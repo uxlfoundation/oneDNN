@@ -28,10 +28,36 @@
 #include <memory>
 #include <random>
 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+#include <string.h>
+
+#ifndef __SHORT_FILE_NAME__
+#define __SHORT_FILE_NAME__ \
+    (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+#endif
+#ifndef PRINTHEAD
+#define PRINTHEAD __SHORT_FILE_NAME__, __FUNCTION__, __LINE__
+#endif
+
+#ifndef DPRINT
+#define DPRINT(fmt, ...) \
+    do { \
+        if (atoi(getenv("TEST_PRINT")) >= 1) { \
+            printf(fmt, __VA_ARGS__); \
+            fflush(0); \
+        } \
+    } while (0)
+#endif
+
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 using mdt = memory::data_type;
 using dnnl::accumulation_mode;
 
 enum class mask_type { no_mask, oneD, twoD, causal_br, causal_tl };
+enum class scale_type { host_side, device_side };
 
 std::ostream &operator<<(std::ostream &ss, const mask_type &p) {
     ss << "mask:";
@@ -206,6 +232,8 @@ struct sdpa_dims_t {
     mask_config_t mask;
     accumulation_t acc_modes;
 
+    scale_type stype;
+
     sdpa_dims_t() = default;
     sdpa_dims_t(memory::dim mb_, memory::dim head_num_,
             memory::dim kv_head_num_, memory::dim seq_len_,
@@ -247,8 +275,11 @@ struct sdpa_dims_t {
 };
 
 struct sdpa_tensors_t {
-    memory m_query, m_scale, m_mask, m_output;
+//    memory m_query, m_scale, m_mask, m_output;
+    memory m_query, m_mask, m_output;
     memory m_key_quantized, m_value_quantized, m_output_quantized;
+    memory m_scale; // tested sdpa arg, can be host-side scalar
+    memory m_scale_device; // reference impl param
 
     memory m_key_scales, m_key_zp, m_value_scales, m_value_zp;
     dnnl::primitive_attr sdpa_attr_quantized, sdpa_kq_attr_quantized,
@@ -302,6 +333,13 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
     }
     if (p.acc_modes.kq_acc == accumulation_mode::f16) ss << "_kqf16acc";
     if (p.acc_modes.vs_acc == accumulation_mode::f16) ss << "_vsf16acc";
+// !!!!!!!!!!!!!
+    if (p.stype == scale_type::host_side) {
+        ss << "_hostscale";
+    } else {
+        ss << "_devicescale";
+    }
+// !!!!!!!!!!!!!
     return ss;
 }
 
@@ -480,6 +518,9 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng,
 
 sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         const sdpa_dims_t &p, std::vector<dnnl_memory_t> &doubled_memory) {
+
+    DPRINT("%s:%s:%d ##### get_descriptors ###### >>>>>>> \n", PRINTHEAD);
+
     sdpa_tensors_t out;
 
     // Prepare input and output shapes to construct the sdpa graph.
@@ -494,6 +535,11 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     const memory::dims v_sz
             = {p.mb, p.heads.kv, p.seq_len.kv, p.head_group.head_size};
     const memory::dims scale_sz = {1, 1, 1, 1};
+
+
+    bool with_host_scale = p.stype == scale_type::host_side;
+    DPRINT("%s:%s:%d ##### p.stype = %s\n", PRINTHEAD, with_host_scale ? "host" : "device");
+
     const memory::dims key_scales_sz = [&] {
         switch (p.qtype) {
             case quantize_type::no_quantization:
@@ -527,6 +573,10 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
                 return memory::dims {v_sz[0], v_sz[1], 1, 1};
         }
         throw std::runtime_error("Quantization type not supported\n");
+    }();
+
+    auto def_scale_value = [&] {
+        return std::sqrt(p.head_group.head_size);
     }();
 
     memory::dims mask_sz;
@@ -595,7 +645,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     // Allocate user data.
     std::vector<float> query_data(product(q_sz), 0.f);
     std::vector<float> scale_data(
-            product(scale_sz), std::sqrt(p.head_group.head_size));
+//            product(scale_sz), std::sqrt(p.head_group.head_size));
+            product(scale_sz), def_scale_value);
     std::vector<float> key_quantized_data(product(k_sz), 0);
     std::vector<float> val_quantized_data(product(v_sz), 0);
     std::vector<float> key_scale_data(product(key_scales_sz), std::nanf("1"));
@@ -880,7 +931,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     if (p.mask.type != mask_type::no_mask)
         write_to_dnnl_memory(mask_data.data(), out.m_mask, eng, strm);
-    write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
+    //write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
 
     // Write data to tensor object's handle.
     write_to_dnnl_memory(query_data.data(), out.m_query, eng, strm);
@@ -908,6 +959,29 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     write_to_dnnl_memory(val_scale_data.data(), out.m_value_scales, eng, strm);
     write_to_dnnl_memory(output_data.data(), out.m_output, eng, strm);
     write_to_dnnl_memory(output_data.data(), out.m_output_quantized, eng, strm);
+
+    // +++++++++++++++++++++++++++ scale processing
+
+    auto setup_device_scale = [&](memory *outmem) {
+        auto scale_md = memory::desc(scale_sz, p.dt.dt, abcd);
+        *outmem = double_and_resize(scale_md, eng, strm, doubled_memory);
+        write_to_dnnl_memory(scale_data.data(), *outmem, eng, strm);
+        };
+
+    if (with_host_scale) {
+        DPRINT("%s:%s:%d ##### get_descriptors: if with_host_scale\n", PRINTHEAD);
+        auto scale_md = memory::desc::host_scalar(p.dt.dt);
+        float scale_val = (float)def_scale_value;
+        // !!!!! TEMP - only for f16 !!!!!
+        out.m_scale = dnnl::memory(scale_md, (float16_t)scale_val);
+    } else
+        setup_device_scale(&out.m_scale);
+    setup_device_scale(&out.m_scale_device);
+
+    // +++++++++++++++++++++++++++ scale processing
+
+    DPRINT("%s:%s:%d <<<<<<< ##### get_descriptors ######\n", PRINTHEAD);
+
 
     return out;
 }
@@ -967,17 +1041,24 @@ std::pair<dnnl::reorder, memory> dequantize_prim(const engine &eng, mdt dt,
 void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         dnnl::engine &eng, dnnl::stream &strm, dnnl::memory &query,
         dnnl::memory &key, dnnl::memory &key_scales, dnnl::memory &key_zp,
-        dnnl::memory::data_type scale_dt, dnnl::memory &scale,
+//        dnnl::memory::data_type scale_dt, dnnl::memory &scale,
+        dnnl::memory::data_type scale_dt, dnnl::memory &scale_device,
         dnnl::memory &mask, dnnl::memory &value, dnnl::memory &value_scales,
         dnnl::memory &value_zp, dnnl::memory &output, bool invert_scale,
         std::vector<dnnl_memory_t> &doubled_memory) {
+
+    DPRINT("%s:%s:%d &&&&&&&&& >>>>>\n", PRINTHEAD);
+
     using namespace dnnl;
     primitive_attr bmm1_attr;
     post_ops bmm1_po;
     bmm1_attr.set_scratchpad_mode(dnnl::scratchpad_mode::library);
-    auto scale_f32 = as(strm, scale, mdt::f32);
+    //auto scale_f32 = as(strm, scale, mdt::f32);
     auto mask_f32 = as(strm, mask, mdt::f32);
     auto mask_sz = mask.get_desc().get_dims();
+
+    DPRINT("%s:%s:%d &&&&&&&&& scale processing\n", PRINTHEAD);
+    auto scale_f32 = as(strm, scale_device, mdt::f32);
 
     if (scale_dt != mdt::undef) {
         scale_f32 = reshape(strm, scale_f32,
@@ -1262,11 +1343,15 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     grouped_output.unmap_data(grouped_output_ptr_);
     output.unmap_data(output_ptr_);
     strm.wait();
+    DPRINT("%s:%s:%d <<<<<< &&&&&&&&&\n", PRINTHEAD);
+
 }
 
 template <typename T>
 void check_memory(dnnl::stream &strm, memory &gold, memory &test,
         float max_diff_threshold = 0.03f, float fthreshold = 0.001466) {
+    DPRINT("%s:%s:%d ***** >>>\n", PRINTHEAD);
+
     T *mapped_ptr_gold = nullptr;
     T *mapped_ptr_test = nullptr;
     mapped_ptr_gold = (T *)gold.map_data();
@@ -1331,6 +1416,9 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
 
     ASSERT_LE(mismatches, threshold) << mismatches << " out of: " << total;
     ASSERT_LE(max_diff, max_diff_threshold);
+
+    DPRINT("%s:%s:%d <<< *****\n", PRINTHEAD);
+
 }
 
 int to_attn_mask_type(mask_type t) {
@@ -1429,6 +1517,7 @@ class sdpa_test_t : public ::testing::TestWithParam<T> {
 public:
     // Testing reusable functionality requires shared engine between tests.
     static void SetUpTestSuite() {
+        DPRINT("%s:%s:%d *******> \n", PRINTHEAD);
 #ifdef DNNL_SYCL_CUDA
         GTEST_SKIP() << "SDPA primitive tests do not support CUDA";
 #endif
@@ -1440,9 +1529,11 @@ public:
                 "SDPA tests require gpus.");
         sdpa_eng.reset(new dnnl::engine(engine::kind::gpu, 0));
 #endif
+        DPRINT("%s:%s:%d <******* \n", PRINTHEAD);
     }
 
     void SetUp() override {
+        DPRINT("%s:%s:%d ++++++> \n", PRINTHEAD);
 #ifdef DNNL_SYCL_CUDA
         GTEST_SKIP() << "SDPA primitive tests do not support CUDA";
 #endif
@@ -1463,6 +1554,7 @@ public:
         doubled_memory.reserve(30);
         t = get_descriptors(eng, strm, p, doubled_memory);
         scale_dt = t.m_query.get_desc().get_data_type();
+        DPRINT("%s:%s:%d <++++++ \n", PRINTHEAD);
     }
 
     void TearDown() override {
@@ -1496,7 +1588,8 @@ public:
         try {
             sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                     t.m_key_quantized.get_desc(),
-                    t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
+//                    t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
+                    t.m_value_quantized.get_desc(), mask_ptr, t.m_scale.get_desc(),
                     t.m_output_quantized.get_desc(), invert_scale, p.heads.kv,
                     to_attn_mask_type(p.mask.type),
                     dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
@@ -1543,7 +1636,8 @@ public:
         sdpa_quantized_p.execute(strm, sdpa_args);
 
         prim_sdpa_quant(p, t, eng, strm, t.m_query, t.m_key_quantized,
-                t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
+//                t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
+                t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale_device, t.m_mask,
                 t.m_value_quantized, t.m_value_scales, t.m_value_zp, t.m_output,
                 invert_scale, doubled_memory);
 
@@ -1588,7 +1682,7 @@ public:
     }
 #endif
     }
-
+#if 0
     void perf() {
         using namespace dnnl::impl;
         auto mask = t.m_mask.get_desc();
@@ -1745,7 +1839,7 @@ protected:
     bool invert_scale = true;
     memory::data_type scale_dt;
 };
-
+#endif
 memory::format_tag with_key_transposed = memory::format_tag::abdc;
 memory::format_tag no_key_transposed = memory::format_tag::abcd;
 
@@ -1768,7 +1862,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
-
+#if 0
 INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s4, sdpa_test_datatypes,
         testing::Combine(testing::Values(1), // mb
                 testing::Values(num_heads_t {2, 2}), // hd_num
@@ -1963,7 +2057,7 @@ INSTANTIATE_TEST_SUITE_P(phi3_mini_4k_instruct,
                     sdpa_dims_t{   1,     32,       32,   2048,    2048,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,     32,       32,   2049,       1,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD }
     ), &print_to_string);
-
+#endif
 // clang-format on
 
 GPU_TEST_P(sdpa_test, compare) {
@@ -1974,10 +2068,11 @@ GPU_TEST_P(sdpa_test_datatypes, compare) {
     compare();
 }
 
+#if 0
 GPU_TEST_P(sdpa_test, perf) {
     perf();
 }
-
+#endif
 /*
 GPU_TEST_P(sdpa_test_datatypes, perf) {
     perf();

@@ -337,11 +337,12 @@ status_t simple_t::execute(const exec_ctx_t &ctx) const {
     const blocking_desc_t &blocking_desc = mdw.blocking_desc();
 
     using namespace format_tag;
-    if (blocking_desc.inner_nblks == 2
+    if (kernel_subg16_ && can_use_subg16_ && blocking_desc.inner_nblks == 2
             && mdw.dims()[blocking_desc.inner_idxs[1]] % 16 == 0
             && blocking_desc.inner_blks[1] % 16 == 0) {
         return execute_subg_16(ctx, mdw, blocking_desc);
-    } else if (blocking_desc.inner_nblks == 1
+    } else if (kernel_subg16_mask_and_clear_dt_1b_ && can_use_subg16_
+            && blocking_desc.inner_nblks == 1
             && blocking_desc.inner_blks[0] == 32
             && mdw.dims()[blocking_desc.inner_idxs[0]] < 16
             && (mdw.nelems(true) % 4096) == 0 && mdw.data_type_size() == 1) {

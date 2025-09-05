@@ -915,6 +915,12 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
     const auto &scratch_md = query_md(const_pd, DNNL_ARG_SCRATCHPAD);
     mem_map.emplace(DNNL_ARG_SCRATCHPAD,
             dnn_mem_t(scratch_md, test_engine, /* prefill = */ true));
+    // Scratchpad memory is not accounted towards mapped as it's write-only
+    // memory. Manually unmap it here.
+    // TODO: if lazy mapping is enabled, this should be removed.
+    if (mem_map.at(DNNL_ARG_SCRATCHPAD).is_mapped()) {
+        mem_map.at(DNNL_ARG_SCRATCHPAD).unmap();
+    }
 
     // Binary post-op.
     // TODO: currently run-time dimensions are not supported in binary post-op.

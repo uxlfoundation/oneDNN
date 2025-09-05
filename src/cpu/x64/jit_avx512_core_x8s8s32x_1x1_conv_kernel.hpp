@@ -33,7 +33,7 @@ namespace x64 {
 
 template <typename Vmm>
 struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_avx512_core_x8s8s32x_1x1_conv_fwd_ker_t)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_x8s8s32x_1x1_conv_fwd_ker_t)
     jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t(
             const jit_1x1_conv_conf_t &ajcp, const primitive_attr_t &attr,
             const memory_desc_t &dst_md);
@@ -53,7 +53,10 @@ private:
     /* register mapping */
     const Xbyak::Reg64 reg_last_load = r8;
     const Xbyak::Reg64 reg_bcast_data = r8;
-    const Xbyak::Reg64 reg_ptr_scales = r8;
+    const Xbyak::Reg64 reg_src_scales = r8;
+    const Xbyak::Reg64 reg_wei_scales = r8;
+    const Xbyak::Reg64 reg_scale_adjust = r8;
+    const Xbyak::Reg64 reg_dst_scales = r12;
     const Xbyak::Reg64 reg_ptr_saturation_ubound = r8;
     const Xbyak::Reg64 reg_output_data = r9;
     const Xbyak::Reg64 reg_load_data = r10;
@@ -61,7 +64,6 @@ private:
     const Xbyak::Reg64 reg_reduce_loop_work = r11;
     const Xbyak::Reg64 reg_bias_data = r12;
     const Xbyak::Reg64 reg_comp_data = r12;
-    const Xbyak::Reg64 reg_ptr_dst_scale = r12;
     const Xbyak::Reg64 reg_scratch = r13;
     const Xbyak::Reg64 aux_reg_bcast_data = r14;
     const Xbyak::Reg64 aux_reg_load_data = r15;
@@ -96,8 +98,7 @@ private:
     /* zero-point */
     const Vmm vmm_zp = Vmm(30);
     const Vmm vmm_zp_tmp = vmm_zp;
-
-    const Vmm vmm_dst_scale = Vmm(30);
+    const Vmm vmm_scale_adjust = Vmm(30);
 
     /* bfloat16 */
     const Xbyak::Zmm bf16_emu_reserv_1 = Xbyak::Zmm(25);
@@ -114,15 +115,16 @@ private:
     constexpr static int reg_bias_data_off = 1 * reg64_size_;
     constexpr static int reg_bcast_data_off = 2 * reg64_size_;
     constexpr static int reg_load_data_off = 3 * reg64_size_;
-    constexpr static int reg_ptr_sum_scale_off = 4 * reg64_size_;
-    constexpr static int reg_ptr_sum_zp_off = 5 * reg64_size_;
-    constexpr static int reg_comp_data_off = 6 * reg64_size_;
-    constexpr static int reg_zp_compensation_off = 7 * reg64_size_;
-    constexpr static int reg_src_zero_point_off = 8 * reg64_size_;
-    constexpr static int reg_dst_zero_point_off = 9 * reg64_size_;
-    constexpr static int reg_dst_scale_off = 10 * reg64_size_;
-    constexpr static int reg_abi_param1_backup = 11 * reg64_size_;
-    constexpr static int stack_space_needed = 12 * reg64_size_;
+    constexpr static int reg_src_scales_off = 4 * reg64_size_;
+    constexpr static int reg_wei_scales_off = 5 * reg64_size_;
+    constexpr static int reg_dst_scales_off = 6 * reg64_size_;
+    constexpr static int reg_ptr_sum_zp_off = 7 * reg64_size_;
+    constexpr static int reg_comp_data_off = 8 * reg64_size_;
+    constexpr static int reg_zp_compensation_off = 9 * reg64_size_;
+    constexpr static int reg_src_zero_point_off = 10 * reg64_size_;
+    constexpr static int reg_dst_zero_point_off = 11 * reg64_size_;
+    constexpr static int reg_abi_param1_backup = 12 * reg64_size_;
+    constexpr static int stack_space_needed = 13 * reg64_size_;
 
     inline Vmm maybe_mask_vmm(Vmm vmm, bool mask_flag) {
         return mask_flag ? vmm | k_load_dim_mask_extended : vmm;

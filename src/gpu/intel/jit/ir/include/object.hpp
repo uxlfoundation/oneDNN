@@ -99,10 +99,10 @@ protected:
     }
 
     struct info_t {
-        constexpr info_t(void *uid, bool is_expr, bool is_stmt)
+        constexpr info_t(const void *uid, bool is_expr, bool is_stmt)
             : uid(uid), is_expr(is_expr), is_stmt(is_stmt) {}
 
-        void *uid = nullptr;
+        const void *uid = nullptr;
         bool is_expr = false;
         bool is_stmt = false;
 
@@ -111,6 +111,12 @@ protected:
             return !operator==(other);
         }
     };
+
+    // std::type_info objects may differ between TUs. Deduplicate them in a
+    // single TU to ensure uniqueness. This is used to improve performance of
+    // object equality checks, as std::type_info comparisons may be relatively
+    // slow.
+    static const void *get_uid(const std::type_info &);
 
     impl_t(info_t info) : info_(info) {};
 
@@ -144,8 +150,9 @@ struct info_t {
 protected:
     friend class impl_t;
     static impl_t::info_t get_info() {
-        return impl_t::info_t(
-                (void *)get_info, is_expr_t<T>::value, is_stmt_t<T>::value);
+        static const void *uid = impl_t::get_uid(typeid(T));
+        return impl_t::info_t(static_cast<const void *>(uid),
+                is_expr_t<T>::value, is_stmt_t<T>::value);
     }
 
 private:

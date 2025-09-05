@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <typeindex>
+
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
@@ -28,6 +30,15 @@ object_t object::impl_t::_mutate(ir_mutator_t &mutator) const {
     return *this;
 }
 void object::impl_t::_visit(ir_visitor_t &visitor) const {}
+
+const void *object::impl_t::get_uid(const std::type_info &info) {
+    static std::unordered_map<std::type_index, const void *> type_registry;
+    static std::mutex mutex;
+
+    const std::lock_guard<std::mutex> guard(mutex);
+    auto result = type_registry.emplace(std::type_index(info), &info);
+    return result.first->second;
+}
 
 static void stmt_seq_flatten(std::vector<stmt_t> &out, const stmt_t &s) {
     if (auto *seq = s.as_ptr<stmt_seq_t>()) {

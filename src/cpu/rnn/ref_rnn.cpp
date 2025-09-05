@@ -434,12 +434,17 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     }
 
     if (rnn_.use_matmul && !rnn_.is_fwd) {
-        assert(this->cell_kind() == alg_kind::vanilla_gru);
-
         constexpr bool trans_B_off = false;
         constexpr bool trans_B_on = true;
         constexpr bool do_sum_off = false;
         constexpr bool do_sum_on = true;
+
+        const bool is_gru = one_of(this->cell_kind(), alg_kind::vanilla_gru,
+                alg_kind::vanilla_augru);
+        const bool is_lbr_gru = one_of(
+                this->cell_kind(), alg_kind::lbr_gru, alg_kind::lbr_augru);
+
+        const auto C_type = is_gru ? acc_type : data_type::f32;
 
         auto check_strides = [](dim_t M, dim_t N, dim_t K, bool transB,
                                      dim_t LDA, dim_t LDB, dim_t LDC) {
@@ -450,24 +455,39 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
             const dim_t M = rnn_.sic;
             const dim_t N = rnn_.mb;
             const dim_t LDA = rnn_.weights_iter_ld;
-            const dim_t LDB = rnn_.scratch_gates_ld;
             const dim_t LDC = rnn_.ws_diff_states_iter_ld;
+            constexpr auto transB = trans_B_off;
 
-            // K and do_sum
-            using dim_bool = std::tuple<dim_t, bool>;
-            const dim_bool K_and_sum[] = {{rnn_.dhc, do_sum_off},
-                    {(rnn_.n_gates - 1) * rnn_.dhc, do_sum_on}};
+            if (is_gru) {
+                const dim_t LDB = rnn_.scratch_gates_ld;
 
-            for (const auto &ks : K_and_sum) {
-                const auto K = std::get<0>(ks);
-                constexpr auto transB = trans_B_off;
+                // K and do_sum
+                using dim_bool = std::tuple<dim_t, bool>;
+                const dim_bool K_and_sum[] = {{rnn_.dhc, do_sum_off},
+                        {(rnn_.n_gates - 1) * rnn_.dhc, do_sum_on}};
 
-                if (!check_strides(M, N, K, transB, LDA, LDB, LDC)) continue;
+                for (const auto &ks : K_and_sum) {
+                    const auto K = std::get<0>(ks);
+                    if (!check_strides(M, N, K, transB, LDA, LDB, LDC))
+                        continue;
 
-                CHECK(bwd_matmul_pds.create_if_not_exist(
-                        {M, N, K, LDA, LDB, LDC, weights_type, src_type,
-                                acc_type, transB, std::get<1>(ks)},
-                        engine));
+                    CHECK(bwd_matmul_pds.create_if_not_exist(
+                            {M, N, K, LDA, LDB, LDC, weights_type, src_type,
+                                    C_type, transB, std::get<1>(ks)},
+                            engine));
+                }
+            } else {
+                const dim_t K = rnn_.n_gates * rnn_.dhc;
+                const dim_t LDB
+                        = is_lbr_gru ? rnn_.ws_gates_ld : rnn_.scratch_gates_ld;
+                const bool do_sum = is_lbr_gru ? do_sum_on : do_sum_off;
+
+                if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                    CHECK(bwd_matmul_pds.create_if_not_exist(
+                            {M, N, K, LDA, LDB, LDC, weights_type, src_type,
+                                    C_type, transB, do_sum},
+                            engine));
+                }
             }
         }
 
@@ -483,13 +503,14 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
 
             if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
                 CHECK(bwd_matmul_pds.create_if_not_exist(
-                        {M, N, K, LDA, LDB, LDC, weights_type, src_type,
-                                acc_type, transB, do_sum_off},
+                        {M, N, K, LDA, LDB, LDC, weights_type, src_type, C_type,
+                                transB, do_sum_off},
                         engine));
             }
         }
 
         { // init weights layer matmuls
+            const auto B_type = is_gru ? weights_type : src_type;
             const dim_t M = rnn_.n_gates * rnn_.dhc;
             const dim_t N = rnn_.slc;
             const dim_t K
@@ -501,55 +522,119 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
             const dim_t LDC = rnn_.diff_weights_layer_ld;
             constexpr auto transB = trans_B_on;
 
+            auto create_descriptor = [&](bool do_sum, dim_t LDB) {
+                return bwd_matmul_pds.create_if_not_exist(
+                        {M, N, K, LDA, LDB, LDC, src_type, B_type, C_type,
+                                transB, do_sum},
+                        engine);
+            };
+
             for (const auto &LDB : LDBs) {
                 if (!check_strides(M, N, K, transB, LDA, LDB, LDC)) continue;
 
-                CHECK(bwd_matmul_pds.create_if_not_exist(
-                        {M, N, K, LDA, LDB, LDC, src_type, weights_type,
-                                acc_type, transB, do_sum_on},
-                        engine));
+                CHECK(create_descriptor(do_sum_on, LDB));
 
                 if (rnn_.diff_weights_overwrite) {
-                    CHECK(bwd_matmul_pds.create_if_not_exist(
-                            {M, N, K, LDA, LDB, LDC, src_type, weights_type,
-                                    acc_type, transB, do_sum_off},
-                            engine));
+                    CHECK(create_descriptor(do_sum_off, LDB));
                 }
             }
         }
 
         { // init weights iter matmuls
+            const auto A_type = is_gru ? weights_type : src_type;
             const dim_t N = rnn_.sic;
             const dim_t K = rnn_.mb;
-            const dim_t LDA = rnn_.ws_gates_ld;
+            const dim_t LDA = is_gru || is_lbr_gru ? rnn_.ws_gates_ld
+                                                   : rnn_.scratch_gates_ld;
             const dim_t LDC = rnn_.diff_weights_iter_ld;
             constexpr auto transB = trans_B_on;
 
-            // M and ldb
-            using dim2 = std::tuple<dim_t, dim_t>;
-            const dim_t M1 = (rnn_.n_gates - 1) * rnn_.dhc;
-            const dim_t M2 = rnn_.dhc;
-            // LDB values for M1 are from rnn_conf_t::src_iter_ld()
-            dim2 M_and_LDB[] = {{M1, rnn_.src_iter_ld_},
-                    {M1, rnn_.dst_layer_ld_}, {M1, rnn_.ws_states_iter_ld},
-                    {M2, rnn_.ws_states_layer_ld}};
+            auto create_descriptors = [&](dim_t M, dim_t LDB) {
+                auto create_descriptor = [&](bool do_sum) {
+                    return bwd_matmul_pds.create_if_not_exist(
+                            {M, N, K, LDA, LDB, LDC, A_type, src_type, C_type,
+                                    transB, do_sum},
+                            engine);
+                };
 
-            for (const auto &m_ldb : M_and_LDB) {
-                const dim_t M = std::get<0>(m_ldb);
-                const dim_t LDB = std::get<1>(m_ldb);
-
-                if (!check_strides(M, N, K, transB, LDA, LDB, LDC)) continue;
-
-                CHECK(bwd_matmul_pds.create_if_not_exist(
-                        {M, N, K, LDA, LDB, LDC, weights_type, src_type,
-                                acc_type, transB, do_sum_on},
-                        engine));
-
+                CHECK(create_descriptor(do_sum_on));
                 if (rnn_.diff_weights_overwrite) {
+                    CHECK(create_descriptor(do_sum_off));
+                }
+
+                return status::success;
+            };
+
+            if (is_gru) {
+                // M and ldb
+                using dim2 = std::tuple<dim_t, dim_t>;
+                const dim_t M1 = (rnn_.n_gates - 1) * rnn_.dhc;
+                const dim_t M2 = rnn_.dhc;
+                // LDB values for M1 are from rnn_conf_t::src_iter_ld()
+                dim2 M_and_LDB[] = {{M1, rnn_.src_iter_ld_},
+                        {M1, rnn_.dst_layer_ld_}, {M1, rnn_.ws_states_iter_ld},
+                        {M2, rnn_.ws_states_layer_ld}};
+
+                for (const auto &m_ldb : M_and_LDB) {
+                    const dim_t M = std::get<0>(m_ldb);
+                    const dim_t LDB = std::get<1>(m_ldb);
+                    if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                        CHECK(create_descriptors(M, LDB));
+                    }
+                }
+            } else {
+                const dim_t M = rnn_.n_gates * rnn_.dhc;
+                // LDB values are from rnn_conf_t::src_iter_ld()
+                dim_t LDBs[] = {rnn_.src_iter_ld_, rnn_.dst_layer_ld_,
+                        rnn_.ws_states_iter_ld};
+
+                for (const auto &LDB : LDBs) {
+                    if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                        CHECK(create_descriptors(M, LDB));
+                    }
+                }
+            }
+        }
+
+        if (rnn_.is_lstm_projection) {
+            { // init proj matmuls
+                const dim_t M = rnn_.dhc;
+                const dim_t N = rnn_.mb;
+                const dim_t K = rnn_.dic;
+                const dim_t LDA = rnn_.weights_projection_ld;
+                const dim_t LDB = rnn_.scratch_diff_ht_ld;
+                const dim_t LDC = rnn_.ws_diff_states_layer_ld;
+                constexpr auto transB = trans_B_off;
+
+                if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
                     CHECK(bwd_matmul_pds.create_if_not_exist(
-                            {M, N, K, LDA, LDB, LDC, weights_type, src_type,
-                                    acc_type, transB, do_sum_off},
+                            {M, N, K, LDA, LDB, LDC, weights_type, weights_type,
+                                    C_type, transB, do_sum_off},
                             engine));
+                }
+            }
+
+            { // init weights proj matmuls
+                const dim_t M = rnn_.dlc;
+                const dim_t N = rnn_.dhc;
+                const dim_t K = rnn_.mb;
+                const dim_t LDA = rnn_.scratch_diff_ht_ld;
+                const dim_t LDB = rnn_.ws_ht_ld;
+                const dim_t LDC = rnn_.diff_weights_projection_ld;
+                constexpr auto transB = trans_B_on;
+
+                auto create_descriptor = [&](bool do_sum) {
+                    return bwd_matmul_pds.create_if_not_exist(
+                            {M, N, K, LDA, LDB, LDC, src_type, src_type, C_type,
+                                    transB, do_sum},
+                            engine);
+                };
+
+                if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                    CHECK(create_descriptor(do_sum_on));
+                    if (rnn_.diff_weights_overwrite) {
+                        CHECK(create_descriptor(do_sum_off));
+                    }
                 }
             }
         }

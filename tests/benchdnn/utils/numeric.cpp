@@ -246,3 +246,7 @@ size_t bits_dt(dnnl_data_type_t dt) {
 
     return 0;
 }
+
+bool is_fp8_dt(dnnl_data_type_t type) {
+    return type == dnnl_f8_e5m2 || type == dnnl_f8_e4m3;
+}

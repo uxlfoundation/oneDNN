@@ -658,7 +658,10 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
         const bool mds_are_int8 = is_integral_dt(mem_replace.dt())
                 && is_integral_dt(mem.dt()) && mem_replace.sizeof_dt() == 1
                 && mem.sizeof_dt() == 1;
-        if (mds_are_int8) {
+
+        const bool mds_are_fp8
+                = is_fp8_dt(mem_replace.dt()) && mem_replace.dt() == mem.dt();
+        if (mds_are_int8 || mds_are_fp8) {
             dnnl_memory_desc_destroy(mem_replace.md_);
             dnnl_memory_desc_clone(&mem_replace.md_, mem.md_);
             SAFE(mem.reorder(mem_replace), WARN);

@@ -19,6 +19,7 @@
 
 #include "common/compiler_workarounds.hpp"
 
+// `cond` should be true, otherwise, it returns `status` with `msg`.
 #define VCHECK_SDP_PRIMITIVE(cond, status, msg, ...) \
     VCONDCHECK(graph, create, check, sdp_primitive_kernel_t, (cond), status, \
             msg, ##__VA_ARGS__);
@@ -105,6 +106,13 @@ status_t sdp_primitive_config_t::initial_check(
                     = mm1->get_output_value(0)->get_logical_tensor();
             f32_inter = f32_inter
                     && (ltw(lt_score).data_type() == data_type::f32);
+            // No accumulation mode or accumulation mode is strict.
+            VCHECK_SDP_PRIMITIVE(!mm1->has_attr(op_attr::accumulation_mode)
+                            || mm1->get_attr<std::string>(
+                                       op_attr::accumulation_mode)
+                                    == "strict",
+                    status::unimplemented,
+                    "not support accumulation mode for bmm1");
             // Not support select between mm1 and scale(optional)
             // GPT-J:[mm1] --> [select] --> [scale]* --> [mask]* --> ...
             VCHECK_SDP_PRIMITIVE(post_op->get_kind() != graph::op_kind::Select,
@@ -151,6 +159,12 @@ status_t sdp_primitive_config_t::initial_check(
             }
         } else {
             mm2 = cur_op;
+            VCHECK_SDP_PRIMITIVE(!mm2->has_attr(op_attr::accumulation_mode)
+                            || mm2->get_attr<std::string>(
+                                       op_attr::accumulation_mode)
+                                    == "strict",
+                    status::unimplemented,
+                    "not support accumulation mode for bmm2");
         }
     }
 

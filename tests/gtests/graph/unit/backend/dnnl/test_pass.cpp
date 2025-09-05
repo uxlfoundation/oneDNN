@@ -12916,7 +12916,7 @@ TEST(test_pass, Int8MhaFusion) {
     agraph.finalize();
     ASSERT_EQ(agraph.get_ops().size(), 13U);
 
-    dnnl::impl::graph::pass::pass_base_ptr apass = get_pass("int8_sdp_fusion");
+    dnnl::impl::graph::pass::pass_base_ptr apass = get_pass("x8_sdpa_fusion");
     apass->run(agraph);
     ASSERT_EQ(agraph.get_num_partitions(), 1U);
 }

@@ -995,7 +995,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     if (with_host_scale) {
         auto scale_md = memory::desc::host_scalar(p.dt.dt);
         float scale_val = (float)def_scale_value;
-        // ????? Better ???????
+        // ????? Better ??????? int ??????
         switch (p.dt.dt) {
         case mdt::f32:
             out.m_scale = dnnl::memory(scale_md, (float)scale_val); break;
@@ -1716,7 +1716,6 @@ public:
 #endif
     }
 
-#if 0
     void perf() {
         using namespace dnnl::impl;
         auto mask = t.m_mask.get_desc();
@@ -1736,7 +1735,8 @@ public:
         try {
             sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                     t.m_key_quantized.get_desc(),
-                    t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
+//                    t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
+                    t.m_value_quantized.get_desc(), mask_ptr, t.m_scale.get_desc(),
                     t.m_output_quantized.get_desc(), invert_scale, p.heads.kv,
                     to_attn_mask_type(p.mask.type),
                     alg_kind::softmax_accurate_inf_as_zero,
@@ -1862,7 +1862,6 @@ public:
                   << "/" << compute(magnitude_cast<gigaops>(total_flops), qtime)
                   << "|" << std::endl;
     }
-#endif
 
 protected:
     dnnl::engine eng;
@@ -2155,13 +2154,11 @@ GPU_TEST_P(sdpa_test_datatypes, compare) {
     compare();
 }
 
-#if 0
 GPU_TEST_P(sdpa_test, perf) {
     perf();
 }
-#endif
-/*
+
 GPU_TEST_P(sdpa_test_datatypes, perf) {
     perf();
 }
-*/
+

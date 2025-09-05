@@ -253,7 +253,7 @@ status_t post_ops_t::append_binary(alg_kind_t alg,
     e.binary.user_src1_desc = *user_src1_desc;
     e.binary.src1_desc = *user_src1_desc;
 
-    if (alg == alg_kind::binary_select) {
+    if (user_src2_desc) {
         e.binary.user_src2_desc = *user_src2_desc;
         e.binary.src2_desc = *user_src2_desc;
     }

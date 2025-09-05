@@ -93,8 +93,10 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
 
     auto ker = [&](float &d, int64_t g, int64_t mb, int64_t oc, int64_t od,
                        int64_t oh, int64_t ow) {
-        const float *__restrict src_loc
-                = (const float *)src_m + (mb * IC + g * ICG) * ID * IH * IW;
+        // The offset assumes `axb` source format defined in
+        // `init_ref_memory_args`.
+        const int64_t src_loc_off = mb * IC * ID * IH * IW + g * ICG;
+        const float *__restrict src_loc = (const float *)src_m + src_loc_off;
         const float *__restrict wei_loc
                 = (const float *)wei_m + (g * OCG + oc) * ICG * KD * KH * KW;
 
@@ -117,8 +119,10 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
                     if (iw < 0 || iw >= IW) continue;
 
                     for (int64_t ic = 0; ic < ICG; ++ic) {
-                        int64_t src_off = ((ic * ID + id) * IH + ih) * IW + iw;
-                        int64_t wei_off = ((ic * KD + kd) * KH + kh) * KW + kw;
+                        // Both offsets assume `axb` source and weights format
+                        // defined in `init_ref_memory_args`.
+                        int64_t src_off = ((id * IH + ih) * IW + iw) * IC + ic;
+                        int64_t wei_off = ((kd * KH + kh) * KW + kw) * ICG + ic;
                         if (src_scale_mask > 0)
                             src_scale = src_scales.get_f32_elem(g * ICG + ic);
                         if (src_zp_mask > 0)

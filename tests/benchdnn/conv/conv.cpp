@@ -508,9 +508,25 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
 
-        // Scratchpad memory relates to a primitive. If reference needs it,
-        // use switch below to define a memory desc for it.
-        if (exec_arg != DNNL_ARG_SCRATCHPAD) {
+        if (exec_arg == DNNL_ARG_SRC && (prb->dir & FLAG_FWD)
+                && prb->alg != WINO) {
+            // Switch the format tag from "abx" to "axb" for forward problems.
+            // Winograd is dead for optimizations.
+            ref_mem_map.emplace(exec_arg,
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::axb, ref_engine,
+                            /* prefill = */ false));
+        } else if (exec_arg == DNNL_ARG_WEIGHTS && (prb->dir & FLAG_FWD)
+                && prb->alg != WINO) {
+            // Switch the format tag from "abx" to "axb" for forward problems.
+            // Handle groups with "abxc" meta-tag.
+            // Winograd is dead for optimizations.
+            std::string axb_tag = prb->has_groups ? "abxc" : "axb";
+            ref_mem_map.emplace(exec_arg,
+                    dnn_mem_t(mem.md_, dnnl_f32, axb_tag, ref_engine,
+                            /* prefill = */ false));
+        } else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
+            // Scratchpad memory relates to a primitive. If reference needs it,
+            // use switch below to define a memory desc for it.
             ref_mem_map.emplace(exec_arg,
                     dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
                             /* prefill = */ false));

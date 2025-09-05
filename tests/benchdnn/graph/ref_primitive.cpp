@@ -312,8 +312,8 @@ int ref_primitive_t::execute_prim(res_t *res) const {
     return OK;
 }
 
-void ref_primitive_t::check_correctness(
-        const args_t &args, bool has_eltwise, bool has_nans, res_t *res) const {
+void ref_primitive_t::check_correctness(const args_t &args, bool has_eltwise,
+        bool has_nans, bool has_reduce_sum, res_t *res) const {
 
     static const std::unordered_map<size_t, data_kind_t>
             dnnl_arg_2_data_kind_map {
@@ -379,7 +379,11 @@ void ref_primitive_t::check_correctness(
         // if number of affected points is really small compared to the total
         // number of points - 1 point per every 1024.
         // This can be revisited later.
-        const size_t allowed_error_points = res->total / 1024;
+        // Special case: for reduce_sum in SDPA training backward, adjust the
+        // total number of elements to its SRC rather than its DST.
+        const size_t allowed_error_points = has_reduce_sum
+                ? args_.find(DNNL_ARG_SRC).nelems() / 1024
+                : res->total / 1024;
         const bool norm_check_allowed = allowed_error_points >= res->errors;
 
         BENCHDNN_PRINT(0,

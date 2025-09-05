@@ -264,13 +264,14 @@ void ref_partition_t::exec_ops(res_t *res) {
                         == graph_recognized_pattern_t::sdpa_fwd;
 
         // For SDPA training backward, it is limited for MatMuls used to compute
-        // dQ, dK, dV (which has no child ops).
+        // dQ, dK, dV (which has no child ops or child ops = ReduceSum for GQA).
         const deserialized_op_t *child_op = nullptr;
         const bool is_matmul_in_sdpa_bwd_pattern
                 = ref_prim->get_kind() == dnnl::graph::op::kind::MatMul
                 && dg_->get_recognized_pattern()
                         == graph_recognized_pattern_t::sdpa_bwd
-                && !has_child_op(op, &child_op);
+                && (!has_child_op(op, &child_op)
+                        || child_op->kind_ == "ReduceSum");
 
         // For gated-MLP, it is complicated - the Swish op is decomposed into
         // Sigmoid and Multiply which has inputs from MatMul0 and Sigmoid. Its
@@ -374,7 +375,11 @@ int ref_partition_t::check_partition_correctness(
                 || (op_driver == dnnl_driver_t::reorder
                         && op.get().in_lts_.front().get_data_type()
                                 == logical_tensor::data_type::f8_e4m3);
-
+        // if there is reductionsum in sdpa_bwd pattern, need to relax compare criteria
+        bool has_reduce_sum
+                = (opstr2kind(op_kind) == dnnl::graph::op::kind::ReduceSum
+                        && dg_->get_recognized_pattern()
+                                == graph_recognized_pattern_t::sdpa_bwd);
         // get the args that need comparing
         args_t output_args;
         for (size_t out_idx = 0; out_idx < op.get().out_lts_.size();
@@ -411,7 +416,7 @@ int ref_partition_t::check_partition_correctness(
         // The graph driver allows nans from the branch of Sqrt, but for the
         // other branch, the driver should not tolerate that.
         ref_prim->check_correctness(
-                output_args, has_eltwise, output_has_nans, res);
+                output_args, has_eltwise, output_has_nans, has_reduce_sum, res);
         if (res->state == FAILED) {
             BENCHDNN_PRINT(
                     2, "Op failed: {(%zu) %s}\n", op_id, op_kind.c_str());

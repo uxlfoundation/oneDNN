@@ -34,6 +34,17 @@ namespace jit {
 
 using namespace intel::jit;
 
+char to_spatial(const pvar_t &p);
+int spatial_index(const pvar_t &p);
+
+template <typename T>
+bool has_spatial(const pvar_map_t<T> &map, char spatial) {
+    for (auto &d : map) {
+        if (to_spatial(d) == spatial) return true;
+    }
+    return false;
+}
+
 bool is_index(const pvar_t &dim);
 bool is_index(const pvar_t &dim, prop_kind_t prop);
 pvar_t prb_stride(const pvar_t &dim, tensor_kind_t tensor_kind);

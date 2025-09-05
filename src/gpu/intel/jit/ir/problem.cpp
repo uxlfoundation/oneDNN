@@ -61,59 +61,6 @@ size_t pvar_t::name_t::get_hash() const {
     return h;
 }
 
-const expr_t &pvar_t::index_var() const {
-    static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(*this))
-        vars[*this] = var_t::make(type_t::s32(), name_.str() + "_idx");
-    return vars[*this];
-}
-
-const expr_t &pvar_t::var() const {
-    static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(*this))
-        vars[*this] = const_var_t::make(type_t::s32(), name_.str());
-    return vars[*this];
-}
-
-pvar_t pvar_t::from_var(const expr_t &var) {
-    auto *ptr = var.as_ptr<const_var_t>();
-    if (!ptr) return pvar_t();
-    return pvar_t(ptr->name);
-}
-
-pvar_t pvar_t::from_index_var(const expr_t &index_var) {
-    auto *ptr = index_var.as_ptr<var_t>();
-    if (!ptr) return pvar_t();
-    const char *suffix = "_idx";
-    const size_t suffix_len = std::strlen(suffix);
-    auto &name = ptr->name;
-    auto pos = name.find(suffix);
-    if (pos == std::string::npos || pos + suffix_len != name.length())
-        return pvar_t();
-    return pvar_t(name.substr(0, name.length() - suffix_len));
-}
-
-char pvar_t::to_spatial() const {
-    auto s = name_.str();
-    if (s.size() != 2) return ' ';
-    char c0 = s[0];
-    char c1 = s[1];
-    if (!std::strchr("dikops", c0)) return ' ';
-    if (!std::strchr("dhw", c1)) return ' ';
-    return c1;
-}
-
-int pvar_t::spatial_index() const {
-    char sp = to_spatial();
-    switch (sp) {
-        case 'd': return 0;
-        case 'h': return 1;
-        case 'w': return 2;
-        default: return -1;
-    }
-    return -1;
-}
-
 namespace pvars {
 pvar_t g("g");
 pvar_t ic("ic");

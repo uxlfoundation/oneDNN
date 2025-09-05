@@ -86,7 +86,7 @@ prb_reqs_t specialization_t::reqs() const {
     prb_reqs_t reqs;
     reqs.add(dim_values);
     for (auto &d : dim_mods) {
-        reqs.add(d.var() % dim_mods[d] == 0);
+        reqs.add(var(d) % dim_mods[d] == 0);
     }
     return reqs;
 }
@@ -341,7 +341,7 @@ void kernel_desc_t::set_stride_reqs(const tensor_kind_t kind,
     auto tag = append_groups(kind, desc_tag, is_dw);
     auto &entries = tag.raw_tag().entries();
     auto dim = tag.desc().prb_dim(entries.rbegin()->index());
-    reqs.add(prb_stride(dim, kind).var() == expr_t(1));
+    reqs.add(var(prb_stride(dim, kind)) == expr_t(1));
 }
 
 bool is_compatible(tensor_kind_t abc, const kernel_desc_t &kernel_desc,

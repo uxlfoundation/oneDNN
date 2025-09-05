@@ -178,7 +178,7 @@ layout_t make_layout(tensor_kind_t tensor_kind, const layout_tag_t &_tag,
         if (tag.is_strided() && it != entries.rbegin()) {
             auto stride = prb_stride(dim, tensor_kind);
             ret.add_block(dim, block_size_expr,
-                    stride.is_undef() ? expr_t(0) : stride.var());
+                    stride.is_undef() ? expr_t(0) : var(stride));
         } else
             ret.add_block(dim, block_size_expr);
     }
@@ -415,7 +415,7 @@ std::vector<pvar_t> skip_mask(
         gpu_assert(view.dim_mapper().has(dim));
         // Assume that dimensions with non-trivial mapping always require
         // masking.
-        if (!view.dim_mapper().expr(dim).is_same(dim.index_var())) continue;
+        if (!view.dim_mapper().expr(dim).is_same(index_var(dim))) continue;
         // Check if the mask can be proven with known dimension requirements.
         if (!reqs.can_prove(dim_sizes.at(dim) % tile.at(dim) == 0)) continue;
         // Mask is not required for this dimension.

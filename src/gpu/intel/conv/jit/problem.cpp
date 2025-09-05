@@ -27,6 +27,27 @@ namespace intel {
 namespace conv {
 namespace jit {
 
+char to_spatial(const pvar_t &p) {
+    auto s = p.str();
+    if (s.size() != 2) return ' ';
+    char c0 = s[0];
+    char c1 = s[1];
+    if (!std::strchr("dikops", c0)) return ' ';
+    if (!std::strchr("dhw", c1)) return ' ';
+    return c1;
+}
+
+int spatial_index(const pvar_t &p) {
+    char sp = to_spatial(p);
+    switch (sp) {
+        case 'd': return 0;
+        case 'h': return 1;
+        case 'w': return 2;
+        default: return -1;
+    }
+    return -1;
+}
+
 const std::vector<pvar_t> &dims() {
     static std::vector<pvar_t> dims = []() {
         std::vector<pvar_t> ret;

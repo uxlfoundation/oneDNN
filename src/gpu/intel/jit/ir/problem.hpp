@@ -56,16 +56,6 @@ public:
     size_t get_hash() const { return ir_utils::get_hash(name_); }
     std::string str() const { return name_.str(); }
 
-    IR_DEFINE_DUMP()
-
-    const expr_t &index_var() const;
-    const expr_t &var() const;
-    static pvar_t from_index_var(const expr_t &ndex_var);
-    static pvar_t from_var(const expr_t &var);
-
-    char to_spatial() const;
-    int spatial_index() const;
-
 private:
     class name_t {
     public:
@@ -183,11 +173,7 @@ public:
     iterator_t end() const { return iterator_t(map_.end()); }
     size_t size() const { return map_.size(); }
     bool is_empty() const { return map_.empty(); }
-    bool is_valid() const { return is_valid_; }
-    bool is_invalid() const { return !is_valid_; }
-
     void set(const pvar_t &key, const ValueT &value) { map_[key] = value; }
-    void set_valid(bool value) { is_valid_ = value; }
 
     void unset(const pvar_t &key) {
         if (!has(key)) return;
@@ -289,7 +275,6 @@ public:
     size_t get_hash() const { return ir_utils::get_hash(map_); }
 
     void stringify(std::ostream &out) const {
-        gpu_assert(is_valid());
         if (is_empty()) {
             out << "x";
             return;
@@ -309,7 +294,6 @@ public:
     }
 
     std::string str_impl(bool multiline) const {
-        if (is_invalid()) return "(invalid)";
         if (is_empty()) return "x";
         ostringstream_t oss;
         bool is_first = true;
@@ -335,7 +319,6 @@ public:
     IR_DEFINE_DUMP()
 
 private:
-    bool is_valid_ = true;
     std::map<pvar_t, ValueT> map_;
 };
 
@@ -389,12 +372,6 @@ public:
 #endif
 
     std::string str() const override { return str_impl(/*multiline=*/false); }
-
-    static tile_t invalid() {
-        tile_t ret;
-        ret.set_valid(false);
-        return ret;
-    }
 };
 
 class coord_t;
@@ -412,11 +389,6 @@ public:
     }
     icoord_t(const coord_t &coord);
     dim_t default_value() const override { return 0; }
-    static icoord_t invalid() {
-        icoord_t ret;
-        ret.set_valid(false);
-        return ret;
-    }
 };
 
 // Coordinate with expression values.
@@ -435,11 +407,6 @@ public:
             set(d, icoord[d]);
     }
     expr_t default_value() const override { return expr_t(0); }
-    static coord_t invalid() {
-        coord_t ret;
-        ret.set_valid(false);
-        return ret;
-    }
     coord_t with(const pvar_t &key, const expr_t &value) const {
         return pvar_map_t<expr_t>::with_impl<coord_t>(key, value);
     }
@@ -477,11 +444,12 @@ inline icoord_t operator+(const icoord_t &a, const icoord_t &b) {
 struct tile_coord_t {
     tile_t tile;
     coord_t coord;
+    bool is_valid;
 
-    tile_coord_t() = default;
+    tile_coord_t(bool is_valid = true) : is_valid(is_valid) {}
     tile_coord_t(const tile_t &tile, const coord_t &coord = {})
-        : tile(tile), coord(coord) {}
-    bool is_invalid() const { return tile.is_invalid() || coord.is_invalid(); }
+        : tile(tile), coord(coord), is_valid(true) {}
+    bool is_invalid() const { return !is_valid; }
     size_t size() const { return tile.size(); }
     dim_t elems() const { return tile.elems(); }
     bool has_zero_coord() const {
@@ -504,6 +472,8 @@ struct tile_coord_t {
     }
 
     std::string str() const {
+        if (is_invalid()) return "tile: (invalid)";
+
         ostringstream_t oss;
         oss << "tile: " << tile.str();
         if (!has_zero_coord()) oss << " coord: " << coord.str();
@@ -512,23 +482,13 @@ struct tile_coord_t {
 
     IR_DEFINE_DUMP()
 
-    static tile_coord_t invalid() {
-        return tile_coord_t(tile_t::invalid(), coord_t::invalid());
-    }
+    static tile_coord_t invalid() { return tile_coord_t(false); }
 };
 
 template <typename F>
 void for_each(const tile_t &tile, const F &f) {
     ir_utils::for_each(tile.values(),
             [&](const std::vector<dim_t> &idxs) { f(icoord_t(idxs)); });
-}
-
-template <typename T>
-bool has_spatial(const pvar_map_t<T> &map, char spatial) {
-    for (auto &d : map) {
-        if (d.to_spatial() == spatial) return true;
-    }
-    return false;
 }
 
 bool is_input_spatial(const pvar_t &pvar);

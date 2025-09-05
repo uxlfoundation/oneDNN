@@ -52,15 +52,15 @@ public:
     const dim_mapper_t &mapper(tensor_kind_t tensor) const;
 
 private:
-    expr_t kw_idx = pvars::kw.index_var();
-    expr_t kh_idx = pvars::kh.index_var();
-    expr_t kd_idx = pvars::kd.index_var();
-    expr_t id_idx = pvars::id.index_var();
-    expr_t ih_idx = pvars::ih.index_var();
-    expr_t iw_idx = pvars::iw.index_var();
-    expr_t od_idx = pvars::od.index_var();
-    expr_t oh_idx = pvars::oh.index_var();
-    expr_t ow_idx = pvars::ow.index_var();
+    expr_t kw_idx = index_var(pvars::kw);
+    expr_t kh_idx = index_var(pvars::kh);
+    expr_t kd_idx = index_var(pvars::kd);
+    expr_t id_idx = index_var(pvars::id);
+    expr_t ih_idx = index_var(pvars::ih);
+    expr_t iw_idx = index_var(pvars::iw);
+    expr_t od_idx = index_var(pvars::od);
+    expr_t oh_idx = index_var(pvars::oh);
+    expr_t ow_idx = index_var(pvars::ow);
 
     dim_mapper_t init_src_mapper() const;
     dim_mapper_t init_wei_mapper() const;

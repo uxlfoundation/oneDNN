@@ -50,9 +50,9 @@ struct stride_t {
     expr_t binary_expr(dim_t rhs, const BinaryFunc &func) const {
         if (is_zero()) return func(0, rhs);
         if (is_one()) return func(1, rhs);
-        expr_t lhs = pvars[0].var();
+        expr_t lhs = var(pvars[0]);
         for (size_t i = 1; i < pvars.size(); i++)
-            lhs *= pvars[i].var();
+            lhs *= var(pvars[i]);
         return func(lhs, ir_utils::safe_div(rhs, factor));
     }
 
@@ -134,7 +134,7 @@ block_2d_params_t to_block_2d_params(const prop_kind_t &prop,
     gpu_assert(!params.h_dim.is_undef());
     params.y_stride = expr_t(1);
     if ((is_fwd || is_bwd_w) && params.h_dim == pvars::iw) {
-        params.y_stride = pvars::sw.var();
+        params.y_stride = var(pvars::sw);
     }
     for (auto &d : strides) {
         if (utils::one_of(d, params.w_dim, params.h_dim)) continue;
@@ -156,11 +156,11 @@ void generate_2d_stride_var_reqs(const layout_tag_t &tag, prb_reqs_t &reqs,
         auto dim = tag.desc().prb_dim(e.index());
         if (utils::one_of(dim, params.w_dim, params.h_dim)) continue;
         reqs.add_no_simplify(
-                prb_stride(dim, tensor_kind).var() % base_align == 0);
+                var(prb_stride(dim, tensor_kind)) % base_align == 0);
     }
     auto &e = tag.raw_tag().entries()[tag.raw_tag().nentries() - 1];
     auto dim = tag.desc().prb_dim(e.index());
-    reqs.add_no_simplify(dim.var() % base_align == 0);
+    reqs.add_no_simplify(var(dim) % base_align == 0);
 }
 
 void generate_2d_reqs(const kernel_desc_t &desc, tensor_kind_t tensor_kind,
@@ -191,11 +191,10 @@ void generate_2d_reqs(const kernel_desc_t &desc, tensor_kind_t tensor_kind,
     auto params = to_block_2d_params(desc.prop, tensor_kind, type_size,
             desc.thread_group_tile, desc.iter_tile, strides, reqs);
     int base_align = block_2d_base_alignment(desc.hw_desc);
-    auto W = params.w_dim.var();
-    auto H = params.h_dim.var();
+    auto W = var(params.w_dim);
+    auto H = var(params.h_dim);
     auto P = strides.at(params.h_dim);
-    if (!is_one(params.y_stride))
-        P.pvars.push_back(pvar_t::from_var(params.y_stride));
+    if (!is_one(params.y_stride)) P.pvars.push_back(to_pvar(params.y_stride));
     reqs.add_no_simplify(W >= safe_div(block_2d_min_dim(), type_size));
     reqs.add_no_simplify(W <= safe_div(block_2d_max_dim(), type_size));
     reqs.add_no_simplify(W % block_2d_w_alignment(type_size) == 0);
@@ -215,8 +214,8 @@ void generate_2d_reqs(const kernel_desc_t &desc, tensor_kind_t tensor_kind,
     else
         reqs.add_no_simplify(params.base_stride.mod(base_align) == 0);
     if ((is_fwd || is_bwd_w) && params.h_dim == pvars::iw) {
-        reqs.add_no_simplify((params.y_stride == 1) | (pvars::pw.var() == 0));
-        reqs.add_no_simplify((params.y_stride == 1) | (pvars::kw.var() == 1));
+        reqs.add_no_simplify((params.y_stride == 1) | (var(pvars::pw) == 0));
+        reqs.add_no_simplify((params.y_stride == 1) | (var(pvars::kw) == 1));
     }
 }
 

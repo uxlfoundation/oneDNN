@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 #include "gpu/intel/jit/ir/v2/reqs.hpp"
-
 #include "gpu/intel/jit/ir/linear_expr.hpp"
 #include "gpu/intel/jit/pass/simplify.hpp"
 #include "gpu/intel/logging.hpp"
@@ -28,6 +27,36 @@ namespace gpu {
 namespace intel {
 namespace jit {
 namespace v2 {
+
+const expr_t &index_var(const pvar_t &p) {
+    static thread_local pvar_map_t<expr_t> vars;
+    if (!vars.has(p)) vars[p] = var_t::make(type_t::s32(), p.str() + "_idx");
+    return vars[p];
+}
+
+const expr_t &var(const pvar_t &p) {
+    static thread_local pvar_map_t<expr_t> vars;
+    if (!vars.has(p)) vars[p] = const_var_t::make(type_t::s32(), p.str());
+    return vars[p];
+}
+
+pvar_t to_pvar(const expr_t &var) {
+    auto *ptr = var.as_ptr<const_var_t>();
+    if (!ptr) return pvar_t();
+    return pvar_t(ptr->name);
+}
+
+pvar_t to_index_pvar(const expr_t &index_var) {
+    auto *ptr = index_var.as_ptr<var_t>();
+    if (!ptr) return pvar_t();
+    const char *suffix = "_idx";
+    const size_t suffix_len = std::strlen(suffix);
+    auto &name = ptr->name;
+    auto pos = name.find(suffix);
+    if (pos == std::string::npos || pos + suffix_len != name.length())
+        return pvar_t();
+    return pvar_t(name.substr(0, name.length() - suffix_len));
+}
 
 bool is_a_mod_b_eq_0(const expr_t &e, expr_t &a, expr_t &b) {
     auto *eq_op = e.as_ptr<binary_op_t>();
@@ -196,8 +225,7 @@ public:
 
 private:
     static std::vector<pvar_t> split(const expr_t &e) {
-        if (auto *var = e.as_ptr<const_var_t>())
-            return {pvar_t::from_var(*var)};
+        if (auto *var = e.as_ptr<const_var_t>()) return {to_pvar(*var)};
         if (auto *op = e.as_ptr<binary_op_t>()) {
             gpu_assert(op->op_kind == op_kind_t::_mul);
             auto a_params = split(op->a);
@@ -222,7 +250,7 @@ public:
         if (is_const(e)) {
             value_ = to_cpp<int>(e);
         } else {
-            pvar_ = pvar_t::from_var(e);
+            pvar_ = to_pvar(e);
             gpu_assert(!pvar_.is_undef()) << e;
         }
     }
@@ -410,8 +438,7 @@ bool has_req_op(const std::string &s) {
 }
 
 bool is_pvar_product(const expr_t &e) {
-    if (auto *var = e.as_ptr<const_var_t>())
-        return !pvar_t::from_var(*var).is_undef();
+    if (auto *var = e.as_ptr<const_var_t>()) return !to_pvar(*var).is_undef();
     if (auto *op = e.as_ptr<binary_op_t>()) {
         if (op->op_kind != op_kind_t::_mul) return false;
         return is_pvar_product(op->a) && is_pvar_product(op->b);
@@ -588,7 +615,7 @@ private:
         expr_t lhs1, rhs1;
         if (!is_a_eq_b_or_c_eq_d(e, lhs0, rhs0, lhs1, rhs1)) return false;
         kind_ = req_kind_t::_or_eq;
-        lhs_ = req_lhs_t(pvar_t::from_var(lhs0), pvar_t::from_var(lhs1));
+        lhs_ = req_lhs_t(to_pvar(lhs0), to_pvar(lhs1));
         rhs_ = req_rhs_t(rhs0, rhs1);
         return true;
     }
@@ -693,7 +720,7 @@ void prb_reqs_t::add_no_simplify(const expr_t &e) {
 }
 
 void prb_reqs_t::set(const pvar_t &pvar, dim_t value) {
-    add(pvar.var() == value);
+    add(var(pvar) == value);
 }
 
 void prb_reqs_t::add_if_not_found(const req_impl_t &new_req) {
@@ -883,7 +910,7 @@ bool prb_reqs_t::implies(const prb_reqs_t &other) const {
 expr_t prb_reqs_t::to_expr(const pvar_t &pvar) const {
     dim_t pvar_value;
     if (get_value(pvar, pvar_value)) return pvar_value;
-    return pvar.var();
+    return var(pvar);
 }
 
 const prover_t &prover_t::instance() {

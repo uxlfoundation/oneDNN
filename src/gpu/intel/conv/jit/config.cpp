@@ -1373,7 +1373,7 @@ dim_t map_spatial(const config_t &cfg, const pvar_t &dim, const tile_t &tile) {
     dim_t padding[] = {prb.pd, prb.ph, prb.pw};
     dim_t stride[] = {prb.sd, prb.sh, prb.sw};
     dim_t dilation[] = {prb.dd, prb.dh, prb.dw};
-    int idx = dim.spatial_index();
+    int idx = spatial_index(dim);
     gpu_assert(idx != -1);
     dim_t O = tile.get(osp_dims[idx], 1);
     dim_t I = tile.get(isp_dims[idx], 1);
@@ -1545,8 +1545,8 @@ public:
         // (WHD, width is first).
         std::sort(entries_.begin(), entries_.end(),
                 [&](const entry_t &a, const entry_t &b) {
-                    int a_sp_idx = a.dim.spatial_index();
-                    int b_sp_idx = b.dim.spatial_index();
+                    int a_sp_idx = spatial_index(a.dim);
+                    int b_sp_idx = spatial_index(b.dim);
                     if (a_sp_idx >= 0 && b_sp_idx >= 0)
                         return a_sp_idx > b_sp_idx;
                     return (a_sp_idx >= 0) && (b_sp_idx < 0);

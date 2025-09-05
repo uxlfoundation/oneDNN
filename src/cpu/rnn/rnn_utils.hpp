@@ -875,8 +875,10 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     rnn.parts_bias[0] = rnn.n_bias;
     rnn.parts_bias[1] = 0;
 
-    const bool use_matmul_for_avx512_f32 = !rnn.is_brgemm
-            && rnn.is_cell_dt_f32() && x64::mayiuse(x64::avx512_core);
+    // const bool use_matmul_for_avx512_f32 = !rnn.is_brgemm
+    //         && rnn.is_cell_dt_f32() && x64::mayiuse(x64::avx512_core);
+    const bool use_matmul_for_avx512_f32
+            = !rnn.is_brgemm && !rnn.is_cell_dt_int8();
     rnn.use_matmul = !rnn.is_brgemm && (rnn.is_fwd || use_matmul_for_avx512_f32)
     // TODO: Below checks are for legacy and a performance study is
     // required to avoid regressions.

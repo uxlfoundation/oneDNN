@@ -311,9 +311,10 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
                 reg_comp_data, sizeof(int32_t) * jcp.oc_block * i_load);
     };
 
-    auto scale_ptr = [this](int i_load) {
+    auto wei_scales_ptr = [this](int i_load) {
         return EVEX_compress_addr(reg_ptr_scales,
-                jcp.is_oc_scale * (sizeof(float) * jcp.oc_block * i_load));
+                jcp.is_oc_scale * (sizeof(float) * jcp.oc_block * i_load),
+                /* bcast = */ !jcp.is_oc_scale);
     };
 
     auto bcast_ptr = [this](int i_reduce, int i_ur, bool bcast) {
@@ -416,7 +417,7 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
                 if (jcp.src_zero_point) vaddps(r, r, vmm_zp);
 
                 const Vmm mask_vmm = mask_flag ? r | k_load_dim_mask | T_z : r;
-                vmulps(mask_vmm, r, scale_ptr(i_load));
+                vmulps(mask_vmm, r, wei_scales_ptr(i_load));
 
                 if (jcp.with_bias) vaddps(r, r, vmm_bias);
             }

@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_JIT_DSL_DECL_HPP
 #define GPU_INTEL_JIT_DSL_DECL_HPP
 
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/include/ir.hpp"
 
 namespace dnnl {
 namespace impl {

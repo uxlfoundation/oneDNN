@@ -141,6 +141,27 @@ private:
     CopyTemporary() = default;
 };
 
+struct CopyResource
+{
+    friend class CopyPlan;
+
+    enum Kind : uint32_t {
+        null = 0,
+        f_0x7E000000,
+        f_0xBF000000,
+    } kind;
+    CopyOperand src;
+    bool preinitialized = true;
+
+    CopyResource(Kind kind_) : kind(kind_) {}
+
+    template <typename Generator>
+    inline void initialize(Generator &g);
+
+protected:
+    std::tuple<const uint8_t*, int> getData() const;
+};
+
 class CopyPlan
 {
 public:
@@ -177,6 +198,7 @@ protected:
     std::vector<CopyInstruction> insns, newInsns;
     std::vector<CopyTemporary> temps;
     CopyInstruction invalidInsn;
+    std::vector<CopyResource> resources;
 
     enum class SortType {
         PhaseOnly, Register, SourceOrder
@@ -185,13 +207,15 @@ protected:
     CopyOperand newTemp(ngen::DataType type, int elems, int stride, int align = 0, int offset = 0);
     CopyOperand newFlag(int bits = 16);
 
+    CopyOperand getResource(CopyResource::Kind kind);
+
     CopyInstruction &split(CopyInstruction &i, bool sequenced = true);
     template <int n>
     std::array<CopyInstruction*, n> splitMultiple(CopyInstruction &i);
     CopyInstruction &join(CopyInstruction &i1, CopyInstruction &i2, int maxGap = 3);
     void mergeChanges();
 
-    void copyThrough(CopyInstruction &i, ngen::DataType type, int stride = 0, bool strideOff0 = false);
+    void copyThrough(CopyInstruction &i, ngen::DataType type, int stride = 0, bool strideOff0 = false, bool movAfter = false);
     void restrideSrc0(CopyInstruction &i, int stride, bool strideOff0 = false);
     void restrideDst(CopyInstruction &i, int stride, bool strideOff0 = false);
 
@@ -209,8 +233,8 @@ protected:
     void planEmulatedHalveFloat(CopyInstruction &i);
     void planSmallUWToHF(CopyInstruction &i);
     void planSmallUWToBF(CopyInstruction &i);
-    void planBToHF(CopyInstruction &i);
-    void planBToBF(CopyInstruction &i);
+    void planInt8ToHF(CopyInstruction &i);
+    void planInt8ToBF(CopyInstruction &i);
     void planS4ToF16(CopyInstruction &i);
     void planUnpack4To16(CopyInstruction &i);
     void planUnpack8To16High(CopyInstruction &i);
@@ -240,12 +264,15 @@ protected:
     void optimizeIntegerDownconvert();
     void optimizeSaturate();
     void optimizeMoveToIntPipe();
+
+    CopyOperand bfImmediate(uint16_t bits, bool ternary);
 };
 
 
 template <typename Generator>
 void CopyPlan::execute(Generator &g)
 {
+    for (auto &r: resources) if (!r.preinitialized) r.initialize(g);
     for (auto &i: insns) i.execute(g);
 }
 
@@ -326,6 +353,36 @@ void CopyInstruction::execute(Generator &g)
 #undef UNARY_OP_CASE
 #undef BINARY_OP_CASE
 #undef TERNARY_OP_CASE
+}
+
+template <typename Generator>
+void CopyResource::initialize(Generator &g)
+{
+    using namespace ngen;
+
+    const uint8_t *data;
+    int n;
+    std::tie(data, n) = getData();
+
+    auto dataUQ = (const uint64_t *) data;
+    auto dataDF = (const double *)   data;
+    auto dataUD = (const uint32_t *) data;
+    auto dataF = (const float *)     data;
+    int n32 = (n + 3) >> 2;
+
+    bool do64 = (g.getHardware() >= HW::XeHPC);
+    GRF r(src.ngen().getBase());
+    for (int i = 0; 2*i+1 < n32; i++) {
+        if (do64) {
+            (i & 1) ? g.mov(1, r.uq(i), Immediate::uq(dataUQ[i]))
+                    : g.mov(1, r.df(i), Immediate::df(dataDF[i]));
+        } else {
+            g.mov(1, r.ud(2*i),    Immediate::ud(dataUD[2*i]));
+            g.mov(1, r.f(2*i + 1), Immediate::f(dataF[2*i + 1]));
+        }
+    }
+    if (n32 & 1)
+        g.mov(1, r.ud(n32 - 1), Immediate::ud(dataUD[n32 - 1]));
 }
 
 GEMMSTONE_NAMESPACE_END

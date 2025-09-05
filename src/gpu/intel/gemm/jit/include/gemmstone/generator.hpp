@@ -252,6 +252,7 @@ protected:
 
     // copy.cxx
     friend struct CopyInstruction;
+    friend struct CopyResource;
     void copyRegisterBlock(Type Ts, Type Td, const RegisterBlock &blockSrc, const RegisterBlock &blockDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false);
     void copyRegisters(const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);
     void copyRegisters(const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int dOffR, int dOffC, bool conjugate, const CommonStrategy &strategy, CommonState &state, bool preserveSrc = false, bool s4Shift = true);

@@ -42,43 +42,6 @@ enum class tensor_kind_t {
 
 std::string to_string(tensor_kind_t tensor);
 
-class pvar_name_t {
-public:
-    pvar_name_t() = default;
-    explicit pvar_name_t(dim_idx_t idx) { data_[0] = into<char>('a' + idx); }
-    explicit pvar_name_t(const std::string &s);
-
-    bool operator==(const pvar_name_t &other) const {
-        return std::strncmp(data_, other.data_, max_len) == 0;
-    }
-
-    bool operator!=(const pvar_name_t &other) const {
-        return !operator==(other);
-    }
-
-    bool operator<(const pvar_name_t &other) const {
-        return std::strncmp(data_, other.data_, max_len) < 0;
-    }
-
-    dim_idx_t index() const {
-        gpu_assert(into<int>(length()) == 1);
-        dim_idx_t idx = into<dim_idx_t>(data_[0]);
-        gpu_assert('a' <= idx && idx <= 'z');
-        return into<dim_idx_t>(idx - 'a');
-    }
-
-    size_t length() const { return std::strlen(data_); }
-    bool is_empty() const { return std::strlen(data_) == 0; }
-    size_t get_hash() const;
-    std::string str() const;
-
-    IR_DEFINE_DUMP()
-
-private:
-    static const size_t max_len = 8;
-    char data_[max_len + 1] = {};
-};
-
 class pvar_t {
 public:
     pvar_t() = default;
@@ -91,7 +54,6 @@ public:
     dim_idx_t index() const { return name_.index(); }
     operator dim_idx_t() const { return index(); }
     size_t get_hash() const { return ir_utils::get_hash(name_); }
-    const pvar_name_t &name() const { return name_; }
     std::string str() const { return name_.str(); }
 
     IR_DEFINE_DUMP()
@@ -105,8 +67,44 @@ public:
     int spatial_index() const;
 
 private:
-    pvar_name_t name_;
+    class name_t {
+    public:
+        name_t() = default;
+        explicit name_t(dim_idx_t idx) { data_[0] = into<char>('a' + idx); }
+        explicit name_t(const std::string &s);
+
+        bool operator==(const name_t &other) const {
+            return std::strncmp(data_, other.data_, max_len) == 0;
+        }
+
+        bool operator!=(const name_t &other) const {
+            return !operator==(other);
+        }
+
+        bool operator<(const name_t &other) const {
+            return std::strncmp(data_, other.data_, max_len) < 0;
+        }
+
+        dim_idx_t index() const {
+            gpu_assert(into<int>(length()) == 1);
+            dim_idx_t idx = into<dim_idx_t>(data_[0]);
+            gpu_assert('a' <= idx && idx <= 'z');
+            return into<dim_idx_t>(idx - 'a');
+        }
+
+        size_t length() const { return std::strlen(data_); }
+        bool is_empty() const { return std::strlen(data_) == 0; }
+        size_t get_hash() const;
+        std::string str() const;
+
+    private:
+        static const size_t max_len = 8;
+        char data_[max_len] = {};
+    };
+
+    name_t name_;
 };
+static_assert(sizeof(pvar_t) == 8);
 
 namespace pvars {
 extern pvar_t g;

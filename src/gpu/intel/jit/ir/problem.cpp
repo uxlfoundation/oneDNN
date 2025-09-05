@@ -40,16 +40,16 @@ std::string to_string(tensor_kind_t tensor) {
     return {};
 }
 
-pvar_name_t::pvar_name_t(const std::string &s) {
+pvar_t::name_t::name_t(const std::string &s) {
     gpu_assert(!s.empty() && s.length() <= max_len);
     s.copy(data_, s.length());
 }
 
-std::string pvar_name_t::str() const {
+std::string pvar_t::name_t::str() const {
     return std::string(data_);
 }
 
-size_t pvar_name_t::get_hash() const {
+size_t pvar_t::name_t::get_hash() const {
     static_assert(max_len % sizeof(uint64_t) == 0,
             "max_len must be aligned to 64 bits");
     size_t h = 0;

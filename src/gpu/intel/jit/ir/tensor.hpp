@@ -492,10 +492,12 @@ public:
             return "(scalar:" + type().str() + ")";
 
         auto to_str = [](const pvar_t &dim, bool is_outer) {
-            if (dim.name().length() == 1)
-                return std::string(
-                        1, into<char>((is_outer ? 'A' : 'a') + dim.index()));
-            return "<" + dim.str() + ">";
+            auto ret = dim.str();
+            if (ret.length() == 1) {
+                if (is_outer) ret[0] -= 'a' - 'A';
+                return ret;
+            }
+            return "<" + ret + ">";
         };
         std::string ret;
         stride_t dense_stride(1);

@@ -539,10 +539,10 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 #if WITH_HOST_SCALE
 #if INVERT_SCALE
-        iscale = (float)scale_val;
+        iscale = SCALES_TO_FLOAT(scale_val);
         scale = native_recip(iscale);
 #else
-        scale = (float)scale_val;
+        scale = SCALES_TO_FLOAT(scale_val);
         iscale = native_recip(scale);
 #endif
 #else

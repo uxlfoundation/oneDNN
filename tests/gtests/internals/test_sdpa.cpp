@@ -993,11 +993,20 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         };
 
     if (with_host_scale) {
-        DPRINT("%s:%s:%d ##### get_descriptors: if with_host_scale\n", PRINTHEAD);
         auto scale_md = memory::desc::host_scalar(p.dt.dt);
         float scale_val = (float)def_scale_value;
-        // !!!!! TEMP - only for f16 !!!!!
-        out.m_scale = dnnl::memory(scale_md, (float16_t)scale_val);
+        // ????? Better ???????
+        switch (p.dt.dt) {
+        case mdt::f32:
+            out.m_scale = dnnl::memory(scale_md, (float)scale_val); break;
+        case mdt::f16:
+            out.m_scale = dnnl::memory(scale_md, (float16_t)scale_val); break;
+        case mdt::bf16:
+            out.m_scale = dnnl::memory(scale_md, (bfloat16_t)scale_val); break;
+        default:
+            throw std::runtime_error("Scale data type not supported\n");
+        }
+        DPRINT("%s:%s:%d ##### get_descriptors: out.m_scale data type = %d\n", PRINTHEAD, (int)out.m_scale.get_desc().get_data_type());
     } else
         setup_device_scale(&out.m_scale);
     setup_device_scale(&out.m_scale_device);

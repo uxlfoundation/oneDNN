@@ -557,6 +557,7 @@ status_t micro_params_t::get_kernel_ctx(
     def_data_type(kernel_ctx, qry_data_t, "QRY");
     def_data_type(kernel_ctx, val_data_t, "VAL");
     def_data_type(kernel_ctx, dst_data_t, "DST");
+    def_data_type(kernel_ctx, scale_data_t, "SCALE", !with_host_scale);
 
     if (with_attn_mask) { def_data_type(kernel_ctx, msk_data_t, "MSK"); }
 
@@ -587,8 +588,6 @@ status_t micro_params_t::get_kernel_ctx(
 
     kernel_ctx.define_int("KEY_GROUP_SIZE", key_group_size);
     kernel_ctx.define_int("VAL_GROUP_SIZE", val_group_size);
-
-    def_data_type(kernel_ctx, scale_data_t, "SCALE");
     kernel_ctx.define_int("INVERT_SCALE", invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", with_attn_scale);
     kernel_ctx.define_int("WITH_HOST_SCALE", with_host_scale);
@@ -709,6 +708,9 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
 
     VDEBUGINFO(4, primitive, sdpa, "MYPRINT:execute");
 
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:execute: (int)pd()->scale_md()->data_type = %d",(int)pd()->scale_md()->data_type);
+
+
     const auto &conf = pd()->conf;
 
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
@@ -773,6 +775,11 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
     compute::kernel_arg_list_t arg_list;
+
+
+    const memory_desc_wrapper scale_mdw(pd()->scale_md());
+    VDEBUGINFO(4, primitive, sdpa, "MYPRINT:execute: (int)scale_mdw.data_type() = %d",(int)scale_mdw.data_type());
+
 
 #if 0
     arg_list.append(key);

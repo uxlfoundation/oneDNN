@@ -384,14 +384,21 @@ std::string print_to_string2(
     ss << sdpa_dims_t(info.param);
     return ss.str();
 }
-
+#if 0
 void print_table_header() {
     std::cout << "| mb | Q Heads | KV Heads |   D |    K  |    Q | Kdt | "
                  "Vdt | "
                  "mask | quant |  time (ns) | BW eff/actual (Gbps) | "
                  "gemm/total FLOPs (GFLOPs) |\n";
 }
-
+#else
+void print_table_header() {
+    std::cout << "| mb | Q Heads | KV Heads |   D |    K  |    Q | Kdt | "
+                 "Vdt | scale | "
+                 "mask | quant |  time (ns) | BW eff/actual (Gbps) | "
+                 "gemm/total FLOPs (GFLOPs) |\n";
+}
+#endif
 std::string print_row(const sdpa_dims_t &p) {
     dnnl::impl::stringstream_t ss;
 
@@ -412,6 +419,11 @@ std::string print_row(const sdpa_dims_t &p) {
             && p.qtype != quantize_type::no_quantization) {
         ss << "/" << p.value.sdt;
         ss << "/" << p.value.zpdt;
+    }
+    ss << "|";
+    switch (p.stype) {
+        case scale_type::device_side: ss << "device"; break;
+        case scale_type::host_side: ss << "host"; break;
     }
     ss << "|";
     switch (p.mask.type) {

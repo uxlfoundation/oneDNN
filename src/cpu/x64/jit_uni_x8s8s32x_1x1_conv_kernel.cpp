@@ -306,7 +306,6 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::reduce_loop(
         const int32_t *p_sum_zp
                 = (sum_idx != -1) ? &p.entry_[sum_idx].sum.zero_point : nullptr;
         mov(ptr[rsp + reg_bcast_data_off], reg_bcast_data);
-        mov(reg_ptr_scales, ptr[rsp + reg_ptr_sum_scale_off]);
         if (p_sum_scale && *p_sum_scale != 1.f) {
             mov(ptr[rsp + reg_load_data_off], reg_load_data);
             mov(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));
@@ -321,14 +320,6 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::reduce_loop(
             }
             const bool mask_flag = mask_flag_in && i_load == load_loop_blk - 1;
             const int load_size = mask_flag ? get_tail_size() : simd_w;
-            const auto ptr_scales_offset
-                    = jcp.is_oc_scale * (sizeof(float) * jcp.oc_block * i_load);
-            if (jcp.with_bias) {
-                if (jcp.signed_input || jcp.dst_scale)
-                    mov(reg_bias_data, ptr[rsp + reg_bias_data_off]);
-                cvt2ps(jcp.bia_dt, vmm_bias, reg_bias_data,
-                        jcp.typesize_bia * jcp.oc_block * i_load, load_size);
-            }
             if (jcp.signed_input) {
                 mov(reg_comp_data, ptr[rsp + reg_comp_data_off]);
                 cvt2ps(data_type::s32, vmm_comp, reg_comp_data,
@@ -344,12 +335,75 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::reduce_loop(
                 uni_vcvtdq2ps(vmm_zp_comp, vmm_zp_comp);
             }
 
-            if (mask_flag) {
-                uni_vpxor(vmm_scale, vmm_scale, vmm_scale);
-                cvt2ps(data_type::f32, vmm_scale, reg_ptr_scales,
-                        ptr_scales_offset, get_tail_size());
-            } else {
-                uni_vmovups(vmm_scale, ptr[reg_ptr_scales + ptr_scales_offset]);
+            // TODO: scales support is done not in the most optimal way.
+            // If there're two free Vmm registers, one can be used to store
+            // scale_adjust value permanently, the second one can re-use data
+            // from it and multiply by src_scale that can be obtained at the
+            // point of scales loading. Then it can be used when multiplying
+            // by wei_scales. And further re-used for dst scales to avoid
+            // reading from the same address, but reading from the Vmm instead.
+            // This would save 1st and 3rd sections for every output Vmm.
+            //
+            // If only one Vmm is found, it will add scale_adjust overhead per
+            // src_scale loading, but the second part of the idea holds.
+            //
+            // Note: attempts to identify these Vmms were not taken.
+
+            // `avx2` is less flexible ISA in terms of tail and broadcast handling.
+            // Thus, need to save scales values in Vmm registers.
+            bool is_vmm_scales_set = false;
+            if (jcp.with_src_scales) {
+                mov(reg_src_scales, ptr[rsp + reg_src_scales_off]);
+                uni_vbroadcastss(vmm_scales, ptr[reg_src_scales]);
+                is_vmm_scales_set = true;
+            }
+            if (jcp.with_wei_scales) {
+                mov(reg_wei_scales, ptr[rsp + reg_wei_scales_off]);
+
+                if (!jcp.is_oc_scale) {
+                    uni_vbroadcastss(vmm_scales_tmp, ptr[reg_wei_scales]);
+                } else {
+                    int scale_offset = jcp.is_oc_scale
+                            * (sizeof(float) * jcp.oc_block * i_load);
+                    if (mask_flag) {
+                        uni_vpxor(
+                                vmm_scales_tmp, vmm_scales_tmp, vmm_scales_tmp);
+                        cvt2ps(data_type::f32, vmm_scales_tmp, reg_wei_scales,
+                                scale_offset, get_tail_size());
+                    } else {
+                        uni_vmovups(vmm_scales_tmp,
+                                ptr[reg_wei_scales + scale_offset]);
+                    }
+                }
+                if (is_vmm_scales_set) {
+                    uni_vmulps(vmm_scales, vmm_scales, vmm_scales_tmp);
+                } else {
+                    uni_vmovups(vmm_scales, vmm_scales_tmp);
+                }
+                is_vmm_scales_set = true;
+            }
+            if (jcp.wei_adj_scale != 1.f) {
+                mov(reg_scale_adjust, float2int(1.f / jcp.wei_adj_scale));
+                auto vmm_scale_adjust = vmm_scales_tmp;
+                auto xmm_scale_adjust = Xmm(vmm_scale_adjust.getIdx());
+                uni_vmovq(xmm_scale_adjust, reg_scale_adjust);
+                uni_vbroadcastss(vmm_scale_adjust, xmm_scale_adjust);
+                if (is_vmm_scales_set) {
+                    uni_vmulps(vmm_scales, vmm_scales, vmm_scale_adjust);
+                } else {
+                    uni_vmovups(vmm_scales, vmm_scale_adjust);
+                }
+                is_vmm_scales_set = true;
+            }
+
+            // The order of this load is important. `vmm_bias` is used as a
+            // temporary vector register for scales. Load bias data into it
+            // after scales are processed.
+            if (jcp.with_bias) {
+                if (jcp.signed_input || jcp.with_dst_scales)
+                    mov(reg_bias_data, ptr[rsp + reg_bias_data_off]);
+                cvt2ps(jcp.bia_dt, vmm_bias, reg_bias_data,
+                        jcp.typesize_bia * jcp.oc_block * i_load, load_size);
             }
 
             for (int i_ur = 0; i_ur < ur; ++i_ur) {
@@ -358,7 +412,7 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::reduce_loop(
                 if (jcp.signed_input) uni_vaddps(r, r, vmm_comp);
                 if (jcp.src_zero_point) uni_vaddps(r, r, vmm_zp_comp);
 
-                uni_vmulps(r, r, vmm_scale);
+                if (is_vmm_scales_set) uni_vmulps(r, r, vmm_scales);
 
                 if (jcp.with_bias) uni_vaddps(r, r, vmm_bias);
             }
@@ -366,15 +420,15 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::reduce_loop(
 
         apply_postops(ur, load_loop_blk, mask_flag_in, p_sum_scale, p_sum_zp);
 
-        if (jcp.dst_scale) {
-            mov(reg_ptr_dst_scale, ptr[rsp + reg_dst_scale_off]);
-            uni_vmovups(vmm_dst_scale, ptr[reg_ptr_dst_scale]);
+        if (jcp.with_dst_scales) {
+            mov(reg_dst_scales, ptr[rsp + reg_dst_scales_off]);
+            uni_vbroadcastss(vmm_dst_scales, ptr[reg_dst_scales]);
 
             /* Apply dst scale to accumulator */
             for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
                 for (int i_ur = 0; i_ur < ur; ++i_ur) {
                     const auto r = vreg_accum(load_loop_blk, i_load, i_ur);
-                    uni_vmulps(r, r, vmm_dst_scale);
+                    uni_vmulps(r, r, vmm_dst_scales);
                 }
             }
         }
@@ -530,17 +584,23 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::generate() {
         mov(reg_src_zero_point, ptr[param1 + GET_OFF(src_zero_point)]);
         mov(ptr[rsp + reg_src_zero_point_off], reg_src_zero_point);
     }
-    if (jcp.dst_scale) {
+    if (jcp.with_src_scales) {
+        mov(reg_src_scales, ptr[param1 + GET_OFF(src_scales)]);
+        mov(ptr[rsp + reg_src_scales_off], reg_src_scales);
+    }
+    if (jcp.with_wei_scales) {
+        mov(reg_wei_scales, ptr[param1 + GET_OFF(wei_scales)]);
+        mov(ptr[rsp + reg_wei_scales_off], reg_wei_scales);
+    }
+    if (jcp.with_dst_scales) {
         if (!jcp.signed_input) mov(ptr[rsp + reg_bias_data_off], reg_bias_data);
-        mov(reg_ptr_dst_scale, ptr[param1 + GET_OFF(dst_scale)]);
-        mov(ptr[rsp + reg_dst_scale_off], reg_ptr_dst_scale);
+        mov(reg_dst_scales, ptr[param1 + GET_OFF(dst_scales)]);
+        mov(ptr[rsp + reg_dst_scales_off], reg_dst_scales);
     }
     if (jcp.dst_zero_point) {
         mov(reg_dst_zero_point, ptr[param1 + GET_OFF(dst_zero_point)]);
         mov(ptr[rsp + reg_dst_zero_point_off], reg_dst_zero_point);
     }
-    mov(reg_ptr_scales, ptr[param1 + GET_OFF(scales)]);
-    mov(ptr[rsp + reg_ptr_sum_scale_off], reg_ptr_scales);
     mov(reg_bcast_data, ptr[param1 + GET_OFF(bcast_data)]);
     mov(reg_load_data, ptr[param1 + GET_OFF(load_data)]);
     mov(reg_output_data, ptr[param1 + GET_OFF(output_data)]);
@@ -555,11 +615,11 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::generate() {
         bcast_loop(load_loop_blk);
         add(reg_load_data, load_loop_blk * jcp.load_loop_load_step);
         if (jcp.with_bias) {
-            if (jcp.signed_input || jcp.dst_scale)
+            if (jcp.signed_input || jcp.with_dst_scales)
                 mov(reg_bias_data, ptr[rsp + reg_bias_data_off]);
             add(reg_bias_data,
                     load_loop_blk * jcp.load_block * jcp.typesize_bia);
-            if (jcp.signed_input || jcp.dst_scale)
+            if (jcp.signed_input || jcp.with_dst_scales)
                 mov(ptr[rsp + reg_bias_data_off], reg_bias_data);
         }
         if (jcp.signed_input) {
@@ -575,11 +635,13 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::generate() {
             mov(ptr[rsp + reg_zp_compensation_off], reg_zp_compensation);
         }
         mov(ptr[rsp + reg_bcast_data_off], reg_bcast_data);
-        mov(reg_ptr_scales, ptr[rsp + reg_ptr_sum_scale_off]);
-        add(reg_ptr_scales,
-                jcp.is_oc_scale * load_loop_blk * jcp.load_block
-                        * sizeof(float));
-        mov(ptr[rsp + reg_ptr_sum_scale_off], reg_ptr_scales);
+        if (jcp.with_wei_scales) {
+            mov(reg_wei_scales, ptr[rsp + reg_wei_scales_off]);
+            add(reg_wei_scales,
+                    jcp.is_oc_scale * load_loop_blk * jcp.load_block
+                            * sizeof(float));
+            mov(ptr[rsp + reg_wei_scales_off], reg_wei_scales);
+        }
         mov(reg_bcast_data, ptr[rsp + reg_bcast_data_off]);
         add(reg_output_data, load_loop_blk * jcp.load_block * jcp.typesize_out);
         sub(reg_load_loop_work, load_loop_blk * jcp.load_loop_iter_step);
@@ -915,10 +977,11 @@ status_t jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_conf(
     // miniumum size of load dim chunk for work distribution within threads
     jcp.nb_load_chunk = 1;
 
-    const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
-    const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
-    jcp.is_oc_scale = wei_scales.get_mask() > 0;
-    jcp.dst_scale = !dst_scales.has_default_values();
+    jcp.is_oc_scale = attr.scales_.get_mask(DNNL_ARG_WEIGHTS) > 0;
+    jcp.with_src_scales = !attr.scales_.get(DNNL_ARG_SRC).has_default_values();
+    jcp.with_wei_scales
+            = !attr.scales_.get(DNNL_ARG_WEIGHTS).has_default_values();
+    jcp.with_dst_scales = !attr.scales_.get(DNNL_ARG_DST).has_default_values();
 
     jcp.wei_adj_scale
             = (weights_d.extra().flags & memory_extra_flags::scale_adjust)
@@ -934,12 +997,11 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_scratchpad(
         const jit_1x1_conv_conf_t &jcp, const primitive_attr_t &attr) {
     using namespace dnnl::impl::memory_tracking::names;
 
-    dim_t count = 8;
-    if (!attr.scales_.has_default_values(DNNL_ARG_WEIGHTS)) {
-        const int wei_mask = attr.scales_.get_mask(DNNL_ARG_WEIGHTS);
-        if (wei_mask > 0) count = static_cast<dim_t>(jcp.oc) * jcp.ngroups;
+    if (jcp.with_dst_scales) {
+        // See brgemm_types.hpp comment for `with_dst_scales`.
+        scratchpad.book(key_conv_dst_scales,
+                static_cast<size_t>(jcp.nthr) * sizeof(float), 4096);
     }
-    scratchpad.book<float>(key_conv_adjusted_scales, count);
 }
 
 template struct jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<avx2, Ymm>;

@@ -875,23 +875,9 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     rnn.parts_bias[0] = rnn.n_bias;
     rnn.parts_bias[1] = 0;
 
-    const bool use_matmul_for_avx512_f32 = !rnn.is_brgemm
-            && rnn.is_cell_dt_f32() && x64::mayiuse(x64::avx512_core);
-    rnn.use_matmul = !rnn.is_brgemm && (rnn.is_fwd || use_matmul_for_avx512_f32)
-    // TODO: Below checks are for legacy and a performance study is
-    // required to avoid regressions.
-#if DNNL_X64
-            && IMPLICATION(
-                    rnn.is_cell_dt_bf16(), !x64::mayiuse(x64::avx512_core))
-            && IMPLICATION(rnn.is_cell_dt_f32() || rnn.is_cell_dt_int8(),
-                    (x64::mayiuse(x64::avx2)
-                            && utils::one_of(rd.cell_kind,
-                                    alg_kind::vanilla_gru,
-                                    alg_kind::vanilla_augru))
-                            || use_matmul_for_avx512_f32);
-#else
-            && !rnn.is_cell_dt_f32() && !rnn.is_cell_dt_int8();
-#endif
+    // const bool use_matmul_for_avx512_f32 = !rnn.is_brgemm
+    //         && rnn.is_cell_dt_f32() && x64::mayiuse(x64::avx512_core);
+    rnn.use_matmul = !rnn.is_brgemm && !rnn.is_cell_dt_int8();
 
     /* Decide which gemm implementation to use: packed/nonpacked jit/cblas
      * and if to merge gemm across iterations */
@@ -908,16 +894,14 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     rnn.dst_layer_is_trivial_stride = dst_layer_d.blocking_desc().strides[0]
             == (rnn.dst_layer_ld_ * rnn.mb);
 
-    rnn.merge_gemm_layer
-            = !(rnn.is_brgemm || rnn.use_matmul) || use_matmul_for_avx512_f32
+    rnn.merge_gemm_layer = !(rnn.is_brgemm)
             ? ((rnn.is_fwd && rnn.src_layer_is_trivial_stride)
                       || ((rd.prop_kind == prop_kind::backward)
                               && rnn.dst_layer_is_trivial_stride))
                     && (((rnn.is_fwd && rnn.mb < 128) || !rnn.is_fwd)
                             || rnn.is_int8_conf())
             : false;
-    rnn.merge_gemm_iter
-            = !(rnn.is_brgemm || rnn.use_matmul) || use_matmul_for_avx512_f32
+    rnn.merge_gemm_iter = !(rnn.is_brgemm)
             ? rnn.dst_layer_is_trivial_stride && !(rnn.is_fwd || is_gru)
             : false;
     rnn.force_nocopy = false;

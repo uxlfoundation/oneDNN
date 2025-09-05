@@ -1808,9 +1808,11 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_t::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp,
         const primitive_attr_t &attr) {
     if (jcp.with_dst_scales) {
+        const size_t n_dst_scales = static_cast<size_t>(
+                jcp.is_depthwise ? jcp.ngroups : jcp.nthr);
         // See brgemm_types.hpp comment for `with_dst_scales`.
-        scratchpad.book(key_conv_dst_scales,
-                static_cast<size_t>(jcp.nthr) * sizeof(float), 4096);
+        scratchpad.book(
+                key_conv_dst_scales, n_dst_scales * sizeof(float), 4096);
     }
 }
 

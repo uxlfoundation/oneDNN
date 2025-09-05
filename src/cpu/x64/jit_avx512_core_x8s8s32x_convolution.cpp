@@ -451,7 +451,8 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d_dw(
                             = static_cast<const float *>(dst_scales);
                     dst_scales_inv_ptr
                             = ctx.get_scratchpad_grantor().template get<float>(
-                                    key_conv_dst_scales); // TODO: + ithr
+                                      key_conv_dst_scales)
+                            + g;
                     dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
                 }
 

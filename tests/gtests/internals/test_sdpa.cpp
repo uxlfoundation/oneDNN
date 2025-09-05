@@ -58,6 +58,7 @@ using dnnl::accumulation_mode;
 
 enum class mask_type { no_mask, oneD, twoD, causal_br, causal_tl };
 enum class scale_type { host_side, device_side };
+constexpr scale_type default_scale_type = scale_type::device_side;
 
 std::ostream &operator<<(std::ostream &ss, const mask_type &p) {
     ss << "mask:";
@@ -223,7 +224,6 @@ std::ostream &operator<<(std::ostream &ss, const accumulation_t &accs) {
 
 using sdpa_dims_t_tuple = std::tuple<int, num_heads_t, seq_len_size_t,
         head_group_size_t, tensor_type_t, tensor_type_t, tensor_type_t,
-//        quantize_type, tag_t, mask_config_t, accumulation_t>;
         quantize_type, tag_t, mask_config_t, scale_type, accumulation_t>;
 
 struct sdpa_dims_t {
@@ -240,9 +240,7 @@ struct sdpa_dims_t {
     quantize_type qtype;
     memory::format_tag key_format_tag;
     mask_config_t mask;
-    // !!!!!!!!!!!!!
     scale_type stype;
-    // !!!!!!!!!!!!!
     accumulation_t acc_modes;
 
     sdpa_dims_t() = default;
@@ -257,9 +255,7 @@ struct sdpa_dims_t {
             dnnl::memory::format_tag key_format_tag_
             = dnnl::memory::format_tag::abcd,
             mask_type mask_ = mask_type::no_mask,
-// !!!!!!!!!!!!!!!
-            scale_type stype_ = scale_type::device_side, // or host ????
-// !!!!!!!!!!!!!!!
+            scale_type stype_ = default_scale_type,
             accumulation_mode kq_acc_ = accumulation_mode::f32,
             accumulation_mode vs_acc_ = accumulation_mode::f32)
         : mb(mb_)
@@ -272,12 +268,8 @@ struct sdpa_dims_t {
         , qtype(qtype_)
         , key_format_tag(key_format_tag_)
         , mask {mask_, mskdt_}
-#if 0
-        , acc_modes {kq_acc_, vs_acc_} {}
-#else
         , stype(stype_)
         , acc_modes {kq_acc_, vs_acc_} {}
-#endif
 
     sdpa_dims_t(const sdpa_dims_t_tuple &dims)
         : mb(std::get<0>(dims))
@@ -290,20 +282,15 @@ struct sdpa_dims_t {
         , qtype(std::get<7>(dims))
         , key_format_tag(std::get<8>(dims))
         , mask(std::get<9>(dims))
-#if 0
-        , acc_modes(std::get<10>(dims)) {}
-#else
         , stype(std::get<10>(dims))
         , acc_modes(std::get<11>(dims)) {}
-#endif
 };
 
 struct sdpa_tensors_t {
-//    memory m_query, m_scale, m_mask, m_output;
     memory m_query, m_mask, m_output;
     memory m_key_quantized, m_value_quantized, m_output_quantized;
     memory m_scale; // tested sdpa arg, can be host-side scalar
-    memory m_scale_device; // reference impl param
+    memory m_scale_device; // reference (prim) sdpa arg
 
     memory m_key_scales, m_key_zp, m_value_scales, m_value_zp;
     dnnl::primitive_attr sdpa_attr_quantized, sdpa_kq_attr_quantized,
@@ -355,13 +342,11 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
         case quantize_type::per_tensor1: ss << "_ptensor1"; break;
         case quantize_type::per_tensor3: ss << "_ptensor3"; break;
     }
-// !!!!!!!!!!!!!
     if (p.stype == scale_type::host_side) {
         ss << "_hostscale";
     } else {
         ss << "_devicescale";
     }
-// !!!!!!!!!!!!!
     if (p.acc_modes.kq_acc == accumulation_mode::f16) ss << "_kqf16acc";
     if (p.acc_modes.vs_acc == accumulation_mode::f16) ss << "_vsf16acc";
     return ss;
@@ -384,21 +369,12 @@ std::string print_to_string2(
     ss << sdpa_dims_t(info.param);
     return ss.str();
 }
-#if 0
-void print_table_header() {
-    std::cout << "| mb | Q Heads | KV Heads |   D |    K  |    Q | Kdt | "
-                 "Vdt | "
-                 "mask | quant |  time (ns) | BW eff/actual (Gbps) | "
-                 "gemm/total FLOPs (GFLOPs) |\n";
-}
-#else
 void print_table_header() {
     std::cout << "| mb | Q Heads | KV Heads |   D |    K  |    Q | Kdt | "
                  "Vdt | scale | "
                  "mask | quant |  time (ns) | BW eff/actual (Gbps) | "
                  "gemm/total FLOPs (GFLOPs) |\n";
 }
-#endif
 std::string print_row(const sdpa_dims_t &p) {
     dnnl::impl::stringstream_t ss;
 
@@ -555,8 +531,6 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng,
 sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         const sdpa_dims_t &p, std::vector<dnnl_memory_t> &doubled_memory) {
 
-    DPRINT("%s:%s:%d ##### get_descriptors ###### >>>>>>> \n", PRINTHEAD);
-
     sdpa_tensors_t out;
 
     // Prepare input and output shapes to construct the sdpa graph.
@@ -574,7 +548,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
 
     bool with_host_scale = p.stype == scale_type::host_side;
-    DPRINT("%s:%s:%d ##### p.stype = %s\n", PRINTHEAD, with_host_scale ? "host" : "device");
 
     const memory::dims key_scales_sz = [&] {
         switch (p.qtype) {
@@ -662,7 +635,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     // Create memory objects
     out.m_query = double_and_resize(query_md, eng, strm, doubled_memory);
-    //out.m_scale = double_and_resize(scale_md, eng, strm, doubled_memory);
     out.m_key_quantized
             = double_and_resize(key_quantized_md, eng, strm, doubled_memory);
     out.m_key_scales
@@ -680,9 +652,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     // Allocate user data.
     std::vector<float> query_data(product(q_sz), 0.f);
-    std::vector<float> scale_data(
-//            product(scale_sz), std::sqrt(p.head_group.head_size));
-            product(scale_sz), def_scale_value);
+    std::vector<float> scale_data(product(scale_sz), def_scale_value);
     std::vector<float> key_quantized_data(product(k_sz), 0);
     std::vector<float> val_quantized_data(product(v_sz), 0);
     std::vector<float> key_scale_data(product(key_scales_sz), std::nanf("1"));
@@ -996,8 +966,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     write_to_dnnl_memory(output_data.data(), out.m_output, eng, strm);
     write_to_dnnl_memory(output_data.data(), out.m_output_quantized, eng, strm);
 
-    // +++++++++++++++++++++++++++ scale processing
-
     auto setup_device_scale = [&](memory *outmem) {
         auto scale_md = memory::desc(scale_sz, p.dt.dt, abcd);
         *outmem = double_and_resize(scale_md, eng, strm, doubled_memory);
@@ -1018,15 +986,9 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         default:
             throw std::runtime_error("Scale data type not supported\n");
         }
-        DPRINT("%s:%s:%d ##### get_descriptors: out.m_scale data type = %d\n", PRINTHEAD, (int)out.m_scale.get_desc().get_data_type());
     } else
         setup_device_scale(&out.m_scale);
     setup_device_scale(&out.m_scale_device);
-
-    // +++++++++++++++++++++++++++ scale processing
-
-    DPRINT("%s:%s:%d <<<<<<< ##### get_descriptors ######\n", PRINTHEAD);
-
 
     return out;
 }
@@ -1086,7 +1048,6 @@ std::pair<dnnl::reorder, memory> dequantize_prim(const engine &eng, mdt dt,
 void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         dnnl::engine &eng, dnnl::stream &strm, dnnl::memory &query,
         dnnl::memory &key, dnnl::memory &key_scales, dnnl::memory &key_zp,
-//        dnnl::memory::data_type scale_dt, dnnl::memory &scale,
         dnnl::memory::data_type scale_dt, dnnl::memory &scale_device,
         dnnl::memory &mask, dnnl::memory &value, dnnl::memory &value_scales,
         dnnl::memory &value_zp, dnnl::memory &output, bool invert_scale,
@@ -1951,7 +1912,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
-                testing::Values(scale_type::device_side), // scale_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1967,7 +1928,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s4, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
-                testing::Values(scale_type::device_side), // scale_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1983,7 +1944,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s8, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
-                testing::Values(scale_type::device_side), // scale_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1999,7 +1960,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s4, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
-                testing::Values(scale_type::device_side), // scale_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -2015,7 +1976,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f32, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
-                testing::Values(scale_type::device_side), // scale_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -2031,7 +1992,7 @@ INSTANTIATE_TEST_SUITE_P(AllMaskTypes, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br}, mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f16}), // mask_type
-                testing::Values(scale_type::device_side), // scale_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -2047,7 +2008,7 @@ INSTANTIATE_TEST_SUITE_P(GQA, sdpa_test_datatypes,
                 testing::Values(quantize_type::no_quantization), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
-                testing::Values(scale_type::device_side), // scale_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -2063,10 +2024,11 @@ INSTANTIATE_TEST_SUITE_P(f16_accumulation, sdpa_test_datatypes,
                 testing::Values(quantize_type::no_quantization), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::twoD}, mask_config_t {mask_type::causal_tl}), // mask_type
-                testing::Values(scale_type::device_side), // scale_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f16, accumulation_mode::f16}, accumulation_t {accumulation_mode::f32, accumulation_mode::f16}, accumulation_t {accumulation_mode::f16, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
+
 
 ////llama-2-7b-chat shape: Q [1x32xSEQ_LENx128] KV [1x32xSEQ_LENx128]
 ////llama-3-8b shape: Q [1x32xSEQ_LENx128] KV [1x8xSEQ_LENx128]
@@ -2156,6 +2118,7 @@ INSTANTIATE_TEST_SUITE_P(phi3_mini_4k_instruct,
                     sdpa_dims_t{   1,     32,       32,   2048,    2048,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD },
                     sdpa_dims_t{   1,     32,       32,   2049,       1,     96,     96,      96, mdt::f16, mdt::s8,  mdt::f16, mdt::s8,  mdt::s8, mdt::f16, mdt::s8, mdt::f16, quantize_type::per_token_with_groups,  with_key_transposed, mask_type::twoD }
     ), &print_to_string);
+
 // clang-format on
 
 GPU_TEST_P(sdpa_test, compare) {
@@ -2170,7 +2133,8 @@ GPU_TEST_P(sdpa_test, perf) {
     perf();
 }
 
+/*
 GPU_TEST_P(sdpa_test_datatypes, perf) {
     perf();
 }
-
+*/

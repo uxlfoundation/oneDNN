@@ -430,7 +430,6 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.transpose_k = gemm_desc_t::get_trans(*pd->key_md()) == dnnl_trans;
 
-    // ??? TODO ???
     int kq_scale_mask = (static_cast<int>(pd->with_key_scales()) << 1)
             | static_cast<int>(with_quantize_common(d->kq_scales));
     conf.kq_scale_mask = kq_scale_mask;

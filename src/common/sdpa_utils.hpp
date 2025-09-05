@@ -121,7 +121,6 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
             VCHECK_SDPA_ATTR_TYPE(utils::one_of(scale_dt, f16, bf16, f32),
                     vs_attr, "scales", "f16, bf16, or f32");
 
-            // ??? TODO ???
             // By default, host scalar scales are not supported for GPU
             // as the value should be accessed differently in the kernel
             VCHECK_SDPA_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
@@ -133,7 +132,6 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
             VCHECK_SDPA_ATTR_TYPE(utils::one_of(zp_dt, s4, u4, u8, s8, s32),
                     vs_attr, "zero_points", "u4, s4, u8, s8, or s32");
 
-            // ??? TODO ???
             // By default, host scalar zero points are not supported for GPU
             // as the value should be accessed differently in the kernel
             VCHECK_SDPA_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,

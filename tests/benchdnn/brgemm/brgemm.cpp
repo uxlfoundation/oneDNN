@@ -928,15 +928,10 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
 
-        // Scratchpad memory relates to a primitive. If reference needs it,
-        // use switch below to define a memory desc for it.
-        if (exec_arg != DNNL_ARG_SCRATCHPAD) {
-            ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
-                            /* prefill = */ false));
-        }
-
+        if (!get_empty_ref_mem(exec_arg, mem, ref_mem_map)) continue;
         auto &ref_mem = ref_mem_map[exec_arg];
+
+        if (fill_from_file(exec_arg, mem, ref_mem_map)) continue;
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:

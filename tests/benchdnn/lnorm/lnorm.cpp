@@ -231,16 +231,19 @@ int fill_shift(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
 }
 
 int prepare_fwd(const prb_t *prb, dnn_mem_map_t &mem_map,
-        dnn_mem_map_t &ref_mem_map, res_t *res) {
+        dnn_mem_map_t &ref_mem_map,
+        const std::unordered_map<int, bool> &file_fill_map, res_t *res) {
     cfg_t cfg(prb);
 
     auto &mean = mem_map.at(DNNL_ARG_MEAN);
     auto &ref_mean = ref_mem_map.at(DNNL_ARG_MEAN);
-    SAFE(fill_mean(prb, cfg, ref_mean, mean), WARN);
+    if (!file_fill_map.at(DNNL_ARG_MEAN))
+        SAFE(fill_mean(prb, cfg, ref_mean, mean), WARN);
 
     auto &src = mem_map.at(DNNL_ARG_SRC);
     auto &ref_src = ref_mem_map.at(DNNL_ARG_SRC);
-    SAFE(fill_src(prb, cfg, ref_src, src, ref_mean, res), WARN);
+    if (!file_fill_map.at(DNNL_ARG_SRC))
+        SAFE(fill_src(prb, cfg, ref_src, src, ref_mean, res), WARN);
 
     // Need a copy of source data for inplace mode for bitwise testing.
     if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {
@@ -251,15 +254,19 @@ int prepare_fwd(const prb_t *prb, dnn_mem_map_t &mem_map,
 
     auto &var = mem_map.at(DNNL_ARG_VARIANCE);
     auto &ref_var = ref_mem_map.at(DNNL_ARG_VARIANCE);
-    SAFE(fill_variance_fwd(prb, cfg, ref_var, var, ref_src, ref_mean), WARN);
+    if (!file_fill_map.at(DNNL_ARG_VARIANCE))
+        SAFE(fill_variance_fwd(prb, cfg, ref_var, var, ref_src, ref_mean),
+                WARN);
 
     auto &scale = mem_map.at(DNNL_ARG_SCALE);
     auto &ref_scale = ref_mem_map.at(DNNL_ARG_SCALE);
-    SAFE(fill_scale(prb, ref_scale, scale), WARN);
+    if (!file_fill_map.at(DNNL_ARG_SCALE))
+        SAFE(fill_scale(prb, ref_scale, scale), WARN);
 
     auto &shift = mem_map.at(DNNL_ARG_SHIFT);
     auto &ref_shift = ref_mem_map.at(DNNL_ARG_SHIFT);
-    SAFE(fill_shift(prb, ref_shift, shift), WARN);
+    if (!file_fill_map.at(DNNL_ARG_SHIFT))
+        SAFE(fill_shift(prb, ref_shift, shift), WARN);
 
     return OK;
 }
@@ -370,24 +377,29 @@ int fill_diff_dst_bwd(
 }
 
 int prepare_bwd(const prb_t *prb, dnn_mem_map_t &mem_map,
-        dnn_mem_map_t &ref_mem_map, res_t *res) {
+        dnn_mem_map_t &ref_mem_map,
+        const std::unordered_map<int, bool> &file_fill_map, res_t *res) {
     cfg_t cfg(prb);
 
     auto &mean = mem_map.at(DNNL_ARG_MEAN);
     auto &ref_mean = ref_mem_map.at(DNNL_ARG_MEAN);
-    SAFE(fill_mean(prb, cfg, ref_mean, mean), WARN);
+    if (!file_fill_map.at(DNNL_ARG_MEAN))
+        SAFE(fill_mean(prb, cfg, ref_mean, mean), WARN);
 
     auto &var = mem_map.at(DNNL_ARG_VARIANCE);
     auto &ref_var = ref_mem_map.at(DNNL_ARG_VARIANCE);
-    SAFE(fill_variance_bwd(prb, ref_var, var), WARN);
+    if (!file_fill_map.at(DNNL_ARG_VARIANCE))
+        SAFE(fill_variance_bwd(prb, ref_var, var), WARN);
 
     auto &src = mem_map.at(DNNL_ARG_SRC);
     auto &ref_src = ref_mem_map.at(DNNL_ARG_SRC);
-    SAFE(fill_src_bwd(prb, ref_src, src, ref_mean, res), WARN);
+    if (!file_fill_map.at(DNNL_ARG_SRC))
+        SAFE(fill_src_bwd(prb, ref_src, src, ref_mean, res), WARN);
 
     auto &d_dst = mem_map.at(DNNL_ARG_DIFF_DST);
     auto &ref_d_dst = ref_mem_map.at(DNNL_ARG_DIFF_DST);
-    SAFE(fill_diff_dst_bwd(prb, ref_d_dst, d_dst, res), WARN);
+    if (!file_fill_map.at(DNNL_ARG_DIFF_DST))
+        SAFE(fill_diff_dst_bwd(prb, ref_d_dst, d_dst, res), WARN);
 
     // Need a copy of source data for inplace mode for bitwise testing.
     if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {
@@ -398,7 +410,8 @@ int prepare_bwd(const prb_t *prb, dnn_mem_map_t &mem_map,
 
     auto &scale = mem_map.at(DNNL_ARG_SCALE);
     auto &ref_scale = ref_mem_map.at(DNNL_ARG_SCALE);
-    SAFE(fill_scale(prb, ref_scale, scale), WARN);
+    if (!file_fill_map.at(DNNL_ARG_SCALE))
+        SAFE(fill_scale(prb, ref_scale, scale), WARN);
 
     return OK;
 }
@@ -600,6 +613,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     const auto &ref_engine = get_cpu_engine();
     const bool is_fwd_prim = is_fwd_prop_kind(query_prop_kind(query_pd(prim)));
 
+    std::unordered_map<int, bool> file_fill_map;
     for (auto &entry : mem_map) {
         const int exec_arg = entry.first;
         // The function targets regular exec_args that are positive.
@@ -609,13 +623,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         auto &mem = entry.second;
 
-        // Scratchpad memory relates to a primitive. If reference needs it,
-        // use switch below to define a memory desc for it.
-        if (exec_arg != DNNL_ARG_SCRATCHPAD) {
-            ref_mem_map.emplace(exec_arg,
-                    dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
-                            /* prefill = */ false));
-        }
+        if (!get_empty_ref_mem(exec_arg, mem, ref_mem_map)) continue;
+
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
@@ -637,12 +646,13 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                         WARN);
                 break;
         }
+        file_fill_map[exec_arg] = fill_from_file(exec_arg, mem, ref_mem_map);
     }
 
     if (is_fwd_prim) {
-        SAFE(prepare_fwd(prb, mem_map, ref_mem_map, res), WARN);
+        SAFE(prepare_fwd(prb, mem_map, ref_mem_map, file_fill_map, res), WARN);
     } else {
-        SAFE(prepare_bwd(prb, mem_map, ref_mem_map, res), WARN);
+        SAFE(prepare_bwd(prb, mem_map, ref_mem_map, file_fill_map, res), WARN);
     }
 
     // Don't keep reference memory if it is not used further.

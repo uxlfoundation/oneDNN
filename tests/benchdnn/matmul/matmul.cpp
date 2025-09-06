@@ -893,6 +893,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         if (exec_arg <= 0) continue;
 
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
+        const bool has_sum_po
+                = prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM) >= 0;
+        const auto swap_dt = cfg.get_swapped_dt(exec_arg2data_kind(exec_arg));
 
         auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
         auto wei_encoding = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
@@ -954,7 +957,17 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 && is_sparse_wei_packed) {
             ref_mem.map();
         }
-
+        if (fill_from_file(exec_arg, mem, ref_mem_map)) {
+            // Bitwise mode for sum requires a copy due to data for
+            // post-op will be overwritten and it must be refreshed.
+            if ((exec_arg == DNNL_ARG_DST) && has_sum_po
+                    && has_bench_mode_bit(mode_bit_t::bitwise))
+                SAFE(mem_map.at(-exec_arg).reorder(mem), WARN);
+            if (has_bench_mode_bit(mode_bit_t::corr))
+                update_ref_mem_map_from_prim(
+                        prim_ref, mem, ref_mem_map, exec_arg, swap_dt);
+            continue;
+        }
         switch (exec_arg) {
             case DNNL_ARG_SRC:
                 SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
@@ -965,10 +978,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             case DNNL_ARG_BIAS:
                 SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
                 break;
-            case DNNL_ARG_DST: {
-                const auto &po = prb->attr.post_ops;
-                const int sum_idx = po.find(attr_t::post_ops_t::SUM);
-                if (sum_idx >= 0) {
+            case DNNL_ARG_DST:
+                if (has_sum_po) {
                     SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.
@@ -976,7 +987,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                         SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
                     }
                 }
-            } break;
+                break;
             case DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS:
                 // Fill it separately down below.
                 // TODO: introduce an order of processing arguments to avoid
@@ -993,9 +1004,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                         WARN);
                 break;
         }
-
-        update_ref_mem_map_from_prim(prim_ref, mem, ref_mem_map, exec_arg,
-                cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)));
+        update_ref_mem_map_from_prim(
+                prim_ref, mem, ref_mem_map, exec_arg, swap_dt);
 
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();

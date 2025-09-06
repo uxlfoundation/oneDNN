@@ -1768,6 +1768,15 @@ void erase_unused_args(
     }
 }
 
+bool get_empty_ref_mem(int exec_arg, dnn_mem_t &mem, dnn_mem_map_t &ref_mem_map,
+        const std::vector<int> &exceptions) {
+    if (std::count(exceptions.begin(), exceptions.end(), exec_arg))
+        return false;
+    ref_mem_map.emplace(exec_arg,
+            dnn_mem_t(mem.md_, dnnl_f32, tag::abx, get_cpu_engine(), false));
+    return true;
+}
+
 // This function handles cases when optimized CPU primitive is used as a
 // reference for a problem. Optimized primitive means custom memory formats
 // which require reorder to them. Since `ref_mem_map` is passed to optimized

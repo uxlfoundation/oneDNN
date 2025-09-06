@@ -428,11 +428,11 @@ private:
     template <typename T>
     void visit_stmt(const T &obj) {
         if (std::is_same<T, for_t>::value) {
-            visit_for((const object_impl_t &)obj);
+            visit_for((const impl_t &)obj);
             return;
         }
         if (std::is_same<T, let_t>::value) {
-            visit_let((const object_impl_t &)obj);
+            visit_let((const impl_t &)obj);
             return;
         }
         root_path_.push(&obj);
@@ -440,7 +440,7 @@ private:
         root_path_.pop();
     }
 
-    void visit_for(const object_impl_t &_obj) {
+    void visit_for(const impl_t &_obj) {
         auto &obj = (const for_t &)_obj;
 
         visit(obj.var);
@@ -451,7 +451,7 @@ private:
         root_path_.pop();
     }
 
-    void visit_let(const object_impl_t &_obj) {
+    void visit_let(const impl_t &_obj) {
         auto &obj = (const let_t &)_obj;
 
         visit(obj.var);

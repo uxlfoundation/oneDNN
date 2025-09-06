@@ -229,7 +229,7 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
 template <typename F>
 void _if(const expr_t &cond, F if_body) {
     if (is_const(cond)) {
-        if (to_cpp<bool>(cond)) {
+        if (to_bool(cond)) {
             begin_scope();
             if_body();
             end_scope();
@@ -245,7 +245,7 @@ template <typename F, typename G>
 void _if(const expr_t &cond, const F &if_body, const G &else_body) {
     if (is_const(cond)) {
         begin_scope();
-        if (to_cpp<bool>(cond)) {
+        if (to_bool(cond)) {
             if_body();
         } else {
             else_body();
@@ -277,7 +277,7 @@ void _for(const expr_t &var, const expr_t &bound, const F &body) {
 
 template <typename F>
 void _while(const expr_t &cond, F body) {
-    if (is_const(cond) && !to_cpp<bool>(cond)) return;
+    if (is_const(cond) && !to_bool(cond)) return;
     begin_scope();
     body();
     append(while_t::make(cond, pop_scope()));

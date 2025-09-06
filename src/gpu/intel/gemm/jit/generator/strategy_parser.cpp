@@ -585,8 +585,8 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
     bool surfaceAq = ((problem.quantized2DA() || problem.needsAGroupSums()) && !strategy.A.base.isStateless());
     bool surfaceBq = ((problem.quantized2DB() || problem.needsBGroupSums()) && !strategy.B.base.isStateless());
 
-    bool surfaceAO = surfaceAq && (problem.aoPtrDims == 2);
-    bool surfaceBO = surfaceBq && (problem.boPtrDims == 2);
+    bool surfaceAO = surfaceAq && problem.aOffset2D();
+    bool surfaceBO = surfaceBq && problem.bOffset2D();
 
     strategy.AO.base = (surfaceAO ? BTS : A64);
     strategy.BO.base = (surfaceBO ? BTS : A64);

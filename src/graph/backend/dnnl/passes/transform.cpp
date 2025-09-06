@@ -2150,6 +2150,57 @@ status_t fuse_typecast_to_add(std::shared_ptr<subgraph_t> &sg) {
     return status::success;
 }
 
+// Fuse bias-typecast to matmul or conv
+status_t fuse_bias_typecast_to_matmul_or_conv(std::shared_ptr<subgraph_t> &sg) {
+    std::vector<std::vector<op_t *>> fusion_groups;
+    for (const auto &cur_op : sg->get_ops()) {
+        // Only process typecast ops
+        if (!is_typecast(cur_op.get())) continue;
+        // Typecast must have exactly one consumer
+        if (cur_op->get_output_value(0)->get_consumers().size() != 1) continue;
+        auto &succ_op
+                = cur_op->get_output_value(0)->get_consumers()[0].get_op();
+
+        // Only fuse if successor is supported op kind
+        if (!impl::utils::one_of(succ_op.get_kind(), op_kind::dnnl_matmul,
+                    op_kind::dnnl_convolution))
+            continue;
+
+        if (!succ_op.get_attr<bool>(op_attr::with_bias)) continue;
+        // If successor has three inputs, only fuse typecast on the third input (offset == 2)
+        size_t offset
+                = cur_op->get_output_value(0)->get_consumers()[0].get_offset();
+        if (offset == 2) {
+            auto tc_in = cur_op->get_input_value(0);
+            // Disconnect typecast from successor
+            cur_op->get_output_value(0)->remove_consumer(succ_op, offset);
+            // Disconnect typecast from its input
+            tc_in->remove_consumer(*cur_op, 0);
+
+            // Connect successor directly to typecast's input
+            succ_op.connect_input(offset, tc_in);
+            tc_in->add_consumer(succ_op, offset);
+
+            // Update successor's input data type
+            succ_op.get_input_value(offset)->set_data_type(
+                    tc_in->get_logical_tensor().data_type);
+
+            fusion_groups.emplace_back(std::vector<op_t *> {cur_op.get()});
+        } else {
+            continue;
+        }
+    }
+
+    subgraph_rewriter_t rewriter(sg);
+    for (auto &fusion_group : fusion_groups)
+        // Remove original typecast ops
+        for (auto &del_op : fusion_group) {
+            rewriter.to_remove(del_op->shared_from_this());
+        }
+    rewriter.run();
+    return status::success;
+}
+
 status_t fuse_post_typecast_to_predecessor(std::shared_ptr<subgraph_t> &sg) {
     std::vector<std::vector<op_t *>> fusion_groups;
     for (const auto &cur_op : sg->get_ops()) {

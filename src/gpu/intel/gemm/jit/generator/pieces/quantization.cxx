@@ -92,7 +92,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     }
 
     if (lateOffset && (Txo.isInt4() || Txo.isInt8()))
-        Txo_int = Type::s16;
+        Txo_int = Type::s32;
 
     // Get tile sizes, depending on whether A/B are copied to SLM.
     // For late scaling (after compute), scales are always applied to the whole tile.
@@ -481,7 +481,7 @@ void Generator<hw>::gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, 
     auto &srLayout   = doA ? state.Ar_scaleLayout      : state.Br_scaleLayout;
     auto &siRegs     = doA ? state.A_scaleRegs         : state.B_scaleRegs;
     auto &srRegs     = doA ? state.Ar_scaleRegs        : state.Br_scaleRegs;
-    bool lateOffset  = doA ? problem.needsAGroupSums() : problem.needsBGroupSums();
+    bool lateOffset  = doA ? problem.needsBGroupSums() : problem.needsAGroupSums();
     bool lateScale   = doA ? state.lateScale2DA        : state.lateScale2DB;
 
     auto &oLayout = orLayout.empty() ? oiLayout : orLayout;

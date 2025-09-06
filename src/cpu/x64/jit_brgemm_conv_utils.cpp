@@ -2399,9 +2399,10 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             + utils::div_up(abs(jcp.back_pad), jcp.dilate_d + 1);
     const auto kh_cnt = 1 + utils::div_up(abs(jcp.t_pad), jcp.dilate_h + 1)
             + utils::div_up(abs(jcp.b_pad), jcp.dilate_h + 1);
-    jcp.ker_ranges_size = jcp.exec_type == exec_trans
-            ? kd_cnt * nstl::min(jcp.oh, jcp.oh_block + kh_cnt)
-            : kd_cnt * kh_cnt;
+    jcp.ker_ranges_size = jcp.exec_type == exec_trans ? kd_cnt
+                    * nstl::min(
+                            jcp.oh, rnd_up(jcp.oh_block + kh_cnt, jcp.oh_block))
+                                                      : kd_cnt * kh_cnt;
     const auto comp_buffer_ow = jcp.exec_type != exec_vpad ? jcp.ow : 1;
     jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size
             * comp_buffer_ow * jcp.oc_block;

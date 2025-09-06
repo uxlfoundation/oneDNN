@@ -2517,8 +2517,8 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
 
                     dec(reg_rdb_loop);
                     cmp(reg_rdb_loop, 0);
+                    jg(rdb_loop_label, T_NEAR);
                 }
-                jg(rdb_loop_label, T_NEAR);
             }
         }
         if (brg.rdb_tail != 0) {
@@ -2664,8 +2664,8 @@ void jit_brgemm_kernel_t<Wmm>::ldb_loop(dim_t bd_block2, bool is_bdb_tail,
             else
                 ldb_regs_shift(1, true);
             dec(reg_ldb_loop);
-            cmp(reg_ldb_loop, 0);
             if (brg.is_tmm) reg_ldb_loop.save();
+            cmp(reg_ldb_loop, 0);
             jg(ldb_loop_label, T_NEAR);
         }
     }
@@ -2844,8 +2844,8 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
                     reg_bdb_loop.restore();
                     dec(reg_bdb_loop);
                     cmp(reg_bdb_loop, 1);
+                    jg(bdb_loop_label, T_NEAR);
                 }
-                jg(bdb_loop_label, T_NEAR);
                 bdblocks = 1;
             }
             if (bdblocks == 1) {
@@ -2874,8 +2874,8 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
                     reg_bdb_loop.restore();
                     dec(reg_bdb_loop);
                     cmp(reg_bdb_loop, 0);
+                    jg(bdb_loop_label, T_NEAR);
                 }
-                jg(bdb_loop_label, T_NEAR);
             }
             if (brg.bdb2_tail > 0)
                 bdb_loop_body(brg.bdb2_tail, false, false, false, 0,

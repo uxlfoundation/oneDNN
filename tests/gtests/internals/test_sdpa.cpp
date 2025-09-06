@@ -290,7 +290,7 @@ struct sdpa_tensors_t {
     memory m_query, m_mask, m_output;
     memory m_key_quantized, m_value_quantized, m_output_quantized;
     memory m_scale; // tested sdpa arg, can be host-side scalar
-    memory m_scale_device; // reference (prim) sdpa arg
+    memory m_scale_prim; // reference (prim) sdpa arg
 
     memory m_key_scales, m_key_zp, m_value_scales, m_value_zp;
     dnnl::primitive_attr sdpa_attr_quantized, sdpa_kq_attr_quantized,
@@ -975,7 +975,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     if (with_host_scale) {
         auto scale_md = memory::desc::host_scalar(p.dt.dt);
         float scale_val = (float)def_scale_value;
-        // ????? Better ??????? int ??????
+        // ????? Better ???????
         switch (p.dt.dt) {
         case mdt::f32:
             out.m_scale = dnnl::memory(scale_md, (float)scale_val); break;
@@ -988,7 +988,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         }
     } else
         setup_device_scale(&out.m_scale);
-    setup_device_scale(&out.m_scale_device);
+    setup_device_scale(&out.m_scale_prim);
 
     return out;
 }
@@ -1643,7 +1643,7 @@ public:
 
         prim_sdpa_quant(p, t, eng, strm, t.m_query, t.m_key_quantized,
 //                t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
-                t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale_device, t.m_mask,
+                t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale_prim, t.m_mask,
                 t.m_value_quantized, t.m_value_scales, t.m_value_zp, t.m_output,
                 invert_scale, doubled_memory);
 

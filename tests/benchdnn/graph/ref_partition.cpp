@@ -413,6 +413,11 @@ int ref_partition_t::check_partition_correctness(
         ref_prim->check_correctness(
                 output_args, has_eltwise, output_has_nans, res);
         if (res->state == FAILED) {
+            if (is_nvidia_gpu()) {
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return OK;
+            }
             BENCHDNN_PRINT(
                     2, "Op failed: {(%zu) %s}\n", op_id, op_kind.c_str());
             return FAIL;

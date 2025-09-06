@@ -108,7 +108,7 @@ struct conv_req_comp {}; // {s8, u8: asymmetric quantization}
     int dst_zp = dst_zero_points ? dst_zero_points[0] : 0; \
     MAYBE_UNUSED(dst_zp); \
     const float alpha = (with_src_scales ? src_scales[0] : 1.f) \
-            * (with_dst_scales ? dst_scales[0] : 1.f); \
+            / (with_dst_scales ? dst_scales[0] : 1.f); \
     MAYBE_UNUSED(alpha); \
     const float beta = pd->beta(); \
     MAYBE_UNUSED(beta);

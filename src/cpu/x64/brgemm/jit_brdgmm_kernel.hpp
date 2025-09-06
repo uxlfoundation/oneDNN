@@ -184,6 +184,8 @@ private:
     const reg64_t param1 = abi_param1;
     const reg64_t reg_A = abi_not_param1;
     const reg64_t reg_B = r8;
+    // reg_aux_batch_addr changed in advance_A_B_matrices,
+    // so need to be savable
     const injector_utils::reg64_savable_t reg_aux_batch_addr {
             regscratchpad_, r15};
     const reg64_t reg_BS = rsi;
@@ -208,27 +210,32 @@ private:
     const reg64_t reg_table_base = rax;
     const reg64_t reg_tmp = reg_table_base;
     const reg64_t reg_total_padding = reg_table_base;
+    // reg_aux_bias changed in store_accumulators_apply_post_ops
     const injector_utils::reg64_savable_t reg_aux_bias {regscratchpad_, rax};
     const injector_utils::reg64_savable_t reg_aux_src_scales {
-            regscratchpad_, rax, r19};
+            regscratchpad_, rax};
+    // reg_aux_wei_scales changed in store_accumulators_apply_post_ops,
+    // so need to be savable
     const injector_utils::reg64_savable_t reg_aux_wei_scales {
             regscratchpad_, rax};
     const injector_utils::reg64_savable_t reg_aux_dst_scales {
-            regscratchpad_, rax, r20};
+            regscratchpad_, rax, r22};
     const injector_utils::reg64_savable_t reg_dst_zero_point {
-            regscratchpad_, rax, r21};
+            regscratchpad_, rax, r23};
     const injector_utils::reg64_savable_t reg_src_zero_point {
-            regscratchpad_, rax};
+            regscratchpad_, rax, r24};
     const injector_utils::reg64_savable_t reg_zp_compensation {
-            regscratchpad_, rbp, r22};
-    const injector_utils::reg64_savable_t reg_binary_params {
-            regscratchpad_, abi_param1}; // default for binary ops
-    const injector_utils::reg64_savable_t reg_ptr_sum_scale {
-            regscratchpad_, r14, r24};
-    const injector_utils::reg64_savable_t reg_ptr_sum_zp {
             regscratchpad_, rbp, r25};
+    // abi_param1 is used in post-ops injector and by reg_aux_B,
+    // so need to be savable or use other registers
+    const injector_utils::reg64_savable_t reg_binary_params {
+            regscratchpad_, abi_param1};
+    const injector_utils::reg64_savable_t reg_ptr_sum_scale {
+            regscratchpad_, r14, r27};
+    const injector_utils::reg64_savable_t reg_ptr_sum_zp {
+            regscratchpad_, rbp, r28};
     const injector_utils::reg64_savable_t reg_s8s8_comp {
-            regscratchpad_, r14, r26};
+            regscratchpad_, r14, r29};
 
     Xbyak::Opmask k_mask = Xbyak::Opmask(2);
     Xbyak::Opmask k_tail_mask = Xbyak::Opmask(3);

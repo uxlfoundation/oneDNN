@@ -159,11 +159,11 @@ private:
 
     // Register decomposition
     const reg64_savable_t param1 {regscratchpad_, abi_param1};
-    const reg64_savable_t param1_backup {regscratchpad_, abi_param1};
+    const reg64_savable_backup_t param1_backup {param1};
 
     const reg64_savable_t reg_C {regscratchpad_, r15};
-    const reg64_savable_t C_backup {regscratchpad_, r15};
     const reg64_savable_t reg_aux_C {regscratchpad_, r14};
+    const reg64_savable_backup_t reg_C_backup {reg_aux_C, r19};
 
     // r14 is used to work with C (via reg_aux_C alias) that happens outside of
     // the microkernel so using r14 (via reg_tmp_microkernel alias) inside the
@@ -202,15 +202,15 @@ private:
     const reg64_savable_t reg_relative_batch {regscratchpad_, rbp};
 
     const reg64_savable_t reg_bias {regscratchpad_, rbx, r24};
-    const reg64_savable_t reg_src_scales {regscratchpad_, rbx};
-    const reg64_savable_t reg_wei_scales {regscratchpad_, rbx};
-    const reg64_savable_t reg_dst_scales {regscratchpad_, rbx};
-    const reg64_savable_t reg_aux_bias {regscratchpad_, rbx};
+    const reg64_savable_t reg_src_scales {regscratchpad_, rbx, r23};
+    const reg64_savable_t reg_wei_scales {regscratchpad_, rbx, r22};
+    const reg64_savable_t reg_dst_scales {regscratchpad_, rbx, r20};
+    const reg64_savable_t reg_aux_bias {regscratchpad_, rbx, r18};
     const reg64_savable_t reg_zp_comp_a {regscratchpad_, rbx};
-    const reg64_savable_t reg_aux_zp_comp_a {regscratchpad_, rbx, r27};
+    const reg64_savable_t reg_aux_zp_comp_a {regscratchpad_, rbx};
     const reg64_savable_t reg_zp_comp_b {regscratchpad_, rbx, r25};
     const reg64_savable_t reg_aux_zp_comp_b {regscratchpad_, rbx, r30};
-    const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx};
+    const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx, r31};
     const reg64_savable_t reg_aux_zp_c_values {regscratchpad_, rbx};
     const reg64_savable_t reg_D_shift_bytes {regscratchpad_, rbx};
 
@@ -225,16 +225,15 @@ private:
     const reg64_savable_t reg_ptr_sum_zp {regscratchpad_, rbx};
     const reg64_savable_t reg_zp_a_val {regscratchpad_, rbx};
     const reg64_savable_t reg_buf {regscratchpad_, rbx, r26};
-    const reg64_savable_t reg_dynamic_C_offset {regscratchpad_, rbx, r19};
+    const reg64_savable_t reg_dynamic_C_offset {regscratchpad_, rbx};
     const reg64_savable_t reg_buf_aux {regscratchpad_, abi_param1};
-    const reg64_savable_t reg_buf_aux_backup {regscratchpad_, abi_param1};
-    const reg64_savable_t reg_compensation {reg_buf};
+    const reg64_savable_backup_t reg_buf_aux_backup {reg_buf_aux};
     const reg64_savable_t reg_aux_compensation {regscratchpad_, rbx, r29};
 
     const reg64_savable_t reg_D {regscratchpad_, r11};
-    const reg64_savable_t reg_aux_D {regscratchpad_, rax};
-    const reg64_savable_t reg_aux_D_backup {regscratchpad_, rax};
-    const reg64_savable_t reg_aux_D_bdb_loop_backup {regscratchpad_, rax};
+    const reg64_savable_t reg_aux_D {regscratchpad_, rax, r27};
+    const reg64_savable_backup_t reg_aux_D_backup {reg_aux_D, r28};
+    const reg64_savable_backup_t reg_aux_D_bdb_loop_backup {reg_aux_D, r19};
     const reg64_savable_t reg_D_bdb_loop_shift {regscratchpad_, rbx, r21};
 
     /* bf16 emulation */
@@ -822,9 +821,9 @@ void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(dim_t ld_block2, bool is_tail) {
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::advance_bd_block2_post_op_regs(dim_t bd_block2) {
     if (brg.req_comp_pads_with_bcast && brg.req_s8s8_compensation) {
-        reg_compensation.restore();
-        add(reg_compensation, bdb_compensation_offset(bd_block2));
-        reg_compensation.save();
+        reg_buf.restore();
+        add(reg_buf, bdb_compensation_offset(bd_block2));
+        reg_buf.save();
     }
 
     if (brg.req_comp_pads_with_bcast
@@ -853,8 +852,8 @@ void jit_brgemm_kernel_t<Wmm>::copy_post_ops_stack_values_to_aux(
             reg_bias.saveTo(reg_aux_bias);
         }
         if (brg.req_s8s8_compensation) {
-            reg_compensation.restore();
-            reg_compensation.saveTo(reg_aux_compensation);
+            reg_buf.restore();
+            reg_buf.saveTo(reg_aux_compensation);
         }
         if (brg.with_wei_scales) {
             reg_wei_scales.restore();
@@ -1097,8 +1096,8 @@ void jit_brgemm_kernel_t<Wmm>::apply_alpha_beta(
     }
 
     reg64_savable_guard_t reg_aux_guard(
-            {{{reg_aux_C}, brg.is_runtime_ldc && bd_block > 1},
-                    {{reg64_fp8_aux}, brg.is_fp8_via_convert()}});
+            {{{&reg_aux_C}, brg.is_runtime_ldc && bd_block > 1},
+                    {{&reg64_fp8_aux}, brg.is_fp8_via_convert()}});
 
     for_(dim_t bd = 0; bd < bd_block; bd++)
     for (dim_t ld = 0; ld < ld_block2; ld++) {
@@ -1141,8 +1140,8 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
         dim_t ldb_and_bdb_offset, bool is_ld_tail) {
 
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
-    reg64_savable_guard_t registers_guard({{{param1_backup}, true},
-            {{reg_aux_D_backup}, brg.is_runtime_ldd && bd_block > 1}});
+    reg64_savable_guard_t registers_guard({{{&param1_backup}, true},
+            {{&reg_aux_D_backup}, brg.is_runtime_ldd && bd_block > 1}});
 
     if (brg.with_binary) param1.restore();
 
@@ -1174,11 +1173,11 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
 
             {
                 const reg64_savable_guard_t register_sum_fp8_guard(
-                        {{{reg_ptr_sum_scale},
+                        {{{&reg_ptr_sum_scale},
                                  with_binary_non_scalar_bcast_
                                          && p_sum_scale_reg_set},
-                                {{reg_ptr_sum_zp}, p_sum_zp_reg_set},
-                                {{reg64_fp8_aux}, brg.is_fp8_via_convert()}});
+                                {{&reg_ptr_sum_zp}, p_sum_zp_reg_set},
+                                {{&reg64_fp8_aux}, brg.is_fp8_via_convert()}});
 
                 const auto &vmm_sum_zp = vmm_tmp(1);
 
@@ -1442,7 +1441,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
     if (brg.is_bf16_emu) bf16_emu_->init_vcvtneps2bf16();
 
     reg64_savable_guard_t reg_aux_D_backup_guard(
-            {reg_aux_D_backup}, brg.is_runtime_ldd && bd_block > 1);
+            {&reg_aux_D_backup}, brg.is_runtime_ldd && bd_block > 1);
 
     if (brg.is_fp8_via_convert()) reg64_fp8_aux.save();
 
@@ -1621,7 +1620,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
     }
 
     reg64_savable_guard_t reg_aux_C_guard(
-            {reg_aux_C}, brg.is_runtime_ldc && bd_block > 1);
+            {&reg_aux_C}, brg.is_runtime_ldc && bd_block > 1);
 
     if (is_superset(brg.isa_impl, avx10_2_512)) prefetchrst2(ptr[reg_aux_C]);
 
@@ -1667,16 +1666,24 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
         auto store_accumulators_amx = [&](const bool apply_post_ops,
                                               const bool apply_zp_a_compensation
                                               = false) {
-            reg_aux_C.saveTo(C_backup);
+            if (brg.brgattr.max_bs > 1) reg_aux_D.restore();
+
+            reg64_savable_guard_t reg_aux_D_bdb_loop_backup_guard(
+                    {{{&reg_C_backup}, !apply_post_ops},
+                            {{&reg_aux_D_bdb_loop_backup}, apply_post_ops}});
+
+            const bool do_accum_ops = need_to_apply_alpha_beta
+                    || are_post_ops_applicable || apply_zp_a_compensation;
+            const dim_t adj_bd_block = (brg.is_M_tail && is_bdb_tail)
+                    ? brg.bdb_tail
+                    : brg.bd_block;
+
             if (brg.is_runtime_ldc && bd_block2 > 1) {
                 xor_(reg_dynamic_C_offset, reg_dynamic_C_offset);
                 reg_stride_ld_block.imulTo(
                         reg_dynamic_C_offset, bdb_C_offset(1));
                 reg_dynamic_C_offset.save();
             }
-
-            reg64_savable_guard_t reg_aux_D_bdb_loop_backup_guard(
-                    {reg_aux_D_bdb_loop_backup}, apply_post_ops);
 
             if (apply_post_ops && brg.is_runtime_ldd && bd_block2 > 1) {
                 xor_(reg_D_bdb_loop_shift, reg_D_bdb_loop_shift);
@@ -1685,14 +1692,13 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
             }
 
             reg_buf.restore();
+
             for (dim_t bdb = 0; bdb < bd_block2; bdb++) {
-                dim_t adj_bd_block = (brg.is_M_tail && is_bdb_tail)
-                        ? brg.bdb_tail
-                        : brg.bd_block;
                 for (dim_t ldb = 0; ldb < ld_block2; ldb++) {
-                    dim_t idx = (is_ld_tail) ? brg.ld_block2 : ldb;
-                    if (need_to_apply_alpha_beta || are_post_ops_applicable
-                            || apply_zp_a_compensation) {
+                    const dim_t idx = is_ld_tail ? brg.ld_block2 : ldb;
+                    const int c_tensor = brg.get_C_tensor(
+                            bdb, idx, is_bdb_tail, is_ld_tail);
+                    if (do_accum_ops) {
                         if (skip_accumulation) {
                             for (dim_t bd = 0; bd < adj_bd_block; bd++) {
                                 auto vreg_acc = accm(1, bd, 0);
@@ -1700,10 +1706,9 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                             }
                         } else {
                             tilestored(ptr[reg_buf + reg_stride_ld_block],
-                                    Tmm(brg.get_C_tensor(bdb, idx, is_bdb_tail,
-                                            is_ld_tail)));
+                                    Tmm(c_tensor));
                             for (dim_t bd = 0; bd < adj_bd_block; bd++) {
-                                size_t buf_offset
+                                const size_t buf_offset
                                         = (bd * brg.ld_block) * brg.typesize_C;
                                 auto vreg_acc = is_ld_tail
                                         ? accm(1, bd, 0) | ld_tail_mask | T_z
@@ -1713,9 +1718,8 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                             }
                         }
 
-                        if (apply_zp_a_compensation) {
+                        if (apply_zp_a_compensation)
                             apply_compensation(adj_bd_block, 1, is_ld_tail);
-                        }
 
                         if (need_to_apply_alpha_beta)
                             apply_alpha_beta(adj_bd_block, 1, is_ld_tail);
@@ -1732,15 +1736,17 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                         } else {
                             store_accumulators_without_post_ops(
                                     adj_bd_block, 1, is_ld_tail);
+                            if (ldb < ld_block2 - 1)
+                                add(reg_aux_C, ldb_C_offset(1));
                         }
                         reg_buf.restore();
                     } else {
-                        auto tmm = Tmm(brg.get_C_tensor(
-                                bdb, idx, is_bdb_tail, is_ld_tail));
+                        auto tmm = Tmm(c_tensor);
                         if (skip_accumulation) tilezero(tmm);
                         tilestored(ptr[reg_aux_C + reg_stride_ld_block], tmm);
+                        if (ldb < ld_block2 - 1)
+                            add(reg_aux_C, ldb_C_offset(1));
                     }
-                    if (ldb < ld_block2 - 1) add(reg_aux_C, ldb_C_offset(1));
                 }
                 if (ld_block2 > 1) sub(reg_aux_C, ldb_C_offset(ld_block2 - 1));
                 if (bdb < bd_block2 - 1) {
@@ -1777,7 +1783,6 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                     if (post_processed) reg_buf.restore();
                 }
             }
-            C_backup.restoreTo(reg_aux_C);
             if (apply_post_ops) { restore_bdb_post_op_regs(bd_block2); }
         };
 
@@ -1997,7 +2002,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
         dim_t B_col = (is_tail ? brg.ldb_tail : brg.ld_block) * typesize_B
                 * rd_step;
         dim_t B_row = brg.typesize_C != 0 ? A_col / brg.typesize_C : 0;
-        reg64_savable_guard_t reg_fp8_buf_guard({reg64_fp8_aux, reg_buf_aux});
+        reg64_savable_guard_t reg_fp8_buf_guard({&reg64_fp8_aux, &reg_buf_aux});
 
         reg_buf.restoreTo(reg_buf_aux);
         maybe_pre_process_data(matrix_kind, t1, reg_base, offset, reg_stride,
@@ -2216,7 +2221,7 @@ void jit_brgemm_kernel_t<Wmm>::compute_int8_compensation(dim_t rd_loop,
     };
 
     if (need_comp_pads && brg.zp_type_a != brgemm_broadcast_t::none) {
-        reg64_savable_guard_t reg_bdb_loop_guard({reg_bdb_loop});
+        reg64_savable_guard_t reg_bdb_loop_guard({&reg_bdb_loop});
         const auto reg32_scratch = reg_zp_a_input_shift.cvt32();
         mov(reg32_scratch, 0x1010101);
         uni_vpbroadcastd(vmm_one_bytes(), reg32_scratch);
@@ -2517,8 +2522,8 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
 
                     dec(reg_rdb_loop);
                     cmp(reg_rdb_loop, 0);
+                    jg(rdb_loop_label, T_NEAR);
                 }
-                jg(rdb_loop_label, T_NEAR);
             }
         }
         if (brg.rdb_tail != 0) {
@@ -2535,7 +2540,7 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
 
     Label BS_loop_label;
 
-    reg64_savable_guard_t reg_aux_D_guard({reg_aux_D}, brg.brgattr.max_bs > 1);
+    reg64_savable_guard_t reg_aux_D_guard({&reg_aux_D}, brg.brgattr.max_bs > 1);
 
     if (brg.alpha != 0.f && !skip_accumulation) {
         restore_A_B_matrices();
@@ -2653,7 +2658,6 @@ void jit_brgemm_kernel_t<Wmm>::ldb_loop(dim_t bd_block2, bool is_bdb_tail,
             if (brg.is_tmm) reg_ldb_loop.restore();
             mov(reg_D, reg_ldb_loop);
         }
-        if (brg.brgattr.max_bs > 1) reg_aux_D.restore();
 
         store_accumulators(bd_block2, is_bdb_tail, ld_block2, is_ld_tail,
                 skip_accumulation);
@@ -2664,8 +2668,8 @@ void jit_brgemm_kernel_t<Wmm>::ldb_loop(dim_t bd_block2, bool is_bdb_tail,
             else
                 ldb_regs_shift(1, true);
             dec(reg_ldb_loop);
-            cmp(reg_ldb_loop, 0);
             if (brg.is_tmm) reg_ldb_loop.save();
+            cmp(reg_ldb_loop, 0);
             jg(ldb_loop_label, T_NEAR);
         }
     }
@@ -2707,18 +2711,18 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
                 rows_for_rd_tail, skip_accumulation);
 
         if (brg.is_runtime_ldc) {
-            reg_C.saveTo(C_backup);
+            reg_C.saveTo(reg_C_backup);
             xor_(reg_C, reg_C);
             reg_stride_ld_block.imulTo(reg_C, bdb_C_offset(bd_block2));
-            C_backup.addTo(reg_C);
+            reg_C_backup.addTo(reg_C);
         } else {
             add(reg_C, bdb_C_offset(bd_block2));
         }
         if (brg.is_runtime_ldd) {
-            reg_D.saveTo(reg_aux_D_bdb_loop_backup);
+            reg_D.saveTo(reg_aux_D_backup);
             xor_(reg_D, reg_D);
             reg_D_shift_bytes.imulTo(reg_D, bdb_D_offset(bd_block2));
-            reg_aux_D_bdb_loop_backup.addTo(reg_D);
+            reg_aux_D_backup.addTo(reg_D);
         } else {
             add(reg_D, bdb_D_offset(bd_block2));
         }
@@ -2844,8 +2848,8 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
                     reg_bdb_loop.restore();
                     dec(reg_bdb_loop);
                     cmp(reg_bdb_loop, 1);
+                    jg(bdb_loop_label, T_NEAR);
                 }
-                jg(bdb_loop_label, T_NEAR);
                 bdblocks = 1;
             }
             if (bdblocks == 1) {
@@ -2874,8 +2878,8 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
                     reg_bdb_loop.restore();
                     dec(reg_bdb_loop);
                     cmp(reg_bdb_loop, 0);
+                    jg(bdb_loop_label, T_NEAR);
                 }
-                jg(bdb_loop_label, T_NEAR);
             }
             if (brg.bdb2_tail > 0)
                 bdb_loop_body(brg.bdb2_tail, false, false, false, 0,

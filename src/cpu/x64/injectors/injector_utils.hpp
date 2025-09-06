@@ -94,7 +94,8 @@ public:
 
     inline jit_generator_t &jit() const { return jit_; }
     inline bool ExtendedRegisters() const {
-        return is_superset(isa_, avx10_2_512);
+        return is_superset(isa_, avx10_1_512)
+                && (mayiuse(avx10_2_512) || mayiuse(avx10_2_512_amx_2));
     }
 
     inline int Size() const { return size_; }
@@ -120,6 +121,8 @@ private:
  */
 class reg64_savable_t : public Xbyak::Reg64 {
 public:
+    DNNL_DISALLOW_COPY_AND_ASSIGN(reg64_savable_t);
+
     reg64_savable_t(
             registry_scratchpad_t &regscratchpad, const Xbyak::Reg64 &reg);
 
@@ -133,9 +136,9 @@ public:
 
     inline bool savable() const { return booking_ >= 0; }
 
-    void save() const;
+    virtual void save() const;
+    virtual void restore() const;
     void saveTo(const reg64_savable_t &regsavable) const;
-    void restore() const;
     void lea() const;
     void restoreTo(const Xbyak::Reg64 &reg) const;
     void restoreTo(const Xbyak::Reg32 &reg32) const;
@@ -145,10 +148,30 @@ public:
         return regscratchpad_.getPtr(booking_);
     }
 
-private:
     registry_scratchpad_t &regscratchpad_;
+
+private:
     int booking_ {-1};
     bool storable_ {false};
+};
+
+class reg64_savable_backup_t : public reg64_savable_t {
+public:
+    DNNL_DISALLOW_COPY_AND_ASSIGN(reg64_savable_backup_t);
+    reg64_savable_backup_t(const reg64_savable_t &other)
+        : reg64_savable_t(other.regscratchpad_, other), other_(other) {}
+
+    reg64_savable_backup_t(
+            const reg64_savable_t &other, const Xbyak::Reg64 &ext_reg)
+        : reg64_savable_t(other.regscratchpad_,
+                other.regscratchpad_.ExtendedRegisters() ? ext_reg : other)
+        , other_(other) {}
+
+    void save() const override { other_.saveTo(*this); }
+    void restore() const override { restoreTo(other_); }
+
+private:
+    const reg64_savable_t &other_;
 };
 
 /*
@@ -157,18 +180,18 @@ private:
  */
 class reg64_savable_guard_t {
 public:
-    reg64_savable_guard_t(
-            std::initializer_list<reg64_savable_t> regs, bool condition = true);
+    reg64_savable_guard_t(std::initializer_list<const reg64_savable_t *> regs,
+            bool condition = true);
 
     reg64_savable_guard_t(std::initializer_list<
-            std::pair<std::initializer_list<reg64_savable_t>, bool>>
+            std::pair<std::initializer_list<const reg64_savable_t *>, bool>>
                     init_list);
 
     ~reg64_savable_guard_t();
     DNNL_DISALLOW_COPY_AND_ASSIGN(reg64_savable_guard_t);
 
 private:
-    std::vector<reg64_savable_t> regs_;
+    std::vector<const reg64_savable_t *> regs_;
 };
 
 } // namespace injector_utils

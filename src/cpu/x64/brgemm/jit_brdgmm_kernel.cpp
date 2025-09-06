@@ -313,9 +313,9 @@ void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
         const bool p_sum_zp_reg_set = *p_sum_zp != 0;
 
         const reg64_savable_guard_t register_guard_sum(
-                {{{reg_ptr_sum_scale},
+                {{{&reg_ptr_sum_scale},
                          with_binary_non_scalar_bcast_ && p_sum_scale_reg_set},
-                        {{reg_ptr_sum_zp}, p_sum_zp_reg_set}});
+                        {{&reg_ptr_sum_zp}, p_sum_zp_reg_set}});
 
         if (p_sum_scale_reg_set)
             mov(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));

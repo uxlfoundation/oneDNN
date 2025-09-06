@@ -276,6 +276,7 @@ void CopyPlan::transform()
 
     sort(SortType::SourceOrder);
 
+    optimizeZip(true);
     optimizeWriteCombine();
     optimizeWriteSpread();
 
@@ -402,6 +403,27 @@ int CopyPlan::tempFlagBytes() const
         if (t.flag)
             bytes += t.bytes;
     return bytes;
+}
+
+CopyOperand CopyPlan::getResource(CopyResource::Kind kind)
+{
+    CopyResource *res = nullptr;
+    if (kind == CopyResource::Kind::null)
+        return CopyOperand();
+    for (auto &r: resources) if (r.kind == kind) {
+        res = &r; break;
+    }
+    if (!res) {
+        resources.push_back(kind);
+        res = &resources.back();
+    }
+    if (!res->src) {
+        auto data = res->getData();
+        res->preinitialized = false;
+        if (int n = std::get<1>(data))
+            res->src = newTemp(DataType::ud, (n + 3) >> 2, 1);
+    }
+    return res->src;
 }
 
 // Split an instruction into two.
@@ -818,17 +840,11 @@ void CopyPlan::planTypeConversions()
             planSmallUWToBF(i);
         else if (one_of(st, ngen_uw_sb(), ngen_uw_ss4()) && dt == DataType::bf)
             planSmallUWToBF(i);
-        else if (st == DataType::ub && dt == DataType::hf) {
-            copyThrough(i, DataType::uw);
+        else if (isB(st) && dt == DataType::hf)
+            planInt8ToHF(i);
+        else if (isB(st) && dt == DataType::bf) {
+            planInt8ToBF(i);
             rerun = true;
-        } else if (st == DataType::ub && dt == DataType::bf && i.src0.stride < 4) {
-            copyThrough(i, DataType::uw);
-            rerunZip = true;
-        } else if (st == DataType::b && dt == DataType::hf)
-            planBToHF(i);
-        else if (st == DataType::b && dt == DataType::bf && i.src0.stride < 4) {
-            planBToBF(i);
-            rerunZip = true;
         } else if (st == DataType::f && dt == DataType::tf32) {
             if (hw < HW::XeHPC)
                 stub("No emulation for tf32 rounding");
@@ -1100,46 +1116,88 @@ void CopyPlan::planSmallUWToBF(CopyInstruction &i)
     ie[3]->flag = ie[0]->flag;
 }
 
-// b->hf sequence.
-void CopyPlan::planBToHF(CopyInstruction &i)
-{
-    if (i.src0.neg || i.sat || i.hasCMod()) return;
-
-    auto ie = splitMultiple<3>(i);
-
-    // Copy to u16 and shift by 128.
-    ie[0]->op = Opcode::add;
-    ie[0]->dst.type = DataType::uw;
-    ie[0]->src1 = 0x80;
-
-    // Reinterpret as f16 denormal and scale to correct range,
-    //   then undo offset.
-    ie[1]->op = Opcode::mul;
-    ie[1]->src0 = ie[1]->dst;
-    ie[1]->src1 = Immediate::hf(0x6C00);       // f16(2^12)
-
-    ie[2]->op = Opcode::mad;
-    ie[2]->src0 = Immediate::hf(0xD800);       // -128
-    ie[2]->src1 = ie[2]->dst;
-    ie[2]->src2 = Immediate::hf(0x6C00);
-    ie[2]->dst.range = ie[0]->src0.type;
-}
-
-// b->bf sequence, part 1
-void CopyPlan::planBToBF(CopyInstruction &i)
+// {b,ub}->hf sequence.
+void CopyPlan::planInt8ToHF(CopyInstruction &i)
 {
     if (i.src0.neg || i.sat || i.hasCMod()) return;
 
     auto &i0 = i, &i1 = split(i);
 
-    // Copy to u16 and shift by 128.
-    i0.op = Opcode::add;
-    i0.dst.type = DataType::uw;
-    i0.src1 = 0x80;
+    bool s8 = (i.src0.type == DataType::b);
+    uint16_t bias = s8 ? 0x6480 : 0x6400;    // s8: 1024+128 / u8: 1024
 
-    // Defer remainder of conversion sequence to planSmallUWToBF, to allow for de-interleaving.
-    i1.src0 = i0.dst;
-    i1.src0.type = ngen_uw_sb();
+    // Copy to low 8 bits and add hf bias term.
+    i0.op = s8 ? Opcode::xor_ : Opcode::or_;
+    i0.src0.type = DataType::ub;
+    i0.src1 = bias;
+    i0.dst.type = DataType::uw;
+
+    // Undo bias in hf arithmetic.
+    i1.op = Opcode::add;
+    i1.src0 = i1.dst;
+    i1.src1 = Immediate::hf(0x8000 | bias);
+}
+
+CopyOperand CopyPlan::bfImmediate(uint16_t bits, bool ternary)
+{
+    if (ternary) {
+        auto kind = CopyResource::Kind::null;
+        switch (bits) {
+            case 0x7E00: kind = CopyResource::Kind::f_0x7E000000; break;
+            case 0xBF00: kind = CopyResource::Kind::f_0xBF000000; break;
+            default: stub("Unsupported bf16 immediate to ternary instruction");
+        }
+        auto val = getResource(kind);
+        val.stride = 0;
+        val.type = DataType::f;
+        return val;
+    } else {
+        auto imm = Immediate::ud(uint32_t(bits) << 16);
+        imm.setType(DataType::f);
+        return imm;
+    }
+};
+
+// {b,ub}->bf sequence.
+void CopyPlan::planInt8ToBF(CopyInstruction &i)
+{
+    if (i.src0.neg || i.sat || i.hasCMod() || hw < HW::Gen12HP) {
+        copyThrough(i, DataType::f);
+        return;
+    }
+
+    auto ie = splitMultiple<3>(i);
+
+    bool s8 = (i.src0.type == DataType::b);
+
+    // Copy to u16, shifting by 128 if signed.
+    if (s8) {
+        ie[0]->op = Opcode::xor_;
+        ie[0]->src0.type = DataType::ub;
+        ie[0]->src1 = 0x80;
+    }
+    ie[0]->dst.type = DataType::uw;
+
+    // Reinterpret as denormal bf16 value, and scale to normal range,
+    //  simultaneously undoing any shift.
+    // This cannot be done in a single multiply. Start with one bf*f multiply
+    //   (2 cycles)
+    if (s8) {
+        ie[1]->op = Opcode::mad;
+        ie[1]->src0 = bfImmediate(0xBF00, true);
+        ie[1]->src1 = ie[1]->dst;
+        ie[1]->src2 = bfImmediate(0x7E00, true);
+    } else {
+        ie[1]->op = Opcode::mul;
+        ie[1]->src0 = ie[1]->dst;
+        ie[1]->src1 = bfImmediate(0x7E00, false);
+    }
+
+    // Complete scaling with a faster hf multiply (1 cycle).
+    ie[2]->op = Opcode::mul;
+    ie[2]->dst.type = DataType::hf;
+    ie[2]->src0 = ie[2]->dst;
+    ie[2]->src1 = Immediate::hf(0x4000);
 }
 
 // s4->hf/bf sequence.
@@ -2166,6 +2224,10 @@ void CopyPlan::legalizeSIMD(bool initial)
                     op.offset += n;
                 if (op.kind != CopyOperand::GRF) return;
                 int ne = bytesToElements(grf, op.type);
+                if (op.width) {
+                    op.offset += (n / op.width) * op.vs;
+                    n %= op.width;
+                }
                 op.offset += n * op.stride;
                 int grfOffset = op.offset / ne;
                 op.grf += grfOffset;
@@ -2214,6 +2276,8 @@ void CopyPlan::legalizeSIMD(bool initial)
 inline bool legalPackedBF(HW hw, const CopyOperand &op)
 {
     if (op.kind != op.GRF) return true;
+
+    if (op.stride == 0 && op.type == DataType::f) return true;
 
     int align = GRF::bytes(hw) / 4;
     return (op.stride == 1 && (op.offset & (align - 1)) == 0);
@@ -2569,8 +2633,20 @@ void CopyPlan::sort(SortType type)
 //    mov (8)  r0.2<4>:uw   r10.1<2>:uw
 // Output:
 //    mov (16) r0.0<2>:uw   r10.0<1>:uw
-void CopyPlan::optimizeZip()
+//
+// If zip2DSrc0 is true, then look for opportunities to use 2D regions
+//   for src0:
+//
+// Example input:
+//    mov (8)  r0.0<2>:uw   r10.0<4>:ub
+//    mov (8)  r0.1<2>:uw   r10.1<4>:ub
+// Output:
+//    mov (16) r0.0<1>:uw   r10.0<4;2,1>:ub
+//
+void CopyPlan::optimizeZip(bool zip2DSrc0)
 {
+    bool didZip2D = false;
+
     auto ninsn = insns.size();
     for (size_t n1 = 0; n1 < ninsn; n1++) {
         for (size_t n2 = n1 + 1; n2 < ninsn; n2++) {
@@ -2580,19 +2656,21 @@ void CopyPlan::optimizeZip()
             if (i1.op != i2.op || i1.phase != i2.phase || i1.dst.grf != i2.dst.grf || i1.flag) break;
             if (i1.simd != i2.simd) continue;
 
-            auto zippable = [](const CopyOperand &o1, const CopyOperand &o2) {
+            auto zippable = [](const CopyOperand &o1, const CopyOperand &o2, bool zip2D = false) {
                 if (o1.kind != o2.kind) return false;
                 if (o1.kind != CopyOperand::GRF) return true;
                 if (o1.type != o2.type || o1.stride != o2.stride || o1.grf != o2.grf) return false;
                 if (o1.temp != o2.temp) return false;
                 if (o1.temp && o1.value != o2.value) return false;
                 if (o1.stride & 1) return false;
+                if (o1.vs || o1.width) return false;
                 if (o1.neg != o2.neg) return false;
                 if (o1.abs != o2.abs) return false;
-                return (o1.offset + (o1.stride >> 1) == o2.offset);
+                if (!is_zero_or_pow2(o2.offset - o1.offset)) return false;
+                return (o1.offset + (o1.stride >> 1) != o2.offset) == zip2D;
             };
 
-            bool zip = zippable(i1.dst, i2.dst) && zippable(i1.src0, i2.src0);
+            bool zip = zippable(i1.dst, i2.dst) && zippable(i1.src0, i2.src0, zip2DSrc0);
             if (i1.src1) zip = zip && zippable(i1.src1, i2.src1);
             if (i1.src2) zip = zip && zippable(i1.src2, i2.src2);
 
@@ -2600,10 +2678,17 @@ void CopyPlan::optimizeZip()
                 if (auto &i = join(i1, i2)) {
                     i.simd *= 2;
                     i.dst.stride /= 2;
-                    i.src0.stride /= 2;
                     i.src1.stride /= 2;
                     i.src2.stride /= 2;
-                    std::swap(i1, i2);      /* move joined entry to end for further processing */
+                    if (!zip2DSrc0) {
+                        i.src0.stride /= 2;
+                        std::swap(i1, i2);      /* move joined entry to end for further processing */
+                    } else {
+                        i.src0.vs = i.src0.stride;
+                        i.src0.stride = i2.src0.offset - i1.src0.offset;
+                        i.src0.width = 2;
+                        didZip2D = true;
+                    }
                     break;
                 }
             }
@@ -2611,6 +2696,9 @@ void CopyPlan::optimizeZip()
     }
 
     mergeChanges();
+
+    if (didZip2D)
+        legalizeSIMD();     /* 2D zipping comes late in the pipeline */
 }
 
 // Make an integer operand twice as wide.
@@ -3142,7 +3230,33 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
         }
     }
 
+    /* Update resources with assignments */
+    for (auto &r: resources) if (r.src.temp) {
+        r.src.temp = false;
+        r.src.grf += temps[r.src.value].assignment;
+    }
+
     temps.clear();
+}
+
+std::tuple<const uint8_t*, int> CopyResource::getData() const
+{
+    const uint8_t *base = nullptr;
+    size_t n = 0;
+
+    switch (kind) {
+        case null: break;
+        case f_0x7E000000: {
+            static const uint32_t val = 0x7E000000;
+            return std::make_tuple((const uint8_t *) &val, sizeof(val));
+        }
+        case f_0xBF000000: {
+            static const uint32_t val = 0xBF000000;
+            return std::make_tuple((const uint8_t *) &val, sizeof(val));
+        }
+    }
+
+    return std::make_tuple(base, n / sizeof(*base));
 }
 
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP

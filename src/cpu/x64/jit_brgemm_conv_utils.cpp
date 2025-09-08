@@ -2440,7 +2440,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.ununroll_bd_loop
             = static_cast<dim_t>(jcp.M) * jcp.N * (jcp.is_bf32 ? 1 : 2)
             > 8 * 1024;
-
+    printf("exec type: %d, use uker: %d, M: %d, oh block: %d, ow block: %d\n",
+            jcp.exec_type, jcp.use_uker, jcp.M, jcp.oh_block, jcp.ow_block);
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
 
@@ -2735,6 +2736,8 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
     if (jcp.src_zero_point && jcp.req_cal_comp_pad) {
         scratchpad.book(key_brgemm_primitive_zp_comp_a, jcp.comp_a_buffer_size,
                 sizeof(int32_t), 0, P4K);
+        scratchpad.book(key_brgemm_primitive_zp_comp_a_offset,
+                static_cast<size_t>(jcp.nthr) * jcp.M * sizeof(size_t), P4K);
     }
 
     if (jcp.with_dst_scales) {

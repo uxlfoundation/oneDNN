@@ -1249,6 +1249,7 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
     uint8_t *__restrict inp_buffer_mask {nullptr};
     const char *const __restrict weights {nullptr};
     void *__restrict inp_buffer_zero {nullptr};
+    size_t *__restrict src_zp_comp_offset {nullptr};
 };
 
 template <cpu_isa_t isa>
@@ -1316,6 +1317,10 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
                        key_brgemm_primitive_buffer_comp)
                                     : s8s8_compensation)
             : nullptr;
+    size_t *src_zp_comp_offset = jcp.src_zero_point && jcp.req_cal_comp_pad
+            ? scratchpad.template get<size_t>(
+                    key_brgemm_primitive_zp_comp_a_offset)
+            : nullptr;
 
     cal_compensation(wei, src_zp_comp_base, s8s8_comp_base);
 
@@ -1376,6 +1381,11 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
                 : nullptr;
 
         btc.input = jcp.copy_input ? btc.inp_buffer : src;
+        btc.src_zp_comp_offset = jcp.src_zero_point && jcp.req_cal_comp_pad
+                ? src_zp_comp_offset + ithr * jcp.M * sizeof(size_t)
+                : nullptr;
+        if (jcp.src_zero_point && jcp.req_cal_comp_pad)
+            std::memset(btc.src_zp_comp_offset, 0, jcp.M * sizeof(size_t));
 
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
@@ -1688,7 +1698,7 @@ inline void brgemm_convolution_fwd_t<isa>::call_brgemm_kernel(
                 btc.wei_scales ? static_cast<const char *>(btc.wei_scales)
                                 + jcp.is_oc_scale * g_oc * sizeof(float)
                                : nullptr,
-                btc.dst_scales};
+                btc.dst_scales, nullptr, btc.src_zp_comp_offset};
 
         void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)
                                : static_cast<void *>(s8s8_comp);
@@ -2281,6 +2291,15 @@ void brgemm_convolution_fwd_t<isa>::ker_trans(brgemm_thread_ctx_t &btc) const {
                 ? get_comp_offset(btc.g, btc.ocb, btc.oh, ow_b, kd_s, kd_f,
                         comp_kh_s, comp_kh_f, 0, KW)
                 : 0;
+        if (do_postwork) {
+            //            printf("comp_ker_offs: %d\n", comp_ker_offs);
+            for (int i = 0; i < jcp.M; i++) {
+                btc.src_zp_comp_offset[i]
+                        = comp_ker_offs + i * jcp.oc_block * sizeof(int32_t);
+                ;
+                printf("comp_ker_offs: %d\n", btc.src_zp_comp_offset[i]);
+            }
+        }
 
         if (nb_ic_b > 0) {
             const auto brg_idx = _pd->get_brg_idx(

@@ -189,6 +189,7 @@ private:
     const reg64_savable_t reg_zp_a_values {regscratchpad_, rbx, r18};
     const reg64_savable_t reg_zp_comp_b {regscratchpad_, rbx, r19};
     const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx, r20};
+    const reg64_savable_t reg_zp_comp_pad_a_off {regscratchpad_, rbx, r21};
     const reg64_t reg_ptr_sum_zp = rbx;
     const reg64_t reg_converted_stride = rsi;
     const reg64_t reg_zp_comp_pad_a = rsi;
@@ -305,6 +306,7 @@ private:
         size_t C_shift {0};
         size_t D_shift {0};
         size_t zp_comp_pad_a_shift {0};
+        size_t zp_comp_pad_a_off_shift {0};
         std::vector<char> bd_mask;
         std::vector<size_t> adj_bd_mask;
         bd_iteration_t *similar {nullptr};
@@ -314,7 +316,8 @@ private:
             return dim_iteration_t::operator==(rhs) && A_shift == rhs.A_shift
                     && C_shift == rhs.C_shift && D_shift == rhs.D_shift
                     && bd_mask == rhs.bd_mask
-                    && zp_comp_pad_a_shift == rhs.zp_comp_pad_a_shift;
+                    && zp_comp_pad_a_shift == rhs.zp_comp_pad_a_shift
+                    && zp_comp_pad_a_off_shift == rhs.zp_comp_pad_a_off_shift;
         }
         bool operator!=(const bd_iteration_t &_rhs) const {
             return !operator==(_rhs);
@@ -602,6 +605,8 @@ private:
 
     size_t scales_offset(int ldb) const noexcept;
     size_t zp_comp_a_offset(int ldb) const noexcept;
+    size_t zp_comp_pad_a_off_offset(const brgemm_iteration_t &bi, int bdb,
+            int inp_bd, int ldb) const noexcept;
     size_t zp_comp_pad_a_offset(const brgemm_iteration_t &bi, int bdb,
             int inp_bd, int ldb) const noexcept;
     size_t zp_comp_b_offset(int bd) const noexcept;
@@ -801,6 +806,15 @@ size_t jit_brgemm_amx_uker_base_t::zp_comp_a_offset(int ldb) const noexcept {
     return ldb * ld_block_zp_size_;
 }
 
+size_t jit_brgemm_amx_uker_base_t::zp_comp_pad_a_off_offset(
+        const brgemm_iteration_t &bi, int bdb, int inp_bd,
+        int ldb) const noexcept {
+    const auto bi_bd_start = get_out_bd(bi.bdi, 0, 0);
+    const auto bd = get_out_bd(bi.bdi, bdb, inp_bd);
+    const auto bd_shift = bd - (ununroll_bd_loop ? bi_bd_start : 0);
+    return (size_t)bd_shift * sizeof(size_t);
+}
+
 size_t jit_brgemm_amx_uker_base_t::zp_comp_pad_a_offset(
         const brgemm_iteration_t &bi, int bdb, int inp_bd,
         int ldb) const noexcept {
@@ -886,8 +900,11 @@ void jit_brgemm_amx_uker_base_t::read_params() {
         mov(reg_zp_a_values, ptr[param1 + GET_OFF(zp_a_val)]);
         reg_zp_a_values.save();
 
-        if (brg.req_comp_pads_with_bcast)
+        if (brg.req_comp_pads_with_bcast) {
             mov(reg_zp_comp_pad_a, ptr[param1 + GET_OFF(a_zp_compensations)]);
+            mov(reg_zp_comp_pad_a_off, ptr[param1 + GET_OFF(a_zp_comp_offset)]);
+            reg_zp_comp_pad_a_off.save();
+        }
     }
 
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
@@ -1351,13 +1368,23 @@ void jit_brgemm_amx_uker_base_t::apply_comp_pad_to_vector(
     const auto zmm_zp_a_val = zmm_tmp_1();
 
     reg_zp_a_values.restore();
+    //    reg_zp_comp_pad_a_off.restore();
+    //    vpbroadcastd(zmm_zp_a_val, ptr_b[reg_zp_comp_pad_a_off.cvt32()]);
     vpbroadcastd(zmm_zp_a_val, reg_zp_a_values.cvt32());
     vcvtdq2ps(zmm_zp_a_val, zmm_zp_a_val);
-    reg_zp_comp_a.restore();
-    const auto comp_pad_offset
+    reg_zp_comp_pad_a_off.restore();
+    const size_t comp_pad_offset
             = zp_comp_pad_a_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
+    const size_t comp_pad_off_offset
+            = zp_comp_pad_a_off_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
+    printf("comp_pad_offset: %ld, %ld\n", comp_pad_offset, comp_pad_off_offset);
+    mov(reg_long_offt,
+            ptr_b[reg_zp_comp_pad_a_off
+                    + comp_pad_off_offset]); //comp_pad_offset);
+    reg_zp_comp_a.restore();
     const auto zp_comp_pad_a_addr
-            = EVEX_compress_addr(reg_zp_comp_pad_a, comp_pad_offset);
+            = ptr[reg_zp_comp_pad_a + reg_long_offt + ldb * ld_block_zp_size_];
+    //= EVEX_compress_addr(reg_zp_comp_pad_a, comp_pad_offset);
     cvt2ps(data_type::s32, zmm_zp_comp_a, zp_comp_pad_a_addr, true, false,
             k_mask);
     vmulps(zmm_zp_comp_a, zmm_zp_comp_a, zmm_zp_a_val);
@@ -2329,8 +2356,13 @@ void jit_brgemm_amx_uker_base_t::bs_loop(brgemm_iteration_t &bi) {
         if (bi_shift != nullptr) {
             add(reg_C, bi_shift->bdi->C_shift);
             add(reg_D, bi_shift->bdi->D_shift);
-            if (brg.req_comp_pads_with_bcast)
-                add(reg_zp_comp_pad_a, bi_shift->bdi->zp_comp_pad_a_shift);
+            if (brg.req_comp_pads_with_bcast) {
+                //                add(reg_zp_comp_pad_a, bi_shift->bdi->zp_comp_pad_a_shift);
+                reg_zp_comp_pad_a_off.restore();
+                add(reg_zp_comp_pad_a_off,
+                        bi_shift->bdi->zp_comp_pad_a_off_shift);
+                reg_zp_comp_pad_a_off.save();
+            }
         }
     }
 
@@ -2524,8 +2556,12 @@ void jit_brgemm_amx_uker_base_t::top_loop(brgemm_iteration_t &bi) {
         // update reg_C and reg_D if they they were not updated yet
         add(reg_C, bi.bdi->C_shift);
         add(reg_D, bi.bdi->D_shift);
-        if (brg.req_comp_pads_with_bcast)
-            add(reg_zp_comp_pad_a, bi.bdi->zp_comp_pad_a_shift);
+        if (brg.req_comp_pads_with_bcast) {
+            //            add(reg_zp_comp_pad_a, bi.bdi->zp_comp_pad_a_shift);
+            reg_zp_comp_pad_a_off.restore();
+            add(reg_zp_comp_pad_a_off, bi.bdi->zp_comp_pad_a_off_shift);
+            reg_zp_comp_pad_a_off.save();
+        }
     }
     interleave_store(bi, true);
 }
@@ -2595,6 +2631,7 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
                         = (get_out_bd(&bdi, 0, 0) - get_out_bd(prev_bdi, 0, 0));
                 bdi.C_shift = out_shift * LDC2_size_M_;
                 bdi.D_shift = out_shift * LDD_size_;
+                bdi.zp_comp_pad_a_off_shift = out_shift * sizeof(size_t);
                 bdi.zp_comp_pad_a_shift = out_shift * brg.LDB * sizeof(int32_t);
             }
             tloop.bdis.push_back(bdi);

@@ -793,6 +793,21 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     arg_list.set(3,dst);
     arg_list.set(4,scale);
 #endif
+    bool use_append = gpu_utils::dev_getenv("use_append", false);
+    if (use_append) {
+        arg_list.append(key);
+        arg_list.append(qry);
+        arg_list.append(val);
+        arg_list.append(dst);
+        arg_list.append(scale);
+    } else {
+        arg_list.set(0,key);
+        arg_list.set(1,qry);
+        arg_list.set(2,val);
+        arg_list.set(3,dst);
+        arg_list.set(4,scale);
+    }
+
 
     arg_list.append((int)D);
     arg_list.append((int)K);

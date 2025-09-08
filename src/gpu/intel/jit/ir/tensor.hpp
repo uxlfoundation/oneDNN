@@ -270,25 +270,6 @@ public:
             const std::vector<dim_t> &dims = {}, bool do_normalize = true);
 
     layout_t(const type_t &type, const expr_t &offset,
-            const std::string &format, const std::vector<dim_t> &dims = {},
-            bool do_normalize = true)
-        : layout_t(type, offset, into<dim_idx_t>(dims.size()),
-                parse_format(format, into<dim_idx_t>(dims.size())), dims,
-                do_normalize) {}
-
-    layout_t(const memory_desc_wrapper &mdw, const std::string &format,
-            bool do_normalize = true)
-        : layout_t(to_ir(mdw.data_type()), mdw.offset0(), format,
-                std::vector<dim_t>(mdw.dims(), mdw.dims() + mdw.ndims()),
-                do_normalize) {}
-
-    layout_t(const memory_desc_wrapper &mdw, const char *format,
-            bool do_normalize = true)
-        : layout_t(mdw, std::string(format), do_normalize) {}
-
-    layout_t(const memory_desc_wrapper &mdw, bool do_normalize = true);
-
-    layout_t(const type_t &type, const expr_t &offset,
             const std::vector<dim_t> &dims, bool do_normalize = true)
         : type_(type), ndims_(into<dim_idx_t>(dims.size())), offset_(offset) {
         dim_t stride = 1;
@@ -536,8 +517,6 @@ public:
     }
 
     IR_DEFINE_DUMP()
-
-    memory_desc_t to_dnnl(const dim_t *dims_hint) const;
 
     // Returns a vector of <block index, block> pairs.
     // The innermost block (first) has index 0.
@@ -1026,14 +1005,6 @@ public:
     }
 
 private:
-    // Returns vector of <dimension index, block size> pairs.
-    static std::vector<std::pair<pvar_t, dim_t>> parse_format(
-            const std::string &format, int ndims_hint);
-
-    // Returns vector of <dimension letter, block size> pairs.
-    static std::vector<std::pair<char, dim_t>> parse_letter_blocks(
-            const std::string &format);
-
     void sanity_check() const;
 
     // Data type of the layout.
@@ -1048,6 +1019,8 @@ private:
     // Blocks ordered from innermost to outermost.
     std::vector<layout_block_t> blocks_;
 };
+
+memory_desc_t to_md(const layout_t &layout, const memory_desc_t &md_hint);
 
 // Helper class to incrementally increase a sub-layout of the given layout.
 // One step - adding the minimal factor of the next remaining block. Used

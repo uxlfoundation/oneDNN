@@ -81,7 +81,7 @@ layout_t init_layout(memory_desc_t &user_md, const std::string &optimal_tag) {
         // the user and return unimplemented later.
         if (user != optimal) return user;
     } else {
-        user_md = optimal.to_dnnl(user_md.dims);
+        user_md = to_md(optimal, user_md);
     }
     return optimal;
 }

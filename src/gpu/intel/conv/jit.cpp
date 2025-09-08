@@ -139,7 +139,7 @@ public:
         int max_tries = 100;
         config_t cfg;
         layout_t zp_dst;
-        if (data.zp_pd) zp_dst = layout_t(zp_md_out(data), false);
+        if (data.zp_pd) zp_dst = make_layout(*zp_md_out(data));
 
         if (primitive->cache_blob()) {
             tiler->set_cur_version(primitive->version());

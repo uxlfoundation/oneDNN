@@ -28,7 +28,7 @@
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
-#include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/ir/tensor_config.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 
@@ -53,7 +53,7 @@ public:
     view_t create_view(const memory_desc_t &md) const override {
         dim_idx_t cp_ndims = cp_view().nvdims();
         gpu_assert(cp_ndims >= 3);
-        layout_t layout(md, /*do_normalize=*/false);
+        layout_t layout = make_layout(md);
         std::vector<dim_t> dims(md.dims, md.dims + md.ndims);
         std::vector<dim_t> pad_dims(md.padded_dims, md.padded_dims + md.ndims);
         maybe_reshape_dims(ndims_, layout, dims, pad_dims);

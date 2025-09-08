@@ -42,7 +42,7 @@ void init_extra_tensors(const zero_points_config_t &zp_cfg,
             gpu_assert(zp_src);
             int arg_key = DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC;
             tensor_cfg.add_tensor("src_zero_points", arg_key, /*is_input=*/true,
-                    /*is_output=*/false, layout_t(zp_src, false), layout_t());
+                    /*is_output=*/false, make_layout(*zp_src), layout_t());
         } else {
             add_zp_buffer("src_zero_points", zp_cfg.src_zp_type, DNNL_ARG_SRC,
                     (zp_cfg.is_common_src_zero_point) ? 1 : ic);
@@ -88,6 +88,64 @@ void init_extra_tensors(const zero_points_config_t &zp_cfg,
             gpu_error_not_expected();
         }
     }
+}
+
+std::vector<std::pair<char, dim_t>> parse_letter_blocks(
+        const std::string &format) {
+    std::vector<std::pair<char, dim_t>> ret;
+
+    stringstream_t ss(format);
+    while (!ss.eof()) {
+        int next = ss.peek();
+        if (ss.eof()) break;
+        dim_t block = 0;
+        while (std::isdigit(next)) {
+            block = 10 * block + (next - '0');
+            ss.ignore(1);
+            next = ss.peek();
+        }
+        char letter = char(ss.peek());
+        gpu_assert(!ss.eof()) << "EOF is unexpected.";
+        ss.ignore(1);
+        ret.emplace_back(letter, block);
+    }
+    return ret;
+}
+
+std::vector<std::pair<pvar_t, dim_t>> parse_format(
+        const std::string &format, int ndims_hint) {
+    bool seen_letters[DNNL_MAX_NDIMS] = {};
+    int letter_ndims = 0;
+    for (char c = 'a'; c < 'a' + DNNL_MAX_NDIMS; c++) {
+        if (format.find(c) != std::string::npos) {
+            seen_letters[c - 'a'] = true;
+            MAYBE_UNUSED(seen_letters);
+            letter_ndims++;
+        }
+    }
+
+    for (int i = 0; i < DNNL_MAX_NDIMS; i++) {
+        gpu_assert(seen_letters[i] == (i < letter_ndims));
+    }
+
+    auto letter_blocks = parse_letter_blocks(format);
+
+    std::vector<std::pair<pvar_t, dim_t>> parts;
+    for (auto &p : letter_blocks) {
+        char letter = p.first;
+        dim_t block = p.second;
+        if (letter != 'x') {
+            int dim_idx = std::tolower(letter) - 'a';
+            parts.emplace_back(dim_idx, block);
+        } else {
+            gpu_assert(ndims_hint >= letter_ndims);
+            for (int i = letter_ndims; i < ndims_hint; i++) {
+                parts.emplace_back(i, 0);
+            }
+        }
+    }
+
+    return parts;
 }
 
 bool matches_tag(const layout_t &layout, const std::string &tag,

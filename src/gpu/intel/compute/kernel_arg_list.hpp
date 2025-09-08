@@ -223,10 +223,41 @@ public:
     kernel_arg_list_t() { args_.reserve(512); }
     ~kernel_arg_list_t() = default;
 
-    void append(const memory_storage_t &storage) {
-        args_.emplace_back();
-        args_.back().set_value(storage);
+#define APPEND_STORED_SCALAR_VALUE(stype, vtype) \
+    case data_type::stype: { \
+        vtype value = 0; \
+        status_t status \
+                = host_storage->get_scalar_value(&value, sizeof(value)); \
+        assert(status == status::success); \
+        if (status != status::success) return; \
+        append(value); \
+        break; \
     }
+
+    void append(const memory_storage_t &storage) {
+        if (!storage.is_host_scalar()) {
+            args_.emplace_back();
+            args_.back().set_value(storage);
+            return;
+        }
+
+        auto *host_storage
+                = utils::downcast<const host_scalar_memory_storage_t *>(
+                        &storage);
+        switch ((int)host_storage->data_type()) {
+            APPEND_STORED_SCALAR_VALUE(f16, float16_t)
+            APPEND_STORED_SCALAR_VALUE(bf16, bfloat16_t)
+            APPEND_STORED_SCALAR_VALUE(f32, float)
+            APPEND_STORED_SCALAR_VALUE(s32, int32_t)
+            APPEND_STORED_SCALAR_VALUE(s8, int8_t)
+            APPEND_STORED_SCALAR_VALUE(u8, uint8_t)
+            default:
+                assert(!"Support for requested data type is missing for "
+                        "host-side scalars");
+        }
+    }
+
+#undef APPEND_STORED_SCALAR_VALUE
 
     template <class T>
     void append(const T &value) {

@@ -23,6 +23,7 @@
 #include "gpu/intel/conv/jit/v2/tensor_utils.hpp"
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/ir/tensor_config.hpp"
 #include "gpu/intel/jit/ir/v2/tensor.hpp"
 
 namespace dnnl {
@@ -162,7 +163,7 @@ inline jit::layout_t to_layout(const layout_tag_t &_tag,
     while (tag.ndims() > into<dim_idx_t>(md.ndims)) {
         tag.remove_dim(dim_idx::as_tag(non_spatial_ndims));
     }
-    return jit::layout_t(md, tag.str(), /*do_normalize=*/false);
+    return jit::make_layout(md, tag.str());
 }
 
 inline jit::layout_t to_layout(const layout_tag_t &_tag, const tile_t &shape) {
@@ -173,7 +174,7 @@ inline jit::layout_t to_layout(const layout_tag_t &_tag, const tile_t &shape) {
         auto d = _tag.desc().prb_dim(i);
         dims[i] = shape.at(d);
     }
-    return jit::layout_t(_tag.type(), expr_t(0), tag.str(), dims);
+    return jit::make_layout(_tag.type(), expr_t(0), tag.str(), dims);
 }
 
 inline jit::grid_info_t to_grid_info(const grid_t &grid, const tile_t &tile) {

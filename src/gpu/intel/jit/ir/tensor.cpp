@@ -82,30 +82,14 @@ layout_t::layout_t(const type_t &type, const expr_t &offset, dim_idx_t ndims,
     sanity_check();
 }
 
-layout_t::layout_t(const memory_desc_wrapper &mdw, bool do_normalize)
-    : type_(to_ir(mdw.data_type())), offset_(mdw.offset0()) {
-    gpu_assert(mdw.is_blocking_desc())
-            << "Expected blocking memory descriptor.";
-
-    ndims_ = mdw.ndims();
-    block_layout_t layout(
-            mdw, /* inner_only */ false, /* do_normalize */ do_normalize);
-
-    // TODO: Switch blocks_ from std::vector<block_t> to block_layout_t
-    // to avoid this copy
-    for (const auto &block : layout) {
-        blocks_.emplace_back(block.dim_idx, block.block, block.stride);
-    }
-
-    sanity_check();
-}
-
-memory_desc_t layout_t::to_dnnl(const dim_t *dims_hint) const {
+memory_desc_t to_md(const layout_t &l, const memory_desc_t &md_hint) {
+    auto dims_hint = md_hint.dims;
+    auto ndims = md_hint.ndims;
     memory_desc_t md = {};
-    md.ndims = ndims();
-    std::copy(dims_hint, dims_hint + ndims(), md.dims);
-    md.data_type = jit::to_dnnl(type_);
-    md.offset0 = to_cpp<dim_t>(offset_);
+    md.ndims = ndims;
+    std::copy(dims_hint, dims_hint + ndims, md.dims);
+    md.data_type = jit::to_dnnl(l.type());
+    md.offset0 = to_cpp<dim_t>(l.offset());
     md.format_kind = format_kind::blocked;
 
     auto &blk = md.format_desc.blocking;
@@ -114,7 +98,7 @@ memory_desc_t layout_t::to_dnnl(const dim_t *dims_hint) const {
     bool in_inner_block = false;
     dim_t prev_stride = 0;
 
-    for (auto it = blocks_.rbegin(); it != blocks_.rend(); ++it) {
+    for (auto it = l.blocks().rbegin(); it != l.blocks().rend(); ++it) {
         auto &b = *it;
         if (!seen[b.dim]) {
             // Outer block.
@@ -138,11 +122,11 @@ memory_desc_t layout_t::to_dnnl(const dim_t *dims_hint) const {
         seen[b.dim] = true;
     }
 
-    for (dim_idx_t i = 0; i < ndims(); i++) {
+    for (int i = 0; i < ndims; i++) {
         if (seen[i]) continue;
         gpu_assert(md.dims[i] == 1);
         md.padded_dims[i] = md.dims[i];
-        blk.strides[i] = elems();
+        blk.strides[i] = l.elems();
     }
 
     return md;
@@ -364,64 +348,6 @@ void layout_t::align_layouts(layout_t &a, layout_t &b) {
             break;
         }
     }
-}
-
-std::vector<std::pair<char, dim_t>> layout_t::parse_letter_blocks(
-        const std::string &format) {
-    std::vector<std::pair<char, dim_t>> ret;
-
-    stringstream_t ss(format);
-    while (!ss.eof()) {
-        int next = ss.peek();
-        if (ss.eof()) break;
-        dim_t block = 0;
-        while (std::isdigit(next)) {
-            block = 10 * block + (next - '0');
-            ss.ignore(1);
-            next = ss.peek();
-        }
-        char letter = char(ss.peek());
-        gpu_assert(!ss.eof()) << "EOF is unexpected.";
-        ss.ignore(1);
-        ret.emplace_back(letter, block);
-    }
-    return ret;
-}
-
-std::vector<std::pair<pvar_t, dim_t>> layout_t::parse_format(
-        const std::string &format, int ndims_hint) {
-    bool seen_letters[DNNL_MAX_NDIMS] = {};
-    int letter_ndims = 0;
-    for (char c = 'a'; c < 'a' + DNNL_MAX_NDIMS; c++) {
-        if (format.find(c) != std::string::npos) {
-            seen_letters[c - 'a'] = true;
-            MAYBE_UNUSED(seen_letters);
-            letter_ndims++;
-        }
-    }
-
-    for (int i = 0; i < DNNL_MAX_NDIMS; i++) {
-        gpu_assert(seen_letters[i] == (i < letter_ndims));
-    }
-
-    auto letter_blocks = parse_letter_blocks(format);
-
-    std::vector<std::pair<pvar_t, dim_t>> parts;
-    for (auto &p : letter_blocks) {
-        char letter = p.first;
-        dim_t block = p.second;
-        if (letter != 'x') {
-            int dim_idx = std::tolower(letter) - 'a';
-            parts.emplace_back(dim_idx, block);
-        } else {
-            gpu_assert(ndims_hint >= letter_ndims);
-            for (int i = letter_ndims; i < ndims_hint; i++) {
-                parts.emplace_back(i, 0);
-            }
-        }
-    }
-
-    return parts;
 }
 
 void layout_t::sanity_check() const {

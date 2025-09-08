@@ -104,8 +104,8 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
             VERBOSE_INCONSISTENT_MDS, "src", "dst");
     int ndims = src_mdw.ndims();
 
-    layout_t src_layout {src_mdw, /*do_normalize=*/false};
-    layout_t dst_layout {dst_mdw, /*do_normalize=*/false};
+    layout_t src_layout = make_layout(*src_md());
+    layout_t dst_layout = make_layout(*dst_md());
 
     VDISPATCH_REORDER(!(src_layout.elems() == 0 || dst_layout.elems() == 0),
             VERBOSE_EMPTY_TENSOR, "src_layout || dst_layout");

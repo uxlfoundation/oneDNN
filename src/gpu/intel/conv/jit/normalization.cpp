@@ -248,7 +248,7 @@ view_t post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
     gpu_assert(cp_ndims >= 3);
     // Add groups to match ngcdhw layout.
     bool add_groups = (cp_view().vvars()[1].as<var_t>().name == "g");
-    layout_t layout(md, /*do_normalize=*/false);
+    layout_t layout = make_layout(md);
     std::vector<dim_t> dims(md.dims, md.dims + md.ndims);
     std::vector<dim_t> padded_dims(md.padded_dims, md.padded_dims + md.ndims);
     maybe_reshape_dims(prb_.ndims, layout, dims, padded_dims);

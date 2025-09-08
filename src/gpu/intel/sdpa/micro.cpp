@@ -774,19 +774,23 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
     compute::kernel_arg_list_t arg_list;
 
-#if 0
-    arg_list.append(key);
-    arg_list.append(qry);
-    arg_list.append(val);
-    arg_list.append(dst);
-    arg_list.append(scale);
-#else // !!!! workaround !!!!!
-    arg_list.set(0,key);
-    arg_list.set(1,qry);
-    arg_list.set(2,val);
-    arg_list.set(3,dst);
-    arg_list.set(4,scale);
-#endif
+    bool use_append = gpu_utils::dev_getenv("use_append", false);
+    if (use_append){
+        VDEBUGINFO(4, primitive, sdpa, "\n!!!!! append !!!!\n\n");
+        arg_list.append(key);
+        arg_list.append(qry);
+        arg_list.append(val);
+        arg_list.append(dst);
+        arg_list.append(scale);
+    } else {
+        VDEBUGINFO(4, primitive, sdpa, "\n!!!!! set !!!!\n\n");
+        arg_list.set(0,key);
+        arg_list.set(1,qry);
+        arg_list.set(2,val);
+        arg_list.set(3,dst);
+        arg_list.set(4,scale);
+    }
+
 
     arg_list.append((int)D);
     arg_list.append((int)K);

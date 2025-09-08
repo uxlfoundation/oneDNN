@@ -285,7 +285,7 @@ TEST(cpp_api_host_scalar_mem, TestDataTypeMismatch) {
         memory scalar_mem(scalar_md, scalar_value);
     } catch (const dnnl::error &e) {
         EXPECT_EQ(e.status, dnnl_invalid_arguments);
-        EXPECT_EQ(e.message,
+        EXPECT_EQ(std::string(e.message),
                 "scalar type size does not match memory descriptor data type "
                 "size");
     }
@@ -298,7 +298,7 @@ TEST(cpp_api_host_scalar_mem, TestDataTypeMismatch) {
         scalar_mem.set_host_scalar_value(1);
     } catch (const dnnl::error &e) {
         EXPECT_EQ(e.status, dnnl_invalid_arguments);
-        EXPECT_EQ(e.message,
+        EXPECT_EQ(std::string(e.message),
                 "scalar type size does not match memory descriptor data type "
                 "size");
     }
@@ -307,7 +307,7 @@ TEST(cpp_api_host_scalar_mem, TestDataTypeMismatch) {
         (void)scalar_mem.get_host_scalar_value<int>();
     } catch (const dnnl::error &e) {
         EXPECT_EQ(e.status, dnnl_invalid_arguments);
-        EXPECT_EQ(e.message,
+        EXPECT_EQ(std::string(e.message),
                 "scalar type size does not match memory descriptor data type "
                 "size");
     }

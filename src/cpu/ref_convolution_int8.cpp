@@ -59,9 +59,12 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
     auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
     CHECK(status);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const float *src_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const float *wei_scales = CTX_IN_MEM(
+            const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const float *dst_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const int32_t *src_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
@@ -243,8 +246,9 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
 
                 float d = static_cast<float>(acc);
 
-                dequantize(d, g, OC, oc, wei_scales, with_groups,
-                        wei_scale_mask, src_scales);
+                if (src_scales) d *= src_scales[0];
+                if (wei_scales)
+                    d *= wei_scales[(wei_scale_mask > 0) * (g * OC + oc)];
 
                 if (bias) {
                     const auto bias_off = bias_d.off(g * OC + oc);
@@ -266,7 +270,7 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
                 args.dst_md = pd()->dst_md();
                 ref_post_ops->execute(d, args);
 
-                if (dst_scales) quantize(d, g, OC, oc, dst_scales);
+                if (dst_scales) d /= dst_scales[0];
 
                 if (dst_zero_points) {
                     const int dst_zp = io::load_int_value(data_type::s32,

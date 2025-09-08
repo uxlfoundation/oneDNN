@@ -79,6 +79,7 @@ struct sdpa_desc_t : public op_desc_t {
 
     memory_desc_t dst_desc;
     memory_desc_t attn_mask_desc;
+    memory_desc_t scale_desc;
     data_type_t scale_dt {};
     data_type_t kq_acc_dt {};
     data_type_t vs_acc_dt {};

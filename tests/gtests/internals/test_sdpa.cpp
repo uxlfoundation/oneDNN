@@ -32,6 +32,8 @@ using mdt = memory::data_type;
 using dnnl::accumulation_mode;
 
 enum class mask_type { no_mask, oneD, twoD, causal_br, causal_tl };
+enum class scale_type { host_side, device_side };
+constexpr scale_type default_scale_type = scale_type::device_side;
 
 std::ostream &operator<<(std::ostream &ss, const mask_type &p) {
     ss << "mask:";
@@ -41,6 +43,15 @@ std::ostream &operator<<(std::ostream &ss, const mask_type &p) {
         case mask_type::twoD: ss << "2D"; break;
         case mask_type::causal_br: ss << "causal bottom right"; break;
         case mask_type::causal_tl: ss << "causal top left"; break;
+    }
+    return ss;
+}
+
+std::ostream &operator<<(std::ostream &ss, const scale_type &p) {
+    ss << "scale:";
+    switch (p) {
+        case scale_type::device_side: ss << "device_side"; break;
+        case scale_type::host_side: ss << "host_side"; break;
     }
     return ss;
 }
@@ -188,7 +199,7 @@ std::ostream &operator<<(std::ostream &ss, const accumulation_t &accs) {
 
 using sdpa_dims_t_tuple = std::tuple<int, num_heads_t, seq_len_size_t,
         head_group_size_t, tensor_type_t, tensor_type_t, tensor_type_t,
-        quantize_type, tag_t, mask_config_t, accumulation_t>;
+        quantize_type, tag_t, mask_config_t, scale_type, accumulation_t>;
 
 struct sdpa_dims_t {
     memory::dim mb;
@@ -204,6 +215,7 @@ struct sdpa_dims_t {
     quantize_type qtype;
     memory::format_tag key_format_tag;
     mask_config_t mask;
+    scale_type stype;
     accumulation_t acc_modes;
 
     sdpa_dims_t() = default;
@@ -218,6 +230,7 @@ struct sdpa_dims_t {
             dnnl::memory::format_tag key_format_tag_
             = dnnl::memory::format_tag::abcd,
             mask_type mask_ = mask_type::no_mask,
+            scale_type stype_ = default_scale_type,
             accumulation_mode kq_acc_ = accumulation_mode::f32,
             accumulation_mode vs_acc_ = accumulation_mode::f32)
         : mb(mb_)
@@ -230,6 +243,7 @@ struct sdpa_dims_t {
         , qtype(qtype_)
         , key_format_tag(key_format_tag_)
         , mask {mask_, mskdt_}
+        , stype(stype_)
         , acc_modes {kq_acc_, vs_acc_} {}
 
     sdpa_dims_t(const sdpa_dims_t_tuple &dims)
@@ -243,12 +257,15 @@ struct sdpa_dims_t {
         , qtype(std::get<7>(dims))
         , key_format_tag(std::get<8>(dims))
         , mask(std::get<9>(dims))
-        , acc_modes(std::get<10>(dims)) {}
+        , stype(std::get<10>(dims))
+        , acc_modes(std::get<11>(dims)) {}
 };
 
 struct sdpa_tensors_t {
-    memory m_query, m_scale, m_mask, m_output;
+    memory m_query, m_mask, m_output;
     memory m_key_quantized, m_value_quantized, m_output_quantized;
+    memory m_scale; // tested sdpa arg, can be host-side scalar
+    memory m_scale_prim; // reference (prim) sdpa arg
 
     memory m_key_scales, m_key_zp, m_value_scales, m_value_zp;
     dnnl::primitive_attr sdpa_attr_quantized, sdpa_kq_attr_quantized,
@@ -300,6 +317,10 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
         case quantize_type::per_tensor1: ss << "_ptensor1"; break;
         case quantize_type::per_tensor3: ss << "_ptensor3"; break;
     }
+    if (p.stype == scale_type::host_side)
+        ss << "_hostscale";
+    else
+        ss << "_devicescale";
     if (p.acc_modes.kq_acc == accumulation_mode::f16) ss << "_kqf16acc";
     if (p.acc_modes.vs_acc == accumulation_mode::f16) ss << "_vsf16acc";
     return ss;
@@ -325,7 +346,7 @@ std::string print_to_string2(
 
 void print_table_header() {
     std::cout << "| mb | Q Heads | KV Heads |   D |    K  |    Q | Kdt | "
-                 "Vdt | "
+                 "Vdt | scale | "
                  "mask | quant |  time (ns) | BW eff/actual (Gbps) | "
                  "gemm/total FLOPs (GFLOPs) |\n";
 }
@@ -350,6 +371,11 @@ std::string print_row(const sdpa_dims_t &p) {
             && p.qtype != quantize_type::no_quantization) {
         ss << "/" << p.value.sdt;
         ss << "/" << p.value.zpdt;
+    }
+    ss << "|";
+    switch (p.stype) {
+        case scale_type::device_side: ss << "device"; break;
+        case scale_type::host_side: ss << "host"; break;
     }
     ss << "|";
     switch (p.mask.type) {
@@ -494,6 +520,9 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     const memory::dims v_sz
             = {p.mb, p.heads.kv, p.seq_len.kv, p.head_group.head_size};
     const memory::dims scale_sz = {1, 1, 1, 1};
+
+    bool with_host_scale = p.stype == scale_type::host_side;
+
     const memory::dims key_scales_sz = [&] {
         switch (p.qtype) {
             case quantize_type::no_quantization:
@@ -529,6 +558,8 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         throw std::runtime_error("Quantization type not supported\n");
     }();
 
+    auto def_scale_value = [&] { return std::sqrt(p.head_group.head_size); }();
+
     memory::dims mask_sz;
     switch (p.mask.type) {
         case mask_type::no_mask: mask_sz = {};
@@ -555,7 +586,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     auto query_md            = memory::desc(q_sz,          p.dt.dt,      abcd);
     auto key_md              = memory::desc(k_sz,          p.dt.dt,       abcd);
     auto value_md            = memory::desc(v_sz,          p.dt.dt,       abcd);
-    auto scale_md            = memory::desc(scale_sz,      p.dt.dt,      abcd);
 
     auto query_test_md       = memory::desc(q_sz,          p.dt.dt,      abcd);
 
@@ -576,7 +606,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     // Create memory objects
     out.m_query = double_and_resize(query_md, eng, strm, doubled_memory);
-    out.m_scale = double_and_resize(scale_md, eng, strm, doubled_memory);
     out.m_key_quantized
             = double_and_resize(key_quantized_md, eng, strm, doubled_memory);
     out.m_key_scales
@@ -594,8 +623,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     // Allocate user data.
     std::vector<float> query_data(product(q_sz), 0.f);
-    std::vector<float> scale_data(
-            product(scale_sz), std::sqrt(p.head_group.head_size));
+    std::vector<float> scale_data(product(scale_sz), def_scale_value);
     std::vector<float> key_quantized_data(product(k_sz), 0);
     std::vector<float> val_quantized_data(product(v_sz), 0);
     std::vector<float> key_scale_data(product(key_scales_sz), std::nanf("1"));
@@ -880,7 +908,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     if (p.mask.type != mask_type::no_mask)
         write_to_dnnl_memory(mask_data.data(), out.m_mask, eng, strm);
-    write_to_dnnl_memory(scale_data.data(), out.m_scale, eng, strm);
 
     // Write data to tensor object's handle.
     write_to_dnnl_memory(query_data.data(), out.m_query, eng, strm);
@@ -908,6 +935,32 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     write_to_dnnl_memory(val_scale_data.data(), out.m_value_scales, eng, strm);
     write_to_dnnl_memory(output_data.data(), out.m_output, eng, strm);
     write_to_dnnl_memory(output_data.data(), out.m_output_quantized, eng, strm);
+
+    auto setup_device_scale = [&](memory *outmem) {
+        auto scale_md = memory::desc(scale_sz, p.dt.dt, abcd);
+        *outmem = double_and_resize(scale_md, eng, strm, doubled_memory);
+        write_to_dnnl_memory(scale_data.data(), *outmem, eng, strm);
+    };
+
+    if (with_host_scale) {
+        auto scale_md = memory::desc::host_scalar(p.dt.dt);
+        float scale_val = (float)def_scale_value;
+        switch (p.dt.dt) {
+            case mdt::f32:
+                out.m_scale = dnnl::memory(scale_md, (float)scale_val);
+                break;
+            case mdt::f16:
+                out.m_scale = dnnl::memory(scale_md, (float16_t)scale_val);
+                break;
+            case mdt::bf16:
+                out.m_scale = dnnl::memory(scale_md, (bfloat16_t)scale_val);
+                break;
+            default:
+                throw std::runtime_error("Scale data type not supported\n");
+        }
+    } else
+        setup_device_scale(&out.m_scale);
+    setup_device_scale(&out.m_scale_prim);
 
     return out;
 }
@@ -967,7 +1020,7 @@ std::pair<dnnl::reorder, memory> dequantize_prim(const engine &eng, mdt dt,
 void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         dnnl::engine &eng, dnnl::stream &strm, dnnl::memory &query,
         dnnl::memory &key, dnnl::memory &key_scales, dnnl::memory &key_zp,
-        dnnl::memory::data_type scale_dt, dnnl::memory &scale,
+        dnnl::memory::data_type scale_dt, dnnl::memory &scale_device,
         dnnl::memory &mask, dnnl::memory &value, dnnl::memory &value_scales,
         dnnl::memory &value_zp, dnnl::memory &output, bool invert_scale,
         std::vector<dnnl_memory_t> &doubled_memory) {
@@ -975,9 +1028,9 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     primitive_attr bmm1_attr;
     post_ops bmm1_po;
     bmm1_attr.set_scratchpad_mode(dnnl::scratchpad_mode::library);
-    auto scale_f32 = as(strm, scale, mdt::f32);
     auto mask_f32 = as(strm, mask, mdt::f32);
     auto mask_sz = mask.get_desc().get_dims();
+    auto scale_f32 = as(strm, scale_device, mdt::f32);
 
     if (scale_dt != mdt::undef) {
         scale_f32 = reshape(strm, scale_f32,
@@ -1496,9 +1549,9 @@ public:
         try {
             sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                     t.m_key_quantized.get_desc(),
-                    t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
-                    t.m_output_quantized.get_desc(), invert_scale, p.heads.kv,
-                    to_attn_mask_type(p.mask.type),
+                    t.m_value_quantized.get_desc(), mask_ptr,
+                    t.m_scale.get_desc(), t.m_output_quantized.get_desc(),
+                    invert_scale, p.heads.kv, to_attn_mask_type(p.mask.type),
                     dnnl::impl::alg_kind::softmax_accurate_inf_as_zero,
                     t.sdpa_attr_quantized, t.sdpa_kq_attr_quantized,
                     t.sdpa_vs_attr_quantized);
@@ -1543,7 +1596,7 @@ public:
         sdpa_quantized_p.execute(strm, sdpa_args);
 
         prim_sdpa_quant(p, t, eng, strm, t.m_query, t.m_key_quantized,
-                t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale, t.m_mask,
+                t.m_key_scales, t.m_key_zp, scale_dt, t.m_scale_prim, t.m_mask,
                 t.m_value_quantized, t.m_value_scales, t.m_value_zp, t.m_output,
                 invert_scale, doubled_memory);
 
@@ -1608,9 +1661,9 @@ public:
         try {
             sdpa_quantized_pd = sdpa::primitive_desc(eng, t.m_query.get_desc(),
                     t.m_key_quantized.get_desc(),
-                    t.m_value_quantized.get_desc(), mask_ptr, scale_dt,
-                    t.m_output_quantized.get_desc(), invert_scale, p.heads.kv,
-                    to_attn_mask_type(p.mask.type),
+                    t.m_value_quantized.get_desc(), mask_ptr,
+                    t.m_scale.get_desc(), t.m_output_quantized.get_desc(),
+                    invert_scale, p.heads.kv, to_attn_mask_type(p.mask.type),
                     alg_kind::softmax_accurate_inf_as_zero,
                     t.sdpa_attr_quantized, t.sdpa_kq_attr_quantized,
                     t.sdpa_vs_attr_quantized);
@@ -1765,6 +1818,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s8, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1780,6 +1834,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f16_s4, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1795,6 +1850,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s8, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1810,6 +1866,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_bf16_s4, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::oneD, mdt::bf16}, mask_config_t {mask_type::twoD, mdt::bf16}), // mask_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1825,6 +1882,7 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f32, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::twoD, mdt::f32}), // mask_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1840,6 +1898,7 @@ INSTANTIATE_TEST_SUITE_P(AllMaskTypes, sdpa_test_datatypes,
                 testing::Values(quantize_type::per_token), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br}, mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f16}), // mask_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1855,6 +1914,7 @@ INSTANTIATE_TEST_SUITE_P(GQA, sdpa_test_datatypes,
                 testing::Values(quantize_type::no_quantization), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);
@@ -1870,6 +1930,7 @@ INSTANTIATE_TEST_SUITE_P(f16_accumulation, sdpa_test_datatypes,
                 testing::Values(quantize_type::no_quantization), // qtype
                 testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
                 testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::twoD}, mask_config_t {mask_type::causal_tl}), // mask_type
+                testing::Values(default_scale_type), // scale_type
                 testing::Values(accumulation_t {accumulation_mode::f16, accumulation_mode::f16}, accumulation_t {accumulation_mode::f32, accumulation_mode::f16}, accumulation_t {accumulation_mode::f16, accumulation_mode::f32}) // accumulation_mode
                 ),
         &print_to_string2);

@@ -465,6 +465,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.invert_scale = d->invert_scale;
     conf.with_attn_scale = pd->with_attn_scale();
+    conf.with_host_scale = pd->with_host_scale();
     conf.with_attn_mask = (pd->with_attn_mask() && !pd->with_causal_mask());
     conf.broadcast_mask_q = (msk_mdw.dims()[pd_t::mask_q_index] == 1);
     conf.with_causal_mask = pd->with_causal_mask();
@@ -541,6 +542,7 @@ status_t micro_params_t::get_kernel_ctx(
     def_data_type(kernel_ctx, qry_data_t, "QRY");
     def_data_type(kernel_ctx, val_data_t, "VAL");
     def_data_type(kernel_ctx, dst_data_t, "DST");
+    def_data_type(kernel_ctx, scale_data_t, "SCALE", !with_host_scale);
 
     if (with_attn_mask) { def_data_type(kernel_ctx, msk_data_t, "MSK"); }
 
@@ -572,9 +574,9 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("KEY_GROUP_SIZE", key_group_size);
     kernel_ctx.define_int("VAL_GROUP_SIZE", val_group_size);
 
-    def_data_type(kernel_ctx, scale_data_t, "SCALE");
     kernel_ctx.define_int("INVERT_SCALE", invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", with_attn_scale);
+    kernel_ctx.define_int("WITH_HOST_SCALE", with_host_scale);
     kernel_ctx.define_int("ATTN_MASK_UNDEF", attn_mask_undef);
     kernel_ctx.define_int("ATTN_MASK_BUFFER", attn_mask_buffer);
     kernel_ctx.define_int("ATTN_MASK_TOP_LEFT", attn_mask_top_left);
@@ -752,6 +754,7 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
     compute::kernel_arg_list_t arg_list;
+    const memory_desc_wrapper scale_mdw(pd()->scale_md());
     arg_list.append(key);
     arg_list.append(qry);
     arg_list.append(val);

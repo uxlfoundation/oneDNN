@@ -74,8 +74,8 @@ struct micro_params_t : trivially_serializable_t<micro_params_t> {
 
     int attn_mask_undef, attn_mask_buffer, attn_mask_top_left,
             attn_mask_bottom_right;
-    bool invert_scale, with_attn_scale, with_attn_mask, broadcast_mask_q,
-            with_causal_mask;
+    bool invert_scale, with_attn_scale, with_host_scale, with_attn_mask,
+            broadcast_mask_q, with_causal_mask;
     uint8_t padding1[3] = {0};
     int subgroup_size, d_max;
 

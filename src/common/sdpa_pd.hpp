@@ -96,6 +96,7 @@ struct sdpa_pd_t : public primitive_desc_t {
     const memory_desc_t *key_md() const { return &desc_.k_desc; }
     const memory_desc_t *val_md() const { return &desc_.v_desc; }
     const memory_desc_t *attn_mask_md() const { return &desc_.attn_mask_desc; }
+    const memory_desc_t *scale_md() const { return &desc_.scale_desc; }
 
     int n_inputs() const override {
         return 3 + int(with_attn_mask()) + int(with_attn_scale());
@@ -104,6 +105,10 @@ struct sdpa_pd_t : public primitive_desc_t {
 
     bool with_attn_scale() const {
         return (desc_.scale_dt != data_type::undef);
+    }
+
+    bool with_host_scale() const {
+        return (scale_md()->format_kind == format_kind::host_scalar);
     }
 
     bool with_attn_mask() const {

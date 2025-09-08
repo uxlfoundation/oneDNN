@@ -105,8 +105,9 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
             : ((wei_zp_mask >> (wei_m.ndims() - 2)) % 2) > 0 ? 1
                                                              : K;
 
-    const auto smallest_k_group = std::min(
+    const auto smallest_k_group = gcd<int64_t>(
             {src_scale_group, wei_scale_group, src_zp_group, wei_zp_group});
+
     const auto n_k_groups = K / smallest_k_group;
 
     // Fast return if any dim is zero. Common logic doesn't apply because of

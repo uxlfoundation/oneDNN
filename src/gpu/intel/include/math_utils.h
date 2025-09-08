@@ -396,6 +396,8 @@ float4  __attribute__((overloadable)) cvt_bf16_to_f32(ushort4  a) { return __bui
 float8  __attribute__((overloadable)) cvt_bf16_to_f32(ushort8  a) { return __builtin_IB_bftof_8 (as_short8 (a)); }
 float16 __attribute__((overloadable)) cvt_bf16_to_f32(ushort16 a) { return __builtin_IB_bftof_16(as_short16(a)); }
 
+float   __attribute__((overloadable)) cvt_bf16_to_f32(bf16     a) { return __builtin_IB_bftof_1 (a.data); }
+
 #ifdef cl_khr_fp64
 double   __attribute__((overloadable)) cvt_bf16_to_f64(ushort   a) { return convert_double(__builtin_IB_bftof_1 (as_short  (a))); }
 double2  __attribute__((overloadable)) cvt_bf16_to_f64(ushort2  a) { return convert_double2(__builtin_IB_bftof_2 (as_short2 (a))); }

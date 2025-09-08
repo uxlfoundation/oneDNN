@@ -80,8 +80,8 @@ status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
                               arch >= compute::gpu_arch_t::xe_hpc),
             VERBOSE_UNSUPPORTED_DT_CFG);
 
-    src = std::make_shared<layout_t>(invariant_src_md());
-    dst = std::make_shared<layout_t>(invariant_dst_md());
+    src = std::make_shared<layout_t>(make_layout(*invariant_src_md()));
+    dst = std::make_shared<layout_t>(make_layout(*invariant_dst_md()));
     VDISPATCH_POOLING(src->ndims() == dst->ndims(), VERBOSE_INCONSISTENT_NDIMS,
             "src->ndims()", "dst_ndims()");
 

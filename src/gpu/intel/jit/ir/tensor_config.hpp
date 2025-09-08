@@ -111,19 +111,50 @@ private:
     std::vector<tensor_info_t> tensors_;
 };
 
-inline layout_t make_layout(const memory_desc_t &md) {
-    if (md.format_kind == format_kind::any) return layout_t();
-    return layout_t(md, /*do_normalize=*/false);
-}
+// Returns vector of <dimension index, block size> pairs.
+std::vector<std::pair<pvar_t, dim_t>> parse_format(
+        const std::string &format, int ndims_hint);
 
-inline layout_t make_layout(const memory_desc_t &md, const std::string &tag) {
-    if (tag == "user") return layout_t(md);
-    return layout_t(md, tag, /*do_normalize=*/false);
+// Returns vector of <dimension letter, block size> pairs.
+std::vector<std::pair<char, dim_t>> parse_letter_blocks(
+        const std::string &format);
+
+inline layout_t make_layout(const type_t &type, const expr_t &offset,
+        const std::string &format, const std::vector<dim_t> &dims = {}) {
+    return layout_t(type, offset, into<dim_idx_t>(dims.size()),
+            parse_format(format, into<dim_idx_t>(dims.size())), dims,
+            /*do_normalize=*/false);
 }
 
 inline layout_t make_layout(const type_t &type, const std::vector<dim_t> &dims,
         const std::string &tag) {
-    return layout_t(type, 0, tag, dims, /*do_normalize=*/false);
+    return make_layout(type, 0, tag, dims);
+}
+
+// Note, the default value of do_normalize is the opposite of the default value
+// for layout_t. The reason behind this is that most practical uses of this
+// interface do not perform normalization.
+inline layout_t make_layout(
+        const memory_desc_t &md, bool do_normalize = false) {
+    if (md.format_kind == format_kind::any) return layout_t();
+
+    auto mdw = memory_desc_wrapper(md);
+    block_layout_t layout(
+            mdw, /* inner_only */ false, /* do_normalize */ false);
+    std::vector<layout_block_t> blocks;
+    for (const auto &block : layout) {
+        blocks.emplace_back(block.dim_idx, block.block, block.stride);
+    }
+
+    return layout_t(to_ir(mdw.data_type()), mdw.ndims(), mdw.offset0(), blocks,
+            do_normalize);
+}
+
+inline layout_t make_layout(const memory_desc_t &md, const std::string &tag) {
+    if (tag == "user") return make_layout(md);
+    auto mdw = memory_desc_wrapper(md);
+    return make_layout(to_ir(mdw.data_type()), mdw.offset0(), tag,
+            std::vector<dim_t>(mdw.dims(), mdw.dims() + mdw.ndims()));
 }
 
 bool matches_tag(const layout_t &layout, const std::string &tag,
@@ -141,7 +172,7 @@ inline bool matches_tag(const memory_desc_t &md, const std::string &tag) {
 
 inline void set_default_format(memory_desc_t &md, const std::string &tag) {
     if (md.format_kind != format_kind::any) return;
-    md = make_layout(md, tag).to_dnnl(md.dims);
+    md = to_md(make_layout(md, tag), md);
 }
 
 inline std::vector<std::pair<const char *, int>> get_scale_args() {

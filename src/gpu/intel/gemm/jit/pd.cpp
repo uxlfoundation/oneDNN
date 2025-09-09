@@ -284,6 +284,8 @@ bool pd_t::zp_ok() {
                        && dy_quant_enabled_)
                     || wei_decomp_);
 
+    if (attr_zps.has_host_scalars()) return false;
+
     if (!a_zps.has_default_values()) {
         // Groups determine supported masks.
         if (!a_zps.has_default_groups()) {
@@ -362,6 +364,8 @@ bool pd_t::scales_ok() {
     const auto &scales = attr()->scales_;
     int ndims = desc()->a_desc.ndims;
     using namespace data_type;
+
+    if (scales.has_host_scalars()) return false;
 
     for (auto s : {DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C}) {
         if (scales.has_default_values(s)) continue;

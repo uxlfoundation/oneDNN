@@ -17,6 +17,8 @@
 #ifndef CPU_RV64_GEMM_RVV_GEMM_UTILS_F32_HPP
 #define CPU_RV64_GEMM_RVV_GEMM_UTILS_F32_HPP
 
+#include "common/c_types_map.hpp"
+
 #include <cstddef>
 
 namespace dnnl {

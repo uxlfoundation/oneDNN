@@ -671,13 +671,15 @@ public:
         auto a = ir_mutator_t::mutate(obj.a);
         auto b = ir_mutator_t::mutate(obj.b);
 
-        if (obj.op_kind == op_kind_t::_or) {
-            if (cset.can_prove(a) || cset.can_prove(b)) return expr_t(true);
-        } else if (obj.op_kind == op_kind_t::_and) {
-            auto not_a = try_not(a);
-            if (not_a && cset.can_prove(not_a)) return expr_t(false);
-            auto not_b = try_not(b);
-            if (not_b && cset.can_prove(not_b)) return expr_t(false);
+        if (obj.type.is_bool()) {
+            if (obj.op_kind == op_kind_t::_or) {
+                if (cset.can_prove(a) || cset.can_prove(b)) return expr_t(true);
+            } else if (obj.op_kind == op_kind_t::_and) {
+                auto not_a = try_not(a);
+                if (not_a && cset.can_prove(not_a)) return expr_t(false);
+                auto not_b = try_not(b);
+                if (not_b && cset.can_prove(not_b)) return expr_t(false);
+            }
         }
 
         if (a.is_same(obj.a) && b.is_same(obj.b)) return obj;
@@ -1161,7 +1163,9 @@ public:
     std::vector<expr_t> factors;
 
 private:
-    factored_expr_t(const expr_t &e) : expr_iface_t(e.type()) {
+    factored_expr_t(const expr_t &e)
+        : expr_iface_t(
+                e.type().with_attr(e.type().attr() & ~type::attr_t::mut)) {
         init_factors(e);
     }
 
@@ -1278,7 +1282,7 @@ public:
     using nary_op_mutator_t::_mutate;
 
     object_t _mutate(const binary_op_t &obj) override {
-        if (obj.op_kind != op_kind_t::_div)
+        if (obj.op_kind != op_kind_t::_div || !obj.type.is_scalar())
             return nary_op_mutator_t::_mutate(obj);
 
         expr_t a = mutate(obj.a);
@@ -1312,8 +1316,8 @@ public:
         auto obj = nary_op_mutator_t::_mutate(_obj);
         auto *binary_op = obj.as_ptr<binary_op_t>();
         if (!binary_op) return obj;
-        if (!utils::one_of(
-                    binary_op->op_kind, op_kind_t::_div, op_kind_t::_mod))
+        if (!utils::one_of(binary_op->op_kind, op_kind_t::_div, op_kind_t::_mod)
+                || !_obj.type.is_scalar())
             return obj;
         if (!binary_op->type.is_int()) return obj;
 
@@ -2296,7 +2300,7 @@ expr_t simplify_propagate_shuffle(const expr_t &e) {
     if (!e.type().is_bool()) return e;
 
     auto *shuffle = e.as_ptr<shuffle_t>();
-    if (!shuffle) return e;
+    if (!shuffle || shuffle->vec[0].type().is_simd()) return e;
 
     // Handle binary operation.
     {

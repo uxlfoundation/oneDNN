@@ -39,10 +39,9 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
             query_desc, key_desc, value_desc, engine, attr, kq_attr, vs_attr));
 
     dnnl::impl::sdpa_desc_t sdpa_desc = dnnl::impl::create_sdpa_desc(query_desc,
-            key_desc, value_desc, dst_desc, mask_desc,
-            scale_desc, invert_scale, kv_head_number,
-            static_cast<attn_mask_type_t>(attn_mask_type), softmax_alg, kq_attr,
-            vs_attr);
+            key_desc, value_desc, dst_desc, mask_desc, scale_desc, invert_scale,
+            kv_head_number, static_cast<attn_mask_type_t>(attn_mask_type),
+            softmax_alg, kq_attr, vs_attr);
     return dnnl::impl::primitive_desc_create(primitive_desc_iface, engine,
             (const dnnl::impl::op_desc_t *)&sdpa_desc, nullptr, attr);
 }

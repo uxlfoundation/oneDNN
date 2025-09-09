@@ -169,7 +169,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             // This case requires scratchpad
             if (N() == DNNL_RUNTIME_DIM_VAL) ok = false;
         }
-        // Impl suppports f32 scales only for non-weight decompression
+        // This impl supports only f32 scales for non-weight decompression.
         if (!(is_bf16_with_int_wei || is_f16_with_int_wei)) {
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_SRC), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32);
@@ -178,8 +178,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         // This impl doesn't support scales over any batch dimensions.
         if (!asc.has_default_values(DNNL_ARG_WEIGHTS)) {
             const auto mask = asc.get_mask(DNNL_ARG_WEIGHTS);
-            const int kn_mask = (1 << (ndims() - 1)) + (1 << (ndims() - 2));
-            const bool scale_over_batch = (mask ^ kn_mask);
+            const int kn_mask = wei_qmask_N() + wei_qmask_K();
+            const bool scale_over_batch = (mask & kn_mask) != mask;
             if (scale_over_batch && batch() > 1) ok = false;
         }
         // Implementation has limited support w.r.t. scales groups.

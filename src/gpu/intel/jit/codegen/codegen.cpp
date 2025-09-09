@@ -1731,7 +1731,7 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
         }
     }
 
-    int slm_size = alloc_manager_t(kernel_body).total_size(alloc_kind_t::slm);
+    int slm_size = alloc_manager_t(kernel_body).slm_size();
     interface.requireSLM(slm_size);
 
     interface.finalize();

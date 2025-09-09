@@ -215,14 +215,14 @@ public:
 
         // Bind local IDs.
         for (int i = 0; i < 3; i++) {
-            auto local_id = alloc_mgr.find_let(ir_builder_t::local_id(i), true);
+            auto local_id = alloc_mgr.find_var(ir_builder_t::local_id(i), true);
             if (!local_id.is_empty()) {
                 auto local_id_reg = BaseGeneratorT::getLocalID(i).uw(0);
                 ra_.claim(local_id_reg);
                 expr_binding.bind(local_id, local_id_reg);
             }
             auto local_size
-                    = alloc_mgr.find_let(ir_builder_t::local_size(i), true);
+                    = alloc_mgr.find_var(ir_builder_t::local_size(i), true);
             if (!local_size.is_empty()) {
                 auto local_size_reg = BaseGeneratorT::getLocalSize(i).uw(0);
                 ra_.claim(local_size_reg);
@@ -270,7 +270,7 @@ public:
         // Bind grid indices.
         int r0_sub_idxs[] = {1, 6, 7};
         for (int i = 0; i < 3; i++) {
-            auto tg_idx = alloc_mgr.find_let(ir_builder_t::tg_idx(i), true);
+            auto tg_idx = alloc_mgr.find_var(ir_builder_t::tg_idx(i), true);
             if (tg_idx) {
                 ngen::Subregister tg_reg = r0_info.ud(r0_sub_idxs[i]);
                 expr_binding.bind(tg_idx, tg_reg);

@@ -657,7 +657,7 @@ struct generator_dsl_t {
             int idx = pipeline_idx(k_unroll_idx, cfg.A_load_warmup(),
                     cfg.A_load.layout.dim(k_var));
             if (idx % A_load_blk != 0) return;
-            load(A.sub({{k_var, idx}}, cfg.A_load.tile), kloop_it.A_load(),
+            load(A.sub(cfg.A_load.tile, {{k_var, idx}}), kloop_it.A_load(),
                     {{k_var, 0}}, {cfg.A_load.transform.cache_hint});
             kloop_it.A_load_inc(A_load_blk);
         };
@@ -679,7 +679,7 @@ struct generator_dsl_t {
             int idx = pipeline_idx(k_unroll_idx, cfg.B_load_warmup(),
                     cfg.B_load.layout.dim(k_var));
             if (idx % B_load_blk != 0) return;
-            load(B.sub({{k_var, idx}}, cfg.B_load.tile), kloop_it.B_load(),
+            load(B.sub(cfg.B_load.tile, {{k_var, idx}}), kloop_it.B_load(),
                     {{k_var, 0}}, {cfg.B_load.transform.cache_hint});
             kloop_it.B_load_inc(B_load_blk);
         };

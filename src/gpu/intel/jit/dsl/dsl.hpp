@@ -192,6 +192,7 @@ public:
 };
 
 expr_t subgroup_id(int idx = 0);
+expr_t subgroup_local_id();
 expr_t arg(const std::string &name, bool allow_empty = false);
 // TODO: Unify def() API, keep three versions:
 // 1. def(name, type, value)

@@ -374,8 +374,6 @@ public:
     std::string str() const override { return str_impl(/*multiline=*/false); }
 };
 
-class coord_t;
-
 // Coordinate with integer values.
 class icoord_t : public pvar_map_t<dim_t> {
 public:
@@ -387,7 +385,6 @@ public:
         for (size_t i = 0; i < values.size(); i++)
             set(pvar_t(std::string(1, into<char>('a' + i))), values[i]);
     }
-    icoord_t(const coord_t &coord);
     dim_t default_value() const override { return 0; }
 };
 
@@ -411,11 +408,6 @@ public:
         return pvar_map_t<expr_t>::with_impl<coord_t>(key, value);
     }
 };
-
-inline icoord_t::icoord_t(const coord_t &coord) {
-    for (auto &d : coord)
-        set(d, to_cpp<dim_t>(coord.at(d)));
-}
 
 inline coord_t operator+(const coord_t &a, const coord_t &b) {
     coord_t ret;

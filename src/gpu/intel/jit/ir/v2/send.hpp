@@ -452,7 +452,7 @@ struct send_1d_plan_t : public base_plan_t {
         e.addr_inc = std::move(addr_inc);
         e.mask_incs = std::move(mask_incs);
         e.reg_off = reg_off;
-        e.coord = std::move(coord);
+        e.coord = coord;
         return true;
     }
 

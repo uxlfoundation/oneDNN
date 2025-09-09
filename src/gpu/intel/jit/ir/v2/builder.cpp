@@ -165,7 +165,7 @@ stmt_t create_stmt(const send_1d_plan_t &plan, const expr_t &mem_buf,
             plan.hw, op, address, type, slots, /*zero_out=*/true);
     auto &send = send_func.as<send_t>();
     stmt_t ret;
-    for_each(tile, plan.entry_tile, [&](const coord_t &sub_coord) {
+    for_each(tile, plan.entry_tile, [&](const icoord_t &sub_coord) {
         int entry_idx = plan.reg_layout.to_linear_index(
                 plan.entry_tile, coord + sub_coord);
         auto &e = plan.entries[entry_idx];
@@ -194,7 +194,7 @@ stmt_t create_stmt(const send_2d_plan_t &plan, const expr_t &mem_buf,
             desc.c, desc.vnni, desc.transpose, /*zero_out=*/true);
     auto &send = send_func.as<send_t>();
     stmt_t ret;
-    for_each(tile, plan.entry_tile, [&](const coord_t &sub_coord) {
+    for_each(tile, plan.entry_tile, [&](const icoord_t &sub_coord) {
         int entry_idx = plan.reg_layout.to_linear_index(
                 plan.entry_tile, coord + sub_coord);
         auto &e = plan.entries[entry_idx];

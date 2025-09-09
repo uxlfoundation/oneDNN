@@ -888,13 +888,13 @@ std::string layout_t::str_with_size(const hw_t &hw) const {
 }
 
 void for_each(const tile_t &base_tile, const tile_t &tile,
-        const std::function<void(const coord_t &)> &func) {
+        const std::function<void(const icoord_t &)> &func) {
     for_each(base_tile, tile, {}, func);
 }
 
 void for_each(const tile_t &base_tile, const tile_t &_tile,
         const std::vector<pvar_t> &idx_order,
-        const std::function<void(const coord_t &)> &func) {
+        const std::function<void(const icoord_t &)> &func) {
     auto tile = _tile;
     for (auto &d : tile) {
         gpu_assert(base_tile.has(d));
@@ -1047,8 +1047,8 @@ int layout_iterator_t::offset(const pvar_t &dim) const {
     return ret;
 }
 
-coord_t layout_iterator_t::coord() const {
-    coord_t ret;
+icoord_t layout_iterator_t::coord() const {
+    icoord_t ret;
     tile_t sizes;
     for (int i = 0; i < parent_->nblocks(); i++) {
         auto &b = parent_->blocks()[i];

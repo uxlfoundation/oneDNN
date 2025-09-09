@@ -1183,7 +1183,7 @@ public:
     }
 
     mask_tensor_t sub(const tile_t &tile, const coord_t &start) const {
-        icoord_t tile_start(start);
+        coord_t tile_start(start);
         auto sub_layout = layout_.sub(tile);
         mask_tensor_t sub_mask(sub_layout);
         for_each(tile, [&](const icoord_t &sub_start) {

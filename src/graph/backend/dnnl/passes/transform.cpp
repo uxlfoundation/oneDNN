@@ -4392,16 +4392,20 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     sdpa_op->set_attr<int64_t>(
             op_attr::mask_type, static_cast<int64_t>(attn_mask_type::undef));
 
-    auto query_val = candidates[0]->get_input_value(0);
-    query_val->remove_consumer(*candidates[0], 0);
+    // alias
+    const auto &qk = candidates[0];
+    const auto &vs = candidates.back();
+
+    auto query_val = qk->get_input_value(0);
+    query_val->remove_consumer(*qk, 0);
     sdpa_op->connect_input(0, query_val);
 
-    auto key_val = candidates[0]->get_input_value(1);
-    key_val->remove_consumer(*candidates[0], 1);
+    auto key_val = qk->get_input_value(1);
+    key_val->remove_consumer(*qk, 1);
     sdpa_op->connect_input(1, key_val);
 
-    auto value_val = candidates.back()->get_input_value(1);
-    value_val->remove_consumer(*candidates.back(), 1);
+    auto value_val = vs->get_input_value(1);
+    value_val->remove_consumer(*vs, 1);
     sdpa_op->connect_input(2, value_val);
 
     size_t input_idx = 3;
@@ -4440,7 +4444,7 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     }
 
     // Handle quantization parameters from both matmuls
-    for (const auto &matmul : {candidates[0], candidates.back()}) {
+    for (const auto &matmul : {qk, vs}) {
         auto inputs = matmul->get_input_values();
         for (size_t idx = 2; idx < inputs.size(); ++idx) {
             const auto &qparam_val = inputs[idx];
@@ -4449,10 +4453,21 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         }
     }
 
+    // Handle QK and VS accumulation modes
+    const std::string qk_acc_mode = qk->has_attr(op_attr::accumulation_mode)
+            ? qk->get_attr<std::string>(op_attr::accumulation_mode)
+            : "strict";
+    const std::string vs_acc_mode = vs->has_attr(op_attr::accumulation_mode)
+            ? vs->get_attr<std::string>(op_attr::accumulation_mode)
+            : "strict";
+
+    sdpa_op->set_attr<std::string>(op_attr::qk_acc_mode, qk_acc_mode);
+    sdpa_op->set_attr<std::string>(op_attr::vs_acc_mode, vs_acc_mode);
+
     fusion_info_t sdpa_fusion_info;
-    if (candidates[0]->has_attr(op_attr::fusion_info)) {
+    if (qk->has_attr(op_attr::fusion_info)) {
         auto mm1_fusion_info
-                = candidates[0]->get_attr<fusion_info_t>(op_attr::fusion_info);
+                = qk->get_attr<fusion_info_t>(op_attr::fusion_info);
         if (mm1_fusion_info.get_mutable_scales(true, 1)) {
             sdpa_fusion_info.set_runtime_scales(
                     mm1_fusion_info.get_mutable_scales(true, 1)
@@ -4467,9 +4482,9 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         }
     }
 
-    if (candidates.back()->has_attr(op_attr::fusion_info)) {
-        auto mm2_fusion_info = candidates.back()->get_attr<fusion_info_t>(
-                op_attr::fusion_info);
+    if (vs->has_attr(op_attr::fusion_info)) {
+        auto mm2_fusion_info
+                = vs->get_attr<fusion_info_t>(op_attr::fusion_info);
         if (mm2_fusion_info.get_mutable_scales(true, 1)) {
             sdpa_fusion_info.set_runtime_scales(
                     mm2_fusion_info.get_mutable_scales(true, 1)
@@ -4485,7 +4500,7 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     }
     sdpa_op->set_attr<fusion_info_t>(op_attr::fusion_info, sdpa_fusion_info);
 
-    auto final_output = candidates.back()->get_output_value(0);
+    auto final_output = vs->get_output_value(0);
     final_output->set_producer(*sdpa_op);
     sdpa_op->add_output(final_output);
 

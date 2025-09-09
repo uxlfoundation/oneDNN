@@ -2964,6 +2964,13 @@ struct sdpa_executable_t : public op_executable_t {
                     op, sdpa_fusion_info, attr_type_t::VS);
         }
 
+        // Set accumulation mode: the two attributes are requested for
+        // dnnl_sdpa, so we can get them directly without calling has_attr().
+        qk_attr.set_accumulation_mode(str2accumulation_mode(
+                op->get_attr<std::string>(op_attr::qk_acc_mode)));
+        vs_attr.set_accumulation_mode(str2accumulation_mode(
+                op->get_attr<std::string>(op_attr::vs_acc_mode)));
+
         dim_t kv_head_number
                 = op->get_input_value(1)->get_logical_tensor().dims[1];
 

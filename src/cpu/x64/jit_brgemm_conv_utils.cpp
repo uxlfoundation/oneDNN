@@ -2440,8 +2440,10 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.ununroll_bd_loop
             = static_cast<dim_t>(jcp.M) * jcp.N * (jcp.is_bf32 ? 1 : 2)
             > 8 * 1024;
-    printf("exec type: %d, use uker: %d, M: %d, oh block: %d, ow block: %d\n",
-            jcp.exec_type, jcp.use_uker, jcp.M, jcp.oh_block, jcp.ow_block);
+    printf("exec type: %d, use uker: %d, M: %d, oc block: %d, oh block: %d, ow "
+           "block: %d\n",
+            jcp.exec_type, jcp.use_uker, jcp.M, jcp.oc_block, jcp.oh_block,
+            jcp.ow_block);
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
 

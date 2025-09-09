@@ -1377,14 +1377,16 @@ void jit_brgemm_amx_uker_base_t::apply_comp_pad_to_vector(
             = zp_comp_pad_a_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
     const size_t comp_pad_off_offset
             = zp_comp_pad_a_off_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
-    printf("comp_pad_offset: %ld, %ld\n", comp_pad_offset, comp_pad_off_offset);
+    printf("ldb: %d, bdb: %d, comp_pad_offset: %ld, %ld\n", ldb, bdb,
+            comp_pad_offset, comp_pad_off_offset);
+    //    reg_zp_comp_pad_a_off.imulTo(reg_long_offt, sizeof(int32_t));
     mov(reg_long_offt,
             ptr_b[reg_zp_comp_pad_a_off
                     + comp_pad_off_offset]); //comp_pad_offset);
     reg_zp_comp_a.restore();
     const auto zp_comp_pad_a_addr
-            = ptr[reg_zp_comp_pad_a + reg_long_offt + ldb * ld_block_zp_size_];
-    //= EVEX_compress_addr(reg_zp_comp_pad_a, comp_pad_offset);
+            = ptr[reg_zp_comp_pad_a + reg_long_offt + zp_comp_a_offset(ldb)];
+    //    = EVEX_compress_addr(reg_zp_comp_pad_a, comp_pad_offset);
     cvt2ps(data_type::s32, zmm_zp_comp_a, zp_comp_pad_a_addr, true, false,
             k_mask);
     vmulps(zmm_zp_comp_a, zmm_zp_comp_a, zmm_zp_a_val);
@@ -2357,7 +2359,8 @@ void jit_brgemm_amx_uker_base_t::bs_loop(brgemm_iteration_t &bi) {
             add(reg_C, bi_shift->bdi->C_shift);
             add(reg_D, bi_shift->bdi->D_shift);
             if (brg.req_comp_pads_with_bcast) {
-                //                add(reg_zp_comp_pad_a, bi_shift->bdi->zp_comp_pad_a_shift);
+                //                printf("bs loop adding - comp pad shift: %d, %d\n", bi_shift->bdi->zp_comp_pad_a_shift, bi_shift->bdi->zp_comp_pad_a_off_shift);
+                add(reg_zp_comp_pad_a, bi_shift->bdi->zp_comp_pad_a_shift);
                 reg_zp_comp_pad_a_off.restore();
                 add(reg_zp_comp_pad_a_off,
                         bi_shift->bdi->zp_comp_pad_a_off_shift);
@@ -2557,7 +2560,8 @@ void jit_brgemm_amx_uker_base_t::top_loop(brgemm_iteration_t &bi) {
         add(reg_C, bi.bdi->C_shift);
         add(reg_D, bi.bdi->D_shift);
         if (brg.req_comp_pads_with_bcast) {
-            //            add(reg_zp_comp_pad_a, bi.bdi->zp_comp_pad_a_shift);
+            //            printf("top loop\n");
+            add(reg_zp_comp_pad_a, bi.bdi->zp_comp_pad_a_shift);
             reg_zp_comp_pad_a_off.restore();
             add(reg_zp_comp_pad_a_off, bi.bdi->zp_comp_pad_a_off_shift);
             reg_zp_comp_pad_a_off.save();
@@ -2762,6 +2766,7 @@ void jit_brgemm_amx_uker_base_t::init(brgemm_iteration_t &bi) {
             && IMPLICATION(!bi.skip_accumulation,
                     (brg.brgattr.max_bs == 1 || brg.type == brgemm_static_offs)
                             && !brg.brgattr.var_bs);
+    printf("ununroll bd loop: %d\n", ununroll_bd_loop);
     if (brg.type == brgemm_static_offs && !bi.skip_accumulation) {
         if (brg.layout == brgemm_row_major) {
             mov(reg_A, ptr[param1 + GET_OFF(ptr_A)]);

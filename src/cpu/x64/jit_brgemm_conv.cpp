@@ -2294,10 +2294,11 @@ void brgemm_convolution_fwd_t<isa>::ker_trans(brgemm_thread_ctx_t &btc) const {
         if (do_postwork) {
             //            printf("comp_ker_offs: %d\n", comp_ker_offs);
             for (int i = 0; i < jcp.M; i++) {
-                btc.src_zp_comp_offset[i]
-                        = comp_ker_offs + i * jcp.oc_block * sizeof(int32_t);
+                btc.src_zp_comp_offset[i] = /*comp_ker_offs + */ i
+                        * jcp.oc_block * sizeof(int32_t);
                 ;
-                printf("comp_ker_offs: %d\n", btc.src_zp_comp_offset[i]);
+                printf("ithr: %d, ocb: %d, i: %d, comp_ker_offs: %d\n",
+                        btc.ithr, btc.ocb, i * 8, btc.src_zp_comp_offset[i]);
             }
         }
 

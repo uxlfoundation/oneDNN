@@ -326,32 +326,6 @@ public:
         return ret;
     }
 
-    // Storage size in bytes.
-    dim_t size() const {
-        if (is_empty()) return 0;
-        dim_t max_off = 0;
-        dim_t max_block_size = 0;
-        for (auto &b : blocks_) {
-            max_off += (b.block - 1) * (dim_t)b.stride;
-            max_block_size
-                    = std::max(max_block_size, b.block * (dim_t)b.stride);
-        }
-        dim_t max_elems = std::max(max_off + 1, max_block_size);
-        return max_elems * type().size() / type().packing();
-    }
-
-    // Offset in bytes following the last accessible element.
-    dim_t max_off_bytes(bool ignore_offset = false) const {
-        if (is_empty()) return 0;
-        dim_t max_off = 0;
-        for (auto &b : blocks_) {
-            max_off += (b.block - 1) * (dim_t)b.stride;
-        }
-        dim_t after_last = max_off + 1;
-        if (!ignore_offset) after_last += expr_cast<dim_t>(offset_);
-        return after_last * type().size() / type().packing();
-    }
-
     template <typename T = expr_t>
     T offset(const coord_t &args = {}, bool ignore_offset = false) const {
         if (args.is_empty()) return expr_cast<T>(offset_);
@@ -469,13 +443,6 @@ public:
     }
 
     expr_t operator()(const coord_t &coord) const { return offset(coord); }
-
-    template <typename T = expr_t>
-    T offset_in_bytes(
-            const coord_t &coord = {}, bool ignore_offset = false) const {
-        return offset<T>(coord, ignore_offset) * type().size()
-                / type().packing();
-    }
 
     std::string desc_str(bool dnnl_style = false) const {
         if (is_empty()) return "(nil)";
@@ -1009,6 +976,28 @@ private:
     // Blocks ordered from innermost to outermost.
     std::vector<layout_block_t> blocks_;
 };
+
+// Storage size in bytes.
+inline dim_t size_bytes(const layout_t &layout, dim_t alignment = 1) {
+    if (layout.is_empty()) return 0;
+    dim_t max_off = 0;
+    dim_t max_block_size = 0;
+    for (auto &b : layout.blocks()) {
+        max_off += (b.block - 1) * (dim_t)b.stride;
+        max_block_size = std::max(max_block_size, b.block * (dim_t)b.stride);
+    }
+    dim_t max_elems = std::max(max_off + 1, max_block_size);
+    return utils::rnd_up(
+            max_elems * layout.type().size() / layout.type().packing(),
+            alignment);
+}
+
+template <typename T = expr_t>
+T offset_in_bytes(const layout_t &layout, const coord_t &coord = {},
+        bool ignore_offset = false) {
+    return layout.offset<T>(coord, ignore_offset) * layout.type().size()
+            / layout.type().packing();
+}
 
 memory_desc_t to_md(const layout_t &layout, const memory_desc_t &md_hint);
 
@@ -1596,7 +1585,7 @@ public:
         return tlayout_.sub(vdims_, vstart_);
     }
 
-    dim_t vlayout_size() const { return create_vlayout().size(); }
+    dim_t vlayout_size() const { return size_bytes(create_vlayout()); }
 
     bool has_same_vlayout(
             const view_t &other, bool compare_offset = true) const {

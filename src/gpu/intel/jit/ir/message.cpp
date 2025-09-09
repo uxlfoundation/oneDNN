@@ -433,9 +433,7 @@ public:
 private:
     const type_t &type() const { return layout_.type(); }
 
-    int max_offset_bytes() const {
-        return utils::rnd_up((int)layout_.size(), grf_size_);
-    }
+    int max_offset_bytes() const { return (int)size_bytes(layout_, grf_size_); }
 
     int remaining_elems() const { return layout_.elems() - elems_; }
 
@@ -776,7 +774,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
         }
 
         auto off = simplify(
-                mem_view_.tlayout().offset_in_bytes(tstart), ir_ctx_->cset());
+                offset_in_bytes(mem_view_.tlayout(), tstart), ir_ctx_->cset());
 
         // Check alignment requirements.
         int64_t align = get_max_const_factor(off, ir_ctx_->cset());

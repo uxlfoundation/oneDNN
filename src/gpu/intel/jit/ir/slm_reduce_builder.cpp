@@ -61,7 +61,7 @@ void slm_reduce_builder_t::build() {
         slm_layout = slm_layout.add_outer_block(ndims + i, tg_grid_.dim(i));
     }
 
-    slm_buf_size_ = into<int>(slm_layout.size());
+    slm_buf_size_ = into<int>(size_bytes(slm_layout));
 
     // Write thread tile to SLM.
     tile_t write_tile(ndims + tg_ndims_);
@@ -116,8 +116,8 @@ void slm_reduce_builder_t::build() {
             view_t(slm_layout.sub(read_tile, read_start)), slm_buf_,
             tmp_reg_buf_, send_op_t::load, send_address_t::slm);
 
-    load_stmt_
-            = load_stmt_.append(funcs::zero_out(reg_buf_, reg_layout_.size()));
+    load_stmt_ = load_stmt_.append(
+            funcs::zero_out(reg_buf_, size_bytes(reg_layout_)));
     load_stmt_ = load_stmt_.append(read.stmt());
 
     tmp_reg_buf_size_ = std::max(tmp_reg_buf_size_, read.reg_buf_size());

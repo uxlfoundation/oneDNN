@@ -722,14 +722,14 @@ stmt_t reorder_plan_t::create_stmt(
 }
 
 dim_t reorder_plan_t::src_buf_size() const {
-    dim_t src_size = utils::div_up(src.size(), split_factor);
+    dim_t src_size = utils::div_up(size_bytes(src), split_factor);
     return src_size;
 }
 
 dim_t reorder_plan_t::estimate_regs() const {
     if (!*this) return 0;
 
-    dim_t dst_size = utils::div_up(dst.size(), split_factor);
+    dim_t dst_size = utils::div_up(size_bytes(dst), split_factor);
     dim_t ret = 0;
     ret += utils::rnd_up(dst_size, grf_size());
     return utils::div_up(ret, grf_size());
@@ -746,7 +746,7 @@ reduce_plan_t create_reduce_plan(const hw_t &hw, const layout_t &src,
 
 dim_t reduce_plan_t::dst_buf_size() const {
     if (!*this) return 0;
-    dim_t dst_size = utils::div_up(dst.size(), split_factor);
+    dim_t dst_size = utils::div_up(size_bytes(dst), split_factor);
     return utils::rnd_up(dst_size, grf_size());
 }
 
@@ -926,14 +926,14 @@ void fma_plan_t::set_split(abc_kind_t abc, int factor) {
 }
 
 int fma_plan_t::a_buf_size() const {
-    int a_size = into<int>(a_layout.size());
+    int a_size = into<int>(size_bytes(a_layout));
     if (split_abc == abc_kind_t::a)
         a_size = utils::div_up(a_size, split_factor);
     return utils::rnd_up(a_size, grf_size());
 }
 
 int fma_plan_t::b_buf_size() const {
-    int b_size = into<int>(b_layout.size());
+    int b_size = into<int>(size_bytes(b_layout));
     if (split_abc == abc_kind_t::b)
         b_size = utils::div_up(b_size, split_factor);
     return utils::rnd_up(b_size, grf_size());
@@ -976,8 +976,7 @@ int fma_plan_t::bmnk_stop_idx(bmnk_kind_t bmnk, int subtile_idx) const {
 stmt_t fma_plan_t::create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
         const std::string &a, const std::string &b, const std::string &c,
         int subtile_idx) const {
-    int c_buf_size
-            = into<int>(utils::rnd_up(c_layout.size(), ir_ctx.grf_size()));
+    int c_buf_size = into<int>(size_bytes(c_layout, ir_ctx.grf_size()));
     auto a_buf = buf_mgr.get(a);
     auto b_buf = buf_mgr.get(b);
     auto c_buf = buf_mgr.get(c, c_buf_size);
@@ -1005,9 +1004,9 @@ stmt_t fma_plan_t::create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
                 b_idx[2] = c_idx[2] = n;
                 for (int m = m0; m < m1; m += m_blk) {
                     a_idx[1] = c_idx[1] = m;
-                    dim_t a_off = a_layout.offset_in_bytes<dim_t>(a_idx);
-                    dim_t b_off = b_layout.offset_in_bytes<dim_t>(b_idx);
-                    dim_t c_off = c_layout.offset_in_bytes<dim_t>(c_idx);
+                    dim_t a_off = offset_in_bytes<dim_t>(a_layout, a_idx);
+                    dim_t b_off = offset_in_bytes<dim_t>(b_layout, b_idx);
+                    dim_t c_off = offset_in_bytes<dim_t>(c_layout, c_idx);
                     a_off = a_off % a_buf_size();
                     b_off = b_off % b_buf_size();
                     stmt = stmt.append(create_fma_block(fma_funcs, a_buf[a_off],
@@ -1077,7 +1076,7 @@ std::vector<func_t> fma_plan_t::create_fma_funcs(const hw_t &hw) const {
 }
 
 int fma_plan_t::estimate_regs() const {
-    return into<int>(utils::div_up(c_layout.size(), grf_size()));
+    return into<int>(utils::div_up(size_bytes(c_layout), grf_size()));
 }
 
 std::string fma_plan_t::str() const {
@@ -1121,7 +1120,7 @@ grf_usage_t plan_t::grf_usage() const {
     bool with_headers = !reuse_headers;
 
     int out_buf_regs = 0;
-    out_buf_regs += utils::div_up(fma.c_layout.size(), grf_size());
+    out_buf_regs += utils::div_up(size_bytes(fma.c_layout), grf_size());
     out_buf_regs += utils::div_up(slm.x_reduce.dst_buf_size(), grf_size());
     out_buf_regs += utils::div_up(x2r.x_reduce.dst_buf_size(), grf_size());
 

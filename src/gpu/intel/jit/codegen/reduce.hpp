@@ -49,7 +49,7 @@ public:
                     << "Inplace operation is supported for the same type only.";
         }
 
-        std::vector<bool> seen(src_layout_.size() * src_type.size());
+        std::vector<bool> seen(size_bytes(src_layout_));
 
         tile_t tile = find_1d_tile(src_layout_, dst_layout_);
         int tile_elems = (int)tile.elems();

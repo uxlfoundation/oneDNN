@@ -336,7 +336,7 @@ tensor_t def(
 }
 
 tensor_t def_slm(layout_t layout, const std::string &name) {
-    auto alloc_elems = into<int>(layout.size() / layout.type().size());
+    auto alloc_elems = into<int>(size_bytes(layout) / layout.type().size());
     auto buf = def(name, layout.type().with_slm()[alloc_elems]);
     int bytes = (to_cpp<int>(layout.offset()) + alloc_elems)
             * layout.type().size();
@@ -404,8 +404,7 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
     auto type = g.type;
 
     v2::for_each(operation_tile, tile, [&](const icoord_t &coord) {
-        auto buffer = is_prefetch ? expr_t()
-                                  : t.buf[t.layout.offset_in_bytes(coord)];
+        auto buffer = is_prefetch ? expr_t() : t.subbuf(coord);
         auto width = !w_idx.is_undef()
                 ? std::min(tile[w_idx], operation_tile[w_idx] - coord[w_idx])
                 : 1;
@@ -485,8 +484,7 @@ void block_2d_send(const conf_2d_t &conf, const tensor_t &t,
     auto tile = conf.get_tile({w_idx, h_idx});
 
     v2::for_each(operation_tile, tile, [&](const icoord_t &coord) {
-        auto buffer = is_prefetch ? expr_t()
-                                  : t.buf[t.layout.offset_in_bytes(coord)];
+        auto buffer = is_prefetch ? expr_t() : t.subbuf(coord);
         int width = into<int>(
                 std::min(tile[w_idx], operation_tile[w_idx] - coord[w_idx]));
         int height = into<int>(
@@ -606,18 +604,16 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
                     A.layout.type());
             // FIXME: This code can access out-of-bounds coordinates, adding
             // modulus to keep the old behavior with v2 layout.
-            auto get_offset = [](const layout_t &layout, icoord_t coord) {
+            auto get_coord = [](const tensor_t &t, icoord_t coord) {
                 for (auto &d : coord) {
-                    coord[d] = coord[d] % layout.tile().get(d, coord[d] + 1);
+                    coord[d] = coord[d] % t.layout.tile().get(d, coord[d] + 1);
                 }
-                return layout.offset_in_bytes(coord);
+                return coord;
             };
-            auto a_off = get_offset(A.layout, base + coord);
-            auto b_off = get_offset(B.layout, base + coord);
-            auto c_off = C.layout.offset_in_bytes(base + coord);
-            auto dst = C.buf[c_off];
-            auto src1 = A.buf[a_off];
-            auto src2 = B.buf[b_off];
+
+            auto dst = C.subbuf(base + coord);
+            auto src1 = A.subbuf(get_coord(A, base + coord));
+            auto src2 = B.subbuf(get_coord(B, base + coord));
             dpas_stmts.emplace_back(dpas.as<dpas_t>()(dst, dst, src1, src2));
         });
         append(inject_dpas_atomic(stmt_seq_t::make(dpas_stmts),
@@ -653,12 +649,9 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
                     C.layout.type(), simd, A.layout.type(), a_stride,
                     B.layout.type(), b_stride);
 
-            auto a_off = A.layout.offset_in_bytes(base + coord);
-            auto b_off = B.layout.offset_in_bytes(base + coord);
-            auto c_off = C.layout.offset_in_bytes(base + coord);
-            auto dst = C.buf[c_off];
-            auto src1 = A.buf[a_off];
-            auto src2 = B.buf[b_off];
+            auto dst = C.subbuf(base + coord);
+            auto src1 = A.subbuf(base + coord);
+            auto src2 = B.subbuf(base + coord);
 
             append(mad.as<mad_t>()(dst, dst, src1, src2));
         });
@@ -692,18 +685,18 @@ void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
     auto subtile_elems = matching_subtile.elems();
 
     v2::for_each(tile, matching_subtile, [&](const icoord_t &coord) {
-        auto offd = dst.layout.offset_in_bytes(coord);
-        auto off0 = src0.layout.offset_in_bytes(coord);
-        auto off1 = src1.layout.offset_in_bytes(coord);
+        auto dst_buf = dst.subbuf(coord);
+        auto src0_buf = src0.subbuf(coord);
+        auto src1_buf = src1.subbuf(coord);
 
         dim_t simd = default_ctx().simd();
         for (int idx = 0; idx < subtile_elems; idx += simd) {
             int elems = into<int>(std::min(subtile_elems - idx, simd));
             auto s0 = load_t::make(src0.layout.type().with_elems(elems),
-                    src0.buf, off0 + idx * src0.layout.type().size());
+                    src0.buf, idx * src0.layout.type().size());
             auto s1 = load_t::make(src1.layout.type().with_elems(elems),
-                    src1.buf, off1 + idx * src1.layout.type().size());
-            assign(dst.buf[offd + dst.layout.type().size() * idx],
+                    src1.buf, idx * src1.layout.type().size());
+            assign(dst_buf[dst.layout.type().size() * idx],
                     binary_op_t::make(op, s0, s1));
         }
     });

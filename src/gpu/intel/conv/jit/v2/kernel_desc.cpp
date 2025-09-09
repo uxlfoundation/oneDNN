@@ -884,7 +884,7 @@ dim_t stream_k_k_batches(const kernel_desc_t &desc, const problem_t &prb) {
     const size_t l3_size = prb.hw().l3_cache_size();
     auto a = to_layout(desc.layout_tag(tensor_kind_t::a), prb.shape());
     auto b = to_layout(desc.layout_tag(tensor_kind_t::b), prb.shape());
-    dim_t ab_size = a.size() + b.size();
+    dim_t ab_size = size_bytes(a) + size_bytes(b);
     return utils::div_up(2 * ab_size, l3_size);
 }
 
@@ -1058,8 +1058,8 @@ status_t kernel_desc_t::init_primitive_plan(
             user_name += "_user";
             scratchpad_key++;
             pd->scratchpad_registry().registrar().book(
-                    into<uint32_t>(scratchpad_key), compute_layout.size(), 1,
-                    OCL_BUFFER_ALIGNMENT);
+                    into<uint32_t>(scratchpad_key), size_bytes(compute_layout),
+                    1, OCL_BUFFER_ALIGNMENT);
             plan.add_internal_buffer(t.name, compute_layout, user_name,
                     scratchpad_key, zero_out);
             zero_out = false;

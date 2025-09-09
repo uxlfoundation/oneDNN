@@ -141,7 +141,7 @@ void reorder_2d_impl_t::emit(
     // Allocate a temporary GRF buffer if needed.
     copy_operand_t tmp;
     const auto &type = dst_.type();
-    auto elems = into<int>(dst_.size() * type.packing() / type.size());
+    auto elems = into<int>(size_bytes(dst_) * type.packing() / type.size());
     if (path_.size() > 1) tmp = plan.newTemp(to_ngen(type), elems, 1);
 
     // Iterate through found reorders.
@@ -672,7 +672,7 @@ layout_t reorder_impl_t::make_compact_layout(
     }(dense_output_stride);
     auto dense_size = dense.elems() * type.size() / type.packing()
             * dense_output_stride;
-    if (dense.size() <= dense_size) return dense;
+    if (size_bytes(dense) <= dense_size) return dense;
     for (auto &block : dense.blocks()) {
         dim_t input_stride = block.stride;
         blocks.push_back(block);
@@ -744,8 +744,8 @@ bool reorder_impl_t::try_emit_2d(copy_plan_t &plan,
 
         // Try to allocate/release a temporary buffer to avoid
         // out_of_registers exception.
-        auto tile_grfs
-                = into<int>(utils::div_up(dst_tile_layout.size(), grf_size));
+        auto tile_grfs = into<int>(
+                utils::div_up(size_bytes(dst_tile_layout), grf_size));
         ngen::GRFRange dummy;
         plan.alloc_grf(tile_grfs, dummy);
         if (dummy.isInvalid()) continue;

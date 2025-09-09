@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2024-2025 FUJITSU LIMITED
 * Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,8 +62,9 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             && expect_data_types(src_type, wei_type, data_type::undef, dst_type,
                     data_type::undef)
             && IMPLICATION(is_int8,
-                    one_of(bias_md_.data_type, data_type::undef, f32, s32, s8,
-                            u8))
+                    one_of(dst_type, u8, f32)
+                            && one_of(bias_md_.data_type, data_type::undef, f32,
+                                    s32, s8, u8))
             && IMPLICATION(!is_int8,
                     one_of(bias_md_.data_type, data_type::undef, f32, src_type))
             && attr()->has_default_values(skip_mask, dst_type)
@@ -78,7 +79,8 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             weights_md_, dst_md_, bias_md_, attr_, dnnl_get_max_threads()));
 
     // brgemm is slower than jit_sve when combined with reorders for shapes where strides < 2
-    if (jcp_.stride_w < 2 || jcp_.stride_h < 2) {
+    if (one_of(data_type::f32, src_type, wei_type)
+            && (jcp_.stride_w < 2 || jcp_.stride_h < 2)) {
         return status::unimplemented;
     }
     brgs_ = std::make_shared<brgemm_containers::brgemm_desc_container_t>(16);

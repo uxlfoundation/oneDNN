@@ -247,17 +247,6 @@ public:
 
     size_t get_hash() const { return ir_utils::get_hash(map_); }
 
-    void stringify(std::ostream &out) const {
-        if (is_empty()) {
-            out << "x";
-            return;
-        }
-        for (auto &d : *this) {
-            auto &value = operator[](d);
-            out << d << value;
-        }
-    }
-
     void parse(std::istream &in) {
         auto s = stream_parse<std::string>(in);
         if (s == "x") return;

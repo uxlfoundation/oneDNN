@@ -54,19 +54,18 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     // Matmul supports scales for floating point data types
     attr_mask |= smask_t::scales_data_type;
 
-    const bool src_is_int8
-            = utils::one_of(src_dt, data_type::s8, data_type::u8);
-    const bool src_is_fp8
-            = utils::one_of(src_dt, data_type::f8_e5m2, data_type::f8_e4m3);
-    if (src_is_int8 || src_is_fp8) attr_mask |= smask_t::zero_points;
+    using namespace data_type;
+    const bool src_is_int8 = utils::one_of(src_dt, s8, u8);
+    const bool src_is_fp8_fp4
+            = utils::one_of(src_dt, f8_e5m2, f8_e4m3, f4_e2m1);
+    if (src_is_int8 || src_is_fp8_fp4) attr_mask |= smask_t::zero_points;
     if (src_is_int8) attr_mask |= smask_t::precomputed_reductions;
 
     // Matmul supports zero points for floating point data types as part of
     // weights decompression.
-    const bool wei_is_int = utils::one_of(
-            wei_dt, data_type::s8, data_type::u8, data_type::s4, data_type::u4);
-    const bool wei_is_fp8_fp4 = utils::one_of(wei_dt, data_type::f8_e5m2,
-            data_type::f8_e4m3, data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool wei_is_int = utils::one_of(wei_dt, s8, u8, s4, u4);
+    const bool wei_is_fp8_fp4
+            = utils::one_of(wei_dt, f8_e5m2, f8_e4m3, f4_e2m1, f4_e3m0);
     if (wei_is_int || wei_is_fp8_fp4) {
         attr_mask |= smask_t::zero_points_data_type;
         attr_mask |= smask_t::zero_points_groups;
@@ -178,13 +177,14 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         }
 
         // Check dependency between scales.
-        // Source scales groups are supported for int8 source and must divide
-        // or be divided by weights groups when both are greater than 1.
+        // Source scales groups are supported for int8, fp8, and fp4 source
+        // and must divide or be divided by weights groups when both are
+        // greater than 1.
         const bool groups_are_divisible = quant_groups_are_divisible(
                 src_scale_group_k, wei_scale_group_k);
-        VCHECK_MATMUL_UNIMPL(
-                IMPLICATION(src_scale_group_k > 1,
-                        (src_is_int8 || src_is_fp8) && groups_are_divisible),
+        VCHECK_MATMUL_UNIMPL(IMPLICATION(src_scale_group_k > 1,
+                                     (src_is_int8 || src_is_fp8_fp4)
+                                             && groups_are_divisible),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
@@ -245,8 +245,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                                          wei_zero_point_group_n % 32 == 0),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
 
-            if (utils::one_of(zp.get_data_type(DNNL_ARG_WEIGHTS), data_type::s4,
-                        data_type::u4)) {
+            if (utils::one_of(zp.get_data_type(DNNL_ARG_WEIGHTS), s4, u4)) {
                 dim_t k = desc.weights_desc.dims[ndims_wei - 2];
                 dim_t n = desc.weights_desc.dims[ndims_wei - 1];
                 VCHECK_MATMUL_UNIMPL(
@@ -298,8 +297,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
             // Data type must be s32 so far.
             const auto pr_dt = pr.get_data_type(DNNL_ARG_SRC);
-            VCHECK_MATMUL_UNIMPL(
-                    pr_dt == data_type::s32, VERBOSE_UNSUPPORTED_PR_CFG);
+            VCHECK_MATMUL_UNIMPL(pr_dt == s32, VERBOSE_UNSUPPORTED_PR_CFG);
 
             if (!pr.get(DNNL_ARG_SRC).has_default_groups()) {
                 const dim_t src_pr_group_k = pr.get_group(DNNL_ARG_SRC, 1);

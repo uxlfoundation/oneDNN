@@ -17,7 +17,7 @@
 # limitations under the License.
 # *******************************************************************************
 import argparse
-from collections import defaultdict
+import ctest_utils
 import os
 import pathlib
 import subprocess
@@ -48,23 +48,6 @@ def create_github_message(results_dict):
     return message
 
 
-def parse_ctest(args):
-    with open(args.file) as f:
-        r = f.readlines()
-
-    failed_cases = defaultdict(list)
-    for l in r:
-        if ":FAILED" in l:
-            l = l.split("__REPRO: ")[1]
-            op = l.split(" ")[0]
-            failed_cases[op].append(l.replace("\n", ""))
-
-    if args.unique:
-        return [x[0] for x in failed_cases.values()]
-
-    return [x for xs in failed_cases.values() for x in xs]  # Flatten list
-
-
 def main():
     args_parser = argparse.ArgumentParser(
         description="oneDNN log converter",
@@ -78,7 +61,7 @@ def main():
         help="whether to return only one test case per unique op",
     )
     args = args_parser.parse_args()
-    cases = parse_ctest(args)
+    cases = ctest_utils.failed_benchdnn_tests(args.file, args.unique)
 
     results_dict = {}
     for case in cases:

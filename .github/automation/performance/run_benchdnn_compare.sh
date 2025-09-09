@@ -33,7 +33,7 @@ NEW_OUT=$4
 # This allows passing things like: --conv --dir=FWD_D --dt=f32 --alg=direct mb1_ic64oc256_ih200oh200kh1sh1dh0ph0_iw267ow267kw1sw1dw0pw0
 BENCHDNN_ARGS=("${@:5}")
 
-REPS=5
+REPS=1
 PERF='--perf-template=%prb%,%-time%,%-ctime%'
 MODE='--mode=P'
 

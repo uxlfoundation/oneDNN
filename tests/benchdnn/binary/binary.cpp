@@ -122,9 +122,10 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     // creating the primitive descriptor.
     auto src2_d = prb->is_ternary_op()
             ? dnn_mem_t::init_md(prb->ndims,
-                    prb->vdims.size() > 2 ? prb->vdims[2].data()
-                                          : prb->vdims[0].data(),
-                    dnnl_s8, prb->stag.size() > 2 ? prb->stag[2] : prb->stag[0])
+                      prb->vdims.size() > 2 ? prb->vdims[2].data()
+                                            : prb->vdims[0].data(),
+                      dnnl_s8,
+                      prb->stag.size() > 2 ? prb->stag[2] : prb->stag[0])
             : nullptr;
 
     TIME_C_PD(DNN_SAFE_STATUS(dnnl_binary_primitive_desc_create_v2(
@@ -137,6 +138,17 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     std::vector<dnnl_data_type_t> dts = {prb->sdt[0], prb->sdt[1], prb->ddt};
+    auto po = prb->attr.post_ops;
+    if (!po.is_def()) {
+        for (auto entry : prb->attr.post_ops.entry) {
+            if (entry.is_sum_kind()) dts.push_back(entry.sum.dt);
+            if (entry.is_binary_kind()) {
+                dts.push_back(entry.binary.src1_dt);
+                if (entry.is_binary_kind_with_ternary_op())
+                    dts.push_back(entry.binary.src2_dt);
+            };
+        }
+    }
     skip_unimplemented_data_type(dts, prb->dir, res);
     skip_unimplemented_arg_scale(prb->attr, res);
     skip_unimplemented_binary_po(prb->attr, res);

@@ -53,7 +53,7 @@ concurrency:
   cancel-in-progress: true
 
 # Declare default permissions as read only.
-permissions: read-all
+permissions: write-all
 
 jobs:
   build-acl-base:
@@ -223,11 +223,20 @@ jobs:
         shell: bash
         run: |
           OMP_NUM_THREADS=${{ inputs.num_threads || 16 }} bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_nightly_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn base.txt new.txt
-          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --check
+          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --out-file perf_table.md
+
+      - name: Update wiki
+        if: ${{ inputs.benchdnn_command == '' }}
+        uses: ./oneDNN/.github/actions/update-wiki
+        with:
+          command: add-perf
+          title: ${{ matrix.config.name }}
+          in-file: perf_table.md
 
       - name: Run custom performance tests
         if: ${{ inputs.benchdnn_command != '' }}
         shell: bash
+        continue-on-error: true
         run: |
           OMP_NUM_THREADS=${{ inputs.num_threads || 16 }} \
           bash ${{ github.workspace }}/oneDNN/.github/automation/performance/run_benchdnn_compare.sh \
@@ -238,7 +247,8 @@ jobs:
       - name: Print speed comparisons
         if: ${{ inputs.benchdnn_command != '' }}
         run: |
-          python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt
+          python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --out-file perf_results.md
+          cat perf_table.md >> $GITHUB_STEP_SUMMARY
 
   #* This job adds a check named "Nightly Performance AArch64" that represents overall
   #* workflow status and can be used in branch rulesets

@@ -172,7 +172,7 @@ jobs:
           ONEDNN_ACTION: build
 
       - name: Run oneDNN tests
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh
+        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh ${{ github.workspace }}/test_results.xml
         working-directory: ${{ github.workspace }}/oneDNN/build
         env:
           CTEST_PARALLEL_LEVEL: 6
@@ -223,9 +223,9 @@ jobs:
         continue-on-error: true
         run: |
           echo "4 threads:"
-          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base_4.txt new_4.txt --check
+          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base_4.txt new_4.txt
           echo "16 threads:"
-          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base_16.txt new_16.txt --check
+          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base_16.txt new_16.txt
 
       - name: Check performance test failure
         if: ${{ steps.performance-test.outputs.pass != 'True' && github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}

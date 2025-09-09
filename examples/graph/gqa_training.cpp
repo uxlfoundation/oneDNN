@@ -99,7 +99,7 @@ void print_test_case(logical_tensor::data_type dt, const gqa_dims_t &p) {
     std::cout << "] " << std::flush;
 }
 
-void bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
+bool bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
         dnnl::stream &strm, dnnl::engine &eng, const tensor &ts_query,
         const tensor &ts_key, const tensor &ts_scale, const tensor &ts_mask,
         const tensor &ts_value, tensor &ts_output, tensor &ts_stats,
@@ -174,7 +174,7 @@ void bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
     // This is just for oneDNN testing purpose.
     if (partitions.size() != 1) {
         std::cout << "unsupported gqa" << std::endl;
-        return;
+        return false;
     }
 
     // Compile the partition with inputs, outputs, and an engine.
@@ -194,7 +194,7 @@ void bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
     // Wait for the computation to finish.
     strm.wait();
 
-    if (quick_test) return;
+    if (quick_test) return true;
 
     // First run (forward).
     auto start_first = std::chrono::steady_clock::now();
@@ -219,9 +219,10 @@ void bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
     double avg_time = (duration.count() - dur_first.count()) / runs;
     std::cout << "forward graph runs: " << runs + 1 << "; ";
     std::cout << "avg_time: " << avg_time << " ms" << std::endl;
+    return true;
 }
 
-void bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
+bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
         dnnl::stream &strm, dnnl::engine &eng, const tensor &ts_query,
         const tensor &ts_key, const tensor &ts_scale, const tensor &ts_mask,
         const tensor &ts_value, const tensor &ts_output, const tensor &ts_stats,
@@ -390,7 +391,7 @@ void bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
     // This is just for oneDNN testing purpose.
     if (partitions.size() != 1) {
         std::cout << "unsupported gqa" << std::endl;
-        return;
+        return false;
     }
 
     // Compile the partition with inputs, outputs, and an engine.
@@ -412,7 +413,7 @@ void bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
     // Wait for the computation to finish.
     strm.wait();
 
-    if (quick_test) return;
+    if (quick_test) return true;
 
     // First run (backward).
     auto start_first = std::chrono::steady_clock::now();
@@ -441,6 +442,7 @@ void bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
     double avg_time = (duration.count() - dur_first.count()) / runs;
     std::cout << "backward graph runs: " << runs + 1 << "; ";
     std::cout << "avg_time: " << avg_time << " ms" << std::endl;
+    return true;
 }
 
 void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
@@ -496,8 +498,9 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     write_to_dnnl_tensor(value_data.data(), ts_value);
 
     // Run forward pass
-    bench_gqa_forward(ekind, dt, strm, eng, ts_query, ts_key, ts_scale, ts_mask,
-            ts_value, ts_output, ts_stats, time_limit);
+    bool success = bench_gqa_forward(ekind, dt, strm, eng, ts_query, ts_key,
+            ts_scale, ts_mask, ts_value, ts_output, ts_stats, time_limit);
+    if (!success) return;
 
     // Prepare output gradients
     const dims doutput_sz = ts_output.get_logical_tensor().get_dims();
@@ -507,6 +510,7 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     // Allocate and initialize gradients
     std::vector<float> doutput_data(product(doutput_sz));
     fill_random(doutput_data);
+    write_to_dnnl_tensor(doutput_data.data(), ts_doutput);
 
     // Run backward pass
     bench_gqa_backward(ekind, dt, strm, eng, ts_query, ts_key, ts_scale,

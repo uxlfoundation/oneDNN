@@ -1,0 +1,18 @@
+diff --git a/tests/benchdnn/binary/binary.cpp b/tests/benchdnn/binary/binary.cpp
+index 487d59d253..436b2dafe3 100644
+--- a/tests/benchdnn/binary/binary.cpp
++++ b/tests/benchdnn/binary/binary.cpp
+@@ -137,6 +137,13 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
+ 
+ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
+     std::vector<dnnl_data_type_t> dts = {prb->sdt[0], prb->sdt[1], prb->ddt};
++    auto po = prb->attr.post_ops;
++    if (po.is_def()) {
++        for (auto entry : prb->attr.post_ops.entry) {
++            if (entry.is_sum_kind()) dts.push_back(entry.sum.dt);
++        }
++        
++    }
+     skip_unimplemented_data_type(dts, prb->dir, res);
+     skip_unimplemented_arg_scale(prb->attr, res);
+     skip_unimplemented_binary_po(prb->attr, res);

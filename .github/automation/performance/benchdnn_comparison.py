@@ -21,7 +21,7 @@
 Compare two benchdnn runs.
 
 Usage:
-    python benchdnn_comparison.py baseline.csv new.csv --check
+    python benchdnn_comparison.py baseline.txt new.txt --out-file out.md
 """
 
 import os
@@ -38,7 +38,7 @@ def print_to_github_out(message):
             print(message.replace("\n", "%0A"), file=f)
 
 
-def compare_two_benchdnn(file1, file2, check=False):
+def compare_two_benchdnn(file1, file2, out_file=None):
     """
     Compare two benchdnn output files
     """
@@ -76,10 +76,12 @@ def compare_two_benchdnn(file1, file2, check=False):
         r2_ctime[key].append(float(ctime))
 
     exec_failures, ctime_failures = [], []
-    if not check:
-        print(
-            "primitive,exec_base,exec_new,ctime_base,ctime_new,exec_diff,ctime_diff"
-        )
+    if out_file is not None:
+        with open(out_file, "w") as f:
+            f.write(
+                "| problem | base time(ms) | new time(ms) | speedup |\n"
+                + "| :---: | :---: | :---: | :---:|\n"
+            )
 
     for prb in r1_exec:
         if prb not in r2_exec:
@@ -128,38 +130,48 @@ def compare_two_benchdnn(file1, file2, check=False):
                 f"(p={ctime_ttest.pvalue:.3g})"
             )
 
-        if not check:
-            print(
-                f"{prb},{r1_med_exec:.3g},{r2_med_exec:.3g},"
-                f"{r1_med_ctime:.3g},{r2_med_ctime:.3g},"
-                f"{(r2_med_exec - r1_med_exec)/r1_med_exec:.1%},"
-                f"{(r2_med_ctime - r1_med_ctime)/r1_med_ctime:.1%}"
+        if out_file is not None:
+            colour = (
+                "green"
+                if r1_med_exec > r2_med_exec * 1.1
+                else "red" if r2_med_exec > r1_med_exec * 1.1 else "white"
             )
-
-    if check:
-        print_to_github_out(f"pass={not exec_failures}")
-
-        message = ""
-        if ctime_failures:
-            message += (
-                "\n----The following ctime regression tests failed:----\n"
-                + "\n".join(ctime_failures)
-                + "\n"
+            speedup_string = (
+                "$${\\color{"
+                + colour
+                + "}"
+                + f"{(r1_med_exec)/r2_med_exec:.3g}x"
+                + "}$$"
             )
+            with open(out_file, "a") as f:
+                f.write(
+                    f'|{prb.replace("--mode=P ", "")}|{r1_med_exec:.3g}|{r2_med_exec:.3g}|{speedup_string}|\n'
+                )
 
-        if not exec_failures:
-            print_to_github_out(f"message={message}")
-            print(message)
-            print("Execution Time regression tests passed")
-        else:
-            message += (
-                "\n----The following exec time regression tests failed:----\n"
-                + "\n".join(exec_failures)
-                + "\n"
-            )
-            print_to_github_out(f"message={message}")
-            print(message)
-            raise Exception("Some regression tests failed")
+    print_to_github_out(f"pass={not exec_failures}")
+
+    message = ""
+    if ctime_failures:
+        message += (
+            "\n----The following ctime regression tests failed:----\n"
+            + "\n".join(ctime_failures)
+            + "\n"
+        )
+
+    if not exec_failures:
+        print_to_github_out(f"message={message}")
+        print(message)
+        print("Execution Time regression tests passed")
+    else:
+        message += (
+            "\n----The following exec time regression tests failed:----\n"
+            + "\n".join(exec_failures)
+            + "\n"
+        )
+        print_to_github_out(f"message={message}")
+        print(message)
+        raise Exception("Some regression tests failed")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -168,8 +180,8 @@ if __name__ == "__main__":
     parser.add_argument("file1", help="Path to baseline result file")
     parser.add_argument("file2", help="Path to new result file")
     parser.add_argument(
-        "--check", action="store_true", help="Enable regression checks"
+        "--out-file", help="md file to output performance results to"
     )
     args = parser.parse_args()
 
-    compare_two_benchdnn(args.file1, args.file2, check=args.check)
+    compare_two_benchdnn(args.file1, args.file2, args.out_file)

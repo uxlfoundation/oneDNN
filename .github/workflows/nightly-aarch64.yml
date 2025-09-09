@@ -32,7 +32,7 @@ concurrency:
   cancel-in-progress: true
 
 # Declare default permissions as read only.
-permissions: read-all
+permissions: write-all
 
 jobs:
   build-acl-cache:
@@ -175,6 +175,13 @@ jobs:
         working-directory: ${{ github.workspace }}/oneDNN
         run: python .github/automation/aarch64/bisect_ctest.py --unique ${{ steps.get-stable.outputs.stable-hash }} test_results.txt
 
+      - name: Update wiki
+        if: success() || failure()
+        uses: ./oneDNN/.github/actions/update-wiki
+        with:
+          command: add-unit
+          title: ${{ matrix.config.name }}
+          in-file: test_results.xml
 
   #* This job adds a check named "Nightly AArch64" that represents overall
   #* workflow status and can be used in branch rulesets

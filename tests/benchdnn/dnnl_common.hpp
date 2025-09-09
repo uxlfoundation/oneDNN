@@ -310,7 +310,6 @@ int check_caches(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
 template <typename prb_t>
 int check_dnnl_status(dnnl_status_t status, const prb_t *prb, res_t *res) {
     if (!res || status == dnnl_success) return OK;
-
     switch (status) {
         case dnnl_invalid_arguments: res->state = INVALID_ARGUMENTS; break;
         case dnnl_unimplemented: {

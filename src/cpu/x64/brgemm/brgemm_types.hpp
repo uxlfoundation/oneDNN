@@ -238,6 +238,8 @@ struct DNNL_API brgemm_attr_t {
     // static_offsets is a static array of fixed offsets used for
     // brgemm_static_offs batch kind
     const brgemm_batch_element_t *static_offsets;
+    // hint whether to use on the fly copy of A due to unaligned accesses
+    bool hint_use_otf = false;
 };
 
 struct brgemm_desc_t {
@@ -254,6 +256,8 @@ struct brgemm_desc_t {
     int LDB = 0;
     int LDC = 0;
     int LDD = 0;
+
+    bool otf = false;
     // we use two isa_ variables
     // isa_user to store the user provided isa value
     // isa_impl to store actual implementation. This can change until the kernel
@@ -450,6 +454,11 @@ struct brgemm_desc_t {
             sz = get_num_C_tiles() * tilesize; // postops buffer
             sz += get_convert_wsp_buffer_size();
             if (amx_wary_k_tail()) sz += tilesize;
+            if (otf) {
+                sz += brgattr.max_bs * bcast_dim
+                        * dnnl::impl::utils::rnd_up(reduce_dim, max_rd_block())
+                        * typesize_A;
+            }
         }
         return sz;
     }

@@ -532,6 +532,17 @@ status_t brgemm_desc_set_attr(
         return status::unimplemented;
     }
 
+    // OTF already copies A for the BRGEMM. No need for partial copy.
+    if (brgattr.hint_use_otf
+            && (brgattr.extendable_k || brgattr.wary_A_k_tail_read)) {
+        return status::unimplemented;
+    }
+
+    if (!IMPLICATION(
+                brgattr.hint_use_otf, is_superset(brg->isa_impl, amx_tile))) {
+        return status::unimplemented;
+    }
+
     brg->prfA = brgattr.hint_prfA;
     brg->prfB = brgattr.hint_prfB;
     brg->prfC = brgattr.hint_prfC;
@@ -547,6 +558,8 @@ status_t brgemm_desc_set_attr(
     if (brgattr.hint_prefetching == brgemm_kernel_prefetching_t::brgemm_prf2
             && brg->prfC.dist2 < 0)
         brg->prfC.dist2 = 0;
+
+    if (brgattr.hint_use_otf) brg->otf = true;
 
     if (brg->is_fp8
             && !utils::one_of(true,

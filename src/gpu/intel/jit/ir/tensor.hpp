@@ -549,22 +549,7 @@ public:
         return is_outermost(eb, blocks_);
     }
 
-    bool is_plain() const {
-        pvar_map_t<bool> seen;
-        for (auto &b : blocks_) {
-            if (seen.has(b.dim)) return false;
-            seen[b.dim] = true;
-        }
-        return true;
-    }
-
     bool has_zero_offset() const { return offset_.is_equal(expr_t(0)); }
-
-    bool has_unknown_strides() const {
-        for (auto &b : blocks_)
-            if (b.stride.is_unknown()) return true;
-        return false;
-    }
 
     // Returns a canonical representation of the layout:
     // - Size one blocks are removed

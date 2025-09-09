@@ -833,7 +833,7 @@ inline void RegData::fixup(HW hw, int execSize, int execWidth, DataType defaultT
             int maxWidth = 32 / getBytes();
             width = (hs == 0) ? 1 : std::min<int>({int(maxWidth / hs), execSize, 16});
             vs = width * hs;
-            if (arity == 3 && hw >= HW::Gen12LP && vs == 2 && srcN < 2) {
+            if (arity == 3 && hw >= HW::Gen12LP && vs == 2 && srcN >= 0 && srcN < 2) {
 #ifdef NGEN_SAFE
                 if (hs != 1) throw invalid_region_exception();
 #endif

@@ -159,9 +159,11 @@ public:
         if (!reg_layout_.is_empty()) {
             if (needs_reduction()) {
                 tile_coord_t reduce_tile(_tile_coord.tile, tile_coord.coord);
-                ret.reg_layout_ = ret.reg_layout_.sub(reduce_tile);
+                ret.reg_layout_ = ret.reg_layout_.sub(
+                        reduce_tile.tile, reduce_tile.coord);
             } else {
-                ret.reg_layout_ = ret.reg_layout_.sub(tile_coord);
+                ret.reg_layout_ = ret.reg_layout_.sub(
+                        tile_coord.tile, tile_coord.coord);
             }
         }
         ret.allocs_.clear();
@@ -905,7 +907,8 @@ private:
         // Iterate by tiles and apply post-ops.
         c_mem_view_.for_each_tile(base_tile, [&](const icoord_t &start) {
             tile_coord_t tile_coord(base_tile, start);
-            auto c_tile_layout = c_reg_layout.sub(tile_coord);
+            auto c_tile_layout
+                    = c_reg_layout.sub(tile_coord.tile, tile_coord.coord);
             build_tile(tile_coord, c_tile_layout, c_reg_buf);
         });
 

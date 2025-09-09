@@ -764,3 +764,8 @@ __itt_pt_write:
 //        ptwrite rcx
         .byte   0xF3, 0x48, 0x0F, 0xAE, 0xE1
         ret
+
+// Ensure the stack is non-executable
+#if defined(__ELF__)
+.section .note.GNU-stack,"",@progbits
+#endif

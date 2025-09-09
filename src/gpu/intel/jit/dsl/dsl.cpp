@@ -46,12 +46,12 @@ struct ctx_t {
 
         if (new_ir_api_) {
             for (int i = 0; i < 3; i++) {
-                local_sizes_[i] = var_t::make(local_size_type(),
-                        std::string("local_size_") + "012"[i]);
+                local_sizes_[i] = var_t::make(
+                        local_size_type(), ir_builder_t::local_size(i));
                 local_ids_[i] = var_t::make(
-                        local_id_type(), std::string("local_id_") + "012"[i]);
+                        local_id_type(), ir_builder_t::local_id(i));
                 group_ids_[i] = var_t::make(
-                        group_id_type(), std::string("group_id_") + "012"[i]);
+                        group_id_type(), ir_builder_t::group_id(i));
             }
         } else {
             for (int i = 0; i < interface.nargs(); i++) {

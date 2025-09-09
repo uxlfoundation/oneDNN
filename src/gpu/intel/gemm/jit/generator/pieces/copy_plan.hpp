@@ -145,10 +145,9 @@ struct CopyResource
 {
     friend class CopyPlan;
 
-    enum Kind : uint32_t {
+    enum Kind : uint64_t {
         null = 0,
-        f_0x7E000000,
-        f_0xBF000000,
+        constantBase = 0x100000000,
     } kind;
     CopyOperand src;
     bool preinitialized = true;
@@ -158,8 +157,10 @@ struct CopyResource
     template <typename Generator>
     inline void initialize(Generator &g);
 
+    static Kind makeConstant32(uint32_t c);
+
 protected:
-    std::tuple<const uint8_t*, int> getData() const;
+    int getData(std::array<uint8_t, 64> &data) const;
 };
 
 class CopyPlan
@@ -231,16 +232,16 @@ protected:
     void planTypeConversions();
     void planEarlyInt4Upconversions();
     void planEmulatedHalveFloat(CopyInstruction &i);
-    void planSmallUWToHF(CopyInstruction &i);
-    void planSmallUWToBF(CopyInstruction &i);
     void planInt8ToHF(CopyInstruction &i);
     void planInt8ToBF(CopyInstruction &i);
-    void planS4ToF16(CopyInstruction &i);
+    void planInt4ToF16(CopyInstruction &i);
     void planUnpack4To16(CopyInstruction &i);
     void planUnpack8To16High(CopyInstruction &i);
     void planInt4Upconversion(CopyInstruction &i);
+    void plan4BitShifts(CopyInstruction &i);
     void planInt4Downconversion(CopyInstruction &i);
     void planEmulatedSIMD1(CopyInstruction &i);
+    void planEmulatedBF8ToBF(CopyInstruction &i);
     void planEmulatedHF8ToHF(CopyInstruction &i);
     void planEmulatedHF8ToBF(CopyInstruction &i);
     void planEmulatedHFToHF8(CopyInstruction &i);
@@ -249,7 +250,7 @@ protected:
     void planEmulatedNF4ToHF(CopyInstruction &i);
     void planEmulatedHFToF4(CopyInstruction &i);
     void planE8M0ToF(CopyInstruction &i);
-    void emulateBooleanFunction();
+    void planBFNEmulation();
     void legalizeSIMD(bool initial = false);
     void legalizeRegions();
     void legalizeNegation();
@@ -266,6 +267,9 @@ protected:
     void optimizeMoveToIntPipe();
 
     CopyOperand bfImmediate(uint16_t bits, bool ternary);
+    CopyOperand zipImmediates(const CopyOperand &o1, const CopyOperand &o2);
+
+    bool bfArithmeticOK(const CopyInstruction &i) const;
 };
 
 
@@ -360,14 +364,13 @@ void CopyResource::initialize(Generator &g)
 {
     using namespace ngen;
 
-    const uint8_t *data;
-    int n;
-    std::tie(data, n) = getData();
+    std::array<uint8_t, 64> data;
+    int n = getData(data);
 
-    auto dataUQ = (const uint64_t *) data;
-    auto dataDF = (const double *)   data;
-    auto dataUD = (const uint32_t *) data;
-    auto dataF = (const float *)     data;
+    auto dataUQ = (const uint64_t *) &data[0];
+    auto dataDF = (const double *)   &data[0];
+    auto dataUD = (const uint32_t *) &data[0];
+    auto dataF  = (const float *)    &data[0];
     int n32 = (n + 3) >> 2;
 
     bool do64 = (g.getHardware() >= HW::XeHPC);

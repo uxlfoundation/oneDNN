@@ -103,7 +103,9 @@ struct slm_plan_t : public base_plan_t {
     explicit operator bool() const { return has_a() || has_b(); }
     bool has_a() const { return (bool)a_g2s_load; }
     bool has_b() const { return (bool)b_g2s_load; }
-    int slm_size() const { return (int)(a_layout.size() + b_layout.size()); }
+    int slm_size() const {
+        return (int)(size_bytes(a_layout) + size_bytes(b_layout));
+    }
     std::string str() const;
 
     IR_DEFINE_DUMP()
@@ -147,14 +149,14 @@ struct x2r_plan_t : public base_plan_t {
     void set_split(abc_kind_t abc = abc_kind_t::undef, int factor = 1);
 
     int a_buf_size() const {
-        int a_size = into<int>(a_layout.size());
+        int a_size = into<int>(size_bytes(a_layout));
         if (split_abc == abc_kind_t::a)
             a_size = utils::div_up(a_size, split_factor);
         return utils::rnd_up(a_size, grf_size());
     }
 
     int b_buf_size() const {
-        int b_size = into<int>(b_layout.size());
+        int b_size = into<int>(size_bytes(b_layout));
         if (split_abc == abc_kind_t::b)
             b_size = utils::div_up(b_size, split_factor);
         return utils::rnd_up(b_size, grf_size());

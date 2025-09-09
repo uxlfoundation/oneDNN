@@ -290,10 +290,10 @@ public:
     }
 
     int wei_reg_buf_size() const {
-        gpu_assert(b_layout_.size()
+        gpu_assert(size_bytes(b_layout_)
                         % (sdepth_ * simd_ * dpas_type(data_type_).size())
                 == 0);
-        return utils::rnd_up(into<int>(b_layout_.size()), grf_size());
+        return into<int>(size_bytes(b_layout_, grf_size()));
     }
 
     int estimate_regs() const {
@@ -335,7 +335,7 @@ public:
         wei_load = simd_bcast(load_t::make(
                 dpas_type(data_type_), (size > 1) ? dpas_buf : wei_buf, 0));
         b_layout_.for_each_tile(tile, [&](const icoord_t &start) {
-            auto off = b_layout_.offset_in_bytes<int>(start);
+            auto off = offset_bytes<int>(b_layout_, start);
             auto mask = (small_ic) ? kw_var < simd_bcast(kw - start.get(kw_idx))
                                    : expr_t();
             for (int i = 0; i < tile.elems(); i += sdepth_size)
@@ -392,11 +392,12 @@ public:
     int ndims() const { return comp_layout_.ndims(); }
 
     int fill_reg_buf_size() const {
-        return utils::rnd_up(into<int>(src_layout_.size()), grf_size());
+        return into<int>(size_bytes(src_layout_, grf_size()));
     }
 
     int comp_reg_buf_size() const {
-        int ret = utils::div_up(into<int>(comp_layout_.size()), split_factor_);
+        int ret = utils::div_up(
+                into<int>(size_bytes(comp_layout_)), split_factor_);
         ret = utils::rnd_up(ret, grf_size());
         return ret;
     }
@@ -457,7 +458,7 @@ public:
                 dpas_buf, 0, -load_t::make(type_t::s8(), src_buf, 0)));
         stmt = stmt.append(int8_bcast4(dpas_buf));
         auto fill = simd_bcast(load_t::make(type_t::u32(), dpas_buf, 0));
-        for (int i = 0; i < src_layout_.size(); i += simd_ * 4)
+        for (int i = 0; i < size_bytes(src_layout_); i += simd_ * 4)
             stmt = stmt.append(store_t::make(dpas_buf, i, fill));
         return stmt;
     }
@@ -622,12 +623,13 @@ private:
     tile_t get_simd_tile() const { return tile_t({{simd_dim_idx_, simd_}}); }
 
     int get_comp_off(const icoord_t &start) const {
-        int off = comp_layout_.offset_in_bytes<int>(start);
+        int off = offset_bytes<int>(comp_layout_, start);
         return off % comp_reg_buf_size();
     }
 
     int wei_reg_buf_size() const {
-        int ret = utils::div_up(into<int>(wei_layout_.size()), split_factor_);
+        int ret = utils::div_up(
+                into<int>(size_bytes(wei_layout_)), split_factor_);
         ret = utils::rnd_up(ret, grf_size());
         return ret;
     }
@@ -635,7 +637,7 @@ private:
     int get_wei_off(const icoord_t &_start, int ck) const {
         auto start = _start;
         start[ck_idx_] = ck;
-        int off = wei_layout_.offset_in_bytes<int>(start);
+        int off = offset_bytes<int>(wei_layout_, start);
         return off % wei_reg_buf_size();
     }
 
@@ -643,7 +645,7 @@ private:
         icoord_t start(2);
         if (_start.has(g_idx_)) start[0] = _start[g_idx_];
         start[1] = is_zp_common() ? 0 : ck;
-        int off = zp_layout_.offset_in_bytes<int>(start);
+        int off = offset_bytes<int>(zp_layout_, start);
         return off;
     }
 
@@ -1079,7 +1081,7 @@ public:
     explicit operator bool() const { return !mask_layout_.is_empty(); }
 
     int mask_reg_buf_size() const {
-        return utils::rnd_up(into<int>(mask_layout_.size()), grf_size());
+        return into<int>(size_bytes(mask_layout_, grf_size()));
     }
 
     int estimate_regs() const {
@@ -1193,7 +1195,7 @@ private:
     }
 
     int get_mask_off(const icoord_t &start) const {
-        int off = mask_layout_.offset_in_bytes<int>(start);
+        int off = offset_bytes<int>(mask_layout_, start);
         return off;
     }
 
@@ -1370,7 +1372,7 @@ private:
     }
 
     int comp_reg_buf_size(const split_dispatcher_t &sd) const {
-        int ret = (int)comp_layout_.size();
+        int ret = (int)size_bytes(comp_layout_);
         if (sd.abc() == abc_kind_t::b) {
             ret = utils::div_up(ret, sd.factor());
         }
@@ -1381,7 +1383,7 @@ private:
             const split_dispatcher_t &sd) const {
         auto start = sd.c_to_comp(_start);
         start[comp_kw_idx_] = kw;
-        int off = comp_layout_.offset_in_bytes<int>(start);
+        int off = offset_bytes<int>(comp_layout_, start);
         return off % comp_reg_buf_size(sd);
     }
 
@@ -1391,12 +1393,12 @@ private:
         auto start = _start;
         int mask_kw_idx = mask_layout_.ndims() - 1;
         start[mask_kw_idx] = kw;
-        int off = mask_layout_.offset_in_bytes<int>(start);
+        int off = offset_bytes<int>(mask_layout_, start);
         return off;
     }
 
     int get_c_off(const icoord_t &start, int kw) const {
-        int off = c_layout_.offset_in_bytes<int>(start);
+        int off = offset_bytes<int>(c_layout_, start);
         return off;
     }
 

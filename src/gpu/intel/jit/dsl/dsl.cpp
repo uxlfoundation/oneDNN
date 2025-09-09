@@ -349,7 +349,7 @@ tensor_t def(const std::string &name, layout_t layout, const expr_t &value,
         type::attr_t attr) {
     if (any(attr & type::attr_t::slm)) {
         gpu_assert(value.is_empty());
-        auto alloc_elems = into<int>(layout.size() / layout.type().size());
+        auto alloc_elems = into<int>(size_bytes(layout) / layout.type().size());
         auto buf = def(name, layout.type().with_slm()[alloc_elems]);
         int bytes = (to_cpp<int>(layout.offset()) + alloc_elems)
                 * layout.type().size();

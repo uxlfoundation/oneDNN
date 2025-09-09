@@ -721,11 +721,11 @@ struct send_2d_params_t {
             t[w_tidx] = expr_t(0);
             t[h_tidx] = expr_t(0);
         }
-        auto ret = tlayout.offset_in_bytes(t);
+        auto ret = offset_bytes(tlayout, t);
         if (h_vstride != 1) {
             coord_t t(targs.size());
             t[h_tidx] = targs[h_tidx] % h_vstride;
-            ret += tlayout.offset_in_bytes(t);
+            ret += offset_bytes(tlayout, t);
         }
         return ret;
     }
@@ -917,7 +917,7 @@ public:
         if (tile_coord.is_invalid()) return;
 
         layout.for_each_tile(tile_coord.tile, [&](const icoord_t &start) {
-            int off = layout.offset_in_bytes<int>(start);
+            int off = offset_bytes<int>(layout, start);
             offs_.push_back(off);
         });
     }
@@ -1395,7 +1395,7 @@ private:
             x_base_ = p2d.to_x(tstart);
             y_base_ = p2d.to_y(tstart);
         } else {
-            addr_base_ = vlayout_.offset_in_bytes();
+            addr_base_ = offset_bytes(vlayout_);
         }
         addr_base_ = simplify(addr_base_);
     }
@@ -1775,7 +1775,7 @@ private:
         int base_align = block_2d_base_alignment(info_.hw());
 
         // TODO: move unaligned portion of offset to block start x
-        auto offset = info_.view().tlayout().offset_in_bytes();
+        auto offset = offset_bytes(info_.view().tlayout());
         if (!is_const(offset) || to_cpp<int64_t>(offset) % base_align)
             return fail_2d("Unsupported base alignment: ", base_align);
 
@@ -2539,7 +2539,7 @@ send_group_t init_2d(const view_info_t &info, view_iterator_t &it,
     ret.mask_inc = it.get_mask(ret.mask_bits);
     int grf_size = info.grf_size();
     reg_layout = params.reg_layout(grf_size, vlayout.ndims(), vlayout.type());
-    ret.pad_bytes = into<int>(utils::rnd_up(reg_layout.size(), grf_size));
+    ret.pad_bytes = into<int>(size_bytes(reg_layout, grf_size));
     return ret;
 }
 
@@ -2773,7 +2773,7 @@ send_plan_t create_send_plan(const exec_config_t &exec_cfg, const view_t &view,
 
     int reg_buf_size = send_params.is_prefetch()
             ? 0
-            : into<int>(utils::rnd_up(reg_layout.size(), base_group.pad_bytes));
+            : into<int>(size_bytes(reg_layout, base_group.pad_bytes));
     auto ret = utils::make_unique<fast_send_plan_t>(
             info, reg_layout, reg_buf_size);
     base_group.add_block(0, vec_off_t(base_group.nmasks(), 0), 0);

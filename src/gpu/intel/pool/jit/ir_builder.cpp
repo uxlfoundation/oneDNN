@@ -435,7 +435,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
         const auto values = gen_fill_values(simd, isneg, layout.type());
         layout.for_each_tile(tile, [&](const icoord_t &s) {
             const dim_t off = layout.offset<dim_t>(s) * layout.type().size();
-            if (off >= utils::rnd_dn(layout.size(), simd * 4))
+            if (off >= utils::rnd_dn(size_bytes(layout), simd * 4))
                 retn = retn.append(store_t::make(buf, off, values.first));
             else if (off % (simd * 4) == 0)
                 retn = retn.append(store_t::make(buf, off, values.second));

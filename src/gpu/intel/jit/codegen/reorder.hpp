@@ -397,7 +397,7 @@ private:
 
     dim_t size_in_elems(const layout_t &layout) {
         const auto &type = layout.type();
-        return layout.size() * type.packing() / type.size();
+        return size_bytes(layout) * type.packing() / type.size();
     }
 
     type_t intermediate_data_type(const type_t &s, const type_t &d) const {

@@ -471,7 +471,7 @@ public:
     const layout_t &reg_layout() const { return reg_layout_; }
     int reg_buf_size() const {
         if (reg_buf_size_ == 0)
-            return into<int>(utils::rnd_up(reg_layout_.size(), grf_size()));
+            return into<int>(size_bytes(reg_layout_, grf_size()));
         return reg_buf_size_;
     }
     const stmt_t &stmt() const { return stmt_; }

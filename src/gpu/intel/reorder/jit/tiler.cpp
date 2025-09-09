@@ -189,7 +189,7 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
     };
 
     auto add_pseudo_dimension = [](const layout_t &l) {
-        auto layout_size = l.size();
+        auto layout_size = size_bytes(l);
         return [=](const tile_t &t) {
             auto dims = t.values();
             dims.push_back(layout_size);

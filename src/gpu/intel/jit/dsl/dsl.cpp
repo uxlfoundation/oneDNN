@@ -52,7 +52,11 @@ struct ctx_t {
                         local_id_type(), ir_builder_t::local_id(i));
                 group_ids_[i] = var_t::make(
                         group_id_type(), ir_builder_t::group_id(i));
+                subgroup_ids_[i] = def("subgroup_id" + std::to_string(i),
+                        extract((local_id(i) / (i == 0 ? simd() : 1)), 0));
             }
+            subgroup_local_id_
+                    = def("subgroup_local_id", local_ids_[0] & (simd() - 1));
         } else {
             for (int i = 0; i < interface.nargs(); i++) {
                 const auto &var = interface.arg_var(i);
@@ -97,6 +101,8 @@ struct ctx_t {
     const expr_t &local_id(int idx) const { return local_ids_[idx]; }
     const std::array<expr_t, 3> &local_sizes() const { return local_sizes_; }
     const expr_t &local_size(int idx) const { return local_sizes_[idx]; }
+    const expr_t &subgroup_id(int idx) const { return subgroup_ids_[idx]; }
+    const expr_t &subgroup_local_id() const { return subgroup_local_id_; }
 
     expr_t arg(const std::string &name, bool allow_empty = false) {
         auto a = interface_.find_arg(name, allow_empty);
@@ -236,6 +242,8 @@ private:
     std::array<expr_t, 3> group_ids_;
     std::array<expr_t, 3> local_ids_;
     std::array<expr_t, 3> local_sizes_;
+    std::array<expr_t, 3> subgroup_ids_;
+    expr_t subgroup_local_id_;
     bool new_ir_api_ = false;
     int slm_byte_offset_ = 0;
 };
@@ -309,8 +317,11 @@ const expr_t &local_size(int idx) {
 }
 
 expr_t subgroup_id(int idx) {
-    int simd = default_ctx().ir_ctx()->exec_cfg().simd();
-    return extract((local_id(idx) / simd), 0);
+    return default_ctx().subgroup_id(idx);
+}
+
+expr_t subgroup_local_id() {
+    return default_ctx().subgroup_local_id();
 }
 
 expr_t arg(const std::string &name, bool allow_empty) {

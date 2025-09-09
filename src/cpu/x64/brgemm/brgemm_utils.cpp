@@ -663,6 +663,8 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     if (brg->amx_may_extend_k()) {
         brg->rd_block = nstl::min(
                 rnd_up(brg->reduce_dim, brg->rd_step), max_rd_block);
+    } else if (brg->fused_copy_a) {
+        brg->rd_block = max_rd_block;
     } else {
         brg->rd_block = rd_block_step;
         for (int i = max_rd_block; i > 0; i -= rd_block_step) {
@@ -681,7 +683,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     // TODO: these checks do not work for fp8-f16 and f16-fp8 cfgs
     if (!IMPLICATION(brg->rdb > 0 && brg->rdb_tail,
                 brg->is_tf32 || brg->is_input_convert()
-                        || brg->amx_wary_k_tail())) {
+                        || brg->amx_wary_k_tail() || brg->fused_copy_a)) {
         return status::unimplemented;
     }
 
@@ -689,7 +691,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                              % ((brg->is_bf16_tmm || brg->is_f16_tmm) ? 2 : 4))
                         != 0,
                 brg->is_tf32 || brg->is_input_convert()
-                        || brg->amx_wary_k_tail())) {
+                        || brg->amx_wary_k_tail() || brg->fused_copy_a)) {
         return status::unimplemented;
     }
 

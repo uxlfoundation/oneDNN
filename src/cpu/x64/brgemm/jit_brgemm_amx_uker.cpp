@@ -536,10 +536,16 @@ private:
 
     bool maybe_pre_process_k_tail(brgemm_iteration_t &bi, int bdb,
             const Tmm &t1, reg64_t reg_base, size_t offset, reg64_t reg_stride,
-            matrix_kind_t mk);
+            matrix_kind_t mk, bool use_memadvice);
+
+    void pre_process_k_tail_fused_copy_a(brgemm_iteration_t &bi, int bdb,
+            const Tmm &t1, reg64_t reg_base, size_t offset_src,
+            size_t offset_dst, bool mem_advice_A);
 
     void maybe_tileloadd_nt(
             brgemm_iteration_t &bi, matrix_kind_t mk, int xdb, size_t offset);
+
+    void maybe_fused_copy_A_nt_load(brgemm_iteration_t &bi, int bdb);
 
     void maybe_sprinkle_prefetches();
 
@@ -580,6 +586,9 @@ private:
     size_t A_offset(
             const brgemm_iteration_t &bi, int bdb, int rdb = 0) const noexcept;
 
+    size_t A_offset_wsp(
+            const brgemm_iteration_t &bi, int bdb, int rdb = 0) const noexcept;
+
     size_t A_offset_line(const brgemm_iteration_t &bi, int bdb, int rdb = 0,
             int bd_elem_idx = 0) const noexcept;
 
@@ -616,6 +625,10 @@ private:
     bd_iteration_t *find_similar(const bd_iteration_t *bdi, bool apply_postops);
 
     void fill_imap();
+    void copy_k_tail_to_wsp(const Tmm &t1,
+            jit_brgemm_amx_uker_base_t::reg64_t &reg_base, size_t src_offset,
+            jit_brgemm_amx_uker_base_t::reg64_t &reg_src_stride,
+            bool use_memadvice);
 };
 
 bool jit_brgemm_amx_uker_base_t::bi_shift_output(
@@ -721,6 +734,26 @@ int jit_brgemm_amx_uker_base_t::skipped_bd_mask(int inp_bd) noexcept {
         return inp_bd;
     else
         return skipped_bd_mask_buffer_[inp_bd];
+}
+
+size_t jit_brgemm_amx_uker_base_t::A_offset_wsp(
+        const brgemm_iteration_t &bi, int bdb, int rdb) const noexcept {
+    // Full WSP buffer layout:
+    //   1. partial C results.
+    //   2. data type conversion.
+    //   3. Wary K: No need to reserve space since it is mutually exclusive with fused copy A.
+    //   4. Fused copy A with layout: [bs][k / rd_block][m][k = rd_block]
+    auto transform_offset = brg.get_num_C_tiles() * brgemm_desc_t::tilesize
+            + brg.get_convert_wsp_buffer_size();
+
+    const auto bs_offs = bi.bsi->pos * brg.bcast_dim
+            * rnd_up(brg.reduce_dim, brg.max_rd_block()) * brg.typesize_A;
+
+    const auto bdb_offs = bi.bdi->pos(bdb) * brg.rd_block * brg.typesize_A;
+    const auto rdb_offs
+            = bi.rdi->pos(rdb) * brg.bcast_dim * brg.rd_block * brg.typesize_A;
+
+    return transform_offset + bs_offs + bdb_offs + rdb_offs;
 }
 
 size_t jit_brgemm_amx_uker_base_t::A_offset(
@@ -1813,7 +1846,8 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
         return;
     }
 
-    if (maybe_pre_process_k_tail(bi, xdb, t1, reg_base, offset, reg_stride, mk))
+    if (maybe_pre_process_k_tail(
+                bi, xdb, t1, reg_base, offset, reg_stride, mk, has_mem_advice))
         return;
 
     if (load_nt) {
@@ -1829,6 +1863,46 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
     }
 }
 
+void jit_brgemm_amx_uker_base_t::maybe_fused_copy_A_nt_load(
+        brgemm_iteration_t &bi, int bdb) {
+    auto t1 = Tmm(brg.get_A_tensor(bdb, bi.bdi->is_tail(bdb)));
+
+    auto load_a_tile_from_wsp = [&]() {
+        if (brg.load_nt_A) {
+            tileloaddt1(
+                    t1, ptr[reg_buf + A_offset_wsp(bi, bdb) + reg_stride_lda]);
+        } else {
+            tileloadd(
+                    t1, ptr[reg_buf + A_offset_wsp(bi, bdb) + reg_stride_lda]);
+        }
+    };
+
+    if (bi.ldi->pos(0) == 0) {
+        mov(reg_stride_lda, lda());
+        const bool has_mem_advice = utils::one_of(brg.brgattr.mem_advice,
+                brgemm_hint_mem_advice_A, brgemm_hint_mem_advice_A_B);
+
+        auto src_offset = A_offset(bi, bdb);
+        // fused copy A: load from A orig and store it aligned in the wsp buffer
+        if (bi.rdi->is_tail(0)) {
+            pre_process_k_tail_fused_copy_a(bi, bdb, t1, reg_A, src_offset,
+                    A_offset_wsp(bi, bdb), has_mem_advice);
+            mov(reg_stride_lda, 64);
+            load_a_tile_from_wsp();
+        } else {
+            if (has_mem_advice)
+                tileloaddrst1(t1, ptr[reg_A + src_offset + reg_stride_lda]);
+            else
+                tileloaddt1(t1, ptr[reg_A + src_offset + reg_stride_lda]);
+            mov(reg_stride_lda, 64);
+            tilestored(
+                    ptr[reg_buf + A_offset_wsp(bi, bdb) + reg_stride_lda], t1);
+        }
+
+    } else {
+        load_a_tile_from_wsp();
+    };
+}
 void jit_brgemm_amx_uker_base_t::maybe_tilestore(brgemm_iteration_t &bi,
         int bdb_idx, int ldb_idx, bool do_pre_tilestore,
         bool do_post_tilestore) {
@@ -2177,9 +2251,18 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     if (buf_offt) sub(reg_buf, buf_offt);
 }
 
+void jit_brgemm_amx_uker_base_t::pre_process_k_tail_fused_copy_a(
+        brgemm_iteration_t &bi, int bdb, const Tmm &t1, reg64_t reg_base,
+        size_t offset_src, size_t offset_dst, bool mem_advice_A) {
+    if (offset_dst) add(reg_buf, offset_dst);
+    copy_k_tail_to_wsp(t1, reg_base, offset_src, reg_stride_lda, mem_advice_A);
+    if (offset_dst) sub(reg_buf, offset_dst);
+}
+
 bool jit_brgemm_amx_uker_base_t::maybe_pre_process_k_tail(
         brgemm_iteration_t &bi, int bdb, const Tmm &t1, reg64_t reg_base,
-        size_t offset, reg64_t reg_stride, matrix_kind_t mk) {
+        size_t offset, reg64_t reg_stride, matrix_kind_t mk,
+        bool use_memadvice) {
     const auto &tloop = imap_[bi.apply_postops];
 
     const auto need_k_tail_processing = mk == matrix_A && brg.amx_wary_k_tail()
@@ -2197,43 +2280,7 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_k_tail(
 
     // reuse transformed data from matrix A for ldi > 0
     if (bi.ldi->idx == 0) {
-        const auto num_rows = palette_.rows[t1.getIdx()];
-        const auto num_col_bytes = palette_.cols[t1.getIdx()];
-
-        const auto max_num_cols
-                = nstl::min<int>(num_col_bytes / brg.typesize_A, brg.rdb_tail);
-        const size_t col_tail
-                = max_num_cols % (zmm_width_in_bytes / brg.typesize_A);
-        if (col_tail) {
-            const auto tail_mask = (static_cast<size_t>(1) << col_tail) - 1;
-            mov(reg_tmp_gpr, tail_mask);
-            kmovq(rd_tail_mask, reg_tmp_gpr);
-        }
-        auto zmm_1 = zmm_tmp_1();
-        auto zmm_1_masked = col_tail ? zmm_1 | rd_tail_mask | T_z : zmm_1;
-
-        assert(max_num_cols > 0);
-
-        const auto reg_data_aux = reg_tmp_gpr;
-        lea(reg_data_aux, ptr[reg_base + offset]);
-
-        for (int r = 0; r < num_rows; ++r) {
-            switch (brg.dt_a) {
-                case data_type::bf16:
-                case data_type::f16:
-                    vmovdqu16(zmm_1_masked, ptr[reg_data_aux]);
-                    break;
-                case data_type::f8_e5m2:
-                case data_type::f8_e4m3:
-                case data_type::s8:
-                case data_type::u8:
-                    vmovdqu8(zmm_1_masked, ptr[reg_data_aux]);
-                    break;
-                default: assert(!"unsupported data type");
-            }
-            vmovups(ptr[reg_buf + r * zmm_width_in_bytes], zmm_1);
-            add(reg_data_aux, reg_stride);
-        }
+        copy_k_tail_to_wsp(t1, reg_base, offset, reg_stride, use_memadvice);
     }
     // load into tmm from the transformed data.
     tileloadd(t1, ptr[reg_buf + reg_converted_stride]);
@@ -2241,6 +2288,54 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_k_tail(
     // reset buf pointer
     if (transform_offset) sub(reg_buf, transform_offset);
     return true;
+}
+void jit_brgemm_amx_uker_base_t::copy_k_tail_to_wsp(const Tmm &t1,
+        jit_brgemm_amx_uker_base_t::reg64_t &reg_base, size_t src_offset,
+        jit_brgemm_amx_uker_base_t::reg64_t &reg_src_stride,
+        bool use_memadvice) {
+    const auto num_rows = palette_.rows[t1.getIdx()];
+    const auto num_col_bytes = palette_.cols[t1.getIdx()];
+
+    const auto max_num_cols
+            = nstl::min<int>(num_col_bytes / brg.typesize_A, brg.rdb_tail);
+    const size_t col_tail
+            = max_num_cols % (zmm_width_in_bytes / brg.typesize_A);
+    if (col_tail) {
+        const auto tail_mask = (static_cast<size_t>(1) << col_tail) - 1;
+        mov(reg_tmp_gpr, tail_mask);
+        kmovq(rd_tail_mask, reg_tmp_gpr);
+    }
+    auto zmm_1 = zmm_tmp_1();
+    auto zmm_1_masked = col_tail ? zmm_1 | rd_tail_mask | T_z : zmm_1;
+
+    assert(max_num_cols > 0);
+
+    const auto reg_src = reg_tmp_gpr;
+    lea(reg_src, ptr[reg_base + src_offset]);
+
+    for (int r = 0; r < num_rows; ++r) {
+        switch (brg.dt_a) {
+            case data_type::bf16:
+            case data_type::f16:
+                if (use_memadvice)
+                    vmovrsw(zmm_1_masked, ptr[reg_src]);
+                else
+                    vmovdqu16(zmm_1_masked, ptr[reg_src]);
+                break;
+            case data_type::f8_e5m2:
+            case data_type::f8_e4m3:
+            case data_type::s8:
+            case data_type::u8:
+                if (use_memadvice)
+                    vmovrsb(zmm_1_masked, ptr[reg_src]);
+                else
+                    vmovdqu8(zmm_1_masked, ptr[reg_src]);
+                break;
+            default: assert(!"unsupported data type");
+        }
+        vmovups(ptr[reg_buf + r * zmm_width_in_bytes], zmm_1);
+        add(reg_src, reg_src_stride);
+    }
 }
 
 void jit_brgemm_amx_uker_base_t::gemm_microkernel_amx(brgemm_iteration_t &bi) {
@@ -2267,7 +2362,13 @@ void jit_brgemm_amx_uker_base_t::gemm_microkernel_amx(brgemm_iteration_t &bi) {
         mov(reg_stride_ld_block, LDC_size_);
 
     for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
-        maybe_tileloadd_nt(bi, matrix_kind_t::matrix_A, bdb, A_offset(bi, bdb));
+        if (brg.fused_copy_a) {
+            maybe_fused_copy_A_nt_load(bi, bdb);
+        } else {
+            maybe_tileloadd_nt(
+                    bi, matrix_kind_t::matrix_A, bdb, A_offset(bi, bdb));
+        }
+
         for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
             if (bdb == 0)
                 maybe_tileloadd_nt(
@@ -2881,7 +2982,7 @@ void jit_brgemm_amx_uker_base_t::generate() {
     prepare_bd_mask();
 
     Label permute_index_table;
-    if (brg.is_input_convert() || brg.amx_wary_k_tail()) {
+    if (brg.is_input_convert() || brg.amx_wary_k_tail() || brg.fused_copy_a) {
         // save tiles description for later use
         brgemm_init_tiles(brg, (char *)(&palette_));
         // load permute indices

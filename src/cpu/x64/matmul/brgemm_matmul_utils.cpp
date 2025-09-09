@@ -1571,9 +1571,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.M_tail = bgmmc.is_runtime_M ? 0 : bgmmc.M % bgmmc.M_blk;
     bgmmc.N_tail = bgmmc.is_runtime_N ? 0 : bgmmc.N % bgmmc.N_blk;
     bgmmc.K_tail = bgmmc.K > bgmmc.K_blk
-            ? (bgmmc.extendable_k ? bgmmc.K % bgmmc.K_blk
-                                  : rnd_up(bgmmc.K % bgmmc.K_blk,
-                                          bgmmc.required_k_granularity))
+            ? ((bgmmc.extendable_k || bgmmc.use_fused_copy_a)
+                            ? bgmmc.K % bgmmc.K_blk
+                            : rnd_up(bgmmc.K % bgmmc.K_blk,
+                                    bgmmc.required_k_granularity))
             : 0;
 
     bgmmc.LDB = bm_conf_utils.get_actual_LDB();

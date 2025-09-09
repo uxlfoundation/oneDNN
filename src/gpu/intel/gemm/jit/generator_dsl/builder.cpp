@@ -67,7 +67,7 @@ struct transform_t {
     transform_t() = default;
 
     transform_t(kind_t t_kind, int pack_size, ngen::CacheSettingsLSC cache_hint,
-            std::array<ir::pvar_t, 2> dims)
+            std::array<idx_t, 2> dims)
         : kind(t_kind)
         , pack_size(pack_size)
         , cache_hint(to_ir(cache_hint))
@@ -137,12 +137,12 @@ struct transform_t {
     kind_t kind = kind_t::none;
     int pack_size = 0;
     ir::send_cache_hint_t cache_hint = ir::send_cache_hint_t::undef;
-    std::array<ir::pvar_t, 2> dims = {};
+    std::array<idx_t, 2> dims = {};
 };
 
-const ir::pvar_t &m_var = ir::pvars::m;
-const ir::pvar_t &n_var = ir::pvars::n;
-const ir::pvar_t &k_var = ir::pvars::k;
+static const idx_t m_var("m");
+static const idx_t n_var("n");
+static const idx_t k_var("k");
 
 struct kloop_iterator_t {
 
@@ -167,7 +167,7 @@ struct kloop_iterator_t {
 };
 
 transform_t get_transform(const MatrixAddressingStrategy &matrix_strategy,
-        std::array<ir::pvar_t, 2> dims, bool is_prefetch = false) {
+        std::array<idx_t, 2> dims, bool is_prefetch = false) {
     switch (matrix_strategy.accessType) {
         case AccessType::Scattered:
             // TODO: Remove workaround unimplemented scattered->vnni support.
@@ -198,7 +198,7 @@ transform_t get_transform(const MatrixAddressingStrategy &matrix_strategy,
     }
 };
 ir::pvar_map_t<expr_t> get_strides(
-        MatrixLayout layout, std::array<ir::pvar_t, 2> pvars, expr_t ld) {
+        MatrixLayout layout, std::array<idx_t, 2> pvars, expr_t ld) {
     switch (layout) {
         case MatrixLayout::N: return {{pvars[0], 1}, {pvars[1], ld}};
         case MatrixLayout::T: return {{pvars[0], ld}, {pvars[1], 1}};
@@ -222,7 +222,7 @@ struct tensor_config_t {
 
 void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
         const tensor_t &C, const std::vector<expr_t> &idxs,
-        const std::vector<ir::pvar_t> &dims) {
+        const std::vector<idx_t> &dims) {
     for (size_t i = 0; i < ops.len(); i++) {
         if (ops[i].is_eltwise()) {
             gpu_assert(false) << "Unimplemeted";
@@ -443,9 +443,9 @@ struct generator_dsl_t {
         auto n_blk = strategy.unroll[LoopN];
         auto k_blk = strategy.unroll[LoopK];
 
-        std::array<ir::pvar_t, 2> A_vars = {m_var, k_var};
-        std::array<ir::pvar_t, 2> B_vars = {k_var, n_var};
-        std::array<ir::pvar_t, 2> C_vars = {m_var, n_var};
+        std::array<idx_t, 2> A_vars = {m_var, k_var};
+        std::array<idx_t, 2> B_vars = {k_var, n_var};
+        std::array<idx_t, 2> C_vars = {m_var, n_var};
 
         auto A_prefetch_transform
                 = get_transform(strategy.A_prefetch, A_vars, true);
@@ -462,7 +462,7 @@ struct generator_dsl_t {
                 = def(C_store_transform.get_layout(C_dims, into_ir(problem.Tc)),
                         "C_blk", 0);
 
-        ir::pvar_t subgroup_dim = C.layout.blocks()[0].dim;
+        idx_t subgroup_dim = C.layout.blocks()[0].dim;
         int m_group_idx = strategy.loopOrder[0] == LoopM ? 0 : 1;
         auto m_idx = let("m_idx",
                 (group_id(m_group_idx) * local_size(m_group_idx)

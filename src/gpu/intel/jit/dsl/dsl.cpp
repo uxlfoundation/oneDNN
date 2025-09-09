@@ -389,14 +389,14 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
     bool is_prefetch = t.buf.is_empty();
     auto &operation_tile = is_prefetch ? g.tile : t.layout.tile();
 
-    pvar_t w_dim;
+    idx_t w_idx;
     tile_t tile;
     for (auto &var : operation_tile) {
         if (is_const(g.strides[var]) && to_cpp<dim_t>(g.strides[var]) == 1
                 && t.layout.elems() != 1) {
             tile[var] = t.layout.blocks()[0].block;
             gpu_assert(t.layout.blocks()[0].dim == var);
-            w_dim = var;
+            w_idx = var;
         } else {
             tile[var] = 1;
         }
@@ -406,8 +406,8 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
     v2::for_each(operation_tile, tile, [&](const icoord_t &coord) {
         auto buffer = is_prefetch ? expr_t()
                                   : t.buf[t.layout.offset_in_bytes(coord)];
-        auto width = !w_dim.is_undef()
-                ? std::min(tile[w_dim], operation_tile[w_dim] - coord[w_dim])
+        auto width = !w_idx.is_undef()
+                ? std::min(tile[w_idx], operation_tile[w_idx] - coord[w_idx])
                 : 1;
 
         int width_bytes = into<int>(width * type.size());
@@ -433,14 +433,14 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
             append(send_func.as<send_t>()(
                     g.buf, g.offset(base + coord_local), buffer, {}));
             width_bytes -= send_type.size();
-            coord_local[w_dim] += send_type.size() / type.size();
+            coord_local[w_idx] += send_type.size() / type.size();
         }
     });
 }
 
 struct conf_2d_t {
     type_t type;
-    pvar_t w_dim;
+    idx_t w_idx;
     int pack_size;
     bool is_vnni;
     bool is_transpose_vnni;
@@ -452,7 +452,7 @@ struct conf_2d_t {
     }
 
     // Tile used for 2d Messages
-    tile_t get_tile(std::array<pvar_t, 2> dims) const {
+    tile_t get_tile(std::array<idx_t, 2> dims) const {
         auto width = pack_size ? pack_size : grf_size() / unit_size();
         auto height = is_store ? 8 : 32;
 
@@ -468,34 +468,34 @@ void block_2d_send(const conf_2d_t &conf, const tensor_t &t,
     bool is_prefetch = t.buf.is_empty();
     auto &operation_tile = is_prefetch ? g.tile : t.layout.tile();
 
-    pvar_t w_dim = conf.w_dim;
-    pvar_t h_dim;
+    idx_t w_idx = conf.w_idx;
+    idx_t h_idx;
     for (auto &var : operation_tile) {
-        if (var != w_dim) {
-            gpu_assert(h_dim.is_undef())
+        if (var != w_idx) {
+            gpu_assert(h_idx.is_undef())
                     << "n-dimensional support unimplemented";
-            h_dim = var;
+            h_idx = var;
         }
     }
 
-    auto tensor_width = g.sizes[w_dim];
-    auto tensor_height = g.sizes[h_dim];
-    auto tensor_pitch = g.strides[h_dim];
+    auto tensor_width = g.sizes[w_idx];
+    auto tensor_height = g.sizes[h_idx];
+    auto tensor_pitch = g.strides[h_idx];
     auto type = g.type;
-    auto tile = conf.get_tile({w_dim, h_dim});
+    auto tile = conf.get_tile({w_idx, h_idx});
 
     v2::for_each(operation_tile, tile, [&](const icoord_t &coord) {
         auto buffer = is_prefetch ? expr_t()
                                   : t.buf[t.layout.offset_in_bytes(coord)];
         int width = into<int>(
-                std::min(tile[w_dim], operation_tile[w_dim] - coord[w_dim]));
+                std::min(tile[w_idx], operation_tile[w_idx] - coord[w_idx]));
         int height = into<int>(
-                std::min(tile[h_dim], operation_tile[h_dim] - coord[h_dim]));
-        int count = std::max(1, into<int>(tile[w_dim] / width));
+                std::min(tile[h_idx], operation_tile[h_idx] - coord[h_idx]));
+        int count = std::max(1, into<int>(tile[w_idx] / width));
         auto width_idx
-                = g.coord[w_dim] + static_cast<uint32_t>((base + coord)[w_dim]);
+                = g.coord[w_idx] + static_cast<uint32_t>((base + coord)[w_idx]);
         auto height_idx
-                = g.coord[h_dim] + static_cast<uint32_t>((base + coord)[h_dim]);
+                = g.coord[h_idx] + static_cast<uint32_t>((base + coord)[h_idx]);
         auto send_kind = [&]() {
             switch (op_kind) {
                 case send_kind_t::prefetch: return send_op_t::prefetch_2d;
@@ -519,28 +519,28 @@ void send(const tensor_t &t, const global_tensor_t &g, send_kind_t op_kind,
         const icoord_t &base, const send_hint_t &hint) {
     bool is_prefetch = t.buf.is_empty();
     auto &operation_tile = is_prefetch ? g.tile : t.layout.tile();
-    pvar_t w_dim;
+    idx_t w_idx;
     for (auto &var : operation_tile) {
         if (is_const(g.strides[var]) && to_cpp<dim_t>(g.strides[var]) == 1) {
-            gpu_assert(w_dim.is_undef())
+            gpu_assert(w_idx.is_undef())
                     << "Could not determine inner dimension";
-            w_dim = var;
+            w_idx = var;
         }
     }
 
     auto type = g.type;
 
     gpu_assert(is_prefetch || type == t.layout.type());
-    if (operation_tile.size() >= 2 && !w_dim.is_undef()) {
+    if (operation_tile.size() >= 2 && !w_idx.is_undef()) {
         auto conf = [&]() -> conf_2d_t {
-            if (is_prefetch) { return {g.type, w_dim, 0, false, false, false}; }
+            if (is_prefetch) { return {g.type, w_idx, 0, false, false, false}; }
             auto &l = t.layout;
-            int pack_dim = l.blocks()[0].block * l.type().size() == 4;
-            int pack_size = into<int>(l.blocks()[pack_dim].block);
-            bool is_transpose_vnni = l.blocks()[pack_dim].dim != w_dim;
-            bool is_vnni = pack_dim == 1 && !is_transpose_vnni;
+            int pack_idx = l.blocks()[0].block * l.type().size() == 4;
+            int pack_size = into<int>(l.blocks()[pack_idx].block);
+            bool is_transpose_vnni = l.blocks()[pack_idx].dim != w_idx;
+            bool is_vnni = pack_idx == 1 && !is_transpose_vnni;
             bool is_store = op_kind == send_kind_t::store;
-            return {g.type, w_dim, pack_size, is_vnni, is_transpose_vnni,
+            return {g.type, w_idx, pack_size, is_vnni, is_transpose_vnni,
                     is_store};
         }();
 
@@ -551,7 +551,7 @@ void send(const tensor_t &t, const global_tensor_t &g, send_kind_t op_kind,
     }
 
     if (is_prefetch || t.layout.elems() == 1
-            || t.layout.blocks()[0].dim == w_dim) {
+            || t.layout.blocks()[0].dim == w_idx) {
         block_send(t, g, op_kind, base, hint);
     } else {
         scatter_send(t, g, op_kind, base, hint);
@@ -580,26 +580,26 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         int64_t sdepth = 8;
         int64_t max_rcount = 8;
 
-        auto dim_simd = C.layout.blocks()[0].dim;
-        auto dim_sdepth = A.layout.blocks()[0].dim == C.layout.blocks()[0].dim
+        auto simd_idx = C.layout.blocks()[0].dim;
+        auto sdepth_idx = A.layout.blocks()[0].dim == C.layout.blocks()[0].dim
                 ? A.layout.blocks()[1].dim
                 : A.layout.blocks()[0].dim;
-        auto dim_rcount = C.layout.blocks()[1].dim;
+        auto rcount_dim = C.layout.blocks()[1].dim;
         auto sdepth_pack = 4 / A.layout.type().size();
 
-        tile_t inst_tile {{dim_simd, simd}, {dim_sdepth, sdepth * sdepth_pack},
-                {dim_rcount, max_rcount}};
+        tile_t inst_tile {{simd_idx, simd}, {sdepth_idx, sdepth * sdepth_pack},
+                {rcount_dim, max_rcount}};
 
-        gpu_assert(tile[dim_simd] % simd == 0);
-        gpu_assert(tile[dim_sdepth] % (sdepth_pack * sdepth) == 0);
+        gpu_assert(tile[simd_idx] % simd == 0);
+        gpu_assert(tile[sdepth_idx] % (sdepth_pack * sdepth) == 0);
         gpu_assert(C.layout.blocks()[0].block == simd);
         std::vector<stmt_t> dpas_stmts;
 
         v2::for_each(tile, inst_tile, [&](const icoord_t &coord) {
-            int simd = (int)inst_tile[dim_simd];
-            auto sdepth = inst_tile[dim_sdepth] / sdepth_pack;
-            auto rcount = std::min(inst_tile[dim_rcount],
-                    tile[dim_rcount] - coord[dim_rcount]);
+            int simd = (int)inst_tile[simd_idx];
+            auto sdepth = inst_tile[sdepth_idx] / sdepth_pack;
+            auto rcount = std::min(inst_tile[rcount_dim],
+                    tile[rcount_dim] - coord[rcount_dim]);
 
             auto dpas = dpas_t::make(false, simd, into<uint8_t>(sdepth),
                     into<uint8_t>(rcount), C.layout.type(), B.layout.type(),
@@ -625,29 +625,29 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
     } else {
         auto max_simd = 32;
 
-        const auto &dim_simd = C.layout.blocks()[0].dim;
-        const auto &dim_rcount = C.layout.blocks()[1].dim;
-        const auto &m_dim = dim_simd;
-        const auto &n_dim = dim_rcount;
-        const auto &k_dim
-                = utils::one_of(A.layout.blocks()[1].dim, dim_simd, dim_rcount)
+        const auto &simd_idx = C.layout.blocks()[0].dim;
+        const auto &rcount_idx = C.layout.blocks()[1].dim;
+        const auto &m_idx = simd_idx;
+        const auto &n_idx = rcount_idx;
+        const auto &k_idx
+                = utils::one_of(A.layout.blocks()[1].dim, simd_idx, rcount_idx)
                 ? A.layout.blocks()[0].dim
                 : A.layout.blocks()[1].dim;
 
-        tile_t inst_tile {{{dim_simd, max_simd}, {dim_rcount, 1}, {k_dim, 1}}};
+        tile_t inst_tile {{{simd_idx, max_simd}, {rcount_idx, 1}, {k_idx, 1}}};
 
-        int M = (int)inst_tile.get(m_dim, 1);
-        int N = (int)inst_tile.get(n_dim, 1);
-        int K = (int)inst_tile.get(k_dim, 1);
+        int M = (int)inst_tile.get(m_idx, 1);
+        int N = (int)inst_tile.get(n_idx, 1);
+        int K = (int)inst_tile.get(k_idx, 1);
         bool is_a_bcast = (M * K == 1);
         bool is_b_bcast = (K * N == 1);
-        int a_stride = is_a_bcast ? 0 : into<int>(A.layout.stride(m_dim));
-        int b_stride = is_b_bcast ? 0 : into<int>(B.layout.stride(n_dim));
+        int a_stride = is_a_bcast ? 0 : into<int>(A.layout.stride(m_idx));
+        int b_stride = is_b_bcast ? 0 : into<int>(B.layout.stride(n_idx));
 
-        gpu_assert(tile[dim_simd] * C.layout.type().size() % grf_size() == 0);
+        gpu_assert(tile[simd_idx] * C.layout.type().size() % grf_size() == 0);
         v2::for_each(tile, inst_tile, [&](const icoord_t &coord) {
             int simd = (int)std::min(
-                    inst_tile[dim_simd], tile[dim_simd] - coord[dim_simd]);
+                    inst_tile[simd_idx], tile[simd_idx] - coord[simd_idx]);
 
             auto mad = mad_t::make(default_ctx().ir_ctx()->hw(),
                     C.layout.type(), simd, A.layout.type(), a_stride,

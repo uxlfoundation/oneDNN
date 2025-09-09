@@ -18,6 +18,7 @@
 #define GPU_INTEL_JIT_DSL_DSL_HPP
 
 #include "gpu/intel/jit/dsl/decl.hpp"
+#include "gpu/intel/jit/dsl/tensor.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
@@ -34,8 +35,6 @@ int grf_size();
 int min_align_2d();
 int min_pitch_2d();
 
-using tile_t = dnnl::impl::gpu::intel::jit::tile_t;
-using coord_t = dnnl::impl::gpu::intel::jit::coord_t;
 using layout_t = dnnl::impl::gpu::intel::jit::layout_t;
 using expr_t = dnnl::impl::gpu::intel::jit::expr_t;
 
@@ -73,17 +72,17 @@ struct global_tensor_t {
     type_t type;
     expr_t base_offset;
     coord_t coord;
-    pvar_map_t<expr_t> sizes;
-    pvar_map_t<expr_t> strides;
+    idx_map_t<expr_t> sizes;
+    idx_map_t<expr_t> strides;
     tile_t tile;
 
     global_tensor_t() = default;
-    global_tensor_t(const expr_t &buf, const pvar_map_t<expr_t> &sizes,
-            const pvar_map_t<expr_t> &strides)
+    global_tensor_t(const expr_t &buf, const idx_map_t<expr_t> &sizes,
+            const idx_map_t<expr_t> &strides)
         : buf(buf), type(buf.type().scalar()), sizes(sizes), strides(strides) {}
     global_tensor_t(const expr_t &buf, const type_t &type,
             const expr_t &base_offset, const coord_t &coord,
-            const pvar_map_t<expr_t> &sizes, const pvar_map_t<expr_t> &strides,
+            const idx_map_t<expr_t> &sizes, const idx_map_t<expr_t> &strides,
             const tile_t &tile)
         : buf(buf)
         , type(type)

@@ -40,27 +40,6 @@ std::string to_string(tensor_kind_t tensor) {
     return {};
 }
 
-pvar_t::name_t::name_t(const std::string &s) {
-    gpu_assert(!s.empty() && s.length() <= max_len);
-    s.copy(data_, s.length());
-}
-
-std::string pvar_t::name_t::str() const {
-    return std::string(data_);
-}
-
-size_t pvar_t::name_t::get_hash() const {
-    static_assert(max_len % sizeof(uint64_t) == 0,
-            "max_len must be aligned to 64 bits");
-    size_t h = 0;
-    for (size_t i = 0; i < max_len; i += sizeof(uint64_t)) {
-        uint64_t u64 = 0;
-        std::memcpy(&u64, &data_[i], sizeof(u64));
-        h = hash_combine(h, u64);
-    }
-    return h;
-}
-
 namespace pvars {
 pvar_t g("g");
 pvar_t ic("ic");

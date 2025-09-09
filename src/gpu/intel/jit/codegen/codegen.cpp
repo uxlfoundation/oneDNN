@@ -1778,6 +1778,11 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
     if (setup_flags.has_dpas || require_dpas) interface.requireDPAS();
     if (setup_flags.has_send_atomics) interface.requireGlobalAtomics();
 
+#if XE3P
+    if (exec_cfg.hw() == ngen::HW::Xe3p && !exec_cfg.hw().is_efficient_64bit())
+        interface.setEfficient64Bit(false);
+#endif
+
     for (int i = 0; i < kernel_iface.nargs(); i++) {
         auto &name = kernel_iface.arg_name(i);
         auto &type = kernel_iface.arg_type(i);

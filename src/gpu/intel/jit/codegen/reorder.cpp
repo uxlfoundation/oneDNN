@@ -236,8 +236,8 @@ auto reorder_2d_impl_t::find_min_cost_path(ngen::HW hw, const layout_t &src,
     std::vector<edge_t> edges;
     for (int a = 1; a <= tile_a; a *= 2) {
         for (int b = 1; b <= tile_b; b *= 2) {
-            if (src.dim(0) % a != 0) continue;
-            if (src.dim(1) % b != 0) continue;
+            if (src.elems(0) % a != 0) continue;
+            if (src.elems(1) % b != 0) continue;
             int idx = int(edges.size());
             edges.emplace_back(idx, a, b);
         }

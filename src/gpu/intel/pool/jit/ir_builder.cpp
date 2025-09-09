@@ -64,7 +64,7 @@ public:
         uint32_t bound_check_mask = 0;
         for (dim_idx_t i = 0; i < cp_ndims; i++) {
             if (dims[i] == 1) continue; // Broadcast, no bound check needed.
-            if (pad_dims[i] != cp_view().tlayout().dim(i)) {
+            if (pad_dims[i] != cp_view().tlayout().elems(i)) {
                 bound_check_mask |= (1 << i);
             } else if (cp_view().has_tmask(i)) {
                 bound_check_mask |= (1 << i);
@@ -182,8 +182,8 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     for (dim_idx_t i = 0; i < padded_dims.size(); i++)
         padded_dims[i] = dims_grid[i];
     gpu_assert(padded_dims.size() == 5);
-    std::vector<dim_t> dims {padded_dims[0], src_layout.dim(1), padded_dims[2],
-            padded_dims[3], padded_dims[4]};
+    std::vector<dim_t> dims {padded_dims[0], src_layout.elems(1),
+            padded_dims[2], padded_dims[3], padded_dims[4]};
 
     // Source.
     auto src_view = view_t({mb, oc, od, oh, ow, kd, kh, kw}, 5);

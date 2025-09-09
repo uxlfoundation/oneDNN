@@ -395,7 +395,7 @@ public:
     tdim_info_t(
             int tidx, const tdim_t &tdim, const view_t &view, int64_t block = 1)
         : tidx_(tidx)
-        , size_(view.tlayout().dim(tidx))
+        , size_(view.tlayout().elems(tidx))
         , base_mod_(to_base(tdim, view.vvars()))
         , block_(block)
         , dim_(&tdim) {

@@ -612,8 +612,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     int surface_width = 0;
     int surface_height = 0;
     int surface_pitch = b1.stride;
-    bool is_w_blocked = (get_2d_dim(w_dim_idx) != tlayout.dim(w_dim_idx));
-    bool is_h_blocked = (get_2d_dim(h_dim_idx) != tlayout.dim(h_dim_idx));
+    bool is_w_blocked = (get_2d_dim(w_dim_idx) != tlayout.elems(w_dim_idx));
+    bool is_h_blocked = (get_2d_dim(h_dim_idx) != tlayout.elems(h_dim_idx));
     // Virtual surface means loading from the innermost block of a block layout
     // which implies no bound checks embedded into 2D block message.
     bool use_virtual_surface = is_w_blocked || is_h_blocked;
@@ -622,8 +622,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
         surface_width = b0.block;
         surface_height = b1.block;
     } else {
-        surface_width = tlayout.dim(w_dim_idx);
-        surface_height = tlayout.dim(h_dim_idx);
+        surface_width = tlayout.elems(w_dim_idx);
+        surface_height = tlayout.elems(h_dim_idx);
         if (surface_height % h_tstride != 0) return false;
         surface_height = surface_height / h_tstride;
     }
@@ -675,8 +675,9 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     }
     reg_layout_ = reg_layout_.add_outer_block(b0.dim, count);
 
-    int w_outermost = ir_utils::safe_divide(vlayout.dim(b0.dim), count * width);
-    int h_outermost = ir_utils::safe_divide(vlayout.dim(b1.dim), height);
+    int w_outermost
+            = ir_utils::safe_divide(vlayout.elems(b0.dim), count * width);
+    int h_outermost = ir_utils::safe_divide(vlayout.elems(b1.dim), height);
     reg_layout_ = reg_layout_.add_outer_block(b0.dim, w_outermost);
     reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_outermost);
 

@@ -414,7 +414,7 @@ public:
         if (b_wei.block != b_comp.block) return false;
         if (b_wei.dim != b_comp.dim) return false;
         int dim_idx = b_comp.dim.index();
-        dim_t subtile_dim = comp_layout_.dim(dim_idx);
+        dim_t subtile_dim = comp_layout_.elems(dim_idx);
         if (dim_idx == simd_dim_idx_ && subtile_dim < simd_) return false;
 
         return true;
@@ -486,7 +486,7 @@ public:
         auto load_mul = binary_op_t::make(op_kind_t::_max,
                 binary_op_t::make(op_kind_t::_min,
                         simd_bcast(-ic_var) + simd_bcast(ic),
-                        simd_bcast(wei_layout_.dim(ck_idx_))),
+                        simd_bcast(wei_layout_.elems(ck_idx_))),
                 simd_bcast(0));
         auto load_wei = simd_bcast(load_t::make(
                 type_t::s16(), (src_buf.is_empty()) ? comp_buf : src_buf, 0));
@@ -494,7 +494,7 @@ public:
         comp_layout_.for_each_tile(get_simd_tile(), [&](const icoord_t &start) {
             if (!in_subtile(start, subtile_idx)) return;
             auto comp = comp_buf[get_comp_off(start)];
-            for (int ck = 0; ck < wei_layout_.dim(ck_idx_); ck += ck_blk) {
+            for (int ck = 0; ck < wei_layout_.elems(ck_idx_); ck += ck_blk) {
                 auto zp = zp_buf[get_zp_off(start, ck)];
                 auto wei = wei_buf[get_wei_off(start, ck)];
                 stmt = stmt.append(create_tile_stmt(zp, wei, comp, buf_mgr));
@@ -653,8 +653,8 @@ private:
         if (split_factor_ == 1) return true;
 
         auto &b = comp_layout_.blocks().back();
-        dim_t subtile_dim
-                = ir_utils::safe_divide(comp_layout_.dim(b.dim), split_factor_);
+        dim_t subtile_dim = ir_utils::safe_divide(
+                comp_layout_.elems(b.dim), split_factor_);
         dim_t beg = subtile_idx * subtile_dim;
         dim_t end = beg + subtile_dim;
         return start[b.dim.index()] >= beg && start[b.dim.index()] < end;
@@ -1155,7 +1155,7 @@ private:
         for (int i = 0; i < ndims; i++) {
             for (auto &m : mask_descs_)
                 if (m.lhs().has_vidx(i, vvars)) {
-                    dims[i] = src_layout.dim(i);
+                    dims[i] = src_layout.elems(i);
                     break;
                 }
         }
@@ -1244,7 +1244,7 @@ public:
             int subtile_idx) const {
         const auto comp_type = comp_layout_.type();
         const auto mask_type = type_t::s16();
-        const dim_t kw_dim = comp_layout_.dim(comp_kw_idx_);
+        const dim_t kw_dim = comp_layout_.elems(comp_kw_idx_);
         std::vector<int> comp_off;
         std::vector<int> mask_off;
         c_layout_.for_each_tile(sd.get_simd_tile(), [&](const icoord_t &start) {

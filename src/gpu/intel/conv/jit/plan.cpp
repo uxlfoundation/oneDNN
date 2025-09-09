@@ -757,7 +757,7 @@ bool reduce_plan_t::can_split(int factor) const {
 
     // Do not split by reduction dims.
     for (dim_idx_t i = 0; i < src.ndims(); i++) {
-        if ((mask & (1 << i)) != 0 && split_src.dim(i) != src.dim(i))
+        if ((mask & (1 << i)) != 0 && split_src.elems(i) != src.elems(i))
             return false;
     }
 
@@ -899,7 +899,7 @@ bool fma_plan_t::can_split(abc_kind_t abc, int factor) const {
     bool is_m = is_a;
     auto &layout = is_a ? a_layout : b_layout;
     dim_idx_t mn_idx = is_a ? 1 : 2;
-    int dim = (int)layout.dim(mn_idx);
+    int dim = (int)layout.elems(mn_idx);
     if (dim % factor != 0) return false;
     int blk = is_m ? m_blk : n_blk;
     if (blk > dim / factor) return false;
@@ -941,10 +941,10 @@ int fma_plan_t::b_buf_size() const {
 
 int fma_plan_t::bmnk_split_idx(
         bmnk_kind_t bmnk, int split_off, bool is_start) const {
-    dim_t B = a_layout.dim(0);
-    dim_t M = a_layout.dim(1);
-    dim_t N = b_layout.dim(2);
-    dim_t K = a_layout.dim(2);
+    dim_t B = a_layout.elems(0);
+    dim_t M = a_layout.elems(1);
+    dim_t N = b_layout.elems(2);
+    dim_t K = a_layout.elems(2);
     int start[4] = {0, 0, 0, 0};
     dim_t stop[4] = {B, M, N, K};
     bool split_a = (split_abc == abc_kind_t::a);
@@ -1433,8 +1433,8 @@ struct fma_context_t {
         for (auto bmnk : {bmnk_kind_t::b, bmnk_kind_t::n, bmnk_kind_t::m}) {
             int a_idx = get_vec_idx(abc_kind_t::a, bmnk);
             int b_idx = get_vec_idx(abc_kind_t::b, bmnk);
-            if (a_idx != -1 && a.dim(a_idx) % vec_size != 0) continue;
-            if (b_idx != -1 && b.dim(b_idx) % vec_size != 0) continue;
+            if (a_idx != -1 && a.elems(a_idx) % vec_size != 0) continue;
+            if (b_idx != -1 && b.elems(b_idx) % vec_size != 0) continue;
             if (a_idx != -1) a_layout_hint.vec_dim_idx = a_idx;
             if (b_idx != -1) b_layout_hint.vec_dim_idx = b_idx;
             break;

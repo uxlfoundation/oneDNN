@@ -112,13 +112,13 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
 
     std::vector<dim_t> dims(ndims);
     for (int i = 0; i < ndims; ++i)
-        dims[i] = std::max(src_layout.dim(i), dst_layout.dim(i));
+        dims[i] = std::max(src_layout.elems(i), dst_layout.elems(i));
 
     auto check_layout = [&](const layout_t &l) {
         for (auto &eb : l.enumerated_blocks()) {
             auto &b = eb.second;
             if (l.is_outermost(eb)) {
-                dim_t inner = l.dim(b.dim) / b.block;
+                dim_t inner = l.elems(b.dim) / b.block;
                 if (dims[b.dim] % inner) return false;
             }
         }

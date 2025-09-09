@@ -845,7 +845,8 @@ status_t init_tensor_layouts(
     if (cfg.zp_cfg().needs_src_reorder_precalc) {
         auto get_channels = [](const layout_t &layout) {
             const dim_t min_esize = 16;
-            return std::max(utils::rnd_up_pow2(layout.dim(1) * layout.dim(2)),
+            return std::max(
+                    utils::rnd_up_pow2(layout.elems(1) * layout.elems(2)),
                     min_esize);
         };
         using namespace memory_extra_flags;
@@ -1416,7 +1417,7 @@ size_t get_memory_footprint(const tensor_kind_t &ab_kind, const config_t &cfg,
                 = (needs_spatial_mapping(cfg, d) ? map_spatial(cfg, d, _tile)
                                                  : _tile.get(d, 1));
         tile[d] = d_size;
-        elems *= std::min(d_size, layout.dim(i));
+        elems *= std::min(d_size, layout.elems(i));
     }
     gpu_assert(elems >= 1);
     return (size_t)layout.type().size() * elems;

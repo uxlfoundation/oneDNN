@@ -612,10 +612,10 @@ struct generator_dsl_t {
         tensor_t C;
 
         int A_load_warmup() const {
-            return A_load.layout.dim(k_var) - A_load.tile[k_var];
+            return A_load.layout.elems(k_var) - A_load.tile[k_var];
         }
         int B_load_warmup() const {
-            return B_load.layout.dim(k_var) - B_load.tile[k_var];
+            return B_load.layout.elems(k_var) - B_load.tile[k_var];
         }
         int k_warmup() const {
             return std::max({A_load_warmup(), B_load_warmup(),
@@ -653,7 +653,7 @@ struct generator_dsl_t {
         int A_load_blk = cfg.A_load.tile[k_var];
         auto A_load = [&](int k_unroll_idx) {
             int idx = pipeline_idx(k_unroll_idx, cfg.A_load_warmup(),
-                    cfg.A_load.layout.dim(k_var));
+                    cfg.A_load.layout.elems(k_var));
             if (idx % A_load_blk != 0) return;
             load(A.sub(cfg.A_load.tile, {{k_var, idx}}), kloop_it.A_load(),
                     {{k_var, 0}}, {cfg.A_load.transform.cache_hint});
@@ -675,7 +675,7 @@ struct generator_dsl_t {
         int B_load_blk = cfg.B_load.tile[k_var];
         auto B_load = [&](int k_unroll_idx) {
             int idx = pipeline_idx(k_unroll_idx, cfg.B_load_warmup(),
-                    cfg.B_load.layout.dim(k_var));
+                    cfg.B_load.layout.elems(k_var));
             if (idx % B_load_blk != 0) return;
             load(B.sub(cfg.B_load.tile, {{k_var, idx}}), kloop_it.B_load(),
                     {{k_var, 0}}, {cfg.B_load.transform.cache_hint});

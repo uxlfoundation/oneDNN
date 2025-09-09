@@ -647,6 +647,11 @@ TEST(test_bmm_execute_subgraph_int8, BmmDivX8x8bf16_CPU) {
     // gpu doesn't support mixed int8-bf16 matmul with runtime zero points
     SKIP_IF(engine->kind() == graph::engine_kind::gpu, "skip on gpu");
 
+    SKIP_IF(unsupported_data_type(static_cast<dnnl::memory::data_type>(
+                                          graph::data_type::bf16),
+                    graph::dnnl_impl::make_dnnl_engine(*engine)),
+            "Skip bf16 examples for systems that do not support avx512_core.");
+
     std::vector<std::string> dtypes = {"uint8", "int8"};
 
     std::vector<int64_t> src_shape = {1, 4, 16, 8};
@@ -796,6 +801,11 @@ TEST(test_bmm_execute_subgraph_int8, BmmDivX8x8bf16_CPU) {
 TEST(test_bmm_execute_subgraph_int8, BmmDivBlockedX8x8bf16_CPU) {
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
+
+    SKIP_IF(unsupported_data_type(static_cast<dnnl::memory::data_type>(
+                                          graph::data_type::bf16),
+                    graph::dnnl_impl::make_dnnl_engine(*engine)),
+            "Skip bf16 examples for systems that do not support avx512_core.");
 
     std::vector<std::string> dtypes = {"uint8", "int8"};
 

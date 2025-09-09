@@ -1491,9 +1491,17 @@ TEST(test_subgraph_pass_int8_matmul_passes_with_diff_inputs,
             add
              | (bf16)
     */
+
     std::vector<op_kind_t> scale_kinds {Multiply, Divide};
     for (auto scale_kind : scale_kinds) {
         graph::engine_t *g_eng = get_engine();
+
+        SKIP_IF(unsupported_data_type(static_cast<dnnl::memory::data_type>(
+                                              graph::data_type::bf16),
+                        graph::dnnl_impl::make_dnnl_engine(*g_eng)),
+                "Skip bf16 examples for systems that do not support "
+                "avx512_core.");
+
         dnnl::engine p_eng
                 = dnnl::impl::graph::dnnl_impl::make_dnnl_engine(*g_eng);
         graph_t agraph;

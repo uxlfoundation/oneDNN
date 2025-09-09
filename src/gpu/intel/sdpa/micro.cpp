@@ -456,7 +456,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     if (pd->with_value_scales() || pd->with_value_zp())
         conf.val_group_size = pd->value_group_size();
 
-    conf.scale_data_t = d->scale_dt;
+    conf.scale_data_t = pd->scale_md()->data_type;
 
     conf.attn_mask_undef = attn_mask_type::undef;
     conf.attn_mask_buffer = attn_mask_type::buffer;

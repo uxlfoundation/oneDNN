@@ -104,7 +104,7 @@ struct sdpa_pd_t : public primitive_desc_t {
     int n_outputs() const override { return 1; }
 
     bool with_attn_scale() const {
-        return (desc_.scale_dt != data_type::undef);
+        return (scale_md()->data_type != data_type::undef);
     }
 
     bool with_host_scale() const {

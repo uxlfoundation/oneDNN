@@ -177,7 +177,6 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
     sdpa_desc.v_desc = *v_md;
     sdpa_desc.dst_desc = *dst_md;
     if (attn_mask_md) sdpa_desc.attn_mask_desc = *attn_mask_md;
-    sdpa_desc.scale_dt = scale_md->data_type;
     sdpa_desc.scale_desc = *scale_md;
     sdpa_desc.invert_scale = invert_scale;
     sdpa_desc.kv_head_number = kv_head_number;

@@ -94,7 +94,7 @@ struct ref_t : public primitive_t {
         def_data_type(kernel_ctx, pd()->val_md()->data_type, "VAL");
         def_data_type(kernel_ctx, pd()->dst_md()->data_type, "DST");
         def_data_type(kernel_ctx, pd()->attn_mask_md()->data_type, "MSK");
-        def_data_type(kernel_ctx, pd()->desc()->scale_dt, "SCALE");
+        def_data_type(kernel_ctx, pd()->scale_md()->data_type, "SCALE");
         CHECK(create_kernel(engine, &kernel_, "ref_sdpa", kernel_ctx));
         if (!kernel_) return status::runtime_error;
         return status::success;

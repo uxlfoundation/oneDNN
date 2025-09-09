@@ -1632,7 +1632,7 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
             ss << "div:";
         else
             ss << "mul:";
-        ss << dnnl_dt2str(desc->scale_dt);
+        ss << dnnl_dt2str(pd->scale_md()->data_type);
     }
 
     ss << "," << md2dim_str(pd->qry_md()) << ":" << md2dim_str(pd->key_md())

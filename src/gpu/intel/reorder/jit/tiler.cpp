@@ -152,7 +152,7 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
 
     std::vector<dim_t> dims(a.ndims());
     for (dim_idx_t i = 0; i < a.ndims(); ++i)
-        dims[i] = std::max(a.dim(i), b.dim(i));
+        dims[i] = std::max(a.elems(i), b.elems(i));
 
     // Pad src/dst layouts to match each other.
     auto pad_layout = [&](layout_t &l) {
@@ -160,7 +160,7 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
         for (auto &eb : l.enumerated_blocks()) {
             auto b = eb.second;
             if (l.is_outermost(eb)) {
-                dim_t inner = l.dim(b.dim) / b.block;
+                dim_t inner = l.elems(b.dim) / b.block;
                 b.block = ir_utils::safe_divide(dims[b.dim], inner);
             }
             padded_blocks.push_back(b);

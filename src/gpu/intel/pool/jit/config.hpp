@@ -228,7 +228,7 @@ public:
         std::vector<dim_t> tg {1, 1, 1}, kg {1, 1, 1};
 
         std::vector<dim_t> padded {
-                src.dim(0), src.dim(1), prb.od, prb.oh, prb.ow};
+                src.elems(0), src.elems(1), prb.od, prb.oh, prb.ow};
         auto &mb = padded[0], &oc = padded[1];
         auto &od = padded[2], &oh = padded[3], &ow = padded[4];
 
@@ -339,7 +339,7 @@ public:
                 }
             }
             lg[0] = calc_non_sp(1, (is_xe2_or_xe3) ? mb : prb.mb, 1, lg[0]);
-            if (src.dim(0) % lg[0] == 0) mb = src.dim(0);
+            if (src.elems(0) % lg[0] == 0) mb = src.elems(0);
 
             const dim_t total_simds = dim_t(mb) * (oc / simd) * od * oh * ow;
             const int safe_thr_count = eu_count * 4;

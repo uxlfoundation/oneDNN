@@ -38,7 +38,7 @@ layout_t insert_dimension(const layout_t &layout, const pvar_t &dim) {
 layout_t remove_size_1_dimension(const layout_t &layout, const pvar_t &dim) {
     gpu_assert(layout.with_ndims());
     gpu_assert(dim.index() < layout.ndims());
-    gpu_assert(layout.dim(dim) == 1);
+    gpu_assert(layout.elems(dim) == 1);
     dim_assignment_t a(layout.ndims(), layout.ndims() - 1);
     for (dim_idx_t i = 0; i < layout.ndims(); i++) {
         if (i == dim.index()) continue;
@@ -50,7 +50,7 @@ layout_t remove_size_1_dimension(const layout_t &layout, const pvar_t &dim) {
 layout_t split_dimension(
         const layout_t &_layout, const pvar_t &dim, dim_t outer_block) {
     dim_t rem_inner_block
-            = ir_utils::safe_divide(_layout.dim(dim), outer_block);
+            = ir_utils::safe_divide(_layout.elems(dim), outer_block);
     auto layout = insert_dimension(_layout, dim);
     std::vector<layout_block_t> new_blocks;
     for (auto &eb : layout.enumerated_blocks()) {
@@ -93,8 +93,8 @@ layout_t normalize_conv_groups(const layout_t &layout, bool with_groups,
     }
 
     gpu_assert(!with_groups) << "Unexpected groups in source/destination.";
-    if (is_dw) groups = layout.dim(1);
-    if (layout.dim(1) == 1) groups = 1;
+    if (is_dw) groups = layout.elems(1);
+    if (layout.elems(1) == 1) groups = 1;
     return split_dimension(layout, /*dim=*/1, groups);
 }
 
@@ -123,12 +123,12 @@ void normalize_layouts(layout_t &src_layout, layout_t &wei_layout,
         dim_t ic, dim_t oc, bool is_dw, const std::array<int, 3> &dhw_map,
         bool add_groups) {
     src_layout = normalize_layout(src_layout, /*with_groups=*/false,
-            g > 1 ? src_layout.dim(1) / ic : 1, is_dw, dhw_map, add_groups,
+            g > 1 ? src_layout.elems(1) / ic : 1, is_dw, dhw_map, add_groups,
             /*is_wei=*/false);
     wei_layout = normalize_layout(wei_layout, with_groups, g, is_dw, dhw_map,
             add_groups, /*is_wei=*/true);
     dst_layout = normalize_layout(dst_layout, /*with_groups=*/false,
-            g > 1 ? dst_layout.dim(1) / oc : 1, is_dw, dhw_map, add_groups,
+            g > 1 ? dst_layout.elems(1) / oc : 1, is_dw, dhw_map, add_groups,
             /*is_wei=*/false);
     if (add_groups && !bia_layout.is_empty()) {
         gpu_assert(bia_layout.ndims() == 1) << bia_layout;
@@ -263,7 +263,7 @@ view_t post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
     uint32_t bound_check_mask = 0;
     for (dim_idx_t i = 0; i < cp_ndims; i++) {
         if (dims[i] == 1) continue; // Broadcast, no bound check needed.
-        if (padded_dims[i] != cp_view().tlayout().dim(i)) {
+        if (padded_dims[i] != cp_view().tlayout().elems(i)) {
             bound_check_mask |= (1 << i);
         } else if (cp_view().has_tmask(i)) {
             bound_check_mask |= (1 << i);

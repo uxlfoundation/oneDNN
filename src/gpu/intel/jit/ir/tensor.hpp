@@ -317,6 +317,7 @@ public:
         return ndims_;
     }
 
+    // Number of elements in the layout
     dim_t elems(const pvar_t &dim = {}) const {
         dim_t ret = 1;
         for (auto &b : blocks_) {
@@ -364,8 +365,6 @@ public:
             tile[b.dim] = tile.get(b.dim, 1) * b.block;
         return tile;
     }
-
-    dim_t dim(const pvar_t &dim) const { return elems(dim); }
 
     stride_t stride(const pvar_t &dim, int dim_block_idx = 0) const {
         int idx = 0;
@@ -825,7 +824,7 @@ public:
     template <typename F>
     void for_each_tile(const tile_t &tile, const F &f) const {
         for (auto &d : tile) {
-            gpu_assert(dim(d) % tile[d] == 0);
+            gpu_assert(elems(d) % tile[d] == 0);
         }
 
         int nblocks = int(blocks().size());
@@ -1324,7 +1323,7 @@ public:
         for (dim_idx_t i = 0; i < nvdims(); i++) {
             expr_t i_mask;
             if ((bound_check_mask & (1 << i)) != 0)
-                i_mask = (placeholder_var() < layout.dim(i));
+                i_mask = (placeholder_var() < layout.elems(i));
             set_tdim(i, vvars_[i], i_mask);
         }
     }
@@ -1402,7 +1401,7 @@ public:
             auto &tdim = tdims_[i];
             if (!tdim.is_identity() || tdim.mask()) continue;
             dim_idx_t vidx = tdim.vidx(0);
-            dim_t dim = tlayout_.dim(i);
+            dim_t dim = tlayout_.elems(i);
             auto &dim_name = vvars_[vidx].as<var_t>().name;
             dim_t padded_dim = get_or_default(padded_dims, dim_name, dim_t(1));
             if (dim >= padded_dim) continue;
@@ -1504,7 +1503,7 @@ public:
         for (dim_idx_t i = 0; i < ntdims(); i++) {
             auto &tdim = tdims_[i];
             if (tdim.expr().is_equal(vvars_[vidx])) {
-                if (vdims_[vidx] != tlayout_.dim(i)) return true;
+                if (vdims_[vidx] != tlayout_.elems(i)) return true;
             }
             if (has_tmask(i)) {
                 for (dim_idx_t j = 0; j < tdim.nvargs(); j++) {
@@ -1533,7 +1532,7 @@ public:
         for (dim_idx_t i = 0; i < ntdims(); i++) {
             for (dim_idx_t j = 0; j < nvdims(); j++) {
                 if (!tdims_[i].expr().is_equal(vvars_[j])) continue;
-                if (vdims_[j] != tlayout_.dim(i)) {
+                if (vdims_[j] != tlayout_.elems(i)) {
                     mask &= (vargs[j] < vdims_[j]);
                 }
             }

@@ -17,8 +17,6 @@
 #include <atomic>
 #include <riscv_vector.h>
 
-#include "oneapi/dnnl/dnnl_types.h"
-
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
@@ -211,34 +209,13 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_thr_nspc(
                                 if (eltwise.alg == alg_kind::eltwise_relu) {
                                     const auto alpha = eltwise.alpha;
                                     const auto scale = eltwise.scale;
-
-                                    size_t n_elems = end_oc - start_oc + 1;
-                                    if (n_elems > 0) {
-                                        size_t oc = 0;
-                                        data_t *d_ptr = dst_arr + start_oc;
-
-                                        while (oc < n_elems) {
-                                            size_t vl = __riscv_vsetvl_e32m1(
-                                                    n_elems - oc);
-                                            vfloat32m1_t v_dst
-                                                    = __riscv_vle32_v_f32m1(
-                                                            d_ptr + oc, vl);
-
-                                            vbool32_t mask
-                                                    = __riscv_vmflt_vf_f32m1_b32(
-                                                            v_dst, 0.0f, vl);
-                                            v_dst = __riscv_vfmul_vf_f32m1_m(
-                                                    mask, v_dst, alpha, vl);
-
-                                            v_dst = __riscv_vfmul_vf_f32m1(
-                                                    v_dst, scale, vl);
-
-                                            __riscv_vse32_v_f32m1(
-                                                    d_ptr + oc, v_dst, vl);
-                                            oc += vl;
-                                        }
+                                    PRAGMA_OMP_SIMD()
+                                    for (size_t oc = start_oc; oc <= end_oc;
+                                            oc++) {
+                                        if (dst_arr[oc] < 0)
+                                            dst_arr[oc] *= alpha;
+                                        dst_arr[oc] *= scale;
                                     }
-
                                     fast_relu_done = true;
                                 }
                             }
@@ -370,20 +347,48 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_ncsp(
                                                          : 0;
                                 data_t *d_ = _dst + oc * M;
 
-                                int oS = 0;
-                                while (oS < m) {
-                                    size_t vl = __riscv_vsetvl_e32m1(m - oS);
-                                    vfloat32m1_t v_d = __riscv_vle32_v_f32m1(
-                                            d_ + oS, vl);
-                                    v_d = __riscv_vfadd_vf_f32m1(v_d, b, vl);
-                                    vbool32_t mask = __riscv_vmflt_vf_f32m1_b32(
-                                            v_d, 0.0f, vl);
-                                    v_d = __riscv_vfmul_vf_f32m1_m(
-                                            mask, v_d, eltwise.alpha, vl);
-                                    v_d = __riscv_vfmul_vf_f32m1(
-                                            v_d, eltwise.scale, vl);
-                                    __riscv_vse32_v_f32m1(d_ + oS, v_d, vl);
-                                    oS += vl;
+                                if (eltwise.alpha == 0.0f) {
+                                    int oS = 0;
+                                    while (oS < m) {
+                                        size_t vl
+                                                = __riscv_vsetvl_e32m1(m - oS);
+                                        vfloat32m1_t v_d
+                                                = __riscv_vle32_v_f32m1(
+                                                        d_ + oS, vl);
+                                        v_d = __riscv_vfadd_vf_f32m1(
+                                                v_d, b, vl); // Add bias
+
+                                        v_d = __riscv_vfmax_vf_f32m1(
+                                                v_d, 0.0f, vl);
+
+                                        if (eltwise.scale != 1.0f) {
+                                            v_d = __riscv_vfmul_vf_f32m1(
+                                                    v_d, eltwise.scale, vl);
+                                        }
+
+                                        __riscv_vse32_v_f32m1(d_ + oS, v_d, vl);
+                                        oS += vl;
+                                    }
+                                } else {
+                                    int oS = 0;
+                                    while (oS < m) {
+                                        size_t vl
+                                                = __riscv_vsetvl_e32m1(m - oS);
+                                        vfloat32m1_t v_d
+                                                = __riscv_vle32_v_f32m1(
+                                                        d_ + oS, vl);
+                                        v_d = __riscv_vfadd_vf_f32m1(
+                                                v_d, b, vl); // Add bias
+                                        vbool32_t mask
+                                                = __riscv_vmflt_vf_f32m1_b32(
+                                                        v_d, 0.0f, vl);
+                                        v_d = __riscv_vfmul_vf_f32m1_m(
+                                                mask, v_d, eltwise.alpha, vl);
+                                        v_d = __riscv_vfmul_vf_f32m1(
+                                                v_d, eltwise.scale, vl);
+                                        __riscv_vse32_v_f32m1(d_ + oS, v_d, vl);
+                                        oS += vl;
+                                    }
                                 }
                             });
                             fast_relu_done = true;

@@ -42,6 +42,7 @@ enum data_kind_t {
     WEI_PEEPHOLE,
     WEI_PROJECTION,
     DROPOUT_MASK,
+    DST_SCALES,
 
     DAT_TOTAL,
     // softmax stats

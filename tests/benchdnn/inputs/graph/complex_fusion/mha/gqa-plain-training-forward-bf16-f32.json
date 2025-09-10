@@ -7,7 +7,6 @@
     0,
     1,
     4,
-    7,
     13
   ],
   "output_ports": [
@@ -162,81 +161,6 @@
       ]
     },
     {
-      "id": 9,
-      "name": "mask_add",
-      "kind": "Add",
-      "attrs": {
-        "auto_broadcast": {
-          "type": "string",
-          "value": "numpy"
-        }
-      },
-      "inputs": [
-        {
-          "id": 5,
-          "dtype": "f32",
-          "shape": [
-            1,
-            2,
-            8,
-            384,
-            384
-          ],
-          "stride": [
-            2359296,
-            1179648,
-            147456,
-            384,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        },
-        {
-          "id": 7,
-          "dtype": "bf16",
-          "shape": [
-            1,
-            2,
-            8,
-            384,
-            384
-          ],
-          "stride": [
-            2359296,
-            1179648,
-            147456,
-            384,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ],
-      "outputs": [
-        {
-          "id": 8,
-          "dtype": "f32",
-          "shape": [
-            1,
-            2,
-            8,
-            384,
-            384
-          ],
-          "stride": [
-            2359296,
-            1179648,
-            147456,
-            384,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ]
-    },
-    {
       "id": 12,
       "name": "softmax",
       "kind": "SoftMax",
@@ -252,7 +176,7 @@
       },
       "inputs": [
         {
-          "id": 8,
+          "id": 5,
           "dtype": "f32",
           "shape": [
             1,

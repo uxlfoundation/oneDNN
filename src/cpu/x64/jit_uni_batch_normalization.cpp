@@ -2351,7 +2351,7 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::pd_t::init(engine_t *engine) {
     // disabling verbose dispatch checks for unsupported isa for better readability
     if (!mayiuse(isa)) return status::unimplemented;
 
-    VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     // Algorithm requires barriers for best performance.
     // TBB utilizes jit_uni_tbb_batch_normalization implementation.
     VDISPATCH_BNORM(dnnl_thr_syncable(),
@@ -2490,7 +2490,7 @@ status_t jit_uni_batch_normalization_bwd_t<isa>::pd_t::init(engine_t *engine) {
     // disabling verbose dispatch checks for unsupported isa for better readability
     if (!mayiuse(isa)) return status::unimplemented;
 
-    VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     // Algorithm requires barriers for best performance.
     // TBB utilizes jit_uni_tbb_batch_normalization implementation.
     VDISPATCH_BNORM(dnnl_thr_syncable(),

@@ -795,7 +795,7 @@ status_t jit_uni_group_normalization_fwd_t::pd_t::init(engine_t *engine) {
 
     VDISPATCH_GNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_GNORM(mayiuse(avx2), VERBOSE_UNSUPPORTED_ISA);
-    VDISPATCH_GNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_GNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_GNORM(utils::one_of(src_md()->data_type, f32, bf16, f16, s8, u8),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_GNORM(utils::one_of(dst_md()->data_type, f32, bf16, f16, s8, u8),

@@ -824,7 +824,7 @@ status_t jit_avx512_core_resampling_bwd_t::pd_t::init(engine_t *engine) {
     // better readability
     if (!mayiuse(avx512_core)) return status::unimplemented;
     VDISPATCH_RESAMPLING(!is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_RESAMPLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_RESAMPLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_RESAMPLING(impl_supports_datatype(diff_dst_md()->data_type),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_RESAMPLING(impl_supports_datatype(diff_src_md()->data_type),

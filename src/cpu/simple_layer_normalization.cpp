@@ -40,7 +40,7 @@ status_t simple_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
     const memory_desc_wrapper src_d(src_md());
 
     VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_LNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_LNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, bf16, f16, s8, u8),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(utils::one_of(dst_md()->data_type, f32, bf16, f16, s8, u8),
@@ -254,7 +254,7 @@ status_t simple_layer_normalization_bwd_t::pd_t::init(engine_t *engine) {
     const memory_desc_wrapper src_d(src_md());
 
     VDISPATCH_LNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_LNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_LNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, bf16, f16),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(utils::one_of(diff_dst_md()->data_type, f32, bf16, f16),

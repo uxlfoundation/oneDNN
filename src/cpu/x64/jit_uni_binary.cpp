@@ -137,7 +137,7 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_BINARY(
             set_default_params() == status::success, VERBOSE_UNSUPPORTED_TAG);
-    VDISPATCH_BINARY(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_BINARY(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src0");
     VDISPATCH_BINARY(IMPLICATION(!conf_.is_i8, src0_md_ == dst_md_),
             VERBOSE_INCONSISTENT_MDS, "src", "dst");
     VDISPATCH_BINARY(

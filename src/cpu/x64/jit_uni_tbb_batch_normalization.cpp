@@ -2452,7 +2452,7 @@ status_t jit_uni_tbb_batch_normalization_fwd_t<isa>::pd_t::init(
     // disabling verbose dispatch checks for unsupported isa for better readability
     if (!mayiuse(isa)) return status::unimplemented;
 
-    VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_BNORM(one_of(src_md()->data_type, f32, bf16, f16),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_BNORM(src_md()->data_type == dst_md()->data_type,
@@ -2587,7 +2587,7 @@ status_t jit_uni_tbb_batch_normalization_bwd_t<isa>::pd_t::init(
     // disabling verbose dispatch checks for unsupported isa for better readability
     if (!mayiuse(isa)) return status::unimplemented;
 
-    VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_BNORM(one_of(src_md()->data_type, f32, bf16, f16),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_BNORM(src_md()->data_type == diff_src_md()->data_type,

@@ -44,7 +44,8 @@ struct vectorized_fwd_t : public primitive_t {
             auto dst_data_t = dst_md()->data_type;
 
             VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_LNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_LNORM(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
             VDISPATCH_LNORM(
                     (utils::everyone_is(u8, src_data_t, dst_data_t)
                             || utils::everyone_is(s8, src_data_t, dst_data_t)
@@ -122,7 +123,8 @@ struct vectorized_bwd_t : public primitive_t {
             auto diff_src_dt = diff_src_md()->data_type;
 
             VDISPATCH_LNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_LNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_LNORM(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
             VDISPATCH_LNORM(
                     (utils::everyone_is(f32, src_dt, diff_dst_dt, diff_src_dt)
                             || utils::everyone_is(

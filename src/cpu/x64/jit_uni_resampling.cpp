@@ -75,7 +75,7 @@ status_t jit_uni_resampling_fwd_t::pd_t::init(engine_t *engine) {
     conf_.isa = get_supported_isa(src_d.is_plain());
 
     VDISPATCH_RESAMPLING(is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_RESAMPLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_RESAMPLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_RESAMPLING(
             conf_.src_tag != format_tag::undef, VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_RESAMPLING(set_default_params(conf_.src_tag) == status::success,

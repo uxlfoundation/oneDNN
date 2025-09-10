@@ -36,7 +36,6 @@ int min_align_2d();
 int min_pitch_2d();
 
 using layout_t = dnnl::impl::gpu::intel::jit::layout_t;
-using expr_t = dnnl::impl::gpu::intel::jit::expr_t;
 
 struct send_hint_t {
     send_cache_hint_t cache;

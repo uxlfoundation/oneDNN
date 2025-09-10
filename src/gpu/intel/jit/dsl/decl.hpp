@@ -40,6 +40,7 @@ static type_t f16 = type_t::f16();
 static type_t bf16 = type_t::bf16();
 
 using expr_t = jit::expr_t;
+using type_t = jit::type_t;
 
 } // namespace dsl
 } // namespace jit

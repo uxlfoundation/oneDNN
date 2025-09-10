@@ -2,7 +2,7 @@
 --reset
 
 # Common params for all cases
---stag=any,ab --wtag=any,ab --dtag=ab,any
+--stag=any,abx --wtag=any,abx --dtag=abx,any
 --bia-dt=undef,f32 --bia_mask=2
 --skip-impl=ref
 --attr-post-ops=
@@ -15,11 +15,9 @@
 
 ## MXFP4
 --dt=f4_e2m1:f4_e2m1:f32,f4_e2m1:f4_e2m1:bf16
---attr-scales=src:per_ocic:e8m0:1x32+wei:per_ocic:e8m0:32x1
---batch=shapes_4bit
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--batch=shapes_mx
 
-# --dt=f4_e2m1:f4_e2m1:f32,f4_e2m1:f4_e2m1:bf16
-# --attr-scales=src:per_ocic:e8m0:1x32+wei:per_ocic:e8m0:32x1
-#--batch=shapes_4bit
-
-
+--dt=f4_e2m1
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--batch=shapes_mx

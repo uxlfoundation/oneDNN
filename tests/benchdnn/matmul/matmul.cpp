@@ -577,11 +577,11 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         }
 
         if (!prb->attr.scales.is_def(DNNL_ARG_DST)
-                && prb->attr.scales.get(DNNL_ARG_DST).policy
-                        != attr_t::COMMON) {
+                && prb->attr.scales.get(DNNL_ARG_DST).policy != attr_t::COMMON
+                && prb->attr.scales.get(DNNL_ARG_DST).policy != attr_t::MX) {
             BENCHDNN_PRINT(2,
-                    "[SKIP][%s:%d]: Only Common dst scales are supported "
-                    "on CPU.\n",
+                    "[SKIP][%s:%d]: Only Common and MX dst scales are "
+                    "supported on CPU.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
@@ -1082,6 +1082,9 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
     //       e.g. get_kinds_to_check_default_case
     std::vector<data_kind_t> check_kinds = {DST};
     if (!prb->attr.dropout.is_def()) check_kinds.push_back(DROPOUT_MASK);
+    if (!prb->attr.scales.get(DNNL_ARG_DST).is_def()
+            && prb->attr.scales.get(DNNL_ARG_DST).is_mx())
+        check_kinds.push_back(DST_SCALES);
     return check_kinds;
 }
 

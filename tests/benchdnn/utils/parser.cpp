@@ -666,8 +666,7 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
     static const std::string help
             = "ENCODING[+SPARSITY]:ENCODING[+SPARSITY]:ENCODING[+SPARSITY]\n   "
               "Specifies sparse encodings and sparsity.\n    More details at "
-              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-              "benchdnn/doc/knobs_encoding.md\n";
+            + doc_url + "knobs_encoding.md\n";
 
     std::vector<sparse_options_t> def {sparse_options_t()};
     auto parse_sparse_options_func = [](const std::string &s) {
@@ -710,8 +709,7 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
               "is one of those:\n    * SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]\n  "
               "  * ELTWISE[:ALPHA[:BETA[:SCALE]]]\n    * DW:KkSsPp[:DST_DT]\n  "
               "  * BINARY:DT[:MASK_INPUT[:TAG]]\n    More details at "
-              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-              "benchdnn/doc/knobs_attr.md\n";
+            + doc_url + "knobs_attr.md\n";
     std::vector<attr_t::post_ops_t> def {attr_t::post_ops_t()};
     return parse_vector_option(po, def, parser_utils::parse_attr_post_ops_func,
             str, option_name, help);
@@ -720,20 +718,20 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
 bool parse_attr_scales(std::vector<attr_t::arg_scales_t> &scales,
         const char *str, const std::string &option_name = "attr-scales") {
     static const std::string help
-            = "ARG:POLICY[:SCALE][+...]\n    Specifies input scales "
-              "attribute.\n    More details at "
-              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-              "benchdnn/doc/knobs_attr.md\n";
+            = "ARG:POLICY[:SCALE[:DATA_TYPE[:GROUPS]]][+...]\n"
+              "    Specifies input scales attribute.\n"
+              "    More details at "
+            + doc_url + "knobs_attr.md\n";
     return parse_subattr(scales, str, option_name, help);
 }
 
 bool parse_attr_zero_points(std::vector<attr_t::zero_points_t> &zp,
         const char *str, const std::string &option_name = "attr-zero-points") {
     static const std::string help
-            = "ARG:POLICY[:ZEROPOINT][+...]\n    Specifies zero-points "
-              "attribute.\n    More details at "
-              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-              "benchdnn/doc/knobs_attr.md\n";
+            = "ARG:POLICY[:ZEROPOINT[:DATA_TYPE[:GROUPS]]][+...]\n"
+              "    Specifies zero-points attribute.\n"
+              "    More details at "
+            + doc_url + "knobs_attr.md\n";
     return parse_subattr(zp, str, option_name, help);
 }
 
@@ -1603,9 +1601,8 @@ bool parse_bench_settings(const char *str) {
         help_ss << "===================\n";
         help_ss << "= Global options: =\n";
         help_ss << "===================\n";
-        help_ss << "(More technical details available at "
-                   "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-                   "benchdnn/doc/knobs_common.md)\n\n";
+        help_ss << "(More technical details available at " + doc_url
+                        + "knobs_common.md)\n\n";
         start_msg = true;
     }
 
@@ -1629,9 +1626,7 @@ bool parse_bench_settings(const char *str) {
         help_ss << "===================\n";
         help_ss << "= Driver options: =\n";
         help_ss << "===================\n";
-        help_ss << "(More technical details available at "
-                   "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-                   "benchdnn/doc/driver_"
+        help_ss << "(More technical details available at " + doc_url + "driver_"
                 << driver_name << ".md)\n\n";
         end_msg = true;
     }

@@ -140,6 +140,7 @@ policy_t attr_t::str2policy(const std::string &str) {
     if (s.compare(STRINGIFY(_plc)) == 0) return _plc
     CASE(COMMON);
     CASE(HOST_SCALAR);
+    CASE(MX);
     CASE(PER_OC);
     CASE(PER_OCIC);
     CASE(PER_DIM_0);
@@ -156,6 +157,7 @@ policy_t attr_t::str2policy(const std::string &str) {
 const char *attr_t::policy2str(policy_t policy) {
     if (policy == COMMON) return "common";
     if (policy == HOST_SCALAR) return "host_scalar";
+    if (policy == MX) return "mx";
     if (policy == PER_OC) return "per_oc";
     if (policy == PER_OCIC) return "per_ocic";
     if (policy == PER_DIM_0) return "per_dim_0";
@@ -190,6 +192,7 @@ int attr_t::get_default_mask(policy_t policy, int ndims) {
         case PER_DIM_01: return (1 << 0) + (1 << 1);
         case PER_DIM_2: return (1 << 2);
         case PER_DIM_3: return (1 << 3);
+        case MX:
         case PER_TENSOR:
             assert(ndims > 0 && ndims <= DNNL_MAX_NDIMS);
             return (1 << ndims) - 1;
@@ -198,6 +201,13 @@ int attr_t::get_default_mask(policy_t policy, int ndims) {
             return 0; // mask=0 is required for compatibility with preprocessing logic
         default: SAFE(FAIL, CRIT); return 0;
     }
+}
+
+dnnl_quantization_mode_t attr_t::policy2quantization_mode(policy_t policy) {
+    if (policy == policy_t::MX)
+        return dnnl_quantization_mode_dynamic_mx;
+    else
+        return dnnl_quantization_mode_static_sazp;
 }
 
 int attr_t::policy2mask(int arg, policy_t policy, int ndims,
@@ -232,6 +242,7 @@ int attr_t::policy2mask(int arg, policy_t policy, int ndims,
             case PER_DIM_1:
             case PER_OC: return (1 << (ndims - 1));
             case PER_OCIC: return (1 << (ndims - 1)) + (1 << (ndims - 2));
+            case MX:
             case PER_TENSOR: return attr_t::get_default_mask(policy, ndims);
             default: SAFE_V(FAIL); return -1;
         }
@@ -328,6 +339,7 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
             case PER_TENSOR:
             case PER_OC:
             case PER_OCIC:
+            case MX:
                 if (this->groups.size() != 2) {
                     BENCHDNN_PRINT(0, "%s\n",
                             "Error: number of groups should be equal to number "
@@ -1268,12 +1280,7 @@ dnnl_primitive_attr_t create_dnnl_attr(
             if (as.is_def(arg_name)) continue;
 
             const auto &e = arg.second;
-            if (e.policy == policy_t::HOST_SCALAR) {
-                DNN_SAFE_V(dnnl_primitive_attr_set_scales_v2(dnnl_attr,
-                        arg_name, 0 /* mask */, 0 /* ndims */, nullptr, e.dt,
-                        true /* is_on_host = true */));
-                continue;
-            }
+            int is_on_host = e.is_host_scalar();
 
             // Check if there's a arg with pre-defined mask in `attr_args`...
             int args_mask = attr_args.get_mask(DNNL_ARG_ATTR_SCALES | arg_name);
@@ -1282,8 +1289,10 @@ dnnl_primitive_attr_t create_dnnl_attr(
                     ? args_mask
                     : attr_t::policy2mask(arg_name, e.policy, ndims);
 
-            DNN_SAFE_V(dnnl_primitive_attr_set_scales(dnnl_attr, arg_name, mask,
-                    static_cast<int>(e.groups.size()), e.groups.data(), e.dt));
+            DNN_SAFE_V(dnnl_primitive_attr_set_scales_v3(dnnl_attr, arg_name,
+                    mask, static_cast<int>(e.groups.size()), e.groups.data(),
+                    e.dt, is_on_host,
+                    attr_t::policy2quantization_mode(e.policy)));
         }
     }
 

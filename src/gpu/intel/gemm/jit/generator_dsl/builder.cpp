@@ -281,7 +281,7 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
                 }
             }
 
-            tensor_t src = def(src_layout, "binary" + i_s + "_blk");
+            tensor_t src = def("binary" + i_s + "_blk", src_layout);
             std::cout << "src_g: " << src_g.str() << "\n";
             std::cout << "src: " << src.str() << "\n";
             load(src, src_g);
@@ -458,9 +458,8 @@ struct generator_dsl_t {
         ir::tile_t C_dims {{{m_var, m_blk}, {n_var, n_blk}}};
         auto C_store_transform = get_transform(strategy.C, C_vars);
 
-        tensor_t C
-                = def(C_store_transform.get_layout(C_dims, into_ir(problem.Tc)),
-                        "C_blk", 0);
+        tensor_t C = def("C_blk",
+                C_store_transform.get_layout(C_dims, into_ir(problem.Tc)), 0);
 
         idx_t subgroup_dim = C.layout.blocks()[0].dim;
         int m_group_idx = strategy.loopOrder[0] == LoopM ? 0 : 1;
@@ -475,7 +474,7 @@ struct generator_dsl_t {
                         + local_id(n_group_idx))
                         * (subgroup_dim == n_var ? n_blk / strategy.subgroupSize
                                                  : n_blk));
-        auto k_idx = def(k.type(), "k_idx", 0);
+        auto k_idx = def("k_idx", k.type(), 0);
 
         auto offset_A = arg("offset_A");
         auto offset_B = arg("offset_B");
@@ -630,8 +629,8 @@ struct generator_dsl_t {
         auto kloop_it = cfg.kloop_it;
         auto &C = cfg.C;
 
-        tensor_t A = def(cfg.A_load.layout, "A_blk");
-        tensor_t B = def(cfg.B_load.layout, "B_blk");
+        tensor_t A = def("A_blk", cfg.A_load.layout);
+        tensor_t B = def("B_blk", cfg.B_load.layout);
 
         int mma_k_blk
                 = std::min(cfg.A_load.tile[k_var], cfg.B_load.tile[k_var]);

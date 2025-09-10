@@ -75,11 +75,11 @@ struct ctx_t {
 
             for (int i = 0; i < 3; i++) {
                 group_ids_[i]
-                        = let(group_id_type(), ir_builder_t::tg_idx(i), {});
+                        = let(ir_builder_t::tg_idx(i), group_id_type(), {});
                 local_ids_[i]
-                        = let(local_id_type(), ir_builder_t::local_id(i), {});
+                        = let(ir_builder_t::local_id(i), local_id_type(), {});
                 local_sizes_[i] = let(
-                        local_size_type(), ir_builder_t::local_size(i), {});
+                        ir_builder_t::local_size(i), local_size_type(), {});
             }
         }
     }
@@ -118,7 +118,7 @@ struct ctx_t {
     }
 
     // TODO: Remove IR restriction which requires force_alloc
-    lval_t def(type_t _type, const std::string &name, const expr_t &value = {},
+    lval_t def(const std::string &name, type_t _type, const expr_t &value = {},
             bool force_alloc = false) {
         auto type = _type.with_attr(_type.attr() | type::attr_t::mut);
         auto alloc_var = var(type, name);
@@ -140,27 +140,28 @@ struct ctx_t {
     }
 
     lval_t def(const std::string &name, const expr_t &value) {
-        return def(value.type(), name, value);
+        return def(name, value.type(), value);
     }
 
-    tensor_t def(const layout_t &layout, const std::string &name,
-            const expr_t &value = {}) {
+    tensor_t def(const std::string &name, const layout_t &layout,
+            type::attr_t attr, const expr_t &value = {}) {
         // Tensors need to be grf-aligned for loading/storing
         // TODO: IR should be modified to enable loading small tensors (such as
         // scalar values) without GRF alignment.
         auto elems = std::max(into<int>(layout.type().elems() * layout.elems()),
                 grf_size() / layout.type().scalar().size());
-        auto t = layout.type()[elems];
-        return {def(t, name, value, true), layout};
+        auto t = layout.type()[elems].with_attr(attr);
+        return {def(name, t, value, /*force_alloc=*/!new_ir_api_), layout};
     }
 
-    expr_t let(type_t type, const std::string &name, const expr_t &value) {
+    expr_t let(
+            const std::string &name, const type_t &type, const expr_t &value) {
         auto alloc_var = var(type, name);
         append(let_t::make(alloc_var, value, {}));
         return alloc_var;
     }
     expr_t let(const std::string &name, const expr_t &value) {
-        return let(value.type(), name, value);
+        return let(name, value.type(), value);
     }
 
     int slm_byte_offset() const { return slm_byte_offset_; }
@@ -334,34 +335,35 @@ expr_t arg(const std::string &name, bool allow_empty) {
     return default_ctx().arg(name, allow_empty);
 }
 
-lval_t def(type_t type, const std::string &name, const expr_t &value,
+lval_t def(const std::string &name, const type_t &type, const expr_t &value,
         bool force_alloc) {
-    return default_ctx().def(type, name, value, force_alloc);
-}
-
-lval_t def(const std::string &name, const type_t &type, const expr_t &value) {
-    return def(type, name, value);
+    return default_ctx().def(name, type, value, force_alloc);
 }
 
 lval_t def(const std::string &name, const expr_t &value) {
-    return def(value.type(), name, value);
+    return def(name, value.type(), value);
+}
+
+tensor_t def(const std::string &name, layout_t layout, const expr_t &value,
+        type::attr_t attr) {
+    if (any(attr & type::attr_t::slm)) {
+        gpu_assert(value.is_empty());
+        auto alloc_elems = into<int>(layout.size() / layout.type().size());
+        auto buf = def(name, layout.type().with_slm()[alloc_elems]);
+        int bytes = (to_cpp<int>(layout.offset()) + alloc_elems)
+                * layout.type().size();
+        auto off = utils::div_up(
+                default_ctx().slm_byte_offset(), layout.type().size());
+        layout.set_offset(off);
+        default_ctx().reserve_slm(bytes);
+        return tensor_t(buf, layout);
+    }
+    return default_ctx().def(name, layout, attr);
 }
 
 tensor_t def(
-        const layout_t &layout, const std::string &name, const expr_t &value) {
-    return default_ctx().def(layout, name, value);
-}
-
-tensor_t def_slm(layout_t layout, const std::string &name) {
-    auto alloc_elems = into<int>(layout.size() / layout.type().size());
-    auto buf = def(name, layout.type().with_slm()[alloc_elems]);
-    int bytes = (to_cpp<int>(layout.offset()) + alloc_elems)
-            * layout.type().size();
-    auto off = utils::div_up(
-            default_ctx().slm_byte_offset(), layout.type().size());
-    layout.set_offset(off);
-    default_ctx().reserve_slm(bytes);
-    return tensor_t(buf, layout);
+        const std::string &name, const layout_t &layout, type::attr_t attr) {
+    return def(name, layout, {}, attr);
 }
 
 expr_t iif(
@@ -378,8 +380,8 @@ lval_t &lval_t::operator=(const expr_t &obj) {
     return *this;
 }
 
-expr_t let(type_t type, const std::string &name, const expr_t &value) {
-    return default_ctx().let(type, name, value);
+expr_t let(const std::string &name, const type_t &type, const expr_t &value) {
+    return default_ctx().let(name, type, value);
 }
 
 expr_t let(const std::string &name, const expr_t &value) {

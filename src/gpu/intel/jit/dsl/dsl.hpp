@@ -194,21 +194,15 @@ public:
 expr_t subgroup_id(int idx = 0);
 expr_t subgroup_local_id();
 expr_t arg(const std::string &name, bool allow_empty = false);
-// TODO: Unify def() API, keep three versions:
-// 1. def(name, type, value)
-// 2. def(name, type)
-// 3. def(name, value)
-// name goes first in all three for consistency.
-lval_t def(type_t type, const std::string &name, const expr_t &value = {},
-        bool force_alloc = false);
-lval_t def(
-        const std::string &name, const type_t &type, const expr_t &value = {});
+lval_t def(const std::string &name, const type_t &type,
+        const expr_t &value = {}, bool force_alloc = false);
 lval_t def(const std::string &name, const expr_t &value);
-tensor_t def(const layout_t &layout, const std::string &name,
-        const expr_t &value = {});
-expr_t let(type_t type, const std::string &name, const expr_t &value);
+tensor_t def(const std::string &name, const layout_t &layout,
+        type::attr_t attr = {});
+tensor_t def(const std::string &name, layout_t layout, const expr_t &value,
+        type::attr_t attr = {});
+expr_t let(const std::string &name, const type_t &type, const expr_t &value);
 expr_t let(const std::string &name, const expr_t &value);
-tensor_t def_slm(layout_t layout, const std::string &name);
 
 expr_t iif(
         const expr_t &cond, const expr_t &true_expr, const expr_t &false_expr);

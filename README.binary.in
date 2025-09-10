@@ -18,13 +18,14 @@ at the oneDNN Github (https://github.com/uxlfoundation/oneDNN/releases).
 Documentation
 -------------
 
-* Developer guide
-(https://uxlfoundation.github.io/oneDNN/v@DNNL_VERSION_MAJOR@.@DNNL_VERSION_MINOR@)
-explains the programming model, supported functionality, and implementation
-details, and includes annotated examples.
-* API reference
-(https://uxlfoundation.github.io/oneDNN/v@DNNL_VERSION_MAJOR@.@DNNL_VERSION_MINOR@/modules.html)
-provides a comprehensive reference of the library API.
+* Developer guide (https://uxlfoundation.github.io/oneDNN/v@DNNL_VERSION_MAJOR@.@DNNL_VERSION_MINOR@)
+  explains the programming model, supported functionality, and implementation
+  details, and includes annotated examples.
+* API reference (https://uxlfoundation.github.io/oneDNN/v@DNNL_VERSION_MAJOR@.@DNNL_VERSION_MINOR@/modules.html)
+  provides a comprehensive reference of the library API.
+* Release Notes (https://github.com/uxlfoundation/oneDNN/releases/tag/v@DNNL_VERSION_MAJOR@.@DNNL_VERSION_MINOR@)
+  explain the new features, performance optimizations, and improvements
+  implemented in each version of oneDNN.
 
 System Requirements
 -------------------
@@ -40,8 +41,12 @@ The library is optimized for the following CPUs:
   Lake, Ice Lake, Sapphire Rapids, and Emerald Rapids)
 * Intel Xeon CPU Max Series (formerly Sapphire Rapids HBM)
 * Intel Core Ultra processors (formerly Meteor Lake, Arrow Lake,
-  and Lunar Lake)
+  Lunar Lake, and Panther Lake)
 * Intel Xeon 6 processors (formerly Sierra Forest and Granite Rapids)
+* future Intel Core processor with Intel AVX10.2 instruction set support
+  (code name Nova Lake)
+* future Intel Xeon processor with Intel AVX10.2 instruction set support
+  (code name Diamond Rapids)
 
 oneDNN detects the instruction set architecture (ISA) at runtime and uses
 just-in-time (JIT) code generation to deploy the code optimized
@@ -54,12 +59,15 @@ for more details.
 The library is optimized for the following GPUs:
 * Intel Graphics for 11th-14th Generation Intel Core Processors
 * Intel Iris Xe MAX Graphics (formerly DG1)
-* Intel Arc(TM) graphics (formerly Alchemist)
+* Intel Arc(TM) A-Series Graphics (formerly Alchemist)
 * Intel Data Center GPU Flex Series (formerly Arctic Sound)
 * Intel Data Center GPU Max Series (formerly Ponte Vecchio)
-* Intel Graphics and Intel Arc graphics for Intel Core Ultra processors
- (formerly Meteor Lake, Arrow Lake and Lunar Lake)
-* future Intel Arc graphics (code name Battlemage)
+* Intel Graphics and Intel Arc Graphics for Intel Core Ultra processors
+  (formerly Meteor Lake, Arrow Lake and Lunar Lake)
+* Intel Arc B-Series Graphics and Intel Arc Pro B-Series Graphics
+  (formerly Battlemage)
+* Intel Arc Graphics for future Intel Core Ultra processors
+  (code name Panther Lake)
 
 Support
 -------
@@ -79,7 +87,7 @@ terms.
 3-clause BSD license:
 * Xbyak (https://github.com/herumi/xbyak)
 * Instrumentation and Tracing Technology API (ITT API)
-(https://github.com/intel/ittapi)
+  (https://github.com/intel/ittapi)
 * CMake (https://github.com/Kitware/CMake)
 
 Boost Software License, Version 1.0:
@@ -87,15 +95,16 @@ Boost Software License, Version 1.0:
 
 MIT License:
 * Intel Graphics Compute Runtime for oneAPI Level Zero and OpenCL Driver
-(https://github.com/intel/compute-runtime)
+  (https://github.com/intel/compute-runtime)
 * Intel Graphics Compiler (https://github.com/intel/intel-graphics-compiler)
 * oneAPI Level Zero (https://github.com/oneapi-src/level-zero)
 * Intel Metrics Discovery Application Programming Interface
-(https://github.com/intel/metrics-discovery)
+  (https://github.com/intel/metrics-discovery)
+* spdlog (https://github.com/gabime/spdlog)
 
 This third party software, even if included with the distribution of
-the Intel software, may be governed by separate license terms, including
-without limitation, third party license terms, other Intel software license
+other software, may be governed by separate license terms, including
+without limitation, third party license terms, other software license
 terms, and open source software license terms. These separate license terms
 govern your use of the third party programs as set forth in the
 "THIRD-PARTY-PROGRAMS" file.
@@ -111,6 +120,8 @@ of Security and trust for our users who consume oneDNN.
 Intel, the Intel logo, Arc, Intel Atom, Intel Core, Iris,
 OpenVINO, the OpenVINO logo, Pentium, VTune, and Xeon are trademarks
 of Intel Corporation or its subsidiaries.
+
+Arm and Neoverse are trademarks, or registered trademarks of Arm Ltd.
 
 \* Other names and brands may be claimed as the property of others.
 

@@ -1188,7 +1188,7 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
                 if (isa == sse41) {
                     movups(cvtvr, indvr);
                     pcmpeqd(cvtvr, vmm_k_offset);
-                    vandps(cvtvr, cvtvr, outvr);
+                    andps(cvtvr, outvr);
                     addps(inpvr, cvtvr);
                     store(input_dt, inpvr.getIdx(), aux_reg_input, inp_offset,
                             is_tail_processing(bci));

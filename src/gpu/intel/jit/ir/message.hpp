@@ -133,10 +133,8 @@ struct block_2d_info_t {
 };
 
 // Function representing send messages.
-class send_t : public func_impl_t {
+class send_t : public func_impl_t, public object::info_t<send_t> {
 public:
-    IR_DECL_TYPE(send_t)
-
     static func_t make(const hw_t &hw, send_op_t op, send_address_t address,
             const type_t &type, int slots, bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {
@@ -193,7 +191,7 @@ public:
                 zero_out, cache_hint);
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const impl_t &obj) const override {
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
@@ -260,8 +258,7 @@ public:
     bool is_slm() const { return address == send_address_t::slm; }
 
     bool is_block() const {
-        return utils::one_of(
-                type.kind(), type_kind_t::oword, type_kind_t::hword);
+        return utils::one_of(type.scalar(), type_t::oword(), type_t::hword());
     }
 
     bool is_scattered() const { return !is_block() && !is_2d(); }
@@ -383,7 +380,7 @@ private:
     send_t(const hw_t &hw, send_op_t op, send_address_t address,
             const type_t &type, int slots, uint32_t slot_mask, bool is_lsc,
             bool zero_out, send_cache_hint_t cache_hint)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , hw(hw)
         , op(op)
         , address(address)
@@ -396,7 +393,7 @@ private:
 
     send_t(const hw_t &hw, send_op_t op, const type_t &type, bool zero_out,
             const block_2d_info_t &block_2d_info, send_cache_hint_t cache_hint)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , hw(hw)
         , op(op)
         , address(send_address_t::a64)

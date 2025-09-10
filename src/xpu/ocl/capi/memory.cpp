@@ -38,7 +38,8 @@ status_t dnnl_ocl_interop_memory_create_v2(memory_t **memory,
     if (!ok) return status::invalid_arguments;
 
     const auto mdw = memory_desc_wrapper(md);
-    if (mdw.format_any() || mdw.has_runtime_dims_or_strides())
+    if (mdw.format_any() || mdw.has_runtime_dims_or_strides()
+            || mdw.is_host_scalar_desc())
         return status::invalid_arguments;
 
     std::vector<unsigned> flags_vec(nhandles);

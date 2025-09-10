@@ -2030,6 +2030,7 @@ void brgemm_convolution_fwd_t<isa>::ker_vpad(brgemm_thread_ctx_t &btc) const {
 #undef BRGEMM_CONV_KER_HEADER
 template struct brgemm_convolution_fwd_t<sve_512>;
 template struct brgemm_convolution_fwd_t<sve_256>;
+template struct brgemm_convolution_fwd_t<sve_128>;
 
 } // namespace aarch64
 

@@ -83,9 +83,9 @@ public:
         , common_dst_zero_point(0) {
         if (pd) {
             auto &zp = pd->attr()->zero_points_;
-            src_zp_type = zp.get_data_type(DNNL_ARG_SRC);
-            wei_zp_type = zp.get_data_type(DNNL_ARG_WEIGHTS);
-            dst_zp_type = zp.get_data_type(DNNL_ARG_DST);
+            src_zp_type = to_ir(zp.get_data_type(DNNL_ARG_SRC));
+            wei_zp_type = to_ir(zp.get_data_type(DNNL_ARG_WEIGHTS));
+            dst_zp_type = to_ir(zp.get_data_type(DNNL_ARG_DST));
         }
     }
 
@@ -252,7 +252,7 @@ public:
     }
 
     virtual view_t create_view(const memory_desc_t &md) const {
-        return cp_view().retype(md.data_type);
+        return cp_view().retype(to_ir(md.data_type));
     }
 
     virtual view_t create_src_zp_view(uint32_t mask) const {

@@ -44,7 +44,8 @@ status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
 
     // TODO: add training(?), add bwd
 #if XE4
-    VDISPATCH_POOLING(intel_engine->device_info()->gpu_arch() < compute::gpu_arch_t::xe4,
+    VDISPATCH_POOLING(
+            intel_engine->device_info()->gpu_arch() < compute::gpu_arch_t::xe4,
             VERBOSE_UNSUPPORTED_ARCH, "gpu");
 #endif
     VDISPATCH_POOLING_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);

@@ -122,7 +122,8 @@ size_t get_md_hash(const memory_desc_t &md) {
     // format desc
     switch ((int)md.format_kind) {
         case format_kind::undef:
-        case format_kind::any: break;
+        case format_kind::any:
+        case format_kind::host_scalar: break; // no additional data to hash
         case format_kind::blocked:
             for (int i = 0; i < md.ndims; i++) {
                 if (md.dims[i] == 1 && md.padded_dims[i] == 1) continue;
@@ -243,6 +244,10 @@ size_t get_attr_hash(const primitive_attr_t &attr) {
 
     if (!attr.zero_points_.has_default_values()) {
         seed = hash_combine(seed, attr.zero_points_.get_hash());
+    }
+
+    if (!attr.precomputed_reductions_.has_default_values()) {
+        seed = hash_combine(seed, attr.precomputed_reductions_.get_hash());
     }
 
     // post_ops: entry[:]
@@ -742,6 +747,8 @@ size_t get_desc_hash(const sdpa_desc_t &desc) {
     seed = hash_combine(seed, get_md_hash(desc.attn_mask_desc));
     // Scale type
     seed = hash_combine(seed, static_cast<size_t>(desc.scale_dt));
+    seed = hash_combine(seed, static_cast<size_t>(desc.kq_acc_dt));
+    seed = hash_combine(seed, static_cast<size_t>(desc.vs_acc_dt));
     seed = hash_combine(seed, desc.invert_scale);
     seed = hash_combine(seed, desc.kv_head_number);
     seed = hash_combine(seed, static_cast<size_t>(desc.mask_type));

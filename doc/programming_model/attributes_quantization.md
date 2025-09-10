@@ -65,8 +65,11 @@ During execution, primitives implementations avoid integer overflows
 and maintain integer accuracy by using wider datatypes (e.g. int32)
 for intermediate values and accumulators. Those are then converted as
 necessary before the result is written to the output memory objects.
-During that conversion, implementations typically saturate in case of
-underflow/overflow (e.g. when converting `s32` to int8).
+
+When converting to integral datatypes, implementations typically
+saturate, whereas for floating-point datatypes, underflow/overflow can
+occur. To force saturation in floating-point datatypes use
+@ref dev_guide_attributes_post_ops_eltwise with clip algorithm.
 
 @warning
 Depending on the architecture, the behavior of int8 computations might slightly
@@ -83,11 +86,9 @@ parameters are applied after the post-ops as follow:
 \f]
 
 Quantizing/dequantizing values between post-operations can still be
-achieved using one of [eltwise](@ref
-dev_guide_attributes_post_ops_eltwise), [binary](@ref
-dev_guide_attributes_post_ops_binary), or the scale parameter of the
-appropriate post-operation.
-
+achieved using one of [eltwise](@ref dev_guide_attributes_post_ops_eltwise),
+[binary](@ref dev_guide_attributes_post_ops_binary), or the scale parameter of
+the appropriate post-operation.
 
 ### Example: Convolution Quantization Workflow
 
@@ -350,3 +351,156 @@ channel scaling.
            attr);   // the attributes describe the quantization flow
 // ...
 ~~~
+
+#### Example 3: matmul with advanced quantization
+
+This example describes a process of weights decompression, or
+weights-only-quantization (WoQ), in matmul primitive which may be found when
+running Large Language Models (LLM). The advanced quantization here refers to
+additional grouping introduced over reduction dimension besides traditional
+per-N quantization.
+
+~~~cpp
+   // Src, weights, and dst memory descriptors for matmul.
+   // Consider simple 2D matmul case.
+   dnnl::memory::desc src_f16_any_md(...);
+   dnnl::memory::desc wei_s8_any_md(
+           {K (256), N (512)},           // dims
+           dnnl::memory::data_type::s8,  // the data originally in s8
+           dnnl::memory::format_tag::any // let matmul to choose
+           );
+   dnnl::memory::desc dst_f16_any_md(...);
+
+   // prepare the attributes
+   dnnl::primitive_attr attr;
+   // scale per K and N dimensions:
+   const int wei_mask = (1 << 0) | (1 << 1);
+   // K dimension specifies the group size of `128`. It means that each 128
+   // elements over K dimension will share a single value. For a given example,
+   // there will be two groups, thus, two values referring to a single N value.
+   std::vector<dim_t> wei_groups = {128, 1}
+
+   // the scaling factors for quantized weights (as declared above)
+   // A unique scale for each gK (256 / 128 = 2) times N, total 1024 elements.
+   std::vector<half> wei_scales(gK, N) = {...};
+
+   attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, wei_groups, data_type::f16);
+
+   // Additionally, to instruct the library to perform weights decompression,
+   // fpmath mode must be set with a flag set to `true`:
+   attr.set_fpmath_mode(fpmath_mode::f16, /* apply_to_int = */ true);
+
+   // create a matmul primitive descriptor
+   auto matmul_pd = dnnl::matmul::primitive_desc(
+           engine,
+           src_f16_any_md,
+           wei_s8_any_md,
+           dst_f16_any_md,
+           attr);   // the attributes describe the quantization flow
+// ...
+~~~
+
+#### Example 4: matmul with precomputed reductions and advanced quantization
+
+This example is a complementary addition to the one above. It describes a
+process of dynamic quantization with weights's tensor asymmetric quantization
+and external precomputed reductions of the source tensor.
+
+The case arises from the technique of quantizing source tensor on-the-fly (on
+the application side) and passing both quantized source and weights tensors to
+the library.
+
+It's important that precomputed reductions appear from weights zero-points to
+provide accurate result when zero-points datatype is s8, in which case it's
+impossible to apply them on-the-fly without potential accuracy loss.
+
+~~~cpp
+   // Src, weights, and dst memory descriptors for matmul.
+   // Consider simple 2D matmul case.
+   dnnl::memory::desc src_u8_any_md(
+           {M (64), K (256)},            // dims
+           dnnl::memory::data_type::u8,  // the data originally in u8
+           dnnl::memory::format_tag::any // let matmul to choose
+           );
+   dnnl::memory::desc wei_s8_any_md(
+           {K (256), N (512)},           // dims
+           dnnl::memory::data_type::s8,  // the data originally in s8
+           dnnl::memory::format_tag::any // let matmul to choose
+           );
+   dnnl::memory::desc dst_f16_any_md(...);
+
+   // prepare the attributes
+   dnnl::primitive_attr attr;
+   // scale per K and N dimensions:
+   const int wei_mask = (1 << 0) | (1 << 1);
+   // K dimension specifies the group size of `128`. It means that each 128
+   // elements over K dimension will share a single value. For a given example,
+   // there will be two groups, thus, two values referring to a single N value.
+   std::vector<dim_t> wei_scales_groups = {128, 1}
+
+   // The scaling factors for quantized weights (as declared above)
+   // A unique scale for each scale_gK (256 / 128 = 2) times N, total 1024
+   // elements.
+   std::vector<half> wei_scales(scale_gK, N) = {...};
+
+   attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, wei_scales_groups,
+           data_type::f16);
+
+   // Zero-points would have the same mask as grouping applies for them as well.
+   // For example, let it use the different size of the group.
+   std::vector<dim_t> wei_zp_groups = {64, 1};
+
+   // The zero-point factors for quantized weights (as declared above)
+   // A unique zero-point for each zp_gK (256 / 64 = 4) times N, total 2048
+   // elements.
+   std::vector<half> wei_zps(zp_gK, N) = {...};
+
+   attr.set_zero_points(DNNL_ARG_WEIGHTS, wei_mask, wei_zp_groups,
+           data_type::s8);
+
+   // Now, specify the precomputed reductions.
+   // Note that it's specified for source tensor.
+   // It means it should have full-size source tensor mask (which in this
+   // example coincides with `wei_mask`), and groups would be over another
+   // dimension, same as zero-points group size.
+   std::vector<dim_t> src_pr_groups = {1, 64};
+
+   // The precomputed reduction factors for quantized sources.
+   // A unique reduction for each M times pr_gK (256 / 64 = 4), total 256
+   // elements.
+   std::vector<half> src_prs(M, pr_gK) = {...};
+
+   attr.set_precomputed_reductions(DNNL_ARG_SRC, src_tensor_mask,
+           src_pr_groups);
+
+   // fpmath mode is not required in case of dynamic quantization as it's
+   // treated as classical quantization case.
+
+   // create a matmul primitive descriptor
+   auto matmul_pd = dnnl::matmul::primitive_desc(
+           engine,
+           src_s8_any_md,
+           wei_s8_any_md,
+           dst_f16_any_md,
+           attr);   // the attributes describe the quantization flow
+// ...
+~~~
+
+### Special Case: Host-side Scalar Scale and Zero-point
+
+When using the GPU engine, host-side scalar scales and zero-points are
+supported to reduce copying of data from host to device. A memory object
+for scale or zero-point host value should be created as a host-side scalar
+(see @ref dev_guide_host_side_scalars for details) and passed to the primitive
+execution function. The host scales or zero-points attributes should also
+be set using the following API:
+
+~~~cpp
+dnnl::primitive_attr attr;
+attr.set_host_scale(DNNL_ARG_DST,
+           memory::data_type::f32);
+
+attr.set_host_zero_point(DNNL_ARG_DST,
+           memory::data_type::s32);
+~~~
+

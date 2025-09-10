@@ -59,7 +59,9 @@
 # Arg scales check
 --reset
 --dt=f64,f32,bf16,f16,f8_e5m2,f8_e4m3,u8:s8:u8,s8:s8:f32,s8:s8:f16,u8:s8:f16
---attr-scales=src:common:0.25+wei:common:0.5+dst:common:2,wei:per_oc
+--attr-scales=src:common:0.25+wei:common:0.5+dst:common:2,\
+              src:host_scalar:0.25+wei:host_scalar:0.5+dst:host_scalar:2,\
+              wei:per_oc
 --batch=shapes_2d_ci
 
 --attr-scales=src:common:0.25,\
@@ -73,7 +75,8 @@
 # Zero-points check
 --reset
 --dt=s8:s8:s8,u8:s8:f32,u8:s8:bf16,s8:s8:f16,u8:s8:f16
---attr-zero-points=src:common:1+wei:common:-1+dst:common:2
+--attr-zero-points=src:common:1+wei:common:-1+dst:common:2,\
+               src:host_scalar:1+wei:host_scalar:-1+dst:host_scalar:2
 --batch=shapes_2d_ci
 
 --attr-zero-points=src:common:1,\

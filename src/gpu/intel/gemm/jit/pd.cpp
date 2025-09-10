@@ -36,15 +36,9 @@ int quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &qmd, int k_idx) {
     if (entry.has_default_values()) return -1;
 
-    // If quantization is batched (any batch dim > 1), we need to tell gemmstone
-    // it's 3D - so it knows to change the offset as the batch index changes.
-    for (int i = 0; i < qmd.ndims - 2; i++) {
-        if (qmd.dims[i] > 1) return 3;
-    }
-
-    // Count the number of nontrivial (dim > 1) dimensions present
+    // C unt the number of nontrivial (dim > 1) dimensions present
     int count = 0;
-    for (int i = 0; i < qmd.ndims; ++i) {
+    for (int i = qmd.ndims - 2; i < qmd.ndims; ++i) {
         if (qmd.dims[i] > 1) { count++; }
     }
 
@@ -79,6 +73,7 @@ status_t pd_t::init_post_ops() {
                                 &e.binary.src1_desc);
                 binary_srcs_.push_back(
                         binary_src_t {binary_src_t::binary, int(i)});
+                non_scale_po_ = true;
                 break;
             case sum:
                 ok &= !with_sum_;
@@ -90,6 +85,7 @@ status_t pd_t::init_post_ops() {
             case eltwise:
                 ok &= eltwise_injector_f32_is_supported(e.eltwise.alg);
                 binary_srcs_.push_back(binary_src_t {binary_src_t::none, 0});
+                non_scale_po_ = true;
                 break;
             case prelu:
                 binary_srcs_.push_back(
@@ -99,6 +95,7 @@ status_t pd_t::init_post_ops() {
                         == status::success;
                 prelu_count++;
                 ok &= prelu_count <= 1;
+                non_scale_po_ = true;
                 break;
             default: return status::unimplemented;
         }
@@ -122,6 +119,7 @@ status_t pd_t::init_post_ops() {
         binary_srcs_.insert(
                 binary_srcs_.begin(), binary_src_t {binary_src_t::bias, 0});
     }
+    non_scale_po_ |= bias_via_binary_;
 
     auto maybe_convert_scales_to_postop
             = [this](const memory_desc_t &scale_md, int arg, data_type_t dt,
@@ -237,21 +235,23 @@ status_t pd_t::init_attrs() {
     bsc_dims_ = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
 
     a_scales_type_ = a_scales.get_data_type();
-    if (a_zp_2d()) {
-        a_q2d_group_k_ = a_zps.get_group(0);
-        a_q2d_group_m_ = a_zps.get_group(1);
-    } else if (a_scales_2d()) {
-        a_q2d_group_k_ = a_scales.get_group(0);
-        a_q2d_group_m_ = a_scales.get_group(1);
+    if (!a_zps.has_default_groups()) {
+        a_zp_group_k_ = a_zps.get_group(0);
+        a_zp_group_m_ = a_zps.get_group(1);
+    }
+    if (!a_scales.has_default_groups()) {
+        a_scales_group_k_ = a_scales.get_group(0);
+        a_scales_group_m_ = a_scales.get_group(1);
     }
 
     b_scales_type_ = b_scales.get_data_type();
-    if (b_zp_2d()) {
-        b_q2d_group_n_ = b_zps.get_group(0);
-        b_q2d_group_k_ = b_zps.get_group(1);
-    } else if (b_scales_2d()) {
-        b_q2d_group_n_ = b_scales.get_group(0);
-        b_q2d_group_k_ = b_scales.get_group(1);
+    if (!b_zps.has_default_groups()) {
+        b_zp_group_n_ = b_zps.get_group(0);
+        b_zp_group_k_ = b_zps.get_group(1);
+    }
+    if (!b_scales.has_default_groups()) {
+        b_scales_group_n_ = b_scales.get_group(0);
+        b_scales_group_k_ = b_scales.get_group(1);
     }
     return status::success;
 }
@@ -263,11 +263,17 @@ bool pd_t::zp_ok() {
     int ndims = desc()->a_desc.ndims;
     const auto d = desc();
     using namespace data_type;
+    bool weights_upconversion
+            = ((utils::one_of(swap_ab() ? d->b_type() : d->a_type(), s4, u4)
+                       && dy_quant_enabled_)
+                    || wei_decomp_);
 
     if (!a_zps.has_default_values()) {
         // Groups determine supported masks.
         if (!a_zps.has_default_groups()) {
-            if (!valid_2d_mask(cmask_a_, ndims, false)) return false;
+            if (!valid_2d_mask(
+                        cmask_a_, ndims, !swap_ab() && weights_upconversion))
+                return false;
             const auto a_q2d_group_n = a_zps.get_group(1);
             // Non-trivial N group unsupported.
             if (a_q2d_group_n != 1) return false;
@@ -290,8 +296,9 @@ bool pd_t::zp_ok() {
     if (!b_zps.has_default_values()) {
         // Groups determine supported masks.
         if (!b_zps.has_default_groups()) {
-            if (!valid_2d_mask(cmask_b_, ndims, false)) return false;
-
+            if (!valid_2d_mask(
+                        cmask_b_, ndims, swap_ab() && weights_upconversion))
+                return false;
             const auto b_q2d_group_n = b_zps.get_group(0);
             // Non-trivial M group unsupported.
             if (!utils::one_of(b_q2d_group_n, 1, desc()->n())) return false;
@@ -398,7 +405,17 @@ dim_t pd_t::eff_scale_stride(int idx, int arg) const {
             = ((DNNL_ARG_A == arg) ^ swap_ab()) ? a_scale_md_ : b_scale_md_;
     gpu_assert(memory_desc_wrapper(scale_md).is_plain())
             << "Expected plain scale_md_";
+    if (scale_md.dims[idx] == 1) return 0;
     return scale_md.format_desc.blocking.strides[idx];
+}
+
+dim_t pd_t::eff_zp_stride(int idx, int arg) const {
+    gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
+    auto zp_md = ((DNNL_ARG_A == arg) ^ swap_ab()) ? a_zp_md_ : b_zp_md_;
+    gpu_assert(memory_desc_wrapper(zp_md).is_plain())
+            << "Expected plain zp_md_";
+    if (zp_md.dims[idx] == 1) return 0;
+    return zp_md.format_desc.blocking.strides[idx];
 }
 
 } // namespace jit

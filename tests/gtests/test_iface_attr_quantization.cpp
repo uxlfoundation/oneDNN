@@ -54,6 +54,26 @@ protected:
         return attr;
     }
 
+    // Precomputed_reductions
+    static primitive_attr gen_attr_with_pr(int arg, int mask = 0,
+            data_type dt = data_type::s32, const memory::dims &groups = {}) {
+        primitive_attr attr;
+
+        // weights zero-points are required for src precomputed reductions.
+        const int zp_arg
+                = arg == DNNL_ARG_SRC ? DNNL_ARG_WEIGHTS : DNNL_ARG_SRC;
+        // groups must be swapped for weights zp.
+        memory::dims zp_groups = {};
+        if (!groups.empty()) {
+            zp_groups.resize(2);
+            zp_groups[0] = groups[1];
+            zp_groups[1] = groups[0];
+        }
+        attr.set_zero_points(zp_arg, mask, zp_groups, dt);
+        attr.set_precomputed_reductions(arg, mask, groups, dt);
+        return attr;
+    }
+
     template <typename F>
     static void check_status(const F &f, dnnl_status_t status,
             const char *filename, int64_t line_num) {
@@ -546,6 +566,34 @@ TEST_F(attr_quantization_test_t, TestMatmul) {
                                     data_type::f32, {1, 32})));
                 }
             }
+        }
+    }
+
+    for (auto a_dt : {data_type::u8}) {
+        const data_type b_dt = data_type::s8;
+
+        memory::desc a_md {{10, 64}, a_dt, tag::ab};
+        memory::desc b_md {{64, 20}, b_dt, tag::ba};
+        memory::desc c_md {{10, 20}, data_type::u8, tag::ab};
+
+        for (auto arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
+            if (impl::utils::one_of(arg, DNNL_ARG_WEIGHTS, DNNL_ARG_DST)) {
+                CHECK_INVALID(matmul::primitive_desc(
+                        eng, a_md, b_md, c_md, gen_attr_with_pr(arg)));
+                continue;
+            }
+
+            // Masks other than full tensor are unsupported.
+            CHECK_UNIMPL(matmul::primitive_desc(
+                    eng, a_md, b_md, c_md, gen_attr_with_pr(arg, 0)));
+
+            // Data types other than s32 are unsupported.
+            CHECK_INVALID(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                    gen_attr_with_pr(arg, 0, data_type::s8)));
+
+            CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                    gen_attr_with_pr(arg, (1 << 1) + (1 << 0), data_type::s32,
+                            {1, 32})));
         }
     }
 }

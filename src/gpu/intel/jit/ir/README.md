@@ -5,8 +5,8 @@ oneDNN JIT Intermediate Representation (IR)
 
 All IR objects are immutable by design and use reference counting. The base
 class is `object_t` which implements intrusive reference-counting for
-`object_impl_t` objects. `object_t` is a wrapper over the real implementation
-in `object_impl_t`. All IR objects must have `object_impl_t` in their
+`object::impl_t` objects. `object_t` is a wrapper over the real implementation
+in `object::impl_t`. All IR objects must have `object::impl_t` in their
 inheritance hierarchy as the top-most class.
 
 IR objects support equality comparison via `a.is_equal(b)`. `operator==()` is

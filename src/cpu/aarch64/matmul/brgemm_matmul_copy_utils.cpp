@@ -1,6 +1,8 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
+*
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
@@ -525,7 +527,6 @@ private:
     const size_t typesize_in_;
     const size_t typesize_out_ = sizeof(float);
     dim_t src_stride_, tr_src_stride_;
-    const bool is_sve_256 = !mayiuse(sve_512);
 
     opmask_t kTail = p7;
     opmask_t kFFFF = p6;
@@ -550,7 +551,7 @@ private:
 void jit_brgemm_matmul_copy_b_f32_t::copy_16_8_x_n_block(
         int nrows, int ncolumns) {
 
-    int n_blk_step = is_sve_256 ? 8 : 16;
+    int n_blk_step = get_sve_length() / typesize_in_;
 
     auto get_zmm = [](int reg_idx) {
         assert(reg_idx >= 0 && reg_idx < max_regs_available);
@@ -610,7 +611,7 @@ void jit_brgemm_matmul_copy_b_f32_t::compute_k_loop(int ncolumns) {
         L(K_end_label);
     };
 
-    int k_unroll = is_sve_256 ? 8 : 16;
+    int k_unroll = get_sve_length() / typesize_in_;
     compute_uni_k_loop(k_unroll);
     compute_uni_k_loop(1);
 }
@@ -1081,6 +1082,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<isa>::generate() {
 
 template struct jit_brgemm_matmul_copy_b_transposed_t<sve_512>;
 template struct jit_brgemm_matmul_copy_b_transposed_t<sve_256>;
+template struct jit_brgemm_matmul_copy_b_transposed_t<sve_128>;
 
 status_t create_brgemm_matmul_copy_b(
         std::unique_ptr<jit_brgemm_matmul_copy_b_t> &copy_ker,

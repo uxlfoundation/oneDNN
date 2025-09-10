@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -49,6 +49,8 @@ void init_thunk_params(
 template <typename... param_types>
 status_t submit_cpu_primitive_with_params_impl(
         submit_ctx_t *submit_ctx, ::sycl::handler &cgh, param_types... params) {
+    // Prevents dereferencing an empty pointer in a host task.
+    if (!submit_ctx) return status::invalid_arguments;
 
     xpu::sycl::compat::host_task(cgh, [=]() {
         thunk_params_t thunk_params;
@@ -110,6 +112,12 @@ void submit_cpu_primitive(stream_t *stream, const primitive_iface_t *prim_iface,
     std::vector<const memory_storage_t *> sycl_mem_storages;
     for (auto &a : exec_ctx.args()) {
         a.second.mem->retain();
+        if (a.second.mem->engine() == nullptr) {
+            const auto mdw = memory_desc_wrapper(a.second.mem->md());
+            if (mdw.is_host_scalar_desc()) {
+                continue; // Skip host scalar memory objects
+            }
+        }
         if (a.second.mem->engine()->runtime_kind() == runtime_kind::sycl) {
             auto *mem_storage = a.second.mem->memory_storage();
             if (!mem_storage->is_null()) {

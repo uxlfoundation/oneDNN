@@ -222,11 +222,18 @@ struct GEMMProblem : public CommonProblem {
     bool gemmt() const { return false; }
     bool backward() const { return false; }
 
+    bool hasAScale() const { return (asPtrDims > -1); }
+    bool hasBScale() const { return (bsPtrDims > -1); }
+    bool hasAOffset() const { return (aoPtrDims > -1); }
+    bool hasBOffset() const { return (boPtrDims > -1); }
+
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }
+    bool aOffset2D() const { return (aoPtrDims >= 2); }
+    bool bOffset2D() const { return (boPtrDims >= 2); }
 
-    bool quantized2DA() const { return (aoPtrDims == 2) || aScale2D(); }
-    bool quantized2DB() const { return (boPtrDims == 2) || bScale2D(); }
+    bool quantized2DA() const { return aOffset2D() || aScale2D(); }
+    bool quantized2DB() const { return bOffset2D() || bScale2D(); }
 
     bool earlyDequantizeA() const { return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)) || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || Ta.isFP())); }
     bool earlyDequantizeB() const { return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)) || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || Tb.isFP())); }

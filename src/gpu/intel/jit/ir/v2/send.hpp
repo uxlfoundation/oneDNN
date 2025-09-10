@@ -610,7 +610,7 @@ struct send_2d_desc_t {
         auto dim_mapper = view.dim_mapper();
         dim_mapper.set_dim(view.plane().x_dim, 0);
         dim_mapper.set_dim(view.plane().y_dim, 0);
-        auto l = view.base_layout().map(dim_mapper, view.coord(), view.tile());
+        auto l = view.base_layout().sub(dim_mapper, view.coord(), view.tile());
         return simplify_rewrite(l.base() * l.type().size());
     }
 };

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,6 +45,9 @@ status_t bnrm_desc_init(batch_normalization_desc_t *bnrm_desc,
         const memory_desc_t *diff_dst_desc, float epsilon, unsigned flags) {
     const bool is_fwd = one_of(prop_kind, forward_training, forward_inference);
     VCHECK_BNORM(!any_null(bnrm_desc, src_desc), VERBOSE_NULL_ARG);
+    VCHECK_BNORM(!any_memory_desc_host_scalar(
+                         src_desc, dst_desc, diff_src_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
     VCHECK_BNORM(one_of(prop_kind, forward_training, forward_inference,
                          backward_data, backward),
             VERBOSE_BAD_PROPKIND);

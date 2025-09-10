@@ -20,6 +20,7 @@
 #include "gpu/intel/jit/utils/utils.hpp"
 #include "gpu/intel/logging.hpp"
 
+#include <numeric>
 #include <string>
 #include <vector>
 #include <initializer_list>

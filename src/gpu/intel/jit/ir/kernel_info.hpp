@@ -82,9 +82,10 @@ public:
             if (a.exttype == ngen::ExternalArgumentType::Scalar) {
                 register_arg(a.name, type_t(a.type));
             } else if (a.exttype == ngen::ExternalArgumentType::GlobalPtr) {
-                register_arg(a.name, type_t::byte_ptr(1, false));
+                register_arg(a.name, type_t::byte(type::attr_t::ptr));
             } else if (a.exttype == ngen::ExternalArgumentType::LocalPtr) {
-                register_arg(a.name, type_t::byte_ptr(1, true));
+                register_arg(a.name,
+                        type_t::byte(type::attr_t::ptr | type::attr_t::slm));
             } else {
                 gpu_assert(false) << "Unimplemented";
             }
@@ -109,6 +110,13 @@ public:
         if (!allow_empty)
             gpu_error_not_expected() << "Argument not found: " << name;
         return expr_t();
+    }
+
+    int index(const std::string &name) const {
+        for (int i = 0; i < nargs(); i++) {
+            if (args_[i].name() == name) return i;
+        }
+        return -1;
     }
 
     void register_arg(const expr_t &var) { args_.emplace_back(var); }

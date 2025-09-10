@@ -253,12 +253,12 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
         if (wei_scales_ptr == nullptr) return status::invalid_arguments;
         post_ops_data.wei_scales = wei_scales_ptr;
     }
+    float dst_scale_inv = 0.f;
     if (!attr_.scales_.has_default_values(DNNL_ARG_DST)) {
         const void *dst_scales_ptr = attr_params->get_scales(DNNL_ARG_DST);
         if (dst_scales_ptr == nullptr) return status::invalid_arguments;
 
-        const float dst_scale_inv
-                = 1.f / static_cast<const float *>(dst_scales_ptr)[0];
+        dst_scale_inv = 1.f / static_cast<const float *>(dst_scales_ptr)[0];
         post_ops_data.dst_scales = &dst_scale_inv;
     }
 

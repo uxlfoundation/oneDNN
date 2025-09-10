@@ -436,7 +436,7 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_mask(
 ///     The set i-th bit indicates that a dedicated scaling factor is used for
 ///     each index along that dimension. Set the mask to 0 to use a common
 ///     scaling factor for the whole output tensor.
-/// @param ndims Number of group dimensions.
+/// @param group_ndims Number of group dimensions.
 /// @param group_dims Scaling factors correspondence groups that define the
 ///     correspondence between the tensor dimensions and the scales array.
 ///     The group dimensions should only be provided for each logical dimension
@@ -445,15 +445,45 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_mask(
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales(
-        dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
+        dnnl_primitive_attr_t attr, int arg, int mask, int group_ndims,
         const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
+
+/// Sets primitive attributes scaling factors for primitive operations for a
+/// given memory argument. The scaling factors must be passed at execution time
+/// as an argument with index #DNNL_ARG_ATTR_SCALES | arg.
+/// If `is_on_host` is true, sets a single host-side scalar scaling factor
+/// for the specified memory argument. In this case, the scaling factor must
+/// be provided as a host scalar memory object at execution time with index
+/// #DNNL_ARG_ATTR_SCALES | arg.
+///
+/// @sa dnnl_primitive_attr_set_scales
+///
+///
+/// @param attr Primitive attributes.
+/// @param arg Parameter argument index as passed to the
+///     dnnl_primitive_execute() call.
+/// @param mask Scaling factors correspondence mask that defines the
+///     correspondence between the tensor dimensions and the @p scales array.
+///     The set i-th bit indicates that a dedicated scaling factor is used for
+///     each index along that dimension. Set the mask to 0 to use a common
+///     scaling factor for the whole output tensor.
+/// @param ndims Number of group dimensions.
+/// @param group_dims Scaling factors correspondence groups that define the
+///     correspondence between the tensor dimensions and the scales array.
+///     The group dimensions should only be provided for each logical dimension
+///     that has correspondence mask @p mask set.
+/// @param data_type Scaling factors data_type.
+/// @param is_on_host Indicates whether the zero point is a host-side scalar.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_v2(
+        dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
+        const dnnl_dims_t group_dims, dnnl_data_type_t data_type,
+        int is_on_host);
 
 /// Sets primitive attributes zero points for primitive operations for a given
 /// memory argument. The zero points must be passed at execution time
 /// as an argument with index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
-///
-/// @sa dnnl_primitive_attr_set_zero_points_mask
-///
 ///
 /// @param attr Primitive attributes.
 /// @param arg Parameter argument index as passed to the
@@ -479,6 +509,64 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points_mask(
 /// @param arg Parameter argument index as passed to the
 ///     dnnl_primitive_execute() call.
 /// @param mask Zero point correspondence mask that defines the
+///     correspondence between the tensor dimensions and the
+///     zero points array. The set i-th bit indicates that a dedicated
+///     zero point is used for each index along that dimension. Set the
+///     mask to 0 to use a common zero point for the whole output tensor.
+/// @param group_ndims Number of group dimensions.
+/// @param group_dims Zero point factors correspondence groups that define the
+///     correspondence between the tensor dimensions and the zero points array.
+///     The group dimensions should be only provided for each logical dimension
+///     that has the bit set correspondence mask @p mask set.
+/// @param data_type Zero points factors data_type.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points(
+        dnnl_primitive_attr_t attr, int arg, int mask, int group_ndims,
+        const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
+
+/// Sets primitive attributes precomputed reductions for primitive operations
+/// for a given memory argument. The precomputed reductions must be passed at
+/// execution time as an argument with index
+/// #DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | arg.
+///
+/// @sa dnnl_primitive_attr_set_precomputed_reductions
+///
+///
+/// @param attr Primitive attributes.
+/// @param arg Parameter argument index as passed to the
+///     dnnl_primitive_execute() call.
+/// @param mask Precomputed reductions correspondence mask that defines the
+///     correspondence between the tensor dimensions and the precomputed
+///     reductions array. The set i-th bit indicates that a dedicated
+///     precomputed reductions is used for each index along that dimension.
+/// @param group_ndims Number of group dimensions.
+/// @param group_dims Precomputed reduction factors correspondence groups that
+///     define the correspondence between the tensor dimensions and the
+///     precomputed reductions array.
+///     The group dimensions should be only provided for each logical dimension
+///     that has the bit set correspondence mask @p mask set.
+/// @param data_type Precomputed reduction factors data_type.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_precomputed_reductions(
+        dnnl_primitive_attr_t attr, int arg, int mask, int group_ndims,
+        const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
+
+/// Sets primitive attributes zero points for primitive operations for a given
+/// memory argument. The zero points must be passed at execution time
+/// as an argument with index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
+/// If `is_on_host` is true, sets a single host-side scalar zero point
+/// for the specified memory argument. In this case, the zero point must
+/// be provided as a host scalar memory object at execution time with index
+/// #DNNL_ARG_ATTR_ZERO_POINTS | arg.
+///
+/// @sa dnnl_primitive_attr_set_zero_points
+///
+/// @param attr Primitive attributes.
+/// @param arg Parameter argument index as passed to the
+///     dnnl_primitive_execute() call.
+/// @param mask Zero point correspondence mask that defines the
 ///     correspondence between the tensor dimensions and the @p
 ///     zero_points array. The set i-th bit indicates that a dedicated
 ///     zero point is used for each index along that dimension. Set the
@@ -489,11 +577,13 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points_mask(
 ///     The group dimensions should be only provided for each logical dimension
 ///     that has the bit set correspondence mask @p mask set.
 /// @param data_type Zero points factors data_type.
+/// @param is_on_host Indicates whether the zero point is a host-side scalar.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
-dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points(
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_zero_points_v2(
         dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
-        const dnnl_dims_t group_dims, dnnl_data_type_t data_type);
+        const dnnl_dims_t group_dims, dnnl_data_type_t data_type,
+        int is_on_host);
 
 /// Sets the rounding mode attribute value for a given argument
 ///
@@ -989,6 +1079,15 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
         dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
         dnnl_data_type_t data_type, dnnl_dim_t nnz);
 
+/// Creates a memory descriptor for a scalar value that resides on the host.
+///
+/// @param memory_desc Output memory descriptor.
+/// @param data_type Elements data type.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_memory_desc_create_host_scalar(
+        dnnl_memory_desc_t *memory_desc, dnnl_data_type_t data_type);
+
 /// Creates a memory descriptor for a region inside an area
 /// described by an existing memory descriptor.
 ///
@@ -1291,6 +1390,21 @@ dnnl_status_t DNNL_API dnnl_memory_create_v2(dnnl_memory_t *memory,
         const_dnnl_memory_desc_t memory_desc, dnnl_engine_t engine,
         int nhandles, void **handles);
 
+/// Creates a memory object for a scalar value located on the host.
+///
+/// @note The scalar value is copied from the provided pointer into the newly
+///     allocated memory storage, so the user does not need to manage the
+///     lifetime of the original scalar data.
+///
+/// @param memory Output host-side scalar memory object.
+/// @param memory_desc Memory descriptor describing a scalar value residing on the host.
+/// @param scalar_ptr Pointer to the scalar value to be copied into the memory
+///     object. This should be a host pointer to the scalar data.
+/// @returns #dnnl_success on success; otherwise, returns a status code
+///     describing the error.
+dnnl_status_t DNNL_API dnnl_memory_create_host_scalar(dnnl_memory_t *memory,
+        const_dnnl_memory_desc_t memory_desc, void *scalar_ptr);
+
 /// Returns the memory descriptor for a memory object.
 ///
 /// @param memory Memory object.
@@ -1443,6 +1557,31 @@ dnnl_status_t DNNL_API dnnl_memory_get_data_handle_v2(
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_memory_set_data_handle_v2(
         dnnl_memory_t memory, void *handle, int index);
+
+/// Returns the value stored in a scalar memory object as a host pointer.
+///
+/// @param memory Host-side scalar memory object.
+/// @param value Output pointer to the scalar value. The type of the value
+///     depends on the data type of the memory object.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_memory_get_host_scalar_value(
+        const_dnnl_memory_t memory, void *value);
+
+/// Sets the value of a scalar memory object from a host pointer.
+///
+/// @note The value would be copied from the provided pointer into the
+///     memory object, so the user does not need to manage the lifetime of the
+///     original scalar data.
+///
+/// @param memory Host-side scalar memory object.
+/// @param value Pointer to the scalar value to be copied into the
+///     memory object. The type of the value must match the data type of the
+///     memory object.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_memory_set_host_scalar_value(
+        dnnl_memory_t memory, const void *value);
 
 /// Destroys a memory object.
 ///

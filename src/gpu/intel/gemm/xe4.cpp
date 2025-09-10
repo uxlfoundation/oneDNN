@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/gemm/xe4_gemm.hpp"
+#include "gpu/intel/gemm/xe4.hpp"
 
 #include "gpu/intel/jit/generator.hpp"
 #include "ngen_register_allocator.hpp"
@@ -27,12 +27,12 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-class xe4_gemm_kernel_t : public jit::generator_t<jit::gpu_xe4> {
+class xe4_kernel_t : public intel::jit::generator_t<intel::jit::gpu_xe4> {
 public:
     static const uint32_t MMA_NULL_C = (1 << 8);
 
     struct Pipeline {
-        Pipeline(xe4_gemm_kernel_t *host, int stages) : host(host) {
+        Pipeline(xe4_kernel_t *host, int stages) : host(host) {
             a_cons_bar = 0;
             a_prod_bar = a_cons_bar + stages;
             b_cons_bar = a_prod_bar + stages;
@@ -66,7 +66,7 @@ public:
         void get_d_bar(SRF out) { host->mov(out, d_bar * 8); }
         void get_store_bar(SRF out) { host->mov(out, store_bar * 8); }
 
-        xe4_gemm_kernel_t *host = nullptr;
+        xe4_kernel_t *host = nullptr;
         int a_cons_bar = 0;
         int a_prod_bar = 0;
         int b_cons_bar = 0;
@@ -77,8 +77,8 @@ public:
         SRF stage;
     };
 
-    xe4_gemm_kernel_t(const xe4_gemm_t::kernel_desc_t &desc)
-        : jit::generator_t<jit::gpu_xe4>({GENERATOR_NAME, GENERATOR_LINE})
+    xe4_kernel_t(const xe4_t::kernel_desc_t &desc)
+        : generator_t<intel::jit::gpu_xe4>({GENERATOR_NAME, GENERATOR_LINE})
         , desc_(desc)
         , ra_(HW::Xe4) {
         Pipeline pipeline(this, desc_.stages);
@@ -479,13 +479,13 @@ public:
     }
 
 private:
-    xe4_gemm_t::kernel_desc_t desc_;
+    xe4_t::kernel_desc_t desc_;
     RegisterAllocator ra_;
 };
 
-status_t xe4_gemm_t::kernel_desc_t::create_generator(
+status_t xe4_t::kernel_desc_t::create_generator(
         const engine_t &engine, compute::kernel_t &kernel) const {
-    xe4_gemm_kernel_t gemm_kernel(*this);
+    xe4_kernel_t gemm_kernel(*this);
     return engine.create_kernel(&kernel, &gemm_kernel);
 }
 

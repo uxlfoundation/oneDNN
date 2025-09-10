@@ -24,6 +24,9 @@
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
+#include "gpu/intel/gemm/jit/generator_dsl/builder.hpp"
+#include "gpu/intel/gemm/jit/generator_dsl/kernel_desc.hpp"
+#include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
 #include "kernel_evaluator.hpp"
@@ -48,6 +51,12 @@ void entryObserver(
     }
 };
 } // anonymous namespace
+
+bool enable_generator_dsl() {
+    static const bool ret
+            = gpu_utils::dev_getenv("enable_generator_dsl", false);
+    return ret;
+}
 
 status_t gen_desc_t::create_generator(
         const intel::engine_t &engine, compute::kernel_t &kernel) const {
@@ -174,6 +183,8 @@ status_t gen_desc_t::finalize(const char *tags) {
             |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
     adjustStrategy(hw_, problem_, strategy_, tags);
 
+    if (enable_generator_dsl()) { fixup_dsl_strategy(strategy_); }
+
     // Align k slice size and quantization group size
     if (strategy_.kParallelLocal) {
         if (problem_.quantized2DA())
@@ -286,10 +297,10 @@ status_t gen_desc_t::finalize(const char *tags) {
     } catch (...) { return status::unimplemented; }
 
     // Check for legal 2D quantization group size.
-    if (problem_.aoPtrDims == 2 || problem_.aScale2D())
+    if (problem_.aOffset2D() || problem_.aScale2D())
         if (problem_.aqGroupK % strategy_.aqGroupKGranularity())
             return status::unimplemented;
-    if (problem_.boPtrDims == 2 || problem_.bScale2D())
+    if (problem_.bOffset2D() || problem_.bScale2D())
         if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
             return status::unimplemented;
 
@@ -559,6 +570,10 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
         base.selector.hw = kcatalog::HWTagXeHPC;
 #endif
 
+    // By default gemmstone assumes that the accumulation type must be at least
+    // as wide as the output type. For oneDNN this restriction is not needed.
+    base.precisionCExt = '\0';
+
     base.sizes.m = m;
     base.sizes.n = n;
     base.sizes.k = k;
@@ -804,6 +819,10 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     // Find it in the catalog.
     MatchParams match_params(hw_, true, is_integrated, problem_);
 
+    // By default gemmstone assumes that the accumulation type must be at least
+    // as wide as the output type. For oneDNN this restriction is not needed.
+    match_params.precisionCExt = '\0';
+
     match_params.sizes.m = m;
     match_params.sizes.n = n;
     match_params.sizes.k = k;
@@ -927,9 +946,9 @@ void gen_kernel_t::init_interface() {
     if (problem.bScale2D())
         interface_.newArgument(
                 "b_scale_ptr", ExternalArgumentType::GlobalPtr, bs_access);
-    if (problem.aoPtrDims == 2 || problem.aScale2D())
+    if (problem.aOffset2D() || problem.aScale2D())
         interface_.newArgument("ldaq", DataType::d);
-    if (problem.boPtrDims == 2 || problem.bScale2D())
+    if (problem.bOffset2D() || problem.bScale2D())
         interface_.newArgument("ldbq", DataType::d);
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         interface_.newArgument(
@@ -963,13 +982,21 @@ void gen_kernel_t::init_interface() {
             interface_.newArgument("stride_A" + std::to_string(i), DataType::d);
             interface_.newArgument("stride_B" + std::to_string(i), DataType::d);
             interface_.newArgument("stride_C" + std::to_string(i), DataType::d);
-            if (problem.asPtrDims > 2) {
+            if (problem.hasAScale()) {
                 interface_.newArgument(
                         "scale_stride_A" + std::to_string(i), DataType::d);
             }
-            if (problem.bsPtrDims > 2) {
+            if (problem.hasBScale()) {
                 interface_.newArgument(
                         "scale_stride_B" + std::to_string(i), DataType::d);
+            }
+            if (problem.hasAOffset()) {
+                interface_.newArgument(
+                        "offset_stride_A" + std::to_string(i), DataType::d);
+            }
+            if (problem.hasBOffset()) {
+                interface_.newArgument(
+                        "offset_stride_B" + std::to_string(i), DataType::d);
             }
         }
         for (size_t i = 0; i < problem.postOps.len(); i++) {
@@ -985,8 +1012,13 @@ void gen_kernel_t::init_interface() {
         for (int i = 0; i < problem.batchDims - 1; i++) {
             interface_.newArgument(
                     "batch_size" + std::to_string(i), DataType::ud);
-            interface_.newArgument(
-                    "recip_batch_size" + std::to_string(i), DataType::ud);
+            if (enable_generator_dsl()) {
+                interface_.newArgument(
+                        "batch_magic" + std::to_string(i), DataType::uq);
+            } else {
+                interface_.newArgument(
+                        "recip_batch_size" + std::to_string(i), DataType::ud);
+            }
         }
     }
     if (strategy.fuseBeta || strategy.fusePostOps)
@@ -1029,10 +1061,34 @@ void gen_kernel_t::init_interface() {
 #endif
 }
 
+dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
+        const GEMMStrategy &strategy, const ngen::InterfaceHandler &iface,
+        const ir::hw_t &hw, int m, int n, int k) {
+    auto gemm_desc
+            = gemmstone::generator_dsl_desc_t(problem, strategy, iface, hw);
+    ir::constraint_set_t cset;
+    if (gpu_utils::dev_getenv("generator_dsl_specialize", false)) {
+        if (n != -1)
+            cset.add_constraint(gemm_desc.kernel_iface().find_arg("m") == m);
+        if (m != -1)
+            cset.add_constraint(gemm_desc.kernel_iface().find_arg("n") == n);
+        if (k != -1)
+            cset.add_constraint(gemm_desc.kernel_iface().find_arg("k") == k);
+    }
+    return make_kernel(gemm_desc, cset);
+};
+
 status_t gen_kernel_t::get_kernel(
         compute::kernel_t &kernel, const intel::engine_t *engine) {
     init_interface();
     maybe_print_verbose();
+
+    if (enable_generator_dsl()) {
+        auto k = get_dsl_kernel(*desc()->problem(), *desc()->strategy(),
+                interface_, hw_t(engine), desc()->m_, desc()->n_, desc()->k_);
+        if (k.body.is_empty()) return status::runtime_error;
+        return engine->create_kernel(kernel, k);
+    }
 
 #define ARCH_DISPATCH(arch) \
     case ngen::HW::arch: { \

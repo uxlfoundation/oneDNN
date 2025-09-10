@@ -74,6 +74,10 @@ static inline status_t sdpa_desc_check(const memory_desc_t *q_desc,
             "dst_desc->dims[%d](%s) == v_desc->dims[%d](%s)", c,
             md2dim_str(dst_desc).c_str(), c, md2dim_str(v_desc).c_str());
 
+    VCHECK_SDPA_COND(!any_memory_desc_host_scalar(
+                             q_desc, k_desc, v_desc, dst_desc, attn_mask_md),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
     return status::success;
 }
 
@@ -115,11 +119,23 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
             const auto &scale_dt = sc.get_data_type(DNNL_ARG_WEIGHTS);
             VCHECK_SDPA_ATTR_TYPE(utils::one_of(scale_dt, f16, bf16, f32),
                     vs_attr, "scales", "f16, bf16, or f32");
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_SDPA_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                       !sc.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
         if (!zp.has_default_values()) {
             const auto &zp_dt = zp.get_data_type(DNNL_ARG_WEIGHTS);
             VCHECK_SDPA_ATTR_TYPE(utils::one_of(zp_dt, s4, u4, u8, s8, s32),
                     vs_attr, "zero_points", "u4, s4, u8, s8, or s32");
+
+            // By default, host scalar zero points are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_SDPA_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                       !zp.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
         }
     }
 
@@ -142,13 +158,21 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
     sdpa_desc.primitive_kind = primitive_kind::sdpa;
     sdpa_desc.q_desc = *q_md;
     sdpa_desc.k_desc = *k_md;
+    sdpa_desc.kq_acc_dt = data_type::f32;
+    sdpa_desc.vs_acc_dt = data_type::f32;
     if (kq_attr) {
         sdpa_desc.kq_scales = kq_attr->scales_.get(DNNL_ARG_WEIGHTS);
         sdpa_desc.kq_zero_points = kq_attr->zero_points_.get(DNNL_ARG_WEIGHTS);
+        if (kq_attr->acc_mode_ == accumulation_mode::f16) {
+            sdpa_desc.kq_acc_dt = data_type::f16;
+        }
     }
     if (vs_attr) {
         sdpa_desc.vs_scales = vs_attr->scales_.get(DNNL_ARG_WEIGHTS);
         sdpa_desc.vs_zero_points = vs_attr->zero_points_.get(DNNL_ARG_WEIGHTS);
+        if (vs_attr->acc_mode_ == accumulation_mode::f16) {
+            sdpa_desc.vs_acc_dt = data_type::f16;
+        }
     }
     sdpa_desc.v_desc = *v_md;
     sdpa_desc.dst_desc = *dst_md;

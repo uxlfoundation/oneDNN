@@ -275,7 +275,8 @@ view_t post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
 
 view_t post_op_view_mapper_t::try_create_bias_view(uint32_t mask) const {
     if ((prb_.is_fwd || prb_.is_bwd_d) && prb_.with_bias)
-        return create_view(prb_.conv_pd->invariant_bia_md()->data_type, mask);
+        return create_view(
+                to_ir(prb_.conv_pd->invariant_bia_md()->data_type), mask);
     return {};
 }
 

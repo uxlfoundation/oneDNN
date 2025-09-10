@@ -40,6 +40,9 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
             = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
     const auto &c0 = CTX_IN_STORAGE(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
+    const auto &src_precomp_reduction = CTX_IN_STORAGE(
+            DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
+
     const auto a_d = ctx.memory_mdw(DNNL_ARG_SRC, pd()->src_md());
     const auto b_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
     const auto c_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
@@ -205,11 +208,40 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t src_zp_stride_k = src_zp_strides[a_d.ndims() - 1];
     const dim_t src_zp_stride_m = src_zp_strides[a_d.ndims() - 2];
 
+    const auto &attr_pr = pd()->attr()->precomputed_reductions_;
+    const int src_pr_mask = attr_pr.get_mask(DNNL_ARG_SRC);
+    const auto src_pr_group_k = attr_pr.get_group(DNNL_ARG_SRC, 1);
+    const auto src_pr_ngroups_k = K / src_pr_group_k;
+    // Identify src_pr dimensions as user may not pass them.
+    dims_t src_pr_dims {};
+    dims_t src_pr_strides {};
+    utils::copy_dims_with_mask(
+            src_pr_dims, a_d.dims(), a_d.ndims(), src_pr_mask);
+    src_pr_dims[a_d.ndims() - 1] /= src_pr_group_k;
+
+    dim_t last_pr_dim = 0;
+    dim_t last_pr_stride = 0;
+    for (int d = a_d.ndims() - 1; d >= 0; d--) {
+        if (src_pr_dims[d] == 0) continue;
+        src_pr_strides[d]
+                = last_pr_stride == 0 ? 1 : last_pr_dim * last_pr_stride;
+        last_pr_stride = src_pr_strides[d];
+        last_pr_dim = src_pr_dims[d];
+    }
+    const dim_t src_pr_stride_k = src_pr_strides[a_d.ndims() - 1];
+    const dim_t src_pr_stride_m = src_pr_strides[a_d.ndims() - 2];
+    const dim_t src_pr_stride_b0
+            = a_d.ndims() > 2 ? src_pr_strides[a_d.ndims() - 3] : 0;
+    const dim_t src_pr_stride_b1
+            = a_d.ndims() > 3 ? src_pr_strides[a_d.ndims() - 4] : 0;
+
     // For compute kernel, the minimal group is picked.
     const auto scale_ngroups_k
             = std::max(src_scale_ngroups_k, wei_scale_ngroups_k);
     const auto zp_ngroups_k = std::max(src_zp_ngroups_k, wei_zp_ngroups_k);
-    const auto ngroups_k = std::max(zp_ngroups_k, scale_ngroups_k);
+    const auto gs_ngroups_k = src_pr_ngroups_k;
+    const auto ngroups_k
+            = std::max(std::max(zp_ngroups_k, scale_ngroups_k), gs_ngroups_k);
     const auto group_K = K / ngroups_k;
 
     const bool subbyte_pack
@@ -250,6 +282,12 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, wei_scale_group_n);
     arg_list.set(arg_idx++, wei_scale_group_k);
     arg_list.set(arg_idx++, dst_scales);
+    arg_list.set(arg_idx++, src_precomp_reduction);
+    arg_list.set(arg_idx++, src_pr_stride_k);
+    arg_list.set(arg_idx++, src_pr_stride_m);
+    arg_list.set(arg_idx++, src_pr_stride_b0);
+    arg_list.set(arg_idx++, src_pr_stride_b1);
+    arg_list.set(arg_idx++, src_pr_group_k);
     arg_list.set(arg_idx++, group_K);
     arg_list.set(arg_idx++, K);
     arg_list.set(arg_idx++, N);

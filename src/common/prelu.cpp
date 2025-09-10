@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -59,6 +59,9 @@ status_t prelu_desc_init(prelu_desc_t *prelu_desc, prop_kind_t prop_kind,
     VCHECK_PRELU(
             IMPLICATION(is_fwd, !memory_desc_wrapper(src_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
+    VCHECK_PRELU(!any_memory_desc_host_scalar(src_desc, weights_desc, dst_desc,
+                         diff_src_desc, diff_weights_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     bool runtime_dims_or_strides
             = memory_desc_wrapper(src_desc).has_runtime_dims_or_strides()

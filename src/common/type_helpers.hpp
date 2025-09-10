@@ -660,7 +660,7 @@ inline bool operator==(const binary_desc_t &lhs, const binary_desc_t &rhs) {
             && COMPARE_DESC_MEMBERS(src_desc[1])
             && COMPARE_DESC_MEMBERS(dst_desc);
 
-    // For ternary operators like select, the additional input for conditional 
+    // For ternary operators like select, the additional input for conditional
     // select must also be compared
     if(utils::one_of(alg_kind::binary_select, lhs.alg_kind, rhs.alg_kind))
         ret = ret && COMPARE_DESC_MEMBERS(src_desc[2]);
@@ -986,6 +986,8 @@ inline bool operator==(const sdpa_desc_t &lhs, const sdpa_desc_t &rhs) {
             && COMPARE_DESC_MEMBERS(dst_desc)
             && COMPARE_DESC_MEMBERS(attn_mask_desc)
             && COMPARE_DESC_MEMBERS(scale_dt)
+            && COMPARE_DESC_MEMBERS(kq_acc_dt)
+            && COMPARE_DESC_MEMBERS(vs_acc_dt)
             && COMPARE_DESC_MEMBERS(invert_scale)
             && COMPARE_DESC_MEMBERS(kv_head_number)
             && COMPARE_DESC_MEMBERS(mask_type)
@@ -1302,6 +1304,17 @@ inline bool memory_desc_sanity_check(int ndims, const dims_t dims,
 inline bool memory_desc_sanity_check(const memory_desc_t &md) {
     return memory_desc_sanity_check(
             md.ndims, md.dims, md.data_type, format_kind::undef);
+}
+
+template <typename... Args>
+inline bool any_memory_desc_host_scalar(const memory_desc_t *md, Args... mds) {
+    if (md != nullptr && md->format_kind == format_kind::host_scalar)
+        return true;
+    return any_memory_desc_host_scalar(mds...);
+}
+
+inline bool any_memory_desc_host_scalar(const memory_desc_t *md) {
+    return md != nullptr && md->format_kind == format_kind::host_scalar;
 }
 
 } // namespace impl

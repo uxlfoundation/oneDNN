@@ -20,6 +20,8 @@
 #include "gemmstone/driver_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/walk_orders.hpp"
+#include "gpu/intel/jit/ir/block_2d_utils.hpp"
+#include "gpu/intel/jit/utils/utils.hpp"
 
 #ifdef DNNL_WITH_SYCL
 #include "gpu/intel/sycl/stream.hpp"
@@ -80,7 +82,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     if (pd()->with_b_zero_points()) arg_list.set(argn++, *bo);
     if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
     if (problem->bScale2D()) arg_list.set(argn++, *b_scales);
-    if (problem->aoPtrDims == 2 || problem->aScale2D()) {
+    if (problem->aOffset2D() || problem->aScale2D()) {
         auto layout = problem->aScale2D() ? problem->A_scale.layout
                                           : problem->AO.layout;
         auto ldaq = into<int32_t>(isColMajor(layout)
@@ -88,7 +90,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                         : utils::div_up(pd()->desc()->k(), problem->aqGroupK));
         arg_list.set(argn++, ldaq);
     }
-    if (problem->boPtrDims == 2 || problem->bScale2D()) {
+    if (problem->bOffset2D() || problem->bScale2D()) {
         auto layout = problem->bScale2D() ? problem->B_scale.layout
                                           : problem->BO.layout;
         auto ldbq = into<int32_t>(!isColMajor(layout)
@@ -134,14 +136,44 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             auto stride_a = int32_t(pd()->eff_stride_a(i));
             auto stride_b = int32_t(pd()->eff_stride_b(i));
             auto stride_c = int32_t(pd()->desc()->stride_c(i));
+            if (jit::enable_generator_dsl()) {
+                auto hw = ngen::getCore(
+                        ((ngen::Product *)&utils::downcast<intel::engine_t *>(
+                                 compute_stream->engine())
+                                        ->device_info()
+                                        ->gpu_product())
+                                ->family);
+
+                // 2d Surface pointer needs to be 64 byte aligned. When negative
+                // bounds checking is unnecessary, this restriction can be
+                // relaxed by rounding down the surface pointer and adjusting
+                // the width accordingly.
+                auto base_alignment = intel::jit::block_2d_base_alignment(hw);
+                auto a_size = types::data_type_size(pd()->eff_a_type());
+                if (stride_a * a_size % base_alignment) {
+                    gpu_warning() << "Unimplemented load transform";
+                    return status::runtime_error;
+                }
+                auto b_size = types::data_type_size(pd()->eff_b_type());
+                if (stride_b * b_size % base_alignment) {
+                    gpu_warning() << "Unimplemented load transform";
+                    return status::runtime_error;
+                }
+            }
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
-            if (problem->asPtrDims > 2) {
+            if (problem->hasAScale()) {
                 arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_A));
             }
-            if (problem->bsPtrDims > 2) {
+            if (problem->hasBScale()) {
                 arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_B));
+            }
+            if (problem->hasAOffset()) {
+                arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_A));
+            }
+            if (problem->hasBOffset()) {
+                arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_B));
             }
         }
         for (int i = 0; i < po_count; i++) {
@@ -153,9 +185,15 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         }
         for (int i = 1; i < pd()->batch_dims(); i++) {
             auto batchSize = uint32_t(pd()->desc()->c_desc.dims[i]);
-            uint32_t recipBatchSize = jit::uint32_reciprocal(batchSize);
             arg_list.set(argn++, batchSize);
-            arg_list.set(argn++, recipBatchSize);
+            if (jit::enable_generator_dsl()) {
+                uint64_t magic = dnnl::impl::gpu::intel::jit::ir_utils::
+                        idiv_magicgu_packed(batchSize);
+                arg_list.set(argn++, magic);
+            } else {
+                uint32_t recipBatchSize = jit::uint32_reciprocal(batchSize);
+                arg_list.set(argn++, recipBatchSize);
+            }
         }
     }
 

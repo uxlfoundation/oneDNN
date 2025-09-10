@@ -82,9 +82,8 @@ struct jit_stat_and_data_base_kernel_t : stat_and_data_kernel_t,
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_lnorm_stat_and_data_kernel_t);
 
     void operator()(const void *src, void *dst, const float *scale,
-            const float *shift, float *mean, float *var,
-            const float *src_scales, const float *dst_scales,
-            const void *post_ops_binary_rhs_arg_vec,
+            const float *shift, float *mean, float *var, const void *src_scales,
+            const void *dst_scales, const void *post_ops_binary_rhs_arg_vec,
             const size_t block_size) const override {
         ker_args_t args;
         args.src = src;
@@ -166,8 +165,8 @@ protected:
         const float *shift;
         const float *mean;
         const float *var;
-        const float *src_scales;
-        const float *dst_scales;
+        const void *src_scales;
+        const void *dst_scales;
         const void *post_ops_binary_rhs_arg_vec;
         size_t block_size;
         float eps;
@@ -454,7 +453,7 @@ protected:
                 if (use_shift_) uni_vaddps(vmm_dst, vmm_dst, vmm_shift);
             }
             if (with_src_scales_) {
-                uni_vmovups(vmm_qscale, ptr[reg_src_scales]);
+                uni_vbroadcastss(vmm_qscale, ptr[reg_src_scales]);
                 uni_vmulps(vmm_dst, vmm_dst, vmm_qscale);
             }
             if (with_postops_) {
@@ -473,7 +472,7 @@ protected:
                         vmm_dst.getIdx(), rhs_arg_params);
             }
             if (with_dst_scales_) {
-                uni_vmovups(vmm_qscale, ptr[reg_dst_scales]);
+                uni_vbroadcastss(vmm_qscale, ptr[reg_dst_scales]);
                 uni_vmulps(vmm_dst, vmm_dst, vmm_qscale);
             }
             io_[dst_d_.data_type()]->store(
@@ -498,7 +497,7 @@ protected:
             if (use_shift_) uni_vaddps(vmm_dst, vmm_dst, vmm_shift);
         }
         if (with_src_scales_) {
-            uni_vmovups(vmm_qscale, ptr[reg_src_scales]);
+            uni_vbroadcastss(vmm_qscale, ptr[reg_src_scales]);
             uni_vmulps(vmm_dst, vmm_dst, vmm_qscale);
         }
         if (with_postops_) {
@@ -514,7 +513,7 @@ protected:
             postops_injector_->compute_vector(vmm_dst.getIdx(), rhs_arg_params);
         }
         if (with_dst_scales_) {
-            uni_vmovups(vmm_qscale, ptr[reg_dst_scales]);
+            uni_vbroadcastss(vmm_qscale, ptr[reg_dst_scales]);
             uni_vmulps(vmm_dst, vmm_dst, vmm_qscale);
         }
         io_[dst_d_.data_type()]->store(vmm_dst, dst_ptr(offt_elems), tail);
@@ -1276,6 +1275,7 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
                 stats_are_src() ? &reordered_stat_md_ : stat_md()));
     }
 
+    nthr_ = dnnl_get_max_threads();
     init_scratchpad();
     return status::success;
 }
@@ -1306,8 +1306,10 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
                 : CTX_OUT_MEM(float *, DNNL_ARG_VARIANCE);
     }
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
@@ -1319,7 +1321,7 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
     const dim_t N = pd()->across_axis();
     const dim_t C_padded = src_d.padded_dims()[pd()->ndims() - 1];
 
-    parallel(0, [&](const int ithr, const int nthr) {
+    parallel(pd()->nthr_, [&](const int ithr, const int nthr) {
         dim_t N_start = 0, N_end = 0;
         balance211(N, nthr, ithr, N_start, N_end);
         const char *const __restrict src_ptr
@@ -1329,8 +1331,18 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
                 + N_start * C_padded * dst_d.data_type_size();
         const int block_size = N_end - N_start;
         float *mean_ptr = skip_mean ? nullptr : &mean[N_start];
+        float *dst_scales_inv_ptr = nullptr;
+        if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_DST)) {
+            const float *dst_scales_ptr
+                    = static_cast<const float *>(dst_scales);
+            dst_scales_inv_ptr
+                    = scratchpad.template get<float>(key_lnorm_dst_scales)
+                    + ithr;
+            dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+        }
+
         (*stat_and_data_kernel_)(src_ptr, dst_ptr, scale, shift, mean_ptr,
-                &variance[N_start], src_scales, dst_scales,
+                &variance[N_start], src_scales, dst_scales_inv_ptr,
                 post_ops_binary_rhs_arg_vec.data(), block_size);
     });
     return status::success;

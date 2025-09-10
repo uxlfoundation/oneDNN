@@ -179,6 +179,27 @@ TEST_P(sycl_memory_usm_test_t, DefaultConstructor) {
     mem.unmap_data(mapped_ptr);
 }
 
+TEST_P(sycl_memory_usm_test_t, HostScalarConstructor) {
+    engine::kind eng_kind = GetParam();
+    SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
+
+    engine eng(eng_kind, 0);
+
+    auto scalar_md = memory::desc::host_scalar(memory::data_type::f32);
+
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
+    if (eng_kind == engine::kind::cpu) {
+        EXPECT_ANY_THROW(sycl_interop::make_memory(
+                scalar_md, eng, sycl_interop::memory_kind::usm));
+        return;
+    }
+#endif
+
+    EXPECT_THROW(memory mem = sycl_interop::make_memory(
+                         scalar_md, eng, sycl_interop::memory_kind::usm),
+            dnnl::error);
+}
+
 /// This test checks if passing system allocated memory(e.g. using malloc)
 /// will throw if passed into the make_memory
 TEST_P(sycl_memory_usm_test_t, ErrorMakeMemoryUsingSystemMemory) {

@@ -39,18 +39,11 @@ using namespace ir_utils;
 
 // Generic pattern expression, used as a wild card during pattern matching. Can
 // match any expression.
-class pexpr_t : public expr_impl_t {
+class pexpr_t : public expr_iface_t<pexpr_t> {
 public:
-    IR_DECL_TYPE(pexpr_t)
-
     static expr_t make(int id) { return expr_t(new pexpr_t(id)); }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
-        return id == other.id;
-    }
+    bool operator==(const pexpr_t &other) const { return id == other.id; }
 
     size_t get_hash() const override { return ir_utils::get_hash(id); }
 
@@ -81,15 +74,13 @@ public:
     int id;
 
 private:
-    pexpr_t(int id) : expr_impl_t(_type_info(), type_t::undef()), id(id) {}
+    pexpr_t(int id) : expr_iface_t(type_t::undef()), id(id) {}
 };
 
 // Pattern expression for int_imm_t, used as a wild card during pattern
 // matching. Can match any int_imm_t with the given value.
-class pint_imm_t : public expr_impl_t {
+class pint_imm_t : public expr_iface_t<pint_imm_t> {
 public:
-    IR_DECL_TYPE(pint_imm_t)
-
     // Matches an integer constant with the given value.
     static expr_t make(int64_t value) {
         return expr_t(new pint_imm_t(-1, value));
@@ -112,10 +103,7 @@ public:
         return true;
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const pint_imm_t &other) const {
         return (id == other.id) && (value == other.value);
     }
 
@@ -132,7 +120,7 @@ public:
 
 private:
     pint_imm_t(int id, int64_t value)
-        : expr_impl_t(_type_info(), type_t::undef()), id(id), value(value) {}
+        : expr_iface_t(type_t::undef()), id(id), value(value) {}
 };
 
 // Stores already matched pairs of <pattern expression, matched expression>.
@@ -727,18 +715,13 @@ public:
 
 // N-ary expression: (a[0] op a[1] op ... op a[n - 1]),
 // where <op> is either addition or multiplication.
-class nary_op_t : public expr_impl_t {
+class nary_op_t : public expr_iface_t<nary_op_t> {
 public:
-    IR_DECL_TYPE(nary_op_t)
-
     static expr_t make(op_kind_t op_kind, const std::vector<expr_t> &args) {
         return expr_t(new nary_op_t(op_kind, args));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const nary_op_t &other) const {
         return (op_kind == other.op_kind)
                 && ir_utils::is_equal(args, other.args);
     }
@@ -766,7 +749,7 @@ public:
 
 private:
     nary_op_t(op_kind_t op_kind, const std::vector<expr_t> &args)
-        : expr_impl_t(_type_info(), nary_op_type(op_kind, args))
+        : expr_iface_t(nary_op_type(op_kind, args))
         , op_kind(op_kind)
         , args(args) {}
 };
@@ -1035,10 +1018,8 @@ public:
 // Stores factorization of an expression in the canonical (normalized) form:
 //     expr = (f(0), f(1), f(2), ... f(n))
 // f(0), ... f(n-1) are non-constant expressions, f(n) is a constant.
-class factored_expr_t : public expr_impl_t {
+class factored_expr_t : public expr_iface_t<factored_expr_t> {
 public:
-    IR_DECL_TYPE(factored_expr_t);
-
     static expr_t make(const expr_t &e) {
         return expr_t(new factored_expr_t(e));
     }
@@ -1047,22 +1028,19 @@ public:
         return expr_t(new factored_expr_t(type, factors));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const factored_expr_t &other) const {
         if (factors.size() != other.factors.size()) return false;
         if (!factors.back().is_equal(other.factors.back())) return false;
 
-        auto common = intersect(obj);
+        auto common = intersect(other);
         auto &f_common = common.as<factored_expr_t>();
         return f_common.factors.size() == factors.size();
     }
 
     // Constant factor is ignored during comparison.
-    bool is_equal_ignore_const(const object_impl_t &obj) const {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
+    bool is_equal_ignore_const(const impl_t &obj) const {
+        if (!obj.is<factored_expr_t>()) return false;
+        auto &other = obj.as<factored_expr_t>();
 
         if (factors.size() != other.factors.size()) return false;
 
@@ -1183,12 +1161,12 @@ public:
     std::vector<expr_t> factors;
 
 private:
-    factored_expr_t(const expr_t &e) : expr_impl_t(_type_info(), e.type()) {
+    factored_expr_t(const expr_t &e) : expr_iface_t(e.type()) {
         init_factors(e);
     }
 
     factored_expr_t(const type_t &type, const std::vector<expr_t> &factors)
-        : expr_impl_t(_type_info(), type) {
+        : expr_iface_t(type) {
         init_normalize(factors);
     }
 
@@ -1906,7 +1884,7 @@ struct op_traits_t {};
                 typename = typename std::enable_if<dummy_op == op_kind_t::_and \
                         || dummy_op == op_kind_t::_or>::type> \
         static bool compute(bool a, bool b) { \
-            return a op b; \
+            return static_cast<bool>(a op b); \
         } \
     };
 
@@ -1923,6 +1901,9 @@ DECL_OP_TRAITS(op_kind_t::_le, <=)
 
 DECL_OP_TRAITS(op_kind_t::_and, &)
 DECL_OP_TRAITS(op_kind_t::_or, |)
+DECL_OP_TRAITS(op_kind_t::_xor, ^)
+DECL_OP_TRAITS(op_kind_t::_shl, <<)
+DECL_OP_TRAITS(op_kind_t::_shr, >>)
 
 template <>
 struct op_traits_t<op_kind_t::_min> {
@@ -2032,6 +2013,9 @@ public:
 
             CASE(op_kind_t::_and)
             CASE(op_kind_t::_or)
+            CASE(op_kind_t::_xor)
+            CASE(op_kind_t::_shl)
+            CASE(op_kind_t::_shr)
             CASE(op_kind_t::_min)
             CASE(op_kind_t::_max)
 

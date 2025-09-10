@@ -198,7 +198,10 @@ struct reorder_operand_t {
     layout_t layout;
     copy_operand_t buffer;
 
-    const type_t &type() const { return layout.type(); }
+    type_t type() const {
+        return buffer.range == ngen::DataType::invalid ? layout.type()
+                                                       : to_ir(buffer.range);
+    }
     bool operator==(const reorder_operand_t &other) const {
         return layout == other.layout && buffer == other.buffer;
     }
@@ -322,34 +325,59 @@ private:
 
 class reorder_impl_t {
 public:
-    reorder_impl_t(ngen::HW hw, const reorder_t &reorder)
-        : hw_(hw)
-        , src_layout_(reorder.src_layout)
-        , dst_layout_(reorder.dst_layout) {
+    reorder_impl_t(
+            ngen::HW hw, const layout_t &src_layout, const layout_t &dst_layout)
+        : hw_(hw), src_layout_(src_layout), dst_layout_(dst_layout) {
         layout_t::try_reinterpret_to_wider_type(src_layout_, dst_layout_);
     }
+
+    reorder_impl_t(ngen::HW hw, const reorder_t &reorder)
+        : reorder_impl_t(hw, reorder.src_layout, reorder.dst_layout) {}
 
     template <typename GeneratorT>
     void emit(GeneratorT *host, ngen_register_scope_t &scope,
             const reg_buf_data_t &src, const reg_buf_data_t &dst) {
-        copy_plan_t plan(scope, host->hw_info().systolic_support());
-        emit(plan, src, dst);
-        plan.transform();
-        plan.execute(*host);
+        auto from_rd = [](const reg_buf_data_t &rd, int off = 0) -> op_init_t {
+            return [&rd, off](int elems, ngen::DataType dt) {
+                return rd.format(off, elems, 1, dt);
+            };
+        };
+
+        for (const auto &tile : tiles()) {
+            copy_plan_t plan(scope, host->hw_info().systolic_support());
+            const auto base_phase = plan.phase;
+            auto src_tile = src_layout_.sub(tile);
+            auto dst_tile = dst_layout_.sub(tile);
+            auto emit_tile = [&](const icoord_t &start) {
+                auto src_off = src_layout_.offset<int>(start);
+                auto dst_off = dst_layout_.offset<int>(start);
+                auto src_op = init_operand(src_tile, from_rd(src, src_off));
+                auto dst_op = init_operand(dst_tile, from_rd(dst, dst_off));
+                emit(plan, src_op, dst_op);
+                plan.phase = base_phase;
+            };
+            dst_layout_.for_each_tile(tile, emit_tile);
+            plan.transform();
+
+            try {
+                plan.execute(*host);
+                return;
+            } catch (const ngen::out_of_registers_exception &) {
+                gpu_debug() << "Reorder with tile " << tile
+                            << " results in out-of-registers. Trying with a "
+                               "smaller tile.";
+            }
+        }
+        throw ngen::out_of_registers_exception();
     }
 
-    void emit(copy_plan_t &plan, const reg_buf_data_t &src,
-            const reg_buf_data_t &dst);
+    void emit(copy_plan_t &plan, const reorder_operand_t &src,
+            reorder_operand_t &dst);
 
 private:
     using op_init_t = std::function<copy_operand_t(int, ngen::DataType)>;
 
-    void emit(copy_plan_t &plan, const reorder_operand_t &dst,
-            const reorder_operand_t &src) {
-        if (src == dst) return;
-        if (try_emit_2d(plan, dst, src)) return;
-        emit_1d(plan, dst, src);
-    }
+    std::vector<tile_t> tiles() const;
 
     bool layouts_compatible(const layout_t &a, const layout_t &b) const;
 
@@ -383,9 +411,7 @@ private:
 
         if (s == d) return d; // Swizzle only
         if (s.is_fp8() || d.is_fp8()) return type_t::f16();
-        if (s.size() > 4) return d;
-        if (d.size() > 4) return s;
-        return s.bitsize() >= d.bitsize() ? s : d;
+        return s.bitsize() > d.bitsize() ? d : s;
     }
 
     bool needs_saturate(const type_t &ddt, const type_t &sdt) const {

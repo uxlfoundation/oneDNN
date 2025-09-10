@@ -100,9 +100,10 @@ static const std::map<int, std::vector<const char *>> supported_args {
 };
 
 int str2arg(const std::string &str) {
-    for (const auto &arg : supported_args)
-        for (const auto &s : arg.second)
-            if (str.compare(s) == 0) return arg.first;
+    for_(const auto &arg : supported_args)
+    for (const auto &s : arg.second)
+        if (str.compare(s) == 0) return arg.first;
+
     // multiple srcs
     std::string msrc = "msrc";
     if (str.compare(0, msrc.size(), msrc) == 0) {
@@ -137,6 +138,7 @@ policy_t attr_t::str2policy(const std::string &str) {
 #define CASE(_plc) \
     if (s.compare(STRINGIFY(_plc)) == 0) return _plc
     CASE(COMMON);
+    CASE(HOST_SCALAR);
     CASE(PER_OC);
     CASE(PER_OCIC);
     CASE(PER_DIM_0);
@@ -152,6 +154,7 @@ policy_t attr_t::str2policy(const std::string &str) {
 
 const char *attr_t::policy2str(policy_t policy) {
     if (policy == COMMON) return "common";
+    if (policy == HOST_SCALAR) return "host_scalar";
     if (policy == PER_OC) return "per_oc";
     if (policy == PER_OCIC) return "per_ocic";
     if (policy == PER_DIM_0) return "per_dim_0";
@@ -190,12 +193,18 @@ int attr_t::get_default_mask(policy_t policy, int ndims) {
             assert(ndims > 0 && ndims <= DNNL_MAX_NDIMS);
             return (1 << ndims) - 1;
         case COMMON: return 0;
+        case HOST_SCALAR:
+            return 0; // mask=0 is required for compatibility with preprocessing logic
         default: SAFE(FAIL, CRIT); return 0;
     }
 }
 
 int attr_t::policy2mask(int arg, policy_t policy, int ndims,
         dnnl_primitive_kind_t prim_kind, bool has_groups) {
+
+    if (policy == policy_t::HOST_SCALAR) { // shortcut
+        return attr_t::get_default_mask(policy, ndims);
+    }
 
     // Handle of weights mask for various primitives.
     if (prim_kind == dnnl_convolution || prim_kind == dnnl_deconvolution
@@ -286,7 +295,7 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
     // process scale value for COMMON policy
-    if (this->policy == COMMON) {
+    if (this->policy == COMMON || this->policy == HOST_SCALAR) {
         SAFE(parse_value_and_runtime(
                      this->scale, parser::get_substr(s, start_pos, ':')),
                 WARN);
@@ -353,7 +362,7 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
     }
     HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
 
-    if (this->policy == COMMON) {
+    if (this->policy == COMMON || this->policy == HOST_SCALAR) {
         float value = 0.0f;
         SAFE(parse_value_and_runtime(
                      value, parser::get_substr(s, start_pos, ':')),
@@ -405,6 +414,58 @@ int attr_t::zero_points_t::entry_t::from_str(const std::string &s) {
     return OK;
 }
 
+int attr_t::precomputed_reductions_t::entry_t::from_str(const std::string &s) {
+    *this = precomputed_reductions_t::entry_t();
+    if (s.empty()) return OK;
+
+    size_t start_pos = 0;
+
+    // process policy
+    const auto policy_str = parser::get_substr(s, start_pos, ':');
+    this->policy = str2policy(policy_str);
+    if (this->policy == POLICY_TOTAL || this->policy != policy_t::PER_TENSOR) {
+        BENCHDNN_PRINT(0, "Error: policy \'%s\' was not recognized.\n",
+                policy_str.c_str());
+        SAFE_V(FAIL);
+    }
+    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
+    // process data type
+    const auto dt_str = parser::get_substr(s, start_pos, ':');
+    this->dt = str2dt(dt_str.c_str());
+    if (this->dt == dnnl_data_type_undef) {
+        BENCHDNN_PRINT(0, "Error: data type \'%s\' was not recognized.\n",
+                dt_str.c_str());
+        SAFE_V(FAIL);
+    }
+    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
+    // process groups
+    const auto g_str = parser::get_substr(s, start_pos, ':');
+    parser::parse_vector_str(this->groups, dims_t(),
+            parser::parser_utils::stoll_safe, g_str, 'x');
+    if (!groups.empty()) {
+        switch (this->policy) {
+            case PER_TENSOR:
+                if (this->groups.size() != 2) {
+                    BENCHDNN_PRINT(0, "%s\n",
+                            "Error: number of groups should be equal to number "
+                            "of dimension bits set in the mask.");
+                    SAFE_V(FAIL);
+                }
+                break;
+            default:
+                BENCHDNN_PRINT(0, "%s\n",
+                        "Error: groups are supported only for policy "
+                        "PER_TENSOR");
+                SAFE_V(FAIL);
+        }
+    }
+    HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING();
+
+    return OK;
+}
+
 #undef HANDLE_DANGLING_SYMBOL_AND_END_OF_STRING
 
 int attr_t::zero_points_t::from_str(const std::string &s) {
@@ -417,6 +478,7 @@ int attr_t::zero_points_t::from_str(const std::string &s) {
         size_t subs_pos = 0;
 
         auto arg = str2arg(parser::get_substr(subs, subs_pos, ':'));
+        // TODO: split errors into different messages.
         if (arg == DNNL_ARG_UNDEF || subs_pos == std::string::npos
                 || subs_pos >= subs.size()) {
             BENCHDNN_PRINT(0,
@@ -429,6 +491,44 @@ int attr_t::zero_points_t::from_str(const std::string &s) {
         SAFE(zero_point.from_str(parser::get_substr(subs, subs_pos, '\0')),
                 WARN);
         set(arg, zero_point);
+    }
+    return OK;
+}
+
+int attr_t::precomputed_reductions_t::from_str(const std::string &s) {
+    *this = precomputed_reductions_t();
+    if (s.empty()) return OK;
+
+    size_t start_pos = 0;
+    while (start_pos != std::string::npos) {
+        auto subs = parser::get_substr(s, start_pos, '+');
+        size_t subs_pos = 0;
+
+        auto arg = str2arg(parser::get_substr(subs, subs_pos, ':'));
+        if (arg == DNNL_ARG_UNDEF) {
+            BENCHDNN_PRINT(0,
+                    "Error: argument name \'%s\' was not recognized.\n",
+                    subs.c_str());
+            SAFE_V(FAIL);
+        }
+        if (subs_pos == std::string::npos) {
+            BENCHDNN_PRINT(0,
+                    "Error: not enough arguments were provided for the input "
+                    "\'%s\'.\n",
+                    subs.c_str());
+            SAFE_V(FAIL);
+        }
+        if (subs_pos >= subs.size()) {
+            BENCHDNN_PRINT(0,
+                    "Error: dangling character in the input \'%s\' was "
+                    "identified.\n",
+                    subs.c_str());
+            SAFE_V(FAIL);
+        }
+
+        precomputed_reductions_t::entry_t pr;
+        SAFE(pr.from_str(parser::get_substr(subs, subs_pos, '\0')), WARN);
+        set(arg, pr);
     }
     return OK;
 }
@@ -448,6 +548,7 @@ int attr_t::arg_scales_t::from_str(const std::string &s) {
         size_t subs_pos = 0;
 
         auto arg = str2arg(parser::get_substr(subs, subs_pos, ':'));
+        // TODO: split errors into different messages.
         if (arg == DNNL_ARG_UNDEF || subs_pos == std::string::npos
                 || subs_pos >= s.size()) {
             BENCHDNN_PRINT(0,
@@ -685,7 +786,9 @@ std::ostream &operator<<(
     using ::operator<<;
 
     s << scale.policy;
-    if (scale.policy == policy_t::COMMON) s << ":" << scale.scale;
+    if (scale.policy == policy_t::COMMON
+            || scale.policy == policy_t::HOST_SCALAR)
+        s << ":" << scale.scale;
     if (scale.dt != dnnl_f32 || !scale.groups.empty()) s << ':' << scale.dt;
     if (!scale.groups.empty()) s << ":" << dims2str(scale.groups);
     return s;
@@ -699,12 +802,31 @@ std::ostream &operator<<(
     for (const auto &point : zero_points.points) {
         s << delim;
         s << arg2str(point.first) << ":" << point.second.policy;
-        if (point.second.policy == policy_t::COMMON)
+        if (point.second.policy == policy_t::COMMON
+                || point.second.policy == policy_t::HOST_SCALAR)
             s << ":" << point.second.value;
         if (point.second.dt != dnnl_s32 || !point.second.groups.empty())
             s << ':' << point.second.dt;
         if (!point.second.groups.empty())
             s << ":" << dims2str(point.second.groups);
+        delim = "+";
+    }
+
+    return s;
+}
+
+std::ostream &operator<<(std::ostream &s,
+        const attr_t::precomputed_reductions_t &precomputed_reductions) {
+    using ::operator<<;
+
+    const char *delim = "";
+    for (const auto &entry : precomputed_reductions.entries) {
+        s << delim;
+        s << arg2str(entry.first) << ":" << entry.second.policy;
+        if (entry.second.dt != dnnl_s32 || !entry.second.groups.empty())
+            s << ':' << entry.second.dt;
+        if (!entry.second.groups.empty())
+            s << ":" << dims2str(entry.second.groups);
         delim = "+";
     }
 
@@ -846,6 +968,9 @@ std::ostream &operator<<(std::ostream &s, const attr_t &attr) {
         if (!attr.scales.is_def()) s << "--attr-scales=" << attr.scales << " ";
         if (!attr.zero_points.is_def())
             s << "--attr-zero-points=" << attr.zero_points << " ";
+        if (!attr.precomputed_reductions.is_def())
+            s << "--attr-precomputed-reductions=" << attr.precomputed_reductions
+              << " ";
         if (!attr.post_ops.is_def())
             s << "--attr-post-ops=" << attr.post_ops << " ";
         if (attr.scratchpad_mode != attr_t::get_default_scratchpad_mode())
@@ -1140,6 +1265,13 @@ dnnl_primitive_attr_t create_dnnl_attr(
             if (as.is_def(arg_name)) continue;
 
             const auto &e = arg.second;
+            if (e.policy == policy_t::HOST_SCALAR) {
+                DNN_SAFE_V(dnnl_primitive_attr_set_scales_v2(dnnl_attr,
+                        arg_name, 0 /* mask */, 0 /* ndims */, nullptr, e.dt,
+                        true /* is_on_host = true */));
+                continue;
+            }
+
             // Check if there's a arg with pre-defined mask in `attr_args`...
             int args_mask = attr_args.get_mask(DNNL_ARG_ATTR_SCALES | arg_name);
             // If it's non-default, use it, otherwise, deduce it.
@@ -1159,6 +1291,15 @@ dnnl_primitive_attr_t create_dnnl_attr(
             if (zp.is_def(arg_name)) continue;
 
             const auto &e = arg.second;
+
+            if (e.policy == policy_t::HOST_SCALAR) {
+                DNN_SAFE_V(dnnl_primitive_attr_set_zero_points_v2(dnnl_attr,
+                        arg_name, 0 /* mask */, 0 /* ndims */, nullptr, e.dt,
+                        true /* is_on_host = true*/));
+
+                continue;
+            }
+
             // Check if there's a arg with pre-defined mask in `attr_args`...
             int args_mask
                     = attr_args.get_mask(DNNL_ARG_ATTR_ZERO_POINTS | arg_name);
@@ -1167,12 +1308,36 @@ dnnl_primitive_attr_t create_dnnl_attr(
                     ? args_mask
                     : attr_t::policy2mask(arg_name, e.policy, ndims);
 
-            int ndims = static_cast<int>(e.groups.size());
+            int group_ndims = static_cast<int>(e.groups.size());
             const auto &groups = e.groups.data();
             const auto dt = e.dt;
 
             DNN_SAFE_V(dnnl_primitive_attr_set_zero_points(
-                    dnnl_attr, arg_name, mask, ndims, groups, dt));
+                    dnnl_attr, arg_name, mask, group_ndims, groups, dt));
+        }
+    }
+
+    if (!attr.precomputed_reductions.is_def()) {
+        const auto &pr = attr.precomputed_reductions;
+        for (const auto &arg : pr.entries) {
+            const auto arg_name = arg.first;
+            if (pr.is_def(arg_name)) continue;
+
+            const auto &e = arg.second;
+            // Check if there's an arg with pre-defined mask in `attr_args`...
+            int args_mask = attr_args.get_mask(
+                    DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | arg_name);
+            // If it's non-default, use it, otherwise, deduce it.
+            int mask = args_mask != attr_args_t::undefined_mask
+                    ? args_mask
+                    : attr_t::policy2mask(arg_name, e.policy, ndims);
+
+            int group_ndims = static_cast<int>(e.groups.size());
+            const auto &groups = e.groups.data();
+            const auto dt = e.dt;
+
+            DNN_SAFE_V(dnnl_primitive_attr_set_precomputed_reductions(
+                    dnnl_attr, arg_name, mask, group_ndims, groups, dt));
         }
     }
 

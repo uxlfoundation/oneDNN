@@ -54,9 +54,9 @@ else
 fi
 
 if [[ "$ACL_BUILD_TYPE" == "Release" ]]; then
-    ACL_DEBUG=0
-elif [[ "$ACL_BUILD_TYPE" == "Debug" ]]; then
-    ACL_DEBUG=1
+    ACL_ASSERTS=0
+elif [[ "$ACL_BUILD_TYPE" == "RelWithAssert" ]]; then
+    ACL_ASSERTS=1
 else
     echo "Unknown build config: $ACL_BUILD_TYPE"
     exit 1
@@ -70,7 +70,7 @@ elif [[ "$ACL_ACTION" == "build" ]]; then
     set -x
     cd $ACL_ROOT_DIR
     set -x
-    scons $MP Werror=0 debug=$ACL_DEBUG neon=1 opencl=0 embed_kernels=0 \
+    scons $MP Werror=0 asserts=${ACL_ASSERTS} neon=1 opencl=0 embed_kernels=0 \
         os=$ACL_OS arch=armv8.2-a build=native multi_isa=$ACL_MULTI_ISA_SUPPORT \
         fixed_format_kernels=1 cppthreads=0 openmp=$ACL_OPENMP examples=0 \
         validation_tests=0

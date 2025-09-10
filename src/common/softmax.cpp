@@ -60,6 +60,9 @@ status_t softmax_desc_init(softmax_desc_t *softmax_desc, prop_kind_t prop_kind,
     VCHECK_SOFTMAX(
             IMPLICATION(!is_fwd, !memory_desc_wrapper(dst_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
+    VCHECK_SOFTMAX(!any_memory_desc_host_scalar(
+                           src_desc, dst_desc, diff_src_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     bool runtime_dims_or_strides
             = memory_desc_wrapper(dst_desc).has_runtime_dims_or_strides();
@@ -93,6 +96,7 @@ status_t softmax_desc_init(softmax_desc_t *softmax_desc, prop_kind_t prop_kind,
 
 status_t softmax_attr_check(const softmax_desc_t &desc, const engine_t *engine,
         const primitive_attr_t *attr) {
+    using namespace data_type;
     using smask_t = primitive_attr_t::skip_mask_t;
 
     if (attr == nullptr) return status::success;
@@ -106,9 +110,10 @@ status_t softmax_attr_check(const softmax_desc_t &desc, const engine_t *engine,
 
         auto fwd_attr_mask = smask_t::post_ops;
 
-        const bool is_int8 = utils::one_of(src_dt, data_type::s8, data_type::u8)
-                || utils::one_of(dst_dt, data_type::s8, data_type::u8);
-        if (is_int8) fwd_attr_mask |= smask_t::scales;
+        const bool is_int8 = utils::one_of(src_dt, s8, u8)
+                || utils::one_of(dst_dt, s8, u8);
+        const bool is_f8 = utils::one_of(dst_dt, f8_e5m2, f8_e4m3);
+        if (is_int8 || is_f8) fwd_attr_mask |= smask_t::scales;
 
         VCHECK_SOFTMAX_UNIMPL(attr->has_default_values(fwd_attr_mask, dst_dt),
                 VERBOSE_UNSUPPORTED_ATTR);
@@ -128,6 +133,13 @@ status_t softmax_attr_check(const softmax_desc_t &desc, const engine_t *engine,
                 VCHECK_SOFTMAX_UNIMPL(
                         mask == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_SOFTMAX_UNIMPL(
+                    IMPLICATION(engine->kind() == engine_kind::gpu,
+                            !attr->scales_.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check post-ops

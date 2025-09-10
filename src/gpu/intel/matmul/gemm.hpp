@@ -40,7 +40,7 @@ struct gemm_t : public primitive_t {
     struct pd_t : public matmul::pd_t {
         using matmul::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T(gemm_pd_->name(), gemm_t);
+        DECLARE_COMMON_PD_T(gemm_pd_ ? gemm_pd_->name() : "gemm_t", gemm_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
@@ -52,10 +52,17 @@ struct gemm_t : public primitive_t {
             gemm_attr.rounding_mode_ = attr()->rounding_mode_;
             gemm_attr.scales_ = attr()->scales_;
             gemm_attr.zero_points_ = attr()->zero_points_;
-            gemm_attr.post_ops_ = attr()->post_ops_;
-            if (!attr()->dropout_.has_default_values()) {
+            if (attr()->zero_points_.has_host_scalars()
+                    || attr()->scales_.has_host_scalars()) {
                 return status::unimplemented;
             }
+            gemm_attr.post_ops_ = attr()->post_ops_;
+            VDISPATCH_MATMUL(attr()->dropout_.has_default_values(),
+                    VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_MATMUL(
+                    attr()->precomputed_reductions_.has_default_values(),
+                    VERBOSE_UNSUPPORTED_ATTR);
+
             auto a_md = src_md(), b_md = weights_md(), c_md = dst_md(),
                  bias_md = weights_md(1);
             const auto acc_dt = desc()->accum_data_type;
@@ -78,18 +85,6 @@ struct gemm_t : public primitive_t {
                 // Early exit if not reshaping
                 if (!allow_reshape || !(reshape_2d || reshape_3d))
                     return status::success;
-
-                // memory_desc_reshape does not support strided matrices. In these cases, we want
-                // to gracefully exit without reshaping
-                auto md_ok = [](const memory_desc_wrapper &mdw) -> bool {
-                    if (mdw.format_any()) return true;
-                    if (mdw.is_dense()) return true;
-                    return false;
-                };
-                bool ok = true;
-                ok = ok && md_ok(a_md);
-                ok = ok && md_ok(b_md);
-                ok = ok && md_ok(c_md);
 
                 int ndims = a_md->ndims;
                 int reshape_size = reshape_2d ? 2 : 3;
@@ -120,9 +115,8 @@ struct gemm_t : public primitive_t {
                 squash_dims(bia_dims, bias_md->dims, ndims, reshape_size);
 
                 // Cannot reshape if bias is broadcast across a subset of squashed dimensions
-                ok = ok
-                        && IMPLICATION(with_bia,
-                                utils::one_of(bia_dims[0], 1, c_dims[0]));
+                bool ok = IMPLICATION(
+                        with_bia, utils::one_of(bia_dims[0], 1, c_dims[0]));
 
                 // 3D reshaping is only possible if A and B batch sizes allow.
                 // This means no reshaping with partial broadcasting

@@ -19,6 +19,7 @@
 #pragma clang diagnostic ignored "-Wimplicit-int-conversion"
 #endif
 
+#include "gpu/intel/jit/codegen/codegen.hpp"
 #include "gpu/intel/jit/codegen/bank_conflict_allocation.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/codegen/reduce.hpp"
@@ -29,6 +30,13 @@
 #include "gpu/intel/jit/ir/eltwise.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "ngen.hpp"
+#ifdef WITH_SYCL_RUNTIME
+#include <optional>
+#include "ngen_sycl.hpp"
+#endif
+#ifdef WITH_OPENCL_RUNTIME
+#include "ngen_opencl.hpp"
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -652,8 +660,7 @@ private:
             ngen::InstructionModifier &mod, const ngen::RegData &mem_off_op,
             ngen::RegData &rd) const {
         int size = send_func.payload_size();
-        gpu_assert(utils::one_of(send_func.type.kind(), type_kind_t::dword,
-                           type_kind_t::qword)
+        gpu_assert((send_func.type.is_dword() || send_func.type.is_qword())
                 && (size == 32 || size == 64))
                 << "expected atomic message dwordx8 or qwordx8";
         auto load_func = send_t::make(send_func.hw, send_op_t::load,
@@ -666,7 +673,7 @@ private:
                 send_func.fill_buf, send_func.cache_hint);
         auto &cmpwr_send = cmpwr_func.as<send_t>();
         send_impl_t cmpwr(cmpwr_send);
-        bool is_df = send_func.type.kind() == type_kind_t::qword;
+        bool is_df = send_func.type.is_qword();
 
         int grf_size = ngen::GRF::bytes(hw());
         int regs = utils::div_up(size, grf_size);
@@ -698,8 +705,10 @@ private:
         auto ne_mod = esize | flag | host_->ne | flag;
         auto eq_mod = esize | flag | host_->eq | flag;
         host_->add(esize, region, old_region, rd.setRegion(4, 4, 1));
-        cmpwr.emit(
-                host_, scope, mod | flag, old_region, mem_off_op, old_region);
+        auto cmpwr_mod = mod;
+        cmpwr_mod.setPredCtrl(ngen::PredCtrl::None);
+        cmpwr_mod |= flag;
+        cmpwr.emit(host_, scope, cmpwr_mod, old_region, mem_off_op, old_region);
         host_->cmp(ne_mod, old_save_region, old_region);
         // The previous comparison always fails for NaNs so check for NaNs
         // explictly to prevent an infinite loop.
@@ -744,8 +753,7 @@ private:
         }
         if ((hw() <= ngen::HW::XeLP && send_func.is_atomic())
                 || (hw() == ngen::HW::XeHPG && send_func.is_atomic()
-                        && send_func.type.kind() == type_kind_t::qword
-                        && !with_atomic_fp64_)) {
+                        && send_func.type.is_qword() && !with_atomic_fp64_)) {
             send_atomic_add_emu(
                     scope, send_func, mask_op, mod, mem_off_op.reg_data(), rd);
         } else {
@@ -1091,9 +1099,10 @@ public:
         auto dst_op = alloc_dst_op(obj);
 
         // Handle ptr -> u64 and u64 -> ptr casts.
-        if (utils::one_of(obj.type, type_t::u64(), type_t::byte_ptr())
-                && utils::one_of(
-                        obj.expr.type(), type_t::u64(), type_t::byte_ptr())) {
+        if (utils::one_of(
+                    obj.type, type_t::u64(), type_t::byte(type::attr_t::ptr))
+                && utils::one_of(obj.expr.type(), type_t::u64(),
+                        type_t::byte(type::attr_t::ptr))) {
             eval(obj.expr, dst_op);
             bind(obj, dst_op);
             return;
@@ -1705,23 +1714,22 @@ setup_flags_t get_setup_flags(const stmt_t &s) {
 }
 
 template <typename GeneratorT>
-void convert_ir_to_ngen(const stmt_t &body, GeneratorT *host,
-        const walk_order_t *kernel_grid_walk_order) {
-    expr_binding_t expr_binding(host->getHardware());
-    host->comment("Prologue");
-    host->generate_prologue();
+void convert_ir_to_ngen(const stmt_t &body, GeneratorT &host,
+        const walk_order_t *kernel_grid_walk_order = nullptr) {
+    expr_binding_t expr_binding(host.getHardware());
+    host.comment("Prologue");
+    host.generate_prologue();
 
-    host->bind_external_vars(body, expr_binding, kernel_grid_walk_order);
+    host.bind_external_vars(body, expr_binding, kernel_grid_walk_order);
     if (kernel_grid_walk_order)
-        host->bind_kernel_grid_walk_order(
-                *kernel_grid_walk_order, expr_binding);
+        host.bind_kernel_grid_walk_order(*kernel_grid_walk_order, expr_binding);
 
-    host->comment("IR");
-    ir_to_ngen_t<GeneratorT> visitor(host, expr_binding);
+    host.comment("IR");
+    ir_to_ngen_t<GeneratorT> visitor(&host, expr_binding);
     visitor.visit(body);
 
-    host->comment("Epilogue");
-    host->generate_epilogue();
+    host.comment("Epilogue");
+    host.generate_epilogue();
 }
 
 template <typename GeneratorT>
@@ -1733,7 +1741,7 @@ std::string get_ngen_str(const stmt_t &body, GeneratorT *host,
     host_asm.set_interface(host->getInterface());
 
     try {
-        convert_ir_to_ngen(body, &host_asm, kernel_grid_walk_order);
+        convert_ir_to_ngen(body, host_asm, kernel_grid_walk_order);
         return host_asm.str();
     } catch (std::runtime_error &e) {
         return "IR to nGEN Exception: " + std::string(e.what());
@@ -1747,7 +1755,7 @@ template <typename GeneratorT>
 void generate_from_ir(const stmt_t &kernel_body, GeneratorT *host,
         const walk_order_t *kernel_grid_walk_order, int &peak_regs) {
     gpu_trace() << get_ngen_str(kernel_body, host, kernel_grid_walk_order);
-    convert_ir_to_ngen(kernel_body, host, kernel_grid_walk_order);
+    convert_ir_to_ngen(kernel_body, *host, kernel_grid_walk_order);
 #ifdef DNNL_DEV_MODE
     peak_regs = host->ra().get_peak_regs();
 #endif
@@ -1821,6 +1829,48 @@ void ir_kernel_t::generate_from_ir(
 
 #undef GPU_HW_CASE
 }
+
+#ifdef WITH_SYCL_RUNTIME
+::sycl::kernel make_kernel(const kernel_iface_t &iface, const stmt_t &body,
+        const exec_config_t &exec_cfg, const ngen::DebugConfig &debug_cfg,
+        ::sycl::context ctx, ::sycl::device dev) {
+
+    ngen::NEOInterfaceHandler interface = generate_ngen_interface(
+            iface, exec_cfg, false, body);
+    std::optional<::sycl::kernel> kernel;
+
+#define GPU_HW_CASE(hw) \
+    ir_to_ngen_generator_t<ngen::SYCLCodeGenerator<(hw)>> g( \
+            iface, exec_cfg, debug_cfg); \
+    g.setInterface(interface); \
+    convert_ir_to_ngen(body, g); \
+    kernel = g.getKernel(ctx, dev); \
+    break;
+
+    GPU_HW_SWITCH(exec_cfg.hw().to_ngen());
+#undef GPU_HW_CASE
+    return kernel.value();
+}
+#endif
+#ifdef WITH_OPENCL_RUNTIME
+cl_kernel make_kernel(const kernel_iface_t &iface, const stmt_t &body,
+        const exec_config_t &exec_cfg, const ngen::DebugConfig &debug_cfg,
+        cl_context ctx, cl_device_id dev) {
+    ngen::NEOInterfaceHandler interface = generate_ngen_interface(
+            iface, exec_cfg, false, body);
+
+#define GPU_HW_CASE(hw) \
+    ir_to_ngen_generator_t<ngen::OpenCLCodeGenerator<(hw)>> g( \
+            iface, exec_cfg, debug_cfg); \
+    g.setInterface(interface); \
+    convert_ir_to_ngen(body, g); \
+    return g.getKernel(ctx, dev);
+
+    GPU_HW_SWITCH(exec_cfg.hw().to_ngen());
+#undef GPU_HW_CASE
+    return {};
+}
+#endif
 
 } // namespace jit
 } // namespace intel

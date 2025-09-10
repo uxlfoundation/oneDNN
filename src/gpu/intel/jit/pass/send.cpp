@@ -73,7 +73,8 @@ public:
 
         gpu_assert(is_var(mem_buf)) << mem_buf;
 
-        auto header_buf = ir_ctx_.create_tmp_var(type_t::byte_ptr(), "h");
+        auto header_buf
+                = ir_ctx_.create_tmp_var(type_t::byte(type::attr_t::ptr), "h");
         auto off_store = simplify_store(
                 send->create_offset_store(header_buf, mem_buf, mem_off));
 

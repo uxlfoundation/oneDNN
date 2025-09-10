@@ -407,19 +407,19 @@ public:
     layout_t split_block(
             const block_t *block_ptr, dim_t inner, dim_t outer) const;
 
-    layout_t map(const dim_mapper_t &dim_mapper, const coord_t &coord,
+    layout_t sub(const dim_mapper_t &dim_mapper, const coord_t &coord,
             const tile_t &tile,
             const var_range_info_t &var_range_info = {}) const;
 
-    layout_t map(const coord_t &coord, const tile_t &tile) const {
-        return map(dim_mapper_t(), coord, tile);
+    layout_t sub(const coord_t &coord, const tile_t &tile) const {
+        return sub(dim_mapper_t(), coord, tile);
     }
 
     template <typename T = int>
-    layout_t map(const tile_t &tile) const {
+    layout_t sub(const tile_t &tile) const {
         dim_mapper_t mapper;
         mapper.set_layout_desc(desc_);
-        return map(mapper, coord_t(), tile);
+        return sub(mapper, coord_t(), tile);
     }
 
     layout_t make_dense() const;

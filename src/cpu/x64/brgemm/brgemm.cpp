@@ -526,6 +526,12 @@ status_t brgemm_desc_set_attr(
             && (brg->is_tmm))
         return status::unimplemented;
 
+    // Sprinkled prefetch is supported for brgemm_batch_size is 1
+    if ((brgattr.max_bs != 1)
+            && (brgattr.hint_prfB.sprinkled || brgattr.hint_prfA.sprinkled)) {
+        return status::unimplemented;
+    }
+
     brg->prfA = brgattr.hint_prfA;
     brg->prfB = brgattr.hint_prfB;
     brg->prfC = brgattr.hint_prfC;
@@ -771,8 +777,10 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.hint_prefetching);
     CMP_BRGEMM_FIELD(brgattr.hint_prfA.dist1);
     CMP_BRGEMM_FIELD(brgattr.hint_prfA.dist2);
+    CMP_BRGEMM_FIELD(brgattr.hint_prfA.sprinkled);
     CMP_BRGEMM_FIELD(brgattr.hint_prfB.dist1);
     CMP_BRGEMM_FIELD(brgattr.hint_prfB.dist2);
+    CMP_BRGEMM_FIELD(brgattr.hint_prfB.sprinkled);
     CMP_BRGEMM_FIELD(brgattr.hint_prfC.dist1);
     CMP_BRGEMM_FIELD(brgattr.hint_prfC.dist2);
     CMP_BRGEMM_FIELD(brgattr.wary_A_k_tail_read);

@@ -81,13 +81,10 @@ type_t multiply_desc_t::get_c_type(
 }
 
 bool dpas_t::is_src_type(type_t type) {
-    return utils::one_of(type.kind(), type_kind_t::u8, type_kind_t::s8,
 #if XE3P
-            type_kind_t::bf16, type_kind_t::f16, type_kind_t::tf32,
-            type_kind_t::bf8, type_kind_t::hf8);
-#else
-            type_kind_t::bf16, type_kind_t::f16, type_kind_t::tf32);
+    if (type.is_bf8() || type.is_hf8()) return true;
 #endif
+    return type.is_x8() || type.is_bf16() || type.is_f16() || type.is_tf32();
 }
 
 layout_t dpas_t::a_layout() const {
@@ -126,9 +123,9 @@ bool dpas_t::matches(const multiply_desc_t &desc) const {
     if (desc.m() % m_blk != 0 || desc.k() % k_blk != 0) return false;
 
     auto a_blk_layout
-            = desc.a_layout().map(tile_t(std::vector<dim_t> {m_blk, k_blk}));
+            = desc.a_layout().sub(tile_t(std::vector<dim_t> {m_blk, k_blk}));
     auto b_blk_layout
-            = desc.b_layout().map(tile_t(std::vector<dim_t> {k_blk, n_blk}));
+            = desc.b_layout().sub(tile_t(std::vector<dim_t> {k_blk, n_blk}));
 
     if (a_blk_layout != a_layout()) return false;
     if (b_blk_layout != b_layout()) return false;

@@ -51,6 +51,7 @@ status_t cvt_primitive_args(const primitive_desc_t *pd, int nargs,
                 n_inputs++;
                 extra_inputs += (arg & DNNL_ARG_ATTR_ZERO_POINTS)
                         || (arg & DNNL_ARG_ATTR_SCALES)
+                        || (arg & DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS)
                         // 1x1 + dw conv fusion
                         || (arg
                                 == (DNNL_ARG_ATTR_POST_OP_DW

@@ -125,7 +125,7 @@ status_t primitive_init_plan_t::add_reorder_kernel(
         impl::engine_t *engine) const {
     kernel_info_t kernel_info;
     for (auto *e : {&src, &dst}) {
-        auto buf_var = var_t::make(type_t::byte_ptr(), e->name);
+        auto buf_var = var_t::make(type_t::byte(type::attr_t::ptr), e->name);
         if (e->is_user()) {
             kernel_info.register_user_arg(
                     buf_var, e->arg_key, /*is_input=*/e == &src);

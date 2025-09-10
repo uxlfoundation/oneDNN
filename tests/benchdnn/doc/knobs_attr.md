@@ -8,8 +8,9 @@
     --attr-rounding-mode=ARG:MODE[+...]
     --attr-deterministic=BOOL
     --attr-dropout=PROBABILITY[:SEED[:TAG]]
-    --attr-scales=ARG:POLICY[:SCALE[:DATA_TYPE[:GROUPS]]][+...]
-    --attr-zero-points=ARG:POLICY[:ZEROPOINT[:DATA_TYPE[:GROUPS]]][+...]
+    --attr-scales=ARG:POLICY[:SCALE][:DATA_TYPE[:GROUPS]][+...]
+    --attr-zero-points=ARG:POLICY[:ZEROPOINT][:DATA_TYPE[:GROUPS]][+...]
+    --attr-precomputed-reductions=ARG:POLICY:DATA_TYPE:GROUPS[+...]
     --attr-post-ops=SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]
                     ELTWISE[:ALPHA[:BETA[:SCALE]]]
                     DW:KkSsPp[:DST_DT]
@@ -87,6 +88,8 @@ default no scales are applied which corresponds to `common` policy and `1.f`
 scale value. Supported values are:
   - `common`         corresponds to `mask = 0` and means a whole tensor will be
                      multiplied by a single `SCALE` value.
+  - `host_scalar`    for this policy, the whole tensor will be multiplied by a
+                     single `SCALE` value that is always stored on the host.
   - `per_dim_0`      corresponds to `mask = 1 << 0` and means elements of dim0
                      will be multiplied by scale factors different for each
                      point. Number of scale factors is equal to dims[0].
@@ -143,6 +146,7 @@ attribute. This attribute is supported only for integer data types as of now.
 `POLICY` has the same semantics and meaning as for `--attr-scales`. Supported
 values are:
   - `common`
+  - `host_scalar`
   - `per_dim_1` (for `src` and `dst`)
 
 `ZEROPOINT` is required for the `common` policy only, an specifies an integer
@@ -154,6 +158,28 @@ policies will trigger an error.
 
 `GROUPS` specifies how zero points are grouped along dimensions where multiple
 zero points factors are used.
+
+To specify more than one memory argument for this attribute, `+` delimiter is
+used.
+
+## --attr-precomputed-reductions
+`--attr-precomputed-reductions` defines precomputed reductions per memory
+argument primitive attribute. This attribute is supported only for integer data
+types as of now.
+
+`ARG` specifies which memory argument will be modified. Supported values are:
+  - `src` corresponds to `DNNL_ARG_SRC`
+  - `wei` corresponds to `DNNL_ARG_WEIGHTS`
+
+`POLICY` has the same semantics and meaning as for `--attr-scales`. Supported
+values are:
+  - `per_tensor`
+
+`DATA_TYPE` specifies data type for precomputed reductions. Supported values are
+`s32` (the default), `s8`, `u8`.
+
+`GROUPS` specifies how precomputed reductions are grouped along dimensions where
+multiple precomputed reduction factors are used.
 
 To specify more than one memory argument for this attribute, `+` delimiter is
 used.
@@ -251,18 +277,18 @@ supported, positioned after `MASK_INPUT`, to specify physical memory format.
 - `sub`
 - `select`
 
-For the `select` algorithm, the operation also requires a third conditional 
-tensor to be specified. A different format is thus used for providing the 
+For the `select` algorithm, the operation also requires a third conditional
+tensor to be specified. A different format is thus used for providing the
 arguments for both the tensors:
 
 ```
 --attr-post-ops=select:DT[.S1_MASK_INPUT[.S1_TAG]][:S2_MASK_INPUT[.S2_TAG]]
 ```
 
-The arguments for each tensor are are delimited using `.`, with the arguments 
-for the third tensor positioned after that of the second and are separated by `:`. 
-The arguments are optional for the third tensor and the data type value for 
-the third tensor is fixed at `s8`. 
+The arguments for each tensor are are delimited using `.`, with the arguments
+for the third tensor positioned after that of the second and are separated by `:`.
+The arguments are optional for the third tensor and the data type value for
+the third tensor is fixed at `s8`.
 
 ### Prelu
 `PRELU` post operation kind applies forward algorithm to the operations result

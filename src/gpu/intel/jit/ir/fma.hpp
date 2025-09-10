@@ -59,6 +59,11 @@ inline bool is_dp_fma(fma_kind_t kind) {
 fma_kind_t get_supported_fma_kind(
         const hw_t &hw, const type_t &a, const type_t &b, const type_t &c);
 
+inline fma_kind_t get_supported_fma_kind(
+        const hw_t &hw, data_type_t a, data_type_t b, data_type_t c) {
+    return get_supported_fma_kind(hw, to_ir(a), to_ir(b), to_ir(c));
+}
+
 int get_simd_size(const hw_t &hw, fma_kind_t kind, const type_t &a,
         const type_t &b, const type_t &c);
 
@@ -98,10 +103,8 @@ private:
 };
 
 // Function representing DPAS instruction.
-class dpas_t : public func_impl_t {
+class dpas_t : public func_impl_t, public object::info_t<dpas_t> {
 public:
-    IR_DECL_TYPE(dpas_t)
-
     static func_t make(bool is_dpasw, int exec_size, uint8_t sdepth,
             uint8_t rcount, const type_t &dst_type, const type_t &src1_type,
             const type_t &src2_type) {
@@ -127,7 +130,7 @@ public:
 
     bool is_dp4a() const { return rcount == 1 && sdepth == 1; }
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const impl_t &obj) const override {
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
@@ -193,7 +196,7 @@ private:
     dpas_t(bool is_dpasw, int exec_size, uint8_t sdepth, uint8_t rcount,
             const type_t &dst_type, const type_t &src1_type,
             const type_t &src2_type)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , is_dpasw(is_dpasw)
         , exec_size(exec_size)
         , sdepth(sdepth)
@@ -204,10 +207,8 @@ private:
 };
 
 // Function representing MAD instruction.
-class mad_t : public func_impl_t {
+class mad_t : public func_impl_t, public object::info_t<mad_t> {
 public:
-    IR_DECL_TYPE(mad_t)
-
     static func_t make(const hw_t &hw, const type_t &dst_type, int exec_size,
             const type_t &src1_type, int src1_stride, const type_t src2_type,
             int src2_stride) {
@@ -273,7 +274,7 @@ private:
     mad_t(const hw_t &hw, const type_t &dst_type, int exec_size,
             const type_t &src1_type, int src1_stride, const type_t &src2_type,
             int src2_stride)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , dst_type(dst_type)
         , src1_type(src1_type)
         , src2_type(src2_type)

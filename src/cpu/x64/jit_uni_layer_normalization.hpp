@@ -41,9 +41,8 @@ struct stat_and_data_kernel_t {
     virtual ~stat_and_data_kernel_t() = default;
 
     virtual void operator()(const void *src, void *dst, const float *scale,
-            const float *shift, float *mean, float *var,
-            const float *src_scales, const float *dst_scales,
-            const void *post_ops_binary_rhs_arg_vec,
+            const float *shift, float *mean, float *var, const void *src_scales,
+            const void *dst_scales, const void *post_ops_binary_rhs_arg_vec,
             const size_t block_size) const {};
 
     virtual status_t create_kernel() { return status::success; }
@@ -100,6 +99,7 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
 
         std::shared_ptr<primitive_desc_t> reorder_pd_;
         memory_desc_t reordered_stat_md_;
+        int nthr_; // To not exceed the limit in execute used for set up.
 
     private:
         void init_scratchpad() {
@@ -115,6 +115,10 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
             }
             if (reordered_stat_md_ != *stat_md() && !stats_are_tmp()) {
                 scratchpad.book(key_nested, reorder_pd_->scratchpad_registry());
+            }
+            if (!attr()->scales_.has_default_values(DNNL_ARG_DST)) {
+                scratchpad.book(key_lnorm_dst_scales,
+                        static_cast<size_t>(nthr_) * sizeof(float), 64);
             }
         }
     };

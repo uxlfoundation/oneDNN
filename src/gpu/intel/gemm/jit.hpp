@@ -24,6 +24,7 @@
 #include "common/c_types_map.hpp"
 #include "common/gemm_utils.hpp"
 #include "common/utils.hpp"
+#include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/compute/zero_pool.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
@@ -235,6 +236,15 @@ struct gen_t : public primitive_t {
             VDISPATCH_GEMM(IMPLICATION(with_binary, arch_ >= arch_t::xe_hp),
                     VERBOSE_UNSUPPORTED_ARCH, "gpu");
 
+            // Grouped scales break pre-XeHPG kernels due to increased register pressure
+            bool A_grouped
+                    = 1 < a_scales_group_k_ && a_scales_group_k_ < desc()->k();
+            bool B_grouped
+                    = 1 < b_scales_group_k_ && b_scales_group_k_ < desc()->k();
+            VDISPATCH_GEMM(IMPLICATION(arch_ == compute::gpu_arch_t::xe_lp,
+                                   !(A_grouped || B_grouped)),
+                    VERBOSE_UNSUPPORTED_FEATURE, "grouped scales");
+
             bool has_systolic
                     = intel_engine->mayiuse(compute::device_ext_t::
                                       intel_subgroup_matrix_multiply_accumulate)
@@ -260,7 +270,8 @@ struct gen_t : public primitive_t {
                     : data_type::s32;
             bool int_acc = utils::one_of(eff_a_type(), s8, u8, s4, u4)
                     && !wei_decomp_;
-            int_acc &= (!a_scales_2d() && !b_scales_2d());
+            int_acc &= (!(a_scales_grouped() || b_scales_grouped())
+                    && !(a_zp_grouped() || b_zp_grouped()));
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
                     : int_acc          ? s32
@@ -321,9 +332,9 @@ struct gen_t : public primitive_t {
                     get_post_op_specializations()));
 
             jit::quant_params a_quant = {a_scales_type_, ao_type, ao_dims_,
-                    asc_dims_, a_q2d_group_k_, a_q2d_group_m_};
+                    asc_dims_, a_q2d_group_k(), a_q2d_group_m()};
             jit::quant_params b_quant = {b_scales_type_, bo_type, bo_dims_,
-                    bsc_dims_, b_q2d_group_k_, b_q2d_group_n_};
+                    bsc_dims_, b_q2d_group_k(), b_q2d_group_n()};
 
 #if XE3P
             if (arch_ == arch_t::xe3p)
@@ -348,8 +359,8 @@ struct gen_t : public primitive_t {
             //   accumulation unless fusion is enabled.
             if (kernel_desc_.driver_info()->kParallel()
                     && !kernel_desc_.driver_info()->fusedPostOps()) {
-                VDISPATCH_GEMM(!with_eltwise && !with_binary
-                                && utils::one_of(d->c_type(), f32, s32),
+                VDISPATCH_GEMM(
+                        !non_scale_po_ && utils::one_of(d->c_type(), f32, s32),
                         VERBOSE_UNSUPPORTED_POSTOP);
             }
 

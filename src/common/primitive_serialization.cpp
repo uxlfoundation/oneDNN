@@ -69,7 +69,8 @@ void serialize(serialization_stream_t &sstream, const memory_desc_t &md) {
     switch ((int)md.format_kind) {
         case format_kind::sparse:
         case format_kind::undef:
-        case format_kind::any: break;
+        case format_kind::any:
+        case format_kind::host_scalar: break; // no additional data to serialize
         case format_kind::blocked:
             sstream.append_array(md.ndims, md.format_desc.blocking.strides);
             sstream.append(md.format_desc.blocking.inner_nblks);
@@ -194,6 +195,11 @@ void serialize(serialization_stream_t &sstream, const primitive_attr_t &attr) {
     if (!attr.zero_points_.has_default_values()) {
         sstream.append('z');
         attr.zero_points_.serialize(sstream);
+    }
+
+    if (!attr.precomputed_reductions_.has_default_values()) {
+        sstream.append('p');
+        attr.precomputed_reductions_.serialize(sstream);
     }
 
     // Rounding modes
@@ -584,6 +590,8 @@ void serialize(serialization_stream_t &sstream, const sdpa_desc_t &desc) {
     serialize(sstream, desc.dst_desc);
     serialize(sstream, desc.attn_mask_desc);
     sstream.append(desc.scale_dt);
+    sstream.append(desc.kq_acc_dt);
+    sstream.append(desc.vs_acc_dt);
     sstream.append(desc.invert_scale);
     sstream.append(desc.kv_head_number);
     sstream.append(desc.mask_type);

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,21 +14,20 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_GEMM_OCL_ATTRS_H
-#define GPU_INTEL_GEMM_OCL_ATTRS_H
+#ifndef GEMMSTONE_GUARD_BUILDER_HPP
+#define GEMMSTONE_GUARD_BUILDER_HPP
 
-#define ATTR_ALPHA 1.0f
+#include "gemmstone/config.hpp"
+#include "gpu/intel/jit/dsl/dsl.hpp"
+#include "gpu/intel/jit/ir/ir.hpp"
 
-#if WITH_SRC_ZPOINTS
-#define ATTR_A0 ao[0]
-#else
-#define ATTR_A0 0
+GEMMSTONE_NAMESPACE_START
+
+struct generator_dsl_desc_t;
+
+dsl::kernel_t make_kernel(
+        const generator_dsl_desc_t &desc, ir::constraint_set_t cset = {});
+
+GEMMSTONE_NAMESPACE_END
+
 #endif
-
-#if WITH_WEI_ZPOINTS
-#define ATTR_B0 bo[0]
-#else
-#define ATTR_B0 0
-#endif
-
-#endif // GPU_INTEL_GEMM_OCL_ATTRS_H

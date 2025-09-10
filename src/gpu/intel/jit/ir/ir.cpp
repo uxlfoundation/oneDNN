@@ -16,6 +16,7 @@
 
 #include "gpu/intel/jit/ir/ir.hpp"
 
+#include <numeric>
 #include <sstream>
 
 #include "common/math_utils.hpp"
@@ -38,6 +39,11 @@ namespace {
 class ir_printer_t : public ir_visitor_t {
 public:
     ir_printer_t(std::ostream &out) : out_(out) {}
+
+    void _visit(const assign_t &obj) override {
+        print_indent();
+        out_ << obj.str() << "\n";
+    }
 
     void _visit(const alloc_t &obj) override {
         auto grf_size = 1; // Assume all objects are grf aligned
@@ -277,7 +283,7 @@ public:
 
 #define HANDLE_IR_OBJECT(type) \
     object_t _mutate(const type &obj) override { \
-        if (from_.impl() == (const object_impl_t *)&obj) { \
+        if (from_.impl() == (const impl_t *)&obj) { \
             substitutions_++; \
             return to_; \
         } \
@@ -405,9 +411,7 @@ private:
     template <typename T>
     object_t mutate_stmt(const T &obj) {
         if (in_ctor_) return ir_mutator_t::_mutate(obj);
-        if (T::_type_info().type_id == stmt_seq_t::_type_info().type_id) {
-            return mutate_stmt_seq(obj);
-        }
+        if (obj.template is<stmt_seq_t>()) { return mutate_stmt_seq(obj); }
         auto undef_bufs = get_undef_bufs();
         auto new_obj = ir_mutator_t::_mutate(obj);
         new_obj = maybe_inject(new_obj, undef_bufs);
@@ -552,7 +556,7 @@ private:
 
 } // namespace
 
-std::string object_impl_t::str() const {
+std::string object::impl_t::str() const {
     ostringstream_t oss;
     ir_printer_t printer(oss);
     printer.visit(this);
@@ -782,7 +786,7 @@ bool is_const_broadcast(const expr_t &e, const expr_t &value) {
 }
 
 expr_t make_buffer(const std::string &name) {
-    return var_t::make(type_t::byte_ptr(), name);
+    return var_t::make(type_t::byte(type::attr_t::ptr), name);
 }
 
 // Returns number of occurrences of `obj` in `root` (based on identity equality).
@@ -792,7 +796,7 @@ int count_object(const object_t &root, const object_t &obj) {
     std::vector<object_t> found;
     do {
 #define HANDLE_IR_OBJECT(type) \
-    if (obj.type_info() == type::_type_info()) { \
+    if (obj.is<type>()) { \
         found = find_objects<type>(root); \
         break; \
     }

@@ -130,6 +130,7 @@ struct brgemm_prf_t {
     int dist1 {-1};
     int dist2 {-1};
     int distNTA {-1};
+    bool sprinkled {false};
 };
 
 struct brgemm_batch_element_t {

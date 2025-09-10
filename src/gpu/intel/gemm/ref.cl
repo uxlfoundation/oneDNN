@@ -14,7 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/gemm/ocl_attrs.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
@@ -39,6 +38,19 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
         float eltwise_alpha, float eltwise_beta, float eltwise_scale,
         int bias_mask, __global int *ao, __global int *bo, __global int *c0,
         int c0_mask, float beta) {
+
+// See note in src/gpu/intel/gemm/primitive.hpp wrt args swap
+#if WITH_WEI_ZPOINTS
+#define ATTR_A0 ao[0]
+#else
+#define ATTR_A0 0
+#endif
+
+#if WITH_SRC_ZPOINTS
+#define ATTR_B0 bo[0]
+#else
+#define ATTR_B0 0
+#endif
 
     long n = get_global_id(0);
     long m = get_global_id(1);

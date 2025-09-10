@@ -1,8 +1,8 @@
 {
     "dependencies": {
-        "acl": "v52.2.0",
+        "acl": "v52.4.0",
         "gcc": "13",
         "clang": "17",
-        "onednn-base": "v3.8"
+        "onednn-base": "v3.9"
     }
 }

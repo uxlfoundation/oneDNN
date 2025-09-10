@@ -668,6 +668,10 @@ void Generator<hw>::initState(const CommonProblem &problem, const CommonStrategy
     state.ra.setRegisterCount(strategy.GRFs);
     state.tokenAllocator = TokenAllocator(hw, strategy.GRFs);
 
+#if XE3P
+    setEfficient64Bit(interface.getEfficient64Bit());
+#endif
+
     if (problem.gtpinSupport)
         interface.requireScratch(128);
 

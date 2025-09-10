@@ -26,6 +26,7 @@
 #include "oneapi/dnnl/dnnl.h"
 
 #include "utils/fill.hpp"
+#include "utils/memory.hpp"
 #include "utils/parallel.hpp"
 
 #include "dnnl_common.hpp"

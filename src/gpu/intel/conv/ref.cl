@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/io.h"
 #include "gpu/intel/include/philox.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
@@ -40,11 +41,36 @@ KERNEL_ATTR
 __kernel void ref_convolution_fwd(
         const __global SRC_DATA_T *src, const __global WEI_DATA_T *wei,
         const __global BIA_DATA_T *bias, __global DST_DATA_T *dst POST_OP_ARGS,
+#if WITH_HOST_SRC_SCALE
+        SRC_SCALES_DATA_T src_scale_value,
+#else
         const __global SRC_SCALES_DATA_T *src_scales,
+#endif
+#if WITH_HOST_WEI_SCALE
+        WEI_SCALES_DATA_T wei_scale_value,
+#else
         const __global WEI_SCALES_DATA_T *wei_scales,
+#endif
+#if WITH_HOST_DST_SCALE
+        DST_SCALES_DATA_T dst_scale_value,
+#else
         const __global DST_SCALES_DATA_T *dst_scales,
-        const __global int *src_zpoints, const __global WEI_ZP_T *wei_zpoints,
+#endif
+#if WITH_HOST_SRC_ZP
+        int src_zp_value,
+#else
+        const __global int *src_zpoints,
+#endif
+#if WITH_HOST_WEI_ZP
+        WEI_ZP_T wei_zp_value,
+#else
+        const __global WEI_ZP_T *wei_zpoints,
+#endif
+#if WITH_HOST_DST_ZP
+        int dst_zp_value
+#else
         const __global int *dst_zpoints
+#endif
 #if WITH_SROUND
         ,
         __global uint *sround_seed_buf
@@ -52,6 +78,25 @@ __kernel void ref_convolution_fwd(
 ) {
 #if WITH_SROUND
     uint sround_seed = sround_seed_buf[0];
+#endif
+
+#if WITH_HOST_SRC_SCALE
+    SRC_SCALES_DATA_T *src_scales = &src_scale_value;
+#endif
+#if WITH_HOST_WEI_SCALE
+    WEI_SCALES_DATA_T *wei_scales = &wei_scale_value;
+#endif
+#if WITH_HOST_DST_SCALE
+    DST_SCALES_DATA_T *dst_scales = &dst_scale_value;
+#endif
+#if WITH_HOST_SRC_ZP
+    int *src_zpoints = &src_zp_value;
+#endif
+#if WITH_HOST_DST_ZP
+    int *dst_zpoints = &dst_zp_value;
+#endif
+#if WITH_HOST_WEI_ZP
+    WEI_ZP_T *wei_zpoints = &wei_zp_value;
 #endif
 
     src += SRC_OFFSET0;
@@ -80,18 +125,8 @@ __kernel void ref_convolution_fwd(
                     const off_t src_off = SRC_OFF(n, g * IC + ic, id, ih, iw);
                     const off_t wei_off = WEI_OFF(g, oc, ic, kd, kh, kw);
 
-#if SRC_DT_F4_E2M1 || SRC_DT_F4_E3M0
-                    ACC_DATA_T s
-                            = TO_ACC(SRC_TO_REF(GET_HALF_BYTE(src, src_off)));
-#else
-                    ACC_DATA_T s = TO_ACC(SRC_TO_REF(src[src_off]));
-#endif
-#if WEI_DT_F4_E2M1 || WEI_DT_F4_E3M0
-                    ACC_DATA_T w
-                            = TO_ACC(WEI_TO_REF(GET_HALF_BYTE(wei, wei_off)));
-#else
-                    ACC_DATA_T w = TO_ACC(WEI_TO_REF(wei[wei_off]));
-#endif
+                    ACC_DATA_T s = load(s, src, src_off);
+                    ACC_DATA_T w = load(w, wei, wei_off);
                     d += s * w;
 
 #if WITH_SRC_ZPOINTS
@@ -113,24 +148,23 @@ __kernel void ref_convolution_fwd(
     POST_OP_DATA_T tmp = d;
 
 #if WITH_SRC_SCALES
-    tmp *= SRC_SCALES_TO_REF(src_scales[0]);
+    tmp *= load(tmp, src_scales);
 #endif
 #if WITH_WEI_SCALES
 #if WEI_SCALES_MASK == 0
-    tmp *= WEI_SCALES_TO_REF(wei_scales[0]);
+    tmp *= load(tmp, wei_scales);
 #else
-    tmp *= WEI_SCALES_TO_REF(wei_scales[g * OC + oc]);
+    tmp *= load(tmp, wei_scales + g * OC + oc);
 #endif
 #endif
 
 #if WITH_BIAS
-    tmp += (POST_OP_DATA_T)BIA_TO_REF(bias[g * OC + oc]);
+    tmp += load(tmp, bias + g * OC + oc);
 #endif
 
     POST_OP_DATA_T sum_src;
 #if WITH_SUM
-    sum_src = (POST_OP_DATA_T)SUM_TO_REF(
-            AS_SUM_DATA_T(dst[DST_OFF(n, g * OC + oc, od, oh, ow)]));
+    sum_src = load(tmp, dst + DST_OFF(n, g * OC + oc, od, oh, ow));
 #endif
 
 #if NDIMS == 3
@@ -158,9 +192,9 @@ __kernel void ref_convolution_fwd(
 
 #if WITH_DST_SCALES
 #if DST_SCALES_MASK == 0
-    tmp /= DST_SCALES_TO_REF(dst_scales[0]);
+    tmp /= load(tmp, dst_scales);
 #else
-    tmp /= DST_SCALES_TO_REF(dst_scales[g * OC + oc]);
+    tmp /= load(tmp, dst_scales + g * OC + oc);
 #endif
 #endif
 
@@ -168,7 +202,7 @@ __kernel void ref_convolution_fwd(
     const int dst_zp = dst_zpoints[WITH_DST_ZPOINTS_PER_OC ? g * OC + oc : 0];
     tmp += dst_zp;
 #endif // WITH_DST_ZPOINTS
-    dst[DST_OFF(n, g * OC + oc, od, oh, ow)] = TO_DST(tmp);
+    write(dst + DST_OFF(n, g * OC + oc, od, oh, ow), tmp);
 }
 #endif
 
@@ -177,9 +211,56 @@ KERNEL_ATTR
 __kernel void ref_convolution_bwd_data(__global SRC_DATA_T *diff_src,
         const __global WEI_DATA_T *wei, const __global DST_DATA_T *diff_dst,
         const __global BIA_DATA_T *bias POST_OP_ARGS,
-        const __global float *src_scales, const __global float *wei_scales,
-        const __global float *dst_scales, const __global int *src_zpoints,
-        const __global WEI_ZP_T *wei_zpoints, const __global int *dst_zpoints) {
+#if WITH_HOST_SRC_SCALE
+        float src_scale_value,
+#else
+        const __global float *src_scales,
+#endif
+#if WITH_HOST_WEI_SCALE
+        float wei_scale_value,
+#else
+        const __global float *wei_scales,
+#endif
+#if WITH_HOST_DST_SCALE
+        float dst_scale_value,
+#else
+        const __global float *dst_scales,
+#endif
+#if WITH_HOST_SRC_ZP
+        int src_zp_value,
+#else
+        const __global int *src_zpoints,
+#endif
+#if WITH_HOST_WEI_ZP
+        WEI_ZP_T wei_zp_value,
+#else
+        const __global WEI_ZP_T *wei_zpoints,
+#endif
+#if WITH_HOST_DST_ZP
+        int dst_zp_value
+#else
+        const __global int *dst_zpoints
+#endif
+) {
+#if WITH_HOST_SRC_SCALE
+    SRC_SCALES_DATA_T *src_scales = &src_scale_value;
+#endif
+#if WITH_HOST_WEI_SCALE
+    WEI_SCALES_DATA_T *wei_scales = &wei_scale_value;
+#endif
+#if WITH_HOST_DST_SCALE
+    DST_SCALES_DATA_T *dst_scales = &dst_scale_value;
+#endif
+#if WITH_HOST_SRC_ZP
+    int *src_zpoints = &src_zp_value;
+#endif
+#if WITH_HOST_DST_ZP
+    int *dst_zpoints = &dst_zp_value;
+#endif
+#if WITH_HOST_WEI_ZP
+    WEI_ZP_T *wei_zpoints = &wei_zp_value;
+#endif
+
     const off_t n = GWS_GET_MB();
     const off_t ic = GWS_GET_IC();
     const off_t g = GWS_GET_G();
@@ -205,16 +286,8 @@ __kernel void ref_convolution_bwd_data(__global SRC_DATA_T *diff_src,
         if (oh < OH && ow < OW && od < OD) {
             const off_t dst_off = DST_OFF(n, g * OC + oc, od, oh, ow);
             const off_t wei_off = WEI_OFF(g, oc, ic, kd, kh, kw);
-#if DST_DT_F4_E2M1 || DST_DT_F4_E3M0
-            ACC_DATA_T diff_d = DST_TO_REF(GET_HALF_BYTE(diff_dst, dst_off));
-#else
-            ACC_DATA_T diff_d = DST_TO_REF(diff_dst[dst_off]);
-#endif
-#if WEI_DT_F4_E2M1 || WEI_DT_F4_E3M0
-            ACC_DATA_T w = WEI_TO_REF(GET_HALF_BYTE(wei, wei_off));
-#else
-            ACC_DATA_T w = WEI_TO_REF(wei[wei_off]);
-#endif
+            ACC_DATA_T diff_d = load(diff_d, diff_dst, dst_off);
+            ACC_DATA_T w = load(w, wei, wei_off);
             d += diff_d * w;
 #if WITH_SRC_ZPOINTS
             const int src_zp
@@ -247,13 +320,12 @@ __kernel void ref_convolution_bwd_data(__global SRC_DATA_T *diff_src,
 #endif
 
 #if WITH_BIAS
-    tmp += (POST_OP_DATA_T)BIA_TO_REF(bias[g * IC + ic]);
+    tmp += load(tmp, bias + g * IC + ic);
 #endif
 
     POST_OP_DATA_T sum_src;
 #if WITH_SUM
-    sum_src = (POST_OP_DATA_T)SUM_TO_REF(
-            AS_SUM_DATA_T(diff_src[SRC_OFF(n, g * IC + ic, id, ih, iw)]));
+    load(&sum_src, diff_src + SRC_OFF(n, g * IC + ic, id, ih, iw));
 #endif
 
 #if NDIMS == 3
@@ -284,7 +356,7 @@ __kernel void ref_convolution_bwd_data(__global SRC_DATA_T *diff_src,
     tmp += dst_zp;
 #endif // WITH_DST_ZPOINTS
 
-    diff_src[SRC_OFF(n, g * IC + ic, id, ih, iw)] = TO_SRC(tmp);
+    write(diff_src + SRC_OFF(n, g * IC + ic, id, ih, iw), tmp);
 }
 #endif
 
@@ -307,10 +379,10 @@ __kernel void ref_convolution_bwd_weights(const __global SRC_DATA_T *src,
             for (off_t od = 0; od < OD; ++od)
                 for (off_t oh = 0; oh < OH; ++oh)
                     for (off_t ow = 0; ow < OW; ++ow) {
-                        d += DST_TO_REF(
-                                diff_dst[DST_OFF(n, g * OC + oc, od, oh, ow)]);
+                        d += load(d,
+                                diff_dst + DST_OFF(n, g * OC + oc, od, oh, ow));
                     }
-        diff_bias[g * OC + oc] = TO_BIA(d);
+        write(diff_bias + g * OC + oc, d);
     }
 #endif
 
@@ -333,19 +405,10 @@ __kernel void ref_convolution_bwd_weights(const __global SRC_DATA_T *src,
                     off_t dst_off = DST_OFF(n, g * OC + oc, od, oh, ow);
                     off_t src_off = SRC_OFF(n, g * IC + ic, id, ih, iw);
 
-#if DST_DT_F4_E2M1 || DST_DT_F4_E3M0
-                    ACC_DATA_T diff_d
-                            = SRC_TO_REF(GET_HALF_BYTE(diff_dst, dst_off));
-#else
-                    ACC_DATA_T diff_d = DST_TO_REF(diff_dst[dst_off]);
-#endif
-#if SRC_DT_F4_E2M1 || SRC_DT_F4_E3M0
-                    ACC_DATA_T s = SRC_TO_REF(GET_HALF_BYTE(src, src_off));
-#else
-                    ACC_DATA_T s = SRC_TO_REF(src[src_off]);
-#endif
+                    ACC_DATA_T diff_d = load(diff_d, diff_dst, dst_off);
+                    ACC_DATA_T s = load(s, src, src_off);
                     dw += diff_d * s;
                 }
-    diff_wei[WEI_OFF(g, oc, ic, kd, kh, kw)] = TO_WEI(dw);
+    write(diff_wei + WEI_OFF(g, oc, ic, kd, kh, kw), dw);
 }
 #endif

@@ -154,7 +154,7 @@ partition_data_displacer_t::partition_data_displacer_t(
 
                 if (parent_op->kind_ == "DynamicDequantize"
                         && dg.get_recognized_pattern()
-                                == graph_recognized_pattern_t::sdpa) {
+                                == graph_recognized_pattern_t::sdpa_fwd) {
                     // Add filling type for quantized input of SDPA cases
                     const auto &parent_op_in_lt = parent_op->in_lts_[0];
                     const auto &prev_parent_op
@@ -231,13 +231,22 @@ partition_data_displacer_t::partition_data_displacer_t(
         // This is done to avoid taking future tokens into account by
         // influencing SoftMax input values.
         while (aop.kind_ == "Add" || aop.kind_ == "Select") {
+            // TODO: consider adding `dg.has_known_patterns()` when the list gets bigger.
+            if (dg.get_recognized_pattern()
+                            != graph_recognized_pattern_t::sdpa_fwd
+                    && dg.get_recognized_pattern()
+                            != graph_recognized_pattern_t::sdpa_bwd)
+                break;
             auto *aop_out_lt = &aop.out_lts_[0];
-            auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
-            if (child_op->kind_ != "SoftMax") break;
+            // s32 add is a case for bottom-right causal mask
+            if (aop.kind_ == "Add" && aop_out_lt->data_type_ == "s32") break;
 
-            // Softmax must be a part of same partition as the mask. This is to
-            // avoid cases, where mask is the last op in the partition, from
-            // being modified.
+            // The following op (Softmax or Subtract) must be a part of same
+            // partition as the mask. This is to avoid cases, where mask is the
+            // last op in the partition, from being modified.
+            auto *child_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
+            if (child_op->kind_ != "SoftMax" && child_op->kind_ != "Subtract")
+                break;
             if (op_ids_set_.find(child_op->id_) == op_ids_set_.end()) break;
 
             // Search for an input lt without a parent, this is the one to
@@ -354,7 +363,15 @@ partition_data_displacer_t::partition_data_displacer_t(
 
         // Fill proper data for bottom-right implicit casual mask
         while (aop.kind_ == "Add") {
+            if (dg.get_recognized_pattern()
+                            != graph_recognized_pattern_t::sdpa_fwd
+                    && dg.get_recognized_pattern()
+                            != graph_recognized_pattern_t::sdpa_bwd)
+                break;
             auto *aop_out_lt = &aop.out_lts_[0];
+            // add in a bottom-right causal mask should have s32 output dtype
+            if (aop_out_lt->data_type_ != "s32") break;
+
             auto *child_sub_op = &dg_->get_op_by_in_lt(aop_out_lt->id_);
             if (child_sub_op->kind_ != "Subtract") break;
 
@@ -415,8 +432,10 @@ partition_data_displacer_t::partition_data_displacer_t(
         }
 
         // Fill proper data for softmax stats in sdpa backward graph.
-        // TODO: check if it's a known sdpa pattern before doing the data filling
         while (aop.kind_ == "Subtract") {
+            if (dg.get_recognized_pattern()
+                    != graph_recognized_pattern_t::sdpa_bwd)
+                break;
             // for softmax stats, it's used as P = exp(S-stats)
             // stats should be an input of the whole backward graph, so it should
             // have no producer.
@@ -438,7 +457,6 @@ partition_data_displacer_t::partition_data_displacer_t(
 }
 
 int partition_data_displacer_t::displace_input_data(size_t lt_id,
-        dnn_mem_t &mem,
         const std::unordered_map<size_t, const dnn_mem_t &> &lt_id_2_mems,
         res_t *res) {
     if (!dg_) {
@@ -451,6 +469,7 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
         return OK;
     }
     const displace_args_t &d_args = displace_args_.at(lt_id);
+    dnn_mem_t &mem = const_cast<dnn_mem_t &>(lt_id_2_mems.at(lt_id));
     const auto &main_op = d_args.main_op_;
     const auto &main_op_offset = d_args.main_op_offset_;
     const auto &tensor = d_args.tensor_;

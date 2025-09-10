@@ -628,8 +628,17 @@ void CopyPlan::copyThrough(CopyInstruction &i, DataType type, int stride, bool s
         i1.src0.range = conversionRange(srange, i0.dst.type);
     }
 
-    if (isInt(st) && isInt(type) && isFP(dt) && getBytes(st) > getBytes(type))
+    auto needsSaturate = [](const CopyOperand &src, const CopyOperand &dst) {
+        auto st = src.range == DataType::invalid ? src.type : src.range;
+        auto dt = dst.type;
+        if (!isInt(st) || !isInt(dt)) return false;
+        return !isSubsetOf(st, dt);
+    };
+
+    if (needsSaturate(i0.src0, i0.dst))
         i0.sat = true;
+    if (needsSaturate(i1.src0, i1.dst))
+        i1.sat = true;
 
     i0.cmod = ConditionModifier::none;
 }
@@ -778,14 +787,17 @@ void CopyPlan::planTypeConversions()
 
         if (asSigned(st) == asSigned(dt) && st != dt && !i.sat)
             dt = st;
-
+        if (st == dt)
+            i.moveToIntegerPipe();
 #if XE3P
         if (hw >= HW::Xe3p && is4(st) && one_of(getBits(dt), 8, 16))
             if (planShflUpconvertXe3p(i))
                 continue;
 #endif
-
-        if (isInt4(st) && isInt(dt)) {
+        if (isInt4(st) && isInt4(dt)) {
+            copyThrough(i, DataType::w);
+            rerun = true;
+        } else if (isInt4(st) && isInt(dt)) {
             planInt4Upconversion(i);
             rerun = true;
         } else if (isInt(st) && isInt4(dt)) {
@@ -811,6 +823,9 @@ void CopyPlan::planTypeConversions()
             rerun = true;
         } else if (isInt4(st) && isFP(dt)) {
             copyThrough(i, DataType::hf, 1);
+            rerun = true;
+        } else if (isFP(st) && isInt4(dt)) {
+            copyThrough(i, DataType::w);
             rerun = true;
         } else if (is4(dt))
             stub("Unsupported move to 4-bit type");
@@ -939,9 +954,7 @@ void CopyPlan::planTypeConversions()
         } else if (st != DataType::bf && dt == DataType::bf) {
             copyThrough(i, DataType::f);
             rerun = true;
-        } else if (st == dt)
-            i.moveToIntegerPipe();
-        else for (auto t: {st, dt}) {
+        } else for (auto t: {st, dt}) {
             if (one_of(t, Type::ngen_e8m0(), Type::ngen_nf4(), ngen_uw_sb(), ngen_uw_ss4(), ngen_b16()))
                 stub("Unsupported data type conversion");
         }
@@ -1300,7 +1313,7 @@ void CopyPlan::planS4ToF16(CopyInstruction &i)
     bool preserveSrc = !i.src0.overwrite;
     auto ssrc = i.src0;
     if (!i.src0.overwrite)
-        ssrc = newTemp(DataType::s4, i.simd, 1);
+        ssrc = newTemp(DataType::s4, i.simd, i.src0.stride);
 
     // Shift by 8.
     ie[0]->op = Opcode::xor_;
@@ -1322,6 +1335,7 @@ void CopyPlan::planS4ToF16(CopyInstruction &i)
         ie[0]->dst = ssrc;
         ie[0]->dst.type = DataType::ub;
         ie[0]->dst.offset /= 2;
+        ie[0]->dst.stride = ss;
     } else
         ie[0]->dst = ie[0]->src0;
 
@@ -1468,9 +1482,9 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
             i0.dst.stride *= 2;
             i0.src0.stride *= 2;
             i0.simd /= 2;
-            auto &i1 = split(i, false);
-            i1.dst.offset += i1.dst.stride / 2;
-            i1.src0.offset += i1.src0.stride / 2;
+            split(i, true);
+            i0.dst.offset += i0.dst.stride / 2;
+            i0.src0.offset += i0.src0.stride / 2;
         }
     } else {
         bool even = (i.src0.offset % 2 == 0);
@@ -1515,171 +1529,170 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
 
 void CopyPlan::planInt4Downconversion(CopyInstruction &i)
 {
-    if (i.src0.neg || i.sat || i.hasCMod()) stub("Unsupported modifier");
+    if (i.src0.neg || i.hasCMod()) stub("Unsupported modifier");
     int simd = i.simd;
 
-    auto ie = splitMultiple<6>(i);
-    auto tmp = newTemp(DataType::ud, simd, 1);
+    auto st = i.src0.type, dt = i.dst.type;
+    bool s4 = (dt == DataType::s4);
+    if (isD(st) || isQ(st)) {
+        copyThrough(i, (isSigned(st) && s4) ? DataType::w : DataType::uw, 1);
+        return;
+    }
+    auto dst = i.dst;
+    auto tmp = newTemp(DataType::uw, simd, 1);
 
-    auto ddst = CopyOperand(i.dst);
-    auto ssrc = CopyOperand(i.src0);
-
-    bool sUw = ssrc.type == DataType::uw;
-    bool sUb = ssrc.type == DataType::ub;
-    if ((!sUw && !sUb)) stub();
-
-    // Effective 4-bit type strides.
-    int sStride = ssrc.stride * getBytes(ssrc.type) * 2;
-    int dStride = ddst.stride / (getBytes(ssrc.type) * 2);
-
-    bool tempSrc = ((ssrc.stride > 1 && ssrc.type == DataType::uw) || (ssrc.stride == 1 && ssrc.type == DataType::ub));
-    int idx = 0;
-
-    if(ddst.stride >= sStride && sStride > 1){
-        if(ddst.stride > sStride){
-            ie[idx]->op = Opcode::mov;
-            ie[idx]->simd = simd;
-            ie[idx]->dst = tmp;
-            ie[idx]->dst.type = DataType::ud;
-            ie[idx]->dst.stride = 1;
-            ie[idx]->src0 = Immediate::d(0);
-            ++idx;
-
-            int tmp_off = (ddst.offset / 4) * 2;
-            ie[idx]->op = Opcode::mov;
-            ie[idx]->simd = simd;
-            ie[idx]->dst = tmp;
-            ie[idx]->dst.type = ssrc.type;
-            ie[idx]->dst.stride = dStride;
-	        ie[idx]->dst.offset = tmp_off;
-            ie[idx]->src0 = ssrc;
-            ++idx;
-            
-	        tmp.type = ssrc.type;
-	        tmp.stride = ssrc.stride;
-	        ssrc = tmp;
-	    } else {
-            ie[idx]->invalidate();
-            ++idx;
-            ie[idx]->invalidate();
-            ++idx;
-	    }
-
-        int tmp_off = ddst.offset / 4;
-        if(ddst.offset % 4 ){
-            ie[idx]->op = Opcode::shl;
-            ie[idx]->simd = simd;
-            ie[idx]->dst = ssrc;
-            ie[idx]->dst.type = DataType::uw;
-            ie[idx]->dst.stride = 2;
-	        ie[idx]->dst.offset = tmp_off;
-            ie[idx]->src0 = ssrc;
-            ie[idx]->src0.type = DataType::uw;
-            ie[idx]->src0.stride = 2;
-	        ie[idx]->src0.offset = tmp_off;
-            ie[idx]->src1 = Immediate::uw(0x4 * (ddst.offset % 4));
-            ++idx;
-	    }else{
-            ie[idx]->invalidate();
-            ++idx;
-	    }
-
-        ie[idx]->op = Opcode::or_;
-        ie[idx]->simd = simd;
-        ie[idx]->dst = ddst;
-        ie[idx]->dst.type = DataType::uw;
-        ie[idx]->dst.stride = ssrc.stride;
-        ie[idx]->dst.offset = ddst.offset/4;
-        ie[idx]->src0 = ssrc;
-        ie[idx]->src0.type = DataType::uw;
-        ie[idx]->src0.stride = ssrc.stride;
-        ie[idx]->src0.offset = tmp_off;
-        ie[idx]->src1 = ddst;
-        ie[idx]->src1.type = DataType::uw;
-        ie[idx]->src1.stride = ssrc.stride;
-        ie[idx]->src1.offset = ddst.offset/4;
-        ++idx;
-
-        ie[idx]->invalidate();
-        ++idx;
-        ie[idx]->invalidate();
-        ++idx;
-    }else{
-        if(tempSrc){
-            ie[idx]->op = Opcode::mov;
-            ie[idx]->dst = ssrc;
-            ie[idx]->dst.type = DataType::ub;
-            ie[idx]->dst.stride = 2;
-            ie[idx]->src0 = ssrc;
-            if(sUw){
-               ie[idx]->src0.type = DataType::ub;
-               ie[idx]->src0.stride = ie[idx]->src0.stride * 2;
-            }
-        }else{
-            ie[idx]->invalidate();
+    if (i.sat) {
+        auto ie = splitMultiple<3>(i);
+        auto ssrc = i.src0;
+        if (ssrc.overwrite && isW(st)) {
+            tmp = ssrc;
+            tmp.type = DataType::uw;
         }
-        ++idx;
+        for (int i = 0; i < 3; ++i)
+            ie[i]->sat = false;
 
-        ie[idx]->op = Opcode::mov;
-        ie[idx]->simd = simd/2;
-        ie[idx]->dst = tmp;
-        ie[idx]->dst.type = DataType::uw;
-        ie[idx]->dst.stride = 1;
-        ie[idx]->src0 = ssrc;
-        ie[idx]->src0.type = DataType::uw;
-        ie[idx]->src0.stride = 2;
-        ++idx;
+        ie[0]->op = Opcode::sel;
+        ie[0]->cmod = ConditionModifier::lt;
+        ie[0]->dst = tmp;
+        ie[0]->src0 = ssrc;
+        ie[0]->src1 = s4 ? 7 : 15;
+        ie[0]->sat = isSigned(ssrc.type) && !s4;
 
-        ie[idx]->op = Opcode::shl;
-        ie[idx]->simd = simd/2;
-        ie[idx]->dst = ssrc;
-        ie[idx]->dst.offset = 0;
-        ie[idx]->dst.stride = 1;
-        ie[idx]->dst.type = DataType::uw;
-        ie[idx]->src0 = ssrc;
-        ie[idx]->src0.type = DataType::uw;
-        ie[idx]->src0.offset = 1;
-        ie[idx]->src0.stride = 2;
-        ie[idx]->src1 = Immediate::uw(0x4);
-        ++idx;
+        if (isSigned(ssrc.type) && s4) {
+            ie[0]->dst.type = tmp.type = asSigned(tmp.type);
 
-        ie[idx]->op = Opcode::or_;
-        ie[idx]->simd = simd/2;
-        ie[idx]->dst = tmp;
-        ie[idx]->dst.type = DataType::uw;
-        ie[idx]->dst.stride = 1;
-        ie[idx]->src0 = tmp;
-        ie[idx]->src0.type = DataType::uw;
-        ie[idx]->src0.stride = 1;
-        ie[idx]->src1 = ssrc;
-        ie[idx]->src1.type = DataType::uw;
-        ie[idx]->src1.stride = 1;
-        ++idx;
+            ie[1]->op = Opcode::sel;
+            ie[1]->cmod = ConditionModifier::ge;
+            ie[1]->dst = tmp;
+            ie[1]->src0 = tmp;
+            ie[1]->src1 = -8;
+        } else
+            ie[1]->invalidate();
 
-        ie[idx]->op = Opcode::mov;
-        ie[idx]->simd = simd/2;
-        ie[idx]->dst = tmp;
-        ie[idx]->dst.type = DataType::ub;
-        ie[idx]->dst.stride = 1;
-        ie[idx]->src0 = tmp;
-        ie[idx]->src0.stride = 2;
-        ie[idx]->src0.type = DataType::ub;
-        ++idx;
+        ie[2]->op = Opcode::mov;
+        ie[2]->dst = dst;
+        ie[2]->src0 = tmp;
+        ie[2]->src0.range = dt;
+        return;
+    }
 
-        ie[idx]->op = Opcode::mov;
-        ie[idx]->simd = simd/2;
-        ie[idx]->dst = ddst;
-        ie[idx]->dst.type = DataType::ub;
-        if (ddst.vs != 0)
-            ie[idx]->dst.stride = std::max(1, ddst.vs / ddst.width);
-        else if (ie[idx]->dst.stride != 0)
-            ie[idx]->dst.stride = std::max(1, ddst.stride / 2);
-        if (ie[idx]->dst.offset != 0)
-                ie[idx]->dst.offset /= 2;
-        ie[idx]->src0 = tmp;
-        ie[idx]->src0.stride = 1;
-        ie[idx]->src0.type = DataType::ub;
-        ++idx;
+    auto ie = splitMultiple<5>(i);
+    auto osrc = i.src0;
+    auto ssrc = newTemp(DataType::uw, simd, 1);
+    auto ddst = i.dst;
+
+    ie[0]->op = Opcode::mov;
+    ie[0]->dst = ssrc;
+    ie[0]->src0 = osrc;
+
+    if (simd > 1 && ddst.stride == 1) {
+        ie[1]->op = Opcode::shl;
+        ie[1]->simd = simd/2;
+        ie[1]->dst = ssrc;
+        ie[1]->dst.offset = 1;
+        ie[1]->dst.stride = 2;
+        ie[1]->src0 = ssrc;
+        ie[1]->src0.offset = 1;
+        ie[1]->src0.stride = 2;
+        ie[1]->src1 = Immediate::uw(0x4);
+
+        ie[2]->op = Opcode::bfn;
+        ie[2]->ctrl = 0xCA;
+        ie[2]->simd = simd/2;
+        ie[2]->dst = tmp;
+        ie[2]->src0 = ssrc;
+        ie[2]->src0.stride = 2;
+        ie[2]->src1 = ssrc;
+        ie[2]->src1.offset = 1;
+        ie[2]->src1.stride = 2;
+        ie[2]->src2 = Immediate::uw(0xF0);
+
+        if (simd > 2) {
+            ie[3]->op = Opcode::mov;
+            ie[3]->simd = simd/2;
+            ie[3]->dst = tmp;
+            ie[3]->dst.type = DataType::ub;
+            ie[3]->dst.stride = 1;
+            ie[3]->src0 = tmp;
+            ie[3]->src0.stride = 2;
+            ie[3]->src0.type = DataType::ub;
+
+            ie[4]->op = Opcode::mov;
+            ie[4]->simd = simd/2;
+            ie[4]->dst = ddst;
+            ie[4]->dst.type = DataType::ub;
+            if (ddst.vs != 0)
+                ie[4]->dst.stride = ddst.vs / ddst.width;
+            ie[4]->dst.offset /= 2;
+            ie[4]->src0 = tmp;
+            ie[4]->src0.stride = 1;
+            ie[4]->src0.type = DataType::ub;
+        } else {
+            ie[3]->op = Opcode::mov;
+            ie[3]->simd = simd/2;
+            ie[3]->dst = ddst;
+            ie[3]->dst.type = DataType::ub;
+            ie[3]->dst.stride = 1;
+            ie[3]->dst.offset /= 2;
+            ie[3]->src0 = tmp;
+            ie[3]->src0.stride = 2;
+            ie[3]->src0.type = DataType::ub;
+
+            ie[4]->invalidate();
+        }
+    } else {
+        const auto stride = ddst.stride / 2;
+        const auto offset = ddst.offset & 1;
+        const auto mask = (uint16_t)(0xF << (4 * offset));
+
+        ie[1]->op = Opcode::mov;
+        ie[1]->dst = tmp;
+        ie[1]->src0 = ddst;
+        ie[1]->src0.type = DataType::ub;
+        ie[1]->src0.stride = stride;
+        ie[1]->src0.offset /= 2;
+
+        if (offset) {
+            ie[2]->op = Opcode::shl;
+            ie[2]->simd = simd;
+            ie[2]->dst = ssrc;
+            ie[2]->dst.stride = 1;
+            ie[2]->src0 = ssrc;
+            ie[2]->src0.stride = 1;
+            ie[2]->src1 = 4;
+        } else {
+            ie[2]->invalidate();
+        }
+
+        if (simd > 1) {
+            ie[3]->op = Opcode::bfn;
+            ie[3]->ctrl = 0xCA;
+            ie[3]->simd = simd;
+            ie[3]->dst = tmp;
+            ie[3]->src0 = tmp;
+            ie[3]->src1 = ssrc;
+            ie[3]->src2 = mask;
+
+            ie[4]->op = Opcode::mov;
+            ie[4]->simd = simd;
+            ie[4]->dst = ddst;
+            ie[4]->dst.type = DataType::ub;
+            ie[4]->dst.stride = stride;
+            ie[4]->dst.offset /= 2;
+            ie[4]->src0 = tmp;
+            ie[4]->src0.type = DataType::ub;
+            ie[4]->src0.stride *= 2;
+        } else {
+            ie[3]->op = Opcode::bfn;
+            ie[3]->ctrl = 0xCA;
+            ie[3]->simd = simd;
+            ie[3]->dst = ddst;
+            ie[3]->src0 = tmp;
+            ie[3]->src1 = ssrc;
+            ie[3]->src2 = mask;
+
+            ie[4]->invalidate();
+        }
     }
 }
 
@@ -3015,7 +3028,7 @@ void CopyPlan::optimizeConcatenate(bool initial)
 
             if (i1.op != i2.op || i1.phase != i2.phase || i1.flag || i2.flag) break;
 
-            int lead1 = i1.simd; // arbitrary
+            int simd1 = i1.simd; // arbitrary
             auto joinable = [&](const CopyOperand &o1, const CopyOperand &o2, bool *outTooFar = nullptr) {
                 if (o1.kind != o2.kind) return false;
                 if (o1.kind == CopyOperand::Null) return true;
@@ -3027,18 +3040,18 @@ void CopyPlan::optimizeConcatenate(bool initial)
                 if (o1.abs != o2.abs) return false;
                 auto lead = bytesToElements((o2.grf - o1.grf) * grf, o1.type) + (int)o2.offset - (int)o1.offset;
                 auto breadth = o1.stride * i1.simd;
+                auto elems = o1.stride ? lead / o1.stride : 0;
                 if (outTooFar) {
                     *outTooFar = (lead > breadth);
-                    lead1 = lead;
+                    simd1 = elems;
                 }
-                return (lead == lead1) && ((lead & (o1.stride - 1)) == 0) && (lead >= 0) && (lead <= breadth);
+                return (elems == simd1) && ((lead & (o1.stride - 1)) == 0) && (lead >= 0) && (lead <= breadth);
             };
 
             bool tooFar = false;
             bool doJoin = joinable(i1.dst, i2.dst, &tooFar) && joinable(i1.src0, i2.src0)
                        && joinable(i1.src1, i2.src1) && joinable(i1.src2, i2.src2);
 
-            auto simd1 = i1.dst.stride ? lead1 / i1.dst.stride : 0;
             int simd = std::max(simd1 + i2.simd, i1.simd);
             if (!initial) {
                 doJoin &= (simd <= 32);
@@ -3048,7 +3061,10 @@ void CopyPlan::optimizeConcatenate(bool initial)
             if (tooFar) break;
 
             if (doJoin) {
-                if (auto &i = join(i1, i2))
+                if (simd == i1.simd)
+                    // i1 completely overlaps i2; remove it.
+                    i2.invalidate();
+                else if (auto &i = join(i1, i2))
                     i.simd = simd;
             }
         }
@@ -3162,6 +3178,7 @@ void CopyPlan::optimizeIntegerDownconvert()
     for (auto &i: insns) {
         if (i.op != Opcode::mov || i.sat) continue;
         if (!isInt(i.dst.type) || !isInt(i.src0.type)) continue;
+        if (isInt4(i.dst.type) || isInt4(i.src0.type)) continue;
 
         int expand = getBytes(i.src0.type) / getBytes(i.dst.type);
         if (expand > 1) {
@@ -3342,6 +3359,8 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
     while (order != end) {
         for (; order != end; ++order) {
             auto &temp = temps[order->second];
+            // Don't allocate unused temporaries.
+            if (temp.cnumMin > temp.cnumMax) continue;
             if (!manager.allocate(temp)) {
                 cnum1 = temp.cnumMin; break;
             }

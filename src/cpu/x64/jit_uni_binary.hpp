@@ -75,23 +75,23 @@ struct jit_uni_binary_t : public primitive_t {
     using data_t = int8_t;
 
     void execute_no_bcast_strategy(const data_t *src0, const data_t *src1,
-            const data_t *src2, data_t *dst, const float *scale0,
-            const float *scale1,
+            const data_t *src2, data_t *dst, const void *src0_scales,
+            const void *src1_scales,
             const std::vector<const void *> &post_ops_binary_rhs_arg_vec,
             const bcast_t bcast_type) const;
     void execute_bcast_per_batch_strategy(const data_t *src0,
             const data_t *src1, const data_t *src2, data_t *dst,
-            const float *scale0, const float *scale1,
+            const void *src0_scales, const void *src1_scales,
             const std::vector<const void *> &post_ops_binary_rhs_arg_vec) const;
     void execute_bcast_per_c_strategy(const data_t *src0, const data_t *src1,
-            const data_t *src2, data_t *dst, const float *scale0,
-            const float *scale1,
+            const data_t *src2, data_t *dst, const void *src0_scales,
+            const void *src1_scales,
             const std::vector<const void *> &post_ops_binary_rhs_arg_vec,
             const op_t op_type, const bcast_t bcast_type,
             const bool blocked_oc_tail) const;
     void execute_bcast_per_w_strategy(const data_t *src0, const data_t *src1,
-            const data_t *src2, data_t *dst, const float *scale0,
-            const float *scale1,
+            const data_t *src2, data_t *dst, const void *src0_scales,
+            const void *src1_scales,
             const std::vector<const void *> &post_ops_binary_rhs_arg_vec,
             const op_t op_type, const bool blocked_oc_tail) const;
 

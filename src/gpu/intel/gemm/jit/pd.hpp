@@ -78,8 +78,11 @@ struct pd_t : public gemm::pd_t {
     bool wei_decomp_ = false;
     bool dy_quant_enabled_ = false;
     bool quant_enabled_ = false;
-    int a_q2d_group_k_ = 0, a_q2d_group_m_ = 0;
-    int b_q2d_group_k_ = 0, b_q2d_group_n_ = 0;
+    int a_scales_group_k_ = 0, a_scales_group_m_ = 0;
+    int b_scales_group_k_ = 0, b_scales_group_n_ = 0;
+    int a_zp_group_k_ = 0, a_zp_group_m_ = 0;
+    int b_zp_group_k_ = 0, b_zp_group_n_ = 0;
+    bool non_scale_po_ = false;
     data_type_t a_scales_type_ = data_type::undef;
     data_type_t b_scales_type_ = data_type::undef;
 
@@ -127,8 +130,8 @@ struct pd_t : public gemm::pd_t {
         return sum_ab();
     }
 
-    bool a_zp_2d() const { return ao_dims_ == 2; }
-    bool b_zp_2d() const { return bo_dims_ == 2; }
+    bool a_zp_2d() const { return ao_dims_ >= 2; }
+    bool b_zp_2d() const { return bo_dims_ >= 2; }
 
     bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
 
@@ -186,6 +189,63 @@ struct pd_t : public gemm::pd_t {
         return !swap_ab() ? desc()->b_type() : desc()->a_type();
     }
     dim_t eff_scale_stride(int idx, int arg) const;
+    dim_t eff_zp_stride(int idx, int arg) const;
+    bool a_scales_grouped() const {
+        bool k_grouped
+                = 1 < a_scales_group_k_ && a_scales_group_k_ < desc()->k();
+        bool m_grouped
+                = 1 < a_scales_group_m_ && a_scales_group_m_ < desc()->m();
+        return k_grouped || m_grouped;
+    }
+    bool b_scales_grouped() const {
+        bool k_grouped
+                = 1 < b_scales_group_k_ && b_scales_group_k_ < desc()->k();
+        bool n_grouped
+                = 1 < b_scales_group_n_ && b_scales_group_n_ < desc()->n();
+        return k_grouped || n_grouped;
+    }
+    bool a_zp_grouped() const {
+        bool k_grouped = 1 < a_zp_group_k_ && a_zp_group_k_ < desc()->k();
+        bool m_grouped = 1 < a_zp_group_m_ && a_zp_group_m_ < desc()->m();
+        return k_grouped || m_grouped;
+    }
+    bool b_zp_grouped() const {
+        bool k_grouped = 1 < b_zp_group_k_ && b_zp_group_k_ < desc()->k();
+        bool n_grouped = 1 < b_zp_group_n_ && b_zp_group_n_ < desc()->n();
+        return k_grouped || n_grouped;
+    }
+    int a_q2d_group_k() const {
+        if (a_zp_2d()) {
+            return a_zp_group_k_;
+        } else if (a_scales_2d()) {
+            return a_scales_group_k_;
+        }
+        return 0;
+    }
+    int a_q2d_group_m() const {
+        if (a_zp_2d()) {
+            return a_zp_group_m_;
+        } else if (a_scales_2d()) {
+            return a_scales_group_m_;
+        }
+        return 0;
+    }
+    int b_q2d_group_k() const {
+        if (b_zp_2d()) {
+            return b_zp_group_k_;
+        } else if (b_scales_2d()) {
+            return b_scales_group_k_;
+        }
+        return 0;
+    }
+    int b_q2d_group_n() const {
+        if (b_zp_2d()) {
+            return b_zp_group_n_;
+        } else if (b_scales_2d()) {
+            return b_scales_group_n_;
+        }
+        return 0;
+    }
     int eff_align_a() const {
         auto dt = eff_a_type();
         auto align

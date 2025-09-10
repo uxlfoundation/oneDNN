@@ -137,6 +137,13 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     const int bf16_emu_zmm_4_idx_ = 26;
     const int tail_opmask_idx_ = 2;
 
+    const int fp8_emu_zmm_1_idx_ = 23;
+    const int fp8_emu_zmm_2_idx_ = 24;
+    const int fp8_emu_zmm_3_idx_ = 25;
+    const int fp8_emu_zmm_4_idx_ = 26;
+    const int fp8_emu_zmm_5_idx_ = 27;
+    const int fp8_emu_kmask_idx_ = 3;
+
     Opmask tail_opmask = Opmask(tail_opmask_idx_);
 
     void operator()(const call_params_t *p) const override {
@@ -757,7 +764,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
 
                     if (with_src_scales_) {
                         Vmm vscale = vmax;
-                        uni_vmovups(vscale, ptr[reg_src_scales]);
+                        uni_vbroadcastss(vscale, ptr[reg_src_scales]);
                         uni_vmulps(vreg_tmp_src, vreg_tmp_src, vscale);
                     }
                     if (with_postops_) {
@@ -778,7 +785,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                     }
                     if (with_dst_scales_) {
                         Vmm vscale = vmax;
-                        uni_vmovups(vscale, ptr[reg_dst_scales]);
+                        uni_vbroadcastss(vscale, ptr[reg_dst_scales]);
                         uni_vmulps(vreg_tmp_src, vreg_tmp_src, vscale);
                     }
 
@@ -821,7 +828,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                     uni_vsubps(vreg_tmp_src, vreg_tmp_src, vsum);
 
                 if (with_src_scales_) {
-                    uni_vmovups(vreg_tmp_scale, ptr[reg_src_scales]);
+                    uni_vbroadcastss(vreg_tmp_scale, ptr[reg_src_scales]);
                     uni_vmulps(vreg_tmp_src, vreg_tmp_src, vreg_tmp_scale);
                 }
                 if (with_postops_) {
@@ -840,7 +847,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                             vreg_tmp_src.getIdx(), rhs_arg_params);
                 }
                 if (with_dst_scales_) {
-                    uni_vmovups(vreg_tmp_scale, ptr[reg_dst_scales]);
+                    uni_vbroadcastss(vreg_tmp_scale, ptr[reg_dst_scales]);
                     uni_vmulps(vreg_tmp_src, vreg_tmp_src, vreg_tmp_scale);
                 }
             }
@@ -979,6 +986,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         if (log_injector_) log_injector_->prepare_table();
         if (with_eltwise_ && postops_injector_)
             postops_injector_->prepare_table(/* generate = */ true);
+        io_.prepare_table_fp8();
     }
 
     jit_softmax_dense_kernel_t(const softmax_pd_t *pd)
@@ -1022,10 +1030,14 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                 bf16_emu_zmm_4_idx_);
         io::io_saturation_conf_t io_saturation_conf(
                 vzero.getIdx(), vsaturation_ubound.getIdx(), reg_tmp);
+        io::io_emu_fp8_conf_t io_fp8_conf(fp8_emu_zmm_1_idx_,
+                fp8_emu_zmm_2_idx_, fp8_emu_zmm_3_idx_, fp8_emu_zmm_4_idx_,
+                fp8_emu_zmm_5_idx_, fp8_emu_kmask_idx_, reg_tmp);
         io_ = io::jit_io_multi_dt_helper_t<Vmm>(this, isa,
                 {src_d_.data_type(), dst_d_.data_type(), f32 /* stats */},
                 io_conf, io_tail_conf, io_bf16_conf,
-                {{dst_d_.data_type(), io_saturation_conf}});
+                {{dst_d_.data_type(), io_saturation_conf}}, utils::nullopt,
+                io_fp8_conf);
     }
 };
 
@@ -1108,6 +1120,13 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     const int bf16_emu_zmm_4_idx_ = 26;
     const int tail_opmask_idx_ = 2;
 
+    const int fp8_emu_zmm_1_idx_ = 23;
+    const int fp8_emu_zmm_2_idx_ = 24;
+    const int fp8_emu_zmm_3_idx_ = 25;
+    const int fp8_emu_zmm_4_idx_ = 26;
+    const int fp8_emu_zmm_5_idx_ = 27;
+    const int fp8_emu_kmask_idx_ = 3;
+
     Opmask tail_opmask = Opmask(tail_opmask_idx_);
 
     void operator()(const call_params_t *p) const override {
@@ -1150,11 +1169,11 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         }
         if (with_src_scales_) {
             mov(reg_tmp, ptr[reg_param + PARAM_OFF(src_scales)]);
-            uni_vmovups(vsrc_scale, ptr[reg_tmp]);
+            uni_vbroadcastss(vsrc_scale, ptr[reg_tmp]);
         }
         if (with_dst_scales_) {
             mov(reg_tmp, ptr[reg_param + PARAM_OFF(dst_scales)]);
-            uni_vmovups(vdst_scale, ptr[reg_tmp]);
+            uni_vbroadcastss(vdst_scale, ptr[reg_tmp]);
         }
     }
 
@@ -1553,6 +1572,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         if (log_injector_) log_injector_->prepare_table();
         if (with_eltwise_ && postops_injector_)
             postops_injector_->prepare_table(/* generate = */ true);
+        io_.prepare_table_fp8();
     }
 
     jit_softmax_strided_kernel_t(const softmax_pd_t *pd)
@@ -1601,10 +1621,14 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
                 bf16_emu_zmm_4_idx_);
         io::io_saturation_conf_t io_saturation_conf(
                 vzero.getIdx(), vsaturation_ubound.getIdx(), reg_tmp);
+        io::io_emu_fp8_conf_t io_fp8_conf(fp8_emu_zmm_1_idx_,
+                fp8_emu_zmm_2_idx_, fp8_emu_zmm_3_idx_, fp8_emu_zmm_4_idx_,
+                fp8_emu_zmm_5_idx_, fp8_emu_kmask_idx_, reg_tmp);
         io_ = io::jit_io_multi_dt_helper_t<Vmm>(this, isa,
                 {src_d_.data_type(), dst_d_.data_type(), f32 /* stats */},
                 io_conf, io_tail_conf, io_bf16_conf,
-                {{dst_d_.data_type(), io_saturation_conf}});
+                {{dst_d_.data_type(), io_saturation_conf}}, utils::nullopt,
+                io_fp8_conf);
     }
 };
 
@@ -1665,11 +1689,15 @@ status_t jit_uni_softmax_fwd_t::init(engine_t *engine) {
 status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
     const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
-    auto scratchpad_ptr = ctx.get_scratchpad_grantor().template get<char>(
-            memory_tracking::names::key_softmax_interim_store);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad_ptr = scratchpad.template get<char>(
+            memory_tracking::names::key_softmax_interim_store);
 
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
@@ -1738,6 +1766,17 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
                 char *interim_ptr = scratchpad_ptr
                         ? scratchpad_ptr + ithr * pd()->scratch_size_per_thr_
                         : nullptr;
+                float *dst_scales_inv_ptr = nullptr;
+                if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_DST)) {
+                    const float *dst_scales_ptr
+                            = static_cast<const float *>(dst_scales);
+                    dst_scales_inv_ptr
+                            = scratchpad.template get<float>(memory_tracking::
+                                              names::key_softmax_dst_scales)
+                            + ithr;
+                    dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+                }
+
                 softmax_impl::jit_softmax_kernel_base_t::call_params_t p;
                 if (pd()->axis_is_plain_and_strided_ && outer_size == 1) {
                     // Special case when inner size is split between threads.
@@ -1753,7 +1792,7 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
                 p.dst = dst_ptr;
                 p.interim = interim_ptr;
                 p.src_scales = src_scales;
-                p.dst_scales = dst_scales;
+                p.dst_scales = dst_scales_inv_ptr;
                 // post-ops
                 p.dst_orig = dst_orig_ptr;
                 p.post_ops_binary_rhs_arg_vec

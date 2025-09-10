@@ -63,6 +63,7 @@ Orphans
     example_sycl_single_op_partition.cpp.rst
     example_vanilla_rnn.cpp.rst
     example_weights_decompression_matmul.cpp.rst
+    example_matmul_with_host_scalar_scale.cpp.rst
     page_augru_example_cpp.rst
     page_batch_normalization_example_cpp.rst
     page_binary_example_cpp.rst
@@ -135,3 +136,4 @@ Orphans
     page_sycl_interop_usm_cpp.rst
     page_vanilla_rnn_example_cpp.rst
     page_weights_decompression_matmul_cpp.rst
+    page_matmul_with_host_scalar_scale_cpp.rst

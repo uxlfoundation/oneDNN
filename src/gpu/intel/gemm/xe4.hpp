@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_GEMM_XE4_GEMM_HPP
-#define GPU_INTEL_JIT_GEMM_XE4_GEMM_HPP
+#ifndef GPU_INTEL_GEMM_XE4_HPP
+#define GPU_INTEL_GEMM_XE4_HPP
 
 #include <assert.h>
 #include <limits>
@@ -26,11 +26,8 @@
 #include "common/serialization.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/kernel.hpp"
-#include "gpu/intel/gemm/config.hpp"
+#include "gpu/intel/gemm/jit/pd.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
-//#include "gpu/intel/gemm/primitive_conf.hpp"
-//#include "gpu/intel/jit/gemm/jit_gemm_pd.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 
 namespace dnnl {
@@ -39,7 +36,7 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-struct xe4_gemm_t : public primitive_t {
+struct xe4_t : public primitive_t {
     struct kernel_desc_t : public trivially_serializable_t<kernel_desc_t> {
         ngen::DataType a_type;
         ngen::DataType b_type;
@@ -72,13 +69,13 @@ struct xe4_gemm_t : public primitive_t {
                 const engine_t &engine, compute::kernel_t &kernel) const;
     };
 
-    struct pd_t : public gemm::pd_t {
+    struct pd_t : public jit::pd_t {
         kernel_desc_t kernel_desc;
         bool swap_ab = false;
 
-        using gemm::pd_t::pd_t;
+        using jit::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("jit:gemm:xe4", xe4_gemm_t);
+        DECLARE_COMMON_PD_T("jit:gemm:xe4", xe4_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace prop_kind;
@@ -96,15 +93,15 @@ struct xe4_gemm_t : public primitive_t {
             const uint32_t max_slm_size = 1280 * 1024;
 
             assert(engine->kind() == engine_kind::gpu);
-            auto *compute_engine = utils::downcast<engine_t *>(engine);
+            auto *intel_engine = utils::downcast<engine_t *>(engine);
 
-            auto *dev_info = compute_engine->device_info();
+            auto *dev_info = intel_engine->device_info();
 
             bool arch_ok = (dev_info->gpu_arch() == arch_t::xe4);
             const auto d = desc();
 
             VDISPATCH_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
-            VDISPATCH_GEMM(compute_engine->mayiuse_ngen_kernels(),
+            VDISPATCH_GEMM(intel_engine->mayiuse_ngen_kernels(),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
             VDISPATCH_GEMM(!has_blocks(), VERBOSE_BLOCKING_FAIL, "");
             VDISPATCH_GEMM(
@@ -134,14 +131,11 @@ struct xe4_gemm_t : public primitive_t {
                 return status::unimplemented;
             }
             kernel_desc.a_type
-                    = ::dnnl::impl::gpu::intel::jit::convert_dnnl_type_to_ngen(
-                            d->b_type());
+                    = intel::jit::convert_dnnl_type_to_ngen(d->b_type());
             kernel_desc.b_type
-                    = ::dnnl::impl::gpu::intel::jit::convert_dnnl_type_to_ngen(
-                            d->a_type());
+                    = intel::jit::convert_dnnl_type_to_ngen(d->a_type());
             kernel_desc.c_type
-                    = ::dnnl::impl::gpu::intel::jit::convert_dnnl_type_to_ngen(
-                            d->c_type());
+                    = intel::jit::convert_dnnl_type_to_ngen(d->c_type());
             uint32_t a_size = ngen::getBytes(kernel_desc.a_type);
             uint32_t b_size = ngen::getBytes(kernel_desc.b_type);
             uint32_t ab_size = std::max(a_size, b_size);
@@ -200,7 +194,7 @@ struct xe4_gemm_t : public primitive_t {
         }
     };
 
-    xe4_gemm_t(const pd_t *apd) : primitive_t(apd) {}
+    xe4_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t init(impl::engine_t *engine) override {
         using namespace data_type;

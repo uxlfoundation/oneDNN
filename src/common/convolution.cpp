@@ -51,6 +51,9 @@ status_t conv_desc_init(convolution_desc_t *conv_desc, prop_kind_t prop_kind,
     VCHECK_CONV(one_of(alg_kind, convolution_auto, convolution_direct,
                         convolution_winograd),
             VERBOSE_BAD_ALGORITHM);
+    VCHECK_CONV(!any_memory_desc_host_scalar(
+                        src_desc, weights_desc, bias_desc, dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     if (padding_r == nullptr) padding_r = padding_l;
 

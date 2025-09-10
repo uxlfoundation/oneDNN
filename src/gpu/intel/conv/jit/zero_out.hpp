@@ -88,7 +88,7 @@ public:
     zero_out_kernel_t(
             const kernel_desc_base_t &_desc, const impl::engine_t *engine)
         : base_type(get_kernel_iface(_desc), _desc.exec_cfg(engine),
-                {GENERATOR_NAME, GENERATOR_LINE}) {
+                debug_config_t {GENERATOR_NAME, GENERATOR_LINE}) {
         requireLocalID(3);
         requireLocalSize();
         requireGRF(exec_cfg().regs());

@@ -610,7 +610,9 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
                 = exec_type == exec_trans && ic_block % simd_w == 0 && !is_xf32
                 ? simd_w
                 : vnni_block;
-        K_tail = kh_koef * rnd_up(ic % ic_block, ic_ceil);
+        K_tail = kh_koef
+                * (exec_type == exec_trans ? rnd_up(ic % ic_block, ic_ceil)
+                                           : (ic % ic_block));
     }
 
     const auto vK = K > 0 ? K : K_tail;

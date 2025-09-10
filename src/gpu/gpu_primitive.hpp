@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -74,6 +74,8 @@ struct primitive_t : public impl::primitive_t {
             std::shared_ptr<impl::primitive_t> &primitive,
             const std::shared_ptr<primitive_desc_t> &pd,
             impl::engine_t *engine) {
+        if (!pd) return status::invalid_arguments;
+
         std::pair<std::shared_ptr<impl::primitive_t>, cache_state_t> p;
         CHECK(pd->create_primitive_nested(p, engine, cache_blob()));
 

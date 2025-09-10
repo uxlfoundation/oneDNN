@@ -277,7 +277,7 @@ void bench(engine::kind ekind, dnnl_data_type_t dt, const gqa_dims_t &p,
 
 void gqa_perf(engine::kind ekind, int argc, char **argv) {
     // default testing parameters
-    gqa_dims_t params = {32, 384, 16, 2, 64};
+    gqa_dims_t params = {2, 128, 16, 2, 64};
 
     if (argc > 2) {
         if (argc == 7) {

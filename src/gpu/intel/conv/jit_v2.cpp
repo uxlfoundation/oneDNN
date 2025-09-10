@@ -121,6 +121,9 @@ public:
         auto skip_mask
                 = sm::post_ops | sm::sum_dt | sm::scales | sm::scales_data_type;
         if (!pd->attr()->has_default_values(skip_mask)) return false;
+        if (pd->attr()->scales_.has_host_scalars()
+                || pd->attr()->zero_points_.has_host_scalars())
+            return false;
         return true;
     }
 

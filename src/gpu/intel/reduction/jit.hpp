@@ -54,8 +54,8 @@ struct gen_t : public primitive_t {
             const auto attr_skip_mask = smask_t::gpu_attr;
 #if XE4
             auto *intel_engine = utils::downcast<engine_t *>(engine);
-            VDISPATCH_REDUCTION(
-                    intel_engine->device_info()->gpu_arch() < compute::gpu_arch_t::xe4,
+            VDISPATCH_REDUCTION(intel_engine->device_info()->gpu_arch()
+                            < compute::gpu_arch_t::xe4,
                     VERBOSE_UNSUPPORTED_ARCH, "gpu");
 #endif
             VDISPATCH_REDUCTION_SC(

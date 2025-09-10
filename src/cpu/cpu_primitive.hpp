@@ -29,6 +29,10 @@
 
 #include "cpu/ref_io_helper.hpp"
 
+#define VCHECK_ATTR_EXEC(cond, ...) \
+    VCONDCHECK(primitive, exec, check, primitive, (cond), \
+            status::invalid_arguments, __VA_ARGS__)
+
 //NOLINTBEGIN(bugprone-macro-parentheses)
 // These macros are actual pieces of code, can't put certain pieces into `()`.
 // TODO: consider making them functions.
@@ -74,15 +78,15 @@
         scale = CONCAT2(CONCAT2(scales, _buf16), mem_arg); \
     } else { \
         const auto scale_d = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | mem_arg); \
-        VCHECK_ATTR(scale_d.data_type() == data_type::f32, \
+        VCHECK_ATTR_EXEC(scale_d.data_type() == data_type::f32, \
                 "Scales data type is not f32"); \
-        VCHECK_ATTR(scale_d.ndims() == 1, "Scales ndims is not 1"); \
-        VCHECK_ATTR( \
+        VCHECK_ATTR_EXEC(scale_d.ndims() == 1, "Scales ndims is not 1"); \
+        VCHECK_ATTR_EXEC( \
                 scale_d.dims()[0] == 1, "Not a single scale was provided"); \
         const float *scale_p \
                 = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | mem_arg); \
-        VCHECK_ATTR(scale_p != nullptr, "Scales buffer for arg %d is missing", \
-                mem_arg); \
+        VCHECK_ATTR_EXEC(scale_p != nullptr, \
+                "Scales buffer for arg %d is missing", mem_arg); \
         scale = scale_p; \
     }
 

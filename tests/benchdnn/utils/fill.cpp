@@ -137,7 +137,7 @@ int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
 
     if (mem_dt) { assert(mem_dt.nelems() == mem_fp.nelems()); }
 
-    if (e.policy == policy_t::COMMON) {
+    if (e.policy == policy_t::COMMON || e.policy == policy_t::HOST_SCALAR) {
         assert(nelems == 1);
         mem_fp.set_f32_elem(0, e.scale);
         if (mem_dt) mem_dt.set_elem(0, e.scale);
@@ -180,7 +180,7 @@ int fill_zero_points(
     assert(mem_dt.nelems() == mem_fp.nelems());
 
     const auto &e = attr.zero_points.get(arg);
-    if (e.policy == policy_t::COMMON) {
+    if (e.policy == policy_t::COMMON || e.policy == policy_t::HOST_SCALAR) {
         assert(nelems == 1);
         mem_fp.set_f32_elem(0, e.value);
         if (mem_dt) mem_dt.set_elem(0, e.value);

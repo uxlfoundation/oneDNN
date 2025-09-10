@@ -902,8 +902,8 @@ enum class binary_bcast_t : unsigned {
 struct jit_binary_conf_t {
     binary_op_t op_type = binary_op_t::none;
     binary_bcast_t bcast_type = binary_bcast_t::none;
-    bool do_scale_src0 = false;
-    bool do_scale_src1 = false;
+    bool with_src0_scales = false;
+    bool with_src1_scales = false;
     bool do_sum = false;
     bool with_eltwise = false;
     bool with_binary = false;
@@ -936,8 +936,8 @@ struct jit_uni_binary_args_t {
     const void *src2 = nullptr;
     const void *dst = nullptr;
     const void *indices = nullptr;
-    const float *scales_src0 = nullptr;
-    const float *scales_src1 = nullptr;
+    const void *scales_src0 = nullptr;
+    const void *scales_src1 = nullptr;
     size_t spat_offt_count = 0;
     const void *post_ops_binary_rhs_arg_vec = nullptr;
     size_t src1_stride_range = 0;

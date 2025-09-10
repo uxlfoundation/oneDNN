@@ -213,6 +213,13 @@ public:
         return map_[key];
     }
 
+    template <typename DerivedT>
+    DerivedT with_impl(const pvar_t &key, const ValueT &value) const {
+        DerivedT ret = static_cast<const DerivedT &>(*this);
+        ret[key] = value;
+        return ret;
+    }
+
     const ValueT &at(const pvar_t &key) const { return operator[](key); }
     const ValueT &at(size_t idx) const {
         return operator[](into<dim_idx_t>(idx));
@@ -434,6 +441,9 @@ public:
         coord_t ret;
         ret.set_valid(false);
         return ret;
+    }
+    coord_t with(const pvar_t &key, const expr_t &value) const {
+        return pvar_map_t<expr_t>::with_impl<coord_t>(key, value);
     }
 };
 

@@ -90,8 +90,8 @@ status_t jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward(
     }
 
     const float *dw_oscales = nullptr;
-    if (pd()->jcp_.with_dw_conv) {
-        auto jcp_dw = pd()->jcp_dw_;
+    if (pd()->jcp_.with_dw_conv && pd()->jcp_dw_) {
+        const auto *jcp_dw = pd()->jcp_dw_;
         memory_tracking::grantor_t dw_scratchpad(
                 scratchpad, memory_tracking::names::prefix_fusion);
         auto attr_dw = pd()->dw_conv_pd_->attr();
@@ -181,7 +181,7 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
             : jcp.nb_load_blocking_max;
 
     // Begin: declare Variables needed for dw conv.
-    const auto jcp_dw = pd()->jcp_dw_;
+    const auto *jcp_dw = pd()->jcp_dw_;
     const auto &dw_pd = pd()->dw_conv_pd_;
     memory_tracking::grantor_t dw_scratchpad(
             scratchpad, memory_tracking::names::prefix_fusion);

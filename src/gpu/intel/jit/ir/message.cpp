@@ -52,7 +52,7 @@ stmt_t send_t::create_offset_store(const expr_t &header_buf,
     expr_t off;
     if (is_a64()) {
         off = cast(mem_buf, address_type());
-        if (mem_off.type().is_vector()) {
+        if (mem_off.type().elems() > 1) {
             off = shuffle_t::make_broadcast(off, mem_off.type().elems());
         }
         off += mem_off;

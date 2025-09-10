@@ -43,7 +43,7 @@ public:
     expr_t create_mask(const layout_t &reg_layout, const tile_t &tile,
             const coord_t &coord) const {
         gpu_assert(!is_empty());
-        auto layout = reg_layout.map(tile, coord);
+        auto layout = reg_layout.sub(tile, coord);
         auto view = mem_view_.create_sub_view(tile, coord);
         mask_tensor_t mask_tensor(layout);
         icoord_t args(layout.ndims());
@@ -159,9 +159,9 @@ public:
         if (!reg_layout_.is_empty()) {
             if (needs_reduction()) {
                 tile_coord_t reduce_tile(_tile_coord.tile, tile_coord.coord);
-                ret.reg_layout_ = ret.reg_layout_.map(reduce_tile);
+                ret.reg_layout_ = ret.reg_layout_.sub(reduce_tile);
             } else {
-                ret.reg_layout_ = ret.reg_layout_.map(tile_coord);
+                ret.reg_layout_ = ret.reg_layout_.sub(tile_coord);
             }
         }
         ret.allocs_.clear();
@@ -425,7 +425,8 @@ private:
         if (!var && needs_compute()) var = op_var().as_ptr<var_t>();
         gpu_assert(var) << "Can't extract variable from buffer: " << mem_buf();
         auto &name = var->name;
-        return ir_ctx_->create_tmp_var(type_t::byte_ptr(), "tmp_" + name);
+        return ir_ctx_->create_tmp_var(
+                type_t::byte(type::attr_t::ptr), "tmp_" + name);
     }
 
     void register_buffer(const expr_t &buf, uint32_t size) {
@@ -537,7 +538,7 @@ public:
         pvar_t inner_dim;
         auto base_inner_tile
                 = find_1d_tile(lhs_tensor.reg_layout().type(), args, inner_dim);
-        auto inner_layout = lhs_tensor.reg_layout().map(base_inner_tile);
+        auto inner_layout = lhs_tensor.reg_layout().sub(base_inner_tile);
         gpu_assert(!inner_dim.is_undef());
 
         // All post-ops arguments are f32 type except f64 bias and u64
@@ -602,8 +603,12 @@ private:
                 gpu_assert(!l.is_empty());
                 gpu_assert(!l.blocks().empty());
                 auto &lb0 = l.blocks()[0];
-                gpu_assert(lb0.dim == b0.dim);
-                gpu_assert(dim_t(lb0.stride) == 1);
+                // Inner blocks do not match, cannot vectorize so switch to
+                // scalar updates.
+                if (lb0.dim != b0.dim) {
+                    inner_block = 1;
+                    break;
+                }
                 inner_block = math::gcd(lb0.block, inner_block);
             }
             dims[b0.dim] = inner_block;
@@ -767,7 +772,7 @@ public:
 
 private:
     expr_t make_c_tmp_buffer() const {
-        return ir_ctx_.create_tmp_var(type_t::byte_ptr(), "c_tmp");
+        return ir_ctx_.create_tmp_var(type_t::byte(type::attr_t::ptr), "c_tmp");
     }
 
     // Represents a GRF buffer and layout to store C tensor.
@@ -839,7 +844,7 @@ private:
             base_tile = c_mem_view_.split_into_max_tile(
                     tmp_buf_elems, /*is_dense=*/false);
             try {
-                c_reg_layout.map(base_tile);
+                c_reg_layout.sub(base_tile);
                 break;
             } catch (std::runtime_error &) {
                 tmp_buf_elems /= 2;
@@ -890,7 +895,7 @@ private:
         // Iterate by tiles and apply post-ops.
         c_mem_view_.for_each_tile(base_tile, [&](const icoord_t &start) {
             tile_coord_t tile_coord(base_tile, start);
-            auto c_tile_layout = c_reg_layout.map(tile_coord);
+            auto c_tile_layout = c_reg_layout.sub(tile_coord);
             build_tile(tile_coord, c_tile_layout, c_reg_buf);
         });
 
@@ -1076,13 +1081,17 @@ private:
     stmt_t build_post_op_block_stmt(
             std::vector<post_op_tensor_t> &sub_po_tensors, int po_beg,
             int po_end) const {
-        // Collect post-op inputs/outputs.
+        // Collect post-op inputs/outputs. The tensors vector is used to ensure a
+        // deterministic ordering of stmts.
         object_map_t<expr_t, post_op_tensor_t *> args;
+        std::vector<post_op_tensor_t *> tensors;
         for (int i = po_beg; i < po_end; i++) {
             auto &po_builder = post_op_builders_[i];
             for (auto &t : sub_po_tensors) {
-                if (po_builder.post_op().uses(t.op_var())) {
+                if (po_builder.post_op().uses(t.op_var())
+                        && args.find(t.op_var()) == args.end()) {
                     args.insert({t.op_var(), &t});
+                    tensors.emplace_back(&t);
                 }
             }
         }
@@ -1090,13 +1099,12 @@ private:
         // Generate load and convert statements for the post-op.
         stmt_t load_stmt;
         stmt_t convert_stmt;
-        for (auto &kv : args) {
-            auto &t = *kv.second;
-            if (!t.needs_load()) continue;
-            if (t.do_preload()) continue;
-            load_stmt = load_stmt.append(t.build_load_stmt(c_mem_view_));
-            if (t.needs_f32_convert()) {
-                convert_stmt = convert_stmt.append(t.build_convert_stmt());
+        for (auto t : tensors) {
+            if (!t->needs_load()) continue;
+            if (t->do_preload()) continue;
+            load_stmt = load_stmt.append(t->build_load_stmt(c_mem_view_));
+            if (t->needs_f32_convert()) {
+                convert_stmt = convert_stmt.append(t->build_convert_stmt());
             }
         }
 
@@ -1112,11 +1120,10 @@ private:
 
         // Generate alloc statements for post-op tensors.
         std::vector<stmt_t> allocs;
-        for (auto &kv : args) {
-            auto &t = *kv.second;
-            if (!t.needs_load()) continue;
-            if (t.do_preload()) continue;
-            auto t_allocs = t.allocs();
+        for (auto t : tensors) {
+            if (!t->needs_load()) continue;
+            if (t->do_preload()) continue;
+            auto t_allocs = t->allocs();
             allocs.insert(allocs.end(), t_allocs.begin(), t_allocs.end());
         }
         stmt = jit::inject_alloc_stmts(stmt, allocs);

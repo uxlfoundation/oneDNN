@@ -206,12 +206,12 @@ public:
         switch (0x10 * read_type.is_int() + is_max()) {
             default:
             case 0x00: return type_t::f32(len); break;
-            case 0x01: return type_t(read_type.kind(), len); break;
+            case 0x01: return read_type.with_elems(len); break;
             case 0x10: return type_t::s32(len); break;
             case 0x11:
                 return ((read_type.is_signed()) ? type_t::s : type_t::u)(
                         8 * std::max(2, read_type.size()), len,
-                        type_attr_t::undef);
+                        type::attr_t::undef);
         }
     }
 

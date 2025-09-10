@@ -215,7 +215,9 @@ int ref_primitive_t::init_prim(
                      false, nullptr, force_f32_prim_dt, \
                      /*is_graph_ref=*/true), \
                 WARN); \
-        if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK; \
+        if (res->state == SKIPPED || res->state == UNIMPLEMENTED \
+                || res->state == DEFERRED) \
+            return OK; \
         break; \
     }
 // custom driver does not contain primitive, skip this step

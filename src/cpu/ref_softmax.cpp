@@ -43,8 +43,10 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const float *src_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const float *dst_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     float *interim_scratchpad
             = ctx.get_scratchpad_grantor().template get<float>(
@@ -52,6 +54,11 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
+
+    const bool with_src_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC);
+    const bool with_dst_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_DST);
 
     const auto interim_dt = pd()->need_intermediate_scratchpad()
             ? data_type::f32
@@ -170,7 +177,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
             } else if (pd()->is_logsoftmax()) {
                 val = d - space_denom;
             }
-            val *= src_scales[0];
+            if (with_src_scales) val *= src_scales[0];
 
             // post-ops
             ref_post_ops_t::args_t args;
@@ -179,7 +186,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
             args.dst_md = pd()->dst_md();
             ref_post_ops->execute(val, args);
 
-            val *= dst_scales[0];
+            if (with_dst_scales) val /= dst_scales[0];
             io::store_float_value(dst_d.data_type(), val, dst_data, c);
         }
         if (zero_padding) {
@@ -200,8 +207,10 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const float *src_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const float *dst_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     float *interim_scratchpad
             = ctx.get_scratchpad_grantor().template get<float>(
@@ -209,6 +218,11 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
+
+    const bool with_src_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC);
+    const bool with_dst_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_DST);
 
     void *interim_ptr
             = pd()->need_intermediate_scratchpad() ? interim_scratchpad : dst;
@@ -296,7 +310,7 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
                     float sd = space_denom[in];
                     d -= sd;
                 }
-                d *= src_scales[0];
+                if (with_src_scales) d *= src_scales[0];
 
                 // post-ops
                 ref_post_ops_t::args_t args;
@@ -304,7 +318,7 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
                 args.l_offset = ou_in_offset + c * inner_size_;
                 args.dst_md = pd()->dst_md();
                 ref_post_ops->execute(d, args);
-                d *= dst_scales[0];
+                if (with_dst_scales) d /= dst_scales[0];
 
                 io::store_float_value(dst_d.data_type(), d, dst, dst_off);
             }

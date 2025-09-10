@@ -28,6 +28,7 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     const auto &d = desc();
     const auto attr_skip_mask = primitive_attr_t::skip_mask_t::scales_data_type
             | primitive_attr_t::skip_mask_t::post_ops
+            | primitive_attr_t::skip_mask_t::accumulation_mode
             | primitive_attr_t::skip_mask_t::fpmath_mode
             | primitive_attr_t::skip_mask_t::zero_points_data_type;
 

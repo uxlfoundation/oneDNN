@@ -24,17 +24,13 @@ Deep learning practitioners should use one of the applications enabled with oneD
 * [Apache SINGA](https://singa.apache.org)
 * [DeepLearning4J\*](https://deeplearning4j.konduit.ai)
 * [Flashlight\*](https://github.com/flashlight/flashlight)
-* [MATLAB\* Deep Learning Toolbox](https://www.mathworks.com/help/deeplearning)
+* [llama.cpp](https://github.com/ggml-org/llama.cpp)
 * [ONNX Runtime](https://onnxruntime.ai)
+* [OpenNMT CTranslate2](https://github.com/OpenNMT/CTranslate2)
 * [OpenVINO(TM) toolkit](https://github.com/openvinotoolkit/openvino)
 * [PaddlePaddle\*](http://www.paddlepaddle.org)
-* [PyTorch\*](https://pytorch.org). Intel GPU support and additional
-optimizations are available with [Intel® Extension for PyTorch*].
-* [Tensorflow\*](https://www.tensorflow.org). Intel GPU support and additional
-optimizations are available with [Intel® Extension for TensorFlow*].
-
-[Intel® Extension for PyTorch*]: https://github.com/intel/intel-extension-for-pytorch
-[Intel® Extension for TensorFlow*]: https://github.com/intel/intel-extension-for-tensorflow
+* [PyTorch\*](https://pytorch.org)
+* [Tensorflow\*](https://www.tensorflow.org)
 
 [UXL Foundation]: http://www.uxlfoundation.org
 [oneAPI specification]: https://oneapi-spec.uxlfoundation.org/specifications/oneapi/latest/elements/onednn/source/
@@ -59,7 +55,7 @@ optimizations are available with [Intel® Extension for TensorFlow*].
   annotated examples.
 * [API Reference] provides a comprehensive reference of the library
   API.
-* [Release Notes] explains the new features, performance
+* [Release Notes] explain the new features, performance
   optimizations, and improvements implemented in each version of
   oneDNN.
 
@@ -91,8 +87,12 @@ The library is optimized for the following CPUs:
     Lake, Ice Lake, Sapphire Rapids, and Emerald Rapids)
   * Intel Xeon CPU Max Series (formerly Sapphire Rapids HBM)
   * Intel Core Ultra processors (formerly Meteor Lake, Arrow Lake,
-    and Lunar Lake)
+    Lunar Lake, and Panther Lake)
   * Intel Xeon 6 processors (formerly Sierra Forest and Granite Rapids)
+  * future Intel Core processor with Intel AVX10.2 instruction set support
+    (code name Nova Lake)
+  * future Intel Xeon processor with Intel AVX10.2 instruction set support
+    (code name Diamond Rapids)
 * AArch64 architecture
   * Arm Neoverse(TM) N1 and V1 processors
 
@@ -113,13 +113,15 @@ require the use of run-time controls to enable them. See
 The library is optimized for the following GPUs:
 * Intel Graphics for 11th-14th Generation Intel Core Processors
 * Intel Iris Xe MAX Graphics (formerly DG1)
-* Intel Arc(TM) graphics (formerly Alchemist)
+* Intel Arc(TM) A-Series Graphics (formerly Alchemist)
 * Intel Data Center GPU Flex Series (formerly Arctic Sound)
 * Intel Data Center GPU Max Series (formerly Ponte Vecchio)
-* Intel Graphics and Intel Arc graphics for Intel Core Ultra processors
- (formerly Meteor Lake, Arrow Lake and Lunar Lake)
-* Intel Arc B-series graphics (formerly Battlemage)
-* Intel Arc graphics for future Intel Core Ultra processors (code name Panther Lake)
+* Intel Graphics and Intel Arc Graphics for Intel Core Ultra processors
+  (formerly Meteor Lake, Arrow Lake and Lunar Lake)
+* Intel Arc B-Series Graphics and Intel Arc Pro B-Series Graphics
+  (formerly Battlemage)
+* Intel Arc Graphics for future Intel Core Ultra processors
+  (code name Panther Lake)
 
 [CPU dispatcher control]: https://uxlfoundation.github.io/oneDNN/dev_guide_cpu_dispatcher_control.html
 [Linking Guide]: https://uxlfoundation.github.io/oneDNN/dev_guide_link.html
@@ -179,7 +181,7 @@ On a CPU based on Arm AArch64 architecture, oneDNN CPU engine can be built with
 machine learning applications and provides AArch64 optimized implementations
 of core functions. This functionality currently requires that ACL is downloaded
 and built separately. See [Build from Source] section of the Developer Guide for
-details. The minimum supported version of ACL is 52.2.0.
+details. The minimum supported version of ACL is 52.4.0.
 
 [Arm Compute Library (ACL)]: https://github.com/arm-software/ComputeLibrary
 
@@ -433,7 +435,6 @@ license terms.
 
 Apache License Version 2.0:
 * [Xbyak_aarch64](https://github.com/fujitsu/xbyak_aarch64)
-* [LLVM](https://llvm.org)
 
 Boost Software License, Version 1.0:
 * [Boost C++ Libraries](https://www.boost.org/)
@@ -450,8 +451,8 @@ Interface](https://github.com/intel/metrics-discovery)
 * [sphinx-copybutton](https://github.com/executablebooks/sphinx-copybutton)
 
 This third-party software, even if included with the distribution of
-the Intel software, may be governed by separate license terms,
-including without limitation,third party license terms, other Intel
+other software, may be governed by separate license terms,
+including without limitation, third party license terms, other
 software license terms, and open source software license terms. These
 separate license terms govern your use of the third party programs as
 set forth in the "[THIRD-PARTY-PROGRAMS](THIRD-PARTY-PROGRAMS)" file.

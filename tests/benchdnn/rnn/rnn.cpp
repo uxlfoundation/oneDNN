@@ -1261,8 +1261,22 @@ int createit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
     if (has_bench_mode_bit(mode_bit_t::exec)) {
+        // Set memory used for reference.
+        auto &mem_args = res->mem_size_args;
+        if (has_bench_mode_bit(mode_bit_t::corr)) {
+            mem_args.extra_size_driver = prb->get_ws_size(FLAG_FWD);
+        }
+
         SAFE(check_total_size(res), WARN);
-        if (v_prim[1]) SAFE(check_total_size(res), WARN);
+
+        if (v_prim[1]) {
+            // For backward, need to accumulate extra space with forward.
+            if (has_bench_mode_bit(mode_bit_t::corr)) {
+                mem_args.extra_size_driver += prb->get_ws_size(FLAG_BWD);
+            }
+
+            SAFE(check_total_size(res), WARN);
+        }
     }
     if (has_bench_mode_bit(mode_bit_t::corr)) {
         SAFE(check_caches(v_prim[0], prb, res), WARN);

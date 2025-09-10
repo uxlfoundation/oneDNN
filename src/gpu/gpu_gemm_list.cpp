@@ -14,8 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "common/compiler_workarounds.hpp"
-
 #include "gpu/gpu_impl_list.hpp"
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
@@ -29,7 +27,7 @@
 #endif
 
 #if XE4
-#include "gpu/intel/gemm/xe4_gemm.hpp"
+#include "gpu/intel/gemm/xe4.hpp"
 #endif
 
 #endif
@@ -43,7 +41,7 @@ namespace {
 // clang-format off
 constexpr impl_list_item_t impl_list[] = {
 #if XE4
-        GPU_INSTANCE_INTEL(intel::gemm::xe4_gemm_t)
+        GPU_INSTANCE_INTEL(intel::gemm::xe4_t)
 #endif
         GPU_INSTANCE_INTEL_DEVMODE(intel::gemm::conv_t)
         GPU_INSTANCE_INTEL(intel::gemm::xe_hp_systolic_t)

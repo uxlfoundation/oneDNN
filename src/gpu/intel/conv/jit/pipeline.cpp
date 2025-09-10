@@ -469,10 +469,12 @@ public:
         // outer loop iteration.
         if (count_object(s.as<for_t>().body, var) != 0) {
             has_var_refs_ = true;
-            mul_var_buf_ = ir_ctx.create_tmp_var(
-                    type_t::byte_ptr(), var.as<var_t>().name + "_mul_buf");
-            preload_var_buf_ = ir_ctx.create_tmp_var(
-                    type_t::byte_ptr(), var.as<var_t>().name + "_preload_buf");
+            mul_var_buf_
+                    = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr),
+                            var.as<var_t>().name + "_mul_buf");
+            preload_var_buf_
+                    = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr),
+                            var.as<var_t>().name + "_preload_buf");
 
             auto mul_alloc = alloc_t::make(
                     mul_var_buf_, var.type().size(), alloc_kind_t::grf);
@@ -1332,8 +1334,8 @@ public:
         // slm_idx[0] -> slm_buf_store
         // slm_idx[1] -> slm_buf_compute
         // slm_idx[2] -> slm_counter
-        auto slm_idx_buf
-                = ir_ctx_.create_tmp_var(type_t::byte_ptr(), "slm_idx");
+        auto slm_idx_buf = ir_ctx_.create_tmp_var(
+                type_t::byte(type::attr_t::ptr), "slm_idx");
         int slm_idx_size = type_t::s32().size();
 
         auto slm_idx_load = [&](int off, int elems) {

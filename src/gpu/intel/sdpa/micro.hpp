@@ -82,13 +82,15 @@ struct micro_params_t : trivially_serializable_t<micro_params_t> {
     bool d_full, arch_gte_hpc;
     bool block_q, block_a, block_msk, block_2d_a;
     bool prefetch_mask, prefetch_k0, prefetch_k, prefetch_v, prefetch_remainder;
-    uint8_t padding2[5] = {0};
+    bool remainder_q;
+    uint8_t padding2[4] = {0};
     int prefetch_d_max;
 
     bool softmax_inf_as_zero;
     bool q_arrive_await_barrier;
     bool use_systolic_ukernel;
-    uint8_t padding3[1] = {0};
+    bool kq_f16_accumulate, vs_f16_accumulate;
+    uint8_t padding3[7] = {0};
 
     micro_ukernel_params_t ukernel_config;
 };
@@ -189,6 +191,11 @@ struct micro_t : public primitive_t {
                     static_cast<long int>(qry_md()->dims[1]),
                     static_cast<long int>(key_md()->dims[1]),
                     static_cast<long int>(val_md()->dims[1]));
+
+            VCHECK_SDPA_COND(utils::one_of(kq_acc_dt(), f16, f32),
+                    "KQ accumulation data type should be f16 or f32");
+            VCHECK_SDPA_COND(utils::one_of(vs_acc_dt(), f16, f32),
+                    "VS accumulation data type should be f16 or f32");
 
             int kq_scales_mask = desc()->kq_scales.get_mask();
             int kq_zp_mask = desc()->kq_zero_points.get_mask();

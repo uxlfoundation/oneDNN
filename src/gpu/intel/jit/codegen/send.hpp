@@ -85,48 +85,40 @@ public:
         auto address_base = to_address_base(send_.address);
 
         int elems = send_.type.elems();
-        switch (send_.type.kind()) {
-            case type_kind_t::byte:
-                emit_load_or_store(host, mod, ngen::scattered_byte(elems),
-                        address_base, header, data);
-                break;
-            case type_kind_t::dword:
-                emit_load_or_store(host, mod, ngen::scattered_dword(elems),
-                        address_base, header, data);
-                break;
-            case type_kind_t::qword:
-                emit_load_or_store(host, mod, ngen::scattered_qword(elems),
-                        address_base, header, data);
-                break;
-            case type_kind_t::oword:
-                emit_load_or_store(host, mod, ngen::block_oword(elems),
-                        address_base, header, data);
-                break;
-            case type_kind_t::hword:
-                emit_load_or_store(host, mod, ngen::block_hword(elems),
-                        address_base, header, data);
-                break;
-            default: gpu_error_not_expected() << send_.type;
-        }
+        auto &t = send_.type;
+        if (t.is_byte())
+            emit_load_or_store(host, mod, ngen::scattered_byte(elems),
+                    address_base, header, data);
+        else if (t.is_dword())
+            emit_load_or_store(host, mod, ngen::scattered_dword(elems),
+                    address_base, header, data);
+        else if (t.is_qword())
+            emit_load_or_store(host, mod, ngen::scattered_qword(elems),
+                    address_base, header, data);
+        else if (t.is_oword())
+            emit_load_or_store(host, mod, ngen::block_oword(elems),
+                    address_base, header, data);
+        else if (t.is_hword())
+            emit_load_or_store(host, mod, ngen::block_hword(elems),
+                    address_base, header, data);
+        else
+            gpu_error_not_expected() << t;
     }
 
     template <typename GeneratorT, typename T>
     void emit(GeneratorT *host, ngen_register_scope_t &scope,
             const ngen::InstructionModifier &mod, const T &dst,
             const ngen::RegData &header, const T &data) {
-        switch (send_.type.kind()) {
-            case type_kind_t::dword:
-                emit_atomic_cmpwr(host, mod, dst,
-                        ngen::scattered_dword(send_.type.elems()),
-                        to_address_base(send_.address), header, data);
-                break;
-            case type_kind_t::qword:
-                emit_atomic_cmpwr(host, mod, dst,
-                        ngen::scattered_qword(send_.type.elems()),
-                        to_address_base(send_.address), header, data);
-                break;
-            default: gpu_error_not_expected() << send_.type;
-        }
+        if (send_.type.is_dword())
+            emit_atomic_cmpwr(host, mod, dst,
+                    ngen::scattered_dword(send_.type.elems()),
+                    to_address_base(send_.address), header, data);
+        else if (send_.type.is_qword())
+            emit_atomic_cmpwr(host, mod, dst,
+                    ngen::scattered_qword(send_.type.elems()),
+                    to_address_base(send_.address), header, data);
+        else
+            gpu_error_not_expected() << send_.type;
     }
 
 private:

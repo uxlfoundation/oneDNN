@@ -232,8 +232,10 @@ struct GEMMState : public CommonState {
         std::vector<ngen::Subregister> strideA;             // ud, used for strided batch.
         std::vector<ngen::Subregister> strideB;             // ud
         std::vector<ngen::Subregister> strideC;             // ud
-        std::vector<ngen::Subregister> strideScaleA;             // ud, used for strided batch.
-        std::vector<ngen::Subregister> strideScaleB;             // ud
+        std::vector<ngen::Subregister> strideScaleA;        // ud, used for strided batch.
+        std::vector<ngen::Subregister> strideScaleB;        // ud
+        std::vector<ngen::Subregister> strideOffsetA;       // ud
+        std::vector<ngen::Subregister> strideOffsetB;       // ud
         std::vector<ngen::Subregister> batchSize;           // ud
         std::vector<ngen::Subregister> recipBatchSize;      // ud
         ngen::Subregister offsetBatch;                      // ud, used for non-strided batch.
@@ -255,6 +257,7 @@ struct GEMMState : public CommonState {
     ngen::Subregister batchID[4];                           // ud
     ngen::Subregister offsetA, offsetB, offsetC[2];
     ngen::Subregister offsetAs, offsetBs;
+    ngen::Subregister offsetAo, offsetBo;
     ngen::Subregister offsetAp, offsetBp, offsetCp;
     ngen::Subregister offsetCO;
     ngen::Subregister saveOffsetA, saveOffsetB, saveOffsetC[2];

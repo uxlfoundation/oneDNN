@@ -129,10 +129,11 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
             is_integrated, use_fma_config, is_f32);
 
-    if (!config) return status::unimplemented;
+    VCHECK_SDPA_COND(config != nullptr,
+            "No suitable kernel configuration found for the given problem "
+            "size and attributes.");
 
-    auto status = update_config_from_devenv_values(config, quantized);
-    if (status != status::success) return status;
+    CHECK(update_config_from_devenv_values(config, quantized));
 
     VDEBUGINFO(4, primitive, sdpa,
             "D=%d,K=%d,%s%s%s"
@@ -216,6 +217,15 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem.Ts = problem.Tc;
 
     auto problem_kq = problem;
+
+    bool is_f16_accumulate_gemm = (kq_acc_dt() == data_type::f16)
+            || (vs_acc_dt() == data_type::f16);
+    VCHECK_SDPA_COND(
+            IMPLICATION(is_f16_accumulate_gemm, !use_systolic_ukernel_),
+            "f16 accumulate only available with FMA matmul."); //TODO: update once matmul primitive supports systolic f16 accumulate for testing
+    problem_kq.Tc = problem_kq.Ts
+            = (kq_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
+
     problem_kq.A.layout = convert_dnnl_to_kernel_layout(key_md());
 
     if (with_key_scales() && !kq_common_scales) {
@@ -286,6 +296,8 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     /* Set up GEMMProblem structure for second GEMM: V * S  */
     auto problem_vs = std::move(problem);
+    problem_vs.Tc = problem_vs.Ts
+            = (vs_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
 
     bool vs_common_scales = with_quantize_common(d->vs_scales);
     bool vs_common_zp = with_quantize_common(d->vs_zero_points);
@@ -468,12 +480,18 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
             conf.ukernel_config.wg_n_vs};
 
     const int kq_wg_tile_m = config.wg_m_kq * config.unroll_m_kq;
+    const int kq_wg_tile_n = config.wg_n_kq * config.unroll_n_kq;
     const int vs_wg_tile_m = config.wg_m_vs * config.unroll_m_vs;
     int tile_k = kq_wg_tile_m;
     int tile_v = vs_wg_tile_m;
 
     bool d_full = (d->head_size() == pd->d_max());
     bool v_full = (d->head_size() == tile_v);
+
+    auto Q = d->queries();
+    const dim_t Q_per_kv_group = (Q == 1 ? Q * conf.kv_group_size : Q);
+    bool q_full = ((Q_per_kv_group % kq_wg_tile_n) != 0);
+    conf.remainder_q = d_full && q_full;
 
     conf.d_full = d_full;
     conf.arch_gte_hpc = (pd->arch() >= compute::gpu_arch_t::xe_hpc);
@@ -503,10 +521,12 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.prefetch_d_max = 0;
     }
 
-    conf.q_arrive_await_barrier = (d->queries() > 1);
+    conf.q_arrive_await_barrier = (Q > 1);
     conf.softmax_inf_as_zero
             = (d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
     conf.use_systolic_ukernel = pd->use_systolic_ukernel();
+    conf.kq_f16_accumulate = (kq_acc_dt() == data_type::f16);
+    conf.vs_f16_accumulate = (vs_acc_dt() == data_type::f16);
     return status::success;
 }
 
@@ -578,10 +598,13 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("PREFETCH_V", prefetch_v);
     kernel_ctx.define_int("PREFETCH_REMAINDER", prefetch_remainder);
     kernel_ctx.define_int("PREFETCH_D_MAX", prefetch_d_max);
+    kernel_ctx.define_int("REMAINDER_Q", remainder_q);
 
     kernel_ctx.define_int("Q_ARRIVE_AWAIT_BARRIER", q_arrive_await_barrier);
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO", softmax_inf_as_zero);
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
+    kernel_ctx.define_int("KQ_F16_ACC", kq_f16_accumulate);
+    kernel_ctx.define_int("VS_F16_ACC", vs_f16_accumulate);
 
     gemmstone::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
@@ -752,14 +775,7 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_attn_mask()) { append_offs(arg_list, msk_off); }
     const int remainder_k = (K % kq_wg_tile_m) != 0;
 
-    auto *d = pd()->desc();
-    const bool d_full = (d->head_size() == pd()->d_max());
-    const bool q_full = ((Q_per_kv_group % kq_wg_tile_n) != 0);
-
-    const int remainder_q = d_full && q_full;
-
     arg_list.append(remainder_k);
-    arg_list.append(remainder_q);
 
     compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
     compute::range_t gws = lws;

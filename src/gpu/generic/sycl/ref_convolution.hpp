@@ -118,6 +118,16 @@ struct ref_convolution_fwd_t : public gpu::generic::sycl::primitive_t {
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
 
+            // By default, host scalar scales and zero points are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VDISPATCH_CONV(IMPLICATION(!attr()->scales_.has_default_values(),
+                                   !attr()->scales_.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDISPATCH_CONV(
+                    IMPLICATION(!attr()->zero_points_.has_default_values(),
+                            !attr()->zero_points_.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+
             return init_conf();
         }
 
@@ -188,6 +198,16 @@ struct ref_convolution_bwd_data_t : public gpu::generic::sycl::primitive_t {
                     VERBOSE_BAD_ALGORITHM);
             VDISPATCH_CONV(sycl_post_ops_t::post_ops_ok(attr(), false),
                     VERBOSE_UNSUPPORTED_POSTOP);
+
+            // By default, host scalar scales and zero points are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VDISPATCH_CONV(IMPLICATION(!attr()->scales_.has_default_values(),
+                                   !attr()->scales_.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDISPATCH_CONV(
+                    IMPLICATION(!attr()->zero_points_.has_default_values(),
+                            !attr()->zero_points_.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
 
             return init_conf();
         }

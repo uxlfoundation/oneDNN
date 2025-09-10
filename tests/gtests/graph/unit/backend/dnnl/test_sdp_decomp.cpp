@@ -524,7 +524,7 @@ TEST(test_sdp_decomp_execute, MultithreaSdpDecomp_CPU) {
             for (auto &lt : partition_outputs) {
                 outputs_ts.emplace_back(lt, eng);
             }
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 5; i++)
                 ASSERT_EQ(cp.execute(strm,
                                   test_tensor_t::to_graph_tensor(inputs_ts),
                                   test_tensor_t::to_graph_tensor(outputs_ts)),

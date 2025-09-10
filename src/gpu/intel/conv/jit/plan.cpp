@@ -687,9 +687,11 @@ void init_bwd_w(const config_t &cfg_, gemm_schedule_t &gemm_schedule,
 reorder_plan_t create_reorder_plan(
         const hw_t &hw, const layout_t &src, const layout_t &dst) {
     if (src == dst) return reorder_plan_t();
-    if (src.type().is_bitwise_compatible(dst.type())
+    if ((src.type() == dst.type()
+                || (src.type().is_f32() && dst.type().is_tf32()))
             && src.retype(dst.type()) == dst)
         return reorder_plan_t();
+
     reorder_plan_t ret(hw);
     ret.src = src;
     ret.dst = dst;
@@ -1268,8 +1270,8 @@ struct fma_context_t {
         , simd(cfg.simd())
         , vec_size(cfg.vec_size())
         , fma(cfg.fma_kind())
-        , a_type(cfg.prb().a_data_type)
-        , b_type(cfg.prb().b_data_type)
+        , a_type(to_ir(cfg.prb().a_data_type))
+        , b_type(to_ir(cfg.prb().b_data_type))
         , acc_type(get_accumulation_type(cfg, a_type, b_type))
         , is_src1_broadcast(!cfg.prb().is_dw)
         , ab_swap_transpose_(cfg.prb().ab_swap_transpose) {}
@@ -2081,7 +2083,7 @@ private:
         if (slm_layout == layout_t()) return plan_status_t::invalid_slm_layout;
         auto thr_tile_coord = slm_layout.split(tg, &grid);
         auto abs_thr_tile_coord = tg_view.vtile_coord().sub(thr_tile_coord);
-        auto slm_thr_layout = slm_layout.map(thr_tile_coord);
+        auto slm_thr_layout = slm_layout.sub(thr_tile_coord);
         auto slm_thr_view = view_t(slm_thr_layout);
         auto thr_view = tg_view.create_sub_view(thr_tile_coord);
         auto load_params = get_send_params(cfg_.exec_cfg(), send_op_t::load,
@@ -2303,7 +2305,7 @@ private:
 
         if (plan_.hw < ngen::HW::XeHPG) {
             // Verifies that SLM loads after k-slicing are at GRF granularity.
-            auto l_sub = l.map(tile_t(rem_dims));
+            auto l_sub = l.sub(tile_t(rem_dims));
             int bytes = l_sub.type().size();
             stride_t stride = 1;
             for (auto &b : l_sub.blocks()) {

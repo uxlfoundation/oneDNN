@@ -126,7 +126,6 @@ struct multi_t : public primitive_t {
                       r_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
                       exec_ctx_t r_ctx(ctx, std::move(r_args));
 
-                      r_ctx.set_scratchpad_grantor(ctx.grantor_handle());
                       return concat->execute(r_ctx);
                   };
 

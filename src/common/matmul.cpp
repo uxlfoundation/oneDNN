@@ -78,6 +78,13 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         attr_mask |= smask_t::scales_groups;
     }
 
+    const bool dst_is_fp8
+            = utils::one_of(dst_dt, data_type::f8_e5m2, data_type::f8_e4m3);
+    const bool dst_is_fp4
+            = utils::one_of(dst_dt, data_type::f4_e2m1, data_type::f4_e3m0);
+    // grouped dst scales are supported for mxfp
+    if (dst_is_fp8 || dst_is_fp4) attr_mask |= smask_t::scales_groups;
+
     // Matmul supports fpmath mode and accumulation mode
     attr_mask |= smask_t::fpmath_mode | smask_t::accumulation_mode;
 
@@ -100,7 +107,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     int wei_qmask_K = 1 << (ndims_wei - 2);
     int wei_qmask_N = 1 << (ndims_wei - 1);
 
-    int dst_qmask_M = src_qmask_K;
+    int dst_qmask_M = src_qmask_M;
     int dst_qmask_N = wei_qmask_N;
 
     int full_tensor_mask = (1 << ndims_src) - 1;
@@ -170,16 +177,10 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
         if (!sc.has_default_values(DNNL_ARG_DST)) {
             const int mask_dst = sc.get_mask(DNNL_ARG_DST);
-
-            if (engine->kind() == engine_kind::gpu) {
-                VCHECK_MATMUL_UNIMPL(
-                        utils::one_of(mask_dst, 0, dst_qmask_N, dst_qmask_M,
-                                dst_qmask_N + dst_qmask_M),
-                        VERBOSE_UNSUPPORTED_SCALES_CFG);
-            } else {
-                VCHECK_MATMUL_UNIMPL(
-                        mask_dst == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
-            }
+            VCHECK_MATMUL_UNIMPL(
+                    utils::one_of(mask_dst, 0, dst_qmask_N, dst_qmask_M,
+                            dst_qmask_N + dst_qmask_M, full_tensor_mask),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check dependency between scales.
@@ -191,6 +192,21 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                                      (src_is_int8 || src_is_fp8 || src_is_fp4)
                                              && groups_are_divisible),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+        // For dynamic scaling, we support only OCP MX flavor
+        if (sc.get(DNNL_ARG_DST).is_mx()) {
+            // only group size of 32
+            VCHECK_MATMUL_UNIMPL(sc.get_mask(DNNL_ARG_DST) == full_tensor_mask,
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VCHECK_MATMUL_UNIMPL(sc.get_group(DNNL_ARG_DST, -1) == 32
+                            && sc.get_group(DNNL_ARG_DST, -2) == 1,
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+            // only e8m0 scales
+            VCHECK_MATMUL_UNIMPL(
+                    sc.get_data_type(DNNL_ARG_DST) == data_type::e8m0,
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+        }
     }
 
     // Check zero points

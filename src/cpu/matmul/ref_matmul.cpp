@@ -35,6 +35,22 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
+void ref_matmul_t::pd_t::init_scratchpad() {
+    using namespace memory_tracking::names;
+    nthr_ = dnnl_get_max_threads();
+    ntasks_ = nthr_;
+    auto dst_scales = attr()->scales_.get(DNNL_ARG_DST);
+    if (dst_scales.is_mx()) {
+        auto scratchpad = scratchpad_registry().registrar();
+        const memory_desc_wrapper dst_d(dst_md());
+        dim_t group_size = dst_scales.get_group_size();
+        dim_t work_amount = dst_d.nelems() / group_size;
+        ntasks_ = std::min<dim_t>(nthr_, work_amount);
+        scratchpad.template book<float>(
+                key_matmul_dst_in_acc_dt, ntasks_ * group_size);
+    }
+}
+
 status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     status_t status = status::success;
     const auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
@@ -58,6 +74,9 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     const void *dst_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+    // No need to zero-pad dynamic scales as they should have plain format.
+    auto dst_dynamic_scales
+            = CTX_OUT_MEM(float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const int32_t *wei_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
@@ -94,8 +113,8 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             = !attr_zps.has_default_values(DNNL_ARG_WEIGHTS);
     int wei_zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
     const auto &wei_zp_dt = attr_zps.get_data_type(DNNL_ARG_WEIGHTS);
-    const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
-    const auto wei_zp_group_n = attr_zps.get_group(DNNL_ARG_WEIGHTS, 1);
+    const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, -2);
+    const auto wei_zp_group_n = attr_zps.get_group(DNNL_ARG_WEIGHTS, -1);
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_zp_md {};
     CHECK(attr_zps.get(DNNL_ARG_WEIGHTS).get_md(wei_zp_md, *weights_d.md_));
@@ -109,10 +128,12 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
     // Scales section
     const auto &attr_scales = pd()->attr()->scales_;
+
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
     const auto src_scale_mask = attr_scales.get_mask(DNNL_ARG_SRC);
     const auto src_scale_dt = attr_scales.get_data_type(DNNL_ARG_SRC);
-    const auto src_scale_group_k = attr_scales.get_group(DNNL_ARG_SRC, 1);
+    const auto src_scale_group_m = attr_scales.get_group(DNNL_ARG_SRC, -2);
+    const auto src_scale_group_k = attr_scales.get_group(DNNL_ARG_SRC, -1);
     const auto src_scale_ngroups_k = K / src_scale_group_k;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t src_scale_md {};
@@ -122,9 +143,9 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
     const auto wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
     const auto wei_scale_dt = attr_scales.get_data_type(DNNL_ARG_WEIGHTS);
-    const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
+    const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
     const auto wei_scale_ngroups_k = K / wei_scale_group_k;
-    const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
+    const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, -1);
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_scale_md {};
     CHECK(attr_scales.get(DNNL_ARG_WEIGHTS)
@@ -132,6 +153,11 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
     const bool with_dst_scales = !attr_scales.has_default_values(DNNL_ARG_DST);
     const auto dst_scale_dt = attr_scales.get_data_type(DNNL_ARG_DST);
+    const auto dst_scale_mask = attr_scales.get_mask(DNNL_ARG_DST);
+    const auto dst_scale_group_m = attr_scales.get_group(DNNL_ARG_DST, -2);
+    const auto dst_scale_group_n = attr_scales.get_group(DNNL_ARG_DST, -1);
+    memory_desc_t dst_scales_md {};
+    CHECK(attr_scales.get(DNNL_ARG_DST).get_md(dst_scales_md, *dst_d.md_));
 
     // For compute kernel, the minimal group is picked.
     const auto ngroups_k = std::max(src_scale_ngroups_k, wei_scale_ngroups_k);
@@ -191,7 +217,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             // apply scales after computing a group along K
             if (with_src_scales) {
                 const dim_t src_scale_offset = matmul_helper_t::get_quant_off(
-                        src_dims_idx, ndims, src_scale_mask, 1,
+                        src_dims_idx, ndims, src_scale_mask, src_scale_group_m,
                         src_scale_group_k, src_scale_md);
                 float src_scale = io::load_float_value(
                         src_scale_dt, src_scales, src_scale_offset);
@@ -200,7 +226,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             if (with_wei_scales && !with_wei_decompression) {
                 const dim_t wei_scale_offset = matmul_helper_t::get_quant_off(
                         weights_dims_idx, ndims, wei_scale_mask,
-                        wei_scale_group_k, 1, wei_scale_md);
+                        wei_scale_group_k, wei_scale_group_n, wei_scale_md);
                 const float wei_scale = io::load_float_value(
                         wei_scale_dt, wei_scales, wei_scale_offset);
                 acc *= wei_scale;
@@ -221,45 +247,133 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
     bool with_dropout = !pd()->attr()->dropout_.has_default_values();
 
-    // computations Note: If dst type is < 8 bits, we cannot split a
-    // byte during store or we get a race condition. To simplify
-    // logic, we limit parallelization on M and N by a factor of 2.
-    parallel_nd(batch, utils::div_up(M, 2), utils::div_up(N, 2),
-            [&](dim_t mb, dim_t m_, dim_t n_) {
-                for_(int m = 2 * m_; m < std::min<int>(2 * (m_ + 1), M); m++)
-                for (int n = 2 * n_; n < std::min<int>(2 * (n_ + 1), N); n++) {
-                    dims_t dst_dims_idx;
-                    const size_t offset = mb * M * N + m * N + n;
-                    utils::l_dims_by_l_offset(
-                            dst_dims_idx, offset, dst_d.dims(), ndims);
+    auto scratchpad = ctx.get_scratchpad_grantor();
+    float *temp_dst = scratchpad.template get<float>(
+            memory_tracking::names::key_matmul_dst_in_acc_dt);
 
-                    float d = ker(dst_dims_idx, m, n);
-                    if (bias) d += ker_bias(dst_dims_idx);
+    // Note 1: If dst type is < 8 bits, we cannot split a byte during
+    //         store or we get a race condition. To simplify logic, we limit
+    //         parallelization on M and N by a factor of 2.
+    // Note 2: dynamic quantization requires to compute a reduction
+    //         along dst groups, so we split parallelization accordingly
+    dim_t M_chunk_size = std::max<dim_t>(2, dst_scale_group_m);
+    dim_t N_chunk_size = std::max<dim_t>(2, dst_scale_group_n);
+    dim_t M_chunks = utils::div_up(M, M_chunk_size);
+    dim_t N_chunks = utils::div_up(N, N_chunk_size);
+    parallel_nd_ext(pd()->nthr_, batch, M_chunks, N_chunks,
+            [&](int ithr, int nthr, dim_t mb, dim_t mc, dim_t nc) {
+                if (ithr >= pd()->ntasks_) return;
+                for_(dim_t m_ = mc * M_chunk_size;
+                        m_ < std::min<dim_t>((mc + 1) * M_chunk_size, M);
+                        m_ += dst_scale_group_m)
+                for (dim_t n_ = nc * N_chunk_size;
+                        n_ < std::min<dim_t>((nc + 1) * N_chunk_size, N);
+                        n_ += dst_scale_group_n) {
+                    float max_dst_group = 0.0f;
+                    for_(dim_t m_gidx = 0; m_gidx < dst_scale_group_m; m_gidx++)
+                    for (dim_t n_gidx = 0; n_gidx < dst_scale_group_n;
+                            n_gidx++) {
+                        dim_t m = m_ + m_gidx;
+                        dim_t n = n_ + n_gidx;
+                        dims_t dst_dims_idx;
+                        const size_t offset = mb * M * N + m * N + n;
+                        utils::l_dims_by_l_offset(
+                                dst_dims_idx, offset, dst_d.dims(), ndims);
 
-                    const auto dst_off = dst_d.off_v(dst_dims_idx);
-                    if (non_default_attrs) {
-                        if (with_dropout)
-                            d = ref_dropout(
-                                    d, dropout_mask, dst_off, *p, *seed);
-                        ref_post_ops_t::args_t args;
-                        args.dst_val
-                                = io::load_float_value(sum_dt, dst, dst_off);
-                        args.ctx = &ctx;
-                        args.l_offset = offset;
-                        args.dst_md = pd()->dst_md();
-                        ref_post_ops->execute(d, args);
+                        float d = ker(dst_dims_idx, m, n);
+                        if (bias) d += ker_bias(dst_dims_idx);
+
+                        const auto dst_off = dst_d.off_v(dst_dims_idx);
+                        if (non_default_attrs) {
+                            if (with_dropout)
+                                d = ref_dropout(
+                                        d, dropout_mask, dst_off, *p, *seed);
+                            ref_post_ops_t::args_t args;
+                            args.dst_val = io::load_float_value(
+                                    sum_dt, dst, dst_off);
+                            args.ctx = &ctx;
+                            args.l_offset = offset;
+                            args.dst_md = pd()->dst_md();
+                            ref_post_ops->execute(d, args);
+                        }
+                        if (attr_scales.get(DNNL_ARG_DST).is_mx()) {
+                            max_dst_group = std::max(max_dst_group, ::fabsf(d));
+                            auto temp_dst_off
+                                    = (ithr * dst_scale_group_m + m_gidx)
+                                            * dst_scale_group_n
+                                    + n_gidx;
+                            io::store_float_value(
+                                    data_type::f32, d, temp_dst, temp_dst_off);
+                        } else {
+                            if (with_dst_scales) {
+                                const float dst_scale = io::load_float_value(
+                                        dst_scale_dt, dst_scales, 0);
+                                d /= dst_scale;
+                            }
+                            if (dst_rnd_mode == rounding_mode::stochastic)
+                                d = math::stochastic_round_fwd(d, dst_off,
+                                        rnd_seed[0], dst_d.data_type());
+                            io::store_float_value(
+                                    dst_d.data_type(), d, dst, dst_off);
+                            utils::dim_iterator(
+                                    dst_d.dims(), dst_dims_idx, batch_ndims);
+                        }
                     }
-                    if (with_dst_scales) {
-                        const float dst_scale = io::load_float_value(
-                                dst_scale_dt, dst_scales, 0);
-                        d /= dst_scale;
+
+                    if (attr_scales.get(DNNL_ARG_DST).is_mx()) {
+                        // MXSPEC does round_down_pow2(dst_d.data_type() /
+                        // round_down_pow2(max_dst_group) so the rounding
+                        // to a power of two happens before the division,
+                        // and not after.
+                        float dst_group_scale = types::round_to_dt(dst_scale_dt,
+                                                        max_dst_group)
+                                / types::max_value<float>(dst_d.data_type());
+
+                        dims_t dst_dims_idx;
+                        const size_t offset = mb * M * N + m_ * N + n_;
+                        utils::l_dims_by_l_offset(
+                                dst_dims_idx, offset, dst_d.dims(), ndims);
+
+                        const dim_t dst_scale_off
+                                = matmul_helper_t::get_quant_off(dst_dims_idx,
+                                        ndims, dst_scale_mask,
+                                        dst_scale_group_m, dst_scale_group_n,
+                                        dst_scales_md);
+
+                        io::store_float_value(dst_scale_dt, dst_group_scale,
+                                dst_dynamic_scales, dst_scale_off);
+                        // we pre-invert the scale to apply it as multiply for the group
+                        dst_group_scale = 1.f / dst_group_scale;
+
+                        for_(dim_t m_gidx = 0; m_gidx < dst_scale_group_m;
+                                m_gidx++)
+                        for (dim_t n_gidx = 0; n_gidx < dst_scale_group_n;
+                                n_gidx++) {
+                            dim_t m = m_ + m_gidx;
+                            dim_t n = n_ + n_gidx;
+                            dims_t dst_dims_idx;
+                            const size_t offset = mb * M * N + m * N + n;
+                            utils::l_dims_by_l_offset(
+                                    dst_dims_idx, offset, dst_d.dims(), ndims);
+                            const auto dst_off = dst_d.off_v(dst_dims_idx);
+
+                            auto temp_dst_off
+                                    = (ithr * dst_scale_group_m + m_gidx)
+                                            * dst_scale_group_n
+                                    + n_gidx;
+                            float d = io::load_float_value(
+                                    data_type::f32, temp_dst, temp_dst_off);
+                            d *= dst_group_scale;
+
+                            if (dst_rnd_mode == rounding_mode::stochastic)
+                                d = math::stochastic_round_fwd(d, dst_off,
+                                        rnd_seed[0], dst_d.data_type());
+                            io::store_float_value(
+                                    dst_d.data_type(), d, dst, dst_off);
+                            utils::dim_iterator(
+                                    dst_d.dims(), dst_dims_idx, batch_ndims);
+                        }
                     }
-                    if (dst_rnd_mode == rounding_mode::stochastic)
-                        d = math::stochastic_round_fwd(
-                                d, dst_off, rnd_seed[0], dst_d.data_type());
-                    io::store_float_value(dst_d.data_type(), d, dst, dst_off);
-                    utils::dim_iterator(
-                            dst_d.dims(), dst_dims_idx, batch_ndims);
                 }
             });
 

@@ -121,10 +121,17 @@ struct ref_matmul_t : public primitive_t {
                                     attr_.dropout_.dropout_desc_, true, false)),
                     VERBOSE_UNSUPPORTED_ATTR);
 
+            init_scratchpad();
+
             return status::success;
         }
 
+        int nthr_;
+        int ntasks_;
+
     private:
+        void init_scratchpad();
+
         bool zero_points_ok() const {
             const auto &zp = attr()->zero_points_;
             if (!zp.has_default_values(DNNL_ARG_SRC)) { return false; }

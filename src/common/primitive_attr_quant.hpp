@@ -98,6 +98,10 @@ struct quant_entry_t : public c_compatible {
         if (d >= group_ndims_ || d < 0) return 0;
         return group_dims_[d];
     }
+    dim_t get_group_size() const {
+        assert(group_ndims_ > 0);
+        return utils::array_product(group_dims_, group_ndims_);
+    }
     bool is_host_scalar() const { return is_host_scalar_; }
     quantization_mode_t get_quantization_mode() const { return qmode_; }
     bool is_mx() const { return qmode_ == quantization_mode::dynamic_mx; }

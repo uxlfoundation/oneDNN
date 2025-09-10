@@ -55,7 +55,7 @@ struct ref_resampling_fwd_t : public primitive_t {
                     platform::has_data_type_support(dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(set_default_params() == status::success,
-                    VERBOSE_BAD_PARAM, "");
+                    VERBOSE_BAD_PARAM, "cannot set default parameters");
             VDISPATCH_RESAMPLING(attr()->has_default_values(
                                          sm::post_ops, dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_ATTR);
@@ -113,7 +113,7 @@ struct ref_resampling_bwd_t : public primitive_t {
                     platform::has_data_type_support(diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(set_default_params() == status::success,
-                    VERBOSE_BAD_PARAM, "");
+                    VERBOSE_BAD_PARAM, "cannot set default parameters");
             VDISPATCH_RESAMPLING(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 

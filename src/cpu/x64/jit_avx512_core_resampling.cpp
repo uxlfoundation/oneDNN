@@ -834,8 +834,8 @@ status_t jit_avx512_core_resampling_bwd_t::pd_t::init(engine_t *engine) {
                     mayiuse(avx512_core_fp16)
                             && memory_desc_wrapper(diff_src_md()).is_plain()),
             VERBOSE_ISA_DT_MISMATCH);
-    VDISPATCH_RESAMPLING(
-            set_default_params() == status::success, VERBOSE_BAD_PARAM, "");
+    VDISPATCH_RESAMPLING(set_default_params() == status::success,
+            VERBOSE_BAD_PARAM, "cannot set default parameters");
     VDISPATCH_RESAMPLING(
             attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 

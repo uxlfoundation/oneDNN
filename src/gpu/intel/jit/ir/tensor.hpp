@@ -321,8 +321,8 @@ public:
 
     bool is_empty() const { return ndims_ == 0; }
     bool with_ndims() const { return ndims_ != dim_idx::invalid; }
-    dim_idx_t ndims() const {
-        gpu_assert(with_ndims());
+    dim_idx_t ndims(bool check_invalid = true) const {
+        if (check_invalid) gpu_assert(with_ndims());
         return ndims_;
     }
 
@@ -1110,7 +1110,7 @@ public:
         }
         outer_blocks.insert(outer_blocks.end(),
                 blocks.begin() + (block_idx_ + 1), blocks.end());
-        return layout_t(l_.type(), l_.ndims(), l_.offset(), outer_blocks);
+        return layout_t(l_.type(), l_.ndims(false), l_.offset(), outer_blocks);
     }
 
 private:

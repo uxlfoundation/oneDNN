@@ -417,7 +417,7 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
         data_type_t b_type, data_type_t c_type, data_type_t co_type,
         data_type_t acc_type, int align_a, int align_b, int align_c, dim_t m,
         dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
-        gpu_post_ops_t &&post_ops) {
+        gpu_post_ops_t &&post_ops, int entry_idx) {
     using namespace ngen;
     using namespace kcatalog;
 
@@ -692,20 +692,12 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     eval_params.deterministic = (mode & mode_deterministic);
 
     SelectionObserver observer = entryObserver;
-    if (strategy_count() <= 0) {
-        entry_ = select(catalog(), static_cast<int>(match_params.size()),
-                match_params.data(), eval_params, aux_params_, entries_,
+
+    entry_ = select(catalog(), static_cast<int>(match_params.size()),
+                match_params.data(), eval_params, aux_params_, entry_idx,
                 &observer);
-        entries_it_ = entries_.begin();
-    }
 
     if (!entry_) return status::unimplemented;
-
-    if (entries_it_ != entries_.end()) {
-        entry_ = entries_it_->second.first;
-        aux_params_ = entries_it_->second.second;
-        entries_it_++;
-    }
 
     // Update A/B/C types from entry.
     Type Ta_new, Ta_ext_new, Tb_new, Tb_ext_new, Tc_new;
@@ -741,7 +733,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         data_type_t b_type, data_type_t c_type, data_type_t ao_type,
         data_type_t bo_type, data_type_t co_type, data_type_t acc_type, dim_t m,
         dim_t n, dim_t k, dim_t batch, int unroll_m, int unroll_n, bool alt,
-        gpu_post_ops_t &&post_ops) {
+        gpu_post_ops_t &&post_ops, int entry_idx) {
     using namespace ngen;
     using namespace kcatalog;
 
@@ -853,19 +845,12 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     eval_params.batch = (batch_dims > 0);
 
     SelectionObserver observer = entryObserver;
-    if (strategy_count() <= 0) {
-        entry_ = select(catalog(), match_params, eval_params, aux_params_,
-                entries_, &observer);
-        entries_it_ = entries_.begin();
-    }
+
+    entry_ = select(catalog(), match_params, eval_params, aux_params_,
+                entry_idx, &observer);
 
     if (!entry_) return status::unimplemented;
 
-    if (entries_it_ != entries_.end()) {
-        entry_ = entries_it_->second.first;
-        aux_params_ = entries_it_->second.second;
-        entries_it_++;
-    }
 
     return finalize(match_params.tags);
 }

@@ -586,7 +586,7 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
             pd()->with_c_zero_points(), pd()->with_bias(), pd()->alpha(),
             pd()->beta(), a_type, b_type, c_type, dnnl_s32, dnnl_s32, co_type,
             acc_type, d->m(), d->n(), d->k(), d->batch(), pd()->unroll_m(),
-            pd()->unroll_n(), pd()->alt(), std::move(gpu_post_ops));
+            pd()->unroll_n(), pd()->alt(), std::move(gpu_post_ops), 0);
 
     if (status != status::success) return status;
 
@@ -625,7 +625,7 @@ status_t xe_hp_systolic_t::init_compute(impl::engine_t *engine) {
                         pd()->with_bias(), pd()->alpha(), this_beta, a_type,
                         b_type, c_type, dnnl_s32, dnnl_s32, co_type, acc_type,
                         d->m(), d->n(), d->k(), d->batch(), pd()->unroll_m(),
-                        pd()->unroll_n(), pd()->alt(), std::move(gpu_post_ops));
+                        pd()->unroll_n(), pd()->alt(), std::move(gpu_post_ops), 0);
 
                 if (status != status::success) return status;
 

@@ -83,7 +83,7 @@ struct gen_desc_t {
     }
     compute::gpu_arch_t arch() const { return arch_; }
 
-    int strategy_count() { return (int)entries_.size(); }
+    bool  has_entry() { return entry_ != nullptr; }
 
     const gemmstone::kcatalog::Entry &entry() const {
         assert(entry_ != nullptr);
@@ -152,7 +152,7 @@ struct gen_nocopy_desc_t : public gen_desc_t {
             data_type_t a_type, data_type_t b_type, data_type_t c_type,
             data_type_t co_type, data_type_t acc_type, int align_a, int align_b,
             int align_c, dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb,
-            dim_t ldc, dim_t batch, gpu_post_ops_t &&post_ops);
+            dim_t ldc, dim_t batch, gpu_post_ops_t &&post_ops, int entry_idx);
 };
 
 struct gen_xe_systolic_kernel_desc_t : public gen_desc_t {
@@ -163,7 +163,7 @@ struct gen_xe_systolic_kernel_desc_t : public gen_desc_t {
             data_type_t c_type, data_type_t ao_type, data_type_t bo_type,
             data_type_t co_type, data_type_t acc_type, dim_t m, dim_t n,
             dim_t k, dim_t batch, int unroll_m, int unroll_n, bool alt,
-            gpu_post_ops_t &&post_ops);
+            gpu_post_ops_t &&post_ops, int entry_idx);
 
     static void choose_unrolls(compute::gpu_arch_t arch, int eu_count,
             data_type_t a_type, data_type_t b_type, data_type_t c_type, dim_t m,

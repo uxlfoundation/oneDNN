@@ -46,12 +46,7 @@ struct tensor_t {
     tensor_t(const expr_t &buf, const layout_t &layout)
         : buf(buf), layout(layout) {}
     const type_t &type() const { return layout.type(); }
-    tensor_t sub(const icoord_t &coord, const tile_t &tile) const {
-        // coord is not measured relative to tile size
-        for (auto &var : coord)
-            gpu_assert(coord[var] % tile[var] == 0);
-        return {buf[layout.offset_in_bytes(coord)], layout.sub(tile)};
-    }
+    tensor_t sub(const tile_t &tile, const icoord_t &coord) const;
 
     std::string str() const {
         std::ostringstream oss;

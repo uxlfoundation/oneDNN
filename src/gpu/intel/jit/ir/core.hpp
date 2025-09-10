@@ -1020,6 +1020,15 @@ private:
     }
 };
 
+inline const expr_t &get_base(const expr_t &e) {
+    if (e.is_empty()) return e;
+    if (e.is<var_t>()) return e;
+    if (e.is<ref_t>()) return e.as<ref_t>().var;
+    if (e.is<ptr_t>()) return get_base(e.as<ptr_t>().base);
+    gpu_error_not_expected() << e;
+    return e;
+}
+
 // Convertor from C++ type to IR expression.
 template <typename T>
 expr_t to_expr(T value, const type_t &type) {

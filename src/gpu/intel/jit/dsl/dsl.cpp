@@ -30,6 +30,24 @@ namespace intel {
 namespace jit {
 namespace dsl {
 
+tensor_t tensor_t::sub(const tile_t &tile, const icoord_t &coord) const {
+    // coord is not measured relative to tile size
+    for (auto &var : coord)
+        gpu_assert(coord[var] % tile[var] == 0);
+    gpu_assert(layout.has_zero_offset());
+    tensor_t ret;
+    ret.buf = buf;
+    ret.layout = layout.sub(tile);
+    icoord_t max_coord;
+    for (auto &d : tile)
+        max_coord[d] = tile[d] - 1;
+    int off = ret.layout.offset<int>(coord, /*ignore_offset=*/true);
+    int elems = ret.layout.offset<int>(max_coord) + 1;
+    ret.buf = ref_t::make(buf, off, elems);
+    ret.layout.set_offset(0);
+    return ret;
+}
+
 struct ctx_t {
     bool new_ir_api() const { return new_ir_api_; }
 

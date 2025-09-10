@@ -266,7 +266,7 @@ layout_t layout_t::split_block(const std::pair<int, layout_block_t> &eb,
     new_blocks.insert(new_blocks.begin() + block_idx + 1, b1);
 
     return layout_t(
-            type(), ndims(), offset(), new_blocks, /*do_normalize=*/false);
+            type(), ndims_, offset(), new_blocks, /*do_normalize=*/false);
 }
 
 layout_t layout_t::split_into_multi_blocks(
@@ -303,7 +303,7 @@ layout_t layout_t::split_into_multi_blocks(
 tile_t layout_t::split_into_max_tile(
         dim_t max_tile_elems, bool is_dense_tile) const {
     stride_t dense_stride = 1;
-    std::vector<dim_t> tile_dims(ndims(), 1);
+    tile_t tile;
     dim_t cur_elems = 1;
     for (auto &eb : enumerated_blocks()) {
         auto &b = eb.second;
@@ -315,7 +315,7 @@ tile_t layout_t::split_into_max_tile(
                 dense_stride = b.block * b.stride;
             }
             cur_elems *= b.block;
-            tile_dims[b.dim] *= b.block;
+            tile[b.dim] *= b.block;
             continue;
         }
         dim_t max_block = utils::max_div(b.block, max_tile_elems / cur_elems);
@@ -323,7 +323,7 @@ tile_t layout_t::split_into_max_tile(
         auto tmp_layout = split_block(eb, max_block, b.block / max_block);
         return tmp_layout.split_into_max_tile(max_tile_elems, is_dense_tile);
     }
-    return tile_t(tile_dims);
+    return tile;
 }
 
 void layout_t::align_layouts(layout_t &a, layout_t &b) {

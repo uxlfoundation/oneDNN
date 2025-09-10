@@ -87,7 +87,13 @@ struct ctx_t {
     kernel_t end_kernel() {
         gpu_assert(stmts_stack_.size() == 1)
                 << "Invalid end of kernel, imbalanced scopes detected";
-        kernel_t ret {std::move(interface_), pop_scope(), ctx_->exec_cfg()};
+        auto body = pop_scope();
+        if (slm_byte_offset() > 0) {
+            auto slm_buf = var_t::make(u8[slm_byte_offset()].with_slm(), "slm");
+            auto slm_alloc = builtin_t::make("alloc")(slm_buf);
+            body = slm_alloc.append(body);
+        }
+        kernel_t ret {std::move(interface_), body, ctx_->exec_cfg()};
         ctx_ = nullptr;
         interface_ = {"undefined_dsl_kernel"};
         return ret;

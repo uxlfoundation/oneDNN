@@ -329,13 +329,13 @@ status_t dnnl_primitive::execute(exec_ctx_t &ctx) const {
         mem_storage = scratchpad_->get_memory_storage();
     }
 
-    auto scratchpad_grantor
-            = primitive_->pd()->scratchpad_registry().grantor(mem_storage, ctx);
-    ctx.set_scratchpad_grantor(&scratchpad_grantor);
+    auto *scratchpad_grantor
+            = primitive_->pd()->scratchpad_registry().create_grantor(
+                    mem_storage, ctx);
+    ctx.set_scratchpad_grantor(scratchpad_grantor);
     ctx.set_resource_mapper(&resource_mapper_);
 
     auto status = primitive_->execute(ctx);
-    ctx.set_scratchpad_grantor(nullptr);
     return status;
 }
 

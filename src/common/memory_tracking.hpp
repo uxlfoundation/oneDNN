@@ -424,7 +424,7 @@ struct registry_t {
     size_t size() const { return size_; }
 
     registrar_t registrar();
-    grantor_t grantor(const memory_storage_t *mem_storage,
+    grantor_t *create_grantor(const memory_storage_t *mem_storage,
             const exec_ctx_t &exec_ctx) const;
 
     template <typename return_type>
@@ -590,9 +590,9 @@ private:
 inline registrar_t registry_t::registrar() {
     return registrar_t(*this);
 }
-inline grantor_t registry_t::grantor(
+inline grantor_t *registry_t::create_grantor(
         const memory_storage_t *mem_storage, const exec_ctx_t &exec_ctx) const {
-    return grantor_t(*this, mem_storage, exec_ctx);
+    return new grantor_t(*this, mem_storage, exec_ctx);
 }
 
 } // namespace memory_tracking

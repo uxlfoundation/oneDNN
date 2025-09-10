@@ -19,11 +19,10 @@
 
 #include <unordered_map>
 
-#include "oneapi/dnnl/dnnl_types.h"
-
-#include "c_types_map.hpp"
-#include "memory.hpp"
-#include "memory_storage.hpp"
+#include "common/c_types_map.hpp"
+#include "common/memory.hpp"
+#include "common/memory_storage.hpp"
+#include "common/memory_tracking.hpp"
 
 // __VA_ARGS__here is an index of the buffer. It is empty unless the memory
 // argument is sparse.
@@ -179,8 +178,7 @@ struct exec_ctx_impl_t {
     // be created without it first.
     void set_scratchpad_grantor(
             const memory_tracking::grantor_t *scratchpad_grantor) {
-        // if `scratchpad_grantor_` is unique, do reset to capture the pointer.
-        scratchpad_grantor_ = scratchpad_grantor;
+        scratchpad_grantor_.reset(scratchpad_grantor);
     }
 
     stream_t *stream() const { return stream_; }
@@ -232,8 +230,7 @@ private:
 
     std::unordered_map<void *, void *> memory_mapping_;
     const resource_mapper_t *resource_mapper_ = nullptr;
-    const memory_tracking::grantor_t *scratchpad_grantor_ = nullptr;
-    // Convert into unique_ptr to emphasize owning and lifetime.
+    std::unique_ptr<const memory_tracking::grantor_t> scratchpad_grantor_;
 };
 
 } // namespace impl

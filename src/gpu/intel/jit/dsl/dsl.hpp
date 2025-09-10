@@ -99,7 +99,7 @@ struct global_tensor_t {
         return simplify(ret * type.size());
     }
 
-    global_tensor_t map(const tile_t &tile, const coord_t &coord) const {
+    global_tensor_t sub(const tile_t &tile, const coord_t &coord) const {
         global_tensor_t ret = *this;
         ret.coord = coord;
         ret.tile = tile;

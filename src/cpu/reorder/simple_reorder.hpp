@@ -310,7 +310,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         const size_t ic_stride = per_ic ? 1 : 0;
         const size_t oc_stride = per_oc ? per_ic ? IC : 1 : 0;
 
-        parallel_nd(G, OC, [&](dim_t g, dim_t oc) {
+        parallel_nd(G, OC, [=](dim_t g, dim_t oc) {
             if (req_comp) cp[g * OC + oc] = 0;
             if (has_asymmetric_comp) zp[g * OC + oc] = 0;
             for_(dim_t ic = 0; ic < IC; ic++)
@@ -526,7 +526,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         // TODO: apply zero padding inside parallel_nd()
         ctx.zero_pad_output(DNNL_ARG_TO);
 
-        auto ker = [&](const data_t<type_i> *inp, data_t<type_o> *out,
+        auto ker = [=](const data_t<type_i> *inp, data_t<type_o> *out,
                            int32_t *c, int32_t *zp, const float *s,
                            const float *d, const dim_t oc_block,
                            const dim_t ic_block) {
@@ -568,7 +568,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 ? reinterpret_cast<int32_t *>(output + zp_offset)
                 : nullptr;
 
-        parallel_nd(G * PADDED_OC, [&](dim_t i) {
+        parallel_nd(G * PADDED_OC, [=](dim_t i) {
             if (req_comp) cp[i] = 0;
             if (has_asymmetric_comp) zp[i] = 0;
         });
@@ -578,7 +578,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     : is_1d ? (md).blk_off<!w_groups>(g, o, i, w) \
                     : is_3d ? (md).blk_off<!w_groups>(g, o, i, d, h, w) \
                             : (md).blk_off<!w_groups>(g, o, i, h, w))
-        parallel_nd(G, NB_OC, [&](dim_t g, dim_t O) {
+        parallel_nd(G, NB_OC, [=](dim_t g, dim_t O) {
             for_(dim_t I = 0; I < NB_IC; I++)
             for_(dim_t d = 0; d < D; d++)
             for_(dim_t h = 0; h < H; h++)
@@ -703,7 +703,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 ? output_d.extra().scale_adjust
                 : 1.f;
 
-        auto ker = [&](const data_t<type_i> *inp, data_t<type_o> *out,
+        auto ker = [=](const data_t<type_i> *inp, data_t<type_o> *out,
                            int32_t *zp, const float *s, const float *d,
                            const dim_t oc_block) {
             for (dim_t oc = 0; oc < oc_block; ++oc) {
@@ -727,7 +727,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 : nullptr;
 
         if (has_asymmetric_comp) {
-            parallel_nd(G * NB_OC * oc_blksize, [&](dim_t i) { zp[i] = 0; });
+            parallel_nd(G * NB_OC * oc_blksize, [=](dim_t i) { zp[i] = 0; });
         }
 
 #define wei_blk_off(md, g, o, i, d, h, w) \
@@ -735,7 +735,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     : is_3d ? (md).blk_off<!w_groups>(g, o, i, d, h, w) \
                             : (md).blk_off<!w_groups>(g, o, i, h, w))
 
-        parallel_nd(G, NB_OC, [&](dim_t g, dim_t O) {
+        parallel_nd(G, NB_OC, [=](dim_t g, dim_t O) {
             for_(dim_t I = 0; I < IC; I++)
             for_(dim_t d = 0; d < D; d++)
             for_(dim_t h = 0; h < H; h++)
@@ -897,7 +897,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         // TODO: apply zero padding inside parallel_nd()
         ctx.zero_pad_output(DNNL_ARG_TO);
 
-        auto ker = [&](const data_t<type_i> *inp, data_t<type_o> *out,
+        auto ker = [=](const data_t<type_i> *inp, data_t<type_o> *out,
                            int32_t *zp, const float *s, const float *d,
                            const dim_t oc_block, const dim_t ic_block) {
             for_(dim_t ic = 0; ic < ic_block; ++ic)
@@ -922,7 +922,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 : nullptr;
 
         if (has_asymmetric_comp) {
-            parallel_nd(G * NB_OC * oc_blksize, [&](dim_t i) { zp[i] = 0; });
+            parallel_nd(G * NB_OC * oc_blksize, [=](dim_t i) { zp[i] = 0; });
         }
 
 #define wei_blk_off(md, g, o, i, d, h, w) \
@@ -930,7 +930,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     : is_3d ? (md).blk_off<!w_groups>(g, o, i, d, h, w) \
                             : (md).blk_off<!w_groups>(g, o, i, h, w))
 
-        parallel_nd(G, NB_OC, [&](dim_t g, dim_t O) {
+        parallel_nd(G, NB_OC, [=](dim_t g, dim_t O) {
             for_(dim_t I = 0; I < NB_IC; I++)
             for_(dim_t d = 0; d < D; d++)
             for_(dim_t h = 0; h < H; h++)
@@ -1072,7 +1072,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 ? output_d.extra().scale_adjust
                 : 1.f;
 
-        auto ker = [&](const data_t<type_i> *inp, data_t<type_o> *out,
+        auto ker = [=](const data_t<type_i> *inp, data_t<type_o> *out,
                            int32_t *cp, int32_t *zp, const float *s,
                            const float *d, const int d0_block,
                            const int d1_block) {
@@ -1130,7 +1130,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 : nullptr;
 
         if (has_asymmetric_comp || req_comp) {
-            parallel_nd(batch_dim * NB_D1dim * D1_blksize, [&](dim_t i) {
+            parallel_nd(batch_dim * NB_D1dim * D1_blksize, [=](dim_t i) {
                 if (req_comp) cp[i] = 0;
                 if (has_asymmetric_comp) zp[i] = 0;
             });
@@ -1139,7 +1139,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 #define get_blk_off(md, batch, d0, d1) \
     (ndims == 3 ? (md).blk_off((batch), (d0), (d1)) : (md).blk_off((d0), (d1)))
 
-        parallel_nd(batch_dim, NB_D1dim, [&](dim_t batch, dim_t D1) {
+        parallel_nd(batch_dim, NB_D1dim, [=](dim_t batch, dim_t D1) {
             for (int D0 = 0; D0 < NB_D0dim; D0++) {
                 auto i = &input[get_blk_off(
                         input_d, batch, D0_blksize * D0, D1_blksize * D1)];
@@ -1273,7 +1273,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 ? output_d.extra().scale_adjust
                 : 1.f;
 
-        auto ker_out = [&](const data_t<type_i> *inp, data_t<type_o> *out,
+        auto ker_out = [=](const data_t<type_i> *inp, data_t<type_o> *out,
                                const float *src_scales, const float *dst_scales,
                                const dim_t g_block) {
             PRAGMA_OMP_SIMD()
@@ -1292,14 +1292,14 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
         /* Note: having separate kernels for s8 and zero-point fixes a
          * compiler-generated bug which results in seg-fault. */
-        auto ker_s8 = [&](const data_t<type_o> *out, int32_t *cp,
+        auto ker_s8 = [=](const data_t<type_o> *out, int32_t *cp,
                               const dim_t g_block) {
             PRAGMA_OMP_SIMD()
             for (dim_t g = 0; g < g_block; g++) {
                 cp[g * OC] -= 128 * (int32_t)(out[g]);
             }
         };
-        auto ker_zp = [&](const data_t<type_o> *out, int32_t *zp,
+        auto ker_zp = [=](const data_t<type_o> *out, int32_t *zp,
                               const dim_t g_block) {
             PRAGMA_OMP_SIMD()
             for (dim_t g = 0; g < g_block; g++) {
@@ -1317,7 +1317,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 ? reinterpret_cast<int32_t *>(output + zp_offset)
                 : nullptr;
 
-        parallel_nd((Gp / blksize) * OC, [&](dim_t ib) {
+        parallel_nd((Gp / blksize) * OC, [=](dim_t ib) {
             PRAGMA_OMP_SIMD()
             for (dim_t i = 0; i < blksize; i++) {
                 if (req_comp) cp[ib * blksize + i] = 0;
@@ -1328,7 +1328,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 #define wei_blk_off(md, g, o, i, h, w) \
     (is_1d ? (md).blk_off(g, o, i, w) : (md).blk_off(g, o, i, h, w))
 
-        parallel_nd(Gp / blksize, OC, [&](dim_t gb, dim_t O) {
+        parallel_nd(Gp / blksize, OC, [=](dim_t gb, dim_t O) {
             for (dim_t I = 0; I < IC; I++) {
                 for_(dim_t h = 0; h < H; h++)
                 for (dim_t w = 0; w < W; w++) {
@@ -1431,7 +1431,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         float *wspace = scratchpad.template get<float>(
                 memory_tracking::names::key_reorder_space);
 
-        auto index = [&](dim_t ic, dim_t oc) -> dim_t {
+        auto index = [=](dim_t ic, dim_t oc) -> dim_t {
             if (utils::one_of(tag_o, gOIhw16i16o, OIhw16i16o))
                 return (ic * blksize + oc);
             else if (utils::one_of(tag_o, gOIhw8i16o2i, OIhw8i16o2i))
@@ -1444,7 +1444,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             return dim_t(0);
         };
 
-        auto ker = [&](const data_t<type_i> *inp, data_t<type_i> *out,
+        auto ker = [=](const data_t<type_i> *inp, data_t<type_i> *out,
                            const dim_t curr_oc_block, const dim_t oc_block,
                            const dim_t curr_ic_block, const dim_t ic_block) {
             dim_t ic = 0;
@@ -1473,7 +1473,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         constexpr int o_mult = 1;
 
         parallel_nd_ext(0, G, NB_OC, NB_IC, H, W,
-                [&](int ithr, int, dim_t g, dim_t O, dim_t I, dim_t h,
+                [=](int ithr, int, dim_t g, dim_t O, dim_t I, dim_t h,
                         dim_t w) {
                     float *_wspace = wspace + wsp_size * ithr;
                     auto i = &input[input_d.blk_off<!w_groups>(
@@ -1542,7 +1542,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         float *wspace = scratchpad.template get<float>(
                 memory_tracking::names::key_reorder_space);
 
-        auto ker = [&](const data_t<type_i> *i, data_t<type_i> *o,
+        auto ker = [=](const data_t<type_i> *i, data_t<type_i> *o,
                            const dim_t curr_c_block, const dim_t c_block) {
             for (dim_t w = 0; w < W; ++w) {
                 dim_t c = 0;
@@ -1562,7 +1562,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         constexpr int o_c_mult = 1;
 
         parallel_nd_ext(0, dims[0], pdims[1] / blksize, H,
-                [&](int ithr, int, dim_t n, dim_t nb_c, dim_t h) {
+                [=](int ithr, int, dim_t n, dim_t nb_c, dim_t h) {
                     float *_wspace = wspace + wsp_size * ithr;
                     auto i = &input[input_d.blk_off(n, i_c_mult * nb_c, h)];
                     auto o = &output[output_d.blk_off(n, o_c_mult * nb_c, h)];
@@ -1632,7 +1632,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         const dim_t H = is_1d ? 1 : dims[2 + is_3d];
         const dim_t W = dims[3 + is_3d - is_1d];
 
-        auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o,
+        auto ker = [=](const data_t<type_i> *i, data_t<type_o> *o,
                            const int block) {
             const int nb = utils::div_up(block, blksize_i);
             if (alpha == 1.0 && beta == 0.0) {
@@ -1693,7 +1693,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                             : (md).blk_off(n, c, h, w))
 
         parallel_nd(dims[0], pdims[1] / blksize_16, D, H, W,
-                [&](dim_t n, dim_t nb_c, dim_t d, dim_t h, dim_t w) {
+                [=](dim_t n, dim_t nb_c, dim_t d, dim_t h, dim_t w) {
                     auto i = &input[data_blk_off(
                             input_d, n, ic_mult * nb_c, d, h, w)];
                     auto o = &output[data_blk_off(
@@ -1786,7 +1786,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 out = _qz<type_i, type_o>()(inp, out, alpha, beta);
         };
 
-        auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o, int block) {
+        auto ker = [=](const data_t<type_i> *i, data_t<type_o> *o, int block) {
             if (alpha == 1.0 && beta == 0.0) {
                 for (int l = 0; l < L; ++l) {
                     for (int blk = 0; blk < block; ++blk) {
@@ -1845,7 +1845,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         if (blk_idx == 0) {
             const dim_t BH0 = pdims[0] / blksize;
             parallel_nd(BH0, H1, M0, M1, M2,
-                    [&](dim_t bh0, dim_t h1, dim_t m0, dim_t m1, dim_t m2) {
+                    [=](dim_t bh0, dim_t h1, dim_t m0, dim_t m1, dim_t m2) {
                         auto i = &input[off(
                                 input_d, bh0 * i_mult, h1, m0, m1, m2)];
                         auto o = &output[off(
@@ -1857,7 +1857,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         } else if (blk_idx == 1) {
             const dim_t BH1 = pdims[1] / blksize;
             parallel_nd(H0, BH1, M0, M1, M2,
-                    [&](dim_t h0, dim_t bh1, dim_t m0, dim_t m1, dim_t m2) {
+                    [=](dim_t h0, dim_t bh1, dim_t m0, dim_t m1, dim_t m2) {
                         auto i = &input[off(
                                 input_d, h0, bh1 * i_mult, m0, m1, m2)];
                         auto o = &output[off(
@@ -1971,7 +1971,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 out = _qz<type_i, type_o>()(inp, out, alpha, beta);
         };
 
-        auto ker = [&](const data_t<type_i> *i, data_t<type_o> *o,
+        auto ker = [=](const data_t<type_i> *i, data_t<type_o> *o,
                            const int block_h0, const int block_h1) {
 #define blk_off AB_or_BC_blk_off<tag_traits_t<tag_o>::inner_blks>
             if (alpha == 1.0 && beta == 0.0) {
@@ -2049,7 +2049,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                             g, h0, h1, m2))
 
         parallel_nd(G, NB_H0, NB_H1, M0, M1, M2,
-                [&](dim_t g, dim_t nb_h0, dim_t nb_h1, dim_t m0, dim_t m1,
+                [=](dim_t g, dim_t nb_h0, dim_t nb_h1, dim_t m0, dim_t m1,
                         dim_t m2) {
                     auto i = &input[off(input_d, g, i_mult_0 * nb_h0,
                             i_mult_1 * nb_h1, m0, m1, m2)];
@@ -2107,7 +2107,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         const auto num_blocks = nelems / block_size;
         const auto rem_elems = nelems % block_size;
 
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [=](const int ithr, const int nthr) {
             size_t start {0}, end {0};
             balance211(num_blocks, nthr, ithr, start, end);
             start = start * block_size;
@@ -2232,7 +2232,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 const dim_t work_amount_zero
                         = get_scratchpad_size(input_d, output_d)
                         / sizeof(float);
-                parallel(0, [&](const int ithr, const int nthr) {
+                parallel(0, [=](const int ithr, const int nthr) {
                     dim_t start {0}, end {0};
                     balance211(work_amount_zero, nthr, ithr, start, end);
                     PRAGMA_OMP_SIMD()
@@ -2243,7 +2243,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             }
 
             const dim_t work_amount = input_d.nelems();
-            parallel(0, [&](const int ithr, const int nthr) {
+            parallel(0, [=](const int ithr, const int nthr) {
                 dim_t start {0}, end {0};
                 balance211(work_amount, nthr, ithr, start, end);
                 PRAGMA_OMP_SIMD()
@@ -2264,7 +2264,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         const dim_t work_amount
                 = get_scratchpad_size(input_d, output_d) / (2 * sizeof(float));
 
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [=](const int ithr, const int nthr) {
             dim_t start {0}, end {0};
             balance211(work_amount, nthr, ithr, start, end);
             PRAGMA_OMP_SIMD()
@@ -2354,7 +2354,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         // is handled by a single thread
         const dim_t work_amount = input_d.nelems() / 2;
 
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [=](const int ithr, const int nthr) {
             auto u8_input = reinterpret_cast<const uint8_t *>(input);
             dim_t start {0}, end {0};
             balance211(work_amount, nthr, ithr, start, end);
@@ -2399,7 +2399,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             CHECK(zps.get(DNNL_ARG_SRC).get_md(src_zps_md, *input_d.md_));
         }
 
-        parallel_nd(input_d.nelems(), [&](dim_t idx) {
+        parallel_nd(input_d.nelems(), [=](dim_t idx) {
             // Must be per thread; when shared, race condition happens.
             dims_t input_idx {};
             float src_scale = 1.f;
@@ -2479,7 +2479,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         const dim_t work_amount = N * nelems_no_d0;
 
         if (alpha == 1.0 && beta == 0.0) {
-            parallel(0, [&](const int ithr, const int nthr) {
+            parallel(0, [=](const int ithr, const int nthr) {
                 dim_t n {0}, dim1_s {0};
                 dim_t start {0}, end {0};
                 balance211(work_amount, nthr, ithr, start, end);
@@ -2496,7 +2496,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 }
             });
         } else {
-            parallel(0, [&](const int ithr, const int nthr) {
+            parallel(0, [=](const int ithr, const int nthr) {
                 dim_t n {0}, dim1_s {0};
                 dim_t start {0}, end {0};
                 balance211(work_amount, nthr, ithr, start, end);
@@ -2630,7 +2630,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             CHECK(zps.get(DNNL_ARG_SRC).get_md(src_zps_md, *input_d.md_));
         }
 
-        parallel_nd(input_d.nelems(), [&](dim_t idx) {
+        parallel_nd(input_d.nelems(), [=](dim_t idx) {
             // Must be per thread; when shared, race condition happens.
             dims_t input_idx {};
             float src_scale = 1.f;

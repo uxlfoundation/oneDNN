@@ -14,24 +14,15 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "oneapi/dnnl/dnnl_types.h"
-
+#include "cpu/rv64/rvv_gemm_convolution_utils.hpp"
 #include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
-#include "cpu/rv64/rvv_gemm_convolution_utils.hpp"
 #include "cpu/scale_utils.hpp"
-#if DNNL_X64
-#include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
-#endif
 
 #include "cpu/platform.hpp"
-
-#if DNNL_X64
-#include "cpu/x64/cpu_isa_traits.hpp"
-#endif
 
 namespace dnnl {
 namespace impl {
@@ -1164,23 +1155,6 @@ status_t init_conf(conv_gemm_conf_t &jcp,
             VERBOSE_UNSUPPORTED_DT);
 
     CHECK(attr.set_default_formats(&dst_md));
-
-#if DNNL_X64
-    // for x64 we need to check post-ops after tags init
-    if (check_postops) {
-        using namespace x64::injector;
-        static constexpr bool sum_at_pos_0_only = true;
-        static constexpr bool sum_requires_scale_one = true;
-        static constexpr bool sum_requires_zp_zero = true;
-
-        VDISPATCH_CONV_IC(
-                post_ops_ok(post_ops_ok_args_t(x64::avx512_core,
-                        {binary, eltwise, sum}, attr.post_ops_, &dst_d,
-                        sum_at_pos_0_only, sum_requires_scale_one,
-                        sum_requires_zp_zero)),
-                VERBOSE_UNSUPPORTED_POSTOP);
-    }
-#endif
 
     jcp.post_ops = attr.post_ops_;
 

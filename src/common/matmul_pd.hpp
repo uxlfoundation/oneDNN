@@ -233,7 +233,8 @@ struct matmul_pd_t : public primitive_desc_t {
                         && utils::one_of(mask, 0, dst_qmask_N(),
                                 dst_qmask_M() + dst_qmask_N());
                 ok = ok
-                        && IMPLICATION(!scales.get(arg).has_default_groups(),
+                        && IMPLICATION(!scales.get(arg).has_default_groups()
+                                        && !scales.get(arg).is_dynamic(),
                                 scales.get_group(arg, 1) == 1
                                         && (M() % scales.get_group(arg, 0))
                                                 == 0);

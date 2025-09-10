@@ -121,10 +121,23 @@ struct ref_matmul_t : public primitive_t {
                                     attr_.dropout_.dropout_desc_, true, false)),
                     VERBOSE_UNSUPPORTED_ATTR);
 
+            init_scratchpad();
+
             return status::success;
         }
 
     private:
+        void init_scratchpad() {
+            using namespace memory_tracking::names;
+            auto scratchpad = scratchpad_registry().registrar();
+            if (attr()->scales_.get(DNNL_ARG_DST).is_dynamic()) {
+                // TODO: ideally, we should only use nthr * group size.
+                const memory_desc_wrapper dst_d(dst_md());
+                scratchpad.template book<float>(
+                        key_matmul_dst_in_acc_dt, dst_d.nelems());
+            }
+        }
+
         bool zero_points_ok() const {
             const auto &zp = attr()->zero_points_;
             if (!zp.has_default_values(DNNL_ARG_SRC)) { return false; }

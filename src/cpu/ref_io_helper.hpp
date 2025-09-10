@@ -132,6 +132,7 @@ inline void store_float_value(data_type_t dt, float val, void *ptr, dim_t idx) {
         CASE(s32);
         CASE(s8);
         CASE(u8);
+        CASE(e8m0);
         case f4_e2m1: {
             auto dst_ = reinterpret_cast<nibble2_t *>(ptr);
             nibble2_t nibble_pair = dst_[idx / 2];

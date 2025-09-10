@@ -217,7 +217,8 @@ type_t binary_op_type(op_kind_t op_kind, const type_t &a, const type_t &b,
     }
     if (utils::one_of(op_kind, op_kind_t::_div, op_kind_t::_mod) && a.is_int()
             && b.is_int()) {
-        return (a.is_signed() ? type_t::s32() : type_t::u32()).with_attr(attr);
+        return (a.is_signed() ? type_t::s32() : type_t::u32())[elems].with_attr(
+                attr);
     }
     return common_type(a, b);
 }

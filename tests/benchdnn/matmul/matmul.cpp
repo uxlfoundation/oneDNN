@@ -577,10 +577,11 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         }
 
         if (!prb->attr.scales.is_def(DNNL_ARG_DST)
-                && prb->attr.scales.get(DNNL_ARG_DST).policy
-                        != attr_t::COMMON) {
+                && prb->attr.scales.get(DNNL_ARG_DST).policy != attr_t::COMMON
+                && prb->attr.scales.get(DNNL_ARG_DST).policy != attr_t::MX) {
             BENCHDNN_PRINT(2,
-                    "[SKIP][%s:%d]: Only Common dst scales are supported "
+                    "[SKIP][%s:%d]: Only Common and MX dst scales are "
+                    "supported "
                     "on CPU.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;

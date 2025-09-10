@@ -232,3 +232,4 @@ bool is_subbyte_type(const dnnl_data_type_t &type) {
     return type == dnnl_f4_e2m1 || type == dnnl_f4_e3m0 || type == dnnl_u4
             || type == dnnl_s4;
 }
+

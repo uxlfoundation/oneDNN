@@ -335,8 +335,8 @@ struct gen_t : public primitive_t {
 
             bool valid = false;
             status_t status;
-	    int i = 0;
-            while  (true) {
+            int i = 0;
+            while (true) {
                 auto po = gpu_post_ops;
                 status = kernel_desc_.select_kernel(arch_, stepping,
                         dev_info_->eu_count(), has_systolic, is_integrated,
@@ -350,7 +350,7 @@ struct gen_t : public primitive_t {
                         d->batch(), std::move(po), i);
                 if (!kernel_desc_.has_entry()) break;
                 // select_kernel can return a strategy that failed in the finalize call
-		valid = status == status::success;
+                valid = status == status::success;
                 // Global k-parallel kernels don't support post-ops or non-f32/s32
                 //   accumulation unless fusion is enabled.
                 if (kernel_desc_.driver_info()->kParallel()
@@ -368,6 +368,7 @@ struct gen_t : public primitive_t {
 
                 compute::kernel_t kernel;
                 if (valid) {
+                    printf("TRY \n");
                     auto *intel_engine
                             = utils::downcast<intel::engine_t *>(engine);
                     dnnl::impl::gpu::intel::gemm::jit::gen_kernel_t kd(
@@ -375,8 +376,7 @@ struct gen_t : public primitive_t {
                     status = intel_engine->create_kernel(&kernel, &kd);
                     if (status == status::success) break;
                 }
-		i++;
-
+                i++;
             }
             VDISPATCH_GEMM_SC(status, VERBOSE_UNSUPPORTED_FEATURE,
                     "matching kernel not found in catalog");
@@ -585,6 +585,7 @@ struct gen_t : public primitive_t {
 
         auto kd = pd()->kernel_desc();
 
+        printf("CREATE \n");
         CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));
 
         scalar_type_ = kd->scalar_type();

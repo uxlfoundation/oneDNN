@@ -784,6 +784,51 @@ void brgemm_convolution_fwd_t<isa>::add_po_kernels(
 }
 
 template <cpu_isa_t isa>
+void brgemm_convolution_fwd_t<isa>::prepare_src_zp_str(brgemm_thread_ctx_t &btc,
+        const int kd_s, const int kd_f, const bool do_postwork) const {
+    const auto _pd = pd();
+    const auto &jcp = _pd->jcp_;
+    auto ndims = _pd->ndims;
+
+    if (!do_postwork || !(jcp.src_zero_point && jcp.req_cal_comp_pad)) return;
+
+    const size_t base_offset
+            = 0; //get_comp_offset(btc.g, btc.ocb, 0, 0, kd_s, kd_f, 0, KH, 0, KW);
+
+    const auto oh_begin = btc.ohb * jcp.oh_block;
+    const auto oh_end = jcp.is_os_blocking
+            ? nstl::min(OH, oh_begin + jcp.oh_block)
+            : oh_begin + 1;
+    const auto oh_l = oh_end - oh_begin;
+    const auto ow_begin = btc.owb * jcp.ow_block;
+    const auto ow_end = nstl::min(OW, ow_begin + jcp.ow_block);
+    const auto ow_l = ow_end - ow_begin;
+    assert(oh_l * ow_l <= jcp.M);
+
+    for (int oh = oh_begin; oh < oh_end; oh++) {
+        const int iih = ndims_pick(oh * SH - TP, oh * SH - TP, 0);
+        const auto kh_s_ = div_up(nstl::max(0, -iih), DH);
+        const auto kh_s = ndims_pick(kh_s_, kh_s_, 0);
+        const auto kh_f_
+                = KH - div_up(nstl::max(0, iih - IH + (KH - 1) * DH + 1), DH);
+        const auto kh_f = ndims_pick(kh_f_, kh_f_, 1);
+        for (int ow = ow_begin; ow < ow_end; ow++) {
+            const auto iiw = ow * SW - LP;
+            const auto kw_s = div_up(nstl::max(0, -iiw), DW);
+            const auto kw_f = KW
+                    - div_up(nstl::max(0, iiw - IW + (KW - 1) * DW + 1), DW);
+            const auto m = ow - ow_begin + (oh - oh_begin) * jcp.ow_block;
+            const auto comp_offset = m * jcp.oc_block * sizeof(int32_t);
+            //            const auto comp_offset = get_comp_offset(
+            //                    btc.g, btc.ocb, 0, 0, kd_s, kd_f, kh_s, kh_f, kw_s, kw_f);
+            btc.src_zp_comp_offset[m] = comp_offset;
+            printf("m: %d, base offset: %d, comp offset: %d\n", m, base_offset,
+                    btc.src_zp_comp_offset[m]);
+        }
+    }
+}
+
+template <cpu_isa_t isa>
 int brgemm_convolution_fwd_t<isa>::get_comp_oh(const int oh) const {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
@@ -2293,13 +2338,14 @@ void brgemm_convolution_fwd_t<isa>::ker_trans(brgemm_thread_ctx_t &btc) const {
                 : 0;
         if (do_postwork) {
             //            printf("comp_ker_offs: %d\n", comp_ker_offs);
-            for (int i = 0; i < jcp.M; i++) {
-                btc.src_zp_comp_offset[i] = /*comp_ker_offs + */ i
+            /*            for (int i = 0; i < jcp.M; i++) {
+                btc.src_zp_comp_offset[i] = i
                         * jcp.oc_block * sizeof(int32_t);
                 ;
                 printf("ithr: %d, ocb: %d, i: %d, comp_ker_offs: %d\n",
                         btc.ithr, btc.ocb, i * 8, btc.src_zp_comp_offset[i]);
-            }
+            }*/
+            prepare_src_zp_str(btc, kd_s, kd_f, do_postwork);
         }
 
         if (nb_ic_b > 0) {

@@ -2399,6 +2399,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             + utils::div_up(abs(jcp.back_pad), jcp.dilate_d + 1);
     const auto kh_cnt = 1 + utils::div_up(abs(jcp.t_pad), jcp.dilate_h + 1)
             + utils::div_up(abs(jcp.b_pad), jcp.dilate_h + 1);
+    const auto kw_cnt = 1 + utils::div_up(abs(jcp.l_pad), jcp.dilate_w + 1)
+            + utils::div_up(abs(jcp.r_pad), jcp.dilate_w + 1);
     jcp.ker_ranges_size = jcp.exec_type == exec_trans
             ? kd_cnt * nstl::min(jcp.oh, jcp.oh_block + kh_cnt)
             : kd_cnt * kh_cnt;

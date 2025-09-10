@@ -16,7 +16,7 @@
 
 #include <algorithm>
 #include "utils/parallel.hpp"
-
+//#include "utils/numeric.hpp"
 #include "matmul/matmul.hpp"
 
 namespace matmul {
@@ -103,17 +103,9 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const int64_t wei_zp_group = !wei_zp_groups.empty()      ? wei_zp_groups[0]
             : ((wei_zp_mask >> (wei_m.ndims() - 2)) % 2) > 0 ? 1
                                                              : K;
-    auto gcd = [](int a, int b) {
-        while (a % b != 0) {
-            auto tmp = b;
-            b = a % b;
-            a = tmp;
-        }
-        return b;
-    };
 
-    auto smallest_k_group = gcd(gcd(src_scale_group, wei_scale_group),
-            gcd(src_zp_group, wei_zp_group));
+    auto smallest_k_group = gcd<int64_t>(
+            {src_scale_group, wei_scale_group, src_zp_group, wei_zp_group});
 
     const auto n_k_groups = K / smallest_k_group;
 

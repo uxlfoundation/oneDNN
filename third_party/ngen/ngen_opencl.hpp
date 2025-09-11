@@ -19,8 +19,10 @@
 
 #include "ngen_config_internal.hpp"
 
+#ifndef __OPENCL_CL_H
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
+#endif
 
 #include <atomic>
 #include <sstream>
@@ -191,6 +193,7 @@ std::vector<uint8_t> OpenCLCodeGenerator<hw>::getPatchTokenBinary(cl_context con
 {
     using super = ELFCodeGenerator<hw>;
     std::ostringstream dummyCL;
+    dummyCL.imbue(std::locale::classic());
     auto modOptions = options;
 
     if ((hw >= HW::XeHP) && (super::interface_.needGRF > 128))
@@ -334,6 +337,7 @@ Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id d
     cl_uint ipVersion = 0;      /* should be cl_version, but older CL/cl.h may not define cl_version */
     if (dynamic::clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL, sizeof(ipVersion), &ipVersion, nullptr) == CL_SUCCESS)
         product = npack::decodeHWIPVersion(ipVersion);
+
     // If it fails, compile a test program and extract the HW information from it.
     if (product.family == ProductFamily::Unknown) {
         const char *dummyCL = "kernel void _ngen_hw_detect(){}";

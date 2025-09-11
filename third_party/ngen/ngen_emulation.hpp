@@ -653,7 +653,7 @@ struct EmulationImplementation {
             auto acc = g.acc0.d();
             g.mov(mod, acc, src1, loc);
             g.mul(mod, dst, acc, src0, loc);
-        } else if (dstQ && s0D && ((s1W && !s1Immed) || ((s1W || s1D) && emulate64))) {
+        } else if (dstQ && s0D && (((s1W && !s1Immed) && emulateDWxDW) || ((s1W || s1D) && emulate64))) {
             RegData dstLo, dstHi;
             splitToDW(dst, dstLo, dstHi);
 
@@ -762,10 +762,11 @@ struct EmulationImplementation {
             if (src1 >= 32) stub();
 
             RegData dstHi, dstLo, s0Hi, s0Lo;
-
-            auto acc = temp[0].ud();
-
             splitToDW(dst, dstLo, dstHi);
+
+            RegData acc = temp[0].ud();
+            if (acc.isInvalid())
+                acc = g.acc0.ud(dstHi.getOffset())(dstHi.getHS());
 
             if (s0Q) {
                 splitToDW(src0, s0Lo, s0Hi);
@@ -806,10 +807,11 @@ struct EmulationImplementation {
             if (src1 >= 32) stub();
 
             RegData dstHi, dstLo, s0Hi, s0Lo;
-
-            auto acc = temp[0].ud();
-
             splitToDW(dst, dstLo, dstHi);
+
+            RegData acc = temp[0].ud();
+            if (acc.isInvalid())
+                acc = g.acc0.ud(dstLo.getOffset())(dstLo.getHS());
 
             if (s0Q) {
                 splitToDW(src0, s0Lo, s0Hi);

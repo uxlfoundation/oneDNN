@@ -21,13 +21,9 @@
 #if (defined(__has_include) && __has_include("ngen_config.hpp")) || defined(NGEN_CONFIG)
 #include "ngen_config.hpp"
 
-#ifndef XE3P
+#ifndef PRERELEASE_HW
 // Align behavior with open source nGEN for interoperability
-#define XE3P 0
-#endif
-#ifndef XE4
-// Align behavior with open source nGEN for interoperability
-#define XE4 0
+#define PRERELEASE_HW 0
 #endif
 
 #ifndef NGEN_ASM_SHOW_FORMATS
@@ -36,20 +32,8 @@
 
 #else
 // Default config settings
-#ifndef NGEN_DNNL
-
 #ifndef PRERELEASE_HW
 #define PRERELEASE_HW 1
-#endif
-
-#ifndef XE3P
-#define XE3P 1
-#endif
-
-#ifndef XE4
-#define XE4 1
-#endif
-
 #endif
 
 #ifndef NGEN_NAMESPACE
@@ -74,4 +58,13 @@
 #endif
 
 #endif
+
+#ifndef XE3P
+#define XE3P PRERELEASE_HW
+#endif
+
+#ifndef XE4
+#define XE4 PRERELEASE_HW
+#endif
+
 #endif /* header guard */

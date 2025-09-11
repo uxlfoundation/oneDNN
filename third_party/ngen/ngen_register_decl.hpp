@@ -1307,13 +1307,6 @@ PREFIX constexpr NGEN_NAMESPACE::FlagRegister CG::p4; \
 PREFIX constexpr NGEN_NAMESPACE::FlagRegister CG::p5; \
 PREFIX constexpr NGEN_NAMESPACE::FlagRegister CG::p6; \
 PREFIX constexpr NGEN_NAMESPACE::FlagRegister CG::p7; \
-PREFIX constexpr NGEN_NAMESPACE::FlagRegister CG::p8; \
-PREFIX constexpr NGEN_NAMESPACE::FlagRegister CG::p9; \
-PREFIX constexpr NGEN_NAMESPACE::FlagRegister CG::p10; \
-PREFIX constexpr NGEN_NAMESPACE::FlagRegister CG::p11; \
-PREFIX constexpr NGEN_NAMESPACE::FlagRegister CG::p12; \
-PREFIX constexpr NGEN_NAMESPACE::FlagRegister CG::p13; \
-PREFIX constexpr NGEN_NAMESPACE::FlagRegister CG::p14; \
 \
 PREFIX constexpr NGEN_NAMESPACE::InstructionModifier CG::rne; \
 PREFIX constexpr NGEN_NAMESPACE::InstructionModifier CG::ru; \

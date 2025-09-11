@@ -2439,7 +2439,7 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
                             // tokenMaskSrc &= ~depTokenMask;          /* not working in certain cases */
                             tokenMaskSrc |=  produce.tokenMaskDst;
                             if (pww.rs)
-                                bb.movs.push_back({uint32_t(inumSync), SWSBInfo{}, 0, true, dtForPipe(generated.pipe.toPipe())});
+                                bb.movs.push_back(DummyMovInsertion{uint32_t(inumSync), SWSBInfo{}, 0, true, dtForPipe(generated.pipe.toPipe())});
                             break;
                         }
                         case PVCWARWA::DummyMov: {
@@ -2471,8 +2471,8 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
                         generated.tokenMaskDst = tokenMaskDst;
                         int maxItems = swsbItems(getEncodingXe4(opcode));
                         while (true) {
-                            int nsrc = utils::popcnt(tokenMaskSrc);
-                            int ndst = utils::popcnt(tokenMaskDst);
+                            int nsrc = utils::popcnt(generated.tokenMaskSrc);
+                            int ndst = utils::popcnt(generated.tokenMaskDst);
                             int nitem = nsrc + ndst + utils::popcnt(depPipe);
                             if (nitem <= maxItems) break;   // SWSB fits inside the instruction.
 
@@ -2508,7 +2508,7 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
                     } else
 #endif
                     {
-                        // Pre-Xe4 SWSB finalization.
+                        // Xe/Xe2/Xe3 SWSB finalization.
                         //    - use SWSB to mark src/dst w/o dist (in-order or no token) or dst + dist (in-order only, same pipe)
                         //    - add sync for any remaining dependencies.
                         bool defaultPipe = generated.pipe.inOrder() && (depPipe == generated.pipe.inOrderPipe())

@@ -37,14 +37,16 @@ public:
     explicit ELFCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator<hw>(stepping_, debugConfig) {}
     explicit ELFCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator(0, debugConfig) {}
 
-    const NEOInterfaceHandler &getInterface() { return interface_; }
-    void setInterface(NEOInterfaceHandler interface) {interface_ = std::move(interface);}
+    const NEOInterfaceHandler &getInterface()                            { return interface_; }
+    void setInterface(NEOInterfaceHandler i)                             { interface_ = std::move(i); }
 
     void externalName(const std::string &name)                           { interface_.externalName(name); }
 
     const std::string &getExternalName() const                           { return interface_.getExternalName(); }
     int getSIMD() const                                                  { return interface_.getSIMD(); }
+#if XE4
     int getABarrierCount() const                                         { return interface_.getABarrierCount(); }
+#endif
     int getGRFCount() const                                              { return interface_.getGRFCount(); }
     size_t getSLMSize() const                                            { return interface_.getSLMSize(); }
 
@@ -52,7 +54,9 @@ public:
     void requireArbitrationMode(ThreadArbitrationMode mode)              { interface_.requireArbitrationMode(mode); }
     void requireBarrier()                                                { interface_.requireBarrier(); }
     void requireBarriers(int nbarriers)                                  { interface_.requireBarriers(nbarriers); }
+#if XE4
     void requireABarriers(int nbarriers)                                 { interface_.requireABarriers(nbarriers); }
+#endif
     void requireDPAS()                                                   { interface_.requireDPAS(); }
     void requireGlobalAtomics()                                          { interface_.requireGlobalAtomics(); }
     void requireGRF(int grfs)                                            { BinaryCodeGenerator<hw>::requireGRF(grfs); interface_.requireGRF(grfs); }
@@ -549,17 +553,16 @@ private:
 #define NGEN_FORWARD_ELF(hw) \
 NGEN_FORWARD_SCOPE_NO_ELF_OVERRIDES(NGEN_NAMESPACE::ELFCodeGenerator<hw>) \
 NGEN_FORWARD_SCOPE_ELF_EXTRA(NGEN_NAMESPACE::ELFCodeGenerator<hw>)        \
+NGEN_FORWARD_SCOPE_ELF_EXTRA2(NGEN_NAMESPACE::ELFCodeGenerator<hw>)       \
 template <typename... Targs> void externalName(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::externalName(std::forward<Targs>(args)...); } \
 const std::string &getExternalName() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getExternalName(); } \
 int getSIMD() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getSIMD(); } \
-int getABarrierCount() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getABarrierCount(); } \
 int getGRFCount() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getGRFCount(); } \
 size_t getSLMSize() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getSLMSize(); } \
 template <typename... Targs> void require32BitBuffers(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::require32BitBuffers(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireArbitrationMode(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireArbitrationMode(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireBarrier(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireBarrier(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireBarriers(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireBarriers(std::forward<Targs>(args)...); } \
-template <typename... Targs> void requireABarriers(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireABarriers(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireDPAS(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireDPAS(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireGlobalAtomics(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireGlobalAtomics(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireGRF(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireGRF(std::forward<Targs>(args)...); } \
@@ -594,6 +597,14 @@ void epilogue(const NGEN_NAMESPACE::RegData &r0_info = NGEN_NAMESPACE::RegData()
 #else
 #define NGEN_FORWARD_SCOPE_ELF_EXTRA(scope) \
 template <typename... Targs> void setEfficient64Bit(Targs&&... args) { scope::setEfficient64Bit(std::forward<Targs>(args)...); }
+#endif
+
+#if !XE4
+#define NGEN_FORWARD_SCOPE_ELF_EXTRA2(scope)
+#else
+#define NGEN_FORWARD_SCOPE_ELF_EXTRA2(scope) \
+int getABarrierCount() const { return scope::getABarrierCount(); } \
+template <typename... Targs> void requireABarriers(Targs&&... args) { scope::requireABarriers(std::forward<Targs>(args)...); }
 #endif
 
 template <HW hw>

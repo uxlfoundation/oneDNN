@@ -120,7 +120,9 @@ public:
     const std::string &getExternalName() const           { return kernelName; }
     int getSIMD() const                                  { return simd; }
     int getBarrierCount() const                          { return barrierCount; }
+#if XE4
     int getABarrierCount() const                         { return abarrierCount; }
+#endif
     int getGRFCount() const                              { return needGRF; }
     size_t getSLMSize() const                            { return slmSize; }
 #if XE3P
@@ -131,7 +133,9 @@ public:
     void requireArbitrationMode(ThreadArbitrationMode m) { arbitrationMode = m; }
     void requireBarrier()                                { barrierCount = 1; }
     void requireBarriers(int nBarriers)                  { barrierCount = nBarriers; }
+#if XE4
     void requireABarriers(int nBarriers)                 { abarrierCount = nBarriers; }
+#endif
     void requireDPAS()                                   { needDPAS = true; }
     void requireGlobalAtomics()                          { needGlobalAtomics = true; }
     void requireGRF(int grfs)                            { needGRF = grfs; }
@@ -193,6 +197,7 @@ public:
         bool globalSurfaceAccess()   const { return (static_cast<int>(access) & static_cast<int>(GlobalAccessType::Surface)); }
         bool globalStatelessAccess() const { return (static_cast<int>(access) & static_cast<int>(GlobalAccessType::Stateless)); }
     };
+
     const Assignment &getAssignment(int idx) const   { return assignments[idx]; }
     size_t numAssignments() const   { return assignments.size(); }
 
@@ -210,7 +215,9 @@ protected:
     bool allow64BitBuffers = false;
     ThreadArbitrationMode arbitrationMode = ThreadArbitrationMode::Default;
     int barrierCount = 0;
+#if XE4
     int abarrierCount = 0;
+#endif
     RegData baseOverride;
     bool needDPAS = false;
     bool needGlobalAtomics = false;
@@ -603,6 +610,7 @@ void InterfaceHandler::finalize()
             newArgument(localSizeArgs[dim], DataType::ud, ExternalArgumentType::Hidden);
 
     assignArgsOfType(ExternalArgumentType::Hidden);
+
 #if XE4
     if (hw >= HW::Xe4) {
         crossthreadBytes = (base.getBase() - getCrossthreadBase().getBase()) * regSize
@@ -615,6 +623,7 @@ void InterfaceHandler::finalize()
                          + ((offset + 31) & -32);
         crossthreadRegs = GRF::bytesToGRFs(hw, crossthreadBytes);
     }
+
     // Manually add regular local size arguments.
     if (needLocalSize && !needNonuniformWGs) {
         for (int dim = 0; dim < 3; dim++) {
@@ -727,6 +736,7 @@ std::string InterfaceHandler::generateZeInfo() const
 #endif
 
     std::stringstream md;
+    md.imbue(std::locale::classic());
 
     const char *version = "1.8";
 #if XE3P
@@ -758,8 +768,10 @@ std::string InterfaceHandler::generateZeInfo() const
         md << "      offset_to_skip_per_thread_data_load: " << offsetSkipPerThread << '\n';
     if (barrierCount > 0)
         md << "      barrier_count: " << utils::roundup_pow2(barrierCount) << '\n';
+#if XE4
     if (abarrierCount > 0)
         md << "      abarrier_count: " << abarrierCount << '\n';
+#endif
     if (allow64BitBuffers)
         md << "      has_4gb_buffers: true\n";
     if (needDPAS)

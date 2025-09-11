@@ -35,9 +35,17 @@ namespace NGEN_NAMESPACE {
 // Exceptions.
 class level_zero_error : public std::runtime_error {
 public:
-    level_zero_error(ze_result_t status_ = ZE_RESULT_SUCCESS) : std::runtime_error("A Level Zero error occurred."), status(status_) {}
+    level_zero_error(ze_result_t status_ = ZE_RESULT_SUCCESS) : std::runtime_error("A Level Zero error occurred: " + to_hex(status_)), status(status_) {}
 protected:
     ze_result_t status;
+
+private:
+    static std::string to_hex(ze_result_t status) {
+        std::ostringstream oss;
+        oss.imbue(std::locale::classic());
+        oss << std::hex << status;
+        return "0x" + oss.str();
+    }
 };
 
 // Dynamic loading support.

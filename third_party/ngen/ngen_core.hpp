@@ -683,6 +683,7 @@ static inline std::ostream &operator<<(std::ostream &str, SyncFunction func)
     return str;
 }
 
+#if XE4
 struct SyncFunctionXe4 { SyncFunction fc; };
 
 static inline std::ostream &operator<<(std::ostream &str, SyncFunctionXe4 func)
@@ -691,6 +692,7 @@ static inline std::ostream &operator<<(std::ostream &str, SyncFunctionXe4 func)
     str << names[static_cast<uint8_t>(func.fc) & 0xF];
     return str;
 }
+#endif
 #endif
 
 #if XE3P
@@ -1066,8 +1068,6 @@ inline void RegData::fixup(HW hw, int execSize, int execWidth, DataType defaultT
 {
 #ifdef NGEN_SAFE
     if (isInvalid()) throw invalid_object_exception();
-    if (execSize != utils::rounddown_pow2(execSize)) throw invalid_modifiers_exception();
-    if (hs > 4) throw invalid_region_exception();
 #endif
 
     if (getType() == DataType::invalid) {
@@ -1085,7 +1085,7 @@ inline void RegData::fixup(HW hw, int execSize, int execWidth, DataType defaultT
             int maxWidth = 32 / getBytes();
             width = (hs == 0) ? 1 : std::min<int>({int(maxWidth / hs), execSize, 16});
             vs = width * hs;
-            if (arity == 3 && hw >= HW::Gen12LP && vs == 2 && srcN < 2) {
+            if (arity == 3 && hw >= HW::Gen12LP && vs == 2 && srcN >= 0 && srcN < 2) {
 #ifdef NGEN_SAFE
                 if (hs != 1) throw invalid_region_exception();
 #endif
@@ -1772,7 +1772,7 @@ public:
 
     static inline constexpr14 int count(HW hw) {
 #if XE4
-        if (hw >= HW::Xe4) return 15;
+        if (hw >= HW::Xe4) return 8;
 #endif
         return (hw >= HW::XeHPC) ? 4 : 2;
     }
@@ -2024,13 +2024,15 @@ public:
     /* implicit */ GRFDisp(const RegData &rd) : disp(0) {
         switch (rd.getRegFile()) {
             case RegFileGRF: base = reinterpret_cast<const GRF &>(rd); return;
-#if XE3P
             case RegFileARF:
+                if (rd.getARFType() == ARFType::null) return;
+#if XE3P
                 if (rd.getARFType() == ARFType::s) {
                     ind0SubReg = rd.getByteOffset();
                     return;
                 }
 #endif
+                break;
 #if XE4
             case RegFileSRF:
                 ind0SubReg = rd.getBase();
@@ -5942,6 +5944,16 @@ struct AMMAOptions
         *this = *this | other;
         return *this;
     }
+};
+
+struct AMMAParams
+{
+    bool sparse = false;
+    int m = 0, n = 0, k = 0;
+    DataType dtype = DataType::invalid;
+    DataType atype = DataType::invalid;
+    DataType btype = DataType::invalid;
+    DataType ctype = DataType::invalid;
 };
 #endif
 

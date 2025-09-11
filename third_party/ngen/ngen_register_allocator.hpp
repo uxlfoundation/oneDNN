@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef NGEN_REGISTER_AllOCATOR_HPP
-#define NGEN_REGISTER_AllOCATOR_HPP
+#ifndef NGEN_REGISTER_ALLOCATOR_HPP
+#define NGEN_REGISTER_ALLOCATOR_HPP
 
 #if defined(__clang__)
 #pragma clang diagnostic push

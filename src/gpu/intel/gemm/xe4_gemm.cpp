@@ -457,9 +457,15 @@ public:
                 && desc_.b_type == ngen::DataType::u8);
         // XXX: Adjust when fixed in XeSim.
         if (a_bytes == 1 && !both_u8) k_bytes *= 2;
-        amma(false, desc_.bm, desc_.bn, k_bytes,
-                is_last ? desc_.c_type : desc_.acc_type(), desc_.a_type,
-                desc_.b_type, desc_.acc_type(), opts, desc, barriers, flags);
+        ngen::AMMAParams params;
+        params.m = desc_.bm;
+        params.n = desc_.bn;
+        params.k = k_bytes;
+        params.dtype = is_last ? desc_.c_type : desc_.acc_type();
+        params.atype = desc_.a_type;
+        params.btype = desc_.b_type;
+        params.ctype = desc_.acc_type();
+        amma(params, opts, desc, barriers, flags);
         if (is_last) abarrierarriveexp(tmp, d_bar, one);
         abarrierarriveexp(tmp, a_cons_bar, one);
         abarrierarriveexp(tmp, b_cons_bar, one);

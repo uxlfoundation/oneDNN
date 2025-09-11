@@ -239,7 +239,7 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::ARL) return NGEN_NAMESPACE::ProductFamily::ARL;
     if (family == ProductFamily::BMG) return NGEN_NAMESPACE::ProductFamily::BMG;
     if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::LNL;
-    if (family == ProductFamily::PTL) return ngen::ProductFamily::GenericXe3;
+    if (family == ProductFamily::PTL) return NGEN_NAMESPACE::ProductFamily::GenericXe3;
 #if XE3P
     if (family == ProductFamily::FCS) return NGEN_NAMESPACE::ProductFamily::GenericXe3p;
 #endif

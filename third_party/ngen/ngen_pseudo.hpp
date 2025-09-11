@@ -898,8 +898,7 @@ void admarrl2g(ADMAReduction rop, ADMAOptions opts, AddressBase base, Register p
 }
 
 // Async MMA.
-void amma(InstructionModifier mod, bool sparse, int m, int n, int k,
-          DataType dtype, DataType atype, DataType btype, DataType ctype, AMMAOptions opts,
+void amma(InstructionModifier mod, AMMAParams params, AMMAOptions opts,
           Register desc, Register barriers, Register flags, SourceLocation loc = {})
 {
     auto encodeInputType = [](DataType dt) {
@@ -914,21 +913,20 @@ void amma(InstructionModifier mod, bool sparse, int m, int n, int k,
     };
 
     auto &o = opts.desc.amma;
-    opts.desc.common.opcode = sparse ? AMMAOpcode::sparse_mma : AMMAOpcode::dense_mma;
-    o.m = (m >> 5) - 1;
-    o.n = (n >> 5) - 1;
-    o.k = (k >> 5) - 1;
-    o.atype = encodeInputType(atype);
-    o.btype = encodeInputType(btype);
-    o.ctype = encodeAccType(ctype);
-    o.dtype = encodeAccType(dtype);
+    opts.desc.common.opcode = params.sparse ? AMMAOpcode::sparse_mma : AMMAOpcode::dense_mma;
+    o.m = (params.m >> 5) - 1;
+    o.n = (params.n >> 5) - 1;
+    o.k = (params.k >> 5) - 1;
+    o.atype = encodeInputType(params.atype);
+    o.btype = encodeInputType(params.btype);
+    o.ctype = encodeAccType(params.ctype);
+    o.dtype = encodeAccType(params.dtype);
     sendgx(mod, SharedFunction::mma, null, RegisterRange(desc, 0), RegisterRange(barriers, 0), flags.uq(), opts.desc.all, loc);
 }
 
-void amma(bool sparse, int m, int n, int k,
-          DataType dtype, DataType atype, DataType btype, DataType ctype, AMMAOptions opts,
+void amma(AMMAParams params, AMMAOptions opts,
           Register desc, Register barriers, Register flags, SourceLocation loc = {}) {
-    amma(InstructionModifier(), sparse, m, n, k, dtype, atype, btype, ctype, opts, desc, barriers, flags, loc);
+    amma(InstructionModifier(), params, opts, desc, barriers, flags, loc);
 }
 
 void ammaerrorclr(InstructionModifier mod = {}, SourceLocation loc = {}) {

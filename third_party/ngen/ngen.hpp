@@ -3137,7 +3137,25 @@ NGEN_FORWARD_SCOPE_OP(abarriercomplete, scope) \
 NGEN_FORWARD_SCOPE_OP(abarrierpoll, scope) \
 NGEN_FORWARD_SCOPE_OP(abarriertry, scope) \
 NGEN_FORWARD_SCOPE_OP(abarrierinval, scope) \
-NGEN_FORWARD_SCOPE_OP(abarrierquery, scope)
+NGEN_FORWARD_SCOPE_OP(abarrierquery, scope) \
+NGEN_FORWARD_SCOPE_OP(abarrierwait, scope) \
+NGEN_FORWARD_SCOPE_OP(admall2r, scope) \
+NGEN_FORWARD_SCOPE_OP(admall2g, scope) \
+NGEN_FORWARD_SCOPE_OP(admalpf, scope) \
+NGEN_FORWARD_SCOPE_OP(admalg2l, scope) \
+NGEN_FORWARD_SCOPE_OP(admalrl2r, scope) \
+NGEN_FORWARD_SCOPE_OP(admalrl2g, scope) \
+NGEN_FORWARD_SCOPE_OP(admatl2g, scope) \
+NGEN_FORWARD_SCOPE_OP(admatpf, scope) \
+NGEN_FORWARD_SCOPE_OP(admatg2l, scope) \
+NGEN_FORWARD_SCOPE_OP(admatrl2g, scope) \
+NGEN_FORWARD_SCOPE_OP(admarl2g, scope) \
+NGEN_FORWARD_SCOPE_OP(admarpf, scope) \
+NGEN_FORWARD_SCOPE_OP(admarg2l, scope) \
+NGEN_FORWARD_SCOPE_OP(admarrl2g, scope) \
+NGEN_FORWARD_SCOPE_OP(amma, scope) \
+NGEN_FORWARD_SCOPE_OP(ammaerrorclr, scope) \
+NGEN_FORWARD_SCOPE_OP(ammaerrorquery, scope)
 #endif
 
 #ifdef NGEN_NO_OP_NAMES
@@ -3503,8 +3521,6 @@ using scope::indirectSRF; \
 using scope::lid; \
 using scope::p0; using scope::p1; using scope::p2; using scope::p3; \
 using scope::p4; using scope::p5; using scope::p6; using scope::p7; \
-using scope::p8; using scope::p9; using scope::p10; using scope::p11; \
-using scope::p12; using scope::p13; using scope::p14; \
 using scope::rne; using scope::ru; using scope::rd; using scope::rtz; using scope::rna; \
 using scope::clmp; \
 using scope::D4; using scope::D6; \

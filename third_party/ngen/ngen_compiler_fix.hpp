@@ -412,8 +412,6 @@ void _workaround_() {
 
     (void) p0.getBase(); (void) p1.getBase(); (void) p2.getBase(); (void) p3.getBase();
     (void) p4.getBase(); (void) p5.getBase(); (void) p6.getBase(); (void) p7.getBase();
-    (void) p8.getBase(); (void) p9.getBase(); (void) p10.getBase(); (void) p11.getBase();
-    (void) p12.getBase(); (void) p13.getBase(); (void) p14.getBase();
 
     (void) rne.getAll(); (void) ru.getAll(); (void) rd.getAll(); (void) rtz.getAll();
     (void) rna.getAll();

@@ -379,7 +379,6 @@ static constexpr_reg IndirectRegisterFrame<RegFileSRF> indirectSRF{};
 static constexpr_reg ARF lid{ARFType::lid, 0};
 
 static constexpr_reg FlagRegister p0{0}, p1{1}, p2{2}, p3{3}, p4{4}, p5{5}, p6{6}, p7{7};
-static constexpr_reg FlagRegister p8{8}, p9{9}, p10{10}, p11{11}, p12{12}, p13{13}, p14{14};
 
 static constexpr_reg InstructionModifier rne{RoundingOverride::rne};
 static constexpr_reg InstructionModifier ru{RoundingOverride::ru};

@@ -128,7 +128,7 @@ inline layout_t make_layout(const type_t &type, const expr_t &offset,
         def[b.dim] *= b.block;
     }
 
-    return layout_t(type, dims.size(), offset, blocks,
+    return layout_t(type, blocks, offset, into<dim_idx_t>(dims.size()),
             /*do_normalize=*/false);
 }
 
@@ -152,7 +152,7 @@ inline layout_t make_layout(
         blocks.emplace_back(block.dim_idx, block.block, block.stride);
     }
 
-    return layout_t(to_ir(mdw.data_type()), mdw.ndims(), mdw.offset0(), blocks,
+    return layout_t(to_ir(mdw.data_type()), blocks, mdw.offset0(), mdw.ndims(),
             do_normalize);
 }
 

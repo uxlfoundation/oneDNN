@@ -130,7 +130,7 @@ public:
                 gpu_assert(type.is_f32()) << "Expected f32: " << mem_buf();
                 reg_buf_ = mem_buf();
                 reg_layout_ = layout_t(
-                        type, 0, std::vector<dim_t>(mem_view().nvdims(), 1));
+                        type, std::vector<dim_t>(mem_view().nvdims(), 1));
             }
         }
     }

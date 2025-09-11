@@ -267,8 +267,8 @@ public:
         sanity_check();
     }
 
-    layout_t(const type_t &type, const expr_t &offset,
-            const std::vector<dim_t> &dims, bool do_normalize = true)
+    layout_t(const type_t &type, const std::vector<dim_t> &dims,
+            const expr_t &offset = 0, bool do_normalize = true)
         : type_(type), ndims_(into<dim_idx_t>(dims.size())), offset_(offset) {
         dim_t stride = 1;
         for (int i = ndims_ - 1; i >= 0; i--) {
@@ -279,8 +279,9 @@ public:
         sanity_check();
     }
 
-    layout_t(const type_t &type, dim_idx_t ndims, const expr_t &offset,
-            const std::vector<layout_block_t> &blocks, bool do_normalize = true)
+    layout_t(const type_t &type, const std::vector<layout_block_t> &blocks = {},
+            const expr_t &offset = 0, dim_idx_t ndims = dim_idx::invalid,
+            bool do_normalize = true)
         : type_(type), ndims_(ndims), offset_(offset), blocks_(blocks) {
         stride_t stride(1);
         for (auto &b : blocks_) {
@@ -295,24 +296,21 @@ public:
         sanity_check();
     }
 
-    layout_t(const type_t &type, const expr_t &offset,
-            const std::vector<layout_block_t> &blocks, bool do_normalize = true)
-        : layout_t(type, dim_idx::invalid, offset, blocks, do_normalize) {}
-
-    layout_t(const type_t &type, const expr_t &offset, const layout_t &other,
-            bool do_normalize)
-        : layout_t(type, other.ndims(), offset, other.blocks(), do_normalize) {}
-
-    layout_t(const type_t &type, const expr_t &offset = expr_t(0))
-        : layout_t(type, dim_idx::invalid, offset,
-                std::vector<layout_block_t>()) {}
-
-    layout_t with(const std::vector<layout_block_t> &blocks,
+    layout_t with(std::vector<layout_block_t> blocks,
             bool do_normalize = true) const {
-        return layout_t(type(), ndims(false), offset(), blocks, do_normalize);
+        layout_t ret = *this;
+        ret.blocks_
+                = do_normalize ? normalize_blocks(blocks) : std::move(blocks);
+        return ret;
     }
 
-    bool is_empty() const { return ndims_ == 0; }
+    bool is_empty() const {
+        if (with_ndims()) {
+            if (ndims() == 0) gpu_assert(blocks_.empty());
+            return ndims() == 0;
+        }
+        return blocks_.empty();
+    }
     bool with_ndims() const { return ndims_ != dim_idx::invalid; }
     dim_idx_t ndims(bool check_invalid = true) const {
         if (check_invalid) gpu_assert(with_ndims());
@@ -1196,7 +1194,7 @@ public:
             new_masks[i / new_type.size()] = mask_id;
         }
         dim_t new_elems = utils::div_up(bytes, new_type.size());
-        layout_t _1d_layout(new_type, 0, std::vector<dim_t> {new_elems});
+        layout_t _1d_layout(new_type, std::vector<dim_t> {new_elems});
         return mask_tensor_t(_1d_layout, new_masks, mask2ids_, id2masks_);
     }
 

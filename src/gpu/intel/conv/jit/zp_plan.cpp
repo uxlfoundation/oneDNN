@@ -562,7 +562,7 @@ private:
         for (auto &b : blocks) {
             if (b.dim.index() == ck_idx_) b.block = 1;
         }
-        comp_layout_ = layout_t(type_t::s32(), wei_layout_.ndims(), 0, blocks);
+        comp_layout_ = layout_t(type_t::s32(), blocks, 0, wei_layout_.ndims());
         comp_layout_ = comp_layout_.make_dense();
     }
 
@@ -1170,7 +1170,7 @@ private:
                     break;
                 }
         }
-        mask_layout_ = layout_t(type_t::s32(), 0, std::vector<dim_t>(ndims, 1));
+        mask_layout_ = layout_t(type_t::s32(), std::vector<dim_t>(ndims, 1));
         for (int i = 0; i < ndims; i++) {
             auto &name = vvars[i].as<var_t>().name;
             if (utils::one_of(name, "mb", "ow", "osp", "iw") && dims[i] != 1) {

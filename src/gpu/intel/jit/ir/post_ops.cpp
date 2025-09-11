@@ -120,7 +120,7 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
                         utils::div_up(schedule.b_view().tlayout().size(),
                                 tlayout.type().size()));
                 view.set_tlayout(tlayout);
-                layout_t scalar(zp_cfg.src_zp_type, 0,
+                layout_t scalar(zp_cfg.src_zp_type,
                         std::vector<dim_t>(view.vvars().size(), 1), false);
                 auto zp = add_input_tensor(view_t(scalar, view.vvars()), buf);
                 auto in = add_input_tensor(view, wei);

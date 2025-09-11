@@ -920,7 +920,7 @@ void fma_plan_t::set_split(abc_kind_t abc, int factor) {
                     fma_kind_t::dpasw)) {
         auto blocks = a_layout.blocks();
         blocks.back().block /= factor;
-        auto layout = layout_t(a_layout.type(), a_layout.ndims(), 0, blocks);
+        auto layout = layout_t(a_layout.type(), blocks, 0, a_layout.ndims());
         m_blk = get_dpas_block_rcount(layout, 1);
     }
 }
@@ -1344,7 +1344,7 @@ struct fma_context_t {
             auto bmnk_layout
                     = mapper.map_to_bmnk(abc, bmnks, layout).retype(type);
             auto fma_layout = bmnk_layout.make_with_block(
-                    layout_t(type, bmnks.size(), 0, blocks));
+                    layout_t(type, blocks, 0, bmnks.size()));
             auto abc_layout
                     = mapper.map_from_bmnk(abc, bmnks, fma_layout, layout);
             if (cvt_f16) return abc_layout.retype(type_t::f16());
@@ -1363,7 +1363,7 @@ struct fma_context_t {
             auto bmnks = get_bmnk_kinds(abc, /*with_batch=*/true);
             auto bmnk_layout = mapper.map_to_bmnk(abc, bmnks, ret);
             auto fma_layout = bmnk_layout.make_with_block(
-                    layout_t(ret.type(), (int)bmnks.size(), 0, blocks));
+                    layout_t(ret.type(), blocks, 0, (int)bmnks.size()));
             auto abc_layout = mapper.map_from_bmnk(abc, bmnks, fma_layout, ret);
             if (layout.type().is_x8()) {
                 gpu_assert(abc_layout.type().is_s16());
@@ -1623,7 +1623,7 @@ layout_t to_reduce_layout(
         reduce_blocks.push_back(bb);
     }
     auto type = get_accumulation_type(cfg, layout.type(), layout.type());
-    return layout_t(type, reduce_ndims, 0, reduce_blocks).make_dense();
+    return layout_t(type, reduce_blocks, 0, reduce_ndims).make_dense();
 }
 
 class direct_view_t {
@@ -1670,7 +1670,7 @@ public:
             }
         }
 
-        return layout_t(layout.type(), view_.nvdims(), 0, blocks);
+        return layout_t(layout.type(), blocks, 0, view_.nvdims());
     }
 
 private:
@@ -1811,7 +1811,7 @@ layout_t get_c_layout(const layout_t &a_layout, const layout_t &b_layout,
         blocks.push_back(b);
     }
 
-    layout_t c_layout(c_blk_layout.type(), c_blk_layout.ndims(), 0, blocks);
+    layout_t c_layout(c_blk_layout.type(), blocks, 0, c_blk_layout.ndims());
     c_layout = c_layout.make_with_block(c_blk_layout);
     return c_layout;
 }
@@ -2235,7 +2235,7 @@ private:
         auto l = plan_.fma.c_prb_layout;
         int ndims = l.ndims();
         auto blocks = l.blocks();
-        l = layout_t(l.type(), ndims + 1, l.offset(), blocks);
+        l = layout_t(l.type(), blocks, l.offset(), ndims + 1);
         l = l.add_outer_block(ndims, k_tg);
         int outer = 1;
         auto rem_dims = l.dims();
@@ -2273,8 +2273,8 @@ private:
         auto &bmnk_mapper = gemm_schedule_.bmnk_mapper();
         object_map_t<expr_t, int> k_vars;
         auto k_sub_layout = [&](abc_kind_t abc_kind, const layout_t &l) {
-            layout_t k_layout = layout_t(type_t::u8(), 0,
-                    std::vector<dim_t>(layout_t::max_ndims, 1));
+            layout_t k_layout = layout_t(
+                    type_t::u8(), std::vector<dim_t>(layout_t::max_ndims, 1));
             for (auto &b : l.blocks()) {
                 auto bmnk_kind = bmnk_mapper.bmnk_kind(abc_kind, b.dim);
                 if (bmnk_kind != bmnk_kind_t::k) continue;
@@ -2368,7 +2368,7 @@ private:
         auto &a_type = a_layout.type();
         auto &b_type = b_layout.type();
         auto c_type = get_accumulation_type(cfg_, a_type, b_type);
-        layout_t c_blk_layout(c_type, 0, std::vector<dim_t>(3, 1));
+        layout_t c_blk_layout(c_type, std::vector<dim_t>(3, 1));
         switch (fma_kind) {
             case fma_kind_t::dp4a:
             case fma_kind_t::dpas:
@@ -2465,11 +2465,11 @@ private:
                 ? cfg_.zp_cfg().src_zp_type
                 : type_t::s32();
         layout_t zp_layout(
-                src_zp_type, zp_off, std::vector<dim_t> {zp_g_dim, zp_ic_dim});
+                src_zp_type, std::vector<dim_t> {zp_g_dim, zp_ic_dim}, zp_off);
         view_t zp_view(zp_layout);
         // TODO: support non-scalar wei layouts
         layout_t zp_wei_layout(
-                cfg_.zp_cfg().wei_zp_type, 0, std::vector<dim_t> {1, 1});
+                cfg_.zp_cfg().wei_zp_type, std::vector<dim_t> {1, 1});
         view_t zp_wei_view(zp_wei_layout);
 
         plan.init(cfg_, x2r.a_load.send_params().hint_2d.enable, gemm_schedule_,

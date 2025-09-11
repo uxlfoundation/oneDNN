@@ -21,22 +21,23 @@
 #include "common/memory.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
-#include "gpu/gpu_reorder_pd.hpp"
 #include "gpu/gpu_resource.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/primitive.hpp"
+#include "gpu/intel/reorder/config.hpp"
+#include "gpu/intel/rnn/config.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
-struct rnn_weights_reorder_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
-    struct pd_t : public reorder_pd_t {
-        using reorder_pd_t::reorder_pd_t;
+struct weights_reorder_t : public primitive_t {
+    using primitive_t::primitive_t;
+    struct pd_t : public reorder::pd_t {
+        using reorder::pd_t::pd_t;
 
-        DECLARE_COMMON_PD_T("cross_engine::rnn", rnn_weights_reorder_t);
+        DECLARE_COMMON_PD_T("cross_engine::rnn", weights_reorder_t);
 
         status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
                 impl::engine_t *dst_engine) {
@@ -50,10 +51,9 @@ struct rnn_weights_reorder_t : public gpu_primitive_t {
             VDISPATCH_REORDER(dst_engine->kind() == engine_kind::gpu,
                     VERBOSE_BAD_ENGINE_KIND);
 
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(dst_engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(dst_engine);
 
-            VDISPATCH_REORDER(compute_engine->mayiuse(
+            VDISPATCH_REORDER(intel_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
             VDISPATCH_REORDER(
@@ -61,9 +61,9 @@ struct rnn_weights_reorder_t : public gpu_primitive_t {
                             utils::one_of(data_type::f16, src_md()->data_type,
                                     dst_md()->data_type),
                             true
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16)
-                                    && compute_engine->mayiuse(
+                                    && intel_engine->mayiuse(
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
@@ -76,7 +76,7 @@ struct rnn_weights_reorder_t : public gpu_primitive_t {
         status_t init_conf(impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        rnn_reorder_conf_t conf;
+        reorder_conf_t conf;
 
     private:
         DECLARE_GPU_REORDER_CREATE();
@@ -131,6 +131,7 @@ private:
     enum { SCALES_ = 0 };
 };
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example cpu_single_op_partition.cpp
-/// @copybrief graph_cpu_single_op_partition_cpp
 /// > Annotated version: @ref graph_cpu_single_op_partition_cpp
 
 /// @page graph_cpu_single_op_partition_cpp Single op partition on CPU
@@ -44,6 +43,7 @@
 ///
 /// @page graph_cpu_single_op_partition_cpp
 /// @snippet cpu_single_op_partition.cpp Headers and namespace
+
 //[Headers and namespace]
 #include <iostream>
 #include <memory>

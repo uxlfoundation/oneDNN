@@ -154,8 +154,6 @@ typically referred to as channels (hence in formulas \f$c\f$ is used).
 
 1. Use in-place operations whenever possible.
 
-## Example
+## Examples
 
-[Softmax Primitive Example](@ref softmax_example_cpp)
-
-@copydetails softmax_example_cpp_short
+* @ref softmax_example_cpp

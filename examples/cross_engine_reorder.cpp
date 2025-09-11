@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example cross_engine_reorder.cpp
-/// @copybrief cross_engine_reorder_cpp
 /// > Annotated version: @ref cross_engine_reorder_cpp
 
 /// @page cross_engine_reorder_cpp Reorder between CPU and GPU engines

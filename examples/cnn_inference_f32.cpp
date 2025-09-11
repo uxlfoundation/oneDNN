@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example cnn_inference_f32.cpp
-/// @copybrief cnn_inference_f32_cpp
 /// > Annotated version: @ref cnn_inference_f32_cpp
 
 /// @page cnn_inference_f32_cpp CNN f32 inference example

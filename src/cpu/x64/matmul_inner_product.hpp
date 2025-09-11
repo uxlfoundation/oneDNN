@@ -59,7 +59,7 @@ struct matmul_inner_product_fwd_t : public primitive_t {
             const auto wei_dt = invariant_wei_md()->data_type;
             const auto dst_dt = invariant_dst_md()->data_type;
             const bool is_int8 = utils::one_of(src_dt, u8, s8) && wei_dt == s8
-                    && utils::one_of(dst_dt, u8, s8, s32, f32, bf16);
+                    && utils::one_of(dst_dt, u8, s8, s32, f32, f16, bf16);
 
             auto skip_mask = skip_mask_t::post_ops | skip_mask_t::sum_dt
                     | skip_mask_t::fpmath_mode;

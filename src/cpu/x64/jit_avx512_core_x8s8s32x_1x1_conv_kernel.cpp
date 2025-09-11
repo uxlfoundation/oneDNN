@@ -843,14 +843,15 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
-    if (!one_of(src_d.data_type(), data_type::u8, data_type::s8)
+    const bool dt_not_ok = (!one_of(src_d.data_type(), data_type::u8,
+                                    data_type::s8)
             || weights_d.data_type() != data_type::s8
             || !one_of(dst_d.data_type(), data_type::f32, data_type::s32,
-                    data_type::s8, data_type::u8, data_type::bf16))
-        return status::unimplemented;
+                    data_type::s8, data_type::u8, data_type::bf16));
+    VDISPATCH_CONV_IC(!dt_not_ok, VERBOSE_UNSUPPORTED_DT_CFG);
 
     jcp.nthr = nthreads;
 
@@ -895,8 +896,8 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
 
     jcp.os = static_cast<dim_t>(jcp.od) * jcp.oh * jcp.ow;
     jcp.is = static_cast<dim_t>(jcp.id) * jcp.ih * jcp.iw;
-
-    if (jcp.os > INT_MAX || jcp.is > INT_MAX) return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            jcp.os <= INT_MAX && jcp.is <= INT_MAX, VERBOSE_LARGE_SHAPES);
 
     const auto &post_ops = attr.post_ops_;
     const int dw_conv_ind = post_ops.find(primitive_kind::convolution);
@@ -930,8 +931,9 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
             = zp.get_mask(DNNL_ARG_SRC) == 0; // otherwise, it's per-channel
     assert(IMPLICATION(jcp.src_zero_point, jcp.zp_src_is_common));
 
-    if ((jcp.dst_zero_point || jcp.src_zero_point) && jcp.with_dw_conv)
-        return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            !((jcp.dst_zero_point || jcp.src_zero_point) && jcp.with_dw_conv),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     format_tag_t dat_tag = utils::pick(
             ndims - 3, format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);
@@ -939,7 +941,7 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
     jcp.dst_tag = dst_d.matches_one_of_tag(dat_tag);
 
     bool args_ok = jcp.src_tag == dat_tag && jcp.dst_tag == dat_tag;
-    if (!args_ok) return status::unimplemented;
+    VDISPATCH_CONV_IC(args_ok, VERBOSE_UNSUPPORTED_TAG);
 
     if (jcp.ngroups == 1) {
         jcp.oc = rnd_up(jcp.oc, 16);
@@ -960,7 +962,7 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
                     !binary_injector::
                             any_binary_postop_rhs_with_ternary_scalar_bcast(
                                     post_ops, dst_d));
-    if (!post_ops_ok_) return status::unimplemented;
+    VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
     const int simd_w = (jcp.ic % 16 == 0 && jcp.oc % 16 == 0) ? 16
             : (jcp.ic % 8 == 0 && jcp.oc % 8 == 0)            ? 8
@@ -1003,7 +1005,8 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
         return weights_md == want_wei_md;
     };
 
-    if (!set_or_check_wei_format()) return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            set_or_check_wei_format(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     args_ok = true && jcp.oc % simd_w == 0 && jcp.ic % simd_w == 0
             && jcp.f_pad == 0 && jcp.t_pad == 0 && jcp.l_pad == 0
@@ -1012,7 +1015,8 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
             && jcp.od == jcp.id && jcp.oh == jcp.ih
             && jcp.ow == jcp.iw // enforce rpad = 0
             && jcp.kd == 1 && jcp.kh == 1 && jcp.kw == 1;
-    if (!args_ok) return status::unimplemented;
+    VDISPATCH_CONV_IC(args_ok, VERBOSE_BAD_PARAM,
+            "bad config for 1x1 convolution kernel");
 
     jcp.bia_dt = jcp.with_bias ? cd.bias_desc.data_type : data_type::undef;
     jcp.dst_dt = cd.dst_desc.data_type;

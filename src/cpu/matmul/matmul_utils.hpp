@@ -151,29 +151,6 @@ struct matmul_helper_t {
         return true;
     }
 
-    // TODO: consolidate these functions with ones in simple_reorder.hpp, as they
-    // are copy-pasted, and address TODOs from there.
-    static status_t get_quant_md(memory_desc_t &md, const int ndims,
-            const dims_t in_dims, const int quant_mask, const dim_t g0,
-            const dim_t g1, const data_type_t dt) {
-        if (dt == data_type::undef || quant_mask < 0) {
-            md = glob_zero_md;
-            return status::success;
-        }
-
-        dims_t quant_dims {};
-        utils::copy_dims_with_mask(quant_dims, in_dims, ndims, quant_mask,
-                /* fill_with_ones = */ true);
-        if (ndims >= 2) {
-            quant_dims[ndims - 1] /= g1;
-            quant_dims[ndims - 2] /= g0;
-        }
-
-        CHECK(memory_desc_init_by_tag(
-                md, ndims, quant_dims, dt, get_abx_tag(ndims)));
-        return status::success;
-    }
-
     static dim_t get_quant_off(const dims_t &input_idx, const int ndims,
             const int quant_mask, const dim_t g0, const dim_t g1,
             const memory_desc_t &quant_md) {

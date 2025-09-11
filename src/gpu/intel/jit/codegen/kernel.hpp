@@ -24,24 +24,21 @@
 
 #include "common/cpp_compat.hpp"
 
-#include "common/impl_registration.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/jit/codegen/operand.hpp"
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
 #include "gpu/intel/jit/codegen/reorder.hpp"
 #include "gpu/intel/jit/generator.hpp"
+#include "gpu/intel/jit/ir/builder.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/ir/ir_builder.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
-#include "gpu/intel/jit/ir/message.hpp"
-#include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/ir/walk_order.hpp"
+#include "gpu/intel/logging.hpp"
 #include "ngen.hpp"
 #include "ngen_emulation.hpp"
 #include "ngen_register_allocator.hpp"
-#include "xpu/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -56,8 +53,8 @@ struct ir_generator_t : public generator_base_t {
 
     const char *kernel_name() const override { return kernel_name_.c_str(); }
 
-    status_t get_kernel(compute::kernel_t &kernel,
-            const compute::compute_engine_t *engine) override {
+    status_t get_kernel(
+            compute::kernel_t &kernel, const intel::engine_t *engine) override {
         try {
             KernelT _kernel(kernel_desc_, engine);
             return _kernel.get_kernel(kernel, engine);
@@ -1202,8 +1199,8 @@ public:
         return kernel_iface().kernel_name().c_str();
     }
 
-    status_t get_kernel(compute::kernel_t &kernel,
-            const compute::compute_engine_t *engine) override {
+    status_t get_kernel(
+            compute::kernel_t &kernel, const intel::engine_t *engine) override {
         return generator_->get_kernel(kernel, engine);
     }
 

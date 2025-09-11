@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example cnn_inference_int8.cpp
-/// @copybrief cnn_inference_int8_cpp
 /// > Annotated version: @ref cnn_inference_int8_cpp
 
 /// @page cnn_inference_int8_cpp CNN int8 inference example

@@ -207,8 +207,11 @@ impl::status_t fuse_src_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg);
 impl::status_t fuse_dst_transpose_to_predecessor(
         std::shared_ptr<subgraph_t> &sg);
 
-// This pass will fuse all the reshape to its lead op for GQA.
+// This pass will fuse all the `reshape` ops to its leading op for GQA.
 impl::status_t fuse_reshape_for_gqa(std::shared_ptr<subgraph_t> &sg);
+
+// This pass will fuse all the `reshape` ops to its leading op for GQA in GPU.
+impl::status_t fuse_reshape_for_gqa_gpu(std::shared_ptr<subgraph_t> &sg);
 
 // This pass will fold add_zps into the previous sub_zps with new_zps = sub_zps
 // - add_zps

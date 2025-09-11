@@ -14,11 +14,10 @@
 * limitations under the License.
 *******************************************************************************/
 
-/// @example  gpu_opencl_interop.cpp
-/// @copybrief gpu_opencl_interop_cpp
+/// @example gpu_opencl_interop.cpp
 /// > Annotated version: @ref gpu_opencl_interop_cpp
 
-/// @page  gpu_opencl_interop_cpp Getting started on GPU with OpenCL extensions API
+/// @page gpu_opencl_interop_cpp Getting started on GPU with OpenCL extensions API
 /// This C++ API example demonstrates programming for Intel(R) Processor
 /// Graphics with OpenCL* extensions API in oneDNN.
 ///
@@ -48,7 +47,7 @@
 /// All C++ API types and functions reside in the `dnnl` namespace.
 /// For simplicity of the example we import this namespace.
 /// @page gpu_opencl_interop_cpp
-/// @snippet  gpu_opencl_interop.cpp Prologue
+/// @snippet gpu_opencl_interop.cpp Prologue
 // [Prologue]
 #include <iostream>
 #include <numeric>
@@ -134,7 +133,7 @@ void gpu_opencl_interop_tutorial() {
     dnnl::stream strm(eng);
     // [Initialize stream]
 
-    /// @subsection  gpu_opencl_interop_cpp_sub2 Wrapping data into oneDNN memory object
+    /// @subsection gpu_opencl_interop_cpp_sub2 Wrapping data into oneDNN memory object
     ///
     /// Next, we create a memory object. We need to specify dimensions of our
     /// memory by passing a memory::dims object. Then we create a memory
@@ -154,7 +153,7 @@ void gpu_opencl_interop_tutorial() {
     memory mem(mem_d, eng);
     //  [memory alloc]
 
-    /// @subsection  gpu_opencl_interop_cpp_sub3 Initialize the data by executing a custom OpenCL kernel
+    /// @subsection gpu_opencl_interop_cpp_sub3 Initialize the data by executing a custom OpenCL kernel
     /// We are going to create an OpenCL kernel that will initialize our data.
     /// It requires writing a bit of C code to create an OpenCL program from a
     /// string literal source. The kernel initializes the data by the
@@ -258,7 +257,7 @@ int main(int argc, char **argv) {
             {engine::kind::gpu}, gpu_opencl_interop_tutorial);
 }
 
-/// @page  gpu_opencl_interop_cpp Getting started on GPU with OpenCL extensions API
+/// @page gpu_opencl_interop_cpp Getting started on GPU with OpenCL extensions API
 ///
 /// <b></b>
 ///

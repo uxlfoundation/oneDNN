@@ -1373,7 +1373,7 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
     const int ndims = src_d.ndims();
@@ -1382,12 +1382,13 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     const bool is_3d = ndims == 5;
     assert(is_1d || is_2d || is_3d);
 
-    if (!(mayiuse(avx512_core)
-                && one_of(src_d.data_type(), data_type::u8, data_type::s8)
-                && weights_d.data_type() == data_type::s8
-                && one_of(dst_d.data_type(), data_type::f32, data_type::s32,
-                        data_type::s8, data_type::u8, data_type::bf16)))
-        return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            (mayiuse(avx512_core)
+                    && one_of(src_d.data_type(), data_type::u8, data_type::s8)
+                    && weights_d.data_type() == data_type::s8
+                    && one_of(dst_d.data_type(), data_type::f32, data_type::s32,
+                            data_type::s8, data_type::u8, data_type::bf16)),
+            VERBOSE_ISA_DT_MISMATCH);
 
     jcp = zero<decltype(jcp)>();
     jcp.nthr = nthreads;
@@ -1442,14 +1443,14 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
             jcp.isa = avx512_core_bf16;
         } else {
             const auto bf16_emulation_isa = bf16_emulation_t::get_isa();
-            if (!is_superset(jcp.isa, bf16_emulation_isa))
-                return status::unimplemented;
+            VDISPATCH_CONV_IC(is_superset(jcp.isa, bf16_emulation_isa),
+                    VERBOSE_UNSUPPORTED_ISA);
         }
     }
 
-    if (jcp.is_depthwise && is_3d)
-        // NOTE: 3D depthwise is not currently supported here.
-        return status::unimplemented;
+    // NOTE: 3D depthwise is not currently supported here.
+    VDISPATCH_CONV_IC(!(jcp.is_depthwise && is_3d), VERBOSE_UNSUPPORTED_FEATURE,
+            "does not support depthwise convolution");
 
     if (jcp.is_depthwise) {
         jcp.ch_block = 16;
@@ -1475,8 +1476,9 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
             jcp.ic_block = (jcp.ic % 8 == 0) && (jcp.oc % 8 == 0) ? 8 : 4;
             jcp.oc_block = jcp.ic_block;
         }
-        if (jcp.ic % jcp.ic_block != 0 || jcp.oc % jcp.oc_block != 0)
-            return status::unimplemented;
+        VDISPATCH_CONV_IC(
+                (jcp.ic % jcp.ic_block == 0 && jcp.oc % jcp.oc_block == 0),
+                VERBOSE_BLOCKING_FAIL, "bad blocking dimensions");
     }
 
     jcp.simd_w = jcp.is_depthwise ? jcp.ch_block : jcp.ic_block;
@@ -1488,8 +1490,9 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
             = zp.get_mask(DNNL_ARG_SRC) == 0; // otherwise, it's per-channel
     assert(IMPLICATION(jcp.src_zero_point, jcp.zp_src_is_common));
 
-    if ((jcp.dst_zero_point || jcp.src_zero_point) && jcp.is_fused_conv)
-        return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            !((jcp.dst_zero_point || jcp.src_zero_point) && jcp.is_fused_conv),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
     const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
@@ -1569,7 +1572,8 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
         return weights_md == want_wei_md;
     };
 
-    if (!set_or_check_wei_format()) return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            set_or_check_wei_format(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     format_tag_t dat_tag = utils::pick(
             ndims - 3, format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);
@@ -1580,7 +1584,7 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     } else {
         jcp.src_tag = src_d.matches_one_of_tag(dat_tag);
     }
-    if (jcp.src_tag != dat_tag) return status::unimplemented;
+    VDISPATCH_CONV_IC(jcp.src_tag == dat_tag, VERBOSE_UNSUPPORTED_TAG_S, "src");
 
     if (dst_d.format_kind() == format_kind::any) {
         CHECK(memory_desc_init_by_tag(dst_md, dat_tag));
@@ -1588,7 +1592,7 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     } else {
         jcp.dst_tag = dst_d.matches_one_of_tag(dat_tag);
     }
-    if (jcp.dst_tag != dat_tag) return status::unimplemented;
+    VDISPATCH_CONV_IC(jcp.dst_tag == dat_tag, VERBOSE_UNSUPPORTED_TAG_S, "dst");
 
     if (jcp.with_bias) {
         if (bias_d.format_kind() == format_kind::any)
@@ -1627,7 +1631,7 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                     !binary_injector::
                             any_binary_postop_rhs_with_ternary_scalar_bcast(
                                     post_ops, dst_d));
-    if (!post_ops_ok_) return status::unimplemented;
+    VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
     jcp.typesize_in = types::data_type_size(src_d.data_type());
     jcp.typesize_out = types::data_type_size(dst_d.data_type());
@@ -1762,7 +1766,8 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
         }
     }
 
-    if (jcp.oc % jcp.oc_block != 0) return status::unimplemented;
+    VDISPATCH_CONV_IC(jcp.oc % jcp.oc_block == 0, VERBOSE_BLOCKING_FAIL,
+            "block size does not divide output channel");
 
     pick_loop_order(jcp, jcp.nthr);
 

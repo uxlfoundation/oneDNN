@@ -101,9 +101,9 @@ Here the \f$\src_{f32}, \weights_{f32}, \dst_{f32}\f$ are not
 computed at all, the whole work happens with int8 tensors.So the task
 is to compute the \f$\dst_{int8}\f$ tensor, using the \f$\src_{int8}\f$,
 \f$\weights_{int8}\f$ tensors passed at execution time, as well as the
-corresponding quantization parameters `scale_{\src}, scale_{\weights},
-scale_{\dst}` and `zero_point{\src},
-zero_point_{\dst}`. Mathematically, the computations are:
+corresponding quantization parameters \f$scale_{\src}\f$, \f$scale_{\weights}\f$,
+\f$scale_{\dst}\f$, and \f$zp_{\src}\f$, \f$zp_{\dst}\f$.
+Mathematically, the computations are:
 
 \f[
    \dst_{int8}[:] =
@@ -121,7 +121,7 @@ where
   is chosen to avoid overflows during the computations);
 
 - \f$comp_{s32}\f$ is a compensation term to account for
-  `\src` non-zero zero-point. This term is computed by the oneDNN
+  \f$\src\f$ non-zero zero-point. This term is computed by the oneDNN
   library and can typically be pre-computed ahead of time, for example
   during weights reorder.
 

@@ -164,8 +164,7 @@ private:
                 producer.get_attr<std::vector<attr_dt>>(attr_name)[0]);
     }
 
-    dnnl::primitive_attr make_primitive_attr(
-            std::shared_ptr<op_t> &op, fusion_info_mgr_t &mgr);
+    dnnl::primitive_attr make_primitive_attr(std::shared_ptr<op_t> &op);
 };
 
 } // namespace dnnl_impl

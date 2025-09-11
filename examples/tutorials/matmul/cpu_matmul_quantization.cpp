@@ -16,8 +16,8 @@
 
 /// @example cpu_matmul_quantization.cpp
 /// > Annotated version: @ref cpu_matmul_quantization_cpp
-///
-/// @page cpu_matmul_quantization_cpp_short
+
+/// @page cpu_matmul_quantization_cpp MatMul Tutorial: Quantization
 /// C++ API example demonstrating how one can perform reduced precision
 /// matrix-matrix multiplication using [MatMul](@ref dev_guide_matmul) and the
 /// accuracy of the result compared to the floating point computations.
@@ -27,9 +27,6 @@
 /// - Asymmetric quantization
 ///   - Scales: dnnl::primitive_attr::set_scales_mask()
 ///   - Zero points: dnnl::primitive_attr::set_zero_points_mask()
-///
-/// @page cpu_matmul_quantization_cpp MatMul Tutorial: Quantization
-/// @copydetails cpu_matmul_quantization_cpp_short
 ///
 /// The example is focused around the following computation:
 /// \f[

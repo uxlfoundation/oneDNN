@@ -46,13 +46,13 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
                     && utils::one_of(desc()->alg_kind, alg_kind::pooling_max,
                             alg_kind::pooling_avg_include_padding,
                             alg_kind::pooling_avg_exclude_padding)
+                    && set_default_params() == status::success
                     && memory_desc_wrapper(dst_md()).is_dense(false)
                     && utils::everyone_is(
                             d_type, src_md()->data_type, dst_md()->data_type)
                     && platform::has_data_type_support(d_type)
                     && !has_zero_dim_memory() && !is_dilated()
                     && attr()->has_default_values()
-                    && set_default_params() == status::success
                     && memory_desc_matches_tag(*src_md(), desired_fmt_tag)
                     && memory_desc_matches_tag(*dst_md(), desired_fmt_tag)
                     && attr_.set_default_formats(dst_md(0)) == status::success

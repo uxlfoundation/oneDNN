@@ -31,9 +31,9 @@ layout_t bmnk_mapper_t::map_to_bmnk(abc_kind_t abc_kind,
 layout_t bmnk_mapper_t::map_to_bmnk(abc_kind_t abc_kind,
         const std::vector<bmnk_kind_t> &bmnk_kinds,
         const layout_t &layout) const {
-    std::vector<block_t> blocks;
+    std::vector<layout_block_t> blocks;
     for (auto &b : layout.blocks()) {
-        auto b_bmnk_kind = bmnk_kind(abc_kind, b.dim_idx);
+        auto b_bmnk_kind = bmnk_kind(abc_kind, b.dim);
         bool found = false;
         for (int i = 0; i < int(bmnk_kinds.size()); i++) {
             if (bmnk_kinds[i] == b_bmnk_kind) {
@@ -55,8 +55,9 @@ layout_t bmnk_mapper_t::map_from_bmnk(abc_kind_t abc_kind,
     return m.map_from_bmnk(abc_kind, bmnk_kinds, bmnk_layout);
 }
 
-void bmnk_block_mapper_t::push_block(abc_kind_t abc_kind, const block_t &b) {
-    auto bmnk_kind = bmnk_mapper_.bmnk_kind(abc_kind, b.dim_idx);
+void bmnk_block_mapper_t::push_block(
+        abc_kind_t abc_kind, const layout_block_t &b) {
+    auto bmnk_kind = bmnk_mapper_.bmnk_kind(abc_kind, b.dim);
     switch (bmnk_kind) {
         case bmnk_kind_t::b:
             if (abc_kind == abc_kind_t::a) b_blocks_.emplace_back(abc_kind, b);
@@ -73,8 +74,8 @@ layout_t bmnk_block_mapper_t::map_from_bmnk(abc_kind_t abc_kind,
         const layout_t &bmnk_layout) const {
     gpu_assert(bmnk_layout.ndims() <= 3);
     gpu_assert(bmnk_layout.has_zero_offset());
-    std::vector<block_t> blocks;
-    std::vector<std::vector<block_t>> tmp_blocks(
+    std::vector<layout_block_t> blocks;
+    std::vector<std::vector<layout_block_t>> tmp_blocks(
             static_cast<int>(bmnk_kind_t::k) + 1);
     tmp_blocks[static_cast<int>(bmnk_kind_t::b)]
             = create_prb_blocks(abc_kind, b_blocks_);
@@ -85,7 +86,7 @@ layout_t bmnk_block_mapper_t::map_from_bmnk(abc_kind_t abc_kind,
     tmp_blocks[static_cast<int>(bmnk_kind_t::k)]
             = create_prb_blocks(abc_kind, k_blocks_);
     for (auto &b : bmnk_layout.blocks()) {
-        auto &bmnk_blocks = tmp_blocks[static_cast<int>(bmnk_kinds[b.dim_idx])];
+        auto &bmnk_blocks = tmp_blocks[static_cast<int>(bmnk_kinds[b.dim])];
         bool ok = pop_block(bmnk_blocks, blocks, b);
         gpu_assert(ok) << "Can't map from bmnk layout to problem layout.";
         MAYBE_UNUSED(ok);
@@ -107,8 +108,9 @@ layout_t bmnk_block_mapper_t::map_from_bmnk(abc_kind_t abc_kind,
             bmnk_layout.type(), bmnk_mapper_.ndims(abc_kind), 0, blocks);
 }
 
-bool bmnk_block_mapper_t::pop_block(std::vector<block_t> &bmnk_blocks,
-        std::vector<block_t> &prb_blocks, const block_t &bmnk_block) const {
+bool bmnk_block_mapper_t::pop_block(std::vector<layout_block_t> &bmnk_blocks,
+        std::vector<layout_block_t> &prb_blocks,
+        const layout_block_t &bmnk_block) const {
     if (bmnk_block.block == 1) return true;
 
     pop_size_1_blocks(bmnk_blocks);
@@ -118,13 +120,13 @@ bool bmnk_block_mapper_t::pop_block(std::vector<block_t> &bmnk_blocks,
     dim_t common_block = math::gcd(next_block.block, bmnk_block.block);
     if (common_block == bmnk_block.block) {
         prb_blocks.emplace_back(
-                next_block.dim_idx, common_block, next_block.stride);
+                next_block.dim, common_block, next_block.stride);
         next_block.block /= common_block;
         next_block.stride *= common_block;
         return true;
     } else if (common_block == next_block.block) {
         prb_blocks.emplace_back(
-                next_block.dim_idx, common_block, next_block.stride);
+                next_block.dim, common_block, next_block.stride);
         bmnk_blocks.erase(bmnk_blocks.begin());
         auto tmp_block = bmnk_block;
         tmp_block.block /= common_block;

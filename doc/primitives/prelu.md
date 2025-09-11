@@ -128,8 +128,6 @@ memory format by passing weights_md with format_tag::any.
 For best performance, the weights memory format should match
 data memory format.
 
-## Example
+## Examples
 
-[PReLU Primitive Example](@ref prelu_example_cpp)
-
-@copydetails prelu_example_cpp_short
+* @ref prelu_example_cpp

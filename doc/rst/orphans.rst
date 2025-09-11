@@ -64,36 +64,27 @@ Orphans
     example_vanilla_rnn.cpp.rst
     example_weights_decompression_matmul.cpp.rst
     page_augru_example_cpp.rst
-    page_augru_example_cpp_short.rst
     page_batch_normalization_example_cpp.rst
-    page_batch_normalization_example_cpp_short.rst
     page_binary_example_cpp.rst
-    page_binary_example_cpp_short.rst
     page_bnorm_u8_via_binary_postops_cpp
-    page_bnorm_u8_via_binary_postops_cpp_short.rst
     page_cnn_inference_f32_c
     page_cnn_inference_f32_cpp
     page_cnn_inference_int8_cpp
     page_cnn_training_bf16_cpp
     page_cnn_training_f32_cpp
     page_concat_example_cpp.rst
-    page_concat_example_cpp_short.rst
     page_convolution_example_cpp.rst
-    page_convolution_example_cpp_short.rst
     page_cpu_cnn_training_f32_c
     page_cpu_matmul_coo_cpp
     page_cpu_matmul_csr_cpp
     page_cpu_matmul_quantization_cpp.rst
-    page_cpu_matmul_quantization_cpp_short.rst
     page_cpu_matmul_weights_compression_cpp
     page_cpu_rnn_inference_f32_cpp
     page_cpu_rnn_inference_int8_cpp
     page_cpu_sgemm_and_matmul_cpp.rst
-    page_cpu_sgemm_and_matmul_cpp_short.rst
     page_cross_engine_reorder_c
     page_cross_engine_reorder_cpp
     page_deconvolution_example_cpp.rst
-    page_deconvolution_example_cpp_short.rst
     page_dev_guide_attributes_accumulation_mode.rst
     page_dev_guide_attributes_deterministic.rst
     page_dev_guide_attributes_fpmath_mode.rst
@@ -111,7 +102,6 @@ Orphans
     page_dev_guide_training_bf16.rst
     page_dev_guide_vtune.rst
     page_eltwise_example_cpp.rst
-    page_eltwise_example_cpp_short.rst
     page_getting_started_cpp
     page_gpu_opencl_interop_cpp
     page_graph_cpu_getting_started_cpp.rst
@@ -121,45 +111,27 @@ Orphans
     page_graph_sycl_getting_started_cpp.rst
     page_graph_sycl_single_op_partition_cpp.rst
     page_group_normalization_example_cpp.rst
-    page_group_normalization_example_cpp_short.rst
     page_inference_int8_matmul_cpp.rst
-    page_inference_int8_matmul_cpp_short.rst
     page_inner_product_example_cpp.rst
-    page_inner_product_example_cpp_short.rst
     page_layer_normalization_example_cpp.rst
-    page_layer_normalization_example_cpp_short.rst
     page_lbr_gru_example_cpp.rst
-    page_lbr_gru_example_cpp_short.rst
     page_legal_information.rst
     page_lrn_example_cpp.rst
-    page_lrn_example_cpp_short.rst
     page_lstm_example_cpp.rst
-    page_lstm_example_cpp_short.rst
     page_matmul_example_cpp.rst
-    page_matmul_example_cpp_short.rst
     page_matmul_perf_cpp.rst
     page_memory_format_propagation_cpp
     page_performance_profiling_cpp
     page_pooling_example_cpp.rst
-    page_pooling_example_cpp_short.rst
     page_prelu_example_cpp.rst
-    page_prelu_example_cpp_short.rst
     page_reduction_example_cpp.rst
-    page_reduction_example_cpp_short.rst
     page_reorder_example_cpp.rst
-    page_reorder_example_cpp_short.rst
     page_resampling_example_cpp.rst
-    page_resampling_example_cpp_short.rst
     page_rnn_training_f32_cpp
     page_shuffle_example_cpp.rst
-    page_shuffle_example_cpp_short.rst
     page_softmax_example_cpp.rst
-    page_softmax_example_cpp_short.rst
     page_sum_example_cpp.rst
-    page_sum_example_cpp_short.rst
     page_sycl_interop_buffer_cpp
     page_sycl_interop_usm_cpp.rst
     page_vanilla_rnn_example_cpp.rst
-    page_vanilla_rnn_example_cpp_short.rst
     page_weights_decompression_matmul_cpp.rst
-    page_weights_decompression_matmul_cpp_short.rst

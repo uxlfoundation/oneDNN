@@ -129,7 +129,7 @@ public:
     // sub_mm1_post_mem contains [post_scale, attn_mask(optional)]
     std::vector<memory> sub_mm1_post_mem, sub_softmax_post_mem;
     //select binary
-    memory sub_select_cond, sub_select_src0, sub_select_dst;
+    memory sub_select_cond, sub_select_src, sub_select_dst;
     //softmax
     memory sub_softmax_dst;
     //reorder2
@@ -145,9 +145,9 @@ public:
 
     bool has_scale = false, has_attention_mask = false, has_select = false,
          has_soft_capping = false;
-    // Used to record the ops from select
-    std::vector<op_ptr> select_op;
-    std::vector<int> select_outop_index;
+    // Record if select can be fused into previous matmul. It can be true when
+    // select's 1st input connected to previous matmul.
+    bool select_fusiable = false;
 
 private:
     // Used to record the ops contained in SDP
@@ -186,8 +186,7 @@ private:
 
     void memory_planning(registry_t &sdp_registry);
 
-    impl::status_t prepare_sdp_scales_zps(const fusion_info_mgr_t &mgr,
-            std::shared_ptr<op_t> &op, int index,
+    impl::status_t prepare_sdp_scales_zps(std::shared_ptr<op_t> &op, int index,
             std::unordered_map<int, memory> &args,
             const dnnl::engine &p_engine);
 
@@ -200,8 +199,7 @@ private:
                 producer.get_attr<std::vector<attr_dt>>(attr_name)[0]);
     }
 
-    dnnl::primitive_attr make_primitive_attr(
-            std::shared_ptr<op_t> &op, fusion_info_mgr_t &mgr);
+    dnnl::primitive_attr make_primitive_attr(std::shared_ptr<op_t> &op);
 };
 
 } // namespace dnnl_impl

@@ -457,12 +457,7 @@ of Winograd algorithm implementations.
   memory format tags when create a convolution primitive to allow the library
   to choose the most appropriate memory format.
 
-## Example
+## Examples
 
-[Convolution Primitive Example](@ref convolution_example_cpp)
-
-@copydetails convolution_example_cpp_short
-
-[Deconvolution Primitive Example](@ref deconvolution_example_cpp)
-
-@copydetails deconvolution_example_cpp_short
+* @ref convolution_example_cpp
+* @ref deconvolution_example_cpp

@@ -22,11 +22,11 @@
 #include "common/primitive_attr.hpp"
 #include "common/serialization.hpp"
 #include "common/verbose.hpp"
-#include "gpu/intel/gpu_post_ops.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/post_op_injector.hpp"
 #include "gpu/intel/microkernels/entrance_agent.hpp"
 #include "gpu/intel/microkernels/package.hpp"
+#include "gpu/intel/post_ops.hpp"
 #include "ngen_register_allocator.hpp"
 
 // TODO: Work with upstream to prefix defines with GEMMSTONE

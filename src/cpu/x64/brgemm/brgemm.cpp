@@ -337,9 +337,10 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     // check that combination of data types is allowed
     if ((brg->dt_a == data_type::u8 && brg->dt_b == data_type::s8)
             && (!one_of(dt_d, data_type::u8, data_type::s8, data_type::s32,
-                    data_type::f32, data_type::bf16))
+                    data_type::f32, data_type::f16, data_type::bf16))
             && (!one_of(dt_bias, data_type::undef, data_type::u8, data_type::s8,
-                    data_type::s32, data_type::f32, data_type::bf16)))
+                    data_type::s32, data_type::f32, data_type::f16,
+                    data_type::bf16)))
         return status::unimplemented;
     if ((brg->dt_a == data_type::bf16 && brg->dt_b == data_type::bf16)
             && (!one_of(dt_d, data_type::bf16, data_type::f32))

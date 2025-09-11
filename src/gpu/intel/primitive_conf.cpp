@@ -15,7 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/gpu_eltwise_pd.hpp"
-#include "gpu/intel/gpu_post_ops.hpp"
+#include "gpu/intel/post_ops.hpp"
 #include "oneapi/dnnl/dnnl_types.h"
 
 #include "gpu/intel/primitive_conf.hpp"
@@ -26,7 +26,7 @@ namespace gpu {
 namespace intel {
 
 bool memory_desc_ndims_ok(const memory_desc_t *md) {
-    return md->ndims > MAX_NDIMS;
+    return md->ndims <= MAX_NDIMS;
 }
 
 memory_desc_info_t memory_desc_info_t::create(const memory_desc_wrapper &mdw) {
@@ -178,128 +178,6 @@ void sum_quantization_t::define_macros(
         compute::kernel_ctx_t &kernel_ctx, const std::string &name) const {
     if (with_scale()) kernel_ctx.define_int("WITH_" + name + "_SCALE", 1);
     if (with_zp()) kernel_ctx.define_int("WITH_" + name + "_ZPOINT", 1);
-}
-
-void set_default_pool_conf(pool_conf_t &conf, const pooling_desc_t &desc,
-        const memory_desc_t &src_md, const memory_desc_t &dst_md,
-        const primitive_attr_t &attr) {
-    const memory_desc_wrapper src_mdw(src_md);
-    const memory_desc_wrapper dst_mdw(dst_md);
-
-    const auto &src_dims = src_mdw.dims();
-    const auto &dst_dims = dst_mdw.dims();
-
-    int ndims = src_mdw.ndims();
-    conf.ndims = ndims;
-
-    conf.mb = src_dims[0];
-
-    conf.c = src_dims[1];
-    conf.mb_padded = src_mdw.padded_dims()[0];
-    conf.c_padded = src_mdw.padded_dims()[1];
-    conf.id = (ndims == 5) ? src_dims[2] : 1;
-    conf.ih = (ndims == 3) ? 1 : src_dims[ndims - 2];
-    conf.iw = src_dims[ndims - 1];
-    conf.od = (ndims == 5) ? dst_dims[2] : 1;
-    conf.oh = (ndims == 3) ? 1 : dst_dims[ndims - 2];
-    conf.ow = dst_dims[ndims - 1];
-
-    conf.stride_d = (ndims == 5) ? desc.strides[0] : 1;
-    conf.stride_h = (ndims == 3) ? 1 : desc.strides[ndims - 4];
-    conf.stride_w = desc.strides[ndims - 3];
-    conf.kd = (ndims == 5) ? desc.kernel[0] : 1;
-    conf.kh = (ndims == 3) ? 1 : desc.kernel[ndims - 4];
-    conf.kw = desc.kernel[ndims - 3];
-
-    conf.dd = (ndims == 5) ? desc.dilation[0] : 0;
-    conf.dh = (ndims == 3) ? 0 : desc.dilation[ndims - 4];
-    conf.dw = desc.dilation[ndims - 3];
-
-    conf.f_pad = (ndims == 5) ? desc.padding[0][0] : 0;
-    conf.t_pad = (ndims == 3) ? 0 : desc.padding[0][ndims - 4];
-    conf.l_pad = desc.padding[0][ndims - 3];
-
-    conf.alg = desc.alg_kind;
-
-    conf.src_dt = src_mdw.data_type();
-    conf.dst_dt = dst_mdw.data_type();
-
-    conf.src_md_info = memory_desc_info_t::create(src_mdw);
-    conf.dst_md_info = memory_desc_info_t::create(dst_mdw);
-
-    conf.is_training = desc.prop_kind == prop_kind::forward_training;
-    conf.is_backward = desc.prop_kind == prop_kind::backward_data;
-
-    conf.attr_info = attr_info_t::create(&attr);
-}
-
-void set_default_conf(conv_conf_t &conf, const convolution_desc_t &cd,
-        const memory_desc_t &src_md, const memory_desc_t &weights_md,
-        const memory_desc_t &dst_md, const memory_desc_t &bias_md,
-        const primitive_attr_t &attr) {
-
-    const memory_desc_wrapper src_mdw(&src_md);
-    const memory_desc_wrapper weights_mdw(&weights_md);
-    const memory_desc_wrapper dst_mdw(&dst_md);
-    const memory_desc_wrapper bias_mdw(&bias_md);
-
-    const bool with_groups = weights_mdw.ndims() == src_mdw.ndims() + 1;
-    int ndims = src_mdw.ndims();
-
-    conf = utils::zero<decltype(conf)>();
-    conf.with_groups = with_groups;
-    conf.ndims = ndims;
-    conf.prop_kind = cd.prop_kind;
-    conf.ngroups = with_groups ? weights_mdw.dims()[0] : 1;
-    conf.mb = src_mdw.dims()[0];
-    conf.oc_without_padding = dst_mdw.dims()[1] / conf.ngroups;
-    conf.ic_without_padding = src_mdw.dims()[1] / conf.ngroups;
-    conf.id = (ndims == 5) ? src_mdw.dims()[2] : 1;
-    conf.ih = (ndims == 3) ? 1 : src_mdw.dims()[ndims - 2];
-    conf.iw = src_mdw.dims()[ndims - 1];
-    conf.od = (ndims == 5) ? dst_mdw.dims()[2] : 1;
-    conf.oh = (ndims == 3) ? 1 : dst_mdw.dims()[ndims - 2];
-    conf.ow = dst_mdw.dims()[ndims - 1];
-    conf.kd = (ndims == 5) ? weights_mdw.dims()[with_groups + 2] : 1;
-    conf.kh = (ndims == 3) ? 1 : weights_mdw.dims()[with_groups + ndims - 2];
-    conf.kw = weights_mdw.dims()[with_groups + ndims - 1];
-
-    conf.is_depthwise = conf.with_groups && conf.oc_without_padding == 1
-            && conf.ic_without_padding == 1;
-    conf.oc = dst_mdw.dims()[1] / conf.ngroups;
-    conf.ic = src_mdw.dims()[1] / conf.ngroups;
-
-    conf.f_pad = (ndims == 5) ? cd.padding[0][0] : 0;
-    conf.back_pad = (ndims == 5) ? cd.padding[1][0] : 0;
-    conf.t_pad = (ndims == 3) ? 0 : cd.padding[0][ndims - 4];
-    conf.b_pad = (ndims == 3) ? 0 : cd.padding[1][ndims - 4];
-    conf.l_pad = cd.padding[0][ndims - 3];
-    conf.r_pad = cd.padding[1][ndims - 3];
-    conf.stride_d = (ndims == 5) ? cd.strides[0] : 1;
-    conf.stride_h = (ndims == 3) ? 1 : cd.strides[ndims - 4];
-    conf.stride_w = cd.strides[ndims - 3];
-    conf.dilate_d = (ndims == 5) ? cd.dilates[0] : 0;
-    conf.dilate_h = (ndims == 3) ? 0 : cd.dilates[ndims - 4];
-    conf.dilate_w = cd.dilates[ndims - 3];
-
-    conf.with_bias = bias_mdw.format_kind() != format_kind::undef;
-
-    conf.src_data_type = src_mdw.data_type();
-    conf.weights_data_type = weights_mdw.data_type();
-    conf.dst_data_type = dst_mdw.data_type();
-
-    conf.acc_data_type = cd.accum_data_type;
-    conf.bias_data_type
-            = conf.with_bias ? bias_mdw.data_type() : data_type::f32;
-
-    if (!src_mdw.format_any())
-        conf.src_md_info = memory_desc_info_t::create(src_mdw);
-    if (!weights_mdw.format_any())
-        conf.wei_md_info = memory_desc_info_t::create(weights_mdw);
-    if (!dst_mdw.format_any())
-        conf.dst_md_info = memory_desc_info_t::create(dst_mdw);
-
-    conf.attr_info = attr_info_t::create(&attr);
 }
 
 void set_offsets(compute::kernel_ctx_t &kernel_ctx,
@@ -806,12 +684,6 @@ int append_post_ops_to_arg_list_base(const exec_args_t &args,
         set_arg_entry(post_ops.entry_[idx], idx);
     }
     return post_op_idx;
-}
-int append_post_ops_to_arg_list_gemm(const exec_args_t &args,
-        compute::kernel_arg_list_t &arg_list, int post_op_idx,
-        const post_ops_t &post_ops, memory_desc_wrapper dst_mdw) {
-    return append_post_ops_to_arg_list_base(
-            args, arg_list, post_op_idx, post_ops, dst_mdw);
 }
 int append_post_ops_to_arg_list(const exec_ctx_t &ctx,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,

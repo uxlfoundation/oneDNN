@@ -2802,7 +2802,7 @@ public:
     }
 
     std::string str() const override {
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << "{";
         bool is_first = true;
         auto append = [&](const std::string &s) {

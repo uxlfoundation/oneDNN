@@ -17,29 +17,20 @@
 #ifndef GPU_INTEL_BNORM_NHWC_REUSABLE_HPP
 #define GPU_INTEL_BNORM_NHWC_REUSABLE_HPP
 
-#include <assert.h>
-
-#include "common/c_types_map.hpp"
-#include "common/primitive.hpp"
 #include "common/serialization.hpp"
-#include "gpu/gpu_batch_normalization_pd.hpp"
-#include "gpu/gpu_resource.hpp"
-#include "gpu/intel/compute/dispatch_reusable.hpp"
+#include "gpu/intel/bnorm/config.hpp"
+#include "gpu/intel/bnorm/nhwc.hpp"
 #include "gpu/intel/compute/kernel.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
-
-#include "common/experimental.hpp"
-#include "gpu/intel/bnorm/nhwc_batch_normalization.hpp"
-#include "gpu/intel/bnorm/utils.hpp"
+#include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace bnorm {
 
-struct nhwc_reusable_bnorm_compile_params_t {
-    status_t create_generator(const compute::compute_engine_t &engine,
+struct nhwc_reusable_compile_params_t {
+    status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         auto status = engine.create_kernel_bundle(
                 bundle, get_kernel_names(), get_kernel_ctx());
@@ -61,19 +52,17 @@ struct nhwc_reusable_bnorm_compile_params_t {
     }
 
 #if __cplusplus >= 202002L
-    bool operator==(
-            const nhwc_reusable_bnorm_compile_params_t &) const = default;
+    bool operator==(const nhwc_reusable_compile_params_t &) const = default;
 #endif
 
     serialization_stream_t serialize() const {
-        DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(
-                nhwc_reusable_bnorm_compile_params_t);
+        DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(nhwc_reusable_compile_params_t);
         return serialization_stream_t(*this);
     }
 
-    static nhwc_reusable_bnorm_compile_params_t deserialize(
+    static nhwc_reusable_compile_params_t deserialize(
             const serialization_stream_t &s) {
-        return deserializer_t(s).pop<nhwc_reusable_bnorm_compile_params_t>();
+        return deserializer_t(s).pop<nhwc_reusable_compile_params_t>();
     }
 
     compute::kernel_ctx_t get_kernel_ctx() const;
@@ -94,7 +83,7 @@ struct nhwc_reusable_bnorm_compile_params_t {
     uint8_t padding[3] = {0};
 };
 
-struct nhwc_reusable_bnorm_runtime_params_t {
+struct nhwc_reusable_runtime_params_t {
     dim_t ic_size, sp_size;
     dim_t update_sp_block, stat_sp_block, ic_block, update_sp_unroll;
     dim_t reduce_stat_nblocks;
@@ -108,14 +97,12 @@ struct nhwc_reusable_bnorm_runtime_params_t {
     compute::range_t calc_adj_lws;
 };
 
-struct nhwc_reusable_batch_normalization_fwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
-    struct pd_t : public gpu_batch_normalization_fwd_pd_t {
-        using gpu_batch_normalization_fwd_pd_t::
-                gpu_batch_normalization_fwd_pd_t;
+struct nhwc_reusable_fwd_t : public primitive_t {
+    using primitive_t::primitive_t;
+    struct pd_t : public fwd_pd_t {
+        using fwd_pd_t::fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                impl_name(), nhwc_reusable_batch_normalization_fwd_t);
+        DECLARE_COMMON_PD_T(impl_name(), nhwc_reusable_fwd_t);
         const char *impl_name() const {
             return bn_conf.use_stats_one_pass ? "ocl:nhwc_reusable:onepass"
                                               : "ocl:nhwc_reusable";
@@ -123,8 +110,7 @@ struct nhwc_reusable_batch_normalization_fwd_t : public gpu_primitive_t {
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
 
@@ -134,7 +120,7 @@ struct nhwc_reusable_batch_normalization_fwd_t : public gpu_primitive_t {
                     utils::one_of(src_md()->data_type, f32, bf16, f16, s8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(IMPLICATION(f16 == src_md()->data_type,
-                                    compute_engine->mayiuse(
+                                    intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_BNORM(src_md()->data_type == dst_md()->data_type,
@@ -157,7 +143,7 @@ struct nhwc_reusable_batch_normalization_fwd_t : public gpu_primitive_t {
             VDISPATCH_BNORM(memory_desc_wrapper(src_md())
                             == memory_desc_wrapper(dst_md()),
                     VERBOSE_INCONSISTENT_MDS, "src", "dst");
-            VDISPATCH_BNORM(compute_engine->mayiuse(
+            VDISPATCH_BNORM(intel_engine->mayiuse(
                                     compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
 
@@ -174,9 +160,9 @@ struct nhwc_reusable_batch_normalization_fwd_t : public gpu_primitive_t {
         status_t init_conf(impl::engine_t *engine);
         void init_scratchpad();
 
-        nhwc_reusable_bnorm_compile_params_t cmpl_conf;
-        nhwc_reusable_bnorm_runtime_params_t rt_conf;
-        nhwc_bnorm_params_t bn_conf;
+        nhwc_reusable_compile_params_t cmpl_conf;
+        nhwc_reusable_runtime_params_t rt_conf;
+        nhwc_params_t bn_conf;
 
         compute::dispatch_t dispatch_calc_stat;
         compute::dispatch_t dispatch_reduce_stat;
@@ -201,26 +187,23 @@ private:
     std::vector<compute::kernel_t> kernels_;
 };
 
-struct nhwc_reusable_batch_normalization_bwd_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
-    struct pd_t : public gpu_batch_normalization_bwd_pd_t {
-        using gpu_batch_normalization_bwd_pd_t::
-                gpu_batch_normalization_bwd_pd_t;
+struct nhwc_reusable_bwd_t : public primitive_t {
+    using primitive_t::primitive_t;
+    struct pd_t : public bwd_pd_t {
+        using bwd_pd_t::bwd_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                "ocl:nhwc_reusable", nhwc_reusable_batch_normalization_bwd_t);
+        DECLARE_COMMON_PD_T("ocl:nhwc_reusable", nhwc_reusable_bwd_t);
 
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
-            auto *compute_engine
-                    = utils::downcast<compute::compute_engine_t *>(engine);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_BNORM(utils::one_of(src_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(IMPLICATION(f16 == src_md()->data_type,
-                                    compute_engine->mayiuse(
+                                    intel_engine->mayiuse(
                                             compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_BNORM(src_md()->data_type == diff_src_md()->data_type,
@@ -238,7 +221,7 @@ struct nhwc_reusable_batch_normalization_bwd_t : public gpu_primitive_t {
             VDISPATCH_BNORM(memory_desc_wrapper(diff_src_md())
                             == memory_desc_wrapper(diff_dst_md()),
                     VERBOSE_INCONSISTENT_MDS, "diff_src", "diff_dst");
-            VDISPATCH_BNORM(compute_engine->mayiuse(
+            VDISPATCH_BNORM(intel_engine->mayiuse(
                                     compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
 
@@ -256,9 +239,9 @@ struct nhwc_reusable_batch_normalization_bwd_t : public gpu_primitive_t {
         status_t init_conf(impl::engine_t *engine);
         void init_scratchpad();
 
-        nhwc_reusable_bnorm_compile_params_t cmpl_conf;
-        nhwc_reusable_bnorm_runtime_params_t rt_conf;
-        nhwc_bnorm_params_t bn_conf;
+        nhwc_reusable_compile_params_t cmpl_conf;
+        nhwc_reusable_runtime_params_t rt_conf;
+        nhwc_params_t bn_conf;
         offsets_t off;
         compute::dispatch_t dispatch_calc_stat;
         compute::dispatch_t dispatch_reduce_stat;
@@ -283,6 +266,7 @@ private:
     std::vector<compute::kernel_t> kernels_;
 };
 
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

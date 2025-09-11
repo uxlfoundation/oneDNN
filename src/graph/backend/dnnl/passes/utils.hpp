@@ -378,14 +378,11 @@ std::string kind2str(op_kind_t kind);
 // which only has different input/output data type.
 bool is_typecast(const op_t *op);
 
-bool with_runtime_scales(const std::shared_ptr<op_t> &op,
-        const fusion_info_mgr_t &mgr, bool is_input, size_t index);
+bool with_runtime_scales(
+        const std::shared_ptr<op_t> &op, bool is_input, size_t index);
 
-bool with_runtime_dst_scales(
-        const std::shared_ptr<op_t> &op, const fusion_info_mgr_t &mgr);
-
-bool with_runtime_zps(const std::shared_ptr<op_t> &op,
-        const fusion_info_mgr_t &mgr, bool is_input, size_t index);
+bool with_runtime_zps(
+        const std::shared_ptr<op_t> &op, bool is_input, size_t index);
 
 // This function is used to check if a dnnl_reorder op is converted from or act
 // as a Reorder op. This function will only return true for a dnnl_reorder op

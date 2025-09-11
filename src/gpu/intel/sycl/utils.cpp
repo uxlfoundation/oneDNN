@@ -16,6 +16,7 @@
 
 #include "gpu/intel/sycl/utils.hpp"
 
+#include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/ocl/utils.hpp"
 #include "gpu/intel/sycl/engine.hpp"
 #include "gpu/intel/sycl/l0/utils.hpp"

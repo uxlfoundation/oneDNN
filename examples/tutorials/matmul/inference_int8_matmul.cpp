@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 /// @example inference_int8_matmul.cpp
 /// > Annotated version: @ref inference_int8_matmul_cpp
 ///
-/// @page inference_int8_matmul_cpp_short
+/// @page inference_int8_matmul_cpp MatMul Tutorial: INT8 Inference
 /// C++ API example demonstrating how one can use
 /// [MatMul](@ref dev_guide_matmul) fused with ReLU in INT8 inference.
 ///
@@ -29,9 +29,6 @@
 /// - Create primitive once, use multiple times
 ///   - Run-time tensor shapes: #DNNL_RUNTIME_DIM_VAL
 /// - Weights pre-packing: use #dnnl::memory::format_tag::any
-///
-/// @page inference_int8_matmul_cpp MatMul Tutorial: INT8 Inference
-/// @copydetails inference_int8_matmul_cpp_short
 ///
 /// Assumptions:
 /// 1. The shape of the weights (matrix \f$B(K, N)\f$) is known in advance, the

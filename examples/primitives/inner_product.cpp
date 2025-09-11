@@ -16,18 +16,14 @@
 
 /// @example inner_product.cpp
 /// > Annotated version: @ref inner_product_example_cpp
-///
-/// @page inner_product_example_cpp_short
-///
+
+/// @page inner_product_example_cpp Inner Product Primitive Example
 /// This C++ API example demonstrates how to create and execute an
 /// [Inner Product](@ref dev_guide_inner_product) primitive.
 ///
 /// Key optimizations included in this example:
 /// - Primitive attributes with fused post-ops;
 /// - Creation of optimized memory format from the primitive descriptor.
-///
-/// @page inner_product_example_cpp Inner Product Primitive Example
-/// @copydetails inner_product_example_cpp_short
 ///
 /// @include inner_product.cpp
 

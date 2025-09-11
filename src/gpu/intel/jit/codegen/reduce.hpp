@@ -128,7 +128,7 @@ private:
         auto &a0 = a.blocks()[0];
         auto &b0 = b.blocks()[0];
 
-        bool ok = (a0.dim_idx == b0.dim_idx && a0.block == b0.block);
+        bool ok = (a0.dim == b0.dim && a0.block == b0.block);
         if (!ok) {
             // Try to match strided layout.
             if (a0.block == 2) {
@@ -160,7 +160,7 @@ private:
         }
 
         std::vector<dim_t> tile_dims(src_layout_.ndims(), 1);
-        tile_dims[a0.dim_idx]
+        tile_dims[a0.dim]
                 = ir_utils::max_divisor(int(a0.block), {min_step, max_step});
 
         return tile_t(tile_dims);

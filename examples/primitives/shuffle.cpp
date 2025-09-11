@@ -16,17 +16,13 @@
 
 /// @example shuffle.cpp
 /// > Annotated version: @ref shuffle_example_cpp
-///
-/// @page shuffle_example_cpp_short
-///
+
+/// @page shuffle_example_cpp Shuffle Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Shuffle](@ref dev_guide_shuffle) primitive.
 ///
 /// Key optimizations included in this example:
 /// - Shuffle along axis 1 (channels).
-///
-/// @page shuffle_example_cpp Shuffle Primitive Example
-/// @copydetails shuffle_example_cpp_short
 ///
 /// @include shuffle.cpp
 

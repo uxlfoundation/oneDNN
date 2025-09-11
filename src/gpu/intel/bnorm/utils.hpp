@@ -17,9 +17,8 @@
 #ifndef GPU_INTEL_BNORM_UTILS_HPP
 #define GPU_INTEL_BNORM_UTILS_HPP
 
-#include "common/batch_normalization_pd.hpp"
+#include "gpu/intel/bnorm/config.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 
 #include <string.h>
 
@@ -63,7 +62,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace bn_utils {
+namespace bnorm {
 
 constexpr int aux_init_stage = 1;
 constexpr int aux_finalize_stage = 0;
@@ -95,12 +94,11 @@ float get_ss_utilization(
         int max_ss, const compute::range_t &gws, const compute::range_t &lws);
 float get_thr_utilization(int eu_count, int threads_per_eu, int sg_size,
         const compute::range_t &gws);
-void init_flags_lookup_table(
-        std::string &flags, const batch_normalization_pd_t *pd);
-void init_conf_basic(bnorm_conf_t &conf, const batch_normalization_pd_t *pd);
-std::string get_prb_desc_str(const batch_normalization_pd_t *pd);
+void init_flags_lookup_table(std::string &flags, const pd_t *pd);
+void init_conf_basic(conf_t &conf, const pd_t *pd);
+std::string get_prb_desc_str(const pd_t *pd);
 
-} // namespace bn_utils
+} // namespace bnorm
 } // namespace intel
 } // namespace gpu
 } // namespace impl

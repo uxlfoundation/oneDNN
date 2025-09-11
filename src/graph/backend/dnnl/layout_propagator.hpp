@@ -36,19 +36,19 @@ namespace dnnl_impl {
 
 using layout_propagator_func
         = std::function<status_t(std::shared_ptr<op_t> &, const dnnl::engine &,
-                fusion_info_mgr_t &, pd_cache_t &, subgraph_rewriter_t &)>;
+                pd_cache_t &, const fpmath_t &, bool, subgraph_rewriter_t &)>;
 
 status_t insert_reorder_before(std::shared_ptr<op_t> &, size_t,
-        const dnnl::memory::desc &, const dnnl::engine &, fusion_info_mgr_t &,
-        pd_cache_t &, subgraph_rewriter_t &);
+        const dnnl::memory::desc &, const dnnl::engine &, pd_cache_t &,
+        const fpmath_t &, bool, subgraph_rewriter_t &);
 
 status_t insert_reorder_after(std::shared_ptr<op_t> &, size_t,
-        const dnnl::memory::desc &, const dnnl::engine &, fusion_info_mgr_t &,
-        pd_cache_t &, subgraph_rewriter_t &);
+        const dnnl::memory::desc &, const dnnl::engine &, pd_cache_t &,
+        const fpmath_t &, bool, subgraph_rewriter_t &);
 
 #define DECLARE_LAYOUT_PROPAGATOR(op_name) \
     status_t layout_propagator_for_##op_name(std::shared_ptr<op_t> &, \
-            const dnnl::engine &, fusion_info_mgr_t &, pd_cache_t &, \
+            const dnnl::engine &, pd_cache_t &, const fpmath_t &, bool, \
             subgraph_rewriter_t &);
 
 DECLARE_LAYOUT_PROPAGATOR(conv);

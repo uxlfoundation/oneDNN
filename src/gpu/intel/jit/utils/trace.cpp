@@ -16,7 +16,7 @@
 
 #include "gpu/intel/jit/utils/trace.hpp"
 
-#include "gpu/intel/jit/conv/grf_usage.hpp"
+#include "gpu/intel/jit/grf_usage.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 
 namespace dnnl {

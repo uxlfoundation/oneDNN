@@ -155,8 +155,6 @@ stage.
   and destinations memory format tags when create an inner product primitive
   to allow the library to choose the most appropriate memory format.
 
-## Example
+## Examples
 
-[Inner Product Primitive Example](@ref inner_product_example_cpp)
-
-@copydetails inner_product_example_cpp_short
+* @ref inner_product_example_cpp

@@ -15,7 +15,8 @@
 *******************************************************************************/
 
 /// @example sycl_interop_usm.cpp
-///
+/// > Annotated version: @ref sycl_interop_usm_cpp
+
 /// @page sycl_interop_usm_cpp SYCL USM example
 ///
 /// This C++ API example demonstrates programming for Intel(R) Processor

@@ -20,9 +20,9 @@
 #include <functional>
 
 #include "common/utils.hpp"
+#include "gpu/intel/gemm/jit/generator/pieces/copy_plan.hpp"
 #include "gpu/intel/jit/codegen/operand.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
-#include "gpu/intel/jit/gemm/generator/pieces/copy_plan.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "ngen.hpp"
@@ -304,14 +304,14 @@ private:
     static std::vector<layout_t> generate_all_layouts(
             const type_t &type, dim_t a, dim_t b) {
         std::vector<layout_t> ret;
-        std::vector<block_t> blocks;
+        std::vector<layout_block_t> blocks;
         generate_all_layouts_impl(ret, blocks, type, a, b, 1);
         return ret;
     }
 
     static void generate_all_layouts_impl(std::vector<layout_t> &layouts,
-            std::vector<block_t> &blocks, const type_t &type, dim_t a, dim_t b,
-            dim_t stride);
+            std::vector<layout_block_t> &blocks, const type_t &type, dim_t a,
+            dim_t b, dim_t stride);
 
     ngen::HW hw_;
     tile_t tile_;
@@ -359,7 +359,7 @@ private:
         auto dt = to_ngen(layout.type());
         auto buffer = init(into<int>(elems), dt);
         buffer.stride = (uint8_t)1;
-        return {layout, buffer};
+        return {std::move(layout), buffer};
     }
 
     layout_t make_retyped_layout(

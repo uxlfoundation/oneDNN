@@ -20,13 +20,11 @@
 #include <string>
 #include <vector>
 
-#include "common/eltwise_pd.hpp"
 #include "gpu/intel/jit/ir/eltwise.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -263,7 +261,7 @@ public:
 
     virtual view_t try_create_bias_view(uint32_t mask) const { return {}; }
 
-    virtual bool is_spurious_spatial(dim_idx_t dim_idx) const { return false; };
+    virtual bool is_spurious_spatial(const pvar_t &dim) const { return false; };
     virtual bool need_to_restore_zero_padding() const { return false; }
     virtual bool use_dst_in_sum_post_op() const { return true; }
     virtual bool can_use_scales() const { return true; }

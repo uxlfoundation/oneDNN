@@ -257,6 +257,4 @@ correctly. Hence, in case of training one should use the #dnnl_fuse_norm_relu or
 
 ## Examples
 
-[Batch Normalization Primitive Example](@ref batch_normalization_example_cpp)
-
-@copydetails batch_normalization_example_cpp_short
+* @ref batch_normalization_example_cpp

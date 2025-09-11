@@ -75,6 +75,7 @@ namespace ukernel {
 
 /// @addtogroup dnnl_api_ukernel_utils ukernel utils
 /// ukernel utility functions
+/// \ingroup dnnl_api_ukernel
 /// @{
 
 /// Packing specification

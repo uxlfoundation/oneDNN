@@ -147,14 +147,14 @@ int device_info_t::max_eus_per_wg(gpu_arch_t gpu_arch) {
         case gpu::intel::compute::gpu_arch_t::xe_hpc:
         case gpu::intel::compute::gpu_arch_t::xe2:
 #if XE3P
-        case gpu_arch_t::xe3p:
+        case gpu::intel::compute::gpu_arch_t::xe3p:
 #endif
         case gpu::intel::compute::gpu_arch_t::xe3: return 8;
         case gpu::intel::compute::gpu_arch_t::xe_lp:
         case gpu::intel::compute::gpu_arch_t::xe_hp:
         case gpu::intel::compute::gpu_arch_t::xe_hpg: return 16;
 #if XE4
-        case gpu_arch_t::xe4: return 4;
+        case gpu::intel::compute::gpu_arch_t::xe4: return 4;
 #endif
         case gpu::intel::compute::gpu_arch_t::unknown: return 8;
     }
@@ -166,10 +166,10 @@ int device_info_t::max_subgroup_size(gpu_arch_t gpu_arch) {
         case gpu::intel::compute::gpu_arch_t::xe_hpc:
         case gpu::intel::compute::gpu_arch_t::xe2:
 #if XE3P
-        case gpu_arch_t::xe3p:
+        case gpu::intel::compute::gpu_arch_t::xe3p:
 #endif
 #if XE4
-        case gpu_arch_t::xe4:
+        case gpu::intel::compute::gpu_arch_t::xe4:
 #endif
         case gpu::intel::compute::gpu_arch_t::xe3: return 32;
         case gpu::intel::compute::gpu_arch_t::xe_lp:
@@ -247,10 +247,10 @@ int device_info_t::threads_per_eu(gpu_arch_t gpu_arch, bool large_grf_mode) {
         case gpu::intel::compute::gpu_arch_t::xe_hpc:
         case gpu::intel::compute::gpu_arch_t::xe2:
 #if XE3P
-        case gpu_arch_t::xe3p:
+        case gpu::intel::compute::gpu_arch_t::xe3p:
 #endif
 #if XE4
-        case gpu_arch_t::xe4:
+        case gpu::intel::compute::gpu_arch_t::xe4:
 #endif
         case gpu::intel::compute::gpu_arch_t::xe3:
             return large_grf_mode ? 4 : 8;

@@ -16,8 +16,8 @@
 
 /// @example cpu_sgemm_and_matmul.cpp
 /// > Annotated version: @ref cpu_sgemm_and_matmul_cpp
-///
-/// @page cpu_sgemm_and_matmul_cpp_short
+
+/// @page cpu_sgemm_and_matmul_cpp MatMul Tutorial: Comparison with SGEMM
 /// C++ API example demonstrating [MatMul](@ref dev_guide_matmul)
 /// as a replacement for SGEMM functions.
 ///
@@ -25,9 +25,6 @@
 /// - Create primitive once, use multiple times
 ///   - Run-time tensor shapes: #DNNL_RUNTIME_DIM_VAL
 ///   - Scales: dnnl::primitive_attr::set_scales_mask()
-///
-/// @page cpu_sgemm_and_matmul_cpp MatMul Tutorial: Comparison with SGEMM
-/// @copydetails cpu_sgemm_and_matmul_cpp_short
 ///
 /// We will show two modes for the MatMul primitive:
 /// 1. The shapes of the input and output matrices are passed at execution time.

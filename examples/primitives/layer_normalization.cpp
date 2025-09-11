@@ -16,9 +16,8 @@
 
 /// @example layer_normalization.cpp
 /// > Annotated version: @ref layer_normalization_example_cpp
-///
-/// @page layer_normalization_example_cpp_short
-///
+
+/// @page layer_normalization_example_cpp Layer Normalization Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Layer normalization](@ref dev_guide_layer_normalization) primitive in
 /// forward propagation mode.
@@ -26,9 +25,6 @@
 /// Key optimizations included in this example:
 /// - In-place primitive execution;
 /// - Creation of memory objects using the primitive descriptor.
-///
-/// @page layer_normalization_example_cpp Layer Normalization Primitive Example
-/// @copydetails layer_normalization_example_cpp_short
 ///
 /// @include layer_normalization.cpp
 

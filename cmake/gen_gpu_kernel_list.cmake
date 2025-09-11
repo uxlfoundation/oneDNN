@@ -62,8 +62,15 @@ function(gen_gpu_kernel_list ker_list_templ ker_list_src ker_sources headers)
     set(KER_HEADER_NAMES)
 
     foreach(header_path ${headers})
-        get_filename_component(header_name ${header_path} NAME_WE)
-        string(REGEX REPLACE ".*\\/src\\/(.*)" "\\1" header_full_name ${header_path})
+        get_filename_component(header_file ${header_path} NAME_WE)
+        string(REGEX REPLACE ".*\\/src\\/(.*)" "\\1" header_full_path ${header_path})
+        get_filename_component(header_dir ${header_full_path} DIRECTORY)
+        if (header_dir STREQUAL "gpu\\/intel")
+            set(header_name "${header_file}")
+        else()
+            string(REGEX REPLACE "gpu\\/intel\\/(.*)" "\\1" header_rel_dir ${header_dir})
+            string(REGEX REPLACE "\\/" "_" header_name "${header_rel_dir}_${header_file}")
+        endif()
 
         set(gen_file "${CMAKE_CURRENT_BINARY_DIR}/${header_name}_header.cpp")
         add_custom_command(
@@ -79,12 +86,20 @@ function(gen_gpu_kernel_list ker_list_templ ker_list_src ker_sources headers)
         set(KER_HEADERS_EXTERN
             "${KER_HEADERS_EXTERN}\nextern const char *${header_name}_header;")
         set(KER_HEADER_LIST_ENTRIES
-            "${KER_HEADER_LIST_ENTRIES}\n        {\"${header_full_name}\", ${header_name}_header},")
+            "${KER_HEADER_LIST_ENTRIES}\n        {\"${header_full_path}\", ${header_name}_header},")
     endforeach()
 
     set(unique_ker_names)
     foreach(ker_path ${ker_sources})
-        get_filename_component(ker_name ${ker_path} NAME_WE)
+        get_filename_component(ker_file ${ker_path} NAME_WE)
+        string(REGEX REPLACE ".*\\/src\\/(.*)" "\\1" ker_full_path ${ker_path})
+        get_filename_component(ker_dir ${ker_full_path} DIRECTORY)
+        if (ker_dir STREQUAL "gpu\\/intel")
+            set(ker_name "${ker_file}")
+        else()
+            string(REGEX REPLACE "gpu\\/intel\\/(.*)" "\\1" ker_rel_dir ${ker_dir})
+            string(REGEX REPLACE "\\/" "_" ker_name "${ker_rel_dir}_${ker_file}")
+        endif()
         set(gen_file "${CMAKE_CURRENT_BINARY_DIR}/${ker_name}_kernel.cpp")
         add_custom_command(
             OUTPUT ${gen_file}

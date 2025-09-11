@@ -1315,10 +1315,9 @@ void add_md_size(const_dnnl_memory_desc_t md,
     // All memory is mapped once it is created and unmapped only before
     // primitive execution. Device memory requires additional buffer for mapped
     // memory allocated on host (CPU).
-    // Note: In DPC++ build oneDNN uses USM memory, which shouldn't require an
-    // additional buffer, so map factor should be equal to 0 for DPC++.
-    // However due to a driver issue oneDNN pretends that shared USM is not
-    // accessible on the host, hence map will allocate an extra memory.
+    // Note: When oneDNN uses USM shared memory on an iGPU, additional buffers
+    // are not required, so map factor could be equal to 0. This is not
+    // accounted for to maintain simplicity.
     const bool mapped_mem_factor = !is_cpu()
             && !has_bench_mode_modifier(mode_modifier_t::no_ref_memory);
 

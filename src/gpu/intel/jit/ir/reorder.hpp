@@ -17,9 +17,8 @@
 #ifndef GPU_INTEL_JIT_IR_REORDER_HPP
 #define GPU_INTEL_JIT_IR_REORDER_HPP
 
-#include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
-#include "gpu/intel/jit/reorder/normalization.hpp"
+#include "gpu/intel/reorder/jit/normalization.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -34,7 +33,7 @@ public:
     IR_DECL_TYPE(reorder_t)
 
     static func_t make(layout_t src_layout, layout_t dst_layout) {
-        reorder::normalize(src_layout, dst_layout);
+        reorder::jit::normalize(src_layout, dst_layout);
         return func_t(
                 new reorder_t(std::move(src_layout), std::move(dst_layout)));
     }

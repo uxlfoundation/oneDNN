@@ -51,12 +51,12 @@ struct ref_inner_product_int8_fwd_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(
                     utils::one_of(src_type, s8, u8), VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(wei_type == s8, VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_INNER_PRODUCT(
-                    IMPLICATION(with_bias(),
-                            utils::one_of(bia_type, f32, bf16, s32, s8, u8)),
+            VDISPATCH_INNER_PRODUCT(IMPLICATION(with_bias(),
+                                            utils::one_of(bia_type, f32, f16,
+                                                    bf16, s32, s8, u8)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
-                    utils::one_of(dst_type, f32, bf16, s32, s8, u8),
+                    utils::one_of(dst_type, f32, f16, bf16, s32, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     IMPLICATION(with_bias(),

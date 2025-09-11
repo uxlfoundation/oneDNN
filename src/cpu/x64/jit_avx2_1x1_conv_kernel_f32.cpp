@@ -695,7 +695,7 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     // TODO (Roma): this code is duplicated from the generic kernel; maybe the
     // configuration struct could do some stuff below
@@ -815,14 +815,19 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
             && jcp.wei_tag == wei_tag && jcp.dst_tag == dat_tag;
 
     VDISPATCH_CONV_IC(args_ok, VERBOSE_UNSUPPORTED_TAG);
-
-    args_ok = true && jcp.id == jcp.od && jcp.ih == jcp.oh && jcp.iw == jcp.ow
-            && IMPLICATION(!is_data_layout_nxc,
-                    jcp.oc % simd_w == 0 && jcp.ic % simd_w == 0)
-            && jcp.f_pad == 0 && jcp.t_pad == 0 && jcp.l_pad == 0
-            && jcp.stride_w == 1 && jcp.stride_h == 1 && jcp.stride_d == 1
-            && jcp.kd == 1 && jcp.kh == 1 && jcp.kw == 1;
-    VDISPATCH_CONV_IC(args_ok, VERBOSE_BAD_PARAM, "");
+    VDISPATCH_CONV_IC(jcp.ow == jcp.iw && jcp.oh == jcp.ih && jcp.od == jcp.id,
+            VERBOSE_UNSUPPORTED_PAD_FEATURE,
+            "inconsistent i/o dimensions"); // enforce rpad=0
+    VDISPATCH_CONV_IC(IMPLICATION(!is_data_layout_nxc,
+                              jcp.oc % simd_w == 0 && jcp.ic % simd_w == 0),
+            VERBOSE_BLOCKING_FAIL, "bad blocking dimensions");
+    VDISPATCH_CONV_IC(jcp.f_pad == 0 && jcp.t_pad == 0 && jcp.l_pad == 0,
+            VERBOSE_UNSUPPORTED_PAD_FEATURE, "f,t,l padding not supported");
+    VDISPATCH_CONV_IC(
+            jcp.stride_w == 1 && jcp.stride_h == 1 && jcp.stride_d == 1,
+            VERBOSE_UNSUPPORTED_FEATURE, "non-unit strides");
+    VDISPATCH_CONV_IC(jcp.kd == 1 && jcp.kh == 1 && jcp.kw == 1,
+            VERBOSE_UNSUPPORTED_FEATURE, "non-unit kernel dimensions");
 
     // TODO: remove this restriction
     // optimized 1x1 bwd_w does not support Intel AVX
@@ -989,7 +994,7 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
                 : 128; // affects L1$ utilization
         reduce_blocking_max = rnd_dn(reduce_blocking * 3 / 2, jcp.reduce_block);
     } else
-        return status::unimplemented;
+        VDISPATCH_CONV_IC(false, VERBOSE_BAD_PROPKIND);
 
     assert(load_blocking);
     assert(load_blocking_max);

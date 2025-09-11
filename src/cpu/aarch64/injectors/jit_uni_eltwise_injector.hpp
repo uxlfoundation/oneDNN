@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2019-2023 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -171,7 +172,7 @@ private:
         _op_mxcsr = jit_generator::_op_mxcsr
     };
 
-    const size_t vlen = get_sve_length();
+    const size_t vlen = get_vec_len();
     static constexpr size_t preserved_vecs_max = 9;
     static constexpr size_t preserved_gprs_max = 4;
     static constexpr size_t vecs_count = cpu_isa_traits<isa>::n_vregs;
@@ -210,6 +211,7 @@ private:
     void blend_with_mask(const TRegS &vmm_dst, const TRegS &src);
     void test_mask();
 
+    size_t get_vec_len();
     void exp_compute_vector_fwd(const TRegS &vmm_src);
     void relu_compute_vector_fwd(const TRegS &vmm_src);
     void relu_zero_ns_compute_vector_fwd(const TRegS &vmm_src);
@@ -251,6 +253,7 @@ private:
     void gelu_erf_compute_vector_bwd(const TRegS &vmm_src);
     void hardswish_compute_vector_bwd(const TRegS &vmm_src);
     void hardsigmoid_compute_vector_bwd(const TRegS &vmm_src);
+    void load_1word_replicate(const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr);
 
     enum key_t {
         scale = 0, // scale argument
@@ -330,14 +333,12 @@ private:
     TRegS table_val(key_t key, TRegS zreg, size_t key_off_val_shift = 0) {
         Xbyak_aarch64::XReg x_addr(h->X_DEFAULT_ADDR);
         auto off = table_off(key, key_off_val_shift);
-
         if (off) {
             h->add_imm(x_addr, x_table, off, h->X_TMP_0);
         } else {
             x_addr = x_table;
         }
-
-        h->ldr(TReg(zreg.getIdx()), ptr(x_addr));
+        load_1word_replicate(zreg, x_addr);
         return zreg;
     }
 

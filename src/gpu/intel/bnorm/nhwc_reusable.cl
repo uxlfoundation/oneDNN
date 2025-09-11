@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 #include "gpu/intel/bnorm/nhwc_reusable.h"
-#include "gpu/intel/bnorm/xe_bnorm_reduce.h"
+#include "gpu/intel/bnorm/xe_reduce.h"
 
 // Two sets of nhwc-optimized reusable kernels which are implemented with and
 // without use of private memory buffers.

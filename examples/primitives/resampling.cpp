@@ -16,15 +16,11 @@
 
 /// @example resampling.cpp
 /// > Annotated version: @ref resampling_example_cpp
-///
-/// @page resampling_example_cpp_short
-///
+
+/// @page resampling_example_cpp Resampling Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Resampling](@ref dev_guide_resampling) primitive in forward training
 /// propagation mode.
-///
-/// @page resampling_example_cpp Resampling Primitive Example
-/// @copydetails resampling_example_cpp_short
 ///
 /// @include resampling.cpp
 

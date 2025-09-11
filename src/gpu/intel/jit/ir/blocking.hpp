@@ -19,6 +19,7 @@
 
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
+#include "gpu/intel/logging.hpp"
 
 #include <set>
 

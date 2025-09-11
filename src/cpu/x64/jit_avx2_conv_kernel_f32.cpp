@@ -592,7 +592,7 @@ status_t jit_avx2_conv_fwd_kernel_f32_t::init_conf(jit_conv_conf_t &jcp,
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     jcp.isa = mayiuse(avx2) ? avx2 : avx;
 
@@ -1128,7 +1128,7 @@ status_t jit_avx2_conv_bwd_data_kernel_f32_t::init_conf(jit_conv_conf_t &jcp,
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, diff_src_d, weights_d, diff_dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     jcp.nthr = dnnl_get_max_threads();
 
@@ -1232,12 +1232,18 @@ status_t jit_avx2_conv_bwd_data_kernel_f32_t::init_conf(jit_conv_conf_t &jcp,
 
     bool args_ok = true && jcp.stride_w == jcp.stride_h && jcp.stride_d == 1
             && IMPLICATION(!is_data_layout_nxc,
-                    jcp.ic % simd_w == 0 && jcp.oc % simd_w == 0)
-            && jcp.ic <= diff_src_d.padded_dims()[1]
-            && jcp.oc <= diff_dst_d.padded_dims()[1]
-            && jcp.dst_tag == required_dat_tag
+                    jcp.ic % simd_w == 0 && jcp.oc % simd_w == 0);
+    VDISPATCH_CONV_IC(
+            args_ok, VERBOSE_BLOCKING_FAIL, "bad blocking dimensions");
+
+    bool padding_ok = jcp.ic <= diff_src_d.padded_dims()[1]
+            && jcp.oc <= diff_dst_d.padded_dims()[1];
+    VDISPATCH_CONV_IC(padding_ok, VERBOSE_UNSUPPORTED_PAD_FEATURE,
+            "padded dims mismatch");
+
+    bool tag_ok = jcp.dst_tag == required_dat_tag
             && jcp.src_tag == required_dat_tag && jcp.wei_tag == wei_tag;
-    VDISPATCH_CONV_IC(args_ok, VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_CONV_IC(tag_ok, VERBOSE_UNSUPPORTED_TAG);
 
     const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
     const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
@@ -1354,7 +1360,7 @@ status_t jit_avx2_conv_bwd_weights_kernel_f32_t::init_conf(jit_conv_conf_t &jcp,
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, diff_weights_d, diff_dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     const bool with_groups = diff_weights_d.ndims() == src_d.ndims() + 1;
     int ndims = src_d.ndims();

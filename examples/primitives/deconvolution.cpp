@@ -16,9 +16,8 @@
 
 /// @example deconvolution.cpp
 /// > Annotated version: @ref deconvolution_example_cpp
-///
-/// @page deconvolution_example_cpp_short
-///
+
+/// @page deconvolution_example_cpp Deconvolution Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Deconvolution](@ref dev_guide_convolution) primitive in forward propagation
 /// mode.
@@ -26,9 +25,6 @@
 /// Key optimizations included in this example:
 /// - Creation of optimized memory format from the primitive descriptor;
 /// - Primitive attributes with fused post-ops.
-///
-/// @page deconvolution_example_cpp Deconvolution Primitive Example
-/// @copydetails deconvolution_example_cpp_short
 ///
 /// @include deconvolution.cpp
 

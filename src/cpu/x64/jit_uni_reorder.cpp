@@ -885,11 +885,11 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             // transposition on the fly
             const bool fast_return = prb_.src_scale_type != scale_type_t::MANY
                     && prb_.dst_scale_type != scale_type_t::MANY
-                    && prb_.beta == 0.f && !prb_.req_src_zp && !prb_.req_dst_zp;
+                    && prb_.beta == 0.f && !prb_.req_src_zp && !prb_.req_dst_zp
+                    && !compensation_needed_;
             if (fast_return) {
-                const bool use_sat_cvt = need_saturation
-                        && !compensation_needed_
-                        && isa_has_sat_cvt(isa_, prb_.otype);
+                const bool use_sat_cvt
+                        = need_saturation && isa_has_sat_cvt(isa_, prb_.otype);
                 if (prb_.src_scale_type == scale_type_t::COMMON)
                     for (int ur = 0; ur < reg_unroll; ur += load_step)
                         uni_vmulps(Xmm(ur), Xmm(ur), xmm_src_scales_);

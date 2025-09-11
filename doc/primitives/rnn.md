@@ -458,20 +458,9 @@ details on how to use and set these quantization parameters.
    - Int8 workloads require weights layouts to be #dnnl_format_tag_any.
    - Bias and cell state of bf16 data type is not supported.
 
-## Example
+## Examples
 
-[LSTM RNN Primitive Example](@ref lstm_example_cpp)
-
-@copydetails lstm_example_cpp_short
-
-[Vanilla RNN Primitive Example](@ref vanilla_rnn_example_cpp)
-
-@copydetails vanilla_rnn_example_cpp_short
-
-[AUGRU RNN Primitive Example](@ref augru_example_cpp)
-
-@copydetails augru_example_cpp_short
-
-[Linear-Before-Reset GRU RNN Primitive Example](@ref lbr_gru_example_cpp)
-
-@copydetails lbr_gru_example_cpp_short
+* @ref lstm_example_cpp
+* @ref vanilla_rnn_example_cpp
+* @ref augru_example_cpp
+* @ref lbr_gru_example_cpp

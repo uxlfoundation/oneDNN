@@ -17,7 +17,6 @@
 #define GPU_INTEL_UTILS_HPP
 
 #include <iostream>
-#include <sstream>
 
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"

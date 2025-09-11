@@ -339,10 +339,10 @@ struct gen_t : public primitive_t {
 
             // Global k-parallel kernels don't support post-ops or non-f32/s32
             //   accumulation unless fusion is enabled.
-            if (kernel_desc_.driver_info()->kParallel()
-                    && !kernel_desc_.driver_info()->fusedPostOps()) {
-                VDISPATCH_GEMM(
-                        !non_scale_po_ && utils::one_of(d->c_type(), f32, s32),
+            auto info_ = kernel_desc_.driver_info();
+            if (info_->kParallel() && !info_->fusedPostOps()) {
+                VDISPATCH_GEMM(!non_scale_po_ && !(with_sum_ && with_c_scales())
+                                && utils::one_of(d->c_type(), f32, s32),
                         VERBOSE_UNSUPPORTED_POSTOP);
             }
 
@@ -353,8 +353,8 @@ struct gen_t : public primitive_t {
 
             // Ensure kernel can be run deterministically if required.
             if (attr()->deterministic_)
-                VDISPATCH_GEMM(!kernel_desc_.driver_info()->nondeterministic(),
-                        VERBOSE_DETERMINISTIC_FAIL);
+                VDISPATCH_GEMM(
+                        !info_->nondeterministic(), VERBOSE_DETERMINISTIC_FAIL);
 
             init_scratchpad();
 

@@ -327,6 +327,10 @@ public:
         return true;
     }
 
+    tile_t with(const idx_t &key, dim_t value) const {
+        return idx_map_t<int64_t>::with_impl<tile_t>(key, value);
+    }
+
 #if __cplusplus >= 202002L
     bool operator==(const tile_t &other) const = default;
 #endif

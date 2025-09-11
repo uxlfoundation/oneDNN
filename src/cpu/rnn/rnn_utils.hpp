@@ -159,11 +159,6 @@
 #define rnn_merged_layer_execution_sig(f) \
     dnnl_status_t f(rnn_merged_layer_execution_sig_args) const
 
-#define rnn_matmul_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, \
-            const std::shared_ptr<dnnl::impl::primitive_t> &matmul_prim, \
-            const weights_t *a_, const gemm_data_t *b_, gemm_acc_t *c_) const
-
 #define rnn_gemm_sig_args \
     const char transA, const char transB, dim_t m, dim_t n, dim_t k, \
             const float alpha, const weights_t *a_, const dim_t ldA, \

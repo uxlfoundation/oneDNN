@@ -133,20 +133,39 @@ public:
     status_t create_primitives(
             const rnn_matmul_primitive_descriptors_t &pds, engine_t *engine);
 
+    // Create execution context for each matmul primitive instance using the provided
+    // RNN execution context. To be called once per RNN execution.
+    void create_all_ctx(exec_ctx_t const &ctx) const;
+
     // Run execute function for corresponding matmul primitive instance
     status_t apply(const exec_ctx_t &ctx, const key_t &key, const void *A,
             const void *B, void *C) const;
 
 private:
     using mm_ptr = std::shared_ptr<primitive_t>;
-    std::vector<std::pair<key_t, mm_ptr>> mms_;
 
-    mm_ptr find(const key_t &key) const {
+    struct matmul_primitive_data_t {
+        using mem_ptr = std::shared_ptr<memory_t>;
+        mm_ptr mm_prim_;
+        mem_ptr A_mem_;
+        mem_ptr B_mem_;
+        mem_ptr C_mem_;
+        std::shared_ptr<exec_ctx_t> ctx_;
+    };
+
+    using mm_data_ptr = std::shared_ptr<matmul_primitive_data_t>;
+    std::vector<std::pair<key_t, mm_data_ptr>> mms_;
+
+    mm_data_ptr find(const key_t &key) const {
         for (const auto &kv : mms_) {
             if (kv.first == key) return kv.second;
         }
         return {};
     }
+
+    static void create_mem_wrappers(const mm_data_ptr &matmul_data);
+    static void create_ctx(
+            const mm_data_ptr &matmul_data, const exec_ctx_t &ctx);
 };
 
 template <impl::data_type_t src_type, impl::data_type_t weights_type,
@@ -230,25 +249,11 @@ struct ref_rnn_common_t : public primitive_t {
         status_t init(engine_t *engine);
 
         rnn_utils::rnn_conf_t rnn_;
-        std::shared_ptr<primitive_desc_t> matmul_layer_1_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_layer_2_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_layer_3_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_iter_1_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_iter_2_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_iter_3_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_part2_1_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_part2_2_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_part2_3_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_part2_4_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_projection_1_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_projection_2_pd_;
-        std::shared_ptr<primitive_desc_t> matmul_projection_3_pd_;
+        rnn_matmul_primitive_descriptors_t matmul_pds_;
 #if DNNL_X64
         std::shared_ptr<primitive_desc_t> bf32_wei_layer_reorder_pd_;
         std::shared_ptr<primitive_desc_t> bf32_wei_iter_reorder_pd_;
 #endif
-        rnn_matmul_primitive_descriptors_t bwd_matmul_pds;
-
     protected:
         void init_scratchpad(size_t scratchpad_sz);
     };
@@ -296,7 +301,6 @@ protected:
             const gemm_acc_t *ws_diff_states_iter_c_) const;
 
     rnn_grid_execution_sig(linear_execution);
-    rnn_matmul_sig(execute_matmul);
     virtual rnn_cell_execution_sig(cell_execution_ref) = 0;
     virtual rnn_merged_layer_execution_sig(merged_layer_execution_ref) = 0;
     virtual rnn_cell_execution_sig(cell_execution_brgemm) = 0;
@@ -309,15 +313,6 @@ protected:
     rnn_bias_finalize_sig(bias_finalize);
     rnn_weights_assign_sig(assign_weights);
     rnn_weights_assign_sig(assign_packed_weights);
-
-    const std::shared_ptr<primitive_t> &get_matmul_layer(
-            rnn_utils::cell_position_t cell_position) const;
-    const std::shared_ptr<primitive_t> &get_matmul_iter(
-            rnn_utils::cell_position_t cell_position) const;
-    const std::shared_ptr<primitive_t> &get_matmul_part2(
-            rnn_utils::cell_position_t cell_position) const;
-    const std::shared_ptr<primitive_t> &get_matmul_projection(
-            rnn_utils::cell_position_t cell_position) const;
 
     float (*activation_func)(float s, float alpha, float cliping) = nullptr;
 
@@ -351,22 +346,7 @@ protected:
 
     // While using Matmul instead of GeMM, we require multiple matmuls, due to
     // differences in M, N, K, LDB and post-ops at different cell_positions.
-    // TODO: Maybe replace them with runtime matmul if it becomes unmanageable.
-    std::shared_ptr<primitive_t> matmul_layer_1_;
-    std::shared_ptr<primitive_t> matmul_layer_2_;
-    std::shared_ptr<primitive_t> matmul_layer_3_;
-    std::shared_ptr<primitive_t> matmul_iter_1_;
-    std::shared_ptr<primitive_t> matmul_iter_2_;
-    std::shared_ptr<primitive_t> matmul_iter_3_;
-    std::shared_ptr<primitive_t> matmul_part2_1_;
-    std::shared_ptr<primitive_t> matmul_part2_2_;
-    std::shared_ptr<primitive_t> matmul_part2_3_;
-    std::shared_ptr<primitive_t> matmul_part2_4_;
-    std::shared_ptr<primitive_t> matmul_projection_1_;
-    std::shared_ptr<primitive_t> matmul_projection_2_;
-    std::shared_ptr<primitive_t> matmul_projection_3_;
-
-    rnn_matmul_primitives_t bwd_mm_primitives_ {};
+    rnn_matmul_primitives_t mm_primitives_ {};
 
     gemm_t gemm_layer_func {};
     gemm_t gemm_iter_func {};
@@ -405,6 +385,8 @@ struct ref_rnn_fwd_t : public ref_rnn_common_t<prop_kind::forward, src_type,
     using base_t::gemm_projection_func;
 
     using base_t::base_t;
+
+    using base_t::scratch_type;
 
 private:
     rnn_gemm_sig(gemm) override;

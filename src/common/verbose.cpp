@@ -1632,7 +1632,11 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
             ss << "div:";
         else
             ss << "mul:";
-        ss << dnnl_dt2str(pd->scale_md()->data_type);
+        ss << dnnl_dt2str(pd->scale_md()->data_type) << ":";
+        if (pd->with_host_scale())
+            ss << "host";
+        else
+            ss << "device";
     }
 
     ss << "," << md2dim_str(pd->qry_md()) << ":" << md2dim_str(pd->key_md())

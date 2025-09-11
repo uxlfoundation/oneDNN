@@ -84,6 +84,18 @@
 --attr-fpmath=f16:true
 1x4096:4096x4096
 
+--reset
+--bia_mask=4
+--dt=f16:u8:f16
+--bia-dt=f16
+--stag=abc
+--wtag=cab
+--dtag=abc
+--attr-scales=wei:per_tensor:f16:16x1
+--attr-zero-points=wei:per_tensor:u8:16x1
+--attr-fpmath=f16:true
+64x1x2048:1x2048x2560
+
 ## 4D cases with full mask
 --reset
 --skip-impl=ref
@@ -179,6 +191,18 @@
 --attr-scales=wei:per_tensor:f16:127x1
 --attr-fpmath=f16:true
 32x127:127x63_n"odd_k_single_group"
+
+--reset
+--bia_mask=4
+--dt=f16:u4:f16
+--bia-dt=f16
+--stag=abc
+--wtag=cab
+--dtag=abc
+--attr-scales=wei:per_tensor:f16:16x1
+--attr-zero-points=wei:per_tensor:u8:16x1
+--attr-fpmath=f16:true
+64x1x2048:1x2048x2560
 
 # fp8 weights decompression
 --reset

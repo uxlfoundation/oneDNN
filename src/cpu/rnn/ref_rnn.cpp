@@ -114,18 +114,44 @@ size_t rnn_matmul_primitive_descriptors_t::get_max_scratchpad_size() const {
 status_t rnn_matmul_primitives_t::create_primitives(
         const rnn_matmul_primitive_descriptors_t &pds, engine_t *engine) {
     for (auto pdi = pds.begin(); pdi != pds.end(); ++pdi) {
-        mm_ptr p;
-        CHECK(pdi->second->create_primitive(p, engine));
-        mms_.emplace_back(pdi->first, p);
+        mm_ptr mm_prim;
+        CHECK(pdi->second->create_primitive(mm_prim, engine));
+
+        auto mm_data = std::make_shared<matmul_primitive_data_t>();
+        mm_data->mm_prim_ = mm_prim;
+        create_mem_wrappers(mm_data);
+
+        mms_.emplace_back(pdi->first, mm_data);
     }
     return status::success;
 }
 
 status_t rnn_matmul_primitives_t::apply(const exec_ctx_t &ctx, const key_t &key,
         const void *A, const void *B, void *C) const {
-    const auto matmul_prim = find(key);
-    assert(matmul_prim);
-    if (!matmul_prim) return status::runtime_error;
+    const auto matmul_data = find(key);
+    assert(matmul_data && matmul_data->mm_prim_ && matmul_data->ctx_);
+    if (!matmul_data) return status::runtime_error;
+
+    auto &matmul_ctx = *matmul_data->ctx_;
+    auto set_handle = [&](int arg, bool is_input, void *handle) {
+        auto *mem = is_input ? matmul_ctx.input(arg) : matmul_ctx.output(arg);
+        assert(mem);
+        return mem->memory_storage()->set_data_handle(handle);
+    };
+    CHECK(set_handle(DNNL_ARG_SRC, true, (void *)B));
+    CHECK(set_handle(DNNL_ARG_WEIGHTS, true, (void *)A));
+    CHECK(set_handle(DNNL_ARG_DST, false, C));
+
+    const auto &matmul_prim = matmul_data->mm_prim_;
+    nested_scratchpad_t ns(ctx, key_nested_multiple, matmul_prim);
+    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+
+    return matmul_prim->execute(matmul_ctx);
+}
+
+void rnn_matmul_primitives_t::create_mem_wrappers(
+        const mm_data_ptr &matmul_data) {
+    assert(matmul_data && matmul_data->mm_prim_);
 
     // Service engine is just a global classic CPU engine that is used
     // when it's required to create memory_t objects for classic CPU
@@ -134,31 +160,48 @@ status_t rnn_matmul_primitives_t::apply(const exec_ctx_t &ctx, const key_t &key,
     engine_t *const service_engine = get_service_engine();
     constexpr auto mem_flag = memory_flags_t::use_runtime_ptr;
 
+    const auto &matmul_pd = matmul_data->mm_prim_->pd();
+
     // A, B and C are regular, raw CPU pointers that can only be used with
     // memory_t objects created for the classic CPU engine.
-    std::unique_ptr<memory_t, memory_deleter_t> A_mem;
-    CHECK(safe_ptr_assign(A_mem,
-            new memory_t(service_engine, matmul_prim->pd()->weights_md(),
-                    mem_flag, (void *)(A))));
-    std::unique_ptr<memory_t, memory_deleter_t> B_mem;
-    CHECK(safe_ptr_assign(B_mem,
-            new memory_t(service_engine, matmul_prim->pd()->src_md(), mem_flag,
-                    (void *)(B))));
-    std::unique_ptr<memory_t, memory_deleter_t> C_mem;
-    CHECK(safe_ptr_assign(C_mem,
-            new memory_t(service_engine, matmul_prim->pd()->dst_md(), mem_flag,
-                    (void *)(C))));
+    std::shared_ptr<memory_t> A_mem(
+            new memory_t(
+                    service_engine, matmul_pd->weights_md(), mem_flag, nullptr),
+            memory_deleter_t());
+
+    std::shared_ptr<memory_t> B_mem(
+            new memory_t(
+                    service_engine, matmul_pd->src_md(), mem_flag, nullptr),
+            memory_deleter_t());
+
+    std::shared_ptr<memory_t> C_mem(
+            new memory_t(
+                    service_engine, matmul_pd->dst_md(), mem_flag, nullptr),
+            memory_deleter_t());
+
+    matmul_data->A_mem_ = A_mem;
+    matmul_data->B_mem_ = B_mem;
+    matmul_data->C_mem_ = C_mem;
+}
+
+void rnn_matmul_primitives_t::create_all_ctx(const exec_ctx_t &ctx) const {
+    for (const auto &kv : mms_) {
+        create_ctx(kv.second, ctx);
+    }
+}
+
+void rnn_matmul_primitives_t::create_ctx(
+        const mm_data_ptr &matmul_data, const exec_ctx_t &ctx) {
+    assert(matmul_data && matmul_data->A_mem_ && matmul_data->B_mem_
+            && matmul_data->C_mem_);
 
     exec_args_t matmul_args;
-    matmul_args[DNNL_ARG_SRC] = {B_mem.get(), true};
-    matmul_args[DNNL_ARG_WEIGHTS] = {A_mem.get(), true};
-    matmul_args[DNNL_ARG_DST] = {C_mem.get(), false};
+    matmul_args[DNNL_ARG_SRC] = {matmul_data->B_mem_.get(), true};
+    matmul_args[DNNL_ARG_WEIGHTS] = {matmul_data->A_mem_.get(), true};
+    matmul_args[DNNL_ARG_DST] = {matmul_data->C_mem_.get(), false};
 
-    exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
-    nested_scratchpad_t ns(ctx, key_nested_multiple, matmul_prim);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
-
-    return matmul_prim->execute(matmul_ctx);
+    matmul_data->ctx_
+            = std::make_shared<exec_ctx_t>(ctx, std::move(matmul_args));
 }
 
 template <prop_kind_t aprop, impl::data_type_t src_type,
@@ -2611,6 +2654,8 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
                     (const src_iter_t *)src_iter, src_iter_c, diff_dst_iter,
                     diff_dst_iter_c);
     }
+
+    if (rnn.use_matmul) { bwd_mm_primitives_.create_all_ctx(ctx); }
 
     // run the execution on the grid
 #if DNNL_X64

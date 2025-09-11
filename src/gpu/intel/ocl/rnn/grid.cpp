@@ -767,14 +767,14 @@ status_t simple_rnn_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
         attr.deterministic_ = this->attr()->deterministic_;
         CHECK(dnnl::impl::create_gemm_pd(gemm_pd, engine, &a_md, &b_md, &c_md,
                 &glob_zero_md, c_dt, &attr));
-        if (threads_per_eu == 0)
-            CHECK(gemm_pd->query(
-                    query::preferred_gpu_threads_per_eu, 0, &threads_per_eu));
-        else if (get_verbose_dev_mode(verbose_t::debuginfo) > 1) {
+        bool verbose = get_verbose_dev_mode(verbose_t::debuginfo) > 1;
+        if (threads_per_eu == 0 || verbose) {
             auto t = 0;
-            CHECK(gemm_pd->query(query::preferred_gpu_threads_per_eu, 0, &t));
-            if (t != threads_per_eu)
-                verbose_printf("[WARNING] GEMM grf modes are inconsistent");
+            auto s = gemm_pd->query(query::preferred_gpu_threads_per_eu, 0, &t);
+            if (threads_per_eu == 0)
+                threads_per_eu = (status::success != s) ? t : 128;
+            if (verbose && t != threads_per_eu)
+                verbose_printf("[WARNING] GEMM grf modes are inconsistent\n");
         }
         return status::success;
     };

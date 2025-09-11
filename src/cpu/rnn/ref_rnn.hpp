@@ -134,20 +134,39 @@ public:
     status_t create_primitives(
             const rnn_matmul_primitive_descriptors_t &pds, engine_t *engine);
 
+    // Create execution context for each matmul primitive instance using the provided
+    // RNN execution context. To be called once per RNN execution.
+    void create_all_ctx(exec_ctx_t const &ctx) const;
+
     // Run execute function for corresponding matmul primitive instance
     status_t apply(const exec_ctx_t &ctx, const key_t &key, const void *A,
             const void *B, void *C) const;
 
 private:
     using mm_ptr = std::shared_ptr<primitive_t>;
-    std::vector<std::pair<key_t, mm_ptr>> mms_;
 
-    mm_ptr find(const key_t &key) const {
+    struct matmul_primitive_data_t {
+        using mem_ptr = std::shared_ptr<memory_t>;
+        mm_ptr mm_prim_;
+        mem_ptr A_mem_;
+        mem_ptr B_mem_;
+        mem_ptr C_mem_;
+        std::shared_ptr<exec_ctx_t> ctx_;
+    };
+
+    using mm_data_ptr = std::shared_ptr<matmul_primitive_data_t>;
+    std::vector<std::pair<key_t, mm_data_ptr>> mms_;
+
+    mm_data_ptr find(const key_t &key) const {
         for (const auto &kv : mms_) {
             if (kv.first == key) return kv.second;
         }
         return {};
     }
+
+    static void create_mem_wrappers(const mm_data_ptr &matmul_data);
+    static void create_ctx(
+            const mm_data_ptr &matmul_data, const exec_ctx_t &ctx);
 };
 
 template <impl::data_type_t src_type, impl::data_type_t weights_type,

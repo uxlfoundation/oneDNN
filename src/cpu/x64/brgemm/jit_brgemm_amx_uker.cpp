@@ -1378,8 +1378,8 @@ void jit_brgemm_amx_uker_base_t::apply_comp_pad_to_vector(
             = zp_comp_pad_a_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
     const size_t comp_pad_off_offset
             = zp_comp_pad_a_off_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
-    printf("ldb: %d, bdb: %d, comp_pad_offset: %ld, %ld\n", ldb, bdb,
-            comp_pad_offset, comp_pad_off_offset * 16);
+    //printf("ldb: %d, bdb: %d, comp_pad_offset: %ld, %ld\n", ldb, bdb,
+    //        comp_pad_offset, comp_pad_off_offset * 16);
     auto reg_tmp = rsi;
     mov(reg_tmp, ptr_b[reg_zp_comp_pad_a_off + comp_pad_off_offset]);
     //    add(reg_zp_comp_pad_a_off, comp_pad_off_offset);
@@ -1388,8 +1388,8 @@ void jit_brgemm_amx_uker_base_t::apply_comp_pad_to_vector(
     //    mov(reg_zp_comp_a, zp_comp_a_offset(ldb) + comp_pad_off_offset * 16);
     reg_zp_comp_pad_a.restore();
     const auto zp_comp_pad_a_addr
-            = ptr[reg_zp_comp_pad_a + reg_tmp + zp_comp_a_offset(ldb)];
-    //        = EVEX_compress_addr(reg_zp_comp_pad_a, comp_pad_offset);
+            //        = ptr[reg_zp_comp_pad_a + reg_tmp + zp_comp_a_offset(ldb)];
+            = EVEX_compress_addr(reg_zp_comp_pad_a, 0); //comp_pad_offset);
     cvt2ps(data_type::s32, zmm_zp_comp_a, zp_comp_pad_a_addr, true, false,
             k_mask);
     vmulps(zmm_zp_comp_a, zmm_zp_comp_a, zmm_zp_a_val);

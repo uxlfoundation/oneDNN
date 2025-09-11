@@ -212,7 +212,8 @@ private:
     status_t cal_compensation(const char *__restrict weights,
             int32_t *src_zp_buffer, int32_t *s8s8_comp_buffer) const;
     void prepare_src_zp_str(brgemm_thread_ctx_t &btc, const int kd_s,
-            const int kd_f, const bool do_postwork) const;
+            const int kd_f, const int kh_s, const int kh_f,
+            const bool do_postwork) const;
     int get_comp_oh(const int oh) const;
     int get_comp_ker_idx(const int kd_b, const int kd_e, const int kh_b,
             const int kh_e, const int kw_b, const int kw_e, const int oh) const;

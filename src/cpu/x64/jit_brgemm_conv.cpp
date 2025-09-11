@@ -785,15 +785,16 @@ void brgemm_convolution_fwd_t<isa>::add_po_kernels(
 
 template <cpu_isa_t isa>
 void brgemm_convolution_fwd_t<isa>::prepare_src_zp_str(brgemm_thread_ctx_t &btc,
-        const int kd_s, const int kd_f, const bool do_postwork) const {
+        const int kd_s, const int kd_f, const int comp_kh_s,
+        const int comp_kh_f, const bool do_postwork) const {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
     auto ndims = _pd->ndims;
 
     if (!do_postwork || !(jcp.src_zero_point && jcp.req_cal_comp_pad)) return;
 
-    const size_t base_offset
-            = 0; //get_comp_offset(btc.g, btc.ocb, 0, 0, kd_s, kd_f, 0, KH, 0, KW);
+    const size_t base_offset = get_comp_offset(
+            btc.g, btc.ocb, 0, 0, kd_s, kd_f, comp_kh_s, comp_kh_f, 0, KW);
 
     const auto oh_begin = btc.ohb * jcp.oh_block;
     const auto oh_end = jcp.is_os_blocking
@@ -818,12 +819,14 @@ void brgemm_convolution_fwd_t<isa>::prepare_src_zp_str(brgemm_thread_ctx_t &btc,
             const auto kw_f = KW
                     - div_up(nstl::max(0, iiw - IW + (KW - 1) * DW + 1), DW);
             const auto m = ow - ow_begin + (oh - oh_begin) * jcp.ow_block;
-            const auto comp_offset = m * jcp.oc_block * sizeof(int32_t);
-            //            const auto comp_offset = get_comp_offset(
-            //                    btc.g, btc.ocb, 0, 0, kd_s, kd_f, kh_s, kh_f, kw_s, kw_f);
-            btc.src_zp_comp_offset[m] = comp_offset;
-            printf("m: %d, base offset: %d, comp offset: %d\n", m, base_offset,
-                    btc.src_zp_comp_offset[m]);
+            const auto k
+                    = get_comp_ker_idx(kd_s, kd_f, kh_s, kh_f, kw_s, kw_f, 0);
+            const auto comp_offset = get_comp_offset(
+                    btc.g, btc.ocb, 0, 0, kd_s, kd_f, kh_s, kh_f, kw_s, kw_f);
+            btc.src_zp_comp_offset[m]
+                    = 0; //(comp_offset - base_offset) * sizeof(int32_t);
+            printf("m: %d, k: %d, base offset: %d, comp offset: %d\n", m, k,
+                    base_offset, btc.src_zp_comp_offset[m]);
         }
     }
 }
@@ -832,7 +835,7 @@ template <cpu_isa_t isa>
 int brgemm_convolution_fwd_t<isa>::get_comp_oh(const int oh) const {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
-
+    return 0;
     if (!(jcp.req_cal_comp_pad && jcp.exec_type == exec_trans)
             || comp_oh_kh_b.empty())
         return 0;
@@ -947,7 +950,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
     dst_w_sz = static_cast<dim_t>(OW) * jcp.oc_without_padding;
     dst_h_sz = OH * dst_w_sz;
 
-    const auto comp_buffer_os = jcp.exec_type != exec_vpad ? jcp.ow : 1;
+    const auto comp_buffer_os = 1; //jcp.exec_type != exec_vpad ? jcp.ow : 1;
     comp_ow_sz = static_cast<dim_t>(jcp.oc_block);
     comp_kw_sz = comp_buffer_os * comp_ow_sz;
     comp_ker_sz = jcp.ker_ranges_size * comp_kw_sz;
@@ -1215,6 +1218,8 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
             kw_es[k] = kw_e;
             comp_oh[k] = oh;
             k++;
+            printf("k: %d, kd: %d, %d, kh: %d, %d, kw: %d, %d\n", k, kd_b, kd_e,
+                    kh_b, kh_e, kw_b, kw_e);
             assert(k <= static_cast<size_t>(jcp.ker_ranges_size));
         };
 
@@ -1225,7 +1230,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
             auto oh_end = nstl::min(OH, oh_begin + jcp.oh_block);
             for (int oh = oh_begin; oh < oh_end; oh++) {
                 int kw_s {0}, kw_full_s {0}, kw_f {0}, kw_full_f {0};
-                const int ow = owb * jcp.ow_block;
+                const int ow_begin = owb * jcp.ow_block;
                 const int iid = ndims_pick(od * SD - FP, 0, 0);
                 const int kd_s
                         = ndims_pick(div_up(nstl::max(0, -iid), DD), 0, 0);
@@ -1242,16 +1247,30 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                                 nstl::max(0, iih - IH + (KH - 1) * DH + 1), DH);
                 const auto kh_f = ndims_pick(kh_f_, kh_f_, 1);
                 brgemm_convolution_utils::get_kw_range(
-                        jcp, ow, kw_s, kw_full_s, kw_full_f, kw_f);
+                        jcp, ow_begin, kw_s, kw_full_s, kw_full_f, kw_f);
                 if (kd_f > kd_s && kh_f > kh_s && kw_f > kw_s) {
                     if (jcp.exec_type != exec_trans) {
                         update_kernels(kd_s, kd_f, kh_s, kh_f, 0, KW);
                     } else {
-                        const auto comp_oh_idx = jcp.is_os_blocking
-                                ? get_comp_oh(oh_begin) + oh - oh_begin
-                                : get_comp_oh(oh);
-                        update_kernels(
-                                kd_s, kd_f, kh_s, kh_f, 0, KW, comp_oh_idx);
+                        //                        const auto comp_oh_idx = jcp.is_os_blocking
+                        //                                ? get_comp_oh(oh_begin) + oh - oh_begin
+                        //                                : get_comp_oh(oh);
+                        const auto ow_end
+                                = nstl::min(OW, ow_begin + jcp.ow_block);
+                        update_kernels(kd_s, kd_f, kh_s, kh_f, 0, KW);
+                        for (int ow = ow_begin; ow < ow_end; ow++) {
+                            const auto iiw = ow * SW - LP;
+                            const auto kw_s = div_up(nstl::max(0, -iiw), DW);
+                            const auto kw_f = KW
+                                    - div_up(nstl::max(0,
+                                                     iiw - IW + (KW - 1) * DW
+                                                             + 1),
+                                            DW);
+                            update_kernels(kd_s, kd_f, kh_s, kh_f, kw_s, kw_f);
+                        }
+
+                        //                        update_kernels(
+                        //                                kd_s, kd_f, kh_s, kh_f, 0, KW, comp_oh_idx);
                     }
                 }
             }
@@ -1515,7 +1534,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
     int vpad_k = 0;
     const bool has_relo_large_spatial /* heuristic*/
             = is_relo_with_relo_weights && jcp.oc_block * jcp.ow > 10240;
-    while (vpad_k < ker_vpad_sz) {
+    /*    while (vpad_k < ker_vpad_sz) {
         int vpad_next_k = vpad_k + 1;
         while (!has_relo_large_spatial && vpad_next_k < ker_vpad_sz) {
             if (kd_bs[vpad_next_k] != kd_bs[vpad_k]
@@ -1531,7 +1550,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
         adjusted_k_l.push_back(vpad_next_k - vpad_k);
         vpad_k = vpad_next_k;
     }
-
+*/
     const int max_ker_sz = adjusted_k.size();
     const auto comp_buffer_ow = jcp.exec_type != exec_vpad ? jcp.ow : 1;
     // TODO: revise the thread distribution here because the work_amount may be
@@ -1600,7 +1619,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
             p.kd_l = kd_e - kd_b;
             p.kh_l = kh_e - kh_b;
             p.kw_l = kw_e - kw_b;
-            p.ker_l = k_l;
+            p.ker_l = 1; //k_l;
             p.last_ocb = ocb == jcp.nb_oc - 1;
             p.use_inversion = _pd->desc()->use_inversion;
             p.ptr_in = &weights[wei_offs];
@@ -2333,8 +2352,8 @@ void brgemm_convolution_fwd_t<isa>::ker_trans(brgemm_thread_ctx_t &btc) const {
         if (ow_e - ow_b <= 0 && !do_init && !do_postwork) return;
 
         const auto comp_ker_offs = do_postwork
-                ? get_comp_offset(btc.g, btc.ocb, btc.oh, ow_b, kd_s, kd_f,
-                        comp_kh_s, comp_kh_f, 0, KW)
+                ? get_comp_offset(btc.g, btc.ocb, 0, 0, kd_s, kd_f, comp_kh_s,
+                        comp_kh_f, 0, KW)
                 : 0;
         if (do_postwork) {
             //            printf("comp_ker_offs: %d\n", comp_ker_offs);
@@ -2345,7 +2364,8 @@ void brgemm_convolution_fwd_t<isa>::ker_trans(brgemm_thread_ctx_t &btc) const {
                 printf("ithr: %d, ocb: %d, i: %d, comp_ker_offs: %d\n",
                         btc.ithr, btc.ocb, i * 8, btc.src_zp_comp_offset[i]);
             }*/
-            prepare_src_zp_str(btc, kd_s, kd_f, do_postwork);
+            prepare_src_zp_str(
+                    btc, kd_s, kd_f, comp_kh_s, comp_kh_f, do_postwork);
         }
 
         if (nb_ic_b > 0) {

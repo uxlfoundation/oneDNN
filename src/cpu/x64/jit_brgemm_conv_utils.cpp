@@ -2401,10 +2401,12 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             + utils::div_up(abs(jcp.b_pad), jcp.dilate_h + 1);
     const auto kw_cnt = 1 + utils::div_up(abs(jcp.l_pad), jcp.dilate_w + 1)
             + utils::div_up(abs(jcp.r_pad), jcp.dilate_w + 1);
-    jcp.ker_ranges_size = jcp.exec_type == exec_trans
-            ? kd_cnt * nstl::min(jcp.oh, jcp.oh_block + kh_cnt)
-            : kd_cnt * kh_cnt;
-    const auto comp_buffer_ow = jcp.exec_type != exec_vpad ? jcp.ow : 1;
+    jcp.ker_ranges_size = jcp.exec_type == exec_trans ? kd_cnt * kh_cnt
+                    * kw_cnt //nstl::min(jcp.oh, jcp.oh_block + kh_cnt)
+                                                      : kd_cnt * kh_cnt;
+    printf("ker range: %d, kh cnt: %d, kw cnt: %d\n", jcp.ker_ranges_size,
+            kh_cnt, kw_cnt);
+    const auto comp_buffer_ow = 0; //jcp.exec_type != exec_vpad ? jcp.ow : 1;
     jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size
             * comp_buffer_ow * jcp.oc_block;
     jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;

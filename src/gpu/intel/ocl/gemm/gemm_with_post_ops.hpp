@@ -42,6 +42,9 @@ struct gemm_with_post_ops_t : public gpu_gemm_t {
         bool use_scratchpad() const {
             return use_scratchpad_with_post_op_worker;
         }
+        status_t query(query_t what, int idx, void *result) const override {
+            return gemm_pd_->query(what, idx, result);
+        }
 
         std::shared_ptr<primitive_desc_t> gemm_pd_;
         bool use_scratchpad_with_post_op_worker = false;

@@ -55,8 +55,8 @@ void slm_reduce_builder_t::build() {
 
     // Create SLM layout to store all intermediate buffers from the thread
     // group.
-    layout_t slm_layout(reg_layout_.type(), ndims + tg_ndims_,
-            reg_layout_.offset(), reg_layout_.blocks());
+    layout_t slm_layout(reg_layout_.type(), reg_layout_.blocks(),
+            reg_layout_.offset(), ndims + tg_ndims_);
     for (int i = tg_ndims_ - 1; i >= 0; i--) {
         slm_layout = slm_layout.add_outer_block(ndims + i, tg_grid_.dim(i));
     }

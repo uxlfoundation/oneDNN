@@ -27,13 +27,13 @@ void init_extra_tensors(const zero_points_config_t &zp_cfg,
         const memory_desc_t &dst_md, dim_t ic, dim_t oc,
         tensor_config_t &tensor_cfg) {
     if (!attr.rounding_mode_.has_default_values()) {
-        layout_t sround_seed_layout(type_t::u32(), 0, std::vector<dim_t> {1});
+        layout_t sround_seed_layout(type_t::u32(), std::vector<dim_t> {1});
         tensor_cfg.add_tensor("sround_seed", DNNL_ARG_ATTR_ROUNDING_SEED,
                 /*is_input=*/true, /*is_output=*/false, sround_seed_layout);
     }
     auto add_zp_buffer = [&](const std::string &name, type_t type, int arg_id,
                                  dim_t size) {
-        layout_t zp_layout(type, 0, std::vector<dim_t> {size});
+        layout_t zp_layout(type, std::vector<dim_t> {size});
         tensor_cfg.add_tensor(name, DNNL_ARG_ATTR_ZERO_POINTS | arg_id,
                 /*is_input=*/true, /*is_output=*/false, zp_layout);
     };
@@ -61,7 +61,7 @@ void init_extra_tensors(const zero_points_config_t &zp_cfg,
         int arg = scale_args[i].second;
         if (attr.scales_.has_default_values(arg)) continue;
         std::vector<dim_t> dims = {(attr.scales_.get_mask(arg) == 0) ? 1 : oc};
-        layout_t layout(type_t::f32(), 0, dims);
+        layout_t layout(type_t::f32(), dims);
         int arg_key = DNNL_ARG_ATTR_SCALES | arg;
         tensor_cfg.add_tensor(scale_args[i].first, arg_key, /*is_input=*/true,
                 /*is_output=*/false, layout);
@@ -79,7 +79,7 @@ void init_extra_tensors(const zero_points_config_t &zp_cfg,
                     /*is_input=*/true,
                     /*is_output=*/false, layout);
         } else if (po.is_prelu()) {
-            layout_t layout(type_t::f32(), 0,
+            layout_t layout(type_t::f32(),
                     get_prelu_weights_dims(po.prelu.mask, dst_md));
             int arg_key = DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_WEIGHTS;
             tensor_cfg.add_tensor("prelu_rhs_" + std::to_string(i), arg_key,

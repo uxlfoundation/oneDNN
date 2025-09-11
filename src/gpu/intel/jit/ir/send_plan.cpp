@@ -784,7 +784,7 @@ struct send_2d_params_t {
     }
 
     layout_t reg_layout(int grf_size, int ndims, const type_t &mem_type) const {
-        layout_t l(type, 0, std::vector<dim_t>(ndims, 1));
+        layout_t l(type, std::vector<dim_t>(ndims, 1));
         dim_t cur_stride = 1;
         enum class pad_kind_t {
             none,
@@ -2556,9 +2556,10 @@ send_group_t init_block(const view_info_t &info, view_iterator_t &it,
     ret.pad_bytes = info.hw().grf_size();
     auto &vlayout = info.vlayout();
     auto &blocks = vlayout.blocks();
-    reg_layout = layout_t(vlayout.type(), vlayout.ndims(), 0,
+    reg_layout = layout_t(vlayout.type(),
             std::vector<layout_block_t>(
-                    blocks.begin(), blocks.begin() + info.outer_idx()));
+                    blocks.begin(), blocks.begin() + info.outer_idx()),
+            0, vlayout.ndims());
     return ret;
 }
 
@@ -2600,9 +2601,10 @@ send_group_t init_scattered(const view_info_t &info,
     }
     ret.addr_inc = std::move(addr_base);
     ret.mask_inc = std::move(mask_base);
-    reg_layout = layout_t(vlayout.type(), vlayout.ndims(), 0,
+    reg_layout = layout_t(vlayout.type(),
             std::vector<layout_block_t>(
-                    blocks.begin(), blocks.begin() + info.outer_idx()));
+                    blocks.begin(), blocks.begin() + info.outer_idx()),
+            0, vlayout.ndims());
     reg_layout = reg_layout.make_dense();
     if (slot_stride != slot_size) {
         if (slot_size * type_packing == type_size) {

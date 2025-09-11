@@ -30,8 +30,8 @@ layout_t insert_dimension(const layout_t &layout, const pvar_t &dim) {
     for (auto &b : new_blocks) {
         if (b.dim.index() >= dim.index()) b.dim = pvar_t((dim_idx_t)b.dim + 1);
     }
-    return layout_t(layout.type(), layout.ndims() + 1, layout.offset(),
-            new_blocks,
+    return layout_t(layout.type(), new_blocks, layout.offset(),
+            layout.ndims() + 1,
             /*do_normalize=*/false);
 }
 
@@ -112,7 +112,7 @@ layout_t normalize_layout(const layout_t &_layout, bool with_groups,
 std::vector<dim_t> normalize_dims(std::vector<dim_t> &dims, bool with_groups,
         dim_t groups, bool is_dw, const std::array<int, 3> &dhw_map,
         bool add_groups, bool is_wei) {
-    layout_t dummy_layout(type_t::u8(), 0, dims);
+    layout_t dummy_layout(type_t::u8(), dims);
     return normalize_layout(dummy_layout, with_groups, groups, is_dw, dhw_map,
             add_groups, is_wei)
             .dims();
@@ -166,8 +166,8 @@ void maybe_reshape_dims(dim_idx_t ndims, layout_t &layout,
         std::vector<dim_t> &dims, std::vector<dim_t> &padded_dims) {
     gpu_assert(layout.ndims() == dim_idx_t(dims.size()));
     if (layout.ndims() < ndims) {
-        layout = layout_t(layout.type(), ndims, layout.offset(),
-                layout.blocks(), /*do_normalize=*/false);
+        layout = layout_t(layout.type(), layout.blocks(), layout.offset(),
+                ndims, /*do_normalize=*/false);
         dims.resize(ndims, 1);
         padded_dims.resize(ndims, 1);
     }

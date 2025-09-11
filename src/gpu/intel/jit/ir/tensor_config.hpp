@@ -121,8 +121,25 @@ std::vector<std::pair<char, dim_t>> parse_letter_blocks(
 
 inline layout_t make_layout(const type_t &type, const expr_t &offset,
         const std::string &format, const std::vector<dim_t> &dims = {}) {
-    return layout_t(type, offset, into<dim_idx_t>(dims.size()),
-            parse_format(format, into<dim_idx_t>(dims.size())), dims,
+    auto parts = parse_format(format, into<dim_idx_t>(dims.size()));
+    std::vector<layout_block_t> blocks;
+
+    // Iterate from right to left (innermost to outermost).
+    for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
+        auto &dim = it->dim;
+        dim_t block = it->block;
+        if (block == 0) {
+            dim_t full_block = 1;
+            for (auto &b : blocks)
+                if (b.dim == dim) full_block *= b.block;
+
+            block = utils::div_up(dims[dim], full_block);
+        }
+
+        blocks.emplace_back(dim, block);
+    }
+
+    return layout_t(type, blocks, offset, into<dim_idx_t>(dims.size()),
             /*do_normalize=*/false);
 }
 
@@ -146,7 +163,7 @@ inline layout_t make_layout(
         blocks.emplace_back(block.dim_idx, block.block, block.stride);
     }
 
-    return layout_t(to_ir(mdw.data_type()), mdw.ndims(), mdw.offset0(), blocks,
+    return layout_t(to_ir(mdw.data_type()), blocks, mdw.offset0(), mdw.ndims(),
             do_normalize);
 }
 

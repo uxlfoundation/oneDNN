@@ -368,13 +368,15 @@ struct gen_t : public primitive_t {
 
                 compute::kernel_t kernel;
                 if (valid) {
-                    printf("TRY \n");
                     auto *intel_engine
                             = utils::downcast<intel::engine_t *>(engine);
                     dnnl::impl::gpu::intel::gemm::jit::gen_kernel_t kd(
                             kernel_desc_);
                     status = intel_engine->create_kernel(&kernel, &kd);
-                    if (status == status::success) break;
+                    if (status == status::success) {
+                        kernel_desc_.set_kernel(kernel);
+                        break;
+                    }
                 }
                 i++;
             }
@@ -585,7 +587,6 @@ struct gen_t : public primitive_t {
 
         auto kd = pd()->kernel_desc();
 
-        printf("CREATE \n");
         CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));
 
         scalar_type_ = kd->scalar_type();

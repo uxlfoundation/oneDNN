@@ -162,15 +162,11 @@ const kcatalog::Entry *select1(const kcatalog::Catalog &catalog, int npatterns, 
     // TODO: omit evaluation if only one match, if aux output not needed.
     for (int ipattern = 0; ipattern < npatterns; ipattern++) {
         for (auto it = match(catalog, patterns[ipattern]); it; it++) {
-
             EvaluateAuxOutput thisAux;
             double score = evaluate(*it, eparams, thisAux);
              // Late tag checking. If late tags do not match, we skip entry.
 	    if (tagMatch(it->restrictions.tags, patterns[ipattern].lateTags))
             entries.push_back(&*it);           
-
-
-            if (observer) (*observer)(&*it, score, aux);
         }
     }
 
@@ -204,7 +200,8 @@ const kcatalog::Entry *select1(const kcatalog::Catalog &catalog, int npatterns, 
     }
 
     if (entry_idx < (int) entries.size()){
-	    evaluate(*entries[entry_idx], eparams, aux);
+	    double score = evaluate(*entries[entry_idx], eparams, aux);
+            if (observer) (*observer)(entries[entry_idx], score, aux);
 	    return entries[entry_idx];
     }
     

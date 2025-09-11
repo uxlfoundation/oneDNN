@@ -61,6 +61,10 @@ bool enable_generator_dsl() {
 
 status_t gen_desc_t::create_generator(
         const intel::engine_t &engine, compute::kernel_t &kernel) const {
+    if (kernel_) {
+        kernel = kernel_;
+        return status::success;
+    }
     gen_kernel_t kd(*this);
     return engine.create_kernel(&kernel, &kd);
 }
@@ -694,8 +698,8 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     SelectionObserver observer = entryObserver;
 
     entry_ = select(catalog(), static_cast<int>(match_params.size()),
-                match_params.data(), eval_params, aux_params_, entry_idx,
-                &observer);
+            match_params.data(), eval_params, aux_params_, entry_idx,
+            &observer);
 
     if (!entry_) return status::unimplemented;
 
@@ -847,10 +851,9 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
     SelectionObserver observer = entryObserver;
 
     entry_ = select(catalog(), match_params, eval_params, aux_params_,
-                entry_idx, &observer);
+            entry_idx, &observer);
 
     if (!entry_) return status::unimplemented;
-
 
     return finalize(match_params.tags);
 }

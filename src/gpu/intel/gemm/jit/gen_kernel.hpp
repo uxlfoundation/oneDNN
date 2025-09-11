@@ -83,12 +83,17 @@ struct gen_desc_t {
     }
     compute::gpu_arch_t arch() const { return arch_; }
 
-    bool  has_entry() { return entry_ != nullptr; }
+    bool has_entry() { return entry_ != nullptr; }
 
     const gemmstone::kcatalog::Entry &entry() const {
         assert(entry_ != nullptr);
         return *entry_;
     };
+
+    status_t set_kernel(compute::kernel_t kernel) {
+        kernel_ = kernel;
+        return status::success;
+    }
 
 protected:
     compute::gpu_arch_t arch_;
@@ -99,7 +104,7 @@ protected:
     const gemmstone::kcatalog::Entry *entry_ = nullptr;
     gemmstone::EvaluateAuxOutput aux_params_;
     gemmstone::CommonDriverInfo driver_info_;
-
+    compute::kernel_t kernel_ = nullptr;
     /* optional information to fine-tune kernel */
     int m_ = -1, n_ = -1, k_ = -1;
     int eu_count_ = -1;

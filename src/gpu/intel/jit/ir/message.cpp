@@ -355,7 +355,7 @@ private:
 
         std::vector<dim_t> sub_dims
                 = {(dim_t)size * type().packing() / type().size()};
-        layout_t sub_layout(type(), 0, sub_dims);
+        layout_t sub_layout(type(), sub_dims);
         mask_tensor_t sub_mask_tensor(sub_layout);
         int beg = (cur_off_ + off) * type().packing() / type().size();
         int end = (cur_off_ + off + size) * type().packing() / type().size();
@@ -663,7 +663,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     tile[b0.dim] = count * width;
     tile[b1.dim] = height;
 
-    reg_layout_ = layout_t(type_factor == 1 ? mem_type_ : send_type, 0,
+    reg_layout_ = layout_t(type_factor == 1 ? mem_type_ : send_type,
             std::vector<dim_t>(vlayout.ndims(), 1));
     int h_inner = vnni ? 4 / send_type.size() : 1;
     int h_outer = ir_utils::safe_divide(height, h_inner);
@@ -684,8 +684,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     if (type_factor != 1) {
         auto blocks = reg_layout_.blocks();
-        reg_layout_ = layout_t(
-                mem_type_, 0, std::vector<dim_t>(vlayout.ndims(), 1));
+        reg_layout_
+                = layout_t(mem_type_, std::vector<dim_t>(vlayout.ndims(), 1));
         reg_layout_ = reg_layout_.add_outer_block(b0.dim, type_factor);
         for (auto &b : blocks)
             reg_layout_ = reg_layout_.add_outer_block(b.dim, b.block);

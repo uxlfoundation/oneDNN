@@ -247,7 +247,7 @@ public:
                 bound_check_mask |= (1 << i);
             }
         }
-        return view_t(layout_t(type, 0, rhs_dims, /*do_normalize=*/false),
+        return view_t(layout_t(type, rhs_dims, /*do_normalize=*/false),
                 cp_view_.vvars(), bound_check_mask);
     }
 

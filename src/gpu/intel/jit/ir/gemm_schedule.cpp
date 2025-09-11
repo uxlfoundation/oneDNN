@@ -44,7 +44,7 @@ layout_t bmnk_mapper_t::map_to_bmnk(abc_kind_t abc_kind,
         }
         if (!found) gpu_error_not_expected() << "MNK dimension not found.";
     }
-    return layout_t(layout.type(), int(bmnk_kinds.size()), 0, blocks);
+    return layout_t(layout.type(), blocks, 0, int(bmnk_kinds.size()));
 }
 
 layout_t bmnk_mapper_t::map_from_bmnk(abc_kind_t abc_kind,
@@ -105,7 +105,7 @@ layout_t bmnk_block_mapper_t::map_from_bmnk(abc_kind_t abc_kind,
     }
 
     return layout_t(
-            bmnk_layout.type(), bmnk_mapper_.ndims(abc_kind), 0, blocks);
+            bmnk_layout.type(), blocks, 0, bmnk_mapper_.ndims(abc_kind));
 }
 
 bool bmnk_block_mapper_t::pop_block(std::vector<layout_block_t> &bmnk_blocks,

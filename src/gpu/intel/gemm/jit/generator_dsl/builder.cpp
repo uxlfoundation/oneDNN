@@ -96,12 +96,11 @@ struct transform_t {
 
         switch (normalized) {
             case kind_t::none:
-                return layout_t(
-                        type, 0, {{col_var, col, 1}, {row_var, row, col}});
+                return layout_t(type, {{col_var, col, 1}, {row_var, row, col}});
 
             case kind_t::block: {
                 int col_outer = (int)(col / col_inner);
-                return layout_t(type, 0,
+                return layout_t(type,
                         {{col_var, col_inner, 1}, {row_var, row, col_inner},
                                 {col_var, col_outer, row * col_inner}});
             }
@@ -110,7 +109,7 @@ struct transform_t {
                 int row_inner = 4 / t;
                 int row_outer = (int)(row / row_inner);
                 int col_outer = (int)(col / col_inner);
-                return layout_t(type, 0,
+                return layout_t(type,
                         {{row_var, row_inner, 1},
                                 {col_var, col_inner, row_inner},
                                 {row_var, row_outer, col_inner * row_inner},

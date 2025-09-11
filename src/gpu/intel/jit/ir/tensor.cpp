@@ -129,8 +129,8 @@ layout_t layout_t::sub(const tile_t &tile, const coord_t &start) const {
         mapped_blocks.emplace_back(b.dim, block, b.stride);
     }
 
-    return layout_t(type(), ndims_, start.is_empty() ? 0 : operator()(start),
-            mapped_blocks);
+    return layout_t(type(), mapped_blocks,
+            start.is_empty() ? 0 : operator()(start), ndims_);
 }
 
 layout_t layout_t::reinterpret(
@@ -190,7 +190,8 @@ layout_t layout_t::reinterpret(
         }
     }
 
-    return layout_t(new_type, ndims(), new_offset, new_blocks, do_normalize);
+    return layout_t(
+            new_type, new_blocks, new_offset, ndims(false), do_normalize);
 }
 
 layout_t layout_t::split_block(const std::pair<int, layout_block_t> &eb,
@@ -211,8 +212,7 @@ layout_t layout_t::split_block(const std::pair<int, layout_block_t> &eb,
 
     new_blocks.insert(new_blocks.begin() + block_idx + 1, b1);
 
-    return layout_t(
-            type(), ndims(), offset(), new_blocks, /*do_normalize=*/false);
+    return with(new_blocks, false);
 }
 
 layout_t layout_t::split_into_multi_blocks(
@@ -467,12 +467,12 @@ layout_t view_t::create_pseudo_vlayout(
         gpu_assert(rem_vdims[d] == 1) << "Can't create pseudo-layout.";
     }
 
-    layout_t ret(tlayout.type(), nvdims(), 0, blocks);
+    layout_t ret(tlayout.type(), blocks, 0, nvdims());
     if (!init_offset) return ret;
 
     auto targs = cvt_vargs_to_targs();
     auto off = tlayout.offset(targs);
-    return layout_t(tlayout.type(), nvdims(), off, blocks);
+    return layout_t(tlayout.type(), blocks, off, nvdims());
 }
 
 layout_t dim_assignment_t::map(const layout_t &layout) const {
@@ -486,7 +486,7 @@ layout_t dim_assignment_t::map(const layout_t &layout) const {
     }
     new_blocks = normalize_blocks(new_blocks,
             /*remove_size_1_blocks=*/false);
-    auto ret = layout_t(layout.type(), new_ndims(), layout.offset(), new_blocks,
+    auto ret = layout_t(layout.type(), new_blocks, layout.offset(), new_ndims(),
             /*do_normalize=*/false);
     gpu_assert(layout.elems() == ret.elems())
             << "Assignment doesn't preserve number of elements.";

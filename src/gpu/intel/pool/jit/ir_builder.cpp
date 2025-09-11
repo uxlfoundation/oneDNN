@@ -80,15 +80,15 @@ private:
             std::vector<dim_t> &dims, std::vector<dim_t> &padded_dims) {
         gpu_assert(layout.ndims() == dims.size());
         if (layout.ndims() < ndims) {
-            layout = layout_t(layout.type(), ndims, layout.offset(),
-                    layout.blocks(), /*do_normalize=*/false);
+            layout = layout_t(layout.type(), layout.blocks(), layout.offset(),
+                    ndims, /*do_normalize=*/false);
             dims.resize(ndims, 1);
             padded_dims.resize(ndims, 1);
         }
     }
 
     static std::vector<dim_t> dims_to_3d(const std::vector<dim_t> &dims) {
-        layout_t dummy_layout(type_t::u8(), 0, dims);
+        layout_t dummy_layout(type_t::u8(), dims);
         return spatials_to_3d(dummy_layout, false, {0, 1, 2}).dims();
     }
 

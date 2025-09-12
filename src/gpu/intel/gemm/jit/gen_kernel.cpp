@@ -88,6 +88,14 @@ compute::scalar_type_t gen_desc_t::scalar_type() const {
     }
 }
 
+static gemmstone::Scalar stringToScalar(std::string val) {
+    using namespace gemmstone;
+    switch (val.c_str()[0]) {
+        case '-': return Scalar(Scalar::Variable);
+        default: return Scalar(std::stoi(val));
+    }
+}
+
 status_t gen_desc_t::finalize(const char *tags) {
     // Update problem alignments to match catalog entry.
     if (!isPacked(problem_.A.layout)
@@ -148,9 +156,9 @@ status_t gen_desc_t::finalize(const char *tags) {
         ss >> strategy_.unroll[LoopN];
 
         ss >> val;
-        problem_.alpha = std::stoi(val);
+        problem_.alpha = stringToScalar(val);
         ss >> val;
-        problem_.beta = std::stoi(val);
+        problem_.beta = stringToScalar(val);
 
         ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
         parseStrategy(ovr_strategy.c_str(), hw_, problem_, strategy_);

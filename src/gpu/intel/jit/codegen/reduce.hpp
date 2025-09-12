@@ -134,7 +134,7 @@ private:
             if (a0.block == 2) {
                 auto a_blocks = a.blocks();
                 a_blocks.erase(a_blocks.begin());
-                a = layout_t(a.type(), a.ndims(), 0, a_blocks);
+                a = a.with(a_blocks);
                 return find_1d_tile(std::move(a), std::move(b));
             }
             return tile_t(std::vector<dim_t>(b.ndims(), 1));

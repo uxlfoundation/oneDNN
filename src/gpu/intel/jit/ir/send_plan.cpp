@@ -97,7 +97,7 @@ protected:
             return false;
 
         front.stride = 4 * type.packing() / (front.block * type.size());
-        layout = {layout.type(), layout.ndims(), layout.offset(), blocks};
+        layout = layout.with(blocks);
         return true;
     }
 

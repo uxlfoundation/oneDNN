@@ -79,8 +79,7 @@ layout_t split_dimension(
         seen[it->dim] = true;
     }
     std::reverse(_new_blocks.begin(), _new_blocks.end());
-    return layout_t(layout.type(), layout.ndims(), layout.offset(), _new_blocks,
-            /*do_normalize=*/false);
+    return layout.with(_new_blocks, false);
 }
 
 layout_t normalize_conv_groups(const layout_t &layout, bool with_groups,
@@ -227,7 +226,7 @@ view_t post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
         }
         new_blk.emplace_back(b);
     }
-    dst = layout_t(dst.type(), dst.ndims(), dst.offset(), new_blk, false);
+    dst = dst.with(new_blk, false);
 
     view_t view(vars, 6);
     view.set_vdim(vars[0], 1); // mb

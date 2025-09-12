@@ -1326,7 +1326,7 @@ struct fma_context_t {
         if (is_dpas) {
             int sdepth = 8;
             int dword_size = 4;
-            std::vector<std::pair<pvar_t, dim_t>> blocks;
+            std::vector<layout_block_t> blocks;
             auto bmnks = get_bmnk_kinds(abc);
             if (is_a) {
                 // A -> src2
@@ -1337,14 +1337,14 @@ struct fma_context_t {
                 int k_blk0 = dword_size / type_size;
                 int n_blk = simd;
                 int k_blk1 = sdepth;
-                blocks.emplace_back(0, k_blk1);
-                blocks.emplace_back(1, n_blk);
                 blocks.emplace_back(0, k_blk0);
+                blocks.emplace_back(1, n_blk);
+                blocks.emplace_back(0, k_blk1);
             }
             auto bmnk_layout
                     = mapper.map_to_bmnk(abc, bmnks, layout).retype(type);
             auto fma_layout = bmnk_layout.make_with_block(
-                    layout_t(type, 0, (int)bmnks.size(), blocks));
+                    layout_t(type, bmnks.size(), 0, blocks));
             auto abc_layout
                     = mapper.map_from_bmnk(abc, bmnks, fma_layout, layout);
             if (cvt_f16) return abc_layout.retype(type_t::f16());
@@ -1358,12 +1358,12 @@ struct fma_context_t {
             auto ret = maybe_retype_layout_for_mad(is_a, layout);
             auto &hint = layout_hint(abc);
             if (hint.is_empty()) return ret;
-            std::vector<std::pair<pvar_t, dim_t>> blocks;
+            std::vector<layout_block_t> blocks;
             blocks.emplace_back(hint.vec_dim_idx, vec_size);
             auto bmnks = get_bmnk_kinds(abc, /*with_batch=*/true);
             auto bmnk_layout = mapper.map_to_bmnk(abc, bmnks, ret);
             auto fma_layout = bmnk_layout.make_with_block(
-                    layout_t(ret.type(), 0, (int)bmnks.size(), blocks));
+                    layout_t(ret.type(), (int)bmnks.size(), 0, blocks));
             auto abc_layout = mapper.map_from_bmnk(abc, bmnks, fma_layout, ret);
             if (layout.type().is_x8()) {
                 gpu_assert(abc_layout.type().is_s16());
@@ -1777,7 +1777,7 @@ bool is_dpas_src1_compatible(int simd, bool transpose, const layout_t &layout) {
             /*is_dpasw=*/false, simd, sdepth, /*rcount=*/1, c_type, type, type);
     auto &dpas = func.as<dpas_t>();
     auto src1_layout = dpas.a_layout();
-    if (transpose) src1_layout = src1_layout.transpose();
+    if (transpose) src1_layout = src1_layout.transpose({0, 1});
     src1_layout = add_batch(src1_layout);
     return src1_layout <= layout;
 }
@@ -1790,7 +1790,7 @@ bool is_dpas_src2_compatible(int simd, bool transpose, const layout_t &layout) {
             /*is_dpasw=*/false, simd, sdepth, /*rcount=*/1, c_type, type, type);
     auto &dpas = func.as<dpas_t>();
     auto src2_layout = dpas.b_layout();
-    if (transpose) src2_layout = src2_layout.transpose();
+    if (transpose) src2_layout = src2_layout.transpose({0, 1});
     src2_layout = add_batch(src2_layout);
     return src2_layout <= layout;
 }

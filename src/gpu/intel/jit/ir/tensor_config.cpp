@@ -112,7 +112,7 @@ std::vector<std::pair<char, dim_t>> parse_letter_blocks(
     return ret;
 }
 
-std::vector<std::pair<pvar_t, dim_t>> parse_format(
+std::vector<layout_block_t> parse_format(
         const std::string &format, int ndims_hint) {
     bool seen_letters[DNNL_MAX_NDIMS] = {};
     int letter_ndims = 0;
@@ -130,16 +130,16 @@ std::vector<std::pair<pvar_t, dim_t>> parse_format(
 
     auto letter_blocks = parse_letter_blocks(format);
 
-    std::vector<std::pair<pvar_t, dim_t>> parts;
-    for (auto &p : letter_blocks) {
-        char letter = p.first;
-        dim_t block = p.second;
+    std::vector<layout_block_t> parts;
+    for (int i = into<int>(letter_blocks.size() - 1); i >= 0; i--) {
+        char letter = letter_blocks[i].first;
+        dim_t block = letter_blocks[i].second;
         if (letter != 'x') {
             int dim_idx = std::tolower(letter) - 'a';
             parts.emplace_back(dim_idx, block);
         } else {
             gpu_assert(ndims_hint >= letter_ndims);
-            for (int i = letter_ndims; i < ndims_hint; i++) {
+            for (int i = ndims_hint - 1; i >= letter_ndims; i--) {
                 parts.emplace_back(i, 0);
             }
         }

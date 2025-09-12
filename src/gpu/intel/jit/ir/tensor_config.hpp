@@ -112,7 +112,7 @@ private:
 };
 
 // Returns vector of <dimension index, block size> pairs.
-std::vector<std::pair<pvar_t, dim_t>> parse_format(
+std::vector<layout_block_t> parse_format(
         const std::string &format, int ndims_hint);
 
 // Returns vector of <dimension letter, block size> pairs.
@@ -121,8 +121,14 @@ std::vector<std::pair<char, dim_t>> parse_letter_blocks(
 
 inline layout_t make_layout(const type_t &type, const expr_t &offset,
         const std::string &format, const std::vector<dim_t> &dims = {}) {
-    return layout_t(type, offset, into<dim_idx_t>(dims.size()),
-            parse_format(format, into<dim_idx_t>(dims.size())), dims,
+    auto blocks = parse_format(format, into<dim_idx_t>(dims.size()));
+    tile_t def;
+    for (auto &b : blocks) {
+        if (b.block == 0) b.block = utils::div_up(dims[b.dim], def[b.dim]);
+        def[b.dim] *= b.block;
+    }
+
+    return layout_t(type, dims.size(), offset, blocks,
             /*do_normalize=*/false);
 }
 

@@ -98,7 +98,8 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
 
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
 
-            VDISPATCH_SOFTMAX(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_SOFTMAX(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "dst");
 
             const auto src_dt = src_md()->data_type;
             const auto dst_dt = dst_md()->data_type;
@@ -304,7 +305,8 @@ struct jit_uni_softmax_bwd_t : public primitive_t {
 
             VDISPATCH_SOFTMAX(!is_fwd(), VERBOSE_BAD_PROPKIND);
 
-            VDISPATCH_SOFTMAX(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_SOFTMAX(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "dst");
 
             const auto dst_dt = dst_md()->data_type;
             const auto diff_dst_dt = diff_dst_md()->data_type;

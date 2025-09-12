@@ -704,7 +704,7 @@ status_t jit_uni_batch_normalization_s8_fwd_t<isa>::pd_t::init(
     if (!mayiuse(isa)) return status::unimplemented;
 
     VDISPATCH_BNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_BNORM(one_of(ndims(), 4, 5), VERBOSE_BAD_NDIMS, "src", ndims());
     VDISPATCH_BNORM(stats_is_src(), VERBOSE_BAD_PARAM, "stats");
     VDISPATCH_BNORM(src_md()->data_type == s8, VERBOSE_UNSUPPORTED_DT);

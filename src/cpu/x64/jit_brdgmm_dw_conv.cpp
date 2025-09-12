@@ -170,7 +170,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     const int ndims = src_d.ndims();
     const bool is_3d = ndims == 5;

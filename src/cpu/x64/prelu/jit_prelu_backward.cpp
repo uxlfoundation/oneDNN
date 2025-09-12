@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ status_t jit_prelu_bwd_t::pd_t::init(engine_t *engine) {
     const memory_desc_wrapper dst_diff_d {diff_dst_md(0)};
 
     VDISPATCH_PRELU(!is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_PRELU(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_PRELU(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_PRELU(
             prelu::dt_supported({src_d.data_type(), weights_d.data_type(),
                     src_diff_d.data_type(), weights_diff_d.data_type(),

@@ -56,7 +56,8 @@ struct nchw_pooling_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_POOLING(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
             VDISPATCH_POOLING(!is_dilated(), VERBOSE_UNSUPPORTED_FEATURE,
                     "does not support dilations");
             VDISPATCH_POOLING(
@@ -145,7 +146,8 @@ struct nchw_pooling_bwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_POOLING(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
             VDISPATCH_POOLING(set_default_params() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(

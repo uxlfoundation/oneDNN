@@ -217,6 +217,8 @@ private:
 struct layout_block_t {
     layout_block_t() = default;
 
+    layout_block_t(const pvar_t &dim, dim_t block) : dim(dim), block(block) {}
+
     layout_block_t(const pvar_t &dim, dim_t block, const stride_t &stride)
         : dim(dim), block(block), stride(stride) {}
 
@@ -265,10 +267,6 @@ public:
         sanity_check();
     }
 
-    layout_t(const type_t &type, const expr_t &offset, dim_idx_t ndims,
-            const std::vector<std::pair<pvar_t, dim_t>> &parts,
-            const std::vector<dim_t> &dims = {}, bool do_normalize = true);
-
     layout_t(const type_t &type, const expr_t &offset,
             const std::vector<dim_t> &dims, bool do_normalize = true)
         : type_(type), ndims_(into<dim_idx_t>(dims.size())), offset_(offset) {
@@ -284,6 +282,15 @@ public:
     layout_t(const type_t &type, dim_idx_t ndims, const expr_t &offset,
             const std::vector<layout_block_t> &blocks, bool do_normalize = true)
         : type_(type), ndims_(ndims), offset_(offset), blocks_(blocks) {
+        stride_t stride(1);
+        for (auto &b : blocks_) {
+            if (b.stride.is_undefined()) {
+                b.stride = stride;
+            } else {
+                stride = b.block;
+            }
+            stride *= b.block;
+        }
         if (do_normalize) blocks_ = normalize_blocks(blocks_);
         sanity_check();
     }
@@ -564,15 +571,12 @@ public:
         return layout_t(type(), ndims_, offset(), blocks);
     }
 
-    layout_t transpose() const {
-        gpu_assert(with_ndims())
-                << "transpose() requires zero-based dimensions.";
-        if (ndims() != 2) gpu_error_not_expected();
-
-        // Flip: 0 -> 1, 1 -> 0.
+    layout_t transpose(std::array<pvar_t, 2> trans) const {
         auto blocks = blocks_;
         for (auto &b : blocks)
-            b.dim = pvar_t(1 - b.dim.index());
+            b.dim = b.dim == trans[0]   ? trans[1]
+                    : b.dim == trans[1] ? trans[0]
+                                        : b.dim;
 
         return layout_t(type(), ndims(), offset(), blocks);
     }

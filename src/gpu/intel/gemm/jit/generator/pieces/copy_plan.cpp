@@ -16,6 +16,7 @@
 
 
 #include "copy_plan.hpp"
+#include "bfn.hpp"
 #include "internal/utils.hpp"
 #include "ngen_object_helpers.hpp"
 
@@ -981,41 +982,111 @@ void CopyPlan::planUnpack8To16High(CopyInstruction &i)
 }
 
 // Emulate bfn instructions on pre-Gen12HP architectures.
-// Only handles certain bfn.{0x6A,0xCA} cases currently.
 void CopyPlan::planBFNEmulation()
 {
     if (hw > HW::Gen12LP) return;
 
-    for (auto &i: insns) {
-        if (i.op != Opcode::bfn) continue;
-        if (i.ctrl != 0x6A && i.ctrl != 0xCA) stub();
+    const CopyOperand zeros = ngen::Immediate::w(0);
 
-        auto dst = i.dst, s0 = i.src0, s1 = i.src1, s2 = i.src2;
-        if (dst == s0 || dst == s2) stub();
-
-        // 0x6A -> s0 ^ (s1        & s2)
-        // 0xCA -> s0 ^ ((s0 ^ s1) & s2)
-
-        auto ie = splitMultiple<3>(i);
-        for (auto ip: ie)
-            ip->src2 = {};
-
-        if (i.ctrl == 0xCA) {
-            ie[0]->op = Opcode::xor_;
-            ie[1]->src0 = ie[0]->dst;
-        } else {
-            ie[0]->invalidate();
-            ie[1]->src0 = s1;
+    auto negate = [](CopyOperand op) {
+        if (op.kind != CopyOperand::Immediate) {
+            op.neg = !op.neg;
+            return op;
         }
 
-        ie[1]->op = Opcode::and_;
-        ie[1]->src1 = s2;
+        const auto bits = getBits(op.type);
+        const uint64_t mask_base = ((bits & 63) != 0);
+        const uint64_t mask = (mask_base << (bits & 63)) - 1;
+        op.value = ~op.value & mask;
+        return op;
+    };
 
-        ie[2]->op = Opcode::xor_;
-        ie[2]->src0 = ie[2]->dst;
-        ie[2]->src1 = s0;
+    auto operand = [&](uint8_t id, const CopyOperand &s0, const CopyOperand &s1, const CopyOperand &s2) {
+        if (id == 0x00) return zeros;
+        if (id == 0x0F) return negate(s2);
+        if (id == 0x33) return negate(s1);
+        if (id == 0x55) return negate(s0);
+        if (id == 0xAA) return s0;
+        if (id == 0xCC) return s1;
+        if (id == 0xF0) return s2;
+        if (id == 0xFF) return negate(zeros);
+        return CopyOperand();
+    };
+
+    auto fixup = [&](CopyInstruction &i) {
+        i.src2 = CopyOperand();
+        bool imm0 = (i.src0.kind == CopyOperand::Immediate);
+        bool imm1 = (i.src1.kind == CopyOperand::Immediate);
+        if (imm0 && !imm1) std::swap(i.src0, i.src1);
+        if (!imm0 || !imm1) return;
+        if (i.op == Opcode::and_) i.src0.value &= i.src1.value;
+        else if (i.op == Opcode::or_) i.src0.value |= i.src1.value;
+        else if (i.op == Opcode::xor_) i.src0.value ^= i.src1.value;
+        else return;
+        i.op = Opcode::mov;
+        i.src1 = CopyOperand();
+    };
+
+    bool rerun = false;
+
+    for (auto &i: insns) {
+        if (i.op != Opcode::bfn) continue;
+
+        auto dst = i.dst, src0 = i.src0, src1 = i.src1, src2 = i.src2;
+        const auto &bfn = BFN::nodes[i.ctrl];
+
+        if (bfn.op == Opcode::mov) {
+            i.op = Opcode::mov;
+            i.src0 = operand(bfn, i.src0, i.src1, i.src2);
+            i.src1 = i.src2 = CopyOperand();
+            continue;
+        }
+
+        // TODO: improve emulation of immediate (sub)trees.
+
+        const auto &left = BFN::nodes[bfn.left];
+        const auto &right = BFN::nodes[bfn.right];
+
+        if (left.op == Opcode::mov && right.op == Opcode::mov) {
+            i.op = bfn.op;
+            i.src0 = operand(left, src0, src1, src2);
+            i.src1 = operand(right, src0, src1, src2);
+            fixup(i);
+            continue;
+        }
+
+        rerun = true;
+        if (left.op == Opcode::mov || right.op == Opcode::mov) {
+            uint8_t nested = left.op == Opcode::mov ? right : left;
+            auto s1 = operand(nested ^ left ^ right, src0, src1, src2);
+
+            auto tmp = dst;
+            if (dst == s1 || dst == negate(s1))
+                tmp = newTemp(dst.type, i.simd, dst.stride);
+            auto &i1 = i, &i2 = split(i);
+            i1.ctrl = nested;
+            i1.dst = tmp;
+
+            i2.op = bfn.op;
+            i2.src0 = tmp;
+            i2.src1 = s1;
+            fixup(i2);
+            continue;
+        }
+
+        auto tmp = newTemp(dst.type, i.simd, dst.stride);
+        auto ie = splitMultiple<3>(i);
+        ie[0]->ctrl = left;
+        ie[0]->dst = tmp;
+        ie[1]->ctrl = right;
+        ie[2]->op = bfn.op;
+        ie[2]->src0 = dst;
+        ie[2]->src1 = tmp;
+        fixup(*ie[2]);
     }
     mergeChanges();
+    if (rerun)
+        planBFNEmulation();
 }
 
 // {b,ub}->hf sequence.
@@ -1407,23 +1478,23 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
         ie[1]->op = Opcode::shl;
         ie[1]->simd = simd/2;
         ie[1]->dst = ssrc;
-        ie[1]->dst.offset = 1;
-        ie[1]->dst.stride = 2;
+        ie[1]->dst.offset += 1;
+        ie[1]->dst.stride *= 2;
         ie[1]->src0 = ssrc;
-        ie[1]->src0.offset = 1;
-        ie[1]->src0.stride = 2;
+        ie[1]->src0.offset += 1;
+        ie[1]->src0.stride *= 2;
         ie[1]->src1 = Immediate::uw(0x4);
 
         ie[2]->op = Opcode::bfn;
-        ie[2]->ctrl = 0xCA;
+        ie[2]->ctrl = 0xEC;
         ie[2]->simd = simd/2;
         ie[2]->dst = tmp;
         ie[2]->src0 = ssrc;
-        ie[2]->src0.stride = 2;
+        ie[2]->src0.stride *= 2;
         ie[2]->src1 = ssrc;
-        ie[2]->src1.offset = 1;
-        ie[2]->src1.stride = 2;
-        ie[2]->src2 = Immediate::uw(0xF0);
+        ie[2]->src1.offset += 1;
+        ie[2]->src1.stride *= 2;
+        ie[2]->src2 = Immediate::uw(0x0F);
 
         if (simd > 2) {
             ie[3]->op = Opcode::mov;
@@ -1482,35 +1553,23 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
             ie[2]->invalidate();
         }
 
-        if (simd > 1) {
-            ie[3]->op = Opcode::bfn;
-            ie[3]->ctrl = 0xCA;
-            ie[3]->simd = simd;
-            ie[3]->dst = tmp;
-            ie[3]->src0 = ssrc;
-            ie[3]->src1 = tmp;
-            ie[3]->src2 = 0xFFFF ^ mask;
+        ie[3]->op = Opcode::bfn;
+        ie[3]->ctrl = 0xCA;
+        ie[3]->simd = simd;
+        ie[3]->dst = tmp;
+        ie[3]->src0 = ssrc;
+        ie[3]->src1 = tmp;
+        ie[3]->src2 = 0xFFFF ^ mask;
 
-            ie[4]->op = Opcode::mov;
-            ie[4]->simd = simd;
-            ie[4]->dst = ddst;
-            ie[4]->dst.type = DataType::ub;
-            ie[4]->dst.stride = stride;
-            ie[4]->dst.offset /= 2;
-            ie[4]->src0 = tmp;
-            ie[4]->src0.type = DataType::ub;
-            ie[4]->src0.stride *= 2;
-        } else {
-            ie[3]->op = Opcode::bfn;
-            ie[3]->ctrl = 0xCA;
-            ie[3]->simd = simd;
-            ie[3]->dst = ddst;
-            ie[3]->src0 = tmp;
-            ie[3]->src1 = ssrc;
-            ie[3]->src2 = mask;
-
-            ie[4]->invalidate();
-        }
+        ie[4]->op = Opcode::mov;
+        ie[4]->simd = simd;
+        ie[4]->dst = ddst;
+        ie[4]->dst.type = DataType::ub;
+        ie[4]->dst.stride = stride;
+        ie[4]->dst.offset /= 2;
+        ie[4]->src0 = tmp;
+        ie[4]->src0.type = DataType::ub;
+        ie[4]->src0.stride *= 2;
     }
 }
 
@@ -1625,7 +1684,7 @@ void CopyPlan::planEmulatedHF8ToBF(CopyInstruction &i)
     // and          y:uw    y:uw      0x87FF
     // cmp (ge)f0   null:hf (abs)y:hf 0x07F0:hf       /* NaN check */
     // mul          y:bf    y:bf      0x7B80:bf
-    // (f0) bfn.CA  y:uw    0x7FC0    y:uw    0x7FFF
+    // (f0) mov     y:uw    y:uw      0x7FFF
 
     auto ie = splitMultiple<5>(i);
 
@@ -1657,11 +1716,9 @@ void CopyPlan::planEmulatedHF8ToBF(CopyInstruction &i)
     ie[3]->src0 = ie[3]->dst = y;
     ie[3]->src1 = bfImmediate(0x7B80, false);
 
-    ie[4]->op = Opcode::bfn;
-    ie[4]->ctrl = 0xCA;
-    ie[4]->src0 = 0x7FC0;
-    ie[4]->src1 = ie[4]->dst = yUW;
-    ie[4]->src2 = 0x7FFF;
+    ie[4]->op = Opcode::mov;
+    ie[4]->src0 = ie[4]->dst = yUW;
+    ie[4]->src1 = 0x7FFF;
     ie[4]->flag = f;
 }
 
@@ -1898,8 +1955,8 @@ void CopyPlan::planEmulatedHFToHF8(CopyInstruction &i)
     ie[9]->dst = ie[9]->src1 = t0UW;
     ie[9]->src0 = x;
     ie[9]->src0.type = DataType::uw;
-    ie[9]->src2 = 0x7FFF;
-    ie[9]->ctrl = 0xCA;
+    ie[9]->src2 = 0x8000;
+    ie[9]->ctrl = 0xEC;  // (s0 & s2) | s1
 
     ie[10]->op = Opcode::mov;
     ie[10]->src0 = t0;
@@ -2001,8 +2058,8 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
     ie[8]->src0 = x;
     ie[8]->src0.type = DataType::uw;
     ie[8]->src1 = ie[8]->dst = t0UW;
-    ie[8]->src2 = 0x7FFF;
-    ie[8]->ctrl = 0xCA;
+    ie[8]->src2 = 0x8000;
+    ie[8]->ctrl = 0xEC;
 
     // Pack into bytes.
     ie[9]->op = Opcode::shr;
@@ -3247,7 +3304,7 @@ void CopyInstruction::dump(const CopyPlan &plan) const
 
     std::cout << getMnemonic(op, HW::Gen9);
     switch (op) {
-        case Opcode::bfn:  std::cout << '.' << std::hex << int(ctrl) << std::dec; break;
+        case Opcode::bfn:  std::cout << ".(" << (std::string)BFN::nodes[ctrl] << ')'; break;
         case Opcode::math: std::cout << '.' << static_cast<MathFunction>(ctrl);   break;
         default: break;
     }

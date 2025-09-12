@@ -156,68 +156,60 @@ bool lessAligned(int alignA1, int alignB1, int alignA2, int alignB2)
 
 // Inner kernel selection logic.
 // Choose the best entry, if any, matching one of the given patterns.
-const kcatalog::Entry *select1(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
+const kcatalog::Entry *select1(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, int entry_idx, SelectionObserver * observer)
 {
-    double bestScore = std::numeric_limits<double>::infinity();
-    const kcatalog::Entry *bestEntry = nullptr;
-    int bestIPattern = -1;
-    bool bestIsFallback = false;
-    int bestAlignA = 0, bestAlignB = 0;
-
+    std::vector<const kcatalog::Entry *> entries;
     // TODO: omit evaluation if only one match, if aux output not needed.
     for (int ipattern = 0; ipattern < npatterns; ipattern++) {
         for (auto it = match(catalog, patterns[ipattern]); it; it++) {
-            EvaluateAuxOutput thisAux;
-
-            bool fallback = (it->restrictions.tags[0] == kcatalog::ReqAlignFallback);
-            int alignA = std::max(it->restrictions.alignment[0], 4);
-            int alignB = std::max(it->restrictions.alignment[1], 4);
-
-            if (fallback && lessAligned(alignA, alignB, bestAlignA, bestAlignB))
-                continue;
-
-            double score = evaluate(*it, eparams, thisAux);
-
-            bool better = (score < bestScore)
-                        | (bestIsFallback && lessAligned(bestAlignA, bestAlignB, alignA, alignB));
-
-            if (better) {
-                bestEntry = &*it;
-                bestScore = score;
-                bestIPattern = ipattern;
-                bestAlignA = alignA;
-                bestAlignB = alignB;
-                bestIsFallback = fallback;
-                aux = thisAux;
-            }
-
-            if (observer) (*observer)(&*it, score, aux);
+             // Late tag checking. If late tags do not match, we skip entry.
+	    if (tagMatch(it->restrictions.tags, patterns[ipattern].lateTags))
+            entries.push_back(&*it);
         }
     }
 
-    // Late tag checking. If late tags do not match, we abandon the kernel and
-    //  force the calling code to take another path.
-    if (bestEntry && !tagMatch(bestEntry->restrictions.tags, patterns[bestIPattern].lateTags))
-        return nullptr;
+    auto less = [&](const kcatalog::Entry * lhs, const kcatalog::Entry * rhs){
+	              EvaluateAuxOutput thisAux;
+                      bool lhsFallback = (lhs->restrictions.tags[0] == kcatalog::ReqAlignFallback);
+                      int  lhsAlignA = std::max(lhs->restrictions.alignment[0], 4);
+                      int  lhsAlignB = std::max(lhs->restrictions.alignment[1], 4);
+                      bool rhsFallback = (rhs->restrictions.tags[0] == kcatalog::ReqAlignFallback);
+                      int  rhsAlignA = std::max(rhs->restrictions.alignment[0], 4);
+                      int  rhsAlignB = std::max(rhs->restrictions.alignment[1], 4);
+		      if (rhsFallback && lessAligned(rhsAlignA, rhsAlignB, lhsAlignA, lhsAlignB)) return true;
+		      if (lhsFallback && lessAligned(lhsAlignA, lhsAlignB, rhsAlignA, rhsAlignB)) return false;
+	              double lhs_score = evaluate(*lhs, eparams, thisAux);
+		      double rhs_score = evaluate(*rhs, eparams, thisAux);
+                      return lhs_score < rhs_score;
 
-    return bestEntry;
+    };
+    std::sort(entries.begin(), entries.end(), less);
+
+    if (entry_idx < (int) entries.size()){
+	    double score = evaluate(*entries[entry_idx], eparams, aux);
+            if (observer) (*observer)(entries[entry_idx], score, aux);
+	    return entries[entry_idx];
+    }
+
+    // No matching entry found
+    return nullptr;
 }
 
 // User-facing kernel selection logic.
 // Includes architecture and data type fallbacks.
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
+const kcatalog::Entry *select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, int entry_idx, SelectionObserver *observer)
 {
-    return select(catalog, 1, &pattern, eparams, aux, observer);
+    return select(catalog, 1, &pattern, eparams, aux, entry_idx, observer);
 }
 
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
+const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, int entry_idx, SelectionObserver *observer)
 {
     using namespace kcatalog;
 
     if (npatterns == 0 || !patterns)
         return nullptr;
 
-    auto result = select1(catalog, npatterns, patterns, eparams, aux, observer);
+    auto result = select1(catalog, npatterns, patterns, eparams, aux, entry_idx, observer);
     if (result) return result;
 
     // Architecture fallback loop.
@@ -234,7 +226,7 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
         // Type fallback loop.
         while (true) {
             if (!first) {
-                result = select1(catalog, npatterns, modPatterns.data(), eparams, aux, observer);
+                result  = select1(catalog, npatterns, modPatterns.data(), eparams, aux, entry_idx, observer);
                 if (result) return result;
             }
             first = false;

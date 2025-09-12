@@ -130,7 +130,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
 
     /* Call kernel selector */
     EvaluateAuxOutput auxParams;
-    auto entry = select(catalog, 1, &matchParams, evalParams, auxParams);
+    auto entry = select(catalog, 1, &matchParams, evalParams, auxParams, 0);
 
     GEMMStrategy strategy(hw, stepping);
 

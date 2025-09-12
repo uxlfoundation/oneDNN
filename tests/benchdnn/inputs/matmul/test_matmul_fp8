@@ -86,3 +86,7 @@
 8x2664:2664x256
 3x4128:4128x128
 
+# MXFP8
+--dt=f8_e4m3:f8_e4m3:f32,f8_e4m3:f8_e4m3:bf16
+--attr-scales=src:per_ocic:e8m0:1x32+wei:per_ocic:e8m0:32x1+dst:per_ocic:e8m0:1x32
+--batch=shapes_4bit

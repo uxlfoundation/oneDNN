@@ -28,7 +28,7 @@
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
-#include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/ir/tensor_config.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 
@@ -53,7 +53,7 @@ public:
     view_t create_view(const memory_desc_t &md) const override {
         dim_idx_t cp_ndims = cp_view().nvdims();
         gpu_assert(cp_ndims >= 3);
-        layout_t layout(md, /*do_normalize=*/false);
+        layout_t layout = make_layout(md);
         std::vector<dim_t> dims(md.dims, md.dims + md.ndims);
         std::vector<dim_t> pad_dims(md.padded_dims, md.padded_dims + md.ndims);
         maybe_reshape_dims(ndims_, layout, dims, pad_dims);
@@ -80,15 +80,15 @@ private:
             std::vector<dim_t> &dims, std::vector<dim_t> &padded_dims) {
         gpu_assert(layout.ndims() == dims.size());
         if (layout.ndims() < ndims) {
-            layout = layout_t(layout.type(), ndims, layout.offset(),
-                    layout.blocks(), /*do_normalize=*/false);
+            layout = layout_t(layout.type(), layout.blocks(), layout.offset(),
+                    ndims, /*do_normalize=*/false);
             dims.resize(ndims, 1);
             padded_dims.resize(ndims, 1);
         }
     }
 
     static std::vector<dim_t> dims_to_3d(const std::vector<dim_t> &dims) {
-        layout_t dummy_layout(type_t::u8(), 0, dims);
+        layout_t dummy_layout(type_t::u8(), dims);
         return spatials_to_3d(dummy_layout, false, {0, 1, 2}).dims();
     }
 

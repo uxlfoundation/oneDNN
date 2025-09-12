@@ -78,7 +78,7 @@ inline jit::layout_t to_ir(const layout_t &layout) {
     }
 
     return jit::layout_t(
-            layout.type(), layout.desc().ndims(), layout.base(), blocks);
+            layout.type(), blocks, layout.base(), layout.desc().ndims());
 }
 
 } // namespace v2

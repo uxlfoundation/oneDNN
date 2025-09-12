@@ -30,8 +30,8 @@ layout_t insert_dimension(const layout_t &layout, const pvar_t &dim) {
     for (auto &b : new_blocks) {
         if (b.dim.index() >= dim.index()) b.dim = pvar_t((dim_idx_t)b.dim + 1);
     }
-    return layout_t(layout.type(), layout.ndims() + 1, layout.offset(),
-            new_blocks,
+    return layout_t(layout.type(), new_blocks, layout.offset(),
+            layout.ndims() + 1,
             /*do_normalize=*/false);
 }
 
@@ -79,8 +79,7 @@ layout_t split_dimension(
         seen[it->dim] = true;
     }
     std::reverse(_new_blocks.begin(), _new_blocks.end());
-    return layout_t(layout.type(), layout.ndims(), layout.offset(), _new_blocks,
-            /*do_normalize=*/false);
+    return layout.with(_new_blocks, false);
 }
 
 layout_t normalize_conv_groups(const layout_t &layout, bool with_groups,
@@ -113,7 +112,7 @@ layout_t normalize_layout(const layout_t &_layout, bool with_groups,
 std::vector<dim_t> normalize_dims(std::vector<dim_t> &dims, bool with_groups,
         dim_t groups, bool is_dw, const std::array<int, 3> &dhw_map,
         bool add_groups, bool is_wei) {
-    layout_t dummy_layout(type_t::u8(), 0, dims);
+    layout_t dummy_layout(type_t::u8(), dims);
     return normalize_layout(dummy_layout, with_groups, groups, is_dw, dhw_map,
             add_groups, is_wei)
             .dims();
@@ -167,8 +166,8 @@ void maybe_reshape_dims(dim_idx_t ndims, layout_t &layout,
         std::vector<dim_t> &dims, std::vector<dim_t> &padded_dims) {
     gpu_assert(layout.ndims() == dim_idx_t(dims.size()));
     if (layout.ndims() < ndims) {
-        layout = layout_t(layout.type(), ndims, layout.offset(),
-                layout.blocks(), /*do_normalize=*/false);
+        layout = layout_t(layout.type(), layout.blocks(), layout.offset(),
+                ndims, /*do_normalize=*/false);
         dims.resize(ndims, 1);
         padded_dims.resize(ndims, 1);
     }
@@ -227,7 +226,7 @@ view_t post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
         }
         new_blk.emplace_back(b);
     }
-    dst = layout_t(dst.type(), dst.ndims(), dst.offset(), new_blk, false);
+    dst = dst.with(new_blk, false);
 
     view_t view(vars, 6);
     view.set_vdim(vars[0], 1); // mb
@@ -248,7 +247,7 @@ view_t post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
     gpu_assert(cp_ndims >= 3);
     // Add groups to match ngcdhw layout.
     bool add_groups = (cp_view().vvars()[1].as<var_t>().name == "g");
-    layout_t layout(md, /*do_normalize=*/false);
+    layout_t layout = make_layout(md);
     std::vector<dim_t> dims(md.dims, md.dims + md.ndims);
     std::vector<dim_t> padded_dims(md.padded_dims, md.padded_dims + md.ndims);
     maybe_reshape_dims(prb_.ndims, layout, dims, padded_dims);

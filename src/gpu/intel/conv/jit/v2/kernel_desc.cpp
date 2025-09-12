@@ -718,7 +718,8 @@ tensor_config_t get_tensor_config(
         if (!is_input && !is_output) continue;
         int key = h.key(t);
         tensor_cfg.add_tensor(t, key, is_input, is_output,
-                pd ? jit::layout_t(pd->arg_md(key)) : jit::layout_t());
+                pd ? jit::make_layout(*pd->arg_md(key), true)
+                   : jit::layout_t());
     }
     for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
         if (desc.scales.get(arg).has_default_values()) continue;
@@ -732,7 +733,8 @@ tensor_config_t get_tensor_config(
         int key = h.post_op_key(i);
         tensor_cfg.add_tensor(name, key, /*is_input=*/true,
                 /*is_output=*/false,
-                pd ? jit::layout_t(pd->arg_md(key)) : jit::layout_t());
+                pd ? jit::make_layout(*pd->arg_md(key), true)
+                   : jit::layout_t());
     }
     return tensor_cfg;
 }
@@ -1047,8 +1049,7 @@ status_t kernel_desc_t::init_primitive_plan(
         auto &md = *pd->arg_md(t.arg_key);
         auto compute_layout = get_kernel_layout(t.name, *this, md, pd);
         const auto &user_layout
-                = (md.ndims == 0 ? jit::layout_t()
-                                 : jit::layout_t(md, /*do_normalize=*/false));
+                = (md.ndims == 0 ? jit::layout_t() : jit::make_layout(md));
         bool is_out_stream_k = use_stream_k && t.is_output;
         bool zero_out = is_out_stream_k;
         if (compute_layout != user_layout

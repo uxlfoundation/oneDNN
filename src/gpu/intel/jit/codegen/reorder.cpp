@@ -362,7 +362,7 @@ void reorder_2d_impl_t::generate_all_layouts_impl(
         std::vector<layout_t> &layouts, std::vector<layout_block_t> &blocks,
         const type_t &type, dim_t a, dim_t b, dim_t stride) {
     if (a == 1 && b == 1) {
-        layouts.emplace_back(type, 2, 0, blocks);
+        layouts.emplace_back(type, blocks, 0, 2);
         return;
     }
     bool iterate_a = true;
@@ -668,7 +668,7 @@ layout_t reorder_impl_t::make_compact_layout(
             eb.second.stride = eb.second.stride * stride / inner_stride;
             new_blocks[eb.first] = eb.second;
         }
-        return {type, layout.ndims(), 0, new_blocks, /*do_normalize=*/false};
+        return {type, new_blocks, 0, layout.ndims(), /*do_normalize=*/false};
     }(dense_output_stride);
     auto dense_size = dense.elems() * type.size() / type.packing()
             * dense_output_stride;
@@ -694,7 +694,7 @@ layout_t reorder_impl_t::make_compact_layout(
         dense_output_stride = blocks.back().stride * block.block;
         dense_input_stride = input_stride * block.block;
     }
-    return {type, layout.ndims(), 0, blocks, /*do_normalize=*/false};
+    return {type, blocks, 0, layout.ndims(), /*do_normalize=*/false};
 }
 
 void reorder_impl_t::emit_1d(copy_plan_t &plan, const reorder_operand_t &dst,

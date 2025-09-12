@@ -146,7 +146,7 @@ struct layout_normalization_t {
     }
 
     layout_t layout() const {
-        return {type_, ndims_, offset_, blocks_, /*do_normalize=*/false};
+        return {type_, blocks_, offset_, ndims_, /*do_normalize=*/false};
     }
 
     iterator_t begin() const {

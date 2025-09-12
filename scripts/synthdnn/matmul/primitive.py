@@ -253,5 +253,44 @@ class Primitive:
         self.kind: Kind = kind
         self.dims = dims
 
+    def __getitem__(self, index):
+        if index == "b":
+            return self.b[0] if len(self.dims.b) > 0 else 1
+        elif index == "m":
+            return self.dims.m
+        elif index == "n":
+            return self.dims.n
+        elif index == "k":
+            return self.dims.k
+        elif index == "dt":
+            return self.kind.type
+        elif index == "kind":
+            return self.kind.benchdnn_str()
+
+        raise KeyError(f"Cannot get {index} from matmul primitive")
+
     def benchdnn_str(self):
         return f"{self.kind.benchdnn_str()} {self.dims}"
+
+    @staticmethod
+    def from_repro(repro_line):
+        t = Types.Type("f32:f32:f32")
+        l = Layouts.Layout("any:any:any")
+        dims = Dims([], 0, 0, 0)
+        for arg in repro_line.split(" "):
+            if arg.startswith("--dt="):
+                t = Types.Type(arg.split("=")[1])
+            elif arg.startswith("--attr-fpmath="):
+                t.mode = arg.split("=")[1]
+            elif arg.startswith("--stag="):
+                l.A = arg.split("=")[1]
+            elif arg.startswith("--wtag="):
+                l.B = arg.split("=")[1]
+            elif arg.startswith("--dtag="):
+                l.C = arg.split("=")[1]
+            elif not arg.startswith("--"):
+                dims.m, dims.k, dims.n = arg.split("x")
+                dims.m = int(dims.m)
+                dims.k = int(dims.k.split(":")[0])
+                dims.n = int(dims.n)
+        return Primitive(Kind(l, t), dims)

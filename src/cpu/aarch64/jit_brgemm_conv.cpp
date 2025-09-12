@@ -317,8 +317,9 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
             && IMPLICATION(is_int8,
-                    one_of(bias_md_.data_type, data_type::undef, f32, s32, s8,
-                            u8))
+                    one_of(dst_type, u8, f32)
+                            && one_of(bias_md_.data_type, data_type::undef, f32,
+                                    s32, s8, u8))
             && IMPLICATION(!is_int8,
                     one_of(bias_md_.data_type, data_type::undef, f32, src_type))
             && attr()->has_default_values(skip_mask, dst_type)
@@ -535,9 +536,6 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     if (jcp_.with_scales)
         book_precomputed_scales(scratchpad, attr()->scales_, OC(),
                 jcp_.scale_adjust_factor != 1.0f);
-
-    // temporary fix for large l_pad failing test caused by PR #3552
-    if (2 * jcp_.l_pad > jcp_.ow_block) return status::unimplemented;
 
     return status::success;
 }

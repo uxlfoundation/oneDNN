@@ -453,7 +453,11 @@ struct host_scalar_executable_t : public op_executable_t {
 
         const memory &src_mem = it_src->second;
         const memory &dst_mem = it_dst->second;
-        dst_mem.set_data_handle(src_mem.get_data_handle());
+        DNNL_HOST_SCALAR_TYPE_SWITCH(
+                src_mem.get_desc().get_data_type(), DType, {
+                    const DType val = src_mem.get_host_scalar_value<DType>();
+                    std::memcpy(dst_mem.get_data_handle(), &val, sizeof(DType));
+                });
     }
 
 #ifdef DNNL_WITH_SYCL
@@ -471,22 +475,23 @@ struct host_scalar_executable_t : public op_executable_t {
         const memory &src_mem = it_src->second;
         const memory &dst_mem = it_dst->second;
 
-        auto prim = dnnl::reorder(src_mem, dst_mem);
-
-        // TODO(xxx): workaround reorder execution which requires the primitive
-        // to have the same engine as stream has.
-        const engine &src_eng = src_mem.get_engine();
-        const engine &dst_eng = dst_mem.get_engine();
-        if (src_eng.get_kind() == engine::kind::cpu
-                && dst_eng.get_kind() == engine::kind::cpu) {
-            auto src_temp = memory(
-                    src_mem.get_desc(), dst_eng, src_mem.get_data_handle());
-            prim = dnnl::reorder(src_temp, dst_mem);
-        }
-
-        auto e = dnnl::sycl_interop::execute(prim, stream, args, deps);
-        if (stream.get_engine().get_kind() == engine::kind::cpu) e.wait();
-        return e;
+        // Use queue.memcpy() to copy the host scalar value to device memory. We
+        // have to wait here as the val is on stack and will become invalid if
+        // queue.memcpy() is asynchronous. A better solution may be supporting
+        // host scalar memory to device memory reorder primitive.
+        auto sycl_queue = dnnl::sycl_interop::get_queue(stream);
+        const size_t size = src_mem.get_desc().get_size();
+        const auto dt = src_mem.get_desc().get_data_type();
+        assert(size
+                == types::data_type_size(static_cast<impl::data_type_t>(dt)));
+        DNNL_HOST_SCALAR_TYPE_SWITCH(dt, DType, {
+            const DType val = src_mem.get_host_scalar_value<DType>();
+            sycl_queue
+                    .memcpy(dst_mem.get_data_handle(),
+                            static_cast<const void *>(&val), size)
+                    .wait();
+        });
+        return {};
     }
 #endif
 
@@ -505,12 +510,26 @@ struct host_scalar_executable_t : public op_executable_t {
         const memory &src_mem = it_src->second;
         const memory &dst_mem = it_dst->second;
 
-        auto prim = dnnl::reorder(src_mem, dst_mem);
-
-        auto e = dnnl::ocl_interop::execute(prim, stream, args, deps);
+        assert(deps.size() <= 1);
+        // Passing the empty event to memcpy below causes failure.
+        const bool empty = deps.empty() || deps[0] == nullptr;
+        const cl_uint num = empty ? 0 : static_cast<cl_uint>(deps.size());
+        const size_t size = src_mem.get_desc().get_size();
+        const auto dt = src_mem.get_desc().get_data_type();
+        assert(size
+                == types::data_type_size(static_cast<impl::data_type_t>(dt)));
+        cl_event e = nullptr;
+        DNNL_HOST_SCALAR_TYPE_SWITCH(dt, DType, {
+            const DType val = src_mem.get_host_scalar_value<DType>();
+            UNUSED_STATUS(xpu::ocl::usm::memcpy(stream.get(),
+                    dst_mem.get_data_handle(), static_cast<const void *>(&val),
+                    size, num, empty ? nullptr : deps.data(), &e));
+            clWaitForEvents(1, &e);
+        });
         return e;
     }
 #endif
+
     status_t reset_engine(const dnnl::engine &p_engine) override {
         UNUSED(p_engine);
         return status::success;

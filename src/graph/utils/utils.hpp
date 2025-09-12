@@ -59,6 +59,20 @@ using namespace dnnl::impl::utils;
 #define DEBUG_PRINT_ERROR(message)
 #endif
 
+#define DNNL_HOST_SCALAR_TYPE_SWITCH(type, DType, ...) \
+    const graph::data_type_t _dt = static_cast<graph::data_type_t>(type); \
+    switch (_dt) { \
+        case graph::data_type::f32: { \
+            typedef float DType; \
+            { __VA_ARGS__ } \
+        } break; \
+        case graph::data_type::s32: { \
+            typedef int32_t DType; \
+            { __VA_ARGS__ } \
+        } break; \
+        default: assert(!"unsupported host scalar data type"); \
+    }
+
 inline static size_t prod(const std::vector<dim_t> &shape) {
     if (shape.empty()) return 0;
 

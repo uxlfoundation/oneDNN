@@ -87,7 +87,7 @@ public:
         auto slm_buffers = alloc_mgr.find_buffers(alloc_kind_t::slm);
         gpu_assert(slm_buffers.size() == 1);
         slm_base_ = slm_buffers[0];
-        slm_size_ = alloc_mgr.total_size(alloc_kind_t::slm);
+        slm_size_ = alloc_mgr.slm_size();
     }
 
     const expr_t &slm_base() const { return slm_base_; }

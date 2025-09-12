@@ -762,26 +762,16 @@ private:
     }
 };
 
-inline const expr_t &get_base(const expr_t &e) {
-    if (e.is_empty()) return e;
-    if (e.is<var_t>()) return e;
-    if (e.is<ptr_t>()) return e.as<ptr_t>().base;
-    gpu_error_not_expected() << e;
-    return e;
-}
-
 class shuffle_t : public expr_iface_t<shuffle_t> {
 public:
     static expr_t make(const expr_t &vec_expr, const std::vector<int> &idx) {
-        check_indices(idx, vec_expr.type().elems());
-        std::vector<expr_t> vec {vec_expr};
-        return expr_t(new shuffle_t(vec, idx));
+        return make(std::vector<expr_t> {vec_expr}, idx);
     }
 
     static expr_t make(
             const std::vector<expr_t> &vec, const std::vector<int> &idx) {
-        check_indices(idx, (int)vec.size());
-        if (idx.size() == 1) return vec[idx[0]];
+        check_indices(vec, idx);
+        if (!vec[0].type().is_simd() && idx.size() == 1) return vec[idx[0]];
         return expr_t(new shuffle_t(vec, idx));
     }
 
@@ -851,7 +841,9 @@ public:
         return true;
     }
 
-    bool is_broadcast() const { return vec.size() == 1; }
+    bool is_broadcast() const {
+        return !vec[0].type().is_simd() && vec.size() == 1;
+    }
 
     std::vector<expr_t> vec;
     std::vector<int> idx;
@@ -860,7 +852,14 @@ private:
     shuffle_t(const std::vector<expr_t> &vec, const std::vector<int> &idx)
         : expr_iface_t(shuffle_type(vec, idx)), vec(vec), idx(idx) {}
 
-    static void check_indices(const std::vector<int> &idx, int elems) {
+    static void check_indices(
+            const std::vector<expr_t> &vec, const std::vector<int> &idx) {
+        gpu_assert(!vec.empty() && !idx.empty());
+        bool is_simd = (vec.size() == 1 && vec[0].type().is_simd());
+        for (auto &v : vec) {
+            gpu_assert(v.type().is_simd() == is_simd);
+        }
+        int elems = (is_simd ? vec[0].type().elems() : (int)vec.size());
         for (int i : idx) {
             gpu_assert(i >= 0 && i < elems);
         }
@@ -868,8 +867,6 @@ private:
 
     static type_t shuffle_type(
             const std::vector<expr_t> &vec, const std::vector<int> &idx) {
-        gpu_assert(!vec.empty() && !idx.empty());
-
         auto elem_type = vec[0].type();
         if (vec.size() == 1 && elem_type.is_simd()) {
             gpu_assert(idx.size() == 1);
@@ -1014,8 +1011,23 @@ private:
         : expr_iface_t(var.type().with_elems(elems))
         , var(var)
         , off(off)
-        , elems(elems) {}
+        , elems(elems) {
+        gpu_assert(off >= 0) << "Invalid offset: " << off;
+        gpu_assert(elems > 0) << "Invalid elems: " << elems;
+        gpu_assert(off + elems <= var.type().elems())
+                << "Incompatible (off, elems): (" << off << ", " << elems
+                << "), the base type: " << var.type().str();
+    }
 };
+
+inline const expr_t &get_base(const expr_t &e) {
+    if (e.is_empty()) return e;
+    if (e.is<var_t>()) return e;
+    if (e.is<ref_t>()) return e.as<ref_t>().var;
+    if (e.is<ptr_t>()) return get_base(e.as<ptr_t>().base);
+    gpu_error_not_expected() << e;
+    return e;
+}
 
 // Convertor from C++ type to IR expression.
 template <typename T>

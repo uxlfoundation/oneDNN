@@ -36,7 +36,6 @@ int min_align_2d();
 int min_pitch_2d();
 
 using layout_t = dnnl::impl::gpu::intel::jit::layout_t;
-using expr_t = dnnl::impl::gpu::intel::jit::expr_t;
 
 struct send_hint_t {
     send_cache_hint_t cache;
@@ -47,12 +46,7 @@ struct tensor_t {
     tensor_t(const expr_t &buf, const layout_t &layout)
         : buf(buf), layout(layout) {}
     const type_t &type() const { return layout.type(); }
-    tensor_t sub(const icoord_t &coord, const tile_t &tile) const {
-        // coord is not measured relative to tile size
-        for (auto &var : coord)
-            gpu_assert(coord[var] % tile[var] == 0);
-        return {buf[layout.offset_in_bytes(coord)], layout.sub(tile)};
-    }
+    tensor_t sub(const tile_t &tile, const icoord_t &coord) const;
 
     std::string str() const {
         std::ostringstream oss;
@@ -100,7 +94,7 @@ struct global_tensor_t {
         return simplify(ret * type.size());
     }
 
-    global_tensor_t map(const tile_t &tile, const coord_t &coord) const {
+    global_tensor_t sub(const tile_t &tile, const coord_t &coord) const {
         global_tensor_t ret = *this;
         ret.coord = coord;
         ret.tile = tile;
@@ -192,22 +186,17 @@ public:
 };
 
 expr_t subgroup_id(int idx = 0);
+expr_t subgroup_local_id();
 expr_t arg(const std::string &name, bool allow_empty = false);
-// TODO: Unify def() API, keep three versions:
-// 1. def(name, type, value)
-// 2. def(name, type)
-// 3. def(name, value)
-// name goes first in all three for consistency.
-lval_t def(type_t type, const std::string &name, const expr_t &value = {},
-        bool force_alloc = false);
-lval_t def(
-        const std::string &name, const type_t &type, const expr_t &value = {});
+lval_t def(const std::string &name, const type_t &type,
+        const expr_t &value = {}, bool force_alloc = false);
 lval_t def(const std::string &name, const expr_t &value);
-tensor_t def(const layout_t &layout, const std::string &name,
-        const expr_t &value = {});
-expr_t let(type_t type, const std::string &name, const expr_t &value);
+tensor_t def(const std::string &name, const layout_t &layout,
+        type::attr_t attr = {});
+tensor_t def(const std::string &name, layout_t layout, const expr_t &value,
+        type::attr_t attr = {});
+expr_t let(const std::string &name, const type_t &type, const expr_t &value);
 expr_t let(const std::string &name, const expr_t &value);
-tensor_t def_slm(layout_t layout, const std::string &name);
 
 expr_t iif(
         const expr_t &cond, const expr_t &true_expr, const expr_t &false_expr);

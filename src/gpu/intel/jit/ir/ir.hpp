@@ -418,6 +418,9 @@ std::vector<std::pair<expr_t, ValueT>> sort_var_map_by_key(
             });
 }
 
+template <typename T>
+object_set_t<object_t> find_unique_objects(const object_t &root);
+
 class alloc_manager_t {
 public:
     alloc_manager_t(const stmt_t &root) {
@@ -425,13 +428,17 @@ public:
             return a.as<var_t>().name < b.as<var_t>().name;
         };
 
-        auto lets = find_objects<let_t>(root);
-        for (auto &_l : lets) {
-            auto &l = _l.as<let_t>();
-            lets_.push_back(l.var);
+        auto vars = find_unique_objects<var_t>(root);
+        all_vars_.insert(all_vars_.end(), vars.begin(), vars.end());
+
+        auto calls = find_objects<func_call_t>(root);
+        for (auto &_c : calls) {
+            if (!is_func_call<builtin_t>(_c)) continue;
+            auto &c = _c.as<func_call_t>();
+            auto &builtin = c.func.as<builtin_t>();
+            if (builtin.name != "alloc") continue;
+            alloc_vars_.push_back(c.args[0]);
         }
-        // Sort lets by name.
-        std::sort(lets_.begin(), lets_.end(), name_sort);
 
         auto allocs = find_objects<alloc_t>(root);
         for (auto &_a : allocs) {
@@ -445,16 +452,15 @@ public:
         std::sort(buffers_.begin(), buffers_.end(), name_sort);
     }
 
-    const std::vector<expr_t> &lets() const { return lets_; }
     const std::vector<expr_t> &buffers() const { return buffers_; }
 
-    expr_t find_let(const std::string &name, bool allow_empty = false) const {
-        return find_var(lets(), name, allow_empty);
+    expr_t find_var(const std::string &name, bool allow_empty = false) const {
+        return find(all_vars_, name, allow_empty);
     }
 
     expr_t find_buffer(
             const std::string &name, bool allow_empty = false) const {
-        return find_var(buffers(), name, allow_empty);
+        return find(buffers(), name, allow_empty);
     }
 
     std::vector<expr_t> find_buffers(alloc_kind_t kind) const {
@@ -476,17 +482,21 @@ public:
         return a->kind;
     }
 
-    uint32_t total_size(alloc_kind_t kind) const {
+    uint32_t slm_size() const {
         uint32_t ret = 0;
         for (auto &kv : buf2alloc_) {
             auto &a = kv.second.as<alloc_t>();
-            if (a.kind == kind) ret += a.size;
+            if (a.kind == alloc_kind_t::slm) ret += a.size;
+        }
+        for (auto &v : alloc_vars_) {
+            if (!v.type().is_slm()) continue;
+            ret += v.type().size();
         }
         return ret;
     }
 
 private:
-    expr_t find_var(const std::vector<expr_t> &vars, const std::string &name,
+    expr_t find(const std::vector<expr_t> &vars, const std::string &name,
             bool allow_empty) const {
         for (auto &v : vars)
             if (v.as<var_t>().name == name) return v;
@@ -500,10 +510,10 @@ private:
         return it->second.as_ptr<alloc_t>();
     }
 
-    object_map_t<expr_t, stmt_t> buf2alloc_;
+    std::vector<expr_t> alloc_vars_;
+    std::vector<expr_t> all_vars_;
     std::vector<expr_t> buffers_;
-    std::vector<expr_t> lets_;
-    object_map_t<expr_t, stmt_t> alloc_updates_;
+    object_map_t<expr_t, stmt_t> buf2alloc_;
 };
 
 // IR utility functions.

@@ -30,8 +30,9 @@ namespace jit {
 // data types is supported.
 class reorder_t : public func_impl_t, public object::info_t<reorder_t> {
 public:
-    static func_t make(layout_t src_layout, layout_t dst_layout) {
-        reorder::jit::normalize(src_layout, dst_layout);
+    static func_t make(layout_t src_layout, layout_t dst_layout,
+            bool do_normalize = true) {
+        if (do_normalize) reorder::jit::normalize(src_layout, dst_layout);
         return func_t(
                 new reorder_t(std::move(src_layout), std::move(dst_layout)));
     }

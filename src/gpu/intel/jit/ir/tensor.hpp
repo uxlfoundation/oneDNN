@@ -662,12 +662,11 @@ public:
 
     layout_t make_with_block(const layout_t &inner) const {
         gpu_assert(type() == inner.type());
-        gpu_assert(ndims() == inner.ndims());
         auto cur_tile = tile();
         tile_t rem_tile;
         for (auto &d : cur_tile)
             rem_tile[d] = ir_utils::safe_divide(cur_tile.at(d), inner.elems(d));
-        auto ret = inner;
+        auto ret = with(inner.blocks_);
         for (auto &b : blocks()) {
             auto &d = cur_tile[b.dim];
             auto &r = rem_tile[b.dim];
@@ -709,9 +708,13 @@ public:
             }
         }
         gpu_assert(stride >= elems());
-        if (with_ndims()) gpu_assert(dim.index() < ndims());
         auto new_blocks = blocks();
         new_blocks.emplace_back(dim, block, stride);
+        auto ret = with(new_blocks);
+        if (ret.with_ndims()) {
+            if (dim.index() == ret.ndims_) ret.ndims_++;
+            gpu_assert(dim.index() < ret.ndims());
+        }
         return with(new_blocks);
     }
 

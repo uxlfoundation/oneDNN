@@ -113,13 +113,11 @@ class split_dispatcher_t {
 public:
     split_dispatcher_t() = default;
     split_dispatcher_t(const layout_t &comp_layout, const layout_t &c_layout,
-            const hw_t &hw, bool is_fwd, const bmnk_mapper_t &mapper) {
-        gpu_assert(comp_layout.ndims() == 6);
-        comp_g_idx_ = 0;
-        comp_c_idx_ = (is_fwd) ? 1 : 2;
-        c_g_idx_ = 1;
-        c_c_idx_ = 2;
-
+            const hw_t &hw, bool is_fwd, const bmnk_mapper_t &mapper)
+        : comp_g_idx_(0)
+        , comp_c_idx_((is_fwd) ? 1 : 2)
+        , c_g_idx_(1)
+        , c_c_idx_(2) {
         for (auto abc : {abc_kind_t::a, abc_kind_t::b}) {
             for (int factor : {2, 4}) {
                 auto &splits = (abc == abc_kind_t::a) ? a_splits_ : b_splits_;
@@ -134,14 +132,14 @@ public:
                     && ends_with(c_layout, c_g_idx_, b)) {
                 simd_dim_idx_ = 1;
                 simd_ = b;
-                simd_tile_ = get_simd_tile(c_layout);
+                simd_tile_ = {{simd_dim_idx_, simd_}};
                 return;
             }
             if (ends_with(comp_layout, comp_c_idx_, b)
                     && ends_with(c_layout, c_c_idx_, b)) {
                 simd_dim_idx_ = 2;
                 simd_ = b;
-                simd_tile_ = get_simd_tile(c_layout);
+                simd_tile_ = {{simd_dim_idx_, simd_}};
                 return;
             }
         }
@@ -260,12 +258,6 @@ private:
         dim_idx_t dim_idx_ = dim_idx::invalid;
         dim_t subtile_dim_ = -1;
     };
-
-    tile_t get_simd_tile(const layout_t &c_layout) const {
-        tile_t tile(c_layout.ndims());
-        tile[simd_dim_idx_] = simd_;
-        return tile;
-    }
 
     int comp_g_idx_ = -1;
     int comp_c_idx_ = -1;
@@ -562,8 +554,7 @@ private:
         for (auto &b : blocks) {
             if (b.dim.index() == ck_idx_) b.block = 1;
         }
-        comp_layout_ = layout_t(type_t::s32(), blocks, 0, wei_layout_.ndims());
-        comp_layout_ = comp_layout_.make_dense();
+        comp_layout_ = layout_t(type_t::s32(), blocks).make_dense();
     }
 
     void init_comp_kind() {
@@ -628,11 +619,7 @@ private:
         return is_wei_Xy_s16(cn_idx_, vec_dim_idx, simd);
     }
 
-    tile_t get_simd_tile() const {
-        tile_t tile(ndims());
-        tile[simd_dim_idx_] = simd_;
-        return tile;
-    }
+    tile_t get_simd_tile() const { return tile_t({{simd_dim_idx_, simd_}}); }
 
     int get_comp_off(const icoord_t &start) const {
         int off = comp_layout_.offset_in_bytes<int>(start);
@@ -1210,11 +1197,7 @@ private:
         return off;
     }
 
-    tile_t get_simd_tile() const {
-        tile_t tile(mask_layout_.ndims());
-        tile[simd_dim_idx_] = simd_;
-        return tile;
-    }
+    tile_t get_simd_tile() const { return {{simd_dim_idx_, simd_}}; }
 
     void add_mask_desc(
             std::vector<zp_mask_desc_t> &mask_descs, const expr_t &mask) const {

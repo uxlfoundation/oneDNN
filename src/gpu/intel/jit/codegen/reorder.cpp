@@ -362,7 +362,7 @@ void reorder_2d_impl_t::generate_all_layouts_impl(
         std::vector<layout_t> &layouts, std::vector<layout_block_t> &blocks,
         const type_t &type, dim_t a, dim_t b, dim_t stride) {
     if (a == 1 && b == 1) {
-        layouts.emplace_back(type, blocks, 0, 2);
+        layouts.emplace_back(type, blocks);
         return;
     }
     bool iterate_a = true;

@@ -350,9 +350,10 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
         };
 
         { // init layer matmuls
-            const dim_t M = rnn_.n_gates * rnn_.dhc;
-            const dim_t N
-                    = rnn_.merge_gemm_layer ? rnn_.mb * rnn_.n_iter : rnn_.mb;
+            const dim_t M = static_cast<dim_t>(rnn_.n_gates) * rnn_.dhc;
+            const dim_t N = rnn_.merge_gemm_layer
+                    ? static_cast<dim_t>(rnn_.mb) * rnn_.n_iter
+                    : rnn_.mb;
             const dim_t K = rnn_.slc;
             const dim_t LDA = rnn_.weights_layer_ld;
             // LDB values are from rnn_conf_t::src_layer_ld()
@@ -477,7 +478,8 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
                 // K and do_sum
                 using dim_bool = std::tuple<dim_t, bool>;
                 const dim_bool K_and_sum[] = {{rnn_.dhc, do_sum_off},
-                        {(rnn_.n_gates - 1) * rnn_.dhc, do_sum_on}};
+                        {static_cast<dim_t>(rnn_.n_gates - 1) * rnn_.dhc,
+                                do_sum_on}};
 
                 for (const auto &ks : K_and_sum) {
                     const auto K = std::get<0>(ks);
@@ -490,7 +492,7 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
                             engine));
                 }
             } else {
-                const dim_t K = rnn_.n_gates * rnn_.dhc;
+                const dim_t K = static_cast<dim_t>(rnn_.n_gates) * rnn_.dhc;
                 const dim_t LDB
                         = is_lbr_gru ? rnn_.ws_gates_ld : rnn_.scratch_gates_ld;
                 const bool do_sum = is_lbr_gru ? do_sum_on : do_sum_off;
@@ -506,9 +508,10 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
 
         { // init layer matmuls
             const dim_t M = rnn_.slc;
-            const dim_t N
-                    = rnn_.merge_gemm_layer ? rnn_.mb * rnn_.n_iter : rnn_.mb;
-            const dim_t K = rnn_.n_gates * rnn_.dhc;
+            const dim_t N = rnn_.merge_gemm_layer
+                    ? static_cast<dim_t>(rnn_.mb) * rnn_.n_iter
+                    : rnn_.mb;
+            const dim_t K = static_cast<dim_t>(rnn_.n_gates) * rnn_.dhc;
             const dim_t LDA = rnn_.weights_layer_ld;
             const dim_t LDB = rnn_.scratch_gates_ld;
             const dim_t LDC = rnn_.ws_diff_states_layer_ld;
@@ -524,10 +527,11 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
 
         { // init weights layer matmuls
             const auto B_type = is_gru ? weights_type : src_type;
-            const dim_t M = rnn_.n_gates * rnn_.dhc;
+            const dim_t M = static_cast<dim_t>(rnn_.n_gates) * rnn_.dhc;
             const dim_t N = rnn_.slc;
-            const dim_t K
-                    = rnn_.merge_gemm_layer ? rnn_.mb * rnn_.n_iter : rnn_.mb;
+            const dim_t K = rnn_.merge_gemm_layer
+                    ? static_cast<dim_t>(rnn_.mb) * rnn_.n_iter
+                    : rnn_.mb;
             // LDB values are from rnn_conf_t::src_layer_ld()
             const dim_t LDBs[] = {rnn_.src_layer_ld_, rnn_.dst_iter_ld_,
                     rnn_.ws_states_layer_ld};
@@ -581,7 +585,8 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
             if (is_gru) {
                 // M and ldb
                 using dim2 = std::tuple<dim_t, dim_t>;
-                const dim_t M1 = (rnn_.n_gates - 1) * rnn_.dhc;
+                const dim_t M1
+                        = (static_cast<dim_t>(rnn_.n_gates) - 1) * rnn_.dhc;
                 const dim_t M2 = rnn_.dhc;
                 // LDB values for M1 are from rnn_conf_t::src_iter_ld()
                 dim2 M_and_LDB[] = {{M1, rnn_.src_iter_ld_},
@@ -596,7 +601,7 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
                     }
                 }
             } else {
-                const dim_t M = rnn_.n_gates * rnn_.dhc;
+                const dim_t M = static_cast<dim_t>(rnn_.n_gates) * rnn_.dhc;
                 // LDB values are from rnn_conf_t::src_iter_ld()
                 dim_t LDBs[] = {rnn_.src_iter_ld_, rnn_.dst_layer_ld_,
                         rnn_.ws_states_iter_ld};

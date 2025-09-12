@@ -28,7 +28,7 @@ struct BFN {
     uint8_t left = 0, right = 0;
 
     operator uint8_t() const;
-    operator std::string() const;
+    std::string str() const;
 
     bool operator==(const BFN& other) const {
         return (uint8_t)*this == (uint8_t)other;

@@ -29,7 +29,7 @@ BFN::operator uint8_t() const {
     }
 }
 
-BFN::operator std::string() const {
+std::string BFN::str() const {
     if (op == ngen::Opcode::mov) {
         if (left == 0x00) return "0";
         if (left == 0xFF) return "1";
@@ -42,7 +42,7 @@ BFN::operator std::string() const {
         return "???";
     }
     std::string op_name = (op == ngen::Opcode::and_ ? "&" : op == ngen::Opcode::or_ ? "|" : "^");
-    return (std::string)nodes[left] + op_name + (std::string)nodes[right];
+    return nodes[left].str() + op_name + nodes[right].str();
 }
 
 BFN BFN::operator~() const {

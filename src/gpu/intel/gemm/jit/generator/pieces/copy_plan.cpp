@@ -1478,23 +1478,23 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
         ie[1]->op = Opcode::shl;
         ie[1]->simd = simd/2;
         ie[1]->dst = ssrc;
-        ie[1]->dst.offset = 1;
-        ie[1]->dst.stride = 2;
+        ie[1]->dst.offset += 1;
+        ie[1]->dst.stride *= 2;
         ie[1]->src0 = ssrc;
-        ie[1]->src0.offset = 1;
-        ie[1]->src0.stride = 2;
+        ie[1]->src0.offset += 1;
+        ie[1]->src0.stride *= 2;
         ie[1]->src1 = Immediate::uw(0x4);
 
         ie[2]->op = Opcode::bfn;
-        ie[2]->ctrl = 0xCA;
+        ie[2]->ctrl = 0xEC;
         ie[2]->simd = simd/2;
         ie[2]->dst = tmp;
         ie[2]->src0 = ssrc;
-        ie[2]->src0.stride = 2;
+        ie[2]->src0.stride *= 2;
         ie[2]->src1 = ssrc;
-        ie[2]->src1.offset = 1;
-        ie[2]->src1.stride = 2;
-        ie[2]->src2 = Immediate::uw(0xF0);
+        ie[2]->src1.offset += 1;
+        ie[2]->src1.stride *= 2;
+        ie[2]->src2 = Immediate::uw(0x0F);
 
         if (simd > 2) {
             ie[3]->op = Opcode::mov;
@@ -1553,35 +1553,23 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
             ie[2]->invalidate();
         }
 
-        if (simd > 1) {
-            ie[3]->op = Opcode::bfn;
-            ie[3]->ctrl = 0xCA;
-            ie[3]->simd = simd;
-            ie[3]->dst = tmp;
-            ie[3]->src0 = ssrc;
-            ie[3]->src1 = tmp;
-            ie[3]->src2 = 0xFFFF ^ mask;
+        ie[3]->op = Opcode::bfn;
+        ie[3]->ctrl = 0xCA;
+        ie[3]->simd = simd;
+        ie[3]->dst = tmp;
+        ie[3]->src0 = ssrc;
+        ie[3]->src1 = tmp;
+        ie[3]->src2 = 0xFFFF ^ mask;
 
-            ie[4]->op = Opcode::mov;
-            ie[4]->simd = simd;
-            ie[4]->dst = ddst;
-            ie[4]->dst.type = DataType::ub;
-            ie[4]->dst.stride = stride;
-            ie[4]->dst.offset /= 2;
-            ie[4]->src0 = tmp;
-            ie[4]->src0.type = DataType::ub;
-            ie[4]->src0.stride *= 2;
-        } else {
-            ie[3]->op = Opcode::bfn;
-            ie[3]->ctrl = 0xCA;
-            ie[3]->simd = simd;
-            ie[3]->dst = ddst;
-            ie[3]->src0 = tmp;
-            ie[3]->src1 = ssrc;
-            ie[3]->src2 = mask;
-
-            ie[4]->invalidate();
-        }
+        ie[4]->op = Opcode::mov;
+        ie[4]->simd = simd;
+        ie[4]->dst = ddst;
+        ie[4]->dst.type = DataType::ub;
+        ie[4]->dst.stride = stride;
+        ie[4]->dst.offset /= 2;
+        ie[4]->src0 = tmp;
+        ie[4]->src0.type = DataType::ub;
+        ie[4]->src0.stride *= 2;
     }
 }
 
@@ -1696,7 +1684,7 @@ void CopyPlan::planEmulatedHF8ToBF(CopyInstruction &i)
     // and          y:uw    y:uw      0x87FF
     // cmp (ge)f0   null:hf (abs)y:hf 0x07F0:hf       /* NaN check */
     // mul          y:bf    y:bf      0x7B80:bf
-    // (f0) bfn.CA  y:uw    0x7FC0    y:uw    0x7FFF
+    // (f0) or      y:uw    y:uw      0x7FFF
 
     auto ie = splitMultiple<5>(i);
 
@@ -1728,11 +1716,9 @@ void CopyPlan::planEmulatedHF8ToBF(CopyInstruction &i)
     ie[3]->src0 = ie[3]->dst = y;
     ie[3]->src1 = bfImmediate(0x7B80, false);
 
-    ie[4]->op = Opcode::bfn;
-    ie[4]->ctrl = 0xCA;
-    ie[4]->src0 = 0x7FC0;
-    ie[4]->src1 = ie[4]->dst = yUW;
-    ie[4]->src2 = 0x7FFF;
+    ie[4]->op = Opcode::or_;
+    ie[4]->src0 = ie[4]->dst = yUW;
+    ie[4]->src1 = 0x7FFF;
     ie[4]->flag = f;
 }
 
@@ -1969,8 +1955,8 @@ void CopyPlan::planEmulatedHFToHF8(CopyInstruction &i)
     ie[9]->dst = ie[9]->src1 = t0UW;
     ie[9]->src0 = x;
     ie[9]->src0.type = DataType::uw;
-    ie[9]->src2 = 0x7FFF;
-    ie[9]->ctrl = 0xCA;
+    ie[9]->src2 = 0x8000;
+    ie[9]->ctrl = 0xEC;  // (s0 & s2) | s1
 
     ie[10]->op = Opcode::mov;
     ie[10]->src0 = t0;
@@ -2072,8 +2058,8 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
     ie[8]->src0 = x;
     ie[8]->src0.type = DataType::uw;
     ie[8]->src1 = ie[8]->dst = t0UW;
-    ie[8]->src2 = 0x7FFF;
-    ie[8]->ctrl = 0xCA;
+    ie[8]->src2 = 0x8000;
+    ie[8]->ctrl = 0xEC;
 
     // Pack into bytes.
     ie[9]->op = Opcode::shr;

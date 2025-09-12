@@ -378,8 +378,10 @@ void Generator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &ptr, const
                 auto pitch = bw * bcount * block.ebytes;
                 if (pitch < 64 || pitch & 0xF) hw_unsupported();
                 mov(1, addr[0].ud(4), pitch - 1);
-            } else
+            } else {
                 add(1, addr[0].ud(4), bld, -1);
+                max_<uint32_t>(1, addr[0].ud(4), addr[0].ud(4), addr[0].ud(2)); 
+            }
 
             mov(1, addr[0].ud(7), (bw - 1) | ((bh - 1) << 8) | ((bcount - 1) << 16));
 

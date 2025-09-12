@@ -59,6 +59,8 @@ const op_attr_t axis_col = 0x10107;
 // string
 const op_attr_t dw_type = 0x10201;
 const op_attr_t kind = 0x10204;
+const op_attr_t qk_acc_mode = 0x10205;
+const op_attr_t vs_acc_mode = 0x10206;
 
 // float
 const op_attr_t p = 0x10300;
@@ -104,6 +106,8 @@ static inline std::string internal_attr2str(op_attr_t attr) {
         CASE(src_zps);
         CASE(permutation);
         CASE(fusion_info);
+        CASE(qk_acc_mode);
+        CASE(vs_acc_mode);
         default: return "undefined_attr";
     }
 #undef CASE

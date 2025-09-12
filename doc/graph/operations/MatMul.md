@@ -29,6 +29,7 @@ the left side of dimensions (inserting `1`) to make sure two ranks matched.
 |:-------------------------------------------------------|:--------------------------------------------------------------------|:-----------|:----------------------|:---------------------|
 | [transpose_a](@ref dnnl::graph::op::attr::transpose_a) | Controls whether to transpose the last two dimensions of `src`.     |bool        | True, False (default) | Optional             |
 | [transpose_b](@ref dnnl::graph::op::attr::transpose_b) | Controls whether to transpose the last two dimensions of `weights`. |bool        | True, False (default) | Optional             |
+| [accumulation_mode](@ref dnnl::graph::op::attr::accumulation_mode) | Specifies the accumulation mode to be used for MatMul calculation | string | `strict` (default), `relaxed`, `any`, `f32`, `s32`, `f16`. | Optional |
 
 The above transpose attribute will not in effect when rank of an input tensor is
 less than 2. For example, in library implementation 1D tensor is unsqueezed
@@ -37,6 +38,10 @@ firstly before compilation. The rule is applied independently.
 - For \src tensor, the rule is defined like: `[d] -> [1, d]`.
 
 - For \weights tensor, the rule is defined like: `[d] -> [d, 1]`.
+
+For the attribute `accumulation_mode`, refer to
+[accumulation mode](https://uxlfoundation.github.io/oneDNN/dev_guide_attributes_accumulation_mode.html)
+for the definition for each supported value.
 
 ## Execution arguments
 

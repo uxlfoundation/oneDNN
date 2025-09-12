@@ -307,6 +307,11 @@ public:
         : layout_t(type, dim_idx::invalid, offset,
                 std::vector<layout_block_t>()) {}
 
+    layout_t with(const std::vector<layout_block_t> &blocks,
+            bool do_normalize = true) const {
+        return layout_t(type(), ndims(false), offset(), blocks, do_normalize);
+    }
+
     bool is_empty() const { return ndims_ == 0; }
     bool with_ndims() const { return ndims_ != dim_idx::invalid; }
     dim_idx_t ndims(bool check_invalid = true) const {
@@ -568,10 +573,7 @@ public:
     // Returns a canonical representation of the layout:
     // - Size one blocks are removed
     // - Consecutive dense blocks are merged
-    layout_t normalize() const {
-        auto blocks = normalize_blocks(blocks_);
-        return layout_t(type(), ndims_, offset(), blocks);
-    }
+    layout_t normalize() const { return with(blocks_); }
 
     layout_t transpose(std::array<pvar_t, 2> trans) const {
         auto blocks = blocks_;
@@ -580,7 +582,7 @@ public:
                     : b.dim == trans[1] ? trans[0]
                                         : b.dim;
 
-        return layout_t(type(), ndims(), offset(), blocks);
+        return with(blocks);
     }
 
     // Returns a new (sub-)layout that fully contains the passed sub-tensor.
@@ -637,7 +639,7 @@ public:
             block_count[b.dim]--;
             inner_blocks.push_back(b);
         }
-        return layout_t(type(), ndims_, 0, inner_blocks);
+        return with(inner_blocks);
     }
 
     // Returns a packed layout where all blocks are contiguous, without gaps.
@@ -648,7 +650,7 @@ public:
             b.stride = stride;
             stride *= b.block;
         }
-        return layout_t(type(), ndims_, 0, new_blocks);
+        return with(new_blocks);
     }
 
     layout_t make_strided(int _stride, int block_idx = 0) const {
@@ -672,7 +674,7 @@ public:
                 b.stride = ir_utils::safe_divide((dim_t)b.stride, -factor);
             }
         }
-        return layout_t(type(), ndims_, 0, new_blocks);
+        return with(new_blocks);
     }
 
     layout_t make_with_block(const layout_t &inner) const {
@@ -727,7 +729,7 @@ public:
         if (with_ndims()) gpu_assert(dim.index() < ndims());
         auto new_blocks = blocks();
         new_blocks.emplace_back(dim, block, stride);
-        return layout_t(type(), ndims_, offset(), new_blocks);
+        return with(new_blocks);
     }
 
     layout_t add_outer_block_and_pad(
@@ -1087,7 +1089,7 @@ public:
         }
         outer_blocks.insert(outer_blocks.end(),
                 blocks.begin() + (block_idx_ + 1), blocks.end());
-        return layout_t(l_.type(), l_.ndims(false), l_.offset(), outer_blocks);
+        return l_.with(outer_blocks);
     }
 
 private:
@@ -1596,8 +1598,7 @@ public:
     layout_t normalized_tlayout() const {
         auto blocks = move_size_1_blocks_outer();
         blocks = normalize_blocks(blocks, false);
-        auto layout = layout_t(
-                type(), tlayout_.ndims(), tlayout_.offset(), blocks, false);
+        auto layout = tlayout_.with(blocks, false);
         return layout;
     }
 

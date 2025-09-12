@@ -1551,8 +1551,7 @@ layout_t pad_slm_layout(
         remaining_elems /= b.block;
         if (remaining_elems == 1) past_inner_block = true;
     }
-    return layout_t(
-            layout.type(), layout.ndims(), layout.offset(), padded_blocks);
+    return layout.with(padded_blocks);
 }
 
 layout_t get_slm_layout(const fma_context_t &fma_ctx, abc_kind_t abc,
@@ -1766,7 +1765,7 @@ layout_t add_batch(const layout_t &layout) {
     for (auto &b : blocks) {
         b.dim = b.dim + 1;
     }
-    return layout_t(layout.type(), layout.ndims(), layout.offset(), blocks);
+    return layout.with(blocks);
 }
 
 bool is_dpas_src1_compatible(int simd, bool transpose, const layout_t &layout) {
@@ -2316,7 +2315,7 @@ private:
                     }
                 }
                 std::swap(a_blocks[i0], a_blocks[i1]);
-                a = layout_t(a.type(), a.ndims(), a.offset(), a_blocks);
+                a = a.with(a_blocks);
                 return plan_status_t::success;
             }
         }

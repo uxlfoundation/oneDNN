@@ -920,7 +920,7 @@ void fma_plan_t::set_split(abc_kind_t abc, int factor) {
                     fma_kind_t::dpasw)) {
         auto blocks = a_layout.blocks();
         blocks.back().block /= factor;
-        auto layout = layout_t(a_layout.type(), blocks, 0, a_layout.ndims());
+        auto layout = layout_t(a_layout.type(), blocks);
         m_blk = get_dpas_block_rcount(layout, 1);
     }
 }
@@ -1343,8 +1343,8 @@ struct fma_context_t {
             }
             auto bmnk_layout
                     = mapper.map_to_bmnk(abc, bmnks, layout).retype(type);
-            auto fma_layout = bmnk_layout.make_with_block(
-                    layout_t(type, blocks, 0, bmnks.size()));
+            auto fma_layout
+                    = bmnk_layout.make_with_block(layout_t(type, blocks));
             auto abc_layout
                     = mapper.map_from_bmnk(abc, bmnks, fma_layout, layout);
             if (cvt_f16) return abc_layout.retype(type_t::f16());
@@ -1362,8 +1362,8 @@ struct fma_context_t {
             blocks.emplace_back(hint.vec_dim_idx, vec_size);
             auto bmnks = get_bmnk_kinds(abc, /*with_batch=*/true);
             auto bmnk_layout = mapper.map_to_bmnk(abc, bmnks, ret);
-            auto fma_layout = bmnk_layout.make_with_block(
-                    layout_t(ret.type(), blocks, 0, (int)bmnks.size()));
+            auto fma_layout
+                    = bmnk_layout.make_with_block(layout_t(ret.type(), blocks));
             auto abc_layout = mapper.map_from_bmnk(abc, bmnks, fma_layout, ret);
             if (layout.type().is_x8()) {
                 gpu_assert(abc_layout.type().is_s16());
@@ -2235,7 +2235,6 @@ private:
         auto l = plan_.fma.c_prb_layout;
         int ndims = l.ndims();
         auto blocks = l.blocks();
-        l = layout_t(l.type(), blocks, l.offset(), ndims + 1);
         l = l.add_outer_block(ndims, k_tg);
         int outer = 1;
         auto rem_dims = l.dims();

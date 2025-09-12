@@ -90,8 +90,8 @@ layout_t dpas_t::a_layout() const {
     int m_blk = exec_size;
     int inner_blk = 4 / src1_type.size();
     int outer_blk = sdepth;
-    std::vector<std::pair<pvar_t, dim_t>> blocks
-            = {{1, outer_blk}, {0, m_blk}, {1, inner_blk}};
+    std::vector<layout_block_t> blocks
+            = {{1, inner_blk}, {0, m_blk}, {1, outer_blk}};
     return layout_t(src1_type, 0, 2, blocks);
 }
 

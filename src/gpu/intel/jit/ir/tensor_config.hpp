@@ -112,7 +112,7 @@ private:
 };
 
 // Returns vector of <dimension index, block size> pairs.
-std::vector<std::pair<pvar_t, dim_t>> parse_format(
+std::vector<layout_block_t> parse_format(
         const std::string &format, int ndims_hint);
 
 // Returns vector of <dimension letter, block size> pairs.

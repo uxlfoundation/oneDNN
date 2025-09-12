@@ -44,44 +44,6 @@ std::vector<layout_block_t> normalize_blocks(
     return res;
 }
 
-layout_t::layout_t(const type_t &type, const expr_t &offset, dim_idx_t ndims,
-        const std::vector<std::pair<pvar_t, dim_t>> &parts,
-        const std::vector<dim_t> &dims, bool do_normalize)
-    : type_(type), ndims_(ndims), offset_(offset) {
-    if (!dims.empty() && ndims_ != dims.size()) {
-        gpu_error_not_expected() << "Format and dimensions do not match.";
-    }
-    for (auto &p : parts) {
-        pvar_t dim = p.first;
-        dim_t block = p.second;
-        gpu_assert(dim.index() < ndims_);
-        if (block == 0 && dims.empty())
-            gpu_error_not_expected()
-                    << "Dimensions are missing. Can't deduce them from "
-                       "the format.";
-    }
-
-    dim_t stride = 1;
-    // Iterate from right to left (innermost to outermost).
-    for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
-        auto &dim = it->first;
-        dim_t block = it->second;
-        if (block == 0) {
-            dim_t full_block = 1;
-            for (auto &b : blocks_)
-                if (b.dim == dim) full_block *= b.block;
-
-            block = utils::div_up(dims[dim], full_block);
-        }
-
-        blocks_.emplace_back(dim, block, stride);
-        stride = block * stride;
-    }
-
-    if (do_normalize) blocks_ = normalize_blocks(blocks_);
-    sanity_check();
-}
-
 memory_desc_t to_md(const layout_t &l, const memory_desc_t &md_hint) {
     auto dims_hint = md_hint.dims;
     auto ndims = md_hint.ndims;

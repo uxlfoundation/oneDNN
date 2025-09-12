@@ -32,7 +32,7 @@ namespace x64 {
 
 template <cpu_isa_t isa, typename Vmm>
 struct jit_uni_x8s8s32x_fwd_kernel_vmm_t : public jit_generator_t {
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_uni_x8s8s32x_conv_fwd_ker_t_)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_x8s8s32x_conv_fwd_ker_t)
 
     jit_uni_x8s8s32x_fwd_kernel_vmm_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
@@ -60,7 +60,11 @@ private:
     };
 
     /* data registers */
-    const Xbyak::Reg64 reg_ptr_scales = rax;
+    const Xbyak::Reg64 reg_src_scales = rax;
+    const Xbyak::Reg64 reg_wei_scales = rax;
+    const Xbyak::Reg64 reg_scale_adjust = rax;
+    const Xbyak::Reg64 reg_dst_scales = r15;
+
     const Xbyak::Reg64 reg_ptr_saturation_ubound = rax;
     const Xbyak::Reg64 reg_inp = r8;
     const Xbyak::Reg64 reg_ker = r9;
@@ -81,8 +85,8 @@ private:
     const Xbyak::Reg64 reg_owb = aux_reg_ker;
     const Xbyak::Reg64 reg_scratch = reg_compensation;
     const Xbyak::Reg64 reg_ki = reg_compensation;
-    const Xbyak::Reg64 reg_kj = reg_ptr_scales;
-    const Xbyak::Reg64 reg_overflow = reg_ptr_scales;
+    const Xbyak::Reg64 reg_kj = rax;
+    const Xbyak::Reg64 reg_overflow = rax;
     const Xbyak::Reg64 reg_icb = reg_bias;
     // Using 3d regs as depthwise3d is not yet supported
     const Xbyak::Reg64 reg_inp_buffer_ptr = aux_reg_inp_d;
@@ -92,8 +96,6 @@ private:
     const Xbyak::Reg64 reg_zp_compensation = aux_reg_inp;
     const Xbyak::Reg64 reg_src_zero_point = aux_reg_ker_d;
     const Xbyak::Reg64 reg_dst_zero_point = reg_src_zero_point;
-    // dst scale
-    const Xbyak::Reg64 reg_dst_scale = reg_dst_zero_point;
 
     /* binary post-ops operand */
     const Xbyak::Reg64 temp_offset_reg = r12;
@@ -102,7 +104,9 @@ private:
     /* used during bias/comp/scale section of store_output */
     const Vmm vmm_bias = Vmm(0);
     const Vmm vmm_comp = Vmm(2); // only for signed input
-    const Vmm vmm_scale = Vmm(1);
+    const Vmm vmm_scales = Vmm(1);
+    const Vmm vmm_scales_tmp = Vmm(0); // Has dependency on `vmm_bias`.
+    const Vmm vmm_dst_scales = Vmm(0);
     /* used during post_op sum section of store_output */
     const Vmm vmm_prev_dst = Vmm(0);
     /* used during write-out section of store_output */
@@ -113,8 +117,6 @@ private:
     const Vmm vmm_zp_one = Vmm(5);
     const Vmm vmm_zp_comp = vmm_zp_one;
     const Vmm vmm_zp_dw_tmp = vmm_zp_one;
-    /* dst scale */
-    const Vmm vmm_dst_scale = Vmm(0);
 
     /* used in compute_ker (but set during prepare_output) */
     const Vmm vmm_shift = Vmm(1); // only for signed input

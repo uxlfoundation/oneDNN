@@ -62,58 +62,23 @@ status_t jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward(
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(
-            dw_wei_scales, DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(
-            dw_dst_scales, DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST);
+    const void *dw_wei_scales = CTX_IN_MEM(const void *,
+            DNNL_ARG_ATTR_SCALES | DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS);
+    const void *dw_dst_scales = CTX_IN_MEM(const void *,
+            DNNL_ARG_ATTR_SCALES | DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
-
-    auto local_scales
-            = scratchpad.template get<float>(key_conv_adjusted_scales);
-    const bool has_wei_scales
-            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS);
-    const int wei_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const float factor = (pd()->jcp_.signed_input && (!pd()->jcp_.has_vnni))
-            ? 1.f / pd()->jcp_.wei_adj_scale
-            : 1.f;
-    if (has_wei_scales && wei_mask > 0) {
-        for (dim_t c = 0; c < pd()->OC(); c++)
-            local_scales[c] = src_scales[0] * wei_scales[c] * factor;
-    } else {
-        utils::array_set(
-                local_scales, src_scales[0] * wei_scales[0] * factor, 8);
-    }
-
-    const float *dw_oscales = nullptr;
-    if (pd()->jcp_.with_dw_conv && pd()->jcp_dw_) {
-        const auto *jcp_dw = pd()->jcp_dw_;
-        memory_tracking::grantor_t dw_scratchpad(
-                scratchpad, memory_tracking::names::prefix_fusion);
-        auto attr_dw = pd()->dw_conv_pd_->attr();
-
-        auto dw_local_scales
-                = dw_scratchpad.template get<float>(key_conv_adjusted_scales);
-        int wei_mask = attr_dw->scales_.get_mask(DNNL_ARG_WEIGHTS);
-        float factor = 1.f / jcp_dw->wei_adj_scale;
-        if (wei_mask == 0) {
-            utils::array_set(dw_local_scales,
-                    dw_wei_scales[0] / dst_scales[0] * factor,
-                    pd()->jcp_.ic_block);
-        } else {
-            for (dim_t c = 0; c < pd()->dw_conv_pd_->OC(); c++)
-                dw_local_scales[c] = dw_wei_scales[c] / dst_scales[0] * factor;
-        }
-        dw_oscales = dw_local_scales;
-    }
     parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
-                dst, local_scales, dst_scales, dw_oscales, dw_dst_scales,
-                src_zero_points, dst_zero_points, scratchpad,
+                dst, src_scales, wei_scales, dst_scales, dw_wei_scales,
+                dw_dst_scales, src_zero_points, dst_zero_points,
+                ctx.get_scratchpad_grantor(),
                 post_ops_binary_rhs_arg_vec.data(),
                 post_ops_binary_rhs_arg_vec_dw.data());
     });
@@ -124,9 +89,10 @@ template <cpu_isa_t isa>
 void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
         const int ithr, const int nthr, const char *src, const char *weights,
         const char *bias, const char *weights_dw, const char *bias_dw,
-        char *dst, const float *oscales, const float *dst_scales,
-        const float *dw_oscales, const float *dw_dst_scales,
-        const int32_t *src_zero_points, const int32_t *dst_zero_points,
+        char *dst, const void *src_scales, const void *wei_scales,
+        const void *dst_scales, const void *dw_wei_scales,
+        const void *dw_dst_scales, const int32_t *src_zero_points,
+        const int32_t *dst_zero_points,
         const memory_tracking::grantor_t &scratchpad,
         const void *post_ops_binary_rhs_arg_vec,
         const void *post_ops_binary_rhs_arg_vec_dw) const {
@@ -165,6 +131,14 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
                     + (jcp.signed_input ? jcp.ngroups * jcp.oc : 0)
             : nullptr;
 
+    float *dst_scales_inv_ptr = nullptr;
+    if (jcp.with_dst_scales) {
+        const float *dst_scales_ptr = static_cast<const float *>(dst_scales);
+        dst_scales_inv_ptr
+                = scratchpad.template get<float>(key_conv_dst_scales) + ithr;
+        dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+    }
+
     auto p = jit_1x1_conv_args_t();
 
     auto rp = typename rtus_driver_t<isa>::call_params_t();
@@ -198,6 +172,15 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
         compensation_dw = (jcp_dw->signed_input)
                 ? reinterpret_cast<int32_t *>(w + offset)
                 : nullptr;
+    }
+
+    float *dw_dst_scales_inv_ptr = nullptr;
+    if (jcp.with_dw_conv && jcp_dw && jcp_dw->with_dst_scales) {
+        const float *dw_dst_scales_ptr
+                = static_cast<const float *>(dw_dst_scales);
+        dw_dst_scales_inv_ptr
+                = dw_scratchpad.template get<float>(key_conv_dst_scales) + ithr;
+        dw_dst_scales_inv_ptr[0] = 1.f / dw_dst_scales_ptr[0];
     }
 
     char *pbuf {nullptr};
@@ -277,8 +260,12 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
                 : nullptr;
         p.src_zero_point = src_zero_points;
         p.dst_zero_point = dst_zero_points;
-        p.scales = &oscales[jcp.is_oc_scale * _ocb * jcp.oc_block];
-        p.dst_scale = dst_scales;
+        p.src_scales = src_scales;
+        p.wei_scales = jcp.with_wei_scales
+                ? static_cast<const float *>(wei_scales)
+                        + jcp.is_oc_scale * _ocb * jcp.oc_block
+                : nullptr;
+        p.dst_scales = dst_scales_inv_ptr;
         if (pd()->rtus_.reduce_src_) {
             rp.ws = rtus_space
                     + src_dt_size
@@ -416,10 +403,12 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
             par_conv_dw.compensation = compensation_dw
                     ? &compensation_dw[ocb * jcp_dw->ch_block]
                     : nullptr;
-            par_conv_dw.scales = dw_oscales
-                    ? &dw_oscales[jcp_dw->is_oc_scale * ocb * jcp_dw->ch_block]
+            par_conv_dw.src_scales = nullptr;
+            par_conv_dw.wei_scales = jcp_dw->with_wei_scales
+                    ? static_cast<const float *>(dw_wei_scales)
+                            + jcp_dw->is_oc_scale * ocb * jcp_dw->ch_block
                     : nullptr;
-            par_conv_dw.dst_scale = dw_dst_scales;
+            par_conv_dw.dst_scales = dw_dst_scales_inv_ptr;
 
             par_conv_dw.post_ops_binary_rhs_arg_vec
                     = post_ops_binary_rhs_arg_vec_dw;

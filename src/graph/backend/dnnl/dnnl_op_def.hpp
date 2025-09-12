@@ -93,6 +93,8 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_mul_scales, 1,
                         executable_creator<reorder_executable_t>)
                 .SET_ARG_INDICES_GETTER(reorder_executable_t))
 
+// We define this op to convert a host scalar tensor to a device tensor, as some
+// kernels/primitives may not accept host scalar tensor as input.
 DNNL_GRAPH_OP_SCHEMA(dnnl_host_scalar, 1,
         op_schema_t()
                 .set_num_inputs(1)

@@ -53,10 +53,6 @@ struct gemm_t : public primitive_t {
             gemm_attr.scales_ = attr()->scales_;
             gemm_attr.precomputed_reductions_ = attr()->precomputed_reductions_;
             gemm_attr.zero_points_ = attr()->zero_points_;
-            if (attr()->zero_points_.has_host_scalars()
-                    || attr()->scales_.has_host_scalars()) {
-                return status::unimplemented;
-            }
             gemm_attr.post_ops_ = attr()->post_ops_;
             VDISPATCH_MATMUL(attr()->dropout_.has_default_values(),
                     VERBOSE_UNSUPPORTED_ATTR);

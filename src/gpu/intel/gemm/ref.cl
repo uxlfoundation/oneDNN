@@ -36,7 +36,22 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
         int transb, long MB, long M, long N, long K, long stride_a_mb,
         long stride_b_mb, long stride_c, long lda, long ldb, long ldc,
         float eltwise_alpha, float eltwise_beta, float eltwise_scale,
-        int bias_mask, __global int *ao, __global int *bo, __global int *c0,
+        int bias_mask,
+#if WITH_HOST_WEI_ZP
+        int ao_value,
+#else
+        __global int *ao,
+#endif
+#if WITH_HOST_SRC_ZP
+        int bo_value,
+#else
+        __global int *bo,
+#endif
+#if WITH_HOST_DST_ZP
+        int c0_value,
+#else
+        __global int *c0,
+#endif
         int c0_mask, float beta) {
 
 // See note in src/gpu/intel/gemm/primitive.hpp wrt args swap
@@ -50,6 +65,16 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
 #define ATTR_B0 bo[0]
 #else
 #define ATTR_B0 0
+#endif
+
+#if WITH_HOST_SRC_ZP
+    int *bo = &bo_value;
+#endif
+#if WITH_HOST_WEI_ZP
+    int *ao = &ao_value;
+#endif
+#if WITH_HOST_DST_ZP
+    int *c0 = &c0_value;
 #endif
 
     long n = get_global_id(0);

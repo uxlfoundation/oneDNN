@@ -158,7 +158,11 @@ std::shared_ptr<execution_args_set_t> execution_args_set_t::clone() const {
     ret->value_mem_map_.reserve(value_mem_map_.size());
     for (auto &val_mem : value_mem_map_) {
         memory cloned_mem;
-        if (val_mem.second.get_engine().get_kind() == dnnl::engine::kind::gpu) {
+        if (val_mem.second.get_desc().get_format_kind()
+                == dnnl::memory::format_kind::host_scalar) {
+            cloned_mem = dnnl::memory(val_mem.second.get_desc(), 0);
+        } else if (val_mem.second.get_engine().get_kind()
+                == dnnl::engine::kind::gpu) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
             dnnl::ocl_interop::memory_kind m_kind
                     = dnnl::ocl_interop::get_memory_kind(val_mem.second);
@@ -238,11 +242,6 @@ std::shared_ptr<execution_args_set_t> execution_args_set_t::clone() const {
         ret->topo_ordered_exec_args_.emplace_back(new_args);
     }
 
-    ret->host_scalar_infos_.reserve(host_scalar_infos_.size());
-    for (const auto &info : host_scalar_infos_) {
-        ret->host_scalar_infos_.emplace_back(info);
-    }
-
     return ret;
 }
 
@@ -253,7 +252,6 @@ void execution_args_set_t::clear() {
     mems_use_internal_persistent_.clear();
     value_mem_map_.clear();
     topo_ordered_exec_args_.clear();
-    host_scalar_infos_.clear();
 }
 
 void alias_analyzer_t::clear() {
@@ -771,17 +769,13 @@ status_t memory_planner_t::prepare_execution_args_set(
         for (auto &in : op->get_input_values()) {
             if (prepared.count(in.get())) continue;
             const logical_tensor_t in_lt = in->get_logical_tensor();
+            const logical_tensor_wrapper_t ltw(in_lt);
             auto md = make_dnnl_memory_desc(in_lt);
-            bool is_host_scalar
-                    = ltw(in_lt).property_type() == property_type::host_scalar;
-            if (is_host_scalar) {
-                // store md, leave memory allocation to execution time
-                host_scalar_mds.insert({in.get(), md});
-            } else {
-                auto mem = make_dnnl_memory(md, p_engine, nullptr);
-                exec_args_set_.add_value_mem_map({in.get(), mem});
-                classify_mem(mem, in.get());
-            }
+            auto mem = ltw.is_host_scalar()
+                    ? dnnl::memory(md, 0)
+                    : make_dnnl_memory(md, p_engine, nullptr);
+            exec_args_set_.add_value_mem_map({in.get(), mem});
+            classify_mem(mem, in.get());
             prepared.insert(in.get());
         }
 
@@ -827,11 +821,7 @@ status_t memory_planner_t::prepare_execution_args_set(
 
             // find the corresponding memory object
             dnnl::memory mem;
-            if (host_scalar_mds.find(val) != host_scalar_mds.end()) {
-                size_t input_idx = buffer_assignments_.at(val).index_;
-                exec_args_set_.add_host_scalar_arg(
-                        input_idx, host_scalar_mds[val], dnnl_arg);
-            } else if (!exec_args_set_.find_value_mem_map(val, mem)) {
+            if (!exec_args_set_.find_value_mem_map(val, mem)) {
                 VCHECK_MEMORY_PLANNING(false, status::invalid_arguments,
                         "can't find memory for value id: %zu",
                         val->get_logical_tensor().id);

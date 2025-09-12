@@ -165,7 +165,7 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
             }
             padded_blocks.push_back(b);
         }
-        l = {l.type(), l.ndims(), 0, padded_blocks, /*do_normalize=*/false};
+        l = l.with(padded_blocks, false);
     };
     pad_layout(a);
     pad_layout(b);

@@ -98,9 +98,11 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     return dnnl_success;
 }
 
-int fill_data_fwd(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+int fill_data_fwd(
+        int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -190,10 +192,11 @@ int fill_data_fwd(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     return OK;
 }
 
-int fill_data_bwd(data_kind_t data_kind, const prb_t *prb, dnn_mem_t &mem_dt,
-        dnn_mem_t &mem_fp, int seed) {
+int fill_data_bwd(data_kind_t data_kind, int exec_arg, const prb_t *prb,
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int seed) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -391,7 +394,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
-                SAFE(fill_data_fwd(prb, mem, ref_mem), WARN);
+                SAFE(fill_data_fwd(exec_arg, prb, mem, ref_mem), WARN);
                 // Need a copy of source data for inplace mode for bitwise
                 // testing.
                 if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {
@@ -404,13 +407,16 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 if (!is_fwd_prim) {
                     const bool neg_sign = prb->alg == SOFTMAX
                             || prb->alg == SOFTMAX_INF_AS_ZERO;
-                    SAFE(fill_data_bwd(DST, prb, mem, ref_mem, neg_sign), WARN);
+                    SAFE(fill_data_bwd(
+                                 DST, exec_arg, prb, mem, ref_mem, neg_sign),
+                            WARN);
                 }
                 break;
             case DNNL_ARG_DIFF_DST: {
                 const bool neg_sign = prb->alg == SOFTMAX
                         || prb->alg == SOFTMAX_INF_AS_ZERO;
-                SAFE(fill_data_bwd(DIFF_DST, prb, mem, ref_mem, !neg_sign),
+                SAFE(fill_data_bwd(
+                             DIFF_DST, exec_arg, prb, mem, ref_mem, !neg_sign),
                         WARN);
                 // Need a copy of source data for inplace mode for bitwise
                 // testing.

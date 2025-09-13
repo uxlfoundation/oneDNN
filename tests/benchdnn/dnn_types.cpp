@@ -38,6 +38,7 @@
 #include "dnnl_memory.hpp"
 #include "utils/cold_cache.hpp"
 #include "utils/dims.hpp"
+#include "utils/fill.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
 
@@ -1074,6 +1075,8 @@ std::ostream &dump_global_params(std::ostream &s) {
 #endif
     if (canonical || cold_cache_input != default_cold_cache_input())
         s << "--cold-cache=" << cold_cache_input << " ";
+    if (canonical || !buffer_prefix.empty())
+        s << "--buffer-prefix=" << buffer_prefix << " ";
     if (canonical || execution_mode != execution_mode_t::direct)
         s << "--execution-mode=" << execution_mode2str(execution_mode) << " ";
 

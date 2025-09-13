@@ -30,6 +30,7 @@
 
 #include "common.hpp"
 
+#include "utils/fill.hpp"
 #include "utils/parallel.hpp"
 
 /* result structure */
@@ -145,6 +146,16 @@ void parse_result(res_t &res, const char *pstr) {
     if (is_failed) {
         bs.failed++;
         bs.failed_cases.emplace(bs.tests, full_repro);
+        // In theory, this can pop up for unimplemented and invalid args, too.
+        // Shouldn't be a problem though.
+        if (!buffer_prefix.empty()) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "Note: importing data from a file led to a correctness "
+                    "issue. It is impossible to tell if that was a real oneDNN "
+                    "bug or just benchdnn refusing to acknowledge a minuscule "
+                    "difference as a match. Take this 'FAILED' with a grain of "
+                    "salt, and proceed with extra caution.");
+        }
     }
     if (print_me) { BENCHDNN_PRINT(0, "%s\n", full_repro.c_str()); }
 

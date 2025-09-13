@@ -89,4 +89,8 @@ int fill_random_real(dnn_mem_t &mem_ref,
         const fill_cfg_t &fill_cfg = get_default_fill_cfg(),
         const_dnnl_memory_t dnnl_memory = nullptr);
 
+extern std::string buffer_prefix;
+
+bool fill_from_file(int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem);
+
 #endif

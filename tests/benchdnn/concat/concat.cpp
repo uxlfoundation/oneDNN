@@ -64,10 +64,11 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     return dnnl_success;
 }
 
-int fill_src(int input_idx, dnnl_data_type_t dt, dnn_mem_t &mem_dt,
+int fill_src(int exec_arg, dnnl_data_type_t dt, dnn_mem_t &mem_dt,
         dnn_mem_t &mem_fp) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -99,7 +100,7 @@ int fill_src(int input_idx, dnnl_data_type_t dt, dnn_mem_t &mem_dt,
         int64_t idx_start = idx_chunk * chunk_size;
         int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
         // See eltwise.cpp for implementation details.
-        std::minstd_rand msr(input_idx * n_chunks + idx_start + 1);
+        std::minstd_rand msr(exec_arg * n_chunks + idx_start + 1);
         msr.discard(1);
         std::uniform_int_distribution<> igen(min_val, max_val);
         // Most fp8 values can't be represented exactly with integers.

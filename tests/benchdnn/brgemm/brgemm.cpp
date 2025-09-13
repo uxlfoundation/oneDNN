@@ -214,11 +214,12 @@ namespace_impl::brgemm_batch_kind_t str2batch_kind(const std::string &str) {
 }
 #endif
 
-int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
+int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
+        const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
 
     const auto nelems = mem_dt.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     assert(mem_dt.nelems() == mem_fp.nelems());
 
@@ -940,24 +941,29 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
-                SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(SRC, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_WEIGHTS:
-                SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(WEI, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_BIAS:
-                SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(BIA, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_DST: {
                 const auto &po = prb->attr.post_ops;
                 const int sum_idx = po.find(attr_t::post_ops_t::SUM);
                 if (sum_idx >= 0) {
-                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                    SAFE(fill_data(DST, exec_arg, prb, cfg, mem, ref_mem, res),
+                            WARN);
                 }
             } break;
             case DNNL_ARG_DST_1: {
                 if (need_fill_acc) {
-                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                    SAFE(fill_data(DST, exec_arg, prb, cfg, mem, ref_mem, res),
+                            WARN);
                 }
             } break;
             default:

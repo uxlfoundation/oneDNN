@@ -32,9 +32,11 @@
 
 namespace prelu {
 
-int fill_data(data_kind_t kind, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+int fill_data(
+        data_kind_t kind, int exec_arg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -202,12 +204,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
-            case DNNL_ARG_SRC: SAFE(fill_data(SRC, mem, ref_mem), WARN); break;
+            case DNNL_ARG_SRC:
+                SAFE(fill_data(SRC, exec_arg, mem, ref_mem), WARN);
+                break;
             case DNNL_ARG_WEIGHTS:
-                SAFE(fill_data(WEI, mem, ref_mem), WARN);
+                SAFE(fill_data(WEI, exec_arg, mem, ref_mem), WARN);
                 break;
             case DNNL_ARG_DIFF_DST:
-                SAFE(fill_data(DST, mem, ref_mem), WARN);
+                SAFE(fill_data(DST, exec_arg, mem, ref_mem), WARN);
                 break;
             default: break;
         }

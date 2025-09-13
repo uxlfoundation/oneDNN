@@ -24,6 +24,72 @@ tries to find the file in a default path
 found, an error is reported. Note that `--batch` option doesn't change the
 previous state.
 
+### --buffer-prefix
+`--buffer-prefix=PREFIX` instructs the driver not to generate the synthetic data
+for certain buffers but fill them with data taken from the files whose paths and
+names are specified in `PREFIX`; see below. This makes benchdnn capable of using
+real workloads, which may come in handy to identify HW issues and driver faults,
+or reveal hidden library bugs potentially escaping scrutiny due to a blind spot
+in the benchdnn test coverage.
+
+The feature has numerous requirements and caveats and must be used with caution.
+It is designed to only be used with one test case at a time.
+
+Here's the list of requirements:
+* `PREFIX` must contain a single string that points to an arbitrary place in the
+  file system, relative to the working directory or absolute, followed via slash
+  by a common part of the file name for all files that contain their respective
+  buffer data.
+* All files in the file system that contain the buffer data should be named like
+  this: `PREFIX.ID.bin`, where `PREFIX` is the string passed to benchdnn via the
+  knob, `ID` is the execution argument ID in the library (e.g. `DNNL_ARG_SRC` is
+  `1`, `DNNL_ARG_WEIGHTS` is `33`, `DNNL_ARG_BIAS` is `41`, etc.; for more info
+  see [dnnl_types.h](../../../include/oneapi/dnnl/dnnl_types.h)), `bin` is the
+  file extension that is the same for all of the files.
+* The files are expected to contain binary data, with exactly the type and the
+  layout that the library uses for the corresponding buffers. Any file the size
+  of which doesn't precisely match the size of the memory buffer it is supposed
+  to contain the data for is considered a reason to output an error message and
+  halt the execution.
+* If a primitive needs more buffers than there are files, those not filled from
+  files are generated following the regular benchdnn process; e.g. ID `80`, the
+  `DNNL_ARG_SCRATCHPAD` buffer, is never initialized by benchdnn unless filled.
+* Due to certain limitations of the machine arithmetic, it is probable that the
+  results the GPU primitives output on real data won't exactly match those from
+  the CPU primitives used by benchdnn as reference; please keep that in mind if
+  benchdnn still reports an accuracy error with buffers filled from files after
+  the root-cause bug got fixed; use `-v99` to see the full output comparison.
+
+#### Usage example
+Consider the following files:
+* `/path/to/faulty/conv_bufs.1.bin` (contains `DNNL_ARG_SRC`)
+* `/path/to/faulty/conv_bufs.33.bin` (contains `DNNL_ARG_WEIGHTS`)
+* `/path/to/faulty/conv_bufs.41.bin` (contains `DNNL_ARG_BIAS`)
+
+This line will instruct benchdnn to pick them up:
+```bash
+./benchdnn --buffer-prefix=/path/to/faulty/conv_bufs -v2 --conv --dir=FWD_B ...
+```
+
+`-v2` (and higher verbosity levels: `-vN`, N≥2) can be used to see what happens
+with the buffers, e.g. when a binary post-op was also specified in the benchdnn
+run line but the user calculated its ID incorrectly, the following message will
+be shown:
+```
+...
+File '/path/to/faulty/conv_bufs.32770.bin' not found; buffer not imported.
+...
+```
+
+The buffers that got picked up leave the following lines in the verbose log:
+```
+...
+File '/path/to/faulty/conv_bufs.1.bin' successfully processed; buffer imported.
+File '/path/to/faulty/conv_bufs.33.bin' successfully processed; buffer imported.
+File '/path/to/faulty/conv_bufs.41.bin' successfully processed; buffer imported.
+...
+```
+
 ### --canonical
 `--canonical=BOOL` instructs the driver to print a canonical form of a
 reproducer line. When `BOOL` is `false` (the default), the driver prints the

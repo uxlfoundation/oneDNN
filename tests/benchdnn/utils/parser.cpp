@@ -18,6 +18,7 @@
 #include <cctype>
 
 #include "utils/cold_cache.hpp"
+#include "utils/fill.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
 
@@ -1497,6 +1498,20 @@ static bool parse_start(
             test_start, 0, parser_utils::stoll_safe, str, option_name, help);
 }
 
+static bool parse_buffer_prefix(
+        const char *str, const std::string &option_name = "buffer-prefix") {
+    static const std::string help
+            = "PREFIX    (Default: not specified)\n    Instructs the driver to "
+              "fill specified buffers with the data from the files provided by "
+              "`PREFIX`.\n    The expected filename format is "
+              "\'PREFIX.ID.bin\'; the files must have binary data in them.\n   "
+              " More details at "
+            + doc_url + "knobs_common.md#--buffer-prefix\n";
+    const auto str2self = [](const std::string &str) { return str; };
+    return parse_single_value_option(
+            buffer_prefix, std::string(), str2self, str, option_name, help);
+}
+
 static bool parse_stream_kind(
         const char *str, const std::string &option_name = "stream-kind") {
     static const std::string help
@@ -1600,7 +1615,8 @@ bool parse_bench_settings(const char *str) {
             || parse_memory_kind(str) || parse_mode(str)
             || parse_mode_modifier(str) || parse_start(str)
             || parse_stream_kind(str) || parse_summary(str)
-            || parse_verbose(str) || parse_execution_mode(str);
+            || parse_verbose(str) || parse_execution_mode(str)
+            || parse_buffer_prefix(str);
 
     // Last condition makes this help message to be triggered once driver_name
     // is already known.

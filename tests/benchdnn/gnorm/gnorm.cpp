@@ -34,6 +34,7 @@ namespace gnorm {
 
 int fill_mean(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         dnn_mem_t &mem_dt) {
+    if (fill_from_file(DNNL_ARG_MEAN, mem_dt, mem_fp)) return OK;
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
         // Mean must be computed unless it is passed by user directly.
@@ -67,6 +68,7 @@ int fill_mean(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
 
 int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         dnn_mem_t &mem_dt, const dnn_mem_t &ref_mean, res_t *res) {
+    if (fill_from_file(DNNL_ARG_SRC, mem_dt, mem_fp)) return OK;
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
         return fill_random_real(mem_dt, mem_fp, res);
@@ -182,6 +184,7 @@ int fill_src(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
 int fill_variance_fwd(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
         dnn_mem_t &mem_dt, const dnn_mem_t &ref_src,
         const dnn_mem_t &ref_mean) {
+    if (fill_from_file(DNNL_ARG_VARIANCE, mem_dt, mem_fp)) return OK;
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
         // Variance must be computed unless it is passed by user directly.
@@ -230,6 +233,7 @@ int fill_variance_fwd(const prb_t *prb, const cfg_t &cfg, dnn_mem_t &mem_fp,
 int fill_scale(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     const bool use_sc = prb->use_sc();
     if (!use_sc) return OK;
+    if (fill_from_file(DNNL_ARG_SCALE, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -254,6 +258,7 @@ int fill_scale(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
 int fill_shift(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     const bool use_sh = prb->use_sh();
     if (!use_sh) return OK;
+    if (fill_from_file(DNNL_ARG_SHIFT, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -312,6 +317,7 @@ int prepare_fwd(const prb_t *prb, dnn_mem_map_t &mem_map,
 int fill_variance_bwd(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(DNNL_ARG_VARIANCE, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -341,6 +347,7 @@ int fill_src_bwd(const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt,
         const dnn_mem_t &ref_mean, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(DNNL_ARG_SRC, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -380,6 +387,7 @@ int fill_diff_dst_bwd(
         const prb_t *prb, dnn_mem_t &mem_fp, dnn_mem_t &mem_dt, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(DNNL_ARG_DIFF_DST, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {

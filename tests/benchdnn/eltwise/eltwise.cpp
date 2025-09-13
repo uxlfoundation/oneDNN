@@ -195,10 +195,11 @@ static float get_eltwise_zero_trust_percent(const prb_t *prb) {
     return ztp;
 }
 
-int fill_data(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
-        dnn_mem_t &mem_fp) {
+int fill_data(int exec_arg, const prb_t *prb, data_kind_t kind,
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -436,7 +437,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
-                SAFE(fill_data(prb, SRC, mem, ref_mem), WARN);
+                SAFE(fill_data(exec_arg, prb, SRC, mem, ref_mem), WARN);
                 // Need a copy of source data for inplace mode for bitwise
                 // testing.
                 if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {
@@ -446,7 +447,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 }
                 break;
             case DNNL_ARG_DIFF_DST:
-                SAFE(fill_data(prb, DST, mem, ref_mem), WARN);
+                SAFE(fill_data(exec_arg, prb, DST, mem, ref_mem), WARN);
                 // Need a copy of source data for inplace mode for bitwise
                 // testing.
                 if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {

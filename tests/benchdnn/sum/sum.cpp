@@ -65,9 +65,10 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     return dnnl_success;
 }
 
-int fill_src(int input_idx, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+int fill_src(int exec_arg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const auto nelems = mem_dt.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -83,7 +84,7 @@ int fill_src(int input_idx, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const int f_min = dt == dnnl_u8 ? 0 : -range / 2;
 
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
-        const float gen = ((97 * i) - 17 * input_idx + 101) % range;
+        const float gen = ((97 * i) - 17 * exec_arg + 101) % range;
         const float value = (dt == dnnl_bf16 || dt == dnnl_f16)
                 ? (f_min + gen) / range
                 : (f_min + gen) * (1.0f + 4.0f / range);

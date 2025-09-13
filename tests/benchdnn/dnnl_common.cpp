@@ -1866,6 +1866,7 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         dnn_mem_t &ref_mem, const attr_t &attr, res_t *res,
         const std::unordered_map<int, fill_cfg_t> &fill_cfg_map) {
     assert(exec_arg > 0); // Negative values will produce false-positive `true`.
+    if (fill_from_file(exec_arg, mem, ref_mem)) return OK;
 
     const int post_ops_range = DNNL_ARG_ATTR_MULTIPLE_POST_OP(31)
             - DNNL_ARG_ATTR_MULTIPLE_POST_OP(0);

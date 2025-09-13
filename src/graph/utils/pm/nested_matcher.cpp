@@ -525,37 +525,27 @@ bool check_cyclic(
 bool match_node(const binding_t &b, match_context_t *ctx,
         std::unordered_map<op_t *, pb_op_t *> &matched_op_map) {
     if (b.bind_op == nullptr) {
-        DEBUG(DEBUGINFO_PM,
-                "matching op & node: %s (%s) <=> %s, matching failed \n",
-                dnnl::impl::graph::op_t::kind2str(b.bind_op->get_kind())
-                        .c_str(),
-                b.bind_op->get_name().c_str(), b.bind_node->get_name().c_str());
         DEBUG(DEBUGINFO_PM, "bind_op is a nullptr [%s:%i] \n", __FILE__,
                 __LINE__);
         VPATTERN_MATCHER(
-                "op:%s (%s),node:%s,node matching failed:bind_op is a "
-                "nullptr,[%s:%i] \n",
-                dnnl::impl::graph::op_t::kind2str(b.bind_op->get_kind())
-                        .c_str(),
-                b.bind_op->get_name().c_str(), b.bind_node->get_name().c_str(),
+                "op,node matching failed: bind_op is a nullptr,%s:%i \n",
                 __FILE__, __LINE__);
         return false;
     }
     if (b.bind_node == nullptr) {
         DEBUG(DEBUGINFO_PM,
-                "matching op & node: %s (%s) <=> %s, matching failed \n",
+                "matching op & node: %s (%s) <=> (node), matching failed \n",
                 dnnl::impl::graph::op_t::kind2str(b.bind_op->get_kind())
                         .c_str(),
-                b.bind_op->get_name().c_str(), b.bind_node->get_name().c_str());
+                b.bind_op->get_name().c_str());
         DEBUG(DEBUGINFO_PM, "bind_node is a nullptr [%s:%i] \n", __FILE__,
                 __LINE__);
         VPATTERN_MATCHER(
-                "op:%s (%s),node:%s,node matching failed:bind_node is a "
+                "op:%s (%s),node matching failed:bind_node is a "
                 "nullptr,%s:%i \n",
                 dnnl::impl::graph::op_t::kind2str(b.bind_op->get_kind())
                         .c_str(),
-                b.bind_op->get_name().c_str(), b.bind_node->get_name().c_str(),
-                __FILE__, __LINE__);
+                b.bind_op->get_name().c_str(), __FILE__, __LINE__);
         return false;
     }
     if (b.bind_op->get_partition() != nullptr) {

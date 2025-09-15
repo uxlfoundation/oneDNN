@@ -34,7 +34,4 @@ fi
 # Nightly failures
 SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_graph_fusions_cpu"
 
-# c7g failures. TODO: scope these to c7g only. Better yet, fix them.
-SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_graph_int8_cpu"
-
 printf "${SKIPPED_TEST_FAILURES}"

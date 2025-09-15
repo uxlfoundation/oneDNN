@@ -404,8 +404,6 @@ rnn_merged_layer_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
     cell_position |= merged_layer;
 
     if (rnn.use_matmul) {
-        assert(n_iter == rnn.n_iter);
-
         CHECK(this->mm_primitives_.apply(ctx,
                 {rnn.n_gates * rnn.dhc, rnn.mb * n_iter, rnn.slc,
                         rnn.weights_layer_ld, src_layer_ld,
@@ -440,8 +438,6 @@ rnn_merged_layer_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
     const float beta = rnn.diff_weights_beta(cell_position);
 
     if (rnn.use_matmul) {
-        assert(n_iter == rnn.n_iter);
-
         constexpr bool trans_B_off = false;
         constexpr bool trans_B_on = true;
         constexpr bool do_sum_off = false;

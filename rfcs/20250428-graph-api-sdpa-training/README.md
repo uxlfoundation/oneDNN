@@ -559,7 +559,13 @@ and backward graphs are as follows:
 
 ## Conclusions
 
-TBD
+The decision is to implement Proposal 1.B (Add Dropout Operation to oneDNN Graph
+API) and Proposal 2.B (Extend Existing SoftMax Operation). This approach enables
+comprehensive support for SDPA training in the oneDNN Graph API, aligning with
+requirements from major frameworks and ensuring interoperability.
+
+A dedicated RFC will be opened to discuss the detailed definition and
+implementation of the Dropout operation.
 
 ## Appendix: Derivation of $dS$
 

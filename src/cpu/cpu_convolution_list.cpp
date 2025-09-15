@@ -73,7 +73,7 @@ using namespace dnnl::impl::cpu::x64;
 #endif
 using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
-#if DNNL_RISCV_USE_RVV_INTRINSICS
+#if defined(DNNL_RISCV_USE_RVV_INTRINSICS)
 #include "cpu/rv64/rvv_gemm_convolution.hpp"
 using namespace dnnl::impl::cpu::rv64;
 #endif // DNNL_RISCV_USE_RVV_INTRINSICS

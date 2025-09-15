@@ -21,6 +21,7 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
+#include "common/utils.hpp"
 
 #include "cpu/binary_injector_utils.hpp"
 #include "cpu/cpu_convolution_pd.hpp"
@@ -44,8 +45,16 @@ struct riscv_gemm_convolution_fwd_t : public primitive_t {
             using namespace data_type;
 
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_CONV(expect_data_types(f32, f32, f32, f32, f32),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
+
+            if (with_bias()) {
+                VDISPATCH_CONV(expect_data_types(f32, f32, f32, f32, f32),
+                        VERBOSE_UNSUPPORTED_DT_CFG);
+            } else {
+                VDISPATCH_CONV(
+                        expect_data_types(f32, f32, data_type::undef, f32, f32),
+                        VERBOSE_UNSUPPORTED_DT_CFG);
+            }
+
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
             VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
@@ -68,36 +77,7 @@ struct riscv_gemm_convolution_fwd_t : public primitive_t {
 
     protected:
         bool post_ops_ok() const {
-            auto const &po = attr()->post_ops_;
-            auto is_sum_ok = [&](int idx) {
-                return IMPLICATION(po.entry_[idx].kind == primitive_kind::sum,
-                        idx == 0 && po.entry_[idx].is_sum());
-            };
-            auto is_binary
-                    = [&](int idx) { return po.entry_[idx].is_binary(); };
-            auto is_prelu = [&](int idx) { return po.entry_[idx].is_prelu(); };
-            auto is_binary_or_prelu_supported = [&](int idx) {
-                bool ok = dnnl::impl::get_rhs_arg_broadcasting_strategy(
-                                  binary_injector_utils::get_src1_desc(
-                                          po.entry_[idx], dst_md_),
-                                  dst_md_,
-                                  {broadcasting_strategy_t::scalar,
-                                          broadcasting_strategy_t::per_oc})
-                        != broadcasting_strategy_t::unsupported;
-                return ok;
-            };
-
-            if (!ref_post_ops_t::primitive_kind_ok(attr()->post_ops_))
-                return false;
-
-            for (int idx = 0; idx < po.len(); idx++) {
-                bool ok = is_sum_ok(idx)
-                        && IMPLICATION(is_binary(idx) || is_prelu(idx),
-                                is_binary_or_prelu_supported(idx));
-                if (!ok) return false;
-            }
-
-            return true;
+            return ref_post_ops_t::post_ops_ok(attr()->post_ops_);
         }
     };
 
@@ -105,9 +85,7 @@ struct riscv_gemm_convolution_fwd_t : public primitive_t {
         : primitive_t(apd), post_ops_(nullptr) {}
 
     status_t init(engine_t *engine) override {
-        const data_t one = 1.0, zero = 0.0;
         const auto &jcp = pd()->jcp_;
-        beta_ = jcp.with_sum ? one : zero;
 
         if (jcp.with_eltwise || jcp.with_binary) {
             CHECK(safe_ptr_assign(post_ops_, new ref_post_ops_t(jcp.post_ops)));
@@ -131,8 +109,6 @@ private:
             const data_t *bia_base, data_t *dst_base,
             const memory_tracking::grantor_t &scratchpad) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-
-    data_t beta_;
 
     std::unique_ptr<ref_post_ops_t> post_ops_;
 };

@@ -83,7 +83,7 @@ void slm_reduce_builder_t::build() {
     // thread.
     grid_info_t full_grid = tg_grid_.sub_grid({dim_});
     grid_info_t split_grid;
-    auto local_thr_tile_coord = split(reg_layout_, full_grid, &split_grid);
+    auto local_thr_tile_coord = reg_layout_.split(full_grid, &split_grid);
     reg_layout_ = reg_layout_.sub(local_thr_tile_coord.tile);
 
     if (split_grid.elems() != full_grid.elems()) {

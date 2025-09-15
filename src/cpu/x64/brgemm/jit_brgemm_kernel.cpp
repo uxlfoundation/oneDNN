@@ -1296,11 +1296,22 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
             const Vmm vmm_wei_scales_masked
                     = vmm_mask(vmm_wei_scales, is_tail, false, k_mask);
             if (is_single_scale) {
-                assert(brg.dt_wei_scales == data_type::f32);
-                if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
-                    vbroadcastss(vmm_wei_scales_masked, addr);
-                } else {
-                    vbroadcastss(vmm_wei_scales, addr);
+                switch (brg.dt_wei_scales) {
+                    case data_type::f32:
+                        vbroadcastss(vmm_wei_scales, addr);
+                        break;
+                    case data_type::bf16:
+                        vpbroadcastw(vmm_wei_scales, addr);
+                        uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
+                        break;
+                    case data_type::f16:
+                        vpbroadcastw(vmm_wei_scales, addr);
+                        vcvtph2ps(Xmm(vmm_wei_scales.getIdx()),
+                                Xmm(vmm_wei_scales.getIdx()));
+                        vbroadcastss(
+                                vmm_wei_scales, Xmm(vmm_wei_scales.getIdx()));
+                        break;
+                    default: assert(!"unsupported wei_scales data type");
                 }
             } else {
                 if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {

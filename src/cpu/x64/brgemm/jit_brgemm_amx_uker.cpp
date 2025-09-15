@@ -1122,16 +1122,31 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
             const auto zmm_scale_masked = zmm_scales(ldb) | k_mask | T_z;
 
             if (is_single_scale) {
-                // Single value is not anticipated to be of any other type.
-                assert(brg.dt_wei_scales == data_type::f32);
                 if (brg.with_src_scales) {
+                    // Single value is not anticipated to be of any other type
+                    // when both scales are defined.
+                    assert(brg.dt_wei_scales == data_type::f32);
                     // Src scales are set, need to multiply by their value.
                     auto scales_bcast_ptr = EVEX_compress_addr(reg_scales,
                             scales_offset(ldi->pos(ldb)), /* bcast = */ true);
                     vmulps(zmm_scale_masked, zmm_scale, scales_bcast_ptr);
                 } else {
-                    // No src scales, just load a single value.
-                    vbroadcastss(zmm_scale_masked, scales_ptr);
+                    switch (brg.dt_wei_scales) {
+                        case data_type::f32:
+                            vbroadcastss(zmm_scale, scales_ptr);
+                            break;
+                        case data_type::bf16:
+                            vpbroadcastw(zmm_scale, scales_ptr);
+                            uni_vpslld(zmm_scale, zmm_scale, 16);
+                            break;
+                        case data_type::f16:
+                            vpbroadcastw(zmm_scale, scales_ptr);
+                            vcvtph2psx(Xmm(zmm_scale.getIdx()),
+                                    Xmm(zmm_scale.getIdx()));
+                            vbroadcastss(zmm_scale, Xmm(zmm_scale.getIdx()));
+                            break;
+                        default: assert(!"unsupported wei_scales data type");
+                    }
                 }
                 continue;
             }

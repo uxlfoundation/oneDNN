@@ -32,10 +32,6 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
-// RVV forward eltwise primitive (RV64GCV). Single unified path.
-// Key compute kernels are intentionally left for RVV intrinsics implementation.
-
-template <impl::data_type_t data_type>
 struct rvv_eltwise_fwd_t : public primitive_t {
     struct pd_t : public cpu_eltwise_fwd_pd_t {
         using cpu_eltwise_fwd_pd_t::cpu_eltwise_fwd_pd_t;
@@ -44,136 +40,121 @@ struct rvv_eltwise_fwd_t : public primitive_t {
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
-            using namespace utils;
 
             const memory_desc_wrapper src_d(src_md());
             const memory_desc_wrapper dst_d(dst_md());
 
-            VDISPATCH_ELTWISE(utils::everyone_is(data_type, src_md()->data_type,
-                                      dst_md()->data_type),
+            const data_type_t d_type = dst_md()->data_type;
+            using namespace dnnl::impl::data_type;
+            bool type_ok = d_type == f32 || d_type == f16 || d_type == s32
+                    || d_type == s8 || d_type == u8;
+            VDISPATCH_ELTWISE(type_ok, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_ELTWISE(
+                    src_md()->data_type == d_type, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_ELTWISE(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_ELTWISE(platform::has_data_type_support(data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-
+            VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_ELTWISE(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-
-            // filter out what algs we implemented
-            VDISPATCH_ELTWISE(
-                    utils::one_of(desc()->alg_kind, alg_kind::eltwise_relu,
-                            alg_kind::eltwise_square, alg_kind::eltwise_abs,
-                            alg_kind::eltwise_sqrt, alg_kind::eltwise_linear,
-                            alg_kind::eltwise_clip,
-                            alg_kind::eltwise_hardsigmoid,
-                            alg_kind::eltwise_hardswish),
-                    "Unsupported alg_kind for rvv extension");
-
             VDISPATCH_ELTWISE(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_ELTWISE(
                     src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
+            VDISPATCH_ELTWISE(check_alg_kind(), VERBOSE_UNSUPPORTED_TAG);
 
-            // Determine supported memory cases: dense or nCspBc padded tail.
             use_dense_ = src_d.is_dense(true) && dst_d.is_dense(true)
                     && IMPLICATION(!src_d.is_dense() || !dst_d.is_dense(),
                             is_zero_preserved());
-
             use_nCspBc_padded_ = !use_dense_
                     && src_d.blocking_desc().inner_nblks == 1
-                    && one_of(src_d.blocking_desc().inner_blks[0], 8, 16)
+                    && utils::one_of(src_d.blocking_desc().inner_blks[0], 8, 16)
                     && src_d.blocking_desc().inner_idxs[0] == 1
                     && src_d.only_padded_dim(1) && src_d.is_dense(true);
-            VDISPATCH_ELTWISE(use_dense_ || use_nCspBc_padded_,
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            VDISPATCH_ELTWISE(
+                    use_dense_ || use_nCspBc_padded_, VERBOSE_UNSUPPORTED_TAG);
 
             return status::success;
         }
 
         bool use_dense_, use_nCspBc_padded_;
+
+        bool check_alg_kind() const {
+            return utils::one_of(desc()->alg_kind, alg_kind::eltwise_relu,
+                    alg_kind::eltwise_square, alg_kind::eltwise_abs,
+                    alg_kind::eltwise_sqrt, alg_kind::eltwise_linear,
+                    alg_kind::eltwise_clip, alg_kind::eltwise_hardsigmoid,
+                    alg_kind::eltwise_hardswish);
+        }
     };
 
     rvv_eltwise_fwd_t(const pd_t *apd) : primitive_t(apd) {}
-
-    using data_t = typename prec_traits_t<data_type>::type;
-
-    status_t execute(const exec_ctx_t &ctx) const override {
-        return execute_forward(ctx);
-    }
+    status_t execute(const exec_ctx_t &ctx) const;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    status_t execute_forward(const exec_ctx_t &ctx) const;
 };
 
-template <impl::data_type_t data_type>
 struct rvv_eltwise_bwd_t : public primitive_t {
     struct pd_t : public cpu_eltwise_bwd_pd_t {
         using cpu_eltwise_bwd_pd_t::cpu_eltwise_bwd_pd_t;
 
-        DECLARE_COMMON_PD_T_("rv64gcv", rvv_eltwise_bwd_t)
+        DECLARE_COMMON_PD_T_("RISCV64GCV", rvv_eltwise_bwd_t)
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
-            using namespace utils;
-            using namespace data_type;
 
             const memory_desc_wrapper diff_src_d(diff_src_md());
             const memory_desc_wrapper diff_dst_d(diff_dst_md());
-            const memory_desc_wrapper data_d(data_md());
+            const memory_desc_wrapper src_d(data_md());
 
+            const data_type_t d_type = src_md()->data_type;
+            using namespace dnnl::impl::data_type;
+            bool type_ok = d_type == f32 || d_type == f16 || d_type == s32
+                    || d_type == s8 || d_type == u8;
+            VDISPATCH_ELTWISE(type_ok, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(
-                    utils::everyone_is(data_type, data_md()->data_type,
-                            diff_src_md()->data_type, diff_dst_md()->data_type),
+                    utils::everyone_is(d_type, diff_src_md()->data_type,
+                            diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_ELTWISE(platform::has_data_type_support(data_type),
+            VDISPATCH_ELTWISE(platform::has_data_type_support(d_type),
                     VERBOSE_UNSUPPORTED_DT);
-
             VDISPATCH_ELTWISE(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-
-            // filter out what algs we implemented
-            VDISPATCH_ELTWISE(
-                    utils::one_of(desc()->alg_kind, alg_kind::eltwise_relu,
-                            alg_kind::eltwise_square, alg_kind::eltwise_abs,
-                            alg_kind::eltwise_sqrt, alg_kind::eltwise_linear,
-                            alg_kind::eltwise_clip,
-                            alg_kind::eltwise_hardsigmoid,
-                            alg_kind::eltwise_hardswish),
-                    "Unsupported alg_kind for rvv extension");
-
             VDISPATCH_ELTWISE(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_ELTWISE(diff_dst_d == diff_src_d,
+            VDISPATCH_ELTWISE(diff_src_d == diff_dst_d,
                     VERBOSE_INCONSISTENT_MDS, "diff_src", "diff_dst");
+            VDISPATCH_ELTWISE(check_alg_kind(), VERBOSE_UNSUPPORTED_TAG);
 
-            // Layout support: dense or nCspBc-padded (blocked C with tail)
             use_dense_ = diff_dst_d.is_dense()
                     || (diff_dst_d.is_dense(true) && is_zero_preserved());
             use_nCspBc_padded_ = !use_dense_
-                    && data_d.blocking_desc().inner_nblks == 1
-                    && one_of(data_d.blocking_desc().inner_blks[0], 8, 16)
-                    && data_d.blocking_desc().inner_idxs[0] == 1
-                    && data_d.only_padded_dim(1) && data_d.is_dense(true);
-            VDISPATCH_ELTWISE(use_dense_ || use_nCspBc_padded_,
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
+                    && src_d.blocking_desc().inner_nblks == 1
+                    && utils::one_of(src_d.blocking_desc().inner_blks[0], 8, 16)
+                    && src_d.blocking_desc().inner_idxs[0] == 1
+                    && src_d.only_padded_dim(1) && src_d.is_dense(true);
+            VDISPATCH_ELTWISE(
+                    use_dense_ || use_nCspBc_padded_, VERBOSE_UNSUPPORTED_TAG);
 
             return status::success;
         }
 
         bool use_dense_, use_nCspBc_padded_;
+
+        bool check_alg_kind() const {
+            return utils::one_of(desc()->alg_kind, alg_kind::eltwise_relu,
+                    alg_kind::eltwise_square, alg_kind::eltwise_abs,
+                    alg_kind::eltwise_sqrt, alg_kind::eltwise_linear,
+                    alg_kind::eltwise_clip, alg_kind::eltwise_hardsigmoid,
+                    alg_kind::eltwise_hardswish);
+        }
     };
 
     rvv_eltwise_bwd_t(const pd_t *apd) : primitive_t(apd) {}
-
-    using data_t = typename prec_traits_t<data_type>::type;
-
-    status_t execute(const exec_ctx_t &ctx) const override {
-        return execute_backward(ctx);
-    }
+    status_t execute(const exec_ctx_t &ctx) const;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    status_t execute_backward(const exec_ctx_t &ctx) const;
 };
 
 } // namespace rv64

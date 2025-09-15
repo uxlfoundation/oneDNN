@@ -21,15 +21,22 @@
 Compare two benchdnn runs.
 
 Usage:
-    python benchdnn_comparison.py baseline.csv new.csv --check
+    python benchdnn_comparison.py baseline.txt new.txt --out-file out.md
 """
 
-import os
-from collections import defaultdict
-from scipy.stats import ttest_ind
-import warnings
-import statistics
 import argparse
+from collections import defaultdict
+import git
+import json
+import os
+import pathlib
+from scipy.stats import ttest_ind
+import statistics
+import warnings
+
+
+F_PATH = pathlib.Path(__file__).parent.resolve()
+CI_JSON_PATH = F_PATH / "../aarch64/ci.json"
 
 
 def print_to_github_out(message):
@@ -38,7 +45,7 @@ def print_to_github_out(message):
             print(message.replace("\n", "%0A"), file=f)
 
 
-def compare_two_benchdnn(file1, file2, check=False):
+def compare_two_benchdnn(file1, file2, out_file=None):
     """
     Compare two benchdnn output files
     """
@@ -76,10 +83,15 @@ def compare_two_benchdnn(file1, file2, check=False):
         r2_ctime[key].append(float(ctime))
 
     exec_failures, ctime_failures = [], []
-    if not check:
-        print(
-            "primitive,exec_base,exec_new,ctime_base,ctime_new,exec_diff,ctime_diff"
-        )
+    if out_file is not None:
+        with open(CI_JSON_PATH) as f:
+            ci_json = json.load(f)
+
+        repo = git.Repo(F_PATH / "../../..", search_parent_directories=True)
+        head_sha = repo.git.rev_parse(repo.head.object.hexsha, short=4)
+        headers = f"| problem | oneDNN ({ci_json['dependencies']['onednn-base']}) time(ms) | oneDNN ({head_sha}) time(ms) | speedup (>1 is faster) |\n"
+        with open(out_file, "w") as f:
+            f.write(headers + "| :---: | :---: | :---: | :---:|\n")
 
     for prb in r1_exec:
         if prb not in r2_exec:
@@ -128,38 +140,57 @@ def compare_two_benchdnn(file1, file2, check=False):
                 f"(p={ctime_ttest.pvalue:.3g})"
             )
 
-        if not check:
-            print(
-                f"{prb},{r1_med_exec:.3g},{r2_med_exec:.3g},"
-                f"{r1_med_ctime:.3g},{r2_med_ctime:.3g},"
-                f"{(r2_med_exec - r1_med_exec)/r1_med_exec:.1%},"
-                f"{(r2_med_ctime - r1_med_ctime)/r1_med_ctime:.1%}"
+        if (
+            out_file is not None
+            and abs((r2_med_exec - r1_med_exec) / r1_med_exec) >= 0.05
+        ):
+            prb_params = [x.replace("--", "") for x in prb.split(" ")]
+            prb_params = [prb_params[1]] + [
+                x for x in prb_params if ("dt=" in x) or ("alg=" in x)
+            ]  # filter out the problem and data types
+            prb_str = (
+                "<details>"
+                + f"<summary>{' '.join(prb_params)}</summary>"
+                + prb
+                + "</details>"
             )
-
-    if check:
-        print_to_github_out(f"pass={not exec_failures}")
-
-        message = ""
-        if ctime_failures:
-            message += (
-                "\n----The following ctime regression tests failed:----\n"
-                + "\n".join(ctime_failures)
-                + "\n"
+            colour = "green" if r1_med_exec >= r2_med_exec * 1.05 else "red"
+            speedup_str = (
+                "$${\\color{"
+                + colour
+                + "}"
+                + f"{(r1_med_exec)/r2_med_exec:.3g}\\times"
+                + "}$$"
             )
+            with open(out_file, "a") as f:
+                f.write(
+                    f"|{prb_str}|{r1_med_exec:.3g}|{r2_med_exec:.3g}|{speedup_str}|\n"
+                )
 
-        if not exec_failures:
-            print_to_github_out(f"message={message}")
-            print(message)
-            print("Execution Time regression tests passed")
-        else:
-            message += (
-                "\n----The following exec time regression tests failed:----\n"
-                + "\n".join(exec_failures)
-                + "\n"
-            )
-            print_to_github_out(f"message={message}")
-            print(message)
-            raise Exception("Some regression tests failed")
+    print_to_github_out(f"pass={not exec_failures}")
+
+    message = ""
+    if ctime_failures:
+        message += (
+            "\n----The following ctime regression tests failed:----\n"
+            + "\n".join(ctime_failures)
+            + "\n"
+        )
+
+    if not exec_failures:
+        print_to_github_out(f"message={message}")
+        print(message)
+        print("Execution Time regression tests passed")
+    else:
+        message += (
+            "\n----The following exec time regression tests failed:----\n"
+            + "\n".join(exec_failures)
+            + "\n"
+        )
+        print_to_github_out(f"message={message}")
+        print(message)
+        raise Exception("Some regression tests failed")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -168,8 +199,8 @@ if __name__ == "__main__":
     parser.add_argument("file1", help="Path to baseline result file")
     parser.add_argument("file2", help="Path to new result file")
     parser.add_argument(
-        "--check", action="store_true", help="Enable regression checks"
+        "--out-file", help="md file to output performance results to"
     )
     args = parser.parse_args()
 
-    compare_two_benchdnn(args.file1, args.file2, check=args.check)
+    compare_two_benchdnn(args.file1, args.file2, args.out_file)

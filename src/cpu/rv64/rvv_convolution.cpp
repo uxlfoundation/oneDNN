@@ -170,32 +170,10 @@ status_t rvv_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     });
 
     if (!dst_is_nhwc) {
-        if (ddt == data_type::f32) {
-            reorder_dst_nhwc_to_nchw<float>(
-                    reinterpret_cast<const float *>(dst_nhwc_void),
-                    reinterpret_cast<float *>(dst) + dst_md.off_l(0), MB, OC,
-                    OH, OW);
-        } else if (ddt == data_type::f16) {
-            reorder_dst_nhwc_to_nchw<_Float16>(
-                    reinterpret_cast<const _Float16 *>(dst_nhwc_void),
-                    reinterpret_cast<_Float16 *>(dst) + dst_md.off_l(0), MB, OC,
-                    OH, OW);
-        } else if (ddt == data_type::s32) {
-            reorder_dst_nhwc_to_nchw<int32_t>(
-                    reinterpret_cast<const int32_t *>(dst_nhwc_void),
-                    reinterpret_cast<int32_t *>(dst) + dst_md.off_l(0), MB, OC,
-                    OH, OW);
-        } else if (ddt == data_type::s8) {
-            reorder_dst_nhwc_to_nchw<int8_t>(
-                    reinterpret_cast<const int8_t *>(dst_nhwc_void),
-                    reinterpret_cast<int8_t *>(dst) + dst_md.off_l(0), MB, OC,
-                    OH, OW);
-        } else if (ddt == data_type::u8) {
-            reorder_dst_nhwc_to_nchw<uint8_t>(
-                    reinterpret_cast<const uint8_t *>(dst_nhwc_void),
-                    reinterpret_cast<uint8_t *>(dst) + dst_md.off_l(0), MB, OC,
-                    OH, OW);
-        }
+        reorder_dst_to_nchw_dispatch(ddt, dst_nhwc_void,
+                ptr_add_elems_mut(
+                        dst, ddt, static_cast<size_t>(dst_md.off_l(0))),
+                MB, OC, OH, OW);
     }
 
     return status::success;

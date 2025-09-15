@@ -21,11 +21,13 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <riscv_vector.h>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
+#include "common/type_helpers.hpp"
 #include "cpu/rv64/rvv_postops.hpp"
 
 namespace dnnl {
@@ -34,40 +36,61 @@ namespace cpu {
 namespace rv64 {
 
 // NHWC -> NCHW reorder for dst
-template <typename data_t>
-inline void reorder_dst_nhwc_to_nchw(const data_t *src, data_t *dst, dim_t MB,
-        dim_t OC, dim_t OH, dim_t OW) {
+inline void reorder_dst_nhwc_to_nchw(data_type_t dt, const void *src, void *dst,
+        dim_t MB, dim_t OC, dim_t OH, dim_t OW) {
+    const size_t esize = types::data_type_size(dt);
+    const char *src_bytes = reinterpret_cast<const char *>(src);
+    char *dst_bytes = reinterpret_cast<char *>(dst);
     parallel_nd(MB, OC, OH, OW, [&](dim_t n, dim_t c, dim_t h, dim_t w) {
-        const data_t *sp = src + (((n * OH + h) * OW + w) * OC);
-        dst[(((n * OC + c) * OH + h) * OW + w)] = sp[c];
+        const size_t src_elem_off
+                = (((static_cast<size_t>(n) * OH + h) * OW + w) * OC + c);
+        const size_t dst_elem_off
+                = (((static_cast<size_t>(n) * OC + c) * OH + h) * OW + w);
+        std::memcpy(dst_bytes + dst_elem_off * esize,
+                src_bytes + src_elem_off * esize, esize);
     });
 }
 
 // NCHW -> NHWC reorder for a single tensor
-template <typename data_t>
-inline void reorder_src_nchw_to_nhwc(const data_t *src, data_t *dst, dim_t MB,
-        dim_t IC, dim_t IH, dim_t IW) {
+inline void reorder_src_nchw_to_nhwc(data_type_t dt, const void *src, void *dst,
+        dim_t MB, dim_t IC, dim_t IH, dim_t IW) {
+    const size_t esize = types::data_type_size(dt);
+    const char *src_bytes = reinterpret_cast<const char *>(src);
+    char *dst_bytes = reinterpret_cast<char *>(dst);
+    const size_t hw_stride = static_cast<size_t>(IH) * static_cast<size_t>(IW);
     parallel_nd(MB, IH, IW, [&](dim_t n, dim_t h, dim_t w) {
-        const data_t *sp_n = src + (n * IC * IH * IW);
-        data_t *dp_hw = dst + (((n * IH + h) * IW + w) * IC);
-        const dim_t hw_stride = IH * IW;
+        const size_t n_base_src = (static_cast<size_t>(n) * IC * IH * IW);
+        const size_t n_hw_dst
+                = (((static_cast<size_t>(n) * IH + h) * IW + w) * IC);
         for (dim_t c = 0; c < IC; ++c) {
-            dp_hw[c] = sp_n[c * hw_stride + h * IW + w];
+            const size_t src_elem_off = n_base_src
+                    + static_cast<size_t>(c) * hw_stride
+                    + static_cast<size_t>(h) * IW + static_cast<size_t>(w);
+            const size_t dst_elem_off = n_hw_dst + static_cast<size_t>(c);
+            std::memcpy(dst_bytes + dst_elem_off * esize,
+                    src_bytes + src_elem_off * esize, esize);
         }
     });
 }
 
 // Pack weights from OIHW to [OC][KH][KW][IC] (IC contiguous)
-template <typename data_t>
-inline void pack_weights_oihw_to_oc_kh_kw_ic(const data_t *wei_oihw,
-        data_t *wei_pack, dim_t OC, dim_t IC, dim_t KH, dim_t KW) {
-    auto idx_oihw = [&](dim_t oc, dim_t ic, dim_t kh, dim_t kw) {
-        return ((((oc * IC) + ic) * KH) + kh) * KW + kw;
+inline void pack_weights_oihw_to_oc_kh_kw_ic(data_type_t dt,
+        const void *wei_oihw, void *wei_pack, dim_t OC, dim_t IC, dim_t KH,
+        dim_t KW) {
+    const size_t esize = types::data_type_size(dt);
+    const char *src_bytes = reinterpret_cast<const char *>(wei_oihw);
+    char *dst_bytes = reinterpret_cast<char *>(wei_pack);
+    auto idx_oihw = [&](dim_t oc, dim_t ic, dim_t kh, dim_t kw) -> size_t {
+        return static_cast<size_t>((((oc * IC) + ic) * KH + kh) * KW + kw);
     };
     parallel_nd(OC, KH, KW, [&](dim_t oc, dim_t kh, dim_t kw) {
-        data_t *dst_panel = wei_pack + (((oc * KH + kh) * KW + kw) * IC);
+        const size_t dst_panel_off
+                = (((static_cast<size_t>(oc) * KH + kh) * KW + kw) * IC);
         for (dim_t ic = 0; ic < IC; ++ic) {
-            dst_panel[ic] = wei_oihw[idx_oihw(oc, ic, kh, kw)];
+            const size_t src_elem_off = idx_oihw(oc, ic, kh, kw);
+            const size_t dst_elem_off = dst_panel_off + static_cast<size_t>(ic);
+            std::memcpy(dst_bytes + dst_elem_off * esize,
+                    src_bytes + src_elem_off * esize, esize);
         }
     });
 }
@@ -97,55 +120,19 @@ static inline void *ptr_add_elems_mut(
 
 static inline void pack_weights_dispatch(data_type_t dt, const void *wei_oihw,
         void *wei_pack, dim_t OC, dim_t IC, dim_t KH, dim_t KW) {
-    using namespace data_type;
-    if (dt == f32) {
-        pack_weights_oihw_to_oc_kh_kw_ic<float>(
-                reinterpret_cast<const float *>(wei_oihw),
-                reinterpret_cast<float *>(wei_pack), OC, IC, KH, KW);
-    } else if (dt == f16) {
-        pack_weights_oihw_to_oc_kh_kw_ic<_Float16>(
-                reinterpret_cast<const _Float16 *>(wei_oihw),
-                reinterpret_cast<_Float16 *>(wei_pack), OC, IC, KH, KW);
-    } else if (dt == s8) {
-        pack_weights_oihw_to_oc_kh_kw_ic<int8_t>(
-                reinterpret_cast<const int8_t *>(wei_oihw),
-                reinterpret_cast<int8_t *>(wei_pack), OC, IC, KH, KW);
-    } else if (dt == u8) {
-        pack_weights_oihw_to_oc_kh_kw_ic<uint8_t>(
-                reinterpret_cast<const uint8_t *>(wei_oihw),
-                reinterpret_cast<uint8_t *>(wei_pack), OC, IC, KH, KW);
-    } else if (dt == s32) {
-        pack_weights_oihw_to_oc_kh_kw_ic<int32_t>(
-                reinterpret_cast<const int32_t *>(wei_oihw),
-                reinterpret_cast<int32_t *>(wei_pack), OC, IC, KH, KW);
-    }
+    pack_weights_oihw_to_oc_kh_kw_ic(dt, wei_oihw, wei_pack, OC, IC, KH, KW);
 }
 
 static inline void reorder_src_to_nhwc_dispatch(data_type_t dt,
         const void *src_ncsp, void *dst_nhwc, dim_t MB, dim_t IC, dim_t IH,
         dim_t IW) {
-    using namespace data_type;
-    if (dt == f32) {
-        reorder_src_nchw_to_nhwc<float>(
-                reinterpret_cast<const float *>(src_ncsp),
-                reinterpret_cast<float *>(dst_nhwc), MB, IC, IH, IW);
-    } else if (dt == f16) {
-        reorder_src_nchw_to_nhwc<_Float16>(
-                reinterpret_cast<const _Float16 *>(src_ncsp),
-                reinterpret_cast<_Float16 *>(dst_nhwc), MB, IC, IH, IW);
-    } else if (dt == s8) {
-        reorder_src_nchw_to_nhwc<int8_t>(
-                reinterpret_cast<const int8_t *>(src_ncsp),
-                reinterpret_cast<int8_t *>(dst_nhwc), MB, IC, IH, IW);
-    } else if (dt == u8) {
-        reorder_src_nchw_to_nhwc<uint8_t>(
-                reinterpret_cast<const uint8_t *>(src_ncsp),
-                reinterpret_cast<uint8_t *>(dst_nhwc), MB, IC, IH, IW);
-    } else if (dt == s32) {
-        reorder_src_nchw_to_nhwc<int32_t>(
-                reinterpret_cast<const int32_t *>(src_ncsp),
-                reinterpret_cast<int32_t *>(dst_nhwc), MB, IC, IH, IW);
-    }
+    reorder_src_nchw_to_nhwc(dt, src_ncsp, dst_nhwc, MB, IC, IH, IW);
+}
+
+static inline void reorder_dst_to_nchw_dispatch(data_type_t dt,
+        const void *src_nhwc, void *dst_nchw, dim_t MB, dim_t OC, dim_t OH,
+        dim_t OW) {
+    reorder_dst_nhwc_to_nchw(dt, src_nhwc, dst_nchw, MB, OC, OH, OW);
 }
 
 // === Forward helpers ===

@@ -30,7 +30,6 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
-template <impl::data_type_t date_type>
 struct rvv_binary_t : public primitive_t {
     struct pd_t : public cpu_binary_pd_t {
         using cpu_binary_pd_t::cpu_binary_pd_t;
@@ -38,77 +37,62 @@ struct rvv_binary_t : public primitive_t {
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
-            using namespace data_type;
+            const data_type_t d_type = dst_md()->data_type;
 
-            VDISPATCH_BINARY(utils::everyone_is(date_type, src_md(0)->data_type,
-                                     src_md(1)->data_type, dst_md()->data_type)
+            VDISPATCH_BINARY(utils::everyone_is(d_type, src_md(0)->data_type,
+                                     src_md(1)->data_type)
                             && platform::has_data_type_support(
                                     src_md(0)->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BINARY(IMPLICATION(is_ternary_op(),
-                                     platform::has_data_type_support(
-                                             src_md(2)->data_type)),
                     VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_BINARY(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
+            VDISPATCH_BINARY_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_BINARY_SC(attr_.set_default_formats(dst_md()),
+                    VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_BINARY(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+
             const memory_desc_wrapper src0_d(src_md(0));
             const memory_desc_wrapper src1_d(src_md(1));
             const memory_desc_wrapper dst_d(dst_md());
 
-            const bool layouts_identical
-                    = src0_d.similar_to(dst_d, /*with_padding=*/true,
-                              /*with_data_type=*/true)
-                    && src1_d.similar_to(dst_d, /*with_padding=*/true,
-                            /*with_data_type=*/true);
-
-            use_dense_ = src0_d.is_dense(/*with_padding=*/false)
-                    && src1_d.is_dense(/*with_padding=*/false)
-                    && dst_d.is_dense(/*with_padding=*/false)
-                    && layouts_identical;
-            use_nCspBc_padded_ = !use_dense_
-                    && src0_d.blocking_desc().inner_nblks == 1
-                    && src1_d.blocking_desc().inner_nblks == 1
-                    && dst_d.blocking_desc().inner_nblks == 1
-                    && utils::one_of(
-                            src0_d.blocking_desc().inner_blks[0], 8, 16)
-                    && src0_d.blocking_desc().inner_blks[0]
-                            == src1_d.blocking_desc().inner_blks[0]
-                    && src0_d.blocking_desc().inner_blks[0]
-                            == dst_d.blocking_desc().inner_blks[0]
-                    && src0_d.blocking_desc().inner_idxs[0] == 1
-                    && src1_d.blocking_desc().inner_idxs[0] == 1
-                    && dst_d.blocking_desc().inner_idxs[0] == 1
-                    && src0_d.only_padded_dim(1) && src1_d.only_padded_dim(1)
-                    && dst_d.only_padded_dim(1) && src0_d.is_dense(true)
-                    && src1_d.is_dense(true) && dst_d.is_dense(true);
-
-            VDISPATCH_BINARY(use_dense_ || use_nCspBc_padded_,
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            VDISPATCH_BINARY(check_layouts(src0_d, src1_d, dst_d),
+                    VERBOSE_UNSUPPORTED_TAG);
 
             return status::success;
         }
 
-        bool use_dense_, use_nCspBc_padded_;
-
-    private:
-        bool check_scales_mask() const {
-            const std::vector<int> supported_args
-                    = {DNNL_ARG_SRC_0, DNNL_ARG_SRC_1};
-            return attr_scales_ok(supported_args);
+        bool check_layouts(const memory_desc_wrapper &src0_d,
+                const memory_desc_wrapper &src1_d,
+                const memory_desc_wrapper &dst_d) const {
+            bool plain_dense = src0_d.blocking_desc().inner_nblks == 0
+                    && src1_d.blocking_desc().inner_nblks == 0
+                    && dst_d.blocking_desc().inner_nblks == 0
+                    && src0_d.is_dense(/*with_padding=*/false)
+                    && src1_d.is_dense(/*with_padding=*/false)
+                    && dst_d.is_dense(/*with_padding=*/false) && ndims() == 4;
+            bool no_broadcast = true;
+            if (plain_dense) {
+                for (int d = 0; d < ndims(); ++d) {
+                    const dim_t a = src0_d.dims()[d];
+                    const dim_t b = src1_d.dims()[d];
+                    const dim_t c = dst_d.dims()[d];
+                    if (!(a == b && a == c)) {
+                        no_broadcast = false;
+                        break;
+                    }
+                }
+            }
+            return plain_dense && no_broadcast;
         }
     };
 
     rvv_binary_t(const pd_t *apd) : primitive_t(apd) {}
-
-    status_t execute(const exec_ctx_t &ctx) const override {
-        return execute_binary(ctx);
-    }
+    status_t execute(const exec_ctx_t &ctx) const;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    status_t execute_binary(const exec_ctx_t &ctx) const;
 };
 
 } // namespace rv64

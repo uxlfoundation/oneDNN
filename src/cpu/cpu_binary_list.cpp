@@ -30,7 +30,7 @@ using namespace dnnl::impl::cpu::x64;
 #endif
 using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
-#if DNNL_RISCV_USE_RVV_INTRINSICS
+#ifdef DNNL_RISCV_USE_RVV_INTRINSICS
 #include "cpu/rv64/rvv_binary.hpp"
 using namespace dnnl::impl::cpu::rv64;
 #endif // DNNL_RISCV_USE_RVV_INTRINSICS
@@ -48,11 +48,7 @@ constexpr impl_list_item_t impl_list[] = REG_BINARY_P({
         CPU_INSTANCE_X64(jit_uni_binary_t)
         CPU_INSTANCE_AARCH64(jit_uni_binary_t)
         CPU_INSTANCE_AARCH64_ACL(acl_binary_t)
-        CPU_INSTANCE_RV64GCV(rvv_binary_t<f32>)
-        CPU_INSTANCE_RV64GCV(rvv_binary_t<f16>)
-        CPU_INSTANCE_RV64GCV(rvv_binary_t<s32>)
-        CPU_INSTANCE_RV64GCV(rvv_binary_t<s8>)
-        CPU_INSTANCE_RV64GCV(rvv_binary_t<u8>)
+        CPU_INSTANCE_RV64GCV(rvv_binary_t)
         CPU_INSTANCE(ref_binary_t)
         /* eol */
         nullptr,

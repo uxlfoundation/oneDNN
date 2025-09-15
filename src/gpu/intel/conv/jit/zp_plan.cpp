@@ -326,7 +326,7 @@ public:
         bool small_ic = is_small(data_type_, ic);
         dim_idx_t kw_idx = 5; // TODO: support non-forward kw!
 
-        tile_t tile(b_layout_.ndims());
+        tile_t tile;
         for (auto &b : b_layout_.blocks()) {
             if (b.dim.index() == kw_idx) break;
             tile[b.dim.index()] *= b.block;

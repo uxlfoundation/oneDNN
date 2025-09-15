@@ -286,7 +286,6 @@ public:
     using idx_map_t<int64_t>::idx_map_t;
 
     tile_t() = default;
-    tile_t(size_t size) : tile_t(std::vector<int64_t>(size, 1)) {}
     tile_t(const std::vector<int64_t> &values) {
         for (size_t i = 0; i < values.size(); i++)
             set(idx_t(std::string(1, into<char>('a' + i))), values[i]);
@@ -310,17 +309,8 @@ public:
         return true;
     }
 
-    bool is_equal(const std::vector<int64_t> &dims) const {
-        if (size() != dims.size()) return false;
-        for (size_t i = 0; i < size(); i++) {
-            if (at(i) != dims[i]) return false;
-        }
-        return true;
-    }
-
     bool is_divisible(const tile_t &other) const {
-        if (size() != other.size()) return false;
-        for (size_t i = 0; i < size(); i++) {
+        for (auto &i : other) {
             if (at(i) % other.at(i) != 0) return false;
         }
         return true;

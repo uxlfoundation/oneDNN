@@ -505,13 +505,6 @@ public:
         return ret;
     }
 
-    std::vector<dim_t> strides(const pvar_t &dim) const {
-        std::vector<dim_t> ret;
-        for (auto &b : blocks_)
-            if (b.dim == dim) ret.push_back(b.stride);
-        return ret;
-    }
-
     // eb is <block index, block> pair, see enumerated_blocks().
     bool is_outermost(const std::pair<int, layout_block_t> &eb) const {
         return is_outermost(eb, blocks_);
@@ -567,25 +560,6 @@ public:
         if (b0.dim != dim) return false;
         if (b0.block % block != 0) return false;
         return true;
-    }
-
-    layout_t innermost_block_layout() const {
-        pvar_map_t<int> block_count;
-        for (auto &b : blocks_)
-            block_count[b.dim]++;
-
-        std::vector<layout_block_t> inner_blocks;
-
-        stride_t stride = 1;
-        for (auto &b : blocks_) {
-            if (b.stride != stride) break; // Not dense anymore.
-            if (block_count[b.dim] == 1) break; // Outer block.
-            stride *= b.block;
-            gpu_assert(block_count[b.dim] > 0);
-            block_count[b.dim]--;
-            inner_blocks.push_back(b);
-        }
-        return with(inner_blocks);
     }
 
     // Returns a packed layout where all blocks are contiguous, without gaps.
@@ -1256,10 +1230,7 @@ public:
     view_t() = default;
 
     view_t(const std::vector<expr_t> &vvars, dim_idx_t ntdims)
-        : vvars_(vvars)
-        , vdims_(vvars.size())
-        , vstart_(vvars.size())
-        , tdims_(ntdims) {}
+        : vvars_(vvars), vstart_(vvars.size()), tdims_(ntdims) {}
 
     // Constructs view from a layout.
     explicit view_t(const layout_t &layout,
@@ -1293,7 +1264,7 @@ public:
 
     const layout_t &tlayout() const { return tlayout_; }
 
-    dim_idx_t nvdims() const { return into<dim_idx_t>(vdims_.size()); }
+    dim_idx_t nvdims() const { return into<dim_idx_t>(vvars_.size()); }
 
     dim_idx_t ntdims() const { return into<dim_idx_t>(tdims_.size()); }
 

@@ -758,6 +758,7 @@ public:
 private:
     ptr_t(const expr_t &base, const expr_t &off)
         : expr_iface_t(base.type()), base(base), off(off) {
+        if (!base.type().is_byte()) abort();
         normalize(this->base, this->off);
     }
 };

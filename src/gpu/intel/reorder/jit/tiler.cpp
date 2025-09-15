@@ -108,7 +108,7 @@ message_info_t estimate_message_info(
         const hw_t &hw, const layout_t &layout, const tile_t &tile) {
     const auto grf_size = hw.grf_size();
     bool can_use_block_messages = true;
-    std::vector<dim_t> outer = tile.values();
+    tile_t outer = tile;
     dim_t inner_elems = 1;
     int item_size = 16;
 
@@ -131,7 +131,7 @@ message_info_t estimate_message_info(
 
     auto inner_bytes = utils::div_up(
             layout.type().with_elems(8).size() * inner_elems, 8);
-    auto iterations = tile_t(outer).elems();
+    auto iterations = outer.elems();
     can_use_block_messages &= (inner_bytes % 16 == 0);
     can_use_block_messages &= (iterations == 1 || inner_bytes % grf_size == 0);
 

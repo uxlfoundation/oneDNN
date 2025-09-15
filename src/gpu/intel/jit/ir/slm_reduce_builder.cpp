@@ -64,8 +64,8 @@ void slm_reduce_builder_t::build() {
     slm_buf_size_ = into<int>(size_bytes(slm_layout));
 
     // Write thread tile to SLM.
-    tile_t write_tile(ndims + tg_ndims_);
-    coord_t write_start(ndims + tg_ndims_);
+    tile_t write_tile;
+    coord_t write_start;
     for (int i = 0; i < ndims; i++)
         write_tile[i] = reg_layout_.dims()[i];
     for (int i = tg_ndims_ - 1; i >= 0; i--) {
@@ -97,8 +97,8 @@ void slm_reduce_builder_t::build() {
         }
     }
 
-    tile_t read_tile(ndims + tg_ndims_);
-    coord_t read_start(ndims + tg_ndims_);
+    tile_t read_tile;
+    coord_t read_start;
     for (int i = 0; i < ndims; i++) {
         read_tile[i] = local_thr_tile_coord.tile[i];
         read_start[i] = local_thr_tile_coord.coord[i];

@@ -1301,10 +1301,7 @@ public:
     view_t() = default;
 
     view_t(const std::vector<expr_t> &vvars, dim_idx_t ntdims)
-        : vvars_(vvars)
-        , vdims_(vvars.size())
-        , vstart_(vvars.size())
-        , tdims_(ntdims) {}
+        : vvars_(vvars), vstart_(vvars.size()), tdims_(ntdims) {}
 
     // Constructs view from a layout.
     explicit view_t(const layout_t &layout,
@@ -1338,7 +1335,7 @@ public:
 
     const layout_t &tlayout() const { return tlayout_; }
 
-    dim_idx_t nvdims() const { return into<dim_idx_t>(vdims_.size()); }
+    dim_idx_t nvdims() const { return into<dim_idx_t>(vvars_.size()); }
 
     dim_idx_t ntdims() const { return into<dim_idx_t>(tdims_.size()); }
 

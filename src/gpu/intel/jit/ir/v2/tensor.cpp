@@ -1059,7 +1059,7 @@ icoord_t layout_iterator_t::coord() const {
 }
 
 std::string layout_iterator_t::str() const {
-    using namespace ir_utils;
+    using ir_utils::operator<<;
     ostringstream_t oss;
     oss << "offset:    " << offset_ << std::endl;
     oss << "block_off: " << block_off_;

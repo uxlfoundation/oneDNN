@@ -86,6 +86,8 @@ struct stride_t {
         }
         pvars = std::move(new_pvars);
     }
+
+    std::string str() const { return "v2::stride_t"; }
 };
 
 struct block_2d_params_t {

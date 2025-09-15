@@ -31,6 +31,8 @@ namespace intel {
 namespace jit {
 namespace v2 {
 
+using jit::operator<<;
+
 // Stores upper bounds for variables.
 class var_range_info_t {
 public:

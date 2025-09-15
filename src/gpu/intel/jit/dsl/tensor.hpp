@@ -264,11 +264,10 @@ public:
             auto &value = kv.second;
             if (multiline) {
                 if (!is_first) oss << std::endl;
-                oss << std::setw(4) << p << ": "
-                    << ir_utils::str_helper_t<ValueT>::call(value);
+                oss << std::setw(4) << p << ": " << value;
                 is_first = false;
             } else {
-                oss << p << ir_utils::str_helper_t<ValueT>::call(value);
+                oss << p << value;
             }
         }
         return oss.str();
@@ -334,11 +333,6 @@ public:
     std::string str() const override { return str_impl(/*multiline=*/false); }
 };
 
-inline std::ostream &operator<<(std::ostream &out, const tile_t &obj) {
-    out << obj.str();
-    return out;
-}
-
 // Coordinate with integer values.
 class icoord_t : public idx_map_t<int64_t> {
 public:
@@ -352,11 +346,6 @@ public:
     }
     int64_t default_value() const override { return 0; }
 };
-
-inline std::ostream &operator<<(std::ostream &out, const icoord_t &obj) {
-    out << obj.str();
-    return out;
-}
 
 // Coordinate with expression values.
 class coord_t : public idx_map_t<expr_t> {
@@ -378,11 +367,6 @@ public:
         return idx_map_t<expr_t>::with_impl<coord_t>(key, value);
     }
 };
-
-inline std::ostream &operator<<(std::ostream &out, const coord_t &obj) {
-    out << obj.str();
-    return out;
-}
 
 inline coord_t operator+(const coord_t &a, const coord_t &b) {
     coord_t ret;

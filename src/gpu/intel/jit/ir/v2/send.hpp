@@ -109,7 +109,7 @@ struct addr_t {
     }
 
     std::string str() const {
-        using namespace ir_utils;
+        using ir_utils::operator<<;
         ostringstream_t oss;
         oss << "base: " << base << std::endl;
         oss << "slot_incs: " << slot_incs;
@@ -133,7 +133,7 @@ struct dim_mask_t {
     int slots() const { return (int)slot_incs.size(); }
 
     std::string str() const {
-        using namespace ir_utils;
+        using ir_utils::operator<<;
         if (is_empty()) return "(empty)";
         ostringstream_t oss;
         oss << "[" << dim << "] " << base << " < " << bound << std::endl;
@@ -412,7 +412,7 @@ struct send_1d_entry_t {
     coord_t coord;
 
     std::string str() const {
-        using namespace ir_utils;
+        using ir_utils::operator<<;
         ostringstream_t oss;
         oss << "mem[" << addr_inc << "] reg[" << reg_off << "] mask"
             << mask_incs;

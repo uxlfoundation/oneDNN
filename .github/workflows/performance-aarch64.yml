@@ -53,7 +53,7 @@ concurrency:
   cancel-in-progress: true
 
 # Declare default permissions as read only.
-permissions: read-all
+permissions: write-all
 
 jobs:
   build-acl-base:
@@ -115,7 +115,7 @@ jobs:
 
       - name: Install scipy
         if: ${{ matrix.config.build == 'Release' }}
-        run: pip install scipy statistics
+        run: pip install scipy statistics GitPython
 
       - name: Clone base ACL
         run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
@@ -223,7 +223,15 @@ jobs:
         shell: bash
         run: |
           OMP_NUM_THREADS=${{ inputs.num_threads || 16 }} bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_nightly_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn base.txt new.txt
-          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --check
+          python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --out-file perf_table.md
+
+      - name: Update wiki
+        if: ${{ (success() || failure()) && inputs.benchdnn_command == '' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ryo-not-rio/wiki') }}
+        uses: ./oneDNN/.github/actions/update-wiki
+        with:
+          command: add-perf
+          title: ${{ matrix.config.name }}
+          in-file: perf_table.md
 
       - name: Run custom performance tests
         if: ${{ inputs.benchdnn_command != '' }}
@@ -236,9 +244,8 @@ jobs:
             base.txt new.txt ${{ inputs.benchdnn_command }}
 
       - name: Print speed comparisons
-        if: ${{ inputs.benchdnn_command != '' }}
-        run: |
-          python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt
+        if: ${{ (success() || failure()) && inputs.benchdnn_command != '' }}
+        run: python3 ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --out-file perf_results.md; cat perf_results.md >> $GITHUB_STEP_SUMMARY
 
   #* This job adds a check named "Nightly Performance AArch64" that represents overall
   #* workflow status and can be used in branch rulesets

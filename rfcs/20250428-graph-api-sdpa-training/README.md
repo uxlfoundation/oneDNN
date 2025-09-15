@@ -177,7 +177,7 @@ This decomposition is based on the following formulas:
 > P_{:,:,:,i} = \frac{e^{S_{:,:,:,i} - max}}{\sum_{j=1}^{S_{kv}}{e^{S_{:,:,:,j} - max}}}
 > $$
 > $$
-> Stats = max + \log\sum_{j=1}^{S_{kv}}{e^{S_{:,:,:,j} - max}} \in \mathbb{R}^{B \times H_{q} \times S_{q} \times 1}
+> Stats = max + \log_{e}\sum_{j=1}^{S_{kv}}{e^{S_{:,:,:,j} - max}} \in \mathbb{R}^{B \times H_{q} \times S_{q} \times 1}
 > $$
 
 Both $P$ and $Stats$ are outputs of the SoftMax operation. The $Stats$ are saved
@@ -267,7 +267,7 @@ The following tables summarize the inputs and outputs required for different bac
 | **key**              | ✓                   | ✓                   | ✓                       | ✓                | ✓                 | The key tensor.                                                                |
 | **value**            | ✓                   | ✓                   | ✓                       | ✓                | ✓                 | The value tensor.                                                              |
 | **attn_mask**        | ✓                   |                     | ✓                       | ✓                | ✓                 | Optional attention mask tensor added to the attention scores.                  |
-| **compute_log_sumexp** | ✓                 | ✓                   | ✓                       | ✓                |                   | Whether to compute the log of the sum of exponentials for softmax.             |
+| **compute_log_sumexp** | ✓                 | ✓                   | ✓                       | ✓                |                   | Whether to compute the stats for softmax.                                      |
 | **dropout_p**        | ✓                   | ✓                   | ✓                       | ✓                | ✓                 | Dropout probability.                                                           |
 | **is_causal**        | ✓                   | ✓                   | ✓                       | ✓                | ✓                 | Whether to apply a causal mask.                                                |
 | **return_debug_mask** | ✓                  | ✓                   |                         | ✓                |                   | Whether to return a debug mask from attention.                                   |
@@ -280,7 +280,7 @@ The following tables summarize the inputs and outputs required for different bac
 | **Outputs**           | **cudnn_attention** | **flash_attention** | **efficient_attention** | **overrideable** | **math**          | **Description**  |
 |-----------------------|---------------------|---------------------|-------------------------|------------------|-------------------|------------------|
 | **out**           | ✓   | ✓ | ✓ | ✓   | ✓   | The output tensor. |
-| **log_sumexp**       | ✓   | ✓ | ✓ | ✓   |     | The log of the sum of exponentials for softmax. |
+| **log_sumexp**       | ✓   | ✓ | ✓ | ✓   |     | The stats for softmax. |
 | **cum_seq_q**        | ✓   | ✓ |   | ✓   |     | cum_seq_q[b] contains the position of the first query token for batch b. |
 | **cum_seq_k**        | ✓   | ✓ |   | ✓   |     | cum_seq_k[b] contains the position of the first key token for batch b. |
 | **max_q**            | ✓   | ✓ |   | ✓   |     | Max sequence length of the query tensor across batches.  |
@@ -304,7 +304,7 @@ The following tables summarize the inputs and outputs required for SDPA backward
 | **value**            | ✓                   | ✓                   | ✓                       | ✓                | The value tensor from the forward pass.                                                                         |
 | **attn_bias**        | ✓                   |                     | ✓                       | ✓                | Optional attention mask tensor from the forward pass.                                                           |
 | **out**              | ✓                   | ✓                   | ✓                       | ✓                | The output tensor from the forward pass.                                                 |
-| **logsumexp**        | ✓                   | ✓                   | ✓                       | ✓                | The log of the sum of exponentials for softmax.                                         |
+| **logsumexp**        | ✓                   | ✓                   | ✓                       | ✓                | The stats for softmax.                                   |
 | **philox_seed**      | ✓                   | ✓                   | ✓                       | ✓                | Seed for the Philox random number generator used in dropout.                             |
 | **philox_offset**    | ✓                   | ✓                   | ✓                       | ✓                | Offset for the Philox random number generator used in dropout.                           |
 | **cum_seq_q**        | ✓                   | ✓                   |                         | ✓                | cum_seq_q[b] contains the position of the first query token for batch b.    |
@@ -457,10 +457,28 @@ This proposal extends the SoftMax operation to output statistics (`stats`) as an
 | Attribute                     | `axis`             | s64           | The axis along which SoftMax is calculated.                                                                  |
 | Attribute                     | `mode`             | string        |The computation mode of SoftMax (`none` or `inf_as_zero`).                                                    |
 | Output                        | `dst`              | f32/bf16/f16  |Output tensor.                                                                                                |
-| **Output**                    | **`stats`**        | f32           | **Optional output that computes the log of the sum of exponentials for SoftMax, used in the backward pass.** |
+| **Output**                    | **`stats`**        | f32           | **Optional output that computes the stats for SoftMax, used in the backward pass.** |
 
-The `stats` output is saved and used during the backward pass to reconstruct the
-SoftMax output. With this approach, the forward and backward graphs are as
+The `dst` and `stats` outputs are computed as follows:
+
+> $$
+> max = \sum_{j=1}^{S_{kv}}{src_{:,:,:,j}} \in \mathbb{R}^{B \times H_{q} \times S_{q} \times 1}
+> $$
+> $$
+> dst_{:,:,:,i} = \frac{e^{src_{:,:,:,i} - max}}{\sum_{j=1}^{S_{kv}}{e^{src_{:,:,:,j} - max}}}
+> $$
+> $$
+> stats = max + \log_{e}\sum_{j=1}^{S_{kv}}{e^{src_{:,:,:,j} - max}} \in \mathbb{R}^{B \times H_{q} \times S_{q} \times 1}
+> $$
+
+The `stats` is saved and used during the backward pass to reconstruct the
+`dst` with the following formula:
+
+> $$
+> dst_{:,:,:,i} = e^{src_{:,:,:,i} - stats_{:,:,:,0}}
+> $$
+
+With this approach, the forward and backward graphs are as
 follows:
 
 ![SDPA training forward proposal B](images/sdpa_training_forward_proposal_2.png)

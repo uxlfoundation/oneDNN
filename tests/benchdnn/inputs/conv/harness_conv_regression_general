@@ -359,7 +359,7 @@ ic64ih56oc256oh56kh1ph0n"primitive-cache_dispatch_shape-2"
 # test correct wei scale calculation
 --reset
 --skip-impl=ref,x64:gemm
---dt=u8:s8:f32 --attr-scales=wei:common:0.025
+--dt=u8:s8:f32 --attr-scales=wei:common:0.25
 mb2_ic512_oc64_ih7_oh7_kh1_ph0_n"test_wei-scale_computation"
 
 # brgemm convolution for amx: Some shapes with stride results SegFault

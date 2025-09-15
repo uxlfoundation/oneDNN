@@ -149,7 +149,7 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_thr_nspc(
             const dim_t LDC = M * jcp.ngroups;
             const char *BT = jcp.im2col_sz ? "T" : "N";
             const data_t onef = 1.f;
-            const float beta = this->beta_;
+            const float beta = jcp.with_sum ? 1.0f : 0.0f;
             const data_t *__restrict src_od
                     = src + od * jcp.oh * jcp.ow * jcp.ngroups * jcp.ic;
             status_t st = extended_sgemm("N", BT, &M, &N, &K, &onef, wei, &LDA,
@@ -318,8 +318,8 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_ncsp(
             const dim_t LDB = jcp.ic * jcp.ks;
             const dim_t N = step.oc;
 
-            // TODO: what if this->beta_ != 0 && != 1 ?
-            const float beta = (curr.ic == 0) ? this->beta_ : one;
+            const float beta
+                    = (curr.ic == 0) ? (jcp.with_sum ? 1.0f : 0.0f) : one;
             const float *_source = jcp.im2col_sz
                     ? _col
                     : _src + curr.ic * M + curr.od * jcp.os + curr.sp;

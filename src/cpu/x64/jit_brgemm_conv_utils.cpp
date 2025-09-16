@@ -2149,7 +2149,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         }
         perf_relo = perf_relo && jcp.kw > 1;
 
-        try_relo_wi = 0
+        try_relo_wi = 1
                 && (relo_supported_shape && perf_relo && relo_supported_isa);
         if (try_relo_wi) try_exec_trans = true;
     }
@@ -2200,7 +2200,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         }
         perf_relo = perf_relo && jcp.kh > 1;
 
-        try_relo_whi = 0
+        try_relo_whi = 1
                 && (relo_supported_shape && perf_relo && relo_supported_isa);
         if (try_relo_whi) try_exec_trans = true;
     }

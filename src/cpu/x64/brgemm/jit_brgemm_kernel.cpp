@@ -457,7 +457,7 @@ private:
     dim_t compensations_offset(dim_t ld, bool is_tail = false) const noexcept;
     dim_t ld_compensation_offset(dim_t ld) const noexcept;
     dim_t bdb_compensation_strd_offset(dim_t bd_block2) const noexcept;
-    dim_t bd_compensation_strd_offset(dim_t ld, dim_t bd) const noexcept;
+    dim_t bd_compensation_strd_offset(dim_t bd) const noexcept;
     dim_t bdb_compensation_offset(dim_t bd_block2) const noexcept;
     dim_t bd_compensation_offset(dim_t ld, dim_t bd) const noexcept;
     dim_t wei_scales_offset(dim_t ld, bool is_tail = false) const noexcept;
@@ -602,8 +602,8 @@ dim_t jit_brgemm_kernel_t<Wmm>::bdb_compensation_strd_offset(
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::bd_compensation_strd_offset(
-        dim_t ld, dim_t bd) const noexcept {
-    return sizeof(size_t) * bd * brg.LDB;
+        dim_t bd) const noexcept {
+    return sizeof(size_t) * bd;
 }
 
 template <typename Wmm>
@@ -672,9 +672,10 @@ Xbyak::Address jit_brgemm_kernel_t<Wmm>::get_comp_a_addr(
         dim_t ld, dim_t bd) const noexcept {
     if (brg.req_comp_pads_with_strd) {
         reg64_savable_guard_t reg_bdb_loop_guard({reg_bdb_loop});
-        mov(reg_stride_comp,
-                ptr_b[reg_aux_comp_strd + bd_compensation_strd_offset(bd)]);
-        return ptr[reg_aux_zp_comp_a + reg_stride_comp
+        reg_aux_comp_strd.restore();
+        const size_t bd_comp_offset = bd_compensation_strd_offset(bd);
+        //        mov(reg_stride_comp, 0);//ptr_b[reg_aux_comp_strd]);
+        return ptr[reg_aux_zp_comp_a // + reg_stride_comp
                 + ld_compensation_offset(ld)];
     } else {
         return ptr[reg_aux_zp_comp_a + bd_zp_comp_a_offset(ld, bd)];
@@ -985,6 +986,11 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         mov(reg_zp_comp_a, ptr[param1 + GET_OFF(a_zp_compensations)]);
         reg_zp_comp_a.save();
+
+        if (brg.req_comp_pads_with_strd) {
+            mov(reg_comp_strd, ptr[param1 + GET_OFF(a_zp_comp_strd)]);
+            reg_comp_strd.save();
+        }
     }
 
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
@@ -1586,8 +1592,9 @@ void jit_brgemm_kernel_t<Wmm>::apply_compensation(
             const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
             for (dim_t bd = 0; bd < bd_block; bd++) {
                 if (IMPLICATION(!brg.req_comp_pads_with_bcast, bd == 0)) {
-                    const auto zp_comp_a_addr = ptr[reg_aux_zp_comp_a
-                            + bd_zp_comp_a_offset(ld, bd)];
+                    const auto zp_comp_a_addr = get_comp_a_addr(ld, bd);
+                    //                    const auto zp_comp_a_addr = ptr[reg_aux_zp_comp_a
+                    //                            + bd_zp_comp_a_offset(ld, bd)];
                     if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
                         auto vmm_zp_comp_a_masked = vmm_mask(
                                 vmm_zp_comp_a, is_tail, false, k_mask);

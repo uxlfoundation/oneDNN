@@ -56,7 +56,7 @@ option(ONEDNN_BUILD_GRAPH "builds graph component" ON)
 
 option(ONEDNN_ENABLE_GRAPH_DUMP "enables control of dumping graph artifacts via
     ONEDNN_GRAPH_DUMP environment variable. The option and feature are valid only
-    when ONEDNN_BUILD_GRAPH is ON" OFF)
+    when ONEDNN_BUILD_GRAPH is ON" ON) # enabled by default
 
 # =============================
 # Building properties and scope

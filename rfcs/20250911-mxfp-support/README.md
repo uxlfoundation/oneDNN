@@ -55,7 +55,7 @@ cover some generalizations to allow extension to other formats and
 recipes.  We will also assume that scales and data are not interleaved
 in memory, similarly to current quantization support.
 
-### Option 1 (Recommended): Through a new attribute (`set_dynamic_scales`)
+### Option 1.a (Recommended): Through a new attribute (`set_dynamic_scales`)
 
 Here we propose to expose a new `dynamic_scales` attribute, similar to
 `scales` attribute except that:
@@ -84,7 +84,7 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_dynamic_scales(
 And the associated symbol in C++ API:
 ```c++
     void set_dynamic_scales(int arg, int mask, const memory::dims &groups,
-            memory::data_type data_type = memory::data_type::f32);
+            memory::data_type data_type = memory::data_type::e8m0);
 ```
 
 Finally, the existing `scales/zero_points` attributes and the new
@@ -119,6 +119,52 @@ To summarize, here is an example of this new API usage with mxfp4:
     // Create a MatMul primitive descriptor
     matmul::primitive_desc(eng, a_md, b_md, c_md, attr);
 ```
+
+### Option 1.b extend scales attribute (`set_scales`)
+
+Same principle as option 1.a. except that instead of exposing new
+attribute, `set_scales` would be extended to support dynamic
+scaling. Main benefit here would be that the API itself would make it
+clear that static and dynamic quantization are mutually exclusive.
+
+We would here introduce a new enum class and add a new argument to set_scales.
+For C API, this would require a v3 method as follow:
+
+```C
+typedef enum {
+    dnnl_quantization_kind_undef = 0,
+    dnnl_quantization_kind_static,
+    dnnl_quantization_kind_mx,
+
+} dnnl_quantization_kind_t;
+
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_v3(
+        dnnl_primitive_attr_t attr, int arg, int mask, int ndims,
+        const dnnl_dims_t group_dims, dnnl_data_type_t data_type,
+        int is_on_host, dnnl_quantization_kind kd);
+```
+
+In C++ API, we would introduce similar enum type and extension to `set_scales`
+
+```C++
+enum class quantization_kind {
+    undef = dnnl_quantization_kind_undef,
+    static = dnnl_quantization_kind_static,
+    mx = dnnl_quantization_kind_mx,
+} quantization_type
+
+
+void set_scales(int arg, int mask, const memory::dims &groups,
+            memory::data_type data_type = memory::data_type::f32,
+            bool is_on_host = false, quantization_kind = quantization_kind::static);
+```
+
+The main drawback for this option would be compatibility with
+zero-point attribute, which would likely be compatible with scales
+only when they are set with static quantization kind.
+
+That behavior would likely be more complex to document and comprehend
+from user perspective.
 
 ### Option 2: Through new datatypes 
 

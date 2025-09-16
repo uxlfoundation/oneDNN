@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gpu/intel/include/conversion.h"
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
@@ -524,10 +525,10 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #if WITH_ATTN_SCALE
 #if WITH_HOST_SCALE
 #if INVERT_SCALE
-        iscale = SCALES_TO_FLOAT(scale_val);
+        iscale = into_float(scale_val);
         scale = native_recip(iscale);
 #else
-        scale = SCALES_TO_FLOAT(scale_val);
+        scale = into_float(scale_val);
         iscale = native_recip(scale);
 #endif
 #else

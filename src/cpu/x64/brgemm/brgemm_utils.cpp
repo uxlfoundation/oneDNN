@@ -703,7 +703,66 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     return status::success;
 }
 
+/**
+ * GEMV Register Blocking Strategy (Row-Major A)
+ * ---------------------------------------------
+ *
+ * Assumptions:
+ * - Target ISA: AVX2 (for now)
+ * - Only N=1 is supported (no blocking along load dimension)
+ * - A is in row-major layout
+ * - Microkernel loads along the reduction dimension
+ *
+ * Blocking scheme:
+ * bd_block = 8:
+ *   - Uses 8 scalar accumulator registers: acc0 to acc7
+ *
+ * rd_block = vlen:
+ *   - 1 vector register for x
+ *   - 1 vector register (a0_reg), reused to load one A micro-row at a time
+ *
+ * Register usage:
+ *   [x_reg]   = vector register holding x[j .. j + rd_block - 1]
+ *   [a0_reg]  = vector register reused for each A micro-row
+ *   [acc0..7] = scalar accumulators for bd_block rows
+ *
+ * Microkernel loop:
+ *
+ *   Load x_reg = x[0 .. rd_block - 1]          // Load entire vector block once
+ *
+ *   for bd in 0 .. bd_block - 1:
+ *     Load a0_reg = A[bd][0 .. rd_block - 1]   // Load A micro-row
+ *     acc[bd] += dot(a0_reg, x_reg)            // Accumulate partial results
+ */
+status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
+    assert(utils::one_of(brg->isa_impl, avx2, avx2_vnni, avx2_vnni_2));
+    assert(brg->load_dim == 1);
+
+    brg->ld_block = 1;
+    brg->ldb = brg->load_dim / brg->ld_block;
+    brg->ldb_tail = brg->load_dim % brg->ld_block;
+    assert(brg->ldb_tail == 0);
+
+    brg->ld_block2 = 1;
+    brg->ldb2 = brg->ldb / brg->ld_block2;
+    brg->ldb2_tail = brg->ldb % brg->ld_block2;
+    assert(brg->ldb2_tail == 0);
+
+    brg->bd_block = 8;
+    brg->bdb = brg->bcast_dim / brg->bd_block;
+    brg->bdb_tail = brg->bcast_dim % brg->bd_block;
+
+    const int simd_w = 8;
+
+    brg->rd_block = simd_w;
+    brg->rdb = brg->reduce_dim / brg->rd_block;
+    brg->rdb_tail = brg->reduce_dim % brg->rd_block;
+
+    return status::success;
+}
+
 status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
+    if (brg->is_gemv) return brgemm_blocking_vmm_gemv(brg);
     const auto L1 = platform::get_per_core_cache_size(1);
 
     const int simd_w = is_superset(brg->isa_impl, avx512_core) ? 16 : 8;

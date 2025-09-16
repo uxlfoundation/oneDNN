@@ -1,4 +1,4 @@
---reset --allow-enum-tags-only=0 --sdt=f32:f32 --ddt=f32 --stag=abcd:abcd --dtag=abcd 1113x8x30x64_n"1bca9bd0e78574fe0ab41bbc68b795f9"
---reset --allow-enum-tags-only=0 --sdt=f32:f32 --ddt=f32 --stag=abcd:abcd --dtag=abcd 64x8x50x64_n"8def238b6b453fb393856464ba8a0d4d"
---reset --allow-enum-tags-only=0 --sdt=f32:f32:f32 --ddt=f32 --stag=abc:abc:abc --dtag=abc 64x50x512_n"7d5660f01c9be41fba9d6135abf33d2d"
---reset --allow-enum-tags-only=0 --sdt=f32:f32:f32:f32 --ddt=f32 --stag=ab:ab:ab:ab --dtag=ab 64x512_n"0bab0aacc5f8028faa61019716a8ef50"
+--reset --allow-enum-tags-only=0 --sdt=f32:f32 --ddt=f32 --stag=abcd:abcd --dtag=abcd --attr-precomputed-reductions= 1113x8x30x64_n"1bca9bd0e78574fe0ab41bbc68b795f9"
+--reset --allow-enum-tags-only=0 --sdt=f32:f32 --ddt=f32 --stag=abcd:abcd --dtag=abcd --attr-precomputed-reductions= 64x8x50x64_n"8def238b6b453fb393856464ba8a0d4d"
+--reset --allow-enum-tags-only=0 --sdt=f32:f32:f32 --ddt=f32 --stag=abc:abc:abc --dtag=abc --attr-precomputed-reductions= 64x50x512_n"7d5660f01c9be41fba9d6135abf33d2d"
+--reset --allow-enum-tags-only=0 --sdt=f32:f32:f32:f32 --ddt=f32 --stag=ab:ab:ab:ab --dtag=ab --attr-precomputed-reductions= 64x512_n"0bab0aacc5f8028faa61019716a8ef50"

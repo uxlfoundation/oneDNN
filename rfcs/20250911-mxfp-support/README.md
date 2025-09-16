@@ -31,8 +31,8 @@ How the scales are computed is defined by the MXFP spec. For a given
 1d block of size 32 (denoted $`X`$), its scale `S` and quantized values `Q`
 are defined as:
 
-$$ S = E8M0(amax(X)) / E8M0(MAX\_DST\_DT) $$
-$$ Q = dst\_dt(X / S) $$
+$$ S = E8M0(amax(X)) / E8M0(MAX\\_DST\\_DT) $$
+$$ Q = dst\\_dt(X / S) $$
 
 With `E8M0` a conversion to `E8M0` datatype, by rounding down to the
 closest power of two below the argument value, `MAX_DST_DT` the

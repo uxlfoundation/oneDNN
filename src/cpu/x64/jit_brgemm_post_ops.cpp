@@ -175,34 +175,6 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::store(
 }
 
 template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::horizontal_sum(
-        Xbyak::Xmm src) {
-    vhaddps(src, src, src);
-    vhaddps(src, src, src);
-}
-
-template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::horizontal_sum(
-        Xbyak::Ymm src, Xbyak::Ymm workspace) {
-    const Xbyak::Xmm xmm_ws {workspace.getIdx()};
-    const Xbyak::Xmm xmm_src {src.getIdx()};
-
-    vextractf128(xmm_ws, src, 1);
-    vaddps(xmm_src, xmm_src, xmm_ws);
-    horizontal_sum(xmm_src);
-}
-template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::horizontal_sum(
-        Xbyak::Zmm src, Xbyak::Zmm workspace) {
-    const Xbyak::Ymm ymm_ws {workspace.getIdx()};
-    const Xbyak::Ymm ymm_src {src.getIdx()};
-
-    vextractf64x4(ymm_ws, src, 1);
-    vaddps(ymm_src, ymm_src, ymm_ws);
-    horizontal_sum(ymm_src, ymm_ws);
-}
-
-template <typename Vmm>
 void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_K() {
     Xbyak::Label k_loop, init_zero, init_done, store_final, store_done;
 
@@ -240,7 +212,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_K() {
     if (k_tail > 0) accumulate_bias(true);
 
     // Do horizontal reduction.
-    horizontal_sum(vbias_acc, get_workspace_reg());
+    regops::horizontal_add_ps(this, vbias_acc, get_workspace_reg());
 
     test(reg_flag, FLAG_REDUCE_LAST);
     jnz(store_final, T_NEAR);

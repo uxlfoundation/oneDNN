@@ -30,6 +30,7 @@
 #include "cpu/x64/jit_brgemm_primitive_conf.hpp"
 #include "cpu/x64/jit_generator.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
+#include "cpu/x64/utils/jit_regops.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -112,10 +113,6 @@ private:
     void loop_by_K();
     void init_masks(int tail_length);
     void generate() override;
-
-    void horizontal_sum(Xbyak::Xmm src);
-    void horizontal_sum(Xbyak::Ymm src, Xbyak::Ymm workspace);
-    void horizontal_sum(Xbyak::Zmm src, Xbyak::Zmm workspace);
 
     void generate_for_a();
     void generate_for_b();

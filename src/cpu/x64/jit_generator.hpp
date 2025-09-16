@@ -2773,6 +2773,10 @@ public:
 
     inline cpu_isa_t max_cpu_isa() const noexcept { return max_cpu_isa_; }
 
+    inline bool is_valid_isa(cpu_isa_t isa) {
+        return is_subset(isa, max_cpu_isa_) && mayiuse(isa);
+    }
+
 private:
     const cpu_isa_t max_cpu_isa_;
     const Xbyak::uint8 *getCode() {
@@ -2781,10 +2785,6 @@ private:
         const Xbyak::uint8 *code = CodeGenerator::getCode();
         register_jit_code(code, getSize());
         return code;
-    }
-
-    inline bool is_valid_isa(cpu_isa_t isa) {
-        return is_subset(isa, max_cpu_isa_) && mayiuse(isa);
     }
 
     static inline bool is_initialized() {

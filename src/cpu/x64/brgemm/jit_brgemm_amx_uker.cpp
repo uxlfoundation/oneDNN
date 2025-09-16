@@ -189,9 +189,10 @@ private:
     const reg64_savable_t reg_zp_a_values {regscratchpad_, rbx, r18};
     const reg64_savable_t reg_zp_comp_b {regscratchpad_, rbx, r19};
     const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx, r20};
+    const reg64_savable_t reg_zp_comp_pad_a = {regscratchpad_, rbx, r21};
+    const reg64_savable_t reg_zp_comp_pad_a_strd = {regscratchpad_, rbx, r22};
     const reg64_t reg_ptr_sum_zp = rbx;
     const reg64_t reg_converted_stride = rsi;
-    const reg64_t reg_zp_comp_pad_a = rsi;
 
     const reg64_t reg_long_offt = r11;
 
@@ -305,6 +306,7 @@ private:
         size_t C_shift {0};
         size_t D_shift {0};
         size_t zp_comp_pad_a_shift {0};
+        size_t zp_comp_pad_a_strd_shift {0};
         std::vector<char> bd_mask;
         std::vector<size_t> adj_bd_mask;
         bd_iteration_t *similar {nullptr};
@@ -314,7 +316,8 @@ private:
             return dim_iteration_t::operator==(rhs) && A_shift == rhs.A_shift
                     && C_shift == rhs.C_shift && D_shift == rhs.D_shift
                     && bd_mask == rhs.bd_mask
-                    && zp_comp_pad_a_shift == rhs.zp_comp_pad_a_shift;
+                    && zp_comp_pad_a_shift == rhs.zp_comp_pad_a_shift
+                    && zp_comp_pad_a_strd_shift == rhs.zp_comp_pad_a_strd_shift;
         }
         bool operator!=(const bd_iteration_t &_rhs) const {
             return !operator==(_rhs);
@@ -604,6 +607,8 @@ private:
     size_t zp_comp_a_offset(int ldb) const noexcept;
     size_t zp_comp_pad_a_offset(const brgemm_iteration_t &bi, int bdb,
             int inp_bd, int ldb) const noexcept;
+    size_t zp_comp_pad_a_strd_offset(const brgemm_iteration_t &bi, int bdb,
+            int inp_bd, int ldb) const noexcept;
     size_t zp_comp_b_offset(int bd) const noexcept;
     size_t zp_c_values_offset(brgemm_iteration_t &bi, int ldb) const noexcept;
     bool is_out_bd(const bd_iteration_t *bdi, int bdb, int inp_bd) const;
@@ -801,6 +806,15 @@ size_t jit_brgemm_amx_uker_base_t::zp_comp_a_offset(int ldb) const noexcept {
     return ldb * ld_block_zp_size_;
 }
 
+size_t jit_brgemm_amx_uker_base_t::zp_comp_pad_a_strd_offset(
+        const brgemm_iteration_t &bi, int bdb, int inp_bd,
+        int ldb) const noexcept {
+    const auto bi_bd_start = get_out_bd(bi.bdi, 0, 0);
+    const auto bd = get_out_bd(bi.bdi, bdb, inp_bd);
+    const auto bd_shift = bd - (ununroll_bd_loop ? bi_bd_start : 0);
+    return (size_t)bd_shift * sizeof(size_t);
+}
+
 size_t jit_brgemm_amx_uker_base_t::zp_comp_pad_a_offset(
         const brgemm_iteration_t &bi, int bdb, int inp_bd,
         int ldb) const noexcept {
@@ -886,8 +900,12 @@ void jit_brgemm_amx_uker_base_t::read_params() {
         mov(reg_zp_a_values, ptr[param1 + GET_OFF(zp_a_val)]);
         reg_zp_a_values.save();
 
-        if (brg.req_comp_pads_with_bcast)
+        if (brg.req_comp_pads_with_bcast) {
             mov(reg_zp_comp_pad_a, ptr[param1 + GET_OFF(a_zp_compensations)]);
+            reg_zp_comp_pad_a.save();
+            mov(reg_zp_comp_pad_a_strd, ptr[param1 + GET_OFF(a_zp_comp_strd)]);
+            reg_zp_comp_pad_a_strd.save();
+        }
     }
 
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
@@ -1353,11 +1371,17 @@ void jit_brgemm_amx_uker_base_t::apply_comp_pad_to_vector(
     reg_zp_a_values.restore();
     vpbroadcastd(zmm_zp_a_val, reg_zp_a_values.cvt32());
     vcvtdq2ps(zmm_zp_a_val, zmm_zp_a_val);
-    reg_zp_comp_a.restore();
+    reg_zp_comp_pad_a_strd.restore();
+    const size_t comp_pad_strd_offset
+            = zp_comp_pad_a_strd_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
+    auto reg_tmp = rsi;
+    mov(reg_tmp, ptr_b[reg_zp_comp_pad_a_strd + comp_pad_strd_offset]);
+    reg_zp_comp_pad_a.restore();
     const auto comp_pad_offset
-            = zp_comp_pad_a_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
+            = 0; //zp_comp_pad_a_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
     const auto zp_comp_pad_a_addr
-            = EVEX_compress_addr(reg_zp_comp_pad_a, comp_pad_offset);
+            = ptr[reg_zp_comp_pad_a + reg_tmp + zp_comp_a_offset(ldb)];
+    //= EVEX_compress_addr(reg_zp_comp_pad_a, comp_pad_offset);
     cvt2ps(data_type::s32, zmm_zp_comp_a, zp_comp_pad_a_addr, true, false,
             k_mask);
     vmulps(zmm_zp_comp_a, zmm_zp_comp_a, zmm_zp_a_val);
@@ -2329,8 +2353,18 @@ void jit_brgemm_amx_uker_base_t::bs_loop(brgemm_iteration_t &bi) {
         if (bi_shift != nullptr) {
             add(reg_C, bi_shift->bdi->C_shift);
             add(reg_D, bi_shift->bdi->D_shift);
-            if (brg.req_comp_pads_with_bcast)
-                add(reg_zp_comp_pad_a, bi_shift->bdi->zp_comp_pad_a_shift);
+            if (brg.req_comp_pads_with_bcast) {
+                if (brg.req_comp_pads_with_strd) {
+                    reg_zp_comp_pad_a_strd.restore();
+                    add(reg_zp_comp_pad_a_strd,
+                            bi_shift->bdi->zp_comp_pad_a_strd_shift);
+                    reg_zp_comp_pad_a_strd.save();
+                } else {
+                    reg_zp_comp_pad_a.restore();
+                    add(reg_zp_comp_pad_a, bi_shift->bdi->zp_comp_pad_a_shift);
+                    reg_zp_comp_pad_a.save();
+                }
+            }
         }
     }
 
@@ -2524,8 +2558,17 @@ void jit_brgemm_amx_uker_base_t::top_loop(brgemm_iteration_t &bi) {
         // update reg_C and reg_D if they they were not updated yet
         add(reg_C, bi.bdi->C_shift);
         add(reg_D, bi.bdi->D_shift);
-        if (brg.req_comp_pads_with_bcast)
-            add(reg_zp_comp_pad_a, bi.bdi->zp_comp_pad_a_shift);
+        if (brg.req_comp_pads_with_bcast) {
+            if (brg.req_comp_pads_with_strd) {
+                reg_zp_comp_pad_a_strd.restore();
+                add(reg_zp_comp_pad_a_strd, bi.bdi->zp_comp_pad_a_strd_shift);
+                reg_zp_comp_pad_a_strd.save();
+            } else {
+                reg_zp_comp_pad_a.restore();
+                add(reg_zp_comp_pad_a, bi.bdi->zp_comp_pad_a_shift);
+                reg_zp_comp_pad_a.save();
+            }
+        }
     }
     interleave_store(bi, true);
 }
@@ -2595,6 +2638,7 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
                         = (get_out_bd(&bdi, 0, 0) - get_out_bd(prev_bdi, 0, 0));
                 bdi.C_shift = out_shift * LDC2_size_M_;
                 bdi.D_shift = out_shift * LDD_size_;
+                bdi.zp_comp_pad_a_strd_shift = out_shift * sizeof(size_t);
                 bdi.zp_comp_pad_a_shift = out_shift * brg.LDB * sizeof(int32_t);
             }
             tloop.bdis.push_back(bdi);

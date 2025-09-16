@@ -164,10 +164,11 @@ protected:
     const reg64_t reg_comp_out = r14;
     const reg64_t reg_zp_comp_out = r13;
     const reg64_t reg_kh_l = r12;
+    const reg64_t reg_kw_l = r11;
 
-    const reg64_t reg_aux_zp_comp_out = r11;
-    const reg64_t reg_aux_comp_out = r10;
-    const reg64_t reg_aux_in = r9;
+    const reg64_t reg_aux_zp_comp_out = r10;
+    const reg64_t reg_aux_comp_out = r9;
+    const reg64_t reg_aux_in = r8;
     const reg64_t reg_ker_l = rsi;
     const reg64_t reg_last_ocb = rbx;
     const reg64_t reg_tmp = rax;

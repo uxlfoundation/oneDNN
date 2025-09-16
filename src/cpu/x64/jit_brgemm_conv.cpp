@@ -270,6 +270,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
     brg.req_cal_comp_pads = jcp_.req_brg_comp_pad;
     brg.req_comp_pads_with_bcast
             = jcp_.req_cal_comp_pad && jcp_.exec_type != exec_vpad;
+    brg.req_comp_pads_with_strd = true;
     const auto strides_ptr
             = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
     CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, src_type, wei_type, false,
@@ -784,6 +785,54 @@ void brgemm_convolution_fwd_t<isa>::add_po_kernels(
 }
 
 template <cpu_isa_t isa>
+void brgemm_convolution_fwd_t<isa>::prepare_src_zp_str(brgemm_thread_ctx_t &btc,
+        const int kd_s, const int kd_f, const int comp_kh_s,
+        const int comp_kh_f, const bool do_postwork) const {
+    const auto _pd = pd();
+    const auto &jcp = _pd->jcp_;
+    auto ndims = _pd->ndims;
+
+    if (!do_postwork || !(jcp.src_zero_point && jcp.req_cal_comp_pad)) return;
+
+    const size_t base_offset = get_comp_offset(
+            btc.g, btc.ocb, 0, 0, kd_s, kd_f, comp_kh_s, comp_kh_f, 0, KW);
+
+    const auto oh_begin = btc.ohb * jcp.oh_block;
+    const auto oh_end = jcp.is_os_blocking
+            ? nstl::min(OH, oh_begin + jcp.oh_block)
+            : oh_begin + 1;
+    const auto oh_l = oh_end - oh_begin;
+    const auto ow_begin = btc.owb * jcp.ow_block;
+    const auto ow_end = nstl::min(OW, ow_begin + jcp.ow_block);
+    const auto ow_l = ow_end - ow_begin;
+    assert(oh_l * ow_l <= jcp.M);
+
+    for (int oh = oh_begin; oh < oh_end; oh++) {
+        const int iih = ndims_pick(oh * SH - TP, oh * SH - TP, 0);
+        const auto kh_s_ = div_up(nstl::max(0, -iih), DH);
+        const auto kh_s = ndims_pick(kh_s_, kh_s_, 0);
+        const auto kh_f_
+                = KH - div_up(nstl::max(0, iih - IH + (KH - 1) * DH + 1), DH);
+        const auto kh_f = ndims_pick(kh_f_, kh_f_, 1);
+        for (int ow = ow_begin; ow < ow_end; ow++) {
+            const auto iiw = ow * SW - LP;
+            const auto kw_s = div_up(nstl::max(0, -iiw), DW);
+            const auto kw_f = KW
+                    - div_up(nstl::max(0, iiw - IW + (KW - 1) * DW + 1), DW);
+            const auto m = ow - ow_begin + (oh - oh_begin) * jcp.ow_block;
+            const auto k
+                    = get_comp_ker_idx(kd_s, kd_f, kh_s, kh_f, kw_s, kw_f, 0);
+            const auto comp_offset = get_comp_offset(
+                    btc.g, btc.ocb, 0, 0, kd_s, kd_f, kh_s, kh_f, kw_s, kw_f);
+            btc.src_zp_comp_strd[m]
+                    = (comp_offset - base_offset) * sizeof(int32_t);
+            //            printf("m: %d, k: %d, base offset: %d, comp offset: %d, %d\n", m, k,
+            //                    base_offset, comp_offset, btc.src_zp_comp_strd[m]);
+        }
+    }
+}
+
+template <cpu_isa_t isa>
 int brgemm_convolution_fwd_t<isa>::get_comp_oh(const int oh) const {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
@@ -838,13 +887,12 @@ inline int brgemm_convolution_fwd_t<isa>::get_comp_offset(const int g,
 
     if (!jcp.src_zero_point && !jcp.s8s8_compensation_required) return 0;
 
-    const auto cur_comp_oh = get_comp_oh(oh);
     const auto comp_idx
-            = get_comp_ker_idx(kd_b, kd_e, kh_b, kh_e, kw_b, kw_e, cur_comp_oh);
+            = get_comp_ker_idx(kd_b, kd_e, kh_b, kh_e, kw_b, kw_e, 0);
     assert(IMPLICATION(jcp.req_cal_comp_pad, comp_idx >= 0));
-    return jcp.req_cal_comp_pad ? g * comp_ocb_sz + ocb * comp_ker_sz
-                    + comp_idx * comp_kw_sz + ow * comp_ow_sz
-                                : (g * jcp.nb_oc + ocb) * jcp.oc_block;
+    return jcp.req_cal_comp_pad
+            ? g * comp_ocb_sz + ocb * comp_ker_sz + comp_idx * comp_kw_sz
+            : (g * jcp.nb_oc + ocb) * jcp.oc_block;
 }
 
 template <cpu_isa_t isa>
@@ -902,7 +950,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
     dst_w_sz = static_cast<dim_t>(OW) * jcp.oc_without_padding;
     dst_h_sz = OH * dst_w_sz;
 
-    const auto comp_buffer_os = jcp.exec_type != exec_vpad ? jcp.ow : 1;
+    const auto comp_buffer_os = 1;
     comp_ow_sz = static_cast<dim_t>(jcp.oc_block);
     comp_kw_sz = comp_buffer_os * comp_ow_sz;
     comp_ker_sz = jcp.ker_ranges_size * comp_kw_sz;
@@ -1169,6 +1217,8 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
             kw_bs[k] = kw_b;
             kw_es[k] = kw_e;
             comp_oh[k] = oh;
+            printf("k: %d, oh: %d, kd: %d, %d, kh: %d, %d, kw: %d, %d\n", k, oh,
+                    kd_b, kd_e, kh_b, kh_e, kw_b, kw_e);
             k++;
             assert(k <= static_cast<size_t>(jcp.ker_ranges_size));
         };
@@ -1180,7 +1230,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
             auto oh_end = nstl::min(OH, oh_begin + jcp.oh_block);
             for (int oh = oh_begin; oh < oh_end; oh++) {
                 int kw_s {0}, kw_full_s {0}, kw_f {0}, kw_full_f {0};
-                const int ow = owb * jcp.ow_block;
+                const int ow_begin = owb * jcp.ow_block;
                 const int iid = ndims_pick(od * SD - FP, 0, 0);
                 const int kd_s
                         = ndims_pick(div_up(nstl::max(0, -iid), DD), 0, 0);
@@ -1197,16 +1247,24 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                                 nstl::max(0, iih - IH + (KH - 1) * DH + 1), DH);
                 const auto kh_f = ndims_pick(kh_f_, kh_f_, 1);
                 brgemm_convolution_utils::get_kw_range(
-                        jcp, ow, kw_s, kw_full_s, kw_full_f, kw_f);
+                        jcp, ow_begin, kw_s, kw_full_s, kw_full_f, kw_f);
                 if (kd_f > kd_s && kh_f > kh_s && kw_f > kw_s) {
-                    if (jcp.exec_type != exec_trans) {
+                    if (jcp.exec_type == exec_vpad) {
                         update_kernels(kd_s, kd_f, kh_s, kh_f, 0, KW);
                     } else {
-                        const auto comp_oh_idx = jcp.is_os_blocking
-                                ? get_comp_oh(oh_begin) + oh - oh_begin
-                                : get_comp_oh(oh);
-                        update_kernels(
-                                kd_s, kd_f, kh_s, kh_f, 0, KW, comp_oh_idx);
+                        const auto ow_end
+                                = nstl::min(OW, ow_begin + jcp.ow_block);
+                        update_kernels(kd_s, kd_f, kh_s, kh_f, 0, KW);
+                        for (int ow = ow_begin; ow < ow_end; ow++) {
+                            const auto iiw = ow * SW - LP;
+                            const auto kw_s = div_up(nstl::max(0, -iiw), DW);
+                            const auto kw_f = KW
+                                    - div_up(nstl::max(0,
+                                                     iiw - IW + (KW - 1) * DW
+                                                             + 1),
+                                            DW);
+                            update_kernels(kd_s, kd_f, kh_s, kh_f, kw_s, kw_f);
+                        }
                     }
                 }
             }
@@ -1249,6 +1307,7 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
     uint8_t *__restrict inp_buffer_mask {nullptr};
     const char *const __restrict weights {nullptr};
     void *__restrict inp_buffer_zero {nullptr};
+    size_t *__restrict src_zp_comp_strd {nullptr};
 };
 
 template <cpu_isa_t isa>
@@ -1316,6 +1375,11 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
                        key_brgemm_primitive_buffer_comp)
                                     : s8s8_compensation)
             : nullptr;
+    size_t *src_zp_comp_strd = jcp.src_zero_point && jcp.req_cal_comp_pad
+                    && jcp.exec_type != exec_vpad
+            ? scratchpad.template get<size_t>(
+                    key_brgemm_primitive_zp_comp_a_strd)
+            : nullptr;
 
     cal_compensation(wei, src_zp_comp_base, s8s8_comp_base);
 
@@ -1376,6 +1440,11 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
                 : nullptr;
 
         btc.input = jcp.copy_input ? btc.inp_buffer : src;
+
+        btc.src_zp_comp_strd = jcp.src_zero_point && jcp.req_cal_comp_pad
+                        && jcp.exec_type != exec_vpad
+                ? src_zp_comp_strd + ithr * jcp.M * sizeof(size_t)
+                : nullptr;
 
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
@@ -1475,10 +1544,12 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
         adjusted_k.push_back(vpad_k);
         adjusted_k_l.push_back(vpad_next_k - vpad_k);
         vpad_k = vpad_next_k;
+        //        printf("vpad k: %d, k_l: %d\n", vpad_k, vpad_next_k - vpad_k);
     }
+    //    printf("ker vpad: %d, adjusted_k size: %d\n", ker_vpad_sz, adjusted_k.size());
 
-    const int max_ker_sz = adjusted_k.size();
-    const auto comp_buffer_ow = jcp.exec_type != exec_vpad ? jcp.ow : 1;
+    const int max_ker_sz = ker_vpad_sz; //adjusted_k.size();
+    const auto comp_buffer_ow = 1; //jcp.exec_type != exec_vpad ? jcp.ow : 1;
     // TODO: revise the thread distribution here because the work_amount may be
     // insufficient
     // TODO: revise comp_vpad_pbuffer_ generator to avoid huge code for cases
@@ -1539,7 +1610,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
             if (jcp.s8s8_compensation_required && s8s8_comp_buffer)
                 std::memset(&s8s8_comp_buffer[buffer_offs], 0,
                         sizeof(int32_t) * comp_kw_sz);
-
+            //printf("wei offs: %d, buffer offs: %d, ocb: %d, k: %d, kw: %d, %d\n", wei_offs, buffer_offs, ocb, k, kw_b, kw_e);
             jit_brgemm_conv_comp_pad_args_t p;
 
             p.kd_l = kd_e - kd_b;
@@ -1688,7 +1759,7 @@ inline void brgemm_convolution_fwd_t<isa>::call_brgemm_kernel(
                 btc.wei_scales ? static_cast<const char *>(btc.wei_scales)
                                 + jcp.is_oc_scale * g_oc * sizeof(float)
                                : nullptr,
-                btc.dst_scales};
+                btc.dst_scales, nullptr, btc.src_zp_comp_strd};
 
         void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)
                                : static_cast<void *>(s8s8_comp);
@@ -2278,9 +2349,11 @@ void brgemm_convolution_fwd_t<isa>::ker_trans(brgemm_thread_ctx_t &btc) const {
         if (ow_e - ow_b <= 0 && !do_init && !do_postwork) return;
 
         const auto comp_ker_offs = do_postwork
-                ? get_comp_offset(btc.g, btc.ocb, btc.oh, ow_b, kd_s, kd_f,
-                        comp_kh_s, comp_kh_f, 0, KW)
+                ? get_comp_offset(btc.g, btc.ocb, 0, 0, kd_s, kd_f, comp_kh_s,
+                        comp_kh_f, 0, KW)
                 : 0;
+
+        prepare_src_zp_str(btc, kd_s, kd_f, comp_kh_s, comp_kh_f, do_postwork);
 
         if (nb_ic_b > 0) {
             const auto brg_idx = _pd->get_brg_idx(

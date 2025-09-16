@@ -2149,7 +2149,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         }
         perf_relo = perf_relo && jcp.kw > 1;
 
-        try_relo_wi = (relo_supported_shape && perf_relo && relo_supported_isa);
+        try_relo_wi = 0
+                && (relo_supported_shape && perf_relo && relo_supported_isa);
         if (try_relo_wi) try_exec_trans = true;
     }
 
@@ -2199,8 +2200,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         }
         perf_relo = perf_relo && jcp.kh > 1;
 
-        try_relo_whi
-                = (relo_supported_shape && perf_relo && relo_supported_isa);
+        try_relo_whi = 0
+                && (relo_supported_shape && perf_relo && relo_supported_isa);
         if (try_relo_whi) try_exec_trans = true;
     }
 
@@ -2399,14 +2400,14 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             + utils::div_up(abs(jcp.back_pad), jcp.dilate_d + 1);
     const auto kh_cnt = 1 + utils::div_up(abs(jcp.t_pad), jcp.dilate_h + 1)
             + utils::div_up(abs(jcp.b_pad), jcp.dilate_h + 1);
-    jcp.ker_ranges_size = jcp.exec_type == exec_trans
-            ? kd_cnt * nstl::min(jcp.oh, jcp.oh_block + kh_cnt)
-            : kd_cnt * kh_cnt;
-    const auto comp_buffer_ow = jcp.exec_type != exec_vpad ? jcp.ow : 1;
-    jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size
-            * comp_buffer_ow * jcp.oc_block;
+    const auto kw_cnt = 1 + utils::div_up(abs(jcp.l_pad), jcp.dilate_w + 1)
+            + utils::div_up(abs(jcp.r_pad), jcp.dilate_w + 1);
+    jcp.ker_ranges_size = jcp.exec_type == exec_trans ? kd_cnt * kh_cnt * kw_cnt
+                                                      : kd_cnt * kh_cnt;
+    jcp.comp_a_buffer_size
+            = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size * jcp.oc_block;
     jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;
-
+    /*
     // Dispatch the shapes to VNNI for better performance
     // TODO: optimize the perf for zero point with large buffer on AMX
     if (is_amx(isa) && jcp.src_zero_point && jcp.exec_type == exec_trans
@@ -2414,7 +2415,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         VDISPATCH_CONV_IC(!allow_perf_heuristics(jcp),
                 VERBOSE_IMPL_HEURISTIC_FAIL,
                 "no optimization for zero point on amx")
-
+*/
     // For padding shapes, we calculate the comp along with the computation
     // inside brgemm kernel when output size is small to get optimal perf
     // For shapes with large ow we calculate the comp inside brgemm kernel too
@@ -2443,7 +2444,11 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
-
+    printf("exec type: %d, use uker: %d, is relo: %d, M: %d, oc block: %d, oh "
+           "block: %d, ow "
+           "block: %d\n",
+            jcp.exec_type, jcp.use_uker, jcp.is_relo(), jcp.M, jcp.oc_block,
+            jcp.oh_block, jcp.ow_block);
     return status::success;
 }
 
@@ -2735,6 +2740,10 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
     if (jcp.src_zero_point && jcp.req_cal_comp_pad) {
         scratchpad.book(key_brgemm_primitive_zp_comp_a, jcp.comp_a_buffer_size,
                 sizeof(int32_t), 0, P4K);
+        if (jcp.exec_type != exec_vpad)
+            scratchpad.book(key_brgemm_primitive_zp_comp_a_strd,
+                    static_cast<size_t>(jcp.nthr) * jcp.M * sizeof(size_t),
+                    P4K);
     }
 
     if (jcp.with_dst_scales) {

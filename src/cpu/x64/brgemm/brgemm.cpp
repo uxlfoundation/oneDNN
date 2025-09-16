@@ -166,6 +166,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.a_zp_compensations = post_ops_data.a_zp_compensations;
     brgemm_p.b_zp_compensations = post_ops_data.b_zp_compensations;
     brgemm_p.c_zp_values = post_ops_data.c_zp_values;
+    brgemm_p.a_zp_comp_strd = post_ops_data.a_zp_comp_strd;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -210,6 +211,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.b_zp_compensations = post_ops_data.b_zp_compensations;
     brgemm_p.a_zp_values = post_ops_data.a_zp_values;
     brgemm_p.c_zp_values = post_ops_data.c_zp_values;
+    brgemm_p.a_zp_comp_strd = post_ops_data.a_zp_comp_strd;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;

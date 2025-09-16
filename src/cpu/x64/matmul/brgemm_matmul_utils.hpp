@@ -135,7 +135,7 @@ struct brgemm_matmul_conf_t {
     data_type_t reduce_dt;
     data_type_t orig_src_dt;
     data_type_t orig_wei_dt;
-    data_type_t wei_zp_dt;
+
     int nthr;
     int nthr_k = 1, nthr_m = 1, nthr_n = 1, nthr_b = 1;
 
@@ -166,9 +166,6 @@ struct brgemm_matmul_conf_t {
     dim_t C_strides[3];
     dim_t buffer_c_chunk_sz;
     dim_t buffer_c_per_thread_sz;
-
-    dim_t wei_zp_N_group; // per_oc
-    dim_t wei_zp_K_group; // per_ic
 
     dim_t A_ptr_shift_b;
     dim_t B_ptr_shift_b;
@@ -229,28 +226,24 @@ struct brgemm_matmul_conf_t {
     bool is_runtime_M = false;
     bool is_runtime_N = false;
     bool is_runtime_K = false;
+    bool extendable_k = false;
     bool is_src_batch_layout_trivial = false;
     bool is_wei_batch_layout_trivial = false;
     bool is_dst_batch_layout_trivial = false;
+
+    bool apply_scales_in_buffer_b = false;
+    size_t wei_scales_dt_sz = 0;
     bool is_wei_scale_per_n = false;
     bool is_wei_scale_per_k = false;
-    bool req_transpose_scales = false;
-    bool apply_scales_in_buffer_b = false;
-    // For generic cases, when groups are selected the way they can't divide a
-    // K_blk in equal pieces, it gets really hard to call a kernel with a
-    // single "per_N line" of scales. In this case weights will be copied
-    // to a larger memory buffer and used like a full tensor.
-    // TODO: convert to a method. State must be set in a specific place of the
-    // initialization as relies on blocking.
-    bool gK_and_K_blk_are_divisible = false;
-    size_t wei_scales_dt_sz = 0;
-    dim_t wei_scales_k_group_size = 0;
+    bool is_wei_scale_common = false;
+    dim_t wei_scales_k_gsize = 0;
     data_type_t wei_scales_dt = data_type::undef;
-    bool extendable_k = false;
+
+    dim_t wei_zp_k_gsize; // per_ic
     bool is_wei_zp_per_k = false;
     bool is_wei_zp_per_n = false;
     bool is_wei_zp_common = false;
-    bool has_wei_zp_groups = false;
+    data_type_t wei_zp_dt;
 
     inline bool lda_big_pow2() const {
         const dim_t big_stride_threshold_in_bytes = 8192;

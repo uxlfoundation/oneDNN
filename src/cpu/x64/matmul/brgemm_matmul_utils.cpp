@@ -1291,19 +1291,19 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.with_src_scales = !src_scales.has_default_values();
     bgmmc.with_wei_scales = !wei_scales.has_default_values();
     if (bgmmc.with_wei_scales) {
-        const auto wei_qmask_N = 1 << (bgmmc.ndims - 1);
-        const auto wei_qmask_K = 1 << (bgmmc.ndims - 2);
-        bgmmc.is_wei_scale_per_k = wei_scales.get_mask() & wei_qmask_K;
-        bgmmc.is_wei_scale_per_n = wei_scales.get_mask() & wei_qmask_N;
+        const auto &wei_scale_mask = wei_scales.get_mask();
+        bgmmc.is_wei_scale_common = wei_scale_mask == 0;
+        bgmmc.is_wei_scale_per_k = wei_scale_mask & 1 << (bgmmc.ndims - 2);
+        bgmmc.is_wei_scale_per_n = wei_scale_mask & 1 << (bgmmc.ndims - 1);
         bgmmc.apply_scales_in_buffer_b = bgmmc.is_wei_scale_per_k
                 && bgmmc.with_wei_decompression && bgmmc.N * bgmmc.K != 1;
         bgmmc.wei_scales_dt = wei_scales.get_data_type();
         bgmmc.wei_scales_dt_sz = types::data_type_size(bgmmc.wei_scales_dt);
-        bgmmc.wei_scales_k_group_size = wei_scales.get_group(0);
+        bgmmc.wei_scales_k_gsize = wei_scales.get_group(0);
 
         // only common and per-oc-channel scales are supported
         // only per-ic-channel scales is supprted with weight decompression
-        VCONDCHECK_BG(wei_scales.get_mask() == 0 || bgmmc.is_wei_scale_per_n
+        VCONDCHECK_BG(bgmmc.is_wei_scale_common || bgmmc.is_wei_scale_per_n
                         || IMPLICATION(bgmmc.is_wei_scale_per_k,
                                 bgmmc.with_wei_decompression),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -1327,15 +1327,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                         || bgmmc.is_wei_zp_per_n,
                 VERBOSE_UNSUPPORTED_ZP_CFG);
 
-        // Fill groups data
-        bgmmc.has_wei_zp_groups
-                = !(wei_zp.has_default_groups() || bgmmc.is_wei_zp_common);
-        if (bgmmc.has_wei_zp_groups) {
-            if (bgmmc.is_wei_zp_per_n)
-                bgmmc.wei_zp_N_group = wei_zp.get_group(bgmmc.ndims - 1);
-            if (bgmmc.is_wei_zp_per_k)
-                bgmmc.wei_zp_K_group = wei_zp.get_group(bgmmc.ndims - 2);
-        }
+        if (bgmmc.is_wei_zp_per_k)
+            bgmmc.wei_zp_k_gsize = wei_zp.get_group(bgmmc.ndims - 2);
+        // Check if K groups for scales and for zero points are identical
+        VCONDCHECK_BG(
+                IMPLICATION(bgmmc.is_wei_zp_per_k && bgmmc.is_wei_scale_per_k,
+                        bgmmc.wei_zp_k_gsize == bgmmc.wei_scales_k_gsize),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
     }
 
     const auto &p = attr.post_ops_;
@@ -1421,9 +1419,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.transposed_B = bm_conf_utils.check_is_transposed(bgmmc.wei_tag)
             || bgmmc.wei_tag == adbc;
     bgmmc.use_buffer_b = bm_conf_utils.use_buffer_b();
-    bgmmc.req_transpose_scales = bgmmc.apply_scales_in_buffer_b
-            && bgmmc.is_wei_scale_per_k && bgmmc.is_wei_scale_per_n
-            && bgmmc.transposed_B;
 
     if ((bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16())
             && is_superset(bgmmc.isa, avx2) && bm_conf_utils.use_buffer_b()) {
@@ -1596,14 +1591,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
         bgmmc.req_wei_vnni_downconvert
                 = bm_conf_utils.wei_down_convert_to_vnni();
-    }
-
-    // This setting must be updated post blocking as it has a dependency on
-    // `bgmmc.K_blk`. See `gK_and_K_blk_are_divisible` comment.
-    if (bgmmc.is_wei_scale_per_k) {
-        const auto gK = bgmmc.wei_scales_k_group_size;
-        bgmmc.gK_and_K_blk_are_divisible = gK > 1
-                && ((bgmmc.K_blk % gK == 0) || (gK % bgmmc.K_blk == 0));
     }
 
     VCHECK_BG(bm_conf_utils.set_B_flags(weights_md), VERBOSE_BLOCKING_FAIL, "");

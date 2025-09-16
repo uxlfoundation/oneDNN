@@ -3304,7 +3304,7 @@ void CopyInstruction::dump(const CopyPlan &plan) const
 
     std::cout << getMnemonic(op, HW::Gen9);
     switch (op) {
-        case Opcode::bfn:  std::cout << ".(" << (std::string)BFN::nodes[ctrl] << ')'; break;
+        case Opcode::bfn:  std::cout << ".(" << BFN::nodes[ctrl].str() << ')'; break;
         case Opcode::math: std::cout << '.' << static_cast<MathFunction>(ctrl);   break;
         default: break;
     }

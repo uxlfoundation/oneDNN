@@ -205,7 +205,7 @@ private:
     const Xbyak::Xmm xmm_aux4 = xmm5;
     const Xbyak::Xmm xmm_aux5 = xmm6;
     const Xbyak::Opmask kmask_aux = k1;
-    const Xbyak::Reg64 reg64_aux = abi_not_param1;
+    const Xbyak::Reg64 reg64_aux = abi_param3;
     const Xbyak::Reg64 reg64_out = abi_param1;
     const Xbyak::Reg64 reg64_inp = abi_param2;
     void generate() override;

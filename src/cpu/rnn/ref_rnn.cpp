@@ -654,6 +654,63 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
                     }
                 }
             }
+
+            if (rnn_.merge_gemm_iter) {
+                assert(rnn_.dst_layer_is_trivial_stride && !is_gru
+                        && !is_lbr_gru);
+
+                const dim_t M = static_cast<dim_t>(rnn_.n_gates) * rnn_.dhc;
+                const dim_t LDA = rnn_.scratch_gates_ld;
+
+                const auto niter_merge_gemm_iter
+                        = rnn_.n_iter - rnn_.skip_src_iter_copy();
+                if (niter_merge_gemm_iter > 0) {
+                    const dim_t K = static_cast<dim_t>(rnn_.mb)
+                            * niter_merge_gemm_iter;
+
+                    std::vector<dim_t> LDBs;
+                    if (!rnn_.skip_dst_layer_copy()) {
+                        LDBs = {rnn_.ws_states_iter_ld};
+                    } else if (rnn_.n_layer == 1) {
+                        LDBs = {rnn_.dst_layer_ld_};
+                    } else {
+                        LDBs = {rnn_.ws_states_iter_ld, rnn_.dst_layer_ld_};
+                    }
+
+                    const float beta = rnn_.diff_weights_beta(
+                            cell_position_t::merged_iter);
+                    const bool do_sum = beta == 1.f;
+
+                    for (auto LDB : LDBs) {
+                        if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                            CHECK(matmul_pds_.create_if_not_exist(
+                                    {M, N, K, LDA, LDB, LDC, src_type, src_type,
+                                            acc_type, transB, do_sum},
+                                    engine));
+                        }
+                    }
+                }
+
+                if (rnn_.skip_src_iter_copy()) {
+                    const dim_t K = rnn_.mb;
+
+                    const dim_t LDB = rnn_.src_iter_ld_;
+                    const dim_t LDC = rnn_.diff_weights_iter_ld;
+
+                    const float beta
+                            = rnn_.diff_weights_beta(niter_merge_gemm_iter
+                                            ? cell_position_t::middle_cell
+                                            : cell_position_t::merged_iter);
+                    const bool do_sum = beta == 1.f;
+
+                    if (check_strides(M, N, K, transB, LDA, LDB, LDC)) {
+                        CHECK(matmul_pds_.create_if_not_exist(
+                                {M, N, K, LDA, LDB, LDC, src_type, src_type,
+                                        acc_type, transB, do_sum},
+                                engine));
+                    }
+                }
+            }
         }
 
         if (rnn_.is_lstm_projection) {
@@ -1505,31 +1562,65 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
                 states_iter = dst_layer_;
                 states_iter_ld = rnn.dst_layer_ld_;
             }
+
+            const dim_t M = rnn.n_gates * rnn.dhc;
+            const dim_t N = rnn.sic;
+            const dim_t LDA = rnn.scratch_gates_ld;
+            const dim_t LDC = rnn.diff_weights_iter_ld;
+            auto *const C = &(diff_weights_iter(lay, dir, 0));
+            constexpr bool trans_B_on = true;
+
             niter_merge_gemm_iter = rnn.n_iter - rnn.skip_src_iter_copy();
             if (niter_merge_gemm_iter > 0) {
-                CHECK(gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.sic,
-                        rnn.mb * niter_merge_gemm_iter, 1.0,
-                        (weights_t *)scratch_gates_
-                                + rnn.skip_src_iter_copy()
-                                        * rnn.scratch_gates_nld
-                                        * rnn.scratch_gates_ld,
-                        rnn.scratch_gates_ld, states_iter, states_iter_ld,
-                        rnn.diff_weights_beta(cell_position_t::merged_iter),
-                        &(diff_weights_iter(lay, dir, 0)),
-                        rnn.diff_weights_iter_ld));
+                const dim_t K = rnn.mb * niter_merge_gemm_iter;
+                const dim_t LDB = states_iter_ld;
+
+                assert(weights_type == src_type);
+                auto *const A = (weights_t *)scratch_gates_
+                        + rnn.skip_src_iter_copy() * rnn.scratch_gates_nld
+                                * rnn.scratch_gates_ld;
+                auto *const B = states_iter;
+
+                const float beta
+                        = rnn.diff_weights_beta(cell_position_t::merged_iter);
+
+                if (rnn.use_matmul) {
+                    const bool do_sum = beta == 1.f;
+                    CHECK(mm_primitives_.apply(ctx,
+                            {M, N, K, LDA, LDB, LDC, src_type, src_type,
+                                    acc_type, trans_B_on, do_sum},
+                            A, B, C));
+                } else {
+                    CHECK(gemm('N', 'T', M, N, K, 1.0, A, LDA, B, LDB, beta, C,
+                            LDC));
+                }
             }
 
             if (rnn.skip_src_iter_copy()) {
                 states_iter = src_iter_ + src_iter_mdw.off(lay, dir, 0, 0);
                 states_iter_ld = rnn.src_iter_ld_;
-                CHECK(gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.sic, rnn.mb,
-                        1.0, (weights_t *)scratch_gates_, rnn.scratch_gates_ld,
-                        states_iter, states_iter_ld,
-                        rnn.diff_weights_beta(niter_merge_gemm_iter
-                                        ? cell_position_t::middle_cell
-                                        : cell_position_t::merged_iter),
-                        &(diff_weights_iter(lay, dir, 0)),
-                        rnn.diff_weights_iter_ld));
+
+                const dim_t K = rnn.mb;
+                const dim_t LDB = states_iter_ld;
+
+                assert(weights_type == src_type);
+                auto *const A = (weights_t *)scratch_gates_;
+                auto *const B = states_iter;
+
+                const float beta = rnn.diff_weights_beta(niter_merge_gemm_iter
+                                ? cell_position_t::middle_cell
+                                : cell_position_t::merged_iter);
+
+                if (rnn.use_matmul) {
+                    const bool do_sum = beta == 1.f;
+                    CHECK(mm_primitives_.apply(ctx,
+                            {M, N, K, LDA, LDB, LDC, src_type, src_type,
+                                    acc_type, trans_B_on, do_sum},
+                            A, B, C));
+                } else {
+                    CHECK(gemm('N', 'T', M, N, K, 1.0, A, LDA, B, LDB, beta, C,
+                            LDC));
+                }
             }
         }
     }

@@ -40,6 +40,8 @@ std::mt19937 &get_generator();
 
 void fill_random(std::vector<float> &out, const dnnl::memory::desc &desc);
 
+void fill_eye(std::vector<float> &out, const dnnl::memory::desc &desc);
+
 void fill_random_scales(
         std::vector<float> &out, const dnnl::memory::desc &desc);
 

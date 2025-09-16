@@ -51,7 +51,7 @@ struct sdpa_pd_t : public primitive_desc_t {
     static constexpr int ndims = 4;
 
     using base_class = sdpa_pd_t;
-    using hint_class = sdpa_pd_t;
+    using hint_class = sdpa_fwd_pd_t;
 
     const sdpa_desc_t *desc() const { return &desc_; }
     const op_desc_t *op_desc() const override {
@@ -154,10 +154,27 @@ protected:
     sdpa_desc_t desc_;
     const sdpa_fwd_pd_t *hint_fwd_pd_;
 
+    memory_desc_t ws_md_;
+
     sdpa_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
             const hint_class *hint_fwd_pd)
         : primitive_desc_t(attr, base_pkind)
-        , desc_(*op_desc_t::to_desc<sdpa_desc_t>(adesc)) {}
+        , desc_(*op_desc_t::to_desc<sdpa_desc_t>(adesc))
+        , hint_fwd_pd_(hint_fwd_pd) {}
+
+    void init_default_ws() {
+        //ws_md_.ndims = 1;
+        //ws_md_.dims[0] = 2 * desc()->queries(); // col sums + maxs
+        //printf("def size %d\n", ws_md_.dims[0]);
+        //ws_md_.data_type = data_type::f32;
+        //ws_md_.format_tag = format_tag::a;
+
+        dims_t d;
+        d[0] = 2 * desc()->queries(); // col sums + maxs
+
+        memory_desc_init_by_tag(ws_md_, 1,
+                d, data_type::f32, format_tag::a);
+    }
 
 private:
     static int group_size(
@@ -199,6 +216,10 @@ struct sdpa_fwd_pd_t : public sdpa_pd_t {
 
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
+        if (arg == DNNL_ARG_WORKSPACE)
+            return !types::is_zero_md(workspace_md()) ? arg_usage_t::output
+                                                      : arg_usage_t::unused;
+
         return primitive_desc_t::arg_usage(arg);
     }
 
@@ -228,11 +249,15 @@ struct sdpa_fwd_pd_t : public sdpa_pd_t {
             int index = 0, bool user_input = false) const override {
         return index == 0 ? &desc_.dst_desc : &glob_zero_md;
     }
+    const memory_desc_t *workspace_md(int index = 0) const override {
+        return index == 0 && !types::is_zero_md(&ws_md_) ? &ws_md_
+                                                         : &glob_zero_md;
+    }
 
     int n_inputs() const override {
         return 3 + int(with_attn_mask()) + int(with_attn_scale());
     }
-    int n_outputs() const override { return 1; }
+    int n_outputs() const override { return 1 + (!types::is_zero_md(workspace_md())); }
 
 protected:
     sdpa_fwd_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
@@ -285,6 +310,10 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
                                DNNL_ARG_DIFF_VALUES))
             return arg_usage_t::output;
 
+        if (arg == DNNL_ARG_WORKSPACE)
+            return !types::is_zero_md(workspace_md()) ? arg_usage_t::input
+                                                      : arg_usage_t::unused;
+
         return primitive_desc_t::arg_usage(arg);
     }
 
@@ -316,7 +345,6 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
             default: return &glob_zero_md;
         }
     }
-
     const memory_desc_t *dst_md(
             int index = 0, bool user_input = false) const override {
         switch (index) {
@@ -326,10 +354,14 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
             default: return &glob_zero_md;
         }
     }
+    const memory_desc_t *workspace_md(int index = 0) const override {
+        return index == 0 && !types::is_zero_md(&ws_md_) ? &ws_md_
+                                                         : &glob_zero_md;
+    }
 
     int n_inputs() const override {
         // Q, K, V, O, dO
-        return 5 + int(with_attn_mask()) + int(with_attn_scale());
+        return 5 + int(with_attn_mask()) + int(with_attn_scale()) + int(!types::is_zero_md(workspace_md()));
     }
     int n_outputs() const override { return 3; } // dQ, dK, dV
 

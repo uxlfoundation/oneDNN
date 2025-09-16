@@ -91,8 +91,8 @@ struct micro_params_t : trivially_serializable_t<micro_params_t> {
     bool q_arrive_await_barrier;
     bool use_systolic_ukernel;
     bool kq_f16_accumulate, vs_f16_accumulate;
-    bool is_fwd;
-    uint8_t padding3[6] = {0};
+    bool is_fwd, is_training;
+    uint8_t padding3[5] = {0};
 
     micro_ukernel_params_t ukernel_config;
 };
@@ -108,7 +108,7 @@ struct micro_t : public primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
-            VDISPATCH_SDPA(is_fwd(), VERBOSE_BAD_PROPKIND);
+            VCHECK_SDPA_COND(is_fwd(), VERBOSE_BAD_PROPKIND);
             VCHECK_SDPA_COND(
                     utils::everyone_is(4, qry_md()->ndims, key_md()->ndims,
                             val_md()->ndims, dst_md()->ndims),
@@ -328,7 +328,7 @@ struct micro_bwd_t : public primitive_t {
             using namespace data_type;
             printf("BWDDDDD\n");
 
-            VDISPATCH_SDPA(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VCHECK_SDPA_COND(!is_fwd(), VERBOSE_BAD_PROPKIND);
 
             //TODO: real checks
             printf("%d %d %d %d??ndims\n", 
@@ -448,6 +448,12 @@ struct micro_bwd_t : public primitive_t {
                         "equal to the number of values(%ld).",
                         vgs, static_cast<long int>(val_md()->dims[3]));
             }
+
+            init_default_ws();
+            printf("iscomparableeee?%d\n", 
+                    compare_ws(hint_fwd_pd_));
+            VCHECK_SDPA_COND(
+                    compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
 
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));

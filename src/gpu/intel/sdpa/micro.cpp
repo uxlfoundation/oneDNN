@@ -487,31 +487,6 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     auto problem_kq = problem;
     problem_kq.A.layout = convert_dnnl_to_kernel_layout(key_md());
 
-    if (with_key_scales() && !kq_common_scales) {
-        auto scale_dt = key_scales_dt();
-        problem_kq.Ta_scale = convert_dnnl_to_kernel_type(scale_dt);
-        problem_kq.A_scale.setAlignment(
-                int8_t(d->keys() * types::data_type_size(scale_dt)));
-        problem_kq.A_scale.layout = MatrixLayout::N;
-        const int matrix_scale = 2;
-        problem_kq.asPtrDims = matrix_scale;
-    }
-    if (with_key_zp()) {
-        auto zp_dt = key_zp_dt();
-        problem_kq.Tao = convert_dnnl_to_kernel_type(zp_dt);
-        problem_kq.AO.setAlignment(
-                int8_t(d->keys() * types::data_type_size(zp_dt)));
-        problem_kq.AO.layout = MatrixLayout::N;
-        problem_kq.aoPtrDims = kq_common_zp ? 0 : 2;
-        problem_kq.aOffset = ABOffset::Calc;
-    }
-
-    if (with_key_scales() || with_key_zp()) {
-        problem_kq.aqGroupM = 1;
-        problem_kq.aqGroupK
-                = (kq_common_scales || kq_common_zp) ? 1 : key_group_size();
-    }
-
     problem_kq.B.layout = MatrixLayout::Pr;
     problem_kq.C.layout = MatrixLayout::T;
     const memory_desc_wrapper key_mdw(key_md());
@@ -531,8 +506,6 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     micro::GEMMProtocol::Options opts_kq;
     opts_kq.localB = true;
     opts_kq.slmPtr = true;
-    opts_kq.scaleA = with_key_scales() && !kq_common_scales;
-    opts_kq.offsetA = with_key_zp();
 
     ukernel_params.opts_kq = {opts_kq};
 
@@ -556,41 +529,14 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     /* Set up GEMMProblem structure for second GEMM: V * S  */
     auto problem_vs = std::move(problem);
 
-    bool vs_common_scales = with_quantize_common(d->vs_scales);
-    bool vs_common_zp = with_quantize_common(d->vs_zero_points);
-
-    problem_vs.Ta_ext = convert_dnnl_to_kernel_type(val_md()->data_type);
-    problem_vs.A.layout = convert_dnnl_to_kernel_layout(val_md());
-    if (with_value_scales() && !vs_common_scales) {
-        auto scale_dt = value_scales_dt();
-        problem_vs.Ta_scale = convert_dnnl_to_kernel_type(scale_dt);
-        problem_vs.A_scale.setAlignment(uint8_t(d->head_size()
-                / value_group_size() * types::data_type_size(scale_dt)));
-        problem_vs.A_scale.layout = MatrixLayout::N;
-        const int matrix_scale = 2;
-        problem_vs.asPtrDims = matrix_scale;
-    }
-    if (with_value_zp()) {
-        auto zp_dt = value_zp_dt();
-        problem_vs.Tao = convert_dnnl_to_kernel_type(zp_dt);
-        problem_vs.AO.setAlignment(uint8_t(d->head_size() / value_group_size()
-                * types::data_type_size(zp_dt)));
-        problem_vs.AO.layout = MatrixLayout::N;
-        problem_vs.aoPtrDims = vs_common_zp ? 0 : 2;
-        problem_vs.aOffset = ABOffset::Calc;
-    }
-    if (with_value_scales() || with_value_zp()) {
-        problem_vs.aqGroupM = (vs_common_scales || vs_common_zp)
-                ? 1
-                : utils::rnd_up_pow2(value_group_size());
-        problem_vs.aqGroupK = 1;
-    }
+    problem_vs.Ta_ext = convert_dnnl_to_kernel_type(diff_val_md()->data_type);
+    problem_vs.A.layout = convert_dnnl_to_kernel_layout(diff_val_md());
 
     problem_vs.B.layout = MatrixLayout::Pr;
     problem_vs.C.layout = MatrixLayout::N;
-    const memory_desc_wrapper val_mdw(val_md());
+    const memory_desc_wrapper diff_val_mdw(diff_val_md());
     auto ldv = static_cast<int>(
-            gemm_desc_t::get_ld(*val_md()) * val_mdw.data_type_size());
+            gemm_desc_t::get_ld(*diff_val_md()) * diff_val_mdw.data_type_size());
     problem_vs.A.setAlignment(alignmentForLD(ldv));
     problem_vs.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) { problem_vs.B.crosspack = 16; }
@@ -600,8 +546,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     // directly tied to config, will recompile w/head size and config updates
     // no need for interval quantization
     heuristic_sizes.m = d->values();
-    const int wg_tile_n = config->wg_n_kq * config->unroll_n_kq;
     const int wg_tile_m = config->wg_m_kq * config->unroll_m_kq;
+    const int wg_tile_n = config->wg_n_kq * config->unroll_n_kq;
     heuristic_sizes.n = wg_tile_n;
     heuristic_sizes.k = wg_tile_m;
 
@@ -609,10 +555,9 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     /* Set up microkernel options */
     micro::GEMMProtocol::Options opts_vs;
+    //swap these for dV matmul
     opts_vs.localB = true;
     opts_vs.slmPtr = true;
-    opts_vs.scaleA = with_value_scales() && !vs_common_scales;
-    opts_vs.offsetA = with_value_zp();
 
     ukernel_params.opts_vs = {opts_vs};
 
@@ -830,6 +775,11 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.vs_f16_accumulate = (vs_acc_dt() == data_type::f16);
     conf.is_fwd = pd->is_fwd();
 
+    // workspace to hold column sums and maxes
+    bool is_training = desc()->prop_kind == prop_kind::forward_training;
+    if (is_training) { pd->init_default_ws(); }
+    conf.is_training = is_training;
+
     return status::success;
 }
 
@@ -984,6 +934,7 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("KQ_F16_ACC", kq_f16_accumulate);
     kernel_ctx.define_int("VS_F16_ACC", vs_f16_accumulate);
     kernel_ctx.define_int("IS_FWD", is_fwd);
+    kernel_ctx.define_int("IS_TRAINING", is_training);
 
     gemmstone::HWInformation hw_info;
     gemmstone::GEMMProblem problem_kq, problem_vs;
@@ -1074,8 +1025,10 @@ status_t micro_t::execute_forward(const exec_ctx_t &ctx) const {
     const auto &key = CTX_IN_STORAGE(DNNL_ARG_KEYS);
     const auto &val = CTX_IN_STORAGE(DNNL_ARG_VALUES);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_DST);
+    auto &ws = CTX_OUT_STORAGE(DNNL_ARG_WORKSPACE);
     const auto &scale = CTX_IN_STORAGE(DNNL_ARG_SCALE);
     const auto &attn_mask = CTX_IN_STORAGE(DNNL_ARG_ATTN_MASK);
+
 
     const auto &key_scales
             = CTX_IN_STORAGE(DNNL_ARG_KEYS | DNNL_ARG_ATTR_SCALES);
@@ -1135,6 +1088,7 @@ status_t micro_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.append(key);
     arg_list.append(qry);
     arg_list.append(val);
+    arg_list.append(ws);
     arg_list.append(dst);
     arg_list.append(scale);
     arg_list.append((int)D);
@@ -1174,6 +1128,7 @@ status_t micro_t::execute_forward(const exec_ctx_t &ctx) const {
 
     printf("execFWD\n");
     auto nd_range = compute::nd_range_t(gws, lws);
+    std::cout << "ndrange" << nd_range.str() << std::endl;
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 }
 
@@ -1182,6 +1137,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     const auto &qry      = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
     const auto &key      = CTX_IN_STORAGE(DNNL_ARG_KEYS);
     const auto &val      = CTX_IN_STORAGE(DNNL_ARG_VALUES);
+    const auto &ws       = CTX_OUT_STORAGE(DNNL_ARG_WORKSPACE);
     const auto &dst      = CTX_IN_STORAGE(DNNL_ARG_DST);
     const auto &diff_dst = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
     auto &diff_q = CTX_OUT_STORAGE(DNNL_ARG_DIFF_QUERIES);
@@ -1249,6 +1205,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     arg_list.append(key);
     arg_list.append(qry);
     arg_list.append(val);
+    arg_list.append(ws);
     arg_list.append(dst);
     arg_list.append(diff_dst);
     arg_list.append(diff_k);

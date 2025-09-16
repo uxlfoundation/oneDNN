@@ -44,7 +44,7 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
         bool invert_scale, dnnl_dim_t kv_head_number, int attn_mask_type,
         dnnl_alg_kind_t softmax_alg, const_dnnl_primitive_attr_t attr,
         const_dnnl_primitive_attr_t kq_attr,
-        const_dnnl_primitive_attr_t vs_attr);
+        const_dnnl_primitive_attr_t vs_attr, dnnl_prop_kind_t prop);
 
 dnnl_status_t DNNL_API sdpa_primitive_desc_create(
         dnnl_primitive_desc_t *primitive_desc_iface, dnnl_engine_t engine,
@@ -58,7 +58,7 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
         bool invert_scale, dnnl_dim_t kv_head_number, int attn_mask_type,
         dnnl_alg_kind_t softmax_alg, const_dnnl_primitive_attr_t attr,
         const_dnnl_primitive_attr_t kq_attr,
-        const_dnnl_primitive_attr_t vs_attr);
+        const_dnnl_primitive_attr_t vs_attr, const dnnl_primitive_desc *hint_fwd_pd );
 
 namespace dnnl {
 namespace impl {
@@ -78,7 +78,7 @@ struct sdpa : public dnnl::primitive {
                 memory::dim kv_head_number, int attn_mask_type, int softmax_alg,
                 const primitive_attr &attr = default_attr(),
                 const primitive_attr &kq_attr = default_attr(),
-                const primitive_attr &vs_attr = default_attr()) {
+                const primitive_attr &vs_attr = default_attr(), prop_kind_t prop_kind = prop_kind::forward_inference) {
 
             dnnl_primitive_desc_t pd = nullptr;
             dnnl_status_t status = sdpa_primitive_desc_create(&pd,
@@ -87,7 +87,7 @@ struct sdpa : public dnnl::primitive {
                     optional_arg(attn_mask_desc), (dnnl_data_type_t)scale_dt,
                     invert_scale, kv_head_number, attn_mask_type,
                     (dnnl_alg_kind_t)softmax_alg, attr.get(), kq_attr.get(),
-                    vs_attr.get());
+                    vs_attr.get(), (prop_kind_t)prop_kind);
 
             dnnl::error::wrap_c_api(status,
                     "could not create a primitive descriptor for a sdpa "
@@ -123,6 +123,7 @@ struct sdpa_backward : public dnnl::primitive {
                 const memory::desc &diff_output_desc,
                 bool invert_scale,
                 memory::dim kv_head_number, int attn_mask_type, int softmax_alg,
+                const sdpa::primitive_desc &hint_fwd_pd,
                 const primitive_attr &attr = default_attr(),
                 const primitive_attr &kq_attr = default_attr(),
                 const primitive_attr &vs_attr = default_attr()) {
@@ -138,7 +139,7 @@ struct sdpa_backward : public dnnl::primitive {
                     optional_arg(attn_mask_desc), (dnnl_data_type_t)scale_dt,
                     invert_scale, kv_head_number, attn_mask_type,
                     (dnnl_alg_kind_t)softmax_alg, attr.get(), kq_attr.get(),
-                    vs_attr.get());
+                    vs_attr.get(), hint_fwd_pd.get());
 
             dnnl::error::wrap_c_api(status,
                     "could not create a primitive descriptor for a sdpa "

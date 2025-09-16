@@ -54,6 +54,20 @@ void fill_random(std::vector<float> &out, const memory::desc &desc) {
     }
 }
 
+// this is changed from the fill_random() function in matmul_perf.cpp.
+void fill_eye(std::vector<float> &out, const memory::desc &desc) {
+    auto elems = product(desc.get_dims());
+    size_t width = desc.get_dims()[desc.get_ndims()-1];
+    for (memory::dim i = 0; i < elems; i++) {
+        if(i%width == i/width) {
+            out[i] = 1.f;
+        } else {
+            out[i] = 0.f;
+        }
+    }
+}
+
+
 void fill_random_scales(std::vector<float> &out, const memory::desc &desc) {
     static std::vector<float> random_data_f;
     constexpr memory::dim nrand = 1037;
@@ -213,7 +227,7 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
                 for (size_t i = 0; i < ndims; ++i) {
                     offset += idxs[i] * strides[i];
                 }
-                printf("%+9.3f", (mapped_ptr[offset].f()));
+                printf("%+6.1f ", (mapped_ptr[offset].f()));
                 if (idxs[lastdim] == (dims[lastdim] - 1)) { printf("\n"); }
             });
         } break;
@@ -227,7 +241,7 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
                 for (size_t i = 0; i < ndims; ++i) {
                     offset += idxs[i] * strides[i];
                 }
-                printf("%+6.1f", (mapped_ptr[offset]));
+                printf("%+6.1f ", (mapped_ptr[offset]));
                 if (idxs[lastdim] == (dims[lastdim] - 1)) { printf("\n"); }
             });
         } break;

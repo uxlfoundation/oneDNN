@@ -153,7 +153,8 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
         const memory_desc_t *dst_md, const memory_desc_t *attn_mask_md,
         data_type_t scale_dt, bool invert_scale, dim_t kv_head_number,
         attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg,
-        const primitive_attr_t *kq_attr, const primitive_attr_t *vs_attr) {
+        const primitive_attr_t *kq_attr, const primitive_attr_t *vs_attr,
+        prop_kind_t prop) {
     auto sdpa_desc = sdpa_desc_t();
     sdpa_desc.primitive_kind = primitive_kind::sdpa;
     sdpa_desc.q_desc = *q_md;
@@ -182,8 +183,7 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
     sdpa_desc.kv_head_number = kv_head_number;
     sdpa_desc.mask_type = attn_mask_type;
     sdpa_desc.softmax_alg = softmax_alg;
-    sdpa_desc.prop_kind = prop_kind::forward_inference;
-    //sdpa_desc.prop_kind = prop_kind::forward_training; //TODO: this one should save to workspace maxes
+    sdpa_desc.prop_kind = prop;
     return sdpa_desc;
 }
 
@@ -227,14 +227,14 @@ static inline status_t create_sdpa_pd(
         bool invert_scale, dim_t kv_head_number,
         attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg,
         const primitive_attr_t *attr, const primitive_attr_t *kq_attr = nullptr,
-        const primitive_attr_t *vs_attr = nullptr) {
+        const primitive_attr_t *vs_attr = nullptr, prop_kind_t prop = prop_kind::forward_inference) {
     CHECK(sdpa_attr_check(q_md, k_md, v_md, engine, attr, kq_attr, vs_attr));
     CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
             kq_attr, vs_attr));
 
     auto sdpa_desc = create_sdpa_desc(q_md, k_md, v_md, dst_md, attn_mask_md,
             scale_dt, invert_scale, kv_head_number, attn_mask_type, softmax_alg,
-            kq_attr, vs_attr);
+            kq_attr, vs_attr, prop);
 
     primitive_attr_t sdpa_attr = attr ? *attr : default_attr();
 

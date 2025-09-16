@@ -32,7 +32,7 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
         bool invert_scale, dnnl_dim_t kv_head_number, int attn_mask_type,
         dnnl_alg_kind_t softmax_alg, const_dnnl_primitive_attr_t attr,
         const_dnnl_primitive_attr_t kq_attr,
-        const_dnnl_primitive_attr_t vs_attr) {
+        const_dnnl_primitive_attr_t vs_attr, prop_kind_t prop) {
     CHECK(sdpa_desc_check(query_desc, key_desc, value_desc, dst_desc, mask_desc,
             engine, attr, kq_attr, vs_attr));
     CHECK(sdpa_attr_check(
@@ -42,7 +42,7 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
             key_desc, value_desc, dst_desc, mask_desc,
             (dnnl::impl::data_type_t)scale_dt, invert_scale, kv_head_number,
             static_cast<attn_mask_type_t>(attn_mask_type), softmax_alg, kq_attr,
-            vs_attr);
+            vs_attr, prop);
     return dnnl::impl::primitive_desc_create(primitive_desc_iface, engine,
             (const dnnl::impl::op_desc_t *)&sdpa_desc, nullptr, attr);
 }
@@ -57,7 +57,7 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
         bool invert_scale, dnnl_dim_t kv_head_number, int attn_mask_type,
         dnnl_alg_kind_t softmax_alg, const_dnnl_primitive_attr_t attr,
         const_dnnl_primitive_attr_t kq_attr,
-        const_dnnl_primitive_attr_t vs_attr) {
+        const_dnnl_primitive_attr_t vs_attr, const_dnnl_primitive_desc_t hint_fwd_pd = nullptr) {
     CHECK(sdpa_desc_check(query_desc, key_desc, value_desc, dst_desc, mask_desc,
             engine, attr, kq_attr, vs_attr));
     CHECK(sdpa_attr_check(
@@ -71,5 +71,5 @@ dnnl_status_t DNNL_API sdpa_primitive_desc_create(
             static_cast<attn_mask_type_t>(attn_mask_type), softmax_alg, kq_attr,
             vs_attr);
     return dnnl::impl::primitive_desc_create(primitive_desc_iface, engine,
-            (const dnnl::impl::op_desc_t *)&sdpa_desc, nullptr, attr);
+            (const dnnl::impl::op_desc_t *)&sdpa_desc, hint_fwd_pd, attr);
 }

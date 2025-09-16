@@ -145,6 +145,7 @@ DECLARE_2D_TILE_BLOCK_OPS(s_tile_type_reblock, FMA_TYPE, SUBGROUP_SIZE,
 
 DECLARE_2D_TILE(
         s_sum_tile_type, float, SUBGROUP_SIZE, ugemm_kq_sg_tile_n, 1, 1, 1)
+DECLARE_2D_TILE_PRINT(s_sum_tile_type, float, SUBGROUP_SIZE, ugemm_kq_sg_tile_n, 1, 1, 1)
 
 DECLARE_2D_TILE(
         a_scale_tile_type, float, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1, 1, 1)
@@ -369,7 +370,7 @@ inline void tile_store_t_slm_src1(q_tile_type *Q_tile, local QRY_DATA_T *Q_slm,
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
-        const global VAL_DATA_T *V, global DST_DATA_T *A,
+        const global VAL_DATA_T *V, global float *ws, global DST_DATA_T *A,
         const global SCALE_DATA_T *scale_ptr, int d, int k, int q,
         const global KEY_ATTR_SCALES_DATA_T *K_scales,
         const global KEY_ATTR_ZP_DATA_T *K_zp,
@@ -613,6 +614,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
     uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m;
     uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n;
+        //printf("tile_n %d sg_j0 %d sg_i, %d\n", ugemm_kq_wg_tile_n, sg_j0_kq, sg_i_kq);
+        //printf("k0? >k0_end%d:%d \n", k0end, ugemm_kq_wg_tile_m);
 
     /* Main loop over k blocks */
     for (int k0 = 0; k0 < k0end; k0 += ugemm_kq_wg_tile_m) {
@@ -851,6 +854,13 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         if (last) {
             tile_store_full(S_sum_tile, S_sum_slm, ugemm_kq_wg_tile_n, sg_j0_kq,
                     sg_i_kq);
+#if IS_TRAINING
+            // save columns sums and maxes to workspace for training pass
+            global float* ws_maxes = ws;
+            global float* ws_sums  = ws + q;
+            tile_store_full(S_max_tile_old, ws_maxes, ugemm_kq_wg_tile_n, sg_j0_kq + wg_j0, 0);
+            tile_store_full(S_sum_tile, ws_sums, ugemm_kq_wg_tile_n, sg_j0_kq + wg_j0, 0);
+#endif
         }
 
 #if PREFETCH_K

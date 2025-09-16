@@ -73,8 +73,8 @@ pvar_t prb_stride(const pvar_t &dim, tensor_kind_t tensor_kind) {
     auto dims = layout_dims(tensor_kind, true);
     for (auto &d : dims) {
         if (d == dim) {
-            auto str = to_string(tensor_kind) + "_";
-            return pvar_t(str + dim.str() + "_stride");
+            auto prefix = to_string(tensor_kind)[0] + std::string("_");
+            return pvar_t(prefix + dim.str() + "_s");
         }
     }
     return pvar_t();

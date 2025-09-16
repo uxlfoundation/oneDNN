@@ -24,6 +24,7 @@
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/prelu/jit_prelu_base_kernel.hpp"
 #include "cpu/x64/utils/jit_io_helper.hpp"
+#include "cpu/x64/utils/jit_regops.hpp"
 
 namespace dnnl {
 namespace impl {

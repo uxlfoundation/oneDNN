@@ -2086,11 +2086,11 @@ expr_t const_fold_binary(const type_t &compute_type, op_kind_t op_kind,
         const expr_t &a, const expr_t &b) {
     if (!compute_type.is_scalar()) {
         int elems = compute_type.elems();
-        auto scalar_type = compute_type.scalar();
+        auto base_type = compute_type.base();
         std::vector<expr_t> ret;
         ret.reserve(elems);
         for (int i = 0; i < elems; i++) {
-            ret.push_back(const_fold_binary(scalar_type, op_kind, a[i], b[i]));
+            ret.push_back(const_fold_binary(base_type, op_kind, a[i], b[i]));
         }
         return shuffle_t::make(ret);
     }

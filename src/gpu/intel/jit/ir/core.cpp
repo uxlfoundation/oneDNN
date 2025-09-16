@@ -158,8 +158,8 @@ type_t common_int_type_impl(const type_t &_a, const type_t &_b) {
     // Promote to s32 first.
     type_t a = _a.size() < int(sizeof(int32_t)) ? type_t::s32() : _a;
     type_t b = _b.size() < int(sizeof(int32_t)) ? type_t::s32() : _b;
-    a = a.scalar();
-    b = b.scalar();
+    a = a.base();
+    b = b.base();
 
     // Integer promotion, follow C++ rules.
     int common_bits = 8 * std::max(a.size(), b.size());

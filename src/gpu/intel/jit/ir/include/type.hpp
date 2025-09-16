@@ -189,7 +189,7 @@ public:
             case kind_t::s32:
             case kind_t::u64:
             case kind_t::s64: {
-                int bits = scalar().bitsize();
+                int bits = base().bitsize();
                 if (is_signed()) bits--;
                 T ret = T(1) << (bits - 1);
                 return ret + (ret - 1);
@@ -349,7 +349,7 @@ public:
         return copy;
     }
 
-    type_t scalar() const { return type_t(kind()); }
+    type_t base() const { return type_t(kind()); }
 
     // Returns size in bytes.
     int size() const;

@@ -305,20 +305,20 @@ public:
         auto mask_op = eval(obj.mask, scope);
 
         auto &type = obj.value.type();
-        auto scalar_type = type.scalar();
+        auto base_type = type.base();
 
         int stride;
         if (obj.has_default_stride()) {
             stride = 1;
         } else {
-            gpu_assert(obj.stride % scalar_type.size() == 0);
-            stride = obj.stride / scalar_type.size();
+            gpu_assert(obj.stride % base_type.size() == 0);
+            stride = obj.stride / base_type.size();
         }
 
         ngen::InstructionModifier mod = type.elems();
         if (!mask_op.is_invalid()) mod |= mask_op.flag_register_mod();
-        auto dst_rbd = buf_op.reg_buf_data().format(off / scalar_type.size(),
-                type.elems(), stride, to_ngen(scalar_type));
+        auto dst_rbd = buf_op.reg_buf_data().format(off / base_type.size(),
+                type.elems(), stride, to_ngen(base_type));
         ngen_operand_t dst(dst_rbd, mod);
         eval(obj.value, scope, dst, obj.fill_mask0 && !mask_op.is_invalid());
     }
@@ -1092,28 +1092,28 @@ public:
 
     void _visit(const load_t &obj) override {
         auto &type = obj.type;
-        auto scalar_type = type.scalar();
+        auto base_type = type.base();
         auto buf_op = eval(obj.buf);
         auto off_op = eval(obj.off);
         int stride;
         if (obj.has_default_stride()) {
             stride = 1;
         } else {
-            gpu_assert(obj.stride % scalar_type.size() == 0);
-            stride = obj.stride / scalar_type.size();
+            gpu_assert(obj.stride % base_type.size() == 0);
+            stride = obj.stride / base_type.size();
         }
         int off = to_cpp<int>(off_op.immediate());
-        auto load_rbd = buf_op.reg_buf_data().format(off / scalar_type.size(),
-                type.elems(), stride, to_ngen(scalar_type));
+        auto load_rbd = buf_op.reg_buf_data().format(off / base_type.size(),
+                type.elems(), stride, to_ngen(base_type));
         bind(obj, load_rbd);
     }
     void _visit(const ref_t &obj) override {
         auto &type = obj.type;
-        auto scalar_type = type.scalar();
+        auto base_type = type.base();
         auto buf_op = eval(obj.var);
         int off = obj.off;
         auto load_rbd = buf_op.reg_buf_data().format(
-                off, type.elems(), /*stride=*/1, to_ngen(scalar_type));
+                off, type.elems(), /*stride=*/1, to_ngen(base_type));
         bind(obj, load_rbd);
     }
 
@@ -1129,7 +1129,7 @@ public:
 
         int elem_off = to_cpp<int>(obj.off);
         int byte_off = ir_utils::safe_divide(
-                elem_off * obj.type.scalar().bitsize(), 8);
+                elem_off * obj.type.base().bitsize(), 8);
         bind(obj, base_op.reg_buf_data().format(byte_off, ngen::DataType::ub));
     }
 
@@ -1290,9 +1290,9 @@ private:
         // Need q-strided region for `e` if res_type is q/uq and `e` is of a
         // sub-q data type and not a scalar.
         if (e.type().is_scalar()) return ngen_operand_t();
-        if (!utils::one_of(res_type.scalar(), type_t::s64(), type_t::u64()))
+        if (!utils::one_of(res_type.base(), type_t::s64(), type_t::u64()))
             return ngen_operand_t();
-        if (utils::one_of(e.type().scalar(), type_t::s64(), type_t::u64()))
+        if (utils::one_of(e.type().base(), type_t::s64(), type_t::u64()))
             return ngen_operand_t();
 
         auto *shuffle = e.as_ptr<shuffle_t>();

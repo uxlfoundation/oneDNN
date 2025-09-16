@@ -255,7 +255,7 @@ public:
     bool is_slm() const { return address == send_address_t::slm; }
 
     bool is_block() const {
-        return utils::one_of(type.scalar(), type_t::oword(), type_t::hword());
+        return utils::one_of(type.base(), type_t::oword(), type_t::hword());
     }
 
     bool is_scattered() const { return !is_block() && !is_2d(); }
@@ -295,7 +295,7 @@ public:
 
     int alignment() const {
         if (is_2d()) return 128;
-        if (is_block()) return type.scalar().size();
+        if (is_block()) return type.base().size();
         return 1;
     }
 

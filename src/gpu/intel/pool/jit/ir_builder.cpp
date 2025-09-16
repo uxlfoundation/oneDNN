@@ -376,7 +376,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     auto acc_type = cfg.acc_type(simd);
     auto acc_buf
             = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr), "acc");
-    const auto acc_sc_size = acc_type.scalar().size();
+    const auto acc_sc_size = acc_type.base().size();
     const auto acc_size = acc_sc_size * lg[4] * lg[3] * lg[2] * lg[1] * lg[0];
 
     auto read_buf
@@ -411,11 +411,11 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     stmt_t stmt;
 
     auto gen_fill_values = [](int simd, bool isneg, type_t type) {
-        gpu_assert(type.scalar().size() <= 4);
-        const int mult = 4 / type.scalar().size();
+        gpu_assert(type.base().size() <= 4);
+        const int mult = 4 / type.base().size();
         expr_t v = 0;
         if (isneg) {
-            switch (to_ngen(type.scalar())) {
+            switch (to_ngen(type.base())) {
                 case ngen::DataType::f: v = 0xFF7FFFFF; break;
                 case ngen::DataType::bf: v = 0xFF7FFF7F; break;
                 case ngen::DataType::hf: v = 0xFBFFFBFF; break;
@@ -517,8 +517,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
             *pd.invariant_dst_md(), *pd.invariant_dst_md(), view_mapper);
     stmt = stmt.append(create_epilogue_stmt(exec, ir_ctx, schedule,
             /*force_c_reorder=*/false, post_op_ctx, dst_thr_tile_coord,
-            write_layout.retype(acc_type.scalar()), dst_buf, acc_buf,
-            buf_size));
+            write_layout.retype(acc_type.base()), dst_buf, acc_buf, buf_size));
 
     loop_bound_counter_t lbc(schedule);
     auto exit_cond = (lbc.count(ow) >= prb.ow) ? (ow < prb.ow) : expr_t();

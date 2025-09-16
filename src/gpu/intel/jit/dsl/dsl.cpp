@@ -149,7 +149,7 @@ struct ctx_t {
         // TODO: IR should be modified to enable loading small tensors (such as
         // scalar values) without GRF alignment.
         auto elems = std::max(into<int>(layout.type().elems() * layout.elems()),
-                grf_size() / layout.type().scalar().size());
+                grf_size() / layout.type().base().size());
         auto t = layout.type()[elems].with_attr(attr);
         auto buf = def(name, t, value, /*force_alloc=*/!new_ir_api_).ptr();
         return {buf, layout};

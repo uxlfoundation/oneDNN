@@ -61,12 +61,12 @@ inline ngen::DataType to_ngen(const type_t &type) {
     gpu_assert(type.is_scalar()) << "Expected scalar type.";
 
 #define CASE(_kind, ngen_enum) \
-    if (type.scalar() == type_t::_kind()) return ngen::DataType::ngen_enum
+    if (type.base() == type_t::_kind()) return ngen::DataType::ngen_enum
 
     // Until f4_e3m0 lands in ngen
-    if (type.scalar() == type_t::f4_e3m0()) return ngen_f4_e3m0();
+    if (type.base() == type_t::f4_e3m0()) return ngen_f4_e3m0();
     // Until f4_e2m1 lands in ngen
-    if (type.scalar() == type_t::f4_e2m1()) return ngen_f4_e2m1();
+    if (type.base() == type_t::f4_e2m1()) return ngen_f4_e2m1();
 
     CASE(bf16, bf);
     CASE(f16, hf);

@@ -80,7 +80,7 @@ struct global_tensor_t {
     global_tensor_t() = default;
     global_tensor_t(const expr_t &buf, const idx_map_t<expr_t> &sizes,
             const idx_map_t<expr_t> &strides)
-        : buf(buf), type(buf.type().scalar()), sizes(sizes), strides(strides) {
+        : buf(buf), type(buf.type().base()), sizes(sizes), strides(strides) {
         gpu_assert(buf.type().is_ptr()) << "Buffer must be of a pointer type.";
     }
     global_tensor_t(const expr_t &buf, const type_t &type,

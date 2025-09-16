@@ -105,7 +105,7 @@ public:
     }
 
     void _visit(const load_t &obj) override {
-        auto elem_type = obj.type.scalar();
+        auto elem_type = obj.type.base();
         int stride_bytes
                 = (obj.has_default_stride() ? elem_type.size() : obj.stride);
         int off = to_cpp<int>(obj.off);
@@ -115,7 +115,7 @@ public:
     }
 
     void _visit(const store_t &obj) override {
-        auto elem_type = obj.value.type().scalar();
+        auto elem_type = obj.value.type().base();
         int stride_bytes
                 = (obj.has_default_stride() ? elem_type.size() : obj.stride);
         int off = to_cpp<int>(obj.off);

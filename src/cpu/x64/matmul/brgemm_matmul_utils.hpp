@@ -243,6 +243,8 @@ struct brgemm_matmul_conf_t {
     data_type_t wei_scales_dt = data_type::undef;
     bool extendable_k = false;
 
+    bool is_gemv = false;
+
     inline bool lda_big_pow2() const {
         const dim_t big_stride_threshold_in_bytes = 8192;
         const dim_t big_K_threshold = big_stride_threshold_in_bytes / a_dt_sz;
@@ -280,6 +282,7 @@ struct brgemm_matmul_conf_utils_t {
         if (bgmmc.is_bf16_with_int_wei) return true;
         if (bgmmc.is_f16_with_int_wei) return true;
         if (bgmmc.apply_scales_in_buffer_b) return true;
+        if (bgmmc.is_gemv) return false;
 
         if (bgmmc.is_amx)
             // use b_buffer for AMX when:
@@ -396,6 +399,9 @@ struct brgemm_matmul_conf_utils_t {
             const dnnl::impl::cpu::matmul::matmul_helper_t &helper) const;
     status_t set_B_flags(memory_desc_t &B_md) const;
     format_tag_t pick_blocked_B_layout(int n_blk) const;
+
+    format_tag_t get_gemv_A_tag(const memory_desc_t &A_md) const;
+    format_tag_t get_gemv_B_tag(const memory_desc_t &B_md) const;
 
 private:
     brgemm_matmul_conf_t &bgmmc;

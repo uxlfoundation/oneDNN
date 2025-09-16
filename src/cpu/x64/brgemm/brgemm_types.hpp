@@ -357,6 +357,8 @@ struct brgemm_desc_t {
     bool is_runtime_ldc = false;
     bool is_runtime_ldd = false;
 
+    bool is_gemv = false;
+
     static constexpr int MAX_VPAD = 100;
     static constexpr int AMX_TILES_NUM = 8;
     static constexpr int tilesize = 1024;

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_JIT_REGOPS_HPP
-#define CPU_X64_JIT_REGOPS_HPP
+#ifndef CPU_X64_UTILS_JIT_REGOPS_HPP
+#define CPU_X64_UTILS_JIT_REGOPS_HPP
 
 #include "cpu/x64/jit_generator.hpp"
 

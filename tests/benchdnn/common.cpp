@@ -179,6 +179,10 @@ void parse_result(res_t &res, const char *pstr) {
         // Only summary time is populated to the highest level report.
         bs.ms[t_name][bt::mode_t::sum] += t.sec(bt::mode_t::sum);
     }
+
+    // Append an impl name into the total stats.
+    // Skipped cases don't count.
+    if (!res.impl_name.empty()) bs.impl_names[res.impl_name]++;
 }
 
 /* misc */

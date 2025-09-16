@@ -21,6 +21,7 @@
 #include "utils/fill.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
+#include "utils/summary.hpp"
 
 #include "dnnl_common.hpp"
 
@@ -496,6 +497,10 @@ summary_t parse_summary_str(const std::string &s) {
         auto option = parser::get_substr(subs, subs_pos, '\0');
         if (option == "failures") {
             v.failed_cases = !negate_option;
+        } else if (option == "impl") {
+            v.impl_names = !negate_option;
+        } else if (option == "impl-csv") {
+            v.impl_names_csv = !negate_option;
         } else {
             BENCHDNN_PRINT(0,
                     "Error: unsupported option-value combination "

@@ -37,15 +37,8 @@ struct simple_t : public primitive_t {
         using zeropad::pd_t::pd_t;
 
         DECLARE_COMMON_PD_T("ocl:simple:any", simple_t);
-        status_t init(impl::engine_t *engine) {
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
-            VDISPATCH_ZERO_PAD(intel_engine->mayiuse_sub_group(16),
-                    VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup(16)");
-            return status::success;
-        }
+        status_t init(impl::engine_t *engine) { return status::success; }
     };
-
-    ;
 
     status_t init(impl::engine_t *engine) override {
         compute::kernel_ctx_t kernel_ctx;
@@ -59,8 +52,11 @@ struct simple_t : public primitive_t {
         kernel_ = kernels[0];
         kernel_subg16_ = kernels[1];
         kernel_subg16_mask_and_clear_dt_1b_ = kernels[2];
+        auto *compute_engine = utils::downcast<intel::engine_t *>(engine);
 
-        if (!kernel_ || !kernel_subg16_ || !kernel_subg16_mask_and_clear_dt_1b_)
+        can_use_subg16_ = compute_engine->mayiuse_sub_group(16);
+
+        if (!kernel_ && !kernel_subg16_ && !kernel_subg16_mask_and_clear_dt_1b_)
             return status::runtime_error;
         return status::success;
     }
@@ -75,6 +71,7 @@ private:
     status_t execute_subg_16_mask_and_clear_dt_1B(const exec_ctx_t &ctx,
             const memory_desc_wrapper &mdw,
             const blocking_desc_t &blocking_desc) const;
+    bool can_use_subg16_ = false;
     compute::kernel_t kernel_;
     compute::kernel_t kernel_subg16_;
     compute::kernel_t kernel_subg16_mask_and_clear_dt_1b_;

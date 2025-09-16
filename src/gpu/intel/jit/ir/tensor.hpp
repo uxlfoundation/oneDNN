@@ -333,14 +333,13 @@ public:
 
         expr_t off = 0;
         auto _args = args;
-        for (auto &eb : enumerated_blocks()) {
-            auto &b = eb.second;
+        for (auto &b : blocks()) {
             if (!_args.has(b.dim)) continue;
             auto &idx = _args[b.dim];
             if (is_zero(idx)) continue;
 
             // Do not use modulus for outermost blocks.
-            auto i = is_outermost(eb) ? idx : (idx % b.block);
+            auto i = is_outermost(b) ? idx : (idx % b.block);
             off = i * dim_t(b.stride) + off;
             idx /= b.block;
         }
@@ -379,6 +378,7 @@ public:
     int nblocks() const { return (int)blocks().size(); }
 
     const std::vector<layout_block_t> &blocks() const { return blocks_; }
+    std::vector<layout_block_t> &blocks() { return blocks_; }
 
     const layout_block_t &operator[](size_t idx) const { return blocks_[idx]; }
     layout_block_t &operator[](size_t idx) { return blocks_[idx]; }
@@ -462,10 +462,9 @@ public:
         std::string ret;
         stride_t dense_stride(1);
         pvar_map_t<bool> seen;
-        for (auto &eb : enumerated_blocks()) {
-            auto &b = eb.second;
+        for (auto &b : blocks()) {
             std::string b_str;
-            if (dnnl_style && is_outermost(eb)) {
+            if (dnnl_style && is_outermost(b)) {
                 b_str += to_str(b.dim, seen.get(b.dim, false));
             } else {
                 b_str = std::to_string(b.block);
@@ -496,22 +495,6 @@ public:
     }
 
     IR_DEFINE_DUMP()
-
-    // Returns a vector of <block index, block> pairs.
-    // The innermost block (first) has index 0.
-    std::vector<std::pair<int, layout_block_t>> enumerated_blocks() const {
-        std::vector<std::pair<int, layout_block_t>> ret;
-        ret.reserve(blocks_.size());
-        for (int i = 0; i < int(blocks_.size()); i++) {
-            ret.emplace_back(i, blocks_[i]);
-        }
-        return ret;
-    }
-
-    // eb is <block index, block> pair, see enumerated_blocks().
-    bool is_outermost(const std::pair<int, layout_block_t> &eb) const {
-        return is_outermost(eb, blocks_);
-    }
 
     bool has_zero_offset() const { return offset_.is_equal(expr_t(0)); }
 
@@ -600,8 +583,8 @@ public:
     // Returns an equivalent layout where the specified block is split into two.
     // block0 - inner block size.
     // block1 - outer block size.
-    layout_t split_block(const std::pair<int, layout_block_t> &eb, dim_t block0,
-            dim_t block1) const;
+    layout_t split_block(
+            const layout_block_t &b, dim_t block0, dim_t block1) const;
 
     // Splits blocks so that they can be used to form `multi_blocks` without
     // crossing the block boundaries. `multi_blocks` are ordered from innermost
@@ -736,8 +719,7 @@ public:
         tile_t dims;
         coord_t start;
         auto rem_tile = tile;
-        for (auto &eb : enumerated_blocks()) {
-            auto &b = eb.second;
+        for (auto &b : blocks()) {
             if (b.block == 1) continue;
 
             dim_t &e = rem_tile[b.dim];
@@ -745,7 +727,7 @@ public:
                 if (e % b.block == 0) {
                     e /= b.block;
                 } else if (b.block % e == 0) {
-                    auto tmp_layout = split_block(eb, e, b.block / e);
+                    auto tmp_layout = split_block(b, e, b.block / e);
                     return tmp_layout.split(tile, grid, outer_blocks);
                 } else {
                     return tile_coord_t::invalid();
@@ -759,7 +741,7 @@ public:
                     if (outer_blocks) outer_blocks->push_back(b);
                 } else if (b.block % next_chunk == 0 && next_chunk != 1) {
                     auto tmp_layout
-                            = split_block(eb, next_chunk, b.block / next_chunk);
+                            = split_block(b, next_chunk, b.block / next_chunk);
                     return tmp_layout.split(tile, grid, outer_blocks);
                 } else {
                     return tile_coord_t::invalid();
@@ -786,10 +768,9 @@ public:
 
         for (auto &d : tile) {
             dim_t dim = tile[d];
-            for (auto &eb : enumerated_blocks()) {
-                auto &b = eb.second;
+            for (auto &b : blocks()) {
                 if (b.dim != d) continue;
-                int block_idx = eb.first;
+                auto block_idx = get_idx(b);
                 if (b.block >= dim) {
                     gpu_assert(b.block % dim == 0);
                     sub_blocks[block_idx] = b.block / dim;
@@ -840,12 +821,14 @@ public:
         return true;
     }
 
-    // eb is <block index, block> pair, see enumerated_blocks().
-    static bool is_outermost(const std::pair<int, layout_block_t> &eb,
-            const std::vector<layout_block_t> &blocks) {
-        auto &dim = eb.second.dim;
-        for (int i = 0; i < int(blocks.size()); i++) {
-            if (blocks[i].dim == dim && i > eb.first) return false;
+    size_t get_idx(const layout_block_t &b) const {
+        gpu_assert(&blocks().front() <= &b && &b <= &blocks().back());
+        return &b - &blocks().front();
+    }
+
+    bool is_outermost(const layout_block_t &block) const {
+        for (size_t i = get_idx(block) + 1; i < blocks().size(); i++) {
+            if (blocks()[i].dim == block.dim) return false;
         }
         return true;
     }

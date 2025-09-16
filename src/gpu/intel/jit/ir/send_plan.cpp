@@ -1201,12 +1201,11 @@ public:
             mods[i] = off[i];
         modulus_t ret = base;
         std::vector<bool> ok(layout.ndims(), true);
-        for (auto &eb : layout.enumerated_blocks()) {
-            auto &b = eb.second;
+        for (auto &b : layout.blocks()) {
             if (b.block == 1) continue;
             auto &m = mods[b.dim];
             ret += (m % b.block) * (int64_t)b.stride;
-            if (!layout.is_outermost(eb)) m /= (int64_t)b.block;
+            if (!layout.is_outermost(b)) m /= (int64_t)b.block;
         }
         return ret * layout.type().size();
     }
@@ -1467,20 +1466,19 @@ private:
         stride_t stride = 1;
         std::vector<dim_t> dims(layout.ndims(), 1);
         inner_idx = (int)layout.blocks().size();
-        for (auto &eb : layout.enumerated_blocks()) {
-            auto &b = eb.second;
+        for (auto &b : layout.blocks()) {
             if (b.stride != stride) {
-                inner_idx = eb.first;
+                inner_idx = layout.get_idx(b);
                 break;
             }
             dim_t factor;
             if (has_vidx_mask(mask_descs_, b.dim, dims[b.dim.index()], b.block,
                         factor)) {
-                inner_idx = eb.first;
+                inner_idx = layout.get_idx(b);
                 if (factor == 1) return layout;
                 inner_idx++;
                 if (factor != b.block)
-                    return layout.split_block(eb, factor, b.block / factor);
+                    return layout.split_block(b, factor, b.block / factor);
             }
             stride *= b.block;
             dims[b.dim] *= b.block;
@@ -1555,8 +1553,7 @@ private:
         outer_idx = best_idx + 1;
         if (!blocks.empty() && best_factor != blocks[best_idx].block) {
             auto &b = blocks[best_idx];
-            return layout.split_block(std::make_pair(best_idx, b), best_factor,
-                    b.block / best_factor);
+            return layout.split_block(b, best_factor, b.block / best_factor);
         }
         return layout;
     }
@@ -2612,8 +2609,7 @@ send_group_t init_scattered(const view_info_t &info,
             gpu_assert(reg_layout.nblocks() > 0);
             auto &b0 = reg_layout[0];
             int inner = slot_size * type_packing / type_size;
-            reg_layout
-                    = reg_layout.split_block({0, b0}, inner, b0.block / inner);
+            reg_layout = reg_layout.split_block(b0, inner, b0.block / inner);
             int stride1 = ir_utils::safe_divide(
                     slot_stride * type_packing, type_size);
             reg_layout = make_strided(reg_layout, stride1, 1);

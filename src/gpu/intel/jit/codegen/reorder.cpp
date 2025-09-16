@@ -654,21 +654,14 @@ layout_t reorder_impl_t::make_compact_layout(
         dense_output_stride = 2;
 
     auto dense = [&](dim_t stride) -> layout_t {
-        using block_info_t = std::pair<size_t, layout_block_t>;
-        auto by_stride = [](const block_info_t &l, const block_info_t &r) {
-            return l.second.stride < r.second.stride;
-        };
-
-        auto blocks = layout.enumerated_blocks();
-        if (blocks.empty()) return layout;
-        std::sort(blocks.begin(), blocks.end(), by_stride);
-        const dim_t inner_stride = blocks.front().second.stride;
-        std::vector<layout_block_t> new_blocks(blocks.size());
-        for (auto &eb : blocks) {
-            eb.second.stride = eb.second.stride * stride / inner_stride;
-            new_blocks[eb.first] = eb.second;
-        }
-        return {type, new_blocks, 0, layout.ndims(), /*do_normalize=*/false};
+        if (!layout.nblocks()) return layout;
+        auto blocks = layout.blocks();
+        stride_t inner_stride = stride_t::max();
+        for (auto &b : blocks)
+            if (b.stride < inner_stride) inner_stride = b.stride;
+        for (auto &b : blocks)
+            b.stride = b.stride * stride / inner_stride;
+        return {type, blocks, 0, layout.ndims(), /*do_normalize=*/false};
     }(dense_output_stride);
     auto dense_size = dense.elems() * type.size() / type.packing()
             * dense_output_stride;

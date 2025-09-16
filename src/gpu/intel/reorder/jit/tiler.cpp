@@ -157,9 +157,8 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
     // Pad src/dst layouts to match each other.
     auto pad_layout = [&](layout_t &l) {
         std::vector<layout_block_t> padded_blocks;
-        for (auto &eb : l.enumerated_blocks()) {
-            auto b = eb.second;
-            if (l.is_outermost(eb)) {
+        for (auto &b : l.blocks()) {
+            if (l.is_outermost(b)) {
                 dim_t inner = l.elems(b.dim) / b.block;
                 b.block = ir_utils::safe_divide(dims[b.dim], inner);
             }

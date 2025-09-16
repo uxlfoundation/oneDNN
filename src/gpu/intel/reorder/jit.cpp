@@ -115,9 +115,8 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
         dims[i] = std::max(src_layout.elems(i), dst_layout.elems(i));
 
     auto check_layout = [&](const layout_t &l) {
-        for (auto &eb : l.enumerated_blocks()) {
-            auto &b = eb.second;
-            if (l.is_outermost(eb)) {
+        for (auto &b : l.blocks()) {
+            if (l.is_outermost(b)) {
                 dim_t inner = l.elems(b.dim) / b.block;
                 if (dims[b.dim] % inner) return false;
             }

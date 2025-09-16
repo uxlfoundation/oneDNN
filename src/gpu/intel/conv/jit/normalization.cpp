@@ -53,8 +53,7 @@ layout_t split_dimension(
             = ir_utils::safe_divide(_layout.elems(dim), outer_block);
     auto layout = insert_dimension(_layout, dim);
     std::vector<layout_block_t> new_blocks;
-    for (auto &eb : layout.enumerated_blocks()) {
-        auto &b = eb.second;
+    for (auto &b : layout.blocks()) {
         if (b.dim.index() != dim.index() + 1) {
             new_blocks.push_back(b);
             continue;

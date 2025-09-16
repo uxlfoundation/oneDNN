@@ -844,6 +844,22 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
             if (consumers.size() != 1) return status::success;
             auto &post_op = consumers[0].get_op();
 
+            // For binary ops, fusion on CPU is only allowed when no
+            // broadcasting occurs. If broadcasting is needed, the reference
+            // path is used, which results in suboptimal performance for fusion
+            // compared to executing the ops separately.
+            // TODO: Enabling the fusion when broadcasting is optimized in binary.
+            if (base_op_kind == op_kind::dnnl_binary
+                    && sg->get_engine_kind() == engine_kind::cpu) {
+                auto in0 = op->get_input_value(0);
+                auto in1 = op->get_input_value(1);
+                auto in0_dims = ltw(in0->get_logical_tensor()).vdims();
+                auto in1_dims = ltw(in1->get_logical_tensor()).vdims();
+                auto in1_nelems = ltw(in1->get_logical_tensor()).nelems();
+                if (in1_nelems != 1 && in0_dims != in1_dims)
+                    return status::success;
+            }
+
             // check if fusible
             // TODO(qun) make sure bn only fuse relu
             auto post_op_kind = post_op.get_kind();

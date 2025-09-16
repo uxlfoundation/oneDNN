@@ -1,5 +1,16 @@
 # Summary information
 
+## Introduction
+Benchdnn is designed to operate with batch files, and while some of them can be
+small, some of them might be really large. While benchdnn provides tools to get
+information from a single test case, it might be challenging to acquire the
+interested data from the whole batch file, e.g., when running the benchmark
+manually, the screen buffer may not fit the whole output and the data is simply
+lost if not redirected to the file.
+
+This is where the summary options come in handy to provide the batch level
+statistics.
+
 ## Usage
 ```
     --summary=[no-]SETTING1[+[no-]SETTING2...]
@@ -7,30 +18,31 @@
 
 The `--summary` knob is a global state of benchdnn and provides the summary
 statistics at the end of the run. Different options are separated with `+`
-delimiter. To negate the effect of the option, use the "no-" prefix in front of
-the option value.
+delimiter. To negate the effect of the particular summary option, use the "no-"
+prefix in front of the option value.
 
 If the same setting is specified multiple times, only the latter value is
 considered.
 
 ## Failed cases summary
 
-### Introduction
-A batch file can contain a large number of test cases. Running the batch file
-may result in the data in the beginning of the list getting lost due to the
-short session screen buffer. Even if the buffer fits all the test cases in it,
-to find the specific failed or unimplemented cases in the middle of the output
-usually requires additional steps such as copying the whole screen buffer to a
-memory buffer, collecting the data in a file, and using the search functionality
-to scan through the file.
-
-The `failures` knob can improve usability in such scenarios.
-
 ### Usage
 ```
     --summary=[no-]failures
 ```
 
-By default, you can see the summary with up to ten failed cases.
+This knob provides a list of failures up to ten entries starting from the
+beginning of the run to help to identify problematic cases during the run
+without necessity to process the whole output manually. Enabled by default.
 
-To disable the summary output, use the "no-failures" input value.
+## Implementations summary
+
+### Usage
+```
+    --summary=[no-]impl
+    --summary=[no-]impl-csv
+```
+
+This knob provides a list of implementation names and the number of hits used
+for problems. A table view is enabled by default, and CSV-style output is
+disabled by default.

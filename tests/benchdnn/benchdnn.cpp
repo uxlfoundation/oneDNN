@@ -24,6 +24,7 @@
 #include "dnnl_common.hpp"
 #include "dnnl_memory.hpp"
 #include "utils/parser.hpp"
+#include "utils/summary.hpp"
 
 #include "binary/binary.hpp"
 #include "bnorm/bnorm.hpp"
@@ -58,7 +59,6 @@ bool canonical {false};
 bool mem_check {true};
 std::string skip_impl;
 stat_t benchdnn_stat {0};
-summary_t summary {};
 std::string driver_name;
 
 double max_ms_per_prb {default_max_ms_per_prb};
@@ -160,6 +160,10 @@ int main(int argc, char **argv) {
 
     total_time.stamp();
 
+    print_impl_names_summary();
+    print_impl_names_csv_summary();
+
+    // Failed cases summary.
     if (has_bench_mode_bit(mode_bit_t::corr) && summary.failed_cases
             && !benchdnn_stat.failed_cases.empty()) {
         printf("===========================================================\n");

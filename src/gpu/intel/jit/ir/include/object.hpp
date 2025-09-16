@@ -310,9 +310,16 @@ public:
 
 #undef DECLARE_BINARY_ASSIGN_OPERATOR
 
-    // Returns a pointer shifted by `off` bytes relative to this pointer. The
-    // base expression must be a pointer.
+    // Depending on the base expression type:
+    // - If the base expression is of a pointer type: returns a pointer shifted
+    //   by `off` elements relative to the base pointer.
+    // - If the base expression is a shuffle expression: returns the `off`-th
+    //   component of this shuffle. `off` msut be a constant.
     expr_t operator[](const expr_t &off) const;
+
+    // Returns a pointer type expression pointing to this variable. The base
+    // expression must be of var_t or ref_t type.
+    expr_t ptr(const expr_t &off = expr_t(0)) const;
 };
 
 bool is_const(const expr_t &e);

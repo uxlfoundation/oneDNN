@@ -282,9 +282,16 @@ void normalize_ptr(const type_t &type, expr_t &base_expr, expr_t &off) {
     if (base_expr.is<ptr_t>()) {
         off = const_fold_non_recursive(base_expr.as<ptr_t>().off + off);
         base_expr = base_expr.as<ptr_t>().base;
+        return;
     }
-    gpu_assert(to_cpp<int64_t>(off) % type.scalar().size() == 0)
-            << "Incompatible offset: " << off;
+    gpu_assert(is_const(off)) << "var/ref requires constant offset.";
+    if (auto *ref = base_expr.as_ptr<ref_t>()) {
+        off = const_fold_non_recursive(ref->off + off);
+        base_expr = ref->var;
+        return;
+    }
+    if (base_expr.is<var_t>()) return;
+    gpu_error_not_expected() << "Unexpected expression: " << base_expr.str();
 }
 
 expr_t linear_t::to_expr() const {

@@ -151,7 +151,8 @@ struct ctx_t {
         auto elems = std::max(into<int>(layout.type().elems() * layout.elems()),
                 grf_size() / layout.type().scalar().size());
         auto t = layout.type()[elems].with_attr(attr);
-        return {def(name, t, value, /*force_alloc=*/!new_ir_api_), layout};
+        auto buf = def(name, t, value, /*force_alloc=*/!new_ir_api_).ptr();
+        return {buf, layout};
     }
 
     expr_t let(
@@ -356,7 +357,7 @@ tensor_t def(const std::string &name, layout_t layout, const expr_t &value,
                 default_ctx().slm_byte_offset(), layout.type().size());
         layout.set_offset(off);
         default_ctx().reserve_slm(bytes);
-        return tensor_t(buf, layout);
+        return tensor_t(buf.ptr(), layout);
     }
     return default_ctx().def(name, layout, attr);
 }
@@ -423,8 +424,8 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
     auto type = g.type;
 
     v2::for_each(operation_tile, tile, [&](const icoord_t &coord) {
-        auto buffer = is_prefetch ? expr_t()
-                                  : t.buf[t.layout.offset_in_bytes(coord)];
+        auto buffer
+                = is_prefetch ? expr_t() : t.buf[t.layout.offset<int>(coord)];
         auto width = !w_idx.is_undef()
                 ? std::min(tile[w_idx], operation_tile[w_idx] - coord[w_idx])
                 : 1;
@@ -504,8 +505,8 @@ void block_2d_send(const conf_2d_t &conf, const tensor_t &t,
     auto tile = conf.get_tile({w_idx, h_idx});
 
     v2::for_each(operation_tile, tile, [&](const icoord_t &coord) {
-        auto buffer = is_prefetch ? expr_t()
-                                  : t.buf[t.layout.offset_in_bytes(coord)];
+        auto buffer
+                = is_prefetch ? expr_t() : t.buf[t.layout.offset<int>(coord)];
         int width = into<int>(
                 std::min(tile[w_idx], operation_tile[w_idx] - coord[w_idx]));
         int height = into<int>(
@@ -629,11 +630,11 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
                 for (auto &d : coord) {
                     coord[d] = coord[d] % layout.tile().get(d, coord[d] + 1);
                 }
-                return layout.offset_in_bytes(coord);
+                return layout.offset<int>(coord);
             };
             auto a_off = get_offset(A.layout, base + coord);
             auto b_off = get_offset(B.layout, base + coord);
-            auto c_off = C.layout.offset_in_bytes(base + coord);
+            auto c_off = C.layout.offset<int>(base + coord);
             auto dst = C.buf[c_off];
             auto src1 = A.buf[a_off];
             auto src2 = B.buf[b_off];
@@ -672,9 +673,9 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
                     C.layout.type(), simd, A.layout.type(), a_stride,
                     B.layout.type(), b_stride);
 
-            auto a_off = A.layout.offset_in_bytes(base + coord);
-            auto b_off = B.layout.offset_in_bytes(base + coord);
-            auto c_off = C.layout.offset_in_bytes(base + coord);
+            auto a_off = A.layout.offset<int>(base + coord);
+            auto b_off = B.layout.offset<int>(base + coord);
+            auto c_off = C.layout.offset<int>(base + coord);
             auto dst = C.buf[c_off];
             auto src1 = A.buf[a_off];
             auto src2 = B.buf[b_off];
@@ -711,9 +712,9 @@ void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
     auto subtile_elems = matching_subtile.elems();
 
     v2::for_each(tile, matching_subtile, [&](const icoord_t &coord) {
-        auto offd = dst.layout.offset_in_bytes(coord);
-        auto off0 = src0.layout.offset_in_bytes(coord);
-        auto off1 = src1.layout.offset_in_bytes(coord);
+        auto offd = dst.layout.offset<int>(coord);
+        auto off0 = src0.layout.offset<int>(coord);
+        auto off1 = src1.layout.offset<int>(coord);
 
         dim_t simd = default_ctx().simd();
         for (int idx = 0; idx < subtile_elems; idx += simd) {

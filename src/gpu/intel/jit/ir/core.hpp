@@ -733,7 +733,7 @@ private:
 // Pointer expression: (base_ptr + off).
 class ptr_t : public expr_iface_t<ptr_t> {
 public:
-    // off - offset in bytes.
+    // off - offset in elements of the base type.
     static expr_t make(const expr_t &base, const expr_t &off) {
         return expr_t(new ptr_t(base, off));
     }
@@ -757,7 +757,7 @@ public:
 
 private:
     ptr_t(const expr_t &base, const expr_t &off)
-        : expr_iface_t(base.type()), base(base), off(off) {
+        : expr_iface_t(base.type().with_ptr()), base(base), off(off) {
         normalize(this->base, this->off);
     }
 };
@@ -1025,6 +1025,15 @@ private:
         gpu_assert(off + elems <= var.type().elems())
                 << "Incompatible (off, elems): (" << off << ", " << elems
                 << "), the base type: " << var.type().str();
+        normalize();
+    }
+
+    void normalize() {
+        if (var.is<var_t>()) return;
+        auto *ref = var.as_ptr<ref_t>();
+        gpu_assert(ref) << "Expected var or ref, got: " << var.str();
+        var = ref->var;
+        off += ref->off;
     }
 };
 
@@ -1119,7 +1128,7 @@ inline int to_int(const expr_t &e) {
     return to_cpp<int>(e);
 }
 
-// Returns a shifted pointer with base `a` (pointer) and offset `b` (in bytes).
+// Returns a shifted pointer with base `a` (pointer) and offset `b` (in elements).
 // shift_ptr(op, a, b) returns &(a op b) in C++ terms (op is either addition or
 // subtraction).
 expr_t shift_ptr(op_kind_t op_kind, const expr_t &a, const expr_t &b);

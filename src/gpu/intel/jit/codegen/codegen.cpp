@@ -1127,8 +1127,10 @@ public:
 
         gpu_assert(base_op.is_reg_buf_data());
 
-        int off = to_cpp<int>(obj.off);
-        bind(obj, base_op.reg_buf_data().format(off, ngen::DataType::ub));
+        int elem_off = to_cpp<int>(obj.off);
+        int byte_off = ir_utils::safe_divide(
+                elem_off * obj.type.scalar().bitsize(), 8);
+        bind(obj, base_op.reg_buf_data().format(byte_off, ngen::DataType::ub));
     }
 
     void _visit(const shuffle_t &obj) override {

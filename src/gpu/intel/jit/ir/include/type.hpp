@@ -315,30 +315,37 @@ public:
     type_t with_elems(int new_elems) const {
         type_t copy = *this;
         copy.elems_ = new_elems;
+        copy.check();
         return copy;
     }
 
     type_t with_ptr() const {
         type_t copy = *this;
         copy.attr_ |= attr_t::ptr;
+        copy.elems_ = 1;
+        copy.check();
         return copy;
     }
 
     type_t with_attr(attr_t attr) const {
         type_t copy = *this;
         copy.attr_ = attr;
+        if (copy.is_ptr()) copy.elems_ = 1;
+        copy.check();
         return copy;
     }
 
     type_t with_simd() const {
         type_t copy = *this;
         copy.attr_ |= attr_t::simd;
+        copy.check();
         return copy;
     }
 
     type_t with_slm() const {
         type_t copy = *this;
         copy.attr_ |= attr_t::slm;
+        copy.check();
         return copy;
     }
 
@@ -349,6 +356,7 @@ public:
 
     // Returns size in bits.
     int bitsize() const {
+        if (is_ptr()) return 64;
         // 8 elements occupy the same number of bytes that a single element
         // occupies in bits.
         constexpr int bits_per_byte = 8;
@@ -405,7 +413,9 @@ protected:
     };
 
     type_t(kind_t kind, uint32_t elems = 1, attr_t attr = attr_t::undef)
-        : kind_(kind), elems_(elems), attr_(attr) {}
+        : kind_(kind), elems_(elems), attr_(attr) {
+        check();
+    }
 
     kind_t kind() const { return kind_; }
 
@@ -415,6 +425,13 @@ private:
     kind_t kind_ = kind_t::undef;
     int elems_ = 0;
     attr_t attr_ = attr_t::undef;
+
+    void check() const {
+        if (is_ptr())
+            gpu_assert(elems_ == 1)
+                    << "Pointer type must have default elems value.";
+        ;
+    }
 };
 
 } // namespace jit

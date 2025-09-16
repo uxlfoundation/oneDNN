@@ -28,6 +28,7 @@ namespace jit {
 namespace dsl {
 
 using jit::operator<<;
+using jit::ir_utils::operator<<;
 
 static type_t _bool = type_t::_bool();
 static type_t s8 = type_t::s8();

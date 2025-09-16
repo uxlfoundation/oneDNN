@@ -52,7 +52,10 @@ struct tensor_t {
         // coord is not measured relative to tile size
         for (auto &var : coord)
             gpu_assert(coord[var] % tile[var] == 0);
-        return {buf[layout.offset_in_bytes(coord)], layout.sub(tile)};
+        return {subbuf(coord), layout.sub(tile)};
+    }
+    expr_t subbuf(const icoord_t &coord) const {
+        return buf[layout.offset<int>(coord)];
     }
 
     std::string str() const {

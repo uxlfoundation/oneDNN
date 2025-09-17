@@ -794,10 +794,7 @@ void CopyPlan::planTypeConversions()
             if (planShflUpconvertXe3p(i))
                 continue;
 #endif
-        if (isInt4(st) && isInt4(dt)) {
-            copyThrough(i, DataType::w);
-            rerun = true;
-        } else if (isInt4(st) && isInt(dt)) {
+        if (isInt4(st) && isInt(dt)) {
             planInt4Upconversion(i);
             rerun = true;
         } else if (isInt(st) && isInt4(dt)) {
@@ -1540,7 +1537,11 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
     }
     auto dst = i.dst;
     auto tmp = newTemp(DataType::uw, simd, 1);
+    auto ddst = CopyOperand(i.dst);
+    auto ssrc = CopyOperand(i.src0);
 
+    int sStride = ssrc.stride * getBytes(ssrc.type) * 2;
+    int dStride = ddst.stride / (getBytes(ssrc.type) * 2);
     if (i.sat) {
         auto ie = splitMultiple<3>(i);
         auto ssrc = i.src0;
@@ -1578,20 +1579,79 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
 
     auto ie = splitMultiple<5>(i);
     auto osrc = i.src0;
-    auto ssrc = newTemp(DataType::uw, simd, 1);
-    auto ddst = i.dst;
+    auto stmp = newTemp(DataType::uw, simd, 1);
 
     ie[0]->op = Opcode::mov;
     ie[0]->dst = ssrc;
     ie[0]->src0 = osrc;
 
-    if (simd > 1 && ddst.stride == 1) {
+    if(ddst.stride >= sStride && sStride > 1){
+        if(ddst.stride > sStride){
+            ie[0]->op = Opcode::mov;
+            ie[0]->simd = simd;
+            ie[0]->dst = tmp;
+            ie[0]->dst.type = DataType::ud;
+            ie[0]->dst.stride = 1;
+            ie[0]->src0 = Immediate::d(0);
+
+            int tmp_off = (ddst.offset / 4) * 2;
+            ie[1]->op = Opcode::mov;
+            ie[1]->simd = simd;
+            ie[1]->dst = tmp;
+            ie[1]->dst.type = ssrc.type;
+            ie[1]->dst.stride = dStride;
+	        ie[1]->dst.offset = tmp_off;
+            ie[1]->src0 = ssrc;
+
+	        tmp.type = ssrc.type;
+	        tmp.stride = ssrc.stride;
+	        ssrc = tmp;
+	    } else {
+            ie[0]->invalidate();
+            ie[1]->invalidate();
+	    }
+
+        int tmp_off = ddst.offset / 4;
+        if(ddst.offset % 4 ){
+            ie[2]->op = Opcode::shl;
+            ie[2]->simd = simd;
+            ie[2]->dst = ssrc;
+            ie[2]->dst.type = DataType::uw;
+            ie[2]->dst.stride = 2;
+	        ie[2]->dst.offset = tmp_off;
+            ie[2]->src0 = ssrc;
+            ie[2]->src0.type = DataType::uw;
+            ie[2]->src0.stride = 2;
+	        ie[2]->src0.offset = tmp_off;
+            ie[2]->src1 = Immediate::uw(0x4 * (ddst.offset % 4));
+	    }else{
+            ie[2]->invalidate();
+	    }
+
+        ie[3]->op = Opcode::or_;
+        ie[3]->simd = simd;
+        ie[3]->dst = ddst;
+        ie[3]->dst.type = DataType::uw;
+        ie[3]->dst.stride = ssrc.stride;
+        ie[3]->dst.offset = ddst.offset/4;
+        ie[3]->src0 = ssrc;
+        ie[3]->src0.type = DataType::uw;
+        ie[3]->src0.stride = ssrc.stride;
+        ie[3]->src0.offset = tmp_off;
+        ie[3]->src1 = ddst;
+        ie[3]->src1.type = DataType::uw;
+        ie[3]->src1.stride = ssrc.stride;
+        ie[3]->src1.offset = ddst.offset/4;
+
+        ie[4]->invalidate();
+        ie[5]->invalidate();
+    } else if (simd > 1 && ddst.stride == 1) {
         ie[1]->op = Opcode::shl;
         ie[1]->simd = simd/2;
-        ie[1]->dst = ssrc;
+        ie[1]->dst = stmp;
         ie[1]->dst.offset = 1;
         ie[1]->dst.stride = 2;
-        ie[1]->src0 = ssrc;
+        ie[1]->src0 = stmp;
         ie[1]->src0.offset = 1;
         ie[1]->src0.stride = 2;
         ie[1]->src1 = Immediate::uw(0x4);
@@ -1600,9 +1660,9 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
         ie[2]->ctrl = 0xCA;
         ie[2]->simd = simd/2;
         ie[2]->dst = tmp;
-        ie[2]->src0 = ssrc;
+        ie[2]->src0 = stmp;
         ie[2]->src0.stride = 2;
-        ie[2]->src1 = ssrc;
+        ie[2]->src1 = stmp;
         ie[2]->src1.offset = 1;
         ie[2]->src1.stride = 2;
         ie[2]->src2 = Immediate::uw(0xF0);
@@ -1655,9 +1715,9 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
         if (offset) {
             ie[2]->op = Opcode::shl;
             ie[2]->simd = simd;
-            ie[2]->dst = ssrc;
+            ie[2]->dst = stmp;
             ie[2]->dst.stride = 1;
-            ie[2]->src0 = ssrc;
+            ie[2]->src0 = stmp;
             ie[2]->src0.stride = 1;
             ie[2]->src1 = 4;
         } else {
@@ -1670,7 +1730,7 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
             ie[3]->simd = simd;
             ie[3]->dst = tmp;
             ie[3]->src0 = tmp;
-            ie[3]->src1 = ssrc;
+            ie[3]->src1 = stmp;
             ie[3]->src2 = mask;
 
             ie[4]->op = Opcode::mov;
@@ -1688,7 +1748,7 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
             ie[3]->simd = simd;
             ie[3]->dst = ddst;
             ie[3]->src0 = tmp;
-            ie[3]->src1 = ssrc;
+            ie[3]->src1 = stmp;
             ie[3]->src2 = mask;
 
             ie[4]->invalidate();

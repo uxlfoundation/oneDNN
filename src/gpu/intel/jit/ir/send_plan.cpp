@@ -2608,7 +2608,7 @@ send_group_t init_scattered(const view_info_t &info,
     reg_layout = reg_layout.make_dense();
     if (slot_stride != slot_size) {
         if (slot_size * type_packing == type_size) {
-            reg_layout = reg_layout.make_strided(slot_stride / slot_size);
+            reg_layout = make_strided(reg_layout, slot_stride / slot_size);
         } else {
             gpu_assert(reg_layout.nblocks() > 0);
             auto &b0 = reg_layout.blocks()[0];
@@ -2617,7 +2617,7 @@ send_group_t init_scattered(const view_info_t &info,
                     = reg_layout.split_block({0, b0}, inner, b0.block / inner);
             int stride1 = ir_utils::safe_divide(
                     slot_stride * type_packing, type_size);
-            reg_layout = reg_layout.make_strided(stride1, 1);
+            reg_layout = make_strided(reg_layout, stride1, 1);
         }
     }
 

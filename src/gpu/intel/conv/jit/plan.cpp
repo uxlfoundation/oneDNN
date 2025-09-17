@@ -1287,7 +1287,7 @@ struct fma_context_t {
             bool is_a, const layout_t &layout) const {
         // mad with s8/u8 is not supported, promote to strided s16.
         if (layout.type().is_x8())
-            return layout.retype(type_t::s16()).make_strided(2);
+            return make_strided(layout.retype(type_t::s16()), 2);
         // mad with f16 requires aligned regioning for src1/src2.
         if (a_type.is_f16() && acc_type.is_f16()) {
             return layout.make_dense();
@@ -1366,7 +1366,7 @@ struct fma_context_t {
             auto abc_layout = mapper.map_from_bmnk(abc, bmnks, fma_layout, ret);
             if (layout.type().is_x8()) {
                 gpu_assert(abc_layout.type().is_s16());
-                abc_layout = abc_layout.make_strided(2);
+                abc_layout = make_strided(abc_layout, 2);
             }
             return abc_layout;
         }

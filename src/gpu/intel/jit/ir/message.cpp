@@ -971,9 +971,9 @@ std::vector<layout_t> access_builder_t::candidate_payload_layouts() const {
 
     // These payload layouts are to match payload for byte x {1,2} scattered
     // messages (they are dword-strided).
-    if (type_size == 2) ret.push_back(vlayout.make_strided(2));
+    if (type_size == 2) ret.push_back(make_strided(vlayout, 2));
     if (type_size == 1 && mem_type_.bitsize() == 8)
-        ret.push_back(vlayout.make_strided(4));
+        ret.push_back(make_strided(vlayout, 4));
 
     return ret;
 }

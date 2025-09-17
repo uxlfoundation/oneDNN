@@ -603,30 +603,6 @@ public:
         return with(new_blocks);
     }
 
-    layout_t make_strided(int _stride, int block_idx = 0) const {
-        auto new_blocks = blocks_;
-        int factor = 1;
-        for (int i = 0; i < (int)new_blocks.size(); i++) {
-            auto &b = new_blocks[i];
-            if (i == block_idx) {
-                int i_stride = (int)b.stride;
-                if (_stride % i_stride == 0) {
-                    factor = (_stride / i_stride);
-                } else if (i_stride % _stride == 0) {
-                    factor = -(i_stride / _stride);
-                } else {
-                    gpu_error_not_expected();
-                }
-            }
-            if (factor > 0) {
-                b.stride *= factor;
-            } else {
-                b.stride = ir_utils::safe_divide((dim_t)b.stride, -factor);
-            }
-        }
-        return with(new_blocks);
-    }
-
     layout_t make_with_block(const layout_t &inner) const {
         gpu_assert(type() == inner.type());
         auto cur_tile = tile();
@@ -999,6 +975,31 @@ T offset_bytes(const layout_t &layout, const coord_t &coord = {},
         bool ignore_offset = false) {
     return layout.offset<T>(coord, ignore_offset) * layout.type().size()
             / layout.type().packing();
+}
+
+inline layout_t make_strided(
+        const layout_t &layout, int _stride, int block_idx = 0) {
+    auto new_blocks = layout.blocks();
+    int factor = 1;
+    for (int i = 0; i < (int)new_blocks.size(); i++) {
+        auto &b = new_blocks[i];
+        if (i == block_idx) {
+            int i_stride = (int)b.stride;
+            if (_stride % i_stride == 0) {
+                factor = (_stride / i_stride);
+            } else if (i_stride % _stride == 0) {
+                factor = -(i_stride / _stride);
+            } else {
+                gpu_error_not_expected();
+            }
+        }
+        if (factor > 0) {
+            b.stride *= factor;
+        } else {
+            b.stride = ir_utils::safe_divide((dim_t)b.stride, -factor);
+        }
+    }
+    return layout.with(new_blocks);
 }
 
 memory_desc_t to_md(const layout_t &layout, const memory_desc_t &md_hint);

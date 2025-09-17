@@ -244,8 +244,7 @@ public:
 
         reg_buf_ = make_tmp_reg_buffer();
 
-        reg_layout_ = mem_view().create_dense_vlayout();
-        reg_layout_ = reg_layout_.retype(type_t::f32());
+        reg_layout_ = mem_view().create_dense_vlayout().with(type_t::f32());
 
         // If this is output and there are masked dimensions then this buffer
         // is computed via reduction. Extend layout to cover full masked_tile
@@ -289,7 +288,7 @@ public:
         if (!needs_load() || !needs_f32_convert()) return stmt_t();
 
         auto f32_buf = make_tmp_reg_buffer();
-        auto f32_layout = reg_layout_.retype(type_t::f32()).make_dense();
+        auto f32_layout = reg_layout_.with(type_t::f32()).make_dense();
 
         register_buffer(f32_buf, into<int>(size_bytes(f32_layout)));
 
@@ -988,7 +987,7 @@ private:
         // Initialize C stages.
         std::vector<c_stage_t> c_stages;
 
-        auto c_fx_layout = r2g.reg_layout().retype(post_op_type).make_dense();
+        auto c_fx_layout = r2g.reg_layout().with(post_op_type).make_dense();
         bool with_post_ops = !post_op_builders_.empty();
         int npost_ops = int(post_op_builders_.size());
 

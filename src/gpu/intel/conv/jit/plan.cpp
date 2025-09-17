@@ -689,7 +689,7 @@ reorder_plan_t create_reorder_plan(
     if (src == dst) return reorder_plan_t();
     if ((src.type() == dst.type()
                 || (src.type().is_f32() && dst.type().is_tf32()))
-            && src.retype(dst.type()) == dst)
+            && src.with(dst.type()) == dst)
         return reorder_plan_t();
 
     reorder_plan_t ret(hw);
@@ -1287,29 +1287,29 @@ struct fma_context_t {
             bool is_a, const layout_t &layout) const {
         // mad with s8/u8 is not supported, promote to strided s16.
         if (layout.type().is_x8())
-            return make_strided(layout.retype(type_t::s16()), 2);
+            return make_strided(layout.with(type_t::s16()), 2);
         // mad with f16 requires aligned regioning for src1/src2.
         if (a_type.is_f16() && acc_type.is_f16()) {
             return layout.make_dense();
         }
         if (layout.type().is_bf16() && !hw.systolic_support())
-            return layout.retype(type_t::f32()).make_dense();
+            return layout.with(type_t::f32()).make_dense();
         if (a_type.is_bf16()) {
             // bf16 mixed mode requires src1 to be converted to f32 when it's
             // broadcasted.
             if (is_a && is_src1_broadcast)
-                return layout.retype(type_t::f32()).make_dense();
+                return layout.with(type_t::f32()).make_dense();
             // bf16 mixed mode mad requires src1 to be packed
             if (is_a) return layout.make_dense();
             // bf16 mixed mode mad requires src2 to be f32.
-            return layout.retype(type_t::f32()).make_dense();
+            return layout.with(type_t::f32()).make_dense();
         }
         bool is_a_xf8_or_xf16_or_xf4 = (a_type.is_fp4() || a_type.is_fp8()
                 || a_type.is_bf16() || a_type.is_f16());
         bool is_b_xf8_or_xf16_or_xf4 = (b_type.is_fp4() || b_type.is_fp8()
                 || b_type.is_bf16() || b_type.is_f16());
         if (is_a_xf8_or_xf16_or_xf4 || is_b_xf8_or_xf16_or_xf4) {
-            return layout.retype(type_t::f32()).make_dense();
+            return layout.with(type_t::f32()).make_dense();
         }
         return layout;
     }
@@ -1341,12 +1341,12 @@ struct fma_context_t {
                 blocks.emplace_back(0, k_blk1);
             }
             auto bmnk_layout
-                    = mapper.map_to_bmnk(abc, bmnks, layout).retype(type);
+                    = mapper.map_to_bmnk(abc, bmnks, layout).with(type);
             auto fma_layout
                     = bmnk_layout.make_with_block(layout_t(type, blocks));
             auto abc_layout
                     = mapper.map_from_bmnk(abc, bmnks, fma_layout, layout);
-            if (cvt_f16) return abc_layout.retype(type_t::f16());
+            if (cvt_f16) return abc_layout.with(type_t::f16());
             return abc_layout;
         }
 

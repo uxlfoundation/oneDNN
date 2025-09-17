@@ -304,6 +304,12 @@ public:
         return ret;
     }
 
+    layout_t with(const type_t &new_type) const {
+        auto ret = *this;
+        ret.type_ = new_type;
+        return ret;
+    }
+
     bool is_empty() const {
         if (with_ndims()) {
             if (ndims() == 0) gpu_assert(blocks_.empty());
@@ -485,12 +491,6 @@ public:
 
     layout_t sub(const tile_coord_t &tile_coord) const {
         return sub(tile_coord.tile, tile_coord.coord);
-    }
-
-    layout_t retype(const type_t &new_type) const {
-        auto ret = *this;
-        ret.type_ = new_type;
-        return ret;
     }
 
     bool is_dense() const {
@@ -1372,7 +1372,7 @@ public:
 
     view_t retype(const type_t &new_type) const {
         auto ret = *this;
-        ret.tlayout_ = tlayout_.retype(new_type);
+        ret.tlayout_ = tlayout_.with(new_type);
         return ret;
     }
 

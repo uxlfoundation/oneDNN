@@ -573,7 +573,7 @@ private:
         if (x_reduce_type.is_undef())
             x_reduce_type = plan_.x2r.x_reduce.dst.type();
         layout_t x_reduce_reg_layout
-                = r2g.reg_layout().retype(x_reduce_type).make_dense();
+                = r2g.reg_layout().with(x_reduce_type).make_dense();
         stmt_t stmt = r2g.stmt();
         if (r2g.reg_layout() == x_reduce_reg_layout) {
             stmt = substitute(stmt, x_reduce_dummy_buf, x_reduce_buf);

@@ -517,7 +517,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
             *pd.invariant_dst_md(), *pd.invariant_dst_md(), view_mapper);
     stmt = stmt.append(create_epilogue_stmt(exec, ir_ctx, schedule,
             /*force_c_reorder=*/false, post_op_ctx, dst_thr_tile_coord,
-            write_layout.retype(acc_type.base()), dst_buf, acc_buf, buf_size));
+            write_layout.with(acc_type.base()), dst_buf, acc_buf, buf_size));
 
     loop_bound_counter_t lbc(schedule);
     auto exit_cond = (lbc.count(ow) >= prb.ow) ? (ow < prb.ow) : expr_t();

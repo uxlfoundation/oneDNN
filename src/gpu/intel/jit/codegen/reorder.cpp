@@ -636,7 +636,7 @@ layout_t reorder_impl_t::make_retyped_layout(
     if (layout.blocks().empty()) return layout;
     const int stride = into<int>(layout.blocks().front().stride);
     return make_strided(
-            layout.retype(type), stride * layout.type().size() / type.size());
+            layout.with(type), stride * layout.type().size() / type.size());
 }
 
 layout_t reorder_impl_t::make_compact_layout(

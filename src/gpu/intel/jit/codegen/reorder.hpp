@@ -382,7 +382,7 @@ private:
     bool layouts_compatible(const layout_t &a, const layout_t &b) const;
 
     reorder_operand_t init_operand(layout_t layout, const op_init_t &init) {
-        if (layout.type().is_tf32()) layout = layout.retype(type_t::f32());
+        if (layout.type().is_tf32()) layout = layout.with(type_t::f32());
         auto elems = size_in_elems(layout);
         auto dt = to_ngen(layout.type());
         auto buffer = init(into<int>(elems), dt);

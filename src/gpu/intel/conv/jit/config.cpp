@@ -791,10 +791,10 @@ status_t init_tensor_layouts(
     if (prb.is_bwd_w) {
         if (utils::one_of(prb.wei_data_type, data_type::bf16, data_type::f16,
                     data_type::f8_e5m2, data_type::f8_e4m3))
-            wei_layout = wei_layout.retype(type_t::f32());
+            wei_layout = wei_layout.with(type_t::f32());
         if (utils::one_of(prb.bia_data_type, data_type::bf16, data_type::f16,
                     data_type::f8_e5m2, data_type::f8_e4m3))
-            bia_layout = bia_layout.retype(type_t::f32());
+            bia_layout = bia_layout.with(type_t::f32());
     }
 
     src.set_compute_unnormalized(src_layout, src_tag);

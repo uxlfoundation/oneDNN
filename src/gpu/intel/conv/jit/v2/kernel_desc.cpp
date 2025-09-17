@@ -1036,7 +1036,7 @@ jit::layout_t get_kernel_layout(const std::string &name,
     }
     gpu_assert(!tag.is_empty()) << "Unknown tensor: " << name;
     auto layout = to_layout(tag, md, name == "wei" && !pd->with_groups());
-    if (layout.type() != tag.type()) layout = layout.retype(tag.type());
+    if (layout.type() != tag.type()) layout = layout.with(tag.type());
     return layout;
 }
 

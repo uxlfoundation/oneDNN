@@ -63,6 +63,7 @@ private:
         // this field is valid when logical tensor's
         // property is host_scalar
         int32_t s32_value = 0;
+        float f32_value;
         // TODO: add more dtype support
     } scalar_;
 };

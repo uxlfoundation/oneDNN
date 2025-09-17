@@ -470,6 +470,10 @@ static int init_memory(
     // Register device memory
     for (int i = 0; i < nhandles; i++) {
         size_t sz = dnnl_memory_desc_get_size_v2(md, i);
+        if (ret) {
+            DNN_SAFE(
+                    dnnl_memory_get_data_handle_v2(*ret, &handles[i], i), CRIT);
+        }
         memory_registry_t::get_instance().add_device(handles[i], sz);
     }
 
@@ -702,6 +706,14 @@ int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
                          dnnl_sycl_interop_usm, (int)handles.size(),
                          handles.data()),
                 CRIT);
+
+        // Register device memory, happens on CPU SYCL path.
+        for (int i = 0; i < nhandles; i++) {
+            size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
+            DNN_SAFE(dnnl_memory_get_data_handle_v2(m_, &handles[i], i), CRIT);
+            memory_registry_t::get_instance().add_device(handles[i], sz);
+        }
+
         return OK;
     }
 
@@ -976,8 +988,9 @@ int dnn_mem_t::cleanup() {
         const int nhandles = query_md_num_handles(md_);
         std::vector<void *> handles(nhandles);
         for (int i = 0; i < nhandles; i++) {
+            size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
             DNN_SAFE(dnnl_memory_get_data_handle_v2(m_, &handles[i], i), CRIT);
-            memory_registry_t::get_instance().remove_device(handles[i]);
+            memory_registry_t::get_instance().remove_device(handles[i], sz);
         }
     }
 

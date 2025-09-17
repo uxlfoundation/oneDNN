@@ -43,7 +43,7 @@ struct memory_registry_t {
     void add_device(void *ptr, size_t size);
 
     // Decreases the registered physically allocated memory on a device.
-    void remove_device(void *ptr);
+    void remove_device(void *ptr, size_t size);
 
     // Uses `size` as an upper limit to check if allocations fit the
     // expectation. The check takes into account `expected_trh_` which increases

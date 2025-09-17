@@ -439,12 +439,12 @@ private:
 
     int advance(std::vector<int> &idxs, int off_bytes) const {
         for (size_t i = 0; i < idxs.size(); i++) {
-            if (++idxs[i] < layout_.blocks()[i].block) break;
+            if (++idxs[i] < layout_[i].block) break;
             idxs[i] = 0;
         }
         int off = 0;
         for (size_t i = 0; i < idxs.size(); i++) {
-            int stride = (int)layout_.blocks()[i].stride;
+            int stride = (int)layout_[i].stride;
             off += idxs[i] * stride;
         }
         return utils::div_up(off * type().size(), type().packing());

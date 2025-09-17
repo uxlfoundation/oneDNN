@@ -740,9 +740,9 @@ private:
         auto comp_type = comp_layout_.type();
         auto real_zp = zp;
 
-        gpu_assert((int)comp_layout_.inner_stride() == 1);
+        gpu_assert(comp_layout_[0].stride == stride_t(1));
         gpu_assert(wei_type.is_s16());
-        gpu_assert((int)wei_layout_.inner_stride() == wei_stride);
+        gpu_assert(wei_layout_[0].stride == stride_t(wei_stride));
 
         auto ret = maybe_typecast_zp_src(
                 buf_mgr, zp_type, real_zp, (zp_stride) ? simd_ : 1);
@@ -1357,7 +1357,7 @@ private:
             const expr_t &c, const split_dispatcher_t &sd) const {
         auto comp_type = comp_layout_.type();
         auto c_type = c_layout_.type();
-        gpu_assert((int)comp_layout_.inner_stride() == 1);
+        gpu_assert(comp_layout_[0].stride == stride_t(1));
         auto comp_load = load_t::make(comp_type.with_elems(sd.simd()), comp, 0);
         auto c_load = load_t::make(c_type.with_elems(sd.simd()), c, 0);
         stmt_t c_update;

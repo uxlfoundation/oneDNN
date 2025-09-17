@@ -201,8 +201,8 @@ bool try_reinterpret_to_wider_type(layout_t &src, layout_t &dst,
     if (src.blocks().empty() || dst.blocks().empty()) return false;
     if (src.type() != dst.type()) return false;
 
-    auto &s0 = src.blocks()[0];
-    auto &d0 = dst.blocks()[0];
+    auto &s0 = src[0];
+    auto &d0 = dst[0];
     if (s0.dim != d0.dim) return false;
     if (int(s0.stride) != 1) return false;
     if (int(d0.stride) != 1) return false;
@@ -218,13 +218,13 @@ bool try_reinterpret_to_wider_type(layout_t &src, layout_t &dst,
     auto tile_ok = [&](const layout_t &l) {
         if (tile.is_empty()) return true;
         int factor = new_size / old_size;
-        if (tile[l.blocks()[0].dim] % factor != 0) return false;
+        if (tile[l[0].dim] % factor != 0) return false;
         return true;
     };
 
     auto strides_ok = [&](const layout_t &l) {
         for (int i = 1; i < int(l.blocks().size()); i++) {
-            auto &b = l.blocks()[i];
+            auto &b = l[i];
             if (int(b.stride) * old_size % new_size != 0) return false;
         }
         return true;

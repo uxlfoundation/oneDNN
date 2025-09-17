@@ -1464,8 +1464,8 @@ walk_order_t maybe_fixup_group_with_small_channels(
     const int g_dim_idx = 1;
     const int c_dim_idx = 2;
     if (layout.nblocks() <= 1) return walk_order;
-    auto &b0 = layout.blocks()[0];
-    auto &b1 = layout.blocks()[1];
+    auto &b0 = layout[0];
+    auto &b1 = layout[1];
     // Check that layout has groups followed by channels, i.e. *gc form.
     if (b0.dim.index() != c_dim_idx || b1.dim.index() != g_dim_idx)
         return walk_order;

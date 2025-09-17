@@ -380,6 +380,9 @@ public:
 
     const std::vector<layout_block_t> &blocks() const { return blocks_; }
 
+    const layout_block_t &operator[](size_t idx) const { return blocks_[idx]; }
+    layout_block_t &operator[](size_t idx) { return blocks_[idx]; }
+
     dim_t inner_block(const pvar_t &dim, bool skip_outer = true,
             bool inner_only = true) const {
         std::vector<dim_t> dim_blocks;
@@ -837,11 +840,6 @@ public:
         return true;
     }
 
-    stride_t inner_stride() const {
-        if (nblocks() == 0) return stride_t(1);
-        return blocks()[0].stride;
-    }
-
     // eb is <block index, block> pair, see enumerated_blocks().
     static bool is_outermost(const std::pair<int, layout_block_t> &eb,
             const std::vector<layout_block_t> &blocks) {
@@ -943,7 +941,7 @@ public:
         while (b == 1) {
             b_idx++;
             if (b_idx >= int(l_.blocks().size())) return false;
-            b = int(l_.blocks()[b_idx].block);
+            b = int(l_[b_idx].block);
         }
         return true;
     }
@@ -952,7 +950,7 @@ public:
         gpu_assert(has_next());
         while (block_ == 1) {
             block_idx_++;
-            block_ = int(l_.blocks()[block_idx_].block);
+            block_ = int(l_[block_idx_].block);
         }
         // Find smallest factor.
         for (int factor = 2; factor <= int(block_); factor++) {
@@ -969,7 +967,7 @@ public:
     tile_t tile() const {
         tile_t ret;
         for (int i = 0; i <= block_idx_; i++) {
-            auto &b = l_.blocks()[i];
+            auto &b = l_[i];
             dim_t b_block = b.block;
             if (i == block_idx_) b_block /= block_;
             ret[b.dim] *= b_block;

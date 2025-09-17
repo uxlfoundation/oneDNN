@@ -125,8 +125,8 @@ private:
         // Allow trivial tile for scalar dst.
         if (b.blocks().empty()) { return tile_t(dst_layout_.dims()); }
 
-        auto &a0 = a.blocks()[0];
-        auto &b0 = b.blocks()[0];
+        auto &a0 = a[0];
+        auto &b0 = b[0];
 
         bool ok = (a0.dim == b0.dim && a0.block == b0.block);
         if (!ok) {

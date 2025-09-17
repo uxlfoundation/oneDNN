@@ -71,7 +71,7 @@ public:
         if (max_tg % 8 != 0) return false;
 
         // only allow SIMD-aligned channel-first layouts
-        const auto &oc_blk = src.blocks()[0];
+        const auto &oc_blk = src[0];
         if ((oc_blk.dim.index() != 1) || (oc_blk.block % exec.simd()))
             return false;
 
@@ -239,8 +239,8 @@ public:
 
         const int src_type_size = src.type().size();
         const int acc_type_size = acc_type(1).size();
-        const dim_t oc_blk = src.blocks()[0].block;
-        const dim_t mb_blk = (is_blocked_by_mb()) ? src.blocks()[1].block : mb;
+        const dim_t oc_blk = src[0].block;
+        const dim_t mb_blk = (is_blocked_by_mb()) ? src[1].block : mb;
         // the constant being subtracted is heuristic
         const int regs_per_tile
                 = exec.regs() - (!is_scalar ? is_blocked_by_mb() ? 8 : 28 : 0);

@@ -879,10 +879,10 @@ std::string x2r_plan_t::str() const {
 int get_dpas_block_rcount(const layout_t &layout, const pvar_t &dim) {
     if (layout.nblocks() < 2) return 1;
 
-    auto &b0 = layout.blocks()[0];
+    auto &b0 = layout[0];
     if (b0.block * layout.type().size() > 32) return 1;
 
-    auto &b1 = layout.blocks()[1];
+    auto &b1 = layout[1];
     if (b1.dim != dim) return 1;
 
     int block_rcount = (int)b1.block;
@@ -1046,8 +1046,8 @@ std::vector<func_t> fma_plan_t::create_fma_funcs(const hw_t &hw) const {
     switch (fma_kind) {
         case fma_kind_t::mad: {
             int simd = max_bmn_blk();
-            int a_stride = is_a_broadcast() ? 0 : (int)a.inner_stride();
-            int b_stride = is_b_broadcast() ? 0 : (int)b.inner_stride();
+            int a_stride = is_a_broadcast() ? 0 : (int)a[0].stride;
+            int b_stride = is_b_broadcast() ? 0 : (int)b[0].stride;
             auto mad = mad_t::make(
                     hw, c.type(), simd, a.type(), a_stride, b.type(), b_stride);
             ret.push_back(mad);
@@ -2289,10 +2289,10 @@ private:
             return plan_status_t::ab_layout_k_blocks_mismatch;
 
         if (a_k.nblocks() == 2 && b_k.nblocks() == 2) {
-            auto &a0 = a_k.blocks()[0];
-            auto &a1 = a_k.blocks()[1];
-            auto &b0 = b_k.blocks()[0];
-            auto &b1 = b_k.blocks()[1];
+            auto &a0 = a_k[0];
+            auto &a1 = a_k[1];
+            auto &b0 = b_k[0];
+            auto &b1 = b_k[1];
             bool dims_ok = (a0.dim == b1.dim) && (a1.dim == b0.dim);
             bool blocks_ok = (a0.block == b1.block) && (a1.block == b0.block);
             if (dims_ok && blocks_ok) {

@@ -469,8 +469,8 @@ int reorder_2d_impl_t::vertex_t::cost(
         if (i > min_log_bytes) {
             gpu_assert(!layout.blocks().empty());
             gpu_assert(!v.layout.blocks().empty());
-            int dim_idx0 = layout.blocks()[0].dim;
-            int dim_idx1 = v.layout.blocks()[0].dim;
+            int dim_idx0 = layout[0].dim;
+            int dim_idx1 = v.layout[0].dim;
             if (dim_idx0 != dim_idx1) continue;
         }
         min_cost = cur_cost;

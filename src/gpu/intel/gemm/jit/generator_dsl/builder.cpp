@@ -460,7 +460,7 @@ struct generator_dsl_t {
         tensor_t C = def("C_blk",
                 C_store_transform.get_layout(C_dims, into_ir(problem.Tc)), 0);
 
-        idx_t subgroup_dim = C.layout.blocks()[0].dim;
+        idx_t subgroup_dim = C.layout[0].dim;
         int m_group_idx = strategy.loopOrder[0] == LoopM ? 0 : 1;
         auto m_idx = let("m_idx",
                 (group_id(m_group_idx) * local_size(m_group_idx)

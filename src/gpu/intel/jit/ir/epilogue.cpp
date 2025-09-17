@@ -585,7 +585,7 @@ private:
                 gpu_assert(d == 1);
             inner_dim = 0;
         } else {
-            auto &b0 = lhs_tensor.reg_layout().blocks()[0];
+            auto &b0 = lhs_tensor.reg_layout()[0];
             gpu_assert(dim_t(b0.stride) == 1);
             inner_dim = b0.dim;
 
@@ -600,7 +600,7 @@ private:
                 auto &l = t.reg_layout();
                 gpu_assert(!l.is_empty());
                 gpu_assert(!l.blocks().empty());
-                auto &lb0 = l.blocks()[0];
+                auto &lb0 = l[0];
                 // Inner blocks do not match, cannot vectorize so switch to
                 // scalar updates.
                 if (lb0.dim != b0.dim) {

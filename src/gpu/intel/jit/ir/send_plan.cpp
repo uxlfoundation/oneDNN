@@ -1253,11 +1253,11 @@ struct layout_2d_wrapper_t {
     }
     const layout_block_t &w_block() const {
         gpu_assert(nblocks() >= 2);
-        return l.blocks()[0];
+        return l[0];
     }
     const layout_block_t &h_block() const {
         gpu_assert(nblocks() >= 2);
-        return l.blocks()[1];
+        return l[1];
     }
     int64_t w_stride() const { return w_block().stride; }
     int64_t h_stride() const { return h_block().stride; }
@@ -1361,7 +1361,7 @@ private:
         dim_t align = mod_info().get_modulus(tlayout, mod_info().vmods()).n();
         // Get outer strides.
         for (int i = inner_idx; i < vlayout().nblocks(); i++) {
-            auto &b = vlayout().blocks()[i];
+            auto &b = vlayout()[i];
             dim_t stride_bytes = dim_t(b.stride) * type.size() / type.packing();
             align = math::gcd(align, stride_bytes);
         }
@@ -1783,8 +1783,7 @@ private:
             return fail_2d("Unsupported base alignment: ", base_align);
 
         for (int i = 2; i < vlayout.nblocks(); i++) {
-            int64_t stride = (int64_t)vlayout.blocks()[i].stride
-                    * vlayout.type().size();
+            int64_t stride = (int64_t)vlayout[i].stride * vlayout.type().size();
             if (stride % base_align != 0)
                 return fail_2d(
                         "Outer stride results in unsupported base alignment: ",
@@ -1849,7 +1848,7 @@ send_2d_params_t view_info_t::try_init_2d() const {
 
 void advance(std::vector<int> &idxs, const layout_t &l, int inc) {
     for (size_t i = 0; i < idxs.size(); i++) {
-        int block = (int)l.blocks()[i].block;
+        int block = (int)l[i].block;
         int inc_idx = (idxs[i] + inc) % block;
         inc = (idxs[i] + inc) / block;
         idxs[i] = inc_idx;
@@ -2611,7 +2610,7 @@ send_group_t init_scattered(const view_info_t &info,
             reg_layout = make_strided(reg_layout, slot_stride / slot_size);
         } else {
             gpu_assert(reg_layout.nblocks() > 0);
-            auto &b0 = reg_layout.blocks()[0];
+            auto &b0 = reg_layout[0];
             int inner = slot_size * type_packing / type_size;
             reg_layout
                     = reg_layout.split_block({0, b0}, inner, b0.block / inner);

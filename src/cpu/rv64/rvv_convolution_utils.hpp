@@ -100,10 +100,12 @@ static inline const void *ptr_add_elems(
         const void *base, data_type_t dt, size_t elems) {
     using namespace data_type;
     if (dt == f32) return reinterpret_cast<const float *>(base) + elems;
-    if (dt == f16) return reinterpret_cast<const _Float16 *>(base) + elems;
     if (dt == s8) return reinterpret_cast<const int8_t *>(base) + elems;
     if (dt == u8) return reinterpret_cast<const uint8_t *>(base) + elems;
     if (dt == s32) return reinterpret_cast<const int32_t *>(base) + elems;
+#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+    if (dt == f16) return reinterpret_cast<const _Float16 *>(base) + elems;
+#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
     return base;
 }
 
@@ -111,10 +113,12 @@ static inline void *ptr_add_elems_mut(
         void *base, data_type_t dt, size_t elems) {
     using namespace data_type;
     if (dt == f32) return reinterpret_cast<float *>(base) + elems;
-    if (dt == f16) return reinterpret_cast<_Float16 *>(base) + elems;
     if (dt == s8) return reinterpret_cast<int8_t *>(base) + elems;
     if (dt == u8) return reinterpret_cast<uint8_t *>(base) + elems;
     if (dt == s32) return reinterpret_cast<int32_t *>(base) + elems;
+#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+    if (dt == f16) return reinterpret_cast<_Float16 *>(base) + elems;
+#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
     return base;
 }
 
@@ -154,6 +158,7 @@ inline float rvv_dot_ic_fwd_f32_f32(
     return out_scalar;
 }
 
+#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 // Per-dtype inner-kernel: dot over IC with RVV intrinsics (f16 x f16 -> f32 accumulate)
 inline float rvv_dot_ic_fwd_f16_f16(
         const _Float16 *sp, const _Float16 *wp, dim_t IC) {
@@ -176,7 +181,9 @@ inline float rvv_dot_ic_fwd_f16_f16(
     }
     return out_scalar;
 }
+#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 
+#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 // Per-dtype inner-kernel: dot over IC with RVV intrinsics (f32 x f16 -> f32 accumulate)
 inline float rvv_dot_ic_fwd_f32_f16(
         const float *sp, const _Float16 *wp, dim_t IC) {
@@ -199,6 +206,7 @@ inline float rvv_dot_ic_fwd_f32_f16(
     }
     return out_scalar;
 }
+#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 
 // Per-dtype inner-kernel: dot over IC with RVV intrinsics (s8 x s8 -> f32 accumulate)
 inline float rvv_dot_ic_fwd_s8_s8(
@@ -255,12 +263,6 @@ inline float compute_dot_ic_fwd(data_type_t sdt, data_type_t wdt,
     if (sdt == f32 && wdt == f32) {
         return rvv_dot_ic_fwd_f32_f32(static_cast<const float *>(sp),
                 static_cast<const float *>(wp), IC);
-    } else if (sdt == f16 && wdt == f16) {
-        return rvv_dot_ic_fwd_f16_f16(static_cast<const _Float16 *>(sp),
-                static_cast<const _Float16 *>(wp), IC);
-    } else if (sdt == f32 && wdt == f16) {
-        return rvv_dot_ic_fwd_f32_f16(static_cast<const float *>(sp),
-                static_cast<const _Float16 *>(wp), IC);
     } else if (sdt == s8 && wdt == s8) {
         return rvv_dot_ic_fwd_s8_s8(static_cast<const int8_t *>(sp),
                 static_cast<const int8_t *>(wp), IC);
@@ -268,6 +270,16 @@ inline float compute_dot_ic_fwd(data_type_t sdt, data_type_t wdt,
         return rvv_dot_ic_fwd_u8_s8(static_cast<const uint8_t *>(sp),
                 static_cast<const int8_t *>(wp), IC);
     }
+
+#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+    if (sdt == f16 && wdt == f16) {
+        return rvv_dot_ic_fwd_f16_f16(static_cast<const _Float16 *>(sp),
+                static_cast<const _Float16 *>(wp), IC);
+    } else if (sdt == f32 && wdt == f16) {
+        return rvv_dot_ic_fwd_f32_f16(static_cast<const float *>(sp),
+                static_cast<const _Float16 *>(wp), IC);
+    }
+#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
     return 0.f;
 }
 

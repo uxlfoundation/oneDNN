@@ -45,7 +45,11 @@ struct rvv_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(KDD() == 0 && KDH() == 0 && KDW() == 0,
                     VERBOSE_UNSUPPORTED_ATTR);
 
-            VDISPATCH_CONV(types_ok && dst_ok, VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_CONV(types_ok && dst_ok, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(platform::has_data_type_support(sdt)
+                            && platform::has_data_type_support(wdt)
+                            && platform::has_data_type_support(ddt),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(IMPLICATION(with_bias(), bdt == ddt),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
 

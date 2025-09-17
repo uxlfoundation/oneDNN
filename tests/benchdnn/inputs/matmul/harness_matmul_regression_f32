@@ -14,7 +14,7 @@
 --reset
 --dt=f32
 --stag=abcd --wtag=abcd --dtag=abcd
---attr-post-ops=add:bf16:13:abcd
+--attr-post-ops=add:f32:13:abcd
 2x2x32x16:2x2x16x64_n"small_shape_with_binary_po_and_mask_13"
 
 # test for K parallel_reduction with batched case

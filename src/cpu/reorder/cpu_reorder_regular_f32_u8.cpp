@@ -36,7 +36,9 @@ const impl_list_map_t &regular_f32_u8_impl_list_map() {
             DNNL_AARCH64_ONLY(CPU_REORDER_INSTANCE(aarch64::jit_blk_reorder_t))
             DNNL_AARCH64_ONLY(CPU_REORDER_INSTANCE(aarch64::jit_uni_reorder_t))
 
+#ifdef DNNL_PPC64_HAS_MMA
 	    DNNL_PPC64_ONLY(CPU_REORDER_INSTANCE(ppc64::ppc64_matrixA_reorder_t))
+#endif
 
 	    REG_FAST_DIRECT_COPY(f32, u8)
 

@@ -40,12 +40,23 @@ if((DNNL_TARGET_ARCH STREQUAL "X64") OR (DNNL_TARGET_ARCH STREQUAL "AARCH64"))
 endif()
 
 if(DNNL_TARGET_ARCH STREQUAL "PPC64")
-    file(GLOB FILES_REQUIRED_OPT
-        ${CMAKE_CURRENT_SOURCE_DIR}/gemm/*.[ch]pp
-    )
-    if(NOT UPPERCASE_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
-        set_source_files_properties(${FILES_REQUIRED_OPT}
-            PROPERTIES COMPILE_FLAGS "-O3 -funroll-loops")
+    include(CheckSourceCompiles)
+
+    check_source_compiles(C [[
+      #if !defined(__MMA__)
+      #  error "MMA not available"
+      #endif
+      int main(void) { return 0; }
+    ]] DNNL_PPC64_HAS_MMA)
+    if(DNNL_PPC64_HAS_MMA)
+        add_definitions_with_host_compiler(-DDNNL_PPC64_HAS_MMA=1)
+        file(GLOB FILES_REQUIRED_OPT
+            ${CMAKE_CURRENT_SOURCE_DIR}/gemm/*.[ch]pp
+        )
+        if(NOT UPPERCASE_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+            set_source_files_properties(${FILES_REQUIRED_OPT}
+                PROPERTIES COMPILE_FLAGS "-O3 -funroll-loops")
+        endif()
     endif()
 endif()
 
@@ -139,7 +150,9 @@ if (DNNL_TARGET_ARCH STREQUAL "AARCH64")
     add_subdirectory(aarch64)
 endif()
 if (DNNL_TARGET_ARCH STREQUAL "PPC64")
-    add_subdirectory(ppc64)
+    if(DNNL_PPC64_HAS_MMA)
+        add_subdirectory(ppc64)
+    endif()
 endif()
 if (DNNL_TARGET_ARCH STREQUAL "S390X")
     add_subdirectory(s390x)

@@ -1420,9 +1420,18 @@ struct fma_context_t {
 
     bool is_mad_compatible(const layout_t &a, const layout_t &b, int a_vec_idx,
             int b_vec_idx) const {
-        if (a_vec_idx != -1 && !a.is_blocked_by(a_vec_idx, vec_size))
+        auto is_blocked_by
+                = [](const layout_t &layout, const pvar_t &dim, int block) {
+                      if (block == 1) return true;
+                      if (layout.nblocks() == 0) return false;
+                      auto &b0 = layout[0];
+                      if (b0.dim != dim) return false;
+                      if (b0.block % block != 0) return false;
+                      return true;
+                  };
+        if (a_vec_idx != -1 && !is_blocked_by(a, a_vec_idx, vec_size))
             return false;
-        if (b_vec_idx != -1 && !b.is_blocked_by(b_vec_idx, vec_size))
+        if (b_vec_idx != -1 && !is_blocked_by(b, b_vec_idx, vec_size))
             return false;
         return true;
     }

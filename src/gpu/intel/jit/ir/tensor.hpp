@@ -504,15 +504,6 @@ public:
         return true;
     }
 
-    bool is_blocked_by(const pvar_t &dim, int block) const {
-        if (block == 1) return true;
-        if (nblocks() == 0) return false;
-        auto &b0 = blocks()[0];
-        if (b0.dim != dim) return false;
-        if (b0.block % block != 0) return false;
-        return true;
-    }
-
     // Returns a packed layout where all blocks are contiguous, without gaps.
     layout_t make_dense() const {
         dim_t stride = 1;

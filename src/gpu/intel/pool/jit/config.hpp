@@ -182,9 +182,9 @@ public:
 
     int pad_block(const pvar_t &d) const override {
         if (d == pvars::mb)
-            return into<int>(src_layout().user().inner_block(0, true, false));
+            return into<int>(inner_block(src_layout().user(), 0, true, false));
         if (d == pvars::oc)
-            return into<int>(src_layout().user().inner_block(1, true, false));
+            return into<int>(inner_block(src_layout().user(), true, false));
         return 1;
     }
 

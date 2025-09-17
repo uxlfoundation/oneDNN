@@ -374,22 +374,6 @@ public:
     const layout_block_t &operator[](size_t idx) const { return blocks_[idx]; }
     layout_block_t &operator[](size_t idx) { return blocks_[idx]; }
 
-    dim_t inner_block(const pvar_t &dim, bool skip_outer = true,
-            bool inner_only = true) const {
-        std::vector<dim_t> dim_blocks;
-        for (auto &b : blocks_) {
-            if (b.dim == dim) dim_blocks.push_back(b.block);
-        }
-        dim_t ret = 1;
-        int nblocks = (int)dim_blocks.size();
-        int lo = 0;
-        int hi = skip_outer ? nblocks - 1 : nblocks;
-        if (inner_only) hi = std::min(hi, 1);
-        for (int i = lo; i < hi; i++)
-            ret *= dim_blocks[i];
-        return ret;
-    }
-
     void set_offset(const expr_t &offset) { offset_ = offset; }
 
     bool is_strictly_equal(const layout_t &other, bool compare_offset = true,
@@ -842,6 +826,22 @@ private:
     // Blocks ordered from innermost to outermost.
     std::vector<layout_block_t> blocks_;
 };
+
+inline dim_t inner_block(const layout_t &layout, const pvar_t &dim,
+        bool skip_outer = true, bool inner_only = true) {
+    std::vector<dim_t> dim_blocks;
+    for (auto &b : layout.blocks()) {
+        if (b.dim == dim) dim_blocks.push_back(b.block);
+    }
+    dim_t ret = 1;
+    int nblocks = (int)dim_blocks.size();
+    int lo = 0;
+    int hi = skip_outer ? nblocks - 1 : nblocks;
+    if (inner_only) hi = std::min(hi, 1);
+    for (int i = lo; i < hi; i++)
+        ret *= dim_blocks[i];
+    return ret;
+}
 
 // Storage size in bytes.
 inline dim_t size_bytes(const layout_t &layout, dim_t alignment = 1) {
@@ -1304,8 +1304,8 @@ public:
             dim_t padded_dim = get_or_default(padded_dims, dim_name, dim_t(1));
             if (dim >= padded_dim) continue;
             dim_t inner_blk = ir_utils::max_pow2_divisor(dim);
-            dim_t dim_blk = ir_utils::max_pow2_divisor(tlayout_.inner_block(
-                    i, /*skip_outer=*/true, /*inner_only=*/false));
+            dim_t dim_blk = ir_utils::max_pow2_divisor(inner_block(
+                    tlayout_, i, /*skip_outer=*/true, /*inner_only=*/false));
             inner_blk = std::min(inner_blk, dim_blk);
             auto tmask = (inner_blk == 1) ? (x < dim)
                                           : (x / inner_blk < dim / inner_blk);

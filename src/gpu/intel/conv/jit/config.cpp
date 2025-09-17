@@ -1919,8 +1919,8 @@ int config_t::pad_block(const pvar_t &d) const {
     int ret = 1;
     for (int i = 0; i < 3; i++) {
         if (idxs[i] == -1) continue;
-        int blk = (int)layouts[i]->inner_block(
-                idxs[i], /*skip_outer=*/true, /*inner_only=*/false);
+        int blk = (int)inner_block(*layouts[i], idxs[i], /*skip_outer=*/true,
+                /*inner_only=*/false);
         ret = math::lcm(ret, blk);
     }
 

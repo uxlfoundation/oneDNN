@@ -47,9 +47,9 @@ where $dX$ is the gradient with respect to the input.
 
 **PyTorch**
 
-troch.nn.Dropout [[#2]][2] takes `p` (probability) and `inplace` as attributes,
+troch.nn.Dropout [[#2]][2] takes `p` (probability, f32) and `inplace` (bool) as attributes,
 with one input and one output. Internally, the random number generator used to
-generate the dropout mask differs by device:
+generate the dropout mask (u8/bool) differs by device:
 
 - CPU: Uses torch.Generator backed by the C++ Mersenne Twister engine [[#3]][3],
   which consumes a 64-bit seed.
@@ -120,9 +120,9 @@ the oneDNN Graph API as follows:
 - The `offset` input is introduced to ensure reproducibility and correct
   partitioning across devices and threads, following best practices from PyTorch
   and cuDNN.
-- Data types for `seed` and `offset` are aligned to PyTorch to ensure
+- Data types for `seed`, `offset`, `p` are aligned to PyTorch to ensure
   compatibility and support large models.
-- A dedicated DropoutBackward operation is not defined, as the backward
+- A dedicated DropoutBackward operation is not needed, as the backward
   computation shares the same mathematical formula as the forward pass.
 
 **Example Usage:**
@@ -135,8 +135,8 @@ graph g = graph(engine::kind::gpu);
 
 logical_tensor src = logical_tensor(ID_SRC, data_type::f16, {256, 1000});
 logical_tensor seed = logical_tensor(ID_SEED, data_type::u64, {1});
-logical_tensor offset = logical_tensor(ID_SEED, data_type::u64, {1});
-logical_tensor p = logical_tensor(ID_SEED, data_type::f32, {1});
+logical_tensor offset = logical_tensor(ID_OFFSET, data_type::u64, {1});
+logical_tensor p = logical_tensor(ID_P, data_type::f32, {1});
 logical_tensor dst = logical_tensor(ID_DST, data_type::f16, {256, 1000});
 logical_tensor mask = logical_tensor(ID_MASK, data_type::u8, {256, 1000});
 
@@ -152,6 +152,20 @@ g.add_op(dropout);
 g.finalize();
 
 ```
+
+**Validation:**
+
+- Use benchdnn graph to validate the accuracy and performance of the Dropout operation.
+- To validate the randomness of Dropout, perform statistical analysis of the
+  mask over many runs:
+  - With the same seed and offset, Dropout should consistently produce the same
+    mask and output, ensuring reproducibility.
+  - With different seeds, the generated masks and outputs should differ,
+    demonstrating randomness.
+  - Additionally, the empirical dropout rate (fraction of zeros in the mask)
+    should closely match the specified probability `p`.
+- Currently, there is no dedicated tool for this validation; a custom script may
+  be required.
 
 **Open Question:**
 

@@ -476,16 +476,6 @@ public:
     // - Consecutive dense blocks are merged
     layout_t normalize() const { return with(blocks_); }
 
-    layout_t transpose(std::array<pvar_t, 2> trans) const {
-        auto blocks = blocks_;
-        for (auto &b : blocks)
-            b.dim = b.dim == trans[0]   ? trans[1]
-                    : b.dim == trans[1] ? trans[0]
-                                        : b.dim;
-
-        return with(blocks);
-    }
-
     // Returns a new (sub-)layout that fully contains the passed sub-tensor.
     // Strides are kept unchanged.
     // Assumption: the original layout can be tiled by the passed sub-tensor.

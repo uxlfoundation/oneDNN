@@ -84,30 +84,30 @@ bool dpas_t::is_src_type(type_t type) {
     return type.is_x8() || type.is_bf16() || type.is_f16() || type.is_tf32();
 }
 
-layout_t dpas_t::a_layout() const {
+layout_t dpas_t::a_layout(std::array<pvar_t, 2> dims) const {
     if (!is_src_type(src1_type)) gpu_error_not_expected();
 
     int m_blk = exec_size;
     int inner_blk = 4 / src1_type.size();
     int outer_blk = sdepth;
     std::vector<layout_block_t> blocks
-            = {{1, inner_blk}, {0, m_blk}, {1, outer_blk}};
+            = {{dims[1], inner_blk}, {dims[0], m_blk}, {dims[1], outer_blk}};
     return layout_t(src1_type, blocks);
 }
 
-layout_t dpas_t::b_layout() const {
+layout_t dpas_t::b_layout(std::array<pvar_t, 2> dims) const {
     if (!is_src_type(src2_type)) gpu_error_not_expected();
 
     int n_blk = rcount;
     int k_blk = sdepth * 4 / src2_type.size();
-    std::vector<layout_block_t> blocks = {{0, k_blk}, {1, n_blk}};
+    std::vector<layout_block_t> blocks = {{dims[0], k_blk}, {dims[1], n_blk}};
     return layout_t(src2_type, blocks);
 }
 
-layout_t dpas_t::c_layout() const {
+layout_t dpas_t::c_layout(std::array<pvar_t, 2> dims) const {
     int m_blk = exec_size;
     int n_blk = rcount;
-    std::vector<layout_block_t> blocks = {{0, m_blk}, {1, n_blk}};
+    std::vector<layout_block_t> blocks = {{dims[0], m_blk}, {dims[1], n_blk}};
     return layout_t(dst_type, blocks);
 }
 

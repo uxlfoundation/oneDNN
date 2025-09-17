@@ -1767,6 +1767,11 @@ layout_t add_batch(const layout_t &layout) {
     return layout.with(blocks);
 }
 
+std::array<pvar_t, 2> dpas_dims(bool transpose) {
+    if (transpose) return {1, 0};
+    return {0, 1};
+}
+
 bool is_dpas_src1_compatible(int simd, bool transpose, const layout_t &layout) {
     const int sdepth = 8;
     auto &type = layout.type();
@@ -1774,8 +1779,7 @@ bool is_dpas_src1_compatible(int simd, bool transpose, const layout_t &layout) {
     auto func = dpas_t::make(
             /*is_dpasw=*/false, simd, sdepth, /*rcount=*/1, c_type, type, type);
     auto &dpas = func.as<dpas_t>();
-    auto src1_layout = dpas.a_layout();
-    if (transpose) src1_layout = src1_layout.transpose({0, 1});
+    auto src1_layout = dpas.a_layout(dpas_dims(transpose));
     src1_layout = add_batch(src1_layout);
     return src1_layout <= layout;
 }
@@ -1787,8 +1791,7 @@ bool is_dpas_src2_compatible(int simd, bool transpose, const layout_t &layout) {
     auto func = dpas_t::make(
             /*is_dpasw=*/false, simd, sdepth, /*rcount=*/1, c_type, type, type);
     auto &dpas = func.as<dpas_t>();
-    auto src2_layout = dpas.b_layout();
-    if (transpose) src2_layout = src2_layout.transpose({0, 1});
+    auto src2_layout = dpas.b_layout(dpas_dims(transpose));
     src2_layout = add_batch(src2_layout);
     return src2_layout <= layout;
 }

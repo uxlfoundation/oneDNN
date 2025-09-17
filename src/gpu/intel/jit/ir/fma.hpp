@@ -172,9 +172,9 @@ public:
         return is_dpasw ? dpas_size / 2 : dpas_size;
     }
 
-    layout_t a_layout() const;
-    layout_t b_layout() const;
-    layout_t c_layout() const;
+    layout_t a_layout(std::array<pvar_t, 2> dims = {0, 1}) const;
+    layout_t b_layout(std::array<pvar_t, 2> dims = {0, 1}) const;
+    layout_t c_layout(std::array<pvar_t, 2> dims = {0, 1}) const;
 
     bool matches(const multiply_desc_t &desc) const;
 

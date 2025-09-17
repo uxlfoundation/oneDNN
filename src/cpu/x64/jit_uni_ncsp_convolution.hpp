@@ -76,7 +76,7 @@ struct jit_uni_ncsp_convolution_fwd_t : public primitive_t {
         status_t init_matmul(engine_t *engine);
         reduction_helper_t reduction_helper_;
         bool is_matmul_ = false;
-        std::string name_ = "jit_uni_ncsp_convolution:";
+        std::string name_ = "jit_uni_ncsp:";
         void init_name() {
             std::string suffix = is_matmul_ ? "matmul" : "conv";
             name_ += suffix + "+";

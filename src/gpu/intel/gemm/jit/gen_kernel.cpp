@@ -635,18 +635,18 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
 
     auto add_matches = [&](const MatchParams &start,
                                const char *(*match)(Type)) {
-        if (match(problem_.Ta)) {
+        if (match(problem_.Ta_ext)) {
             match_params.push_back(start);
-            match_params.back().selector.precisions[0] = match(problem_.Ta);
+            match_params.back().selector.precisions[0] = match(problem_.Ta_ext);
         }
-        if (match(problem_.Tb)) {
+        if (match(problem_.Tb_ext)) {
             match_params.push_back(start);
-            match_params.back().selector.precisions[1] = match(problem_.Tb);
+            match_params.back().selector.precisions[1] = match(problem_.Tb_ext);
         }
-        if (match(problem_.Ta) && match(problem_.Tb)) {
+        if (match(problem_.Ta_ext) && match(problem_.Tb_ext)) {
             match_params.push_back(start);
-            match_params.back().selector.precisions[0] = match(problem_.Ta);
-            match_params.back().selector.precisions[1] = match(problem_.Tb);
+            match_params.back().selector.precisions[0] = match(problem_.Ta_ext);
+            match_params.back().selector.precisions[1] = match(problem_.Tb_ext);
         }
     };
 

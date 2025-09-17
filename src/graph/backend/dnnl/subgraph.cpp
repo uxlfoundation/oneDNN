@@ -154,6 +154,7 @@ std::string property2str(property_type_t ptype) {
         case property_type::undef: str = "undef"; break;
         case property_type::variable: str = "variable"; break;
         case property_type::constant: str = "constant"; break;
+        case property_type::host_scalar: str = "host_scalar"; break;
         default: break;
     }
     return str;

@@ -111,6 +111,8 @@ static inline void rvv_matmul_colmajor_kernel_f32_f32_f32(
     }
 }
 
+#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+
 static inline void rvv_matmul_colmajor_kernel_f16_f16_f16(
         const void *src_base_void_ptr, const void *weights_base_void_ptr,
         void *dst_base_void_ptr, dim_t K, dim_t N, const void *bias_void_ptr,
@@ -291,6 +293,8 @@ static inline void rvv_matmul_colmajor_kernel_f16_f16_f32(
     }
 }
 
+#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+
 static inline void rvv_matmul_colmajor_compute_kernel(const void *src_base_ptr,
         const void *weights_base_ptr, void *dst_base_ptr, dim_t K, dim_t N,
         const void *bias, const memory_desc_wrapper &src_d,
@@ -307,7 +311,9 @@ static inline void rvv_matmul_colmajor_compute_kernel(const void *src_base_ptr,
         rvv_matmul_colmajor_kernel_f32_f32_f32(src_base_ptr, weights_base_ptr,
                 dst_base_ptr, K, N, bias, src_d, weights_d, dst_d, bias_d,
                 dst_idx_prefix, postops_handler);
-    } else if (sdt == f16 && wdt == f16 && ddt == f16) {
+    }
+#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+    if (sdt == f16 && wdt == f16 && ddt == f16) {
         rvv_matmul_colmajor_kernel_f16_f16_f16(src_base_ptr, weights_base_ptr,
                 dst_base_ptr, K, N, bias, src_d, weights_d, dst_d, bias_d,
                 dst_idx_prefix, postops_handler);
@@ -316,6 +322,7 @@ static inline void rvv_matmul_colmajor_compute_kernel(const void *src_base_ptr,
                 dst_base_ptr, K, N, bias, src_d, weights_d, dst_d, bias_d,
                 dst_idx_prefix, postops_handler);
     }
+#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 }
 
 static inline void rvv_matmul_rowmajor_kernel_f32_f32_f32(
@@ -380,6 +387,8 @@ static inline void rvv_matmul_rowmajor_kernel_f32_f32_f32(
         n0 += vl;
     }
 }
+
+#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 
 static inline void rvv_matmul_rowmajor_kernel_f16_f16_f16(
         const void *src_base_void_ptr, const void *weights_base_void_ptr,
@@ -520,6 +529,8 @@ static inline void rvv_matmul_rowmajor_kernel_f16_f16_f32(
     }
 }
 
+#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+
 static inline void rvv_matmul_rowmajor_compute_kernel(const void *src_base_ptr,
         const void *weights_base_ptr, void *dst_base_ptr, dim_t K, dim_t N,
         const void *bias, const memory_desc_wrapper &src_d,
@@ -536,7 +547,9 @@ static inline void rvv_matmul_rowmajor_compute_kernel(const void *src_base_ptr,
         rvv_matmul_rowmajor_kernel_f32_f32_f32(src_base_ptr, weights_base_ptr,
                 dst_base_ptr, K, N, bias, src_d, weights_d, dst_d, bias_d,
                 dst_idx_prefix, postops_handler);
-    } else if (sdt == f16 && wdt == f16 && ddt == f16) {
+    }
+#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+    if (sdt == f16 && wdt == f16 && ddt == f16) {
         rvv_matmul_rowmajor_kernel_f16_f16_f16(src_base_ptr, weights_base_ptr,
                 dst_base_ptr, K, N, bias, src_d, weights_d, dst_d, bias_d,
                 dst_idx_prefix, postops_handler);
@@ -545,6 +558,7 @@ static inline void rvv_matmul_rowmajor_compute_kernel(const void *src_base_ptr,
                 dst_base_ptr, K, N, bias, src_d, weights_d, dst_d, bias_d,
                 dst_idx_prefix, postops_handler);
     }
+#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 }
 
 } // namespace matmul

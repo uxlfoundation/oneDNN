@@ -32,8 +32,6 @@ struct rvv_matmul_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("RISCV64GCV", rvv_matmul_t)
 
-        static constexpr data_type_t d_type = data_type::f32;
-
         status_t init(engine_t *engine) {
             UNUSED(engine);
 
@@ -63,6 +61,11 @@ struct rvv_matmul_t : public primitive_t {
                             && (accdt == f32 || (ddt == f16 && accdt == f16)));
             const bool types_ok = f32_ok || f16_ok;
             VDISPATCH_MATMUL(types_ok, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(platform::has_data_type_support(sdt)
+                            && platform::has_data_type_support(wdt)
+                            && platform::has_data_type_support(ddt)
+                            && platform::has_data_type_support(accdt),
+                    VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_MATMUL(attr()->scales_.has_default_values(),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);

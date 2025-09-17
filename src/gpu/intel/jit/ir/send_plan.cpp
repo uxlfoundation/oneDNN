@@ -912,7 +912,7 @@ int get_max_block_size(const hw_t &hw, const send_params_t &params) {
 class split_bounds_t {
 public:
     split_bounds_t(const layout_t &layout, int factor) {
-        gpu_assert(layout.has_zero_offset()) << layout;
+        gpu_assert(is_zero(layout.offset())) << layout;
         auto tile_coord = layout.split_exact(factor);
         if (tile_coord.is_invalid()) return;
 

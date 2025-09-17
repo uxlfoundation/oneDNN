@@ -139,7 +139,7 @@ layout_t reinterpret(
     if (new_size == old_size) return layout;
 
     expr_t new_offset = 0;
-    if (!layout.has_zero_offset()) {
+    if (!is_zero(layout.offset())) {
         gpu_assert(is_const(layout.offset())) << "Expected constant offset.";
         int64_t off = to_cpp<int64_t>(layout.offset()) * old_size;
         gpu_assert(off % new_size == 0);

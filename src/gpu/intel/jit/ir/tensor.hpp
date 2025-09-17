@@ -465,13 +465,11 @@ public:
         if (is_empty()) return "(nil)";
         ostringstream_t oss;
         oss << desc_str();
-        if (!has_zero_offset()) oss << " offset: " << offset_;
+        if (!is_zero(offset())) oss << " offset: " << offset_;
         return oss.str();
     }
 
     IR_DEFINE_DUMP()
-
-    bool has_zero_offset() const { return offset_.is_equal(expr_t(0)); }
 
     // Returns a canonical representation of the layout:
     // - Size one blocks are removed

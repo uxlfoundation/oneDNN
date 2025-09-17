@@ -788,7 +788,7 @@ void CopyPlan::planTypeConversions()
 
         if (is4(st) && one_of(dt, ngen_b16_h4x(), ngen_b16_l4x()))
             plan4BitShifts(i);
-        else if (isInt4(st) && isInt4(dt)) {
+        else if (isInt4(st) && isInt4(dt) && st != dt) {
             copyThrough(i, DataType::w);
             rerun = true;
         } else if (isInt4(st) && isInt(dt)) {
@@ -1427,8 +1427,10 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
         copyThrough(i, (isSigned(st) && s4) ? DataType::w : DataType::uw, 1);
         return;
     }
-    auto dst = i.dst;
-    auto tmp = newTemp(DataType::uw, simd, 1);
+    auto ddst = CopyOperand(i.dst);
+    auto ssrc = CopyOperand(i.src0);
+    int tmp_elems = ddst.stride > 4 ? simd * 2 : simd;
+    auto tmp = newTemp(DataType::uw, tmp_elems, 1);
 
     if (i.sat) {
         auto ie = splitMultiple<3>(i);
@@ -1459,7 +1461,7 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
             ie[1]->invalidate();
 
         ie[2]->op = Opcode::mov;
-        ie[2]->dst = dst;
+        ie[2]->dst = ddst;
         ie[2]->src0 = tmp;
         ie[2]->src0.range = dt;
         return;
@@ -1467,20 +1469,95 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
 
     auto ie = splitMultiple<5>(i);
     auto osrc = i.src0;
-    auto ssrc = newTemp(DataType::uw, simd, 1);
-    auto ddst = i.dst;
+    auto stmp = newTemp(DataType::uw, simd, 1);
+    int sStride = ssrc.stride * getBytes(ssrc.type) * 2;
+    int dStride = ddst.stride / (getBytes(ssrc.type) * 2);
 
     ie[0]->op = Opcode::mov;
-    ie[0]->dst = ssrc;
+    ie[0]->dst = stmp;
     ie[0]->src0 = osrc;
 
-    if (simd > 1 && ddst.stride == 1) {
+    // Special case for expanding 4-bit values already at least byte aligned.
+    if (ddst.stride >= sStride && sStride > 1 && ssrc.type == DataType::ub && simd >= 4) {
+        int dst_mask = 0x0;
+        int mask_granularity = std::min<int>(4, ddst.stride);
+        switch (mask_granularity) {
+            case 2:
+                dst_mask = 0x0f0f << ((ddst.offset % 2) * 4);
+                break;
+            case 4:
+                dst_mask = 0x000f << ((ddst.offset % 4) * 4);
+                break;
+            default: stub();
+        }
+
+        if (ddst.stride > sStride) {
+            ie[0]->op = Opcode::mov;
+            ie[0]->simd = simd;
+            ie[0]->dst = tmp;
+            ie[0]->dst.type = DataType::ud;
+            ie[0]->dst.stride = 1;
+            ie[0]->src0 = Immediate::d(0);
+
+            int tmp_off = (ddst.offset / 4) * 2;
+            ie[1]->op = Opcode::mov;
+            ie[1]->simd = simd;
+            ie[1]->dst = tmp;
+            ie[1]->dst.type = ssrc.type;
+            ie[1]->dst.stride = dStride;
+            ie[1]->dst.offset = tmp_off;
+            ie[1]->src0 = ssrc;
+
+            tmp.type = ssrc.type;
+            tmp.stride = ssrc.stride;
+            ssrc = tmp;
+        } else {
+            ie[0]->invalidate();
+            ie[1]->invalidate();
+        }
+
+        int tmp_off = ddst.offset / 4;
+        if (ddst.offset % mask_granularity) {
+            ie[2]->op = Opcode::shl;
+            ie[2]->simd = simd;
+            ie[2]->dst = ssrc;
+            ie[2]->dst.type = DataType::uw;
+            ie[2]->dst.stride = 2;
+	        ie[2]->dst.offset = tmp_off;
+            ie[2]->src0 = ssrc;
+            ie[2]->src0.type = DataType::uw;
+            ie[2]->src0.stride = 2;
+	        ie[2]->src0.offset = tmp_off;
+            ie[2]->src1 = Immediate::uw(0x4 * (ddst.offset % mask_granularity));
+	    } else {
+            ie[2]->invalidate();
+	    }
+
+        ie[3]->op = Opcode::bfn;
+        ie[3]->ctrl = 0xCA;
+        ie[3]->simd = simd;
+        ie[3]->dst = ddst;
+        ie[3]->dst.type = DataType::uw;
+        ie[3]->dst.stride = ssrc.stride;
+        ie[3]->dst.offset = ddst.offset/4;
+        ie[3]->src0 = ddst;
+        ie[3]->src0.type = DataType::uw;
+        ie[3]->src0.stride = ssrc.stride;
+        ie[3]->src0.offset = ddst.offset/4;
+        ie[3]->src1 = ssrc;
+        ie[3]->src1.type = DataType::uw;
+        ie[3]->src1.stride = ssrc.stride;
+        ie[3]->src1.offset = tmp_off;
+        ie[3]->src2 = Immediate::uw(dst_mask);
+
+        ie[4]->invalidate();
+    } else if (simd > 1 && ddst.stride == 1) {
         ie[1]->op = Opcode::shl;
         ie[1]->simd = simd/2;
-        ie[1]->dst = ssrc;
+        ie[1]->dst = stmp;
         ie[1]->dst.offset += 1;
         ie[1]->dst.stride *= 2;
-        ie[1]->src0 = ssrc;
+        ie[1]->src0 = stmp;
         ie[1]->src0.offset += 1;
         ie[1]->src0.stride *= 2;
         ie[1]->src1 = Immediate::uw(0x4);
@@ -1489,9 +1566,9 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
         ie[2]->ctrl = 0xEC;
         ie[2]->simd = simd/2;
         ie[2]->dst = tmp;
-        ie[2]->src0 = ssrc;
+        ie[2]->src0 = stmp;
         ie[2]->src0.stride *= 2;
-        ie[2]->src1 = ssrc;
+        ie[2]->src1 = stmp;
         ie[2]->src1.offset += 1;
         ie[2]->src1.stride *= 2;
         ie[2]->src2 = Immediate::uw(0x0F);
@@ -1544,9 +1621,9 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
         if (offset) {
             ie[2]->op = Opcode::shl;
             ie[2]->simd = simd;
-            ie[2]->dst = ssrc;
+            ie[2]->dst = stmp;
             ie[2]->dst.stride = 1;
-            ie[2]->src0 = ssrc;
+            ie[2]->src0 = stmp;
             ie[2]->src0.stride = 1;
             ie[2]->src1 = 4;
         } else {
@@ -1557,7 +1634,7 @@ void CopyPlan::planInt4Downconversion(CopyInstruction &i)
         ie[3]->ctrl = 0xCA;
         ie[3]->simd = simd;
         ie[3]->dst = tmp;
-        ie[3]->src0 = ssrc;
+        ie[3]->src0 = stmp;
         ie[3]->src1 = tmp;
         ie[3]->src2 = 0xFFFF ^ mask;
 

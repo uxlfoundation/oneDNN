@@ -168,7 +168,7 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
     };
     pad_layout(a);
     pad_layout(b);
-    gpu_assert(ir_utils::is_equal(a.dims(), b.dims()));
+    gpu_assert(a.tile() == b.tile());
 
     auto can_be_mapped = [](const layout_t &l, const tile_t &t) {
         std::vector<dim_t> rem_dims = t.values();

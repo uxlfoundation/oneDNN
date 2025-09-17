@@ -58,19 +58,19 @@ public:
         std::vector<dim_t> pad_dims(md.padded_dims, md.padded_dims + md.ndims);
         maybe_reshape_dims(ndims_, layout, dims, pad_dims);
         layout = spatials_to_3d(layout, false, {0, 1, 2});
-        dims = dims_to_3d(dims);
-        pad_dims = dims_to_3d(pad_dims);
+        auto tile = dims_to_3d(dims);
+        auto pad_tile = dims_to_3d(pad_dims);
         gpu_assert(layout.ndims() == cp_ndims) << "Incompatible dimensions.";
         uint32_t bound_check_mask = 0;
         for (dim_idx_t i = 0; i < cp_ndims; i++) {
-            if (dims[i] == 1) continue; // Broadcast, no bound check needed.
-            if (pad_dims[i] != cp_view().tlayout().elems(i)) {
+            if (tile[i] == 1) continue; // Broadcast, no bound check needed.
+            if (pad_tile[i] != cp_view().tlayout().elems(i)) {
                 bound_check_mask |= (1 << i);
             } else if (cp_view().has_tmask(i)) {
                 bound_check_mask |= (1 << i);
             }
         }
-        return view_t(layout, cp_view().vvars(), dims, bound_check_mask);
+        return view_t(layout, cp_view().vvars(), tile, bound_check_mask);
     }
 
     bool need_to_restore_zero_padding() const override { return true; }
@@ -87,9 +87,9 @@ private:
         }
     }
 
-    static std::vector<dim_t> dims_to_3d(const std::vector<dim_t> &dims) {
+    static tile_t dims_to_3d(const std::vector<dim_t> &dims) {
         layout_t dummy_layout(type_t::u8(), dims);
-        return spatials_to_3d(dummy_layout, false, {0, 1, 2}).dims();
+        return spatials_to_3d(dummy_layout, false, {0, 1, 2}).tile();
     }
 
     uint32_t normalize_mask(uint32_t orig_mask) const {

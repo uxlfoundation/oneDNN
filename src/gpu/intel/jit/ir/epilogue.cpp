@@ -86,7 +86,7 @@ private:
             return;
         }
 
-        for (int i = 0; i < int(layout.dims()[idx]); i++) {
+        for (int i = 0; i < int(layout.tile()[idx]); i++) {
             args[idx] = i;
             fill_mask_impl(mask_tensor, idx + 1, args, view, layout);
         }
@@ -190,9 +190,10 @@ public:
     bool needs_reduction() const {
         if (!info_.is_output()) return false;
 
+        tile_t reg_tile = reg_layout_.tile();
         for (dim_idx_t i = 0; i < mem_view().nvdims(); i++) {
             if (is_broadcast_dim(i)) {
-                if (reg_layout_.dims()[i] != 1) return true;
+                if (reg_tile[i] != 1) return true;
             }
         }
         return false;

@@ -148,8 +148,8 @@ std::vector<layout_block_t> parse_format(
     return parts;
 }
 
-bool matches_tag(const layout_t &layout, const std::string &tag,
-        const std::vector<dim_t> &dims) {
+bool matches_tag(
+        const layout_t &layout, const std::string &tag, const tile_t &dims) {
     if (layout.is_empty()) return false;
     auto tag_layout = make_layout(layout.type(), dims, tag);
     if (layout != tag_layout) return false;

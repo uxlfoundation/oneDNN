@@ -558,7 +558,7 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reorder_operand_t &src,
 std::vector<tile_t> reorder_impl_t::tiles() const {
     auto make_tiles = [](const layout_t &l) {
         const auto &blocks = l.blocks();
-        tile_t base = l.dims();
+        tile_t base = l.tile();
         std::vector<tile_t> tiles = {base};
         auto it = blocks.rbegin();
         const auto end = blocks.rend();

@@ -69,7 +69,7 @@ public:
             ngen_register_scope_t tile_scope(scope.register_allocator());
             auto dst_start = src_start;
             for (dim_idx_t i = 0; i < dst_layout_.ndims(); i++) {
-                if (dst_layout_.dims()[i] == 1) dst_start[i] = 0;
+                if (dst_layout_.tile()[i] == 1) dst_start[i] = 0;
             }
             int src_off = src_layout_.offset<int>(src_start);
             int dst_off = dst_layout_.offset<int>(dst_start);
@@ -123,7 +123,7 @@ private:
 
         gpu_assert(!a.blocks().empty());
         // Allow trivial tile for scalar dst.
-        if (b.blocks().empty()) { return tile_t(dst_layout_.dims()); }
+        if (b.blocks().empty()) { return dst_layout_.tile(); }
 
         auto &a0 = a[0];
         auto &b0 = b[0];

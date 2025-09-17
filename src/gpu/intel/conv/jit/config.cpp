@@ -47,7 +47,7 @@ namespace jit {
 // Helper functions.
 bool matches_tag_strict(const layout_t &layout, const std::string &tag) {
     if (layout.is_empty()) return false;
-    auto tag_layout = make_layout(layout.type(), layout.dims(), tag);
+    auto tag_layout = make_layout(layout.type(), layout.tile(), tag);
     if (!layout.is_strictly_equal(tag_layout)) return false;
     return true;
 }

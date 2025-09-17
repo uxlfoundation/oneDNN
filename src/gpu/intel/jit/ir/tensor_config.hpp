@@ -120,7 +120,7 @@ std::vector<std::pair<char, dim_t>> parse_letter_blocks(
         const std::string &format);
 
 inline layout_t make_layout(const type_t &type, const expr_t &offset,
-        const std::string &format, const std::vector<dim_t> &dims = {}) {
+        const std::string &format, const tile_t &dims = {}) {
     auto blocks = parse_format(format, into<dim_idx_t>(dims.size()));
     tile_t def;
     for (auto &b : blocks) {
@@ -132,8 +132,8 @@ inline layout_t make_layout(const type_t &type, const expr_t &offset,
             /*do_normalize=*/false);
 }
 
-inline layout_t make_layout(const type_t &type, const std::vector<dim_t> &dims,
-        const std::string &tag) {
+inline layout_t make_layout(
+        const type_t &type, const tile_t &dims, const std::string &tag) {
     return make_layout(type, 0, tag, dims);
 }
 
@@ -163,11 +163,11 @@ inline layout_t make_layout(const memory_desc_t &md, const std::string &tag) {
             std::vector<dim_t>(mdw.dims(), mdw.dims() + mdw.ndims()));
 }
 
-bool matches_tag(const layout_t &layout, const std::string &tag,
-        const std::vector<dim_t> &dims);
+bool matches_tag(
+        const layout_t &layout, const std::string &tag, const tile_t &dims);
 
 inline bool matches_tag(const layout_t &layout, const std::string &tag) {
-    return matches_tag(layout, tag, layout.dims());
+    return matches_tag(layout, tag, layout.tile());
 }
 
 inline bool matches_tag(const memory_desc_t &md, const std::string &tag) {

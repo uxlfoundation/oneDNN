@@ -349,15 +349,6 @@ public:
 
     const type_t &type() const { return type_; }
 
-    std::vector<dim_t> dims() const {
-        gpu_assert(with_ndims());
-        std::vector<dim_t> dims(ndims(), 1);
-        for (auto &b : blocks_) {
-            dims[b.dim] *= b.block;
-        }
-        return dims;
-    }
-
     tile_t tile() const {
         tile_t tile;
         for (auto &b : blocks_)
@@ -1217,10 +1208,10 @@ public:
     explicit view_t(const layout_t &layout,
             const std::vector<expr_t> &_vvars = {},
             uint32_t bound_check_mask = 0)
-        : view_t(layout, _vvars, layout.dims(), bound_check_mask) {}
+        : view_t(layout, _vvars, layout.tile(), bound_check_mask) {}
 
     view_t(const layout_t &layout, const std::vector<expr_t> &_vvars,
-            const std::vector<dim_t> &_vdims, uint32_t bound_check_mask)
+            const tile_t &_vdims, uint32_t bound_check_mask)
         : vvars_(_vvars)
         , vdims_(_vdims)
         , vstart_(layout.ndims())

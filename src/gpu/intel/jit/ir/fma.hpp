@@ -89,9 +89,9 @@ public:
     const type_t &b_type() const { return b_layout_.type(); }
     const type_t &c_type() const { return c_type_; }
 
-    dim_t m() const { return a_layout_.dims()[0]; }
-    dim_t n() const { return b_layout_.dims()[1]; }
-    dim_t k() const { return a_layout_.dims()[1]; }
+    dim_t m() const { return a_layout_.tile()[0]; }
+    dim_t n() const { return b_layout_.tile()[1]; }
+    dim_t k() const { return a_layout_.tile()[1]; }
 
     static type_t get_c_type(
             const type_t &a, const type_t &b, bool force_c_upconvert);

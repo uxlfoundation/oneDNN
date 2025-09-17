@@ -32,9 +32,8 @@ stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
         bool drop_dims) {
     auto sub_tile = _sub_tile_coord.tile;
     auto sub_coord = _sub_tile_coord.coord;
-    if (sub_tile.is_empty()) sub_tile = tile_t(src.dims());
+    if (sub_tile.is_empty()) sub_tile = src.tile();
     if (sub_coord.is_empty()) sub_coord = coord_t(src.ndims());
-    gpu_assert(src.ndims() == sub_tile.size());
     dim_idx_t ndims = src.ndims();
 
     // Align dst layout with src layout according to the mask if needed.
@@ -78,12 +77,14 @@ stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
         const expr_t &src_buf, const expr_t &dst_buf) {
     gpu_assert(src.ndims() == dst.ndims());
     uint32_t reduction_mask = 0;
+    tile_t dst_tile = dst.tile();
+    tile_t src_tile = src.tile();
     for (dim_idx_t i = 0; i < src.ndims(); i++) {
-        if (dst.dims()[i] != 1 || src.dims()[i] == 1) {
+        if (dst_tile[i] != 1 || src_tile[i] == 1) {
             reduction_mask |= (1 << i);
         }
     }
-    return create_reduce_stmt(src, dst, src_buf, dst_buf, tile_t(src.dims()),
+    return create_reduce_stmt(src, dst, src_buf, dst_buf, src_tile,
             reduction_mask, /*drop_dims=*/false);
 }
 

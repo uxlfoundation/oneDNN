@@ -108,13 +108,13 @@ layout_t normalize_layout(const layout_t &_layout, bool with_groups,
     return layout;
 }
 
-std::vector<dim_t> normalize_dims(std::vector<dim_t> &dims, bool with_groups,
-        dim_t groups, bool is_dw, const std::array<int, 3> &dhw_map,
-        bool add_groups, bool is_wei) {
+tile_t normalize_tile(std::vector<dim_t> &dims, bool with_groups, dim_t groups,
+        bool is_dw, const std::array<int, 3> &dhw_map, bool add_groups,
+        bool is_wei) {
     layout_t dummy_layout(type_t::u8(), dims);
     return normalize_layout(dummy_layout, with_groups, groups, is_dw, dhw_map,
             add_groups, is_wei)
-            .dims();
+            .tile();
 }
 
 void normalize_layouts(layout_t &src_layout, layout_t &wei_layout,
@@ -147,12 +147,18 @@ uint32_t post_op_view_mapper_t::normalize_mask(uint32_t orig_mask) const {
     for (int i = 0; i < orig_ndims; i++) {
         if ((orig_mask & (1 << i)) != 0) dummy_dims[i] = mask_set_value;
     }
-    auto cvt_dims = normalize_dims(dummy_dims, /*with_groups=*/false, prb_.g,
+    auto cvt_dims = normalize_tile(dummy_dims, /*with_groups=*/false, prb_.g,
             prb_.is_dw, prb_.dhw_map,
             /*add_groups=*/false, /*is_wei=*/false);
     // Split channels into groups and channels to match ngcdhw layout.
-    if (add_groups) cvt_dims.insert(cvt_dims.begin() + 1, cvt_dims[1]);
-    gpu_assert(cvt_dims.size() == cp_ndims);
+    if (add_groups) {
+        tile_t new_tile;
+        for (auto &b : cvt_dims) {
+            if (b > 0) new_tile.set(b + 1, cvt_dims[b]);
+        }
+        new_tile[1] = cvt_dims[1];
+        cvt_dims = new_tile;
+    }
 
     uint32_t mask = 0;
     for (dim_idx_t i = 0; i < cp_ndims; i++) {
@@ -253,22 +259,22 @@ view_t post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
     layout = normalize_layout(layout, /*with_groups=*/false, prb_.g, prb_.is_dw,
             prb_.dhw_map, add_groups,
             /*is_wei=*/false);
-    dims = normalize_dims(dims, /*with_groups=*/false, prb_.g, prb_.is_dw,
+    auto tile = normalize_tile(dims, /*with_groups=*/false, prb_.g, prb_.is_dw,
             prb_.dhw_map, add_groups, /*is_wei=*/false);
-    padded_dims = normalize_dims(padded_dims, /*with_groups=*/false, prb_.g,
-            prb_.is_dw, prb_.dhw_map, add_groups,
+    auto padded_tile = normalize_tile(padded_dims, /*with_groups=*/false,
+            prb_.g, prb_.is_dw, prb_.dhw_map, add_groups,
             /*is_wei=*/false);
     gpu_assert(layout.ndims() == cp_ndims) << "Incompatible dimensions.";
     uint32_t bound_check_mask = 0;
     for (dim_idx_t i = 0; i < cp_ndims; i++) {
-        if (dims[i] == 1) continue; // Broadcast, no bound check needed.
-        if (padded_dims[i] != cp_view().tlayout().elems(i)) {
+        if (tile[i] == 1) continue; // Broadcast, no bound check needed.
+        if (padded_tile[i] != cp_view().tlayout().elems(i)) {
             bound_check_mask |= (1 << i);
         } else if (cp_view().has_tmask(i)) {
             bound_check_mask |= (1 << i);
         }
     }
-    return view_t(layout, cp_view().vvars(), dims, bound_check_mask);
+    return view_t(layout, cp_view().vvars(), tile, bound_check_mask);
 }
 
 view_t post_op_view_mapper_t::try_create_bias_view(uint32_t mask) const {

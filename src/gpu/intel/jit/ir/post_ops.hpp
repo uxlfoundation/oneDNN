@@ -401,7 +401,7 @@ private:
         gpu_assert(cp_ndims() == view.nvdims());
         uint32_t mask = 0;
         for (dim_idx_t i = 0; i < cp_ndims(); i++) {
-            if (view.vdims()[i] != 1) mask |= (1 << i);
+            if (view.vdims().get(i) != 1) mask |= (1 << i);
         }
         return mask;
     }

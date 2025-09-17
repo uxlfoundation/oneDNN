@@ -66,8 +66,9 @@ void slm_reduce_builder_t::build() {
     // Write thread tile to SLM.
     tile_t write_tile;
     coord_t write_start;
+    tile_t reg_tile = reg_layout_.tile();
     for (int i = 0; i < ndims; i++)
-        write_tile[i] = reg_layout_.dims()[i];
+        write_tile[i] = reg_tile[i];
     for (int i = tg_ndims_ - 1; i >= 0; i--) {
         write_start[ndims + i] = tg_grid_.idx(i);
     }
@@ -99,10 +100,11 @@ void slm_reduce_builder_t::build() {
 
     tile_t read_tile;
     coord_t read_start;
+    tile_t slm_tile = slm_layout.tile();
     for (int i = 0; i < ndims; i++) {
         read_tile[i] = local_thr_tile_coord.tile[i];
         read_start[i] = local_thr_tile_coord.coord[i];
-        auto cond = read_start[i] < slm_layout.dims()[i];
+        auto cond = read_start[i] < slm_tile[i];
         if (reduce_cond_.is_empty())
             reduce_cond_ = std::move(cond);
         else

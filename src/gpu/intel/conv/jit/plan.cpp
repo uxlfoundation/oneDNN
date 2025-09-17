@@ -701,9 +701,9 @@ reorder_plan_t create_reorder_plan(
 bool reorder_plan_t::can_split(int factor) const {
     auto split_src = split(src, factor);
     auto split_dst = split(dst, factor);
-    auto split_src_dims = split_src.dims();
-    auto split_dst_dims = split_dst.dims();
-    return ir_utils::is_equal(split_src_dims, split_dst_dims);
+    auto split_src_tile = split_src.tile();
+    auto split_dst_tile = split_dst.tile();
+    return ir_utils::is_equal(split_src_tile, split_dst_tile);
 }
 
 void reorder_plan_t::set_split(int factor) {
@@ -2236,7 +2236,7 @@ private:
         auto blocks = l.blocks();
         l = l.add_outer_block(ndims, k_tg);
         int outer = 1;
-        auto rem_dims = l.dims();
+        auto rem_dims = l.tile();
         for (int i = (int)blocks.size() - 1; i >= 0; i--) {
             auto &b = blocks[i];
             for (dim_t j = 2; j <= b.block; j++) {

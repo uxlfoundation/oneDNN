@@ -575,7 +575,7 @@ private:
         layout_t x_reduce_reg_layout
                 = r2g.reg_layout().with(x_reduce_type).make_dense();
         stmt_t stmt = r2g.stmt();
-        if (r2g.reg_layout() == x_reduce_reg_layout) {
+        if (r2g.reg_layout().is_equal_normalized(x_reduce_reg_layout)) {
             stmt = substitute(stmt, x_reduce_dummy_buf, x_reduce_buf);
         } else {
             auto x_reduce_tmp_buf = buf_mgr_.get(

@@ -78,7 +78,8 @@ void slm_reduce_builder_t::build() {
     store_stmt_ = write.stmt();
 
     auto &write_layout = write.reg_layout();
-    gpu_assert(write_layout == reg_layout_) << "Incompatible layouts.";
+    gpu_assert(write_layout.is_equal_normalized(reg_layout_))
+            << "Incompatible layouts.";
 
     // Redistribute the layout to read/reduce all k-axis tiles from every
     // thread.

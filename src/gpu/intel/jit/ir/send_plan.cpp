@@ -67,7 +67,7 @@ public:
         if (!is_scattered()) return stmt;
         const auto &reg = reg_layout();
         const auto &msg = message_layout();
-        if (reg == msg) return stmt;
+        if (reg.is_equal_normalized(msg)) return stmt;
 
         if (op == send_op_t::load) {
             auto reorder = create_reorder_stmt(msg, reg, reg_buf, reg_buf);

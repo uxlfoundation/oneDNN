@@ -1052,7 +1052,7 @@ status_t kernel_desc_t::init_primitive_plan(
                 = (md.ndims == 0 ? jit::layout_t() : jit::make_layout(md));
         bool is_out_stream_k = use_stream_k && t.is_output;
         bool zero_out = is_out_stream_k;
-        if (compute_layout != user_layout
+        if (!compute_layout.is_equal_normalized(user_layout)
                 && !compute_layout.normalize().is_strictly_equal(
                         user_layout.normalize(), true, false)) {
             user_name += "_user";

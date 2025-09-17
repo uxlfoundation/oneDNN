@@ -203,7 +203,8 @@ struct reorder_operand_t {
                                                        : to_ir(buffer.range);
     }
     bool operator==(const reorder_operand_t &other) const {
-        return layout == other.layout && buffer == other.buffer;
+        return layout.is_equal_normalized(other.layout)
+                && buffer == other.buffer;
     }
 };
 

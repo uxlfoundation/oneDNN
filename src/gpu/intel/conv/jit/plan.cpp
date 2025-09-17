@@ -686,10 +686,10 @@ void init_bwd_w(const config_t &cfg_, gemm_schedule_t &gemm_schedule,
 
 reorder_plan_t create_reorder_plan(
         const hw_t &hw, const layout_t &src, const layout_t &dst) {
-    if (src == dst) return reorder_plan_t();
+    if (src.is_equal_normalized(dst)) return reorder_plan_t();
     if ((src.type() == dst.type()
                 || (src.type().is_f32() && dst.type().is_tf32()))
-            && src.with(dst.type()) == dst)
+            && src.with(dst.type()).is_equal_normalized(dst))
         return reorder_plan_t();
 
     reorder_plan_t ret(hw);
@@ -2287,7 +2287,7 @@ private:
         };
         auto a_k = k_sub_layout(abc_kind_t::a, a);
         auto b_k = k_sub_layout(abc_kind_t::b, b);
-        if (a_k == b_k) return plan_status_t::success;
+        if (a_k.is_equal_normalized(b_k)) return plan_status_t::success;
         if (cfg_.fma_kind() != fma_kind_t::mad)
             return plan_status_t::ab_layout_k_blocks_mismatch;
 

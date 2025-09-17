@@ -531,7 +531,7 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reorder_operand_t &src,
         // Pure conversion or pure swizzle
         emit(dst, src);
     } else if (do_pre_conv && do_post_conv) {
-        const bool has_swizzle = up_layout != down_layout;
+        const bool has_swizzle = !up_layout.is_equal_normalized(down_layout);
         auto tmp = init_operand(std::move(up_layout), from_temp);
         emit(tmp, src);
         if (has_swizzle) {

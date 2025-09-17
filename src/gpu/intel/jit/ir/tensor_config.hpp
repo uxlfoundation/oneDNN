@@ -70,7 +70,7 @@ public:
         t.is_output = is_output;
         t.compute_layout = compute_layout;
         t.user_layout = user_layout;
-        t.needs_reorder = (t.compute_layout != t.user_layout);
+        t.needs_reorder = !t.compute_layout.is_equal_normalized(t.user_layout);
         t.needs_zero_out = false;
     }
 
@@ -78,7 +78,7 @@ public:
             const std::string &name, const layout_t &compute_layout) {
         auto &t = find_tensor(name);
         t.compute_layout = compute_layout;
-        t.needs_reorder = (t.compute_layout != t.user_layout);
+        t.needs_reorder = !t.compute_layout.is_equal_normalized(t.user_layout);
     }
 
     const layout_t &compute_layout(const std::string &name) const {

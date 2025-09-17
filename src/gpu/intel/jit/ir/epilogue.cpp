@@ -376,7 +376,7 @@ public:
 
         auto write = make_access_builder(*ir_ctx_, mem_view(), mem_buf(),
                 reg_buf(), send_op_t::atomic_fadd, send_address_t::a64);
-        gpu_assert(write.reg_layout() == reg_layout());
+        gpu_assert(write.reg_layout().is_equal_normalized(reg_layout()));
 
         return write.stmt();
     }
@@ -782,8 +782,8 @@ private:
         void set_next(
                 ir_context_t &ir_ctx, c_stage_t *next, bool force_reorder) {
             if (!next) return;
-            bool do_reorder
-                    = !layout.is_equal(next->layout, /*compare_offset=*/false);
+            bool do_reorder = !layout.is_equal_normalized(
+                    next->layout, /*compare_offset=*/false);
             if (force_reorder) do_reorder = true;
             if (do_reorder) {
                 gpu_assert(stmt.is_empty());

@@ -397,8 +397,10 @@ public:
         return true;
     }
 
-    bool operator==(const layout_t &other) const { return is_equal(other); }
-
+    bool operator==(const layout_t &other) const {
+        return type_ == other.type_ && ndims_ == other.ndims_
+                && offset_.is_equal(other.offset_) && blocks_ == other.blocks_;
+    }
     bool operator!=(const layout_t &other) const { return !operator==(other); }
     bool operator<=(const layout_t &other) const {
         if (type_ != other.type_) return false;
@@ -415,9 +417,9 @@ public:
                 && self_blocks[i].stride == other_blocks[i].stride
                 && other_blocks[i].block % self_blocks[i].block == 0);
     }
-    bool operator>=(const layout_t &other) const { return other <= *this; }
 
-    bool is_equal(const layout_t &other, bool compare_offset = true) const {
+    bool is_equal_normalized(
+            const layout_t &other, bool compare_offset = true) const {
         return normalize().is_strictly_equal(other.normalize(), compare_offset);
     }
 
@@ -1474,7 +1476,7 @@ public:
 
     bool has_same_vlayout(
             const view_t &other, bool compare_offset = true) const {
-        return create_vlayout().is_equal(
+        return create_vlayout().is_equal_normalized(
                 other.create_vlayout(), compare_offset);
     }
 

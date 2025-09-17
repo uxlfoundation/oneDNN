@@ -123,8 +123,8 @@ bool dpas_t::matches(const multiply_desc_t &desc) const {
     auto b_blk_layout
             = desc.b_layout().sub(tile_t(std::vector<dim_t> {k_blk, n_blk}));
 
-    if (a_blk_layout != a_layout()) return false;
-    if (b_blk_layout != b_layout()) return false;
+    if (!a_blk_layout.is_equal_normalized(a_layout())) return false;
+    if (!b_blk_layout.is_equal_normalized(b_layout())) return false;
 
     return true;
 }

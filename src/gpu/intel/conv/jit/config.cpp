@@ -79,7 +79,7 @@ layout_t init_layout(memory_desc_t &user_md, const std::string &optimal_tag) {
         auto user = make_layout(user_md);
         // If layouts are physically different return the layout passed by
         // the user and return unimplemented later.
-        if (user != optimal) return user;
+        if (!user.is_equal_normalized(optimal)) return user;
     } else {
         user_md = to_md(optimal, user_md);
     }
@@ -1942,7 +1942,7 @@ std::string config_t::str() const {
         auto &compute_layout = layouts[i]->compute_unnormalized();
         auto &user_layout = layouts[i]->user_unnormalized();
         oss << "  " << desc << compute_layout;
-        if (user_layout != compute_layout) {
+        if (!user_layout.is_equal_normalized(compute_layout)) {
             oss << " (user: " << user_layout << ")";
         }
         oss << std::endl;

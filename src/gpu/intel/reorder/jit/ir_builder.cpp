@@ -216,7 +216,7 @@ bool ir_builder_t::try_build(const tile_t &iter_tile, const tile_t &loop_tile) {
         write_stmt = create_epilogue_stmt(cfg_.exec_cfg(), ir_ctx, schedule,
                 /*force_c_reorder=*/true, post_op_ctx, thr_tile_coord,
                 read_layout, dst_buf, reg_buf, write_buf_size);
-    } else if (read_layout != write_layout) {
+    } else if (!read_layout.is_equal_normalized(write_layout)) {
         auto tmp_buf
                 = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr), "tmp");
         allocs.push_back(

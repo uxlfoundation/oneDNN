@@ -2135,6 +2135,14 @@ void CopyPlan::legalizeSIMD(bool initial)
     for (auto &i: insns)
         i.cnumSub = 0;
 
+    // Basic rule: maximum of 2 registers per operand.
+    auto opSimdMax = [&] (const CopyOperand &op, bool src2 = false) {
+        if (op.kind != CopyOperand::GRF || op.stride == 0) return 64;
+        int nregs = (!src2 || ((op.offset == 0) && (op.stride == 1))) ? 2 : 1;
+        int remaining = (bytesToElements(nregs * grf, op.type) - (op.offset + 1)) / op.stride + 1;
+        return rounddown_pow2(remaining);
+    };
+
     auto ninsn = insns.size();
     std::vector<std::pair<int16_t, int16_t>> cnumOffsets;
     for (size_t n = 0; n < ninsn; ) {
@@ -2143,18 +2151,7 @@ void CopyPlan::legalizeSIMD(bool initial)
         int simdMax = 32;
 
         if (!initial) {
-            // Basic rule: maximum of 2 registers per operand.
-            auto opSimdMax = [=](const CopyOperand &op) {
-                int bstride = getBytes(op.type) * op.stride;
-                if (bstride == 0)
-                    return 256;
-                else if (op.offset >= op.stride)
-                    return grf / bstride;
-                else
-                    return 2 * grf / bstride;
-            };
-
-            simdMax = std::min({simdMax, opSimdMax(i.dst), opSimdMax(i.src0), opSimdMax(i.src1)});
+            simdMax = std::min({simdMax, opSimdMax(i.dst), opSimdMax(i.src0), opSimdMax(i.src1), opSimdMax(i.src2, true)});
 
             // Special handling for mixed mode (f16/bf16 with f32) instructions.
             bool hasF  = one_of(DataType::f,  i.dst.type, i.src0.type, i.src1.type, i.src2.type);
@@ -2182,18 +2179,11 @@ void CopyPlan::legalizeSIMD(bool initial)
 
         // Fracture instruction into legal SIMD lengths.
         int simd0 = std::min<int>(rounddown_pow2(i.simd), simdMax);
-        auto opSimdMax = [&] (const CopyOperand &op) {
-            if (op.kind != CopyOperand::GRF || op.stride == 0) return simdMax;
-            int remaining = (bytesToElements(grf, op.type) - (op.offset + 1)) / op.stride + 1;
-            return rounddown_pow2(remaining);
-        };
 
         if (!initial && forceSIMD1(i))
             simd0 = 1;
 
         if (simd0 < i.simd || splitting) {
-            simd0 = std::min({simd0, opSimdMax(i.src0), opSimdMax(i.src1), opSimdMax(i.src2)});
-
             auto &isplit = split(i, false);
             isplit.simd = simd0;
 

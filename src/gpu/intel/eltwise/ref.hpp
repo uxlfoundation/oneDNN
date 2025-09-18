@@ -117,7 +117,8 @@ struct ref_bwd_t : public primitive_t {
             using namespace alg_kind;
             VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_ELTWISE(memory_desc_ndims_ok(data_md(), diff_dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "data_md", "diff_dst_md");
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "data_md",
+                    "diff_dst_md", data_md()->ndims, diff_dst_md()->ndims);
             VDISPATCH_ELTWISE(
                     utils::one_of(data_md()->data_type, data_type::f32,
                             data_type::f16, data_type::bf16, data_type::f64),

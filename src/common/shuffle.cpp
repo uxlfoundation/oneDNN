@@ -73,7 +73,8 @@ status_t shuffle_desc_init(shuffle_desc_t *shuffle_desc, prop_kind_t prop_kind,
     VCHECK_SHUFFLE(sd.src_desc.dims[axis] % sd.group_size == 0,
             VERBOSE_INCONSISTENT_DIM, "src", axis, "group_size", 0);
     VCHECK_SHUFFLE(sd.dst_desc.ndims == sd.src_desc.ndims,
-            VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst",
+            sd.dst_desc.ndims, sd.src_desc.ndims);
     VCHECK_SHUFFLE(
             array_cmp(sd.dst_desc.dims, sd.src_desc.dims, sd.src_desc.ndims),
             VERBOSE_INCONSISTENT_DIM, "src", -1, "dst", -1);

@@ -96,7 +96,8 @@ status_t eltwise_desc_init(eltwise_desc_t *eltwise_desc, prop_kind_t prop_kind,
 #define CHECK_DIMS(t1, t2) \
     do { \
         VCHECK_ELTWISE(ed.t2##_desc.ndims == ed.t1##_desc.ndims, \
-                VERBOSE_INCONSISTENT_NDIMS, #t1, #t2); \
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, #t1, #t2, \
+                ed.t2##_desc.ndims, ed.t1##_desc.ndims); \
         VCHECK_ELTWISE(array_cmp(ed.t2##_desc.dims, ed.t1##_desc.dims, \
                                ed.t1##_desc.ndims), \
                 VERBOSE_INCONSISTENT_DIM, #t1, -1, #t2, -1); \

@@ -125,7 +125,8 @@ status_t lnorm_desc_init(layer_normalization_desc_t *lnorm_desc,
 #define CHECK_DIMS(t1, t2, off_ndims) \
     do { \
         VCHECK_LNORM(ld.t1##_desc.ndims == ld.t2##_desc.ndims + (off_ndims), \
-                VERBOSE_INCONSISTENT_NDIMS, #t1, #t2); \
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, #t1, #t2, \
+                ld.t1##_desc.ndims, ld.t2##_desc.ndims + (off_ndims)); \
         VCHECK_LNORM(array_cmp(ld.t1##_desc.dims, ld.t2##_desc.dims, \
                              ld.t2##_desc.ndims), \
                 VERBOSE_INCONSISTENT_DIM, #t1, -1, #t2, -1); \

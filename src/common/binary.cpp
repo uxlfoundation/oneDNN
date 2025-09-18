@@ -119,17 +119,18 @@ status_t binary_md_check(const engine_t *engine, alg_kind_t alg_kind,
     const int ndims = dst_md->ndims;
     const dims_t &dims = dst_md->dims;
 
-    VCHECK_BINARY(
-            src0_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS, "src0", "dst");
-    VCHECK_BINARY(
-            src1_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS, "src1", "dst");
+    VCHECK_BINARY(src0_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS_WITH_VALS,
+            "src0", "dst", src0_md->ndims, ndims);
+    VCHECK_BINARY(src1_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS_WITH_VALS,
+            "src1", "dst", src1_md->ndims, ndims);
 
     if (src2_md != nullptr) {
         VCHECK_BINARY_UNIMPL(
                 !memory_desc_wrapper(src2_md).has_runtime_dims_or_strides(),
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-        VCHECK_BINARY(src2_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS,
-                "src2", "dst");
+        VCHECK_BINARY(src2_md->ndims == ndims,
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src2", "dst",
+                src2_md->ndims, ndims);
         VCHECK_BINARY(
                 src2_md->data_type == data_type::s8, VERBOSE_UNSUPPORTED_DT);
     }

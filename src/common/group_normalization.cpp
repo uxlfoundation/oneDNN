@@ -111,7 +111,8 @@ status_t group_normalization_desc_init(group_normalization_desc_t *desc,
 #define CHECK_DIMS(t1, t2) \
     do { \
         VCHECK_GNORM(gd.t2##_desc.ndims == gd.t1##_desc.ndims, \
-                VERBOSE_INCONSISTENT_NDIMS, #t1, #t2); \
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, #t1, #t2, \
+                gd.t2##_desc.ndims, gd.t1##_desc.ndims); \
         VCHECK_GNORM(array_cmp(gd.t2##_desc.dims, gd.t1##_desc.dims, \
                              gd.t1##_desc.ndims), \
                 VERBOSE_INCONSISTENT_DIM, #t1, -1, #t2, -1); \

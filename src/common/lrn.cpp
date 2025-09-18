@@ -95,7 +95,8 @@ status_t lrn_desc_init(lrn_desc_t *lrn_desc, prop_kind_t prop_kind,
 #define CHECK_DIMS(t1, t2) \
     do { \
         VCHECK_LRN(ld.t2##_desc.ndims == ld.t1##_desc.ndims, \
-                VERBOSE_INCONSISTENT_NDIMS, #t1, #t2); \
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, #t1, #t2, \
+                ld.t2##_desc.ndims, ld.t1##_desc.ndims); \
         VCHECK_LRN(array_cmp(ld.t2##_desc.dims, ld.t1##_desc.dims, \
                            ld.t1##_desc.ndims), \
                 VERBOSE_INCONSISTENT_DIM, #t1, -1, #t2, -1); \

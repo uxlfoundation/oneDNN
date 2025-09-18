@@ -389,7 +389,8 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
     VCHECK_MATMUL(ndims >= 2 && ndims <= DNNL_MAX_NDIMS, VERBOSE_BAD_NDIMS,
             "dst", ndims);
     VCHECK_MATMUL(everyone_is(ndims, src_desc->ndims, weights_desc->ndims),
-            VERBOSE_INCONSISTENT_NDIMS, "src", "weights");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "weights",
+            src_desc->ndims, weights_desc->ndims);
     VCHECK_MATMUL(IMPLICATION(with_bias, op_d.bias_desc.ndims == ndims),
             VERBOSE_BAD_NDIMS, "bias", op_d.bias_desc.ndims);
     VCHECK_MATMUL(IMPLICATION(with_reduce, op_d.reduce_desc.ndims == ndims),

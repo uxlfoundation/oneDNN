@@ -89,7 +89,8 @@ status_t ip_desc_init(inner_product_desc_t *ip_desc, prop_kind_t prop_kind,
             src_desc->ndims);
     VCHECK_IP(dst_desc->ndims == 2, VERBOSE_BAD_NDIMS, "dst", dst_desc->ndims);
     VCHECK_IP(weights_desc->ndims == src_desc->ndims,
-            VERBOSE_INCONSISTENT_NDIMS, "weights", "src");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "weights", "src",
+            weights_desc->ndims, src_desc->ndims);
     VCHECK_IP((with_bias ? bias_desc->ndims == 1 : true), VERBOSE_BAD_NDIMS,
             "bias", bias_desc->ndims);
     VCHECK_IP((with_bias ? bias_desc->dims[0] == dst_desc->dims[1] : true),

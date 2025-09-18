@@ -107,12 +107,14 @@ status_t deconv_desc_init(deconvolution_desc_t *deconv_desc,
 
     const dim_t g = with_groups ? weights_desc->dims[0] : 1;
     VCHECK_DECONV(src_desc->ndims == dst_desc->ndims,
-            VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst", src_desc->ndims,
+            dst_desc->ndims);
     VCHECK_DECONV(utils::one_of(src_desc->ndims, 3, 4, 5), VERBOSE_BAD_NDIMS,
             "src", src_desc->ndims);
     VCHECK_DECONV(utils::one_of(weights_desc->ndims, src_desc->ndims,
                           src_desc->ndims + 1),
-            VERBOSE_INCONSISTENT_NDIMS, "src", "weights");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "weights",
+            weights_desc->ndims, src_desc->ndims);
     VCHECK_DECONV(IMPLICATION(with_bias, bias_desc->ndims == 1),
             VERBOSE_BAD_NDIMS, "bias", bias_desc->ndims);
     VCHECK_DECONV(

@@ -67,8 +67,8 @@ status_t sum_primitive_desc_create(primitive_desc_iface_t **sum_pd_iface,
 #define SRC2STR(i) (std::string("src_") + std::to_string(i)).c_str()
     for (int i = 1; i < n; ++i) {
         const memory_desc_t &src_md = *src_mds[i];
-        VCHECK_SUM(src_md.ndims == ndims, VERBOSE_INCONSISTENT_NDIMS, "src_0",
-                SRC2STR(i));
+        VCHECK_SUM(src_md.ndims == ndims, VERBOSE_INCONSISTENT_NDIMS_WITH_VALS,
+                "src_0", SRC2STR(i), src_md.ndims, ndims);
         VCHECK_SUM(!memory_desc_wrapper(src_md).format_any(),
                 VERBOSE_UNSUPPORTED_TAG_S, SRC2STR(i));
         VCHECK_SUM_UNIMPL(
@@ -82,8 +82,8 @@ status_t sum_primitive_desc_create(primitive_desc_iface_t **sum_pd_iface,
 
     memory_desc_t dummy_dst_md;
     if (dst_md) {
-        VCHECK_SUM(dst_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS, "src_0",
-                "dst");
+        VCHECK_SUM(dst_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS_WITH_VALS,
+                "src_0", "dst", dst_md->ndims, ndims);
         VCHECK_SUM(!memory_desc_wrapper(dst_md).has_runtime_dims_or_strides(),
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
         for (int d = 0; d < ndims; ++d) {

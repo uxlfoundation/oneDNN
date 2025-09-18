@@ -139,7 +139,8 @@ struct reusable_fwd_t : public primitive_t {
 
             // src, dst must have equal formats and dimensions
             VDISPATCH_SOFTMAX(src_mdw.ndims() == dst_mdw.ndims(),
-                    VERBOSE_INCONSISTENT_NDIMS, "source", "destination");
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "source",
+                    "destination", src_mdw.ndims(), dst_mdw.ndims());
             const blocking_desc_t &src_blk = src_mdw.blocking_desc(),
                                   &dst_blk = dst_mdw.blocking_desc();
             for (int i = 0; i < src_mdw.ndims(); i++) {

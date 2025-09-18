@@ -131,8 +131,9 @@ struct ref_t : public primitive_t {
             VDISPATCH_GEMM(
                     IMPLICATION(desc()->is_batched(),
                             desc()->a_desc.dims[0] == desc()->b_desc.dims[0]),
-                    VERBOSE_INCONSISTENT_NDIMS, "desc()->a_desc.dims[0]",
-                    "desc()->b_desc.dims[0]");
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "desc()->a_desc",
+                    "desc()->b_desc", static_cast<int>(desc()->a_desc.dims[0]),
+                    static_cast<int>(desc()->b_desc.dims[0]));
             VDISPATCH_GEMM(IMPLICATION(acc_dt != s32 && !wei_decompress,
                                    attr()->zero_points_.has_default_values()),
                     VERBOSE_UNSUPPORTED_ZP_CFG);

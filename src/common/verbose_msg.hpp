@@ -65,7 +65,6 @@
 #define VERBOSE_INCONSISTENT_DIM "dimension %s:%d is inconsistent with %s:%d"
 #define VERBOSE_INCONSISTENT_NDIMS \
     "tensors %s and %s have inconsistent number of dimensions"
-// TODO: replace the version above with the version below.
 #define VERBOSE_INCONSISTENT_NDIMS_WITH_VALS \
     "tensors %s and %s have inconsistent number of dimensions (%d) and (%d)"
 #define VERBOSE_INCONSISTENT_DT "tensors %s and %s have inconsistent datatypes"

@@ -98,13 +98,15 @@ status_t conv_desc_init(convolution_desc_t *conv_desc, prop_kind_t prop_kind,
 
     VCHECK_CONV(memory_desc_wrapper(weights_desc).nelems(),
             VERBOSE_EMPTY_TENSOR, "weights");
-    VCHECK_CONV(src_desc->ndims == dst_desc->ndims, VERBOSE_INCONSISTENT_NDIMS,
-            "src", "dst");
+    VCHECK_CONV(src_desc->ndims == dst_desc->ndims,
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst", src_desc->ndims,
+            dst_desc->ndims);
     VCHECK_CONV(utils::one_of(src_desc->ndims, 3, 4, 5), VERBOSE_BAD_NDIMS,
             "src", src_desc->ndims);
     VCHECK_CONV(utils::one_of(weights_desc->ndims, src_desc->ndims,
                         src_desc->ndims + 1),
-            VERBOSE_INCONSISTENT_NDIMS, "src", "weights");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "weights",
+            weights_desc->ndims, src_desc->ndims);
 
     const dim_t g = with_groups ? weights_desc->dims[0] : 1;
     const dim_t bias_dim = prop_kind == backward_data ? src_desc->dims[1]

@@ -49,15 +49,17 @@ private:
         ker_max_reg_idx = 13,
     };
     const Xbyak::Reg64 reg_bcast_data = r8;
-    const Xbyak::Reg64 reg_ptr_scales = r8;
     const Xbyak::Reg64 reg_output_data = r9;
+    const Xbyak::Reg64 reg_src_scales = r8;
+    const Xbyak::Reg64 reg_wei_scales = r8;
+    const Xbyak::Reg64 reg_scale_adjust = r8;
+    const Xbyak::Reg64 reg_dst_scales = r12;
     const Xbyak::Reg64 reg_load_data = r10;
     const Xbyak::Reg64 reg_ptr_sum_scale = r10;
     const Xbyak::Reg64 reg_ptr_sum_zp = rdx;
     const Xbyak::Reg64 reg_reduce_loop_work = r11;
     const Xbyak::Reg64 reg_bias_data = r12;
     const Xbyak::Reg64 reg_comp_data = r12;
-    const Xbyak::Reg64 reg_ptr_dst_scale = r12;
     const Xbyak::Reg64 reg_init_bcast = r13;
     const Xbyak::Reg64 reg_store_bcast = r13;
     const Xbyak::Reg64 reg_reduce_loop_iter = r13;
@@ -82,7 +84,9 @@ private:
     const Vmm vmm_bcast = Vmm(0);
     const Vmm vmm_saturation = Vmm(0);
     /* used during scale section of store_output */
-    const Vmm vmm_scale = Vmm(1);
+    const Vmm vmm_scales = Vmm(1);
+    const Vmm vmm_scales_tmp = Vmm(3); // Has dependency on `vmm_bias`.
+    const Vmm vmm_dst_scales = Vmm(1);
     /* used during post_op sum section of store_output */
     const Vmm vmm_prev_dst = Vmm(1);
     /* used during bias section of store_output */
@@ -91,8 +95,6 @@ private:
     /* zero-point */
     const Vmm vmm_zp = Vmm(1);
     const Vmm vmm_zp_comp = Vmm(2);
-    /* dst scale */
-    const Vmm vmm_dst_scale = Vmm(1);
 
     constexpr static int simd_w = isa == avx2 ? 8 : 4;
     constexpr static int reg64_size = sizeof(int64_t);
@@ -100,14 +102,15 @@ private:
     constexpr static int reg_bias_data_off = 1 * reg64_size;
     constexpr static int reg_bcast_data_off = 2 * reg64_size;
     constexpr static int reg_load_data_off = 3 * reg64_size;
-    constexpr static int reg_ptr_sum_scale_off = 4 * reg64_size;
-    constexpr static int reg_bcast_loop_iter_off = 5 * reg64_size;
-    constexpr static int reg_comp_data_off = 6 * reg64_size;
-    constexpr static int reg_zp_compensation_off = 7 * reg64_size;
-    constexpr static int reg_src_zero_point_off = 8 * reg64_size;
-    constexpr static int reg_dst_zero_point_off = 9 * reg64_size;
-    constexpr static int reg_dst_scale_off = 10 * reg64_size;
-    constexpr static int stack_space_needed = 11 * reg64_size;
+    constexpr static int reg_src_scales_off = 4 * reg64_size;
+    constexpr static int reg_wei_scales_off = 5 * reg64_size;
+    constexpr static int reg_dst_scales_off = 6 * reg64_size;
+    constexpr static int reg_bcast_loop_iter_off = 7 * reg64_size;
+    constexpr static int reg_comp_data_off = 8 * reg64_size;
+    constexpr static int reg_zp_compensation_off = 9 * reg64_size;
+    constexpr static int reg_src_zero_point_off = 10 * reg64_size;
+    constexpr static int reg_dst_zero_point_off = 11 * reg64_size;
+    constexpr static int stack_space_needed = 12 * reg64_size;
 
     int vreg_accum_idx(
             const int load_loop_blk, const int i_load, const int i_ur);

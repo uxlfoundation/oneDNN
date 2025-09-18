@@ -107,7 +107,8 @@ struct nhwc_fwd_t : public primitive_t {
                 VDISPATCH_BNORM_SC(init_default_ws(8), VERBOSE_WS_INIT);
             }
 
-            VDISPATCH_BNORM_SC(init_conf(engine), "init_conf()");
+            VDISPATCH_BNORM_SC(init_conf(engine),
+                    VERBOSE_PRIMITIVE_CREATION_FAIL, "bnorm");
             init_scratchpad();
 
             return status::success;
@@ -250,8 +251,8 @@ struct nhwc_bwd_t : public primitive_t {
                 VDISPATCH_BNORM(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
             }
 
-            status_t status = init_conf(engine);
-            if (status != status::success) return status;
+            VDISPATCH_BNORM_SC(init_conf(engine),
+                    VERBOSE_PRIMITIVE_CREATION_FAIL, "bnorm");
             init_scratchpad();
 
             return status::success;

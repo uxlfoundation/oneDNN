@@ -112,7 +112,7 @@ status_t simple_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     CHECK(init_conf_common(conf, off, this));
 
     // This implementation optimizes the stat calculation - skip it if we're not calculating stats
-    if (!conf.calculate_stats) return status::unimplemented;
+    VDISPATCH_BNORM_IC(conf.calculate_stats, VERBOSE_SKIP_PRIMITIVE_IMPL);
 
     const memory_desc_wrapper data_mdw(src_md());
     const dim_idx_t ndims = into<dim_idx_t>(data_mdw.ndims());
@@ -151,7 +151,7 @@ status_t simple_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     // Fall back to reference unless this heuristic is hit to skip reducing stats
     // WARNING: This is doing a one-pass stat calculation, but it's not checking
     // for the experimental flag. This should be updated to follow the API.
-    if (!conf.skip_reduce_stat) return status::unimplemented;
+    VDISPATCH_BNORM_IC(conf.skip_reduce_stat, VERBOSE_SKIP_PRIMITIVE_IMPL);
 
     dim_t calc_dims_blocks[5] = {1, 1, 1, 1, 1};
 
@@ -291,10 +291,10 @@ status_t simple_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     const bool is_supported_double_block
             = data_mdw.matches_one_of_tag(NCw16n16c, NChw16n16c, NCdhw16n16c);
 
-    if (has_padding
-            || !(is_supported_single_block || is_supported_double_block)) {
-        return status::unimplemented;
-    }
+    VDISPATCH_BNORM_IC(!(has_padding
+                               || !(is_supported_single_block
+                                       || is_supported_double_block)),
+            VERBOSE_BLOCKING_FAIL, "unsupported blocking format");
 
     conf.mb_block = 1;
     conf.vect_size = 1;
@@ -337,7 +337,7 @@ status_t simple_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     CHECK(dispatch.vectorize_dim("IC", 16));
     dispatch.generate();
 
-    return status::unimplemented;
+    return status::success;
 }
 
 status_t simple_bwd_t::pd_t::init_kernel_ctx(

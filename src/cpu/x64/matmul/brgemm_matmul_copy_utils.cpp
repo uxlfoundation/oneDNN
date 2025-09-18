@@ -3472,19 +3472,10 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
                 conf_->orig_wei_dt, conf_->wei_dt);
     };
 
-    int iter = 0;
-    int n_iters;
-    if (is_dynamic_N || do_N_loop) {
-        n_iters = ncolumns;
-    } else {
-        n_iters = conf_->wei_n_blk;
-    }
-
     // Adjust strides for grouped over k weights
     // k_blk_step is const 2. This case handles
     // nrows = 1
     // Move pointer to the beginning of the block 2x32
-    // And shift the pointer to n_blk_step
     const auto kernel_early_stop = is_wei_grouped_over_k && nrows < k_blk_step;
     if (kernel_early_stop) {
         mov(reg_tr_src, ptr[rsp + reg_tr_src_offs]);
@@ -3493,8 +3484,15 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
         test(reg_tmp, 1);
         jz(even_k, T_NEAR);
         sub(reg_tr_src, conf_->LDB * tr_typesize);
-        add(reg_tr_src, vreg_traits_t<Vmm>::vlen);
         L(even_k);
+    }
+
+    int iter = 0;
+    int n_iters;
+    if (is_dynamic_N || do_N_loop) {
+        n_iters = ncolumns;
+    } else {
+        n_iters = conf_->wei_n_blk;
     }
 
     for_(int k = 0; k < nrows; k += k_blk_step)
@@ -3530,12 +3528,27 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
 
         load(blk_idx, k, n);
 
+        // Save only k, ignore (k + 1) and switch to the next n block
         if (kernel_early_stop) {
-            uni_vxorps(src_vmm1, src_vmm1, src_vmm1);
-            const auto src_ymm1 = ymm(src_vmm1.getIdx());
-            vinsertf64x4(src_zmm0, src_zmm0, src_ymm1, 1);
+            const auto zmm1 = zmm(src_vmm1.getIdx());
+            uni_vxorps(zmm1, zmm1, zmm1);
+            //if k % 2 == 1 then save only odd indices
+            // otherwise: only even using masks
+            Label even_k, end_permute;
+            mov(reg_tmp, ptr[rsp + reg_K_start_offs_]);
+            test(reg_tmp, 1);
+            jz(even_k, T_NEAR);
+            vinsertf64x4(src_zmm0, zmm1, ymm(src_vmm0.getIdx()), 1);
             vpermw(src_zmm0, vmm_permw, src_zmm0);
-            uni_vmovups(store_addr, ymm(src_zmm0));
+            vmovdqu16(store_addr | kAAAA, src_zmm0);
+            jmp(end_permute);
+            L(even_k);
+            vinsertf64x4(src_zmm0, zmm1, ymm(src_vmm0.getIdx()), 0);
+            vpermw(src_zmm0, vmm_permw, src_zmm0);
+            vmovdqu16(store_addr | k5555 | T_z, src_zmm0);
+            L(end_permute);
+
+            iter++;
             continue;
         }
 
@@ -3588,8 +3601,11 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::init_masks() {
             mov(reg_tmp, reinterpret_cast<size_t>(int4_permute));
             vmovdqa32(vmm_permd, ptr[reg_tmp]);
 
-            kmovx(kAAAA, 0xaaaa);
-            kmovx(k5555, 0x5555);
+            // 64-bit mask is also used when is_wei_[zp\scales]_per_k
+            mov(reg_tmp, 0xAAAAAAAAAAAAAAAA);
+            kmovq(kAAAA, reg_tmp);
+            mov(reg_tmp, 0x5555555555555555);
+            kmovq(k5555, reg_tmp);
         }
     }
 }
@@ -3717,6 +3733,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::generate() {
                     ? conf_->wei_zp_k_gsize
                     : conf_->wei_scales_k_gsize;
             if (k_group_size < k_blk_step) {
+                if (zeropad) return;
                 copy_block(
                         k_group_size, ncolumns, is_N_tail, /*zeropad= */ false);
                 return;
@@ -4047,11 +4064,8 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , wei_scales_typesize_(conf_->wei_scales_dt_sz)
         , vnni_granularity_(data_type_vnni_granularity(conf_->wei_dt))
         , k_blk_step_(vlen_ / tr_typesize_)
-        // K_blk could be adjust for grouped ZP/scales
-        , k_blk_size_(conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k
-                          ? conf_->is_wei_zp_per_k ? conf_->wei_zp_k_gsize
-                                                   : conf_->wei_scales_k_gsize
-                          : conf_->K_blk)
+        , is_wei_grouped_over_k_(
+                  conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k)
         , do_compute_compensation_(
                   conf_->has_zero_point_a || conf_->s8s8_compensation_required)
         , is_bf32_(conf->is_bf32)
@@ -4112,7 +4126,7 @@ private:
     const int wei_scales_typesize_;
     const int vnni_granularity_;
     const int k_blk_step_;
-    const dim_t k_blk_size_;
+    const bool is_wei_grouped_over_k_;
     const bool do_compute_compensation_;
     const bool is_bf32_;
     const bool is_bf16_with_int_wei_;
@@ -4290,6 +4304,49 @@ private:
         }
     }
 
+    /** Updates reg_tr_src offsets for the grouped over K case when K is odd. */
+    void maybe_update_strides(int ncolumns) {
+        if (is_wei_grouped_over_k_ && ncolumns == 1 && vnni_granularity_ == 2) {
+            Label even_k;
+            test(reg_K_start, 1);
+            jz(even_k, T_NEAR);
+            sub(reg_tr_src, conf_->LDB * tr_typesize_);
+            L(even_k);
+        }
+    }
+
+    /** Stores half of the block using mask for the case when vnni_granularity == 2 */
+    void store_half_block(const Zmm &r, const Xbyak::Address &store_addr) {
+        Label even_k, end_permute;
+        test(reg_K_start, 1);
+        jz(even_k, T_NEAR);
+        vmovdqu16(store_addr | kAAAA, r);
+        jmp(end_permute);
+        L(even_k);
+        vmovdqu16(store_addr | k5555 | T_z, r);
+        L(end_permute);
+    }
+
+    /** Merges and downconverts to register of f32 -> f16/bf16
+    *  depending if K is even or odd.
+    */
+    void merge_and_downconvert(
+            const Zmm &src, const Zmm &src_next, int ncolumns) {
+        const auto &dt = conf_->wei_dt;
+        if (is_wei_grouped_over_k_ && ncolumns == 1 && vnni_granularity_ == 2) {
+            Label even_k, merge_done;
+            test(reg_K_start, 1);
+            jz(even_k, T_NEAR);
+            // when K is odd - swap src and src_next
+            downconvert_to_dst_dt(src_next, src, dt);
+            jmp(merge_done);
+            L(even_k);
+            downconvert_to_dst_dt(src, src_next, dt);
+            L(merge_done);
+        } else
+            downconvert_to_dst_dt(src, src_next, dt);
+    }
+
     void generate() override;
 };
 
@@ -4362,6 +4419,24 @@ bool jit_brgemm_matmul_copy_b_transposed_t<Vmm>::preload_int4(const Xmm &xmm_in,
         }
         return true;
     }
+
+    // The case when the kernel is grouped over K and need to load odd or even columns
+    const auto preload_for_k_1_blk
+            = is_src_int4_ && is_wei_grouped_over_k_ && columns_tail == 1;
+    if (preload_for_k_1_blk) {
+        // Unconditionally load 1 byte, then shift if odd index
+        load_bytes(xmm_in, addr, 1);
+        Label load_done, even_k;
+        test(reg_K_start, 1);
+        jz(even_k, T_NEAR);
+        vpsrlq(xmm_in, xmm_in, 4);
+        jmp(load_done);
+        L(even_k);
+        vpsllq(xmm_in, xmm_in, 4);
+        vpsrlq(xmm_in, xmm_in, 4);
+        L(load_done);
+        return true;
+    }
     return false;
 }
 
@@ -4376,6 +4451,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             = req_cvtps2xf16_ ? req_cvt_bf16_k_blk_step_ : k_blk_step_;
 
     const int columns_tail = ncolumns % cur_k_blk_step;
+
+    maybe_update_strides(ncolumns);
     init_tail_mask(columns_tail, false);
 
     auto load2bf16 = [this, nrows, columns_tail, ncolumns](int i) {
@@ -4454,7 +4531,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             } else
                 assert(!"Unsupported data type in loading");
         }
-        downconvert_to_dst_dt(src_reg, src_reg_next, conf_->wei_dt);
+        merge_and_downconvert(src_reg, src_reg_next, ncolumns);
         L(load_done);
     };
 
@@ -4513,14 +4590,18 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         L(load_done);
     };
 
-    auto store = [this, columns_tail, cur_k_blk_step](Zmm r, int i) {
-        // For the small block size (grouped ZPs/scales)
-        // Process each block as a tail and do not store the data outside the buffer
-        if (k_blk_size_ < cur_k_blk_step && columns_tail > 0
-                && i >= columns_tail)
-            return;
+    auto store = [this, columns_tail, ncolumns, cur_k_blk_step](Zmm r, int i) {
         auto addr = EVEX_compress_addr(reg_tr_src, i * tr_src_stride_);
-        vmovups(addr, r);
+        if (is_wei_grouped_over_k_) {
+            const bool is_tail = columns_tail > 0 && ncolumns < cur_k_blk_step;
+            if (is_tail && i >= columns_tail) return;
+            if (vnni_granularity_ == 2 && ncolumns == 1)
+                store_half_block(r, addr);
+            else
+                vmovups(addr, r);
+        } else {
+            vmovups(addr, r);
+        }
     };
 
     auto transpose16x8 = [&](int base_idx) {
@@ -4777,10 +4858,6 @@ void jit_brgemm_matmul_copy_b_transposed_t<Ymm>::copy_row_x_col(
         const auto src0 = src_vmm(i);
         if (do_compute_compensation_)
             dot_product(vmm_comp_acc, vmm_comp_mul, src0);
-        // For the small block size (grouped ZPs/scales)
-        // Process each block as a tail and do not store the data outside the buffer
-        if (k_blk_size_ < k_blk_step_ && columns_tail > 0 && i >= columns_tail)
-            break;
         uni_vmovups(ptr[reg_tr_src + i * tr_src_stride_], src0);
     }
 }
@@ -4937,10 +5014,13 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
     mov(reg_N_iters, ptr[param1 + GET_OFF(current_N_blk)]);
     mov(reg_wei_scales, ptr[param1 + GET_OFF(wei_scales_ptr)]);
     mov(reg_zp_ptr, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
+    mov(reg_K_start, ptr[param1 + GET_OFF(current_K_start)]);
 
     if (!is_ymm_) {
-        kmovw(k5555, 0x5555);
-        kmovw(kAAAA, 0xaaaa);
+        // 64-bit mask is also used when is_wei_[zp\scales]_per_k
+        kmovq(kAAAA, 0xAAAAAAAAAAAAAAAA);
+        kmovq(k5555, 0x5555555555555555);
+
         kmovw(k3333, 0x3333);
         kmovw(kCCCC, 0xcccc);
         kmovw(k0F0F, 0x0f0f);
@@ -4960,8 +5040,14 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
     assert(N_chunk_elems % n_blk_step_ == 0 || N_chunk_elems == conf_->N);
     UNUSED(N_chunk_elems);
 
-    const auto K_blk_tail = nstl::min(conf_->K, k_blk_size_) % k_blk_step_;
-    const auto K_tail_tail = (conf_->K % k_blk_size_) % k_blk_step_;
+    const auto &k_blk = conf_->K_blk;
+    const auto K_blk_tail = nstl::min(conf_->K, k_blk) % k_blk_step_;
+    const auto K_tail_tail = (conf_->K % k_blk) % k_blk_step_;
+
+    const auto grouped_k = is_wei_grouped_over_k_
+            ? (conf_->is_wei_zp_per_k ? conf_->wei_zp_k_gsize
+                                      : conf_->wei_scales_k_gsize)
+            : 0;
 
     auto compute_body = [&](bool is_first_K_iter, bool is_last_K_iter) {
         if (is_last_K_iter) {
@@ -4978,10 +5064,15 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
             }
         }
 
+        if (is_wei_grouped_over_k_ && grouped_k < k_blk_step_) {
+            compute_N_loop(grouped_k, is_first_K_iter, is_last_K_iter);
+            return;
+        }
+
         Label compute_body_done;
         if (conf_->K_tail > 0 && K_blk_tail != K_tail_tail) {
             Label not_K_tail;
-            cmp(reg_K_iters, k_blk_size_);
+            cmp(reg_K_iters, k_blk);
             je(not_K_tail, T_NEAR);
             compute_N_loop(K_tail_tail, is_first_K_iter, is_last_K_iter);
             jmp(compute_body_done, T_NEAR);
@@ -5007,8 +5098,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
         mov(regq_tmp, 1);
         uni_vpbroadcastb(vmm_comp_mul, regq_tmp.cvt8());
 
-        const auto last_K_threshold
-                = rnd_up(conf_->K, k_blk_size_) - k_blk_size_;
+        const auto last_K_threshold = rnd_up(conf_->K, k_blk) - k_blk;
         Label not_first, not_first_not_last;
         cmp(reg_K_start, 0);
         jne(not_first, T_NEAR);
@@ -5062,11 +5152,12 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
         , req_zp_b_shift_(
                   conf_->has_zero_point_b && conf_->with_wei_decompression)
         , req_apply_wei_scales_(conf_->apply_scales_in_buffer_b)
-        , reserved_regs_(conf_->is_wei_zp_per_n   ? 6
+        , reserved_regs_(is_src_int4_             ? 6
                           : req_apply_wei_scales_ ? 5
-                          : is_src_int4_          ? 2
-                          : req_zp_b_shift_       ? 1
-                                                  : 0) {}
+                          : req_zp_b_shift_       ? 3
+                                                  : 0)
+        , is_wei_grouped_over_k_(
+                  conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k) {}
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
     status_t create_kernel() override {
@@ -5088,6 +5179,7 @@ private:
     const bool req_zp_b_shift_;
     const bool req_apply_wei_scales_;
     const int reserved_regs_;
+    const bool is_wei_grouped_over_k_;
 
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;
@@ -5102,13 +5194,14 @@ private:
     reg64_t reg_tr_src_back = r13;
 
     reg64_t reg_wei_zp = r14;
+    reg64_t reg_k_start = r15;
 
     Vmm vmm_zp_b_val = Vmm(0);
-    Vmm vmm_zp_b_val1 = Vmm(5); // Used if is_wei_zp_per_n
-    Vmm vmm_permd = Vmm(1);
-    Vmm vmm_wei_scales0 = Vmm(2);
-    Vmm vmm_wei_scales1 = Vmm(3);
-    Vmm vmm_tmp = Vmm(4);
+    Vmm vmm_zp_b_val1 = Vmm(1);
+    Vmm vmm_tmp = Vmm(2);
+    Vmm vmm_wei_scales0 = Vmm(3);
+    Vmm vmm_wei_scales1 = Vmm(4);
+    Vmm vmm_permd = Vmm(5);
 
     Vmm get_vmm(const int blk, const int idx) {
         const int max_isa_regs = isa_num_vregs(conf_->isa);
@@ -5125,6 +5218,39 @@ private:
             const bool is_n_tail, const bool is_k_tail);
     void get_zero_points(const int n, const bool is_tail, const bool is_k_tail);
     void copy_block(const int nrows, const int ncolumns, bool zeropad);
+
+    /** Adjust strides for grouped over k weights
+    * k_blk_step is const 2. This case handles
+    * nrows = 1
+    * Move pointer to the beginning of the block 2x32
+    * if the k_start % 2 = 1 is odd.
+    **/
+    void maybe_update_strides(int nrows) {
+        if (is_wei_grouped_over_k_ && nrows < k_blk_step) {
+            Label even_k;
+            test(reg_k_start, 1);
+            jz(even_k, T_NEAR);
+            sub(reg_tr_src, conf_->LDB * tr_typesize_);
+            if (!is_src_int4_) sub(reg_src, 1);
+            L(even_k);
+        }
+    }
+
+    void save_half_block(const int blk_idx, const Xbyak::Address &store_addr) {
+        const auto src0 = get_vmm(blk_idx, 0);
+        const auto zmm0 = zmm(src0.getIdx());
+        //if k % 2 == 1 then save only odd indices
+        // otherwise: only even using masks
+        Label even_k, end_permute;
+        test(reg_k_start, 1);
+        jz(even_k, T_NEAR);
+        vmovdqu16(store_addr | kAAAA, zmm0);
+        jmp(end_permute);
+        L(even_k);
+        vmovdqu16(store_addr | k5555 | T_z, zmm0);
+        L(end_permute);
+    }
+
     void generate() override;
 };
 
@@ -5139,10 +5265,11 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::init_masks() {
         mov(reg_tmp, reinterpret_cast<size_t>(bf16_vnni_permute));
         vmovdqa32(vmm_permd, ptr[reg_tmp]);
 
-        mov(regw_tmp, 0x5555);
-        kmovw(k5555, regw_tmp);
-        mov(regw_tmp, 0xaaaa);
-        kmovw(kAAAA, regw_tmp);
+        // 64-bit mask is also used when is_wei_[zp\scales]_per_k
+        mov(reg_tmp, 0xAAAAAAAAAAAAAAAA);
+        kmovq(kAAAA, reg_tmp);
+        mov(reg_tmp, 0x5555555555555555);
+        kmovq(k5555, reg_tmp);
     }
 }
 
@@ -5167,11 +5294,7 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::get_wei_scales(const int blk,
     load_scale_value(
             zmm_tmp, wei_scales_addr0, conf_->wei_scales_dt, is_n_tail);
 
-    if (is_k_tail)
-        vpxord(vmm_wei_scales1, vmm_wei_scales1, vmm_wei_scales1);
-    else
-        load_scale_value(vmm_wei_scales1, wei_scales_addr0,
-                conf_->wei_scales_dt, is_n_tail);
+    uni_vmovups(vmm_wei_scales1, vmm_tmp);
 
     vinsertf64x4(vmm_wei_scales0, vmm_tmp, Ymm(vmm_wei_scales1.getIdx()), 1);
     vextractf64x4(Ymm(vmm_tmp.getIdx()), vmm_tmp, 1);
@@ -5201,10 +5324,7 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::get_zero_points(
     const auto addr = maybe_EVEX_compress_addr(reg_wei_zp, base_offset(n));
     load_value(vmm_tmp, addr, vmm_permd, zp_dt, is_n_tail);
 
-    if (is_k_tail)
-        vpxord(vmm_zp_b_val1, vmm_zp_b_val1, vmm_zp_b_val1);
-    else
-        load_value(vmm_zp_b_val1, addr, vmm_permd, zp_dt, is_n_tail);
+    uni_vmovups(vmm_zp_b_val1, vmm_tmp);
 
     vinserti64x4(vmm_zp_b_val, vmm_tmp, Ymm(vmm_zp_b_val1.getIdx()), 1);
     vextracti64x4(Ymm(vmm_tmp.getIdx()), vmm_tmp, 1);
@@ -5251,6 +5371,8 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
                 conf_->wei_dt);
     };
 
+    maybe_update_strides(nrows);
+
     int iter = 0;
     for_(int k = 0; k < nrows; k += k_blk_step)
     for (int n = 0; n < ncolumns; n += n_blk_step) {
@@ -5266,6 +5388,14 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
             uni_vpxor(store_vmm, store_vmm, store_vmm);
         else
             load(blk_idx, k, n);
+
+        // Special case for goruped zp/scales when nrows == 1
+        if (is_wei_grouped_over_k_ && nrows == 1) {
+            save_half_block(blk_idx, store_addr);
+            iter++;
+            continue;
+        }
+
         uni_vmovups(store_addr, store_vmm);
 
         iter++;
@@ -5284,52 +5414,67 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
     mov(reg_N_blk, ptr[param1 + GET_OFF(current_N_blk)]);
     mov(reg_wei_scales, ptr[param1 + GET_OFF(wei_scales_ptr)]);
     mov(reg_wei_zp, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
+    mov(reg_k_start, ptr[param1 + GET_OFF(current_K_start)]);
 
     load_common_zp_value(vmm_zp_b_val, reg_wei_zp);
+    load_common_zp_value(vmm_zp_b_val1, reg_wei_zp);
     load_common_scale_value(vmm_wei_scales0, reg_wei_scales);
     load_common_scale_value(vmm_wei_scales1, reg_wei_scales);
 
-    auto compute_K_loop_body
-            = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {
-                  const int k_unroll = 8;
+    auto compute_K_loop_body = [&](const reg64_t &reg_K, int ncolumns,
+                                       bool zeropad) {
+        // Compute special K-loop for per-k attributes
+        // Only when k_group_size < k_blk_step
+        // Otherwise default K-loop is used
+        if (is_wei_grouped_over_k_) {
+            const int k_group_size = conf_->is_wei_zp_per_k
+                    ? conf_->wei_zp_k_gsize
+                    : conf_->wei_scales_k_gsize;
+            if (k_group_size == 1) {
+                if (zeropad) return;
+                copy_block(k_group_size, ncolumns, /*zeropad= */ false);
+                return;
+            }
+        }
+        const int k_unroll = 8;
 
-                  Label K_loop_unrolled, K_loop_single, K_loop_tail_or_done;
-                  cmp(reg_K, k_unroll * k_blk_step);
-                  jl(K_loop_single, T_NEAR);
+        Label K_loop_unrolled, K_loop_single, K_loop_tail_or_done;
+        cmp(reg_K, k_unroll * k_blk_step);
+        jl(K_loop_single, T_NEAR);
 
-                  L(K_loop_unrolled);
-                  copy_block(k_unroll * k_blk_step, ncolumns, zeropad);
-                  add(reg_src, k_unroll * src_stride_);
-                  add(reg_tr_src, k_unroll * tr_src_stride_);
+        L(K_loop_unrolled);
+        copy_block(k_unroll * k_blk_step, ncolumns, zeropad);
+        add(reg_src, k_unroll * src_stride_);
+        add(reg_tr_src, k_unroll * tr_src_stride_);
 
-                  sub(reg_K, k_unroll * k_blk_step);
-                  cmp(reg_K, k_unroll * k_blk_step);
-                  jge(K_loop_unrolled, T_NEAR);
+        sub(reg_K, k_unroll * k_blk_step);
+        cmp(reg_K, k_unroll * k_blk_step);
+        jge(K_loop_unrolled, T_NEAR);
 
-                  L(K_loop_single);
-                  cmp(reg_K, k_blk_step);
-                  jl(K_loop_tail_or_done, T_NEAR);
+        L(K_loop_single);
+        cmp(reg_K, k_blk_step);
+        jl(K_loop_tail_or_done, T_NEAR);
 
-                  copy_block(k_blk_step, ncolumns, zeropad);
-                  add(reg_src, src_stride_);
-                  add(reg_tr_src, tr_src_stride_);
+        copy_block(k_blk_step, ncolumns, zeropad);
+        add(reg_src, src_stride_);
+        add(reg_tr_src, tr_src_stride_);
 
-                  sub(reg_K, k_blk_step);
-                  jmp(K_loop_single, T_NEAR);
+        sub(reg_K, k_blk_step);
+        jmp(K_loop_single, T_NEAR);
 
-                  L(K_loop_tail_or_done);
+        L(K_loop_tail_or_done);
 
-                  const int k_blk_tail = conf_->K % k_blk_step;
-                  if (k_blk_tail > 0) {
-                      Label K_loop_done;
-                      cmp(reg_K, 0);
-                      jle(K_loop_done, T_NEAR);
-                      copy_block(k_blk_tail, ncolumns, zeropad);
-                      add(reg_tr_src, tr_src_stride_);
-                      sub(reg_K, k_blk_tail);
-                      L(K_loop_done);
-                  }
-              };
+        const int k_blk_tail = conf_->K % k_blk_step;
+        if (k_blk_tail > 0) {
+            Label K_loop_done;
+            cmp(reg_K, 0);
+            jle(K_loop_done, T_NEAR);
+            copy_block(k_blk_tail, ncolumns, zeropad);
+            add(reg_tr_src, tr_src_stride_);
+            sub(reg_K, k_blk_tail);
+            L(K_loop_done);
+        }
+    };
 
     auto compute_K_loop = [&](const int ncolumns) {
         mov(reg_src_back, reg_src);

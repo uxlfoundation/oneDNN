@@ -55,12 +55,12 @@ status_t shuffle_desc_init(shuffle_desc_t *shuffle_desc, prop_kind_t prop_kind,
     VCHECK_SHUFFLE(!any_memory_desc_host_scalar(src_desc, dst_desc),
             VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
-    VCONDCHECK(primitive, create, check, shuffle,
+    VCHECK_SHUFFLE_UNIMPL(
             !memory_desc_wrapper(src_desc).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-    VCONDCHECK(primitive, create, check, shuffle,
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_SHUFFLE_UNIMPL(
             !memory_desc_wrapper(dst_desc).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     auto sd = shuffle_desc_t();
     sd.primitive_kind = primitive_kind::shuffle;

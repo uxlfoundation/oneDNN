@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2023 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -57,9 +57,9 @@ status_t sum_primitive_desc_create(primitive_desc_iface_t **sum_pd_iface,
 
     const int ndims = src_mds[0]->ndims;
     const dims_t &dims = src_mds[0]->dims;
-    VCONDCHECK(primitive, create, check, sum,
+    VCHECK_SUM_UNIMPL(
             !memory_desc_wrapper(src_mds[0]).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     VCHECK_SUM(!memory_desc_wrapper(src_mds[0]).format_any(),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
@@ -71,9 +71,9 @@ status_t sum_primitive_desc_create(primitive_desc_iface_t **sum_pd_iface,
                 SRC2STR(i));
         VCHECK_SUM(!memory_desc_wrapper(src_md).format_any(),
                 VERBOSE_UNSUPPORTED_TAG_S, SRC2STR(i));
-        VCONDCHECK(primitive, create, check, sum,
+        VCHECK_SUM_UNIMPL(
                 !memory_desc_wrapper(src_md).has_runtime_dims_or_strides(),
-                status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
         for (int d = 0; d < ndims; ++d)
             VCHECK_SUM(src_md.dims[d] == dims[d], VERBOSE_INCONSISTENT_DIM,
                     "src_0", d, SRC2STR(i), d);

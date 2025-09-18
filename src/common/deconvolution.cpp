@@ -80,8 +80,8 @@ status_t deconv_desc_init(deconvolution_desc_t *deconv_desc,
     if (with_bias)
         runtime_dims_or_strides = runtime_dims_or_strides
                 || memory_desc_wrapper(bias_desc).has_runtime_dims_or_strides();
-    VCONDCHECK(primitive, create, check, deconv, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_DECONV_UNIMPL(
+            !runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     (prop_kind == backward_data ? dd.diff_src_desc : dd.src_desc) = *src_desc;
     (is_fwd ? dd.dst_desc : dd.diff_dst_desc) = *dst_desc;

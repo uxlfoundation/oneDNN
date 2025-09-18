@@ -2067,7 +2067,7 @@ template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Ymm>;
  * @brief Common class for BRGEMM B matrix copy operations
  * 
  * This class contains common methods and properties for all copy B kernels.
- * Now it consists of `load_value` and `decompress_value` and it's considered(TODO: )
+ * Now it consists of `load_value` and `decompress_reg` and it's considered(TODO: )
  * to contain all common methods for copy B kernels.
  */
 struct jit_brgemm_matmul_copy_b_common_t : public jit_brgemm_matmul_copy_b_t,
@@ -2157,21 +2157,12 @@ protected:
             }
             case data_type::f16:
                 if (!is_xf16) {
-                    if (is_superset(conf_->isa, avx512_core_fp16)) {
-                        vcvtph2psx(vmm_in, op);
-                    } else {
-                        vcvtph2ps(vmm_in, op);
-                    }
+                    uni_vcvtph2psx(vmm_in, op);
                     break;
                 }
             case data_type::bf16:
                 if (is_xf16) {
-                    // jit_brgemm_matmul_copy_b_transposed_t requires
-                    // another instruction to load
-                    if (conf_->transposed_B)
-                        vmovdqu8(vmm_in, op);
-                    else
-                        vmovdqu16(vmm_in, op);
+                    vmovdqu16(vmm_in, op);
                 } else {
                     uni_vpmovzxwd(vmm_in, op);
                     uni_vpslld(vmm_in, vmm_in, 16);
@@ -2300,18 +2291,18 @@ protected:
     void apply_shift(const Vmm &input, const Vmm &zp, data_type_t src_dt) {
         if (!conf_->has_zero_point_b) return;
 
-        switch (src_dt) {
-            case data_type::s8:
-            case data_type::u8:
-            case data_type::s4:
-            case data_type::u4:
-                vpsubd(input, input, zp);
-                break; //uni_vpsubd(input, input, zp); break;
-            case data_type::bf16:
-            case data_type::f16:
-            case data_type::f32: uni_vsubps(input, input, zp); break;
-            default: assert(!"Unable to shift input for zero-point");
-        }
+        const bool is_int_shift = one_of(src_dt, data_type::s8, data_type::u8,
+                data_type::s4, data_type::u4);
+        const bool is_fp_shift = one_of(
+                src_dt, data_type::bf16, data_type::f16, data_type::f32);
+
+        if (is_int_shift)
+            uni_vpsubd(input, input, zp);
+        else if (is_fp_shift)
+            uni_vsubps(input, input, zp);
+        // should be unreachable
+        else
+            assert(!"Unable to shift input for zero-point");
     }
 
     /**
@@ -2348,7 +2339,7 @@ protected:
     */
     template <typename Vmm>
     void apply_scales(const Vmm &input, const Xbyak::Operand &scale_op) {
-        if (conf_->apply_scales_in_buffer_b) vmulps(input, input, scale_op);
+        if (conf_->apply_scales_in_buffer_b) uni_vmulps(input, input, scale_op);
     }
 
     /**
@@ -2408,7 +2399,7 @@ protected:
     * @param dst_dt Destination data type for the decompressed values
     */
     template <typename Vmm>
-    void decompress_value(const Vmm &input, const Vmm &zp,
+    void decompress_reg(const Vmm &input, const Vmm &zp,
             const Xbyak::Operand &scale_op, data_type_t src_dt) {
         if (src_dt == data_type::f32)
             return; // Decompression doesn't support f32
@@ -2418,22 +2409,22 @@ protected:
     }
 
     template <typename Vmm>
-    void decompress_value(const Vmm &input, const Vmm &zp,
+    void decompress_and_downcvt_reg(const Vmm &input, const Vmm &zp,
             const Xbyak::Operand &scale_op, data_type_t src_dt,
             data_type_t dst_dt) {
         if (src_dt == dst_dt) return;
-        decompress_value(input, zp, scale_op, src_dt);
+        decompress_reg(input, zp, scale_op, src_dt);
         downconvert_to_dst_dt(input, dst_dt);
     }
 
     template <typename Vmm>
-    void decompress_value(const Vmm &input1, const Vmm &input2, const Vmm &zp,
-            const Vmm &zp1, const Xbyak::Operand &scale_op1,
+    void decompress_and_downcvt_2reg(const Vmm &input1, const Vmm &input2,
+            const Vmm &zp1, const Vmm &zp2, const Xbyak::Operand &scale_op1,
             const Xbyak::Operand &scale_op2, data_type_t src_dt,
             data_type_t dst_dt) {
         if (src_dt == dst_dt) return;
-        decompress_value(input1, zp, scale_op1, src_dt);
-        decompress_value(input2, zp1, scale_op2, src_dt);
+        decompress_reg(input1, zp1, scale_op1, src_dt);
+        decompress_reg(input2, zp2, scale_op2, src_dt);
         downconvert_to_dst_dt(input1, input2, dst_dt);
     }
 
@@ -3468,7 +3459,7 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
         }
         load_zero_point(n);
         load_scales(n);
-        decompress_value(src_reg, vmm_zp_b_shift, vmm_wei_scales,
+        decompress_and_downcvt_reg(src_reg, vmm_zp_b_shift, vmm_wei_scales,
                 conf_->orig_wei_dt, conf_->wei_dt);
     };
 
@@ -3908,7 +3899,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         else
             load_value(src_vmm, addr, vmm_permd, conf_->orig_wei_dt, is_tail);
 
-        decompress_value(maybe_mask(src_vmm, is_tail), vmm_zp_b_shift,
+        decompress_reg(maybe_mask(src_vmm, is_tail), vmm_zp_b_shift,
                 vmm_wei_scales, conf_->orig_wei_dt);
     };
 
@@ -4496,7 +4487,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             if (is_src_int4_) init_tail_mask(columns_tail, false);
             load_zero_point(i, is_tail);
             load_scales(i, is_tail);
-            decompress_value(src_reg_masked, vmm_zp_b_val, vmm_wei_scales,
+            decompress_reg(src_reg_masked, vmm_zp_b_val, vmm_wei_scales,
                     conf_->orig_wei_dt);
         } else
             assert(!"Unsupported data type in loading");
@@ -4526,7 +4517,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
                 if (is_src_int4_) init_tail_mask(columns_tail, false);
                 load_zero_point(i, is_tail);
                 load_scales(i, is_tail);
-                decompress_value(src_next_masked, vmm_zp_b_val, vmm_wei_scales,
+                decompress_reg(src_next_masked, vmm_zp_b_val, vmm_wei_scales,
                         conf_->orig_wei_dt);
             } else
                 assert(!"Unsupported data type in loading");
@@ -4572,7 +4563,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             if (is_src_int4_) init_tail_mask(columns_tail, false);
             load_zero_point(i, is_tail);
             load_scales(i, is_tail);
-            decompress_value(src_masked_reg, vmm_zp_b_val, vmm_wei_scales,
+            decompress_reg(src_masked_reg, vmm_zp_b_val, vmm_wei_scales,
                     conf_->orig_wei_dt);
         } else if (use_fp16_instructions_) {
             if (conf_->isa == avx512_core_fp16) {
@@ -5152,10 +5143,10 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
         , req_zp_b_shift_(
                   conf_->has_zero_point_b && conf_->with_wei_decompression)
         , req_apply_wei_scales_(conf_->apply_scales_in_buffer_b)
-        , reserved_regs_(is_src_int4_             ? 6
-                          : req_apply_wei_scales_ ? 5
-                          : req_zp_b_shift_       ? 3
-                                                  : 0)
+        , reserved_regs_(req_apply_wei_scales_ ? 6
+                          : req_zp_b_shift_    ? 4
+                          : is_src_int4_       ? 1
+                                               : 0)
         , is_wei_grouped_over_k_(
                   conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k) {}
 
@@ -5196,12 +5187,12 @@ private:
     reg64_t reg_wei_zp = r14;
     reg64_t reg_k_start = r15;
 
-    Vmm vmm_zp_b_val = Vmm(0);
-    Vmm vmm_zp_b_val1 = Vmm(1);
-    Vmm vmm_tmp = Vmm(2);
-    Vmm vmm_wei_scales0 = Vmm(3);
-    Vmm vmm_wei_scales1 = Vmm(4);
-    Vmm vmm_permd = Vmm(5);
+    Vmm vmm_permd = Vmm(0);
+    Vmm vmm_zp_b_val0 = Vmm(1);
+    Vmm vmm_zp_b_val1 = Vmm(2);
+    Vmm vmm_tmp = Vmm(3);
+    Vmm vmm_wei_scales0 = Vmm(4);
+    Vmm vmm_wei_scales1 = Vmm(5);
 
     Vmm get_vmm(const int blk, const int idx) {
         const int max_isa_regs = isa_num_vregs(conf_->isa);
@@ -5214,8 +5205,8 @@ private:
     }
 
     void init_masks();
-    void get_wei_scales(const int blk, const int k, const int n,
-            const bool is_n_tail, const bool is_k_tail);
+    void get_wei_scales(
+            const int n, const bool is_n_tail, const bool is_k_tail);
     void get_zero_points(const int n, const bool is_tail, const bool is_k_tail);
     void copy_block(const int nrows, const int ncolumns, bool zeropad);
 
@@ -5278,8 +5269,8 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::init_masks() {
 *   loading is performed for the same address for both registers.
 */
 template <typename Vmm>
-void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::get_wei_scales(const int blk,
-        const int k, const int n, const bool is_n_tail, const bool is_k_tail) {
+void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::get_wei_scales(
+        const int n, const bool is_n_tail, const bool is_k_tail) {
 
     if (!req_apply_wei_scales_ || !conf_->is_wei_scale_per_n) return;
 
@@ -5326,10 +5317,11 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::get_zero_points(
 
     uni_vmovups(vmm_zp_b_val1, vmm_tmp);
 
-    vinserti64x4(vmm_zp_b_val, vmm_tmp, Ymm(vmm_zp_b_val1.getIdx()), 1);
+    const auto zmm_zp_b_val1 = maybe_mask(vmm_zp_b_val1, is_n_tail);
+    vinserti64x4(vmm_zp_b_val0, vmm_tmp, Ymm(vmm_zp_b_val1.getIdx()), 1);
     vextracti64x4(Ymm(vmm_tmp.getIdx()), vmm_tmp, 1);
-    vinserti64x4(vmm_zp_b_val1, vmm_zp_b_val1, Ymm(vmm_tmp.getIdx()), 0);
-    vpermd(vmm_zp_b_val, vmm_permd, vmm_zp_b_val);
+    vinserti64x4(vmm_zp_b_val1, zmm_zp_b_val1, Ymm(vmm_tmp.getIdx()), 0);
+    vpermd(vmm_zp_b_val0, vmm_permd, vmm_zp_b_val0);
     vpermd(vmm_zp_b_val1, vmm_permd, vmm_zp_b_val1);
 }
 
@@ -5364,11 +5356,11 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
 
         load_value(src_vmm0, load_addr0, vmm_permd, conf_->orig_wei_dt, false);
         load_value(src_vmm1, load_addr1, vmm_permd, conf_->orig_wei_dt, false);
-        get_wei_scales(blk, k, n, is_n_tail, is_k_tail);
+        get_wei_scales(n, is_n_tail, is_k_tail);
         get_zero_points(n, is_n_tail, is_k_tail);
-        decompress_value(src_vmm0, src_vmm1, vmm_zp_b_val, vmm_zp_b_val1,
-                vmm_wei_scales0, vmm_wei_scales1, conf_->orig_wei_dt,
-                conf_->wei_dt);
+        decompress_and_downcvt_2reg(src_vmm0, src_vmm1, vmm_zp_b_val0,
+                vmm_zp_b_val1, vmm_wei_scales0, vmm_wei_scales1,
+                conf_->orig_wei_dt, conf_->wei_dt);
     };
 
     maybe_update_strides(nrows);
@@ -5416,7 +5408,7 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
     mov(reg_wei_zp, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
     mov(reg_k_start, ptr[param1 + GET_OFF(current_K_start)]);
 
-    load_common_zp_value(vmm_zp_b_val, reg_wei_zp);
+    load_common_zp_value(vmm_zp_b_val0, reg_wei_zp);
     load_common_zp_value(vmm_zp_b_val1, reg_wei_zp);
     load_common_scale_value(vmm_wei_scales0, reg_wei_scales);
     load_common_scale_value(vmm_wei_scales1, reg_wei_scales);

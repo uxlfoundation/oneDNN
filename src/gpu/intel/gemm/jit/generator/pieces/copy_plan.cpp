@@ -2532,16 +2532,20 @@ void CopyPlan::legalizeRegions()
                 i1.src0.offset++;
             }
         }
+    }
 
+    for (auto &i: insns) {
         bool use2D = false;
         auto width = i.simd;
         for (auto &op: {i.src0, i.src1, i.src2}) {
+            if (op.width != 0 || op.vs != 0) continue;
             if (op.kind != CopyOperand::GRF || op.stride == 0) continue;
             auto size = getBytes(op.type);
             auto remaining = (GRF::bytes(hw) - size * (1 + op.offset)) / (size * op.stride) + 1;
-            use2D |= (i.simd > remaining);
+            if (i.simd <= remaining) continue;
+            use2D = true;
             remaining |= width;
-            width = remaining - (remaining & (remaining - 1)); // pow2 GCD
+            width = remaining & -remaining;  // pow2 GCD
             width = std::min(width, 32 / (size * op.stride));
         }
 
@@ -2555,6 +2559,7 @@ void CopyPlan::legalizeRegions()
             set2DRegion(i.src0);
             set2DRegion(i.src1);
             set2DRegion(i.src2);
+            rerun = true;
         }
     }
 

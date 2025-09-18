@@ -75,8 +75,8 @@ status_t eltwise_desc_init(eltwise_desc_t *eltwise_desc, prop_kind_t prop_kind,
                            .has_runtime_dims_or_strides()
                 || memory_desc_wrapper(diff_dst_desc)
                            .has_runtime_dims_or_strides();
-    VCONDCHECK(primitive, create, check, eltwise, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_ELTWISE_IMPL(
+            !runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     auto ed = eltwise_desc_t();
     ed.primitive_kind = primitive_kind::eltwise;

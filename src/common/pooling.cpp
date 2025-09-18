@@ -70,8 +70,7 @@ status_t pooling_desc_init(pooling_desc_t *pool_desc, prop_kind_t prop_kind,
     const bool rt_dims_or_strides
             = memory_desc_wrapper(src_desc).has_runtime_dims_or_strides()
             || memory_desc_wrapper(dst_desc).has_runtime_dims_or_strides();
-    VCONDCHECK(primitive, create, check, pool, !rt_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_POOLING_IMPL(!rt_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     pd.diff_src_desc = pd.src_desc = zero_md();
     pd.diff_dst_desc = pd.dst_desc = zero_md();

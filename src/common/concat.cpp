@@ -75,9 +75,9 @@ status_t concat_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
     const int ndims = src_mds[0]->ndims;
     const dims_t &dims = src_mds[0]->dims;
     const data_type_t dt = src_mds[0]->data_type;
-    VCONDCHECK(primitive, create, check, concat,
+    VCHECK_CONCAT_UNIMPL(
             !memory_desc_wrapper(src_mds[0]).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     dim_t concat_dim_sz = dims[concat_dim];
     VCHECK_CONCAT(!memory_desc_wrapper(src_mds[0]).format_any(),
@@ -90,9 +90,9 @@ status_t concat_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
                 "src_0", SRC2STR(i));
         VCHECK_CONCAT(!memory_desc_wrapper(src_md).format_any(),
                 VERBOSE_UNSUPPORTED_TAG_S, SRC2STR(i));
-        VCONDCHECK(primitive, create, check, concat,
+        VCHECK_CONCAT_UNIMPL(
                 !memory_desc_wrapper(src_md).has_runtime_dims_or_strides(),
-                status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
         for (int d = 0; d < ndims; ++d) {
             if (d == concat_dim) continue;

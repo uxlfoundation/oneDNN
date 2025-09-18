@@ -78,8 +78,7 @@ status_t lrn_desc_init(lrn_desc_t *lrn_desc, prop_kind_t prop_kind,
                 || memory_desc_wrapper(diff_dst_desc)
                            .has_runtime_dims_or_strides();
     }
-    VCONDCHECK(primitive, create, check, lrn, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_LRN_UNIMPL(!runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     ld.src_desc = *src_desc;
     if (is_fwd) ld.dst_desc = *dst_desc;

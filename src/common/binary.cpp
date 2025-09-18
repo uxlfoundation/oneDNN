@@ -106,15 +106,15 @@ status_t binary_md_check(const engine_t *engine, alg_kind_t alg_kind,
     VCHECK_BINARY(!memory_desc_wrapper(src0_md).format_any(),
             VERBOSE_UNSUPPORTED_TAG_S, "src0");
 
-    VCONDCHECK(primitive, create, check, binary,
+    VCHECK_BINARY_UNIMPL(
             !memory_desc_wrapper(src0_md).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-    VCONDCHECK(primitive, create, check, binary,
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_BINARY_UNIMPL(
             !memory_desc_wrapper(src1_md).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-    VCONDCHECK(primitive, create, check, binary,
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_BINARY_UNIMPL(
             !memory_desc_wrapper(dst_md).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     const int ndims = dst_md->ndims;
     const dims_t &dims = dst_md->dims;
@@ -125,9 +125,9 @@ status_t binary_md_check(const engine_t *engine, alg_kind_t alg_kind,
             src1_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS, "src1", "dst");
 
     if (src2_md != nullptr) {
-        VCONDCHECK(primitive, create, check, binary,
+        VCHECK_BINARY_UNIMPL(
                 !memory_desc_wrapper(src2_md).has_runtime_dims_or_strides(),
-                status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
         VCHECK_BINARY(src2_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS,
                 "src2", "dst");
         VCHECK_BINARY(

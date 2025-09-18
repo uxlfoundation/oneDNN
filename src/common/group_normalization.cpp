@@ -83,8 +83,8 @@ status_t group_normalization_desc_init(group_normalization_desc_t *desc,
                 || memory_desc_wrapper(diff_dst_desc)
                            .has_runtime_dims_or_strides();
     }
-    VCONDCHECK(primitive, create, check, bnorm, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_GNORM_UNIMPL(
+            !runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     gd.src_desc = *src_desc;
     if (is_fwd) gd.dst_desc = *dst_desc;

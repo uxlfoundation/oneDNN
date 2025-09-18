@@ -151,10 +151,23 @@ status_t conv_desc_init(convolution_desc_t *conv_desc, prop_kind_t prop_kind,
         dim_t dst = dst_desc->dims[i];
         dim_t ker_range = 1 + (ker - 1) * (dil + 1);
         VCHECK_CONV(str > 0, VERBOSE_BAD_DIM, "strides", i - 2);
-        VCHECK_CONV(dil >= 0 && pad_l >= 0 && pad_r + str > 0,
-                VERBOSE_INCONSISTENT_PRB);
+        VCHECK_CONV(dil >= 0, "%s: dilation (%d) must be non-negative",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(dil));
+        VCHECK_CONV(pad_l >= 0,
+                "%s: left padding value (%d) must be non-negative",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(pad_l));
+        VCHECK_CONV(pad_r + str > 0,
+                "%s: right padding (%d) and stride (%d) must sum up to a "
+                "positive value",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(pad_r),
+                static_cast<int>(str));
         VCHECK_CONV((src - ker_range + pad_l + pad_r) / str + 1 == dst,
-                VERBOSE_INCONSISTENT_PRB);
+                "%s: mismatch between actual and computed dst dims, dst (%d) "
+                "!= (src(%d) - ker(%d) + pad_l(%d) + pad_r(%d))/ str(%d) + 1",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(dst),
+                static_cast<int>(src), static_cast<int>(ker_range),
+                static_cast<int>(pad_l), static_cast<int>(pad_r),
+                static_cast<int>(str));
     }
 
     *conv_desc = cd;

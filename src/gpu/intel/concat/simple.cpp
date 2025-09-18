@@ -69,7 +69,8 @@ static status_t normalize(simple_params_t &conf,
                     max_write_size, device_info->gpu_arch());
         }
     }
-    if (infos.empty() || !infos[0].block) { return status::unimplemented; }
+    VDISPATCH_CONCAT_IC(!infos.empty() && infos[0].block, VERBOSE_BLOCKING_FAIL,
+            "zero blocking");
     std::sort(infos.begin(), infos.end());
     const auto &info = infos[0];
 
@@ -140,11 +141,11 @@ static status_t normalize(simple_params_t &conf,
     rt_conf.gws_d[2] = concat_dim_size;
 
     // Lots of zero padding byte writes -- very costly in this kernel
-    if (conf.write_block * conf.data_type_size == 1
+    const bool padding_ok = !(conf.write_block * conf.data_type_size == 1
             && 4 * dst_md.dims[axis::concat]
-                    <= dst_md.padded_dims[axis::concat]) {
-        return status::unimplemented;
-    }
+                    <= dst_md.padded_dims[axis::concat]);
+    VDISPATCH_CONCAT_IC(padding_ok, VERBOSE_UNSUPPORTED_PAD_FEATURE,
+            "bad padding dimensions");
 
     rt_conf.lws_d = compute::get_optimal_lws(
             rt_conf.gws_d, dim_idx::invalid, device_info->gpu_arch());
@@ -249,7 +250,7 @@ static status_t try_normalize_internal_padding(simple_params_t &conf,
             break;
         }
     }
-    if (max_simd == 1) { return status::unimplemented; }
+    VDISPATCH_CONCAT_IC(max_simd != 1, VERBOSE_BLOCKING_FAIL, "max_simd == 1");
 
     dim_t inner_offset = dst_blkg.strides[axis::concat];
 
@@ -288,11 +289,12 @@ static status_t try_normalize_internal_padding(simple_params_t &conf,
             && ((conf.blocks[0] == 4) || (conf.blocks[0] == 8)
                     || (conf.blocks[0] == 16) || (conf.blocks[0] == 32));
 
-    bool can_use = (conf.n == 2) && can_subgroup_read_dt
-            && inner_size_sufficient && supported_block_size
-            && problem_size_sufficient;
-
-    if (!can_use) return status::unimplemented;
+    VDISPATCH_CONCAT_IC(conf.n == 2, VERBOSE_BAD_PARAM, "n");
+    VDISPATCH_CONCAT_IC(can_subgroup_read_dt, VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_CONCAT_IC(inner_size_sufficient, VERBOSE_BAD_PARAM, "inner_size");
+    VDISPATCH_CONCAT_IC(supported_block_size, VERBOSE_BAD_PARAM, "block_size");
+    VDISPATCH_CONCAT_IC(
+            problem_size_sufficient, VERBOSE_BAD_PARAM, "problem_size");
 
     rt_conf.inner_axis = concat2_inner_axis;
     conf.data_type_size = static_cast<int>(concat2_dtsize);
@@ -316,15 +318,15 @@ static status_t init_conf_common(impl::engine_t *engine, const concat_pd_t *pd,
     using namespace utils;
     const memory_desc_t &ref_dst_md = *pd->dst_md();
 
-    if (ref_dst_md.format_kind != format_kind::blocked) {
-        return status::unimplemented;
-    }
+    VDISPATCH_CONCAT_IC(ref_dst_md.format_kind == format_kind::blocked,
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
     const auto concat_dim = pd->concat_dim();
 
     normalization_t normalize(ref_dst_md, concat_dim);
     for (int i = 0; i < pd->n_inputs(); ++i) {
         const memory_desc_t &src_md = *pd->src_md(i);
-        if (!normalize.add_source(src_md)) { return status::unimplemented; }
+        VDISPATCH_CONCAT_IC(
+                normalize.add_source(src_md), "cannot normalize src");
     }
 
     if (normalize.has_internal_padding()) {

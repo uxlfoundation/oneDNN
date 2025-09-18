@@ -1829,7 +1829,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         if (!bgmmc_.use_buffer_b) return nullptr;
         int k_blk_local = k_blk_idx % get_K_chunk_size();
         auto offset = ithr * bgmmc_.buffer_b_per_thread_sz
-                + (k == 0) * k_blk_local * bgmmc_.buffer_b_k_brg_stride
+                + k_blk_local * bgmmc_.buffer_b_k_brg_stride
                 + (k == 0) * gb
                         * bgmmc_.buffer_b_gb_stride // This component used only when k = 0
                 + k * bgmmc_.buffer_b_k_stride;

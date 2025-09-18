@@ -19,10 +19,33 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <map>
 #include <string>
+#include <unistd.h>
+#include <sys/ioctl.h>
 
 summary_t summary {};
+
+size_t get_terminal_width() {
+    struct winsize w;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == -1) { return 80; }
+    return static_cast<size_t>(w.ws_col);
+}
+
+void print_in_frame(const std::string &str, size_t terminal_width) {
+    size_t content_width = terminal_width - 2;
+    size_t pos = 0;
+
+    while (pos < str.size()) {
+        std::string part = str.substr(pos, content_width);
+        if (part.size() < content_width) {
+            part += std::string(content_width - part.size(), ' ');
+        }
+        std::cout << "|" << part << "|" << std::endl;
+        pos += content_width;
+    }
+}
 
 // Prints the statistics summary over implementations used in the run in a
 // table.
@@ -32,6 +55,7 @@ void print_impl_names_summary() {
     // If there is no content in the table, just exit.
     if (benchdnn_stat.impl_names.empty()) return;
 
+    auto term_width = get_terminal_width();
     std::string footer_text(
             "= Implementation statistics (--summary=no-impl to disable) ");
     // +1 for closing `=`.
@@ -75,40 +99,39 @@ void print_impl_names_summary() {
                     + extra_symbols);
 
     // Print the footer. Adjusted if content strings are larger.
-    std::string footer(longest_entry_length, '=');
+    std::string footer(term_width, '=');
     std::string footer_text_pad(
             std::max(longest_entry_length, footer_size) - footer_size, ' ');
-    printf("%s\n", footer.c_str());
-    printf("%s%s=\n", footer_text.c_str(), footer_text_pad.c_str());
-    printf("%s\n", footer.c_str());
+            
+    std::cout << footer << std::endl
+              << footer_text + footer_text_pad << std::endl
+              << footer << std::endl;
 
     // Print the table content.
     for (const auto &impl_entry : swapped_map) {
         size_t percent = static_cast<size_t>(
                 std::round(100.f * impl_entry.first / total_cases));
-        std::string percent_str = " (" + std::to_string(percent) + "%)";
 
-        // Pad to the left of impl based on the longest impl name.
-        size_t left_pad_length = longest_impl_length - impl_entry.second.size();
-        std::string left_pad(left_pad_length, ' ');
+        std::string right_part = std::to_string(impl_entry.first) + " ("
+                + std::to_string(percent) + "%)";
+        size_t left_padding = (longest_impl_length > impl_entry.second.size())
+                ? longest_impl_length - impl_entry.second.size()
+                : 0;
+        std::string left_padded
+                = std::string(left_padding, ' ') + impl_entry.second;
 
-        // Get the entry length to properly pad it from left and right.
-        // Must be computed with same members as `longest_entry_length`.
-        size_t entry_length = /* impl_name = */ impl_entry.second.size() +
-                /* count_length = */ std::to_string(impl_entry.first).size() +
-                /* percent_length = */ percent_str.size() +
-                /* extra_symbols = */ extra_symbols;
+        std::string line = left_padded + ":" + right_part;
 
-        // Pad to the right of numbers based on largest count.
-        size_t right_pad_length
-                = longest_entry_length - entry_length - left_pad_length;
-        std::string right_pad(right_pad_length, ' ');
-
-        printf("| %s%s : %zu%s%s |\n", left_pad.c_str(),
-                impl_entry.second.c_str(), impl_entry.first,
-                percent_str.c_str(), right_pad.c_str());
+        if (line.size() <= term_width - 2) {
+            std::cout << "|" << line
+                      << std::string(term_width - 2 - line.size(), ' ') << "|"
+                      << std::endl;
+        } else {
+            std::string simple_line = impl_entry.second + ":" + right_part;
+            print_in_frame(simple_line, term_width);
+        }
     }
-    printf("%s\n", footer.c_str());
+    std::cout << footer << std::endl;
 }
 
 // Prints the statistics summary over implementations used in the run in CSV

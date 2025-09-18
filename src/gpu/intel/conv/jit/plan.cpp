@@ -2309,16 +2309,17 @@ private:
             bool blocks_ok = (a0.block == b1.block) && (a1.block == b0.block);
             if (dims_ok && blocks_ok) {
                 auto a_blocks = a.blocks();
-                int i0 = -1;
-                int i1 = -1;
-                for (int i = 0; i < a.nblocks(); i++) {
+                constexpr size_t unset = -1;
+                size_t i0 = unset;
+                size_t i1 = unset;
+                for (size_t i = 0; i < a.nblocks(); i++) {
                     if (bmnk_mapper.bmnk_kind(abc_kind_t::a, a_blocks[i].dim)
                             == bmnk_kind_t::k) {
-                        if (i0 == -1) {
+                        if (i0 == unset) {
                             i0 = i;
                             continue;
                         }
-                        if (i1 == -1) {
+                        if (i1 == unset) {
                             i1 = i;
                             continue;
                         }

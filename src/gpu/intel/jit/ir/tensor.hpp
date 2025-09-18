@@ -372,7 +372,7 @@ public:
         return stride_t();
     }
 
-    int nblocks() const { return (int)blocks().size(); }
+    size_t nblocks() const { return blocks().size(); }
 
     const std::vector<layout_block_t> &blocks() const { return blocks_; }
     std::vector<layout_block_t> &blocks() { return blocks_; }

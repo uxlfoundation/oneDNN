@@ -248,7 +248,7 @@ bool try_reinterpret_to_wider_type(layout_t &src, layout_t &dst,
 
 layout_t layout_t::split_block(
         const layout_block_t &b, dim_t block0, dim_t block1) const {
-    int block_idx = get_idx(b);
+    size_t block_idx = get_idx(b);
     gpu_assert(b.block == block0 * block1) << "Incompatible block sizes.";
     MAYBE_UNUSED(b);
 

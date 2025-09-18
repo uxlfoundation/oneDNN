@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2023 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 * Copyright 2020 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -81,7 +81,7 @@
 // Helper macros: expand the parameters only on the corresponding architecture.
 // Equivalent to: #if DNNL_$ARCH ... #endif
 #define DNNL_X64_ONLY(...) Z_CONDITIONAL_DO(DNNL_X64, __VA_ARGS__)
-#define DNNL_PPC64_ONLY(...) Z_CONDITIONAL_DO(DNNL_PPC64, __VA_ARGS__)
+#define DNNL_PPC64_ONLY(...) Z_CONDITIONAL_DO(DNNL_PPC64_ONLY, __VA_ARGS__)
 #define DNNL_S390X_ONLY(...) Z_CONDITIONAL_DO(DNNL_S390X_ONLY, __VA_ARGS__)
 #define DNNL_AARCH64_ONLY(...) Z_CONDITIONAL_DO(DNNL_AARCH64, __VA_ARGS__)
 
@@ -181,15 +181,6 @@ constexpr int get_cache_line_size() {
 }
 
 int get_vector_register_size();
-
-// Helper to avoid #ifdefs for DNNL_PPC64
-static constexpr bool is_ppc64() {
-#if defined(DNNL_PPC64)
-    return true;
-#else
-    return false;
-#endif
-}
 
 size_t get_timestamp();
 

@@ -156,8 +156,8 @@ void reorder_2d_impl_t::emit(
         auto *next_layout = &step.layout;
 
         // x -> y reorder.
-        auto x = prev_layout->sub(tile).reinterpret(type);
-        auto y = next_layout->sub(tile).reinterpret(type);
+        auto x = reinterpret(prev_layout->sub(tile), type);
+        auto y = reinterpret(next_layout->sub(tile), type);
 
         bool use_dst = ((path_len - i) % 2 == 1);
         copy_operand_t next_op = use_dst ? dst : tmp;
@@ -402,7 +402,7 @@ void reorder_2d_impl_t::vertex_t::set_edges(const std::vector<edge_t> &edges) {
         auto &e = edges[i];
         auto tile = e.tile();
         int max_type_size;
-        bool ok = layout_t::try_reinterpret_to_wider_type(
+        bool ok = try_reinterpret_to_wider_type(
                 layout, layout, tile, false, &max_type_size);
         if (!ok) max_type_size = type_size;
         int from = math::ilog2q(type_size);
@@ -420,7 +420,7 @@ void reorder_2d_impl_t::vertex_t::set_edges(const std::vector<edge_t> &edges) {
 // - GRF region can't span more than 2 registers
 bool reorder_2d_impl_t::vertex_t::can_reorder(
         const tile_t &tile, const type_t &type) const {
-    auto ab_layout = layout.sub(tile).reinterpret(type);
+    auto ab_layout = reinterpret(layout.sub(tile), type);
     int nblocks = int(ab_layout.blocks().size());
     if (nblocks == 0) return true;
     if (nblocks > 1) return false;

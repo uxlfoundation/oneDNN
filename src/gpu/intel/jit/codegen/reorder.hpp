@@ -328,7 +328,7 @@ public:
     reorder_impl_t(
             ngen::HW hw, const layout_t &src_layout, const layout_t &dst_layout)
         : hw_(hw), src_layout_(src_layout), dst_layout_(dst_layout) {
-        layout_t::try_reinterpret_to_wider_type(src_layout_, dst_layout_);
+        try_reinterpret_to_wider_type(src_layout_, dst_layout_);
     }
 
     reorder_impl_t(ngen::HW hw, const reorder_t &reorder)

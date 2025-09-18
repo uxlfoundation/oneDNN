@@ -112,7 +112,7 @@ private:
         auto dst = reorder.dst_layout;
         if (!src.is_dense() || !dst.is_dense()) return stmt_t();
 
-        layout_t::try_reinterpret_to_wider_type(src, dst);
+        try_reinterpret_to_wider_type(src, dst);
         if (src.type() != dst.type()) return stmt_t();
         if (src.type().size() != 4) return stmt_t();
 

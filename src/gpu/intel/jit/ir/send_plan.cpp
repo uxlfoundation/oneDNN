@@ -823,7 +823,7 @@ struct send_2d_params_t {
         add_block(vnni_factor > 1 ? h_vidx : w_vidx, c);
         l = l.add_outer_block_and_pad(w_vidx, w_rcount, grf_size);
         l = l.add_outer_block_and_pad(h_vidx, h_rcount, grf_size);
-        if (type != mem_type) l = l.reinterpret(mem_type);
+        if (type != mem_type) l = reinterpret(l, mem_type);
         return l;
     }
 

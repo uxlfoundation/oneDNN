@@ -546,9 +546,6 @@ public:
         return sub(tile_coord.tile, tile_coord.coord);
     }
 
-    layout_t reinterpret(
-            const type_t &new_type, bool do_normalize = true) const;
-
     layout_t retype(const type_t &new_type) const {
         auto ret = *this;
         ret.type_ = new_type;
@@ -885,60 +882,6 @@ public:
     // Assume that layouts are normalized.
     static void align_layouts(layout_t &a, layout_t &b);
 
-    // Reinterprets layouts to wider data type (up to 4 bytes).
-    // Example: 16a16b (s8 type) -> 16a4b (s32 type)
-    static bool try_reinterpret_to_wider_type(layout_t &src, layout_t &dst,
-            const tile_t &tile = {}, bool do_update = true,
-            int *new_size_out = nullptr) {
-        if (src.blocks().empty() || dst.blocks().empty()) return false;
-        if (src.type() != dst.type()) return false;
-
-        auto &s0 = src.blocks()[0];
-        auto &d0 = dst.blocks()[0];
-        if (s0.dim != d0.dim) return false;
-        if (int(s0.stride) != 1) return false;
-        if (int(d0.stride) != 1) return false;
-
-        int old_size = src.type().size();
-        int s0_old_size = int(s0.block) * old_size;
-        int d0_old_size = int(d0.block) * old_size;
-
-        int new_size = math::gcd(s0_old_size, d0_old_size);
-        new_size = math::gcd(new_size, 4); // Try types up to 4 bytes.
-        if (new_size <= old_size) return false;
-
-        auto tile_ok = [&](const layout_t &l) {
-            if (tile.is_empty()) return true;
-            int factor = new_size / old_size;
-            if (tile[l.blocks()[0].dim] % factor != 0) return false;
-            return true;
-        };
-
-        auto strides_ok = [&](const layout_t &l) {
-            for (int i = 1; i < int(l.blocks().size()); i++) {
-                auto &b = l.blocks()[i];
-                if (int(b.stride) * old_size % new_size != 0) return false;
-            }
-            return true;
-        };
-
-        while (new_size > old_size) {
-            bool ok = true;
-            ok &= (tile_ok(src) && tile_ok(dst));
-            ok &= (strides_ok(src) && strides_ok(dst));
-            if (ok) {
-                if (do_update) {
-                    src = src.reinterpret(type_t::s(new_size * 8));
-                    dst = dst.reinterpret(type_t::s(new_size * 8));
-                }
-                if (new_size_out) *new_size_out = new_size;
-                return true;
-            }
-            new_size /= 2;
-        }
-        return false;
-    }
-
 private:
     void sanity_check() const;
 
@@ -1001,6 +944,15 @@ inline layout_t make_strided(
     }
     return layout.with(new_blocks);
 }
+
+layout_t reinterpret(const layout_t &layout, const type_t &new_type,
+        bool do_normalize = true);
+
+// Reinterprets layouts to wider data type (up to 4 bytes).
+// Example: 16a16b (s8 type) -> 16a4b (s32 type)
+bool try_reinterpret_to_wider_type(layout_t &src, layout_t &dst,
+        const tile_t &tile = {}, bool do_update = true,
+        int *new_size_out = nullptr);
 
 memory_desc_t to_md(const layout_t &layout, const memory_desc_t &md_hint);
 

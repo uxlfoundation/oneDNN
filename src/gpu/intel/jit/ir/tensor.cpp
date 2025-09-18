@@ -133,16 +133,16 @@ layout_t layout_t::sub(const tile_t &tile, const coord_t &start) const {
             start.is_empty() ? 0 : operator()(start), ndims_);
 }
 
-layout_t layout_t::reinterpret(
-        const type_t &new_type, bool do_normalize) const {
-    int old_size = type().size();
+layout_t reinterpret(
+        const layout_t &layout, const type_t &new_type, bool do_normalize) {
+    int old_size = layout.type().size();
     int new_size = new_type.size();
-    if (new_size == old_size) return *this;
+    if (new_size == old_size) return layout;
 
     expr_t new_offset = 0;
-    if (!has_zero_offset()) {
-        gpu_assert(is_const(offset_)) << "Expected constant offset.";
-        int64_t off = to_cpp<int64_t>(offset_) * old_size;
+    if (!layout.has_zero_offset()) {
+        gpu_assert(is_const(layout.offset())) << "Expected constant offset.";
+        int64_t off = to_cpp<int64_t>(layout.offset()) * old_size;
         gpu_assert(off % new_size == 0);
         new_offset = off / new_size;
     }
@@ -152,7 +152,7 @@ layout_t layout_t::reinterpret(
         return layout_t();
     }
 
-    auto new_blocks = blocks_;
+    auto new_blocks = layout.blocks();
     if (new_blocks.empty()) {
         gpu_error_not_expected() << "Can't reinterpret.";
         return layout_t();
@@ -190,8 +190,61 @@ layout_t layout_t::reinterpret(
         }
     }
 
-    return layout_t(
-            new_type, new_blocks, new_offset, ndims(false), do_normalize);
+    return layout_t(new_type, new_blocks, new_offset, layout.ndims(false),
+            do_normalize);
+}
+
+// Reinterprets layouts to wider data type (up to 4 bytes).
+// Example: 16a16b (s8 type) -> 16a4b (s32 type)
+bool try_reinterpret_to_wider_type(layout_t &src, layout_t &dst,
+        const tile_t &tile, bool do_update, int *new_size_out) {
+    if (src.blocks().empty() || dst.blocks().empty()) return false;
+    if (src.type() != dst.type()) return false;
+
+    auto &s0 = src.blocks()[0];
+    auto &d0 = dst.blocks()[0];
+    if (s0.dim != d0.dim) return false;
+    if (int(s0.stride) != 1) return false;
+    if (int(d0.stride) != 1) return false;
+
+    int old_size = src.type().size();
+    int s0_old_size = int(s0.block) * old_size;
+    int d0_old_size = int(d0.block) * old_size;
+
+    int new_size = math::gcd(s0_old_size, d0_old_size);
+    new_size = math::gcd(new_size, 4); // Try types up to 4 bytes.
+    if (new_size <= old_size) return false;
+
+    auto tile_ok = [&](const layout_t &l) {
+        if (tile.is_empty()) return true;
+        int factor = new_size / old_size;
+        if (tile[l.blocks()[0].dim] % factor != 0) return false;
+        return true;
+    };
+
+    auto strides_ok = [&](const layout_t &l) {
+        for (int i = 1; i < int(l.blocks().size()); i++) {
+            auto &b = l.blocks()[i];
+            if (int(b.stride) * old_size % new_size != 0) return false;
+        }
+        return true;
+    };
+
+    while (new_size > old_size) {
+        bool ok = true;
+        ok &= (tile_ok(src) && tile_ok(dst));
+        ok &= (strides_ok(src) && strides_ok(dst));
+        if (ok) {
+            if (do_update) {
+                src = reinterpret(src, type_t::s(new_size * 8));
+                dst = reinterpret(dst, type_t::s(new_size * 8));
+            }
+            if (new_size_out) *new_size_out = new_size;
+            return true;
+        }
+        new_size /= 2;
+    }
+    return false;
 }
 
 layout_t layout_t::split_block(const std::pair<int, layout_block_t> &eb,

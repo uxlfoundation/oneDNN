@@ -89,8 +89,8 @@
 --skip-impl=ref
 --dt=bf16:s8:bf16,bf16:u8:bf16
 --wtag=any,abcd,abdc
---attr-scales=wei:per_tensor:bf16:128x1,wei:per_tensor:bf16:1x128
---attr-zero-points=wei:per_tensor:u8:128x1,wei:per_tensor:u8:1x128
+--attr-scales=wei:per_tensor:bf16:128x1
+--attr-zero-points=wei:per_tensor:u8:128x1
 --attr-fpmath=bf16:true
 2x3x5x512:2x3x512x1024
 
@@ -158,8 +158,8 @@
 --skip-impl=ref
 --dt=bf16:s4:bf16,bf16:u4:bf16
 --wtag=any,abcd,abdc
---attr-scales=wei:per_tensor:bf16:128x1,wei:per_tensor:bf16:1x128
---attr-zero-points=wei:per_tensor:u4:128x1,wei:per_tensor:u4:1x128
+--attr-scales=wei:per_tensor:bf16:128x1
+--attr-zero-points=wei:per_tensor:u4:128x1
 --attr-fpmath=bf16:true
 2x3x5x512:2x3x512x1024
 
@@ -167,8 +167,8 @@
 --skip-impl=ref
 --dt=f16:s4:f16,f16:u4:f16
 --wtag=any,abcd,abdc
---attr-scales=wei:per_tensor:f16:128x1,wei:per_tensor:f16:1x128
---attr-zero-points=wei:per_tensor:u4:128x1,wei:per_tensor:u4:1x128
+--attr-scales=wei:per_tensor:f16:128x1
+--attr-zero-points=wei:per_tensor:u4:128x1
 --attr-fpmath=f16:true
 2x3x5x512:2x3x512x1024
 

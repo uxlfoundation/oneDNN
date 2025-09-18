@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2023 Intel Corporation
 * Copyright 2020 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -184,7 +184,7 @@ int get_vector_register_size();
 
 // Helper to avoid #ifdefs for DNNL_PPC64
 static constexpr bool is_ppc64() {
-#if DNNL_PPC64
+#if defined(DNNL_PPC64)
     return true;
 #else
     return false;

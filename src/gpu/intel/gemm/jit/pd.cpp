@@ -36,7 +36,7 @@ int quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &qmd, int k_idx) {
     if (entry.has_default_values()) return -1;
 
-    // C unt the number of nontrivial (dim > 1) dimensions present
+    // Count the number of nontrivial (dim > 1) dimensions present
     int count = 0;
     for (int i = qmd.ndims - 2; i < qmd.ndims; ++i) {
         if (qmd.dims[i] > 1) { count++; }

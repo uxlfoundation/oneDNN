@@ -84,7 +84,6 @@ status_t sdp_primitive_kernel_t<quantized>::compile_impl(
         BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_zero_points);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_zero_points);
     }
-    BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
     BACKEND_DNNL_ADD_PASS(pipeline, insert_permute_for_matmul);
     if (quantized) {
         BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
@@ -135,8 +134,20 @@ void sdp_primitive_kernel_t<quantized>::prepare_args_set(
         const std::vector<tensor_t> &outputs, const scratchpad_t &scratchpad) {
     // update the data of partition in/outputs args
     for (const auto &mem_idx : res->get_mems_use_external_inputs()) {
-        mem_idx.first.set_data_handle(inputs[mem_idx.second].get_data_handle());
+        const dnnl::memory &mem = mem_idx.first;
+        const tensor_t &ts = inputs[mem_idx.second];
+        const logical_tensor_t lt = ts.get_logical_tensor();
+        const logical_tensor_wrapper_t ltw(lt);
+        if (ltw.is_host_scalar()) {
+            DNNL_HOST_SCALAR_TYPE_SWITCH(ltw.data_type(), DType, {
+                mem.set_host_scalar_value(
+                        *static_cast<DType *>(ts.get_data_handle()));
+            });
+        } else {
+            mem.set_data_handle(ts.get_data_handle());
+        }
     }
+
     for (const auto &mem_idx : res->get_mems_use_external_outputs()) {
         mem_idx.first.set_data_handle(
                 outputs[mem_idx.second].get_data_handle());

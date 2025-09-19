@@ -974,9 +974,6 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 	    } else if (convertA)
             convert(regs, Ta_load, Ta, strategy, state);
     };
-    if (state.repackA && state.Ar_layout.type().isF4()) ls.schedule({
-		    {reqRepackA, [&](Iteration h) { zeroMatrix(state.Ar_regs, strategy);}},
-		    {reqRepackA, nothing}});
 
     if (scheduleRepackA && readA) ls.schedule({
         {reqRepackA,    [&](Iteration h) { doRepackA(state.A_layout,    A_regs(h), state.repackA,    h, ka_loadMain, ka_repackMain); }},
@@ -999,9 +996,6 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 	    } else if (convertB)
             convert(regs, Tb_load, Tb, strategy, state);
     };
-    if (state.repackB && state.Br_layout.type().isF4()) ls.schedule({
-		    {reqRepackB, [&](Iteration h) { zeroMatrix(state.Br_regs, strategy);}},
-		    {reqRepackB, nothing}});
 
     if (scheduleRepackB && readB) ls.schedule({
         {reqRepackB,    [&](Iteration h) { doRepackB(state.B_layout,    B_regs(h), state.repackB,    h, 0);                                   }},
@@ -1126,7 +1120,6 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             gemmDequantizeAB(true, Ai_layout(h), state.Ao_layout, Ai_regs(h), Ao_regs(h), 0, 0, problem, strategy, state);
         else{
             if (slmA && !aioShare(h) && !(slmRemActive(h) && Ai_remIncrCopy)){
-                if(Ta_ext.isF4()) zeroMatrix(Ao_regs(h), strategy);
                 copyRegisters(Ai_layout(h), state.Ao_layout, Ai_regs(h), Ao_regs(h), strategy, state);
             } else if (slmConvertA(h))
                 convert(Ai_regs(h), Ta_ext, Ta, strategy, state);
@@ -1136,7 +1129,6 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             gemmDequantizeAB(false, Bi_layout(h), state.Bo_layout, Bi_regs(h), Bo_regs(h), 0, 0, problem, strategy, state);
         else{
             if (slmB && !bioShare(h) && !(slmRemActive(h) && Bi_remIncrCopy)) {
-                if(Tb_ext.isF4()) zeroMatrix(Bo_regs(h), strategy);
                 copyRegisters(Bi_layout(h), state.Bo_layout, Bi_regs(h), Bo_regs(h), strategy, state);
             } else if (slmConvertB(h))
                 convert(Bi_regs(h), Tb_ext, Tb, strategy, state);

@@ -2182,9 +2182,9 @@ void CopyPlan::legalizeSIMD(bool initial)
 
         // Fracture instruction into legal SIMD lengths.
         int simd0 = std::min<int>(rounddown_pow2(i.simd), simdMax);
-        auto opSimdMax = [&] (const CopyOperand &op) {
+        auto opSimdMax = [&] (const CopyOperand &op, int nregs = 2) {
             if (op.kind != CopyOperand::GRF || op.stride == 0) return simdMax;
-            int remaining = (bytesToElements(grf, op.type) - (op.offset + 1)) / op.stride + 1;
+            int remaining = (bytesToElements(nregs * grf, op.type) - (op.offset + 1)) / op.stride + 1;
             return rounddown_pow2(remaining);
         };
 
@@ -2192,7 +2192,8 @@ void CopyPlan::legalizeSIMD(bool initial)
             simd0 = 1;
 
         if (simd0 < i.simd || splitting) {
-            simd0 = std::min({simd0, opSimdMax(i.src0), opSimdMax(i.src1), opSimdMax(i.src2)});
+            int src2Regs = (i.src2.offset == 0) && (i.src2.stride == 1) ? 2 : 1;
+            simd0 = std::min({simd0, opSimdMax(i.src0), opSimdMax(i.src1), opSimdMax(i.src2, src2Regs)});
 
             auto &isplit = split(i, false);
             isplit.simd = simd0;
@@ -2542,16 +2543,20 @@ void CopyPlan::legalizeRegions()
                 i1.src0.offset++;
             }
         }
+    }
 
+    for (auto &i: insns) {
         bool use2D = false;
         auto width = i.simd;
         for (auto &op: {i.src0, i.src1, i.src2}) {
+            if (op.width != 0 || op.vs != 0) continue;
             if (op.kind != CopyOperand::GRF || op.stride == 0) continue;
             auto size = getBytes(op.type);
             auto remaining = (GRF::bytes(hw) - size * (1 + op.offset)) / (size * op.stride) + 1;
-            use2D |= (i.simd > remaining);
+            if (i.simd <= remaining) continue;
+            use2D = true;
             remaining |= width;
-            width = remaining - (remaining & (remaining - 1)); // pow2 GCD
+            width = remaining & -remaining;  // pow2 GCD
             width = std::min(width, 32 / (size * op.stride));
         }
 
@@ -2565,6 +2570,7 @@ void CopyPlan::legalizeRegions()
             set2DRegion(i.src0);
             set2DRegion(i.src1);
             set2DRegion(i.src2);
+            rerun = true;
         }
     }
 

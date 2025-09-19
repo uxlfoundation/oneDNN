@@ -808,6 +808,18 @@ struct send_2d_params_t {
             }
             cur_stride = stride;
         };
+
+        auto add_padded_block = [&](size_t dim_idx, dim_t block, dim_t pad) {
+            int type_size = l.type().size();
+            gpu_assert(pad % type_size == 0);
+            if (l.blocks().empty())
+                return l.with_block({dim_idx, block, pad / type_size});
+            auto &last = l.blocks().back();
+            auto stride = utils::rnd_up(
+                    (dim_t)last.stride * last.block, (dim_t)(pad / type_size));
+            return l.with_block({dim_idx, block, stride});
+        };
+
         if (transpose) {
             add_block(h_vidx, h, pad_kind_t::dim_pow2);
             add_block(w_vidx, w, pad_kind_t::stride_grf);
@@ -822,8 +834,8 @@ struct send_2d_params_t {
             add_block(h_vidx, h, pad_kind_t::stride_grf);
         }
         add_block(vnni_factor > 1 ? h_vidx : w_vidx, c);
-        l = l.add_outer_block_and_pad(w_vidx, w_rcount, grf_size);
-        l = l.add_outer_block_and_pad(h_vidx, h_rcount, grf_size);
+        l = add_padded_block(w_vidx, w_rcount, grf_size);
+        l = add_padded_block(h_vidx, h_rcount, grf_size);
         if (type != mem_type) l = reinterpret(l, mem_type);
         return l;
     }

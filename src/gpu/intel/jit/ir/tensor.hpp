@@ -570,18 +570,6 @@ public:
     layout_t split_block(
             const layout_block_t &b, dim_t block0, dim_t block1) const;
 
-    layout_t add_outer_block_and_pad(
-            const pvar_t &dim, dim_t block, int pad_bytes) const {
-        int type_size = type().size();
-        gpu_assert(pad_bytes % type_size == 0);
-        if (blocks_.empty())
-            return with_block({dim, block, pad_bytes / type_size});
-        auto &last = blocks_.back();
-        auto stride = utils::rnd_up((dim_t)last.stride * last.block,
-                (dim_t)(pad_bytes / type_size));
-        return with_block({dim, block, stride});
-    }
-
     // Returns a tensor corresponding to the biggest innermost sub-layout so that
     // 1) It consists of consecutive blocks only.
     // 2) It contains less or equal than max_tile_elems elements.

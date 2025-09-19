@@ -59,6 +59,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
     });
     pass_pipeline_t pipeline = pass_pipeline_t(vis);
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
+    BACKEND_DNNL_ADD_PASS(pipeline, insert_host_scalar);
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_reshape_for_gqa);
     // Fusion and canonicalization passes begin
     if (quantized) {

@@ -452,6 +452,22 @@ struct brgemm_desc_t {
         return (get_num_C_tiles() + get_num_A_tiles() + N);
     }
 
+    bool save_transform_A() const {
+        // For fp8 via conversion we use temporal buffer heavily for conversion.
+        // Therefore saved data may be overwritten
+        // TODO: remove this restriction
+        if (is_fp8_via_convert()) return false;
+        return ldb2 > 1;
+    }
+
+    bool save_transform_B() const {
+        // For fp8 via conversion we use temporal buffer heavily for conversion.
+        // Therefore saved data may be overwritten
+        // TODO: remove this restriction
+        if (is_fp8_via_convert()) return false;
+        return bdb2 > 1;
+    }
+
     int get_convert_wsp_buffer_size() const noexcept {
         if (!is_input_convert()) return 0;
         const int n_bdb = bd_block2;
@@ -488,7 +504,12 @@ struct brgemm_desc_t {
 
     int get_wsp_buffer_size() const noexcept {
         int sz = 0;
-        if (is_tmm) {
+        if (is_amx10()) {
+            if (save_transform_A()) sz += bd_block2_A_size();
+            if (save_transform_B()) sz += ld_block2_B_size();
+            sz *= brgattr.max_bs * all_rdb();
+            sz = nstl::max(sz, get_num_C_tiles() * tilesize); // postops buffer
+        } else if (is_tmm) {
             sz = get_num_C_tiles() * tilesize; // postops buffer
             sz += get_convert_wsp_buffer_size();
             if (amx_wary_k_tail()) sz += tilesize;

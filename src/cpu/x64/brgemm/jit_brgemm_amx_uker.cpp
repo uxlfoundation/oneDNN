@@ -174,7 +174,7 @@ private:
     const reg64_savable_t reg_C {regscratchpad_, r15};
     const reg64_savable_t reg_D {regscratchpad_, r12};
 
-    const reg64_t reg_buf = r8;
+    const reg64_savable_t reg_buf {regscratchpad_, r8};
     const reg64_t reg_BS = rbx;
     const reg64_t reg_BS_loop = r9;
     const reg64_savable_t reg_bias {regscratchpad_, rbx};
@@ -2351,16 +2351,10 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
 
     const auto &tloop = imap_[bi.apply_postops];
     auto should_save_transform = [&](matrix_kind_t mk) {
-        // For fp8 via conversion we use temporal buffer heavily for conversion.
-        // Therefore saved data may be overwritten
-        // TODO: remove this restriction
-        if (brg.is_fp8_via_convert()) return false;
-        // save if there is a reuse
-        if (mk == matrix_A) {
-            return tloop.ldis.size() > 1;
-        } else {
-            return tloop.bdis.size() > 1;
-        }
+        if (mk == matrix_A)
+            return brg.save_transform_A();
+        else
+            return brg.save_transform_B();
     };
 
     const auto dt = mk == matrix_A ? brg.dt_a : brg.dt_b;
@@ -2589,6 +2583,30 @@ void jit_brgemm_amx_uker_base_t::amx10_load_A(
 
     const auto bd_block = bi.bdi->block(bdb);
     const auto rd_block = bi.rdi->block(0);
+    const auto base_zmm_idx = amx10_zmm_A(bdb, 0).getIdx();
+    const auto a_zmm1 = Zmm(base_zmm_idx + 0);
+    const auto a_zmm2 = Zmm(base_zmm_idx + 1);
+    const auto a_zmm3 = Zmm(base_zmm_idx + 2);
+    const auto a_zmm4 = Zmm(base_zmm_idx + 3);
+
+    const auto transformed_data_base
+            = (bi.bsi->idx * brg.all_rdb() + bi.rdi->pos(0))
+                    * brg.bd_block2_A_size()
+            + bdb * brg.bd_block_A_size();
+    const auto transf_addr = [&](int i) {
+        const auto transformed_data_offset
+                = transformed_data_base + i * zmm_width_in_bytes;
+        return ptr[reg_buf + transformed_data_offset];
+    };
+
+    if (brg.save_transform_A() && bi.ldi->idx > 0) {
+        vmovups(a_zmm1, transf_addr(0));
+        vmovups(a_zmm2, transf_addr(1));
+        vmovups(a_zmm3, transf_addr(2));
+        vmovups(a_zmm4, transf_addr(3));
+        return; // done
+    }
+
     // load 4 zmm registers with 16 rows, 4 bytes per each row
     // So overall we have (16x2)x4 bf16 values in 4 zmm registers
 
@@ -2619,11 +2637,6 @@ void jit_brgemm_amx_uker_base_t::amx10_load_A(
         amx10_load_A_4x16bytes(zmm, mask, reg_A, offset + rb * lda());
     }
     // transpose four 4x4 blocks
-    const auto base_zmm_idx = amx10_zmm_A(bdb, 0).getIdx();
-    const auto a_zmm1 = Zmm(base_zmm_idx + 0);
-    const auto a_zmm2 = Zmm(base_zmm_idx + 1);
-    const auto a_zmm3 = Zmm(base_zmm_idx + 2);
-    const auto a_zmm4 = Zmm(base_zmm_idx + 3);
     const auto tmp_zmm1 = amx10_zmm_tmp(1);
     const auto tmp_zmm2 = amx10_zmm_tmp(2);
     const auto tmp_zmm3 = amx10_zmm_tmp(3);
@@ -2636,6 +2649,13 @@ void jit_brgemm_amx_uker_base_t::amx10_load_A(
     vpunpckhqdq(a_zmm2, tmp_zmm1, tmp_zmm3);
     vpunpcklqdq(a_zmm3, tmp_zmm2, tmp_zmm4);
     vpunpckhqdq(a_zmm4, tmp_zmm2, tmp_zmm4);
+
+    if (brg.save_transform_A() && bi.ldi->idx == 0) {
+        vmovups(transf_addr(0), a_zmm1);
+        vmovups(transf_addr(1), a_zmm2);
+        vmovups(transf_addr(2), a_zmm3);
+        vmovups(transf_addr(3), a_zmm4);
+    }
 }
 
 void jit_brgemm_amx_uker_base_t::amx10_load_B(
@@ -2796,6 +2816,7 @@ void jit_brgemm_amx_uker_base_t::rdb_loop(brgemm_iteration_t &bi) {
         reg_rdb_loop_backup.save();
         reg_A_backup.save(); //??
         reg_B_backup.save(); //??
+        if (brg.save_transform_A()) reg_buf.save();
 
         mov(reg_rdb_loop, rdb_loop_count);
         reg_rdb_loop.save();
@@ -2808,6 +2829,8 @@ void jit_brgemm_amx_uker_base_t::rdb_loop(brgemm_iteration_t &bi) {
                 rdb_loop_body(bi);
                 add(reg_A, reg_A_increment);
                 add(reg_B, reg_B_increment);
+                if (brg.save_transform_A())
+                    add(reg_buf, brg.bd_block2_A_size());
                 reg_rdb_loop.restore();
                 dec(reg_rdb_loop);
                 reg_rdb_loop.save();
@@ -2819,6 +2842,7 @@ void jit_brgemm_amx_uker_base_t::rdb_loop(brgemm_iteration_t &bi) {
         // restore registers
         reg_B_backup.restore();
         reg_A_backup.restore();
+        if (brg.save_transform_A()) reg_buf.restore();
 
         // separate last iteration if needed
         if (separate_last_iteration) {
@@ -3057,7 +3081,8 @@ void jit_brgemm_amx_uker_base_t::ldb_loop(brgemm_iteration_t &bi) {
         bi.rdi = &tloop.rdis[0];
         const bool real_ils = actual_ils(bi.apply_postops, bi.skip_accumulation)
                 && bi.bdi->idx == 0;
-        const bool separate_first_iteration = real_ils;
+        const bool separate_first_iteration
+                = real_ils || brg.save_transform_A();
         const auto last_ldi = &tloop.ldis[tloop.ldis.size() - 1];
         const bool separate_last_iteration
                 = brg.ldb_tail || last_ldi->block2() != brg.ld_block2;

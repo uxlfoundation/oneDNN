@@ -290,6 +290,15 @@ if(MSVC)
         append(CMAKE_CCXX_FLAGS "-Wno-unknown-warning-option")
     endif()
 elseif(UNIX OR MINGW)
+
+    # Enable debug checks for common C++ standard libraries
+    if(DNNL_DEV_MODE OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+        # Enable debug checks for libstdc++
+        append(CMAKE_CCXX_FLAGS "-D_GLIBCXX_ASSERTIONS")
+        # Enable debug checks for libc++
+        append(CMAKE_CCXX_FLAGS "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE")
+    endif()
+
     if(DNNL_WITH_SYCL OR CMAKE_BASE_NAME STREQUAL "icx" OR CMAKE_BASE_NAME STREQUAL "icpx")
         # When using Debug build mode CMake adds "-g" option without "-O0"
         # causing the warning. This probably happens because clang/gcc compilers

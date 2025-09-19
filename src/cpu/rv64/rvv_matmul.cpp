@@ -15,6 +15,7 @@
 *******************************************************************************/
 #include "cpu/rv64/rvv_matmul.hpp"
 #include "common/dnnl_thread.hpp"
+#include "cpu/rv64/rvv_matmul_kernel.hpp"
 #include "cpu/rv64/rvv_postops.hpp"
 #include <riscv_vector.h>
 
@@ -24,9 +25,9 @@ namespace cpu {
 namespace rv64 {
 namespace matmul {
 
-void rvv_matmul_colmajor(const float *src, const float *weights, float *dst,
+void rvv_matmul_colmajor(const void *src, const void *weights, void *dst,
         const memory_desc_wrapper &src_d, const memory_desc_wrapper &weights_d,
-        const memory_desc_wrapper &dst_d, const float *bias,
+        const memory_desc_wrapper &dst_d, const void *bias,
         const memory_desc_wrapper &bias_d,
         const rvv_postops_t &postops_handler) {
 
@@ -67,85 +68,26 @@ void rvv_matmul_colmajor(const float *src, const float *weights, float *dst,
             }
         }
 
-        const float *src_base_ptr = src + (size_t)b * M * K + (size_t)m * K;
-        float *dst_base_ptr = dst + (size_t)b * M * N + (size_t)m * N;
-        const float *weights_base_ptr = weights + weights_batch_offset;
+        const uint8_t *src_base_ptr = reinterpret_cast<const uint8_t *>(src)
+                + ((size_t)b * M * K + (size_t)m * K)
+                        * types::data_type_size(src_d.data_type());
+        uint8_t *dst_base_ptr = reinterpret_cast<uint8_t *>(dst)
+                + ((size_t)b * M * N + (size_t)m * N)
+                        * types::data_type_size(dst_d.data_type());
+        const uint8_t *weights_base_ptr
+                = reinterpret_cast<const uint8_t *>(weights)
+                + weights_batch_offset
+                        * types::data_type_size(weights_d.data_type());
 
-        for (dim_t n0 = 0; n0 < N;) {
-            size_t vl = __riscv_vsetvl_e32m1(N - n0);
-            std::vector<float> out_vals(vl, 0.0f);
-
-            for (dim_t k0 = 0; k0 < K;) {
-                size_t k_vl = __riscv_vsetvl_e32m1(K - k0);
-
-                vfloat32m1_t src_vec
-                        = __riscv_vle32_v_f32m1(src_base_ptr + k0, k_vl);
-
-                for (size_t ni = 0; ni < vl; ++ni) {
-                    const float *weight_col_ptr
-                            = weights_base_ptr + (size_t)(n0 + ni) * (size_t)K;
-                    vfloat32m1_t wei_vec
-                            = __riscv_vle32_v_f32m1(weight_col_ptr + k0, k_vl);
-
-                    vfloat32m1_t prod
-                            = __riscv_vfmul_vv_f32m1(src_vec, wei_vec, k_vl);
-                    vfloat32m1_t reduced = __riscv_vfredusum_vs_f32m1_f32m1(
-                            prod, __riscv_vfmv_v_f_f32m1(0.0f, k_vl), k_vl);
-                    float partial = __riscv_vfmv_f_s_f32m1_f32(reduced);
-
-                    out_vals[ni] += partial;
-                }
-
-                k0 += k_vl;
-            }
-
-            vfloat32m1_t acc = __riscv_vle32_v_f32m1(out_vals.data(), vl);
-
-            if (bias) {
-                if (bias_d.nelems() == 1) {
-                    acc = __riscv_vfadd_vf_f32m1(acc, bias[0], vl);
-                } else {
-                    const int dst_ndims = dst_d.ndims();
-                    const int bias_ndims = bias_d.ndims();
-                    const dim_t *bias_dims = bias_d.dims();
-
-                    std::vector<size_t> bias_strides(bias_ndims);
-                    bias_strides[bias_ndims - 1] = 1;
-                    for (int d = bias_ndims - 2; d >= 0; --d)
-                        bias_strides[d] = bias_strides[d + 1]
-                                * (size_t)bias_dims[d + 1];
-
-                    size_t base_bias_off = 0;
-                    for (int d = 0; d < bias_ndims - 1; ++d) {
-                        int dst_dim_idx = d + (dst_ndims - bias_ndims);
-                        dim_t idx = (bias_dims[d] == 1)
-                                ? 0
-                                : dst_idx_prefix[dst_dim_idx];
-                        base_bias_off += idx * bias_strides[d];
-                    }
-
-                    if (bias_dims[bias_ndims - 1] == 1) {
-                        acc = __riscv_vfadd_vf_f32m1(
-                                acc, bias[base_bias_off], vl);
-                    } else {
-                        const float *bias_ptr = bias + base_bias_off + n0;
-                        vfloat32m1_t bias_vec
-                                = __riscv_vle32_v_f32m1(bias_ptr, vl);
-                        acc = __riscv_vfadd_vv_f32m1(acc, bias_vec, vl);
-                    }
-                }
-            }
-
-            acc = postops_handler.apply(acc, vl);
-            __riscv_vse32_v_f32m1(&dst_base_ptr[n0], acc, vl);
-            n0 += vl;
-        }
+        rvv_matmul_colmajor_compute_kernel(src_base_ptr, weights_base_ptr,
+                dst_base_ptr, K, N, bias, src_d, weights_d, dst_d, bias_d,
+                dst_idx_prefix, const_cast<rvv_postops_t &>(postops_handler));
     });
 }
 
-void rvv_matmul_rowmajor(const float *src, const float *weights, float *dst,
+void rvv_matmul_rowmajor(const void *src, const void *weights, void *dst,
         const memory_desc_wrapper &src_d, const memory_desc_wrapper &weights_d,
-        const memory_desc_wrapper &dst_d, const float *bias,
+        const memory_desc_wrapper &dst_d, const void *bias,
         const memory_desc_wrapper &bias_d,
         const rvv_postops_t &postops_handler) {
 
@@ -186,70 +128,29 @@ void rvv_matmul_rowmajor(const float *src, const float *weights, float *dst,
             }
         }
 
-        const float *src_base_ptr = src + (size_t)b * M * K + (size_t)m * K;
-        float *dst_base_ptr = dst + (size_t)b * M * N + (size_t)m * N;
-        const float *weights_base_ptr = weights + weights_batch_offset;
+        const uint8_t *src_base_ptr = reinterpret_cast<const uint8_t *>(src)
+                + ((size_t)b * M * K + (size_t)m * K)
+                        * types::data_type_size(src_d.data_type());
+        uint8_t *dst_base_ptr = reinterpret_cast<uint8_t *>(dst)
+                + ((size_t)b * M * N + (size_t)m * N)
+                        * types::data_type_size(dst_d.data_type());
+        const uint8_t *weights_base_ptr
+                = reinterpret_cast<const uint8_t *>(weights)
+                + weights_batch_offset
+                        * types::data_type_size(weights_d.data_type());
 
-        for (dim_t n0 = 0; n0 < N;) {
-            size_t vl = __riscv_vsetvl_e32m1(N - n0);
-            vfloat32m1_t acc = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-
-            for (dim_t k = 0; k < K; ++k) {
-                vfloat32m1_t a_vec
-                        = __riscv_vfmv_v_f_f32m1(src_base_ptr[k], vl);
-                const float *b_ptr = weights_base_ptr + (size_t)k * N + n0;
-                vfloat32m1_t b_vec = __riscv_vle32_v_f32m1(b_ptr, vl);
-                acc = __riscv_vfmacc_vv_f32m1(acc, a_vec, b_vec, vl);
-            }
-
-            if (bias) {
-                if (bias_d.nelems() == 1) {
-                    acc = __riscv_vfadd_vf_f32m1(acc, bias[0], vl);
-                } else {
-                    const int dst_ndims = dst_d.ndims();
-                    const int bias_ndims = bias_d.ndims();
-                    const dim_t *bias_dims = bias_d.dims();
-
-                    std::vector<size_t> bias_strides(bias_ndims);
-                    bias_strides[bias_ndims - 1] = 1;
-                    for (int d = bias_ndims - 2; d >= 0; --d)
-                        bias_strides[d] = bias_strides[d + 1]
-                                * (size_t)bias_dims[d + 1];
-
-                    size_t base_bias_off = 0;
-                    for (int d = 0; d < bias_ndims - 1; ++d) {
-                        int dst_dim_idx = d + (dst_ndims - bias_ndims);
-                        dim_t idx = (bias_dims[d] == 1)
-                                ? 0
-                                : dst_idx_prefix[dst_dim_idx];
-                        base_bias_off += idx * bias_strides[d];
-                    }
-
-                    if (bias_dims[bias_ndims - 1] == 1) {
-                        acc = __riscv_vfadd_vf_f32m1(
-                                acc, bias[base_bias_off], vl);
-                    } else {
-                        const float *bias_ptr = bias + base_bias_off + n0;
-                        vfloat32m1_t bias_vec
-                                = __riscv_vle32_v_f32m1(bias_ptr, vl);
-                        acc = __riscv_vfadd_vv_f32m1(acc, bias_vec, vl);
-                    }
-                }
-            }
-
-            acc = postops_handler.apply(acc, vl);
-            __riscv_vse32_v_f32m1(&dst_base_ptr[n0], acc, vl);
-            n0 += vl;
-        }
+        rvv_matmul_rowmajor_compute_kernel(src_base_ptr, weights_base_ptr,
+                dst_base_ptr, K, N, bias, src_d, weights_d, dst_d, bias_d,
+                dst_idx_prefix, const_cast<rvv_postops_t &>(postops_handler));
     });
 }
 
 rvv_matmul_t::rvv_matmul_t(const pd_t *apd) : primitive_t(apd) {}
 
 status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
-    auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
-    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
-    auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
+    auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
+    auto weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
+    auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper weights_d(pd()->weights_md());
@@ -259,7 +160,7 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     const post_ops_t &post_ops = pd()->attr()->post_ops_;
     rvv_postops_t postops_handler(post_ops);
 
-    const float *bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
+    const void *bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
     if (pd()->is_col_major(weights_d)) {
         rvv_matmul_colmajor(src, weights, dst, src_d, weights_d, dst_d, bias,
                 bias_d, postops_handler);

@@ -90,6 +90,7 @@ struct brgemm_matmul_conf_t {
     int M_chunk_size, N_chunk_size, K_chunk_size;
     bool is_a_nt, is_b_nt, set_nt;
     bool need_prefetch_a, need_prefetch_b;
+    bool use_fused_copy_a;
     dim_t LDA, LDB, LDC, LDD;
     dim_t LDB2;
     int brgemm_batch_size, brgemm_batch_tail_size;

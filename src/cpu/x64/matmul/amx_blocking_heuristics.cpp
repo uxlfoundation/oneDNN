@@ -56,6 +56,7 @@ void matmul_amx_blocking_params_t::update_configuration(
     bgmmc.set_nt = set_nt_;
     bgmmc.need_prefetch_a = need_prefetch_a_;
     bgmmc.need_prefetch_b = need_prefetch_b_;
+    bgmmc.use_fused_copy_a = use_fused_copy_a_;
     bgmmc.is_macro_heuristics
             = dynamic_cast<const matmul_amx_blocking_params_macro_t *>(this)
             != nullptr;
@@ -787,8 +788,13 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
         m_chunk_size_ = div_up(m_per_thread, m_blk_);
         need_prefetch_a_ = (m_per_thread / m_blk_) >= 2;
         need_prefetch_b_ = false;
+        // use fused copy A if A is unaligned and reused at least 2 times and not completely write bound.
+        use_fused_copy_a_ = (K % wei_k_blk != 0)
+                && (n_blk_ >= n_decomposition * 3)
+                && ((size_t)k_blk_ >= (64 / gemm_dt_sz) * 4);
 
-        extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k();
+        extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k()
+                && !use_fused_copy_a_;
 
     } else {
         if (is_postops_bound(k_blk_v)) {
@@ -812,6 +818,7 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
         is_b_nt_ = false;
         need_prefetch_a_ = false;
         need_prefetch_b_ = (n_per_thread / n_blk_) >= 2;
+        use_fused_copy_a_ = false;
 
         extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k();
     }

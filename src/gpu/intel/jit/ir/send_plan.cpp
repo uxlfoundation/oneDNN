@@ -791,9 +791,9 @@ struct send_2d_params_t {
             dim_pow2,
             stride_grf,
         };
-        auto add_block = [&](int dim_idx, dim_t block,
+        auto add_block = [&](size_t dim_idx, dim_t block,
                                  pad_kind_t pad = pad_kind_t::none) {
-            l = l.add_outer_block(dim_idx, block, cur_stride);
+            l = l.with_block({dim_idx, block, cur_stride});
             dim_t stride = cur_stride * block;
             switch (pad) {
                 case pad_kind_t::dim_pow2:
@@ -2763,7 +2763,7 @@ send_plan_t create_send_plan(const exec_config_t &exec_cfg, const view_t &view,
             stride, base_group.pad_bytes * type.packing() / type.size());
     for (size_t i = outer_idx; i < blocks.size(); i++) {
         auto &b = blocks[i];
-        reg_layout = reg_layout.add_outer_block(b.dim, b.block, stride);
+        reg_layout = reg_layout.with_block({b.dim, b.block, stride});
         stride *= b.block;
     }
 

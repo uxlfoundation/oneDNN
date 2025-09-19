@@ -656,9 +656,7 @@ layout_t reorder_impl_t::make_compact_layout(
     auto dense = [&](dim_t stride) -> layout_t {
         if (!layout.nblocks()) return layout;
         auto blocks = layout.blocks();
-        stride_t inner_stride = stride_t::max();
-        for (auto &b : blocks)
-            if (b.stride < inner_stride) inner_stride = b.stride;
+        stride_t inner_stride = layout[0].stride;
         for (auto &b : blocks)
             b.stride = b.stride * stride / inner_stride;
         return {type, blocks, 0, layout.ndims(), /*do_normalize=*/false};

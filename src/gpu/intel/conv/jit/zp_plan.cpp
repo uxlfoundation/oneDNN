@@ -1149,10 +1149,10 @@ private:
     void init_mask_layout(
             const layout_t &src_layout, const std::vector<expr_t> &vvars) {
         if (mask_descs_.empty()) return;
-        int ndims = src_layout.ndims();
-        gpu_assert((int)vvars.size() == ndims);
+        size_t ndims = src_layout.ndims();
+        gpu_assert(vvars.size() == ndims);
         std::vector<dim_t> dims(ndims, 1);
-        for (int i = 0; i < ndims; i++) {
+        for (size_t i = 0; i < ndims; i++) {
             for (auto &m : mask_descs_)
                 if (m.lhs().has_vidx(i, vvars)) {
                     dims[i] = src_layout.elems(i);
@@ -1160,7 +1160,7 @@ private:
                 }
         }
         mask_layout_ = layout_t(type_t::s32(), std::vector<dim_t>(ndims, 1));
-        for (int i = 0; i < ndims; i++) {
+        for (size_t i = 0; i < ndims; i++) {
             auto &name = vvars[i].as<var_t>().name;
             if (utils::one_of(name, "mb", "ow", "osp", "iw") && dims[i] != 1) {
                 for (int b : {32, 16, 8}) {
@@ -1172,15 +1172,15 @@ private:
                     }
                 }
                 if (simd_ != 1) {
-                    mask_layout_ = mask_layout_.add_outer_block(i, simd_);
-                    dims[i] = utils::div_up((int)dims[i], simd_);
+                    mask_layout_ = mask_layout_.with_block({i, simd_});
+                    dims[i] = utils::div_up(dims[i], dim_t(simd_));
                     break;
                 }
             }
         }
-        for (int i = 0; i < ndims; i++) {
+        for (size_t i = 0; i < ndims; i++) {
             if (dims[i] != 1)
-                mask_layout_ = mask_layout_.add_outer_block(i, dims[i]);
+                mask_layout_ = mask_layout_.with_block({i, dims[i]});
         }
     }
 

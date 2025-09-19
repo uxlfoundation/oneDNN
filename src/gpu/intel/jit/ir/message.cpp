@@ -665,34 +665,34 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
             std::vector<dim_t>(vlayout.ndims(), 1));
     int h_inner = vnni ? 4 / send_type.size() : 1;
     int h_outer = ir_utils::safe_divide(height, h_inner);
-    reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_inner);
+    reg_layout_ = reg_layout_.with_block({b1.dim, h_inner});
     if (transpose) {
-        reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_outer);
-        reg_layout_ = reg_layout_.add_outer_block(b0.dim, width);
+        reg_layout_ = reg_layout_.with_block({b1.dim, h_outer});
+        reg_layout_ = reg_layout_.with_block({b0.dim, width});
     } else {
-        reg_layout_ = reg_layout_.add_outer_block(b0.dim, width);
-        reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_outer);
+        reg_layout_ = reg_layout_.with_block({b0.dim, width});
+        reg_layout_ = reg_layout_.with_block({b1.dim, h_outer});
     }
-    reg_layout_ = reg_layout_.add_outer_block(b0.dim, count);
+    reg_layout_ = reg_layout_.with_block({b0.dim, count});
 
     int w_outermost
             = ir_utils::safe_divide(vlayout.elems(b0.dim), count * width);
     int h_outermost = ir_utils::safe_divide(vlayout.elems(b1.dim), height);
-    reg_layout_ = reg_layout_.add_outer_block(b0.dim, w_outermost);
-    reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_outermost);
+    reg_layout_ = reg_layout_.with_block({b0.dim, w_outermost});
+    reg_layout_ = reg_layout_.with_block({b1.dim, h_outermost});
 
     if (type_factor != 1) {
         auto blocks = reg_layout_.blocks();
         reg_layout_
                 = layout_t(mem_type_, std::vector<dim_t>(vlayout.ndims(), 1));
-        reg_layout_ = reg_layout_.add_outer_block(b0.dim, type_factor);
+        reg_layout_ = reg_layout_.with_block({b0.dim, type_factor});
         for (auto &b : blocks)
-            reg_layout_ = reg_layout_.add_outer_block(b.dim, b.block);
+            reg_layout_ = reg_layout_.with_block({b.dim, b.block});
     }
 
     for (auto &b : blocks) {
         if (utils::one_of(b.dim, b0.dim, b1.dim)) continue;
-        reg_layout_ = reg_layout_.add_outer_block(b.dim, b.block);
+        reg_layout_ = reg_layout_.with_block({b.dim, b.block});
     }
 
     reg_layout_walker_

@@ -74,6 +74,27 @@ public:
         return *this;
     }
 
+    bool operator<=(const stride_t &other) const {
+        gpu_assert(!is_undefined() && !other.is_undefined());
+        if (is_unknown() || other.is_unknown()) return false;
+        return stride_ <= other.stride_;
+    }
+    bool operator<(const stride_t &other) const {
+        gpu_assert(!is_undefined() && !other.is_undefined());
+        if (is_unknown() || other.is_unknown()) return false;
+        return stride_ < other.stride_;
+    }
+    bool operator>=(const stride_t &other) const {
+        gpu_assert(!is_undefined() && !other.is_undefined());
+        if (is_unknown() || other.is_unknown()) return false;
+        return stride_ >= other.stride_;
+    }
+    bool operator>(const stride_t &other) const {
+        gpu_assert(!is_undefined() && !other.is_undefined());
+        if (is_unknown() || other.is_unknown()) return false;
+        return stride_ > other.stride_;
+    }
+
     std::string str() const {
         ostringstream_t oss;
         if (is_fixed()) {
@@ -98,6 +119,31 @@ private:
 
     dim_t stride_ = undefined_stride;
 };
+
+inline bool operator<=(int a, const stride_t &b) {
+    return stride_t(a) <= b;
+}
+inline bool operator<(int a, const stride_t &b) {
+    return stride_t(a) < b;
+}
+inline bool operator>=(int a, const stride_t &b) {
+    return stride_t(a) >= b;
+}
+inline bool operator>(int a, const stride_t &b) {
+    return stride_t(a) > b;
+}
+inline bool operator<=(const stride_t &a, int b) {
+    return a <= stride_t(b);
+}
+inline bool operator<(const stride_t &a, int b) {
+    return a < stride_t(b);
+}
+inline bool operator>=(const stride_t &a, int b) {
+    return a >= stride_t(b);
+}
+inline bool operator>(const stride_t &a, int b) {
+    return a > stride_t(b);
+}
 
 namespace compute {
 template <>

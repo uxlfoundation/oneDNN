@@ -210,7 +210,7 @@ struct tensor_config_t {
         : transform(t) {
         tile = g.tile;
         layout = t.get_layout(g.tile, g.type);
-        layout = layout.add_outer_block(k_var, copies, layout.elems());
+        layout = layout.with_block({k_var, copies});
     }
 
     ir::tile_t tile;
@@ -272,11 +272,9 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
             layout_t src_layout = {src_g.type};
             for (auto &b : C.layout.blocks()) {
                 if (!e.src1_desc.is_broadcast(dim_to_md[b.dim], ndims)) {
-                    src_layout = src_layout.add_outer_block(
-                            b.dim, b.block, src_layout.elems());
+                    src_layout = src_layout.with_block({b.dim, b.block});
                 } else {
-                    src_layout = src_layout.add_outer_block(
-                            b.dim, 1, src_layout.elems());
+                    src_layout = src_layout.with_block({b.dim, 1});
                 }
             }
 

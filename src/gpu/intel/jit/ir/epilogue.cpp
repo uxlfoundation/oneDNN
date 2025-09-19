@@ -254,7 +254,7 @@ public:
             if (masked_tile[i] >= tile[i]) continue;
             gpu_assert(masked_tile[i] == 1)
                     << "Unexpected output tensor shape.";
-            reg_layout_ = reg_layout_.add_outer_block(i, tile[i]);
+            reg_layout_ = reg_layout_.with_block({i, tile[i]});
         }
         register_buffer(reg_buf_, into<int>(size_bytes(reg_layout_)));
     }

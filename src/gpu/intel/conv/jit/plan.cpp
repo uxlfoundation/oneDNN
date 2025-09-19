@@ -2282,9 +2282,9 @@ private:
         if (k_tg == 1) return plan_status_t::success;
 
         auto l = plan_.fma.c_prb_layout;
-        int ndims = l.ndims();
+        size_t ndims = l.ndims();
         auto blocks = l.blocks();
-        l = l.add_outer_block(ndims, k_tg);
+        l = l.with_block({ndims, k_tg});
         int outer = 1;
         auto rem_dims = l.tile();
         for (int i = (int)blocks.size() - 1; i >= 0; i--) {
@@ -2319,7 +2319,7 @@ private:
 
     plan_status_t fixup_k_blocks_order(layout_t &a, layout_t &b) const {
         auto &bmnk_mapper = gemm_schedule_.bmnk_mapper();
-        object_map_t<expr_t, int> k_vars;
+        object_map_t<expr_t, pvar_t> k_vars;
         auto k_sub_layout = [&](abc_kind_t abc_kind, const layout_t &l) {
             layout_t k_layout = layout_t(
                     type_t::u8(), std::vector<dim_t>(layout_t::max_ndims, 1));
@@ -2327,8 +2327,8 @@ private:
                 auto bmnk_kind = bmnk_mapper.bmnk_kind(abc_kind, b.dim);
                 if (bmnk_kind != bmnk_kind_t::k) continue;
                 auto &var = bmnk_mapper.var(abc_kind, b.dim);
-                auto ret = k_vars.emplace(var, (int)k_vars.size());
-                k_layout = k_layout.add_outer_block(ret.first->second, b.block);
+                auto ret = k_vars.emplace(var, k_vars.size());
+                k_layout = k_layout.with_block({ret.first->second, b.block});
             }
             return k_layout;
         };
@@ -2433,23 +2433,23 @@ private:
                 m_blk = get_dpas_block_rcount(a_layout, 1);
                 n_blk = simd;
                 k_blk = sdepth * dword_size / ab_type_size;
-                c_blk_layout = c_blk_layout.add_outer_block(2, n_blk);
-                c_blk_layout = c_blk_layout.add_outer_block(1, m_blk);
+                c_blk_layout = c_blk_layout.with_block({2, n_blk});
+                c_blk_layout = c_blk_layout.with_block({1, m_blk});
                 break;
             }
             case fma_kind_t::mad:
                 if (fma_ctx.can_vectorize_by(
                             bmnk_kind_t::b, a_layout, b_layout)) {
                     b_blk = vec_size;
-                    c_blk_layout = c_blk_layout.add_outer_block(0, vec_size);
+                    c_blk_layout = c_blk_layout.with_block({0, vec_size});
                 } else if (fma_ctx.can_vectorize_by(
                                    bmnk_kind_t::n, a_layout, b_layout)) {
                     n_blk = vec_size;
-                    c_blk_layout = c_blk_layout.add_outer_block(2, vec_size);
+                    c_blk_layout = c_blk_layout.with_block({2, vec_size});
                 } else if (fma_ctx.can_vectorize_by(
                                    bmnk_kind_t::m, a_layout, b_layout)) {
                     m_blk = vec_size;
-                    c_blk_layout = c_blk_layout.add_outer_block(1, vec_size);
+                    c_blk_layout = c_blk_layout.with_block({1, vec_size});
                 } else {
                     fma_ctx.set_layout_hints(a_layout, b_layout);
                     return plan_status_t::invalid_fma_layout;

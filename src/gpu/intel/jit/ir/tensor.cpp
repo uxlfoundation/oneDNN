@@ -337,9 +337,13 @@ void layout_t::sanity_check() const {
 #endif
     if (is_empty()) return;
 
-    for (auto &b : blocks_) {
-        gpu_assert(b.block > 0) << "Incorrect block size.";
-        MAYBE_UNUSED(b);
+    for (size_t i = 0; i < blocks_.size(); i++) {
+        gpu_assert(blocks_[i].block > 0) << "Incorrect block size.";
+        if (i > 0)
+            gpu_assert(blocks_[i].stride > blocks_[i - 1].stride)
+                    << "Block " << blocks_[i]
+                    << " is incorrectly sorted when compared with "
+                    << blocks_[i - 1];
     }
     if (with_ndims()) gpu_assert(ndims() <= max_ndims);
 }

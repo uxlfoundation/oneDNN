@@ -310,6 +310,34 @@ public:
         return ret;
     }
 
+    // Unknown/undefined strides are assumed to be the outermost block.
+    // Furthermore, undefined strides are assumed to be dense with respect to
+    // the previous block.
+    layout_t with_block(layout_block_t block) const {
+        auto new_blocks = blocks();
+        if (block.stride.is_unknown()) {
+            new_blocks.emplace_back(block);
+        } else if (block.stride.is_undefined()) {
+            block.stride = !new_blocks.empty()
+                    ? new_blocks.back().stride * new_blocks.back().block
+                    : stride_t(1);
+            new_blocks.emplace_back(block);
+        } else {
+            auto it = new_blocks.begin();
+            while (it != new_blocks.end() && it->stride <= block.stride) {
+                it++;
+            }
+            new_blocks.insert(it, block);
+        }
+
+        auto ret = with(new_blocks);
+        if (ret.with_ndims()) {
+            if (block.dim.index() == ret.ndims()) ret.ndims_++;
+            gpu_assert(block.dim.index() < ret.ndims());
+        }
+        return ret;
+    }
+
     bool is_empty() const {
         if (with_ndims()) {
             if (ndims() == 0) gpu_assert(blocks_.empty());
@@ -528,7 +556,7 @@ public:
             d = ir_utils::safe_divide(d, b.block);
             if (r <= d) continue;
             auto blk = ir_utils::safe_divide(r, d);
-            ret = ret.add_outer_block(b.dim, blk);
+            ret = ret.with_block({b.dim, blk});
             r = ir_utils::safe_divide(r, blk);
         }
         for (auto &d : rem_tile)
@@ -542,37 +570,16 @@ public:
     layout_t split_block(
             const layout_block_t &b, dim_t block0, dim_t block1) const;
 
-    layout_t add_outer_block(
-            const pvar_t &dim, dim_t block, dim_t stride = -1) const {
-        if (stride == -1) {
-            if (blocks_.empty()) {
-                stride = 1;
-            } else {
-                auto &last = blocks_.back();
-                stride = last.block * last.stride;
-            }
-        }
-        gpu_assert(stride >= elems());
-        auto new_blocks = blocks();
-        new_blocks.emplace_back(dim, block, stride);
-        auto ret = with(new_blocks);
-        if (ret.with_ndims()) {
-            if (dim.index() == ret.ndims_) ret.ndims_++;
-            gpu_assert(dim.index() < ret.ndims());
-        }
-        return with(new_blocks);
-    }
-
     layout_t add_outer_block_and_pad(
             const pvar_t &dim, dim_t block, int pad_bytes) const {
         int type_size = type().size();
         gpu_assert(pad_bytes % type_size == 0);
         if (blocks_.empty())
-            return add_outer_block(dim, block, pad_bytes / type_size);
+            return with_block({dim, block, pad_bytes / type_size});
         auto &last = blocks_.back();
         auto stride = utils::rnd_up((dim_t)last.stride * last.block,
                 (dim_t)(pad_bytes / type_size));
-        return add_outer_block(dim, block, stride);
+        return with_block({dim, block, stride});
     }
 
     // Returns a tensor corresponding to the biggest innermost sub-layout so that

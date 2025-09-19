@@ -319,10 +319,16 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 ? (dim_t)bgmmc_.wei_k_blk
                 : bgmmc_.LDA;
         const auto kernel_isa = i_M == max_m_ker_idx - 1 ? backup_isa : isa;
-        CHECK(brgemm_desc_init(&brg, kernel_isa, bgmmc_.brg_type, bgmmc_.src_dt,
-                bgmmc_.wei_dt, false, false, brgemm_row_major, alpha, vbeta,
-                LDA, bgmmc_.LDB, bgmmc_.LDC, vM, vN, vK, nullptr,
-                bgmmc_.is_tf32));
+
+        if (bgmmc_.is_gemv)
+            CHECK(brgemv_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
+                    bgmmc_.src_dt, bgmmc_.wei_dt, false, alpha, vbeta, LDA,
+                    bgmmc_.LDC, vM, vK));
+        else
+            CHECK(brgemm_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
+                    bgmmc_.src_dt, bgmmc_.wei_dt, false, false,
+                    brgemm_row_major, alpha, vbeta, LDA, bgmmc_.LDB, bgmmc_.LDC,
+                    vM, vN, vK, nullptr, bgmmc_.is_tf32));
 
         auto LDD = bgmmc_.LDD;
         if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)

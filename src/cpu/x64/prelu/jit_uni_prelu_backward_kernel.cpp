@@ -306,44 +306,13 @@ const Xbyak::Operand &jit_uni_prelu_backward_kernel_t<Vmm>::get_or_load_weights(
     return weights_vmm;
 }
 
-static void reduce(jit_generator_t *host, const Xbyak::Xmm &src,
-        const Xbyak::Xmm &helper, const cpu_isa_t &isa) {
-    UNUSED(helper);
-    if (isa == sse41) {
-        host->haddps(src, src);
-        host->haddps(src, src);
-    } else {
-        host->vhaddps(src, src, src);
-        host->vhaddps(src, src, src);
-    }
-}
-
-static void reduce(jit_generator_t *host, const Xbyak::Ymm &src,
-        const Xbyak::Ymm &helper, const cpu_isa_t &isa) {
-    const Xbyak::Xmm xmm_helper {helper.getIdx()};
-    const Xbyak::Xmm xmm_src {src.getIdx()};
-
-    host->vextractf128(xmm_helper, src, 1);
-    host->vaddps(xmm_src, xmm_src, xmm_helper);
-    reduce(host, xmm_src, xmm_helper, isa);
-}
-
-static void reduce(jit_generator_t *host, const Xbyak::Zmm &src,
-        const Xbyak::Zmm &helper, const cpu_isa_t &isa) {
-    const Xbyak::Ymm ymm_helper {helper.getIdx()};
-    const Xbyak::Ymm ymm_src {src.getIdx()};
-
-    host->vextractf64x4(ymm_helper, src, 1);
-    host->vaddps(ymm_src, ymm_src, ymm_helper);
-    reduce(host, ymm_src, ymm_helper, isa);
-}
-
 template <typename Vmm>
 void jit_uni_prelu_backward_kernel_t<Vmm>::finalize() {
     if (bcast_ == prelu::bcast::per_oc_blocked)
         uni_vmovups(ptr[reg_weights_diff_], weights_diff_acc_vmm_);
     else if (bcast_ == prelu::bcast::per_oc_n_c_spatial) {
-        reduce(this, weights_diff_acc_vmm_, weights_const_vmm_, isa_);
+        regops::horizontal_add_ps(
+                this, weights_diff_acc_vmm_, weights_const_vmm_);
         uni_vmovss(ptr[reg_weights_diff_], weights_diff_acc_vmm_);
     }
 }

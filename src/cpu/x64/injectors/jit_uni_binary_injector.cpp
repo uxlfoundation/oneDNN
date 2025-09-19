@@ -547,7 +547,6 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
                 && IMPLICATION(rhs_broadcasting_strategy
                                 == broadcasting_strategy_t::scalar,
                         rhs_arg_static_params_.use_exact_tail_scalar_bcast);
-
         const Vmm tern_tmp_vmm(rhs_arg_static_params_.rhs_dt_helper_vmm_idx);
         const auto local_vmm_preservation = should_preserve_vmm(
                 vmm_idx, vmm_hint, max_vmm_idx, dt_helper_vmm_needed);

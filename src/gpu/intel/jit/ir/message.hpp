@@ -496,7 +496,7 @@ private:
             int &c, int &vnni_permute_factor);
 
     bool check_2d_mask(const tile_t &tile, const coord_t &coord,
-            bool use_virtual_surface, dim_idx_t w_idx, dim_idx_t h_idx,
+            bool use_virtual_surface, size_t w_idx, size_t h_idx,
             expr_t &mask) const;
 
     std::vector<layout_t> candidate_payload_layouts() const;

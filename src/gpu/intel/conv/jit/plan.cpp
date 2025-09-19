@@ -1632,10 +1632,10 @@ reduce_mask_t reduce_mask(const config_t &cfg, abc_kind_t abc) {
     return reduce_mask_t((1 << 1) | (1 << 2));
 }
 
-std::vector<int> get_reduce_dim_map(uint32_t mask, dim_idx_t &ndims) {
-    std::vector<int> ret(ndims, -1);
-    dim_idx_t dst_idx = 0;
-    for (dim_idx_t i = 0; i < ndims; i++) {
+std::vector<size_t> get_reduce_dim_map(uint32_t mask, size_t &ndims) {
+    std::vector<size_t> ret(ndims, dim_idx::invalid);
+    size_t dst_idx = 0;
+    for (size_t i = 0; i < ndims; i++) {
         if ((mask & (1 << i)) == 0) continue;
         ret[i] = dst_idx++;
     }
@@ -1644,13 +1644,13 @@ std::vector<int> get_reduce_dim_map(uint32_t mask, dim_idx_t &ndims) {
 }
 
 tile_coord_t to_reduce_tensor(
-        dim_idx_t ndims, const tile_coord_t &tile_coord, uint32_t mask) {
-    dim_idx_t reduce_ndims = ndims;
+        size_t ndims, const tile_coord_t &tile_coord, uint32_t mask) {
+    size_t reduce_ndims = ndims;
     auto map = get_reduce_dim_map(mask, reduce_ndims);
     tile_t reduce_dims;
     coord_t reduce_start;
-    for (dim_idx_t i = 0; i < ndims; i++) {
-        if (map[i] == -1) continue;
+    for (size_t i = 0; i < ndims; i++) {
+        if (map[i] == dim_idx::invalid) continue;
         reduce_dims[map[i]] = tile_coord.tile.get(i);
         reduce_start[map[i]] = tile_coord.coord.get(i);
     }
@@ -1659,11 +1659,11 @@ tile_coord_t to_reduce_tensor(
 
 layout_t to_reduce_layout(
         const config_t &cfg, const layout_t &layout, uint32_t mask) {
-    dim_idx_t reduce_ndims = layout.ndims();
+    size_t reduce_ndims = layout.ndims();
     auto map = get_reduce_dim_map(mask, reduce_ndims);
     std::vector<layout_block_t> reduce_blocks;
     for (auto &b : layout.blocks()) {
-        if (map[b.dim] == -1) continue;
+        if (map[b.dim] == dim_idx::invalid) continue;
         auto bb = b;
         bb.dim = map[b.dim];
         reduce_blocks.push_back(bb);

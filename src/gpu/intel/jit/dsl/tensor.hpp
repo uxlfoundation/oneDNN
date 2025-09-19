@@ -38,14 +38,14 @@ namespace dsl {
 class idx_t {
 public:
     idx_t() = default;
-    idx_t(size_t idx) : name_(into<uint32_t>(idx)) {}
+    idx_t(size_t idx) : name_(idx) {}
     explicit idx_t(const std::string &name) : name_(name) {}
     bool is_undef() const { return name_.is_empty(); }
     bool operator==(const idx_t &other) const { return name_ == other.name_; }
     bool operator!=(const idx_t &other) const { return name_ != other.name_; }
     bool operator<(const idx_t &other) const { return name_ < other.name_; }
-    uint32_t index() const { return name_.index(); }
-    operator uint32_t() const { return index(); }
+    size_t index() const { return name_.index(); }
+    operator size_t() const { return index(); }
     size_t get_hash() const { return name_.get_hash(); }
     std::string str() const { return name_.str(); }
 
@@ -53,7 +53,7 @@ private:
     class name_t {
     public:
         name_t() = default;
-        explicit name_t(uint32_t idx) { data_[0] = into<char>('a' + idx); }
+        explicit name_t(size_t idx) { data_[0] = into<char>('a' + idx); }
         explicit name_t(const std::string &s) {
             gpu_assert(!s.empty() && s.length() <= max_len);
             s.copy(data_, s.length());
@@ -71,8 +71,8 @@ private:
             return std::strncmp(data_, other.data_, max_len) < 0;
         }
 
-        uint32_t index() const {
-            gpu_assert(into<int>(length()) == 1);
+        size_t index() const {
+            gpu_assert(length() == 1);
             gpu_assert('a' <= data_[0] && data_[0] <= 'z');
             return data_[0] - 'a';
         }

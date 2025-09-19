@@ -203,7 +203,7 @@ public:
 
     const expr_t &compute_expr() const { return info_.compute_expr(); }
 
-    bool is_broadcast_dim(dim_idx_t dim_idx) const {
+    bool is_broadcast_dim(size_t dim_idx) const {
         gpu_assert(
                 dim_idx != dim_idx::invalid && dim_idx < mem_view().nvdims());
         return (mask() & (1 << dim_idx)) == 0;
@@ -381,7 +381,7 @@ public:
         return write.stmt();
     }
 
-    expr_t load_expr(const tile_coord_t &tile_coord, int dim_idx) const {
+    expr_t load_expr(const tile_coord_t &tile_coord, size_t dim_idx) const {
         auto &type = reg_layout_.type();
         int elems
                 = is_broadcast_dim(dim_idx) ? 1 : into<int>(tile_coord.elems());
@@ -394,7 +394,7 @@ public:
         return ret;
     }
 
-    stmt_t store_stmt(const tile_coord_t &tile_coord, int dim_idx,
+    stmt_t store_stmt(const tile_coord_t &tile_coord, size_t dim_idx,
             const expr_t &_value, const expr_t &mask = expr_t()) const {
         auto value = _value;
         gpu_assert(!is_broadcast_dim(dim_idx));
@@ -615,7 +615,7 @@ private:
     }
 
     expr_t compute_post_op_expr(const expr_t &expr,
-            const tile_coord_t &tile_coord, int dim_idx,
+            const tile_coord_t &tile_coord, size_t dim_idx,
             const object_map_t<expr_t, post_op_tensor_t *> &args) const {
         object_map_t<object_t, object_t> sub_map;
         for (auto &kv : args) {

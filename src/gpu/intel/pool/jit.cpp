@@ -83,8 +83,8 @@ status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
     src = std::make_shared<layout_t>(make_layout(*invariant_src_md()));
     dst = std::make_shared<layout_t>(make_layout(*invariant_dst_md()));
     VDISPATCH_POOLING(src->ndims() == dst->ndims(),
-            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst", src->ndims(),
-            dst->ndims());
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst",
+            into<int>(src->ndims()), into<int>(dst->ndims()));
 
     conf = std::make_shared<conf_t>();
     set_default_conf(

@@ -86,7 +86,7 @@ struct layout_normalization_t {
             return *this;
         }
 
-        iterator_t(dim_idx_t ndims, block_iterator_t it, block_iterator_t end)
+        iterator_t(size_t ndims, block_iterator_t it, block_iterator_t end)
             : curr_(it == end ? end : it + 1)
             , last_(it)
             , end_(end)
@@ -99,7 +99,7 @@ struct layout_normalization_t {
         std::vector<dim_t> tile_;
     };
 
-    int ndims() const { return ndims_; }
+    size_t ndims() const { return ndims_; }
     const blocks_t &blocks() const { return blocks_; }
 
     bool empty() const { return begin() == end(); }
@@ -188,7 +188,7 @@ private:
     }
 
     type_t type_;
-    dim_idx_t ndims_;
+    size_t ndims_;
     expr_t offset_;
     blocks_t blocks_;
 };
@@ -209,7 +209,7 @@ private:
 //    re-index the dimensions so that the new layouts are 2D.
 void normalize(layout_t &a, layout_t &b) {
     using direction_t = merge_info_t::merge_direction_t;
-    int ndims = a.ndims();
+    auto ndims = a.ndims();
     auto cmp = [](const normalization_stage_t &a,
                        const normalization_stage_t &b) {
         return a.elems() <= b.elems();
@@ -232,7 +232,7 @@ void normalize(layout_t &a, layout_t &b) {
     std::vector<merge_info_t> a_merges;
     std::vector<merge_info_t> b_merges;
     // Find pairs of consecutive blocks which can be combined
-    for (int i = 0; i < ndims; ++i) {
+    for (size_t i = 0; i < ndims; ++i) {
         auto dim_i_blocks = dim_blocks(i);
         auto a_stages = a_normalization | filter(dim_i_blocks);
         auto b_stages = b_normalization | filter(dim_i_blocks);
@@ -251,7 +251,7 @@ void normalize(layout_t &a, layout_t &b) {
     // new dimension indices
     int curr_dim = 0;
     std::vector<int> dim_map(ndims);
-    for (int i = 0; i < ndims; ++i)
+    for (size_t i = 0; i < ndims; ++i)
         if (a_normalization.contains_dim(i) || b_normalization.contains_dim(i))
             dim_map[i] = curr_dim++;
     a_normalization.reindex(curr_dim, dim_map);

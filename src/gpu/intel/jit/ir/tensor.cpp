@@ -500,8 +500,8 @@ layout_t view_t::create_pseudo_vlayout(
 layout_t dim_assignment_t::map(const layout_t &layout) const {
     std::vector<layout_block_t> new_blocks;
     for (auto &b : layout.blocks()) {
-        int new_idx = assignments_[b.dim];
-        if (new_idx == -1) continue; // Drop this block.
+        size_t new_idx = assignments_[b.dim];
+        if (new_idx == dim_idx::invalid) continue; // Drop this block.
         auto new_b = b;
         new_b.dim = new_idx;
         new_blocks.push_back(new_b);
@@ -517,19 +517,19 @@ layout_t dim_assignment_t::map(const layout_t &layout) const {
 
 layout_t spatials_to_3d(const layout_t &layout, bool with_groups,
         const std::array<int, 3> &dhw_map) {
-    const int old_ndims = layout.ndims();
-    const int old_sp_ndims = old_ndims - (with_groups ? 3 : 2);
-    const int new_ndims = old_ndims - old_sp_ndims + 3;
+    const size_t old_ndims = layout.ndims();
+    const size_t old_sp_ndims = old_ndims - (with_groups ? 3 : 2);
+    const size_t new_ndims = old_ndims - old_sp_ndims + 3;
 
     dim_assignment_t to_3d(old_ndims, new_ndims);
-    for (int i = 0; i < old_ndims; i++) {
+    for (size_t i = 0; i < old_ndims; i++) {
         if (i < old_ndims - old_sp_ndims) {
             // Non-spatial dimensions.
             to_3d.assign(i, i);
         } else {
             // Spatial dimensions.
-            int old_sp_idx = 3 - (old_ndims - i);
-            int new_sp_idx = dhw_map[old_sp_idx];
+            size_t old_sp_idx = 3 - (old_ndims - i);
+            size_t new_sp_idx = dhw_map[old_sp_idx];
             to_3d.assign(i, new_ndims - (3 - new_sp_idx));
         }
     }

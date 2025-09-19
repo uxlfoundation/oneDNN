@@ -509,8 +509,8 @@ void access_builder_t::build() {
     gpu_assert(ok) << "Can't generate send decomposition.";
 }
 
-static bool stride_dimension_ok(const view_t &view, int stride_tidx,
-        dim_idx_t stride_vidx, const coord_t &vstart) {
+static bool stride_dimension_ok(const view_t &view, size_t stride_tidx,
+        size_t stride_vidx, const coord_t &vstart) {
     auto &tdim = view.tdim(stride_tidx);
     auto e = tdim.expr();
     for (dim_idx_t i = 0; i < tdim.nvargs(); i++) {
@@ -582,8 +582,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     if (b0.stride != stride_t(1)) return false;
     if (!b1.stride.is_fixed()) return false;
 
-    auto get_tdim_idx = [&](dim_idx_t vdim_idx, int &stride) {
-        dim_idx_t ret = dim_idx::invalid;
+    auto get_tdim_idx = [&](size_t vdim_idx, int &stride) {
+        size_t ret = dim_idx::invalid;
         for (dim_idx_t i = 0; i < mem_view_.ntdims(); i++) {
             auto &tdim = mem_view_.tdim(i);
             for (dim_idx_t j = 0; j < tdim.nvargs(); j++) {
@@ -599,13 +599,13 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     int w_tstride = 0;
     int h_tstride = 0;
-    dim_idx_t w_dim_idx = get_tdim_idx(b0.dim, w_tstride);
-    dim_idx_t h_dim_idx = get_tdim_idx(b1.dim, h_tstride);
+    size_t w_dim_idx = get_tdim_idx(b0.dim, w_tstride);
+    size_t h_dim_idx = get_tdim_idx(b1.dim, h_tstride);
 
     if (w_tstride != 1) return false;
 
     auto &tlayout = mem_view_.tlayout();
-    auto get_2d_dim = [&](dim_idx_t tidx) {
+    auto get_2d_dim = [&](size_t tidx) {
         return inner_block(tlayout, tidx, /*skip_outer=*/false);
     };
 
@@ -851,7 +851,7 @@ bool access_builder_t::fixup_send_2d_params(const type_t &send_type, bool vnni,
 }
 
 bool access_builder_t::check_2d_mask(const tile_t &tile, const coord_t &coord,
-        bool use_virtual_surface, dim_idx_t w_dim_idx, dim_idx_t h_dim_idx,
+        bool use_virtual_surface, size_t w_dim_idx, size_t h_dim_idx,
         expr_t &mask) const {
     auto sub_view = mem_view_.create_sub_view(tile, coord);
     auto mask_tensor = sub_view.create_mask_tensor(ir_ctx_->cset());

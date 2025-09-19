@@ -75,7 +75,7 @@ bool ir_builder_t::try_build(const tile_t &iter_tile, const tile_t &loop_tile) {
 
     const auto &padded_dims = cfg_.padded_dims().get();
     auto string_map = padded_dims.to_string_map();
-    const auto ndims = cfg_.src_layout().user().ndims();
+    const dim_idx_t ndims = into<dim_idx_t>(cfg_.src_layout().user().ndims());
 
     std::vector<expr_t> vars;
     vars.reserve(ndims);

@@ -51,15 +51,14 @@ slm_reduce_builder_t::slm_reduce_builder_t(ir_context_t &ir_ctx,
 }
 
 void slm_reduce_builder_t::build() {
-    int ndims = reg_layout_.ndims();
+    auto ndims = reg_layout_.ndims();
 
     // Create SLM layout to store all intermediate buffers from the thread
     // group.
     layout_t slm_layout(reg_layout_.type(), reg_layout_.blocks(),
             reg_layout_.offset(), ndims + tg_ndims_);
     for (int i = tg_ndims_ - 1; i >= 0; i--) {
-        slm_layout = slm_layout.with_block(
-                {into<size_t>(ndims + i), tg_grid_.dim(i)});
+        slm_layout = slm_layout.with_block({ndims + i, tg_grid_.dim(i)});
     }
 
     slm_buf_size_ = into<int>(size_bytes(slm_layout));
@@ -68,7 +67,7 @@ void slm_reduce_builder_t::build() {
     tile_t write_tile;
     coord_t write_start;
     tile_t reg_tile = reg_layout_.tile();
-    for (int i = 0; i < ndims; i++)
+    for (size_t i = 0; i < ndims; i++)
         write_tile[i] = reg_tile[i];
     for (int i = tg_ndims_ - 1; i >= 0; i--) {
         write_start[ndims + i] = tg_grid_.idx(i);
@@ -103,7 +102,7 @@ void slm_reduce_builder_t::build() {
     tile_t read_tile;
     coord_t read_start;
     tile_t slm_tile = slm_layout.tile();
-    for (int i = 0; i < ndims; i++) {
+    for (size_t i = 0; i < ndims; i++) {
         read_tile[i] = local_thr_tile_coord.tile[i];
         read_start[i] = local_thr_tile_coord.coord[i];
         auto cond = read_start[i] < slm_tile[i];

@@ -71,7 +71,7 @@ public:
         return it->second;
     }
 
-    bmnk_kind_t bmnk_kind(abc_kind_t abc_kind, int dim_idx) const {
+    bmnk_kind_t bmnk_kind(abc_kind_t abc_kind, size_t dim_idx) const {
         return bmnk_kind(var(abc_kind, dim_idx));
     }
 
@@ -88,7 +88,7 @@ public:
         gpu_assert(ret.second) << "Can't set variable twice: " << var;
     }
 
-    const expr_t &var(abc_kind_t abc_kind, int dim_idx) const {
+    const expr_t &var(abc_kind_t abc_kind, size_t dim_idx) const {
         return get_vars(abc_kind)[dim_idx];
     }
 

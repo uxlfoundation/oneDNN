@@ -77,7 +77,7 @@ public:
             if (idx(i).is_same(idx_var)) return i;
         }
         gpu_error_not_expected() << "Index not found: " << idx_var;
-        return -1;
+        return dim_idx::invalid;
     }
 
     const dim_t &dim(dim_idx_t dim_idx) const { return dims_[dim_idx]; }
@@ -271,7 +271,7 @@ public:
             const expr_t &offset = 0, bool do_normalize = true)
         : type_(type), ndims_(into<dim_idx_t>(dims.size())), offset_(offset) {
         dim_t stride = 1;
-        for (int i = ndims_ - 1; i >= 0; i--) {
+        for (int64_t i = ndims_ - 1; i >= 0; i--) {
             blocks_.emplace_back(i, dims[i], stride);
             stride *= dims[i];
         }
@@ -280,7 +280,7 @@ public:
     }
 
     layout_t(const type_t &type, const std::vector<layout_block_t> &blocks = {},
-            const expr_t &offset = 0, dim_idx_t ndims = dim_idx::invalid,
+            const expr_t &offset = 0, size_t ndims = dim_idx::invalid,
             bool do_normalize = true)
         : type_(type), ndims_(ndims), offset_(offset), blocks_(blocks) {
         stride_t stride(1);
@@ -346,7 +346,7 @@ public:
         return blocks_.empty();
     }
     bool with_ndims() const { return ndims_ != dim_idx::invalid; }
-    dim_idx_t ndims(bool check_invalid = true) const {
+    size_t ndims(bool check_invalid = true) const {
         if (check_invalid) gpu_assert(with_ndims());
         return ndims_;
     }
@@ -796,7 +796,7 @@ private:
     type_t type_;
 
     // Number of dimensions.
-    dim_idx_t ndims_ = dim_idx::invalid;
+    size_t ndims_ = dim_idx::invalid;
 
     // Offset to the start of the layout (in elements of type).
     expr_t offset_;
@@ -1195,7 +1195,8 @@ public:
         , vstart_(layout.ndims())
         , tdims_(layout.ndims())
         , tlayout_(layout) {
-        if (vvars_.empty()) vvars_ = create_vvars(layout.ndims());
+        if (vvars_.empty())
+            vvars_ = create_vvars(into<dim_idx_t>(layout.ndims()));
         for (dim_idx_t i = 0; i < nvdims(); i++) {
             expr_t i_mask;
             if ((bound_check_mask & (1 << i)) != 0)
@@ -1225,7 +1226,7 @@ public:
         return ret;
     }
 
-    const expr_t &vvar(dim_idx_t idx) const {
+    const expr_t &vvar(size_t idx) const {
         gpu_assert(idx < nvdims());
         return vvars_[idx];
     }
@@ -1237,7 +1238,7 @@ public:
         return vvars_[0];
     }
 
-    const tdim_t &tdim(dim_idx_t idx) const {
+    const tdim_t &tdim(size_t idx) const {
         gpu_assert(idx < ntdims());
         return tdims_[idx];
     }
@@ -1680,42 +1681,42 @@ class dim_assignment_t {
 public:
     dim_assignment_t() = default;
 
-    dim_assignment_t(dim_idx_t old_ndims, dim_idx_t new_ndims)
+    dim_assignment_t(size_t old_ndims, size_t new_ndims)
         : old_ndims_(old_ndims)
         , new_ndims_(new_ndims)
-        , assignments_(old_ndims, -1) {}
+        , assignments_(old_ndims, dim_idx::invalid) {}
 
-    void assign(dim_idx_t old_idx, dim_idx_t new_idx) {
+    void assign(size_t old_idx, size_t new_idx) {
         gpu_assert(old_idx != dim_idx::invalid && old_idx < old_ndims_);
         gpu_assert(new_idx != dim_idx::invalid && new_idx < new_ndims_);
         assignments_[old_idx] = new_idx;
     }
 
-    void assign(const std::vector<dim_idx_t> &old_idxes, dim_idx_t new_idx) {
+    void assign(const std::vector<size_t> &old_idxes, size_t new_idx) {
         for (auto old_idx : old_idxes) {
             assign(old_idx, new_idx);
         }
     }
 
-    dim_idx_t operator[](dim_idx_t old_idx) const {
+    size_t operator[](size_t old_idx) const {
         gpu_assert(old_idx >= 0 && old_idx < old_ndims());
         return assignments_[old_idx];
     }
 
-    dim_idx_t old_ndims() const { return old_ndims_; }
+    size_t old_ndims() const { return old_ndims_; }
 
-    dim_idx_t new_ndims() const { return new_ndims_; }
+    size_t new_ndims() const { return new_ndims_; }
 
     bool is_empty() const { return old_ndims_ == 0 && new_ndims_ == 0; }
 
     layout_t map(const layout_t &layout) const;
 
 private:
-    dim_idx_t old_ndims_ = 0;
-    dim_idx_t new_ndims_ = 0;
+    size_t old_ndims_ = 0;
+    size_t new_ndims_ = 0;
 
     // assignments_[old_idx] = new_idx.
-    std::vector<dim_idx_t> assignments_;
+    std::vector<size_t> assignments_;
 };
 
 // Adds size one spatial dimensions according to input parameters. Spatial

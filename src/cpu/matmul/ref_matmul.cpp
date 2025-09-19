@@ -123,6 +123,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
     const auto wei_scale_ngroups_k = K / wei_scale_group_k;
+    const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_scale_md {};
     CHECK(attr_scales.get(DNNL_ARG_WEIGHTS)
@@ -175,7 +176,8 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                         const dim_t wei_scale_offset
                                 = matmul_helper_t::get_quant_off(
                                         weights_dims_idx, ndims, wei_scale_mask,
-                                        wei_scale_group_k, 1, wei_scale_md);
+                                        wei_scale_group_k, wei_scale_group_n,
+                                        wei_scale_md);
                         // Single scale value was already converted into f32.
                         const float wei_scale = wei_scales_d.nelems() == 1
                                 ? wei_scales[0]
@@ -216,11 +218,6 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
         return io::load_float_value(bia_d.data_type(), bias, bias_off);
     };
 
-    auto get_dst_dims_idx = [&](dims_t &dims_idx, int mb, int m, int n) {
-        const size_t offset = mb * M * N + m * N + n;
-        utils::l_dims_by_l_offset(dims_idx, offset, dst_d.dims(), ndims);
-    };
-
     auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
     bool with_dropout = !pd()->attr()->dropout_.has_default_values();
 
@@ -232,7 +229,9 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                 for_(int m = 2 * m_; m < std::min<int>(2 * (m_ + 1), M); m++)
                 for (int n = 2 * n_; n < std::min<int>(2 * (n_ + 1), N); n++) {
                     dims_t dst_dims_idx;
-                    get_dst_dims_idx(dst_dims_idx, mb, m, n);
+                    const size_t offset = mb * M * N + m * N + n;
+                    utils::l_dims_by_l_offset(
+                            dst_dims_idx, offset, dst_d.dims(), ndims);
 
                     float d = ker(dst_dims_idx, m, n);
                     if (bias) d += ker_bias(dst_dims_idx);
@@ -246,7 +245,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                         args.dst_val
                                 = io::load_float_value(sum_dt, dst, dst_off);
                         args.ctx = &ctx;
-                        args.l_offset = mb * M * N + m * N + n;
+                        args.l_offset = offset;
                         args.dst_md = pd()->dst_md();
                         ref_post_ops->execute(d, args);
                     }

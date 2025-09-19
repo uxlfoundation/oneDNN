@@ -44,6 +44,7 @@ enum class property : int {
     integrated = 0x4,
     fma = 0x8,
     f32 = 0x10,
+    f16_accumulate = 0x20,
 };
 
 property operator|(property a, property b);

@@ -1518,6 +1518,44 @@ dim_t find_min_stride_without_conflicts(
     return dense_stride_bytes;
 }
 
+// Splits blocks so that they can be used to form `multi_blocks` without
+// crossing the block boundaries. `multi_blocks` are ordered from innermost to
+// outermost. Returns an empty layout if such a split is not possible.
+// Example (all blocks are ordered from innermost to outermost):
+//     Input blocks:  [4, 4, 2]
+//     Multi-blocks:  [8, 2]
+//     Output blocks: [4, 2, 2, 2]
+layout_t split_into_multi_blocks(
+        const layout_t &layout, const std::vector<dim_t> &multi_blocks) {
+    if (layout.is_empty()) return layout;
+
+    layout_t tmp(layout);
+    std::vector<dim_t> rem_elems = multi_blocks;
+    std::vector<dim_t> cur_elems(rem_elems.size(), 1);
+    for (auto &b : tmp.blocks()) {
+        for (int i = 0; i < int(rem_elems.size()); i++) {
+            auto &e = rem_elems[i];
+            if (e == 1) continue;
+            if (b.block > e) {
+                // Try to split this block.
+                dim_t next_block = utils::max_div(b.block, e);
+                if (next_block == 1) return layout_t();
+                return split_into_multi_blocks(
+                        tmp.split_block(b, next_block, b.block / next_block),
+                        multi_blocks);
+            }
+            if (e % b.block != 0) return layout_t();
+            e /= b.block;
+            cur_elems[i] *= b.block;
+            break;
+        }
+    }
+    for (int i = 0; i < int(cur_elems.size()); i++) {
+        if (cur_elems[i] != multi_blocks[i]) { return layout_t(); }
+    }
+    return tmp;
+}
+
 layout_t pad_slm_layout(
         const hw_t &hw, const layout_t &layout, const grid_info_t &grid) {
     // EUs are fused only in XeHP and XeHPG; otherwise no need to pad SLM.
@@ -1533,7 +1571,7 @@ layout_t pad_slm_layout(
     dim_t per_thr_bytes = (inner_block * type_size) / tg_dim1;
 
     std::vector<dim_t> multi_blocks = {inner_block, tg_dim0};
-    auto l = layout.split_into_multi_blocks(multi_blocks);
+    auto l = split_into_multi_blocks(layout, multi_blocks);
 
     if (l.is_empty()) {
         gpu_warning() << "Couldn't split layout for SLM padding.";

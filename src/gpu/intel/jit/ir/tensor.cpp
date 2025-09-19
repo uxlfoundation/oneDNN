@@ -266,36 +266,6 @@ layout_t layout_t::split_block(
     return with(new_blocks, false);
 }
 
-layout_t layout_t::split_into_multi_blocks(
-        const std::vector<dim_t> &multi_blocks) const {
-    if (is_empty()) return *this;
-
-    layout_t tmp(*this);
-    std::vector<dim_t> rem_elems = multi_blocks;
-    std::vector<dim_t> cur_elems(rem_elems.size(), 1);
-    for (auto &b : tmp.blocks()) {
-        for (int i = 0; i < int(rem_elems.size()); i++) {
-            auto &e = rem_elems[i];
-            if (e == 1) continue;
-            if (b.block > e) {
-                // Try to split this block.
-                dim_t next_block = utils::max_div(b.block, e);
-                if (next_block == 1) return layout_t();
-                return tmp.split_block(b, next_block, b.block / next_block)
-                        .split_into_multi_blocks(multi_blocks);
-            }
-            if (e % b.block != 0) return layout_t();
-            e /= b.block;
-            cur_elems[i] *= b.block;
-            break;
-        }
-    }
-    for (int i = 0; i < int(cur_elems.size()); i++) {
-        if (cur_elems[i] != multi_blocks[i]) { return layout_t(); }
-    }
-    return tmp;
-}
-
 tile_t layout_t::split_into_max_tile(
         dim_t max_tile_elems, bool is_dense_tile) const {
     stride_t dense_stride = 1;

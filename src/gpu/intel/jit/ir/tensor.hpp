@@ -542,16 +542,6 @@ public:
     layout_t split_block(
             const layout_block_t &b, dim_t block0, dim_t block1) const;
 
-    // Splits blocks so that they can be used to form `multi_blocks` without
-    // crossing the block boundaries. `multi_blocks` are ordered from innermost
-    // to outermost. Returns an empty layout if such a split is not possible.
-    // Example (all blocks are ordered from innermost to outermost):
-    //     Input blocks:  [4, 4, 2]
-    //     Multi-blocks:  [8, 2]
-    //     Output blocks: [4, 2, 2, 2]
-    layout_t split_into_multi_blocks(
-            const std::vector<dim_t> &multi_blocks) const;
-
     layout_t add_outer_block(
             const pvar_t &dim, dim_t block, dim_t stride = -1) const {
         if (stride == -1) {

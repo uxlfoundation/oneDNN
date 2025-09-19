@@ -157,14 +157,14 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             // Due to hardware specifics, groups, when more than 1, should be
-            // multiple of 32.
+            // multiple of 16.
             VCHECK_MATMUL_UNIMPL(
                     IMPLICATION(wei_scale_group_k > 1 && wei_scale_group_k < K,
-                            wei_scale_group_k % 32 == 0),
+                            wei_scale_group_k % 16 == 0),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
             VCHECK_MATMUL_UNIMPL(
                     IMPLICATION(wei_scale_group_n > 1 && wei_scale_group_n < N,
-                            wei_scale_group_n % 32 == 0),
+                            wei_scale_group_n % 16 == 0),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
@@ -240,14 +240,14 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                     VERBOSE_UNSUPPORTED_ZP_CFG);
 
             // Due to hardware specifics, groups, when more than 1, should be
-            // multiple of 32.
+            // multiple of 16.
             VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_zero_point_group_k > 1
                                                  && wei_zero_point_group_k < K,
-                                         wei_zero_point_group_k % 32 == 0),
+                                         wei_zero_point_group_k % 16 == 0),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
             VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_zero_point_group_n > 1
                                                  && wei_zero_point_group_n < N,
-                                         wei_zero_point_group_n % 32 == 0),
+                                         wei_zero_point_group_n % 16 == 0),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
 
             if (utils::one_of(zp.get_data_type(DNNL_ARG_WEIGHTS), data_type::s4,

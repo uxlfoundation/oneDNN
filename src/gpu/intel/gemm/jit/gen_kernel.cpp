@@ -305,6 +305,16 @@ status_t gen_desc_t::finalize(const char *tags) {
     if (problem_.bOffset2D() || problem_.bScale2D())
         if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
             return status::unimplemented;
+    if (problem_.aScale2D()
+            && problem_.aqGroupK
+                            % minOuterProductCount(hw_, problem_, strategy_)
+                    != 0)
+        return status::unimplemented;
+    if (problem_.bScale2D()
+            && problem_.bqGroupK
+                            % minOuterProductCount(hw_, problem_, strategy_)
+                    != 0)
+        return status::unimplemented;
 
     // If the M/N group size is equal to M or N, align up to a multiple of unroll size
     // XXX: Increase group size to a large value before aligning to increase reusability

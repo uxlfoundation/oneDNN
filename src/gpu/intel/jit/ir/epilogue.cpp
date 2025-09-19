@@ -57,8 +57,7 @@ public:
                 << "Incompatible view/layout.";
         int max_step = std::min(
                 16, 2 * ir_ctx_->grf_size() / reg_layout.type().size());
-        auto base_tile = reg_layout.split_into_max_tile(
-                max_step, /*is_dense_tile=*/true);
+        auto base_tile = reg_layout.max_subtile(max_step);
         stmt_t stmt;
         reg_layout.for_each_tile(base_tile, [&](const icoord_t &start) {
             dim_t off = reg_layout.offset<dim_t>(start)

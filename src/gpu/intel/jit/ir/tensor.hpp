@@ -390,6 +390,12 @@ public:
         return tile;
     }
 
+    // Returns the maximum inner subtile containing less than max elements. This
+    // tile is dense within the layout when is_dense is true and perfectly
+    // subdivides the layout when perfectly_divides is true.
+    tile_t max_subtile(dim_t max, bool is_dense = true,
+            bool perfectly_divides = true) const;
+
     stride_t stride(const pvar_t &dim, int dim_block_idx = 0) const {
         int idx = 0;
         for (auto &b : blocks_) {
@@ -569,12 +575,6 @@ public:
     // block1 - outer block size.
     layout_t split_block(
             const layout_block_t &b, dim_t block0, dim_t block1) const;
-
-    // Returns a tensor corresponding to the biggest innermost sub-layout so that
-    // 1) It consists of consecutive blocks only.
-    // 2) It contains less or equal than max_tile_elems elements.
-    // 3) It is dense if is_dense_tile is true.
-    tile_t split_into_max_tile(dim_t max_tile_elems, bool is_dense_tile) const;
 
     tile_coord_t split(const grid_info_t &grid_info,
             grid_info_t *out_grid = nullptr) const {
@@ -1476,7 +1476,7 @@ public:
     // 3) It is dense if is_dense_tile is true.
     tile_t split_into_max_tile(dim_t max_tile_elems, bool is_dense_tile) const {
         auto vlayout = create_pseudo_vlayout();
-        return vlayout.split_into_max_tile(max_tile_elems, is_dense_tile);
+        return vlayout.max_subtile(max_tile_elems, is_dense_tile);
     }
 
     template <typename F>

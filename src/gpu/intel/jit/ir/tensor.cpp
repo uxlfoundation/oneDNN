@@ -266,29 +266,31 @@ layout_t layout_t::split_block(
     return with(new_blocks, false);
 }
 
-tile_t layout_t::split_into_max_tile(
-        dim_t max_tile_elems, bool is_dense_tile) const {
-    stride_t dense_stride = 1;
-    std::vector<dim_t> tile_dims(ndims(), 1);
-    dim_t cur_elems = 1;
-    for (auto &b : blocks()) {
-        if (b.block == 1) continue;
-        if (b.block * cur_elems <= max_tile_elems) {
-            if (is_dense_tile) {
-                if (b.stride.is_unknown()) break;
-                if (dense_stride != b.stride) break;
-                dense_stride = b.block * b.stride;
+tile_t layout_t::max_subtile(
+        dim_t max, bool is_dense, bool perfectly_divides) const {
+    tile_t subtile;
+    dim_t elems = 1;
+    for (size_t i = 0; i < nblocks(); i++) {
+        auto &b = blocks()[i];
+        gpu_assert(!b.stride.is_undefined());
+        if (is_dense) {
+            if (b.stride.is_unknown()) return subtile;
+            if (i > 0) {
+                auto &b0 = blocks()[i - 1];
+                if (b.stride != b0.block * b0.stride) break;
             }
-            cur_elems *= b.block;
-            tile_dims[b.dim] *= b.block;
-            continue;
         }
-        dim_t max_block = utils::max_div(b.block, max_tile_elems / cur_elems);
-        if (max_block == 1) break;
-        auto tmp_layout = split_block(b, max_block, b.block / max_block);
-        return tmp_layout.split_into_max_tile(max_tile_elems, is_dense_tile);
+        if (b.block * elems >= max) {
+            if (perfectly_divides)
+                subtile[b.dim] *= utils::max_div(b.block, max / elems);
+            else
+                subtile[b.dim] *= max / elems;
+            break;
+        }
+        subtile[b.dim] *= b.block;
+        elems *= b.block;
     }
-    return tile_t(tile_dims);
+    return subtile;
 }
 
 void layout_t::align_layouts(layout_t &a, layout_t &b) {

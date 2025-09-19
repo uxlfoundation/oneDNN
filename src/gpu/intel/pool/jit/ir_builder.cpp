@@ -399,8 +399,8 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     const auto &write_layout = write.reg_layout();
     auto write_stmt = write.stmt();
 
-    tile_t src_tile(read_layout.split_into_max_tile(simd, true));
-    tile_t dst_tile(write_layout.split_into_max_tile(simd, true));
+    tile_t src_tile(read_layout.max_subtile(simd));
+    tile_t dst_tile(write_layout.max_subtile(simd));
     gpu_assert(src_tile.elems() == simd);
     gpu_assert(dst_tile.elems() == simd);
 

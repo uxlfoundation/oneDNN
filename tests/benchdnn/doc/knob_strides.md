@@ -18,14 +18,16 @@ For example, tensor `2x3` can be represented in multiple ways:
 
 ## Usage
 ```
-    --strides=SRC_DIMS[:WEI_DIMS]:DST_DIMS
+    --strides=SRC_DIMS[:OPTIONAL_DIMS]:DST_DIMS
 ```
 
 This is a general representation of strides option support across benchdnn.
-The order of arguments is always the same: source, weights, and destination.
-Weights strides are required if the driver has weights support. However, they
-can't be specified if the driver doesn't have a notion of weights for the
-operation, and only two inputs are expected in this case.
+The order of arguments is always the same: source, optional dimensions, and
+destination. `OPTIONAL_DIMS` can be `WEI_DIMS` for primitives having weights, or
+`SRC1_DIMS` for primitives having two source inputs. Weights strides are
+required if the driver has weights support. However, strides for the optional
+dimensions can't be specified if the driver doesn't support them and only two
+inputs are expected in this case.
 
 `DIMS` generic form is \f$D_0xD_1x...xD_n\f$, where `n` should match the problem
 number of dimensions.

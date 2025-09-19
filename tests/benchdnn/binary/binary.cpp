@@ -99,13 +99,16 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     bool force_f32_dt = init_pd_args.force_f32_dt;
 
     auto src0_d = dnn_mem_t::init_md(prb->ndims, prb->vdims[0].data(),
-            force_f32_dt ? dnnl_f32 : prb->sdt[0], prb->stag[0]);
+            force_f32_dt ? dnnl_f32 : prb->sdt[0], prb->stag[0],
+            prb->strides[STRIDES_SRC_0]);
 
     auto src1_d = dnn_mem_t::init_md(prb->ndims, prb->vdims[1].data(),
-            force_f32_dt ? dnnl_f32 : prb->sdt[1], prb->stag[1]);
+            force_f32_dt ? dnnl_f32 : prb->sdt[1], prb->stag[1],
+            prb->strides[STRIDES_SRC_1]);
 
     auto dst_d = dnn_mem_t::init_md(prb->ndims, prb->dst_dims.data(),
-            force_f32_dt ? dnnl_f32 : prb->ddt, prb->dtag);
+            force_f32_dt ? dnnl_f32 : prb->ddt, prb->dtag,
+            prb->strides[STRIDES_DST]);
 
     dnnl_alg_kind_t alg = attr_t::post_ops_t::kind2dnnl_kind(prb->alg);
 

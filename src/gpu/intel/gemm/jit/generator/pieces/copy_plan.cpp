@@ -2962,6 +2962,7 @@ void CopyPlan::optimizeWriteCombine()
             if (!canWC(hw, i1)) break;
             if (i1.dst.grf != i0.dst.grf) break;
             if (i1.dst.offset + n != i0.dst.offset + n1) break;
+            if (i0.dst.offset / 4 != i1.dst.offset / 4) break;
             cnumMin = std::min(cnumMin, i1.cnumMin);
             cnumMax = std::max(cnumMax, i1.cnumMax);
         }

@@ -1,0 +1,195 @@
+# *******************************************************************************
+# Copyright 2024-2025 Arm Limited and affiliates.
+# Copyright 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# *******************************************************************************
+
+name: "CI RISC-V"
+
+#* To avoid duplicate jobs running when both push and PR is satisfied, we use this:
+#* https://github.com/orgs/community/discussions/26940#discussioncomment-5686753
+on:
+  push:
+    branches: [main, "rls-*"]
+    paths:
+      - ".github/automation/riscv/**"
+      - ".github/workflows/ci-riscv.yml"
+      - "cmake/**"
+      - "examples/**"
+      - "include/**"
+      - "src/common/**"
+      - "src/cpu/*"
+      - "src/cpu/rv64/**"
+      - "tests/**"
+      - "CMakeLists.txt"
+  pull_request:
+     types: [opened, synchronize, reopened]
+     paths:
+      - ".github/automation/riscv/**"
+      - ".github/workflows/ci-riscv.yml"
+      - "cmake/**"
+      - "examples/**"
+      - "include/**"
+      - "src/common/**"
+      - "src/cpu/*"
+      - "src/cpu/rv64/**"
+      - "tests/**"
+      - "CMakeLists.txt"
+  #* allow manual trigger of workflow when needed.
+  workflow_dispatch:
+
+#* Stop stale workflows when pull requests are updated: https://stackoverflow.com/a/70972844
+#* Does not apply to the main branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Declare default permissions as read only.
+permissions: read-all
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        config: [
+          { name: riscv-build, label: ubuntu-24.04, threading: OMP, toolset: gcc, build: RelWithAssert, testset: SMOKE }
+        ]
+
+    name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}
+    runs-on: ${{ matrix.config.label }}
+    steps:
+      - name: Checkout oneDNN
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: oneDNN
+
+      - name: Read version file
+        id: get-versions
+        run: |
+          content=`cat ${{ github.workspace }}/oneDNN/.github/automation/riscv/ci.json`
+          content="${content//[$'\t\r\n$ ']}"
+          echo "output=$content" >> $GITHUB_OUTPUT
+
+      # Note: This will create a github actions cache
+      - name: Get latest CMake and Ninja
+        uses: lukka/get-cmake@56d043d188c3612951d8755da8f4b709ec951ad6 # v3.31.6
+        with:
+          cmakeVersion: 3.31.0
+          ninjaVersion: 1.12.0
+
+      # Install cross-compilation tools
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}-riscv64-linux-gnu g++-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}-riscv64-linux-gnu
+
+      - name: Configure oneDNN
+        run: ${{ github.workspace }}/oneDNN/.github/automation/riscv/build.sh
+        working-directory: ${{ github.workspace }}/oneDNN
+        env:
+          BUILD_TOOLSET: ${{ matrix.config.toolset }}
+          CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
+          CMAKE_GENERATOR: Ninja
+          GCC_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
+          ONEDNN_ACTION: configure
+          ONEDNN_TEST_SET: ${{ matrix.config.testset }}
+          ONEDNN_THREADING: ${{ matrix.config.threading }}
+
+      - name: Build oneDNN
+        run: ${{ github.workspace }}/oneDNN/.github/automation/riscv/build.sh
+        working-directory: ${{ github.workspace }}/oneDNN
+        env:
+          ONEDNN_ACTION: build
+
+      - name: Create archive with preserved permissions
+        working-directory: ${{ github.workspace }}/oneDNN
+        run: |
+          tar -czf build.tar.gz build
+
+      # Upload build artifacts
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: build-artifact
+          path: |
+            ${{ github.workspace }}/oneDNN/build.tar.gz
+          retention-days: 1
+
+  test:
+    needs: build
+    strategy:
+      matrix:
+        config: [
+          # Test with different vector lengths and threading modes
+          { name: riscv-test-vlen128, threading: OMP, testset: SMOKE, vlen: 128, build: RelWithAssert },
+          { name: riscv-test-vlen256, threading: OMP, testset: SMOKE, vlen: 256, build: RelWithAssert }
+        ]
+
+    name: ${{ matrix.config.name }}, ${{ matrix.config.threading }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout oneDNN
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: oneDNN
+
+      - name: Read version file
+        id: get-versions
+        run: |
+          content=`cat ${{ github.workspace }}/oneDNN/.github/automation/riscv/ci.json`
+          content="${content//[$'\t\r\n$ ']}"
+          echo "output=$content" >> $GITHUB_OUTPUT
+
+      # Setup QEMU for RISC-V platform support
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@53851d14592bedcffcf25ea515637cff71ef929a # v3.0.0
+        with:
+          platforms: riscv64
+
+      # Install cross-compilation tools
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}-riscv64-linux-gnu g++-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}-riscv64-linux-gnu
+
+      # Download build artifacts
+      - name: Download build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: build-artifact
+          path: ${{ github.workspace }}/oneDNN/
+
+      - name: Extract archive
+        working-directory: ${{ github.workspace }}/oneDNN/
+        run: |
+          tar -xzf build.tar.gz
+
+      - name: Run oneDNN tests
+        run: ${{ github.workspace }}/oneDNN/.github/automation/riscv/test.sh
+        working-directory: ${{ github.workspace }}/oneDNN/build
+        env:
+          CTEST_PARALLEL_LEVEL: 4
+          ONEDNN_THREADING: ${{ matrix.config.threading }}
+          QEMU_CPU: "rv64,v=true,vlen=${{ matrix.config.vlen }},vext_spec=v1.0"
+
+  # This job adds a check named "CI RISC-V" that represents overall
+  # workflow status and can be used in branch rulesets
+  status:
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    name: "CI RISC-V"
+    steps:
+      - name: Print success
+        run: echo Success

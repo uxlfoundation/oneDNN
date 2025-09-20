@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2017-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -307,7 +308,7 @@ status_t gemm_x8s8s32x_convolution_fwd_t::execute_forward_thr(const int ithr,
                 balance211(N * jcp.oc, nthr, ithr, _start, _end);
 
                 (*pp_ker_)(dst, acc, bia_base, scales, dst_scales[0], sum_scale,
-                        1.f / wei_adj_scale, g, _start, _end, zp,
+                        1.f / wei_adj_scale, g, n, _start, _end, zp,
                         post_ops_binary_rhs_arg_vec, dst_base, ctx,
                         *pd()->dst_md(), chunk_desc);
             });

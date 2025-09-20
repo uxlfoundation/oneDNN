@@ -247,8 +247,8 @@ void Generator<hw>::copyExecute(CopyPlan &&plan, CommonState &state)
             mov(1, savedFlags[i], FlagRegister(i));
 
     // Workaround probable scheduling / hw issue
-    if (hw == HW::Xe2)
-        sync(SyncFunction::nop, SWSB<uint32_t>(1));
+    if (hw >= HW::XeHPC)
+        sync.nop(SWSB<uint32_t>(1));
 
     // Generate code.
     plan.execute(*this);

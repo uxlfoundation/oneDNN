@@ -148,14 +148,6 @@ void memory_registry_t::remove_device(void *ptr, size_t size) {
     std::lock_guard<std::mutex> g(m_);
     if (!ptr) return;
 
-    if (mapped_allocations_.find(ptr) != mapped_allocations_.end()) {
-        BENCHDNN_PRINT(8,
-                "[CHECK_MEM]: device_free (%p) attempts to free a mapped "
-                "pointer. Skip this action.\n",
-                ptr);
-        return;
-    }
-
     const size_t stored_size = allocations_device_.at(ptr);
     if (stored_size > size) {
         BENCHDNN_PRINT(8,
@@ -164,6 +156,19 @@ void memory_registry_t::remove_device(void *ptr, size_t size) {
                 ptr);
         allocations_device_[ptr] -= size;
     } else {
+        // See `add_device` comment. Because of that, extra allocations in CPU
+        // SYCL scenario are handled by `if` branch, but skipping action must be
+        // done for non SYCL CPU backend.
+        const bool is_cpu_sycl = DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL;
+        if (!is_cpu_sycl
+                && mapped_allocations_.find(ptr) != mapped_allocations_.end()) {
+            BENCHDNN_PRINT(8,
+                    "[CHECK_MEM]: device_free (%p) attempts to free a mapped "
+                    "pointer. Skip this action.\n",
+                    ptr);
+            return;
+        }
+
         allocations_device_.erase(ptr);
         total_size_gpu_ -= size;
 

@@ -141,7 +141,7 @@ void reorder_2d_impl_t::emit(
     // Allocate a temporary GRF buffer if needed.
     copy_operand_t tmp;
     const auto &type = dst_.type();
-    auto elems = into<int>(dst_.size() * type.packing() / type.size());
+    auto elems = into<int>(size_bytes(dst_) * type.packing() / type.size());
     if (path_.size() > 1) tmp = plan.newTemp(to_ngen(type), elems, 1);
 
     // Iterate through found reorders.
@@ -156,8 +156,8 @@ void reorder_2d_impl_t::emit(
         auto *next_layout = &step.layout;
 
         // x -> y reorder.
-        auto x = prev_layout->sub(tile).reinterpret(type);
-        auto y = next_layout->sub(tile).reinterpret(type);
+        auto x = reinterpret(prev_layout->sub(tile), type);
+        auto y = reinterpret(next_layout->sub(tile), type);
 
         bool use_dst = ((path_len - i) % 2 == 1);
         copy_operand_t next_op = use_dst ? dst : tmp;
@@ -236,8 +236,8 @@ auto reorder_2d_impl_t::find_min_cost_path(ngen::HW hw, const layout_t &src,
     std::vector<edge_t> edges;
     for (int a = 1; a <= tile_a; a *= 2) {
         for (int b = 1; b <= tile_b; b *= 2) {
-            if (src.dim(0) % a != 0) continue;
-            if (src.dim(1) % b != 0) continue;
+            if (src.elems(0) % a != 0) continue;
+            if (src.elems(1) % b != 0) continue;
             int idx = int(edges.size());
             edges.emplace_back(idx, a, b);
         }
@@ -402,7 +402,7 @@ void reorder_2d_impl_t::vertex_t::set_edges(const std::vector<edge_t> &edges) {
         auto &e = edges[i];
         auto tile = e.tile();
         int max_type_size;
-        bool ok = layout_t::try_reinterpret_to_wider_type(
+        bool ok = try_reinterpret_to_wider_type(
                 layout, layout, tile, false, &max_type_size);
         if (!ok) max_type_size = type_size;
         int from = math::ilog2q(type_size);
@@ -420,7 +420,7 @@ void reorder_2d_impl_t::vertex_t::set_edges(const std::vector<edge_t> &edges) {
 // - GRF region can't span more than 2 registers
 bool reorder_2d_impl_t::vertex_t::can_reorder(
         const tile_t &tile, const type_t &type) const {
-    auto ab_layout = layout.sub(tile).reinterpret(type);
+    auto ab_layout = reinterpret(layout.sub(tile), type);
     int nblocks = int(ab_layout.blocks().size());
     if (nblocks == 0) return true;
     if (nblocks > 1) return false;
@@ -469,8 +469,8 @@ int reorder_2d_impl_t::vertex_t::cost(
         if (i > min_log_bytes) {
             gpu_assert(!layout.blocks().empty());
             gpu_assert(!v.layout.blocks().empty());
-            int dim_idx0 = layout.blocks()[0].dim;
-            int dim_idx1 = v.layout.blocks()[0].dim;
+            int dim_idx0 = layout[0].dim;
+            int dim_idx1 = v.layout[0].dim;
             if (dim_idx0 != dim_idx1) continue;
         }
         min_cost = cur_cost;
@@ -531,7 +531,7 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reorder_operand_t &src,
         // Pure conversion or pure swizzle
         emit(dst, src);
     } else if (do_pre_conv && do_post_conv) {
-        const bool has_swizzle = up_layout != down_layout;
+        const bool has_swizzle = !up_layout.is_equal_normalized(down_layout);
         auto tmp = init_operand(std::move(up_layout), from_temp);
         emit(tmp, src);
         if (has_swizzle) {
@@ -558,7 +558,7 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reorder_operand_t &src,
 std::vector<tile_t> reorder_impl_t::tiles() const {
     auto make_tiles = [](const layout_t &l) {
         const auto &blocks = l.blocks();
-        tile_t base = l.dims();
+        tile_t base = l.tile();
         std::vector<tile_t> tiles = {base};
         auto it = blocks.rbegin();
         const auto end = blocks.rend();
@@ -635,8 +635,8 @@ layout_t reorder_impl_t::make_retyped_layout(
         const layout_t &layout, const type_t &type) const {
     if (layout.blocks().empty()) return layout;
     const int stride = into<int>(layout.blocks().front().stride);
-    return layout.retype(type).make_strided(
-            stride * layout.type().size() / type.size());
+    return make_strided(
+            layout.with(type), stride * layout.type().size() / type.size());
 }
 
 layout_t reorder_impl_t::make_compact_layout(
@@ -654,25 +654,18 @@ layout_t reorder_impl_t::make_compact_layout(
         dense_output_stride = 2;
 
     auto dense = [&](dim_t stride) -> layout_t {
-        using block_info_t = std::pair<size_t, layout_block_t>;
-        auto by_stride = [](const block_info_t &l, const block_info_t &r) {
-            return l.second.stride < r.second.stride;
-        };
-
-        auto blocks = layout.enumerated_blocks();
-        if (blocks.empty()) return layout;
-        std::sort(blocks.begin(), blocks.end(), by_stride);
-        const dim_t inner_stride = blocks.front().second.stride;
-        std::vector<layout_block_t> new_blocks(blocks.size());
-        for (auto &eb : blocks) {
-            eb.second.stride = eb.second.stride * stride / inner_stride;
-            new_blocks[eb.first] = eb.second;
-        }
-        return {type, new_blocks, 0, layout.ndims(), /*do_normalize=*/false};
+        if (!layout.nblocks()) return layout;
+        auto blocks = layout.blocks();
+        stride_t inner_stride = stride_t::max();
+        for (auto &b : blocks)
+            if (b.stride < inner_stride) inner_stride = b.stride;
+        for (auto &b : blocks)
+            b.stride = b.stride * stride / inner_stride;
+        return {type, blocks, 0, layout.ndims(), /*do_normalize=*/false};
     }(dense_output_stride);
     auto dense_size = dense.elems() * type.size() / type.packing()
             * dense_output_stride;
-    if (dense.size() <= dense_size) return dense;
+    if (size_bytes(dense) <= dense_size) return dense;
     for (auto &block : dense.blocks()) {
         dim_t input_stride = block.stride;
         blocks.push_back(block);
@@ -744,8 +737,8 @@ bool reorder_impl_t::try_emit_2d(copy_plan_t &plan,
 
         // Try to allocate/release a temporary buffer to avoid
         // out_of_registers exception.
-        auto tile_grfs
-                = into<int>(utils::div_up(dst_tile_layout.size(), grf_size));
+        auto tile_grfs = into<int>(
+                utils::div_up(size_bytes(dst_tile_layout), grf_size));
         ngen::GRFRange dummy;
         plan.alloc_grf(tile_grfs, dummy);
         if (dummy.isInvalid()) continue;

@@ -432,8 +432,8 @@ int inner_block(
     int dim_idx = tensor_conv_dim_index(dim, tensor_kind);
     gpu_assert(dim_idx != -1);
     auto &layout = compute_layout(cfg, tensor_kind);
-    return into<int>(layout.inner_block(
-            dim_idx, /*skip_outer=*/true, /*inner_only=*/false));
+    return into<int>(inner_block(
+            layout, dim_idx, /*skip_outer=*/true, /*inner_only=*/false));
 }
 
 int inner_block(const config_t &cfg, const pvar_t &dim) {

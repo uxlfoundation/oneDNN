@@ -49,10 +49,10 @@ config_t::config_t(const exec_config_t &ec, layout_t src, layout_t dst) {
         pvar_t d(i);
 
         dim_t tg_dim = thr_tile[i];
-        dim_t outer = utils::div_up(dst.dim(i), tg_dim);
+        dim_t outer = utils::div_up(dst.elems(i), tg_dim);
         iter_tile[d] = tg_dim;
         loop_tile[d] = 1;
-        dims[d] = std::max(src.dim(i), dst.dim(i));
+        dims[d] = std::max(src.elems(i), dst.elems(i));
         grid_[grid_idx][d] = 1;
 
         if (outer != 1) grid_idx = std::min<dim_idx_t>(grid_idx + 1, 2);

@@ -47,7 +47,7 @@ namespace jit {
 // Helper functions.
 bool matches_tag_strict(const layout_t &layout, const std::string &tag) {
     if (layout.is_empty()) return false;
-    auto tag_layout = make_layout(layout.type(), layout.dims(), tag);
+    auto tag_layout = make_layout(layout.type(), layout.tile(), tag);
     if (!layout.is_strictly_equal(tag_layout)) return false;
     return true;
 }
@@ -79,7 +79,7 @@ layout_t init_layout(memory_desc_t &user_md, const std::string &optimal_tag) {
         auto user = make_layout(user_md);
         // If layouts are physically different return the layout passed by
         // the user and return unimplemented later.
-        if (user != optimal) return user;
+        if (!user.is_equal_normalized(optimal)) return user;
     } else {
         user_md = to_md(optimal, user_md);
     }
@@ -791,10 +791,10 @@ status_t init_tensor_layouts(
     if (prb.is_bwd_w) {
         if (utils::one_of(prb.wei_data_type, data_type::bf16, data_type::f16,
                     data_type::f8_e5m2, data_type::f8_e4m3))
-            wei_layout = wei_layout.retype(type_t::f32());
+            wei_layout = wei_layout.with(type_t::f32());
         if (utils::one_of(prb.bia_data_type, data_type::bf16, data_type::f16,
                     data_type::f8_e5m2, data_type::f8_e4m3))
-            bia_layout = bia_layout.retype(type_t::f32());
+            bia_layout = bia_layout.with(type_t::f32());
     }
 
     src.set_compute_unnormalized(src_layout, src_tag);
@@ -845,7 +845,8 @@ status_t init_tensor_layouts(
     if (cfg.zp_cfg().needs_src_reorder_precalc) {
         auto get_channels = [](const layout_t &layout) {
             const dim_t min_esize = 16;
-            return std::max(utils::rnd_up_pow2(layout.dim(1) * layout.dim(2)),
+            return std::max(
+                    utils::rnd_up_pow2(layout.elems(1) * layout.elems(2)),
                     min_esize);
         };
         using namespace memory_extra_flags;
@@ -1416,7 +1417,7 @@ size_t get_memory_footprint(const tensor_kind_t &ab_kind, const config_t &cfg,
                 = (needs_spatial_mapping(cfg, d) ? map_spatial(cfg, d, _tile)
                                                  : _tile.get(d, 1));
         tile[d] = d_size;
-        elems *= std::min(d_size, layout.dim(i));
+        elems *= std::min(d_size, layout.elems(i));
     }
     gpu_assert(elems >= 1);
     return (size_t)layout.type().size() * elems;
@@ -1463,8 +1464,8 @@ walk_order_t maybe_fixup_group_with_small_channels(
     const int g_dim_idx = 1;
     const int c_dim_idx = 2;
     if (layout.nblocks() <= 1) return walk_order;
-    auto &b0 = layout.blocks()[0];
-    auto &b1 = layout.blocks()[1];
+    auto &b0 = layout[0];
+    auto &b1 = layout[1];
     // Check that layout has groups followed by channels, i.e. *gc form.
     if (b0.dim.index() != c_dim_idx || b1.dim.index() != g_dim_idx)
         return walk_order;
@@ -1918,8 +1919,8 @@ int config_t::pad_block(const pvar_t &d) const {
     int ret = 1;
     for (int i = 0; i < 3; i++) {
         if (idxs[i] == -1) continue;
-        int blk = (int)layouts[i]->inner_block(
-                idxs[i], /*skip_outer=*/true, /*inner_only=*/false);
+        int blk = (int)inner_block(*layouts[i], idxs[i], /*skip_outer=*/true,
+                /*inner_only=*/false);
         ret = math::lcm(ret, blk);
     }
 
@@ -1941,7 +1942,7 @@ std::string config_t::str() const {
         auto &compute_layout = layouts[i]->compute_unnormalized();
         auto &user_layout = layouts[i]->user_unnormalized();
         oss << "  " << desc << compute_layout;
-        if (user_layout != compute_layout) {
+        if (!user_layout.is_equal_normalized(compute_layout)) {
             oss << " (user: " << user_layout << ")";
         }
         oss << std::endl;

@@ -360,7 +360,7 @@ private:
                     && cfg.zp_cfg().needs_src_conv_precalc;
 
             const auto compute_buf = make_buffer(t.name);
-            size_t compute_size = t.compute_layout.size();
+            size_t compute_size = size_bytes(t.compute_layout);
             int compute_arg_key = t.arg_key;
 
             if (compute_arg_key == DNNL_ARG_UNDEF) {

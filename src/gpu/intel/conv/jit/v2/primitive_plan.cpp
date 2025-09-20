@@ -88,8 +88,8 @@ kernel_info_t primitive_init_plan_t::create_kernel_info(
         } else if (buf.is_user()) {
             info.register_user_arg(var, buf.arg_key, buf.is_user_input);
         } else {
-            info.register_scratchpad_arg(
-                    var, buf.arg_key, /*is_input=*/false, buf.layout.size());
+            info.register_scratchpad_arg(var, buf.arg_key, /*is_input=*/false,
+                    size_bytes(buf.layout));
         }
     }
     return info;
@@ -113,7 +113,7 @@ status_t primitive_init_plan_t::add_zero_out_kernel(
     auto desc = std::make_shared<conv::jit::zero_out_kernel_desc_t>(
             regs_, simd_, dpas_);
     auto params = std::make_shared<conv::jit::zero_out_kernel_params_t>(
-            buf.layout.size());
+            size_bytes(buf.layout));
     std::unordered_map<std::string, std::string> buf_map;
     buf_map["ptr"] = buf.name;
     return add_kernel(exec_plan, *desc, *params, primitive, engine, buf_map);
@@ -131,7 +131,7 @@ status_t primitive_init_plan_t::add_reorder_kernel(
                     buf_var, e->arg_key, /*is_input=*/e == &src);
         } else {
             kernel_info.register_scratchpad_arg(buf_var, e->arg_key,
-                    /*is_input=*/e == &src, e->layout.size());
+                    /*is_input=*/e == &src, size_bytes(e->layout));
         }
     }
     exec_config_t exec_cfg(hw_t(engine), regs_, simd_);

@@ -172,10 +172,9 @@ private:
     static std::vector<layout_block_t> normalized_blocks(
             const layout_t &layout, std::vector<bool> dim_empty) {
         std::vector<layout_block_t> normalized_blocks;
-        for (auto &eb : layout.enumerated_blocks()) {
-            auto &blk = eb.second;
+        for (auto &blk : layout.blocks()) {
             if (blk.block != 1
-                    || (layout.is_outermost(eb) && !dim_empty[blk.dim])) {
+                    || (layout.is_outermost(blk) && !dim_empty[blk.dim])) {
                 if (normalized_blocks.empty()
                         || !can_combine(normalized_blocks.back(), blk)) {
                     normalized_blocks.push_back(blk);

@@ -61,13 +61,14 @@ void slm_reduce_builder_t::build() {
         slm_layout = slm_layout.add_outer_block(ndims + i, tg_grid_.dim(i));
     }
 
-    slm_buf_size_ = into<int>(slm_layout.size());
+    slm_buf_size_ = into<int>(size_bytes(slm_layout));
 
     // Write thread tile to SLM.
-    tile_t write_tile(ndims + tg_ndims_);
-    coord_t write_start(ndims + tg_ndims_);
+    tile_t write_tile;
+    coord_t write_start;
+    tile_t reg_tile = reg_layout_.tile();
     for (int i = 0; i < ndims; i++)
-        write_tile[i] = reg_layout_.dims()[i];
+        write_tile[i] = reg_tile[i];
     for (int i = tg_ndims_ - 1; i >= 0; i--) {
         write_start[ndims + i] = tg_grid_.idx(i);
     }
@@ -77,7 +78,8 @@ void slm_reduce_builder_t::build() {
     store_stmt_ = write.stmt();
 
     auto &write_layout = write.reg_layout();
-    gpu_assert(write_layout == reg_layout_) << "Incompatible layouts.";
+    gpu_assert(write_layout.is_equal_normalized(reg_layout_))
+            << "Incompatible layouts.";
 
     // Redistribute the layout to read/reduce all k-axis tiles from every
     // thread.
@@ -97,12 +99,13 @@ void slm_reduce_builder_t::build() {
         }
     }
 
-    tile_t read_tile(ndims + tg_ndims_);
-    coord_t read_start(ndims + tg_ndims_);
+    tile_t read_tile;
+    coord_t read_start;
+    tile_t slm_tile = slm_layout.tile();
     for (int i = 0; i < ndims; i++) {
         read_tile[i] = local_thr_tile_coord.tile[i];
         read_start[i] = local_thr_tile_coord.coord[i];
-        auto cond = read_start[i] < slm_layout.dims()[i];
+        auto cond = read_start[i] < slm_tile[i];
         if (reduce_cond_.is_empty())
             reduce_cond_ = std::move(cond);
         else
@@ -116,8 +119,8 @@ void slm_reduce_builder_t::build() {
             view_t(slm_layout.sub(read_tile, read_start)), slm_buf_,
             tmp_reg_buf_, send_op_t::load, send_address_t::slm);
 
-    load_stmt_
-            = load_stmt_.append(funcs::zero_out(reg_buf_, reg_layout_.size()));
+    load_stmt_ = load_stmt_.append(
+            funcs::zero_out(reg_buf_, size_bytes(reg_layout_)));
     load_stmt_ = load_stmt_.append(read.stmt());
 
     tmp_reg_buf_size_ = std::max(tmp_reg_buf_size_, read.reg_buf_size());

@@ -71,7 +71,7 @@ public:
         if (max_tg % 8 != 0) return false;
 
         // only allow SIMD-aligned channel-first layouts
-        const auto &oc_blk = src.blocks()[0];
+        const auto &oc_blk = src[0];
         if ((oc_blk.dim.index() != 1) || (oc_blk.block % exec.simd()))
             return false;
 
@@ -182,9 +182,9 @@ public:
 
     int pad_block(const pvar_t &d) const override {
         if (d == pvars::mb)
-            return into<int>(src_layout().user().inner_block(0, true, false));
+            return into<int>(inner_block(src_layout().user(), 0, true, false));
         if (d == pvars::oc)
-            return into<int>(src_layout().user().inner_block(1, true, false));
+            return into<int>(inner_block(src_layout().user(), true, false));
         return 1;
     }
 
@@ -228,7 +228,7 @@ public:
         std::vector<dim_t> tg {1, 1, 1}, kg {1, 1, 1};
 
         std::vector<dim_t> padded {
-                src.dim(0), src.dim(1), prb.od, prb.oh, prb.ow};
+                src.elems(0), src.elems(1), prb.od, prb.oh, prb.ow};
         auto &mb = padded[0], &oc = padded[1];
         auto &od = padded[2], &oh = padded[3], &ow = padded[4];
 
@@ -239,8 +239,8 @@ public:
 
         const int src_type_size = src.type().size();
         const int acc_type_size = acc_type(1).size();
-        const dim_t oc_blk = src.blocks()[0].block;
-        const dim_t mb_blk = (is_blocked_by_mb()) ? src.blocks()[1].block : mb;
+        const dim_t oc_blk = src[0].block;
+        const dim_t mb_blk = (is_blocked_by_mb()) ? src[1].block : mb;
         // the constant being subtracted is heuristic
         const int regs_per_tile
                 = exec.regs() - (!is_scalar ? is_blocked_by_mb() ? 8 : 28 : 0);
@@ -339,7 +339,7 @@ public:
                 }
             }
             lg[0] = calc_non_sp(1, (is_xe2_or_xe3) ? mb : prb.mb, 1, lg[0]);
-            if (src.dim(0) % lg[0] == 0) mb = src.dim(0);
+            if (src.elems(0) % lg[0] == 0) mb = src.elems(0);
 
             const dim_t total_simds = dim_t(mb) * (oc / simd) * od * oh * ow;
             const int safe_thr_count = eu_count * 4;

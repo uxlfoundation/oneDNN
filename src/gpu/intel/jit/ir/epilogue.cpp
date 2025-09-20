@@ -86,7 +86,7 @@ private:
             return;
         }
 
-        for (int i = 0; i < int(layout.dims()[idx]); i++) {
+        for (int i = 0; i < int(layout.tile()[idx]); i++) {
             args[idx] = i;
             fill_mask_impl(mask_tensor, idx + 1, args, view, layout);
         }
@@ -190,9 +190,10 @@ public:
     bool needs_reduction() const {
         if (!info_.is_output()) return false;
 
+        tile_t reg_tile = reg_layout_.tile();
         for (dim_idx_t i = 0; i < mem_view().nvdims(); i++) {
             if (is_broadcast_dim(i)) {
-                if (reg_layout_.dims()[i] != 1) return true;
+                if (reg_tile[i] != 1) return true;
             }
         }
         return false;
@@ -243,8 +244,7 @@ public:
 
         reg_buf_ = make_tmp_reg_buffer();
 
-        reg_layout_ = mem_view().create_dense_vlayout();
-        reg_layout_ = reg_layout_.retype(type_t::f32());
+        reg_layout_ = mem_view().create_dense_vlayout().with(type_t::f32());
 
         // If this is output and there are masked dimensions then this buffer
         // is computed via reduction. Extend layout to cover full masked_tile
@@ -256,7 +256,7 @@ public:
                     << "Unexpected output tensor shape.";
             reg_layout_ = reg_layout_.add_outer_block(i, tile[i]);
         }
-        register_buffer(reg_buf_, into<int>(reg_layout_.size()));
+        register_buffer(reg_buf_, into<int>(size_bytes(reg_layout_)));
     }
 
     stmt_t build_load_stmt(const view_t &c_view) {
@@ -288,9 +288,9 @@ public:
         if (!needs_load() || !needs_f32_convert()) return stmt_t();
 
         auto f32_buf = make_tmp_reg_buffer();
-        auto f32_layout = reg_layout_.retype(type_t::f32()).make_dense();
+        auto f32_layout = reg_layout_.with(type_t::f32()).make_dense();
 
-        register_buffer(f32_buf, into<int>(f32_layout.size()));
+        register_buffer(f32_buf, into<int>(size_bytes(f32_layout)));
 
         // Reorder to f32.
         auto ret = create_reorder_stmt(
@@ -321,13 +321,13 @@ public:
             }
         }
         reg_buf_ = make_tmp_reg_buffer();
-        register_buffer(reg_buf_, into<int>(reg_layout_.size()));
+        register_buffer(reg_buf_, into<int>(size_bytes(reg_layout_)));
         return store_t::make(reg_buf_, 0, e);
     }
 
     stmt_t build_zero_out_stmt() const {
         gpu_assert(needs_store());
-        return funcs::zero_out(reg_buf_, reg_layout_.size());
+        return funcs::zero_out(reg_buf_, size_bytes(reg_layout_));
     }
 
     stmt_t build_reduce_stmt() {
@@ -337,7 +337,7 @@ public:
 
         if (needs_reduction()) {
             auto reduced_layout = mem_view().create_dense_vlayout();
-            gpu_assert(reduced_layout.size() <= reg_layout_.size());
+            gpu_assert(size_bytes(reduced_layout) <= size_bytes(reg_layout_));
 
             stmt = stmt.append(create_reduce_stmt(reg_layout_, reduced_layout,
                     reg_buf_, reg_buf_, tile_t(), mask(), /*drop_dims=*/false));
@@ -376,7 +376,7 @@ public:
 
         auto write = make_access_builder(*ir_ctx_, mem_view(), mem_buf(),
                 reg_buf(), send_op_t::atomic_fadd, send_address_t::a64);
-        gpu_assert(write.reg_layout() == reg_layout());
+        gpu_assert(write.reg_layout().is_equal_normalized(reg_layout()));
 
         return write.stmt();
     }
@@ -385,7 +385,7 @@ public:
         auto &type = reg_layout_.type();
         int elems
                 = is_broadcast_dim(dim_idx) ? 1 : into<int>(tile_coord.elems());
-        dim_t off = reg_layout_.offset_in_bytes<dim_t>(tile_coord.coord);
+        dim_t off = offset_bytes<dim_t>(reg_layout_, tile_coord.coord);
         auto ret = (reg_buf_.type().is_ptr()
                         ? load_t::make(type.with_elems(elems), reg_buf_, off)
                         : reg_buf_);
@@ -405,7 +405,7 @@ public:
                     reg_layout_.type().with_elems(
                             into<int>(tile_coord.elems())));
         }
-        dim_t off = reg_layout_.offset_in_bytes<dim_t>(tile_coord.coord);
+        dim_t off = offset_bytes<dim_t>(reg_layout_, tile_coord.coord);
         auto ret = store_t::make(
                 reg_buf_, off, value, store_t::default_stride, mask);
         return ret;
@@ -519,7 +519,7 @@ public:
             // Apply eltwise post-op.
             gpu_assert(post_op_.lhs().is_equal(post_op_.rhs()))
                     << "Only supported form is lhs = eltwise(lhs).";
-            dim_t lhs_size = lhs_tensor.reg_layout().size();
+            dim_t lhs_size = size_bytes(lhs_tensor.reg_layout());
             dim_t lhs_elems = lhs_size / int(sizeof(float));
             auto &eltwise_func = post_op_.eltwise().as<eltwise_t>();
             if (eltwise_func.alg_kind == alg_kind::eltwise_stochastic_round) {
@@ -585,7 +585,7 @@ private:
                 gpu_assert(d == 1);
             inner_dim = 0;
         } else {
-            auto &b0 = lhs_tensor.reg_layout().blocks()[0];
+            auto &b0 = lhs_tensor.reg_layout()[0];
             gpu_assert(dim_t(b0.stride) == 1);
             inner_dim = b0.dim;
 
@@ -600,7 +600,7 @@ private:
                 auto &l = t.reg_layout();
                 gpu_assert(!l.is_empty());
                 gpu_assert(!l.blocks().empty());
-                auto &lb0 = l.blocks()[0];
+                auto &lb0 = l[0];
                 // Inner blocks do not match, cannot vectorize so switch to
                 // scalar updates.
                 if (lb0.dim != b0.dim) {
@@ -674,7 +674,7 @@ int find_tile_size(const exec_config_t &exec_cfg,
 
         int total_size = c_size + preload_max_size + po_size;
         int available_size = exec_cfg.regs() * exec_cfg.grf_size()
-                - (int)c_reg_layout.size();
+                - (int)size_bytes(c_reg_layout);
         if (total_size <= available_size * 0.8) return tile_size;
     }
     gpu_error_not_expected();
@@ -782,8 +782,8 @@ private:
         void set_next(
                 ir_context_t &ir_ctx, c_stage_t *next, bool force_reorder) {
             if (!next) return;
-            bool do_reorder
-                    = !layout.is_equal(next->layout, /*compare_offset=*/false);
+            bool do_reorder = !layout.is_equal_normalized(
+                    next->layout, /*compare_offset=*/false);
             if (force_reorder) do_reorder = true;
             if (do_reorder) {
                 gpu_assert(stmt.is_empty());
@@ -792,8 +792,8 @@ private:
                         layout, next->layout, buf, next->buf);
             } else {
                 // Reuse the same GRF buffer for the next stage.
-                dim_t this_off = to_cpp<dim_t>(layout.offset_in_bytes());
-                dim_t next_off = to_cpp<dim_t>(next->layout.offset_in_bytes());
+                dim_t this_off = offset_bytes<dim_t>(layout);
+                dim_t next_off = offset_bytes<dim_t>(next->layout);
                 gpu_assert(next_off == 0);
                 next->set_buf(buf[this_off]);
             }
@@ -814,11 +814,21 @@ private:
             if (check_base)
                 gpu_assert(buf.is_same(buf_base()))
                         << "Size must be queried from another stage.";
-            return (buf_size == 0) ? layout.size() : buf_size;
+            return (buf_size == 0) ? size_bytes(layout) : buf_size;
         }
 
         dim_t max_off_bytes() const {
-            dim_t l_off_bytes = layout.max_off_bytes(/*ignore_offset=*/true);
+            auto l_off_bytes = [&]() {
+                if (layout.is_empty()) return dim_t(0);
+                dim_t max_off = 0;
+                for (auto &b : layout.blocks()) {
+                    max_off += (b.block - 1) * (dim_t)b.stride;
+                }
+                dim_t after_last = max_off + 1;
+                return after_last * layout.type().size()
+                        / layout.type().packing();
+            }();
+
             return std::max(buf_size, l_off_bytes);
         }
 
@@ -833,7 +843,7 @@ private:
     };
 
     void build(const layout_t &c_reg_layout, const expr_t &c_reg_buf) {
-        c_reg_buf_size_ = into<int>(c_reg_layout.size());
+        c_reg_buf_size_ = into<int>(size_bytes(c_reg_layout));
         auto tmp_type = (post_op_builders_.empty() ? c_mem_view_.type()
                                                    : type_t::f32());
         int tmp_buf_elems = tile_size_ / tmp_type.size();
@@ -964,7 +974,7 @@ private:
         auto send_op = gemm_schedule_.with_kernel_grid_k_slicing()
                 ? send_op_t::atomic_fadd
                 : send_op_t::store;
-        auto offset = c_mem_tile_view.tlayout().offset_in_bytes();
+        auto offset = offset_bytes(c_mem_tile_view.tlayout());
         const int cache_line_size = 64;
         const bool allow_2d = !offset.is<int_imm_t>()
                 || (offset.as<int_imm_t>().value % cache_line_size == 0);
@@ -977,7 +987,7 @@ private:
         // Initialize C stages.
         std::vector<c_stage_t> c_stages;
 
-        auto c_fx_layout = r2g.reg_layout().retype(post_op_type).make_dense();
+        auto c_fx_layout = r2g.reg_layout().with(post_op_type).make_dense();
         bool with_post_ops = !post_op_builders_.empty();
         int npost_ops = int(post_op_builders_.size());
 
@@ -1072,7 +1082,7 @@ private:
         }
 
         stmt_ = stmt_.append(tile_stmt);
-        int c_off_bytes = to_cpp<int>(c_tile_layout.offset_in_bytes());
+        int c_off_bytes = offset_bytes<int>(c_tile_layout);
         c_reg_buf_size_ = std::max(c_reg_buf_size_, c_off_bytes + buf_sizes[0]);
     }
 

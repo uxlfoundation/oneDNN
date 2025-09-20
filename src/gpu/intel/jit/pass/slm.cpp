@@ -112,7 +112,7 @@ private:
         auto dst = reorder.dst_layout;
         if (!src.is_dense() || !dst.is_dense()) return stmt_t();
 
-        layout_t::try_reinterpret_to_wider_type(src, dst);
+        try_reinterpret_to_wider_type(src, dst);
         if (src.type() != dst.type()) return stmt_t();
         if (src.type().size() != 4) return stmt_t();
 
@@ -158,7 +158,7 @@ private:
         int simd = into<int>(src_tile_blocks[0].block);
         int vect_size = into<int>(src_tile_blocks[1].block);
         int tile_size = simd * vect_size * src.type().size();
-        int slm_thr_size = (int)src.size();
+        int slm_thr_size = (int)size_bytes(src);
         int dword_size = type_t::dword().size();
         int hword_size = type_t::hword().size();
         int hwords = tile_size / hword_size;
@@ -183,7 +183,7 @@ private:
         stmt_t store_stmt;
         stmt_t load_stmt;
         src.for_each_tile(tile, [&](const icoord_t &start) {
-            expr_t off = src.offset_in_bytes(start);
+            expr_t off = offset_bytes(src, start);
             auto store = store_send.call({slm_base_,
                     shuffle_t::make_broadcast(off0 + off, simd) + vec_off,
                     src_buf + off, expr_t()});

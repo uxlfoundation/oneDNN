@@ -337,7 +337,7 @@ private:
         // Split the memory view into dense blocks and precompute block offsets
         // and alignments.
         view_.for_each_tile(tile, [&](const icoord_t &start) {
-            auto off = view_.offset_in_bytes(start);
+            auto off = view_.offset_bytes(start);
             off = simplify(off, cset);
 
             const int base_alignment = 128;
@@ -433,20 +433,18 @@ public:
 private:
     const type_t &type() const { return layout_.type(); }
 
-    int max_offset_bytes() const {
-        return utils::rnd_up((int)layout_.size(), grf_size_);
-    }
+    int max_offset_bytes() const { return (int)size_bytes(layout_, grf_size_); }
 
     int remaining_elems() const { return layout_.elems() - elems_; }
 
     int advance(std::vector<int> &idxs, int off_bytes) const {
         for (size_t i = 0; i < idxs.size(); i++) {
-            if (++idxs[i] < layout_.blocks()[i].block) break;
+            if (++idxs[i] < layout_[i].block) break;
             idxs[i] = 0;
         }
         int off = 0;
         for (size_t i = 0; i < idxs.size(); i++) {
-            int stride = (int)layout_.blocks()[i].stride;
+            int stride = (int)layout_[i].stride;
             off += idxs[i] * stride;
         }
         return utils::div_up(off * type().size(), type().packing());
@@ -571,7 +569,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     auto vlayout = mem_view_.create_pseudo_vlayout();
     auto &hint = send_params.hint_2d;
     // The data may be loaded in a wider data type to get a proper GRF layout.
-    if (!hint.type.is_undef()) vlayout = vlayout.reinterpret(hint.type);
+    if (!hint.type.is_undef()) vlayout = reinterpret(vlayout, hint.type);
 
     bool is_store = (send_op_ == send_op_t::store);
     auto send_type = type_t::u(vlayout.type().size() * 8);
@@ -608,14 +606,14 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     auto &tlayout = mem_view_.tlayout();
     auto get_2d_dim = [&](dim_idx_t tidx) {
-        return tlayout.inner_block(tidx, /*skip_outer=*/false);
+        return inner_block(tlayout, tidx, /*skip_outer=*/false);
     };
 
     int surface_width = 0;
     int surface_height = 0;
     int surface_pitch = b1.stride;
-    bool is_w_blocked = (get_2d_dim(w_dim_idx) != tlayout.dim(w_dim_idx));
-    bool is_h_blocked = (get_2d_dim(h_dim_idx) != tlayout.dim(h_dim_idx));
+    bool is_w_blocked = (get_2d_dim(w_dim_idx) != tlayout.elems(w_dim_idx));
+    bool is_h_blocked = (get_2d_dim(h_dim_idx) != tlayout.elems(h_dim_idx));
     // Virtual surface means loading from the innermost block of a block layout
     // which implies no bound checks embedded into 2D block message.
     bool use_virtual_surface = is_w_blocked || is_h_blocked;
@@ -624,8 +622,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
         surface_width = b0.block;
         surface_height = b1.block;
     } else {
-        surface_width = tlayout.dim(w_dim_idx);
-        surface_height = tlayout.dim(h_dim_idx);
+        surface_width = tlayout.elems(w_dim_idx);
+        surface_height = tlayout.elems(h_dim_idx);
         if (surface_height % h_tstride != 0) return false;
         surface_height = surface_height / h_tstride;
     }
@@ -677,8 +675,9 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     }
     reg_layout_ = reg_layout_.add_outer_block(b0.dim, count);
 
-    int w_outermost = ir_utils::safe_divide(vlayout.dim(b0.dim), count * width);
-    int h_outermost = ir_utils::safe_divide(vlayout.dim(b1.dim), height);
+    int w_outermost
+            = ir_utils::safe_divide(vlayout.elems(b0.dim), count * width);
+    int h_outermost = ir_utils::safe_divide(vlayout.elems(b1.dim), height);
     reg_layout_ = reg_layout_.add_outer_block(b0.dim, w_outermost);
     reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_outermost);
 
@@ -776,7 +775,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
         }
 
         auto off = simplify(
-                mem_view_.tlayout().offset_in_bytes(tstart), ir_ctx_->cset());
+                offset_bytes(mem_view_.tlayout(), tstart), ir_ctx_->cset());
 
         // Check alignment requirements.
         int64_t align = get_max_const_factor(off, ir_ctx_->cset());
@@ -973,9 +972,9 @@ std::vector<layout_t> access_builder_t::candidate_payload_layouts() const {
 
     // These payload layouts are to match payload for byte x {1,2} scattered
     // messages (they are dword-strided).
-    if (type_size == 2) ret.push_back(vlayout.make_strided(2));
+    if (type_size == 2) ret.push_back(make_strided(vlayout, 2));
     if (type_size == 1 && mem_type_.bitsize() == 8)
-        ret.push_back(vlayout.make_strided(4));
+        ret.push_back(make_strided(vlayout, 4));
 
     return ret;
 }

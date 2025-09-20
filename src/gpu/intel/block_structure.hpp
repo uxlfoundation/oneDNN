@@ -88,11 +88,13 @@ public:
 
     static stride_t unknown() { return stride_t(unknown_stride); }
     static stride_t undefined() { return stride_t(undefined_stride); }
+    static stride_t max() { return stride_t(max_stride); }
 
 private:
     // Both negative sentinels: won't interfere with valid strides
     static constexpr dim_t unknown_stride = std::numeric_limits<dim_t>::min();
     static constexpr dim_t undefined_stride = unknown_stride + 1;
+    static constexpr dim_t max_stride = std::numeric_limits<dim_t>::max();
 
     dim_t stride_ = undefined_stride;
 };

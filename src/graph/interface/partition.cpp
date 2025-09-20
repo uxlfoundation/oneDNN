@@ -599,9 +599,9 @@ status_t dnnl_graph_partition::compile(compiled_partition_t *cp,
     const_cast<partition_impl_t *>(pimpl_.get())
             ->set_use_blocked_layout(can_use_blocked_layout);
 
-#ifdef DNNL_ENABLE_GRAPH_DUMP
-    if (dnnl::impl::getenv_int_user("GRAPH_DUMP", 0) > 1
-            || utils::check_verbose_string_user("GRAPH_DUMP", "subgraph")) {
+#ifndef DNNL_DISABLE_GRAPH_DUMP
+    if (dnnl::impl::graph::utils::get_graph_dump_mode(
+                dnnl::impl::graph::utils::graph_dump_mode_t::subgraph)) {
         if (!is_supported()) return status::unimplemented;
         // deep copy for graph serialization
         auto part = pimpl_->clone();

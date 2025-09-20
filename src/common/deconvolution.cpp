@@ -80,8 +80,8 @@ status_t deconv_desc_init(deconvolution_desc_t *deconv_desc,
     if (with_bias)
         runtime_dims_or_strides = runtime_dims_or_strides
                 || memory_desc_wrapper(bias_desc).has_runtime_dims_or_strides();
-    VCONDCHECK(primitive, create, check, deconv, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_DECONV_UNIMPL(
+            !runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     (prop_kind == backward_data ? dd.diff_src_desc : dd.src_desc) = *src_desc;
     (is_fwd ? dd.dst_desc : dd.diff_dst_desc) = *dst_desc;
@@ -107,12 +107,14 @@ status_t deconv_desc_init(deconvolution_desc_t *deconv_desc,
 
     const dim_t g = with_groups ? weights_desc->dims[0] : 1;
     VCHECK_DECONV(src_desc->ndims == dst_desc->ndims,
-            VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst", src_desc->ndims,
+            dst_desc->ndims);
     VCHECK_DECONV(utils::one_of(src_desc->ndims, 3, 4, 5), VERBOSE_BAD_NDIMS,
             "src", src_desc->ndims);
     VCHECK_DECONV(utils::one_of(weights_desc->ndims, src_desc->ndims,
                           src_desc->ndims + 1),
-            VERBOSE_INCONSISTENT_NDIMS, "src", "weights");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "weights",
+            weights_desc->ndims, src_desc->ndims);
     VCHECK_DECONV(IMPLICATION(with_bias, bias_desc->ndims == 1),
             VERBOSE_BAD_NDIMS, "bias", bias_desc->ndims);
     VCHECK_DECONV(
@@ -135,10 +137,23 @@ status_t deconv_desc_init(deconvolution_desc_t *deconv_desc,
         dim_t ker_range = 1 + (ker - 1) * (dil + 1);
 
         VCHECK_DECONV(str > 0, VERBOSE_BAD_DIM, "strides", i - 2);
-        VCHECK_DECONV(dil >= 0 && pad_l >= 0 && pad_r + str > 0,
-                VERBOSE_INCONSISTENT_PRB);
+        VCHECK_DECONV(dil >= 0, "%s: dilation (%d) must be non-negative",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(dil));
+        VCHECK_DECONV(pad_l >= 0,
+                "%s: left padding value (%d) must be non-negative",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(pad_l));
+        VCHECK_DECONV(pad_r + str > 0,
+                "%s: right padding (%d) and stride (%d) must sum up to a "
+                "positive value",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(pad_r),
+                static_cast<int>(str));
         VCHECK_DECONV((dst - ker_range + pad_l + pad_r) / str + 1 == src,
-                VERBOSE_INCONSISTENT_PRB);
+                "%s: mismatch between actual and computed src dims, src (%d) "
+                "!= (dst(%d) - ker(%d) + pad_l(%d) + pad_r(%d))/ str(%d) + 1",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(src),
+                static_cast<int>(dst), static_cast<int>(ker_range),
+                static_cast<int>(pad_l), static_cast<int>(pad_r),
+                static_cast<int>(str));
     }
 
     *deconv_desc = dd;

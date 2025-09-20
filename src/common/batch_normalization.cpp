@@ -80,8 +80,8 @@ status_t bnrm_desc_init(batch_normalization_desc_t *bnrm_desc,
                 || memory_desc_wrapper(diff_dst_desc)
                            .has_runtime_dims_or_strides();
     }
-    VCONDCHECK(primitive, create, check, bnorm, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_BNORM_UNIMPL(
+            !runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     bd.src_desc = *src_desc;
     if (is_fwd) bd.dst_desc = *dst_desc;
@@ -111,7 +111,8 @@ status_t bnrm_desc_init(batch_normalization_desc_t *bnrm_desc,
 #define CHECK_DIMS(t1, t2) \
     do { \
         VCHECK_BNORM(bd.t2##_desc.ndims == bd.t1##_desc.ndims, \
-                VERBOSE_INCONSISTENT_NDIMS, #t1, #t2); \
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, #t1, #t2, \
+                bd.t1##_desc.ndims, bd.t2##_desc.ndims); \
         VCHECK_BNORM(array_cmp(bd.t2##_desc.dims, bd.t1##_desc.dims, \
                              bd.t1##_desc.ndims), \
                 VERBOSE_INCONSISTENT_DIM, #t1, -1, #t2, -1); \

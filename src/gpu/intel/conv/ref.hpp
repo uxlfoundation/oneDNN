@@ -198,7 +198,8 @@ struct ref_bwd_data_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_CONV(memory_desc_ndims_ok(diff_src_md(), diff_dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src", "diff_dst");
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "diff_dst",
+                    diff_src_md()->ndims, diff_dst_md()->ndims);
 
             VDISPATCH_CONV(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
@@ -311,7 +312,8 @@ struct ref_bwd_weights_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_CONV(memory_desc_ndims_ok(src_md(), diff_dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src", "diff_dst");
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "diff_dst",
+                    src_md()->ndims, diff_dst_md()->ndims);
 
             VDISPATCH_CONV(utils::one_of(desc()->diff_weights_desc.data_type,
                                    f32, bf16, f16, f64, f8_e5m2, f8_e4m3),

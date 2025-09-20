@@ -75,9 +75,9 @@ status_t concat_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
     const int ndims = src_mds[0]->ndims;
     const dims_t &dims = src_mds[0]->dims;
     const data_type_t dt = src_mds[0]->data_type;
-    VCONDCHECK(primitive, create, check, concat,
+    VCHECK_CONCAT_UNIMPL(
             !memory_desc_wrapper(src_mds[0]).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     dim_t concat_dim_sz = dims[concat_dim];
     VCHECK_CONCAT(!memory_desc_wrapper(src_mds[0]).format_any(),
@@ -86,13 +86,14 @@ status_t concat_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
 #define SRC2STR(i) (std::string("src_") + std::to_string(i)).c_str()
     for (int i = 1; i < n; ++i) {
         const memory_desc_t &src_md = *src_mds[i];
-        VCHECK_CONCAT(src_md.ndims == ndims, VERBOSE_INCONSISTENT_NDIMS,
-                "src_0", SRC2STR(i));
+        VCHECK_CONCAT(src_md.ndims == ndims,
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src_0", SRC2STR(i),
+                src_md.ndims, ndims);
         VCHECK_CONCAT(!memory_desc_wrapper(src_md).format_any(),
                 VERBOSE_UNSUPPORTED_TAG_S, SRC2STR(i));
-        VCONDCHECK(primitive, create, check, concat,
+        VCHECK_CONCAT_UNIMPL(
                 !memory_desc_wrapper(src_md).has_runtime_dims_or_strides(),
-                status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
         for (int d = 0; d < ndims; ++d) {
             if (d == concat_dim) continue;
@@ -107,8 +108,9 @@ status_t concat_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
 
     memory_desc_t dummy_dst_md;
     if (dst_md) {
-        VCHECK_CONCAT(dst_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS,
-                "src_0", "dst");
+        VCHECK_CONCAT(dst_md->ndims == ndims,
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src_0", "dst",
+                dst_md->ndims, ndims);
         VCHECK_CONCAT(
                 !memory_desc_wrapper(dst_md).has_runtime_dims_or_strides(),
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);

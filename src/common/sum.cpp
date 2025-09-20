@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2023 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -57,9 +57,9 @@ status_t sum_primitive_desc_create(primitive_desc_iface_t **sum_pd_iface,
 
     const int ndims = src_mds[0]->ndims;
     const dims_t &dims = src_mds[0]->dims;
-    VCONDCHECK(primitive, create, check, sum,
+    VCHECK_SUM_UNIMPL(
             !memory_desc_wrapper(src_mds[0]).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     VCHECK_SUM(!memory_desc_wrapper(src_mds[0]).format_any(),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
@@ -67,13 +67,13 @@ status_t sum_primitive_desc_create(primitive_desc_iface_t **sum_pd_iface,
 #define SRC2STR(i) (std::string("src_") + std::to_string(i)).c_str()
     for (int i = 1; i < n; ++i) {
         const memory_desc_t &src_md = *src_mds[i];
-        VCHECK_SUM(src_md.ndims == ndims, VERBOSE_INCONSISTENT_NDIMS, "src_0",
-                SRC2STR(i));
+        VCHECK_SUM(src_md.ndims == ndims, VERBOSE_INCONSISTENT_NDIMS_WITH_VALS,
+                "src_0", SRC2STR(i), src_md.ndims, ndims);
         VCHECK_SUM(!memory_desc_wrapper(src_md).format_any(),
                 VERBOSE_UNSUPPORTED_TAG_S, SRC2STR(i));
-        VCONDCHECK(primitive, create, check, sum,
+        VCHECK_SUM_UNIMPL(
                 !memory_desc_wrapper(src_md).has_runtime_dims_or_strides(),
-                status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
         for (int d = 0; d < ndims; ++d)
             VCHECK_SUM(src_md.dims[d] == dims[d], VERBOSE_INCONSISTENT_DIM,
                     "src_0", d, SRC2STR(i), d);
@@ -82,8 +82,8 @@ status_t sum_primitive_desc_create(primitive_desc_iface_t **sum_pd_iface,
 
     memory_desc_t dummy_dst_md;
     if (dst_md) {
-        VCHECK_SUM(dst_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS, "src_0",
-                "dst");
+        VCHECK_SUM(dst_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS_WITH_VALS,
+                "src_0", "dst", dst_md->ndims, ndims);
         VCHECK_SUM(!memory_desc_wrapper(dst_md).has_runtime_dims_or_strides(),
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
         for (int d = 0; d < ndims; ++d) {

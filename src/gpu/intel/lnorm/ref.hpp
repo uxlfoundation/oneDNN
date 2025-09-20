@@ -59,7 +59,7 @@ struct ref_fwd_t : public primitive_t {
                                             compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_LNORM(memory_desc_ndims_ok(src_md(), dst_md(), stat_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src", "dst stat");
+                    VERBOSE_INCONSISTENT_NDIMS, "src, dst", "stat");
             VDISPATCH_LNORM(
                     stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_LNORM(check_scale_shift_data_type({f32, bf16, f16}),

@@ -65,7 +65,7 @@ struct simple_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(
                     memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src_0", "dst");
+                    VERBOSE_INCONSISTENT_NDIMS, "src_0, src_1", "dst");
 
             VDISPATCH_BINARY(IMPLICATION(!attr()->scales_.has_default_values(),
                                      check_scales_mask()),

@@ -34,7 +34,7 @@
 
 #define VDISPATCH_CONV_IC(cond, msg, ...) \
     VCONDCHECK(primitive, create, dispatch, convolution, (cond), \
-            status::unimplemented, msg, ##__VA_ARGS__);
+            status::unimplemented, msg, ##__VA_ARGS__)
 
 namespace dnnl {
 namespace impl {

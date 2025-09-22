@@ -2414,7 +2414,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             && (jcp.l_pad > 0 || jcp.r_pad > 0) && jcp.oc * jcp.ow > 8192)
         VDISPATCH_CONV_IC(!allow_perf_heuristics(jcp),
                 VERBOSE_IMPL_HEURISTIC_FAIL,
-                "no optimization for zero point on amx")
+                "no optimization for zero point on amx");
 
     // For padding shapes, we calculate the comp along with the computation
     // inside brgemm kernel when output size is small to get optimal perf

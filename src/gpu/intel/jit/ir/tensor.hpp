@@ -268,6 +268,11 @@ public:
     layout_t(const type_t &type, const std::vector<int64_t> &dims,
             const expr_t &offset = 0, bool do_normalize = true)
         : type_(type), ndims_(dims.size()), offset_(offset) {
+        if (type.is_undef()) {
+            *this = layout_t();
+            return;
+        }
+
         int64_t stride = 1;
         for (int64_t i = ndims_ - 1; i >= 0; i--) {
             blocks_.emplace_back(i, dims[i], stride);
@@ -281,6 +286,11 @@ public:
             const expr_t &offset = 0, size_t ndims = max_ndims,
             bool do_normalize = true)
         : type_(type), ndims_(ndims), offset_(offset), blocks_(blocks) {
+        if (type.is_undef()) {
+            *this = layout_t();
+            return;
+        }
+
         stride_t stride(1);
         for (auto &b : blocks_) {
             if (b.stride.is_undefined()) {
@@ -337,11 +347,8 @@ public:
     }
 
     bool is_empty() const {
-        if (has_ndims()) {
-            if (ndims() == 0) gpu_assert(blocks_.empty());
-            return ndims() == 0;
-        }
-        return blocks_.empty();
+        if (type_.is_undef()) gpu_assert(*this == layout_t());
+        return type_.is_undef();
     }
 
     size_t ndims(bool check_invalid = true) const {

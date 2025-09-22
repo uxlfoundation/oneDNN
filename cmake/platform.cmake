@@ -150,15 +150,14 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
         set(CMAKE_REQUIRED_FLAGS_SAVE ${CMAKE_REQUIRED_FLAGS})
         set(CMAKE_REQUIRED_FLAGS "${ARCH_SIMD_TEST_FLAGS}")
         check_cxx_source_compiles("#include <riscv_vector.h>
-                                    #ifndef __riscv_zvfh
-                                    #error \"Zvfh extension is not supported by the compiler\"
-                                    #endif
-
-                                    int main() {
-                                     vfloat16m1_t a;
-                                     return 0; 
-                                    };"
-                                    CAN_COMPILE_ZVFH_INTRINSICS
+                                   #ifndef __riscv_zvfh
+                                   #error \"Zvfh extension is not supported by the compiler\"
+                                   #endif   
+                                   int main() {
+                                    vfloat16m1_t a;
+                                    return 0; 
+                                   };"
+                                   CAN_COMPILE_ZVFH_INTRINSICS
         )
         set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS_SAVE})
 

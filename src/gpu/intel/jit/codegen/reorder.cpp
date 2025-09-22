@@ -814,7 +814,7 @@ tile_t reorder_impl_t::find_max_tile_with_fixed_stride(const layout_t &src,
     // 1. Split layouts to have aligned blocks.
     auto a = src;
     auto b = dst;
-    layout_t::align_layouts(a, b);
+    align_layouts(a, b);
 
     // 2. Find the max innermost tile.
     auto a_blocks = a.blocks();

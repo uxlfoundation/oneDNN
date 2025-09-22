@@ -627,9 +627,6 @@ public:
         return true;
     }
 
-    // Assume that layouts are normalized.
-    static void align_layouts(layout_t &a, layout_t &b);
-
 private:
     void sanity_check() const;
 
@@ -725,6 +722,8 @@ tile_coord_t split_exact(const layout_t &layout, int factor);
 tile_coord_t split(const layout_t &layout, const tile_t &tile,
         const grid_info_t &grid,
         std::vector<layout_block_t> *outer_blocks = nullptr);
+
+void align_layouts(layout_t &a, layout_t &b);
 
 memory_desc_t to_md(const layout_t &layout, const memory_desc_t &md_hint);
 

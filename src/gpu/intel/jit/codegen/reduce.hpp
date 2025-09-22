@@ -119,7 +119,7 @@ public:
 
 private:
     tile_t find_1d_tile(layout_t a, layout_t b) const {
-        layout_t::align_layouts(a, b);
+        align_layouts(a, b);
 
         gpu_assert(!a.blocks().empty());
         // Allow trivial tile for scalar dst.

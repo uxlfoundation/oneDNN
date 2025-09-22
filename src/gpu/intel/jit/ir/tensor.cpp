@@ -406,7 +406,7 @@ tile_t layout_t::max_subtile(
     return subtile;
 }
 
-void layout_t::align_layouts(layout_t &a, layout_t &b) {
+void align_layouts(layout_t &a, layout_t &b) {
     for (auto &d : a.tile()) {
         auto a_blocks = a.blocks();
         auto b_blocks = b.blocks();

@@ -1,0 +1,85 @@
+#===============================================================================
+# Copyright 2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#===============================================================================
+header:
+  license:
+    spdx-id: Apache-2.0
+    copyright-owner: 
+    pattern: |
+      (Copyright \d{4} Intel Corporation)
+
+      Licensed under the Apache License, Version 2\.0 \(the "License"\);
+      you may not use this file except in compliance with the License\.
+      You may obtain a copy of the License at
+
+          http:\/\/www\.apache\.org\/licenses\/LICENSE-2\.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied\.
+      See the License for the specific language governing permissions and
+      limitations under the License\.
+
+  paths:
+    - '**'
+
+  paths-ignore:
+# all documentation-like files
+  - '/doc'
+  - '*\.md$'
+
+# files in the root (which are typically are doc-like files)
+  - '[^/]*$'
+
+# Github automation
+  - '/.github'
+
+# Clang tools configs
+  - '*\.clang-tidy$'
+  - '.*\.clang-format$'
+
+# cmake
+  - '/cmake/ACL.cmake'
+  - '/cmake/FindACL.cmake'
+  - '/cmake/FindBLAS.cmake'
+  - '/cmake/FindOpenCL.cmake'
+  - '/cmake/FindComputeCpp.cmake'
+
+# Third party contributions
+  - '/src/cpu/aarch64'
+  - '/src/cpu/ppc64'
+  - '/src/cpu/rv64'
+  - '/src/cpu/s390x'
+
+# benchdnn inputs
+  - '/tests/benchdnn/inputs'
+
+# Third party components
+  - '/third_party'
+  - '/src/cpu/xbyak'
+  - '/src/cpu/x64/xbyak'
+  - '/src/common/ittnotify'
+  - '/src/common/spdlog'
+  - '/src/gpu/intel/jit/ngen'
+  - '/src/gpu/intel/sycl/l0/level_zero'
+  - '/src/gpu/intel/ocl/mdapi'
+  - '/tests/gtests/gtest'
+
+# visual-studio files
+  - '*\.vcxproj(\.user)?$'
+  
+  comment: never
+
+  license-location-threshold: 111  # specifies the index threshold where the license header can be located.

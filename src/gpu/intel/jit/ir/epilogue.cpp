@@ -59,7 +59,7 @@ public:
                 16, 2 * ir_ctx_->grf_size() / reg_layout.type().size());
         auto base_tile = reg_layout.max_subtile(max_step);
         stmt_t stmt;
-        reg_layout.for_each_tile(base_tile, [&](const icoord_t &start) {
+        for (auto &start : reg_layout.iter(base_tile)) {
             dim_t off = reg_layout.offset<dim_t>(start)
                     * reg_layout.type().size();
             auto mask = create_mask(reg_layout, base_tile, start);
@@ -68,7 +68,7 @@ public:
                     shuffle_t::make_broadcast(zero, base_tile.elems()),
                     store_t::default_stride, -mask);
             stmt = stmt.append(store);
-        });
+        };
         return stmt;
     }
 
@@ -546,21 +546,20 @@ public:
         // Handle one inner tile at a time. Inner tile covers a single block
         // within a single dimension.
         stmt_t stmt;
-        lhs_tensor.reg_layout().for_each_tile(
-                base_inner_tile, [&](const icoord_t &lhs_start) {
-                    tile_coord_t inner_tile_coord(base_inner_tile, lhs_start);
-                    auto rhs_value = compute_post_op_expr(
-                            post_op_.rhs(), inner_tile_coord, inner_dim, args);
-                    auto &t = *args.at(post_op_.lhs());
-                    expr_t store_mask;
-                    if (lhs_tensor.needs_masked_update()) {
-                        store_mask = zero_pad_builder.create_mask(inner_layout,
-                                inner_tile_coord.tile, inner_tile_coord.coord);
-                    }
-                    auto inner_stmt = t.store_stmt(
-                            inner_tile_coord, inner_dim, rhs_value, store_mask);
-                    stmt = stmt.append(inner_stmt);
-                });
+        for (auto &lhs_start : lhs_tensor.reg_layout().iter(base_inner_tile)) {
+            tile_coord_t inner_tile_coord(base_inner_tile, lhs_start);
+            auto rhs_value = compute_post_op_expr(
+                    post_op_.rhs(), inner_tile_coord, inner_dim, args);
+            auto &t = *args.at(post_op_.lhs());
+            expr_t store_mask;
+            if (lhs_tensor.needs_masked_update()) {
+                store_mask = zero_pad_builder.create_mask(inner_layout,
+                        inner_tile_coord.tile, inner_tile_coord.coord);
+            }
+            auto inner_stmt = t.store_stmt(
+                    inner_tile_coord, inner_dim, rhs_value, store_mask);
+            stmt = stmt.append(inner_stmt);
+        };
 
         return stmt;
     }

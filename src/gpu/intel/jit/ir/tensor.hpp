@@ -556,63 +556,75 @@ public:
     layout_t split_block(
             const layout_block_t &b, int64_t block0, int64_t block1) const;
 
-    // Iterates through tiles of the layout, calling `f` with relative offsets
-    // for each tile. The iteration order is defined by the layout blocks -
-    // absolute 1D offsets are increasing between callback calls.
+    // Iterates through subtiles of the layout by returning the coordinates for
+    // each tile. The iteration order is defined by the layout blocks.
+    struct tile_iterator_t {
+        tile_iterator_t &operator++() {
+            for (size_t i = 0; i < d_.size(); i++) {
+                if (d_[i].i < d_[i].end - 1) {
+                    coord_[d_[i].idx] += d_[i].stride;
+                    d_[i].i++;
+                    return *this;
+                }
+                coord_[d_[i].idx] -= d_[i].i * d_[i].stride;
+                d_[i].i = 0;
+            }
+            *this = end();
+            return *this;
+        }
+
+        const icoord_t &operator*() const { return coord_; }
+        tile_iterator_t begin() const { return *this; }
+        tile_iterator_t end() const { return {}; }
+        bool operator==(const tile_iterator_t &o) const { return d_ == o.d_; }
+        bool operator!=(const tile_iterator_t &o) const { return d_ != o.d_; }
+
+    protected:
+        friend class layout_t;
+        tile_iterator_t() = default;
+        tile_iterator_t(const layout_t &layout, const tile_t &tile) {
+            tile_t strides;
+            for (auto &b : layout.blocks()) {
+                auto &stride = strides[b.dim];
+                d_.emplace_back(b.dim, b.block, stride, tile.get(b.dim));
+                coord_[b.dim] = 0;
+                stride *= b.block;
+            }
+            if (!layout.is_empty() && layout.blocks().empty()) {
+                d_.emplace_back(*tile.begin(), 1, 1, 1);
+                coord_[d_[0].idx] = 0;
+            }
+        }
+
+    private:
+        struct index_data_t {
+            index_data_t(
+                    pvar_t idx, int64_t block, int64_t stride_, int64_t tile)
+                : i(0)
+                , idx(idx)
+                , end(std::min(block, utils::div_up(stride_ * block, tile)))
+                , stride(stride_ * utils::div_up(block, end)) {}
+            bool operator==(const index_data_t &other) const {
+                return i == other.i && idx == other.idx && end == other.end
+                        && stride == other.stride;
+            }
+            int64_t i;
+            pvar_t idx;
+            int64_t end;
+            int64_t stride;
+        };
+        std::vector<index_data_t> d_;
+        icoord_t coord_;
+    };
+
+    tile_iterator_t iter(const tile_t &tile) const {
+        return tile_iterator_t(*this, tile);
+    };
+
     template <typename F>
     void for_each_tile(const tile_t &tile, const F &f) const {
-        for (auto &d : tile) {
-            gpu_assert(elems(d) % tile[d] == 0);
-        }
-
-        int nblocks = int(blocks().size());
-        std::vector<int64_t> sub_blocks(nblocks);
-        for (int i = 0; i < nblocks; i++)
-            sub_blocks[i] = blocks()[i].block;
-
-        for (auto &d : tile) {
-            int64_t dim = tile[d];
-            for (auto &b : blocks()) {
-                if (b.dim != d) continue;
-                auto block_idx = get_idx(b);
-                if (b.block >= dim) {
-                    gpu_assert(b.block % dim == 0);
-                    sub_blocks[block_idx] = b.block / dim;
-                    break;
-                }
-                sub_blocks[block_idx] = 1;
-                gpu_assert(dim % b.block == 0);
-                dim /= b.block;
-            }
-        }
-
-        int ntiles = int(elems() / tile.elems());
-
-        std::vector<int64_t> sub_block_idxs(nblocks);
-        for (int i = 0; i < ntiles; i++) {
-            // Convert sub-block indices to dimension indices.
-            tile_t dims;
-            icoord_t start;
-            for (int j = 0; j < nblocks; j++) {
-                auto &b = blocks()[j];
-                int64_t k = sub_block_idxs[j]
-                        * (blocks()[j].block / sub_blocks[j]);
-                start[b.dim] += dims[b.dim] * k;
-                dims[b.dim] *= b.block;
-            }
-
-            // Pass dimension offsets to the callback.
-            f(start);
-
-            // Move to the next vector of indices.
-            for (int j = 0; j < nblocks; j++) {
-                auto &idx = sub_block_idxs[j];
-                if (idx + 1 < sub_blocks[j]) {
-                    idx++;
-                    break;
-                }
-                idx = 0;
-            }
+        for (auto &coord : iter(tile)) {
+            f(coord);
         }
     }
 

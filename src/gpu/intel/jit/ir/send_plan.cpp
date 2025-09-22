@@ -929,10 +929,8 @@ public:
         auto tile_coord = split_exact(layout, factor);
         if (tile_coord.is_invalid()) return;
 
-        layout.for_each_tile(tile_coord.tile, [&](const icoord_t &start) {
-            int off = offset_bytes<int>(layout, start);
-            offs_.push_back(off);
-        });
+        for (auto &start : layout.iter(tile_coord.tile))
+            offs_.push_back(offset_bytes<int>(layout, start));
     }
 
     int factor() const { return (int)offs_.size(); }

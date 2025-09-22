@@ -697,7 +697,7 @@ void reorder_impl_t::emit_1d(copy_plan_t &plan, const reorder_operand_t &dst,
     ngen::InstructionModifier mod;
     if (needs_saturate(dst.type(), src.type())) mod |= sat;
 
-    dst.layout.for_each_tile(tile, [&](const icoord_t &start) {
+    for (auto &start : dst.layout.iter(tile)) {
         // Tile operands
         auto tile_src = src.buffer, tile_dst = dst.buffer;
         tile_src.stride = (uint8_t)src_stride;
@@ -705,7 +705,7 @@ void reorder_impl_t::emit_1d(copy_plan_t &plan, const reorder_operand_t &dst,
         tile_src.advance(hw_, src.layout.offset<int>(start));
         tile_dst.advance(hw_, dst.layout.offset<int>(start));
         plan.mov(tile_elems, mod, tile_dst, tile_src);
-    });
+    };
     ++plan.phase;
 }
 

@@ -711,11 +711,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     auto &send = _send.as<send_t>();
 
     stmt_ = stmt_t();
-    bool ok = true;
     auto vstart0 = mem_view_.vstart();
-    vlayout.for_each_tile(tile, [&](const icoord_t &start) {
-        if (!ok) return;
-
+    for (auto &start : vlayout.iter(tile)) {
         int access_size = send.access_size();
         int access_elems = access_size / mem_type_.size();
 
@@ -723,19 +720,16 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
         expr_t mask;
         if (!check_2d_mask(tile, start, use_virtual_surface, w_dim_idx,
                     h_dim_idx, mask)) {
-            ok = false;
-            return;
+            return false;
         }
 
         if (!send.is_prefetch_2d()) {
             if (!reg_layout_walker_->can_advance(1, access_elems)) {
-                ok = false;
-                return;
+                return false;
             }
 
             if (!reg_layout_walker_->can_access(send.payload_size())) {
-                ok = false;
-                return;
+                return false;
             }
         }
 
@@ -766,8 +760,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
                     if (send.is_prefetch_2d()) {
                         skip_send = true;
                     } else {
-                        ok = false;
-                        return;
+                        break;
                     }
                 }
                 y /= h_tstride;
@@ -780,15 +773,13 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
         // Check alignment requirements.
         int64_t align = get_max_const_factor(off, ir_ctx_->cset());
         if (align % block_2d_base_alignment(ir_ctx_->hw()) != 0) {
-            ok = false;
-            return;
+            return false;
         }
 
         if (!skip_send) {
             if (!ir_ctx_->cset().can_prove(
                         x % block_2d_x_alignment(send_type.size()) == 0)) {
-                ok = false;
-                return;
+                break;
             }
             auto reg_buf = (send.is_prefetch_2d()
                             ? expr_t()
@@ -798,9 +789,9 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
         }
 
         reg_layout_walker_->advance(send.access_size() / mem_type_.size());
-    });
+    }
 
-    return ok;
+    return true;
 }
 
 bool access_builder_t::fixup_send_2d_params(const type_t &send_type, bool vnni,

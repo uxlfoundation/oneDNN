@@ -182,7 +182,7 @@ private:
 
         stmt_t store_stmt;
         stmt_t load_stmt;
-        src.for_each_tile(tile, [&](const icoord_t &start) {
+        for (auto &start : src.iter(tile)) {
             expr_t off = offset_bytes(src, start);
             auto store = store_send.call({slm_base_,
                     shuffle_t::make_broadcast(off0 + off, simd) + vec_off,
@@ -191,7 +191,7 @@ private:
                     {slm_base_, off0 + off, dst_buf + off, expr_t()});
             store_stmt = store_stmt.append(store);
             load_stmt = load_stmt.append(load);
-        });
+        }
 
         auto ret = store_stmt.append(load_stmt);
         return ret;

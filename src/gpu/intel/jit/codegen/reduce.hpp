@@ -65,7 +65,7 @@ public:
         int dst_stride
                 = dst_tile_blocks.empty() ? 1 : (int)dst_tile_blocks[0].stride;
         int grf_size = ngen::GRF::bytes(hw_);
-        src_layout_.for_each_tile(tile, [&](const icoord_t &src_start) {
+        for (auto &src_start : src_layout_.iter(tile)) {
             ngen_register_scope_t tile_scope(scope.register_allocator());
             auto dst_start = src_start;
             for (dim_idx_t i = 0; i < dst_layout_.ndims(); i++) {
@@ -114,7 +114,7 @@ public:
             }
             align_src_dst_offset(host, tile_scope, tile_elems, d, s);
             host->add(tile_elems, d.reg_data(), d.reg_data(), s.reg_data());
-        });
+        }
     }
 
 private:

@@ -267,7 +267,7 @@ public:
 
     layout_t(const type_t &type, const std::vector<int64_t> &dims,
             const expr_t &offset = 0, bool do_normalize = true)
-        : type_(type), ndims_(into<dim_idx_t>(dims.size())), offset_(offset) {
+        : type_(type), ndims_(dims.size()), offset_(offset) {
         int64_t stride = 1;
         for (int64_t i = ndims_ - 1; i >= 0; i--) {
             blocks_.emplace_back(i, dims[i], stride);
@@ -278,7 +278,7 @@ public:
     }
 
     layout_t(const type_t &type, const std::vector<layout_block_t> &blocks = {},
-            const expr_t &offset = 0, size_t ndims = dim_idx::invalid,
+            const expr_t &offset = 0, size_t ndims = max_ndims,
             bool do_normalize = true)
         : type_(type), ndims_(ndims), offset_(offset), blocks_(blocks) {
         stride_t stride(1);
@@ -631,7 +631,7 @@ private:
     type_t type_;
 
     // Number of dimensions.
-    size_t ndims_ = dim_idx::invalid;
+    size_t ndims_ = max_ndims;
 
     // Offset to the start of the layout (in elements of type).
     expr_t offset_;

@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2022 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -52,7 +53,7 @@ struct jit_uni_shuffle_t : public primitive_t {
 
     jit_uni_shuffle_t(const pd_t *apd);
 
-    ~jit_uni_shuffle_t();
+    ~jit_uni_shuffle_t() override;
 
     status_t init(engine_t *engine) override;
 

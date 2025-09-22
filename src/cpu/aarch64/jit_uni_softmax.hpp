@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2019-2022 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -112,7 +113,7 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
     };
 
     jit_uni_softmax_fwd_t(const pd_t *apd);
-    ~jit_uni_softmax_fwd_t();
+    ~jit_uni_softmax_fwd_t() override;
 
     status_t init(engine_t *engine) override;
 
@@ -185,7 +186,7 @@ struct jit_uni_softmax_bwd_t : public primitive_t {
     };
 
     jit_uni_softmax_bwd_t(const pd_t *apd);
-    ~jit_uni_softmax_bwd_t();
+    ~jit_uni_softmax_bwd_t() override;
 
     status_t init(engine_t *engine) override;
 

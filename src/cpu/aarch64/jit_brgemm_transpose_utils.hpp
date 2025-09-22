@@ -41,7 +41,7 @@ struct jit_brgemm_trans_src_t {
 
     jit_brgemm_trans_src_t(const jit_brgemm_primitive_conf_t *conf)
         : conf_(conf) {}
-    virtual ~jit_brgemm_trans_src_t() {}
+    virtual ~jit_brgemm_trans_src_t() = default;
 
     const jit_brgemm_primitive_conf_t *conf_;
 };
@@ -79,7 +79,7 @@ struct jit_brgemm_copy_to_coarse_t : public jit_generator {
 
         MAYBE_UNUSED(row_granularity_);
     }
-    ~jit_brgemm_copy_to_coarse_t() {}
+    ~jit_brgemm_copy_to_coarse_t() override = default;
 
 private:
     enum {
@@ -149,7 +149,7 @@ struct jit_brgemm_trans_to_vnni_t {
     jit_brgemm_trans_to_vnni_t(const jit_brgemm_primitive_conf_t *conf,
             matrix_to_transform_t matrix_to_transform)
         : conf_(conf), matrix_to_transform_(matrix_to_transform) {}
-    virtual ~jit_brgemm_trans_to_vnni_t() {}
+    virtual ~jit_brgemm_trans_to_vnni_t() = default;
 
     const jit_brgemm_primitive_conf_t *conf_;
     matrix_to_transform_t matrix_to_transform_;
@@ -169,7 +169,7 @@ struct jit_brgemm_trans_wei_t {
 
     jit_brgemm_trans_wei_t(const jit_brgemm_primitive_conf_t *conf)
         : conf_(conf) {}
-    virtual ~jit_brgemm_trans_wei_t() {}
+    virtual ~jit_brgemm_trans_wei_t() = default;
 
     const jit_brgemm_primitive_conf_t *conf_;
 };

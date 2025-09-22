@@ -2,6 +2,7 @@
 * Copyright 2017-2022 Intel Corporation
 * Copyright 2018 YANDEX LLC
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -42,7 +43,7 @@ struct jit_uni_pool_kernel : public jit_generator {
     jit_uni_pool_kernel(
             const jit_pool_conf_t &ajpp, const memory_desc_t *dst_md);
     jit_pool_conf_t jpp;
-    ~jit_uni_pool_kernel();
+    ~jit_uni_pool_kernel() override;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_pool_kernel)
 

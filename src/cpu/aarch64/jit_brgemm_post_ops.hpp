@@ -334,7 +334,7 @@ struct jit_brgemm_kernel_post_ops : public jit_generator {
         bia_typesize_ = (jcp.with_bias) ? types::data_type_size(bia_dt_) : 0;
     }
 
-    ~jit_brgemm_kernel_post_ops() = default;
+    ~jit_brgemm_kernel_post_ops() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_post_ops)
 

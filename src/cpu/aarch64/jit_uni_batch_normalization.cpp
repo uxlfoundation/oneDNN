@@ -2057,7 +2057,7 @@ struct jit_bnorm_t : public jit_generator {
 
     void operator()(const call_params_t *p) { jit_generator::operator()(p); }
 
-    ~jit_bnorm_t() override {}
+    ~jit_bnorm_t() override = default;
 };
 
 namespace bnorm_impl {

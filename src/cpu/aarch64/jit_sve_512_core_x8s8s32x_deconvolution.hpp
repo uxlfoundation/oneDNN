@@ -80,7 +80,7 @@ struct jit_sve_512_core_x8s8s32x_deconv_fwd_kernel : public jit_generator {
 
     jit_sve_512_core_x8s8s32x_deconv_fwd_kernel(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
-    ~jit_sve_512_core_x8s8s32x_deconv_fwd_kernel();
+    ~jit_sve_512_core_x8s8s32x_deconv_fwd_kernel() override;
 
     const jit_conv_conf_t &jcp;
     const primitive_attr_t &attr_;

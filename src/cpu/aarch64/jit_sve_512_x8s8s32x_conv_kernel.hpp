@@ -51,7 +51,7 @@ struct jit_sve_512_x8s8s32x_fwd_kernel : public jit_generator {
         }
     }
 
-    ~jit_sve_512_x8s8s32x_fwd_kernel() {}
+    ~jit_sve_512_x8s8s32x_fwd_kernel() override = default;
 
     jit_conv_conf_t jcp;
     const primitive_attr_t &attr_;

@@ -53,7 +53,7 @@ struct jit_sve_conv_fwd_kernel : public jit_generator {
                     this, jcp.eltwise);
     }
 
-    ~jit_sve_conv_fwd_kernel() = default;
+    ~jit_sve_conv_fwd_kernel() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sve_conv_fwd_kernel)
 

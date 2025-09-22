@@ -47,7 +47,7 @@ struct jit_uni_dw_conv_fwd_kernel_f32_t : public jit_generator {
                     this, jcp.eltwise);
     }
 
-    ~jit_uni_dw_conv_fwd_kernel_f32_t() = default;
+    ~jit_uni_dw_conv_fwd_kernel_f32_t() override = default;
 
     jit_conv_conf_t jcp;
 

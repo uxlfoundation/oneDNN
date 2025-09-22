@@ -674,10 +674,11 @@ public:
     jit_generator(void *code_ptr = nullptr, size_t code_size = MAX_CODE_SIZE,
             bool use_autogrow = true, cpu_isa_t max_cpu_isa = isa_all)
         : Xbyak_aarch64::CodeGenerator(code_size,
-                (code_ptr == nullptr && use_autogrow) ? Xbyak_aarch64::AutoGrow
-                                                      : code_ptr)
+                  (code_ptr == nullptr && use_autogrow)
+                          ? Xbyak_aarch64::AutoGrow
+                          : code_ptr)
         , max_cpu_isa_(max_cpu_isa) {}
-    virtual ~jit_generator() {}
+    ~jit_generator() override = default;
 
     virtual const char *name() const = 0;
     virtual const char *source_file() const = 0;

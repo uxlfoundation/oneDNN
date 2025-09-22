@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2016-2023 Intel Corporation
-* Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2020-2025 FUJITSU LIMITED
 * Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,6 +38,27 @@
 #define DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_name) \
     const char *name() const override { return STRINGIFY(jit_name); } \
     const char *source_file() const override { return __FILE__; }
+
+#define LD_MUL_VL(mn, op, mask, addr, off, size) \
+    do { \
+        if (use_mul_vl(off, size, cpu_sveLen)) \
+            mn(op, (mask) / T_z, \
+                    ptr(addr, compute_off_mul_vl(off, size, cpu_sveLen), \
+                            MUL_VL)); \
+        else \
+            mn(op, (mask) / T_z, \
+                    ptr(addr_off(addr, off, X_DEFAULT_ADDR, X_TMP_0))); \
+    } while (0)
+
+#define ST_MUL_VL(mn, op, mask, addr, off, size) \
+    do { \
+        if (use_mul_vl(off, size, cpu_sveLen)) \
+            mn(op, (mask), \
+                    ptr(addr, compute_off_mul_vl(off, size, cpu_sveLen), \
+                            MUL_VL)); \
+        else \
+            mn(op, (mask), ptr(addr_off(addr, off, X_DEFAULT_ADDR, X_TMP_0))); \
+    } while (0)
 
 static const size_t CSIZE = sizeof(uint32_t);
 
@@ -219,6 +240,18 @@ public:
 
         add_imm(addr, base, off, x_tmp);
         return addr;
+    }
+
+    inline int compute_off_mul_vl(int off, int size, int cpu_sveLen) {
+        const int mul_vl_len = (cpu_sveLen / 4) * size;
+        return off / mul_vl_len;
+    }
+
+    inline bool use_mul_vl(int off, int size, int cpu_sveLen) {
+        const int mul_vl_len = (cpu_sveLen / 4) * size;
+        int off_mod = off % mul_vl_len;
+        int off_mul_vl = off / mul_vl_len;
+        return (off_mod == 0 && -8 <= off_mul_vl && off_mul_vl <= 7);
     }
 
     template <typename PRegBHSD, typename T>

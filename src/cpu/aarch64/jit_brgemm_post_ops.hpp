@@ -435,7 +435,8 @@ private:
     }
 
     void cvt2ps(data_type_t type_in, const ZReg zmm_in, const AdrNoOfs &op,
-            bool mask_flag, bool store, PReg ktail_mask) {
+            bool mask_flag, bool store, PReg ktail_mask,
+            bool skip_cvt2ps = false) {
         switch (type_in) {
             case data_type::f32:
             case data_type::s32:
@@ -449,7 +450,18 @@ private:
                     ld1w(zmm_in.s, k_full_mask / T_z, op);
                 }
                 break;
-            case data_type::s8: assert(!"unsupported data type\n"); break;
+            case data_type::s8:
+                if (mask_flag) {
+                    if (store) {
+                        st1w(zmm_in.s, ktail_mask / T_m, op);
+
+                    } else {
+                        ld1sb(zmm_in.s, ktail_mask / T_z, op);
+                    }
+                } else {
+                    ld1sb(zmm_in.s, k_full_mask / T_z, op);
+                }
+                break;
             case data_type::u8:
                 if (mask_flag) {
                     if (store) {
@@ -477,7 +489,7 @@ private:
                 break;
             default: assert(!"unsupported data type");
         }
-        if (types::is_integral_dt(type_in)) {
+        if (!skip_cvt2ps && types::is_integral_dt(type_in)) {
             scvtf(zmm_in.s, P_ALL_ONE / T_m, zmm_in.s);
         }
     }
@@ -624,7 +636,7 @@ private:
                         inp_typesize_ * (m * brg.LDC + n * brg.ld_block),
                         X_TMP_0);
                 cvt2ps(inp_dt_, vector(m, n), ptr(X_DEFAULT_ADDR), tail, false,
-                        k_mask);
+                        k_mask, req_comp);
             }
         }
 
@@ -735,7 +747,14 @@ private:
                     bfcvt(vmm.h, k_mask / T_m, vmm.s);
                     st1h(vmm.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
                     break;
-                case data_type::s8: assert(!"unsupported data type\n"); break;
+                case data_type::s8:
+                    smin(vmm.s, std::numeric_limits<int8_t>::max());
+                    smax(vmm.s, std::numeric_limits<int8_t>::min());
+                    add_imm(X_DEFAULT_ADDR, aux_reg_out,
+                            out_typesize_ * (m * LDD_ + n * brg.ld_block),
+                            X_TMP_0); //addr
+                    st1b(vmm.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
+                    break;
                 case data_type::u8:
                     umin(vmm.s, std::numeric_limits<uint8_t>::max());
                     add_imm(X_DEFAULT_ADDR, aux_reg_out,

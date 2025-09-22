@@ -91,6 +91,13 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     const auto &p = attr()->post_ops_;
     const int sum_idx = p.find(primitive_kind::sum);
     with_sum = (sum_idx != -1);
+    // Check if postop sum datatype is supported
+    if (with_sum) {
+        const auto &sum_po = p.entry_[sum_idx];
+        if (!one_of(sum_po.sum.dt, data_type::undef, data_type::f32,
+                    data_type::s32, data_type::u8, data_type::s8))
+            return status::unimplemented;
+    }
     sum_scale = with_sum ? p.entry_[sum_idx].sum.scale : 0.0;
 
     ic_chunks = div_up(jcp_.nb_ic, jcp_.nb_ic_blocking);

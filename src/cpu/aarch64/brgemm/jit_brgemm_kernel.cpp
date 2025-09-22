@@ -31,29 +31,9 @@
 #define GET_OFF(field) (uint32_t) offsetof(brgemm_kernel_params_t, field)
 #define GET_OFF_BATCH_ELEMENT(field) \
     (uint32_t) offsetof(brgemm_batch_element_t, field)
-#define LD_MUL_VL(mn, op, mask, addr, off, size) \
-    { \
-        const int mul_vl_len = (cpu_sveLen / 4) * (size); \
-        const int off_mod = (off) % mul_vl_len; \
-        const int off_mul_vl = (off) / mul_vl_len; \
-        if (off_mod == 0 && -8 <= off_mul_vl && off_mul_vl <= 7) \
-            mn(op, (mask) / T_z, ptr(addr, off_mul_vl, MUL_VL)); \
-        else \
-            mn(op, (mask) / T_z, \
-                    ptr(addr_off(addr, off, X_DEFAULT_ADDR, X_TMP_0))); \
-    }
-#define ST_MUL_VL(mn, op, mask, addr, off, size) \
-    { \
-        const int mul_vl_len = (cpu_sveLen / 4) * (size); \
-        const int off_mod = (off) % mul_vl_len; \
-        const int off_mul_vl = (off) / mul_vl_len; \
-        if (off_mod == 0 && -8 <= off_mul_vl && off_mul_vl <= 7) \
-            mn(op, mask, ptr(addr, off_mul_vl, MUL_VL)); \
-        else \
-            mn(op, mask, ptr(addr_off(addr, off, X_DEFAULT_ADDR, X_TMP_0))); \
-    }
+
 #define LDR_IMM(reg, addr, off) \
-    { \
+    do { \
         const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
         if (((off)&IMM12_MASK) == 0) { \
             ldr(reg, ptr(addr, off)); \
@@ -61,9 +41,9 @@
             add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
             ldr(reg, ptr(X_DEFAULT_ADDR)); \
         } \
-    }
+    } while (0)
 #define STR_IMM(reg, addr, off) \
-    { \
+    do { \
         const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
         if (((off)&IMM12_MASK) == 0) { \
             str(reg, ptr(addr, off)); \
@@ -71,7 +51,7 @@
             add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
             str(reg, ptr(X_DEFAULT_ADDR)); \
         } \
-    }
+    } while (0)
 
 using namespace Xbyak_aarch64;
 
@@ -518,14 +498,7 @@ void jit_brgemm_kernel_t::cvt2ps(data_type_t type_in, const ZReg zmm_in,
             break;
         }
         case data_type::s8:
-            if (mask_flag)
-                set_preg(P_TMP.b, brg.ldb_tail, X_TMP_0, X_TMP_1);
-            else
-                set_preg(P_TMP.b, brg.ld_block, X_TMP_0, X_TMP_1);
-            add_imm(X_DEFAULT_ADDR, addr, offset - base_offset, X_TMP_0);
-            ld1b(z_tmp_1().b, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
-            sunpklo(z_tmp_1().h, z_tmp_1().b);
-            sunpklo(z_tmp_1().s, z_tmp_1().h);
+            LD_MUL_VL(ld1sb, z_tmp_1().s, mask, addr, offset - base_offset, 1);
             if (store) // Merging
                 mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
             break;
@@ -947,6 +920,9 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
             = brg.beta == 1.f && IMPLICATION(brg.is_int8, brg.alpha == 1.0f);
     const bool dq2ps_required = brg.is_int8
             && IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd);
+    // This flag tracks whether the conversion has happened, since it must be
+    // done only once despite all scales and bias applications requiring it.
+    bool dq2ps_cvt_done = false;
 
     if (brg.with_scales) {
         add_imm(X_DEFAULT_ADDR, X_SP, reg_aux_scales_offs_, X_TMP_0);
@@ -963,10 +939,13 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
             }
             for (int bd = 0; bd < bd_block; bd++) {
                 auto vmm = accm(ld_block2, bd, ld);
-                if (dq2ps_required) { scvtf(vmm.s, P_ALL_ONE / T_m, vmm.s); }
+                if (dq2ps_required && !dq2ps_cvt_done) {
+                    scvtf(vmm.s, P_ALL_ONE / T_m, vmm.s);
+                }
                 fmul(vmm.s, vmm.s, vmm_scales.s);
             }
         }
+        dq2ps_cvt_done = true;
     }
 
     if (brg.with_bias) { LDR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_); }
@@ -986,9 +965,10 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
             cvt2ps(brg.dt_bias, zmm_bias, x_addr, is_ld_tail, false, k_mask,
                     offset, base_offset);
         }
+
         for (int bd = 0; bd < bd_block; bd++) {
             auto zmm = accm(ld_block2, bd, ld);
-            if (dq2ps_required && !brg.with_scales) {
+            if (dq2ps_required && !dq2ps_cvt_done) {
                 scvtf(zmm.s, P_ALL_ONE / T_m, zmm.s);
             }
             if (brg.with_bias) { fadd(zmm.s, zmm.s, zmm_bias.s); }
@@ -1223,7 +1203,8 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
             brg.zp_type_a, brg.zp_type_b, brg.zp_type_c);
     const bool are_post_ops_applicable = one_of(true, brg.with_eltwise,
             brg.with_binary, brg.with_scales, brg.with_bias, brg.with_sum,
-            brg.dt_d != brg.dt_c, brg.req_s8s8_compensation, has_zero_points);
+            brg.dt_d != brg.dt_c, brg.with_dst_scales,
+            brg.req_s8s8_compensation, has_zero_points);
     const bool need_to_apply_alpha_beta = brg.beta != 0.f || brg.alpha != 1.f;
     int bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
 

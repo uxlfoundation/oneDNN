@@ -265,10 +265,10 @@ public:
         sanity_check();
     }
 
-    layout_t(const type_t &type, const std::vector<dim_t> &dims,
+    layout_t(const type_t &type, const std::vector<int64_t> &dims,
             const expr_t &offset = 0, bool do_normalize = true)
         : type_(type), ndims_(into<dim_idx_t>(dims.size())), offset_(offset) {
-        dim_t stride = 1;
+        int64_t stride = 1;
         for (int64_t i = ndims_ - 1; i >= 0; i--) {
             blocks_.emplace_back(i, dims[i], stride);
             stride *= dims[i];
@@ -350,8 +350,8 @@ public:
     }
 
     // Number of elements in the layout
-    dim_t elems(const pvar_t &dim = {}) const {
-        dim_t ret = 1;
+    int64_t elems(const pvar_t &dim = {}) const {
+        int64_t ret = 1;
         for (auto &b : blocks_) {
             if (!dim.is_undef() && b.dim != dim) continue;
             ret *= b.block;
@@ -372,7 +372,7 @@ public:
 
             // Do not use modulus for outermost blocks.
             auto i = is_outermost(b) ? idx : (idx % b.block);
-            off = i * dim_t(b.stride) + off;
+            off = i * int64_t(b.stride) + off;
             idx /= b.block;
         }
         if (ignore_offset) return expr_cast<T>(off);
@@ -391,7 +391,7 @@ public:
     // Returns the maximum inner subtile containing less than max elements. This
     // tile is dense within the layout when is_dense is true and perfectly
     // subdivides the layout when perfectly_divides is true.
-    tile_t max_subtile(dim_t max, bool is_dense = true,
+    tile_t max_subtile(int64_t max, bool is_dense = true,
             bool perfectly_divides = true) const;
 
     stride_t stride(const pvar_t &dim, int dim_block_idx = 0) const {
@@ -534,7 +534,7 @@ public:
 
     // Returns a packed layout where all blocks are contiguous, without gaps.
     layout_t make_dense() const {
-        dim_t stride = 1;
+        int64_t stride = 1;
         auto new_blocks = blocks_;
         for (auto &b : new_blocks) {
             b.stride = stride;
@@ -547,7 +547,7 @@ public:
     // block0 - inner block size.
     // block1 - outer block size.
     layout_t split_block(
-            const layout_block_t &b, dim_t block0, dim_t block1) const;
+            const layout_block_t &b, int64_t block0, int64_t block1) const;
 
     // Iterates through tiles of the layout, calling `f` with relative offsets
     // for each tile. The iteration order is defined by the layout blocks -
@@ -559,12 +559,12 @@ public:
         }
 
         int nblocks = int(blocks().size());
-        std::vector<dim_t> sub_blocks(nblocks);
+        std::vector<int64_t> sub_blocks(nblocks);
         for (int i = 0; i < nblocks; i++)
             sub_blocks[i] = blocks()[i].block;
 
         for (auto &d : tile) {
-            dim_t dim = tile[d];
+            int64_t dim = tile[d];
             for (auto &b : blocks()) {
                 if (b.dim != d) continue;
                 auto block_idx = get_idx(b);
@@ -581,14 +581,14 @@ public:
 
         int ntiles = int(elems() / tile.elems());
 
-        std::vector<dim_t> sub_block_idxs(nblocks);
+        std::vector<int64_t> sub_block_idxs(nblocks);
         for (int i = 0; i < ntiles; i++) {
             // Convert sub-block indices to dimension indices.
             tile_t dims;
             icoord_t start;
             for (int j = 0; j < nblocks; j++) {
                 auto &b = blocks()[j];
-                dim_t k = sub_block_idxs[j]
+                int64_t k = sub_block_idxs[j]
                         * (blocks()[j].block / sub_blocks[j]);
                 start[b.dim] += dims[b.dim] * k;
                 dims[b.dim] *= b.block;

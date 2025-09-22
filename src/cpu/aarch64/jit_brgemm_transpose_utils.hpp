@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -140,10 +141,7 @@ struct jit_brgemm_trans_to_vnni_t {
         dim_t current_col_size, current_row_size;
     };
 
-    typedef enum matrix_to_transform {
-        matrix_B,
-        matrix_C
-    } matrix_to_transform_t;
+    enum matrix_to_transform_t { matrix_B, matrix_C };
 
     virtual void operator()(ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;

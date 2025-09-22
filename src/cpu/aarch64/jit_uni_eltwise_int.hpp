@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,7 +51,7 @@ struct jit_uni_eltwise_int_fwd_t : public primitive_t {
     jit_uni_eltwise_int_fwd_t(const pd_t *apd);
     ~jit_uni_eltwise_int_fwd_t();
 
-    typedef typename prec_traits_t<d_type>::type data_t;
+    using data_t = typename prec_traits_t<d_type>::type;
 
     status_t init(engine_t *engine) override;
 

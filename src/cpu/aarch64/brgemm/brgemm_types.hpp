@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
 * Copyright 2023 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,7 +28,7 @@ namespace cpu {
 namespace aarch64 {
 
 // The type defines organization of batch of matrices
-typedef enum {
+enum brgemm_batch_kind_t {
     // Undefined brgemm batch kind
     brgemm_batch_kind_undef = 0,
     // A and B arrays of pointers
@@ -38,22 +39,22 @@ typedef enum {
     brgemm_strd = 3,
     // Base address and static array of fixed offsets.
     brgemm_static_offs = 4,
-} brgemm_batch_kind_t;
+};
 
 // The type defines the storage format of matrix
-typedef enum {
+enum brgemm_layout_t {
     brgemm_layout_undef = 0,
     brgemm_col_major = 1,
     brgemm_row_major = 2,
-} brgemm_layout_t;
+};
 
-typedef enum {
+enum brgemm_broadcast_t {
     none = 0,
     per_tensor = 1,
     per_m = 2,
     per_n = 3,
     per_k = 4,
-} brgemm_broadcast_t;
+};
 
 struct brgemm_strides_t {
     // Stride between A matrices
@@ -62,29 +63,29 @@ struct brgemm_strides_t {
     dim_t stride_b;
 };
 
-typedef enum {
+enum brgemm_kernel_loop_order_t {
     brgemm_lo_default = 0,
     brgemm_lo_bl_1load,
     brgemm_lo_bl_1bcst,
-} brgemm_kernel_loop_order_t;
+};
 
-typedef enum {
+enum brgemm_kernel_prefetching_t {
     brgemm_prf_default = 1,
     brgemm_prf1,
     brgemm_prf2,
-} brgemm_kernel_prefetching_t;
+};
 
-typedef enum {
+enum brgemm_kernel_innermost_loop_t {
     brgemm_innermost_undef = 0,
     brgemm_bd_loop_innermost,
     brgemm_ld_loop_innermost,
-} brgemm_kernel_innermost_loop_t;
+};
 
-typedef enum {
+enum brgemm_kernel_hint_nt_t {
     brgemm_hint_nt_undef = 0,
     brgemm_hint_nt_false,
     brgemm_hint_nt_true,
-} brgemm_kernel_hint_nt_t;
+};
 
 struct brgemm_prf_t {
     int dist1 = -1;

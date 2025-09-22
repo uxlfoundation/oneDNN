@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,13 +24,13 @@ namespace cpu {
 namespace aarch64 {
 namespace matmul {
 
-typedef enum {
+enum jit_int8_broadcast_t {
     none = 0,
     per_tensor = 1,
     per_m = 2,
     per_n = 3,
     per_k = 4,
-} jit_int8_broadcast_t;
+};
 
 struct dyn_vals_t {
     int f = 0;

@@ -140,11 +140,11 @@ struct cpu_isa_traits<isa_all> {
 
 template <>
 struct cpu_isa_traits<asimd> {
-    typedef Xbyak_aarch64::VReg TReg;
-    typedef Xbyak_aarch64::VReg16B TRegB;
-    typedef Xbyak_aarch64::VReg8H TRegH;
-    typedef Xbyak_aarch64::VReg4S TRegS;
-    typedef Xbyak_aarch64::VReg2D TRegD;
+    using TReg = Xbyak_aarch64::VReg;
+    using TRegB = Xbyak_aarch64::VReg16B;
+    using TRegH = Xbyak_aarch64::VReg8H;
+    using TRegS = Xbyak_aarch64::VReg4S;
+    using TRegD = Xbyak_aarch64::VReg2D;
     static constexpr int vlen_shift = 4;
     static constexpr int vlen = 16;
     static constexpr int n_vregs = 32;

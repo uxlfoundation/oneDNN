@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2016-2023 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -48,9 +49,9 @@ namespace aarch64 {
 // TODO: move this to jit_generator class?
 namespace {
 
-typedef enum {
+enum max_code_size_t {
     MAX_CODE_SIZE = 256 * 1024,
-} max_code_size_t;
+};
 
 // Callee-saved registers
 constexpr Xbyak_aarch64::Operand::Code abi_save_gpr_regs[]

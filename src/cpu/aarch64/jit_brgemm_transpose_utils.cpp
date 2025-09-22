@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2024-2025 FUJITSU LIMITED
 * Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,18 +24,6 @@
 #include "cpu/aarch64/jit_generator.hpp"
 
 #include "cpu/aarch64/jit_brgemm_transpose_utils.hpp"
-
-#define LD_MUL_VL(mn, op, mask, addr, off, size) \
-    { \
-        const int mul_vl_len = (cpu_sveLen / 4) * (size); \
-        const int off_mod = (off) % mul_vl_len; \
-        const int off_mul_vl = (off) / mul_vl_len; \
-        if (off_mod == 0 && -8 <= off_mul_vl && off_mul_vl <= 7) \
-            mn(op, (mask) / T_z, ptr(addr, off_mul_vl, MUL_VL)); \
-        else \
-            mn(op, (mask) / T_z, \
-                    ptr(addr_off(addr, off, X_DEFAULT_ADDR, X_TMP_0))); \
-    }
 
 namespace dnnl {
 namespace impl {

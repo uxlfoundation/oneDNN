@@ -21,6 +21,7 @@
 #include "common/sdpa_utils.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/ref_io_helper.hpp"
 #include "gemmstone/microkernel_provider.hpp"
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
@@ -754,12 +755,30 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
     compute::kernel_arg_list_t arg_list;
+
     const memory_desc_wrapper scale_mdw(pd()->scale_md());
+    float scalar_scale = 1.f;
+    float inv_scalar_scale = 1.f;
+    if (pd()->with_host_scale()) {
+        auto scalar_storage = utils::downcast<
+                const dnnl::impl::host_scalar_memory_storage_t *>(&scale);
+        scalar_storage->get_scalar_value(
+                &scalar_scale, scale_mdw.data_type_size());
+        scalar_scale = dnnl::impl::cpu::io::load_float_value(
+                pd()->scale_md()->data_type, &scalar_scale, 0);
+        inv_scalar_scale = 1. / scalar_scale;
+    }
+
     arg_list.append(key);
     arg_list.append(qry);
     arg_list.append(val);
     arg_list.append(dst);
-    arg_list.append(scale);
+    if (pd()->with_host_scale()) {
+        arg_list.append(scalar_scale);
+        arg_list.append(inv_scalar_scale);
+    } else {
+        arg_list.append(scale);
+    }
     arg_list.append((int)D);
     arg_list.append((int)K);
     arg_list.append((int)Q);

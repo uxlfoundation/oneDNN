@@ -1257,6 +1257,27 @@ type_t get_accumulation_type(
     return type_t::f32();
 }
 
+layout_t make_with_block(const layout_t &base, const layout_t &inner) {
+    gpu_assert(base.type() == inner.type());
+    auto cur_tile = base.tile();
+    tile_t rem_tile;
+    for (auto &d : cur_tile)
+        rem_tile[d] = ir_utils::safe_divide(cur_tile.at(d), inner.elems(d));
+    auto ret = base.with(inner.blocks());
+    for (auto &b : base.blocks()) {
+        auto &d = cur_tile[b.dim];
+        auto &r = rem_tile[b.dim];
+        d = ir_utils::safe_divide(d, b.block);
+        if (r <= d) continue;
+        auto blk = ir_utils::safe_divide(r, d);
+        ret = ret.with_block({b.dim, blk});
+        r = ir_utils::safe_divide(r, blk);
+    }
+    for (auto &d : rem_tile)
+        gpu_assert(rem_tile[d] == 1);
+    return ret;
+}
+
 struct fma_layout_hint_t {
     int vec_dim_idx = -1;
 
@@ -1343,7 +1364,7 @@ struct fma_context_t {
             auto bmnk_layout
                     = mapper.map_to_bmnk(abc, bmnks, layout).with(type);
             auto fma_layout
-                    = bmnk_layout.make_with_block(layout_t(type, blocks));
+                    = make_with_block(bmnk_layout, layout_t(type, blocks));
             auto abc_layout
                     = mapper.map_from_bmnk(abc, bmnks, fma_layout, layout);
             if (cvt_f16) return abc_layout.with(type_t::f16());
@@ -1361,8 +1382,8 @@ struct fma_context_t {
             blocks.emplace_back(hint.vec_dim_idx, vec_size);
             auto bmnks = get_bmnk_kinds(abc, /*with_batch=*/true);
             auto bmnk_layout = mapper.map_to_bmnk(abc, bmnks, ret);
-            auto fma_layout
-                    = bmnk_layout.make_with_block(layout_t(ret.type(), blocks));
+            auto fma_layout = make_with_block(
+                    bmnk_layout, layout_t(ret.type(), blocks));
             auto abc_layout = mapper.map_from_bmnk(abc, bmnks, fma_layout, ret);
             if (layout.type().is_x8()) {
                 gpu_assert(abc_layout.type().is_s16());
@@ -1861,7 +1882,7 @@ layout_t get_c_layout(const layout_t &a_layout, const layout_t &b_layout,
     }
 
     layout_t c_layout(c_blk_layout.type(), blocks, 0, c_blk_layout.ndims());
-    c_layout = c_layout.make_with_block(c_blk_layout);
+    c_layout = make_with_block(c_layout, c_blk_layout);
     return c_layout;
 }
 

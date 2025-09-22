@@ -549,27 +549,6 @@ public:
         return with(new_blocks);
     }
 
-    layout_t make_with_block(const layout_t &inner) const {
-        gpu_assert(type() == inner.type());
-        auto cur_tile = tile();
-        tile_t rem_tile;
-        for (auto &d : cur_tile)
-            rem_tile[d] = ir_utils::safe_divide(cur_tile.at(d), inner.elems(d));
-        auto ret = with(inner.blocks_);
-        for (auto &b : blocks()) {
-            auto &d = cur_tile[b.dim];
-            auto &r = rem_tile[b.dim];
-            d = ir_utils::safe_divide(d, b.block);
-            if (r <= d) continue;
-            auto blk = ir_utils::safe_divide(r, d);
-            ret = ret.with_block({b.dim, blk});
-            r = ir_utils::safe_divide(r, blk);
-        }
-        for (auto &d : rem_tile)
-            gpu_assert(rem_tile[d] == 1);
-        return ret;
-    }
-
     // Returns an equivalent layout where the specified block is split into two.
     // block0 - inner block size.
     // block1 - outer block size.

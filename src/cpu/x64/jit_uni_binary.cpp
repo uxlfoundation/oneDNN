@@ -1,4 +1,4 @@
-/*******************************************************************************
+﻿/*******************************************************************************
 * Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -926,15 +926,8 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
     const bool postops_per_w_broadcast_exists
             = pd()->get_conf().postops_per_w_broadcast_exists;
     const dim_t MB = dims[0];
-    dim_t C = 1;
-    dim_t SP = 1;
-    if (postops_per_w_broadcast_exists) {
-        C = (ndims >= 3) ? dims[1] * dims[2] : 1;
-        SP = (ndims >= 4) ? utils::array_product(dims + 3, ndims - 3) : 1;
-    } else {
-        C = (ndims >= 2) ? dims[1] : 1;
-        SP = (ndims >= 3) ? utils::array_product(dims + 2, ndims - 2) : 1;
-    }
+    dim_t C = (ndims >= 2) ? dims[1] : 1;
+    dim_t SP = (ndims >= 3) ? utils::array_product(dims + 2, ndims - 2) : 1;
 
     const auto &bcast_dims = pd()->broadcast_dims();
 
@@ -1022,6 +1015,22 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
                 default: return mb * nelems_slice_src1 + c;
             }
         };
+
+        const auto &post_ops = pd()->attr()->post_ops_;
+        const auto &rhs_md = post_ops.entry_[0].binary.src1_desc;
+        const memory_desc_wrapper rhs_md_wrap(&rhs_md);
+        dim_t rhs_len = rhs_md_wrap.nelems();
+
+        dim_t expanded_len = simd_w + (simd_w % rhs_len);
+        std::vector<float> expanded_rhs(expanded_len);
+
+        const float *orig_rhs = reinterpret_cast<const float *>(
+                post_ops_binary_rhs_arg_vec[0]);
+        for (dim_t i = 0; i < expanded_len; ++i) {
+            expanded_rhs[i] = orig_rhs[i % rhs_len];
+        }
+        std::vector<const void *> expanded_post_ops_binary_rhs_arg_vec
+                = {expanded_rhs.data()};
 
         // Compute strategy:
         // Each line of spatial is individual, parallel over MB and C.

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2022 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -43,11 +43,12 @@ namespace impl {
 
 nested_scratchpad_t::nested_scratchpad_t(const exec_ctx_t &master_ctx, int key,
         const std::shared_ptr<primitive_t> &nested_p) {
-    auto scratchpad = master_ctx.get_scratchpad_grantor();
-    scratchpad_mem_storage_ = scratchpad.get_memory_storage(key);
+    auto master_grantor = master_ctx.get_scratchpad_grantor();
+    scratchpad_mem_storage_ = master_grantor.get_memory_storage(key);
     grantor_ = utils::make_unique<memory_tracking::grantor_t>(
             nested_p->pd()->scratchpad_registry().grantor(
-                    scratchpad_mem_storage_.get(), master_ctx));
+                    scratchpad_mem_storage_.get(),
+                    master_grantor.get_base_mem_storage_host_ptr()));
 #ifdef DNNL_ENABLE_MEM_DEBUG
     if (scratchpad_debug::is_protect_scratchpad()) {
         scratchpad_debug::protect_scratchpad_buffer(

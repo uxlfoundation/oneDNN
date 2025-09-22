@@ -140,7 +140,8 @@ void *exec_ctx_t::host_ptr(
     return host_ptr(mem_storage);
 }
 
-void *exec_ctx_t::host_ptr(const memory_storage_t *mem_storage) const {
+void *exec_ctx_t::host_ptr(
+        const memory_storage_t *mem_storage, bool require_host_ptr) const {
     if (!mem_storage || mem_storage->is_null()) return nullptr;
 
     void *handle = mem_storage->root_storage()->data_handle();
@@ -150,8 +151,7 @@ void *exec_ctx_t::host_ptr(const memory_storage_t *mem_storage) const {
         base_ptr = reinterpret_cast<char *>(base_ptr)
                 + mem_storage->base_offset();
     } else {
-        assert(mem_storage->is_host_accessible());
-        base_ptr = handle;
+        base_ptr = require_host_ptr ? nullptr : handle;
     }
     return base_ptr;
 }

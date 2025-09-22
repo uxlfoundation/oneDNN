@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -98,7 +98,14 @@ struct exec_ctx_t {
 
     void *host_ptr(int arg, bool do_zeropad = false, status_t *status = nullptr,
             int index = 0) const;
-    void *host_ptr(const memory_storage_t *mem_storage) const;
+    // Returns a mapped pointer for a provided `mem_storage`.
+    // If `memory_mapping_` presents, returns a host_ptr, otherwise, returns
+    // a storage handle.
+    //
+    // `require_host_ptr` forces to return a host_ptr, and if it's not
+    // available, the function returns `nullptr`.
+    void *host_ptr(const memory_storage_t *mem_storage,
+            bool require_host_ptr = false) const;
 
     void *map_memory_storage(const memory_storage_t *storage, stream_t *stream,
             size_t size) const;
@@ -143,6 +150,15 @@ private:
     stream_t *stream_;
     exec_args_t args_;
 
+    // `memory_mapping_` is a bridge between memory storages and their mapped
+    // counterparts.
+    // Key is a memory storage handle, value is a mapped pointer.
+    // Mapping is kept in the context for two reasons:
+    // * Provide a mapped pointer to a grantor object. The latter will be
+    //   assigned to the current context.
+    // * Provide mapped pointers to arguments that require zero-padding at the
+    //   end of execution.
+    // Methods associated with mapping serve the same purpose.
     std::unordered_map<void *, void *> memory_mapping_;
     const resource_mapper_t *resource_mapper_ = nullptr;
     const memory_tracking::grantor_t *scratchpad_grantor_ = nullptr;

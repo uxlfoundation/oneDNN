@@ -812,13 +812,24 @@ std::string prefetch_plan_t::str() const {
 
 bool x2r_plan_t::can_split(abc_kind_t abc, int factor) const {
     if (factor == 1) return true;
+
+    auto has_outer_block
+            = [](const layout_t &layout, dim_t block, const pvar_t &dim = {}) {
+                  if (block == 1) return true;
+                  if (layout.blocks().empty()) return false;
+                  auto &b = layout.blocks().back();
+                  if (!dim.is_undef() && b.dim != dim) return false;
+                  if (b.block % block != 0) return false;
+                  return true;
+              };
+
     bool is_a = (abc == abc_kind_t::a);
     auto &load = (is_a ? a_load : b_load);
     auto &reorder = (is_a ? a_reorder : b_reorder);
     auto &layout = (is_a ? a_layout : b_layout);
-    if (!layout.has_outer_block(factor)) return false;
+    if (!has_outer_block(layout, factor)) return false;
     auto &dim = layout.blocks().back().dim;
-    if (reorder && !reorder.src.has_outer_block(factor, dim)) return false;
+    if (reorder && !has_outer_block(reorder.src, factor, dim)) return false;
     if (!load.can_split(factor)) return false;
     if (!x_reduce.can_split(factor)) return false;
     return true;

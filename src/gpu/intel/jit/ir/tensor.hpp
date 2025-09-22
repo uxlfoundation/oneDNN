@@ -615,15 +615,6 @@ public:
         }
     }
 
-    bool has_outer_block(dim_t block, const pvar_t &dim = {}) const {
-        if (block == 1) return true;
-        if (blocks().empty()) return false;
-        auto &b = blocks().back();
-        if (!dim.is_undef() && b.dim != dim) return false;
-        if (b.block % block != 0) return false;
-        return true;
-    }
-
     size_t get_idx(const layout_block_t &b) const {
         gpu_assert(&blocks().front() <= &b && &b <= &blocks().back());
         return &b - &blocks().front();

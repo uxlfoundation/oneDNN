@@ -2158,7 +2158,8 @@ private:
         if (slm_layout == layout_t()) return plan_status_t::invalid_slm_layout;
         auto thr_tile_coord = split(slm_layout, tg, &grid);
         auto abs_thr_tile_coord = tg_view.vtile_coord().sub(thr_tile_coord);
-        auto slm_thr_layout = slm_layout.sub(thr_tile_coord);
+        auto slm_thr_layout
+                = slm_layout.sub(thr_tile_coord.tile, thr_tile_coord.coord);
         auto slm_thr_view = view_t(slm_thr_layout);
         auto thr_view = tg_view.create_sub_view(thr_tile_coord);
         auto load_params = get_send_params(cfg_.exec_cfg(), send_op_t::load,

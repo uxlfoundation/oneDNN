@@ -156,12 +156,9 @@ public:
         ret.info_ = ret.info_.create_sub_tensor(
                 tile_coord.tile, tile_coord.coord);
         if (!reg_layout_.is_empty()) {
-            if (needs_reduction()) {
-                tile_coord_t reduce_tile(_tile_coord.tile, tile_coord.coord);
-                ret.reg_layout_ = ret.reg_layout_.sub(reduce_tile);
-            } else {
-                ret.reg_layout_ = ret.reg_layout_.sub(tile_coord);
-            }
+            ret.reg_layout_ = ret.reg_layout_.sub(
+                    needs_reduction() ? _tile_coord.tile : tile_coord.tile,
+                    tile_coord.coord);
         }
         ret.allocs_.clear();
         return ret;
@@ -901,9 +898,8 @@ private:
 
         // Iterate by tiles and apply post-ops.
         c_mem_view_.for_each_tile(base_tile, [&](const icoord_t &start) {
-            tile_coord_t tile_coord(base_tile, start);
-            auto c_tile_layout = c_reg_layout.sub(tile_coord);
-            build_tile(tile_coord, c_tile_layout, c_reg_buf);
+            auto c_tile_layout = c_reg_layout.sub(base_tile, start);
+            build_tile({base_tile, start}, c_tile_layout, c_reg_buf);
         });
 
         // TODO: Generalize the condition. Iterate through output tensor masks

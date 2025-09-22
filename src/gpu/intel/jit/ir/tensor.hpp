@@ -525,10 +525,6 @@ public:
     // possible to tile it into 3x2 sub-tensors.
     layout_t sub(const tile_t &tile, const coord_t &start = {}) const;
 
-    layout_t sub(const tile_coord_t &tile_coord) const {
-        return sub(tile_coord.tile, tile_coord.coord);
-    }
-
     bool is_dense() const {
         stride_t stride = 1;
         for (auto &b : blocks_) {

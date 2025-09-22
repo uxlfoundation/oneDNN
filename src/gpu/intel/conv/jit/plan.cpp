@@ -2354,8 +2354,7 @@ private:
         auto &bmnk_mapper = gemm_schedule_.bmnk_mapper();
         object_map_t<expr_t, pvar_t> k_vars;
         auto k_sub_layout = [&](abc_kind_t abc_kind, const layout_t &l) {
-            layout_t k_layout = layout_t(
-                    type_t::u8(), std::vector<dim_t>(layout_t::max_ndims, 1));
+            layout_t k_layout = layout_t(type_t::u8());
             for (auto &b : l.blocks()) {
                 auto bmnk_kind = bmnk_mapper.bmnk_kind(abc_kind, b.dim);
                 if (bmnk_kind != bmnk_kind_t::k) continue;

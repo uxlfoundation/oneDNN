@@ -261,8 +261,6 @@ std::vector<layout_block_t> normalize_blocks(
 
 class layout_t {
 public:
-    static const dim_idx_t max_ndims = 16;
-
     layout_t() : type_(type_t::undef()), ndims_(0), offset_(0) {
         sanity_check();
     }
@@ -331,23 +329,23 @@ public:
         }
 
         auto ret = with(new_blocks);
-        if (ret.with_ndims()) {
+        if (ret.has_ndims()) {
             if (block.dim.index() == ret.ndims()) ret.ndims_++;
-            gpu_assert(block.dim.index() < ret.ndims());
+            gpu_assert(has_ndims());
         }
         return ret;
     }
 
     bool is_empty() const {
-        if (with_ndims()) {
+        if (has_ndims()) {
             if (ndims() == 0) gpu_assert(blocks_.empty());
             return ndims() == 0;
         }
         return blocks_.empty();
     }
-    bool with_ndims() const { return ndims_ != dim_idx::invalid; }
+
     size_t ndims(bool check_invalid = true) const {
-        if (check_invalid) gpu_assert(with_ndims());
+        if (check_invalid) gpu_assert(has_ndims());
         return ndims_;
     }
 
@@ -624,6 +622,9 @@ public:
     }
 
 private:
+    static constexpr size_t max_ndims = 16;
+    bool has_ndims() const { return ndims_ < max_ndims; }
+
     void sanity_check() const;
 
     // Data type of the layout.

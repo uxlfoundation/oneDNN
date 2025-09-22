@@ -460,7 +460,7 @@ void layout_t::sanity_check() const {
                     << " is incorrectly sorted when compared with "
                     << blocks_[i - 1];
     }
-    if (with_ndims()) gpu_assert(ndims() <= max_ndims);
+    gpu_assert(has_ndims() || ndims_ == dim_idx::invalid);
 }
 
 expr_t grid_splitter_t::pop_block(dim_t size) {

@@ -36,7 +36,6 @@ layout_t insert_dimension(const layout_t &layout, const pvar_t &dim) {
 }
 
 layout_t remove_size_1_dimension(const layout_t &layout, const pvar_t &dim) {
-    gpu_assert(layout.with_ndims());
     gpu_assert(dim.index() < layout.ndims());
     gpu_assert(layout.elems(dim) == 1);
     dim_assignment_t a(layout.ndims(), layout.ndims() - 1);

@@ -2145,7 +2145,7 @@ private:
         slm_layout = get_slm_layout(
                 fma_ctx_, abc, gemm_schedule_.bmnk_mapper(), tg_view, tg);
         if (slm_layout == layout_t()) return plan_status_t::invalid_slm_layout;
-        auto thr_tile_coord = slm_layout.split(tg, &grid);
+        auto thr_tile_coord = split(slm_layout, tg, &grid);
         auto abs_thr_tile_coord = tg_view.vtile_coord().sub(thr_tile_coord);
         auto slm_thr_layout = slm_layout.sub(thr_tile_coord);
         auto slm_thr_view = view_t(slm_thr_layout);

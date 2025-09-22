@@ -926,7 +926,7 @@ class split_bounds_t {
 public:
     split_bounds_t(const layout_t &layout, int factor) {
         gpu_assert(is_zero(layout.offset())) << layout;
-        auto tile_coord = layout.split_exact(factor);
+        auto tile_coord = split_exact(layout, factor);
         if (tile_coord.is_invalid()) return;
 
         layout.for_each_tile(tile_coord.tile, [&](const icoord_t &start) {

@@ -555,123 +555,6 @@ public:
     layout_t split_block(
             const layout_block_t &b, dim_t block0, dim_t block1) const;
 
-    tile_coord_t split(const grid_info_t &grid_info,
-            grid_info_t *out_grid = nullptr) const {
-        tile_coord_t min_tile_coord = tile_coord_t::invalid();
-        std::vector<dim_t> cur_dims(grid_info.ndims(), 1);
-
-        for (int iter = 0; iter < grid_info.elems(); iter++) {
-            for (dim_idx_t i = 0; i < grid_info.ndims(); i++) {
-                if (++cur_dims[i] <= grid_info.dim(i)) break;
-                cur_dims[i] = 1;
-            }
-            auto sub_grid = grid_info.resize(cur_dims);
-            auto tile_coord = split_exact(sub_grid);
-            if (tile_coord.is_invalid()) continue;
-            if (min_tile_coord.is_invalid()
-                    || tile_coord.elems() < min_tile_coord.elems()) {
-                min_tile_coord = std::move(tile_coord);
-                if (out_grid) { *out_grid = std::move(sub_grid); }
-            }
-        }
-        return min_tile_coord;
-    }
-
-    tile_coord_t split_exact(const grid_info_t &grid) const {
-        tile_t tile;
-        if (elems() % grid.elems() != 0) return tile_coord_t::invalid();
-
-        dim_t cur_elems_per_tile = 1;
-        dim_t elems_per_tile = elems() / grid.elems();
-        for (auto &b : blocks()) {
-            dim_t block
-                    = std::min(b.block, elems_per_tile / cur_elems_per_tile);
-            tile[b.dim] = tile.get(b.dim, 1) * block;
-            cur_elems_per_tile *= block;
-        }
-        if (cur_elems_per_tile != elems_per_tile)
-            return tile_coord_t::invalid();
-
-        return split(tile, grid);
-    }
-
-    tile_coord_t split_exact(int factor) const {
-        if (factor == 1) return tile_coord_t(tile());
-        if (elems() % factor != 0) return tile_coord_t::invalid();
-        dim_t cur_elems = 1;
-        dim_t split_elems = elems() / factor;
-        std::vector<layout_block_t> split_blocks;
-        for (auto &b : blocks()) {
-            if (cur_elems * b.block > split_elems) {
-                if (split_elems % cur_elems != 0)
-                    return tile_coord_t::invalid();
-                auto bb = b;
-                bb.block = split_elems / cur_elems;
-                if (b.block % bb.block != 0) return tile_coord_t::invalid();
-                split_blocks.push_back(bb);
-            } else {
-                split_blocks.push_back(b);
-            }
-            cur_elems *= split_blocks.back().block;
-            if (cur_elems == split_elems) break;
-        }
-        tile_t split_tile;
-        for (auto &b : split_blocks)
-            split_tile[b.dim] = split_tile.get(b.dim, 1) * b.block;
-        return tile_coord_t(split_tile);
-    }
-
-    tile_coord_t split(const tile_t &tile, const grid_info_t &grid,
-            std::vector<layout_block_t> *outer_blocks = nullptr) const {
-        if (outer_blocks) outer_blocks->resize(0);
-
-        if (grid.elems() == 1) return tile_coord_t(tile);
-
-        dim_t total_elems = elems();
-        dim_t tile_elems = tile.elems();
-
-        grid_splitter_t grid_splitter(grid);
-        gpu_assert(tile_elems * grid.elems() == total_elems)
-                << "Tile/grid dimensions do not match.";
-        MAYBE_UNUSED(total_elems);
-        MAYBE_UNUSED(tile_elems);
-
-        tile_t dims;
-        coord_t start;
-        auto rem_tile = tile;
-        for (auto &b : blocks()) {
-            if (b.block == 1) continue;
-
-            dim_t &e = rem_tile[b.dim];
-            if (e > 1) {
-                if (e % b.block == 0) {
-                    e /= b.block;
-                } else if (b.block % e == 0) {
-                    auto tmp_layout = split_block(b, e, b.block / e);
-                    return tmp_layout.split(tile, grid, outer_blocks);
-                } else {
-                    return tile_coord_t::invalid();
-                }
-            } else {
-                dim_t next_chunk
-                        = math::gcd(b.block, grid_splitter.cur_block());
-                if (b.block == next_chunk) {
-                    auto idx = grid_splitter.pop_block(next_chunk);
-                    start[b.dim] += idx * dims[b.dim];
-                    if (outer_blocks) outer_blocks->push_back(b);
-                } else if (b.block % next_chunk == 0 && next_chunk != 1) {
-                    auto tmp_layout
-                            = split_block(b, next_chunk, b.block / next_chunk);
-                    return tmp_layout.split(tile, grid, outer_blocks);
-                } else {
-                    return tile_coord_t::invalid();
-                }
-            }
-            dims[b.dim] *= b.block;
-        }
-        return tile_coord_t(tile, start);
-    }
-
     // Iterates through tiles of the layout, calling `f` with relative offsets
     // for each tile. The iteration order is defined by the layout blocks -
     // absolute 1D offsets are increasing between callback calls.
@@ -843,6 +726,14 @@ layout_t reinterpret(const layout_t &layout, const type_t &new_type,
 bool try_reinterpret_to_wider_type(layout_t &src, layout_t &dst,
         const tile_t &tile = {}, bool do_update = true,
         int *new_size_out = nullptr);
+
+tile_coord_t split(const layout_t &layout, const grid_info_t &grid_info,
+        grid_info_t *out_grid = nullptr);
+tile_coord_t split_exact(const layout_t &layout, const grid_info_t &grid);
+tile_coord_t split_exact(const layout_t &layout, int factor);
+tile_coord_t split(const layout_t &layout, const tile_t &tile,
+        const grid_info_t &grid,
+        std::vector<layout_block_t> *outer_blocks = nullptr);
 
 memory_desc_t to_md(const layout_t &layout, const memory_desc_t &md_hint);
 
@@ -1439,7 +1330,8 @@ public:
     view_t split(const grid_info_t &grid, tile_coord_t &vtile_coord,
             grid_info_t *out_grid = nullptr) const {
         auto vlayout = create_pseudo_vlayout();
-        vtile_coord = vlayout.split(grid, out_grid);
+        vtile_coord
+                = dnnl::impl::gpu::intel::jit::split(vlayout, grid, out_grid);
         return create_sub_view(vtile_coord.tile, vtile_coord.coord);
     }
 

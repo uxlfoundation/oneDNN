@@ -51,7 +51,7 @@ inline std::string add_indent(const std::string &tag, const std::string &s) {
 }
 
 inline layout_t split(const layout_t &layout, int factor) {
-    auto tile_coord = layout.split_exact(factor);
+    auto tile_coord = split_exact(layout, factor);
     if (tile_coord.is_invalid()) return layout_t();
     return layout.sub(tile_coord.tile, tile_coord.coord);
 }

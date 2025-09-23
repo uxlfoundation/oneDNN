@@ -1432,6 +1432,31 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_gemv
             = is_gemv_applicable(bgmmc, bm_conf_utils, src_md, weights_md);
 
+    if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.isa == avx2) {
+        // AVX2 implementation has a dedicated GEMV code path optimized
+        // for the N=1 case, which is the only scenario guaranteed to
+        // perform on par or better than the GEMM implementation.
+        // For all other cases, we prefer to fall back to GEMM implementation,
+        // as it typically offers better performance as of now.
+        // However, we must ensure that GEMM can handle the data formats.
+        // If it cannot (e.g., the weights format is blocked), we use
+        // this implementation to avoid falling back to the reference one.
+
+        // IMPORTANT: Perform this check before calling functions that
+        // modify the memory descriptors.
+        const bool is_gemm_compatible
+                = IMPLICATION(src_d.format_kind() != format_kind::any,
+                          gemm_based::check_gemm_input_format(src_md))
+                && IMPLICATION(weights_d.format_kind() != format_kind::any,
+                        gemm_based::check_gemm_input_format(weights_md))
+                && IMPLICATION(dst_d.format_kind() != format_kind::any,
+                        gemm_based::check_gemm_output_format(dst_md));
+
+        VCONDCHECK_BG(!is_gemm_compatible,
+                "Fall back to GEMM implementation for cases not supported by "
+                "GEMV code path.");
+    }
+
     VCHECK_BG(bm_conf_utils.set_or_check_tags(src_md, dst_md, bias_md, helper),
             VERBOSE_UNSUPPORTED_TAG);
     VCHECK_BG(attr.set_default_formats(&dst_md), VERBOSE_UNSUPPORTED_TAG);

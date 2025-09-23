@@ -543,10 +543,14 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
     matmul_helper_t helper(src_d, weights_d, dst_d);
 
-    brg_matmul_exec_ctx_t brgmm_ctx(ctx, pd(), helper);
+    auto brgmm_ctx_ptr
+            = std::make_shared<brg_matmul_exec_ctx_t>(ctx, pd(), helper);
 
-    const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();
-    parallel(num_threads, [&](const int ithr, const int nthr) {
+    const int num_threads
+            = brgmm_ctx_ptr->get_num_threads_for_parallelization();
+    parallel(num_threads, [=](const int ithr, const int nthr) {
+        const auto &brgmm_ctx = *brgmm_ctx_ptr;
+
         const auto &bgmmc = pd()->get_brgemm_matmul_conf();
         const bool use_buffer_a
                 = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
@@ -694,8 +698,14 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         if (is_amx) { amx_tile_release(); }
     });
 
-    maybe_reduce_and_convert_partial_results_A(brgmm_ctx);
-    maybe_reduce_partial_results_and_apply_postops(brgmm_ctx);
+    // Single-threaded reductions must be put under parallel to issue a task
+    // under threadpool runtime.
+    parallel(1, [=](const int ithr, const int nthr) {
+        const auto &brgmm_ctx = *brgmm_ctx_ptr;
+
+        maybe_reduce_and_convert_partial_results_A(brgmm_ctx);
+        maybe_reduce_partial_results_and_apply_postops(brgmm_ctx);
+    });
 
     return status::success;
 }

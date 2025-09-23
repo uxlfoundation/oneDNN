@@ -20,7 +20,13 @@
 #include "graph/interface/logical_tensor.hpp"
 #include "graph/interface/partition_hashing.hpp"
 
+#include "common/verbose.hpp"
+
 using namespace dnnl::impl::graph;
+
+#define VCHECK_LOGICAL_TENSOR(cond, stat, msg, ...) \
+    VCONDCHECK(graph, create, check, logical_tensor, (cond), stat, msg, \
+            ##__VA_ARGS__)
 
 size_t logical_tensor_wrapper_t::size() const {
     if (is_strided()) {
@@ -191,10 +197,12 @@ status_t DNNL_API dnnl_graph_logical_tensor_init(
 
     // currently only supports s32 and f32 host scalar.
     if (ptype == property_type::host_scalar) {
-        if (!utils::one_of(dtype, data_type::s32, data_type::f32)
-                || ndims != 0) {
-            return status::invalid_arguments;
-        }
+        VCHECK_LOGICAL_TENSOR(ndims == 0, status::invalid_arguments,
+                "host scalar tensor should have zero ndims");
+        VCHECK_LOGICAL_TENSOR(
+                utils::one_of(dtype, data_type::s32, data_type::f32),
+                status::invalid_arguments,
+                "host scalar tensor should have s32 or f32 dtype");
     }
 
     auto val = logical_tensor_t();
@@ -227,10 +235,12 @@ status_t DNNL_API dnnl_graph_logical_tensor_init_with_dims(
 
     // currently only supports s32 and f32 host scalar.
     if (ptype == property_type::host_scalar) {
-        if (!utils::one_of(dtype, data_type::s32, data_type::f32)
-                || ndims != 0) {
-            return status::invalid_arguments;
-        }
+        VCHECK_LOGICAL_TENSOR(ndims == 0, status::invalid_arguments,
+                "host scalar tensor should have zero ndims");
+        VCHECK_LOGICAL_TENSOR(
+                utils::one_of(dtype, data_type::s32, data_type::f32),
+                status::invalid_arguments,
+                "host scalar tensor should have s32 or f32 dtype");
     }
 
     auto val = logical_tensor_t();
@@ -277,10 +287,12 @@ status_t DNNL_API dnnl_graph_logical_tensor_init_with_strides(
 
     // currently only supports s32 and f32 host scalar.
     if (ptype == property_type::host_scalar) {
-        if (!utils::one_of(dtype, data_type::s32, data_type::f32)
-                || ndims != 0) {
-            return status::invalid_arguments;
-        }
+        VCHECK_LOGICAL_TENSOR(ndims == 0, status::invalid_arguments,
+                "host scalar tensor should have zero ndims");
+        VCHECK_LOGICAL_TENSOR(
+                utils::one_of(dtype, data_type::s32, data_type::f32),
+                status::invalid_arguments,
+                "host scalar tensor should have s32 or f32 dtype");
     }
 
     auto val = logical_tensor_t();

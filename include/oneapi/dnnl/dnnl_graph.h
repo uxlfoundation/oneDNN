@@ -771,6 +771,22 @@ dnnl_status_t DNNL_API dnnl_graph_set_constant_tensor_cache_capacity(
 dnnl_status_t DNNL_API dnnl_graph_get_constant_tensor_cache_capacity(
         dnnl_engine_kind_t eng_kind, size_t *size);
 
+/// Configures graph dump modes at runtime.
+///
+/// @note
+///     Enabling graph dump affects performance.
+///     This setting overrides the ONEDNN_GRAPH_DUMP environment variable.
+///
+/// @param modes Accepted comma separated (case-insensitive) tokens:
+///  - "graph": dump the whole graph before partitioning,
+///  - "subgraph": dump the subgraphs in partitions after partitioning,
+///  - "graph,subgraph": dump both the whole graph and the subgraphs,
+///  - "": an empty string disables all dumping.
+/// @returns #dnnl_invalid_arguments/#dnnl::status::invalid_arguments if the
+///     @p modes value is invalid or graph dump is disabled,
+///     and #dnnl_success/#dnnl::status::success on success.
+dnnl_status_t DNNL_API dnnl_graph_set_dump_mode(const char *modes);
+
 /// @} dnnl_graph_api_constant_tensor_cache
 
 /// @} dnnl_graph_api

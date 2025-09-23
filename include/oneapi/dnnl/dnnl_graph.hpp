@@ -1637,6 +1637,12 @@ inline size_t get_constant_tensor_cache_capacity(engine::kind kind) {
 
 /// @} dnnl_graph_api_constant_tensor_cache
 
+/// @copydoc dnnl_graph_set_dump_mode()
+inline status set_dump_mode(const std::string &modes) {
+    return static_cast<status>(dnnl_graph_set_dump_mode(modes.c_str()));
+}
+/// @} dnnl_graph_api_dump_mode
+
 } // namespace graph
 
 /// @} dnnl_graph_api

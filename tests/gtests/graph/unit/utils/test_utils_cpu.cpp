@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,6 +20,9 @@
 
 #include "utils/any.hpp"
 #include "utils/utils.hpp"
+#include "utils/verbose.hpp"
+
+#include "oneapi/dnnl/dnnl_graph.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -89,4 +92,51 @@ TEST(test_utils_utils, IffyCheckVerboseStringUser) {
     namespace utils = dnnl::impl::graph::utils;
     custom_setenv("ONEDNN_UNKTYU", "ab,c\nd\ne\nf\n", 1);
     ASSERT_NO_THROW(utils::check_verbose_string_user("UNKTYU", "a"));
+}
+
+TEST(test_utils_utils, SetGraphDumpEnv) {
+    custom_setenv("ONEDNN_GRAPH_DUMP", "subgraph", 1);
+    ASSERT_EQ(dnnl::impl::getenv_string_user("GRAPH_DUMP"), "subgraph");
+    custom_setenv("ONEDNN_GRAPH_DUMP", "graph,subgraph", 1);
+    ASSERT_EQ(dnnl::impl::getenv_string_user("GRAPH_DUMP"), "graph,subgraph");
+}
+
+TEST(test_utils_utils, GetGraphDumpSetByEnv) {
+    custom_setenv("ONEDNN_GRAPH_DUMP", "subgraph", 1);
+    ASSERT_EQ(dnnl::impl::getenv_string_user("GRAPH_DUMP"), "subgraph");
+    ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::utils::graph_dump_mode_t::subgraph));
+    ASSERT_FALSE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::utils::graph_dump_mode_t::graph));
+
+    custom_setenv("ONEDNN_GRAPH_DUMP", "graph,subgraph", 1);
+    ASSERT_EQ(dnnl::impl::getenv_string_user("GRAPH_DUMP"), "graph,subgraph");
+    // environment variable can only be set once
+    ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::utils::graph_dump_mode_t::subgraph));
+    ASSERT_FALSE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::utils::graph_dump_mode_t::graph));
+}
+
+TEST(test_utils_utils, GetGraphDumpSetByAPI) {
+    ASSERT_EQ(dnnl::graph::set_dump_mode("subgraph"),
+            dnnl::graph::status::success);
+    ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::utils::graph_dump_mode_t::subgraph));
+    ASSERT_FALSE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::utils::graph_dump_mode_t::graph));
+
+    // API can be used as many times as possible to change the mode
+    ASSERT_EQ(dnnl::graph::set_dump_mode("subgraph,graph"),
+            dnnl::graph::status::success);
+    ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::utils::graph_dump_mode_t::subgraph));
+    ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::utils::graph_dump_mode_t::graph));
+
+    ASSERT_EQ(dnnl::graph::set_dump_mode(""), dnnl::graph::status::success);
+    ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::utils::graph_dump_mode_t::none));
+    ASSERT_FALSE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::utils::graph_dump_mode_t::graph));
 }

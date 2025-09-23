@@ -217,17 +217,10 @@ private:
 struct layout_block_t {
     layout_block_t() = default;
 
-    layout_block_t(const pvar_t &dim, dim_t block) : dim(dim), block(block) {}
+    layout_block_t(const pvar_t &dim, int64_t block) : dim(dim), block(block) {}
 
-    layout_block_t(const pvar_t &dim, dim_t block, const stride_t &stride)
+    layout_block_t(const pvar_t &dim, int64_t block, const stride_t &stride)
         : dim(dim), block(block), stride(stride) {}
-
-    bool can_merge(
-            const layout_block_t &other, bool same_dim_only = true) const {
-        bool dim_ok = !same_dim_only || (dim == other.dim);
-        bool is_dense = (stride * block == other.stride);
-        return dim_ok && is_dense;
-    }
 
     bool operator==(const layout_block_t &other) const {
         return (dim == other.dim) && (block == other.block)
@@ -237,7 +230,7 @@ struct layout_block_t {
         return !(*this == other);
     }
 
-    size_t get_hash() const { return 0; }
+    size_t get_hash() const { return ir_utils::get_hash(dim, block, stride); }
 
     std::string str() const {
         std::ostringstream oss;
@@ -248,10 +241,8 @@ struct layout_block_t {
         return oss.str();
     }
 
-    bool is_empty() const { return dim.is_undef(); }
-
     pvar_t dim;
-    dim_t block = 1; // Block size.
+    int64_t block = 1; // Block size.
     stride_t stride; // Stride between elements of the block.
 };
 

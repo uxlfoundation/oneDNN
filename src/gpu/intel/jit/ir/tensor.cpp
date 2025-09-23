@@ -34,7 +34,10 @@ std::vector<layout_block_t> normalize_blocks(
     for (const layout_block_t &block : blocks) {
         if (remove_size_1_blocks && block.block == 1) continue;
 
-        if (!res.empty() && res.back().can_merge(block)) {
+        auto can_merge = [&](const layout_block_t &a, const layout_block_t &b) {
+            return a.dim == b.dim && a.stride * a.block == b.stride;
+        };
+        if (!res.empty() && can_merge(res.back(), block)) {
             res.back().block *= block.block;
         } else {
             res.emplace_back(block);

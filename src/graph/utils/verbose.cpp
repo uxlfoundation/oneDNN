@@ -241,31 +241,49 @@ void partition_info_t::init(const engine_t *engine,
     });
 }
 
+static setting_t<uint8_t> graph_dump_modes {0};
+
+uint8_t parse_graph_dump_mode(const std::string &modes) {
+    uint8_t m = 0;
+    if (modes.empty()) return m;
+
+    std::string user_opt = modes;
+    std::transform(
+            user_opt.begin(), user_opt.end(), user_opt.begin(), ::tolower);
+    user_opt += ','; // Add a trailing comma to process the last token
+    size_t start = 0, end = 0;
+    while ((end = user_opt.find(',', start)) != std::string::npos) {
+        std::string token = user_opt.substr(start, end - start);
+        if (token == "subgraph")
+            m |= static_cast<uint8_t>(graph_dump_mode_t::subgraph);
+        else if (token == "graph")
+            m |= static_cast<uint8_t>(graph_dump_mode_t::graph);
+        else if (token == "pattern")
+            m |= static_cast<uint8_t>(graph_dump_mode_t::pattern);
+        else
+            m = static_cast<uint8_t>(graph_dump_mode_t::none);
+        start = end + 1;
+    }
+    return m;
+}
+
 bool get_graph_dump_mode(graph_dump_mode_t mode) {
 #ifdef DNNL_DISABLE_GRAPH_DUMP
     return false;
 #else
-    static uint8_t modes = []() {
-        uint8_t m = 0;
+    if (!graph_dump_modes.initialized()) {
+        // Assumes that all threads see the same environment
+        static std::string env = getenv_string_user("GRAPH_DUMP");
+        graph_dump_modes.set(parse_graph_dump_mode(env));
+    }
 
-        std::string env = getenv_string_user("GRAPH_DUMP");
-        if (env.empty()) return m;
-        std::transform(env.begin(), env.end(), env.begin(), ::tolower);
-        env += ','; // Add a trailing comma to process the last token
-        size_t start = 0, end = 0;
-        while ((end = env.find(',', start)) != std::string::npos) {
-            std::string token = env.substr(start, end - start);
-            if (token == "subgraph")
-                m |= graph_dump_mode_t::subgraph;
-            else if (token == "graph")
-                m |= graph_dump_mode_t::graph;
-            else if (token == "pattern")
-                m |= graph_dump_mode_t::pattern;
-            start = end + 1;
-        }
-        return m;
-    }();
-    return (modes & mode) != 0;
+    uint8_t saved_mode = graph_dump_modes.get();
+    uint8_t target_mode = static_cast<uint8_t>(mode);
+    if (saved_mode == 0) {
+        return saved_mode == target_mode;
+    } else {
+        return (saved_mode & target_mode) != 0;
+    }
 #endif
 }
 
@@ -273,3 +291,25 @@ bool get_graph_dump_mode(graph_dump_mode_t mode) {
 } // namespace graph
 } // namespace impl
 } // namespace dnnl
+
+dnnl::impl::graph::status_t dnnl_graph_set_dump_mode(const char *modes) {
+#ifdef DNNL_DISABLE_GRAPH_DUMP
+    return dnnl::impl::graph::status::invalid_arguments;
+#else
+    // modes == nullptr is invalid
+    if (!modes) return dnnl::impl::graph::status::invalid_arguments;
+
+    std::string mode_str = std::string(modes);
+    uint8_t mode_int
+            = dnnl::impl::graph::utils::parse_graph_dump_mode(mode_str);
+    // mode_int == 0 is valid when mode_str is empty, which means to disable
+    // graph dump.
+    // mode_int == 0 is invalid when mode_str is not empty, which means user
+    // passed in some invalid mode strings.
+    if (mode_int == 0 && !mode_str.empty())
+        return dnnl::impl::graph::status::invalid_arguments;
+
+    dnnl::impl::graph::utils::graph_dump_modes.set(mode_int);
+    return dnnl::impl::graph::status::success;
+#endif
+}

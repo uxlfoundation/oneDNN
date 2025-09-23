@@ -167,7 +167,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     // value to multiply on. This moves scales application inside the kernel.
     // This reference kernel applies scales inside unconditionally as it is
     // always possible to do that.
-    auto ker = [&](const dims_t dst_dims_idx, dim_t m, dim_t n) {
+    auto ker = [=](const dims_t dst_dims_idx, dim_t m, dim_t n) {
         float d = 0;
         dims_t src_dims_idx, weights_dims_idx;
         utils::copy_dims_with_mask(src_dims_idx, dst_dims_idx, ndims, src_mask);
@@ -247,7 +247,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     };
 
     // bias section
-    auto ker_bias = [&](const dims_t &dst_dims_idx) -> float {
+    auto ker_bias = [=](const dims_t &dst_dims_idx) -> float {
         dims_t bia_dims_idx;
         utils::copy_dims_with_mask(bia_dims_idx, dst_dims_idx, ndims, bia_mask);
         const auto bias_off = bia_d.off_v(bia_dims_idx);
@@ -257,7 +257,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
 
     // computations
-    parallel_nd(batch, M, N, [&](dim_t mb, dim_t m, dim_t n) {
+    parallel_nd(batch, M, N, [=](dim_t mb, dim_t m, dim_t n) {
         dims_t dst_dims_idx;
         // account for M, N dims for index calculations
         const size_t l_offset = mb * M * N + m * N + n;

@@ -41,10 +41,26 @@ const void *registry_t::entry_t::compute_ptr(const void *base_ptr) const {
     return (const void *)aligned_ptr;
 }
 
-grantor_t registry_t::grantor(const memory_storage_t *mem_storage,
+// This call allocates the grantor on the heap, and then the ownership is
+// provided to the `exec_ctx_t` object.
+grantor_t *registry_t::create_grantor(const memory_storage_t *mem_storage,
         const void *base_mem_storage_host_ptr) const {
-    return grantor_t(*this, mem_storage, base_mem_storage_host_ptr);
+    return new grantor_t(*this, mem_storage, base_mem_storage_host_ptr);
 }
+
+grantor_t::grantor_t(const registry_t &registry,
+        const memory_storage_t *base_mem_storage,
+        const void *base_mem_storage_host_ptr)
+    : registry_(registry)
+    , prefix_(0)
+    , base_mem_storage_(base_mem_storage)
+    , base_mem_storage_host_ptr_(base_mem_storage_host_ptr) {}
+
+grantor_t::grantor_t(const grantor_t &parent, const key_t &prefix)
+    : registry_(parent.registry_)
+    , prefix_(make_prefix(parent.prefix_, prefix))
+    , base_mem_storage_(parent.base_mem_storage_)
+    , base_mem_storage_host_ptr_(parent.base_mem_storage_host_ptr_) {}
 
 char *grantor_t::host_ptr(const memory_storage_t *mem_storage) const {
     if (!mem_storage || mem_storage->is_null()) return nullptr;

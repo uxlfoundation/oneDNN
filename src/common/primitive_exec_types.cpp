@@ -14,12 +14,12 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "primitive_exec_types.hpp"
-#include "engine.hpp"
-#include "memory.hpp"
-#include "memory_storage.hpp"
-#include "primitive.hpp"
-#include "primitive_desc.hpp"
+#include "common/primitive_exec_types.hpp"
+#include "common/engine.hpp"
+#include "common/memory.hpp"
+#include "common/memory_storage.hpp"
+#include "common/memory_tracking.hpp"
+#include "common/primitive_desc.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -92,18 +92,49 @@ status_t cvt_primitive_args(const primitive_desc_t *pd, int nargs,
     return success;
 }
 
-memory_t *exec_ctx_t::input(int arg) const {
-    if (args_.count(arg) != 1) return nullptr;
-    const auto ma = args_.at(arg);
-    assert(ma.is_const);
-    return ma.mem;
+exec_ctx_t::exec_ctx_t(stream_t *stream, exec_args_t &&args)
+    : impl_(new exec_ctx_impl_t(stream, std::move(args))) {}
+
+exec_ctx_t::exec_ctx_t(const exec_ctx_t &other, exec_args_t &&args)
+    : impl_(new exec_ctx_impl_t(other.stream(), std::move(args),
+            other.get_memory_mapping(), other.get_resource_mapper())) {}
+
+void exec_ctx_t::set_memory_mapping(void *handle, void *host_ptr) {
+    impl_->set_memory_mapping(handle, host_ptr);
+}
+void exec_ctx_t::set_resource_mapper(const resource_mapper_t *resource_mapper) {
+    impl_->set_resource_mapper(resource_mapper);
+}
+void exec_ctx_t::set_scratchpad_grantor(
+        const memory_tracking::grantor_t *scratchpad_grantor) {
+    impl_->set_scratchpad_grantor(scratchpad_grantor);
 }
 
+stream_t *exec_ctx_t::stream() const {
+    return impl_->stream();
+}
+const exec_args_t &exec_ctx_t::args() const {
+    return impl_->args();
+}
+const std::unordered_map<void *, void *> &
+exec_ctx_t::get_memory_mapping() const {
+    return impl_->get_memory_mapping();
+}
+const resource_mapper_t *exec_ctx_t::get_resource_mapper() const {
+    return impl_->get_resource_mapper();
+}
+const memory_tracking::grantor_t &exec_ctx_t::get_scratchpad_grantor() const {
+    return impl_->get_scratchpad_grantor();
+}
+
+memory_t *exec_ctx_t::input(int arg) const {
+    return impl_->input(arg);
+}
 memory_t *exec_ctx_t::output(int arg) const {
-    if (args_.count(arg) != 1) return nullptr;
-    const auto ma = args_.at(arg);
-    assert(!ma.is_const);
-    return ma.mem;
+    return impl_->output(arg);
+}
+memory_t *exec_ctx_t::memory(int arg) const {
+    return impl_->memory(arg);
 }
 
 status_t exec_ctx_t::zero_pad_output(int arg) const {
@@ -113,34 +144,80 @@ status_t exec_ctx_t::zero_pad_output(int arg) const {
     return mem->zero_pad(*this);
 }
 
-memory_t *exec_ctx_t::memory(int arg) const {
+void *exec_ctx_t::host_ptr(
+        int arg, bool do_zeropad, status_t *status, int index) const {
+    status_t local_status = status::success;
+    if (status) *status = local_status;
+
+    if (impl_->args().count(arg) != 1) return nullptr;
+
+    auto *mem = args().at(arg).mem;
+    if (do_zeropad) local_status = mem->zero_pad(*this);
+    if (status) *status = local_status;
+
+    auto *mem_storage = mem->memory_storage(index);
+    return impl_->host_ptr(mem_storage);
+}
+
+void *exec_ctx_t::host_ptr(
+        const memory_storage_t *mem_storage, bool require_host_ptr) const {
+    return impl_->host_ptr(mem_storage, require_host_ptr);
+}
+
+void *exec_ctx_t::map_memory_storage(
+        const memory_storage_t *storage, stream_t *stream, size_t size) const {
+    return impl_->map_memory_storage(storage, stream, size);
+}
+void exec_ctx_t::unmap_memory_storage(const memory_storage_t *storage,
+        void *mapped_ptr, stream_t *stream) const {
+    return impl_->unmap_memory_storage(storage, mapped_ptr, stream);
+}
+
+memory_desc_wrapper exec_ctx_t::memory_mdw(
+        int arg, const memory_desc_t *md_from_primitive_desc) const {
+    return impl_->memory_mdw(arg, md_from_primitive_desc);
+}
+
+exec_ctx_impl_t::~exec_ctx_impl_t() = default;
+
+void exec_ctx_impl_t::set_memory_mapping(void *handle, void *host_ptr) {
+    assert(memory_mapping_.count(handle) == 0);
+    memory_mapping_.insert({handle, host_ptr});
+}
+
+void exec_ctx_impl_t::set_scratchpad_grantor(
+        const memory_tracking::grantor_t *scratchpad_grantor) {
+    scratchpad_grantor_.reset(scratchpad_grantor);
+}
+
+const memory_tracking::grantor_t &
+exec_ctx_impl_t::get_scratchpad_grantor() const {
+    assert(scratchpad_grantor_);
+    return *scratchpad_grantor_;
+}
+
+memory_t *exec_ctx_impl_t::input(int arg) const {
+    if (args_.count(arg) != 1) return nullptr;
+    const auto ma = args_.at(arg);
+    assert(ma.is_const);
+    return ma.mem;
+}
+
+memory_t *exec_ctx_impl_t::output(int arg) const {
+    if (args_.count(arg) != 1) return nullptr;
+    const auto ma = args_.at(arg);
+    assert(!ma.is_const);
+    return ma.mem;
+}
+
+memory_t *exec_ctx_impl_t::memory(int arg) const {
     assert(args_.count(arg) == 1);
     const auto ma = args_.at(arg);
     assert(!ma.is_const);
     return ma.mem;
 }
 
-void exec_ctx_t::register_memory_mapping(void *handle, void *host_ptr) {
-    assert(memory_mapping_.count(handle) == 0);
-    memory_mapping_.insert({handle, host_ptr});
-}
-
-void *exec_ctx_t::host_ptr(
-        int arg, bool do_zeropad, status_t *status_, int index) const {
-    status_t status = status::success;
-    if (status_) *status_ = status;
-
-    if (args_.count(arg) != 1) return nullptr;
-
-    auto *mem = args_.at(arg).mem;
-    if (do_zeropad) status = mem->zero_pad(*this);
-    if (status_) *status_ = status;
-
-    auto *mem_storage = mem->memory_storage(index);
-    return host_ptr(mem_storage);
-}
-
-void *exec_ctx_t::host_ptr(
+void *exec_ctx_impl_t::host_ptr(
         const memory_storage_t *mem_storage, bool require_host_ptr) const {
     if (!mem_storage || mem_storage->is_null()) return nullptr;
 
@@ -156,7 +233,7 @@ void *exec_ctx_t::host_ptr(
     return base_ptr;
 }
 
-void *exec_ctx_t::map_memory_storage(
+void *exec_ctx_impl_t::map_memory_storage(
         const memory_storage_t *storage, stream_t *stream, size_t size) const {
     if (!storage || storage->is_null()) return nullptr;
 
@@ -171,7 +248,7 @@ void *exec_ctx_t::map_memory_storage(
     return mapped_ptr;
 }
 
-void exec_ctx_t::unmap_memory_storage(const memory_storage_t *storage,
+void exec_ctx_impl_t::unmap_memory_storage(const memory_storage_t *storage,
         void *mapped_ptr, stream_t *stream) const {
     if (!storage || storage->is_null()
             || memory_mapping_.count(storage->data_handle()) > 0)
@@ -182,7 +259,7 @@ void exec_ctx_t::unmap_memory_storage(const memory_storage_t *storage,
     MAYBE_UNUSED(status);
 }
 
-memory_desc_wrapper exec_ctx_t::memory_mdw(
+memory_desc_wrapper exec_ctx_impl_t::memory_mdw(
         int arg, const memory_desc_t *md_from_primitive_desc) const {
     if (md_from_primitive_desc) {
         memory_desc_wrapper mdw_from_primitive_desc(md_from_primitive_desc);
@@ -193,14 +270,16 @@ memory_desc_wrapper exec_ctx_t::memory_mdw(
     return memory_desc_wrapper(args_.at(arg).mem->md());
 }
 
-const resource_mapper_t *exec_ctx_t::get_resource_mapper() const {
-    assert(resource_mapper_);
-    return resource_mapper_;
-}
+exec_ctx_impl_t::exec_ctx_impl_t(stream_t *stream, exec_args_t &&args)
+    : stream_(stream), args_(std::move(args)) {}
 
-void exec_ctx_t::set_resource_mapper(const resource_mapper_t *resource_mapper) {
-    resource_mapper_ = resource_mapper;
-}
+exec_ctx_impl_t::exec_ctx_impl_t(stream_t *stream, exec_args_t &&args,
+        const std::unordered_map<void *, void *> &memory_mapping,
+        const resource_mapper_t *resource_mapper)
+    : stream_(stream)
+    , args_(std::move(args))
+    , memory_mapping_(memory_mapping)
+    , resource_mapper_(resource_mapper) {}
 
 } // namespace impl
 } // namespace dnnl

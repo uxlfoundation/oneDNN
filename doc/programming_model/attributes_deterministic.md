@@ -1,5 +1,5 @@
-Primitive Attributes: deterministic {#dev_guide_attributes_deterministic}
-===================================================================
+Deterministic Mode {#dev_guide_attributes_deterministic}
+========================================================
 
 To support debugging, validation and certification of some applications, oneDNN
 provides a deterministic mode. This mode guarantees that multiple executions of

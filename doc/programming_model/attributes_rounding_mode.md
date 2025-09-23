@@ -1,5 +1,5 @@
-Primitive Attributes: rounding mode {#dev_guide_attributes_rounding_mode}
-===================================================================
+Rounding Mode {#dev_guide_attributes_rounding_mode}
+===================================================
 
 The default numerical behavior of oneDNN with respect to rounding
 (described in @ref dev_guide_data_types) can be altered to allow the

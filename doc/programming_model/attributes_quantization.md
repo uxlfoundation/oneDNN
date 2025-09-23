@@ -1,5 +1,5 @@
-Primitive Attributes: Quantization {#dev_guide_attributes_quantization}
-=======================================================================
+Quantization {#dev_guide_attributes_quantization}
+=================================================
 
 @anchor dgaq_intro
 ## Introduction

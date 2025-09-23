@@ -1,5 +1,5 @@
-Primitive Attributes: dropout {#dev_guide_attributes_dropout}
-=============================================================
+Dropout {#dev_guide_attributes_dropout}
+=======================================
 
 ## Introduction
 

@@ -140,7 +140,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     auto dst_rnd_mode = pd()->attr()->rounding_mode_.get(DNNL_ARG_DST);
 
     // mm kernel
-    auto ker = [&](const dims_t dst_dims_idx, dim_t m, dim_t n) {
+    auto ker = [=](const dims_t dst_dims_idx, dim_t m, dim_t n) {
         dims_t src_dims_idx, weights_dims_idx;
         utils::copy_dims_with_mask(src_dims_idx, dst_dims_idx, ndims, src_mask);
         utils::copy_dims_with_mask(
@@ -211,7 +211,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     };
 
     // bias section
-    auto ker_bias = [&](const dims_t &dst_dims_idx) -> float {
+    auto ker_bias = [=](const dims_t &dst_dims_idx) -> float {
         dims_t bia_dims_idx;
         utils::copy_dims_with_mask(bia_dims_idx, dst_dims_idx, ndims, bia_mask);
         const auto bias_off = bia_d.off_v(bia_dims_idx);
@@ -225,7 +225,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     // byte during store or we get a race condition. To simplify
     // logic, we limit parallelization on M and N by a factor of 2.
     parallel_nd(batch, utils::div_up(M, 2), utils::div_up(N, 2),
-            [&](dim_t mb, dim_t m_, dim_t n_) {
+            [=](dim_t mb, dim_t m_, dim_t n_) {
                 for_(int m = 2 * m_; m < std::min<int>(2 * (m_ + 1), M); m++)
                 for (int n = 2 * n_; n < std::min<int>(2 * (n_ + 1), N); n++) {
                     dims_t dst_dims_idx;

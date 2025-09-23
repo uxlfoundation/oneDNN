@@ -100,7 +100,7 @@ struct ref_fwd_t : public primitive_t {
             case lrn_within_channel:
                 kernel_ctx.define_int("WITHIN_CHANNEL", 1);
                 break;
-            default: status = status::unimplemented;
+            default: VDISPATCH_LRN_IC(false, VERBOSE_BAD_ALGORITHM);
         }
         if (status != status::success) return status;
 
@@ -221,7 +221,7 @@ struct ref_bwd_t : public primitive_t {
             case lrn_within_channel:
                 kernel_ctx.define_int("WITHIN_CHANNEL", 1);
                 break;
-            default: status = status::unimplemented;
+            default: VDISPATCH_LRN_IC(false, VERBOSE_BAD_ALGORITHM);
         }
         if (status != status::success) return status;
 

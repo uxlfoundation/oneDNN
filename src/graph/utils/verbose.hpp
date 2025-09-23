@@ -51,7 +51,7 @@ private:
     std::once_flag initialization_flag_;
 };
 
-enum graph_dump_mode_t : uint8_t {
+enum class graph_dump_mode_t : uint8_t {
     none = 0,
     subgraph = 1 << 0,
     graph = 1 << 1,

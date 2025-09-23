@@ -1,3 +1,3 @@
 --reset --case=complex_fusion/bmb/binary-matmul-binary-f32.json
 --reset --case=complex_fusion/bmb/binary-matmul-binary-bf16.json
---reset --dt=0:f16+1:f16+2:f16+3:f16+4:f16+5:f16+6:f16+7:f16+8:f16+9:f16+10:f16+11:f16+12:f16+13:f16+14:f16+15:f16+16:f16+17:f16+18:f16+19:f16+20:f16+21:f16+67:f16+43:f16 --case=complex_fusion/bmb/binary-matmul-binary-bf16.json
+--reset --dt=0:f16+1:f16+2:f16+3:f16+4:f16+5:f16+6:f16+7:f16+8:f16+9:f16+10:f16+11:f16+12:f16+13:f16+14:f16+15:f16+16:f16+17:f16+18:f16+19:f16+20:f16+21:f16+67:f16+43:f16 --op-kind=23:Add+25:Add+27:Add+29:Add+31:Add+35:Add+37:Add+39:Add+41:Add --case=complex_fusion/bmb/binary-matmul-binary-bf16.json

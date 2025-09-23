@@ -26,27 +26,6 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-std::vector<layout_block_t> normalize_blocks(
-        const std::vector<layout_block_t> &blocks, bool remove_size_1_blocks) {
-    if (blocks.empty()) return {};
-    std::vector<layout_block_t> res;
-
-    for (const layout_block_t &block : blocks) {
-        if (remove_size_1_blocks && block.block == 1) continue;
-
-        auto can_merge = [&](const layout_block_t &a, const layout_block_t &b) {
-            return a.dim == b.dim && a.stride * a.block == b.stride;
-        };
-        if (!res.empty() && can_merge(res.back(), block)) {
-            res.back().block *= block.block;
-        } else {
-            res.emplace_back(block);
-        }
-    }
-
-    return res;
-}
-
 tile_coord_t split(const layout_t &layout, const grid_info_t &grid_info,
         grid_info_t *out_grid) {
     tile_coord_t min_tile_coord = tile_coord_t::invalid();
@@ -210,44 +189,6 @@ memory_desc_t to_md(const layout_t &l, const memory_desc_t &md_hint) {
     return md;
 }
 
-layout_t layout_t::sub(const tile_t &tile, const coord_t &start) const {
-    auto remaining_tile = tile;
-    std::vector<layout_block_t> mapped_blocks;
-
-    for (auto &b : blocks()) {
-        bool b_is_outermost = is_outermost(b);
-
-        dim_t block = b.block;
-        if (!remaining_tile.has(b.dim)) remaining_tile[b.dim] = 1;
-        dim_t &rem_dim = remaining_tile[b.dim];
-        if (rem_dim == 1) {
-            if (b_is_outermost) {
-                // This is to have similarity between the current and
-                // mapped layouts.
-                mapped_blocks.emplace_back(b.dim, 1, b.stride);
-            }
-            continue;
-        }
-        if (b_is_outermost) {
-            block = rem_dim;
-        } else if (rem_dim % block != 0) {
-            // Try to split the current block and start mapping from
-            // scratch.
-            if (block % rem_dim == 0)
-                return split_block(b, rem_dim, block / rem_dim)
-                        .sub(tile, start);
-
-            // TODO: Remove exception usage.
-            gpu_except_not_implemented("Can't map tensor layout.");
-        }
-        rem_dim /= block;
-        mapped_blocks.emplace_back(b.dim, block, b.stride);
-    }
-
-    return layout_t(type(), mapped_blocks,
-            start.is_empty() ? 0 : operator()(start), ndims_);
-}
-
 layout_t reinterpret(
         const layout_t &layout, const type_t &new_type, bool do_normalize) {
     int old_size = layout.type().size();
@@ -362,53 +303,6 @@ bool try_reinterpret_to_wider_type(layout_t &src, layout_t &dst,
     return false;
 }
 
-layout_t layout_t::split_block(
-        const layout_block_t &b, dim_t block0, dim_t block1) const {
-    size_t block_idx = get_idx(b);
-    gpu_assert(b.block == block0 * block1) << "Incompatible block sizes.";
-    MAYBE_UNUSED(b);
-
-    auto new_blocks = blocks_;
-
-    layout_block_t &b0 = new_blocks[block_idx];
-    layout_block_t b1 = b0;
-
-    b0.block = block0;
-    b1.block = block1;
-    b1.stride = b0.stride * block0;
-
-    new_blocks.insert(new_blocks.begin() + block_idx + 1, b1);
-
-    return with(new_blocks, false);
-}
-
-tile_t layout_t::max_subtile(
-        dim_t max, bool is_dense, bool perfectly_divides) const {
-    tile_t subtile;
-    dim_t elems = 1;
-    for (size_t i = 0; i < nblocks(); i++) {
-        auto &b = blocks()[i];
-        gpu_assert(!b.stride.is_undefined());
-        if (is_dense) {
-            if (b.stride.is_unknown()) return subtile;
-            if (i > 0) {
-                auto &b0 = blocks()[i - 1];
-                if (b.stride != b0.block * b0.stride) break;
-            }
-        }
-        if (b.block * elems >= max) {
-            if (perfectly_divides)
-                subtile[b.dim] *= utils::max_div(b.block, max / elems);
-            else
-                subtile[b.dim] *= max / elems;
-            break;
-        }
-        subtile[b.dim] *= b.block;
-        elems *= b.block;
-    }
-    return subtile;
-}
-
 void align_layouts(layout_t &a, layout_t &b) {
     for (auto &d : a.tile()) {
         auto a_blocks = a.blocks();
@@ -447,23 +341,6 @@ void align_layouts(layout_t &a, layout_t &b) {
             break;
         }
     }
-}
-
-void layout_t::sanity_check() const {
-#if !defined(NDEBUG) || defined(DNNL_DEV_MODE)
-    return;
-#endif
-    if (is_empty()) return;
-
-    for (size_t i = 0; i < blocks_.size(); i++) {
-        gpu_assert(blocks_[i].block > 0) << "Incorrect block size.";
-        if (i > 0)
-            gpu_assert(blocks_[i].stride > blocks_[i - 1].stride)
-                    << "Block " << blocks_[i]
-                    << " is incorrectly sorted when compared with "
-                    << blocks_[i - 1];
-    }
-    gpu_assert(has_ndims() || ndims_ == max_ndims);
 }
 
 expr_t grid_splitter_t::pop_block(dim_t size) {

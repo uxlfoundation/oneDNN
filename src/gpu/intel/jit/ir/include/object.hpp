@@ -323,6 +323,7 @@ public:
 };
 
 bool is_const(const expr_t &e);
+bool is_const(const expr_t &e, int value);
 bool to_bool(const expr_t &e);
 expr_t operator-(const expr_t &a);
 expr_t div_up(const expr_t &a, const expr_t &b);

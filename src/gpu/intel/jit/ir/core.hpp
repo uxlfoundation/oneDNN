@@ -312,7 +312,6 @@ inline const type_t &expr_t::type() const {
 }
 
 // Helper functions.
-inline bool is_const(const expr_t &e, int value);
 inline bool is_var(const expr_t &e);
 inline bool is_ref(const expr_t &e);
 inline bool all_of(const expr_t &e, const expr_t &value);
@@ -1079,11 +1078,6 @@ inline bool is_binary_op(const expr_t &e, op_kind_t op_kind) {
 inline bool is_binary_cmp_op(const expr_t &e) {
     if (!is_binary_op(e)) return false;
     return is_cmp_op(e.as<binary_op_t>().op_kind);
-}
-
-inline bool is_const(const expr_t &e, int value) {
-    if (!is_const(e)) return false;
-    return e.is_equal(to_expr(value, e.type()));
 }
 
 inline bool all_of(const expr_t &e, const expr_t &value) {

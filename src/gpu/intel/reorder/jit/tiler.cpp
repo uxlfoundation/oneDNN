@@ -160,9 +160,11 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
         for (auto &b : l.blocks()) {
             if (l.is_outermost(b)) {
                 dim_t inner = l.elems(b.dim) / b.block;
-                b.block = ir_utils::safe_divide(dims[b.dim], inner);
+                padded_blocks.emplace_back(b.dim,
+                        ir_utils::safe_divide(dims[b.dim], inner), b.stride);
+            } else {
+                padded_blocks.emplace_back(b);
             }
-            padded_blocks.push_back(b);
         }
         l = l.with(padded_blocks, false);
     };

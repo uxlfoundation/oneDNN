@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ void dnnl_impl_sycl_cpu_thunk(const thunk_params_t *params) {
         auto *mem_storage = submit_ctx->sycl_mem_storages[i];
         void *handle = mem_storage->data_handle();
         void *host_ptr = reinterpret_cast<void *>(params->native_pointers[i]);
-        submit_ctx->exec_ctx.register_memory_mapping(handle, host_ptr);
+        submit_ctx->exec_ctx.set_memory_mapping(handle, host_ptr);
     }
 
     prim_iface->execute(submit_ctx->exec_ctx);

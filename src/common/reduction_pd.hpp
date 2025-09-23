@@ -30,6 +30,10 @@
     VCHECK(primitive, create, dispatch, reduction, (f), "%s," msg, \
             this->info(engine), ##__VA_ARGS__)
 
+#define VDISPATCH_REDUCTION_IC(cond, msg, ...) \
+    VCONDCHECK(primitive, create, dispatch, reduction, (cond), \
+            status::unimplemented, msg, ##__VA_ARGS__)
+
 namespace dnnl {
 namespace impl {
 

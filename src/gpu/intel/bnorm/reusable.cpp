@@ -90,7 +90,7 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
     block_layout_t layout(data_mdw);
     for (const auto &block : layout) {
         if (static_cast<size_t>(block.dim_idx) == reduce_dim_idx) {
-            rt_conf.reduce_dim_stride = block.stride;
+            rt_conf.reduce_dim_stride = dim_t(block.stride);
             num_blocks_reduced++;
         }
     }

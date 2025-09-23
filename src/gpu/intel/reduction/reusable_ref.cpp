@@ -246,7 +246,7 @@ status_t reusable_ref_t::execute(const exec_ctx_t &ctx) const {
 
         arg_list.append(src_mem);
         arg_list.append(dst_mem);
-        append_off(arg_list, phase.reduction_stride);
+        append_off(arg_list, dim_t(phase.reduction_stride));
         append_off(arg_list, into<dim_t>(phase.reduction_size));
         arg_list.append(pd()->div);
         arg_list.append(pd()->desc()->p);

@@ -182,7 +182,7 @@ memory_desc_t to_md(const layout_t &l, const memory_desc_t &md_hint) {
             // Outer block.
             gpu_assert(!in_inner_block);
             MAYBE_UNUSED(in_inner_block);
-            blk.strides[b.dim] = b.stride;
+            blk.strides[b.dim] = dim_t(b.stride);
             md.padded_dims[b.dim] = b.block;
         } else {
             // Inner block.
@@ -194,7 +194,7 @@ memory_desc_t to_md(const layout_t &l, const memory_desc_t &md_hint) {
                 // Inner block must be dense.
                 gpu_assert(prev_stride == b.block * dim_t(b.stride));
             }
-            prev_stride = b.stride;
+            prev_stride = dim_t(b.stride);
             in_inner_block = true;
         }
         seen[b.dim] = true;

@@ -428,7 +428,7 @@ bool reorder_2d_impl_t::vertex_t::can_reorder(
     int max_stride = int(last.stride * last.block);
     if (last.stride > 4) return false;
     if ((int)last.stride == 4 && type.size() != 4) return false;
-    if (!math::is_pow2(last.stride)) return false;
+    if (!math::is_pow2(int64_t(last.stride))) return false;
     int max_stride_bytes = max_stride * type.size();
     int grf_size = ngen::GRF::bytes(hw);
     if (max_stride_bytes > 2 * grf_size) return false;
@@ -632,7 +632,7 @@ bool reorder_impl_t::layouts_compatible(
 layout_t reorder_impl_t::make_retyped_layout(
         const layout_t &layout, const type_t &type) const {
     if (layout.blocks().empty()) return layout;
-    const int stride = into<int>(layout.blocks().front().stride);
+    const int stride = int(layout.blocks().front().stride);
     return make_strided(
             layout.with(type), stride * layout.type().size() / type.size());
 }
@@ -644,14 +644,14 @@ layout_t reorder_impl_t::make_compact_layout(
     const auto align_offset = is_source && layout.type().is_hf8();
 
     std::vector<layout_block_t> blocks;
-    dim_t dense_input_stride = 1;
-    dim_t dense_output_stride = 1;
+    int64_t dense_input_stride = 1;
+    int64_t dense_output_stride = 1;
     if (layout.type().is_x8() && type.is_x8() && layout.type() != type)
         // For byte intermediate (only s8<->u8 reorder), use stride-2
         // to avoid using too many temporaries.
         dense_output_stride = 2;
 
-    auto dense = [&](dim_t stride) -> layout_t {
+    auto dense = [&](int64_t stride) -> layout_t {
         if (!layout.nblocks()) return layout;
         auto blocks = layout.blocks();
         stride_t inner_stride = layout[0].stride;
@@ -663,7 +663,7 @@ layout_t reorder_impl_t::make_compact_layout(
             * dense_output_stride;
     if (size_bytes(dense) <= dense_size) return dense;
     for (auto &block : dense.blocks()) {
-        dim_t input_stride = block.stride;
+        auto input_stride = block.stride;
         blocks.push_back(block);
         auto &stride = blocks.back().stride;
         if (blocks.size() == 1 || input_stride == dense_input_stride)
@@ -673,15 +673,15 @@ layout_t reorder_impl_t::make_compact_layout(
             //   shl x:uw y:ub n
             // which seems to require offset alignment.
             const auto align = grf_size >> 1;
-            auto offset = input_stride % align;
+            auto offset = int64_t(input_stride % align);
             stride = utils::rnd_up(dense_output_stride - offset, align)
                     + offset;
         } else
             stride = std::min(
                     utils::rnd_up(dense_output_stride, grf_elems >> 1),
                     utils::rnd_up_pow2(dense_output_stride));
-        dense_output_stride = blocks.back().stride * block.block;
-        dense_input_stride = input_stride * block.block;
+        dense_output_stride = int64_t(blocks.back().stride * block.block);
+        dense_input_stride = int64_t(input_stride * block.block);
     }
     return {type, blocks, 0, layout.ndims(), /*do_normalize=*/false};
 }

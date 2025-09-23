@@ -691,11 +691,11 @@ T offset_bytes(const layout_t &layout, const coord_t &coord = {},
 inline layout_t make_strided(
         const layout_t &layout, int _stride, int block_idx = 0) {
     auto new_blocks = layout.blocks();
-    int factor = 1;
+    int64_t factor = 1;
     for (int i = 0; i < (int)new_blocks.size(); i++) {
         auto &b = new_blocks[i];
         if (i == block_idx) {
-            int i_stride = (int)b.stride;
+            auto i_stride = int64_t(b.stride);
             if (_stride % i_stride == 0) {
                 factor = (_stride / i_stride);
             } else if (i_stride % _stride == 0) {
@@ -707,7 +707,7 @@ inline layout_t make_strided(
         if (factor > 0) {
             b.stride *= factor;
         } else {
-            b.stride = ir_utils::safe_divide((dim_t)b.stride, -factor);
+            b.stride = ir_utils::safe_divide(int64_t(b.stride), -factor);
         }
     }
     return layout.with(new_blocks);

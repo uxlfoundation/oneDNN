@@ -1057,8 +1057,8 @@ std::vector<func_t> fma_plan_t::create_fma_funcs(const hw_t &hw) const {
     switch (fma_kind) {
         case fma_kind_t::mad: {
             int simd = max_bmn_blk();
-            int a_stride = is_a_broadcast() ? 0 : (int)a[0].stride;
-            int b_stride = is_b_broadcast() ? 0 : (int)b[0].stride;
+            int a_stride = is_a_broadcast() ? 0 : int(a[0].stride);
+            int b_stride = is_b_broadcast() ? 0 : int(b[0].stride);
             auto mad = mad_t::make(
                     hw, c.type(), simd, a.type(), a_stride, b.type(), b_stride);
             ret.push_back(mad);
@@ -1610,12 +1610,12 @@ layout_t pad_slm_layout(
         return layout;
     }
     auto padded_blocks = l.blocks();
-    dim_t stride = -1;
+    stride_t stride;
     dim_t remaining_elems = inner_block;
     bool past_inner_block = remaining_elems == 1;
     for (auto &b : padded_blocks) {
         if (past_inner_block) {
-            if (stride == -1) {
+            if (stride.is_undefined()) {
                 dim_t stride_bytes = find_min_stride_without_conflicts(
                         hw, per_thr_bytes, dim_t(b.stride) * type_size);
                 gpu_assert(stride_bytes % type_size == 0);

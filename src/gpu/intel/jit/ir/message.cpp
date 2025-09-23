@@ -611,7 +611,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     int surface_width = 0;
     int surface_height = 0;
-    int surface_pitch = b1.stride;
+    int surface_pitch = int(b1.stride);
     bool is_w_blocked = (get_2d_dim(w_dim_idx) != tlayout.elems(w_dim_idx));
     bool is_h_blocked = (get_2d_dim(h_dim_idx) != tlayout.elems(h_dim_idx));
     // Virtual surface means loading from the innermost block of a block layout

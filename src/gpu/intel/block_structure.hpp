@@ -25,6 +25,7 @@
 #include "common/serialization.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
+#include "gpu/intel/jit/dsl/tensor.hpp"
 #include "gpu/intel/utils.hpp"
 
 namespace dnnl {
@@ -32,118 +33,7 @@ namespace impl {
 namespace gpu {
 namespace intel {
 
-class stride_t {
-public:
-    stride_t() = default;
-
-    stride_t(dim_t stride) : stride_(stride) {}
-
-    bool operator==(const stride_t &other) const {
-        return stride_ == other.stride_;
-    }
-
-    bool operator!=(const stride_t &other) const { return !operator==(other); }
-
-    size_t get_hash() const { return serialization_stream_t::get_hash(*this); }
-
-    operator dim_t() const {
-        assert(is_fixed());
-        return stride_;
-    }
-
-    bool is_fixed() const { return !is_unknown() && !is_undefined(); }
-    bool is_unknown() const { return stride_ == unknown_stride; }
-    bool is_undefined() const { return stride_ == undefined_stride; }
-
-    stride_t &operator*=(const stride_t &other) {
-        if (is_fixed() && other.is_fixed()) {
-            stride_ *= other.stride_;
-        } else {
-            stride_ = unknown_stride;
-        }
-        return *this;
-    }
-
-    // XXX: Ambiguous when coprime
-    stride_t &operator/=(const stride_t &other) {
-        if (is_fixed() && other.is_fixed()) {
-            stride_ /= other.stride_;
-        } else {
-            stride_ = unknown_stride;
-        }
-        return *this;
-    }
-
-    bool operator<=(const stride_t &other) const {
-        gpu_assert(!is_undefined() && !other.is_undefined());
-        if (is_unknown() || other.is_unknown()) return false;
-        return stride_ <= other.stride_;
-    }
-    bool operator<(const stride_t &other) const {
-        gpu_assert(!is_undefined() && !other.is_undefined());
-        if (is_unknown() || other.is_unknown()) return false;
-        return stride_ < other.stride_;
-    }
-    bool operator>=(const stride_t &other) const {
-        gpu_assert(!is_undefined() && !other.is_undefined());
-        if (is_unknown() || other.is_unknown()) return false;
-        return stride_ >= other.stride_;
-    }
-    bool operator>(const stride_t &other) const {
-        gpu_assert(!is_undefined() && !other.is_undefined());
-        if (is_unknown() || other.is_unknown()) return false;
-        return stride_ > other.stride_;
-    }
-
-    std::string str() const {
-        ostringstream_t oss;
-        if (is_fixed()) {
-            oss << stride_;
-        } else if (is_unknown()) {
-            oss << "(unknown)";
-        } else {
-            oss << "(invalid)";
-        }
-        return oss.str();
-    }
-
-    static stride_t unknown() { return stride_t(unknown_stride); }
-    static stride_t undefined() { return stride_t(undefined_stride); }
-    static stride_t max() { return stride_t(max_stride); }
-
-private:
-    // Both negative sentinels: won't interfere with valid strides
-    static constexpr dim_t unknown_stride = std::numeric_limits<dim_t>::min();
-    static constexpr dim_t undefined_stride = unknown_stride + 1;
-    static constexpr dim_t max_stride = std::numeric_limits<dim_t>::max();
-
-    dim_t stride_ = undefined_stride;
-};
-
-inline bool operator<=(int a, const stride_t &b) {
-    return stride_t(a) <= b;
-}
-inline bool operator<(int a, const stride_t &b) {
-    return stride_t(a) < b;
-}
-inline bool operator>=(int a, const stride_t &b) {
-    return stride_t(a) >= b;
-}
-inline bool operator>(int a, const stride_t &b) {
-    return stride_t(a) > b;
-}
-inline bool operator<=(const stride_t &a, int b) {
-    return a <= stride_t(b);
-}
-inline bool operator<(const stride_t &a, int b) {
-    return a < stride_t(b);
-}
-inline bool operator>=(const stride_t &a, int b) {
-    return a >= stride_t(b);
-}
-inline bool operator>(const stride_t &a, int b) {
-    return a > stride_t(b);
-}
+using stride_t = jit::dsl::stride_t;
 
 namespace compute {
 template <>
@@ -152,19 +42,6 @@ struct scalar_type_traits_t<stride_t> {
 };
 } // namespace compute
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(stride_t);
-
-inline stride_t operator*(const stride_t &a, const stride_t &b) {
-    stride_t tmp = a;
-    return tmp *= b;
-}
-
-inline stride_t operator*(const stride_t &a, dim_t b) {
-    return a * stride_t(b);
-}
-
-inline stride_t operator*(dim_t a, const stride_t &b) {
-    return stride_t(a) * b;
-}
 
 static constexpr dim_idx_t undefined_dim_idx = -1;
 

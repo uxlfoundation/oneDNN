@@ -271,7 +271,7 @@ void def_block_offsets(const block_layout_t &layout,
     for (const block_t &b : layout) {
         kernel_ctx.define_int(utils::format("%s_B%d", str, b.dim_idx), b.block);
         kernel_ctx.define_int(
-                utils::format("%s_SB%d", str, b.dim_idx), b.stride);
+                utils::format("%s_SB%d", str, b.dim_idx), int64_t(b.stride));
     }
 }
 

@@ -401,7 +401,7 @@ public:
         , dim_(&tdim) {
         for (dim_idx_t i = 0; i < tdim.nvargs(); i++) {
             vidxs_[i] = tdim.vidx(i);
-            vstrides_[i] = tdim.vstride(i);
+            vstrides_[i] = int64_t(tdim.vstride(i));
         }
     }
 
@@ -1269,8 +1269,8 @@ struct layout_2d_wrapper_t {
         gpu_assert(nblocks() >= 2);
         return l[1];
     }
-    int64_t w_stride() const { return w_block().stride; }
-    int64_t h_stride() const { return h_block().stride; }
+    int64_t w_stride() const { return int64_t(w_block().stride); }
+    int64_t h_stride() const { return int64_t(h_block().stride); }
     dim_t w_dim() const { return w_block().block; }
     dim_t h_dim() const { return h_block().block; }
     size_t w_idx() const { return w_block().dim.index(); }

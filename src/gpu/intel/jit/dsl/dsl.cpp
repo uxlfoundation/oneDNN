@@ -653,8 +653,8 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         int K = (int)inst_tile.get(k_idx, 1);
         bool is_a_bcast = (M * K == 1);
         bool is_b_bcast = (K * N == 1);
-        int a_stride = is_a_bcast ? 0 : into<int>(A.layout.stride(m_idx));
-        int b_stride = is_b_bcast ? 0 : into<int>(B.layout.stride(n_idx));
+        int a_stride = is_a_bcast ? 0 : int(A.layout.stride(m_idx));
+        int b_stride = is_b_bcast ? 0 : int(B.layout.stride(n_idx));
 
         gpu_assert(tile[simd_idx] * C.layout.type().size() % grf_size() == 0);
         v2::for_each(tile, inst_tile, [&](const icoord_t &coord) {

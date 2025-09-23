@@ -250,7 +250,7 @@ status_t atomic_conf_t::init_dispatcher(
     dim_idx_t src_outer_idx = src.get_dim_idx(dims::outer);
     gpu_assert(src_outer_idx != dim_idx::invalid);
     src.format_desc.blocking.strides[src_outer_idx]
-            = outer_block.stride / conf.vect_size;
+            = dim_t(outer_block.stride / conf.vect_size);
 
     compute::named_buffer_t dst("DST", src);
     dst.remove_dim(dims::loop);

@@ -100,6 +100,110 @@ private:
     name_t name_;
 };
 
+class stride_t {
+public:
+    constexpr stride_t(int64_t stride = undefined_stride) : stride_(stride) {}
+
+    constexpr bool operator==(const stride_t &other) const {
+        return stride_ == other.stride_;
+    }
+
+    constexpr bool operator!=(const stride_t &other) const {
+        return !operator==(other);
+    }
+
+    stride_t &operator*=(const stride_t &other) {
+        gpu_assert(!(is_undefined() || other.is_undefined()));
+        if (is_unknown() || other.is_unknown())
+            *this = stride_t::unknown();
+        else
+            stride_ *= other.stride_;
+        return *this;
+    }
+    stride_t &operator/=(const stride_t &other) {
+        gpu_assert(!(is_undefined() || other.is_undefined()));
+        if (is_unknown() || other.is_unknown())
+            *this = stride_t::unknown();
+        else
+            stride_ /= other.stride_;
+        return *this;
+    }
+    stride_t &operator%=(const stride_t &other) {
+        gpu_assert(!(is_undefined() || other.is_undefined()));
+        if (is_unknown() || other.is_unknown())
+            *this = stride_t::unknown();
+        else
+            stride_ %= other.stride_;
+        return *this;
+    }
+
+    size_t get_hash() const { return std::hash<int64_t> {}(stride_); }
+
+    explicit operator int64_t() const {
+        gpu_assert(is_fixed());
+        return stride_;
+    }
+    explicit operator int() const {
+        gpu_assert(is_fixed());
+        return into<int>(stride_);
+    }
+
+    constexpr bool is_fixed() const { return !is_unknown() && !is_undefined(); }
+    constexpr bool is_unknown() const { return stride_ == unknown_stride; }
+    constexpr bool is_undefined() const { return stride_ == undefined_stride; }
+
+    static constexpr stride_t unknown() { return stride_t(unknown_stride); }
+    static constexpr stride_t undefined() { return stride_t(undefined_stride); }
+    static constexpr stride_t max() { return stride_t(max_stride); }
+
+    std::string str() const {
+        if (is_undefined()) return "(invalid)";
+        if (is_unknown()) return "(unknown)";
+        return std::to_string(stride_);
+    }
+
+private:
+    // Both negative sentinels: won't interfere with valid strides
+    static constexpr int64_t unknown_stride
+            = std::numeric_limits<int64_t>::min();
+    static constexpr int64_t undefined_stride = unknown_stride + 1;
+    static constexpr int64_t max_stride = std::numeric_limits<int64_t>::max();
+
+    int64_t stride_ = undefined_stride;
+};
+
+static_assert(sizeof(stride_t) == 8, "stride_t is unexpectedly large");
+
+inline stride_t operator*(stride_t a, stride_t b) {
+    return a *= b;
+}
+inline stride_t operator/(stride_t a, stride_t b) {
+    return a /= b;
+}
+inline stride_t operator%(stride_t a, stride_t b) {
+    return a %= b;
+}
+inline bool operator<(stride_t a, stride_t b) {
+    gpu_assert(!a.is_undefined() && !b.is_undefined());
+    if (a.is_unknown() || b.is_unknown()) return false;
+    return int64_t(a) < int64_t(b);
+}
+inline bool operator<=(stride_t a, stride_t b) {
+    gpu_assert(!a.is_undefined() && !b.is_undefined());
+    if (a.is_unknown() || b.is_unknown()) return false;
+    return int64_t(a) <= int64_t(b);
+}
+inline bool operator>(stride_t a, stride_t b) {
+    gpu_assert(!a.is_undefined() && !b.is_undefined());
+    if (a.is_unknown() || b.is_unknown()) return false;
+    return int64_t(a) > int64_t(b);
+}
+inline bool operator>=(stride_t a, stride_t b) {
+    gpu_assert(!a.is_undefined() && !b.is_undefined());
+    if (a.is_unknown() || b.is_unknown()) return false;
+    return int64_t(a) >= int64_t(b);
+}
+
 // The idx_map_t is a helper class to simplify constructing hash maps using
 // idx_t as a key. On top of the normal hash map interfaces, this helper class
 // includes features for logging and hashing.

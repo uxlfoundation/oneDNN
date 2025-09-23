@@ -425,7 +425,7 @@ struct registry_t {
     size_t size() const { return size_; }
 
     registrar_t registrar();
-    grantor_t grantor(const memory_storage_t *mem_storage,
+    grantor_t *create_grantor(const memory_storage_t *mem_storage,
             const void *base_mem_storage_host_ptr) const;
 
     template <typename return_type>
@@ -512,16 +512,8 @@ protected:
 struct grantor_t {
     grantor_t(const registry_t &registry,
             const memory_storage_t *base_mem_storage,
-            const void *base_mem_storage_host_ptr)
-        : registry_(registry)
-        , prefix_(0)
-        , base_mem_storage_(base_mem_storage)
-        , base_mem_storage_host_ptr_(base_mem_storage_host_ptr) {}
-    grantor_t(const grantor_t &parent, const key_t &prefix)
-        : registry_(parent.registry_)
-        , prefix_(make_prefix(parent.prefix_, prefix))
-        , base_mem_storage_(parent.base_mem_storage_)
-        , base_mem_storage_host_ptr_(parent.base_mem_storage_host_ptr_) {}
+            const void *base_mem_storage_host_ptr);
+    grantor_t(const grantor_t &parent, const key_t &prefix);
 
     template <typename T = void>
     T *get(const key_t &key, size_t *size = nullptr) const {

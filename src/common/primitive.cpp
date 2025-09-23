@@ -45,10 +45,9 @@ nested_scratchpad_t::nested_scratchpad_t(const exec_ctx_t &master_ctx, int key,
         const std::shared_ptr<primitive_t> &nested_p) {
     auto master_grantor = master_ctx.get_scratchpad_grantor();
     scratchpad_mem_storage_ = master_grantor.get_memory_storage(key);
-    grantor_ = utils::make_unique<memory_tracking::grantor_t>(
-            nested_p->pd()->scratchpad_registry().grantor(
-                    scratchpad_mem_storage_.get(),
-                    master_grantor.get_base_mem_storage_host_ptr()));
+    grantor_ = nested_p->pd()->scratchpad_registry().create_grantor(
+            scratchpad_mem_storage_.get(),
+            master_grantor.get_base_mem_storage_host_ptr());
 #ifdef DNNL_ENABLE_MEM_DEBUG
     if (scratchpad_debug::is_protect_scratchpad()) {
         scratchpad_debug::protect_scratchpad_buffer(

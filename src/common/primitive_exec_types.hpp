@@ -19,11 +19,9 @@
 
 #include <unordered_map>
 
-#include "oneapi/dnnl/dnnl_types.h"
-
-#include "c_types_map.hpp"
-#include "memory.hpp"
-#include "memory_storage.hpp"
+#include "common/c_types_map.hpp"
+#include "common/memory.hpp"
+#include "common/memory_storage.hpp"
 
 // __VA_ARGS__here is an index of the buffer. It is empty unless the memory
 // argument is sparse.
@@ -73,28 +71,47 @@ using exec_args_t = std::unordered_map<int, memory_arg_t>;
 status_t cvt_primitive_args(const primitive_desc_t *pd, int nargs,
         const dnnl_exec_arg_t *c_args, exec_args_t &args);
 
-/** Primitive execution context (helps passing stream, memories, and events. */
+struct exec_ctx_impl_t;
 struct resource_mapper_t;
-struct exec_ctx_t {
-    explicit exec_ctx_t(stream_t *stream) : stream_(stream) {}
-    exec_ctx_t(stream_t *stream, exec_args_t &&args)
-        : stream_(stream), args_(std::move(args)) {}
-    exec_ctx_t(const exec_ctx_t &other, exec_args_t &&args)
-        : stream_(other.stream_)
-        , args_(std::move(args))
-        , memory_mapping_(other.memory_mapping_)
-        , resource_mapper_(other.resource_mapper_) {}
 
-    stream_t *stream() const { return stream_; }
-    const exec_args_t &args() const { return args_; }
+// Primitive execution context, it helps to pass a stream, memory objects, and
+// events.
+//
+// Despite the fact `exec_ctx_t` is mutable via setters to objects that are not
+// available at construction place, `execute` call uses `const exec_ctx_t &`
+// which prevents from calling non-const methods, thus, changing the state isn't
+// possible.
+struct exec_ctx_t {
+    // Doesn't work without a stream and args.
+    exec_ctx_t() = delete;
+
+    // A main version when only a stream and args is available.
+    exec_ctx_t(stream_t *stream, exec_args_t &&args = {});
+
+    // A version used by `nested_scratchpad_t` objects. Underlying
+    // implementation copies master context objects except args and grantor.
+    exec_ctx_t(const exec_ctx_t &other, exec_args_t &&args);
+
+    // See `exec_ctx_impl_t` setters comment.
+    void set_memory_mapping(void *handle, void *host_ptr);
+    void set_resource_mapper(const resource_mapper_t *resource_mapper);
+    void set_scratchpad_grantor(
+            const memory_tracking::grantor_t *scratchpad_grantor);
+
+    stream_t *stream() const;
+    const exec_args_t &args() const;
+
+    const std::unordered_map<void *, void *> &get_memory_mapping() const;
+    const resource_mapper_t *get_resource_mapper() const;
+    // Tip: when a pointer to `grantor` is needed, take an address of the
+    // returned reference.
+    const memory_tracking::grantor_t &get_scratchpad_grantor() const;
 
     memory_t *input(int arg) const;
     memory_t *output(int arg) const;
     memory_t *memory(int arg) const;
 
     status_t zero_pad_output(int arg) const;
-
-    void register_memory_mapping(void *handle, void *host_ptr);
 
     void *host_ptr(int arg, bool do_zeropad = false, status_t *status = nullptr,
             int index = 0) const;
@@ -103,6 +120,76 @@ struct exec_ctx_t {
     // `use_mem_storage_handle` is set to true. If `use_mem_storage_handle` is
     // set to `false`, a `nullptr` will be returned. It's needed when a
     // distinction of mapped pointer versus abstract 'host_ptr' is required.
+    //
+    // Exclusively for a scratchpad memory in the library scratchpad mode.
+    void *host_ptr(const memory_storage_t *mem_storage,
+            bool use_mem_storage_handle = true) const;
+
+    void *map_memory_storage(const memory_storage_t *storage, stream_t *stream,
+            size_t size) const;
+    void unmap_memory_storage(const memory_storage_t *storage, void *mapped_ptr,
+            stream_t *stream) const;
+
+    memory_desc_wrapper memory_mdw(int arg,
+            const memory_desc_t *md_from_primitive_desc = nullptr) const;
+
+private:
+    // `shared_ptr` to the implementation allows the asynchronous threadpool
+    // runtime to keep underlying objects alive when a lambda function from a
+    // `parallel` call captures `ctx` or `ctx_impl` objects such as grantor.
+    std::shared_ptr<exec_ctx_impl_t> impl_;
+};
+
+struct exec_ctx_impl_t {
+    // Doesn't work without a stream and args.
+    exec_ctx_impl_t() = delete;
+
+    exec_ctx_impl_t(stream_t *stream, exec_args_t &&args);
+
+    exec_ctx_impl_t(stream_t *stream, exec_args_t &&args,
+            const std::unordered_map<void *, void *> &memory_mapping,
+            const resource_mapper_t *resource_mapper);
+
+    ~exec_ctx_impl_t();
+
+    // Copying `args` is restricted, must be moved instead.
+    exec_ctx_impl_t(const exec_ctx_impl_t &) = delete;
+    exec_ctx_impl_t &operator=(const exec_ctx_impl_t &) = delete;
+
+    // There's a number of setters due to not all objects the context relies on
+    // are available at the construction time. For example, ...
+    //
+    // ... the memory mapping is required by CPU SYCL runtime and can be filled
+    // only from a host_task call.
+    void set_memory_mapping(void *handle, void *host_ptr) {
+        assert(memory_mapping_.count(handle) == 0);
+        memory_mapping_.insert({handle, host_ptr});
+    }
+    // ... the resource mapper is declared private and can be used only inside
+    // primitive_t methods.
+    void set_resource_mapper(const resource_mapper_t *resource_mapper) {
+        resource_mapper_ = resource_mapper;
+    }
+    // ... a grantor has a dependency on a host pointer which is available at
+    // primitive_t::execute level only.
+    void set_scratchpad_grantor(
+            const memory_tracking::grantor_t *scratchpad_grantor);
+
+    stream_t *stream() const { return stream_; }
+    const exec_args_t &args() const { return args_; }
+
+    const std::unordered_map<void *, void *> &get_memory_mapping() const {
+        return memory_mapping_;
+    }
+    const resource_mapper_t *get_resource_mapper() const {
+        return resource_mapper_;
+    }
+    const memory_tracking::grantor_t &get_scratchpad_grantor() const;
+
+    memory_t *input(int arg) const;
+    memory_t *output(int arg) const;
+    memory_t *memory(int arg) const;
+
     void *host_ptr(const memory_storage_t *mem_storage,
             bool use_mem_storage_handle = true) const;
 
@@ -129,22 +216,6 @@ struct exec_ctx_t {
     memory_desc_wrapper memory_mdw(int arg,
             const memory_desc_t *md_from_primitive_desc = nullptr) const;
 
-    void set_scratchpad_grantor(
-            const memory_tracking::grantor_t *scratchpad_grantor) {
-        scratchpad_grantor_ = scratchpad_grantor;
-    }
-
-    const memory_tracking::grantor_t &get_scratchpad_grantor() const {
-        return *scratchpad_grantor_;
-    }
-
-    const memory_tracking::grantor_t *grantor_handle() const {
-        return scratchpad_grantor_;
-    }
-
-    const resource_mapper_t *get_resource_mapper() const;
-    void set_resource_mapper(const resource_mapper_t *resource_mapper);
-
 private:
     stream_t *stream_;
     exec_args_t args_;
@@ -160,7 +231,11 @@ private:
     // Methods associated with mapping serve the same purpose.
     std::unordered_map<void *, void *> memory_mapping_;
     const resource_mapper_t *resource_mapper_ = nullptr;
-    const memory_tracking::grantor_t *scratchpad_grantor_ = nullptr;
+
+    // `exec_ctx_t` acquires the ownership of a grantor by taking a pointer to
+    // it allocated by `create_grantor`. Ownership aligns the lifetime of the
+    // grantor with a `exec_ctx_t` lifetime.
+    std::unique_ptr<const memory_tracking::grantor_t> scratchpad_grantor_;
 };
 
 } // namespace impl

@@ -543,10 +543,14 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
     matmul_helper_t helper(src_d, weights_d, dst_d);
 
-    brg_matmul_exec_ctx_t brgmm_ctx(ctx, pd(), helper);
+    auto brgmm_ctx_ptr
+            = std::make_shared<brg_matmul_exec_ctx_t>(ctx, pd(), helper);
 
-    const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();
-    parallel(num_threads, [&](const int ithr, const int nthr) {
+    const int num_threads
+            = brgmm_ctx_ptr->get_num_threads_for_parallelization();
+    parallel(num_threads, [=](const int ithr, const int nthr) {
+        const auto &brgmm_ctx = *brgmm_ctx_ptr;
+
         const auto &bgmmc = pd()->get_brgemm_matmul_conf();
         const bool use_buffer_a
                 = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
@@ -694,8 +698,8 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         if (is_amx) { amx_tile_release(); }
     });
 
-    maybe_reduce_and_convert_partial_results_A(brgmm_ctx);
-    maybe_reduce_partial_results_and_apply_postops(brgmm_ctx);
+    maybe_reduce_and_convert_partial_results_A(brgmm_ctx_ptr);
+    maybe_reduce_partial_results_and_apply_postops(brgmm_ctx_ptr);
 
     return status::success;
 }
@@ -925,7 +929,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_A(
 
 template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::maybe_reduce_and_convert_partial_results_A(
-        const brg_matmul_exec_ctx_t &brgmm_ctx) const {
+        const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const {
     // Partial results appear when parallel reduction is used.
     //
     // There are two cases that require slightly different handling.
@@ -969,12 +973,15 @@ void brgemm_matmul_t<isa>::maybe_reduce_and_convert_partial_results_A(
     //         +<--| reduce_buf_1 (f32) |
     //             +--------------------+
 
-    if (!pd()->with_reduce() || !brgmm_ctx.parallel_reduction_is_used()) return;
+    if (!pd()->with_reduce() || !brgmm_ctx_ptr->parallel_reduction_is_used())
+        return;
 
-    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
-    const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();
+    const int num_threads
+            = brgmm_ctx_ptr->get_num_threads_for_parallelization();
+    parallel(num_threads, [=](const int ithr, const int nthr) {
+        const auto &brgmm_ctx = *brgmm_ctx_ptr;
 
-    parallel(num_threads, [&](const int ithr, const int nthr) {
+        const auto &bgmmc = pd()->get_brgemm_matmul_conf();
         const int ithr_bmn = brgmm_ctx.get_thread_idx_for_bmn(ithr);
         const int ithr_k = brgmm_ctx.get_thread_idx_for_k(ithr);
         if (ithr_bmn < 0 || ithr_k < 0) return;
@@ -1028,21 +1035,23 @@ void brgemm_matmul_t<isa>::maybe_reduce_and_convert_partial_results_A(
 
 template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
-        const brg_matmul_exec_ctx_t &brgmm_ctx) const {
-    if (!brgmm_ctx.parallel_reduction_is_used()) return;
+        const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const {
+    if (!brgmm_ctx_ptr->parallel_reduction_is_used()) return;
 
-    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
-    const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();
-    brgemm_dynamic_values_t leading_dimensions(
-            bgmmc.LDA, bgmmc.LDB, brgmm_ctx.get_LDC(), brgmm_ctx.get_LDD());
+    const int num_threads
+            = brgmm_ctx_ptr->get_num_threads_for_parallelization();
+    parallel(num_threads, [=](const int ithr, const int nthr) {
+        const auto &brgmm_ctx = *brgmm_ctx_ptr;
 
-    parallel(num_threads, [&](const int ithr, const int nthr) {
+        const auto &bgmmc = pd()->get_brgemm_matmul_conf();
         const int nthr_k = brgmm_ctx.get_num_threads_for_k();
         const int ithr_bmn = brgmm_ctx.get_thread_idx_for_bmn(ithr);
         const int ithr_k = brgmm_ctx.get_thread_idx_for_k(ithr);
         if (ithr_bmn < 0 || ithr_k < 0) return;
 
         const int num_reduction_buffers = nstl::min(nthr_k, bgmmc.K_chunks);
+        brgemm_dynamic_values_t leading_dimensions(
+                bgmmc.LDA, bgmmc.LDB, brgmm_ctx.get_LDC(), brgmm_ctx.get_LDD());
 
         int bmn_start {0}, bmn_end {0};
         int start {0}, end {0};

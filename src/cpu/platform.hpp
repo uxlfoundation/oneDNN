@@ -200,6 +200,111 @@ static constexpr bool is_ppc64() {
 
 size_t get_timestamp();
 
+// using the P-core E-core terminology from Intel
+// P-core: Performance core (high performance, high power consumption)
+// E-core: Efficiency core (low performance, low power consumption)
+// However the naming in the SDM is different: using core (P-core) and atom (E-core)
+enum class core_type {
+    p_core, // Performance core
+    e_core, // Efficiency core
+    default = p_core // Default core (used for non-hybrid CPUs)
+};
+
+// Assumption each core type on a system is homogeneous in terms of cache topology
+// e.g. all P-cores have the same cache topology, all E-cores have the same cache topology
+// this is true for all Intel hybrid CPUs so far (Alder Lake, Raptor Lake, Lunar Lake)
+struct cache_info_t {
+    uint8_t level; // cache level (0 - L1i, 1 - L1d, 2 - L2, 3 - L3, etc)
+    uint32_t size; // cache size in bytes
+    uint32_t num_sharing_cores; // number of cores sharing this cache
+    core_type ctype; // core type (used for hybrid CPUs)
+};
+
+// Cache topology for hybrid CPUs
+// For non-hybrid CPUs, the entries only the first entries should be used
+//    e.g. caches[0..3] - L1i, L1d, L2, L3
+//    caches[4..7] expected to be a copy of caches[0..3] but not guaranteed
+// For hybrid CPUs with 2 core types (e.g. Alder Lake) the entries are as follows:
+//    caches[0..3] - L1i, L1d, L2, L3 P-core
+//    caches[4..7] - L1i, L1d, L2, L3 E-core
+//
+// Currently no error checking is performed on the indices passed to get_cache()
+// it is assumed the caller knows the valid cache levels for the CPU
+struct cache_topology_t {
+    static constexpr size_t max_cache_levels = 4;
+    static constexpr size_t max_core_types = 2;
+    cache_info_t caches[max_cache_levels * max_core_types];
+    bool is_hybrid;
+    const cache_info_t &get_cache(int level, core_type ctype = core_type::default) const {
+        size_t type_idx = (ctype == core_type::p_core) ? 0
+                          : (ctype == core_type::e_core) ? 1
+                          : 0;
+        // do I need to check if type_idx is a valid index?
+        size_t idx = type_idx * max_cache_levels + level;
+        // do I need to check if idx is less than max_cache_levels * max_core_types?
+        const auto &cache = caches[idx];
+        return cache;
+    }
+};
+
+
+enum class behavior_t {
+    p_core, // Performance core
+    e_core, // Efficiency core
+    current, // Current core
+    min,    // used to select the smallest value for the core_type
+    max,    // used to select the largest value for the core_type
+    unknown
+};
+// called in place of get_per_core_cache_size when dealing with hybrid CPUs
+// the core_type argument specifies the type of core to query
+// if behavior_t is current, the function returns the cache size of the core the calling
+// thread is running on.
+//
+// if core_type is min/max, the function returns the min/max cache size among all cores
+// Examples:
+//
+// for a hybrid CPU with (e.g. Alder Lake)
+//   48KB L1d cache on P-cores (with hyperthreading) and
+//   32KB L1d cache on E-cores
+// get_per_core_cache_size(1, core_type::min)
+//   returns 24KB (48KB/2) (P-core).
+// get_per_core_cache_size(1, core_type::max)
+//   returns 32KB (E-core).
+// get_per_core_cache_size(1, core_type::p_core)
+//   returns 24KB
+// get_per_core_cache_size(1, core_type::e_core)
+//   returns 32KB
+// get_per_core_cache_size(1, core_type::current)
+//   returns 24KB or 32KB depending on the core the thread is running on.
+//
+// for a hybrid CPU (4p+4e) with (e.g.Lunar Lake)
+//   3MB L2 cache on P-cores (no hyperthreading) and
+//   4MB L2 cache on E-cores (shared in 4-core clusters)
+// get_per_core_cache_size(2, core_type::max)
+//   returns 3MB
+// get_per_core_cache_size(2, core_type::min)
+//   returns 1MB (4MB/4)
+// get_per_core_cache_size(2, core_type::p_core)
+//   returns 3MB
+// get_per_core_cache_size(2, core_type::e_core)
+//   returns 1MB (4MB/4)
+// get_per_core_cache_size(2, core_type::current)
+//   returns 3MB or 1MB depending on the core the thread is running on
+// get_per_core_cache_size(3, core_type::unknown)
+//   uses the get_per_core_cache_size(int level) function.
+//
+// for non-hybrid CPUs (e.g. SRF/CWF), get_per_core_cache_size(int level, core_type ctype)
+// behaves like get_per_core_cache_size(int level) unless core_type is min/max/current
+// in which case it will consider the cache topology to return the appropriate value.
+// this can be used for CPUs with non-uniform cache topology.
+// This behavior will need to be tested on a non-hybrid CPUs
+//
+// Note: for non-hybrid CPUs, the core_type argument is ignored and the function
+// behaves like get_per_core_cache_size(int level)
+unsigned DNNL_API get_per_core_cache_size(int level, behavior_t btype);
+bool is_hybrid();
+
 } // namespace platform
 
 // XXX: find a better place for these values?
@@ -207,6 +312,7 @@ enum {
     PAGE_4K = 4096,
     PAGE_2M = 2097152,
 };
+
 
 } // namespace cpu
 } // namespace impl

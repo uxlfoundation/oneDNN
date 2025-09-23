@@ -241,6 +241,34 @@ void partition_info_t::init(const engine_t *engine,
     });
 }
 
+bool get_graph_dump_mode(graph_dump_mode_t mode) {
+#ifdef DNNL_DISABLE_GRAPH_DUMP
+    return false;
+#else
+    static uint8_t modes = []() {
+        uint8_t m = 0;
+
+        std::string env = getenv_string_user("GRAPH_DUMP");
+        if (env.empty()) return m;
+        std::transform(env.begin(), env.end(), env.begin(), ::tolower);
+        env += ','; // Add a trailing comma to process the last token
+        size_t start = 0, end = 0;
+        while ((end = env.find(',', start)) != std::string::npos) {
+            std::string token = env.substr(start, end - start);
+            if (token == "subgraph")
+                m |= graph_dump_mode_t::subgraph;
+            else if (token == "graph")
+                m |= graph_dump_mode_t::graph;
+            else if (token == "pattern")
+                m |= graph_dump_mode_t::pattern;
+            start = end + 1;
+        }
+        return m;
+    }();
+    return (modes & mode) != 0;
+#endif
+}
+
 } // namespace utils
 } // namespace graph
 } // namespace impl

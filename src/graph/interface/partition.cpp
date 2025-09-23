@@ -599,9 +599,8 @@ status_t dnnl_graph_partition::compile(compiled_partition_t *cp,
     const_cast<partition_impl_t *>(pimpl_.get())
             ->set_use_blocked_layout(can_use_blocked_layout);
 
-#ifdef DNNL_ENABLE_GRAPH_DUMP
-    if (dnnl::impl::getenv_int_user("GRAPH_DUMP", 0) > 1
-            || utils::check_verbose_string_user("GRAPH_DUMP", "subgraph")) {
+    if (dnnl::impl::graph::utils::get_graph_dump_mode(
+                dnnl::impl::graph::utils::graph_dump_mode_t::subgraph)) {
         if (!is_supported()) return status::unimplemented;
         // deep copy for graph serialization
         auto part = pimpl_->clone();
@@ -622,7 +621,6 @@ status_t dnnl_graph_partition::compile(compiled_partition_t *cp,
         filename << "graph-" << id() << "-" << seed << ".json";
         agraph.serialize(filename.str());
     }
-#endif
 
     // The impl's compile will generate the compiled_partition_impl and
     // modify the given inputs outputs logical tensor

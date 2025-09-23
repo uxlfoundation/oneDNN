@@ -166,9 +166,9 @@ if(ONEDNN_BUILD_GRAPH)
             "primitive selection with ONEDNN_ENABLE_PRIMITIVE=ALL.")
     endif()
 
-    if(ONEDNN_ENABLE_GRAPH_DUMP)
-        message(STATUS "Graph artifacts dump is enabled")
-        add_definitions_with_host_compiler(-DDNNL_ENABLE_GRAPH_DUMP)
+    if(NOT ONEDNN_ENABLE_GRAPH_DUMP)
+        message(STATUS "Graph artifacts dump is disabled")
+        add_definitions_with_host_compiler(-DDNNL_DISABLE_GRAPH_DUMP)
     endif()
 
     add_subdirectory(graph)

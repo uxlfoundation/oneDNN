@@ -88,7 +88,7 @@ std::string kind2str(op_kind_t kind) {
     }
 }
 
-#ifdef DNNL_ENABLE_GRAPH_DUMP
+#ifndef DNNL_DISABLE_GRAPH_DUMP
 namespace {
 std::string layout2str(const dnnl::memory::desc &md) {
     std::string str;
@@ -165,7 +165,13 @@ std::string property2str(property_type_t ptype) {
 status_t subgraph_visualizer_t::run(const std::shared_ptr<subgraph_t> &sg,
         const std::string &name_suffix, bool is_layout_sensitive,
         bool is_memory_sensitive) {
-#ifdef DNNL_ENABLE_GRAPH_DUMP
+#ifdef DNNL_DISABLE_GRAPH_DUMP
+    UNUSED(sg);
+    UNUSED(name_suffix);
+    UNUSED(is_layout_sensitive);
+    UNUSED(is_memory_sensitive);
+    return status::success;
+#else
     if (!enabled_) return status::success;
 
     std::ofstream out;
@@ -275,14 +281,8 @@ status_t subgraph_visualizer_t::run(const std::shared_ptr<subgraph_t> &sg,
 
     out << "}\n";
     out.close();
-#else
-    UNUSED(sg);
-    UNUSED(name_suffix);
-    UNUSED(is_layout_sensitive);
-    UNUSED(is_memory_sensitive);
-#endif
-
     return status::success;
+#endif
 }
 
 status_t subgraph_validator_t::run(const std::shared_ptr<subgraph_t> &sg) {

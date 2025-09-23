@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2021-2024 Intel Corporation
+# Copyright 2021-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -55,12 +55,14 @@ FILE(GLOB API_TEST_ENGINE_INDEPENDENT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/test_c_api_graph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_c_api_logical_tensor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_c_api_op.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_c_api_graph_dump.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_cpp_api_constant_cache.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_cpp_api_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_cpp_api_graph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_cpp_api_logical_tensor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_cpp_api_op.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_cpp_api_tensor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_cpp_api_graph_dump.cpp
 )
 
 FILE(GLOB API_TEST_ENGINE_DEPENDENT_SOURCES

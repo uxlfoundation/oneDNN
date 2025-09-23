@@ -41,12 +41,31 @@ const void *registry_t::entry_t::compute_ptr(const void *base_ptr) const {
     return (const void *)aligned_ptr;
 }
 
-grantor_t registry_t::grantor(const memory_storage_t *mem_storage,
+// This call returns a pointer to a grantor allocated on the heap. It's user's
+// responsibility to free it.
+//
+// Note: if grabbed by `exec_ctx_t::set_scratchpad_grantor(...)`, a `exec_ctx_t`
+// object context will handle its proper destruction.
+grantor_t *registry_t::create_grantor(const memory_storage_t *mem_storage,
         const void *base_mem_storage_host_ptr) const {
     // Empty memory storage implies its mapped ptr is empty as well.
     assert(IMPLICATION(!mem_storage, !base_mem_storage_host_ptr));
-    return grantor_t(*this, mem_storage, base_mem_storage_host_ptr);
+    return new grantor_t(*this, mem_storage, base_mem_storage_host_ptr);
 }
+
+grantor_t::grantor_t(const registry_t &registry,
+        const memory_storage_t *base_mem_storage,
+        const void *base_mem_storage_host_ptr)
+    : registry_(registry)
+    , prefix_(0)
+    , base_mem_storage_(base_mem_storage)
+    , base_mem_storage_host_ptr_(base_mem_storage_host_ptr) {}
+
+grantor_t::grantor_t(const grantor_t &parent, const key_t &prefix)
+    : registry_(parent.registry_)
+    , prefix_(make_prefix(parent.prefix_, prefix))
+    , base_mem_storage_(parent.base_mem_storage_)
+    , base_mem_storage_host_ptr_(parent.base_mem_storage_host_ptr_) {}
 
 char *grantor_t::host_ptr(const memory_storage_t *mem_storage) const {
     if (!mem_storage || mem_storage->is_null()) return nullptr;

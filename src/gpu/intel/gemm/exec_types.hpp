@@ -63,7 +63,7 @@ struct exec_ctx_t {
         , args_(args)
         , desc_(desc)
         , resource_mapper_(other.get_resource_mapper())
-        , scratchpad_grantor_(other.grantor_handle()) {}
+        , scratchpad_grantor_(&other.get_scratchpad_grantor()) {}
 
     impl::stream_t *stream() const { return stream_; }
     const exec_args_t &args() const { return args_; }

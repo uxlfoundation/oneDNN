@@ -137,7 +137,7 @@ private:
 struct nested_scratchpad_t {
     nested_scratchpad_t(const exec_ctx_t &master_ctx, int key,
             const std::shared_ptr<primitive_t> &nested_p);
-    const memory_tracking::grantor_t *grantor() const { return grantor_.get(); }
+    memory_tracking::grantor_t *grantor() const { return grantor_; }
 
     ~nested_scratchpad_t();
 
@@ -145,7 +145,7 @@ struct nested_scratchpad_t {
 
 private:
     std::unique_ptr<memory_storage_t> scratchpad_mem_storage_;
-    std::unique_ptr<memory_tracking::grantor_t> grantor_;
+    memory_tracking::grantor_t *grantor_;
 };
 
 } // namespace impl

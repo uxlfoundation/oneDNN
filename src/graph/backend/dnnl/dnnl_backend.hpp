@@ -111,25 +111,23 @@ public:
         auto &pass_registry = get_pass_registry();
         graph::pass::pass_manager_t pm(pass_registry);
 
-#ifdef DNNL_ENABLE_GRAPH_DUMP
-        std::string pass_config_json = "dnnl_graph_passes.json";
-        std::ifstream fs(pass_config_json.c_str());
-        if (fs) {
-            verbose_printf(
-                    "graph,info,pattern,load,%s\n", pass_config_json.c_str());
-        } else {
-            if (getenv_int_user("GRAPH_DUMP", 0) > 0
-                    || graph::utils::check_verbose_string_user(
-                            "GRAPH_DUMP", "pattern")) {
+        if (graph::utils::get_graph_dump_mode(
+                    graph::utils::graph_dump_mode_t::pattern)) {
+            std::string pass_config_json = "dnnl_graph_passes.json";
+            std::ifstream fs(pass_config_json.c_str());
+            if (fs) {
+                verbose_printf("graph,info,pattern,load,%s\n",
+                        pass_config_json.c_str());
+            } else {
                 verbose_printf("graph,info,pattern,dump,%s\n",
                         pass_config_json.c_str());
                 pm.print_passes(pass_config_json);
             }
+            pm.run_passes(agraph, &fs, policy, dnnl_pass_filter);
+        } else {
+            pm.run_passes(agraph, "", policy, dnnl_pass_filter);
         }
-        pm.run_passes(agraph, &fs, policy, dnnl_pass_filter);
-#else
-        pm.run_passes(agraph, "", policy, dnnl_pass_filter);
-#endif
+
         return status::success;
     }
 

@@ -134,9 +134,8 @@ public:
             pu.match(agraph, pgraph, fusion_ops);
             if (!fusion_ops.empty()) {
                 // temporary solution here for showing which pattern matched
-                if (getenv_int_user("GRAPH_DUMP", 0) > 0
-                        || graph::utils::check_verbose_string_user(
-                                "GRAPH_DUMP", "pattern")) {
+                if (graph::utils::get_graph_dump_mode(
+                            graph::utils::graph_dump_mode_t::pattern)) {
                     verbose_printf("graph,info,pattern,hit,%s\n",
                             get_pass_name().c_str());
                 }

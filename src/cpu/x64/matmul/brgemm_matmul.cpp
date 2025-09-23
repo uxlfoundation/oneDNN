@@ -516,7 +516,7 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
 template <cpu_isa_t isa>
 bool brgemm_matmul_t<isa>::determine_prefetch(const int mb, const int m_end,
         const int nb, const int n_end, const brgemm_matmul_conf_t &bgmmc,
-        brg_matmul_exec_ctx_t &brgmm_ctx) const {
+        const brg_matmul_exec_ctx_t &brgmm_ctx) const {
     // Prefetch if not the last BRGEMM in the chunk and
     // if the next BRGEMM is identical to the current one.
 
@@ -547,22 +547,23 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
 
     brg_matmul_exec_ctx_t brgmm_ctx(ctx, pd(), helper);
 
-    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
-    const bool use_buffer_a
-            = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
-    const bool is_amx = is_superset(isa, avx512_core_amx);
     const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();
-    const int M_chunks = brgmm_ctx.get_M_chunks();
-    const int M_chunk_size = brgmm_ctx.get_M_chunk_size();
-    const int M_chunk_tail = brgmm_ctx.get_M_chunk_tail();
-
-    const int K_chunks = brgmm_ctx.get_K_chunks();
-    const int K_chunk_size = brgmm_ctx.get_K_chunk_size();
-    const int K_chunk_tail = brgmm_ctx.get_K_chunk_tail();
-
-    const int N_chunks = brgmm_ctx.get_N_chunks();
-    const int N_chunk_tail = brgmm_ctx.get_N_chunk_tail();
     parallel(num_threads, [&](const int ithr, const int nthr) {
+        const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+        const bool use_buffer_a
+                = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
+        const bool is_amx = is_superset(isa, avx512_core_amx);
+        const int M_chunks = brgmm_ctx.get_M_chunks();
+        const int M_chunk_size = brgmm_ctx.get_M_chunk_size();
+        const int M_chunk_tail = brgmm_ctx.get_M_chunk_tail();
+
+        const int K_chunks = brgmm_ctx.get_K_chunks();
+        const int K_chunk_size = brgmm_ctx.get_K_chunk_size();
+        const int K_chunk_tail = brgmm_ctx.get_K_chunk_tail();
+
+        const int N_chunks = brgmm_ctx.get_N_chunks();
+        const int N_chunk_tail = brgmm_ctx.get_N_chunk_tail();
+
         const int ithr_bmn = brgmm_ctx.get_thread_idx_for_bmn_gemm(ithr);
         const int ithr_k = brgmm_ctx.get_thread_idx_for_k(ithr);
         if (ithr_bmn < 0 || ithr_k < 0) return;

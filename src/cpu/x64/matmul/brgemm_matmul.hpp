@@ -101,7 +101,7 @@ private:
 
     bool determine_prefetch(const int mc, const int m_end, const int nc,
             const int n_end, const brgemm_matmul_conf_t &bgmmc,
-            brg_matmul_exec_ctx_t &brgmm_ctx) const;
+            const brg_matmul_exec_ctx_t &brgmm_ctx) const;
 
     void copy_a_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
             const char *A_data_batch_ptr, int ithr, int m_blk_idx,

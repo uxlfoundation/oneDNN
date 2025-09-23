@@ -33,6 +33,10 @@
 #define VDISPATCH_MATMUL_SC(f, msg, ...) \
     VCHECK(primitive, create, dispatch, matmul, f, msg, ##__VA_ARGS__);
 
+#define VDISPATCH_MATMUL_IC(cond, msg, ...) \
+    VCONDCHECK(primitive, create, dispatch, matmul, (cond), \
+            status::unimplemented, msg, ##__VA_ARGS__)
+
 namespace dnnl {
 namespace impl {
 

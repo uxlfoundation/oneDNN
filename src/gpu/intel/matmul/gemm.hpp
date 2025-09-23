@@ -109,7 +109,7 @@ struct gemm_t : public primitive_t {
                 squash_dims(bia_dims, bias_md->dims, ndims, reshape_size);
 
                 // Cannot reshape if bias is broadcast across a subset of squashed dimensions
-                bool ok = IMPLICATION(
+                bool bcast_not_ok = IMPLICATION(
                         with_bia, utils::one_of(bia_dims[0], 1, c_dims[0]));
 
                 // 3D reshaping is only possible if A and B batch sizes allow.
@@ -123,8 +123,8 @@ struct gemm_t : public primitive_t {
                     if (b_md->dims[i] == 1 && a_md->dims[i] > 1)
                         b_broadcast = true;
                 }
-                ok = ok && !(a_broadcast && b_broadcast);
-                ok = ok
+                bcast_not_ok = bcast_not_ok && !(a_broadcast && b_broadcast);
+                bcast_not_ok = bcast_not_ok
                         && IMPLICATION(reshape_size == 3,
                                 a_dims[0] == b_dims[0]
                                         || utils::one_of(
@@ -138,17 +138,17 @@ struct gemm_t : public primitive_t {
                     CHECK_BOOL(memory_desc_reshape(out_md, in_md, ndims, dims));
                     return true;
                 };
-                ok = ok
+                bcast_not_ok = bcast_not_ok
                         && safe_reshape(
                                 a_md_reshaped, *a_md, reshape_size, a_dims);
-                ok = ok
+                bcast_not_ok = bcast_not_ok
                         && safe_reshape(
                                 b_md_reshaped, *b_md, reshape_size, b_dims);
-                ok = ok
+                bcast_not_ok = bcast_not_ok
                         && safe_reshape(
                                 c_md_reshaped, *c_md, reshape_size, c_dims);
                 if (with_bia) {
-                    ok = ok
+                    bcast_not_ok = bcast_not_ok
                             && safe_reshape(bia_md_reshaped, *bias_md,
                                     reshape_size, bia_dims);
                 }
@@ -182,7 +182,7 @@ struct gemm_t : public primitive_t {
                                     : 1;
                         }
                         memory_desc_t tmp_po_desc;
-                        ok = ok
+                        bcast_not_ok = bcast_not_ok
                                 && safe_reshape(tmp_po_desc, po_desc,
                                         reshape_size, po_dims);
                         reshaped_post_ops.entry_[i].binary.src1_desc
@@ -219,7 +219,7 @@ struct gemm_t : public primitive_t {
                         reshaped_post_ops.entry_[i].prelu.mask = new_mask;
                     }
                 }
-                if (!ok) return status::success;
+                if (!bcast_not_ok) return status::success;
 
                 // Quantization has a few wrinkles...
                 // Example: --attr-scales=src:per_ocic:f16:1x128 4x1x4096:1x4096x16

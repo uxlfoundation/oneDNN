@@ -1,5 +1,5 @@
-Primitive Attributes: accumulation mode {#dev_guide_attributes_accumulation_mode}
-===================================================================
+Accumulation Mode {#dev_guide_attributes_accumulation_mode}
+===========================================================
 
 Some applications can benefit from using lower precision accumulators
 to speed up computations without causing noticeable impacts on

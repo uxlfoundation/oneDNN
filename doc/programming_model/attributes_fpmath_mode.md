@@ -1,5 +1,5 @@
-Primitive Attributes: floating-point math mode {#dev_guide_attributes_fpmath_mode}
-===================================================================
+Floating-point Math Mode {#dev_guide_attributes_fpmath_mode}
+============================================================
 
 For some applications, it can be beneficial to allow down-conversions to
 speedup computations without noticeable impact on accuracy.

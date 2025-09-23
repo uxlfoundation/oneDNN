@@ -166,7 +166,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     auto dst_rnd_mode = pd()->attr()->rounding_mode_.get(DNNL_ARG_DST);
 
     // mm kernel
-    auto ker = [&](const dims_t dst_dims_idx, dim_t m, dim_t n) {
+    auto ker = [=](const dims_t dst_dims_idx, dim_t m, dim_t n) {
         dims_t src_dims_idx, weights_dims_idx;
         utils::copy_dims_with_mask(src_dims_idx, dst_dims_idx, ndims, src_mask);
         utils::copy_dims_with_mask(
@@ -237,7 +237,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     };
 
     // bias section
-    auto ker_bias = [&](const dims_t &dst_dims_idx) -> float {
+    auto ker_bias = [=](const dims_t &dst_dims_idx) -> float {
         dims_t bia_dims_idx;
         utils::copy_dims_with_mask(bia_dims_idx, dst_dims_idx, ndims, bia_mask);
         const auto bias_off = bia_d.off_v(bia_dims_idx);
@@ -261,7 +261,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     dim_t M_chunks = utils::div_up(M, M_chunk_size);
     dim_t N_chunks = utils::div_up(N, N_chunk_size);
     parallel_nd_ext(pd()->nthr_, batch, M_chunks, N_chunks,
-            [&](int ithr, int nthr, dim_t mb, dim_t mc, dim_t nc) {
+            [=](int ithr, int nthr, dim_t mb, dim_t mc, dim_t nc) {
                 if (ithr >= pd()->ntasks_) return;
                 for_(dim_t m_ = mc * M_chunk_size;
                         m_ < std::min<dim_t>((mc + 1) * M_chunk_size, M);

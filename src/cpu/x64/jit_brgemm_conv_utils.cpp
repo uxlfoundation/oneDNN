@@ -1619,13 +1619,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     // take L1 as 7/8 of the real size for L1
     brg_blocking_t::L1 = (platform::get_per_core_cache_size(1) * 7) / 8;
-    brg_blocking_t::L2 = platform::get_per_core_cache_size(2);
-    // here is hard-coded L2 size for avx2 performance cores
-    // TODO: get L2 size from the platform
-    if (one_of(isa, avx2, avx2_vnni, avx2_vnni_2))
-        brg_blocking_t::L2 = 2 * 1024 * 1024;
     // take L2 as 3/4 of the real size for L2
-    brg_blocking_t::L2 = (brg_blocking_t::L2 * 3) / 4;
+    brg_blocking_t::L2 = (platform::get_per_core_cache_size(2) * 3) / 4;
 
     // These are rough estimates of the latency (relative) of access to various
     // cache levels. This is enough for an estimation of data access cost.

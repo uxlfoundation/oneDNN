@@ -256,7 +256,7 @@ unsigned get_per_core_cache_size(int level) {
 #if DNNL_X64
     using namespace x64;
     if (cpu().getDataCacheLevels() == 0) return guess(level);
-
+    
     if (level > 0 && (unsigned)level <= cpu().getDataCacheLevels()) {
         unsigned l = level - 1;
         return cpu().getDataCacheSize(l) / cpu().getCoresSharingDataCache(l);

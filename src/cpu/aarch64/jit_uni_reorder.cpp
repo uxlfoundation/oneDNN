@@ -712,11 +712,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         /* check whether loading 4 values at once is possible */
         static constexpr int xmm_vlen = 4;
         bool can_load_xmm = reg_unroll % xmm_vlen == 0;
-        for (int ur = 1; ur < reg_unroll; ++ur)
-            if (i_off[ur] != i_off[ur - 1] + 1) {
-                can_load_xmm = false;
-                break;
-            }
+        int registers_total = reg_unroll / 4;
+        for (int reg = 0; reg < registers_total; reg++) {
+            for (int ur = 1 + (reg * 4); ur < ((reg + 1) * 4); ur++)
+                if (i_off[ur] != i_off[ur - 1] + 1) {
+                    can_load_xmm = false;
+                    break;
+                }
+        }
         const int load_step = can_load_xmm ? xmm_vlen : 1;
 
         /* check whether storing 4 values at once is possible */

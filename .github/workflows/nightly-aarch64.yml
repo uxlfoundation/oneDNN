@@ -46,8 +46,8 @@ jobs:
     strategy:
       matrix:
         config: [
-          { name: c6g, label: ah-ubuntu_22_04-c6g_8x-100, threading: OMP, toolset: gcc, build: Release, testset: NIGHTLY },
-          { name: c7g, label: ah-ubuntu_22_04-c7g_8x-100, threading: OMP, toolset: gcc, build: Release, testset: NIGHTLY }
+          { name: c6g, label: ah-ubuntu_22_04-c6g_8x-100, threading: OMP, toolset: gcc, build: RelWithAssert, testset: NIGHTLY },
+          { name: c7g, label: ah-ubuntu_22_04-c7g_8x-100, threading: OMP, toolset: gcc, build: RelWithAssert, testset: NIGHTLY }
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}

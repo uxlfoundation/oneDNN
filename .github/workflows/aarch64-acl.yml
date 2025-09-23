@@ -41,6 +41,7 @@ jobs:
           { name: MacOS, label: macos-14, threading: SEQ, toolset: clang, build: RelWithAssert },
           { name: cb100, label: ubuntu-24.04-arm, threading: OMP, toolset: gcc, build: RelWithAssert },
           { name: c6g, label: ah-ubuntu_22_04-c6g_2x-50, threading: OMP, toolset: clang, build: RelWithAssert },
+          { name: c6g, label: ah-ubuntu_22_04-c6g_2x-50, threading: OMP, toolset: gcc, build: RelWithAssert },
           { name: c6g, label: ah-ubuntu_22_04-c6g_2x-50, threading: OMP, toolset: gcc, build: Release }
         ]
 

@@ -117,7 +117,7 @@ void gpu_opencl_interop_tutorial() {
     ///
     /// @snippet  gpu_opencl_interop.cpp Initialize engine
     // [Initialize engine]
-    engine eng(engine::kind::gpu, 0);
+    engine eng(validate_engine_kind(engine::kind::gpu), 0);
     // [Initialize engine]
 
     /// In addition to an engine, all primitives require a @ref dnnl::stream

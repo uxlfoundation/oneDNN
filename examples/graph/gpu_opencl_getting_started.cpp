@@ -190,7 +190,7 @@ void ocl_getting_started_tutorial() {
     ///
     /// @snippet gpu_opencl_getting_started.cpp Create graph and add ops
     //[Create graph and add ops]
-    graph g(engine::kind::gpu);
+    graph g(validate_engine_kind(engine::kind::gpu));
 
     g.add_op(conv0);
     g.add_op(conv0_bias_add);

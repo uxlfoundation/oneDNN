@@ -110,8 +110,8 @@ private:
     reg64_t reg_ker_org = x21; // ker base addr (3d)
     reg64_t reg_inp_org = x29; // src base addr (3d)
 
-    void prefetch(
-            const std::string prfop, int level, reg64_t in, long long int ofs) {
+    void prefetch(const std::string &prfop, int level, reg64_t in,
+            long long int ofs) {
         bool for_load = false;
         if (prfop == "LD") {
             for_load = true;
@@ -293,7 +293,7 @@ private:
     reg64_t reg_input_org = x22;
     reg64_t reg_kernel_org = x26;
 
-    long long int prefetch(const std::string prfop, int level, reg64_t in,
+    long long int prefetch(const std::string &prfop, int level, reg64_t in,
             long long int ofs, long long int prev_ofs) {
         bool for_load = false;
         if (prfop == "LD") {
@@ -491,8 +491,8 @@ private:
     reg64_t reg_ker_start_addr = x27;
     reg64_t reg_addr_diff_input = x18;
 
-    void prefetch(
-            const std::string prfop, int level, reg64_t in, long long int ofs) {
+    void prefetch(const std::string &prfop, int level, reg64_t in,
+            long long int ofs) {
         bool for_load = false;
         if (prfop == "LD") {
             for_load = true;

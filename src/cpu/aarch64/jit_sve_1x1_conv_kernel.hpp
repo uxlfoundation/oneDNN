@@ -124,8 +124,8 @@ private:
         return addr;
     }
 
-    void prefetch(
-            const std::string prfop, int level, reg64_t in, long long int ofs) {
+    void prefetch(const std::string &prfop, int level, reg64_t in,
+            long long int ofs) {
         bool for_load = false;
         if (prfop == "LD") {
             for_load = true;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Arm Ltd. and affiliates
+* Copyright 2021-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -276,7 +276,8 @@ int reorder_dimensions_by_stride(std::vector<memory_desc_t *> permuted_mds,
 
 void reorder_to_weight_format(arm_compute::TensorInfo &info, memory_desc_t &md,
         arm_compute::WeightFormat wf, dim_t I_dim, dim_t O_dim,
-        std::vector<dim_t> spatial_dims, std::vector<dim_t> batch_dims) {
+        const std::vector<dim_t> &spatial_dims,
+        const std::vector<dim_t> &batch_dims) {
 
     md.format_kind = format_kind::blocked;
     md.format_desc.blocking = blocking_desc_t {};

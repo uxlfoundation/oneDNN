@@ -33,7 +33,7 @@ namespace dsl {
 struct ctx_t {
     bool new_ir_api() const { return new_ir_api_; }
 
-    void declare_kernel(const kernel_iface_t &interface, ir_context_t &ctx,
+    void declare_kernel(const kernel::iface_t &interface, ir_context_t &ctx,
             bool new_ir_api = false) {
         slm_byte_offset_ = 0;
         new_ir_api_ = new_ir_api;
@@ -58,8 +58,8 @@ struct ctx_t {
             subgroup_local_id_
                     = def("subgroup_local_id", local_ids_[0] & (simd() - 1));
         } else {
-            for (int i = 0; i < interface.nargs(); i++) {
-                const auto &var = interface.arg_var(i);
+            for (size_t i = 0; i < interface.nargs(); i++) {
+                const auto &var = interface[i];
                 if (var.type().is_ptr()) {
                     if (var.type().is_slm()) {
                         append(alloc_t::make(
@@ -245,7 +245,7 @@ private:
 
     std::vector<stmt_t> &stmts() { return stmts_stack_.top(); }
     std::stack<std::vector<stmt_t>> stmts_stack_;
-    kernel_iface_t interface_ = {"undefined_dsl_kernel"};
+    kernel::iface_t interface_ = {"undefined_dsl_kernel"};
     ir_context_t *ctx_ = nullptr;
     std::array<expr_t, 3> group_ids_;
     std::array<expr_t, 3> local_ids_;
@@ -272,7 +272,7 @@ int min_pitch_2d() {
 }
 
 void declare_kernel(
-        const kernel_iface_t &interface, ir_context_t &ctx, bool new_ir_api) {
+        const kernel::iface_t &interface, ir_context_t &ctx, bool new_ir_api) {
     default_ctx().declare_kernel(interface, ctx, new_ir_api);
 }
 

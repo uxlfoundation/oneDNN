@@ -19,7 +19,6 @@
 
 #include "gpu/intel/jit/dsl/decl.hpp"
 #include "gpu/intel/jit/dsl/tensor.hpp"
-#include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/message_patterns.hpp"
 
@@ -40,16 +39,16 @@ struct send_hint_t {
 
 struct kernel_t {
     kernel_t() : iface("invalid_dsl_kernel") {}
-    kernel_t(kernel_iface_t iface, stmt_t body, const exec_config_t &exec_cfg)
+    kernel_t(kernel::iface_t iface, stmt_t body, const exec_config_t &exec_cfg)
         : iface(std::move(iface)), body(std::move(body)), exec_cfg(exec_cfg) {}
 
-    kernel_iface_t iface;
+    kernel::iface_t iface;
     stmt_t body;
     exec_config_t exec_cfg;
     ngen::DebugConfig debug_cfg;
 };
 
-void declare_kernel(const kernel_iface_t &interface, ir_context_t &ctx,
+void declare_kernel(const kernel::iface_t &interface, ir_context_t &ctx,
         bool new_ir_api = false);
 kernel_t end_kernel();
 

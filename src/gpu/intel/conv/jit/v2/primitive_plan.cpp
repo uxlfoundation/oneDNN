@@ -76,12 +76,12 @@ primitive_init_plan_t::buffer_entry_t primitive_init_plan_t::find_buf(
 kernel_info_t primitive_init_plan_t::create_kernel_info(
         const kernel_desc_base_t &desc,
         const std::unordered_map<std::string, std::string> &buf_map) const {
-    kernel_iface_t iface(desc.kernel_name());
+    kernel::iface_t iface(desc.kernel_name());
     desc.init_kernel_iface(iface);
     kernel_info_t info;
-    for (int i = 0; i < iface.nargs(); i++) {
-        auto &name = iface.arg_name(i);
-        auto &var = iface.arg_var(i);
+    for (size_t i = 0; i < iface.nargs(); i++) {
+        auto &var = iface[i];
+        auto &name = var.as<var_t>().name;
         auto buf = find_buf(buf_map.count(name) == 0 ? name : buf_map.at(name));
         if (!buf) {
             info.register_internal_arg(var);

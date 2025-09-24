@@ -34,9 +34,11 @@ class kernel_t;
 
 namespace jit {
 
-class kernel_iface_t;
 class kernel_info_t;
 class kernel_params_base_t;
+namespace kernel {
+class iface_t;
+}
 
 class kernel_desc_base_t {
 public:
@@ -45,7 +47,7 @@ public:
     virtual exec_config_t exec_cfg(const impl::engine_t *engine) const = 0;
     virtual bool with_dpas() const = 0;
     virtual compute::range_t local_range() const = 0;
-    virtual void init_kernel_iface(kernel_iface_t &kernel_iface) const = 0;
+    virtual void init_kernel_iface(kernel::iface_t &kernel_iface) const = 0;
     virtual void init_kernel_info(kernel_info_t &kernel_info,
             const kernel_params_base_t &params,
             const impl::engine_t *engine) const = 0;

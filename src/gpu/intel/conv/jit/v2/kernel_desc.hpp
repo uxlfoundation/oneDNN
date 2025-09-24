@@ -350,7 +350,7 @@ public:
 
     void specialize(const problem_t &prb) { spec.specialize(prb); }
 
-    void init_kernel_iface(kernel_iface_t &kernel_iface) const override;
+    void init_kernel_iface(kernel::iface_t &kernel_iface) const override;
     void init_kernel_info(kernel_info_t &kernel_info,
             const kernel_params_base_t &params,
             const impl::engine_t *engine) const override;

@@ -1706,7 +1706,7 @@ void generate_from_ir(const stmt_t &kernel_body, GeneratorT *host,
 }
 
 ngen::NEOInterfaceHandler generate_ngen_interface(
-        const kernel_iface_t &kernel_iface, const exec_config_t &exec_cfg,
+        const kernel::iface_t &kernel_iface, const exec_config_t &exec_cfg,
         bool require_dpas, const stmt_t &kernel_body) {
 
     ngen::NEOInterfaceHandler interface(exec_cfg.hw());
@@ -1722,9 +1722,9 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
     if (setup_flags.has_dpas || require_dpas) interface.requireDPAS();
     if (setup_flags.has_send_atomics) interface.requireGlobalAtomics();
 
-    for (int i = 0; i < kernel_iface.nargs(); i++) {
-        auto &name = kernel_iface.arg_name(i);
-        auto &type = kernel_iface.arg_type(i);
+    for (size_t i = 0; i < kernel_iface.nargs(); i++) {
+        auto &name = kernel_iface[i].as<var_t>().name;
+        auto &type = kernel_iface[i].type();
         if (type.is_ptr()) {
             interface.newArgument(name, ngen::ExternalArgumentType::GlobalPtr,
                     ngen::GlobalAccessType::Stateless);
@@ -1775,7 +1775,7 @@ void ir_kernel_t::generate_from_ir(
 }
 
 #ifdef WITH_SYCL_RUNTIME
-::sycl::kernel make_kernel(const kernel_iface_t &iface, const stmt_t &body,
+::sycl::kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
         const exec_config_t &exec_cfg, const ngen::DebugConfig &debug_cfg,
         ::sycl::context ctx, ::sycl::device dev) {
 
@@ -1797,7 +1797,7 @@ void ir_kernel_t::generate_from_ir(
 }
 #endif
 #ifdef WITH_OPENCL_RUNTIME
-cl_kernel make_kernel(const kernel_iface_t &iface, const stmt_t &body,
+cl_kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
         const exec_config_t &exec_cfg, const ngen::DebugConfig &debug_cfg,
         cl_context ctx, cl_device_id dev) {
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(

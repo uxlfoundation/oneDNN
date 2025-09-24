@@ -174,7 +174,7 @@ class ir_to_ngen_generator_t : public BaseGeneratorT {
 public:
     NGEN_FORWARD_SCOPE(BaseGeneratorT)
 
-    ir_to_ngen_generator_t(const kernel_iface_t &kernel_iface,
+    ir_to_ngen_generator_t(const kernel::iface_t &kernel_iface,
             const exec_config_t &exec_cfg,
             const ngen::DebugConfig &debug_config)
         : BaseGeneratorT(exec_cfg.hw().product(), debug_config)
@@ -192,7 +192,7 @@ public:
 
     ngen::Subregister grid_ids[3] = {r0.ud(1), r0.ud(6), r0.ud(7)};
 
-    const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
+    const kernel::iface_t &kernel_iface() const { return kernel_iface_; }
     const exec_config_t &exec_cfg() const { return exec_cfg_; }
     const hw_t &hw_info() const { return exec_cfg_.hw(); }
 
@@ -231,9 +231,9 @@ public:
         }
 
         // Bind arguments.
-        for (int i = 0; i < kernel_iface_.nargs(); i++) {
-            auto &arg_var = kernel_iface_.arg_var(i);
-            auto &name = kernel_iface_.arg_name(i);
+        for (size_t i = 0; i < kernel_iface_.nargs(); i++) {
+            auto &arg_var = kernel_iface_[i];
+            auto &name = arg_var.as<var_t>().name;
             if (arg_var.type().is_ptr()) {
                 auto alloc_buf
                         = alloc_mgr.find_buffer(name, /*allow_empty=*/true);
@@ -1130,7 +1130,7 @@ protected:
                 : retn;
     }
 
-    kernel_iface_t kernel_iface_;
+    kernel::iface_t kernel_iface_;
     exec_config_t exec_cfg_;
     reg_allocator_t ra_;
     ngen::GRF signal_header_;
@@ -1167,7 +1167,7 @@ public:
         desc.init_kernel_iface(kernel_iface_);
     }
 
-    ir_kernel_t(const kernel_iface_t &kernel_iface,
+    ir_kernel_t(const kernel::iface_t &kernel_iface,
             const exec_config_t &exec_cfg, const compute::range_t &local_range,
             bool require_dpas, const debug_config_t &debug_config)
         : kernel_iface_(kernel_iface)
@@ -1177,7 +1177,7 @@ public:
         , debug_config_(debug_config) {}
 
     const exec_config_t &exec_cfg() const { return exec_cfg_; }
-    const kernel_iface_t &kernel_iface() const { return kernel_iface_; }
+    const kernel::iface_t &kernel_iface() const { return kernel_iface_; }
     void force_emulate64() { force_emulate64_ = true; }
 
     int peak_regs() const { return peak_regs_; }
@@ -1204,7 +1204,7 @@ private:
         return ir_utils::safe_divide(local_size, exec_cfg_.simd());
     }
 
-    kernel_iface_t kernel_iface_;
+    kernel::iface_t kernel_iface_;
     exec_config_t exec_cfg_;
     compute::range_t local_range_;
     bool require_dpas_;

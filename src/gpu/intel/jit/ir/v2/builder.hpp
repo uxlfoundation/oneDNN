@@ -675,13 +675,13 @@ inline var_ref_t &var_ref_t::operator=(const expr_t &value) {
 
 class var_manager_t {
 public:
-    var_manager_t(const kernel_iface_t &kernel_iface)
+    var_manager_t(const kernel::iface_t &kernel_iface)
         : kernel_iface_(kernel_iface) {}
 
     std::vector<expr_t> ptr_args() const {
         std::vector<expr_t> ret;
-        for (int i = 0; i < kernel_iface_.nargs(); i++) {
-            auto &var = kernel_iface_.arg_var(i);
+        for (size_t i = 0; i < kernel_iface_.nargs(); i++) {
+            auto &var = kernel_iface_[i];
             if (var.type().is_ptr()) ret.push_back(var);
         }
         return ret;
@@ -724,7 +724,7 @@ public:
     }
 
 private:
-    const kernel_iface_t &kernel_iface_;
+    const kernel::iface_t &kernel_iface_;
 };
 
 } // namespace v2

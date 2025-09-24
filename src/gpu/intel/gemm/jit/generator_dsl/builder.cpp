@@ -394,7 +394,7 @@ struct generator_dsl_t {
     generator_dsl_t(const generator_dsl_desc_t &desc)
         : problem(desc.problem), strategy(desc.strategy) {}
 
-    kernel_t build(ir::kernel_iface_t iface, ir::ir_context_t &ctx) {
+    kernel_t build(ir::kernel::iface_t iface, ir::ir_context_t &ctx) {
         if (strategy.kParallel || strategy.kParallelLocal) {
             gpu_warning() << "kParallel support is unimplemented";
             return {};

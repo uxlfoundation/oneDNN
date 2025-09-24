@@ -42,7 +42,7 @@ public:
     exec_config_t exec_cfg(const impl::engine_t *engine) const override;
     bool with_dpas() const override { return dpas_; }
     compute::range_t local_range() const override;
-    void init_kernel_iface(kernel_iface_t &kernel_iface) const override;
+    void init_kernel_iface(kernel::iface_t &kernel_iface) const override;
     void init_kernel_info(kernel_info_t &kernel_info,
             const kernel_params_base_t &params,
             const impl::engine_t *engine) const override;
@@ -96,9 +96,9 @@ public:
         requireBarrier();
 
         externalName(_desc.kernel_name());
-        newArgument(kernel_iface().arg_name(0),
-                to_ngen(kernel_iface().arg_type(0)));
-        newArgument(kernel_iface().arg_name(1),
+        newArgument(kernel_iface()[0].template as<var_t>().name,
+                to_ngen(kernel_iface()[0].type()));
+        newArgument(kernel_iface()[1].template as<var_t>().name,
                 ngen::ExternalArgumentType::GlobalPtr,
                 ngen::GlobalAccessType::Stateless);
 
@@ -112,9 +112,9 @@ public:
         int simd_size = getSIMD();
         bool use_lsc = (hw >= ngen::HW::XeHPG);
 
-        auto size = getArgument(kernel_iface().arg_name(0));
+        auto size = getArgument(kernel_iface()[0].template as<var_t>().name);
         ra().claim(size);
-        auto ptr = getArgument(kernel_iface().arg_name(1));
+        auto ptr = getArgument(kernel_iface()[1].template as<var_t>().name);
         ra().claim(ptr);
         auto global_id = ra().template alloc_sub<uint32_t>();
         auto off0 = ra().template alloc_sub<uint32_t>();
@@ -190,8 +190,8 @@ public:
     }
 
 private:
-    static kernel_iface_t get_kernel_iface(const kernel_desc_base_t &desc) {
-        kernel_iface_t iface(desc.kernel_name());
+    static kernel::iface_t get_kernel_iface(const kernel_desc_base_t &desc) {
+        kernel::iface_t iface(desc.kernel_name());
         desc.init_kernel_iface(iface);
         return iface;
     }

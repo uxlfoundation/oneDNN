@@ -34,11 +34,11 @@ struct generator_dsl_desc_t {
         , exec_cfg(hw, strategy.GRFs, strategy.subgroupSize) {}
 
     const std::string &kernel_name() const { return iface.kernel_name(); }
-    const ir::kernel_iface_t &kernel_iface() const { return iface; }
+    const ir::kernel::iface_t &kernel_iface() const { return iface; }
 
     const GEMMProblem &problem;
     const GEMMStrategy &strategy;
-    ir::kernel_iface_t iface;
+    ir::kernel::iface_t iface;
     ir::exec_config_t exec_cfg;
 };
 

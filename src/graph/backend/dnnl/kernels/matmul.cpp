@@ -80,6 +80,10 @@ status_t matmul_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
     }
     BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
     BACKEND_DNNL_ADD_PASS(pipeline, binary_broadcast_swap);
+    if (!quantized) {
+        BACKEND_DNNL_ADD_PASS(pipeline, lift_up_reshape_post_ops);
+        BACKEND_DNNL_ADD_PASS(pipeline, binary_canonicalization);
+    }
     BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_ops);
 
     if (quantized) {

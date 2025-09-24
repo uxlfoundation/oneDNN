@@ -300,6 +300,26 @@ status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg);
 /// This pass will transform the sdpa subgraph into a dnnl_sdpa op.
 status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg);
 
+/// This pass will move eltwise, typecast or binary ops after reshape to before reshape.
+/// For binary ops, it will also insert reshape before src1 of binary to match dimension changes.
+///
+/// Case 1 - Eltwise/Typecast:
+///         |                                 |
+///       reshape                          post_op
+///         |                                 |
+///       post_op        ----->           reshape
+///         |                                 |
+///
+/// Case 2 - Binary (with src1 reshape):
+///         |       src1                      |       src1
+///         |        |                        |        |
+///       reshape    |                      binary   reshape
+///         |       /                         |        |
+///       binary                           reshape
+///         |                                 |
+///
+impl::status_t lift_up_reshape_post_ops(std::shared_ptr<subgraph_t> &sg);
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

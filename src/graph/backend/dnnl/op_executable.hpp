@@ -945,6 +945,7 @@ struct matmul_executable_t : public op_executable_t {
                         .execute(stream, psrc_mem, dst_mem);
             }
         }
+
         prim_.execute(stream, args);
     }
 

@@ -83,6 +83,39 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_post_ops)
                 |
              [bias]*
                 |
+             reshape
+                |
+           unary/binary
+                |
+*/
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_reshape_post_ops)
+        .set_priority(8.9f)
+        .set_kind(partition_kind_t::matmul_post_ops)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    pm::pb_op_t *pmatmul
+                            = pgraph->append_op(graph::op_kind::MatMul);
+
+                    // Optional bias
+                    auto popt_bias = optional_bias_add(pgraph, pmatmul, false);
+
+                    pm::pb_op_t *p_reshape
+                            = pgraph->append_op(graph::op_kind::StaticReshape,
+                                    in_edges_t {in_edge(0, popt_bias, 0)});
+
+                    pgraph->append_alternation(get_unary_binary_ops(),
+                            in_edges_t {in_edge(0, p_reshape, 0)});
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<float_matmul>();
+        });
+
+/*
+              \   /
+              matmul
+                |
+             [bias]*
+                |
             [Reshape]*
                 |
             transpose

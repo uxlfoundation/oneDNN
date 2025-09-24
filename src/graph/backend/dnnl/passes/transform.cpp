@@ -4530,6 +4530,173 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     return status::success;
 }
 
+impl::status_t lift_up_reshape_post_ops(std::shared_ptr<subgraph_t> &sg) {
+    subgraph_rewriter_t rewriter(sg);
+
+    for (const auto &cur_op : sg->get_ops()) {
+        if (cur_op->get_kind() != op_kind::dnnl_reshape) continue;
+
+        auto reshape_in = cur_op->get_input_value(0);
+        auto reshape_out = cur_op->get_output_value(0);
+
+        // Reshape must have exactly one consumer
+        if (reshape_out->get_consumers().size() != 1) break;
+        auto &post_op = reshape_out->get_consumers()[0].get_op();
+
+        // Process eltwise or typecast case
+        if (post_op.get_kind() == op_kind::dnnl_eltwise) {
+            auto post_op_out = post_op.get_output_value(0);
+
+            // Disconnect connections
+            reshape_out->remove_consumer(post_op, 0);
+            reshape_in->remove_consumer(*cur_op, 0);
+
+            // Move post_op before reshape
+            post_op.connect_input(0, reshape_in);
+
+            // Create new intermediate value
+            logical_tensor_t new_lt = empty_logical_tensor_with_default_id();
+            auto new_val = std::make_shared<value_t>(post_op, 0, new_lt, true);
+            new_val->set_data_type(post_op_out->get_logical_tensor().data_type);
+
+            // Connect post_op output to reshape input
+            post_op.connect_output(0, new_val);
+            cur_op->connect_input(0, new_val);
+
+            // Connect reshape output to output
+            cur_op->connect_output(0, post_op_out);
+
+            break; // Break the for loop to restart with fresh topology
+        } else if (post_op.get_kind() == op_kind::dnnl_binary) {
+            // Only process if binary's src0 comes from reshape
+            if (post_op.get_input_value(0) != reshape_out) break;
+
+            auto binary_in1 = post_op.get_input_value(1);
+            auto binary_out = post_op.get_output_value(0);
+
+            // Analyze dimension changes in reshape
+            auto reshape_in_dims
+                    = ltw(reshape_in->get_logical_tensor()).vdims();
+            auto reshape_out_dims
+                    = ltw(reshape_out->get_logical_tensor()).vdims();
+            auto binary_in1_dims
+                    = ltw(binary_in1->get_logical_tensor()).vdims();
+
+            if (abs((int)reshape_in_dims.size() - (int)reshape_out_dims.size())
+                    != 1) {
+                // Only support adding or removing one dimension
+                break;
+            }
+
+            // Determine dimension changes (added or removed)
+            std::vector<int64_t> inverse_shape;
+            if (reshape_in_dims.size() < reshape_out_dims.size()) {
+                // Reshape is ADDING dimensions - when we lift up binary before
+                // reshape we need to REMOVE this dimension from binary's src1
+                int added_dim_idx = -1;
+                for (size_t i = 0; i < reshape_out_dims.size(); i++) {
+                    if (i >= reshape_in_dims.size()
+                            || reshape_out_dims[i]
+                                    != reshape_in_dims[i
+                                            - (i >= reshape_in_dims.size()
+                                                            ? 1
+                                                            : 0)]) {
+                        added_dim_idx = i;
+                        break;
+                    }
+                }
+                // check if the added dimension is 1 for broadcasting
+                if (added_dim_idx >= 0
+                        && added_dim_idx < (int)reshape_out_dims.size()
+                        && reshape_out_dims[added_dim_idx] != 1) {
+                    break;
+                }
+
+                // Create inverse shape by REMOVING a dimension from src1
+                inverse_shape = binary_in1_dims;
+                if (added_dim_idx >= 0
+                        && added_dim_idx < (int)inverse_shape.size()) {
+                    // check src1 has the added dimension and it is 1 to allow
+                    // broadcasting. For case like [2,1,3,4] * [2,5,3,4], we
+                    // can't lift up multiply and reshape src1 to [2,3,4]
+                    if (inverse_shape[added_dim_idx] != 1) break;
+                    inverse_shape.erase(inverse_shape.begin() + added_dim_idx);
+                }
+            } else if (reshape_in_dims.size() > reshape_out_dims.size()) {
+                // Reshape is REMOVING dimensions - when we lift up binary
+                // before reshape, we need to ADD this dimension to binary's
+                // src1
+                int removed_dim_idx = -1;
+                for (size_t i = 0; i < reshape_in_dims.size(); i++) {
+                    if (i >= reshape_out_dims.size()
+                            || reshape_in_dims[i]
+                                    != reshape_out_dims[i
+                                            - (i >= reshape_out_dims.size()
+                                                            ? 1
+                                                            : 0)]) {
+                        removed_dim_idx = i;
+                        break;
+                    }
+                }
+                // check if the removed dimension is 1 for broadcasting
+                if (removed_dim_idx >= 0
+                        && removed_dim_idx < (int)reshape_in_dims.size()
+                        && reshape_in_dims[removed_dim_idx] != 1) {
+                    break;
+                }
+                // Create inverse shape by ADDING a dimension to src1
+                inverse_shape = binary_in1_dims;
+                if (removed_dim_idx >= 0) {
+                    inverse_shape.insert(
+                            inverse_shape.begin() + removed_dim_idx, 1);
+                }
+            } else {
+                // Same number of dimensions but some values changed
+                inverse_shape = binary_in1_dims;
+            }
+
+            // Disconnect connections
+            reshape_out->remove_consumer(post_op, 0);
+            reshape_in->remove_consumer(*cur_op, 0);
+            binary_in1->remove_consumer(post_op, 1);
+            // Move binary before reshape
+            post_op.connect_input(0, reshape_in);
+
+            // Create new intermediate value
+            logical_tensor_t new_lt = empty_logical_tensor_with_default_id();
+            auto new_val = std::make_shared<value_t>(post_op, 0, new_lt, true);
+            new_val->set_data_type(binary_out->get_logical_tensor().data_type);
+
+            // Connect binary output to reshape input op
+            post_op.connect_output(0, new_val);
+            cur_op->connect_input(0, new_val);
+
+            // Connect reshape output to output
+            cur_op->connect_output(0, binary_out);
+
+            // Add reshape before src1 of binary with inverse shape
+            auto reshape_src1_op
+                    = std::make_shared<op_t>(op_kind::dnnl_reshape);
+            reshape_src1_op->set_attr<std::vector<int64_t>>(
+                    op_attr::shape, inverse_shape);
+            reshape_src1_op->set_attr<bool>(op_attr::special_zero, false);
+
+            // Insert reshape op before binary's src1
+            rewriter.insert_op_before(
+                    reshape_src1_op, post_op.shared_from_this(), 1, 0, 0);
+            post_op.connect_input(1, reshape_src1_op->get_output_value(0));
+
+            break; // Break the for loop to restart with fresh topology
+        } else {
+            // For any other operation type, stop processing this reshape
+            break;
+        }
+    }
+
+    rewriter.run();
+    return infer_shape(sg);
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

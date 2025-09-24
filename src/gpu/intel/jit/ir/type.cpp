@@ -159,7 +159,8 @@ std::string type_t::str() const {
     ostringstream_t oss;
     oss << type::to_string(kind());
     if (elems() > 1) oss << "x" << elems();
-    if (is_ptr()) oss << "*";
+    if (is_ptr()) oss << ".ptr";
+    if (is_simd()) oss << ".simd";
     if (is_mutable()) oss << ".mut";
     if (is_slm()) oss << ".slm";
     return oss.str();
@@ -183,7 +184,8 @@ void type_t::parse(std::istream &in) {
     if (stream_try_match(in, "x")) { in >> elems; }
 
     attr_t attr {};
-    if (stream_try_match(in, "*")) { attr |= attr_t::ptr; }
+    if (stream_try_match(in, ".ptr")) { attr |= attr_t::ptr; }
+    if (stream_try_match(in, ".simd")) { attr |= attr_t::simd; }
     if (stream_try_match(in, ".mut")) { attr |= attr_t::mut; }
     if (stream_try_match(in, ".slm")) { attr |= attr_t::slm; }
     *this = type_t(kind, elems, attr);

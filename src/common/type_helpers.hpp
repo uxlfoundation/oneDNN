@@ -103,6 +103,7 @@ inline size_t data_type_size(data_type_t data_type) {
         case tf32: // the tf32 type is an f32
         case f32: return sizeof(prec_traits_t<f32>::type);
         case f64: return sizeof(prec_traits_t<f64>::type);
+        case s64: return sizeof(prec_traits_t<s64>::type);
         case s32: return sizeof(prec_traits_t<s32>::type);
         case s8: return sizeof(prec_traits_t<s8>::type);
         case u8: return sizeof(prec_traits_t<u8>::type);
@@ -158,6 +159,7 @@ inline T min_value(data_type_t data_type) {
         CASE(bf16);
         CASE(f32);
         CASE(f64);
+        CASE(s64);
         CASE(s32);
         CASE(s8);
         CASE(u8);
@@ -186,6 +188,7 @@ inline T max_value(data_type_t data_type) {
         CASE(f16);
         CASE(bf16);
         CASE(f32);
+        CASE(s64);
         CASE(s32);
         CASE(s8);
         CASE(u8);
@@ -255,6 +258,7 @@ inline T lowest_value(data_type_t data_type) {
         CASE(f16);
         CASE(bf16);
         CASE(f32);
+        CASE(s64);
         CASE(s32);
         CASE(s8);
         CASE(u8);
@@ -285,6 +289,7 @@ inline T digits(data_type_t data_type) {
         CASE(bf16);
         CASE(f32);
         CASE(f64);
+        CASE(s64);
         CASE(s32);
         CASE(s8);
         CASE(u8);
@@ -315,6 +320,7 @@ inline float round_to_dt(data_type_t data_type, float val) {
         CASE(bf16);
         CASE(f32);
         CASE(f64);
+        CASE(s64);
         CASE(s32);
         CASE(s8);
         CASE(u8);
@@ -514,7 +520,7 @@ inline data_type_t default_accum_data_type(data_type_t src_dt,
 
 inline bool is_integral_dt(data_type_t dt) {
     using namespace data_type;
-    return utils::one_of(dt, s32, s8, u8, u4, s4);
+    return utils::one_of(dt, s64, s32, s8, u8, u4, s4);
 }
 
 template <typename data_t>
@@ -1315,7 +1321,7 @@ inline bool memory_desc_sanity_check(int ndims, const dims_t dims,
 
     bool ok = dims != nullptr && 0 < ndims && ndims <= DNNL_MAX_NDIMS
             && utils::one_of(data_type, f4_e3m0, f4_e2m1, e8m0, f8_e5m2,
-                    f8_e4m3, f16, bf16, f32, f64, s32, s8, u8, s4, u4);
+                    f8_e4m3, f16, bf16, f32, f64, s64, s32, s8, u8, s4, u4);
     if (!ok) return false;
 
     bool has_runtime_dims = false;

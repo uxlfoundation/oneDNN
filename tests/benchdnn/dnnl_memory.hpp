@@ -150,11 +150,17 @@ struct dnn_mem_t {
     }
     float get_elem(int64_t idx, int buffer_index = 0) const;
 
-    // This interface is a shortcut version of the one below to speed up access
+    // This interface is a shortcut version of set_elem below to speed up access
     // to the memory that is guaranteedly of f32 data type.
     // Keep the body in the header to help compiler to inline better.
     void set_f32_elem(int64_t idx, float value) const {
         static_cast<float *>(*this)[idx] = value;
+    }
+    // This interface allows to prevent roundings to float when
+    // setting s64 values that are meant to not fit in f32, like seeds
+    // or offsets.
+    void set_s64_elem(int64_t idx, int64_t value) const {
+        static_cast<int64_t *>(*this)[idx] = value;
     }
     void set_elem(int64_t idx, float value, int buffer_index = 0) const;
 

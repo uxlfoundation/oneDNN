@@ -43,6 +43,7 @@ struct gemm_with_post_ops_t : public gpu_gemm_t {
             return use_scratchpad_with_post_op_worker;
         }
         status_t query(query_t what, int idx, void *result) const override {
+            if (!gemm_pd_) return gpu_gemm_pd_t::query(what, idx, result);
             return gemm_pd_->query(what, idx, result);
         }
 

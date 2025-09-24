@@ -75,6 +75,10 @@ struct prec_traits_t<data_type::f64> {
     using type = double;
 };
 template <>
+struct prec_traits_t<data_type::s64> {
+    using type = int64_t;
+};
+template <>
 struct prec_traits_t<data_type::s32> {
     using type = int32_t;
 };
@@ -130,6 +134,10 @@ struct data_traits_t<bfloat16_t> {
 template <>
 struct data_traits_t<float> {
     static constexpr data_type_t data_type = data_type::f32;
+};
+template <>
+struct data_traits_t<int64_t> {
+    static constexpr data_type_t data_type = data_type::s64;
 };
 template <>
 struct data_traits_t<int32_t> {

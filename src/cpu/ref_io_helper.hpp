@@ -40,6 +40,7 @@ inline int load_int_value(data_type_t dt, const void *ptr, dim_t idx) {
 
     using namespace data_type;
     switch (dt) {
+        CASE(s64);
         CASE(s32);
         CASE(s8);
         CASE(u8);
@@ -60,6 +61,13 @@ inline int load_int_value(data_type_t dt, const void *ptr, dim_t idx) {
 
 #undef CASE
     return INT_MAX;
+}
+
+inline int64_t load_int64_value(data_type_t dt, const void *ptr, dim_t idx) {
+    assert(ptr);
+    if (dt == data_type::s64)
+        return reinterpret_cast<const int64_t *>(ptr)[idx];
+    return static_cast<int64_t>(load_int_value(dt, ptr, idx));
 }
 
 ALWAYS_INLINE float load_float_value(

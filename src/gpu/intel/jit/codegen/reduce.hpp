@@ -128,10 +128,10 @@ private:
         auto &a0 = a[0];
         auto &b0 = b[0];
 
-        bool ok = (a0.dim == b0.dim && a0.block == b0.block);
+        bool ok = (a0.idx == b0.idx && a0.size == b0.size);
         if (!ok) {
             // Try to match strided layout.
-            if (a0.block == 2) {
+            if (a0.size == 2) {
                 auto a_blocks = a.blocks();
                 a_blocks.erase(a_blocks.begin());
                 a = a.with(a_blocks);
@@ -152,16 +152,16 @@ private:
 
         min_step = std::min(
                 std::min(hw_ <= ngen::HW::XeLP ? 8 : simd_size_, min_step),
-                (int)a0.block);
+                (int)a0.size);
 
-        if (a0.block % min_step != 0) {
+        if (a0.size % min_step != 0) {
             // TODO: Extend implementation to support this case.
             gpu_except_not_implemented("Reduction is not supported.");
         }
 
         std::vector<dim_t> tile_dims(src_layout_.ndims(), 1);
-        tile_dims[a0.dim]
-                = ir_utils::max_divisor(int(a0.block), {min_step, max_step});
+        tile_dims[a0.idx]
+                = ir_utils::max_divisor(int(a0.size), {min_step, max_step});
 
         return tile_t(tile_dims);
     }

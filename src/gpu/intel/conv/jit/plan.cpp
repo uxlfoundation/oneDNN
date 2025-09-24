@@ -814,12 +814,12 @@ bool x2r_plan_t::can_split(abc_kind_t abc, int factor) const {
     if (factor == 1) return true;
 
     auto has_outer_block
-            = [](const layout_t &layout, dim_t block, const pvar_t &dim = {}) {
+            = [](const layout_t &layout, dim_t block, const pvar_t &idx = {}) {
                   if (block == 1) return true;
                   if (layout.blocks().empty()) return false;
                   auto &b = layout.blocks().back();
-                  if (!dim.is_undef() && b.dim != dim) return false;
-                  if (b.block % block != 0) return false;
+                  if (!idx.is_undef() && b.idx != idx) return false;
+                  if (b.size % block != 0) return false;
                   return true;
               };
 
@@ -828,8 +828,8 @@ bool x2r_plan_t::can_split(abc_kind_t abc, int factor) const {
     auto &reorder = (is_a ? a_reorder : b_reorder);
     auto &layout = (is_a ? a_layout : b_layout);
     if (!has_outer_block(layout, factor)) return false;
-    auto &dim = layout.blocks().back().dim;
-    if (reorder && !has_outer_block(reorder.src, factor, dim)) return false;
+    auto &idx = layout.blocks().back().idx;
+    if (reorder && !has_outer_block(reorder.src, factor, idx)) return false;
     if (!load.can_split(factor)) return false;
     if (!x_reduce.can_split(factor)) return false;
     return true;
@@ -887,16 +887,16 @@ std::string x2r_plan_t::str() const {
     return add_indent("x2r_plan", oss.str());
 }
 
-int get_dpas_block_rcount(const layout_t &layout, const pvar_t &dim) {
+int get_dpas_block_rcount(const layout_t &layout, const pvar_t &idx) {
     if (layout.nblocks() < 2) return 1;
 
     auto &b0 = layout[0];
-    if (b0.block * layout.type().size() > 32) return 1;
+    if (b0.size * layout.type().size() > 32) return 1;
 
     auto &b1 = layout[1];
-    if (b1.dim != dim) return 1;
+    if (b1.idx != idx) return 1;
 
-    int block_rcount = (int)b1.block;
+    int block_rcount = (int)b1.size;
     int max_rcount = 8;
 
     if (block_rcount % max_rcount == 0) return max_rcount;
@@ -917,8 +917,8 @@ bool fma_plan_t::can_split(abc_kind_t abc, int factor) const {
     auto &blocks = layout.blocks();
     if (blocks.empty()) return false;
     auto &b = blocks.back();
-    if (b.dim.index() != mn_idx) return false;
-    if ((int)b.block % factor != 0) return false;
+    if (b.idx.index() != mn_idx) return false;
+    if ((int)b.size % factor != 0) return false;
     return true;
 }
 
@@ -930,7 +930,7 @@ void fma_plan_t::set_split(abc_kind_t abc, int factor) {
             && utils::one_of(fma_kind, fma_kind_t::dp4a, fma_kind_t::dpas,
                     fma_kind_t::dpasw)) {
         auto blocks = a_layout.blocks();
-        blocks.back().block /= factor;
+        blocks.back().size /= factor;
         auto layout = layout_t(a_layout.type(), blocks);
         m_blk = get_dpas_block_rcount(layout, 1);
     }
@@ -1276,12 +1276,12 @@ layout_t make_with_block(const layout_t &base, const layout_t &inner) {
         rem_tile[d] = ir_utils::safe_divide(cur_tile.at(d), inner.elems(d));
     auto ret = base.with(inner.blocks());
     for (auto &b : base.blocks()) {
-        auto &d = cur_tile[b.dim];
-        auto &r = rem_tile[b.dim];
-        d = ir_utils::safe_divide(d, b.block);
+        auto &d = cur_tile[b.idx];
+        auto &r = rem_tile[b.idx];
+        d = ir_utils::safe_divide(d, b.size);
         if (r <= d) continue;
         auto blk = ir_utils::safe_divide(r, d);
-        ret = ret.with_block({b.dim, blk});
+        ret = ret.with_block({b.idx, blk});
         r = ir_utils::safe_divide(r, blk);
     }
     for (auto &d : rem_tile)
@@ -1457,8 +1457,8 @@ struct fma_context_t {
                       if (block == 1) return true;
                       if (layout.nblocks() == 0) return false;
                       auto &b0 = layout[0];
-                      if (b0.dim != dim) return false;
-                      if (b0.block % block != 0) return false;
+                      if (b0.idx != dim) return false;
+                      if (b0.size % block != 0) return false;
                       return true;
                   };
         if (a_vec_idx != -1 && !is_blocked_by(a, a_vec_idx, vec_size))
@@ -1568,17 +1568,17 @@ layout_t split_into_multi_blocks(
         for (int i = 0; i < int(rem_elems.size()); i++) {
             auto &e = rem_elems[i];
             if (e == 1) continue;
-            if (b.block > e) {
+            if (b.size > e) {
                 // Try to split this block.
-                dim_t next_block = utils::max_div(b.block, e);
+                dim_t next_block = utils::max_div(b.size, e);
                 if (next_block == 1) return layout_t();
                 return split_into_multi_blocks(
-                        tmp.split_block(b, next_block, b.block / next_block),
+                        tmp.split_block(b, next_block, b.size / next_block),
                         multi_blocks);
             }
-            if (e % b.block != 0) return layout_t();
-            e /= b.block;
-            cur_elems[i] *= b.block;
+            if (e % b.size != 0) return layout_t();
+            e /= b.size;
+            cur_elems[i] *= b.size;
             break;
         }
     }
@@ -1622,11 +1622,11 @@ layout_t pad_slm_layout(
                 stride = stride_bytes / type_size;
             }
             b.stride = stride;
-            stride = b.stride * b.block;
+            stride = b.stride * b.size;
             continue;
         }
-        gpu_assert(remaining_elems % b.block == 0);
-        remaining_elems /= b.block;
+        gpu_assert(remaining_elems % b.size == 0);
+        remaining_elems /= b.size;
         if (remaining_elems == 1) past_inner_block = true;
     }
     return layout.with(padded_blocks);
@@ -1695,9 +1695,9 @@ layout_t to_reduce_layout(
     auto map = get_reduce_dim_map(mask, reduce_ndims);
     std::vector<layout_block_t> reduce_blocks;
     for (auto &b : layout.blocks()) {
-        if (map[b.dim] == dim_idx::invalid) continue;
+        if (map[b.idx] == dim_idx::invalid) continue;
         auto bb = b;
-        bb.dim = map[b.dim];
+        bb.idx = map[b.idx];
         reduce_blocks.push_back(bb);
     }
     auto type = get_accumulation_type(cfg, layout.type(), layout.type());
@@ -1727,11 +1727,11 @@ public:
         std::vector<layout_block_t> blocks;
         bool seen = false;
         for (auto &b : layout.blocks()) {
-            if (b.block == 1) continue;
-            auto &tdim = view_.tdim(b.dim);
-            if (b.dim.index() != fused_tidx_) {
+            if (b.size == 1) continue;
+            auto &tdim = view_.tdim(b.idx);
+            if (b.idx.index() != fused_tidx_) {
                 auto vb = b;
-                vb.dim = tdim.vidx(0);
+                vb.idx = tdim.vidx(0);
                 blocks.push_back(vb);
                 continue;
             }
@@ -1741,8 +1741,8 @@ public:
                 int vidx = tdim.vidx(i);
                 dim_t vstride = (dim_t)tdim.vstride(i);
                 auto vb = b;
-                vb.dim = vidx;
-                vb.block = view_.vdims()[vidx];
+                vb.idx = vidx;
+                vb.size = view_.vdims()[vidx];
                 vb.stride = b.stride * vstride;
                 blocks.push_back(vb);
             }
@@ -1841,7 +1841,7 @@ private:
 layout_t add_batch(const layout_t &layout) {
     auto blocks = layout.blocks();
     for (auto &b : blocks) {
-        b.dim = b.dim + 1;
+        b.idx = b.idx + 1;
     }
     return layout.with(blocks);
 }
@@ -1883,11 +1883,11 @@ layout_t get_c_layout(const layout_t &a_layout, const layout_t &b_layout,
     const bmnk_kind_t b_bmnks[3]
             = {bmnk_kind_t::b, bmnk_kind_t::k, bmnk_kind_t::n};
     for (auto &b : a_layout.blocks()) {
-        if (a_bmnks[b.dim] == bmnk_kind_t::k) continue;
+        if (a_bmnks[b.idx] == bmnk_kind_t::k) continue;
         blocks.push_back(b);
     }
     for (auto &b : b_layout.blocks()) {
-        if (utils::one_of(b_bmnks[b.dim], bmnk_kind_t::b, bmnk_kind_t::k))
+        if (utils::one_of(b_bmnks[b.idx], bmnk_kind_t::b, bmnk_kind_t::k))
             continue;
         blocks.push_back(b);
     }
@@ -2322,11 +2322,11 @@ private:
         auto rem_dims = l.tile();
         for (int i = (int)blocks.size() - 1; i >= 0; i--) {
             auto &b = blocks[i];
-            for (dim_t j = 2; j <= b.block; j++) {
-                if (b.block % j != 0) continue;
+            for (dim_t j = 2; j <= b.size; j++) {
+                if (b.size % j != 0) continue;
                 if (outer * j > k_tg) break;
-                if (outer * j == k_tg || j == b.block) {
-                    rem_dims[b.dim] /= j;
+                if (outer * j == k_tg || j == b.size) {
+                    rem_dims[b.idx] /= j;
                     outer *= j;
                     break;
                 }
@@ -2341,8 +2341,8 @@ private:
             stride_t stride = 1;
             for (auto &b : l_sub.blocks()) {
                 if (b.stride != stride) break;
-                bytes *= (int)b.block;
-                stride *= b.block;
+                bytes *= (int)b.size;
+                stride *= b.size;
             }
             if (bytes % plan_.grf_size() != 0)
                 return plan_status_t::invalid_slm_k_slicing;
@@ -2356,11 +2356,11 @@ private:
         auto k_sub_layout = [&](abc_kind_t abc_kind, const layout_t &l) {
             layout_t k_layout = layout_t(type_t::u8());
             for (auto &b : l.blocks()) {
-                auto bmnk_kind = bmnk_mapper.bmnk_kind(abc_kind, b.dim);
+                auto bmnk_kind = bmnk_mapper.bmnk_kind(abc_kind, b.idx);
                 if (bmnk_kind != bmnk_kind_t::k) continue;
-                auto &var = bmnk_mapper.var(abc_kind, b.dim);
+                auto &var = bmnk_mapper.var(abc_kind, b.idx);
                 auto ret = k_vars.emplace(var, k_vars.size());
-                k_layout = k_layout.with_block({ret.first->second, b.block});
+                k_layout = k_layout.with_block({ret.first->second, b.size});
             }
             return k_layout;
         };
@@ -2375,15 +2375,15 @@ private:
             auto &a1 = a_k[1];
             auto &b0 = b_k[0];
             auto &b1 = b_k[1];
-            bool dims_ok = (a0.dim == b1.dim) && (a1.dim == b0.dim);
-            bool blocks_ok = (a0.block == b1.block) && (a1.block == b0.block);
+            bool dims_ok = (a0.idx == b1.idx) && (a1.idx == b0.idx);
+            bool blocks_ok = (a0.size == b1.size) && (a1.size == b0.size);
             if (dims_ok && blocks_ok) {
                 auto a_blocks = a.blocks();
                 constexpr size_t unset = -1;
                 size_t i0 = unset;
                 size_t i1 = unset;
                 for (size_t i = 0; i < a.nblocks(); i++) {
-                    if (bmnk_mapper.bmnk_kind(abc_kind_t::a, a_blocks[i].dim)
+                    if (bmnk_mapper.bmnk_kind(abc_kind_t::a, a_blocks[i].idx)
                             == bmnk_kind_t::k) {
                         if (i0 == unset) {
                             i0 = i;

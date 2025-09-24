@@ -32,13 +32,13 @@ std::vector<block_t> normalize_blocks(
     std::vector<block_t> res;
 
     for (const block_t &block : blocks) {
-        if (remove_size_1_blocks && block.block == 1) continue;
+        if (remove_size_1_blocks && block.size == 1) continue;
 
         auto can_merge = [&](const block_t &a, const block_t &b) {
-            return a.dim == b.dim && a.stride * a.block == b.stride;
+            return a.idx == b.idx && a.stride * a.size == b.stride;
         };
         if (!res.empty() && can_merge(res.back(), block)) {
-            res.back().block *= block.block;
+            res.back().size *= block.size;
         } else {
             res.emplace_back(block);
         }
@@ -64,10 +64,10 @@ tile_iterator_t &tile_iterator_t::operator++() {
 tile_iterator_t::tile_iterator_t(const layout_t &layout, const tile_t &tile) {
     tile_t strides;
     for (auto &b : layout.blocks()) {
-        auto &stride = strides[b.dim];
-        d_.emplace_back(b.dim, b.block, stride, tile.get(b.dim));
-        coord_[b.dim] = 0;
-        stride *= b.block;
+        auto &stride = strides[b.idx];
+        d_.emplace_back(b.idx, b.size, stride, tile.get(b.idx));
+        coord_[b.idx] = 0;
+        stride *= b.size;
     }
     if (!layout.is_empty() && layout.blocks().empty()) {
         d_.emplace_back(*tile.begin(), 1, 1, 1);
@@ -107,9 +107,9 @@ layout_t::layout_t(const type_t &type, const std::vector<block_t> &blocks,
         if (b.stride.is_undefined()) {
             b.stride = stride;
         } else {
-            stride = b.block;
+            stride = b.size;
         }
-        stride *= b.block;
+        stride *= b.size;
     }
     if (do_normalize) blocks_ = normalize_blocks(blocks_);
     sanity_check();
@@ -121,7 +121,7 @@ layout_t layout_t::with_block(block_t block) const {
         new_blocks.emplace_back(block);
     } else if (block.stride.is_undefined()) {
         block.stride = !new_blocks.empty()
-                ? new_blocks.back().stride * new_blocks.back().block
+                ? new_blocks.back().stride * new_blocks.back().size
                 : stride_t(1);
         new_blocks.emplace_back(block);
     } else {
@@ -134,7 +134,7 @@ layout_t layout_t::with_block(block_t block) const {
 
     auto ret = with(new_blocks);
     if (ret.has_ndims()) {
-        if (block.dim.index() == ret.ndims()) ret.ndims_++;
+        if (block.idx.index() == ret.ndims()) ret.ndims_++;
         gpu_assert(has_ndims());
     }
     return ret;
@@ -147,14 +147,14 @@ T layout_t::offset(const coord_t &args, bool ignore_offset) const {
     expr_t off = 0;
     auto _args = args;
     for (auto &b : blocks()) {
-        if (!_args.has(b.dim)) continue;
-        auto &idx = _args[b.dim];
+        if (!_args.has(b.idx)) continue;
+        auto &idx = _args[b.idx];
         if (is_const(idx, 0)) continue;
 
         // Do not use modulus for outermost blocks.
-        auto i = is_outermost(b) ? idx : (idx % b.block);
+        auto i = is_outermost(b) ? idx : (idx % b.size);
         off = i * int64_t(b.stride) + off;
-        idx /= b.block;
+        idx /= b.size;
     }
     if (ignore_offset) return expr_cast<T>(off);
     return expr_cast<T>(offset_ + off);
@@ -175,8 +175,8 @@ bool layout_t::is_strictly_equal(const layout_t &other, bool compare_offset,
     for (size_t i = 0; i < blocks_.size(); i++) {
         auto &b0 = blocks_[i];
         auto &b1 = other.blocks_[i];
-        if (b0.dim != b1.dim) return false;
-        if (b0.block != b1.block) return false;
+        if (b0.idx != b1.idx) return false;
+        if (b0.size != b1.size) return false;
         if (compare_strides && b0.stride != b1.stride) return false;
     }
     return true;
@@ -193,9 +193,9 @@ bool layout_t::operator<=(const layout_t &other) const {
     for (; i < (int)self_blocks.size() - 1; i++) {
         if (self_blocks[i] != other_blocks[i]) return false;
     }
-    return (self_blocks[i].dim == other_blocks[i].dim
+    return (self_blocks[i].idx == other_blocks[i].idx
             && self_blocks[i].stride == other_blocks[i].stride
-            && other_blocks[i].block % self_blocks[i].block == 0);
+            && other_blocks[i].size % self_blocks[i].size == 0);
 }
 
 layout_t layout_t::sub(const tile_t &tile, const coord_t &start) const {
@@ -205,31 +205,30 @@ layout_t layout_t::sub(const tile_t &tile, const coord_t &start) const {
     for (auto &b : blocks()) {
         bool b_is_outermost = is_outermost(b);
 
-        dim_t block = b.block;
-        if (!remaining_tile.has(b.dim)) remaining_tile[b.dim] = 1;
-        dim_t &rem_dim = remaining_tile[b.dim];
+        int64_t size = b.size;
+        if (!remaining_tile.has(b.idx)) remaining_tile[b.idx] = 1;
+        int64_t &rem_dim = remaining_tile[b.idx];
         if (rem_dim == 1) {
             if (b_is_outermost) {
                 // This is to have similarity between the current and
                 // mapped layouts.
-                mapped_blocks.emplace_back(b.dim, 1, b.stride);
+                mapped_blocks.emplace_back(b.idx, 1, b.stride);
             }
             continue;
         }
         if (b_is_outermost) {
-            block = rem_dim;
-        } else if (rem_dim % block != 0) {
+            size = rem_dim;
+        } else if (rem_dim % size != 0) {
             // Try to split the current block and start mapping from
             // scratch.
-            if (block % rem_dim == 0)
-                return split_block(b, rem_dim, block / rem_dim)
-                        .sub(tile, start);
+            if (size % rem_dim == 0)
+                return split_block(b, rem_dim, size / rem_dim).sub(tile, start);
 
             // TODO: Remove exception usage.
             gpu_except_not_implemented("Can't map tensor layout.");
         }
-        rem_dim /= block;
-        mapped_blocks.emplace_back(b.dim, block, b.stride);
+        rem_dim /= size;
+        mapped_blocks.emplace_back(b.idx, size, b.stride);
     }
 
     return layout_t(type(), mapped_blocks,
@@ -237,9 +236,9 @@ layout_t layout_t::sub(const tile_t &tile, const coord_t &start) const {
 }
 
 layout_t layout_t::split_block(
-        const block_t &b, dim_t block0, dim_t block1) const {
+        const block_t &b, dim_t size0, dim_t size1) const {
     size_t block_idx = get_idx(b);
-    gpu_assert(b.block == block0 * block1) << "Incompatible block sizes.";
+    gpu_assert(b.size == size0 * size1) << "Incompatible block sizes.";
     MAYBE_UNUSED(b);
 
     auto new_blocks = blocks_;
@@ -247,9 +246,9 @@ layout_t layout_t::split_block(
     block_t &b0 = new_blocks[block_idx];
     block_t b1 = b0;
 
-    b0.block = block0;
-    b1.block = block1;
-    b1.stride = b0.stride * block0;
+    b0.size = size0;
+    b1.size = size1;
+    b1.stride = b0.stride * size0;
 
     new_blocks.insert(new_blocks.begin() + block_idx + 1, b1);
 
@@ -267,18 +266,18 @@ tile_t layout_t::max_subtile(
             if (b.stride.is_unknown()) return subtile;
             if (i > 0) {
                 auto &b0 = blocks()[i - 1];
-                if (b.stride != b0.block * b0.stride) break;
+                if (b.stride != b0.size * b0.stride) break;
             }
         }
-        if (b.block * elems >= max) {
+        if (b.size * elems >= max) {
             if (perfectly_divides)
-                subtile[b.dim] *= utils::max_div(b.block, max / elems);
+                subtile[b.idx] *= utils::max_div(b.size, max / elems);
             else
-                subtile[b.dim] *= max / elems;
+                subtile[b.idx] *= max / elems;
             break;
         }
-        subtile[b.dim] *= b.block;
-        elems *= b.block;
+        subtile[b.idx] *= b.size;
+        elems *= b.size;
     }
     return subtile;
 }
@@ -287,8 +286,8 @@ std::string layout_t::desc_str(bool dnnl_style) const {
     if (is_empty()) return "(nil)";
     if (!dnnl_style && blocks_.empty()) return "(scalar:" + type().str() + ")";
 
-    auto to_str = [](const idx_t &dim, bool is_outer) {
-        auto ret = dim.str();
+    auto to_str = [](const idx_t &idx, bool is_outer) {
+        auto ret = idx.str();
         if (ret.length() == 1) {
             if (is_outer) ret[0] -= 'a' - 'A';
             return ret;
@@ -301,10 +300,10 @@ std::string layout_t::desc_str(bool dnnl_style) const {
     for (auto &b : blocks()) {
         std::string b_str;
         if (dnnl_style && is_outermost(b)) {
-            b_str += to_str(b.dim, seen.get(b.dim, false));
+            b_str += to_str(b.idx, seen.get(b.idx, false));
         } else {
-            b_str = std::to_string(b.block);
-            b_str += to_str(b.dim, false);
+            b_str = std::to_string(b.size);
+            b_str += to_str(b.idx, false);
         }
         if (!dnnl_style) {
             if (b.stride.is_unknown()) {
@@ -315,8 +314,8 @@ std::string layout_t::desc_str(bool dnnl_style) const {
         }
         b_str += ret;
         std::swap(ret, b_str);
-        dense_stride = b.stride * b.block;
-        seen[b.dim] = true;
+        dense_stride = b.stride * b.size;
+        seen[b.idx] = true;
     }
     ret += ":" + type().str();
     return ret;
@@ -329,7 +328,7 @@ void layout_t::sanity_check() const {
     if (is_empty()) return;
 
     for (size_t i = 0; i < blocks_.size(); i++) {
-        gpu_assert(blocks_[i].block > 0) << "Incorrect block size.";
+        gpu_assert(blocks_[i].size > 0) << "Incorrect block size.";
         if (i > 0)
             gpu_assert(blocks_[i].stride > blocks_[i - 1].stride)
                     << "Block " << blocks_[i]

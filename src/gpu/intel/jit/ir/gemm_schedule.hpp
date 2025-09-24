@@ -154,7 +154,7 @@ public:
 
 private:
     static void pop_size_1_blocks(std::vector<layout_block_t> &blocks) {
-        while (!blocks.empty() && blocks.front().block == 1) {
+        while (!blocks.empty() && blocks.front().size == 1) {
             blocks.erase(blocks.begin());
         }
     }
@@ -166,8 +166,8 @@ private:
         ret.reserve(mn_blocks.size());
         for (auto &p : mn_blocks) {
             auto b = p.second;
-            const auto &var = bmnk_mapper_.var(p.first, b.dim);
-            b.dim = bmnk_mapper_.dim_idx(abc_kind, var);
+            const auto &var = bmnk_mapper_.var(p.first, b.idx);
+            b.idx = bmnk_mapper_.dim_idx(abc_kind, var);
             ret.push_back(b);
         }
         return ret;

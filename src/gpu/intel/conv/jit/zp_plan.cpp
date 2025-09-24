@@ -76,9 +76,9 @@ static bool ends_with(
         const layout_t &layout, size_t i0, int b0, bool strict = false) {
     if (layout.nblocks() < 1) return false;
     auto &blocks = layout.blocks();
-    if (blocks[0].dim.index() != i0) return false;
-    if (strict && blocks[0].block != b0) return false;
-    if (!strict && blocks[0].block % b0 != 0) return false;
+    if (blocks[0].idx.index() != i0) return false;
+    if (strict && blocks[0].size != b0) return false;
+    if (!strict && blocks[0].size % b0 != 0) return false;
     return true;
 }
 
@@ -87,8 +87,8 @@ static bool ends_with(
     if (!ends_with(layout, i0, b0, /*strict=*/true)) return false;
     if (layout.nblocks() < 2) return false;
     auto &blocks = layout.blocks();
-    if (blocks[1].dim.index() != i1) return false;
-    if (blocks[1].block % b1 != 0) return false;
+    if (blocks[1].idx.index() != i1) return false;
+    if (blocks[1].size % b1 != 0) return false;
     return true;
 }
 
@@ -204,10 +204,10 @@ private:
             dim_t dim = 1;
             std::vector<layout_block_t> mn_blocks;
             for (auto &b : c.blocks()) {
-                if (b.block == 1) continue;
-                auto bmnk = mapper.bmnk_kind(abc_kind_t::c, b.dim);
+                if (b.size == 1) continue;
+                auto bmnk = mapper.bmnk_kind(abc_kind_t::c, b.idx);
                 if (bmnk != split_mn) continue;
-                dim *= b.block;
+                dim *= b.size;
                 mn_blocks.push_back(b);
             }
             if (dim % factor != 0) return;
@@ -216,12 +216,12 @@ private:
             size_t cur_idx = dim_idx::invalid;
             for (auto &b : mn_blocks) {
                 if (cur_idx == dim_idx::invalid) {
-                    cur_idx = b.dim;
-                } else if (b.dim.index() != cur_idx) {
+                    cur_idx = b.idx;
+                } else if (b.idx.index() != cur_idx) {
                     return;
                 }
-                dim_t max_block = std::min(b.block, subtile_dim / cur_dim);
-                if (b.block % max_block != 0) return;
+                dim_t max_block = std::min(b.size, subtile_dim / cur_dim);
+                if (b.size % max_block != 0) return;
                 cur_dim *= max_block;
                 if (cur_dim == subtile_dim) break;
             }
@@ -328,8 +328,8 @@ public:
 
         tile_t tile;
         for (auto &b : b_layout_.blocks()) {
-            if (b.dim.index() == kw_idx) break;
-            tile[b.dim.index()] *= b.block;
+            if (b.idx.index() == kw_idx) break;
+            tile[b.idx.index()] *= b.size;
         }
         gpu_assert(tile.elems() % sdepth_size == 0);
         wei_load = simd_bcast(load_t::make(
@@ -410,10 +410,10 @@ public:
 
         auto &b_wei = wei_layout_.blocks().back();
         auto &b_comp = comp_layout_.blocks().back();
-        if (b_wei.block % factor != 0) return false;
-        if (b_wei.block != b_comp.block) return false;
-        if (b_wei.dim != b_comp.dim) return false;
-        size_t dim_idx = b_comp.dim.index();
+        if (b_wei.size % factor != 0) return false;
+        if (b_wei.size != b_comp.size) return false;
+        if (b_wei.idx != b_comp.idx) return false;
+        size_t dim_idx = b_comp.idx.index();
         dim_t subtile_dim = comp_layout_.elems(dim_idx);
         if (dim_idx == simd_dim_idx_ && subtile_dim < simd_) return false;
 
@@ -553,7 +553,7 @@ private:
     void init_comp_layout() {
         auto blocks = wei_layout_.blocks();
         for (auto &b : blocks) {
-            if (b.dim.index() == ck_idx_) b.block = 1;
+            if (b.idx.index() == ck_idx_) b.size = 1;
         }
         comp_layout_ = layout_t(type_t::s32(), blocks).make_dense();
     }
@@ -654,10 +654,10 @@ private:
 
         auto &b = comp_layout_.blocks().back();
         dim_t subtile_dim = ir_utils::safe_divide(
-                comp_layout_.elems(b.dim), split_factor_);
+                comp_layout_.elems(b.idx), split_factor_);
         dim_t beg = subtile_idx * subtile_dim;
         dim_t end = beg + subtile_dim;
-        return start[b.dim.index()] >= beg && start[b.dim.index()] < end;
+        return start[b.idx.index()] >= beg && start[b.idx.index()] < end;
     }
 
     stmt_t create_tile_stmt(const expr_t &zp, const expr_t &wei,

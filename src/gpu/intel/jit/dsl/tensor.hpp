@@ -496,29 +496,29 @@ namespace layout {
 using jit::operator<<;
 struct block_t {
     block_t() = default;
-    block_t(const idx_t &dim, int64_t block, stride_t stride = stride_t())
-        : dim(dim), block(block), stride(stride) {}
+    block_t(const idx_t &idx, int64_t size, stride_t stride = stride_t())
+        : idx(idx), size(size), stride(stride) {}
 
     bool operator==(const block_t &other) const {
-        return (dim == other.dim) && (block == other.block)
+        return (idx == other.idx) && (size == other.size)
                 && (stride == other.stride);
     }
     bool operator!=(const block_t &other) const { return !(*this == other); }
 
-    size_t get_hash() const { return ir_utils::get_hash(dim, block, stride); }
+    size_t get_hash() const { return ir_utils::get_hash(idx, size, stride); }
 
     std::string str() const {
         std::ostringstream oss;
-        oss << "block_t(dim = " << dim;
-        oss << ", block = " << block;
+        oss << "block_t(idx = " << idx;
+        oss << ", size = " << size;
         oss << ", stride = " << stride.str();
         oss << ")";
         return oss.str();
     }
 
-    idx_t dim;
-    int64_t block = 1; // Block size.
-    stride_t stride; // Stride between elements of the block.
+    idx_t idx;
+    int64_t size = 1;
+    stride_t stride;
 };
 
 std::vector<block_t> normalize_blocks(
@@ -541,11 +541,11 @@ protected:
 
 private:
     struct index_data_t {
-        index_data_t(idx_t idx, int64_t block, int64_t stride_, int64_t tile)
+        index_data_t(idx_t idx, int64_t size, int64_t stride_, int64_t tile)
             : i(0)
             , idx(idx)
-            , end(std::min(block, utils::div_up(stride_ * block, tile)))
-            , stride(stride_ * utils::div_up(block, end)) {}
+            , end(std::min(size, utils::div_up(stride_ * size, tile)))
+            , stride(stride_ * utils::div_up(size, end)) {}
         bool operator==(const index_data_t &other) const {
             return i == other.i && idx == other.idx && end == other.end
                     && stride == other.stride;
@@ -599,10 +599,10 @@ struct layout_t {
     }
 
     // Number of elements in the layout
-    int64_t elems(const idx_t &dim = {}) const {
+    int64_t elems(const idx_t &idx = {}) const {
         int64_t ret = 1;
         for (auto &b : blocks_)
-            if (dim.is_undef() || b.dim == dim) ret *= b.block;
+            if (idx.is_undef() || b.idx == idx) ret *= b.size;
         return ret;
     }
 
@@ -614,7 +614,7 @@ struct layout_t {
     tile_t tile() const {
         tile_t tile;
         for (auto &b : blocks_)
-            tile[b.dim] = tile.get(b.dim, 1) * b.block;
+            tile[b.idx] = tile.get(b.idx, 1) * b.size;
         return tile;
     }
 
@@ -624,12 +624,12 @@ struct layout_t {
     tile_t max_subtile(int64_t max, bool is_dense = true,
             bool perfectly_divides = true) const;
 
-    stride_t stride(const idx_t &dim, int dim_block_idx = 0) const {
-        int idx = 0;
+    stride_t stride(const idx_t &idx, int block_idx = 0) const {
+        int i = 0;
         for (auto &b : blocks_) {
-            if (b.dim != dim) continue;
-            if (idx == dim_block_idx) { return b.stride; }
-            idx++;
+            if (b.idx != idx) continue;
+            if (i == block_idx) { return b.stride; }
+            i++;
         }
         return stride_t();
     }
@@ -687,7 +687,7 @@ struct layout_t {
         stride_t stride = 1;
         for (auto &b : blocks_) {
             if (b.stride != stride) return false;
-            stride *= b.block;
+            stride *= b.size;
         }
         return true;
     }
@@ -698,16 +698,15 @@ struct layout_t {
         auto new_blocks = blocks_;
         for (auto &b : new_blocks) {
             b.stride = stride;
-            stride *= b.block;
+            stride *= b.size;
         }
         return with(new_blocks);
     }
 
     // Returns an equivalent layout where the specified block is split into two.
-    // block0 - inner block size.
-    // block1 - outer block size.
-    layout_t split_block(
-            const block_t &b, int64_t block0, int64_t block1) const;
+    // size0 - inner block size.
+    // size1 - outer block size.
+    layout_t split_block(const block_t &b, int64_t size0, int64_t size1) const;
 
     using tile_iterator_t = layout::tile_iterator_t;
     tile_iterator_t iter(const tile_t &tile) const {
@@ -728,7 +727,7 @@ struct layout_t {
 
     bool is_outermost(const block_t &block) const {
         for (size_t i = get_idx(block) + 1; i < blocks().size(); i++) {
-            if (blocks()[i].dim == block.dim) return false;
+            if (blocks()[i].idx == block.idx) return false;
         }
         return true;
     }

@@ -217,11 +217,11 @@ private:
 using layout_block_t = dsl::layout::block_t;
 using layout_t = dsl::layout_t;
 
-inline dim_t inner_block(const layout_t &layout, const pvar_t &dim,
+inline dim_t inner_block(const layout_t &layout, const pvar_t &idx,
         bool skip_outer = true, bool inner_only = true) {
     std::vector<dim_t> dim_blocks;
     for (auto &b : layout.blocks()) {
-        if (b.dim == dim) dim_blocks.push_back(b.block);
+        if (b.idx == idx) dim_blocks.push_back(b.size);
     }
     dim_t ret = 1;
     int nblocks = (int)dim_blocks.size();
@@ -239,8 +239,8 @@ inline dim_t size_bytes(const layout_t &layout, dim_t alignment = 1) {
     dim_t max_off = 0;
     dim_t max_block_size = 0;
     for (auto &b : layout.blocks()) {
-        max_off += (b.block - 1) * (dim_t)b.stride;
-        max_block_size = std::max(max_block_size, b.block * (dim_t)b.stride);
+        max_off += (b.size - 1) * (dim_t)b.stride;
+        max_block_size = std::max(max_block_size, b.size * (dim_t)b.stride);
     }
     dim_t max_elems = std::max(max_off + 1, max_block_size);
     return utils::rnd_up(
@@ -315,7 +315,7 @@ public:
         while (b == 1) {
             b_idx++;
             if (b_idx >= int(l_.blocks().size())) return false;
-            b = int(l_[b_idx].block);
+            b = int(l_[b_idx].size);
         }
         return true;
     }
@@ -324,7 +324,7 @@ public:
         gpu_assert(has_next());
         while (block_ == 1) {
             block_idx_++;
-            block_ = int(l_[block_idx_].block);
+            block_ = int(l_[block_idx_].size);
         }
         // Find smallest factor.
         for (int factor = 2; factor <= int(block_); factor++) {
@@ -342,9 +342,9 @@ public:
         tile_t ret;
         for (int i = 0; i <= block_idx_; i++) {
             auto &b = l_[i];
-            dim_t b_block = b.block;
+            dim_t b_block = b.size;
             if (i == block_idx_) b_block /= block_;
-            ret[b.dim] *= b_block;
+            ret[b.idx] *= b_block;
         }
         return ret;
     }
@@ -357,8 +357,8 @@ public:
         if (block_ > 1) {
             auto &b = blocks[block_idx_];
             outer_blocks.push_back(b);
-            outer_blocks[0].block = block_;
-            outer_blocks[0].stride = b.stride * (b.block / block_);
+            outer_blocks[0].size = block_;
+            outer_blocks[0].stride = b.stride * (b.size / block_);
         }
         outer_blocks.insert(outer_blocks.end(),
                 blocks.begin() + (block_idx_ + 1), blocks.end());
@@ -1076,7 +1076,7 @@ private:
         std::vector<layout_block_t> new_blocks;
         std::vector<layout_block_t> size_1_blocks;
         for (auto &b : tlayout_.blocks()) {
-            if (b.block == 1 && vdims_.get(b.dim) == 1) {
+            if (b.size == 1 && vdims_.get(b.idx) == 1) {
                 size_1_blocks.emplace_back(b);
             } else {
                 new_blocks.emplace_back(b);
@@ -1084,7 +1084,7 @@ private:
         }
         stride_t stride = new_blocks.empty()
                 ? stride_t(1)
-                : new_blocks.back().block * new_blocks.back().stride;
+                : new_blocks.back().size * new_blocks.back().stride;
         for (auto &b : size_1_blocks) {
             b.stride = stride;
             new_blocks.emplace_back(b);

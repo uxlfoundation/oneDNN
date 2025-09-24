@@ -371,8 +371,8 @@ void reorder_2d_impl_t::generate_all_layouts_impl(
     // Avoid repeating indices to keep only unique layouts.
     if (!blocks.empty()) {
         auto &last = blocks.back();
-        iterate_a &= (last.dim.index() != 0);
-        iterate_b &= (last.dim.index() != 1);
+        iterate_a &= (last.idx.index() != 0);
+        iterate_b &= (last.idx.index() != 1);
     }
 
     if (iterate_a) {
@@ -425,7 +425,7 @@ bool reorder_2d_impl_t::vertex_t::can_reorder(
     if (nblocks == 0) return true;
     if (nblocks > 1) return false;
     auto &last = ab_layout.blocks().back();
-    int max_stride = int(last.stride * last.block);
+    int max_stride = int(last.stride * last.size);
     if (last.stride > 4) return false;
     if ((int)last.stride == 4 && type.size() != 4) return false;
     if (!math::is_pow2(int64_t(last.stride))) return false;
@@ -469,7 +469,7 @@ int reorder_2d_impl_t::vertex_t::cost(
         if (i > min_log_bytes) {
             gpu_assert(!layout.blocks().empty());
             gpu_assert(!v.layout.blocks().empty());
-            if (layout[0].dim != v.layout[0].dim) continue;
+            if (layout[0].idx != v.layout[0].idx) continue;
         }
         min_cost = cur_cost;
         type = type_t::u(8 << i);
@@ -561,15 +561,15 @@ std::vector<tile_t> reorder_impl_t::tiles() const {
         auto it = blocks.rbegin();
         const auto end = blocks.rend();
         for (; it != end; ++it) {
-            auto block = it->block;
+            auto block = it->size;
             for (dim_t factor = 2; factor <= block; ++factor) {
                 if (tiles.size() >= 8) return tiles;
                 if (block % factor) continue;
                 tile_t tile = base;
-                tile[it->dim] /= factor;
+                tile[it->idx] /= factor;
                 tiles.push_back(std::move(tile));
             }
-            base[it->dim] /= block;
+            base[it->idx] /= block;
         }
         return tiles;
     };
@@ -611,7 +611,7 @@ bool reorder_impl_t::layouts_compatible(
     const iterator_t b_block_end = b.blocks().end();
 
     auto skip_size_1_blocks = [](iterator_t &it, const iterator_t &end) {
-        while (it != end && it->block == 1)
+        while (it != end && it->size == 1)
             it++;
     };
 
@@ -620,8 +620,8 @@ bool reorder_impl_t::layouts_compatible(
         skip_size_1_blocks(b_block_it, b_block_end);
         if (a_block_it == a_block_end || b_block_it == b_block_end) break;
 
-        if (a_block_it->dim != b_block_it->dim) return false;
-        if (a_block_it->block != b_block_it->block) return false;
+        if (a_block_it->idx != b_block_it->idx) return false;
+        if (a_block_it->size != b_block_it->size) return false;
         a_block_it++;
         b_block_it++;
     }
@@ -680,8 +680,8 @@ layout_t reorder_impl_t::make_compact_layout(
             stride = std::min(
                     utils::rnd_up(dense_output_stride, grf_elems >> 1),
                     utils::rnd_up_pow2(dense_output_stride));
-        dense_output_stride = int64_t(blocks.back().stride * block.block);
-        dense_input_stride = int64_t(input_stride * block.block);
+        dense_output_stride = int64_t(blocks.back().stride * block.size);
+        dense_input_stride = int64_t(input_stride * block.size);
     }
     return {type, blocks, 0, layout.ndims(), /*do_normalize=*/false};
 }
@@ -776,22 +776,22 @@ std::vector<tile_t> reorder_impl_t::find_2d_dense_tiles(
         std::vector<dim_t> dims(l.ndims(), 1);
         std::vector<tile_t> tiles;
         for (auto &b : l.blocks()) {
-            if (b.block == 1) continue;
+            if (b.size == 1) continue;
             if (count >= max_tile_blocks) break;
-            uint32_t dim_bit = 1u << b.dim;
+            uint32_t dim_bit = 1u << b.idx;
             if ((dim_t)b.stride != stride) break;
             if (!(dim_mask & dim_bit)) {
                 if (ndims >= 2) break;
                 ndims += 1;
                 dim_mask |= dim_bit;
             }
-            auto pow2_block = b.block & ~(b.block - 1);
+            auto pow2_block = b.size & ~(b.size - 1);
             for (dim_t d = 1; d < pow2_block; d *= 2) {
-                dims[b.dim] *= 2;
+                dims[b.idx] *= 2;
                 tiles.emplace_back(dims);
             }
-            if (b.block != pow2_block) break;
-            stride *= b.block;
+            if (b.size != pow2_block) break;
+            stride *= b.size;
             count++;
         }
         return tiles;
@@ -832,15 +832,15 @@ tile_t reorder_impl_t::find_max_tile_with_fixed_stride(const layout_t &src,
     for (int i = 0; i < min_blocks; i++) {
         auto &ab = a_blocks[i];
         auto &bb = b_blocks[i];
-        if (ab.dim != bb.dim || ab.block != bb.block) break;
+        if (ab.idx != bb.idx || ab.size != bb.size) break;
 
         // Strides are supported for the innermost block only.
         if (src_cur_stride != int(ab.stride)) break;
         if (dst_cur_stride != int(bb.stride)) break;
 
-        src_cur_stride = int(ab.block * ab.stride);
-        dst_cur_stride = int(bb.block * bb.stride);
-        tile_dims[ab.dim] *= ab.block;
+        src_cur_stride = int(ab.size * ab.stride);
+        dst_cur_stride = int(bb.size * bb.stride);
+        tile_dims[ab.idx] *= ab.size;
     }
     return tile_t(tile_dims);
 }

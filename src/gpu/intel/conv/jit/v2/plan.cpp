@@ -334,9 +334,9 @@ private:
             const layout_desc_t &desc, std::vector<fused_dim_t> dims) {
         v2::layout_t ret(desc, layout.type());
         for (auto &b : layout.blocks()) {
-            dim_t block = b.block;
+            dim_t block = b.size;
             while (block > 1) {
-                auto dim_block = dims[b.dim].pop(block);
+                auto dim_block = dims[b.idx].pop(block);
                 ret.add_block(dim_block.first, dim_block.second);
             }
         }

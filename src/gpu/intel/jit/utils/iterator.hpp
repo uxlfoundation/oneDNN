@@ -218,7 +218,7 @@ public:
         iterator_t &operator++() {
             if (it_ == end_) return *this;
 
-            auto block = (*it_).block;
+            auto block = (*it_).size;
             auto size = block / scale();
             if ((size & 1) == 0) {
                 log2scale_++;
@@ -228,7 +228,7 @@ public:
                 if (size % factor_ == 0) return *this;
             }
 
-            dims_[(*it_).dim] *= block;
+            dims_[(*it_).idx] *= block;
             ++it_;
             factor_ = 1;
             log2scale_ = 0;
@@ -237,7 +237,7 @@ public:
 
         tile_t operator*() const {
             auto dims = dims_;
-            dims[(*it_).dim] *= factor();
+            dims[(*it_).idx] *= factor();
             return tile_t(dims);
         }
 

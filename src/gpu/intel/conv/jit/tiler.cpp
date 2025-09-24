@@ -167,7 +167,7 @@ int get_layout_unit(const config_t &cfg, const layout_t &layout,
 
     std::vector<dim_t> blocks;
     for (auto &b : layout.blocks()) {
-        if (b.dim.index() == dim_idx) blocks.push_back(b.block);
+        if (b.idx.index() == dim_idx) blocks.push_back(b.size);
     }
     if (blocks.size() <= 1) return 1;
     blocks.resize(blocks.size() - 1);
@@ -452,7 +452,7 @@ dim_t inner_stride(
     gpu_assert(dim_idx != dim_idx::invalid);
     auto &layout = compute_layout(cfg, tensor_kind);
     for (auto &b : layout.blocks()) {
-        if (b.dim.index() == dim_idx) return (dim_t)b.stride;
+        if (b.idx.index() == dim_idx) return (dim_t)b.stride;
     }
     return 0;
 }
@@ -808,7 +808,7 @@ private:
         if (dim_idx == dim_idx::invalid) return true;
         std::vector<dim_t> blocks;
         for (auto &b : layout.blocks()) {
-            if (b.dim.index() == dim_idx) blocks.push_back(b.block);
+            if (b.idx.index() == dim_idx) blocks.push_back(b.size);
         }
         if (blocks.size() <= 1) return true;
         blocks.resize(blocks.size() - 1);

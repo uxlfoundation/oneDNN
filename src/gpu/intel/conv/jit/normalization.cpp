@@ -25,46 +25,46 @@ namespace intel {
 namespace conv {
 namespace jit {
 
-layout_t insert_dimension(const layout_t &layout, const pvar_t &dim) {
+layout_t insert_dimension(const layout_t &layout, const pvar_t &idx) {
     auto new_blocks = layout.blocks();
     for (auto &b : new_blocks) {
-        if (b.dim.index() >= dim.index()) b.dim = pvar_t((dim_idx_t)b.dim + 1);
+        if (b.idx.index() >= idx.index()) b.idx = b.idx + 1;
     }
     return layout_t(layout.type(), new_blocks, layout.offset(),
             layout.ndims() + 1,
             /*do_normalize=*/false);
 }
 
-layout_t remove_size_1_dimension(const layout_t &layout, const pvar_t &dim) {
-    gpu_assert(dim.index() < layout.ndims());
-    gpu_assert(layout.elems(dim) == 1);
+layout_t remove_size_1_dimension(const layout_t &layout, const pvar_t &idx) {
+    gpu_assert(idx.index() < layout.ndims());
+    gpu_assert(layout.elems(idx) == 1);
     dim_assignment_t a(layout.ndims(), layout.ndims() - 1);
     for (dim_idx_t i = 0; i < layout.ndims(); i++) {
-        if (i == dim.index()) continue;
-        a.assign(i, i < dim.index() ? i : i - 1);
+        if (i == idx.index()) continue;
+        a.assign(i, i < idx.index() ? i : i - 1);
     }
     return a.map(layout);
 }
 
 layout_t split_dimension(
-        const layout_t &_layout, const pvar_t &dim, dim_t outer_block) {
-    dim_t rem_inner_block
-            = ir_utils::safe_divide(_layout.elems(dim), outer_block);
-    auto layout = insert_dimension(_layout, dim);
+        const layout_t &_layout, const pvar_t &idx, dim_t outer_size) {
+    dim_t rem_inner_size
+            = ir_utils::safe_divide(_layout.elems(idx), outer_size);
+    auto layout = insert_dimension(_layout, idx);
     std::vector<layout_block_t> new_blocks;
     for (auto &b : layout.blocks()) {
-        if (b.dim.index() != dim.index() + 1) {
+        if (b.idx.index() != idx.index() + 1) {
             new_blocks.push_back(b);
             continue;
         }
-        if (b.block % rem_inner_block == 0) {
-            new_blocks.emplace_back(dim.index() + 1, rem_inner_block, b.stride);
-            new_blocks.emplace_back(dim, b.block / rem_inner_block,
-                    dim_t(b.stride) * rem_inner_block);
-            rem_inner_block = 1;
+        if (b.size % rem_inner_size == 0) {
+            new_blocks.emplace_back(idx.index() + 1, rem_inner_size, b.stride);
+            new_blocks.emplace_back(idx, b.size / rem_inner_size,
+                    dim_t(b.stride) * rem_inner_size);
+            rem_inner_size = 1;
         } else {
             new_blocks.push_back(b);
-            rem_inner_block = ir_utils::safe_divide(rem_inner_block, b.block);
+            rem_inner_size = ir_utils::safe_divide(rem_inner_size, b.size);
         }
     }
 
@@ -72,9 +72,9 @@ layout_t split_dimension(
     std::vector<layout_block_t> _new_blocks;
     pvar_map_t<bool> seen;
     for (auto it = new_blocks.rbegin(); it != new_blocks.rend(); ++it) {
-        if (it->block == 1 && seen[it->dim]) continue;
+        if (it->size == 1 && seen[it->idx]) continue;
         _new_blocks.push_back(*it);
-        seen[it->dim] = true;
+        seen[it->idx] = true;
     }
     std::reverse(_new_blocks.begin(), _new_blocks.end());
     return layout.with(_new_blocks, false);
@@ -222,10 +222,10 @@ view_t post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
     bool non_1_spatials[3] = {false, false, false};
     std::vector<layout_block_t> new_blk;
     for (auto &b : dst.blocks()) {
-        if ((b.dim >= 3) && (b.dim <= 5)) {
-            if (b.block > 1)
-                non_1_spatials[b.dim - 3] = true;
-            else if (non_1_spatials[b.dim - 3])
+        if ((b.idx >= 3) && (b.idx <= 5)) {
+            if (b.size > 1)
+                non_1_spatials[b.idx - 3] = true;
+            else if (non_1_spatials[b.idx - 3])
                 continue;
         }
         new_blk.emplace_back(b);

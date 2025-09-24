@@ -72,7 +72,7 @@ public:
 
         // only allow SIMD-aligned channel-first layouts
         const auto &oc_blk = src[0];
-        if ((oc_blk.dim.index() != 1) || (oc_blk.block % exec.simd()))
+        if ((oc_blk.idx.index() != 1) || (oc_blk.size % exec.simd()))
             return false;
 
         // for some reason 3D pooling works poorly on PVC at the moment
@@ -111,7 +111,7 @@ public:
         }
         has_additive_po |= (!dst_dt.is_int() && (total_added != 0))
                 || (dst_dt.is_int() && (fabsf(total_added) >= 1));
-        if ((prb.c % oc_blk.block)
+        if ((prb.c % oc_blk.size)
                 && (has_additive_po || (prb.id / prb.stride_d < prb.od)
                         || (prb.ih / prb.stride_h < prb.oh)
                         || (prb.iw / prb.stride_w < prb.ow)))
@@ -198,7 +198,7 @@ public:
 
     bool is_blocked_by_mb() const {
         const auto &blk = src_layout().user().blocks();
-        return (blk.size() > 1) && (blk[1].dim.index() == 0);
+        return (blk.size() > 1) && (blk[1].idx.index() == 0);
     }
 
     type_t acc_type(int len) const {
@@ -239,8 +239,8 @@ public:
 
         const int src_type_size = src.type().size();
         const int acc_type_size = acc_type(1).size();
-        const dim_t oc_blk = src[0].block;
-        const dim_t mb_blk = (is_blocked_by_mb()) ? src[1].block : mb;
+        const dim_t oc_blk = src[0].size;
+        const dim_t mb_blk = (is_blocked_by_mb()) ? src[1].size : mb;
         // the constant being subtracted is heuristic
         const int regs_per_tile
                 = exec.regs() - (!is_scalar ? is_blocked_by_mb() ? 8 : 28 : 0);

@@ -569,7 +569,7 @@ private:
     // post-op.
     tile_t find_1d_tile(const type_t &lhs_type,
             const object_map_t<expr_t, post_op_tensor_t *> &args,
-            pvar_t &inner_dim) const {
+            pvar_t &inner_idx) const {
         auto &lhs_tensor = *args.at(post_op_.lhs());
 
         gpu_assert(!lhs_tensor.reg_layout().is_empty());
@@ -578,19 +578,19 @@ private:
         if (lhs_tensor.reg_layout().blocks().empty()) {
             for (dim_t d : lhs_tensor.mem_view().vdims().values())
                 gpu_assert(d == 1);
-            inner_dim = 0;
+            inner_idx = 0;
         } else {
             auto &b0 = lhs_tensor.reg_layout()[0];
             gpu_assert(dim_t(b0.stride) == 1);
-            inner_dim = b0.dim;
+            inner_idx = b0.idx;
 
-            dim_t inner_block = b0.block;
+            dim_t inner_block = b0.size;
             dim_t max_step = 2 * hw_.grf_size() / lhs_type.size();
             inner_block = std::max<dim_t>(8, math::gcd(inner_block, max_step));
 
             for (auto &kv : args) {
                 auto &t = *kv.second;
-                if (t.is_broadcast_dim(b0.dim)) continue;
+                if (t.is_broadcast_dim(b0.idx)) continue;
 
                 auto &l = t.reg_layout();
                 gpu_assert(!l.is_empty());
@@ -598,13 +598,13 @@ private:
                 auto &lb0 = l[0];
                 // Inner blocks do not match, cannot vectorize so switch to
                 // scalar updates.
-                if (lb0.dim != b0.dim) {
+                if (lb0.idx != b0.idx) {
                     inner_block = 1;
                     break;
                 }
-                inner_block = math::gcd(lb0.block, inner_block);
+                inner_block = math::gcd(lb0.size, inner_block);
             }
-            dims[b0.dim] = inner_block;
+            dims[b0.idx] = inner_block;
         }
         return tile_t(dims);
     }
@@ -817,7 +817,7 @@ private:
                 if (layout.is_empty()) return dim_t(0);
                 dim_t max_off = 0;
                 for (auto &b : layout.blocks()) {
-                    max_off += (b.block - 1) * (dim_t)b.stride;
+                    max_off += (b.size - 1) * (dim_t)b.stride;
                 }
                 dim_t after_last = max_off + 1;
                 return after_last * layout.type().size()

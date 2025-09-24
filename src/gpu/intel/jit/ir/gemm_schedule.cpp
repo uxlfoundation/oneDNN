@@ -33,11 +33,11 @@ layout_t bmnk_mapper_t::map_to_bmnk(abc_kind_t abc_kind,
         const layout_t &layout) const {
     std::vector<layout_block_t> blocks;
     for (auto &b : layout.blocks()) {
-        auto b_bmnk_kind = bmnk_kind(abc_kind, b.dim);
+        auto b_bmnk_kind = bmnk_kind(abc_kind, b.idx);
         bool found = false;
         for (int i = 0; i < int(bmnk_kinds.size()); i++) {
             if (bmnk_kinds[i] == b_bmnk_kind) {
-                blocks.emplace_back(i, b.block, b.stride);
+                blocks.emplace_back(i, b.size, b.stride);
                 found = true;
                 break;
             }
@@ -57,7 +57,7 @@ layout_t bmnk_mapper_t::map_from_bmnk(abc_kind_t abc_kind,
 
 void bmnk_block_mapper_t::push_block(
         abc_kind_t abc_kind, const layout_block_t &b) {
-    auto bmnk_kind = bmnk_mapper_.bmnk_kind(abc_kind, b.dim);
+    auto bmnk_kind = bmnk_mapper_.bmnk_kind(abc_kind, b.idx);
     switch (bmnk_kind) {
         case bmnk_kind_t::b:
             if (abc_kind == abc_kind_t::a) b_blocks_.emplace_back(abc_kind, b);
@@ -86,7 +86,7 @@ layout_t bmnk_block_mapper_t::map_from_bmnk(abc_kind_t abc_kind,
     tmp_blocks[static_cast<int>(bmnk_kind_t::k)]
             = create_prb_blocks(abc_kind, k_blocks_);
     for (auto &b : bmnk_layout.blocks()) {
-        auto &bmnk_blocks = tmp_blocks[static_cast<int>(bmnk_kinds[b.dim])];
+        auto &bmnk_blocks = tmp_blocks[static_cast<int>(bmnk_kinds[b.idx])];
         bool ok = pop_block(bmnk_blocks, blocks, b);
         gpu_assert(ok) << "Can't map from bmnk layout to problem layout.";
         MAYBE_UNUSED(ok);
@@ -101,7 +101,7 @@ layout_t bmnk_block_mapper_t::map_from_bmnk(abc_kind_t abc_kind,
     dim_t dense_stride = 1;
     for (auto &b : blocks) {
         b.stride = stride_t(dense_stride);
-        dense_stride *= b.block;
+        dense_stride *= b.size;
     }
 
     return layout_t(
@@ -111,25 +111,23 @@ layout_t bmnk_block_mapper_t::map_from_bmnk(abc_kind_t abc_kind,
 bool bmnk_block_mapper_t::pop_block(std::vector<layout_block_t> &bmnk_blocks,
         std::vector<layout_block_t> &prb_blocks,
         const layout_block_t &bmnk_block) const {
-    if (bmnk_block.block == 1) return true;
+    if (bmnk_block.size == 1) return true;
 
     pop_size_1_blocks(bmnk_blocks);
     if (bmnk_blocks.empty()) return false;
 
     auto &next_block = bmnk_blocks.front();
-    dim_t common_block = math::gcd(next_block.block, bmnk_block.block);
-    if (common_block == bmnk_block.block) {
-        prb_blocks.emplace_back(
-                next_block.dim, common_block, next_block.stride);
-        next_block.block /= common_block;
-        next_block.stride *= common_block;
+    dim_t common_size = math::gcd(next_block.size, bmnk_block.size);
+    if (common_size == bmnk_block.size) {
+        prb_blocks.emplace_back(next_block.idx, common_size, next_block.stride);
+        next_block.size /= common_size;
+        next_block.stride *= common_size;
         return true;
-    } else if (common_block == next_block.block) {
-        prb_blocks.emplace_back(
-                next_block.dim, common_block, next_block.stride);
+    } else if (common_size == next_block.size) {
+        prb_blocks.emplace_back(next_block.idx, common_size, next_block.stride);
         bmnk_blocks.erase(bmnk_blocks.begin());
         auto tmp_block = bmnk_block;
-        tmp_block.block /= common_block;
+        tmp_block.size /= common_size;
         return pop_block(bmnk_blocks, prb_blocks, tmp_block);
     }
     return false;

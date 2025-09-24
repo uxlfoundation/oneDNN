@@ -819,17 +819,17 @@ status_t init_tensor_layouts(
     // Disable cases that cannot generate valid fp4 tiling.
     if (src_layout.type().is_fp4())
         for (auto &b : src_layout.blocks()) {
-            if (b.stride == stride_t(1) && b.block % 8)
+            if (b.stride == stride_t(1) && b.size % 8)
                 return status::unimplemented;
         }
     if (wei_layout.type().is_fp4())
         for (auto &b : wei_layout.blocks()) {
-            if (b.stride == stride_t(1) && b.block % 8)
+            if (b.stride == stride_t(1) && b.size % 8)
                 return status::unimplemented;
         }
     if (dst_layout.type().is_fp4())
         for (auto &b : dst_layout.blocks()) {
-            if (b.stride == stride_t(1) && b.block % 8)
+            if (b.stride == stride_t(1) && b.size % 8)
                 return status::unimplemented;
         }
 
@@ -1467,13 +1467,13 @@ walk_order_t maybe_fixup_group_with_small_channels(
     auto &b0 = layout[0];
     auto &b1 = layout[1];
     // Check that layout has groups followed by channels, i.e. *gc form.
-    if (b0.dim.index() != c_dim_idx || b1.dim.index() != g_dim_idx)
+    if (b0.idx.index() != c_dim_idx || b1.idx.index() != g_dim_idx)
         return walk_order;
     // If the full channel dimension exceeds the cache line size, cache reuse
     // should be already good enough.
     // Xe2 has 256 byte L3 cache block so try to span 4 cache lines.
     int factor = (cfg.hw() == ngen::HW::Xe2) ? 4 : 1;
-    if (layout.type().size() * b0.block >= cfg.hw().cache_line_size() * factor)
+    if (layout.type().size() * b0.size >= cfg.hw().cache_line_size() * factor)
         return walk_order;
 
     walk_order_t fixed;

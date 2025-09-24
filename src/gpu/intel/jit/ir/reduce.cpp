@@ -52,7 +52,7 @@ stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
 
         auto dst_blocks = dst.blocks();
         for (auto &b : dst_blocks)
-            b.dim = dst2src[b.dim];
+            b.idx = dst2src[b.idx];
 
         // Create final layout.
         dst_aligned = layout_t(dst.type(), dst_blocks, dst.offset(), ndims);

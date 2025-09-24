@@ -271,10 +271,10 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
 
             layout_t src_layout = {src_g.type};
             for (auto &b : C.layout.blocks()) {
-                if (!e.src1_desc.is_broadcast(dim_to_md[b.dim], ndims)) {
-                    src_layout = src_layout.with_block({b.dim, b.block});
+                if (!e.src1_desc.is_broadcast(dim_to_md[b.idx], ndims)) {
+                    src_layout = src_layout.with_block({b.idx, b.size});
                 } else {
-                    src_layout = src_layout.with_block({b.dim, 1});
+                    src_layout = src_layout.with_block({b.idx, 1});
                 }
             }
 
@@ -458,7 +458,7 @@ struct generator_dsl_t {
         tensor_t C = def("C_blk",
                 C_store_transform.get_layout(C_dims, into_ir(problem.Tc)), 0);
 
-        idx_t subgroup_dim = C.layout[0].dim;
+        idx_t subgroup_dim = C.layout[0].idx;
         int m_group_idx = strategy.loopOrder[0] == LoopM ? 0 : 1;
         auto m_idx = let("m_idx",
                 (group_id(m_group_idx) * local_size(m_group_idx)

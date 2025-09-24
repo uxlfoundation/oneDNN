@@ -117,8 +117,8 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
     auto check_layout = [&](const layout_t &l) {
         for (auto &b : l.blocks()) {
             if (l.is_outermost(b)) {
-                dim_t inner = l.elems(b.dim) / b.block;
-                if (dims[b.dim] % inner) return false;
+                dim_t inner = l.elems(b.idx) / b.size;
+                if (dims[b.idx] % inner) return false;
             }
         }
         return true;
@@ -147,16 +147,16 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
         const auto packing = layout.type().packing();
         if (packing == 1) return true;
         for (auto &b : layout.blocks()) {
-            if (b.block == 1) continue;
+            if (b.size == 1) continue;
             if ((dim_t)b.stride != contiguous_inner_elems) break;
-            if (innermost_elems == 1) innermost_elems = b.block;
-            if (b.block > dims[b.dim]) {
-                if (b.block % dims[b.dim] == 0)
-                    contiguous_inner_elems *= dims[b.dim];
+            if (innermost_elems == 1) innermost_elems = b.size;
+            if (b.size > dims[b.idx]) {
+                if (b.size % dims[b.idx] == 0)
+                    contiguous_inner_elems *= dims[b.idx];
                 break;
             }
-            contiguous_inner_elems *= b.block;
-            dims[b.dim] /= b.block;
+            contiguous_inner_elems *= b.size;
+            dims[b.idx] /= b.size;
         }
         return innermost_elems % packing == 0
                 || contiguous_inner_elems % (4 * packing) == 0;

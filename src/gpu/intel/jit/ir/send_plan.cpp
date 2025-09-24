@@ -92,11 +92,11 @@ protected:
         auto &front = blocks[0];
         auto &second = blocks[1];
         if ((dim_t)front.stride > 1) return false;
-        if (front.block * type.size() >= 4 * type.packing()) return false;
+        if (front.size * type.size() >= 4 * type.packing()) return false;
         if ((dim_t)second.stride * type.size() < 4 * type.packing())
             return false;
 
-        front.stride = 4 * type.packing() / (front.block * type.size());
+        front.stride = 4 * type.packing() / (front.size * type.size());
         layout = layout.with(blocks);
         return true;
     }
@@ -753,8 +753,8 @@ struct send_2d_params_t {
         for (int i = 0; i < nblocks; i++) {
             auto &b = blocks[i];
             if (use_xy) {
-                if (w_tdim.has_vidx(b.dim.index())) continue;
-                if (h_tdim.has_vidx(b.dim.index())) continue;
+                if (w_tdim.has_vidx(b.idx.index())) continue;
+                if (h_tdim.has_vidx(b.idx.index())) continue;
             }
             ret += (int64_t)b.stride * vblock_off[i];
         }
@@ -816,7 +816,7 @@ struct send_2d_params_t {
                 return l.with_block({dim_idx, block, pad / type_size});
             auto &last = l.blocks().back();
             auto stride = utils::rnd_up(
-                    (dim_t)last.stride * last.block, (dim_t)(pad / type_size));
+                    (dim_t)last.stride * last.size, (dim_t)(pad / type_size));
             return l.with_block({dim_idx, block, stride});
         };
 
@@ -1213,10 +1213,10 @@ public:
         modulus_t ret = base;
         std::vector<bool> ok(layout.ndims(), true);
         for (auto &b : layout.blocks()) {
-            if (b.block == 1) continue;
-            auto &m = mods[b.dim];
-            ret += (m % b.block) * (int64_t)b.stride;
-            if (!layout.is_outermost(b)) m /= (int64_t)b.block;
+            if (b.size == 1) continue;
+            auto &m = mods[b.idx];
+            ret += (m % b.size) * (int64_t)b.stride;
+            if (!layout.is_outermost(b)) m /= (int64_t)b.size;
         }
         return ret * layout.type().size();
     }
@@ -1256,8 +1256,8 @@ struct layout_2d_wrapper_t {
     int nblocks(size_t idx = dim_idx::invalid) const {
         int ret = 0;
         for (auto &b : l.blocks()) {
-            if (b.block == 1) continue;
-            if (idx == dim_idx::invalid || b.dim.index() == idx) ret++;
+            if (b.size == 1) continue;
+            if (idx == dim_idx::invalid || b.idx.index() == idx) ret++;
         }
         return ret;
     }
@@ -1271,10 +1271,10 @@ struct layout_2d_wrapper_t {
     }
     int64_t w_stride() const { return int64_t(w_block().stride); }
     int64_t h_stride() const { return int64_t(h_block().stride); }
-    dim_t w_dim() const { return w_block().block; }
-    dim_t h_dim() const { return h_block().block; }
-    size_t w_idx() const { return w_block().dim.index(); }
-    size_t h_idx() const { return h_block().dim.index(); }
+    dim_t w_dim() const { return w_block().size; }
+    dim_t h_dim() const { return h_block().size; }
+    size_t w_idx() const { return w_block().idx.index(); }
+    size_t h_idx() const { return h_block().idx.index(); }
 
     const layout_t &l;
 };
@@ -1460,7 +1460,7 @@ private:
         int total_elems = into<int>(vlayout_.elems());
         auto &blocks = vlayout_.blocks();
         for (size_t i = 0; i < inner_idx_; i++) {
-            inner_elems *= into<int>(blocks[i].block);
+            inner_elems *= into<int>(blocks[i].size);
         }
         int inner_bytes = type.size() * inner_elems / type.packing();
         int total_bytes = type.size() * total_elems / type.packing();
@@ -1484,16 +1484,16 @@ private:
                 break;
             }
             dim_t factor;
-            if (has_vidx_mask(mask_descs_, b.dim, dims[b.dim.index()], b.block,
+            if (has_vidx_mask(mask_descs_, b.idx, dims[b.idx.index()], b.size,
                         factor)) {
                 inner_idx = layout.get_idx(b);
                 if (factor == 1) return layout;
                 inner_idx++;
-                if (factor != b.block)
-                    return layout.split_block(b, factor, b.block / factor);
+                if (factor != b.size)
+                    return layout.split_block(b, factor, b.size / factor);
             }
-            stride *= b.block;
-            dims[b.dim] *= b.block;
+            stride *= b.size;
+            dims[b.idx] *= b.size;
         }
         return layout;
     }
@@ -1530,7 +1530,7 @@ private:
         auto &blocks = layout.blocks();
         size_t nblocks = blocks.size();
         for (size_t i = 0; i < inner_idx_; i++) {
-            inner_elems *= (int)blocks[i].block;
+            inner_elems *= (int)blocks[i].size;
         }
         gpu_assert(total_elems * type.size() % type.packing() == 0);
         gpu_assert(inner_elems * type.size() % type.packing() == 0);
@@ -1545,12 +1545,12 @@ private:
         int inner_slots = ir_utils::safe_divide(inner_bytes, slot_size);
         int slots = inner_slots;
         size_t best_idx = layout.nblocks() - 1;
-        dim_t best_factor = blocks.empty() ? 1 : blocks.back().block;
+        dim_t best_factor = blocks.empty() ? 1 : blocks.back().size;
         double best_score = 0;
         for (size_t i = inner_idx_; i < nblocks; i++) {
             auto &b = blocks[i];
-            for (dim_t j = b.block; j > 1; j--) {
-                if (b.block % j == 0) {
+            for (dim_t j = b.size; j > 1; j--) {
+                if (b.size % j == 0) {
                     double score = outer_split_score(slot_size,
                             into<int>(slots * j), max_slots, total_bytes);
                     if (score > best_score) {
@@ -1560,12 +1560,12 @@ private:
                     }
                 }
             }
-            slots *= (int)b.block;
+            slots *= (int)b.size;
         }
         outer_idx = best_idx + 1;
-        if (!blocks.empty() && best_factor != blocks[best_idx].block) {
+        if (!blocks.empty() && best_factor != blocks[best_idx].size) {
             auto &b = blocks[best_idx];
-            return layout.split_block(b, best_factor, b.block / best_factor);
+            return layout.split_block(b, best_factor, b.size / best_factor);
         }
         return layout;
     }
@@ -1697,8 +1697,8 @@ public:
         int w_tcount = 0;
         int h_tcount = 0;
         for (auto &b : info_.view().tlayout().blocks()) {
-            w_tcount += (b.dim.index() == w_tidx);
-            h_tcount += (b.dim.index() == h_tidx);
+            w_tcount += (b.idx.index() == w_tidx);
+            h_tcount += (b.idx.index() == h_tidx);
         }
 
         if (w_tcount > 1 || h_tcount > 1) use_xy = false;
@@ -1857,7 +1857,7 @@ send_2d_params_t view_info_t::try_init_2d() const {
 
 void advance(std::vector<int> &idxs, const layout_t &l, int inc) {
     for (size_t i = 0; i < idxs.size(); i++) {
-        int block = (int)l[i].block;
+        int block = (int)l[i].size;
         int inc_idx = (idxs[i] + inc) % block;
         inc = (idxs[i] + inc) / block;
         idxs[i] = inc_idx;
@@ -1874,13 +1874,13 @@ public:
         , block_dims_(nblocks())
         , off_(info.vlayout().ndims()) {
         for (size_t i = 0; i < info_.inner_idx(); i++) {
-            inner_elems_ *= (int)blocks()[i].block;
+            inner_elems_ *= (int)blocks()[i].size;
         }
         std::vector<int> dims(info_.vlayout().ndims(), 1);
         for (size_t i = 0; i < nblocks(); i++) {
             auto &b = blocks()[i];
-            block_dims_[i] = dims[b.dim.index()];
-            dims[b.dim.index()] *= (int)b.block;
+            block_dims_[i] = dims[b.idx.index()];
+            dims[b.idx.index()] *= (int)b.size;
         }
     }
 
@@ -1895,7 +1895,7 @@ public:
     int middle_blocks() const {
         int ret = 1;
         for (size_t i = info_.inner_idx(); i < info_.outer_idx(); i++)
-            ret *= (int)blocks()[i].block;
+            ret *= (int)blocks()[i].size;
         return ret;
     }
 
@@ -1923,7 +1923,7 @@ public:
         off_.assign(info_.vlayout().ndims(), 0);
         for (size_t i = 0; i < nblocks(); i++) {
             auto &b = blocks()[i];
-            off_[b.dim.index()] += block_off_[i] * block_dims_[i];
+            off_[b.idx.index()] += block_off_[i] * block_dims_[i];
         }
         mask.merge(get_mask(mask_bits, slots));
         addr.merge(get_addr(slots, slot_size));
@@ -2583,7 +2583,7 @@ send_group_t init_scattered(const view_info_t &info,
     // If not dword aligned, ensure that packing elements from the inner block
     // results in a valid layout. Otherwise, pack fewer elements per slot.
     if ((slot_size & 0x3) && !blocks.empty()) {
-        auto inner_block = blocks.front().block * type_size / type_packing;
+        auto inner_block = blocks.front().size * type_size / type_packing;
         auto masked = inner_block & (slot_size - 1);
         if (masked) slot_size = into<int>(masked & ~(masked - 1));
     }
@@ -2621,7 +2621,7 @@ send_group_t init_scattered(const view_info_t &info,
             gpu_assert(reg_layout.nblocks() > 0);
             auto &b0 = reg_layout[0];
             int inner = slot_size * type_packing / type_size;
-            reg_layout = reg_layout.split_block(b0, inner, b0.block / inner);
+            reg_layout = reg_layout.split_block(b0, inner, b0.size / inner);
             int stride1 = ir_utils::safe_divide(
                     slot_stride * type_packing, type_size);
             reg_layout = make_strided(reg_layout, stride1, 1);
@@ -2767,15 +2767,15 @@ send_plan_t create_send_plan(const exec_config_t &exec_cfg, const view_t &view,
     dim_t stride = 1;
     if (!reg_layout.blocks().empty()) {
         auto &last = reg_layout.blocks().back();
-        stride = (dim_t)last.stride * last.block;
+        stride = (dim_t)last.stride * last.size;
     }
     const type_t &type = reg_layout.type();
     stride = utils::rnd_up(
             stride, base_group.pad_bytes * type.packing() / type.size());
     for (size_t i = outer_idx; i < blocks.size(); i++) {
         auto &b = blocks[i];
-        reg_layout = reg_layout.with_block({b.dim, b.block, stride});
-        stride *= b.block;
+        reg_layout = reg_layout.with_block({b.idx, b.size, stride});
+        stride *= b.size;
     }
 
     int reg_buf_size = send_params.is_prefetch()

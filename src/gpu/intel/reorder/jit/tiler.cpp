@@ -113,8 +113,8 @@ message_info_t estimate_message_info(
     int item_size = 16;
 
     for (auto &blk : layout.blocks()) {
-        auto block = blk.block;
-        auto dim = blk.dim;
+        auto block = blk.size;
+        auto dim = blk.idx;
         if (block == 1) continue;
         if (outer[dim] < block) {
             if (block % outer[dim] == 0) {
@@ -159,9 +159,9 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
         std::vector<layout_block_t> padded_blocks;
         for (auto &b : l.blocks()) {
             if (l.is_outermost(b)) {
-                dim_t inner = l.elems(b.dim) / b.block;
-                padded_blocks.emplace_back(b.dim,
-                        ir_utils::safe_divide(dims[b.dim], inner), b.stride);
+                dim_t inner = l.elems(b.idx) / b.size;
+                padded_blocks.emplace_back(b.idx,
+                        ir_utils::safe_divide(dims[b.idx], inner), b.stride);
             } else {
                 padded_blocks.emplace_back(b);
             }
@@ -175,13 +175,13 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
     auto can_be_mapped = [](const layout_t &l, const tile_t &t) {
         std::vector<dim_t> rem_dims = t.values();
         for (auto &b : l.blocks()) {
-            auto &rem_dim = rem_dims[b.dim];
-            if (rem_dim >= b.block) {
-                if (rem_dim % b.block != 0) return false;
-                rem_dim /= b.block;
+            auto &rem_dim = rem_dims[b.idx];
+            if (rem_dim >= b.size) {
+                if (rem_dim % b.size != 0) return false;
+                rem_dim /= b.size;
                 continue;
             }
-            if (b.block % rem_dim != 0) return false;
+            if (b.size % rem_dim != 0) return false;
             rem_dim = 1;
         }
         for (auto d : rem_dims)

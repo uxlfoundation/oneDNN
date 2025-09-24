@@ -124,8 +124,8 @@ inline layout_t make_layout(const type_t &type, const expr_t &offset,
     auto blocks = parse_format(format, into<dim_idx_t>(dims.size()));
     tile_t def;
     for (auto &b : blocks) {
-        if (b.block == 0) b.block = utils::div_up(dims[b.dim], def[b.dim]);
-        def[b.dim] *= b.block;
+        if (b.size == 0) b.size = utils::div_up(dims[b.idx], def[b.idx]);
+        def[b.idx] *= b.size;
     }
 
     return layout_t(type, blocks, offset, into<dim_idx_t>(dims.size()),

@@ -2019,9 +2019,8 @@ brgemm_attr_t::brgemm_attr_t()
     , bd_mask(nullptr)
     , static_offsets(nullptr) {}
 
-brgemm_kernel_common_t::brgemm_kernel_common_t(const brgemm_t abrd) {
-    brgemm_kernel_ = new jit_brgemm_kernel_t(abrd);
-}
+brgemm_kernel_common_t::brgemm_kernel_common_t(const brgemm_t abrd)
+    : brgemm_kernel_(new jit_brgemm_kernel_t(abrd)) {}
 
 status_t brgemm_kernel_common_t::create_kernel() {
     return brgemm_kernel_->create_kernel();

@@ -58,13 +58,10 @@ struct jit_brgemm_kernel_diff_bias_t : public jit_generator {
         , ddst_dt_(ajbgp.dst_dt)
         , bia_dt_(ajbgp.bia_dt)
         , acc_dt_(ajbgp.acc_dt)
+        , ddst_typesize_(types::data_type_size(ddst_dt_))
         , bia_typesize_(types::data_type_size(bia_dt_))
-        , acc_typesize_(types::data_type_size(acc_dt_)) {
-
-        ddst_dt_ = ajbgp.dst_dt;
-        ddst_typesize_ = types::data_type_size(ddst_dt_);
-        mult_ = data_type_vnni_granularity(ddst_dt_);
-    }
+        , acc_typesize_(types::data_type_size(acc_dt_))
+        , mult_(data_type_vnni_granularity(ddst_dt_)) {}
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_diff_bias_t)
 

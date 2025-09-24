@@ -16,6 +16,7 @@
 
 #include "gpu/intel/jit/dsl/tensor.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/pass/simplify.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -336,6 +337,14 @@ void layout_t::sanity_check() const {
                     << blocks_[i - 1];
     }
     gpu_assert(has_ndims() || ndims_ == max_ndims);
+}
+
+expr_t global_tensor_t::offset(const icoord_t &sub_coord) const {
+    expr_t ret = base_offset;
+    for (auto &c : sub_coord) {
+        ret += (coord[c] + sub_coord[c]) * strides[c];
+    }
+    return simplify(ret * type.size());
 }
 
 } // namespace dsl

@@ -752,6 +752,89 @@ extern template int layout_t::offset<int>(
 extern template int64_t layout_t::offset<int64_t>(
         const coord_t &args, bool ignore_offset) const;
 
+struct tensor_t {
+    tensor_t() = default;
+    tensor_t(const expr_t &buf, const layout_t &layout)
+        : buf(buf), layout(layout) {
+        gpu_assert(buf.type().is_ptr()) << "Buffer must be of a pointer type.";
+    }
+    const type_t &type() const { return layout.type(); }
+    tensor_t sub(const tile_t &tile, const icoord_t &coord) const {
+        // coord is not measured relative to tile size
+        for (auto &var : coord)
+            gpu_assert(coord[var] % tile[var] == 0);
+        return {subbuf(coord), layout.sub(tile)};
+    }
+    expr_t subbuf(const icoord_t &coord) const {
+        return buf[layout.offset<int>(coord)];
+    }
+
+    std::string str() const {
+        std::ostringstream oss;
+        oss << "buffer:    " << buf.str() << "\n";
+        oss << "layout: " << layout.str();
+        return oss.str();
+    }
+
+    void dump() const { printf("%s\n", str().c_str()); }
+
+    expr_t buf;
+    layout_t layout;
+};
+
+struct global_tensor_t {
+    global_tensor_t() = default;
+    global_tensor_t(const expr_t &buf, const idx_map_t<expr_t> &sizes,
+            const idx_map_t<expr_t> &strides)
+        : buf(buf), type(buf.type().base()), sizes(sizes), strides(strides) {
+        gpu_assert(buf.type().is_ptr()) << "Buffer must be of a pointer type.";
+    }
+    global_tensor_t(const expr_t &buf, const type_t &type,
+            const expr_t &base_offset, const coord_t &coord,
+            const idx_map_t<expr_t> &sizes, const idx_map_t<expr_t> &strides,
+            const tile_t &tile)
+        : buf(buf)
+        , type(type)
+        , base_offset(base_offset)
+        , coord(coord)
+        , sizes(sizes)
+        , strides(strides)
+        , tile(tile) {
+        gpu_assert(buf.type().is_ptr()) << "Buffer must be of a pointer type.";
+    }
+
+    expr_t offset(const icoord_t &sub_coord) const;
+
+    global_tensor_t sub(const tile_t &tile, const coord_t &coord) const {
+        global_tensor_t ret = *this;
+        ret.coord = coord;
+        ret.tile = tile;
+        return ret;
+    }
+
+    std::string str() const {
+        std::ostringstream oss;
+        oss << "(" << buf << "+" << base_offset << ")." << type << " : ";
+        for (auto &k : coord) {
+            oss << " " << k << " - (coord: " << coord[k]
+                << ", stride: " << strides[k] << ", size: " << sizes[k];
+            if (!tile.is_empty()) oss << ", tile: " << tile[k];
+            oss << ")";
+        }
+        return oss.str();
+    }
+
+    void dump() const { printf("%s\n", str().c_str()); }
+
+    expr_t buf;
+    type_t type;
+    expr_t base_offset;
+    coord_t coord;
+    idx_map_t<expr_t> sizes;
+    idx_map_t<expr_t> strides;
+    tile_t tile;
+};
+
 } // namespace dsl
 } // namespace jit
 } // namespace intel

@@ -19,7 +19,6 @@
 
 #include "gpu/intel/jit/dsl/decl.hpp"
 #include "gpu/intel/jit/dsl/tensor.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/message_patterns.hpp"
@@ -35,97 +34,8 @@ int grf_size();
 int min_align_2d();
 int min_pitch_2d();
 
-using layout_t = dnnl::impl::gpu::intel::jit::layout_t;
-
 struct send_hint_t {
     send_cache_hint_t cache;
-};
-
-struct tensor_t {
-    tensor_t() = default;
-    tensor_t(const expr_t &buf, const layout_t &layout)
-        : buf(buf), layout(layout) {
-        gpu_assert(buf.type().is_ptr()) << "Buffer must be of a pointer type.";
-    }
-    const type_t &type() const { return layout.type(); }
-    tensor_t sub(const tile_t &tile, const icoord_t &coord) const {
-        // coord is not measured relative to tile size
-        for (auto &var : coord)
-            gpu_assert(coord[var] % tile[var] == 0);
-        return {subbuf(coord), layout.sub(tile)};
-    }
-    expr_t subbuf(const icoord_t &coord) const {
-        return buf[layout.offset<int>(coord)];
-    }
-
-    std::string str() const {
-        std::ostringstream oss;
-        oss << "buffer:    " << buf.str() << "\n";
-        oss << "layout: " << layout.str();
-        return oss.str();
-    }
-
-    IR_DEFINE_DUMP()
-
-    expr_t buf;
-    layout_t layout;
-};
-
-struct global_tensor_t {
-    expr_t buf;
-    type_t type;
-    expr_t base_offset;
-    coord_t coord;
-    idx_map_t<expr_t> sizes;
-    idx_map_t<expr_t> strides;
-    tile_t tile;
-
-    global_tensor_t() = default;
-    global_tensor_t(const expr_t &buf, const idx_map_t<expr_t> &sizes,
-            const idx_map_t<expr_t> &strides)
-        : buf(buf), type(buf.type().base()), sizes(sizes), strides(strides) {
-        gpu_assert(buf.type().is_ptr()) << "Buffer must be of a pointer type.";
-    }
-    global_tensor_t(const expr_t &buf, const type_t &type,
-            const expr_t &base_offset, const coord_t &coord,
-            const idx_map_t<expr_t> &sizes, const idx_map_t<expr_t> &strides,
-            const tile_t &tile)
-        : buf(buf)
-        , type(type)
-        , base_offset(base_offset)
-        , coord(coord)
-        , sizes(sizes)
-        , strides(strides)
-        , tile(tile) {
-        gpu_assert(buf.type().is_ptr()) << "Buffer must be of a pointer type.";
-    }
-
-    expr_t offset(const icoord_t &sub_coord) const {
-        expr_t ret = base_offset;
-        for (auto &c : sub_coord) {
-            ret += (coord[c] + sub_coord[c]) * strides[c];
-        }
-        return simplify(ret * type.size());
-    }
-
-    global_tensor_t sub(const tile_t &tile, const coord_t &coord) const {
-        global_tensor_t ret = *this;
-        ret.coord = coord;
-        ret.tile = tile;
-        return ret;
-    }
-
-    std::string str() const {
-        std::ostringstream oss;
-        oss << "(" << buf << "+" << base_offset << ")." << type << " : ";
-        for (auto &k : coord) {
-            oss << " " << k << " - (coord: " << coord[k]
-                << ", stride: " << strides[k] << ", size: " << sizes[k];
-            if (!tile.is_empty()) oss << ", tile: " << tile[k];
-            oss << ")";
-        }
-        return oss.str();
-    }
 };
 
 struct kernel_t {

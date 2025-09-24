@@ -4387,7 +4387,7 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
                 default: valid_pattern = false;
             }
 
-            if (!valid_pattern) break;
+            if (!valid_pattern) return status::unimplemented;
 
             auto out_val = walker->get_output_value(0);
             if (out_val->get_consumers().size() != 1) break;

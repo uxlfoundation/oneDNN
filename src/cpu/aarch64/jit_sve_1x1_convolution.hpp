@@ -90,15 +90,20 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
             return status::success;
         }
 
-        const memory_desc_t *dst_md(
-                int index = 0, bool user_input = false) const override {
+        const memory_desc_t *dst_md() const { return dst_md(0, false); }
+        const memory_desc_t *dst_md(int index) const {
+            return dst_md(index, false);
+        }
+        const memory_desc_t *dst_md(int index, bool user_input) const override {
             return jcp_.with_dw_conv
                     ? dw_conv_pd_->dst_md(index, user_input)
                     : cpu_convolution_fwd_pd_t::dst_md(index, user_input);
         }
 
-        const memory_desc_t *arg_md(
-                int arg, bool user_input = false) const override {
+        const memory_desc_t *arg_md(int arg) const {
+            return arg_md(arg, false);
+        }
+        const memory_desc_t *arg_md(int arg, bool user_input) const override {
             if (jcp_.with_dw_conv) {
                 switch (arg) {
                     case DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_SRC:

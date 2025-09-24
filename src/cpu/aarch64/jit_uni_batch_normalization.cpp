@@ -35,13 +35,13 @@
 
 #include "cpu/aarch64/jit_uni_batch_normalization.hpp"
 
-#define IDX(a) static_cast<uint32_t>(a.getIdx())
+#define IDX(a) static_cast<uint32_t>((a).getIdx())
 #define LDR_ASSERT(r, addr, offt) \
-    assert(offt < 256); \
-    ldr(r, ptr(addr, (int)offt));
+    assert((offt) < 256); \
+    ldr(r, ptr(addr, (int)(offt)));
 #define STR_ASSERT(r, addr, offt) \
-    assert(offt < 256); \
-    str(r, ptr(addr, (int)offt));
+    assert((offt) < 256); \
+    str(r, ptr(addr, (int)(offt)));
 
 namespace dnnl {
 namespace impl {
@@ -357,8 +357,8 @@ struct jit_bnorm_t : public jit_generator {
     }
 #define STR_PARAM(r, offt) \
     { \
-        assert(offt <= 256); \
-        str(r, ptr(X_DEFAULT_ADDR, (int32_t)offt)); \
+        assert((offt) <= 256); \
+        str(r, ptr(X_DEFAULT_ADDR, (int32_t)(offt))); \
     }
 
         LDR_PARAM(reg_rbuf1, rbuf1);

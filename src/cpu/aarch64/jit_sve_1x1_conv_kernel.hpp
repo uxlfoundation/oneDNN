@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,7 +35,7 @@ namespace cpu {
 namespace aarch64 {
 
 /* Get vector offsets, ofs / VL(eg VL: 512bits = 64Bytes ) */
-#define VL64_OFS(ofs) (ofs >> cpu_isa_traits<isa_>::vlen_shift)
+#define VL64_OFS(ofs) ((ofs) >> cpu_isa_traits<isa_>::vlen_shift)
 
 template <cpu_isa_t isa_ = isa_undef>
 struct jit_sve_1x1_conv_kernel : public jit_generator {

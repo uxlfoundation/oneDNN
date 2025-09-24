@@ -162,7 +162,7 @@ struct cpu_isa_traits<asimd> {
         typedef Xbyak_aarch64::ZRegS TRegS; \
         typedef Xbyak_aarch64::ZRegD TRegD; \
         static constexpr int vlen_shift = shift; \
-        static constexpr int vlen = bits / 8; \
+        static constexpr int vlen = (bits) / 8; \
         static constexpr int n_vregs = 32; \
         static constexpr dnnl_cpu_isa_t user_option_val \
                 = static_cast<dnnl_cpu_isa_t>(dnnl_cpu_isa_sve_##bits); \

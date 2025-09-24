@@ -33,7 +33,7 @@
 #define LDRWMAX 252
 #define ADDMAX 4095
 /* Get vector offsets, ofs / VL(eg VL: 512bits = 64Bytes ) */
-#define VL_OFS(ofs, isa) (ofs >> cpu_isa_traits<isa>::vlen_shift)
+#define VL_OFS(ofs, isa) ((ofs) >> cpu_isa_traits<isa>::vlen_shift)
 
 using namespace Xbyak_aarch64;
 

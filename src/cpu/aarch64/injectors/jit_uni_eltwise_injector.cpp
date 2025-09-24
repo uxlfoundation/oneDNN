@@ -23,7 +23,7 @@
 
 #include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
 
-#define IDX(a) static_cast<uint32_t>(a.getIdx())
+#define IDX(a) static_cast<uint32_t>((a).getIdx())
 
 namespace dnnl {
 namespace impl {

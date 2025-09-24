@@ -104,7 +104,8 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    void dump() const { printf("%s\n", str().c_str()); }
+
     expr_t var;
 };
 

@@ -250,7 +250,7 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe_hpg, 128, 448, fma | f16_accumulate}, {8, 16, 16, 16, 8, 2, 8, 2}},
         {{compute::gpu_arch_t::xe_hpg, 128, fma | second_token}, {32, 16, 32, 8, 16, 2, 8, 4}},
 
-        {{compute::gpu_arch_t::xe_hpg, 128, fma | f32},                            { 8, 32,  8, 32, 32, 1, 32, 1 }},
+        {{compute::gpu_arch_t::xe_hpg, 128, fma | f32},                            { 8, 16, 32,  8,  8, 2,  4, 4 }},
         {{compute::gpu_arch_t::xe_hpg, 128, second_token | fma | f32},             { 8, 16, 32,  8, 16, 1,  8, 2 }},
         {{compute::gpu_arch_t::xe_hpg, 128, quantized | fma | f32},                { 8, 16, 16, 16,  8, 1,  8, 1 }},
         {{compute::gpu_arch_t::xe_hpg, 128, second_token | quantized | fma | f32}, {16, 16, 16,  8, 32, 1, 16, 2 }},

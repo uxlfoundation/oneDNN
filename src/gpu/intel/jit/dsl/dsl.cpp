@@ -122,16 +122,16 @@ struct ctx_t {
             bool force_alloc = false) {
         auto type = _type.with_attr(_type.attr() | type::attr_t::mut);
         auto alloc_var = var(type, name);
-        if (force_alloc || type.is_ptr()) {
-            append(alloc_t::make(alloc_var, {}));
-
-            if (!value.is_empty()) {
-                gpu_assert(to_cpp<int>(value) == 0);
-                append(funcs::zero_out(alloc_var, type.size()));
-            }
+        if (new_ir_api_) {
+            if (!value.is_empty()) append(assign_t::make(alloc_var, value));
         } else {
-            if (new_ir_api_) {
-                if (!value.is_empty()) append(assign_t::make(alloc_var, value));
+            if (force_alloc || type.is_ptr()) {
+                append(alloc_t::make(alloc_var, {}));
+
+                if (!value.is_empty()) {
+                    gpu_assert(to_cpp<int>(value) == 0);
+                    append(funcs::zero_out(alloc_var, type.size()));
+                }
             } else {
                 append(let_t::make(alloc_var, value, {}));
             }

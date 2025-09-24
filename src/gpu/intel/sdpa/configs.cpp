@@ -17,6 +17,7 @@
 #include "gpu/intel/sdpa/configs.hpp"
 
 #include <algorithm>
+#include <type_traits>
 
 #include "common/c_types_map.hpp"
 
@@ -112,27 +113,31 @@ bool operator==(const config_record_t &key, const config_query_t &query) {
     return result;
 }
 
+template <typename Enum>
+int popcount(Enum e) {
+    using U = typename std::underlying_type<Enum>::type;
+    U x = static_cast<U>(e);
+    int count = 0;
+    while (x) {
+        x &= (x - 1); // clear lowest set bit
+        ++count;
+    }
+    return count;
+}
+
 bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
     auto num_set_fields = [](const config_criteria_t &crit) {
         int set_fields = 0;
         if (crit.arch != compute::gpu_arch_t::unknown) { set_fields++; }
         if (crit.head_size != -1) { set_fields++; }
-        if ((int)(crit.prop & property::second_token)) { set_fields++; }
-        if ((int)(crit.prop & property::quantized)) { set_fields++; }
-        if ((int)(crit.prop & property::integrated)) { set_fields++; }
-        if ((int)(crit.prop & property::fma)) { set_fields++; }
-        if ((int)(crit.prop & property::f32)) { set_fields++; }
-        if ((int)(crit.prop & property::f16_accumulate)) { set_fields++; }
+        const int n_props = popcount<property>(crit.prop);
+        set_fields += n_props;
         return set_fields;
     };
 
     auto noprops = [](const config_criteria_t &crit) {
-        return !(((bool)(crit.prop & property::second_token))
-                || ((bool)(crit.prop & property::quantized))
-                || ((bool)(crit.prop & property::integrated))
-                || ((bool)(crit.prop & property::fma))
-                || ((bool)(crit.prop & property::f32))
-                || ((bool)(crit.prop & property::f16_accumulate)));
+        const int n_props = popcount<property>(crit.prop);
+        return (n_props == 0);
     };
 
     int l_set_fields = num_set_fields(lhs);

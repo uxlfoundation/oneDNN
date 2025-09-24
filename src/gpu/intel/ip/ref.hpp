@@ -93,8 +93,7 @@ struct ref_fwd_t : public primitive_t {
                             intel_engine->mayiuse(
                                     compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-
-            VDISPATCH_INNER_PRODUCT_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 
@@ -159,8 +158,7 @@ struct ref_bwd_data_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-
-            VDISPATCH_INNER_PRODUCT_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 
@@ -225,8 +223,7 @@ struct ref_bwd_weights_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_INNER_PRODUCT(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-
-            VDISPATCH_INNER_PRODUCT_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 

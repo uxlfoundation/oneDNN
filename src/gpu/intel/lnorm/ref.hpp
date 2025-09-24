@@ -69,8 +69,7 @@ struct ref_fwd_t : public primitive_t {
             VDISPATCH_LNORM(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-
-            VDISPATCH_LNORM_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 
@@ -148,8 +147,7 @@ struct ref_bwd_t : public primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-
-            VDISPATCH_LNORM_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 

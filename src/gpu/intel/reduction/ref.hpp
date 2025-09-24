@@ -51,8 +51,7 @@ struct ref_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_REDUCTION_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_TAG);
-
-            VDISPATCH_REDUCTION_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 

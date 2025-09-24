@@ -87,7 +87,6 @@ struct xe_fwd_t : public primitive_t {
             bool is_training = desc()->prop_kind == forward_training;
             if (desc()->alg_kind == pooling_max && is_training)
                 init_default_ws(s32);
-
             CHECK(init_conf(engine));
 
             // Required for storing spatial offsets into workspace for
@@ -180,7 +179,6 @@ struct xe_bwd_t : public primitive_t {
                 VDISPATCH_POOLING(
                         compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
             }
-
             CHECK(init_conf(engine));
 
             // Required for storing spatial offsets into workspace for

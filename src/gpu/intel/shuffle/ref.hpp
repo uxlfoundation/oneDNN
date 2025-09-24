@@ -58,8 +58,7 @@ struct ref_t : public primitive_t {
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-
-            VDISPATCH_SHUFFLE_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 

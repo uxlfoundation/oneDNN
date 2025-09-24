@@ -109,8 +109,7 @@ struct reusable_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-
-            VDISPATCH_LNORM_SC(init_conf(engine), "Failed init_conf");
+            CHECK(init_conf(engine));
             if (stats_are_tmp()) init_scratchpad();
 
             return status::success;
@@ -183,8 +182,7 @@ struct reusable_bwd_t : public primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-
-            VDISPATCH_LNORM_SC(init_conf(engine), "Failed init_conf");
+            CHECK(init_conf(engine));
 
             return status::success;
         }

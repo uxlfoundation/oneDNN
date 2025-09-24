@@ -68,8 +68,7 @@ struct ref_fwd_t : public primitive_t {
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-
-            VDISPATCH_ELTWISE_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 
@@ -144,8 +143,7 @@ struct ref_bwd_t : public primitive_t {
             VDISPATCH_ELTWISE(memory_desc_wrapper(diff_dst_md())
                             == memory_desc_wrapper(diff_src_md()),
                     VERBOSE_INCONSISTENT_MDS, "diff_src", "diff_dst");
-
-            VDISPATCH_ELTWISE_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 

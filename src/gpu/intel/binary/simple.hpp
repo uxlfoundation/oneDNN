@@ -86,9 +86,7 @@ struct simple_t : public primitive_t {
                                      && src_md(1)->data_type == bf16
                                      && dst_md()->data_type == u8),
                     VERBOSE_UNSUPPORTED_POSTOP);
-
-            VDISPATCH_BINARY_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "binary");
+            CHECK(init_conf(engine));
             return status::success;
         }
 

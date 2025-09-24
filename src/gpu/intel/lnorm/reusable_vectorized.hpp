@@ -123,8 +123,7 @@ struct reusable_vectorized_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-
-            VDISPATCH_LNORM_SC(init_conf(engine), "Failed init_conf");
+            CHECK(init_conf(engine));
 
             return status::success;
         }

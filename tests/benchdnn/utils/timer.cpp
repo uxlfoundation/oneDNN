@@ -35,6 +35,7 @@ double ms_now() {
 
 void timer_t::restart() {
     ms_.clear();
+    total_ms_ = 0;
     start();
 }
 
@@ -50,12 +51,17 @@ void timer_t::stop(int append_n_times, double append_ms) {
     if (append_n_times <= 0) {
         // No measurements happened.
         return;
-    } else if (append_n_times == 1) {
-        ms_.push_back(append_ms);
-    } else {
-        for (auto i : append_n_times)
-            ms_.push_back(append_ms / append_n_times);
     }
+
+    if (append_n_times == 1) {
+        ms_.push_back(append_ms);
+        total_ms_ += append_ms;
+        return;
+    }
+
+    for (auto i : append_n_times)
+        ms_.push_back(append_ms / append_n_times);
+    total_ms_ += append_ms;
 
     // double d_ms = append_ms;
 
@@ -68,6 +74,10 @@ void timer_t::stop(int append_n_times, double append_ms) {
     // ms_[mode_t::max] = times_ ? std::max(ms_[mode_t::max], d_ms) : d_ms;
 
     // times_ += append_n_times;
+}
+
+int timer_t::n_times() const {
+    return static_cast<int>(ms_.size());
 }
 
 timer_t &timer_map_t::get_timer(const std::string &name) {

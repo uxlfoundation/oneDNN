@@ -250,11 +250,14 @@ int collect_mem_size(check_mem_size_args_t &mem_size_args,
         const_dnnl_primitive_desc_t const_pd, dir_t dir, bool need_skip = true);
 
 inline bool should_stop(const timer::timer_t &t) {
-    const bool stop = false
-            || (fix_times_per_prb && t.times() >= fix_times_per_prb)
-            || (!fix_times_per_prb && t.total_ms() >= max_ms_per_prb
-                    && t.times() >= min_times_per_prb);
-    return stop;
+    // Either run specific number of times requested...
+    const bool stop_by_n_times
+            = fix_times_per_prb && t.n_times() >= fix_times_per_prb;
+    // ... or run at least min_times and reach the requested time border.
+    const bool stop_by_ms = !fix_times_per_prb
+            && t.ms(timer::timer_t::mode_t::sum) >= max_ms_per_prb
+            && t.n_times() >= min_times_per_prb;
+    return stop_by_n_times || stop_by_ms;
 }
 
 void skip_unimplemented_data_type(

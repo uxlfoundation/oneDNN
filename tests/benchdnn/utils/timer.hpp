@@ -46,7 +46,12 @@
 namespace timer {
 
 struct timer_t {
-    enum mode_t { min = 0, avg = 1, max = 2, sum = 3, n_modes };
+    enum class mode_t {
+        min,
+        avg,
+        max,
+        sum,
+    };
 
     // Updates a timer's internal state for tracking. All collected measurements
     // is preserved.
@@ -70,7 +75,12 @@ struct timer_t {
     // `append_n_times`. Used with external profiling features.
     void stop(int append_n_times, double append_ms);
 
-    // int n_times() const { return n_times_; }
+    // Returns the number of measurements collected.
+    int n_times() const;
+
+    double ms(mode_t mode) const {
+        if (mode == mode_t::sum) return total_ms_;
+    }
 
     // double total_ms() const { return ms_[avg]; }
 
@@ -87,6 +97,9 @@ private:
 
     // All registered time entries;
     std::vector<double> ms_;
+
+    // Stats intermediate numbers (perf optimization)
+    double total_ms_ = 0;
 };
 
 // Designated timers to support benchdnn performance reporting and general time

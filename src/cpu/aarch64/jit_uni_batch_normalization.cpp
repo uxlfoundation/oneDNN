@@ -226,13 +226,13 @@ struct jit_bnorm_t : public jit_generator {
     using TRegS =
             typename utils::conditional<isa == asimd, VReg4S, ZRegS>::type;
 
-    const int vlen = isa == asimd ? 32 : cpu_isa_traits<isa>::vlen;
-    int vlen_spat_data_; // set by ctor depending on data type (BF16 or FP32);
-
     const batch_normalization_pd_t *pd_ = nullptr;
     const jit_bnorm_conf_t *jbp_ = nullptr;
     bool is_bf16_ = false;
     bool is_f16_ = false;
+
+    const int vlen = isa == asimd ? 32 : cpu_isa_traits<isa>::vlen;
+    int vlen_spat_data_; // set by ctor depending on data type (BF16 or FP32);
 
     XReg reg_param = abi_param1;
 
@@ -2011,11 +2011,11 @@ struct jit_bnorm_t : public jit_generator {
     }
 
     jit_bnorm_t(const batch_normalization_pd_t *pd, const jit_bnorm_conf_t *jbp)
-        : vlen_spat_data_(vlen / (1 + is_xf16())) // 32B of xF16 -> 64B of FP32
-        , pd_(pd)
+        : pd_(pd)
         , jbp_(jbp)
         , is_bf16_(pd_->src_md()->data_type == data_type::bf16)
         , is_f16_(pd_->src_md()->data_type == data_type::f16)
+        , vlen_spat_data_(vlen / (1 + is_xf16())) // 32B of xF16 -> 64B of FP32
         , unroll_blocks(
                   (isa == sve_256 || isa == sve_512) && !jbp_->is_spatial_thr_
                           ? 4

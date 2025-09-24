@@ -576,10 +576,10 @@ inline int measure_perf_aggregate(timer::timer_t &t,
 
             for_(size_t j = 0; j < v_stream.size(); j++)
             for (size_t i = 0; i < v_nsecs[j].size(); i++) {
-                t.stop(1, (int64_t)v_cycles[j][i], v_nsecs[j][i] / 1e6);
+                t.stop(1, v_nsecs[j][i] / 1e6);
             }
         } else {
-            t.stamp(cur_batch_times * num_streams);
+            t.stop(cur_batch_times * num_streams);
         }
 
         // Assumption that for each stream cold_cache acts same.

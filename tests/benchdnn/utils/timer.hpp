@@ -18,6 +18,7 @@
 #define UTILS_TIMER_HPP
 
 #include <string>
+#include <vector>
 #include <unordered_map>
 
 #define TIME_FUNC(func, res, name) \
@@ -26,7 +27,7 @@
             auto &t = (res)->timer_map.get_timer(name); \
             t.start(); \
             func; \
-            t.stamp(); \
+            t.stop(); \
         } else { \
             func; \
         } \
@@ -47,45 +48,45 @@ namespace timer {
 struct timer_t {
     enum mode_t { min = 0, avg = 1, max = 2, sum = 3, n_modes };
 
-    timer_t() { reset(); }
-
-    // Fully reset the measurements
-    void reset();
-    // Restart timer
+    // Updates a timer's internal state for tracking. All collected measurements
+    // is preserved.
+    // Intended for the following model:
+    // for (...) {
+    //     t.start(); // Doesn't erase stats.
+    //     call_to_measure(...);
+    //     t.stop(); // Accumulates a single measurement.
+    // }
+    // get_stats_from_timer(...);
     void start();
-    // Stop timer & update statistics
-    void stop(int add_times, int64_t add_ticks, double add_ms);
 
-    void stamp(int add_times = 1);
+    // Deletes all the measurements and starts the timer.
+    void restart();
 
-    void stamp_with_frequency(int add_times, double add_ms, double freq) {
-        uint64_t add_ticks = (uint64_t)(add_ms * freq / 1e3);
-        stop(add_times, add_ticks, add_ms);
-    }
+    // Takes the current time and updates measurements. `append_n_times` tells
+    // how many measurements happened for proper measurements processing.
+    void stop(int append_n_times = 1);
 
-    int times() const { return times_; }
+    // Updates measurements based on externally taken value `append_ms` and
+    // `append_n_times`. Used with external profiling features.
+    void stop(int append_n_times, double append_ms);
 
-    double total_ms() const { return ms_[avg]; }
+    // int n_times() const { return n_times_; }
 
-    double ms(mode_t mode = min) const {
-        if (!times()) return 0; // nothing to report
-        return ms_[mode] / (mode == avg ? times() : 1);
-    }
+    // double total_ms() const { return ms_[avg]; }
 
-    double sec(mode_t mode = min) const { return ms(mode) / 1e3; }
+    // double ms(mode_t mode = min) const {
+    //     if (!times()) return 0; // nothing to report
+    //     return ms_[mode] / (mode == avg ? times() : 1);
+    // }
 
-    uint64_t ticks(mode_t mode = min) const {
-        if (!times()) return 0; // nothing to report
-        return ticks_[mode] / (mode == avg ? times() : 1);
-    }
+    // double sec(mode_t mode = min) const { return ms(mode) / 1e3; }
 
-    timer_t(const timer_t &rhs) = default;
-    timer_t &operator=(const timer_t &rhs);
-    timer_t &operator=(timer_t &&rhs) = default;
+private:
+    // Tracks the start of measurements.
+    double ms_start_ = 0;
 
-    int times_;
-    uint64_t ticks_[n_modes], ticks_start_;
-    double ms_[n_modes], ms_start_;
+    // All registered time entries;
+    std::vector<double> ms_;
 };
 
 // Designated timers to support benchdnn performance reporting and general time

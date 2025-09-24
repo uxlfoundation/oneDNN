@@ -28,74 +28,46 @@ double ms_now() {
     return std::chrono::duration<double, std::milli>(timePointTmp).count();
 }
 
+// TODO: remove me
 #if !defined(BENCHDNN_USE_RDPMC) || defined(_WIN32)
-uint64_t ticks_now() {
-    return (uint64_t)0;
-}
 #else
-uint64_t ticks_now() {
-    uint32_t eax, edx, ecx;
-
-    ecx = (1 << 30) + 1;
-    __asm__ volatile("rdpmc" : "=a"(eax), "=d"(edx) : "c"(ecx));
-
-    return (uint64_t)eax | (uint64_t)edx << 32;
-}
 #endif
 
-void timer_t::reset() {
-    times_ = 0;
-    for (int i = 0; i < n_modes; ++i)
-        ticks_[i] = 0;
-    ticks_start_ = 0;
-    for (int i = 0; i < n_modes; ++i)
-        ms_[i] = 0;
-    ms_start_ = 0;
-
+void timer_t::restart() {
+    ms_.clear();
     start();
 }
 
 void timer_t::start() {
-    ticks_start_ = ticks_now();
     ms_start_ = ms_now();
 }
 
-void timer_t::stop(int add_times, int64_t add_ticks, double add_ms) {
-    if (add_times == 0) return;
-
-    uint64_t d_ticks = add_ticks;
-    double d_ms = add_ms;
-
-    ticks_start_ += d_ticks;
-    ms_start_ += d_ms;
-
-    ms_[mode_t::avg] += d_ms;
-    ms_[mode_t::sum] += d_ms;
-    ticks_[mode_t::avg] += d_ticks;
-    ticks_[mode_t::sum] += d_ticks;
-
-    d_ticks /= add_times;
-    d_ms /= add_times;
-
-    ms_[mode_t::min] = times_ ? std::min(ms_[mode_t::min], d_ms) : d_ms;
-    ms_[mode_t::max] = times_ ? std::max(ms_[mode_t::max], d_ms) : d_ms;
-
-    ticks_[mode_t::min]
-            = times_ ? std::min(ticks_[mode_t::min], d_ticks) : d_ticks;
-    ticks_[mode_t::max]
-            = times_ ? std::max(ticks_[mode_t::max], d_ticks) : d_ticks;
-
-    times_ += add_times;
+void timer_t::stop(int append_n_times) {
+    stop(append_n_times, ms_now() - ms_start_);
 }
 
-void timer_t::stamp(int add_times) {
-    stop(add_times, ticks_now() - ticks_start_, ms_now() - ms_start_);
-}
+void timer_t::stop(int append_n_times, double append_ms) {
+    if (append_n_times <= 0) {
+        // No measurements happened.
+        return;
+    } else if (append_n_times == 1) {
+        ms_.push_back(append_ms);
+    } else {
+        for (auto i : append_n_times)
+            ms_.push_back(append_ms / append_n_times);
+    }
 
-timer_t &timer_t::operator=(const timer_t &rhs) {
-    if (this == &rhs) return *this;
-    *this = timer_t(rhs);
-    return *this;
+    // double d_ms = append_ms;
+
+    // ms_[mode_t::avg] += d_ms;
+    // ms_[mode_t::sum] += d_ms;
+
+    // d_ms /= append_n_times;
+
+    // ms_[mode_t::min] = times_ ? std::min(ms_[mode_t::min], d_ms) : d_ms;
+    // ms_[mode_t::max] = times_ ? std::max(ms_[mode_t::max], d_ms) : d_ms;
+
+    // times_ += append_n_times;
 }
 
 timer_t &timer_map_t::get_timer(const std::string &name) {

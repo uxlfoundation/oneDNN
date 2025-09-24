@@ -221,7 +221,7 @@ status_t acl_lowp_matmul_sq_t::pd_t::init_scratchpad(engine_t *engine,
     CHECK(post_ops.init(engine, attr_post_ops, dst_md, act_info));
 
     // Book temp mem.
-    if (aux_mem_req.size() != 0) {
+    if (!aux_mem_req.empty()) {
         for (size_t id = 0; id < lowp_matmul_keys.size(); id++) {
             if (aux_mem_req[id].size > 0) {
                 scratchpad.book(lowp_matmul_keys[id], aux_mem_req[id].size, 1,

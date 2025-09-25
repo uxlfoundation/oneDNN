@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -116,9 +117,7 @@ private:
     int tail_length() { return n_block1_tail() % simd_w_; }
     bool is_fma_embd() { return brg.is_f32; }
     bool is_fast_vnni_int8() { return is_fast_vnni_int8(brg); }
-    int vnni_substep() {
-        return brg.isa_impl == sve_256 && (brg.is_bf16 || brg.is_f16) ? 2 : 1;
-    }
+    int vnni_substep() { return brg.isa_impl == sve_256 && brg.is_f16 ? 2 : 1; }
     int get_substep_simd(int n_i, int v_i, bool has_n_tail) {
         const int last_n_block_sz
                 = n_block2_tail() > 0 ? n_block2_tail() : n_block2();

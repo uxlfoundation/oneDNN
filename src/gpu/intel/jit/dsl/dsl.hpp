@@ -39,12 +39,13 @@ struct send_hint_t {
 
 struct kernel_t {
     kernel_t() : iface("invalid_dsl_kernel") {}
-    kernel_t(kernel::iface_t iface, stmt_t body, const exec_config_t &exec_cfg)
-        : iface(std::move(iface)), body(std::move(body)), exec_cfg(exec_cfg) {}
+    kernel_t(kernel::iface_t iface, stmt_t body,
+            const kernel::options_t &options)
+        : iface(std::move(iface)), body(std::move(body)), options(options) {}
 
     kernel::iface_t iface;
     stmt_t body;
-    exec_config_t exec_cfg;
+    kernel::options_t options;
     ngen::DebugConfig debug_cfg;
 };
 

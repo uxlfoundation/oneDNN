@@ -980,7 +980,7 @@ void kernel_desc_t::init_kernel_info(kernel_info_t &kernel_info,
         grid_dims[d] = utils::div_up(shape.at(d), tg_size * iter_size);
     }
     dim_t max_tgs = prim_config_t::get_max_threadgroups_per_wave(
-            exec_cfg(engine), thread_group_tile.elems());
+            options(engine), thread_group_tile.elems());
     dim_t stream_k_tg0 = 0;
     dim_t stream_k_tg1 = 0;
     v2::init_kernel_info(kernel_info, prb, *this, tg_grid, grid_dims, max_tgs,

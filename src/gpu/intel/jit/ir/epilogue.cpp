@@ -641,7 +641,7 @@ int get_post_op_mem_usage(const post_op_tensor_info_t &info, int c_elems,
     return load_size + cvt_size;
 }
 
-int find_tile_size(const exec_config_t &exec_cfg,
+int find_tile_size(const kernel::options_t &options,
         const post_op_context_t &post_op_ctx, const view_t &c_mem_view,
         const layout_t &c_reg_layout, int preload_max_size, int post_op_blk) {
     bool with_post_ops = !post_op_ctx.post_ops().empty();
@@ -668,7 +668,7 @@ int find_tile_size(const exec_config_t &exec_cfg,
         }
 
         int total_size = c_size + preload_max_size + po_size;
-        int available_size = exec_cfg.regs() * exec_cfg.grf_size()
+        int available_size = options.regs() * options.grf_size()
                 - (int)size_bytes(c_reg_layout);
         if (total_size <= available_size * 0.8) return tile_size;
     }
@@ -700,7 +700,7 @@ int find_tile_size(const exec_config_t &exec_cfg,
 // - S_y    is the stage before storing C to global memory
 class epilogue_builder_t {
 public:
-    epilogue_builder_t(ir_context_t &ir_ctx, const exec_config_t &exec_cfg,
+    epilogue_builder_t(ir_context_t &ir_ctx, const kernel::options_t &options,
             const gemm_schedule_t &gemm_schedule, bool force_c_reorder,
             const post_op_context_t &post_op_ctx,
             const tile_coord_t &thr_tile_coord, const view_t &c_mem_view,
@@ -720,7 +720,7 @@ public:
 
         // Tile size in bytes. All post-ops are applied to a single tile, then
         // to the next tile, etc.
-        tile_size_ = find_tile_size(exec_cfg, post_op_ctx_, c_mem_view_,
+        tile_size_ = find_tile_size(options, post_op_ctx_, c_mem_view_,
                 c_reg_layout, preload_max_size_, post_op_blk_);
 
         gpu_trace() << "Creating epilogue with parameters"
@@ -972,7 +972,7 @@ private:
         const int cache_line_size = 64;
         const bool allow_2d = !offset.is<int_imm_t>()
                 || (offset.as<int_imm_t>().value % cache_line_size == 0);
-        auto send_params = get_send_params(ir_ctx_.exec_cfg(), send_op,
+        auto send_params = get_send_params(ir_ctx_.options(), send_op,
                 send_address_t::a64, fma_kind_t::undef, abc_kind_t::c,
                 c_mem_tile_view, gemm_schedule_, allow_2d);
         auto r2g = make_access_builder(
@@ -1165,9 +1165,9 @@ private:
     int c_reg_buf_size_ = 0;
 };
 
-stmt_t create_epilogue_stmt(const exec_config_t &exec_cfg, ir_context_t &ir_ctx,
-        const gemm_schedule_t &gemm_schedule, bool force_c_reorder,
-        const post_op_context_t &post_op_ctx,
+stmt_t create_epilogue_stmt(const kernel::options_t &options,
+        ir_context_t &ir_ctx, const gemm_schedule_t &gemm_schedule,
+        bool force_c_reorder, const post_op_context_t &post_op_ctx,
         const tile_coord_t &thr_tile_coord, const layout_t &c_reg_layout,
         const expr_t &c_mem_buf, const expr_t &c_reg_buf, int &c_reg_buf_size) {
     // Max size of post-op tensor buffers to preload and reuse for all tiles.
@@ -1179,7 +1179,7 @@ stmt_t create_epilogue_stmt(const exec_config_t &exec_cfg, ir_context_t &ir_ctx,
 
     const auto c_mem_view
             = post_op_ctx.cp_view().create_sub_view(thr_tile_coord);
-    epilogue_builder_t builder(ir_ctx, exec_cfg, gemm_schedule, force_c_reorder,
+    epilogue_builder_t builder(ir_ctx, options, gemm_schedule, force_c_reorder,
             post_op_ctx, thr_tile_coord, c_mem_view, c_reg_layout, c_mem_buf,
             c_reg_buf, preload_max_size, post_op_blk);
     c_reg_buf_size = utils::rnd_up(builder.c_reg_buf_size(), ir_ctx.grf_size());

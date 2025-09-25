@@ -65,7 +65,7 @@ public:
 class config_t : public prim_config_t {
 public:
     static bool check_compatibility(const conf_t &prb,
-            const exec_config_t &exec, const layout_t &src,
+            const kernel::options_t &exec, const layout_t &src,
             const post_ops_t &po, type_t dst_dt) {
         const int max_tg = exec.hw().max_tg_size(exec.regs(), exec.simd());
         if (max_tg % 8 != 0) return false;
@@ -121,12 +121,12 @@ public:
     }
 
     config_t() = default;
-    config_t(const exec_config_t &ec, const conf_t &prb, const layout_t &src,
-            const layout_t &dst) {
+    config_t(const kernel::options_t &ec, const conf_t &prb,
+            const layout_t &src, const layout_t &dst) {
         set_problem(prb);
         src_layout().set_user(spatials_to_3d(src, false, {0, 1, 2}));
         dst_layout().set_user(spatials_to_3d(dst, false, {0, 1, 2}));
-        set_exec_cfg(ec);
+        set_options(ec);
     }
 
     tile_t shape(bool pad) const override {
@@ -218,7 +218,7 @@ public:
     void compute_grid() {
         const auto &prb = problem();
         const auto &src = src_layout().user();
-        const auto &exec = exec_cfg();
+        const auto &exec = options();
         const int simd = exec.simd();
         const int eu_count = exec.hw().eu_count();
 
@@ -508,8 +508,8 @@ public:
     compute::nd_range_t nd_range() const {
         const auto &kg = kernel_grid();
         const auto &tg = thread_group_grid();
-        compute::range_t local(size_t(tg[0] * exec_cfg().simd()), size_t(tg[1]),
-                size_t(tg[2]));
+        compute::range_t local(
+                size_t(tg[0] * options().simd()), size_t(tg[1]), size_t(tg[2]));
         compute::range_t global(size_t(kg[0]) * local[0],
                 size_t(kg[1]) * local[1], size_t(kg[2]) * local[2]);
 
@@ -519,7 +519,7 @@ public:
     std::string str() const override {
         ostringstream_t oss;
         // clang-format off
-        oss << "  Exec config:          " << exec_cfg() << std::endl;
+        oss << "  Exec config:          " << options() << std::endl;
         oss << "  Problem:              " << desc_str() << std::endl;
         const char *names[] = {"Source", "Destination"};
         const layout_param_t *layouts[] = {&src_layout(), &dst_layout()};
@@ -537,9 +537,9 @@ public:
         oss << "  Kernel grid:          " << kernel_grid() << std::endl;
         oss << "  Threads:              " << kg_elems * tg_elems
             << " (utilization: "
-            << get_thread_utilization(exec_cfg(), kg_elems, tg_elems)
+            << get_thread_utilization(options(), kg_elems, tg_elems)
             << "% thread, "
-            << get_wave_utilization(exec_cfg(), kg_elems, tg_elems)
+            << get_wave_utilization(options(), kg_elems, tg_elems)
             << "% wave)" << std::endl;
         oss << "  Configuration line:   " << get_config_line() << std::endl;
         // clang-format on
@@ -548,7 +548,7 @@ public:
 
     int n_cuts() const { return n_cuts_; }
     bool cut() {
-        const auto simd = exec_cfg().simd();
+        const auto simd = options().simd();
         auto kg(kernel_grid());
         auto lg(loop_grid());
         dim_t null = 0;

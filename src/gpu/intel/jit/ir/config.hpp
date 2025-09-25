@@ -108,7 +108,7 @@ class dst_layout_param_t : public layout_param_t {
     bool is_default() const override { return false; }
 };
 
-class exec_cfg_param_t : public value_param_t<exec_config_t> {
+class options_param_t : public value_param_t<kernel::options_t> {
 public:
     using value_param_t::is_overridden;
     using value_param_t::value_param_t;
@@ -319,12 +319,12 @@ public:
     }
 
     static int get_max_threadgroups_per_wave(
-            const exec_config_t &exec_cfg, dim_t tg_elems) {
-        auto arch = convert_ngen_arch_to_dnnl(exec_cfg.hw());
+            const kernel::options_t &options, dim_t tg_elems) {
+        auto arch = convert_ngen_arch_to_dnnl(options.hw());
         int threads_per_eu = compute::device_info_t::threads_per_eu(
-                arch, exec_cfg.regs() > 128);
+                arch, options.regs() > 128);
         int eus_per_subslice = compute::device_info_t::max_eus_per_wg(arch);
-        int subslice_count = exec_cfg.hw().eu_count() / eus_per_subslice;
+        int subslice_count = options.hw().eu_count() / eus_per_subslice;
 
         int tgs_per_subslice = eus_per_subslice * threads_per_eu / tg_elems;
         gpu_assert(tgs_per_subslice > 0);
@@ -334,10 +334,10 @@ public:
     // Return thread utilization as a percentage. If this value is low,
     // parallelism is a fundamental limitation to the current work scheduling.
     static float get_thread_utilization(
-            const exec_config_t &exec_cfg, dim_t kg_elems, dim_t tg_elems) {
-        auto arch = convert_ngen_arch_to_dnnl(exec_cfg.hw());
+            const kernel::options_t &options, dim_t kg_elems, dim_t tg_elems) {
+        auto arch = convert_ngen_arch_to_dnnl(options.hw());
         int eus_per_subslice = compute::device_info_t::max_eus_per_wg(arch);
-        int subslice_count = exec_cfg.hw().eu_count() / eus_per_subslice;
+        int subslice_count = options.hw().eu_count() / eus_per_subslice;
 
         dim_t min_wg_per_subslice_wave
                 = std::max<dim_t>(eus_per_subslice / tg_elems, 1);
@@ -349,8 +349,8 @@ public:
     // Return wave utilization as a percentage. If this value is low, memory
     // latency may be an issue due to limited use of SMT to hide the latency.
     static float get_wave_utilization(
-            const exec_config_t &exec_cfg, dim_t kg_elems, dim_t tg_elems) {
-        int tgs_per_wave = get_max_threadgroups_per_wave(exec_cfg, tg_elems);
+            const kernel::options_t &options, dim_t kg_elems, dim_t tg_elems) {
+        int tgs_per_wave = get_max_threadgroups_per_wave(options, tg_elems);
         return (100.f * float(kg_elems))
                 / float(utils::rnd_up(kg_elems, tgs_per_wave));
     }
@@ -376,7 +376,7 @@ public:
         return name##_; \
     } \
     name##_param_t &name() { return name##_; }
-    DECL_PARAM(exec_cfg)
+    DECL_PARAM(options)
     DECL_PARAM(kernel_grid)
     DECL_PARAM(thread_group_grid)
     DECL_PARAM2(src_layout)
@@ -447,7 +447,7 @@ protected:
             = register_param([](const container_config_t *c) { \
                   return &static_cast<const prim_config_t *>(c)->name##_; \
               });
-    INIT_PARAM(exec_cfg)
+    INIT_PARAM(options)
     INIT_PARAM(kernel_grid)
     INIT_PARAM(thread_group_grid)
     INIT_PARAM(src_layout)

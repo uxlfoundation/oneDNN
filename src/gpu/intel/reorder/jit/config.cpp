@@ -25,8 +25,8 @@ namespace intel {
 namespace reorder {
 namespace jit {
 
-config_t::config_t(const exec_config_t &ec, layout_t src, layout_t dst) {
-    set_exec_cfg(ec);
+config_t::config_t(const kernel::options_t &ec, layout_t src, layout_t dst) {
+    set_options(ec);
 
     jit::normalize(src, dst);
     src_layout().set_user(src);

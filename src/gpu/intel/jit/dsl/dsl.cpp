@@ -93,13 +93,13 @@ struct ctx_t {
             auto slm_alloc = builtin_t::make("alloc")(slm_buf);
             body = slm_alloc.append(body);
         }
-        kernel_t ret {std::move(interface_), body, ctx_->exec_cfg()};
+        kernel_t ret {std::move(interface_), body, ctx_->options()};
         ctx_ = nullptr;
         interface_ = {"undefined_dsl_kernel"};
         return ret;
     }
 
-    int simd() const { return ctx_->exec_cfg().simd(); }
+    int simd() const { return ctx_->options().simd(); }
 
     const std::array<expr_t, 3> &group_ids() const { return group_ids_; }
     const expr_t &group_id(int idx) const { return group_ids_[idx]; }

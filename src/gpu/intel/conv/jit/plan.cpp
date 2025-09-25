@@ -2032,7 +2032,7 @@ private:
         int bound = cfg_.regs() - tmp_regs;
         if (plan.grf_usage().total() < bound) return plan_status_t::success;
         // Do not downsize grf mode at the cost of disabling below optimizations.
-        if (cfg_.exec_cfg().hw().large_grf_support() && cfg_.regs() <= 128
+        if (cfg_.options().hw().large_grf_support() && cfg_.regs() <= 128
                 && default_regs(cfg_) != 128)
             return plan_status_t::out_of_registers;
         plan_status_t status;
@@ -2162,13 +2162,13 @@ private:
                 = slm_layout.sub(thr_tile_coord.tile, thr_tile_coord.coord);
         auto slm_thr_view = view_t(slm_thr_layout);
         auto thr_view = tg_view.create_sub_view(thr_tile_coord);
-        auto load_params = get_send_params(cfg_.exec_cfg(), send_op_t::load,
+        auto load_params = get_send_params(cfg_.options(), send_op_t::load,
                 send_address_t::a64, abc, thr_view);
-        auto store_params = get_send_params(cfg_.exec_cfg(), send_op_t::store,
+        auto store_params = get_send_params(cfg_.options(), send_op_t::store,
                 send_address_t::slm, abc, slm_thr_view);
-        g2s_load = create_send_plan(cfg_.exec_cfg(), thr_view, load_params);
+        g2s_load = create_send_plan(cfg_.options(), thr_view, load_params);
         g2s_store
-                = create_send_plan(cfg_.exec_cfg(), slm_thr_view, store_params);
+                = create_send_plan(cfg_.options(), slm_thr_view, store_params);
         auto &src = g2s_load.reg_layout();
         auto &dst = g2s_store.reg_layout();
         reorder = create_reorder_plan(cfg_.hw(), src, dst);
@@ -2211,10 +2211,10 @@ private:
         if (!use_prefetch(abc)) return plan_status_t::success;
         auto &tg = cfg_.thread_group_grid();
         auto thr_view = tg_view.split(tg, &grid);
-        auto params = get_send_params(cfg_.exec_cfg(), send_op_t::prefetch,
+        auto params = get_send_params(cfg_.options(), send_op_t::prefetch,
                 send_address_t::a64, fma_kind_t::undef, abc, thr_view,
                 gemm_schedule_);
-        prefetch = create_send_plan(cfg_.exec_cfg(), thr_view, params);
+        prefetch = create_send_plan(cfg_.options(), thr_view, params);
         return plan_status_t::success;
     }
 
@@ -2234,9 +2234,9 @@ private:
             tile_coord_t *reduce_tile_coord = nullptr) const {
         if (!has_x_slm) return plan_status_t::success;
         auto thr_view = view_t(slm_layout).create_sub_view(thr_tile_coord);
-        auto params = get_send_params(cfg_.exec_cfg(), send_op_t::load,
+        auto params = get_send_params(cfg_.options(), send_op_t::load,
                 send_address_t::slm, abc, thr_view);
-        load = create_send_plan(cfg_.exec_cfg(), thr_view, params);
+        load = create_send_plan(cfg_.options(), thr_view, params);
         layout = load.reg_layout();
         if (reduce_mask && !cfg_.allow_global_reduction()) {
             *reduce_tile_coord = to_reduce_tensor(
@@ -2268,11 +2268,11 @@ private:
                 = (abc == abc_kind_t::a ? a_direct_view_ : b_direct_view_);
         const auto &load_view = direct_view ? direct_view.get() : gmem_view;
 
-        auto params = get_send_params(cfg_.exec_cfg(), send_op_t::load,
+        auto params = get_send_params(cfg_.options(), send_op_t::load,
                 send_address_t::a64, cfg_.fma_kind(), abc, load_view,
                 gemm_schedule_,
                 /*allow_2d_load=*/true);
-        load = create_send_plan(cfg_.exec_cfg(), load_view, params);
+        load = create_send_plan(cfg_.options(), load_view, params);
 
         auto reg_layout = load.reg_layout();
         if (direct_view) {
@@ -2589,21 +2589,23 @@ private:
         return plan_ptr;
     }
 
-    send_params_t get_send_params(const exec_config_t &exec_cfg, send_op_t op,
-            send_address_t address, abc_kind_t abc, const view_t &view) const {
-        auto params = jit::get_send_params(exec_cfg, op, address, view);
+    send_params_t get_send_params(const kernel::options_t &options,
+            send_op_t op, send_address_t address, abc_kind_t abc,
+            const view_t &view) const {
+        auto params = jit::get_send_params(options, op, address, view);
         bool allow_send_2d
                 = (abc == abc_kind_t::a ? allow_a_send_2d_ : allow_b_send_2d_);
         if (!allow_send_2d) params.hint_2d.enable = false;
         return params;
     }
 
-    send_params_t get_send_params(const exec_config_t &exec_cfg, send_op_t op,
-            send_address_t address, fma_kind_t fma, abc_kind_t abc,
-            const view_t &view, const gemm_schedule_t &gemm_schedule,
+    send_params_t get_send_params(const kernel::options_t &options,
+            send_op_t op, send_address_t address, fma_kind_t fma,
+            abc_kind_t abc, const view_t &view,
+            const gemm_schedule_t &gemm_schedule,
             bool allow_2d_load = true) const {
-        auto params = jit::get_send_params(exec_cfg, op, address, fma, abc,
-                view, gemm_schedule, allow_2d_load);
+        auto params = jit::get_send_params(options, op, address, fma, abc, view,
+                gemm_schedule, allow_2d_load);
         bool allow_send_2d
                 = (abc == abc_kind_t::a ? allow_a_send_2d_ : allow_b_send_2d_);
         if (!allow_send_2d) params.hint_2d.enable = false;

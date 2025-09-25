@@ -29,7 +29,7 @@ namespace conv {
 namespace jit {
 namespace v2 {
 
-stmt_t build_ir(const exec_config_t &exec_cfg, const kernel_desc_t &desc,
+stmt_t build_ir(const kernel::options_t &options, const kernel_desc_t &desc,
         var_manager_t &var_mgr);
 
 } // namespace v2

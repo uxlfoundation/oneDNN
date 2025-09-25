@@ -56,34 +56,6 @@ inline bool prefer_large_grf(
     return gpu_attr->threads_per_eu() * 2 == hw.threads_per_eu();
 }
 
-class exec_config_t {
-public:
-    exec_config_t() = default;
-    exec_config_t(const hw_t &hw) : hw_(hw) {}
-    exec_config_t(const hw_t &hw, int regs, int simd)
-        : hw_(hw), regs_(regs), simd_(simd) {}
-
-    const hw_t &hw() const { return hw_; }
-    int regs() const { return regs_; }
-    int simd() const { return simd_; }
-    int grf_size() const { return hw_.grf_size(); }
-    void set_regs(int regs) { regs_ = regs; }
-    void set_simd(int simd) { simd_ = simd; }
-
-    std::string str() const {
-        ostringstream_t oss;
-        oss << hw_.str();
-        oss << ", SIMD: " << simd();
-        oss << ", regs: " << regs();
-        return oss.str();
-    }
-
-private:
-    hw_t hw_;
-    int regs_ = 0;
-    int simd_ = 0;
-};
-
 } // namespace jit
 } // namespace intel
 } // namespace gpu

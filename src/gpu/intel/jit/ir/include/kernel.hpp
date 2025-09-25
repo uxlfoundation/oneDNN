@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_JIT_IR_INCLUDE_KERNEL_HPP
 #define GPU_INTEL_JIT_IR_INCLUDE_KERNEL_HPP
 
+#include "gpu/intel/jit/ir/include/hw.hpp"
 #include "gpu/intel/jit/ir/include/object.hpp"
 #include "gpu/intel/jit/ir/include/type.hpp"
 
@@ -85,6 +86,36 @@ private:
     std::string kernel_name_;
     std::vector<arg_t> args_;
 };
+
+// Compilation options used for IR generation and lowering
+class options_t {
+public:
+    options_t() = default;
+    options_t(const hw_t &hw) : hw_(hw) {}
+    options_t(const hw_t &hw, int regs, int simd)
+        : hw_(hw), regs_(regs), simd_(simd) {}
+
+    const hw_t &hw() const { return hw_; }
+    int regs() const { return regs_; }
+    int simd() const { return simd_; }
+    int grf_size() const { return hw_.grf_size(); }
+    void set_regs(int regs) { regs_ = regs; }
+    void set_simd(int simd) { simd_ = simd; }
+
+    std::string str() const {
+        ostringstream_t oss;
+        oss << hw_.str();
+        oss << ", SIMD: " << simd();
+        oss << ", regs: " << regs();
+        return oss.str();
+    }
+
+private:
+    hw_t hw_;
+    int regs_ = 0;
+    int simd_ = 0;
+};
+
 } // namespace kernel
 
 } // namespace jit

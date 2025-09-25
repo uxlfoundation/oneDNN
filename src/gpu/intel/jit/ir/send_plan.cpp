@@ -2327,10 +2327,10 @@ private:
 
 class ir_send_plan_t final : public send_plan_impl_t {
 public:
-    ir_send_plan_t(const exec_config_t &exec_cfg, const view_t &view,
+    ir_send_plan_t(const kernel::options_t &options, const view_t &view,
             send_params_t &send_params)
         : send_params_(send_params)
-        , ir_ctx_(exec_cfg, cset_)
+        , ir_ctx_(options, cset_)
         , dummy_mem_buf_(var_t::make(type_t::byte(type::attr_t::ptr), "mem"))
         , dummy_reg_buf_(var_t::make(type_t::byte(type::attr_t::ptr), "reg"))
         , access_(make_access_builder(
@@ -2729,19 +2729,19 @@ bool can_use_send_plan(const view_t &view) {
     return true;
 }
 
-send_plan_t create_ir_send_plan(const exec_config_t &exec_cfg,
+send_plan_t create_ir_send_plan(const kernel::options_t &options,
         const view_t &view, const send_params_t &_send_params) {
     auto send_params = _send_params;
     auto send_plan
-            = utils::make_unique<ir_send_plan_t>(exec_cfg, view, send_params);
+            = utils::make_unique<ir_send_plan_t>(options, view, send_params);
     return send_plan_t(std::move(send_plan));
 }
 
-send_plan_t create_send_plan(const exec_config_t &exec_cfg, const view_t &view,
-        const send_params_t &send_params, bool fill_buf) {
+send_plan_t create_send_plan(const kernel::options_t &options,
+        const view_t &view, const send_params_t &send_params, bool fill_buf) {
     if (!send_params.use_send_plan)
-        return create_ir_send_plan(exec_cfg, view, send_params);
-    auto &hw = exec_cfg.hw();
+        return create_ir_send_plan(options, view, send_params);
+    auto &hw = options.hw();
     view_info_t info(hw, view, send_params);
     view_iterator_t it(info);
 

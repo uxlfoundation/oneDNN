@@ -133,7 +133,7 @@ private:
 
 stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
         const config_t &cfg, const primitive_desc_t &pd) {
-    const auto &exec = cfg.exec_cfg();
+    const auto &exec = cfg.options();
     const auto &prb = cfg.problem();
     const auto &src_layout = cfg.src_layout().user();
     const auto &dst_layout = cfg.dst_layout().user();

@@ -338,8 +338,8 @@ public:
     v2::send_kind_t access_kind(v2::send_op_t op, tensor_kind_t tensor) const;
     std::string kernel_name() const override { return "gen_conv_v2"; }
 
-    exec_config_t exec_cfg(const impl::engine_t *engine) const override {
-        return exec_config_t(make_ir_hw(engine), regs, simd);
+    kernel::options_t options(const impl::engine_t *engine) const override {
+        return kernel::options_t(make_ir_hw(engine), regs, simd);
     }
 
     compute::range_t local_range() const override;

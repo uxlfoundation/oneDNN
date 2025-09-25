@@ -35,12 +35,12 @@ class constraint_set_t;
 
 class ir_context_t {
 public:
-    ir_context_t(const exec_config_t &exec_cfg, constraint_set_t &cset)
-        : exec_cfg_(exec_cfg), cset_(cset) {}
+    ir_context_t(const kernel::options_t &options, constraint_set_t &cset)
+        : options_(options), cset_(cset) {}
 
-    const exec_config_t &exec_cfg() const { return exec_cfg_; }
+    const kernel::options_t &options() const { return options_; }
 
-    const hw_t &hw() const { return exec_cfg().hw(); }
+    const hw_t &hw() const { return options().hw(); }
 
     int grf_size() const { return hw().grf_size(); }
 
@@ -67,7 +67,7 @@ public:
     }
 
 private:
-    exec_config_t exec_cfg_;
+    kernel::options_t options_;
     constraint_set_t &cset_;
     std::unordered_set<std::string> all_names_;
     std::unordered_map<std::string, int> prefix_ids_;

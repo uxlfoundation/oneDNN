@@ -1031,16 +1031,16 @@ private:
     buffer_info_t buf_info_;
 };
 
-stmt_t build_ir(const exec_config_t &exec_cfg, const kernel_desc_t &desc,
+stmt_t build_ir(const kernel::options_t &options, const kernel_desc_t &desc,
         var_manager_t &var_mgr) {
-    auto plan = create_plan(desc, exec_cfg.hw());
+    auto plan = create_plan(desc, options.hw());
     if (!plan) gpu_except_not_implemented("Cannot create plan.");
 
     gpu_info() << desc;
     gpu_trace() << plan;
 
     constraint_set_t cset;
-    ir_context_t ir_ctx(exec_cfg, cset);
+    ir_context_t ir_ctx(options, cset);
     builder_t builder(ir_ctx, desc, var_mgr, plan);
     auto stmt = builder.get_stmt();
     gpu_trace() << "Convolution kernel body:\n" << stmt;

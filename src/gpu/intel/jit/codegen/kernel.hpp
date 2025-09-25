@@ -175,14 +175,14 @@ public:
     NGEN_FORWARD_SCOPE(BaseGeneratorT)
 
     ir_to_ngen_generator_t(const kernel::iface_t &kernel_iface,
-            const exec_config_t &exec_cfg,
+            const kernel::options_t &options,
             const ngen::DebugConfig &debug_config)
-        : BaseGeneratorT(exec_cfg.hw().product(), debug_config)
+        : BaseGeneratorT(options.hw().product(), debug_config)
         , kernel_iface_(kernel_iface)
-        , exec_cfg_(exec_cfg)
+        , options_(options)
         , ra_(getHardware())
-        , emu_strategy_(getHardware(), exec_cfg_.hw().stepping()) {
-        ra_.setRegisterCount(exec_cfg_.regs());
+        , emu_strategy_(getHardware(), options_.hw().stepping()) {
+        ra_.setRegisterCount(options_.regs());
     }
 
     void force_emulate64() { emu_strategy_.emulate64 = true; }
@@ -193,8 +193,8 @@ public:
     ngen::Subregister grid_ids[3] = {r0.ud(1), r0.ud(6), r0.ud(7)};
 
     const kernel::iface_t &kernel_iface() const { return kernel_iface_; }
-    const exec_config_t &exec_cfg() const { return exec_cfg_; }
-    const hw_t &hw_info() const { return exec_cfg_.hw(); }
+    const kernel::options_t &options() const { return options_; }
+    const hw_t &hw_info() const { return options_.hw(); }
 
     void generate_prologue() {
         BaseGeneratorT::setDefaultNoMask();
@@ -1131,7 +1131,7 @@ protected:
     }
 
     kernel::iface_t kernel_iface_;
-    exec_config_t exec_cfg_;
+    kernel::options_t options_;
     reg_allocator_t ra_;
     ngen::GRF signal_header_;
 
@@ -1149,7 +1149,7 @@ protected:
 #define IR_TO_NGEN_GENERATOR_FORWARD(BaseGeneratorT) \
     NGEN_FORWARD_ELF(BaseGeneratorT::hardware) \
     IR_TO_NGEN_GENERATOR_EMULATION_FORWARD(BaseGeneratorT) \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::exec_cfg; \
+    using ir_to_ngen_generator_t<BaseGeneratorT>::options; \
     using ir_to_ngen_generator_t<BaseGeneratorT>::kernel_iface; \
     using ir_to_ngen_generator_t<BaseGeneratorT>::generate_prologue; \
     using ir_to_ngen_generator_t<BaseGeneratorT>::generate_epilogue; \
@@ -1160,7 +1160,7 @@ public:
     ir_kernel_t(const kernel_desc_base_t &desc, const impl::engine_t *engine,
             const debug_config_t &debug_config)
         : kernel_iface_(desc.kernel_name())
-        , exec_cfg_(desc.exec_cfg(engine))
+        , options_(desc.options(engine))
         , local_range_(desc.local_range())
         , require_dpas_(desc.with_dpas())
         , debug_config_(debug_config) {
@@ -1168,15 +1168,16 @@ public:
     }
 
     ir_kernel_t(const kernel::iface_t &kernel_iface,
-            const exec_config_t &exec_cfg, const compute::range_t &local_range,
-            bool require_dpas, const debug_config_t &debug_config)
+            const kernel::options_t &options,
+            const compute::range_t &local_range, bool require_dpas,
+            const debug_config_t &debug_config)
         : kernel_iface_(kernel_iface)
-        , exec_cfg_(exec_cfg)
+        , options_(options)
         , local_range_(local_range)
         , require_dpas_(require_dpas)
         , debug_config_(debug_config) {}
 
-    const exec_config_t &exec_cfg() const { return exec_cfg_; }
+    const kernel::options_t &options() const { return options_; }
     const kernel::iface_t &kernel_iface() const { return kernel_iface_; }
     void force_emulate64() { force_emulate64_ = true; }
 
@@ -1201,11 +1202,11 @@ private:
         for (int i = 0; i < (int)local_range_.ndims(); i++) {
             local_size *= (int)local_range_[i];
         }
-        return ir_utils::safe_divide(local_size, exec_cfg_.simd());
+        return ir_utils::safe_divide(local_size, options_.simd());
     }
 
     kernel::iface_t kernel_iface_;
-    exec_config_t exec_cfg_;
+    kernel::options_t options_;
     compute::range_t local_range_;
     bool require_dpas_;
 

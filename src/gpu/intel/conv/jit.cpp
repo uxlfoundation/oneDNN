@@ -183,7 +183,7 @@ public:
                             break;
                         }
                         case kernel_id_t::pre_reorder: {
-                            reorder::jit::config_t reorder_cfg(cfg.exec_cfg(),
+                            reorder::jit::config_t reorder_cfg(cfg.options(),
                                     tensor_cfg.user_layout(info.arg_name(1)),
                                     tensor_cfg.compute_layout(
                                             info.arg_name(1)));
@@ -196,7 +196,7 @@ public:
                             break;
                         }
                         case kernel_id_t::post_reorder: {
-                            reorder::jit::config_t reorder_cfg(cfg.exec_cfg(),
+                            reorder::jit::config_t reorder_cfg(cfg.options(),
                                     tensor_cfg.compute_layout(info.arg_name(0)),
                                     tensor_cfg.user_layout(info.arg_name(0)));
                             tmp_kernels.push_back(
@@ -215,7 +215,7 @@ public:
                             tmp_kernels.push_back(
                                     make_kernel<zero_out_kernel_t>(primitive,
                                             /*register_kernel=*/false, engine,
-                                            cfg.exec_cfg(), info,
+                                            cfg.options(), info,
                                             cfg.is_dpas_or_dpasw_fma(),
                                             engine));
                             break;
@@ -405,7 +405,7 @@ private:
                             /*is_input=*/true);
                     add_compute_arg(reorder_info, compute_buf, false);
                     reorder::jit::config_t reorder_cfg(
-                            cfg.exec_cfg(), t.user_layout, t.compute_layout);
+                            cfg.options(), t.user_layout, t.compute_layout);
                     reorder_info.set_nd_range(reorder_cfg.nd_range());
                 }
                 if (!src_conv_precalc && t.is_output) {
@@ -415,7 +415,7 @@ private:
                     reorder_info.register_user_arg(user_buf, user_arg_key,
                             /*is_input=*/false);
                     reorder::jit::config_t reorder_cfg(
-                            cfg.exec_cfg(), t.compute_layout, t.user_layout);
+                            cfg.options(), t.compute_layout, t.user_layout);
                     reorder_info.set_nd_range(reorder_cfg.nd_range());
                 }
                 if (src_conv_precalc) {

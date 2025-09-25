@@ -1499,8 +1499,8 @@ void zp_plan_t::init(const config_t &cfg, bool src_2d_loads,
 
     if (do_src || do_wei) {
         auto load_params = get_send_params(
-                cfg.exec_cfg(), send_op_t::load, send_address_t::a64, zp_view);
-        impl_load = create_send_plan(cfg.exec_cfg(), zp_view, load_params);
+                cfg.options(), send_op_t::load, send_address_t::a64, zp_view);
+        impl_load = create_send_plan(cfg.options(), zp_view, load_params);
         impl->comp_init = zp_comp_init_plan_t(cfg.hw(), cfg.prb().is_fwd,
                 impl_load.reg_layout(), src_layout, wei_layout);
         impl->sd = split_dispatcher_t(impl->comp_init.comp_layout(), dst_layout,
@@ -1514,10 +1514,10 @@ void zp_plan_t::init(const config_t &cfg, bool src_2d_loads,
                 dst_layout, impl->sd.simd_str());
     }
     if (do_wei) {
-        auto load_params = get_send_params(cfg.exec_cfg(), send_op_t::load,
+        auto load_params = get_send_params(cfg.options(), send_op_t::load,
                 send_address_t::a64, zp_src_view);
         impl->wei_load
-                = create_send_plan(cfg.exec_cfg(), zp_src_view, load_params);
+                = create_send_plan(cfg.options(), zp_src_view, load_params);
         impl->wei_init
                 = zp_wei_init_plan_t(cfg.hw(), cfg.prb().is_fwd, cfg.simd(),
                         src_layout.type(), zp_src_view.tlayout(), wei_layout);

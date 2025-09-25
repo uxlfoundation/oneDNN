@@ -39,7 +39,7 @@ public:
     zero_out_kernel_desc_t(int regs, int simd, bool dpas)
         : regs_(regs), simd_(simd), dpas_(dpas) {}
     std::string kernel_name() const override;
-    exec_config_t exec_cfg(const impl::engine_t *engine) const override;
+    kernel::options_t options(const impl::engine_t *engine) const override;
     bool with_dpas() const override { return dpas_; }
     compute::range_t local_range() const override;
     void init_kernel_iface(kernel::iface_t &kernel_iface) const override;
@@ -78,21 +78,21 @@ public:
 
     using base_type = ir_to_ngen_generator_t<generator_t<hw>>;
 
-    zero_out_kernel_t(const exec_config_t &exec_cfg,
+    zero_out_kernel_t(const kernel::options_t &options,
             const kernel_info_t &kernel_info, bool require_dpas,
             const impl::engine_t *engine)
-        : zero_out_kernel_t(zero_out_kernel_desc_t(exec_cfg.regs(),
-                                    exec_cfg.simd(), require_dpas),
+        : zero_out_kernel_t(zero_out_kernel_desc_t(options.regs(),
+                                    options.simd(), require_dpas),
                 engine) {}
 
     zero_out_kernel_t(
             const kernel_desc_base_t &_desc, const impl::engine_t *engine)
-        : base_type(get_kernel_iface(_desc), _desc.exec_cfg(engine),
+        : base_type(get_kernel_iface(_desc), _desc.options(engine),
                 debug_config_t {GENERATOR_NAME, GENERATOR_LINE}) {
         requireLocalID(3);
         requireLocalSize();
-        requireGRF(exec_cfg().regs());
-        requireSIMD(exec_cfg().simd());
+        requireGRF(options().regs());
+        requireSIMD(options().simd());
         requireBarrier();
 
         externalName(_desc.kernel_name());

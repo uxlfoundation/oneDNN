@@ -525,9 +525,9 @@ private:
         bool force_c_reorder = cfg_.fma_kind() == fma_kind_t::dpasw;
 
         int c_buf_size = 0;
-        auto stmt = create_epilogue_stmt(cfg_.exec_cfg(), ir_ctx_,
-                gemm_schedule, force_c_reorder, post_op_ctx, thr_tile_coord,
-                c_thr_reg_layout, cp_buf_, c_buf, c_buf_size);
+        auto stmt = create_epilogue_stmt(cfg_.options(), ir_ctx_, gemm_schedule,
+                force_c_reorder, post_op_ctx, thr_tile_coord, c_thr_reg_layout,
+                cp_buf_, c_buf, c_buf_size);
         (void)buf_mgr_.get("c", c_buf_size);
         if (reduce_cond) stmt = if_t::make(reduce_cond, stmt);
         c_store_stmt_ = c_store_stmt_.append(stmt);
@@ -681,7 +681,7 @@ void builder_t::build() {
 
     trace_stamp("GEMM Schedule");
 
-    ir_context_t ir_ctx(cfg_.exec_cfg(), init_cset);
+    ir_context_t ir_ctx(cfg_.options(), init_cset);
     compute_builder_t cb(cfg_, ir_ctx, kernel_info_, zp_dst_);
     cb.set_ap_buf(ap_buf);
     cb.set_bp_buf(bp_buf);

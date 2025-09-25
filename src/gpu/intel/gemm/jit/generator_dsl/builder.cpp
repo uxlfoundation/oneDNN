@@ -748,7 +748,7 @@ struct generator_dsl_t {
 
 kernel_t make_kernel(
         const generator_dsl_desc_t &desc, ir::constraint_set_t cset) {
-    ir::ir_context_t ctx(desc.exec_cfg, cset);
+    ir::ir_context_t ctx(desc.options, cset);
 
     ir::trace_start();
     auto k = generator_dsl_t(desc).build(desc.kernel_iface(), ctx);

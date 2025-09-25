@@ -543,15 +543,15 @@ public:
 
     int reserved_regs() const;
 
-    const hw_t &hw() const { return exec_cfg().hw(); }
+    const hw_t &hw() const { return options().hw(); }
 
     bool is_ge_xe_hpc() const { return hw() >= ngen::HW::XeHPC; }
 
     int grf_size() const { return hw().grf_size(); }
 
-    int regs() const { return exec_cfg().regs(); }
+    int regs() const { return options().regs(); }
 
-    int simd() const { return exec_cfg().simd(); }
+    int simd() const { return options().simd(); }
 
     int vec_size() const { return vec_size_; }
 
@@ -584,15 +584,15 @@ public:
     void set_pd(const pd_t *pd) { prb_.set_pd(pd); }
 
     void set_regs(int regs) {
-        auto tmp = exec_cfg();
+        auto tmp = options();
         tmp.set_regs(regs);
-        set_exec_cfg(tmp);
+        set_options(tmp);
     }
 
     void set_simd(int simd) {
-        auto tmp = exec_cfg();
+        auto tmp = options();
         tmp.set_simd(simd);
-        set_exec_cfg(tmp);
+        set_options(tmp);
     }
 
     void set_vec_size(int vec_size) { vec_size_ = vec_size; }

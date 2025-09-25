@@ -86,7 +86,7 @@ bool ir_builder_t::try_build(const tile_t &iter_tile, const tile_t &loop_tile) {
 
     std::vector<stmt_t> init_stmts;
     init_kernel_grid(cfg_.kernel_grid(), cfg_.thread_group_grid(),
-            cfg_.exec_cfg().simd(), init_cset, init_stmts);
+            cfg_.options().simd(), init_cset, init_stmts);
 
     view_t src_view(vars, ndims);
     view_t dst_view(vars, ndims);
@@ -173,7 +173,7 @@ bool ir_builder_t::try_build(const tile_t &iter_tile, const tile_t &loop_tile) {
     auto src_buf = kernel_info_.arg_var(0);
     auto dst_buf = kernel_info_.arg_var(1);
 
-    ir_context_t ir_ctx(cfg_.exec_cfg(), init_cset);
+    ir_context_t ir_ctx(cfg_.options(), init_cset);
     auto reg_buf
             = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr), "reg");
 
@@ -184,14 +184,14 @@ bool ir_builder_t::try_build(const tile_t &iter_tile, const tile_t &loop_tile) {
         allocs.push_back(alloc_t::make(var, 0, alloc_kind_t::global));
     }
 
-    auto read_params = get_send_params(cfg_.exec_cfg(), send_op_t::load,
+    auto read_params = get_send_params(cfg_.options(), send_op_t::load,
             send_address_t::a64, src_thr_view, true);
     read_params.try_legacy = false;
     auto read = make_access_builder(
             ir_ctx, src_thr_view, src_buf, reg_buf, read_params);
     auto &read_stmt = read.stmt();
 
-    auto write_params = get_send_params(cfg_.exec_cfg(), send_op_t::store,
+    auto write_params = get_send_params(cfg_.options(), send_op_t::store,
             send_address_t::a64, dst_thr_view, true);
     write_params.try_legacy = false;
     auto write = make_access_builder(
@@ -213,7 +213,7 @@ bool ir_builder_t::try_build(const tile_t &iter_tile, const tile_t &loop_tile) {
         post_op_view_mapper_t view_mapper(dst_view);
         post_op_context_t post_op_ctx(*attr_, cfg_.zp_cfg(), schedule,
                 kernel_info_, *dst_md_, *dst_md_, view_mapper);
-        write_stmt = create_epilogue_stmt(cfg_.exec_cfg(), ir_ctx, schedule,
+        write_stmt = create_epilogue_stmt(cfg_.options(), ir_ctx, schedule,
                 /*force_c_reorder=*/true, post_op_ctx, thr_tile_coord,
                 read_layout, dst_buf, reg_buf, write_buf_size);
     } else if (!read_layout.is_equal_normalized(write_layout)) {
@@ -247,15 +247,15 @@ bool ir_builder_t::try_build(const tile_t &iter_tile, const tile_t &loop_tile) {
     stmt_ = split_wide_stores(stmt_, ir_ctx);
     stmt_ = fix_int32_overflow(stmt_, ir_ctx);
     stmt_ = eliminate_common_subexprs(
-            stmt_, ir_ctx, cfg_.exec_cfg().regs() * cfg_.exec_cfg().grf_size());
+            stmt_, ir_ctx, cfg_.options().regs() * cfg_.options().grf_size());
     stmt_ = simplify(stmt_, ir_ctx);
     stmt_ = optimize_alloc_let(stmt_, ir_ctx);
     stmt_ = stmt_group_t::make(stmt_label_t::kernel(), stmt_);
 
-    int ir_regs = get_peak_regs(stmt_, cfg_.exec_cfg().grf_size());
+    int ir_regs = get_peak_regs(stmt_, cfg_.options().grf_size());
     int reserved_regs = 16;
     int regs = ir_regs + reserved_regs;
-    if (regs > cfg_.exec_cfg().regs()) {
+    if (regs > cfg_.options().regs()) {
         gpu_warning() << "Estimated GRF usage is " << regs
                       << " registers which exceeds available space, retry with "
                          "a smaller tile.";

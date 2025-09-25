@@ -537,8 +537,7 @@ public:
         : cfg_(cfg)
         , padded_shape_(cfg.shape(/*pad=*/true))
         , padded_gemm_shape_(to_gemm(padded_shape_, cfg.prb()))
-        , max_tg_size_(
-                  cfg.hw().max_tg_size(cfg.exec_cfg().regs(), cfg.simd())) {
+        , max_tg_size_(cfg.hw().max_tg_size(cfg.options().regs(), cfg.simd())) {
         reset_checks();
     }
 
@@ -750,9 +749,9 @@ private:
         dim_t abc_size = grf_usage_bytes(cfg_.fma_kind(), ctx.b_iter,
                 ctx.m_iter, ctx.n_iter, ctx.k_iter, prb.a_data_type_size,
                 prb.b_data_type_size, prb.acc_data_type_size);
-        auto &exec_cfg = cfg_.exec_cfg();
-        int usage_limit = exec_cfg.grf_size()
-                * (exec_cfg.regs() - cfg_.reserved_regs());
+        auto &options = cfg_.options();
+        int usage_limit
+                = options.grf_size() * (options.regs() - cfg_.reserved_regs());
         return abc_size <= usage_limit;
     }
 
@@ -763,11 +762,11 @@ private:
                 ctx.k_tg, ctx.b_iter, ctx.m_iter, ctx.n_iter, ctx.k_iter);
         if (slm_size == 0) return true;
 
-        auto &exec_cfg = cfg_.exec_cfg();
+        auto &options = cfg_.options();
         dim_t tg_size = ctx.b_tg * ctx.m_tg * ctx.n_tg * ctx.k_tg;
         int max_slm_size = compute::device_info_t::max_slm_size_per_tg(
                 convert_ngen_arch_to_dnnl(cfg_.hw()), into<int>(tg_size),
-                exec_cfg.regs() > 128);
+                options.regs() > 128);
         if (slm_size > max_slm_size) return false;
 
         return true;
@@ -1617,7 +1616,7 @@ private:
     }
 
     void maybe_try_small_grf(config_t &cfg) {
-        if (cfg.regs() == 128 || cfg.exec_cfg_param().is_overridden("regs"))
+        if (cfg.regs() == 128 || cfg.options_param().is_overridden("regs"))
             return;
         auto try_cfg = cfg;
         init_walk_order(try_cfg);
@@ -1627,9 +1626,9 @@ private:
               tg_elems = try_cfg.thread_group_grid().elems();
         try_cfg.set_regs(128);
         int new_wave_util = static_cast<int>(config_t::get_wave_utilization(
-                try_cfg.exec_cfg(), kg_elems, tg_elems));
+                try_cfg.options(), kg_elems, tg_elems));
         int wave_util = static_cast<int>(config_t::get_wave_utilization(
-                cfg.exec_cfg(), kg_elems, tg_elems));
+                cfg.options(), kg_elems, tg_elems));
         if (wave_util > 90 && new_wave_util >= wave_util) cfg.set_regs(128);
     }
 

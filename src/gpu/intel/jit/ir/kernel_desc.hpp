@@ -44,7 +44,7 @@ class kernel_desc_base_t {
 public:
     virtual ~kernel_desc_base_t() = default;
     virtual std::string kernel_name() const = 0;
-    virtual exec_config_t exec_cfg(const impl::engine_t *engine) const = 0;
+    virtual kernel::options_t options(const impl::engine_t *engine) const = 0;
     virtual bool with_dpas() const = 0;
     virtual compute::range_t local_range() const = 0;
     virtual void init_kernel_iface(kernel::iface_t &kernel_iface) const = 0;

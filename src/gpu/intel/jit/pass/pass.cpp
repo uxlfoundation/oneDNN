@@ -186,7 +186,7 @@ private:
 
 stmt_t fixup_if_conditions(const stmt_t &s, ir_context_t &ir_ctx) {
     trace_start();
-    auto ret = if_condition_fixer_t(ir_ctx.exec_cfg().simd()).mutate(s);
+    auto ret = if_condition_fixer_t(ir_ctx.options().simd()).mutate(s);
     trace_pass("fixup_if_conditions", ret, ir_ctx);
     return ret;
 }

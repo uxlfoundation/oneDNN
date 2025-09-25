@@ -274,6 +274,7 @@ struct gemm_t : public primitive_t {
                                             const memory_desc_t &reshaped_md,
                                             int diff_dims) -> status_t {
                     const quant_entry_t &entry = entries.get(arg);
+                    if (entry.is_host_scalar()) return status::success;
                     memory_desc_t qmd;
                     CHECK(entry.get_md(qmd, md));
                     dims_t qdims;

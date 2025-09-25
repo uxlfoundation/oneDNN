@@ -22,6 +22,7 @@
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -31,75 +32,95 @@ namespace jit {
 
 // Provides access to HW configuration which includes non-configurable
 // properties.
+
+namespace hw {
+enum class attr_t { none = 0, large_grf = 1, systolic = 2, atomic_fp64 = 4 };
+constexpr attr_t operator&(attr_t a, attr_t b) {
+    return static_cast<attr_t>(
+            static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
+constexpr attr_t operator|(attr_t a, attr_t b) {
+    return static_cast<attr_t>(
+            static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+constexpr attr_t operator~(attr_t a) {
+    return static_cast<attr_t>(~static_cast<uint32_t>(a));
+}
+constexpr bool any(attr_t a) {
+    return a != static_cast<attr_t>(0);
+}
+
+inline attr_t &operator|=(attr_t &a, attr_t b) {
+    return a = a | b;
+}
+inline attr_t &operator&=(attr_t &a, attr_t b) {
+    return a = a & b;
+}
+
+} // namespace hw
+
 class hw_t {
 public:
+    using attr_t = hw::attr_t;
     hw_t() = default;
     explicit hw_t(ngen::HW hw) : hw_(hw) {}
-    explicit hw_t(const impl::engine_t *engine) {
-        using namespace compute;
-        auto intel_engine = utils::downcast<const engine_t *>(engine);
-
-        auto *device_info = intel_engine->device_info();
-        gpu_arch_t gpu_arch = device_info->gpu_arch();
-        product_ = get_ngen_product(*device_info);
-        eu_count_ = device_info->eu_count();
-        max_wg_size_ = static_cast<int>(
-                device_info->max_wg_size(/*large_grf_mode=*/false));
-        l3_cache_size_ = device_info->l3_cache_size();
-        large_grf_support_ = intel_engine->mayiuse_large_grf_mode();
-        systolic_support_ = device_info->mayiuse_systolic();
-        with_atomic_fp64_
-                = device_info->mayiuse_float_atomic_add(data_type::f64);
-
-#ifdef DNNL_DEV_MODE
-        gpu_arch_t old_arch = gpu_arch;
-        gpu_arch = gpu_utils::dev_getenv(
-                "gpu_arch", gpu_arch, &eu_count_, &max_wg_size_);
-        if (old_arch != gpu_arch)
-            large_grf_support_ = gpu_arch >= compute::gpu_arch_t::xe_hp;
-#endif
-
-        hw_ = convert_dnnl_arch_to_ngen(gpu_arch);
-    }
+    explicit hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
+            size_t l3_cache_size, attr_t attr)
+        : hw_(ngen::getCore(product.family))
+        , eu_count_(eu_count)
+        , max_wg_size_(max_wg_size)
+        , l3_cache_size_(l3_cache_size)
+        , attr_(attr) {}
 
     ngen::HW ngen_hw() const { return hw_; }
     const ngen::Product &product() const { return product_; }
 
     bool is_undef() const { return hw_ == ngen::HW::Unknown; }
-    bool has_fp64_atomic_support() const { return with_atomic_fp64_; }
+    bool has_fp64_atomic_support() const {
+        return any(attr_ & attr_t::atomic_fp64);
+    }
     ngen::HW to_ngen() const { return hw_; }
     operator ngen::HW() const { return hw_; }
     ngen::ProductFamily product_family() const { return product_.family; }
     int stepping_id() const { return product_.stepping; }
     int eu_count() const { return eu_count_; }
-    int large_grf_support() const { return large_grf_support_; }
+    int large_grf_support() const { return any(attr_ & attr_t::large_grf); }
     int grf_size() const { return ngen::GRF::bytes(hw_); }
-    int systolic_support() const { return systolic_support_; }
+    int systolic_support() const { return any(attr_ & attr_t::systolic); }
     size_t l3_cache_size() const { return l3_cache_size_; }
 
     int max_tg_size(int regs, int simd) const {
         int wg_size = max_wg_size(regs);
-        int eu_based_tg_size = eus_per_ss_or_dss()
-                * utils::rnd_down_pow2(threads_per_eu(regs));
+        int eu_based_tg_size
+                = eus_per_core() * utils::rnd_down_pow2(threads_per_eu(regs));
         int wg_based_tg_size = wg_size / simd;
         return std::min(eu_based_tg_size, wg_based_tg_size);
     }
 
-    // Number of EUs per subslice or dual subslice.
-    int eus_per_ss_or_dss() const {
-        auto arch = convert_ngen_arch_to_dnnl(hw_);
-        return compute::device_info_t::max_eus_per_wg(arch);
+    // Number of EUs per Xe core (maps to dual subslice on XeHPG).
+    int eus_per_core() const {
+        switch (hw_) {
+            case ngen::HW::XeHPG: return 16;
+            case ngen::HW::XeLP:
+            case ngen::HW::XeHP:
+            case ngen::HW::XeHPC:
+            case ngen::HW::Xe2:
+            case ngen::HW::Xe3: return 8;
+            default: gpu_error_not_expected(); return 8;
+        }
     }
 
     int threads_per_eu(int regs = 128) const {
-        auto arch = convert_ngen_arch_to_dnnl(hw_);
         bool is_large_grf = (regs > 128);
-        return compute::device_info_t::threads_per_eu(arch, is_large_grf);
-    }
-
-    bool prefer_large_grf(const gpu_primitive_attr_t *gpu_attr) const {
-        if (!gpu_attr || !large_grf_support_) return false;
-        return gpu_attr->threads_per_eu() * 2 == threads_per_eu();
+        switch (hw_) {
+            case ngen::HW::XeLP: return 7;
+            case ngen::HW::XeHP:
+            case ngen::HW::XeHPG:
+            case ngen::HW::XeHPC:
+            case ngen::HW::Xe2:
+            case ngen::HW::Xe3: return is_large_grf ? 4 : 8;
+            default: gpu_error_not_expected(); return 8;
+        }
     }
 
     int cache_line_size() const {
@@ -148,10 +169,33 @@ private:
     int eu_count_ = 0;
     int max_wg_size_ = 0;
     size_t l3_cache_size_ = 0;
-    bool large_grf_support_ = false;
-    bool systolic_support_ = false;
-    bool with_atomic_fp64_ = false;
+    attr_t attr_ = attr_t::none;
 };
+
+inline hw_t make_ir_hw(const impl::engine_t *engine) {
+    using namespace compute;
+    auto intel_engine = utils::downcast<const engine_t *>(engine);
+
+    auto *device_info = intel_engine->device_info();
+    auto product = get_ngen_product(*device_info);
+    int eu_count = device_info->eu_count();
+    int max_wg_size = static_cast<int>(
+            device_info->max_wg_size(/*large_grf_mode=*/false));
+    size_t l3_cache_size = device_info->l3_cache_size();
+    hw::attr_t attr = hw::attr_t::none;
+    if (intel_engine->mayiuse_large_grf_mode()) attr |= hw::attr_t::large_grf;
+    if (device_info->mayiuse_systolic()) attr |= hw_t::attr_t::systolic;
+    if (device_info->mayiuse_float_atomic_add(data_type::f64))
+        attr |= hw_t::attr_t::atomic_fp64;
+
+    return hw_t(product, eu_count, max_wg_size, l3_cache_size, attr);
+}
+
+inline bool prefer_large_grf(
+        const hw_t &hw, const gpu_primitive_attr_t *gpu_attr) {
+    if (!gpu_attr || !hw.large_grf_support()) return false;
+    return gpu_attr->threads_per_eu() * 2 == hw.threads_per_eu();
+}
 
 class exec_config_t {
 public:

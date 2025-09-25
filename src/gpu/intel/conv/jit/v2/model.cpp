@@ -42,8 +42,8 @@ struct hw_config_t {
 
     int max_tgs_per_gpu(dim_t tg_size) const {
         int tgs_per_ss
-                = hw.eus_per_ss_or_dss() * hw.threads_per_eu(regs) / tg_size;
-        return hw.eu_count() / hw.eus_per_ss_or_dss() * tgs_per_ss;
+                = hw.eus_per_core() * hw.threads_per_eu(regs) / tg_size;
+        return hw.eu_count() / hw.eus_per_core() * tgs_per_ss;
     }
 };
 

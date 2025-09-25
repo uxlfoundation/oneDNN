@@ -134,7 +134,7 @@ status_t primitive_init_plan_t::add_reorder_kernel(
                     /*is_input=*/e == &src, size_bytes(e->layout));
         }
     }
-    exec_config_t exec_cfg(hw_t(engine), regs_, simd_);
+    exec_config_t exec_cfg(make_ir_hw(engine), regs_, simd_);
     reorder::jit::config_t cfg(exec_cfg, src.layout, dst.layout);
     kernel_info.set_nd_range(cfg.nd_range());
     auto kernel = make_kernel<reorder::jit::kernel_t>(primitive,

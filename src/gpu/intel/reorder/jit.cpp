@@ -133,9 +133,9 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
 
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-    hw_t hw(engine);
+    hw_t hw(make_ir_hw(engine));
     exec_config_t exec_cfg(hw);
-    exec_cfg.set_regs(hw.prefer_large_grf(gpu_attr) ? 256 : 128);
+    exec_cfg.set_regs(prefer_large_grf(hw, gpu_attr) ? 256 : 128);
     exec_cfg.set_simd(16);
     cfg = std::make_shared<config_t>(exec_cfg, src_layout, dst_layout);
     cfg->set_zp_cfg(zp_cfg);

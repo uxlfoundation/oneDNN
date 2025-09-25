@@ -1101,7 +1101,8 @@ status_t gen_kernel_t::get_kernel(
 
     if (enable_generator_dsl()) {
         auto k = get_dsl_kernel(*desc()->problem(), *desc()->strategy(),
-                interface_, hw_t(engine), desc()->m_, desc()->n_, desc()->k_);
+                interface_, make_ir_hw(engine), desc()->m_, desc()->n_,
+                desc()->k_);
         if (k.body.is_empty()) return status::runtime_error;
         return engine->create_kernel(kernel, k);
     }

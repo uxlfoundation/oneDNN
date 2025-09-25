@@ -31,7 +31,7 @@ std::string zero_out_kernel_desc_t::kernel_name() const {
 
 exec_config_t zero_out_kernel_desc_t::exec_cfg(
         const impl::engine_t *engine) const {
-    return exec_config_t(hw_t(engine), regs_, simd_);
+    return exec_config_t(make_ir_hw(engine), regs_, simd_);
 }
 compute::range_t zero_out_kernel_desc_t::local_range() const {
     return compute::range_t(into<size_t>(simd_));

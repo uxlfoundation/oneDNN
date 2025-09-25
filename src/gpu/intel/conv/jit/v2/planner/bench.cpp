@@ -54,7 +54,7 @@ bench_manager_t::bench_manager_t()
     , stream_(engine_,
               static_cast<stream::flags>(
                       stream_flags::in_order | stream_flags::profiling))
-    , hw_(engine_.get()) {}
+    , hw_(make_ir_hw(engine_.get())) {}
 
 bench_manager_t::~bench_manager_t() {
     dump_plan_registry();

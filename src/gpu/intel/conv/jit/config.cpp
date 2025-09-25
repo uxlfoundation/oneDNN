@@ -195,7 +195,7 @@ status_t problem_t::init(
     isp = id * ih * iw;
     osp = od * oh * ow;
 
-    hw_t hw(engine);
+    hw_t hw(make_ir_hw(engine));
     init_transpose(hw);
     CHECK(init_abc_data_types(hw));
     CHECK(init_acc_data_type());
@@ -1137,7 +1137,7 @@ void init_bwd_d_optimize(config_t &cfg) {
 
 status_t init_pd_time_cfg(const problem_t &prb, config_t &cfg,
         impl::engine_t *engine, convolution_pd_t *pd, primitive_attr_t *attr) {
-    hw_t hw(engine);
+    hw_t hw(make_ir_hw(engine));
 
     VDISPATCH_CHECK(pd, engine, hw_ok(hw), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_CHECK(

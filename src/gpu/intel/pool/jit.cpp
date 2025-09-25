@@ -92,9 +92,9 @@ status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
 
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-    hw_t hw(engine);
+    hw_t hw(make_ir_hw(engine));
     exec_cfg = std::make_shared<exec_config_t>(hw);
-    exec_cfg->set_regs(hw.prefer_large_grf(gpu_attr) ? 256 : 128);
+    exec_cfg->set_regs(prefer_large_grf(hw, gpu_attr) ? 256 : 128);
     exec_cfg->set_simd(16);
 
     VDISPATCH_POOLING(config_t::check_compatibility(*conf, *exec_cfg, *src,

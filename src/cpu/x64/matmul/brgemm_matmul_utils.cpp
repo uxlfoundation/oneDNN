@@ -295,12 +295,14 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && isa == avx10_2_512_amx_2)
     , weights_decompression_support(one_of(bgmmc.wei_dt, u8, s8, u4, s4)
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16,
-                      fpmath_mode::any)
+                      fpmath_mode::strict, fpmath_mode::any)
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::f16,
                       bgmmc.src_dt == f16)
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::bf16,
                       bgmmc.src_dt == bf16)
-              && attr.fpmath_.apply_to_int_)
+              && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::strict,
+                      bgmmc.src_dt == f32)
+              && (attr.fpmath_.apply_to_int_ || bgmmc.src_dt == f32))
     , bf16_with_int_wei_dt(weights_decompression_support && bgmmc.src_dt == bf16
               && one_of(bgmmc.dst_dt, bf16, f32))
     // Keep this var separate from f16_dt to not slip f16:f16 on avx512_core and
@@ -313,7 +315,7 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, bf16, f32))
     , f16_with_int_wei_dt(weights_decompression_support && bgmmc.src_dt == f16
               && one_of(bgmmc.dst_dt, f16, f32))
-    , f32_with_int_wei_dt(one_of(bgmmc.wei_dt, u8, s8, u4, s4)
+    , f32_with_int_wei_dt(weights_decompression_support
               && everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt)
               && !one_of(
                       attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16))
@@ -1306,6 +1308,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         VCONDCHECK_BG(bgmmc.is_wei_scale_common || bgmmc.is_wei_scale_per_n
                         || IMPLICATION(bgmmc.is_wei_scale_per_k,
                                 bgmmc.with_wei_decompression),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+        // AVX2 supports f32 scales only
+        VCONDCHECK_BG(
+                IMPLICATION(is_superset(isa, avx2), bgmmc.wei_scales_dt == f32),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 

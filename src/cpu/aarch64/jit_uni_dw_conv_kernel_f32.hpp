@@ -20,7 +20,6 @@
 #define CPU_AARCH64_JIT_UNI_DW_CONV_KERNEL_F32_HPP
 
 #include <memory>
-#include <utility>
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
 
@@ -40,8 +39,8 @@ template <cpu_isa_t isa>
 struct jit_uni_dw_conv_fwd_kernel_f32_t : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_fwd_kernel_f32_t)
 
-    jit_uni_dw_conv_fwd_kernel_f32_t(jit_conv_conf_t ajcp)
-        : jcp(std::move(ajcp)), eltwise_injector_(nullptr) {
+    jit_uni_dw_conv_fwd_kernel_f32_t(const jit_conv_conf_t &ajcp)
+        : jcp(ajcp), eltwise_injector_(nullptr) {
         if (jcp.with_eltwise)
             eltwise_injector_ = utils::make_unique<
                     jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>(
@@ -147,8 +146,8 @@ template <cpu_isa_t isa>
 struct jit_uni_dw_conv_bwd_data_kernel_f32_t : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_data_kernel_f32_t)
 
-    jit_uni_dw_conv_bwd_data_kernel_f32_t(jit_conv_conf_t ajcp)
-        : jcp(std::move(ajcp)) {}
+    jit_uni_dw_conv_bwd_data_kernel_f32_t(const jit_conv_conf_t &ajcp)
+        : jcp(ajcp) {}
     jit_conv_conf_t jcp;
 
 private:
@@ -194,8 +193,8 @@ struct jit_uni_dw_conv_bwd_weights_kernel_f32_t : public jit_generator {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_weights_kernel_f32_t)
 
-    jit_uni_dw_conv_bwd_weights_kernel_f32_t(jit_conv_conf_t ajcp)
-        : jcp(std::move(ajcp)) {}
+    jit_uni_dw_conv_bwd_weights_kernel_f32_t(const jit_conv_conf_t &ajcp)
+        : jcp(ajcp) {}
 
     jit_conv_conf_t jcp;
 

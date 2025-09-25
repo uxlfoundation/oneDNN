@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2022 Intel Corporation
-* Copyright 2020-2025 FUJITSU LIMITED
+* Copyright 2020-2024 FUJITSU LIMITED
 * Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -1176,8 +1176,6 @@ status_t jit_sve_conv_fwd_kernel<isa>::init_conf(jit_conv_conf_t &jcp,
         else
             jcp.nb_ic_L2 = nstl::min(nb_ic_theshold_L2, jcp.nb_ic);
     }
-    //Temporary fix nightly crash for large l_pad failing test mb1ic64ih1iw33oc1oh1ow33kh1kw24ph0pw23n"l_pad_exceeds_ow_block"
-    if (2 * jcp.l_pad > jcp.ow_block) return status::unimplemented;
 
     // A rough check on code size
     // TODO: come up with a tighter bound

@@ -885,20 +885,18 @@ void jit_brgemm_kernel_t::apply_post_ops(
                     register_guard_sum_zp(
                             p_sum_zp_reg_set, this, {reg_ptr_sum_zp});
 
-            const auto &vmm_sum_scale = z_tmp_2();
-            const auto &vmm_sum_zp = z_tmp_3();
+            const auto &vmm_sum_zp = z_tmp_2();
 
             if (p_sum_zp_reg_set) {
                 mov_imm(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-                ld1rw(vmm_sum_zp.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_zp));
-                scvtf(vmm_sum_zp.s, P_ALL_ONE / T_m, vmm_sum_zp.s);
+                ld1rw(z_tmp_3().s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_zp));
+                scvtf(vmm_sum_zp.s, P_ALL_ONE / T_m, z_tmp_3().s);
             }
 
             if (p_sum_scale_reg_set) {
                 // embd bcast fma
                 mov_imm(reg_ptr_sum_scale,
                         reinterpret_cast<size_t>(p_sum_scale));
-                ld1rw(vmm_sum_scale.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_scale));
             }
 
             for_(int bd = 0; bd < bd_block; bd++)
@@ -913,8 +911,9 @@ void jit_brgemm_kernel_t::apply_post_ops(
                 if (p_sum_zp_reg_set)
                     fsub(vmm_prev_dst.s, vmm_prev_dst.s, vmm_sum_zp.s);
                 if (p_sum_scale_reg_set) {
-                    fmla(vmm.s, P_ALL_ONE / T_m, vmm_prev_dst.s,
-                            vmm_sum_scale.s);
+                    const auto ztmp2 = z_tmp_2();
+                    ld1rw(ztmp2.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_scale));
+                    fmla(vmm.s, P_ALL_ONE / T_m, vmm_prev_dst.s, ztmp2.s);
                 } else
                     fadd(vmm.s, vmm.s, vmm_prev_dst.s);
             }

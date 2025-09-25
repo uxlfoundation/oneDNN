@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
-* Copyright 2024-2025 FUJITSU LIMITED
+* Copyright 2024 FUJITSU LIMITED
 * Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -450,18 +450,7 @@ private:
                 }
                 break;
             case data_type::s8: assert(!"unsupported data type\n"); break;
-            case data_type::u8:
-                if (mask_flag) {
-                    if (store) {
-                        st1w(zmm_in.s, ktail_mask / T_m, op);
-
-                    } else {
-                        ld1b(zmm_in.s, ktail_mask / T_z, op);
-                    }
-                } else {
-                    ld1b(zmm_in.s, k_full_mask / T_z, op);
-                }
-                break;
+            case data_type::u8: assert(!"unsupported data type\n"); break;
             case data_type::bf16: assert(!"unsupported data type\n"); break;
             default: assert(!"unsupported data type");
         }
@@ -686,10 +675,11 @@ private:
 
         const bool dt_requires_saturation = types::is_integral_dt(out_dt_);
 
+        const XReg reg_tmp_gpr = reg_tmp;
         auto vmm_lbound = vmm_tmp(0);
         auto vmm_ubound = vmm_tmp(1);
         if (dt_requires_saturation) {
-            init_saturate_f32(vmm_lbound, vmm_ubound, X_DEFAULT_ADDR,
+            init_saturate_f32(vmm_lbound, vmm_ubound, reg_tmp_gpr,
                     data_type::f32, out_dt_);
         }
 
@@ -702,7 +692,7 @@ private:
 
             if (dt_requires_saturation) {
                 saturate_f32(vmm, vmm_lbound, vmm_ubound, out_dt_, k_full_mask);
-                frinti(vmm.s, k_full_mask, vmm.s);
+                frintn(vmm.s, k_full_mask, vmm.s);
                 fcvtzs(vmm.s, k_full_mask, vmm.s);
             }
 
@@ -715,13 +705,7 @@ private:
                     st1w(vmm.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
                     break;
                 case data_type::s8: assert(!"unsupported data type\n"); break;
-                case data_type::u8:
-                    umin(vmm.s, std::numeric_limits<uint8_t>::max());
-                    add_imm(X_DEFAULT_ADDR, aux_reg_out,
-                            out_typesize_ * (m * LDD_ + n * brg.ld_block),
-                            X_TMP_0); //addr
-                    st1b(vmm.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
-                    break;
+                case data_type::u8: assert(!"unsupported data type\n"); break;
                 default: assert(!"unknown dst_dt");
             }
         }

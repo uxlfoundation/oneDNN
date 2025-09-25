@@ -43,10 +43,13 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_GEMM(!utils::one_of(d->c_type(), u4, s4), VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_GEMM(!attr()->scales_.has_host_scalars(),
-            VERBOSE_UNSUPPORTED_SCALES_CFG);
-    VDISPATCH_GEMM(!attr()->zero_points_.has_host_scalars(),
-            VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+    // gemm_post_ops kernel supports only dst zero-point,
+    // host scalar is also supported for dst zp
+    const auto &zps = attr()->zero_points_;
+    VDISPATCH_GEMM(!(zps.get(DNNL_ARG_SRC).is_host_scalar()
+                           || zps.get(DNNL_ARG_WEIGHTS).is_host_scalar()),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     const primitive_attr_t *attributes_with_po = attr();
     for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {

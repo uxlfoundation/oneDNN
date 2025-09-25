@@ -1798,9 +1798,9 @@ void jit_brgemm_amx_uker_base_t::maybe_sprinkle_prefetches() {
         // Update idx of last prefetched line
         prf_sprinkled.current_prefetch_idx += num_prefetches_to_jit;
     };
-
-    if (brg.prfA.sprinkled) jit_prefetches(prf_sprinkled_a, reg_A);
-    if (brg.prfB.sprinkled) jit_prefetches(prf_sprinkled_b, reg_B);
+    MAYBE_UNUSED(jit_prefetches);
+    // if (brg.prfA.sprinkled) jit_prefetches(prf_sprinkled_a, reg_A);
+    // if (brg.prfB.sprinkled) jit_prefetches(prf_sprinkled_b, reg_B);
 
     current_num_amx_ops++;
 }

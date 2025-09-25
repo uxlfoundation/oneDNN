@@ -63,7 +63,6 @@ status_t ppc64_matrixA_reorder_t::pd_t::init(
             : false;
     const bool dt_ok = true && utils::one_of(type_i, data_type::f32)
             && utils::one_of(type_o, data_type::u8, data_type::s8);
-    //const bool args_ok = dt_ok && ndims == 2;
     const bool args_ok = dt_ok && ndims == 2 && is_row_major;
 
     if (!args_ok) return invalid_arguments;
@@ -95,13 +94,15 @@ void kernel(InputType *inp, OutputType *out, int N, const float SrcScale,
     constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::min();
     constexpr int32_t MaximumValue = std::numeric_limits<OutputType>::max();
 
-    auto SrcScaleVector = vec_splats(SrcScale);
-    auto DstScaleVector = vec_splats(DstScale);
+    __vector float SrcScaleVector = vec_splats(SrcScale);
+    __vector float DstScaleVector = vec_splats(DstScale);
 
-    auto MinimumValueVector = vec_splats(float(MinimumValue));
-    auto MaximumValueVector = vec_splats(float(MaximumValue));
-    auto SrcZeroPointVector = vec_splats(float(SrcZeroPoint));
-    auto DstZeroPointVector = vec_splats(float(DstZeroPoint));
+    __vector float MinimumValueVector = vec_splats(float(MinimumValue));
+    __vector float MaximumValueVector = vec_splats(float(MaximumValue));
+    __vector float SrcZeroPointVector = vec_splats(float(SrcZeroPoint));
+    __vector float DstZeroPointVector = vec_splats(float(DstZeroPoint));
+
+    const bool use_beta = (beta != 0.0f);
 
     while (N >= 16) {
         auto FloatVector0 = vec_xl(0, inp);
@@ -118,7 +119,7 @@ void kernel(InputType *inp, OutputType *out, int N, const float SrcScale,
         FloatVector3 = vec_sub(FloatVector3, SrcZeroPointVector);
         FloatVector3 = vec_mul(FloatVector3, SrcScaleVector);
 
-        if (beta) {
+        if (use_beta) {
             FloatVector0[0] += beta * (float)out[0];
             FloatVector0[1] += beta * (float)out[1];
             FloatVector0[2] += beta * (float)out[2];
@@ -179,62 +180,17 @@ void kernel(InputType *inp, OutputType *out, int N, const float SrcScale,
         N -= 16;
     }
 
-    while (N >= 4) {
-        auto FloatVector = vec_xl(0, inp);
-        FloatVector = vec_sub(FloatVector, SrcZeroPointVector);
-        FloatVector = vec_mul(FloatVector, SrcScaleVector);
-
-        if (beta) {
-            FloatVector[0] += beta * (float)out[0];
-            FloatVector[1] += beta * (float)out[1];
-            FloatVector[2] += beta * (float)out[2];
-            FloatVector[3] += beta * (float)out[3];
-        }
-        FloatVector = vec_mul(FloatVector, DstScaleVector);
-        FloatVector = vec_round(FloatVector);
-        FloatVector = vec_add(FloatVector, DstZeroPointVector);
-
-        FloatVector = vec_max(FloatVector, MinimumValueVector);
-        FloatVector = vec_min(FloatVector, MaximumValueVector);
-        auto IntegerVector = vec_ctu(FloatVector, 0);
-
-        auto ShortVector = vec_pack(IntegerVector, vec_splats((uint32_t)0));
-        auto CharVector = vec_pack(ShortVector, vec_splats((uint16_t)0));
-
-        vec_xst_len(CharVector, (uint8_t *)out, N);
-
-        out += 4;
-        inp += 4;
-        N -= 4;
-    }
-
-    if (N > 0) {
-        auto FloatVector = vec_xl_len(const_cast<float *>(inp), 4 * N);
-        FloatVector = vec_sub(FloatVector, SrcZeroPointVector);
-        FloatVector = vec_mul(FloatVector, SrcScaleVector);
-        if (beta) {
-            if (N == 1) { FloatVector[0] += beta * (float)out[0]; }
-            if (N == 2) {
-                FloatVector[0] += beta * (float)out[0];
-                FloatVector[1] += beta * (float)out[1];
-            }
-            if (N == 3) {
-                FloatVector[0] += beta * (float)out[0];
-                FloatVector[1] += beta * (float)out[1];
-                FloatVector[2] += beta * (float)out[2];
-            }
-        }
-        FloatVector = vec_mul(FloatVector, DstScaleVector);
-        FloatVector = vec_round(FloatVector);
-        FloatVector = vec_add(FloatVector, DstZeroPointVector);
-
-        FloatVector = vec_max(FloatVector, MinimumValueVector);
-        FloatVector = vec_min(FloatVector, MaximumValueVector);
-        auto IntegerVector = vec_ctu(FloatVector, 0);
-
-        auto ShortVector = vec_pack(IntegerVector, vec_splats((uint32_t)0));
-        auto CharVector = vec_pack(ShortVector, vec_splats((uint16_t)0));
-        vec_xst_len(CharVector, (uint8_t *)out, N);
+    // Remaining 1-15 elements
+    while (N > 0) {
+        float val = (*inp - SrcZeroPoint) * SrcScale;
+        if (beta) val += beta * *out;
+        val = val * DstScale + DstZeroPoint;
+        val = std::fmin(
+                std::fmax(val, float(MinimumValue)), float(MaximumValue));
+        *out = uint8_t(std::nearbyint(val));
+        inp++;
+        out++;
+        N -= 1;
     }
 }
 status_t ppc64_matrixA_reorder_t::execute_body(const exec_ctx_t &ctx) const {
@@ -261,8 +217,13 @@ status_t ppc64_matrixA_reorder_t::execute_body(const exec_ctx_t &ctx) const {
     const float *dst_scales = pd()->precompute_scales(
             scratchpad, pd()->attr(), D_mask, dst_scales_);
 
-    DEFINE_ZERO_POINT_VALUE_ATTR(pd()->attr(), src_zp, DNNL_ARG_FROM);
-    DEFINE_ZERO_POINT_VALUE_ATTR(pd()->attr(), dst_zp, DNNL_ARG_TO);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_FROM);
+    int src_zp = src_zero_points ? src_zero_points[0] : 0;
+
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_TO);
+    int dst_zp = dst_zero_points ? dst_zero_points[0] : 0;
 
     const float alpha = src_scales[0] * dst_scales[0];
     MAYBE_UNUSED(alpha);

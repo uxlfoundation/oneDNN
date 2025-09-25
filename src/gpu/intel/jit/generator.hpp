@@ -141,19 +141,19 @@ template <class KernelT, typename... ArgsT>
 compute::kernel_t make_kernel(primitive_t *primitive, bool register_kernel,
         impl::engine_t *engine, ArgsT &&...args) {
     using namespace compute;
-    kernel_t kernel;
+    compute::kernel_t kernel;
 
     if (primitive->cache_blob()) {
         status_t status = primitive->create_kernel(
                 engine, &kernel, nullptr, register_kernel);
-        if (status != status::success) return kernel_t();
+        if (status != status::success) return compute::kernel_t();
         return kernel;
     }
 
     KernelT jit_kernel(std::forward<ArgsT>(args)...);
     status_t status = primitive->create_kernel(
             engine, &kernel, &jit_kernel, register_kernel);
-    if (status != status::success) return kernel_t();
+    if (status != status::success) return compute::kernel_t();
     return kernel;
 }
 

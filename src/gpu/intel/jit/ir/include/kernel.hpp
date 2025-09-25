@@ -118,6 +118,18 @@ private:
 
 } // namespace kernel
 
+struct kernel_t {
+    kernel_t() : iface("invalid_dsl_kernel") {}
+    kernel_t(kernel::iface_t iface, stmt_t body,
+            const kernel::options_t &options)
+        : iface(std::move(iface)), body(std::move(body)), options(options) {}
+
+    kernel::iface_t iface;
+    stmt_t body;
+    kernel::options_t options;
+    ngen::DebugConfig debug_cfg;
+};
+
 } // namespace jit
 } // namespace intel
 } // namespace gpu

@@ -37,18 +37,6 @@ struct send_hint_t {
     send_cache_hint_t cache;
 };
 
-struct kernel_t {
-    kernel_t() : iface("invalid_dsl_kernel") {}
-    kernel_t(kernel::iface_t iface, stmt_t body,
-            const kernel::options_t &options)
-        : iface(std::move(iface)), body(std::move(body)), options(options) {}
-
-    kernel::iface_t iface;
-    stmt_t body;
-    kernel::options_t options;
-    ngen::DebugConfig debug_cfg;
-};
-
 void declare_kernel(const kernel::iface_t &interface, ir_context_t &ctx,
         bool new_ir_api = false);
 kernel_t end_kernel();

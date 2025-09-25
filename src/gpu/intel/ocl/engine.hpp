@@ -61,7 +61,7 @@ public:
             jit::generator_base_t *jitter) const override;
 
     status_t create_kernel(compute::kernel_t &kernel,
-            const jit::dsl::kernel_t &kernel_dsl) const override;
+            const jit::kernel_t &kernel_ir) const override;
 
     status_t create_kernels(std::vector<compute::kernel_t> *kernels,
             const std::vector<const char *> &kernel_names,

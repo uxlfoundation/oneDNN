@@ -63,7 +63,6 @@ status_t ppc64_matrixA_reorder_t::pd_t::init(
             : false;
     const bool dt_ok = true && utils::one_of(type_i, data_type::f32)
             && utils::one_of(type_o, data_type::u8, data_type::s8);
-    //const bool args_ok = dt_ok && ndims == 2;
     const bool args_ok = dt_ok && ndims == 2 && is_row_major;
 
     if (!args_ok) return invalid_arguments;
@@ -95,13 +94,13 @@ void kernel(InputType *inp, OutputType *out, int N, const float SrcScale,
     constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::min();
     constexpr int32_t MaximumValue = std::numeric_limits<OutputType>::max();
 
-    auto SrcScaleVector = vec_splats(SrcScale);
-    auto DstScaleVector = vec_splats(DstScale);
+    __vector float SrcScaleVector = vec_splats(SrcScale);
+    __vector float DstScaleVector = vec_splats(DstScale);
 
-    auto MinimumValueVector = vec_splats(float(MinimumValue));
-    auto MaximumValueVector = vec_splats(float(MaximumValue));
-    auto SrcZeroPointVector = vec_splats(float(SrcZeroPoint));
-    auto DstZeroPointVector = vec_splats(float(DstZeroPoint));
+    __vector float MinimumValueVector = vec_splats(float(MinimumValue));
+    __vector float MaximumValueVector = vec_splats(float(MaximumValue));
+    __vector float SrcZeroPointVector = vec_splats(float(SrcZeroPoint));
+    __vector float DstZeroPointVector = vec_splats(float(DstZeroPoint));
 
     while (N >= 16) {
         auto FloatVector0 = vec_xl(0, inp);
@@ -178,7 +177,7 @@ void kernel(InputType *inp, OutputType *out, int N, const float SrcScale,
         inp += 16;
         N -= 16;
     }
-
+#ifdef __MMA__
     while (N >= 4) {
         auto FloatVector = vec_xl(0, inp);
         FloatVector = vec_sub(FloatVector, SrcZeroPointVector);
@@ -236,7 +235,23 @@ void kernel(InputType *inp, OutputType *out, int N, const float SrcScale,
         auto CharVector = vec_pack(ShortVector, vec_splats((uint16_t)0));
         vec_xst_len(CharVector, (uint8_t *)out, N);
     }
+#else
+    // For Other than Power10 below code will run
+    // Remaining 1-15 elements
+    while (N > 0) {
+        float val = (*inp - SrcZeroPoint) * SrcScale;
+        if (beta) val += beta * *out;
+        val = val * DstScale + DstZeroPoint;
+        val = std::fmin(
+                std::fmax(val, float(MinimumValue)), float(MaximumValue));
+        *out = uint8_t(std::nearbyint(val));
+        inp++;
+        out++;
+        N -= 1;
+    }
+#endif
 }
+
 status_t ppc64_matrixA_reorder_t::execute_body(const exec_ctx_t &ctx) const {
     using namespace utils;
 
@@ -261,8 +276,13 @@ status_t ppc64_matrixA_reorder_t::execute_body(const exec_ctx_t &ctx) const {
     const float *dst_scales = pd()->precompute_scales(
             scratchpad, pd()->attr(), D_mask, dst_scales_);
 
-    DEFINE_ZERO_POINT_VALUE_ATTR(pd()->attr(), src_zp, DNNL_ARG_FROM);
-    DEFINE_ZERO_POINT_VALUE_ATTR(pd()->attr(), dst_zp, DNNL_ARG_TO);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_FROM);
+    int src_zp = src_zero_points ? src_zero_points[0] : 0;
+
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_TO);
+    int dst_zp = dst_zero_points ? dst_zero_points[0] : 0;
 
     const float alpha = src_scales[0] * dst_scales[0];
     MAYBE_UNUSED(alpha);

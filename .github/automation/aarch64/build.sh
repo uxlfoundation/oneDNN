@@ -1,7 +1,7 @@
 #! /bin/bash
 
 # *******************************************************************************
-# Copyright 2024 Arm Limited and affiliates.
+# Copyright 2024-2025 Arm Limited and affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,17 +33,32 @@ ONEDNN_TEST_SET=${ONEDNN_TEST_SET:-"SMOKE"}
 ONEDNN_BUILD_GRAPH=${ONEDNN_BUILD_GRAPH:-"ON"}
 
 if [[ "$ONEDNN_ACTION" == "configure" ]]; then
-    set -x
-    cmake \
-        -Bbuild -S. \
-        -DDNNL_AARCH64_USE_ACL=ON \
-        -DONEDNN_BUILD_GRAPH=$ONEDNN_BUILD_GRAPH \
-        -DDNNL_CPU_RUNTIME=$ONEDNN_THREADING \
-        -DONEDNN_WERROR=ON \
-        -DDNNL_BUILD_FOR_CI=ON \
-        -DONEDNN_TEST_SET=$ONEDNN_TEST_SET \
-        -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE
-    set +x
+    if [[ "$GITHUB_JOB" == "pr-clang-tidy-aarch64" ]]; then
+        set -x
+        cmake \
+            -Bbuild -S. \
+            -DDNNL_AARCH64_USE_ACL=ON \
+            -DONEDNN_BUILD_GRAPH=$ONEDNN_BUILD_GRAPH \
+            -DDNNL_CPU_RUNTIME=$ONEDNN_THREADING \
+            -DONEDNN_WERROR=ON \
+            -DDNNL_BUILD_FOR_CI=ON \
+            -DONEDNN_TEST_SET=$ONEDNN_TEST_SET \
+            -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        set +x
+    else
+        set -x
+        cmake \
+            -Bbuild -S. \
+            -DDNNL_AARCH64_USE_ACL=ON \
+            -DONEDNN_BUILD_GRAPH=$ONEDNN_BUILD_GRAPH \
+            -DDNNL_CPU_RUNTIME=$ONEDNN_THREADING \
+            -DONEDNN_WERROR=ON \
+            -DDNNL_BUILD_FOR_CI=ON \
+            -DONEDNN_TEST_SET=$ONEDNN_TEST_SET \
+            -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE
+        set +x
+    fi
 elif [[ "$ONEDNN_ACTION" == "build" ]]; then
     set -x
     cmake --build build 

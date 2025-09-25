@@ -37,11 +37,15 @@
 
 #define IDX(a) static_cast<uint32_t>((a).getIdx())
 #define LDR_ASSERT(r, addr, offt) \
-    assert((offt) < 256); \
-    ldr(r, ptr(addr, (int)(offt)));
+    do { \
+        assert((offt) < 256); \
+        ldr(r, ptr(addr, (int)(offt))); \
+    } while (0)
 #define STR_ASSERT(r, addr, offt) \
-    assert((offt) < 256); \
-    str(r, ptr(addr, (int)(offt)));
+    do { \
+        assert((offt) < 256); \
+        str(r, ptr(addr, (int)(offt))); \
+    } while (0)
 
 namespace dnnl {
 namespace impl {
@@ -2001,8 +2005,10 @@ struct jit_bnorm_t : public jit_generator {
         }
         if (jbp_->is_nspc_) {
             // comeback
-            if (!pd_->use_global_stats())
+            if (!pd_->use_global_stats()) {
                 LDR_ASSERT(reg_src, sp, (int)stack_off_src);
+            }
+
             LDR_ASSERT(reg_diff_dst, sp, (int)stack_off_diff_dst);
             LDR_ASSERT(reg_diff_src, sp, (int)stack_off_diff_src);
             if (with_relu) { LDR_ASSERT(reg_ws, sp, (int)stack_off_ws); }

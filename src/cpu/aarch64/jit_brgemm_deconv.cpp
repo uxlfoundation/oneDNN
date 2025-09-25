@@ -1,0 +1,203 @@
+/*******************************************************************************
+* Copyright 2022-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
+
+#include "common/dnnl_thread.hpp"
+#include "common/nstl.hpp"
+#include "common/primitive_desc_iterator.hpp"
+#include "common/type_helpers.hpp"
+#include "cpu_isa_traits.hpp"
+
+#include "cpu/aarch64/jit_brgemm_deconv.hpp"
+
+#include "cpu/aarch64/jit_brgemm_1x1_conv.hpp"
+#include "cpu/aarch64/jit_brgemm_conv.hpp"
+
+namespace dnnl {
+namespace impl {
+namespace cpu {
+namespace aarch64 {
+
+namespace {
+status_t fwd_conv_desc_create(const deconvolution_desc_t *fwd_deconv_d,
+        convolution_desc_t *fwd_conv_d) {
+    const memory_desc_t &fwd_weights_md = fwd_deconv_d->weights_desc;
+    // create a fwd convolution descriptor with padding adjusted
+    // to the perspective of backward propagation, namely:
+    // - left padding replaced by left overflow
+    // - right padding replaced by right overflow
+    const int ndims_spatial = fwd_deconv_d->dst_desc.ndims - 2;
+    dims_t overflow_l;
+    dims_t overflow_r;
+    dim_t ks = 1;
+    for (int i = 0; i < ndims_spatial; i++) {
+        VDISPATCH_DECONVOLUTION_IC(fwd_deconv_d->strides[i] == 1,
+                VERBOSE_UNSUPPORTED_FEATURE,
+                "only unit strides are allowed for bwd-to-fwd conversion");
+        const dim_t K
+                = fwd_weights_md.dims[fwd_weights_md.ndims - ndims_spatial + i];
+        ks *= K;
+        const dim_t D = fwd_deconv_d->dilates[i];
+        const dim_t PL = fwd_deconv_d->padding[0][i]; // left padding
+        const dim_t PR = fwd_deconv_d->padding[1][i]; // right padding
+        constexpr dim_t S = 1;
+        // the following relations hold for unit stride only
+        overflow_l[i] = ((K - 1) * (D + 1) - PL) / S;
+        overflow_r[i] = ((K - 1) * (D + 1) - PR) / S;
+    }
+
+    const status_t desc_init_status = conv_desc_init(fwd_conv_d,
+            prop_kind::forward_training, alg_kind::convolution_direct,
+            &fwd_deconv_d->src_desc, &fwd_weights_md, &fwd_deconv_d->bias_desc,
+            &fwd_deconv_d->dst_desc, fwd_deconv_d->strides,
+            fwd_deconv_d->dilates, overflow_l, overflow_r);
+
+    VDISPATCH_DECONVOLUTION_IC(desc_init_status == status::success,
+            VERBOSE_PRIMITIVE_CREATION_FAIL, "fwd_conv");
+
+    // TODO: This is currently the same workaround as in the x64 path.
+    //       Adopt the same solution as in x64 or fix it here by passing
+    //       this information via attributes or integrate the bwd-via-fwd
+    //       method directly into fwd conv implementations.
+    const bool with_spatial_inversion = ks > 1;
+    if (with_spatial_inversion) {
+        fwd_conv_d->diff_src_desc = fwd_conv_d->src_desc;
+        fwd_conv_d->diff_dst_desc = fwd_conv_d->dst_desc;
+    }
+    // Note: internal field to hint this conv is created from deconv.
+    fwd_conv_d->use_inversion = true;
+    return status::success;
+}
+} // namespace
+
+template <typename implementation_pd>
+status_t check_embedded_impl_init(primitive_desc_iterator_t &it) {
+    const auto pd = dynamic_cast<implementation_pd *>((*it).get());
+    if (pd != nullptr) return status::success; // implementation found
+    return status::unimplemented;
+}
+
+template <cpu_isa_t isa>
+status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
+    using namespace data_type;
+    using namespace utils;
+    using namespace format_tag;
+    using smask_t = primitive_attr_t::skip_mask_t;
+    const deconvolution_desc_t *fwd_deconv_d = desc();
+    const auto src_type = fwd_deconv_d->src_desc.data_type;
+    const auto dst_type = fwd_deconv_d->dst_desc.data_type;
+    const bool is_int8 = utils::one_of(src_type, s8, u8);
+
+    auto skip_mask = smask_t::post_ops | smask_t::sum_dt;
+    if (is_int8) skip_mask |= smask_t::scales | smask_t::zero_points;
+
+    VDISPATCH_DECONVOLUTION(is_fwd(), VERBOSE_BAD_PROPKIND);
+    VDISPATCH_DECONVOLUTION((desc()->alg_kind & alg_kind::deconvolution_direct),
+            VERBOSE_BAD_ALGORITHM);
+    VDISPATCH_DECONVOLUTION(attr()->has_default_values(skip_mask, dst_type),
+            VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_DECONVOLUTION(
+            attr()->post_ops_.check_sum_consistency(dst_type, is_int8),
+            VERBOSE_UNSUPPORTED_POSTOP);
+    VDISPATCH_DECONVOLUTION(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VDISPATCH_DECONVOLUTION(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
+    VDISPATCH_DECONVOLUTION(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+    VDISPATCH_DECONVOLUTION(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_DECONVOLUTION(
+            impl::is_dense_format_kind({src_md(0), diff_weights_md(0),
+                    diff_weights_md(1), diff_dst_md(0), dst_md(0)}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
+    convolution_desc_t conv_d = convolution_desc_t();
+
+    assert(src_type != data_type::undef);
+
+    const int ndims_spatial = fwd_deconv_d->dst_desc.ndims - 2;
+    for (int i = 0; i < ndims_spatial; i++) {
+        if (fwd_deconv_d->strides[i] != 1) {
+            has_strides_ = true;
+            break;
+        }
+    }
+
+    if (has_strides_) {
+        return status::unimplemented;
+    } else {
+        CHECK(fwd_conv_desc_create(fwd_deconv_d, &conv_d));
+
+        primitive_desc_iterator_t it(engine,
+                reinterpret_cast<const op_desc_t *>(&conv_d), attr(), nullptr);
+        if (!it.is_initialized()) return status::out_of_memory;
+
+        while (++it != it.end()) {
+            conv_pd_ = *it;
+            // try 1x1 fwd convolution
+            if (check_embedded_impl_init<
+                        typename brgemm_1x1_convolution_fwd_t<isa>::pd_t>(it)
+                    == status::success) {
+                break;
+            }
+            // try non-1x1 fwd convolution
+            if (check_embedded_impl_init<
+                        typename brgemm_convolution_fwd_t<isa>::pd_t>(it)
+                    == status::success)
+                break;
+        }
+        if (it == it.end())
+            VDISPATCH_DECONVOLUTION_IC(false,
+                    "brgemm implementation not found for strided convolution");
+    }
+
+    if (weights_md_.format_kind == format_kind::any)
+        weights_md_ = *conv_pd_->weights_md();
+    if (src_md_.format_kind == format_kind::any) src_md_ = *conv_pd_->src_md();
+    if (dst_md_.format_kind == format_kind::any) dst_md_ = *conv_pd_->dst_md();
+
+    attr_.set_default_formats(&dst_md_);
+    if (bias_md_.format_kind == format_kind::any)
+        CHECK(memory_desc_init_by_tag(bias_md_, x));
+
+    init_name();
+    auto scratchpad = scratchpad_registry().registrar();
+    scratchpad.book(memory_tracking::names::key_nested,
+            conv_pd_->scratchpad_registry());
+
+    return status::success;
+}
+
+template <cpu_isa_t isa>
+status_t brgemm_deconvolution_fwd_t<isa>::init(engine_t *engine) {
+    return pd()->conv_pd_->create_primitive(conv_p_, engine);
+}
+
+template <cpu_isa_t isa>
+status_t brgemm_deconvolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+    const auto &args = ctx.args();
+    exec_args_t conv_args(args);
+    exec_ctx_t conv_ctx(ctx, std::move(conv_args));
+
+    nested_scratchpad_t ns(ctx, memory_tracking::names::key_nested, conv_p_);
+    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    return conv_p_->execute(conv_ctx);
+}
+
+template struct brgemm_deconvolution_fwd_t<sve_256>;
+template struct brgemm_deconvolution_fwd_t<sve_128>;
+
+} // namespace aarch64
+} // namespace cpu
+} // namespace impl
+} // namespace dnnl

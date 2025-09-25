@@ -79,10 +79,12 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             weights_md_, dst_md_, bias_md_, attr_, dnnl_get_max_threads()));
 
     // brgemm is slower than jit_sve when combined with reorders for shapes where strides < 2
-    if (one_of(data_type::f32, src_type, wei_type)
+    const convolution_desc_t &cd = *desc();
+    if (!cd.use_inversion && one_of(data_type::f32, src_type, wei_type)
             && (jcp_.stride_w < 2 || jcp_.stride_h < 2)) {
         return status::unimplemented;
     }
+
     brgs_ = std::make_shared<brgemm_containers::brgemm_desc_container_t>(16);
 
     const float alpha = 1.0;

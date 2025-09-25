@@ -358,9 +358,9 @@ void problem_t::init_transpose(const hw_t &hw) {
     if (is_fwd) ab_swap_transpose &= allow_fwd;
     if (is_bwd_d) ab_swap_transpose &= allow_bwd_d;
     if (is_bwd_w) ab_swap_transpose &= allow_bwd_w;
-    if (is_fwd && is_nchw_ok(*this, hw.to_ngen(), tensor_kind_t::src))
+    if (is_fwd && is_nchw_ok(*this, hw, tensor_kind_t::src))
         ab_swap_transpose = true;
-    if (is_bwd_d && is_nchw_ok(*this, hw.to_ngen(), tensor_kind_t::dst))
+    if (is_bwd_d && is_nchw_ok(*this, hw, tensor_kind_t::dst))
         ab_swap_transpose = true;
     ab_swap_transpose
             = gpu_utils::dev_getenv("ab_swap_transpose", ab_swap_transpose);

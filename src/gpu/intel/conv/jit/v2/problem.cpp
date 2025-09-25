@@ -160,7 +160,7 @@ std::string problem_t::desc_str() const {
 std::string problem_t::str() const {
     ostringstream_t oss;
     oss << "Conv problem" << std::endl;
-    oss << "  HW:            " << to_string(hw_.to_ngen()) << std::endl;
+    oss << "  HW:            " << to_string(hw_.ngen_hw()) << std::endl;
     oss << "  Propagation:   " << jit::to_string(prop_) << std::endl;
     oss << "  Source:        " << src_tag_ << std::endl;
     oss << "  Weights:       " << wei_tag_ << std::endl;

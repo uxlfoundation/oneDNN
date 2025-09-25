@@ -140,8 +140,8 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
 
     const bool is_xe2_or_xe3_small_kdhw = !(prb.kd * prb.kh * prb.kw == 1)
             && (prb.kh * prb.kw <= 9)
-            && (exec.hw().to_ngen() == ngen::HW::Xe2
-                    || exec.hw().to_ngen() == ngen::HW::Xe3);
+            && (exec.hw().ngen_hw() == ngen::HW::Xe2
+                    || exec.hw().ngen_hw() == ngen::HW::Xe3);
 
     gpu_assert(src_layout.ndims() == dst_layout.ndims());
 

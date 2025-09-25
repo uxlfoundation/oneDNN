@@ -1769,7 +1769,7 @@ void ir_kernel_t::generate_from_ir(
     if (force_emulate64_) gen->force_emulate64(); \
     jit::generate_from_ir(kernel_body, gen, kernel_grid_walk_order, peak_regs_);
 
-    GPU_HW_SWITCH(exec_cfg_.hw().to_ngen());
+    GPU_HW_SWITCH(exec_cfg_.hw().ngen_hw());
 
 #undef GPU_HW_CASE
 }
@@ -1791,7 +1791,7 @@ void ir_kernel_t::generate_from_ir(
     kernel = g.getKernel(ctx, dev); \
     break;
 
-    GPU_HW_SWITCH(exec_cfg.hw().to_ngen());
+    GPU_HW_SWITCH(exec_cfg.hw().ngen_hw());
 #undef GPU_HW_CASE
     return kernel.value();
 }
@@ -1810,7 +1810,7 @@ cl_kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
     convert_ir_to_ngen(body, g); \
     return g.getKernel(ctx, dev);
 
-    GPU_HW_SWITCH(exec_cfg.hw().to_ngen());
+    GPU_HW_SWITCH(exec_cfg.hw().ngen_hw());
 #undef GPU_HW_CASE
     return {};
 }

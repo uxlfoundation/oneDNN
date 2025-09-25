@@ -1020,7 +1020,7 @@ bool post_ops_ok(const problem_t &prb, const hw_t &hw) {
                 return false;
             else if (po.eltwise.alg == alg_kind::eltwise_tanh
                     && hw == ngen::HW::XeHPG
-                    && utils::one_of(hw.product_family(),
+                    && utils::one_of(hw.family(),
                             ngen::ProductFamily::GenericXeHPG,
                             ngen::ProductFamily::DG2)
                     && hw.systolic_support() && hw.eu_count() <= 128)
@@ -1214,8 +1214,7 @@ void init_pipeline(config_t &cfg) {
 send_pattern_t<pvar_t> validate_blocking(const config_t &cfg,
         stride_layout_t::input_tensor_t tensor, bool check_2d) {
     using send_pattern = send_pattern_t<pvar_t>;
-    const compute::gpu_arch_t arch
-            = convert_ngen_arch_to_dnnl(cfg.hw().to_ngen());
+    const compute::gpu_arch_t arch = convert_ngen_arch_to_dnnl(cfg.hw());
 
     auto is_match = [&](const send_hint_t<pvar_t> &hint) {
         for (auto &dim : cfg.index_dims()) {
@@ -1612,7 +1611,7 @@ walk_order_t compute_walk_order(const config_t &cfg) {
     // math.inv usage to emulate integer division when using blocked walk
     // order.
     if (cfg.hw() == ngen::HW::XeHPG
-            && utils::one_of(cfg.hw().product_family(),
+            && utils::one_of(cfg.hw().family(),
                     ngen::ProductFamily::GenericXeHPG,
                     ngen::ProductFamily::DG2))
         return default_walk_order;

@@ -881,7 +881,9 @@ std::string layout_t::str() const {
 std::string layout_t::str_with_size(const hw_t &hw) const {
     ostringstream_t oss;
     oss << str();
-    int regs = (hw.is_undef() ? 0 : utils::div_up(size(), hw.grf_size()));
+    int regs = (hw.ngen_hw() == ngen::HW::Unknown
+                    ? 0
+                    : utils::div_up(size(), hw.grf_size()));
     oss << " (" << size() << " bytes, ";
     oss << regs << " regs)";
     return oss.str();

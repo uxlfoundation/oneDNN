@@ -79,7 +79,7 @@ fma_t to_fma(fma_kind_t fma) {
 hw_config_t to_hw_config(const config_t &cfg) {
     auto &prb = cfg.prb();
     auto &hw = cfg.hw();
-    return hw_config_t(to_hw(hw.to_ngen()), to_fma(cfg.fma_kind()),
+    return hw_config_t(to_hw(hw), to_fma(cfg.fma_kind()),
             to_type(prb.a_data_type), hw.eu_count());
 }
 

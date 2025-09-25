@@ -258,9 +258,9 @@ prb_reqs_t kernel_desc_t::reqs() const {
 bool kernel_desc_t::is_supported(const hw_t &hw, const problem_t *prb) const {
     gpu_check(prop != prop_kind::undef)
             << "Invalid prop: " << ir_utils::to_string(prop);
-    gpu_check(!prb || (hw_desc.hw == prb->hw().to_ngen()))
+    gpu_check(!prb || (hw_desc.hw == prb->hw().ngen_hw()))
             << "HW mismatch, desc: " << jit::to_string(hw_desc.hw)
-            << ", problem: " << jit::to_string(prb->hw().to_ngen());
+            << ", problem: " << jit::to_string(prb->hw().ngen_hw());
     gpu_check(fma != fma_kind_t::undef)
             << "Invalid fma: " << jit::to_string(fma);
     gpu_check(simd != 0) << "Invalid simd: " << simd;
@@ -371,11 +371,11 @@ bool is_compatible(const hw_desc_t &hw_desc, const hw_t &hw, bool exact) {
         switch (hw_desc.hw) {
             case ngen::HW::XeHPC:
                 return utils::one_of(
-                        hw.to_ngen(), ngen::HW::Xe2, ngen::HW::Xe3);
+                        hw.ngen_hw(), ngen::HW::Xe2, ngen::HW::Xe3);
             default: break;
         }
     }
-    return hw_desc.hw == hw.to_ngen();
+    return hw_desc.hw == hw.ngen_hw();
 }
 
 bool is_compatible(
@@ -427,7 +427,7 @@ void fit_tag_to(
 }
 
 void fit_to_impl(kernel_desc_t &desc, const problem_t &prb) {
-    desc.hw_desc = hw_desc_t(prb.hw().to_ngen());
+    desc.hw_desc = hw_desc_t(prb.hw().ngen_hw());
     fit_tag_to(tensor_kind_t::a, desc, prb);
     fit_tag_to(tensor_kind_t::b, desc, prb);
     fit_tag_to(tensor_kind_t::c, desc, prb);

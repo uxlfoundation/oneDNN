@@ -181,7 +181,7 @@ public:
         , kernel_iface_(kernel_iface)
         , exec_cfg_(exec_cfg)
         , ra_(getHardware())
-        , emu_strategy_(getHardware(), exec_cfg_.hw().stepping_id()) {
+        , emu_strategy_(getHardware(), exec_cfg_.hw().stepping()) {
         ra_.setRegisterCount(exec_cfg_.regs());
     }
 

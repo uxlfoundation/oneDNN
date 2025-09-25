@@ -234,8 +234,8 @@ public:
 
         const bool is_scalar = (prb.kd * prb.kh * prb.kw == 1);
         const bool is_small = (prb.kh * prb.kw <= 9);
-        const bool is_xe2_or_xe3 = (exec.hw().to_ngen() == ngen::HW::Xe2)
-                || (exec.hw().to_ngen() == ngen::HW::Xe3);
+        const bool is_xe2_or_xe3 = (exec.hw().ngen_hw() == ngen::HW::Xe2)
+                || (exec.hw().ngen_hw() == ngen::HW::Xe3);
 
         const int src_type_size = src.type().size();
         const int acc_type_size = acc_type(1).size();

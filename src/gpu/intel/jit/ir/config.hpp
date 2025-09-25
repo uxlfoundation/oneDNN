@@ -320,7 +320,7 @@ public:
 
     static int get_max_threadgroups_per_wave(
             const exec_config_t &exec_cfg, dim_t tg_elems) {
-        auto arch = convert_ngen_arch_to_dnnl(exec_cfg.hw().to_ngen());
+        auto arch = convert_ngen_arch_to_dnnl(exec_cfg.hw());
         int threads_per_eu = compute::device_info_t::threads_per_eu(
                 arch, exec_cfg.regs() > 128);
         int eus_per_subslice = compute::device_info_t::max_eus_per_wg(arch);
@@ -335,7 +335,7 @@ public:
     // parallelism is a fundamental limitation to the current work scheduling.
     static float get_thread_utilization(
             const exec_config_t &exec_cfg, dim_t kg_elems, dim_t tg_elems) {
-        auto arch = convert_ngen_arch_to_dnnl(exec_cfg.hw().to_ngen());
+        auto arch = convert_ngen_arch_to_dnnl(exec_cfg.hw());
         int eus_per_subslice = compute::device_info_t::max_eus_per_wg(arch);
         int subslice_count = exec_cfg.hw().eu_count() / eus_per_subslice;
 

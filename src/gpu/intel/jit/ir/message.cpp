@@ -181,7 +181,7 @@ ngen::CacheSettingsLSC get_cache_settings(const send_t &send, const hw_t &hw) {
     bool is_prefetch = send.is_prefetch() || send.is_prefetch_2d();
     switch (send.cache_hint) {
         case send_cache_hint_t::undef:
-            switch (send.hw.to_ngen()) {
+            switch (send.hw.ngen_hw()) {
                 case ngen::HW::XeHPG:
                     // Use default cache policy on xelpg to avoid suspected driver issue.
                     if (is_store && hw.systolic_support())

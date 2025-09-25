@@ -36,7 +36,7 @@ struct base_plan_t {
     base_plan_t(const hw_t hw = hw_t()) : hw(hw) {}
 
     int grf_size() const {
-        gpu_assert(!hw.is_undef());
+        gpu_assert(hw.ngen_hw() != ngen::HW::Unknown);
         return hw.grf_size();
     }
 

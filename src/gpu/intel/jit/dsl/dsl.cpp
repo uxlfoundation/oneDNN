@@ -265,10 +265,10 @@ int grf_size() {
     return default_ctx().ir_ctx()->hw().grf_size();
 }
 int min_align_2d() {
-    return block_2d_base_alignment(default_ctx().ir_ctx()->hw().to_ngen());
+    return block_2d_base_alignment(default_ctx().ir_ctx()->hw());
 }
 int min_pitch_2d() {
-    return block_2d_pitch_alignment(default_ctx().ir_ctx()->hw().to_ngen());
+    return block_2d_pitch_alignment(default_ctx().ir_ctx()->hw());
 }
 
 void declare_kernel(

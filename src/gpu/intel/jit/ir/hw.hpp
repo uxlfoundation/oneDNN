@@ -63,88 +63,32 @@ class hw_t {
 public:
     using attr_t = hw::attr_t;
     hw_t() = default;
-    explicit hw_t(ngen::HW hw) : hw_(hw) {}
     explicit hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
-            size_t l3_cache_size, attr_t attr)
-        : hw_(ngen::getCore(product.family))
-        , eu_count_(eu_count)
-        , max_wg_size_(max_wg_size)
-        , l3_cache_size_(l3_cache_size)
-        , attr_(attr) {}
-
+            size_t l3_cache_size, attr_t attr);
     ngen::HW ngen_hw() const { return hw_; }
-    const ngen::Product &product() const { return product_; }
+    operator ngen::HW() const { return hw_; }
+    const ngen::Product &product() const;
 
     bool is_undef() const { return hw_ == ngen::HW::Unknown; }
     bool has_fp64_atomic_support() const {
         return any(attr_ & attr_t::atomic_fp64);
     }
-    ngen::HW to_ngen() const { return hw_; }
-    operator ngen::HW() const { return hw_; }
-    ngen::ProductFamily product_family() const { return product_.family; }
-    int stepping_id() const { return product_.stepping; }
+    ngen::ProductFamily family() const;
+    int stepping() const;
     int eu_count() const { return eu_count_; }
     int large_grf_support() const { return any(attr_ & attr_t::large_grf); }
-    int grf_size() const { return ngen::GRF::bytes(hw_); }
+    int grf_size() const;
     int systolic_support() const { return any(attr_ & attr_t::systolic); }
     size_t l3_cache_size() const { return l3_cache_size_; }
 
-    int max_tg_size(int regs, int simd) const {
-        int wg_size = max_wg_size(regs);
-        int eu_based_tg_size
-                = eus_per_core() * utils::rnd_down_pow2(threads_per_eu(regs));
-        int wg_based_tg_size = wg_size / simd;
-        return std::min(eu_based_tg_size, wg_based_tg_size);
-    }
-
+    int max_tg_size(int regs, int simd) const;
     // Number of EUs per Xe core (maps to dual subslice on XeHPG).
-    int eus_per_core() const {
-        switch (hw_) {
-            case ngen::HW::XeHPG: return 16;
-            case ngen::HW::XeLP:
-            case ngen::HW::XeHP:
-            case ngen::HW::XeHPC:
-            case ngen::HW::Xe2:
-            case ngen::HW::Xe3: return 8;
-            default: gpu_error_not_expected(); return 8;
-        }
-    }
+    int eus_per_core() const;
+    int threads_per_eu(int regs = 128) const;
+    int cache_line_size() const;
+    std::string str() const;
 
-    int threads_per_eu(int regs = 128) const {
-        bool is_large_grf = (regs > 128);
-        switch (hw_) {
-            case ngen::HW::XeLP: return 7;
-            case ngen::HW::XeHP:
-            case ngen::HW::XeHPG:
-            case ngen::HW::XeHPC:
-            case ngen::HW::Xe2:
-            case ngen::HW::Xe3: return is_large_grf ? 4 : 8;
-            default: gpu_error_not_expected(); return 8;
-        }
-    }
-
-    int cache_line_size() const {
-        switch (hw_) {
-            case ngen::HW::XeLP:
-            case ngen::HW::XeHP:
-            case ngen::HW::XeHPG:
-            case ngen::HW::XeHPC:
-            case ngen::HW::Xe2:
-            case ngen::HW::Xe3: return 64;
-            default: gpu_error_not_expected();
-        }
-        return 0;
-    }
-
-    std::string str() const {
-        ostringstream_t oss;
-        oss << to_string(hw_);
-        oss << ", stepping: " << stepping_id();
-        oss << ", EUs: " << eu_count();
-        return oss.str();
-    }
-
-    std::string brief_str() const { return ir_utils::to_lower(to_string(hw_)); }
+    std::string brief_str() const;
 
     IR_DEFINE_DUMP()
 

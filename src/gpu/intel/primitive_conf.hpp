@@ -101,6 +101,7 @@ struct attr_info_t {
     bool with_host_src_scale;
     bool with_host_wei_scale;
     bool with_host_dst_scale;
+    bool with_mx_dst_scale;
     bool with_host_src_zp;
     bool with_host_wei_zp;
     bool with_host_dst_zp;

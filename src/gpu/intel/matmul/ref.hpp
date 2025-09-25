@@ -66,6 +66,11 @@ struct ref_t : public primitive_t {
                             | smask_t::precomputed_reductions),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_MATMUL(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDISPATCH_MATMUL(attr_scales_ok({DNNL_ARG_SRC, DNNL_ARG_WEIGHTS,
+                                                    DNNL_ARG_DST},
+                                     {quantization_mode::static_sazp,
+                                             quantization_mode::dynamic_mx}),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_MATMUL(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
             VDISPATCH_MATMUL(
                     precomputed_reductions_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
@@ -125,6 +130,18 @@ struct ref_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             subbyte_pack_ = utils::one_of(
                     dst_dt_, data_type::f4_e2m1, data_type::f4_e3m0);
+            mx_scales_ = attr()->scales_.get(DNNL_ARG_DST).is_mx();
+            if (mx_scales_) {
+                using namespace dnnl::impl::memory_tracking::names;
+                const memory_desc_wrapper dst_mdw(dst_md(0));
+                const auto &padded_dims = dst_mdw.padded_dims();
+                const dim_t ndims = dst_mdw.ndims();
+                const dim_t nelems = utils::array_product(padded_dims, ndims);
+                auto scratchpad = scratchpad_registry().registrar();
+                scratchpad.book(
+                        memory_tracking::names::key_matmul_mx_scale_space,
+                        nelems, sizeof(float), OCL_BUFFER_ALIGNMENT);
+            }
             if (subbyte_pack_) {
                 using namespace dnnl::impl::memory_tracking::names;
                 const memory_desc_wrapper dst_mdw(dst_md(0));
@@ -144,6 +161,7 @@ struct ref_t : public primitive_t {
 
         bool non_default_attrs_ = false;
         bool subbyte_pack_ = false;
+        bool mx_scales_ = false;
         data_type_t bia_dt_ = data_type::undef;
         data_type_t src_dt_ = data_type::undef;
         data_type_t dst_dt_ = data_type::undef;
@@ -240,6 +258,9 @@ struct ref_t : public primitive_t {
                     DNNL_ARG_SRC))
             kernel_ctx.define_int("WITH_SRC_GROUP_SUMS", 1);
 
+        bool mx_scales = pd()->attr()->scales_.get(DNNL_ARG_DST).is_mx();
+        kernel_ctx.define_int("DYN_SCALES", mx_scales);
+
         bool runtime_dims = pd()->has_runtime_dims_or_strides() || ndims > 5;
         if (!runtime_dims) {
             const memory_desc_wrapper src_d(pd()->src_md(0));
@@ -290,13 +311,19 @@ struct ref_t : public primitive_t {
         def_data_type(kernel_ctx,
                 pd()->attr()->scales_.get_data_type(DNNL_ARG_DST),
                 "DST_SCALES");
-        kernels_.resize(2);
-        CHECK(create_kernel(engine, &kernels_[0], "ref_matmul", kernel_ctx));
+        int kidx = 0;
+        kernels_.resize(3);
+        CHECK(create_kernel(
+                engine, &kernels_[kidx++], "ref_matmul", kernel_ctx));
+        if (pd()->mx_scales_)
+            CHECK(create_kernel(
+                    engine, &kernels_[kidx++], "mx_scale_dst", kernel_ctx));
         if (pd()->subbyte_pack_)
             CHECK(create_kernel(
-                    engine, &kernels_[1], "subbyte_pack", kernel_ctx));
+                    engine, &kernels_[kidx++], "subbyte_pack", kernel_ctx));
         if (!kernels_[0]) return status::runtime_error;
-        if (pd()->subbyte_pack_ && !kernels_[1]) return status::runtime_error;
+        if ((pd()->subbyte_pack_ || pd()->mx_scales_) && !kernels_[1])
+            return status::runtime_error;
         return status::success;
     }
 

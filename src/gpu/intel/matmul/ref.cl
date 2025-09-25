@@ -310,14 +310,23 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #if WITH_DST_SCALES
 #if DST_SCALES_MASK == 0
         po_acc /= DST_SCALES_TO_REF(dst_scales[0]);
-#else
+#elif WITH_MX_DST_SCALE == 0
         po_acc /= DST_SCALES_TO_REF(dst_scales[n]);
 #endif
 #endif
         po_acc += dst_zp;
+
+#if WITH_MX_DST_SCALE
+        ((__global ACC_DATA_T *)C)[dst_off] = po_acc;
+#else
         C[dst_off] = TO_DST(po_acc);
+#endif
 #else // WITH_BIAS || NON_DEFAULT_ATTRS
+#if WITH_MX_DST_SCALE
+        ((__global ACC_DATA_T *)C)[dst_off] = acc;
+#else
         C[dst_off] = TO_DST(acc);
+#endif
 #endif // WITH_BIAS || NON_DEFAULT_ATTRS
     }
 }

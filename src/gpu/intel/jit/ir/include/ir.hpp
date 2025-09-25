@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_JIT_IR_INCLUDE_IR_HPP
 #define GPU_INTEL_JIT_IR_INCLUDE_IR_HPP
 
+#include "gpu/intel/jit/ir/include/hw.hpp"
 #include "gpu/intel/jit/ir/include/kernel.hpp"
 #include "gpu/intel/jit/ir/include/object.hpp"
 #include "gpu/intel/jit/ir/include/type.hpp"

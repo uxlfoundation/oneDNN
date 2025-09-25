@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/ir/hw.hpp"
+#include "gpu/intel/jit/ir/include/hw.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 #include "ngen.hpp"
 
@@ -26,15 +26,17 @@ namespace jit {
 
 hw_t::hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
         size_t l3_cache_size, attr_t attr)
-    : hw_(ngen::getCore(product.family))
-    , product_(product)
+    : product_(product)
+    , hw_(ngen::getCore(product.family))
     , eu_count_(eu_count)
     , max_wg_size_(max_wg_size)
     , l3_cache_size_(l3_cache_size)
     , attr_(attr) {}
 
-const ngen::Product &hw_t::product() const {
-    return product_;
+ngen::Product hw_t::product() const {
+    ngen::Product product;
+    std::memcpy(&product, &product_, sizeof(product));
+    return product;
 }
 
 ngen::ProductFamily hw_t::family() const {
@@ -103,6 +105,12 @@ std::string hw_t::str() const {
 
 std::string hw_t::brief_str() const {
     return ir_utils::to_lower(to_string(hw_));
+}
+
+hw_t::product_t::product_t(const ngen::Product &product) {
+    static_assert(sizeof(product) == sizeof(*this),
+            "ngen::Product and hw_t::product must be binary compatible");
+    std::memcpy(this, &product, sizeof(product));
 }
 
 } // namespace jit

@@ -57,7 +57,8 @@ struct quant_entry_t : public c_compatible {
         return set(mask, data_type, 0, {});
     }
     status_t set(int mask, data_type_t data_type, int group_ndims,
-            const dims_t group_dims, bool is_host_scalar = false) {
+            const dims_t group_dims, bool is_host_scalar = false,
+            quantization_kind_t qkind = quantization_kind::static_) {
         mask_ = mask;
         data_type_ = data_type;
         group_ndims_ = group_ndims;
@@ -65,11 +66,12 @@ struct quant_entry_t : public c_compatible {
             utils::array_copy(group_dims_, group_dims, group_ndims_);
         }
         is_host_scalar_ = is_host_scalar;
+        qkind_ = qkind;
         return status::success;
     }
     status_t set(const quant_entry_t &other) {
         return set(other.mask_, other.data_type_, other.group_ndims_,
-                other.group_dims_, other.is_host_scalar());
+                other.group_dims_, other.is_host_scalar(), other.qkind_);
     }
 
     quant_entry_t &operator=(const quant_entry_t &rhs) {
@@ -95,6 +97,10 @@ struct quant_entry_t : public c_compatible {
         return group_dims_[d];
     }
     bool is_host_scalar() const { return is_host_scalar_; }
+    quantization_kind_t get_quantization_kind() const { return qkind_; }
+    bool is_dynamic() const {
+        return qkind_ == dnnl_quantization_kind_dynamic_mx;
+    }
 
     status_t get_md(memory_desc_t &out_md, const memory_desc_t &base_md) const {
         if (has_default_values()) {
@@ -157,6 +163,7 @@ private:
     int group_ndims_ = 0;
     dims_t group_dims_ {};
     bool is_host_scalar_ = false;
+    quantization_kind_t qkind_ = quantization_kind::undef;
 };
 
 std::ostream &operator<<(std::ostream &ss, const quant_entry_t &e);
@@ -177,10 +184,11 @@ struct quant_entries_t : public c_compatible {
         return set(arg, mask, default_data_type_, 0, {});
     }
     status_t set(int arg, int mask, data_type_t data_type, int group_ndims,
-            const dims_t group_dims, bool is_host_scalar = false) {
+            const dims_t group_dims, bool is_host_scalar = false,
+            quantization_kind_t qkind = quantization_kind::static_) {
         if (!check_arg(arg)) return status::invalid_arguments;
-        CHECK(entries_[arg].set(
-                mask, data_type, group_ndims, group_dims, is_host_scalar));
+        CHECK(entries_[arg].set(mask, data_type, group_ndims, group_dims,
+                is_host_scalar, qkind));
         return status::success;
     }
     // Use this interface with `default_quant_entry` when need to remove a

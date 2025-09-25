@@ -376,9 +376,16 @@ expr_t extract(const expr_t &expr, int lane) {
     return shuffle_t::make(expr, {lane});
 }
 
+lval_t::lval_t(const type_t &type, const std::string &name)
+    : var(var_t::make(type, name)) {}
+
 lval_t &lval_t::operator=(const expr_t &obj) {
     assign(this->var, obj);
     return *this;
+}
+
+lval_t lval_t::sub(int off, int elems) const {
+    return lval_t(ref_t::make(var, off, elems));
 }
 
 expr_t let(const std::string &name, const type_t &type, const expr_t &value) {
@@ -672,6 +679,21 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
             append(mad.as<mad_t>()(dst, dst, src1, src2));
         });
     }
+}
+
+void _if_impl(const expr_t &cond, const stmt_t &if_body) {
+    append(if_t::make(cond, if_body));
+}
+void _if_impl(
+        const expr_t &cond, const stmt_t &if_body, const stmt_t &else_body) {
+    append(if_t::make(cond, if_body, else_body));
+}
+void _for_impl(const expr_t &var, const expr_t &bound, const expr_t &step,
+        const stmt_t &body) {
+    append(for_t::make(var, 0, bound, body, step));
+}
+void _while_impl(const expr_t &cond, const stmt_t &body) {
+    append(while_t::make(cond, body));
 }
 
 void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,

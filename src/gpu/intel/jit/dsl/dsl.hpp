@@ -19,8 +19,6 @@
 
 #include "gpu/intel/jit/dsl/decl.hpp"
 #include "gpu/intel/jit/dsl/tensor.hpp"
-#include "gpu/intel/jit/ir/message.hpp"
-#include "gpu/intel/jit/ir/message_patterns.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -58,14 +56,11 @@ const expr_t &local_size(int idx);
 class lval_t {
 public:
     lval_t() = default;
-    lval_t(const type_t &type, const std::string &name)
-        : var(var_t::make(type, name)) {}
+    lval_t(const type_t &type, const std::string &name);
     lval_t(const expr_t &v) : var(v) {}
     lval_t &operator=(const expr_t &obj);
 
-    lval_t sub(int off, int elems) const {
-        return lval_t(ref_t::make(var, off, elems));
-    }
+    lval_t sub(int off, int elems) const;
     expr_t ptr(int off = 0) const { return var.ptr(off); }
     lval_t operator[](int off) const { return sub(off, 1); }
     operator expr_t() const { return var; }
@@ -127,8 +122,9 @@ void store(const global_tensor_t &g, const tensor_t &t,
 void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         const tile_t &tile, const icoord_t &base, bool is_systolic);
 
+void _if_impl(const expr_t &cond, const stmt_t &body);
 template <typename F>
-void _if(const expr_t &cond, F if_body) {
+void _if(const expr_t &cond, const F &if_body) {
     if (is_const(cond)) {
         if (to_bool(cond)) {
             begin_scope();
@@ -138,10 +134,12 @@ void _if(const expr_t &cond, F if_body) {
     } else {
         begin_scope();
         if_body();
-        append(if_t::make(cond, pop_scope()));
+        _if_impl(cond, pop_scope());
     }
 }
 
+void _if_impl(
+        const expr_t &cond, const stmt_t &if_body, const stmt_t &else_body);
 template <typename F, typename G>
 void _if(const expr_t &cond, const F &if_body, const G &else_body) {
     if (is_const(cond)) {
@@ -159,16 +157,18 @@ void _if(const expr_t &cond, const F &if_body, const G &else_body) {
 
         begin_scope();
         else_body();
-        append(if_t::make(cond, if_body_stmt, pop_scope()));
+        _if_impl(cond, if_body_stmt, pop_scope());
     }
 }
 
+void _for_impl(const expr_t &var, const expr_t &bound, const expr_t &step,
+        const stmt_t &body);
 template <typename F>
 void _for(const expr_t &var, const expr_t &bound, const expr_t &step,
         const F &body) {
     begin_scope();
     body();
-    append(for_t::make(var, 0, bound, pop_scope(), step));
+    _for_impl(var, bound, step, pop_scope());
 }
 
 template <typename F>
@@ -176,12 +176,13 @@ void _for(const expr_t &var, const expr_t &bound, const F &body) {
     _for(var, bound, 1, body);
 }
 
+void _while_impl(const expr_t &cond, const stmt_t &body);
 template <typename F>
-void _while(const expr_t &cond, F body) {
+void _while(const expr_t &cond, const F &body) {
     if (is_const(cond) && !to_bool(cond)) return;
     begin_scope();
     body();
-    append(while_t::make(cond, pop_scope()));
+    _while_impl(cond, pop_scope());
 }
 
 void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,

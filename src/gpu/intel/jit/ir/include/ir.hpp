@@ -22,4 +22,22 @@
 #include "gpu/intel/jit/ir/include/object.hpp"
 #include "gpu/intel/jit/ir/include/type.hpp"
 
+namespace dnnl {
+namespace impl {
+namespace gpu {
+namespace intel {
+namespace jit {
+
+enum class send_cache_hint_t {
+    undef,
+    hw_default,
+    load_once,
+};
+
+}
+} // namespace intel
+} // namespace gpu
+} // namespace impl
+} // namespace dnnl
+
 #endif

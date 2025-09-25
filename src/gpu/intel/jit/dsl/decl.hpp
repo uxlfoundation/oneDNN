@@ -25,6 +25,15 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+
+// TODO: re-evaluate naming within op_kind_t to remove '_' prefix
+enum class op_kind_t;
+
+// TODO: ir_context_t should be removed from the DSL API. All necessary
+// information should be passed in either via kernel::interface and
+// kernel::options.
+class ir_context_t;
+
 namespace dsl {
 
 using jit::operator<<;
@@ -45,8 +54,8 @@ static type_t bf16 = type_t::bf16();
 
 using expr_t = jit::expr_t;
 using type_t = jit::type_t;
-
 using kernel_t = jit::kernel_t;
+using send_cache_hint_t = jit::send_cache_hint_t;
 
 } // namespace dsl
 } // namespace jit

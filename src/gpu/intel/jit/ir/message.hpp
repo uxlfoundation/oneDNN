@@ -77,12 +77,6 @@ enum class send_address_t {
     slm,
 };
 
-enum class send_cache_hint_t {
-    undef,
-    hw_default,
-    load_once,
-};
-
 static auto send_cache_hint_names = nstl::to_array({
         make_enum_name(send_cache_hint_t::undef, "cache:undef"),
         make_enum_name(send_cache_hint_t::load_once, "cache:load_once"),

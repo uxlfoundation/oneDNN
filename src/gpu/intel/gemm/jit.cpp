@@ -22,6 +22,7 @@
 #include "gpu/intel/gemm/jit/walk_orders.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/logging.hpp"
 
 #ifdef DNNL_WITH_SYCL
 #include "gpu/intel/sycl/stream.hpp"

@@ -127,6 +127,11 @@ float __attribute__((overloadable)) cvt_e8m0_to_f32(uchar f) {
 }
 #endif
 
+uchar __attribute__((overloadable)) cvt_f32_to_e8m0(float f) {
+    uint bits = as_uint(f);
+    return ((uchar4)((bits >> 23) & 0xff)).s0;
+}
+
 #if MATH_UTILS_DECLARE_HF8
 // Emulation functions for f8_e4m3 <-> f16 conversion.
 uchar __attribute__((overloadable)) cvt_hf_to_f8_e4m3(half f) {

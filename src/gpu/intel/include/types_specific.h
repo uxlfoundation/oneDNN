@@ -897,6 +897,11 @@
 #define DST_OFF(x0, x1, d, h, w) \
     (((x0) % DST_B0) * DST_SB0 + ((x0) / DST_B0) * DST_S0 \
             + ((x1) % DST_B1) * DST_SB1 + ((x1) / DST_B1) * DST_S1)
+
+#define DST_SCALE_OFF(x0, x1, d, h, w, g1, g0) \
+    (((x0) % DST_B0) * DST_SB0 + ((x0) / DST_B0) * (DST_S0 / g0) \
+            + ((x1) % DST_B1) * DST_SB1 \
+            + ((x1) / DST_B1) * (DST_S1 / (g1 * g0)))
 #elif NDIMS == 3
 #define SRC_OFF(x0, x1, d, h, x2) \
     (((x0) % SRC_B0) * SRC_SB0 + ((x0) / SRC_B0) * SRC_S0 \
@@ -919,6 +924,11 @@
 #define DST_OFF(x0, x1, d, h, x2) \
     (((x0) % DST_B0) * DST_SB0 + ((x0) / DST_B0) * DST_S0 \
             + ((x1) % DST_B1) * DST_SB1 + ((x1) / DST_B1) * DST_S1 \
+            + ((x2) % DST_B2) * DST_SB2 + ((x2) / DST_B2) * DST_S2)
+#define DST_SCALE_OFF(x0, x1, d, h, x2, g1, g0) \
+    (((x0) % DST_B0) * DST_SB0 + ((x0) / DST_B0) * (DST_S0 / g0) \
+            + ((x1) % DST_B1) * DST_SB1 \
+            + ((x1) / DST_B1) * (DST_S1 / (g1 * g0)) \
             + ((x2) % DST_B2) * DST_SB2 + ((x2) / DST_B2) * DST_S2)
 #elif NDIMS == 4
 #define SRC_OFF(x0, x1, d, x2, x3) \
@@ -945,6 +955,12 @@
 #define DST_OFF(x0, x1, d, x2, x3) \
     (((x0) % DST_B0) * DST_SB0 + ((x0) / DST_B0) * DST_S0 \
             + ((x1) % DST_B1) * DST_SB1 + ((x1) / DST_B1) * DST_S1 \
+            + ((x2) % DST_B2) * DST_SB2 + ((x2) / DST_B2) * DST_S2 \
+            + ((x3) % DST_B3) * DST_SB3 + ((x3) / DST_B3) * DST_S3)
+#define DST_SCALE_OFF(x0, x1, d, x2, x3, g1, g0) \
+    (((x0) % DST_B0) * DST_SB0 + ((x0) / DST_B0) * (DST_S0 / g0) \
+            + ((x1) % DST_B1) * DST_SB1 \
+            + ((x1) / DST_B1) * (DST_S1 / (g1 * g0)) \
             + ((x2) % DST_B2) * DST_SB2 + ((x2) / DST_B2) * DST_S2 \
             + ((x3) % DST_B3) * DST_SB3 + ((x3) / DST_B3) * DST_S3)
 #elif NDIMS == 5
@@ -975,6 +991,14 @@
 #define DST_OFF(x0, x1, x2, x3, x4) \
     (((x0) % DST_B0) * DST_SB0 + ((x0) / DST_B0) * DST_S0 \
             + ((x1) % DST_B1) * DST_SB1 + ((x1) / DST_B1) * DST_S1 \
+            + ((x2) % DST_B2) * DST_SB2 + ((x2) / DST_B2) * DST_S2 \
+            + ((x3) % DST_B3) * DST_SB3 + ((x3) / DST_B3) * DST_S3 \
+            + ((x4) % DST_B4) * DST_SB4 + ((x4) / DST_B4) * DST_S4)
+
+#define DST_SCALE_OFF(x0, x1, x2, x3, x4, g1, g0) \
+    (((x0) % DST_B0) * DST_SB0 + ((x0) / DST_B0) * (DST_S0 / g0) \
+            + ((x1) % DST_B1) * DST_SB1 \
+            + ((x1) / DST_B1) * (DST_S1 / (g1 * g0)) \
             + ((x2) % DST_B2) * DST_SB2 + ((x2) / DST_B2) * DST_S2 \
             + ((x3) % DST_B3) * DST_SB3 + ((x3) / DST_B3) * DST_S3 \
             + ((x4) % DST_B4) * DST_SB4 + ((x4) / DST_B4) * DST_S4)

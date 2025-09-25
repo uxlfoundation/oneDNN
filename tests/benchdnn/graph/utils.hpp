@@ -139,6 +139,7 @@ int measure_perf(timer::timer_t &t,
         const std::vector<dnnl::graph::compiled_partition> &cp_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
+        const std::vector<partition_mem_map_t> &partition_mem_map_v,
         res_t *res);
 
 dnnl::graph::op::kind opstr2kind(const std::string &kind);

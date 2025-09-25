@@ -250,6 +250,36 @@ bool parse_graph_fpmath_mode(
     return true;
 }
 
+bool parse_graph_cold_cache(
+        graph_cold_cache_input_t &graph_cold_cache_input, const char *str) {
+    std::string graph_attrs_str;
+    if (!parse_string(graph_attrs_str, str, "cold-cache")) return false;
+
+    dnnl::impl::stringstream_t ss(graph_attrs_str);
+
+    const auto str2cold_cache_input = [](const std::string &_str) {
+        graph_cold_cache_input_t cc_input;
+        if (_str == "none") {
+            cc_input.cold_cache_mode_ = graph_cold_cache_mode_t::none;
+        } else if (_str == "all") {
+            cc_input.cold_cache_mode_ = graph_cold_cache_mode_t::all;
+        } else {
+            BENCHDNN_PRINT(0, "%s \'%s\'\n", "Error: unknown cold cache mode",
+                    _str.c_str());
+            SAFE_V(FAIL);
+        }
+        return cc_input;
+    };
+
+    std::string graph_cold_cache;
+    while (std::getline(ss, graph_cold_cache, ',')) {
+        if (!graph_cold_cache.empty()) {
+            graph_cold_cache_input = str2cold_cache_input(graph_cold_cache);
+        }
+    }
+    return true;
+}
+
 std::map<std::string, std::string> parse_attrs(const std::string &attrs_str) {
     std::map<std::string, std::string> attrs_map;
     std::string::size_type key_pos = 0;

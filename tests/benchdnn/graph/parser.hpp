@@ -22,6 +22,7 @@
 
 #include "allocator.hpp"
 #include "dnnl_common.hpp"
+#include "graph_cold_cache.hpp"
 #include "oneapi/dnnl/dnnl_graph.hpp"
 #include "utils.hpp"
 
@@ -50,6 +51,9 @@ bool parse_dt(std::vector<dnnl_data_type_t> &dt,
 
 bool parse_op_kind(std::vector<std::map<size_t, std::string>> &op_kind_map,
         const char *str, const std::string &option_name = "op-kind");
+
+bool parse_graph_cold_cache(
+        graph_cold_cache_input_t &graph_cold_cache_vec, const char *str);
 
 std::map<std::string, std::string> parse_attrs(const std::string &attrs_str);
 

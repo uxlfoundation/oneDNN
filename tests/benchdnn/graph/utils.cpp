@@ -108,6 +108,7 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         std::vector<perf_function_t> &perf_func_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
+        const std::vector<partition_mem_map_t> &partition_mem_map_v,
         res_t *res) {
     const int max_batch_times = 4096;
     // Nvidia/AMD don't support profiling.
@@ -196,6 +197,7 @@ inline int measure_perf_individual(timer::timer_t &t,
         std::vector<perf_function_t> &perf_func_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
+        const std::vector<partition_mem_map_t> &partition_mem_map_v,
         res_t *res) {
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
     const dnnl::stream::flags flags = use_profiling
@@ -203,11 +205,24 @@ inline int measure_perf_individual(timer::timer_t &t,
             : dnnl::stream::flags::default_flags;
     cpp_stream_t stream {get_graph_engine(), flags};
 
+    std::vector<std::vector<dnnl::graph::tensor>> exec_inputs_v(
+            inputs_v.size());
+    for (size_t idx = 0; idx < inputs_v.size(); idx++) {
+        for (size_t idy = 0; idy < inputs_v[idx].size(); idy++) {
+            exec_inputs_v[idx].push_back(inputs_v[idx][idy]);
+        }
+    }
+
+    // TODO: This is where we can insert cold cache logic
+    // graph_cold_cache_t graph_cc;
+    // graph_cc.update_partition_inputs(exec_inputs_v, partition_mem_map_v);
+
     t.reset();
     while (true) {
         auto sz = perf_func_v.size();
         for (size_t i = 0; i < sz; i++) {
-            DNN_GRAPH_SAFE(perf_func_v[i](stream, inputs_v[i], outputs_v[i]),
+            DNN_GRAPH_SAFE(
+                    perf_func_v[i](stream, exec_inputs_v[i], outputs_v[i]),
                     WARN, res);
         }
         t.stamp();
@@ -219,16 +234,17 @@ inline int measure_perf_individual(timer::timer_t &t,
 int measure_perf(timer::timer_t &t, std::vector<perf_function_t> &perf_func_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
+        const std::vector<partition_mem_map_t> &partition_mem_map_v,
         res_t *res) {
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         // enable GPU profiling, Nvidia/AMD dose not support profiling.
         int ret = OK;
         if (is_cpu() && !is_sycl_engine()) {
-            ret = measure_perf_individual(
-                    t, perf_func_v, inputs_v, outputs_v, res);
+            ret = measure_perf_individual(t, perf_func_v, inputs_v, outputs_v,
+                    partition_mem_map_v, res);
         } else {
-            ret = measure_perf_aggregate(
-                    t, perf_func_v, inputs_v, outputs_v, res);
+            ret = measure_perf_aggregate(t, perf_func_v, inputs_v, outputs_v,
+                    partition_mem_map_v, res);
         }
         return ret;
     } else {
@@ -240,6 +256,7 @@ int measure_perf(timer::timer_t &t,
         const std::vector<dnnl::graph::compiled_partition> &cp_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &inputs_v,
         const std::vector<std::vector<dnnl::graph::tensor>> &outputs_v,
+        const std::vector<partition_mem_map_t> &partition_mem_map_v,
         res_t *res) {
     std::vector<perf_function_t> perf_func_v;
     perf_func_v.reserve(cp_v.size());
@@ -249,7 +266,8 @@ int measure_perf(timer::timer_t &t,
                 std::placeholders::_3));
     }
 
-    int status = measure_perf(t, perf_func_v, inputs_v, outputs_v, res);
+    int status = measure_perf(
+            t, perf_func_v, inputs_v, outputs_v, partition_mem_map_v, res);
     if (res) res->state = EXECUTED;
 
     return status;

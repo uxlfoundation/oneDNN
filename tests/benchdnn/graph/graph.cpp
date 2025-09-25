@@ -739,7 +739,7 @@ int doit(const prb_t *prb, res_t *res) {
 
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         SAFE(measure_perf(res->timer_map.perf_timer(), c_partitions,
-                     input_ts_all, output_ts_all, res),
+                     input_ts_all, output_ts_all, partition_mem_map_v, res),
                 WARN);
     }
 

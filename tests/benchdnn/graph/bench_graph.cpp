@@ -92,6 +92,7 @@ int bench(int argc, char **argv) {
                 || parse_graph_expected_n_partitions(
                         s.expected_n_partition_vec, argv[0])
                 || parse_graph_fpmath_mode(s.fpmath_mode_vec, argv[0])
+                || parse_graph_cold_cache(graph_cold_cache_input, argv[0])
                 || parse_mb(s.mb, def.mb, argv[0]) || parse_reset(s, argv[0]);
         if (!parsed_options) {
             if (!parse_input_file(s.json_file, argv[0]))

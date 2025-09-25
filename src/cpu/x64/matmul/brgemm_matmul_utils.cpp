@@ -295,12 +295,14 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && isa == avx10_2_512_amx_2)
     , weights_decompression_support(one_of(bgmmc.wei_dt, u8, s8, u4, s4)
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16,
-                      fpmath_mode::any)
+                      fpmath_mode::strict, fpmath_mode::any)
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::f16,
                       bgmmc.src_dt == f16)
               && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::bf16,
                       bgmmc.src_dt == bf16)
-              && attr.fpmath_.apply_to_int_)
+              && IMPLICATION(attr.fpmath_.mode_ == fpmath_mode::strict,
+                      bgmmc.src_dt == f32)
+              && (attr.fpmath_.apply_to_int_ || bgmmc.src_dt == f32))
     , bf16_with_int_wei_dt(weights_decompression_support && bgmmc.src_dt == bf16
               && one_of(bgmmc.dst_dt, bf16, f32))
     // Keep this var separate from f16_dt to not slip f16:f16 on avx512_core and
@@ -313,7 +315,7 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, bf16, f32))
     , f16_with_int_wei_dt(weights_decompression_support && bgmmc.src_dt == f16
               && one_of(bgmmc.dst_dt, f16, f32))
-    , f32_with_int_wei_dt(one_of(bgmmc.wei_dt, u8, s8, u4, s4)
+    , f32_with_int_wei_dt(weights_decompression_support
               && everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt)
               && !one_of(
                       attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16))
@@ -677,7 +679,8 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
     if (this->is_f32() || this->is_bf32() || this->is_f16()
             || this->is_f32_f16() || this->is_f32_bf16()
             || this->is_f16_with_int_wei() || this->is_tf32()
-            || this->is_f32_with_int_wei())
+            || (this->is_f32_with_int_wei()
+                    && is_superset(bgmmc.isa, avx512_core)))
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c : BA16a64b;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c : BA16a48b;
@@ -1411,6 +1414,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                         || IMPLICATION(bgmmc.is_wei_scale_per_k,
                                 bgmmc.with_wei_decompression),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+        // AVX2 supports f32 scales only
+        VCONDCHECK_BG(
+                IMPLICATION(is_superset(isa, avx2), bgmmc.wei_scales_dt == f32),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
     const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
@@ -1431,8 +1439,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                         || bgmmc.is_wei_zp_per_n,
                 VERBOSE_UNSUPPORTED_ZP_CFG);
 
-        if (bgmmc.is_wei_zp_per_k)
-            bgmmc.wei_zp_k_gsize = wei_zp.get_group(bgmmc.ndims - 2);
+        if (bgmmc.is_wei_zp_per_k) bgmmc.wei_zp_k_gsize = wei_zp.get_group(0);
         // Check if K groups for scales and for zero points are identical
         VCONDCHECK_BG(
                 IMPLICATION(bgmmc.is_wei_zp_per_k && bgmmc.is_wei_scale_per_k,
@@ -1878,8 +1885,7 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
                     data_type::s4, data_type::u4);
     const bool with_wei_decompression = in_type != out_type
             && utils::one_of(in_type, data_type::s8, data_type::u8,
-                    data_type::s4, data_type::u4, data_type::bf16,
-                    data_type::f16);
+                    data_type::s4, data_type::u4);
 
     const bool is_copyB = N > 0;
     conf.isa = get_max_cpu_isa(); // Just use the best ISA possible.

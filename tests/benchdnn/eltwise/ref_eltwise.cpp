@@ -54,7 +54,7 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &d_src = args.find(DNNL_ARG_DIFF_SRC);
 
     float *d_src_ptr = (float *)d_src;
-    const auto nelems = src.nelems();
+    const auto nelems = source.nelems();
 
     benchdnn_parallel_nd(nelems, [&](int64_t i) {
         d_src_ptr[i] = compute_eltwise_bwd(prb->alg, d_dst.get_f32_elem(i),

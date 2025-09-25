@@ -902,9 +902,9 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
     dst_w_sz = static_cast<dim_t>(OW) * jcp.oc_without_padding;
     dst_h_sz = OH * dst_w_sz;
 
-    const auto comp_buffer_os = jcp.exec_type != exec_vpad ? jcp.ow : 1;
+    //    const auto comp_buffer_os = jcp.comp_ow_size;//jcp.exec_type != exec_vpad ? jcp.ow : 1;
     comp_ow_sz = static_cast<dim_t>(jcp.oc_block);
-    comp_kw_sz = comp_buffer_os * comp_ow_sz;
+    comp_kw_sz = comp_ow_sz * jcp.comp_ow_size;
     comp_ker_sz = jcp.ker_ranges_size * comp_kw_sz;
     comp_ocb_sz = jcp.nb_oc * comp_ker_sz;
 

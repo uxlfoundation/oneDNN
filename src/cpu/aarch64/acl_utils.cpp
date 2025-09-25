@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Arm Ltd. and affiliates
+* Copyright 2021-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -208,7 +208,7 @@ int reorder_dimensions_by_stride(std::vector<memory_desc_t *> permuted_mds,
         std::vector<const memory_desc_t *> mds) {
 
     // Vectors must be the same length and not empty
-    if (permuted_mds.size() != mds.size() || mds.empty()) return 0;
+    if (permuted_mds.size() != mds.size() || (mds.size() != 0)) return 0;
 
     const dim_t ndims = mds[0]->ndims;
 

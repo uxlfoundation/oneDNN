@@ -56,7 +56,7 @@ jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::
     , out_ker_sz_(static_cast<size_t>(out_ow_sz_)
               * (jcp_.exec_type == exec_trans ? jcp_.prop_kind == backward_data
                                       ? jcp_.iw
-                                      : jcp_.ow
+                                      : jcp_.comp_ow_size
                                               : 1))
     , isa_max_regs(isa_num_vregs(jcp_.isa)) {}
 
@@ -707,7 +707,7 @@ jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::
               * (jcp_.is_relo_whi() ? 1 : jcp_.kw))
     , inp_oc_sz_(static_cast<size_t>(inp_ic_sz_) * jcp_.ic * jcp_.kh * jcp_.kw)
     , out_ow_sz_(static_cast<size_t>(out_dsz_) * jcp_.oc_block)
-    , out_ker_sz_(static_cast<size_t>(out_ow_sz_) * jcp_.ow)
+    , out_ker_sz_(static_cast<size_t>(out_ow_sz_) * jcp_.comp_ow_size)
     , isa_max_regs_(isa_num_vregs(jcp_.isa)) {}
 
 template struct jit_uni_brgemm_conv_comp_pad_kernel_t<Xbyak::Zmm>;

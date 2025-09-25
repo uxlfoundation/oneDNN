@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@
 #include "gpu/generic/sycl/sycl_q10n.hpp"
 #include "gpu/generic/sycl/sycl_utils.hpp"
 #include "gpu/gpu_pooling_pd.hpp"
-#include "gpu/intel/primitive_conf.hpp"
 #include "xpu/sycl/types.hpp"
 
 namespace dnnl {

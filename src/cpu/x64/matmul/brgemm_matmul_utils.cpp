@@ -1054,7 +1054,7 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
 
     const int nthr = bgmmc.nthr;
 
-    dim_t max_m_blk = nstl::min(256, matmul.M);
+    dim_t max_m_blk = nstl::min(128, matmul.M);
     dim_t min_m_blk = max_m_blk;
 
     int n_blk = bgmmc.N_blk;
@@ -1432,7 +1432,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_gemv
             = is_gemv_applicable(bgmmc, bm_conf_utils, src_md, weights_md);
 
-    if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.isa == avx2) {
+    if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.isa == avx2
+            && bgmmc.M == 1) {
         // AVX2 implementation has a dedicated GEMV code path optimized
         // for the N=1 case, which is the only scenario guaranteed to
         // perform on par or better than the GEMM implementation.

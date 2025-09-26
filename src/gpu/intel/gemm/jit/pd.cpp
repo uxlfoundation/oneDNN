@@ -272,7 +272,6 @@ status_t pd_t::init_attrs() {
 }
 
 bool pd_t::zp_ok() {
-    auto &attr_gs = attr()->precomputed_reductions_;
     auto &attr_zps = attr()->zero_points_;
     auto &a_zps = attr_zps.get(DNNL_ARG_A);
     auto &b_zps = attr_zps.get(DNNL_ARG_B);
@@ -295,11 +294,6 @@ bool pd_t::zp_ok() {
             const auto a_q2d_group_n = a_zps.get_group(1);
             // Non-trivial N group unsupported.
             if (a_q2d_group_n != 1) return false;
-            // Zero points with non-trivial groups only supported with
-            // precomputed reductions or when target tensor is being dequantized.
-            if (attr_gs.has_default_values(DNNL_ARG_B) && dy_quant_enabled_
-                    && !utils::one_of(d->a_type(), s4, u4) && a_zp_2d())
-                return false;
         } else {
             if (!utils::one_of(cmask_a_, 0, mask_per_oc, mask_per_ic))
                 return false;
@@ -320,11 +314,6 @@ bool pd_t::zp_ok() {
             const auto b_q2d_group_n = b_zps.get_group(0);
             // Non-trivial M group unsupported.
             if (!utils::one_of(b_q2d_group_n, 1, desc()->n())) return false;
-            // Zero points with non-trivial groups only supported
-            // when target tensor is being dequantized.
-            if (dy_quant_enabled_ && !utils::one_of(d->b_type(), s4, u4)
-                    && b_zp_2d())
-                return false;
         } else {
             if (!utils::one_of(
                         cmask_b_, 0, mask_scalar, mask_per_oc | mask_per_ic))

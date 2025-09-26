@@ -478,8 +478,7 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     if (b_quant.zp_ndims >= 0) problem_.bOffset = ABOffset::Calc;
     problem_.aoPtrDims = a_quant.zp_ndims;
     problem_.boPtrDims = b_quant.zp_ndims;
-    problem_.AO.layout = MatrixLayout::N;
-    problem_.BO.layout = MatrixLayout::T;
+    problem_.AO.layout = problem_.BO.layout = MatrixLayout::N;
     problem_.AO.crosspack = problem_.BO.crosspack = 1;
     problem_.AO.packSize = problem_.BO.packSize = 0;
     problem_.A_scale = problem_.Ag = problem_.AO;
@@ -628,10 +627,11 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     // Workaround limited attribute support with int8 dynamic quant,
     // upconvert to f16.
     mod_match(base,
-            ((a_quant.scale_ndims >= 2 || b_quant.scale_ndims >= 2)
-                    && a_quant.zp_ndims > -1 && problem_.Ta_ext.isInt8()
-                    && problem_.Tb_ext.isInt8() && problem_.Tc.isFP()
-                    && !problem_.forceGroupSumsA && !problem_.forceGroupSumsB),
+            ((a_quant.scale_ndims >= 2 || b_quant.scale_ndims >= 2
+                     || a_quant.zp_ndims > -1 || b_quant.zp_ndims > -1)
+                    && problem_.Ta_ext.isInt8() && problem_.Tb_ext.isInt8()
+                    && !problem_.forceGroupSumsA && !problem_.forceGroupSumsB)
+                    && problem_.Tc.isFP(),
             [](Type dt) -> const char * {
                 if (dt.isInt8()) return "[OH]";
                 return nullptr;

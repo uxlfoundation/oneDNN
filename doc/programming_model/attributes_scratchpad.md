@@ -1,5 +1,5 @@
-Primitive Attributes: Scratchpad {#dev_guide_attributes_scratchpad}
-===================================================================
+Scratchpad {#dev_guide_attributes_scratchpad}
+=============================================
 
 Some primitives might require a temporary buffer while performing their
 computations. For instance, the operations that do not have enough independent

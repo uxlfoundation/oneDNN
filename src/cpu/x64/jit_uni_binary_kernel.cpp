@@ -80,13 +80,11 @@ size_t binary_kernel_t::get_tail_size() const {
         if (conf_.op_type == op_t::n_spatial_c)
             nelems = dims[1];
         else if (conf_.op_type == op_t::n_c_spatial && ndims >= 3) {
-            const auto postops_per_w = conf_.postops_per_w_broadcast_exists;
             nelems = conf_.bcast_type == bcast_t::per_w
                     ? utils::array_product(
                             dims + (ndims - conf_.not_bcasted_sp_dims),
                             conf_.not_bcasted_sp_dims)
-                    : utils::array_product(dims + 2 + postops_per_w,
-                            ndims - 2 - postops_per_w);
+                    : utils::array_product(dims + 2, ndims - 2);
         }
     }
     // it's float due to for bfloat16 we still load 16 elements, not 32.

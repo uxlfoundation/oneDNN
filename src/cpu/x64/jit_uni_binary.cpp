@@ -111,31 +111,6 @@ static bool data_format_supported(
             || (is_superset(isa, sse41) && blk_size == 4);
 }
 
-// TODO: Temporary workaround for unsupported per_w binary post-op broadcasting patterns.
-// Remove this code and add proper kernel support for these cases.
-static bool is_per_w_skipped(const memory_desc_wrapper &src0_md,
-        const memory_desc_wrapper &src1_md) {
-    const dims_t &src0_dims = src0_md.dims();
-    const dims_t &src1_dims = src1_md.dims();
-    const int ndims = src0_md.ndims();
-
-    if (ndims != 4) return false;
-
-    // src0: 1 x a x b x c, src1: 1 x a x 1 x 1
-    if (src0_dims[0] == 1 && src1_dims[0] == 1 && src0_dims[1] == src1_dims[1]
-            && src1_dims[2] == 1 && src1_dims[3] == 1) {
-        return true;
-    }
-
-    // src0: 1 x a x b x c, src1: 1 x 1 x b x c
-    if (src0_dims[0] == 1 && src1_dims[0] == 1 && src1_dims[1] == 1
-            && src0_dims[2] == src1_dims[2] && src0_dims[3] == src1_dims[3]) {
-        return true;
-    }
-
-    return false;
-}
-
 status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     using sm = primitive_attr_t::skip_mask_t;
 
@@ -172,13 +147,6 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_BINARY(attr_.set_default_formats(dst_md(0)) == status::success,
             VERBOSE_UNSUPPORTED_POSTOP);
-
-    conf_.postops_per_w_broadcast_exists
-            = binary_injector::any_binary_postop_rhs_per_w_broadcast(
-                    po, src0_md_, get_supported_postops_bcast_strategies());
-    VDISPATCH_BINARY(!(conf_.postops_per_w_broadcast_exists
-                             && is_per_w_skipped(src0_md_, src1_md_)),
-            "unsupported dimensions for per_w broadcasting pattern");
     // All operations over blocking descriptors should have md initialized.
     conf_.is_src_different_layouts = !compare_layouts(src0_md_, src1_md_);
     VDISPATCH_BINARY(post_ops_ok(attr(), src_md(0), dst_md(),
@@ -201,6 +169,9 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
 
     conf_.postops_per_oc_broadcast_exists
             = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
+                    po, src0_md_, get_supported_postops_bcast_strategies());
+    conf_.postops_per_w_broadcast_exists
+            = binary_injector::any_binary_postop_rhs_per_w_broadcast(
                     po, src0_md_, get_supported_postops_bcast_strategies());
     conf_.is_bf16 = conf_.dst_type == bf16;
     conf_.is_f16 = conf_.dst_type == f16;
@@ -745,6 +716,25 @@ status_t jit_uni_binary_t::init(engine_t *engine) {
     return kernel_->create_kernel();
 }
 
+void expand_post_ops_binary_rhs_per_w(const post_ops_t &post_ops,
+        const std::vector<const void *> &orig_post_ops_binary_rhs_arg_vec,
+        dim_t simd_w, std::vector<const void *> &post_ops_binary_rhs_arg_vec,
+        std::vector<float> &expanded_rhs) {
+    const auto &rhs_md = post_ops.entry_[0].binary.src1_desc;
+    const memory_desc_wrapper rhs_md_wrap(&rhs_md);
+    dim_t rhs_len = rhs_md_wrap.nelems();
+
+    dim_t expanded_len = ((rhs_len + simd_w - 1) / simd_w) * simd_w * 2;
+    expanded_rhs.resize(expanded_len);
+
+    const float *orig_rhs = reinterpret_cast<const float *>(
+            orig_post_ops_binary_rhs_arg_vec[0]);
+    for (dim_t i = 0; i < expanded_len; ++i)
+        expanded_rhs[i] = orig_rhs[i % rhs_len];
+
+    post_ops_binary_rhs_arg_vec = {expanded_rhs.data()};
+}
+
 void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
         const data_t *src1, const data_t *src2, data_t *dst,
         const float *scale0, const float *scale1,
@@ -949,14 +939,11 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
     const auto ndims = src0_d.ndims();
     const auto &dims = src0_d.dims();
 
-    const bool postops_per_w_broadcast_exists
-            = pd()->get_conf().postops_per_w_broadcast_exists;
     const dim_t MB = dims[0];
     dim_t C = (ndims >= 2) ? dims[1] : 1;
     dim_t SP = (ndims >= 3) ? utils::array_product(dims + 2, ndims - 2) : 1;
 
     const auto &bcast_dims = pd()->broadcast_dims();
-
 
     const dim_t nelems_slice_src0
             = utils::array_product(src0_d.padded_dims() + 1, ndims - 1);
@@ -1043,22 +1030,6 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
             }
         };
 
-        const auto &post_ops = pd()->attr()->post_ops_;
-        const auto &rhs_md = post_ops.entry_[0].binary.src1_desc;
-        const memory_desc_wrapper rhs_md_wrap(&rhs_md);
-        dim_t rhs_len = rhs_md_wrap.nelems();
-
-        dim_t expanded_len = simd_w + (simd_w % rhs_len);
-        std::vector<float> expanded_rhs(expanded_len);
-
-        const float *orig_rhs = reinterpret_cast<const float *>(
-                post_ops_binary_rhs_arg_vec[0]);
-        for (dim_t i = 0; i < expanded_len; ++i) {
-            expanded_rhs[i] = orig_rhs[i % rhs_len];
-        }
-        std::vector<const void *> expanded_post_ops_binary_rhs_arg_vec
-                = {expanded_rhs.data()};
-
         // Compute strategy:
         // Each line of spatial is individual, parallel over MB and C.
         parallel_nd(MB, C, [&](dim_t mb, dim_t c) {
@@ -1071,9 +1042,7 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
             p.src2 = src2 + off * src2_type_size;
             p.scales_src0 = scale0;
             p.scales_src1 = scale1;
-            p.post_ops_binary_rhs_arg_vec
-                    = expanded_post_ops_binary_rhs_arg_vec.data();
-            //p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
+            p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
             p.dst_orig = dst;
             (*kernel)(&p);
         });
@@ -1217,8 +1186,10 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
 
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     const auto &post_ops = pd()->attr()->post_ops_;
-    const auto &post_ops_binary_rhs_arg_vec
+    const auto &orig_post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(post_ops, ctx);
+    std::vector<const void *> post_ops_binary_rhs_arg_vec
+            = orig_post_ops_binary_rhs_arg_vec;
     const float *scales[2];
     ASSIGN_ARG_SCALE_VALUE(scales[0], DNNL_ARG_SRC_0);
     ASSIGN_ARG_SCALE_VALUE(scales[1], DNNL_ARG_SRC_1);
@@ -1254,6 +1225,13 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
     const bool blocked_oc_tail = op_type == op_t::c_blocked && has_oc_tail
             && (with_postops || point_broadcast || bcast_type == bcast_t::per_w
                     || vector_overwrite);
+
+    std::vector<float> expanded_post_ops_rhs_storage;
+    if (postops_per_w_broadcast_exists) {
+        expand_post_ops_binary_rhs_per_w(post_ops,
+                orig_post_ops_binary_rhs_arg_vec, simd_w,
+                post_ops_binary_rhs_arg_vec, expanded_post_ops_rhs_storage);
+    }
 
     if ((bcast_type == bcast_t::none || point_broadcast_no_oc_tail)
             && !postops_per_oc_broadcast_exists && !blocked_oc_tail

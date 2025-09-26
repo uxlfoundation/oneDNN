@@ -78,7 +78,6 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
         float b_scale = 1;
         if (B_SCALES) load(&b_scale, b_scales + scale_stride * b_scale_dim);
         if (A_SCALES || B_SCALES) acc *= a_scale * b_scale;
-
         if (bias) {
             ACC_DATA_T b = load(b, bias + BIAS_OFF(d0, d1, d2, d3, 0, 0));
             acc += b;
@@ -89,13 +88,13 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
 
         accumulator = AS_POST_OP_DATA_T(acc);
         APPLY_POST_OPS_SERIAL(accumulator, sum_src, d0, d1, d2, d3, 0, 0);
-
+#if WITH_DYNAMIC_DST_SCALE == 0
         if (C_SCALES) {
             POST_OP_DATA_T c_scale = load(c_scale, c_scales);
             accumulator /= c_scale;
         }
+#endif
         if (DST_ZERO_POINT) accumulator += dst_zp[0];
     }
-
     write(dst + data_idx, accumulator);
 }

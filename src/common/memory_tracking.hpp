@@ -426,7 +426,7 @@ struct registry_t {
 
     registrar_t registrar();
     grantor_t grantor(const memory_storage_t *mem_storage,
-            const exec_ctx_t &exec_ctx) const;
+            const void *base_mem_storage_host_ptr) const;
 
     template <typename return_type>
     class common_iterator_t {
@@ -512,16 +512,16 @@ protected:
 struct grantor_t {
     grantor_t(const registry_t &registry,
             const memory_storage_t *base_mem_storage,
-            const exec_ctx_t &exec_ctx)
+            const void *base_mem_storage_host_ptr)
         : registry_(registry)
         , prefix_(0)
         , base_mem_storage_(base_mem_storage)
-        , exec_ctx_(&exec_ctx) {}
+        , base_mem_storage_host_ptr_(base_mem_storage_host_ptr) {}
     grantor_t(const grantor_t &parent, const key_t &prefix)
         : registry_(parent.registry_)
         , prefix_(make_prefix(parent.prefix_, prefix))
         , base_mem_storage_(parent.base_mem_storage_)
-        , exec_ctx_(parent.exec_ctx_) {}
+        , base_mem_storage_host_ptr_(parent.base_mem_storage_host_ptr_) {}
 
     template <typename T = void>
     T *get(const key_t &key, size_t *size = nullptr) const {
@@ -534,7 +534,7 @@ struct grantor_t {
         if (size) *size = e.size;
         if (e.size == 0) return nullptr;
 
-        char *host_storage_ptr = get_host_storage_ptr(base_mem_storage_);
+        char *host_storage_ptr = host_ptr(base_mem_storage_);
         char *base_ptr = host_storage_ptr + base_mem_storage_->base_offset();
         return (T *)e.compute_ptr(base_ptr);
     }
@@ -554,7 +554,7 @@ struct grantor_t {
             // passed to nested primitives. It's required to keep host mapping
             // working. It's working because handles in memory storages are keys
             // in mapping.
-            char *host_storage_ptr = get_host_storage_ptr(base_mem_storage_);
+            char *host_storage_ptr = host_ptr(base_mem_storage_);
             char *base_ptr
                     = host_storage_ptr + base_mem_storage_->base_offset();
             char *aligned_ptr = (char *)e.compute_ptr(base_ptr);
@@ -575,25 +575,25 @@ struct grantor_t {
     const memory_storage_t *get_base_storage() const {
         return base_mem_storage_;
     }
+    const void *get_base_mem_storage_host_ptr() const {
+        return base_mem_storage_host_ptr_;
+    }
     const registry_t &get_registry() const { return registry_; }
 
 protected:
     const registry_t &registry_;
     const key_t prefix_;
-    const memory_storage_t *base_mem_storage_;
-    const exec_ctx_t *exec_ctx_;
+    const memory_storage_t *base_mem_storage_ = nullptr;
+    const void *base_mem_storage_host_ptr_ = nullptr;
 
 private:
-    char *get_host_storage_ptr(const memory_storage_t *storage) const;
+    // Same as the one in `exec_ctx_t` but based on `base_mem_storage_host_ptr_`
+    char *host_ptr(const memory_storage_t *mem_storage) const;
     bool is_cpu_engine(const memory_storage_t *mem_storage) const;
 };
 
 inline registrar_t registry_t::registrar() {
     return registrar_t(*this);
-}
-inline grantor_t registry_t::grantor(
-        const memory_storage_t *mem_storage, const exec_ctx_t &exec_ctx) const {
-    return grantor_t(*this, mem_storage, exec_ctx);
 }
 
 } // namespace memory_tracking

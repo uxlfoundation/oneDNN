@@ -147,6 +147,7 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_BINARY(attr_.set_default_formats(dst_md(0)) == status::success,
             VERBOSE_UNSUPPORTED_POSTOP);
+
     // All operations over blocking descriptors should have md initialized.
     conf_.is_src_different_layouts = !compare_layouts(src0_md_, src1_md_);
     VDISPATCH_BINARY(post_ops_ok(attr(), src_md(0), dst_md(),
@@ -938,10 +939,9 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
 
     const auto ndims = src0_d.ndims();
     const auto &dims = src0_d.dims();
-
     const dim_t MB = dims[0];
-    dim_t C = (ndims >= 2) ? dims[1] : 1;
-    dim_t SP = (ndims >= 3) ? utils::array_product(dims + 2, ndims - 2) : 1;
+    const dim_t C = ndims >= 2 ? dims[1] : 1;
+    const dim_t SP = ndims >= 3 ? utils::array_product(dims + 2, ndims - 2) : 1;
 
     const auto &bcast_dims = pd()->broadcast_dims();
 

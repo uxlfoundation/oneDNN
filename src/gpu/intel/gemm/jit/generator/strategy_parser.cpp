@@ -667,6 +667,18 @@ void adjustStrategy(HW hw, const GEMMProblem &problem, GEMMStrategy &strategy, c
     // Finally, no remainder handling needed for GEMV-type kernels.
     if (strategy.unroll[LoopM] * strategy.wg[LoopM] == 1) strategy.remHandling[LoopM] = RemainderHandling::Ignore;
     if (strategy.unroll[LoopN] * strategy.wg[LoopN] == 1) strategy.remHandling[LoopN] = RemainderHandling::Ignore;
+
+    // Set kVariable related params
+    if (strategy.kParallelVariable){
+            strategy.fuseBeta = true;
+            strategy.fusePostOps = true;
+            strategy.C.atomic = true;
+            strategy.CO.atomic = problem.sumA || problem.sumB;
+            if (strategy.CO.atomic)
+                strategy.CO.forceA64();
+	    strategy.kInterleave = 0;
+    }
+
 }
 
 const char *parseLayout(const char *s, MatrixAddressing &atype)

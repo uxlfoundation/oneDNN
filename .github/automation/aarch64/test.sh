@@ -32,5 +32,5 @@ if [[ "$ONEDNN_THREADING" == "SEQ" ]]; then
 fi
 
 set -x
-ctest --no-tests=error --output-on-failure -E $("${SCRIPT_DIR}"/skipped-tests.sh)
+ctest --no-tests=error --output-on-failure -E $("${SCRIPT_DIR}"/skipped-tests.sh) --output-junit $1
 set +x

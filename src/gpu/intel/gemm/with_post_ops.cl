@@ -28,9 +28,41 @@
 
 __kernel void gemm_post_ops(__global SRC_DATA_T *src,
         __global BIAS_DATA_T *bias, __global DST_DATA_T *dst POST_OP_ARGS,
-        global float *a_scales, global WEI_SCALES_DATA_T *b_scales,
-        global DST_SCALES_DATA_T *c_scales, int scale_stride,
-        global int *dst_zp) {
+#if WITH_HOST_SRC_SCALE
+        float a_scale_value,
+#else
+        global float *a_scales,
+#endif
+#if WITH_HOST_WEI_SCALE
+        WEI_SCALES_DATA_T b_scale_value,
+#else
+        global WEI_SCALES_DATA_T *b_scales,
+#endif
+#if WITH_HOST_DST_SCALE
+        DST_SCALES_DATA_T c_scale_value,
+#else
+        global DST_SCALES_DATA_T *c_scales,
+#endif
+        int scale_stride,
+#if WITH_HOST_DST_ZP
+        int dst_zp_value
+#else
+        global int *dst_zp
+#endif
+) {
+#if WITH_HOST_SRC_SCALE
+    float *a_scales = &a_scale_value;
+#endif
+#if WITH_HOST_WEI_SCALE
+    WEI_SCALES_DATA_T *b_scales = &b_scale_value;
+#endif
+#if WITH_HOST_DST_SCALE
+    DST_SCALES_DATA_T *c_scales = &c_scale_value;
+#endif
+#if WITH_HOST_DST_ZP
+    int *dst_zp = &dst_zp_value;
+#endif
+
     const uint d0 = GWS_GET_D0();
     const uint d1 = GWS_GET_D1();
     const uint d2 = GWS_GET_D2();

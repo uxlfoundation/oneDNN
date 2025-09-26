@@ -2240,9 +2240,11 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                 && IMPLICATION(jcp.wei_dt == f16, isa != avx10_1_512)
                 && jcp.ic * rd_ksize > rd_padded_block;
 
+        // Disable os blocking to avoid using large buffer
+        // The value is empirical
         jcp.is_os_blocking = jcp.f_pad < jcp.kd && jcp.back_pad < jcp.kd
                 && jcp.t_pad < jcp.kh && jcp.b_pad < jcp.kh
-                && jcp.r_pad < jcp.kw && jcp.l_pad < jcp.kw;
+                && jcp.r_pad < jcp.kw && jcp.l_pad < jcp.kw && jcp.iwp < 10800;
 
         if (is_amx(isa)
                 && IMPLICATION(!jcp.is_relo(),

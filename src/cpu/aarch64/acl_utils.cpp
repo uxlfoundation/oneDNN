@@ -208,7 +208,7 @@ int reorder_dimensions_by_stride(std::vector<memory_desc_t *> permuted_mds,
         std::vector<const memory_desc_t *> mds) {
 
     // Vectors must be the same length and not empty
-    if (permuted_mds.size() != mds.size() || mds.empty()) return 0;
+    if (permuted_mds.size() != mds.size() || (mds.size() != 0)) return 0;
 
     const dim_t ndims = mds[0]->ndims;
 

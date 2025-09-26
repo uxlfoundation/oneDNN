@@ -71,7 +71,8 @@ jobs:
     strategy:
       matrix:
         config: [
-          { name: c7g, label: ah-ubuntu_22_04-c7g_m-100, threading: OMP, toolset: gcc, build: Release, testset: NIGHTLY }
+          { name: c7g, label: ah-ubuntu_22_04-c7g_m-100, threading: OMP, toolset: gcc, build: Release, testset: NIGHTLY },
+          { name: c8g, label: ah-ubuntu_24_04-c8g_m, threading: OMP, toolset: gcc, build: Release, testset: NIGHTLY }
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}

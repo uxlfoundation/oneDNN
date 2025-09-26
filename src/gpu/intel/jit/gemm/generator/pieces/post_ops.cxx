@@ -334,6 +334,7 @@ bool Generator<hw>::gemmBinaryOpC(BinaryOp op, bool row, bool column,
             }
 
             mark(lDoneLoading);
+            if (simtCF && checkRemY) join(16);
             if (checkRemY)
                 cmp(simt | gt | state.flagAP, remY, y0);
 

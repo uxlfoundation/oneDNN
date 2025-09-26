@@ -92,9 +92,7 @@ bool post_ops_ok(jit_brdgmm_conv_conf_t &jcp, const primitive_attr_t &attr,
 
 template <cpu_isa_t isa>
 status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
-
     using skip_mask_t = primitive_attr_t::skip_mask_t;
-
     const auto &cd = *desc();
     const auto src_type = cd.src_desc.data_type;
     const auto wei_type = cd.weights_desc.data_type;
@@ -103,6 +101,7 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     // TODO: support s8s8 conv
     const bool is_f32 = everyone_is(f32, src_type, wei_type, dst_type);
+    const bool is_bf16 = everyone_is(bf16, src_type, wei_type, dst_type);
     const bool is_int8 = one_of(src_type, u8) && wei_type == s8
             && one_of(dst_type, s32, f32, u8, s8);
 
@@ -112,7 +111,7 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     if (is_int8) skip_mask |= skip_mask_t::scales;
 
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
-            && one_of(true, is_f32, is_int8) && (isa != isa_undef)
+            && one_of(true, is_f32, is_int8, is_bf16) && (isa != isa_undef)
             && mayiuse(isa)
             && IMPLICATION(is_int8,
                     one_of(bia_type, data_type::undef, f32, s32, s8, u8))
@@ -176,10 +175,8 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     if (!(everyone_is(1, jcp.ic, jcp.oc))) { return status::unimplemented; }
 
     const auto def_data_tag = is_3d ? format_tag::ndhwc : format_tag::nhwc;
-    const bool any_eligible = (cd.prop_kind == prop_kind::forward_inference
-            || is_int8 || is_3d);
-    CHECK(init_tag(src_md_, src_d, def_data_tag, any_eligible));
-    CHECK(init_tag(dst_md_, dst_d, def_data_tag, any_eligible));
+    CHECK(init_tag(src_md_, src_d, def_data_tag, true));
+    CHECK(init_tag(dst_md_, dst_d, def_data_tag, true));
 
     if (jcp.with_bias) {
         if (bias_d.format_kind() == format_kind::any)

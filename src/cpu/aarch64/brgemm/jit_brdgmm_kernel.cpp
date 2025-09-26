@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -205,21 +206,26 @@ void jit_brdgmm_kernel_base_t::advance_A_B_matrices() {
 
 void jit_brdgmm_kernel_base_t::cvt2ps(data_type_t type_in, const ZReg vmm_in,
         const AdrNoOfs &op, bool mask_flag, bool store) {
+    auto mask = mask_flag ? k_mask : P_ALL_ONE;
     switch (type_in) {
         case data_type::f32:
         case data_type::s32:
-            if (mask_flag) {
-                if (store) { //Merging
-                    ld1w(vmm_tmp(0).s, k_mask / T_z, op);
-                    mov(vmm_in.s, k_mask / T_m, vmm_tmp(0).s);
-                } else //Zeroing
-                    ld1w(vmm_in.s, k_mask / T_z, op);
+            if (mask_flag && store) {
+                ld1w(vmm_tmp(0).s, mask / T_z, op);
+                mov(vmm_in.s, mask / T_m, vmm_tmp(0).s);
             } else
-                ld1w(vmm_in.s, P_ALL_ONE / T_z, op);
+                ld1w(vmm_in.s, mask / T_z, op);
             break;
-        case data_type::f16: assert(!"unsupported data type\n"); break;
-        case data_type::s8: assert(!"unsupported data type\n"); break;
-        case data_type::u8: assert(!"unsupported data type\n"); break;
+        case data_type::bf16:
+            if (mask_flag && store) {
+                ld1h(vmm_tmp(0).s, mask / T_z, op);
+                lsl(vmm_tmp(0).s, vmm_tmp(0).s, 16);
+                mov(vmm_in.s, mask / T_m, vmm_tmp(0).s);
+            } else {
+                ld1h(vmm_in.s, mask / T_z, op);
+                lsl(vmm_in.s, vmm_in.s, 16);
+            }
+            break;
         default: assert(!"unsupported data type");
     }
     if (types::is_integral_dt(type_in)) {
@@ -447,15 +453,14 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
             auto addr = ptr(X_DEFAULT_ADDR);
             auto vmm = accm(m_blocks, n_blocks, m, n, v_i);
             const bool mask_flag = n + 1 == n_blocks && has_n_tail;
+            auto mask = mask_flag ? k_mask / T_m : P_ALL_ONE / T_m;
             switch (brg.dt_d) {
                 case data_type::f32:
-                case data_type::s32:
-                    if (mask_flag)
-                        st1w(vmm.s, k_mask / T_m, addr);
-                    else
-                        st1w(vmm.s, P_ALL_ONE / T_m, addr);
+                case data_type::s32: st1w(vmm.s, mask, addr); break;
+                case data_type::bf16:
+                    bfcvt(vmm.h, mask, vmm.s);
+                    st1h(vmm.s, mask, addr);
                     break;
-                case data_type::bf16: assert(!"unsupported data type\n"); break;
                 case data_type::s8: assert(!"unsupported data type\n"); break;
                 case data_type::u8: assert(!"unsupported data type\n"); break;
                 default: assert(!"unknown dst_dt");
@@ -486,10 +491,8 @@ void jit_brdgmm_kernel_base_t::store_accumulators_without_post_ops(
         if (dt_requires_saturation) { assert(!"unsupported\n"); }
         const auto offset = C_offset(m, n, v_i);
         add_imm(X_DEFAULT_ADDR, reg_aux_C, offset, X_TMP_0);
-        if (mask_flag)
-            st1w(vmm_acc.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
-        else
-            st1w(vmm_acc.s, P_ALL_ONE / T_m, ptr(X_DEFAULT_ADDR));
+        st1w(vmm_acc.s, (mask_flag ? k_mask : P_ALL_ONE) / T_m,
+                ptr(X_DEFAULT_ADDR));
     }
 }
 
@@ -530,13 +533,11 @@ void jit_brdgmm_kernel_base_t::load_a(
             A_offset(m_i, n_i) + is_tail_block * v_i * simd_w_ * brg.typesize_A,
             X_TMP_0);
     const auto addr = ptr(X_DEFAULT_ADDR);
+    auto mask = mask_flag ? k_mask / T_z : P_ALL_ONE / T_z;
     if (brg.is_f32) {
-        if (mask_flag) {
-            ld1w(vmma.s, k_mask / T_z, addr);
-        } else
-            ld1w(vmma.s, P_ALL_ONE / T_z, addr);
+        ld1w(vmma.s, mask, addr);
     } else if (brg.is_bf16) {
-        assert(!"unsupported\n");
+        ld1h(vmma.s, mask, addr);
     } else if (brg.is_int8) {
         assert(!"unsupported\n");
     }
@@ -558,7 +559,7 @@ void jit_brdgmm_kernel_base_t::load_b(
     } else if (brg.is_int8) {
         assert(!"unsupported\n");
     } else if (brg.is_bf16) {
-        assert(!"unsupported\n");
+        ld1h(vmmb.s, P_ALL_ONE / T_z, addr);
     }
 }
 
@@ -578,19 +579,15 @@ void jit_brdgmm_kernel_base_t::brdgmm_microkernel(int m_blocks, int n_blocks,
                 const bool mask_flag = has_tail && (n_i + 1 == n_blocks);
                 add_imm(X_DEFAULT_ADDR, reg_aux_A, A_offset(m_i, n_i), X_TMP_0);
                 const auto addr = ptr(X_DEFAULT_ADDR);
-                if (mask_flag) {
-                    ld1w(z_tmp.s, k_mask / T_z, addr);
-                    fmla(vmm_acc.s, k_mask / T_m, vmmb.s, z_tmp.s);
-                } else {
-                    ld1w(z_tmp.s, P_ALL_ONE / T_z, addr);
-                    fmla(vmm_acc.s, P_ALL_ONE / T_m, vmmb.s, z_tmp.s);
-                }
+                auto mask = mask_flag ? k_mask : P_ALL_ONE;
+                ld1w(z_tmp.s, mask / T_z, addr);
+                fmla(vmm_acc.s, mask / T_m, vmmb.s, z_tmp.s);
             } else {
                 fmla(vmm_acc.s, P_ALL_ONE / T_m, vmma.s, vmmb.s);
             }
             pop_z_tmp(z_tmp);
         } else if (brg.is_bf16) {
-            assert(!"unsupported\n");
+            bfdot(vmm_acc.s, vmmb.h, vmma.h);
         } else if (brg.is_int8) {
             assert(!"unsupported\n");
         }

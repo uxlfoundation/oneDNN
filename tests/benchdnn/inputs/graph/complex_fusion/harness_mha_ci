@@ -16,6 +16,7 @@
 --reset --dt=0:f32+1:f32+4:f32+7:f32+10:f32+13:f32+14:f32 --case=complex_fusion/mha/sdpa-plain-training-forward-bf16-f32.json
 --reset --case=complex_fusion/mha/sdpa-plain-training-backward-f32.json
 --reset --dt=0:f32+1:f32+4:f32+10:f32+13:f32+14:f32 --case=complex_fusion/mha/gqa-plain-training-forward-bf16-f32.json
+# a larger shape can fail with correctness issue
 --reset --case=complex_fusion/mha/gqa-plain-training-backward-f32.json
 
 # f16 inputs + f32 intermediates + f16 outputs

@@ -129,7 +129,9 @@ status_t reusable_ref_t::pd_t::init_conf(impl::engine_t *engine) {
     }
 
     std::vector<subproblem_t> subprbs;
-    CHECK(generate_phases(src_md(), dst_md(), subprbs));
+    VDISPATCH_REDUCTION_IC(
+            generate_phases(src_md(), dst_md(), subprbs) == status::success,
+            "failed to create sub-problems");
 
     //DST zero-padding not supported on reduction dims
     subproblem_t &last_subprb = subprbs.back();
@@ -176,7 +178,10 @@ status_t reusable_ref_t::pd_t::init_conf(impl::engine_t *engine) {
         phases.emplace_back(subprbs[i], phase_alg, src_dt, dst_dt,
                 *intel_engine->device_info(), gpu_attr);
         auto &phase = phases.back();
-        CHECK(phase.init_dispatcher(subprbs[i], *intel_engine, gpu_attr));
+        VDISPATCH_REDUCTION_IC(
+                phase.init_dispatcher(subprbs[i], *intel_engine, gpu_attr)
+                        == status::success,
+                "failed to initialize dispatcher for subproblem");
     }
 
     // Compute div from basic mdw dims

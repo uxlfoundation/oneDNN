@@ -50,6 +50,7 @@ public:
         , set_nt_(set_nt)
         , need_prefetch_a_(need_prefetch_a)
         , need_prefetch_b_(need_prefetch_b)
+        , use_fused_copy_a_(use_fused_copy_a)
         , brgemm_batch_size_(brgemm_batch_size)
         , current_lda_(LDA)
         , need_buf_c_(use_buffer_c)
@@ -81,7 +82,7 @@ protected:
     bool is_a_nt_ {true}, is_b_nt_ {true};
     bool set_nt_ {false};
     bool need_prefetch_a_ {false}, need_prefetch_b_ {false};
-
+    bool use_fused_copy_a_ {false};
     dim_t brgemm_batch_size_ {0};
     dim_t current_lda_ {0};
     bool need_buf_c_ {false}, need_buf_a_ {false};

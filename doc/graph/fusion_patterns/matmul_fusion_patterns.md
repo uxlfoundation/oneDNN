@@ -36,6 +36,12 @@ nodes are optional.
    - **Select**: If present, must follow binary/unary operations (if present)
      and can only appear once.
 
+3. **F2F Conversion Subgraph**: Converts the output tensor from floating-point to
+   another floating-point. It is constructed by a [TypeCast](@ref dev_guide_op_typecast)
+   operation.
+
+   ![f2f_conversion_subgraph](images/f2f_conversion.png)
+
 ## Data Types
 
 oneDNN supports the following combinations of data types for src, weights, bias
@@ -47,6 +53,10 @@ and dst:
 
 The definition of the data types and support status on different CPU and GPU
 platforms follow the general description in the [Data Types Guide](@ref dev_guide_data_types).
+
+## Implementation Limitations
+
+1. Epilogue Subgraph only supports f32 input, output and intermediate data type.
 
 ## Example
 

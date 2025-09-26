@@ -1196,11 +1196,31 @@ struct jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
 
     thread_info_t(const jit_sve_convolution_bwd_weights_t *self,
             const exec_ctx_t &ctx, int ithr)
-        : scratchpad(ctx.get_scratchpad_grantor()), ithr(ithr) {
-        diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
-        src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
-        diff_weights
-                = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_WEIGHTS);
+        : src(CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC))
+        , diff_dst(CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST))
+        , diff_weights(
+                  CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_WEIGHTS))
+        , scratchpad(ctx.get_scratchpad_grantor())
+        , tr_src(scratchpad.template get<src_data_t>(key_conv_tr_src))
+        , tr_src_bctx(scratchpad.template get<simple_barrier::ctx_t>(
+                  key_conv_tr_src_bctx))
+        , tr_diff_dst(scratchpad.template get<diff_dst_data_t>(
+                  key_conv_tr_diff_dst))
+        , tr_diff_dst_bctx(scratchpad.template get<simple_barrier::ctx_t>(
+                  key_conv_tr_diff_dst_bctx))
+        , wei_bia_reduction(scratchpad.template get<diff_weights_data_t>(
+                  key_conv_wei_bia_reduction))
+        , wei_bia_reduction_bctx(scratchpad.template get<simple_barrier::ctx_t>(
+                  key_conv_wei_bia_reduction_bctx))
+        , ithr(ithr)
+        , ithr_ic_b(ithr % self->nthr_ic_b_)
+        , ithr_oc_b(ithr / self->nthr_ic_b_ % self->nthr_oc_b_)
+        , ithr_g(ithr / self->nthr_ic_b_ / self->nthr_oc_b_ % self->nthr_g_)
+        , ithr_mb(ithr / self->nthr_ic_b_ / self->nthr_oc_b_ / self->nthr_g_)
+        , ithr_but_oc((ithr_mb * self->nthr_g_ + ithr_g) * self->nthr_ic_b_
+                  + ithr_ic_b)
+        , ithr_but_ic((ithr_mb * self->nthr_g_ + ithr_g) * self->nthr_oc_b_
+                  + ithr_oc_b) {
         const auto &jcp = self->kernel_->jcp;
         const bool is_bias_padded = self->pd()->with_bias()
                 && jcp.oc_without_padding % jcp.oc_block != 0;
@@ -1209,47 +1229,26 @@ struct jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
                         key_conv_padded_bias)
                 : CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_BIAS);
 
-        tr_src = scratchpad.template get<src_data_t>(key_conv_tr_src);
-        tr_src_bctx = scratchpad.template get<simple_barrier::ctx_t>(
-                key_conv_tr_src_bctx);
-
-        tr_diff_dst = scratchpad.template get<diff_dst_data_t>(
-                key_conv_tr_diff_dst);
-        tr_diff_dst_bctx = scratchpad.template get<simple_barrier::ctx_t>(
-                key_conv_tr_diff_dst_bctx);
-
-        wei_bia_reduction = scratchpad.template get<diff_weights_data_t>(
-                key_conv_wei_bia_reduction);
-        wei_bia_reduction_bctx = scratchpad.template get<simple_barrier::ctx_t>(
-                key_conv_wei_bia_reduction_bctx);
-
-        ithr_ic_b = ithr % self->nthr_ic_b_;
-        ithr_oc_b = ithr / self->nthr_ic_b_ % self->nthr_oc_b_;
-        ithr_g = ithr / self->nthr_ic_b_ / self->nthr_oc_b_ % self->nthr_g_;
-        ithr_mb = ithr / self->nthr_ic_b_ / self->nthr_oc_b_ / self->nthr_g_;
-
-        ithr_but_oc = (ithr_mb * self->nthr_g_ + ithr_g) * self->nthr_ic_b_
-                + ithr_ic_b;
-
-        ithr_but_ic = (ithr_mb * self->nthr_g_ + ithr_g) * self->nthr_oc_b_
-                + ithr_oc_b;
-
         /* reduction dimension */
         int oh_reduce = jcp.harness == harness_2d_reduction ? jcp.oh : 1;
         balance211(jcp.mb * jcp.od * oh_reduce, self->nthr_mb_, ithr_mb,
                 img_start, img_end);
+        // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
         img_work = img_end - img_start;
 
         /* independent dimensions */
         balance211(jcp.ngroups, self->nthr_g_, ithr_g, g_start, g_end);
+        // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
         g_work = g_end - g_start;
 
         balance211(
                 jcp.nb_oc, self->nthr_oc_b_, ithr_oc_b, oc_b_start, oc_b_end);
+        // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
         oc_b_work = oc_b_end - oc_b_start;
 
         balance211(
                 jcp.nb_ic, self->nthr_ic_b_, ithr_ic_b, ic_b_start, ic_b_end);
+        // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
         ic_b_work = ic_b_end - ic_b_start;
     }
 };

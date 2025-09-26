@@ -626,11 +626,11 @@ struct jit_softmax_base_t : public jit_generator {
         , pd_(pd)
         , src_d_(pd_->is_fwd() ? pd_->src_md() : pd_->diff_src_md())
         , dst_d_(pd_->dst_md())
-        , diff_dst_d_(pd_->diff_dst_md()) {
-        simd_w_ = vlen / sizeof(float); // bf16 works on ymms
-        need_scratchpad_ = utils::one_of(
-                dst_d_.data_type(), data_type::u8, data_type::s8);
-    }
+        , diff_dst_d_(pd_->diff_dst_md())
+        , need_scratchpad_(utils::one_of(
+                  dst_d_.data_type(), data_type::u8, data_type::s8))
+        , simd_w_(vlen / sizeof(float)) // bf16 works on ymms
+    {}
 };
 
 template <cpu_isa_t isa>

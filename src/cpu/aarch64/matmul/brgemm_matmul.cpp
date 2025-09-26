@@ -1,7 +1,8 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
+*
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
@@ -727,13 +728,14 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     brg_matmul_exec_ctx_t(const exec_ctx_t &ctx, const pd_t *pd,
             const float *oscales, const float *dst_scales,
             matmul_helper_t &helper)
-        : bgmmc_(pd->get_brgemm_matmul_conf()) {
-
-        data_A_ptr_ = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
-        data_B_ptr_ = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
-        data_C_ptr_ = CTX_OUT_MEM(char *, DNNL_ARG_DST);
-
-        bias_ptr_ = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
+        : bgmmc_(pd->get_brgemm_matmul_conf())
+        , data_A_ptr_(CTX_IN_MEM(const char *, DNNL_ARG_SRC))
+        , data_B_ptr_(CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS))
+        , data_C_ptr_(CTX_OUT_MEM(char *, DNNL_ARG_DST))
+        , wsp_tile_ptr_(nullptr)
+        , bias_ptr_(CTX_IN_MEM(const char *, DNNL_ARG_BIAS))
+        , oscales_ptr_(oscales)
+        , dst_scales_ptr_(dst_scales) {
 
         // setup scales / zp pointers
         const void *src_zero_points = CTX_IN_MEM(
@@ -761,8 +763,6 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                         dst_zero_points, 0)
                 : 0;
 
-        oscales_ptr_ = oscales;
-        dst_scales_ptr_ = dst_scales;
         memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
         const auto &bgmmc = pd->get_brgemm_matmul_conf();
 
@@ -786,8 +786,6 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         buf_D_ptr_ = (bgmmc.is_runtime_M)
                 ? scratchpad.template get<char>(key_brgemm_primitive_buffer_d)
                 : nullptr;
-
-        wsp_tile_ptr_ = nullptr;
 
         const memory_desc_wrapper weights_d(pd->weights_md(0));
         const dim_t comp_offset = bgmmc_.b_dt_sz

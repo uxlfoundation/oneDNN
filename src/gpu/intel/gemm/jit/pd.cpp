@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -277,17 +277,20 @@ status_t pd_t::init_attrs() {
 }
 
 bool pd_t::zp_ok() {
-    auto &attr_gs = attr()->precomputed_reductions_;
+    using namespace data_type;
     auto &attr_zps = attr()->zero_points_;
     auto &a_zps = attr_zps.get(DNNL_ARG_A);
     auto &b_zps = attr_zps.get(DNNL_ARG_B);
+
+    // INT4 ZPs on SRC do not expand the range in a meaningful way, skipping
+    if (utils::one_of((swap_ab() ? a_zps : b_zps).get_data_type(), s4, u4))
+        return false;
+
     int ndims = desc()->a_desc.ndims;
-    const auto d = desc();
-    using namespace data_type;
-    bool weights_upconversion
-            = ((utils::one_of(swap_ab() ? d->b_type() : d->a_type(), s4, u4)
-                       && dy_quant_enabled_)
-                    || wei_decomp_);
+    const bool a_int4 = utils::one_of(desc()->a_type(), s4, u4);
+    const bool b_int4 = utils::one_of(desc()->b_type(), s4, u4);
+    const bool weights_upconversion = wei_decomp_
+            || ((swap_ab() ? b_int4 : a_int4) && dy_quant_enabled_);
 
     if (attr_zps.has_host_scalars()) return false;
 
@@ -302,17 +305,15 @@ bool pd_t::zp_ok() {
             if (a_q2d_group_n != 1) return false;
             // Zero points with non-trivial groups only supported with
             // precomputed reductions or when target tensor is being dequantized.
-            if (attr_gs.has_default_values(DNNL_ARG_B) && dy_quant_enabled_
-                    && !utils::one_of(d->a_type(), s4, u4) && a_zp_2d())
+            if (attr()->precomputed_reductions_.has_default_values(DNNL_ARG_B)
+                    && dy_quant_enabled_ && b_int4 && !a_int4 && a_zp_2d())
                 return false;
         } else {
             if (!utils::one_of(cmask_a_, 0, mask_per_oc, mask_per_ic))
                 return false;
             // Weights zp can only be performantly enabled during upconversion
             // for cases that perform decompression.
-            if (!wei_decomp_ && !utils::one_of(d->a_type(), s4, u4)
-                    && a_scales_2d())
-                return false;
+            if (!wei_decomp_ && !a_int4 && a_scales_2d()) return false;
         }
     }
 
@@ -327,8 +328,7 @@ bool pd_t::zp_ok() {
             if (!utils::one_of(b_q2d_group_n, 1, desc()->n())) return false;
             // Zero points with non-trivial groups only supported
             // when target tensor is being dequantized.
-            if (dy_quant_enabled_ && !utils::one_of(d->b_type(), s4, u4)
-                    && b_zp_2d())
+            if (dy_quant_enabled_ && a_int4 && !b_int4 && b_zp_2d())
                 return false;
         } else {
             if (!utils::one_of(

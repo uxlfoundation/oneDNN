@@ -796,6 +796,7 @@ struct jit_brgemm_conv_conf_t {
 
     bool use_buffer;
     dim_t buffer_size;
+    dim_t comp_ow_size;
     dim_t ker_ranges_size;
     dim_t comp_a_buffer_size;
     dim_t s8s8_comp_buffer_size;

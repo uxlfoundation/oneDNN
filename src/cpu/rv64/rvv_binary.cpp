@@ -39,29 +39,19 @@ static inline void compute_binary_rvv(const alg_kind_t alg, const void *x,
         const data_type_t dt) {
     switch (dt) {
         case data_type::f32:
-            rvv_binary_apply_f32(alg, static_cast<const float *>(x),
-                    static_cast<const float *>(y), static_cast<float *>(dst), c,
-                    len);
+            rvv_binary_apply_f32(alg, x, y, dst, c, len, dt);
             break;
         case data_type::f16:
-            rvv_binary_apply_f16(alg, static_cast<const _Float16 *>(x),
-                    static_cast<const _Float16 *>(y),
-                    static_cast<_Float16 *>(dst), c, len);
+            rvv_binary_apply_f16(alg, x, y, dst, c, len, dt);
             break;
         case data_type::s32:
-            rvv_binary_apply_s32(alg, static_cast<const int32_t *>(x),
-                    static_cast<const int32_t *>(y),
-                    static_cast<int32_t *>(dst), c, len);
+            rvv_binary_apply_s32(alg, x, y, dst, c, len, dt);
             break;
         case data_type::s8:
-            rvv_binary_apply_s8(alg, static_cast<const int8_t *>(x),
-                    static_cast<const int8_t *>(y), static_cast<int8_t *>(dst),
-                    c, len);
+            rvv_binary_apply_s8(alg, x, y, dst, c, len, dt);
             break;
         case data_type::u8:
-            rvv_binary_apply_u8(alg, static_cast<const uint8_t *>(x),
-                    static_cast<const uint8_t *>(y),
-                    static_cast<uint8_t *>(dst), c, len);
+            rvv_binary_apply_u8(alg, x, y, dst, c, len, dt);
             break;
         default: assert(!"Unsupported data type for RVV binary");
     }

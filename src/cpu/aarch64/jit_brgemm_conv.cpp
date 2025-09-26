@@ -317,7 +317,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
             && IMPLICATION(is_int8,
-                    one_of(dst_type, u8, f32)
+                    one_of(dst_type, s8, u8, s32, f32)
                             && one_of(bias_md_.data_type, data_type::undef, f32,
                                     s32, s8, u8))
             && IMPLICATION(!is_int8,
@@ -327,6 +327,16 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             && !has_zero_dim_memory() && zero_points_ok()
             && impl::is_dense_format_kind({src_md(), weights_md(), dst_md()});
     if (!ok) return status::unimplemented;
+
+    //check if postop sum is supported
+    if (attr()->post_ops_.find(primitive_kind::sum) != -1) {
+        const auto &sum_po
+                = attr()->post_ops_
+                          .entry_[attr()->post_ops_.find(primitive_kind::sum)];
+        if (!one_of(sum_po.sum.dt, data_type::f32, data_type::s32,
+                    data_type::u8, data_type::s8))
+            return status::unimplemented;
+    }
 
     CHECK(attr_scales_ok());
 

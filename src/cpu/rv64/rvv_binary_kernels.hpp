@@ -38,47 +38,83 @@ using eval_s8m1_t = vint8m1_t (*)(vint8m1_t, vint8m1_t, size_t);
 using eval_u8m1_t = vuint8m1_t (*)(vuint8m1_t, vuint8m1_t, size_t);
 
 /*** Kernel methods ***/
-static inline void rvv_binary_kernel_f32(const float *x, const float *y,
-        float *dst, const int8_t * /*c*/, dim_t len, eval_f32m1_t eval) {
+static inline void rvv_binary_kernel_f32(const void *x_base, const void *y_base,
+        void *dst_base, const int8_t * /*c*/, dim_t len, eval_f32m1_t eval,
+        const data_type_t dt) {
     for (dim_t i = 0; i < len;) {
         size_t vl = __riscv_vsetvl_e32m1(static_cast<size_t>(len - i));
-        vfloat32m1_t vx = __riscv_vle32_v_f32m1(x + i, vl);
-        vfloat32m1_t vy = __riscv_vle32_v_f32m1(y + i, vl);
+        const float *x = reinterpret_cast<const float *>(
+                static_cast<const char *>(x_base)
+                + i * types::data_type_size(dt));
+        const float *y = reinterpret_cast<const float *>(
+                static_cast<const char *>(y_base)
+                + i * types::data_type_size(dt));
+        float *dst = reinterpret_cast<float *>(
+                static_cast<char *>(dst_base) + i * types::data_type_size(dt));
+        vfloat32m1_t vx = __riscv_vle32_v_f32m1(x, vl);
+        vfloat32m1_t vy = __riscv_vle32_v_f32m1(y, vl);
         vfloat32m1_t vd = eval(vx, vy, vl);
-        __riscv_vse32_v_f32m1(dst + i, vd, vl);
+        __riscv_vse32_v_f32m1(dst, vd, vl);
         i += static_cast<dim_t>(vl);
     }
 }
-static inline void rvv_binary_kernel_s32(const int32_t *x, const int32_t *y,
-        int32_t *dst, const int8_t * /*c*/, dim_t len, eval_s32m1_t eval) {
+static inline void rvv_binary_kernel_s32(const void *x_base, const void *y_base,
+        void *dst_base, const int8_t * /*c*/, dim_t len, eval_s32m1_t eval,
+        const data_type_t dt) {
     for (dim_t i = 0; i < len;) {
         size_t vl = __riscv_vsetvl_e32m1(static_cast<size_t>(len - i));
-        vint32m1_t vx = __riscv_vle32_v_i32m1(x + i, vl);
-        vint32m1_t vy = __riscv_vle32_v_i32m1(y + i, vl);
+        const int32_t *x = reinterpret_cast<const int32_t *>(
+                static_cast<const char *>(x_base)
+                + i * types::data_type_size(dt));
+        const int32_t *y = reinterpret_cast<const int32_t *>(
+                static_cast<const char *>(y_base)
+                + i * types::data_type_size(dt));
+        int32_t *dst = reinterpret_cast<int32_t *>(
+                static_cast<char *>(dst_base) + i * types::data_type_size(dt));
+        vint32m1_t vx = __riscv_vle32_v_i32m1(x, vl);
+        vint32m1_t vy = __riscv_vle32_v_i32m1(y, vl);
         vint32m1_t vd = eval(vx, vy, vl);
-        __riscv_vse32_v_i32m1(dst + i, vd, vl);
+        __riscv_vse32_v_i32m1(dst, vd, vl);
         i += static_cast<dim_t>(vl);
     }
 }
-static inline void rvv_binary_kernel_s8(const int8_t *x, const int8_t *y,
-        int8_t *dst, const int8_t * /*c*/, dim_t len, eval_s8m1_t eval) {
+static inline void rvv_binary_kernel_s8(const void *x_base, const void *y_base,
+        void *dst_base, const int8_t * /*c*/, dim_t len, eval_s8m1_t eval,
+        const data_type_t dt) {
     for (dim_t i = 0; i < len;) {
         size_t vl = __riscv_vsetvl_e8m1(static_cast<size_t>(len - i));
-        vint8m1_t vx = __riscv_vle8_v_i8m1(x + i, vl);
-        vint8m1_t vy = __riscv_vle8_v_i8m1(y + i, vl);
+        const int8_t *x = reinterpret_cast<const int8_t *>(
+                static_cast<const char *>(x_base)
+                + i * types::data_type_size(dt));
+        const int8_t *y = reinterpret_cast<const int8_t *>(
+                static_cast<const char *>(y_base)
+                + i * types::data_type_size(dt));
+        int8_t *dst = reinterpret_cast<int8_t *>(
+                static_cast<char *>(dst_base) + i * types::data_type_size(dt));
+        vint8m1_t vx = __riscv_vle8_v_i8m1(x, vl);
+        vint8m1_t vy = __riscv_vle8_v_i8m1(y, vl);
         vint8m1_t vd = eval(vx, vy, vl);
-        __riscv_vse8_v_i8m1(dst + i, vd, vl);
+        __riscv_vse8_v_i8m1(dst, vd, vl);
         i += static_cast<dim_t>(vl);
     }
 }
-static inline void rvv_binary_kernel_u8(const uint8_t *x, const uint8_t *y,
-        uint8_t *dst, const int8_t * /*c*/, dim_t len, eval_u8m1_t eval) {
+static inline void rvv_binary_kernel_u8(const void *x_base, const void *y_base,
+        void *dst_base, const int8_t * /*c*/, dim_t len, eval_u8m1_t eval,
+        const data_type_t dt) {
     for (dim_t i = 0; i < len;) {
         size_t vl = __riscv_vsetvl_e8m1(static_cast<size_t>(len - i));
-        vuint8m1_t vx = __riscv_vle8_v_u8m1(x + i, vl);
-        vuint8m1_t vy = __riscv_vle8_v_u8m1(y + i, vl);
+        const uint8_t *x = reinterpret_cast<const uint8_t *>(
+                static_cast<const char *>(x_base)
+                + i * types::data_type_size(dt));
+        const uint8_t *y = reinterpret_cast<const uint8_t *>(
+                static_cast<const char *>(y_base)
+                + i * types::data_type_size(dt));
+        uint8_t *dst = reinterpret_cast<uint8_t *>(
+                static_cast<char *>(dst_base) + i * types::data_type_size(dt));
+        vuint8m1_t vx = __riscv_vle8_v_u8m1(x, vl);
+        vuint8m1_t vy = __riscv_vle8_v_u8m1(y, vl);
         vuint8m1_t vd = eval(vx, vy, vl);
-        __riscv_vse8_v_u8m1(dst + i, vd, vl);
+        __riscv_vse8_v_u8m1(dst, vd, vl);
         i += static_cast<dim_t>(vl);
     }
 }
@@ -530,10 +566,13 @@ inline eval_u8m1_t get_eval_u8(const alg_kind_t alg) {
 }
 
 /*** Apply methods ***/
-static inline void rvv_binary_apply_f32(const alg_kind_t alg, const float *x,
-        const float *y, float *dst, const int8_t *c, const dim_t len) {
+static inline void rvv_binary_apply_f32(const alg_kind_t alg, const void *x,
+        const void *y, void *dst, const int8_t *c, const dim_t len,
+        const data_type_t dt) {
     if (alg == alg_kind::binary_select) {
-        rvv_binary_select_kernel_f32(x, y, dst, c, len);
+        rvv_binary_select_kernel_f32(reinterpret_cast<const float *>(x),
+                reinterpret_cast<const float *>(y),
+                reinterpret_cast<float *>(dst), c, len);
         return;
     }
     auto eval = get_eval_f32(alg);
@@ -541,12 +580,15 @@ static inline void rvv_binary_apply_f32(const alg_kind_t alg, const float *x,
         assert(!"[rvv_binary_apply_f32] unknown binary alg_kind");
         return;
     }
-    rvv_binary_kernel_f32(x, y, dst, c, len, eval);
+    rvv_binary_kernel_f32(x, y, dst, c, len, eval, dt);
 }
-static inline void rvv_binary_apply_s32(const alg_kind_t alg, const int32_t *x,
-        const int32_t *y, int32_t *dst, const int8_t *c, const dim_t len) {
+static inline void rvv_binary_apply_s32(const alg_kind_t alg, const void *x,
+        const void *y, void *dst, const int8_t *c, const dim_t len,
+        const data_type_t dt) {
     if (alg == alg_kind::binary_select) {
-        rvv_binary_select_kernel_s32(x, y, dst, c, len);
+        rvv_binary_select_kernel_s32(reinterpret_cast<const int32_t *>(x),
+                reinterpret_cast<const int32_t *>(y),
+                reinterpret_cast<int32_t *>(dst), c, len);
         return;
     }
     auto eval = get_eval_s32(alg);
@@ -554,12 +596,15 @@ static inline void rvv_binary_apply_s32(const alg_kind_t alg, const int32_t *x,
         assert(!"[rvv_binary_apply_s32] unknown binary alg_kind");
         return;
     }
-    rvv_binary_kernel_s32(x, y, dst, c, len, eval);
+    rvv_binary_kernel_s32(x, y, dst, c, len, eval, dt);
 }
-static inline void rvv_binary_apply_s8(const alg_kind_t alg, const int8_t *x,
-        const int8_t *y, int8_t *dst, const int8_t *c, const dim_t len) {
+static inline void rvv_binary_apply_s8(const alg_kind_t alg, const void *x,
+        const void *y, void *dst, const int8_t *c, const dim_t len,
+        const data_type_t dt) {
     if (alg == alg_kind::binary_select) {
-        rvv_binary_select_kernel_s8(x, y, dst, c, len);
+        rvv_binary_select_kernel_s8(reinterpret_cast<const int8_t *>(x),
+                reinterpret_cast<const int8_t *>(y),
+                reinterpret_cast<int8_t *>(dst), c, len);
         return;
     }
     auto eval = get_eval_s8(alg);
@@ -567,12 +612,15 @@ static inline void rvv_binary_apply_s8(const alg_kind_t alg, const int8_t *x,
         assert(!"[rvv_binary_apply_s8] unknown binary alg_kind");
         return;
     }
-    rvv_binary_kernel_s8(x, y, dst, c, len, eval);
+    rvv_binary_kernel_s8(x, y, dst, c, len, eval, dt);
 }
-static inline void rvv_binary_apply_u8(const alg_kind_t alg, const uint8_t *x,
-        const uint8_t *y, uint8_t *dst, const int8_t *c, const dim_t len) {
+static inline void rvv_binary_apply_u8(const alg_kind_t alg, const void *x,
+        const void *y, void *dst, const int8_t *c, const dim_t len,
+        const data_type_t dt) {
     if (alg == alg_kind::binary_select) {
-        rvv_binary_select_kernel_u8(x, y, dst, c, len);
+        rvv_binary_select_kernel_u8(reinterpret_cast<const uint8_t *>(x),
+                reinterpret_cast<const uint8_t *>(y),
+                reinterpret_cast<uint8_t *>(dst), c, len);
         return;
     }
     auto eval = get_eval_u8(alg);
@@ -580,21 +628,51 @@ static inline void rvv_binary_apply_u8(const alg_kind_t alg, const uint8_t *x,
         assert(!"[rvv_binary_apply_u8] unknown binary alg_kind");
         return;
     }
-    rvv_binary_kernel_u8(x, y, dst, c, len, eval);
+    rvv_binary_kernel_u8(x, y, dst, c, len, eval, dt);
 }
 
 /* F16 integration with Zvfh extension */
 #if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 
 using eval_f16m1_t = vfloat16m1_t (*)(vfloat16m1_t, vfloat16m1_t, size_t);
-static inline void rvv_binary_kernel_f16(const _Float16 *x, const _Float16 *y,
-        _Float16 *dst, const int8_t * /*c*/, dim_t len, eval_f16m1_t eval) {
+static inline void rvv_binary_select_kernel_f16(const _Float16 *x,
+        const _Float16 *y, _Float16 *dst, const int8_t *c, dim_t len) {
+    for (dim_t i = 0; i < len;) {
+        // Load f16 with e16m2
+        size_t vl = __riscv_vsetvl_e16m2(static_cast<size_t>(len - i));
+        vfloat16m2_t vx16 = __riscv_vle16_v_f16m2(x + i, vl);
+        vfloat16m2_t vy16 = __riscv_vle16_v_f16m2(y + i, vl);
+        // Widen and compute in f32m4
+        vfloat32m4_t vx = __riscv_vfwcvt_f_f_v_f32m4(vx16, vl);
+        vfloat32m4_t vy = __riscv_vfwcvt_f_f_v_f32m4(vy16, vl);
+        // Mask
+        vint8m1_t vc8 = __riscv_vle8_v_i8m1(c + i, vl);
+        vbool8_t mask
+                = __riscv_vmsne_vx_i8m1_b8(vc8, static_cast<int8_t>(0), vl);
+        // Merge in f32 and narrow back to f16m2
+        vfloat32m4_t vsel = __riscv_vmerge_vvm_f32m4(vy, vx, mask, vl);
+        vfloat16m2_t vd16 = __riscv_vfncvt_f_f_w_f16m2(vsel, vl);
+        __riscv_vse16_v_f16m2(dst + i, vd16, vl);
+        i += static_cast<dim_t>(vl);
+    }
+}
+static inline void rvv_binary_kernel_f16(const void *x_base, const void *y_base,
+        void *dst_base, const int8_t * /*c*/, dim_t len, eval_f16m1_t eval,
+        const data_type_t dt) {
     for (dim_t i = 0; i < len;) {
         size_t vl = __riscv_vsetvl_e16m1(static_cast<size_t>(len - i));
-        vfloat16m1_t vx = __riscv_vle16_v_f16m1(x + i, vl);
-        vfloat16m1_t vy = __riscv_vle16_v_f16m1(y + i, vl);
+        const _Float16 *x = reinterpret_cast<const _Float16 *>(
+                static_cast<const char *>(x_base)
+                + i * types::data_type_size(dt));
+        const _Float16 *y = reinterpret_cast<const _Float16 *>(
+                static_cast<const char *>(y_base)
+                + i * types::data_type_size(dt));
+        _Float16 *dst = reinterpret_cast<_Float16 *>(
+                static_cast<char *>(dst_base) + i * types::data_type_size(dt));
+        vfloat16m1_t vx = __riscv_vle16_v_f16m1(x, vl);
+        vfloat16m1_t vy = __riscv_vle16_v_f16m1(y, vl);
         vfloat16m1_t vd = eval(vx, vy, vl);
-        __riscv_vse16_v_f16m1(dst + i, vd, vl);
+        __riscv_vse16_v_f16m1(dst, vd, vl);
         i += static_cast<dim_t>(vl);
     }
 }
@@ -671,52 +749,17 @@ inline vfloat16m1_t rvv_binary_ne_f16(
     return __riscv_vfmerge_vfm_f16m1(
             zero, static_cast<_Float16>(1.f), mask, vl);
 }
-inline void rvv_binary_select_kernel_f16(const _Float16 *x, const _Float16 *y,
-        _Float16 *dst, const int8_t *c, dim_t len) {
-    for (dim_t i = 0; i < len;) {
-        // Load f16 with e16m2
-        size_t vl = __riscv_vsetvl_e16m2(static_cast<size_t>(len - i));
-        vfloat16m2_t vx16 = __riscv_vle16_v_f16m2(x + i, vl);
-        vfloat16m2_t vy16 = __riscv_vle16_v_f16m2(y + i, vl);
-        // Widen and compute in f32m4
-        vfloat32m4_t vx = __riscv_vfwcvt_f_f_v_f32m4(vx16, vl);
-        vfloat32m4_t vy = __riscv_vfwcvt_f_f_v_f32m4(vy16, vl);
-        // Mask
-        vint8m1_t vc8 = __riscv_vle8_v_i8m1(c + i, vl);
-        vbool8_t mask
-                = __riscv_vmsne_vx_i8m1_b8(vc8, static_cast<int8_t>(0), vl);
-        // Merge in f32 and narrow back to f16m2
-        vfloat32m4_t vsel = __riscv_vmerge_vvm_f32m4(vy, vx, mask, vl);
-        vfloat16m2_t vd16 = __riscv_vfncvt_f_f_w_f16m2(vsel, vl);
-        __riscv_vse16_v_f16m2(dst + i, vd16, vl);
-        i += static_cast<dim_t>(vl);
-    }
-}
-inline eval_f16m1_t get_eval_f16(const alg_kind_t alg) {
-    switch (alg) {
-        case alg_kind::binary_add: return rvv_binary_add_f16;
-        case alg_kind::binary_div: return rvv_binary_div_f16;
-        case alg_kind::binary_max: return rvv_binary_max_f16;
-        case alg_kind::binary_min: return rvv_binary_min_f16;
-        case alg_kind::binary_mul: return rvv_binary_mul_f16;
-        case alg_kind::binary_sub: return rvv_binary_sub_f16;
-        case alg_kind::binary_ge: return rvv_binary_ge_f16;
-        case alg_kind::binary_gt: return rvv_binary_gt_f16;
-        case alg_kind::binary_le: return rvv_binary_le_f16;
-        case alg_kind::binary_lt: return rvv_binary_lt_f16;
-        case alg_kind::binary_eq: return rvv_binary_eq_f16;
-        case alg_kind::binary_ne: return rvv_binary_ne_f16;
-        default: return nullptr;
-    }
-}
 
 #endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 
-static inline void rvv_binary_apply_f16(const alg_kind_t alg, const _Float16 *x,
-        const _Float16 *y, _Float16 *dst, const int8_t *c, const dim_t len) {
+static inline void rvv_binary_apply_f16(const alg_kind_t alg, const void *x,
+        const void *y, void *dst, const int8_t *c, const dim_t len,
+        const data_type_t dt) {
 #if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
     if (alg == alg_kind::binary_select) {
-        rvv_binary_select_kernel_f16(x, y, dst, c, len);
+        rvv_binary_select_kernel_f16(reinterpret_cast<const _Float16 *>(x),
+                reinterpret_cast<const _Float16 *>(y),
+                reinterpret_cast<_Float16 *>(dst), c, len);
         return;
     }
     auto eval = get_eval_f16(alg);
@@ -724,7 +767,7 @@ static inline void rvv_binary_apply_f16(const alg_kind_t alg, const _Float16 *x,
         assert(!"[rvv_binary_apply_f16] unknown binary alg_kind");
         return;
     }
-    rvv_binary_kernel_f16(x, y, dst, c, len, eval);
+    rvv_binary_kernel_f16(x, y, dst, c, len, eval, dt);
 #endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 }
 

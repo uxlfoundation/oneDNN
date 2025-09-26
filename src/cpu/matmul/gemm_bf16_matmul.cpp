@@ -144,8 +144,14 @@ status_t gemm_bf16_matmul_t<dst_type>::pd_t::check_and_configure_attributes(
 
     // set state
     CHECK(params_.pp_attr_.copy_from(*attr()));
+
+    bool apply_wei_scales_in_pp_kernel = false;
+    if (!attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS))
+        apply_wei_scales_in_pp_kernel
+                = attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0;
+
     params_.gemm_applies_output_scales_
-            = attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) == 0 && !with_bias();
+            = !apply_wei_scales_in_pp_kernel && !with_bias();
 
     if (params_.gemm_applies_output_scales_) {
         VDISPATCH_MATMUL_SC(params_.pp_attr_.scales_.set(
@@ -166,16 +172,23 @@ status_t gemm_bf16_matmul_t<dst_type>::pd_t::check_and_configure_attributes(
             && IMPLICATION(attr()->post_ops_.find(primitive_kind::sum) != -1,
                     sum_po_via_gemm_beta);
 
+    const auto &po = params_.pp_attr_.post_ops_;
     if (sum_po_via_gemm_beta) {
         // set state
-        const auto &po = params_.pp_attr_.post_ops_;
         static constexpr int sum_idx = 0;
         params_.gemm_beta_ = po.entry_[sum_idx].sum.scale;
     }
 
+    using sm = primitive_attr_t::skip_mask_t;
+    auto attr_skip_mask = sm::none;
+    if (sum_po_via_gemm_beta && po.len() == 1) {
+        // po contains only sum and it is handled in gemm
+        attr_skip_mask = sm::post_ops;
+    }
+
     // set state
     params_.has_pp_kernel_ = !params_.dst_is_acc_ || with_bias()
-            || !params_.pp_attr_.has_default_values();
+            || !params_.pp_attr_.has_default_values(attr_skip_mask);
 
     return status::success;
 }

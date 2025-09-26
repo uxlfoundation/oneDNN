@@ -75,9 +75,13 @@ jobs:
         config: [
           { name: MacOS, label: macos-14, threading: SEQ, toolset: clang, build: RelWithAssert, testset: SMOKE },
           { name: cb100, label: ubuntu-24.04-arm, threading: OMP, toolset: gcc, build: RelWithAssert, testset: SMOKE },
-          { name: c6g, label: ah-ubuntu_22_04-c6g_4x-50, threading: OMP, toolset: gcc, build: Release, testset: CI }, # Performance testing requires Release
-          { name: c6g, label: ah-ubuntu_22_04-c6g_2x-50, threading: OMP, toolset: clang, build: RelWithAssert, testset: SMOKE },
-          { name: c7g, label: ah-ubuntu_22_04-c7g_4x-50, threading: OMP, toolset: gcc, build: Release, testset: CI } # Performance testing requires Release
+          { name: c6g, label: ah-ubuntu_22_04-c6g_2x-50, threading: OMP, toolset: clang, build: RelWithAssert, testset: CI },
+          { name: c7g, label: ah-ubuntu_22_04-c6g_2x-50, threading: OMP, toolset: gcc, build: RelWithAssert, testset: CI },
+          { name: c8g, label: ah-ubuntu_22_04-c6g_2x-50, threading: OMP, toolset: gcc, build: RelWithAssert, testset: CI },
+          # Performance testing requires Release
+          { name: c6g, label: ah-ubuntu_22_04-c6g_4x-50, threading: OMP, toolset: gcc, build: Release, testset: SMOKE },
+          { name: c7g, label: ah-ubuntu_22_04-c7g_4x-50, threading: OMP, toolset: gcc, build: Release, testset: SMOKE },
+          { name: c8g, label: ah-ubuntu_22_04-c8g_4x, threading: OMP, toolset: gcc, build: Release, testset: SMOKE }
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}

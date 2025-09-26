@@ -94,6 +94,13 @@
 #define DNNL_RV64GCV_ONLY(...)
 #endif
 
+// Zvfh intrinsics are enabled if V extension is enabled and Zvfh is supported by the toolchain.
+#if defined(DNNL_RV64) && defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
+#define DNNL_RV64GCV_ZVFH_ONLY(...) __VA_ARGS__
+#else
+#define DNNL_RV64GCV_ZVFH_ONLY(...)
+#endif
+
 // Negation of the helper macros above
 #define DNNL_NON_X64_ONLY(...) Z_CONDITIONAL_DO(Z_NOT(DNNL_X64), __VA_ARGS__)
 

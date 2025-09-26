@@ -39,7 +39,8 @@ brown nodes are optional.
      and can only appear once.
    - **Convolution**: If present, is a Depthwise Convolution which can only be
      fused with 1x1 Convolution and can only appear once.
-   - 0 to 4 Binary or Unary operations are supported in the epilogue subgraph.
+   - N=20, 0 to 20 Binary or Unary operations are supported in the epilogue
+     subgraph.
 
 3. **F2F Conversion Subgraph**: Converts the output tensor from floating-point to
    another floating-point. It is constructed by a [TypeCast](@ref dev_guide_op_typecast)

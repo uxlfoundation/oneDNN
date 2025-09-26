@@ -36,7 +36,8 @@ brown nodes are optional.
 
    ![epilogue subgraph](images/epilogue_subgraph_general_1.png)
 
-   - 0 to 4 Binary or Unary operations are supported in the epilogue subgraph.
+   - N=20, 0 to 20 Binary or Unary operations are supported in the epilogue
+     subgraph.
 
 4. **F2Q Conversion Subgraph**: Converts the output
    tensor from floating-point to quantized data type. It can

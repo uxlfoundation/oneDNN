@@ -33,7 +33,8 @@ brown nodes are optional.
 
    ![epilogue subgraph](images/epilogue_subgraph_general_1.png)
 
-   - 0 to 4 Binary or Unary operations are supported in the epilogue subgraph.
+   - N=20, 0 to 20 Binary or Unary operations are supported in the epilogue
+     subgraph.
 
 
 ## Data Types

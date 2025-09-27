@@ -191,7 +191,6 @@ status_t gen_desc_t::finalize(const char *tags) {
 #endif
     strategy_.panelCheck
             |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
-    adjustStrategy(hw_, problem_, strategy_, tags);
 
     if (enable_generator_dsl()) { fixup_dsl_strategy(strategy_); }
 
@@ -293,6 +292,7 @@ status_t gen_desc_t::finalize(const char *tags) {
     strategy_.systolicAvailable &= !disable_systolic_;
     if (problem_.needsAGroupSums() || problem_.needsBGroupSums())
         problem_.autoTypeConversions(hw_, strategy_.systolicAvailable);
+    adjustStrategy(hw_, problem_, strategy_, tags);
     try {
         strategy_.preflight(hw_, problem_);
     } catch (...) { return status::unimplemented; }

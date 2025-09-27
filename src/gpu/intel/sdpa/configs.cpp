@@ -17,6 +17,7 @@
 #include "gpu/intel/sdpa/configs.hpp"
 
 #include <algorithm>
+#include <type_traits>
 
 #include "common/c_types_map.hpp"
 
@@ -53,7 +54,8 @@ std::string to_string(const config_query_t &q) {
       << ((bool)(q.prop & property::quantized) ? " quant" : "")
       << ((bool)(q.prop & property::integrated) ? " [integ]" : "")
       << ((bool)(q.prop & property::fma) ? " fma" : "")
-      << ((bool)(q.prop & property::f32) ? " [f32]" : "");
+      << ((bool)(q.prop & property::f32) ? " [f32]" : "")
+      << ((bool)(q.prop & property::f16_accumulate) ? " [f16_acc]" : "");
     return s.str();
 }
 std::string to_string(const config_criteria_t &c) {
@@ -64,7 +66,8 @@ std::string to_string(const config_criteria_t &c) {
       << ((bool)(c.prop & property::quantized) ? " quant" : "")
       << ((bool)(c.prop & property::integrated) ? " integ" : "")
       << ((bool)(c.prop & property::fma) ? " fma" : "")
-      << ((bool)(c.prop & property::f32) ? " f32" : "");
+      << ((bool)(c.prop & property::f32) ? " f32" : "")
+      << ((bool)(c.prop & property::f16_accumulate) ? " f16_acc" : "");
     return s.str();
 }
 std::string to_string(const config_t &c) {
@@ -97,6 +100,11 @@ bool operator==(const config_record_t &key, const config_query_t &query) {
                     && (((key.criteria.prop & property::f32) == property::none)
                             || ((query.prop & property::f32)
                                     == (key.criteria.prop & property::f32)))
+                    && (((key.criteria.prop & property::f16_accumulate)
+                                == property::none)
+                            || ((query.prop & property::f16_accumulate)
+                                    == (key.criteria.prop
+                                            & property::f16_accumulate)))
                     && (((key.criteria.prop & property::integrated)
                                 == property::none)
                             || ((query.prop & property::integrated)
@@ -105,25 +113,31 @@ bool operator==(const config_record_t &key, const config_query_t &query) {
     return result;
 }
 
+template <typename Enum>
+int popcount(Enum e) {
+    using U = typename std::underlying_type<Enum>::type;
+    U x = static_cast<U>(e);
+    int count = 0;
+    while (x) {
+        x &= (x - 1); // clear lowest set bit
+        ++count;
+    }
+    return count;
+}
+
 bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
     auto num_set_fields = [](const config_criteria_t &crit) {
         int set_fields = 0;
         if (crit.arch != compute::gpu_arch_t::unknown) { set_fields++; }
         if (crit.head_size != -1) { set_fields++; }
-        if ((int)(crit.prop & property::second_token)) { set_fields++; }
-        if ((int)(crit.prop & property::quantized)) { set_fields++; }
-        if ((int)(crit.prop & property::integrated)) { set_fields++; }
-        if ((int)(crit.prop & property::fma)) { set_fields++; }
-        if ((int)(crit.prop & property::f32)) { set_fields++; }
+        const int n_props = popcount<property>(crit.prop);
+        set_fields += n_props;
         return set_fields;
     };
 
     auto noprops = [](const config_criteria_t &crit) {
-        return !(((bool)(crit.prop & property::second_token))
-                || ((bool)(crit.prop & property::quantized))
-                || ((bool)(crit.prop & property::integrated))
-                || ((bool)(crit.prop & property::fma))
-                || ((bool)(crit.prop & property::f32)));
+        const int n_props = popcount<property>(crit.prop);
+        return (n_props == 0);
     };
 
     int l_set_fields = num_set_fields(lhs);
@@ -160,6 +174,9 @@ bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs) {
         return static_cast<bool>(lhs.prop & property::integrated);
     else if ((lhs.prop & property::f32) != (rhs.prop & property::f32))
         return static_cast<bool>(lhs.prop & property::f32);
+    else if ((lhs.prop & property::f16_accumulate)
+            != (rhs.prop & property::f16_accumulate))
+        return static_cast<bool>(lhs.prop & property::f16_accumulate);
     return false;
 }
 
@@ -172,6 +189,7 @@ static auto constexpr quantized = property::quantized;
 static auto constexpr integrated = property::integrated;
 static auto constexpr fma = property::fma;
 static auto constexpr f32 = property::f32;
+static auto constexpr f16_accumulate = property::f16_accumulate;
 
 // Kernel configurations: [ arch, head_size, {sequence length}, {properties} ] -> config
 static std::vector<config_record_t> sorted_configs = []() {
@@ -218,6 +236,7 @@ static std::vector<config_record_t> sorted_configs = []() {
 
 
         {{compute::gpu_arch_t::xe_hpg, 80, fma}, {16, 16, 16, 16, 5, 4, 5, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 80, fma | f16_accumulate}, {8, 16, 16, 16, 8, 4, 8, 4}},
 
         {{compute::gpu_arch_t::xe_hpg, 128},                    {16, 16, 32, 8, 8, 4, 4, 8}},
         {{compute::gpu_arch_t::xe_hpg, 128, 32},                {16, 16, 16, 8, 16, 2, 8, 4}},
@@ -232,10 +251,11 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe_hpg, 128,      quantized | second_token}, {16, 16, 16, 8, 16, 2, 8, 4}},
 
         {{compute::gpu_arch_t::xe_hpg, 128, fma},                {8, 16, 16, 16, 8, 4, 8, 4}},
-        {{compute::gpu_arch_t::xe_hpg, 128, 448, fma},           {8, 16, 16, 16, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe_hpg, 128, 448, fma},           {8, 16, 16, 16, 8, 4, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 128, 448, fma | f16_accumulate}, {8, 16, 16, 16, 8, 2, 8, 2}},
         {{compute::gpu_arch_t::xe_hpg, 128, fma | second_token}, {32, 16, 32, 8, 16, 2, 8, 4}},
 
-        {{compute::gpu_arch_t::xe_hpg, 128, fma | f32},                            { 8, 32,  8, 32, 32, 1, 32, 1 }},
+        {{compute::gpu_arch_t::xe_hpg, 128, fma | f32},                            { 8, 16, 32,  8,  8, 2,  4, 4 }},
         {{compute::gpu_arch_t::xe_hpg, 128, second_token | fma | f32},             { 8, 16, 32,  8, 16, 1,  8, 2 }},
         {{compute::gpu_arch_t::xe_hpg, 128, quantized | fma | f32},                { 8, 16, 16, 16,  8, 1,  8, 1 }},
         {{compute::gpu_arch_t::xe_hpg, 128, second_token | quantized | fma | f32}, {16, 16, 16,  8, 32, 1, 16, 2 }},

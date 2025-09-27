@@ -178,8 +178,9 @@ static status_t init_conf_common(
 
     // Limited due to performance reasons
     // Vectorized implementation can be used for FWD on DG2+, for BWD on PVC+
-    if (gpu_arch < (pd->is_fwd() ? gpu_arch_t::xe_hpg : gpu_arch_t::xe_hpc))
-        return status::unimplemented;
+    VDISPATCH_LNORM_IC(!(gpu_arch < (pd->is_fwd() ? gpu_arch_t::xe_hpg
+                                                  : gpu_arch_t::xe_hpc)),
+            VERBOSE_UNSUPPORTED_ISA);
 
     memory_desc_wrapper src_mdw(pd->src_md());
     memory_desc_wrapper stat_mdw(pd->stat_md());
@@ -226,8 +227,9 @@ static status_t init_conf_common(
         c_is_last_physical = src_mdw.blocking_desc().strides[ndims - 1] == 1;
     }
 
-    if (!(src_mdw.is_dense() && c_is_last_physical && ndims < 4))
-        return status::unimplemented;
+    VDISPATCH_LNORM_IC(src_mdw.is_dense(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
+    VDISPATCH_LNORM_IC(!c_is_last_physical, VERBOSE_BLOCKING_FAIL, "");
+    VDISPATCH_LNORM_IC(ndims >= 4, VERBOSE_BAD_NDIMS, "src", ndims);
 
     conf.dispatch_scaleshift = intel_engine->create_dispatch();
     conf.dispatch_scaleshift_finalize = intel_engine->create_dispatch();
@@ -271,9 +273,10 @@ static status_t init_conf_common(
                     || conf.src_dt == data_type::bf16) {
                 buff_size_limit *= 2;
             }
-            if (src_buff_KB > buff_size_limit) return status::unimplemented;
+            VDISPATCH_LNORM_IC(src_buff_KB <= buff_size_limit,
+                    "buffer size limit exceeded");
         } else {
-            if (conf.across_axis < 4) return status::unimplemented;
+            VDISPATCH_LNORM_IC(conf.across_axis >= 4, VERBOSE_BAD_AXIS);
         }
     }
 
@@ -294,7 +297,8 @@ static status_t init_conf_common(
             }
             return size;
         }();
-        if (best_sg_size <= 1) return status::unimplemented;
+        VDISPATCH_LNORM_IC(
+                best_sg_size > 1, VERBOSE_BAD_PARAM, "bad subgroup size");
 
         conf.sub_group_size = best_sg_size;
         int vector_size = 8;
@@ -377,7 +381,8 @@ static status_t init_conf_common(
             }
             return size;
         }();
-        if (best_sg_size <= 1) return status::unimplemented;
+        VDISPATCH_LNORM_IC(
+                best_sg_size > 1, VERBOSE_BAD_PARAM, "bad subgroup size");
 
         conf.sub_group_size = best_sg_size;
         conf.vect_dt_n = 8;
@@ -417,8 +422,9 @@ static status_t init_conf_common(
                                     || src_mdw.matches_tag(ab)))
                         || (ndims == 3 && src_mdw.matches_tag(abc)
                                 && dims[0] == 1));
-        if ((conf.use_scale || conf.use_shift) && !vectorize_bwd_scaleshift)
-            return status::unimplemented;
+        VDISPATCH_LNORM_IC(!((conf.use_scale || conf.use_shift)
+                                   && !vectorize_bwd_scaleshift),
+                VERBOSE_UNSUPPORTED_FEATURE, "scaleshift vectorization");
 
         const dim_t first_dim = ndims == 2 ? dims[0] : dims[1];
         const int max_n_chunk_size = 16; // Experimentally selected values

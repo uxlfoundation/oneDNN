@@ -129,12 +129,17 @@ status_t xe_wino_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
     conf.ic = utils::rnd_up(conf.ic_without_padding, 16);
     conf.oc = utils::rnd_up(conf.oc_without_padding, 16);
 
-    const bool is_wino_shape = conf.ndims == 4 && conf.kh == 3 && conf.kw == 3
-            && conf.ngroups == 1 && conf.stride_h == 1 && conf.stride_w == 1
-            && conf.dilate_h == 0 && conf.dilate_w == 0 && conf.l_pad < conf.kw
-            && conf.r_pad < conf.kw && conf.t_pad < conf.kh
-            && conf.b_pad < conf.kh;
-    if (!is_wino_shape) return status::unimplemented;
+    VDISPATCH_CONV_IC(conf.ndims == 4, VERBOSE_BAD_NDIMS, "src", conf.ndims);
+    VDISPATCH_CONV_IC(conf.kh == 3 && conf.kw == 3, VERBOSE_BAD_PARAM,
+            "kernel dimensions != 3");
+    VDISPATCH_CONV_IC(conf.ngroups == 1, VERBOSE_BAD_PARAM, "non-unit groups");
+    VDISPATCH_CONV_IC(conf.stride_h == 1 && conf.stride_w == 1,
+            VERBOSE_BAD_PARAM, "non-unit strides");
+    VDISPATCH_CONV_IC(conf.dilate_h == 0 && conf.dilate_w == 0,
+            VERBOSE_BAD_PARAM, "non-zero dilations");
+    VDISPATCH_CONV_IC(conf.l_pad < conf.kw && conf.r_pad < conf.kw
+                    && conf.t_pad < conf.kh && conf.b_pad < conf.kh,
+            VERBOSE_BAD_PARAM, "inconsistent padding/kernel dimensions");
 
     const bool is_16oc = conf.oc % 16 == 0;
     const bool is_16ic = conf.ic % 16 == 0;
@@ -146,20 +151,21 @@ status_t xe_wino_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
         // of VTRANS_BLOCK = 4. This condition was not implemented yet due to no
         // known use case, and small IC is expected to have poor performance
         // because of extra work created by the current blocking.
-        if (conf.ic_without_padding % 16 != 0
-                || conf.oc_without_padding % 16 != 0)
-            return status::unimplemented;
+        VDISPATCH_CONV_IC(
+                conf.ic_without_padding == 16 && conf.oc_without_padding == 16,
+                VERBOSE_BAD_PARAM, "bad channel dimensions");
         conf.ver = ver_nhwc;
     } else if ((is_16oc && is_16ic)) {
         conf.ver = (conf.mb % 16 == 0) ? ver_16mb16c : ver_8ow16c;
     } else {
-        return status::unimplemented;
+        VDISPATCH_CONV_IC(false, VERBOSE_UNSUPPORTED_TAG);
     }
 
     const compute::gpu_arch_t arch = engine->device_info()->gpu_arch();
     conv::fwd_compute_block_sizes(conf, arch);
-    if (!conv::is_impl_optimal(conf, cd, arch)) return status::unimplemented;
-
+    VDISPATCH_CONV_IC(conv::is_impl_optimal(conf, cd, arch),
+            "non-optimal implementation for config: %s",
+            VERBOSE_SKIP_PRIMITIVE_IMPL);
     size_t U_sz = conf.tile_size * conf.kh * conf.wino_ic * conf.wino_oc;
     size_t M_sz = 0, V_sz = 0;
     if (!conf.is_fused) {
@@ -170,7 +176,8 @@ status_t xe_wino_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
     }
 
     // Limit max problem size since this method uses more memory
-    if (U_sz + M_sz + V_sz > 300000000) return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            U_sz + M_sz + V_sz <= 300000000, "max problem size exceeded");
 
     //Using F(m, r) for r = 3 and tile_size = m + r - 1
     if (!conf.is_fused) {
@@ -240,7 +247,7 @@ status_t xe_wino_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
             dst_tag = nhwc;
             wei_tag = conf.with_groups ? gOIhw16i16o : OIhw16i16o;
             break;
-        default: return status::unimplemented;
+        default: VDISPATCH_CONV_IC(false, "unsupported winograd version");
     }
 
     if (src_mdw.format_kind() == format_kind::any) {
@@ -248,21 +255,24 @@ status_t xe_wino_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
     } else {
         conf.src_tag = src_mdw.matches_one_of_tag(src_tag);
     }
-    if (conf.src_tag != src_tag) return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            conf.src_tag == src_tag, VERBOSE_UNSUPPORTED_TAG_S, "src");
 
     if (weights_mdw.format_kind() == format_kind::any) {
         conf.wei_tag = wei_tag;
     } else {
         conf.wei_tag = weights_mdw.matches_one_of_tag(wei_tag);
     }
-    if (conf.wei_tag != wei_tag) return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            conf.wei_tag == wei_tag, VERBOSE_UNSUPPORTED_TAG_S, "wei");
 
     if (dst_mdw.format_kind() == format_kind::any) {
         conf.dst_tag = dst_tag;
     } else {
         conf.dst_tag = dst_mdw.matches_one_of_tag(dst_tag);
     }
-    if (conf.dst_tag != dst_tag) return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            conf.dst_tag == dst_tag, VERBOSE_UNSUPPORTED_TAG_S, "dst");
 
     return status::success;
 }

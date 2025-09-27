@@ -96,10 +96,9 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
 
     for (int i = 0; i < MAX_NDIMS; ++i) {
         // Kernel doesn't support src0 broadcast
-        if (i < ndims && src0_d.dims()[i] == 1
-                && src0_d.dims()[i] != src1_d.dims()[i]) {
-            return status::unimplemented;
-        }
+        VDISPATCH_BINARY_IC(!(i < ndims && src0_d.dims()[i] == 1
+                                    && src0_d.dims()[i] != src1_d.dims()[i]),
+                VERBOSE_UNSUPPORTED_FEATURE, "broadcasted src0 dimensions");
         conf.src1_bcast_dims[i]
                 = i < ndims ? into<int>(broadcast_dims()[i]) : 1;
     }
@@ -165,7 +164,9 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
         CHECK(conf.dispatch.vectorize_dim(dim_str, sub_group_size));
         conf.plain_to_ABcd4a4b = true;
     } else if (conf.isXa16b) {
-        if (is_broadcast()) return status::unimplemented;
+        VDISPATCH_BINARY_IC(!is_broadcast(), VERBOSE_UNSUPPORTED_FEATURE,
+                "broadcasted dimensions");
+
         conf.nvect = 8;
         int channel_blk = 16;
         const int vect_dim_size = 16;
@@ -224,7 +225,8 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
                         || dst_d.dims()[2] % 16 != 0)) {
             size_check = false;
         }
-        if (!size_check) return status::unimplemented;
+        VDISPATCH_BINARY_IC(
+                size_check, VERBOSE_BLOCKING_FAIL, "bad dimensions");
         for (int i = 0; i < MAX_NDIMS; ++i) {
             dim_t dim = i < ndims ? dst_d.dims()[i] : 1;
             if (i == 1) {
@@ -240,10 +242,9 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
             }
         }
     } else if (conf.is_plain_layout) {
-
-        if (!src0_d.matches_tag(dst_tag) || !src1_d.matches_tag(dst_tag)) {
-            return status::unimplemented;
-        }
+        VDISPATCH_BINARY_IC(
+                src0_d.matches_tag(dst_tag) && src1_d.matches_tag(dst_tag),
+                VERBOSE_UNSUPPORTED_TAG);
 
         const int subgroup_size = 16;
         const dim_t last_dim = dst_d.dims()[ndims - 1];
@@ -256,17 +257,17 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
             if (src1_d.dims()[i] != 1) all_dims_broadcast = false;
         }
 
-        if (rem && !all_dims_broadcast) { return status::unimplemented; }
-
+        VDISPATCH_BINARY_IC(!rem || all_dims_broadcast, VERBOSE_BAD_PARAM,
+                "tail processing fail");
         dim_t rounded_last_dim = utils::rnd_up(last_dim, subgroup_size);
 
         dim_t mixed_dim = 1;
         for (int i = 0; i < (ndims - 1); ++i) {
             mixed_dim *= dst_d.dims()[i];
         }
+        VDISPATCH_BINARY_IC(!rem || (mixed_dim * last_dim) % subgroup_size != 0,
+                VERBOSE_BAD_PARAM, "bad tail processing fail");
 
-        if (rem && (mixed_dim * last_dim) % subgroup_size == 0)
-            return status::unimplemented;
         mixed_dim *= rounded_last_dim;
 
         while ((rounded_last_dim / subgroup_size) % conf.nvect != 0) {
@@ -276,7 +277,7 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.dispatch.define_dim("MIXED_DIM", 0, mixed_dim, conf.nvect);
         CHECK(conf.dispatch.vectorize_dim("MIXED_DIM", subgroup_size));
     } else {
-        return status::unimplemented;
+        VDISPATCH_BINARY_IC(false, VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "");
     }
 
     conf.dispatch.generate();

@@ -78,9 +78,7 @@ struct generic_t : public primitive_t {
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-
-            VDISPATCH_REORDER_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "reorder");
+            CHECK(init_conf(engine));
             using namespace data_type;
             VDISPATCH_REORDER(utils::one_of(src_md()->data_type, f32, f16, bf16,
                                       f8_e5m2, f8_e4m3, s32, s8, u8, f64),

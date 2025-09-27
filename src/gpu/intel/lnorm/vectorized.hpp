@@ -67,8 +67,7 @@ struct vectorized_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-
-            VDISPATCH_LNORM_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 
@@ -144,8 +143,7 @@ struct vectorized_bwd_t : public primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-
-            VDISPATCH_LNORM_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             init_scratchpad();
             return status::success;
         }

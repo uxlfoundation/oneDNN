@@ -106,9 +106,11 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
 status_t vectorized_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace data_type;
     assert(engine->kind() == engine_kind::gpu);
-    bool ok = !is_fwd() && set_default_params() == status::success
-            && attr()->has_default_values();
-    if (!ok) return status::unimplemented;
+    VDISPATCH_RESAMPLING_IC(!is_fwd(), VERBOSE_BAD_PROPKIND);
+    VDISPATCH_RESAMPLING_IC(
+            set_default_params() == status::success, VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_RESAMPLING_IC(
+            attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
     const memory_desc_wrapper diff_src_d(diff_src_md());
     const memory_desc_wrapper diff_dst_d(diff_dst_md());
@@ -119,7 +121,7 @@ status_t vectorized_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
                     != format_tag::undef
             && diff_src_d.matches_one_of_tag(abc, abcd, abcde)
                     == format_tag::undef);
-    if (!is_axb) { return status::unimplemented; }
+    VDISPATCH_RESAMPLING_IC(is_axb, VERBOSE_UNSUPPORTED_TAG);
 
     // ------- Heuristics -------- //
     // Tuned for PVC
@@ -176,9 +178,8 @@ status_t vectorized_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     const int max_h = std::max(1, (int)std::ceil(conf.FH * 1.5 - 0.5));
     const int max_w = std::max(1, (int)std::ceil(conf.FW * 1.5 - 0.5));
     const int max_num_linear_calcs = 2 * (max_d + max_h + max_w);
-    if (max_num_linear_calcs > conf.sub_group_size) {
-        return status::unimplemented;
-    }
+    VDISPATCH_RESAMPLING_IC(max_num_linear_calcs <= conf.sub_group_size,
+            VERBOSE_BAD_PARAM, "sub_group_size");
 
     // Compute strides after vect_size is taken into account.
     const blocking_desc_t &blocks = diff_src_md()->format_desc.blocking;

@@ -85,9 +85,7 @@ struct xe_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_ELTWISE(intel_engine->mayiuse_sub_group(16),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
-
-            VDISPATCH_ELTWISE_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "eltwise");
+            CHECK(init_conf(engine));
             return status::success;
         }
 
@@ -150,9 +148,7 @@ struct xe_bwd_t : public primitive_t {
             VDISPATCH_ELTWISE(memory_desc_wrapper(diff_dst_md())
                             == memory_desc_wrapper(diff_src_md()),
                     VERBOSE_INCONSISTENT_MDS, "diff_src", "diff_dst");
-
-            VDISPATCH_ELTWISE_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "eltwise");
+            CHECK(init_conf(engine));
             return status::success;
         }
 

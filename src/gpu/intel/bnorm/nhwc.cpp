@@ -213,24 +213,26 @@ static status_t init_conf_common(nhwc_params_t &conf, offsets_t &off,
     bool nhwc_optimized = conf.ic % 16 == 0
             && data_mdw.matches_one_of_tag(nwc, nhwc, ndhwc)
             && gpu_arch >= compute::gpu_arch_t::xe_hpg;
-    if (!nhwc_optimized) return status::unimplemented;
+    VDISPATCH_BNORM_IC(nhwc_optimized, VERBOSE_UNSUPPORTED_FEATURE,
+            "unsupported config for optimized nhwc bnorm");
 
     conf.mb_block = 1;
     conf.is_nhwc = true;
 
     const bool has_padding = !data_mdw.is_dense();
-    if (has_padding) return status::unimplemented;
+    VDISPATCH_BNORM_IC(!has_padding, VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "data");
 
     // Due to intel_sub_group_write_uc requires 16-bytes alignment,
     // IC div by 8 tail processing is not applicable to fuse_norm_relu
     // and char data type.
-    if (conf.ic % 8 == 0 && conf.ic % 16
-            && (conf.fuse_norm_relu || conf.data_type == data_type::s8))
-        return status::unimplemented;
+    VDISPATCH_BNORM_IC(!(conf.ic % 8 == 0 && conf.ic % 16
+                               && (conf.fuse_norm_relu
+                                       || conf.data_type == data_type::s8)),
+            VERBOSE_BLOCKING_FAIL, "unsupported blocking config");
     // IC tail processing performnce boost is not obvious on arch < xe_hpc
-    if (conf.ic % 8 == 0 && conf.ic % 16
-            && gpu_arch < compute::gpu_arch_t::xe_hpc)
-        return status::unimplemented;
+    VDISPATCH_BNORM_IC(!(conf.ic % 8 == 0 && conf.ic % 16
+                               && gpu_arch < compute::gpu_arch_t::xe_hpc),
+            VERBOSE_UNSUPPORTED_ISA);
 
     conf.use_stats_one_pass = experimental::use_bnorm_stats_one_pass();
 

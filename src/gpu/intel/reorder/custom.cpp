@@ -549,7 +549,8 @@ status_t custom_t::pd_t::init_conf(impl::engine_t *engine) {
             | conf.dst_quant.scale_mask() | conf.dst_quant.zp_mask();
 
     switch (conf.implementation) {
-        case custom_kernel_t::none: return status_t::dnnl_unimplemented;
+        case custom_kernel_t::none:
+            VDISPATCH_REORDER_IC(false, "undefined kernel implementation");
         case custom_kernel_t::alt:
             // special handling with dispatcher override
             conf.sub_group_size = 16;
@@ -593,9 +594,8 @@ status_t custom_t::pd_t::init_conf(impl::engine_t *engine) {
         case custom_kernel_t::vectorize_last_dim:
             vect_dim = last;
             vect_size = (last_dim % 16 == 0) ? 16 : 8;
-            if (!may_use_sg8 && vect_size == 8) {
-                return status_t::dnnl_unimplemented;
-            }
+            VDISPATCH_REORDER_IC(may_use_sg8 || vect_size != 8,
+                    VERBOSE_BAD_PARAM, "vect_size");
             for (dim_idx_t dim = last - 1; dim < MAX_NDIMS && temp_block == 1;
                     dim--) {
                 if (padded_dims[dim] % 4 == 0) { temp_block = 4; }
@@ -615,9 +615,8 @@ status_t custom_t::pd_t::init_conf(impl::engine_t *engine) {
             dim_t max_common_size
                     = std::max(last_dim_src.size, last_dim_dst.size);
             conf.sub_group_size = into<int>(max_common_size);
-            if (!may_use_sg8 && conf.sub_group_size == 8) {
-                return status_t::dnnl_unimplemented;
-            }
+            VDISPATCH_REORDER_IC(may_use_sg8 || conf.sub_group_size != 8,
+                    VERBOSE_BAD_PARAM, "sub_group_size");
 
             // Group size bigger than 4 would need too much private mem;
             // group size 1 will give worse perf than reference kernel.
@@ -655,9 +654,8 @@ status_t custom_t::pd_t::init_conf(impl::engine_t *engine) {
                     = std::min(last_dim_src.size, last_dim_dst.size);
             vect_size = (min_common_size % 16 == 0) ? 16 : 8;
             vect_dim = last_dim_src.idx;
-            if (!may_use_sg8 && vect_size == 8) {
-                return status_t::dnnl_unimplemented;
-            }
+            VDISPATCH_REORDER_IC(may_use_sg8 || vect_size != 8,
+                    VERBOSE_BAD_PARAM, "vect_size");
 
             assert(last_dim_src.size % vect_size == 0
                     && last_dim_dst.size % vect_size == 0);
@@ -717,7 +715,8 @@ status_t custom_t::pd_t::init_conf(impl::engine_t *engine) {
             vect_size = 16;
             break;
         case custom_kernel_t::transpose8x8:
-            if (!may_use_sg8) { return status_t::dnnl_unimplemented; }
+            VDISPATCH_REORDER_IC(
+                    may_use_sg8, VERBOSE_BAD_PARAM, "sub_group_size");
             conf.sub_group_size = 8;
             blocks[get_Nth_last_dim_or_block(dst_mdw).idx] = 8;
             vect_dim = get_Nth_last_dim_or_block(src_mdw).idx;

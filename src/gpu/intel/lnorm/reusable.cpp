@@ -299,9 +299,9 @@ status_t reusable_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     if (conf.use_scale || conf.use_shift) {
         // OK to mutate diff_src_buffer
         diff_src_buffer.remove_dim(dims.back());
-        if (diff_src_buffer.layout() != stat_buffer.layout()) {
-            return status::unimplemented;
-        }
+        VDISPATCH_LNORM_IC(diff_src_buffer.layout() == stat_buffer.layout(),
+                "src and stat buffers are not aligned: %s ",
+                VERBOSE_SKIP_PRIMITIVE_IMPL);
     }
 
     return status::success;

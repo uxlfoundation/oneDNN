@@ -110,14 +110,23 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
     }
     compute::reusable_dispatch_config_t calc_stat_dispatch_config(
             intel_engine, dim_ids);
-    CHECK(calc_stat_dispatch_config.register_buffer(src_buf));
-    CHECK(calc_stat_dispatch_config.register_buffer(dst_buf));
-    CHECK(calc_stat_dispatch_config.define_dim_index(
-            "IC_DIM", dims::ic, rt_conf.ic));
+    VDISPATCH_BNORM_IC(calc_stat_dispatch_config.register_buffer(src_buf)
+                    == status::success,
+            "failed to register src buffer");
+    VDISPATCH_BNORM_IC(calc_stat_dispatch_config.register_buffer(dst_buf)
+                    == status::success,
+            "failed to register dst buffer");
+    VDISPATCH_BNORM_IC(calc_stat_dispatch_config.define_dim_index(
+                               "IC_DIM", dims::ic, rt_conf.ic)
+                    == status::success,
+            "cannot define dim index for dispatch config");
 
     compute::reusable_dispatch_t dispatch_calc_stat;
     auto lws_strategy = compute::default_lws_strategy_t(intel_engine, gpu_attr);
-    CHECK(calc_stat_dispatch_config.generate(dispatch_calc_stat, lws_strategy));
+    VDISPATCH_BNORM_IC(
+            calc_stat_dispatch_config.generate(dispatch_calc_stat, lws_strategy)
+                    == status::success,
+            "failed to generate dispatch_config");
     conf.calc_stat_params = dispatch_calc_stat.get_compile_params();
     rt_conf.calc_stat_params = dispatch_calc_stat.get_runtime_params();
 
@@ -129,11 +138,16 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
     // Reduce kernels dispatch to ic dim only
     compute::reusable_dispatch_config_t reduce_stat_dispatch_config(
             intel_engine, {dims::ic});
-    CHECK(reduce_stat_dispatch_config.register_buffer(reduce_buffer));
+    VDISPATCH_BNORM_IC(
+            reduce_stat_dispatch_config.register_buffer(reduce_buffer)
+                    == status::success,
+            "failed to register reduce buffer");
 
     compute::reusable_dispatch_t dispatch_reduce_stat;
-    CHECK(reduce_stat_dispatch_config.generate(
-            dispatch_reduce_stat, lws_strategy));
+    VDISPATCH_BNORM_IC(reduce_stat_dispatch_config.generate(
+                               dispatch_reduce_stat, lws_strategy)
+                    == status::success,
+            "failed to generate dispatch_config");
     conf.reduce_stat_params = dispatch_reduce_stat.get_compile_params();
     rt_conf.reduce_stat_params = dispatch_reduce_stat.get_runtime_params();
     return status::success;
@@ -170,12 +184,20 @@ static status_t init_conf_common(reusable_params_t &conf,
     // Dispatch to all dims
     compute::reusable_dispatch_config_t dispatch_config(
             intel_engine, std::move(dims));
-    CHECK(dispatch_config.register_buffer(buffer));
-    CHECK(dispatch_config.define_dim_index("IC_DIM", dims::ic, rt_conf.ic));
+    VDISPATCH_BNORM_IC(
+            dispatch_config.register_buffer(buffer) == status::success,
+            "failed to register buffer");
+    VDISPATCH_BNORM_IC(
+            dispatch_config.define_dim_index("IC_DIM", dims::ic, rt_conf.ic)
+                    == status::success,
+            "cannot define dim index for dispatch config");
 
     compute::reusable_dispatch_t dispatch;
-    CHECK(dispatch_config.generate(
-            dispatch, compute::default_lws_strategy_t(intel_engine, gpu_attr)));
+    VDISPATCH_BNORM_IC(
+            dispatch_config.generate(dispatch,
+                    compute::default_lws_strategy_t(intel_engine, gpu_attr))
+                    == status::success,
+            "failed to generate dispatch_config");
     conf.gws_params = dispatch.get_compile_params();
     rt_conf.gws_params = dispatch.get_runtime_params();
 

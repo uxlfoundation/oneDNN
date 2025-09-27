@@ -129,12 +129,15 @@ status_t reusable_ref_t::pd_t::init_conf(impl::engine_t *engine) {
     }
 
     std::vector<subproblem_t> subprbs;
-    CHECK(generate_phases(src_md(), dst_md(), subprbs));
+    VDISPATCH_REDUCTION_IC(
+            generate_phases(src_md(), dst_md(), subprbs) == status::success,
+            "failed to create sub-problems");
 
     //DST zero-padding not supported on reduction dims
     subproblem_t &last_subprb = subprbs.back();
     for (const auto &zpad : last_subprb.dst_zpads) {
-        if (is_reduction_dim[zpad.dim_idx]) return status::unimplemented;
+        VDISPATCH_REDUCTION_IC(!is_reduction_dim[zpad.dim_idx],
+                VERBOSE_UNSUPPORTED_FEATURE, "zero-padding");
     }
 
     // DST zero-padding is not supported for algs which modify input 0s
@@ -144,18 +147,18 @@ status_t reusable_ref_t::pd_t::init_conf(impl::engine_t *engine) {
             && utils::one_of(desc()->alg_kind, reduction_norm_lp_max,
                     reduction_norm_lp_sum, reduction_norm_lp_power_p_max,
                     reduction_norm_lp_power_p_sum);
-    if (alg_changes_zeros && !last_subprb.dst_zpads.empty()) {
-        return status::unimplemented;
-    }
+    VDISPATCH_REDUCTION_IC(
+            !(alg_changes_zeros && !last_subprb.dst_zpads.empty()),
+            VERBOSE_BAD_ALGORITHM);
 
     // SRC zero-padding on reduced dims is not supported if alg is affected by zeros.
     subproblem_t &first_subprb = subprbs.front();
     const bool alg_affected_by_zeros = utils::one_of(
             desc()->alg_kind, reduction_min, reduction_max, reduction_mul);
     for (const auto &zpad : first_subprb.src_zpads) {
-        if (alg_affected_by_zeros && is_reduction_dim[zpad.dim_idx]) {
-            return status::unimplemented;
-        }
+        VDISPATCH_REDUCTION_IC(
+                !(alg_affected_by_zeros && is_reduction_dim[zpad.dim_idx]),
+                VERBOSE_BAD_ALGORITHM);
     }
 
     const intel::engine_t *intel_engine
@@ -175,7 +178,10 @@ status_t reusable_ref_t::pd_t::init_conf(impl::engine_t *engine) {
         phases.emplace_back(subprbs[i], phase_alg, src_dt, dst_dt,
                 *intel_engine->device_info(), gpu_attr);
         auto &phase = phases.back();
-        CHECK(phase.init_dispatcher(subprbs[i], *intel_engine, gpu_attr));
+        VDISPATCH_REDUCTION_IC(
+                phase.init_dispatcher(subprbs[i], *intel_engine, gpu_attr)
+                        == status::success,
+                "failed to initialize dispatcher for subproblem");
     }
 
     // Compute div from basic mdw dims

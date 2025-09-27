@@ -164,13 +164,14 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
     // Due to intel_sub_group_write_uc requires 16-bytes alignment,
     // IC div by 8 tail processing is not applicable to fuse_norm_relu
     // and char data type.
-    if (conf.ic % 8 == 0 && conf.ic % 16
-            && (conf.fuse_norm_relu || conf.data_type == data_type::s8))
-        return status::unimplemented;
+    VDISPATCH_BNORM_IC(!(conf.ic % 8 == 0 && conf.ic % 16
+                               && (conf.fuse_norm_relu
+                                       || conf.data_type == data_type::s8)),
+            VERBOSE_BLOCKING_FAIL, "unsupported blocking config");
     // IC tail processing performnce boost is not obvious on arch < xe_hpc
-    if (conf.ic % 8 == 0 && conf.ic % 16
-            && gpu_arch < compute::gpu_arch_t::xe_hpc)
-        return status::unimplemented;
+    VDISPATCH_BNORM_IC(!(conf.ic % 8 == 0 && conf.ic % 16
+                               && gpu_arch < compute::gpu_arch_t::xe_hpc),
+            VERBOSE_UNSUPPORTED_ISA);
 
     conf.use_stats_one_pass = experimental::use_bnorm_stats_one_pass();
 
@@ -179,10 +180,11 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
     if (conf.ic % 8 == 0 && conf.ic % 16 && conf.use_stats_one_pass)
         conf.use_stats_one_pass = false;
 
-    if (has_padding
+    const bool blocking_ok = !(has_padding
             || !(conf.is_blocked_16c || conf.is_blocked_16n16c
-                    || conf.is_blocked_32n16c || conf.is_nhwc))
-        return status::unimplemented;
+                    || conf.is_blocked_32n16c || conf.is_nhwc));
+    VDISPATCH_BNORM_IC(
+            blocking_ok, VERBOSE_BLOCKING_FAIL, "unsupporting blocking format");
 
     conf.sub_group_size = 16;
 
@@ -224,9 +226,9 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
     }
 
     // The case IC==8 requires spacial dim to be even because of using one
-    // block read/write operation for 2 spacial rows at once
-    if (conf.is_nhwc && conf.ic == 8 && conf.sp % 2)
-        return status::unimplemented;
+    // block read/write operation for 2 spatial rows at once
+    VDISPATCH_BNORM_IC(!(conf.is_nhwc && conf.ic == 8 && conf.sp % 2),
+            VERBOSE_BAD_PARAM, "sp,ic values for nhwc format");
 
     conf.calc_stat_ic = rnd_up(conf.ic, 16);
 
@@ -280,9 +282,9 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
         adjust_lws_calc_kernel(
                 conf, dispatch_calc_stat, intel_engine, large_grf_mode);
 
-        if (!intel_engine->mayiuse(compute::device_ext_t::ext_float_atomics)) {
-            return status::unimplemented;
-        }
+        VDISPATCH_BNORM_IC(
+                intel_engine->mayiuse(compute::device_ext_t::ext_float_atomics),
+                VERBOSE_BAD_ENGINE_KIND);
     }
 
     dispatch_reduce_stat = intel_engine->create_dispatch();

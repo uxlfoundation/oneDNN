@@ -32,6 +32,10 @@
     VCHECK(primitive, create, dispatch, bnorm, (f), "%s," msg, \
             this->info(engine), ##__VA_ARGS__)
 
+#define VDISPATCH_BNORM_IC(cond, msg, ...) \
+    VCONDCHECK(primitive, create, dispatch, bnorm, (cond), \
+            status::unimplemented, msg, ##__VA_ARGS__)
+
 namespace dnnl {
 namespace impl {
 

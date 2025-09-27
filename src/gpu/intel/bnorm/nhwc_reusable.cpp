@@ -95,7 +95,8 @@ static status_t init_conf_common(nhwc_params_t &bn_conf,
 
     // This implementation is temporarly unavailable by default
     // TODO: remove the guard after performance tuning
-    if (!dev_getenv("enable_bn_nhwc_reusable", 0)) return status::unimplemented;
+    VDISPATCH_BNORM_IC(dev_getenv("enable_bn_nhwc_reusable", 0),
+            VERBOSE_UNSUPPORTED_FEATURE, "reusable nhwc batch norm");
     bn_conf.impl = impl_t::nhwc_reusable;
 
     using namespace dnnl::impl::format_tag;
@@ -120,21 +121,24 @@ static status_t init_conf_common(nhwc_params_t &bn_conf,
     bool nhwc_optimized = bn_conf.ic % 16 == 0
             && data_mdw.matches_one_of_tag(nwc, nhwc, ndhwc)
             && gpu_arch >= compute::gpu_arch_t::xe_hpg;
-    if (!nhwc_optimized) return status::unimplemented;
+    VDISPATCH_BNORM_IC(nhwc_optimized, VERBOSE_UNSUPPORTED_FEATURE,
+            "unsupported config for optimized nhwc bnorm");
 
     const bool has_padding = !data_mdw.is_dense();
-    if (has_padding) return status::unimplemented;
+    VDISPATCH_BNORM_IC(!has_padding, VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "data");
 
     // Due to intel_sub_group_write_uc requires 16-bytes alignment,
     // IC div by 8 tail processing is not applicable to fuse_norm_relu
     // and char data type.
-    if (bn_conf.ic % 8 == 0 && bn_conf.ic % 16
-            && (bn_conf.fuse_norm_relu || bn_conf.data_type == data_type::s8))
-        return status::unimplemented;
+    VDISPATCH_BNORM_IC(!(bn_conf.ic % 8 == 0 && bn_conf.ic % 16
+                               && (bn_conf.fuse_norm_relu
+                                       || bn_conf.data_type == data_type::s8)),
+            VERBOSE_BLOCKING_FAIL, "unsupported blocking config");
+
     // IC tail processing performance boost is not obvious on arch < xe_hpc
-    if (bn_conf.ic % 8 == 0 && bn_conf.ic % 16
-            && gpu_arch < compute::gpu_arch_t::xe_hpc)
-        return status::unimplemented;
+    VDISPATCH_BNORM_IC(!(bn_conf.ic % 8 == 0 && bn_conf.ic % 16
+                               && gpu_arch < compute::gpu_arch_t::xe_hpc),
+            VERBOSE_UNSUPPORTED_ISA);
 
     cmpl_conf.use_stats_one_pass = experimental::use_bnorm_stats_one_pass();
     bn_conf.use_stats_one_pass = cmpl_conf.use_stats_one_pass;

@@ -99,8 +99,7 @@ struct atomic_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_REDUCTION(
                     !attr()->deterministic_, VERBOSE_UNSUPPORTED_ATTR);
-
-            VDISPATCH_REDUCTION_SC(init_conf(engine), "init_conf");
+            CHECK(init_conf(engine));
             init_scratchpad();
 
             return status::success;

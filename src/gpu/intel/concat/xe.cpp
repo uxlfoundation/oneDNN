@@ -145,13 +145,12 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
 
     int sg_chunk = conf.iter_dim_chunk * conf.sub_group_size;
     dim_t chunks = dst_mdw.nelems(true) / sg_chunk;
-    if (chunks > (1u << 15) && conf.sub_group_size == 1)
-        return status::unimplemented;
-    if (dst_mdw.blocking_desc().inner_nblks == 0
-            && (conf.sub_group_size == 1
-                    || (conf.ndims > 2 && conf.iter_dim_chunk == 1))) {
-        return status::unimplemented;
-    }
+    VDISPATCH_CONCAT_IC(chunks <= (1u << 15) || conf.sub_group_size != 1,
+            VERBOSE_BAD_PARAM, "sub_group_size");
+    VDISPATCH_CONCAT_IC(dst_mdw.blocking_desc().inner_nblks != 0
+                    || !(conf.sub_group_size == 1
+                            || (conf.ndims > 2 && conf.iter_dim_chunk == 1)),
+            VERBOSE_BAD_PARAM, "ndims, dim_chunk for non-unit group size");
 
     for (int dim_idx = 0; dim_idx < MAX_NDIMS; dim_idx++) {
         const int dim_block

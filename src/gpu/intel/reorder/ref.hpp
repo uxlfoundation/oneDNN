@@ -106,8 +106,7 @@ struct ref_t : public primitive_t {
                                     || utils::one_of(data_type::s4, sdt, ddt)),
                             attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-
-            VDISPATCH_REORDER_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             VDISPATCH_REORDER_SC(maybe_create_zp_precompute_conv_pd(dst_engine),
                     "failed to create nested zp precompute convolution");
 

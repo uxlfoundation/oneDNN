@@ -93,9 +93,7 @@ struct simple_t : public primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_CONCAT_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
 
-            VDISPATCH_CONCAT_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL,
-                    "reusable_concat init_conf");
+            CHECK(init_conf(engine));
 
             return status::success;
         }

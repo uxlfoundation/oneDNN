@@ -225,8 +225,7 @@ struct xe_bwd_t : public primitive_t {
                 VDISPATCH_BNORM_SC(init_default_ws(8), VERBOSE_WS_INIT);
                 VDISPATCH_BNORM(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
             }
-
-            VDISPATCH_BNORM_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             init_scratchpad();
 
             return status::success;

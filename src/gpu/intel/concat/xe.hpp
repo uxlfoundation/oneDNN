@@ -49,9 +49,7 @@ struct xe_t : public primitive_t {
             VDISPATCH_CONCAT_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_CONCAT(memory_desc_ndims_ok(dst_md()), VERBOSE_BAD_NDIMS,
                     "dst", dst_md()->ndims);
-
-            VDISPATCH_CONCAT_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "concat");
+            CHECK(init_conf(engine));
             return status::success;
         }
 

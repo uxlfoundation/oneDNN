@@ -100,8 +100,7 @@ struct ref_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_POOLING_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_TAG);
-
-            VDISPATCH_POOLING_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
 
             bool is_training = desc_.prop_kind == forward_training;
             if (desc()->alg_kind == pooling_max && is_training) {
@@ -183,8 +182,7 @@ struct ref_bwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-
-            VDISPATCH_POOLING_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
 
             if (desc()->alg_kind == pooling_max) {
                 // Required for storing spatial offsets into workspace for

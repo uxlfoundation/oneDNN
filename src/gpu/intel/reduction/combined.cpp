@@ -251,8 +251,9 @@ status_t combined_t::pd_t::init_conf(impl::engine_t *engine) {
     const dim_t *dst_dims = dst_mdw.dims();
 
     // Implementation uses int for offset calculations
-    if (src_mdw.nelems(true) > INT_MAX || dst_mdw.nelems(true) > INT_MAX)
-        return status::unimplemented;
+    VDISPATCH_REDUCTION_IC(
+            !(src_mdw.nelems(true) > INT_MAX || dst_mdw.nelems(true) > INT_MAX),
+            "exceeds max number of elememts");
 
     for (int i = 0; i < ndims; i++) {
         // Actually reduced dimensions
@@ -288,10 +289,8 @@ status_t combined_t::pd_t::init_conf(impl::engine_t *engine) {
             }
         }
     }
-
-    if (accumulating_src_zpad && alg_affected_by_zeros) {
-        return status::unimplemented;
-    }
+    VDISPATCH_REDUCTION_IC(!(accumulating_src_zpad && alg_affected_by_zeros),
+            VERBOSE_BAD_ALGORITHM);
 
     const intel::engine_t *intel_engine
             = utils::downcast<intel::engine_t *>(engine);

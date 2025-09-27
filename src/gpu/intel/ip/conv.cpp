@@ -86,10 +86,10 @@ status_t conv_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     primitive_desc_iterator_t it(engine, (op_desc_t *)&cd, &conv_attr, nullptr);
     if (!it.is_initialized()) return status::out_of_memory;
     cpd_ = *(++it);
-    if (!cpd_) return status::unimplemented;
+    VDISPATCH_INNER_PRODUCT_IC(cpd_, VERBOSE_NULL_ARG);
     std::string impl_name(cpd_->name());
-    if (impl_name.find("ref") != std::string::npos)
-        return status::unimplemented;
+    VDISPATCH_INNER_PRODUCT_IC(impl_name.find("ref") == std::string::npos,
+            "not a reference implementation");
 
     auto src_conv = *cpd_->src_md();
     auto wei_conv = *cpd_->weights_md();
@@ -127,11 +127,11 @@ status_t conv_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
     memory_desc_wrapper src_d(src_md_);
     memory_desc_wrapper dst_d(dst_md_);
-    if (conv_src_md.format_desc.blocking.inner_nblks < 2
-            && conv_wei_md.format_desc.blocking.inner_nblks < 2
-            && src_d.size() + dst_d.size() >= 20000000)
-        return status::unimplemented;
-
+    VDISPATCH_INNER_PRODUCT_IC(conv_src_md.format_desc.blocking.inner_nblks >= 2
+                    || conv_wei_md.format_desc.blocking.inner_nblks >= 2,
+            VERBOSE_BAD_PARAM, "bad inner block size");
+    VDISPATCH_INNER_PRODUCT_IC(
+            src_d.size() + dst_d.size() < 20000000, VERBOSE_LARGE_SHAPES);
     return status::success;
 }
 

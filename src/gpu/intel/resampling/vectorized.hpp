@@ -42,8 +42,7 @@ struct vectorized_bwd_t : public primitive_t {
                     set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_RESAMPLING(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-
-            VDISPATCH_RESAMPLING_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
         conf_t conf;

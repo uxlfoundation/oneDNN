@@ -32,7 +32,8 @@ void MaxPooling(const float *src, float *dst, const dim_t batch,
         const dim_t outW, const dim_t inD, const dim_t inH, const dim_t inW,
         const dim_t kerD, const dim_t kerH, const dim_t kerW,
         const dim_t strideD, const dim_t strideH, const dim_t strideW,
-        const dim_t padFront, const dim_t padTop, const dim_t padLeft) {
+        const dim_t padFront, const dim_t padTop, const dim_t padLeft,
+        const rvv_postops_t &postops_handler) {
 
     parallel_nd(batch, channels, outD, outH, outW,
             [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
@@ -53,7 +54,11 @@ void MaxPooling(const float *src, float *dst, const dim_t batch,
                 int iw_end = std::min(ow_offset + kerW, inW);
 
                 if (iw_start >= iw_end) {
-                    dst[dst_offset] = -__FLT_MAX__;
+                    size_t one = __riscv_vsetvl_e32m1(1);
+                    vfloat32m1_t vneg_inf
+                            = __riscv_vfmv_v_f_f32m1(-__FLT_MAX__, one);
+                    vfloat32m1_t vout = postops_handler.apply(vneg_inf, one);
+                    __riscv_vse32_v_f32m1(&dst[dst_offset], vout, 1);
                     return;
                 }
 
@@ -96,6 +101,7 @@ void MaxPooling(const float *src, float *dst, const dim_t batch,
                 vred_res = __riscv_vfredmax_vs_f32m1_f32m1(
                         vmax, min_scalar, cycleLength);
 
+                vred_res = postops_handler.apply(vred_res, 1);
                 __riscv_vse32_v_f32m1(&dst[dst_offset], vred_res, 1);
             });
 }
@@ -105,7 +111,8 @@ void AvgPoolingIncludePadding(const float *src, float *dst, const dim_t batch,
         const dim_t outW, const dim_t inD, const dim_t inH, const dim_t inW,
         const dim_t kerD, const dim_t kerH, const dim_t kerW,
         const dim_t strideD, const dim_t strideH, const dim_t strideW,
-        const dim_t padFront, const dim_t padTop, const dim_t padLeft) {
+        const dim_t padFront, const dim_t padTop, const dim_t padLeft,
+        const rvv_postops_t &postops_handler) {
 
     const float kernel_volume = (float)(kerD * kerH * kerW);
 
@@ -170,9 +177,10 @@ void AvgPoolingIncludePadding(const float *src, float *dst, const dim_t batch,
                 vred_res = __riscv_vfredusum_vs_f32m1_f32m1(
                         vsum, zero_scalar, cycleLength);
 
-                float red_res;
-                __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
-                dst[dst_offset] = red_res / kernel_volume;
+                vfloat32m1_t vavg_res;
+                vavg_res = postops_handler.apply(
+                        __riscv_vfdiv_vf_f32m1(vred_res, kernel_volume, 1), 1);
+                __riscv_vse32_v_f32m1(&dst[dst_offset], vavg_res, 1);
             });
 }
 
@@ -181,7 +189,8 @@ void AvgPoolingExcludePadding(const float *src, float *dst, const dim_t batch,
         const dim_t outW, const dim_t inD, const dim_t inH, const dim_t inW,
         const dim_t kerD, const dim_t kerH, const dim_t kerW,
         const dim_t strideD, const dim_t strideH, const dim_t strideW,
-        const dim_t padFront, const dim_t padTop, const dim_t padLeft) {
+        const dim_t padFront, const dim_t padTop, const dim_t padLeft,
+        const rvv_postops_t &postops_handler) {
 
     parallel_nd(batch, channels, outD, outH, outW,
             [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
@@ -256,9 +265,10 @@ void AvgPoolingExcludePadding(const float *src, float *dst, const dim_t batch,
                 vred_res = __riscv_vfredusum_vs_f32m1_f32m1(
                         vsum, zero_scalar, cycleLength);
 
-                float red_res;
-                __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
-                dst[dst_offset] = red_res / (float)count;
+                vfloat32m1_t vavg_res;
+                vavg_res = postops_handler.apply(
+                        __riscv_vfdiv_vf_f32m1(vred_res, (float)count, 1), 1);
+                __riscv_vse32_v_f32m1(&dst[dst_offset], vavg_res, 1);
             });
 }
 } // namespace
@@ -297,6 +307,9 @@ status_t riscv_nchw_pooling_fwd_t<data_type::f32>::execute_forward(
     const dim_t padT = pd()->padT();
     const dim_t padL = pd()->padL();
 
+    const post_ops_t &post_ops = pd()->attr()->post_ops_;
+    rvv_postops_t postops_handler(post_ops);
+
     const auto alg = pd()->desc()->alg_kind;
     const bool is_max_pool = alg == alg_kind::pooling_max;
     const bool is_avg_pool_include
@@ -305,13 +318,13 @@ status_t riscv_nchw_pooling_fwd_t<data_type::f32>::execute_forward(
             = alg == alg_kind::pooling_avg_exclude_padding;
     if (is_max_pool) {
         MaxPooling(src, dst, MB, C, OD, OH, OW, ID, IH, IW, KD, KH, KW, SD, SH,
-                SW, padF, padT, padL);
+                SW, padF, padT, padL, postops_handler);
     } else if (is_avg_pool_exclude) {
         AvgPoolingExcludePadding(src, dst, MB, C, OD, OH, OW, ID, IH, IW, KD,
-                KH, KW, SD, SH, SW, padF, padT, padL);
+                KH, KW, SD, SH, SW, padF, padT, padL, postops_handler);
     } else if (is_avg_pool_include) {
         AvgPoolingIncludePadding(src, dst, MB, C, OD, OH, OW, ID, IH, IW, KD,
-                KH, KW, SD, SH, SW, padF, padT, padL);
+                KH, KW, SD, SH, SW, padF, padT, padL, postops_handler);
     } else {
         return status::unimplemented;
     }

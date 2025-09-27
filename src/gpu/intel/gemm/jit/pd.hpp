@@ -21,6 +21,7 @@
 
 #include "common/c_types_map.hpp"
 #include "gpu/intel/gemm/config.hpp"
+#include "gpu/intel/gemm/jit/gen_kernel.hpp"
 #include "gpu/intel/post_ops.hpp"
 
 namespace dnnl {
@@ -79,19 +80,9 @@ struct pd_t : public gemm::pd_t {
     bool wei_decomp_ = false;
     bool dy_quant_enabled_ = false;
     bool quant_enabled_ = false;
-    int a_scales_group_k_ = 0, a_scales_group_m_ = 0;
-    int b_scales_group_k_ = 0, b_scales_group_n_ = 0;
-    int a_zp_group_k_ = 0, a_zp_group_m_ = 0;
-    int b_zp_group_k_ = 0, b_zp_group_n_ = 0;
-    int a_gs_group_k_ = 0, a_gs_group_m_ = 0;
-    int b_gs_group_k_ = 0, b_gs_group_n_ = 0;
+    quant_params a_quant_, b_quant_;
     bool non_scale_po_ = false;
-    data_type_t a_scales_type_ = data_type::undef;
-    data_type_t b_scales_type_ = data_type::undef;
 
-    int ao_dims_ = -1, bo_dims_ = -1;
-    int ag_dims_ = -1, bg_dims_ = -1;
-    int asc_dims_ = -1, bsc_dims_ = -1;
     post_ops_t post_ops_;
     std::vector<binary_src_t> binary_srcs_;
 
@@ -135,11 +126,11 @@ struct pd_t : public gemm::pd_t {
         return sum_ab();
     }
 
-    bool a_zp_2d() const { return ao_dims_ >= 2; }
-    bool b_zp_2d() const { return bo_dims_ >= 2; }
+    bool a_zp_2d() const { return a_quant_.zp_ndims >= 2; }
+    bool b_zp_2d() const { return b_quant_.zp_ndims >= 2; }
 
-    bool a_gs_2d() const { return ag_dims_ >= 2; }
-    bool b_gs_2d() const { return bg_dims_ >= 2; }
+    bool a_gs_2d() const { return a_quant_.gs_ndims >= 2; }
+    bool b_gs_2d() const { return b_quant_.gs_ndims >= 2; }
 
     bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
 
@@ -151,25 +142,38 @@ struct pd_t : public gemm::pd_t {
             case sum_ab::sum_b_col: return 2;
         }
     }
-    bool with_a_scales() const { return (asc_dims_ >= 0); }
-    bool with_b_scales() const { return (bsc_dims_ >= 0); }
+    bool with_a_scales() const { return (a_quant_.scale_ndims >= 0); }
+    bool with_b_scales() const { return (b_quant_.scale_ndims >= 0); }
     bool with_c_scales() const {
         return !attr()->scales_.has_default_values(DNNL_ARG_DST);
     }
 
-    bool with_a_zero_points() const { return (ao_dims_ >= 0); }
-    bool with_b_zero_points() const { return (bo_dims_ >= 0); }
+    bool with_a_zero_points() const { return (a_quant_.zp_ndims >= 0); }
+    bool with_b_zero_points() const { return (b_quant_.zp_ndims >= 0); }
     bool with_c_zero_points() const {
         return !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
     }
 
-    bool with_a_group_sums() const { return (ag_dims_ >= 0); }
-    bool with_b_group_sums() const { return (bg_dims_ >= 0); }
+    bool with_a_group_sums() const { return (a_quant_.gs_ndims >= 0); }
+    bool with_b_group_sums() const { return (b_quant_.gs_ndims >= 0); }
 
     bool with_sround() const { return with_sround_; }
 
-    bool a_scales_2d() const { return asc_dims_ > 1; }
-    bool b_scales_2d() const { return bsc_dims_ > 1; }
+    bool a_scales_2d() const { return a_quant_.scale_ndims > 1; }
+    bool b_scales_2d() const { return b_quant_.scale_ndims > 1; }
+
+    bool a_grouped() const {
+        bool k_grouped = 1 < a_quant_.group_k && a_quant_.group_k < desc()->k();
+        bool m_grouped
+                = 1 < a_quant_.group_mn && a_quant_.group_mn < desc()->m();
+        return k_grouped || m_grouped;
+    }
+    bool b_grouped() const {
+        bool k_grouped = 1 < b_quant_.group_k && b_quant_.group_k < desc()->k();
+        bool n_grouped
+                = 1 < b_quant_.group_mn && b_quant_.group_mn < desc()->n();
+        return k_grouped || n_grouped;
+    }
 
     bool dy_quant_enabled();
     bool wei_decomp();
@@ -202,70 +206,6 @@ struct pd_t : public gemm::pd_t {
     }
     dim_t eff_scale_stride(int idx, int arg) const;
     dim_t eff_zp_stride(int idx, int arg) const;
-    bool a_scales_grouped() const {
-        bool k_grouped
-                = 1 < a_scales_group_k_ && a_scales_group_k_ < desc()->k();
-        bool m_grouped
-                = 1 < a_scales_group_m_ && a_scales_group_m_ < desc()->m();
-        return k_grouped || m_grouped;
-    }
-    bool b_scales_grouped() const {
-        bool k_grouped
-                = 1 < b_scales_group_k_ && b_scales_group_k_ < desc()->k();
-        bool n_grouped
-                = 1 < b_scales_group_n_ && b_scales_group_n_ < desc()->n();
-        return k_grouped || n_grouped;
-    }
-    bool a_zp_grouped() const {
-        bool k_grouped = 1 < a_zp_group_k_ && a_zp_group_k_ < desc()->k();
-        bool m_grouped = 1 < a_zp_group_m_ && a_zp_group_m_ < desc()->m();
-        return k_grouped || m_grouped;
-    }
-    bool b_zp_grouped() const {
-        bool k_grouped = 1 < b_zp_group_k_ && b_zp_group_k_ < desc()->k();
-        bool n_grouped = 1 < b_zp_group_n_ && b_zp_group_n_ < desc()->n();
-        return k_grouped || n_grouped;
-    }
-    int a_q2d_group_k() const {
-        if (a_zp_2d()) {
-            return a_zp_group_k_;
-        } else if (a_scales_2d()) {
-            return a_scales_group_k_;
-        } else if (with_a_group_sums()) {
-            return a_gs_group_k_;
-        }
-        return 0;
-    }
-    int a_q2d_group_m() const {
-        if (a_zp_2d()) {
-            return a_zp_group_m_;
-        } else if (a_scales_2d()) {
-            return a_scales_group_m_;
-        } else if (with_a_group_sums()) {
-            return a_gs_group_m_;
-        }
-        return 0;
-    }
-    int b_q2d_group_k() const {
-        if (b_zp_2d()) {
-            return b_zp_group_k_;
-        } else if (b_scales_2d()) {
-            return b_scales_group_k_;
-        } else if (with_b_group_sums()) {
-            return b_gs_group_k_;
-        }
-        return 0;
-    }
-    int b_q2d_group_n() const {
-        if (b_zp_2d()) {
-            return b_zp_group_n_;
-        } else if (b_scales_2d()) {
-            return b_scales_group_n_;
-        } else if (with_b_group_sums()) {
-            return b_gs_group_n_;
-        }
-        return 0;
-    }
     int eff_align_a() const {
         auto dt = eff_a_type();
         auto align

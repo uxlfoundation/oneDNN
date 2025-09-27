@@ -692,15 +692,19 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
         return nullptr;
     });
 
-    // If both A/B are integers, we can use integer dpas/accumulation
-    // but only if there are no grouped scales (in these cases,
-    // we apply scales before dpas, and we must use fp dpas)
-    bool allow = gpu_utils::dev_getenv("ALLOW_IACC", true);
-    bool is_int
-            = types::is_integral_dt(a_type) && types::is_integral_dt(b_type);
-    if (a_quant.scale_ndims < 1 && b_quant.scale_ndims < 1 && is_int && allow) {
+    // Look for additional accumulation types in case the preferred
+    // one is not found
+    // XXX: There is no preference for the original data type, we rely on the
+    // performance model to select the best accumulation type if multiple are found.
+    bool allow = gpu_utils::dev_getenv("ALLOW_ACC_OVERRIDE", true);
+    if (acc_type == data_type::s32 && allow) {
         match_params.push_back(base);
-        match_params.back().selector.precisions[2] = "I";
+        match_params.back().selector.precisions[2] = "S";
+    }
+
+    if (acc_type == data_type::f16 && allow) {
+        match_params.push_back(base);
+        match_params.back().selector.precisions[2] = "S";
     }
 
     EvaluateParams eval_params;

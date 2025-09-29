@@ -229,7 +229,7 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
                 ? cpu_isa_traits_t<avx512_core>::vlen
                 : cpu_isa_traits_t<avx2>::vlen;
         const dim_t simd_w = vlen / types::data_type_size(conf_.dst_type);
-        dim_t expanded_len = ((rhs_len + simd_w - 1) / simd_w) * simd_w * 2;
+        dim_t expanded_len = utils::rnd_up(rhs_len, simd_w) * 2;
 
         conf_.post_ops_expanded_rhs_elems = expanded_len;
     }

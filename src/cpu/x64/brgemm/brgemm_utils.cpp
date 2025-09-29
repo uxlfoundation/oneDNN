@@ -98,14 +98,6 @@ void init_common_conf(brgemm_desc_t *brg, brgemm_batch_kind_t type, float alpha,
 
 namespace brgemm_utils {
 
-bool can_dispatch_uker(const brgemm_desc_t *brg) {
-    return brg->is_tmm
-            && one_of(brg->type, brgemm_addr, brgemm_offs, brgemm_static_offs)
-            && brg->brgattr.use_uker
-            && everyone_is(false, brg->is_runtime_lda, brg->is_runtime_ldb,
-                    brg->is_runtime_ldc, brg->is_runtime_ldd);
-}
-
 void maybe_try_bf32(brgemm_desc_t *brg) {
     const bool try_bf32 = brg->is_f32
             && one_of(brg->brgattr.fpmath_mode, fpmath_mode::bf16,
@@ -115,7 +107,7 @@ void maybe_try_bf32(brgemm_desc_t *brg) {
     if (try_bf32) {
         const bool is_tmm = brg->is_tmm;
         brg->is_tmm = true;
-        if (can_dispatch_uker(brg) /*Requires is_tmm to be true*/) {
+        if (brg->can_dispatch_uker() /*Requires is_tmm to be true*/) {
             brg->is_bf32 = true;
         } else {
             brg->is_bf32 = false;
@@ -463,7 +455,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
 
         if (new_bd_block2 != 0) {
             brg->bd_block2 = new_bd_block2;
-            if (can_dispatch_uker(brg)) {
+            if (brg->can_dispatch_uker()) {
                 brg->bdb2 = div_up(brg->bdb, brg->bd_block2);
                 brg->bdb2_tail = 0;
             } else {
@@ -476,7 +468,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
 
         if (new_ld_block2 != 0) {
             brg->ld_block2 = new_ld_block2;
-            if (can_dispatch_uker(brg)) {
+            if (brg->can_dispatch_uker()) {
                 brg->ldb2 = div_up(brg->ldb, brg->ld_block2);
                 brg->ldb2_tail = 0;
             } else {
@@ -535,7 +527,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     recalc_blocking(
             brg->bd_block, brg->ld_block, brg->bd_block2, brg->ld_block2);
 
-    if (can_dispatch_uker(brg)) {
+    if (brg->can_dispatch_uker()) {
         // Blocking heuristics for some shapes
         // TODO: Review these criteria
         const size_t eff_K

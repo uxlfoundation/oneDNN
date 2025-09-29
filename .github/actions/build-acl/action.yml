@@ -1,0 +1,106 @@
+# *******************************************************************************
+# Copyright 2025 Arm Limited and affiliates.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# *******************************************************************************
+
+name: "Build ACL"
+description: "Build and cache ACL"
+
+inputs:
+  onednn_path:
+    description: oneDNN repository path. Default ./oneDNN
+    default: ./oneDNN
+    required: false
+  acl_path:
+    description: ACL repository path. Default ./ComputeLibrary
+    default: ./ComputeLibrary
+    required: false
+  toolset:
+    description: compiler to use. gcc or clang
+    required: true
+  build:
+    description: build type. Release, RelWithAssert or Debug
+    required: true
+  threading:
+    description: threading type. OMP or Sequential
+    required: true
+  acl_hash:
+    description: acl hash to build
+    required: true
+  gcc_version:
+    description: gcc Version
+    required: true
+
+# Cache is built sequentially to avoid cache-hit race conditions
+runs:
+  using: "composite"
+
+  steps:
+    - name: Clone ACL
+      run: ${{ inputs.onednn_path }}/.github/automation/aarch64/build_acl.sh
+      shell: bash
+      env:
+        ACL_ACTION: clone
+        ACL_ROOT_DIR: ${{ inputs.acl_path }}
+        ACL_VERSION: ${{ inputs.acl_hash }}
+
+    - name: Get ACL commit hash for cache key
+      id: get_acl_commit_hash
+      shell: bash
+      run: (cd ${{ inputs.acl_path }} && echo "ACLCommitHash=$(git rev-parse --short HEAD)") >> $GITHUB_OUTPUT
+
+    - name: Get system name
+      id: get_system_name
+      shell: bash
+      run: (echo "SystemName=$(uname)") >> $GITHUB_OUTPUT
+
+    - name: Restore cached ACL
+      id: cache-acl-restore
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ inputs.toolset }}-${{ inputs.build }}-${{ steps.get_acl_commit_hash.outputs.ACLCommitHash }}
+        path: ${{ inputs.acl_path }}/build
+
+    - name: Install Scons (MacOS)
+      if: ${{ (steps.get_system_name.outputs.SystemName == 'Darwin') && (steps.cache-acl-restore.outputs.cache-hit != 'true') }}
+      shell: bash
+      run: brew install scons
+
+    - name: Install scons (Linux)
+      if: ${{ (steps.get_system_name.outputs.SystemName == 'Linux') && (steps.cache-acl-restore.outputs.cache-hit != 'true') }}
+      shell: bash
+      run: |
+        sudo apt update -y
+        sudo apt install -y scons
+
+    - name: Build ACL
+      if: ${{ steps.cache-acl-restore.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: ${{ inputs.onednn_path }}/.github/automation/aarch64/build_acl.sh
+      env:
+        ACL_ACTION: build
+        ACL_ROOT_DIR: ${{ inputs.acl_path }}
+        ACL_THREADING: ${{ inputs.threading }}
+        BUILD_TOOLSET: ${{ inputs.toolset }}
+        ACL_BUILD_TYPE: ${{ inputs.build }}
+        GCC_VERSION: ${{ inputs.gcc_version }}
+
+    - name: Save ACL in cache
+      id: cache-acl_build-save
+      if: ${{ steps.cache-acl-restore.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ inputs.toolset }}-${{ inputs.build }}-${{ steps.get_acl_commit_hash.outputs.ACLCommitHash }}
+        path: ${{ inputs.acl_path }}/build

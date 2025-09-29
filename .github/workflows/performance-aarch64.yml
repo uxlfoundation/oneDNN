@@ -56,18 +56,7 @@ concurrency:
 permissions: write-all
 
 jobs:
-  build-acl-base:
-    uses: ./.github/workflows/aarch64-acl.yml
-    with:
-      acl_hash: ${{ inputs.acl_base_hash }}
-
-  build-acl-new:
-    uses: ./.github/workflows/aarch64-acl.yml
-    with:
-      acl_hash: ${{ inputs.acl_new_hash }}
-
   build-and-test-performance:
-    needs: [build-acl-base, build-acl-new]
     strategy:
       matrix:
         config: [
@@ -76,6 +65,9 @@ jobs:
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}
     runs-on: ${{ matrix.config.label }}
+    permissions:
+      contents: write
+    continue-on-error: true
     steps:
 
       - name: Checkout oneDNN
@@ -117,52 +109,26 @@ jobs:
         if: ${{ matrix.config.build == 'Release' }}
         run: pip install scipy statistics GitPython
 
-      - name: Clone base ACL
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
-        env:
-          ACL_ACTION: clone
-          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
-          ACL_VERSION: ${{ inputs.acl_base_hash || fromJson(steps.get-versions.outputs.output).dependencies.acl }}
-
-      - name: Get system name
-        id: get_system_name
-        run: (echo "SystemName=$(uname)") >> $GITHUB_OUTPUT
-
-      - name: Get ACL commit hash for cache key
-        id: get_acl_commit_hash_base
-        run: |
-          cd ${{ github.workspace }}/ComputeLibrary && echo "ACLCommitHash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Restore base cached ACL
-        id: cache-acl-restore-base
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - name: Build Base ComputeLibrary
+        uses: ./oneDNN/.github/actions/build-acl
         with:
-          key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash_base.outputs.ACLCommitHash }}
-          path: ${{ github.workspace }}/ComputeLibrary/build
-          fail-on-cache-miss: true
+          toolset: ${{ matrix.config.toolset }}
+          build: ${{ matrix.config.build }}
+          threading: ${{ matrix.config.threading }}
+          acl_hash: ${{ inputs.acl_base_hash || fromJson(steps.get-versions.outputs.output).dependencies.acl }}
+          gcc_version: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
 
       - name: Rename to ComputeLibrary_base
         run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_base
 
-      - name: Clone new ACL
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
-        env:
-          ACL_ACTION: clone
-          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
-          ACL_VERSION: ${{ inputs.acl_new_hash || fromJson(steps.get-versions.outputs.output).dependencies.acl }}
-
-      - name: Get ACL commit hash for cache key
-        id: get_acl_commit_hash_new
-        run: |
-          cd ${{ github.workspace }}/ComputeLibrary && echo "ACLCommitHash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Restore new cached ACL
-        id: cache-acl-restore-new
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - name: Build New ComputeLibrary
+        uses: ./oneDNN/.github/actions/build-acl
         with:
-          key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash_new.outputs.ACLCommitHash }}
-          path: ${{ github.workspace }}/ComputeLibrary/build
-          fail-on-cache-miss: true
+          toolset: ${{ matrix.config.toolset }}
+          build: ${{ matrix.config.build }}
+          threading: ${{ matrix.config.threading }}
+          acl_hash: ${{ inputs.acl_new_hash || fromJson(steps.get-versions.outputs.output).dependencies.acl }}
+          gcc_version: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
 
       - name: Move to ComputeLibrary_new
         run: mv ${{ github.workspace }}/ComputeLibrary ${{ github.workspace }}/ComputeLibrary_new

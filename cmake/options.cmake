@@ -369,7 +369,7 @@ set(DNNL_USE_CLANG_SANITIZER "" CACHE STRING
 
 option(DNNL_ENABLE_MEM_DEBUG "enables memory-related debug functionality,
     such as buffer overflow (default) and underflow, using gtests and benchdnn.
-    Additionaly, this option enables testing of out-of-memory handling by the
+    Additionally, this option enables testing of out-of-memory handling by the
     library, such as failed memory allocations, using primitive-related gtests.
     This feature is experimental and is only available on Linux." OFF)
 

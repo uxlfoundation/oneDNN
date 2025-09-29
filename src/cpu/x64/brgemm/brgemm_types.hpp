@@ -526,6 +526,15 @@ struct brgemm_desc_t {
                 || with_src_scales || with_wei_scales || with_dst_scales;
     }
 
+    bool can_dispatch_uker() const noexcept {
+        using namespace utils;
+        return is_tmm
+                && one_of(type, brgemm_addr, brgemm_offs, brgemm_static_offs)
+                && brgattr.use_uker
+                && everyone_is(false, is_runtime_lda, is_runtime_ldb,
+                        is_runtime_ldc, is_runtime_ldd);
+    }
+
     bool is_xf16() const noexcept { return is_bf16 || is_f16; }
 
     bool is_f16_b_non_amx_vnni() const {

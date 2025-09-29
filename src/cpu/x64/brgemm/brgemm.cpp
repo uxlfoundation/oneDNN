@@ -636,7 +636,7 @@ status_t brgemm_kernel_create(
             CHECK(safe_ptr_assign<brgemm_kernel_t>(
                     *brg_kernel, new brdgmm_kernel_t<Xbyak::Ymm>(brg)));
         }
-    } else if (can_dispatch_uker(&brg)) {
+    } else if (brg.can_dispatch_uker()) {
         CHECK(safe_ptr_assign<brgemm_kernel_t>(
                 *brg_kernel, new brgemm_amx_uker_t(brg)));
     } else {

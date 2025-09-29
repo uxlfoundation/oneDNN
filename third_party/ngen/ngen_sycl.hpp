@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2025 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -87,22 +87,22 @@ sycl::kernel SYCLCodeGenerator<hw>::getKernel(const sycl::context &context, cons
             auto deviceCL = get_native<backend::opencl>(device);
 
             cl_int status = CL_SUCCESS;
-            auto programCL = clCreateProgramWithBinary(contextCL, 1, &deviceCL, &binarySize, &binaryPtr, nullptr, &status);
+            auto programCL = dynamic::clCreateProgramWithBinary(contextCL, 1, &deviceCL, &binarySize, &binaryPtr, nullptr, &status);
 
             detail::handleCL(status);
             if (programCL == nullptr)
                 detail::handleCL(CL_OUT_OF_HOST_MEMORY);    /* a tried and true "default" error */
 
-            detail::handleCL(clBuildProgram(programCL, 1, &deviceCL, "-cl-std=CL2.0", nullptr, nullptr));
+            detail::handleCL(dynamic::clBuildProgram(programCL, 1, &deviceCL, "-cl-std=CL2.0", nullptr, nullptr));
 
-            auto kernelCL = clCreateKernel(programCL, kernelName, &status);
+            auto kernelCL = dynamic::clCreateKernel(programCL, kernelName, &status);
             detail::handleCL(status);
 
             outKernel = make_kernel<backend::opencl>(kernelCL, context);
 
-            detail::handleCL(clReleaseKernel(kernelCL));
-            detail::handleCL(clReleaseProgram(programCL));
-            detail::handleCL(clReleaseContext(contextCL));
+            detail::handleCL(dynamic::clReleaseKernel(kernelCL));
+            detail::handleCL(dynamic::clReleaseProgram(programCL));
+            detail::handleCL(dynamic::clReleaseContext(contextCL));
             break;
         }
         case backend::ext_oneapi_level_zero: {
@@ -120,14 +120,14 @@ sycl::kernel SYCLCodeGenerator<hw>::getKernel(const sycl::context &context, cons
             };
 
             ze_module_handle_t moduleL0;
-            detail::handleL0(call_zeModuleCreate(contextL0, deviceL0, &moduleDesc, &moduleL0, nullptr));
+            detail::handleL0(dynamic::zeModuleCreate(contextL0, deviceL0, &moduleDesc, &moduleL0, nullptr));
 
             ze_kernel_handle_t kernelL0;
             ze_kernel_desc_t kernelDesc{ZE_STRUCTURE_TYPE_KERNEL_DESC, nullptr, 0, kernelName};
-            detail::handleL0(call_zeKernelCreate(moduleL0, &kernelDesc, &kernelL0));
+            detail::handleL0(dynamic::zeKernelCreate(moduleL0, &kernelDesc, &kernelL0));
 
             auto bundle = make_kernel_bundle<backend::ext_oneapi_level_zero, bundle_state::executable>({moduleL0}, context);
-            outKernel = make_kernel<backend::ext_oneapi_level_zero>({std::move(bundle), kernelL0}, context);
+            outKernel = make_kernel<backend::ext_oneapi_level_zero>({bundle, kernelL0}, context);
             break;
         }
         default: throw unsupported_sycl_device();
@@ -151,7 +151,7 @@ Product SYCLCodeGenerator<hw>::detectHWInfo(const sycl::context &context, const 
             auto contextCL = get_native<backend::opencl>(context);
             auto deviceCL = get_native<backend::opencl>(device);
             auto ret = OpenCLCodeGenerator<hw>::detectHWInfo(contextCL, deviceCL);
-            detail::handleCL(clReleaseContext(contextCL));
+            detail::handleCL(dynamic::clReleaseContext(contextCL));
             return ret;
         }
         case backend::ext_oneapi_level_zero:

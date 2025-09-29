@@ -176,8 +176,6 @@ meaning associated with any logical dimensions.
       propagation (e.g., if the convolution operation satisfies these
       conditions).
 
-## Example
+## Examples
 
-[Eltwise Primitive Example](@ref eltwise_example_cpp)
-
-@copydetails eltwise_example_cpp_short
+* @ref eltwise_example_cpp

@@ -1419,7 +1419,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, diff_src_d, weights_d, diff_dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     const bool with_groups = weights_d.ndims() == diff_src_d.ndims() + 1;
     int ndims = diff_src_d.ndims();
@@ -2073,10 +2073,12 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     if (cd.use_inversion) {
         const auto &src_scales = attr.scales_.get(DNNL_ARG_SRC);
         const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
-        jcp.with_scales = !src_scales.has_default_values()
-                || !wei_scales.has_default_values()
+        const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
+        jcp.with_src_scales = !src_scales.has_default_values();
+        jcp.with_wei_scales = !wei_scales.has_default_values()
                 || jcp.scale_adjust_factor != 1.0f;
         jcp.is_ic_scale = wei_scales.get_mask() > 0;
+        jcp.with_dst_scales = !dst_scales.has_default_values();
     }
 
     jcp.req_brg_comp_pad = false;
@@ -2145,6 +2147,12 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
     if (jcp.src_zero_point && jcp.req_cal_comp_pad) {
         scratchpad.book(key_brgemm_primitive_zp_comp_a, jcp.comp_a_buffer_size,
                 sizeof(int32_t), 0, P4K);
+    }
+
+    if (jcp.with_dst_scales) {
+        // See brgemm_types.hpp comment for `with_dst_scales`.
+        scratchpad.book(key_conv_dst_scales,
+                static_cast<size_t>(jcp.nthr) * sizeof(float), P4K);
     }
 }
 

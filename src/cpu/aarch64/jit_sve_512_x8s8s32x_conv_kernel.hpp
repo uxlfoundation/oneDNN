@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,7 +51,7 @@ struct jit_sve_512_x8s8s32x_fwd_kernel : public jit_generator {
         }
     }
 
-    ~jit_sve_512_x8s8s32x_fwd_kernel() {}
+    ~jit_sve_512_x8s8s32x_fwd_kernel() override = default;
 
     jit_conv_conf_t jcp;
     const primitive_attr_t &attr_;
@@ -71,11 +72,11 @@ private:
         ker_dw_reg_base_idx = 30,
         ker_zp_reg_base_idx = 26,
     };
-    typedef enum {
+    enum ic_block_t {
         no_last_block,
         last_ic_block,
         last_sp_block,
-    } ic_block_t;
+    };
 
     /* data regs */
     const XReg reg_ptr_scales = x7;

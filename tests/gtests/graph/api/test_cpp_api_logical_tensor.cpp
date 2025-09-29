@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -214,12 +214,30 @@ TEST(APILogicalTensor, TestProperty) {
     using layout_type = logical_tensor::layout_type;
     using property_type = logical_tensor::property_type;
 
-    logical_tensor lt0 {0, data_type::f32, {1, 2, 3}, layout_type::strided};
+    size_t id = 0;
+
+    logical_tensor lt0 {id++, data_type::f32, {1, 2, 3}, layout_type::strided};
     ASSERT_EQ(lt0.get_property_type(), property_type::undef);
 
-    logical_tensor lt1 {1, data_type::f32, {1, 2, 3}, layout_type::strided,
+    logical_tensor lt1 {id++, data_type::f32, {1, 2, 3}, layout_type::strided,
             property_type::constant};
     ASSERT_EQ(lt1.get_property_type(), property_type::constant);
+
+    // Test creating host scalar logical tensor with s32 data type
+    logical_tensor lt_host_scalar {id++, data_type::s32, 0,
+            layout_type::strided, property_type::host_scalar};
+    ASSERT_EQ(lt_host_scalar.get_data_type(), data_type::s32);
+    ASSERT_EQ(lt_host_scalar.get_property_type(), property_type::host_scalar);
+    ASSERT_EQ(lt_host_scalar.get_dims().size(), 0U);
+
+    // Test creating host scalar logical tensor with dims constructor
+    logical_tensor lt_host_scalar_empty_dims {id++, data_type::s32,
+            logical_tensor::dims {}, layout_type::strided,
+            property_type::host_scalar};
+    ASSERT_EQ(lt_host_scalar_empty_dims.get_data_type(), data_type::s32);
+    ASSERT_EQ(lt_host_scalar_empty_dims.get_property_type(),
+            property_type::host_scalar);
+    ASSERT_EQ(lt_host_scalar_empty_dims.get_dims().size(), 0U);
 }
 
 TEST(APILogicalTensor, CreateWith0Dims) {
@@ -317,4 +335,52 @@ TEST(APILogicalTensor, LogicalTensorSize) {
     ASSERT_EQ(lt_4.get_data_type(), data_type::s4);
     // in case num_elem is not even.
     ASSERT_EQ(lt_4.get_mem_size(), (num_elem + 1) / 2);
+}
+
+TEST(APILogicalTensor, HostScalarDataTypes) {
+    using logical_tensor = dnnl::graph::logical_tensor;
+    using data_type = logical_tensor::data_type;
+    using layout_type = logical_tensor::layout_type;
+    using property_type = logical_tensor::property_type;
+
+    const size_t id = 456;
+
+    // Test that only s32 and f32 data type are supported for host scalar.
+    ASSERT_NO_THROW((logical_tensor {id, data_type::s32, 0,
+            layout_type::strided, property_type::host_scalar}));
+
+    ASSERT_NO_THROW((logical_tensor {id, data_type::f32, 0,
+            layout_type::strided, property_type::host_scalar}));
+
+    ASSERT_THROW((logical_tensor {id, data_type::f16, 0, layout_type::strided,
+                         property_type::host_scalar}),
+            dnnl::error);
+
+    ASSERT_THROW((logical_tensor {id, data_type::s8, 0, layout_type::strided,
+                         property_type::host_scalar}),
+            dnnl::error);
+}
+
+TEST(APILogicalTensor, HostScalarNDims) {
+    using logical_tensor = dnnl::graph::logical_tensor;
+    using data_type = logical_tensor::data_type;
+    using layout_type = logical_tensor::layout_type;
+    using property_type = logical_tensor::property_type;
+
+    const size_t id = 789;
+
+    // Test that host scalar must be 0-dimensional (scalar)
+    // Non-zero dimensions should fail
+    ASSERT_THROW((logical_tensor {id, data_type::s32, logical_tensor::dims {3},
+                         layout_type::strided, property_type::host_scalar}),
+            dnnl::error);
+
+    ASSERT_THROW((logical_tensor {id, data_type::s32, {2, 3},
+                         layout_type::strided, property_type::host_scalar}),
+            dnnl::error);
+
+    // Test using ndims constructor with non-zero ndims should fail
+    ASSERT_THROW((logical_tensor {id, data_type::s32, 1, layout_type::strided,
+                         property_type::host_scalar}),
+            dnnl::error);
 }

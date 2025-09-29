@@ -62,6 +62,9 @@ status_t eltwise_desc_init(eltwise_desc_t *eltwise_desc, prop_kind_t prop_kind,
     VCHECK_ELTWISE(
             IMPLICATION(is_fwd, !memory_desc_wrapper(src_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
+    VCHECK_ELTWISE(!any_memory_desc_host_scalar(
+                           src_desc, dst_desc, diff_src_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     bool runtime_dims_or_strides
             = memory_desc_wrapper(src_desc).has_runtime_dims_or_strides()
@@ -72,8 +75,8 @@ status_t eltwise_desc_init(eltwise_desc_t *eltwise_desc, prop_kind_t prop_kind,
                            .has_runtime_dims_or_strides()
                 || memory_desc_wrapper(diff_dst_desc)
                            .has_runtime_dims_or_strides();
-    VCONDCHECK(primitive, create, check, eltwise, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_ELTWISE_IMPL(
+            !runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     auto ed = eltwise_desc_t();
     ed.primitive_kind = primitive_kind::eltwise;
@@ -93,7 +96,8 @@ status_t eltwise_desc_init(eltwise_desc_t *eltwise_desc, prop_kind_t prop_kind,
 #define CHECK_DIMS(t1, t2) \
     do { \
         VCHECK_ELTWISE(ed.t2##_desc.ndims == ed.t1##_desc.ndims, \
-                VERBOSE_INCONSISTENT_NDIMS, #t1, #t2); \
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, #t1, #t2, \
+                ed.t2##_desc.ndims, ed.t1##_desc.ndims); \
         VCHECK_ELTWISE(array_cmp(ed.t2##_desc.dims, ed.t1##_desc.dims, \
                                ed.t1##_desc.ndims), \
                 VERBOSE_INCONSISTENT_DIM, #t1, -1, #t2, -1); \

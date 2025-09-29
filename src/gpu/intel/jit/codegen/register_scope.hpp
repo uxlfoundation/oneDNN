@@ -111,7 +111,7 @@ public:
                 type.with_elems(type.elems() * stride).size(), grf_size);
         auto buf = alloc_reg_buf(regs, bundle);
         reg_buf_data_t rbd(buf);
-        return rbd.format(0, type.elems(), stride, to_ngen(type.scalar()));
+        return rbd.format(0, type.elems(), stride, to_ngen(type.base()));
     }
 
     ngen::GRF alloc(ngen::Bundle bundle = ngen::Bundle()) {

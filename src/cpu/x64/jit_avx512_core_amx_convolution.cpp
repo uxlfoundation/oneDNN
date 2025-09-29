@@ -76,8 +76,10 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -95,15 +97,12 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
     assert(jcp.is_relo);
     assert(jcp.nb_oc % jcp.nb_oc_blocking == 0);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
-    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const float *oscales = scale_utils::precompute_scales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
-            pd()->OC(), false, wei_scale_mask > 0, pd()->attr(),
-            jit_scale_precompute_.get());
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     auto inp_p_buffer = ctx.get_scratchpad_grantor().template get<char>(
             key_conv_amx_inp_buffer); // fix the template
@@ -192,7 +191,7 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
                     p.oc_blocks = occ * jcp.nb_oc_blocking;
                     p.filt = weights
                             + wei_dt_size * (g * oc_chunks + occ) * wei_oc_step;
-                    p.src_zero_point = src_zero_point;
+                    p.src_zero_point = src_zero_points;
 
                     kernel_->zp_pbuff_kernel()(&p);
                 });
@@ -219,6 +218,17 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
 
         auto p = jit_conv_args_t();
         amx_tile_configure(tcfg);
+
+        float *dst_scales_inv_ptr = nullptr;
+        if (jcp.with_dst_scales) {
+            const float *dst_scales_ptr
+                    = static_cast<const float *>(dst_scales);
+            dst_scales_inv_ptr
+                    = ctx.get_scratchpad_grantor().template get<float>(
+                              key_conv_dst_scales)
+                    + ithr;
+            dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+        }
 
         const int oh_work = jcp.oh_pad;
         const int sp_stride = mem_blk_off(dst_d, 0, 0, 0, 0, 1);
@@ -250,8 +260,8 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
                     : nullptr;
             p.zp_compensation
                     = jcp.src_zero_point ? zp_compensation + oc : nullptr;
-            p.src_zero_point = jcp.src_zero_point ? src_zero_point : nullptr;
-            p.dst_zero_point = jcp.dst_zero_point ? dst_zero_point : nullptr;
+            p.src_zero_point = src_zero_points;
+            p.dst_zero_point = dst_zero_points;
 
             int oh_s = ohc * jcp.oh_blk_size;
             int oh_e = nstl::min(jcp.oh, oh_s + jcp.oh_blk_size);
@@ -303,7 +313,7 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
                     p.oc_blocks = occ * jcp.nb_oc_blocking;
                     p.filt = weights
                             + wei_dt_size * (g * oc_chunks + occ) * wei_oc_step;
-                    p.src_zero_point = src_zero_point;
+                    p.src_zero_point = src_zero_points;
 
                     kernel_->zp_pbuff_kernel()(&p);
                 }
@@ -375,8 +385,12 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
                 p.filt = wei
                         + wei_dt_size * (g * oc_chunks + occ) * wei_oc_shift;
                 p.bias = bias_w;
-                p.scales = &oscales[jcp.is_oc_scale * oc];
-                p.dst_scale = &dst_scales[0];
+                p.src_scales = src_scales;
+                p.wei_scales = jcp.with_wei_scales
+                        ? static_cast<const float *>(wei_scales)
+                                + jcp.is_oc_scale * oc
+                        : nullptr;
+                p.dst_scales = dst_scales_inv_ptr;
 
                 p.acc_s32 = wsp + ithr * jcp.wsp_buffer_size;
 
@@ -434,8 +448,10 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
 
-    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
-    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+    const int32_t *src_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
+    const int32_t *dst_zero_points = CTX_IN_MEM(
+            const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const size_t bia_dt_size = pd()->with_bias()
             ? types::data_type_size(pd()->desc()->bias_desc.data_type)
@@ -452,15 +468,12 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
     const auto &jcp = pd()->jcp_;
     assert(jcp.nb_oc % jcp.nb_oc_blocking == 0);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
-    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const float *oscales = scale_utils::precompute_scales(
-            ctx.get_scratchpad_grantor(), src_scales, wei_scales, pd()->IC(),
-            pd()->OC(), false, wei_scale_mask > 0, pd()->attr(),
-            jit_scale_precompute_.get());
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     // TODO: use block offset instead of hand-calculated one
     //size_t wei_oc_shift = wht_blk_off(weights_d, 0, 1);
@@ -564,7 +577,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
                     p.filt = weights
                             + wei_dt_size * (g * oc_chunks + occ)
                                     * wei_oc_shift;
-                    p.src_zero_point = src_zero_point;
+                    p.src_zero_point = src_zero_points;
 
                     kernel_->zp_pbuff_kernel()(&p);
                 });
@@ -591,6 +604,17 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
 
         auto p = jit_conv_args_t();
         amx_tile_configure(tcfg);
+
+        float *dst_scales_inv_ptr = nullptr;
+        if (jcp.with_dst_scales) {
+            const float *dst_scales_ptr
+                    = static_cast<const float *>(dst_scales);
+            dst_scales_inv_ptr
+                    = ctx.get_scratchpad_grantor().template get<float>(
+                              key_conv_dst_scales)
+                    + ithr;
+            dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+        }
 
         const int oh_work = jcp.oh_pad;
         const int sp_stride = mem_blk_off(dst_d, 0, 0, 0, 0, 1);
@@ -621,8 +645,8 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
                     : nullptr;
             p.zp_compensation
                     = jcp.src_zero_point ? zp_compensation + oc : nullptr;
-            p.src_zero_point = jcp.src_zero_point ? src_zero_point : nullptr;
-            p.dst_zero_point = jcp.dst_zero_point ? dst_zero_point : nullptr;
+            p.src_zero_point = src_zero_points;
+            p.dst_zero_point = dst_zero_points;
 
             const size_t inp_src_d_stride = mem_blk_off(src_d, 0, 0, 1, 0, 0);
             int oh_s = ohc * jcp.oh_blk_size;
@@ -677,7 +701,7 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
                     p.filt = weights
                             + wei_dt_size * (g * oc_chunks + occ)
                                     * wei_oc_shift;
-                    p.src_zero_point = src_zero_point;
+                    p.src_zero_point = src_zero_points;
 
                     kernel_->zp_pbuff_kernel()(&p);
                 }
@@ -769,8 +793,12 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
                                   + d_f_overflow * wei_d_shift)
                                 * wei_dt_size;
                 p.bias = bias_w;
-                p.scales = &oscales[jcp.is_oc_scale * oc];
-                p.dst_scale = &dst_scales[0];
+                p.src_scales = src_scales;
+                p.wei_scales = jcp.with_wei_scales
+                        ? static_cast<const float *>(wei_scales)
+                                + jcp.is_oc_scale * oc
+                        : nullptr;
+                p.dst_scales = dst_scales_inv_ptr;
 
                 p.acc_s32 = wsp + ithr * jcp.wsp_buffer_size;
                 if (req_zero_point_buffer

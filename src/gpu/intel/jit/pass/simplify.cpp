@@ -39,18 +39,11 @@ using namespace ir_utils;
 
 // Generic pattern expression, used as a wild card during pattern matching. Can
 // match any expression.
-class pexpr_t : public expr_impl_t {
+class pexpr_t : public expr_iface_t<pexpr_t> {
 public:
-    IR_DECL_TYPE(pexpr_t)
-
     static expr_t make(int id) { return expr_t(new pexpr_t(id)); }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
-        return id == other.id;
-    }
+    bool operator==(const pexpr_t &other) const { return id == other.id; }
 
     size_t get_hash() const override { return ir_utils::get_hash(id); }
 
@@ -81,15 +74,13 @@ public:
     int id;
 
 private:
-    pexpr_t(int id) : expr_impl_t(_type_info(), type_t::undef()), id(id) {}
+    pexpr_t(int id) : expr_iface_t(type_t::undef()), id(id) {}
 };
 
 // Pattern expression for int_imm_t, used as a wild card during pattern
 // matching. Can match any int_imm_t with the given value.
-class pint_imm_t : public expr_impl_t {
+class pint_imm_t : public expr_iface_t<pint_imm_t> {
 public:
-    IR_DECL_TYPE(pint_imm_t)
-
     // Matches an integer constant with the given value.
     static expr_t make(int64_t value) {
         return expr_t(new pint_imm_t(-1, value));
@@ -112,10 +103,7 @@ public:
         return true;
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const pint_imm_t &other) const {
         return (id == other.id) && (value == other.value);
     }
 
@@ -132,7 +120,7 @@ public:
 
 private:
     pint_imm_t(int id, int64_t value)
-        : expr_impl_t(_type_info(), type_t::undef()), id(id), value(value) {}
+        : expr_iface_t(type_t::undef()), id(id), value(value) {}
 };
 
 // Stores already matched pairs of <pattern expression, matched expression>.
@@ -683,13 +671,15 @@ public:
         auto a = ir_mutator_t::mutate(obj.a);
         auto b = ir_mutator_t::mutate(obj.b);
 
-        if (obj.op_kind == op_kind_t::_or) {
-            if (cset.can_prove(a) || cset.can_prove(b)) return expr_t(true);
-        } else if (obj.op_kind == op_kind_t::_and) {
-            auto not_a = try_not(a);
-            if (not_a && cset.can_prove(not_a)) return expr_t(false);
-            auto not_b = try_not(b);
-            if (not_b && cset.can_prove(not_b)) return expr_t(false);
+        if (obj.type.is_bool()) {
+            if (obj.op_kind == op_kind_t::_or) {
+                if (cset.can_prove(a) || cset.can_prove(b)) return expr_t(true);
+            } else if (obj.op_kind == op_kind_t::_and) {
+                auto not_a = try_not(a);
+                if (not_a && cset.can_prove(not_a)) return expr_t(false);
+                auto not_b = try_not(b);
+                if (not_b && cset.can_prove(not_b)) return expr_t(false);
+            }
         }
 
         if (a.is_same(obj.a) && b.is_same(obj.b)) return obj;
@@ -727,18 +717,13 @@ public:
 
 // N-ary expression: (a[0] op a[1] op ... op a[n - 1]),
 // where <op> is either addition or multiplication.
-class nary_op_t : public expr_impl_t {
+class nary_op_t : public expr_iface_t<nary_op_t> {
 public:
-    IR_DECL_TYPE(nary_op_t)
-
     static expr_t make(op_kind_t op_kind, const std::vector<expr_t> &args) {
         return expr_t(new nary_op_t(op_kind, args));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const nary_op_t &other) const {
         return (op_kind == other.op_kind)
                 && ir_utils::is_equal(args, other.args);
     }
@@ -766,7 +751,7 @@ public:
 
 private:
     nary_op_t(op_kind_t op_kind, const std::vector<expr_t> &args)
-        : expr_impl_t(_type_info(), nary_op_type(op_kind, args))
+        : expr_iface_t(nary_op_type(op_kind, args))
         , op_kind(op_kind)
         , args(args) {}
 };
@@ -1035,10 +1020,8 @@ public:
 // Stores factorization of an expression in the canonical (normalized) form:
 //     expr = (f(0), f(1), f(2), ... f(n))
 // f(0), ... f(n-1) are non-constant expressions, f(n) is a constant.
-class factored_expr_t : public expr_impl_t {
+class factored_expr_t : public expr_iface_t<factored_expr_t> {
 public:
-    IR_DECL_TYPE(factored_expr_t);
-
     static expr_t make(const expr_t &e) {
         return expr_t(new factored_expr_t(e));
     }
@@ -1047,22 +1030,19 @@ public:
         return expr_t(new factored_expr_t(type, factors));
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
-
+    bool operator==(const factored_expr_t &other) const {
         if (factors.size() != other.factors.size()) return false;
         if (!factors.back().is_equal(other.factors.back())) return false;
 
-        auto common = intersect(obj);
+        auto common = intersect(other);
         auto &f_common = common.as<factored_expr_t>();
         return f_common.factors.size() == factors.size();
     }
 
     // Constant factor is ignored during comparison.
-    bool is_equal_ignore_const(const object_impl_t &obj) const {
-        if (!obj.is<self_type>()) return false;
-        auto &other = obj.as<self_type>();
+    bool is_equal_ignore_const(const impl_t &obj) const {
+        if (!obj.is<factored_expr_t>()) return false;
+        auto &other = obj.as<factored_expr_t>();
 
         if (factors.size() != other.factors.size()) return false;
 
@@ -1183,12 +1163,14 @@ public:
     std::vector<expr_t> factors;
 
 private:
-    factored_expr_t(const expr_t &e) : expr_impl_t(_type_info(), e.type()) {
+    factored_expr_t(const expr_t &e)
+        : expr_iface_t(
+                e.type().with_attr(e.type().attr() & ~type::attr_t::mut)) {
         init_factors(e);
     }
 
     factored_expr_t(const type_t &type, const std::vector<expr_t> &factors)
-        : expr_impl_t(_type_info(), type) {
+        : expr_iface_t(type) {
         init_normalize(factors);
     }
 
@@ -1300,7 +1282,7 @@ public:
     using nary_op_mutator_t::_mutate;
 
     object_t _mutate(const binary_op_t &obj) override {
-        if (obj.op_kind != op_kind_t::_div)
+        if (obj.op_kind != op_kind_t::_div || !obj.type.is_scalar())
             return nary_op_mutator_t::_mutate(obj);
 
         expr_t a = mutate(obj.a);
@@ -1334,8 +1316,8 @@ public:
         auto obj = nary_op_mutator_t::_mutate(_obj);
         auto *binary_op = obj.as_ptr<binary_op_t>();
         if (!binary_op) return obj;
-        if (!utils::one_of(
-                    binary_op->op_kind, op_kind_t::_div, op_kind_t::_mod))
+        if (!utils::one_of(binary_op->op_kind, op_kind_t::_div, op_kind_t::_mod)
+                || !_obj.type.is_scalar())
             return obj;
         if (!binary_op->type.is_int()) return obj;
 
@@ -1729,6 +1711,7 @@ public:
     }
 
     object_t _mutate(const let_t &obj) override {
+
         // Attempt to inline
         expr_t value;
         if (cset_.is_single_value(obj.var, value)) {
@@ -1736,6 +1719,8 @@ public:
                     cast_t::make(obj.var.as<var_t>().type, value));
             return mutate(body);
         }
+
+        if (obj.var.type().is_mutable()) return ir_mutator_t::_mutate(obj);
 
         // External variable.
         if (obj.value.is_empty()) return ir_mutator_t::_mutate(obj);
@@ -1807,7 +1792,7 @@ public:
     }
 
 private:
-    static op_kind_t flip_cmp_op(op_kind_t op_kind) {
+    static op_kind_t flip_op(op_kind_t op_kind) {
         switch (op_kind) {
             case op_kind_t::_eq: return op_kind_t::_ne;
             case op_kind_t::_ge: return op_kind_t::_lt;
@@ -1815,6 +1800,8 @@ private:
             case op_kind_t::_le: return op_kind_t::_gt;
             case op_kind_t::_lt: return op_kind_t::_ge;
             case op_kind_t::_ne: return op_kind_t::_eq;
+            case op_kind_t::_and: return op_kind_t::_or;
+            case op_kind_t::_or: return op_kind_t::_and;
             default: gpu_error_not_expected();
         }
         return op_kind_t::undef;
@@ -1828,7 +1815,13 @@ private:
             auto &a = binary_op->a;
             auto &b = binary_op->b;
             auto op_kind = binary_op->op_kind;
-            return binary_op_t::make(flip_cmp_op(op_kind), a, b);
+            if (is_cmp_op(op_kind))
+                return binary_op_t::make(flip_op(op_kind), a, b);
+            if (utils::one_of(op_kind, op_kind_t::_and, op_kind_t::_or)) {
+                auto a_neg = flip_condition(a);
+                auto b_neg = flip_condition(b);
+                return binary_op_t::make(flip_op(op_kind), a_neg, b_neg);
+            }
         }
 
         auto *shuffle = cond.as_ptr<shuffle_t>();
@@ -1895,7 +1888,7 @@ struct op_traits_t {};
                 typename = typename std::enable_if<dummy_op == op_kind_t::_and \
                         || dummy_op == op_kind_t::_or>::type> \
         static bool compute(bool a, bool b) { \
-            return a op b; \
+            return static_cast<bool>(a op b); \
         } \
     };
 
@@ -1912,6 +1905,9 @@ DECL_OP_TRAITS(op_kind_t::_le, <=)
 
 DECL_OP_TRAITS(op_kind_t::_and, &)
 DECL_OP_TRAITS(op_kind_t::_or, |)
+DECL_OP_TRAITS(op_kind_t::_xor, ^)
+DECL_OP_TRAITS(op_kind_t::_shl, <<)
+DECL_OP_TRAITS(op_kind_t::_shr, >>)
 
 template <>
 struct op_traits_t<op_kind_t::_min> {
@@ -2021,6 +2017,9 @@ public:
 
             CASE(op_kind_t::_and)
             CASE(op_kind_t::_or)
+            CASE(op_kind_t::_xor)
+            CASE(op_kind_t::_shl)
+            CASE(op_kind_t::_shr)
             CASE(op_kind_t::_min)
             CASE(op_kind_t::_max)
 
@@ -2087,11 +2086,11 @@ expr_t const_fold_binary(const type_t &compute_type, op_kind_t op_kind,
         const expr_t &a, const expr_t &b) {
     if (!compute_type.is_scalar()) {
         int elems = compute_type.elems();
-        auto scalar_type = compute_type.scalar();
+        auto base_type = compute_type.base();
         std::vector<expr_t> ret;
         ret.reserve(elems);
         for (int i = 0; i < elems; i++) {
-            ret.push_back(const_fold_binary(scalar_type, op_kind, a[i], b[i]));
+            ret.push_back(const_fold_binary(base_type, op_kind, a[i], b[i]));
         }
         return shuffle_t::make(ret);
     }
@@ -2301,7 +2300,7 @@ expr_t simplify_propagate_shuffle(const expr_t &e) {
     if (!e.type().is_bool()) return e;
 
     auto *shuffle = e.as_ptr<shuffle_t>();
-    if (!shuffle) return e;
+    if (!shuffle || shuffle->vec[0].type().is_simd()) return e;
 
     // Handle binary operation.
     {

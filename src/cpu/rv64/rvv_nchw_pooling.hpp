@@ -26,7 +26,6 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
-template <data_type_t d_type>
 struct riscv_nchw_pooling_fwd_t : public primitive_t {
     struct pd_t : public cpu_pooling_fwd_pd_t {
         using cpu_pooling_fwd_pd_t::cpu_pooling_fwd_pd_t;
@@ -39,36 +38,44 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
             const format_tag_t desired_fmt_tag = utils::pick(ndims() - 3,
                     format_tag::ncw, format_tag::nchw, format_tag::ncdhw);
 
-            const bool is_training
-                    = desc_.prop_kind == prop_kind::forward_training;
-
-            const bool ok = is_fwd()
-                    && utils::one_of(desc()->alg_kind, alg_kind::pooling_max,
+            VDISPATCH_POOLING(desc_.prop_kind == prop_kind::forward_inference,
+                    VERBOSE_BAD_PROPKIND);
+            VDISPATCH_POOLING(
+                    utils::one_of(desc()->alg_kind, alg_kind::pooling_max,
                             alg_kind::pooling_avg_include_padding,
-                            alg_kind::pooling_avg_exclude_padding)
-                    && memory_desc_wrapper(dst_md()).is_dense(false)
-                    && utils::everyone_is(
-                            d_type, src_md()->data_type, dst_md()->data_type)
-                    && platform::has_data_type_support(d_type)
-                    && !has_zero_dim_memory() && !is_dilated()
-                    && attr()->has_default_values()
-                    && set_default_params() == status::success
-                    && memory_desc_matches_tag(*src_md(), desired_fmt_tag)
-                    && memory_desc_matches_tag(*dst_md(), desired_fmt_tag)
-                    && attr_.set_default_formats(dst_md(0)) == status::success
-                    && !is_training
-                    && KW() < riscv_nchw_pooling_fwd_t<
-                               d_type>::max_kernel_width;
-
-            if (!ok) return status::unimplemented;
+                            alg_kind::pooling_avg_exclude_padding),
+                    VERBOSE_BAD_ALGORITHM);
+            VDISPATCH_POOLING(set_default_params() == status::success,
+                    VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_POOLING(memory_desc_wrapper(dst_md()).is_dense(false),
+                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            static constexpr data_type_t d_type = data_type::f32;
+            const bool types_ok = src_md()->data_type == d_type
+                    && dst_md()->data_type == d_type;
+            VDISPATCH_POOLING(types_ok, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_POOLING(!is_dilated(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "does not support dilations");
+            VDISPATCH_POOLING(
+                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_POOLING(
+                    memory_desc_matches_tag(*src_md(), desired_fmt_tag),
+                    VERBOSE_UNSUPPORTED_TAG_S, "src");
+            VDISPATCH_POOLING(
+                    memory_desc_matches_tag(*dst_md(), desired_fmt_tag),
+                    VERBOSE_UNSUPPORTED_TAG_S, "dst");
+            VDISPATCH_POOLING(
+                    attr_.set_default_formats(dst_md(0)) == status::success,
+                    VERBOSE_UNSUPPORTED_POSTOP);
+            VDISPATCH_POOLING(KW() < max_kernel_width,
+                    VERBOSE_UNSUPPORTED_FEATURE,
+                    "kernel width exceeds maximum");
 
             return status::success;
         }
     };
 
     riscv_nchw_pooling_fwd_t(const pd_t *apd);
-
-    using data_t = typename prec_traits_t<d_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);

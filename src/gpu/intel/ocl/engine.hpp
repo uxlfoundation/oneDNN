@@ -20,8 +20,7 @@
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
 #include "gpu/gpu_impl_list.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/engine.hpp"
 #include "xpu/ocl/engine_impl.hpp"
 #include "xpu/utils.hpp"
 
@@ -38,10 +37,10 @@ status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
         cl_device_id dev, cl_context ctx, size_t index,
         const std::vector<uint8_t> &cache_blob);
 
-class engine_t : public compute::compute_engine_t {
+class engine_t : public intel::engine_t {
 public:
     engine_t(cl_device_id adevice, cl_context acontext, size_t index)
-        : compute::compute_engine_t(
+        : intel::engine_t(
                 new xpu::ocl::engine_impl_t(adevice, acontext, index)) {}
 
     status_t init() override;
@@ -60,6 +59,9 @@ public:
 
     status_t create_kernel(compute::kernel_t *kernel,
             jit::generator_base_t *jitter) const override;
+
+    status_t create_kernel(compute::kernel_t &kernel,
+            const jit::kernel_t &kernel_ir) const override;
 
     status_t create_kernels(std::vector<compute::kernel_t> *kernels,
             const std::vector<const char *> &kernel_names,

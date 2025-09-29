@@ -24,9 +24,10 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive_exec_types.hpp"
-#include "common/serialization.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
+#include "gpu/intel/jit/ir/include/kernel.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
+#include "gpu/intel/primitive.hpp"
+#include "ngen_interface.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -70,53 +71,6 @@ public:
 
 private:
     std::shared_ptr<memory_storage_ptr_t> ptr_;
-};
-
-class kernel_iface_t {
-public:
-    int nargs() const { return int(args_.size()); }
-    const expr_t &arg_var(int idx) const {
-        gpu_assert(idx >= 0 && idx < nargs());
-        return args_[idx].var;
-    }
-    const std::string &arg_name(int idx) const {
-        return arg_var(idx).as<var_t>().name;
-    }
-    const type_t &arg_type(int idx) const { return arg_var(idx).type(); }
-    bool has(const std::string &name) const { return find_arg_impl(name); }
-
-    expr_t find_arg(const std::string &name, bool allow_empty = false) const {
-        auto *arg = find_arg_impl(name);
-        if (arg) return arg->var;
-        if (!allow_empty)
-            gpu_error_not_expected() << "Argument not found: " << name;
-        return expr_t();
-    }
-
-    void register_arg(const expr_t &var) { args_.emplace_back(var); }
-
-    void register_arg(const std::string &name, const type_t &type) {
-        register_arg(var_t::make(type, name));
-    }
-
-private:
-    struct arg_t {
-        arg_t() = default;
-        arg_t(const expr_t &var) : var(var) {}
-        const std::string &name() const { return var.as<var_t>().name; }
-        bool is_ptr() const { return var.type().is_ptr(); }
-
-        expr_t var;
-    };
-
-    const arg_t *find_arg_impl(const std::string &name) const {
-        for (int i = 0; i < nargs(); i++) {
-            if (args_[i].name() == name) return &args_[i];
-        }
-        return nullptr;
-    }
-
-    std::vector<arg_t> args_;
 };
 
 enum class kernel_id_t {
@@ -236,8 +190,8 @@ public:
 
     bool is_output(int idx) const { return !is_input(idx); }
 
-    kernel_iface_t iface() const {
-        kernel_iface_t iface;
+    kernel::iface_t iface(const std::string &name) const {
+        kernel::iface_t iface(name);
         for (int i = 0; i < nargs(); i++) {
             iface.register_arg(args_[i].var);
         }
@@ -245,7 +199,7 @@ public:
     }
 
     memory_storage_wrapper_t arg_storage(int idx, const exec_ctx_t &ctx,
-            const gpu_primitive_t *primitive) const {
+            const primitive_t *primitive) const {
         gpu_assert(idx >= 0 && idx < nargs());
         bool is_input = args_[idx].is_input;
         int key = args_[idx].key;
@@ -263,7 +217,7 @@ public:
         return memory_storage_wrapper_t();
     }
 
-    size_t arg_size(int idx, const gpu_primitive_t *primitive) const {
+    size_t arg_size(int idx, const primitive_t *primitive) const {
         switch (args_[idx].kind) {
             case arg_kind_t::user: {
                 auto *md = primitive->pd()->arg_md(key(idx));
@@ -276,7 +230,7 @@ public:
     }
 
     void init_memory_storage_list(std::vector<memory_storage_wrapper_t> &list,
-            const exec_ctx_t &ctx, const gpu_primitive_t *primitive) const {
+            const exec_ctx_t &ctx, const primitive_t *primitive) const {
         list = std::vector<memory_storage_wrapper_t>(nargs());
         for (int i = 0; i < nargs(); i++) {
             list[i] = arg_storage(i, ctx, primitive);

@@ -390,6 +390,16 @@ private:
             return;
         }
 
+        // Support for expressions with mutable variables is unimplemented due
+        // hoisting logic not accounting for mutation.
+        auto vars = find_objects<var_t>(obj);
+        for (auto &v : vars) {
+            if (v.template as<var_t>().type.is_mutable()) {
+                ir_visitor_t::_visit(obj);
+                return;
+            }
+        }
+
         if (std::is_same<T, shuffle_t>::value) {
             auto &shuffle = reinterpret_cast<const shuffle_t &>(obj);
             if (shuffle.is_broadcast()) {
@@ -418,11 +428,11 @@ private:
     template <typename T>
     void visit_stmt(const T &obj) {
         if (std::is_same<T, for_t>::value) {
-            visit_for((const object_impl_t &)obj);
+            visit_for((const impl_t &)obj);
             return;
         }
         if (std::is_same<T, let_t>::value) {
-            visit_let((const object_impl_t &)obj);
+            visit_let((const impl_t &)obj);
             return;
         }
         root_path_.push(&obj);
@@ -430,7 +440,7 @@ private:
         root_path_.pop();
     }
 
-    void visit_for(const object_impl_t &_obj) {
+    void visit_for(const impl_t &_obj) {
         auto &obj = (const for_t &)_obj;
 
         visit(obj.var);
@@ -441,7 +451,7 @@ private:
         root_path_.pop();
     }
 
-    void visit_let(const object_impl_t &_obj) {
+    void visit_let(const impl_t &_obj) {
         auto &obj = (const let_t &)_obj;
 
         visit(obj.var);
@@ -755,7 +765,7 @@ private:
 stmt_t eliminate_common_subexprs(const stmt_t &stmt, ir_context_t &ir_ctx,
         int reserved_regs, int gmem_bufs) {
     int grf_size = ir_ctx.grf_size();
-    int available_regs = ir_ctx.exec_cfg().regs() - reserved_regs;
+    int available_regs = ir_ctx.options().regs() - reserved_regs;
     int memory_usage_limit = available_regs * grf_size;
     if (gmem_bufs > 1) {
         g2s_buf_visitor_t v;

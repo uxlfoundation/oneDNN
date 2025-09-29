@@ -77,12 +77,6 @@ enum class send_address_t {
     slm,
 };
 
-enum class send_cache_hint_t {
-    undef,
-    hw_default,
-    load_once,
-};
-
 static auto send_cache_hint_names = nstl::to_array({
         make_enum_name(send_cache_hint_t::undef, "cache:undef"),
         make_enum_name(send_cache_hint_t::load_once, "cache:load_once"),
@@ -130,10 +124,8 @@ struct block_2d_info_t {
 };
 
 // Function representing send messages.
-class send_t : public func_impl_t {
+class send_t : public func_impl_t, public object::info_t<send_t> {
 public:
-    IR_DECL_TYPE(send_t)
-
     static func_t make(const hw_t &hw, send_op_t op, send_address_t address,
             const type_t &type, int slots, bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {
@@ -190,7 +182,7 @@ public:
                 zero_out, cache_hint);
     }
 
-    bool is_equal(const object_impl_t &obj) const override {
+    bool is_equal(const impl_t &obj) const override {
         if (!obj.is<self_type>()) return false;
         auto &other = obj.as<self_type>();
 
@@ -257,8 +249,7 @@ public:
     bool is_slm() const { return address == send_address_t::slm; }
 
     bool is_block() const {
-        return utils::one_of(
-                type.kind(), type_kind_t::oword, type_kind_t::hword);
+        return utils::one_of(type.base(), type_t::oword(), type_t::hword());
     }
 
     bool is_scattered() const { return !is_block() && !is_2d(); }
@@ -298,7 +289,7 @@ public:
 
     int alignment() const {
         if (is_2d()) return 128;
-        if (is_block()) return type.scalar().size();
+        if (is_block()) return type.base().size();
         return 1;
     }
 
@@ -380,7 +371,7 @@ private:
     send_t(const hw_t &hw, send_op_t op, send_address_t address,
             const type_t &type, int slots, uint32_t slot_mask, bool is_lsc,
             bool zero_out, send_cache_hint_t cache_hint)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , hw(hw)
         , op(op)
         , address(address)
@@ -393,7 +384,7 @@ private:
 
     send_t(const hw_t &hw, send_op_t op, const type_t &type, bool zero_out,
             const block_2d_info_t &block_2d_info, send_cache_hint_t cache_hint)
-        : func_impl_t(_type_info())
+        : func_impl_t(get_info())
         , hw(hw)
         , op(op)
         , address(send_address_t::a64)
@@ -474,7 +465,7 @@ public:
     const layout_t &reg_layout() const { return reg_layout_; }
     int reg_buf_size() const {
         if (reg_buf_size_ == 0)
-            return into<int>(utils::rnd_up(reg_layout_.size(), grf_size()));
+            return into<int>(size_bytes(reg_layout_, grf_size()));
         return reg_buf_size_;
     }
     const stmt_t &stmt() const { return stmt_; }
@@ -499,7 +490,7 @@ private:
             int &c, int &vnni_permute_factor);
 
     bool check_2d_mask(const tile_t &tile, const coord_t &coord,
-            bool use_virtual_surface, dim_idx_t w_idx, dim_idx_t h_idx,
+            bool use_virtual_surface, size_t w_idx, size_t h_idx,
             expr_t &mask) const;
 
     std::vector<layout_t> candidate_payload_layouts() const;
@@ -525,21 +516,21 @@ private:
     stmt_t stmt_;
 };
 
-send_params_t get_send_params(const exec_config_t &exec_cfg, send_op_t send_op,
-        send_address_t send_address, const view_t &view,
+send_params_t get_send_params(const kernel::options_t &options,
+        send_op_t send_op, send_address_t send_address, const view_t &view,
         send_cache_hint_t cache_hint = send_cache_hint_t::undef,
         fma_kind_t fma_kind = fma_kind_t::undef,
         abc_kind_t abc_kind = abc_kind_t::undef, bool allow_2d = false);
 
-send_params_t get_send_params(const exec_config_t &exec_cfg, send_op_t send_op,
-        send_address_t send_address, fma_kind_t fma_kind, abc_kind_t abc_kind,
-        const view_t &view, const gemm_schedule_t &gemm_schedule,
-        bool allow_2d = true);
+send_params_t get_send_params(const kernel::options_t &options,
+        send_op_t send_op, send_address_t send_address, fma_kind_t fma_kind,
+        abc_kind_t abc_kind, const view_t &view,
+        const gemm_schedule_t &gemm_schedule, bool allow_2d = true);
 
-inline send_params_t get_send_params(const exec_config_t &exec_cfg,
+inline send_params_t get_send_params(const kernel::options_t &options,
         send_op_t send_op, send_address_t send_address, const view_t &view,
         bool allow_2d) {
-    return get_send_params(exec_cfg, send_op, send_address, view,
+    return get_send_params(options, send_op, send_address, view,
             send_cache_hint_t::undef, fma_kind_t::undef, abc_kind_t::undef,
             allow_2d);
 }
@@ -558,7 +549,7 @@ inline access_builder_t make_access_builder(ir_context_t &ir_ctx,
         send_cache_hint_t cache_hint = send_cache_hint_t::undef,
         bool zero_out = true) {
     auto send_params = get_send_params(
-            ir_ctx.exec_cfg(), send_op, send_address, mem_view, cache_hint);
+            ir_ctx.options(), send_op, send_address, mem_view, cache_hint);
     return make_access_builder(
             ir_ctx, mem_view, mem_buf, reg_buf, send_params, zero_out);
 }

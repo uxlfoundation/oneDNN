@@ -96,6 +96,7 @@ struct sdpa_pd_t : public primitive_desc_t {
     const memory_desc_t *key_md() const { return &desc_.k_desc; }
     const memory_desc_t *val_md() const { return &desc_.v_desc; }
     const memory_desc_t *attn_mask_md() const { return &desc_.attn_mask_desc; }
+    const memory_desc_t *scale_md() const { return &desc_.scale_desc; }
 
     int n_inputs() const override {
         return 3 + int(with_attn_mask()) + int(with_attn_scale());
@@ -103,12 +104,22 @@ struct sdpa_pd_t : public primitive_desc_t {
     int n_outputs() const override { return 1; }
 
     bool with_attn_scale() const {
-        return (desc_.scale_dt != data_type::undef);
+        return (scale_md()->data_type != data_type::undef);
+    }
+
+    bool with_host_scale() const {
+        return (scale_md()->format_kind == format_kind::host_scalar);
     }
 
     bool with_attn_mask() const {
         return (attn_mask_md()->data_type != data_type::undef);
     }
+
+    /// Returns the accumulation data type of the KQ matmul
+    data_type_t kq_acc_dt() const { return desc()->kq_acc_dt; }
+
+    /// Returns the accumulation data type of the VS matmul
+    data_type_t vs_acc_dt() const { return desc()->vs_acc_dt; }
 
     /// If true, the attention mask is a causal mask
     bool with_causal_mask() const {

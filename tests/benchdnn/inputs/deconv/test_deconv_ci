@@ -33,7 +33,7 @@
 --dt=s8:s8:f32,s8:s8:bf16,s8:s8:s32,s8:s8:s8,s8:s8:u8,u8:s8:f32,u8:s8:bf16,u8:s8:s32,u8:s8:s8,u8:s8:u8
 --batch=shapes_ci
 
---attr-scales=,src:common:0.25,wei:per_oc,dst:common:2,src:common:0.25+wei:per_oc
+--attr-scales=,src:common:0.25,wei:per_oc,dst:common:2,src:common:0.25+wei:per_oc,src:host_scalar:0.25+dst:host_scalar:2
 ## Direct
 --alg=direct
 --dt=s8:s8:s8,u8:s8:s32
@@ -48,7 +48,7 @@
 --batch=shapes_ci
 
 --attr-post-ops=
---attr-zero-points=,src:common:31+dst:common:15
+--attr-zero-points=,src:common:31+dst:common:15,src:host_scalar:31+dst:host_scalar:15
 --batch=shapes_ci
 # BF32 and TF32
 --reset

@@ -36,6 +36,7 @@ namespace cpu {
 namespace x64 {
 
 using namespace dnnl::impl::utils;
+using namespace injector_utils;
 using namespace Xbyak;
 
 struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
@@ -148,17 +149,19 @@ private:
     std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
     std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
 
-    using reg64_t = const Xbyak::Reg64;
     enum {
         simd_w = 16,
         zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen,
     };
 
     // Register decomposition
-    const reg64_t param1 = abi_param1;
+    using reg64_t = const Xbyak::Reg64;
 
+    registry_scratchpad_t regscratchpad_ {*this, brg.isa_impl};
+
+    const reg64_t param1 = abi_param1;
     const reg64_t reg_iter_label = r9;
-    const reg64_t reg_iter_labels_list = rax;
+    const reg64_savable_t reg_iter_labels_list {regscratchpad_, rax, r16};
 
     const reg64_t reg_addr_batch = r13;
     const reg64_t reg_aux1_batch = rbp;
@@ -182,24 +185,15 @@ private:
     const reg64_t reg_tmp_gpr = rbx;
     const reg64_t reg_ptr_sum_scale = rbx;
 
-    const reg64_t reg_zp_comp_a = rbx;
-    const reg64_t reg_aux_zp_comp_a = rbx;
-    const reg64_t reg_zp_a_values = rbx;
-    const reg64_t reg_zp_comp_b = rbx;
-    const reg64_t reg_zp_c_values = rbx;
+    const reg64_savable_t reg_zp_comp_a {regscratchpad_, rbx, r17};
+    const reg64_savable_t reg_zp_a_values {regscratchpad_, rbx, r18};
+    const reg64_savable_t reg_zp_comp_b {regscratchpad_, rbx, r19};
+    const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx, r20};
     const reg64_t reg_ptr_sum_zp = rbx;
     const reg64_t reg_converted_stride = rsi;
     const reg64_t reg_zp_comp_pad_a = rsi;
 
     const reg64_t reg_long_offt = r11;
-
-    constexpr static int abi_param1_offs_ = 0;
-    constexpr static int reg_zp_comp_a_offs_ = 8;
-    constexpr static int reg_zp_comp_b_offs_ = 16;
-    constexpr static int reg_zp_c_values_offs_ = 24;
-    constexpr static int reg_iter_labels_list_offs_ = 32;
-    constexpr static int reg_zp_a_values_offs_ = 40;
-    constexpr static int stack_space_needed_ = 48;
 
     bool are_post_ops_applicable_ = false;
     bool need_to_apply_alpha_beta_ = false;
@@ -388,9 +382,21 @@ private:
         void reset() { vec = 0; }
     };
 
+    struct prf_sprinkled_t {
+        std::vector<size_t> prefetch_offsets;
+        size_t current_prefetch_idx;
+        void reset() {
+            prefetch_offsets.clear();
+            current_prefetch_idx = 0;
+        }
+    };
+
     // iteration map
     iteration_map_t imap_;
 
+    prf_sprinkled_t prf_sprinkled_a, prf_sprinkled_b;
+    size_t num_amx_ops;
+    size_t current_num_amx_ops;
     // interleave stores
     bool use_ils_ = false;
     bool was_prev_bi_ = false;
@@ -530,10 +536,18 @@ private:
 
     bool maybe_pre_process_k_tail(brgemm_iteration_t &bi, int bdb,
             const Tmm &t1, reg64_t reg_base, size_t offset, reg64_t reg_stride,
-            matrix_kind_t mk);
+            matrix_kind_t mk, bool use_memadvice);
+
+    void pre_process_k_tail_fused_copy_a(brgemm_iteration_t &bi, int bdb,
+            const Tmm &t1, reg64_t reg_base, size_t offset_src,
+            size_t offset_dst, bool mem_advice_A);
 
     void maybe_tileloadd_nt(
             brgemm_iteration_t &bi, matrix_kind_t mk, int xdb, size_t offset);
+
+    void maybe_fused_copy_A_nt_load(brgemm_iteration_t &bi, int bdb);
+
+    void maybe_sprinkle_prefetches();
 
     void tdpbxxd(brgemm_iteration_t &bi, int bdb_idx, int ldb_idx,
             bool do_pre_tilestore, bool do_post_tilestore);
@@ -569,10 +583,24 @@ private:
                 && !skip_accumulation);
     }
 
-    size_t A_offset(const brgemm_iteration_t &bi, int bdb) const noexcept;
-    size_t B_offset(const brgemm_iteration_t &bi, int ldb) const noexcept;
+    size_t A_offset(
+            const brgemm_iteration_t &bi, int bdb, int rdb = 0) const noexcept;
+
+    size_t A_offset_wsp(
+            const brgemm_iteration_t &bi, int bdb, int rdb = 0) const noexcept;
+
+    size_t A_offset_line(const brgemm_iteration_t &bi, int bdb, int rdb = 0,
+            int bd_elem_idx = 0) const noexcept;
+
+    size_t B_offset(
+            const brgemm_iteration_t &bi, int ldb, int rdb = 0) const noexcept;
+
+    size_t B_offset_line(const brgemm_iteration_t &bi, int ldb, int rdb = 0,
+            int rd_elem_idx = 0) const noexcept;
+
     size_t C_offset(const brgemm_iteration_t &bi, int bdb, int inp_bd,
             int ldb) const noexcept;
+
     size_t D_offset(const brgemm_iteration_t &bi, int bdb, int inp_bd,
             int ldb) const noexcept;
 
@@ -597,6 +625,10 @@ private:
     bd_iteration_t *find_similar(const bd_iteration_t *bdi, bool apply_postops);
 
     void fill_imap();
+    void copy_k_tail_to_wsp(const Tmm &t1,
+            jit_brgemm_amx_uker_base_t::reg64_t &reg_base, size_t src_offset,
+            jit_brgemm_amx_uker_base_t::reg64_t &reg_src_stride,
+            bool use_memadvice);
 };
 
 bool jit_brgemm_amx_uker_base_t::bi_shift_output(
@@ -704,24 +736,49 @@ int jit_brgemm_amx_uker_base_t::skipped_bd_mask(int inp_bd) noexcept {
         return skipped_bd_mask_buffer_[inp_bd];
 }
 
+size_t jit_brgemm_amx_uker_base_t::A_offset_wsp(
+        const brgemm_iteration_t &bi, int bdb, int rdb) const noexcept {
+    // Full WSP buffer layout:
+    //   1. partial C results.
+    //   2. data type conversion.
+    //   3. Wary K: No need to reserve space since it is mutually exclusive with fused copy A.
+    //   4. Fused copy A with layout: [bs][k / rd_block][m][k = rd_block]
+    auto transform_offset = brg.get_num_C_tiles() * brgemm_desc_t::tilesize
+            + brg.get_convert_wsp_buffer_size();
+
+    const auto bs_offs = bi.bsi->pos * brg.bcast_dim
+            * rnd_up(brg.reduce_dim, brg.max_rd_block()) * brg.typesize_A;
+
+    const auto bdb_offs = bi.bdi->pos(bdb) * brg.rd_block * brg.typesize_A;
+    const auto rdb_offs
+            = bi.rdi->pos(rdb) * brg.bcast_dim * brg.rd_block * brg.typesize_A;
+
+    return transform_offset + bs_offs + bdb_offs + rdb_offs;
+}
+
 size_t jit_brgemm_amx_uker_base_t::A_offset(
-        const brgemm_iteration_t &bi, int bdb) const noexcept {
+        const brgemm_iteration_t &bi, int bdb, int rdb) const noexcept {
     const auto bs_offs = (brg.type == brgemm_static_offs)
             ? brg.brgattr.static_offsets[bi.bsi->idx].offset.A
             : 0;
     const auto bdb_offs
             = ununroll_bd_loop ? bi.bdi->rel_pos(bdb) : bi.bdi->pos(bdb);
     return bdb_offs * LDA2_size_ + bs_offs
-            + bi.rdi->pos(0) * brg.rd_block * brg.typesize_A;
+            + bi.rdi->pos(rdb) * brg.rd_block * brg.typesize_A;
+}
+
+size_t jit_brgemm_amx_uker_base_t::A_offset_line(const brgemm_iteration_t &bi,
+        int bdb, int rdb, int bd_elem_idx) const noexcept {
+    return A_offset(bi, bdb, rdb) + bd_elem_idx * LDA2_size_;
 }
 
 size_t jit_brgemm_amx_uker_base_t::B_offset(
-        const brgemm_iteration_t &bi, int ldb) const noexcept {
+        const brgemm_iteration_t &bi, int ldb, int rdb) const noexcept {
     const auto bs_offs = (brg.type == brgemm_static_offs)
             ? brg.brgattr.static_offsets[bi.bsi->idx].offset.B
             : 0;
 
-    const auto rdb_B_offset = bi.rdi->pos(0) * brg.rd_block * LDB_size_;
+    const auto rdb_B_offset = bi.rdi->pos(rdb) * brg.rd_block * LDB_size_;
 
     const auto ldb_offs = bi.ldi->pos(ldb) * brg.ld_block;
     const auto ldb_B_offset = brg.typesize_B
@@ -729,6 +786,11 @@ size_t jit_brgemm_amx_uker_base_t::B_offset(
                     + (ldb_offs % brg.LDB) * brg.rd_step);
 
     return rdb_B_offset + ldb_B_offset + bs_offs;
+}
+
+size_t jit_brgemm_amx_uker_base_t::B_offset_line(const brgemm_iteration_t &bi,
+        int ldb, int rdb, int rd_elem_idx) const noexcept {
+    return B_offset(bi, ldb, rdb) + rd_elem_idx * LDB_size_;
 }
 
 size_t jit_brgemm_amx_uker_base_t::C_offset(const brgemm_iteration_t &bi,
@@ -853,9 +915,9 @@ void jit_brgemm_amx_uker_base_t::read_params() {
 
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         mov(reg_zp_comp_a, ptr[param1 + GET_OFF(a_zp_compensations)]);
-        mov(ptr[rsp + reg_zp_comp_a_offs_], reg_zp_comp_a);
+        reg_zp_comp_a.save();
         mov(reg_zp_a_values, ptr[param1 + GET_OFF(zp_a_val)]);
-        mov(ptr[rsp + reg_zp_a_values_offs_], reg_zp_a_values);
+        reg_zp_a_values.save();
 
         if (brg.req_comp_pads_with_bcast)
             mov(reg_zp_comp_pad_a, ptr[param1 + GET_OFF(a_zp_compensations)]);
@@ -863,12 +925,12 @@ void jit_brgemm_amx_uker_base_t::read_params() {
 
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
         mov(reg_zp_comp_b, ptr[param1 + GET_OFF(b_zp_compensations)]);
-        mov(ptr[rsp + reg_zp_comp_b_offs_], reg_zp_comp_b);
+        reg_zp_comp_b.save();
     }
 
     if (brg.zp_type_c != brgemm_broadcast_t::none) {
         mov(reg_zp_c_values, ptr[param1 + GET_OFF(c_zp_values)]);
-        mov(ptr[rsp + reg_zp_c_values_offs_], reg_zp_c_values);
+        reg_zp_c_values.save();
     }
 }
 
@@ -1027,21 +1089,21 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers_ldb(
 
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         const auto zmm_zp_a_val = zmm_tmp_1();
-        mov(reg_zp_a_values, ptr[rsp + reg_zp_a_values_offs_]);
+        reg_zp_a_values.restore();
         vpbroadcastd(zmm_zp_a_val, reg_zp_a_values.cvt32());
         vcvtdq2ps(zmm_zp_a_val, zmm_zp_a_val);
-        mov(reg_aux_zp_comp_a, ptr[rsp + reg_zp_comp_a_offs_]);
+        reg_zp_comp_a.restore();
 
         const auto zp_comp_a_off = zp_comp_a_offset(bi.ldi->pos(ldb));
         const auto zp_comp_a_addr
-                = EVEX_compress_addr(reg_aux_zp_comp_a, zp_comp_a_off);
+                = EVEX_compress_addr(reg_zp_comp_a, zp_comp_a_off);
         cvt2ps(data_type::s32, zmm_zp_comp_a, zp_comp_a_addr, true, false,
                 k_mask);
         vmulps(zmm_zp_comp_a, zmm_zp_comp_a, zmm_zp_a_val);
     }
 
     if (brg.zp_type_c != brgemm_broadcast_t::none) {
-        mov(reg_zp_c_values, ptr[rsp + reg_zp_c_values_offs_]);
+        reg_zp_c_values.restore();
         if (brg.zp_type_c == brgemm_broadcast_t::per_tensor) {
             vcvtdq2ps(zmm_zp_c, EVEX_compress_addr(reg_zp_c_values, 0, true));
         }
@@ -1070,13 +1132,81 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
         }
     }
 
-    if (brg.with_scales) {
-        mov(reg_scales, ptr[param1 + GET_OFF(ptr_scales)]);
+    if (brg.with_src_scales) {
+        mov(reg_scales, ptr[param1 + GET_OFF(ptr_src_scales)]);
+        for (int ldb = 0; ldb < ldi->block2(); ldb++) {
+            // Hard-coded assumption for a single src scale value being
+            // supported, thus, offset is 0.
+            auto scales_ptr = EVEX_compress_addr(reg_scales, /* offset = */ 0);
+            auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
+            vbroadcastss(zmm_scales(ldb) | k_mask | T_z, scales_ptr);
+        }
+    }
+
+    if (brg.with_wei_scales) {
+        mov(reg_scales, ptr[param1 + GET_OFF(ptr_wei_scales)]);
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             auto scales_ptr = EVEX_compress_addr(
                     reg_scales, scales_offset(ldi->pos(ldb)));
             auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
-            vmovups(zmm_scales(ldb) | k_mask | T_z, scales_ptr);
+            const bool is_single_scale = !brg.is_oc_scale;
+
+            const auto zmm_scale = zmm_scales(ldb);
+            const auto zmm_scale_masked = zmm_scales(ldb) | k_mask | T_z;
+
+            if (is_single_scale) {
+                if (brg.with_src_scales) {
+                    // Single value is not anticipated to be of any other type
+                    // when both scales are defined.
+                    assert(brg.dt_wei_scales == data_type::f32);
+                    // Src scales are set, need to multiply by their value.
+                    auto scales_bcast_ptr = EVEX_compress_addr(reg_scales,
+                            scales_offset(ldi->pos(ldb)), /* bcast = */ true);
+                    vmulps(zmm_scale_masked, zmm_scale, scales_bcast_ptr);
+                } else {
+                    switch (brg.dt_wei_scales) {
+                        case data_type::f32:
+                            vbroadcastss(zmm_scale, scales_ptr);
+                            break;
+                        case data_type::bf16:
+                            vpbroadcastw(zmm_scale, scales_ptr);
+                            uni_vpslld(zmm_scale, zmm_scale, 16);
+                            break;
+                        case data_type::f16:
+                            vpbroadcastw(zmm_scale, scales_ptr);
+                            vcvtph2psx(Xmm(zmm_scale.getIdx()),
+                                    Xmm(zmm_scale.getIdx()));
+                            vbroadcastss(zmm_scale, Xmm(zmm_scale.getIdx()));
+                            break;
+                        default: assert(!"unsupported wei_scales data type");
+                    }
+                }
+                continue;
+            }
+
+            const auto zmm_wei_scale = zmm_tmp_1();
+            const auto zmm_wei_scale_masked = zmm_wei_scale | k_mask | T_z;
+            switch (brg.dt_wei_scales) {
+                case data_type::f32:
+                    uni_vmovups(zmm_wei_scale_masked, scales_ptr);
+                    break;
+                case data_type::bf16:
+                    uni_vpmovzxwd(zmm_wei_scale_masked, scales_ptr);
+                    uni_vpslld(zmm_wei_scale, zmm_wei_scale, 16);
+                    break;
+                case data_type::f16:
+                    vcvtph2ps(zmm_wei_scale_masked, scales_ptr);
+                    break;
+                default: assert(!"unsupported wei_scales data type");
+            }
+
+            if (brg.with_src_scales) {
+                // Src scales are set, need to multiply by their value.
+                vmulps(zmm_scale_masked, zmm_scale, zmm_wei_scale);
+            } else {
+                // No src scales, just load a vector of values.
+                vmovups(zmm_scale, zmm_wei_scale);
+            }
         }
     }
 }
@@ -1257,6 +1387,7 @@ void jit_brgemm_amx_uker_base_t::prefetching(
     maybe_prefetch_B(prf1B);
     maybe_prefetch_B(prf2B);
     maybe_prefetch_B(prfntaB);
+    if (!prefetch_all) maybe_sprinkle_prefetches();
 }
 
 void jit_brgemm_amx_uker_base_t::apply_comp_pad_to_vector(
@@ -1267,10 +1398,10 @@ void jit_brgemm_amx_uker_base_t::apply_comp_pad_to_vector(
     auto zmm_masked = zmm | k_mask | T_z;
     const auto zmm_zp_a_val = zmm_tmp_1();
 
-    mov(reg_zp_a_values, ptr[rsp + reg_zp_a_values_offs_]);
+    reg_zp_a_values.restore();
     vpbroadcastd(zmm_zp_a_val, reg_zp_a_values.cvt32());
     vcvtdq2ps(zmm_zp_a_val, zmm_zp_a_val);
-    mov(reg_aux_zp_comp_a, ptr[rsp + reg_zp_comp_a_offs_]);
+    reg_zp_comp_a.restore();
     const auto comp_pad_offset
             = zp_comp_pad_a_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
     const auto zp_comp_pad_a_addr
@@ -1343,7 +1474,7 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
     }
 
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
-        mov(reg_zp_comp_b, ptr[rsp + reg_zp_comp_b_offs_]);
+        reg_zp_comp_b.restore();
 
         auto zmm_zp_comp_b = zmm_tmp_1();
         for (auto bd = bd_start; bd < bd_finish; bd++) {
@@ -1360,7 +1491,7 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
         }
     }
 
-    if (brg.with_scales) {
+    if (brg.with_src_scales || brg.with_wei_scales) {
         for (auto bd = bd_start; bd < bd_finish; bd++) {
             if (!is_out_bd(bi.bdi, bdb, bd)) continue;
 
@@ -1676,6 +1807,36 @@ void jit_brgemm_amx_uker_base_t::set_A_B_matrices() {
     }
 }
 
+void jit_brgemm_amx_uker_base_t::maybe_sprinkle_prefetches() {
+    auto jit_prefetches = [&](prf_sprinkled_t &prf_sprinkled,
+                                  Xbyak::Reg64 base) {
+        // Calculate the number of cache lines to jit
+        float total_cache_lines_to_prefetch
+                = (float)prf_sprinkled.prefetch_offsets.size();
+        float cache_lines_per_amx_op
+                = total_cache_lines_to_prefetch / num_amx_ops;
+        int num_prefetches_to_jit
+                = (int)((current_num_amx_ops + 1) * cache_lines_per_amx_op)
+                - (int)(current_num_amx_ops * cache_lines_per_amx_op);
+
+        // Jit the prefetches
+        for (size_t i = prf_sprinkled.current_prefetch_idx;
+                i < num_prefetches_to_jit + prf_sprinkled.current_prefetch_idx;
+                i++) {
+            const auto ptr = EVEX_compress_addr(
+                    base, prf_sprinkled.prefetch_offsets[i]);
+            uni_prefetch(ptr, brgemm_prf1, false);
+        }
+
+        // Update idx of last prefetched line
+        prf_sprinkled.current_prefetch_idx += num_prefetches_to_jit;
+    };
+
+    if (brg.prfA.sprinkled) jit_prefetches(prf_sprinkled_a, reg_A);
+    if (brg.prfB.sprinkled) jit_prefetches(prf_sprinkled_b, reg_B);
+
+    current_num_amx_ops++;
+}
 void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
         brgemm_iteration_t &bi, matrix_kind_t mk, int xdb, size_t offset) {
 
@@ -1700,7 +1861,8 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
         return;
     }
 
-    if (maybe_pre_process_k_tail(bi, xdb, t1, reg_base, offset, reg_stride, mk))
+    if (maybe_pre_process_k_tail(
+                bi, xdb, t1, reg_base, offset, reg_stride, mk, has_mem_advice))
         return;
 
     if (load_nt) {
@@ -1716,6 +1878,46 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
     }
 }
 
+void jit_brgemm_amx_uker_base_t::maybe_fused_copy_A_nt_load(
+        brgemm_iteration_t &bi, int bdb) {
+    auto t1 = Tmm(brg.get_A_tensor(bdb, bi.bdi->is_tail(bdb)));
+
+    auto load_a_tile_from_wsp = [&]() {
+        if (brg.load_nt_A) {
+            tileloaddt1(
+                    t1, ptr[reg_buf + A_offset_wsp(bi, bdb) + reg_stride_lda]);
+        } else {
+            tileloadd(
+                    t1, ptr[reg_buf + A_offset_wsp(bi, bdb) + reg_stride_lda]);
+        }
+    };
+
+    if (bi.ldi->pos(0) == 0) {
+        mov(reg_stride_lda, lda());
+        const bool has_mem_advice = utils::one_of(brg.brgattr.mem_advice,
+                brgemm_hint_mem_advice_A, brgemm_hint_mem_advice_A_B);
+
+        auto src_offset = A_offset(bi, bdb);
+        // fused copy A: load from A orig and store it aligned in the wsp buffer
+        if (bi.rdi->is_tail(0)) {
+            pre_process_k_tail_fused_copy_a(bi, bdb, t1, reg_A, src_offset,
+                    A_offset_wsp(bi, bdb), has_mem_advice);
+            mov(reg_stride_lda, 64);
+            load_a_tile_from_wsp();
+        } else {
+            if (has_mem_advice)
+                tileloaddrst1(t1, ptr[reg_A + src_offset + reg_stride_lda]);
+            else
+                tileloaddt1(t1, ptr[reg_A + src_offset + reg_stride_lda]);
+            mov(reg_stride_lda, 64);
+            tilestored(
+                    ptr[reg_buf + A_offset_wsp(bi, bdb) + reg_stride_lda], t1);
+        }
+
+    } else {
+        load_a_tile_from_wsp();
+    };
+}
 void jit_brgemm_amx_uker_base_t::maybe_tilestore(brgemm_iteration_t &bi,
         int bdb_idx, int ldb_idx, bool do_pre_tilestore,
         bool do_post_tilestore) {
@@ -2064,9 +2266,18 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     if (buf_offt) sub(reg_buf, buf_offt);
 }
 
+void jit_brgemm_amx_uker_base_t::pre_process_k_tail_fused_copy_a(
+        brgemm_iteration_t &bi, int bdb, const Tmm &t1, reg64_t reg_base,
+        size_t offset_src, size_t offset_dst, bool mem_advice_A) {
+    if (offset_dst) add(reg_buf, offset_dst);
+    copy_k_tail_to_wsp(t1, reg_base, offset_src, reg_stride_lda, mem_advice_A);
+    if (offset_dst) sub(reg_buf, offset_dst);
+}
+
 bool jit_brgemm_amx_uker_base_t::maybe_pre_process_k_tail(
         brgemm_iteration_t &bi, int bdb, const Tmm &t1, reg64_t reg_base,
-        size_t offset, reg64_t reg_stride, matrix_kind_t mk) {
+        size_t offset, reg64_t reg_stride, matrix_kind_t mk,
+        bool use_memadvice) {
     const auto &tloop = imap_[bi.apply_postops];
 
     const auto need_k_tail_processing = mk == matrix_A && brg.amx_wary_k_tail()
@@ -2084,43 +2295,7 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_k_tail(
 
     // reuse transformed data from matrix A for ldi > 0
     if (bi.ldi->idx == 0) {
-        const auto num_rows = palette_.rows[t1.getIdx()];
-        const auto num_col_bytes = palette_.cols[t1.getIdx()];
-
-        const auto max_num_cols
-                = nstl::min<int>(num_col_bytes / brg.typesize_A, brg.rdb_tail);
-        const size_t col_tail
-                = max_num_cols % (zmm_width_in_bytes / brg.typesize_A);
-        if (col_tail) {
-            const auto tail_mask = (static_cast<size_t>(1) << col_tail) - 1;
-            mov(reg_tmp_gpr, tail_mask);
-            kmovq(rd_tail_mask, reg_tmp_gpr);
-        }
-        auto zmm_1 = zmm_tmp_1();
-        auto zmm_1_masked = col_tail ? zmm_1 | rd_tail_mask | T_z : zmm_1;
-
-        assert(max_num_cols > 0);
-
-        const auto reg_data_aux = reg_tmp_gpr;
-        lea(reg_data_aux, ptr[reg_base + offset]);
-
-        for (int r = 0; r < num_rows; ++r) {
-            switch (brg.dt_a) {
-                case data_type::bf16:
-                case data_type::f16:
-                    vmovdqu16(zmm_1_masked, ptr[reg_data_aux]);
-                    break;
-                case data_type::f8_e5m2:
-                case data_type::f8_e4m3:
-                case data_type::s8:
-                case data_type::u8:
-                    vmovdqu8(zmm_1_masked, ptr[reg_data_aux]);
-                    break;
-                default: assert(!"unsupported data type");
-            }
-            vmovups(ptr[reg_buf + r * zmm_width_in_bytes], zmm_1);
-            add(reg_data_aux, reg_stride);
-        }
+        copy_k_tail_to_wsp(t1, reg_base, offset, reg_stride, use_memadvice);
     }
     // load into tmm from the transformed data.
     tileloadd(t1, ptr[reg_buf + reg_converted_stride]);
@@ -2128,6 +2303,54 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_k_tail(
     // reset buf pointer
     if (transform_offset) sub(reg_buf, transform_offset);
     return true;
+}
+void jit_brgemm_amx_uker_base_t::copy_k_tail_to_wsp(const Tmm &t1,
+        jit_brgemm_amx_uker_base_t::reg64_t &reg_base, size_t src_offset,
+        jit_brgemm_amx_uker_base_t::reg64_t &reg_src_stride,
+        bool use_memadvice) {
+    const auto num_rows = palette_.rows[t1.getIdx()];
+    const auto num_col_bytes = palette_.cols[t1.getIdx()];
+
+    const auto max_num_cols
+            = nstl::min<int>(num_col_bytes / brg.typesize_A, brg.rdb_tail);
+    const size_t col_tail
+            = max_num_cols % (zmm_width_in_bytes / brg.typesize_A);
+    if (col_tail) {
+        const auto tail_mask = (static_cast<size_t>(1) << col_tail) - 1;
+        mov(reg_tmp_gpr, tail_mask);
+        kmovq(rd_tail_mask, reg_tmp_gpr);
+    }
+    auto zmm_1 = zmm_tmp_1();
+    auto zmm_1_masked = col_tail ? zmm_1 | rd_tail_mask | T_z : zmm_1;
+
+    assert(max_num_cols > 0);
+
+    const auto reg_src = reg_tmp_gpr;
+    lea(reg_src, ptr[reg_base + src_offset]);
+
+    for (int r = 0; r < num_rows; ++r) {
+        switch (brg.dt_a) {
+            case data_type::bf16:
+            case data_type::f16:
+                if (use_memadvice)
+                    vmovrsw(zmm_1_masked, ptr[reg_src]);
+                else
+                    vmovdqu16(zmm_1_masked, ptr[reg_src]);
+                break;
+            case data_type::f8_e5m2:
+            case data_type::f8_e4m3:
+            case data_type::s8:
+            case data_type::u8:
+                if (use_memadvice)
+                    vmovrsb(zmm_1_masked, ptr[reg_src]);
+                else
+                    vmovdqu8(zmm_1_masked, ptr[reg_src]);
+                break;
+            default: assert(!"unsupported data type");
+        }
+        vmovups(ptr[reg_buf + r * zmm_width_in_bytes], zmm_1);
+        add(reg_src, reg_src_stride);
+    }
 }
 
 void jit_brgemm_amx_uker_base_t::gemm_microkernel_amx(brgemm_iteration_t &bi) {
@@ -2154,7 +2377,13 @@ void jit_brgemm_amx_uker_base_t::gemm_microkernel_amx(brgemm_iteration_t &bi) {
         mov(reg_stride_ld_block, LDC_size_);
 
     for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
-        maybe_tileloadd_nt(bi, matrix_kind_t::matrix_A, bdb, A_offset(bi, bdb));
+        if (brg.fused_copy_a) {
+            maybe_fused_copy_A_nt_load(bi, bdb);
+        } else {
+            maybe_tileloadd_nt(
+                    bi, matrix_kind_t::matrix_A, bdb, A_offset(bi, bdb));
+        }
+
         for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
             if (bdb == 0)
                 maybe_tileloadd_nt(
@@ -2340,10 +2569,10 @@ void jit_brgemm_amx_uker_base_t::bdb_loop_body(brgemm_iteration_t &bi) {
         } else {
             align(64);
             L(tloop.bdis[cidx].lstart);
-            mov(reg_iter_labels_list, ptr[rsp + reg_iter_labels_list_offs_]);
+            reg_iter_labels_list.restore();
             mov(reg_iter_label, ptr[reg_iter_labels_list]);
             add(reg_iter_labels_list, 8);
-            mov(ptr[rsp + reg_iter_labels_list_offs_], reg_iter_labels_list);
+            reg_iter_labels_list.save();
         }
     }
 
@@ -2363,7 +2592,7 @@ void jit_brgemm_amx_uker_base_t::bdb_loop(brgemm_iteration_t &bi) {
         lea(reg_iter_labels_list, ptr[rip + iteration_pointers]);
         // shift to load address for jmp for next iteration
         add(reg_iter_labels_list, 8);
-        mov(ptr[rsp + reg_iter_labels_list_offs_], reg_iter_labels_list);
+        reg_iter_labels_list.save();
     }
 
     for (auto &bdi : tloop.bdis) {
@@ -2429,19 +2658,33 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
         tloop.ldis.reserve(brg.ldb2);
         tloop.rdis.reserve(brg.rdb);
         tloop.bsis.reserve(brg.brgattr.max_bs);
+        brgemm_iteration_t bi_prefetch;
 
         auto bdi_pos = skipped_bd_mask(0);
         bd_iteration_t bdi;
         bdi.blocks.reserve(brg.bd_block2);
+        int prefetch_distance_m = brg.bcast_dim;
+        bd_iteration_t bdi_prefetch;
+        bi_prefetch.bdi = &bdi_prefetch;
+
         for (int bdb = 0; bdb < brg.bdb; bdb += brg.bd_block2) {
             bdi.blocks.clear();
             for (int ibdb = 0; ibdb < brg.bd_block2; ibdb++) {
                 auto abdb = bdb + ibdb;
                 if (abdb >= brg.bdb) break;
-                if (brg.bdb_tail && abdb == brg.bdb - 1)
+                if (brg.bdb_tail && abdb == brg.bdb - 1) {
                     bdi.blocks.emplace_back(bdi_pos, brg.bdb_tail, true);
-                else
+                    if (brg.prfA.sprinkled)
+                        bdi_prefetch.blocks.emplace_back(
+                                bdi_pos + prefetch_distance_m, brg.bdb_tail,
+                                true);
+                } else {
                     bdi.blocks.emplace_back(bdi_pos, brg.bd_block, false);
+                    if (brg.prfA.sprinkled)
+                        bdi_prefetch.blocks.emplace_back(
+                                bdi_pos + prefetch_distance_m, brg.bd_block,
+                                false);
+                }
                 bdi_pos += brg.bd_block;
                 if (bdi_pos >= brg.bcast_dim) break;
                 bdi_pos = skipped_bd_mask(bdi_pos);
@@ -2476,15 +2719,29 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
         size_t ldi_pos = 0;
         dim_iteration_t ldi;
         ldi.blocks.reserve(brg.ld_block2);
+        size_t prefetch_distance_n = (size_t)brg.ldb;
+        bd_iteration_t ldi_prefetch;
+        bi_prefetch.ldi = &ldi_prefetch;
+
         for (int ldb = 0; ldb < brg.ldb; ldb += brg.ld_block2) {
             ldi.blocks.clear();
             for (int ildb = 0; ildb < brg.ld_block2; ildb++) {
                 auto aldb = ldb + ildb;
                 if (aldb >= brg.ldb) break;
-                if (brg.ldb_tail && aldb == brg.ldb - 1)
+                if (brg.ldb_tail && aldb == brg.ldb - 1) {
                     ldi.blocks.emplace_back(ldi_pos, brg.ldb_tail, true);
-                else
+                    if (brg.prfB.sprinkled)
+                        ldi_prefetch.blocks.emplace_back(
+                                ldi_pos + prefetch_distance_n, brg.ldb_tail,
+                                true);
+
+                } else {
                     ldi.blocks.emplace_back(ldi_pos, brg.ld_block, false);
+                    if (brg.prfB.sprinkled)
+                        ldi_prefetch.blocks.emplace_back(
+                                ldi_pos + prefetch_distance_n, brg.ld_block,
+                                false);
+                }
                 ldi_pos++;
             }
             ldi.idx = tloop.ldis.size();
@@ -2494,9 +2751,15 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
         size_t rdi_pos = 0;
         dim_iteration_t rdi;
         rdi.blocks.reserve(1);
+        dim_iteration_t rdi_prefetch;
+        bi_prefetch.rdi = &rdi_prefetch;
+
         for (int rdb = 0; rdb < brg.rdb; rdb++) {
             rdi.blocks.clear();
             rdi.blocks.emplace_back(rdi_pos, brg.rd_block);
+            if (brg.prfA.sprinkled || brg.prfB.sprinkled) {
+                rdi_prefetch.blocks.emplace_back(rdi_pos, brg.rd_block);
+            }
             rdi.idx = tloop.rdis.size();
             tloop.rdis.push_back(rdi);
             rdi_pos++;
@@ -2504,10 +2767,16 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
         if (brg.rdb_tail > 0) {
             rdi.blocks.clear();
             rdi.blocks.emplace_back(rdi_pos, brg.rdb_tail, true);
+            if (brg.prfA.sprinkled || brg.prfB.sprinkled) {
+                rdi_prefetch.blocks.emplace_back(rdi_pos, brg.rdb_tail, true);
+            }
             rdi.idx = tloop.rdis.size();
             tloop.rdis.push_back(rdi);
         }
 
+        // The case where bs_max is > 1, and prefetches are enabled
+        // is not supported. In order to support prefetches in this case,
+        // current_num_amx_ops needs to be an array per bs in bs_max.
         bs_iteration_t bsi;
         for (int bs = 0; bs < brg.brgattr.max_bs; bs++) {
             bsi.pos = bs;
@@ -2522,6 +2791,40 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
                 tloop.bdis[ibdi].similar
                         = find_similar(&(tloop.bdis[ibdi]), apply_postops);
             }
+        }
+        size_t rdb_including_tail = brg.rdb + (brg.rdb_tail > 0 ? 1 : 0);
+        num_amx_ops = brg.bdb * rdb_including_tail * brg.ldb;
+        current_num_amx_ops = 0;
+        // Calculate the offsets of A's cache lines to prefetch
+        prf_sprinkled_a.reset();
+        if (brg.prfA.sprinkled) {
+            for (size_t bdb = 0; bdb < bdi_prefetch.blocks.size(); ++bdb) {
+                for (size_t rdb = 0; rdb < rdi_prefetch.blocks.size(); ++rdb) {
+                    int bd_block_size = bdi_prefetch.blocks[bdb].block;
+                    for (int bd = 0; bd < bd_block_size; bd++) {
+                        prf_sprinkled_a.prefetch_offsets.push_back(
+                                A_offset_line(bi_prefetch, bdb, rdb, bd));
+                    }
+                }
+            }
+            std::sort(prf_sprinkled_a.prefetch_offsets.begin(),
+                    prf_sprinkled_a.prefetch_offsets.end());
+        }
+
+        // Calculate the offsets of B's cache lines to prefetch
+        prf_sprinkled_b.reset();
+        if (brg.prfB.sprinkled) {
+            for (size_t ldb = 0; ldb < ldi_prefetch.blocks.size(); ++ldb) {
+                for (size_t rdb = 0; rdb < rdi_prefetch.blocks.size(); ++rdb) {
+                    int rd_block_size = rdi_prefetch.blocks[rdb].block;
+                    for (int rd = 0; rd < rd_block_size; rd += brg.rd_step) {
+                        prf_sprinkled_b.prefetch_offsets.push_back(
+                                B_offset_line(bi_prefetch, ldb, rdb, rd));
+                    }
+                }
+            }
+            std::sort(prf_sprinkled_b.prefetch_offsets.begin(),
+                    prf_sprinkled_b.prefetch_offsets.end());
         }
     }
 }
@@ -2637,7 +2940,7 @@ void jit_brgemm_amx_uker_base_t::init(brgemm_iteration_t &bi) {
 void jit_brgemm_amx_uker_base_t::generate() {
     preamble();
 
-    sub(rsp, stack_space_needed_);
+    sub(rsp, regscratchpad_.Size());
 
     const auto full_mask = size_t {0xffffffffffffffff};
     const auto tail_mask = size_t((1 << brg.ldb_tail) - 1);
@@ -2663,7 +2966,10 @@ void jit_brgemm_amx_uker_base_t::generate() {
     ld_block_C_size_ = brg.typesize_C * brg.ld_block;
     ld_block_D_size_ = brg.typesize_D * brg.ld_block;
     ld_block_bias_size_ = brg.typesize_bias * brg.ld_block;
-    ld_block_scales_size_ = sizeof(float) * brg.ld_block;
+    if (brg.with_wei_scales) {
+        ld_block_scales_size_
+                = types::data_type_size(brg.dt_wei_scales) * brg.ld_block;
+    }
     ld_block_zp_size_ = sizeof(int32_t) * brg.ld_block;
     ldb_tail_B_size_ = brg.typesize_B * brg.ldb_tail;
     ldb_tail_C_size_ = brg.typesize_C * brg.ldb_tail;
@@ -2691,7 +2997,7 @@ void jit_brgemm_amx_uker_base_t::generate() {
     prepare_bd_mask();
 
     Label permute_index_table;
-    if (brg.is_input_convert() || brg.amx_wary_k_tail()) {
+    if (brg.is_input_convert() || brg.amx_wary_k_tail() || brg.fused_copy_a) {
         // save tiles description for later use
         brgemm_init_tiles(brg, (char *)(&palette_));
         // load permute indices
@@ -2739,7 +3045,7 @@ void jit_brgemm_amx_uker_base_t::generate() {
     }
     L(label_to_ret);
 
-    add(rsp, stack_space_needed_);
+    add(rsp, regscratchpad_.Size());
 
     postamble();
 

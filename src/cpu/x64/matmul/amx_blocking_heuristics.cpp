@@ -54,6 +54,9 @@ void matmul_amx_blocking_params_t::update_configuration(
     bgmmc.is_a_nt = is_a_nt_;
     bgmmc.is_b_nt = is_b_nt_;
     bgmmc.set_nt = set_nt_;
+    bgmmc.need_prefetch_a = need_prefetch_a_;
+    bgmmc.need_prefetch_b = need_prefetch_b_;
+    bgmmc.use_fused_copy_a = use_fused_copy_a_;
     bgmmc.is_macro_heuristics
             = dynamic_cast<const matmul_amx_blocking_params_macro_t *>(this)
             != nullptr;
@@ -93,11 +96,8 @@ size_t matmul_amx_blocking_params_t::L1_threshold() {
 bool matmul_amx_blocking_params_macro_t::is_supported(
         const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils) {
-    // TODO: enable extendable_k optimization
-    if (bgmmc.K < bgmmc.wei_k_blk
-            || bgmmc.K % data_type_vnni_granularity(bgmmc.wei_dt) != 0) {
-        return false;
-    }
+
+    if (bgmmc.K < bgmmc.wei_k_blk) { return false; }
 
     bool a_dt_ok
             = one_of(bgmmc.orig_src_dt, dnnl_s8, dnnl_u8, dnnl_bf16, dnnl_f16);
@@ -482,9 +482,23 @@ size_t matmul_amx_blocking_params_macro_t::l2_matrix_usage(size_t k_chunk_size,
     int l2_matrix_size = m_or_n_blk
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
             * gemm_dt_sz;
-    int c_size = 2 * decomposition * m_or_n_blk
-            * acc_dt_sz; // Keep 2 C strips just to avoid evicting A
-    return l1_matrix_size + l2_matrix_size + c_size;
+
+    // Calculate C post size (output buffer)
+    int c_post_size;
+    if (is_horizontal) {
+        c_post_size = 2 * m_decomposition * rnd_up(m_or_n_blk * c_dt_sz, 64);
+    } else {
+        c_post_size = 2 * rnd_up(n_decomposition * c_dt_sz, 64) * m_or_n_blk;
+    }
+    // Calculate C tmp size (partial results buffer)
+    int c_tmp_size;
+    if (k_blk == (size_t)K || (acc_dt == dst_dt && nthr_k_ == 1)) {
+        c_tmp_size = 2 * m_decomposition * n_decomposition * acc_dt_sz;
+    } else {
+        c_tmp_size = 2 * decomposition * m_or_n_blk * acc_dt_sz;
+    }
+
+    return l1_matrix_size + l2_matrix_size + c_tmp_size + c_post_size;
 }
 
 size_t matmul_amx_blocking_params_macro_t::l2_matrix_and_c_usage(
@@ -764,13 +778,6 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
             k_blk_h = nstl::min(wei_k_blk * best_k_h, K);
             best_k_h = 1;
             is_a_nt_ = true;
-            // TODO: revive after precopy implementation
-            //            need_buf_a_ = false;
-            need_prefetch = false;
-        } else {
-            // TODO: revive after precopy implementation
-            //            need_buf_a_ = false;
-            need_prefetch = true;
         }
 
         k_blk_ = k_blk_h;
@@ -779,6 +786,16 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
         n_chunk_size_ = 1;
         m_blk_ = m_decomposition;
         m_chunk_size_ = div_up(m_per_thread, m_blk_);
+        need_prefetch_a_ = (m_per_thread / m_blk_) >= 2;
+        need_prefetch_b_ = false;
+        // use fused copy A if A is unaligned and reused at least 2 times and not completely write bound.
+        use_fused_copy_a_ = (K % wei_k_blk != 0)
+                && (n_blk_ >= n_decomposition * 3)
+                && ((size_t)k_blk_ >= (64 / gemm_dt_sz) * 4);
+
+        extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k()
+                && !use_fused_copy_a_;
+
     } else {
         if (is_postops_bound(k_blk_v)) {
             // Give up on the L1 blocking
@@ -799,10 +816,12 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
         m_chunk_size_ = 1;
         is_a_nt_ = true;
         is_b_nt_ = false;
-        need_prefetch = true;
-    }
+        need_prefetch_a_ = false;
+        need_prefetch_b_ = (n_per_thread / n_blk_) >= 2;
+        use_fused_copy_a_ = false;
 
-    extendable_k_ = K % data_type_vnni_granularity(wei_dt) != 0;
+        extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k();
+    }
 
     brgemm_batch_size_ = 1;
 
@@ -815,12 +834,30 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
     current_lda_ = get_actual_lda();
 
     // Need a temp C buffer if a BRGEMM creates partial results
-    need_buf_c_ = (nthr_k_ > 1 && K > k_chunk_elems_)
-            || (acc_dt != dst_dt || with_sum);
+    need_buf_c_ = (nthr_k_ != 1) || (k_blk_ != K && acc_dt != dst_dt);
 
     efficiency_score_ = calculate_blocking_scores();
 
     return true;
+}
+bool matmul_amx_blocking_params_macro_t::skip_extendable_k() const {
+
+    auto skip_for_k_blk = [&](size_t k_to_check) {
+        size_t num_amx_ops_over_k = div_up(k_to_check, 64 / gemm_dt_sz);
+        bool common_k_tile_exists = k_to_check % num_amx_ops_over_k == 0;
+        size_t k_tile = k_to_check / num_amx_ops_over_k;
+        bool k_tile_size_fits = k_tile <= 64 / gemm_dt_sz;
+        bool k_tile_is_vnni = k_tile % data_type_vnni_granularity(wei_dt) == 0;
+
+        return common_k_tile_exists && k_tile_size_fits && k_tile_is_vnni;
+    };
+
+    size_t k_tail = K % k_blk_;
+    if (k_tail) {
+        return skip_for_k_blk(k_blk_) && skip_for_k_blk(k_tail);
+    } else {
+        return skip_for_k_blk(k_blk_);
+    }
 }
 
 void matmul_amx_blocking_params_macro_t::set_core_divs(

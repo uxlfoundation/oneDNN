@@ -198,14 +198,11 @@ status_t infer_shape(std::shared_ptr<subgraph_t> &sg) {
     // internal dw_type attr to record the post-dw-conv info used to infer
     // correct shape. Here the dw_type attr is a temporary attr only used during
     // shape infer, and will be removed from the op before existing shape infer.
-    const auto &mgr = sg->fusion_info_mgr_;
     std::vector<op_ptr> conv_fused_post_s2_dw_conv;
     for (auto &op : sg->get_ops()) {
         fusion_info_t fusion_info;
-        if (op->has_attr(op_attr::fusion_info_key)
-                && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-            int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-            fusion_info = mgr.get_info(key);
+        if (op->has_attr(op_attr::fusion_info)) {
+            fusion_info = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         }
 
         if (fusion_info.has_post_dw_conv()) {
@@ -415,6 +412,17 @@ bool post_binary_fusible(
         if (ltw(fused_in).data_type() != ltw(bin_out).data_type()) return false;
     }
 
+    // Special check: subtract and divide binary post-op can only be fused
+    // when base_op is their first input's producer
+    if (static_cast<dnnl::algorithm>(
+                bin_op->get_attr<int64_t>(op_attr::alg_kind))
+                    == dnnl::algorithm::binary_sub
+            || static_cast<dnnl::algorithm>(
+                       bin_op->get_attr<int64_t>(op_attr::alg_kind))
+                    == dnnl::algorithm::binary_div) {
+        if (fused_in_off != 0) return false;
+    }
+
     return post_binary_fusible_impl(
             base_op, ltw(fused_in).vdims(), ltw(other_in).vdims(), ekind);
 }
@@ -609,24 +617,20 @@ bool is_typecast(const op_t *op) {
     return is_typecast;
 }
 
-bool with_runtime_zps(const op_ptr &op, const fusion_info_mgr_t &mgr,
-        bool is_input, size_t index) {
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        const fusion_info_t &fusion_info = mgr.get_info(key);
+bool with_runtime_zps(const op_ptr &op, bool is_input, size_t index) {
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         return fusion_info.with_runtime_zero_points(is_input, index);
     } else {
         return false;
     }
 }
 
-bool with_runtime_scales(const op_ptr &op, const fusion_info_mgr_t &mgr,
-        bool is_input, size_t index) {
-    if (op->has_attr(op_attr::fusion_info_key)
-            && op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-        int64_t key = op->get_attr<int64_t>(op_attr::fusion_info_key);
-        const fusion_info_t &fusion_info = mgr.get_info(key);
+bool with_runtime_scales(const op_ptr &op, bool is_input, size_t index) {
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         return fusion_info.with_runtime_scales(is_input, index);
     } else {
         return false;
@@ -673,9 +677,10 @@ bool inverse_mul_scales(std::shared_ptr<op_t> &scale_op) {
     VCHECK_UTILS(scale_op->num_inputs() <= 1
                     && !scale_op->has_attr(op_attr::with_runtime_scales),
             false, "scale_op should be static and have only one input value.");
-    auto scales = scale_op->get_attr<std::vector<float>>(op_attr::scales);
-    scales = dnnl_impl::utils::fmap(scales, [](float s) { return 1.f / s; });
-    scale_op->set_attr(op_attr::scales, scales);
+    const auto scales = scale_op->get_attr<std::vector<float>>(op_attr::scales);
+    const auto scales_inv
+            = dnnl_impl::utils::fmap(scales, [](float s) { return 1.f / s; });
+    scale_op->set_attr(op_attr::scales, scales_inv);
     return true;
 }
 

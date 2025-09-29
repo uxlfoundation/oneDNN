@@ -48,6 +48,8 @@ status_t resampling_desc_init(resampling_desc_t *resampling_desc,
     VCHECK_RS(IMPLICATION(dst_desc == nullptr, factors), VERBOSE_NULL_ARG);
     VCHECK_RS(utils::one_of(src_desc->ndims, 3, 4, 5), VERBOSE_BAD_NDIMS, "src",
             src_desc->ndims);
+    VCHECK_RS(!any_memory_desc_host_scalar(src_desc, dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     const bool is_fwd = one_of(prop_kind, forward_training, forward_inference);
     VCHECK_RS(IMPLICATION(is_fwd, src_desc->format_kind != format_kind::any),
@@ -94,8 +96,9 @@ status_t resampling_desc_init(resampling_desc_t *resampling_desc,
         rd.factors[i] = static_cast<float>(dst_dim_val / src_dim_val);
     }
 
-    VCHECK_RS(src_desc->ndims == dst_desc->ndims, VERBOSE_INCONSISTENT_NDIMS,
-            "src", "dst");
+    VCHECK_RS(src_desc->ndims == dst_desc->ndims,
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst", src_desc->ndims,
+            dst_desc->ndims);
     for (int i : {0, 1})
         VCHECK_RS(src_desc->dims[i] == dst_desc->dims[i],
                 VERBOSE_INCONSISTENT_DIM, "src", i, "dst", i);

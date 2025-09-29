@@ -268,8 +268,7 @@ public:
                 if (!mapped_blocks.is_broadcasted(sg_buf_idx)) {
                     const block_t &buf_block
                             = mapped_blocks.get_buffer_blocks().at(sg_buf_idx);
-                    if (static_cast<size_t>(buf_block.stride * buf_block.block)
-                            <= subgroup.size()) {
+                    if (buf_block.stride * buf_block.block <= subgroup.size()) {
                         // This mapped_block_t corresponds to the subgroup block
                         bins.emplace_back(mapped_blocks, num_layouts, true);
                         continue;
@@ -362,7 +361,7 @@ std::vector<gws_indexing_term_t> gws_bin_mapping_t::condense_terms(
                 gws_op_t op = get_op(gws_[gws_idx], block.gws_stride, block);
 
                 ret.emplace_back(op, gws_idx, block.block, block.gws_stride,
-                        block.stride);
+                        dim_t(block.stride));
 
                 // Update values for the next block
                 block = next_block;
@@ -372,8 +371,8 @@ std::vector<gws_indexing_term_t> gws_bin_mapping_t::condense_terms(
         // Create the final term
         gws_op_t op = get_op(gws_[gws_idx], block.gws_stride, block);
 
-        ret.emplace_back(
-                op, gws_idx, block.block, block.gws_stride, block.stride);
+        ret.emplace_back(op, gws_idx, block.block, block.gws_stride,
+                dim_t(block.stride));
     }
 
     if (ret.empty()) {

@@ -77,8 +77,9 @@ enum class dnnl_driver_t {
 };
 
 enum class graph_recognized_pattern_t {
-    sdpa,
     ordinary,
+    sdpa_fwd,
+    sdpa_bwd,
 };
 
 extern bdnn_state_t convert_state(const dnnl_status_t &s);
@@ -142,6 +143,7 @@ int measure_perf(timer::timer_t &t,
 
 dnnl::graph::op::kind opstr2kind(const std::string &kind);
 dnnl::graph::op::attr attrstr2kind(const std::string &attr_name);
+const std::string &attrstr2type(const std::string &attr_name);
 
 std::string get_default_tag(size_t length);
 std::string strides2memory_tag(const size_t ndims,

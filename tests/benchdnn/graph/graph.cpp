@@ -463,6 +463,31 @@ int skip_unimplemented_ops(const dnnl::graph::partition &partition,
     return OK;
 }
 
+// Currently, all primitives support "strict" and "relaxed" accumulation modes
+// on CPU.
+int skip_unimplemented_accumulation_mode(
+        const dnnl::graph::partition &partition, const deserialized_graph_t &dg,
+        res_t *res) {
+    const auto &eng = get_graph_engine();
+    bool is_cpu = eng.get_kind() == dnnl::engine::kind::cpu;
+    if (!is_cpu) return OK;
+    const std::vector<size_t> &partition_op_ids = partition.get_ops();
+    for (const size_t op_id : partition_op_ids) {
+        std::string acc_mode;
+        if (dg.get_op(op_id).get_attr_string(acc_mode, "accumulation_mode")) {
+            if (acc_mode != "strict" && acc_mode != "relaxed") {
+                BENCHDNN_PRINT(2,
+                        "[INFO]: Unimplemented accumulation mode: %s.\n",
+                        acc_mode.c_str());
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return OK;
+            }
+        }
+    }
+    return OK;
+}
+
 int skip_unimplemented_partitions(const std::vector<partition> &partitions,
         const deserialized_graph_t &dg, const prb_t *prb, res_t *res) {
 
@@ -478,6 +503,10 @@ int skip_unimplemented_partitions(const std::vector<partition> &partitions,
             && partitions.size() != prb->expected_n_partition);
 
     for (size_t i = 0; i < partitions.size(); ++i) {
+        // Skip the partition contains op with unimplemented accumulation_mode
+        skip_unimplemented_accumulation_mode(partitions[i], dg, res);
+        if (res->state == SKIPPED) return OK;
+
         // If the partition number mismatches the requirement, check whether
         // there are unsupported data types.
         if (partitions[i].is_supported() && !partition_num_mismatch) continue;
@@ -636,12 +665,10 @@ int doit(const prb_t *prb, res_t *res) {
         SAFE(ref_partition.init_ref(graph_in_ports, res), WARN);
         if (res->state == SKIPPED) return OK;
 
-        SAFE(ref_partition.init_graph_mem(partition_mem_map_v[i], res), WARN);
-        if (res->state == SKIPPED) return OK;
-
         if (has_bench_mode_bit(mode_bit_t::corr)) {
             // correctness mode, run ref partition
-            if (res->state == UNTESTED || res->state == EXECUTED) {
+            if (res->state == UNTESTED || res->state == EXECUTED
+                    || res->state == DEFERRED) {
                 ref_partition.exec_ops(res);
                 if (res->state == FAILED) return FAIL;
                 if (res->state == SKIPPED || res->state == UNIMPLEMENTED)
@@ -651,6 +678,13 @@ int doit(const prb_t *prb, res_t *res) {
                 return FAIL;
             }
         }
+
+        // To ensure data consistency between graph and reference paths,
+        // memory initialization and data displacement for reference primitives
+        // (performed in ref_partition.init_ref and ref_partition.exec_ops)
+        // must be completed before initializing graph memory.
+        SAFE(ref_partition.init_graph_mem(partition_mem_map_v[i], res), WARN);
+        if (res->state == SKIPPED) return OK;
 
         // unmap memory from host to device
         SAFE(map_unmap_partition_mem(

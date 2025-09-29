@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,12 +30,13 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+
+class engine_t;
+
 namespace compute {
 
 range_t get_optimal_lws(range_t &gws, const dim_idx_t mapped_vec_dim_idx,
         const gpu_arch_t gpu_arch);
-
-class compute_engine_t;
 
 class dispatch_t {
 public:
@@ -43,7 +44,7 @@ public:
     static constexpr dim_idx_t dim_not_found = -1;
 
     // md - memory descriptor hint to extract nesting levels based on the layout.
-    dispatch_t(const compute_engine_t *engine = nullptr,
+    dispatch_t(const intel::engine_t *engine = nullptr,
             const memory_desc_t *md = nullptr);
 
     nd_range_t nd_range() const {
@@ -132,7 +133,7 @@ protected:
         return s;
     }
 
-    const compute_engine_t *engine_;
+    const engine_t *engine_;
 
     dim_idx_t md_ndims_ = 0;
     int md_nesting_levels_[DNNL_MAX_NDIMS];

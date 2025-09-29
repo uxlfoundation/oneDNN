@@ -18,8 +18,10 @@
 #include <cctype>
 
 #include "utils/cold_cache.hpp"
+#include "utils/fill.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
+#include "utils/summary.hpp"
 
 #include "dnnl_common.hpp"
 
@@ -495,6 +497,10 @@ summary_t parse_summary_str(const std::string &s) {
         auto option = parser::get_substr(subs, subs_pos, '\0');
         if (option == "failures") {
             v.failed_cases = !negate_option;
+        } else if (option == "impl") {
+            v.impl_names = !negate_option;
+        } else if (option == "impl-csv") {
+            v.impl_names_csv = !negate_option;
         } else {
             BENCHDNN_PRINT(0,
                     "Error: unsupported option-value combination "
@@ -731,6 +737,17 @@ bool parse_attr_zero_points(std::vector<attr_t::zero_points_t> &zp,
     return parse_subattr(zp, str, option_name, help);
 }
 
+bool parse_attr_precomputed_reductions(
+        std::vector<attr_t::precomputed_reductions_t> &pr, const char *str,
+        const std::string &option_name = "attr-precomputed-reductions") {
+    static const std::string help
+            = "ARG:POLICY:DATA_TYPE:GROUPS[+...]\n    Specifies precomputed "
+              "reductions attribute.\n    More details at "
+              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
+              "benchdnn/doc/knobs_attr.md\n";
+    return parse_subattr(pr, str, option_name, help);
+}
+
 bool parse_attr_rounding_mode(std::vector<attr_t::rounding_mode_t> &rm,
         const char *str,
         const std::string &option_name = "attr-rounding-mode") {
@@ -809,6 +826,7 @@ bool parse_attributes(
         base_settings_t &s, const base_settings_t &def, const char *str) {
     const bool parsed_attrs = parse_attr_scales(s.scales, str)
             || parse_attr_zero_points(s.zero_points, str)
+            || parse_attr_precomputed_reductions(s.precomputed_reductions, str)
             || parse_attr_post_ops(s.post_ops, str)
             || parse_attr_dropout(s.dropout, def.dropout, str)
             || parse_attr_scratchpad_mode(
@@ -1485,6 +1503,20 @@ static bool parse_start(
             test_start, 0, parser_utils::stoll_safe, str, option_name, help);
 }
 
+static bool parse_buffer_prefix(
+        const char *str, const std::string &option_name = "buffer-prefix") {
+    static const std::string help
+            = "PREFIX    (Default: not specified)\n    Instructs the driver to "
+              "fill specified buffers with the data from the files provided by "
+              "`PREFIX`.\n    The expected filename format is "
+              "\'PREFIX.ID.bin\'; the files must have binary data in them.\n   "
+              " More details at "
+            + doc_url + "knobs_common.md#--buffer-prefix\n";
+    const auto str2self = [](const std::string &str) { return str; };
+    return parse_single_value_option(
+            buffer_prefix, std::string(), str2self, str, option_name, help);
+}
+
 static bool parse_stream_kind(
         const char *str, const std::string &option_name = "stream-kind") {
     static const std::string help
@@ -1588,7 +1620,8 @@ bool parse_bench_settings(const char *str) {
             || parse_memory_kind(str) || parse_mode(str)
             || parse_mode_modifier(str) || parse_start(str)
             || parse_stream_kind(str) || parse_summary(str)
-            || parse_verbose(str) || parse_execution_mode(str);
+            || parse_verbose(str) || parse_execution_mode(str)
+            || parse_buffer_prefix(str);
 
     // Last condition makes this help message to be triggered once driver_name
     // is already known.

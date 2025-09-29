@@ -21,6 +21,7 @@
 
 #ifndef __OPENCL_CL_H
 #include <CL/cl.h>
+#include <CL/cl_ext.h>
 #endif
 
 #include <atomic>
@@ -28,8 +29,11 @@
 
 #include "ngen_elf.hpp"
 #include "ngen_interface.hpp"
-
 #include "npack/neo_packager.hpp"
+
+#ifndef NGEN_LINK_OPENCL
+#include "ngen_dynamic.hpp"
+#endif
 
 #ifndef CL_DEVICE_IP_VERSION_INTEL
 #define CL_DEVICE_IP_VERSION_INTEL 0x4250
@@ -50,6 +54,49 @@ protected:
     cl_int status;
 };
 
+// Dynamic loading support.
+// By default OpenCL is loaded dynamically, but direct linking is also possible
+//   by #defining the NGEN_LINK_OPENCL macro.
+namespace dynamic {
+
+#ifdef _WIN32
+#define NGEN_OCL_LIB "OpenCL.dll"
+#else
+#define NGEN_OCL_LIB "libOpenCL.so.1"
+#endif
+
+#ifdef NGEN_LINK_OPENCL
+#define NGEN_OCL_INDIRECT_API(result_type, f) using ::f;
+#else
+template <typename F>
+F findOCLSymbol(const char *symbol) {
+    auto f = (F) findSymbol(NGEN_OCL_LIB, symbol);
+    if (!f) throw opencl_error{CL_PLATFORM_NOT_FOUND_KHR};
+    return f;
+}
+
+#define NGEN_OCL_INDIRECT_API(result_type, f) \
+    template <typename... Args> result_type f(Args&&... args) { \
+        static auto f_ = findOCLSymbol<decltype(&::f)>(#f);     \
+        return f_(std::forward<Args>(args)...);                 \
+    }
+#endif
+
+NGEN_OCL_INDIRECT_API(cl_int, clGetDeviceInfo)
+NGEN_OCL_INDIRECT_API(cl_int, clReleaseContext)
+NGEN_OCL_INDIRECT_API(cl_program, clCreateProgramWithSource)
+NGEN_OCL_INDIRECT_API(cl_program, clCreateProgramWithBinary)
+NGEN_OCL_INDIRECT_API(cl_int, clBuildProgram)
+NGEN_OCL_INDIRECT_API(cl_int, clGetProgramInfo)
+NGEN_OCL_INDIRECT_API(cl_int, clReleaseProgram)
+NGEN_OCL_INDIRECT_API(cl_kernel, clCreateKernel)
+NGEN_OCL_INDIRECT_API(cl_int, clReleaseKernel)
+
+#undef NGEN_OCL_INDIRECT_API
+
+} // namespace dynamic
+
+
 // OpenCL program generator class.
 template <HW hw>
 class OpenCLCodeGenerator : public ELFCodeGenerator<hw>
@@ -63,7 +110,9 @@ public:
     inline cl_kernel getKernel(cl_context context, cl_device_id device, const std::string &options = "-cl-std=CL2.0");
     bool binaryIsZebin() { return isZebin; }
 
+    static inline HW detectHW(cl_device_id device);
     static inline HW detectHW(cl_context context, cl_device_id device);
+    static inline Product detectHWInfo(cl_device_id device);
     static inline Product detectHWInfo(cl_context context, cl_device_id device);
 
 private:
@@ -85,17 +134,17 @@ static inline std::vector<uint8_t> getOpenCLCProgramBinary(cl_context context, c
 {
     cl_int status;
 
-    auto program = clCreateProgramWithSource(context, 1, &src, nullptr, &status);
+    auto program = dynamic::clCreateProgramWithSource(context, 1, &src, nullptr, &status);
 
     detail::handleCL(status);
     if (program == nullptr)
         throw opencl_error();
 
-    detail::handleCL(clBuildProgram(program, 1, &device, options, nullptr, nullptr));
+    detail::handleCL(dynamic::clBuildProgram(program, 1, &device, options, nullptr, nullptr));
     cl_uint nDevices = 0;
-    detail::handleCL(clGetProgramInfo(program, CL_PROGRAM_NUM_DEVICES, sizeof(cl_uint), &nDevices, nullptr));
+    detail::handleCL(dynamic::clGetProgramInfo(program, CL_PROGRAM_NUM_DEVICES, sizeof(cl_uint), &nDevices, nullptr));
     std::vector<cl_device_id> devices(nDevices);
-    detail::handleCL(clGetProgramInfo(program, CL_PROGRAM_DEVICES, sizeof(cl_device_id) * nDevices, devices.data(), nullptr));
+    detail::handleCL(dynamic::clGetProgramInfo(program, CL_PROGRAM_DEVICES, sizeof(cl_device_id) * nDevices, devices.data(), nullptr));
     size_t deviceIdx = std::distance(devices.begin(), std::find(devices.begin(), devices.end(), device));
 
     if (deviceIdx >= nDevices)
@@ -105,14 +154,14 @@ static inline std::vector<uint8_t> getOpenCLCProgramBinary(cl_context context, c
     std::vector<uint8_t *> binaryPointers(nDevices);
     std::vector<std::vector<uint8_t>> binaries(nDevices);
 
-    detail::handleCL(clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES, sizeof(size_t) * nDevices, binarySize.data(), nullptr));
+    detail::handleCL(dynamic::clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES, sizeof(size_t) * nDevices, binarySize.data(), nullptr));
     for (size_t i = 0; i < nDevices; i++) {
         binaries[i].resize(binarySize[i]);
         binaryPointers[i] = binaries[i].data();
     }
 
-    detail::handleCL(clGetProgramInfo(program, CL_PROGRAM_BINARIES, sizeof(uint8_t *) * nDevices, binaryPointers.data(), nullptr));
-    detail::handleCL(clReleaseProgram(program));
+    detail::handleCL(dynamic::clGetProgramInfo(program, CL_PROGRAM_BINARIES, sizeof(uint8_t *) * nDevices, binaryPointers.data(), nullptr));
+    detail::handleCL(dynamic::clReleaseProgram(program));
 
     return binaries[deviceIdx];
 }
@@ -180,10 +229,10 @@ std::vector<uint8_t> OpenCLCodeGenerator<hw>::getBinary(cl_context context, cl_d
             auto binary = super::getBinary(code);
             const auto *binaryPtr = binary.data();
             size_t binarySize = binary.size();
-            auto program = clCreateProgramWithBinary(context, 1, &device, &binarySize, &binaryPtr, nullptr, &status);
+            auto program = dynamic::clCreateProgramWithBinary(context, 1, &device, &binarySize, &binaryPtr, nullptr, &status);
             if (status == CL_SUCCESS) {
-                status = clBuildProgram(program, 1, &device, options.c_str(), nullptr, nullptr);
-                detail::handleCL(clReleaseProgram(program));
+                status = dynamic::clBuildProgram(program, 1, &device, options.c_str(), nullptr, nullptr);
+                detail::handleCL(dynamic::clReleaseProgram(program));
             }
 
             if (status == CL_SUCCESS)
@@ -215,7 +264,6 @@ cl_kernel OpenCLCodeGenerator<hw>::getKernel(cl_context context, cl_device_id de
 
     for (bool defaultFormat : {true, false}) {
         bool legacy = defaultFormat ^ zebinFirst;
-        isZebin = !legacy;
 
         if (legacy) {
             try {
@@ -229,32 +277,38 @@ cl_kernel OpenCLCodeGenerator<hw>::getKernel(cl_context context, cl_device_id de
         const auto *binaryPtr = binary.data();
         size_t binarySize = binary.size();
         status = CL_SUCCESS;
-        program = clCreateProgramWithBinary(context, 1, &device, &binarySize, &binaryPtr, nullptr, &status);
+        program = dynamic::clCreateProgramWithBinary(context, 1, &device, &binarySize, &binaryPtr, nullptr, &status);
 
         if ((program == nullptr) || (status != CL_SUCCESS))
             continue;
 
-        status = clBuildProgram(program, 1, &device, options.c_str(), nullptr, nullptr);
+        status = dynamic::clBuildProgram(program, 1, &device, options.c_str(), nullptr, nullptr);
 
         good = (status == CL_SUCCESS);
         if (good) {
             (void) detail::tryZebinFirst(device, true, !legacy);
             break;
         } else
-            detail::handleCL(clReleaseProgram(program));
+            detail::handleCL(dynamic::clReleaseProgram(program));
     }
 
     if (!good)
         throw opencl_error(status);
 
-    auto kernel = clCreateKernel(program, super::interface_.getExternalName().c_str(), &status);
+    auto kernel = dynamic::clCreateKernel(program, super::interface_.getExternalName().c_str(), &status);
     detail::handleCL(status);
     if (kernel == nullptr)
         throw opencl_error();
 
-    detail::handleCL(clReleaseProgram(program));
+    detail::handleCL(dynamic::clReleaseProgram(program));
 
     return kernel;
+}
+
+template <HW hw>
+HW OpenCLCodeGenerator<hw>::detectHW(cl_device_id device)
+{
+    return getCore(detectHWInfo(nullptr, device).family);
 }
 
 template <HW hw>
@@ -264,24 +318,34 @@ HW OpenCLCodeGenerator<hw>::detectHW(cl_context context, cl_device_id device)
 }
 
 template <HW hw>
+Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_device_id device)
+{
+    return detectHWInfo(nullptr, device);
+}
+
+template <HW hw>
 Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id device)
 {
-    Product product;
+    Product product{};
+    product.family = ProductFamily::Unknown;
 
     // Try CL_DEVICE_IP_VERSION_INTEL query first.
     cl_uint ipVersion = 0;      /* should be cl_version, but older CL/cl.h may not define cl_version */
-    if (clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL, sizeof(ipVersion), &ipVersion, nullptr) == CL_SUCCESS)
+    if (dynamic::clGetDeviceInfo(device, CL_DEVICE_IP_VERSION_INTEL, sizeof(ipVersion), &ipVersion, nullptr) == CL_SUCCESS)
         product = npack::decodeHWIPVersion(ipVersion);
-    else {
-        // If it fails, compile a test program and extract the HW information from it.
+
+    // If it fails, compile a test program and extract the HW information from it.
+    if (product.family == ProductFamily::Unknown) {
         const char *dummyCL = "kernel void _ngen_hw_detect(){}";
         const char *dummyOptions = "";
-        auto binary = detail::getOpenCLCProgramBinary(context, device, dummyCL, dummyOptions);
+        cl_context query_context = context ? context : clCreateContext(nullptr, 1, &device, nullptr, nullptr, nullptr);
+        auto binary = detail::getOpenCLCProgramBinary(query_context, device, dummyCL, dummyOptions);
+        if(!context) clReleaseContext(query_context);
         product = ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
     }
 
     cl_bool integrated;
-    if (clGetDeviceInfo(device, CL_DEVICE_HOST_UNIFIED_MEMORY, sizeof(integrated), &integrated, nullptr) == CL_SUCCESS)
+    if (dynamic::clGetDeviceInfo(device, CL_DEVICE_HOST_UNIFIED_MEMORY, sizeof(integrated), &integrated, nullptr) == CL_SUCCESS)
         product.type = integrated ? PlatformType::Integrated : PlatformType::Discrete;
 
     return product;

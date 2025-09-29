@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,13 +24,13 @@ namespace cpu {
 namespace aarch64 {
 namespace matmul {
 
-typedef enum {
+enum jit_int8_broadcast_t {
     none = 0,
     per_tensor = 1,
     per_m = 2,
     per_n = 3,
     per_k = 4,
-} jit_int8_broadcast_t;
+};
 
 struct dyn_vals_t {
     int f = 0;
@@ -63,7 +64,7 @@ struct brg_int8_t {
     int m_tail, n_tail, k_tail;
     int is_m_tail, is_k_tail, is_n_tail, is_zp_cal;
     int dst_dt_sz;
-    bool is_s8;
+    bool is_s8, is_u8_s8;
     bool is_bias;
     bool with_scales;
     bool with_dst_scales;
@@ -84,7 +85,7 @@ struct call_params_t {
     dim_t M, K, N;
     char *buf_B_ptr_;
     int *na, *nb;
-    int32_t *src_zero_point, *wei_zero_point, *dst_zero_point;
+    const int32_t *src_zero_point, *wei_zero_point, *dst_zero_point;
     const int8_t *wei_zero_point_buf;
     float *zp_a_ptr, *zp_b_ptr;
 };

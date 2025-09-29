@@ -591,6 +591,17 @@ status_t fuse_to_int8_concat(std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);
     for (auto &concat_op : fusion_ops) {
         for (size_t i = 0; i < concat_op->num_inputs(); ++i) {
+// Avoid the assertion caused by concat with 0-dim src on NV GPU
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
+            const auto src_lt
+                    = concat_op->get_input_value(i)->get_logical_tensor();
+            const auto src_dims = ltw(src_lt).vdims();
+            if (std::any_of(src_dims.begin(), src_dims.end(),
+                        [](dim_t src_dim) { return src_dim == 0; })) {
+                return status::unimplemented;
+            }
+#endif
             op_t &scale_op = concat_op->get_input_value(i)->get_producer();
             op_t &zp_op = scale_op.get_input_value(0)->get_producer();
             rewriter.fuse_op_to_successor(zp_op.shared_from_this());
@@ -813,7 +824,6 @@ status_t fuse_to_shuffle(std::shared_ptr<subgraph_t> &sg) {
 status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
     // lambda function to fuse one post op into base primitive
     auto fuse_post_ops_func = [&](bool &changed) -> status_t {
-        auto &mgr = sg->fusion_info_mgr_;
         std::vector<std::pair<op_t *, op_t *>> fuse_groups;
 
         std::set<op_t *> visited;
@@ -833,6 +843,22 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
             // the post op to be fused
             if (consumers.size() != 1) return status::success;
             auto &post_op = consumers[0].get_op();
+
+            // For binary ops, fusion on CPU is only allowed when no
+            // broadcasting occurs. If broadcasting is needed, the reference
+            // path is used, which results in suboptimal performance for fusion
+            // compared to executing the ops separately.
+            // TODO: Enabling the fusion when broadcasting is optimized in binary.
+            if (base_op_kind == op_kind::dnnl_binary
+                    && sg->get_engine_kind() == engine_kind::cpu) {
+                auto in0 = op->get_input_value(0);
+                auto in1 = op->get_input_value(1);
+                auto in0_dims = ltw(in0->get_logical_tensor()).vdims();
+                auto in1_dims = ltw(in1->get_logical_tensor()).vdims();
+                auto in1_nelems = ltw(in1->get_logical_tensor()).nelems();
+                if (in1_nelems != 1 && in0_dims != in1_dims)
+                    return status::success;
+            }
 
             // check if fusible
             // TODO(qun) make sure bn only fuse relu
@@ -872,17 +898,13 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
                                                         ->get_consumers()[0]
                                                         .get_offset();
 
-            int64_t key = -1;
-            if (base_op->has_attr(op_attr::fusion_info_key)
-                    && base_op->get_attr<int64_t>(op_attr::fusion_info_key)
-                            != -1) {
-                key = base_op->get_attr<int64_t>(op_attr::fusion_info_key);
-            } else {
-                key = mgr.init_info();
-                base_op->set_attr<int64_t>(op_attr::fusion_info_key, key);
+            if (!base_op->has_attr(op_attr::fusion_info)) {
+                fusion_info_t fusion_info;
+                base_op->set_attr<fusion_info_t>(
+                        op_attr::fusion_info, fusion_info);
             }
-
-            fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+            fusion_info_t fusion_info
+                    = base_op->get_attr<fusion_info_t>(op_attr::fusion_info);
 
             if (post_op->get_kind() == op_kind::dnnl_eltwise) {
                 float scale = 1.f;
@@ -988,6 +1010,8 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
                 // unsupported post ops
                 continue;
             }
+            // Update fusion info
+            base_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
 
             // remove the fused post_ops op
             rewriter.fuse_op_to_predecessor(
@@ -1016,7 +1040,6 @@ status_t fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
 status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
     // lambda function to fuse one post op into base primitive
     auto fuse_post_ops_func = [&](bool &changed) -> status_t {
-        auto &mgr = sg->fusion_info_mgr_;
         std::vector<std::pair<op_t *, op_t *>> fuse_groups;
 
         std::set<op_t *> visited;
@@ -1036,8 +1059,11 @@ status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
             // the post op to be fused
             if (consumers.size() != 1) return status::success;
             auto &post_op = consumers[0].get_op();
+            size_t fused_in_off = consumers[0].get_offset();
 
             // check if fusible
+            // For select, it can only be fused to preceding op when it's first
+            // input is connected to preceding op, namely fused_in_off = 0.
             auto post_op_kind = post_op.get_kind();
             bool not_fusible
                     = (!pops_fusible_map.at(base_op_kind).count(post_op_kind)
@@ -1045,7 +1071,9 @@ status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
                                     && static_cast<dnnl::algorithm>(
                                                post_op.get_attr<int64_t>(
                                                        op_attr::alg_kind))
-                                            == dnnl::algorithm::binary_select));
+                                            == dnnl::algorithm::binary_select
+                                    && fused_in_off >= 1));
+
             if (not_fusible) { return status::success; }
 
             // push fusible pair to fuse group for later fusion
@@ -1069,20 +1097,25 @@ status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
             size_t fuse_op_predecessor_offset = base_op->get_output_value(0)
                                                         ->get_consumers()[0]
                                                         .get_offset();
-            int64_t key = -1;
-            if (base_op->has_attr(op_attr::fusion_info_key)
-                    && base_op->get_attr<int64_t>(op_attr::fusion_info_key)
-                            != -1) {
-                key = base_op->get_attr<int64_t>(op_attr::fusion_info_key);
-            } else {
-                key = mgr.init_info();
-                base_op->set_attr<int64_t>(op_attr::fusion_info_key, key);
+            if (!base_op->has_attr(op_attr::fusion_info)) {
+                fusion_info_t fusion_info;
+                base_op->set_attr<fusion_info_t>(
+                        op_attr::fusion_info, fusion_info);
             }
-            fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+            fusion_info_t fusion_info
+                    = base_op->get_attr<fusion_info_t>(op_attr::fusion_info);
+
             if (post_op->get_kind() == op_kind::dnnl_eltwise) {
                 float scale = 1.f;
                 fusion_info.append_post_eltwise(
                         post_op->shared_from_this(), scale);
+            } else if (post_op->get_kind() == op_kind::dnnl_binary
+                    && static_cast<dnnl::algorithm>(
+                               post_op->get_attr<int64_t>(op_attr::alg_kind))
+                            == dnnl::algorithm::binary_select) {
+                fusion_info.append_post_binary(post_op->shared_from_this(),
+                        std::vector<size_t> {base_op->num_inputs(),
+                                base_op->num_inputs() + 1});
             } else if (post_op->get_kind() == op_kind::dnnl_binary
                     && static_cast<dnnl::algorithm>(
                                post_op->get_attr<int64_t>(op_attr::alg_kind))
@@ -1153,6 +1186,8 @@ status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
                 // unsupported post ops
                 continue;
             }
+            // update fusion info
+            base_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
             // remove the fused post_ops op
             rewriter.fuse_op_to_predecessor(
                     post_op->shared_from_this(), fuse_op_predecessor_offset);
@@ -1174,7 +1209,6 @@ status_t sdp_fuse_post_ops(std::shared_ptr<subgraph_t> &sg) {
 }
 
 status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
 
     std::vector<op_t *> zp_ops;
 
@@ -1200,14 +1234,13 @@ status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
         auto &next_op = consumers[0].get_op();
         auto offset = consumers[0].get_offset();
         if (offset == 0 || offset == 1) {
-            int64_t key = -1;
-            if (next_op.has_attr(op_attr::fusion_info_key)) {
-                key = next_op.get_attr<int64_t>(op_attr::fusion_info_key);
-            } else {
-                key = mgr.init_info();
-                next_op.set_attr<int64_t>(op_attr::fusion_info_key, key);
+            if (!next_op.has_attr(op_attr::fusion_info)) {
+                fusion_info_t fusion_info;
+                next_op.set_attr<fusion_info_t>(
+                        op_attr::fusion_info, fusion_info);
             }
-            fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+            fusion_info_t fusion_info
+                    = next_op.get_attr<fusion_info_t>(op_attr::fusion_info);
             bool not_all_zero = true;
             if (zp_op->has_attr(op_attr::with_runtime_zps)
                     && zp_op->get_attr<bool>(op_attr::with_runtime_zps)) {
@@ -1253,6 +1286,8 @@ status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
                 fusion_info.set_zero_points(
                         zp_op->shared_from_this(), true, offset);
             }
+            // update fusion info
+            next_op.set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
         }
     }
     rewriter.run();
@@ -1260,7 +1295,6 @@ status_t fuse_src_zero_points(std::shared_ptr<subgraph_t> &sg) {
 }
 
 status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
 
     std::vector<op_t *> scales_ops;
 
@@ -1313,14 +1347,13 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
                         "trans_flag: %d, axis: %ld, ndims: %d",
                         trans_flag, static_cast<long int>(axis), ndims);
             }
-            int64_t key = -1;
-            if (next_op.has_attr(op_attr::fusion_info_key)) {
-                key = next_op.get_attr<int64_t>(op_attr::fusion_info_key);
-            } else {
-                key = mgr.init_info();
-                next_op.set_attr<int64_t>(op_attr::fusion_info_key, key);
+            if (!next_op.has_attr(op_attr::fusion_info)) {
+                fusion_info_t fusion_info;
+                next_op.set_attr<fusion_info_t>(
+                        op_attr::fusion_info, fusion_info);
             }
-            fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+            fusion_info_t fusion_info
+                    = next_op.get_attr<fusion_info_t>(op_attr::fusion_info);
             if (scale_op->has_attr(op_attr::with_runtime_scales)
                     && scale_op->get_attr<bool>(op_attr::with_runtime_scales)) {
                 value_ptr in0_val = scale_op->get_input_value(0);
@@ -1339,6 +1372,8 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
                 VCHECK_TRANSFORM(false, status::unimplemented,
                         "src scales must be runtime scales.");
             }
+            // update fusion info
+            next_op.set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
         }
     }
     rewriter.run();
@@ -1346,7 +1381,6 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
 }
 
 status_t fuse_dst_scales(std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
     subgraph_rewriter_t rewriter(sg);
 
     std::vector<std::pair<op_t *, op_t *>> fuse_groups;
@@ -1387,17 +1421,14 @@ status_t fuse_dst_scales(std::shared_ptr<subgraph_t> &sg) {
         auto base_op = fuse_group.first;
         auto scale_op = fuse_group.second;
 
-        int64_t key = -1;
-        if (base_op->has_attr(op_attr::fusion_info_key)
-                && base_op->get_attr<int64_t>(op_attr::fusion_info_key) != -1) {
-            key = base_op->get_attr<int64_t>(op_attr::fusion_info_key);
-        } else {
-            key = mgr.init_info();
-            base_op->set_attr<int64_t>(op_attr::fusion_info_key, key);
+        if (!base_op->has_attr(op_attr::fusion_info)) {
+            fusion_info_t fusion_info;
+            base_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
         }
-
-        fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+        fusion_info_t fusion_info
+                = base_op->get_attr<fusion_info_t>(op_attr::fusion_info);
         fusion_info.set_runtime_scales(scale_op->shared_from_this(), false, 0);
+        base_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
         rewriter.fuse_op_to_predecessor(scale_op->shared_from_this());
     }
 
@@ -1499,7 +1530,6 @@ status_t convert_bias_to_f32(std::shared_ptr<subgraph_t> &sg) {
 }
 
 status_t fuse_dst_zero_points(std::shared_ptr<subgraph_t> &sg) {
-    auto &mgr = sg->fusion_info_mgr_;
     std::vector<op_t *> zp_ops;
     std::set<op_t *> visited;
     for (auto &cur_op : sg->get_ops()) {
@@ -1523,16 +1553,14 @@ status_t fuse_dst_zero_points(std::shared_ptr<subgraph_t> &sg) {
 
         if (!has_int8_support(prv_op.get_kind())) continue;
 
-        int64_t key = -1;
-        if (prv_op.has_attr(op_attr::fusion_info_key)) {
-            key = prv_op.get_attr<int64_t>(op_attr::fusion_info_key);
-        } else {
-            key = mgr.init_info();
-            prv_op.set_attr<int64_t>(op_attr::fusion_info_key, key);
+        if (!prv_op.has_attr(op_attr::fusion_info)) {
+            fusion_info_t fusion_info;
+            prv_op.set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
         }
-
-        fusion_info_t &fusion_info = mgr.get_mutable_info(key);
+        fusion_info_t fusion_info
+                = prv_op.get_attr<fusion_info_t>(op_attr::fusion_info);
         fusion_info.set_zero_points(zp_op->shared_from_this(), false, 0);
+        prv_op.set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
         rewriter.fuse_op_to_predecessor(zp_op->shared_from_this());
     }
     rewriter.run();
@@ -2219,13 +2247,14 @@ status_t fuse_reciprocal_mul_to_div(std::shared_ptr<subgraph_t> &sg) {
             float alpha = 0.f;
             if (cur_op->has_attr(op_attr::alpha))
                 alpha = cur_op->get_attr<float>(op_attr::alpha);
-            if (!utils::compare_float(alpha, 1.f)) return false;
+            if (alpha != 1.f) return false;
 
             // check attribute beta
             float beta = 0.f;
             if (cur_op->has_attr(op_attr::beta))
                 beta = cur_op->get_attr<float>(op_attr::beta);
-            if (!utils::compare_float(beta, -1.f)) return false;
+            if (beta != -1.f) return false;
+
             return true;
         };
 
@@ -2552,9 +2581,10 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
     const static std::set<op_kind_t> reorder_op_set = {op_kind::dnnl_reorder};
 
     auto fuse_two_adjacent_reorders = [&](bool &changed) -> status_t {
-        auto &mgr = sg->fusion_info_mgr_;
         auto &p_engine = sg->p_engine_;
         auto &pd_cache = sg->pd_cache_;
+        auto &fpm = sg->get_fpmath_mode();
+        bool use_block_layout = sg->can_use_blocked_layout_;
 
         std::vector<std::pair<op_t *, op_t *>> fuse_groups;
 
@@ -2755,7 +2785,7 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
                 pd_cache.erase(fused_op.get());
             }
             const auto &pd = reorder_executable_t::create_desc(
-                    fused_op, *p_engine, mgr, pd_cache);
+                    fused_op, *p_engine, pd_cache, fpm, use_block_layout);
             const memory::desc scratchpad_desc = pd.scratchpad_desc();
             CHECK(fill_layout_info(scratchpad_val, scratchpad_desc));
 
@@ -3961,9 +3991,9 @@ impl::status_t fuse_reshape_for_gqa(std::shared_ptr<subgraph_t> &sg) {
     std::vector<op_ptr> reshape_ops;
     dnnl_dim_t head_num;
     for (auto &cur_op : sg->get_ops()) {
-        auto in = cur_op->get_input_value(0)->get_logical_tensor();
-        auto out = cur_op->get_output_value(0)->get_logical_tensor();
         if (cur_op->get_kind() == op_kind::dnnl_reshape) {
+            auto in = cur_op->get_input_value(0)->get_logical_tensor();
+            auto out = cur_op->get_output_value(0)->get_logical_tensor();
             if (ltw(in).ndims() == 5 || ltw(out).ndims() == 5) {
                 reshape_ops.emplace_back(cur_op);
                 if (ltw(in).ndims() == 5) head_num = ltw(out).vdims()[1];
@@ -3992,6 +4022,58 @@ impl::status_t fuse_reshape_for_gqa(std::shared_ptr<subgraph_t> &sg) {
     for (auto &cur_op : sg->get_ops()) {
         auto out_val = cur_op->get_output_value(0);
         //the subgraph output logical tensor don't change shape.
+        if (!out_val->get_consumers().empty()) out_val->set_ndims(-1);
+    }
+    return infer_shape(sg);
+}
+
+// TODO: This pass is similar to the one above, and the ultimate goal is to
+// merge them by using dnnl_sdpa for cpu.
+impl::status_t fuse_reshape_for_gqa_gpu(std::shared_ptr<subgraph_t> &sg) {
+    if (sg->get_engine_kind() == graph::engine_kind::cpu)
+        return impl::status::success;
+    std::vector<op_ptr> reshape_ops;
+    for (auto &cur_op : sg->get_ops()) {
+        if (cur_op->get_kind() == op_kind::dnnl_reshape) {
+            auto in = cur_op->get_input_value(0)->get_logical_tensor();
+            auto out = cur_op->get_output_value(0)->get_logical_tensor();
+            if (ltw(in).ndims() == 5 || ltw(out).ndims() == 5) {
+                reshape_ops.emplace_back(cur_op);
+            }
+        }
+    }
+    if (reshape_ops.empty()) { return impl::status::success; }
+    subgraph_rewriter_t rewriter(sg);
+    for (auto &reshape_op : reshape_ops) {
+        auto in = reshape_op->get_input_value(0)->get_logical_tensor();
+        auto out = reshape_op->get_output_value(0)->get_logical_tensor();
+        if (ltw(in).ndims() == 5)
+            rewriter.fuse_op_to_predecessor(reshape_op->shared_from_this());
+        if (ltw(out).ndims() == 5) {
+            auto in_val = reshape_op->get_input_value(0);
+            auto out_val = reshape_op->get_output_value(0);
+            if (out_val->get_consumers()[0].get_op().get_kind()
+                    == op_kind::dnnl_permute) {
+                in_val->remove_consumer(*reshape_op, 0);
+                auto &permute_op = out_val->get_consumers()[0].get_op();
+                in_val->add_consumer(permute_op, 0);
+                permute_op.connect_input(0, in_val);
+                auto perm = permute_op.get_attr<std::vector<int64_t>>(
+                        op_attr::permutation);
+                // GQA specific scenario
+                permute_op.set_attr<std::vector<int64_t>>(
+                        op_attr::permutation, {0, 1, 3, 2});
+                rewriter.to_remove(reshape_op);
+            } else {
+                rewriter.fuse_op_to_successor(reshape_op->shared_from_this());
+            }
+        }
+    }
+    rewriter.run();
+    //rewrite the subgraph internal logical_tensor's shape
+    for (auto &cur_op : sg->get_ops()) {
+        auto out_val = cur_op->get_output_value(0);
+        //the subgraph output logical tensor doesn't change shape.
         if (!out_val->get_consumers().empty()) out_val->set_ndims(-1);
     }
     return infer_shape(sg);
@@ -4305,7 +4387,7 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
                 default: valid_pattern = false;
             }
 
-            if (!valid_pattern) break;
+            if (!valid_pattern) return status::unimplemented;
 
             auto out_val = walker->get_output_value(0);
             if (out_val->get_consumers().size() != 1) break;
@@ -4326,16 +4408,20 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     sdpa_op->set_attr<int64_t>(
             op_attr::mask_type, static_cast<int64_t>(attn_mask_type::undef));
 
-    auto query_val = candidates[0]->get_input_value(0);
-    query_val->remove_consumer(*candidates[0], 0);
+    // alias
+    const auto &qk = candidates[0];
+    const auto &vs = candidates.back();
+
+    auto query_val = qk->get_input_value(0);
+    query_val->remove_consumer(*qk, 0);
     sdpa_op->connect_input(0, query_val);
 
-    auto key_val = candidates[0]->get_input_value(1);
-    key_val->remove_consumer(*candidates[0], 1);
+    auto key_val = qk->get_input_value(1);
+    key_val->remove_consumer(*qk, 1);
     sdpa_op->connect_input(1, key_val);
 
-    auto value_val = candidates.back()->get_input_value(1);
-    value_val->remove_consumer(*candidates.back(), 1);
+    auto value_val = vs->get_input_value(1);
+    value_val->remove_consumer(*vs, 1);
     sdpa_op->connect_input(2, value_val);
 
     size_t input_idx = 3;
@@ -4373,7 +4459,64 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         }
     }
 
-    auto final_output = candidates.back()->get_output_value(0);
+    // Handle quantization parameters from both matmuls
+    for (const auto &matmul : {qk, vs}) {
+        auto inputs = matmul->get_input_values();
+        for (size_t idx = 2; idx < inputs.size(); ++idx) {
+            const auto &qparam_val = inputs[idx];
+            qparam_val->remove_consumer(*matmul, idx);
+            sdpa_op->connect_input(input_idx++, qparam_val);
+        }
+    }
+
+    // Handle QK and VS accumulation modes
+    const std::string qk_acc_mode = qk->has_attr(op_attr::accumulation_mode)
+            ? qk->get_attr<std::string>(op_attr::accumulation_mode)
+            : "strict";
+    const std::string vs_acc_mode = vs->has_attr(op_attr::accumulation_mode)
+            ? vs->get_attr<std::string>(op_attr::accumulation_mode)
+            : "strict";
+
+    sdpa_op->set_attr<std::string>(op_attr::qk_acc_mode, qk_acc_mode);
+    sdpa_op->set_attr<std::string>(op_attr::vs_acc_mode, vs_acc_mode);
+
+    fusion_info_t sdpa_fusion_info;
+    if (qk->has_attr(op_attr::fusion_info)) {
+        auto mm1_fusion_info
+                = qk->get_attr<fusion_info_t>(op_attr::fusion_info);
+        if (mm1_fusion_info.get_mutable_scales(true, 1)) {
+            sdpa_fusion_info.set_runtime_scales(
+                    mm1_fusion_info.get_mutable_scales(true, 1)
+                            ->shared_from_this(),
+                    true, DNNL_ARG_KEYS);
+        }
+        if (mm1_fusion_info.with_runtime_zero_points(true, 1)) {
+            sdpa_fusion_info.set_zero_points(
+                    mm1_fusion_info.get_mutable_zero_points(true, 1)
+                            ->shared_from_this(),
+                    true, DNNL_ARG_KEYS);
+        }
+    }
+
+    if (vs->has_attr(op_attr::fusion_info)) {
+        auto mm2_fusion_info
+                = vs->get_attr<fusion_info_t>(op_attr::fusion_info);
+        if (mm2_fusion_info.get_mutable_scales(true, 1)) {
+            sdpa_fusion_info.set_runtime_scales(
+                    mm2_fusion_info.get_mutable_scales(true, 1)
+                            ->shared_from_this(),
+                    true, DNNL_ARG_VALUES);
+        }
+        if (mm2_fusion_info.with_runtime_zero_points(true, 1)) {
+            sdpa_fusion_info.set_zero_points(
+                    mm2_fusion_info.get_mutable_zero_points(true, 1)
+                            ->shared_from_this(),
+                    true, DNNL_ARG_VALUES);
+        }
+    }
+    sdpa_op->set_attr<fusion_info_t>(op_attr::fusion_info, sdpa_fusion_info);
+
+    auto final_output = vs->get_output_value(0);
     final_output->set_producer(*sdpa_op);
     sdpa_op->add_output(final_output);
 

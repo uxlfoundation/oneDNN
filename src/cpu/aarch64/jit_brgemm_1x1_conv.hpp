@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -81,7 +82,7 @@ struct brgemm_1x1_convolution_fwd_t : public primitive_t {
     brgemm_1x1_convolution_fwd_t(const pd_t *apd)
         : primitive_t(apd), bias_d(pd()->weights_md(1)) {}
 
-    ~brgemm_1x1_convolution_fwd_t() {}
+    ~brgemm_1x1_convolution_fwd_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         execute_forward_all(ctx);
@@ -119,7 +120,7 @@ private:
             char *const c_buffer, const char *inp_buffer, int g, int n, int ocb,
             int od, int oh, int ow, int icc, int *last_brg_idx,
             const float *oscales, int32_t src_zp_vals, int32_t *src_zp_comp,
-            int32_t *dst_zp_vals, int32_t *s8s8_compensation,
+            const int32_t *dst_zero_points, int32_t *s8s8_compensation,
             const float *dst_scales) const;
     status_t execute_forward_all(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

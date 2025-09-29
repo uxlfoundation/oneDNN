@@ -116,8 +116,6 @@ The shuffle primitive does not support any post-ops or attributes.
 
 N/A
 
-## Example
+## Examples
 
-[Shuffle Primitive Example](@ref shuffle_example_cpp)
-
-@copydetails shuffle_example_cpp_short
+* @ref shuffle_example_cpp

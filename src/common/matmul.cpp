@@ -58,15 +58,21 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             = utils::one_of(src_dt, data_type::s8, data_type::u8);
     const bool src_is_fp8
             = utils::one_of(src_dt, data_type::f8_e5m2, data_type::f8_e4m3);
-    if (src_is_int8 || src_is_fp8) attr_mask |= smask_t::zero_points;
+    const bool src_is_fp4
+            = utils::one_of(src_dt, data_type::f4_e2m1, data_type::f4_e3m0);
+    if (src_is_int8 || src_is_fp8 || src_is_fp4)
+        attr_mask |= smask_t::zero_points;
+    if (src_is_int8) attr_mask |= smask_t::precomputed_reductions;
 
     // Matmul supports zero points for floating point data types as part of
     // weights decompression.
     const bool wei_is_int = utils::one_of(
             wei_dt, data_type::s8, data_type::u8, data_type::s4, data_type::u4);
-    const bool wei_is_fp8_fp4 = utils::one_of(wei_dt, data_type::f8_e5m2,
-            data_type::f8_e4m3, data_type::f4_e2m1, data_type::f4_e3m0);
-    if (wei_is_int || wei_is_fp8_fp4) {
+    const bool wei_is_fp8
+            = utils::one_of(wei_dt, data_type::f8_e5m2, data_type::f8_e4m3);
+    const bool wei_is_fp4
+            = utils::one_of(wei_dt, data_type::f4_e2m1, data_type::f4_e3m0);
+    if (wei_is_int || wei_is_fp8 || wei_is_fp4) {
         attr_mask |= smask_t::zero_points_data_type;
         attr_mask |= smask_t::zero_points_groups;
         attr_mask |= smask_t::scales_groups;
@@ -98,6 +104,10 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     int dst_qmask_N = wei_qmask_N;
 
     int full_tensor_mask = (1 << ndims_src) - 1;
+
+    const auto &quant_groups_are_divisible = [](dim_t g1, dim_t g2) -> bool {
+        return IMPLICATION(g1 > 1 && g2 > 1, (g1 % g2 == 0) || (g2 % g1 == 0));
+    };
 
     // Check scales
     if (!attr->scales_.has_default_values()) {
@@ -175,13 +185,11 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         // Check dependency between scales.
         // Source scales groups are supported for int8 source and must divide
         // or be divided by weights groups when both are greater than 1.
-        const bool groups_are_divisible = IMPLICATION(
-                src_scale_group_k > 1 && wei_scale_group_k > 1,
-                (src_scale_group_k % wei_scale_group_k == 0)
-                        || (wei_scale_group_k % src_scale_group_k == 0));
-        VCHECK_MATMUL_UNIMPL(
-                IMPLICATION(src_scale_group_k > 1,
-                        (src_is_int8 || src_is_fp8) && groups_are_divisible),
+        const bool groups_are_divisible = quant_groups_are_divisible(
+                src_scale_group_k, wei_scale_group_k);
+        VCHECK_MATMUL_UNIMPL(IMPLICATION(src_scale_group_k > 1,
+                                     (src_is_int8 || src_is_fp8 || src_is_fp4)
+                                             && groups_are_divisible),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
@@ -266,14 +274,57 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         // Check dependency between zero_points.
         // Source zero_points groups are supported for int8 source and must
         // divide or be divided by weights groups when both are greater than 1.
-        const bool groups_are_divisible = IMPLICATION(
-                src_zero_point_group_k > 1 && wei_zero_point_group_k > 1,
-                (src_zero_point_group_k % wei_zero_point_group_k == 0)
-                        || (wei_zero_point_group_k % src_zero_point_group_k
-                                == 0));
+        const bool groups_are_divisible = quant_groups_are_divisible(
+                src_zero_point_group_k, wei_zero_point_group_k);
         VCHECK_MATMUL_UNIMPL(IMPLICATION(src_zero_point_group_k > 1,
                                      src_is_int8 && groups_are_divisible),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
+    }
+
+    // Check precomputed reductions
+    if (!attr->precomputed_reductions_.has_default_values()) {
+        const auto &pr = attr->precomputed_reductions_;
+
+        // Only SRC argument is supported so far.
+        std::vector<int> supported_args = {DNNL_ARG_SRC};
+        VCHECK_MATMUL_UNIMPL(pr.has_default_values(supported_args),
+                VERBOSE_UNSUPPORTED_PR_CFG);
+
+        if (!pr.has_default_values(DNNL_ARG_SRC)) {
+            const auto &zp = attr->zero_points_;
+            // Weights zero points must be specified.
+            VCHECK_MATMUL_UNIMPL(!zp.get(DNNL_ARG_WEIGHTS).has_default_values(),
+                    VERBOSE_UNSUPPORTED_PR_CFG);
+
+            // Mask must be defined for a full tensor, no broadcasts.
+            const int pr_mask_src = pr.get_mask(DNNL_ARG_SRC);
+            VCHECK_MATMUL_UNIMPL(pr_mask_src == full_tensor_mask,
+                    VERBOSE_UNSUPPORTED_PR_CFG);
+
+            // Data type must be s32 so far.
+            const auto pr_dt = pr.get_data_type(DNNL_ARG_SRC);
+            VCHECK_MATMUL_UNIMPL(
+                    pr_dt == data_type::s32, VERBOSE_UNSUPPORTED_PR_CFG);
+
+            if (!pr.get(DNNL_ARG_SRC).has_default_groups()) {
+                const dim_t src_pr_group_k = pr.get_group(DNNL_ARG_SRC, 1);
+
+                dim_t wei_zero_point_group_k = 1;
+                if (!zp.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
+                    const int mask_wei = zp.get_mask(DNNL_ARG_WEIGHTS);
+                    if (mask_wei & wei_qmask_K)
+                        wei_zero_point_group_k
+                                = zp.get_group(DNNL_ARG_WEIGHTS, 0);
+                }
+
+                const bool groups_are_divisible = quant_groups_are_divisible(
+                        src_pr_group_k, wei_zero_point_group_k);
+                VCHECK_MATMUL_UNIMPL(
+                        IMPLICATION(src_pr_group_k > 1,
+                                src_is_int8 && groups_are_divisible),
+                        VERBOSE_UNSUPPORTED_PR_CFG);
+            }
+        }
     }
 
     // Check post-ops
@@ -312,6 +363,10 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
     VCHECK_MATMUL(
             IMPLICATION(bias_desc, !reduce_desc), VERBOSE_UNSUPPORTED_BIAS_CFG);
 
+    VCHECK_MATMUL(!any_memory_desc_host_scalar(src_desc, weights_desc,
+                          bias_desc, dst_desc, reduce_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
     auto op_d = matmul_desc_t();
     op_d.primitive_kind = primitive_kind::matmul;
 
@@ -334,7 +389,8 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
     VCHECK_MATMUL(ndims >= 2 && ndims <= DNNL_MAX_NDIMS, VERBOSE_BAD_NDIMS,
             "dst", ndims);
     VCHECK_MATMUL(everyone_is(ndims, src_desc->ndims, weights_desc->ndims),
-            VERBOSE_INCONSISTENT_NDIMS, "src", "weights");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "weights",
+            src_desc->ndims, weights_desc->ndims);
     VCHECK_MATMUL(IMPLICATION(with_bias, op_d.bias_desc.ndims == ndims),
             VERBOSE_BAD_NDIMS, "bias", op_d.bias_desc.ndims);
     VCHECK_MATMUL(IMPLICATION(with_reduce, op_d.reduce_desc.ndims == ndims),

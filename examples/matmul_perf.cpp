@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 /// @example matmul_perf.cpp
-/// @copybrief matmul_perf_cpp
 /// > Annotated version: @ref matmul_perf_cpp
 
 /// @page matmul_perf_cpp Matrix Multiplication Performance Example

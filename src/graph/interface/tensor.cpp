@@ -34,7 +34,7 @@ static const size_t DNNL_SYCL_MEMALIGNMENT = 64;
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "xpu/ocl/engine_factory.hpp"
 static const size_t DNNL_OCL_MEMALIGNMENT = 0;
-using namespace dnnl::impl::gpu::intel;
+
 #endif
 
 using namespace dnnl::impl::graph;
@@ -61,7 +61,8 @@ static void *tensor_malloc(
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         return alc->allocate(size, *dev, *ctx, {type, DNNL_SYCL_MEMALIGNMENT});
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        auto *ocl_engine = utils::downcast<const ocl::engine_t *>(eng);
+        auto *ocl_engine = utils::downcast<
+                const dnnl::impl::gpu::intel::ocl::engine_t *>(eng);
         const cl_device_id &ocl_dev = ocl_engine->device();
         const cl_context &ocl_ctx = ocl_engine->context();
         return alc->allocate(
@@ -97,7 +98,8 @@ static void tensor_free(void *p, const engine_t *eng) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         alc->deallocate(p, *dev, *ctx, {});
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        auto *ocl_engine = utils::downcast<const ocl::engine_t *>(eng);
+        auto *ocl_engine = utils::downcast<
+                const dnnl::impl::gpu::intel::ocl::engine_t *>(eng);
         const cl_device_id &ocl_dev = ocl_engine->device();
         const cl_context &ocl_ctx = ocl_engine->context();
         return alc->deallocate(p, ocl_dev, ocl_ctx, {});
@@ -123,6 +125,9 @@ dnnl_graph_tensor::dnnl_graph_tensor(
         if (lt.data_type == data_type::s32) {
             scalar_.s32_value = *static_cast<int32_t *>(handle);
             handle_.reset(&scalar_.s32_value, dummy_destructor);
+        } else if (lt.data_type == data_type::f32) {
+            scalar_.f32_value = *static_cast<float *>(handle);
+            handle_.reset(&scalar_.f32_value, dummy_destructor);
         } else {
             assertm(false, "Unsupported data type for host scalar");
         }

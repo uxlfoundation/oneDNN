@@ -163,8 +163,7 @@ information on sparse encding.
 
 N/A
 
-## Example
+## Examples
 
-[Reorder Primitive Example](@ref reorder_example_cpp)
+* @ref reorder_example_cpp
 
-@copydetails reorder_example_cpp_short

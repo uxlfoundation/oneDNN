@@ -16,17 +16,13 @@
 
 /// @example sum.cpp
 /// > Annotated version: @ref sum_example_cpp
-///
-/// @page sum_example_cpp_short
-///
+
+/// @page sum_example_cpp Sum Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Sum](@ref dev_guide_sum) primitive.
 ///
 /// Key optimizations included in this example:
 /// - Identical memory formats for source (src) and destination (dst) tensors.
-///
-/// @page sum_example_cpp Sum Primitive Example
-/// @copydetails sum_example_cpp_short
 ///
 /// @include sum.cpp
 

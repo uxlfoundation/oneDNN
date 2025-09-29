@@ -48,6 +48,9 @@ public:
         , is_a_nt_(is_a_nt)
         , is_b_nt_(is_b_nt)
         , set_nt_(set_nt)
+        , need_prefetch_a_(need_prefetch_a)
+        , need_prefetch_b_(need_prefetch_b)
+        , use_fused_copy_a_(use_fused_copy_a)
         , brgemm_batch_size_(brgemm_batch_size)
         , current_lda_(LDA)
         , need_buf_c_(use_buffer_c)
@@ -78,7 +81,8 @@ protected:
 
     bool is_a_nt_ {true}, is_b_nt_ {true};
     bool set_nt_ {false};
-
+    bool need_prefetch_a_ {false}, need_prefetch_b_ {false};
+    bool use_fused_copy_a_ {false};
     dim_t brgemm_batch_size_ {0};
     dim_t current_lda_ {0};
     bool need_buf_c_ {false}, need_buf_a_ {false};
@@ -112,7 +116,6 @@ private:
     dim_t m_decomposition = 32;
     size_t gemm_dt_sz;
     dim_t m_per_thread, k_per_thread, n_per_thread, b_per_thread;
-    bool need_prefetch;
     bool is_horizontal;
     dim_t min_m_elem, min_k_elem, min_n_elem;
     dim_t k_threshold_write_bound_layer_elem, min_n_dim_write_bound_layer_elem;
@@ -145,6 +148,7 @@ private:
     bool operator>(const matmul_amx_blocking_params_macro_t &other) const;
     bool operator!=(const matmul_amx_blocking_params_macro_t &other) const;
     bool operator<(const matmul_amx_blocking_params_macro_t &other) const;
+    bool skip_extendable_k() const;
 };
 
 class matmul_amx_blocking_params_micro_t : public matmul_amx_blocking_params_t {

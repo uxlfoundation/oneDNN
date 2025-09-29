@@ -197,6 +197,7 @@ enum {
     key_conv_brgemm_out_buffer,
     key_conv_bwd_w_1st_bia_reorder,
     key_conv_bwd_w_1st_wei_reorder,
+    key_conv_dst_scales,
     key_conv_gemm_acc,
     key_conv_gemm_col,
     key_conv_gemm_row,
@@ -255,9 +256,11 @@ enum {
     key_iprod_bias_bf16_convert_wsp,
     key_iprod_dst_bf16_convert_wsp,
     key_iprod_dst_reorder,
+    key_iprod_dst_scales,
     key_iprod_int_dat_in_acc_dt,
     key_iprod_src_reorder,
     key_iprod_weights_reorder,
+    key_lnorm_dst_scales,
     key_lnorm_inv_sqrtvar,
     key_lnorm_tmp_mean,
     key_lnorm_tmp_var,
@@ -271,6 +274,7 @@ enum {
     key_matmul_wei_trans,
     key_matmul_dst_trans,
     key_matmul_dst_cast_acc,
+    key_matmul_dst_scales,
     key_matmul_sparse_tmp_ptr,
     key_pool_dst_bf16cvt,
     key_pool_dst_plain2blocked_cvt,
@@ -279,6 +283,7 @@ enum {
     key_pool_src_f32_accum,
     key_pool_src_plain2blocked_cvt,
     key_pool_reduction,
+    key_pool_wsp_buffer,
     key_precomputed_scales,
     key_prelu_reduction,
     key_reducer_space,
@@ -317,6 +322,7 @@ enum {
     key_rnn_ptrs_wei_layer,
     key_rnn_ptrs_wei_iter,
     key_rnn_ptrs_wei_projection,
+    key_softmax_dst_scales,
     key_softmax_reduction,
     key_softmax_interim_store,
     key_sum_reduction,
@@ -493,7 +499,8 @@ struct registrar_t {
 
     void book(const key_t &key, const registry_t &registry,
             size_t perf_align = default_alignment) {
-        registry_.book(make_key(prefix_, key), registry.size(), 1, perf_align);
+        registry_.book(make_key(prefix_, key), registry.size(),
+                default_alignment, perf_align);
     }
 
     size_t size() const { return registry_.size(); }

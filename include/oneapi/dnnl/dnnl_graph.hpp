@@ -53,6 +53,7 @@ using fpmath_mode = dnnl::fpmath_mode;
 
 /// @addtogroup dnnl_graph_api_utils Utilities
 /// Utility types and definitions
+/// \ingroup dnnl_graph_api
 /// @{
 
 /// @cond DO_NOT_DOCUMENT_THIS
@@ -125,6 +126,7 @@ using req = typename std::enable_if<B, bool>::type;
 
 /// @addtogroup dnnl_graph_api_status Status
 /// Definitions of status values returned by the library functions.
+/// \ingroup dnnl_graph_api
 /// @{
 
 /// Status values returned by the library functions.
@@ -995,6 +997,9 @@ public:
         /// Specifies a weights_format of an op. The value can be "OIX", "XIO",
         /// "IOX", or "XOI". Different operations may support different values.
         weights_format = dnnl_graph_op_attr_weights_format,
+        /// Specifies an accumulation_mode attribute to an op. The value can be
+        /// "strict", "relaxed", "any", "f32", "s32", or "f16".
+        accumulation_mode = dnnl_graph_op_attr_accumulation_mode,
 
         /// Specifies the end of all above exteral attributes for check.
         end = dnnl_graph_op_attr_end,

@@ -22,11 +22,12 @@
 #include "common/primitive_attr.hpp"
 #include "common/serialization.hpp"
 #include "common/verbose.hpp"
-#include "gpu/intel/gpu_post_ops.hpp"
+#include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/post_op_injector.hpp"
 #include "gpu/intel/microkernels/entrance_agent.hpp"
 #include "gpu/intel/microkernels/package.hpp"
+#include "gpu/intel/post_ops.hpp"
 #include "ngen_register_allocator.hpp"
 
 // TODO: Work with upstream to prefix defines with GEMMSTONE
@@ -41,11 +42,16 @@
 
 namespace gemmstone {
 
+namespace ir = dnnl::impl::gpu::intel::jit;
+namespace dsl = dnnl::impl::gpu::intel::jit::dsl;
+
 #define GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
 #define GENERATOR_BASE(hw) dnnl::impl::gpu::intel::jit::generator_t<hw>
 #define FORWARD(hw) NGEN_FORWARD_ELF(hw)
 #define GENERATOR_DEBUGINFO \
-    { GENERATOR_NAME, GENERATOR_LINE }
+    dnnl::impl::gpu::intel::jit::debug_config_t { \
+        GENERATOR_NAME, GENERATOR_LINE \
+    }
 
 inline int getEnv(const char *s, int def) {
     return dnnl::impl::gpu::intel::gpu_utils::dev_getenv(s, def);

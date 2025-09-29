@@ -16,18 +16,14 @@
 
 /// @example vanilla_rnn.cpp
 /// > Annotated version: @ref vanilla_rnn_example_cpp
-///
-/// @page vanilla_rnn_example_cpp_short
-///
+
+/// @page vanilla_rnn_example_cpp Vanilla RNN Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Vanilla RNN](@ref dev_guide_rnn) primitive in forward training propagation
 /// mode.
 ///
 /// Key optimizations included in this example:
 /// - Creation of optimized memory format from the primitive descriptor.
-///
-/// @page vanilla_rnn_example_cpp Vanilla RNN Primitive Example
-/// @copydetails vanilla_rnn_example_cpp_short
 ///
 /// @include vanilla_rnn.cpp
 

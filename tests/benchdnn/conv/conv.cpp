@@ -24,6 +24,7 @@
 #include "oneapi/dnnl/dnnl.h"
 
 #include "utils/fill.hpp"
+#include "utils/memory.hpp"
 #include "utils/parallel.hpp"
 
 #include "dnnl_common.hpp"
@@ -142,10 +143,11 @@ int check_reorder_presence(
     return OK;
 }
 
-int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
+int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
+        const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -507,9 +509,25 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
 
-        // Scratchpad memory relates to a primitive. If reference needs it,
-        // use switch below to define a memory desc for it.
-        if (exec_arg != DNNL_ARG_SCRATCHPAD) {
+        if (exec_arg == DNNL_ARG_SRC && (prb->dir & FLAG_FWD)
+                && prb->alg != WINO) {
+            // Switch the format tag from "abx" to "axb" for forward problems.
+            // Winograd is dead for optimizations.
+            ref_mem_map.emplace(exec_arg,
+                    dnn_mem_t(mem.md_, dnnl_f32, tag::axb, ref_engine,
+                            /* prefill = */ false));
+        } else if (exec_arg == DNNL_ARG_WEIGHTS && (prb->dir & FLAG_FWD)
+                && prb->alg != WINO) {
+            // Switch the format tag from "abx" to "axb" for forward problems.
+            // Handle groups with "abxc" meta-tag.
+            // Winograd is dead for optimizations.
+            std::string axb_tag = prb->has_groups ? "abxc" : "axb";
+            ref_mem_map.emplace(exec_arg,
+                    dnn_mem_t(mem.md_, dnnl_f32, axb_tag, ref_engine,
+                            /* prefill = */ false));
+        } else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
+            // Scratchpad memory relates to a primitive. If reference needs it,
+            // use switch below to define a memory desc for it.
             ref_mem_map.emplace(exec_arg,
                     dnn_mem_t(mem.md_, dnnl_f32, tag::abx, ref_engine,
                             /* prefill = */ false));
@@ -518,18 +536,22 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
-                SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(SRC, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_WEIGHTS:
-                SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(WEI, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_BIAS:
-                SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(BIA, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_DST:
                 if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM)
                         >= 0) {
-                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                    SAFE(fill_data(DST, exec_arg, prb, cfg, mem, ref_mem, res),
+                            WARN);
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.
                     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -538,7 +560,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 }
                 break;
             case DNNL_ARG_DIFF_DST:
-                SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(DST, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             default:
                 SAFE(init_ref_memory_args_default_case(

@@ -24,6 +24,7 @@
 #include "oneapi/dnnl/dnnl.h"
 
 #include "utils/fill.hpp"
+#include "utils/memory.hpp"
 #include "utils/parallel.hpp"
 
 #include "dnnl_common.hpp"
@@ -154,6 +155,9 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
     overload_quant_mask(prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy,
             DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
+    overload_quant_mask(
+            prb->attr.precomputed_reductions.get(DNNL_ARG_SRC).policy,
+            DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
 
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args, prb->ndims));
@@ -350,11 +354,12 @@ int fill_sparse_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
     return OK;
 }
 
-int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
+int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
+        const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
 
     const auto nelems = mem_dt.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     bool is_sparse_packed = false;
     bool is_any_sparse = false;
@@ -671,6 +676,27 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
             res->reason = skip_reason::case_not_supported;
             return;
         }
+        if (is_nvidia_gpu() || is_amd_gpu()) {
+            if (prb->attr.scales.has_host_scalars()) {
+                BENCHDNN_PRINT(2,
+                        "[SKIP][%s:%d]: Scales as host-side scalars are not "
+                        "supported on NVIDIA and AMD GPUs.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return;
+            }
+            if (prb->attr.zero_points.has_host_scalars()) {
+                BENCHDNN_PRINT(2,
+                        "[SKIP][%s:%d]: Zero-points as host-side scalars are "
+                        "not "
+                        "supported on NVIDIA and AMD GPUs.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = skip_reason::case_not_supported;
+                return;
+            }
+        }
     }
 }
 
@@ -932,19 +958,23 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
-                SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(SRC, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_WEIGHTS:
-                SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(WEI, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_BIAS:
-                SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(BIA, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_DST: {
                 const auto &po = prb->attr.post_ops;
                 const int sum_idx = po.find(attr_t::post_ops_t::SUM);
                 if (sum_idx >= 0) {
-                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                    SAFE(fill_data(DST, exec_arg, prb, cfg, mem, ref_mem, res),
+                            WARN);
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.
                     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -952,6 +982,11 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                     }
                 }
             } break;
+            case DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS:
+                // Fill it separately down below.
+                // TODO: introduce an order of processing arguments to avoid
+                // post filling manipulations.
+                break;
             case DNNL_ARG_ATTR_DROPOUT_SEED: {
                 ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine,
                         /* prefill = */ false);
@@ -969,6 +1004,39 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();
+    }
+
+    if (ref_mem_map.count(
+                DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC)) {
+        auto &mem = mem_map.at(
+                DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
+        auto &ref_mem = ref_mem_map.at(
+                DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
+        // TODO: will be handled by `init_ref_memory_args_default_case` once
+        // memory argument dependency is resolved.
+        if (fill_from_file(DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC,
+                    mem, ref_mem))
+            return OK;
+        const auto &ref_mem_src = ref_mem_map.at(DNNL_ARG_SRC);
+        const auto src_precomputed_reductions_gs
+                = prb->attr.precomputed_reductions.get(DNNL_ARG_SRC).groups[1];
+
+        // Reducing original `ref_src` by group size specified.
+        //
+        // Assumption that `ref_src` didn't change its `abx` format which can be
+        // changed in `update_ref_mem_map_from_prim`.
+        for (int64_t i = 0;
+                i < ref_mem_src.nelems() / src_precomputed_reductions_gs; i++) {
+            float val = 0;
+            for (int64_t k = 0; k < src_precomputed_reductions_gs; k++) {
+                const auto offset = i * src_precomputed_reductions_gs + k;
+                const auto s = ref_mem_src.get_elem(offset);
+                val += s;
+            }
+            ref_mem.set_elem(i, val);
+        }
+
+        SAFE(mem.reorder(ref_mem), WARN);
     }
 
     return OK;

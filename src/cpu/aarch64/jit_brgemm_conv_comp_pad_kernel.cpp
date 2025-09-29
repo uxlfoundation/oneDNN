@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2022-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -299,6 +300,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::generate() {
 
 template struct jit_uni_brgemm_conv_comp_pad_kernel_t<sve_512>;
 template struct jit_uni_brgemm_conv_comp_pad_kernel_t<sve_256>;
+template struct jit_uni_brgemm_conv_comp_pad_kernel_t<sve_128>;
 } // namespace jit_uni_brgemm_conv_comp_pad_kernel
 
 } // namespace aarch64

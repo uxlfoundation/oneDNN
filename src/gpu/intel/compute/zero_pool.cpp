@@ -64,9 +64,8 @@ static bool in_cleanup() {
     return destroyed;
 }
 
-status_t lookup_zero_pool(compute::compute_engine_t *engine,
-        compute::compute_stream_t *stream, size_t chunk_size,
-        zero_pool_t **out_pool) {
+status_t lookup_zero_pool(intel::engine_t *engine, intel::stream_t *stream,
+        size_t chunk_size, zero_pool_t **out_pool) {
     status_t status = status::success;
 
     (void)in_cleanup();
@@ -134,7 +133,7 @@ void release_zero_pool(zero_pool_t *pool) {
     }
 }
 
-zero_pool_t::zero_pool_t(compute::compute_engine_t *engine, size_t chunk_size,
+zero_pool_t::zero_pool_t(intel::engine_t *engine, size_t chunk_size,
         bool stream_private, bool in_order)
     : engine_(engine)
     , chunk_size_(chunk_size)
@@ -170,8 +169,8 @@ int zero_pool_t::detach_client() {
     return --clients_;
 }
 
-status_t zero_pool_t::claim_unpooled(compute::compute_stream_t *stream,
-        size_t len, std::unique_ptr<memory_storage_t> &out_mem) {
+status_t zero_pool_t::claim_unpooled(intel::stream_t *stream, size_t len,
+        std::unique_ptr<memory_storage_t> &out_mem) {
 
     memory_storage_t *new_mem = nullptr;
     auto status = stream->engine()->create_memory_storage(&new_mem,
@@ -187,7 +186,7 @@ status_t zero_pool_t::claim_unpooled(compute::compute_stream_t *stream,
     return status;
 }
 
-status_t zero_pool_t::claim(compute::compute_stream_t *stream, size_t len,
+status_t zero_pool_t::claim(intel::stream_t *stream, size_t len,
         std::unique_ptr<memory_storage_t> &out_mem, int *out_token) {
     out_mem.reset();
     *out_token = -1;

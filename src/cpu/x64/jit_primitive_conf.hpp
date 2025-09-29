@@ -190,7 +190,11 @@ struct jit_conv_conf_t {
     bool req_zero_point_buffer; // used for calculating padding compensation
     bool zp_pbuff_outer_compute; // indicates if zp_bbuff is computed in
 
-    bool dst_scale;
+    bool dst_scale = false; // TODO: delete me
+
+    bool with_src_scales = false;
+    bool with_wei_scales = false;
+    bool with_dst_scales = false;
 
     // a separate parallel region
     int ow_pad, oh_pad, od_pad; // output elements with padding & filter overlap
@@ -312,7 +316,6 @@ struct jit_conv_args_t {
     const void *dst_prf = nullptr;
     const void *filt_prf = nullptr;
     const void *bias_prf = nullptr;
-    const void *scales = nullptr;
     const void *acc_s32 = nullptr;
     const void *compensation = nullptr;
     const int32_t *zp_compensation = nullptr;
@@ -321,7 +324,12 @@ struct jit_conv_args_t {
     const int32_t *dst_zero_point = nullptr;
     const void *tile_cfg = nullptr;
     const void *tile_cfg_tail = nullptr;
-    const void *dst_scale = nullptr;
+    const void *scales = nullptr; // TODO: delete me
+    const void *dst_scale = nullptr; // TODO: delete me
+
+    const void *src_scales = nullptr;
+    const void *wei_scales = nullptr;
+    const void *dst_scales = nullptr;
 
     // ptr to table of void * elements that are pointers to
     // post_op binary src1 tensors
@@ -478,7 +486,11 @@ struct jit_1x1_conv_conf_t {
     bool dst_zero_point;
     bool zp_src_is_common; // common, otherwise (TODO) per-channel
 
-    bool dst_scale;
+    bool dst_scale; // TODO: delete me
+
+    bool with_src_scales = false;
+    bool with_wei_scales = false;
+    bool with_dst_scales = false;
 
     cpu_isa_t isa;
     bool uses_permw_transposition;
@@ -491,13 +503,17 @@ struct jit_1x1_conv_args_t {
     // Used in forward and backward_weights only
     const void *bias_data = nullptr;
     const void *acc_s32 = nullptr;
-    const void *scales = nullptr;
     const void *compensation = nullptr;
     const void *store_buffer = nullptr;
     const int32_t *zp_compensation = nullptr;
     const int32_t *src_zero_point = nullptr;
     const int32_t *dst_zero_point = nullptr;
-    const void *dst_scale = nullptr;
+    const void *scales = nullptr; // TODO: delete me
+    const void *dst_scale = nullptr; // TODO: delete me
+
+    const void *src_scales = nullptr;
+    const void *wei_scales = nullptr;
+    const void *dst_scales = nullptr;
 
     // ptr to table of void * elements that are pointers to
     // post_op binary src1 tensors
@@ -666,8 +682,8 @@ struct jit_brdgmm_conv_conf_t {
 
     bool with_bias;
     bool with_post_ops;
-    bool with_scale;
     bool is_oc_scale;
+    bool with_dst_scales;
 
     data_type_t src_dt;
     data_type_t wei_dt;
@@ -784,7 +800,9 @@ struct jit_brgemm_conv_conf_t {
     dim_t comp_a_buffer_size;
     dim_t s8s8_comp_buffer_size;
 
-    bool with_scales;
+    bool with_src_scales;
+    bool with_wei_scales;
+    bool with_dst_scales;
     int is_ic_scale, is_oc_scale;
 
     int LDA, LDB, LDC, LDD;
@@ -900,8 +918,8 @@ enum class binary_bcast_t : unsigned {
 struct jit_binary_conf_t {
     binary_op_t op_type = binary_op_t::none;
     binary_bcast_t bcast_type = binary_bcast_t::none;
-    bool do_scale_src0 = false;
-    bool do_scale_src1 = false;
+    bool with_src0_scales = false;
+    bool with_src1_scales = false;
     bool do_sum = false;
     bool with_eltwise = false;
     bool with_binary = false;
@@ -936,8 +954,8 @@ struct jit_uni_binary_args_t {
     const void *src2 = nullptr;
     const void *dst = nullptr;
     const void *indices = nullptr;
-    const float *scales_src0 = nullptr;
-    const float *scales_src1 = nullptr;
+    const void *scales_src0 = nullptr;
+    const void *scales_src1 = nullptr;
     size_t spat_offt_count = 0;
     const void *post_ops_binary_rhs_arg_vec = nullptr;
     size_t src1_stride_range = 0;

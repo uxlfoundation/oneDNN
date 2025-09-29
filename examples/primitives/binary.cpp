@@ -16,18 +16,14 @@
 
 /// @example binary.cpp
 /// > Annotated version: @ref binary_example_cpp
-///
-/// @page binary_example_cpp_short
-///
+
+/// @page binary_example_cpp Binary Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Binary](@ref dev_guide_binary) primitive.
 ///
 /// Key optimizations included in this example:
 /// - In-place primitive execution;
 /// - Primitive attributes with fused post-ops.
-///
-/// @page binary_example_cpp Binary Primitive Example
-/// @copydetails binary_example_cpp_short
 ///
 /// @include binary.cpp
 

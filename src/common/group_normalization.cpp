@@ -53,6 +53,9 @@ status_t group_normalization_desc_init(group_normalization_desc_t *desc,
     VCHECK_GNORM(
             IMPLICATION(is_fwd, !memory_desc_wrapper(src_desc).format_any()),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
+    VCHECK_GNORM(!any_memory_desc_host_scalar(
+                         src_desc, dst_desc, diff_src_desc, diff_dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     unsigned gnorm_flags = normalization_flags::use_global_stats
             | normalization_flags::use_scale | normalization_flags::use_shift;
@@ -80,8 +83,8 @@ status_t group_normalization_desc_init(group_normalization_desc_t *desc,
                 || memory_desc_wrapper(diff_dst_desc)
                            .has_runtime_dims_or_strides();
     }
-    VCONDCHECK(primitive, create, check, bnorm, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_GNORM_UNIMPL(
+            !runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     gd.src_desc = *src_desc;
     if (is_fwd) gd.dst_desc = *dst_desc;
@@ -108,7 +111,8 @@ status_t group_normalization_desc_init(group_normalization_desc_t *desc,
 #define CHECK_DIMS(t1, t2) \
     do { \
         VCHECK_GNORM(gd.t2##_desc.ndims == gd.t1##_desc.ndims, \
-                VERBOSE_INCONSISTENT_NDIMS, #t1, #t2); \
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, #t1, #t2, \
+                gd.t2##_desc.ndims, gd.t1##_desc.ndims); \
         VCHECK_GNORM(array_cmp(gd.t2##_desc.dims, gd.t1##_desc.dims, \
                              gd.t1##_desc.ndims), \
                 VERBOSE_INCONSISTENT_DIM, #t1, -1, #t2, -1); \
@@ -166,6 +170,12 @@ status_t group_normalization_attr_check(const group_normalization_desc_t &desc,
                 const int mask = attr->scales_.get_mask(arg);
                 VCHECK_GNORM_UNIMPL(mask == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_GNORM_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                        !attr->scales_.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
         // Check post-ops

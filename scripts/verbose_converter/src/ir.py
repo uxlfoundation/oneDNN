@@ -306,6 +306,7 @@ class QuantizationParam(Mapping):
     data_type: str
     mask: int = 0
     groups: str = ""
+    is_host_scalar: bool = False
 
     def __str__(self):
         if self.groups:
@@ -321,6 +322,12 @@ class Scale(QuantizationParam):
 
 @dataclass(eq=False)
 class ZeroPoint(QuantizationParam):
+    value: int = 0
+    data_type: str = "s32"
+
+
+@dataclass(eq=False)
+class PrecomputedReduction(QuantizationParam):
     value: int = 0
     data_type: str = "s32"
 
@@ -355,6 +362,7 @@ Attribute = Union[
     List[PostOp],
     Dict[str, Scale],
     Dict[str, ZeroPoint],
+    Dict[str, PrecomputedReduction],
     Dict[str, RoundingMode],
     Scale,  # oscale
 ]
@@ -372,6 +380,7 @@ class Attributes(FormattedMapping):
     scales: Optional[Dict[str, Scale]] = None
     scratchpad: Optional[str] = None
     zero_points: Optional[Dict[str, ZeroPoint]] = None
+    precomputed_reductions: Optional[Dict[str, PrecomputedReduction]] = None
 
     acc = alias("acc_mode")
 

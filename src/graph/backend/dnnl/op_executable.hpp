@@ -16,7 +16,6 @@
 #ifndef GRAPH_BACKEND_DNNL_OP_EXECUTABLE_HPP
 #define GRAPH_BACKEND_DNNL_OP_EXECUTABLE_HPP
 
-#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -53,8 +52,8 @@
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
 
-#include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/compute/compute_stream.hpp"
+#include "gpu/intel/engine.hpp"
+#include "gpu/intel/stream.hpp"
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "gpu/intel/ocl/stream.hpp"
 #endif
@@ -85,16 +84,13 @@ struct indices_t {
 // We should be able to know this map according the information on an op.
 using arg_indices_t = std::unordered_map<int, indices_t>;
 
-using arg_indices_getter_func
-        = std::function<arg_indices_t(const op_t *, fusion_info_mgr_t &)>;
+using arg_indices_getter_func = std::function<arg_indices_t(const op_t *)>;
 
 // A dummy arg indices getter which is only used for those internal ops that are
 // only for fusion purpose, like dnnl_add_zps and dnnl_sub_zps. The dummy getter
 // should never be called.
-inline arg_indices_t dummy_arg_indices_getter(
-        const op_t *op, fusion_info_mgr_t &mgr) {
+inline arg_indices_t dummy_arg_indices_getter(const op_t *op) {
     UNUSED(op);
-    UNUSED(mgr);
     assertm(false, "dummy getter should never be called");
     return arg_indices_t {};
 }
@@ -103,8 +99,7 @@ inline arg_indices_t dummy_arg_indices_getter(
 // getter can be used to generate the <dnnl_arg, in/output index> map. According
 // to that, we can form the execution args by using the in/outputs list in op.
 #define DECLARE_ARG_INDICES_GETTER \
-    static arg_indices_t get_arg_indices( \
-            const op_t *op, fusion_info_mgr_t &mgr);
+    static arg_indices_t get_arg_indices(const op_t *op);
 
 #define DECLARE_RESET_ENGINE(primitive) \
     status_t reset_engine(const dnnl::engine &p_engine) override { \
@@ -134,19 +129,20 @@ struct op_executable_t {
 };
 
 using executable_creator_func = std::function<std::shared_ptr<op_executable_t>(
-        std::shared_ptr<op_t> &, const dnnl::engine &, fusion_info_mgr_t &,
-        pd_cache_t &)>;
+        std::shared_ptr<op_t> &, const dnnl::engine &, pd_cache_t &,
+        const fpmath_t &, bool)>;
 
 // A dummy executable creator which is only used for those internal ops that are
 // only for fusion purpose, like dnnl_add_zps and dnnl_sub_zps. The dummy
 // creator should never be called.
 inline std::shared_ptr<op_executable_t> dummy_executable_creator(
         std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
+        pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout) {
     UNUSED(op);
     UNUSED(p_engine);
-    UNUSED(mgr);
     UNUSED(pd_cache);
+    UNUSED(fpmath);
+    UNUSED(use_block_layout);
     assertm(false, "dummy executable creator should never be called");
     return {};
 }
@@ -156,8 +152,9 @@ inline std::shared_ptr<op_executable_t> dummy_executable_creator(
 template <typename T>
 inline std::shared_ptr<op_executable_t> executable_creator(
         std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-        fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
-    return std::make_shared<T>(op, p_engine, mgr, pd_cache);
+        pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout) {
+    return std::make_shared<T>(
+            op, p_engine, pd_cache, fpmath, use_block_layout);
 }
 
 // Used to declare the desc_t class and the static create_desc method inside an
@@ -173,8 +170,8 @@ inline std::shared_ptr<op_executable_t> executable_creator(
         bool is_from_cache() const { return from_cache_; } \
     }; \
     static desc_t create_desc(std::shared_ptr<op_t> &op, \
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr, \
-            pd_cache_t &pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache, \
+            const fpmath_t &fpmath, bool use_block_layout);
 
 // This class is a dummy executable which doesn't do any actual computation.
 // This dummy executable can be used to:
@@ -246,11 +243,13 @@ struct memory_reparser_t : public dummy_impl_t {
     DECLARE_ARG_INDICES_GETTER;
 
     memory_reparser_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-            fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
+            pd_cache_t &pd_cache, const fpmath_t &fpmath,
+            bool use_block_layout) {
         UNUSED(op);
         UNUSED(p_engine);
-        UNUSED(mgr);
         UNUSED(pd_cache);
+        UNUSED(fpmath);
+        UNUSED(use_block_layout);
     }
 
     void execute(const stream &stream,
@@ -327,9 +326,7 @@ struct memory_reparser_t : public dummy_impl_t {
 
 template <op_attr_t attr_name, typename attr_dt, typename target_dt>
 struct const_memory_filler_t : public op_executable_t {
-    static arg_indices_t get_arg_indices(
-            const op_t *op, fusion_info_mgr_t &mgr) {
-        UNUSED(mgr);
+    static arg_indices_t get_arg_indices(const op_t *op) {
         arg_indices_t arg_indices;
         // We only set dst argument, to which constant data will be copied
         arg_indices.insert(
@@ -338,11 +335,12 @@ struct const_memory_filler_t : public op_executable_t {
     }
 
     const_memory_filler_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
         UNUSED(p_engine);
-        UNUSED(mgr);
         UNUSED(pd_cache);
+        UNUSED(fpmath);
+        UNUSED(use_block_layout);
         // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
         attr_data_
                 = get_attr_data(op->get_attr<std::vector<attr_dt>>(attr_name),
@@ -434,12 +432,13 @@ struct host_scalar_executable_t : public op_executable_t {
     DECLARE_ARG_INDICES_GETTER;
 
     host_scalar_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
         UNUSED(op);
         UNUSED(p_engine);
-        UNUSED(mgr);
         UNUSED(pd_cache);
+        UNUSED(fpmath);
+        UNUSED(use_block_layout);
     }
 
     void execute(const stream &stream,
@@ -454,7 +453,11 @@ struct host_scalar_executable_t : public op_executable_t {
 
         const memory &src_mem = it_src->second;
         const memory &dst_mem = it_dst->second;
-        dst_mem.set_data_handle(src_mem.get_data_handle());
+        DNNL_HOST_SCALAR_TYPE_SWITCH(
+                src_mem.get_desc().get_data_type(), DType, {
+                    const DType val = src_mem.get_host_scalar_value<DType>();
+                    std::memcpy(dst_mem.get_data_handle(), &val, sizeof(DType));
+                });
     }
 
 #ifdef DNNL_WITH_SYCL
@@ -472,22 +475,23 @@ struct host_scalar_executable_t : public op_executable_t {
         const memory &src_mem = it_src->second;
         const memory &dst_mem = it_dst->second;
 
-        auto prim = dnnl::reorder(src_mem, dst_mem);
-
-        // TODO(xxx): workaround reorder execution which requires the primitive
-        // to have the same engine as stream has.
-        const engine &src_eng = src_mem.get_engine();
-        const engine &dst_eng = dst_mem.get_engine();
-        if (src_eng.get_kind() == engine::kind::cpu
-                && dst_eng.get_kind() == engine::kind::cpu) {
-            auto src_temp = memory(
-                    src_mem.get_desc(), dst_eng, src_mem.get_data_handle());
-            prim = dnnl::reorder(src_temp, dst_mem);
-        }
-
-        auto e = dnnl::sycl_interop::execute(prim, stream, args, deps);
-        if (stream.get_engine().get_kind() == engine::kind::cpu) e.wait();
-        return e;
+        // Use queue.memcpy() to copy the host scalar value to device memory. We
+        // have to wait here as the val is on stack and will become invalid if
+        // queue.memcpy() is asynchronous. A better solution may be supporting
+        // host scalar memory to device memory reorder primitive.
+        auto sycl_queue = dnnl::sycl_interop::get_queue(stream);
+        const size_t size = src_mem.get_desc().get_size();
+        const auto dt = src_mem.get_desc().get_data_type();
+        assert(size
+                == types::data_type_size(static_cast<impl::data_type_t>(dt)));
+        DNNL_HOST_SCALAR_TYPE_SWITCH(dt, DType, {
+            const DType val = src_mem.get_host_scalar_value<DType>();
+            sycl_queue
+                    .memcpy(dst_mem.get_data_handle(),
+                            static_cast<const void *>(&val), size)
+                    .wait();
+        });
+        return {};
     }
 #endif
 
@@ -506,12 +510,26 @@ struct host_scalar_executable_t : public op_executable_t {
         const memory &src_mem = it_src->second;
         const memory &dst_mem = it_dst->second;
 
-        auto prim = dnnl::reorder(src_mem, dst_mem);
-
-        auto e = dnnl::ocl_interop::execute(prim, stream, args, deps);
+        assert(deps.size() <= 1);
+        // Passing the empty event to memcpy below causes failure.
+        const bool empty = deps.empty() || deps[0] == nullptr;
+        const cl_uint num = empty ? 0 : static_cast<cl_uint>(deps.size());
+        const size_t size = src_mem.get_desc().get_size();
+        const auto dt = src_mem.get_desc().get_data_type();
+        assert(size
+                == types::data_type_size(static_cast<impl::data_type_t>(dt)));
+        cl_event e = nullptr;
+        DNNL_HOST_SCALAR_TYPE_SWITCH(dt, DType, {
+            const DType val = src_mem.get_host_scalar_value<DType>();
+            UNUSED_STATUS(xpu::ocl::usm::memcpy(stream.get(),
+                    dst_mem.get_data_handle(), static_cast<const void *>(&val),
+                    size, num, empty ? nullptr : deps.data(), &e));
+            clWaitForEvents(1, &e);
+        });
         return e;
     }
 #endif
+
     status_t reset_engine(const dnnl::engine &p_engine) override {
         UNUSED(p_engine);
         return status::success;
@@ -528,9 +546,10 @@ struct conv_fwd_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::convolution_forward);
 
     conv_fwd_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::convolution_forward(desc);
         if (op->has_attr(op_attr::with_sum))
             with_sum_ = op->get_attr<bool>(op_attr::with_sum);
@@ -707,9 +726,10 @@ struct deconv_fwd_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::deconvolution_forward);
 
     deconv_fwd_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::deconvolution_forward(desc);
         if (op->has_attr(op_attr::with_sum))
             with_sum_ = op->get_attr<bool>(op_attr::with_sum);
@@ -787,9 +807,10 @@ struct deconv_bwd_data_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::deconvolution_backward_data);
 
     deconv_bwd_data_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::deconvolution_backward_data(desc);
     }
 
@@ -828,9 +849,10 @@ struct deconv_bwd_weights_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::deconvolution_backward_weights);
 
     deconv_bwd_weights_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::deconvolution_backward_weights(desc);
     }
 
@@ -868,7 +890,8 @@ struct matmul_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::matmul);
 
     matmul_executable_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-            fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
+            pd_cache_t &pd_cache, const fpmath_t &fpmath,
+            bool use_block_layout) {
         using ltw = logical_tensor_wrapper_t;
         // if with zero dimension, the matmul op will take no effect, we
         // construct a dummy kernel
@@ -879,7 +902,8 @@ struct matmul_executable_t : public op_executable_t {
             return;
         }
 
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::matmul(desc);
 
         // The scratchpad size of pd created by using any format tag may be
@@ -1002,9 +1026,10 @@ struct eltwise_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::eltwise_forward);
 
     eltwise_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::eltwise_forward(desc);
     }
 
@@ -1042,9 +1067,10 @@ struct eltwise_bwd_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::eltwise_backward);
 
     eltwise_bwd_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::eltwise_backward(desc);
     }
 
@@ -1082,7 +1108,8 @@ struct binary_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::binary);
 
     binary_executable_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-            fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
+            pd_cache_t &pd_cache, const fpmath_t &fpmath,
+            bool use_block_layout) {
         using ltw = logical_tensor_wrapper_t;
         // if with zero dimension, the binary op will take no effect, we
         // construct a dummy kernel
@@ -1093,7 +1120,8 @@ struct binary_executable_t : public op_executable_t {
             return;
         }
 
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::binary(desc);
 
         if (op->has_attr(op_attr::with_sum))
@@ -1205,8 +1233,10 @@ struct concat_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::concat);
 
     concat_executable_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-            fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            pd_cache_t &pd_cache, const fpmath_t &fpmath,
+            bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::concat(desc);
     }
 
@@ -1244,9 +1274,10 @@ struct shuffle_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::shuffle_forward);
 
     shuffle_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::shuffle_forward(desc);
     }
 
@@ -1284,8 +1315,10 @@ struct pool_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::pooling_forward);
 
     pool_executable_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-            fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            pd_cache_t &pd_cache, const fpmath_t &fpmath,
+            bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::pooling_forward(desc);
     }
 
@@ -1323,9 +1356,10 @@ struct pool_bwd_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::pooling_backward);
 
     pool_bwd_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::pooling_backward(desc);
     }
 
@@ -1363,8 +1397,10 @@ struct prelu_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::prelu_forward);
 
     prelu_executable_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-            fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            pd_cache_t &pd_cache, const fpmath_t &fpmath,
+            bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::prelu_forward(desc);
     }
 
@@ -1402,9 +1438,10 @@ struct prelu_bwd_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::prelu_backward);
 
     prelu_bwd_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::prelu_backward(desc);
     }
 
@@ -1442,9 +1479,10 @@ struct reorder_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::reorder);
 
     reorder_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::reorder(desc);
         if (op->has_attr(op_attr::with_sum))
             with_sum_ = op->get_attr<bool>(op_attr::with_sum);
@@ -1569,12 +1607,13 @@ struct bn_folding_t : public op_executable_t {
     };
 
     static desc_t create_desc(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout);
 
     bn_folding_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-            fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
-        desc_ = create_desc(op, p_engine, mgr, pd_cache);
+            pd_cache_t &pd_cache, const fpmath_t &fpmath,
+            bool use_block_layout) {
+        desc_ = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         add_prim_ = dnnl::binary(desc_.add_pd_);
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
@@ -1961,9 +2000,10 @@ struct conv_bwd_data_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::convolution_backward_data);
 
     conv_bwd_data_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::convolution_backward_data(desc);
     }
 
@@ -2002,9 +2042,10 @@ struct conv_bwd_weights_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::convolution_backward_weights);
 
     conv_bwd_weights_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::convolution_backward_weights(desc);
     }
 
@@ -2043,14 +2084,15 @@ struct batchnorm_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::batch_normalization_forward);
 
     batchnorm_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache)
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout)
         : is_training_(op->get_attr<bool>(op_attr::is_training)) {
         float momentum = 0.5;
         if (op->has_attr(op_attr::momentum))
             momentum = op->get_attr<float>(op_attr::momentum);
         scales_ = {momentum, 1 - momentum};
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::batch_normalization_forward(desc);
     }
 
@@ -2221,9 +2263,10 @@ struct batchnorm_bwd_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::batch_normalization_backward);
 
     batchnorm_bwd_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::batch_normalization_backward(desc);
     }
 
@@ -2261,9 +2304,10 @@ struct resampling_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::resampling_forward);
 
     resampling_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::resampling_forward(desc);
         if (op->has_attr(op_attr::with_sum))
             with_sum_ = op->get_attr<bool>(op_attr::with_sum);
@@ -2346,9 +2390,10 @@ struct resampling_bwd_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::resampling_backward);
 
     resampling_bwd_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::resampling_backward(desc);
     }
 
@@ -2387,9 +2432,10 @@ struct layernorm_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::layer_normalization_forward);
 
     layernorm_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::layer_normalization_forward(desc);
     }
 
@@ -2428,9 +2474,10 @@ struct layernorm_bwd_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::layer_normalization_backward);
 
     layernorm_bwd_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::layer_normalization_backward(desc);
     }
 
@@ -2468,8 +2515,10 @@ struct sum_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::sum);
 
     sum_executable_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-            fusion_info_mgr_t &mgr, pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            pd_cache_t &pd_cache, const fpmath_t &fpmath,
+            bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::sum(desc);
     }
 
@@ -2507,9 +2556,10 @@ struct softmax_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::softmax_forward);
 
     softmax_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::softmax_forward(desc);
     }
 
@@ -2547,9 +2597,10 @@ struct softmax_bwd_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::softmax_backward);
 
     softmax_bwd_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::softmax_backward(desc);
     }
 
@@ -2587,9 +2638,10 @@ struct reduction_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::reduction);
 
     reduction_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::reduction(desc);
 
         if (op->has_attr(op_attr::with_sum))
@@ -2670,9 +2722,10 @@ struct groupnorm_executable_t : public op_executable_t {
     DECLARE_RESET_ENGINE(dnnl::group_normalization_forward);
 
     groupnorm_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache) {
-        auto desc = create_desc(op, p_engine, mgr, pd_cache);
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout) {
+        auto desc
+                = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
         prim_ = dnnl::group_normalization_forward(desc);
     }
 
@@ -2713,8 +2766,8 @@ struct genindex_executable_t : public op_executable_t {
     DECLARE_ARG_INDICES_GETTER;
 
     genindex_executable_t(std::shared_ptr<op_t> &op,
-            const dnnl::engine &p_engine, fusion_info_mgr_t &mgr,
-            pd_cache_t &pd_cache)
+            const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+            const fpmath_t &fpmath, bool use_block_layout)
         : axis_(op->get_attr<int64_t>(op_attr::axis)) {
         using ltw = logical_tensor_wrapper_t;
         const auto &input_lt = op->get_input_value(0)->get_logical_tensor();
@@ -2737,11 +2790,11 @@ struct genindex_executable_t : public op_executable_t {
                 kernel_ctx.define_int(
                         dnnl::impl::utils::format("S%d", d), stride);
             }
-            auto *compute_engine
-                    = dnnl::impl::utils::downcast<compute::compute_engine_t *>(
+            auto *intel_engine
+                    = dnnl::impl::utils::downcast<gpu::intel::engine_t *>(
                             p_engine.get());
             std::vector<compute::kernel_t> kernels(1);
-            compute_engine->create_kernels(&kernels, {"gen_index"}, kernel_ctx);
+            intel_engine->create_kernels(&kernels, {"gen_index"}, kernel_ctx);
             kernel_ = kernels[0];
         }
 #endif
@@ -2772,7 +2825,7 @@ struct genindex_executable_t : public op_executable_t {
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
         auto compute_stream
-                = dnnl::impl::utils::downcast<compute::compute_stream_t *>(
+                = dnnl::impl::utils::downcast<gpu::intel::stream_t *>(
                         stream.get());
         compute::range_t gws = {static_cast<size_t>(nelems_)};
         auto nd_range = compute::nd_range_t(gws);
@@ -2807,7 +2860,7 @@ struct genindex_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override {
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
         auto compute_stream
-                = dnnl::impl::utils::downcast<compute::compute_stream_t *>(
+                = dnnl::impl::utils::downcast<gpu::intel::stream_t *>(
                         stream.get());
 
         compute::range_t gws = {static_cast<size_t>(nelems_)};
@@ -2870,7 +2923,7 @@ struct sdpa_executable_t : public op_executable_t {
     DECLARE_ARG_INDICES_GETTER;
 
     sdpa_executable_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-            fusion_info_mgr_t &mgr, pd_cache_t &pd_cache)
+            pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout)
         : with_scale_(op->get_attr<bool>(op_attr::with_scale))
         , mask_type_(static_cast<attn_mask_type_t>(
                   op->get_attr<int64_t>(op_attr::mask_type))) {
@@ -2884,12 +2937,11 @@ struct sdpa_executable_t : public op_executable_t {
         auto md_dst = make_dnnl_memory_desc(
                 op->get_output_value(0)->get_logical_tensor());
 
-        auto scale_dt = impl::data_type::undef;
+        auto md_scale = dnnl::memory::desc();
         size_t idx = 3;
         if (with_scale_)
-            scale_dt = op->get_input_value(idx++)
-                               ->get_logical_tensor()
-                               .data_type;
+            md_scale = make_dnnl_memory_desc(
+                    op->get_input_value(idx++)->get_logical_tensor());
 
         dnnl::memory::desc md_mask;
         with_explicit_mask_ = mask_type_ == attn_mask_type::buffer;
@@ -2897,12 +2949,27 @@ struct sdpa_executable_t : public op_executable_t {
             md_mask = make_dnnl_memory_desc(
                     op->get_input_value(idx++)->get_logical_tensor());
 
-        dnnl::primitive_attr attr;
+        dnnl::primitive_attr attr, qk_attr, vs_attr;
         attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-        attr.set_fpmath_mode(
-                static_cast<dnnl::fpmath_mode>(mgr.get_fpmath_mode().mode_));
+        attr.set_fpmath_mode(static_cast<dnnl::fpmath_mode>(fpmath.mode_));
         if (op->has_attr(op_attr::is_invert_scale))
             is_invert_scale_ = op->get_attr<bool>(op_attr::is_invert_scale);
+
+        if (op->has_attr(op_attr::fusion_info)) {
+            const auto &sdpa_fusion_info
+                    = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+            qk_attr = make_dnnl_sdpa_primitive_attr(
+                    op, sdpa_fusion_info, attr_type_t::QK);
+            vs_attr = make_dnnl_sdpa_primitive_attr(
+                    op, sdpa_fusion_info, attr_type_t::VS);
+        }
+
+        // Set accumulation mode: the two attributes are requested for
+        // dnnl_sdpa, so we can get them directly without calling has_attr().
+        qk_attr.set_accumulation_mode(str2accumulation_mode(
+                op->get_attr<std::string>(op_attr::qk_acc_mode)));
+        vs_attr.set_accumulation_mode(str2accumulation_mode(
+                op->get_attr<std::string>(op_attr::vs_acc_mode)));
 
         dim_t kv_head_number
                 = op->get_input_value(1)->get_logical_tensor().dims[1];
@@ -2913,9 +2980,9 @@ struct sdpa_executable_t : public op_executable_t {
                 ? alg_kind::softmax_accurate_inf_as_zero
                 : alg_kind::softmax_accurate;
         status_t s = create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(),
-                md_k.get(), md_v.get(), md_dst.get(), md_mask.get(), scale_dt,
-                is_invert_scale_, kv_head_number, mask_type_, softmax_alg,
-                attr.get());
+                md_k.get(), md_v.get(), md_dst.get(), md_mask.get(),
+                md_scale.get(), is_invert_scale_, kv_head_number, mask_type_,
+                softmax_alg, attr.get(), qk_attr.get(), vs_attr.get());
         if (s != dnnl::impl::status::success) {
             is_initialized_ = false;
         } else {
@@ -2939,6 +3006,32 @@ struct sdpa_executable_t : public op_executable_t {
                 = {with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get()
                                        : nullptr,
                         true};
+        memory_arg_t mem_arg_k_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS)).get()
+                        : nullptr,
+                true};
+
+        memory_arg_t mem_arg_v_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_k_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_v_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
 
         exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
         exec_args[DNNL_ARG_KEYS] = mem_arg_k;
@@ -2946,6 +3039,12 @@ struct sdpa_executable_t : public op_executable_t {
         exec_args[DNNL_ARG_DST] = mem_arg_dst;
         exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
         exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES] = mem_arg_v_scale;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS]
+                = mem_arg_k_zero_points;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES]
+                = mem_arg_v_zero_points;
 
         exec_ctx_t ctx(stream.get(), std::move(exec_args));
         sdpa_prim_->execute(ctx);
@@ -2967,6 +3066,32 @@ struct sdpa_executable_t : public op_executable_t {
                 = {with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get()
                                        : nullptr,
                         true};
+        memory_arg_t mem_arg_k_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS)).get()
+                        : nullptr,
+                true};
+
+        memory_arg_t mem_arg_v_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_k_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_v_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
 
         exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
         exec_args[DNNL_ARG_KEYS] = mem_arg_k;
@@ -2974,6 +3099,13 @@ struct sdpa_executable_t : public op_executable_t {
         exec_args[DNNL_ARG_DST] = mem_arg_dst;
         exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
         exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES] = mem_arg_v_scale;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS]
+                = mem_arg_k_zero_points;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES]
+                = mem_arg_v_zero_points;
+
         auto strm_t = stream.get();
         exec_ctx_t ctx(strm_t, std::move(exec_args));
         auto *sycl_stream_impl = dnnl::impl::utils::downcast<
@@ -3006,6 +3138,32 @@ struct sdpa_executable_t : public op_executable_t {
                 = {with_explicit_mask_ ? (args.at(DNNL_ARG_ATTN_MASK)).get()
                                        : nullptr,
                         true};
+        memory_arg_t mem_arg_k_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS)).get()
+                        : nullptr,
+                true};
+
+        memory_arg_t mem_arg_v_scale = {
+                args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES) != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_k_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS))
+                                  .get()
+                        : nullptr,
+                true};
+        memory_arg_t mem_arg_v_zero_points = {
+                args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES)
+                                != args.end()
+                        ? (args.at(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
+                                  .get()
+                        : nullptr,
+                true};
 
         exec_args[DNNL_ARG_QUERIES] = mem_arg_q;
         exec_args[DNNL_ARG_KEYS] = mem_arg_k;
@@ -3013,6 +3171,12 @@ struct sdpa_executable_t : public op_executable_t {
         exec_args[DNNL_ARG_DST] = mem_arg_dst;
         exec_args[DNNL_ARG_SCALE] = mem_arg_scale;
         exec_args[DNNL_ARG_ATTN_MASK] = mem_arg_mask;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS] = mem_arg_k_scale;
+        exec_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES] = mem_arg_v_scale;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS]
+                = mem_arg_k_zero_points;
+        exec_args[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES]
+                = mem_arg_v_zero_points;
 
         exec_ctx_t ctx(stream.get(), std::move(exec_args));
 

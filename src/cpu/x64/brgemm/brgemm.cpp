@@ -148,7 +148,9 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.ptr_D = ptr_D;
     brgemm_p.ptr_buf = scratch;
     brgemm_p.ptr_bias = post_ops_data.bias;
-    brgemm_p.ptr_scales = post_ops_data.scales;
+    brgemm_p.ptr_src_scales = post_ops_data.src_scales;
+    brgemm_p.ptr_wei_scales = post_ops_data.wei_scales;
+    brgemm_p.ptr_dst_scales = post_ops_data.dst_scales;
     brgemm_p.do_post_ops
             = post_ops_data.do_only_comp || post_ops_data.do_only_zp_a_val ? 0
                                                                            : 1;
@@ -164,7 +166,6 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.a_zp_compensations = post_ops_data.a_zp_compensations;
     brgemm_p.b_zp_compensations = post_ops_data.b_zp_compensations;
     brgemm_p.c_zp_values = post_ops_data.c_zp_values;
-    brgemm_p.ptr_dst_scales = post_ops_data.dst_scales;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -190,7 +191,9 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.ptr_D = ptr_D;
     brgemm_p.ptr_buf = scratch;
     brgemm_p.ptr_bias = post_ops_data.bias;
-    brgemm_p.ptr_scales = post_ops_data.scales;
+    brgemm_p.ptr_src_scales = post_ops_data.src_scales;
+    brgemm_p.ptr_wei_scales = post_ops_data.wei_scales;
+    brgemm_p.ptr_dst_scales = post_ops_data.dst_scales;
     brgemm_p.do_post_ops
             = post_ops_data.do_only_comp || post_ops_data.do_only_zp_a_val ? 0
                                                                            : 1;
@@ -207,7 +210,6 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.b_zp_compensations = post_ops_data.b_zp_compensations;
     brgemm_p.a_zp_values = post_ops_data.a_zp_values;
     brgemm_p.c_zp_values = post_ops_data.c_zp_values;
-    brgemm_p.ptr_dst_scales = post_ops_data.dst_scales;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -277,6 +279,27 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     return status::success;
 }
 
+status_t brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
+        brgemm_batch_kind_t type, impl::data_type_t dt_a,
+        impl::data_type_t dt_x, bool transA, float alpha, float beta, dim_t LDA,
+        dim_t INCY, dim_t M, dim_t N) {
+
+    // Only f32 is supported for now.
+    if (!utils::everyone_is(data_type::f32, dt_a, dt_x))
+        return status::unimplemented;
+
+    // y = x*A^t is not yet implemented.
+    if (transA) return status::unimplemented;
+
+    CHECK(brgemm_desc_init(brg, isa, type, dt_a, dt_x, transA, false,
+            brgemm_row_major, alpha, beta, LDA, 1, INCY, M, 1, N, nullptr,
+            false));
+
+    brg->is_gemv = true;
+
+    return status::success;
+}
+
 status_t brdgmm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_b, bool transA, brgemm_layout_t layout,
@@ -335,9 +358,10 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     // check that combination of data types is allowed
     if ((brg->dt_a == data_type::u8 && brg->dt_b == data_type::s8)
             && (!one_of(dt_d, data_type::u8, data_type::s8, data_type::s32,
-                    data_type::f32, data_type::bf16))
+                    data_type::f32, data_type::f16, data_type::bf16))
             && (!one_of(dt_bias, data_type::undef, data_type::u8, data_type::s8,
-                    data_type::s32, data_type::f32, data_type::bf16)))
+                    data_type::s32, data_type::f32, data_type::f16,
+                    data_type::bf16)))
         return status::unimplemented;
     if ((brg->dt_a == data_type::bf16 && brg->dt_b == data_type::bf16)
             && (!one_of(dt_d, data_type::bf16, data_type::f32))
@@ -348,10 +372,15 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
             && (!one_of(dt_d, data_type::f32))
             && (!one_of(dt_bias, data_type::undef, data_type::f32, dt_d)))
         return status::unimplemented;
+    if (!IMPLICATION(brg->is_bf16,
+                one_of(dt_d, data_type::f32, data_type::bf16, data_type::f16)
+                        && one_of(dt_bias, data_type::undef, data_type::f32,
+                                data_type::bf16, data_type::f16)))
+        return status::unimplemented;
     if (!IMPLICATION(brg->is_f16,
                 one_of(dt_d, data_type::f32, data_type::f16)
                         && one_of(dt_bias, data_type::undef, data_type::f32,
-                                data_type::f16)))
+                                data_type::bf16, data_type::f16)))
         return status::unimplemented;
     const auto bias_f8_e5m2_compatible
             = one_of(dt_d, data_type::f32, data_type::f16, data_type::bf16,
@@ -431,12 +460,12 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
 
     const auto &src_scales = attr->scales_.get(DNNL_ARG_SRC);
     const auto &wei_scales = attr->scales_.get(DNNL_ARG_WEIGHTS);
-    brg->with_scales = !brg->skip_scales
-            && (!src_scales.has_default_values()
-                    || !wei_scales.has_default_values()
-                    || brg->with_weights_scale_adjust);
-    if (brg->with_scales) {
-        // Note. the current version supports only two different output scale
+    brg->with_src_scales
+            = !brg->skip_scales && !src_scales.has_default_values();
+    brg->with_wei_scales
+            = !brg->skip_scales && !wei_scales.has_default_values();
+    if (brg->with_wei_scales) {
+        // Note. the current version supports only two different wei scales
         // types:
         //     1) common (mask = 0)
         //     2) per_n_dim_scale - broadcast across n dimension;
@@ -448,6 +477,7 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         // scale type is per_n_dim_scale and driver which calls brgemm kernel
         // checked that mask has correct value for this case
         brg->is_oc_scale = wei_scales.get_mask() > 0;
+        brg->dt_wei_scales = wei_scales.get_data_type();
     }
 
     const auto &dst_scales = attr->scales_.get(DNNL_ARG_DST);
@@ -522,6 +552,23 @@ status_t brgemm_desc_set_attr(
             && (brg->is_tmm))
         return status::unimplemented;
 
+    // Sprinkled prefetch is supported for brgemm_batch_size is 1
+    if ((brgattr.max_bs != 1)
+            && (brgattr.hint_prfB.sprinkled || brgattr.hint_prfA.sprinkled)) {
+        return status::unimplemented;
+    }
+
+    // fused copy A already copies A for the BRGEMM. No need for partial copy.
+    if (brgattr.hint_fused_copy_a
+            && (brgattr.extendable_k || brgattr.wary_A_k_tail_read)) {
+        return status::unimplemented;
+    }
+
+    if (!IMPLICATION(brgattr.hint_fused_copy_a,
+                is_superset(brg->isa_impl, amx_tile))) {
+        return status::unimplemented;
+    }
+
     brg->prfA = brgattr.hint_prfA;
     brg->prfB = brgattr.hint_prfB;
     brg->prfC = brgattr.hint_prfC;
@@ -537,6 +584,8 @@ status_t brgemm_desc_set_attr(
     if (brgattr.hint_prefetching == brgemm_kernel_prefetching_t::brgemm_prf2
             && brg->prfC.dist2 < 0)
         brg->prfC.dist2 = 0;
+
+    if (brgattr.hint_fused_copy_a) brg->fused_copy_a = true;
 
     if (brg->is_fp8
             && !utils::one_of(true,
@@ -740,14 +789,17 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(sum_dt);
     CMP_BRGEMM_FIELD(with_eltwise);
     CMP_BRGEMM_FIELD(with_binary);
-    CMP_BRGEMM_FIELD(with_scales);
 
     CMP_BRGEMM_FIELD(zp_type_a);
     CMP_BRGEMM_FIELD(zp_type_b);
     CMP_BRGEMM_FIELD(zp_type_c);
 
+    CMP_BRGEMM_FIELD(skip_scales);
     CMP_BRGEMM_FIELD(is_oc_scale);
+    CMP_BRGEMM_FIELD(with_src_scales);
+    CMP_BRGEMM_FIELD(with_wei_scales);
     CMP_BRGEMM_FIELD(with_dst_scales);
+    CMP_BRGEMM_FIELD(dt_wei_scales);
     CMP_BRGEMM_FIELD(bs_group);
 
     // Compare all non-pointer parameters of brgemm_attr_t except derived
@@ -764,8 +816,10 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.hint_prefetching);
     CMP_BRGEMM_FIELD(brgattr.hint_prfA.dist1);
     CMP_BRGEMM_FIELD(brgattr.hint_prfA.dist2);
+    CMP_BRGEMM_FIELD(brgattr.hint_prfA.sprinkled);
     CMP_BRGEMM_FIELD(brgattr.hint_prfB.dist1);
     CMP_BRGEMM_FIELD(brgattr.hint_prfB.dist2);
+    CMP_BRGEMM_FIELD(brgattr.hint_prfB.sprinkled);
     CMP_BRGEMM_FIELD(brgattr.hint_prfC.dist1);
     CMP_BRGEMM_FIELD(brgattr.hint_prfC.dist2);
     CMP_BRGEMM_FIELD(brgattr.wary_A_k_tail_read);

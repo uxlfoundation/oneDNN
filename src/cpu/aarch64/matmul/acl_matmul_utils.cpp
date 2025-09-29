@@ -201,7 +201,7 @@ status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
         scratchpad.book(memory_tracking::names::key_matmul_dst_in_acc_dt,
                 dst_d.nelems(), dst_d.data_type_size());
     }
-    if (aux_mem_req.size() != 0) {
+    if (!aux_mem_req.empty()) {
         for (const auto &key : matmul_keys) {
             const auto id = key.first;
             if (aux_mem_req[id].size > 0) {

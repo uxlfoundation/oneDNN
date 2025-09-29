@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2019-2023 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -69,7 +70,7 @@ struct jit_uni_binary_t : public primitive_t {
     };
 
     jit_uni_binary_t(const pd_t *apd);
-    ~jit_uni_binary_t() = default;
+    ~jit_uni_binary_t() override = default;
 
     status_t init(engine_t *engine) override;
 

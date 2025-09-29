@@ -19,6 +19,7 @@
 
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
+#include "gpu/intel/logging.hpp"
 
 #include <set>
 
@@ -70,11 +71,11 @@ public:
     void stringify(std::ostream &out) const {
         out << "simd=" << simd_;
         out << " l=";
-        loop_.stringify(out);
+        out << loop_.str();
         out << " T=";
-        thread_group_.stringify(out);
+        out << thread_group_.str();
         out << " i=";
-        iter_.stringify(out);
+        out << iter_.str();
     }
 
     void parse(std::istream &in) {
@@ -468,7 +469,7 @@ public:
     void set_id(int id) { id_ = id; }
 
     void stringify(std::ostream &out) const {
-        blocking_.stringify(out);
+        out << blocking_.str();
         if (bufs_hint_ != -1) out << " bufs=" << bufs_hint_;
     }
 

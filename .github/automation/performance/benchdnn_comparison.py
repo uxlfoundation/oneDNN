@@ -17,12 +17,19 @@
 # limitations under the License.
 # *******************************************************************************
 
-import sys
+"""
+Compare two benchdnn runs.
+
+Usage:
+    python benchdnn_comparison.py baseline.csv new.csv --check
+"""
+
 import os
 from collections import defaultdict
 from scipy.stats import ttest_ind
 import warnings
 import statistics
+import argparse
 
 
 def print_to_github_out(message):
@@ -31,7 +38,7 @@ def print_to_github_out(message):
             print(message.replace("\n", "%0A"), file=f)
 
 
-def compare_two_benchdnn(file1, file2, tolerance=0.05):
+def compare_two_benchdnn(file1, file2, check=False):
     """
     Compare two benchdnn output files
     """
@@ -69,6 +76,11 @@ def compare_two_benchdnn(file1, file2, tolerance=0.05):
         r2_ctime[key].append(float(ctime))
 
     exec_failures, ctime_failures = [], []
+    if not check:
+        print(
+            "primitive,exec_base,exec_new,ctime_base,ctime_new,exec_diff,ctime_diff"
+        )
+
     for prb in r1_exec:
         if prb not in r2_exec:
             raise Exception(f"{prb} exists in {file1} but not {file2}")
@@ -109,36 +121,55 @@ def compare_two_benchdnn(file1, file2, tolerance=0.05):
                 f"{prb} exec: {r1_med_exec:.3g} → {r2_med_exec:.3g} "
                 f"(p={exec_ttest.pvalue:.3g})"
             )
+
         if ctime_regressed:
             ctime_failures.append(
                 f"{prb} ctime: {r1_med_ctime:.3g} → {r2_med_ctime:.3g}"
                 f"(p={ctime_ttest.pvalue:.3g})"
             )
 
-    print_to_github_out(f"pass={not exec_failures}")
+        if not check:
+            print(
+                f"{prb},{r1_med_exec:.3g},{r2_med_exec:.3g},"
+                f"{r1_med_ctime:.3g},{r2_med_ctime:.3g},"
+                f"{(r2_med_exec - r1_med_exec)/r1_med_exec:.1%},"
+                f"{(r2_med_ctime - r1_med_ctime)/r1_med_ctime:.1%}"
+            )
 
-    message = ""
-    if ctime_failures:
-        message += (
-            "\n----The following ctime regression tests failed:----\n"
-            + "\n".join(ctime_failures)
-            + "\n"
-        )
+    if check:
+        print_to_github_out(f"pass={not exec_failures}")
 
-    if not exec_failures:
-        print_to_github_out(f"message={message}")
-        print(message)
-        print("Regression tests passed")
-    else:
-        message += (
-            "\n----The following exec time regression tests failed:----\n"
-            + "\n".join(exec_failures)
-            + "\n"
-        )
-        print_to_github_out(f"message={message}")
-        print(message)
-        raise Exception("Some regression tests failed")
+        message = ""
+        if ctime_failures:
+            message += (
+                "\n----The following ctime regression tests failed:----\n"
+                + "\n".join(ctime_failures)
+                + "\n"
+            )
 
+        if not exec_failures:
+            print_to_github_out(f"message={message}")
+            print(message)
+            print("Execution Time regression tests passed")
+        else:
+            message += (
+                "\n----The following exec time regression tests failed:----\n"
+                + "\n".join(exec_failures)
+                + "\n"
+            )
+            print_to_github_out(f"message={message}")
+            print(message)
+            raise Exception("Some regression tests failed")
 
 if __name__ == "__main__":
-    compare_two_benchdnn(sys.argv[1], sys.argv[2])
+    parser = argparse.ArgumentParser(
+        description="Compare two benchdnn result files"
+    )
+    parser.add_argument("file1", help="Path to baseline result file")
+    parser.add_argument("file2", help="Path to new result file")
+    parser.add_argument(
+        "--check", action="store_true", help="Enable regression checks"
+    )
+    args = parser.parse_args()
+
+    compare_two_benchdnn(args.file1, args.file2, check=args.check)

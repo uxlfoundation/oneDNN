@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -308,6 +308,13 @@ status_t rnn_common_fwd_desc_init(rnn_desc_t *rnn_desc, prop_kind_t prop_kind,
                            weights_iter_desc, dst_layer_desc),
             VERBOSE_NULL_ARG);
 
+    VCONDCHECK_RNN(!any_memory_desc_host_scalar(src_layer_desc, src_iter_desc,
+                           src_iter_c_desc, attention_desc, weights_layer_desc,
+                           weights_iter_desc, weights_peephole_desc,
+                           weights_projection_desc, bias_desc, dst_layer_desc,
+                           dst_iter_desc, dst_iter_c_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
     if (cell_kind == dnnl_vanilla_rnn) {
         VCONDCHECK_RNN(one_of(activation, eltwise_relu, eltwise_tanh,
                                eltwise_logistic),
@@ -409,6 +416,19 @@ status_t rnn_common_bwd_desc_init(rnn_desc_t *rnn_desc, prop_kind_t prop_kind,
                            diff_src_layer_desc, diff_weights_layer_desc,
                            diff_weights_iter_desc, diff_dst_layer_desc),
             VERBOSE_NULL_ARG);
+
+    VCONDCHECK_RNN(!any_memory_desc_host_scalar(src_layer_desc, src_iter_desc,
+                           src_iter_c_desc, attention_desc, weights_layer_desc,
+                           weights_iter_desc, weights_peephole_desc,
+                           weights_projection_desc, bias_desc, dst_layer_desc,
+                           dst_iter_desc, dst_iter_c_desc, diff_src_layer_desc,
+                           diff_src_iter_desc, diff_src_iter_c_desc,
+                           diff_attention_desc, diff_weights_layer_desc,
+                           diff_weights_iter_desc, diff_weights_peephole_desc,
+                           diff_weights_projection_desc, diff_bias_desc,
+                           diff_dst_layer_desc, diff_dst_iter_desc,
+                           diff_dst_iter_c_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     if (cell_kind == dnnl_vanilla_rnn) {
         VCONDCHECK_RNN(one_of(activation, eltwise_relu, eltwise_tanh,

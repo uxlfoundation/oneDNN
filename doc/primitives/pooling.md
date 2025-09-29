@@ -167,8 +167,6 @@ of any preceding compute-intensive primitive.
 
 N/A
 
-## Example
+## Examples
 
-[Pooling Primitive Example](@ref pooling_example_cpp)
-
-@copydetails pooling_example_cpp_short
+* @ref pooling_example_cpp

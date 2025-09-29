@@ -29,7 +29,11 @@ The notations used in the document:
 ## GQA Pattern
 
 Similar to how SDPA is supported, the GQA pattern is also defined as a
-directional acyclic graph (DAG) using oneDNN Graph API. oneDNN extends the
+directional acyclic graph (DAG) using oneDNN Graph API.
+
+### GQA for Inference
+
+oneDNN extends the
 [SDPA pattern](@ref dev_guide_graph_sdpa) to support two types of floating-point
 (f32, bf16, and f16) GQA patterns. The blue nodes are required when defining a
 GQA pattern while the brown nodes are optional. The key difference between the
@@ -40,7 +44,8 @@ are in 4D shapes.
 
 ![GQA pattern](images/gqa.png)
 
-### GQA Pattern with 4D input and output
+
+#### GQA Inference Pattern with 4D input and output
 
 Due to the broadcasting semantics of MatMul, implementing GQA often requires
 additional tensor manipulation. Specifically, when working with 4D input tensors,
@@ -66,7 +71,7 @@ following differences:
    similarly. Besides that, they have the same definition as described in the
    typical SDPA pattern.
 
-### GQA Pattern with 5D input and output
+#### GQA Inference Pattern with 5D input and output
 
 To simplify the process and avoid unnecessary reshaping, the native 5D GQA
 pattern supported by oneDNN can be used. In this approach, the input Query, Key,
@@ -78,6 +83,57 @@ and Value tensors are provided in a grouped format.
    SoftMax and Value nodes and generates output with shape (N, H_kv, N_rep, S, D).
 4. The input scale factor and mask in the pattern must meet the operations'
    shape requirement.
+
+### GQA for Training Forward Propagation
+
+oneDNN defines floating-point (f32, bf16, or f16) GQA for training forward
+propagation as follows. The blue nodes are required while the brown nodes are optional.
+
+![GQA forward pattern](images/gqa_forward.png)
+
+The training forward pattern only supports 5D input and output tensors. The key
+difference between the inference pattern with 5D input/output and the training
+forward propagation pattern is that, for training forward propagation, the
+`Stats` output of the SoftMax operation is needed. See
+[SoftMax](@ref dev_guide_op_softmax) in Graph API for more details.
+
+### GQA for Training Backpropagation
+
+oneDNN defines floating-point (f32, bf16, or f16) GQA for training
+backpropagation as follows, it currently supports 5D input and output tensors.
+The blue nodes are required while the brown nodes are optional.
+
+![GQA backward pattern](images/gqa_backward.png)
+
+1. The first MatMul computes the score between Query and Key, similar to
+   inference and training forward propagation. See
+   [MatMul](@ref dev_guide_op_matmul) in Graph API.
+2. The Scale node is optional and scales the output of the first MatMul using a
+   scaling factor. This can be implemented using [Multiply](@ref dev_guide_op_multiply)
+   or [Divide](@ref dev_guide_op_divide) in Graph API.
+3. The Mask node is optional and applies an attention mask to the output of the
+   previous Scale node. For training backpropagation, only explicit user-generated
+   masks are currently supported. The mask definition is the same as in
+   inference and training forward propagation.
+4. The Subtract and Exp operations take the masked output and `Stats` as inputs
+   and recover the probabilities computed by SoftMax in the training forward
+   propagation. See [Subtract](@ref dev_guide_op_subtract) and [Exp](@ref dev_guide_op_exp)
+   in Graph API.
+5. The TypeCast, MatMul and ReduceSum operations after Exp are used to compute the
+   gradients with respect to Value. TypeCast is required for bf16 and f16
+   training scenarios. ReduceSum reduces the Value gradients from
+   (N, H_kv, N_rep, S, D) to (N, H_kv, 1, S, D). See [TypeCast](@ref dev_guide_op_typecast)
+   and [ReduceSum](@ref dev_guide_op_reducesum) in Graph API.
+6. The MatMul takes the output gradients (`dO`) and the Value as inputs to
+   compute the gradients of the probabilities.
+7. The SoftMaxBackward operation computes the gradients of the scaled output.
+   See [SoftMaxBackward](@ref dev_guide_op_softmaxbackward) in Graph API.
+8. The Scale node after SoftMaxBackward corresponds to the forward Scale node
+   and is used to compute the gradients of the score.
+9. The TypeCast, two MatMul and ReduceSum operations after the Scale node
+   compute the gradients with respect to Query and Key, respectively. TypeCast
+   is required for bf16 and f16 training scenarios. ReduceSum reduces the Key
+   gradients from (N, H_kv, N_rep, S, D) to (N, H_kv, 1, S, D).
 
 ## Data Types
 
@@ -119,10 +175,11 @@ platforms follow the general description in @ref dev_guide_data_types.
 
 ## Example
 
-oneDNN provides a [GQA
+oneDNN provides a [GQA inference
 example](https://github.com/uxlfoundation/oneDNN/tree/main/examples/graph/gqa.cpp)
-demonstrating how to construct a 5D floating-point GQA pattern with oneDNN Graph
-API on CPU and GPU with different runtimes.
+and a [GQA training example](https://github.com/uxlfoundation/oneDNN/tree/main/examples/graph/gqa_training.cpp)
+demonstrating how to construct 5D floating-point GQA patterns for inference and
+training with oneDNN Graph API on CPU and GPU with different runtimes.
 
 ## References
 

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ namespace brgemm_convolution_utils {
 bool is_any_eligible(const jit_brgemm_conv_conf_t &jcp) {
     return (jcp.prop_kind == prop_kind::forward_inference || jcp.wei_plain
             || one_of(jcp.wei_dt, data_type::s8, data_type::f16)
-            || one_of(jcp.isa, sve_512, sve_256));
+            || one_of(jcp.isa, sve_512, sve_256, sve_128));
 }
 
 inline status_t init_tag(format_tag_t &tag, memory_desc_t &md,
@@ -1746,7 +1746,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         return status::unimplemented;
     const bool is_f32
             = utils::everyone_is(f32, jcp.src_dt, jcp.wei_dt, jcp.dst_dt);
-    if (!IMPLICATION(is_f32, one_of(isa, sve_512, sve_256) || jcp.is_bf32))
+    if (!IMPLICATION(
+                is_f32, one_of(isa, sve_512, sve_256, sve_128) || jcp.is_bf32))
         return status::unimplemented;
 
     if (!post_ops_ok(jcp, attr, dst_d)) return status::unimplemented;
@@ -1856,6 +1857,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             cur_brgb.oc_block = ocb * jcp.acc_simd_w;
             cur_brgb.nb_oc = utils::div_up(jcp.oc, cur_brgb.oc_block);
             if (!cur_brgb.fast_check_oc_block()) continue;
+            // eff heuristics seem to be wrong for sve_128, <16 is always worse
+            if (isa == sve_128 && cur_brgb.oc_block < 16) break;
 
             const status_t blocking_ok = cur_brgb.calc_blocks();
             if (blocking_ok != status::success) continue;
@@ -2104,6 +2107,9 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         cur_brgb.get_from_jcp(jcp);
         cur_brgb.oc_block = ocb * min_oc_block;
         cur_brgb.nb_oc = utils::div_up(jcp.oc, cur_brgb.oc_block);
+
+        // eff heuristics seem to be wrong for sve_128, <16 is always worse
+        if (isa == sve_128 && cur_brgb.oc_block < 16) break;
 
         if (!cur_brgb.fast_check_oc_block_1x1()) continue;
 

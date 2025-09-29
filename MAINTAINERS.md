@@ -141,15 +141,18 @@ Team: @uxlfoundation/onednn-graph
 
 Team: @uxlfoundation/onednn-cpu-x64
 
-| Name               | Github ID             | Affiliation       | Role       |
-| ------------------ | --------------------- | ----------------- | ---------- |
-| Andrey Kalinin     | @ankalinin            | Intel Corporation | Maintainer |
-| Tatyana Primak     | @tprimak              | Intel Corporation | Maintainer |
-| Alexey Makarevich  | @amakarev             | Intel Corporation | Code Owner |
-| David Eberius      | @davideberius         | Intel Corporation | Code Owner |
-| Stefan Palicki     | @spalicki             | Intel Corporation | Code Owner |
-| Tomasz Czeszun     | @tczeszun             | Intel Corporation | Code Owner |
-| Xuxin Zeng         | @xuxinzen             | Intel Corporation | Code Owner |
+| Name                | Github ID             | Affiliation       | Role       |
+| ------------------- | --------------------- | ----------------- | ---------- |
+| Andrey Kalinin      | @ankalinin            | Intel Corporation | Maintainer |
+| Tatyana Primak      | @tprimak              | Intel Corporation | Maintainer |
+| Alexander Simonov   | @asimonov1            | Intel Corporation | Code Owner |
+| Alexey Makarevich   | @amakarev             | Intel Corporation | Code Owner |
+| David Eberius       | @davideberius         | Intel Corporation | Code Owner |
+| Dmitriy Ovchinnikov | @inteldimitrius       | Intel Corporation | Code Owner |
+| Stefan Palicki      | @spalicki             | Intel Corporation | Code Owner |
+| Tomasz Czeszun      | @tczeszun             | Intel Corporation | Code Owner |
+| Yair Obodovsky      | @yair-obodovsky       | Intel Corporation | Code Owner |
+| Xuxin Zeng          | @xuxinzen             | Intel Corporation | Code Owner |
 
 ### AArch64
 
@@ -158,6 +161,7 @@ Team: @uxlfoundation/onednn-cpu-aarch64
 | Name               | Github ID             | Affiliation       | Role       |
 | ------------------ | --------------------- | ----------------- | ---------- |
 | Hamza Butt         | @theComputeKid        | Arm Ltd           | Maintainer |
+| Aditya Tewari      | @aditew01             | Arm Ltd           | Code Owner |
 | Crefeda Rodrigues  | @cfrod                | Arm Ltd           | Code Owner |
 | David Svantesson   | @davsva01             | Arm Ltd           | Code Owner |
 | Jonathan Deakin    | @jondea               | Arm Ltd           | Code Owner |
@@ -244,6 +248,7 @@ Team: @uxlfoundation/onednn-devops
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
 | Hamza Butt         | @theComputeKid        | Arm Ltd           | Code Owner |
 | Ryo Suzuki         | @Ryo-not-rio          | Arm Ltd           | Code Owner |
+| Siddhartha Menon   | @Sqvid                | Arm Ltd           | Code Owner |
 
 ### Release management
 

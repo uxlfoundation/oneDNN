@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,7 +35,7 @@ namespace brgemm_containers {
 
 struct brgemm_desc_container_t {
 public:
-    brgemm_desc_container_t() {}
+    brgemm_desc_container_t() = default;
     brgemm_desc_container_t(size_t ns) { resize(ns); }
     void resize(size_t ns) { refs_.resize(ns); }
     inline const brgemm_t *operator[](int idx) const { return refs_[idx]; }
@@ -59,7 +60,7 @@ private:
 #define BRGEMM_KERNEL_GLOBAL_STORAGE
 
 struct brgemm_kernel_container_t {
-    brgemm_kernel_container_t() {}
+    brgemm_kernel_container_t() = default;
     brgemm_kernel_container_t(size_t ns) { resize(ns); }
     void resize(size_t ns) { refs_.resize(ns); }
     inline const brgemm_kernel_t *operator[](int idx) const {

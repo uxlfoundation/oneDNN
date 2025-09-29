@@ -46,7 +46,7 @@ status_t jit_avx512_common_lrn_fwd_t<d_type>::pd_t::init(engine_t *engine) {
     // disabling verbose dispatch checks for unsupported isa for better readability
     if (!mayiuse(avx512_core)) return status::unimplemented;
 
-    VDISPATCH_LRN(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_LRN(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_LRN(everyone_is(d_type, src_d.data_type(), dst_d.data_type()),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LRN(IMPLICATION(d_type == f16, mayiuse(avx512_core_fp16)),
@@ -109,7 +109,7 @@ status_t jit_avx512_common_lrn_bwd_t<d_type>::pd_t::init(engine_t *engine) {
     // disabling verbose dispatch checks for unsupported isa for better readability
     if (!mayiuse(avx512_core)) return status::unimplemented;
 
-    VDISPATCH_LRN(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_LRN(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_LRN(utils::everyone_is(d_type, src_d.data_type(),
                           diff_src_d.data_type(), diff_dst_d.data_type()),
             VERBOSE_UNSUPPORTED_DT);

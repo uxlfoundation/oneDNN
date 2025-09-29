@@ -25,6 +25,8 @@
 
 #include "xpu/ocl/memory_storage.hpp"
 
+#include "gpu/intel/jit/dsl/runtime.hpp"
+#include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/microkernels/fuser.hpp"
 #include "gpu/intel/ocl/device_info.hpp"
 #include "gpu/intel/ocl/engine.hpp"
@@ -103,7 +105,7 @@ status_t engine_t::init() {
 
 status_t engine_t::init(const std::vector<uint8_t> &cache_blob) {
     CHECK(init_impl());
-    CHECK(compute::compute_engine_t::init(cache_blob));
+    CHECK(intel::engine_t::init(cache_blob));
     return status::success;
 }
 
@@ -299,6 +301,14 @@ status_t engine_t::create_kernel(
         compute::kernel_t *kernel, jit::generator_base_t *jitter) const {
     if (!jitter) return status::invalid_arguments;
     return jitter->get_kernel(*kernel, this);
+}
+
+status_t engine_t::create_kernel(
+        compute::kernel_t &kernel, const jit::dsl::kernel_t &kernel_dsl) const {
+    return kernel_t::make(kernel,
+            jit::dsl::make_kernel(
+                    kernel_dsl, impl()->context(), impl()->device()),
+            {});
 }
 
 status_t engine_t::create_program(xpu::ocl::wrapper_t<cl_program> &program,

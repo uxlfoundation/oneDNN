@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2022 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 *******************************************************************************/
 
 /// @example cpu_cnn_training_f32.c
-/// @copybrief cpu_cnn_training_f32_c
+/// > Annotated version: @ref cpu_cnn_training_f32_c
 
 /// @page cpu_cnn_training_f32_c CNN f32 training example
 /// This C API example demonstrates how to build an AlexNet model training.

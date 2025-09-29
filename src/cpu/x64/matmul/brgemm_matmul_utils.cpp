@@ -283,7 +283,7 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , bf8_dt(everyone_is(f8_e5m2, bgmmc.src_dt, bgmmc.wei_dt)
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
     , int8_dt(utils::one_of(bgmmc.src_dt, u8, s8) && bgmmc.wei_dt == s8
-              && one_of(bgmmc.dst_dt, u8, s8, s32, f32, bf16))
+              && one_of(bgmmc.dst_dt, u8, s8, s32, f32, f16, bf16))
     , bf32_dt(f32_dt
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
               && isa == avx512_core_amx)
@@ -345,6 +345,8 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
 
 int brgemm_matmul_conf_utils_t::get_default_n_block(
         format_tag_t matrix_b_tag) const {
+    if (bgmmc.is_gemv) return 1;
+
     const int n_blk = get_n_block_from_tag(matrix_b_tag);
     if (n_blk > 0) return n_blk;
 
@@ -359,19 +361,93 @@ int brgemm_matmul_conf_utils_t::get_default_n_block(
             : nstl::min<int>(24, rnd_up(bgmmc.N, simd_w));
 }
 
+/**
+ * This function selects a compatible format for A if its format is "any".
+ * Otherwise, it checks if the provided format is compatible.
+ * It returns a valid format tag on success, or format_tag::undef otherwise.
+ */
+format_tag_t brgemm_matmul_conf_utils_t::get_gemv_A_tag(
+        const memory_desc_t &A_md) const {
+    if (A_any_layout)
+        return plain_tensor_layout_tag;
+    else
+        return memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag);
+}
+
+/**
+ * This function selects a compatible format for B if its format is "any".
+ * Otherwise, it checks if the provided format is compatible.
+ * It returns a valid format tag on success, or format_tag::undef otherwise.
+ */
+format_tag_t brgemm_matmul_conf_utils_t::get_gemv_B_tag(
+        const memory_desc_t &B_md) const {
+    if (B_any_layout) {
+        // Plain and transposed layouts are identical for B in GEMV cases,
+        // so we simply choose the plain one.
+        return plain_tensor_layout_tag;
+    } else {
+        if (B_md.format_kind != format_kind::blocked) return format_tag::undef;
+
+        // Elements of B, which is a vector in the case of GEMV, must be
+        // contiguous in memory.
+        const bool wei_format_compatible
+                = B_md.format_desc.blocking.strides[bgmmc.ndims - 2] == 1;
+        if (!wei_format_compatible) return format_tag::undef;
+
+        // TODO: The current matmul design requires us to infer wei_tag, so
+        // we still need to do that even though the provided format is
+        // compatible. For now, allow both plain and trans formats. Consider
+        // removing the need to infer the wei_tag in the future.
+        return memory_desc_matches_one_of_tag(
+                B_md, plain_tensor_layout_tag, transposed_tensor_layout_tag);
+    }
+}
+
+/**
+ * This function checks if a dedicated code path for GEMV is applicable.
+ * All relevant checks must be performed here to determine whether we
+ * should fall back to the GEMM code path before initializing format tags
+ * and other relevant parameters.
+ */
+bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
+        const brgemm_matmul_conf_utils_t &bm_conf_utils,
+        const memory_desc_t &A_md, const memory_desc_t &B_md) {
+
+    // Only the N=1 case is supported currently.
+    // TODO: The existing GEMV code path could also support the M=1 case when
+    // B tensor has a transposed format. Enable this by swapping A and B.
+    if (bgmmc.N != 1) return false;
+
+    // BRGEMV currently supports only f32 and AVX2.
+    if (utils::one_of(false, bm_conf_utils.is_f32(), bgmmc.isa == avx2))
+        return false;
+
+    if (utils::one_of(format_tag::undef, bm_conf_utils.get_gemv_A_tag(A_md),
+                bm_conf_utils.get_gemv_B_tag(B_md)))
+        return false;
+
+    return true;
+}
+
 status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
         const matmul_helper_t &helper, bool init_n_tag) const {
     const memory_desc_wrapper B_d(&B_md);
     if (B_any_layout) {
-        const int default_n_block = init_n_tag
-                ? get_default_n_block(format_tag::undef)
-                : bgmmc.N_blk;
-        bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
-                        && !bgmmc.is_int4_weights
-                ? this->pick_blocked_B_layout(default_n_block)
-                : bgmmc.is_int4_weights && bgmmc.N % 2 != 0
-                ? transposed_tensor_layout_tag
-                : plain_tensor_layout_tag;
+        if (bgmmc.is_gemv) {
+            bgmmc.wei_tag = get_gemv_B_tag(B_md);
+            assert(bgmmc.wei_tag != format_tag::undef
+                && "if bgmmc.is_gemv is true the format tag must be defined");
+        } else {
+            const int default_n_block = init_n_tag
+                    ? get_default_n_block(format_tag::undef)
+                    : bgmmc.N_blk;
+            bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
+                            && !bgmmc.is_int4_weights
+                    ? this->pick_blocked_B_layout(default_n_block)
+                    : bgmmc.is_int4_weights && bgmmc.N % 2 != 0
+                    ? transposed_tensor_layout_tag
+                    : plain_tensor_layout_tag;
+        }
         VCONDCHECK_BG(
                 format_tag::undef != bgmmc.wei_tag, VERBOSE_UNSUPPORTED_TAG)
 
@@ -384,33 +460,43 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
                     = bgmmc.b_dt_sz * B_d.blocking_desc().strides[dim];
         }
     } else {
-        bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
-                        && !bgmmc.is_int4_weights
-                ? memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
-                        transposed_tensor_layout_tag, blocked_64n_B_layout_tag,
-                        blocked_48n_B_layout_tag, blocked_32n_B_layout_tag,
-                        blocked_16n_B_layout_tag)
-                : memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
-                        transposed_tensor_layout_tag, acbd, adbc);
-        const bool plain_transposed_matched
-                = memory_desc_matches_tag(B_md, plain_tensor_layout_tag)
-                && memory_desc_matches_tag(B_md, transposed_tensor_layout_tag);
-        if (bgmmc.wei_tag == format_tag::undef || plain_transposed_matched) {
-            if (gemm_based::check_gemm_input_format(B_md)) {
-                // Note: Here we batch layout may not be accurately represented
-                // by the wei_tag string, due to all the permutations of the
-                // batch. Only the gemm dimensions "n, k" are accurately
-                // represented in the string representing transposed or not
-                // TODO: update helper.transB() to handle the case that
-                // wei tag can be represented in both plain and transposed
-                bgmmc.wei_tag = helper.transB() == 'N'
-                                || (plain_transposed_matched
-                                        && B_d.blocking_desc()
-                                                        .strides[bgmmc.ndims
-                                                                - 1]
-                                                == 1)
-                        ? plain_tensor_layout_tag
-                        : transposed_tensor_layout_tag;
+        if (bgmmc.is_gemv) {
+            bgmmc.wei_tag = get_gemv_B_tag(B_md);
+            assert(bgmmc.wei_tag != format_tag::undef
+                && "if bgmmc.is_gemv is true the format tag must be defined");
+        } else {
+            bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
+                            && !bgmmc.is_int4_weights
+                    ? memory_desc_matches_one_of_tag(B_md,
+                            plain_tensor_layout_tag,
+                            transposed_tensor_layout_tag,
+                            blocked_64n_B_layout_tag, blocked_48n_B_layout_tag,
+                            blocked_32n_B_layout_tag, blocked_16n_B_layout_tag)
+                    : memory_desc_matches_one_of_tag(B_md,
+                            plain_tensor_layout_tag,
+                            transposed_tensor_layout_tag, acbd, adbc);
+            const bool plain_transposed_matched
+                    = memory_desc_matches_tag(B_md, plain_tensor_layout_tag)
+                    && memory_desc_matches_tag(
+                            B_md, transposed_tensor_layout_tag);
+            if (bgmmc.wei_tag == format_tag::undef
+                    || plain_transposed_matched) {
+                if (gemm_based::check_gemm_input_format(B_md)) {
+                    // Note: Here we batch layout may not be accurately represented
+                    // by the wei_tag string, due to all the permutations of the
+                    // batch. Only the gemm dimensions "n, k" are accurately
+                    // represented in the string representing transposed or not
+                    // TODO: update helper.transB() to handle the case that
+                    // wei tag can be represented in both plain and transposed
+                    bgmmc.wei_tag = helper.transB() == 'N'
+                                    || (plain_transposed_matched
+                                            && B_d.blocking_desc()
+                                                            .strides[bgmmc.ndims
+                                                                    - 1]
+                                                    == 1)
+                            ? plain_tensor_layout_tag
+                            : transposed_tensor_layout_tag;
+                }
             }
         }
         VCONDCHECK_BG(
@@ -433,47 +519,62 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
         memory_desc_t &C_md, memory_desc_t &bias_md,
         const matmul_helper_t &helper) const {
     if (A_any_layout) {
-        const format_tag_t desired_A_tag = plain_tensor_layout_tag;
+        const format_tag_t desired_A_tag = bgmmc.is_gemv
+                ? get_gemv_A_tag(A_md)
+                : plain_tensor_layout_tag;
         VCHECK_BG(memory_desc_init_by_tag(A_md, desired_A_tag),
                 VERBOSE_UNSUPPORTED_TAG);
         bgmmc.src_tag = desired_A_tag;
+
+        assert(IMPLICATION(bgmmc.is_gemv, bgmmc.src_tag != format_tag::undef)
+                && "if bgmmc.is_gemv is true the format tag must be defined");
     } else {
-        const bool xf16_avx2_vnni_2 = (this->is_bf16() || this->is_f16())
-                && bgmmc.isa == avx2_vnni_2;
-        const bool is_int8_avx512_core
-                = this->is_int8() && is_superset(bgmmc.isa, avx512_core);
-        const bool is_adbc_allowed
-                = (this->is_bf16() || this->is_f32() || this->is_bf32()
-                          || this->is_f16() || this->is_f32_f16()
-                          || this->is_f32_bf16() || this->is_bf16_with_int_wei()
-                          || this->is_f16_with_int_wei() || this->is_tf32())
-                && !xf16_avx2_vnni_2;
-        bgmmc.src_tag = is_adbc_allowed
-                ? memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag,
-                        transposed_tensor_layout_tag, acbd, adbc)
-                : is_int8_avx512_core
-                ? memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag,
-                        transposed_tensor_layout_tag, acbd)
-                : memory_desc_matches_one_of_tag(
-                        A_md, plain_tensor_layout_tag, acbd);
-        if (bgmmc.src_tag == format_tag::undef
-                || (memory_desc_matches_tag(A_md, transposed_tensor_layout_tag)
-                        && memory_desc_matches_tag(
-                                A_md, plain_tensor_layout_tag)
-                        && IMPLICATION(
-                                !is_adbc_allowed, is_int8_avx512_core))) {
-            if (gemm_based::check_gemm_input_format(A_md)) {
-                // Note: Here we batch layout may not be accurately represented
-                // by the wei_tag string, due to all the permutations of the
-                // batch. Only the gemm dimensions "m, k" are accurately
-                // represented in the string representing transposed or not.
-                bgmmc.src_tag = helper.transA() == 'N'
-                        ? plain_tensor_layout_tag
-                        : transposed_tensor_layout_tag;
+        if (bgmmc.is_gemv) {
+            bgmmc.src_tag = get_gemv_A_tag(A_md);
+            assert(bgmmc.src_tag != format_tag::undef
+                    && "if bgmmc.is_gemv is true the format tag must be defined");
+        } else {
+            const bool xf16_avx2_vnni_2 = (this->is_bf16() || this->is_f16())
+                    && bgmmc.isa == avx2_vnni_2;
+            const bool is_int8_avx512_core
+                    = this->is_int8() && is_superset(bgmmc.isa, avx512_core);
+            const bool is_adbc_allowed
+                    = (this->is_bf16() || this->is_f32() || this->is_bf32()
+                              || this->is_f16() || this->is_f32_f16()
+                              || this->is_f32_bf16()
+                              || this->is_bf16_with_int_wei()
+                              || this->is_f16_with_int_wei() || this->is_tf32())
+                    && !xf16_avx2_vnni_2;
+            bgmmc.src_tag = is_adbc_allowed ? memory_desc_matches_one_of_tag(
+                                    A_md, plain_tensor_layout_tag,
+                                    transposed_tensor_layout_tag, acbd, adbc)
+                    : is_int8_avx512_core
+                    ? memory_desc_matches_one_of_tag(A_md,
+                            plain_tensor_layout_tag,
+                            transposed_tensor_layout_tag, acbd)
+                    : memory_desc_matches_one_of_tag(
+                            A_md, plain_tensor_layout_tag, acbd);
+            if (bgmmc.src_tag == format_tag::undef
+                    || (memory_desc_matches_tag(
+                                A_md, transposed_tensor_layout_tag)
+                            && memory_desc_matches_tag(
+                                    A_md, plain_tensor_layout_tag)
+                            && IMPLICATION(
+                                    !is_adbc_allowed, is_int8_avx512_core))) {
+                if (gemm_based::check_gemm_input_format(A_md)) {
+                    // Note: Here we batch layout may not be accurately represented
+                    // by the wei_tag string, due to all the permutations of the
+                    // batch. Only the gemm dimensions "m, k" are accurately
+                    // represented in the string representing transposed or not.
+                    bgmmc.src_tag = helper.transA() == 'N'
+                            ? plain_tensor_layout_tag
+                            : transposed_tensor_layout_tag;
+                }
+                if (!IMPLICATION(bgmmc.src_tag == transposed_tensor_layout_tag,
+                            is_adbc_allowed || is_int8_avx512_core
+                                    || bgmmc.is_gemv))
+                    bgmmc.src_tag = format_tag::undef;
             }
-            if (!IMPLICATION(bgmmc.src_tag == transposed_tensor_layout_tag,
-                        is_adbc_allowed || is_int8_avx512_core))
-                bgmmc.src_tag = format_tag::undef;
         }
     }
 
@@ -1271,20 +1372,23 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const auto &src_scales = attr.scales_.get(DNNL_ARG_SRC);
     const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
-    const bool has_wei_scales = !wei_scales.has_default_values();
-    bgmmc.with_scales = !src_scales.has_default_values() || has_wei_scales;
-    if (has_wei_scales) {
+    bgmmc.with_src_scales = !src_scales.has_default_values();
+    bgmmc.with_wei_scales = !wei_scales.has_default_values();
+    if (bgmmc.with_wei_scales) {
         const auto wei_qmask_N = 1 << (bgmmc.ndims - 1);
         const auto wei_qmask_K = 1 << (bgmmc.ndims - 2);
-        bgmmc.is_oscale_per_k = wei_scales.get_mask() & wei_qmask_K;
-        bgmmc.is_oscale_per_n = wei_scales.get_mask() & wei_qmask_N;
-        bgmmc.apply_scales_in_buffer_b = bgmmc.is_oscale_per_k
+        bgmmc.is_wei_scale_per_k = wei_scales.get_mask() & wei_qmask_K;
+        bgmmc.is_wei_scale_per_n = wei_scales.get_mask() & wei_qmask_N;
+        bgmmc.apply_scales_in_buffer_b = bgmmc.is_wei_scale_per_k
                 && bgmmc.with_wei_decompression && bgmmc.N * bgmmc.K != 1;
+        bgmmc.wei_scales_dt = wei_scales.get_data_type();
+        bgmmc.wei_scales_dt_sz = types::data_type_size(bgmmc.wei_scales_dt);
+        bgmmc.wei_scales_k_group_size = wei_scales.get_group(0);
 
         // only common and per-oc-channel scales are supported
         // only per-ic-channel scales is supprted with weight decompression
-        VCONDCHECK_BG(wei_scales.get_mask() == 0 || bgmmc.is_oscale_per_n
-                        || IMPLICATION(bgmmc.is_oscale_per_k,
+        VCONDCHECK_BG(wei_scales.get_mask() == 0 || bgmmc.is_wei_scale_per_n
+                        || IMPLICATION(bgmmc.is_wei_scale_per_k,
                                 bgmmc.with_wei_decompression),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
@@ -1324,6 +1428,34 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_M = is_runtime_value(bgmmc.M);
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
+
+    bgmmc.is_gemv
+            = is_gemv_applicable(bgmmc, bm_conf_utils, src_md, weights_md);
+
+    if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.isa == avx2) {
+        // AVX2 implementation has a dedicated GEMV code path optimized
+        // for the N=1 case, which is the only scenario guaranteed to
+        // perform on par or better than the GEMM implementation.
+        // For all other cases, we prefer to fall back to GEMM implementation,
+        // as it typically offers better performance as of now.
+        // However, we must ensure that GEMM can handle the data formats.
+        // If it cannot (e.g., the weights format is blocked), we use
+        // this implementation to avoid falling back to the reference one.
+
+        // IMPORTANT: Perform this check before calling functions that
+        // modify the memory descriptors.
+        const bool is_gemm_compatible
+                = IMPLICATION(src_d.format_kind() != format_kind::any,
+                          gemm_based::check_gemm_input_format(src_md))
+                && IMPLICATION(weights_d.format_kind() != format_kind::any,
+                        gemm_based::check_gemm_input_format(weights_md))
+                && IMPLICATION(dst_d.format_kind() != format_kind::any,
+                        gemm_based::check_gemm_output_format(dst_md));
+
+        VCONDCHECK_BG(!is_gemm_compatible,
+                "Fall back to GEMM implementation for cases not supported by "
+                "GEMV code path.");
+    }
 
     VCHECK_BG(bm_conf_utils.set_or_check_tags(src_md, dst_md, bias_md, helper),
             VERBOSE_UNSUPPORTED_TAG);
@@ -1379,7 +1511,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             || bgmmc.wei_tag == adbc;
     bgmmc.use_buffer_b = bm_conf_utils.use_buffer_b();
     bgmmc.req_transpose_scales = bgmmc.apply_scales_in_buffer_b
-            && bgmmc.is_oscale_per_k && bgmmc.is_oscale_per_n
+            && bgmmc.is_wei_scale_per_k && bgmmc.is_wei_scale_per_n
             && bgmmc.transposed_B;
 
     if ((bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16())
@@ -1478,14 +1610,15 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 VERBOSE_UNSUPPORTED_MEM_STRIDE);
     }
 
-    const bool is_copy_a_required
-            = (bgmmc.is_amx
-                      && (bm_conf_utils.is_bf32() || bm_conf_utils.is_tf32()))
-            || ((bm_conf_utils.is_f16() || bm_conf_utils.is_f16_with_int_wei())
-                    && isa == avx512_core_fp16)
-            || (bgmmc.wei_zp_type != brgemm_broadcast_t::none
-                    && !bm_conf_utils.with_weights_decompression())
-            || bgmmc.transposed_A;
+    const bool is_copy_a_required = !bgmmc.is_gemv
+            && ((bgmmc.is_amx
+                        && (bm_conf_utils.is_bf32() || bm_conf_utils.is_tf32()))
+                    || ((bm_conf_utils.is_f16()
+                                || bm_conf_utils.is_f16_with_int_wei())
+                            && isa == avx512_core_fp16)
+                    || (bgmmc.wei_zp_type != brgemm_broadcast_t::none
+                            && !bm_conf_utils.with_weights_decompression())
+                    || bgmmc.transposed_A);
 
     bgmmc.use_buffer_a = is_copy_a_required;
 
@@ -1541,12 +1674,21 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
             VERBOSE_BLOCKING_FAIL, "");
 
-    if (bgmmc.wei_n_blk > bgmmc.N_blk
-            && IMPLICATION(
-                    bgmmc.N == bgmmc.N_blk, bgmmc.N >= bgmmc.wei_n_blk)) {
+    if (bgmmc.wei_n_blk > bgmmc.N_blk && bgmmc.N != bgmmc.N_blk) {
         assert(!bgmmc.is_runtime_N
                 && "N_blk should not be adjusted for runtime N");
-        bgmmc.wei_n_blk = bgmmc.N_blk;
+        if (bgmmc.use_buffer_b) {
+            // Copy kernels require the B buffer to be aligned.
+            // ZMM registers are used without masking;
+            // Two YMMs are used in the AVX2 case with the same granularity.
+            size_t n_elements_in_wei_zmm = platform::get_cache_line_size()
+                    / (data_type_vnni_granularity(bgmmc.wei_dt)
+                            * bgmmc.tr_b_dt_sz);
+            bgmmc.wei_n_blk = rnd_up(bgmmc.N_blk, n_elements_in_wei_zmm);
+        } else {
+            bgmmc.wei_n_blk = bgmmc.N_blk;
+        }
+
         VCHECK_BG(bm_conf_utils.update_and_check_B_tag(
                           weights_md, bgmmc.wei_n_blk, helper),
                 VERBOSE_UNSUPPORTED_TAG);
@@ -1555,14 +1697,23 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 = bm_conf_utils.wei_down_convert_to_vnni();
     }
 
+    // This setting must be updated post blocking as it has a dependency on
+    // `bgmmc.K_blk`. See `gK_and_K_blk_are_divisible` comment.
+    if (bgmmc.is_wei_scale_per_k) {
+        const auto gK = bgmmc.wei_scales_k_group_size;
+        bgmmc.gK_and_K_blk_are_divisible = gK > 1
+                && ((bgmmc.K_blk % gK == 0) || (gK % bgmmc.K_blk == 0));
+    }
+
     VCHECK_BG(bm_conf_utils.set_B_flags(weights_md), VERBOSE_BLOCKING_FAIL, "");
 
     bgmmc.M_tail = bgmmc.is_runtime_M ? 0 : bgmmc.M % bgmmc.M_blk;
     bgmmc.N_tail = bgmmc.is_runtime_N ? 0 : bgmmc.N % bgmmc.N_blk;
     bgmmc.K_tail = bgmmc.K > bgmmc.K_blk
-            ? (bgmmc.extendable_k ? bgmmc.K % bgmmc.K_blk
-                                  : rnd_up(bgmmc.K % bgmmc.K_blk,
-                                          bgmmc.required_k_granularity))
+            ? ((bgmmc.extendable_k || bgmmc.use_fused_copy_a)
+                            ? bgmmc.K % bgmmc.K_blk
+                            : rnd_up(bgmmc.K % bgmmc.K_blk,
+                                    bgmmc.required_k_granularity))
             : 0;
 
     bgmmc.LDB = bm_conf_utils.get_actual_LDB();
@@ -1589,7 +1740,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
 
-    if (bm_conf_utils.is_f32()) {
+    if (!bgmmc.is_gemv && bm_conf_utils.is_f32()
+            && is_superset(bgmmc.isa, avx512_core)) {
         // Dispatch the shapes with small K to gemm for better performance
         // The heuristic values are empirical
         const bool small_K = bgmmc.N <= 14528
@@ -1654,6 +1806,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         const dim_t buffer_a_chunk_sz_limit = 126;
         is_small_shapes = is_small_shapes
                 && bgmmc.buffer_a_gb_stride <= buffer_a_chunk_sz_limit;
+    } else if (bm_conf_utils.is_f8() || bm_conf_utils.is_bf8()) {
+        is_small_shapes = false;
     } else {
         is_small_shapes = is_small_shapes && bgmmc.ndims < 3
                 && ((bgmmc.M == 1 && bgmmc.K == 256)
@@ -1664,6 +1818,15 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // case therefore there is no fallback for it.
     is_small_shapes = is_small_shapes && !bgmmc.packed_sparse_weights;
     VCONDCHECK_BG(!is_small_shapes, VERBOSE_SMALL_SHAPES);
+
+    if (bgmmc.use_buffer_b) {
+        // If B is copied to a temporary buffer then the layout of B is
+        //      [n = n_blk / LDB][k = k_blk / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
+        bgmmc.LDB2 = rnd_up(bgmmc.K_blk, bgmmc.wei_k_blk) * bgmmc.LDB;
+    } else {
+        //      [n = N / LDB][k = K / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
+        bgmmc.LDB2 = rnd_up(bgmmc.K, bgmmc.wei_k_blk) * bgmmc.LDB;
+    }
 
     return status::success;
 }
@@ -1794,7 +1957,10 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
                 * (bgmmc.nthr_k > 1 ? bgmmc.M : bgmmc.M_blk);
     }
 
-    if (bgmmc.nthr_k > 1) {
+    if (!bgmmc.use_buffer_c) {
+        // No need for C buffer
+        bgmmc.buffer_c_per_thread_sz = 0;
+    } else if (bgmmc.nthr_k > 1) {
         // c size == M * N (for reduction)
         bgmmc.buffer_c_per_thread_sz = bgmmc.buffer_c_chunk_sz;
 
@@ -1819,10 +1985,29 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.buffer_a_per_thread_sz = bgmmc.buffer_a_m_stride * bgmmc.M_chunk_size;
 
-    bgmmc.buffer_b_gb_stride
-            = bgmmc.tr_b_dt_sz * bgmmc.LDB * bgmmc.K_blk * bgmmc.wei_k_blk;
+    // Layout of a single GB in packed format:
+    //     [n = n_blk / LDB][k = k_blk / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
+
+    // For n = 0 and K aligned to vnni granularity, the starting position is:
+    //     [K / vnni][n = 0][k_vnni = 0]
+    // Each copy kernel processes wei_scales_gK * n elements.
+    // The kernel accounts for LDB2 and writes data in a strided manner.
+
+    // The following value is multiplied by K to compute the starting offset:
+    bgmmc.buffer_b_k_stride = bgmmc.tr_b_dt_sz * bgmmc.LDB;
+
+    // The total usable data in one GB is:
+    //     n_blk * k_blk, though both values require rounding.
+    bgmmc.buffer_b_gb_stride = bgmmc.tr_b_dt_sz * rnd_up(bgmmc.N_blk, bgmmc.LDB)
+            * rnd_up(bgmmc.K_blk, bgmmc.wei_k_blk);
+
+    // Each BRGEMM operation consumes k_blk * n_blk * brgemm_batch_size elements from B.
     bgmmc.buffer_b_k_brg_stride
             = bgmmc.buffer_b_gb_stride * bgmmc.brgemm_batch_size;
+
+    // A full K chunk of B is stored in a temporary buffer for reuse.
+    // Often, the size k_blk * n_blk * brgemm_batch_size * K_chunk_size ≈ L2 cache size,
+    // enabling reuse across the M dimension.
     bgmmc.buffer_b_per_thread_sz
             = bgmmc.buffer_b_k_brg_stride * bgmmc.K_chunk_size;
 
@@ -1921,7 +2106,8 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     bgmmc.has_zero_point_b = bgmmc.wei_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_c = bgmmc.dst_zp_type != brgemm_broadcast_t::none;
     bgmmc.post_ops_applicable = one_of(true, bgmmc.with_sum, bgmmc.with_bias,
-            bgmmc.with_scales && !bgmmc.apply_scales_in_buffer_b,
+            (bgmmc.with_src_scales || bgmmc.with_wei_scales)
+                    && !bgmmc.apply_scales_in_buffer_b,
             bgmmc.with_eltwise, bgmmc.with_binary, bgmmc.acc_dt != bgmmc.dst_dt,
             bgmmc.s8s8_compensation_required, bgmmc.has_zero_point_a,
             bgmmc.has_zero_point_b && !bgmmc.with_wei_decompression,
@@ -1996,6 +2182,12 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         scratchpad.book(key_brgemm_primitive_buffer_d,
                 bgmmc.M_blk * bgmmc.N_blk * bgmmc.c_dt_sz * bgmmc.nthr,
                 default_data_align);
+    if (bgmmc.with_dst_scales) {
+        // See brgemm_types.hpp comment for `with_dst_scales`.
+        scratchpad.book(key_matmul_dst_scales,
+                static_cast<size_t>(bgmmc.nthr) * sizeof(float),
+                default_data_align);
+    }
 }
 
 } // namespace matmul

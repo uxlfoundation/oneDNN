@@ -20,13 +20,11 @@
 #include <string>
 #include <vector>
 
-#include "common/eltwise_pd.hpp"
 #include "gpu/intel/jit/ir/eltwise.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -85,9 +83,9 @@ public:
         , common_dst_zero_point(0) {
         if (pd) {
             auto &zp = pd->attr()->zero_points_;
-            src_zp_type = zp.get_data_type(DNNL_ARG_SRC);
-            wei_zp_type = zp.get_data_type(DNNL_ARG_WEIGHTS);
-            dst_zp_type = zp.get_data_type(DNNL_ARG_DST);
+            src_zp_type = to_ir(zp.get_data_type(DNNL_ARG_SRC));
+            wei_zp_type = to_ir(zp.get_data_type(DNNL_ARG_WEIGHTS));
+            dst_zp_type = to_ir(zp.get_data_type(DNNL_ARG_DST));
         }
     }
 
@@ -249,12 +247,12 @@ public:
                 bound_check_mask |= (1 << i);
             }
         }
-        return view_t(layout_t(type, 0, rhs_dims, /*do_normalize=*/false),
+        return view_t(layout_t(type, rhs_dims, 0, /*do_normalize=*/false),
                 cp_view_.vvars(), bound_check_mask);
     }
 
     virtual view_t create_view(const memory_desc_t &md) const {
-        return cp_view().retype(md.data_type);
+        return cp_view().retype(to_ir(md.data_type));
     }
 
     virtual view_t create_src_zp_view(uint32_t mask) const {
@@ -263,7 +261,7 @@ public:
 
     virtual view_t try_create_bias_view(uint32_t mask) const { return {}; }
 
-    virtual bool is_spurious_spatial(dim_idx_t dim_idx) const { return false; };
+    virtual bool is_spurious_spatial(const pvar_t &dim) const { return false; };
     virtual bool need_to_restore_zero_padding() const { return false; }
     virtual bool use_dst_in_sum_post_op() const { return true; }
     virtual bool can_use_scales() const { return true; }
@@ -403,7 +401,7 @@ private:
         gpu_assert(cp_ndims() == view.nvdims());
         uint32_t mask = 0;
         for (dim_idx_t i = 0; i < cp_ndims(); i++) {
-            if (view.vdims()[i] != 1) mask |= (1 << i);
+            if (view.vdims().get(i) != 1) mask |= (1 << i);
         }
         return mask;
     }

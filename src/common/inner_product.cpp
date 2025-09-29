@@ -44,6 +44,9 @@ status_t ip_desc_init(inner_product_desc_t *ip_desc, prop_kind_t prop_kind,
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc) {
     VCHECK_IP(!any_null(ip_desc, src_desc, weights_desc, dst_desc),
             VERBOSE_NULL_ARG);
+    VCHECK_IP(!any_memory_desc_host_scalar(
+                      src_desc, weights_desc, bias_desc, dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     auto id = inner_product_desc_t();
     id.primitive_kind = primitive_kind::inner_product;
@@ -65,8 +68,7 @@ status_t ip_desc_init(inner_product_desc_t *ip_desc, prop_kind_t prop_kind,
     if (with_bias)
         runtime_dims_or_strides = runtime_dims_or_strides
                 || memory_desc_wrapper(bias_desc).has_runtime_dims_or_strides();
-    VCONDCHECK(primitive, create, check, ip, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_IP_UNIMPL(!runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     (prop_kind == backward_data ? id.diff_src_desc : id.src_desc) = *src_desc;
     (is_fwd ? id.dst_desc : id.diff_dst_desc) = *dst_desc;
@@ -87,7 +89,8 @@ status_t ip_desc_init(inner_product_desc_t *ip_desc, prop_kind_t prop_kind,
             src_desc->ndims);
     VCHECK_IP(dst_desc->ndims == 2, VERBOSE_BAD_NDIMS, "dst", dst_desc->ndims);
     VCHECK_IP(weights_desc->ndims == src_desc->ndims,
-            VERBOSE_INCONSISTENT_NDIMS, "weights", "src");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "weights", "src",
+            weights_desc->ndims, src_desc->ndims);
     VCHECK_IP((with_bias ? bias_desc->ndims == 1 : true), VERBOSE_BAD_NDIMS,
             "bias", bias_desc->ndims);
     VCHECK_IP((with_bias ? bias_desc->dims[0] == dst_desc->dims[1] : true),
@@ -142,6 +145,12 @@ status_t ip_attr_check(const inner_product_desc_t &desc, const engine_t *engine,
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
             VCHECK_IP_UNIMPL(IMPLICATION(!sc.has_default_values(DNNL_ARG_DST),
                                      sc.get_mask(DNNL_ARG_DST) == 0),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_IP_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                     !sc.has_host_scalars()),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 

@@ -23,8 +23,6 @@ set -o errexit -o pipefail -o noclobber
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 
-export CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-"Release"}
-
 # Defines MP, CC, CXX and OS.
 source ${SCRIPT_DIR}/common.sh
 

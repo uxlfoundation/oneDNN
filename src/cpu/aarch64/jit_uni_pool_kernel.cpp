@@ -389,7 +389,7 @@ bool jit_uni_pool_kernel<isa>::post_ops_ok(jit_pool_conf_t &jpp,
                         = eltwise_injector::is_supported(to_vla_sve(isa), alg);
             } else if (entry.is_binary()) {
                 if (entry.binary.src1_desc.data_type == data_type::bf16
-                        && entry.binary.src1_desc.data_type == data_type::f16)
+                        || entry.binary.src1_desc.data_type == data_type::f16)
                     return false;
 
                 jpp.with_binary = true;

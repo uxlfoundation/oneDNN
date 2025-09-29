@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2022 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,13 +35,17 @@
 
 #include "cpu/aarch64/jit_uni_batch_normalization.hpp"
 
-#define IDX(a) static_cast<uint32_t>(a.getIdx())
+#define IDX(a) static_cast<uint32_t>((a).getIdx())
 #define LDR_ASSERT(r, addr, offt) \
-    assert(offt < 256); \
-    ldr(r, ptr(addr, (int)offt));
+    do { \
+        assert((offt) < 256); \
+        ldr(r, ptr(addr, (int)(offt))); \
+    } while (0)
 #define STR_ASSERT(r, addr, offt) \
-    assert(offt < 256); \
-    str(r, ptr(addr, (int)offt));
+    do { \
+        assert((offt) < 256); \
+        str(r, ptr(addr, (int)(offt))); \
+    } while (0)
 
 namespace dnnl {
 namespace impl {
@@ -356,8 +361,8 @@ struct jit_bnorm_t : public jit_generator {
     }
 #define STR_PARAM(r, offt) \
     { \
-        assert(offt <= 256); \
-        str(r, ptr(X_DEFAULT_ADDR, (int32_t)offt)); \
+        assert((offt) <= 256); \
+        str(r, ptr(X_DEFAULT_ADDR, (int32_t)(offt))); \
     }
 
         LDR_PARAM(reg_rbuf1, rbuf1);
@@ -2000,8 +2005,10 @@ struct jit_bnorm_t : public jit_generator {
         }
         if (jbp_->is_nspc_) {
             // comeback
-            if (!pd_->use_global_stats())
+            if (!pd_->use_global_stats()) {
                 LDR_ASSERT(reg_src, sp, (int)stack_off_src);
+            }
+
             LDR_ASSERT(reg_diff_dst, sp, (int)stack_off_diff_dst);
             LDR_ASSERT(reg_diff_src, sp, (int)stack_off_diff_src);
             if (with_relu) { LDR_ASSERT(reg_ws, sp, (int)stack_off_ws); }
@@ -2031,10 +2038,11 @@ struct jit_bnorm_t : public jit_generator {
         preamble();
 
         size_t simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
-        if (simd_w_ != cpu_sveLen / sizeof(float))
-            set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
-
-        if (isa == sve_256 || isa == sve_512) { prepare_tail_mask(); }
+        if (isa == sve_256 || isa == sve_512) {
+            if (simd_w_ != cpu_sveLen / sizeof(float))
+                set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
+            prepare_tail_mask();
+        }
 
         compute_static_strides();
 
@@ -2055,7 +2063,7 @@ struct jit_bnorm_t : public jit_generator {
 
     void operator()(const call_params_t *p) { jit_generator::operator()(p); }
 
-    ~jit_bnorm_t() override {}
+    ~jit_bnorm_t() override = default;
 };
 
 namespace bnorm_impl {
@@ -2296,17 +2304,19 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::pd_t::init(engine_t *engine) {
     if (fuse_norm_add_relu()) return status::unimplemented;
 
     const memory_desc_wrapper src_d(src_md());
-    if (isa == sve_512) {
+    if (is_superset(isa, sve_512)) {
         if (!src_d.matches_one_of_tag(
                     nCw16c, nChw16c, nCdhw16c, nc, nwc, nhwc, ndhwc))
             return status::unimplemented;
-    } else if (isa == sve_256) {
+    } else if (is_superset(isa, sve_256)) {
         if (!src_d.matches_one_of_tag(
                     nCw8c, nChw8c, nCdhw8c, nc, nwc, nhwc, ndhwc))
             return status::unimplemented;
-    } else {
+    } else if (isa == asimd) {
         if (!src_d.matches_one_of_tag(nCw8c, nChw8c, nCdhw8c))
             return status::unimplemented;
+    } else {
+        return status::unimplemented;
     }
 
     if (is_fwd() ? with_relu_post_op(is_training()) || fuse_norm_relu()

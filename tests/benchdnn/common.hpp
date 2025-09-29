@@ -144,6 +144,8 @@ struct stat_t {
     std::unordered_map<std::string, double[timer::timer_t::mode_t::n_modes]> ms;
     // Key is the number of the test, value is the repro string.
     std::map<int, std::string> failed_cases;
+    // Key is an impl_name, value is the number of cases.
+    std::map<std::string, size_t> impl_names;
 };
 extern stat_t benchdnn_stat;
 
@@ -163,10 +165,6 @@ void parse_result(res_t &res, const char *pstr);
 
 /* misc */
 void init_fp_mode();
-
-void *zmalloc(size_t size, size_t align);
-void zfree(void *ptr);
-void set_zmalloc_max_expected_size(size_t size);
 
 bool str2bool(const char *str);
 const char *bool2str(bool value);
@@ -211,14 +209,6 @@ void print_dhw(bool &print_d, bool &print_h, bool &print_w, int ndims,
 
 int benchdnn_getenv_int(const char *name, int default_value);
 std::string benchdnn_getenv_string(const char *name);
-
-// Responsible for printing service information.
-struct summary_t {
-    // Prints up to 10 failed cases reproducers at the end of the run.
-    bool failed_cases = true;
-};
-
-extern summary_t summary;
 
 std::string smart_bytes(double bytes);
 #endif

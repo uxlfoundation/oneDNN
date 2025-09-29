@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Arm Ltd. and affiliates
+* Copyright 2023, 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ class BenchmarkScheduler final : public arm_compute::IScheduler {
 public:
     BenchmarkScheduler(IScheduler &real_scheduler);
 
-    ~BenchmarkScheduler();
+    ~BenchmarkScheduler() override;
 
     void set_num_threads(unsigned int num_threads) override;
     unsigned int num_threads() const override;

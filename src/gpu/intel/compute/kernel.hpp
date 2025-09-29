@@ -187,15 +187,19 @@ public:
     virtual status_t check_alignment(
             const kernel_arg_list_t &arg_list) const = 0;
 
-    status_t check_alignment(const void *ptr) const {
+    status_t check_alignment(const void *ptr, int arg_idx) const {
         const int min_alignment = 64;
         auto addr = reinterpret_cast<uint64_t>(ptr);
         if (addr % min_alignment == 0) return status::success;
         // Reference kernels support element-wise alignment.
         if (name().find("ref_") == 0) return status::success;
-        // Report an error otherwise.
-        VERROR(common, runtime, "found misaligned buffer: %p", ptr);
-        return status::runtime_error;
+        // Report a warning otherwise.
+        // XXX: This may cause incorrect results but keeping as a warning for
+        // now to preserve the old behavior.
+        VWARN(common, runtime,
+                "found misaligned buffer: %p for kernel %s at index %d", ptr,
+                name().c_str(), arg_idx);
+        return status::success;
     }
 };
 
@@ -257,6 +261,7 @@ public:
     // kernel. In particular, it may come from the blob, or it could be
     // properly generated.
     void hash_dump(const char *tag = nullptr) const {
+        if (!*this) return;
         if (get_verbose_dev_mode(verbose_t::debuginfo) >= 6) {
             printf("kernel creation [%s] %s -> %zu\n", tag ? tag : "unlabeled",
                     name().c_str(), get_hash());

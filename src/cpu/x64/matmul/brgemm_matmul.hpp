@@ -27,7 +27,6 @@
 #include "cpu/x64/brgemm/brgemm_containers.hpp"
 #include "cpu/x64/brgemm/brgemm_utils.hpp"
 #include "cpu/x64/cpu_reducer.hpp"
-#include "cpu/x64/jit_avx512_core_scale_precompute.hpp"
 #include "cpu/x64/jit_avx512_sparse_decompress_kernel.hpp"
 #include "cpu/x64/jit_brgemm_post_ops.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_copy_utils.hpp"
@@ -47,7 +46,8 @@ constexpr int max_num_dynamic_n_tails
         = sizeof(dynamic_n_tails) / sizeof(dynamic_n_tails[0]);
 constexpr int max_num_brg_kernels_matmul = 2 * 2 * 2
         * (max_num_dynamic_n_tails + 1 /* main kernel size */)
-        * (max_num_dynamic_m_tails + 1 /* main kernel size */);
+        * (max_num_dynamic_m_tails + 1 /* main kernel size */)
+        * 2; //prefetching on/off
 
 template <cpu_isa_t isa>
 struct brgemm_matmul_t : public primitive_t {
@@ -59,15 +59,14 @@ struct brgemm_matmul_t : public primitive_t {
 
         status_t init(engine_t *engine);
         int get_brg_kernel_idx(bool is_bs_tail, bool do_initialization,
-                int m_ker_idx, int n_ker_idx, bool is_K_tail) const;
+                int m_ker_idx, int n_ker_idx, bool is_K_tail,
+                bool is_prefetching) const;
         const brgemm_desc_t &get_brg_desc(int idx) const {
             return brg_descs_[idx];
         }
         const brgemm_matmul_conf_t &get_brgemm_matmul_conf() const {
             return bgmmc_;
         }
-
-        void maybe_set_LDB2();
 
     private:
         brgemm_desc_t brg_descs_[max_num_brg_kernels_matmul];
@@ -91,7 +90,12 @@ private:
     void compute_kernel(const brg_matmul_exec_ctx_t &brgmm_ctx,
             const char *A_data_batch_ptr, const char *B_data_batch_ptr,
             int ithr, int b_idx, int m_blk_idx, int n_blk_idx, int k_blk_idx,
-            bool do_init, int &prev_ker_idx) const;
+            bool do_init, int &prev_ker_idx, bool prefetch) const;
+
+    bool determine_prefetch(const int mc, const int m_end, const int nc,
+            const int n_end, const brgemm_matmul_conf_t &bgmmc,
+            brg_matmul_exec_ctx_t &brgmm_ctx) const;
+
     void copy_a_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
             const char *A_data_batch_ptr, int ithr, int m_blk_idx,
             int k_blk_idx) const;
@@ -118,7 +122,6 @@ private:
     std::unique_ptr<cpu_accumulator_1d_t<data_type::s32>> acc_ker_s32_;
     std::unique_ptr<jit_avx512_sparse_decompress_kernel_t>
             sparse_decompress_kernel_;
-    std::unique_ptr<jit_avx512_core_scale_precompute_t> jit_scale_precompute_;
 
     using reducer_t = x64::jit_brgemm_kernel_diff_bias_t<
             typename cpu_isa_traits_t<isa>::Vmm>;

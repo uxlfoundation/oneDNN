@@ -22,10 +22,10 @@
 #include "gpu/intel/jit/binary_format.hpp"
 
 #include "common/utils.hpp"
-#include "gpu/intel/compute/compute_engine.hpp"
-#include "gpu/intel/compute/compute_stream.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/engine.hpp"
 #include "gpu/intel/jit/generator.hpp"
+#include "gpu/intel/stream.hpp"
 
 #define MAGIC0 0xBEEFCAFEu
 #define MAGIC1 0x3141592653589793ull
@@ -53,7 +53,7 @@ class binary_format_kernel_t : public generator_t<hw> {
 
 public:
     binary_format_kernel_t()
-        : generator_t<hw>({GENERATOR_NAME, GENERATOR_LINE}) {
+        : generator_t<hw>(debug_config_t {GENERATOR_NAME, GENERATOR_LINE}) {
 
         auto low_half = [](uint64_t q) -> uint32_t { return q & 0xFFFFFFFF; };
         auto high_half = [](uint64_t q) -> uint32_t { return q >> 32; };
@@ -156,7 +156,7 @@ public:
     }
 
     static compute::kernel_t make_kernel(
-            compute::compute_engine_t *engine, bool *skip_check) {
+            intel::engine_t *engine, bool *skip_check) {
         compute::kernel_t kernel;
 
         *skip_check = false;
@@ -221,7 +221,7 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
     }
 #endif
 
-    auto gpu_engine = utils::downcast<compute::compute_engine_t *>(engine);
+    auto gpu_engine = utils::downcast<intel::engine_t *>(engine);
 
     if (!gpu_engine) {
         VERROR(common, runtime, "bad engine kind, expected a gpu engine");
@@ -232,7 +232,7 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
     auto status = gpu_engine->get_service_stream(stream_generic);
     if (status != status::success) return status::runtime_error;
 
-    auto stream = utils::downcast<compute::compute_stream_t *>(stream_generic);
+    auto stream = utils::downcast<intel::stream_t *>(stream_generic);
     if (!stream) return status::invalid_arguments;
 
     bool skip_check = false;
@@ -314,7 +314,7 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
 
     auto nd_range = compute::nd_range_t(gws, lws);
 
-    auto compute_stream = utils::downcast<compute::compute_stream_t *>(stream);
+    auto compute_stream = utils::downcast<intel::stream_t *>(stream);
     status = kernel.parallel_for(*stream, nd_range, arg_list,
             compute_stream->ctx().get_deps(), compute_stream->ctx().get_deps());
 

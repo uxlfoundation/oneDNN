@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2018-2022 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -42,11 +43,11 @@ namespace aarch64 {
 
 using namespace Xbyak_aarch64;
 
-typedef enum {
+enum ker_block_t {
     no_last_block = 0x1U,
     last_ic_block = 0x2U,
     last_sp_block = 0x4U,
-} ker_block_t;
+};
 
 struct ur_w_blks_params_t {
     struct single_ur_w_blk_params_t {
@@ -79,7 +80,7 @@ struct jit_sve_512_core_x8s8s32x_deconv_fwd_kernel : public jit_generator {
 
     jit_sve_512_core_x8s8s32x_deconv_fwd_kernel(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
-    ~jit_sve_512_core_x8s8s32x_deconv_fwd_kernel();
+    ~jit_sve_512_core_x8s8s32x_deconv_fwd_kernel() override;
 
     const jit_conv_conf_t &jcp;
     const primitive_attr_t &attr_;

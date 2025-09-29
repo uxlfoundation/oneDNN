@@ -205,6 +205,4 @@ primitive:
 
 ## Examples
 
-[Group Normalization Primitive Example](@ref group_normalization_example_cpp)
-
-@copydetails group_normalization_example_cpp_short
+* @ref group_normalization_example_cpp

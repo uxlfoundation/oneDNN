@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2021 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -169,7 +170,7 @@ struct reducer_2d_driver_t;
  */
 template <impl::data_type_t data_type, cpu_isa_t isa = sve_512>
 struct cpu_reducer_t {
-    typedef typename prec_traits_t<data_type>::type data_t;
+    using data_t = typename prec_traits_t<data_type>::type;
 
     struct conf_t {
         conf_t() = default;
@@ -249,7 +250,7 @@ private:
 
 template <impl::data_type_t data_type, cpu_isa_t isa = sve_512>
 struct cpu_reducer_2d_t {
-    typedef typename prec_traits_t<data_type>::type data_t;
+    using data_t = typename prec_traits_t<data_type>::type;
 
     struct conf_t {
         conf_t() = default;
@@ -334,7 +335,7 @@ private:
 /** simple 1d accumulator: y[:] += x[:] */
 template <impl::data_type_t data_type, cpu_isa_t isa = sve_512>
 struct cpu_accumulator_1d_t {
-    typedef typename prec_traits_t<data_type>::type data_t;
+    using data_t = typename prec_traits_t<data_type>::type;
 
     cpu_accumulator_1d_t();
     ~cpu_accumulator_1d_t();

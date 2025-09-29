@@ -55,6 +55,12 @@ status_t binary_attr_check(const binary_desc_t &desc, const engine_t *engine,
 
     // Check scales
     if (!attr->scales_.has_default_values()) {
+        // By default, host scalar scales are not supported for GPU
+        // as the value should be accessed differently in the kernel
+        VCHECK_BINARY_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                     !attr->scales_.has_host_scalars()),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
+
         static const std::vector<int> supported_args {
                 DNNL_ARG_SRC_0, DNNL_ARG_SRC_1};
         VCHECK_BINARY_UNIMPL(attr->scales_.has_default_values(supported_args),
@@ -92,34 +98,39 @@ status_t binary_md_check(const engine_t *engine, alg_kind_t alg_kind,
     VCHECK_BINARY(IMPLICATION(alg_kind == binary_select, src2_md != nullptr),
             VERBOSE_NULL_ARG);
 
+    VCHECK_BINARY(
+            !any_memory_desc_host_scalar(src0_md, src1_md, src2_md, dst_md),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
     // TODO - Add support for mutual or bi-directional broadcasts
     VCHECK_BINARY(!memory_desc_wrapper(src0_md).format_any(),
             VERBOSE_UNSUPPORTED_TAG_S, "src0");
 
-    VCONDCHECK(primitive, create, check, binary,
+    VCHECK_BINARY_UNIMPL(
             !memory_desc_wrapper(src0_md).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-    VCONDCHECK(primitive, create, check, binary,
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_BINARY_UNIMPL(
             !memory_desc_wrapper(src1_md).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-    VCONDCHECK(primitive, create, check, binary,
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_BINARY_UNIMPL(
             !memory_desc_wrapper(dst_md).has_runtime_dims_or_strides(),
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     const int ndims = dst_md->ndims;
     const dims_t &dims = dst_md->dims;
 
-    VCHECK_BINARY(
-            src0_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS, "src0", "dst");
-    VCHECK_BINARY(
-            src1_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS, "src1", "dst");
+    VCHECK_BINARY(src0_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS_WITH_VALS,
+            "src0", "dst", src0_md->ndims, ndims);
+    VCHECK_BINARY(src1_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS_WITH_VALS,
+            "src1", "dst", src1_md->ndims, ndims);
 
     if (src2_md != nullptr) {
-        VCONDCHECK(primitive, create, check, binary,
+        VCHECK_BINARY_UNIMPL(
                 !memory_desc_wrapper(src2_md).has_runtime_dims_or_strides(),
-                status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-        VCHECK_BINARY(src2_md->ndims == ndims, VERBOSE_INCONSISTENT_NDIMS,
-                "src2", "dst");
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        VCHECK_BINARY(src2_md->ndims == ndims,
+                VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src2", "dst",
+                src2_md->ndims, ndims);
         VCHECK_BINARY(
                 src2_md->data_type == data_type::s8, VERBOSE_UNSUPPORTED_DT);
     }
@@ -171,7 +182,7 @@ status_t dnnl_binary_primitive_desc_create_v2(
 
     bod.src_desc[0] = *src0_md;
     bod.src_desc[1] = *src1_md;
-    if (alg_kind == binary_select) bod.src_desc[2] = *src2_md;
+    if (src2_md) bod.src_desc[2] = *src2_md;
     bod.dst_desc = *dst_md;
 
     CHECK(binary_attr_check(bod, engine, attr));

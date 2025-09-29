@@ -16,9 +16,8 @@
 
 /// @example group_normalization.cpp
 /// > Annotated version: @ref group_normalization_example_cpp
-///
-/// @page group_normalization_example_cpp_short
-///
+
+/// @page group_normalization_example_cpp Group Normalization Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Group Normalization](@ref dev_guide_group_normalization) primitive in
 /// forward training propagation mode.
@@ -26,9 +25,6 @@
 /// Key optimizations included in this example:
 /// - In-place primitive execution;
 /// - Source memory format for an optimized primitive implementation;
-///
-/// @page group_normalization_example_cpp Group Normalization Primitive Example
-/// @copydetails group_normalization_example_cpp_short
 ///
 /// @include group_normalization.cpp
 

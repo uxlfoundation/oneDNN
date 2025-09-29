@@ -98,7 +98,8 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
 
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
 
-            VDISPATCH_SOFTMAX(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_SOFTMAX(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "dst");
 
             const auto src_dt = src_md()->data_type;
             const auto dst_dt = dst_md()->data_type;
@@ -107,8 +108,8 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
                     = utils::one_of(src_dt, f32, bf16, f16, s8, u8);
             VDISPATCH_SOFTMAX(src_dt_ok, VERBOSE_UNSUPPORTED_DT);
 
-            const bool dst_dt_ok
-                    = utils::one_of(dst_dt, f32, bf16, f16, s8, u8);
+            const bool dst_dt_ok = utils::one_of(
+                    dst_dt, f32, bf16, f16, f8_e5m2, f8_e4m3, s8, u8);
             VDISPATCH_SOFTMAX(dst_dt_ok, VERBOSE_UNSUPPORTED_DT);
 
             // TODO: add int8 support for SSE41.
@@ -129,6 +130,13 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
                             is_superset(isa_, avx512_core_fp16)
                                     || is_superset(isa_, avx2_vnni_2));
             VDISPATCH_SOFTMAX(f16_isa_ok, VERBOSE_ISA_DT_MISMATCH);
+
+            const bool f8_isa_ok
+                    = IMPLICATION(utils::one_of(f8_e5m2, src_dt, dst_dt),
+                              is_superset(isa_, avx10_1_512_amx))
+                    && IMPLICATION(utils::one_of(f8_e4m3, src_dt, dst_dt),
+                            is_superset(isa_, avx10_1_512_amx));
+            VDISPATCH_SOFTMAX(f8_isa_ok, VERBOSE_ISA_DT_MISMATCH);
 
             VDISPATCH_SOFTMAX(attr()->has_default_values(skip_mask_t::scales
                                       | skip_mask_t::post_ops),
@@ -178,10 +186,10 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
                     && !types::is_integral_dt(dst_dt)
                     && utils::one_of(attr()->acc_mode_,
                             accumulation_mode::relaxed, accumulation_mode::any);
-            const bool need_scratchpad
+            auto scratchpad = scratchpad_registry().registrar();
+            const bool need_f32_intermediate
                     = dst_dt != data_type::f32 && !relaxed_acc;
-            if (need_scratchpad) {
-                auto scratchpad = scratchpad_registry().registrar();
+            if (need_f32_intermediate) {
                 // When stride != 1, then each thread operates over simd at a
                 // time, thus, increased scratchpad size.
                 dim_t elem_per_thr = 1;
@@ -194,6 +202,10 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
                 scratchpad.template book<char>(
                         memory_tracking::names::key_softmax_interim_store,
                         scratch_size_per_thr_ * nthr_);
+            }
+            if (!attr()->scales_.has_default_values(DNNL_ARG_DST)) {
+                scratchpad.book(memory_tracking::names::key_softmax_dst_scales,
+                        static_cast<size_t>(nthr_) * sizeof(float), 64);
             }
         }
 
@@ -293,7 +305,8 @@ struct jit_uni_softmax_bwd_t : public primitive_t {
 
             VDISPATCH_SOFTMAX(!is_fwd(), VERBOSE_BAD_PROPKIND);
 
-            VDISPATCH_SOFTMAX(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_SOFTMAX(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "dst");
 
             const auto dst_dt = dst_md()->data_type;
             const auto diff_dst_dt = diff_dst_md()->data_type;

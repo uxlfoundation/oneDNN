@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 /// @example weights_decompression_matmul.cpp
 /// > Annotated version: @ref weights_decompression_matmul_cpp
 ///
-/// @page weights_decompression_matmul_cpp_short
+/// @page weights_decompression_matmul_cpp MatMul Tutorial: weights decompression
 /// C++ API example demonstrating how one can use
 /// [MatMul](@ref dev_guide_matmul) with compressed weights.
 ///
@@ -28,9 +28,6 @@
 /// - [Operation fusion](@ref dev_guide_attributes_post_ops)
 /// - Create primitive once, use multiple times
 /// - Weights pre-packing: use #dnnl::memory::format_tag::any
-///
-/// @page weights_decompression_matmul_cpp MatMul Tutorial: weights decompression
-/// @copydetails weights_decompression_matmul_cpp_short
 ///
 /// Assumptions:
 /// 1. The shape of the weights (matrix \f$B(K, N)\f$) is known in advance, the

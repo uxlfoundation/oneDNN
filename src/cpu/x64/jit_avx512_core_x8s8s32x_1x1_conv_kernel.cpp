@@ -311,11 +311,6 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
                 reg_comp_data, sizeof(int32_t) * jcp.oc_block * i_load);
     };
 
-    auto scale_ptr = [this](int i_load) {
-        return EVEX_compress_addr(reg_ptr_scales,
-                jcp.is_oc_scale * (sizeof(float) * jcp.oc_block * i_load));
-    };
-
     auto bcast_ptr = [this](int i_reduce, int i_ur, bool bcast) {
         assert(i_ur < jcp.ur);
         assert(i_reduce <= jcp.reduce_loop_unroll);
@@ -363,7 +358,6 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
         const bool is_scale_or_zp_sum
                 = p_sum_zp_val != 0 || p_sum_scale_val != 1.f;
         mov(EVEX_compress_addr(rsp, reg_bcast_data_off), reg_bcast_data);
-        mov(reg_ptr_scales, EVEX_compress_addr(rsp, reg_ptr_sum_scale_off));
         if (is_scale_or_zp_sum) {
             mov(EVEX_compress_addr(rsp, reg_load_data_off), reg_load_data);
             if (p_sum_zp_val != 0) {
@@ -387,7 +381,7 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
             auto vmm_bias = vmm_tmp;
             auto vmm_comp = vmm_bcast;
             if (jcp.with_bias) {
-                if (jcp.signed_input || jcp.dst_scale)
+                if (jcp.signed_input || jcp.with_dst_scales)
                     mov(reg_bias_data,
                             EVEX_compress_addr(rsp, reg_bias_data_off));
                 cvt2ps(jcp.bia_dt, vmm_bias, bias_ptr(i_load), mask_flag);
@@ -410,33 +404,75 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
                 vcvtdq2ps(vmm_, vmm_);
             }
             for (int i_ur = 0; i_ur < ur; ++i_ur) {
-                auto r = vreg_accum(load_loop_blk, i_load, i_ur);
-                vcvtdq2ps(r, r);
-                if (jcp.signed_input) vaddps(r, r, vmm_comp);
-                if (jcp.src_zero_point) vaddps(r, r, vmm_zp);
+                auto vmm = vreg_accum(load_loop_blk, i_load, i_ur);
+                vcvtdq2ps(vmm, vmm);
+                if (jcp.signed_input) vaddps(vmm, vmm, vmm_comp);
+                if (jcp.src_zero_point) vaddps(vmm, vmm, vmm_zp);
 
-                const Vmm mask_vmm = mask_flag ? r | k_load_dim_mask | T_z : r;
-                vmulps(mask_vmm, r, scale_ptr(i_load));
+                const Vmm vmm_k = mask_flag ? vmm | k_load_dim_mask | T_z : vmm;
 
-                if (jcp.with_bias) vaddps(r, r, vmm_bias);
+                // TODO: scales support is done not in the most optimal way.
+                // If there're two free Vmm registers, one can be used to store
+                // scale_adjust value permanently, the second one can re-use
+                // data from it and multiply by src_scale that can be obtained
+                // at the point of scales loading. Then it can be used when
+                // multiplying by wei_scales. And further re-used for dst scales
+                // to avoid reading from the same address, but reading from the
+                // Vmm instead.
+                // This would save 1st and 3rd sections for every output Vmm.
+                //
+                // If only one Vmm is found, it will add scale_adjust overhead
+                // per src_scale loading, but the second part of the idea holds.
+                //
+                // Note: attempts to identify these Vmms were not taken.
+                if (jcp.with_src_scales) {
+                    mov(reg_src_scales,
+                            EVEX_compress_addr(rsp, reg_src_scales_off));
+
+                    vmulps(vmm_k, vmm,
+                            EVEX_compress_addr(
+                                    reg_src_scales, 0, /* bcast = */ true));
+                }
+
+                if (jcp.with_wei_scales) {
+                    mov(reg_wei_scales,
+                            EVEX_compress_addr(rsp, reg_wei_scales_off));
+
+                    int scale_offset = jcp.is_oc_scale
+                            * (sizeof(float) * jcp.oc_block * i_load);
+                    vmulps(vmm_k, vmm,
+                            EVEX_compress_addr(reg_wei_scales, scale_offset,
+                                    /* bcast = */ !jcp.is_oc_scale));
+                }
+
+                if (jcp.wei_adj_scale != 1.f) {
+                    mov(reg_scale_adjust, float2int(1.f / jcp.wei_adj_scale));
+                    auto xmm_scale_adjust = Xmm(vmm_scale_adjust.getIdx());
+                    vmovq(xmm_scale_adjust, reg_scale_adjust);
+                    vbroadcastss(vmm_scale_adjust, xmm_scale_adjust);
+                    vmulps(vmm_k, vmm, vmm_scale_adjust);
+                }
+
+                if (jcp.with_bias) vaddps(vmm, vmm, vmm_bias);
             }
         }
 
         apply_postops(load_loop_blk, ur, mask_flag_in, p_sum_scale, p_sum_zp);
 
-        if (jcp.dst_scale) {
-            mov(reg_ptr_dst_scale, EVEX_compress_addr(rsp, reg_dst_scale_off));
-            vmovups(vmm_dst_scale, EVEX_compress_addr(reg_ptr_dst_scale, 0));
+        if (jcp.with_dst_scales) {
+            mov(reg_dst_scales, EVEX_compress_addr(rsp, reg_dst_scales_off));
 
             /* Apply dst scale to accumulator */
             for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
                 const bool mask_flag
                         = mask_flag_in && i_load == load_loop_blk - 1;
                 for (int i_ur = 0; i_ur < ur; ++i_ur) {
-                    const auto r = vreg_accum(load_loop_blk, i_load, i_ur);
-                    const Vmm mask_vmm
-                            = mask_flag ? r | k_load_dim_mask | T_z : r;
-                    vmulps(mask_vmm, r, vmm_dst_scale);
+                    const auto vmm = vreg_accum(load_loop_blk, i_load, i_ur);
+                    const Vmm vmm_k
+                            = mask_flag ? vmm | k_load_dim_mask | T_z : vmm;
+                    vmulps(vmm_k, vmm,
+                            EVEX_compress_addr(
+                                    reg_dst_scales, 0, /* bcast = */ true));
                 }
             }
         }
@@ -655,19 +691,25 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::generate() {
         mov(EVEX_compress_addr(rsp, reg_src_zero_point_off),
                 reg_src_zero_point);
     }
-    if (jcp.dst_scale) {
+    if (jcp.with_src_scales) {
+        mov(reg_src_scales, ptr[param1 + GET_OFF(src_scales)]);
+        mov(EVEX_compress_addr(rsp, reg_src_scales_off), reg_src_scales);
+    }
+    if (jcp.with_wei_scales) {
+        mov(reg_wei_scales, ptr[param1 + GET_OFF(wei_scales)]);
+        mov(EVEX_compress_addr(rsp, reg_wei_scales_off), reg_wei_scales);
+    }
+    if (jcp.with_dst_scales) {
         if (!jcp.signed_input)
             mov(EVEX_compress_addr(rsp, reg_bias_data_off), reg_bias_data);
-        mov(reg_ptr_dst_scale, ptr[param1 + GET_OFF(dst_scale)]);
-        mov(EVEX_compress_addr(rsp, reg_dst_scale_off), reg_ptr_dst_scale);
+        mov(reg_dst_scales, ptr[param1 + GET_OFF(dst_scales)]);
+        mov(EVEX_compress_addr(rsp, reg_dst_scales_off), reg_dst_scales);
     }
     if (jcp.dst_zero_point) {
         mov(reg_dst_zero_point, ptr[param1 + GET_OFF(dst_zero_point)]);
         mov(EVEX_compress_addr(rsp, reg_dst_zero_point_off),
                 reg_dst_zero_point);
     }
-    mov(reg_ptr_scales, ptr[param1 + GET_OFF(scales)]);
-    mov(EVEX_compress_addr(rsp, reg_ptr_sum_scale_off), reg_ptr_scales);
     mov(reg_bcast_data, ptr[param1 + GET_OFF(bcast_data)]);
     mov(reg_load_data, ptr[param1 + GET_OFF(load_data)]);
     mov(reg_output_data, ptr[param1 + GET_OFF(output_data)]);
@@ -732,11 +774,11 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::generate() {
         bcast_loop(load_loop_blk);
         add(reg_load_data, load_loop_blk * jcp.load_loop_load_step);
         if (jcp.with_bias) {
-            if (jcp.signed_input || jcp.dst_scale)
+            if (jcp.signed_input || jcp.with_dst_scales)
                 mov(reg_bias_data, EVEX_compress_addr(rsp, reg_bias_data_off));
             add(reg_bias_data,
                     load_loop_blk * jcp.load_block * jcp.typesize_bia);
-            if (jcp.signed_input || jcp.dst_scale)
+            if (jcp.signed_input || jcp.with_dst_scales)
                 mov(EVEX_compress_addr(rsp, reg_bias_data_off), reg_bias_data);
         }
         if (jcp.signed_input) {
@@ -754,11 +796,13 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::generate() {
                     reg_zp_compensation);
         }
         mov(EVEX_compress_addr(rsp, reg_bcast_data_off), reg_bcast_data);
-        mov(reg_ptr_scales, EVEX_compress_addr(rsp, reg_ptr_sum_scale_off));
-        add(reg_ptr_scales,
-                jcp.is_oc_scale * load_loop_blk * jcp.load_block
-                        * sizeof(float));
-        mov(EVEX_compress_addr(rsp, reg_ptr_sum_scale_off), reg_ptr_scales);
+        if (jcp.with_wei_scales) {
+            mov(reg_wei_scales, EVEX_compress_addr(rsp, reg_wei_scales_off));
+            add(reg_wei_scales,
+                    jcp.is_oc_scale * load_loop_blk * jcp.load_block
+                            * sizeof(float));
+            mov(EVEX_compress_addr(rsp, reg_wei_scales_off), reg_wei_scales);
+        }
         mov(reg_bcast_data, EVEX_compress_addr(rsp, reg_bcast_data_off));
         add(reg_output_data, load_loop_blk * jcp.load_block * jcp.typesize_out);
         sub(reg_load_loop_work, load_loop_blk * jcp.load_loop_iter_step);
@@ -843,14 +887,15 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
-    if (!one_of(src_d.data_type(), data_type::u8, data_type::s8)
+    const bool dt_not_ok = (!one_of(src_d.data_type(), data_type::u8,
+                                    data_type::s8)
             || weights_d.data_type() != data_type::s8
             || !one_of(dst_d.data_type(), data_type::f32, data_type::s32,
-                    data_type::s8, data_type::u8, data_type::bf16))
-        return status::unimplemented;
+                    data_type::s8, data_type::u8, data_type::bf16));
+    VDISPATCH_CONV_IC(!dt_not_ok, VERBOSE_UNSUPPORTED_DT_CFG);
 
     jcp.nthr = nthreads;
 
@@ -895,8 +940,8 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
 
     jcp.os = static_cast<dim_t>(jcp.od) * jcp.oh * jcp.ow;
     jcp.is = static_cast<dim_t>(jcp.id) * jcp.ih * jcp.iw;
-
-    if (jcp.os > INT_MAX || jcp.is > INT_MAX) return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            jcp.os <= INT_MAX && jcp.is <= INT_MAX, VERBOSE_LARGE_SHAPES);
 
     const auto &post_ops = attr.post_ops_;
     const int dw_conv_ind = post_ops.find(primitive_kind::convolution);
@@ -930,8 +975,9 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
             = zp.get_mask(DNNL_ARG_SRC) == 0; // otherwise, it's per-channel
     assert(IMPLICATION(jcp.src_zero_point, jcp.zp_src_is_common));
 
-    if ((jcp.dst_zero_point || jcp.src_zero_point) && jcp.with_dw_conv)
-        return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            !((jcp.dst_zero_point || jcp.src_zero_point) && jcp.with_dw_conv),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     format_tag_t dat_tag = utils::pick(
             ndims - 3, format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);
@@ -939,7 +985,7 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
     jcp.dst_tag = dst_d.matches_one_of_tag(dat_tag);
 
     bool args_ok = jcp.src_tag == dat_tag && jcp.dst_tag == dat_tag;
-    if (!args_ok) return status::unimplemented;
+    VDISPATCH_CONV_IC(args_ok, VERBOSE_UNSUPPORTED_TAG);
 
     if (jcp.ngroups == 1) {
         jcp.oc = rnd_up(jcp.oc, 16);
@@ -960,7 +1006,7 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
                     !binary_injector::
                             any_binary_postop_rhs_with_ternary_scalar_bcast(
                                     post_ops, dst_d));
-    if (!post_ops_ok_) return status::unimplemented;
+    VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
     const int simd_w = (jcp.ic % 16 == 0 && jcp.oc % 16 == 0) ? 16
             : (jcp.ic % 8 == 0 && jcp.oc % 8 == 0)            ? 8
@@ -1003,7 +1049,8 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
         return weights_md == want_wei_md;
     };
 
-    if (!set_or_check_wei_format()) return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            set_or_check_wei_format(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     args_ok = true && jcp.oc % simd_w == 0 && jcp.ic % simd_w == 0
             && jcp.f_pad == 0 && jcp.t_pad == 0 && jcp.l_pad == 0
@@ -1012,7 +1059,8 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
             && jcp.od == jcp.id && jcp.oh == jcp.ih
             && jcp.ow == jcp.iw // enforce rpad = 0
             && jcp.kd == 1 && jcp.kh == 1 && jcp.kw == 1;
-    if (!args_ok) return status::unimplemented;
+    VDISPATCH_CONV_IC(args_ok, VERBOSE_BAD_PARAM,
+            "bad config for 1x1 convolution kernel");
 
     jcp.bia_dt = jcp.with_bias ? cd.bias_desc.data_type : data_type::undef;
     jcp.dst_dt = cd.dst_desc.data_type;
@@ -1218,10 +1266,11 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
         jcp.nthr = nstl::min(jcp.nthr, nthr);
     }
 
-    const auto &wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
-    const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
-    jcp.is_oc_scale = wei_scales.get_mask() > 0;
-    jcp.dst_scale = !dst_scales.has_default_values();
+    jcp.is_oc_scale = attr.scales_.get_mask(DNNL_ARG_WEIGHTS) > 0;
+    jcp.with_src_scales = !attr.scales_.get(DNNL_ARG_SRC).has_default_values();
+    jcp.with_wei_scales
+            = !attr.scales_.get(DNNL_ARG_WEIGHTS).has_default_values();
+    jcp.with_dst_scales = !attr.scales_.get(DNNL_ARG_DST).has_default_values();
 
     jcp.wei_adj_scale
             = (weights_d.extra().flags & memory_extra_flags::scale_adjust)
@@ -1236,15 +1285,11 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_scratchpad(
         const jit_1x1_conv_conf_t &jcp, const primitive_attr_t &attr) {
     using namespace dnnl::impl::memory_tracking::names;
 
-    const int wei_mask = attr.scales_.get_mask(DNNL_ARG_WEIGHTS);
-
-    // The implementation always uses scales, regardless of whether they have
-    // been set or not.
-    const dim_t scales_count
-            = wei_mask <= 0 ? 1 : static_cast<dim_t>(jcp.oc) * jcp.ngroups;
-
-    const dim_t count = nstl::max<dim_t>(scales_count, (dim_t)jcp.ic_block);
-    scratchpad.book<float>(key_conv_adjusted_scales, count);
+    if (jcp.with_dst_scales) {
+        // See brgemm_types.hpp comment for `with_dst_scales`.
+        scratchpad.book(key_conv_dst_scales,
+                static_cast<size_t>(jcp.nthr) * sizeof(float), 4096);
+    }
 }
 
 template struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Xbyak::Zmm>;

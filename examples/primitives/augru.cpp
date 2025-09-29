@@ -16,8 +16,8 @@
 
 /// @example augru.cpp
 /// > Annotated version: @ref augru_example_cpp
-///
-/// @page augru_example_cpp_short
+
+/// @page augru_example_cpp AUGRU RNN Primitive Example
 ///
 /// This C++ API example demonstrates how to create and execute an
 /// [AUGRU RNN](@ref dev_guide_rnn) primitive in forward training propagation
@@ -25,9 +25,6 @@
 ///
 /// Key optimizations included in this example:
 /// - Creation of optimized memory format from the primitive descriptor.
-///
-/// @page augru_example_cpp AUGRU RNN Primitive Example
-/// @copydetails augru_example_cpp_short
 ///
 /// @include augru.cpp
 

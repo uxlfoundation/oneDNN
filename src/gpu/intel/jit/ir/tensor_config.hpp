@@ -70,7 +70,7 @@ public:
         t.is_output = is_output;
         t.compute_layout = compute_layout;
         t.user_layout = user_layout;
-        t.needs_reorder = (t.compute_layout != t.user_layout);
+        t.needs_reorder = !t.compute_layout.is_equal_normalized(t.user_layout);
         t.needs_zero_out = false;
     }
 
@@ -78,7 +78,7 @@ public:
             const std::string &name, const layout_t &compute_layout) {
         auto &t = find_tensor(name);
         t.compute_layout = compute_layout;
-        t.needs_reorder = (t.compute_layout != t.user_layout);
+        t.needs_reorder = !t.compute_layout.is_equal_normalized(t.user_layout);
     }
 
     const layout_t &compute_layout(const std::string &name) const {
@@ -111,26 +111,63 @@ private:
     std::vector<tensor_info_t> tensors_;
 };
 
-inline layout_t make_layout(const memory_desc_t &md) {
+// Returns vector of <dimension index, block size> pairs.
+std::vector<layout_block_t> parse_format(
+        const std::string &format, int ndims_hint);
+
+// Returns vector of <dimension letter, block size> pairs.
+std::vector<std::pair<char, dim_t>> parse_letter_blocks(
+        const std::string &format);
+
+inline layout_t make_layout(const type_t &type, const expr_t &offset,
+        const std::string &format, const tile_t &dims = {}) {
+    auto blocks = parse_format(format, into<dim_idx_t>(dims.size()));
+    tile_t def;
+    for (auto &b : blocks) {
+        if (b.size == 0) b.size = utils::div_up(dims[b.idx], def[b.idx]);
+        def[b.idx] *= b.size;
+    }
+
+    return layout_t(type, blocks, offset, into<dim_idx_t>(dims.size()),
+            /*do_normalize=*/false);
+}
+
+inline layout_t make_layout(
+        const type_t &type, const tile_t &dims, const std::string &tag) {
+    return make_layout(type, 0, tag, dims);
+}
+
+// Note, the default value of do_normalize is the opposite of the default value
+// for layout_t. The reason behind this is that most practical uses of this
+// interface do not perform normalization.
+inline layout_t make_layout(
+        const memory_desc_t &md, bool do_normalize = false) {
     if (md.format_kind == format_kind::any) return layout_t();
-    return layout_t(md, /*do_normalize=*/false);
+
+    auto mdw = memory_desc_wrapper(md);
+    block_layout_t layout(
+            mdw, /* inner_only */ false, /* do_normalize */ false);
+    std::vector<layout_block_t> blocks;
+    for (const auto &block : layout) {
+        blocks.emplace_back(block.dim_idx, block.block, block.stride);
+    }
+
+    return layout_t(to_ir(mdw.data_type()), blocks, mdw.offset0(), mdw.ndims(),
+            do_normalize);
 }
 
 inline layout_t make_layout(const memory_desc_t &md, const std::string &tag) {
-    if (tag == "user") return layout_t(md);
-    return layout_t(md, tag, /*do_normalize=*/false);
+    if (tag == "user") return make_layout(md);
+    auto mdw = memory_desc_wrapper(md);
+    return make_layout(to_ir(mdw.data_type()), mdw.offset0(), tag,
+            std::vector<dim_t>(mdw.dims(), mdw.dims() + mdw.ndims()));
 }
 
-inline layout_t make_layout(const type_t &type, const std::vector<dim_t> &dims,
-        const std::string &tag) {
-    return layout_t(type, 0, tag, dims, /*do_normalize=*/false);
-}
-
-bool matches_tag(const layout_t &layout, const std::string &tag,
-        const std::vector<dim_t> &dims);
+bool matches_tag(
+        const layout_t &layout, const std::string &tag, const tile_t &dims);
 
 inline bool matches_tag(const layout_t &layout, const std::string &tag) {
-    return matches_tag(layout, tag, layout.dims());
+    return matches_tag(layout, tag, layout.tile());
 }
 
 inline bool matches_tag(const memory_desc_t &md, const std::string &tag) {
@@ -141,7 +178,7 @@ inline bool matches_tag(const memory_desc_t &md, const std::string &tag) {
 
 inline void set_default_format(memory_desc_t &md, const std::string &tag) {
     if (md.format_kind != format_kind::any) return;
-    md = make_layout(md, tag).to_dnnl(md.dims);
+    md = to_md(make_layout(md, tag), md);
 }
 
 inline std::vector<std::pair<const char *, int>> get_scale_args() {

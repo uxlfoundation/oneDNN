@@ -24,9 +24,7 @@
 #include "common/primitive_desc_iterator.hpp"
 #include "common/utils.hpp"
 #include "gpu/gpu_resource.hpp"
-#include "gpu/gpu_rnn_pd.hpp"
-#include "gpu/intel/gpu_primitive.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/primitive.hpp"
 #include "gpu/intel/rnn/utils.hpp"
 
 // TODO just to debug
@@ -36,6 +34,7 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+namespace rnn {
 
 enum gemm_kind_t {
     gemm_iter_fwd,
@@ -53,10 +52,10 @@ enum gemm_kind_t {
 };
 
 template <prop_kind_t aprop>
-struct simple_rnn_common_t : public gpu_primitive_t {
-    using gpu_primitive_t::gpu_primitive_t;
+struct simple_common_t : public primitive_t {
+    using primitive_t::primitive_t;
 
-    using class_name = simple_rnn_common_t<aprop>;
+    using class_name = simple_common_t<aprop>;
 
     using elemwise_f = elemwise_sig((class_name::*));
     using elemwise_gru_f = elemwise_sig_gru((class_name::*));
@@ -66,8 +65,8 @@ struct simple_rnn_common_t : public gpu_primitive_t {
     using gemm_t = gemm_sig((class_name::*));
 
     using base_pd_t =
-            typename utils::conditional<false || aprop == prop_kind::forward,
-                    gpu_rnn_fwd_pd_t, gpu_rnn_bwd_pd_t>::type;
+            typename impl::utils::conditional<aprop == prop_kind::forward,
+                    fwd_pd_t, bwd_pd_t>::type;
 
     struct pd_t : public base_pd_t {
 
@@ -81,9 +80,9 @@ struct simple_rnn_common_t : public gpu_primitive_t {
 
         status_t set_default_params();
 
-        rnn_utils::ocl_conf_t ocl_conf = {};
-        rnn_offsets_t off = {};
-        rnn_utils::conf_t rnn_conf = {};
+        ocl_conf_t ocl_conf = {};
+        offsets_t off = {};
+        conf_t conf = {};
         data_type_t acc_data_t = data_type::undef;
         data_type_t src_type = data_type::undef;
         data_type_t weights_type = data_type::undef;
@@ -109,7 +108,7 @@ struct simple_rnn_common_t : public gpu_primitive_t {
             auto scratchpad = this->scratchpad_registry().registrar();
             scratchpad.book(key_rnn_space, workspace_size, 1,
                     OCL_BUFFER_ALIGNMENT, 4096);
-            rnn_utils::scratch_t::book(scratchpad, rnn_conf,
+            utils::scratch_t::book(scratchpad, conf,
                     {
                             gemm_iter_fwd_pd_.get(),
                             gemm_iter_fwd_2_pd_.get(),
@@ -148,11 +147,12 @@ private:
         std::vector<dim_t> lws;
         lws.reserve(gws.size());
         for (size_t i = 0; i < gws.size(); i++) {
-            dim_t l_dim = 2 * gws[i] <= lws_max ? utils::rnd_up_pow2(gws[i])
-                                                : lws_max;
+            dim_t l_dim = 2 * gws[i] <= lws_max
+                    ? impl::utils::rnd_up_pow2(gws[i])
+                    : lws_max;
             if (i == 0 && l_dim < subgroup_size) l_dim = subgroup_size;
             lws.emplace_back(l_dim);
-            gws[i] = utils::rnd_up(gws[i], l_dim);
+            gws[i] = impl::utils::rnd_up(gws[i], l_dim);
             lws_max = lws_max / l_dim;
         }
 
@@ -177,24 +177,24 @@ private:
     float (*activation_func)(float dd, float s, float alpha, float cliping)
             = nullptr;
     status_t bias_prepare(const exec_ctx_t &ctx,
-            compute::compute_stream_t *compute_stream, dim_t n_layer,
-            dim_t n_dir, dim_t n_bias, dim_t n_gates, dim_t dhc,
+            intel::stream_t *compute_stream, dim_t n_layer, dim_t n_dir,
+            dim_t n_bias, dim_t n_gates, dim_t dhc,
             const memory_storage_t &ws_bias, const memory_storage_t &scales,
             const memory_storage_t &wei_layer, const memory_storage_t &wei_iter,
             const memory_storage_t &bias) const;
     status_t copy_init_layer(const exec_ctx_t &ctx,
-            compute::compute_stream_t *compute_stream, bool lr, bool rl,
-            dim_t n_iter, dim_t batch, dim_t slc, dim_t dhc, dim_t n_layer,
-            dim_t n_dir, dim_t n_states, dim_t states_ws_ld,
-            dim_t scratch_diff_states_ld, const memory_storage_t &ws_states,
+            intel::stream_t *compute_stream, bool lr, bool rl, dim_t n_iter,
+            dim_t batch, dim_t slc, dim_t dhc, dim_t n_layer, dim_t n_dir,
+            dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
+            const memory_storage_t &ws_states,
             const memory_storage_t *scratch_diff_states,
             const memory_storage_t &input,
             const memory_storage_t &diff_dst_layer) const;
     status_t copy_init_iter(const exec_ctx_t &ctx,
-            compute::compute_stream_t *compute_stream, dim_t n_layer,
-            dim_t n_dir, dim_t batch, dim_t sic, dim_t dhc, dim_t n_iter,
-            dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
-            const rnn_utils::workspace_t &ws,
+            intel::stream_t *compute_stream, dim_t n_layer, dim_t n_dir,
+            dim_t batch, dim_t sic, dim_t dhc, dim_t n_iter, dim_t n_states,
+            dim_t states_ws_ld, dim_t scratch_diff_states_ld,
+            const utils::workspace_t &ws,
             const memory_storage_t *scratch_diff_states,
             const memory_storage_t &firstit_states,
             const memory_storage_t &firstit_c_states,
@@ -202,26 +202,25 @@ private:
             const memory_storage_t &diff_dst_iter_c, const float shift,
             const float scale, const bool quantize) const;
     status_t copy_res_layer(const exec_ctx_t &ctx,
-            compute::compute_stream_t *compute_stream, bool lr, bool rl,
-            dim_t n_iter, dim_t batch, dim_t slc, dim_t dhc, dim_t n_layer,
-            dim_t n_dir, dim_t n_states, dim_t states_ws_ld,
-            dim_t scratch_diff_states_ld,
+            intel::stream_t *compute_stream, bool lr, bool rl, dim_t n_iter,
+            dim_t batch, dim_t slc, dim_t dhc, dim_t n_layer, dim_t n_dir,
+            dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
             const memory_storage_t *scratch_diff_states,
             const memory_storage_t &dst_last_layer,
             const memory_storage_t &diff_src_layer,
             const memory_storage_t &ws_states, const float shift,
             const float scale, const bool dequantize) const;
     status_t copy_res_iter(const exec_ctx_t &ctx,
-            compute::compute_stream_t *compute_stream, dim_t n_layer,
-            dim_t n_dir, dim_t batch, dim_t sic, dim_t dhc, dim_t n_iter,
-            dim_t n_states, dim_t states_ws_ld, dim_t scratch_diff_states_ld,
+            intel::stream_t *compute_stream, dim_t n_layer, dim_t n_dir,
+            dim_t batch, dim_t sic, dim_t dhc, dim_t n_iter, dim_t n_states,
+            dim_t states_ws_ld, dim_t scratch_diff_states_ld,
             const memory_storage_t *scratch_diff_states,
             const memory_storage_t &dst_last_iter,
             const memory_storage_t &dst_last_iter_c,
             const memory_storage_t &diff_src_iter,
             const memory_storage_t &diff_src_iter_c,
-            const rnn_utils::workspace_t &ws, const float shift,
-            const float scale, const bool dequantize) const;
+            const utils::workspace_t &ws, const float shift, const float scale,
+            const bool dequantize) const;
 
     std::vector<compute::kernel_t> kernels_;
 
@@ -261,9 +260,10 @@ private:
 
     enum { SCALES_ = 0, TM_SCALES_ = 1 };
 };
-using simple_rnn_fwd_t = simple_rnn_common_t<prop_kind::forward>;
-using simple_rnn_bwd_t = simple_rnn_common_t<prop_kind::backward>;
+using simple_fwd_t = simple_common_t<prop_kind::forward>;
+using simple_bwd_t = simple_common_t<prop_kind::backward>;
 
+} // namespace rnn
 } // namespace intel
 } // namespace gpu
 } // namespace impl

@@ -145,10 +145,35 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
     set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS_SAVE})
     # Set CAN_COMPILE_RVV_INTRINSICS to TRUE / FALSE instead of 1 / "" (Undefined)
     if (CAN_COMPILE_RVV_INTRINSICS)
+        # RVV is supported, now check for Zvfh (which depends on V)
+        set(ARCH_SIMD_TEST_FLAGS "-march=rv64gcv_zvfh")
+        set(CMAKE_REQUIRED_FLAGS_SAVE ${CMAKE_REQUIRED_FLAGS})
+        set(CMAKE_REQUIRED_FLAGS "${ARCH_SIMD_TEST_FLAGS}")
+        check_cxx_source_compiles("#include <riscv_vector.h>
+                                    #ifndef __riscv_zvfh
+                                    #error \"Zvfh extension is not supported by the compiler\"
+                                    #endif
+
+                                    int main() {
+                                     vfloat16m1_t a;
+                                     return 0; 
+                                    };"
+                                    CAN_COMPILE_ZVFH_INTRINSICS
+        )
+        set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS_SAVE})
+
         set(CAN_COMPILE_RVV_INTRINSICS TRUE)
-        set(RV64_MARCH_FLAG "-march=rv64gcv")
+        if (CAN_COMPILE_ZVFH_INTRINSICS)
+            set(CAN_COMPILE_ZVFH_INTRINSICS TRUE)
+            set(RV64_MARCH_FLAG "-march=rv64gcv_zvfh")
+        else()
+            set(CAN_COMPILE_ZVFH_INTRINSICS FALSE)
+            set(RV64_MARCH_FLAG "-march=rv64gcv")
+        endif()
     else()
+        # RVV is not supported, so Zvfh is also not supported
         set(CAN_COMPILE_RVV_INTRINSICS FALSE)
+        set(CAN_COMPILE_ZVFH_INTRINSICS FALSE)
         set(RV64_MARCH_FLAG "-march=rv64gc")
     endif()
 
@@ -157,8 +182,15 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
         add_definitions(-DDNNL_RISCV_USE_RVV_INTRINSICS)
     endif()
 
+    set(DNNL_RISCV_USE_ZVFH_INTRINSICS ${CAN_COMPILE_ZVFH_INTRINSICS})
+    if (${DNNL_RISCV_USE_ZVFH_INTRINSICS})
+        add_definitions(-DDNNL_RISCV_USE_ZVFH_INTRINSICS)
+    endif()
+
     message(STATUS "Can compile RVV Intrinsics: ${CAN_COMPILE_RVV_INTRINSICS}")
+    message(STATUS "Can compile Zvfh Intrinsics: ${CAN_COMPILE_ZVFH_INTRINSICS}")
     message(STATUS "DNNL_RISCV_USE_RVV_INTRINSICS: ${DNNL_RISCV_USE_RVV_INTRINSICS}")
+    message(STATUS "DNNL_RISCV_USE_ZVFH_INTRINSICS: ${DNNL_RISCV_USE_ZVFH_INTRINSICS}")
     message(STATUS "Using RV64 march flag: ${RV64_MARCH_FLAG}")
 endif()
 
@@ -258,6 +290,15 @@ if(MSVC)
         append(CMAKE_CCXX_FLAGS "-Wno-unknown-warning-option")
     endif()
 elseif(UNIX OR MINGW)
+
+    # Enable debug checks for common C++ standard libraries
+    if(DNNL_DEV_MODE OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+        # Enable debug checks for libstdc++
+        append(CMAKE_CCXX_FLAGS "-D_GLIBCXX_ASSERTIONS")
+        # Enable debug checks for libc++
+        append(CMAKE_CCXX_FLAGS "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE")
+    endif()
+
     if(DNNL_WITH_SYCL OR CMAKE_BASE_NAME STREQUAL "icx" OR CMAKE_BASE_NAME STREQUAL "icpx")
         # When using Debug build mode CMake adds "-g" option without "-O0"
         # causing the warning. This probably happens because clang/gcc compilers

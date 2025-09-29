@@ -16,9 +16,8 @@
 
 /// @example convolution.cpp
 /// > Annotated version: @ref convolution_example_cpp
-///
-/// @page convolution_example_cpp_short
-///
+
+/// @page convolution_example_cpp Convolution Primitive Example
 /// This C++ API example demonstrates how to create and execute a
 /// [Convolution](@ref dev_guide_convolution) primitive in forward propagation
 /// mode in two configurations - with and without groups.
@@ -26,9 +25,6 @@
 /// Key optimizations included in this example:
 /// - Creation of optimized memory format from the primitive descriptor;
 /// - Primitive attributes with fused post-ops.
-///
-/// @page convolution_example_cpp Convolution Primitive Example
-/// @copydetails convolution_example_cpp_short
 ///
 /// @include convolution.cpp
 

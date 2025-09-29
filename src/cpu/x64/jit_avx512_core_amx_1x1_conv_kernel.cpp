@@ -306,14 +306,28 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_int8(
         vcvtdq2ps(zmm_r, zmm_r);
     }
 
-    mov(reg_ptr_scales, ptr[param1 + GET_OFF(scales)]);
-    for (int j = 0; j < jcp.tile_width; j++) {
-        const int scale_offset
-                = jcp.is_oc_scale * (sizeof(float) * ocb * jcp.oc_block);
-        const Zmm zmm_r = zmm_out(j);
-        const Zmm zmm_r_msk = zmm_mask(zmm_r, mask_flag);
-        vmulps(zmm_r_msk, zmm_r,
-                EVEX_compress_addr(reg_ptr_scales, scale_offset));
+    if (jcp.with_src_scales) {
+        mov(reg_ptr_src_scales, ptr[param1 + GET_OFF(src_scales)]);
+        for (int j = 0; j < jcp.tile_width; j++) {
+            const Zmm zmm_r = zmm_out(j);
+            const Zmm zmm_r_msk = zmm_mask(zmm_r, mask_flag);
+            vmulps(zmm_r_msk, zmm_r,
+                    EVEX_compress_addr(
+                            reg_ptr_src_scales, 0, /* bcast = */ true));
+        }
+    }
+
+    if (jcp.with_wei_scales) {
+        mov(reg_ptr_wei_scales, ptr[param1 + GET_OFF(wei_scales)]);
+        for (int j = 0; j < jcp.tile_width; j++) {
+            const int scale_offset
+                    = jcp.is_oc_scale * (sizeof(float) * ocb * jcp.oc_block);
+            const Zmm zmm_r = zmm_out(j);
+            const Zmm zmm_r_msk = zmm_mask(zmm_r, mask_flag);
+            vmulps(zmm_r_msk, zmm_r,
+                    EVEX_compress_addr(reg_ptr_wei_scales, scale_offset,
+                            /* bcast = */ !jcp.is_oc_scale));
+        }
     }
 
     if (jcp.with_bias) {
@@ -356,12 +370,14 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_int8(
         }
     }
 
-    if (jcp.dst_scale) {
-        mov(reg_ptr_dst_scale, ptr[param1 + GET_OFF(dst_scale)]);
+    if (jcp.with_dst_scales) {
+        mov(reg_ptr_dst_scales, ptr[param1 + GET_OFF(dst_scales)]);
         for (int j = 0; j < jcp.tile_width; j++) {
             const Zmm zmm_r = zmm_out(j);
             const Zmm zmm_r_msk = zmm_mask(zmm_r, mask_flag);
-            vmulps(zmm_r_msk, zmm_r, EVEX_compress_addr(reg_ptr_dst_scale, 0));
+            vmulps(zmm_r_msk, zmm_r,
+                    EVEX_compress_addr(
+                            reg_ptr_dst_scales, 0, /* bcast = */ true));
         }
     }
 
@@ -427,11 +443,8 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vector_int8(
             mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
     }
 
-    mov(reg_bias, ptr[param1 + GET_OFF(bias)]);
-    mov(reg_ptr_scales, ptr[param1 + GET_OFF(scales)]);
-
-    int scale_offset = jcp.is_oc_scale * (sizeof(float) * ocb * jcp.oc_block);
     if (jcp.with_bias) {
+        mov(reg_bias, ptr[param1 + GET_OFF(bias)]);
         int bias_offset = jcp.typesize_bia * ocb * jcp.oc_block;
         auto bias_addr = EVEX_compress_addr(reg_bias, bias_offset);
         cvt2ps(jcp.bia_dt, zmm_bias, bias_addr, mask_flag);
@@ -446,17 +459,33 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vector_int8(
     /* add to zmm_accum: compensation, bias and permute */
     vcvtdq2ps(zmm_out, zmm_out);
 
-    const Zmm zmm_out_msk = zmm_mask(zmm_out, mask_flag);
-    vmulps(zmm_out_msk, zmm_out,
-            EVEX_compress_addr(reg_ptr_scales, scale_offset));
+    if (jcp.with_src_scales) {
+        mov(reg_ptr_src_scales, ptr[param1 + GET_OFF(src_scales)]);
+        vmulps(zmm_out, zmm_out,
+                EVEX_compress_addr(reg_ptr_src_scales, 0, /* bcast = */ true));
+    }
 
-    if (jcp.with_bias) vaddps(zmm_out_msk, zmm_out, zmm_bias);
+    if (jcp.with_wei_scales) {
+        mov(reg_ptr_wei_scales, ptr[param1 + GET_OFF(wei_scales)]);
+        int scale_offset
+                = jcp.is_oc_scale * (sizeof(float) * ocb * jcp.oc_block);
+        const Zmm zmm_out_msk = zmm_mask(zmm_out, mask_flag);
+        vmulps(zmm_out_msk, zmm_out,
+                EVEX_compress_addr(reg_ptr_wei_scales, scale_offset,
+                        /* bcast = */ !jcp.is_oc_scale));
+    }
+
+    if (jcp.with_bias) {
+        const Zmm zmm_out_msk = zmm_mask(zmm_out, mask_flag);
+        vaddps(zmm_out_msk, zmm_out, zmm_bias);
+    }
 
     apply_postops(zmm_out, p_sum_scale, p_sum_zp, addr, off, mask_flag);
 
-    if (jcp.dst_scale) {
-        mov(reg_ptr_dst_scale, ptr[param1 + GET_OFF(dst_scale)]);
-        vmulps(zmm_out, zmm_out, EVEX_compress_addr(reg_ptr_dst_scale, 0));
+    if (jcp.with_dst_scales) {
+        mov(reg_ptr_dst_scales, ptr[param1 + GET_OFF(dst_scales)]);
+        vmulps(zmm_out, zmm_out,
+                EVEX_compress_addr(reg_ptr_dst_scales, 0, /* bcast = */ true));
     }
     if (jcp.dst_zero_point) { vaddps(zmm_out, zmm_out, zmm_dst_zp); }
 
@@ -956,7 +985,7 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
-            VERBOSE_BAD_PARAM, "Large size is not supported");
+            VERBOSE_BAD_PARAM, "large size is not supported");
 
     const bool is_bf16_convolution
             = everyone_is(true, src_d.data_type() == data_type::bf16,
@@ -971,7 +1000,7 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     bool supported = mayiuse(avx512_core_amx)
             && (is_bf16_convolution || is_int8_convolution);
-    if (!supported) return status::unimplemented;
+    VDISPATCH_CONV_IC(supported, VERBOSE_ISA_DT_MISMATCH);
 
     jcp = zero<decltype(jcp)>();
     jcp.isa = avx512_core_amx;
@@ -1000,11 +1029,10 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.stride_w = cd.strides[ndims - 3];
     jcp.with_bias = cd.bias_desc.format_kind != format_kind::undef;
 
-    if (!(jcp.kd == 1 && jcp.kh == 1 && jcp.kw == 1))
-        return status::unimplemented;
-
-    if (!(jcp.f_pad == 0 && jcp.t_pad == 0 && jcp.l_pad == 0))
-        return status::unimplemented;
+    VDISPATCH_CONV_IC((jcp.kd == 1 && jcp.kh == 1 && jcp.kw == 1),
+            VERBOSE_UNSUPPORTED_FEATURE, "non-unit convolution kernel");
+    VDISPATCH_CONV_IC((jcp.f_pad == 0 && jcp.t_pad == 0 && jcp.l_pad == 0),
+            VERBOSE_UNSUPPORTED_FEATURE, "non-zero padding");
 
     jcp.dilate_d = is_3d ? cd.dilates[0] : 0;
     jcp.dilate_h = is_1d ? 0 : cd.dilates[ndims - 4];
@@ -1012,12 +1040,15 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     jcp.is_depthwise = true && with_groups && everyone_is(1, jcp.ic, jcp.oc);
 
-    if (jcp.dilate_d != 0 || jcp.dilate_h != 0 || jcp.dilate_w != 0)
-        return status::unimplemented;
-    if (jcp.is_depthwise)
-        return status::unimplemented; // TODO: add support of DW convolution
-    if (jcp.ngroups > 1)
-        return status::unimplemented; // TODO: add support for non-unit groups
+    VDISPATCH_CONV_IC(
+            !(jcp.dilate_d != 0 || jcp.dilate_h != 0 || jcp.dilate_w != 0),
+            VERBOSE_UNSUPPORTED_FEATURE, "dilation > 0");
+    // TODO: add support of DW convolution
+    VDISPATCH_CONV_IC(!jcp.is_depthwise, VERBOSE_UNSUPPORTED_FEATURE,
+            "depthwise convolutions");
+    // TODO: add support for non-unit groups
+    VDISPATCH_CONV_IC(
+            jcp.ngroups <= 1, VERBOSE_UNSUPPORTED_FEATURE, "non-unit groups");
 
     jcp.bia_dt = jcp.with_bias ? cd.bias_desc.data_type : data_type::undef;
     jcp.dst_dt = cd.dst_desc.data_type;
@@ -1030,17 +1061,20 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                        platform::get_per_core_cache_size(1) / 2);
     const auto is_3d_small_ic = jcp.ndims == 5 && jcp.ic * jcp.oc <= 32
             && jcp.od >= 128 && jcp.oh >= 128 && jcp.ow >= 128;
-    if (is_small_shape || is_3d_small_ic) return status::unimplemented;
+    VDISPATCH_CONV_IC(!is_small_shape, VERBOSE_SMALL_SHAPES);
+    VDISPATCH_CONV_IC(!is_3d_small_ic, VERBOSE_BAD_PARAM,
+            "bad output dimensions for 3d cases");
 
     const auto zp = attr.zero_points_;
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
     // If it's not per-tensor, then it's per-channel (not supported)
     jcp.zp_src_is_common = zp.get_mask(DNNL_ARG_SRC) == 0;
-    if (!IMPLICATION(jcp.src_zero_point, jcp.zp_src_is_common)
-            || !IMPLICATION(jcp.dst_zero_point || jcp.src_zero_point,
-                    is_int8_convolution))
-        return status::unimplemented;
+    VDISPATCH_CONV_IC(IMPLICATION(jcp.src_zero_point, jcp.zp_src_is_common),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
+    VDISPATCH_CONV_IC(IMPLICATION(jcp.dst_zero_point || jcp.src_zero_point,
+                              is_int8_convolution),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     jcp.nthr = nthreads;
 
@@ -1065,7 +1099,8 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
             && (jcp.ow == jcp.iw && jcp.stride_w == 1)
             && (jcp.oh == jcp.ih && jcp.stride_h == 1)
             && (jcp.od == jcp.id && jcp.stride_d == 1);
-    if (!args_ok) return status::unimplemented;
+    VDISPATCH_CONV_IC(args_ok, VERBOSE_UNSUPPORTED_FEATURE,
+            "unsupported shape for 1x1 convolution");
 
     if (jcp.ngroups == 1) {
         jcp.oc = rnd_up(jcp.oc, jcp.oc_block);
@@ -1098,7 +1133,8 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
         return weights_md == want_wei_md;
     };
 
-    if (!set_or_check_wei_format()) { return status::unimplemented; }
+    VDISPATCH_CONV_IC(
+            set_or_check_wei_format(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     format_tag_t dat_tag = utils::pick(
             ndims - 3, format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);
@@ -1109,7 +1145,7 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     } else {
         jcp.src_tag = src_d.matches_one_of_tag(dat_tag);
     }
-    if (jcp.src_tag != dat_tag) { return status::unimplemented; }
+    VDISPATCH_CONV_IC(jcp.src_tag == dat_tag, VERBOSE_UNSUPPORTED_TAG_S, "src");
 
     if (dst_d.format_kind() == format_kind::any) {
         CHECK(memory_desc_init_by_tag(dst_md, dat_tag));
@@ -1117,7 +1153,7 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     } else {
         jcp.dst_tag = dst_d.matches_one_of_tag(dat_tag);
     }
-    if (jcp.dst_tag != dat_tag) { return status::unimplemented; }
+    VDISPATCH_CONV_IC(jcp.dst_tag == dat_tag, VERBOSE_UNSUPPORTED_TAG_S, "dst");
 
     if (jcp.with_bias) {
         if (bias_d.format_kind() == format_kind::any)
@@ -1154,7 +1190,7 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                     !binary_injector::
                             any_binary_postop_rhs_with_ternary_scalar_bcast(
                                     p, dst_d));
-    if (!post_ops_ok_) return status::unimplemented;
+    VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
     jcp.typesize_in = types::data_type_size(src_d.data_type());
     jcp.typesize_out = types::data_type_size(dst_d.data_type());
@@ -1167,7 +1203,7 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.nb_ic_int = div_up(jcp.ic_without_padding, jcp.ic_block_int_np);
 
     jcp.max_width = amx::get_max_rows(amx::get_target_palette());
-    if (jcp.max_width <= 0) return status::unimplemented;
+    VDISPATCH_CONV_IC(jcp.max_width > 0, VERBOSE_BAD_PARAM, "max_width = 0");
 
     const int size_treshold = 32;
     const int min_width
@@ -1206,11 +1242,14 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     */
 
     // TODO: Add support for spatial tails
-    if (jcp.tile_tail != 0) return status::unimplemented;
+    VDISPATCH_CONV_IC(
+            jcp.tile_tail == 0, VERBOSE_UNSUPPORTED_FEATURE, "spatial tails");
 
     // TODO: Implement efficient tile tail processing. Now just go to common
     // case if we utilize half of tile or less.
-    if (jcp.tile_width <= jcp.max_width / 2) return status::unimplemented;
+    VDISPATCH_CONV_IC(jcp.tile_width > jcp.max_width / 2,
+            VERBOSE_UNSUPPORTED_FEATURE,
+            "less than half number of tiles utilized");
 
     jcp.nb_oc_blocking = (jcp.nb_oc % 2 == 0) ? 2 : 1;
     jcp.nb_ic_blocking = 1;
@@ -1230,9 +1269,11 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
             = (avaliable_ops) ? ops_tile_store / avaliable_ops + 1 : 0;
     if (jcp.per_one_pstore > 12) jcp.per_one_pstore = 0;
 
-    const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
     jcp.is_oc_scale = attr.scales_.get_mask(DNNL_ARG_WEIGHTS) > 0;
-    jcp.dst_scale = !dst_scales.has_default_values();
+    jcp.with_src_scales = !attr.scales_.get(DNNL_ARG_SRC).has_default_values();
+    jcp.with_wei_scales
+            = !attr.scales_.get(DNNL_ARG_WEIGHTS).has_default_values();
+    jcp.with_dst_scales = !attr.scales_.get(DNNL_ARG_DST).has_default_values();
 
     return status::success;
 }
@@ -1250,8 +1291,11 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::init_scratchpad(
         scratchpad.book(key_conv_padded_bias, jcp.oc, jcp.typesize_bia);
     }
     scratchpad.book(key_conv_amx_tilecfg, 2, 64); // 2 whole cachelines
-    book_precomputed_scales(
-            scratchpad, attr.scales_, jcp.ngroups * jcp.oc_without_padding);
+    if (jcp.with_dst_scales) {
+        // See brgemm_types.hpp comment for `with_dst_scales`.
+        scratchpad.book(key_conv_dst_scales,
+                static_cast<size_t>(jcp.nthr) * sizeof(float), 4096);
+    }
 }
 
 } // namespace x64

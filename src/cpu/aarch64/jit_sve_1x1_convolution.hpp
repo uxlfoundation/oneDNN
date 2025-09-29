@@ -90,15 +90,20 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
             return status::success;
         }
 
-        const memory_desc_t *dst_md(
-                int index = 0, bool user_input = false) const override {
+        const memory_desc_t *dst_md() const { return dst_md(0, false); }
+        const memory_desc_t *dst_md(int index) const {
+            return dst_md(index, false);
+        }
+        const memory_desc_t *dst_md(int index, bool user_input) const override {
             return jcp_.with_dw_conv
                     ? dw_conv_pd_->dst_md(index, user_input)
                     : cpu_convolution_fwd_pd_t::dst_md(index, user_input);
         }
 
-        const memory_desc_t *arg_md(
-                int arg, bool user_input = false) const override {
+        const memory_desc_t *arg_md(int arg) const {
+            return arg_md(arg, false);
+        }
+        const memory_desc_t *arg_md(int arg, bool user_input) const override {
             if (jcp_.with_dw_conv) {
                 switch (arg) {
                     case DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_SRC:
@@ -323,9 +328,9 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
 
     jit_sve_1x1_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    typedef typename prec_traits_t<src_type>::type src_data_t;
-    typedef typename prec_traits_t<wei_type>::type wei_data_t;
-    typedef typename prec_traits_t<dst_type>::type dst_data_t;
+    using src_data_t = typename prec_traits_t<src_type>::type;
+    using wei_data_t = typename prec_traits_t<wei_type>::type;
+    using dst_data_t = typename prec_traits_t<dst_type>::type;
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
@@ -478,9 +483,9 @@ struct jit_sve_1x1_convolution_bwd_data_t : public primitive_t {
 
     jit_sve_1x1_convolution_bwd_data_t(const pd_t *apd) : primitive_t(apd) {}
 
-    typedef typename prec_traits_t<diff_dst_type>::type diff_dst_data_t;
-    typedef typename prec_traits_t<wei_type>::type wei_data_t;
-    typedef typename prec_traits_t<diff_src_type>::type diff_src_data_t;
+    using diff_dst_data_t = typename prec_traits_t<diff_dst_type>::type;
+    using wei_data_t = typename prec_traits_t<wei_type>::type;
+    using diff_src_data_t = typename prec_traits_t<diff_src_type>::type;
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
@@ -636,7 +641,7 @@ struct jit_sve_1x1_convolution_bwd_weights_t : public primitive_t {
 
     jit_sve_1x1_convolution_bwd_weights_t(const pd_t *apd) : primitive_t(apd) {}
 
-    typedef typename prec_traits_t<data_type::f32>::type data_t;
+    using data_t = typename prec_traits_t<data_type::f32>::type;
 
     status_t init(engine_t *engine) override;
 

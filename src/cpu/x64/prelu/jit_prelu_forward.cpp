@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ status_t jit_prelu_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_PRELU(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_PRELU(bcast_supported(src_d, weights_d, dst_d),
             VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_PRELU(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_PRELU(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_PRELU(src_d.is_dense(true), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_PRELU(weights_d.is_dense(true), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_PRELU(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

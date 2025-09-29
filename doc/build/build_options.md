@@ -3,37 +3,40 @@ Use Build Options {#dev_guide_build_options}
 
 oneDNN supports the following build-time options.
 
-| CMake Option                    | Supported values (defaults in bold)                 | Description                                                                                     |
-|:--------------------------------|:----------------------------------------------------|:------------------------------------------------------------------------------------------------|
-| ONEDNN_LIBRARY_TYPE             | **SHARED**, STATIC                                  | Defines the resulting library type                                                              |
-| ONEDNN_CPU_RUNTIME              | NONE, **OMP**, TBB, SEQ, THREADPOOL, SYCL           | Defines the threading runtime for CPU engines                                                   |
-| ONEDNN_GPU_RUNTIME              | **NONE**, OCL, SYCL                                 | Defines the offload runtime for GPU engines                                                     |
-| ONEDNN_BUILD_DOC                | **ON**, OFF                                         | Controls building the documentation                                                             |
-| ONEDNN_BUILD_EXAMPLES           | **ON**, OFF                                         | Controls building the examples                                                                  |
-| ONEDNN_BUILD_TESTS              | **ON**, OFF                                         | Controls building the tests                                                                     |
-| ONEDNN_BUILD_GRAPH              | **ON**, OFF                                         | Controls building graph component                                                               |
-| ONEDNN_ENABLE_GRAPH_DUMP        | ON, **OFF**                                         | Controls dumping graph artifacts                                                                |
-| ONEDNN_ARCH_OPT_FLAGS           | *compiler flags*                                    | Specifies compiler optimization flags (see warning note below)                                  |
-| ONEDNN_ENABLE_CONCURRENT_EXEC   | ON, **OFF**                                         | Disables sharing a common scratchpad between primitives in #dnnl::scratchpad_mode::library mode |
-| ONEDNN_ENABLE_JIT_PROFILING     | **ON**, OFF                                         | Enables [integration with performance profilers](@ref dev_guide_profilers)                      |
-| ONEDNN_ENABLE_ITT_TASKS         | **ON**, OFF                                         | Enables [integration with performance profilers](@ref dev_guide_profilers)                      |
-| ONEDNN_ENABLE_PRIMITIVE_CACHE   | **ON**, OFF                                         | Enables [primitive cache](@ref dev_guide_primitive_cache)                                       |
-| ONEDNN_ENABLE_MAX_CPU_ISA       | **ON**, OFF                                         | Enables [CPU dispatcher controls](@ref dev_guide_cpu_dispatcher_control)                        |
-| ONEDNN_ENABLE_CPU_ISA_HINTS     | **ON**, OFF                                         | Enables [CPU ISA hints](@ref dev_guide_cpu_isa_hints)                                           |
-| ONEDNN_ENABLE_WORKLOAD          | **TRAINING**, INFERENCE                             | Specifies a set of functionality to be available based on workload                              |
-| ONEDNN_ENABLE_PRIMITIVE         | **ALL**, PRIMITIVE_NAME                             | Specifies a set of functionality to be available based on primitives                            |
-| ONEDNN_ENABLE_PRIMITIVE_CPU_ISA | **ALL**, CPU_ISA_NAME                               | Specifies a set of functionality to be available for CPU backend based on CPU ISA               |
-| ONEDNN_ENABLE_PRIMITIVE_GPU_ISA | **ALL**, GPU_ISA_NAME                               | Specifies a set of functionality to be available for GPU backend based on GPU ISA               |
-| ONEDNN_ENABLE_GEMM_KERNELS_ISA  | **ALL**, NONE, ISA_NAME                             | Specifies a set of functionality to be available for GeMM kernels for CPU backend based on ISA  |
-| ONEDNN_EXPERIMENTAL             | ON, **OFF**                                         | Enables [experimental features](@ref dev_guide_experimental)                                    |
-| ONEDNN_VERBOSE                  | **ON**, OFF                                         | Enables [verbose mode](@ref dev_guide_verbose)                                                  |
-| ONEDNN_DEV_MODE                 | ON, **OFF**                                         | Enables internal tracing and `debuginfo` logging in verbose output (for oneDNN developers)      |
-| ONEDNN_AARCH64_USE_ACL          | ON, **OFF**                                         | Enables integration with Arm Compute Library for AArch64 builds                                 |
-| ONEDNN_BLAS_VENDOR              | **NONE**, ARMPL, ACCELERATE                         | Defines an external BLAS library to link to for GEMM-like operations                            |
-| ONEDNN_GPU_VENDOR               | NONE, **INTEL**, NVIDIA, AMD                        | When DNNL_GPU_RUNTIME is not NONE defines GPU vendor for GPU engines otherwise its value is NONE|
-| ONEDNN_DPCPP_HOST_COMPILER      | **DEFAULT**, *GNU or Clang C++ compiler executable* | Specifies host compiler executable for SYCL runtime                                             |
-| ONEDNN_LIBRARY_NAME             | **dnnl**, *library name*                            | Specifies name of the library                                                                   |
-| ONEDNN_TEST_SET                 | SMOKE, **CI**, NIGHTLY, MODIFIER_NAME               | Specifies the testing coverage enabled through the generated testing targets                    |
+| CMake Option                    | Supported values (defaults in bold)                 | Description                                                                                                        |
+|:--------------------------------|:----------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------|
+| ONEDNN_LIBRARY_TYPE             | **SHARED**, STATIC                                  | Defines the resulting library type                                                                                 |
+| ONEDNN_CPU_RUNTIME              | NONE, **OMP**, TBB, SEQ, THREADPOOL, SYCL           | Defines the threading runtime for CPU engines                                                                      |
+| ONEDNN_GPU_RUNTIME              | **NONE**, OCL, SYCL                                 | Defines the offload runtime for GPU engines                                                                        |
+| ONEDNN_BUILD_DOC                | **ON**, OFF                                         | Controls building the documentation                                                                                |
+| ONEDNN_DOC_VERSIONS_JSON        | **""**, *string*                                    | Location of JSON file for [PyData Sphinx Theme version switcher]. Enables documentation version switcher when set. |
+| ONEDNN_BUILD_EXAMPLES           | **ON**, OFF                                         | Controls building the examples                                                                                     |
+| ONEDNN_BUILD_TESTS              | **ON**, OFF                                         | Controls building the tests                                                                                        |
+| ONEDNN_BUILD_GRAPH              | **ON**, OFF                                         | Controls building graph component                                                                                  |
+| ONEDNN_ENABLE_GRAPH_DUMP        | ON, **OFF**                                         | Controls dumping graph artifacts                                                                                   |
+| ONEDNN_ARCH_OPT_FLAGS           | *compiler flags*                                    | Specifies compiler optimization flags (see warning note below)                                                     |
+| ONEDNN_ENABLE_CONCURRENT_EXEC   | ON, **OFF**                                         | Disables sharing a common scratchpad between primitives in #dnnl::scratchpad_mode::library mode                    |
+| ONEDNN_ENABLE_JIT_PROFILING     | **ON**, OFF                                         | Enables [integration with performance profilers](@ref dev_guide_profilers)                                         |
+| ONEDNN_ENABLE_ITT_TASKS         | **ON**, OFF                                         | Enables [integration with performance profilers](@ref dev_guide_profilers)                                         |
+| ONEDNN_ENABLE_PRIMITIVE_CACHE   | **ON**, OFF                                         | Enables [primitive cache](@ref dev_guide_primitive_cache)                                                          |
+| ONEDNN_ENABLE_MAX_CPU_ISA       | **ON**, OFF                                         | Enables [CPU dispatcher controls](@ref dev_guide_cpu_dispatcher_control)                                           |
+| ONEDNN_ENABLE_CPU_ISA_HINTS     | **ON**, OFF                                         | Enables [CPU ISA hints](@ref dev_guide_cpu_isa_hints)                                                              |
+| ONEDNN_ENABLE_WORKLOAD          | **TRAINING**, INFERENCE                             | Specifies a set of functionality to be available based on workload                                                 |
+| ONEDNN_ENABLE_PRIMITIVE         | **ALL**, PRIMITIVE_NAME                             | Specifies a set of functionality to be available based on primitives                                               |
+| ONEDNN_ENABLE_PRIMITIVE_CPU_ISA | **ALL**, CPU_ISA_NAME                               | Specifies a set of functionality to be available for CPU backend based on CPU ISA                                  |
+| ONEDNN_ENABLE_PRIMITIVE_GPU_ISA | **ALL**, GPU_ISA_NAME                               | Specifies a set of functionality to be available for GPU backend based on GPU ISA                                  |
+| ONEDNN_ENABLE_GEMM_KERNELS_ISA  | **ALL**, NONE, ISA_NAME                             | Specifies a set of functionality to be available for GeMM kernels for CPU backend based on ISA                     |
+| ONEDNN_EXPERIMENTAL             | ON, **OFF**                                         | Enables [experimental features](@ref dev_guide_experimental)                                                       |
+| ONEDNN_VERBOSE                  | **ON**, OFF                                         | Enables [verbose mode](@ref dev_guide_verbose)                                                                     |
+| ONEDNN_DEV_MODE                 | ON, **OFF**                                         | Enables internal tracing and `debuginfo` logging in verbose output (for oneDNN developers)                         |
+| ONEDNN_AARCH64_USE_ACL          | ON, **OFF**                                         | Enables integration with Arm Compute Library for AArch64 builds                                                    |
+| ONEDNN_BLAS_VENDOR              | **NONE**, ARMPL, ACCELERATE                         | Defines an external BLAS library to link to for GEMM-like operations                                               |
+| ONEDNN_GPU_VENDOR               | NONE, **INTEL**, NVIDIA, AMD                        | When DNNL_GPU_RUNTIME is not NONE defines GPU vendor for GPU engines otherwise its value is NONE                   |
+| ONEDNN_DPCPP_HOST_COMPILER      | **DEFAULT**, *GNU or Clang C++ compiler executable* | Specifies host compiler executable for SYCL runtime                                                                |
+| ONEDNN_LIBRARY_NAME             | **dnnl**, *library name*                            | Specifies name of the library                                                                                      |
+| ONEDNN_TEST_SET                 | SMOKE, **CI**, NIGHTLY, MODIFIER_NAME               | Specifies the testing coverage enabled through the generated testing targets                                       |
+
+[PyData Sphinx Theme version switcher]: https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/version-dropdown.html
 
 All building options listed support their counterparts with `DNNL` prefix
 instead of `ONEDNN`. `DNNL` options would take precedence over `ONEDNN`

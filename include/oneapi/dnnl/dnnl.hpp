@@ -933,6 +933,8 @@ struct memory : public handle<dnnl_memory_t> {
         blocked = dnnl_blocked,
         /// Format kind for sparse tensors.
         sparse = dnnl_format_kind_sparse,
+        /// Format kind for host scalars.
+        host_scalar = dnnl_format_kind_host_scalar,
         /// A special format kind that indicates that tensor format is opaque.
         opaque = dnnl_format_kind_opaque,
     };
@@ -2961,6 +2963,19 @@ struct memory : public handle<dnnl_memory_t> {
             return desc {md};
         }
 
+        /// Creates a memory descriptor for a scalar value that resides on the host.
+        ///
+        /// @param adata_type Data type of the scalar.
+        /// @returns A memory descriptor for host-side scalar input.
+        static desc host_scalar(data_type adata_type) {
+            dnnl_memory_desc_t md = nullptr;
+            error::wrap_c_api(dnnl_memory_desc_create_host_scalar(
+                                      &md, convert_to_c(adata_type)),
+                    "could not create a memory descriptor describing host side "
+                    "scalar");
+            return desc {md};
+        }
+
         /// Construct a memory descriptor from a C API ::dnnl_memory_desc_t
         /// handle. The resulting handle is not weak and the C handle will be
         /// destroyed during the destruction of the C++ object.
@@ -3393,6 +3408,33 @@ struct memory : public handle<dnnl_memory_t> {
         reset(result);
     }
 
+    /// Constructs a memory object that wraps a host-side scalar value.
+    ///
+    /// @note The scalar value is copied into the newly allocated memory storage,
+    ///     so the user does not need to manage the lifetime of the original scalar data.
+    ///
+    /// @tparam T Type of the scalar value.
+    /// @param md Memory descriptor describing a scalar value residing on the host.
+    /// @param value The scalar value to be wrapped by the memory object.
+    ///
+    /// @throws error if the memory object could not be created.
+    template <typename T>
+    memory(const desc &md, const T value) {
+        dnnl_memory_t result;
+        // Check that the data type of T matches the memory descriptor's data type
+        // For host-side scalars, md.get_size() is data_type size
+        if (sizeof(T) != md.get_size()) {
+            DNNL_THROW_ERROR(dnnl_invalid_arguments,
+                    "scalar type size does not match memory descriptor data "
+                    "type size");
+        } else {
+            dnnl_status_t status = dnnl_memory_create_host_scalar(
+                    &result, md.get(), (void *)&value);
+            error::wrap_c_api(status, "could not create a memory object");
+        }
+        reset(result);
+    }
+
     /// Returns the associated memory descriptor.
     desc get_desc() const {
         const_dnnl_memory_desc_t cdesc;
@@ -3433,6 +3475,49 @@ struct memory : public handle<dnnl_memory_t> {
     void set_data_handle(void *handle, int index = 0) const {
         error::wrap_c_api(dnnl_memory_set_data_handle_v2(get(), handle, index),
                 "could not set native handle of a memory object");
+    }
+
+    /// Returns the scalar value stored in the memory object as type T.
+    ///
+    /// @tparam T Type to cast the scalar value to.
+    template <typename T>
+    T get_host_scalar_value() const {
+        const_dnnl_memory_desc_t cdesc;
+        error::wrap_c_api(dnnl_memory_get_memory_desc(get(), &cdesc),
+                "could not get memory descriptor");
+
+        if (sizeof(T) != dnnl_memory_desc_get_size_v2(cdesc, 0)) {
+            DNNL_THROW_ERROR(dnnl_invalid_arguments,
+                    "scalar type size does not match memory descriptor data "
+                    "type size");
+        }
+
+        T value;
+        error::wrap_c_api(dnnl_memory_get_host_scalar_value(get(), &value),
+                "could not get host scalar value from a memory object");
+        return value;
+    }
+
+    /// Sets the scalar value stored in the memory object.
+    ///
+    /// @note The scalar value is copied into the memory storage, so the user
+    ///     does not need to manage the lifetime of the original scalar data.
+    ///
+    /// @param value Pointer to the scalar value to set.
+    template <typename T>
+    void set_host_scalar_value(const T value) const {
+        const_dnnl_memory_desc_t cdesc;
+        error::wrap_c_api(dnnl_memory_get_memory_desc(get(), &cdesc),
+                "could not get memory descriptor from a memory object");
+
+        if (sizeof(T) != dnnl_memory_desc_get_size_v2(cdesc, 0)) {
+            DNNL_THROW_ERROR(dnnl_invalid_arguments,
+                    "scalar type size does not match memory descriptor data "
+                    "type size");
+        }
+
+        error::wrap_c_api(dnnl_memory_set_host_scalar_value(get(), &value),
+                "could not set host scalar value to a memory object");
     }
 
     /// Maps a memory object and returns a host-side pointer to a memory
@@ -4091,7 +4176,12 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     /// argument. The scaling factors must be passed at execution time
     /// as an argument with index #DNNL_ARG_ATTR_SCALES | arg.
     ///
-    /// @sa dnnl_primitive_attr_set_scales
+    /// @note If `is_on_host` is true, sets a single host-side scalar scaling
+    /// factor for the specified memory argument. The scaling factor should be
+    /// passed as a host scalar memory object at execution time with index
+    /// #DNNL_ARG_ATTR_SCALES | arg.
+    ///
+    /// @sa dnnl_primitive_attr_set_scales_v2
     ///
     /// @param arg Parameter argument index as passed to the
     ///     primitive::execute() call.
@@ -4105,11 +4195,33 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     ///     The set i-th dimension indicates a number of groups of scaling
     ///     factors used for that logical dimension in a memory indicated by @p arg.
     /// @param data_type Scaling factors data_type.
+    /// @param is_on_host Indicates whether the scaling factor is a host-side scalar.
     void set_scales(int arg, int mask, const memory::dims &groups,
-            memory::data_type data_type = memory::data_type::f32) {
-        error::wrap_c_api(dnnl_primitive_attr_set_scales(get(), arg, mask,
+            memory::data_type data_type = memory::data_type::f32,
+            bool is_on_host = false) {
+        error::wrap_c_api(dnnl_primitive_attr_set_scales_v2(get(), arg, mask,
                                   (int)groups.size(), groups.data(),
-                                  memory::convert_to_c(data_type)),
+                                  memory::convert_to_c(data_type), is_on_host),
+                "could not set scales primitive attribute");
+    }
+
+    /// Sets a single host-side scalar scaling
+    /// factor for the specified memory argument. The scaling factor should be
+    /// passed as a host scalar memory object at execution time with index
+    /// #DNNL_ARG_ATTR_SCALES | arg.
+    ///
+    /// @note Using this API to set the scaling factor implies that the scales
+    /// attribute has `mask == 0` and an empty groups vector.
+    ///
+    /// @sa dnnl_primitive_attr_set_scales_v2
+    ///
+    /// @param arg Parameter argument index as passed to the
+    ///     primitive::execute() call.
+    /// @param data_type Scaling factors data_type.
+    void set_host_scale(
+            int arg, memory::data_type data_type = memory::data_type::f32) {
+        error::wrap_c_api(dnnl_primitive_attr_set_scales_v2(get(), arg, 0, 0,
+                                  nullptr, memory::convert_to_c(data_type), 1),
                 "could not set scales primitive attribute");
     }
 
@@ -4136,26 +4248,84 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     /// The zero points must be passed at execution time as an argument with
     /// index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
     ///
+    /// @note If `is_on_host` is true, sets a single host-side zero point
+    /// for the specified memory argument. The zero point should be
+    /// passed as a host scalar memory object at execution time with index
+    /// #DNNL_ARG_ATTR_ZERO_POINTS | arg.
+    ///
     /// @sa dnnl_primitive_attr_set_zero_points
     ///
     /// @param arg Parameter argument index as passed to the
     ///     primitive::execute() call.
     /// @param mask Zero point correspondence mask that defines the
-    ///     correspondence between the tensor dimensions and the @p
-    ///     zero_points vector. The set i-th bit indicates that a dedicated
-    ///     zero point is used for each index along that dimension. Set the
-    ///     mask to 0 to use a common zero point for the whole output tensor.
+    ///     correspondence between the tensor dimensions and the zero points
+    ///     vector. The set i-th bit indicates that a dedicated zero point is
+    ///     used for each index along that dimension. Set the mask to 0 to use
+    ///     a common zero point for the whole output tensor.
     /// @param groups Zero point factors correspondence groups that define the
-    ///     correspondence between the tensor dimensions and the zero_points array.
+    ///     correspondence between the tensor dimensions and the zero points
+    ///     array.
     ///     The set i-th dimension indicates a number of groups of zero point
-    ///     factors used for that logical dimension in a memory indicated by @p arg.
+    ///     factors used for that logical dimension in a memory indicated by
+    ///     @p arg.
     /// @param data_type Zero point factors data_type.
+    /// @param is_on_host Indicates whether the zero point is a host-side scalar.
     void set_zero_points(int arg, int mask, const memory::dims &groups,
-            memory::data_type data_type = memory::data_type::s32) {
-        error::wrap_c_api(dnnl_primitive_attr_set_zero_points(get(), arg, mask,
-                                  (int)groups.size(), groups.data(),
-                                  memory::convert_to_c(data_type)),
+            memory::data_type data_type = memory::data_type::s32,
+            bool is_on_host = false) {
+        error::wrap_c_api(dnnl_primitive_attr_set_zero_points_v2(get(), arg,
+                                  mask, (int)groups.size(), groups.data(),
+                                  memory::convert_to_c(data_type), is_on_host),
                 "could not set zero points primitive attribute");
+    }
+
+    /// Sets a single host-side zero point for the specified memory argument.
+    /// The zero point should be passed as a host scalar memory object at
+    /// execution time with index #DNNL_ARG_ATTR_ZERO_POINTS | arg.
+    ///
+    /// @note Using this API to set the zero point implies that the zero
+    /// point attribute has `mask == 0` and an empty groups vector.
+    ///
+    /// @sa dnnl_primitive_attr_set_zero_points_v2
+    ///
+    /// @param arg Parameter argument index as passed to the
+    ///     primitive::execute() call.
+    /// @param data_type Zero point data type.
+    void set_host_zero_point(
+            int arg, memory::data_type data_type = memory::data_type::s32) {
+        error::wrap_c_api(
+                dnnl_primitive_attr_set_zero_points_v2(get(), arg, 0, 0,
+                        nullptr, memory::convert_to_c(data_type), 1),
+                "could not set zero points primitive attribute");
+    }
+
+    /// Sets precomputed reductions for primitive operations for a given memory
+    /// argument. The precomputed reductions must be passed at execution time as
+    /// an argument with index #DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | arg.
+    ///
+    /// @sa dnnl_primitive_attr_set_precomputed_reductions
+    ///
+    /// @param arg Parameter argument index as passed to the
+    ///     primitive::execute() call.
+    /// @param mask Precomputed reductions correspondence mask that defines the
+    ///     correspondence between the tensor dimensions and the precomputed
+    ///     reductions vector. The set i-th bit indicates that a dedicated
+    ///     precomputed reduction point is used for each index along that
+    ///     dimension.
+    /// @param groups Precomputed reduction factors correspondence groups that
+    ///     define the correspondence between the tensor dimensions and the
+    ///     precomputed reductions array.
+    ///     The set i-th dimension indicates a number of groups of precomputed
+    ///     reduction factors used for that logical dimension in a memory
+    ///     indicated by @p arg.
+    /// @param data_type Precomputed reduction factors data_type.
+    void set_precomputed_reductions(int arg, int mask,
+            const memory::dims &groups,
+            memory::data_type data_type = memory::data_type::s32) {
+        error::wrap_c_api(dnnl_primitive_attr_set_precomputed_reductions(get(),
+                                  arg, mask, (int)groups.size(), groups.data(),
+                                  memory::convert_to_c(data_type)),
+                "could not set precomputed reductions primitive attribute");
     }
 
     /// Returns post-ops previously set via set_post_ops().

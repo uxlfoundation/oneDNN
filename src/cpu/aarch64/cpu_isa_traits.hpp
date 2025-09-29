@@ -140,11 +140,11 @@ struct cpu_isa_traits<isa_all> {
 
 template <>
 struct cpu_isa_traits<asimd> {
-    typedef Xbyak_aarch64::VReg TReg;
-    typedef Xbyak_aarch64::VReg16B TRegB;
-    typedef Xbyak_aarch64::VReg8H TRegH;
-    typedef Xbyak_aarch64::VReg4S TRegS;
-    typedef Xbyak_aarch64::VReg2D TRegD;
+    using TReg = Xbyak_aarch64::VReg;
+    using TRegB = Xbyak_aarch64::VReg16B;
+    using TRegH = Xbyak_aarch64::VReg8H;
+    using TRegS = Xbyak_aarch64::VReg4S;
+    using TRegD = Xbyak_aarch64::VReg2D;
     static constexpr int vlen_shift = 4;
     static constexpr int vlen = 16;
     static constexpr int n_vregs = 32;
@@ -162,7 +162,7 @@ struct cpu_isa_traits<asimd> {
         typedef Xbyak_aarch64::ZRegS TRegS; \
         typedef Xbyak_aarch64::ZRegD TRegD; \
         static constexpr int vlen_shift = shift; \
-        static constexpr int vlen = bits / 8; \
+        static constexpr int vlen = (bits) / 8; \
         static constexpr int n_vregs = 32; \
         static constexpr dnnl_cpu_isa_t user_option_val \
                 = static_cast<dnnl_cpu_isa_t>(dnnl_cpu_isa_sve_##bits); \
@@ -218,6 +218,7 @@ static inline int isa_max_vlen(cpu_isa_t isa) {
         return 0;
 };
 
+// SVE length in bytes
 static inline uint64_t get_sve_length() {
     return cpu().getSveLen();
 }
@@ -228,7 +229,7 @@ static inline bool mayiuse_atomic() {
 }
 
 static inline bool isa_has_s8s8(cpu_isa_t isa) {
-    return is_superset(isa, sve_256);
+    return is_superset(isa, sve_128);
 }
 
 static inline bool mayiuse_bf16() {
@@ -281,6 +282,24 @@ inline size_t data_type_vnni_simd_elems(data_type_t data_type) {
     const size_t dt_size = types::data_type_size(data_type);
     assert(dt_size > 0);
     return cpu_isa_traits<isa>::vlen / dt_size;
+}
+
+// Maximum number of elements of a given type in a SIMD (SVE/Neon) vector for a
+// given ISA
+inline size_t simd_elems(data_type_t dt, cpu_isa_t cpu_isa) {
+    switch (cpu_isa) {
+        case sve_512: return data_type_vnni_simd_elems<sve_512>(dt);
+        case sve_256: return data_type_vnni_simd_elems<sve_256>(dt);
+        case sve_128:
+        case asimd: return data_type_vnni_simd_elems<sve_128>(dt);
+        default: {
+            // If this ISA does implement SIMD, then you need to add support for
+            // it in this function. If not, then you need to check earlier in
+            // the implementation and don't call this function.
+            assert(!"simd_elems does not support this cpu_isa_t.");
+            return 0;
+        }
+    }
 }
 
 } // namespace aarch64

@@ -212,10 +212,9 @@ TEST(test_subgraph_pass, LowerDownToInt8Conv) {
                 return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
             });
     ASSERT_NE(qconv_op, subgraph->get_ops().end());
-    ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info_key));
-    int64_t key = (*qconv_op)->get_attr<int64_t>(
-            dnnl_impl::op_attr::fusion_info_key);
-    auto &fusion_info = subgraph->fusion_info_mgr_.get_info(key);
+    ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info));
+    const auto &fusion_info = (*qconv_op)->get_attr<dnnl_impl::fusion_info_t>(
+            dnnl_impl::op_attr::fusion_info);
     const auto &post_ops = fusion_info.get_post_ops();
     ASSERT_EQ(post_ops.size(), 2U);
 }
@@ -330,11 +329,10 @@ TEST(test_subgraph_pass, LowerDownToInt8Matmul) {
                 return op->get_kind() == dnnl_impl::op_kind::dnnl_matmul;
             });
     ASSERT_NE(qmatmul_op, subgraph->get_ops().end());
-    ASSERT_TRUE((*qmatmul_op)->has_attr(dnnl_impl::op_attr::fusion_info_key));
-    int64_t key
-            = (*qmatmul_op)
-                      ->get_attr<int64_t>(dnnl_impl::op_attr::fusion_info_key);
-    auto &fusion_info = subgraph->fusion_info_mgr_.get_info(key);
+    ASSERT_TRUE((*qmatmul_op)->has_attr(dnnl_impl::op_attr::fusion_info));
+    const auto &fusion_info = (*qmatmul_op)
+                                      ->get_attr<dnnl_impl::fusion_info_t>(
+                                              dnnl_impl::op_attr::fusion_info);
     const auto &post_ops = fusion_info.get_post_ops();
     ASSERT_EQ(post_ops.size(), 1U);
 }
@@ -1491,9 +1489,17 @@ TEST(test_subgraph_pass_int8_matmul_passes_with_diff_inputs,
             add
              | (bf16)
     */
+
     std::vector<op_kind_t> scale_kinds {Multiply, Divide};
     for (auto scale_kind : scale_kinds) {
         graph::engine_t *g_eng = get_engine();
+
+        SKIP_IF(unsupported_data_type(static_cast<dnnl::memory::data_type>(
+                                              graph::data_type::bf16),
+                        graph::dnnl_impl::make_dnnl_engine(*g_eng)),
+                "Skip bf16 examples for systems that do not support "
+                "avx512_core.");
+
         dnnl::engine p_eng
                 = dnnl::impl::graph::dnnl_impl::make_dnnl_engine(*g_eng);
         graph_t agraph;
@@ -2326,10 +2332,9 @@ TEST(test_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
                 return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
             });
     ASSERT_NE(qconv_op, subgraph->get_ops().end());
-    ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info_key));
-    int64_t key = (*qconv_op)->get_attr<int64_t>(
-            dnnl_impl::op_attr::fusion_info_key);
-    auto &fusion_info = subgraph->fusion_info_mgr_.get_info(key);
+    ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info));
+    const auto &fusion_info = (*qconv_op)->get_attr<dnnl_impl::fusion_info_t>(
+            dnnl_impl::op_attr::fusion_info);
     const auto &post_ops = fusion_info.get_post_ops();
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
@@ -2492,10 +2497,9 @@ TEST(test_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
                 return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
             });
     ASSERT_NE(qconv_op, subgraph->get_ops().end());
-    ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info_key));
-    int64_t key = (*qconv_op)->get_attr<int64_t>(
-            dnnl_impl::op_attr::fusion_info_key);
-    auto &fusion_info = subgraph->fusion_info_mgr_.get_info(key);
+    ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info));
+    const auto &fusion_info = (*qconv_op)->get_attr<dnnl_impl::fusion_info_t>(
+            dnnl_impl::op_attr::fusion_info);
     const auto &post_ops = fusion_info.get_post_ops();
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA

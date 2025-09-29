@@ -16,18 +16,14 @@
 
 /// @example lstm.cpp
 /// > Annotated version: @ref lstm_example_cpp
-///
-/// @page lstm_example_cpp_short
-///
+
+/// @page lstm_example_cpp LSTM RNN Primitive Example
 /// This C++ API example demonstrates how to create and execute an
 /// [LSTM RNN](@ref dev_guide_rnn) primitive in forward training propagation
 /// mode.
 ///
 /// Key optimizations included in this example:
 /// - Creation of optimized memory format from the primitive descriptor.
-///
-/// @page lstm_example_cpp LSTM RNN Primitive Example
-/// @copydetails lstm_example_cpp_short
 ///
 /// @include lstm.cpp
 

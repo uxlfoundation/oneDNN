@@ -14,9 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <string>
+
 #include "gpu/intel/jit/generator.hpp"
 
-#include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/logging.hpp"
 #include "ngen_register_decl.hpp"
 
 namespace dnnl {
@@ -26,7 +28,9 @@ namespace intel {
 namespace jit {
 
 void check_kernel_size(const std::string &kernel_name, size_t kernel_size,
-        size_t icache_size) {
+        const intel::engine_t *engine) {
+    auto *device_info = engine->device_info();
+    size_t icache_size = device_info->icache_size();
     if (kernel_size > icache_size) {
         gpu_warning() << kernel_name
                       << " larger than icache, kernel: " << kernel_size

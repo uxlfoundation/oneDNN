@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,14 +41,20 @@ status_t ref_binary_t::execute_ref(const exec_ctx_t &ctx) const {
 
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    const float *scales[2];
-    ASSIGN_ARG_SCALE_VALUE(scales[0], DNNL_ARG_SRC_0);
-    ASSIGN_ARG_SCALE_VALUE(scales[1], DNNL_ARG_SRC_1);
+    const float *src0_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0);
+    const float *src1_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_1);
 
     const memory_desc_wrapper src0_d(pd()->src_md(0));
     const memory_desc_wrapper src1_d(pd()->src_md(1));
     const memory_desc_wrapper src2_d(pd()->src_md(2));
     const memory_desc_wrapper dst_d(pd()->dst_md());
+
+    const bool with_src0_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC_0);
+    const bool with_src1_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC_1);
 
     const auto src0_dt = src0_d.data_type();
     const auto src1_dt = src1_d.data_type();
@@ -108,8 +114,8 @@ status_t ref_binary_t::execute_ref(const exec_ctx_t &ctx) const {
         float y_f = io::load_float_value(src1_dt, src1, off_B);
         float dst_f = io::load_float_value(dst_dt, dst, off_D);
 
-        x_f *= scales[0][0];
-        y_f *= scales[1][0];
+        if (with_src0_scales) x_f *= src0_scales[0];
+        if (with_src1_scales) y_f *= src1_scales[0];
 
         bool c_f = false;
         if (pd()->is_ternary_op()) {

@@ -45,6 +45,8 @@ namespace dnnl_impl {
     VCONDCHECK(graph, create, check, fusion_info, (cond), status, msg, \
             ##__VA_ARGS__);
 
+enum class attr_type_t { QK, VS };
+
 // This class is used to represent an op's fusion information, such as the post
 // ops, the zero points or scales.
 class fusion_info_t {
@@ -70,6 +72,13 @@ class fusion_info_t {
         meta_op_t(const op_ptr &op,
                 const std::vector<size_t> &extra_input_indices)
             : op_(op), unfused_input_indices_(extra_input_indices) {};
+
+        bool operator==(const meta_op_t &other) const {
+            return *op_ == *other.op_ && scale_ == other.scale_
+                    && zp_ == other.zp_
+                    && unfused_input_indices_ == other.unfused_input_indices_
+                    && is_post_sum_ == other.is_post_sum_;
+        }
 
         float get_scale() const { return scale_; }
         int32_t get_zp() const { return zp_; }
@@ -106,7 +115,61 @@ public:
     friend dnnl::primitive_attr make_dnnl_primitive_attr(
             const op_ptr &op, const fusion_info_t &fusion_info);
 
+    friend dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
+            const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info,
+            const attr_type_t attr_type);
+
     fusion_info_t() = default;
+
+    bool operator==(const fusion_info_t &other) const {
+        // input_zps_
+        if (input_zps_.size() != other.input_zps_.size()) return false;
+        for (const auto &pair : input_zps_) {
+            size_t index = pair.first;
+            const std::shared_ptr<meta_op_t> &meta_op = pair.second;
+            auto it = other.input_zps_.find(index);
+            if (it == other.input_zps_.end() || !(*meta_op == *it->second)) {
+                return false;
+            }
+        }
+
+        // output_zps_
+        if ((output_zps_ == nullptr) != (other.output_zps_ == nullptr))
+            return false;
+        if (output_zps_ && other.output_zps_
+                && !(*output_zps_ == *other.output_zps_))
+            return false;
+
+        // input_scales_
+        if (input_scales_.size() != other.input_scales_.size()) return false;
+        for (const auto &pair : input_scales_) {
+            size_t index = pair.first;
+            const std::shared_ptr<meta_op_t> &meta_op = pair.second;
+            auto it = other.input_scales_.find(index);
+            if (it == other.input_scales_.end() || !(*meta_op == *it->second)) {
+                return false;
+            }
+        }
+
+        // dst_scales_
+        if ((dst_scales_ == nullptr) != (other.dst_scales_ == nullptr))
+            return false;
+        if (dst_scales_ && other.dst_scales_
+                && !(*dst_scales_ == *other.dst_scales_))
+            return false;
+
+        // post_ops_
+        if (post_ops_.size() != other.post_ops_.size()) return false;
+        for (size_t i = 0; i < post_ops_.size(); ++i) {
+            if (!(*post_ops_[i] == *other.post_ops_[i])) { return false; }
+        }
+
+        return true;
+    }
+
+    bool operator!=(const fusion_info_t &other) const {
+        return !(*this == other);
+    }
 
     // used to modify the fused arg scales, like modifying it's axis after
     // inserting reshape op
@@ -267,59 +330,18 @@ private:
     std::vector<std::shared_ptr<meta_op_t>> post_ops_;
 };
 
-// This class is used to manage all fusion infos in a subgraph. The
-// fusion_info_t can't be directly stored in op's attribute system, so we store
-// them in this manager class and then store the generated int64_t typed key in
-// op's attribute system. When using an ops' fusion info, we can use the fusion
-// info key to query it out from the manager.
-class fusion_info_mgr_t {
-public:
-    fusion_info_mgr_t(
-            graph::fpmath_t fpm_mode = {}, bool can_use_blocked_layout = false)
-        : fpmath_mode_(fpm_mode)
-        , can_use_blocked_layout_(can_use_blocked_layout) {}
-
-    // Disable assignment and copy
-    fusion_info_mgr_t(const fusion_info_mgr_t &) = delete;
-    fusion_info_mgr_t(fusion_info_mgr_t &&) = delete;
-    fusion_info_mgr_t &operator=(const fusion_info_mgr_t &) = delete;
-    fusion_info_mgr_t &operator=(fusion_info_mgr_t &&) = delete;
-
-    // Initialize an empty fusion info object and return its key
-    int64_t init_info() {
-        data_.emplace_back();
-        return static_cast<int64_t>(data_.size() - 1);
-    }
-
-    // Get out a mutable fusion info reference according to the key
-    fusion_info_t &get_mutable_info(int64_t key) {
-        size_t k = static_cast<size_t>(key);
-        VCHECK_FUSION_INFO(k < data_.size(), data_[k], "invalid key");
-        return data_[k];
-    }
-
-    // Get out a constant fusion info reference according to the key
-    const fusion_info_t &get_info(int64_t key) const {
-        size_t k = static_cast<size_t>(key);
-        VCHECK_FUSION_INFO(k < data_.size(), data_[k], "invalid key");
-        return data_[k];
-    }
-
-    const fpmath_t &get_fpmath_mode() const { return fpmath_mode_; }
-    bool get_use_blocked_layout() const { return can_use_blocked_layout_; }
-
-private:
-    std::vector<fusion_info_t> data_;
-    // specified floating-point math mode for all fusions
-    fpmath_t fpmath_mode_;
-    bool can_use_blocked_layout_;
-};
-
 // This function is used to make a dnnl::primitive_attr from the fusion info.
 // Note that the op and fusion_info arguments must be matched since a fusion
 // info make sense only when it belongs to a specific op.
 dnnl::primitive_attr make_dnnl_primitive_attr(
         const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info);
+
+// This function is used to make a dnnl::primitive_attr(QK and VS) for sdpa.
+// The attr creation is similar to matmul attr, but fusion info of sdpa has
+// different semantics, so we need to handle it differently.
+dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
+        const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info,
+        const attr_type_t attr_type);
 
 } // namespace dnnl_impl
 } // namespace graph

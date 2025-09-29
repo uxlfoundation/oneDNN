@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 FUJITSU LIMITED
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
+#include "common/utils.hpp"
 
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_brgemm_primitive_conf.hpp"
@@ -197,19 +198,15 @@ private:
     }
 
     void generate() override {
-        size_t simd_w_ = 0;
-        switch (brg_.isa_impl) {
-            case sve_512:
-                simd_w_ = cpu_isa_traits<sve_512>::vlen / sizeof(float);
-                break;
-            case sve_256:
-                simd_w_ = cpu_isa_traits<sve_256>::vlen / sizeof(float);
-                break;
-            default: {
-                assert(!"unsupported isa");
-                return;
-            }
+
+        if (!utils::one_of(brg_.isa_impl, sve_512, sve_256, sve_128)) {
+            assert(!"unsupported isa: jit_brgemm_kernel_t only supports SVE "
+                    "512, 256 and 128, this should have been checked earlier "
+                    "in the implementation");
         }
+
+        size_t simd_w_ = simd_elems(data_type::f32, brg_.isa_impl);
+
         preamble();
         if (simd_w_ != cpu_sveLen / sizeof(float)) {
             set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
@@ -275,7 +272,7 @@ struct brgemm_kernel_post_ops_t {
     size_t apply_comp = 0;
     int32_t a_comp_val = 1;
     int32_t *a_zp_compensation;
-    int32_t *c_zp_values;
+    const int32_t *c_zp_values;
     int32_t *s8s8_compensation;
     const void *dst_orig;
     void *ptr_dst_scales;
@@ -337,7 +334,7 @@ struct jit_brgemm_kernel_post_ops : public jit_generator {
         bia_typesize_ = (jcp.with_bias) ? types::data_type_size(bia_dt_) : 0;
     }
 
-    ~jit_brgemm_kernel_post_ops() = default;
+    ~jit_brgemm_kernel_post_ops() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_post_ops)
 
@@ -453,8 +450,31 @@ private:
                 }
                 break;
             case data_type::s8: assert(!"unsupported data type\n"); break;
-            case data_type::u8: assert(!"unsupported data type\n"); break;
-            case data_type::bf16: assert(!"unsupported data type\n"); break;
+            case data_type::u8:
+                if (mask_flag) {
+                    if (store) {
+                        st1w(zmm_in.s, ktail_mask / T_m, op);
+
+                    } else {
+                        ld1b(zmm_in.s, ktail_mask / T_z, op);
+                    }
+                } else {
+                    ld1b(zmm_in.s, k_full_mask / T_z, op);
+                }
+                break;
+            case data_type::bf16:
+                if (mask_flag) {
+                    if (store) {
+                        st1w(zmm_in.s, ktail_mask / T_m, op);
+                    } else {
+                        ld1h(zmm_in.s, ktail_mask / T_z, op);
+                        lsl(zmm_in.s, zmm_in.s, 16);
+                    }
+                } else {
+                    ld1h(zmm_in.s, k_full_mask / T_z, op);
+                    lsl(zmm_in.s, zmm_in.s, 16);
+                }
+                break;
             default: assert(!"unsupported data type");
         }
         if (types::is_integral_dt(type_in)) {
@@ -603,7 +623,7 @@ private:
                 add_imm(X_DEFAULT_ADDR, aux_reg_in,
                         inp_typesize_ * (m * brg.LDC + n * brg.ld_block),
                         X_TMP_0);
-                cvt2ps(inp_dt_, vector(m, n), ptr(X_DEFAULT_ADDR), true, false,
+                cvt2ps(inp_dt_, vector(m, n), ptr(X_DEFAULT_ADDR), tail, false,
                         k_mask);
             }
         }
@@ -629,7 +649,7 @@ private:
                 auto vmm_bias = vmm_tmp(0);
                 add_imm(X_DEFAULT_ADDR, aux_reg_bias,
                         bia_typesize_ * (n * brg.ld_block), X_TMP_0);
-                cvt2ps(bia_dt_, vmm_bias, ptr(X_DEFAULT_ADDR), true, false,
+                cvt2ps(bia_dt_, vmm_bias, ptr(X_DEFAULT_ADDR), tail, false,
                         k_mask);
                 for (int m = 0; m < m_block; m++) {
                     fadd(vector(m, n).s, vector(m, n).s, vmm_bias.s);
@@ -678,11 +698,10 @@ private:
 
         const bool dt_requires_saturation = types::is_integral_dt(out_dt_);
 
-        const XReg reg_tmp_gpr = reg_tmp;
         auto vmm_lbound = vmm_tmp(0);
         auto vmm_ubound = vmm_tmp(1);
         if (dt_requires_saturation) {
-            init_saturate_f32(vmm_lbound, vmm_ubound, reg_tmp_gpr,
+            init_saturate_f32(vmm_lbound, vmm_ubound, X_DEFAULT_ADDR,
                     data_type::f32, out_dt_);
         }
 
@@ -695,7 +714,7 @@ private:
 
             if (dt_requires_saturation) {
                 saturate_f32(vmm, vmm_lbound, vmm_ubound, out_dt_, k_full_mask);
-                frintn(vmm.s, k_full_mask, vmm.s);
+                frinti(vmm.s, k_full_mask, vmm.s);
                 fcvtzs(vmm.s, k_full_mask, vmm.s);
             }
 
@@ -707,8 +726,23 @@ private:
                             X_TMP_0); //addr
                     st1w(vmm.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
                     break;
+                case data_type::bf16:
+                    add_imm(X_DEFAULT_ADDR, aux_reg_out,
+                            out_typesize_ * (m * LDD_ + n * brg.ld_block),
+                            X_TMP_0); //addr
+                    // bfcvt() converts f32 to bf16 (by zero extension) and places bf16s into even lanes
+                    // st1h(vmm.s, ....) narrows bf16's in even lanes into memory.
+                    bfcvt(vmm.h, k_mask / T_m, vmm.s);
+                    st1h(vmm.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
+                    break;
                 case data_type::s8: assert(!"unsupported data type\n"); break;
-                case data_type::u8: assert(!"unsupported data type\n"); break;
+                case data_type::u8:
+                    umin(vmm.s, std::numeric_limits<uint8_t>::max());
+                    add_imm(X_DEFAULT_ADDR, aux_reg_out,
+                            out_typesize_ * (m * LDD_ + n * brg.ld_block),
+                            X_TMP_0); //addr
+                    st1b(vmm.s, k_mask / T_m, ptr(X_DEFAULT_ADDR));
+                    break;
                 default: assert(!"unknown dst_dt");
             }
         }
@@ -854,19 +888,11 @@ private:
     }
 
     void generate() override {
-        size_t simd_w_ = 0;
-        switch (brg.isa_impl) {
-            case sve_512:
-                simd_w_ = cpu_isa_traits<sve_512>::vlen / sizeof(float);
-                break;
-            case sve_256:
-                simd_w_ = cpu_isa_traits<sve_256>::vlen / sizeof(float);
-                break;
-            default: {
-                assert(!"unsupported isa");
-                return;
-            }
-        }
+        if (!utils::one_of(brg.isa_impl, sve_512, sve_256, sve_128))
+            assert(!"unsupported isa: only SVE 512, 256 and 128 supported");
+
+        size_t simd_w_ = simd_elems(data_type::f32, brg.isa_impl);
+
         preamble();
         if (simd_w_ != cpu_sveLen / sizeof(float)) {
             set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);

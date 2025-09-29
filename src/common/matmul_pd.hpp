@@ -201,27 +201,26 @@ struct matmul_pd_t : public primitive_desc_t {
                 const bool wei_k_group_ok = IMPLICATION(g0 > 1, K() % g1 == 0);
                 const bool wei_n_group_ok = IMPLICATION(g1 > 1, N() % g0 == 0);
 
-                // Any group is allowed to be greater than 1 but only one at a
-                // time, not both.
-                ok = ok
-                        && IMPLICATION(!scales.get(arg).has_default_groups(),
-                                utils::one_of(1, g0, g1) && wei_k_group_ok
-                                        && wei_n_group_ok);
+                ok = ok && wei_k_group_ok && wei_n_group_ok;
 
-                // Mask over K dim is allowed for decompression feature only.
-                const bool is_decompression_or_dynquant
-                        = utils::one_of(weights_md(0)->data_type, data_type::s8,
-                                  data_type::u8, data_type::s4, data_type::u4)
-                        && IMPLICATION(
-                                !types::is_integral_dt(src_md()->data_type),
-                                attr()->fpmath_.apply_to_int_);
-                ok = ok
-                        && IMPLICATION((mask & wei_qmask_K()),
-                                is_decompression_or_dynquant);
+                // Mask over K dim is allowed for fp types or weights decompression only.
+                if (types::is_integral_dt(weights_md(0)->data_type)) {
+                    const bool is_decompression
+                            = utils::one_of(weights_md(0)->data_type,
+                                      data_type::s8, data_type::u8,
+                                      data_type::s4, data_type::u4)
+                            && IMPLICATION(
+                                    !types::is_integral_dt(src_md()->data_type),
+                                    attr()->fpmath_.apply_to_int_);
+                    ok = ok
+                            && IMPLICATION(
+                                    (mask & wei_qmask_K()), is_decompression);
+                }
             } else if (arg == DNNL_ARG_SRC) {
                 ok = ok
                         && utils::one_of(mask, 0, src_qmask_K(),
-                                src_qmask_M() + src_qmask_K());
+                                src_qmask_M() + src_qmask_K(),
+                                full_tensor_mask());
                 ok = ok
                         && IMPLICATION((mask & src_qmask_K()),
                                 !scales.get(arg).has_default_groups());

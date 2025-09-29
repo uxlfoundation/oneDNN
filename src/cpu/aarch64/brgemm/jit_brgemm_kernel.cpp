@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,18 +33,18 @@
     (uint32_t) offsetof(brgemm_batch_element_t, field)
 #define LD_MUL_VL(mn, op, mask, addr, off, size) \
     { \
-        const int mul_vl_len = (cpu_sveLen / 4) * size; \
+        const int mul_vl_len = (cpu_sveLen / 4) * (size); \
         const int off_mod = (off) % mul_vl_len; \
         const int off_mul_vl = (off) / mul_vl_len; \
         if (off_mod == 0 && -8 <= off_mul_vl && off_mul_vl <= 7) \
-            mn(op, mask / T_z, ptr(addr, off_mul_vl, MUL_VL)); \
+            mn(op, (mask) / T_z, ptr(addr, off_mul_vl, MUL_VL)); \
         else \
-            mn(op, mask / T_z, \
+            mn(op, (mask) / T_z, \
                     ptr(addr_off(addr, off, X_DEFAULT_ADDR, X_TMP_0))); \
     }
 #define ST_MUL_VL(mn, op, mask, addr, off, size) \
     { \
-        const int mul_vl_len = (cpu_sveLen / 4) * size; \
+        const int mul_vl_len = (cpu_sveLen / 4) * (size); \
         const int off_mod = (off) % mul_vl_len; \
         const int off_mul_vl = (off) / mul_vl_len; \
         if (off_mod == 0 && -8 <= off_mul_vl && off_mul_vl <= 7) \
@@ -55,7 +55,7 @@
 #define LDR_IMM(reg, addr, off) \
     { \
         const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if ((off & IMM12_MASK) == 0) { \
+        if (((off)&IMM12_MASK) == 0) { \
             ldr(reg, ptr(addr, off)); \
         } else { \
             add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
@@ -65,7 +65,7 @@
 #define STR_IMM(reg, addr, off) \
     { \
         const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if ((off & IMM12_MASK) == 0) { \
+        if (((off)&IMM12_MASK) == 0) { \
             str(reg, ptr(addr, off)); \
         } else { \
             add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
@@ -313,7 +313,7 @@ private:
             int bd_block, int ld_block2, bool is_ld_tail, int vpad);
 
     void dot_product(ZReg z1, ZReg z2, ZReg z3);
-    void gemm_microkernel_sve512(int bd_block2, bool is_bdb_tail, int ld_block,
+    void gemm_microkernel(int bd_block2, bool is_bdb_tail, int ld_block,
             bool is_rd_tail, bool is_ld_tail, int vpad, int rows_for_rd_tail);
 
     void ldb_loop(int bd_block2, bool is_bdb_tail, int ld_block,
@@ -503,25 +503,42 @@ void jit_brgemm_kernel_t::cvt2ps(data_type_t type_in, const ZReg zmm_in,
     const auto mask = mask_flag ? ktail_mask : P_ALL_ONE;
     switch (type_in) {
         case data_type::f32:
-        case data_type::s32:
+        case data_type::s32: {
             LD_MUL_VL(ld1w, z_tmp_1().s, mask, addr, offset - base_offset, 4);
             if (store) //Merging
                 mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
             break;
-        case data_type::bf16: assert(!"unsupported data type\n"); break;
+        }
+        case data_type::bf16: {
+            add_imm(X_TMP_1, addr, offset - base_offset, X_TMP_0);
+            ld1h(z_tmp_1().s, mask, ptr(X_TMP_1));
+            lsl(z_tmp_1().s, z_tmp_1().s, 16);
+            if (store) //Merging
+                mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
+            break;
+        }
         case data_type::s8:
-            LD_MUL_VL(ld1b, z_tmp_1().b, mask, addr, offset - base_offset, 1);
-            sxtb(z_tmp_1().d, mask / T_m, z_tmp_1().d);
+            if (mask_flag)
+                set_preg(P_TMP.b, brg.ldb_tail, X_TMP_0, X_TMP_1);
+            else
+                set_preg(P_TMP.b, brg.ld_block, X_TMP_0, X_TMP_1);
+            add_imm(X_DEFAULT_ADDR, addr, offset - base_offset, X_TMP_0);
+            ld1b(z_tmp_1().b, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
+            sunpklo(z_tmp_1().h, z_tmp_1().b);
+            sunpklo(z_tmp_1().s, z_tmp_1().h);
             if (store) // Merging
                 mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
             break;
-        case data_type::u8:
-            LD_MUL_VL(ld1b, z_tmp_1().b, mask, addr, offset - base_offset, 1);
-            uxtb(z_tmp_1().s, mask / T_m, z_tmp_1().s);
+        case data_type::u8: {
+            LD_MUL_VL(ld1b, z_tmp_1().s, mask, addr, offset - base_offset, 1);
             if (store) // Merging
                 mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
             break;
+        }
         default: assert(!"unsupported data type");
+    }
+    if (types::is_integral_dt(type_in)) {
+        scvtf(zmm_in.s, P_ALL_ONE / T_m, zmm_in.s);
     }
 }
 
@@ -868,18 +885,20 @@ void jit_brgemm_kernel_t::apply_post_ops(
                     register_guard_sum_zp(
                             p_sum_zp_reg_set, this, {reg_ptr_sum_zp});
 
-            const auto &vmm_sum_zp = z_tmp_2();
+            const auto &vmm_sum_scale = z_tmp_2();
+            const auto &vmm_sum_zp = z_tmp_3();
 
             if (p_sum_zp_reg_set) {
                 mov_imm(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-                ld1rw(z_tmp_3().s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_zp));
-                scvtf(vmm_sum_zp.s, P_ALL_ONE / T_m, z_tmp_3().s);
+                ld1rw(vmm_sum_zp.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_zp));
+                scvtf(vmm_sum_zp.s, P_ALL_ONE / T_m, vmm_sum_zp.s);
             }
 
             if (p_sum_scale_reg_set) {
                 // embd bcast fma
                 mov_imm(reg_ptr_sum_scale,
                         reinterpret_cast<size_t>(p_sum_scale));
+                ld1rw(vmm_sum_scale.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_scale));
             }
 
             for_(int bd = 0; bd < bd_block; bd++)
@@ -889,13 +908,13 @@ void jit_brgemm_kernel_t::apply_post_ops(
                 const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
                 const auto k_mask = is_tail ? ld_tail_mask : ld_full_mask;
                 add_imm(X_DEFAULT_ADDR, reg_aux_D, D_offset(bd, ld), X_TMP_0);
-                ld1w(vmm_prev_dst.s, k_mask / T_z, ptr(X_DEFAULT_ADDR));
+                cvt2ps(brg.sum_dt, vmm_prev_dst, X_DEFAULT_ADDR, is_tail, false,
+                        k_mask, 0, 0);
                 if (p_sum_zp_reg_set)
                     fsub(vmm_prev_dst.s, vmm_prev_dst.s, vmm_sum_zp.s);
                 if (p_sum_scale_reg_set) {
-                    const auto ztmp2 = z_tmp_2();
-                    ld1rw(ztmp2.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_scale));
-                    fmla(vmm.s, P_ALL_ONE / T_m, vmm_prev_dst.s, ztmp2.s);
+                    fmla(vmm.s, P_ALL_ONE / T_m, vmm_prev_dst.s,
+                            vmm_sum_scale.s);
                 } else
                     fadd(vmm.s, vmm.s, vmm_prev_dst.s);
             }
@@ -913,7 +932,7 @@ void jit_brgemm_kernel_t::apply_post_ops(
 }
 
 static inline bool isa_has_masks(cpu_isa_t isa) {
-    return is_superset(isa, sve_256);
+    return is_superset(isa, sve_128);
 }
 
 void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
@@ -964,8 +983,8 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
                 base_offset = offset;
                 x_addr = reg_tmp_;
             }
-            cvt2ps(brg.dt_bias, zmm_bias, x_addr, true, false, k_mask, offset,
-                    base_offset);
+            cvt2ps(brg.dt_bias, zmm_bias, x_addr, is_ld_tail, false, k_mask,
+                    offset, base_offset);
         }
         for (int bd = 0; bd < bd_block; bd++) {
             auto zmm = accm(ld_block2, bd, ld);
@@ -1020,7 +1039,20 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
 
     const bool dt_requires_saturation
             = one_of(brg.dt_d, data_type::u8, data_type::s8, data_type::s32);
-    if (dt_requires_saturation) { assert(!"unsupported\n"); }
+    auto zmm_lbound = z_tmp_1();
+    auto zmm_ubound = z_tmp_2();
+    if (dt_requires_saturation) {
+        init_saturate_f32(
+                zmm_lbound, zmm_ubound, reg_tmp_gpr, data_type::f32, brg.dt_d);
+        for (int bd = 0; bd < bd_block; bd++) {
+            for (int ld = 0; ld < ld_block2; ld++) {
+                auto zmm = accm(ld_block2, bd, ld);
+                saturate_f32(zmm, zmm_lbound, zmm_ubound, brg.dt_d, k_mask);
+                frinti(zmm.s, k_mask, zmm.s);
+                fcvtzs(zmm.s, k_mask, zmm.s);
+            }
+        }
+    }
 
     x_addr = reg_aux_D;
     base_offset = 0;
@@ -1040,9 +1072,24 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
                     ST_MUL_VL(st1w, zmm.s, k_mask, x_addr, offset - base_offset,
                             4);
                     break;
-                case data_type::bf16: assert(!"unsupported\n"); break;
-                case data_type::s8: assert(!"unsupported\n"); break;
-                case data_type::u8: assert(!"unsupported\n"); break;
+                case data_type::bf16: {
+                    bfcvt(zmm.h, k_mask / T_m, zmm.s);
+                    st1h(zmm.s, k_mask,
+                            ptr(addr_off(x_addr, offset - base_offset,
+                                    X_DEFAULT_ADDR, X_TMP_0)));
+                    break;
+                }
+                case data_type::s8:
+                    smin(zmm.s, std::numeric_limits<int8_t>::max());
+                    smax(zmm.s, std::numeric_limits<int8_t>::min());
+                    ST_MUL_VL(st1b, zmm.s, k_mask, x_addr, offset - base_offset,
+                            1);
+                    break;
+                case data_type::u8:
+                    umin(zmm.s, std::numeric_limits<uint8_t>::max());
+                    ST_MUL_VL(st1b, zmm.s, k_mask, x_addr, offset - base_offset,
+                            1);
+                    break;
                 default: assert(!"unknown dst_dt");
             }
         }
@@ -1135,7 +1182,22 @@ void jit_brgemm_kernel_t::store_accumulators_without_post_ops(
             = brg.beta == 1.f && IMPLICATION(brg.is_int8, brg.alpha == 1.0f);
     const bool dt_requires_saturation = brg.is_int8
             && !IMPLICATION(alpha_or_beta_applicable, beta_uses_vadd);
-    if (dt_requires_saturation) { assert(!"unsupported\n"); }
+    auto zmm_lbound = z_tmp_1();
+    auto zmm_ubound = z_tmp_2();
+    assert(zmm_lbound.getIdx() != zmm_ubound.getIdx());
+    if (dt_requires_saturation) {
+        init_saturate_f32(
+                zmm_lbound, zmm_ubound, reg_tmp_gpr, data_type::f32, brg.dt_d);
+        for (int bd = 0; bd < bd_block; bd++) {
+            for (int ld = 0; ld < ld_block2; ld++) {
+                auto zmm = accm(ld_block2, bd, ld);
+                saturate_f32(
+                        zmm, zmm_lbound, zmm_ubound, brg.dt_d, ld_full_mask);
+                frinti(zmm.s, ld_full_mask, zmm.s);
+                fcvtzs(zmm.s, ld_full_mask, zmm.s);
+            }
+        }
+    }
     auto x_addr = reg_aux_C;
     int base_offset = 0;
 
@@ -1275,7 +1337,7 @@ void jit_brgemm_kernel_t::dot_product(ZReg v_acc, ZReg v_b, ZReg v_a) {
     if (brg.is_f32) {
         fmla(v_acc.s, P_ALL_ONE / T_m, v_a.s, v_b.s);
     } else if (brg.is_bf16)
-        assert(!"unsupported\n");
+        bfdot(v_acc.s, v_b.h, v_a.h);
     else if (brg.is_int8 && isa_has_s8s8(brg.isa_impl)) {
         // SDOT/USDOT/UDOT implicitly produce int32 output.
         // we reorder RHS to align for SDOT lane-wise ops.
@@ -1362,9 +1424,9 @@ void jit_brgemm_kernel_t::compute_int8_compensation(int rd_loop, int bd_b,
     }
 }
 
-void jit_brgemm_kernel_t::gemm_microkernel_sve512(int bd_block2,
-        bool is_bdb_tail, int ld_block2, bool is_rd_tail, bool is_ld_tail,
-        int vpad, int rows_for_rd_tail) {
+void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
+        int ld_block2, bool is_rd_tail, bool is_ld_tail, int vpad,
+        int rows_for_rd_tail) {
     MAYBE_UNUSED(bd_block2);
     int bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
     const auto bd_b = nstl::max(0, vpad);
@@ -1392,10 +1454,16 @@ void jit_brgemm_kernel_t::gemm_microkernel_sve512(int bd_block2,
         if (is_tail) {
             eor(z1.d, z1.d, z1.d);
             auto xmm_tmp = z_tmp_1();
-            add_imm(X_DEFAULT_ADDR, reg_aux_A, offset * brg.typesize_A,
-                    X_TMP_0);
-            set_preg(P_TMP.b, rd_tail_size, X_TMP_0, X_TMP_1);
-            ld1b(xmm_tmp.b, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
+            add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
+            if (brg.is_int8) {
+                set_preg(P_TMP.b, rd_tail_size, X_TMP_0, X_TMP_1);
+                ld1b(xmm_tmp.b, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
+            } else if (brg.is_bf16) {
+                set_preg(P_TMP.h, rd_tail_size, X_DEFAULT_ADDR, X_TMP_1);
+                ld1h(xmm_tmp.h, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
+            } else if (brg.is_f16) {
+                assert(!"unsupported\n");
+            }
             dup(z1.s, xmm_tmp.s[0]);
         } else {
             if (dt == data_type::f32) {
@@ -1406,9 +1474,8 @@ void jit_brgemm_kernel_t::gemm_microkernel_sve512(int bd_block2,
                     add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
                     ld1rw(z1.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
                 }
-            } else if (dt == data_type::bf16) {
-                assert(!"unsupported\n");
-            } else if (one_of(dt, data_type::s8, data_type::u8)) {
+            } else if (one_of(dt, data_type::s8, data_type::u8,
+                               data_type::bf16)) {
                 add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
                 ld1rw(z1.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
             } else if (dt == data_type::f16) {
@@ -1446,9 +1513,6 @@ void jit_brgemm_kernel_t::gemm_microkernel_sve512(int bd_block2,
                 add_imm(X_DEFAULT_ADDR, reg_aux_B, B_offset(ld, rd), X_TMP_0);
                 if (brg.dt_b == data_type::f16) {
                     assert(!"unsupported\n");
-                } else if (brg.dt_b == data_type::bf16
-                        && brg.isa_impl == sve_256) {
-                    assert(!"unsupported\n");
                 } else if (is_ld_tail) {
                     ld1w(load().s, ld_tail_mask / T_z, ptr(X_DEFAULT_ADDR));
                 } else {
@@ -1480,9 +1544,6 @@ void jit_brgemm_kernel_t::gemm_microkernel_sve512(int bd_block2,
             for (int ld = 0; ld < ld_block2; ld++) {
                 const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
                 if (brg.dt_b == data_type::f16) {
-                    assert(!"unsupported\n");
-                } else if (brg.dt_b == data_type::bf16
-                        && brg.isa_impl == sve_256) {
                     assert(!"unsupported\n");
                 } else {
                     const int offset = B_offset(ld, rd);
@@ -1557,8 +1618,8 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
             L_aligned(rdb_loop_label, 64);
             {
                 const bool is_rd_tail = false;
-                gemm_microkernel_sve512(bd_block2, is_bdb_tail, ld_block2,
-                        is_rd_tail, is_ld_tail, vpad, rows_for_rd_tail);
+                gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
+                        is_ld_tail, vpad, rows_for_rd_tail);
 
                 add_imm(reg_aux_A, reg_aux_A, rdb_A_offset(), X_TMP_0);
                 add_imm(reg_aux_B, reg_aux_B, rdb_B_offset(), X_TMP_0);
@@ -1571,8 +1632,8 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
         if (brg.rdb_tail != 0) {
             const bool is_rd_tail = true;
 
-            gemm_microkernel_sve512(bd_block2, is_bdb_tail, ld_block2,
-                    is_rd_tail, is_ld_tail, vpad, rows_for_rd_tail);
+            gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
+                    is_ld_tail, vpad, rows_for_rd_tail);
         }
     };
     if (is_ldb_loop_) { mov_imm(reg_ldb_loop, ldb_loop_length); }
@@ -1887,19 +1948,15 @@ void jit_brgemm_kernel_t::bdb_loop() {
 }
 
 void jit_brgemm_kernel_t::generate() {
-    size_t simd_w_ = 0;
-    switch (brg.isa_impl) {
-        case sve_512:
-            simd_w_ = cpu_isa_traits<sve_512>::vlen / sizeof(float);
-            break;
-        case sve_256:
-            simd_w_ = cpu_isa_traits<sve_256>::vlen / sizeof(float);
-            break;
-        default: {
-            assert(!"unsupported isa");
-            return;
-        }
+
+    if (!one_of(brg.isa_impl, sve_512, sve_256, sve_128)) {
+        assert(!"unsupported isa: jit_brgemm_kernel_t only supports SVE 512, "
+                "256 and 128, this should have been checked earlier in the "
+                "implementation");
     }
+
+    size_t simd_w_ = simd_elems(data_type::f32, brg.isa_impl);
+
     preamble();
     if (simd_w_ != cpu_sveLen / sizeof(float)) {
         set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);

@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -166,7 +167,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
 
     brgemm_convolution_fwd_t(const pd_t *apd);
 
-    ~brgemm_convolution_fwd_t() = default;
+    ~brgemm_convolution_fwd_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 

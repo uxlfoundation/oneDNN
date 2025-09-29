@@ -40,8 +40,16 @@ if(len GREATER 65535)
         "Windows requires string literals to fit in 65535 bytes. Please split ${CL_FILE}.")
 endif()
 
-get_filename_component(cl_file_name ${CL_FILE} NAME_WE)
+get_filename_component(file_name ${CL_FILE} NAME_WE)
 get_filename_component(cl_file_ext ${CL_FILE} EXT)
+get_filename_component(cl_file_dir ${CL_FILE} DIRECTORY)
+string(REGEX REPLACE ".*\\/src\\/(.*)" "\\1" cl_full_dir ${cl_file_dir})
+if (cl_full_dir STREQUAL "gpu\\/intel")
+    set(cl_file_name "${file_name}")
+else()
+    string(REGEX REPLACE "gpu\\/intel\\/(.*)" "\\1" cl_rel_dir ${cl_full_dir})
+    string(REGEX REPLACE "\\/" "_" cl_file_name "${cl_rel_dir}_${file_name}")
+endif()
 
 # Split string into concatenated parts to circumvent the limitation on Windows
 string(REGEX REPLACE "\n" ")==\"\"\\\\n\"\nR\"==(" cl_file_lines "${cl_file_lines}")

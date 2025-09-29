@@ -113,9 +113,9 @@ def ignore(path: str, status: Status):
 
 
 def get_file_guard(path):
-    if path.startswith("src/gpu/intel/jit/gemm"):
+    if path.startswith("src/gpu/intel/gemm/jit/"):
         base = os.path.basename(path)
-        if path != "src/gpu/intel/jit/gemm/" + base:
+        if path != "src/gpu/intel/gemm/jit/" + base:
             path = "src/gemmstone_guard/" + os.path.basename(path)
     elif path.startswith("src/gpu/intel/microkernels"):
         path = path.replace("intel/", "")

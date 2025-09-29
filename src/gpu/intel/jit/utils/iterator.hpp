@@ -32,9 +32,9 @@ namespace jit {
 //
 // E.g.
 //
-//   std::vector<block_t> blocks = {...};
-//   auto block_filter = [](const block_t &blk) { return blk.block != 1; };
-//   filter_t<std::vector<block_t>> non_size_1_blocks(blocks, block_filter);
+//   std::vector<layout_block_t> blocks = {...};
+//   auto block_filter = [](const layout_block_t &blk) { return blk.block != 1; };
+//   filter_t<std::vector<layout_block_t>> non_size_1_blocks(blocks, block_filter);
 //   for (const auto &blk : non_size_1_blocks) {
 //       // blk is a value from blocks, skipping those with blk.block == 1
 //       ...
@@ -206,8 +206,8 @@ class inner_tiles_t {
     using inner_iter_t = decltype(std::declval<const IterT>().begin());
     using iter_value_t = decltype(*std::declval<inner_iter_t>());
     using decayed_iter_value_t = typename std::decay<iter_value_t>::type;
-    static_assert(std::is_same<decayed_iter_value_t, block_t>::value,
-            "inner_tiles_t only accepts iterables with block_t values");
+    static_assert(std::is_same<decayed_iter_value_t, layout_block_t>::value,
+            "inner_tiles_t only accepts iterables with layout_block_t values");
 
 public:
     class iterator_t {
@@ -218,7 +218,7 @@ public:
         iterator_t &operator++() {
             if (it_ == end_) return *this;
 
-            auto block = (*it_).block;
+            auto block = (*it_).size;
             auto size = block / scale();
             if ((size & 1) == 0) {
                 log2scale_++;
@@ -228,7 +228,7 @@ public:
                 if (size % factor_ == 0) return *this;
             }
 
-            dims_[(*it_).dim_idx] *= block;
+            dims_[(*it_).idx] *= block;
             ++it_;
             factor_ = 1;
             log2scale_ = 0;
@@ -237,11 +237,12 @@ public:
 
         tile_t operator*() const {
             auto dims = dims_;
-            dims[(*it_).dim_idx] *= factor();
+            dims[(*it_).idx] *= factor();
             return tile_t(dims);
         }
 
-        iterator_t(const inner_iter_t &it, const inner_iter_t &end, int ndims)
+        iterator_t(
+                const inner_iter_t &it, const inner_iter_t &end, size_t ndims)
             : it_(it), end_(end), dims_(ndims, 1), factor_(1) {}
 
     private:
@@ -257,16 +258,16 @@ public:
     iterator_t begin() const { return {begin_, end_, ndims_}; }
     iterator_t end() const { return {end_, end_, ndims_}; }
 
-    inner_tiles_t(const IterT &iterable, int ndims)
+    inner_tiles_t(const IterT &iterable, size_t ndims)
         : begin_(iterable.begin()), end_(iterable.end()), ndims_(ndims) {}
 
 private:
     inner_iter_t begin_, end_;
-    int ndims_;
+    size_t ndims_;
 };
 
 template <typename IterT>
-inner_tiles_t<IterT> inner_tiles(const IterT &iter, int ndims) {
+inner_tiles_t<IterT> inner_tiles(const IterT &iter, size_t ndims) {
     return {iter, ndims};
 }
 

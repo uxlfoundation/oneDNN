@@ -16,17 +16,13 @@
 
 /// @example reorder.cpp
 /// > Annotated version: @ref reorder_example_cpp
-///
-/// @page reorder_example_cpp_short
-///
+
+/// @page reorder_example_cpp Reorder Primitive Example
 /// This C++ API demonstrates how to create and execute a
 /// [Reorder](@ref dev_guide_reorder) primitive.
 ///
 /// Key optimizations included in this example:
 /// - Primitive attributes for output scaling.
-///
-/// @page reorder_example_cpp Reorder Primitive Example
-/// @copydetails reorder_example_cpp_short
 ///
 /// @include reorder.cpp
 

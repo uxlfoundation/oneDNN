@@ -418,6 +418,9 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
     // B tensor has a transposed format. Enable this by swapping A and B.
     if (bgmmc.N != 1) return false;
 
+    // Reduction is not supported for GEMV code path.
+    if (bgmmc.with_reduce) return false;
+
     // BRGEMV currently supports only f32 and AVX2.
     if (utils::one_of(false, bm_conf_utils.is_f32(), bgmmc.isa == avx2))
         return false;

@@ -183,14 +183,22 @@ struct primitive_desc_t : public c_compatible {
             return !is_zero_md(scratchpad_md()) ? arg_usage_t::output
                                                 : arg_usage_t::unused;
         if (arg == DNNL_ARG_ATTR_DROPOUT_MASK)
-            return !attr()->dropout_.has_default_values() ? arg_usage_t::output
-                                                          : arg_usage_t::unused;
+            return !attr()->dropout_.has_default_values()
+                            && attr()->dropout_.has_output_mask()
+                    ? arg_usage_t::output
+                    : arg_usage_t::unused;
         if (arg == DNNL_ARG_ATTR_DROPOUT_PROBABILITY)
             return !attr()->dropout_.has_default_values() ? arg_usage_t::input
                                                           : arg_usage_t::unused;
         if (arg == DNNL_ARG_ATTR_DROPOUT_SEED)
             return !attr()->dropout_.has_default_values() ? arg_usage_t::input
                                                           : arg_usage_t::unused;
+        if (arg == DNNL_ARG_ATTR_DROPOUT_OFFSET)
+            return !attr()->dropout_.has_default_values()
+                            && attr()->dropout_.use_offset_
+                    ? arg_usage_t::input
+                    : arg_usage_t::unused;
+
         if (arg == DNNL_ARG_ATTR_ROUNDING_SEED)
             return !attr()->rounding_mode_.has_default_values()
                     ? arg_usage_t::input

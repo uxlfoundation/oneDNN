@@ -444,12 +444,25 @@ attr_t::dropout_t parse_attr_dropout_func(const std::string &s) {
     v.seed = stoll_safe(subs);
     if (start_pos == std::string::npos) return v;
 
-    v.tag = get_substr(s, start_pos, '\0');
+    v.tag = get_substr(s, start_pos, ':');
     if (check_tag(v.tag) != OK) {
         BENCHDNN_PRINT(0, "%s \'%s\' %s\n", "Error: dropout mask tag",
                 v.tag.c_str(), "is not recognized.");
         SAFE_V(FAIL);
     }
+    if (start_pos == std::string::npos) return v;
+
+    subs = get_substr(s, start_pos, ':');
+    v.offset = stoll_safe(subs);
+    if (v.offset < 0) {
+        BENCHDNN_PRINT(
+                0, "Error: bad dropout offset value: %" PRId64 "\n", v.offset);
+        SAFE_V(FAIL);
+    }
+    if (start_pos == std::string::npos) return v;
+
+    subs = get_substr(s, start_pos, '\0');
+    v.use_host_scalars = str2bool(subs.c_str());
 
     return v;
 }
@@ -789,8 +802,8 @@ bool parse_attr_dropout(std::vector<attr_t::dropout_t> &dropout,
         const std::vector<attr_t::dropout_t> &def_dropout, const char *str,
         const std::string &option_name = "attr-dropout") {
     static const std::string help
-            = "PROBABILITY[:SEED[:TAG]]\n    Specifies dropout attribute.\n    "
-              "More details at "
+            = "PROBABILITY[:SEED[:TAG[:OFFSET[:USE_HOST_SCALARS]]]]\n    "
+              "Specifies dropout attribute.\n    More details at "
             + doc_url + "knobs_attr.md\n";
     return parse_vector_option(dropout, def_dropout,
             parser_utils::parse_attr_dropout_func, str, option_name, help);

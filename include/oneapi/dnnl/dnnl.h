@@ -271,24 +271,61 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_clone(
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_primitive_attr_destroy(dnnl_primitive_attr_t attr);
 
-/// Returns probability for output dropout primitive attribute.
+/// Gets dropout primitive attribute.
 ///
 /// @param attr Primitive attributes.
-/// @param dropout_desc Output dropout memory descriptor
+/// @param mask_desc Output memory descriptor for dropout masks. If a default
+///     memory descriptor is returned, the mask values will not be written to
+///     the output memory buffer during the primitive execution.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_primitive_attr_get_dropout(
-        const_dnnl_primitive_attr_t attr,
-        const_dnnl_memory_desc_t *dropout_desc);
+        const_dnnl_primitive_attr_t attr, const_dnnl_memory_desc_t *mask_desc);
 
-/// Sets probability for output dropout primitive attribute.
+/// Sets dropout primitive attribute.
 ///
 /// @param attr Primitive attributes.
-/// @param dropout_desc Output dropout memory descriptor
+/// @param mask_desc Memory descriptor for dropout masks. If a default memory
+///     descriptor is passed, the mask values will not be written to the output
+///     memory buffer during the primitive execution.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_dropout(
-        dnnl_primitive_attr_t attr, const_dnnl_memory_desc_t dropout_desc);
+        dnnl_primitive_attr_t attr, const_dnnl_memory_desc_t mask_desc);
+
+/// Gets dropout primitive attribute parameters.
+///
+/// @param attr Primitive attributes.
+/// @param mask_desc Output memory descriptor for dropout masks. If a default
+///     memory descriptor is returned, the mask values will not be written to
+///     the output memory buffer during the primitive execution.
+/// @param seed_dt Output datatype for seed argument.
+/// @param use_offset Output boolean. If true, an offset argument must be passed
+///     at the execution and will be used in random number generation.
+/// @param use_host_scalars Output boolean. If true, probability, seed and
+///     offset arguments are passed as host_scalar memory objects.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_get_dropout_v2(
+        const_dnnl_primitive_attr_t attr, const_dnnl_memory_desc_t *mask_desc,
+        dnnl_data_type_t *seed_dt, int *use_offset, int *use_host_scalars);
+
+/// Sets dropout primitive attribute parameters.
+///
+/// @param attr Primitive attributes.
+/// @param mask_desc Memory descriptor for dropout masks. If a default memory
+///     descriptor is passed, the mask values will not be written to the output
+///     memory buffer during the primitive execution.
+/// @param seed_dt Datatype for seed argument.
+/// @param use_offset If true, an offset argument must be passed at the
+///     execution and will be used in random number generation.
+/// @param use_host_scalars If true, probability, seed and offset arguments are
+///     passed as host_scalar memory objects.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_dropout_v2(
+        dnnl_primitive_attr_t attr, const_dnnl_memory_desc_t mask_desc,
+        dnnl_data_type_t seed_dt, int use_offset, int use_host_scalars);
 
 /// Returns the floating-point math mode primitive attribute.
 ///

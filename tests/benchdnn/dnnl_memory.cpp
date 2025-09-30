@@ -180,13 +180,15 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
             BENCHDNN_PRINT(2, "%s\n", "[REORDER] Fallback to plain copy.");
             const int64_t chunk_size = 64;
             const int64_t n_chunks = div_up(src.nelems(), chunk_size);
+            const int64_t size_dt = src.sizeof_dt();
             benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
                 int64_t idx_start = idx_chunk * chunk_size;
                 int64_t idx_end = MIN2(idx_start + chunk_size, src.nelems());
-                for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-                    float e = src.get_elem(idx);
-                    dst.set_elem(idx, e);
-                }
+                char *in
+                        = src.get_mapped_pointer<char>(0) + idx_start * size_dt;
+                char *out
+                        = dst.get_mapped_pointer<char>(0) + idx_start * size_dt;
+                std::memcpy(out, in, (idx_end - idx_start) * size_dt);
             });
             return OK;
         }
@@ -634,6 +636,13 @@ dnnl_memory_desc_t dnn_mem_t::pad_memory_desc(const_dnnl_memory_desc_t md,
     DNN_SAFE_V(
             dnnl_memory_desc_create_with_tag(&ret, 1, dims, dnnl_u8, dnnl_x));
     return ret;
+}
+
+benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_md() {
+    dnnl_memory_desc_t zero_md {};
+    DNN_SAFE_V(dnnl_memory_desc_create_with_tag(
+            &zero_md, 0, nullptr, dnnl_data_type_undef, dnnl_format_tag_undef));
+    return zero_md;
 }
 
 benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_md(int ndims,

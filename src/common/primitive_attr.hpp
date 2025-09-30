@@ -188,14 +188,33 @@ struct dropout_t : public c_compatible {
     dropout_t() = default;
 
     bool has_default_values() const {
-        return types::is_zero_md(&user_dropout_desc_);
+        return types::is_zero_md(&user_dropout_desc_)
+                && (seed_dt_ == data_type::undef) && !use_offset_
+                && !use_host_scalars_;
     }
+
     bool operator==(const dropout_t &rhs) const {
-        return user_dropout_desc_ == rhs.user_dropout_desc_;
+        return (user_dropout_desc_ == rhs.user_dropout_desc_)
+                && (seed_dt_ == rhs.seed_dt_)
+                && (use_offset_ == rhs.use_offset_)
+                && (use_host_scalars_ == rhs.use_host_scalars_);
     }
+
+    size_t get_hash() const;
+
+    void serialize(serialization_stream_t &sstream) const;
+
     status_t set_default_formats(const memory_desc_t *dst_md);
+
+    bool has_output_mask() const {
+        return !dnnl::impl::types::is_zero_md(&user_dropout_desc_);
+    }
+
     dnnl::impl::memory_desc_t dropout_desc_;
     dnnl::impl::memory_desc_t user_dropout_desc_;
+    dnnl::impl::data_type_t seed_dt_ = data_type::undef;
+    bool use_offset_ = false;
+    bool use_host_scalars_ = false;
 };
 
 struct rnd_mode_t : public c_compatible {
@@ -664,7 +683,9 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
     dnnl::impl::status_t set_accumulation_mode(
             dnnl::impl::accumulation_mode_t am);
     dnnl::impl::status_t set_dropout(
-            const dnnl::impl::memory_desc_t *dropout_desc);
+            const dnnl::impl::memory_desc_t *dropout_desc,
+            dnnl::impl::data_type_t seed_dt, bool user_offset,
+            bool use_host_scalars);
     dnnl::impl::status_t set_scratchpad_mode(
             dnnl::impl::scratchpad_mode_t scratchpad_mode);
     dnnl::impl::status_t set_post_ops(const dnnl::impl::post_ops_t &post_ops);

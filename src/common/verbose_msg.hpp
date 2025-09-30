@@ -87,6 +87,7 @@
 #define VERBOSE_UNSUPPORTED_ZP_CFG "unsupported zero-point configuration"
 #define VERBOSE_UNSUPPORTED_PR_CFG \
     "unsupported precomputed reductions configuration"
+#define VERBOSE_UNSUPPORTED_DROPOUT "unsupported dropout configuration"
 #define VERBOSE_UNSUPPORTED_BIAS_CFG "unsupported bias configuration"
 #define VERBOSE_UNSUPPORTED_DT_CFG "unsupported datatype combination"
 #define VERBOSE_UNSUPPORTED_SPARSE_CFG "unsupported sparse md configuration"

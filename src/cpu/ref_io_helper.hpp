@@ -40,7 +40,6 @@ inline int load_int_value(data_type_t dt, const void *ptr, dim_t idx) {
 
     using namespace data_type;
     switch (dt) {
-        CASE(s64);
         CASE(s32);
         CASE(s8);
         CASE(u8);

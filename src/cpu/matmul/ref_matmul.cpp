@@ -57,13 +57,37 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
 
-    const auto p = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
-    const auto seed = CTX_IN_MEM(const uint32_t *, DNNL_ARG_ATTR_DROPOUT_SEED);
+    int64_t dropout_seed = 0;
+    float dropout_p = 0.0f;
+    int64_t dropout_offset = 0;
+    unsigned char *dropout_mask = nullptr;
+    if (!pd()->attr()->dropout_.has_default_values()) {
+        // Mandatory parameters
+        const auto dropout_p_ptr
+                = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
+        dropout_p = *dropout_p_ptr;
+
+        const auto dropout_seed_ptr
+                = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_DROPOUT_SEED);
+        dropout_seed = io::load_int64_value(
+                pd()->attr()->dropout_.seed_dt_, dropout_seed_ptr, 0);
+
+        // Optional parameters
+        if (!types::is_zero_md(&pd()->attr()->dropout_.user_dropout_desc_)) {
+            dropout_mask = CTX_OUT_CLEAN_MEM(
+                    unsigned char *, DNNL_ARG_ATTR_DROPOUT_MASK, status);
+            CHECK(status);
+        }
+
+        if (pd()->attr()->dropout_.use_offset_) {
+            const auto dropout_offset_ptr
+                    = CTX_IN_MEM(const int64_t *, DNNL_ARG_ATTR_DROPOUT_OFFSET);
+            dropout_offset = *dropout_offset_ptr;
+        }
+    }
+
     const auto rnd_seed
             = CTX_IN_MEM(const uint32_t *, DNNL_ARG_ATTR_ROUNDING_SEED);
-    auto dropout_mask = CTX_OUT_CLEAN_MEM(
-            unsigned char *, DNNL_ARG_ATTR_DROPOUT_MASK, status);
-    CHECK(status);
 
     auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
     CHECK(status);
@@ -286,8 +310,9 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                         const auto dst_off = dst_d.off_v(dst_dims_idx);
                         if (non_default_attrs) {
                             if (with_dropout)
-                                d = ref_dropout(
-                                        d, dropout_mask, dst_off, *p, *seed);
+                                d = ref_dropout(d, dropout_mask, dst_off,
+                                        dropout_p, dropout_seed,
+                                        dropout_offset);
                             ref_post_ops_t::args_t args;
                             args.dst_val = io::load_float_value(
                                     sum_dt, dst, dst_off);

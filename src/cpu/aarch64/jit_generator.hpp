@@ -84,7 +84,7 @@ constexpr Xbyak_aarch64::Operand::Code abi_save_gpr_regs[]
                 Xbyak_aarch64::Operand::X27, Xbyak_aarch64::Operand::X28};
 
 // See "Procedure Call Standsard for the ARM 64-bit Architecture (AArch64)"
-static const Xbyak_aarch64::XReg abi_param1(Xbyak_aarch64::Operand::X0),
+const Xbyak_aarch64::XReg abi_param1(Xbyak_aarch64::Operand::X0),
         abi_param2(Xbyak_aarch64::Operand::X1),
         abi_param3(Xbyak_aarch64::Operand::X2),
         abi_param4(Xbyak_aarch64::Operand::X3),

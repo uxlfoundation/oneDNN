@@ -65,7 +65,6 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
 
     jit_brgemm_matmul_copy_a_impl_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
-        , jit_generator_t()
         , typesize_(conf_->a_dt_sz)
         , tr_typesize_(conf_->tr_a_dt_sz)
         , vnni_granularity_(data_type_vnni_granularity(conf_->src_dt))
@@ -366,7 +365,6 @@ struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
 
     jit_brgemm_matmul_copy_b_int8_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator_t()
         , src_stride_(conf->wei_tag == format_tag::acbd
                           ? conf->copy_B_wei_stride
                           : conf->N * sizeof(int8_t))
@@ -655,7 +653,6 @@ struct jit_brgemm_matmul_copy_b_transposed_t
 
     jit_brgemm_matmul_copy_b_transposed_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator_t()
         , typesize_(conf_->b_dt_sz)
         , tr_typesize_(conf_->tr_b_dt_sz)
         , vnni_granularity_(data_type_vnni_granularity(conf_->wei_dt))
@@ -680,7 +677,6 @@ private:
     using reg64_t = const Xbyak_aarch64::XReg;
     using reg32_t = const Xbyak_aarch64::WReg;
     using opmask_t = const Xbyak_aarch64::PReg;
-    using ZReg = const Xbyak_aarch64::ZReg;
 
     static constexpr bool is_sve256_ = isa == sve_256;
     static constexpr cpu_isa_t isa_ = isa;
@@ -728,20 +724,20 @@ private:
 
     // Note: for the SVE256 implementation, reserve ZReg(8) and ZReg(9) as
     // temporary compute registers.
-    ZReg vmm_comp_mul = Xbyak_aarch64::ZReg(max_vmm_regs_ - 1);
-    ZReg vmm_comp_acc = Xbyak_aarch64::ZReg(max_vmm_regs_ - 2);
-    ZReg vmm_zp_a_neg_val = Xbyak_aarch64::ZReg(max_vmm_regs_ - 3);
-    ZReg vmm_s8s8_comp_acc = Xbyak_aarch64::ZReg(max_vmm_regs_ - 4);
-    ZReg vmm_all_bits_1 = Xbyak_aarch64::ZReg(max_vmm_regs_ - 5);
-    ZReg vmm_one_s32 = Xbyak_aarch64::ZReg(max_vmm_regs_ - 6);
+    const ZReg vmm_comp_mul {max_vmm_regs_ - 1};
+    const ZReg vmm_comp_acc {max_vmm_regs_ - 2};
+    const ZReg vmm_zp_a_neg_val {max_vmm_regs_ - 3};
+    const ZReg vmm_s8s8_comp_acc {max_vmm_regs_ - 4};
+    const ZReg vmm_all_bits_1 {max_vmm_regs_ - 5};
+    const ZReg vmm_one_s32 {max_vmm_regs_ - 6};
+    const ZReg vmm_ones_words {max_vmm_regs_ - 7};
+    const ZReg vmm_dot_product_temp {max_vmm_regs_ - 8};
 
-    ZReg vmm_ones_words = ZReg(max_vmm_regs_ - 7);
-    ZReg vmm_dot_product_temp = ZReg(max_vmm_regs_ - 8);
+    const ZReg z_tmp_0 {28};
+    const ZReg z_tmp_1 {29};
+    const ZReg z_tmp_3 {30};
+    const ZReg z_tmp_2 {27};
 
-    ZReg z_tmp_0 = ZReg(28);
-    ZReg z_tmp_1 = ZReg(29);
-    ZReg z_tmp_3 = ZReg(30);
-    ZReg z_tmp_2 = ZReg(27);
     PReg p_tmp_0 = p7;
     PReg p_02 = p8;
     PReg p_AA = p9;

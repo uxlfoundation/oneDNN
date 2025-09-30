@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2024 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 * Copyright 2020 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,6 +40,7 @@ regular_impl_list_map() {
             {{f4_e3m0, data_type::undef, 0}, &regular_fp4_impl_list_map()},
             {{f8_e5m2, data_type::undef, 0}, &regular_fp8_impl_list_map()},
             {{f8_e4m3, data_type::undef, 0}, &regular_fp8_impl_list_map()},
+            {{e8m0, f32, 0}, &regular_fp8_impl_list_map()},
             {{bf16, data_type::undef, 0}, &regular_bf16_impl_list_map()},
             {{f16, data_type::undef, 0}, &regular_f16_impl_list_map()},
             {{s32, data_type::undef, 0}, &regular_s32_impl_list_map()},

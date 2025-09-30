@@ -2408,8 +2408,11 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                             jcp.oh, rnd_up(jcp.oh_block + kh_cnt, jcp.oh_block))
                                                       : kd_cnt * kh_cnt;
     jcp.comp_ow_size = jcp.exec_type != exec_vpad
-            ? nstl::min(jcp.ow, rnd_up(kw_cnt + jcp.ow_block, jcp.ow_block))
+            ? nstl::min(jcp.ow,
+                    kw_cnt * (jcp.dilate_w + 1)
+                            + jcp.ow_block) //rnd_up(kw_cnt * (jcp.dilate_w + 1) + jcp.ow_block, jcp.ow_block))
             : 1;
+    //printf("kw_cnt: %d, l pad: %d, sw: %d, dw: %d\n", kw_cnt, jcp.l_pad, jcp.stride_w, jcp.dilate_w);
     jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size
             * jcp.comp_ow_size * jcp.oc_block;
     jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;
@@ -2442,7 +2445,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
-
+    //printf("exec type: %d, ow block: %d, comp ow: %d, comp buffer: %d, req_brg_comp_pad: %d, req_cal_comp_pad: %d\n", jcp.exec_type, jcp.ow_block, jcp.comp_ow_size, jcp.comp_a_buffer_size, jcp.req_brg_comp_pad, jcp.req_cal_comp_pad);
     return status::success;
 }
 

@@ -1158,6 +1158,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         int comp_ow_l = 0;
 
         for (int ow = 0; ow < OW;) {
+            assert(comp_ow_l <= jcp.comp_ow_size);
             const auto iiw = ow * SW - LP;
             const auto kw_s = div_up(nstl::max(0, -iiw), DW);
             const auto kw_f = KW
@@ -1182,6 +1183,8 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
             }
             ow = ow_e;
         }
+        //        for (int i = 0; i < comp_ow_l; i++)
+        //            printf("ow: %d, comp kw: %d, %d\n", i, comp_ow_kw_s[i], comp_ow_kw_f[i]);
 
         for (int owb = 0; owb < jcp.nb_ow; owb++) {
             const auto ow_b = owb * jcp.ow_block;
@@ -1200,6 +1203,8 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                 if (ow == ow_e - 1) comp_owb[owb] = i;
             }
         }
+        //        for (int i = 0; i < jcp.nb_ow; i++)
+        //            printf("owb: %d, comp owb: %d\n", i, comp_owb[i]);
     }
 
     // pre-calculate unique kernel combination

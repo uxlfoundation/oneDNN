@@ -114,17 +114,7 @@ struct ref_matmul_t : public primitive_t {
             VDISPATCH_MATMUL(
                     attr_.set_default_formats(dst_md(0)) == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_MATMUL(
-                    IMPLICATION(!attr_.dropout_.has_default_values(),
-                            utils::one_of(
-                                    attr_.dropout_.dropout_desc_.data_type, u8,
-                                    s8)),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_MATMUL(
-                    IMPLICATION(!attr_.dropout_.has_default_values(),
-                            memory_desc_wrapper(dst_md(0)).similar_to(
-                                    attr_.dropout_.dropout_desc_, true, false)),
-                    VERBOSE_UNSUPPORTED_ATTR);
+            CHECK(dropout_ok());
 
             init_scratchpad();
 
@@ -159,6 +149,25 @@ struct ref_matmul_t : public primitive_t {
             if (!zp.has_default_values(DNNL_ARG_DST)) { return false; }
 
             return true;
+        }
+
+        status_t dropout_ok() const {
+            if (attr_.dropout_.has_default_values()) return status::success;
+
+            assert(memory_desc_wrapper(dst_md(0)).format_kind()
+                    == format_kind::blocked);
+
+            using namespace format_tag;
+            // See `ref_dropout(...)` comment which explains the requirement.
+            VDISPATCH_MATMUL_IC(memory_desc_matches_one_of_tag(
+                                        *dst_md(0), ncdhw, nchw, ncw, nc)
+                            && IMPLICATION(attr_.dropout_.has_output_mask(),
+                                    memory_desc_wrapper(dst_md(0)).similar_to(
+                                            attr_.dropout_.dropout_desc_, true,
+                                            false)),
+                    VERBOSE_UNSUPPORTED_DROPOUT);
+
+            return status::success;
         }
     };
 

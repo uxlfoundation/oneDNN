@@ -2698,6 +2698,9 @@ typedef const struct dnnl_primitive *const_dnnl_primitive_t;
 /// A special mnemonic for shift argument of normalization primitives.
 #define DNNL_ARG_DIFF_SHIFT 256
 
+/// Dropout offset value passed via a buffer
+#define DNNL_ARG_ATTR_DROPOUT_OFFSET 507
+
 /// Rounding mode seed for stochastic rounding
 /// Single seed needed independently of how many arguments need stochastic rounding
 #define DNNL_ARG_ATTR_ROUNDING_SEED 508

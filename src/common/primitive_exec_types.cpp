@@ -115,6 +115,7 @@ status_t cvt_primitive_args(const primitive_desc_t *pd, int nargs,
                                 == (DNNL_ARG_ATTR_POST_OP_DW
                                         | DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST))
                         || (arg == DNNL_ARG_ATTR_DROPOUT_PROBABILITY)
+                        || (arg == DNNL_ARG_ATTR_DROPOUT_OFFSET)
                         || (arg == DNNL_ARG_ATTR_DROPOUT_SEED)
                         || (arg == DNNL_ARG_ATTR_ROUNDING_SEED);
                 break;

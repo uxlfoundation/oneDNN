@@ -390,7 +390,9 @@ class ParserImpl:
 
     @staticmethod
     def parse_dropout(args: str) -> ir.Dropout:
-        return ir.Dropout(tag=args if args else None)
+        spec = ParseSpec(args)
+        fields = args.split(":")
+        return ir.Dropout(fields[0], fields[1], fields[2], fields[3])
 
     @staticmethod
     def parse_per_argument(attr, name, parse):

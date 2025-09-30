@@ -823,8 +823,12 @@ std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
                     ss << ":" << md2fmt_tag_str(&attr->dropout_.dropout_desc_);
                 break;
             case format_kind::any: ss << ":any"; break;
+            case format_kind::undef: ss << ":undef"; break;
             default: assert(!"unsupported format_kind");
         }
+        ss << ":" << dnnl_dt2str(attr->dropout_.seed_dt_);
+        ss << ":" << attr->dropout_.use_offset_;
+        ss << ":" << attr->dropout_.use_host_scalars_;
     }
     return ss;
 }

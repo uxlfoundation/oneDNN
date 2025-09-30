@@ -697,6 +697,15 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
                 return;
             }
         }
+
+        if (!prb->attr.dropout.is_def()) {
+            BENCHDNN_PRINT(2,
+                    "[SKIP][%s:%d]: Dropout with s64 seed isn't supported.\n",
+                    __FILE__, __LINE__);
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
     }
 }
 
@@ -991,11 +1000,6 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 // TODO: introduce an order of processing arguments to avoid
                 // post filling manipulations.
                 break;
-            case DNNL_ARG_ATTR_DROPOUT_SEED: {
-                ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine,
-                        /* prefill = */ false);
-                // No break to fall back into `default` call with initialization.
-            }
             default:
                 SAFE(init_ref_memory_args_default_case(
                              exec_arg, mem, ref_mem, prb->attr, res),
@@ -1085,7 +1089,8 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
     // TODO: move the regular buffer kinds like SRC or DST to a common function,
     //       e.g. get_kinds_to_check_default_case
     std::vector<data_kind_t> check_kinds = {DST};
-    if (!prb->attr.dropout.is_def()) check_kinds.push_back(DROPOUT_MASK);
+    if (!prb->attr.dropout.is_def() && prb->attr.dropout.has_output_mask())
+        check_kinds.push_back(DROPOUT_MASK);
     if (!prb->attr.scales.get(DNNL_ARG_DST).is_def()
             && prb->attr.scales.get(DNNL_ARG_DST).is_dynamic())
         check_kinds.push_back(DST_SCALES);

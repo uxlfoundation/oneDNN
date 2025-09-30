@@ -957,14 +957,38 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
         const auto &dropout_md = query_md(const_pd, DNNL_ARG_ATTR_DROPOUT_MASK);
         mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_MASK,
                 dnn_mem_t(dropout_md, test_engine, /* prefill = */ true));
-        int64_t count = 1;
-        auto prob_md = dnn_mem_t::init_md(1, &count, dnnl_f32, tag::abx);
-        mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_PROBABILITY,
-                dnn_mem_t(prob_md, test_engine, /* prefill = */ true));
 
-        auto seed_md = dnn_mem_t::init_md(1, &count, dnnl_s32, tag::abx);
-        mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_SEED,
-                dnn_mem_t(seed_md, test_engine, /* prefill = */ true));
+        if (prb->attr.dropout.use_host_scalars) {
+            auto prob_md = dnn_mem_t::init_host_scalar_md(dnnl_f32);
+            float probability = prb->attr.dropout.p;
+            mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_PROBABILITY,
+                    dnn_mem_t(prob_md, &probability));
+            auto seed_md = dnn_mem_t::init_host_scalar_md(dnnl_s64);
+            int64_t seed = prb->attr.dropout.seed;
+            mem_map.emplace(
+                    DNNL_ARG_ATTR_DROPOUT_SEED, dnn_mem_t(seed_md, &seed));
+            if (prb->attr.dropout.offset != 0) {
+                auto offset_md = dnn_mem_t::init_host_scalar_md(dnnl_s64);
+                int64_t offset = prb->attr.dropout.offset;
+                mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_OFFSET,
+                        dnn_mem_t(offset_md, &offset));
+            }
+        } else {
+            int64_t count = 1;
+            auto prob_md = dnn_mem_t::init_md(1, &count, dnnl_f32, tag::abx);
+            mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_PROBABILITY,
+                    dnn_mem_t(prob_md, test_engine, /* prefill = */ true));
+            auto seed_md = dnn_mem_t::init_md(1, &count, dnnl_s64, tag::abx);
+            mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_SEED,
+                    dnn_mem_t(seed_md, test_engine, /* prefill = */ true));
+            if (prb->attr.dropout.offset != 0) {
+                auto offset_md
+                        = dnn_mem_t::init_md(1, &count, dnnl_s64, tag::abx);
+                mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_OFFSET,
+                        dnn_mem_t(
+                                offset_md, test_engine, /* prefill = */ true));
+            }
+        }
     }
 
     // Scales.

@@ -115,6 +115,9 @@ struct ref_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_MATMUL(post_ops_with_binary_ok(attr(), *dst_md(), 6),
                     VERBOSE_UNSUPPORTED_POSTOP);
+            VDISPATCH_MATMUL(IMPLICATION(!attr_.dropout_.has_default_values(),
+                                     attr_.dropout_.seed_dt_ == data_type::s32),
+                    VERBOSE_UNSUPPORTED_DROPOUT);
             const memory_desc_wrapper dropout_md(attr_.dropout_.dropout_desc_);
             VDISPATCH_MATMUL(
                     IMPLICATION(!attr_.dropout_.has_default_values(),

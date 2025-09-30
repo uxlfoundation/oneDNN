@@ -7,7 +7,7 @@
     --attr-acc-mode=ACCMODE
     --attr-rounding-mode=ARG:MODE[+...]
     --attr-deterministic=BOOL
-    --attr-dropout=PROBABILITY[:SEED[:TAG]]
+    --attr-dropout=PROBABILITY[:SEED[:TAG[:OFFSET[:HOST_SCALARS]]]]
     --attr-scales=ARG:POLICY[:SCALE[:DATA_TYPE]][+...]
                   ARG:POLICY[:DATA_TYPE[:GROUPS]][+...]
     --attr-zero-points=ARG:POLICY[:ZEROPOINT[:DATA_TYPE]][+...]
@@ -70,11 +70,16 @@ means probability, see below.
 likely it is for any given output value to be zeroed (i.e. 'dropped out'): when
 `0` is specified the output buffer is to remain intact, when `1` is specified
 all output values are to be dropped out.
-`SEED` is the 32-bit integer seed of the RNG (a modified Philox algorithm
-adapted for GPUs), 0 by default.
-`TAG` specifies the memory format of the output buffer where the dropout mask
-will be stored. `TAG` values use the same notation as in drivers. The default
-value of `TAG` is `any`. Refer to [tags](knobs_tag.md) for details.
+`SEED` is the 64-bit integer seed of the Philox RNG, 0 by default.
+`TAG` specifies the memory format of the output buffer where the
+dropout mask will be stored. When set to `undef`, no dropout mask
+memory is passed. `TAG` values use the same notation as in
+drivers. The default value of `TAG` is `any`. Refer to
+[tags](knobs_tag.md) for details.
+`OFFSET` is a 64-bit integer used as offset added to the index upon
+calls to the Philox RNG, 0 (unset) by default.
+`HOST_SCALARS` is a boolean specifying if scalar parameters are passed
+as host_scalars (`true`) or as device memory objects (`false`, default).
 
 ## --attr-scales
 `--attr-scales` defines per memory argument primitive scales attribute.

@@ -214,7 +214,7 @@ void serialize(serialization_stream_t &sstream, const primitive_attr_t &attr) {
 
     if (!attr.dropout_.has_default_values()) {
         sstream.append('d');
-        serialize(sstream, attr.dropout_.user_dropout_desc_);
+        attr.dropout_.serialize(sstream);
     }
 
     serialize(sstream, attr.post_ops_);

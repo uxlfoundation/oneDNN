@@ -47,7 +47,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
     const dnn_mem_t &dst_zps
             = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
-    const dnn_mem_t &dropout = args.find(DNNL_ARG_ATTR_DROPOUT_MASK);
+    const dnn_mem_t &dropout_mask = args.find(DNNL_ARG_ATTR_DROPOUT_MASK);
 
     const int64_t M = prb->m;
     const int64_t N = prb->n;
@@ -209,7 +209,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
 
             const auto v_po_vals
                     = prepare_po_vals(dst_m, args, v_po_masks, dst_off);
-            maybe_dropout(prb->attr, dst, dst_off, dropout);
+            maybe_dropout(prb->attr, dst, dst_off, dropout_mask);
             const auto sum_val = dst_m.get_f32_elem(dst_off);
             maybe_post_ops(prb->attr, dst, sum_val, v_po_vals);
 

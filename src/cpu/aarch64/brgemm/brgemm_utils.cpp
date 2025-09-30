@@ -385,7 +385,7 @@ status_t init_brdgmm_conf(brgemm_t *brg, cpu_isa_t isa,
         return mayiuse(isa) && one_of(brg->isa_user, isa_undef, isa);
     };
 
-    if (brg->is_f32 || brg->is_bf16) {
+    if (brg->is_f32 || brg->is_bf16 || brg->is_int8) {
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(sve_512), sve_512,
                 is_isa_ok(sve_256), sve_256, is_isa_ok(sve_128), sve_128);
     }

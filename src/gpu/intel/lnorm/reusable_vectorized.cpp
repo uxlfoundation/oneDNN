@@ -103,22 +103,19 @@ static status_t init_conf_common(const pd_t *pd,
     memory_desc_wrapper dst_mdw(pd->dst_md());
     if (src_mdw.blocking_desc().inner_nblks != 0
             || dst_mdw.blocking_desc().inner_nblks != 0) {
-        VDEBUGINFO(15, primitive, lnorm,
-                "Reusable Vectorized LNorm not used because source or "
+        VDISPATCH_LNORM_IC(src_mdw.blocking_desc().inner_nblks == 0
+                        && dst_mdw.blocking_desc().inner_nblks == 0,
+                "reusable vectorized lnorm not used because source or "
                 "destination tensors have blocked memory layouts.");
-        return status::unimplemented;
     }
 
     bool c_is_last_physical = src_mdw.blocking_desc().strides[ndims - 1] == 1;
-    if (!(src_mdw.is_dense() && c_is_last_physical)) {
-        VDEBUGINFO(15, primitive, lnorm,
-                "Reusable Vectorized LNorm not used because the source tensor "
-                "is not dense(%s) or the last axis(stride[ndims-1] = %d) "
-                "is not continuous.",
-                src_mdw.is_dense() ? "true" : "false",
-                int(src_mdw.blocking_desc().strides[ndims - 1]));
-        return status::unimplemented;
-    }
+    VDISPATCH_LNORM_IC(src_mdw.is_dense() || !c_is_last_physical,
+            "reusable vectorized lnorm not used because the source tensor "
+            "is not dense(%s) or the last axis(stride[ndims-1] = %d) "
+            "is not continuous.",
+            src_mdw.is_dense() ? "true" : "false",
+            int(src_mdw.blocking_desc().strides[ndims - 1]));
 
     const auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
             pd->attr()->gpu_attr_.get());
@@ -145,13 +142,10 @@ static status_t init_conf_common(const pd_t *pd,
         if (found_compatible_sg_and_vector_size) break;
     }
 
-    if (found_compatible_sg_and_vector_size == false) {
-        VDEBUGINFO(15, primitive, lnorm,
-                "Reusable Vectorized LNorm not used because norm_axis(%ld) "
-                "is not a multiple of the vector size and subgroup size.",
-                long(pd->norm_axis()));
-        return status::unimplemented;
-    }
+    VDISPATCH_LNORM_IC(found_compatible_sg_and_vector_size,
+            "reusable vectorized lnorm not used because norm_axis(%ld) "
+            "is not a multiple of the vector size and subgroup size.",
+            long(pd->norm_axis()));
 
     conf->unroll = std::min<int>(
             4, (int)pd->norm_axis() / (conf->sg_size * conf->vector_size));
@@ -162,13 +156,23 @@ static status_t init_conf_common(const pd_t *pd,
 
     compute::reusable_dispatch_config_t dispatch_config(
             intel_engine, std::move(dims));
-    CHECK(dispatch_config.register_buffer(input_buf));
-    CHECK(dispatch_config.register_buffer(output_buf));
-    CHECK(dispatch_config.register_buffer(stat_buf));
-    CHECK(dispatch_config.register_buffer(ss_buf));
+    VDISPATCH_LNORM_IC(
+            dispatch_config.register_buffer(input_buf) == status::success,
+            "failed to register input buffer");
+    VDISPATCH_LNORM_IC(
+            dispatch_config.register_buffer(output_buf) == status::success,
+            "failed to register output buffer");
+    VDISPATCH_LNORM_IC(
+            dispatch_config.register_buffer(stat_buf) == status::success,
+            "failed to register stat buffer");
+    VDISPATCH_LNORM_IC(
+            dispatch_config.register_buffer(ss_buf) == status::success,
+            "failed to register ss buffer");
 
     compute::reusable_dispatch_t dispatch;
-    CHECK(dispatch_config.generate(dispatch, lws_strategy));
+    VDISPATCH_LNORM_IC(
+            dispatch_config.generate(dispatch, lws_strategy) == status::success,
+            "failed to generate dispatch_config");
     conf->gws_params = dispatch.get_compile_params();
     rt_conf->gws_params = dispatch.get_runtime_params();
 

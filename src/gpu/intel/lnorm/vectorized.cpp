@@ -227,9 +227,8 @@ static status_t init_conf_common(
         c_is_last_physical = src_mdw.blocking_desc().strides[ndims - 1] == 1;
     }
 
-    VDISPATCH_LNORM_IC(src_mdw.is_dense(), VERBOSE_UNSUPPORTED_FORMAT_KIND);
-    VDISPATCH_LNORM_IC(!c_is_last_physical, VERBOSE_BLOCKING_FAIL, "");
-    VDISPATCH_LNORM_IC(ndims >= 4, VERBOSE_BAD_NDIMS, "src", ndims);
+    VDISPATCH_LNORM_IC(src_mdw.is_dense() || !c_is_last_physical || ndims >= 4,
+            "bad md configuration");
 
     conf.dispatch_scaleshift = intel_engine->create_dispatch();
     conf.dispatch_scaleshift_finalize = intel_engine->create_dispatch();

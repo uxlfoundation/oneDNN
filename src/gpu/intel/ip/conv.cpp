@@ -127,11 +127,10 @@ status_t conv_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
     memory_desc_wrapper src_d(src_md_);
     memory_desc_wrapper dst_d(dst_md_);
-    VDISPATCH_INNER_PRODUCT_IC(conv_src_md.format_desc.blocking.inner_nblks >= 2
-                    || conv_wei_md.format_desc.blocking.inner_nblks >= 2,
-            VERBOSE_BAD_PARAM, "bad inner block size");
-    VDISPATCH_INNER_PRODUCT_IC(
-            src_d.size() + dst_d.size() < 20000000, VERBOSE_LARGE_SHAPES);
+    const bool prob_ok = !(conv_src_md.format_desc.blocking.inner_nblks < 2
+            && conv_wei_md.format_desc.blocking.inner_nblks < 2
+            && src_d.size() + dst_d.size() >= 20000000);
+    VDISPATCH_INNER_PRODUCT_IC(prob_ok, "bad md blocking configuration");
     return status::success;
 }
 

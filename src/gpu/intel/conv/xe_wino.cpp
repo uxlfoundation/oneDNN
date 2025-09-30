@@ -151,8 +151,8 @@ status_t xe_wino_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
         // of VTRANS_BLOCK = 4. This condition was not implemented yet due to no
         // known use case, and small IC is expected to have poor performance
         // because of extra work created by the current blocking.
-        VDISPATCH_CONV_IC(
-                conf.ic_without_padding == 16 && conf.oc_without_padding == 16,
+        VDISPATCH_CONV_IC(conf.ic_without_padding % 16 == 0
+                        && conf.oc_without_padding % 16 == 0,
                 VERBOSE_BAD_PARAM, "bad channel dimensions");
         conf.ver = ver_nhwc;
     } else if ((is_16oc && is_16ic)) {

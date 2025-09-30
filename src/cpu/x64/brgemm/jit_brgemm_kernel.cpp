@@ -518,12 +518,12 @@ dim_t jit_brgemm_kernel_t<Wmm>::D_offset(dim_t bd, dim_t ld) const noexcept {
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::rdb_A_offset() const noexcept {
-    return brg.typesize_A * brg.rd_block;
+    return brg.rd_block_A_size();
 }
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::rdb_B_offset() const noexcept {
-    return brg.typesize_B * brg.rd_block * brg.LDB;
+    return brg.rd_block_B_size() * brg.LDB;
 }
 
 template <typename Wmm>
@@ -2521,7 +2521,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
     // `reg_aux_C` and `reg_tmp_microkernel` are aliases for `r14` so we need to
     // save its content.
     const dim_t max_prefetch_offset = B_offset(ld_block2 - 1, rd_loop - 1)
-            + static_cast<dim_t>(brg.LDB) * brg.rd_block * brg.typesize_B;
+            + static_cast<dim_t>(brg.LDB) * brg.rd_block_B_size();
     if (max_prefetch_offset > INT_MAX) reg_aux_C.save();
 
     if (brg.is_fp8_via_convert()) reg64_fp8_aux.save();
@@ -2565,8 +2565,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 if (prefetch_count_B < ld_block2) {
                     const dim_t prefetch_offset
                             = B_offset(prefetch_count_B++, rd)
-                            + static_cast<dim_t>(brg.LDB) * brg.rd_block
-                                    * brg.typesize_B;
+                            + static_cast<dim_t>(brg.LDB)
+                                    * brg.rd_block_B_size();
                     // Only use EVEX_compress_addr_safe/make_safe_addr
                     // when prefetch_offset > INT_MAX forr perf purpose
                     if (prefetch_offset <= INT_MAX) {

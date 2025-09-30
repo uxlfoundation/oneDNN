@@ -831,9 +831,9 @@ dim_t jit_brgemm_amx_uker_base_t::A_offset_wsp(
     const auto bs_offs = bi.bsi->pos * brg.bcast_dim
             * rnd_up(brg.reduce_dim, brg.max_rd_block()) * brg.typesize_A;
 
-    const auto bdb_offs = bi.bdi->pos(bdb) * brg.rd_block * brg.typesize_A;
+    const auto bdb_offs = bi.bdi->pos(bdb) * brg.rd_block_A_size();
     const auto rdb_offs
-            = bi.rdi->pos(rdb) * brg.bcast_dim * brg.rd_block * brg.typesize_A;
+            = bi.rdi->pos(rdb) * brg.bcast_dim * brg.rd_block_A_size();
 
     return transform_offset + bs_offs + bdb_offs + rdb_offs;
 }
@@ -846,7 +846,7 @@ dim_t jit_brgemm_amx_uker_base_t::A_offset(
     const auto bdb_offs
             = ununroll_bd_loop ? bi.bdi->rel_pos(bdb) : bi.bdi->pos(bdb);
     return bdb_offs * LDA2_size_ + bs_offs
-            + bi.rdi->pos(rdb) * brg.rd_block * brg.typesize_A;
+            + bi.rdi->pos(rdb) * brg.rd_block_A_size();
 }
 
 dim_t jit_brgemm_amx_uker_base_t::A_offset_line(const brgemm_iteration_t &bi,

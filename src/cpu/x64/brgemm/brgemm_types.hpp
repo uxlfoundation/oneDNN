@@ -469,6 +469,23 @@ struct brgemm_desc_t {
         return 0;
     }
 
+    int all_rdb() const noexcept { return (rdb + (rdb_tail != 0)); }
+
+    int rd_block_A_size() const noexcept { return rd_block * typesize_A; }
+    int rd_block_B_size() const noexcept { return rd_block * typesize_B; }
+    int bd_block_A_size() const noexcept {
+        return bd_block * rd_block_A_size();
+    }
+    int ld_block_B_size() const noexcept {
+        return ld_block * rd_block_B_size();
+    }
+    int bd_block2_A_size() const noexcept {
+        return bd_block2 * bd_block_A_size();
+    }
+    int ld_block2_B_size() const noexcept {
+        return ld_block2 * ld_block_B_size();
+    }
+
     int get_wsp_buffer_size() const noexcept {
         int sz = 0;
         if (is_tmm) {

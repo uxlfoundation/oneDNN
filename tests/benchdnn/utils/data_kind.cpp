@@ -76,7 +76,8 @@ data_kind_t exec_arg2data_kind(int arg) {
     bool is_zero_point_arg = (arg & DNNL_ARG_ATTR_ZERO_POINTS);
     bool is_dropout_arg = (arg & DNNL_ARG_ATTR_DROPOUT_PROBABILITY)
             || (arg & DNNL_ARG_ATTR_DROPOUT_MASK)
-            || (arg & DNNL_ARG_ATTR_DROPOUT_SEED);
+            || (arg & DNNL_ARG_ATTR_DROPOUT_SEED)
+            || (arg & DNNL_ARG_ATTR_DROPOUT_OFFSET);
     if (!is_post_ops_arg && !is_dw_post_op && !is_scales_arg
             && !is_zero_point_arg && !is_dropout_arg)
         BENCHDNN_PRINT(0, "Error: arg \'%d\' was not recognized\n", arg);

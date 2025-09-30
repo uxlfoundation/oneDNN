@@ -410,6 +410,7 @@ std::string execarg2str(int exec_arg) {
             ARG(DNNL_ARG_ATTR_DROPOUT_MASK),
             ARG(DNNL_ARG_ATTR_DROPOUT_PROBABILITY),
             ARG(DNNL_ARG_ATTR_DROPOUT_SEED),
+            ARG(DNNL_ARG_ATTR_DROPOUT_OFFSET),
     };
     static const arg_map_t flags = {
             ARG(DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS),

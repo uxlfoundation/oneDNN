@@ -180,13 +180,15 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
             BENCHDNN_PRINT(2, "%s\n", "[REORDER] Fallback to plain copy.");
             const int64_t chunk_size = 64;
             const int64_t n_chunks = div_up(src.nelems(), chunk_size);
+            const int64_t size_dt = src.sizeof_dt();
             benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
                 int64_t idx_start = idx_chunk * chunk_size;
                 int64_t idx_end = MIN2(idx_start + chunk_size, src.nelems());
-                for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-                    float e = src.get_elem(idx);
-                    dst.set_elem(idx, e);
-                }
+                char *in
+                        = src.get_mapped_pointer<char>(0) + idx_start * size_dt;
+                char *out
+                        = dst.get_mapped_pointer<char>(0) + idx_start * size_dt;
+                std::memcpy(out, in, (idx_end - idx_start) * size_dt);
             });
             return OK;
         }
@@ -270,6 +272,7 @@ float dnn_mem_t::get_elem(int64_t idx, int buffer_index) const {
         case dnnl_s8: elem = static_cast<int8_t *>(data)[idx]; break;
         case dnnl_u8: elem = static_cast<uint8_t *>(data)[idx]; break;
         case dnnl_s32: elem = static_cast<int32_t *>(data)[idx]; break;
+        case dnnl_s64: elem = static_cast<int64_t *>(data)[idx]; break;
         case dnnl_f32: elem = static_cast<float *>(data)[idx]; break;
         case dnnl_f64: elem = static_cast<double *>(data)[idx]; break;
         case dnnl_f16:
@@ -323,6 +326,7 @@ void dnn_mem_t::set_elem(int64_t idx, float value, int buffer_index) const {
         case dnnl_s8: ((int8_t *)data)[idx] = value; break;
         case dnnl_u8: ((uint8_t *)data)[idx] = value; break;
         case dnnl_s32: ((int32_t *)data)[idx] = value; break;
+        case dnnl_s64: ((int64_t *)data)[idx] = value; break;
         case dnnl_f32: ((float *)data)[idx] = value; break;
         case dnnl_f64: ((double *)data)[idx] = value; break;
         case dnnl_f16: ((dnnl::impl::float16_t *)data)[idx] = value; break;
@@ -632,6 +636,13 @@ dnnl_memory_desc_t dnn_mem_t::pad_memory_desc(const_dnnl_memory_desc_t md,
     DNN_SAFE_V(
             dnnl_memory_desc_create_with_tag(&ret, 1, dims, dnnl_u8, dnnl_x));
     return ret;
+}
+
+benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_md() {
+    dnnl_memory_desc_t zero_md {};
+    DNN_SAFE_V(dnnl_memory_desc_create_with_tag(
+            &zero_md, 0, nullptr, dnnl_data_type_undef, dnnl_format_tag_undef));
+    return zero_md;
 }
 
 benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_md(int ndims,
@@ -1174,6 +1185,7 @@ int check_zero_padding(
             CASE(dnnl_f32, float);
             CASE(dnnl_f64, double);
             CASE(dnnl_s32, int32_t);
+            CASE(dnnl_s64, int64_t);
             CASE(dnnl_s8, int8_t);
             CASE(dnnl_u8, uint8_t);
             CASE(dnnl_s4, dnnl::impl::int4_t);

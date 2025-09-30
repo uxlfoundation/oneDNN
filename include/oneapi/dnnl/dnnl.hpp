@@ -4030,21 +4030,51 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     ///
     /// @param mask_desc Output memory descriptor of a dropout mask.
     void get_dropout(memory::desc &mask_desc) const {
+        memory::data_type seed_dt;
+        bool use_offset, use_host_scalars;
+        get_dropout(mask_desc, seed_dt, use_offset, use_host_scalars);
+        // TODO: add checks that seed_dt = f32, use_offset=use_host_scalars=false;
+        //       or call C API with nullptr to trigger checks internally?
+    }
+
+    /// Returns the parameters of a dropout attribute.
+    ///
+    /// @param mask_desc Output memory descriptor of a dropout mask.
+    void get_dropout(memory::desc &mask_desc, memory::data_type &seed_dt,
+            bool &use_offset, bool &use_host_scalars) const {
         const_dnnl_memory_desc_t cdesc;
-        error::wrap_c_api(dnnl_primitive_attr_get_dropout(get(), &cdesc),
+        dnnl_data_type_t c_seed_dt;
+        int c_use_offset;
+        int c_use_host_scalars;
+        error::wrap_c_api(
+                dnnl_primitive_attr_get_dropout_v2(get(), &cdesc, &c_seed_dt,
+                        &c_use_offset, &c_use_host_scalars),
                 "could not get parameters of a dropout attribute");
         dnnl_memory_desc_t cloned_md = nullptr;
         error::wrap_c_api(dnnl_memory_desc_clone(&cloned_md, cdesc),
                 "could not clone a memory descriptor");
         mask_desc = memory::desc(cloned_md);
+        seed_dt = static_cast<memory::data_type>(c_seed_dt);
+        use_offset = c_use_offset;
+        use_host_scalars = c_use_host_scalars;
     }
 
     /// Sets dropout probability.
     ///
     /// @param mask_desc Output memory descriptor of a dropout mask.
     void set_dropout(const memory::desc &mask_desc) {
+        set_dropout(mask_desc, memory::data_type::f32, false, false);
+    }
+
+    /// Sets dropout probability.
+    ///
+    /// @param mask_desc Output memory descriptor of a dropout mask.
+    void set_dropout(const memory::desc &mask_desc, memory::data_type seed_dt,
+            bool use_offset, bool use_host_scalars) {
         error::wrap_c_api(
-                dnnl_primitive_attr_set_dropout(get(), mask_desc.get()),
+                dnnl_primitive_attr_set_dropout_v2(get(), mask_desc.get(),
+                        memory::convert_to_c(seed_dt), use_offset,
+                        use_host_scalars),
                 "could not set dropout primitive attribute");
     }
 

@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2022 Intel Corporation
 * Copyright 2020-2022 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -58,7 +59,7 @@ struct call_params_t {
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator {
+struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_i8i8_pooling_fwd_ker_t)
 
     using TReg = typename cpu_isa_traits<isa>::TReg;
@@ -178,7 +179,7 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator {
 
     jit_uni_i8i8_pooling_fwd_ker_t(
             const jit_pool_conf_t &jpp_, const memory_desc_t *dst_md)
-        : jit_generator(nullptr, MAX_CODE_SIZE, true), jpp(jpp_) {}
+        : jit_generator_t(nullptr, MAX_CODE_SIZE, true), jpp(jpp_) {}
 };
 
 template <>

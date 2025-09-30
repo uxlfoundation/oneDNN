@@ -42,17 +42,18 @@ using namespace nstl;
                          : (d).blk_off(__VA_ARGS__))
 
 template <cpu_isa_t isa>
-jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::
-        jit_sve_512_core_x8s8s32x_deconv_fwd_kernel(const jit_conv_conf_t &ajcp,
-                const primitive_attr_t &attr, const memory_desc_t &dst_md)
+jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::
+        jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t(
+                const jit_conv_conf_t &ajcp, const primitive_attr_t &attr,
+                const memory_desc_t &dst_md)
     : jcp(ajcp), attr_(attr) {}
 
 template <cpu_isa_t isa>
-jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<
-        isa>::~jit_sve_512_core_x8s8s32x_deconv_fwd_kernel()
+jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<
+        isa>::~jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t()
         = default;
 
-status_t _jit_sve_512_core_x8s8s32x_deconv_fwd_kernel::init_conf(
+status_t jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_wrapper_t::init_conf(
         jit_conv_conf_t &jcp, const deconvolution_desc_t &cd,
         memory_desc_t &src_md, memory_desc_t &weights_md, memory_desc_t &dst_md,
         const bool with_bias, memory_desc_t &bias_md, primitive_attr_t &attr,
@@ -330,7 +331,7 @@ status_t _jit_sve_512_core_x8s8s32x_deconv_fwd_kernel::init_conf(
     return status::success;
 }
 
-void _jit_sve_512_core_x8s8s32x_deconv_fwd_kernel::init_scratchpad(
+void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_wrapper_t::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp,
         const primitive_attr_t &attr) {
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp)) {
@@ -342,13 +343,13 @@ void _jit_sve_512_core_x8s8s32x_deconv_fwd_kernel::init_scratchpad(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::compute(
+void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::compute(
         const ZReg &vreg_acc, const ZReg &vreg_wei, const ZReg &vreg_src) {
     sdot(vreg_acc.s, vreg_src.b, vreg_wei.b);
 }
 
 template <cpu_isa_t isa>
-std::function<uint32_t()> jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<
+std::function<uint32_t()> jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<
         isa>::prepare_round_robin_vmm_inp_generator(int ur_w) const noexcept {
     const uint32_t start_vmm_idx = vmm_inp(0, jcp.nb_oc_blocking).getIdx();
     const uint32_t end_vmm_idx
@@ -365,7 +366,7 @@ std::function<uint32_t()> jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<
 }
 
 template <cpu_isa_t isa>
-void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<
+void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<
         isa>::apply_zp_src_pad_str_comp(int ur_w, int l_overflow,
         int r_overflow, bool h_padded) {
     Label end_zp_pad, no_tail;
@@ -398,7 +399,7 @@ void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<
 }
 
 template <cpu_isa_t isa>
-void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<
+void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<
         isa>::append_zp_src_pad_str_comp(int ur_w, int l_overflow,
         int r_overflow, bool h_padded, bool last_oc_block) {
 
@@ -481,7 +482,7 @@ void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<
 }
 
 template <cpu_isa_t isa>
-void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::compute_ker(int ur_w,
+void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::compute_ker(int ur_w,
         int l_overflow, int r_overflow, ker_block_t last_ic_block_flag,
         bool h_padded) {
 
@@ -629,7 +630,7 @@ void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::compute_ker(int ur_w,
 } // namespace aarch64
 
 template <cpu_isa_t isa>
-void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::kh_loop(int ur_w,
+void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::kh_loop(int ur_w,
         int l_overflow, int r_overflow, ker_block_t last_ic_block_flag) {
 
     const bool unsigned_input_or_src_zp
@@ -822,20 +823,20 @@ void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::kh_loop(int ur_w,
     }
 }
 template <cpu_isa_t isa>
-int jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::get_tail_size()
+int jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::get_tail_size()
         const noexcept {
     return jcp.is_depthwise ? jcp.ngroups % jcp.ch_block
                             : jcp.oc_without_padding % jcp.oc_block;
 }
 
 template <cpu_isa_t isa>
-int jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::get_blocking_size()
+int jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::get_blocking_size()
         const noexcept {
     return jcp.is_depthwise ? jcp.ch_block : jcp.oc_block;
 }
 
 template <cpu_isa_t isa>
-void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::prepare_output(
+void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::prepare_output(
         int ur_w) {
     for (int ocb = 0; ocb < jcp.nb_oc_blocking; ocb++)
         for (int ur = 0; ur < ur_w; ur++)
@@ -851,7 +852,7 @@ void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::prepare_output(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::cvt2ps(
+void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::cvt2ps(
         data_type_t type_in, const ZReg &vmm_in, const ZReg &op,
         bool mask_flag) {
     PReg mask = P_ALL_ONE;
@@ -893,7 +894,7 @@ void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::cvt2ps(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::store_output(
+void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::store_output(
         int ur_w, bool last_oc_block) {
     add_imm(X_TMP_1, param1, GET_OFF(bias), X_TMP_0);
     ldr(reg_bias, ptr(X_TMP_1));
@@ -1118,7 +1119,7 @@ void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::store_output(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::icb_loop(
+void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::icb_loop(
         int ur_w, int l_overflow, int r_overflow, bool is_last_sp_block) {
 
     int shift_src_icb = jcp.typesize_in * jcp.ic_block;
@@ -1198,7 +1199,7 @@ void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::icb_loop(
 
 template <cpu_isa_t isa>
 ur_w_blks_params_t
-jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::get_ur_w_blks_params() {
+jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::get_ur_w_blks_params() {
     const int n_ur_blocks = jcp.ow / jcp.ur_w;
 
     ur_w_blks_params_t ur_w_blks_params;
@@ -1260,7 +1261,7 @@ jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::get_ur_w_blks_params() {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<isa>::generate() {
+void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::generate() {
     preamble();
 
     assert(get_sve_length() >= isa_sveLen);
@@ -1837,9 +1838,9 @@ status_t jit_sve_512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
     return status::success;
 }
 
-template struct jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<sve_512>;
-template struct jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<sve_256>;
-template struct jit_sve_512_core_x8s8s32x_deconv_fwd_kernel<sve_128>;
+template struct jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<sve_512>;
+template struct jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<sve_256>;
+template struct jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<sve_128>;
 
 } // namespace aarch64
 } // namespace cpu

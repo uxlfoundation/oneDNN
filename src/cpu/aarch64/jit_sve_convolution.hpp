@@ -63,13 +63,13 @@ struct jit_sve_convolution_fwd_t : public primitive_t {
                     && !has_zero_dim_memory();
             if (!ok) return status::unimplemented;
 
-            status_t status = jit_sve_conv_fwd_kernel<isa>::init_conf(jcp_,
+            status_t status = jit_sve_conv_fwd_kernel_t<isa>::init_conf(jcp_,
                     *desc(), src_md_, weights_md_, dst_md_, bias_md_, *attr(),
                     dnnl_get_max_threads());
             if (status != status::success) return status;
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_sve_conv_fwd_kernel<isa>::init_scratchpad(scratchpad, jcp_);
+            jit_sve_conv_fwd_kernel_t<isa>::init_scratchpad(scratchpad, jcp_);
 
             return status;
         }
@@ -85,7 +85,7 @@ struct jit_sve_convolution_fwd_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_sve_conv_fwd_kernel<isa>(pd()->jcp_, *pd()->attr())));
+                new jit_sve_conv_fwd_kernel_t<isa>(pd()->jcp_, *pd()->attr())));
         return kernel_->create_kernel();
     }
 
@@ -112,7 +112,7 @@ private:
     void execute_forward_3d(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_sve_conv_fwd_kernel<isa>> kernel_;
+    std::unique_ptr<jit_sve_conv_fwd_kernel_t<isa>> kernel_;
 };
 
 template <impl::data_type_t diff_dst_type,
@@ -134,13 +134,14 @@ struct jit_sve_convolution_bwd_data_t : public primitive_t {
                     && attr()->has_default_values() && !has_zero_dim_memory();
             if (!ok) return status::unimplemented;
 
-            status_t status = jit_sve_conv_bwd_data_kernel_f32<isa>::init_conf(
-                    jcp_, *desc(), diff_src_md_, weights_md_, diff_dst_md_,
-                    dnnl_get_max_threads());
+            status_t status
+                    = jit_sve_conv_bwd_data_kernel_f32_t<isa>::init_conf(jcp_,
+                            *desc(), diff_src_md_, weights_md_, diff_dst_md_,
+                            dnnl_get_max_threads());
             if (status != status::success) return status;
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_sve_conv_bwd_data_kernel_f32<isa>::init_scratchpad(
+            jit_sve_conv_bwd_data_kernel_f32_t<isa>::init_scratchpad(
                     scratchpad, jcp_);
 
             return status::success;
@@ -157,7 +158,7 @@ struct jit_sve_convolution_bwd_data_t : public primitive_t {
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_sve_conv_bwd_data_kernel_f32<isa>(pd()->jcp_)));
+                new jit_sve_conv_bwd_data_kernel_f32_t<isa>(pd()->jcp_)));
         return kernel_->create_kernel();
     }
 
@@ -179,7 +180,7 @@ private:
     void execute_backward_data_3d(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_sve_conv_bwd_data_kernel_f32<isa>> kernel_;
+    std::unique_ptr<jit_sve_conv_bwd_data_kernel_f32_t<isa>> kernel_;
 };
 
 template <impl::data_type_t src_type,
@@ -203,15 +204,16 @@ struct jit_sve_convolution_bwd_weights_t : public primitive_t {
             if (!ok) return status::unimplemented;
 
             status_t status
-                    = jit_sve_conv_bwd_weights_kernel_f32<isa>::init_conf(jcp_,
-                            *desc(), src_md_, diff_weights_md_, diff_bias_md_,
-                            diff_dst_md_, dnnl_get_max_threads());
+                    = jit_sve_conv_bwd_weights_kernel_f32_t<isa>::init_conf(
+                            jcp_, *desc(), src_md_, diff_weights_md_,
+                            diff_bias_md_, diff_dst_md_,
+                            dnnl_get_max_threads());
             if (status != status::success) return status;
 
             init_balancers();
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_sve_conv_bwd_weights_kernel_f32<isa>::init_scratchpad(
+            jit_sve_conv_bwd_weights_kernel_f32_t<isa>::init_scratchpad(
                     scratchpad, jcp_);
 
             auto reducer_bia_scratchpad = memory_tracking::registrar_t(
@@ -265,7 +267,7 @@ private:
 
     int nthr_, nthr_mb_, nthr_g_, nthr_oc_b_, nthr_ic_b_;
 
-    jit_sve_conv_bwd_weights_kernel_f32<isa> *kernel_;
+    jit_sve_conv_bwd_weights_kernel_f32_t<isa> *kernel_;
     cpu_accumulator_1d_t<diff_weights_type, isa> *acc_ker_;
     cpu_reducer_t<diff_weights_type, isa> *reducer_bias_;
 };

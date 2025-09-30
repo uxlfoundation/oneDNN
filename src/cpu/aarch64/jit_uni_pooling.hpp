@@ -69,7 +69,7 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
 
             auto scratchpad = scratchpad_registry().registrar();
 
-            CHECK(jit_uni_pool_kernel<isa>::init_conf(
+            CHECK(jit_uni_pool_kernel_t<isa>::init_conf(
                     jpp_, scratchpad, attr_, this));
 
             return status::success;
@@ -108,7 +108,7 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t init_ncsp_trans_ctx();
 
-    std::unique_ptr<jit_uni_pool_kernel<isa>> kernel_;
+    std::unique_ptr<jit_uni_pool_kernel_t<isa>> kernel_;
     std::unique_ptr<jit_uni_pooling_utils::trans_context_t> trans_ctx_;
     static constexpr data_type_t wsp_dt_ = data_type::f32;
 };
@@ -138,7 +138,7 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
 
             auto scratchpad = scratchpad_registry().registrar();
 
-            CHECK(jit_uni_pool_kernel<isa>::init_conf(
+            CHECK(jit_uni_pool_kernel_t<isa>::init_conf(
                     jpp_, scratchpad, attr_, this));
 
             return status::success;
@@ -177,7 +177,7 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t init_ncsp_trans_ctx();
 
-    std::unique_ptr<jit_uni_pool_kernel<isa>> kernel_;
+    std::unique_ptr<jit_uni_pool_kernel_t<isa>> kernel_;
     std::unique_ptr<jit_uni_pooling_utils::trans_context_t> trans_ctx_;
     static constexpr data_type_t wsp_dt_ = data_type::f32;
 };

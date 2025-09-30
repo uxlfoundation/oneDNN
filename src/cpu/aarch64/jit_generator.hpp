@@ -95,7 +95,8 @@ static const Xbyak_aarch64::XReg abi_param1(Xbyak_aarch64::Operand::X0),
         abi_not_param1(Xbyak_aarch64::Operand::X15);
 } // namespace
 
-class jit_generator : public Xbyak_aarch64::CodeGenerator, public c_compatible {
+class jit_generator_t : public Xbyak_aarch64::CodeGenerator,
+                        public c_compatible {
 public:
     using c_compatible::operator new;
     using c_compatible::operator new[];
@@ -703,15 +704,15 @@ public:
         L(label_tbl_end);
     }
 
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_generator);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_generator_t);
 
-    jit_generator(void *code_ptr = nullptr, size_t code_size = MAX_CODE_SIZE,
+    jit_generator_t(void *code_ptr = nullptr, size_t code_size = MAX_CODE_SIZE,
             bool use_autogrow = true, cpu_isa_t max_cpu_isa = isa_all)
         : Xbyak_aarch64::CodeGenerator(code_size,
                 (code_ptr == nullptr && use_autogrow) ? Xbyak_aarch64::AutoGrow
                                                       : code_ptr)
         , max_cpu_isa_(max_cpu_isa) {}
-    ~jit_generator() override = default;
+    ~jit_generator_t() override = default;
 
     virtual const char *name() const = 0;
     virtual const char *source_file() const = 0;

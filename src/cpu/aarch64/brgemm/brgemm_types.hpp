@@ -338,14 +338,14 @@ struct brgemm_kernel_params_t {
 
 struct jit_brgemm_kernel_t;
 struct jit_brdgmm_kernel_base_t;
-class jit_generator;
+class jit_generator_t;
 
 struct brgemm_kernel_t {
     brgemm_kernel_t() = default;
     virtual ~brgemm_kernel_t() = default;
     virtual status_t create_kernel() = 0;
     virtual void operator()(brgemm_kernel_params_t *) const = 0;
-    virtual const jit_generator *get_jit_generator() const = 0;
+    virtual const jit_generator_t *get_jit_generator() const = 0;
 };
 
 struct brgemm_kernel_common_t : public brgemm_kernel_t {
@@ -354,7 +354,7 @@ struct brgemm_kernel_common_t : public brgemm_kernel_t {
 
     status_t create_kernel() override;
     void operator()(brgemm_kernel_params_t *) const override;
-    const jit_generator *get_jit_generator() const override;
+    const jit_generator_t *get_jit_generator() const override;
 
 private:
     jit_brgemm_kernel_t *brgemm_kernel_ = nullptr;
@@ -368,7 +368,7 @@ struct brdgmm_kernel_t : public brgemm_kernel_t {
 
     status_t create_kernel() override;
     void operator()(brgemm_kernel_params_t *) const override;
-    const jit_generator *get_jit_generator() const override;
+    const jit_generator_t *get_jit_generator() const override;
 
 private:
     jit_brdgmm_kernel_base_t *brgemm_kernel_ = nullptr;

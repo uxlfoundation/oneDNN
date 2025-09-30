@@ -95,7 +95,7 @@ inline bool is_owb_prefetching(const jit_conv_conf_t &jcp) {
 } // namespace
 
 template <cpu_isa_t isa>
-void jit_sve_conv_fwd_kernel<isa>::prepare_output(int ur_w) {
+void jit_sve_conv_fwd_kernel_t<isa>::prepare_output(int ur_w) {
 
     auto zreg_out_s = [=](int i_ur, int i_oc) {
         int idx = i_ur + i_oc * jcp.ur_w;
@@ -125,7 +125,7 @@ void jit_sve_conv_fwd_kernel<isa>::prepare_output(int ur_w) {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_fwd_kernel<isa>::store_output(int ur_w) {
+void jit_sve_conv_fwd_kernel_t<isa>::store_output(int ur_w) {
 
     Label no_update_label, store_label, eltwise_label;
 
@@ -275,7 +275,7 @@ void jit_sve_conv_fwd_kernel<isa>::store_output(int ur_w) {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_fwd_kernel<isa>::compute_loop_fma_core(
+void jit_sve_conv_fwd_kernel_t<isa>::compute_loop_fma_core(
         int ur_w, int pad_l, int pad_r) {
     int kw = jcp.kw;
     int ic_block = jcp.ic_block;
@@ -533,7 +533,7 @@ void jit_sve_conv_fwd_kernel<isa>::compute_loop_fma_core(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_fwd_kernel<isa>::compute_loop(
+void jit_sve_conv_fwd_kernel_t<isa>::compute_loop(
         int ur_w, int pad_l, int pad_r) {
 
     if (jcp.ndims == 5) mov(reg_oi_org, reg_oi);
@@ -599,7 +599,7 @@ void jit_sve_conv_fwd_kernel<isa>::compute_loop(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_fwd_kernel<isa>::generate() {
+void jit_sve_conv_fwd_kernel_t<isa>::generate() {
     int iw = jcp.iw;
     int ow = jcp.ow;
     int ow_block = jcp.ow_block;
@@ -820,7 +820,7 @@ void jit_sve_conv_fwd_kernel<isa>::generate() {
 }
 
 template <cpu_isa_t isa>
-bool jit_sve_conv_fwd_kernel<isa>::post_ops_ok(
+bool jit_sve_conv_fwd_kernel_t<isa>::post_ops_ok(
         jit_conv_conf_t &jcp, const primitive_attr_t &attr) {
     const auto &p = attr.post_ops_;
 
@@ -838,7 +838,7 @@ bool jit_sve_conv_fwd_kernel<isa>::post_ops_ok(
 }
 
 template <cpu_isa_t isa>
-status_t jit_sve_conv_fwd_kernel<isa>::init_conf(jit_conv_conf_t &jcp,
+status_t jit_sve_conv_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
         const convolution_desc_t &cd, memory_desc_t &src_md,
         memory_desc_t &weights_md, memory_desc_t &dst_md,
         memory_desc_t &bias_md, const primitive_attr_t &attr, int nthreads) {
@@ -1195,7 +1195,7 @@ status_t jit_sve_conv_fwd_kernel<isa>::init_conf(jit_conv_conf_t &jcp,
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_fwd_kernel<isa>::init_scratchpad(
+void jit_sve_conv_fwd_kernel_t<isa>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp) {
 
     if (jcp.with_bias && jcp.oc != jcp.oc_without_padding)
@@ -1203,7 +1203,7 @@ void jit_sve_conv_fwd_kernel<isa>::init_scratchpad(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_data_kernel_f32<isa>::prepare_output(int ur_w) {
+void jit_sve_conv_bwd_data_kernel_f32_t<isa>::prepare_output(int ur_w) {
     auto zreg_out_s = [=](int i_ur, int i_oc) {
         int idx = i_ur + i_oc * jcp.ur_w;
         assert(idx < ker_reg_base_idx);
@@ -1225,7 +1225,7 @@ void jit_sve_conv_bwd_data_kernel_f32<isa>::prepare_output(int ur_w) {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_data_kernel_f32<isa>::store_output(int ur_w) {
+void jit_sve_conv_bwd_data_kernel_f32_t<isa>::store_output(int ur_w) {
 
     int num_used_zreg = 32 - ker_reg_base_idx;
 
@@ -1336,7 +1336,7 @@ void jit_sve_conv_bwd_data_kernel_f32<isa>::store_output(int ur_w) {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_data_kernel_f32<isa>::compute_loop_fma(
+void jit_sve_conv_bwd_data_kernel_f32_t<isa>::compute_loop_fma(
         int ur_w, int l_overflow, int r_overflow) {
     Label kh_label, kd_label;
     int kw = jcp.kw;
@@ -1578,7 +1578,7 @@ void jit_sve_conv_bwd_data_kernel_f32<isa>::compute_loop_fma(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_data_kernel_f32<isa>::compute_loop_fma_core(
+void jit_sve_conv_bwd_data_kernel_f32_t<isa>::compute_loop_fma_core(
         int ur_w, int l_overflow, int r_overflow, int k_offset) {
     int kw = jcp.kw;
     int ow = jcp.ow;
@@ -1820,7 +1820,7 @@ void jit_sve_conv_bwd_data_kernel_f32<isa>::compute_loop_fma_core(
 }
 
 template <cpu_isa_t isa>
-inline void jit_sve_conv_bwd_data_kernel_f32<isa>::compute_loop(
+inline void jit_sve_conv_bwd_data_kernel_f32_t<isa>::compute_loop(
         int ur_w, int l_overflow, int r_overflow, int k_offset) {
     if (jcp.ndims == 5) mov(reg_oi_org, reg_oi);
 
@@ -1873,7 +1873,7 @@ inline void jit_sve_conv_bwd_data_kernel_f32<isa>::compute_loop(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_data_kernel_f32<isa>::generate() {
+void jit_sve_conv_bwd_data_kernel_f32_t<isa>::generate() {
     int iw = jcp.iw;
     int kw = jcp.kw;
     int ur_w = jcp.ur_w;
@@ -2066,9 +2066,10 @@ void jit_sve_conv_bwd_data_kernel_f32<isa>::generate() {
 }
 
 template <cpu_isa_t isa>
-status_t jit_sve_conv_bwd_data_kernel_f32<isa>::init_conf(jit_conv_conf_t &jcp,
-        const convolution_desc_t &cd, memory_desc_t &diff_src_md,
-        memory_desc_t &weights_md, memory_desc_t &diff_dst_md, int nthreads) {
+status_t jit_sve_conv_bwd_data_kernel_f32_t<isa>::init_conf(
+        jit_conv_conf_t &jcp, const convolution_desc_t &cd,
+        memory_desc_t &diff_src_md, memory_desc_t &weights_md,
+        memory_desc_t &diff_dst_md, int nthreads) {
     if (!mayiuse(isa)) return status::unimplemented;
 
     const memory_desc_wrapper diff_src_d(&diff_src_md);
@@ -2433,7 +2434,7 @@ status_t jit_sve_conv_bwd_data_kernel_f32<isa>::init_conf(jit_conv_conf_t &jcp,
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_data_kernel_f32<isa>::init_scratchpad(
+void jit_sve_conv_bwd_data_kernel_f32_t<isa>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp) {
     UNUSED(scratchpad);
     UNUSED(jcp);
@@ -2441,12 +2442,12 @@ void jit_sve_conv_bwd_data_kernel_f32<isa>::init_scratchpad(
 
 // Initialize static data members
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-const int jit_sve_conv_bwd_weights_kernel_f32<isa>::max_ur_w = 28;
+const int jit_sve_conv_bwd_weights_kernel_f32_t<isa>::max_ur_w = 28;
 template <dnnl::impl::cpu::aarch64::cpu_isa_t isa>
-const int jit_sve_conv_bwd_weights_kernel_f32<isa>::min_oh_reduce = 9;
+const int jit_sve_conv_bwd_weights_kernel_f32_t<isa>::min_oh_reduce = 9;
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::od_step_comeback_pointers() {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::od_step_comeback_pointers() {
     Label kd_comeback_label;
 
     /* 'depth' loop count bound by 'kd_work_size' */
@@ -2471,7 +2472,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::od_step_comeback_pointers() {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::oh_step_comeback_pointers() {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::oh_step_comeback_pointers() {
     Label kh_comeback_label, kd_comeback_label;
     mov(kj, reg_kh);
     L(kh_comeback_label);
@@ -2494,7 +2495,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::oh_step_comeback_pointers() {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_ic_block_step(int ur_w,
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::compute_ic_block_step(int ur_w,
         int pad_l, int pad_r, int ic_block_step, int input_offset,
         int kernel_offset, int output_offset, bool input_wraparound) {
 
@@ -2789,7 +2790,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_ic_block_step(int ur_w,
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<
+void jit_sve_conv_bwd_weights_kernel_f32_t<
         isa>::compute_oh_step_unroll_ow_icblock(int ic_block_step,
         int max_ur_w) {
     UNUSED(max_ur_w);
@@ -2914,7 +2915,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_oh_step_unroll_ow(
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::compute_oh_step_unroll_ow(
         int ic_block_step, int max_ur_w) {
     Label kh_label, ic_block_label, ic_tail_loop_label, ic_tail_label, kd_label;
     const bool src_layout_nxc = is_src_layout_nxc();
@@ -3064,7 +3065,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_oh_step_unroll_ow(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_oh_step_common(
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::compute_oh_step_common(
         int ic_block_step, int max_ur_w) {
     using namespace nstl;
     Label kh_label, ic_block_label, ic_tail_loop_label, ic_tail_label, kd_label;
@@ -3277,7 +3278,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_oh_step_common(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_oh_step_disp() {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::compute_oh_step_disp() {
     int ic_block_step;
     if (jcp.kernel_kind == expl_bcast)
         ic_block_step = jcp.kw <= 3 ? 4 : (jcp.kw <= 6 ? 2 : 1);
@@ -3322,7 +3323,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_oh_step_disp() {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::maybe_zero_kernel() {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::maybe_zero_kernel() {
     Label skip_zeroing, zeroing_loop;
 
     ldr(reg_tmp, ptr(param, GET_OFF(channel)));
@@ -3379,7 +3380,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::maybe_zero_kernel() {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::bias_kernel_2d() {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::bias_kernel_2d() {
     assert(jcp.ndims == 4); // only supports 2d
     Label skip_bias, bias_loop;
 
@@ -3409,7 +3410,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::bias_kernel_2d() {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::bias_kernel_3d() {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::bias_kernel_3d() {
     assert(jcp.ndims == 5); // only supports 3d
     Label skip_bias, bias_loop, skip_load_bias;
 
@@ -3455,7 +3456,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::bias_kernel_3d() {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_oh_loop_common() {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::compute_oh_loop_common() {
     assert(one_of(jcp.harness, harness_mb_reduction, harness_3d_reduction));
 
     int b_pad = jcp.b_pad;
@@ -3662,7 +3663,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_oh_loop_common() {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_oh_loop_partial() {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::compute_oh_loop_partial() {
     assert(jcp.harness == harness_2d_reduction);
     int ic_block = jcp.ic_block;
     int oc_block = jcp.oc_block;
@@ -3806,7 +3807,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_oh_loop_partial() {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_od_loop_partial() {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::compute_od_loop_partial() {
     assert(jcp.harness == harness_3d_reduction);
     int ic_block = jcp.ic_block;
     int oc_block = jcp.oc_block;
@@ -3937,7 +3938,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_od_loop_partial() {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_loop() {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::compute_loop() {
 
     maybe_zero_kernel();
 
@@ -3951,7 +3952,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_loop() {
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::generate_kernel() {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::generate_kernel() {
     const int simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
 
     preamble();
@@ -3969,7 +3970,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::generate_kernel() {
 }
 
 template <cpu_isa_t isa>
-status_t jit_sve_conv_bwd_weights_kernel_f32<isa>::init_conf(
+status_t jit_sve_conv_bwd_weights_kernel_f32_t<isa>::init_conf(
         jit_conv_conf_t &jcp, const convolution_desc_t &cd,
         memory_desc_t &src_md, memory_desc_t &diff_weights_md,
         memory_desc_t &diff_bias_md, memory_desc_t &diff_dst_md, int nthreads) {
@@ -4355,7 +4356,7 @@ status_t jit_sve_conv_bwd_weights_kernel_f32<isa>::init_conf(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::init_scratchpad(
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp) {
     if (jcp.nthr_mb > 1) {
         const int wei_size = jcp.ngroups * rnd_up(jcp.oc, jcp.oc_block)
@@ -4378,9 +4379,9 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::init_scratchpad(
 }
 
 template <cpu_isa_t isa>
-void jit_sve_conv_bwd_weights_kernel_f32<isa>::balance(const jit_conv_conf_t &j,
-        int &nthr_, int &nthr_mb_, int &nthr_g_, int &nthr_oc_b_,
-        int &nthr_ic_b_, int nthreads) {
+void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::balance(
+        const jit_conv_conf_t &j, int &nthr_, int &nthr_mb_, int &nthr_g_,
+        int &nthr_oc_b_, int &nthr_ic_b_, int nthreads) {
     nthr_ = nthr_mb_ = nthr_g_ = nthr_oc_b_ = nthr_ic_b_ = 1;
 
     if (nthreads < j.ngroups) {
@@ -4457,12 +4458,12 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::balance(const jit_conv_conf_t &j,
 }
 
 /*struct instantiation*/
-template struct jit_sve_conv_fwd_kernel<sve_512>;
-template struct jit_sve_conv_fwd_kernel<sve_256>;
-template struct jit_sve_conv_bwd_data_kernel_f32<sve_512>;
-template struct jit_sve_conv_bwd_data_kernel_f32<sve_256>;
-template struct jit_sve_conv_bwd_weights_kernel_f32<sve_512>;
-template struct jit_sve_conv_bwd_weights_kernel_f32<sve_256>;
+template struct jit_sve_conv_fwd_kernel_t<sve_512>;
+template struct jit_sve_conv_fwd_kernel_t<sve_256>;
+template struct jit_sve_conv_bwd_data_kernel_f32_t<sve_512>;
+template struct jit_sve_conv_bwd_data_kernel_f32_t<sve_256>;
+template struct jit_sve_conv_bwd_weights_kernel_f32_t<sve_512>;
+template struct jit_sve_conv_bwd_weights_kernel_f32_t<sve_256>;
 
 } // namespace aarch64
 } // namespace cpu

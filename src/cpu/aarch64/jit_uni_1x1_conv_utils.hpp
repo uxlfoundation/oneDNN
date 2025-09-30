@@ -121,7 +121,7 @@ inline void rtus_prepare_space_info(conv_pd_t *self,
 }
 
 template <cpu_isa_t isa>
-struct rtus_driver_t : public jit_generator {
+struct rtus_driver_t : public jit_generator_t {
 
     struct call_params_t {
         const void *ws; /* reduced image (w/ strides = 1) */

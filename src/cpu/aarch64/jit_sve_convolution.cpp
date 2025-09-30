@@ -1148,7 +1148,7 @@ status_t jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
     nthr_ic_b_ = j.nthr_ic_b;
 
     CHECK(safe_ptr_assign(
-            kernel_, new jit_sve_conv_bwd_weights_kernel_f32<isa>(j)));
+            kernel_, new jit_sve_conv_bwd_weights_kernel_f32_t<isa>(j)));
     CHECK(kernel_->create_kernel());
 
     if (nthr_mb_ > 1) {

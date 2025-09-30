@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2021 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,7 +27,7 @@ namespace aarch64 {
 
 namespace simple_barrier {
 
-void generate(jit_generator &code, Xbyak_aarch64::XReg reg_ctx,
+void generate(jit_generator_t &code, Xbyak_aarch64::XReg reg_ctx,
         Xbyak_aarch64::XReg reg_nthr, bool usedAsFunc) {
 #define BAR_CTR_OFF offsetof(ctx_t, ctr)
 #define BAR_SENSE_OFF offsetof(ctx_t, sense)
@@ -95,7 +96,7 @@ void generate(jit_generator &code, Xbyak_aarch64::XReg reg_ctx,
 }
 
 /** jit barrier generator */
-struct jit_t : public jit_generator {
+struct jit_t : public jit_generator_t {
 
     void generate() override {
         simple_barrier::generate(*this, abi_param1, abi_param2, true);

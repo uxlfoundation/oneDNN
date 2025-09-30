@@ -32,7 +32,7 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
-struct jit_brdgmm_kernel_base_t : public jit_generator {
+struct jit_brdgmm_kernel_base_t : public jit_generator_t {
     jit_brdgmm_kernel_base_t(const brgemm_t &abrd);
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brdgmm_kernel_base_t)

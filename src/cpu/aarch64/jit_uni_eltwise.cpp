@@ -43,10 +43,10 @@ struct jit_args_t {
     size_t work_amount;
 };
 
-struct jit_uni_eltwise_kernel_t : public jit_generator {
+struct jit_uni_eltwise_kernel_t : public jit_generator_t {
     jit_uni_eltwise_kernel_t(const eltwise_pd_t *pd) : pd_(pd) {}
 
-    void operator()(jit_args_t *p) { jit_generator::operator()(p); }
+    void operator()(jit_args_t *p) { jit_generator_t::operator()(p); }
 
 protected:
     const eltwise_pd_t *pd_;
@@ -72,7 +72,7 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         // there's no auxiliary vregs on fwd path
         const bool is_fwd = pd_->is_fwd();
         const bool save_state = is_fwd ? false : true;
-        eltwise_injector_.reset(new jit_uni_eltwise_injector_f32<isa>(this,
+        eltwise_injector_.reset(new jit_uni_eltwise_injector_f32_t<isa>(this,
                 desc.alg_kind, desc.alpha, desc.beta, 1.f, save_state,
                 reg_injector_table, injector_mask, injector_p_tmp0, is_fwd,
                 pd_->use_dst()));
@@ -226,7 +226,7 @@ private:
     TRegS vmm_diff_dst {2};
     TReg tmp0 {2};
     TReg tmp1 {7};
-    std::unique_ptr<jit_uni_eltwise_injector_f32<isa>> eltwise_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_f32_t<isa>> eltwise_injector_;
 
     PReg p_tmp0 {4}; /* Index is temporal. */
 

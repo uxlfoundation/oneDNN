@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2022 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,7 +38,7 @@ namespace aarch64 {
 using namespace Xbyak_aarch64;
 
 template <cpu_isa_t isa>
-struct jit_uni_shuffle_kernel_t : public jit_generator {
+struct jit_uni_shuffle_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_shuffle_kernel_t)
 
     jit_uni_shuffle_kernel_t(const jit_shuffle_conf_t conf);

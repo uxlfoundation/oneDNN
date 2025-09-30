@@ -169,8 +169,8 @@ void jit_uni_deconv_zp_pad_str_kernel_t<isa>::compute_step(
 }
 
 struct helper_store_t {
-    static void store(jit_generator *gen, const ZReg &vmm, const XReg &reg_dst,
-            const size_t size, const PReg &opmask) {
+    static void store(jit_generator_t *gen, const ZReg &vmm,
+            const XReg &reg_dst, const size_t size, const PReg &opmask) {
         gen->st1w(vmm.s, opmask, ptr(reg_dst));
     }
 };

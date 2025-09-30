@@ -38,12 +38,12 @@ namespace cpu {
 namespace aarch64 {
 
 template <cpu_isa_t isa>
-struct jit_uni_pool_kernel : public jit_generator {
+struct jit_uni_pool_kernel_t : public jit_generator_t {
 
-    jit_uni_pool_kernel(
+    jit_uni_pool_kernel_t(
             const jit_pool_conf_t &ajpp, const memory_desc_t *dst_md);
     jit_pool_conf_t jpp;
-    ~jit_uni_pool_kernel() override;
+    ~jit_uni_pool_kernel_t() override;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_pool_kernel)
 

@@ -38,8 +38,8 @@ namespace aarch64 {
 #define VL64_OFS(ofs) ((ofs) >> cpu_isa_traits<isa_>::vlen_shift)
 
 template <cpu_isa_t isa_ = isa_undef>
-struct jit_sve_1x1_conv_kernel : public jit_generator {
-    jit_sve_1x1_conv_kernel(const jit_1x1_conv_conf_t &ajcp,
+struct jit_sve_1x1_conv_kernel_t : public jit_generator_t {
+    jit_sve_1x1_conv_kernel_t(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sve_1x1_conv_kernel)

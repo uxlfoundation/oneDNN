@@ -43,17 +43,17 @@ namespace cpu {
 namespace aarch64 {
 
 template <cpu_isa_t isa = isa_undef>
-struct jit_sve_conv_fwd_kernel : public jit_generator {
-    jit_sve_conv_fwd_kernel(
+struct jit_sve_conv_fwd_kernel_t : public jit_generator_t {
+    jit_sve_conv_fwd_kernel_t(
             const jit_conv_conf_t &ajcp, const primitive_attr_t &attr)
         : jcp(ajcp), attr_(attr), eltwise_injector_(nullptr) {
         if (jcp.with_eltwise)
             eltwise_injector_ = utils::make_unique<
-                    jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>(
+                    jit_uni_eltwise_injector_f32_t<to_vla_sve(isa)>>(
                     this, jcp.eltwise);
     }
 
-    ~jit_sve_conv_fwd_kernel() override = default;
+    ~jit_sve_conv_fwd_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sve_conv_fwd_kernel)
 
@@ -163,7 +163,7 @@ private:
         }
     }
 
-    std::unique_ptr<jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>
+    std::unique_ptr<jit_uni_eltwise_injector_f32_t<to_vla_sve(isa)>>
             eltwise_injector_;
 
     inline void prepare_output(int ur_w);
@@ -226,9 +226,10 @@ private:
 };
 
 template <cpu_isa_t isa = isa_undef>
-struct jit_sve_conv_bwd_data_kernel_f32 : public jit_generator {
+struct jit_sve_conv_bwd_data_kernel_f32_t : public jit_generator_t {
 
-    jit_sve_conv_bwd_data_kernel_f32(const jit_conv_conf_t &ajcp) : jcp(ajcp) {}
+    jit_sve_conv_bwd_data_kernel_f32_t(const jit_conv_conf_t &ajcp)
+        : jcp(ajcp) {}
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sve_conv_bwd_data_kernel_f32)
     jit_conv_conf_t jcp;
@@ -420,9 +421,9 @@ private:
 };
 
 template <cpu_isa_t isa = isa_undef>
-struct jit_sve_conv_bwd_weights_kernel_f32 : public jit_generator {
+struct jit_sve_conv_bwd_weights_kernel_f32_t : public jit_generator_t {
 
-    jit_sve_conv_bwd_weights_kernel_f32(const jit_conv_conf_t &ajcp)
+    jit_sve_conv_bwd_weights_kernel_f32_t(const jit_conv_conf_t &ajcp)
         : jcp(ajcp) {}
 
     void generate() override {

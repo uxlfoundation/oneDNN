@@ -38,7 +38,7 @@ struct jit_brgemm_conv_comp_pad_args_t {
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_brgemm_conv_comp_pad_kernel_t : public jit_generator {
+struct jit_uni_brgemm_conv_comp_pad_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_brgemm_conv_comp_pad_kernel_t)
 

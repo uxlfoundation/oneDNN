@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2022 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -107,7 +108,7 @@ class jit_io_helper_t {
 public:
     friend class jit_io_multi_dt_helper_t<Vmm>;
 
-    jit_io_helper_t(jit_generator *host, const cpu_isa_t &isa,
+    jit_io_helper_t(jit_generator_t *host, const cpu_isa_t &isa,
             const data_type_t &data_type, const io_conf_t &io_conf,
             const utils::optional_t<io_tail_conf_t> &tail_conf = utils::nullopt,
             const utils::optional_t<io_saturation_conf_t> &saturation_conf
@@ -167,7 +168,7 @@ private:
     void store_i8_udb(Xbyak_aarch64::XReg addr, const Vmm &src_vmm,
             const Xbyak_aarch64::PReg &mask);
 
-    jit_generator *host_;
+    jit_generator_t *host_;
     const cpu_isa_t isa_;
     const data_type_t data_type_;
     const io_conf_t io_conf_;
@@ -181,7 +182,7 @@ class jit_io_multi_dt_helper_t {
 public:
     using data_types_t = std::unordered_set<data_type_t, std::hash<int>>;
 
-    jit_io_multi_dt_helper_t(jit_generator *host, const cpu_isa_t &isa,
+    jit_io_multi_dt_helper_t(jit_generator_t *host, const cpu_isa_t &isa,
             const data_types_t &data_types, const io_conf_t &io_conf,
             const utils::optional_t<io_tail_conf_t> &tail_conf = utils::nullopt,
             const std::map<data_type_t, io_saturation_conf_t> &saturation_confs

@@ -42,12 +42,12 @@ static bcast_set_t get_supported_bcast_strategies() {
 }
 
 template <cpu_isa_t isa>
-jit_uni_pool_kernel<isa>::~jit_uni_pool_kernel() = default;
+jit_uni_pool_kernel_t<isa>::~jit_uni_pool_kernel_t() = default;
 
 template <cpu_isa_t isa>
-jit_uni_pool_kernel<isa>::jit_uni_pool_kernel(
+jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
         const jit_pool_conf_t &ajpp, const memory_desc_t *dst_md)
-    : jit_generator(nullptr, MAX_CODE_SIZE, true), jpp(ajpp) {
+    : jit_generator_t(nullptr, MAX_CODE_SIZE, true), jpp(ajpp) {
     if (jpp.with_postops) {
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = true;
@@ -97,7 +97,7 @@ static status_t set_binary_postops_formats(
 }
 
 template <cpu_isa_t isa>
-status_t jit_uni_pool_kernel<isa>::init_conf(jit_pool_conf_t &jpp,
+status_t jit_uni_pool_kernel_t<isa>::init_conf(jit_pool_conf_t &jpp,
         memory_tracking::registrar_t &scratchpad, primitive_attr_t &attr,
         const pooling_pd_t *ppd) {
 
@@ -334,7 +334,7 @@ static int reg_ind(int shift, int bc, int j, int ur_bc, int ur_w) noexcept {
 };
 
 template <cpu_isa_t isa>
-inline void jit_uni_pool_kernel<isa>::prepare_tail_mask() {
+inline void jit_uni_pool_kernel_t<isa>::prepare_tail_mask() {
     /* PRegS(k_c_tail_mask) keeps flags in the context
            of 8-bit elements. */
     set_preg(k_c_tail_mask_b.b, jpp.c_tail, X_TMP_0, X_TMP_1);
@@ -343,8 +343,9 @@ inline void jit_uni_pool_kernel<isa>::prepare_tail_mask() {
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_pool_kernel<isa>::load(const int idx, const xreg_t &reg_ptr,
-        const int offset, const bool is_c_tail_proccessing) {
+inline void jit_uni_pool_kernel_t<isa>::load(const int idx,
+        const xreg_t &reg_ptr, const int offset,
+        const bool is_c_tail_proccessing) {
     if (is_c_tail_proccessing && !jpp.is_c_padded) {
         add_imm(X_DEFAULT_ADDR, reg_ptr, offset, X_TMP_0);
         ld1w(ZRegS(idx), k_c_tail_mask_s / T_z, ptr(X_DEFAULT_ADDR));
@@ -355,7 +356,7 @@ inline void jit_uni_pool_kernel<isa>::load(const int idx, const xreg_t &reg_ptr,
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_pool_kernel<isa>::store(const int idx,
+inline void jit_uni_pool_kernel_t<isa>::store(const int idx,
         const xreg_t &reg_ptr, const int offset,
         const bool is_c_tail_proccessing) {
     add_imm(X_DEFAULT_ADDR, reg_ptr, offset, X_TMP_0);
@@ -373,7 +374,7 @@ inline void jit_uni_pool_kernel<isa>::store(const int idx,
 }
 
 template <cpu_isa_t isa>
-bool jit_uni_pool_kernel<isa>::post_ops_ok(jit_pool_conf_t &jpp,
+bool jit_uni_pool_kernel_t<isa>::post_ops_ok(jit_pool_conf_t &jpp,
         const primitive_attr_t &attr, const memory_desc_wrapper &dst_d) {
     const auto &post_ops = attr.post_ops_;
     const auto &entries = post_ops.entry_;
@@ -405,7 +406,7 @@ bool jit_uni_pool_kernel<isa>::post_ops_ok(jit_pool_conf_t &jpp,
 }
 
 template <cpu_isa_t isa>
-void jit_uni_pool_kernel<isa>::apply_postops(int ur_bc, int ur_w, int c_block,
+void jit_uni_pool_kernel_t<isa>::apply_postops(int ur_bc, int ur_w, int c_block,
         const std::function<bool(int)> &is_tail_predicate) {
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
     const int end_idx = vmm_idx_upper_bound() + 1;
@@ -448,7 +449,7 @@ void jit_uni_pool_kernel<isa>::apply_postops(int ur_bc, int ur_w, int c_block,
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_pool_kernel<isa>::maybe_recalculate_divisor(
+inline void jit_uni_pool_kernel_t<isa>::maybe_recalculate_divisor(
         int jj, int ur_w, int pad_l, int pad_r, bool with_c_tail_proccessing) {
     if (jpp.alg == pooling_avg_exclude_padding) {
         int kw = jpp.kw;
@@ -469,7 +470,7 @@ inline void jit_uni_pool_kernel<isa>::maybe_recalculate_divisor(
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_pool_kernel<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
+inline void jit_uni_pool_kernel_t<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
         int pad_r, bool with_c_tail_proccessing) {
 
     auto iw = jpp.iw;
@@ -598,7 +599,7 @@ inline void jit_uni_pool_kernel<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_pool_kernel<isa>::max_step_fwd(int ur_w, int ur_bc,
+inline void jit_uni_pool_kernel_t<isa>::max_step_fwd(int ur_w, int ur_bc,
         int pad_l, int pad_r, bool with_c_tail_proccessing) {
     int iw = jpp.iw;
     int kw = jpp.kw;
@@ -731,7 +732,7 @@ inline void jit_uni_pool_kernel<isa>::max_step_fwd(int ur_w, int ur_bc,
 }
 
 template <cpu_isa_t isa>
-inline void jit_uni_pool_kernel<isa>::max_step_bwd(int ur_w, int ur_bc,
+inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
         int pad_l, int pad_r, bool with_c_tail_proccessing) {
 
     int iw = jpp.iw;
@@ -834,7 +835,7 @@ inline void jit_uni_pool_kernel<isa>::max_step_bwd(int ur_w, int ur_bc,
 }
 
 template <cpu_isa_t isa>
-void jit_uni_pool_kernel<isa>::zero_diff_src(
+void jit_uni_pool_kernel_t<isa>::zero_diff_src(
         int ur_bc, bool with_c_tail_proccessing) {
     const int c_off = (jpp.tag_kind == jit_memory_tag_kind_t::nspc)
             ? jpp.c
@@ -892,7 +893,7 @@ void jit_uni_pool_kernel<isa>::zero_diff_src(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_pool_kernel<isa>::generate() {
+void jit_uni_pool_kernel_t<isa>::generate() {
 
     this->preamble();
 
@@ -1062,8 +1063,8 @@ void jit_uni_pool_kernel<isa>::generate() {
         postops_injector_->prepare_table();
 }
 
-template struct jit_uni_pool_kernel<sve_512>;
-template struct jit_uni_pool_kernel<sve_256>;
+template struct jit_uni_pool_kernel_t<sve_512>;
+template struct jit_uni_pool_kernel_t<sve_256>;
 
 } // namespace aarch64
 } // namespace cpu

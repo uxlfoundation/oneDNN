@@ -203,7 +203,7 @@ struct jit_bnorm_conf_t {
 };
 
 template <cpu_isa_t isa>
-struct jit_bnorm_t : public jit_generator {
+struct jit_bnorm_t : public jit_generator_t {
     struct call_params_t {
         // keep all sizes at 8 bytes -- jit code expects this
         size_t N_ithr, N_nthr;
@@ -2062,7 +2062,7 @@ struct jit_bnorm_t : public jit_generator {
         postamble();
     }
 
-    void operator()(const call_params_t *p) { jit_generator::operator()(p); }
+    void operator()(const call_params_t *p) { jit_generator_t::operator()(p); }
 
     ~jit_bnorm_t() override = default;
 };

@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,10 +39,10 @@ struct jit_args_t {
     size_t work_amount;
 };
 
-struct jit_uni_eltwise_int_kernel_t : public jit_generator {
+struct jit_uni_eltwise_int_kernel_t : public jit_generator_t {
     jit_uni_eltwise_int_kernel_t(const eltwise_desc_t &desc) : desc_(desc) {}
 
-    void operator()(jit_args_t *p) { jit_generator::operator()(p); }
+    void operator()(jit_args_t *p) { jit_generator_t::operator()(p); }
 
 protected:
     data_type_t data_type() const { return desc_.src_desc.data_type; }

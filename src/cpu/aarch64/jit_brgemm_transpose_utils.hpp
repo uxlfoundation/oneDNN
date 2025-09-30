@@ -46,7 +46,7 @@ struct jit_brgemm_trans_src_t {
     const jit_brgemm_primitive_conf_t *conf_;
 };
 
-struct jit_brgemm_copy_to_coarse_t : public jit_generator {
+struct jit_brgemm_copy_to_coarse_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_copy_to_coarse_t)
 
     struct ctx_t {
@@ -57,8 +57,10 @@ struct jit_brgemm_copy_to_coarse_t : public jit_generator {
         dim_t last_row_blk;
     };
 
-    void operator()(ctx_t *ctx) { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     jit_brgemm_copy_to_coarse_t(const jit_brgemm_primitive_conf_t *conf)
         : conf_(conf)

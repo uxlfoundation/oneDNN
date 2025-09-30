@@ -73,17 +73,19 @@ static bool prb_has_small_strides(const prb_t &prb) {
 const size_t ker_prb_size_min = 64;
 
 /* kernel */
-struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
+struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_reorder_kernel_f32)
 
     void operator()(const call_param_t *c) const override {
-        jit_generator::operator()(c);
+        jit_generator_t::operator()(c);
     }
     void operator()(const tail_call_param_t *c) const override {
-        jit_generator::operator()(c);
+        jit_generator_t::operator()(c);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     enum class scale_arg_t { NONE, SRC, DST };
 
@@ -2040,7 +2042,7 @@ private:
 };
 
 // Seperate class for no unroll/threading burden
-struct jit_single_blk_kernel_t : public jit_generator {
+struct jit_single_blk_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_single_blk_kernel)
     static bool applicable(const prb_t &p) {
 

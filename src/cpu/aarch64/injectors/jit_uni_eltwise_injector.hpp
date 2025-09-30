@@ -81,7 +81,7 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg);
 } // namespace eltwise_injector
 
 template <cpu_isa_t isa>
-struct jit_uni_eltwise_injector_f32 {
+struct jit_uni_eltwise_injector_f32_t {
     using TReg = typename cpu_isa_traits<isa>::TReg;
     using TRegS = typename cpu_isa_traits<isa>::TRegS;
 
@@ -97,7 +97,7 @@ struct jit_uni_eltwise_injector_f32 {
     //   - algorithm derivative.
     // use_dst - defines whether source or destination point is passed to alg
     //   code. Depends on algorithm. See `_use_dst_for_bwd` algs definition.
-    jit_uni_eltwise_injector_f32(jit_generator *host, alg_kind_t alg,
+    jit_uni_eltwise_injector_f32_t(jit_generator_t *host, alg_kind_t alg,
             float alpha, float beta, float scale, bool save_state = true,
             Xbyak_aarch64::XReg x_table = Xbyak_aarch64::XReg(0),
             Xbyak_aarch64::PReg p_mask = Xbyak_aarch64::PReg(1),
@@ -122,7 +122,7 @@ struct jit_uni_eltwise_injector_f32 {
         register_table_entries();
     }
 
-    jit_uni_eltwise_injector_f32(jit_generator *host,
+    jit_uni_eltwise_injector_f32_t(jit_generator_t *host,
             const post_ops_t::entry_t::eltwise_t &eltwise,
             bool save_state = true,
             Xbyak_aarch64::XReg x_table = Xbyak_aarch64::XReg(0),
@@ -130,7 +130,7 @@ struct jit_uni_eltwise_injector_f32 {
             Xbyak_aarch64::PReg p_tmp0 = Xbyak_aarch64::PReg(4),
             bool is_fwd = true, bool use_dst = false, bool preserve_vmm = true,
             bool preserve_p_table = true)
-        : jit_uni_eltwise_injector_f32(host, eltwise.alg, eltwise.alpha,
+        : jit_uni_eltwise_injector_f32_t(host, eltwise.alg, eltwise.alpha,
                 eltwise.beta, eltwise.scale, save_state, x_table, p_mask,
                 p_tmp0, is_fwd, use_dst, preserve_vmm, preserve_p_table) {}
 
@@ -146,7 +146,7 @@ private:
     const float beta_;
     const float scale_;
 
-    jit_generator *const h;
+    jit_generator_t *const h;
 
     const bool save_state_;
     const Xbyak_aarch64::XReg x_table;
@@ -163,13 +163,13 @@ private:
 
     // if only the injector was inherited from jit_generator...
     enum {
-        _cmp_eq_oq = jit_generator::_cmp_eq_oq,
-        _cmp_lt_os = jit_generator::_cmp_lt_os,
-        _cmp_le_os = jit_generator::_cmp_le_os,
-        _cmp_ge_os = jit_generator::_cmp_nlt_us,
-        _cmp_gt_os = jit_generator::_cmp_nle_us,
-        _op_floor = jit_generator::_op_floor,
-        _op_mxcsr = jit_generator::_op_mxcsr
+        _cmp_eq_oq = jit_generator_t::_cmp_eq_oq,
+        _cmp_lt_os = jit_generator_t::_cmp_lt_os,
+        _cmp_le_os = jit_generator_t::_cmp_le_os,
+        _cmp_ge_os = jit_generator_t::_cmp_nlt_us,
+        _cmp_gt_os = jit_generator_t::_cmp_nle_us,
+        _op_floor = jit_generator_t::_op_floor,
+        _op_mxcsr = jit_generator_t::_op_mxcsr
     };
 
     const size_t vlen = get_vec_len();

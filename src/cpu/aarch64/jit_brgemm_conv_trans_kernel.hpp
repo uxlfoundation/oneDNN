@@ -40,7 +40,7 @@ struct jit_brgemm_conv_trans_kernel_args_t {
     size_t b_pad;
 };
 
-struct jit_sve_core_brgemm_conv_trans_kernel_t : public jit_generator {
+struct jit_sve_core_brgemm_conv_trans_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sve_core_brgemm_conv_trans_kernel_t)
 
     jit_sve_core_brgemm_conv_trans_kernel_t(const jit_brgemm_conv_conf_t &ajcp);

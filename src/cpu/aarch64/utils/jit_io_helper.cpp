@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2022 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -58,8 +59,9 @@ io_gather_conf_t::io_gather_conf_t(const std::size_t simd_w,
     , vmm_tmp_idx_(vmm_tmp_idx) {}
 
 template <typename Vmm>
-jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator *host, const cpu_isa_t &isa,
-        const data_type_t &data_type, const io_conf_t &io_conf,
+jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator_t *host,
+        const cpu_isa_t &isa, const data_type_t &data_type,
+        const io_conf_t &io_conf,
         const utils::optional_t<io_tail_conf_t> &tail_conf,
         const utils::optional_t<io_saturation_conf_t> &saturation_conf,
         const utils::optional_t<io_gather_conf_t> &gather_conf)
@@ -652,7 +654,7 @@ void jit_io_helper_t<Vmm>::store_i8(const Vmm &src_vmm,
 }
 
 template <typename Vmm>
-void uni_vpmovsxbd(jit_generator *host_, const Vmm &dst, const Vmm &src) {
+void uni_vpmovsxbd(jit_generator_t *host_, const Vmm &dst, const Vmm &src) {
     Xbyak_aarch64::ZReg z_dst(dst.getIdx());
     Xbyak_aarch64::ZReg z_src(src.getIdx());
     host_->zip1(z_dst.b, z_src.b, z_src.b);
@@ -661,7 +663,7 @@ void uni_vpmovsxbd(jit_generator *host_, const Vmm &dst, const Vmm &src) {
 }
 
 template <typename Vmm>
-void uni_vpmovzxbd(jit_generator *host_, const Vmm &dst, const Vmm &src) {
+void uni_vpmovzxbd(jit_generator_t *host_, const Vmm &dst, const Vmm &src) {
     Xbyak_aarch64::ZReg z_dst(dst.getIdx());
     Xbyak_aarch64::ZReg z_src(src.getIdx());
     host_->zip1(z_dst.b, z_src.b, z_src.b);
@@ -695,15 +697,15 @@ void jit_io_helper_t<Vmm>::convert_to_f32(const Vmm &dst_vmm,
 }
 
 template <typename Vmm>
-void uni_vbroadcastss(
-        jit_generator *host_, const Vmm &dst, const Xbyak_aarch64::XReg &src) {
+void uni_vbroadcastss(jit_generator_t *host_, const Vmm &dst,
+        const Xbyak_aarch64::XReg &src) {
     uint8_t dstIdx = dst.getIdx();
     host_->ld1rw(Xbyak_aarch64::ZRegS(dstIdx),
             host_->P_ALL_ONE / Xbyak_aarch64::T_z, Xbyak_aarch64::ptr(src));
 }
 template <typename Vmm>
-void uni_vbroadcastss(
-        jit_generator *host_, const Vmm &dst, const Xbyak_aarch64::VReg &src) {
+void uni_vbroadcastss(jit_generator_t *host_, const Vmm &dst,
+        const Xbyak_aarch64::VReg &src) {
     uint8_t dstIdx = dst.getIdx();
     uint8_t srcIdx = src.getIdx();
     host_->dup(Xbyak_aarch64::ZRegS(dstIdx), Xbyak_aarch64::ZRegS(srcIdx)[0]);
@@ -754,7 +756,7 @@ void jit_io_helper_t<Vmm>::broadcast(const Xbyak_aarch64::XReg &src_addr,
 }
 
 template <typename Vmm>
-jit_io_multi_dt_helper_t<Vmm>::jit_io_multi_dt_helper_t(jit_generator *host,
+jit_io_multi_dt_helper_t<Vmm>::jit_io_multi_dt_helper_t(jit_generator_t *host,
         const cpu_isa_t &isa, const data_types_t &data_types,
         const io_conf_t &io_conf,
         const utils::optional_t<io_tail_conf_t> &tail_conf,

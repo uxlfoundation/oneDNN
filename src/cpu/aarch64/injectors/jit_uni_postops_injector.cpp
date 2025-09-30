@@ -47,8 +47,8 @@ bool is_supported(const post_ops_ok_args_t &post_ops_ok_args) {
 }
 
 template <cpu_isa_t isa>
-jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(jit_generator *host,
-        const post_ops_t &post_ops,
+jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(
+        jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params,
         const lambda_jit_injectors_t &lambda_jit_injectors)
@@ -66,7 +66,7 @@ jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(jit_generator *host,
         if (post_op.is_eltwise()) {
             is_eltwise = true;
             alg_to_eltwise_injector_.emplace(i,
-                    jit_uni_eltwise_injector_f32<to_vla_sve(isa)>(host_,
+                    jit_uni_eltwise_injector_f32_t<to_vla_sve(isa)>(host_,
                             post_op.eltwise, esp.save_state, esp.x_table,
                             esp.p_mask, esp.p_tmp0, esp.is_fwd, esp.use_dst));
         } else if (post_op.is_binary()) {
@@ -89,23 +89,23 @@ jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(jit_generator *host,
 }
 
 template <cpu_isa_t isa>
-jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(jit_generator *host,
-        const post_ops_t &post_ops,
+jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(
+        jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
             eltwise_injector::static_params_t(), lambda_jit_injectors_t()) {}
 
 template <cpu_isa_t isa>
-jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(jit_generator *host,
-        const post_ops_t &post_ops,
+jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(
+        jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const lambda_jit_injectors_t &lambda_jit_injectors)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
             eltwise_injector::static_params_t(), lambda_jit_injectors) {}
 
 template <cpu_isa_t isa>
-jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(jit_generator *host,
-        const post_ops_t &post_ops,
+jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(
+        jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,

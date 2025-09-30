@@ -49,7 +49,7 @@ struct jit_uni_bnorm_s8_call_params_t {
 };
 
 template <cpu_isa_t isa>
-struct jit_bnorm_base_t : public jit_generator {
+struct jit_bnorm_base_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_s8_t)
 

@@ -36,14 +36,14 @@ namespace cpu {
 namespace aarch64 {
 
 template <cpu_isa_t isa>
-struct jit_uni_dw_conv_fwd_kernel_f32_t : public jit_generator {
+struct jit_uni_dw_conv_fwd_kernel_f32_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_fwd_kernel_f32_t)
 
     jit_uni_dw_conv_fwd_kernel_f32_t(const jit_conv_conf_t &ajcp)
         : jcp(ajcp), eltwise_injector_(nullptr) {
         if (jcp.with_eltwise)
             eltwise_injector_ = utils::make_unique<
-                    jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>(
+                    jit_uni_eltwise_injector_f32_t<to_vla_sve(isa)>>(
                     this, jcp.eltwise);
     }
 
@@ -136,14 +136,14 @@ private:
                 format_tag::nwc);
     }
 
-    std::unique_ptr<jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>
+    std::unique_ptr<jit_uni_eltwise_injector_f32_t<to_vla_sve(isa)>>
             eltwise_injector_;
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_fwd_kernel_f32_t)
     void generate() override;
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_dw_conv_bwd_data_kernel_f32_t : public jit_generator {
+struct jit_uni_dw_conv_bwd_data_kernel_f32_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_data_kernel_f32_t)
 
     jit_uni_dw_conv_bwd_data_kernel_f32_t(const jit_conv_conf_t &ajcp)
@@ -189,7 +189,7 @@ private:
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_dw_conv_bwd_weights_kernel_f32_t : public jit_generator {
+struct jit_uni_dw_conv_bwd_weights_kernel_f32_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_dw_conv_bwd_weights_kernel_f32_t)
 

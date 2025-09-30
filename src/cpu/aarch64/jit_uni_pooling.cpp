@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2017-2023 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -495,7 +496,7 @@ template <cpu_isa_t isa, impl::data_type_t d_type>
 status_t jit_uni_pooling_fwd_t<isa, d_type>::init(engine_t *engine) {
 
     CHECK(safe_ptr_assign(kernel_,
-            new jit_uni_pool_kernel<isa>(
+            new jit_uni_pool_kernel_t<isa>(
                     pd()->jpp_, pd()->invariant_dst_md())));
 
     if (pd()->jpp_.tag_kind == jit_memory_tag_kind_t::ncsp)
@@ -833,7 +834,7 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward_3d(const data_t *src,
 template <cpu_isa_t isa, data_type_t d_type>
 jit_uni_pooling_bwd_t<isa, d_type>::jit_uni_pooling_bwd_t(const pd_t *apd)
     : primitive_t(apd)
-    , kernel_(utils::make_unique<jit_uni_pool_kernel<isa>>(
+    , kernel_(utils::make_unique<jit_uni_pool_kernel_t<isa>>(
               pd()->jpp_, pd()->invariant_dst_md()))
     , trans_ctx_(nullptr) {}
 

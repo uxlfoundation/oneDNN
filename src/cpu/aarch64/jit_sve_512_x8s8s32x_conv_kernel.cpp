@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2022 Intel Corporation
 * Copyright 2021-2022 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -46,7 +47,7 @@ void pick_loop_order(jit_conv_conf_t &jcp, int nthr) {
 }
 } // namespace
 
-void jit_sve_512_x8s8s32x_fwd_kernel::prepare_output(int ur_w) {
+void jit_sve_512_x8s8s32x_fwd_kernel_t::prepare_output(int ur_w) {
     int nb_oc_block
             = jcp.is_depthwise ? jcp.nb_ch_blocking : jcp.nb_oc_blocking;
     for (int k = 0; k < nb_oc_block; k++)
@@ -65,7 +66,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::prepare_output(int ur_w) {
     }
 }
 
-void jit_sve_512_x8s8s32x_fwd_kernel::cvt2ps(data_type_t type_in,
+void jit_sve_512_x8s8s32x_fwd_kernel_t::cvt2ps(data_type_t type_in,
         const ZReg vmm_in, const XReg reg_base, const int offset,
         bool mask_flag) {
 
@@ -115,7 +116,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::cvt2ps(data_type_t type_in,
     if (type_in != data_type::f32) scvtf(vmm_in.s, mask_all_one, vmm_in.s);
 }
 
-void jit_sve_512_x8s8s32x_fwd_kernel::store_output(
+void jit_sve_512_x8s8s32x_fwd_kernel_t::store_output(
         int ur_w, bool last_oc_block_flag) {
     int nb_oc_block
             = jcp.is_depthwise ? jcp.nb_ch_blocking : jcp.nb_oc_blocking;
@@ -292,7 +293,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::store_output(
     }
 }
 
-void jit_sve_512_x8s8s32x_fwd_kernel::compute_ker_dw(int ur_w, int pad_l,
+void jit_sve_512_x8s8s32x_fwd_kernel_t::compute_ker_dw(int ur_w, int pad_l,
         int pad_r, ic_block_t last_ic_block_flag, bool h_padded) {
 
     if (sve_len_ != 64)
@@ -487,7 +488,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::compute_ker_dw(int ur_w, int pad_l,
     }
 }
 
-void jit_sve_512_x8s8s32x_fwd_kernel::compute_ker(int ur_w, int pad_l,
+void jit_sve_512_x8s8s32x_fwd_kernel_t::compute_ker(int ur_w, int pad_l,
         int pad_r, ic_block_t last_ic_block_flag, bool h_padded) {
     if (jcp.is_depthwise)
         return compute_ker_dw(ur_w, pad_l, pad_r, last_ic_block_flag, h_padded);
@@ -616,7 +617,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::compute_ker(int ur_w, int pad_l,
     }
 }
 
-void jit_sve_512_x8s8s32x_fwd_kernel::kh_loop(
+void jit_sve_512_x8s8s32x_fwd_kernel_t::kh_loop(
         int ur_w, int pad_l, int pad_r, ic_block_t last_ic_block_flag) {
     Label kd_label, kh_label, skip_kd_loop, skip_kh_loop;
     Label f_overflow_label, no_f_overflow_label, d_h_f_overflow_label,
@@ -773,7 +774,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::kh_loop(
     }
 }
 
-void jit_sve_512_x8s8s32x_fwd_kernel::icb_loop(
+void jit_sve_512_x8s8s32x_fwd_kernel_t::icb_loop(
         int ur_w, int pad_l, int pad_r, bool is_last_sp_block) {
     prepare_output(ur_w);
 
@@ -838,7 +839,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::icb_loop(
     }
 }
 
-void jit_sve_512_x8s8s32x_fwd_kernel::vmm_mask_all_one() {
+void jit_sve_512_x8s8s32x_fwd_kernel_t::vmm_mask_all_one() {
     mask_gflag = false;
     if (sve_len_ == 64) {
         mask_gflag = true;
@@ -852,7 +853,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::vmm_mask_all_one() {
     }
 }
 
-void jit_sve_512_x8s8s32x_fwd_kernel::vmm_load_src(
+void jit_sve_512_x8s8s32x_fwd_kernel_t::vmm_load_src(
         ZReg src, XReg reg_addr, bool mask_flag) {
     if (mask_flag) {
         eor(mask_tmp.b, mask_all_one, mask_tmp.b, mask_tmp.b);
@@ -873,7 +874,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::vmm_load_src(
     ld1b(src.b, mask_tmp, ptr(reg_addr));
 }
 
-void jit_sve_512_x8s8s32x_fwd_kernel::generate() {
+void jit_sve_512_x8s8s32x_fwd_kernel_t::generate() {
     Label permute_index_table;
     int in_ic_shift = jcp.is_fused_conv ? jcp.dw_conv_buffer_oc
                                         : jcp.ic_without_padding * jcp.ngroups;
@@ -1125,7 +1126,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::generate() {
     }
 }
 
-bool jit_sve_512_x8s8s32x_fwd_kernel::post_ops_ok(
+bool jit_sve_512_x8s8s32x_fwd_kernel_t::post_ops_ok(
         jit_conv_conf_t &jcp, const primitive_attr_t &attr) {
     using namespace primitive_kind;
     const auto &p = attr.post_ops_;
@@ -1134,7 +1135,7 @@ bool jit_sve_512_x8s8s32x_fwd_kernel::post_ops_ok(
     return 0 == p.len();
 }
 
-status_t jit_sve_512_x8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
+status_t jit_sve_512_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
         const convolution_desc_t &cd, memory_desc_t &src_md,
         memory_desc_t &weights_md, memory_desc_t &dst_md,
         memory_desc_t &bias_md, const primitive_attr_t &attr, int nthreads) {
@@ -1437,7 +1438,7 @@ status_t jit_sve_512_x8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     return status::success;
 }
 
-void jit_sve_512_x8s8s32x_fwd_kernel::init_scratchpad(
+void jit_sve_512_x8s8s32x_fwd_kernel_t::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp,
         const primitive_attr_t &attr) {}
 

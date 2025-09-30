@@ -317,7 +317,7 @@ rhs_arg_static_params_t::rhs_arg_static_params_t(
 
 template <cpu_isa_t isa>
 jit_uni_binary_injector_t<isa>::jit_uni_binary_injector_t(
-        jit_generator *host, const static_params_t &static_params)
+        jit_generator_t *host, const static_params_t &static_params)
     : host_(host)
     , rhs_arg_static_params_(static_params.rhs_arg_static_params)
     , param1_(static_params.param1)
@@ -415,31 +415,31 @@ int jit_uni_binary_injector_t<isa>::adjust_temp_vmm_hint(
 }
 
 template <typename Vmm>
-static void push_vmm(jit_generator *host, const Vmm &vmm) {
+static void push_vmm(jit_generator_t *host, const Vmm &vmm) {
     host->sub_imm(host->X_SP, host->X_SP, host->cpu_sveLen * 16, host->X_TMP_0);
     host->uni_str(vmm, host->X_SP);
 }
 
 template <typename Vmm>
-static void pop_vmm(jit_generator *host, const Vmm &vmm) {
+static void pop_vmm(jit_generator_t *host, const Vmm &vmm) {
     host->uni_ldr(vmm, host->X_SP);
     host->add_imm(host->X_SP, host->X_SP, host->cpu_sveLen * 16, host->X_TMP_0);
 }
 
-static void push_opmask(jit_generator *host, const Xbyak_aarch64::PReg &k) {
+static void push_opmask(jit_generator_t *host, const Xbyak_aarch64::PReg &k) {
     static constexpr int k_mask_size = 8;
     host->sub_imm(host->X_SP, host->X_SP, k_mask_size, host->X_TMP_0);
     host->str(k, Xbyak_aarch64::ptr(host->X_SP));
 }
 
-static void pop_opmask(jit_generator *host, const Xbyak_aarch64::PReg &k) {
+static void pop_opmask(jit_generator_t *host, const Xbyak_aarch64::PReg &k) {
     static constexpr int k_mask_size = 8;
     host->ldr(k, Xbyak_aarch64::ptr(host->X_SP));
     host->add_imm(host->X_SP, host->X_SP, k_mask_size, host->X_TMP_0);
 }
 
 template <typename Vmm>
-static void restore_stack(jit_generator *host, const Vmm &vmm) {
+static void restore_stack(jit_generator_t *host, const Vmm &vmm) {
     host->add_imm(host->X_SP, host->X_SP, host->cpu_sveLen * 16, host->X_TMP_0);
 }
 
@@ -1603,7 +1603,7 @@ void jit_uni_binary_injector_t<isa>::load_rhs_tail_dynamically_with_opmask(
 * provided memory buffer so as to minimize the total number of read
 * memory instructions.
 */
-static void load_bytes(jit_generator *host, const Xbyak_aarch64::ZReg &vmm,
+static void load_bytes(jit_generator_t *host, const Xbyak_aarch64::ZReg &vmm,
         const Xbyak_aarch64::XReg reg_addr, int load_size) {
 
     // Ensure data fits completely inside the ZReg register
@@ -1631,7 +1631,7 @@ static void load_bytes(jit_generator *host, const Xbyak_aarch64::ZReg &vmm,
 * [0..8] for ZReg version of the function.
 * TODO: Implement this routine for every ISA.
 */
-static void load_bytes_to_dword_extension(jit_generator *host,
+static void load_bytes_to_dword_extension(jit_generator_t *host,
         const Xbyak_aarch64::ZReg &vmm, const Xbyak_aarch64::XReg &reg_addr,
         bool is_signed, int load_size) {
     if (host->cpu_sveLen == Xbyak_aarch64::util::SVE_256) {
@@ -1686,7 +1686,7 @@ static void load_bytes_to_dword_extension(jit_generator *host,
     }
 }
 
-static void load_data(jit_generator *host, data_type_t type_in,
+static void load_data(jit_generator_t *host, data_type_t type_in,
         const Xbyak_aarch64::ZReg &vmm, const Xbyak_aarch64::XReg &reg_addr,
         int offset, int load_size) {
     host->add_imm(host->X_TMP_4, reg_addr, offset, host->X_TMP_0);
@@ -1734,27 +1734,27 @@ void jit_uni_binary_injector_t<isa>::compute_cmp_mask(
         const unsigned int cmp) const {
 
     switch (cmp) {
-        case jit_generator::_cmp_nlt_us:
+        case jit_generator_t::_cmp_nlt_us:
             host_->fcmge(cmp_dst.s, mask / Xbyak_aarch64::T_z, cmp_src.s,
                     cmp_src2.s);
             break;
-        case jit_generator::_cmp_nle_us:
+        case jit_generator_t::_cmp_nle_us:
             host_->fcmgt(cmp_dst.s, mask / Xbyak_aarch64::T_z, cmp_src.s,
                     cmp_src2.s);
             break;
-        case jit_generator::_cmp_le_os:
+        case jit_generator_t::_cmp_le_os:
             host_->fcmle(cmp_dst.s, mask / Xbyak_aarch64::T_z, cmp_src.s,
                     cmp_src2.s);
             break;
-        case jit_generator::_cmp_lt_os:
+        case jit_generator_t::_cmp_lt_os:
             host_->fcmlt(cmp_dst.s, mask / Xbyak_aarch64::T_z, cmp_src.s,
                     cmp_src2.s);
             break;
-        case jit_generator::_cmp_eq_oq:
+        case jit_generator_t::_cmp_eq_oq:
             host_->fcmeq(cmp_dst.s, mask / Xbyak_aarch64::T_z, cmp_src.s,
                     cmp_src2.s);
             break;
-        case jit_generator::_cmp_neq_uq:
+        case jit_generator_t::_cmp_neq_uq:
             host_->fcmne(cmp_dst.s, mask / Xbyak_aarch64::T_z, cmp_src.s,
                     cmp_src2.s);
             break;
@@ -1764,7 +1764,7 @@ void jit_uni_binary_injector_t<isa>::compute_cmp_mask(
 
 template <typename T>
 void get_z_rhs_value(
-        jit_generator *host, const T &rhs, const Xbyak_aarch64::ZReg &z_tmp) {
+        jit_generator_t *host, const T &rhs, const Xbyak_aarch64::ZReg &z_tmp) {
     const bool is_reg = std::is_same<T, Xbyak_aarch64::ZReg>::value;
     if (is_reg) {
         const Xbyak_aarch64::ZReg &rst_reg = (Xbyak_aarch64::ZReg &)rhs;
@@ -1781,7 +1781,7 @@ void get_z_rhs_value(
 }
 template <typename T>
 void get_v_rhs_value(
-        jit_generator *host, const T &rhs, const Xbyak_aarch64::VReg &v_tmp) {
+        jit_generator_t *host, const T &rhs, const Xbyak_aarch64::VReg &v_tmp) {
     const bool is_reg = std::is_same<T, Xbyak_aarch64::VReg>::value;
     if (is_reg) {
         const Xbyak_aarch64::VReg &rst_reg = (Xbyak_aarch64::VReg &)rhs;
@@ -1859,7 +1859,7 @@ void jit_uni_binary_injector_t<isa>::execute_binary(alg_kind_t binary_alg,
             break;
         case alg_kind::binary_div:
             host_->uni_fdiv(dst.s, lhs.s, z_rhs.s,
-                    Vmm(dnnl::impl::cpu::aarch64::jit_generator::DUMMY_IDX).s,
+                    Vmm(dnnl::impl::cpu::aarch64::jit_generator_t::DUMMY_IDX).s,
                     mask);
             break;
         case alg_kind::binary_sub:
@@ -1867,27 +1867,27 @@ void jit_uni_binary_injector_t<isa>::execute_binary(alg_kind_t binary_alg,
             break;
         case alg_kind::binary_ge:
             execute_cmp_binary(
-                    dst, mask, lhs, z_rhs, jit_generator::_cmp_nlt_us);
+                    dst, mask, lhs, z_rhs, jit_generator_t::_cmp_nlt_us);
             break;
         case alg_kind::binary_gt:
             execute_cmp_binary(
-                    dst, mask, lhs, z_rhs, jit_generator::_cmp_nle_us);
+                    dst, mask, lhs, z_rhs, jit_generator_t::_cmp_nle_us);
             break;
         case alg_kind::binary_le:
             execute_cmp_binary(
-                    dst, mask, lhs, z_rhs, jit_generator::_cmp_le_os);
+                    dst, mask, lhs, z_rhs, jit_generator_t::_cmp_le_os);
             break;
         case alg_kind::binary_lt:
             execute_cmp_binary(
-                    dst, mask, lhs, z_rhs, jit_generator::_cmp_lt_os);
+                    dst, mask, lhs, z_rhs, jit_generator_t::_cmp_lt_os);
             break;
         case alg_kind::binary_eq:
             execute_cmp_binary(
-                    dst, mask, lhs, z_rhs, jit_generator::_cmp_eq_oq);
+                    dst, mask, lhs, z_rhs, jit_generator_t::_cmp_eq_oq);
             break;
         case alg_kind::binary_ne:
             execute_cmp_binary(
-                    dst, mask, lhs, z_rhs, jit_generator::_cmp_neq_uq);
+                    dst, mask, lhs, z_rhs, jit_generator_t::_cmp_neq_uq);
             break;
         default: assert(!"unsupported algorithm");
     }

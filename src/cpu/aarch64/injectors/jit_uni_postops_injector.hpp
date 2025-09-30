@@ -73,15 +73,19 @@ public:
      * @param lambda_jit_injectors <optional> - allows user specify custom injector
      * function for given post-op type
      */
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params);
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const lambda_jit_injectors_t &lambda_jit_injectors);
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params);
-    jit_uni_postops_injector_t(jit_generator *host, const post_ops_t &post_ops,
+    jit_uni_postops_injector_t(jit_generator_t *host,
+            const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params,
             const lambda_jit_injectors_t &lambda_jit_injectors);
@@ -127,9 +131,9 @@ public:
 
 private:
     post_ops_t post_ops_;
-    jit_generator *host_;
+    jit_generator_t *host_;
     // Key is a numerical order of a post-op in attributes.
-    std::map<int, jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>
+    std::map<int, jit_uni_eltwise_injector_f32_t<to_vla_sve(isa)>>
             alg_to_eltwise_injector_;
     std::unique_ptr<binary_injector::jit_uni_binary_injector_t<isa>>
             binary_injector_;

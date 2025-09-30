@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Arm Ltd. and affiliates
+* Copyright 2023, 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,25 +23,25 @@ namespace cpu {
 namespace aarch64 {
 using namespace arm_compute;
 
-BenchmarkScheduler::BenchmarkScheduler(IScheduler &real_scheduler)
+benchmark_scheduler_t::benchmark_scheduler_t(IScheduler &real_scheduler)
     : _real_scheduler(real_scheduler) {}
 
-BenchmarkScheduler::~BenchmarkScheduler() = default;
+benchmark_scheduler_t::~benchmark_scheduler_t() = default;
 
-void BenchmarkScheduler::set_num_threads(unsigned int num_threads) {
+void benchmark_scheduler_t::set_num_threads(unsigned int num_threads) {
     _real_scheduler.set_num_threads(num_threads);
 }
 
-void BenchmarkScheduler::set_num_threads_with_affinity(
+void benchmark_scheduler_t::set_num_threads_with_affinity(
         unsigned int num_threads, BindFunc func) {
     _real_scheduler.set_num_threads_with_affinity(num_threads, func);
 }
 
-unsigned int BenchmarkScheduler::num_threads() const {
+unsigned int benchmark_scheduler_t::num_threads() const {
     return _real_scheduler.num_threads();
 }
 
-void BenchmarkScheduler::schedule(ICPPKernel *kernel, const Hints &hints) {
+void benchmark_scheduler_t::schedule(ICPPKernel *kernel, const Hints &hints) {
     double start_ms = get_msec();
     _real_scheduler.schedule(kernel, hints);
     double duration_ms = get_msec() - start_ms;
@@ -49,7 +49,7 @@ void BenchmarkScheduler::schedule(ICPPKernel *kernel, const Hints &hints) {
     VPROF(start_ms, primitive, exec, VERBOSE_external, name, duration_ms);
 }
 
-void BenchmarkScheduler::schedule_op(ICPPKernel *kernel, const Hints &hints,
+void benchmark_scheduler_t::schedule_op(ICPPKernel *kernel, const Hints &hints,
         const Window &window, ITensorPack &tensors) {
     double start_ms = get_msec();
     _real_scheduler.schedule_op(kernel, hints, window, tensors);
@@ -58,7 +58,7 @@ void BenchmarkScheduler::schedule_op(ICPPKernel *kernel, const Hints &hints,
     VPROF(start_ms, primitive, exec, VERBOSE_external, name, duration_ms);
 }
 
-void BenchmarkScheduler::run_tagged_workloads(
+void benchmark_scheduler_t::run_tagged_workloads(
         std::vector<Workload> &workloads, const char *tag) {
     double start_ms = get_msec();
     _real_scheduler.run_tagged_workloads(workloads, tag);
@@ -67,7 +67,7 @@ void BenchmarkScheduler::run_tagged_workloads(
     VPROF(start_ms, primitive, exec, VERBOSE_external, name, duration_ms);
 }
 
-void BenchmarkScheduler::run_workloads(std::vector<Workload> &workloads) {
+void benchmark_scheduler_t::run_workloads(std::vector<Workload> &workloads) {
     ARM_COMPUTE_UNUSED(workloads);
     ARM_COMPUTE_ERROR("Can't be reached");
 }

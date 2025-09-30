@@ -58,7 +58,7 @@ struct jit_uni_dw_conv_fwd_kernel_t {
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_conv_conf_t &jcp);
 
-    jit_generator *ker() const { return ker_.get(); }
+    jit_generator_t *ker() const { return ker_.get(); }
     void operator()(const jit_conv_args_t *p) const { (*ker_)(p); }
 
 private:

@@ -37,14 +37,16 @@ using namespace Xbyak_aarch64;
 #define GET_OFF(x) offsetof(ctx_t, x)
 
 struct jit_brgemm_trans_m_k_f32_t : public jit_brgemm_trans_src_t,
-                                    public jit_generator {
+                                    public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_trans_m_k_f32_t)
 
     jit_brgemm_trans_m_k_f32_t(const jit_brgemm_primitive_conf_t *conf)
         : jit_brgemm_trans_src_t(conf) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     enum { typesize = sizeof(float), transpose_size = 16 };
@@ -178,13 +180,15 @@ void jit_brgemm_trans_m_k_f32_t::generate() {
 }
 
 struct jit_brgemm_trans_m_k_bf16_t : public jit_brgemm_trans_src_t,
-                                     public jit_generator {
+                                     public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_trans_m_k_bf16_t)
     jit_brgemm_trans_m_k_bf16_t(const jit_brgemm_primitive_conf_t *conf)
         : jit_brgemm_trans_src_t(conf) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     enum {
@@ -376,15 +380,17 @@ void jit_brgemm_copy_to_coarse_t::generate() {
 }
 
 struct jit_trans_to_vnni_t : public jit_brgemm_trans_to_vnni_t,
-                             public jit_generator {
+                             public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_trans_to_vnni_t)
     jit_trans_to_vnni_t(const jit_brgemm_primitive_conf_t *conf,
             jit_brgemm_trans_to_vnni_t::matrix_to_transform_t
                     matrix_to_transform)
         : jit_brgemm_trans_to_vnni_t(conf, matrix_to_transform) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     enum {
@@ -435,15 +441,17 @@ void jit_trans_to_vnni_t::generate() {
 }
 
 struct jit_copy_f32_t : public jit_brgemm_trans_to_vnni_t,
-                        public jit_generator {
+                        public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_copy_f32_t)
     jit_copy_f32_t(const jit_brgemm_primitive_conf_t *conf,
             jit_brgemm_trans_to_vnni_t::matrix_to_transform_t
                     matrix_to_transform)
         : jit_brgemm_trans_to_vnni_t(conf, matrix_to_transform) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     enum {
@@ -544,14 +552,16 @@ void jit_copy_f32_t::generate() {
 }
 
 struct jit_brgemm_trans_wei_f32_t : public jit_brgemm_trans_wei_t,
-                                    public jit_generator {
+                                    public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_trans_wei_f32_t)
 
     jit_brgemm_trans_wei_f32_t(const jit_brgemm_primitive_conf_t *conf)
         : jit_brgemm_trans_wei_t(conf) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     enum { typesize = sizeof(float), transpose_size = 16 };
@@ -706,14 +716,16 @@ void jit_brgemm_trans_wei_f32_t::generate() {
 }
 
 struct jit_brgemm_trans_wei_bf16_t : public jit_brgemm_trans_wei_t,
-                                     public jit_generator {
+                                     public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_trans_wei_bf16_t)
 
     jit_brgemm_trans_wei_bf16_t(const jit_brgemm_primitive_conf_t *conf)
         : jit_brgemm_trans_wei_t(conf) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     enum { typesize = sizeof(int16_t), transpose_size = 16 };

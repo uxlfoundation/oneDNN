@@ -32,12 +32,12 @@ namespace aarch64 {
 
 using namespace Xbyak_aarch64;
 
-struct jit_sve_512_x8s8s32x_fwd_kernel : public jit_generator {
+struct jit_sve_512_x8s8s32x_fwd_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_sve_512_x8s8s32x_conv_fwd_ker_t)
 
     enum { STATE_FIRST_DST_LOAD = 0x1U };
 
-    jit_sve_512_x8s8s32x_fwd_kernel(
+    jit_sve_512_x8s8s32x_fwd_kernel_t(
             const jit_conv_conf_t &ajcp, const primitive_attr_t &attr)
         : jcp(ajcp), attr_(attr) {
         if (jcp.with_eltwise) assert(!"not supported");
@@ -51,7 +51,7 @@ struct jit_sve_512_x8s8s32x_fwd_kernel : public jit_generator {
         }
     }
 
-    ~jit_sve_512_x8s8s32x_fwd_kernel() override = default;
+    ~jit_sve_512_x8s8s32x_fwd_kernel_t() override = default;
 
     jit_conv_conf_t jcp;
     const primitive_attr_t &attr_;

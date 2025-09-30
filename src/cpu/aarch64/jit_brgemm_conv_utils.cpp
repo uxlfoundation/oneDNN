@@ -1735,20 +1735,13 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     const bool is_signed_input = jcp.src_dt == s8;
     jcp.s8s8_compensation_required = is_signed_input && !isa_has_s8s8(jcp.isa);
-    jcp.has_int8_vnni
-            = is_superset(jcp.isa, sve_512) || is_superset(jcp.isa, sve_256);
-    if (!IMPLICATION(
-                jcp.wei_dt == s8, mayiuse(sve_512) || one_of(jcp.isa, sve_256)))
-        return status::unimplemented;
-    if (!IMPLICATION(jcp.wei_dt == bf16, mayiuse(sve_256)))
-        return status::unimplemented;
-    if (!IMPLICATION(jcp.wei_dt == f16, mayiuse(sve_256)))
-        return status::unimplemented;
-    const bool is_f32
-            = utils::everyone_is(f32, jcp.src_dt, jcp.wei_dt, jcp.dst_dt);
-    if (!IMPLICATION(
-                is_f32, one_of(isa, sve_512, sve_256, sve_128) || jcp.is_bf32))
-        return status::unimplemented;
+    jcp.has_int8_vnni = isa_has_s8s8(jcp.isa);
+
+    if (!is_superset(jcp.isa, sve_128)) return status::unimplemented;
+
+    const bool is_bf16
+            = jcp.src_dt == data_type::bf16 && jcp.wei_dt == data_type::bf16;
+    if (!IMPLICATION(is_bf16, mayiuse_bf16())) return status::unimplemented;
 
     if (!post_ops_ok(jcp, attr, dst_d)) return status::unimplemented;
 

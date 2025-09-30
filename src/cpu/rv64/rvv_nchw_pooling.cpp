@@ -19,6 +19,7 @@
 #include <riscv_vector.h>
 
 #include "common/dnnl_thread.hpp"
+#include "common/stream.hpp"
 #include "cpu/rv64/rvv_nchw_pooling.hpp"
 
 namespace dnnl {
@@ -312,6 +313,15 @@ status_t riscv_nchw_pooling_fwd_t::execute_forward(
                 KH, KW, SD, SH, SW, padF, padT, padL);
     } else {
         return status::unimplemented;
+    }
+
+    const post_ops_t &post_ops = pd()->attr()->post_ops_;
+    if (post_ops.len() == 1 && post_ops.entry_[0].is_binary()) {
+        engine_t *engine = ctx.stream()->engine();
+        post_ops_t local_po = post_ops;
+        rvv_postops_t postops;
+        CHECK(postops.init(engine, local_po, *pd()->dst_md()));
+        CHECK(postops.execute(ctx, dst, dst));
     }
 
     return status::success;

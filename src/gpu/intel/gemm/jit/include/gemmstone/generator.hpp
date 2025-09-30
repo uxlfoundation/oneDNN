@@ -507,7 +507,7 @@ protected:
     void gemmRepack2DOffsetData(Type Text, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void dequantizeInt4Shift(Type Tsrc, GRFMultirange src, const CommonStrategy &strategy);
     void dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const RegisterLayout &layoutOffset, const RegisterLayout &layoutScale, const GRFMultirange &src, const GRFMultirange &dst, const GRFMultirange &offset, const GRFMultirange &scale, int offR, int offC, int hq, const GEMMProblem *problem, const CommonStrategy &strategy, CommonState &state, bool s4Shift = true);
-    void gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp op, const RegisterLayout &layout, const RegisterLayout &qlayout, const GRFMultirange &regs, const GRFMultirange &qregs, int hq, const GEMMProblem &problem);
+    void gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp op, const RegisterLayout &layout, const RegisterLayout &qlayout, const GRFMultirange &regs, const GRFMultirange &qregs, int hq, const GEMMProblem &problem, CommonState &state);
     void gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst, const GRFMultirange &src, const GRFMultirange &dst, int hab, int hq, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool s4Shift = true);
 
     // register_allocation.cxx

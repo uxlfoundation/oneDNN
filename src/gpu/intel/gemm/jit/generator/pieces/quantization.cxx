@@ -300,12 +300,24 @@ template <HW hw>
 void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp op,
                                             const RegisterLayout &layout, const RegisterLayout &qlayout,
                                             const GRFMultirange &regs, const GRFMultirange &qregs,
-                                            int hq, const GEMMProblem &problem)
+                                            int hq, const GEMMProblem &problem, CommonState &state)
 {
     int xqGroupK  = doA ? problem.aqGroupK : problem.bqGroupK;
     int xqGroupMN = doA ? problem.aqGroupM : problem.bqGroupN;
 
     bool common = (qlayout.rows() * qlayout.cols()) == 1;
+
+    bool bfSpecialPath = (T == Type::bf16) && (Tq == Type::f32) && (xqGroupMN > 1) && layout.hasFullCrosspack(2);
+    GRFMultirange qPairs;
+    int npairs = 0;
+
+    if (bfSpecialPath) {
+        for (npairs = 8; npairs > 0; npairs >>= 1) {
+            qPairs = tryChunkAlloc(npairs, 1, Bundle(), BundleGroup::AllBundles(), state);
+            if (!qPairs.empty()) break;
+        }
+        if (qPairs.empty()) throw out_of_registers_exception();
+    }
 
     for (auto &block: layout) {
         auto crosspack = block.crosspack;
@@ -317,7 +329,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
         int xqGroupY = colMajor == doA ? xqGroupK : xqGroupMN;
 
         // If crosspack spans multiple groups, use a stride to restrict to one group
-        bool qbroadcastY = (xqGroupY % crosspack == 0) || common;
+        bool qbroadcastY = (xqGroupY % crosspack == 0) || common || bfSpecialPath;
         int strided = 1;
         if (!qbroadcastY) {
             strided = crosspack;
@@ -325,6 +337,8 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
 
         bool qbroadcastX = xqGroupX > 1 || common;
         int strideq = qbroadcastX ? 0 : 1;
+        if (bfSpecialPath)
+            strideq = 1;
 
         for(int y0 = 0; y0 < ny; y0 += qbroadcastY ? crosspack : 1) {
         for(int x0 = 0; x0 < nx; ) {
@@ -351,6 +365,15 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
             // If a group lies along the X-direction, limit ne to the end of the current group
             if (xqGroupX > 1) ne = std::min(ne, xqGroupX - x0 % xqGroupX);
 
+            // Broadcast pairs of scales, in case of stride-2 bfloat16 data.
+            if (bfSpecialPath) {
+                int npair = (qdata.getOffset() / 2) % npairs;
+                if (x0 == 0 && npair == 0)
+                    for (int p = 0; p < npairs; p++)
+                        mov(elementsPerGRF(hw, Tq), qPairs[p].ud(), qdata.ud(2*p)(0,2,1));
+                qdata = qPairs[npair].sub(0, Tq.ngen());
+            }
+
             int maxSIMD = (op == BinaryOp::Sub && T.isInt8()) ? 64 : 32;
             if (Tq == Type::f32) maxSIMD = elementsPerGRF(hw, Tq);
             int simd = std::min({ne * crosspack / strided, 2 * elementsPerGRF(hw, T) / strided, maxSIMD});
@@ -364,7 +387,9 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
                     } else
                         add(simd, data(strided), data(strided), -qdata(strideq));
                     break;
-                case BinaryOp::Mul: mul(simd, data(strided), data(strided),  qdata(strideq)); break;
+                case BinaryOp::Mul:
+                    mul(simd, data(strided), data(strided), qdata(strideq));
+                    break;
                 case BinaryOp::ScaleSub:
                     if (T != Type::f16) stub();
                     mad(simd, data(strided), -qdata(strideq), data(strided), Immediate::hf(0x6C00));  /* 0x6C00 = 2^12 */
@@ -375,6 +400,8 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
         }
         }
     }
+
+    safeReleaseRanges(qPairs, state);
 }
 
 // Shift s4 data by 8 to transfrom it into u4 data.
@@ -430,7 +457,7 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     //     so two multiplications are needed.
     if (!layoutOffset.empty()) {
         if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::ScaleSub, *effLayoutDst, layoutOffset, *effDst, offset, hq, *problem);
+        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::ScaleSub, *effLayoutDst, layoutOffset, *effDst, offset, hq, *problem, state);
     } else {
         map(hw, Type::f16, *effDst, *effLayoutDst, strategy, [&](int esize, RegData r) {
             s4 ? mad(esize, r, Immediate::hf(0x9800), r, Immediate::hf(0x6C00)) /* 0x9800 = -8*2^(-12), 0x6C00 = 2^12 */
@@ -447,7 +474,7 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     //      this could be merged into the previous multiplication.
     if (!f32 && !layoutScale.empty()) {
         if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::Mul, *effLayoutDst, layoutScale, *effDst, scale, hq, *problem);
+        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::Mul, *effLayoutDst, layoutScale, *effDst, scale, hq, *problem, state);
     }
 
     // 6) Convert to dst type if needed.
@@ -459,7 +486,7 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     // 7) Apply scales for f32 after f16->f32 upconversion.
     if (f32 && !layoutScale.empty()) {
         if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f32, Type::f32, BinaryOp::Mul, layoutDst, layoutScale, dst, scale, hq, *problem);
+        gemmDequantizeOperation(doA, Type::f32, Type::f32, BinaryOp::Mul, layoutDst, layoutScale, dst, scale, hq, *problem, state);
     }
 }
 
@@ -526,12 +553,12 @@ void Generator<hw>::gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, 
             convert(src, Tsrc, Tx_int, strategy, state);
 
         if (xo2D) {
-            gemmDequantizeOperation(doA, Tx_int, Txo_int, BinaryOp::Sub, layoutDst, oLayout, dst, oRegs, hq, problem);
+            gemmDequantizeOperation(doA, Tx_int, Txo_int, BinaryOp::Sub, layoutDst, oLayout, dst, oRegs, hq, problem, state);
             convert(dst, Tx_int, Tdst, strategy, state);
         }
 
         if (xs2D)
-            gemmDequantizeOperation(doA, Tdst, Txs_int, BinaryOp::Mul, layoutDst, sLayout, dst, sRegs, hq, problem);
+            gemmDequantizeOperation(doA, Tdst, Txs_int, BinaryOp::Mul, layoutDst, sLayout, dst, sRegs, hq, problem, state);
     }
 
     if (ms < md || ns < nd) {

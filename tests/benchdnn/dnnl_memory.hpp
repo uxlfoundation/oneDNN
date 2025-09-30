@@ -150,11 +150,17 @@ struct dnn_mem_t {
     }
     float get_elem(int64_t idx, int buffer_index = 0) const;
 
-    // This interface is a shortcut version of the one below to speed up access
+    // This interface is a shortcut version of set_elem below to speed up access
     // to the memory that is guaranteedly of f32 data type.
     // Keep the body in the header to help compiler to inline better.
     void set_f32_elem(int64_t idx, float value) const {
         static_cast<float *>(*this)[idx] = value;
+    }
+    // This interface allows to prevent roundings to float when
+    // setting s64 values that are meant to not fit in f32, like seeds
+    // or offsets.
+    void set_s64_elem(int64_t idx, int64_t value) const {
+        static_cast<int64_t *>(*this)[idx] = value;
     }
     void set_elem(int64_t idx, float value, int buffer_index = 0) const;
 
@@ -186,6 +192,8 @@ struct dnn_mem_t {
     // overwrites. The padded area is filled with a canary value.
     static dnnl_memory_desc_t pad_memory_desc(const_dnnl_memory_desc_t md,
             dnnl_engine_kind_t engine_kind, bool *was_padded = nullptr);
+    // Initializes zero memory descriptor
+    static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_md();
     // Initializes memory descriptor from sporadic tag or strides.
     static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_md(int ndims,
             const dnnl_dims_t dims, dnnl_data_type_t data_type,

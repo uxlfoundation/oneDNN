@@ -271,12 +271,27 @@ static int check_attr() {
     {
         base_settings_t s;
         std::vector<attr_t::dropout_t> &d = s.dropout;
+        std::string content_to_parse("--attr-dropout=0.5:12345:axb:16:true");
+        auto st = parse_attributes(s, def, content_to_parse.c_str());
+        SELF_CHECK_EQ(st, true);
+        SELF_CHECK_EQ(d[0].p, 0.5f);
+        SELF_CHECK_EQ(d[0].seed, 12345);
+        SELF_CHECK_CASE_STR_EQ(d[0].tag.c_str(), tag::axb);
+        SELF_CHECK_EQ(d[0].offset, 16);
+        SELF_CHECK_EQ(d[0].use_host_scalars, true);
+    }
+
+    {
+        base_settings_t s;
+        std::vector<attr_t::dropout_t> &d = s.dropout;
         std::string content_to_parse("--attr-dropout=0.5:12345:axb");
         auto st = parse_attributes(s, def, content_to_parse.c_str());
         SELF_CHECK_EQ(st, true);
         SELF_CHECK_EQ(d[0].p, 0.5f);
         SELF_CHECK_EQ(d[0].seed, 12345);
         SELF_CHECK_CASE_STR_EQ(d[0].tag.c_str(), tag::axb);
+        SELF_CHECK_EQ(d[0].offset, UINT64_MAX);
+        SELF_CHECK_EQ(d[0].use_host_scalars, false);
     }
 
     {
@@ -288,6 +303,8 @@ static int check_attr() {
         SELF_CHECK_EQ(d[0].p, 0.75f);
         SELF_CHECK_EQ(d[0].seed, 0);
         SELF_CHECK_CASE_STR_EQ(d[0].tag.c_str(), tag::any);
+        SELF_CHECK_EQ(d[0].offset, UINT64_MAX);
+        SELF_CHECK_EQ(d[0].use_host_scalars, false);
     }
 
     {
@@ -299,6 +316,8 @@ static int check_attr() {
         SELF_CHECK_EQ(d[0].p, 0.f);
         SELF_CHECK_EQ(d[0].seed, 0);
         SELF_CHECK_CASE_STR_EQ(d[0].tag.c_str(), tag::any);
+        SELF_CHECK_EQ(d[0].offset, UINT64_MAX);
+        SELF_CHECK_EQ(d[0].use_host_scalars, false);
     }
 
     {

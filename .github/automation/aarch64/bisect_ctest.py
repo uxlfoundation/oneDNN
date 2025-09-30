@@ -59,12 +59,13 @@ def main():
     args = args_parser.parse_args()
     cases = ctest_utils.failed_benchdnn_tests(args.file, args.unique)
 
+    print(cases)
     results_dict = {}
     for case in cases:
         bisect_cmd = str(F_PATH / f"git_bisect.sh {args.good} HEAD")
         build_dir = str(F_PATH.parent.parent.parent / "build")
         result = subprocess.run(
-            args=[f"{bisect_cmd} {build_dir} {case}"],
+            args=[f"{bisect_cmd} {build_dir} \"{case}\""],
             shell=True,
             capture_output=True,
         )

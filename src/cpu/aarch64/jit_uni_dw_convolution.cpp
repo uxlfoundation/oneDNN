@@ -347,7 +347,6 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         assert(nthr == jcp.nthr);
 
         auto conv_params = jit_dw_conv_args_t();
-        const int h_block_size = 15;
 
         /* assign iteration space to thread */
         const int ithr_g = ithr % jcp.nthr_g;
@@ -381,23 +380,18 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
             if (jcp.with_bias) conv_params.bias = &diff_bia[g * ch_block];
 
             for (int mb = mb_start; mb < mb_end; ++mb) {
-                int oh = 0;
-                while (oh < jcp.oh) {
-                    const int h_work = nstl::min(h_block_size, jcp.oh - oh);
-                    auto kh_t_padding = nstl::max(0, jcp.t_pad - oh);
-                    auto kh_b_padding
-                            = (oh * jcp.stride_h + jcp.kh > jcp.ih + jcp.t_pad)
-                            ? nstl::max(jcp.b_pad - (h_work - 1), 0)
-                            : 0;
-
-                    set_kernel_params(&conv_params, mb, g, oh, h_work,
+                for (int oh = 0; oh < jcp.oh; ++oh) {
+                    const int kh_t_padding = nstl::max(0, jcp.t_pad - oh);
+                    const int bottom_excess = (oh * jcp.stride_h + jcp.kh)
+                            - (jcp.ih + jcp.t_pad);
+                    const int kh_b_padding
+                            = bottom_excess > 0 ? bottom_excess : 0;
+                    set_kernel_params(&conv_params, mb, g, oh, 1,
                             zero_filter_flag | zero_bias_flag,
                             kh_t_padding + kh_b_padding, kh_t_padding);
                     (*kernel_)(&conv_params);
-
                     zero_bias_flag &= ~FLAG_ZERO_BIAS;
                     zero_filter_flag &= ~FLAG_ZERO_FILTER;
-                    oh += h_work;
                 }
             }
         }

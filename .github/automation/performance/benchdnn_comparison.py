@@ -88,7 +88,7 @@ def compare_two_benchdnn(file1, file2, out_file=None):
             ci_json = json.load(f)
 
         repo = git.Repo(F_PATH / "../../..", search_parent_directories=True)
-        head_sha = repo.git.rev_parse(repo.head.object.hexsha, short=4)
+        head_sha = repo.git.rev_parse(repo.head.object.hexsha, short=6)
         headers = f"| problem | oneDNN ({ci_json['dependencies']['onednn-base']}) time(ms) | oneDNN ({head_sha}) time(ms) | speedup (>1 is faster) |\n"
         with open(out_file, "w") as f:
             f.write(headers + "| :---: | :---: | :---: | :---:|\n")
@@ -101,7 +101,8 @@ def compare_two_benchdnn(file1, file2, out_file=None):
         exec2 = r2_exec[prb]
         ctime1 = r1_ctime[prb]
         ctime2 = r2_ctime[prb]
-        exec_ttest = ttest_ind(exec2, exec1, alternative="greater")
+        exec_regressed_ttest = ttest_ind(exec2, exec1, alternative="greater")
+        exec_improved_ttest = ttest_ind(exec2, exec1, alternative="less")
         ctime_ttest = ttest_ind(ctime2, ctime1, alternative="greater")
         r1_med_exec = statistics.median(exec1)
         r2_med_exec = statistics.median(exec2)
@@ -119,9 +120,13 @@ def compare_two_benchdnn(file1, file2, out_file=None):
         # A test fails if execution time:
         # - shows a statistically significant regression and
         # - shows ≥ 10% slowdown in either median or min times
-        exec_regressed = exec_ttest.pvalue <= 0.05 and (
+        exec_regressed = exec_regressed_ttest.pvalue <= 0.05 and (
             (r2_med_exec - r1_med_exec) / r1_med_exec >= 0.1
             or (min(exec2) - min(exec1)) / min(exec1) >= 0.1
+        )
+        exec_improved = exec_improved_ttest.pvalue <= 0.05 and (
+            r1_med_exec / r2_med_exec >= 1.1
+            or min(exec1) / min(exec2) >= 1.1
         )
         ctime_regressed = ctime_ttest.pvalue <= 0.05 and (
             (r2_med_ctime - r1_med_ctime) / r1_med_ctime >= 0.1
@@ -131,7 +136,7 @@ def compare_two_benchdnn(file1, file2, out_file=None):
         if exec_regressed:
             exec_failures.append(
                 f"{prb} exec: {r1_med_exec:.3g} → {r2_med_exec:.3g} "
-                f"(p={exec_ttest.pvalue:.3g})"
+                f"(p={exec_regressed_ttest.pvalue:.3g})"
             )
 
         if ctime_regressed:
@@ -142,7 +147,7 @@ def compare_two_benchdnn(file1, file2, out_file=None):
 
         if (
             out_file is not None
-            and abs((r2_med_exec - r1_med_exec) / r1_med_exec) >= 0.05
+            and (exec_regressed or exec_improved)
         ):
             prb_params = [x.replace("--", "") for x in prb.split(" ")]
             prb_params = [prb_params[1]] + [
@@ -154,7 +159,7 @@ def compare_two_benchdnn(file1, file2, out_file=None):
                 + prb
                 + "</details>"
             )
-            colour = "green" if r1_med_exec >= r2_med_exec * 1.05 else "red"
+            colour = "green" if exec_improved else "red"
             speedup_str = (
                 "$${\\color{"
                 + colour

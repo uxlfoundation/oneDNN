@@ -1214,7 +1214,7 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
             = binary_injector::prepare_binary_args(post_ops, ctx);
     std::vector<const void *> post_ops_binary_rhs_arg_vec
             = orig_post_ops_binary_rhs_arg_vec;
-  
+
     const void *src0_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0);
     const void *src1_scales

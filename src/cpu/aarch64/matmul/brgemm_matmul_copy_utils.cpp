@@ -237,7 +237,6 @@ struct jit_brgemm_matmul_copy_a_transposed_impl_t
 
     jit_brgemm_matmul_copy_a_transposed_impl_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
-        , jit_generator()
         , typesize(conf_->a_dt_sz)
         , tr_typesize(conf_->tr_a_dt_sz)
         , src_stride(conf_->copy_A_src_stride)
@@ -503,7 +502,6 @@ struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
 
     jit_brgemm_matmul_copy_b_f32_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator()
         , dt_in_(data_type::f32)
         , typesize_in_(types::data_type_size(dt_in_))
         , src_stride_(conf_->wei_tag == acbd ? conf_->copy_B_wei_stride

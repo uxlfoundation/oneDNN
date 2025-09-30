@@ -103,7 +103,7 @@ struct jit_bf16_matmul_kernel_t : public jit_generator {
 
     ZReg loadb(int ld) { return ZReg(ld + 1); }
 
-    ZReg acc(int bd, int ld) {
+    ZReg acc(int bd, int ld) const {
         return ZReg(bd * brg.ld_block + ld + brg.ld_block + 1);
     }
 

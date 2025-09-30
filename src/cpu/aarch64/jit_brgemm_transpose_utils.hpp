@@ -95,7 +95,7 @@ private:
             row_step_;
     const dim_t data_stride_, tr_data_stride_;
 
-    inline size_t addr_offset(int row_idx) {
+    inline size_t addr_offset(int row_idx) const {
         return row_idx * row_step_ * typesize_;
     }
     inline Xbyak_aarch64::ZReg get_zmm_copy(int row_idx) const {

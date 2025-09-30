@@ -164,12 +164,12 @@ private:
                 < (jcp.is_depthwise ? ker_dw_reg_base_idx : ker_reg_base_idx));
         return ZReg(idx);
     }
-    ZReg vmm_inp(int i_ic, int nb_x_blocking) {
+    ZReg vmm_inp(int i_ic, int nb_x_blocking) const {
         int idx = i_ic + nb_x_blocking * jcp.ur_w;
         assert(idx < 31);
         return ZReg(idx);
     }
-    ZReg zmm_inp(int i_ic, int nb_x_blocking) {
+    ZReg zmm_inp(int i_ic, int nb_x_blocking) const {
         int idx = i_ic + nb_x_blocking * jcp.ur_w;
         const int max_idx = ker_dw_reg_base_idx;
         assert(idx < max_idx);
@@ -187,11 +187,11 @@ private:
                 = jcp.is_depthwise ? jcp.nb_ch_blocking : jcp.nb_oc_blocking;
         return ZReg(nb_c_block * jcp.ur_w);
     }
-    int get_ow_start(int ki, int pad_l) {
+    int get_ow_start(int ki, int pad_l) const {
         return nstl::max(0,
                 utils::div_up(pad_l - ki * (jcp.dilate_w + 1), jcp.stride_w));
     }
-    int get_ow_end(int ur_w, int ki, int pad_r) {
+    int get_ow_end(int ur_w, int ki, int pad_r) const {
         return ur_w
                 - nstl::max(0,
                         utils::div_up(

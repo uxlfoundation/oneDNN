@@ -139,7 +139,9 @@ public:
     constexpr static size_t translator_stack_offset = 1024 * 128;
     constexpr static uint32_t DUMMY_IDX = 99;
 
-    inline size_t get_size_of_abi_save_regs() { return size_of_abi_save_regs; }
+    inline size_t get_size_of_abi_save_regs() const {
+        return size_of_abi_save_regs;
+    }
 
     void preamble() {
         using namespace Xbyak_aarch64::util;
@@ -670,7 +672,6 @@ public:
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_generator);
 
-public:
     jit_generator(void *code_ptr = nullptr, size_t code_size = MAX_CODE_SIZE,
             bool use_autogrow = true, cpu_isa_t max_cpu_isa = isa_all)
         : Xbyak_aarch64::CodeGenerator(code_size,

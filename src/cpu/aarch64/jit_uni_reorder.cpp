@@ -2088,8 +2088,7 @@ struct jit_single_blk_kernel_t : public jit_generator {
     }
 
     jit_single_blk_kernel_t(const tr::prb_t &prb)
-        : jit_generator()
-        , prb_(prb)
+        : prb_(prb)
         , itype_sz_(data_type_size(prb_.itype))
         , otype_sz_(data_type_size(prb_.otype))
         , block_sz(prb.nodes[0].n) {}

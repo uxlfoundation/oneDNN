@@ -242,7 +242,7 @@ private:
     PReg ld_full_mask = PReg(2);
     PReg ld_tail_mask = PReg(3);
 
-    ZReg accm(int ld_block, int bd, int ld) {
+    ZReg accm(int ld_block, int bd, int ld) const {
         return ZReg(max_effective_vregs - 1 - (bd * ld_block + ld));
     }
 

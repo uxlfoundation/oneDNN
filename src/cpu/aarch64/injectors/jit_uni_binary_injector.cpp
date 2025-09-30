@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
 * Copyright 2022-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1857,8 +1858,9 @@ void jit_uni_binary_injector_t<isa>::execute_binary(alg_kind_t binary_alg,
             host_->uni_fmin(dst.s, lhs.s, z_rhs.s);
             break;
         case alg_kind::binary_div:
-            host_->uni_fdiv(
-                    dst.s, lhs.s, z_rhs.s, Vmm(host_->DUMMY_IDX).s, mask);
+            host_->uni_fdiv(dst.s, lhs.s, z_rhs.s,
+                    Vmm(dnnl::impl::cpu::aarch64::jit_generator::DUMMY_IDX).s,
+                    mask);
             break;
         case alg_kind::binary_sub:
             host_->uni_fsub(dst.s, lhs.s, z_rhs.s);

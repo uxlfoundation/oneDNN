@@ -98,26 +98,28 @@ private:
 
     bool with_binary_non_scalar_bcast_ = false;
 
-    inline int M() { return brg.bcast_dim; }
-    inline int N() { return brg.load_dim; }
-    inline int m_block1() { return brg.bd_block; }
-    inline int nb_m_block1() { return brg.bdb; }
-    inline int m_block1_tail() { return brg.bdb_tail; }
-    inline int m_block2() { return brg.bd_block2; }
-    inline int nb_m_block2() { return brg.bdb2; }
-    inline int m_block2_tail() { return brg.bdb2_tail; }
+    inline int M() const { return brg.bcast_dim; }
+    inline int N() const { return brg.load_dim; }
+    inline int m_block1() const { return brg.bd_block; }
+    inline int nb_m_block1() const { return brg.bdb; }
+    inline int m_block1_tail() const { return brg.bdb_tail; }
+    inline int m_block2() const { return brg.bd_block2; }
+    inline int nb_m_block2() const { return brg.bdb2; }
+    inline int m_block2_tail() const { return brg.bdb2_tail; }
 
-    inline int n_block1() { return brg.ld_block; }
-    inline int nb_n_block1() { return brg.ldb; }
-    inline int n_block1_tail() { return brg.ldb_tail; }
-    inline int n_block2() { return brg.ld_block2; }
-    inline int nb_n_block2() { return brg.ldb2; }
-    inline int n_block2_tail() { return brg.ldb2_tail; }
+    inline int n_block1() const { return brg.ld_block; }
+    inline int nb_n_block1() const { return brg.ldb; }
+    inline int n_block1_tail() const { return brg.ldb_tail; }
+    inline int n_block2() const { return brg.ld_block2; }
+    inline int nb_n_block2() const { return brg.ldb2; }
+    inline int n_block2_tail() const { return brg.ldb2_tail; }
 
     int tail_length() { return n_block1_tail() % simd_w_; }
-    bool is_fma_embd() { return brg.is_f32; }
-    bool is_fast_vnni_int8() { return is_fast_vnni_int8(brg); }
-    int vnni_substep() { return brg.isa_impl == sve_256 && brg.is_f16 ? 2 : 1; }
+    bool is_fma_embd() const { return brg.is_f32; }
+    bool is_fast_vnni_int8() const { return is_fast_vnni_int8(brg); }
+    int vnni_substep() const {
+        return brg.isa_impl == sve_256 && brg.is_f16 ? 2 : 1;
+    }
     int get_substep_simd(int n_i, int v_i, bool has_n_tail) {
         const int last_n_block_sz
                 = n_block2_tail() > 0 ? n_block2_tail() : n_block2();
@@ -204,7 +206,7 @@ private:
     void store_accumulators_apply_post_ops(
             int m_blocks, int n_blocks, bool has_n_tail);
 
-    bool has_vpad() {
+    bool has_vpad() const {
         return brg.brgattr.max_top_vpad > 0 || brg.brgattr.max_bottom_vpad > 0;
     }
     bool check_effective_padding() { return has_vpad() && M() > m_block2(); }

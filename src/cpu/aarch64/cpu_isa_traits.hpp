@@ -181,7 +181,7 @@ inline const Xbyak_aarch64::util::Cpu &cpu() {
 
 namespace {
 
-static inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
+inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
     using namespace Xbyak_aarch64::util;
 
     unsigned cpu_isa_mask = aarch64::get_max_cpu_isa_mask(soft);
@@ -207,7 +207,7 @@ static inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
     return false;
 }
 
-static inline int isa_max_vlen(cpu_isa_t isa) {
+inline int isa_max_vlen(cpu_isa_t isa) {
     if (isa == sve_512)
         return cpu_isa_traits<sve_512>::vlen;
     else if (isa == sve_256)
@@ -219,25 +219,25 @@ static inline int isa_max_vlen(cpu_isa_t isa) {
 };
 
 // SVE length in bytes
-static inline uint64_t get_sve_length() {
+inline uint64_t get_sve_length() {
     return cpu().getSveLen();
 }
 
-static inline bool mayiuse_atomic() {
+inline bool mayiuse_atomic() {
     using namespace Xbyak_aarch64::util;
     return cpu().isAtomicSupported();
 }
 
-static inline bool isa_has_s8s8(cpu_isa_t isa) {
+inline bool isa_has_s8s8(cpu_isa_t isa) {
     return is_superset(isa, sve_128);
 }
 
-static inline bool mayiuse_bf16() {
+inline bool mayiuse_bf16() {
     using namespace Xbyak_aarch64::util;
     return cpu().isBf16Supported();
 }
 
-static inline int isa_num_vregs(cpu_isa_t isa) {
+inline int isa_num_vregs(cpu_isa_t isa) {
     if (isa == sve_512)
         return cpu_isa_traits<sve_512>::n_vregs;
     else if (isa == sve_256)

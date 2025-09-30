@@ -411,13 +411,22 @@ std::vector<int> supported_exec_args(dir_t dir) {
             DNNL_ARG_DIFF_DST,
             DNNL_ARG_DIFF_SRC,
     };
+    // Since it costs much to enable a work around for `use_dst` at graph
+    // driver, just pass all of args there.
+    static const std::vector<int> exec_bwd_args_graph = {
+            DNNL_ARG_SRC,
+            DNNL_ARG_DST,
+            DNNL_ARG_DIFF_DST,
+            DNNL_ARG_DIFF_SRC,
+    };
     // This driver uses additional information coming only from `prb` through
     // the `dir` variable, which is not a clean solution, but the alternative
     // is to modify the `supported_exec_args` signature and introduce a `param`
     // struct to pass it to the call and fill according driver needs.
-    return (dir & FLAG_FWD)    ? exec_fwd_args
-            : (dir & FLAG_WEI) ? exec_bwd_use_dst_args
-                               : exec_bwd_args;
+    return (dir & FLAG_FWD)            ? exec_fwd_args
+            : (driver_name == "graph") ? exec_bwd_args_graph
+            : (dir & FLAG_WEI)         ? exec_bwd_use_dst_args
+                                       : exec_bwd_args;
 };
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,

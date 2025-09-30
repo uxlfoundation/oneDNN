@@ -76,7 +76,7 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
         return status::success;
     }
 
-    parallel_nd(N, [&](dim_t n) {
+    parallel_nd(N, [=](dim_t n) {
         const size_t s_off = stat_d.off_l(n);
         auto v_mean = (calculate_stats || skip_mean) ? 0 : mean[s_off];
         auto v_variance = calculate_stats ? 0 : variance[s_off];
@@ -194,7 +194,7 @@ status_t ref_layer_normalization_bwd_t::execute_backward(
     const bool skip_mean = pd()->skip_mean();
 
     if (diff_scale || diff_shift) {
-        parallel_nd(C, [&](dim_t c) {
+        parallel_nd(C, [=](dim_t c) {
             float diff_gamma = 0.f;
             float diff_beta = 0.f;
 
@@ -220,7 +220,7 @@ status_t ref_layer_normalization_bwd_t::execute_backward(
         });
     }
 
-    parallel_nd(N, [&](dim_t n) {
+    parallel_nd(N, [=](dim_t n) {
         const size_t s_off = stat_d.off_l(n);
         float inv_sqrt_variance = 1.f / sqrtf(variance[s_off] + eps);
         float dd_gamma = 0.f;

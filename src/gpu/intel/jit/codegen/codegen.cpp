@@ -173,9 +173,10 @@ public:
             auto &send_func = func.as<send_t>();
             auto args = obj.args;
             auto &mask = send_t::arg_mask(args);
+            bool is_load = send_func.is_load() || send_func.is_load_2d();
             // If all channels are disabled for writing, quick return.
             if (all_of(mask, expr_t(false))) {
-                if (send_func.is_load() || send_func.is_load_2d()) {
+                if (is_load) {
                     auto reg_buf_op = eval(send_t::arg_reg_buf(args), scope);
                     auto pattern_op
                             = eval(send_t::arg_fill_pattern(args), scope);
@@ -185,6 +186,18 @@ public:
             }
             // If all channels are enabled, do not use mask.
             if (all_of(mask, expr_t(true))) mask = expr_t();
+            // On fused-EU architectures (XeLP/XeHP/XeHPG) masked loads require
+            // a workaround to mitigate a read suppression hardware bug in both
+            // int and float pipes; refer to HSD-ES 16012061344 for more info.
+            if (!mask.is_empty() && is_load
+                    && utils::one_of(hw(), ngen::HW::XeLP, ngen::HW::XeHP,
+                            ngen::HW::XeHPG)) {
+                auto ri = ngen::GRF(0).uw(0)(1); // r0 least likely to stall
+                auto rf = ngen::GRF(0).f(4)(1);
+                host_->csel(4, ri, ri, ri, ri); // Clear read suppression in I
+                host_->csel(4, rf, rf, rf, rf); // Clear read suppression in F
+            }
+            // Do the actual send
             auto arg_ops = eval(args, scope);
             send(scope, func.as<send_t>(), arg_ops, obj.attr);
         } else if (func.is<reorder_t>()) {

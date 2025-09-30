@@ -322,10 +322,19 @@ status_t DNNL_API dnnl_graph_compiled_partition_execute(
 
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream->wait();
+        bool block_on_wait = true;
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+        dnnl::threadpool_interop::threadpool_iface *tp;
+        auto status = stream->get_threadpool(&tp);
+        block_on_wait = status == status::success && tp
+                && !(tp->get_flags()
+                        & dnnl::threadpool_interop::threadpool_iface::
+                                ASYNCHRONOUS);
+#endif
+        if (block_on_wait) stream->wait();
         double start_ms = dnnl::impl::get_msec();
         CHECK(compiled_partition->execute(stream, ins, outs));
-        stream->wait();
+        if (block_on_wait) stream->wait();
         double duration_ms = dnnl::impl::get_msec() - start_ms;
         VPROF(start_ms, graph, exec, VERBOSE_profile,
                 compiled_partition->info(), duration_ms);

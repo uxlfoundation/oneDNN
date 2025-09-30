@@ -100,10 +100,20 @@ status_t primitive_execute(
 
     if (get_verbose(verbose_t::exec_profile,
                 prim_kind2_comp_kind(primitive_iface->pd()->impl()->kind()))) {
-        stream->wait();
+        bool block_on_wait = true;
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+        dnnl::threadpool_interop::threadpool_iface *tp;
+        auto status = stream->get_threadpool(&tp);
+        block_on_wait = status == status::success && tp
+                && !(tp->get_flags()
+                        & dnnl::threadpool_interop::threadpool_iface::
+                                ASYNCHRONOUS);
+#endif
+        if (block_on_wait) stream->wait();
         double start_ms = get_msec();
         status = stream->enqueue_primitive(primitive_iface, ctx);
-        stream->wait();
+        if (block_on_wait) stream->wait();
+
         double duration_ms = get_msec() - start_ms;
         if (primitive_iface->pd()->impl()->has_runtime_dims_or_strides()) {
             // Take out mds from `ctx` here to avoid primitive_desc dependency

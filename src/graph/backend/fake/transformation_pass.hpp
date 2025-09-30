@@ -61,9 +61,7 @@ public:
         pu.match(agraph, pgraph, matched_op_list);
         if (!matched_op_list.empty()) {
             // temporary solution here for showing which pattern matched
-            if (getenv_int_user("GRAPH_DUMP", 0) > 0
-                    || utils::check_verbose_string_user(
-                            "GRAPH_DUMP", "pattern")) {
+            if (utils::get_graph_dump_mode(utils::graph_dump_mode_t::pattern)) {
                 verbose_printf(
                         "graph,info,pattern,hit,%s\n", get_pass_name().c_str());
             }

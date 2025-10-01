@@ -41,6 +41,12 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
     const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
     const bool has_wei_scale = !prb->attr.scales.get(DNNL_ARG_WEIGHTS).is_def();
     const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
+    const float single_src_scale_val
+            = has_src_scale ? src_scales.get_f32_elem(0) : 1.f;
+    const float single_wei_scale_val
+            = has_wei_scale ? wei_scales.get_f32_elem(0) : 1.f;
+    const float single_dst_scale_val
+            = has_dst_scale ? 1.f / dst_scales.get_f32_elem(0) : 1.f;
     const int src_scale_mask = has_src_scale
             ? prb->attr.scales.get_mask(DNNL_ARG_SRC, dnnl_convolution,
                     src_m.ndims(), prb->has_groups)
@@ -100,9 +106,9 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
         const float *__restrict wei_loc
                 = (const float *)wei_m + (g * OCG + oc) * ICG * KD * KH * KW;
 
-        float src_scale = has_src_scale ? src_scales.get_f32_elem(0) : 1.f;
+        float src_scale = single_src_scale_val;
         int src_zp = has_src_zp ? src_zps.get_elem(0) : 0;
-        float wei_scale = has_wei_scale ? wei_scales.get_f32_elem(0) : 1.f;
+        float wei_scale = single_wei_scale_val;
         if (wei_scale_mask > 0)
             wei_scale = wei_scales.get_f32_elem(g * OCG + oc);
         int wei_zp = has_wei_zp ? wei_zps.get_elem(0) : 0;
@@ -158,11 +164,9 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
                 maybe_post_ops(prb->attr, conv_res, dst, v_po_vals);
 
                 // Inverse a single value ahead of time to save on division.
-                float dst_scale = has_dst_scale
-                        ? 1.f / dst_scales.get_f32_elem(0)
-                        : 1.f;
+                float dst_scale = single_dst_scale_val;
                 if (dst_scale_mask > 0)
-                    dst_scale = dst_scales.get_f32_elem(g * OCG + oc);
+                    dst_scale = 1.f / dst_scales.get_f32_elem(g * OCG + oc);
 
                 int dst_zp = has_dst_zp ? dst_zps.get_elem(0) : 0;
                 if (dst_zp_mask > 0) dst_zp = dst_zps.get_elem(g * OCG + oc);

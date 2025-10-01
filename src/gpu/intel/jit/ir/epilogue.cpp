@@ -519,7 +519,10 @@ public:
             dim_t lhs_elems = lhs_size / int(sizeof(float));
             auto &eltwise_func = post_op_.eltwise().as<eltwise_t>();
             if (eltwise_func.alg_kind == alg_kind::eltwise_stochastic_round) {
-
+                return post_op_.eltwise().call(
+                        {expr_t(lhs_elems), lhs_tensor.reg_buf(),
+                                (*args.at(eltwise_func.seed)).reg_buf()});
+            } else if (eltwise_func.alg_kind == alg_kind::eltwise_mx_scale) {
                 return post_op_.eltwise().call(
                         {expr_t(lhs_elems), lhs_tensor.reg_buf(),
                                 (*args.at(eltwise_func.seed)).reg_buf()});

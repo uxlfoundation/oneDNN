@@ -305,7 +305,9 @@ public:
         if (contains_object(rhs_, op_var)) return true;
         if (eltwise_.is<eltwise_t>()) {
             auto &eltwise_func = eltwise_.as<eltwise_t>();
-            if (eltwise_func.alg_kind == alg_kind::eltwise_stochastic_round)
+            if (utils::one_of(eltwise_func.alg_kind,
+                        alg_kind::eltwise_stochastic_round,
+                        alg_kind::eltwise_mx_scale))
                 if (contains_object(eltwise_func.seed, op_var)) return true;
         }
         return false;
@@ -381,6 +383,13 @@ private:
             const bool do_convert = true,
             const expr_t &compute_expr = expr_t()) {
         return add_tensor(/*is_input=*/true, /*is_output=*/false, view, buf,
+                expr_t(), compute_expr, do_convert);
+    }
+
+    const expr_t &add_output_tensor(const view_t &view, const expr_t &buf,
+            const bool do_convert = true,
+            const expr_t &compute_expr = expr_t()) {
+        return add_tensor(/*is_input=*/false, /*is_output=*/true, view, buf,
                 expr_t(), compute_expr, do_convert);
     }
 

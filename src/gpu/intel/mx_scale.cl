@@ -91,7 +91,7 @@ __kernel void mx_scale_dst(__global float *restrict src,
 #elif NDIMS == 3
     scale_off = DST_SCALE_OFF(d0 % DST_D0, m, 0, 0, n, groupSize, 1);
 #else
-    scale_off = DST_SCALE_OFF(m, n, 0, 0, 0, 1, groupSize);
+    scale_off = DST_SCALE_OFF(m, n, 0, 0, 0, groupSize, 1);
 #endif
 #endif
     dst_scales[scale_off] = cvt_f32_to_e8m0(scale_val);

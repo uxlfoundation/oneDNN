@@ -276,6 +276,7 @@ void debugdump_processed_source(const std::string &source,
                 = std::string() + "cpp -P " + o + " | clang-format";
         execute_command(preprocess_cmd, source);
         std::cout << "OCL_ARCH_OPTIONS: " << cl_options << std::endl;
+        std::cout << "OCL_OPTIONS: " << options << std::endl;
     }
 #endif
 }

@@ -804,6 +804,12 @@ private:
                 inj.compute(ngen::GRFRange(r.base(), count),
                         seed.reg_data().getBase(), seed.reg_data().getOffset(),
                         func.dst_dt);
+            } else if (func.alg_kind == alg_kind::eltwise_mx_scale) {
+                gpu_assert(args.size() == 3);
+                const auto &scales_dst = args[2].reg_buf_data();
+                inj.compute(ngen::GRFRange(r.base(), count),
+                        scales_dst.reg_data().getBase(),
+                        scales_dst.reg_data().getOffset(), func.dst_dt);
             } else {
                 inj.compute(ngen::GRFRange(r.base(), count));
             }

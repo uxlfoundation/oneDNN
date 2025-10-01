@@ -193,7 +193,16 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
     }
 
     // Handle dst scale.
-    if (!is_one(inv_dst_scales)) {
+    if (attr.scales_.get(DNNL_ARG_DST).is_mx()) {
+        auto scales_buf = kernel_info.find_arg("dst_scales");
+        auto view = po_vm_.create_view(type_t::u64(), 0);
+        auto in = add_output_tensor(view, scales_buf, /*do_convert=*/false);
+        auto func = eltwise_t::make(alg_kind::eltwise_mx_scale,
+                /*scale=*/1.f,
+                /*alpha=*/1.f,
+                /*beta=*/0.f, in, convert_dnnl_type_to_ngen(dst_md.data_type));
+        post_ops_.emplace_back(c, c, func);
+    } else if (!is_one(inv_dst_scales)) {
         auto c_scaled = c * inv_dst_scales;
         post_ops_.emplace_back(c, c_scaled);
     } else if (!is_one(dst_scales)) {

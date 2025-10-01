@@ -81,6 +81,7 @@ struct pd_t : public gemm::pd_t {
     bool quant_enabled_ = false;
     int a_scales_group_k_ = 0, a_scales_group_m_ = 0;
     int b_scales_group_k_ = 0, b_scales_group_n_ = 0;
+    int c_scales_group_m_ = 0, c_scales_group_n_ = 0;
     int a_zp_group_k_ = 0, a_zp_group_m_ = 0;
     int b_zp_group_k_ = 0, b_zp_group_n_ = 0;
     int a_gs_group_k_ = 0, a_gs_group_m_ = 0;
@@ -88,10 +89,11 @@ struct pd_t : public gemm::pd_t {
     bool non_scale_po_ = false;
     data_type_t a_scales_type_ = data_type::undef;
     data_type_t b_scales_type_ = data_type::undef;
+    data_type_t c_scales_type_ = data_type::undef;
 
     int ao_dims_ = -1, bo_dims_ = -1;
     int ag_dims_ = -1, bg_dims_ = -1;
-    int asc_dims_ = -1, bsc_dims_ = -1;
+    int asc_dims_ = -1, bsc_dims_ = -1, csc_dims_ = -1;
     post_ops_t post_ops_;
     std::vector<binary_src_t> binary_srcs_;
 
@@ -111,6 +113,7 @@ struct pd_t : public gemm::pd_t {
     dim_t eff_lda_ = 0, eff_ldb_ = 0;
     bool eff_transa_ = false, eff_transb_ = false;
     bool with_sround_ = false;
+    bool with_mx_scale_ = false;
 
     float alpha() const {
         auto attr_info = attr_info_t::create(attr());
@@ -177,9 +180,11 @@ struct pd_t : public gemm::pd_t {
     bool with_b_group_sums() const { return (bg_dims_ >= 0); }
 
     bool with_sround() const { return with_sround_; }
+    bool with_mx_scale() const { return with_mx_scale_; }
 
     bool a_scales_2d() const { return asc_dims_ > 1; }
     bool b_scales_2d() const { return bsc_dims_ > 1; }
+    bool c_scales_2d() const { return csc_dims_ > 1; }
 
     bool dy_quant_enabled();
     bool wei_decomp();
@@ -275,6 +280,14 @@ struct pd_t : public gemm::pd_t {
         } else if (with_b_group_sums()) {
             return b_gs_group_n_;
         }
+        return 0;
+    }
+    int c_q2d_group_m() const {
+        if (c_scales_2d() || with_mx_scale()) { return c_scales_group_m_; }
+        return 0;
+    }
+    int c_q2d_group_n() const {
+        if (c_scales_2d() || with_mx_scale()) { return c_scales_group_n_; }
         return 0;
     }
     int eff_align_a() const {

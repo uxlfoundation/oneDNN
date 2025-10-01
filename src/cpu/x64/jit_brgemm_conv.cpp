@@ -839,11 +839,15 @@ inline int brgemm_convolution_fwd_t<isa>::get_comp_offset(const int g,
     if (!jcp.src_zero_point && !jcp.s8s8_compensation_required) return 0;
 
     const auto cur_comp_oh = get_comp_oh(oh);
+    const auto cur_owb = ow / jcp.ow_block;
+    const auto cur_comp_ow = jcp.req_cal_comp_pad && jcp.exec_type != exec_vpad
+            ? comp_owb[cur_owb] + ow % jcp.ow_block
+            : ow;
     const auto comp_idx
             = get_comp_ker_idx(kd_b, kd_e, kh_b, kh_e, kw_b, kw_e, cur_comp_oh);
     assert(IMPLICATION(jcp.req_cal_comp_pad, comp_idx >= 0));
     return jcp.req_cal_comp_pad ? g * comp_ocb_sz + ocb * comp_ker_sz
-                    + comp_idx * comp_kw_sz + ow * comp_ow_sz
+                    + comp_idx * comp_kw_sz + cur_comp_ow * comp_ow_sz
                                 : (g * jcp.nb_oc + ocb) * jcp.oc_block;
 }
 
@@ -902,7 +906,6 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
     dst_w_sz = static_cast<dim_t>(OW) * jcp.oc_without_padding;
     dst_h_sz = OH * dst_w_sz;
 
-    //    const auto comp_buffer_os = jcp.comp_ow_size;//jcp.exec_type != exec_vpad ? jcp.ow : 1;
     comp_ow_sz = static_cast<dim_t>(jcp.oc_block);
     comp_kw_sz = comp_ow_sz * jcp.comp_ow_size;
     comp_ker_sz = jcp.ker_ranges_size * comp_kw_sz;
@@ -1142,6 +1145,60 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                         comp_oh_kh_e.push_back(oh_kh_e[comp_oh]);
                     }
                 }
+            }
+        }
+    }
+
+    if (jcp.req_cal_comp_pad && jcp.exec_type != exec_vpad) {
+        comp_owb.resize(jcp.nb_ow, -1);
+        vector<int> ow_kw_b(jcp.ow, -1);
+        vector<int> ow_kw_e(jcp.ow, -1);
+        vector<int> comp_ow_kw_s(jcp.comp_ow_size, -1);
+        vector<int> comp_ow_kw_f(jcp.comp_ow_size, -1);
+        dim_t comp_ow_l = 0;
+
+        for (int ow = 0; ow < OW;) {
+            assert(comp_ow_l <= jcp.comp_ow_size);
+            const auto iiw = ow * SW - LP;
+            const auto kw_s = div_up(nstl::max(0, -iiw), DW);
+            const auto kw_f = KW
+                    - div_up(nstl::max(0, iiw - IW + (KW - 1) * DW + 1), DW);
+
+            int ow_e = ow;
+            while (ow_e < OW) {
+                const auto iiw_e = ow_e * SW - LP;
+                const auto cur_kw_s = div_up(nstl::max(0, -iiw_e), DW);
+                const auto cur_kw_f = KW
+                        - div_up(nstl::max(0, iiw_e - IW + (KW - 1) * DW + 1),
+                                DW);
+                ow_kw_b[ow_e] = kw_s;
+                ow_kw_e[ow_e] = kw_f;
+                if (cur_kw_s != kw_s || cur_kw_f != kw_f) break;
+                if (ow_e - ow < jcp.ow_block) {
+                    comp_ow_kw_s[comp_ow_l] = kw_s;
+                    comp_ow_kw_f[comp_ow_l] = kw_f;
+                    comp_ow_l++;
+                }
+                ow_e++;
+            }
+            ow = ow_e;
+        }
+
+        for (int owb = 0; owb < jcp.nb_ow; owb++) {
+            const auto ow_b = owb * jcp.ow_block;
+            const auto ow_e = nstl::min(ow_b + jcp.ow_block, OW);
+
+            if (owb == 0) {
+                comp_owb[owb] = 0;
+                continue;
+            }
+
+            for_(int i = 0; i < comp_ow_l; i++)
+            for (int ow = ow_b; ow < ow_e; ow++) {
+                if (ow_kw_b[ow] != comp_ow_kw_s[i + ow - ow_b]
+                        || ow_kw_e[ow] != comp_ow_kw_f[i + ow - ow_b])
+                    break;
+                if (ow == ow_e - 1) comp_owb[owb] = i;
             }
         }
     }
@@ -1609,10 +1666,12 @@ void brgemm_convolution_fwd_t<isa>::perform_outwork(
         if (is_postwork) {
             p.apply_comp = has_postcomp;
             p.a_zp_compensation = has_postcomp && jcp.src_zero_point
-                    ? &btc.src_zp_comp_ptr[comp_ker_offs + ow_pw_s * comp_ow_sz]
+                    ? &btc.src_zp_comp_ptr[comp_ker_offs
+                            + (ow_pw_s - ow) * comp_ow_sz]
                     : btc.src_zp_comp_ptr;
             p.s8s8_compensation = has_postcomp && jcp.s8s8_compensation_required
-                    ? &btc.s8s8_comp_ptr[comp_ker_offs + ow_pw_s * comp_ow_sz]
+                    ? &btc.s8s8_comp_ptr[comp_ker_offs
+                            + (ow_pw_s - ow) * comp_ow_sz]
                     : btc.s8s8_comp_ptr;
 
             p.ptr_out = dst_base
@@ -2122,7 +2181,7 @@ void brgemm_convolution_fwd_t<isa>::ker_base(brgemm_thread_ctx_t &btc) const {
         }
 
         const auto post_comp_ker_offs = get_comp_offset(
-                btc.g, btc.ocb, 0, 0, kd_s, kd_f, kh_s, kh_f, 0, KW);
+                btc.g, btc.ocb, 0, ow, kd_s, kd_f, kh_s, kh_f, 0, KW);
         perform_outwork(btc, dst_base, bias_w, ow, g_oc, is_oc_tail, ow_b, ow_e,
                 kd_l, kh_l, do_init, do_postwork, post_comp_ker_offs,
                 do_post_comp);

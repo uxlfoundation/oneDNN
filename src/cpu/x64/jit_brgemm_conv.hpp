@@ -242,7 +242,7 @@ private:
     std::vector<dim_t> owb_kw_top_vpads;
     std::vector<dim_t> owb_kw_bottom_vpads;
     std::vector<dim_t> kd_bs, kd_es, kh_bs, kh_es, kw_bs, kw_es, oh_kh_b,
-            oh_kh_e, comp_oh, comp_oh_kh_b, comp_oh_kh_e;
+            oh_kh_e, comp_oh, comp_oh_kh_b, comp_oh_kh_e, comp_owb;
 
     int KD, KH, KW, EXT_KD, EXT_KH, EXT_KW, KS, KD_BLOCK, KH_BLOCK, KW_BLOCK,
             KD_BLOCK_PAD, KH_BLOCK_PAD, ID, IH, IW, IDP, IHP, IWP, OD, OH, OW,

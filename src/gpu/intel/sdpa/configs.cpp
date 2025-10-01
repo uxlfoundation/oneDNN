@@ -197,6 +197,8 @@ static std::vector<config_record_t> sorted_configs = []() {
     // clang-format off
     std::vector<config_record_t> configs = {
         // xe_hpg
+        {{compute::gpu_arch_t::xe_hpg, 16, fma | f32},    {8, 16, 8, 16, 2, 4, 2, 4}},
+
         {{compute::gpu_arch_t::xe_hpg, 32},               {32, 16, 16, 16, 2, 16, 2, 16}},
         {{compute::gpu_arch_t::xe_hpg, 32, 256},          {16, 16, 16, 16, 2, 8, 2, 8}},
         {{compute::gpu_arch_t::xe_hpg, 32, 64},           {16, 16, 16, 8, 4, 4, 2, 8}},
@@ -384,6 +386,14 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe_hpc, 512, 1024, fma }, {16, 16, 32, 16, 16, 1, 16, 1}},
         {{compute::gpu_arch_t::xe_hpc, 512,       fma }, {16, 16, 32, 16, 16, 1, 16, 1}},
 
+        {{compute::gpu_arch_t::xe_hpc,  16,   f32 | fma }, {16, 32, 16, 16, 4,  1,  2, 2}},
+        {{compute::gpu_arch_t::xe_hpc,  32,   f32 | fma }, {16, 32, 16, 16, 4 , 2,  2, 4}},
+        {{compute::gpu_arch_t::xe_hpc,  64,   f32 | fma }, {16, 16, 16, 16, 4,  2,  4, 2}},
+        {{compute::gpu_arch_t::xe_hpc,  64, 384,   f32 | fma }, {16, 16, 16, 16, 8,  2,  8, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 128,   f32 | fma }, {32, 32, 16, 32, 8,  2,  8, 2}},
+        {{compute::gpu_arch_t::xe_hpc, 256,   f32 | fma }, {16, 16, 32, 16, 8,  4,  8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 512,   f32 | fma }, {16, 16, 32, 16, 16, 1, 16, 1}},
+
         // xe2
         {{compute::gpu_arch_t::xe2, 32},               {16, 64, 32, 16, 4, 2, 1, 8}},
         {{compute::gpu_arch_t::xe2, 32, second_token}, {16, 64, 16, 16, 8, 1, 2, 4}},
@@ -517,14 +527,15 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 576}, {16, 32, 32, 32, 32, 1, 32, 1}},
 
 
-        {{compute::gpu_arch_t::xe2,  32, 384, fma }, { 32, 32, 16, 32,  4, 4,  4, 4 }},
-        {{compute::gpu_arch_t::xe2,  64, 384, fma }, { 16, 16, 16, 16,  8, 4,  8, 4 }},
+        {{compute::gpu_arch_t::xe2,  32, 384, fma }, { 32, 16, 16, 16,  2, 4,  2, 4 }},
+        {{compute::gpu_arch_t::xe2,  64, 384, fma }, { 16, 16, 16, 16,  4, 4,  4, 4 }},
         {{compute::gpu_arch_t::xe2, 128, 384, fma }, { 16, 16, 32, 16,  4, 4,  4, 4 }},
         {{compute::gpu_arch_t::xe2, 256, 384, fma }, { 16, 16, 32, 16,  8, 2,  8, 2 }},
         {{compute::gpu_arch_t::xe2, 512, 384, fma }, { 16, 16, 32, 16, 16, 2, 16, 2 }},
 
-        {{compute::gpu_arch_t::xe2,  32, fma }, { 32, 32, 16, 32,  4, 4,  4, 4 }},
-        {{compute::gpu_arch_t::xe2,  64, fma }, { 16, 16, 16, 16,  8, 4,  8, 4 }},
+        {{compute::gpu_arch_t::xe2,  16, fma }, { 16, 16, 16, 16,  2, 4,  2, 4 }},
+        {{compute::gpu_arch_t::xe2,  32, fma }, { 32, 16, 16, 16,  2, 4,  2, 4 }},
+        {{compute::gpu_arch_t::xe2,  64, fma }, { 16, 16, 16, 16,  4, 4,  4, 4 }},
         {{compute::gpu_arch_t::xe2, 128, fma }, { 16, 16, 32, 16,  4, 4,  4, 4 }},
         {{compute::gpu_arch_t::xe2, 256, fma }, { 16, 16, 32, 16,  8, 2,  8, 2 }},
         {{compute::gpu_arch_t::xe2, 512, fma }, { 16, 16, 32, 16, 16, 2, 16, 2 }},
@@ -564,22 +575,20 @@ static std::vector<config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 256, 384, fma | integrated }, { 16, 16, 32, 16,  8, 2,  8, 2 }},
         {{compute::gpu_arch_t::xe2, 512, 384, fma | integrated }, { 16, 16, 32, 16, 16, 2, 16, 2 }},
 
-        {{compute::gpu_arch_t::xe2,  32, fma | integrated }, { 32, 32, 16, 32,  4, 4,  4, 4 }},
-        {{compute::gpu_arch_t::xe2,  64, fma | integrated }, { 16, 16, 16, 16,  8, 4,  8, 4 }},
+        {{compute::gpu_arch_t::xe2,  16, fma | integrated }, { 16, 16, 16, 16,  2, 4,  2, 4 }},
+        {{compute::gpu_arch_t::xe2,  32, fma | integrated }, { 32, 16, 16, 16,  2, 4,  2, 4 }},
+        {{compute::gpu_arch_t::xe2,  64, fma | integrated }, { 16, 16, 32, 16,  2, 4,  2, 4 }},
         {{compute::gpu_arch_t::xe2, 128, fma | integrated }, { 16, 16, 32, 16,  4, 4,  4, 4 }},
         {{compute::gpu_arch_t::xe2, 256, fma | integrated }, { 16, 16, 32, 16,  8, 2,  8, 2 }},
         {{compute::gpu_arch_t::xe2, 512, fma | integrated }, { 16, 16, 32, 16, 16, 2, 16, 2 }},
 
-        {{compute::gpu_arch_t::xe2,  32, 385, fma | second_token | integrated }, { 16, 16, 16, 16,  8, 2,  8, 2 }},
-        {{compute::gpu_arch_t::xe2,  64, 385, fma | second_token | integrated }, { 32, 16, 16, 16,  8, 4,  8, 4 }},
         {{compute::gpu_arch_t::xe2, 128, 385, fma | second_token | integrated }, { 16, 16, 32, 16, 16, 1, 16, 1 }},
-        {{compute::gpu_arch_t::xe2, 256, 385, fma | second_token | integrated }, { 32, 16, 32, 16, 16, 2, 16, 2 }},
 
         {{compute::gpu_arch_t::xe2,  32, fma | second_token | integrated }, { 16, 16, 16, 16,  8, 2,  8, 2 }},
-        {{compute::gpu_arch_t::xe2,  64, fma | second_token | integrated }, { 32, 32, 16, 32,  4, 4,  4, 4 }},
+        {{compute::gpu_arch_t::xe2,  64, fma | second_token | integrated }, { 16, 16, 16, 16,  4, 2,  4, 2 }},
         {{compute::gpu_arch_t::xe2, 128, fma | second_token | integrated }, { 16, 16, 32, 16, 16, 1, 16, 1 }},
-        {{compute::gpu_arch_t::xe2, 128, f32 | fma | second_token | integrated }, { 16, 16, 32, 16, 8, 2, 8, 2}},
-        {{compute::gpu_arch_t::xe2, 256, fma | second_token | integrated }, { 16, 16, 16, 16, 16, 2, 16, 2 }},
+        {{compute::gpu_arch_t::xe2, 128, f32 | fma | second_token | integrated }, { 16, 16, 32, 16, 4, 2, 4, 2 }},
+        {{compute::gpu_arch_t::xe2, 256, fma | second_token | integrated }, { 16, 16, 32, 16, 8, 2, 8, 2 }},
     };
     // clang-format on
 

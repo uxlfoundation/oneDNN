@@ -74,11 +74,14 @@ inline status_t init_tag(format_tag_t &tag, memory_desc_t &md,
     return status::success;
 }
 
+// TODO: What does this mean?
 inline bool is_1stconv(const jit_conv_conf_t &jcp) {
     if (mayiuse(sve_512))
         return (jcp.ic < 16 && jcp.ngroups == 1);
-    else
+    else if (mayiuse(sve_256))
         return one_of(jcp.ic, 1, 3);
+    else
+        return true; // true seems to be the conservative version, but probably leaves some perf on the table
 }
 
 inline bool is_ow_threading_on(const jit_conv_conf_t &jcp) {
@@ -901,6 +904,7 @@ status_t jit_sve_conv_fwd_kernel<isa>::init_conf(jit_conv_conf_t &jcp,
 
     const auto dat_tag_nxc = pick(ndims - 3, nwc, nhwc, ndhwc);
     const auto dat_tag_ncx = pick(ndims - 3, ncw, nchw, ncdhw);
+    const auto dat_tag_nCx4c = pick(ndims - 3, nCw4c, nChw4c, nCdhw4c);
     const auto dat_tag_nCx8c = pick(ndims - 3, nCw8c, nChw8c, nCdhw8c);
     const auto dat_tag_nCx16c = pick(ndims - 3, nCw16c, nChw16c, nCdhw16c);
     auto curr_src_tag = src_d.matches_one_of_tag(
@@ -965,6 +969,12 @@ status_t jit_sve_conv_fwd_kernel<isa>::init_conf(jit_conv_conf_t &jcp,
             wei_tag = pick(2 * ndims - 6 + with_groups, OIw8i8o, gOIw8i8o,
                     OIhw8i8o, gOIhw8i8o, OIdhw8i8o, gOIdhw8i8o);
             break;
+        case sve_128:
+            dst_tag = dat_tag_nCx4c;
+            src_tag = jcp.is_1stconv ? dat_tag_ncx : dat_tag_nCx4c;
+            wei_tag = pick(2 * ndims - 6 + with_groups, OIw4i4o, gOIw4i4o,
+                    OIhw4i4o, gOIhw4i4o, OIdhw4i4o, gOIdhw4i4o);
+            break;
         default: break;
     }
 
@@ -1004,6 +1014,11 @@ status_t jit_sve_conv_fwd_kernel<isa>::init_conf(jit_conv_conf_t &jcp,
                     wei_tag = with_groups
                             ? pick(ndims - 3, gOwi8o, gOhwi8o, gOdhwi8o)
                             : pick(ndims - 3, Owi8o, Ohwi8o, Odhwi8o);
+                    break;
+                case sve_128:
+                    wei_tag = with_groups
+                            ? pick(ndims - 3, gOwi4o, gOhwi4o, gOdhwi4o)
+                            : pick(ndims - 3, Owi4o, Ohwi4o, Odhwi4o);
                     break;
                 default: break;
             }
@@ -2168,7 +2183,7 @@ status_t jit_sve_conv_bwd_data_kernel_f32<isa>::init_conf(jit_conv_conf_t &jcp,
     jcp.oc_tail = is_data_layout_nxc ? jcp.oc % jcp.simd_w : 0;
 
     format_tag_t dat_tag, wei_tag;
-    const auto nxc_tag = pick(ndims - 3, nwc, nhwc, ndhwc);
+    // const auto nxc_tag = pick(ndims - 3, nwc, nhwc, ndhwc);
 
     if (jcp.simd_w == 8) {
         dat_tag = is_data_layout_nxc ? pick(ndims - 3, nwc, nhwc, ndhwc)
@@ -2176,10 +2191,10 @@ status_t jit_sve_conv_bwd_data_kernel_f32<isa>::init_conf(jit_conv_conf_t &jcp,
         wei_tag = pick(2 * ndims - 6 + with_groups, OIw8o8i, gOIw8o8i, OIhw8o8i,
                 gOIhw8o8i, OIdhw8o8i, gOIdhw8o8i);
     } else if (jcp.simd_w == 4) {
-        assert(with_groups);
-        dat_tag = is_data_layout_nxc ? nxc_tag
+        dat_tag = is_data_layout_nxc ? pick(ndims - 3, nwc, nhwc, ndhwc)
                                      : pick(ndims - 3, nCw4c, nChw4c, nCdhw4c);
-        wei_tag = pick(ndims - 3, gOIw4o4i, gOIhw4o4i, gOIdhw4o4i);
+        wei_tag = pick(2 * ndims - 6 + with_groups, OIw4o4i, gOIw4o4i, OIhw4o4i,
+                gOIhw4o4i, OIdhw4o4i, gOIdhw4o4i);
     } else {
         dat_tag = is_data_layout_nxc
                 ? pick(ndims - 3, nwc, nhwc, ndhwc)
@@ -2645,7 +2660,7 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::compute_ic_block_step(int ur_w,
     };
 
     int pre_loaded_ur = 0;
-    /* 
+    /*
      * This loop generates the ld1rw instruction as much as possible
      * before the loop that generates the fmla instruction.
      */
@@ -4053,12 +4068,13 @@ status_t jit_sve_conv_bwd_weights_kernel_f32<isa>::init_conf(
     const int max_filter_size = 20;
     const auto dat_tag_nxc = pick(ndims - 3, nwc, nhwc, ndhwc);
     const auto dat_tag_ncx = pick(ndims - 3, ncw, nchw, ncdhw);
+    const auto dat_tag_nCx4c = pick(ndims - 3, nCw4c, nChw4c, nCdhw4c);
     const auto dat_tag_nCx8c = pick(ndims - 3, nCw8c, nChw8c, nCdhw8c);
     const auto dat_tag_nCx16c = pick(ndims - 3, nCw16c, nChw16c, nCdhw16c);
     auto curr_src_tag = src_d.matches_one_of_tag(
-            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c, dat_tag_ncx);
+            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c, dat_tag_nCx4c, dat_tag_ncx);
     auto curr_dst_tag = diff_dst_d.matches_one_of_tag(
-            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c);
+            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c, dat_tag_nCx4c);
     bool is_data_layout_nxc
             = utils::everyone_is(dat_tag_nxc, curr_src_tag, curr_dst_tag);
     if (mayiuse(isa) && is_data_layout_nxc) return status::unimplemented;
@@ -4116,6 +4132,12 @@ status_t jit_sve_conv_bwd_weights_kernel_f32<isa>::init_conf(
             wei_tag = with_groups
                     ? pick(ndims - 3, gOIw8i8o, gOIhw8i8o, gOIdhw8i8o)
                     : pick(ndims - 3, OIw8i8o, OIhw8i8o, OIdhw8i8o);
+            break;
+        case sve_128:
+            dst_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx4c;
+            wei_tag = with_groups
+                    ? pick(ndims - 3, gOIw4i4o, gOIhw4i4o, gOIdhw4i4o)
+                    : pick(ndims - 3, OIw4i4o, OIhw4i4o, OIdhw4i4o);
             break;
         default: return status::unimplemented;
     }
@@ -4192,6 +4214,11 @@ status_t jit_sve_conv_bwd_weights_kernel_f32<isa>::init_conf(
                         ? pick(ndims - 3, gOwi8o, gOhwi8o, gOdhwi8o)
                         : pick(ndims - 3, Owi8o, Ohwi8o, Odhwi8o);
                 break;
+            case sve_128:
+                wei_tag = with_groups
+                        ? pick(ndims - 3, gOwi4o, gOhwi4o, gOdhwi4o)
+                        : pick(ndims - 3, Owi4o, Ohwi4o, Odhwi4o);
+                break;
             default: return status::unimplemented;
         }
 
@@ -4207,6 +4234,9 @@ status_t jit_sve_conv_bwd_weights_kernel_f32<isa>::init_conf(
                 break;
             case sve_256:
                 src_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx8c;
+                break;
+            case sve_128:
+                src_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx4c;
                 break;
             default: return status::unimplemented;
         }
@@ -4459,10 +4489,13 @@ void jit_sve_conv_bwd_weights_kernel_f32<isa>::balance(const jit_conv_conf_t &j,
 /*struct instantiation*/
 template struct jit_sve_conv_fwd_kernel<sve_512>;
 template struct jit_sve_conv_fwd_kernel<sve_256>;
+template struct jit_sve_conv_fwd_kernel<sve_128>;
 template struct jit_sve_conv_bwd_data_kernel_f32<sve_512>;
 template struct jit_sve_conv_bwd_data_kernel_f32<sve_256>;
+template struct jit_sve_conv_bwd_data_kernel_f32<sve_128>;
 template struct jit_sve_conv_bwd_weights_kernel_f32<sve_512>;
 template struct jit_sve_conv_bwd_weights_kernel_f32<sve_256>;
+template struct jit_sve_conv_bwd_weights_kernel_f32<sve_128>;
 
 } // namespace aarch64
 } // namespace cpu

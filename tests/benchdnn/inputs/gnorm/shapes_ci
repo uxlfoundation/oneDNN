@@ -1,13 +1,13 @@
 # Instance normalization
-g2mb2ic2iw4
-g7mb2ic7ih3iw4
-g5mb2ic5id9ih1iw10
+g2mb2ic2iw4_n"gnorm_ci_1d:1"
+g7mb2ic7ih3iw4_n"gnorm_ci_2d:1"
+g5mb2ic5id9ih1iw10_n"gnorm_ci_3d:1"
 
 # Group normalization
-g1mb2ic2iw4
-g2mb2ic8ih3iw4
-g5mb2ic10id9ih1iw10
-g5mb2ic40id2ih1iw5
-g5mb2ic80id2ih1iw5
-g1mb1ic128ih2iw2
-g2mb2ic30ih1iw1
+g1mb2ic2iw4_n"gnorm_ci_1d:2"
+g2mb2ic8ih3iw4_n"gnorm_ci_2d:2"
+g5mb2ic10id9ih1iw10_n"gnorm_ci_3d:2"
+g5mb2ic40id2ih1iw5_n"gnorm_ci_3d:3"
+g5mb2ic80id2ih1iw5_n"gnorm_ci_3d:4"
+g1mb1ic128ih2iw2_n"gnorm_ci_2d:3"
+g2mb2ic30ih1iw1_n"gnorm_ci_2d:4"

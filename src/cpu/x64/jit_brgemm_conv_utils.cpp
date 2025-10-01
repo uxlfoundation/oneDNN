@@ -205,6 +205,37 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     loop_t loop[MAXNLOOPS];
 };
 
+int get_comp_ow_size(const jit_brgemm_conv_conf_t &jcp) {
+    if (jcp.exec_type == exec_vpad) return 1;
+
+    const auto IW = jcp.iw;
+    const auto DW = jcp.dilate_w + 1;
+    const auto KW = jcp.kw;
+    const auto SW = jcp.stride_w;
+    const auto LP = jcp.l_pad;
+    int comp_ow_size = 0;
+
+    for (int ow = 0; ow < jcp.ow;) {
+        const auto iiw = ow * SW - LP;
+        const auto kw_s = div_up(nstl::max(0, -iiw), DW);
+        const auto kw_f
+                = KW - div_up(nstl::max(0, iiw - IW + (KW - 1) * DW + 1), DW);
+        int ow_e = ow;
+        while (ow_e < jcp.ow) {
+            const auto iiw_e = ow_e * SW - LP;
+            const auto cur_kw_s = div_up(nstl::max(0, -iiw_e), DW);
+            const auto cur_kw_f = KW
+                    - div_up(nstl::max(0, iiw_e - IW + (KW - 1) * DW + 1), DW);
+            if (cur_kw_s != kw_s || cur_kw_f != kw_f) break;
+            if (ow_e - ow < jcp.ow_block) comp_ow_size++;
+            ow_e++;
+        }
+        ow = ow_e;
+    }
+
+    return comp_ow_size;
+}
+
 bool is_any_eligible(const jit_brgemm_conv_conf_t &jcp) {
     return (jcp.prop_kind == prop_kind::forward_inference || jcp.wei_plain
             || one_of(jcp.wei_dt, data_type::s8, data_type::f16,
@@ -2412,6 +2443,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                     kw_cnt * (jcp.dilate_w + 1)
                             + jcp.ow_block) //rnd_up(kw_cnt * (jcp.dilate_w + 1) + jcp.ow_block, jcp.ow_block))
             : 1;
+    jcp.comp_ow_size = get_comp_ow_size(jcp);
     //printf("kw_cnt: %d, l pad: %d, sw: %d, dw: %d\n", kw_cnt, jcp.l_pad, jcp.stride_w, jcp.dilate_w);
     jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size
             * jcp.comp_ow_size * jcp.oc_block;

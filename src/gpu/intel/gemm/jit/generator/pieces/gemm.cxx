@@ -242,6 +242,14 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (aoScalarLoad) loadABO(problem.Tao, state.inputs.ao, state.inputs.aoPtr);
     if (boScalarLoad) loadABO(problem.Tbo, state.inputs.bo, state.inputs.boPtr);
 
+    if (problem.postOps.cMXScale) {
+        auto unrollM = strategy.unroll[LoopM];
+        auto unrollN = strategy.unroll[LoopN];
+        int n_elems = (unrollN / problem.cqGroupN) * (unrollM / problem.cqGroupM);
+        int n_regs = std::max(1, n_elems / GRF::bytes(hw));
+        state.tmpCScales = state.ra.alloc_range(n_regs);
+    }
+
     if (problem.postOps.cStochasticRound) {
         state.inputs.sroundSeed = state.ra.alloc_sub(DataType::ud, getHint(HintType::LongTerm, strategy));
         vector<Subregister> srcs;

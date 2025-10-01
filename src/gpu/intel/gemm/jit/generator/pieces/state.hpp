@@ -192,7 +192,7 @@ struct GEMMState : public CommonState {
         ngen::Subregister A, B, C[2], CO, base, tempC;      // q
         ngen::Subregister ao, bo, abo;                      // w/w/ud
         ngen::Subregister aoPtr, boPtr;                     // q
-        ngen::Subregister aScalePtr, bScalePtr;             // q
+        ngen::Subregister aScalePtr, bScalePtr, cScalePtr;  // q
         ngen::Subregister agPtr, bgPtr;                     // q
         ngen::Subregister offsetA, offsetB, offsetC[2];     // q
         ngen::Subregister offsetAO, offsetBO, offsetCO;     // d
@@ -201,9 +201,9 @@ struct GEMMState : public CommonState {
         ngen::Subregister offsetAq, offsetBq;               // d
         ngen::Subregister lda, ldb, ldc[2];                 // d
         ngen::Subregister ldao, ldbo, ldco;                 // d
-        ngen::Subregister ldaScale, ldbScale;               // d
+        ngen::Subregister ldaScale, ldbScale, ldcScale;     // d
         ngen::Subregister ldag, ldbg;                       // d
-        ngen::Subregister ldaq, ldbq;                       // d
+        ngen::Subregister ldaq, ldbq, ldcq;                 // d
         ngen::Subregister m, n, k, k0;                      // d
         SubregisterPair alpha_real, alpha_imag;             // T_real
         SubregisterPair beta_real, beta_imag;               // T_real
@@ -229,11 +229,13 @@ struct GEMMState : public CommonState {
         uint8_t surfaceB, surfaceBO, surfaceBScale;         // BTS indices
         uint8_t surfaceAg, surfaceBg;                       // BTS
         uint8_t surfaceC[2], surfaceCO, surfaceTempC;       // BTS
+        uint8_t surfaceCScale;                              // BTS
         std::vector<ngen::Subregister> strideA;             // ud, used for strided batch.
         std::vector<ngen::Subregister> strideB;             // ud
         std::vector<ngen::Subregister> strideC;             // ud
         std::vector<ngen::Subregister> strideScaleA;        // ud, used for strided batch.
         std::vector<ngen::Subregister> strideScaleB;        // ud
+        std::vector<ngen::Subregister> strideScaleC;        // ud
         std::vector<ngen::Subregister> strideOffsetA;       // ud
         std::vector<ngen::Subregister> strideOffsetB;       // ud
         std::vector<ngen::Subregister> strideGroupSumsA;    // ud
@@ -258,7 +260,7 @@ struct GEMMState : public CommonState {
     ngen::Subregister persistentGroupID;                    // ud
     ngen::Subregister batchID[4];                           // ud
     ngen::Subregister offsetA, offsetB, offsetC[2];
-    ngen::Subregister offsetAs, offsetBs;
+    ngen::Subregister offsetAs, offsetBs, offsetCs;
     ngen::Subregister offsetAo, offsetBo;
     ngen::Subregister offsetAp, offsetBp, offsetCp;
     ngen::Subregister offsetCO;
@@ -281,7 +283,7 @@ struct GEMMState : public CommonState {
     std::vector<ngen::GRFRange> Ap_addrs, Bp_addrs, Cp_addrs;
     std::vector<ngen::GRFRange> Ap_addrsAlt, Bp_addrsAlt;
     std::vector<ngen::GRFRange> A_offsetAddrs, B_offsetAddrs;
-    std::vector<ngen::GRFRange> A_scaleAddrs, B_scaleAddrs;
+    std::vector<ngen::GRFRange> A_scaleAddrs, B_scaleAddrs, C_scaleAddrs;
     std::vector<ngen::GRFRange> Ag_addrs, Bg_addrs;
     std::vector<GRFMultirange> A_regs, B_regs, C_regs;
     GRFMultirange Ar_regs, Br_regs;                         // Repacked A/B registers.
@@ -312,7 +314,7 @@ struct GEMMState : public CommonState {
     ngen::Subregister remFusedStorage;                      // d
     ngen::Subregister diagA, diagB, diagC;                  // d
     SubregisterPair lda, ldb;
-    SubregisterPair ldao, ldbo, ldag, ldbg, ldaScale, ldbScale;
+    SubregisterPair ldao, ldbo, ldag, ldbg, ldaScale, ldbScale, ldcScale;
     LDIncrements ldaIncrements, ldbIncrements;              // Cached lda * ka, ldb * kb
     LDIncrements ldaoIncrements, ldboIncrements;
     LDIncrements ldasIncrements, ldbsIncrements;
@@ -332,6 +334,7 @@ struct GEMMState : public CommonState {
     ngen::Subregister isCompute;                            // ud
     ngen::GRF sysSumAll1s;                                  // Ta/Tb
     ngen::GRF betaCheckReturn;
+    ngen::GRF tmpCScales;                                   // Internal storage of dynamic scales
     ngen::Subregister statusFlagAddr;                        // uq
     bool systolicSumA = false, systolicSumB = false;
     bool lateKLoopCheck = false;
@@ -365,7 +368,7 @@ struct GEMMState : public CommonState {
     RegisterLayout Ap_layout, Bp_layout, Cp_layout;
     RegisterLayout Ap_layoutAlt, Bp_layoutAlt;
     RegisterLayout A_offsetLayout, B_offsetLayout;
-    RegisterLayout A_scaleLayout, B_scaleLayout;
+    RegisterLayout A_scaleLayout, B_scaleLayout, C_scaleLayout;
     RegisterLayout Ag_layout, Bg_layout;
     RegisterLayout Ar_offsetLayout, Br_offsetLayout;
     RegisterLayout Ar_scaleLayout, Br_scaleLayout;

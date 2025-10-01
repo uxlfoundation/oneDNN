@@ -62,9 +62,11 @@ void dump_point_values(
 
     BENCHDNN_PRINT(0,
             "[%4" PRId64
-            "]%s[%s] exp_f32:%12g exp:%12g got:%12g diff:%8g rdiff:%8g\n",
+            "]%s[%s] exp_f32:%12g exp_x:%hhx exp:%12g got:%12g diff:%8g "
+            "rdiff:%8g\n",
             ctx.l_offset, kind_str.c_str(), ind_str.c_str(), ctx.exp_f32,
-            ctx.exp, ctx.got, ctx.diff, ctx.rel_diff);
+            dnnl::impl::float8_e8m0_t(ctx.exp_f32).raw_bits_, ctx.exp, ctx.got,
+            ctx.diff, ctx.rel_diff);
 }
 
 void dump_norm_values(

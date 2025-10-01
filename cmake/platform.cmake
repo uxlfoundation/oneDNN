@@ -1,5 +1,6 @@
 #===============================================================================
 # Copyright 2016-2025 Intel Corporation
+# Copyright 2025 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,10 +54,7 @@ endif()
 # the macros to avoid code duplication and ensure consistency.
 macro(platform_unix_and_mingw_common_ccxx_flags var)
     append(${var} "-Wall -Wno-unknown-pragmas")
-    # TODO: remove Aarch64 limitation when ACL hits are resolved.
-    if(NOT DNNL_TARGET_ARCH STREQUAL "AARCH64")
-        append(${var} "-Wundef")
-    endif()
+    append(${var} "-Wundef")
     append_if(DNNL_WERROR ${var} "-Werror")
     append(${var} "-fvisibility=internal")
 endmacro()

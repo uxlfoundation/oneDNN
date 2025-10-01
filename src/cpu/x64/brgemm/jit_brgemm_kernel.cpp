@@ -214,15 +214,15 @@ private:
     const reg64_savable_t reg_relative_batch {regscratchpad_, rbp};
 
     const reg64_savable_t reg_bias {regscratchpad_, rbx, r24};
-    const reg64_savable_t reg_src_scales {regscratchpad_, rbx, r23};
-    const reg64_savable_t reg_wei_scales {regscratchpad_, rbx, r22};
-    const reg64_savable_t reg_dst_scales {regscratchpad_, rbx, r20};
-    const reg64_savable_t reg_aux_bias {regscratchpad_, rbx, r18};
+    const reg64_savable_t reg_src_scales {regscratchpad_, rbx /*, r23*/};
+    const reg64_savable_t reg_wei_scales {regscratchpad_, rbx /*, r22*/};
+    const reg64_savable_t reg_dst_scales {regscratchpad_, rbx /*, r20 */};
+    const reg64_savable_t reg_aux_bias {regscratchpad_, rbx /*, r18*/};
     const reg64_savable_t reg_zp_comp_a {regscratchpad_, rbx};
     const reg64_savable_t reg_aux_zp_comp_a {regscratchpad_, rbx};
     const reg64_savable_t reg_zp_comp_b {regscratchpad_, rbx, r25};
     const reg64_savable_t reg_aux_zp_comp_b {regscratchpad_, rbx, r30};
-    const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx, r31};
+    const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx /*, r31*/};
     const reg64_savable_t reg_aux_zp_c_values {regscratchpad_, rbx};
     const reg64_savable_t reg_D_shift_bytes {regscratchpad_, rbx};
 
@@ -243,7 +243,7 @@ private:
     const reg64_savable_t reg_aux_compensation {regscratchpad_, rbx, r29};
 
     const reg64_savable_t reg_D {regscratchpad_, r11};
-    const reg64_savable_t reg_aux_D {regscratchpad_, rax, r27};
+    const reg64_savable_t reg_aux_D {regscratchpad_, rax /*, r27*/};
     const reg64_savable_backup_t reg_aux_D_backup {reg_aux_D, r28};
     const reg64_savable_backup_t reg_aux_D_bdb_loop_backup {reg_aux_D, r19};
     const reg64_savable_t reg_D_bdb_loop_shift {regscratchpad_, rbx, r21};

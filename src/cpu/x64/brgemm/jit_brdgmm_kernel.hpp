@@ -223,7 +223,7 @@ private:
     const injector_utils::reg64_savable_t reg_dst_zero_point {
             regscratchpad_, rax, r23};
     const injector_utils::reg64_savable_t reg_src_zero_point {
-            regscratchpad_, rax, r24};
+            regscratchpad_, rax /*, r24*/};
     const injector_utils::reg64_savable_t reg_zp_compensation {
             regscratchpad_, rbp, r25};
     // abi_param1 is used in post-ops injector and by reg_aux_B,

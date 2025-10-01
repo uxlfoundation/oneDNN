@@ -495,7 +495,7 @@ void Generator<hw>::gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMS
 template <HW hw>
 void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
-    if (poMin >= poMax && !problem.postOps.cStochasticRound) return;
+    if (poMin >= poMax && !problem.postOps.binaryPostProcess()) return;
 
     Label lSkip;
     and_(1 | nz | state.flagAP, null.ud(), state.inputs.flags, FlagNonfinalKBlock);
@@ -589,6 +589,17 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
     }
     if(problem.postOps.cStochasticRound) {
         problem.postOps.injectStochasticRound(this, state.ra, C_grfs, C_ngrf, state.inputs.sroundSeed, problem.Tc_ext.ngen());
+    }
+    if(problem.postOps.cMXScale) {
+        auto unrollM = strategy.unroll[LoopM];
+        auto unrollN = strategy.unroll[LoopN];
+        int n_elems = (unrollN / problem.cqGroupN) * (unrollM / problem.cqGroupM);
+        int n_regs = std::max(1, n_elems / GRF::bytes(hw));
+        auto tmpCScales = state.ra.alloc_range(n_regs);
+        auto cs_layout = RegisterLayout(hw, Type::f8_e8m0, unrollM * (unrollN/problem.cqGroupN), 1,  true, 1);
+        problem.postOps.injectMXScale(this, state.ra, C_grfs, C_ngrf, tmpCScales.sub(hw, 0, ngen::DataType::ub), problem.Tc_ext.ngen(), unrollN);
+        storeMatrix(tmpCScales, cs_layout, state.C_scaleAddrs, strategy, state);
+        state.ra.safeRelease(tmpCScales);
     }
 
     mark(lSkip);

@@ -153,6 +153,8 @@ const alg_kind_t eltwise_stochastic_round
 // all axis values are -inf.
 const alg_kind_t softmax_accurate_inf_as_zero
         = (alg_kind_t)(internal_only_start + 2);
+// GPU only via jit_eltwise injector.
+const alg_kind_t eltwise_mx_scale = (alg_kind_t)(internal_only_start + 3);
 } // namespace alg_kind
 
 using data_type_t = dnnl_data_type_t;

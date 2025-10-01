@@ -426,11 +426,11 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         int eu_count, bool has_systolic, bool is_integrated, compute_mode mode,
         int batch_dims, bool trans_a, bool trans_b, bool trans_co, bool swap_ab,
         const quant_params &a_quant, const quant_params &b_quant,
-        bool dst_sround, bool c_offset, bool bias, sum_ab_t reduce_ab,
-        float alpha, float beta, data_type_t a_type, data_type_t b_type,
-        data_type_t c_type, data_type_t co_type, data_type_t acc_type,
-        int align_a, int align_b, int align_c, dim_t m, dim_t n, dim_t k,
-        dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
+        const quant_params &c_quant, bool dst_sround, bool c_offset, bool bias,
+        sum_ab_t reduce_ab, float alpha, float beta, data_type_t a_type,
+        data_type_t b_type, data_type_t c_type, data_type_t co_type,
+        data_type_t acc_type, int align_a, int align_b, int align_c, dim_t m,
+        dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
         gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
@@ -505,8 +505,8 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.bsPtrDims = b_quant.scale_ndims;
         problem_.aqGroupK = a_quant.group_k;
         problem_.bqGroupK = b_quant.group_k;
-        problem_.aqGroupM = a_quant.group_mn;
-        problem_.bqGroupN = b_quant.group_mn;
+        problem_.aqGroupM = a_quant.group_m;
+        problem_.bqGroupN = b_quant.group_n;
         if (a_quant.scales_type != data_type::undef) {
             problem_.Ta_scale
                     = convert_dnnl_to_kernel_type(a_quant.scales_type);
@@ -525,8 +525,8 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.asPtrDims = b_quant.scale_ndims;
         problem_.bqGroupK = a_quant.group_k;
         problem_.aqGroupK = b_quant.group_k;
-        problem_.bqGroupN = a_quant.group_mn;
-        problem_.aqGroupM = b_quant.group_mn;
+        problem_.bqGroupN = a_quant.group_n;
+        problem_.aqGroupM = b_quant.group_m;
         if (a_quant.scales_type != data_type::undef) {
             problem_.Tb_scale
                     = convert_dnnl_to_kernel_type(a_quant.scales_type);
@@ -541,6 +541,8 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
                     int(types::data_type_size(b_quant.scales_type)));
         }
     }
+    problem_.cqGroupM = c_quant.group_m;
+    problem_.cqGroupN = c_quant.group_n;
 
     if (problem_.Ta_ext.isInt4() && problem_.Tb_ext.isInt8()
             && a_quant.zp_ndims >= 0)
@@ -573,6 +575,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     problem_.forceGroupSumsB = b_quant.force_gs;
 
     problem_.postOps.cStochasticRound = dst_sround;
+    problem_.postOps.cMXScale = (c_quant.scale_ndims != -1);
 
     if (problem_.needsAGroupSums() || problem_.needsBGroupSums())
         problem_.autoTypeConversions(hw_, has_systolic);
@@ -999,6 +1002,9 @@ void gen_kernel_t::init_interface() {
     if (problem.bScale2D())
         interface_.newArgument(
                 "b_scale_ptr", ExternalArgumentType::GlobalPtr, bs_access);
+    if (problem.postOps.cMXScale)
+        interface_.newArgument(
+                "c_scale_ptr", ExternalArgumentType::GlobalPtr, c_access);
     if (problem.needsAGroupSums())
         interface_.newArgument(
                 "ag_ptr", ExternalArgumentType::GlobalPtr, ag_access);

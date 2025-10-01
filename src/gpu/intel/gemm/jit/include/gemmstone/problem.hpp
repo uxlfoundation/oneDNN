@@ -171,6 +171,7 @@ struct GEMMProblem : public CommonProblem {
     int asPtrDims = -1, bsPtrDims = -1;           // A/B scale dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
     int aqGroupM = 0, aqGroupK = 0;                 // Group sizes for A quantization parameters (offsets and scales)
     int bqGroupN = 0, bqGroupK = 0;                 // Group sizes for B quantization parameters (offsets and scales)
+    int cqGroupM = 0, cqGroupN = 0;                 // Group sizes for C quantization parameters (offsets and scales)
     COffset cOffset = COffset::None;                // C offset mode.
     BatchMode batch = BatchMode::None;              // Batch mode.
     int batchDims = 0;                              // # of batch dimensions (strided batch only).

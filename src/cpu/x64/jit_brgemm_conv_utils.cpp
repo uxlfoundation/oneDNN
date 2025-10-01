@@ -205,6 +205,37 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     loop_t loop[MAXNLOOPS];
 };
 
+dim_t get_comp_ow_size(const jit_brgemm_conv_conf_t &jcp) {
+    if (jcp.exec_type == exec_vpad) return 1;
+
+    const auto IW = jcp.iw;
+    const auto DW = jcp.dilate_w + 1;
+    const auto KW = jcp.kw;
+    const auto SW = jcp.stride_w;
+    const auto LP = jcp.l_pad;
+    dim_t comp_ow_size = 0;
+
+    for (int ow = 0; ow < jcp.ow;) {
+        const auto iiw = ow * SW - LP;
+        const auto kw_s = div_up(nstl::max(0, -iiw), DW);
+        const auto kw_f
+                = KW - div_up(nstl::max(0, iiw - IW + (KW - 1) * DW + 1), DW);
+        int ow_e = ow;
+        while (ow_e < jcp.ow) {
+            const auto iiw_e = ow_e * SW - LP;
+            const auto cur_kw_s = div_up(nstl::max(0, -iiw_e), DW);
+            const auto cur_kw_f = KW
+                    - div_up(nstl::max(0, iiw_e - IW + (KW - 1) * DW + 1), DW);
+            if (cur_kw_s != kw_s || cur_kw_f != kw_f) break;
+            if (ow_e - ow < jcp.ow_block) comp_ow_size++;
+            ow_e++;
+        }
+        ow = ow_e;
+    }
+
+    return comp_ow_size;
+}
+
 bool is_any_eligible(const jit_brgemm_conv_conf_t &jcp) {
     return (jcp.prop_kind == prop_kind::forward_inference || jcp.wei_plain
             || one_of(jcp.wei_dt, data_type::s8, data_type::f16,
@@ -2237,9 +2268,11 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                 && IMPLICATION(jcp.wei_dt == f16, isa != avx10_1_512)
                 && jcp.ic * rd_ksize > rd_padded_block;
 
+        // Disable os blocking to avoid using large buffer
+        // The value is empirical
         jcp.is_os_blocking = jcp.f_pad < jcp.kd && jcp.back_pad < jcp.kd
                 && jcp.t_pad < jcp.kh && jcp.b_pad < jcp.kh
-                && jcp.r_pad < jcp.kw && jcp.l_pad < jcp.kw;
+                && jcp.r_pad < jcp.kw && jcp.l_pad < jcp.kw && jcp.iwp < 10800;
 
         if (is_amx(isa)
                 && IMPLICATION(!jcp.is_relo(),
@@ -2394,21 +2427,14 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             + utils::div_up(abs(jcp.back_pad), jcp.dilate_d + 1);
     const auto kh_cnt = 1 + utils::div_up(abs(jcp.t_pad), jcp.dilate_h + 1)
             + utils::div_up(abs(jcp.b_pad), jcp.dilate_h + 1);
-    jcp.ker_ranges_size = jcp.exec_type == exec_trans
-            ? kd_cnt * nstl::min(jcp.oh, jcp.oh_block + kh_cnt)
-            : kd_cnt * kh_cnt;
-    const auto comp_buffer_ow = jcp.exec_type != exec_vpad ? jcp.ow : 1;
+    jcp.ker_ranges_size = jcp.exec_type == exec_trans ? kd_cnt
+                    * nstl::min(
+                            jcp.oh, rnd_up(jcp.oh_block + kh_cnt, jcp.oh_block))
+                                                      : kd_cnt * kh_cnt;
+    jcp.comp_ow_size = get_comp_ow_size(jcp);
     jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size
-            * comp_buffer_ow * jcp.oc_block;
+            * jcp.comp_ow_size * jcp.oc_block;
     jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;
-
-    // Dispatch the shapes to VNNI for better performance
-    // TODO: optimize the perf for zero point with large buffer on AMX
-    if (is_amx(isa) && jcp.src_zero_point && jcp.exec_type == exec_trans
-            && (jcp.l_pad > 0 || jcp.r_pad > 0) && jcp.oc * jcp.ow > 8192)
-        VDISPATCH_CONV_IC(!allow_perf_heuristics(jcp),
-                VERBOSE_IMPL_HEURISTIC_FAIL,
-                "no optimization for zero point on amx")
 
     // For padding shapes, we calculate the comp along with the computation
     // inside brgemm kernel when output size is small to get optimal perf
@@ -2650,6 +2676,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         weights_md.extra.asymm_compensation_mask = with_groups ? 0x3 : 0x1;
     }
     jcp.req_cal_comp_pad = false;
+    jcp.comp_ow_size = 1;
     jcp.s8s8_comp_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.oc_block;
     jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.oc_block;
 

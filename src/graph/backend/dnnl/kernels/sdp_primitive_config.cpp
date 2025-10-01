@@ -59,10 +59,6 @@ status_t sdp_primitive_config_t::initial_check(
                 status::unimplemented, "Not support quantized SDPA");
         if (opk == graph::op_kind::GenIndex) { has_genindex = true; }
     }
-    if (is_f32 && !has_genindex) {
-        VCHECK_SDP_PRIMITIVE(false, status::unimplemented,
-                "only implicit causal mask for f32 sdpa");
-    }
 
     // step1(pattern check): Not support sdpa variants with select as mask
     // We already have a pattern matcher to ensure that the sdpa patterns
@@ -180,6 +176,21 @@ status_t sdp_primitive_config_t::initial_check(
 
     VCHECK_SDP_PRIMITIVE(q_id != -1 && k_id != -1 && v_id != -1,
             status::unimplemented, "Q, K, V are not found");
+
+    dims q_dims = ltw(inputs[q_id]).vdims();
+    const size_t q_ndims = q_dims.size();
+    VCHECK_SDP_PRIMITIVE(q_ndims == 4, status::unimplemented,
+            "input ndims (Q) can only be == 4");
+    const dim_t seq_len_q = q_dims[2];
+    const dim_t head_size_qk = q_dims[3];
+    const bool thinq = seq_len_q < 16;
+    const bool opt_prefill = head_size_qk <= 64 && !thinq;
+
+    if (is_f32 && !(has_genindex || opt_prefill)) {
+        VCHECK_SDP_PRIMITIVE(false, status::unimplemented,
+                "f32 fused sdpa supported for: causal mask or cases with "
+                "head_size <= 64, seq_len >= 16");
+    }
 
     // sdp_primitive only supports single scale value.
     if (scale) {

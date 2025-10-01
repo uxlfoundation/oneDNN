@@ -161,6 +161,26 @@ struct PostOpsProblem {
         injector.prepare();
         injector.compute(C_grfs, C_ngrf, seed.getBase(), seed.getOffset(), t);
     }
+
+    template <ngen::HW hw>
+    void injectMXScale(GENERATOR_BASE(hw) * g, ngen::RegisterAllocator ra,
+            int C_grfs[ngen::GRF::maxRegs()], int C_ngrf,
+            const ngen::Subregister &scaleDst, ngen::DataType t,
+            int unroll) const {
+        namespace jit = dnnl::impl::gpu::intel::jit;
+        using Injector = jit::eltwise_injector_f32_t<
+                typename jit::generator_t<hw>::RootCodeGenerator>;
+        Injector injector {g, dnnl::impl::alg_kind::eltwise_mx_scale, 0.0, 0.0,
+                1.0, ngen::GRFRange(), fwd};
+        auto scratch = ra.try_alloc_range(injector.preferred_scratch_regs());
+        if (scratch.isInvalid())
+            scratch = ra.alloc_range(injector.min_scratch_regs());
+        if (scratch.isInvalid()) gpu_error_not_expected();
+
+        injector.set_scratch(scratch);
+        injector.prepare();
+        injector.compute(C_grfs, C_ngrf, scaleDst.getBase(), unroll, t);
+    }
 };
 // NOLINTEND(readability-identifier-naming)
 

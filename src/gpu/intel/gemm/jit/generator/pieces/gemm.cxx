@@ -242,6 +242,14 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (aoScalarLoad) loadABO(problem.Tao, state.inputs.ao, state.inputs.aoPtr);
     if (boScalarLoad) loadABO(problem.Tbo, state.inputs.bo, state.inputs.boPtr);
 
+    if (problem.hasCMXScale()) {
+        auto unrollM = strategy.unroll[LoopM];
+        auto unrollN = strategy.unroll[LoopN];
+        int n_elems = (unrollN / problem.cqGroupN) * (unrollM / problem.cqGroupM);
+        int n_regs = std::max(1, n_elems / GRF::bytes(hw));
+        state.tmpCScales = state.ra.alloc_range(n_regs);
+    }
+
     if (problem.postOps.cStochasticRound) {
         state.inputs.sroundSeed = state.ra.alloc_sub(DataType::ud, getHint(HintType::LongTerm, strategy));
         vector<Subregister> srcs;
@@ -272,6 +280,8 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (problem.bqGroupK == 0) problem.bqGroupK = strategy.slmB ? strategy.unrollKSLM : strategy.kb_load;
     if (problem.aqGroupM == 0) problem.aqGroupM = 1;
     if (problem.bqGroupN == 0) problem.bqGroupN = 1;
+    if (problem.cqGroupM == 0) problem.cqGroupM = 1;
+    if (problem.cqGroupN == 0) problem.cqGroupN = 1;
 
     // Persistent thread preparation and re-entry.
     if (strategy.persistentLoop()) {

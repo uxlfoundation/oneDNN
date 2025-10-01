@@ -81,6 +81,7 @@ public:
             // Note: `eltwise_stochastic_round` is not a part of `enum` which
             // forces `switch` to iterate over `int`, not `alg_kind_t`.
             case alg_kind::eltwise_stochastic_round: return "stochastic_round";
+            case alg_kind::eltwise_mx_scale: return "mx_scale";
             default: gpu_error_not_expected();
         }
         return "unknown";
@@ -106,7 +107,8 @@ private:
         , beta(beta)
         , seed(seed)
         , dst_dt(dst_dt) {
-        assert(alg_kind == alg_kind::eltwise_stochastic_round);
+        assert(utils::one_of(alg_kind, alg_kind::eltwise_stochastic_round,
+                alg_kind::eltwise_mx_scale));
     }
 
     eltwise_t(alg_kind_t alg_kind, float scale, float alpha, float beta)
@@ -115,7 +117,8 @@ private:
         , scale(scale)
         , alpha(alpha)
         , beta(beta) {
-        assert(alg_kind != alg_kind::eltwise_stochastic_round);
+        assert(!utils::one_of(alg_kind, alg_kind::eltwise_stochastic_round,
+                alg_kind::eltwise_mx_scale));
     }
 };
 

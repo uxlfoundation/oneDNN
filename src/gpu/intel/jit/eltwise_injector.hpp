@@ -40,7 +40,8 @@ inline bool eltwise_injector_f32_is_supported(alg_kind_t alg) {
             eltwise_tanh, eltwise_tanh_use_dst_for_bwd, eltwise_abs,
             eltwise_round, eltwise_linear, eltwise_clip, eltwise_clip_v2,
             eltwise_clip_v2_use_dst_for_bwd, eltwise_logistic,
-            eltwise_logistic_use_dst_for_bwd, eltwise_stochastic_round);
+            eltwise_logistic_use_dst_for_bwd, eltwise_stochastic_round,
+            eltwise_mx_scale);
 }
 
 template <typename ngen_generator_t>
@@ -123,6 +124,9 @@ private:
     void sround_compute_fwd(int simd, const ngen::GRF &r, int phase,
             const ngen::Subregister &seed, const ngen::DataType dst_dt,
             int off);
+    void mx_scale_compute_fwd(int simd, const ngen::GRF &r, int phase,
+            const ngen::Subregister &dst_base, int dst_off,
+            const ngen::DataType dst_dt, int off);
     void philox_4x32(
             int simd, const ngen::Subregister &seed, const ngen::GRF &bias);
     void swish_compute_fwd(int simd, const ngen::GRF &r, int phase, int off);

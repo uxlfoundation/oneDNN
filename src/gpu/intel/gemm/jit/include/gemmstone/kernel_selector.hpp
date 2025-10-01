@@ -51,6 +51,7 @@ struct MatchParamsBase
 #if XE3P
     bool ReqBDPASDims = false;
 #endif
+    bool reqNUnroll32 = false;
     int stepping = 0;
     int alignment[3] = {0, 0, 0};
     kcatalog::string tags, lateTags;

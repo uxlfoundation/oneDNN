@@ -138,6 +138,9 @@ bool matches(const kcatalog::Entry &e, const MatchParams &p)
         ok = ok && (e.driverInfo.unroll[LoopN] % 8 == 0);
     }
 #endif
+    if (p.reqNUnroll32){
+        ok = ok && (e.driverInfo.unroll[LoopM] % 32 == 0);
+    }
 
     for (int i = 0; i < p.nExtraReqs; i++)
         ok = ok && strategyMatch(e.driverInfo, p.extraReqs[i]);
@@ -323,6 +326,7 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     using namespace kcatalog;
 
     auto problem = problem_;
+    reqNUnroll32 = problem.hasCMXScale();
 
     switch (hw) {
         default: assert(!"Unknown architecture");

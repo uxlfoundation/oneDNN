@@ -227,7 +227,7 @@ static status_t init_conf_common(
         c_is_last_physical = src_mdw.blocking_desc().strides[ndims - 1] == 1;
     }
 
-    VDISPATCH_LNORM_IC(src_mdw.is_dense() || !c_is_last_physical || ndims >= 4,
+    VDISPATCH_LNORM_IC((src_mdw.is_dense() && c_is_last_physical && ndims < 4),
             "bad md configuration");
 
     conf.dispatch_scaleshift = intel_engine->create_dispatch();

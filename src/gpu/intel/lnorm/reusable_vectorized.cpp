@@ -101,16 +101,13 @@ static status_t init_conf_common(const pd_t *pd,
 
     memory_desc_wrapper src_mdw(pd->src_md());
     memory_desc_wrapper dst_mdw(pd->dst_md());
-    if (src_mdw.blocking_desc().inner_nblks != 0
-            || dst_mdw.blocking_desc().inner_nblks != 0) {
-        VDISPATCH_LNORM_IC(src_mdw.blocking_desc().inner_nblks == 0
-                        && dst_mdw.blocking_desc().inner_nblks == 0,
-                "reusable vectorized lnorm not used because source or "
-                "destination tensors have blocked memory layouts.");
-    }
+    VDISPATCH_LNORM_IC(src_mdw.blocking_desc().inner_nblks == 0
+                    && dst_mdw.blocking_desc().inner_nblks == 0,
+            "reusable vectorized lnorm not used because source or "
+            "destination tensors have blocked memory layouts.");
 
     bool c_is_last_physical = src_mdw.blocking_desc().strides[ndims - 1] == 1;
-    VDISPATCH_LNORM_IC(src_mdw.is_dense() || !c_is_last_physical,
+    VDISPATCH_LNORM_IC(src_mdw.is_dense() && c_is_last_physical,
             "reusable vectorized lnorm not used because the source tensor "
             "is not dense(%s) or the last axis(stride[ndims-1] = %d) "
             "is not continuous.",

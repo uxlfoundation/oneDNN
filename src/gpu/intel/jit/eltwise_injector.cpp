@@ -63,6 +63,7 @@ int eltwise_injector_f32_t<ngen_generator_t>::min_scratch_regs() {
             case eltwise_logistic:
             case eltwise_logistic_use_dst_for_bwd: return 0;
             case eltwise_stochastic_round: return 6;
+            case eltwise_mx_scale: return 6;
             default: assert(!"unsupported eltwise algorithm");
         }
     } else {
@@ -304,6 +305,52 @@ template <typename ngen_generator_t>
 void eltwise_injector_f32_t<ngen_generator_t>::round_compute_fwd(
         int simd, const ngen::GRF &r) {
     h->rnde(simd, r, r);
+}
+
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
+        const ngen::GRF &r, int off, const ngen::Subregister &seed, int nreg,
+        const ngen::DataType dst_dt, int phase) {
+    assert(simd == 32);
+    //assert(utils::one_of(dst_dt, ngen::DataType::f8_e5m2, ngen::DataType::f4_e2m1));
+    assert(dst_dt == ngen::DataType::bf8);
+    GRFRange r_range(r, nreg);
+    ngen::GRF r_alt(off);
+    auto max = scratch_[0].f();
+    auto tmp = scratch_[1].f();
+    auto fmax = (dst_dt == ngen::DataType::bf8) ? Immediate::f(57344)
+                                                : Immediate::f(6);
+    auto scale_dst = seed.offset(off / nreg);
+    h->template mov<float>(4, max, Immediate::f(0));
+
+    // Get Max value from group.
+    h->sel(16 | ge, max.f(0)(1), abs(r.f(0)(1)), abs(r_alt.f(0)(1)));
+    for (int i = 0; i < 16; i += 4) {
+        h->mov(4, tmp.ud(0)(1), max.ud(i)(1));
+        h->sel(4 | ge, max.f(0), max.f(0)(1), tmp.f(0)(1));
+    }
+    h->mov(2, tmp.ud(0)(1), max.ud(2)(1));
+    h->sel(2 | ge, max, max.f(0)(1), tmp.f(0)(1));
+    h->mov(2, tmp.ud(0)(1), max.ud(1)(1));
+    h->sel(1 | ge, max, max.f(0)(1), tmp.f(0)(1));
+
+    // Clamp max to e8m0 range.
+    // TODO: replace with bfn
+    h->shr(1, max.ud(0), max.ud(0), 23);
+    h->shl(1, max.ud(0), max.ud(0), 23);
+
+    // Compute 1/scale.
+    h->inv(1, max.f(1), max.f(0));
+    h->mul(1, max.f(1), max.f(1), fmax);
+
+    // Apply scale to dst.
+    h->mul(16, r, r, max.f(1)(0));
+    h->mul(16, r_alt.f(0)(1), r_alt.f(0)(1), max.f(1)(0));
+
+    // Store scale value.
+    h->inv(1, max.f(0), max.f(1));
+    h->shr(1, max.ud(0), max.ud(0), 23);
+    h->mov(1, scale_dst.ub(0), max.ub(0));
 }
 
 template <typename ngen_generator_t>
@@ -847,6 +894,9 @@ void eltwise_injector_f32_t<ngen_generator_t>::compute(const int *grfs,
 
                 int simd = nreg * GRF::bytes(hw()) / sizeof(float);
 
+                auto grf0_t = grfs[idx0 + (ii / 2)];
+                auto base_t = GRF(grf0_t).f();
+                auto grf1 = grfs[idx0 + off + (ii / 2)];
                 if (is_fwd_) {
                     switch ((int)alg_) {
                         case eltwise_elu:
@@ -925,6 +975,10 @@ void eltwise_injector_f32_t<ngen_generator_t>::compute(const int *grfs,
                         case eltwise_stochastic_round:
                             sround_compute_fwd(simd, base, phase,
                                     GRF(seed).ud(off), dt, ii);
+                            break;
+                        case eltwise_mx_scale:
+                            mx_scale_compute_fwd(simd, base_t, grf1,
+                                    GRF(seed).ud(0), nreg, dt, ii);
                             break;
                         default: assert(!"unsupported eltwise algorithm");
                     }

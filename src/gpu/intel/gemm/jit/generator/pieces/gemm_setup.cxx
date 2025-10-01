@@ -904,6 +904,11 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
         scale(problem.Tb_scale, inputs.ldbScale, ldbq);
         scale(problem.Tb_scale, inputs.offsetBScale, inputs.offsetBq);
     }
+    if (problem.postOps.cMXScale){
+        inputs.ldcScale = state.ra.alloc_sub(inputs.n.getType(), getHint(HintType::LongTerm, strategy));
+        divDown(inputs.ldcScale, inputs.n, problem.cqGroupN, strategy, state);
+        emul(1, inputs.ldcScale, inputs.ldcScale, inputs.m, strategy, state);
+    }
     if (problem.needsAGroupSums()) {
         scale(problem.Tag, inputs.ldag, ldaq);
         scale(problem.Tag, inputs.offsetAg, inputs.offsetAq);
@@ -917,6 +922,7 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
     state.ldbo = inputs.ldbo;
     state.ldaScale = inputs.ldaScale;
     state.ldbScale = inputs.ldbScale;
+    state.ldcScale = inputs.ldcScale;
     state.ldag = inputs.ldag;
     state.ldbg = inputs.ldbg;
 
@@ -1788,6 +1794,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     allocAddrRegs(state.B_offsetAddrs, state.B_offsetLayout, state);
     allocAddrRegs(state.A_scaleAddrs, state.A_scaleLayout, state);
     allocAddrRegs(state.B_scaleAddrs, state.B_scaleLayout, state);
+    allocAddrRegs(state.C_scaleAddrs, state.C_scaleLayout, state);
     allocAddrRegs(state.Ag_addrs, state.Ag_layout, state);
     allocAddrRegs(state.Bg_addrs, state.Bg_layout, state);
 
@@ -1924,6 +1931,11 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     if (bg2D) {
         setupQAddr(Tbg, state.Bg_addrs, state.Bg_layout, state.inputs.bgPtr,
                    B_h0qLate, j0qLate, state.inputs.ldbg);
+    }
+
+    if (problem.postOps.cMXScale){
+        setupQAddr(Type::u8, state.C_scaleAddrs, state.C_scaleLayout, state.inputs.cScalePtr,
+                   i0q, j0q, state.inputs.ldcScale, state.offsetBs);
     }
 
     if (i0qLate != state.i0) state.ra.safeRelease(i0qLate);
@@ -2587,6 +2599,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         state.inputs.bScalePtr = interface.getArgumentIfExists("b_scale_ptr");
         state.inputs.surfaceBScale = interface.getArgumentSurfaceIfExists("b_scale_ptr");
     }
+    if (problem.postOps.cMXScale) {
+        state.inputs.cScalePtr = interface.getArgumentIfExists("c_scale_ptr");
+        state.inputs.surfaceCScale = interface.getArgumentSurfaceIfExists("c_scale_ptr");
+    }
     if (problem.needsAGroupSums()) {
         state.inputs.agPtr = interface.getArgumentIfExists("ag_ptr");
         state.inputs.surfaceAg = interface.getArgumentSurfaceIfExists("ag_ptr");
@@ -2817,6 +2833,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     if (problem.bScale2D()) {
         state.ra.claim(state.inputs.bScalePtr);
         claimIfValid(state.inputs.offsetBScale);
+    }
+
+    if (problem.postOps.cMXScale) {
+        state.ra.claim(state.inputs.cScalePtr);
     }
 
     if (problem.needsAGroupSums()) {

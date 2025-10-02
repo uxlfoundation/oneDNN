@@ -59,6 +59,7 @@ jobs:
         with:
           path: oneDNN
           fetch-tags: true
+          fetch-depth: 0
 
       # Note: This will create a github actions cache
       - name: Get latest CMake and Ninja
@@ -172,8 +173,11 @@ jobs:
 
       - name: Run git bisect
         if: failure()
+        shell: bash
         working-directory: ${{ github.workspace }}/oneDNN
         run: python .github/automation/aarch64/bisect_ctest.py --unique ${{ steps.get-stable.outputs.stable-hash }} ${{ github.workspace }}/test_results.xml
+        env:
+          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
 
       - name: Update wiki
         if: ${{ (success() || failure()) && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ryo-not-rio/wiki') }}

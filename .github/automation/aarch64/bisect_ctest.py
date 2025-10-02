@@ -61,10 +61,12 @@ def main():
 
     results_dict = {}
     for case in cases:
-        bisect_cmd = str(F_PATH / f"git_bisect.sh {args.good} HEAD")
+        bisect_cmd = str(F_PATH / f"git_bisect.sh")
         build_dir = str(F_PATH.parent.parent.parent / "build")
         result = subprocess.run(
-            args=[f"{bisect_cmd} {build_dir} {case}"],
+            args=[
+                f'bash {bisect_cmd} {args.good} HEAD {build_dir} "{case}"'
+            ],
             shell=True,
             capture_output=True,
         )
@@ -74,7 +76,12 @@ def main():
             results_dict[case] = "Unknown"
             continue
 
-        bad_hash = result.stdout.decode("utf-8").split("\n")[-2].split(" ")[-1]
+        bad_hash = (
+            result.stdout.decode("utf-8")
+            .split("\n")[-2]
+            .split("[")[1]
+            .split("]")[0]
+        )
         print(f"First bad hash for {case}: {bad_hash}")
         results_dict[case] = bad_hash
 

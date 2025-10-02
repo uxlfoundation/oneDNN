@@ -97,8 +97,9 @@ def parse_unit(args):
         body = "| :x: | Failed Test |\n" "| :-----------: | :------: |\n"
         for test in failed_tests:
             body += f"| :x: | {test} |\n"
+        body = body[:-1] # Strip the last '\n'
     else:
-        body = ":white_check_mark: unit tests passed\n"
+        body = ":white_check_mark: unit tests passed"
 
     parse(args.out_file, "Unit test results", args.title, body)
 

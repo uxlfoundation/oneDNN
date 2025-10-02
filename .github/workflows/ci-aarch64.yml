@@ -125,9 +125,9 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install scipy
+      - name: Install dependencies
         if: ${{ matrix.config.build == 'Release' }}
-        run: pip install scipy statistics
+        run: pip install scipy statistics gitpython
 
       - name: Clone ACL
         run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh

@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2019-2021 Intel Corporation
+# Copyright 2019-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,4 +43,4 @@ add_definitions(-DCL_TARGET_OPENCL_VERSION=120)
 
 set(DNNL_GPU_RUNTIME_CURRENT ${DNNL_GPU_RUNTIME})
 include_directories(${OpenCL_INCLUDE_DIRS})
-list(APPEND EXTRA_SHARED_LIBS OpenCL::OpenCL)
+# list(APPEND EXTRA_SHARED_LIBS OpenCL::OpenCL)

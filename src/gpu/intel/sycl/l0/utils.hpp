@@ -40,15 +40,10 @@ status_t sycl_create_kernels_with_level_zero(
         const gpu::intel::sycl::engine_t *sycl_engine,
         const xpu::binary_t &binary);
 
-bool compare_ze_devices(const ::sycl::device &lhs, const ::sycl::device &rhs);
+status_t get_l0_kernel_binary(
+        const ::sycl::kernel &kernel, xpu::binary_t &binary);
 
-#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
-status_t func_zeGetKernelBinary(
-        ze_kernel_handle_t hKernel, size_t *pSize, uint8_t *pKernelBinary);
-#else
-status_t func_zeModuleGetNativeBinary(ze_module_handle_t hModule, size_t *pSize,
-        uint8_t *pModuleNativeBinary);
-#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+bool compare_ze_devices(const ::sycl::device &lhs, const ::sycl::device &rhs);
 
 status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         ze_context_handle_t context, uint32_t &ip_version,

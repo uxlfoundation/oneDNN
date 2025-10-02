@@ -157,17 +157,18 @@ const char *convert_cl_int_to_str(cl_int cl_status) {
     }
 }
 
-template <typename T, typename F>
-static std::string get_ocl_name(T obj, F get_func, cl_uint name_query) {
+std::string get_kernel_name(cl_kernel kernel) {
     size_t name_size;
-    cl_int err = get_func(obj, name_query, 0, nullptr, &name_size);
+    cl_int err = clGetKernelInfo(
+            kernel, CL_KERNEL_FUNCTION_NAME, 0, nullptr, &name_size);
     // Ignore error.
     UNUSED_OCL_RESULT(err);
 
     // Include null terminator explicitly - to safely overwrite it in
     // clGetKernelInfo
     std::string name(name_size, 0);
-    err = get_func(obj, name_query, name_size, &name[0], nullptr);
+    err = clGetKernelInfo(
+            kernel, CL_KERNEL_FUNCTION_NAME, name_size, &name[0], nullptr);
     // Ignore error.
     UNUSED_OCL_RESULT(err);
 
@@ -176,12 +177,24 @@ static std::string get_ocl_name(T obj, F get_func, cl_uint name_query) {
     return name;
 }
 
-std::string get_kernel_name(cl_kernel kernel) {
-    return get_ocl_name(kernel, clGetKernelInfo, CL_KERNEL_FUNCTION_NAME);
-}
-
 static std::string get_platform_name(cl_platform_id platform) {
-    return get_ocl_name(platform, clGetPlatformInfo, CL_PLATFORM_NAME);
+    size_t name_size;
+    cl_int err = clGetPlatformInfo(
+            platform, CL_PLATFORM_NAME, 0, nullptr, &name_size);
+    // Ignore error.
+    UNUSED_OCL_RESULT(err);
+
+    // Include null terminator explicitly - to safely overwrite it in
+    // clGetKernelInfo
+    std::string name(name_size, 0);
+    err = clGetPlatformInfo(
+            platform, CL_PLATFORM_NAME, name_size, &name[0], nullptr);
+    // Ignore error.
+    UNUSED_OCL_RESULT(err);
+
+    // Remove the null terminator as std::string already includes it
+    name.resize(name_size - 1);
+    return name;
 }
 
 static bool is_intel_platform(cl_platform_id platform) {

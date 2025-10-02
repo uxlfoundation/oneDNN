@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@
 #define GPU_INTEL_OCL_KERNEL_HPP
 
 #include <string>
-#include <CL/cl.h>
 
 #include "gpu/intel/compute/kernel.hpp"
 #include "xpu/ocl/utils.hpp"

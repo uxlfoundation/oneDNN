@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -76,7 +76,6 @@ void *malloc(size_t size, int alignment) {
 } // namespace dnnl
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include <CL/cl.h>
 
 namespace dnnl {
 namespace impl {

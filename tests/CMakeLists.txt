@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2016 Intel Corporation
+# Copyright 2016-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +28,12 @@ set(CMAKE_TEST_CCXX_NOWARN_FLAGS)
 
 # propagate no warning flags
 append(CMAKE_TEST_CCXX_NOWARN_FLAGS "${CMAKE_CCXX_NOWARN_FLAGS}")
+
+# link tests directly to OCL
+if(DNNL_GPU_RUNTIME STREQUAL "OCL" OR (DNNL_GPU_SYCL AND DNNL_GPU_VENDOR STREQUAL "INTEL"))
+    find_package(OpenCL REQUIRED)
+    list(APPEND EXTRA_SHARED_LIBS ${OpenCL_LIBRARY})
+endif()
 
 # propagate sanitizer flags
 append(CMAKE_C_FLAGS "${CMAKE_CCXX_SANITIZER_FLAGS}")

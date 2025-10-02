@@ -56,12 +56,14 @@ if [[ "$ONEDNN_ACTION" == "configure" ]]; then
             -DONEDNN_WERROR=ON \
             -DDNNL_BUILD_FOR_CI=ON \
             -DONEDNN_TEST_SET=$ONEDNN_TEST_SET \
-            -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE
+            -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
+            -DCMAKE_SKIP_BUILD_RPATH=FALSE \
+            -DCMAKE_BUILD_RPATH_USE_ORIGIN=ON
         set +x
     fi
 elif [[ "$ONEDNN_ACTION" == "build" ]]; then
     set -x
-    cmake --build build 
+    cmake --build build -j"$(nproc)"
     set +x
 else
     echo "Unknown action: $ONEDNN_ACTION"

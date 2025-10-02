@@ -64,7 +64,7 @@ status_t pd_t::init_post_ops() {
 
     bool ok = true;
     int prelu_count = 0;
-    int num_orig_postops = attr()->post_ops_.len();
+    const int num_orig_postops = post_ops_.len();
     for (int i = 0; i < post_ops_.len(); i++) {
         const auto &e = post_ops_.entry_[i];
         switch (e.kind) {

@@ -434,15 +434,19 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         const auto &b_scales_storage = GEMM_CTX_ARG_STORAGE(b_scales);
         const auto &c_scales_storage = GEMM_CTX_ARG_STORAGE(c_scales);
         alpha = 1.0f;
+        float scale_val = 0;
         if (a_scales.is_host_scalar()) {
-            CHECK(maybe_convert_scales_to_alpha(a_scales_storage, alpha));
+            CHECK(maybe_get_scale_as_float(a_scales_storage, scale_val));
+            alpha *= scale_val;
         }
         if (b_scales.is_host_scalar()) {
-            CHECK(maybe_convert_scales_to_alpha(b_scales_storage, alpha));
+            CHECK(maybe_get_scale_as_float(b_scales_storage, scale_val));
+            alpha *= scale_val;
         }
         // Limited support of host scalar dst scales
         if (c_scales.is_host_scalar() && pd()->attr()->post_ops_.len() == 0) {
-            CHECK(maybe_convert_scales_to_alpha(c_scales_storage, alpha, true));
+            CHECK(maybe_get_scale_as_float(c_scales_storage, scale_val));
+            alpha /= scale_val;
         }
     }
 

@@ -14,10 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_GEMM_HOST_SCALARS_HPP
-#define GPU_INTEL_GEMM_HOST_SCALARS_HPP
-
-#include "common/host_scalar_memory_storage.hpp"
+#include "gpu/intel/gemm/host_scalars.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -25,27 +22,34 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-// Get value of host side scalar from storage and convert to float
-
-template <typename ScalarType>
-status_t get_scalar_value_as_float(float &scalar_value,
-        const host_scalar_memory_storage_t *scale_storage) {
-    ScalarType value = 0;
-    status_t status = scale_storage->get_scalar_value(&value, sizeof(value));
-    assert(status == status::success);
-    if (status != status::success) return status;
-
-    scalar_value = static_cast<float>(value);
-    return status::success;
-}
-
 status_t maybe_get_scale_as_float(
-        const memory_storage_t &scale_storage, float &scalar_value);
+        const memory_storage_t &scale_storage, float &scalar_value) {
+#define SCALAR_DT_DISPATCH(sdt, vdt) \
+    case sdt: { \
+        CHECK(get_scalar_value_as_float<vdt>(scalar_value, scalar_storage)); \
+        break; \
+    }
+
+    using namespace data_type;
+    auto scalar_storage = utils::downcast<const host_scalar_memory_storage_t *>(
+            &scale_storage);
+    switch ((int)scalar_storage->data_type()) {
+        SCALAR_DT_DISPATCH(f32, float)
+        SCALAR_DT_DISPATCH(f16, float16_t)
+        SCALAR_DT_DISPATCH(bf16, bfloat16_t)
+        SCALAR_DT_DISPATCH(s32, int32_t)
+        SCALAR_DT_DISPATCH(s8, int8_t)
+        SCALAR_DT_DISPATCH(u8, uint8_t)
+        default:
+            assert(!"Support for requested data type is missing for "
+                    "host-side scalars");
+    }
+    return status::success;
+#undef SCALAR_DT_DISPATCH
+}
 
 } // namespace gemm
 } // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
-
-#endif

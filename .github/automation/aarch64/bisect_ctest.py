@@ -52,21 +52,28 @@ def main():
     args_parser.add_argument("good", nargs="?", help="good hash")
     args_parser.add_argument("file", nargs="?", help="input file")
     args_parser.add_argument(
+        "build", nargs="?", default="build", help="build directory"
+    )
+    args_parser.add_argument(
         "--unique",
         action="store_true",
         help="whether to return only one test case per unique op",
     )
     args = args_parser.parse_args()
+
+    if args.good is None:
+        raise Exception("Good hash cannot be empty")
+    if args.file is None:
+        raise Exception("File argument cannot be empty")
+
     cases = ctest_utils.failed_benchdnn_tests(args.file, args.unique)
 
     results_dict = {}
     for case in cases:
         bisect_cmd = str(F_PATH / f"git_bisect.sh")
-        build_dir = str(F_PATH.parent.parent.parent / "build")
+        build_dir = str(args.build)
         result = subprocess.run(
-            args=[
-                f'bash {bisect_cmd} {args.good} HEAD {build_dir} "{case}"'
-            ],
+            args=[f'bash {bisect_cmd} {args.good} HEAD {build_dir} "{case}"'],
             shell=True,
             capture_output=True,
         )

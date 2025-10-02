@@ -266,8 +266,8 @@ endif()
 set(_DNNL_TEST_THREADPOOL_IMPL "STANDALONE" CACHE STRING
     "specifies which threadpool implementation to use when
     DNNL_CPU_RUNTIME=THREADPOOL is selected. Valid values: STANDALONE, EIGEN,
-    TBB")
-if(NOT "${_DNNL_TEST_THREADPOOL_IMPL}" MATCHES "^(STANDALONE|TBB|EIGEN)$")
+    EIGEN_ASYNC, TBB")
+if(NOT "${_DNNL_TEST_THREADPOOL_IMPL}" MATCHES "^(STANDALONE|TBB|EIGEN|EIGEN_ASYNC)$")
     message(FATAL_ERROR
         "Unsupported threadpool implementation: ${_DNNL_TEST_THREADPOOL_IMPL}")
 endif()

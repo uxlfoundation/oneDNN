@@ -25,9 +25,14 @@ def failed_benchdnn_tests(file, unique):
         r = f.readlines()
 
     failed_cases = defaultdict(list)
-    for l in r:
-        if ":FAILED" in l:
-            l = l.split("__REPRO: ")[1]
+    for i, l in enumerate(r[:-1]):
+        if (
+            (":PASSED" not in r[i + 1])
+            and (":SKIPPED" not in r[i + 1])
+            and (":MISTRUSTED" not in r[i + 1])
+            and ("run: --" in l)
+        ):
+            l = l.split("run: ")[1]
             op = l.split(" ")[0]
             failed_cases[op].append(l.replace("\n", ""))
 

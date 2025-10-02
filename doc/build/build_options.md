@@ -236,28 +236,37 @@ oneDNN has functional limitations if built with TBB:
 
 #### Threadpool
 To build oneDNN with support for threadpool threading, set `ONEDNN_CPU_RUNTIME`
-to `THREADPOOL`
+to `THREADPOOL`:
 
 ~~~sh
 $ cmake -DONEDNN_CPU_RUNTIME=THREADPOOL ..
 ~~~
 
+Threadpool threading support has the same limitations as TBB plus more:
+* As threadpools are attached to streams which are only passed during primitive
+  execution, work decomposition is performed statically at primitive creation
+  time. At the primitive execution time, the threadpool is responsible for
+  balancing this decomposition across available worker threads.
+
+##### Threadpool validation
 The `_ONEDNN_TEST_THREADPOOL_IMPL` CMake variable controls which of the three
-threadpool implementations would be used for testing: `STANDALONE`, `TBB`, or
-`EIGEN`. The latter two require also passing `TBBROOT` or `Eigen3_DIR` paths
-to CMake. For example:
+threadpool implementations would be used for testing: `STANDALONE`, `TBB`,
+`EIGEN`, `EIGEN_ASYNC`.
 
+The `TBB` requires passing `TBBROOT` for CMake to find a package.
+
+The `EIGEN` requires Eigen 5.0 or higher and Abseil-CPP packages to be
+discoverable by CMake.
+
+The `EIGEN_ASYNC` has same requirements as `EIGEN` and additionally requires
+OpenXLA threadpool package, however, additional actions might be required to
+compile tests since this threadpool implementation relies on internal OpenXLA
+headers.
+
+For example:
 ~~~sh
-$ cmake -DONEDNN_CPU_RUNTIME=THREADPOOL -D_ONEDNN_TEST_THREADPOOL_IMPL=EIGEN -DEigen3_DIR=/path/to/eigen/share/eigen3/cmake ..
+$ cmake -DONEDNN_CPU_RUNTIME=THREADPOOL -D_ONEDNN_TEST_THREADPOOL_IMPL=EIGEN -DCMAKE_PREFIX_PATH="/path/to/eigen/share/eigen3/cmake;/path/to/absl/lib64/cmake" ..
 ~~~
-
-Threadpool threading support is experimental and has the same limitations as
-TBB plus more:
-* As threadpools are attached to streams which are only passed during
-  primitive execution, work decomposition is performed statically at the
-  primitive creation time. At the primitive execution time, the threadpool is
-  responsible for balancing the static decomposition from the previous item
-  across available worker threads.
 
 ### AArch64 Options
 

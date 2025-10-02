@@ -20,27 +20,27 @@ description: "Build and cache ACL"
 
 inputs:
   onednn_path:
-    description: oneDNN repository path. Default ./oneDNN
+    description: oneDNN repository path. Default ./oneDNN.
     default: ./oneDNN
     required: false
   acl_path:
-    description: ACL repository path. Default ./ComputeLibrary
+    description: ACL repository path. Default ./ComputeLibrary.
     default: ./ComputeLibrary
     required: false
   toolset:
-    description: compiler to use. gcc or clang
+    description: Compiler to use. gcc or clang.
     required: true
   build:
-    description: build type. Release, RelWithAssert or Debug
+    description: Build type. Release, RelWithAssert or Debug.
     required: true
   threading:
-    description: threading type. OMP or Sequential
+    description: Threading type. OMP or Sequential.
     required: true
   acl_hash:
-    description: acl hash to build
+    description: ACL hash to build.
     required: true
   gcc_version:
-    description: gcc Version
+    description: GCC Version.
     required: true
 
 # Cache is built sequentially to avoid cache-hit race conditions

@@ -37,13 +37,32 @@ permissions: write-all
 jobs:
   test-performance:
     uses: ./.github/workflows/performance-aarch64.yml
+  
+  build:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - name: Checkout oneDNN
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+            path: oneDNN
 
-  build-and-test:
+      - name: Build oneDNN
+        uses: ./oneDNN/.github/actions/build-onednn-aarch64
+        with:
+          artifact_name: onednn-nightly
+          threading: OMP
+          toolset: gcc
+          build: RelWithAssert
+          testset: NIGHTLY
+
+  test:
+    needs: build
     strategy:
       matrix:
         config: [
           { name: c6g, label: ah-ubuntu_22_04-c6g_8x-100, threading: OMP, toolset: gcc, build: RelWithAssert, testset: NIGHTLY },
-          { name: c7g, label: ah-ubuntu_22_04-c7g_8x-100, threading: OMP, toolset: gcc, build: RelWithAssert, testset: NIGHTLY }
+          { name: c7g, label: ah-ubuntu_22_04-c7g_8x-100, threading: OMP, toolset: gcc, build: RelWithAssert, testset: NIGHTLY },
+          { name: c8g, label: ah-ubuntu_22_04-c8g_8x, threading: OMP, toolset: gcc, build: RelWithAssert, testset: NIGHTLY }
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}
@@ -57,18 +76,6 @@ jobs:
           fetch-tags: true
           fetch-depth: 0
 
-      # Note: This will create a github actions cache
-      - name: Get latest CMake and Ninja
-        uses: lukka/get-cmake@56d043d188c3612951d8755da8f4b709ec951ad6 # v3.31.6
-        with:
-          cmakeVersion: 3.31.0
-          ninjaVersion: 1.12.0
-
-      - if: ${{ matrix.config.threading == 'OMP' }}
-        name: Install openmp
-        run: |
-          sudo apt install -y libomp-dev
-
       - name: Read version file
         id: get-versions
         run: |
@@ -76,56 +83,44 @@ jobs:
           content="${content//[$'\t\r\n$ ']}"
           echo "output=$content" >> $GITHUB_OUTPUT
 
-      - name: Install gcc
+      # Note: This will create a github actions cache
+      - name: Get latest CMake and Ninja
+        uses: lukka/get-cmake@56d043d188c3612951d8755da8f4b709ec951ad6 # v3.31.6
+        with:
+          cmakeVersion: 3.31.0
+          ninjaVersion: 1.12.0
+
+      - name: Install dependencies
         run: |
           sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
           sudo apt update -y
-          sudo apt install -y g++-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
+          sudo apt install -y libomp-dev g++-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
 
       - name: setup python
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: '3.10'
-
-      - name: Build ComputeLibrary
-        uses: ./oneDNN/.github/actions/build-acl
+      
+      - name: Download oneDNN
+        uses: actions/download-artifact@v5
         with:
-          toolset: ${{ matrix.config.toolset }}
-          build: ${{ matrix.config.build }}
-          threading: ${{ matrix.config.threading }}
-          acl_hash: ${{ fromJson(steps.get-versions.outputs.output).dependencies.acl }}
-          gcc_version: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
-
-      - name: Configure oneDNN
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
-        working-directory: ${{ github.workspace }}/oneDNN
-        env:
-          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
-          BUILD_TOOLSET: ${{ matrix.config.toolset }}
-          CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
-          CMAKE_GENERATOR: Ninja
-          GCC_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
-          ONEDNN_ACTION: configure
-          ONEDNN_TEST_SET: ${{ matrix.config.testset }}
-          ONEDNN_THREADING: ${{ matrix.config.threading }}
-
-      - name: Build oneDNN
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
-        working-directory: ${{ github.workspace }}/oneDNN
-        env:
-          ONEDNN_ACTION: build
+          name: onednn-nightly
+          path: oneDNN_pkg
+      
+      - name: Prepare oneDNN for execution
+        run: chmod -R +x oneDNN_pkg
 
       - name: Run oneDNN tests
         run: |
           set -o pipefail
-          ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh ${{ github.workspace }}/test_results.xml
-        working-directory: ${{ github.workspace }}/oneDNN/build
+          ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh ${{ github.workspace }}/test_results.xml ${{ github.workspace }}/test_results.log
+        working-directory: ${{ github.workspace }}/oneDNN_pkg/oneDNN/build
         env:
           BUILD_TOOLSET: ${{ matrix.config.toolset }}
           CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
           CTEST_PARALLEL_LEVEL: 8
-          DYLD_LIBRARY_PATH: ${{ github.workspace }}/ComputeLibrary/build
           ONEDNN_THREADING: ${{ matrix.config.threading }}
+          LD_LIBRARY_PATH: ${{ github.workspace }}/oneDNN_pkg/ComputeLibrary/build
 
       - name: Create hash file
         working-directory: ${{ github.workspace }}/oneDNN
@@ -158,9 +153,17 @@ jobs:
         if: failure()
         shell: bash
         working-directory: ${{ github.workspace }}/oneDNN
-        run: python .github/automation/aarch64/bisect_ctest.py --unique ${{ steps.get-stable.outputs.stable-hash }} ${{ github.workspace }}/test_results.xml
+        run: |
+          mkdir build
+          python .github/automation/aarch64/bisect_ctest.py --unique ${{ steps.get-stable.outputs.stable-hash }} ${{ github.workspace }}/test_results.log ${{ github.workspace }}/oneDNN/build
         env:
-          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
+          ACL_ROOT_DIR: ${{ github.workspace }}/oneDNN_pkg/ComputeLibrary
+          LD_LIBRARY_PATH: ${{ github.workspace }}/oneDNN_pkg/ComputeLibrary/build
+
+      - name: Reset to HEAD
+        if: failure()
+        working-directory: ${{ github.workspace }}/oneDNN
+        run: git bisect reset
 
       - name: Update wiki
         if: ${{ (success() || failure()) && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ryo-not-rio/wiki') }}
@@ -169,11 +172,30 @@ jobs:
           command: add-unit
           title: ${{ matrix.config.name }}
           in-file: ${{ github.workspace }}/test_results.xml
+  
+  save-success-hash:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout oneDNN
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          path: oneDNN
+      
+      - name: Create hash file
+        working-directory: ${{ github.workspace }}/oneDNN
+        run: echo "$(git rev-parse --short HEAD)" > .github/automation/aarch64/stable.sha
+
+      - name: Save hash
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          key: latest-nightly-success-sha
+          path: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/stable.sha
 
   #* This job adds a check named "Nightly AArch64" that represents overall
   #* workflow status and can be used in branch rulesets
   status:
-    needs: build-and-test
+    needs: test
     runs-on: ubuntu-latest
     name: "Nightly AArch64"
     steps:

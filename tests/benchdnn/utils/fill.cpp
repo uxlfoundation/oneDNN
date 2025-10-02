@@ -372,6 +372,9 @@ bool fill_from_file(int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem) {
     auto prefix = buffer_prefix;
     if (prefix.empty()) return false;
 
+    // `mem` is not supposed to be filled.
+    if (mem.nelems() == 0) return false;
+
     prefix += "." + std::to_string(exec_arg) + ".bin";
 
     FILE *file = nullptr;

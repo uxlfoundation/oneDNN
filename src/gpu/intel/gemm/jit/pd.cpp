@@ -64,6 +64,7 @@ status_t pd_t::init_post_ops() {
 
     bool ok = true;
     int prelu_count = 0;
+    int num_orig_postops = attr()->post_ops_.len();
     for (int i = 0; i < post_ops_.len(); i++) {
         const auto &e = post_ops_.entry_[i];
         switch (e.kind) {
@@ -145,21 +146,24 @@ status_t pd_t::init_post_ops() {
         return status::success;
     };
 
-    if (!a_scales.has_default_values()) {
+    if (!a_scales.has_default_values() && !a_scales.is_host_scalar()) {
+        // Host scalar scale will be converted to Alpha
         bool converted;
         CHECK(maybe_convert_scales_to_postop(
                 a_scale_md_, DNNL_ARG_A, a_scales.get_data_type(), converted));
         if (converted) asc_dims_ = -1;
     }
 
-    if (!b_scales.has_default_values()) {
+    if (!b_scales.has_default_values() && !b_scales.is_host_scalar()) {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(
                 b_scale_md_, DNNL_ARG_B, b_scales.get_data_type(), converted));
         if (converted) bsc_dims_ = -1;
     }
 
-    if (!c_scales.has_default_values()) {
+    bool try_c_scale = !c_scales.is_host_scalar()
+            || (c_scales.is_host_scalar() && num_orig_postops > 0);
+    if (!c_scales.has_default_values() && try_c_scale) {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(
                 c_scale_md_, DNNL_ARG_C, c_scales.get_data_type(), converted));
@@ -365,10 +369,9 @@ bool pd_t::scales_ok() {
     int ndims = desc()->a_desc.ndims;
     using namespace data_type;
 
-    if (scales.has_host_scalars()) return false;
-
     for (auto s : {DNNL_ARG_A, DNNL_ARG_B, DNNL_ARG_C}) {
-        if (scales.has_default_values(s)) continue;
+        if (scales.has_default_values(s) || scales.get(s).is_host_scalar())
+            continue;
         const auto &x_scales = scales.get(s);
 
         auto mask = x_scales.get_mask();

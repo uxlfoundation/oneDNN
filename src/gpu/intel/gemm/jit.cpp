@@ -19,6 +19,7 @@
 #include "common/type_helpers.hpp"
 #include "gemmstone/driver_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/gemm/host_scalars.hpp"
 #include "gpu/intel/gemm/jit/walk_orders.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
@@ -422,6 +423,27 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
+    }
+
+    // Convert host scalar scales to Alpha
+    if (pd()->attr()->scales_.has_host_scalars()) {
+        const auto &a_scales = pd()->attr()->scales_.get(DNNL_ARG_A);
+        const auto &b_scales = pd()->attr()->scales_.get(DNNL_ARG_B);
+        const auto &c_scales = pd()->attr()->scales_.get(DNNL_ARG_C);
+        const auto &a_scales_storage = GEMM_CTX_ARG_STORAGE(a_scales);
+        const auto &b_scales_storage = GEMM_CTX_ARG_STORAGE(b_scales);
+        const auto &c_scales_storage = GEMM_CTX_ARG_STORAGE(c_scales);
+        alpha = 1.0f;
+        if (a_scales.is_host_scalar()) {
+            CHECK(maybe_convert_scales_to_alpha(a_scales_storage, alpha));
+        }
+        if (b_scales.is_host_scalar()) {
+            CHECK(maybe_convert_scales_to_alpha(b_scales_storage, alpha));
+        }
+        // Limited support of host scalar dst scales
+        if (c_scales.is_host_scalar() && pd()->attr()->post_ops_.len() == 0) {
+            CHECK(maybe_convert_scales_to_alpha(c_scales_storage, alpha, true));
+        }
     }
 
     if (pd()->a_scales_2d()) { a_scales = &GEMM_CTX_ARG_STORAGE(a_scales); }

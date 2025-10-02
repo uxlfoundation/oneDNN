@@ -112,7 +112,17 @@ struct pd_t : public gemm::pd_t {
     bool eff_transa_ = false, eff_transb_ = false;
     bool with_sround_ = false;
 
-    float alpha() const { return 1.0f; }
+    float alpha() const {
+        auto attr_info = attr_info_t::create(attr());
+        bool host_scales_by_alpha = attr_info.with_host_src_scale
+                || attr_info.with_host_wei_scale
+                || (attr_info.with_host_dst_scale
+                        && attr()->post_ops_.len() == 0);
+        // Bogus non-one value for host scalar.
+        // Actual value will be passed on execution step
+        if (host_scales_by_alpha) return 9.99f;
+        return 1.0f;
+    }
 
     float beta() const { return beta_; }
 

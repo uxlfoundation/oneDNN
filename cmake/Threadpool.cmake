@@ -33,7 +33,20 @@ if("${DNNL_CPU_THREADING_RUNTIME}" STREQUAL "THREADPOOL")
     endif()
 
     if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN")
-        find_package(Eigen3 REQUIRED 3.3 NO_MODULE)
+        find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+        if(Eigen3_FOUND)
+            list(APPEND EXTRA_STATIC_LIBS Eigen3::Eigen)
+            message(STATUS "Threadpool testing: Eigen (${EIGEN3_ROOT_DIR})")
+        endif()
+    endif()
+
+    if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN_ASYNC")
+        # TODO: maybe switch to `target_compile_features` to require and not
+        # silently set the standard.
+        set(CMAKE_CXX_STANDARD 17)
+        set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+        find_package(Eigen3 3.3 REQUIRED NO_MODULE)
         if(Eigen3_FOUND)
             list(APPEND EXTRA_STATIC_LIBS Eigen3::Eigen)
             message(STATUS "Threadpool testing: Eigen (${EIGEN3_ROOT_DIR})")

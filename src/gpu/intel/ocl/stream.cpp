@@ -59,25 +59,25 @@ status_t stream_t::init() {
     } else {
         // Check that queue is compatible with the engine
         cl_context ocl_ctx;
-        OCL_CHECK(clGetCommandQueueInfo(queue, CL_QUEUE_CONTEXT,
+        OCL_CHECK(xpu::ocl::clGetCommandQueueInfo(queue, CL_QUEUE_CONTEXT,
                 sizeof(cl_context), &ocl_ctx, nullptr));
 
         cl_device_id ocl_dev;
-        OCL_CHECK(clGetCommandQueueInfo(queue, CL_QUEUE_DEVICE,
+        OCL_CHECK(xpu::ocl::clGetCommandQueueInfo(queue, CL_QUEUE_DEVICE,
                 sizeof(cl_device_id), &ocl_dev, nullptr));
 
         if (ocl_engine_impl->device() != ocl_dev
                 || ocl_engine_impl->context() != ocl_ctx)
             return status::invalid_arguments;
 
-        OCL_CHECK(clRetainCommandQueue(queue));
+        OCL_CHECK(xpu::ocl::clRetainCommandQueue(queue));
     }
     CHECK(impl()->set_queue(queue));
 
     if (is_profiling_enabled()) {
         cl_command_queue_properties props;
-        OCL_CHECK(clGetCommandQueueInfo(impl()->queue(), CL_QUEUE_PROPERTIES,
-                sizeof(props), &props, nullptr));
+        OCL_CHECK(xpu::ocl::clGetCommandQueueInfo(impl()->queue(),
+                CL_QUEUE_PROPERTIES, sizeof(props), &props, nullptr));
         bool is_out_of_order
                 = (props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE) != 0;
         if (is_out_of_order) {
@@ -105,9 +105,9 @@ cl_command_queue stream_t::create_queue(
     if (is_out_of_order) queue_props |= CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE;
 #ifdef CL_VERSION_2_0
     cl_queue_properties props[] = {CL_QUEUE_PROPERTIES, queue_props, 0};
-    return clCreateCommandQueueWithProperties(ctx, dev, props, err);
+    return xpu::ocl::clCreateCommandQueueWithProperties(ctx, dev, props, err);
 #else
-    return clCreateCommandQueue(ctx, dev, queue_props, err);
+    return xpu::ocl::clCreateCommandQueue(ctx, dev, queue_props, err);
 #endif
 }
 

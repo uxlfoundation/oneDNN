@@ -74,6 +74,77 @@ const char *convert_cl_int_to_str(cl_int cl_status);
         MAYBE_UNUSED(s); \
     } while (false)
 
+#if defined(_WIN32)
+#define OCL_LIB_NAME "OpenCL.dll"
+#elif defined(__linux__)
+#define OCL_LIB_NAME "libOpenCL.so.1"
+#endif
+
+template <typename F>
+F find_ocl_symbol(const char *symbol) {
+    auto f = (F)xpu::find_symbol(OCL_LIB_NAME, symbol);
+    if (!f) VERROR(common, ocl, "cannot find symbol: %s", symbol);
+    return f;
+}
+#undef OCL_LIB_NAME
+
+#define INDIRECT_OCL_CALL(result_type, f) \
+    template <typename... Args> \
+    result_type f(Args &&...args) { \
+        static auto f_ = find_ocl_symbol<decltype(&::f)>(#f); \
+        return f_(std::forward<Args>(args)...); \
+    }
+INDIRECT_OCL_CALL(cl_int, clBuildProgram)
+INDIRECT_OCL_CALL(cl_mem, clCreateBuffer)
+#ifdef CL_VERSION_2_0
+INDIRECT_OCL_CALL(cl_command_queue, clCreateCommandQueueWithProperties)
+#else
+INDIRECT_OCL_CALL(cl_command_queue, clCreateCommandQueue)
+#endif
+INDIRECT_OCL_CALL(cl_context, clCreateContext)
+INDIRECT_OCL_CALL(cl_kernel, clCreateKernel)
+INDIRECT_OCL_CALL(cl_program, clCreateProgramWithBinary)
+INDIRECT_OCL_CALL(cl_program, clCreateProgramWithSource)
+INDIRECT_OCL_CALL(cl_mem, clCreateSubBuffer)
+INDIRECT_OCL_CALL(cl_int, clCreateSubDevices)
+INDIRECT_OCL_CALL(cl_int, clEnqueueCopyBuffer)
+INDIRECT_OCL_CALL(cl_int, clEnqueueFillBuffer)
+INDIRECT_OCL_CALL(void *, clEnqueueMapBuffer)
+INDIRECT_OCL_CALL(cl_int, clEnqueueMarkerWithWaitList)
+INDIRECT_OCL_CALL(cl_int, clEnqueueNDRangeKernel)
+INDIRECT_OCL_CALL(cl_int, clEnqueueReadBuffer)
+INDIRECT_OCL_CALL(cl_int, clEnqueueUnmapMemObject)
+INDIRECT_OCL_CALL(cl_int, clEnqueueWriteBuffer)
+INDIRECT_OCL_CALL(cl_int, clFinish)
+INDIRECT_OCL_CALL(cl_int, clGetCommandQueueInfo)
+INDIRECT_OCL_CALL(cl_int, clGetContextInfo)
+INDIRECT_OCL_CALL(cl_int, clGetDeviceIDs)
+INDIRECT_OCL_CALL(cl_int, clGetDeviceInfo)
+INDIRECT_OCL_CALL(cl_int, clGetEventProfilingInfo)
+INDIRECT_OCL_CALL(void *, clGetExtensionFunctionAddressForPlatform)
+INDIRECT_OCL_CALL(cl_int, clGetKernelArgInfo)
+INDIRECT_OCL_CALL(cl_int, clGetKernelInfo)
+INDIRECT_OCL_CALL(cl_int, clGetMemObjectInfo)
+INDIRECT_OCL_CALL(cl_int, clGetPlatformIDs)
+INDIRECT_OCL_CALL(cl_int, clGetPlatformInfo)
+INDIRECT_OCL_CALL(cl_int, clGetProgramBuildInfo)
+INDIRECT_OCL_CALL(cl_int, clGetProgramInfo)
+INDIRECT_OCL_CALL(cl_int, clReleaseCommandQueue)
+INDIRECT_OCL_CALL(cl_int, clReleaseContext)
+INDIRECT_OCL_CALL(cl_int, clReleaseDevice)
+INDIRECT_OCL_CALL(cl_int, clReleaseEvent)
+INDIRECT_OCL_CALL(cl_int, clReleaseKernel)
+INDIRECT_OCL_CALL(cl_int, clReleaseMemObject)
+INDIRECT_OCL_CALL(cl_int, clReleaseProgram)
+INDIRECT_OCL_CALL(cl_int, clRetainCommandQueue)
+INDIRECT_OCL_CALL(cl_int, clRetainContext)
+INDIRECT_OCL_CALL(cl_int, clRetainDevice)
+INDIRECT_OCL_CALL(cl_int, clRetainEvent)
+INDIRECT_OCL_CALL(cl_int, clRetainMemObject)
+INDIRECT_OCL_CALL(cl_int, clSetKernelArg)
+INDIRECT_OCL_CALL(cl_int, clWaitForEvents)
+#undef INDIRECT_OCL_CALL
+
 // OpenCL objects reference counting traits
 template <typename T>
 struct ref_traits;

@@ -121,7 +121,7 @@ def main():
     unit_parser.add_argument(
         "--title", required=True, help="title of unit test run"
     )
-    # xml is the only machine-readable output format from ctest
+    # xml required for machine-readable unit test results
     unit_parser.add_argument(
         "--in-file", required=True, help="xml file storing test results"
     )

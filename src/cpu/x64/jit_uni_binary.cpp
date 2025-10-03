@@ -1,4 +1,4 @@
-/*******************************************************************************
+﻿/*******************************************************************************
 * Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +29,7 @@ namespace x64 {
 static bcast_set_t get_supported_postops_bcast_strategies() {
     return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,
             broadcasting_strategy_t::per_oc_spatial,
+            broadcasting_strategy_t::per_w,
             broadcasting_strategy_t::no_broadcast};
 }
 
@@ -170,6 +171,9 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     conf_.postops_per_oc_broadcast_exists
             = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
                     po, src0_md_, get_supported_postops_bcast_strategies());
+    conf_.postops_per_w_broadcast_exists
+            = binary_injector::any_binary_postop_rhs_per_w_broadcast(
+                    po, src0_md_, get_supported_postops_bcast_strategies());
     conf_.is_bf16 = conf_.dst_type == bf16;
     conf_.is_f16 = conf_.dst_type == f16;
     conf_.op_type = get_op_type(src0_md_);
@@ -219,6 +223,19 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
             conf_.not_bcasted_sp_dims += !bcast_dims[d];
     }
 
+    if (conf_.postops_per_w_broadcast_exists) {
+        const auto &rhs_md = po.entry_[0].binary.src1_desc;
+        const memory_desc_wrapper rhs_md_wrap(&rhs_md);
+        dim_t rhs_len = rhs_md_wrap.nelems();
+        const int vlen = is_superset(conf_.isa, avx512_core)
+                ? cpu_isa_traits_t<avx512_core>::vlen
+                : cpu_isa_traits_t<avx2>::vlen;
+        const dim_t simd_w = vlen / types::data_type_size(conf_.dst_type);
+        dim_t expanded_len = utils::rnd_up(rhs_len, simd_w) * 2;
+
+        conf_.post_ops_expanded_rhs_elems = expanded_len;
+    }
+
     if (is_ternary_op()) {
         conf_.is_ternary_op = is_ternary_op();
         conf_.src2_type = src_md(2)->data_type;
@@ -227,6 +244,7 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
         // The kernel does not work for AVX, SSE41
         VDISPATCH_BINARY(mayiuse(avx2), "unsupported isa for ternary op");
     }
+    init_scratchpad();
 
     return status::success;
 }
@@ -567,6 +585,16 @@ bool jit_uni_binary_t::post_ops_ok(const primitive_attr_t *attr,
                             }));
 }
 
+void jit_uni_binary_t::pd_t::init_scratchpad() {
+    using namespace memory_tracking::names;
+    if (conf_.post_ops_expanded_rhs_elems > 0) {
+        auto scratchpad = scratchpad_registry().registrar();
+        const size_t dst_type_size = types::data_type_size(conf_.dst_type);
+        scratchpad.template book<float>(key_binary_post_ops_expanded_rhs,
+                conf_.post_ops_expanded_rhs_elems * dst_type_size);
+    }
+}
+
 binary_kernel_t *create_binary_kernel(
         const jit_uni_binary_t::pd_t *pd, bool tail_kernel) {
     const auto &conf = pd->get_conf();
@@ -713,6 +741,23 @@ status_t jit_uni_binary_t::init(engine_t *engine) {
     }
 
     return kernel_->create_kernel();
+}
+
+void jit_uni_binary_t::expand_post_ops_binary_rhs_per_w(
+        const post_ops_t &post_ops,
+        const std::vector<const void *> &orig_post_ops_binary_rhs_arg_vec,
+        std::vector<const void *> &post_ops_binary_rhs_arg_vec,
+        float *expanded_rhs, dim_t expanded_rhs_elems) const {
+    const auto &rhs_md = post_ops.entry_[0].binary.src1_desc;
+    const memory_desc_wrapper rhs_md_wrap(&rhs_md);
+    dim_t rhs_len = rhs_md_wrap.nelems();
+
+    const float *orig_rhs = reinterpret_cast<const float *>(
+            orig_post_ops_binary_rhs_arg_vec[0]);
+    for (dim_t i = 0; i < expanded_rhs_elems; ++i)
+        expanded_rhs[i] = orig_rhs[i % rhs_len];
+
+    post_ops_binary_rhs_arg_vec = {expanded_rhs};
 }
 
 void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
@@ -1165,8 +1210,10 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
 
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     const auto &post_ops = pd()->attr()->post_ops_;
-    const auto &post_ops_binary_rhs_arg_vec
+    const auto &orig_post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(post_ops, ctx);
+    std::vector<const void *> post_ops_binary_rhs_arg_vec
+            = orig_post_ops_binary_rhs_arg_vec;
 
     const void *src0_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0);
@@ -1183,6 +1230,9 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
 
     const bool postops_per_oc_broadcast_exists
             = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
+                    post_ops, src0_d, get_supported_postops_bcast_strategies());
+    const bool postops_per_w_broadcast_exists
+            = binary_injector::any_binary_postop_rhs_per_w_broadcast(
                     post_ops, src0_d, get_supported_postops_bcast_strategies());
     const auto &bcast_type = pd()->get_conf().bcast_type;
     const bool point_broadcast = bcast_type == bcast_t::scalar;
@@ -1202,12 +1252,26 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
             && (with_postops || point_broadcast || bcast_type == bcast_t::per_w
                     || vector_overwrite);
 
+    std::vector<float> expanded_post_ops_rhs_storage;
+    if (postops_per_w_broadcast_exists) {
+        auto &scratchpad = ctx.get_scratchpad_grantor();
+        float *expanded_buf = scratchpad.get<float>(
+                memory_tracking::names::key_binary_post_ops_expanded_rhs);
+        dim_t expanded_rhs_elems = pd()->get_conf().post_ops_expanded_rhs_elems;
+
+        expand_post_ops_binary_rhs_per_w(post_ops,
+                orig_post_ops_binary_rhs_arg_vec, post_ops_binary_rhs_arg_vec,
+                expanded_buf, expanded_rhs_elems);
+    }
+
     if ((bcast_type == bcast_t::none || point_broadcast_no_oc_tail)
-            && !postops_per_oc_broadcast_exists && !blocked_oc_tail)
+            && !postops_per_oc_broadcast_exists && !blocked_oc_tail
+            && !postops_per_w_broadcast_exists)
         execute_no_bcast_strategy(src0, src1, src2, dst, src0_scales,
                 src1_scales, post_ops_binary_rhs_arg_vec, bcast_type);
     else if (bcast_type == bcast_t::per_batch
-            && !postops_per_oc_broadcast_exists && !blocked_oc_tail)
+            && !postops_per_oc_broadcast_exists && !blocked_oc_tail
+            && !postops_per_w_broadcast_exists)
         execute_bcast_per_batch_strategy(src0, src1, src2, dst, src0_scales,
                 src1_scales, post_ops_binary_rhs_arg_vec);
     else if (bcast_type == bcast_t::per_w)

@@ -29,6 +29,7 @@ namespace x64 {
 static bcast_set_t get_supported_postops_bcast_strategies() {
     return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,
             broadcasting_strategy_t::per_oc_spatial,
+            broadcasting_strategy_t::per_w,
             broadcasting_strategy_t::no_broadcast};
 }
 
@@ -68,10 +69,12 @@ size_t binary_kernel_t::get_tail_size() const {
             && (is_tail_kernel_ || conf_.bcast_type == bcast_t::per_w))
         nelems = dims[1];
     else if (conf_.bcast_type == bcast_t::none
-            && !conf_.postops_per_oc_broadcast_exists)
+            && !conf_.postops_per_oc_broadcast_exists
+            && !conf_.postops_per_w_broadcast_exists)
         nelems = src0_d.nelems(true);
     else if (conf_.bcast_type == bcast_t::per_batch
-            && !conf_.postops_per_oc_broadcast_exists)
+            && !conf_.postops_per_oc_broadcast_exists
+            && !conf_.postops_per_w_broadcast_exists)
         nelems = src0_d.nelems(true) / dims[0];
     else {
         if (conf_.op_type == op_t::n_spatial_c)

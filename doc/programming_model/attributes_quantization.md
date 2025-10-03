@@ -21,62 +21,101 @@ Related materials:
 
 ## Quantization Model
 
-The primary quantization model that the library assumes is the following:
-\f[
-    x_{f32}[:] = scale_{x} \cdot (x_{int8}[:] - zp_{x})
-\f]
+oneDNN support two main categories of quantization:
+- static quantization with scales only (symmetric) or scales and
+  zero-points (asymmetric), where scales are applied after zero-point.
+- dynamic quantization compliant with the Open Compute Project (OCP)
+  Microscaling (MX) [formats specification][1].
 
-where \f$scale_{x}\f$ is a *scaling factor* in float format,
-\f$zp_{x}\f$ is the *zero point* in int32 format, and
-\f$[:]\f$ is used to denote elementwise application of the formula
-to the arrays. In order to provide best performance, oneDNN does not
-compute those scaling factors and zero-points as part of primitive
-computation. Those should be computed and provided by the user.
+To support quantization, primitives should be created and executed as
+follows:
 
-These quantization parameters can either be computed ahead of time
-using calibration tools (*static* quantization) or at runtime based on
-the actual minimum and maximum values of a tensor (*dynamic*
-quantization). Either method can be used in conjunction with oneDNN, as
-the quantization parameters are passed to the oneDNN primitives at
-execution time.
-
-To support int8 quantization, primitives should be created and
-executed as follow:
-
-- during primitive descriptor creation, if one or multiple inputs are
-  int8 (signed or not), then the primitive will behave as a quantized
-  integer operation.
-- still during primitive descriptor creation, the dimensionality of
-  the scaling factors and zero-point should be provided using masks
-  (e.g. one scale per tensor, one scale per channel, ...).
-- finally, during primitive execution, the user must provide the
-  actual quantization parameters as arguments to the execute function.
-  Scales are `f32` values, and zero-points are `s32` values.
+- during primitive descriptor creation source, weights or destination
+  memory descriptors use low precision datatype (e.g. `s8` or
+  `fp8_e4m3`).
+- during primitive descriptor creation group size, data types, and
+  broadcasting masks of the scaling factors and zero-point are
+  provided using primitive attributes.
+- during primitive execution the actual quantization parameters are
+  provided as arguments to the execute function.
 
 For performance reasons, each primitive implementation typically
-supports only a subset of quantization parameter masks. For example,
-convolution typically supports per-tensor or per-channel scales (no
-zero-point) for weights, and per-tensor scaling factor and zero-points
-for activation.
+supports only a subset of quantization parameter masks, group sizes
+and data type combinations. Which combination is supported and
+optimized is listed in each primitive documentation page.
 
 This guide does not cover how the appropriate scaling factor can be found.
 Refer to the materials in the [Introduction](@ref dgaq_intro).
 
-### Numerical behavior
+### Static quantization
 
-Primitive implementations are allowed to convert int8 inputs to wider
-datatypes (e.g. int16 or int32), as those conversions do not impact
-accuracy.
+The only formula for static quantization currently supported
+by oneDNN is with scales applied after zero-point as follows:
+
+\f[
+x_{f32}[:] = scale_{x} \cdot (x_{quant}[:] - zp_{x})
+\f]
+
+where \f$x_{f32}\f$ and \f$x_{quant}\f$ are the non-quantized and
+quantized representation of \f$x\f$ respectively, \f$scale_{x}\f$ is a
+*scaling factor* in a floating-point format, \f$zp_{x}\f$ is a *zero
+point* (typically in integral format), and \f$[:]\f$ is used to denote
+elementwise application of the formula to the arrays. 
+
+In this model, oneDNN assumes that quantization parameters are inputs
+provided by the user and the library does not compute those scaling
+factors and zero-points as part of primitive computation.
+
+These quantization parameters can either be computed ahead of time
+using calibration tools or at runtime based on the actual minimum and
+maximum values of a tensor. Either method can be used in conjunction
+with oneDNN static quantization, as long as the quantization
+parameters are passed as input to the oneDNN primitives at execution
+time.
+
+
+### Dynamic quantization
+
+The only formula for dynamic quantization currently supported by
+oneDNN is with scales computed following the [1],
+namely:
+
+\f[
+x_{f32}[:] = scale_{x} \cdot x_{quant}[:] 
+\f]
+
+where \f$x_{f32}\f$ and \f$x_{quant}\f$ are the non-quantized and
+quantized representation of \f$x\f$ respectively, and \f$scale_{x}\f$ is a
+*scaling factor*:
+- in e8m0 format,
+- computed for each group of size 32 (see [set_scales](@ref dnnl::primitive_attr::set_scales)),
+- and computed as the largest power-of-two less than or equal to the
+  maximum absolute value of the group divided by the largest
+  power-of-two representable in the \f$x_{quant}\f$ data type
+  (e.g. \f$E8M0(amax(x_quant[:])) / E8M0(MAX\_QUANT\_DT) \f$).
+
+
+## General numerical behavior notes
+
+Primitive implementations are allowed to convert inputs to wider
+datatypes (e.g. int8 to int16 or int32), when those conversions do not
+impact accuracy.
 
 During execution, primitives implementations avoid integer overflows
 and maintain integer accuracy by using wider datatypes (e.g. int32)
-for intermediate values and accumulators. Those are then converted as
+for intermediate values and accumulators. 
+
+Results are then converted as
 necessary before the result is written to the output memory objects.
 
-When converting to integral datatypes, implementations typically
-saturate, whereas for floating-point datatypes, underflow/overflow can
-occur. To force saturation in floating-point datatypes use
-@ref dev_guide_attributes_post_ops_eltwise with clip algorithm.
+The scales are applied in single precision floating point data type
+(#dnnl::memory::data_type::f32) before downconversion to the
+destination datatype. When converting to integral datatypes,
+implementations typically saturate, whereas for floating-point
+datatypes, underflow/overflow can occur. To force saturation in
+floating-point datatypes use @ref
+dev_guide_attributes_post_ops_eltwise with clip algorithm. Rounding
+happens according to [rounding mode attribute](@ref dev_guide_attributes_rounding_mode).
 
 @warning
 Depending on the architecture, the behavior of int8 computations might slightly
@@ -85,19 +124,72 @@ vary. For more details, refer to @ref dev_guide_int8_computations.
 When multiple operations are fused in a single primitive using the
 [post ops attribute](@ref dev_guide_attributes_post_ops), those are assumed to be
 computed in f32 precision. As a result the destination quantization
-parameters are applied after the post-ops as follow:
+parameters are applied after the post-ops as follows:
 
 \f[
    \dst[:] = post\_ops(OP(src[:], weights[:], ...)) / scale_{\dst} + zp_{\dst}
 
 \f]
 
-Quantizing/dequantizing values between post-operations can still be
-achieved using one of [eltwise](@ref dev_guide_attributes_post_ops_eltwise),
-[binary](@ref dev_guide_attributes_post_ops_binary), or the scale parameter of
-the appropriate post-operation.
+Quantizing/dequantizing values between post-operations can be achieved
+using one of [eltwise](@ref dev_guide_attributes_post_ops_eltwise),
+[binary](@ref dev_guide_attributes_post_ops_binary), or the scale
+parameter of the appropriate post-operation.
 
-### Example: Convolution Quantization Workflow
+
+## API
+
+oneDNN provides the following APIs to set scales:
+- C: @ref dnnl_primitive_attr_set_scales
+- C++: @ref dnnl::primitive_attr::set_scales
+
+and the following APIs to set zero-points:
+- C: @ref dnnl_primitive_attr_set_zero_points
+- C++: @ref dnnl::primitive_attr::set_zero_points
+
+Those take five parameters:
+- an argument index, to specify which argument is having its
+  quantization parameter description set.
+- a mask, to specify along which axis the quantization parameters are
+  applied. If the argument we are specifying is a \f$D_0 \times
+  ... \times D_{n-1}\f$ tensor and we want to have scales per \f$d_i\f$
+  dimension (where \f$0 \le d_i < n\f$), then the mask should be set to
+  \f$mask = \sum \limits_{d_i} 2^{d_i}\f$, and the number of scales
+  should be \f$\prod\limits_{d_i}D_{d_i}\f$.
+- an array of group sizes, that specify the number of consecutive
+  elements a single scale/zero-point applies to for each axis along
+  which the quantization parameters apply,
+- a scale/zero-point data type. It is f32 by default for scales and
+  int32 for zero-points
+- a quantization mode, which specifies how the scales are computed
+  (e.g. static or dynamic).
+
+
+### Special Case: Host-side Scalar Scale and Zero-point
+
+When using the GPU engine and a single scale/zero-point is used for an
+argument (mask=0), oneDNN supports passing those from the host to
+reduce overheads of copying data from host to device or allocating
+extra device memory. The host scale or zero-point attributes should be
+set at creation time using the following API:
+
+~~~cpp
+dnnl::primitive_attr attr;
+attr.set_host_scale(DNNL_ARG_DST,
+           memory::data_type::f32);
+
+attr.set_host_zero_point(DNNL_ARG_DST,
+           memory::data_type::s32);
+~~~
+
+The corresponding memory objects for scale or zero-point host value
+should be created as a host-side scalar (see @ref
+dev_guide_host_side_scalars for details) and passed to the primitive
+execution function.
+
+## Examples of quantization workflow
+
+### Convolution Quantization Workflow
 
 Consider a convolution with bias. The tensors are represented as:
 
@@ -142,7 +234,7 @@ where
   necessary to apply `f32` scaling factors.
 
 
-### Per-Channel Scaling
+#### Per-Channel Scaling
 
 Some of the primitives have limited support of multiple scales for a quantized
 tensor. The most popular use case is the @ref dev_guide_convolution primitive
@@ -184,78 +276,7 @@ oneDNN provides reorders that can perform per-channel scaling:
         ).
 \f]
 
-## API
-
-The library API to support for INT8 was designed for the model described above.
-However, it does not require users to follow exactly this model. As long as
-users can fit their model into the given functionality everything should work
-fine. Having this in mind we tried to design a minimal and simple yet powerful
-enough quantization API.
-
-The most common data type for data tensors during INT8 inference is
- #dnnl::memory::data_type::s8 and #dnnl::memory::data_type::u8. All the
-scaling factors related to tensors are not attached in any way to the
-oneDNN memory objects and should be maintained by users.
-
-The library essentially extends the ability of the primitives to scale the
-output before storing the result to the memory with the destination data type.
-That's exactly the minimum that we need to support INT8 inference (check the
-equations above--only \f$output\_scale\f$ is non-standard).
-
-The scaling happens in the single precision floating point data type
-(#dnnl::memory::data_type::f32). Before storing, the result is downconverted
-to the destination data type with saturation if required. The rounding happens
-according to the current HW setting (for instance, on CPU according to the
-MXCSR register).
-
-
-@anchor dev_guide_attributes_quantization_scales
-### Argument Scaling
-
-The library uses @ref dev_guide_attributes API for setting the scaling factors
-for most of the primitives. The supporting attributes can be found in the
-documentation for each primitive. The unsupported cases are handled according
-to the
-[attributes error handling section](@ref dev_guide_attributes_error_handling).
-
-API:
-- C: @ref dnnl_primitive_attr_set_scales_mask
-- C++: @ref dnnl::primitive_attr::set_scales_mask
-
-Primitives support scales only when the data type of computation is an
-integer.
-
-The parameters (C++ API for simplicity):
-~~~cpp
-void dnnl::primitive_attr::set_scales_mask(int arg, int mask);
-~~~
-
-In the simplest case, when there is only one common scale the attribute changes
-the op behavior from
-\f[
-    \dst[:] = Op(...)
-\f]
-
-to
-
-\f[
-    \dst[:] = scale \cdot Op(...).
-\f]
-
-To support scales per one or several dimensions, users must set the appropriate
-mask.
-
-Say the destination is a \f$D_0 \times ... \times D_{n-1}\f$ tensor and
-we want to have output scales per \f$d_i\f$ dimension
-(where \f$0 \le d_i < n\f$).
-
-Then the mask should be set to:
-- \f$mask = \sum \limits_{d_i} 2^{d_i}\f$,
-
-and the number of scales should be:
-- `scales.size()` = \f$\prod\limits_{d_i}D_{d_i}\f$.
-
-#### Example 1: weights quantization with per-output-channel scaling
+#### Preparing the weights with per-output-channel scaling
 
 ~~~cpp
    // weights dimensions
@@ -297,7 +318,7 @@ and the number of scales should be:
 // ...
 ~~~
 
-#### Example 2: convolution with per-output-channel quantization
+#### Create the convolution with per-output-channel quantization
 
 This example is complementary to the previous example (which should ideally be
 the first one). Let's say we want to create an int8 convolution with per-output
@@ -359,7 +380,7 @@ channel scaling.
 // ...
 ~~~
 
-#### Example 3: matmul with advanced quantization
+### Matmul with weights-only quantization
 
 This example describes a process of weights decompression, or
 weights-only-quantization (WoQ), in matmul primitive which may be found when
@@ -407,7 +428,7 @@ per-N quantization.
 // ...
 ~~~
 
-#### Example 4: matmul with precomputed reductions and advanced quantization
+### Matmul with precomputed reductions and advanced quantization
 
 This example is a complementary addition to the one above. It describes a
 process of dynamic quantization with weights's tensor asymmetric quantization
@@ -493,21 +514,5 @@ impossible to apply them on-the-fly without potential accuracy loss.
 // ...
 ~~~
 
-### Special Case: Host-side Scalar Scale and Zero-point
 
-When using the GPU engine, host-side scalar scales and zero-points are
-supported to reduce copying of data from host to device. A memory object
-for scale or zero-point host value should be created as a host-side scalar
-(see @ref dev_guide_host_side_scalars for details) and passed to the primitive
-execution function. The host scales or zero-points attributes should also
-be set using the following API:
-
-~~~cpp
-dnnl::primitive_attr attr;
-attr.set_host_scale(DNNL_ARG_DST,
-           memory::data_type::f32);
-
-attr.set_host_zero_point(DNNL_ARG_DST,
-           memory::data_type::s32);
-~~~
-
+[1]: [Open Compute Project Microscaling specification version 1](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf)

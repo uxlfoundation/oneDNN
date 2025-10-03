@@ -2466,7 +2466,10 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.ununroll_bd_loop
             = static_cast<dim_t>(jcp.M) * jcp.N * (jcp.is_bf32 ? 1 : 2)
             > 8 * 1024;
-
+    printf("exec type: %d, nthr: %d, is relo: %d, comp ow: %d, ow block: %d, "
+           "req_brg_comp_pad: %d, req_cal_comp_pad: %d\n",
+            jcp.exec_type, jcp.nthr, jcp.is_relo(), jcp.comp_ow_size,
+            jcp.ow_block, jcp.req_brg_comp_pad, jcp.req_cal_comp_pad);
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
 

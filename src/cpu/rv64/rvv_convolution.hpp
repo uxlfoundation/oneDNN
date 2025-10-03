@@ -30,9 +30,8 @@ struct rvv_convolution_fwd_t : public primitive_t {
             const data_type_t ddt = dst_md()->data_type;
 
             const bool types_ok = (sdt == f32 && wdt == f32)
-                    || (sdt == f16 && wdt == f16) || (sdt == f32 && wdt == f16)
                     || (sdt == s8 && wdt == s8) || (sdt == u8 && wdt == s8);
-            const bool dst_ok = utils::one_of(ddt, f32, f16, s8, u8, s32);
+            const bool dst_ok = utils::one_of(ddt, f32, s8, u8, s32);
 
             VDISPATCH_CONV(attr()->scales_.has_default_values(),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);

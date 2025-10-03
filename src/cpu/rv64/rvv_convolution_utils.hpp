@@ -103,9 +103,6 @@ static inline const void *ptr_add_elems(
     if (dt == s8) return reinterpret_cast<const int8_t *>(base) + elems;
     if (dt == u8) return reinterpret_cast<const uint8_t *>(base) + elems;
     if (dt == s32) return reinterpret_cast<const int32_t *>(base) + elems;
-#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
-    if (dt == f16) return reinterpret_cast<const _Float16 *>(base) + elems;
-#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
     return base;
 }
 
@@ -116,9 +113,6 @@ static inline void *ptr_add_elems_mut(
     if (dt == s8) return reinterpret_cast<int8_t *>(base) + elems;
     if (dt == u8) return reinterpret_cast<uint8_t *>(base) + elems;
     if (dt == s32) return reinterpret_cast<int32_t *>(base) + elems;
-#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
-    if (dt == f16) return reinterpret_cast<_Float16 *>(base) + elems;
-#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
     return base;
 }
 
@@ -157,56 +151,6 @@ inline float rvv_dot_ic_fwd_f32_f32(
     }
     return out_scalar;
 }
-
-#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
-// Per-dtype inner-kernel: dot over IC with RVV intrinsics (f16 x f16 -> f32 accumulate)
-inline float rvv_dot_ic_fwd_f16_f16(
-        const _Float16 *sp, const _Float16 *wp, dim_t IC) {
-    float out_scalar = 0.f;
-    for (dim_t ic = 0; ic < IC;) {
-        const size_t vl = __riscv_vsetvl_e16m1(static_cast<size_t>(IC - ic));
-        vfloat16m1_t vin_h = __riscv_vle16_v_f16m1(sp + ic, vl);
-        vfloat16m1_t wv_h = __riscv_vle16_v_f16m1(wp + ic, vl);
-        // widen to f32 and multiply in f32
-        vfloat32m2_t vin_f = __riscv_vfwcvt_f_f_v_f32m2(vin_h, vl);
-        vfloat32m2_t wv_f = __riscv_vfwcvt_f_f_v_f32m2(wv_h, vl);
-        vfloat32m2_t vmul_f = __riscv_vfmul_vv_f32m2(vin_f, wv_f, vl);
-        // reduce to scalar f32
-        vfloat32m1_t vzero_f = __riscv_vfmv_v_f_f32m1(0.f, 1);
-        vfloat32m1_t vred_f
-                = __riscv_vfredusum_vs_f32m2_f32m1(vmul_f, vzero_f, vl);
-        float chunk = __riscv_vfmv_f_s_f32m1_f32(vred_f);
-        out_scalar += chunk;
-        ic += static_cast<dim_t>(vl);
-    }
-    return out_scalar;
-}
-#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
-
-#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
-// Per-dtype inner-kernel: dot over IC with RVV intrinsics (f32 x f16 -> f32 accumulate)
-inline float rvv_dot_ic_fwd_f32_f16(
-        const float *sp, const _Float16 *wp, dim_t IC) {
-    float out_scalar = 0.f;
-    for (dim_t ic = 0; ic < IC;) {
-        const size_t vl = __riscv_vsetvl_e32m1(static_cast<size_t>(IC - ic));
-        // load f32 src chunk using m2
-        vfloat32m2_t vin_f = __riscv_vle32_v_f32m2(sp + ic, vl);
-        // load f16 weights and widen to f32
-        vfloat16m1_t wv_h = __riscv_vle16_v_f16m1(wp + ic, vl);
-        vfloat32m2_t wv_f = __riscv_vfwcvt_f_f_v_f32m2(wv_h, vl);
-        // multiply in f32 and reduce to scalar f32
-        vfloat32m2_t vmul_f = __riscv_vfmul_vv_f32m2(vin_f, wv_f, vl);
-        vfloat32m1_t vzero_f = __riscv_vfmv_v_f_f32m1(0.f, 1);
-        vfloat32m1_t vred_f
-                = __riscv_vfredusum_vs_f32m2_f32m1(vmul_f, vzero_f, vl);
-        float chunk = __riscv_vfmv_f_s_f32m1_f32(vred_f);
-        out_scalar += chunk;
-        ic += static_cast<dim_t>(vl);
-    }
-    return out_scalar;
-}
-#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
 
 // Per-dtype inner-kernel: dot over IC with RVV intrinsics (s8 x s8 -> f32 accumulate)
 inline float rvv_dot_ic_fwd_s8_s8(
@@ -270,16 +214,6 @@ inline float compute_dot_ic_fwd(data_type_t sdt, data_type_t wdt,
         return rvv_dot_ic_fwd_u8_s8(static_cast<const uint8_t *>(sp),
                 static_cast<const int8_t *>(wp), IC);
     }
-
-#if defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
-    if (sdt == f16 && wdt == f16) {
-        return rvv_dot_ic_fwd_f16_f16(static_cast<const _Float16 *>(sp),
-                static_cast<const _Float16 *>(wp), IC);
-    } else if (sdt == f32 && wdt == f16) {
-        return rvv_dot_ic_fwd_f32_f16(static_cast<const float *>(sp),
-                static_cast<const _Float16 *>(wp), IC);
-    }
-#endif // defined(DNNL_RISCV_USE_ZVFH_INTRINSICS)
     return 0.f;
 }
 
@@ -304,7 +238,6 @@ inline float finalize_conv_acc(float acc_dot, float bias_val,
 }
 
 // Saturating cast from float accumulator to destination scalar type
-// _Float16 cast uses default narrowing
 template <typename TDst>
 inline TDst saturate_cast(float x) {
     return static_cast<TDst>(x);

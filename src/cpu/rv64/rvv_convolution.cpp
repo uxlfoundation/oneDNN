@@ -153,9 +153,6 @@ status_t rvv_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
             const size_t doff = dst_off_nhwc(n, oh, ow, oc);
             if (ddt == data_type::f32) {
                 reinterpret_cast<float *>(dst_nhwc_void)[doff] = out_scalar;
-            } else if (ddt == data_type::f16) {
-                reinterpret_cast<_Float16 *>(dst_nhwc_void)[doff]
-                        = (_Float16)out_scalar;
             } else if (ddt == data_type::s32) {
                 reinterpret_cast<int32_t *>(dst_nhwc_void)[doff]
                         = saturate_cast<int32_t>(out_scalar);

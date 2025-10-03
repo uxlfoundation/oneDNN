@@ -44,15 +44,15 @@ struct simple_params_t : trivially_serializable_t<simple_params_t> {
     compute::kernel_ctx_t get_kernel_ctx() const;
 
     dim_t n_blocks;
-    dim_t blocks[6];
-    dim_t strides[6];
+    dim_t blocks[6] = {0};
+    dim_t strides[6] = {0};
 
     dim_t read_block;
     dim_t write_block;
     int n;
     int simd;
     int data_type_size;
-    int bytes_per_workitem;
+    int bytes_per_workitem = 0;
     bool use_large_index = true;
     bool use_internal_padding_kernel = false;
     uint8_t padding[6] = {0};

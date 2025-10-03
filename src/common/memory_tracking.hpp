@@ -565,9 +565,7 @@ struct grantor_t {
             return base_mem_storage_->get_sub_storage(aligned_offset, e.size);
         }
 
-        const size_t aligned_offset
-                = reinterpret_cast<size_t>(utils::align_ptr<char>(
-                        reinterpret_cast<char *>(e.offset), e.alignment));
+        const size_t aligned_offset = reinterpret_cast<size_t>(utils::align_ptr<char>( reinterpret_cast<char *>(e.offset), e.alignment));
         assert(aligned_offset + e.size <= registry_.size());
         return base_mem_storage_->get_sub_storage(aligned_offset, e.size);
     }

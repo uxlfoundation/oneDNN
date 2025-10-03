@@ -597,19 +597,20 @@ static std::vector<config_record_t> sorted_configs = []() {
 }();
 
 property set_properties(bool is_thin_q, bool is_quantized, bool is_integrated,
-        bool is_fma, bool is_f32) {
+        bool is_fma, bool is_f32, bool is_f16_accumulate) {
     property properties = property::none;
     if (is_thin_q) { properties |= property::second_token; }
     if (is_quantized) { properties |= property::quantized; }
     if (is_integrated) { properties |= property::integrated; }
     if (is_fma) { properties |= property::fma; }
     if (is_f32) { properties |= property::f32; }
+    if (is_f16_accumulate) { properties |= property::f16_accumulate; }
     return properties;
 }
 
 config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size, dim_t seq,
         bool is_thin_q, bool is_quantized, bool is_integrated, bool is_fma,
-        bool is_f32) {
+        bool is_f32, bool is_f16_accumulate) {
     // quantized FMA for f16 on MTL not implemented in gemmstone
     if (arch == compute::gpu_arch_t::xe_hpg && is_fma && !is_f32
             && is_quantized)
@@ -626,8 +627,8 @@ config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size, dim_t seq,
     compute::gpu_arch_t arch_query = (arch >= compute::gpu_arch_t::xe3)
             ? compute::gpu_arch_t::xe2
             : arch;
-    property query_properties = set_properties(
-            is_thin_q, is_quantized, is_integrated, is_fma, is_f32);
+    property query_properties = set_properties(is_thin_q, is_quantized,
+            is_integrated, is_fma, is_f32, is_f16_accumulate);
 
     config_query_t query(arch_query, static_cast<int>(head_size),
             static_cast<int>(seq), query_properties);
@@ -648,9 +649,9 @@ config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size, dim_t seq,
 // excessive recompilation with smaller power of 2 sizes
 dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
         dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
-        bool is_fma, bool is_f32) {
-    property query_properties = set_properties(
-            is_thin_q, is_quantized, is_integrated, is_fma, is_f32);
+        bool is_fma, bool is_f32, bool is_f16_accumulate) {
+    property query_properties = set_properties(is_thin_q, is_quantized,
+            is_integrated, is_fma, is_f32, is_f16_accumulate);
 
     compute::gpu_arch_t arch_query = (arch >= compute::gpu_arch_t::xe3)
             ? compute::gpu_arch_t::xe2

@@ -182,7 +182,7 @@ const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &c
                       return lhs_score < rhs_score;
 
     };
-    std::sort(entries.begin(), entries.end(), less);
+    std::stable_sort(entries.begin(), entries.end(), less);
     if (entries.size() > 0)
 	    evaluate(*entries[0], eparams, aux);
 

@@ -20,12 +20,14 @@
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/nstl.hpp"
+#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/aarch64/jit_generator.hpp"
 
 #include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
 #include "cpu/aarch64/jit_uni_eltwise.hpp"
+#include <cstdint>
 
 #define GET_OFF(field) offsetof(jit_args_t, field)
 
@@ -260,7 +262,7 @@ private:
 
     /**
      * @brief Unpack two BFloat16 values from a single register into two target registers.
-    * 
+    *
     * ASIMD (NEON) version: unpack in low/high half order.
     * SVE version: unpack in even/odd element order.
     *
@@ -271,7 +273,7 @@ private:
 
     /**
      * @brief Pack two BFloat16 values from two registers into a single register.
-     * 
+     *
      * ASIMD (NEON) version: pack from low/high half order.
      * SVE version: pack from even/odd element order.
      *
@@ -282,7 +284,7 @@ private:
 
     /**
      * @brief Unpack two IEEE‑754 FP16 values from a single register into two target registers.
-     * 
+     *
      * ASIMD (NEON) version: unpack in low/high half order.
      * SVE version: unpack in even/odd element order.
      *
@@ -293,7 +295,7 @@ private:
 
     /**
      * @brief Pack two IEEE‑754 FP16 values from two registers into a single register.
-     * 
+     *
      * ASIMD (NEON) version: pack from low/high half order.
      * SVE version: pack from even/odd element order.
      *
@@ -396,15 +398,14 @@ inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::pack_fp16(
 }
 } // namespace
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(engine_t *engine) {
     using namespace alg_kind;
 
     const memory_desc_wrapper src_d(src_md());
 
     bool ok = mayiuse(isa) && is_fwd()
-            && utils::everyone_is(
-                    d_type, src_md()->data_type, dst_md()->data_type)
+            && src_md()->data_type == dst_md()->data_type
             && !has_zero_dim_memory() && src_d.is_dense(true)
             && eltwise_injector::is_supported(isa, desc_.alg_kind)
             // refer to a comment in jit_uni_kernel why this is needed
@@ -414,31 +415,42 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
     return ok ? status::success : status::unimplemented;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_fwd_t<isa, d_type>::jit_uni_eltwise_fwd_t(const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_eltwise_fwd_t<isa>::jit_uni_eltwise_fwd_t(const pd_t *apd)
     : primitive_t(apd) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_fwd_t<isa, d_type>::~jit_uni_eltwise_fwd_t() = default;
+template <cpu_isa_t isa>
+jit_uni_eltwise_fwd_t<isa>::~jit_uni_eltwise_fwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_fwd_t<isa>::init(engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t<isa>(pd())));
     return kernel_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::execute(
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_fwd_t<isa>::execute(
         const exec_ctx_t &ctx) const {
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+
+    const data_type_t src_dt = pd()->src_md()->data_type;
+
+    const size_t elem_size = types::data_type_size(src_dt);
+
+    // data_type_size returns 0 for data_type::undef
+    if (elem_size == 0) return status::unimplemented;
+
+    auto src_uint_t = CTX_IN_MEM(const uint8_t *, DNNL_ARG_SRC);
+    auto dst_uint_t = CTX_OUT_MEM(uint8_t *, DNNL_ARG_DST);
 
     const memory_desc_wrapper data_d(pd()->src_md());
     const auto nelems = data_d.nelems(true);
     const int simd_w = 64 / data_d.data_type_size();
 
-    src += data_d.offset0();
-    dst += data_d.offset0();
+    const auto offset_bytes = static_cast<ptrdiff_t>(data_d.offset0())
+            * static_cast<ptrdiff_t>(elem_size);
+
+    const uint8_t *src = src_uint_t + offset_bytes;
+    uint8_t *dst = dst_uint_t + offset_bytes;
 
     parallel(0, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
@@ -449,8 +461,8 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::execute(
         if (start == end) return;
 
         jit_args_t args;
-        args.src = src + start;
-        args.dst = dst + start;
+        args.src = src + types::elements_to_bytes(src_dt, start);
+        args.dst = dst + types::elements_to_bytes(src_dt, start);
         args.diff_dst = nullptr;
         args.work_amount = end - start;
         (*kernel_)(&args);
@@ -459,14 +471,14 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::execute(
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(engine_t *engine) {
     using namespace alg_kind;
 
     const memory_desc_wrapper data_d(data_md());
 
     bool ok = mayiuse(isa) && !is_fwd()
-            && utils::everyone_is(d_type, data_md()->data_type,
+            && utils::everyone_is(data_md()->data_type,
                     diff_src_md()->data_type, diff_dst_md()->data_type)
             && !has_zero_dim_memory() && set_default_formats_common()
             && data_d.is_dense(true)
@@ -480,35 +492,46 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
     return ok ? status::success : status::unimplemented;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_bwd_t<isa, d_type>::jit_uni_eltwise_bwd_t(const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_eltwise_bwd_t<isa>::jit_uni_eltwise_bwd_t(const pd_t *apd)
     : primitive_t(apd) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_bwd_t<isa, d_type>::~jit_uni_eltwise_bwd_t() = default;
+template <cpu_isa_t isa>
+jit_uni_eltwise_bwd_t<isa>::~jit_uni_eltwise_bwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_bwd_t<isa>::init(engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t<isa>(pd())));
     return kernel_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_bwd_t<isa>::execute(
         const exec_ctx_t &ctx) const {
-    auto src = pd()->use_dst() ? CTX_IN_MEM(const data_t *, DNNL_ARG_DST)
-                               : CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
-    auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
+    const data_type_t data_dt =
+    pd()->use_dst() ? pd()->dst_md()->data_type : pd()->src_md()->data_type;
+
+    auto src_uint_t = pd()->use_dst() ? CTX_IN_MEM(const uint8_t *, DNNL_ARG_DST)
+                               : CTX_IN_MEM(const uint8_t *, DNNL_ARG_SRC);
+    auto diff_dst_uint = CTX_IN_MEM(const uint8_t *, DNNL_ARG_DIFF_DST);
+    auto diff_src_uint = CTX_OUT_MEM(uint8_t *, DNNL_ARG_DIFF_SRC);
 
     const memory_desc_wrapper data_d(pd()->data_md());
     const memory_desc_wrapper diff_data_d(pd()->diff_src_md());
     const auto nelems = data_d.nelems(true);
     const int simd_w = 64 / data_d.data_type_size();
 
-    src += data_d.offset0();
-    diff_dst += diff_data_d.offset0();
-    diff_src += diff_data_d.offset0();
+    const size_t elem_size = types::data_type_size(data_dt);
+    if (elem_size == 0) return status::unimplemented;
+
+    const ptrdiff_t data_off_bytes
+            = static_cast<ptrdiff_t>(data_d.offset0()) * static_cast<ptrdiff_t>(elem_size);
+    const ptrdiff_t diff_off_bytes
+            = static_cast<ptrdiff_t>(diff_data_d.offset0()) * static_cast<ptrdiff_t>(elem_size);
+
+    const uint8_t *src = static_cast<const uint8_t *>(src_uint_t) + data_off_bytes;
+    const uint8_t *diff_dst = static_cast<const uint8_t *>(diff_dst_uint) + diff_off_bytes;
+    uint8_t *diff_src = static_cast<uint8_t *>(diff_src_uint) + diff_off_bytes;
 
     parallel(0, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
@@ -519,9 +542,9 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
         if (start == end) return;
 
         jit_args_t args;
-        args.src = src + start;
-        args.dst = diff_src + start;
-        args.diff_dst = diff_dst + start;
+        args.src = src + types::elements_to_bytes(data_dt, start);
+        args.dst = diff_src + types::elements_to_bytes(data_dt, start);
+        args.diff_dst = diff_dst + types::elements_to_bytes(data_dt, start);
         args.work_amount = end - start;
         (*kernel_)(&args);
     });
@@ -531,13 +554,9 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
 
 // Jit uni eltwise is fully vector length agnostic, so we use sve_128
 // as alias for VLA SVE.
-template struct jit_uni_eltwise_fwd_t<asimd, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<asimd, data_type::bf16>;
-template struct jit_uni_eltwise_fwd_t<asimd, data_type::f16>;
-template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<sve_128, data_type::bf16>;
-template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f16>;
-template struct jit_uni_eltwise_bwd_t<sve_128, data_type::f32>;
+template struct jit_uni_eltwise_fwd_t<asimd>;
+template struct jit_uni_eltwise_fwd_t<sve_128>;
+template struct jit_uni_eltwise_bwd_t<sve_128>;
 
 } // namespace aarch64
 } // namespace cpu

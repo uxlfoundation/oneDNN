@@ -446,6 +446,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         // Limited support of host scalar dst scales
         if (c_scales.is_host_scalar() && pd()->attr()->post_ops_.len() == 0) {
             CHECK(maybe_get_scale_as_float(c_scales_storage, scale_val));
+            gpu_assert(scale_val != 0);
             alpha /= scale_val;
         }
     }

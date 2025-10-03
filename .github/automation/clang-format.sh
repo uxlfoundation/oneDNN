@@ -1,7 +1,8 @@
-#! /bin/bash
+#!/usr/bin/env bash
 
 #===============================================================================
 # Copyright 2019-2020 Intel Corporation
+# Copyright 2025 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +27,18 @@ fi
 
 echo "Starting format check..."
 
-for filename in $(find "$(pwd)" -type f | grep -P ".*\.(c|cpp|h|hpp|cl)$"); do ${CLANG_FORMAT} -style=file -i $filename; done
+src_regex='.*\.(c|h|cpp|hpp|cxx|hxx|cl)$'
+
+# Treat each argument as an input file. If called with no arguments check the
+# whole repo.
+if [[ $# -gt 0 ]]; then
+    base_sha=$1
+    file_list=$(git diff --name-only $base_sha | grep -E "$src_regex")
+    echo "Checking: $file_list"
+    for filename in $file_list; do ${CLANG_FORMAT} -style=file -i $filename; done
+else
+    find "$(pwd)" -type f -regextype posix-egrep -regex "$src_regex" -exec "$CLANG_FORMAT" -style=file -i {} \+
+fi
 
 RETURN_CODE=0
 

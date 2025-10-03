@@ -257,6 +257,12 @@ struct micro_t : public primitive_t {
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));
 
+            VCHECK_SDPA_COND(
+                    IMPLICATION((arch() == compute::gpu_arch_t::xe_hpc)
+                                    && (qry_md()->data_type == data_type::f32),
+                            with_causal_mask()),
+                    "fused f32 SDPA only optimized for causal mask"); //TODO: update when performance improved
+
             return status::success;
         }
 

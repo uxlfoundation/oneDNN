@@ -23,7 +23,6 @@
 
 #include "common/utils.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
-#include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/pass/simplify.hpp"
@@ -1364,7 +1363,6 @@ public:
 
 private:
     dim_t get_block_alignment_bytes(size_t inner_idx) const {
-        if (inner_idx < 0) return 1;
         // Get base address.
         const auto &tlayout = view().tlayout();
         const auto &type = vlayout().type();

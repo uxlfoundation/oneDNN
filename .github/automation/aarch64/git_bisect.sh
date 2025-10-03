@@ -38,3 +38,4 @@ git bisect good ${GOOD}
 git bisect bad ${BAD}
 git bisect run sh -c "cmake --build ${BUILD_DIR} && ${BUILD_DIR}/tests/benchdnn/benchdnn ${CMD}"
 git bisect log
+git bisect reset

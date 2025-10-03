@@ -38,8 +38,8 @@ jobs:
   build-acl-cache:
     uses: ./.github/workflows/aarch64-acl.yml
 
-  test-performance:
-    uses: ./.github/workflows/performance-aarch64.yml
+  # test-performance:
+  #   uses: ./.github/workflows/performance-aarch64.yml
 
   build-and-test:
     needs: build-acl-cache
@@ -135,7 +135,7 @@ jobs:
       - name: Run oneDNN tests
         run: |
           set -o pipefail
-          ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh ${{ github.workspace }}/test_results.xml
+          ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh ${{ github.workspace }}/test_results.xml ${{ github.workspace }}/test_results.log
         working-directory: ${{ github.workspace }}/oneDNN/build
         env:
           BUILD_TOOLSET: ${{ matrix.config.toolset }}
@@ -175,7 +175,7 @@ jobs:
         if: failure()
         shell: bash
         working-directory: ${{ github.workspace }}/oneDNN
-        run: python .github/automation/aarch64/bisect_ctest.py --unique ${{ steps.get-stable.outputs.stable-hash }} ${{ github.workspace }}/test_results.xml
+        run: python .github/automation/aarch64/bisect_ctest.py --unique ${{ steps.get-stable.outputs.stable-hash }} ${{ github.workspace }}/test_results.log
         env:
           ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
 

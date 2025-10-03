@@ -1282,7 +1282,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 }
 template <cpu_isa_t isa>
 struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
-    brgemm_thread_ctx_t(brgemm_exec_ctx_t &brgemm_ctx_, int ithr_,
+    brgemm_thread_ctx_t(const brgemm_exec_ctx_t &brgemm_ctx_, int ithr_,
             brgemm_batch_element_t *__restrict brg_batch_, char *c_buffer_,
             char *wsp_tile_, const char *__restrict weights_)
         : brgemm_ctx(brgemm_ctx_)
@@ -1292,7 +1292,7 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
         , wsp_tile(wsp_tile_)
         , weights(weights_) {}
 
-    brgemm_exec_ctx_t &brgemm_ctx;
+    const brgemm_exec_ctx_t &brgemm_ctx;
     int ithr {0};
     brgemm_batch_element_t *__restrict brg_batch {nullptr};
     char *__restrict c_buffer {nullptr};

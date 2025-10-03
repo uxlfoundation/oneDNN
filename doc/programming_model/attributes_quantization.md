@@ -4,13 +4,20 @@ Quantization {#dev_guide_attributes_quantization}
 @anchor dgaq_intro
 ## Introduction
 
-Some primitives in the library support input/output tensors with the INT8
-(either signed or unsigned) data type. The primary goal is to support
-reduced precision inference on the compatible hardware.
+Some primitives support input and output tensors with INT8 data types,
+both signed and unsigned, enabling reduced-precision inference on
+supported hardware.
+
+Similarly, some primitives support OFP8-compliant f8 types (8-bit
+floating-point formats) designed to accelerate AI workloads, including
+training and inference of large neural networks. Lowering precision to
+8 bits with f8 enables faster computation and reduced memory usage.
 
 Related materials:
 - [Lower Numerical Precision Deep Learning Inference and Training](https://www.intel.com/content/dam/develop/external/us/en/documents/lower-numerical-precision-deep-learning-jan2018-754765.pdf)
-- An example with annotations: @ref dev_guide_inference_int8
+- INT8 example with annotations: @ref dev_guide_inference_int8
+- f8 example with annotations: @ref matmul_f8_quantization_cpp
+- [OFP8 standard 8-bit floating-point](https://www.opencompute.org/documents/ocp-8-bit-floating-point-specification-ofp8-revision-1-0-2023-06-20-pdf)
 
 ## Quantization Model
 

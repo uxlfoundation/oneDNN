@@ -10,7 +10,7 @@ computations (referred to as int8) offer improved performance over
 higher-precision types because they enable packing more data into a single
 instruction, at the cost of reduced (but acceptable) accuracy.
 
-## Int8 Workflow
+## int8 Workflow
 
 There are different ways to use lower precision to perform inference. The
 @ref dev_guide_attributes_quantization page describes what kind of

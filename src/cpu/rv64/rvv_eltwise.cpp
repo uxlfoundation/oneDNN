@@ -39,11 +39,6 @@ static inline void compute_eltwise_rvv_fwd(const alg_kind_t alg,
             rvv_eltwise_apply_fwd_f32(alg, reinterpret_cast<const float *>(src),
                     reinterpret_cast<float *>(dst), len, alpha, beta);
             break;
-        case data_type::f16:
-            rvv_eltwise_apply_fwd_f16(alg,
-                    reinterpret_cast<const _Float16 *>(src),
-                    reinterpret_cast<_Float16 *>(dst), len, alpha, beta);
-            break;
         case data_type::s32:
             rvv_eltwise_apply_fwd_s32(alg,
                     reinterpret_cast<const int32_t *>(src),
@@ -71,12 +66,6 @@ static inline void compute_eltwise_rvv_bwd(const alg_kind_t alg, void *diff_src,
             rvv_eltwise_apply_bwd_f32(alg, reinterpret_cast<float *>(diff_src),
                     reinterpret_cast<const float *>(diff_dst),
                     reinterpret_cast<const float *>(src), len, alpha, beta);
-            break;
-        case data_type::f16:
-            rvv_eltwise_apply_bwd_f16(alg,
-                    reinterpret_cast<_Float16 *>(diff_src),
-                    reinterpret_cast<const _Float16 *>(diff_dst),
-                    reinterpret_cast<const _Float16 *>(src), len, alpha, beta);
             break;
         case data_type::s32:
             rvv_eltwise_apply_bwd_s32(alg,

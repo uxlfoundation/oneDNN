@@ -46,8 +46,8 @@ struct rvv_eltwise_fwd_t : public primitive_t {
 
             const data_type_t d_type = dst_md()->data_type;
             using namespace dnnl::impl::data_type;
-            bool type_ok = d_type == f32 || d_type == f16 || d_type == s32
-                    || d_type == s8 || d_type == u8;
+            bool type_ok = d_type == f32 || d_type == s32 || d_type == s8
+                    || d_type == u8;
             VDISPATCH_ELTWISE(type_ok, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(
                     src_md()->data_type == d_type, VERBOSE_UNSUPPORTED_DT);
@@ -109,8 +109,8 @@ struct rvv_eltwise_bwd_t : public primitive_t {
 
             const data_type_t d_type = src_md()->data_type;
             using namespace dnnl::impl::data_type;
-            bool type_ok = d_type == f32 || d_type == f16 || d_type == s32
-                    || d_type == s8 || d_type == u8;
+            bool type_ok = d_type == f32 || d_type == s32 || d_type == s8
+                    || d_type == u8;
             VDISPATCH_ELTWISE(type_ok, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(
                     utils::everyone_is(d_type, diff_src_md()->data_type,

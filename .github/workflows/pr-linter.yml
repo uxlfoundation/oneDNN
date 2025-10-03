@@ -1,5 +1,5 @@
 # *******************************************************************************
-# Copyright 2024 Arm Limited and affiliates.
+# Copyright 2024-2025 Arm Limited and affiliates.
 # Copyright 2024 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -64,7 +64,7 @@ jobs:
       - name: Install clang-format
         run: sudo apt update && sudo apt install -y "clang-format-11"
       - name: Check code formatting
-        run: .github/automation/clang-format.sh
+        run: .github/automation/clang-format.sh ${{ github.event.pull_request.base.sha }}
 
   pr-format-tags:
     name: Format tags consistency

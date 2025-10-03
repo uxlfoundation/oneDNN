@@ -188,7 +188,7 @@ void rnn_utils::init_rnn_conf(conf_t &rnn, const rnn_desc_t &rd,
         if (rd.cell_kind == alg_kind::vanilla_lstm) {
             min_k = (min_k <= 256) ? 160 : 256;
         } else {
-            min_k = 256;
+            min_k = device_info.mayiuse_systolic() ? 64 : 256;
         }
         dim_t k_limit = tail_dhc ? 50 : nstl::min(min_k, ideal_k);
 

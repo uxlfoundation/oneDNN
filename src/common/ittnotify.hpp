@@ -41,6 +41,8 @@ bool get_itt(__itt_task_level level);
 void primitive_task_start(primitive_kind_t kind);
 primitive_kind_t primitive_task_get_current_kind();
 void primitive_task_end();
+void add_formatted_metadata_parallel_task(int ithr, int nthr);
+void add_formatted_metadata_task(const char *prim_str, const char *param_str);
 } // namespace itt
 } // namespace impl
 } // namespace dnnl

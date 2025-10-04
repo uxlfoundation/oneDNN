@@ -97,93 +97,6 @@ achieved using one of [eltwise](@ref dev_guide_attributes_post_ops_eltwise),
 [binary](@ref dev_guide_attributes_post_ops_binary), or the scale parameter of
 the appropriate post-operation.
 
-### Example: Convolution Quantization Workflow
-
-Consider a convolution with bias. The tensors are represented as:
-
-- \f$\src_{f32}[:] = scale_{\src} \cdot (\src_{int8}[:] - zp_{\src})\f$
-- \f$\weights_{f32}[:] = scale_{\weights} \cdot \weights_{int8}[:]\f$
-- \f$\dst_{f32}[:] = scale_{\dst} \cdot (\dst_{int8}[:] - zp_{\dst})\f$
-
-Here the \f$\src_{f32}, \weights_{f32}, \dst_{f32}\f$ are not
-computed at all, the whole work happens with int8 tensors.So the task
-is to compute the \f$\dst_{int8}\f$ tensor, using the \f$\src_{int8}\f$,
-\f$\weights_{int8}\f$ tensors passed at execution time, as well as the
-corresponding quantization parameters \f$scale_{\src}\f$, \f$scale_{\weights}\f$,
-\f$scale_{\dst}\f$, and \f$zp_{\src}\f$, \f$zp_{\dst}\f$.
-Mathematically, the computations are:
-
-\f[
-   \dst_{int8}[:] =
-      \operatorname{f32\_to\_int8}(
-         (scale_{\src} \cdot scale_{\weights} \cdot
-         \operatorname{s32\_to\_f32}(conv_{s32}(\src_{int8}, \weights_{int8})
-	   - zp_{\src} \cdot comp_{s32}) + bias_{f32}) / scale_{\dst}
-           + zp_{\dst} )
-\f]
-
-where
-
-- \f$\operatorname{conv}_{s32}\f$ is just a regular convolution which takes source and
-  weights with int8 data type and compute the result in int32 data type (int32
-  is chosen to avoid overflows during the computations);
-
-- \f$comp_{s32}\f$ is a compensation term to account for
-  \f$\src\f$ non-zero zero-point. This term is computed by the oneDNN
-  library and can typically be pre-computed ahead of time, for example
-  during weights reorder.
-
-- \f$\operatorname{f32\_to\_s8}()\f$ converts an `f32` value to `s8` with
-  potential saturation if the values are out of the range of the int8 data
-  type.
-
-- \f$\operatorname{s32\_to\_f32}()\f$ converts an `int8` value to
-  `f32` with potential rounding. This conversion is typically
-  necessary to apply `f32` scaling factors.
-
-
-### Per-Channel Scaling
-
-Some of the primitives have limited support of multiple scales for a quantized
-tensor. The most popular use case is the @ref dev_guide_convolution primitive
-that supports per-output-channel scaling factors for the weights, meaning that
-the actual convolution computations would need to scale different output
-channels differently. This is possible without significant performance loss
-because the per-output-channel re-quantization is only required at the very end
-of the computations. It seems impossible to implement the same trick for the
-input channels, since that would require re-quantization for every input
-data point.
-
-- \f$\src_{f32}(n, ic, ih, iw) = scale_{\src} \cdot \src_{int8}(n, ic, ih, iw)\f$
-
-- \f$\weights_{f32}(oc, ic, kh, kw) = scale_{\weights}(oc) \cdot \weights_{int8}(oc, ic, kh, kw)\f$
-
-- \f$\dst_{f32}(n, oc, oh, ow) = scale_{\dst} \cdot \dst_{int8}(n, oc, oh, ow)\f$
-
-Note that now the weights' scaling factor depends on \f$oc\f$.
-
-To compute the \f$\dst_{int8}\f$ we need to perform the following:
-
-\f[
-
-    \dst_{int8}(n, oc, oh, ow) =
-        \operatorname{f32\_to\_int8}(
-            \frac{scale_{\src} \cdot scale_{\weights}(oc) \cdot
-            conv_{s32}(\src_{int8}, \weights_{int8})|_{(n, oc, oh, ow)} + \bias_{f32}}{scale_{\dst}}
-        ).
-\f]
-
-The user is responsible for preparing quantized weights accordingly. To do that,
-oneDNN provides reorders that can perform per-channel scaling:
-
-\f[
-
-    \weights_{int8}(oc, ic, kh, kw) =
-        \operatorname{f32\_to\_int8}(
-            \weights_{f32}(oc, ic, kh, kw) / scale_{weights}(oc)
-        ).
-\f]
-
 ## Quantization APIs: Scaling, Zero-Points, and Precomputed Reductions
 
 The library API to support for int8 was designed for the model described above.
@@ -318,7 +231,7 @@ host, use @ref host-side-scalars-and-zero-points "host-side scalar scaling"
 (`set_host_scale`) to avoid device memory transfer overhead.
 
 Global scaling is demonstrated in
-[Example 2](#example-2-convolution-with-per-output-channel-quantization) below.
+[Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization) below.
 
 ##### Per-Channel Scaling
 
@@ -337,8 +250,8 @@ attr.set_scales(DNNL_ARG_WEIGHTS, 1 << 0, {}, dnnl::memory::data_type::f32,
 ~~~
 
 Per-channel scaling is demonstrated in the
-[Example 1](#example-1-weights-quantization-with-per-output-channel-scaling) and
-[Example 2](#example-2-convolution-with-per-output-channel-quantization).
+[Weights Preparation with Per-output-channel Scaling](#weights-preparation-with-per-output-channel-scaling) and
+[Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization).
 It's also used in @ref inference_int8_matmul_cpp for weights quantization.
 
 ##### Group-Based Quantization
@@ -360,8 +273,8 @@ attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) + (1 << 1), groups,
 ~~~
 
 Group-based quantization is demonstrated in
-[Example 3](#example-3-matmul-with-advanced-quantization)
-and [Example 4](#example-4-matmul-with-precomputed-reductions-and-advanced-quantization)
+[Example 1](#example-1-matmul-with-advanced-quantization)
+and [Example 2](#example-2-matmul-with-precomputed-reductions-and-advanced-quantization)
 below.
 See also @ref weights_decompression_matmul_cpp for a complete implementation.
 
@@ -386,8 +299,8 @@ attr.set_scales(DNNL_ARG_SRC, (1 << 0) + (1 << 1), {},
 ~~~
 
 Multi-dimensional scaling is demonstrated in
-[Example 3](#example-3-matmul-with-advanced-quantization)
-and [Example 4](#example-4-matmul-with-precomputed-reductions-and-advanced-quantization)
+[Example 1](#example-1-matmul-with-advanced-quantization)
+and [Example 2](#example-2-matmul-with-precomputed-reductions-and-advanced-quantization)
 below.
 See also @ref weights_decompression_matmul_cpp for a complete implementation.
 
@@ -468,8 +381,8 @@ attr.set_zero_points(DNNL_ARG_WEIGHTS, (1 << 0) + (1 << 1), groups,
 ~~~
 
 Zero-point usage is demonstrated in the
-[Example 2](#example-2-convolution-with-per-output-channel-quantization) and
-[Example 4](#example-4-matmul-with-precomputed-reductions-and-advanced-quantization)
+[Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization) and
+[Example 2](#example-2-matmul-with-precomputed-reductions-and-advanced-quantization)
 below.
 See also @ref inference_int8_matmul_cpp and @ref weights_decompression_matmul_cpp
 for complete implementations.
@@ -538,11 +451,95 @@ The following limitations apply when using precomputed reductions:
 - **Full matrix mask required**: Must have full A matrix mask (e.g., for standard
   M×K times K×N MatMul, the mask should be 3), meaning broadcast is not supported
 
-See [Example 4](#example-4-matmul-with-precomputed-reductions-and-advanced-quantization) for complete code.
+See [Example 2](#example-2-matmul-with-precomputed-reductions-and-advanced-quantization) for complete code.
 
-## Quantization Examples
+## int8 Convolution Quantization Breakdown
 
-### Example 1: weights quantization with per-output-channel scaling
+Consider a convolution with bias. The tensors are represented as:
+
+- \f$\src_{f32}[:] = scale_{\src} \cdot (\src_{int8}[:] - zp_{\src})\f$
+- \f$\weights_{f32}[:] = scale_{\weights} \cdot \weights_{int8}[:]\f$
+- \f$\dst_{f32}[:] = scale_{\dst} \cdot (\dst_{int8}[:] - zp_{\dst})\f$
+
+Here the \f$\src_{f32}, \weights_{f32}, \dst_{f32}\f$ are not
+computed at all, the whole work happens with int8 tensors.So the task
+is to compute the \f$\dst_{int8}\f$ tensor, using the \f$\src_{int8}\f$,
+\f$\weights_{int8}\f$ tensors passed at execution time, as well as the
+corresponding quantization parameters \f$scale_{\src}\f$, \f$scale_{\weights}\f$,
+\f$scale_{\dst}\f$, and \f$zp_{\src}\f$, \f$zp_{\dst}\f$.
+Mathematically, the computations are:
+
+\f[
+   \dst_{int8}[:] =
+      \operatorname{f32\_to\_int8}(
+         (scale_{\src} \cdot scale_{\weights} \cdot
+         \operatorname{s32\_to\_f32}(conv_{s32}(\src_{int8}, \weights_{int8})
+	   - zp_{\src} \cdot comp_{s32}) + bias_{f32}) / scale_{\dst}
+           + zp_{\dst} )
+\f]
+
+where
+
+- \f$\operatorname{conv}_{s32}\f$ is just a regular convolution which takes source and
+  weights with int8 data type and compute the result in int32 data type (int32
+  is chosen to avoid overflows during the computations);
+
+- \f$comp_{s32}\f$ is a compensation term to account for
+  \f$\src\f$ non-zero zero-point. This term is computed by the oneDNN
+  library and can typically be pre-computed ahead of time, for example
+  during weights reorder.
+
+- \f$\operatorname{f32\_to\_s8}()\f$ converts an `f32` value to `s8` with
+  potential saturation if the values are out of the range of the int8 data
+  type.
+
+- \f$\operatorname{s32\_to\_f32}()\f$ converts an `int8` value to
+  `f32` with potential rounding. This conversion is typically
+  necessary to apply `f32` scaling factors.
+
+### Per-Channel Scaling Specifics
+
+Some of the primitives have limited support of multiple scales for a quantized
+tensor. The most popular use case is the @ref dev_guide_convolution primitive
+that supports per-output-channel scaling factors for the weights, meaning that
+the actual convolution computations would need to scale different output
+channels differently. This is possible without significant performance loss
+because the per-output-channel re-quantization is only required at the very end
+of the computations. It seems impossible to implement the same trick for the
+input channels, since that would require re-quantization for every input
+data point.
+
+- \f$\src_{f32}(n, ic, ih, iw) = scale_{\src} \cdot \src_{int8}(n, ic, ih, iw)\f$
+
+- \f$\weights_{f32}(oc, ic, kh, kw) = scale_{\weights}(oc) \cdot \weights_{int8}(oc, ic, kh, kw)\f$
+
+- \f$\dst_{f32}(n, oc, oh, ow) = scale_{\dst} \cdot \dst_{int8}(n, oc, oh, ow)\f$
+
+Note that now the weights' scaling factor depends on \f$oc\f$.
+
+To compute the \f$\dst_{int8}\f$ we need to perform the following:
+
+\f[
+
+    \dst_{int8}(n, oc, oh, ow) =
+        \operatorname{f32\_to\_int8}(
+            \frac{scale_{\src} \cdot scale_{\weights}(oc) \cdot
+            conv_{s32}(\src_{int8}, \weights_{int8})|_{(n, oc, oh, ow)} + \bias_{f32}}{scale_{\dst}}
+        ).
+\f]
+
+The user is responsible for preparing quantized weights accordingly. To do that,
+oneDNN provides reorders that can perform per-channel scaling:
+
+\f[
+
+    \weights_{int8}(oc, ic, kh, kw) =
+        \operatorname{f32\_to\_int8}(
+            \weights_{f32}(oc, ic, kh, kw) / scale_{weights}(oc)
+        ).
+\f]
+
+### Weights Preparation with Per-output-channel Scaling
 
 ~~~cpp
    // weights dimensions
@@ -561,7 +558,7 @@ See [Example 4](#example-4-matmul-with-precomputed-reductions-and-advanced-quant
    dnnl::memory();
 
    // int8 convolution primitive descriptor
-   dnnl::convolution_forward::primitive_desc conv_pd(/* see the next example */);
+   dnnl::convolution_forward::primitive_desc conv_pd(/* see the convolution workflow section */);
 
    // query the convolution weights memory descriptor
    dnnl::memory::desc wei_conv_s8_md = conv_pd.weights_desc();
@@ -584,11 +581,11 @@ See [Example 4](#example-4-matmul-with-precomputed-reductions-and-advanced-quant
 // ...
 ~~~
 
-### Example 2: convolution with per-output-channel quantization
+### Convolution with Per-output-channel Quantization
 
-This example is complementary to the previous example (which should ideally be
-the first one). Let's say we want to create an int8 convolution with per-output
-channel scaling.
+Building upon the weights preparation shown above, this section shows
+the complete workflow for an int8 convolution that combines per-output-channel
+weight scaling with global source and destination scaling.
 
 ~~~cpp
    const float src_scale; // src_f32[:] = src_scale * src_s8[:]
@@ -646,7 +643,9 @@ channel scaling.
 // ...
 ~~~
 
-### Example 3: matmul with advanced quantization
+## Additional Examples
+
+### Example 1: matmul with advanced quantization
 
 This example describes a process of weights decompression, or
 weights-only-quantization (WoQ), in matmul primitive which may be found when
@@ -694,7 +693,7 @@ per-N quantization.
 // ...
 ~~~
 
-### Example 4: matmul with precomputed reductions and advanced quantization
+### Example 2: matmul with precomputed reductions and advanced quantization
 
 This example is a complementary addition to the one above. It describes a
 process of dynamic quantization with weights's tensor asymmetric quantization
@@ -779,4 +778,3 @@ impossible to apply them on-the-fly without potential accuracy loss.
            attr);   // the attributes describe the quantization flow
 // ...
 ~~~
-

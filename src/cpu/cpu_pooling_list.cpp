@@ -68,6 +68,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_AARCH64(jit_uni_pooling_fwd_t<sve_256, f32>)
             CPU_INSTANCE_AARCH64_ACL(acl_pooling_fwd_t)
             CPU_INSTANCE_RV64GCV(riscv_nchw_pooling_fwd_t)
+            CPU_INSTANCE_RV64GCV(riscv_nhwc_pooling_fwd_t)
             CPU_INSTANCE(nchw_pooling_fwd_t<bf16>)
             CPU_INSTANCE(nchw_pooling_fwd_t<f32>)
             CPU_INSTANCE(nchw_pooling_fwd_t<f16>)

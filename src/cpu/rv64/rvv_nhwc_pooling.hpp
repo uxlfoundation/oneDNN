@@ -33,8 +33,6 @@ struct riscv_nhwc_pooling_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T_("RISCV64GCV", riscv_nhwc_pooling_fwd_t)
 
-        static constexpr data_type_t d_type = data_type::f32;
-
         status_t init(engine_t *engine) {
             UNUSED(engine);
 
@@ -52,13 +50,13 @@ struct riscv_nhwc_pooling_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(memory_desc_wrapper(dst_md()).is_dense(false),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            VDISPATCH_POOLING(utils::everyone_is(d_type, src_md()->data_type,
-                                      dst_md()->data_type),
+            VDISPATCH_POOLING(utils::everyone_is(data_type::f32,
+                                      src_md()->data_type, dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_POOLING(platform::has_data_type_support(d_type),
+            VDISPATCH_POOLING(platform::has_data_type_support(data_type::f32),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_POOLING(
-                    desc()->accum_data_type == d_type, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_POOLING(desc()->accum_data_type == data_type::f32,
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_POOLING(!is_dilated(), VERBOSE_UNSUPPORTED_FEATURE,
                     "does not support dilations");
@@ -90,9 +88,8 @@ struct riscv_nhwc_pooling_fwd_t : public primitive_t {
         return execute_forward(ctx);
     }
 
-    constexpr static int max_kernel_width = 32;
-
 private:
+    static constexpr int max_kernel_width = 32;
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };

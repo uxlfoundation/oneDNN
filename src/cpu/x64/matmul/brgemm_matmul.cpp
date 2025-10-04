@@ -215,9 +215,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         }
         if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
             const auto mask = zp.get_mask(DNNL_ARG_WEIGHTS);
-            const auto dims = ndims();
-            const auto kn_mask = (1 << (dims - 1)) + (1 << (dims - 2));
-            const bool zp_over_batch = (mask ^ kn_mask);
+            const auto kn_mask = wei_qmask_N() + wei_qmask_K();
+            const bool zp_over_batch = (mask & kn_mask) != mask;
             const bool mask_ok = (mask & ~kn_mask) == 0;
             return !(zp_over_batch && batch() > 1) && mask_ok;
         }

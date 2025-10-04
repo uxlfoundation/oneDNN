@@ -240,11 +240,11 @@ struct brgemm_matmul_conf_t {
     dim_t wei_scales_k_gsize = 0;
     data_type_t wei_scales_dt = data_type::undef;
 
-    dim_t wei_zp_k_gsize; // per_ic
+    dim_t wei_zp_k_gsize = 0;
     bool is_wei_zp_per_k = false;
     bool is_wei_zp_per_n = false;
     bool is_wei_zp_common = false;
-    data_type_t wei_zp_dt;
+    data_type_t wei_zp_dt = data_type::undef;
 
     bool is_gemv = false;
 

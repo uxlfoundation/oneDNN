@@ -317,8 +317,7 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, f16, f32))
     , f32_with_int_wei_dt(weights_decompression_support
               && everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt)
-              && !one_of(
-                      attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16))
+              && attr.fpmath_.mode_ == fpmath_mode::strict)
     , A_any_layout(A_any_layout)
     , B_any_layout(B_any_layout)
     , C_any_layout(C_any_layout)
@@ -1416,8 +1415,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
 
         // AVX2 supports f32 scales only
-        VCONDCHECK_BG(
-                IMPLICATION(is_superset(isa, avx2), bgmmc.wei_scales_dt == f32),
+        VCONDCHECK_BG(IMPLICATION(one_of(isa, avx2, avx2_vnni, avx2_vnni_2),
+                              bgmmc.wei_scales_dt == f32),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
@@ -1432,14 +1431,16 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     if (has_wei_zp) {
         const auto wei_zp_mask = wei_zp.get_mask();
+        bgmmc.is_wei_zp_common = wei_zp_mask == 0;
         bgmmc.is_wei_zp_per_k = wei_zp_mask & (1 << (bgmmc.ndims - 2));
         bgmmc.is_wei_zp_per_n = wei_zp_mask & (1 << (bgmmc.ndims - 1));
-        bgmmc.is_wei_zp_common = wei_zp_mask == 0;
+        bgmmc.wei_zp_dt = wei_zp.get_data_type();
+        bgmmc.wei_zp_k_gsize = wei_zp.get_group(0);
+
         VCONDCHECK_BG(wei_zp_mask == 0 || bgmmc.is_wei_zp_per_k
                         || bgmmc.is_wei_zp_per_n,
                 VERBOSE_UNSUPPORTED_ZP_CFG);
 
-        if (bgmmc.is_wei_zp_per_k) bgmmc.wei_zp_k_gsize = wei_zp.get_group(0);
         // Check if K groups for scales and for zero points are identical
         VCONDCHECK_BG(
                 IMPLICATION(bgmmc.is_wei_zp_per_k && bgmmc.is_wei_scale_per_k,

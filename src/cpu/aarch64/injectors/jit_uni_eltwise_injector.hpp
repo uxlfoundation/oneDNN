@@ -43,7 +43,7 @@ struct static_params_t {
             Xbyak_aarch64::PReg p_mask = Xbyak_aarch64::PReg(1),
             Xbyak_aarch64::PReg p_tmp0 = Xbyak_aarch64::PReg(4),
             bool is_fwd = true, bool use_dst = false, bool preserve_vmm = true,
-            bool preserve_p_table = true)
+            bool preserve_p_table = true, data_type_t d_type = data_type::f32)
         : save_state(save_state)
         , x_table(x_table)
         , p_mask(p_mask)
@@ -51,7 +51,8 @@ struct static_params_t {
         , is_fwd(is_fwd)
         , use_dst(use_dst)
         , preserve_vmm(preserve_vmm)
-        , preserve_p_table(preserve_p_table) {}
+        , preserve_p_table(preserve_p_table)
+        , d_type(d_type) {}
 
     bool save_state;
     Xbyak_aarch64::XReg x_table;
@@ -61,6 +62,7 @@ struct static_params_t {
     bool use_dst;
     bool preserve_vmm;
     bool preserve_p_table;
+    data_type_t d_type;
 };
 
 /*
@@ -81,9 +83,10 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg);
 } // namespace eltwise_injector
 
 template <cpu_isa_t isa>
-struct jit_uni_eltwise_injector_f32_t {
+struct jit_uni_eltwise_injector_t {
     using TReg = typename cpu_isa_traits<isa>::TReg;
     using TRegS = typename cpu_isa_traits<isa>::TRegS;
+    using TRegH = typename cpu_isa_traits<isa>::TRegH;
 
     // Arguments description:
     // host - jit generator which is filled with instructions
@@ -97,13 +100,13 @@ struct jit_uni_eltwise_injector_f32_t {
     //   - algorithm derivative.
     // use_dst - defines whether source or destination point is passed to alg
     //   code. Depends on algorithm. See `_use_dst_for_bwd` algs definition.
-    jit_uni_eltwise_injector_f32_t(jit_generator_t *host, alg_kind_t alg,
+    jit_uni_eltwise_injector_t(jit_generator_t *host, alg_kind_t alg,
             float alpha, float beta, float scale, bool save_state = true,
             Xbyak_aarch64::XReg x_table = Xbyak_aarch64::XReg(0),
             Xbyak_aarch64::PReg p_mask = Xbyak_aarch64::PReg(1),
             Xbyak_aarch64::PReg p_tmp0 = Xbyak_aarch64::PReg(4),
             bool is_fwd = true, bool use_dst = false, bool preserve_vmm = true,
-            bool preserve_p_table = true)
+            bool preserve_p_table = true, data_type_t d_type = data_type::f32)
         : alg_(alg)
         , alpha_(alpha)
         , beta_(beta)
@@ -116,23 +119,25 @@ struct jit_uni_eltwise_injector_f32_t {
         , is_fwd_(is_fwd)
         , use_dst_(use_dst)
         , preserve_vmm_(preserve_vmm)
-        , preserve_p_table_(preserve_p_table) {
+        , preserve_p_table_(preserve_p_table)
+        , d_type_(d_type) {
         assert(eltwise_injector::is_supported(isa, alg_));
 
         register_table_entries();
     }
 
-    jit_uni_eltwise_injector_f32_t(jit_generator_t *host,
+    jit_uni_eltwise_injector_t(jit_generator_t *host,
             const post_ops_t::entry_t::eltwise_t &eltwise,
             bool save_state = true,
             Xbyak_aarch64::XReg x_table = Xbyak_aarch64::XReg(0),
             Xbyak_aarch64::PReg p_mask = Xbyak_aarch64::PReg(1),
             Xbyak_aarch64::PReg p_tmp0 = Xbyak_aarch64::PReg(4),
             bool is_fwd = true, bool use_dst = false, bool preserve_vmm = true,
-            bool preserve_p_table = true)
-        : jit_uni_eltwise_injector_f32_t(host, eltwise.alg, eltwise.alpha,
+            bool preserve_p_table = true, data_type_t d_type = data_type::f32)
+        : jit_uni_eltwise_injector_t(host, eltwise.alg, eltwise.alpha,
                 eltwise.beta, eltwise.scale, save_state, x_table, p_mask,
-                p_tmp0, is_fwd, use_dst, preserve_vmm, preserve_p_table) {}
+                p_tmp0, is_fwd, use_dst, preserve_vmm, preserve_p_table,
+                d_type) {}
 
     void compute_vector_range(size_t start_idx, size_t end_idx);
     void compute_vector_range(const injector_utils::vmm_index_set_t &vmm_idxs);
@@ -160,6 +165,8 @@ private:
     const bool preserve_p_table_;
 
     Xbyak_aarch64::Label l_table;
+
+    const data_type_t d_type_;
 
     // if only the injector was inherited from jit_generator...
     enum {
@@ -215,12 +222,16 @@ private:
     void exp_compute_vector_fwd(const TRegS &vmm_src);
     void relu_compute_vector_fwd(const TRegS &vmm_src);
     void relu_zero_ns_compute_vector_fwd(const TRegS &vmm_src);
+    void relu_zero_ns_compute_vector_fwd(const TRegH &vmm_src);
     void elu_compute_vector_fwd(const TRegS &vmm_src);
     void tanh_compute_vector_fwd(const TRegS &vmm_src);
     void tanh_polynomial_approx_compute_vector_fwd(const TRegS &vmm_src);
     void square_compute_vector_fwd(const TRegS &vmm_src);
+    void square_compute_vector_fwd(const TRegH &vmm_src);
     void abs_compute_vector_fwd(const TRegS &vmm_src);
+    void abs_compute_vector_fwd(const TRegH &vmm_src);
     void sqrt_compute_vector_fwd(const TRegS &vmm_src);
+    void sqrt_compute_vector_fwd(const TRegH &vmm_src);
     void linear_compute_vector_fwd(const TRegS &vmm_src);
     void soft_relu_compute_vector_fwd(const TRegS &vmm_src);
     void mish_compute_vector_fwd(const TRegS &vmm_src);

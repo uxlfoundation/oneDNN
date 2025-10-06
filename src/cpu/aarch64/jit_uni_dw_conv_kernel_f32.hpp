@@ -43,7 +43,7 @@ struct jit_uni_dw_conv_fwd_kernel_f32_t : public jit_generator_t {
         : jcp(ajcp), eltwise_injector_(nullptr) {
         if (jcp.with_eltwise)
             eltwise_injector_ = utils::make_unique<
-                    jit_uni_eltwise_injector_f32_t<to_vla_sve(isa)>>(
+                    jit_uni_eltwise_injector_t<to_vla_sve(isa)>>(
                     this, jcp.eltwise);
     }
 
@@ -136,7 +136,7 @@ private:
                 format_tag::nwc);
     }
 
-    std::unique_ptr<jit_uni_eltwise_injector_f32_t<to_vla_sve(isa)>>
+    std::unique_ptr<jit_uni_eltwise_injector_t<to_vla_sve(isa)>>
             eltwise_injector_;
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_dw_conv_fwd_kernel_f32_t)
     void generate() override;

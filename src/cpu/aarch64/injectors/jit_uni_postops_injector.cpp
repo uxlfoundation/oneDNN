@@ -66,7 +66,7 @@ jit_uni_postops_injector_t<isa>::jit_uni_postops_injector_t(
         if (post_op.is_eltwise()) {
             is_eltwise = true;
             alg_to_eltwise_injector_.emplace(i,
-                    jit_uni_eltwise_injector_f32_t<to_vla_sve(isa)>(host_,
+                    jit_uni_eltwise_injector_t<to_vla_sve(isa)>(host_,
                             post_op.eltwise, esp.save_state, esp.x_table,
                             esp.p_mask, esp.p_tmp0, esp.is_fwd, esp.use_dst));
         } else if (post_op.is_binary()) {

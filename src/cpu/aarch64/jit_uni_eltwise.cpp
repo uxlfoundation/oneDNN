@@ -58,6 +58,28 @@ protected:
     bool is_bf16() const { return data_type() == data_type::bf16; }
     bool is_f16() const { return data_type() == data_type::f16; }
     int dtype_size() const { return types::data_type_size(data_type()); }
+    // ABS and non-leaky RELU depend only on sign bit, so FP16 reinterpretation of BF16 value is safe
+    bool is_bf16_compatible_alg() const {
+        const auto &desc = *pd_->desc();
+        return pd_->is_fwd()
+                && ((desc.alg_kind == alg_kind::eltwise_relu
+                            && desc.alpha == 0.0f)
+                        || desc.alg_kind == alg_kind::eltwise_abs);
+    }
+    // Simple operations can be done in FP16 without conversion to/from FP32
+    bool is_f16_compatible_alg() const {
+        const auto &desc = *pd_->desc();
+        return pd_->is_fwd()
+                && ((desc.alg_kind == alg_kind::eltwise_relu
+                            && desc.alpha == 0.0f)
+                        || desc.alg_kind == alg_kind::eltwise_abs
+                        || desc.alg_kind == alg_kind::eltwise_square
+                        || desc.alg_kind == alg_kind::eltwise_sqrt);
+    }
+    bool is_f16_compute_safe() const {
+        return (is_bf16() && is_bf16_compatible_alg())
+                || (is_f16() && is_f16_compatible_alg());
+    }
 };
 
 // jit kernels
@@ -72,10 +94,11 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         // there's no auxiliary vregs on fwd path
         const bool is_fwd = pd_->is_fwd();
         const bool save_state = is_fwd ? false : true;
-        eltwise_injector_.reset(new jit_uni_eltwise_injector_f32_t<isa>(this,
+        eltwise_injector_.reset(new jit_uni_eltwise_injector_t<isa>(this,
                 desc.alg_kind, desc.alpha, desc.beta, 1.f, save_state,
                 reg_injector_table, injector_mask, injector_p_tmp0, is_fwd,
-                pd_->use_dst()));
+                pd_->use_dst(), true, true,
+                is_f16_compute_safe() ? data_type::f16 : data_type::f32));
     }
 
     void generate() override {
@@ -111,7 +134,11 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         // perspective and will complicate the compute logic significantly.
 
         load_vector(vmm_src.s, reg_src);
-        if (is_bf16()) {
+        if (is_f16_compute_safe()) {
+            // For FP16-compatible algorithms, we can keep the data in 16-bit format
+            // throughout the computation, avoiding the need for conversion to/from FP32.
+            eltwise_injector_->compute_vector(vmm_src.getIdx());
+        } else if (is_bf16()) {
             // Convert BF16 input to FP32, apply eltwise op, then convert back to BF16:
             // - unpack BF16 to FP32 by zero-extending
             // - compute eltwise alg in FP32
@@ -157,7 +184,10 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         cmp(reg_work_amount, 0);
         b(LE, remainder_loop_end);
 
-        if (is_bf16()) {
+        if (is_f16_compute_safe()) {
+            ld1(v_f16[0], ptr(reg_src));
+            eltwise_injector_->compute_vector(vmm_src.getIdx());
+        } else if (is_bf16()) {
             ld1(v_bf16[0], ptr(reg_src));
             unpack_bf16(vmm_src, tmp0);
             eltwise_injector_->compute_vector(vmm_src.getIdx());
@@ -226,7 +256,7 @@ private:
     TRegS vmm_diff_dst {2};
     TReg tmp0 {2};
     TReg tmp1 {7};
-    std::unique_ptr<jit_uni_eltwise_injector_f32_t<isa>> eltwise_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<isa>> eltwise_injector_;
 
     PReg p_tmp0 {4}; /* Index is temporal. */
 

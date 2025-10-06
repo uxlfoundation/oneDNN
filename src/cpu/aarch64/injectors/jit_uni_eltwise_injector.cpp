@@ -71,7 +71,7 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg) {
 using namespace Xbyak_aarch64;
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::injector_preamble(
+void jit_uni_eltwise_injector_t<isa>::injector_preamble(
         const injector_utils::vmm_index_set_t &vmm_idxs) {
     using namespace alg_kind;
     using namespace Xbyak_aarch64::util;
@@ -128,7 +128,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::injector_preamble(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::injector_preamble_tail(
+void jit_uni_eltwise_injector_t<isa>::injector_preamble_tail(
         const injector_utils::vmm_index_set_iterator_t start_idx_it) {
     size_t tail_vecs_to_preserve = std::distance(start_idx_it, start_idx_tail);
     if (tail_vecs_to_preserve == 0) return;
@@ -159,7 +159,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::injector_preamble_tail(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::injector_postamble() {
+void jit_uni_eltwise_injector_t<isa>::injector_postamble() {
     using namespace Xbyak_aarch64::util;
     const int reg_size = h->x0.getBit() / 8;
     if (!save_state_) return;
@@ -179,7 +179,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::injector_postamble() {
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::assign_regs() {
+void jit_uni_eltwise_injector_t<isa>::assign_regs() {
     /* For translation of x64's memory operand instructions */
     z_tmp = TRegS(static_cast<uint32_t>(preserved_vec_idxs[0]));
 
@@ -195,7 +195,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::assign_regs() {
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::set_coef_to_regs() {
+void jit_uni_eltwise_injector_t<isa>::set_coef_to_regs() {
     using namespace alg_kind;
 
     if (is_fwd_) {
@@ -271,7 +271,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::set_coef_to_regs() {
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::compute_cmp_mask(
+void jit_uni_eltwise_injector_t<isa>::compute_cmp_mask(
         const TRegS &vmm_src, const TRegS &compare_operand, int cmp_predicate) {
     enum {
         EQ_OQ = 0,
@@ -422,13 +422,13 @@ void jit_uni_eltwise_injector_f32_t<isa>::compute_cmp_mask(
 // Uses injector masks objects: p_mask
 // Blends a result of second input into a first input w/ a stored mask.
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::blend_with_mask(
+void jit_uni_eltwise_injector_t<isa>::blend_with_mask(
         const TRegS &vmm_dst, const TRegS &src) {
     h->sel(vmm_dst, p_mask / T_m, src, vmm_dst);
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::exp_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::exp_compute_vector_fwd(
         const TRegS &vmm_src) {
 
     const auto &t0 = ZRegS(IDX(vmm_src));
@@ -455,7 +455,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::exp_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::relu_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::relu_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->mov(ZRegD(vmm_aux0.getIdx()), ZRegD(vmm_src.getIdx()));
     h->fcmgt(p_mask.s, p_all, vmm_src, 0.0);
@@ -464,13 +464,19 @@ void jit_uni_eltwise_injector_f32_t<isa>::relu_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::relu_zero_ns_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::relu_zero_ns_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->fmaxnm(vmm_src, p_all, 0.);
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::elu_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::relu_zero_ns_compute_vector_fwd(
+        const TRegH &vmm_src) {
+    h->fmaxnm(vmm_src, p_all, 0.);
+}
+
+template <cpu_isa_t isa>
+void jit_uni_eltwise_injector_t<isa>::elu_compute_vector_fwd(
         const TRegS &vmm_src) {
     // IMPORTANT: we use vmm_aux3 for the mask as exp_compute does not use it.
     h->mov(ZRegD(vmm_aux3.getIdx()), ZRegD(vmm_src.getIdx()));
@@ -488,8 +494,8 @@ void jit_uni_eltwise_injector_f32_t<isa>::elu_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<
-        isa>::tanh_polynomial_approx_compute_vector_fwd(const TRegS &vmm_src) {
+void jit_uni_eltwise_injector_t<isa>::tanh_polynomial_approx_compute_vector_fwd(
+        const TRegS &vmm_src) {
 
     if (vlen != 512) return;
 
@@ -560,7 +566,7 @@ void jit_uni_eltwise_injector_f32_t<
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::tanh_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::tanh_compute_vector_fwd(
         const TRegS &vmm_src) {
 
     if (vlen == 512) {
@@ -614,7 +620,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::tanh_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::gelu_tanh_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::gelu_tanh_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->mov(ZRegD(IDX(vmm_aux0)), ZRegD(IDX(vmm_src)));
 
@@ -650,39 +656,57 @@ void jit_uni_eltwise_injector_f32_t<isa>::gelu_tanh_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::square_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::square_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->fmul(vmm_src, vmm_src, vmm_src);
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::abs_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::square_compute_vector_fwd(
+        const TRegH &vmm_src) {
+    h->fmul(vmm_src, vmm_src, vmm_src);
+}
+
+template <cpu_isa_t isa>
+void jit_uni_eltwise_injector_t<isa>::abs_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->fabs(vmm_src, p_all / T_m, vmm_src);
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::sqrt_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::abs_compute_vector_fwd(
+        const TRegH &vmm_src) {
+    h->fabs(vmm_src, p_all / T_m, vmm_src);
+}
+
+template <cpu_isa_t isa>
+void jit_uni_eltwise_injector_t<isa>::sqrt_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->fsqrt(vmm_src, p_all / T_m, vmm_src);
 }
 
+template <>
+void jit_uni_eltwise_injector_t<asimd>::sqrt_compute_vector_fwd(
+        const TRegH &vmm_src) {
+    h->fsqrt(vmm_src, vmm_src);
+}
+
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::linear_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::linear_compute_vector_fwd(
         const TRegS &vmm_src) {
     // compute x = alpha * x + beta;
     h->fmad(vmm_src, p_all / T_m, z_tmp, vmm_aux0);
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::clip_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::clip_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->fmaxnm(vmm_src, p_all, z_tmp);
     h->fminnm(vmm_src, p_all, vmm_aux0);
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::mish_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::mish_compute_vector_fwd(
         const TRegS &vmm_src) {
     // An equation other than mish(x) = x*tanh(srelu(x)) was used
     // to calculate mish, but it should be remembered that it is equivalent
@@ -715,7 +739,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::mish_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::hardswish_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::hardswish_compute_vector_fwd(
         const TRegS &vmm_src) {
     // result = x * hardsigmoid(x)
     h->mov(ZRegD(vmm_aux1.getIdx()), ZRegD(vmm_src.getIdx()));
@@ -724,7 +748,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::hardswish_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::hardsigmoid_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::hardsigmoid_compute_vector_fwd(
         const TRegS &vmm_src) {
     // alpha:z_tmp, beta:vmm_aux0
     // result = max(0, min(1, alpha * x + beta))
@@ -735,7 +759,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::hardsigmoid_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::soft_relu_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::soft_relu_compute_vector_fwd(
         const TRegS &vmm_src) {
     // alpha scaling
     if (alpha_ == 1.f) {
@@ -870,7 +894,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::soft_relu_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::logistic_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::logistic_compute_vector_fwd(
         const TRegS &vmm_src) {
     // To avoid exp(x) overflow happened at x > logf(FLT_MAX), negate positive,
     // compute exp(x), where x <= 0 to get 0 <= exp(x) <= 1 and restore value
@@ -905,7 +929,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::logistic_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::swish_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::swish_compute_vector_fwd(
         const TRegS &vmm_src) {
     // Save src data on stack for later usage
     h->sub_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
@@ -924,7 +948,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::swish_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::log_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::log_compute_vector_fwd(
         const TRegS &vmm_src) {
 
     const auto &t0 = ZRegS(IDX(vmm_src));
@@ -1009,7 +1033,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::log_compute_vector_fwd(
     h->L(exitL);
 }
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<
+void jit_uni_eltwise_injector_t<
         isa>::gelu_erf_minimax_approx_compute_vector_fwd(const TRegS &vmm_src) {
     if (vlen != 512) { // TODO: change this condition based on cpu id.
         return;
@@ -1082,7 +1106,7 @@ void jit_uni_eltwise_injector_f32_t<
     h->fmul(vmm_src, vmm_src, ZRegS(IDX(table_val(half, z_tmp))));
 }
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::gelu_erf_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_fwd(
         const TRegS &vmm_src) {
 
     if (vlen == 512) { // TODO: consider performance improvement for lower ISA
@@ -1151,7 +1175,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::gelu_erf_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::relu_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::relu_compute_vector_bwd(
         const TRegS &vmm_src) {
     h->fcmgt(p_mask.s, p_all / T_z, vmm_src, 0.);
     h->mov(ZRegD(vmm_src.getIdx()), ZRegD(z_tmp.getIdx()));
@@ -1161,7 +1185,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::relu_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::elu_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::elu_compute_vector_bwd(
         const TRegS &vmm_src) {
     if (!use_dst_) {
         // R = exp(s)
@@ -1180,7 +1204,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::elu_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::tanh_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::tanh_compute_vector_bwd(
         const TRegS &vmm_src) {
     // res = 1 - d^2 = 1 - tanh^2(s)
     if (!use_dst_) tanh_compute_vector_fwd(vmm_src);
@@ -1192,7 +1216,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::tanh_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::gelu_tanh_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::gelu_tanh_compute_vector_bwd(
         const TRegS &vmm_src) {
     h->mov(ZRegD(IDX(vmm_aux0)), ZRegD(IDX(vmm_src)));
 
@@ -1237,14 +1261,14 @@ void jit_uni_eltwise_injector_f32_t<isa>::gelu_tanh_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::square_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::square_compute_vector_bwd(
         const TRegS &vmm_src) {
     // res = 2 * s
     h->fmul(vmm_src, p_all / T_m, 2.);
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::abs_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::abs_compute_vector_bwd(
         const TRegS &vmm_src) {
     // replace positive values with 1.f
     compute_cmp_mask(vmm_src, table_val(zero, z_tmp), _cmp_gt_os);
@@ -1255,7 +1279,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::abs_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::sqrt_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::sqrt_compute_vector_bwd(
         const TRegS &vmm_src) {
     // res = 0.5 / d = 0.5 / sqrt(s)
     if (!use_dst_) sqrt_compute_vector_fwd(vmm_src);
@@ -1265,13 +1289,13 @@ void jit_uni_eltwise_injector_f32_t<isa>::sqrt_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::linear_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::linear_compute_vector_bwd(
         const TRegS &vmm_src) {
     h->mov(ZRegD(IDX(vmm_src)), ZRegD(IDX(table_val(alpha, z_tmp))));
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::soft_relu_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::soft_relu_compute_vector_bwd(
         const TRegS &vmm_src) {
     if (alpha_ == 1.f) {
         // Skip an instruction.
@@ -1283,7 +1307,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::soft_relu_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::mish_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::mish_compute_vector_bwd(
         const TRegS &vmm_src) {
     // IMPORTANT: we use vmm_aux3 to save src as exp does not use it.
     h->mov(ZRegD(vmm_aux3.getIdx()), ZRegD(vmm_src.getIdx())); // vmm_aux3 = x
@@ -1328,7 +1352,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::mish_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::logistic_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::logistic_compute_vector_bwd(
         const TRegS &vmm_src) {
     // res = d * (1 - d) = d - d * d; d = logistic(s)
     if (!use_dst_) logistic_compute_vector_fwd(vmm_src);
@@ -1340,13 +1364,13 @@ void jit_uni_eltwise_injector_f32_t<isa>::logistic_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::exp_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::exp_compute_vector_bwd(
         const TRegS &vmm_src) {
     if (!use_dst_) exp_compute_vector_fwd(vmm_src);
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::swish_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::swish_compute_vector_bwd(
         const TRegS &vmm_src) {
     // R = alpha * s
     h->fmul(vmm_src, vmm_src, ZRegS(IDX(table_val(alpha, z_tmp))));
@@ -1374,7 +1398,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::swish_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::log_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::log_compute_vector_bwd(
         const TRegS &vmm_src) {
     // res = 1 / s
     /* Do not use 1.f, which is a float constant,
@@ -1385,7 +1409,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::log_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::clip_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::clip_compute_vector_bwd(
         const TRegS &vmm_src) {
     using namespace alg_kind;
     // z_tmp:alpha, vmm_aux0:beta
@@ -1403,7 +1427,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::clip_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::gelu_erf_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_bwd(
         const TRegS &vmm_src) {
     // R = s / sqrt(2)
     h->fmul(vmm_src, vmm_src,
@@ -1477,7 +1501,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::gelu_erf_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::hardswish_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::hardswish_compute_vector_bwd(
         const TRegS &vmm_src) {
     // alpha:z_tmp, beta:vmm_aux0, 1.f:vmm_aux1
     // Get mask for 0 < alpha * x + beta < 1
@@ -1495,7 +1519,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::hardswish_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::hardsigmoid_compute_vector_bwd(
+void jit_uni_eltwise_injector_t<isa>::hardsigmoid_compute_vector_bwd(
         const TRegS &vmm_src) {
     // alpha:z_tmp, beta:vmm_aux0, 1:vmm_aux1
     // Get mask for 0 < alpha * x + beta < 1
@@ -1512,7 +1536,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::hardsigmoid_compute_vector_bwd(
 }
 
 template <cpu_isa_t isa>
-size_t jit_uni_eltwise_injector_f32_t<isa>::aux_gprs_count() {
+size_t jit_uni_eltwise_injector_t<isa>::aux_gprs_count() {
     using namespace alg_kind;
     switch (alg_) {
         case eltwise_tanh_use_dst_for_bwd:
@@ -1524,13 +1548,13 @@ size_t jit_uni_eltwise_injector_f32_t<isa>::aux_gprs_count() {
 };
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::round_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<isa>::round_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->frintn(vmm_src, p_all / T_m, vmm_src);
 }
 
 template <cpu_isa_t isa>
-size_t jit_uni_eltwise_injector_f32_t<isa>::aux_vecs_count() {
+size_t jit_uni_eltwise_injector_t<isa>::aux_vecs_count() {
     using namespace alg_kind;
 
     if (is_fwd_) {
@@ -1600,114 +1624,142 @@ size_t jit_uni_eltwise_injector_f32_t<isa>::aux_vecs_count() {
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::compute_body(
+void jit_uni_eltwise_injector_t<isa>::compute_body(
         const injector_utils::vmm_index_set_iterator_t &start_idx_it,
         const injector_utils::vmm_index_set_iterator_t &end_idx_it) {
     using namespace alg_kind;
+
+    const bool use_f16 = (d_type_ == data_type::f16);
+
     std::for_each(start_idx_it, end_idx_it, [&](size_t idx) {
-        if (is_fwd_) {
-            switch (alg_) {
-                case eltwise_relu_use_dst_for_bwd:
-                case eltwise_relu:
-                    if (alpha_ == 0.f)
-                        relu_zero_ns_compute_vector_fwd(TRegS(idx));
-                    else
-                        relu_compute_vector_fwd(TRegS(idx));
-                    break;
-                case eltwise_elu_use_dst_for_bwd:
-                case eltwise_elu: elu_compute_vector_fwd(TRegS(idx)); break;
-                case eltwise_tanh_use_dst_for_bwd:
-                case eltwise_tanh: tanh_compute_vector_fwd(TRegS(idx)); break;
-                case eltwise_square:
-                    square_compute_vector_fwd(TRegS(idx));
-                    break;
-                case eltwise_abs: abs_compute_vector_fwd(TRegS(idx)); break;
-                case eltwise_sqrt_use_dst_for_bwd:
-                case eltwise_sqrt: sqrt_compute_vector_fwd(TRegS(idx)); break;
-                case eltwise_swish: swish_compute_vector_fwd(TRegS(idx)); break;
-                case eltwise_linear:
-                    linear_compute_vector_fwd(TRegS(idx));
-                    break;
-                case eltwise_soft_relu:
-                    soft_relu_compute_vector_fwd(TRegS(idx));
-                    break;
-                case eltwise_mish: mish_compute_vector_fwd(TRegS(idx)); break;
-                case eltwise_logistic_use_dst_for_bwd:
-                case eltwise_logistic:
-                    logistic_compute_vector_fwd(TRegS(idx));
-                    break;
-                case eltwise_exp_use_dst_for_bwd:
-                case eltwise_exp: exp_compute_vector_fwd(TRegS(idx)); break;
-                case eltwise_gelu_tanh:
-                    gelu_tanh_compute_vector_fwd(TRegS(idx));
-                    break;
-                case eltwise_log: log_compute_vector_fwd(TRegS(idx)); break;
-                case eltwise_clip:
-                case eltwise_clip_v2_use_dst_for_bwd:
-                case eltwise_clip_v2:
-                    clip_compute_vector_fwd(TRegS(idx));
-                    break;
-                case eltwise_gelu_erf:
-                    gelu_erf_compute_vector_fwd(TRegS(idx));
-                    break;
-                case eltwise_round: round_compute_vector_fwd(TRegS(idx)); break;
-                case eltwise_hardswish:
-                    hardswish_compute_vector_fwd(TRegS(idx));
-                    break;
-                case eltwise_hardsigmoid:
-                    hardsigmoid_compute_vector_fwd(TRegS(idx));
-                    break;
-                default: assert(!"unsupported eltwise algorithm");
+        auto with_reg = [&](auto reg) {
+            if (is_fwd_) {
+                switch (alg_) {
+                    case eltwise_relu_use_dst_for_bwd:
+                    case eltwise_relu:
+                        if (alpha_ == 0.f)
+                            relu_zero_ns_compute_vector_fwd(reg);
+                        else
+                            relu_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_elu_use_dst_for_bwd:
+                    case eltwise_elu: elu_compute_vector_fwd(TRegS(idx)); break;
+                    case eltwise_tanh_use_dst_for_bwd:
+                    case eltwise_tanh:
+                        tanh_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_square: square_compute_vector_fwd(reg); break;
+                    case eltwise_abs: abs_compute_vector_fwd(reg); break;
+                    case eltwise_sqrt_use_dst_for_bwd:
+                    case eltwise_sqrt: sqrt_compute_vector_fwd(reg); break;
+                    case eltwise_swish:
+                        swish_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_linear:
+                        linear_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_soft_relu:
+                        soft_relu_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_mish:
+                        mish_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_logistic_use_dst_for_bwd:
+                    case eltwise_logistic:
+                        logistic_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_exp_use_dst_for_bwd:
+                    case eltwise_exp: exp_compute_vector_fwd(TRegS(idx)); break;
+                    case eltwise_gelu_tanh:
+                        gelu_tanh_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_log: log_compute_vector_fwd(TRegS(idx)); break;
+                    case eltwise_clip:
+                    case eltwise_clip_v2_use_dst_for_bwd:
+                    case eltwise_clip_v2:
+                        clip_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_gelu_erf:
+                        gelu_erf_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_round:
+                        round_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_hardswish:
+                        hardswish_compute_vector_fwd(TRegS(idx));
+                        break;
+                    case eltwise_hardsigmoid:
+                        hardsigmoid_compute_vector_fwd(TRegS(idx));
+                        break;
+                    default: assert(!"unsupported eltwise algorithm");
+                }
+            } else {
+                switch (alg_) {
+                    case eltwise_relu_use_dst_for_bwd:
+                    case eltwise_relu:
+                        relu_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_elu_use_dst_for_bwd:
+                    case eltwise_elu: elu_compute_vector_bwd(TRegS(idx)); break;
+                    case eltwise_tanh_use_dst_for_bwd:
+                    case eltwise_tanh:
+                        tanh_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_square:
+                        square_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_abs: abs_compute_vector_bwd(TRegS(idx)); break;
+                    case eltwise_sqrt_use_dst_for_bwd:
+                    case eltwise_sqrt:
+                        sqrt_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_linear:
+                        linear_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_soft_relu:
+                        soft_relu_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_mish:
+                        mish_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_logistic_use_dst_for_bwd:
+                    case eltwise_logistic:
+                        logistic_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_exp_use_dst_for_bwd:
+                    case eltwise_exp: exp_compute_vector_bwd(TRegS(idx)); break;
+                    case eltwise_gelu_tanh:
+                        gelu_tanh_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_swish:
+                        swish_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_log: log_compute_vector_bwd(TRegS(idx)); break;
+                    case eltwise_clip:
+                    case eltwise_clip_v2_use_dst_for_bwd:
+                    case eltwise_clip_v2:
+                        clip_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_gelu_erf:
+                        gelu_erf_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_hardswish:
+                        hardswish_compute_vector_bwd(TRegS(idx));
+                        break;
+                    case eltwise_hardsigmoid:
+                        hardsigmoid_compute_vector_bwd(TRegS(idx));
+                        break;
+                    default: assert(!"unsupported eltwise algorithm");
+                }
             }
-        } else {
-            switch (alg_) {
-                case eltwise_relu_use_dst_for_bwd:
-                case eltwise_relu: relu_compute_vector_bwd(TRegS(idx)); break;
-                case eltwise_elu_use_dst_for_bwd:
-                case eltwise_elu: elu_compute_vector_bwd(TRegS(idx)); break;
-                case eltwise_tanh_use_dst_for_bwd:
-                case eltwise_tanh: tanh_compute_vector_bwd(TRegS(idx)); break;
-                case eltwise_square:
-                    square_compute_vector_bwd(TRegS(idx));
-                    break;
-                case eltwise_abs: abs_compute_vector_bwd(TRegS(idx)); break;
-                case eltwise_sqrt_use_dst_for_bwd:
-                case eltwise_sqrt: sqrt_compute_vector_bwd(TRegS(idx)); break;
-                case eltwise_linear:
-                    linear_compute_vector_bwd(TRegS(idx));
-                    break;
-                case eltwise_soft_relu:
-                    soft_relu_compute_vector_bwd(TRegS(idx));
-                    break;
-                case eltwise_mish: mish_compute_vector_bwd(TRegS(idx)); break;
-                case eltwise_logistic_use_dst_for_bwd:
-                case eltwise_logistic:
-                    logistic_compute_vector_bwd(TRegS(idx));
-                    break;
-                case eltwise_exp_use_dst_for_bwd:
-                case eltwise_exp: exp_compute_vector_bwd(TRegS(idx)); break;
-                case eltwise_gelu_tanh:
-                    gelu_tanh_compute_vector_bwd(TRegS(idx));
-                    break;
-                case eltwise_swish: swish_compute_vector_bwd(TRegS(idx)); break;
-                case eltwise_log: log_compute_vector_bwd(TRegS(idx)); break;
-                case eltwise_clip:
-                case eltwise_clip_v2_use_dst_for_bwd:
-                case eltwise_clip_v2:
-                    clip_compute_vector_bwd(TRegS(idx));
-                    break;
-                case eltwise_gelu_erf:
-                    gelu_erf_compute_vector_bwd(TRegS(idx));
-                    break;
-                case eltwise_hardswish:
-                    hardswish_compute_vector_bwd(TRegS(idx));
-                    break;
-                case eltwise_hardsigmoid:
-                    hardsigmoid_compute_vector_bwd(TRegS(idx));
-                    break;
-                default: assert(!"unsupported eltwise algorithm");
-            }
-        }
+        };
+
+        // Pick the right register type (h/s) according to the data type
+        if (use_f16)
+            with_reg(TRegH(idx));
+        else
+            with_reg(TRegS(idx));
+
         if (scale_ != 1.f) {
             h->fmul(ZRegS(IDX(TRegS(idx))), ZRegS(IDX(TRegS(idx))),
                     ZRegS(IDX(table_val(scale, vmm_mask))));
@@ -1716,7 +1768,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::compute_body(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::compute_vector_range(
+void jit_uni_eltwise_injector_t<isa>::compute_vector_range(
         size_t start_idx, size_t end_idx) {
     injector_utils::vmm_index_set_t vmm_idxs;
     for (size_t i = start_idx; i < end_idx; i++)
@@ -1725,7 +1777,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::compute_vector_range(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::compute_vector_range(
+void jit_uni_eltwise_injector_t<isa>::compute_vector_range(
         const injector_utils::vmm_index_set_t &vmm_idxs) {
     const auto &start_idx_it = vmm_idxs.begin();
     const auto &end_idx_it = vmm_idxs.end();
@@ -1740,7 +1792,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::compute_vector_range(
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::prepare_table(bool gen_table) {
+void jit_uni_eltwise_injector_t<isa>::prepare_table(bool gen_table) {
     if (!gen_table) return;
 
     h->align(64);
@@ -1782,7 +1834,7 @@ void jit_uni_eltwise_injector_f32_t<isa>::prepare_table(bool gen_table) {
 }
 
 template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_f32_t<isa>::register_table_entries() {
+void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
     // This function is responsible to pick all necessary constants
     // for a given algorithm, compute right offset for them to be used
     // in table_val() and save the hexadecimal value of them, which
@@ -2411,24 +2463,31 @@ void jit_uni_eltwise_injector_f32_t<isa>::register_table_entries() {
 }
 
 template <>
-size_t jit_uni_eltwise_injector_f32_t<asimd>::get_vec_len() {
+size_t jit_uni_eltwise_injector_t<asimd>::get_vec_len() {
     return 16;
 }
 
 template <>
-size_t jit_uni_eltwise_injector_f32_t<sve_128>::get_vec_len() {
+size_t jit_uni_eltwise_injector_t<sve_128>::get_vec_len() {
     return get_sve_length();
 }
 
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::relu_zero_ns_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<asimd>::relu_zero_ns_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->movi(vmm_aux0, 0);
     h->fmaxnm(vmm_src, vmm_src, vmm_aux0);
 }
 
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::relu_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<asimd>::relu_zero_ns_compute_vector_fwd(
+        const TRegH &vmm_src) {
+    h->movi(TRegH(IDX(vmm_aux0)), 0);
+    h->fmaxnm(vmm_src, vmm_src, TRegH(IDX(vmm_aux0)));
+}
+
+template <>
+void jit_uni_eltwise_injector_t<asimd>::relu_compute_vector_fwd(
         const TRegS &vmm_src) {
     // vmm_tmp = alpha * vmm_tmp
     h->fmul(vmm_aux0, vmm_src, z_tmp);
@@ -2437,19 +2496,31 @@ void jit_uni_eltwise_injector_f32_t<asimd>::relu_compute_vector_fwd(
 }
 
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::abs_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<asimd>::abs_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->fabs(vmm_src, vmm_src);
 }
 
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::sqrt_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<asimd>::abs_compute_vector_fwd(
+        const TRegH &vmm_src) {
+    h->fabs(vmm_src, vmm_src);
+}
+
+template <>
+void jit_uni_eltwise_injector_t<asimd>::sqrt_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->fsqrt(vmm_src, vmm_src);
 }
 
+template <cpu_isa_t isa>
+void jit_uni_eltwise_injector_t<isa>::sqrt_compute_vector_fwd(
+        const TRegH &vmm_src) {
+    h->fsqrt(vmm_src, p_all / T_m, vmm_src);
+}
+
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::linear_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<asimd>::linear_compute_vector_fwd(
         const TRegS &vmm_src) {
     // compute x = alpha * x + beta;
     h->fmul(vmm_src, vmm_src, z_tmp);
@@ -2457,14 +2528,14 @@ void jit_uni_eltwise_injector_f32_t<asimd>::linear_compute_vector_fwd(
 }
 
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::clip_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<asimd>::clip_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->fmaxnm(vmm_src, vmm_src, z_tmp);
     h->fminnm(vmm_src, vmm_src, vmm_aux0);
 }
 
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::hardsigmoid_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<asimd>::hardsigmoid_compute_vector_fwd(
         const TRegS &vmm_src) {
     // alpha:z_tmp, beta:vmm_aux0
     // result = max(0, min(1, alpha * x + beta))
@@ -2475,7 +2546,7 @@ void jit_uni_eltwise_injector_f32_t<asimd>::hardsigmoid_compute_vector_fwd(
 }
 
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::hardswish_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<asimd>::hardswish_compute_vector_fwd(
         const TRegS &vmm_src) {
     // result = x * hardsigmoid(x)
     h->mov(VReg16B(vmm_aux2.getIdx()), VReg16B(vmm_src.getIdx()));
@@ -2484,25 +2555,25 @@ void jit_uni_eltwise_injector_f32_t<asimd>::hardswish_compute_vector_fwd(
 }
 
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::round_compute_vector_fwd(
+void jit_uni_eltwise_injector_t<asimd>::round_compute_vector_fwd(
         const TRegS &vmm_src) {
     h->frintn(vmm_src, vmm_src);
 }
 
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::load_1word_replicate(
+void jit_uni_eltwise_injector_t<asimd>::load_1word_replicate(
         const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr) {
     h->ld1r(TRegS(vmm_src.getIdx()), ptr(x_addr));
 }
 template <>
-void jit_uni_eltwise_injector_f32_t<sve_128>::load_1word_replicate(
+void jit_uni_eltwise_injector_t<sve_128>::load_1word_replicate(
         const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr) {
     h->ldr(TReg(vmm_src.getIdx()), ptr(x_addr));
 }
 
 #define DEFINE_ASIMD_EMPTY_FUNC(func_name) \
     template <> \
-    void jit_uni_eltwise_injector_f32_t<asimd>::func_name(const TRegS &) {}
+    void jit_uni_eltwise_injector_t<asimd>::func_name(const TRegS &) {}
 DEFINE_ASIMD_EMPTY_FUNC(exp_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(mish_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(elu_compute_vector_fwd);
@@ -2537,17 +2608,16 @@ DEFINE_ASIMD_EMPTY_FUNC(hardsigmoid_compute_vector_bwd);
 #undef DEFINE_ASIMD_EMPTY_FUNC
 
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::compute_cmp_mask(
-        const TRegS &vmm_src, const TRegS &compare_operand,
-        int cmp_predicate) {};
+void jit_uni_eltwise_injector_t<asimd>::compute_cmp_mask(const TRegS &vmm_src,
+        const TRegS &compare_operand, int cmp_predicate) {};
 
 template <>
-void jit_uni_eltwise_injector_f32_t<asimd>::blend_with_mask(
+void jit_uni_eltwise_injector_t<asimd>::blend_with_mask(
         const TRegS &vmm_dst, const TRegS &src) {};
 
 // We only need sve_128 as the injector is fully vector length agnostic.
-template struct jit_uni_eltwise_injector_f32_t<sve_128>;
-template struct jit_uni_eltwise_injector_f32_t<asimd>;
+template struct jit_uni_eltwise_injector_t<sve_128>;
+template struct jit_uni_eltwise_injector_t<asimd>;
 
 } // namespace aarch64
 } // namespace cpu

@@ -57,6 +57,8 @@ status_t pd_t::init_post_ops() {
     using namespace alg_kind;
     using namespace data_type;
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** >");
+
     const auto d = desc();
 
     // Examine post-ops and remember binary srcs.
@@ -66,6 +68,9 @@ status_t pd_t::init_post_ops() {
     bool ok = true;
     int prelu_count = 0;
     const int num_orig_postops = post_ops_.len();
+
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** : post_ops_.len() = %d",post_ops_.len());
+
     for (int i = 0; i < post_ops_.len(); i++) {
         const auto &e = post_ops_.entry_[i];
         switch (e.kind) {
@@ -105,6 +110,8 @@ status_t pd_t::init_post_ops() {
 
     if (!ok) return status::unimplemented;
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** try convert scales to postops");
+
     // If scales are present, convert them and any bias to binary post-ops.
     //   Exception: 2D scales.
     // Also convert bias to binary post-op if dst zp are present.
@@ -126,28 +133,36 @@ status_t pd_t::init_post_ops() {
     auto maybe_convert_scales_to_postop
             = [this](const memory_desc_t &scale_md, int arg, data_type_t dt,
                       bool &converted) -> status_t {
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** maybe_convert_scales_to_postop >>>>>");
+
         auto ndims = desc()->c_desc.ndims;
         // Scales on A/B can be converted to postops if
         // the scales md has K=1
         converted = false;
         int inner_dim = (arg == DNNL_ARG_A ? ndims - 2 : ndims - 1);
         bool convert = (scale_md.dims[inner_dim] <= 1) || (arg == DNNL_ARG_C);
+        VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: maybe_convert_scales_to_postop : convert = %d", convert);
+
         if (convert) {
             if (arg == DNNL_ARG_C) {
                 CHECK(post_ops_.append_binary(binary_div, &scale_md));
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: maybe_convert_scales_to_postop : append");
                 binary_srcs_.push_back(
                         binary_src_t {binary_src_t::scales, arg});
             } else {
                 CHECK(post_ops_.prepend_binary(binary_mul, &scale_md));
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: maybe_convert_scales_to_postop : prepend");
                 binary_srcs_.insert(binary_srcs_.begin(),
                         binary_src_t {binary_src_t::scales, arg});
             }
             converted = true;
         }
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: maybe_convert_scales_to_postop : converted = %d",converted);
         return status::success;
     };
 
     if (!a_scales.has_default_values() && !a_scales.is_host_scalar()) {
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** ! a_scales has_default");
         // Host scalar scale will be converted to Alpha
         bool converted;
         CHECK(maybe_convert_scales_to_postop(
@@ -156,6 +171,7 @@ status_t pd_t::init_post_ops() {
     }
 
     if (!b_scales.has_default_values() && !b_scales.is_host_scalar()) {
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** ! b_scales has_default");
         bool converted;
         CHECK(maybe_convert_scales_to_postop(
                 b_scale_md_, DNNL_ARG_B, b_scales.get_data_type(), converted));
@@ -165,6 +181,7 @@ status_t pd_t::init_post_ops() {
     bool try_c_scale = !c_scales.is_host_scalar()
             || (c_scales.is_host_scalar() && num_orig_postops > 0);
     if (!c_scales.has_default_values() && try_c_scale) {
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** ! c_scales has_default");
         bool converted;
         CHECK(maybe_convert_scales_to_postop(
                 c_scale_md_, DNNL_ARG_C, c_scales.get_data_type(), converted));
@@ -173,6 +190,7 @@ status_t pd_t::init_post_ops() {
         gpu_assert(converted) << "Unable to convert dst scales to a post op";
     }
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() < ****");
     return status::success;
 }
 
@@ -206,6 +224,9 @@ bool pd_t::quant_enabled() {
 }
 
 status_t pd_t::init_attrs() {
+
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs @@@@@ >");
+
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
@@ -273,6 +294,7 @@ status_t pd_t::init_attrs() {
         b_scales_group_n_ = b_scales.get_group(0);
         b_scales_group_k_ = b_scales.get_group(1);
     }
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs < @@@@@");
     return status::success;
 }
 

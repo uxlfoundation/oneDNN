@@ -52,6 +52,8 @@ struct gen_t : public primitive_t {
             using smask_t = primitive_attr_t::skip_mask_t;
             using arch_t = compute::gpu_arch_t;
 
+            VDEBUGINFO(4, primitive, gemm, "MY init =====>");
+
             assert(engine->kind() == engine_kind::gpu);
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
@@ -221,8 +223,9 @@ struct gen_t : public primitive_t {
                                        c_stride == 1 || c_stride % 2 == 0),
                         VERBOSE_SHAPE_RESTRICTION);
             }
-
+            VDEBUGINFO(4, primitive, gemm, "MY init =====");
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDEBUGINFO(4, primitive, gemm, "MY init =====");
 
             if (!attr()->zero_points_.has_default_values()) {
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -232,12 +235,16 @@ struct gen_t : public primitive_t {
                 VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
                 if (swap_ab_) std::swap(ag_dims_, bg_dims_);
             }
+            VDEBUGINFO(4, primitive, gemm, "MY init =====");
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
+            VDEBUGINFO(4, primitive, gemm, "MY init =====");
 
             bool with_binary = (post_ops_.find(binary) != -1)
                     || (post_ops_.find(prelu) != -1);
             bool with_eltwise = (post_ops_.find(eltwise) != -1);
+
+            VDEBUGINFO(4, primitive, gemm,"MY init ===== with_binary with_eltwise = %d %d",with_binary, with_eltwise);
 
             // Check GPU architecture.
             bool arch_ok = utils::one_of(arch_, arch_t::xe_lp, arch_t::xe_hp,
@@ -348,6 +355,7 @@ struct gen_t : public primitive_t {
                             <= std::numeric_limits<uint32_t>::max(),
                     VERBOSE_SHAPE_RESTRICTION);
 
+            VDEBUGINFO(4, primitive, gemm,                    "MY init ===== : Call kernel selector to choose a kernel");
             // Call kernel selector to choose a kernel.
             gpu_post_ops_t gpu_post_ops;
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
@@ -458,6 +466,8 @@ struct gen_t : public primitive_t {
                     kernel_success, "matching kernel not found in catalog");
 
             init_scratchpad();
+
+            VDEBUGINFO(4, primitive, gemm, "MY init <=====");
 
             return status::success;
         }
@@ -654,6 +664,9 @@ struct gen_t : public primitive_t {
 
     status_t init_nocopy(impl::engine_t *engine) {
         using namespace data_type;
+
+        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy *****>");
+
         auto kd = pd()->kernel_desc();
 
         CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));
@@ -678,6 +691,7 @@ struct gen_t : public primitive_t {
             nocopy_kernel_.save_output_events();
         }
 
+        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy <*****");
         return status::success;
     }
 

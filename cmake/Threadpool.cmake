@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2020-2021 Intel Corporation
+# Copyright 2020-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,10 +33,10 @@ if("${DNNL_CPU_THREADING_RUNTIME}" STREQUAL "THREADPOOL")
     endif()
 
     if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN")
-        find_package(Eigen3 REQUIRED 3.3 NO_MODULE)
+        find_package(Eigen3 3.3...<5.1 REQUIRED NO_MODULE)
         if(Eigen3_FOUND)
             list(APPEND EXTRA_STATIC_LIBS Eigen3::Eigen)
-            message(STATUS "Threadpool testing: Eigen (${EIGEN3_ROOT_DIR})")
+            message(STATUS "Threadpool testing: Eigen (${PACKAGE_PREFIX_DIR})")
         endif()
     endif()
 

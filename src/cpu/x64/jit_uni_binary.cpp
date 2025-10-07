@@ -224,16 +224,30 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     }
 
     if (conf_.postops_per_w_broadcast_exists) {
-        const auto &rhs_md = po.entry_[0].binary.src1_desc;
-        const memory_desc_wrapper rhs_md_wrap(&rhs_md);
-        dim_t rhs_len = rhs_md_wrap.nelems();
-        const int vlen = is_superset(conf_.isa, avx512_core)
-                ? cpu_isa_traits_t<avx512_core>::vlen
-                : cpu_isa_traits_t<avx2>::vlen;
-        const dim_t simd_w = vlen / types::data_type_size(conf_.dst_type);
-        dim_t expanded_len = utils::rnd_up(rhs_len, simd_w) * 2;
+        const int po_len = po.len();
+        conf_.post_ops_expanded_rhs_elems.assign(po_len, 0);
 
-        conf_.post_ops_expanded_rhs_elems = expanded_len;
+        for (int i = 0; i < po_len; ++i) {
+            if (!po.entry_[i].is_binary()) continue;
+            const memory_desc_wrapper rhs_md_wrap(
+                    &po.entry_[i].binary.src1_desc);
+            const auto bcast_type
+                    = get_rhs_arg_broadcasting_strategy(*rhs_md_wrap.md_,
+                            dst_md_, get_supported_postops_bcast_strategies());
+            if (bcast_type == broadcasting_strategy_t::per_w) {
+                dim_t rhs_len = rhs_md_wrap.nelems();
+                if (!rhs_len) continue;
+
+                const int vlen = is_superset(conf_.isa, avx512_core)
+                        ? cpu_isa_traits_t<avx512_core>::vlen
+                        : cpu_isa_traits_t<avx2>::vlen;
+                const dim_t simd_w
+                        = vlen / types::data_type_size(conf_.dst_type);
+                dim_t expanded_len = utils::rnd_up(rhs_len, simd_w) * 2;
+
+                conf_.post_ops_expanded_rhs_elems[i] = expanded_len;
+            }
+        }
     }
 
     if (is_ternary_op()) {
@@ -587,11 +601,16 @@ bool jit_uni_binary_t::post_ops_ok(const primitive_attr_t *attr,
 
 void jit_uni_binary_t::pd_t::init_scratchpad() {
     using namespace memory_tracking::names;
-    if (conf_.post_ops_expanded_rhs_elems > 0) {
+
+    if (!conf_.post_ops_expanded_rhs_elems.empty()) {
         auto scratchpad = scratchpad_registry().registrar();
         const size_t dst_type_size = types::data_type_size(conf_.dst_type);
-        scratchpad.template book<float>(key_binary_post_ops_expanded_rhs,
-                conf_.post_ops_expanded_rhs_elems * dst_type_size);
+        dim_t sum_expanded_len = 0;
+        for (const auto &expanded_len : conf_.post_ops_expanded_rhs_elems) {
+            sum_expanded_len += expanded_len * dst_type_size;
+        }
+        scratchpad.template book<float>(
+                key_binary_post_ops_expanded_rhs, sum_expanded_len);
     }
 }
 
@@ -741,23 +760,6 @@ status_t jit_uni_binary_t::init(engine_t *engine) {
     }
 
     return kernel_->create_kernel();
-}
-
-void jit_uni_binary_t::expand_post_ops_binary_rhs_per_w(
-        const post_ops_t &post_ops,
-        const std::vector<const void *> &orig_post_ops_binary_rhs_arg_vec,
-        std::vector<const void *> &post_ops_binary_rhs_arg_vec,
-        float *expanded_rhs, dim_t expanded_rhs_elems) const {
-    const auto &rhs_md = post_ops.entry_[0].binary.src1_desc;
-    const memory_desc_wrapper rhs_md_wrap(&rhs_md);
-    dim_t rhs_len = rhs_md_wrap.nelems();
-
-    const float *orig_rhs = reinterpret_cast<const float *>(
-            orig_post_ops_binary_rhs_arg_vec[0]);
-    for (dim_t i = 0; i < expanded_rhs_elems; ++i)
-        expanded_rhs[i] = orig_rhs[i % rhs_len];
-
-    post_ops_binary_rhs_arg_vec = {expanded_rhs};
 }
 
 void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
@@ -1252,16 +1254,16 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
             && (with_postops || point_broadcast || bcast_type == bcast_t::per_w
                     || vector_overwrite);
 
-    std::vector<float> expanded_post_ops_rhs_storage;
     if (postops_per_w_broadcast_exists) {
         auto &scratchpad = ctx.get_scratchpad_grantor();
         float *expanded_buf = scratchpad.get<float>(
                 memory_tracking::names::key_binary_post_ops_expanded_rhs);
-        dim_t expanded_rhs_elems = pd()->get_conf().post_ops_expanded_rhs_elems;
+        const std::vector<dim_t> &expanded_elems
+                = pd()->get_conf().post_ops_expanded_rhs_elems;
 
-        expand_post_ops_binary_rhs_per_w(post_ops,
+        binary_injector::extend_binary_args_per_w(post_ops,
                 orig_post_ops_binary_rhs_arg_vec, post_ops_binary_rhs_arg_vec,
-                expanded_buf, expanded_rhs_elems);
+                expanded_buf, expanded_elems);
     }
 
     if ((bcast_type == bcast_t::none || point_broadcast_no_oc_tail)

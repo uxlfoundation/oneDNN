@@ -65,13 +65,19 @@ tile_iterator_t::tile_iterator_t(const layout_t &layout, const tile_t &tile) {
     tile_t strides;
     for (auto &b : layout.blocks()) {
         auto &stride = strides[b.idx];
-        d_.emplace_back(b.idx, b.size, stride, tile.get(b.idx));
+        auto tile_dim = tile.get(b.idx);
+        if (tile_dim == 0) {
+            d_.clear();
+            return;
+        }
+        d_.emplace_back(b.idx, b.size, stride, tile_dim);
         coord_[b.idx] = 0;
         stride *= b.size;
     }
     if (!layout.is_empty() && layout.blocks().empty()) {
-        d_.emplace_back(*tile.begin(), 1, 1, 1);
-        coord_[d_[0].idx] = 0;
+        auto idx = tile.is_empty() ? idx_t() : *tile.begin();
+        d_.emplace_back(idx, 1, 1, 1);
+        coord_[idx] = 0;
     }
 }
 

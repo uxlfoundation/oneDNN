@@ -465,14 +465,11 @@ void jit_uni_eltwise_injector_t<isa>::relu_compute_vector_fwd(
 
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::relu_zero_ns_compute_vector_fwd(
-        const TRegS &vmm_src) {
-    h->fmaxnm(vmm_src, p_all, 0.);
-}
-
-template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_t<isa>::relu_zero_ns_compute_vector_fwd(
-        const TRegH &vmm_src) {
-    h->fmaxnm(vmm_src, p_all, 0.);
+        const TReg &vmm_src) {
+    if (d_type_ == data_type::f16)
+        h->fmaxnm(vmm_src.h, p_all, 0.);
+    else
+        h->fmaxnm(vmm_src.s, p_all, 0.);
 }
 
 template <cpu_isa_t isa>
@@ -657,38 +654,29 @@ void jit_uni_eltwise_injector_t<isa>::gelu_tanh_compute_vector_fwd(
 
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::square_compute_vector_fwd(
-        const TRegS &vmm_src) {
-    h->fmul(vmm_src, vmm_src, vmm_src);
-}
-
-template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_t<isa>::square_compute_vector_fwd(
-        const TRegH &vmm_src) {
-    h->fmul(vmm_src, vmm_src, vmm_src);
-}
-
-template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_t<isa>::abs_compute_vector_fwd(
-        const TRegS &vmm_src) {
-    h->fabs(vmm_src, p_all / T_m, vmm_src);
+        const TReg &vmm_src) {
+    if (d_type_ == data_type::f16)
+        h->fmul(vmm_src.h, vmm_src.h, vmm_src.h);
+    else
+        h->fmul(vmm_src.s, vmm_src.s, vmm_src.s);
 }
 
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::abs_compute_vector_fwd(
-        const TRegH &vmm_src) {
-    h->fabs(vmm_src, p_all / T_m, vmm_src);
+        const TReg &vmm_src) {
+    if (d_type_ == data_type::f16)
+        h->fabs(vmm_src.h, p_all / T_m, vmm_src.h);
+    else
+        h->fabs(vmm_src.s, p_all / T_m, vmm_src.s);
 }
 
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::sqrt_compute_vector_fwd(
-        const TRegS &vmm_src) {
-    h->fsqrt(vmm_src, p_all / T_m, vmm_src);
-}
-
-template <>
-void jit_uni_eltwise_injector_t<asimd>::sqrt_compute_vector_fwd(
-        const TRegH &vmm_src) {
-    h->fsqrt(vmm_src, vmm_src);
+        const TReg &vmm_src) {
+    if (d_type_ == data_type::f16)
+        h->fsqrt(vmm_src.h, p_all / T_m, vmm_src.h);
+    else
+        h->fsqrt(vmm_src.s, p_all / T_m, vmm_src.s);
 }
 
 template <cpu_isa_t isa>
@@ -1282,7 +1270,7 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::sqrt_compute_vector_bwd(
         const TRegS &vmm_src) {
     // res = 0.5 / d = 0.5 / sqrt(s)
-    if (!use_dst_) sqrt_compute_vector_fwd(vmm_src);
+    if (!use_dst_) sqrt_compute_vector_fwd(ZReg(IDX(vmm_src)));
     h->mov(ZRegD(IDX(vmm_aux0)), ZRegD(IDX(table_val(half, z_tmp))));
     h->fdiv(vmm_aux0, p_all, vmm_src);
     h->mov(ZRegD(IDX(vmm_src)), ZRegD(IDX(vmm_aux0)));
@@ -1466,7 +1454,7 @@ void jit_uni_eltwise_injector_t<isa>::gelu_erf_compute_vector_bwd(
     h->ldr(ZReg(IDX(vmm_aux1)), ptr(h->X_TMP_0));
     h->add_imm(h->X_SP, h->X_SP, vlen, h->X_TMP_0);
 
-    abs_compute_vector_fwd(vmm_aux1);
+    abs_compute_vector_fwd(ZReg(IDX(vmm_aux1)));
 
     // W = 1 / (p * s + 1)
     h->mov(ZRegD(IDX(vmm_aux3)),
@@ -1628,138 +1616,110 @@ void jit_uni_eltwise_injector_t<isa>::compute_body(
         const injector_utils::vmm_index_set_iterator_t &start_idx_it,
         const injector_utils::vmm_index_set_iterator_t &end_idx_it) {
     using namespace alg_kind;
-
-    const bool use_f16 = (d_type_ == data_type::f16);
-
     std::for_each(start_idx_it, end_idx_it, [&](size_t idx) {
-        auto with_reg = [&](auto reg) {
-            if (is_fwd_) {
-                switch (alg_) {
-                    case eltwise_relu_use_dst_for_bwd:
-                    case eltwise_relu:
-                        if (alpha_ == 0.f)
-                            relu_zero_ns_compute_vector_fwd(reg);
-                        else
-                            relu_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_elu_use_dst_for_bwd:
-                    case eltwise_elu: elu_compute_vector_fwd(TRegS(idx)); break;
-                    case eltwise_tanh_use_dst_for_bwd:
-                    case eltwise_tanh:
-                        tanh_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_square: square_compute_vector_fwd(reg); break;
-                    case eltwise_abs: abs_compute_vector_fwd(reg); break;
-                    case eltwise_sqrt_use_dst_for_bwd:
-                    case eltwise_sqrt: sqrt_compute_vector_fwd(reg); break;
-                    case eltwise_swish:
-                        swish_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_linear:
-                        linear_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_soft_relu:
-                        soft_relu_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_mish:
-                        mish_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_logistic_use_dst_for_bwd:
-                    case eltwise_logistic:
-                        logistic_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_exp_use_dst_for_bwd:
-                    case eltwise_exp: exp_compute_vector_fwd(TRegS(idx)); break;
-                    case eltwise_gelu_tanh:
-                        gelu_tanh_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_log: log_compute_vector_fwd(TRegS(idx)); break;
-                    case eltwise_clip:
-                    case eltwise_clip_v2_use_dst_for_bwd:
-                    case eltwise_clip_v2:
-                        clip_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_gelu_erf:
-                        gelu_erf_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_round:
-                        round_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_hardswish:
-                        hardswish_compute_vector_fwd(TRegS(idx));
-                        break;
-                    case eltwise_hardsigmoid:
-                        hardsigmoid_compute_vector_fwd(TRegS(idx));
-                        break;
-                    default: assert(!"unsupported eltwise algorithm");
-                }
-            } else {
-                switch (alg_) {
-                    case eltwise_relu_use_dst_for_bwd:
-                    case eltwise_relu:
-                        relu_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_elu_use_dst_for_bwd:
-                    case eltwise_elu: elu_compute_vector_bwd(TRegS(idx)); break;
-                    case eltwise_tanh_use_dst_for_bwd:
-                    case eltwise_tanh:
-                        tanh_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_square:
-                        square_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_abs: abs_compute_vector_bwd(TRegS(idx)); break;
-                    case eltwise_sqrt_use_dst_for_bwd:
-                    case eltwise_sqrt:
-                        sqrt_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_linear:
-                        linear_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_soft_relu:
-                        soft_relu_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_mish:
-                        mish_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_logistic_use_dst_for_bwd:
-                    case eltwise_logistic:
-                        logistic_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_exp_use_dst_for_bwd:
-                    case eltwise_exp: exp_compute_vector_bwd(TRegS(idx)); break;
-                    case eltwise_gelu_tanh:
-                        gelu_tanh_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_swish:
-                        swish_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_log: log_compute_vector_bwd(TRegS(idx)); break;
-                    case eltwise_clip:
-                    case eltwise_clip_v2_use_dst_for_bwd:
-                    case eltwise_clip_v2:
-                        clip_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_gelu_erf:
-                        gelu_erf_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_hardswish:
-                        hardswish_compute_vector_bwd(TRegS(idx));
-                        break;
-                    case eltwise_hardsigmoid:
-                        hardsigmoid_compute_vector_bwd(TRegS(idx));
-                        break;
-                    default: assert(!"unsupported eltwise algorithm");
-                }
+        if (is_fwd_) {
+            switch (alg_) {
+                case eltwise_relu_use_dst_for_bwd:
+                case eltwise_relu:
+                    if (alpha_ == 0.f)
+                        relu_zero_ns_compute_vector_fwd(TReg(idx));
+                    else
+                        relu_compute_vector_fwd(TRegS(idx));
+                    break;
+                case eltwise_elu_use_dst_for_bwd:
+                case eltwise_elu: elu_compute_vector_fwd(TRegS(idx)); break;
+                case eltwise_tanh_use_dst_for_bwd:
+                case eltwise_tanh: tanh_compute_vector_fwd(TRegS(idx)); break;
+                case eltwise_square:
+                    square_compute_vector_fwd(TReg(idx));
+                    break;
+                case eltwise_abs: abs_compute_vector_fwd(TReg(idx)); break;
+                case eltwise_sqrt_use_dst_for_bwd:
+                case eltwise_sqrt: sqrt_compute_vector_fwd(TReg(idx)); break;
+                case eltwise_swish: swish_compute_vector_fwd(TRegS(idx)); break;
+                case eltwise_linear:
+                    linear_compute_vector_fwd(TRegS(idx));
+                    break;
+                case eltwise_soft_relu:
+                    soft_relu_compute_vector_fwd(TRegS(idx));
+                    break;
+                case eltwise_mish: mish_compute_vector_fwd(TRegS(idx)); break;
+                case eltwise_logistic_use_dst_for_bwd:
+                case eltwise_logistic:
+                    logistic_compute_vector_fwd(TRegS(idx));
+                    break;
+                case eltwise_exp_use_dst_for_bwd:
+                case eltwise_exp: exp_compute_vector_fwd(TRegS(idx)); break;
+                case eltwise_gelu_tanh:
+                    gelu_tanh_compute_vector_fwd(TRegS(idx));
+                    break;
+                case eltwise_log: log_compute_vector_fwd(TRegS(idx)); break;
+                case eltwise_clip:
+                case eltwise_clip_v2_use_dst_for_bwd:
+                case eltwise_clip_v2:
+                    clip_compute_vector_fwd(TRegS(idx));
+                    break;
+                case eltwise_gelu_erf:
+                    gelu_erf_compute_vector_fwd(TRegS(idx));
+                    break;
+                case eltwise_round: round_compute_vector_fwd(TRegS(idx)); break;
+                case eltwise_hardswish:
+                    hardswish_compute_vector_fwd(TRegS(idx));
+                    break;
+                case eltwise_hardsigmoid:
+                    hardsigmoid_compute_vector_fwd(TRegS(idx));
+                    break;
+                default: assert(!"unsupported eltwise algorithm");
             }
-        };
-
-        // Pick the right register type (h/s) according to the data type
-        if (use_f16)
-            with_reg(TRegH(idx));
-        else
-            with_reg(TRegS(idx));
-
+        } else {
+            switch (alg_) {
+                case eltwise_relu_use_dst_for_bwd:
+                case eltwise_relu: relu_compute_vector_bwd(TRegS(idx)); break;
+                case eltwise_elu_use_dst_for_bwd:
+                case eltwise_elu: elu_compute_vector_bwd(TRegS(idx)); break;
+                case eltwise_tanh_use_dst_for_bwd:
+                case eltwise_tanh: tanh_compute_vector_bwd(TRegS(idx)); break;
+                case eltwise_square:
+                    square_compute_vector_bwd(TRegS(idx));
+                    break;
+                case eltwise_abs: abs_compute_vector_bwd(TRegS(idx)); break;
+                case eltwise_sqrt_use_dst_for_bwd:
+                case eltwise_sqrt: sqrt_compute_vector_bwd(TRegS(idx)); break;
+                case eltwise_linear:
+                    linear_compute_vector_bwd(TRegS(idx));
+                    break;
+                case eltwise_soft_relu:
+                    soft_relu_compute_vector_bwd(TRegS(idx));
+                    break;
+                case eltwise_mish: mish_compute_vector_bwd(TRegS(idx)); break;
+                case eltwise_logistic_use_dst_for_bwd:
+                case eltwise_logistic:
+                    logistic_compute_vector_bwd(TRegS(idx));
+                    break;
+                case eltwise_exp_use_dst_for_bwd:
+                case eltwise_exp: exp_compute_vector_bwd(TRegS(idx)); break;
+                case eltwise_gelu_tanh:
+                    gelu_tanh_compute_vector_bwd(TRegS(idx));
+                    break;
+                case eltwise_swish: swish_compute_vector_bwd(TRegS(idx)); break;
+                case eltwise_log: log_compute_vector_bwd(TRegS(idx)); break;
+                case eltwise_clip:
+                case eltwise_clip_v2_use_dst_for_bwd:
+                case eltwise_clip_v2:
+                    clip_compute_vector_bwd(TRegS(idx));
+                    break;
+                case eltwise_gelu_erf:
+                    gelu_erf_compute_vector_bwd(TRegS(idx));
+                    break;
+                case eltwise_hardswish:
+                    hardswish_compute_vector_bwd(TRegS(idx));
+                    break;
+                case eltwise_hardsigmoid:
+                    hardsigmoid_compute_vector_bwd(TRegS(idx));
+                    break;
+                default: assert(!"unsupported eltwise algorithm");
+            }
+        }
         if (scale_ != 1.f) {
             h->fmul(ZRegS(IDX(TRegS(idx))), ZRegS(IDX(TRegS(idx))),
                     ZRegS(IDX(table_val(scale, vmm_mask))));
@@ -2474,16 +2434,14 @@ size_t jit_uni_eltwise_injector_t<sve_128>::get_vec_len() {
 
 template <>
 void jit_uni_eltwise_injector_t<asimd>::relu_zero_ns_compute_vector_fwd(
-        const TRegS &vmm_src) {
-    h->movi(vmm_aux0, 0);
-    h->fmaxnm(vmm_src, vmm_src, vmm_aux0);
-}
-
-template <>
-void jit_uni_eltwise_injector_t<asimd>::relu_zero_ns_compute_vector_fwd(
-        const TRegH &vmm_src) {
-    h->movi(TRegH(IDX(vmm_aux0)), 0);
-    h->fmaxnm(vmm_src, vmm_src, TRegH(IDX(vmm_aux0)));
+        const TReg &vmm_src) {
+    if (d_type_ == data_type::f16) {
+        h->movi(TRegH(IDX(vmm_aux0)), 0);
+        h->fmaxnm(vmm_src.h, vmm_src.h, TRegH(IDX(vmm_aux0)));
+    } else {
+        h->movi(vmm_aux0, 0);
+        h->fmaxnm(vmm_src.s, vmm_src.s, vmm_aux0);
+    }
 }
 
 template <>
@@ -2497,26 +2455,20 @@ void jit_uni_eltwise_injector_t<asimd>::relu_compute_vector_fwd(
 
 template <>
 void jit_uni_eltwise_injector_t<asimd>::abs_compute_vector_fwd(
-        const TRegS &vmm_src) {
-    h->fabs(vmm_src, vmm_src);
-}
-
-template <>
-void jit_uni_eltwise_injector_t<asimd>::abs_compute_vector_fwd(
-        const TRegH &vmm_src) {
-    h->fabs(vmm_src, vmm_src);
+        const TReg &vmm_src) {
+    if (d_type_ == data_type::f16)
+        h->fabs(vmm_src.h, vmm_src.h);
+    else
+        h->fabs(vmm_src.s, vmm_src.s);
 }
 
 template <>
 void jit_uni_eltwise_injector_t<asimd>::sqrt_compute_vector_fwd(
-        const TRegS &vmm_src) {
-    h->fsqrt(vmm_src, vmm_src);
-}
-
-template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_t<isa>::sqrt_compute_vector_fwd(
-        const TRegH &vmm_src) {
-    h->fsqrt(vmm_src, p_all / T_m, vmm_src);
+        const TReg &vmm_src) {
+    if (d_type_ == data_type::f16)
+        h->fsqrt(vmm_src.h, vmm_src.h);
+    else
+        h->fsqrt(vmm_src.s, vmm_src.s);
 }
 
 template <>

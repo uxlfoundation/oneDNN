@@ -16,12 +16,33 @@
 
 #include "cpu/aarch64/matmul/acl_matmul_utils.hpp"
 #include "cpu/aarch64/acl_utils.hpp"
+#include "cpu/matmul/gemm_based_common.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
+
+bool batch_dims_have_default_order(const memory_desc_wrapper &mdw) {
+    assert(mdw.is_blocking_desc());
+
+    if (mdw.ndims() <= 2) { return true; }
+
+    const auto &dims = mdw.dims();
+    const auto ndims = mdw.ndims();
+    const auto &strides = mdw.strides();
+
+    int prod = dims[ndims - 1] * dims[ndims - 2];
+
+    for (int i = ndims - 3; i >= 0; --i) {
+        if (strides[i] != prod) { return false; }
+
+        prod *= dims[i];
+    }
+
+    return true;
+}
 
 namespace acl_matmul_utils {
 
@@ -41,6 +62,10 @@ status_t init_conf_matmul(acl_matmul_conf_t &amp, memory_desc_t &src_md,
     const dim_t dst_batch = helper.batch();
     const dim_t src_batch = helper.src_batch();
     const dim_t wei_batch = helper.wei_batch();
+
+    ACL_CHECK_SUPPORT(
+            src_d.ndims() > 4 || wei_d.ndims() > 4 || dst_d.ndims() > 4,
+            "ACL does not support more than 4 dimensions");
 
     // We can only broadcast on one of src or wei at once
     // ACL supports broadcast for 3D shapes, and 4D shapes
@@ -72,25 +97,30 @@ status_t init_conf_matmul(acl_matmul_conf_t &amp, memory_desc_t &src_md,
     ACL_CHECK_SUPPORT(with_bias, "ACL does not support bias for matmul");
 
     // The two innermost dimensions can be transposed, but the batch dimensions
-    // must be the outermost
-    using namespace format_tag;
-    if (IsFixedFormat) {
-        auto src_tag = memory_desc_matches_one_of_tag(
-                src_md, abcd, abdc, abc, acb, ab, ba);
-        auto dst_tag
-                = memory_desc_matches_one_of_tag(dst_md, abcd, abc, ab, ba);
-        ACL_CHECK_SUPPORT(utils::one_of(format_tag::undef, src_tag, dst_tag),
-                "Format tag is undefined");
-    } else {
-        auto src_tag = memory_desc_matches_one_of_tag(
-                src_md, acdb, abcd, abdc, abc, acb, ab, ba);
-        auto wei_tag = memory_desc_matches_one_of_tag(
-                wei_md, acdb, abcd, abdc, abc, acb, ab, ba);
-        auto dst_tag = memory_desc_matches_one_of_tag(dst_md, abcd, abc, ab);
-        ACL_CHECK_SUPPORT(
-                utils::one_of(format_tag::undef, src_tag, wei_tag, dst_tag),
-                "Format tag is undefined");
+    // must be the outermost. Require contiguity like GEMM-based matmul.
+    ACL_CHECK_SUPPORT(!matmul::gemm_based::check_gemm_input_format(src_md),
+            "at least one innermost dimension must be contiguous");
+    ACL_CHECK_SUPPORT(!matmul::gemm_based::check_gemm_output_format(dst_md),
+            "innermost dst dimension must be contiguous");
+    if (!IsFixedFormat) {
+        ACL_CHECK_SUPPORT(!matmul::gemm_based::check_gemm_input_format(wei_md),
+                "at least one innermost dimension must be contiguous");
     }
+
+    //added check to ensure dense tensors
+    ACL_CHECK_SUPPORT(!src_d.is_dense(), "src tensor is not dense");
+    ACL_CHECK_SUPPORT(!dst_d.is_dense(), "dst tensor is not dense");
+    if (!IsFixedFormat) {
+        ACL_CHECK_SUPPORT(!wei_d.is_dense(), "wei tensor is not dense");
+    }
+
+    // ACL does not support batch dimensions being non-contiguous
+    ACL_CHECK_SUPPORT(!batch_dims_have_default_order(src_d),
+            "src batch dimensions must be in order");
+    ACL_CHECK_SUPPORT(!batch_dims_have_default_order(wei_d),
+            "wei batch dimensions must be in order");
+    ACL_CHECK_SUPPORT(!batch_dims_have_default_order(dst_d),
+            "dst batch dimensions must be in order");
 
     // Transpose A (src) and/or B (wei). Transpose B is not needed for fixed format.
     amp.is_transA = helper.transA() == 'T';

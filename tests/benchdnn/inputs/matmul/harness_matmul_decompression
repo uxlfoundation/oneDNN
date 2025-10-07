@@ -319,8 +319,7 @@
 --dt=f32:s4:f32,f32:u4:f32
 --wtag=any,ab,ba
 --attr-scales=,wei:common:0.5:f32,wei:per_ocic:f32:32x1
---attr-zero-points=,wei:common:2
-# ,wei:per_oc:s4:4096x1 # PER_OC skips for all matmul implemetations
+--attr-zero-points=,wei:common:2,wei:per_oc:s4
 --attr-fpmath=strict:true
 1x4096:4096x4096
 
@@ -328,7 +327,6 @@
 --dt=f32:s8:f32,f32:u8:f32
 --wtag=any,ab,ba
 --attr-scales=,wei:common:0.5:f32,wei:per_ocic:f32:32x1
---attr-zero-points=,wei:common:2
-# ,wei:per_ocic:s8:32x1 # PER_OC skips for all matmul implementations
+--attr-zero-points=,wei:common:2,wei:per_ocic:s8:32x1
 --attr-fpmath=strict:true
 1x4096:4096x4096

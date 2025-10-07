@@ -350,15 +350,11 @@ int brgemm_matmul_conf_utils_t::get_default_n_block(
     const int n_blk = get_n_block_from_tag(matrix_b_tag);
     if (n_blk > 0) return n_blk;
 
-    const int simd_w = isa_max_vlen(isa_) / sizeof(float);
-
     if (matmul_amx_blocking_params_macro_t::is_supported(bgmmc, *this)) {
         return 32;
     }
 
-    return is_superset(isa_, avx512_core) || !f32_dt
-            ? 64
-            : nstl::min<int>(24, rnd_up(bgmmc.N, simd_w));
+    return 64;
 }
 
 /**
@@ -1058,7 +1054,7 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
     const int nthr = bgmmc.nthr;
 
     dim_t max_m_blk = nstl::min(256, matmul.M);
-    dim_t min_m_blk = max_m_blk;
+    dim_t min_m_blk = nstl::min(32, matmul.M);
 
     int n_blk = bgmmc.N_blk;
     const int n_chunks = div_up(matmul.N, n_blk);
@@ -1098,7 +1094,7 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
     max_m_blk = nstl::max(max_m_blk, min_m_blk);
     for_(int nthr_k = start_nthr_k; nthr_k >= 1; --nthr_k)
     for_(int n_chunk_size = n_chunks_start; n_chunk_size >= 1; --n_chunk_size)
-    for (int m_blk = min_m_blk; m_blk <= max_m_blk; m_blk += 4) {
+    for (int m_blk = max_m_blk; m_blk >= min_m_blk; --m_blk) {
         matmul_avx512_blocking_params_t cur_params(matmul, nthr);
         cur_params.update_params(
                 1, m_blk, n_chunk_size, n_blk, 1, k_blk, nthr_k);
@@ -1435,7 +1431,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_gemv
             = is_gemv_applicable(bgmmc, bm_conf_utils, src_md, weights_md);
 
-    if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.isa == avx2) {
+    if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.isa == avx2
+            && (bgmmc.N == 1 || bgmmc.M == 1)) {
         // AVX2 implementation has a dedicated GEMV code path optimized
         // for the N=1 case, which is the only scenario guaranteed to
         // perform on par or better than the GEMM implementation.

@@ -593,6 +593,10 @@ inline size_t data_type_vnni_simd_elems(data_type_t data_type, cpu_isa_t isa) {
     if (data_type == data_type::s8 && isa != avx512_core)
         return data_type_vnni_simd_elems(data_type, avx512_core);
 
+    // We want to use the same blocking over K for f32 on avx2.
+    if (data_type == data_type::f32 && isa == avx2)
+        return data_type_vnni_simd_elems(data_type, avx512_core);
+
     size_t vlen = isa_max_vlen(isa);
     assert(vlen >= dt_size);
     return vlen / dt_size;

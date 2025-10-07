@@ -1412,6 +1412,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                         || IMPLICATION(bgmmc.is_wei_scale_per_k,
                                 bgmmc.with_wei_decompression),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+        // AVX2 supports f32 scales only
+        VCONDCHECK_BG(IMPLICATION(one_of(isa, avx2, avx2_vnni, avx2_vnni_2),
+                              bgmmc.wei_scales_dt == f32),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
     const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);

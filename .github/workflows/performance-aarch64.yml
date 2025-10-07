@@ -74,13 +74,14 @@ jobs:
       - name: Build oneDNN base
         uses: ./oneDNN/.github/actions/build-onednn
         with:
-          artifact-name: onednn-base
+          artifact_name: onednn-base
           threading: OMP
           toolset: gcc
           build: Release
           testset: SMOKE
           acl_hash: ${{ inputs.acl_base_hash }}
           onednn_hash: ${{ inputs.onednn_base_hash || fromJson(steps.get-versions.outputs.output).dependencies.onednn-base }}
+          cache: ${{ inputs.onednn_base_hash == '' && 'true' || 'false'}}
 
   build-oneDNN-new:
     runs-on: ubuntu-22.04-arm
@@ -93,7 +94,7 @@ jobs:
       - name: Build oneDNN new
         uses: ./oneDNN/.github/actions/build-onednn
         with:
-          artifact-name: onednn-new
+          artifact_name: onednn-new
           threading: OMP
           toolset: gcc
           build: Release
@@ -108,7 +109,7 @@ jobs:
         # Todo RYO: change to metal instances
         config: [
           { name: c7g, label: ah-ubuntu_22_04-c7g_4x-50, threading: OMP, toolset: gcc, build: Release, testset: NIGHTLY },
-          { name: c8g, label: ah-ubuntu_22_04-c8g_4x, threading: OMP, toolset: gcc, build: Release, testset: NIGHTLY }
+          { name: c8g, label: ah-ubuntu_22_04-c8g_8x, threading: OMP, toolset: gcc, build: Release, testset: NIGHTLY }
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}
@@ -125,11 +126,6 @@ jobs:
           content=`cat ${{ github.workspace }}/oneDNN/.github/automation/aarch64/ci.json`
           content="${content//[$'\t\r\n$ ']}"
           echo "output=$content" >> $GITHUB_OUTPUT
-      
-      - name: Get system name
-        id: get_system_name
-        shell: bash
-        run: (echo "SystemName=$(uname)") >> $GITHUB_OUTPUT
 
       - name: setup python
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
@@ -141,7 +137,7 @@ jobs:
         run: |
             sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
             sudo apt update -y
-            sudo apt install -y patchelf g++-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
+            sudo apt install -y patchelf libomp-dev g++-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
             pip install scipy statistics GitPython
 
       - name: Download oneDNN base

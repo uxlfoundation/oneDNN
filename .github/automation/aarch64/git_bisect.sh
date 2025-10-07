@@ -32,9 +32,15 @@ if [ "$#" -ne 4 ]; then
 fi
 
 ONEDNN_TEST_SET=NO_CORR ONEDNN_ACTION=configure ONEDNN_THREADING=OMP ${SCRIPT_DIR}/build.sh
-git bisect reset
-git bisect start
-git bisect good ${GOOD}
-git bisect bad ${BAD}
-git bisect run sh -c "cmake --build ${BUILD_DIR} && ${BUILD_DIR}/tests/benchdnn/benchdnn ${CMD}"
-git bisect log
+# git bisect reset
+# git bisect start
+# git bisect good ${GOOD}
+# git bisect bad ${BAD}
+git checkout ${GOOD}
+git log -1
+git checkout ${BAD}
+git log -1
+echo $BUILD_DIR
+echo $CMD
+# git bisect run sh -c "cmake --build ${BUILD_DIR} && ${BUILD_DIR}/tests/benchdnn/benchdnn ${CMD}"
+# git bisect log

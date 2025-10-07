@@ -255,6 +255,7 @@ struct AsmInstruction {
     inline unsigned src1Typecode() const { return getTypecode(src[1]); }
     inline autoswsb::DestinationMask destinations(int &jip, int &uip) const;
     inline bool getOperandRegion(autoswsb::DependencyRegion &region, int opNum) const;
+    inline bool getCModDepRegion(autoswsb::DependencyRegion &region) const;
 
     void shiftJIP(int32_t shift) const {}
     void shiftUIP(int32_t shift) const {}
@@ -439,6 +440,15 @@ bool AsmInstruction::getOperandRegion(autoswsb::DependencyRegion &region, int op
     } else
         region = DependencyRegion(hw, mod.getExecSize(), rd);
 
+    return true;
+}
+
+bool AsmInstruction::getCModDepRegion(autoswsb::DependencyRegion &region) const
+{
+    if (mod.getCMod() == ConditionModifier::none)
+        return false;
+
+    region = autoswsb::DependencyRegion(region.hw, 1, mod.getFlagReg());
     return true;
 }
 

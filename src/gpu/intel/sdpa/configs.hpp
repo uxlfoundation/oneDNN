@@ -100,12 +100,12 @@ bool operator<(const config_record_t &lhs, const config_record_t &rhs);
 
 config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size, dim_t seq,
         bool is_thin_q, bool is_quantized, bool is_integrated, bool is_fma,
-        bool is_f32);
+        bool is_f32, bool is_f16_accumulate);
 dim_t round_up_seq_interval(dim_t seq, compute::gpu_arch_t arch);
 
 dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
         dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
-        bool is_fma, bool is_f32);
+        bool is_fma, bool is_f32, bool is_f16_accumulate);
 
 // serializable options for microkernel configuration
 // follows reduced subset of structs from gemmstone that

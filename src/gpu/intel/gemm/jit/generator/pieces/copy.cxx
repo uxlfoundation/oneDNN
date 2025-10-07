@@ -246,10 +246,6 @@ void Generator<hw>::copyExecute(CopyPlan &&plan, CommonState &state)
         if (clobbered[2*i] || clobbered[2*i + 1])
             mov(1, savedFlags[i], FlagRegister(i));
 
-    // Workaround probable scheduling / hw issue
-    if (hw >= HW::XeHPC)
-        sync.nop(SWSB<uint32_t>(1));
-
     // Generate code.
     plan.execute(*this);
 

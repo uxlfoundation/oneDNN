@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2022 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -97,35 +97,23 @@ inline int read_num_threads_from_env() {
 
 #if defined(DNNL_TEST_THREADPOOL_USE_EIGEN)
 
-#include <memory>
-#include "Eigen/Core"
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
-#if EIGEN_WORLD_VERSION + 10 * EIGEN_MAJOR_VERSION < 33
-#define STR_(x) #x
-#define STR(x) STR_(x)
-#pragma message("EIGEN_WORLD_VERSION " STR(EIGEN_WORLD_VERSION))
-#pragma message("EIGEN_MAJOR_VERSION " STR(EIGEN_MAJOR_VERSION))
-#error Unsupported Eigen version (need 3.3.x or higher)
-#endif
-
-#if EIGEN_MINOR_VERSION >= 90
-using EigenThreadPool = Eigen::ThreadPool;
-#else
-using EigenThreadPool = Eigen::NonBlockingThreadPool;
-#endif
+#include <memory>
 
 namespace dnnl {
 namespace testing {
 
 class threadpool_t : public dnnl::threadpool_interop::threadpool_iface {
 private:
-    std::unique_ptr<EigenThreadPool> tp_;
+    std::unique_ptr<Eigen::ThreadPool> tp_;
 
 public:
     explicit threadpool_t(int num_threads = 0) {
         if (num_threads <= 0) num_threads = read_num_threads_from_env();
-        tp_.reset(new EigenThreadPool(num_threads));
+        tp_.reset(new Eigen::ThreadPool(num_threads));
     }
     int get_num_threads() const override { return tp_->NumThreads(); }
     bool get_in_parallel() const override {

@@ -76,10 +76,6 @@ struct jit_uni_binary_t : public primitive_t {
 
     using data_t = int8_t;
 
-    void expand_post_ops_binary_rhs_per_w(const post_ops_t &post_ops,
-            const std::vector<const void *> &orig_post_ops_binary_rhs_arg_vec,
-            std::vector<const void *> &post_ops_binary_rhs_arg_vec,
-            float *expanded_rhs, dim_t expanded_rhs_elems) const;
     void execute_no_bcast_strategy(const data_t *src0, const data_t *src1,
             const data_t *src2, data_t *dst, const void *src0_scales,
             const void *src1_scales,

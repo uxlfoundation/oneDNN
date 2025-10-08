@@ -21,9 +21,12 @@
 #include <sstream>
 #include <string>
 
-/// @page memory_format_propagation_cpp Memory Format Propagation
-/// This example demonstrates memory format propagation, which is critical for
+/// @page memory_format_propagation_cpp_brief
+/// @brief This example demonstrates memory format propagation, which is critical for
 /// deep learning applications performance.
+
+/// @page memory_format_propagation_cpp Memory Format Propagation
+/// \copybrief memory_format_propagation_cpp_brief
 ///
 /// > Example code: @ref memory_format_propagation.cpp
 ///

@@ -17,10 +17,12 @@
 /// @example reduction.cpp
 /// > Annotated version: @ref reduction_example_cpp
 
-/// @page reduction_example_cpp Reduction Primitive Example
-/// This C++ API example demonstrates how to create and execute a
+/// @page reduction_example_cpp_brief
+/// @brief This C++ API example demonstrates how to create and execute a
 /// [Reduction](@ref dev_guide_reduction) primitive.
-///
+
+/// @page reduction_example_cpp Reduction Primitive Example
+/// \copybrief reduction_example_cpp_brief
 /// @include reduction.cpp
 
 #include <cmath>

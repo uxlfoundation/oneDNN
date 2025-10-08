@@ -17,10 +17,13 @@
 /// @example layer_normalization.cpp
 /// > Annotated version: @ref layer_normalization_example_cpp
 
+/// @page layer_normalization_example_cpp_brief
+/// @brief This C++ API example demonstrates how to create and execute a
+/// [Layer normalization](@ref dev_guide_layer_normalization) primitive in forward
+/// propagation mode.
+
 /// @page layer_normalization_example_cpp Layer Normalization Primitive Example
-/// This C++ API example demonstrates how to create and execute a
-/// [Layer normalization](@ref dev_guide_layer_normalization) primitive in
-/// forward propagation mode.
+/// \copybrief layer_normalization_example_cpp_brief
 ///
 /// Key optimizations included in this example:
 /// - In-place primitive execution;

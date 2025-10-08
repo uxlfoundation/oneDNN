@@ -16,10 +16,13 @@
 
 /// @example cpu_brgemm.cpp
 /// > Annotated version: @ref cpu_brgemm_example_cpp
-///
-/// @page cpu_brgemm_example_cpp BRGeMM ukernel example
-/// This C++ API example demonstrates how to create and execute a BRGeMM
+
+/// @page cpu_brgemm_example_cpp_brief
+/// @brief This C++ API example demonstrates how to create and execute a BRGeMM
 /// ukernel.
+
+/// @page cpu_brgemm_example_cpp BRGeMM ukernel example
+/// \copybrief cpu_brgemm_example_cpp_brief
 ///
 /// @include cpu_brgemm.cpp
 

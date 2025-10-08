@@ -17,11 +17,12 @@
 /// @example cnn_training_bf16.cpp
 /// > Annotated version: @ref cnn_training_bf16_cpp
 ///
-/// @page cnn_training_bf16_cpp CNN bf16 training example
-/// This C++ API example demonstrates how to build an AlexNet model training
+/// @page cnn_training_bf16_cpp_brief
+/// @brief This C++ API example demonstrates how to build an AlexNet model training
 /// using the bfloat16 data type.
-///
-/// The example implements a few layers from AlexNet model.
+
+/// @page cnn_training_bf16_cpp CNN bf16 training example
+/// \copybrief cnn_training_bf16_cpp_brief
 ///
 /// @include cnn_training_bf16.cpp
 

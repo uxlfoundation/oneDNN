@@ -17,9 +17,12 @@
 /// @example cnn_inference_f32.cpp
 /// > Annotated version: @ref cnn_inference_f32_cpp
 
+/// @page cnn_inference_f32_cpp_brief
+/// @brief This C++ API example demonstrates how to build an AlexNet neural network
+/// topology for forward-pass inference.
+
 /// @page cnn_inference_f32_cpp CNN f32 inference example
-/// This C++ API example demonstrates how to build an AlexNet neural
-/// network topology for forward-pass inference.
+/// \copybrief cnn_inference_f32_cpp_brief
 ///
 /// > Example code: @ref cnn_inference_f32.cpp
 ///

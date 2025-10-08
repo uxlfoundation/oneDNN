@@ -17,8 +17,11 @@
 /// @example cpu_rnn_inference_int8.cpp
 /// > Annotated version: @ref cpu_rnn_inference_int8_cpp
 
+/// @page cpu_rnn_inference_int8_cpp_brief
+/// @brief This C++ API example demonstrates how to build GNMT model inference.
+
 /// @page cpu_rnn_inference_int8_cpp RNN int8 inference example
-/// This C++ API example demonstrates how to build GNMT model inference.
+/// \copybrief cpu_rnn_inference_int8_cpp_brief
 ///
 /// > Example code: @ref cpu_rnn_inference_int8.cpp
 ///

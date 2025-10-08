@@ -17,8 +17,11 @@
 /// @example cpu_rnn_inference_f32.cpp
 /// > Annotated version: @ref cpu_rnn_inference_f32_cpp
 
-/// @page cpu_rnn_inference_f32_cpp RNN f32 inference example
-/// This C++ API example demonstrates how to build GNMT model inference.
+/// @page cpu_rnn_inference_f32_cpp_brief
+/// @brief This C++ API example demonstrates how to build GNMT model inference.
+
+/// @page cpu_rnn_inference_f32_cpp RNN f32 Inference Example
+/// \copybrief cpu_rnn_inference_f32_cpp_brief
 ///
 /// > Example code: @ref cpu_rnn_inference_f32.cpp
 ///

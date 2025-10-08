@@ -17,9 +17,12 @@
 /// @example cpu_sgemm_and_matmul.cpp
 /// > Annotated version: @ref cpu_sgemm_and_matmul_cpp
 
+/// @page cpu_sgemm_and_matmul_cpp_brief
+/// @brief C++ API example demonstrating [MatMul](@ref dev_guide_matmul) as a
+/// replacement for SGEMM functions.
+
 /// @page cpu_sgemm_and_matmul_cpp MatMul Tutorial: Comparison with SGEMM
-/// C++ API example demonstrating [MatMul](@ref dev_guide_matmul)
-/// as a replacement for SGEMM functions.
+/// \copybrief cpu_sgemm_and_matmul_cpp_brief
 ///
 /// Concepts:
 /// - Create primitive once, use multiple times

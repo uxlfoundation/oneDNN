@@ -17,10 +17,13 @@
 /// @example cpu_matmul_csr.cpp
 /// > Annotated version: @ref cpu_matmul_csr_cpp
 
-/// @page cpu_matmul_csr_cpp MatMul Primitive with Sparse Memory in CSR Format
-/// This C++ API example demonstrates how to create and execute a
+/// @page cpu_matmul_csr_cpp_brief
+/// @brief This C++ API example demonstrates how to create and execute a
 /// [MatMul](@ref dev_guide_matmul) primitive that uses a source tensor
 /// encoded with the CSR sparse encoding.
+
+/// @page cpu_matmul_csr_cpp MatMul Primitive with Sparse Memory in CSR Format
+/// \copybrief cpu_matmul_csr_cpp_brief
 ///
 /// @include cpu_matmul_csr.cpp
 

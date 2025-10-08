@@ -16,10 +16,13 @@
 
 /// @example matmul_f8_quantization.cpp
 /// > Annotated version: @ref matmul_f8_quantization_cpp
-///
+
+/// @page matmul_f8_quantization_cpp_brief
+/// @brief C++ API example demonstrating how to use f8_e5m2 and f8_e4m3 data types for
+/// [MatMul](@ref dev_guide_matmul) with scaling for quantization.
+
 /// @page matmul_f8_quantization_cpp Matrix Multiplication with f8 Quantization
-/// C++ API example demonstrating how to use f8_e5m2 and f8_e4m3 data types
-/// for [MatMul](@ref dev_guide_matmul) with scaling for quantization.
+/// \copybrief matmul_f8_quantization_cpp_brief
 ///
 /// Specification of f8 Formats:
 /// - **f8_e5m2**: 1 sign + 5 exponent + 2 mantissa bits, max value is 57,344.
@@ -27,8 +30,8 @@
 ///
 /// Concepts:
 /// - f8 quantization.
-///   - f8_e5m2 and f8_e4m3 data type conversion from f32 is done using [Reorder primitive](@ref dev_guide_reorder)
-///     with simple scaling factors.
+///   - f8_e5m2 and f8_e4m3 data type conversion from f32 is done using
+///     [Reorder primitive](@ref dev_guide_reorder) with simple scaling factors.
 /// - Matrix multiplication with f8 inputs and f32 output.
 ///   - Scaling is done using dnnl::primitive_attr::set_scales_mask().
 ///

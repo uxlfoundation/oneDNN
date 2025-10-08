@@ -16,10 +16,13 @@
 
 /// @example inference_int8_matmul.cpp
 /// > Annotated version: @ref inference_int8_matmul_cpp
-///
-/// @page inference_int8_matmul_cpp MatMul Tutorial: INT8 Inference
-/// C++ API example demonstrating how one can use
+
+/// @page inference_int8_matmul_cpp_brief
+/// @brief C++ API example demonstrating how one can use
 /// [MatMul](@ref dev_guide_matmul) fused with ReLU in INT8 inference.
+
+/// @page inference_int8_matmul_cpp MatMul Tutorial: INT8 Inference
+/// \copybrief inference_int8_matmul_cpp_brief
 ///
 /// Concepts:
 /// - Asymmetric quantization

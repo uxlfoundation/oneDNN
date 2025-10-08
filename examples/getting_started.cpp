@@ -29,10 +29,15 @@
 
 using namespace dnnl;
 
+/// @page getting_started_cpp_brief
+/// @brief This C++ API example demonstrates the basics of the oneDNN programming model.
+
 /// @page getting_started_cpp oneDNN API Basic Workflow Tutorial
+/// \copybrief getting_started_cpp_brief
+///
 /// > Example code: @ref getting_started.cpp
 ///
-/// This C++ API example demonstrates the basics of the oneDNN programming model:
+/// Key concepts:
 /// - How to create oneDNN memory objects.
 ///   - How to get data from the user's buffer into a oneDNN memory object.
 ///   - How a tensor's logical dimensions and memory object formats relate.

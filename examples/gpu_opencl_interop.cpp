@@ -17,9 +17,12 @@
 /// @example gpu_opencl_interop.cpp
 /// > Annotated version: @ref gpu_opencl_interop_cpp
 
-/// @page gpu_opencl_interop_cpp Getting started on GPU with OpenCL extensions API
-/// This C++ API example demonstrates programming for Intel(R) Processor
+/// @page gpu_opencl_interop_cpp_brief
+/// @brief This C++ API example demonstrates programming for Intel(R) Processor
 /// Graphics with OpenCL* extensions API in oneDNN.
+
+/// @page gpu_opencl_interop_cpp Getting started on GPU with OpenCL extensions API
+/// \copybrief gpu_opencl_interop_cpp_brief
 ///
 /// > Example code: @ref gpu_opencl_interop.cpp
 ///

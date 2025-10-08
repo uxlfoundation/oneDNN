@@ -17,17 +17,19 @@
 /// @example bnorm_u8_via_binary_postops.cpp
 /// > Annotated version: @ref bnorm_u8_via_binary_postops_cpp
 
-/// @page bnorm_u8_via_binary_postops_cpp Bnorm u8 by binary post-ops example
-/// The example implements the Batch normalization u8 via the following
+/// @page bnorm_u8_via_binary_postops_cpp_brief
+/// @brief The example implements the Batch normalization u8 via the following
 /// operations: binary_sub(src, mean), binary_div(tmp_dst, variance),
 /// binary_mul(tmp_dst, scale), binary_add(tmp_dst, shift).
+
+/// @page bnorm_u8_via_binary_postops_cpp Bnorm u8 by binary post-ops example
+/// \copybrief bnorm_u8_via_binary_postops_cpp_brief
 ///
 /// Some key take-aways include:
-///
-/// * How tensors are implemented and submitted to primitives.
-/// * How primitives are created.
-/// * How to use multiple binary post operations.
-/// * How to use different data types in binary.
+/// - How tensors are implemented and submitted to primitives.
+/// - How primitives are created.
+/// - How to use multiple binary post operations.
+/// - How to use different data types in binary.
 ///
 /// @include bnorm_u8_via_binary_postops.cpp
 

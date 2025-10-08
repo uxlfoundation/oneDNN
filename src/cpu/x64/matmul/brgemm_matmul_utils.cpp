@@ -71,16 +71,12 @@ int get_n_block_from_tag(format_tag_t matrix_b_tag) {
         case BA16a32b:
         case BA16a32b2a:
         case BA16a32b4a: return 32;
-        case aCB2b24c:
-        case BA8a24b: return 24;
         case aCB16b16c:
         case aCB16b16c2b:
         case aCB16b16c4b:
         case BA16a16b:
         case BA16a16b2a:
         case BA16a16b4a: return 16;
-        case aCB2b8c:
-        case BA8a8b: return 8;
         default: return 0;
     }
 }
@@ -323,23 +319,10 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , blocked_64n_B_layout_tag(pick_blocked_B_layout(64))
     , blocked_48n_B_layout_tag(pick_blocked_B_layout(48))
     , blocked_32n_B_layout_tag(pick_blocked_B_layout(32))
-    , blocked_24n_B_layout_tag(pick_blocked_B_layout(24))
     , blocked_16n_B_layout_tag(pick_blocked_B_layout(16))
-    , blocked_8n_B_layout_tag(pick_blocked_B_layout(8))
-    , blocked_B_layouts_allowed(IMPLICATION(is_f32(),
-                                        !utils::one_of(format_tag::undef,
-                                                blocked_64n_B_layout_tag,
-                                                blocked_48n_B_layout_tag,
-                                                blocked_32n_B_layout_tag,
-                                                blocked_24n_B_layout_tag,
-                                                blocked_16n_B_layout_tag,
-                                                blocked_8n_B_layout_tag))
-              && IMPLICATION(!is_f32(),
-                      !utils::one_of(format_tag::undef,
-                              blocked_64n_B_layout_tag,
-                              blocked_48n_B_layout_tag,
-                              blocked_32n_B_layout_tag,
-                              blocked_16n_B_layout_tag)))
+    , blocked_B_layouts_allowed(!utils::one_of(format_tag::undef,
+              blocked_64n_B_layout_tag, blocked_48n_B_layout_tag,
+              blocked_32n_B_layout_tag, blocked_16n_B_layout_tag))
     , n_blk_fixed((!B_any_layout) && blocked_B_layouts_allowed)
     , isa_(isa) {}
 
@@ -350,15 +333,11 @@ int brgemm_matmul_conf_utils_t::get_default_n_block(
     const int n_blk = get_n_block_from_tag(matrix_b_tag);
     if (n_blk > 0) return n_blk;
 
-    const int simd_w = isa_max_vlen(isa_) / sizeof(float);
-
     if (matmul_amx_blocking_params_macro_t::is_supported(bgmmc, *this)) {
         return 32;
     }
 
-    return is_superset(isa_, avx512_core) || !f32_dt
-            ? 64
-            : nstl::min<int>(24, rnd_up(bgmmc.N, simd_w));
+    return 64;
 }
 
 /**
@@ -642,7 +621,6 @@ status_t brgemm_matmul_conf_utils_t::set_B_flags(memory_desc_t &B_md) const {
 
 format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
         int n_blk) const {
-    const auto wei_k_blk = data_type_vnni_simd_elems(bgmmc.wei_dt, bgmmc.isa);
     if (bgmmc.ndims > 3) return format_tag::undef;
     if (this->is_int8() || this->is_f8()) switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c4b : BA16a64b4a;
@@ -672,12 +650,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
             case 64: return bgmmc.ndims == 3 ? aCB16b64c : BA16a64b;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c : BA16a48b;
             case 32: return bgmmc.ndims == 3 ? aCB16b32c : BA16a32b;
-            case 24: return bgmmc.ndims == 3 ? aCB8b24c : BA8a24b;
-            case 16:
-                return wei_k_blk == 8
-                        ? (bgmmc.ndims == 3 ? aCB8b16c : BA8a16b)
-                        : (bgmmc.ndims == 3 ? aCB16b16c : BA16a16b);
-            case 8: return bgmmc.ndims == 3 ? aCB8b8c : BA8a8b;
+            case 16: return bgmmc.ndims == 3 ? aCB16b16c : BA16a16b;
             default: return format_tag::undef;
         }
     return format_tag::undef;
@@ -1498,7 +1471,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     VCONDCHECK_BG(bgmmc.required_k_granularity > 0, VERBOSE_BLOCKING_FAIL, "");
 
-    bgmmc.wei_k_blk = data_type_vnni_simd_elems(bgmmc.wei_dt, bgmmc.isa);
+    bgmmc.wei_k_blk = bm_conf_utils.get_wei_k_blk();
+    bgmmc.orig_wei_k_blk
+            = bm_conf_utils.get_wei_k_blk(/*use_orig_wei_dt=*/true);
 
     VCHECK_BG(bm_conf_utils.set_or_check_B_tag(weights_md, helper),
             VERBOSE_UNSUPPORTED_TAG);

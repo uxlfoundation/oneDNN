@@ -84,7 +84,16 @@ struct rvv_binary_t : public primitive_t {
                     }
                 }
             }
-            return plain_dense && no_broadcast;
+            bool same_layouts = false;
+            if (plain_dense && no_broadcast) {
+                same_layouts = src0_d.is_plain() && src1_d.is_plain()
+                        && dst_d.is_plain()
+                        && src0_d.similar_to(src1_d, /*with_strides=*/true,
+                                /*with_pads=*/false)
+                        && src0_d.similar_to(dst_d, /*with_strides=*/true,
+                                /*with_pads=*/false);
+            }
+            return plain_dense && no_broadcast && same_layouts;
         }
     };
 

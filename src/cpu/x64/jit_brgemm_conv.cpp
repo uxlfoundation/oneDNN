@@ -1202,19 +1202,23 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         for (int owb = 0; owb < jcp.nb_ow; owb++) {
             const auto ow_b = owb * jcp.ow_block;
             const auto ow_e = nstl::min(ow_b + jcp.ow_block, OW);
+            const auto comp_ow_f = comp_ow_l - (ow_e - ow_b) + 1;
+            MAYBE_UNUSED(comp_ow_f);
 
             if (owb == 0) {
                 comp_owb[owb] = 0;
                 continue;
             }
 
-            for_(int i = 0; i < comp_ow_l; i++)
-            for (int ow = ow_b; ow < ow_e; ow++) {
+            for_(int i = 0; i < comp_ow_f; i++)
+            for (int ow = ow_b; ow <= ow_e; ow++) {
+                if (ow == ow_e) comp_owb[owb] = i;
                 if (ow_kw_b[ow] != comp_ow_kw_s[i + ow - ow_b]
-                        || ow_kw_e[ow] != comp_ow_kw_f[i + ow - ow_b])
+                        || ow_kw_e[ow] != comp_ow_kw_f[i + ow - ow_b]
+                        || comp_owb[owb] >= 0)
                     break;
-                if (ow == ow_e - 1) comp_owb[owb] = i;
             }
+            assert(comp_owb[owb] >= 0);
         }
     }
 

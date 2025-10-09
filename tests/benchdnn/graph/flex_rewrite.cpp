@@ -406,7 +406,7 @@ int flex_rewrite_t::linked_shape_and_attr_rewrite(
                     SAFE(FAIL, WARN);
                 }
 
-                std::vector<int64_t> new_group_shape(src_lt.shape_.size(), 1);
+                group_shape = std::vector<int64_t>(src_lt.shape_.size(), 1);
                 for (size_t idx = 0; idx < src_lt.shape_.size(); ++idx) {
                     if (src_lt.shape_[idx] % scale_lt.shape_[idx] != 0) {
                         BENCHDNN_PRINT(0,
@@ -418,11 +418,9 @@ int flex_rewrite_t::linked_shape_and_attr_rewrite(
                                 (long long)src_lt.shape_[idx]);
                         SAFE(FAIL, WARN);
                     }
-                    new_group_shape[idx]
+                    group_shape[idx]
                             = src_lt.shape_[idx] / scale_lt.shape_[idx];
                 }
-
-                group_shape = new_group_shape;
             }
         }
     }

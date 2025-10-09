@@ -1685,11 +1685,10 @@ status_t layout_propagator_for_gen_index(std::shared_ptr<op_t> &op,
     auto src_md = make_dnnl_memory_desc(
             op->get_input_value(0)->get_logical_tensor());
     if (!is_plain(src_md)) {
-        auto plain_src_md = dnnl::memory::desc(src_md.get_dims(),
-                src_md.get_data_type(), dnnl::memory::format_tag::abcd);
-        insert_reorder_before(op, 0, plain_src_md, p_engine, pd_cache, fpmath,
+        src_md = dnnl::memory::desc(src_md.get_dims(), src_md.get_data_type(),
+                dnnl::memory::format_tag::abcd);
+        insert_reorder_before(op, 0, src_md, p_engine, pd_cache, fpmath,
                 use_block_layout, rewriter);
-        src_md = plain_src_md;
     }
     value_ptr dst_val = op->get_output_value(0);
     status_t status = fill_layout_info(dst_val, src_md);

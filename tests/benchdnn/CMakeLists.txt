@@ -47,7 +47,7 @@ elseif(QNXNTO)
     find_library(LIBREGEX regex)
     find_library(LIBSOCKET socket)
 endif()
-register_exe(benchdnn "${SOURCES}" "" "${LIBRT};${LIBREGEX};${LIBSOCKET}")
+register_exe(benchdnn "${SOURCES}" "" "${LIBRT};${LIBREGEX};${LIBSOCKET};${LIBABSL_SYNC}")
 
 file(COPY inputs DESTINATION .)
 

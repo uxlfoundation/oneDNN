@@ -122,8 +122,8 @@ public:
             for (int factor : {2, 4}) {
                 auto &splits = (abc == abc_kind_t::a) ? a_splits_ : b_splits_;
                 if ((int)splits.size() <= factor) splits.resize(factor + 1);
-                splits[factor] = split_t(
-                        c_layout, mapper, abc, factor, simd_dim_idx_, simd_);
+                splits[factor] = split_t(c_layout, mapper, abc, factor,
+                        static_cast<size_t>(simd_dim_idx_), simd_);
             }
         }
         for (int b : {32, 16, 8}) {

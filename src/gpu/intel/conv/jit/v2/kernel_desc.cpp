@@ -840,7 +840,7 @@ static bool try_parse_internal_arg(std::string s, std::string &base_name,
         denom = std::stoi(s.substr(pos));
         s = s.substr(0, divup_pos);
     }
-    base_name = s;
+    base_name = std::move(s);
     return true;
 }
 

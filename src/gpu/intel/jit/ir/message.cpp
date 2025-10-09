@@ -711,7 +711,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     auto &send = _send.as<send_t>();
 
     stmt_ = stmt_t();
-    auto vstart0 = mem_view_.vstart();
+    const auto &vstart0 = mem_view_.vstart();
     for (auto &start : vlayout.iter(tile)) {
         int access_size = send.access_size();
         int access_elems = access_size / mem_type_.size();

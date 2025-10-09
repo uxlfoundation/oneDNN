@@ -49,8 +49,7 @@ status_t rvv_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper wei_md(pd()->weights_md());
     const memory_desc_wrapper bias_md(pd()->desc()->bias_desc);
 
-    const post_ops_t &post_ops = pd()->attr()->post_ops_;
-    rvv_postops_t postops_handler(post_ops);
+    // post-ops not supported
 
     const bool src_is_nhwc = pd()->src_is_nhwc_;
     const bool dst_is_nhwc = pd()->dst_is_nhwc_;
@@ -73,6 +72,10 @@ status_t rvv_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
     DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
+
+    // Precompute scalar scales; load any non-f32 safely via io helpers.
+    const float src_scale_scalar = src_scales ? src_scales[0] : 1.0f;
+    const float dst_scale_scalar = dst_scales ? dst_scales[0] : 1.0f;
 
     auto &mem = ctx.get_scratchpad_grantor();
     void *wei_pack_void = mem.template get<void>(
@@ -145,10 +148,17 @@ status_t rvv_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                     acc_dot += static_cast<double>(dot);
                 }
             }
-            const float out_scalar
-                    = finalize_conv_acc(static_cast<float>(acc_dot),
-                            load_bias(oc), src_scales, wei_scales, dst_scales,
-                            wei_scale_mask, oc, postops_handler);
+            float wei_scale_scalar = 1.0f;
+            if (wei_scales) {
+                const int wei_idx_mult = wei_scale_mask > 0;
+                // mask==0 means per-tensor scale at index 0
+                wei_scale_scalar
+                        = wei_scales[static_cast<size_t>(oc) * wei_idx_mult];
+            }
+
+            const float out_scalar = finalize_conv_acc(
+                    static_cast<float>(acc_dot), load_bias(oc),
+                    src_scale_scalar, wei_scale_scalar, dst_scale_scalar);
 
             const size_t doff = dst_off_nhwc(n, oh, ow, oc);
             if (ddt == data_type::f32) {

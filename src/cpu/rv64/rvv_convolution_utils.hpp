@@ -28,7 +28,6 @@
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
-#include "cpu/rv64/rvv_postops.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -218,22 +217,10 @@ inline float compute_dot_ic_fwd(data_type_t sdt, data_type_t wdt,
 }
 
 // Helper: finalize convolution accumulator with bias, scales, post-ops (VL-aware), and dst scales
-inline float finalize_conv_acc(float acc_dot, float bias_val,
-        const float *src_scales, const float *wei_scales,
-        const float *dst_scales, int wei_scale_mask, dim_t oc,
-        const rvv_postops_t &postops_handler) {
-    float scale = 1.0f;
-    if (src_scales) scale *= src_scales[0];
-    if (wei_scales) {
-        const int wei_idx_mult = wei_scale_mask > 0;
-        scale *= wei_scales[oc * wei_idx_mult];
-    }
-    float val = bias_val + acc_dot * scale;
-    const size_t vl = __riscv_vsetvl_e32m1(1);
-    vfloat32m1_t v = __riscv_vfmv_v_f_f32m1(val, vl);
-    v = postops_handler.apply(v, vl);
-    val = __riscv_vfmv_f_s_f32m1_f32(v);
-    if (dst_scales) val *= dst_scales[0];
+inline float finalize_conv_acc(float acc_dot, float bias_val, float src_scale,
+        float wei_scale, float dst_scale) {
+    float val = bias_val + acc_dot * (src_scale * wei_scale);
+    val *= dst_scale;
     return val;
 }
 

@@ -5,7 +5,6 @@
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "cpu/cpu_convolution_pd.hpp"
-#include "cpu/rv64/rvv_postops.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -35,8 +34,8 @@ struct rvv_convolution_fwd_t : public primitive_t {
 
             VDISPATCH_CONV(attr()->scales_.has_default_values(),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_CONV(rvv_postops_t::post_ops_ok(attr()->post_ops_),
-                    VERBOSE_UNSUPPORTED_POSTOP);
+            VDISPATCH_CONV(
+                    attr()->post_ops_.len() == 0, VERBOSE_UNSUPPORTED_POSTOP);
 
             VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_CONV(ndims() == 4, VERBOSE_BAD_NDIMS, "src", ndims());
@@ -125,4 +124,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif
+#endif // CPU_RV64_RVV_CONVOLUTION_HPP

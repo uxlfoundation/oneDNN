@@ -2952,8 +2952,10 @@ struct sdpa_executable_t : public op_executable_t {
         dnnl::primitive_attr attr, qk_attr, vs_attr;
         attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
         attr.set_fpmath_mode(static_cast<dnnl::fpmath_mode>(fpmath.mode_));
-        if (op->has_attr(op_attr::is_invert_scale))
-            is_invert_scale_ = op->get_attr<bool>(op_attr::is_invert_scale);
+
+        is_invert_scale_ = op->has_attr(op_attr::is_invert_scale)
+                ? op->get_attr<bool>(op_attr::is_invert_scale)
+                : false;
 
         if (op->has_attr(op_attr::fusion_info)) {
             const auto &sdpa_fusion_info

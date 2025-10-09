@@ -93,10 +93,20 @@ endif()
 
 set(TEST_THREAD ${CMAKE_CURRENT_SOURCE_DIR}/test_thread.cpp)
 
+set(LIBABSL_SYNC)
 if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN")
     add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/abseil-cpp abseil-cpp)
     include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/abseil-cpp)
-    set(LIBABSL_SYNC absl::synchronization)
+    list(APPEND LIBABSL_SYNC absl::synchronization)
+elseif("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN_ASYNC")
+    add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/abseil-cpp abseil-cpp)
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/abseil-cpp)
+    list(APPEND LIBABSL_SYNC absl::log;absl::status;absl::check)
+
+    add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/xla xla)
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/xla)
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/xla/third_party)
+    list(APPEND LIBABSL_SYNC dnnl_xla)
 endif()
 
 # Switch on threading layer for GPU only configurations to speed up testing.

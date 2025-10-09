@@ -2336,7 +2336,7 @@ private:
 
         if (plan_.hw < ngen::HW::XeHPG) {
             // Verifies that SLM loads after k-slicing are at GRF granularity.
-            auto l_sub = l.sub(tile_t(rem_dims));
+            auto l_sub = l.sub(tile_t(std::move(rem_dims)));
             int bytes = l_sub.type().size();
             stride_t stride = 1;
             for (auto &b : l_sub.blocks()) {

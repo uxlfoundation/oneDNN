@@ -1131,7 +1131,7 @@ dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
         if (k != -1)
             cset.add_constraint(gemm_desc.kernel_iface().find_arg("k") == k);
     }
-    return make_kernel(gemm_desc, cset);
+    return make_kernel(gemm_desc, std::move(cset));
 };
 
 status_t gen_kernel_t::get_kernel(

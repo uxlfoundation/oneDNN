@@ -361,7 +361,7 @@ std::string print_row(const sdpa_dims_t &p) {
     ss << "|" << p.seq_len.kv;
     ss << "|" << p.seq_len.q;
     ss << "|" << p.key.dt;
-    if (!(p.key.dt == mdt::f16 || p.value.dt == mdt::bf16)
+    if (!(p.key.dt == mdt::f16 || p.key.dt == mdt::bf16)
             && p.qtype != quantize_type::no_quantization) {
         ss << "/" << p.key.sdt;
         ss << "/" << p.key.zpdt;

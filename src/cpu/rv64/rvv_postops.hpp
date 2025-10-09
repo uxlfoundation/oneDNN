@@ -90,7 +90,6 @@ struct rvv_postops_t {
         if (po.len() > 1) return false;
 
         const auto &e = po.entry_[0];
-        if (e.is_binary()) return true;
         if (!e.is_eltwise()) return false;
 
         switch (e.eltwise.alg) {

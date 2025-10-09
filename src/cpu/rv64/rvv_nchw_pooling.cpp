@@ -317,11 +317,7 @@ status_t riscv_nchw_pooling_fwd_t::execute_forward(
 
     const post_ops_t &post_ops = pd()->attr()->post_ops_;
     if (post_ops.len() == 1 && post_ops.entry_[0].is_binary()) {
-        engine_t *engine = ctx.stream()->engine();
-        post_ops_t local_po = post_ops;
-        rvv_postops_t postops;
-        CHECK(postops.init(engine, local_po, *pd()->dst_md()));
-        CHECK(postops.execute(ctx, dst, dst));
+        CHECK(pd()->postops_.execute(ctx, dst, dst));
     }
 
     return status::success;

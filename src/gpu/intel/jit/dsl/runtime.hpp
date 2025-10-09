@@ -30,7 +30,7 @@ namespace dsl {
 inline ::sycl::kernel make_kernel(
         const kernel_t &kernel, ::sycl::context ctx, ::sycl::device dev) {
     return make_kernel(kernel.iface, kernel.body, kernel.options,
-            kernel.debug_cfg, ctx, dev);
+            kernel.debug_cfg, std::move(ctx), std::move(dev));
 }
 #endif
 #ifdef WITH_OPENCL_RUNTIME

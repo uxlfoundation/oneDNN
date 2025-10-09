@@ -559,7 +559,7 @@ public:
         auto s = jit::parse<std::string>(in);
         for (req_kind_t op : {req_kind_t::_or_eq, req_kind_t::eq,
                      req_kind_t::ge, req_kind_t::le}) {
-            auto s_op = to_string(op);
+            const auto &s_op = to_string(op);
             auto pos = s.find(s_op);
             if (pos == std::string::npos) continue;
             auto s_lhs = s.substr(0, pos);

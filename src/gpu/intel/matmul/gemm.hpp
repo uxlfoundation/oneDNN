@@ -312,9 +312,9 @@ struct gemm_t : public primitive_t {
                 c_md = &c_md_reshaped;
                 if (with_bia) bias_md = &bia_md_reshaped;
 
-                gemm_attr.scales_ = reshaped_scales;
-                gemm_attr.zero_points_ = reshaped_zp;
-                gemm_attr.precomputed_reductions_ = reshaped_pr;
+                gemm_attr.scales_ = std::move(reshaped_scales);
+                gemm_attr.zero_points_ = std::move(reshaped_zp);
+                gemm_attr.precomputed_reductions_ = std::move(reshaped_pr);
                 gemm_attr.post_ops_ = reshaped_post_ops;
                 return status::success;
             };

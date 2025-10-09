@@ -491,16 +491,23 @@ dim_t jit_brgemm_kernel_t<Wmm>::A_offset(
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::B_offset(
         dim_t ld, dim_t rd, bool is_amx) const noexcept {
+    //m =4  // k =32 // n =128
     if (is_amx) {
         return brg.typesize_B * (brg.rd_step * ld * brg.ld_block);
     } else {
         const dim_t rdb0 = rd / brg.ld_step;
+        int n = ld * brg.ld_block;
+
+
         // Note: Offsets for elements within vnni_granularity are expected to be
         // handled within gemm_microkernel (for ex: odd-even converts).
         // hence no `rd % brg.ld_step`
-        return brg.typesize_B
+        // B layout   [n][K][ldb][vnni]
+        dim_t res =  brg.typesize_B
                 * (rdb0 * brg.ld_step * brg.LDB
-                        + brg.ld_step * ld * brg.ld_block);
+                        + brg.ld_step * (n% brg.LDB )
+                        + brg.LDB2 *  (n/ brg.LDB ));
+        return res;
     }
 }
 
@@ -530,7 +537,7 @@ template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::ldb_B_offset(
         dim_t ld_block2, bool is_tail) const noexcept {
     return (is_tail) ? brg.typesize_B * brg.ldb_tail * brg.ld_step
-                     : brg.typesize_B * ld_block2 * brg.ld_block * brg.ld_step;
+                     : B_offset(ld_block2 ,0,false);
 }
 
 template <typename Wmm>

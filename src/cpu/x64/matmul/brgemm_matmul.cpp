@@ -74,7 +74,6 @@ int get_brg_kernel_index(const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail,
             : bgmmc.N_blk;
     auto vK = (is_K_tail) ? bgmmc.K_tail : bgmmc.K_blk;
     if (vM == 0 || vN == 0 || vK == 0 || bs == 0 || bgmmc.LDA < vK
-            || (bgmmc.LDB < vN && !bgmmc.is_amx)
             || ((bgmmc.LDC < vN && !bgmmc.is_amx)
                     && !is_runtime_value(bgmmc.LDC)))
         return -1;
@@ -341,6 +340,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         brgattr.generate_skip_accumulation
                 = bgmmc_.post_ops_applicable && bgmmc_.nthr_k > 1;
         brgattr.mem_advice = bgmmc_.mem_advice;
+        if (bgmmc_.LDB2 != 0) brgattr.LDB2 = bgmmc_.LDB2;
+
         if (is_superset(kernel_isa, avx512_core_amx)) {
             brgattr.use_uker = true;
             brgattr.use_interleave_stores = true;
@@ -351,7 +352,6 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             brgattr.hint_expected_A_size = vM * vK * bs;
             brgattr.hint_expected_B_size = vN * vK * bs;
             brgattr.hint_expected_C_size = vM * vN * bs;
-            if (bgmmc_.LDB2 != 0) brgattr.LDB2 = bgmmc_.LDB2;
 
             brgattr.LDC2_N = bgmmc_.M_blk * bgmmc_.LDC;
 
@@ -494,8 +494,16 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     matmul_helper_t helper(src_d, weights_d, dst_d);
 
     brg_matmul_exec_ctx_t brgmm_ctx(ctx, pd(), helper);
-
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+
+    if(bgmmc.M_blk == bgmmc.M && bgmmc.K_blk == bgmmc.K && bgmmc.N_blk == bgmmc.N && bgmmc.batch ==1){
+        int prev_kernel_idx = -1;
+
+        compute_kernel(brgmm_ctx, brgmm_ctx.get_data_A_batch_ptr(0), brgmm_ctx.get_data_B_batch_ptr(0),
+                0, 0, 0, 0, 0,true,prev_kernel_idx, false);
+        return status::success;
+    }
+
     const bool use_buffer_a
             = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
     const bool is_amx = is_superset(isa, avx512_core_amx);
@@ -730,8 +738,10 @@ void brgemm_matmul_t<isa>::compute_kernel(
             const char *dst_anchor_point = brgmm_ctx.get_data_C_ptr(0, 0, 0);
             const brgemm_post_ops_data_t post_ops_data {
                     static_cast<const void *>(ptr_bias),
-                    post_ops_binary_rhs_arg_vec.data(), static_cast<size_t>(n),
-                    dst_row_logical_off, dst_anchor_point,
+                    post_ops_binary_rhs_arg_vec.data(),
+                    static_cast<size_t>(n),
+                    dst_row_logical_off,
+                    dst_anchor_point,
                     first_mb_matrix_addr_off,
                     static_cast<const void *>(zp_comp_a),
                     static_cast<const void *>(zp_comp_b),

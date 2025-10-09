@@ -97,7 +97,7 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
         const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils) {
 
-    if (bgmmc.K < bgmmc.wei_k_blk) { return false; }
+
 
     bool a_dt_ok
             = one_of(bgmmc.orig_src_dt, dnnl_s8, dnnl_u8, dnnl_bf16, dnnl_f16);
@@ -878,6 +878,9 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
         const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
         matmul_amx_blocking_params_t &best_blocking) {
+
+
+
 
     matmul_amx_blocking_params_micro_t current_blocking(bgmmc);
 

@@ -841,6 +841,32 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
         const matmul_avx512_blocking_params_t::matmul_params_t &matmul,
         matmul_avx512_blocking_params_t &best_blocking) {
     const int nthr = bgmmc.nthr;
+    // NEW: Single-thread optimization for small shapes
+    if (nthr == 1 && matmul.M <= 16 && matmul.N <= 256 && matmul.K <= 64) {
+        // Force inner-product-like blocking for single thread
+        best_blocking.update_params(
+                1,              // m_chunks=1
+                matmul.M,       // m_blk=M (no M blocking)
+                1,              // n_chunks=1
+                128,       // n_blk=N (no N blocking - single call)
+                1,              // batch_size=1
+                32,       // k_blk=K (no K blocking)
+                1               // nthr_k=1
+        );
+        best_blocking.n_chunks = getenv_int_user("N_CHUNKS", best_blocking.n_chunks);
+        best_blocking.n_blk = getenv_int_user("N_BLK", best_blocking.n_blk);
+        best_blocking.k_blk = getenv_int_user("K_BLK", best_blocking.k_blk);
+        bgmmc.use_buffer_a = false;
+        bgmmc.use_buffer_b = false;
+        // printf("Best blocking found: m_chunks=%d, m_blk=%d, n_chunks=%d, n_blk=%d, k_blk=%d, nthr_k=%d\n",
+        //         best_blocking.m_chunks, best_blocking.m_blk, best_blocking.n_chunks,
+        //         best_blocking.n_blk, best_blocking.k_blk, best_blocking.nthr_k);
+        // printf("Single-thread small shape optimization applied\n");
+        return 0.5f; // Accept this immediately
+    }
+
+
+//    const int nthr = bgmmc.nthr;
 
     const int max_m_blk = nstl::min(256, matmul.M);
     int min_m_blk = nstl::min(32, matmul.M);

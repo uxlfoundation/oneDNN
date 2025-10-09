@@ -47,6 +47,9 @@ enum class property : int {
     f16_accumulate = 0x20,
 };
 
+property set_properties(bool is_thin_q, bool is_quantized, bool is_integrated,
+        bool is_fma, bool is_f32, bool is_f16_accumulate);
+
 property operator|(property a, property b);
 property operator&(property a, property b);
 property operator^(property a, property b);
@@ -68,6 +71,7 @@ struct config_query_t {
         , seq_len(seq_len_)
         , prop(property_) {}
 };
+std::string to_string(const config_query_t &q);
 
 struct config_criteria_t {
     static constexpr int any = -1;
@@ -98,14 +102,10 @@ bool operator==(const config_record_t &key, const config_query_t &query);
 bool operator<(const config_criteria_t &lhs, const config_criteria_t &rhs);
 bool operator<(const config_record_t &lhs, const config_record_t &rhs);
 
-config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size, dim_t seq,
-        bool is_thin_q, bool is_quantized, bool is_integrated, bool is_fma,
-        bool is_f32, bool is_f16_accumulate);
+config_record_t *choose_config(config_query_t &query);
 dim_t round_up_seq_interval(dim_t seq, compute::gpu_arch_t arch);
 
-dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
-        dim_t seq, bool is_thin_q, bool is_quantized, bool is_integrated,
-        bool is_fma, bool is_f32, bool is_f16_accumulate);
+dim_t nearest_conf_seq_interval(config_record_t *config);
 
 // serializable options for microkernel configuration
 // follows reduced subset of structs from gemmstone that

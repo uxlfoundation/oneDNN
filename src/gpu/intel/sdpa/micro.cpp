@@ -129,15 +129,25 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     bool use_fma_config = !use_systolic_ukernel_;
     bool is_f16_accumulate_gemm = (kq_acc_dt() == data_type::f16)
             || (vs_acc_dt() == data_type::f16);
+
+    //TODO: update once matmul primitive supports systolic f16 accumulate for testing
     VCHECK_SDPA_COND(
             IMPLICATION(is_f16_accumulate_gemm, !use_systolic_ukernel_),
-            "f16 accumulate only available with FMA matmul."); //TODO: update once matmul primitive supports systolic f16 accumulate for testing
-    config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
-            is_integrated, use_fma_config, is_f32, is_f16_accumulate_gemm);
+            "f16 accumulate only available with FMA matmul.");
+
+    compute::gpu_arch_t arch_query = (arch_ >= compute::gpu_arch_t::xe3)
+            ? compute::gpu_arch_t::xe2
+            : arch_;
+    config_query_t query(arch_query, d->head_size(), d->keys(),
+            set_properties(thin_q, quantized, is_integrated, use_fma_config,
+                    is_f32, is_f16_accumulate_gemm));
+    auto record = choose_config(query);
+    config = record ? &record->config : nullptr;
 
     VCHECK_SDPA_COND(config != nullptr,
             "No suitable kernel configuration found for the given problem "
-            "size and attributes.");
+            "size and attributes.{%s}",
+            to_string(query).c_str());
 
     CHECK(update_config_from_devenv_values(config, quantized));
 
@@ -281,9 +291,7 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     SizeParams heuristic_sizes;
     // quanatizing sizes to large intervals allows kernel
     // selection search while avoiding recompilation for every new size
-    heuristic_sizes.m = nearest_conf_seq_interval(arch_, d->head_size(),
-            d->keys(), thin_q, quantized, is_integrated, use_fma_config, is_f32,
-            is_f16_accumulate_gemm);
+    heuristic_sizes.m = nearest_conf_seq_interval(record);
     // query size is only tuned to thin_q/non-thin_q cases
     heuristic_sizes.n = (queries <= thin_q_threshold)
             ? thin_q_threshold

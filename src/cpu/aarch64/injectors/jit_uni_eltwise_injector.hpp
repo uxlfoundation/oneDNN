@@ -235,7 +235,7 @@ private:
     void gelu_tanh_compute_vector_fwd(const TRegS &vmm_src);
     void swish_compute_vector_fwd(const TRegS &vmm_src);
     void log_compute_vector_fwd(const TRegS &vmm_src);
-    void clip_compute_vector_fwd(const TRegS &vmm_src);
+    void clip_compute_vector_fwd(const TReg &vmm_src);
     void gelu_erf_compute_vector_fwd(const TRegS &vmm_src);
     void gelu_erf_minimax_approx_compute_vector_fwd(const TRegS &vmm_src);
     void round_compute_vector_fwd(const TRegS &vmm_src);

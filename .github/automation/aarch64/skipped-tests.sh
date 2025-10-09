@@ -23,15 +23,12 @@ set -eo pipefail
 
 OS=${OS:-"Linux"}
 
-# described in issue: https://github.com/uxlfoundation/oneDNN/issues/2175
-SKIPPED_TEST_FAILURES="test_benchdnn_modeC_matmul_multidims_cpu"
+# Nightly failures
+SKIPPED_TEST_FAILURES+="test_benchdnn_modeC_graph_fusions_cpu"
 
 #  We currently have some OS and config specific test failures.
 if [[ "$OS" == "Linux" ]]; then
     SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_graph_ci_cpu"
 fi
-
-# Nightly failures
-SKIPPED_TEST_FAILURES+="|test_benchdnn_modeC_graph_fusions_cpu"
 
 printf "${SKIPPED_TEST_FAILURES}"

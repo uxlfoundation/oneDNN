@@ -166,10 +166,7 @@ void init_conf(conf_t &conf, const desc_t &rd,
                 && conf.wei_iter_type == conf.wei_layer_type && conf.is_fwd
                 && utils::one_of(rd.cell_kind, alg_kind::vanilla_rnn,
                         alg_kind::vanilla_lstm, alg_kind::lbr_gru);
-        can_fuse_lbr_gemm = (alg::kind::lbr_gru == rd.cell_kind)
-                ? !device_info.mayiuse_systolic()
-                : true;
-        can_fuse_gemm = can_fuse_gemm && can_fuse_lbr_gemm;
+
         // Poor implementation performance if dhc % subgroup_size != 0
         bool tail_dhc = conf.dhc % device_info.min_subgroup_size() != 0;
         // Since RNN cells may result in very small workloads the CPU overhead
@@ -189,7 +186,7 @@ void init_conf(conf_t &conf, const desc_t &rd,
         if (rd.cell_kind == alg_kind::vanilla_lstm) {
             min_k = (min_k <= 256) ? 160 : 256;
         } else {
-            min_k = 256;
+            min_k = device_info.mayiuse_systolic() ? 64 : 256;
         }
         dim_t k_limit = tail_dhc ? 50 : nstl::min(min_k, ideal_k);
 

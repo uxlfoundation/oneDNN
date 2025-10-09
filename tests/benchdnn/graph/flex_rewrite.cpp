@@ -1736,7 +1736,6 @@ int flex_rewrite_t::update_output_info(deserialized_op_t &aop,
         default:
             BENCHDNN_PRINT(0, "%s is not supported\n", aop.kind_.c_str());
             SAFE(FAIL, WARN);
-            break;
     }
 
     return OK;

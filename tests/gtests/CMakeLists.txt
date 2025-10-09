@@ -180,7 +180,7 @@ function(register_gtest exe src)
 
     add_executable(${exe} ${MAIN_SRC_GTEST} ${src})
     add_definitions_with_host_compiler(-DNOMINMAX) # to allow std::max on Windows with parentheses
-    target_link_libraries(${exe} ${LIB_PACKAGE_NAME} dnnl_gtest ${EXTRA_SHARED_LIBS})
+    target_link_libraries(${exe} ${LIB_PACKAGE_NAME} dnnl_gtest ${EXTRA_SHARED_LIBS};${LIBABSL_SYNC})
 
     get_source_file_property(no_engine_param ${src} NO_ENGINE_PARAM)
 

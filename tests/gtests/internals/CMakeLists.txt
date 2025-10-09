@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2020-2023 Intel Corporation
+# Copyright 2020-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,11 +43,11 @@ endif()
 # per binary run.
 register_exe(${TEST_EXE}_env_vars_dnnl
         "${MAIN_SRC_GTEST};${CMAKE_CURRENT_SOURCE_DIR}/test_env_vars_dnnl.cpp"
-        "test" "dnnl_gtest")
+        "test" "dnnl_gtest;${LIBABSL_SYNC}")
 list(REMOVE_ITEM TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_env_vars_dnnl.cpp)
 register_exe(${TEST_EXE}_env_vars_onednn
         "${MAIN_SRC_GTEST};${CMAKE_CURRENT_SOURCE_DIR}/test_env_vars_onednn.cpp"
-        "test" "dnnl_gtest")
+        "test" "dnnl_gtest;${LIBABSL_SYNC}")
 list(REMOVE_ITEM TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_env_vars_onednn.cpp)
 
-register_exe(${TEST_EXE} "${TEST_SOURCES}" "test" "dnnl_gtest")
+register_exe(${TEST_EXE} "${TEST_SOURCES}" "test" "dnnl_gtest;${LIBABSL_SYNC}")

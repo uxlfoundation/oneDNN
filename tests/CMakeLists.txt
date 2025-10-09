@@ -93,6 +93,12 @@ endif()
 
 set(TEST_THREAD ${CMAKE_CURRENT_SOURCE_DIR}/test_thread.cpp)
 
+if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN")
+    add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/abseil-cpp abseil-cpp)
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/abseil-cpp)
+    set(LIBABSL_SYNC absl::synchronization)
+endif()
+
 # Switch on threading layer for GPU only configurations to speed up testing.
 # For non-dppcp compilers OpenMP threading will be used which is handled in
 # OpenMP.cmake.

@@ -49,34 +49,42 @@ inline property &operator^=(property &a, property b) {
 
 std::string to_string(const config_query_t &q) {
     std::stringstream s;
-    s << "arch:" << std::to_string((int)q.arch) << " hs:" << q.head_size
-      << " seq:" << q.seq_len
-      << " prop:" << ((bool)(q.prop & property::second_token) ? " thinq" : "")
-      << ((bool)(q.prop & property::quantized) ? " quant" : "")
-      << ((bool)(q.prop & property::integrated) ? " [integ]" : "")
-      << ((bool)(q.prop & property::fma) ? " fma" : "")
-      << ((bool)(q.prop & property::f32) ? " [f32]" : "")
-      << ((bool)(q.prop & property::f16_accumulate) ? " [f16_acc]" : "");
+    s << "arch:" << std::to_string((int)q.arch) << " hs:" << std::setw(4)
+      << q.head_size << " seq:" << std::setw(5) << q.seq_len << " prop:"
+      << ((bool)(q.prop & property::second_token) ? " thinq" : "      ")
+      << ((bool)(q.prop & property::quantized) ? " quant" : "      ")
+      << ((bool)(q.prop & property::integrated) ? " integ" : "     ")
+      << ((bool)(q.prop & property::fma) ? " fma" : "    ")
+      << ((bool)(q.prop & property::f32) ? " f32" : "    ")
+      << ((bool)(q.prop & property::f16_accumulate) ? " f16_accumulate"
+                                                    : "        ");
     return s.str();
 }
+
 std::string to_string(const config_criteria_t &c) {
     std::stringstream s;
-    s << "arch:" << std::to_string((int)c.arch) << " hs:" << c.head_size
-      << " seq:" << c.seq_len
-      << " prop:" << ((bool)(c.prop & property::second_token) ? " thinq" : "")
-      << ((bool)(c.prop & property::quantized) ? " quant" : "")
-      << ((bool)(c.prop & property::integrated) ? " integ" : "")
-      << ((bool)(c.prop & property::fma) ? " fma" : "")
-      << ((bool)(c.prop & property::f32) ? " f32" : "")
-      << ((bool)(c.prop & property::f16_accumulate) ? " f16_acc" : "");
+    s << "arch:" << std::to_string((int)c.arch) << " hs:" << std::setw(4)
+      << c.head_size << " seq:" << std::setw(5) << c.seq_len << " prop:"
+      << ((bool)(c.prop & property::second_token) ? " thinq" : "      ")
+      << ((bool)(c.prop & property::quantized) ? " quant" : "      ")
+      << ((bool)(c.prop & property::integrated) ? " integ" : "      ")
+      << ((bool)(c.prop & property::fma) ? " fma" : "    ")
+      << ((bool)(c.prop & property::f32) ? " f32" : "    ")
+      << ((bool)(c.prop & property::f16_accumulate) ? " f16_accumulate"
+                                                    : "        ");
     return s.str();
 }
+
 std::string to_string(const config_t &c) {
     std::stringstream s;
     s << c.unroll_m_kq << "," << c.unroll_n_kq << "," << c.unroll_m_vs << ","
       << c.unroll_n_vs << "," << c.wg_m_kq << "," << c.wg_n_kq << ","
       << c.wg_m_vs << "," << c.wg_n_vs;
     return s.str();
+}
+
+std::string to_string(const config_record_t &r) {
+    return to_string(r.criteria) + " cfg:{" + to_string(r.config) + "}";
 }
 
 // A matching config is a combination of mandatory and optional requirements

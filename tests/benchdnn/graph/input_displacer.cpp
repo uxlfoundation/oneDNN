@@ -555,12 +555,13 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
             case ::graph::op::kind::StaticTranspose: {
                 ::std::vector<int64_t> order;
                 op.get_attr_s64_vector(order, "order");
-                size_t ndims = order.size();
-                ::std::vector<int64_t> new_order(ndims, 0);
+                const size_t ndims = order.size();
+                op.attrs_["order"].s64_vector_
+                        = ::std::vector<int64_t>(ndims, 0);
                 for (size_t i = 0; i < ndims; i++) {
-                    new_order[(order[i] + ndims) % ndims] = i;
+                    op.attrs_["order"].s64_vector_[(order[i] + ndims) % ndims]
+                            = i;
                 }
-                op.attrs_["order"].s64_vector_ = new_order;
                 break;
             }
             case ::graph::op::kind::TypeCast:

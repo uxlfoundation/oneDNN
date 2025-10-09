@@ -36,22 +36,16 @@ static inline void compute_eltwise_rvv_fwd(const alg_kind_t alg,
         const dim_t len, const data_type_t dt) {
     switch (dt) {
         case data_type::f32:
-            rvv_eltwise_apply_fwd_f32(alg, reinterpret_cast<const float *>(src),
-                    reinterpret_cast<float *>(dst), len, alpha, beta);
+            rvv_eltwise_apply_fwd_f32(alg, src, dst, len, alpha, beta, dt);
             break;
         case data_type::s32:
-            rvv_eltwise_apply_fwd_s32(alg,
-                    reinterpret_cast<const int32_t *>(src),
-                    reinterpret_cast<int32_t *>(dst), len, alpha, beta);
+            rvv_eltwise_apply_fwd_s32(alg, src, dst, len, alpha, beta, dt);
             break;
         case data_type::s8:
-            rvv_eltwise_apply_fwd_s8(alg, reinterpret_cast<const int8_t *>(src),
-                    reinterpret_cast<int8_t *>(dst), len, alpha, beta);
+            rvv_eltwise_apply_fwd_s8(alg, src, dst, len, alpha, beta, dt);
             break;
         case data_type::u8:
-            rvv_eltwise_apply_fwd_u8(alg,
-                    reinterpret_cast<const uint8_t *>(src),
-                    reinterpret_cast<uint8_t *>(dst), len, alpha, beta);
+            rvv_eltwise_apply_fwd_u8(alg, src, dst, len, alpha, beta, dt);
             break;
         default: assert(!"Unsupported data type for RVV eltwise");
     }
@@ -63,25 +57,20 @@ static inline void compute_eltwise_rvv_bwd(const alg_kind_t alg, void *diff_src,
         const float beta, const dim_t len, const data_type_t dt) {
     switch (dt) {
         case data_type::f32:
-            rvv_eltwise_apply_bwd_f32(alg, reinterpret_cast<float *>(diff_src),
-                    reinterpret_cast<const float *>(diff_dst),
-                    reinterpret_cast<const float *>(src), len, alpha, beta);
+            rvv_eltwise_apply_bwd_f32(
+                    alg, diff_src, diff_dst, src, len, alpha, beta, dt);
             break;
         case data_type::s32:
-            rvv_eltwise_apply_bwd_s32(alg,
-                    reinterpret_cast<int32_t *>(diff_src),
-                    reinterpret_cast<const int32_t *>(diff_dst),
-                    reinterpret_cast<const int32_t *>(src), len, alpha, beta);
+            rvv_eltwise_apply_bwd_s32(
+                    alg, diff_src, diff_dst, src, len, alpha, beta, dt);
             break;
         case data_type::s8:
-            rvv_eltwise_apply_bwd_s8(alg, reinterpret_cast<int8_t *>(diff_src),
-                    reinterpret_cast<const int8_t *>(diff_dst),
-                    reinterpret_cast<const int8_t *>(src), len, alpha, beta);
+            rvv_eltwise_apply_bwd_s8(
+                    alg, diff_src, diff_dst, src, len, alpha, beta, dt);
             break;
         case data_type::u8:
-            rvv_eltwise_apply_bwd_u8(alg, reinterpret_cast<uint8_t *>(diff_src),
-                    reinterpret_cast<const uint8_t *>(diff_dst),
-                    reinterpret_cast<const uint8_t *>(src), len, alpha, beta);
+            rvv_eltwise_apply_bwd_u8(
+                    alg, diff_src, diff_dst, src, len, alpha, beta, dt);
             break;
         default: assert(!"Unsupported data type for RVV eltwise");
     }

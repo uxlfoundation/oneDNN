@@ -562,7 +562,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
 
     memory::dims mask_sz;
     switch (p.mask.type) {
-        case mask_type::no_mask: mask_sz = {};
+        case mask_type::no_mask: mask_sz = {}; break;
         case mask_type::oneD: mask_sz = {1, 1, 1, p.seq_len.kv}; break;
         case mask_type::causal_br:
         case mask_type::causal_tl:

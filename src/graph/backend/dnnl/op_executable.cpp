@@ -434,7 +434,6 @@ pool_executable_t::desc_t pool_executable_t::create_desc(
     dst = to_format_any(dst);
 
     // infer dnnl explicit padding
-    dims new_pads_end(pads_end);
     bool adj_pad = false;
     std::string rounding_type = "floor";
     if (op->has_attr(op_attr::rounding_type)) {
@@ -455,7 +454,7 @@ pool_executable_t::desc_t pool_executable_t::create_desc(
             // formula: output = (padded - dilated) / strides + 1
             dim_t expected_padded = (output_sp[i] - 1) * strides[i] + dilated;
             dim_t cur_pads_end = expected_padded - src_sp[i] - pads_begin[i];
-            new_pads_end[i] = cur_pads_end;
+            pads_end[i] = cur_pads_end;
         }
         adj_pad = true;
     }
@@ -480,7 +479,7 @@ pool_executable_t::desc_t pool_executable_t::create_desc(
     }
 
     dnnl::pooling_forward::primitive_desc pd(p_engine, prop, algo, src, dst,
-            strides, kernel, dilations, pads_begin, new_pads_end, prm_attr);
+            strides, kernel, dilations, pads_begin, pads_end, prm_attr);
 
     pd_cache.insert({op.get(), pd});
 
@@ -526,7 +525,6 @@ pool_bwd_executable_t::desc_t pool_bwd_executable_t::create_desc(
                     get_ncx_format(diff_src.get_dims()));
 
     // infer dnnl explicit pad
-    dims new_pads_end(pads_end);
     bool adj_pad = false;
     std::string rounding_type = "floor";
     if (op->has_attr(op_attr::rounding_type)) {
@@ -543,7 +541,7 @@ pool_bwd_executable_t::desc_t pool_bwd_executable_t::create_desc(
                 dilated += 1;
             dim_t cur_pads_end = (output_sp[i] - 1) * strides[i] + dilated
                     - src_sp[i] - pads_begin[i];
-            new_pads_end[i] = cur_pads_end;
+            pads_end[i] = cur_pads_end;
         }
         adj_pad = true;
     }
@@ -568,10 +566,10 @@ pool_bwd_executable_t::desc_t pool_bwd_executable_t::create_desc(
     dnnl::pooling_forward::primitive_desc forward_hints
             = dnnl::pooling_forward::primitive_desc(p_engine,
                     prop_kind::forward_training, algo, src, diff_dst, strides,
-                    kernel, dilations, pads_begin, new_pads_end);
+                    kernel, dilations, pads_begin, pads_end);
 
     dnnl::pooling_backward::primitive_desc pd(p_engine, algo, diff_src,
-            diff_dst, strides, kernel, dilations, pads_begin, new_pads_end,
+            diff_dst, strides, kernel, dilations, pads_begin, pads_end,
             forward_hints);
 
     pd_cache.insert({op.get(), pd});

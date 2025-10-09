@@ -1604,8 +1604,8 @@ status_t simple_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
     bool is_lr = !one_of(conf.exec_dir, r2l, r2l);
     bool is_rl = !one_of(conf.exec_dir, l2r, l2r);
 
-    const memory_storage_t *scales_buf = nullptr;
-    if (pd()->conf.is_int8 && pd()->conf.copy_bias) {
+    const memory_storage_t *scales_buf = &memory_storage_t::empty_storage();
+    if (conf.is_int8 && conf.copy_bias) {
         scales_buf = &CTX_GPU_RES_STORAGE(SCALES_);
     }
 

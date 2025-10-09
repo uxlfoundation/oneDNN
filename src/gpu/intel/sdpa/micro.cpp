@@ -761,8 +761,10 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_host_scale()) {
         auto scalar_storage = utils::downcast<
                 const dnnl::impl::host_scalar_memory_storage_t *>(&scale);
-        scalar_storage->get_scalar_value(
+        auto status = scalar_storage->get_scalar_value(
                 &scalar_scale, scale_mdw.data_type_size());
+        assert(status == status::success);
+        if (status != status::success) return status;
         scalar_scale = dnnl::impl::cpu::io::load_float_value(
                 pd()->scale_md()->data_type, &scalar_scale, 0);
         inv_scalar_scale = 1. / scalar_scale;

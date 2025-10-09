@@ -192,6 +192,85 @@ public:
 } // namespace testing
 } // namespace dnnl
 
+#elif defined(DNNL_TEST_THREADPOOL_USE_EIGEN_ASYNC)
+
+// absl sources define its own version of `CHECK` macro. oneDNN's version is not
+// needed further the file, thus, disable it for compilation reason.
+#undef CHECK
+
+#define EIGEN_USE_THREADS
+#include "Eigen/ThreadPool"
+
+// XLA doesn't support compilation with GCC natively. Any warnings popping up
+// should be silenced through the following adjustment of diagnostics.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-compare"
+#pragma GCC diagnostic ignored "-Wattributes"
+#pragma GCC diagnostic ignored "-Wreturn-type"
+#include "xla/backends/cpu/runtime/work_queue.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
+#pragma GCC diagnostic pop
+
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+
+namespace dnnl {
+namespace testing {
+
+static tsl::AsyncValueRef<tsl::Chain> OkDoneEventSingleton() {
+    static tsl::AsyncValueOwningRef<tsl::Chain> *singleton = [] {
+        auto *storage = new tsl::internal::AsyncValueStorage<tsl::Chain>();
+        return new tsl::AsyncValueOwningRef<tsl::Chain>(
+                tsl::MakeAvailableAsyncValueRef<tsl::Chain>(*storage));
+    }();
+    return singleton->AsRef();
+}
+
+class threadpool_t : public dnnl::threadpool_interop::threadpool_iface {
+private:
+    // `ThreadPool` class implements `ThreadPoolInterface` class used in the
+    // original version of the code from
+    // `xla/backends/cpu/runtime/onednn/onednn_threadpool.h`.
+    std::unique_ptr<Eigen::ThreadPool> tp_;
+
+    // Async value that signals completion of the last scheduled parallel loop.
+    tsl::AsyncValueRef<tsl::Chain> done_event_;
+
+public:
+    explicit threadpool_t(int num_threads = 0) {
+        if (num_threads <= 0) num_threads = read_num_threads_from_env();
+        tp_.reset(new Eigen::ThreadPool(num_threads));
+        done_event_ = OkDoneEventSingleton();
+    }
+    int get_num_threads() const override { return tp_->NumThreads(); }
+    bool get_in_parallel() const override { return false; }
+    uint64_t get_flags() const override { return ASYNCHRONOUS; }
+    void parallel_for(int n, const std::function<void(int, int)> &fn) override {
+        // If we are using oneDNN with async support, we need to schedule the
+        // parallel loop using the done_event_. This allows us to return
+        // immediately and not block the caller thread.
+        auto parallelize = [this, n, fn](tsl::Chain) {
+            return xla::cpu::Worker::Parallelize(tp_.get(), tp_->NumThreads(),
+                    n, [fn, n](size_t i) { fn(static_cast<int>(i), n); });
+        };
+
+        done_event_ = done_event_.FlatMap(parallelize);
+    }
+    void wait() override {
+        // While performing asynchronous execution, wait() method is needed to
+        // notify the user that the output is ready. oneDNN will not call wait()
+        // inside the library to avoid deadlock.
+        tsl::BlockUntilReady(done_event_);
+    }
+
+    tsl::AsyncValueRef<tsl::Chain> done_event() const { return done_event_; }
+};
+
+} // namespace testing
+} // namespace dnnl
+
 #elif defined(DNNL_TEST_THREADPOOL_USE_TBB)
 #include "tbb/parallel_for.h"
 #include "tbb/task_arena.h"

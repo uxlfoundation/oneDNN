@@ -129,7 +129,8 @@ default, so users do not need to manually configure it for graph debugging. By
 default, no graph JSON files are generated unless the
 `ONEDNN_GRAPH_DUMP` environment variable is set, so performance remains
 unaffected. When `ONEDNN_GRAPH_DUMP=subgraph` is specified, graph JSON files are
-dumped, and corresponding verbose lines are printed during partition compilation:
+dumped during partition compilation (calling the partition::compile API), and
+corresponding verbose lines are printed:
 
 ```shell
 onednn_verbose,v1,graph,info,serialize graph to a json file graph-100002-9333857264675079303.json

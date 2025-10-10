@@ -232,6 +232,8 @@ struct brgemm_matmul_conf_t {
     bool is_wei_batch_layout_trivial = false;
     bool is_dst_batch_layout_trivial = false;
 
+    // Attributes related to quantization
+    // Scales
     bool apply_scales_in_buffer_b = false;
     size_t wei_scales_dt_sz = 0;
     bool is_wei_scale_per_n = false;
@@ -240,6 +242,7 @@ struct brgemm_matmul_conf_t {
     dim_t wei_scales_k_gsize = 0;
     data_type_t wei_scales_dt = data_type::undef;
 
+    // Zero points
     dim_t wei_zp_k_gsize = 0;
     bool is_wei_zp_per_k = false;
     bool is_wei_zp_per_n = false;

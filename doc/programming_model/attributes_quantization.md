@@ -394,8 +394,8 @@ oneDNN provides the following method for setting precomputed reductions:
 
 ~~~cpp
 void dnnl::primitive_attr::set_precomputed_reductions(int arg, int mask,
-        const memory::dims &groups,
-        memory::data_type data_type = memory::data_type::s32);
+        const dnnl::memory::dims &groups,
+        dnnl::memory::data_type data_type = dnnl::memory::data_type::s32);
 ~~~
 
 Key parameters of the precomputed reductions API method are summarized below:
@@ -639,11 +639,11 @@ per-N quantization.
    // A unique scale for each gK (256 / 128 = 2) times N, total 1024 elements.
    std::vector<half> wei_scales(gK, N) = {...};
 
-   attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, wei_groups, data_type::f16);
+   attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, wei_groups, dnnl::memory::data_type::f16);
 
    // Additionally, to instruct the library to perform weights decompression,
    // fpmath mode must be set with a flag set to `true`:
-   attr.set_fpmath_mode(fpmath_mode::f16, /* apply_to_int = */ true);
+   attr.set_fpmath_mode(dnnl::fpmath_mode::f16, /* apply_to_int = */ true);
 
    // create a matmul primitive descriptor
    auto matmul_pd = dnnl::matmul::primitive_desc(
@@ -699,7 +699,7 @@ impossible to apply them on-the-fly without potential accuracy loss.
    std::vector<half> wei_scales(scale_gK, N) = {...};
 
    attr.set_scales(DNNL_ARG_WEIGHTS, wei_mask, wei_scales_groups,
-           data_type::f16);
+           dnnl::memory::data_type::f16);
 
    // Zero-points would have the same mask as grouping applies for them as well.
    // For example, let it use the different size of the group.
@@ -711,7 +711,7 @@ impossible to apply them on-the-fly without potential accuracy loss.
    std::vector<half> wei_zps(zp_gK, N) = {...};
 
    attr.set_zero_points(DNNL_ARG_WEIGHTS, wei_mask, wei_zp_groups,
-           data_type::s8);
+           dnnl::memory::data_type::s8);
 
    // Now, specify the precomputed reductions.
    // Note that it's specified for source tensor.

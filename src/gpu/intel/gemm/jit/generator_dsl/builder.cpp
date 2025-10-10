@@ -561,7 +561,8 @@ struct generator_dsl_t {
                           << strategy.prefetchB << " -> " << prefetchB;
 
         k_loop_config_t k_loop_main {k_blk, prefetchA, prefetchB, kloop_it,
-                A_load, B_load, A_prefetch_transform, B_prefetch_transform, C};
+                std::move(A_load), std::move(B_load), A_prefetch_transform,
+                B_prefetch_transform, C};
 
         gpu_assert(k_loop_main.A_load_warmup() % kloop_it.A_load().tile[k_var]
                 == 0);
@@ -573,8 +574,8 @@ struct generator_dsl_t {
 
         k_loop_config_t k_loop_short {
                 (int)lcm(A_load_short.tile[k_var], B_load_short.tile[k_var]), 0,
-                0, kloop_it, A_load_short, B_load_short, A_prefetch_transform,
-                B_prefetch_transform, C};
+                0, kloop_it, std::move(A_load_short), std::move(B_load_short),
+                A_prefetch_transform, B_prefetch_transform, std::move(C)};
         gpu_assert(k_loop_short.k_warmup() == 0);
 
         if (problem.A.alignment) {

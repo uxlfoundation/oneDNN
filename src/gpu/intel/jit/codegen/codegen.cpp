@@ -1806,7 +1806,7 @@ cl_kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
 #define GPU_HW_CASE(hw) \
     ir_to_ngen_generator_t<ngen::OpenCLCodeGenerator<(hw)>> g( \
             iface, options, debug_cfg); \
-    g.setInterface(interface); \
+    g.setInterface(std::move(interface)); \
     convert_ir_to_ngen(body, g); \
     return g.getKernel(ctx, dev);
 

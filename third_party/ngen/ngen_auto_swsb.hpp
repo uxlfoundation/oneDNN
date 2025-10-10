@@ -1794,7 +1794,7 @@ PVCWARWA analyzePVCWARWA(HW hw, Program &program, BasicBlock &bb, int phase,
     }
 
     // Case 2: walk forward, looking for a new target send instruction.
-    auto eligibleSend = [=, &program](uint32_t inum) {
+    auto eligibleSend = [=, &program, &dep](uint32_t inum) {
         auto &insn = program[inum];
         if (inum != dep.inum && insn.predicated())
             return false;

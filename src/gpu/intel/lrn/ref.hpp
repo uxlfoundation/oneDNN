@@ -83,7 +83,6 @@ struct ref_fwd_t : public primitive_t {
 
         compute::kernel_ctx_t kernel_ctx;
 
-        status_t status = status::success;
         const auto *desc = pd()->desc();
 
         kernel_ctx.set_data_type(desc->src_desc.data_type, false);
@@ -102,7 +101,6 @@ struct ref_fwd_t : public primitive_t {
                 break;
             default: VDISPATCH_LRN_IC(false, VERBOSE_BAD_ALGORITHM);
         }
-        if (status != status::success) return status;
 
         const memory_desc_wrapper src_d(pd()->src_md());
         const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -207,7 +205,6 @@ struct ref_bwd_t : public primitive_t {
 
         compute::kernel_ctx_t kernel_ctx;
 
-        status_t status = status::success;
         const auto *desc = pd()->desc();
 
         kernel_ctx.set_data_type(desc->src_desc.data_type, false);
@@ -223,7 +220,6 @@ struct ref_bwd_t : public primitive_t {
                 break;
             default: VDISPATCH_LRN_IC(false, VERBOSE_BAD_ALGORITHM);
         }
-        if (status != status::success) return status;
 
         const memory_desc_wrapper src_d(pd()->src_md());
         const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());

@@ -156,7 +156,7 @@ uint32_t post_op_view_mapper_t::normalize_mask(uint32_t orig_mask) const {
             if (b > 0) new_tile.set(b + 1, cvt_dims[b]);
         }
         new_tile[1] = cvt_dims[1];
-        cvt_dims = new_tile;
+        cvt_dims = std::move(new_tile);
     }
 
     uint32_t mask = 0;

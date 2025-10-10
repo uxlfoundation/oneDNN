@@ -46,7 +46,7 @@ TBD
 * Introduced support group size 16 `int8` for decompressed weight with regular weights decompression.
 
 ## Intel Architecture Processors
-* Introduced `fp4` weights support for `fp32` matmul and convolution  for future Intel Xeon processors with Intel AVX 10.2/AVX512 instruction sets support.
+* Introduced `fp4` weights support for `fp32` matmul and convolution  for future Intel Xeon processors with Intel AVX10.2 instruction set support.
 
 # Usability
 * Extended diagnostics available in verbose mode for primitive descriptor creation issues.

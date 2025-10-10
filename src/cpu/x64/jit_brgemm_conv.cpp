@@ -1153,8 +1153,8 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         comp_owb.resize(jcp.nb_ow, -1);
         vector<dim_t> ow_kw_b(jcp.ow, -1);
         vector<dim_t> ow_kw_e(jcp.ow, -1);
-        vector<dim_t> comp_ow_kw_s(jcp.comp_ow_size, -1);
-        vector<dim_t> comp_ow_kw_f(jcp.comp_ow_size, -1);
+        vector<dim_t> comp_ow_kw_s(jcp.ow, -1);
+        vector<dim_t> comp_ow_kw_f(jcp.ow, -1);
         dim_t comp_ow_l = 0;
 
         for (int ow = 0; ow < OW;) {

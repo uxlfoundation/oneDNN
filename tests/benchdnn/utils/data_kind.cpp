@@ -55,8 +55,10 @@ static data_kind_entry_t data_kind_table[] = {
         {WEI_PROJECTION,
                 {DNNL_ARG_DIFF_WEIGHTS_PROJECTION,
                         DNNL_ARG_WEIGHTS_PROJECTION}},
-        {DAT_TOTAL, {DNNL_ARG_SCRATCHPAD}},
         {DROPOUT_MASK, {DNNL_ARG_ATTR_DROPOUT_MASK}},
+        {DST_SCALES, {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST}},
+        // Always keep this entry the last in the list
+        {DAT_TOTAL, {DNNL_ARG_UNDEF}},
 };
 
 data_kind_t exec_arg2data_kind(int arg) {
@@ -117,6 +119,7 @@ const char *data_kind2str(data_kind_t kind) {
         case WEI_PEEPHOLE: return "WEI_PEEPHOLE";
         case WEI_PROJECTION: return "WEI_PROJECTION";
         case DROPOUT_MASK: return "DROPOUT_MASK";
+        case DST_SCALES: return "DST_SCALES";
         default: assert(!"incorrect data kind");
     }
     return "incorrect data kind";

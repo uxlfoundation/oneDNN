@@ -170,10 +170,15 @@ struct primitive_desc_t : public c_compatible {
         }
         if (arg & DNNL_ARG_ATTR_SCALES) {
             int scale_arg = arg & ~DNNL_ARG_ATTR_SCALES;
-            return !attr()->scales_.has_default_values(scale_arg)
-                    ? arg_usage_t::input
-                    : arg_usage_t::unused;
+            if (!attr()->scales_.has_default_values(scale_arg)) {
+                if (attr()->scales_.get(scale_arg).is_mx())
+                    return arg_usage_t::output;
+                else
+                    return arg_usage_t::input;
+            } else
+                return arg_usage_t::unused;
         }
+
         if (arg == DNNL_ARG_SCRATCHPAD)
             return !is_zero_md(scratchpad_md()) ? arg_usage_t::output
                                                 : arg_usage_t::unused;

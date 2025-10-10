@@ -235,11 +235,12 @@ struct matmul_pd_t : public primitive_desc_t {
             } else if (arg == DNNL_ARG_DST) {
                 ok = ok
                         && utils::one_of(mask, 0, dst_qmask_N(),
-                                dst_qmask_M() + dst_qmask_N());
+                                dst_qmask_M() + dst_qmask_N(),
+                                full_tensor_mask());
                 ok = ok
                         && IMPLICATION(!scales.get(arg).has_default_groups(),
-                                scales.get_group(arg, 1) == 1
-                                        && (M() % scales.get_group(arg, 0))
+                                (M() % scales.get_group(arg, -2)) == 0
+                                        && (N() % scales.get_group(arg, -1))
                                                 == 0);
             } else {
                 assert(!"Unsupported arg");

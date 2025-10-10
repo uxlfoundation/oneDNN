@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,6 +50,12 @@ const impl_list_map_t &regular_fp8_impl_list_map() {
 
             nullptr,
         }},
+        // e8m0 -> f32
+        {{e8m0, f32, 0}, {
+            REG_SR(e8m0, any, f32, any, fmt_order::any, spec::reference)
+            nullptr,
+        }},
+
     });
     return the_map;
 }

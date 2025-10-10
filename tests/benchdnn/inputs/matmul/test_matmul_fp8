@@ -86,3 +86,15 @@
 8x2664:2664x256
 3x4128:4128x128
 
+## MXFP8
+--dt=f8_e4m3:f8_e4m3:f32,f8_e4m3:f8_e4m3:bf16
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1
+--batch=shapes_mx
+
+--dt=f8_e4m3
+--attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+--batch=shapes_mx
+
+# Adding a 4d shapes outside of shapes_mx as it is incompatible with tags tested above
+--stag=any,abcd --wtag=any,abcd --dtag=abcd,any
+6x2x14x96:6x2x96x32

@@ -8,8 +8,10 @@
     --attr-rounding-mode=ARG:MODE[+...]
     --attr-deterministic=BOOL
     --attr-dropout=PROBABILITY[:SEED[:TAG]]
-    --attr-scales=ARG:POLICY[:SCALE][:DATA_TYPE[:GROUPS]][+...]
-    --attr-zero-points=ARG:POLICY[:ZEROPOINT][:DATA_TYPE[:GROUPS]][+...]
+    --attr-scales=ARG:POLICY[:SCALE[:DATA_TYPE]][+...]
+                  ARG:POLICY[:DATA_TYPE[:GROUPS]][+...]
+    --attr-zero-points=ARG:POLICY[:ZEROPOINT[:DATA_TYPE]][+...]
+                       ARG:POLICY[:DATA_TYPE[:GROUPS]][+...]
     --attr-precomputed-reductions=ARG:POLICY:DATA_TYPE:GROUPS[+...]
     --attr-post-ops=SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]
                     ELTWISE[:ALPHA[:BETA[:SCALE]]]
@@ -120,6 +122,8 @@ scale value. Supported values are:
   - `per_tensor`     means each element of original tensor will be multiplied
                      by a unique number. Number of scale factor is equal to
                      `nelems`. As of now supported only by binary post-ops.
+  - `mx`             scales are output, computed by the primitive itself, following 
+                     the OCP MX specification.
 
 `SCALE` is required for the `common` policy only, and specifies a floating-point
 value which is passed for execution at runtime. Specifying a value for any other
@@ -157,7 +161,7 @@ policies will trigger an error.
 `s32` (the default), `s8`, `u8`, `s4`, `u4`.
 
 `GROUPS` specifies how zero points are grouped along dimensions where multiple
-zero points factors are used.
+zero points are used.
 
 To specify more than one memory argument for this attribute, `+` delimiter is
 used.
@@ -347,4 +351,11 @@ Run a matmul problem with weights decompression where weights `bf16` scales and
   ./benchdnn --matmul --dt=f32:s8:f32 --attr-fpmath=bf16:true \
              --attr-scales=wei:per_ocic:bf16:2x1 \
              --attr-zero-points=wei:per_ocic:s8:2x1 6x4:4x5
+```
+
+Run a matmul problem with MXFP4 semantics:
+``` sh
+  ./benchdnn --matmul --dt=f4_e2m1 \
+             --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+             32x32:32x64
 ```

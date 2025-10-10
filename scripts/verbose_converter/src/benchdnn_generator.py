@@ -455,6 +455,31 @@ class BinaryConverter(AlgorithmMixin, MultiSourceMixin, Converter):
         dst_tag = maybe_make_any_tag(dst)
         return f"--stag={src0_tag}:{src1_tag} --dtag={dst_tag}"
 
+    @property
+    def tags(self):
+        def tag_and_strides(md):
+            tag = maybe_make_any_tag(md)
+            if tag != "any" and tag.lower() == tag and md.strides:
+                return tag, md.strides
+            return tag, ""
+
+        src0, src1, *_, dst = self.entry.mds
+        src0_tag, src0_strides = tag_and_strides(src0)
+        src1_tag, src1_strides = tag_and_strides(src1)
+        dst_tag, dst_strides = tag_and_strides(dst)
+
+        flags: List[str] = []
+        strides: List[str] = []
+
+        if not src0_strides or not src1_strides:
+            flags.append(f"--stag={src0_tag}:{src1_tag}")
+        strides.extend([src0_strides, src1_strides])
+        if not dst_strides:
+            flags.append(f"--dtag={dst_tag}")
+        strides.append(dst_strides)
+        flags.append("--strides=" + ":".join(strides))
+        return " ".join(flags)
+
 
 class BRGEMMConverter(MultiDataTypeMixin, Converter):
     driver: str = "brgemm"

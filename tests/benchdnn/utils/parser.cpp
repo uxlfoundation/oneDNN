@@ -916,7 +916,8 @@ bool parse_strides(std::vector<vdims_t> &strides,
         const std::vector<vdims_t> &def_strides, const char *str,
         const std::string &option_name /* = "strides"*/) {
     static const std::string help
-            = "DIMS_SRC[:DIMS_WEI]:DIMS_DST    (Default: not specified)\n    "
+            = "DIMS_SRC[:DIMS_OPTIONAL]:DIMS_DST    (Default: not specified)\n "
+              "   "
               "Specifies strides `DIMS_ARG` for correspondent supported "
               "`ARG`.\n    If correspondent `DIMS_ARG` is empty, it does not "
               "take an effect.\n    More details at "

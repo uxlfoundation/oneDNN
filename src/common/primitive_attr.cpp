@@ -404,10 +404,14 @@ status_t post_ops_t::validate_binary(
     return status::success;
 }
 
-status_t primitive_attr_t::set_dropout(const memory_desc_t *user_dropout_desc) {
+status_t primitive_attr_t::set_dropout(const memory_desc_t *user_dropout_desc,
+        data_type_t seed_dt, bool use_offset, bool use_host_scalars) {
     if (any_null(user_dropout_desc)) return invalid_arguments;
     dropout_.user_dropout_desc_ = *user_dropout_desc;
     dropout_.dropout_desc_ = *user_dropout_desc;
+    dropout_.seed_dt_ = seed_dt;
+    dropout_.use_offset_ = use_offset;
+    dropout_.use_host_scalars_ = use_host_scalars;
     return success;
 }
 
@@ -493,8 +497,16 @@ status_t dnnl_primitive_attr_get_dropout(
 
 status_t dnnl_primitive_attr_set_dropout(
         primitive_attr_t *attr, const memory_desc_t *user_dropout_desc) {
+    return dnnl_primitive_attr_set_dropout_v2(
+            attr, user_dropout_desc, dnnl_f32, false, false);
+}
+
+status_t dnnl_primitive_attr_set_dropout_v2(primitive_attr_t *attr,
+        const memory_desc_t *user_dropout_desc, data_type_t seed_dt,
+        int use_offset, int use_host_scalars) {
     if (any_null(attr)) return invalid_arguments;
-    return attr->set_dropout(user_dropout_desc);
+    return attr->set_dropout(
+            user_dropout_desc, seed_dt, use_offset, use_host_scalars);
 }
 
 status_t dnnl_primitive_attr_get_fpmath_mode(

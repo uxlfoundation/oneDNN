@@ -2,7 +2,7 @@
 --dt=f32,bf16
 --attr-fpmath=,bf16
 --check-ref-impl=false
---attr-dropout=0.5:12345678
+--attr-dropout=0.5:12345678,0.5:12345678:undef:32:true
 
 --stag=ab --dtag=ab
 --batch=shapes_2d

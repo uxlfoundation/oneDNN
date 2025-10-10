@@ -508,13 +508,13 @@ public:
             movups(addr, x);
     }
 
-    void uni_vmovdqu16(const Xbyak::Xmm &x, const Xbyak::Address &addr) {
+    void uni_vmovdqu16(const Xbyak::Xmm &x, const Xbyak::Operand &op) {
         if (is_valid_isa(avx512_core))
-            vmovdqu16(x, addr);
+            vmovdqu16(x, op);
         else if (is_valid_isa(avx))
-            vmovups(x, addr);
+            vmovups(x, op);
         else
-            movups(x, addr);
+            movups(x, op);
     }
 
     void uni_vmovups(const Xbyak::Address &addr, const Xbyak::Xmm &x) {

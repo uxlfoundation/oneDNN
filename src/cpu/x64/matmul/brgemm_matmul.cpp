@@ -1219,8 +1219,12 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
                                     bool aligned_blocks = false) {
         ctx.src = (void *)brgmm_ctx.get_data_B_kn_ptr(B_data_batch_ptr, k, n);
         // Use k for buffer locating only when the block is unaligned
-        ctx.tr_src = (void *)brgmm_ctx.get_buf_B_ptr(ithr, k_blk_idx, n_blk_idx,
-                gb, (k % bgmmc.K_blk) * (!aligned_blocks));
+        if (aligned_blocks)
+            ctx.tr_src = (void *)brgmm_ctx.get_buf_B_ptr(
+                    ithr, k_blk_idx, n_blk_idx, gb);
+        else
+            ctx.tr_src = (void *)brgmm_ctx.get_buf_B_k_ptr(ithr, k);
+
         ctx.current_K_start = k;
         ctx.current_K_iters = k_iters;
         ctx.current_K_pad = brgmm_ctx.get_current_K_pad(k_iters);
@@ -1240,11 +1244,20 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
     if (bgmmc.is_wei_zp_per_k || bgmmc.is_wei_scale_per_k) {
         const auto &k_group = bgmmc.is_wei_zp_per_k ? bgmmc.wei_zp_k_gsize
                                                     : bgmmc.wei_scales_k_gsize;
-        const auto adj_k_blk = nstl::min(bgmmc.K, k_group);
+        const auto brgemm_k_blk = nstl::min(bgmmc.K, bgmmc.K_blk);
+        const auto adj_k_blk = nstl::min(brgemm_k_blk, k_group);
         assert(adj_k_blk > 0);
         auto k = k_start;
-        const auto k_end = k_start + gemm_batch * bgmmc.K_blk
-                + is_K_tail * (bgmmc.K % bgmmc.K_blk);
+        // is_K_tail behaves incorrectly for the case K < K_blk
+        // Should be is_K_tail = true && gemm_batch = 0
+        // Now: is_K_tail = false, gemm_batch = 1.
+        // Causes Segfault when the `group over k` < K_blk for blocked formats.
+        const auto work_amount = bgmmc.K < bgmmc.K_blk
+                ? bgmmc.K
+                : gemm_batch * bgmmc.K_blk
+                        + is_K_tail * (bgmmc.K % bgmmc.K_blk);
+        const auto k_end = k_start + work_amount;
+
         // Handle first block
         if (k_start % adj_k_blk > 0) {
             call_copy_kernel(k_start, k_start % adj_k_blk, 0);
@@ -1826,20 +1839,35 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     //     a block of memory per thread.
     //   `gb` defines an offset to a specific block over K inside a portion of
     //     blocks.
-    //   `k` defines an offset inside a specific block over K. It is the
-    //     smallest granularity possible. It is used only when wei_decompression
-    //     feature is requested with a single scale over a sub-piece of `K_blk`.
-    char *get_buf_B_ptr(
-            int ithr, int k_blk_idx, int n_blk_idx, int gb, int k = 0) const {
+    char *get_buf_B_ptr(int ithr, int k_blk_idx, int n_blk_idx, int gb) const {
         UNUSED(n_blk_idx);
-
         if (!bgmmc_.use_buffer_b) return nullptr;
         int k_blk_local = k_blk_idx % get_K_chunk_size();
-        auto offset = ithr * bgmmc_.buffer_b_per_thread_sz
-                + (k == 0) * k_blk_local * bgmmc_.buffer_b_k_brg_stride
-                + (k == 0) * gb
-                        * bgmmc_.buffer_b_gb_stride // This component used only when k = 0
-                + k * bgmmc_.buffer_b_k_stride;
+        const auto offset = ithr * bgmmc_.buffer_b_per_thread_sz
+                + k_blk_local * bgmmc_.buffer_b_k_brg_stride
+                + gb * bgmmc_.buffer_b_gb_stride;
+        return buf_B_ptr_ + offset;
+    }
+
+    /* Returns a pointer to buffer B based on unaligned K inside
+    *  a thread buffer. Used for copy kernels including grouped ZP/Scales.
+    *  For the vnni granularity > 1 it returns a pointer to a start of vnni block.
+    *  Functionality intersects with get_buf_B_ptr(). TODO: make combined solution.
+    */
+    char *get_buf_B_k_ptr(const int ithr, const int k) const {
+        if (!bgmmc_.use_buffer_b) return nullptr;
+
+        const int batch_block_size = bgmmc_.K_blk * bgmmc_.brgemm_batch_size;
+        const auto batch_blocking = std::div(k, batch_block_size);
+        const auto k_blk_idx = batch_blocking.quot;
+        const auto k_blk_local = k_blk_idx % get_K_chunk_size();
+        const auto k_in_batch = batch_blocking.rem;
+
+        auto offset = ithr * bgmmc_.buffer_b_per_thread_sz;
+        offset += k_blk_local * bgmmc_.buffer_b_k_brg_stride;
+        // div down to the start of the vnni block
+        const auto k_outer = (k_in_batch / vnni_factor) * vnni_factor;
+        offset += k_outer * bgmmc_.buffer_b_k_stride;
         return buf_B_ptr_ + offset;
     }
 
@@ -2040,7 +2068,6 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 = one_of(bgmmc_.wei_zp_dt, data_type::s4, data_type::u4) ? 2
                                                                          : 1;
         offset = offset * dt_sz / elems_per_byte;
-        // Need byte arithmetic for types s4/u4/s8/u8
         return (char *)wei_zp_ptr_ + offset;
     }
 

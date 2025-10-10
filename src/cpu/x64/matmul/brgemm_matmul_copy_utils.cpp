@@ -2069,6 +2069,12 @@ template struct jit_brgemm_matmul_copy_a_transposed_impl_t<Ymm>;
  * This class contains common methods and properties for all copy B kernels.
  * Now it consists of `load_value` and `decompress_reg` and it's considered
  * to contain all common methods for copy B kernels.
+ * Default scenario for weight decompression is:
+ * 1. load_value()
+ * 2. apply zero point shift (if needed)
+ * 3. convert to f32
+ * 4. apply scaling (if needed)
+ * 5. down convert if destination datatype is not f32.
  */
 struct jit_brgemm_matmul_copy_b_common_t : public jit_brgemm_matmul_copy_b_t,
                                            public jit_generator_t {
@@ -2112,7 +2118,7 @@ protected:
     * @param zmm Destination ZMM register where data will be inserted
     * @param ymm_half Source YMM register containing data for the upper half
     */
-    void copy_half_int4(const Zmm &zmm, const Ymm &ymm_half) {
+    void copy_half_reg(const Zmm &zmm, const Ymm &ymm_half) {
         vinserti64x4(zmm, zmm, ymm_half, 1);
     }
 
@@ -2121,7 +2127,7 @@ protected:
     * @param ymm Destination YMM register where data will be inserted
     * @param xmm_half Source XMM register containing data for the upper half
     */
-    void copy_half_int4(const Ymm &ymm, const Xmm &xmm_half) {
+    void copy_half_reg(const Ymm &ymm, const Xmm &xmm_half) {
         vinserti128(ymm, ymm, xmm_half, 1);
     }
 
@@ -2136,9 +2142,9 @@ protected:
         vmovdqa(vmm_permd, ptr[reg_tmp]);
     }
 
-    /** Loaded in register(half of it) containing bytes (2 int4 values)
+    /** Loaded in register(half of it) containing bytes.
     * The idea is duplicate each byte in two dwords
-    * using `copy_half_int4` and `vpermd`. Then shift bytes left or right
+    * using `copy_half_reg` and `vpermd`. Then shift bytes left or right
     * depending on the position (odd/even) and signed/unsigned type.
      */
     template <typename Vmm>
@@ -2147,7 +2153,7 @@ protected:
         using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
         const auto vmm_lower = Vmm_lower_t(reg.getIdx());
 
-        copy_half_int4(reg, vmm_lower);
+        copy_half_reg(reg, vmm_lower);
         vpermd(reg, vmm_permd, reg);
         // Without masks int4 is going to use 2 tmp registers
         // To perform masks using VPAND operator
@@ -2201,7 +2207,8 @@ protected:
 
     /**
     * @brief Loads and converts data of various types into vector registers with appropriate handling
-    * 
+    * Integer types s4, u4, s8, u8, s32 will be loaded and converted to s32 during the loading.
+    * Floating point types f16, bf16, f32 will be loaded and converted to f32 during the loading.
     * @tparam Vmm Vector register type for computation
     * @param reg Destination vector register
     * @param op Source memory operand to load from
@@ -2236,7 +2243,7 @@ protected:
                 }
             case data_type::bf16:
                 if (is_xf16) {
-                    vmovdqu16(vmm_in, op);
+                    uni_vmovdqu16(vmm_in, op);
                 } else {
                     uni_vpmovzxwd(vmm_in, op);
                     uni_vpslld(vmm_in, vmm_in, 16);
@@ -2400,7 +2407,7 @@ protected:
             case data_type::s8:
             case data_type::u8:
             case data_type::s4:
-            case data_type::u4: vcvtdq2ps(input, input); break;
+            case data_type::u4: uni_vcvtdq2ps(input, input); break;
             case data_type::bf16:
             case data_type::f16:
             case data_type::f32:
@@ -2460,7 +2467,7 @@ protected:
                 const auto src_vmm_lower1 = Vmm_lower_t(reg2.getIdx());
                 vcvtps2phx(src_vmm_lower0, reg1);
                 vcvtps2phx(src_vmm_lower1, reg2);
-                vinsertf64x4(reg1, reg1, src_vmm_lower1, 1);
+                copy_half_reg(reg1, src_vmm_lower1);
                 break;
             }
             case data_type::f32:
@@ -3491,23 +3498,26 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
     /** Loads zero points, when is_wei_zp_per_n is set.
     *   Zeropoints size over N dimension always equals to N.
     */
-    auto load_zero_point = [this, ncolumns](int n) {
+    auto load_zero_point = [this, ncolumns, columns_tail](int n) {
         if (!conf_->is_wei_zp_per_n) return;
-        const int n_tail = ncolumns % n_blk_step;
-        const bool is_tail = n_tail > 0 && n_tail < n_blk_step;
+        const bool is_tail = (ncolumns - n) < n_blk_step;
         const auto zp_dt = conf_->wei_zp_dt;
         const auto zp_dt_sz = types::data_type_size(zp_dt);
         const auto elems_per_byte
                 = one_of(zp_dt, data_type::s4, data_type::u4) ? 2 : 1;
         const auto offset = n * zp_dt_sz / elems_per_byte;
         const auto addr = maybe_EVEX_compress_addr(reg_zp_ptr, offset);
+        if (is_tail && !isa_has_masks(conf_->isa)) {
+            load_bytes(vmm_zp_b_shift, addr, columns_tail / elems_per_byte);
+            load_value(vmm_zp_b_shift, vmm_zp_b_shift, vmm_permd, zp_dt);
+        }
         load_value(vmm_zp_b_shift, addr, vmm_permd, zp_dt, is_tail);
     };
 
     /** Loads scales, when is_wei_scale_per_n is set.
     *   Scales size over N dimension always equals to N.
     */
-    auto load_scales = [this, ncolumns](int n) {
+    auto load_scales = [this, ncolumns, columns_tail](int n) {
         if (!conf_->is_wei_scale_per_n || !conf_->apply_scales_in_buffer_b)
             return;
 
@@ -3516,6 +3526,12 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
         const auto scales_dt_sz = types::data_type_size(scales_dt);
         const auto offset = n * scales_dt_sz;
         const auto addr = maybe_EVEX_compress_addr(reg_wei_scales, offset);
+        if (is_tail && !isa_has_masks(conf_->isa)) {
+            load_bytes(
+                    vmm_wei_scales, addr, columns_tail * wei_scales_typesize);
+            load_scale_value(vmm_wei_scales, vmm_wei_scales, scales_dt,
+                    /*is_tail=*/false);
+        }
         load_scale_value(vmm_wei_scales, addr, scales_dt, is_tail);
     };
 
@@ -3547,20 +3563,32 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
                 conf_->orig_wei_dt, conf_->wei_dt);
     };
 
-    // Adjust strides for grouped over k weights
-    // k_blk_step is const 2. This case handles
-    // nrows = 1
-    // Move pointer to the beginning of the block 2x32
-    const auto kernel_early_stop = is_wei_grouped_over_k && nrows < k_blk_step;
-    if (kernel_early_stop) {
-        mov(reg_tr_src, ptr[rsp + reg_tr_src_offs]);
-        Label even_k;
+    /** Stores half of the block using mask for the case when vnni_granularity == 2 */
+    auto store_half_block = [&](const Vmm &src_vmm0, const Vmm &src_vmm1,
+                                    const Xbyak::Address &store_addr) {
+        const auto zmm1 = zmm(src_vmm1.getIdx());
+        const auto zmm0 = zmm(src_vmm0.getIdx());
+        uni_vxorps(zmm1, zmm1, zmm1);
+        //if k % 2 == 1 then save only odd indices
+        // otherwise: using only even indices
+        Label even_k, end_permute;
         mov(reg_tmp, ptr[rsp + reg_K_start_offs_]);
         test(reg_tmp, 1);
         jz(even_k, T_NEAR);
-        sub(reg_tr_src, conf_->LDB * tr_typesize);
+        vinsertf64x4(zmm0, zmm1, ymm(src_vmm0.getIdx()), 1);
+        vpermw(zmm0, vmm_permw, zmm0);
+        uni_vmovdqu16(store_addr | kAAAA, zmm0);
+        jmp(end_permute);
         L(even_k);
-    }
+        vinsertf64x4(zmm0, zmm1, ymm(src_vmm0.getIdx()), 0);
+        vpermw(zmm0, vmm_permw, zmm0);
+        uni_vmovdqu16(store_addr, zmm0);
+        L(end_permute);
+    };
+
+    // The case when it's required to store half block
+    // When grouped over K weights and K == 1
+    const auto kernel_early_stop = is_wei_grouped_over_k && nrows == 1;
 
     int iter = 0;
     int n_iters;
@@ -3603,42 +3631,22 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_2x32(
 
         load(blk_idx, k, n);
 
-        // Save only k, ignore (k + 1) and switch to the next n block
+        // Store only half block
         if (kernel_early_stop) {
-            const auto zmm1 = zmm(src_vmm1.getIdx());
-            uni_vxorps(zmm1, zmm1, zmm1);
-            //if k % 2 == 1 then save only odd indices
-            // otherwise: only even using masks
-            Label even_k, end_permute;
-            mov(reg_tmp, ptr[rsp + reg_K_start_offs_]);
-            test(reg_tmp, 1);
-            jz(even_k, T_NEAR);
-            vinsertf64x4(src_zmm0, zmm1, ymm(src_vmm0.getIdx()), 1);
-            vpermw(src_zmm0, vmm_permw, src_zmm0);
-            vmovdqu16(store_addr | kAAAA, src_zmm0);
-            jmp(end_permute);
-            L(even_k);
-            vinsertf64x4(src_zmm0, zmm1, ymm(src_vmm0.getIdx()), 0);
-            vpermw(src_zmm0, vmm_permw, src_zmm0);
-            vmovdqu16(store_addr | k5555 | T_z, src_zmm0);
-            L(end_permute);
-
+            store_half_block(src_vmm0, src_vmm1, store_addr);
             iter++;
             continue;
         }
 
-        if (nrows - k >= k_blk_step) {
+        // Load second K half blk and downconvert if required.
+        if (nrows - k >= k_blk_step)
             load(blk_idx, k + 1, n);
-            if (is_superset(conf_->isa, avx512_core)) {
-                const auto src_ymm1 = ymm(src_vmm1.getIdx());
-                vinsertf64x4(src_zmm0, src_zmm0, src_ymm1, 1);
-            }
-        }
-        if (!is_superset(conf_->isa, avx512_core)) {
+        else
             uni_vxorps(src_vmm1, src_vmm1, src_vmm1);
-        }
 
         if (is_superset(conf_->isa, avx512_core)) {
+            const auto src_ymm1 = ymm(src_vmm1.getIdx());
+            vinsertf64x4(src_zmm0, src_zmm0, src_ymm1, 1);
             vpermw(src_zmm0, vmm_permw, src_zmm0);
             uni_vmovups(store_addr, src_zmm0);
         } else {
@@ -3670,17 +3678,19 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::init_masks() {
         mov(reg_tmp, reinterpret_cast<size_t>(bf16_vnni_permute));
         vmovdqa64(vmm_permw, ptr[reg_tmp]);
 
-        if (is_src_int4) {
-            alignas(64) static constexpr const uint32_t int4_permute[16]
-                    = {0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15};
-            mov(reg_tmp, reinterpret_cast<size_t>(int4_permute));
-            vmovdqa32(vmm_permd, ptr[reg_tmp]);
-
+        if (isa_has_masks(conf_->isa)) {
             // 64-bit mask is also used when is_wei_[zp\scales]_per_k
             mov(reg_tmp, 0xAAAAAAAAAAAAAAAA);
             kmovq(kAAAA, reg_tmp);
             mov(reg_tmp, 0x5555555555555555);
             kmovq(k5555, reg_tmp);
+        }
+
+        if (is_src_int4) {
+            alignas(64) static constexpr const uint32_t int4_permute[16]
+                    = {0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15};
+            mov(reg_tmp, reinterpret_cast<size_t>(int4_permute));
+            vmovdqa32(vmm_permd, ptr[reg_tmp]);
         }
     }
 }
@@ -4395,55 +4405,24 @@ private:
         }
     }
 
-    /** Updates reg_tr_src offsets for the grouped over K case when K is odd. */
-    void maybe_update_strides(int ncolumns) {
-        if (is_wei_grouped_over_k_ && ncolumns == 1 && vnni_granularity_ == 2) {
-            Label even_k;
-            test(reg_K_start, 1);
-            jz(even_k, T_NEAR);
-            sub(reg_tr_src, conf_->LDB * tr_typesize_);
-            L(even_k);
-        }
-    }
-
     /** Stores half of the block using mask for the case when vnni_granularity == 2 */
     void store_half_block(const Zmm &r, const Xbyak::Address &store_addr) {
         Label even_k, end_permute;
         test(reg_K_start, 1);
         jz(even_k, T_NEAR);
+        // Shift left by 16 bytes to store odd indices
+        uni_vpslld(r, r, 16);
         vmovdqu16(store_addr | kAAAA, r);
         jmp(end_permute);
         L(even_k);
-        vmovdqu16(store_addr | k5555 | T_z, r);
+        // Store even indices, odd set to zero.
+        vmovdqu16(store_addr, r);
         L(end_permute);
-    }
-
-    /** Merges and downconverts to register of f32 -> f16/bf16
-    *  depending if K is even or odd.
-    */
-    void merge_and_downconvert(
-            const Zmm &src, const Zmm &src_next, int ncolumns) {
-        const auto &dt = conf_->wei_dt;
-        if (is_wei_grouped_over_k_ && ncolumns == 1 && vnni_granularity_ == 2) {
-            Label even_k, merge_done;
-            test(reg_K_start, 1);
-            jz(even_k, T_NEAR);
-            // when K is odd - swap src and src_next
-            downconvert_to_dst_dt(src_next, src, dt);
-            jmp(merge_done);
-            L(even_k);
-            downconvert_to_dst_dt(src, src_next, dt);
-            L(merge_done);
-        } else
-            downconvert_to_dst_dt(src, src_next, dt);
     }
 
     void generate() override;
 };
 
-// This method applies scales for weights decompression scenario. Given it's the
-// transposed kernel, B is in column-major format, but scales in the library are
-// in row-major format.
 template <typename Vmm>
 void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::init_tail_mask(
         const int columns_tail, const bool use_int4_mask) {
@@ -4544,7 +4523,6 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
 
     const int columns_tail = ncolumns % cur_k_blk_step;
 
-    maybe_update_strides(ncolumns);
     init_tail_mask(columns_tail, false);
 
     auto load2bf16 = [this, nrows, columns_tail, ncolumns](int i) {
@@ -4605,7 +4583,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             if (is_bf32_)
                 vmovups(src_next_masked, next_addr);
             else if (is_bf16_with_int_wei_ || conf_->is_f16_with_int_wei) {
-                const auto xmm_preload = Xmm(src_reg.getIdx());
+                const auto xmm_preload = Xmm(src_reg_next.getIdx());
                 MAYBE_UNUSED(xmm_preload);
                 const bool preloaded_int4 = preload_int4(
                         xmm_preload, i, columns_tail, is_tail, src_offset);
@@ -4623,7 +4601,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             } else
                 assert(!"Unsupported data type in loading");
         }
-        merge_and_downconvert(src_reg, src_reg_next, ncolumns);
+        downconvert_to_dst_dt(src_reg, src_reg_next, conf_->wei_dt);
         L(load_done);
     };
 
@@ -5351,7 +5329,7 @@ private:
     /** Adjust strides for grouped over k weights
     * k_blk_step is const 2. This case handles
     * nrows = 1
-    * Move pointer to the beginning of the block 2x32
+    * Move tr_src pointer to the beginning of the block 2x32
     * if the k_start % 2 = 1 is odd.
     **/
     void maybe_update_strides(int nrows) {
@@ -5359,8 +5337,8 @@ private:
             Label even_k;
             test(reg_k_start, 1);
             jz(even_k, T_NEAR);
-            sub(reg_tr_src, conf_->LDB * tr_typesize_);
-            if (!is_src_int4_) sub(reg_src, 1);
+            // Shift back to start of the vnni block
+            sub(reg_src, typesize_ / src_elems_per_byte_);
             L(even_k);
         }
     }
@@ -5373,9 +5351,14 @@ private:
         Label even_k, end_permute;
         test(reg_k_start, 1);
         jz(even_k, T_NEAR);
+        // Odd indices case
         vmovdqu16(store_addr | kAAAA, zmm0);
         jmp(end_permute);
         L(even_k);
+        // Clean the whole block before storing
+        uni_vpxor(vmm_tmp, vmm_tmp, vmm_tmp);
+        vmovdqu16(store_addr, vmm_tmp);
+        // Store only even indices
         vmovdqu16(store_addr | k5555 | T_z, zmm0);
         L(end_permute);
     }
@@ -5417,11 +5400,10 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::get_wei_scales(
     const auto base_offset
             = [&](int n_idx) { return n_idx * wei_scales_typesize_; };
 
-    auto wei_scales_addr0
+    auto wei_scales_addr
             = maybe_EVEX_compress_addr(reg_wei_scales, base_offset(n));
 
-    load_scale_value(
-            zmm_tmp, wei_scales_addr0, conf_->wei_scales_dt, is_n_tail);
+    load_scale_value(zmm_tmp, wei_scales_addr, conf_->wei_scales_dt, is_n_tail);
 
     uni_vmovups(vmm_wei_scales1, vmm_tmp);
 
@@ -5492,8 +5474,8 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
         const bool is_n_tail = ncolumns - n < n_blk_step;
         const bool is_k_tail = nrows - k < k_blk_step;
 
-        load_value(src_vmm0, load_addr0, vmm_permd, conf_->orig_wei_dt, false);
-        load_value(src_vmm1, load_addr1, vmm_permd, conf_->orig_wei_dt, false);
+        load_value(src_vmm0, load_addr0, vmm_permd, conf_->orig_wei_dt);
+        load_value(src_vmm1, load_addr1, vmm_permd, conf_->orig_wei_dt);
         get_wei_scales(n, is_n_tail, is_k_tail);
         get_zero_points(n, is_n_tail, is_k_tail);
         decompress_and_downcvt_2reg(src_vmm0, src_vmm1, vmm_zp_b_val0,

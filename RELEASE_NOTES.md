@@ -38,7 +38,7 @@ TBD
 * Introduced [accumulation mode attribute] support in `Matmul` op. This attribute allows relaxing `fp32` accumulation requirements to achieve performance benefits on some platforms. 
 
 [`host_scalar` property]: https://uxlfoundation.github.io/oneDNN/v3.10/enum_dnnl_graph_logical_tensor_property_type.html
-[accumulation mode]: https://uxlfoundation.github.io/oneDNN/v3.10/dev_guide_op_matmul.html
+[accumulation mode attribute]: https://uxlfoundation.github.io/oneDNN/v3.10/dev_guide_op_matmul.html
 
 ## Intel Graphics Products
 * Introduced support for `fp4` weights in matmul primitive.

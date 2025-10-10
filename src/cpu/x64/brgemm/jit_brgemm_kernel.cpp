@@ -1291,6 +1291,8 @@ void jit_brgemm_kernel_t<Wmm>::reduce_gemv_accumulators(
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         dim_t ld_block2, dim_t ldb_and_bdb_offset, bool is_ld_tail) {
+    is_ld_tail = is_ld_tail || brg.is_gemv;
+
     auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
 
     // if (brg.is_int8 && alpha_or_beta_applicable && !beta_uses_vadd) ->
@@ -2334,9 +2336,14 @@ void jit_brgemm_kernel_t<Wmm>::gemv_microkernel(
                 ? ptr[reg_aux_A + A_offset(row, col)]
                 : ptr[reg_aux_B + B_offset(row, col)];
 
-        if (is_rd_tail)
-            vmaskmovps(vec, vmm_tail_mask(), addr);
-        else
+        if (is_rd_tail) {
+            if (is_superset(brg.isa_impl, avx512_core)) {
+                auto vmm_comp_masked
+                        = vmm_mask(vec, is_rd_tail, false, rd_tail_mask);
+                uni_vmovups(vmm_comp_masked, addr);
+            } else
+                vmaskmovps(vec, vmm_tail_mask(), addr);
+        } else
             uni_vmovups(vec, addr);
     };
 
@@ -3052,13 +3059,21 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
 
     if (is_superset(brg.isa_impl, avx512_core)) {
         const auto full_mask = size_t {0xffffffffffffffff};
-        const auto tail_mask = size_t((1 << brg.ldb_tail) - 1);
+        const auto ld_tail = brg.is_gemv ? 1 : brg.ldb_tail;
+        const auto ld_tail_mask_val = size_t((1 << ld_tail) - 1);
         reg64_t reg_mask = rax;
 
         mov(reg_mask, full_mask);
         kmovq(ld_full_mask, reg_mask);
-        mov(reg_mask, tail_mask);
+        mov(reg_mask, ld_tail_mask_val);
         kmovq(ld_tail_mask, reg_mask);
+
+        if (brg.is_gemv) {
+            const auto rd_tail_mask_val
+                    = (static_cast<size_t>(1) << brg.rdb_tail) - 1;
+            mov(reg_mask, rd_tail_mask_val);
+            kmovq(rd_tail_mask, reg_mask);
+        }
     }
 
     if (brg.is_int8 && !brg.has_int8_vnni) {

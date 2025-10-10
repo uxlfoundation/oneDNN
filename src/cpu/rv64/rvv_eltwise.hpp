@@ -17,8 +17,6 @@
 #ifndef CPU_RV64_RVV_ELTWISE_HPP
 #define CPU_RV64_RVV_ELTWISE_HPP
 
-#include <assert.h>
-
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/type_helpers.hpp"
@@ -46,8 +44,7 @@ struct rvv_eltwise_fwd_t : public primitive_t {
 
             const data_type_t d_type = dst_md()->data_type;
             using namespace dnnl::impl::data_type;
-            bool type_ok = d_type == f32 || d_type == s32 || d_type == s8
-                    || d_type == u8;
+            bool type_ok = utils::one_of(d_type, f32, s32, s8, u8);
             VDISPATCH_ELTWISE(type_ok, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(
                     src_md()->data_type == d_type, VERBOSE_UNSUPPORTED_DT);
@@ -65,18 +62,12 @@ struct rvv_eltwise_fwd_t : public primitive_t {
             use_dense_ = src_d.is_dense(true) && dst_d.is_dense(true)
                     && IMPLICATION(!src_d.is_dense() || !dst_d.is_dense(),
                             is_zero_preserved());
-            use_nCspBc_padded_ = !use_dense_
-                    && src_d.blocking_desc().inner_nblks == 1
-                    && utils::one_of(src_d.blocking_desc().inner_blks[0], 8, 16)
-                    && src_d.blocking_desc().inner_idxs[0] == 1
-                    && src_d.only_padded_dim(1) && src_d.is_dense(true);
-            VDISPATCH_ELTWISE(
-                    use_dense_ || use_nCspBc_padded_, VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_ELTWISE(use_dense_, VERBOSE_UNSUPPORTED_TAG);
 
             return status::success;
         }
 
-        bool use_dense_, use_nCspBc_padded_;
+        bool use_dense_;
 
         bool check_alg_kind() const {
             return utils::one_of(desc()->alg_kind, alg_kind::eltwise_relu,
@@ -109,8 +100,7 @@ struct rvv_eltwise_bwd_t : public primitive_t {
 
             const data_type_t d_type = src_md()->data_type;
             using namespace dnnl::impl::data_type;
-            bool type_ok = d_type == f32 || d_type == s32 || d_type == s8
-                    || d_type == u8;
+            bool type_ok = utils::one_of(d_type, f32, s32, s8, u8);
             VDISPATCH_ELTWISE(type_ok, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(
                     utils::everyone_is(d_type, diff_src_md()->data_type,
@@ -128,18 +118,12 @@ struct rvv_eltwise_bwd_t : public primitive_t {
 
             use_dense_ = diff_dst_d.is_dense()
                     || (diff_dst_d.is_dense(true) && is_zero_preserved());
-            use_nCspBc_padded_ = !use_dense_
-                    && src_d.blocking_desc().inner_nblks == 1
-                    && utils::one_of(src_d.blocking_desc().inner_blks[0], 8, 16)
-                    && src_d.blocking_desc().inner_idxs[0] == 1
-                    && src_d.only_padded_dim(1) && src_d.is_dense(true);
-            VDISPATCH_ELTWISE(
-                    use_dense_ || use_nCspBc_padded_, VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_ELTWISE(use_dense_, VERBOSE_UNSUPPORTED_TAG);
 
             return status::success;
         }
 
-        bool use_dense_, use_nCspBc_padded_;
+        bool use_dense_;
 
         bool check_alg_kind() const {
             return utils::one_of(desc()->alg_kind, alg_kind::eltwise_relu,

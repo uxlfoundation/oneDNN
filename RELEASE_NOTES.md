@@ -8,7 +8,7 @@
 * Improved performance of subgraphs containing sequence of multiple binary ops with Graph API.
 
 ## Intel Graphics Products
-*Improve GEMM performance for small batch size on Intel Core Ultra processors (Series 2) (formerly Lunar Lake).
+* Improve GEMM performance for small batch size on Intel Core Ultra processors (Series 2) (formerly Lunar Lake).
 * Improved matmul performance for Qwen2-7B shapes on Intel Arc graphics (formerly DG2) and Intel Arc Graphics for Intel Core Ultra processors (formerly Arrow Lake-H).
 * Improved `int8` matmul performance with `int4` weights and per-tensor zero-points.
 * Improved `bf16` matmul performance with `fp8` weights.

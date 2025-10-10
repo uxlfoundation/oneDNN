@@ -1723,8 +1723,14 @@ void maybe_zero_point(const attr_t &attr, float &d, const int32_t *zero_points,
 }
 
 float compute_eltwise_fwd(pk_t kind, float src, float alpha, float beta) {
-    // don't compute on nan, propagate it
-    if (std::isnan(src)) return NAN;
+    if (std::isnan(src)) {
+        // Don't compute if source is NAN, propagate it, unless a special case.
+
+        // pow(NAN, 0) = 1 according to IEEE Std 754-2008.
+        const bool is_pow0 = kind == pk_t::POW && beta == 0;
+        const bool propagate_nan = !is_pow0;
+        if (propagate_nan) { return NAN; }
+    }
 
     using namespace dnnl::impl::math;
 

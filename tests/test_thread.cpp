@@ -101,7 +101,10 @@ inline int read_num_threads_from_env() {
 #include "Eigen/Core"
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
-#if EIGEN_WORLD_VERSION + 10 * EIGEN_MAJOR_VERSION < 33
+#define EIGEN_VERSION \
+    EIGEN_WORLD_VERSION * 10000 + EIGEN_MAJOR_VERSION * 100 \
+            + EIGEN_MINOR_VERSION
+#if EIGEN_VERSION < 30300
 #define STR_(x) #x
 #define STR(x) STR_(x)
 #pragma message("EIGEN_WORLD_VERSION " STR(EIGEN_WORLD_VERSION))
@@ -109,7 +112,7 @@ inline int read_num_threads_from_env() {
 #error Unsupported Eigen version (need 3.3.x or higher)
 #endif
 
-#if EIGEN_MINOR_VERSION >= 90
+#if EIGEN_VERSION >= 30308
 using EigenThreadPool = Eigen::ThreadPool;
 #else
 using EigenThreadPool = Eigen::NonBlockingThreadPool;

@@ -97,7 +97,7 @@ achieved using one of [eltwise](@ref dev_guide_attributes_post_ops_eltwise),
 [binary](@ref dev_guide_attributes_post_ops_binary), or the scale parameter of
 the appropriate post-operation.
 
-## Quantization APIs: Scaling, Zero-Points, and Precomputed Reductions
+## Quantization APIs and Supported Patterns
 
 The library API to support for int8 was designed for the model described above.
 However, it does not require users to follow exactly this model. As long as
@@ -148,51 +148,29 @@ void dnnl::primitive_attr::set_host_scale(int arg,
                                           dnnl::memory::data_type data_type = dnnl::memory::data_type::f32);
 ~~~
 
-##### Concepts
+Key parameters of the scaling API methods are summarized below:
 
-Argument identifiers (`arg`) specify which tensor (primitive input/output) to scale:
-- `DNNL_ARG_SRC`: Source tensor
-- `DNNL_ARG_WEIGHTS`: Weight tensor
-- `DNNL_ARG_DST`: Destination tensor
-- `DNNL_ARG_BIAS`: Bias tensor (limited support)
-
-Mask (`mask`) controls which dimensions get individual scaling factors:
-- `0`: Single scaling factor for entire tensor (global scaling)
-- `1 << dim`: Scaling factors vary along dimension `dim`
-- `(1 << dim1) + (1 << dim2)`: Scaling factors vary along multiple dimensions
-
-Groups (`groups`) divide dimensions into blocks for block-wise quantization:
-- `{}`: No grouping (default)
-- `{G}`: Single group
-- `{G1, G2, ...}`: Multi-dimensional grouping
-
-The scaling parameters support multiple data types to accommodate
-different quantization workflows and precision requirements:
-- `f32`
-- `bf16`, `f16`
-- `f8_e5m2`, `f8_e4m3`
-- `e8m0`
-
-Additionally, scaling factors can be specified as residing on host or device memory
-(refer to [the section below](@ref host-side-scalars-and-zero-points) for
-more details):
-- `is_on_host = false`: Scaling factor values are in device memory
-- `is_on_host = true`: Scaling factor values are in host memory
-
+| Parameter | Options | Description |
+|:----------|:--------|:------------|
+| `arg` | `DNNL_ARG_SRC`, `DNNL_ARG_WEIGHTS`, `DNNL_ARG_DST`, `DNNL_ARG_BIAS` | Tensor to scale |
+| `mask` | `0`, `1<<dim`, `(1<<d1)+(1<<d2)` | Scaling granularity: global, per-dimension, multi-dimensional |
+| `groups` | `{}`, `{G}`, `{G1,G2,...}` | Block quantization: none, single-size, multi-dimensional blocks |
+| `data_type` | `f32`, `bf16`, `f16`, `f8_e5m2`, `f8_e4m3`, `e8m0` | Scaling factor data type |
+| `is_on_host` | `true`/`false` | Host vs device memory location of scaling factor |
 
 #### Supported Scaling Patterns
 
-oneDNN supports several scaling patterns to support different quantization
-schemes.
+oneDNN supports next scaling patterns to support different quantization
+schemes:
 
-* **Global scaling** (`mask=0`) uses a single scaling factor for the entire
+- [Global scaling](#global-scaling) (`mask=0`) uses a single scaling factor for the entire
   tensor, making it the simplest approach.
-* **Per-channel scaling** (`mask=1<<dim`) applies different scaling factors
+- [Per-channel scaling](#per-channel-scaling) (`mask=1<<dim`) applies different scaling factors
   along a specific dimension, commonly used for CNN weights.
-* **Multi-dimensional scaling** (`mask=(1<<dim1)+(1<<dim2)`) provides
+- [Multi-dimensional scaling](#multi-dimensional-scaling) (`mask=(1<<dim1)+(1<<dim2)`) provides
   independent scaling factors along multiple tensor dimensions, useful for complex
   activations where both batch and channel dimensions need separate scaling.
-* **Group-based quantization** subdivides tensor dimensions into smaller
+- [Group-based quantization](#group-based-quantization) subdivides tensor dimensions into smaller
   blocks with individual scaling factors, important for large transformer
   models and advanced quantization techniques.
 
@@ -230,8 +208,8 @@ attr.set_scales_mask(DNNL_ARG_SRC, 0);
 host, use @ref host-side-scalars-and-zero-points "host-side scalar scaling"
 (`set_host_scale`) to avoid device memory transfer overhead.
 
-Global scaling is demonstrated in
-[Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization) below.
+See examples:
+- [Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization)
 
 ##### Per-Channel Scaling
 
@@ -249,10 +227,10 @@ attr.set_scales(DNNL_ARG_WEIGHTS, 1 << 0, {}, dnnl::memory::data_type::f32,
 // Usage: Each output channel gets its own scaling factor
 ~~~
 
-Per-channel scaling is demonstrated in the
-[Weights Preparation with Per-output-channel Scaling](#weights-preparation-with-per-output-channel-scaling) and
-[Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization).
-It's also used in @ref inference_int8_matmul_cpp for weights quantization.
+See examples:
+- [Weights Preparation with Per-output-channel Scaling](#weights-preparation-with-per-output-channel-scaling)
+- [Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization)
+- @ref inference_int8_matmul_cpp
 
 ##### Group-Based Quantization
 
@@ -272,11 +250,10 @@ attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) + (1 << 1), groups,
 // Usage: Each group gets its own scaling factor
 ~~~
 
-Group-based quantization is demonstrated in
-[Example 1](#example-1-matmul-with-advanced-quantization)
-and [Example 2](#example-2-matmul-with-precomputed-reductions-and-advanced-quantization)
-below.
-See also @ref weights_decompression_matmul_cpp for a complete implementation.
+See examples:
+- [Matmul with Advanced Quantization](#matmul-with-advanced-quantization)
+- [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
+- @ref weights_decompression_matmul_cpp
 
 ##### Multi-Dimensional Scaling
 
@@ -298,11 +275,10 @@ attr.set_scales(DNNL_ARG_SRC, (1 << 0) + (1 << 1), {},
 // Usage: Each (batch, channel) combination gets its own scaling factor
 ~~~
 
-Multi-dimensional scaling is demonstrated in
-[Example 1](#example-1-matmul-with-advanced-quantization)
-and [Example 2](#example-2-matmul-with-precomputed-reductions-and-advanced-quantization)
-below.
-See also @ref weights_decompression_matmul_cpp for a complete implementation.
+See examples:
+- [Matmul with Advanced Quantization](#matmul-with-advanced-quantization)
+- [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
+- @ref weights_decompression_matmul_cpp
 
 ### Argument Zero-Points
 
@@ -333,26 +309,16 @@ void dnnl::primitive_attr::set_host_zero_point(int arg,
                                               dnnl::memory::data_type data_type = dnnl::memory::data_type::s32);
 ~~~
 
-##### Zero-Point Concepts
 
-Argument identifiers (`arg`) specify which tensor (primitive input/output) to apply zero-points:
-- `DNNL_ARG_SRC`: Source tensor zero-points
-- `DNNL_ARG_WEIGHTS`: Weight tensor zero-points
-- `DNNL_ARG_DST`: Destination tensor zero-points
+Key parameters of the zero-point API methods are summarized below:
 
-Mask (`mask`) and Groups (`groups`) follow the same semantics as scaling
-factors.
-
-Data Types (`data_type`) supported for zero-points:
-- `s32`
-- `s8`, `u8`
-- `s4`, `u4`
-
-Additionally, zero-point can be specified as residing on host or device memory
-(refer to [the section below](@ref host-side-scalars-and-zero-points) for
-more details):
-- `is_on_host = false`: Zero-point value is in device memory
-- `is_on_host = true`: Zero-point value is in host memory
+| Parameter | Options | Description |
+|:----------|:--------|:------------|
+| `arg` | `DNNL_ARG_SRC`, `DNNL_ARG_WEIGHTS`, `DNNL_ARG_DST` | Tensor to apply zero-point |
+| `mask` | `0`, `1<<dim`, `(1<<d1)+(1<<d2)` | Zero-point granularity: global, per-dimension, multi-dimensional |
+| `groups` | `{}`, `{G}`, `{G1,G2,...}` | Block quantization: none, single-size, multi-dimensional blocks |
+| `data_type` | `s32`, `s8`, `u8`, `s4`, `u4` | Zero-point data type |
+| `is_on_host` | `true`/`false` | Host vs device memory location of zero-point |
 
 #### Supported Zero-Point Patterns
 
@@ -380,12 +346,11 @@ attr.set_zero_points(DNNL_ARG_WEIGHTS, (1 << 0) + (1 << 1), groups,
                      dnnl::memory::data_type::s32, false);
 ~~~
 
-Zero-point usage is demonstrated in the
-[Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization) and
-[Example 2](#example-2-matmul-with-precomputed-reductions-and-advanced-quantization)
-below.
-See also @ref inference_int8_matmul_cpp and @ref weights_decompression_matmul_cpp
-for complete implementations.
+See examples:
+- [Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization)
+- [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
+- @ref inference_int8_matmul_cpp
+- @ref weights_decompression_matmul_cpp
 
 @anchor host-side-scalars-and-zero-points
 ### Special Case: Host-side Scalar Scale and Zero-point
@@ -406,7 +371,8 @@ attr.set_host_zero_point(DNNL_ARG_DST,
            dnnl::memory::data_type::s32);
 ~~~
 
-See also @ref matmul_with_host_scalar_scale_cpp for a complete example.
+See examples:
+- @ref matmul_with_host_scalar_scale_cpp
 
 ### Precomputed Reductions
 
@@ -432,26 +398,22 @@ void dnnl::primitive_attr::set_precomputed_reductions(int arg, int mask,
         memory::data_type data_type = memory::data_type::s32);
 ~~~
 
-##### Precomputed Reductions Concepts
+Key parameters of the precomputed reductions API method are summarized below:
 
-Argument identifier (`arg`):
-- `DNNL_ARG_SRC`: Source tensor reductions
+| Parameter | Options | Description |
+|:----------|:--------|:------------|
+| `arg` | `DNNL_ARG_SRC` | Tensor to apply precomputed reductions |
+| `mask` | `0`, `1<<dim`, `(1<<d1)+(1<<d2)` | Reduction granularity: global, per-dimension, multi-dimensional |
+| `groups` | `{}`, `{G}`, `{G1,G2,...}` | Block quantization: none, single-size, multi-dimensional blocks |
+| `data_type` | `s32` | Reduction data type |
 
-Mask (`mask`) and Groups (`groups`) follow the same semantics as scaling
-factors and zero-points.
-
-Data Types (`data_type`) supported for precomputed reductions:
-- `s32`
-
-#### Limitations
-
+@note
 The following limitations apply when using precomputed reductions:
+- Requires weight zero-points: Cannot be used without weights zero-points specified.
+- Full matrix mask required: Must have full A matrix mask, meaning broadcast is not supported.
 
-- **Requires weight zero-points**: Cannot be used without weights zero-points specified
-- **Full matrix mask required**: Must have full A matrix mask (e.g., for standard
-  M×K times K×N MatMul, the mask should be 3), meaning broadcast is not supported
-
-See [Example 2](#example-2-matmul-with-precomputed-reductions-and-advanced-quantization) for complete code.
+See examples:
+- [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
 
 ## int8 Convolution Quantization Breakdown
 
@@ -645,7 +607,7 @@ weight scaling with global source and destination scaling.
 
 ## Additional Examples
 
-### Example 1: matmul with advanced quantization
+### Matrix Multiplication with Advanced Quantization
 
 This example describes a process of weights decompression, or
 weights-only-quantization (WoQ), in matmul primitive which may be found when
@@ -693,7 +655,7 @@ per-N quantization.
 // ...
 ~~~
 
-### Example 2: matmul with precomputed reductions and advanced quantization
+### Matrix Multiplication with Precomputed Reductions and Advanced Quantization
 
 This example is a complementary addition to the one above. It describes a
 process of dynamic quantization with weights's tensor asymmetric quantization
@@ -778,3 +740,4 @@ impossible to apply them on-the-fly without potential accuracy loss.
            attr);   // the attributes describe the quantization flow
 // ...
 ~~~
+

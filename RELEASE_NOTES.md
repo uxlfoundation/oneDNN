@@ -54,8 +54,6 @@ TBD
 
 # Validation
 
-
-
 # Deprecated Functionality
 * [BLAS-like API] including `dnnl::sgemm`, `dnnl::gemm_u8s8s32`, and `dnnl::gemm_s8s8s32` functions is deprecated and will be removed in future releases. If you are using this API consider switching to [matmul primitive].
 
@@ -63,7 +61,6 @@ TBD
 [matmul primitive]: https://uxlfoundation.github.io/oneDNN/v3.10/dev_guide_matmul.html
 
 # Breaking Changes
-
 
 # Thanks to our Contributors
 This release contains contributions from the [project core team] as well as Andrei Hutu @Anndrey24, 

@@ -736,7 +736,8 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
  *     acc[bd] += dot(a0_reg, x_reg)            // Accumulate partial results
  */
 status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
-    assert(utils::one_of(brg->isa_impl, avx2, avx2_vnni, avx2_vnni_2));
+    assert(is_superset(brg->isa_impl, avx2)
+            && !is_superset(brg->isa_impl, avx512_core_amx));
     assert(brg->load_dim == 1);
 
     brg->ld_block = 1;
@@ -753,7 +754,7 @@ status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
     brg->bdb = brg->bcast_dim / brg->bd_block;
     brg->bdb_tail = brg->bcast_dim % brg->bd_block;
 
-    const int simd_w = 8;
+    const int simd_w = is_superset(brg->isa_impl, avx512_core) ? 16 : 8;
 
     brg->rd_block = simd_w;
     brg->rdb = brg->reduce_dim / brg->rd_block;

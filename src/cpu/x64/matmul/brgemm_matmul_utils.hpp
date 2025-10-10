@@ -189,6 +189,8 @@ struct brgemm_matmul_conf_t {
     dim_t s8s8_comp_b_str;
     dim_t s8s8_comp_n_str;
     bool has_zero_point_a, has_zero_point_b, has_zero_point_c;
+    bool has_zero_point_c_per_oc;
+    bool has_zero_point_b_per_oc;
     bool post_ops_applicable;
     bool transposed_A;
     bool transposed_B;

@@ -689,9 +689,14 @@ void jit_uni_eltwise_injector_t<isa>::linear_compute_vector_fwd(
 
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::clip_compute_vector_fwd(
-        const TRegS &vmm_src) {
-    h->fmaxnm(vmm_src, p_all, z_tmp);
-    h->fminnm(vmm_src, p_all, vmm_aux0);
+        const TReg &vmm_src) {
+    if (d_type_ == data_type::f16) {
+        h->fmaxnm(vmm_src.h, p_all, TRegH(IDX(z_tmp)));
+        h->fminnm(vmm_src.h, p_all, TRegH(IDX(vmm_aux0)));
+    } else {
+        h->fmaxnm(vmm_src.s, p_all, z_tmp);
+        h->fminnm(vmm_src.s, p_all, vmm_aux0);
+    }
 }
 
 template <cpu_isa_t isa>
@@ -1678,9 +1683,7 @@ void jit_uni_eltwise_injector_t<isa>::compute_body(
                 case eltwise_log: log_compute_vector_fwd(TRegS(idx)); break;
                 case eltwise_clip:
                 case eltwise_clip_v2_use_dst_for_bwd:
-                case eltwise_clip_v2:
-                    clip_compute_vector_fwd(TRegS(idx));
-                    break;
+                case eltwise_clip_v2: clip_compute_vector_fwd(TReg(idx)); break;
                 case eltwise_gelu_erf:
                     gelu_erf_compute_vector_fwd(TRegS(idx));
                     break;
@@ -1772,6 +1775,15 @@ void jit_uni_eltwise_injector_t<isa>::compute_vector_range(
     compute_body(start_idx_it, start_idx_tail);
     injector_postamble();
 }
+
+namespace {
+// Downcast f32 -> f16, then pack that 16-bit pattern twice into a uint32: [f16 | f16]
+inline uint32_t pack_f16_twice_from_f32(float s) {
+    float16_t h = s;
+    uint16_t h_bits = h.raw;
+    return (uint32_t(h_bits) << 16) | uint32_t(h_bits);
+}
+} // anonymous namespace
 
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::prepare_table(bool gen_table) {
@@ -2416,8 +2428,17 @@ void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
     };
 
     push_arg_entry_of(scale, float2int(scale_), true);
-    push_arg_entry_of(alpha, float2int(alpha_), true);
-    push_arg_entry_of(beta, float2int(beta_), true);
+    // For f16 data: convert alpha/beta from f32 to f16, then pack each value twice
+    // into a single 32-bit word ([f16 | f16]) to match the 4-byte memory write granularity.
+    // This ensures proper alignment and broadcasting when using vector registers.
+    push_arg_entry_of(alpha,
+            d_type_ == data_type::f16 ? pack_f16_twice_from_f32(alpha_)
+                                      : float2int(alpha_),
+            true);
+    push_arg_entry_of(beta,
+            d_type_ == data_type::f16 ? pack_f16_twice_from_f32(beta_)
+                                      : float2int(beta_),
+            true);
     push_entries_of(common_values);
     if (need.exp()) push_entries_of(exp_consts);
     if (need.exp()) push_entries_of(exp_polynomial);
@@ -2503,9 +2524,14 @@ void jit_uni_eltwise_injector_t<asimd>::linear_compute_vector_fwd(
 
 template <>
 void jit_uni_eltwise_injector_t<asimd>::clip_compute_vector_fwd(
-        const TRegS &vmm_src) {
-    h->fmaxnm(vmm_src, vmm_src, z_tmp);
-    h->fminnm(vmm_src, vmm_src, vmm_aux0);
+        const TReg &vmm_src) {
+    if (d_type_ == data_type::f16) {
+        h->fmaxnm(vmm_src.h, vmm_src.h, TRegH(IDX(z_tmp)));
+        h->fminnm(vmm_src.h, vmm_src.h, TRegH(IDX(vmm_aux0)));
+    } else {
+        h->fmaxnm(vmm_src.s, vmm_src.s, z_tmp);
+        h->fminnm(vmm_src.s, vmm_src.s, vmm_aux0);
+    }
 }
 
 template <>

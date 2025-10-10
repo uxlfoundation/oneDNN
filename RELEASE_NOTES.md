@@ -13,14 +13,14 @@
 * Improved `int8` matmul performance with `int4` weights and per-tensor zero-points.
 * Improved `bf16` matmul performance with `fp8` weights.
 * Graph API optimizations:
-  * Improved Scaled Dot Product Attention (SDPA) subgraph performance when relaxed accumulation mode is enabled on Intel Core Ultra processors (formerly Meteor Lake).
+  * Improved [Scaled Dot Product Attention (SDPA)] subgraph performance when relaxed accumulation mode is enabled on Intel Core Ultra processors (formerly Meteor Lake).
   * Improved performance of [Grouped Query Attention (GQA)] subgraphs for training forward and backward propagation.
   * Improved SDPA and GQA subgraphs performance when using host-side scalars.
   * Improved performance of GQA subgraph for 2nd token scenarios.
   * Improved performance of subgraphs containing sequence of multiple binary ops.
 
 [Grouped Query Attention (GQA)]: https://uxlfoundation.github.io/oneDNN/v3.10/dev_guide_graph_gqa.html#gqa-for-training-forward-propagation
-
+[Scaled Dot Product Attention (SDPA)]: https://uxlfoundation.github.io/oneDNN/v3.10/dev_guide_graph_sdpa.html
 ## AArch64-based Processors
 TBD
 

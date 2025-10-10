@@ -51,6 +51,7 @@ def main():
     )
     args_parser.add_argument("good", nargs="?", help="good hash")
     args_parser.add_argument("file", nargs="?", help="input file")
+    args_parser.add_argument("build", nargs="?", help="build directory")
     args_parser.add_argument(
         "--unique",
         action="store_true",
@@ -62,7 +63,7 @@ def main():
     results_dict = {}
     for case in cases:
         bisect_cmd = str(F_PATH / f"git_bisect.sh")
-        build_dir = str(F_PATH.parent.parent.parent / "build")
+        build_dir = str(args.build)
         result = subprocess.run(
             args=[
                 f'bash {bisect_cmd} {args.good} HEAD {build_dir} "{case}"'

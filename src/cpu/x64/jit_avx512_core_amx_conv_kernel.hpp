@@ -532,7 +532,8 @@ private:
     const Xbyak::Reg64 reg_wsp_ptr = r12;
 
     const Xbyak::Reg64 reg_bias = r11;
-    const Xbyak::Reg64 reg_ptr_scales = r10;
+    const Xbyak::Reg64 reg_ptr_src_scales = r10;
+    const Xbyak::Reg64 reg_ptr_wei_scales = r10;
     const Xbyak::Reg64 reg_ptr_dst_scales = r10;
     const Xbyak::Reg64 reg_ptr_sum_scale = r9;
     const Xbyak::Reg64 reg_ptr_sum_zp = abi_not_param1;
@@ -557,8 +558,6 @@ private:
     const Xbyak::Zmm zmm_zero = zmm30;
     const Xbyak::Zmm zmm_prev_dst = zmm29;
     const Xbyak::Zmm zmm_sum_zp = zmm28;
-    /* dst scale */
-    const Xbyak::Zmm &zmm_dst_scale = zmm27;
 
     // AUX: Steps, shifts and offsets
     size_t get_inp_ocb_step() const;

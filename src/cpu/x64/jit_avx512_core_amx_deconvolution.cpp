@@ -75,14 +75,12 @@ status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
 
     prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
-    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
-    const float *oscales = precompute_scales(ctx.get_scratchpad_grantor(),
-            src_scales, wei_scales, src_d.dims()[1], dst_d.dims()[1], false,
-            wei_scale_mask > 0, pd()->attr());
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const auto &jcp = pd()->jcp_;
     assert(jcp.nb_ic % jcp.nb_ic_blocking == 0);
@@ -122,6 +120,17 @@ status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
         amx_tile_configure(tcfg);
 
         amx_utils::spatial_features_3d_t sfd(jcp);
+
+        float *dst_scales_inv_ptr = nullptr;
+        if (jcp.with_dst_scales) {
+            const float *dst_scales_ptr
+                    = static_cast<const float *>(dst_scales);
+            dst_scales_inv_ptr
+                    = ctx.get_scratchpad_grantor().template get<float>(
+                              key_conv_dst_scales)
+                    + ithr;
+            dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+        }
 
         int mb {0}, g {0}, id_s {0}, ihc {0}, iwb {0}, icc {0};
         nd_iterator_init(start, mb, jcp.mb, g, jcp.ngroups, id_s, jcp.id, ihc,
@@ -226,8 +235,12 @@ status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
                                 * (g * wei_g_shift + icc * wei_ic_shift
                                         + d_lo * wht_d_stride);
                 p.bias = bias_w;
-                p.scales = &oscales[jcp.is_ic_scale * ic];
-                p.dst_scale = &dst_scales[0];
+                p.src_scales = src_scales;
+                p.wei_scales = jcp.with_wei_scales
+                        ? static_cast<const float *>(wei_scales)
+                                + jcp.is_ic_scale * ic
+                        : nullptr;
+                p.dst_scales = dst_scales_inv_ptr;
                 p.acc_s32 = wsp + ithr * jcp.wsp_buffer_size;
                 p.last_h = (ih + ih_step <= ih_e);
                 p.iwb = iwb;

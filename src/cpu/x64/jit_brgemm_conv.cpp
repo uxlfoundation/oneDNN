@@ -1151,10 +1151,10 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 
     if (jcp.req_cal_comp_pad && jcp.exec_type != exec_vpad) {
         comp_owb.resize(jcp.nb_ow, -1);
-        vector<int> ow_kw_b(jcp.ow, -1);
-        vector<int> ow_kw_e(jcp.ow, -1);
-        vector<int> comp_ow_kw_s(jcp.comp_ow_size, -1);
-        vector<int> comp_ow_kw_f(jcp.comp_ow_size, -1);
+        vector<dim_t> ow_kw_b(jcp.ow, -1);
+        vector<dim_t> ow_kw_e(jcp.ow, -1);
+        vector<dim_t> comp_ow_kw_s(jcp.comp_ow_size, -1);
+        vector<dim_t> comp_ow_kw_f(jcp.comp_ow_size, -1);
         dim_t comp_ow_l = 0;
 
         for (int ow = 0; ow < OW;) {
@@ -1199,11 +1199,11 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
             for (int ow = ow_b; ow <= ow_e; ow++) {
                 if (ow == ow_e) {
                     comp_owb[owb] = i;
-                    break;
+                    //                    break;
                 }
                 if (ow_kw_b[ow] != comp_ow_kw_s[i + ow - ow_b]
                         || ow_kw_e[ow] != comp_ow_kw_f[i + ow - ow_b]
-                        || comp_owb[owb] != -1)
+                        || comp_owb[owb] >= 0)
                     break;
             }
             assert(comp_owb[owb] >= 0);

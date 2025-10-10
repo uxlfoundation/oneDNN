@@ -881,7 +881,7 @@ status_t jit_avx512_core_amx_convolution_bwd_data_t::execute_backward(
     const bool is_1d = jcp.ndims == 3;
     const bool is_3d = jcp.ndims == 5;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 

@@ -132,7 +132,9 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     bmm1.add_outputs({score});
 
     // scale_mul_out_lt = score * scale
-    auto scale = logical_tensor(id++, dt, scale_sz, layout_type::strided);
+    const logical_tensor::data_type dt_scale = logical_tensor::data_type::f32;
+    auto scale = logical_tensor(id++, dt_scale, 0, layout_type::strided,
+            property_type::host_scalar);
     auto scaled_score
             = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
     auto scale_mul = op(id++, op::kind::Multiply, "scale_mul");
@@ -175,8 +177,8 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     mask_ge.add_inputs({mask_sub_out, index_col});
     mask_ge.add_outputs({mask_ge_out});
 
-    auto neg_inf
-            = logical_tensor(id++, dt_inter, scale_sz, layout_type::strided);
+    auto neg_inf = logical_tensor(id++, dt_scale, 0, layout_type::strided,
+            property_type::host_scalar);
     auto masked_score
             = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
     auto mask_select = op(id++, op::kind::Select, "mask_select");
@@ -225,24 +227,9 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
             {query, key, scale, seq_len_kv, seq_len_q, neg_inf, value},
             {output}, eng);
 
-    int32_t q_len = p.query_num;
-    int32_t kv_len = p.seq_len;
-    auto ts_mask_add = tensor::make_scalar_tensor(seq_len_kv, &kv_len);
-    auto ts_mask_sub = tensor::make_scalar_tensor(seq_len_q, &q_len);
-    // Create tensor objects
-    auto ts_query = tensor(query, eng);
-    auto ts_key = tensor(key, eng);
-    auto ts_scale = tensor(scale, eng);
-    auto ts_neg_inf = tensor(neg_inf, eng);
-    auto ts_value = tensor(value, eng);
-    auto ts_output = tensor(output, eng);
-
     // Allocate user data.
     std::vector<float> query_data(product(qv_sz));
     std::vector<float> key_data(product(k_sz));
-    std::vector<float> scale_data(product(scale_sz), std::sqrt(p.head_size));
-    std::vector<float> neg_inf_data(
-            product(scale_sz), -1 * std::numeric_limits<float>::infinity());
     std::vector<float> value_data(product(k_sz));
     std::vector<float> output_data(product(qv_sz));
 
@@ -250,11 +237,25 @@ void bench_sdpa(engine::kind ekind, logical_tensor::data_type dt,
     fill_random(key_data);
     fill_random(value_data);
 
+    // Create tensor objects
+    auto ts_query = tensor(query, eng);
+    auto ts_key = tensor(key, eng);
+    auto ts_value = tensor(value, eng);
+    auto ts_output = tensor(output, eng);
+
+    // Create host scalar tensors
+    int32_t q_len = p.query_num;
+    int32_t kv_len = p.seq_len;
+    float scale_val = std::sqrt(p.head_size);
+    float neg_inf_val = -1 * std::numeric_limits<float>::infinity();
+    auto ts_mask_add = tensor::make_scalar_tensor(seq_len_kv, &kv_len);
+    auto ts_mask_sub = tensor::make_scalar_tensor(seq_len_q, &q_len);
+    auto ts_scale = tensor::make_scalar_tensor(scale, &scale_val);
+    auto ts_neg_inf = tensor::make_scalar_tensor(neg_inf, &neg_inf_val);
+
     // Write data to tensor object's handle.
     write_to_dnnl_tensor(query_data.data(), ts_query);
     write_to_dnnl_tensor(key_data.data(), ts_key);
-    write_to_dnnl_tensor(scale_data.data(), ts_scale);
-    write_to_dnnl_tensor(neg_inf_data.data(), ts_neg_inf);
     write_to_dnnl_tensor(value_data.data(), ts_value);
 
     // Warmup run.

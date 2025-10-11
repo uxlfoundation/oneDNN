@@ -37,7 +37,7 @@ namespace aarch64 {
 
 struct jit_uni_eltwise_kernel_t;
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
+template <cpu_isa_t isa>
 struct jit_uni_eltwise_fwd_t : public primitive_t {
     struct pd_t : public cpu_eltwise_fwd_pd_t {
         using cpu_eltwise_fwd_pd_t::cpu_eltwise_fwd_pd_t;
@@ -51,8 +51,6 @@ struct jit_uni_eltwise_fwd_t : public primitive_t {
     jit_uni_eltwise_fwd_t(const pd_t *apd);
     ~jit_uni_eltwise_fwd_t() override;
 
-    using data_t = typename prec_traits_t<d_type>::type;
-
     status_t init(engine_t *engine) override;
 
     status_t execute(const exec_ctx_t &ctx) const override;
@@ -62,7 +60,7 @@ private:
     std::unique_ptr<jit_uni_eltwise_kernel_t> kernel_;
 };
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
+template <cpu_isa_t isa>
 struct jit_uni_eltwise_bwd_t : public primitive_t {
     struct pd_t : public cpu_eltwise_bwd_pd_t {
         using cpu_eltwise_bwd_pd_t::cpu_eltwise_bwd_pd_t;
@@ -75,8 +73,6 @@ struct jit_uni_eltwise_bwd_t : public primitive_t {
 
     jit_uni_eltwise_bwd_t(const pd_t *apd);
     ~jit_uni_eltwise_bwd_t() override;
-
-    using data_t = typename prec_traits_t<d_type>::type;
 
     status_t init(engine_t *engine) override;
 

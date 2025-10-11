@@ -2565,12 +2565,18 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                             = B_offset(prefetch_count_B++, rd)
                             + static_cast<dim_t>(brg.LDB) * brg.rd_block
                                     * brg.typesize_B;
-                    if (is_superset(brg.isa_impl, avx512_core)) {
-                        prefetcht0(EVEX_compress_addr_safe(reg_aux_B,
-                                prefetch_offset, reg_tmp_microkernel));
+                    // Only use EVEX_compress_addr_safe/make_safe_addr
+                    // when prefetch_offset > INT_MAX forr perf purpose
+                    if (prefetch_offset <= INT_MAX) {
+                        prefetcht0(ptr[reg_aux_B + prefetch_offset]);
                     } else {
-                        prefetcht0(make_safe_addr(reg_aux_B, prefetch_offset,
-                                reg_tmp_microkernel));
+                        if (is_superset(brg.isa_impl, avx512_core)) {
+                            prefetcht0(EVEX_compress_addr_safe(reg_aux_B,
+                                    prefetch_offset, reg_tmp_microkernel));
+                        } else {
+                            prefetcht0(make_safe_addr(reg_aux_B,
+                                    prefetch_offset, reg_tmp_microkernel));
+                        }
                     }
                 }
                 for (dim_t ld = 0; ld < ld_block2; ld++) {

@@ -21,6 +21,7 @@
 #include "common/nstl.hpp"
 #include "common/utils.hpp"
 
+#include <cstdint>
 #include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
 
 #define IDX(a) static_cast<uint32_t>((a).getIdx())
@@ -990,22 +991,43 @@ void jit_uni_eltwise_injector_f32_t<isa>::log_compute_vector_fwd(
     h->dup(t1, wt0);
     h->fcmeq(mask, p_all, t4, t1);
     h->sel(t0, mask, t1, t0);
-
     h->b(exitL);
+
     h->L(tbl1L);
+    // Caution: This pointer can be invalidated if the underlying
+    // Xbyak_aarch64::CodeArray is reallocated. We take note of the current size
+    // so we can jump back to the appropriate spot in the reallocated CodeArray
+    // if needed.
     const float *tbl1Addr = (const float *)h->getCurr();
-    for (size_t i = 0; i < tblN; i++) {
+    auto tbl_max_size = h->getMaxSize();
+    const auto tbl_orig_size = h->getSize();
+    for (size_t i = 0; i < tblN; ++i) {
         fi fi;
         fi.i = (127 << 23) | (i << (23 - tblL));
         fi.f = std::sqrt(2) / fi.f;
         h->dd(fi.i);
     }
     h->L(tbl2L);
-    for (size_t i = 0; i < tblN; i++) {
+    for (size_t i = 0; i < tblN; ++i) {
         fi fi;
+
+        // If the table has been reallocated due to a previous instruction then
+        // jump back to the corresponding location in the new table. This will
+        // essentially be the current position minus the number of instructions
+        // that have been added since we initialised the original pointer.
+        if (tbl_max_size != h->getMaxSize()) {
+            constexpr int instr_size = sizeof(uint32_t);
+            auto tbl_curr_size = h->getSize();
+            auto correction = (tbl_curr_size - tbl_orig_size) / instr_size;
+
+            tbl1Addr = (const float *)h->getCurr() - correction;
+            tbl_max_size = h->getMaxSize();
+        }
+
         fi.f = std::log(tbl1Addr[i]);
         h->dd(fi.i);
     }
+
     h->L(exitL);
 }
 template <cpu_isa_t isa>

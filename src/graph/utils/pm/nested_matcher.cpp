@@ -927,8 +927,8 @@ bool match_graph_helper(const binding_t &local_bind, match_context_t *ctx,
 
         if (!match_node(local_bind, ctx, matched_op_map)) {
             matched_op_map.erase(local_bind.bind_op);
-            ctx->in_port_map = saved_in_map;
-            ctx->out_port_map = saved_out_map;
+            ctx->in_port_map = std::move(saved_in_map);
+            ctx->out_port_map = std::move(saved_out_map);
             return false;
         }
     }

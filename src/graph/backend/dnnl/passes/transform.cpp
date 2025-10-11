@@ -4395,7 +4395,7 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
         }
 
         if (valid_pattern && finished) {
-            candidates = pattern_ops;
+            candidates = std::move(pattern_ops);
             break;
         }
     }

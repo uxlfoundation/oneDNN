@@ -62,7 +62,7 @@ subgraph_t::subgraph_t(const std::vector<op_ptr> &ops, const dnnl::engine &eng,
 }
 
 subgraph_t::subgraph_t(const std::vector<op_ptr> &ops, bool reset_layout)
-    : graph_t(ops), p_engine_(nullptr) {
+    : graph_t(ops), p_engine_(nullptr), can_use_blocked_layout_(false) {
     if (reset_layout) { set_all_layout_to_any(get_mutable_ops()); }
 }
 

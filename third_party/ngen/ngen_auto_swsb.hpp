@@ -2222,8 +2222,12 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
                 tokenMaskSrc &= ~tokenMaskDst;
 
                 // Clean producer list of known SWSB and sync dependencies.
+                // Be careful with coalesced A@ dependencies in phase 1: if they may be
+                //   reduced to a single pipe dependency later they cannot be cleared now.
                 if (tokenMaskSrc) bb.producers.removeByTokenMask(tokenMaskSrc, false);
                 if (tokenMaskDst) bb.producers.removeByTokenMask(tokenMaskDst, true);
+                if ((depPipe == PipeMaskA) && !recordSWSB)
+                    generated.dists.fill(0);
                 bb.producers.removeIntersections(generated);
 
                 if (recordSWSB) {

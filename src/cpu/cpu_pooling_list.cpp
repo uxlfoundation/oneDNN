@@ -36,6 +36,7 @@ using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
 #if defined(DNNL_RISCV_USE_RVV_INTRINSICS)
 #include "cpu/rv64/rvv_nchw_pooling.hpp"
+#include "cpu/rv64/rvv_nhwc_pooling.hpp"
 using namespace dnnl::impl::cpu::rv64;
 #endif // DNNL_RISCV_USE_RVV_INTRINSICS
 #endif

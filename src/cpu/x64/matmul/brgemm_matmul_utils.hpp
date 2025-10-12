@@ -447,7 +447,8 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
 status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         const matmul_desc_t &mmd, memory_desc_t &src_md,
         memory_desc_t &weights_md, memory_desc_t &dst_md,
-        memory_desc_t &bias_md, primitive_attr_t &attr);
+        memory_desc_t &bias_md, primitive_attr_t &attr,
+        const std::function<bool()> &can_use_gemm_fallback);
 
 void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         const brgemm_matmul_conf_t &bgmmc);

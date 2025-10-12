@@ -29,6 +29,11 @@
 #include "cpu/x64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/x64/matmul/brgemm_matmul.hpp"
 
+// This is required to implement `can_use_gemm_fallback`.
+#include "cpu/matmul/gemm_bf16_matmul.hpp"
+#include "cpu/matmul/gemm_f32_matmul.hpp"
+#include "cpu/matmul/gemm_x8s8s32x_matmul.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -92,6 +97,44 @@ int get_brg_kernel_index(const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail,
 }
 
 } // anonymous namespace
+
+template <cpu_isa_t isa>
+bool brgemm_matmul_t<isa>::pd_t::can_use_gemm_fallback(engine_t *engine) const {
+    // We have to copy the attributes to be able to reset them to their original
+    // values, ensuring that this function can be called at any point in the
+    // initialization flow (since `attr.set_default_formats` may modify them).
+    primitive_attr_t orig_attr;
+    if (orig_attr.copy_from_and_reset(*attr()) != status::success) return false;
+
+    const auto src_dt = src_md_.data_type;
+    const auto dst_dt = dst_md_.data_type;
+
+    status_t st = status::unimplemented;
+
+    std::unique_ptr<primitive_desc_t> pd;
+    primitive_desc_t *pd_raw = pd.get();
+
+#define TRY_CREATE_FALLBACK_PD(pd_type) \
+    primitive_desc_t::create<pd_type>( \
+            &pd_raw, op_desc(), &orig_attr, engine, nullptr)
+
+    // Try to create GEMM-based matmul implementation directly to avoid
+    // primitive descriptor iterator overhead.
+    if (src_dt == f32)
+        st = TRY_CREATE_FALLBACK_PD(gemm_f32_matmul_t::pd_t);
+    else if (one_of(src_dt, u8, s8))
+        st = TRY_CREATE_FALLBACK_PD(gemm_x8s8s32x_matmul_t::pd_t);
+    else if (src_dt == bf16 && dst_dt == f32)
+        st = TRY_CREATE_FALLBACK_PD(gemm_bf16_matmul_t<f32>::pd_t);
+    else if (src_dt == bf16 && dst_dt == bf16)
+        st = TRY_CREATE_FALLBACK_PD(gemm_bf16_matmul_t<bf16>::pd_t);
+    else
+        assert(!"unknown fallback configuration");
+
+#undef TRY_CREATE_FALLBACK_PD
+
+    return st == status::success;
+}
 
 template <cpu_isa_t isa>
 int brgemm_matmul_t<isa>::pd_t::get_brg_kernel_idx(bool is_bs_tail,
@@ -260,7 +303,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             "reduce is not supported");
 
     CHECK(init_brgemm_matmul_conf(isa, bgmmc_, *desc(), src_md_, weights_md_,
-            dst_md_, bias_md_, attr_));
+            dst_md_, bias_md_, attr_,
+            [this, engine]() { return can_use_gemm_fallback(engine); }));
 
     // f32:f16 configuration on AVX2 doesn't support tails with proper
     // instruction sequence in copy routines. Anchor: F32_F16_AVX2_NO_TAIL.

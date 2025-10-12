@@ -1256,7 +1256,8 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
 status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         const matmul_desc_t &mmd, memory_desc_t &src_md,
         memory_desc_t &weights_md, memory_desc_t &dst_md,
-        memory_desc_t &bias_md, primitive_attr_t &attr) {
+        memory_desc_t &bias_md, primitive_attr_t &attr,
+        const std::function<bool()> &can_use_gemm_fallback) {
     const memory_desc_wrapper src_d(&src_md);
     const memory_desc_wrapper weights_d(&weights_md);
     const memory_desc_wrapper dst_d(&dst_md);
@@ -1438,20 +1439,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         // However, we must ensure that GEMM can handle the data formats.
         // If it cannot (e.g., the weights format is blocked), we use
         // this implementation to avoid falling back to the reference one.
-
-        // IMPORTANT: Perform this check before calling functions that
-        // modify the memory descriptors.
-        const bool is_gemm_compatible
-                = IMPLICATION(src_d.format_kind() != format_kind::any,
-                          gemm_based::check_gemm_input_format(src_md))
-                && IMPLICATION(weights_d.format_kind() != format_kind::any,
-                        gemm_based::check_gemm_input_format(weights_md))
-                && IMPLICATION(dst_d.format_kind() != format_kind::any,
-                        gemm_based::check_gemm_output_format(dst_md));
-
-        VCONDCHECK_BG(!is_gemm_compatible,
-                "Fall back to GEMM implementation for cases not supported by "
-                "GEMV code path.");
+        VCONDCHECK_BG(!can_use_gemm_fallback(),
+                "Fall back to the GEMM implementation for cases not supported "
+                "by the GEMV code path for the N=1 and M=1 cases.");
     }
 
     VCHECK_BG(bm_conf_utils.set_or_check_tags(src_md, dst_md, bias_md, helper),
@@ -1746,8 +1736,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         const bool small_K = bgmmc.N <= 14528
                 && ((bgmmc.M <= 768 && bgmmc.K <= 128)
                         || bgmmc.K * bgmmc.M <= 49152);
-        VCONDCHECK_BG(
-                IMPLICATION(bgmmc.ndims == 2, !small_K), VERBOSE_SMALL_SHAPES);
+        VCONDCHECK_BG(IMPLICATION(bgmmc.ndims == 2,
+                              !small_K || !can_use_gemm_fallback()),
+                VERBOSE_SMALL_SHAPES);
     }
 
     bgmmc.use_buffer_reduce

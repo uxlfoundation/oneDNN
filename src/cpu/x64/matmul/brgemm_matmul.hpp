@@ -71,6 +71,13 @@ struct brgemm_matmul_t : public primitive_t {
     private:
         brgemm_desc_t brg_descs_[max_num_brg_kernels_matmul];
         brgemm_matmul_conf_t bgmmc_;
+
+        /**
+         * This function checks whether the current problem can be handled by
+         * the GEMM-based matmul implementation to avoid falling back to the
+         * reference implementation.
+         */
+        bool can_use_gemm_fallback(engine_t *engine) const;
     };
 
     brgemm_matmul_t(const pd_t *apd) : primitive_t(apd) {}

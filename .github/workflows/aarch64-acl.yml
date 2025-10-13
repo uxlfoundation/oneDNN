@@ -107,7 +107,7 @@ jobs:
 
       - if: ${{ contains(matrix.config.label,'ubuntu') && (matrix.config.toolset == 'clang') && (steps.cache-acl-restore.outputs.cache-hit != 'true') }}
         name: Install clang
-        uses: KyleMayes/install-llvm-action@a7a1a882e2d06ebe05d5bb97c3e1f8c984ae96fc
+        uses: KyleMayes/install-llvm-action@98e68e10c96dffcb7bfed8b2144541a66b49aa02 # v2.0.8
         with:
           version: ${{ fromJson(steps.get-versions.outputs.output).dependencies.clang }}
 

@@ -491,9 +491,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
                     && one_of(entry.eltwise.alg,
                             // these fail due to label offset being too large
                             alg_kind::eltwise_tanh, alg_kind::eltwise_gelu_tanh,
-                            alg_kind::eltwise_gelu_erf,
-                            // this po segfaults TODO: check issues with f32
-                            alg_kind::eltwise_log);
+                            alg_kind::eltwise_gelu_erf);
             VDISPATCH_CONV(!is_failing_po, VERBOSE_BAD_ALGORITHM);
         }
     }

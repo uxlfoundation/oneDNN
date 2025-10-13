@@ -420,3 +420,8 @@ mb1_g50ic50oc50_ih28oh26_kh3sh1ph0_n"dw_post-op_ngroups-tail"
 # test big oc tail processing in brgemm kernel
 --reset
 --dir=BWD_D --dt=f16:f16:f16 mb1ic1iw2oc1387ow2kw2pw0_n"brgemm_big_oc_tail"
+
+# Test chained post-ops on brgemm kernels
+# See github.com/uxlfoundation/oneDNN issue #4055, and #4089
+--reset
+--impl=brg --dt=bf16 --attr-post-ops=relu+log g1mb1ic32ih128iw128oc32oh128ow128kh2kw2sh1sw1ph0pw0dh0dw0_n"brgemm_chained_post_ops"

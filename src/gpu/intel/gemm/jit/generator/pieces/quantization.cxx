@@ -100,12 +100,13 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     int tileR = 0, tileC = 0;
     bool remR = false, remC = false;
     if (isA) {
+        int alignK = strategy.kaq_align;
         bool slmA = strategy.slmA;
         rNoSLM = strategy.unroll[LoopM];
-        cNoSLM = strategy.ka_load;
+        cNoSLM = align_up(strategy.ka_load, alignK);
         r = slmA ? state.ma_slm : rNoSLM;
-        c = slmA ? state.ka_slm : cNoSLM;
-        k = slmA ? strategy.unrollKSLM : cNoSLM;
+        c = slmA ? align_up(state.ka_slm, alignK)        : cNoSLM;
+        k = slmA ? align_up(strategy.unrollKSLM, alignK) : cNoSLM;
         r = std::max(1, r / xqGroupMN);
         c = state.kaq = std::max(1, c % xqGroupK == 0 ? c / xqGroupK : 1);
         state.kaqStride = std::max(1, k % xqGroupK == 0 ? k /  xqGroupK : 1);
@@ -116,12 +117,13 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         if (xqGroupMN > 1 && (xqGroupMN % strategy.unroll[LoopM] && strategy.unroll[LoopM] % xqGroupMN))
             stub("Tile size not compatible with group size in m dimension");
     } else {
+        int alignK = strategy.kbq_align;
         bool slmB = strategy.slmB;
         cNoSLM = strategy.unroll[LoopN];
-        rNoSLM = strategy.kb_load;
+        rNoSLM = align_up(strategy.kb_load, alignK);
         c = slmB ? state.nb_slm : cNoSLM;
-        r = slmB ? state.kb_slm : rNoSLM;
-        k = slmB ? strategy.unrollKSLM : rNoSLM;
+        r = slmB ? align_up(state.kb_slm, alignK)        : rNoSLM;
+        k = slmB ? align_up(strategy.unrollKSLM, alignK) : rNoSLM;
         c = std::max(1, c / xqGroupMN);
         r = state.kbq = std::max(1, r % xqGroupK == 0 ? r / xqGroupK : 1);
         state.kbqStride = std::max(1, k % xqGroupK == 0 ?  k / xqGroupK : 1);

@@ -3442,12 +3442,14 @@ struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
         , jit_generator_t(jit_name())
         , dt_in_(conf->orig_wei_dt)
         , simd_w_(vreg_traits_t<Vmm>::vlen / sizeof(float))
+        , is_src_f4_(one_of(
+                  conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , req_zp_b_shift_(
                   conf->has_zero_point_b && conf->with_wei_decompression)
         , req_apply_wei_scales_(conf->apply_scales_in_buffer_b)
         , typesize_in_(types::data_type_size(dt_in_))
-        , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
+        , src_elems_per_byte_(is_src_int4_ || is_src_f4_ ? 2 : 1)
         , wei_scales_typesize_(conf_->wei_scales_dt_sz)
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * typesize_out_)
@@ -3471,7 +3473,7 @@ private:
 
     const data_type_t dt_in_;
     const int simd_w_;
-    const bool is_src_int4_, req_zp_b_shift_, req_apply_wei_scales_;
+    const bool is_src_f4_, is_src_int4_, req_zp_b_shift_, req_apply_wei_scales_;
     const size_t typesize_in_, src_elems_per_byte_, wei_scales_typesize_;
     const size_t typesize_out_ = sizeof(float);
     dim_t src_stride_, tr_src_stride_, wei_scales_N_stride_;
@@ -3480,7 +3482,7 @@ private:
     opmask_t kFFFF = k6;
     opmask_t k5555 = k5;
     opmask_t kAAAA = k4;
-    opmask_t kTail_int4 = k3;
+    opmask_t kTail4bit = k3;
 
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;
@@ -3491,11 +3493,13 @@ private:
     reg64_t reg_tmp = r15;
     reg32_t regw_tmp = r15d;
     reg64_t reg_wei_scales = rdx;
+    reg64_t reg_f4_lut = r11;
 
     Vmm vmm_zero = Vmm(0);
     Vmm vmm_wei_scales = Vmm(1);
     Vmm vmm_permd = Vmm(2);
     Vmm vmm_zp_b_shift = Vmm(3);
+    Vmm vmm_f4_lut = Vmm(4);
     Ymm ymm_tail_mask = ymm1;
 
     inline void kmovw(Opmask k, unsigned w) {
@@ -3503,16 +3507,16 @@ private:
         mov(regw_tmp, w);
         jit_generator_t::kmovd(k, regw_tmp);
     }
-    void copy_half_int4(const Zmm &zmm, const Ymm &ymm_half) {
+    void insert_high_half(const Zmm &zmm, const Ymm &ymm_half) {
         vinserti64x4(zmm, zmm, ymm_half, 1);
     }
-    void copy_half_int4(const Ymm &ymm, const Xmm &xmm_half) {
+    void insert_high_half(const Ymm &ymm, const Xmm &xmm_half) {
         vinserti128(ymm, ymm, xmm_half, 1);
     }
     Vmm_lower_t maybe_mask(Vmm_lower_t vmm_lower, bool is_tail) {
-        assert(is_src_int4_);
+        assert(is_src_int4_ || is_src_f4_);
         return is_tail && isa_has_masks(conf_->isa)
-                ? vmm_lower | kTail_int4 | T_z
+                ? vmm_lower | kTail4bit | T_z
                 : vmm_lower;
     }
     Vmm maybe_mask(Vmm vmm, bool is_tail) {
@@ -3553,7 +3557,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::load_data(
         // Finally, we process the extend bytes for s4/u4 accordingly
         case data_type::s4:
             uni_vpmovsxbd(maybe_mask(vmm_lower, is_tail), op);
-            copy_half_int4(vmm_in, vmm_lower);
+            insert_high_half(vmm_in, vmm_lower);
             vpermd(vmm_in, vmm_permd, vmm_in);
             uni_vpslld(vmm_in | k5555, vmm_in, 28);
             vpsrad(vmm_in | k5555, vmm_in, 28);
@@ -3561,11 +3565,21 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::load_data(
             break;
         case data_type::u4:
             uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), op);
-            copy_half_int4(vmm_in, vmm_lower);
+            insert_high_half(vmm_in, vmm_lower);
             vpermd(vmm_in, vmm_permd, vmm_in);
             uni_vpslld(vmm_in | k5555, vmm_in, 28);
             vpsrld(vmm_in | k5555, vmm_in, 28);
             vpsrld(vmm_in | kAAAA, vmm_in, 4);
+            break;
+        case data_type::f4_e2m1:
+        case data_type::f4_e3m0:
+            uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), op);
+            insert_high_half(vmm_in, vmm_lower);
+            vpermd(vmm_in, vmm_permd, vmm_in);
+            uni_vpslld(vmm_in | k5555, vmm_in, 28);
+            vpsrld(vmm_in | k5555, vmm_in, 28);
+            vpsrld(vmm_in | kAAAA, vmm_in, 4);
+            vpermps(vmm_in, vmm_in, vmm_f4_lut);
             break;
         default: assert(!"unsupported data type");
     }
@@ -3579,7 +3593,10 @@ template <typename Vmm>
 void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         int nrows, int ncolumns) {
     const int max_isa_regs = isa_num_vregs(conf_->isa);
-    const int reserved_regs = req_zp_b_shift_ ? 4 : is_src_int4_ ? 3 : 2;
+    const int reserved_regs = is_src_f4_ ? 5
+            : req_zp_b_shift_            ? 4
+            : is_src_int4_               ? 3
+                                         : 2;
     const int max_regs_available = max_isa_regs - reserved_regs;
 
     auto get_vmm = [max_regs_available, reserved_regs](int reg_idx) {
@@ -3629,10 +3646,10 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         if (isa_has_masks(conf_->isa)) {
             const auto tail_mask = (1 << columns_tail) - 1;
             kmovw(kTail, tail_mask);
-            if (is_src_int4_) {
-                const auto int4_tail_mask
+            if (is_src_int4_ || is_src_f4_) {
+                const auto tail_mask_4bit
                         = (1 << (columns_tail / src_elems_per_byte_)) - 1;
-                kmovw(kTail_int4, int4_tail_mask);
+                kmovw(kTail4bit, tail_mask_4bit);
             }
         } else {
             init_f32_avx2_mask_ymm(ymm_tail_mask, reg_tmp, columns_tail);
@@ -3699,7 +3716,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
     mov(reg_N_blk, ptr[param1 + GET_OFF(current_N_blk)]);
     mov(reg_wei_scales, ptr[param1 + GET_OFF(wei_scales_ptr)]);
     kmovw(kFFFF, 0xffff); // 1111111111111111
-    if (is_src_int4_) {
+    if (is_src_int4_ || is_src_f4_) {
         alignas(64) static constexpr const uint32_t int4_permute[16]
                 = {0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15};
         mov(reg_tmp, reinterpret_cast<size_t>(int4_permute));
@@ -3708,6 +3725,27 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
         kmovw(kAAAA, 0xaaaa);
         kmovw(k5555, 0x5555);
     }
+    if (is_src_f4_) {
+
+        alignas(64) static constexpr const float f4_e2m1_table[16]
+                = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -.5f,
+                        -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
+        alignas(64) static constexpr const float f4_e3m0_table[16]
+                = {0.0f, .25f, .5f, 1.0f, 2.0f, 4.0f, 8.0f, 16.0f, -0.0f, -.25f,
+                        -.5f, -1.0f, -2.0f, -4.0f, -8.0f, -16.0f};
+        switch (dt_in_) {
+            case data_type::f4_e2m1:
+                mov(reg_f4_lut, reinterpret_cast<size_t>(f4_e2m1_table));
+                break;
+            case data_type::f4_e3m0:
+                mov(reg_f4_lut, reinterpret_cast<size_t>(f4_e3m0_table));
+                break;
+
+            default: break;
+        }
+        vmovdqa32(vmm_f4_lut, ptr[reg_f4_lut]);
+    }
+
     if (req_zp_b_shift_) {
         mov(reg_tmp, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
         uni_vpbroadcastd(vmm_zp_b_shift, ptr[reg_tmp]);

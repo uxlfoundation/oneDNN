@@ -145,7 +145,7 @@ void set_isa_impl(brgemm_desc_t *brg) {
                 // is implemented using pre-conversion of inputs to f32.
                 // This is needed to support f16 binary post-ops.
                 is_isa_ok(avx512_core_fp16), avx512_core_fp16, is_isa_ok(avx2),
-                avx2);
+                avx2, is_isa_ok(avx10_2_512), avx10_2_512);
     } else if (brg->is_bf16) {
         if (brg->dt_a == data_type::f32 && brg->dt_b == data_type::bf16) {
             // Distinguish f32:bf16 case upconversion for bf16 on AVX512_CORE

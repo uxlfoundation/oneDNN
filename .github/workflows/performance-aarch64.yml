@@ -240,8 +240,10 @@ jobs:
         if: ${{ inputs.benchdnn_command == '' }}
         shell: bash
         run: |
-          OMP_NUM_THREADS=${{ inputs.num_threads || 16 }} bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_nightly_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn base.txt new.txt
+          bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_nightly_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn base.txt new.txt
           python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base.txt new.txt --out-file perf_table.md
+        env:
+          OMP_NUM_THREADS: ${{ inputs.num_threads || 16 }}
 
       - name: Update wiki
         if: ${{ (success() || failure()) && inputs.benchdnn_command == '' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ryo-not-rio/wiki') }}
@@ -255,10 +257,13 @@ jobs:
         if: ${{ inputs.benchdnn_command != '' }}
         shell: bash
         run: |
-          OMP_NUM_THREADS=${{ inputs.num_threads || 16 }} bash ${{ github.workspace }}/oneDNN/.github/automation/performance/run_benchdnn_compare.sh \
+          bash ${{ github.workspace }}/oneDNN/.github/automation/performance/run_benchdnn_compare.sh \
             "${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn" \
             "${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn" \
-            base.txt new.txt ${{ inputs.benchdnn_command }}
+            base.txt new.txt "$BENCHDNN_COMMAND"
+        env:
+          OMP_NUM_THREADS: ${{ inputs.num_threads || 16 }}
+          BENCHDNN_COMMAND: ${{ inputs.benchdnn_command }}
 
       - name: Print speed comparisons
         if: ${{ (success() || failure()) && inputs.benchdnn_command != '' }}

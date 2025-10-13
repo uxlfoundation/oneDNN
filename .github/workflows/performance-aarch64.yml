@@ -53,7 +53,23 @@ concurrency:
   cancel-in-progress: true
 
 # Declare default permissions as read only.
-permissions: write-all
+# Setting this to read-all causes issues with the id-tokens permission
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  deployments: read
+  discussions: read
+  issues: read
+  packages: read
+  pages: read
+  pull-requests: read
+  repository-projects: read
+  security-events: read
+  statuses: read
+  attestations: read
+  models: read
+  id-token: none
 
 jobs:
   build-acl-base:
@@ -76,6 +92,8 @@ jobs:
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}
     runs-on: ${{ matrix.config.label }}
+    permissions:
+      contents: write
     steps:
 
       - name: Checkout oneDNN
@@ -237,8 +255,7 @@ jobs:
         if: ${{ inputs.benchdnn_command != '' }}
         shell: bash
         run: |
-          OMP_NUM_THREADS=${{ inputs.num_threads || 16 }} \
-          bash ${{ github.workspace }}/oneDNN/.github/automation/performance/run_benchdnn_compare.sh \
+          OMP_NUM_THREADS=${{ inputs.num_threads || 16 }} bash ${{ github.workspace }}/oneDNN/.github/automation/performance/run_benchdnn_compare.sh \
             "${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn" \
             "${{ github.workspace }}/oneDNN_new/build/tests/benchdnn/benchdnn" \
             base.txt new.txt ${{ inputs.benchdnn_command }}

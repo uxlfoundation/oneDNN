@@ -43,13 +43,40 @@ bool get_itt(__itt_task_level level) {
 namespace {
 
 thread_local primitive_kind_t thread_primitive_kind;
+__itt_string_handle *task_format = nullptr;
+__itt_string_handle *parallel_task_format = nullptr;
 
 __itt_domain *itt_domain() {
     static __itt_domain *d = __itt_domain_create("dnnl::primitive::execute");
     return d;
 }
 
+__itt_string_handle *get_task_format() {
+    if (task_format == nullptr) {
+        task_format = __itt_string_handle_create("[%s]%s");
+    }
+    return task_format;
+}
+
+__itt_string_handle *get_parallel_task_format() {
+    if (parallel_task_format == nullptr) {
+        parallel_task_format = __itt_string_handle_create(
+                "running parallel ithr %d / nthr %d");
+    }
+    return parallel_task_format;
+}
+
 } // namespace
+
+void add_formatted_metadata_parallel_task(int ithr, int nthr) {
+    __itt_string_handle *fm = get_parallel_task_format();
+    __itt_formatted_metadata_add(itt_domain(), fm, ithr, nthr);
+}
+
+void add_formatted_metadata_task(const char *prim_str, const char *param_str) {
+    __itt_string_handle *fm = get_task_format();
+    __itt_formatted_metadata_add(itt_domain(), fm, prim_str, param_str);
+}
 
 void primitive_task_start(primitive_kind_t kind) {
     if (kind == primitive_kind::undefined) return;

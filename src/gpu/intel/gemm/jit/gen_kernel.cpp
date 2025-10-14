@@ -1057,6 +1057,14 @@ void gen_kernel_t::init_interface() {
                 interface_.newArgument(
                         "offset_stride_B" + std::to_string(i), DataType::d);
             }
+            if (problem.needsAGroupSums()) {
+                interface_.newArgument(
+                        "group_sums_stride_A" + std::to_string(i), DataType::d);
+            }
+            if (problem.needsBGroupSums()) {
+                interface_.newArgument(
+                        "group_sums_stride_B" + std::to_string(i), DataType::d);
+            }
         }
         for (size_t i = 0; i < problem.postOps.len(); i++) {
             if (problem.postOps[i].is_binary()

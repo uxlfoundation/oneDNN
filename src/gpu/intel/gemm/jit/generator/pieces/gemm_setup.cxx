@@ -550,6 +550,7 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
         Subregister bOffsetA[4], bOffsetB[4], bOffsetC[4];
         Subregister bOffsetAs[4], bOffsetBs[4];
         Subregister bOffsetAo[4], bOffsetBo[4];
+        Subregister bOffsetAg[4], bOffsetBg[4];
 
         for (int b = 0; b < problem.batchDims; b++) {
             bOffsetA[b] = state.inputs.strideA[b];
@@ -566,6 +567,12 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
             }
             if(problem.hasBOffset()){
                 bOffsetBo[b] = state.inputs.strideOffsetB[b];
+            }
+            if(problem.needsAGroupSums()){
+                bOffsetAg[b] = state.inputs.strideGroupSumsA[b];
+            }
+            if(problem.needsBGroupSums()){
+                bOffsetBg[b] = state.inputs.strideGroupSumsB[b];
             }
             if (strategy.A.base.isStateless()) bOffsetA[b] = state.ra.alloc_sub<uint64_t>();
             if (strategy.B.base.isStateless()) bOffsetB[b] = state.ra.alloc_sub<uint64_t>();
@@ -588,6 +595,12 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
             if(problem.hasBOffset()){
                     emul(1, bOffsetBo[b], state.inputs.strideOffsetB[b], state.batchID[b], strategy, state);
             }
+            if(problem.needsAGroupSums()){
+                    emul(1, bOffsetAg[b], state.inputs.strideGroupSumsA[b], state.batchID[b], strategy, state);
+            }
+            if(problem.needsBGroupSums()){
+                    emul(1, bOffsetBg[b], state.inputs.strideGroupSumsB[b], state.batchID[b], strategy, state);
+            }
         }
 
         if(problem.hasAScale() && state.offsetAs.isInvalid()){
@@ -605,6 +618,14 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
         if(problem.hasBOffset() && state.offsetBo.isInvalid()){
             state.offsetBo = state.ra.alloc_sub(state.offsetB.getType());
             emov(1, state.offsetBo, 0, strategy, state);
+        }
+        if(problem.needsAGroupSums() && state.inputs.offsetAg.isInvalid()){
+            state.inputs.offsetAg = state.ra.alloc_sub(state.offsetA.getType());
+            emov(1, state.inputs.offsetAg, 0, strategy, state);
+        }
+        if(problem.needsBGroupSums() && state.inputs.offsetBg.isInvalid()){
+            state.inputs.offsetBg = state.ra.alloc_sub(state.offsetB.getType());
+            emov(1, state.inputs.offsetBg, 0, strategy, state);
         }
 
         for (int b = 0; b < problem.batchDims; b++) {
@@ -625,6 +646,12 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
             }
             if(problem.hasBOffset()){
                     eadd(1, state.offsetBo, state.offsetBo, bOffsetBo[b], strategy, state);
+            }
+            if(problem.needsAGroupSums()){
+                    eadd(1, state.inputs.offsetAg, state.inputs.offsetAg, bOffsetAg[b], strategy, state);
+            }
+            if(problem.needsBGroupSums()){
+                    eadd(1, state.inputs.offsetBg, state.inputs.offsetBg, bOffsetBg[b], strategy, state);
             }
             if (!strategy.persistentLoop()) {
                 state.ra.safeRelease(state.inputs.strideA[b]);
@@ -875,6 +902,16 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
         if(problem.hasBOffset()){
                 for (int b = 0; b < problem.batchDims; b++) {
             scale(problem.Tbo, state.inputs.strideOffsetB[b]);
+            }
+        }
+        if(problem.needsAGroupSums()){
+                for (int b = 0; b < problem.batchDims; b++) {
+            scale(problem.Tag, state.inputs.strideGroupSumsA[b]);
+            }
+        }
+        if(problem.needsBGroupSums()){
+                for (int b = 0; b < problem.batchDims; b++) {
+            scale(problem.Tbg, state.inputs.strideGroupSumsB[b]);
             }
         }
         for (int b = 0; b < problem.batchDims; b++) {
@@ -1907,7 +1944,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     }
     if (ag2D) {
         setupQAddr(Tag, state.Ag_addrs, state.Ag_layout, state.inputs.agPtr,
-                   i0qLate, A_h0qLate, state.inputs.ldag);
+                   i0qLate, A_h0qLate, state.inputs.ldag, state.inputs.offsetAg);
     }
     if (bo2D) {
         auto &j0o   = lateOffsetB ? j0qLate   : j0q;
@@ -1923,7 +1960,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     }
     if (bg2D) {
         setupQAddr(Tbg, state.Bg_addrs, state.Bg_layout, state.inputs.bgPtr,
-                   B_h0qLate, j0qLate, state.inputs.ldbg);
+                   B_h0qLate, j0qLate, state.inputs.ldbg, state.inputs.offsetBg);
     }
 
     if (i0qLate != state.i0) state.ra.safeRelease(i0qLate);
@@ -2629,6 +2666,12 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             if(problem.hasBOffset()){
                     state.inputs.strideOffsetB.push_back(interface.getArgument("offset_stride_B" + istr));
             }
+            if(problem.needsAGroupSums()){
+                    state.inputs.strideGroupSumsA.push_back(interface.getArgument("group_sums_stride_A" + istr));
+            }
+            if(problem.needsBGroupSums()){
+                    state.inputs.strideGroupSumsB.push_back(interface.getArgument("group_sums_stride_B" + istr));
+            }
             if (i < problem.batchDims - 1) {
                 state.inputs.batchSize.push_back(interface.getArgument("batch_size" + istr));
                 state.inputs.recipBatchSize.push_back(interface.getArgument("recip_batch_size" + istr));
@@ -2913,6 +2956,12 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             }
             if(problem.hasBOffset()){
                     state.ra.claim(state.inputs.strideOffsetB[i]);
+            }
+            if(problem.needsAGroupSums()){
+                    state.ra.claim(state.inputs.strideGroupSumsA[i]);
+            }
+            if(problem.needsBGroupSums()){
+                    state.ra.claim(state.inputs.strideGroupSumsB[i]);
             }
         }
         for (int i = 0; i < problem.batchDims - 1; i++) {

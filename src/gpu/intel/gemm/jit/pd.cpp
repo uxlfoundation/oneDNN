@@ -463,6 +463,15 @@ dim_t pd_t::eff_zp_stride(int idx, int arg) const {
     return zp_md.format_desc.blocking.strides[idx];
 }
 
+dim_t pd_t::eff_gs_stride(int idx, int arg) const {
+    gpu_assert(utils::one_of(arg, DNNL_ARG_A, DNNL_ARG_B));
+    auto gs_md = ((DNNL_ARG_A == arg) ^ swap_ab()) ? a_gs_md_ : b_gs_md_;
+    gpu_assert(memory_desc_wrapper(gs_md).is_plain())
+            << "Expected plain gs_md_";
+    if (gs_md.dims[idx] == 1) return 0;
+    return gs_md.format_desc.blocking.strides[idx];
+}
+
 } // namespace jit
 } // namespace gemm
 } // namespace intel

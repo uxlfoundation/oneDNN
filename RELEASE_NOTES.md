@@ -13,7 +13,7 @@
 * Improved `int8` matmul performance with `int4` weights and per-tensor zero-points.
 * Improved `bf16` matmul performance with `fp8` weights.
 * Graph API optimizations:
-  * Improved [Scaled Dot Product Attention (SDPA)] subgraph performance when relaxed accumulation mode is enabled on Intel Core Ultra processors (formerly Meteor Lake).
+  * Improved [Scaled Dot Product Attention (SDPA)] subgraph performance for inference when relaxed accumulation mode is enabled on Intel Core Ultra processors (formerly Meteor Lake).
   * Improved SDPA and GQA subgraphs performance when using host-side scalars.
   * Improved performance of GQA subgraph for 2nd token scenarios.
   * Improved performance of subgraphs containing sequence of multiple binary ops.

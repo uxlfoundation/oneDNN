@@ -154,11 +154,7 @@ of any preceding compute-intensive primitive.
 1. Refer to @ref dev_guide_data_types for limitations related to data types
    support.
 
-2. **CPU**
-    - Different data types of source and destination in forward inference
-      are not supported.
-
-3. **GPU**
+2. **GPU**
     - #dnnl_pooling_max for f64 data type will return `-FLT_MAX` as an output
       value instead of `-DBL_MAX` in scenarios when pooling kernel is applied
       to a completely padded area.

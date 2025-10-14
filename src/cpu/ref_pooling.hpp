@@ -33,7 +33,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <impl::data_type_t data_type, impl::data_type_t acc_type = data_type>
 struct ref_pooling_fwd_t : public primitive_t {
     struct pd_t : public cpu_pooling_fwd_pd_t {
         using cpu_pooling_fwd_pd_t::cpu_pooling_fwd_pd_t;
@@ -43,16 +42,15 @@ struct ref_pooling_fwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;
 
-            VDISPATCH_POOLING(platform::has_data_type_support(data_type),
+            VDISPATCH_POOLING(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_POOLING(
+                    platform::has_data_type_support(dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(set_default_params() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_POOLING(utils::everyone_is(data_type, src_md()->data_type,
-                                      dst_md()->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_POOLING(desc()->accum_data_type == acc_type,
-                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(attr()->has_default_values(sm::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_POOLING(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
@@ -78,9 +76,6 @@ struct ref_pooling_fwd_t : public primitive_t {
         CHECK(ref_post_ops->init(pd()->dst_md()));
         return status::success;
     }
-
-    using data_t = typename prec_traits_t<data_type>::type;
-    using acc_data_t = typename prec_traits_t<acc_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);

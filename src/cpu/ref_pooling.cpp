@@ -43,13 +43,11 @@ static inline dim_t get_offset(const memory_desc_wrapper &mdw, dim_t n, dim_t c,
 
 using namespace nstl;
 
-template <data_type_t data_type, data_type_t acc_type>
-status_t ref_pooling_fwd_t<data_type, acc_type>::execute_forward(
-        const exec_ctx_t &ctx) const {
+status_t ref_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DST, status);
+    auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
+    auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
     CHECK(status);
     auto ws = CTX_OUT_CLEAN_MEM(unsigned char *, DNNL_ARG_WORKSPACE, status);
     CHECK(status);
@@ -111,7 +109,7 @@ status_t ref_pooling_fwd_t<data_type, acc_type>::execute_forward(
                     if (iw < 0 || iw >= IW) continue;
 
                     const auto off = get_offset(src_d, mb, oc, id, ih, iw);
-                    auto s = src[off];
+                    float s = io::load_float_value(src_d.data_type(), src, off);
                     if (s > d) {
                         d = s;
                         set_ws(mb, oc, od, oh, ow, (kd * KH + kh) * KW + kw);
@@ -134,7 +132,7 @@ status_t ref_pooling_fwd_t<data_type, acc_type>::execute_forward(
                     if (iw < 0 || iw >= IW) continue;
 
                     const auto off = get_offset(src_d, mb, oc, id, ih, iw);
-                    d += src[off];
+                    d += io::load_float_value(src_d.data_type(), src, off);
                 }
             }
         }
@@ -172,7 +170,8 @@ status_t ref_pooling_fwd_t<data_type, acc_type>::execute_forward(
     const bool is_max_pool = alg == alg_kind::pooling_max;
 
     float base_res
-            = is_max_pool ? (float)numeric_limits<data_t>::lowest() : 0.f;
+            = is_max_pool ? types::lowest_value<float>(dst_d.data_type()) : 0.f;
+
     using ker_t
             = std::function<void(float &, dim_t, dim_t, dim_t, dim_t, dim_t)>;
     ker_t kernel = is_max_pool ? (ker_t)ker_max : (ker_t)ker_avg;
@@ -190,7 +189,7 @@ status_t ref_pooling_fwd_t<data_type, acc_type>::execute_forward(
         args.dst_md = pd()->dst_md();
         ref_post_ops->execute(res, args);
 
-        dst[data_p_off] = cpu::q10n::saturate_and_round<data_t>(res);
+        io::store_float_value(dst_d.data_type(), res, dst, data_p_off);
     });
 
     return status::success;
@@ -369,15 +368,6 @@ status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
 
     return status::success;
 }
-
-template struct ref_pooling_fwd_t<data_type::f32>;
-template struct ref_pooling_fwd_t<data_type::s32>;
-template struct ref_pooling_fwd_t<data_type::bf16, data_type::f32>;
-template struct ref_pooling_fwd_t<data_type::f16, data_type::f32>;
-template struct ref_pooling_fwd_t<data_type::f8_e5m2, data_type::f32>;
-template struct ref_pooling_fwd_t<data_type::f8_e4m3, data_type::f32>;
-template struct ref_pooling_fwd_t<data_type::s8, data_type::s32>;
-template struct ref_pooling_fwd_t<data_type::u8, data_type::s32>;
 
 } // namespace cpu
 } // namespace impl

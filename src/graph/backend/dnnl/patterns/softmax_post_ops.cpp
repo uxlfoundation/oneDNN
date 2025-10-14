@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -56,6 +56,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_softmax_post_ops)
                     auto alt_unary_binary = std::make_shared<pb_graph_t>();
                     auto palt = alt_unary_binary->append_alternation(
                             get_unary_binary_ops());
+                    palt->append_decision_function(
+                            check_input_dtype<graph::data_type::f32>);
                     palt->allow_internal_inputs();
                     alt_unary_binary->create_input_port(0, palt, 0);
                     alt_unary_binary->create_output_port(0, palt, 0);
@@ -67,6 +69,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_softmax_post_ops)
                     auto tc_graph = std::make_shared<pb_graph_t>();
                     pm::pb_op_t *ptypecast
                             = tc_graph->append_op(graph::op_kind::TypeCast);
+                    ptypecast->append_decision_function(
+                            check_input_dtype<graph::data_type::f32>);
                     tc_graph->create_input_port(0, ptypecast, 0);
                     tc_graph->create_output_port(0, ptypecast, 0);
                     auto pre_tc = pgraph->append_optional(

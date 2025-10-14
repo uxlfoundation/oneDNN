@@ -212,6 +212,7 @@ struct pd_t : public gemm::pd_t {
     }
     dim_t eff_scale_stride(int idx, int arg) const;
     dim_t eff_zp_stride(int idx, int arg) const;
+    dim_t eff_gs_stride(int idx, int arg) const;
     bool a_scales_grouped() const {
         bool k_grouped
                 = 1 < a_scales_group_k_ && a_scales_group_k_ < desc()->k();

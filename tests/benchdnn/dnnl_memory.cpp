@@ -438,6 +438,7 @@ static int init_memory(
     bool is_sycl = is_sycl_engine(engine);
     bool is_opencl = is_opencl_engine(engine);
 
+    if (ret == nullptr) return FAIL;
     *ret = nullptr;
 
     const int nhandles = query_md_num_handles(md);
@@ -470,7 +471,7 @@ static int init_memory(
     // Register device memory
     for (int i = 0; i < nhandles; i++) {
         size_t sz = dnnl_memory_desc_get_size_v2(md, i);
-        if (ret) {
+        if (*ret) {
             DNN_SAFE(
                     dnnl_memory_get_data_handle_v2(*ret, &handles[i], i), CRIT);
         }

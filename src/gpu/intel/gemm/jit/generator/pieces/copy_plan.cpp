@@ -2591,7 +2591,7 @@ void CopyPlan::legalizeRegions()
         auto dt = i.dst.type;
 
         if (!i.dst && (hw < ngen::HW::XeHPC || i.op != Opcode::cmp)) continue;
-	    if(i.dst.stride == 0) stub("Illegal dst stride");
+	    if (i.dst.stride == 0) stub("Illegal dst stride");
         if (isFP4(dt)) continue;
 
         /* Check for special packed conversion cases */
@@ -2685,6 +2685,15 @@ void CopyPlan::legalizeRegions()
             }
         }
 
+        int dstBO  = i.dst.byteOffset();
+        int src0BO = i.src0.byteOffset();
+        int src1BO = i.src1.byteOffset();
+        int src2BO = i.src2.byteOffset();
+        int dstBS  = i.dst.byteStride();
+        int src0BS = i.src0.byteStride();
+        int src1BS = i.src1.byteStride();
+        int src2BS = i.src2.byteStride();
+
         /* Check for swizzling */
         bool canSwizzle = true, splitQWMov = false;
         if (hw >= HW::XeHP) {
@@ -2696,16 +2705,12 @@ void CopyPlan::legalizeRegions()
             }
             if (isFP(dt))
                 canSwizzle = false;
+#if XE3P
+            if (hw >= HW::Xe3p)
+                canSwizzle &= (!i.src1 || isBroadcast(i.src1) || (src1BO == dstBO && src1BS == dstBS));
+#endif
         }
 
-        int dstBO  = i.dst.byteOffset();
-        int src0BO = i.src0.byteOffset();
-        int src1BO = i.src1.byteOffset();
-        int src2BO = i.src2.byteOffset();
-        int dstBS  = i.dst.byteStride();
-        int src0BS = i.src0.byteStride();
-        int src1BS = i.src1.byteStride();
-        int src2BS = i.src2.byteStride();
         if (!canSwizzle) {
             int dboMask = GRF::bytes(hw) - (isFP(dt) ? 1 : 4);
 

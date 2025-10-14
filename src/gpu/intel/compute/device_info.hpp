@@ -45,7 +45,9 @@ enum class gpu_arch_t {
     xe2,
     xe3,
 #if XE3P
-    xe3p,
+    xe3p_35_10,
+    xe3p_35_11,
+    xe3p_35_unknown,
 #endif
 #if XE4
     xe4,
@@ -69,7 +71,9 @@ static inline std::string to_string(gpu_arch_t arch) {
     CASE(xe2);
     CASE(xe3);
 #if XE3P
-    CASE(xe3p);
+    CASE(xe3p_35_10);
+    CASE(xe3p_35_11);
+    CASE(xe3p_35_unknown);
 #endif
 #if XE4
     CASE(xe4);
@@ -88,7 +92,9 @@ static inline gpu_arch_t str2gpu_arch(const char *str) {
     CASE(xe2);
     CASE(xe3);
 #if XE3P
-    CASE(xe3p);
+    CASE(xe3p_35_10);
+    CASE(xe3p_35_11);
+    CASE(xe3p_35_unknown);
 #endif
 #if XE4
     CASE(xe4);

@@ -55,7 +55,7 @@ int eltwise_injector_f32_t<ngen_generator_t>::min_scratch_regs() {
             case eltwise_tanh:
             case eltwise_tanh_use_dst_for_bwd:
 #if XE3P
-                return (hw() != gpu_xe3p) ? 2 : 1;
+                return (hw() < gpu_xe3p_35_10) ? 2 : 1;
 #else
                 return 2;
 #endif
@@ -79,7 +79,7 @@ int eltwise_injector_f32_t<ngen_generator_t>::min_scratch_regs() {
             case eltwise_clip: return 1;
             case eltwise_gelu_tanh:
 #if XE3P
-                return (hw() != gpu_xe3p) ? 2 : 1;
+                return (hw() < gpu_xe3p_35_10) ? 2 : 1;
 #else
                 return 2;
 #endif
@@ -174,14 +174,14 @@ int eltwise_injector_f32_t<ngen_generator_t>::phase_count(alg_kind_t alg) {
             case eltwise_soft_relu: return 10;
             case eltwise_swish:
 #if XE3P
-                return (hw() != gpu_xe3p) ? 5 : 3;
+                return (hw() < gpu_xe3p_35_10) ? 5 : 3;
 #else
                 return 5;
 #endif
             case eltwise_tanh:
             case eltwise_tanh_use_dst_for_bwd:
 #if XE3P
-                return (hw() != gpu_xe3p) ? 6 : 1;
+                return (hw() < gpu_xe3p_35_10) ? 6 : 1;
 #else
                 return (use_tanh_compat()) ? 9 : 6;
 #endif
@@ -193,7 +193,7 @@ int eltwise_injector_f32_t<ngen_generator_t>::phase_count(alg_kind_t alg) {
             case eltwise_logistic:
             case eltwise_logistic_use_dst_for_bwd:
 #if XE3P
-                return (hw() != gpu_xe3p) ? 4 : 1;
+                return (hw() < gpu_xe3p_35_10) ? 4 : 1;
 #else
                 return 4;
 #endif
@@ -205,7 +205,7 @@ int eltwise_injector_f32_t<ngen_generator_t>::phase_count(alg_kind_t alg) {
             case eltwise_clip: return 4;
             case eltwise_gelu_tanh:
 #if XE3P
-                return (hw() != gpu_xe3p) ? 14 : 8;
+                return (hw() < gpu_xe3p_35_10) ? 14 : 8;
 #else
                 return 14;
 #endif
@@ -290,7 +290,7 @@ template <typename ngen_generator_t>
 void eltwise_injector_f32_t<ngen_generator_t>::tanh_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off, int batch) {
 #if XE3P
-    if (hw() != gpu_xe3p) {
+    if (hw() < gpu_xe3p_35_10) {
 #endif
         const float log2e = 1.44269502162933349609375f; // log_2(e)
         auto one_half = scratch_[0].f(7);
@@ -515,7 +515,7 @@ void eltwise_injector_f32_t<ngen_generator_t>::swish_compute_fwd(
         int simd, const ngen::GRF &r, int phase, int off) {
     auto temp = scratch_[off].f();
 #if XE3P
-    if (hw() != gpu_xe3p) {
+    if (hw() < gpu_xe3p_35_10) {
 #endif
         const float log2e = 1.442695f; // log_2(e)
         switch (phase) {
@@ -588,7 +588,7 @@ template <typename ngen_generator_t>
 void eltwise_injector_f32_t<ngen_generator_t>::logistic_compute_fwd(
         int simd, const ngen::GRF &r, int phase) {
 #if XE3P
-    if (hw() != gpu_xe3p) {
+    if (hw() < gpu_xe3p_35_10) {
 #endif
         const float log2e = 1.442695f; // log_2(e)
         switch (phase) {
@@ -646,7 +646,7 @@ void eltwise_injector_f32_t<ngen_generator_t>::clip_prepare_bwd() {
 template <typename ngen_generator_t>
 void eltwise_injector_f32_t<ngen_generator_t>::tanh_prepare_fwd() {
 #if XE3P
-    if (hw() != gpu_xe3p) {
+    if (hw() < gpu_xe3p_35_10) {
 #endif
         auto one_half = scratch_[0].f(7);
         h->mov(1, one_half, 0.5f);
@@ -723,7 +723,7 @@ void eltwise_injector_f32_t<ngen_generator_t>::gelu_tanh_compute_bwd(
 
     auto a = scratch_[off].f();
 #if XE3P
-    if (hw() != gpu_xe3p) {
+    if (hw() < gpu_xe3p_35_10) {
 #endif
         auto b = scratch_[off + batch].f();
         switch (phase) {
@@ -1098,7 +1098,9 @@ REG_XEHPC_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe_hpc>>);
 REG_XE2_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe2>>);
 REG_XE3_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe3>>);
 #if XE3P
-REG_XE3P_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe3p>>);
+REG_XE3P_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe3p_35_10>>);
+REG_XE3P_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe3p_35_11>>);
+REG_XE3P_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe3p_35_unknown>>);
 #endif
 #if XE4
 REG_XE4_ISA(template struct eltwise_injector_f32_t<code_gen<gpu_xe4>>);

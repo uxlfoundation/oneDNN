@@ -211,7 +211,8 @@ status_t gen_desc_t::finalize(const char *tags) {
     }
 
 #if XE3P
-    if (hw_ == ngen::HW::Xe3p) {
+    if (utils::one_of(hw_, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                ngen::HW::XE3P_UNKNOWN)) {
         // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
         if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
 
@@ -341,7 +342,9 @@ void gen_desc_t::update_driver_info() {
         REG_XE2_ISA(ARCH_DISPATCH(Xe2))
         REG_XE3_ISA(ARCH_DISPATCH(Xe3))
 #if XE3P
-        REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
+        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_10))
+        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_11))
+        REG_XE3P_ISA(ARCH_DISPATCH(XE3P_UNKNOWN))
 #endif
         default:
             assert(!"Unsupported architecture");
@@ -566,7 +569,9 @@ status_t gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch,
     MatchParams base(hw_, has_systolic, is_integrated, problem_);
 #if XE3P
     /* Reuse PVC strategies for legacy mode on Xe3p */
-    if (arch == compute::gpu_arch_t::xe3p && !efficient_64b_)
+    if (utils::one_of(hw_, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                ngen::HW::XE3P_UNKNOWN)
+            && !efficient_64b_)
         base.selector.hw = kcatalog::HWTagXeHPC;
 #endif
 
@@ -880,7 +885,9 @@ void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
         case compute::gpu_arch_t::xe2:
         case compute::gpu_arch_t::xe3:
 #if XE3P
-        case compute::gpu_arch_t::xe3p:
+        case compute::gpu_arch_t::xe3p_35_10:
+        case compute::gpu_arch_t::xe3p_35_11:
+        case compute::gpu_arch_t::xe3p_35_unknown:
 #endif
             if (utils::one_of(a_type, f16, bf16)) {
                 if (unroll_m != 0)
@@ -1108,7 +1115,9 @@ status_t gen_kernel_t::get_kernel(
             REG_XE2_ISA(ARCH_DISPATCH(Xe2))
             REG_XE3_ISA(ARCH_DISPATCH(Xe3))
 #if XE3P
-            REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
+            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_10))
+            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_35_11))
+            REG_XE3P_ISA(ARCH_DISPATCH(XE3P_UNKNOWN))
 #endif
             default: assert(!"Unsupported architecture"); break;
         }

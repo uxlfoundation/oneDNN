@@ -84,7 +84,9 @@ struct hw_context_t {
             case ngen::HW::Xe2:
             case ngen::HW::Xe3:
 #if XE3P
-            case ngen::HW::Xe3p:
+            case ngen::HW::XE3P_35_10:
+            case ngen::HW::XE3P_35_11:
+            case ngen::HW::XE3P_UNKNOWN:
 #endif
                 return 16;
             default: gpu_error_not_expected();

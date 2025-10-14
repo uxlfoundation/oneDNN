@@ -229,7 +229,7 @@ struct gen_t : public primitive_t {
             bool arch_ok = utils::one_of(arch_, arch_t::xe_lp, arch_t::xe_hp,
                     arch_t::xe_hpg, arch_t::xe_hpc, arch_t::xe2, arch_t::xe3);
 #if XE3P
-            arch_ok |= (arch_ == arch_t::xe3p);
+            arch_ok |= (arch_ >= arch_t::xe3p_35_10);
 #endif
 
             VDISPATCH_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
@@ -251,7 +251,7 @@ struct gen_t : public primitive_t {
                     || intel_engine->mayiuse(compute::device_ext_t::
                                     intel_subgroup_split_matrix_multiply_accumulate);
 
-            bool is_integrated = intel_engine->device_info()->is_integrated();
+            bool is_integrated = dev_info_->is_integrated();
 
             // Size checks for fused reduction kernels.
             if (with_sum_ab()) {
@@ -337,7 +337,7 @@ struct gen_t : public primitive_t {
                     bsc_dims_, b_q2d_group_k(), b_q2d_group_n()};
 
 #if XE3P
-            if (arch_ == arch_t::xe3p)
+            if (arch_ >= arch_t::xe3p_35_10)
                 kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
 #endif
 

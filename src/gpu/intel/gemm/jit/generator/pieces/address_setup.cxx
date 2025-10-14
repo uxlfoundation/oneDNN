@@ -230,7 +230,7 @@ void Generator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &ptr, const
                     eadd(simd1, addr[0].uq(), addr[0].ud(0)(udStride), ptrShifted, strategy, state);
                 } else if (ptrShifted != 0) {
 #if XE3P
-                    if (consecutive > 1 || tblock > 1 || hw >= HW::Xe3p)
+                    if (consecutive > 1 || tblock > 1 || hw >= HW::XE3P_35_10)
 #else
                     if (consecutive > 1 || tblock > 1)
 #endif

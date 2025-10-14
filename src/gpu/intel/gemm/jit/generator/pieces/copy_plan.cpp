@@ -729,7 +729,8 @@ void CopyPlan::split2DRegions()
             if (i.flag) stub("Unsupported predication");
             int w = i.src0.width, vs = i.src0.vs, hs = i.src0.stride;
 #if XE3P
-            bool splitH = (w * w >= i.simd || (hw == ngen::HW::Xe3p && i.dst.stride * w >= 8));
+            bool is_xe3p = one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN);
+            bool splitH = (w * w >= i.simd || (is_xe3p && i.dst.stride * w >= 8));
 #else
             bool splitH = (w * w >= i.simd);
 #endif
@@ -790,7 +791,8 @@ void CopyPlan::planTypeConversions()
         if (st == dt)
             i.moveToIntegerPipe();
 #if XE3P
-        if (hw >= HW::Xe3p && is4(st) && one_of(getBits(dt), 8, 16))
+        bool is_xe3p = one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN);
+        if (is_xe3p && is4(st) && one_of(getBits(dt), 8, 16))
             if (planShflUpconvertXe3p(i))
                 continue;
 #endif 
@@ -1180,7 +1182,7 @@ void CopyPlan::planSmallUWToHF(CopyInstruction &i)
 void CopyPlan::planSmallUWToBF(CopyInstruction &i)
 {
 #if XE3P
-    if (hw >= HW::Xe3p) {
+    if (hw >= HW::XE3P_35_10) {
         planSmallUWToBFXe3p(i);
         return;
     }
@@ -1435,7 +1437,7 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
     i.sat = false;
 
 #if XE3P
-    if (hw >= HW::Xe3p && one_of(getBits(i.dst.type), 8, 16))
+    if (hw >= HW::XE3P_35_10 && one_of(getBits(i.dst.type), 8, 16))
         if (planShflUpconvertXe3p(i))
             return;
 #endif
@@ -2212,7 +2214,7 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
     }
 
 #if XE3P
-    if (hw >= HW::Xe3p) {
+    if (hw >= HW::XE3P_35_10) {
         auto t0 = newTemp(DataType::hf, i.simd/2, 1);
         auto t1 = newTemp(DataType::hf, i.simd/2, 1);
         auto ie = splitMultiple<5>(i);
@@ -2486,7 +2488,8 @@ void CopyPlan::legalizeSIMD(bool initial)
         // Fracture instruction into legal SIMD lengths.
         int simd0 = std::min<int>(rounddown_pow2(i.simd), simdMax);
 #if XE3P
-        if (hw == ngen::HW::Xe3p && simd0 == 2) simd0 = 1;
+        bool is_xe3p = one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN);
+        if (is_xe3p && simd0 == 2) simd0 = 1;
 #endif
         auto opSimdMax = [&] (const CopyOperand &op) {
             if (op.kind != CopyOperand::GRF || op.stride == 0) return simdMax;

@@ -44,7 +44,7 @@ void CommonStrategy::preflight(HW hw, const CommonProblem &problem)
     if (moveR0 == MoveR0::Acc && emulateNeedsAcc)
         moveR0 = MoveR0::None;
 #if XE3P
-    if (hw >= HW::Xe3p) moveR0 = MoveR0::None;
+    if (hw >= HW::XE3P_35_10) moveR0 = MoveR0::None;
 #endif
 
     spf &= !fused;

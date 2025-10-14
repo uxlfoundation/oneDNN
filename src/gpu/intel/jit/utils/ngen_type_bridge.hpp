@@ -82,7 +82,9 @@ inline ngen::HW convert_dnnl_arch_to_ngen(compute::gpu_arch_t gpu_arch) {
         case compute::gpu_arch_t::xe2: return ngen::HW::Xe2;
         case compute::gpu_arch_t::xe3: return ngen::HW::Xe3;
 #if XE3P
-        case compute::gpu_arch_t::xe3p: return ngen::HW::Xe3p;
+        case compute::gpu_arch_t::xe3p_35_10: return ngen::HW::XE3P_35_10;
+        case compute::gpu_arch_t::xe3p_35_11: return ngen::HW::XE3P_35_11;
+        case compute::gpu_arch_t::xe3p_35_unknown: return ngen::HW::XE3P_UNKNOWN;
 #endif
 #if XE4
         case compute::gpu_arch_t::xe4: return ngen::HW::Xe4;
@@ -102,7 +104,9 @@ inline compute::gpu_arch_t convert_ngen_arch_to_dnnl(ngen::HW gpu_arch) {
         case ngen::HW::Xe2: return compute::gpu_arch_t::xe2;
         case ngen::HW::Xe3: return compute::gpu_arch_t::xe3;
 #if XE3P
-        case ngen::HW::Xe3p: return compute::gpu_arch_t::xe3p;
+        case ngen::HW::XE3P_35_10: return compute::gpu_arch_t::xe3p_35_10;
+        case ngen::HW::XE3P_35_11: return compute::gpu_arch_t::xe3p_35_11;
+        case ngen::HW::XE3P_UNKNOWN: return compute::gpu_arch_t::xe3p_35_unknown;
 #endif
 #if XE4
         case ngen::HW::Xe4: return compute::gpu_arch_t::xe4;

@@ -869,7 +869,8 @@ private:
 bool is_src1_ok(ngen::HW hw, const ngen_operand_t &dst,
         const ngen_operand_t &src0, const ngen_operand_t &src1) {
 #if XE3P
-    if (hw == ngen::HW::Xe3p) {
+    if (utils::one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                ngen::HW::XE3P_UNKNOWN)) {
         if (!src1.is_reg_data()) return true;
         auto src1_rd = src1.reg_data();
         if (src1_rd.isScalar()) return true;
@@ -916,7 +917,8 @@ public:
                 } else {
 #if XE3P
                     const auto grf_size = ngen::GRF::bytes(hw());
-                    if (hw() >= ngen::HW::Xe3p && bind.is_reg_buf_data()) {
+                    if (hw() >= ngen::HW::XE3P_35_10
+                            && bind.is_reg_buf_data()) {
                         auto mod = dst_operand.mod();
                         auto dst = dst_operand.reg_data();
                         auto src = bind.reg_data();
@@ -1661,7 +1663,9 @@ private:
         reg_buf_data_t t_strided;
         bool align_with_dst = false;
 #if XE3P
-        if (hw() == ngen::HW::Xe3p) align_with_dst = true;
+        if (utils::one_of(hw(), ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                    ngen::HW::XE3P_UNKNOWN))
+            align_with_dst = true;
 #endif
         if (align_with_dst) {
             int w_stride = dst_stride * (ngen::getBytes(dst.type()) / w_size);
@@ -1783,7 +1787,9 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
     if (setup_flags.has_send_atomics) interface.requireGlobalAtomics();
 
 #if XE3P
-    if (exec_cfg.hw() == ngen::HW::Xe3p && !exec_cfg.hw().is_efficient_64bit())
+    if (utils::one_of(exec_cfg.hw(), ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11,
+                ngen::HW::XE3P_UNKNOWN)
+            && !exec_cfg.hw().is_efficient_64bit())
         interface.setEfficient64Bit(false);
 #endif
 

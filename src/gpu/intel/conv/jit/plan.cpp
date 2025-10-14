@@ -1322,8 +1322,8 @@ struct fma_context_t {
         bool is_a = (abc == abc_kind_t::a);
         auto type = (is_a ? a_type : b_type);
 #if XE3P
-        bool cvt_f16 = (hw != ngen::HW::Xe3p
-                && (layout.type().is_fp8() || layout.type().is_fp4()));
+        bool cvt_f16 = ((hw < ngen::HW::XE3P_35_10 && layout.type().is_fp8())
+                || (hw < ngen::HW::XE3P_35_11 && layout.type().is_fp4()));
 #else
         bool cvt_f16 = (layout.type().is_fp8() || layout.type().is_fp4());
 #endif
@@ -2175,7 +2175,7 @@ private:
         auto &tg = cfg_.thread_group_grid();
         auto thr_view = tg_view.split(tg, &grid);
 #if XE3P
-        if (cfg_.hw() == ngen::HW::Xe3p) {
+        if (cfg_.hw() == ngen::HW::XE3P_35_11) {
             maybe_extend_prefetch_thread_view_to_256_bytes(thr_view);
         }
 #endif

@@ -73,7 +73,7 @@ static inline bool hasNativeAtomicAdd(ngen::HW hw, Type T, const MatrixAddressin
     if (astrategy.newDP)
         floatAtomics |= (astrategy.base.getModel() != ModelSLM);
 #if XE3P
-    if (hw >= HW::Xe3p) floatAtomics = true;
+    if (hw >= HW::XE3P_35_10) floatAtomics = true;
 #endif
 
     if (T.isInt4())
@@ -84,7 +84,7 @@ static inline bool hasNativeAtomicAdd(ngen::HW hw, Type T, const MatrixAddressin
         return floatAtomics && (hw >= HW::XeHP);
 #if XE3P
     else if (T == Type::f16 || T == Type::bf16)
-        return (hw >= HW::Xe3p);
+        return (hw >= HW::XE3P_35_10);
 #endif
     else if (T == Type::f64)
         return floatAtomics && (hw >= HW::XeHPC);
@@ -99,11 +99,13 @@ static inline size_t slmCapacity(ngen::HW hw)
         case HW::Gen12LP:
         case HW::XeHP:
         case HW::XeHPG:
-        case HW::XeHPC:     return 131072;
-        case HW::Xe2:       return 131072;
-        case HW::Xe3:       return 131072;
+        case HW::XeHPC:      return 131072;
+        case HW::Xe2:        return 131072;
+        case HW::Xe3:        return 131072;
 #if XE3P
-        case HW::Xe3p:      return 393216;
+        case HW::XE3P_35_10: return 196608; 
+        case HW::XE3P_35_11: 
+        case HW::XE3P_UNKNOWN: return 393216;
 #endif
         default:
             return 0;
@@ -133,7 +135,9 @@ static inline int eusPerSubslice(ngen::HW hw)
         case HW::XeHPC:
         case HW::Xe2:
 #if XE3P 
-        case HW::Xe3p:
+        case HW::XE3P_35_10:
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN:
 #endif
         case HW::Xe3:
             return 8;
@@ -170,7 +174,7 @@ static inline int block2DMinAlignment(ngen::HW hw, const MatrixAddressing &atype
     if (hw == HW::Xe2) return 16;
     if (hw == HW::Xe3) return 16;
 #if XE3P
-    if (hw >= HW::Xe3p) return 4;
+    if (hw >= HW::XE3P_35_10) return 4;
 #endif
     return (isTransposing(astrategy.accessType) || astrategy.prefetch) ? 4 : 8;
 }
@@ -180,7 +184,7 @@ static inline int block2DBaseAlignment(ngen::HW hw, int stepping)
 {
     using namespace ngen;
 #if XE3P
-    if (hw >= HW::Xe3p) return 4;
+    if (hw >= HW::XE3P_35_10) return 4;
 #endif
     if (hw == HW::XeHPC && stepping < SteppingPVCXTB4)
         return 128;

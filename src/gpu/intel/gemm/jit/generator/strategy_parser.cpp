@@ -123,7 +123,7 @@ CacheSettingsLSC getCaching(char l1, char l2, char l3) {
 CacheSettingsLSC getCachingEntry(std::stringstream &s, HW hw)
 {
 #if XE3P
-    if (hw >= HW::Xe3p) {
+    if (hw >= HW::XE3P_35_10) {
         char l1, l2, l3;
         s >> l1 >> l2 >> l3;
         return getCaching(l1, l2, l3);
@@ -147,7 +147,7 @@ void getCaching(std::stringstream &s, HW hw, MatrixAddressingStrategy &astrategy
         if (hw >= HW::XeHPC)
             cachingW = CacheSettingsLSC::L1UC_L3WB;
 #if XE3P
-        if (hw >= HW::Xe3p) 
+        if (hw >= HW::XE3P_35_10) 
             cachingR = CacheSettingsLSC::L1C_L2C_L3C;
 #endif
     }
@@ -272,7 +272,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
     strategy.B.cachingW = CacheSettingsLSC::Default;
     strategy.CO.cachingR = CacheSettingsLSC::L1C_L3C;
 #if XE3P
-    if (hw >= HW::Xe3p) strategy.CO.cachingR = CacheSettingsLSC::L1C_L2C_L3C;
+    if (hw >= HW::XE3P_35_10) strategy.CO.cachingR = CacheSettingsLSC::L1C_L2C_L3C;
 #endif
     strategy.A_prefetch.prefetch = true;
     strategy.B_prefetch.prefetch = true;
@@ -295,7 +295,7 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
     if (strategy.AB_prefetchL3.cachingR == CacheSettingsLSC::Default) {
         strategy.AB_prefetchL3.cachingR = CacheSettingsLSC::L1UC_L3C;
 #if XE3P
-        if (hw >= HW::Xe3p)
+        if (hw >= HW::XE3P_35_10)
             strategy.AB_prefetchL3.cachingR = CacheSettingsLSC::L1UC_L2C_L3C;
 #endif
     }

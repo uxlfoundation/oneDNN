@@ -1685,12 +1685,12 @@ void Generator<hw>::doAlternateCRemainder(COperation op, const GEMMProblem &prob
 
     if (!uniform) {
 #if XE3P
-        static constexpr int maxGRFs = 512;
+        int maxGRFs = ( hw == HW::XE3P_35_11 ? 512 : 256 );
 #else
-        static constexpr int maxGRFs = 256;
+        int maxGRFs = 256;
 #endif
-        uint8_t baseIndices[maxGRFs] = {0};
-        uint16_t offIndices[maxGRFs] = {0};
+        std::vector<uint8_t> baseIndices(maxGRFs, 0);
+        std::vector<uint16_t> offIndices(maxGRFs, 0);
 
         // Workaround for spurious maybe-uninitialized warning in GCC11
         for (int i = 0; i < maxGRFs; i++) offIndices[i] = 0;

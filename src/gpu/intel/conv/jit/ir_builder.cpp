@@ -253,7 +253,7 @@ public:
 
 #if XE3P
         // Assign {Fwd} for dpas when applicable.
-        if (cfg_.hw() >= ngen::HW::Xe3p)
+        if (cfg_.hw() >= ngen::HW::XE3P_35_10)
             x2r_mul_stmt_ = inject_dpas_fwd(x2r_mul_stmt_);
 #endif
         // Assign {Atomic} for dpas(w) when applicable.

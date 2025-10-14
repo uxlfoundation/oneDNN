@@ -338,7 +338,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         case ngen::HW::Xe2:     selector.hw = kcatalog::HWTagXe2;     break;
         case ngen::HW::Xe3:     selector.hw = kcatalog::HWTagXe3;   break;
 #if XE3P
-        case ngen::HW::Xe3p:     selector.hw = kcatalog::HWTagXe3p;   break;
+        case ngen::HW::XE3P_35_10:
+        case ngen::HW::XE3P_35_11:
+        case ngen::HW::XE3P_UNKNOWN:     selector.hw = kcatalog::HWTagXe3p;   break;
 #endif
     }
 
@@ -421,7 +423,7 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     if (hw == ngen::HW::Xe3)
         *tagPtr++ = ReqXe2Block2D;
 #if XE3P
-    if (hw == ngen::HW::Xe3p) *tagPtr++ = ReqXe2Block2D;
+    if (one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN)) *tagPtr++ = ReqXe2Block2D;
 #endif
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;

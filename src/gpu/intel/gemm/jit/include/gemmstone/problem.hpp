@@ -314,11 +314,16 @@ void GEMMProblem::autoTypeConversions(ngen::HW hw, bool systolicAvailable)
     if (Ta == Ta_ext.asSigned()) Ta = Ta_ext;
     if (Tb == Tb_ext.asSigned()) Tb = Tb_ext;
 #if XE3P
-    if (hw < HW::Xe3p || !systolicAvailable)
+    if (hw < HW::XE3P_35_10 || !systolicAvailable)
 #endif
     {
         if (Ta.isF8()) Ta = Type::f16;
         if (Tb.isF8()) Tb = Type::f16;
+    }
+#if XE3P
+    if (hw < HW::XE3P_35_11 || !systolicAvailable)
+#endif
+    {
         if (Ta.isF4()) Ta = Type::f16;
         if (Tb.isF4()) Tb = Type::f16;
     }

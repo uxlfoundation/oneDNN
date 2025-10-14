@@ -9,7 +9,7 @@ where *pool-knobs* are:
 
  - `--dir={FWD_D [default], FWD_I, BWD_D}` -- dnnl_prop_kind_t.
             Refer to [direction](knobs_dir.md) for details.
- - `--dt={f32:f32:f32 [default], ...}` -- source, weights and destination data
+ - `--dt={f32:f32 [default], ...}` -- source, weights and destination data
             types. Interface supports broadcasting, when a single input is
             provided, e.g., `--dt=f32`, and the value will be applied for all
             tensors. Refer to [data types](knobs_dt.md) for details.
@@ -41,33 +41,6 @@ and *pool-desc* is a problem descriptor. The canonical form is:
 Refer to [descriptor](knobs_desc.md) for details. Input shape and kernel size
 are mandatory inputs. Output shape and padding may be deduced based on the
 values provided.
-
-## Precision Configurations
-
-`--cfg` option specifies what [data types](knobs_dt.md) will be used for a
-problem. It is implicit for the integer type saturation. This option also
-defines the threshold for computation errors.
-
-The table below shows supported name configurations for this driver:
-
-| src   | dst   | cfg   | notes
-|:---   |:---   |:---   |:---
-| f32   | f32   | f32   | TBA.
-| s32   | s32   | s32   |
-| f16   | f16   | f16   |
-| bf16  | bf16  | bf16  |
-| s8    | s8    | s8    |
-| u8    | u8    | u8    |
-| s8    | u8    | s8u8  | Only on GPU engine
-| u8    | s8    | u8s8  | Only on GPU engine
-| s8    | f16   | s8f16 | Only on GPU engine
-| f16   | s8    | f16s8 | Only on GPU engine
-| u8    | f16   | u8f16 | Only on GPU engine
-| f16   | u8    | f16u8 | Only on GPU engine
-| s8    | f32   | s8f32 | Only on GPU engine
-| f32   | s8    | f32s8 | Only on GPU engine
-| u8    | f32   | u8f32 | Only on GPU engine
-| f32   | u8    | f32u8 | Only on GPU engine
 
 
 ## Essence of Testing

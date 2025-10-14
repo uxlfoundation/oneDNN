@@ -253,7 +253,12 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         for (int arg : supported_args) {
             if (!zp.has_default_values(arg)) {
                 const int mask = zp.get_mask(arg);
-                if (mask > 0) return false;
+                if (mask == 0)
+                    continue;
+                else if (mask == 2
+                        && utils::one_of(arg, DNNL_ARG_WEIGHTS, DNNL_ARG_DST))
+                    continue;
+                return false;
             }
         }
         return true;
@@ -736,7 +741,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
             = brgmm_ctx.get_zp_a_compensation_ptr(ithr, b_idx, n_blk_idx);
     const auto zp_comp_b
             = brgmm_ctx.get_zp_b_compensation_result_ptr(ithr, m_blk_idx);
-    const auto zp_c_val_ptr = brgmm_ctx.get_zp_c_val_ptr();
+    const auto zp_c_val_ptr = brgmm_ctx.get_zp_c_val_ptr(n);
     const auto &post_ops_binary_rhs_arg_vec
             = brgmm_ctx.get_post_ops_binary_rhs_arg_vec();
     const bool post_ops_applicable = bgmmc.post_ops_applicable
@@ -1122,7 +1127,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
                         const auto zp_comp_b
                                 = brgmm_ctx.get_zp_b_compensation_result_ptr(
                                         ithr, mb);
-                        const auto zp_c_val_ptr = brgmm_ctx.get_zp_c_val_ptr();
+                        const auto zp_c_val_ptr = brgmm_ctx.get_zp_c_val_ptr(n);
                         const auto &post_ops_binary_rhs_arg_vec
                                 = brgmm_ctx.get_post_ops_binary_rhs_arg_vec();
 
@@ -1248,7 +1253,7 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
     ctx.zp_a_compensation_ptr = (void *)brgmm_ctx.get_zp_a_compensation_ptr(
             ithr, b_idx, n_blk_idx);
     ctx.zp_a_neg_value_ptr = (void *)brgmm_ctx.get_zp_a_neg_val_ptr();
-    ctx.zp_b_value_ptr = (void *)brgmm_ctx.get_zp_b_val_ptr();
+    ctx.zp_b_value_ptr = (void *)brgmm_ctx.get_zp_b_val_ptr(n);
     ctx.dynamic_src_stride = brgmm_ctx.copy_B_wei_stride();
 
     // For best performance, scales should be taken in copy kernels as is.
@@ -1380,17 +1385,40 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                         pd->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
                         src_zero_points, 0)
                 : 0;
-        zero_point_b_val_ = wei_zero_points ? cpu::io::load_int_value(
-                                    pd->attr()->zero_points_.get_data_type(
-                                            DNNL_ARG_WEIGHTS),
-                                    wei_zero_points, 0)
-                                            : 0;
-        zero_point_b_negative_val_ = -zero_point_b_val_;
-        zero_point_c_val_ = dst_zero_points
-                ? cpu::io::load_int_value(
-                        pd->attr()->zero_points_.get_data_type(DNNL_ARG_DST),
-                        dst_zero_points, 0)
-                : 0;
+
+        const int wei_zp_mask
+                = pd->attr()->zero_points_.get_mask(DNNL_ARG_WEIGHTS);
+        const bool is_wei_zp_per_oc = (wei_zp_mask == 2);
+
+        if (is_wei_zp_per_oc) {
+            zero_point_b_per_oc_ptr_ = wei_zero_points;
+            zero_point_b_val_ = 0;
+            zero_point_b_negative_val_ = 0;
+
+        } else {
+            zero_point_b_val_ = wei_zero_points ? cpu::io::load_int_value(
+                                        pd->attr()->zero_points_.get_data_type(
+                                                DNNL_ARG_WEIGHTS),
+                                        wei_zero_points, 0)
+                                                : 0;
+            zero_point_b_negative_val_ = -zero_point_b_val_;
+            zero_point_b_per_oc_ptr_ = nullptr;
+        }
+
+        const int dst_zp_mask = pd->attr()->zero_points_.get_mask(DNNL_ARG_DST);
+        const bool is_dst_zp_per_oc = (dst_zp_mask == 2);
+
+        if (is_dst_zp_per_oc) {
+            zero_point_c_per_oc_ptr_ = dst_zero_points;
+            zero_point_c_val_ = 0;
+        } else {
+            zero_point_c_val_ = dst_zero_points ? cpu::io::load_int_value(
+                                        pd->attr()->zero_points_.get_data_type(
+                                                DNNL_ARG_DST),
+                                        dst_zero_points, 0)
+                                                : 0;
+            zero_point_c_per_oc_ptr_ = nullptr;
+        }
 
         memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
 
@@ -2168,13 +2196,29 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return &zero_point_b_negative_val_;
     }
 
-    const int32_t *get_zp_b_val_ptr() const { return &zero_point_b_val_; }
+    const int32_t *get_zp_b_val_ptr(int n_offset) const {
+        if (zero_point_b_per_oc_ptr_ != nullptr) {
+            return static_cast<const int32_t *>(zero_point_b_per_oc_ptr_)
+                    + n_offset;
+        } else {
+            return &zero_point_b_val_;
+        }
+    }
 
     const int32_t *get_zp_ab_mixed_comp_ptr() const {
         return &zero_point_mixed_ab_compensation_component_;
     }
 
     const int32_t *get_zp_c_val_ptr() const { return &zero_point_c_val_; }
+
+    const int32_t *get_zp_c_val_ptr(int n_offset) const {
+        if (zero_point_c_per_oc_ptr_ != nullptr) {
+            return static_cast<const int32_t *>(zero_point_c_per_oc_ptr_)
+                    + n_offset;
+        } else {
+            return &zero_point_c_val_;
+        }
+    }
 
     int32_t *get_zp_a_compensation_ptr(
             int ithr, int b_idx, int n_blk_idx) const {
@@ -2532,6 +2576,8 @@ private:
     int32_t zero_point_b_negative_val_;
     int32_t zero_point_mixed_ab_compensation_component_;
     int32_t zero_point_c_val_;
+    const void *zero_point_c_per_oc_ptr_;
+    const void *zero_point_b_per_oc_ptr_;
     std::vector<const void *> post_ops_binary_rhs_arg_vec_;
 
     int base_brg_ker_idx_;

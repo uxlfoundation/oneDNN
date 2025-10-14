@@ -2134,10 +2134,13 @@ protected:
     * @param vmm_permd Vector register containing permutation indices for INT4 processing
     * @param dt Data type being loaded
     * @param is_tail Flag indicating if tail processing is needed
+    * @param vmm_f4_lut Vector register containing lookup table for FP4 conversion
+    * (default is Vmm(4) for kernel jit_brgemm_matmul_copy_b_f32_t)
     */
     template <typename Vmm>
     void load_value(const Vmm &reg, const Xbyak::Operand &op,
-            const Vmm &vmm_permd, data_type_t dt, bool is_tail = false) {
+            const Vmm &vmm_permd, data_type_t dt, bool is_tail = false,
+            const Vmm &vmm_f4_lut = Vmm(4)) {
         using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
         const auto vmm_in = maybe_mask(reg, is_tail);
         const auto vmm_lower = Vmm_lower_t(vmm_in.getIdx());
@@ -2195,6 +2198,16 @@ protected:
                 uni_vpslld(reg | k5555, reg, 28);
                 vpsrld(reg | k5555, reg, 28);
                 vpsrld(reg | kAAAA, reg, 4);
+                break;
+            case data_type::f4_e2m1:
+            case data_type::f4_e3m0:
+                uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), op);
+                copy_half_int4(vmm_in, vmm_lower);
+                vpermd(vmm_in, vmm_permd, vmm_in);
+                uni_vpslld(vmm_in | k5555, vmm_in, 28);
+                vpsrld(vmm_in | k5555, vmm_in, 28);
+                vpsrld(vmm_in | kAAAA, vmm_in, 4);
+                vpermps(vmm_in, vmm_in, vmm_f4_lut);
                 break;
             default: assert(!"unsupported data type");
         }
@@ -3665,13 +3678,12 @@ template struct jit_brgemm_matmul_copy_b_bf16_t<Zmm>;
 template struct jit_brgemm_matmul_copy_b_bf16_t<Ymm>;
 
 template <typename Vmm>
-struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
-                                        public jit_generator_t {
+struct jit_brgemm_matmul_copy_b_f32_t
+    : public jit_brgemm_matmul_copy_b_common_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_f32_t)
 
     jit_brgemm_matmul_copy_b_f32_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator_t(jit_name())
+        : jit_brgemm_matmul_copy_b_common_t(conf)
         , dt_in_(conf->orig_wei_dt)
         , simd_w_(vreg_traits_t<Vmm>::vlen / sizeof(float))
         , is_src_f4_(one_of(
@@ -3710,12 +3722,6 @@ private:
     const size_t typesize_out_ = sizeof(float);
     dim_t src_stride_, tr_src_stride_, wei_scales_N_stride_;
 
-    opmask_t kTail = k7;
-    opmask_t kFFFF = k6;
-    opmask_t k5555 = k5;
-    opmask_t kAAAA = k4;
-    opmask_t kTail4bit = k3;
-
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;
 
@@ -3725,7 +3731,6 @@ private:
     reg64_t reg_tmp = r15;
     reg32_t regw_tmp = r15d;
     reg64_t reg_wei_scales = rdx;
-    reg64_t reg_f4_lut = r11;
 
     Vmm vmm_zero = Vmm(0);
     Vmm vmm_wei_scales = Vmm(1);
@@ -3739,87 +3744,11 @@ private:
         mov(regw_tmp, w);
         jit_generator_t::kmovd(k, regw_tmp);
     }
-    void insert_high_half(const Zmm &zmm, const Ymm &ymm_half) {
-        vinserti64x4(zmm, zmm, ymm_half, 1);
-    }
-    void insert_high_half(const Ymm &ymm, const Xmm &xmm_half) {
-        vinserti128(ymm, ymm, xmm_half, 1);
-    }
-    Vmm_lower_t maybe_mask(Vmm_lower_t vmm_lower, bool is_tail) {
-        assert(is_src_int4_ || is_src_f4_);
-        return is_tail && isa_has_masks(conf_->isa)
-                ? vmm_lower | kTail4bit | T_z
-                : vmm_lower;
-    }
-    Vmm maybe_mask(Vmm vmm, bool is_tail) {
-        return is_tail && isa_has_masks(conf_->isa) ? vmm | kTail | T_z : vmm;
-    }
-    void load_data(const Vmm vmm_in, const Xbyak::Operand &op, bool is_tail);
+
     void copy_16_x_n_block(int nrows, int ncolumns);
     void compute_k_loop(int ncolumns);
     void generate() override;
 };
-
-template <typename Vmm>
-void jit_brgemm_matmul_copy_b_f32_t<Vmm>::load_data(
-        const Vmm vmm_in, const Xbyak::Operand &op, bool is_tail) {
-    const auto vmm = maybe_mask(vmm_in, is_tail);
-    const auto vmm_lower = Vmm_lower_t(vmm.getIdx());
-    MAYBE_UNUSED(vmm_lower);
-
-    switch (dt_in_) {
-        case data_type::f32: uni_vmovups(vmm, op); break;
-        case data_type::bf16:
-            // Upconvert: load 16 bits and move them 16 bits left.
-            uni_vpmovzxwd(vmm, op);
-            uni_vpslld(vmm, vmm, 16);
-            break;
-        case data_type::f16:
-            if (is_superset(conf_->isa, avx512_core_fp16)) {
-                vcvtph2psx(vmm, op);
-            } else {
-                vcvtph2ps(vmm, op);
-            }
-            break;
-        case data_type::s8: uni_vpmovsxbd(vmm, op); break;
-        case data_type::u8: uni_vpmovzxbd(vmm, op); break;
-        // For int4, we see two int4 as one int8 and extend them int32
-        // low half stores in lower bytes of vmm and high half in higher
-        // bytes of vmm, then permute them into correct order
-        // Finally, we process the extend bytes for s4/u4 accordingly
-        case data_type::s4:
-            uni_vpmovsxbd(maybe_mask(vmm_lower, is_tail), op);
-            insert_high_half(vmm_in, vmm_lower);
-            vpermd(vmm_in, vmm_permd, vmm_in);
-            uni_vpslld(vmm_in | k5555, vmm_in, 28);
-            vpsrad(vmm_in | k5555, vmm_in, 28);
-            vpsrad(vmm_in | kAAAA, vmm_in, 4);
-            break;
-        case data_type::u4:
-            uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), op);
-            insert_high_half(vmm_in, vmm_lower);
-            vpermd(vmm_in, vmm_permd, vmm_in);
-            uni_vpslld(vmm_in | k5555, vmm_in, 28);
-            vpsrld(vmm_in | k5555, vmm_in, 28);
-            vpsrld(vmm_in | kAAAA, vmm_in, 4);
-            break;
-        case data_type::f4_e2m1:
-        case data_type::f4_e3m0:
-            uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), op);
-            insert_high_half(vmm_in, vmm_lower);
-            vpermd(vmm_in, vmm_permd, vmm_in);
-            uni_vpslld(vmm_in | k5555, vmm_in, 28);
-            vpsrld(vmm_in | k5555, vmm_in, 28);
-            vpsrld(vmm_in | kAAAA, vmm_in, 4);
-            vpermps(vmm_in, vmm_in, vmm_f4_lut);
-            break;
-        default: assert(!"unsupported data type");
-    }
-
-    if (one_of(dt_in_, data_type::s8, data_type::u8, data_type::s4,
-                data_type::u4))
-        uni_vcvtdq2ps(vmm_in, vmm_in);
-}
 
 template <typename Vmm>
 void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
@@ -3846,31 +3775,12 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         if (is_tail && !isa_has_masks(conf_->isa))
             vmaskmovps(src_vmm, ymm_tail_mask, addr);
         else
-            load_data(src_vmm, addr, is_tail);
+            load_value(src_vmm, addr, vmm_permd, conf_->orig_wei_dt, is_tail);
 
-        if (req_zp_b_shift_)
-            uni_vsubps(maybe_mask(src_vmm, is_tail), src_vmm, vmm_zp_b_shift);
-        if (req_apply_wei_scales_) {
-            const auto wei_scales_addr = maybe_EVEX_compress_addr(
-                    reg_wei_scales,
-                    k * wei_scales_N_stride_ + n * wei_scales_typesize_);
-            const auto vmm_wei_scales_masked
-                    = maybe_mask(vmm_wei_scales, is_tail);
-            switch (conf_->wei_scales_dt) {
-                case data_type::f32:
-                    uni_vmovups(vmm_wei_scales_masked, wei_scales_addr);
-                    break;
-                case data_type::bf16:
-                    uni_vpmovzxwd(vmm_wei_scales_masked, wei_scales_addr);
-                    uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
-                    break;
-                case data_type::f16:
-                    vcvtph2ps(vmm_wei_scales_masked, wei_scales_addr);
-                    break;
-                default: assert(!"unsupported wei_scales data type");
-            }
-            vmulps(src_vmm, src_vmm, vmm_wei_scales);
-        }
+        const auto scales_addr = maybe_EVEX_compress_addr(reg_wei_scales,
+                k * wei_scales_N_stride_ + n * wei_scales_typesize_);
+        decompress_reg(maybe_mask(src_vmm, is_tail), vmm_zp_b_shift,
+                scales_addr, conf_->orig_wei_dt);
     };
 
     const int columns_tail = ncolumns % simd_w_;
@@ -3881,7 +3791,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
             if (is_src_int4_ || is_src_f4_) {
                 const auto tail_mask_4bit
                         = (1 << (columns_tail / src_elems_per_byte_)) - 1;
-                kmovw(kTail4bit, tail_mask_4bit);
+                kmovw(kTail_int4, tail_mask_4bit);
             }
         } else {
             init_f32_avx2_mask_ymm(ymm_tail_mask, reg_tmp, columns_tail);
@@ -3967,21 +3877,20 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
                         -.5f, -1.0f, -2.0f, -4.0f, -8.0f, -16.0f};
         switch (dt_in_) {
             case data_type::f4_e2m1:
-                mov(reg_f4_lut, reinterpret_cast<size_t>(f4_e2m1_table));
+                mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
                 break;
             case data_type::f4_e3m0:
-                mov(reg_f4_lut, reinterpret_cast<size_t>(f4_e3m0_table));
+                mov(reg_tmp, reinterpret_cast<size_t>(f4_e3m0_table));
                 break;
 
             default: break;
         }
-        vmovdqa32(vmm_f4_lut, ptr[reg_f4_lut]);
+        vmovdqa32(vmm_f4_lut, ptr[reg_tmp]);
     }
 
     if (req_zp_b_shift_) {
         mov(reg_tmp, ptr[param1 + GET_OFF(zp_b_value_ptr)]);
         uni_vpbroadcastd(vmm_zp_b_shift, ptr[reg_tmp]);
-        uni_vcvtdq2ps(vmm_zp_b_shift, vmm_zp_b_shift);
     }
 
     Label done;
@@ -4441,7 +4350,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
         auto src_load = is_tail ? src_reg | kTail | T_z : src_reg;
         const auto src_offset = (i * src_stride_) / src_elems_per_byte_;
         const auto addr = EVEX_compress_addr(reg_src, src_offset);
-        if (conf_->is_f16_with_int_wei && conf_->wei_dt == data_type::f32) {
+        if ((conf_->is_f16_with_int_wei || conf_->is_f32_with_int_wei)
+                && conf_->wei_dt == data_type::f32) {
             const auto xmm_preload = Xmm(src_reg.getIdx());
 
             MAYBE_UNUSED(xmm_preload);

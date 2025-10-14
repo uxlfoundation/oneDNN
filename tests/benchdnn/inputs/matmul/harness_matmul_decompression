@@ -297,3 +297,38 @@
 --attr-zero-points=wei:per_tensor:s4:128x1,src:per_ocic:u4:1x256+wei:per_tensor:s4:128x1
 2x3x4x256:2x3x256x64
 2x3x6x256:2x3x256x100
+
+# f32 + weight decomression
+--reset
+--skip-impl=ref
+--dt=f32:s4:f32,f32:u4:f32,f32:s8:f32,f32:u8:f32
+--wtag=any,ab,ba
+--attr-fpmath=strict:true
+1x4096:4096x4096
+
+--skip-impl=ref
+--dt=f32:s4:f32,f32:u4:f32,f32:s8:f32,f32:u8:f32
+--wtag=any,abc,acb
+--attr-fpmath=strict:true
+2x40x256:2x256x64
+7x41x256:1x256x64
+3x96x512:3x512x64
+3x6x512:1x512x62
+
+--skip-impl=ref
+--dt=f32:s4:f32,f32:u4:f32
+--wtag=any,ab,ba
+--attr-scales=,wei:common:0.5:f32,wei:per_ocic:f32:32x1
+--attr-zero-points=,wei:common:2
+# ,wei:per_oc:s4:4096x1 # PER_OC skips for all matmul implemetations
+--attr-fpmath=strict:true
+1x4096:4096x4096
+
+--skip-impl=ref
+--dt=f32:s8:f32,f32:u8:f32
+--wtag=any,ab,ba
+--attr-scales=,wei:common:0.5:f32,wei:per_ocic:f32:32x1
+--attr-zero-points=,wei:common:2
+# ,wei:per_ocic:s8:32x1 # PER_OC skips for all matmul implementations
+--attr-fpmath=strict:true
+1x4096:4096x4096

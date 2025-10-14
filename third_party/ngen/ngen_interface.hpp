@@ -87,7 +87,7 @@ class InterfaceHandler
 public:
     InterfaceHandler(HW hw_) : hw(hw_), simd(GRF::bytes(hw_) >> 2)
 #if XE3P
-                             , useEfficient64Bit(hw_ >= HW::Xe3p)
+                             , useEfficient64Bit(hw_ >= HW::XE3P_35_10)
 #endif
                              , requestedInlineBytes(defaultInlineBytes(hw))
     {}
@@ -714,7 +714,7 @@ void InterfaceHandler::setPrologueLabels(InterfaceLabels &labels, LabelManager &
 
     int immOffset = 0xC;
 #if XE3P
-    if (hw == HW::Xe3p) immOffset = 0x8;
+    if (hw >= HW::XE3P_35_10) immOffset = 0x8;
 #endif
 
     setOffset(labels.localIDsLoaded, offsetSkipPerThread);

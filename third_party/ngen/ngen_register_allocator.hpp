@@ -292,7 +292,9 @@ int Bundle::firstReg(HW hw) const
         case HW::Xe2:
         case HW::Xe3:
 #if XE3P
-        case HW::Xe3p:
+        case HW::XE3P_35_10:
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN:
 #endif
             return (bundle0 << 1) | bank0;
         case HW::XeHP:
@@ -331,7 +333,9 @@ int Bundle::stride(HW hw) const
         case HW::Xe2:
         case HW::Xe3:
 #if XE3P
-        case HW::Xe3p:
+        case HW::XE3P_35_10:
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN:
 #endif
             return 16;
         case HW::XeHP:
@@ -364,7 +368,9 @@ uint64_t Bundle::regMask(HW hw, int offset) const
         case HW::Xe2:
         case HW::Xe3:
 #if XE3P
-        case HW::Xe3p:
+        case HW::XE3P_35_10:
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN:
 #endif
             if (bundle_id != any)                           base_mask  = 0x0003000300030003;
             if (bank_id != any)                             base_mask &= 0x5555555555555555;
@@ -397,7 +403,9 @@ Bundle Bundle::locate(HW hw, RegData reg)
         case HW::Xe2:
         case HW::Xe3:
 #if XE3P
-        case HW::Xe3p:
+        case HW::XE3P_35_10:
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN:
 #endif
             return Bundle(base & 1, (base >> 1) & 7);
         case HW::XeHP:
@@ -430,7 +438,7 @@ void RegisterAllocator::init()
     if (hw < HW::XeHP)
         setRegisterCount(128);
 #if XE3P
-    else if (hw < HW::Xe3p)
+    else if (hw < HW::XE3P_35_10)
         setRegisterCount(256);
 #endif
 

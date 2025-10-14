@@ -362,7 +362,7 @@ bool OpenCLCodeGenerator<hw>::detectEfficient64Bit(cl_context context, cl_device
     const char *dummyCL = "kernel void _ngen_eff64b_detect(){}";
 
     if (inHW == HW::Unknown) inHW = hw;
-    if (inHW < HW::Xe3p) return false;
+    if (inHW < HW::XE3P_35_10) return false;
 #if XE4
     if (inHW >= HW::Xe4) return true;
 #endif

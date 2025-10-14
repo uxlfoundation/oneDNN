@@ -588,7 +588,7 @@ public:
         _workaround_();
         streamStack.push_back(new InstructionStream());
 #if XE3P
-        useEfficient64Bit = (hardware >= HW::Xe3p);
+        useEfficient64Bit = (hardware >= HW::XE3P_35_10);
 #endif
     }
 
@@ -1672,35 +1672,35 @@ public:
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::Xe3p) unsupported();
+        if (hardware >= HW::XE3P_35_10) unsupported();
 #endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::Xe3p) unsupported();
+        if (hardware >= HW::XE3P_35_10) unsupported();
 #endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::Xe3p) unsupported();
+        if (hardware >= HW::XE3P_35_10) unsupported();
 #endif
         opX(Opcode::mach, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::Xe3p) unsupported();
+        if (hardware >= HW::XE3P_35_10) unsupported();
 #endif
         opX(Opcode::mach, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::Xe3p) unsupported();
+        if (hardware >= HW::XE3P_35_10) unsupported();
 #endif
         if (hardware < HW::Gen10) unsupported();
         opX((hardware >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1);
@@ -1708,7 +1708,7 @@ public:
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::Xe3p) unsupported();
+        if (hardware >= HW::XE3P_35_10) unsupported();
 #endif
         if (hardware < HW::Gen10) unsupported();
         opX((hardware >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1);

@@ -46,7 +46,9 @@ enum class GfxCoreFamily : uint32_t {
     Xe2 = 0xC09,
     Xe3 = 0x1E00,
 #if XE3P
-    Xe3p = 0x2300,
+    XE3P_35_10 = 0x2300,
+    XE3P_35_11 = XE3P_35_10,
+    XE3P_UNKNOWN = 0xFFFF,
 #endif
 #if XE4
     Xe4 = 0x2800,
@@ -70,7 +72,9 @@ enum class ProductFamily : uint32_t {
     LNL_M = 1276,
     PTL = 1300,
 #if XE3P
-    FCS = 1350,
+    XE3P_35_10 = 1360,
+    XE3P_35_11 = 1380,
+    XE3P_UNKNOWN = 9999,
 #endif
 #if XE4
     JGS = 1400,

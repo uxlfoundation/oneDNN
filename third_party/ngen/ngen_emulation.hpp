@@ -54,7 +54,7 @@ struct EmulationStrategy {
                 emulate64_mul = emulate64_logic = true;
         }
 #if XE3P
-        if (hw_ >= HW::Xe3p)
+        if (hw_ >= HW::XE3P_35_10)
             emulateDWxDW = emulate64_mul = false;
 #endif
         emulate64_mul |= emulate64;

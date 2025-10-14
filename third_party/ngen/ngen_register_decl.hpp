@@ -1377,7 +1377,9 @@ template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XeHPC>;
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe2>;
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe3>;
 #if XE3P
-template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe3p>;
+template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XE3P_35_10>;
+template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XE3P_35_11>;
+template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XE3P_UNKNOWN>;
 #endif
 #if XE4
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe4>;

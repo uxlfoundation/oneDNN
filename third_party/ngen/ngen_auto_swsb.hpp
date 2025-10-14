@@ -514,7 +514,7 @@ inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = t
     if ((dt & lmask) == lmask)
         mask = PipeMaskL;
 #if XE3P
-    else if ((hw >= HW::Xe3p) && (op == Opcode::mov_gen12 || op == Opcode::srnd) && (dt != insn.src0Typecode()))
+    else if ((hw >= HW::XE3P_35_10) && (op == Opcode::mov_gen12 || op == Opcode::srnd) && (dt != insn.src0Typecode()))
         mask = PipeMaskI;
 #endif
     else if (dt & 8)

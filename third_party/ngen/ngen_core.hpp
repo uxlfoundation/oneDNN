@@ -283,7 +283,9 @@ enum class Core {
     Xe2,
     Xe3,
 #if XE3P
-    Xe3p,
+    XE3P_35_10,
+    XE3P_35_11,
+    XE3P_UNKNOWN,
 #endif
 #if XE4
     Xe4,
@@ -316,7 +318,9 @@ enum class ProductFamily : int {
     GenericXe3,
 #if XE3P
     GenericXe3p,
-    NVLP,
+    XE3P_35_10,
+    XE3P_35_11,
+    XE3P_UNKNOWN,
 #endif
 #if XE4
     GenericXe4,
@@ -348,7 +352,7 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::ARL:
         case ProductFamily::LNL:
 #if XE3P
-        case ProductFamily::NVLP:
+        case ProductFamily::XE3P_35_10:
 #endif
             return PlatformType::Integrated;
         // Could be integrated or discrete
@@ -358,6 +362,7 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::GenericXe3:
 #if XE3P
         case ProductFamily::GenericXe3p:
+        case ProductFamily::XE3P_UNKNOWN:
 #endif
 #if XE4
         case ProductFamily::GenericXe4:
@@ -370,6 +375,9 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::PVC:
         case ProductFamily::PVCVG:
         case ProductFamily::BMG:
+#if XE3P
+        case ProductFamily::XE3P_35_11:
+#endif
             return PlatformType::Discrete;
         case ProductFamily::Unknown:
             return PlatformType::Unknown;
@@ -390,7 +398,9 @@ static inline constexpr14 ProductFamily genericProductFamily(HW hw)
         case HW::Xe2:   return ProductFamily::GenericXe2;
         case HW::Xe3:   return ProductFamily::GenericXe3;
 #if XE3P
-        case HW::Xe3p:  return ProductFamily::GenericXe3p;
+        case HW::XE3P_35_10:
+        case HW::XE3P_35_11:
+        case HW::XE3P_UNKNOWN: return ProductFamily::GenericXe3p;
 #endif
 #if XE4
         case HW::Xe4:   return ProductFamily::GenericXe4;
@@ -405,7 +415,10 @@ static inline constexpr14 Core getCore(ProductFamily family)
     if (family >= ProductFamily::GenericXe4)   return Core::Xe4;
 #endif
 #if XE3P
-    if (family >= ProductFamily::GenericXe3p)  return Core::Xe3p;
+    if (family >= ProductFamily::XE3P_UNKNOWN)  return Core::XE3P_UNKNOWN;
+    if (family >= ProductFamily::XE3P_35_11)  return Core::XE3P_35_11;
+    if (family >= ProductFamily::XE3P_35_10)  return Core::XE3P_35_10;
+    if (family >= ProductFamily::GenericXe3p) return Core::XE3P_35_10;
 #endif
     if (family >= ProductFamily::GenericXe3)   return Core::Xe3;
     if (family >= ProductFamily::GenericXe2)   return Core::Xe2;
@@ -634,7 +647,7 @@ enum class MathFunction : uint8_t {
 static inline int mathArgCount(HW hw, MathFunction func)
 {
 #if XE3P
-    if (hw >= HW::Xe3p) {
+    if (hw >= HW::XE3P_35_10) {
         static const char argCounts[16] = {0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 2, 2, 2, 2, 1};
         return argCounts[static_cast<uint8_t>(func) & 0xF];
     }
@@ -3300,7 +3313,7 @@ static inline bool trackedByToken(HW hw, Opcode op, unsigned dstTypecode)
             return true;
 #if XE3P
         case Opcode::bdpas:
-            return (hw >= HW::Xe3p);
+            return (hw >= HW::XE3P_35_10);
 #endif
         default:
             if (isSend(op)) return true;

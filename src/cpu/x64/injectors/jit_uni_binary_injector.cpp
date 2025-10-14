@@ -223,24 +223,29 @@ bool any_binary_postop_rhs_per_w_broadcast(const post_ops_t &post_ops,
 void extend_binary_args_per_w(const post_ops_t &post_ops,
         const std::vector<const void *> &orig_post_ops_binary_rhs_arg_vec,
         std::vector<const void *> &post_ops_binary_rhs_arg_vec,
-        float *expanded_rhs, const std::vector<dim_t> &expanded_elems) {
-    dim_t offset = 0;
+        uint8_t *expanded_rhs, const std::vector<dim_t> &expanded_elems_len) {
+    size_t offset = 0;
     const int po_len = post_ops.len();
 
     for (int i = 0; i < po_len; ++i) {
-        if (expanded_elems[i] > 0) {
+        if (expanded_elems_len[i] > 0) {
             const auto &rhs_md = post_ops.entry_[i].binary.src1_desc;
             const memory_desc_wrapper rhs_md_wrap(&rhs_md);
-            dim_t rhs_len = rhs_md_wrap.nelems();
+            const dim_t rhs_len = rhs_md_wrap.nelems();
+            const data_type_t dt = rhs_md.data_type;
+            const auto dt_size = types::data_type_size(dt);
 
-            const float *orig_rhs = reinterpret_cast<const float *>(
+            const uint8_t *src = reinterpret_cast<const uint8_t *>(
                     orig_post_ops_binary_rhs_arg_vec[i]);
-            float *dst = expanded_rhs + offset;
-            for (dim_t j = 0; j < expanded_elems[i]; ++j)
-                dst[j] = orig_rhs[j % rhs_len];
+            auto *dst = expanded_rhs + offset;
+
+            for (dim_t j = 0; j < expanded_elems_len[i]; ++j) {
+                const size_t src_idx = j % rhs_len;
+                memcpy(dst + j * dt_size, src + src_idx * dt_size, dt_size);
+            }
 
             post_ops_binary_rhs_arg_vec[i] = dst;
-            offset += expanded_elems[i];
+            offset += expanded_elems_len[i] * dt_size;
         } else {
             post_ops_binary_rhs_arg_vec[i]
                     = orig_post_ops_binary_rhs_arg_vec[i];

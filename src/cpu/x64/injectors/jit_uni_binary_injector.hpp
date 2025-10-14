@@ -70,7 +70,7 @@ bool any_binary_postop_rhs_per_w_broadcast(const post_ops_t &post_ops,
 void extend_binary_args_per_w(const post_ops_t &post_ops,
         const std::vector<const void *> &orig_post_ops_binary_rhs_arg_vec,
         std::vector<const void *> &post_ops_binary_rhs_arg_vec,
-        float *expanded_rhs, const std::vector<dim_t> &expanded_elems);
+        uint8_t *expanded_rhs, const std::vector<dim_t> &expanded_elems_len);
 
 /*
  * Represents params related to all binary post-ops right-hand side arguments

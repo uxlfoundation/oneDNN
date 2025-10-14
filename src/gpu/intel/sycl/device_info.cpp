@@ -102,7 +102,7 @@ status_t device_info_t::init_extensions(impl::engine_t *engine) {
     for (uint64_t i_ext = 1; i_ext < (uint64_t)device_ext_t::last;
             i_ext <<= 1) {
         const char *s_ext = ext2cl_str((device_ext_t)i_ext);
-        if (device.ext_oneapi_supports_cl_extension(s_ext)) {
+        if (s_ext && device.ext_oneapi_supports_cl_extension(s_ext)) {
             extensions_ |= i_ext;
         }
     }

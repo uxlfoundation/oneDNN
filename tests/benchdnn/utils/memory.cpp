@@ -181,6 +181,7 @@ void memory_registry_t::remove_device(void *ptr, size_t size) {
 }
 
 void memory_registry_t::set_expected_max(size_t size) {
+    std::lock_guard<std::mutex> g(m_);
     expected_max_ = static_cast<size_t>(expected_trh_ * size);
     has_warned_ = false;
     warn_size_check();

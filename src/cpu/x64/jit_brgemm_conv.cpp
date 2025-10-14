@@ -1212,10 +1212,13 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 
             for_(int i = 0; i < comp_ow_f; i++)
             for (int ow = ow_b; ow <= ow_e; ow++) {
-                if (ow == ow_e) comp_owb[owb] = i;
-                if (ow_kw_b[ow] != comp_ow_kw_s[i + ow - ow_b]
-                        || ow_kw_e[ow] != comp_ow_kw_f[i + ow - ow_b]
-                        || comp_owb[owb] >= 0)
+                if (ow == ow_e) {
+                    comp_owb[owb] = i;
+                    break;
+                }
+                if (comp_owb[owb] >= 0 || (i + ow - ow_b) >= comp_ow_l
+                        || ow_kw_b[ow] != comp_ow_kw_s[i + ow - ow_b]
+                        || ow_kw_e[ow] != comp_ow_kw_f[i + ow - ow_b])
                     break;
             }
             assert(comp_owb[owb] >= 0);

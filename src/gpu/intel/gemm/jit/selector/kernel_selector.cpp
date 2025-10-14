@@ -179,8 +179,9 @@ const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &c
                       if (lhsFallback && lessAligned(lhsAlignA, lhsAlignB, rhsAlignA, rhsAlignB)) return false;
                       double lhs_score = evaluate(*lhs, eparams, thisAux);
                       double rhs_score = evaluate(*rhs, eparams, thisAux);
-                      return lhs_score < rhs_score;
-
+                      if (lhs_score < rhs_score) return true;
+                      if (lhs_score > rhs_score) return false;
+                      return (lhs < rhs);
     };
     std::sort(entries.begin(), entries.end(), less);
     if (entries.size() > 0)

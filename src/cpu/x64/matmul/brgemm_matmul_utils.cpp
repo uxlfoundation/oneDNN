@@ -81,6 +81,16 @@ int get_n_block_from_tag(format_tag_t matrix_b_tag) {
     }
 }
 
+int get_wei_k_blk(data_type_t wei_dt) {
+    // Fixed outer block size.
+    const int k_outer_block = 16;
+
+    // VNNI granularity determines the inner block size along K.
+    const int k_inner_block = data_type_vnni_granularity(wei_dt);
+
+    return k_outer_block * k_inner_block;
+}
+
 void mem_advice_init(brgemm_matmul_conf_t &bgmmc) {
 
     dim_t parallel_work_amount = bgmmc.batch * bgmmc.M_chunks * bgmmc.N_chunks;
@@ -1482,9 +1492,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     VCONDCHECK_BG(bgmmc.required_k_granularity > 0, VERBOSE_BLOCKING_FAIL, "");
 
-    bgmmc.wei_k_blk = bm_conf_utils.get_wei_k_blk();
-    bgmmc.orig_wei_k_blk
-            = bm_conf_utils.get_wei_k_blk(/*use_orig_wei_dt=*/true);
+    bgmmc.wei_k_blk = get_wei_k_blk(bgmmc.wei_dt);
 
     VCHECK_BG(bm_conf_utils.set_or_check_B_tag(weights_md, helper),
             VERBOSE_UNSUPPORTED_TAG);

@@ -1755,7 +1755,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
     dim_t get_data_B_kn_off(int k, int n) const {
         const int wei_k_blk
-                = bgmmc_.is_bf32 ? bgmmc_.orig_wei_k_blk : bgmmc_.wei_k_blk;
+                = bgmmc_.is_bf32 ? get_wei_k_blk(f32) : bgmmc_.wei_k_blk;
         const int k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
         const int n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
         const int int4_fac = bgmmc_.is_int4_weights ? 2 : 1;

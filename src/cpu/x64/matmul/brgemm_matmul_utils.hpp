@@ -94,7 +94,7 @@ struct brgemm_matmul_conf_t {
     dim_t LDA, LDB, LDC, LDD;
     dim_t LDB2;
     int brgemm_batch_size, brgemm_batch_tail_size;
-    int wei_n_blk, wei_k_blk, orig_wei_k_blk;
+    int wei_n_blk, wei_k_blk;
     brgemm_batch_kind_t brg_type;
     bool is_macro_heuristics;
 
@@ -277,32 +277,6 @@ struct brgemm_matmul_conf_utils_t {
                 && check_b_layout_blocked_by_n(bgmmc.wei_tag);
     }
 
-    /**
-     * Returns the total block size along the K dimension, as the product of
-     * the fixed outer block size and the VNNI granularity.
-     *
-     * Example: For format tag BA16a16b4a, the block size is
-     * 16 (outer) * 4 (VNNI granularity) = 64.
-     *
-     * @param use_orig_wei_dt If true, use the original weight data type to
-     *   determine block size. If false, use the compute data type type.
-     * @return The total K dimension block size.
-     */
-    int get_wei_k_blk(bool use_orig_wei_dt = false) const {
-        // No blocking is used in GEMV mode.
-        if (bgmmc.is_gemv) return 1;
-
-        // Fixed outer block size.
-        const int k_outer_block = 16;
-
-        // VNNI granularity determines the inner block size along K.
-        const data_type_t wei_dt
-                = use_orig_wei_dt ? bgmmc.orig_wei_dt : bgmmc.wei_dt;
-        const int k_inner_block = data_type_vnni_granularity(wei_dt);
-
-        return k_outer_block * k_inner_block;
-    }
-
     inline bool use_buffer_b(bool use_heuristic = true) const {
         if (bgmmc.is_runtime_N) return true;
         if (bgmmc.is_bf16_with_int_wei) return true;
@@ -474,6 +448,19 @@ int get_n_block_from_tag(format_tag_t matrix_b_tag);
 void mem_advice_init(brgemm_matmul_conf_t &bgmmc);
 
 bool is_batch_layout_trivial(const memory_desc_wrapper &mdw, const dim_t batch);
+
+/**
+ * Returns the total block size along the K dimension, as the product of
+ * the fixed outer block size and the VNNI granularity.
+ *
+ * Example: For format tag BA16a16b4a, the block size is
+ * 16 (outer) * 4 (VNNI granularity) = 64.
+ *
+ * @param wei_dt Weights data type.
+ *
+ * @return The total K dimension block size.
+ */
+int get_wei_k_blk(data_type_t wei_dt);
 
 } // namespace matmul
 } // namespace x64

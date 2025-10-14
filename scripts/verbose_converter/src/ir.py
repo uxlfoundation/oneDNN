@@ -307,6 +307,7 @@ class QuantizationParam(Mapping):
     mask: int = 0
     groups: str = ""
     is_host_scalar: bool = False
+    quantization_mode: str = ""
 
     def __str__(self):
         if self.groups:

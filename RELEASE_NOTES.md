@@ -34,7 +34,7 @@ TBD
 
 ## Graph API 
 
-* Introduced [`host_scalar` property] for logical tensors. This functionality allows passing host-side scalars instead of device memory objects when using oneDNN with OpenCL or SYCL runtimes.
+* Introduced [`host_scalar` property] for logical tensors. This functionality allows passing host-side scalars instead of device memory objects when using oneDNN with OpenCL or SYCL runtimes. Host-side scalars are currently supported to define attention scale, sequence length, and the negative infinity value in SDPA/GQA subgraphs.
 * Introduced [accumulation mode attribute] support in `Matmul` op. This attribute allows relaxing `fp32` accumulation requirements to achieve performance benefits on some platforms. 
 
 [`host_scalar` property]: https://uxlfoundation.github.io/oneDNN/v3.10/enum_dnnl_graph_logical_tensor_property_type.html

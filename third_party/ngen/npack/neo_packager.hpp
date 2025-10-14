@@ -182,47 +182,68 @@ inline void replaceKernel(std::vector<uint8_t> &binary, const std::vector<uint8_
 inline HW decodeGfxCoreFamily(GfxCoreFamily family)
 {
     switch (family) {
-        case GfxCoreFamily::Gen9:     return HW::Gen9;
-        case GfxCoreFamily::Gen10:    return HW::Gen10;
-        case GfxCoreFamily::Gen10LP:  return HW::Gen10;
-        case GfxCoreFamily::Gen11:    return HW::Gen11;
-        case GfxCoreFamily::Gen11LP:  return HW::Gen11;
-        case GfxCoreFamily::Gen12LP:  return HW::Gen12LP;
+        case GfxCoreFamily::Gen9:         return HW::Gen9;
+        case GfxCoreFamily::Gen10:        return HW::Gen10;
+        case GfxCoreFamily::Gen10LP:      return HW::Gen10;
+        case GfxCoreFamily::Gen11:        return HW::Gen11;
+        case GfxCoreFamily::Gen11LP:      return HW::Gen11;
+        case GfxCoreFamily::Gen12LP:      return HW::Gen12LP;
         case GfxCoreFamily::Gen12:
-        case GfxCoreFamily::XeHP:     return HW::XeHP;
-        case GfxCoreFamily::XeHPG:    return HW::XeHPG;
-        case GfxCoreFamily::XeHPC:    return HW::XeHPC;
-        case GfxCoreFamily::Xe2:      return HW::Xe2;
-        case GfxCoreFamily::Xe3:      return HW::Xe3;
+        case GfxCoreFamily::XeHP:         return HW::XeHP;
+        case GfxCoreFamily::XeHPG:        return HW::XeHPG;
+        case GfxCoreFamily::XeHPC:        return HW::XeHPC;
+        case GfxCoreFamily::Xe2:          return HW::Xe2;
+        case GfxCoreFamily::Xe3:          return HW::Xe3;
 #if XE3P
-        case GfxCoreFamily::Xe3p:     return HW::Xe3p;
+	    // XE3P_35_10 and XE3P_35_11 use duplicate GfxCore. 
+	    // Detection via GfxCore is therefore unsupported.
+	    case GfxCoreFamily::XE3P_35_10:   return HW::Unknown;
+        case GfxCoreFamily::XE3P_UNKNOWN: return HW::XE3P_UNKNOWN;
 #endif
 #if XE4
-        case GfxCoreFamily::Xe4:      return HW::Xe4;
+        case GfxCoreFamily::Xe4:          return HW::Xe4;
 #endif
-        default:                      return HW::Unknown;
+#if XE3P
+        default:                          if (family > GfxCoreFamily::XE3P_35_10) {
+                                              return HW::XE3P_UNKNOWN;
+                                          } else {
+                                              return HW::Unknown;
+                                          }
+#else
+        default:                          return HW::Unknown;
+#endif
     }
 }
 
 inline GfxCoreFamily encodeGfxCoreFamily(HW hw)
 {
     switch (hw) {
-        case HW::Gen9:    return GfxCoreFamily::Gen9;
-        case HW::Gen10:   return GfxCoreFamily::Gen10;
-        case HW::Gen11:   return GfxCoreFamily::Gen11LP;
-        case HW::Gen12LP: return GfxCoreFamily::Gen12LP;
-        case HW::XeHP:    return GfxCoreFamily::XeHP;
-        case HW::XeHPG:   return GfxCoreFamily::XeHPG;
-        case HW::XeHPC:   return GfxCoreFamily::XeHPC;
-        case HW::Xe2:     return GfxCoreFamily::Xe2;
-        case HW::Xe3:     return GfxCoreFamily::Xe3;
+        case HW::Gen9:         return GfxCoreFamily::Gen9;
+        case HW::Gen10:        return GfxCoreFamily::Gen10;
+        case HW::Gen11:        return GfxCoreFamily::Gen11LP;
+        case HW::Gen12LP:      return GfxCoreFamily::Gen12LP;
+        case HW::XeHP:         return GfxCoreFamily::XeHP;
+        case HW::XeHPG:        return GfxCoreFamily::XeHPG;
+        case HW::XeHPC:        return GfxCoreFamily::XeHPC;
+        case HW::Xe2:          return GfxCoreFamily::Xe2;
+        case HW::Xe3:          return GfxCoreFamily::Xe3;
 #if XE3P
-        case HW::Xe3p:    return GfxCoreFamily::Xe3p;
+        case HW::XE3P_35_10:   return GfxCoreFamily::XE3P_35_10;
+        case HW::XE3P_35_11:   return GfxCoreFamily::XE3P_35_11;
+        case HW::XE3P_UNKNOWN: return GfxCoreFamily::XE3P_UNKNOWN;
 #endif
 #if XE4
-        case HW::Xe4:     return GfxCoreFamily::Xe4;
+        case HW::Xe4:          return GfxCoreFamily::Xe4;
 #endif
-        default:          return GfxCoreFamily::Unknown;
+#if XE3P
+        default:               if (hw > HW::XE3P_35_10) {
+                                   return GfxCoreFamily::XE3P_UNKNOWN;
+                               } else {
+                                   return GfxCoreFamily::Unknown;
+                               }
+#else
+        default:               return GfxCoreFamily::Unknown;
+#endif
     }
 }
 
@@ -241,7 +262,9 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family >= ProductFamily::LNL && family <= ProductFamily::LNL_M) return NGEN_NAMESPACE::ProductFamily::LNL;
     if (family == ProductFamily::PTL) return NGEN_NAMESPACE::ProductFamily::GenericXe3;
 #if XE3P
-    if (family == ProductFamily::FCS) return NGEN_NAMESPACE::ProductFamily::GenericXe3p;
+    if (family == ProductFamily::XE3P_35_10) return NGEN_NAMESPACE::ProductFamily::XE3P_35_10;
+    if (family == ProductFamily::XE3P_35_11) return NGEN_NAMESPACE::ProductFamily::XE3P_35_11;
+    if (family >= ProductFamily::XE3P_35_11) return NGEN_NAMESPACE::ProductFamily::XE3P_UNKNOWN;
 #endif
 #if XE4
     if (family == ProductFamily::JGS) return NGEN_NAMESPACE::ProductFamily::GenericXe4;
@@ -333,7 +356,14 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
             break;
         case 30: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3; break;
 #if XE3P
-        case 35: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe3p; break;
+        case 35:
+            if (version.release == 10)
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::XE3P_35_10;
+            else if (version.release == 11)
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::XE3P_35_11;
+            else if (version.release >= 11)
+                outProduct.family = NGEN_NAMESPACE::ProductFamily::XE3P_UNKNOWN;
+            break;
 #endif
 #if XE4
         case 40: outProduct.family = NGEN_NAMESPACE::ProductFamily::GenericXe4; break;
@@ -352,7 +382,7 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
 #if XE3P
 inline bool isBinaryEfficient64Bit(const std::vector<uint8_t> &binary, HW hw)
 {
-    return (hw >= HW::Xe3p) && !hasGatewayEOTSend(binary);
+    return (hw >= HW::XE3P_35_10) && !hasGatewayEOTSend(binary);
 }
 #endif
 

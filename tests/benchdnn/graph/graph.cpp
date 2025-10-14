@@ -375,7 +375,7 @@ private:
 };
 #else
 struct stream_staller_t {
-    stream_staller_t(cpp_stream_t &stream) {}
+    stream_staller_t(graph::cpp_stream_t &stream) {}
     void release() {}
 };
 #endif

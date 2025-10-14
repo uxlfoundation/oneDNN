@@ -42,17 +42,53 @@ struct ref_pooling_fwd_t : public primitive_t {
 
         status_t init(engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;
+            using namespace data_type;
 
             VDISPATCH_POOLING(platform::has_data_type_support(data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(set_default_params() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_POOLING(utils::everyone_is(data_type, src_md()->data_type,
-                                      dst_md()->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_POOLING(desc()->accum_data_type == acc_type,
-                    VERBOSE_UNSUPPORTED_DT);
+
+            VDISPATCH_POOLING(
+                    data_type == src_md()->data_type, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_POOLING(
+                    IMPLICATION(src_md()->data_type != dst_md()->data_type,
+                            desc()->prop_kind == prop_kind::forward_inference),
+                    VERBOSE_BAD_PROPKIND);
+            VDISPATCH_POOLING(
+                    IMPLICATION(src_md()->data_type == bf16,
+                            src_md()->data_type == dst_md()->data_type),
+                    VERBOSE_INCONSISTENT_DT, "src_data_t", "dst_data_t");
+            VDISPATCH_POOLING(
+                    IMPLICATION(utils::one_of(src_md()->data_type, s8, u8),
+                            utils::one_of(
+                                    dst_md()->data_type, s8, u8, f16, f32)),
+                    VERBOSE_INCONSISTENT_DT, "src_data_t", "dst_data_t");
+            VDISPATCH_POOLING(
+                    IMPLICATION(src_md()->data_type == f16,
+                            utils::one_of(dst_md()->data_type, s8, u8, f16)),
+                    VERBOSE_INCONSISTENT_DT, "src_data_t", "dst_data_t");
+            VDISPATCH_POOLING(
+                    IMPLICATION(src_md()->data_type == f32,
+                            utils::one_of(dst_md()->data_type, s8, u8, f32)),
+                    VERBOSE_INCONSISTENT_DT, "src_data_t", "dst_data_t");
+            VDISPATCH_POOLING(
+                    IMPLICATION(utils::one_of(f32, src_md()->data_type,
+                                        dst_md()->data_type),
+                            acc_type == f32),
+                    VERBOSE_INCONSISTENT_DT, "src_data_t", "dst_data_t");
+            VDISPATCH_POOLING(
+                    IMPLICATION(utils::one_of(f16, src_md()->data_type,
+                                        dst_md()->data_type),
+                            acc_type == f32),
+                    VERBOSE_INCONSISTENT_DT, "src_data_t", "dst_data_t");
+            VDISPATCH_POOLING(
+                    IMPLICATION(utils::one_of(src_md()->data_type, s8, u8)
+                                    && utils::one_of(
+                                            dst_md()->data_type, f16, f32),
+                            acc_type == f32),
+                    VERBOSE_INCONSISTENT_DT, "src_data_t", "dst_data_t");
             VDISPATCH_POOLING(attr()->has_default_values(sm::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_POOLING(ref_post_ops_t::post_ops_ok(attr()->post_ops_),

@@ -90,6 +90,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE(ref_pooling_fwd_t<s32>)
             CPU_INSTANCE(ref_pooling_fwd_t<s8, s32>)
             CPU_INSTANCE(ref_pooling_fwd_t<u8, s32>)
+            CPU_INSTANCE(ref_pooling_fwd_t<s8, f32>)
+            CPU_INSTANCE(ref_pooling_fwd_t<u8, f32>)
             nullptr,
         }},
         {{backward}, REG_BWD_PK({

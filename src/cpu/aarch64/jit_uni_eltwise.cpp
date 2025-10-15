@@ -70,6 +70,8 @@ protected:
                                     || desc.alg_kind == alg_kind::eltwise_abs))
                         || (is_f16() // only if F16 data type
                                 && utils::one_of(desc.alg_kind,
+                                        alg_kind::eltwise_clip,
+                                        alg_kind::eltwise_clip_v2,
                                         alg_kind::eltwise_square,
                                         alg_kind::eltwise_sqrt)));
     }

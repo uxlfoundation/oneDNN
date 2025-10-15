@@ -55,6 +55,10 @@ namespace aarch64 {
 
 namespace tr {
 
+static inline bool is_direct_copy(const prb_t &prb) {
+    return prb.ndims == 1 && prb.nodes[0].is == 1 && prb.nodes[0].os == 1;
+}
+
 static bool prb_has_small_strides(const prb_t &prb) {
     constexpr ptrdiff_t max_stride = (1LL << 31) - 1;
     for (int d = 0; d < prb.ndims; ++d) {
@@ -2606,7 +2610,7 @@ static void prb_block_for_cache(tr::prb_t &prb) {
 
     const bool cache_blocking_needed
             = stride_cache_friendly || requires_inner_blocking;
-    if (!cache_blocking_needed) return;
+    if (!cache_blocking_needed || is_direct_copy(prb)) return;
 
     int unit_input_stride_idx = -1;
     for (auto idx = 0; idx < prb.ndims; ++idx) {
@@ -2690,7 +2694,10 @@ static void prb_thread_kernel_balance(
      * size_drv_min = C0 + FC * (nthr > 1 ? 1 : 0) + VC * (nthr - 1)
      * where FC and VC are fixed and variable costs respectively.
      * Though for now, the below heuristic seems to be good enough */
-    const size_t size_drv_thr = (nthr > 1) ? 16 * nthr : 1;
+    // Note: direct copy needs only as many kernels as nthr.
+    const size_t size_drv_thr = is_direct_copy(prb) ? nthr
+            : (nthr > 1)                            ? 16 * nthr
+                                                    : 1;
 
     /* size_drv_min is the minimal size for the parallel
      * driver required for good parallelization */

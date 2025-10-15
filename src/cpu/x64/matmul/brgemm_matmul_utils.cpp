@@ -1739,7 +1739,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
-
+    /*
     if (!bgmmc.is_gemv && bm_conf_utils.is_f32()
             && is_superset(bgmmc.isa, avx512_core)) {
         // Dispatch the shapes with small K to gemm for better performance
@@ -1751,7 +1751,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                               !small_K || !can_use_gemm_fallback()),
                 VERBOSE_SMALL_SHAPES);
     }
-
+*/
     bgmmc.use_buffer_reduce
             = (bgmmc.reduce_dt != data_type::f32) || (bgmmc.nthr_k > 1);
 

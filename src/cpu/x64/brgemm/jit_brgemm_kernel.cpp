@@ -1723,7 +1723,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
             = brg.is_int8 && (brg.req_s8s8_compensation || has_zero_points);
 
     maybe_set_avx_mask(is_ld_tail);
-
+    printf("brg type: %d, max bs: %d\n", brg.type, brg.brgattr.max_bs);
     if (brg.is_tmm) {
         if (need_to_apply_alpha_beta || are_post_ops_applicable
                 || need_generate_zp_a_compensation)

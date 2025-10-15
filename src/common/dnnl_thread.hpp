@@ -44,10 +44,6 @@
 // due to linker optimizations. The newer compiler and C++ standard, the less
 // binary size will be achieved.
 
-#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
-#include "counting_barrier.hpp"
-#endif
-
 #if defined(DNNL_ENABLE_ITT_TASKS)
 #include "common/ittnotify.hpp"
 #endif
@@ -282,10 +278,14 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
     auto task_primitive_kind = itt::primitive_task_get_current_kind();
     bool itt_enable = itt::get_itt(itt::__itt_task_level_high);
 #endif
+#if DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL
+    // Tasks must be always submitted to a threadpool, it will handle them
+    // properly.
     if (nthr == 1) {
         f(0, 1);
         return;
     }
+#endif
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
 #pragma omp parallel num_threads(nthr)
     {
@@ -326,10 +326,6 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
         }
         threadpool_utils::activate_threadpool(tp);
     } else {
-        bool async = tp->get_flags()
-                & dnnl::threadpool_interop::threadpool_iface::ASYNCHRONOUS;
-        counting_barrier_t b;
-        if (async) b.init(nthr);
         tp->parallel_for(nthr, [&, tp](int ithr, int nthr) {
             bool is_master = threadpool_utils::get_active_threadpool() == tp;
             if (!is_master) {
@@ -345,9 +341,7 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
 #endif
                 threadpool_utils::deactivate_threadpool();
             }
-            if (async) b.notify();
         });
-        if (async) b.wait();
     }
 #endif
 #endif

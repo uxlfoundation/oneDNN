@@ -226,8 +226,10 @@ void extend_binary_args_per_w(const post_ops_t &post_ops,
         uint8_t *expanded_rhs, const std::vector<dim_t> &expanded_elems_len) {
     size_t offset = 0;
     const int po_len = post_ops.len();
+    post_ops_binary_rhs_arg_vec.assign(po_len, nullptr);
 
     for (int i = 0; i < po_len; ++i) {
+        if (!post_ops.entry_[i].is_binary()) { continue; }
         if (expanded_elems_len[i] > 0) {
             const auto &rhs_md = post_ops.entry_[i].binary.src1_desc;
             const memory_desc_wrapper rhs_md_wrap(&rhs_md);

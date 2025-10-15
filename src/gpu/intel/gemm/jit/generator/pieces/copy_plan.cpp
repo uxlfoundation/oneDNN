@@ -3184,7 +3184,7 @@ void CopyPlan::optimizeWriteCombine()
             if (!isB(i.dst.type)) return false;
             if (!(isB(st) || isW(st) || isD(st) || st == DataType::f)) return false;
             if (multiGRF(hw, i, i.dst)) return false;
-            return true;
+            return !mayOverlap(hw, i, i.dst, i.src0);
         };
 
         if (!canWC(hw, i0)) {

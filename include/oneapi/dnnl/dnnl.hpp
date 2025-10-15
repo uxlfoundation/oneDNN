@@ -335,7 +335,7 @@ enum class quantization_mode {
 
 /// Converts a quantization kind enum value from C++ API to C API type.
 ///
-/// @param mode C++ API quantization kind enum value.
+/// @param qmode C++ API quantization kind enum value.
 /// @returns Corresponding C API quantization kind enum value.
 inline dnnl_quantization_mode_t convert_to_c(quantization_mode qmode) {
     return static_cast<dnnl_quantization_mode_t>(qmode);

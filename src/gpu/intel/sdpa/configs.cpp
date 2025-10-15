@@ -619,9 +619,13 @@ config_t *choose_config(compute::gpu_arch_t arch, dim_t head_size, dim_t seq,
     compute::gpu_arch_t arch_query = (arch >= compute::gpu_arch_t::xe3)
             ? compute::gpu_arch_t::xe2
             : arch;
+
+    // TODO: remove this when Xe3 configs are added. Currently the Xe2
+    // non-integrated configs perform better than integrated Xe2 configs.
+    if (arch == compute::gpu_arch_t::xe3) { is_integrated = false; }
+
     property query_properties = set_properties(is_thin_q, is_quantized,
             is_integrated, is_fma, is_f32, is_f16_accumulate);
-
     config_query_t query(arch_query, static_cast<int>(head_size),
             static_cast<int>(seq), query_properties);
     auto it = find(begin(sorted_configs), end(sorted_configs), query);

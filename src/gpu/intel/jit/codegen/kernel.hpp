@@ -827,8 +827,8 @@ public:
         mach(1, _qot, _x, m);
         add(1, p_tmp, p, -32);
         cmp(1 | ge | f0[0], p, 32);
-        shr<uint32_t>(1 | f0[0], _qot, _qot, p_tmp);
-        shr<uint32_t>(1 | ~f0[0], _qot, _x, p);
+        eshr(1 | f0[0], _qot, _qot, p_tmp);
+        eshr(1 | ~f0[0], _qot, _x, p);
         if (!qot.isInvalid()) mov(mod, qot, _qot);
 
         if (!rem.isInvalid()) {
@@ -915,7 +915,7 @@ public:
                 _x = ra_.alloc_sub(div_type);
                 mov(1, _x, x);
             }
-            if (!qot.isInvalid()) shr(mod, qot, _x, ngen::utils::log2(y));
+            if (!qot.isInvalid()) eshr(mod, qot, _x, ngen::utils::log2(y));
             if (!rem.isInvalid()) and_(mod, rem, _x, y - 1);
             if (_x != x) ra_.safeRelease(_x);
             return;
@@ -930,10 +930,18 @@ public:
         auto _qot = qot_tmp[0];
         mov(1, _x, x);
 
-        auto acc = acc0.retype(div_type);
-        mul(1, acc[0], _x, m & 0xFFFF);
-        mach(1, _qot, _x, m);
-        shr<uint32_t>(1, _qot, _qot, p - 32);
+        // qot = (x * m) >> p
+        bool use_mach = true;
+        if (use_mach) {
+            auto acc = acc0.retype(div_type);
+            mul(1, acc[0], _x, m & 0xFFFF);
+            mach(1, _qot, _x, m);
+            eshr(1, _qot, _qot, p - 32);
+        } else {
+            auto q_tmp = qot_tmp.retype(ngen::DataType::q);
+            emul(1, q_tmp[0], _x, m);
+            eshr(1, q_tmp, q_tmp, p);
+        }
 
         if (!rem.isInvalid()) {
             // rem = x - qot * y
@@ -1012,6 +1020,22 @@ public:
             ngen::RegData src0, uint16_t src1) {
         ngen::EmulationImplementation::eshr<DT>(
                 *this, mod, dst, src0, src1, emu_strategy_, emu_state_);
+    }
+
+    template <typename DT = void>
+    void eshr(const ngen::InstructionModifier &mod, ngen::RegData dst,
+            ngen::RegData src0, ngen::RegData src1) {
+        const bool is_q = ngen_is_qw(src0.getType());
+        if (is_q) {
+            gpu_error_not_expected()
+                    << "eshr(q, q, reg_data) case not implemented";
+        } else {
+            if (ngen::isSigned(src0.getType())) {
+                asr<DT>(mod, dst, src0, src1);
+            } else {
+                shr<DT>(mod, dst, src0, src1);
+            }
+        }
     }
 
     void esel(const ngen::InstructionModifier &mod, const ngen_operand_t &dst,

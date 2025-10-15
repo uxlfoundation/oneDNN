@@ -1304,19 +1304,19 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
 
         // Handle first block
         if (k_start % adj_k_blk > 0) {
-            call_copy_kernel(k_start, k_start % adj_k_blk, 0);
-            k += k_start % adj_k_blk;
+            const auto first_blk_size = adj_k_blk - (k_start % adj_k_blk);
+            call_copy_kernel(k_start, first_blk_size, 0);
+            k += first_blk_size;
         }
         // Handle full blocks
-        for (; k < k_end; k += adj_k_blk) {
+        for (; (k + adj_k_blk) <= k_end; k += adj_k_blk) {
             const auto gb = (k - k_start) / bgmmc.K_blk;
             call_copy_kernel(k, adj_k_blk, gb);
         }
         // Handle last block
-        if (k_end % adj_k_blk > 0) {
-            k -= adj_k_blk;
+        if (k_end > k) {
             const auto gb = (k - k_start) / bgmmc.K_blk;
-            call_copy_kernel(k, k_end % adj_k_blk, gb);
+            call_copy_kernel(k, k_end - k, gb);
         }
     } else { // Default case with k_blk blocking
         for (int gb = 0; gb < gemm_batch; ++gb) {

@@ -1779,7 +1779,7 @@ void jit_uni_eltwise_injector_t<isa>::compute_vector_range(
 namespace {
 // Downcast f32 -> f16, then pack that 16-bit pattern twice into a uint32: [f16 | f16]
 inline uint32_t pack_f16_twice_from_f32(float s) {
-    float16_t h = s;
+    float16_t h = float16_t(s);
     uint16_t h_bits = h.raw;
     return (uint32_t(h_bits) << 16) | uint32_t(h_bits);
 }

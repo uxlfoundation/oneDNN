@@ -33,10 +33,16 @@ if("${DNNL_CPU_THREADING_RUNTIME}" STREQUAL "THREADPOOL")
     endif()
 
     if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN")
-        find_package(Eigen3 3.3...<5.1 REQUIRED NO_MODULE)
+        find_package(Eigen3 5.0 REQUIRED NO_MODULE)
         if(Eigen3_FOUND)
             list(APPEND EXTRA_STATIC_LIBS Eigen3::Eigen)
-            message(STATUS "Threadpool testing: Eigen (${PACKAGE_PREFIX_DIR})")
+            message(STATUS "Found Eigen: ${PACKAGE_PREFIX_DIR}")
+        endif()
+
+        find_package(absl REQUIRED CONFIG)
+        if(absl_FOUND)
+            list(APPEND EXTRA_STATIC_LIBS absl::synchronization)
+            message(STATUS "Found abseil-cpp: ${PACKAGE_PREFIX_DIR}")
         endif()
     endif()
 

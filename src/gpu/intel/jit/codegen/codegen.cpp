@@ -579,13 +579,16 @@ private:
         } else {
             gpu_assert(dst.byte_offset() == src0.getByteOffset())
                     << "dst/src0 must be aligned to the same GRF offset.";
-            align_src_dst_offset(host_, scope, mod, dst, src1, src2);
             if (mad_func.dst_type == type_t::f64()
                     && src1.reg_data().getHS() == 0
                     && src1.reg_data().getVS() == 0) {
+                align_src_dst_offset(host_, scope, mod, dst, src1);
+                align_src_dst_offset(host_, scope, mod, dst, src2, true);
                 // Workaround for sporadic f64 mad errors with broadcast src1 on XeHPC.
                 host_->mad(mod, dst, src0, src2, src1);
             } else {
+                align_src_dst_offset(host_, scope, mod, dst, src1, true);
+                align_src_dst_offset(host_, scope, mod, dst, src2);
                 host_->mad(mod, dst, src0, src1, src2);
             }
         }
@@ -1379,7 +1382,8 @@ private:
         auto &dst = _dst;
         auto src0 = _src0;
         auto src1 = _src1;
-        align_src_dst_offset(host_, scope_, mod, dst, src0, src1);
+        align_src_dst_offset(host_, scope_, mod, dst, src0);
+        align_src_dst_offset(host_, scope_, mod, dst, src1, true);
         switch (obj.op_kind) {
             case op_kind_t::_add: host_->eadd(mod, dst, src0, src1); break;
             case op_kind_t::_sub: host_->eadd(mod, dst, src0, -src1); break;

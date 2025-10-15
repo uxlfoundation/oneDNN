@@ -545,7 +545,7 @@ public:
         auto src2 = _src2;
         auto scope = ngen_register_scope_t(ra_);
         align_src_dst_offset(this, scope, mod, dst, src0);
-        align_src_dst_offset(this, scope, mod, dst, src1);
+        align_src_dst_offset(this, scope, mod, dst, src1, true);
         if (getHardware() >= ngen::HW::XeHP) {
             if (src2.is_reg_data()) {
                 align_src_dst_offset(this, scope, mod, dst, src2);
@@ -559,7 +559,7 @@ public:
         }
         add(mod, dst.reg_data(), src0.reg_data(), src1.reg_data());
         if (src2.is_reg_data()) {
-            align_src_dst_offset(this, scope, mod, dst, src2);
+            align_src_dst_offset(this, scope, mod, dst, src2, true);
             add(mod, dst.reg_data(), dst.reg_data(), src2.reg_data());
         } else {
             add(mod, dst.reg_data(), dst.reg_data(), src2.immediate());
@@ -573,7 +573,7 @@ public:
         auto src1 = _src1;
         auto src2 = _src2;
         auto scope = ngen_register_scope_t(ra_);
-        align_src_dst_offset(this, scope, mod, dst, src1);
+        align_src_dst_offset(this, scope, mod, dst, src1, true);
         if (src2.is_reg_data()) {
             align_src_dst_offset(this, scope, mod, dst, src0);
             align_src_dst_offset(this, scope, mod, dst, src2);

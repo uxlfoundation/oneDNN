@@ -77,16 +77,16 @@ run line but the user calculated its ID incorrectly, the following message will
 be shown:
 ```
 ...
-File '/path/to/faulty/conv_bufs.32770.bin' not found; buffer not imported.
+File '/path/to/faulty/conv_bufs.32770.bin' [DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1] not found; buffer not imported.
 ...
 ```
 
 The buffers that got picked up leave the following lines in the verbose log:
 ```
 ...
-File '/path/to/faulty/conv_bufs.1.bin' successfully processed; buffer imported.
-File '/path/to/faulty/conv_bufs.33.bin' successfully processed; buffer imported.
-File '/path/to/faulty/conv_bufs.41.bin' successfully processed; buffer imported.
+File '/path/to/faulty/conv_bufs.1.bin' [DNNL_ARG_SRC_0] successfully processed; buffer imported.
+File '/path/to/faulty/conv_bufs.33.bin' [DNNL_ARG_WEIGHTS_0] successfully processed; buffer imported.
+File '/path/to/faulty/conv_bufs.41.bin' [DNNL_ARG_BIAS] successfully processed; buffer imported.
 ...
 ```
 

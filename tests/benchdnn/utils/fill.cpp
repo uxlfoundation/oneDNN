@@ -17,7 +17,9 @@
 #include <cstring>
 #include <random>
 #include <sstream>
+#include <unordered_map>
 
+#include "dnnl_debug.hpp"
 #include "utils/dnnl_query.hpp"
 #include "utils/fill.hpp"
 #include "utils/numeric.hpp"
@@ -365,10 +367,127 @@ int fill_random_real(dnn_mem_t &mem_ref, const fill_cfg_t &fill_cfg,
     return fill_random_real(dummy, mem_ref, nullptr, fill_cfg, dnnl_memory);
 }
 
+std::string execarg2str(int exec_arg) {
+    using arg_map_t = std::unordered_map<int, std::string>;
+#define ARG(id) \
+    { id, #id }
+    static const arg_map_t ids = {
+            ARG(DNNL_ARG_UNDEF),
+            ARG(DNNL_ARG_SRC_0),
+            ARG(DNNL_ARG_SRC_1),
+            ARG(DNNL_ARG_SRC_2),
+            ARG(DNNL_ARG_SRC_3),
+            ARG(DNNL_ARG_DST_0),
+            ARG(DNNL_ARG_DST_1),
+            ARG(DNNL_ARG_DST_2),
+            ARG(DNNL_ARG_WEIGHTS_0),
+            ARG(DNNL_ARG_WEIGHTS_1),
+            ARG(DNNL_ARG_WEIGHTS_2),
+            ARG(DNNL_ARG_WEIGHTS_3),
+            ARG(DNNL_ARG_BIAS),
+            ARG(DNNL_ARG_REDUCE),
+            ARG(DNNL_ARG_MEAN),
+            ARG(DNNL_ARG_VARIANCE),
+            ARG(DNNL_ARG_SCALE),
+            ARG(DNNL_ARG_SHIFT),
+            ARG(DNNL_ARG_WORKSPACE),
+            ARG(DNNL_ARG_SCRATCHPAD),
+            ARG(DNNL_ARG_DIFF_SRC_0),
+            ARG(DNNL_ARG_DIFF_SRC_1),
+            ARG(DNNL_ARG_DIFF_SRC_2),
+            ARG(DNNL_ARG_DIFF_SRC_3),
+            ARG(DNNL_ARG_DIFF_DST_0),
+            ARG(DNNL_ARG_DIFF_DST_1),
+            ARG(DNNL_ARG_DIFF_DST_2),
+            ARG(DNNL_ARG_DIFF_WEIGHTS_0),
+            ARG(DNNL_ARG_DIFF_WEIGHTS_1),
+            ARG(DNNL_ARG_DIFF_WEIGHTS_2),
+            ARG(DNNL_ARG_DIFF_WEIGHTS_3),
+            ARG(DNNL_ARG_DIFF_BIAS),
+            ARG(DNNL_ARG_DIFF_SCALE),
+            ARG(DNNL_ARG_DIFF_SHIFT),
+            ARG(DNNL_ARG_ATTR_ROUNDING_SEED),
+            ARG(DNNL_ARG_ATTR_DROPOUT_MASK),
+            ARG(DNNL_ARG_ATTR_DROPOUT_PROBABILITY),
+            ARG(DNNL_ARG_ATTR_DROPOUT_SEED),
+    };
+    static const arg_map_t flags = {
+            ARG(DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS),
+            ARG(DNNL_ARG_ATTR_SCALES),
+            ARG(DNNL_ARG_ATTR_ZERO_POINTS),
+            ARG(DNNL_ARG_ATTR_POST_OP_DW),
+    };
+    static const arg_map_t post_ops = {
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(0)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(1)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(2)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(3)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(4)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(5)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(6)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(7)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(8)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(9)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(10)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(11)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(12)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(13)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(14)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(15)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(16)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(17)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(18)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(19)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(20)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(21)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(22)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(23)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(24)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(25)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(26)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(27)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(28)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(29)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(30)),
+            ARG(DNNL_ARG_ATTR_MULTIPLE_POST_OP(31)),
+    };
+#undef ARG
+#define SPACE " | "
+    auto search = [](const arg_map_t &map, int i) {
+        auto it = map.find(i);
+        if (it != map.end()) return SPACE + it->second;
+        if (!i) return std::string();
+        std::ostringstream oss;
+        oss << std::hex << i;
+        return SPACE "0x" + oss.str();
+    };
+    std::string retn = search(
+            post_ops, exec_arg & ~(DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE - 1));
+    exec_arg &= DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE - 1;
+    for (auto &flag : flags) {
+        assert(((flag.first - 1) & flag.first) == 0);
+        if (exec_arg & flag.first) {
+            retn += SPACE + flag.second;
+            exec_arg &= ~flag.first;
+        }
+    }
+    if (exec_arg >= DNNL_ARG_MULTIPLE_DST) {
+        retn += SPACE "DNNL_ARG_MULTIPLE_DST+"
+                + std::to_string(exec_arg - DNNL_ARG_MULTIPLE_DST);
+    } else if (exec_arg >= DNNL_ARG_MULTIPLE_SRC) {
+        retn += SPACE "DNNL_ARG_MULTIPLE_SRC+"
+                + std::to_string(exec_arg - DNNL_ARG_MULTIPLE_SRC);
+    } else {
+        retn += search(ids, exec_arg); // including DNNL_ARG_UNDEF
+    }
+    return retn.erase(0, sizeof(SPACE) - 1);
+#undef SPACE
+}
+
 std::string buffer_prefix;
 
 bool fill_from_file(int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem) {
-    static const char format[] = "File '%s' %s; buffer not imported.\n";
+    static const char format[] = "File %s %s; buffer not imported.\n";
     auto prefix = buffer_prefix;
     if (prefix.empty()) return false;
 
@@ -383,6 +502,7 @@ bool fill_from_file(int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem) {
 #else
     file = fopen(prefix.c_str(), "rb");
 #endif
+    prefix = "'" + prefix + "' [" + execarg2str(exec_arg) + "]";
     if (!file) {
         BENCHDNN_PRINT(2, format, prefix.c_str(), "not found");
         return false;
@@ -393,6 +513,9 @@ bool fill_from_file(int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem) {
         fclose(file);
         BENCHDNN_PRINT(0, format, prefix.c_str(),
                 "differs in size from the buffer's memory descriptor");
+        BENCHDNN_PRINT(0, "Actual size: %zu\nNeeded size: %zu (%zu x %s)\n",
+                size, mem.size(), mem.size() / mem.sizeof_dt(),
+                dt2str(mem.dt()));
         SAFE_V(FAIL);
         return false;
     }
@@ -411,7 +534,7 @@ bool fill_from_file(int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem) {
         SAFE_V(FAIL);
         return false;
     }
-    BENCHDNN_PRINT(2, "File '%s' successfully processed; buffer imported.\n",
+    BENCHDNN_PRINT(2, "File %s successfully processed; buffer imported.\n",
             prefix.c_str());
     return true;
 }

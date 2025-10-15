@@ -80,7 +80,7 @@ private:
         size_t length() const { return std::strlen(data_); }
         bool is_empty() const { return data_[0] == 0; }
         size_t get_hash() const {
-            return std::hash<uint64_t> {}(numeric_value());
+            return std::hash<std::string> {}(std::string(data_));
         };
         std::string str() const { return data_; }
 

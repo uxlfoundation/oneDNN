@@ -53,9 +53,6 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
     auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
     CHECK(status);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
     const auto ndims = src_d.ndims();
     const auto N = pd()->MB();
 
@@ -83,9 +80,12 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
     }
 
     const auto C_PER_G = C / G;
-    auto get_c_start = [&C_PER_G](int64_t g) { return g * C_PER_G; };
+    auto get_c_start = [=](int64_t g) { return g * C_PER_G; };
 
-    parallel_nd(N, G, [&](dim_t n, dim_t g) {
+    parallel_nd(N, G, [=](dim_t n, dim_t g) {
+        DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
+        DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+
         size_t stat_off = n * G + g;
         float v_mean = calculate_stats ? 0 : mean[stat_off];
         float v_variance = calculate_stats ? 0 : variance[stat_off];
@@ -146,6 +146,8 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
                 variance[stat_off] = v_variance;
             }
         }
+
+        return status::success;
     });
     return status::success;
 }
@@ -205,7 +207,7 @@ status_t ref_group_normalization_bwd_t::execute(const exec_ctx_t &ctx) const {
     auto get_c_start = [&C_PER_G](int64_t g) { return g * C_PER_G; };
 
     // See benchdnn's ref path for explaining comments.
-    parallel_nd(C, [&](dim_t c) {
+    parallel_nd(C, [=](dim_t c) {
         dim_t g = c / C_PER_G;
 
         float diff_gamma = 0.0f;

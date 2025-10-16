@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -59,10 +59,6 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
         }
     }
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-    const float combined_scale = src_scales[0] * dst_scales[0];
-
     const dim_t N = pd()->MB();
     const dim_t G = pd()->desc()->groups;
     const dim_t C = pd()->C();
@@ -71,7 +67,7 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
     const float eps = pd()->desc()->group_norm_epsilon;
 
     const dim_t C_PER_G = C / G;
-    auto get_c_start = [&C_PER_G](dim_t g) { return g * C_PER_G; };
+    auto get_c_start = [=](dim_t g) { return g * C_PER_G; };
 
     const dim_t sp_block_nelems
             = static_cast<dim_t>(pd_t::cvt_per_thread_size_);
@@ -80,7 +76,11 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
 
     const int nthr = pd()->nthr_;
 
-    auto kernel = [&](int ithr, int, const dim_t n, const dim_t g) {
+    auto kernel = [=](int ithr, int, const dim_t n, const dim_t g) {
+        DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
+        DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+        const float combined_scale = src_scales[0] * dst_scales[0];
+
         float m = 0.0f;
         float v = 0.0f;
         if (calculate_stats) {
@@ -259,6 +259,8 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
             mean[n * G + g] = m;
             variance[n * G + g] = v;
         }
+
+        return status::success;
     };
 
     parallel_nd_ext(nthr, N, G, kernel);

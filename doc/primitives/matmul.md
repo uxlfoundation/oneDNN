@@ -146,9 +146,10 @@ The following attributes and post-ops are supported:
 
 | Type      | Operation                                                      | Description                                                                   | Restrictions                        |
 |:----------|:---------------------------------------------------------------|:------------------------------------------------------------------------------|:------------------------------------|
-| Attribute | [Scales](@ref dnnl::primitive_attr::set_scales_mask)           | Scales the result by given scale factor(s)                                    |                                     |
-| Attribute | [Zero-points](@ref dnnl::primitive_attr::set_zero_points_mask) | Sets zero point(s) for the corresponding tensors                              | Int8 computations only              |
+| Attribute | [Scales](@ref dnnl::primitive_attr::set_scales_mask)           | Scales the result by given scaling factor(s)                                    |                                     |
+| Attribute | [Zero-points](@ref dnnl::primitive_attr::set_zero_points_mask) | Sets zero-point(s) for the corresponding tensors                              | `int8` computations only              |
 | Attribute | [Dropout](@ref dnnl::primitive_attr::set_dropout)              | Applies pseudo-random dropout to destination buffer, also fills mask buffer   |                                     |
+| Attribute | [Precomputed reductions](@ref dnnl::primitive_attr::set_precomputed_reductions) | Sets precomputed reductions for the corresponding tensors  |  Requires weight zero-points and full matrix mask |
 | Post-op   | [Eltwise](@ref dnnl::post_ops::append_eltwise)                 | Applies an @ref dnnl_api_eltwise operation to the result                      |                                     |
 | Post-op   | [Sum](@ref dnnl::post_ops::append_sum)                         | Adds the operation result to the destination tensor instead of overwriting it |                                     |
 | Post-op   | [Binary](@ref dnnl::post_ops::append_binary)                   | Applies a @ref dnnl_api_binary operation to the result                        | General binary post-op restrictions |
@@ -266,7 +267,7 @@ information on sparse encding.
    - Sum post-op doesn't support data type other than destination data type.
    - Bias of bf16 data type is supported for configuration with bf16 source data
      type and weights bf16 data type, and up to three dimensional matrices.
-   - Optimized implementations for fp8 data type are available only on Intel(R) 
+   - Optimized implementations for fp8 data type are available only on Intel(R)
      Data Center GPU Max Series and Intel(R) Xe2 Graphics.
    - Configuration with int8 source data type, s8 weight data type and bf16
      destination data type don't support:
@@ -282,7 +283,7 @@ information on sparse encding.
    - Configuration with floating point source data type, integer weights data
      type and floating point destination data type is not optimized.
    - The layout of dropout mask has to be exactly the same as that of dst.
- 
+
 ## Performance Tips
 
 - Use #dnnl::memory::format_tag::any for either of the input tensors if and

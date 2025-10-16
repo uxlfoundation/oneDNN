@@ -108,6 +108,7 @@ def compare_two_benchdnn(file1, file2, out_file=None):
         r2_med_exec = statistics.median(exec2)
         r1_med_ctime = statistics.median(ctime1)
         r2_med_ctime = statistics.median(ctime2)
+        use_ttest = len(exec1) >= 3 and len(exec2) >= 3
 
         if 0 in [r1_med_exec, min(exec1), r1_med_ctime, min(ctime1)]:
             warnings.warn(
@@ -120,13 +121,16 @@ def compare_two_benchdnn(file1, file2, out_file=None):
         # A test fails if execution time:
         # - shows a statistically significant regression and
         # - shows ≥ 10% slowdown in either median or min times
-        exec_regressed = exec_regressed_ttest.pvalue <= 0.05 and (
+        exec_regressed = (
+            not use_ttest or exec_regressed_ttest.pvalue <= 0.05
+        ) and (
             (r2_med_exec - r1_med_exec) / r1_med_exec >= 0.1
             or (min(exec2) - min(exec1)) / min(exec1) >= 0.1
         )
-        exec_improved = exec_improved_ttest.pvalue <= 0.05 and (
-            r1_med_exec / r2_med_exec >= 1.1
-            or min(exec1) / min(exec2) >= 1.1
+        exec_improved = (
+            not use_ttest or exec_improved_ttest.pvalue <= 0.05
+        ) and (
+            r1_med_exec / r2_med_exec >= 1.1 or min(exec1) / min(exec2) >= 1.1
         )
         ctime_regressed = ctime_ttest.pvalue <= 0.05 and (
             (r2_med_ctime - r1_med_ctime) / r1_med_ctime >= 0.1
@@ -145,10 +149,7 @@ def compare_two_benchdnn(file1, file2, out_file=None):
                 f"(p={ctime_ttest.pvalue:.3g})"
             )
 
-        if (
-            out_file is not None
-            and (exec_regressed or exec_improved)
-        ):
+        if out_file is not None and (exec_regressed or exec_improved):
             prb_params = [x.replace("--", "") for x in prb.split(" ")]
             prb_params = [prb_params[1]] + [
                 x for x in prb_params if ("dt=" in x) or ("alg=" in x)

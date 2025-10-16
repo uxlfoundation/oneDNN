@@ -204,10 +204,10 @@ size_t get_timestamp();
 // P-core: Performance core (high performance, high power consumption)
 // E-core: Efficiency core (low performance, low power consumption)
 // However the naming in the SDM is different: using core (P-core) and atom (E-core)
-enum class core_type {
-    p_core, // Performance core
-    e_core, // Efficiency core
-    default = p_core // Default core (used for non-hybrid CPUs)
+enum class core_type : int {
+    p_core = 0, // Performance core
+    e_core = 1, // Efficiency core
+    default_core = p_core // Default core (used for non-hybrid CPUs)
 };
 
 // Assumption each core type on a system is homogeneous in terms of cache topology
@@ -235,7 +235,7 @@ struct cache_topology_t {
     static constexpr size_t max_core_types = 2;
     cache_info_t caches[max_cache_levels * max_core_types];
     bool is_hybrid;
-    const cache_info_t &get_cache(int level, core_type ctype = core_type::default) const {
+    const cache_info_t &get_cache(int level, core_type ctype = core_type::default_core) const {
         size_t type_idx = (ctype == core_type::p_core) ? 0
                           : (ctype == core_type::e_core) ? 1
                           : 0;
@@ -298,12 +298,13 @@ enum class behavior_t {
 // behaves like get_per_core_cache_size(int level) unless core_type is min/max/current
 // in which case it will consider the cache topology to return the appropriate value.
 // this can be used for CPUs with non-uniform cache topology.
-// This behavior will need to be tested on a non-hybrid CPUs
+// TODO: Test This behavior on non-hybrid CPUs.
 //
 // Note: for non-hybrid CPUs, the core_type argument is ignored and the function
 // behaves like get_per_core_cache_size(int level)
 unsigned DNNL_API get_per_core_cache_size(int level, behavior_t btype);
 bool is_hybrid();
+core_type get_core_type();
 
 } // namespace platform
 

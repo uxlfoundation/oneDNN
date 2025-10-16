@@ -302,8 +302,10 @@ public:
                     e_args[DNNL_ARG_DST] = memory_arg_t {zp_dst.get(), false};
                     exec_ctx_t e_ctx(ctx, std::move(e_args));
                     const auto nm = memory_tracking::names::key_nested_multiple;
-                    nested_scratchpad_t ns(ctx, nm, zp_prim_);
-                    e_ctx.set_scratchpad_grantor(ns.grantor());
+                    auto *nested_grantor = create_nested_grantor(
+                            ctx.get_scratchpad_grantor(), nm,
+                            zp_prim_->pd()->scratchpad_registry());
+                    e_ctx.set_scratchpad_grantor(nested_grantor);
                     CONV_CHECK(zp_prim_->execute(e_ctx));
                 }
                 nsubmitted++;

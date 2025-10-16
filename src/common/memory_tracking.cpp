@@ -50,22 +50,29 @@ grantor_t *registry_t::create_grantor(const memory_storage_t *mem_storage,
         const void *base_mem_storage_host_ptr) const {
     // Empty memory storage implies its mapped ptr is empty as well.
     assert(IMPLICATION(!mem_storage, !base_mem_storage_host_ptr));
-    return new grantor_t(*this, mem_storage, base_mem_storage_host_ptr);
+    return new grantor_t(*this, mem_storage, base_mem_storage_host_ptr,
+            /* delete_storage = */ false);
 }
 
 grantor_t::grantor_t(const registry_t &registry,
         const memory_storage_t *base_mem_storage,
-        const void *base_mem_storage_host_ptr)
+        const void *base_mem_storage_host_ptr, bool delete_storage)
     : registry_(registry)
     , prefix_(0)
     , base_mem_storage_(base_mem_storage)
-    , base_mem_storage_host_ptr_(base_mem_storage_host_ptr) {}
+    , base_mem_storage_host_ptr_(base_mem_storage_host_ptr)
+    , delete_storage_(delete_storage) {}
 
 grantor_t::grantor_t(const grantor_t &parent, const key_t &prefix)
     : registry_(parent.registry_)
     , prefix_(make_prefix(parent.prefix_, prefix))
     , base_mem_storage_(parent.base_mem_storage_)
-    , base_mem_storage_host_ptr_(parent.base_mem_storage_host_ptr_) {}
+    , base_mem_storage_host_ptr_(parent.base_mem_storage_host_ptr_)
+    , delete_storage_(false) {}
+
+grantor_t::~grantor_t() {
+    if (delete_storage_) { delete base_mem_storage_; }
+}
 
 char *grantor_t::host_ptr(const memory_storage_t *mem_storage) const {
     if (!mem_storage || mem_storage->is_null()) return nullptr;
@@ -89,6 +96,17 @@ bool grantor_t::is_cpu_engine(const memory_storage_t *mem_storage) const {
     assert(engine);
     if (engine->kind() == engine_kind::cpu) return true;
     return false;
+}
+
+grantor_t *create_nested_grantor(const grantor_t &master_grantor, int key,
+        const registry_t &nested_registry) {
+    // Note: `release()` from std::unique_ptr returns a pointer to allocated
+    // sub-storage. `get()` would lead to `std::unique` ptr destruction and
+    // losing the information about the storage.
+    return new grantor_t(nested_registry,
+            master_grantor.get_memory_storage(key).release(),
+            master_grantor.get_base_mem_storage_host_ptr(),
+            /* delete_storage = */ true);
 }
 
 } // namespace memory_tracking

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 * Copyright 2024 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,10 +38,11 @@ status_t cudnn_reorder_lt_t::execute_internal_reorder(const exec_ctx_t &ctx,
     if (dst_scales) r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST] = *dst_scales;
 
     exec_ctx_t r_ctx(ctx, std::move(r_args));
-    nested_scratchpad_t ns(
-            ctx, memory_tracking::names::key_nested, generic_reorder_);
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            memory_tracking::names::key_nested,
+            generic_reorder_->pd()->scratchpad_registry());
 
-    r_ctx.set_scratchpad_grantor(ns.grantor());
+    r_ctx.set_scratchpad_grantor(nested_grantor);
 
     return generic_reorder_->execute(r_ctx);
 }

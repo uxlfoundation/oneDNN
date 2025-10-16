@@ -41,31 +41,5 @@ using namespace dnnl::impl::primitive_kind;
 namespace dnnl {
 namespace impl {
 
-nested_scratchpad_t::nested_scratchpad_t(const exec_ctx_t &master_ctx, int key,
-        const std::shared_ptr<primitive_t> &nested_p) {
-    const auto &master_grantor = master_ctx.get_scratchpad_grantor();
-    scratchpad_mem_storage_ = master_grantor.get_memory_storage(key);
-    grantor_ = nested_p->pd()->scratchpad_registry().create_grantor(
-            scratchpad_mem_storage_.get(),
-            master_grantor.get_base_mem_storage_host_ptr());
-#ifdef DNNL_ENABLE_MEM_DEBUG
-    if (scratchpad_debug::is_protect_scratchpad()) {
-        scratchpad_debug::protect_scratchpad_buffer(
-                grantor_->get_base_storage(), grantor_->get_registry());
-    }
-#endif
-}
-
-#ifdef DNNL_ENABLE_MEM_DEBUG
-nested_scratchpad_t::~nested_scratchpad_t() {
-    if (scratchpad_debug::is_protect_scratchpad()) {
-        scratchpad_debug::unprotect_scratchpad_buffer(
-                grantor_->get_base_storage(), grantor_->get_registry());
-    }
-}
-#else
-nested_scratchpad_t::~nested_scratchpad_t() = default;
-#endif
-
 } // namespace impl
 } // namespace dnnl

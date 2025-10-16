@@ -138,8 +138,10 @@ struct ref_sum_t : public primitive_t {
 
             exec_ctx_t r_ctx(ctx, std::move(r_args));
 
-            nested_scratchpad_t ns(ctx, key_nested_multiple + i, reorders_[i]);
-            r_ctx.set_scratchpad_grantor(ns.grantor());
+            auto *nested_grantor = create_nested_grantor(
+                    ctx.get_scratchpad_grantor(), key_nested_multiple + i,
+                    reorders_[i]->pd()->scratchpad_registry());
+            r_ctx.set_scratchpad_grantor(nested_grantor);
             reorders_[i]->execute(r_ctx);
         }
 
@@ -149,8 +151,10 @@ struct ref_sum_t : public primitive_t {
             r_args[DNNL_ARG_DST] = dst;
             exec_ctx_t r_ctx(ctx, std::move(r_args));
 
-            nested_scratchpad_t ns(ctx, key_nested_multiple + n, reorders_[n]);
-            r_ctx.set_scratchpad_grantor(ns.grantor());
+            auto *nested_grantor = create_nested_grantor(
+                    ctx.get_scratchpad_grantor(), key_nested_multiple + n,
+                    reorders_[n]->pd()->scratchpad_registry());
+            r_ctx.set_scratchpad_grantor(nested_grantor);
             reorders_[n]->execute(r_ctx);
         }
         return status::success;

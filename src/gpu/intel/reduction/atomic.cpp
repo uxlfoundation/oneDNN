@@ -556,9 +556,11 @@ status_t atomic_t::execute_atomic(const exec_ctx_t &ctx) const {
         eltwise_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
         exec_ctx_t eltwise_ctx(ctx, std::move(eltwise_args));
 
-        nested_scratchpad_t ns(
-                ctx, memory_tracking::names::key_nested, eltwise_p_);
-        eltwise_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        memory_tracking::names::key_nested,
+                        eltwise_p_->pd()->scratchpad_registry());
+        eltwise_ctx.set_scratchpad_grantor(nested_grantor);
 
         CHECK(eltwise_p_->execute(eltwise_ctx));
     }

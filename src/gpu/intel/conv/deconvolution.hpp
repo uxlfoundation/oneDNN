@@ -227,8 +227,10 @@ struct conv_bwd_weights_t : public primitive_t {
             nested_args[DNNL_ARG_SCRATCHPAD] = args.at(DNNL_ARG_SCRATCHPAD);
         exec_ctx_t nested_ctx(ctx, std::move(nested_args));
 
-        nested_scratchpad_t ns(ctx, key_nested, nested_p_);
-        nested_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        key_nested, nested_p_->pd()->scratchpad_registry());
+        nested_ctx.set_scratchpad_grantor(nested_grantor);
 
         status_t status = nested_p_->execute(nested_ctx);
         if (status != status::success) return status;

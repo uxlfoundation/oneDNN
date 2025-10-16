@@ -145,8 +145,10 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
         r_args[DNNL_ARG_DST] = out;
         exec_ctx_t r_ctx(ctx, std::move(r_args));
 
-        nested_scratchpad_t ns(ctx, key_nested, reorder_);
-        r_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        key_nested, reorder_->pd()->scratchpad_registry());
+        r_ctx.set_scratchpad_grantor(nested_grantor);
         reorder_->execute(r_ctx);
     }
 
@@ -322,8 +324,10 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
         r_args[DNNL_ARG_DST] = out;
         exec_ctx_t r_ctx(ctx, std::move(r_args));
 
-        nested_scratchpad_t ns(ctx, key_nested, reorder_);
-        r_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        key_nested, reorder_->pd()->scratchpad_registry());
+        r_ctx.set_scratchpad_grantor(nested_grantor);
         reorder_->execute(r_ctx);
     }
 

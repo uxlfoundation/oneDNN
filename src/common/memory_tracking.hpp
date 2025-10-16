@@ -510,11 +510,33 @@ protected:
 };
 
 struct grantor_t {
+    // `base_mem_storage` can be either a root storage for master grantor, or
+    // a sub-storage from that root storage for nested grantors.
+    //
+    // When master grantor is created, `delete_storage` must be set to `false`
+    // as the storage is either owned by the primitive (library mode) or by the
+    // user (user mode).
+    //
+    // When nested grantor is created, `delete_storage` must be set to `true` to
+    // free up the memory allocated for a sub-storage object; sub-storage
+    // content won't be touched in that case since it doesn't own it.
     grantor_t(const registry_t &registry,
             const memory_storage_t *base_mem_storage,
-            const void *base_mem_storage_host_ptr);
+            const void *base_mem_storage_host_ptr, bool delete_storage = false);
+
+    // Another version of nested grantor that doesn't manage underlying memory
+    // storage.
     grantor_t(const grantor_t &parent, const key_t &prefix);
 
+    ~grantor_t();
+
+    // Copy is restricted as grantor cleans up the storage depending on the
+    // creation context - master or nested. The same object under a single
+    // implementation can be used in both scenarios, e.g. standalone reorder
+    // versus nested reorder.
+    //
+    // Note: if there's a scenario when a copy is needed, careful consideration
+    // about cleaning up the storage must be done.
     grantor_t(const grantor_t &other) = delete;
     grantor_t &operator=(const grantor_t &other) = delete;
 
@@ -575,13 +597,13 @@ struct grantor_t {
     }
     const registry_t &get_registry() const { return registry_; }
 
-protected:
+private:
     const registry_t &registry_;
     const key_t prefix_;
     const memory_storage_t *base_mem_storage_ = nullptr;
     const void *base_mem_storage_host_ptr_ = nullptr;
+    bool delete_storage_ = false;
 
-private:
     // Same as the one in `exec_ctx_t` but based on `base_mem_storage_host_ptr_`
     char *host_ptr(const memory_storage_t *mem_storage) const;
     bool is_cpu_engine(const memory_storage_t *mem_storage) const;
@@ -590,6 +612,11 @@ private:
 inline registrar_t registry_t::registrar() {
     return registrar_t(*this);
 }
+
+// Similar to `registry_t::create_grantor` except it targets nested grantor
+// creation which owns its underlying memory storage.
+grantor_t *create_nested_grantor(const grantor_t &master_grantor, int key,
+        const registry_t &nested_registry);
 
 } // namespace memory_tracking
 } // namespace impl

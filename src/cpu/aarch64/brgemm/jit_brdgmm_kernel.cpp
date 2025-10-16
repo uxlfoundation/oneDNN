@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2024-2025 FUJITSU LIMITED
 * Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -534,10 +534,11 @@ void jit_brdgmm_kernel_base_t::load_a(
             X_TMP_0);
     const auto addr = ptr(X_DEFAULT_ADDR);
     auto mask = mask_flag ? k_mask / T_z : P_ALL_ONE / T_z;
-    if (brg.is_f32) {
+    if (brg.dt_a == data_type::f32) {
         ld1w(vmma.s, mask, addr);
-    } else if (brg.is_bf16) {
+    } else if (brg.dt_a == data_type::bf16) {
         ld1h(vmma.s, mask, addr);
+        lsl(vmma.s, vmma.s, 16);
     } else if (brg.is_int8) {
         assert(!"unsupported\n");
     }
@@ -554,12 +555,13 @@ void jit_brdgmm_kernel_base_t::load_b(
             B_offset(n_i) + is_tail_block * v_i * simd_w_ * brg.typesize_B,
             X_TMP_0);
     const auto addr = ptr(X_DEFAULT_ADDR);
-    if (brg.is_f32) {
+    if (brg.dt_b == data_type::f32) {
         ld1w(vmmb.s, P_ALL_ONE / T_z, addr);
+    } else if (brg.dt_b == data_type::bf16) {
+        ld1h(vmmb.s, P_ALL_ONE / T_z, addr);
+        lsl(vmmb.s, vmmb.s, 16);
     } else if (brg.is_int8) {
         assert(!"unsupported\n");
-    } else if (brg.is_bf16) {
-        ld1h(vmmb.s, P_ALL_ONE / T_z, addr);
     }
 }
 

@@ -55,7 +55,8 @@ status_t init_kernel_datatype(
     brg->is_int8 = utils::one_of(dt_a, data_type::u8, data_type::s8)
             && utils::one_of(dt_b, data_type::u8, data_type::s8);
     brg->is_bf16 = (dt_a == data_type::bf16) && (dt_b == data_type::bf16);
-    brg->is_f32 = (dt_a == data_type::f32) && (dt_b == data_type::f32);
+    brg->is_f32 = (dt_a == data_type::f32)
+            && utils::one_of(dt_b, data_type::f32, data_type::bf16);
     brg->is_f16 = utils::one_of(data_type::f16, dt_a, dt_b);
     if (!(brg->is_int8 || brg->is_bf16 || brg->is_f32 || brg->is_f16))
         return status::unimplemented;
@@ -309,6 +310,8 @@ status_t init_brgemm_conf(brgemm_t *brg, cpu_isa_t isa,
     brg->dt_b = brg->is_row_major() ? dt_b : dt_a;
     CHECK(init_kernel_datatype(brg, brg->dt_a, brg->dt_b));
 
+    if (brg->is_f32 && (dt_b == data_type::bf16)) return status::unimplemented;
+
     brg->dt_c = get_accum_datatype(brg);
     brg->dt_d = brg->dt_c;
     brg->dt_bias = brg->dt_c;
@@ -385,6 +388,10 @@ status_t init_brdgmm_conf(brgemm_t *brg, cpu_isa_t isa,
     if (brg->is_f32 || brg->is_bf16) {
         brg->isa_impl = utils::map(true, isa_undef, is_isa_ok(sve_512), sve_512,
                 is_isa_ok(sve_256), sve_256, is_isa_ok(sve_128), sve_128);
+    }
+
+    if (!IMPLICATION(brg->is_bf16, mayiuse_bf16())) {
+        return status::unimplemented;
     }
 
     brg->is_dgmm = true;

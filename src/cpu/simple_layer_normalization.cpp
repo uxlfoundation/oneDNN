@@ -87,7 +87,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
     const bool use_shift = pd()->use_shift();
     const bool skip_mean = pd()->skip_mean();
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     const auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
@@ -299,7 +299,7 @@ status_t simple_layer_normalization_bwd_t::execute_backward(
 
     const bool use_scale = pd()->use_scale();
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     auto scale = CTX_IN_MEM(float *, DNNL_ARG_SCALE);

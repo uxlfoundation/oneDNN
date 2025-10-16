@@ -762,7 +762,7 @@ struct jit_avx512_core_bf16_convolution_bwd_weights_t ::thread_info_t {
     const void *diff_weights = nullptr;
     const void *diff_bias = nullptr;
 
-    const memory_tracking::grantor_t scratchpad;
+    const memory_tracking::grantor_t &scratchpad;
 
     src_data_t *tr_src = nullptr;
     diff_dst_data_t *tr_diff_dst = nullptr;
@@ -1913,7 +1913,7 @@ void jit_avx512_core_bf16_convolution_bwd_weights_t ::
 
 void jit_avx512_core_bf16_convolution_bwd_weights_t::prepare_scratchpad_data(
         const exec_ctx_t &ctx) const {
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     const auto &jcp = pd()->jcp_;
 

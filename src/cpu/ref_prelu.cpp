@@ -353,7 +353,7 @@ status_t ref_prelu_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     if (pd()->has_zero_dim_memory()) return status::success;
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto scratchpad_buf = scratchpad.template get<float>(
             memory_tracking::names::key_prelu_reduction);
 

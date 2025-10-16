@@ -314,7 +314,7 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute_convolution(
 
     using namespace memory_tracking::names;
     engine_t *engine = ctx.stream()->engine();
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     // initialize nspc src memory
     auto nspc_src_mem = scratchpad.get_memory_storage(key_conv_ncsp_src);
@@ -496,7 +496,7 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::execute_convolution(
         const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
     engine_t *engine = ctx.stream()->engine();
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     // initialize nspc src memory
     auto nspc_src_mem = scratchpad.get_memory_storage(key_conv_ncsp_src);
@@ -700,7 +700,7 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_convolution(
         const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
     engine_t *engine = ctx.stream()->engine();
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     // initialize nspc src memory
     auto nspc_diff_src_mem

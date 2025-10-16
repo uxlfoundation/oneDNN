@@ -284,7 +284,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
     matmul_helper_t helper(src_d, weights_d, dst_d);
 
-    auto &scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     const float *oscales = precompute_scales(
             scratchpad, src_scales, wei_scales, pd()->N(), pd()->attr());
 
@@ -762,7 +762,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                         dst_zero_points, 0)
                 : 0;
 
-        memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
         const auto &bgmmc = pd->get_brgemm_matmul_conf();
 
         batch_element_ptr_ = scratchpad.template get<brgemm_batch_element_t>(

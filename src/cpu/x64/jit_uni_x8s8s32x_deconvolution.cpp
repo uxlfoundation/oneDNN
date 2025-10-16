@@ -1516,7 +1516,7 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute_forward_1d(
 
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     int32_t *zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
@@ -1626,7 +1626,7 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute_forward_2d(
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     int32_t *zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
@@ -1801,7 +1801,7 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute_forward_3d(
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(jcp.post_ops, ctx);
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     int32_t *const zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))

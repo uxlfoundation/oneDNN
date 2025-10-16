@@ -515,6 +515,9 @@ struct grantor_t {
             const void *base_mem_storage_host_ptr);
     grantor_t(const grantor_t &parent, const key_t &prefix);
 
+    grantor_t(const grantor_t &other) = delete;
+    grantor_t &operator=(const grantor_t &other) = delete;
+
     template <typename T = void>
     T *get(const key_t &key, size_t *size = nullptr) const {
         if (!base_mem_storage_) {

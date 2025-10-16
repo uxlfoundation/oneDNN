@@ -698,7 +698,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
     const void *dst_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
-    const memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     brgemm_bwd_exec_ctx_t brgemm_ctx(ctx, _pd);
 

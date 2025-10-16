@@ -775,7 +775,7 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
     const int nthr = pd()->nthr_;
 
     if (calculate_stats) {
-        auto reduce = [&](float *stat, const float *tmp_stat) {
+        auto reduce = [=](float *stat, const float *tmp_stat) {
             for (dim_t n = 0; n < N; ++n) {
                 const float *loc_stat = tmp_stat + n * nthr * C;
                 for (dim_t g = 0; g < G; ++g)
@@ -797,7 +797,7 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
             }
         };
         // compute mean
-        parallel(nthr, [&](const int ithr, const int nthr) {
+        parallel(nthr, [=](const int ithr, const int nthr) {
             dim_t SP_start = 0, SP_end = 0;
             balance211(SP, nthr, ithr, SP_start, SP_end);
             const int block_size = SP_end - SP_start;
@@ -811,9 +811,11 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
                 (*kernel_mean_)(local_src, local_mean, block_size);
             }
         });
-        reduce(mean, stat_reduction);
+        parallel(1, [=](const int ithr, const int nthr) {
+            reduce(mean, stat_reduction);
+        });
         // compute variance
-        parallel(nthr, [&](const int ithr, const int nthr) {
+        parallel(nthr, [=](const int ithr, const int nthr) {
             dim_t SP_start = 0, SP_end = 0;
             balance211(SP, nthr, ithr, SP_start, SP_end);
             const dim_t block_size = SP_end - SP_start;
@@ -828,10 +830,12 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
                 (*kernel_var_)(local_src, local_mean, local_var, block_size);
             }
         });
-        reduce(variance, stat_reduction);
+        parallel(1, [=](const int ithr, const int nthr) {
+            reduce(variance, stat_reduction);
+        });
     }
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         dim_t SP_start = 0, SP_end = 0;
         balance211(SP, nthr, ithr, SP_start, SP_end);
         for (dim_t n = 0; n < N; ++n) {

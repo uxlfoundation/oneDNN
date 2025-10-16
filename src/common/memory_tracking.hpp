@@ -276,6 +276,7 @@ enum {
     key_matmul_dst_cast_acc,
     key_matmul_dst_scales,
     key_matmul_sparse_tmp_ptr,
+    key_matmul_mx_scale_space,
     key_pool_dst_bf16cvt,
     key_pool_dst_plain2blocked_cvt,
     key_pool_ind_plain2blocked_cvt,

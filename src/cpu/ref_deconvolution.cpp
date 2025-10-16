@@ -512,8 +512,9 @@ status_t ref_deconvolution_fwd_t::execute(const exec_ctx_t &ctx) const {
 
     exec_ctx_t conv_ctx(ctx, std::move(conv_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, conv_p_->pd()->scratchpad_registry());
+    conv_ctx.set_scratchpad_grantor(nested_grantor);
     auto status = conv_p_->execute(conv_ctx);
     if (status != status::success) return status;
 
@@ -561,8 +562,9 @@ status_t ref_deconvolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     conv_args[DNNL_ARG_DST] = args.at(DNNL_ARG_DIFF_SRC);
     exec_ctx_t conv_ctx(ctx, std::move(conv_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, conv_p_->pd()->scratchpad_registry());
+    conv_ctx.set_scratchpad_grantor(nested_grantor);
     conv_p_->execute(conv_ctx);
     return status::success;
 }
@@ -721,8 +723,9 @@ status_t ref_deconvolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
     conv_args[DNNL_ARG_DIFF_WEIGHTS] = args.at(DNNL_ARG_DIFF_WEIGHTS);
     exec_ctx_t conv_ctx(ctx, std::move(conv_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, conv_p_->pd()->scratchpad_registry());
+    conv_ctx.set_scratchpad_grantor(nested_grantor);
     status_t status = conv_p_->execute(conv_ctx);
     if (status != status::success) return status;
 

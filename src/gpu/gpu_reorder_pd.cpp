@@ -91,8 +91,9 @@ status_t gpu_reorder_pd_t::maybe_exec_zp_precompute_conv(const exec_ctx_t &ctx,
     r_args[arg_out] = memory_arg_t {ctx.output(DNNL_ARG_TO), false};
     exec_ctx_t r_ctx(ctx, std::move(r_args));
 
-    nested_scratchpad_t ns(ctx, key_conv_tails, zp_precomp_conv);
-    r_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_conv_tails, zp_precomp_conv->pd()->scratchpad_registry());
+    r_ctx.set_scratchpad_grantor(nested_grantor);
     return zp_precomp_conv->execute(r_ctx);
 }
 

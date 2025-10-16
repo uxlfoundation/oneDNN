@@ -17,22 +17,13 @@
 #ifndef COMMON_PRIMITIVE_HPP
 #define COMMON_PRIMITIVE_HPP
 
-#include <assert.h>
-#include <atomic>
+#include "common/c_types_map.hpp"
+#include "common/cache_blob.hpp"
+#include "common/cache_hit_types.hpp"
+#include "common/primitive_desc.hpp"
+#include "common/primitive_exec_types.hpp"
 
-#include "oneapi/dnnl/dnnl.h"
-
-#include "c_types_map.hpp"
-#include "cache_blob.hpp"
-#include "cache_hit_types.hpp"
-#include "memory_storage.hpp"
-#include "memory_tracking.hpp"
-#include "primitive_desc.hpp"
-#include "primitive_exec_types.hpp"
-#include "rw_mutex.hpp"
-#include "scratchpad.hpp"
-
-#include <future>
+#include <cassert>
 #include <type_traits>
 
 namespace dnnl {
@@ -130,22 +121,6 @@ protected:
 private:
     primitive_t() = delete;
     DNNL_DISALLOW_COPY_AND_ASSIGN(primitive_t);
-};
-
-// This is a helper class which is used for forwarding a scratchpad
-// from master primitive to the nested ones.
-struct nested_scratchpad_t {
-    nested_scratchpad_t(const exec_ctx_t &master_ctx, int key,
-            const std::shared_ptr<primitive_t> &nested_p);
-    memory_tracking::grantor_t *grantor() const { return grantor_; }
-
-    ~nested_scratchpad_t();
-
-    DNNL_DISALLOW_COPY_AND_ASSIGN(nested_scratchpad_t);
-
-private:
-    std::unique_ptr<memory_storage_t> scratchpad_mem_storage_;
-    memory_tracking::grantor_t *grantor_;
 };
 
 } // namespace impl

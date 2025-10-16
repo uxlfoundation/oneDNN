@@ -69,8 +69,9 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
 
     gemm::exec_ctx_t gemm_ctx(ctx, args, &desc);
 
-    nested_scratchpad_t ns(ctx, key_nested, gemm_);
-    gemm_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, gemm_->pd()->scratchpad_registry());
+    gemm_ctx.set_scratchpad_grantor(nested_grantor);
 
     status_t gemm_exec_status = gemm::gemm(gemm_)->execute(gemm_ctx);
     if (gemm_exec_status != status::success) return gemm_exec_status;

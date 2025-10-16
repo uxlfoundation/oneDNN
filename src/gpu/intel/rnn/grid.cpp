@@ -1077,11 +1077,12 @@ gemm_sig((simple_common_t<aprop>::gemm_primitive)) {
 
     auto gemm_ctx = gemm::exec_ctx_t(ctx, gemm_args);
 
-    std::unique_ptr<nested_scratchpad_t> ns;
     const auto init_gemm_nested_scratchpad
             = [&](const std::shared_ptr<impl::primitive_t> &gemm, int key) {
-                  ns = utils::make_unique<nested_scratchpad_t>(ctx, key, gemm);
-                  gemm_ctx.set_scratchpad_grantor(ns->grantor());
+                  auto *nested_grantor
+                          = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                                  key, gemm->pd()->scratchpad_registry());
+                  gemm_ctx.set_scratchpad_grantor(nested_grantor);
               };
 
     switch (gemm_kind) {

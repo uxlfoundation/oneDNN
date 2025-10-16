@@ -51,8 +51,9 @@ status_t gemm_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     gemm::exec_ctx_t gemm_ctx(ctx, args);
 
-    nested_scratchpad_t ns(ctx, key_nested, gemm_);
-    gemm_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, gemm_->pd()->scratchpad_registry());
+    gemm_ctx.set_scratchpad_grantor(nested_grantor);
 
     status_t gemm_exec_status = gemm::gemm(gemm_)->execute(gemm_ctx);
 
@@ -71,8 +72,9 @@ status_t gemm_bwd_data_t::execute_backward_data(const exec_ctx_t &ctx) const {
 
     gemm::exec_ctx_t gemm_ctx(ctx, args);
 
-    nested_scratchpad_t ns(ctx, key_nested, gemm_);
-    gemm_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, gemm_->pd()->scratchpad_registry());
+    gemm_ctx.set_scratchpad_grantor(nested_grantor);
 
     status_t gemm_exec_status = gemm::gemm(gemm_)->execute(gemm_ctx);
     if (gemm_exec_status != status::success) return gemm_exec_status;
@@ -97,8 +99,9 @@ status_t gemm_bwd_weights_t::execute_backward_weights(
         gemm_args.sum_ab = &CTX_OUT_STORAGE(DNNL_ARG_DIFF_BIAS);
     gemm::exec_ctx_t gemm_ctx(ctx, gemm_args);
 
-    nested_scratchpad_t ns(ctx, key_nested_multiple, gemm_);
-    gemm_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested_multiple, gemm_->pd()->scratchpad_registry());
+    gemm_ctx.set_scratchpad_grantor(nested_grantor);
 
     status_t gemm_exec_status = gemm::gemm(gemm_)->execute(gemm_ctx);
     if (gemm_exec_status != status::success) return gemm_exec_status;
@@ -110,8 +113,10 @@ status_t gemm_bwd_weights_t::execute_backward_weights(
         r_args[DNNL_ARG_SRC] = memory_arg_t {diff_dst, true};
         r_args[DNNL_ARG_DST] = memory_arg_t {diff_bia, false};
         exec_ctx_t r_ctx(ctx, std::move(r_args));
-        nested_scratchpad_t ns(ctx, key_nested_multiple + 1, reduction_);
-        r_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor = create_nested_grantor(
+                ctx.get_scratchpad_grantor(), key_nested_multiple + 1,
+                reduction_->pd()->scratchpad_registry());
+        r_ctx.set_scratchpad_grantor(nested_grantor);
         return reduction_->execute(r_ctx);
     }
 

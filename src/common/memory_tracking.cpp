@@ -14,9 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "memory_tracking.hpp"
-
-#include "engine.hpp"
+#include "common/memory_tracking.hpp"
+#include "common/engine.hpp"
+#include "common/scratchpad_debug.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -50,16 +50,35 @@ grantor_t *registry_t::create_grantor(const memory_storage_t *mem_storage,
         const void *base_mem_storage_host_ptr) const {
     // Empty memory storage implies its mapped ptr is empty as well.
     assert(IMPLICATION(!mem_storage, !base_mem_storage_host_ptr));
-    return new grantor_t(*this, mem_storage, base_mem_storage_host_ptr);
+    return new grantor_t(*this, mem_storage, base_mem_storage_host_ptr,
+            /* take_storage_ownership = */ false);
 }
 
 grantor_t::grantor_t(const registry_t &registry,
         const memory_storage_t *base_mem_storage,
-        const void *base_mem_storage_host_ptr)
+        const void *base_mem_storage_host_ptr, bool take_storage_ownership)
     : registry_(registry)
     , prefix_(0)
-    , base_mem_storage_(base_mem_storage)
-    , base_mem_storage_host_ptr_(base_mem_storage_host_ptr) {}
+    // Note: user-defined deleter makes sure the object won't get destroyed when
+    // it's owned by the external party.
+    , base_mem_storage_(base_mem_storage,
+              [&, take_storage_ownership](const memory_storage_t *ms) {
+#if defined(DNNL_ENABLE_MEM_DEBUG)
+                  if (scratchpad_debug::is_protect_scratchpad()) {
+                      scratchpad_debug::unprotect_scratchpad_buffer(
+                              get_base_storage(), get_registry());
+                  }
+#endif
+                  if (take_storage_ownership) delete ms;
+              })
+    , base_mem_storage_host_ptr_(base_mem_storage_host_ptr) {
+#ifdef DNNL_ENABLE_MEM_DEBUG
+    if (scratchpad_debug::is_protect_scratchpad()) {
+        scratchpad_debug::protect_scratchpad_buffer(
+                get_base_storage(), get_registry());
+    }
+#endif
+}
 
 grantor_t::grantor_t(const grantor_t &parent, const key_t &prefix)
     : registry_(parent.registry_)
@@ -89,6 +108,15 @@ bool grantor_t::is_cpu_engine(const memory_storage_t *mem_storage) const {
     assert(engine);
     if (engine->kind() == engine_kind::cpu) return true;
     return false;
+}
+
+grantor_t *create_nested_grantor(const grantor_t &master_grantor, int key,
+        const registry_t &nested_registry) {
+    // Take the ownership of a nested storage through a `release()` call.
+    return new grantor_t(nested_registry,
+            master_grantor.get_memory_storage(key).release(),
+            master_grantor.get_base_mem_storage_host_ptr(),
+            /* take_storage_ownership = */ true);
 }
 
 } // namespace memory_tracking

@@ -174,3 +174,47 @@ with minimal overhead.
 | Example | Description |
 |:--------|:------------|
 | @ref cpu_brgemm_example_cpp | \copybrief cpu_brgemm_example_cpp_brief |
+
+## Running Examples
+
+### Prerequisites and Building Examples
+
+Before running examples, ensure:
+1. oneDNN is built from source.
+   Note that examples are built automatically when building oneDNN
+   with `-DONEDNN_BUILD_EXAMPLES=ON` (enabled by default).
+2. Environment is set up and oneDNN libraries are in the path.
+
+Refer to @ref dev_guide_build for detailed build instructions.
+
+### Running Examples
+
+Most examples accept an optional engine argument (`cpu` or `gpu`),
+and if no argument is provided, example will most likely default to CPU:
+
+**Linux/macOS:**
+```bash
+# Run on CPU (default)
+./examples/getting_started
+
+# Run on CPU explicitly
+./examples/getting_started cpu
+
+# Run on GPU (if available)
+./examples/getting_started gpu
+```
+
+**Windows:**
+```cmd
+# Run on CPU (default)
+examples\getting_started.exe
+
+# Run on CPU explicitly
+examples\getting_started.exe cpu
+
+# Run on GPU (if available)
+examples\getting_started.exe gpu
+```
+
+Examples will output "Example passed on CPU/GPU." upon successful completion
+and display an error status with message otherwise.

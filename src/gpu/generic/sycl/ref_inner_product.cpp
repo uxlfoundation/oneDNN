@@ -633,10 +633,11 @@ status_t ref_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
         CHECK(weights_reorder_primitive->execute(wei_reorder_ctx));
     }
 
-    nested_scratchpad_t nested_scratchpad(
-            ctx, memory_tracking::names::key_nested, matmul_primitive);
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            memory_tracking::names::key_nested,
+            matmul_primitive->pd()->scratchpad_registry());
     exec_ctx_t matmul_ctx(ctx.stream(), std::move(matmul_args));
-    matmul_ctx.set_scratchpad_grantor(nested_scratchpad.grantor());
+    matmul_ctx.set_scratchpad_grantor(nested_grantor);
     return matmul_primitive->execute(matmul_ctx);
 }
 
@@ -668,8 +669,9 @@ status_t ref_inner_product_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     matmul_args[DNNL_ARG_DST] = matmul_args[DNNL_ARG_DIFF_SRC];
     exec_args_t dst_reorder_args(ctx.args());
 
-    nested_scratchpad_t nested_scratchpad(
-            ctx, memory_tracking::names::key_nested, matmul_primitive);
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            memory_tracking::names::key_nested,
+            matmul_primitive->pd()->scratchpad_registry());
 
     // Map src and dst to diff_dst and diff_src respectively
     if (pd()->wei_needs_reorder) {
@@ -709,7 +711,7 @@ status_t ref_inner_product_bwd_data_t::execute(const exec_ctx_t &ctx) const {
 
     exec_ctx_t matmul_ctx(ctx.stream(), std::move(matmul_args));
 
-    matmul_ctx.set_scratchpad_grantor(nested_scratchpad.grantor());
+    matmul_ctx.set_scratchpad_grantor(nested_grantor);
 
     CHECK(matmul_primitive->execute(matmul_ctx));
     if (pd()->dst_needs_reorder) {
@@ -753,8 +755,9 @@ status_t ref_inner_product_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
     std::unique_ptr<memory_t, memory_deleter_t> wei_scratch_mem;
     auto zero_md = types::zero_md();
 
-    nested_scratchpad_t nested_scratchpad(
-            ctx, memory_tracking::names::key_nested_multiple, matmul_primitive);
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            memory_tracking::names::key_nested_multiple,
+            matmul_primitive->pd()->scratchpad_registry());
 
     exec_args_t matmul_args(ctx.args());
 
@@ -801,7 +804,7 @@ status_t ref_inner_product_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
     // Map src and dst to diff_dst and diff_src respectively
     exec_ctx_t matmul_ctx(ctx.stream(), std::move(matmul_args));
 
-    matmul_ctx.set_scratchpad_grantor(nested_scratchpad.grantor());
+    matmul_ctx.set_scratchpad_grantor(nested_grantor);
     // calcules dL/dW;
     CHECK(matmul_primitive->execute(matmul_ctx));
 
@@ -812,9 +815,11 @@ status_t ref_inner_product_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
 
     if (pd()->with_bias()) {
         //calculates dL/dB
-        nested_scratchpad_t reduction_scratchpad(ctx,
-                memory_tracking::names::key_nested_multiple + 1,
-                reduction_primitive);
+        auto *reduction_nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        memory_tracking::names::key_nested_multiple + 1,
+                        reduction_primitive->pd()->scratchpad_registry());
+
         exec_args_t args_copy_reduction(ctx.args());
         args_copy_reduction[DNNL_ARG_SRC]
                 = args_copy_reduction[DNNL_ARG_DIFF_DST];
@@ -823,8 +828,7 @@ status_t ref_inner_product_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
         exec_ctx_t copied_ctx_reduction(
                 ctx.stream(), std::move(args_copy_reduction));
 
-        copied_ctx_reduction.set_scratchpad_grantor(
-                reduction_scratchpad.grantor());
+        copied_ctx_reduction.set_scratchpad_grantor(reduction_nested_grantor);
         CHECK(reduction_primitive->execute(copied_ctx_reduction));
     }
     return status::success;

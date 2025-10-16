@@ -382,8 +382,9 @@ status_t matmul_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
     exec_args_t matmul_args = ctx.args();
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, matmul_);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, matmul_->pd()->scratchpad_registry());
+    matmul_ctx.set_scratchpad_grantor(nested_grantor);
 
     return matmul_->execute(matmul_ctx);
 }
@@ -398,8 +399,9 @@ status_t matmul_inner_product_bwd_data_t::execute(const exec_ctx_t &ctx) const {
 
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, matmul_);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, matmul_->pd()->scratchpad_registry());
+    matmul_ctx.set_scratchpad_grantor(nested_grantor);
 
     return matmul_->execute(matmul_ctx);
 }
@@ -418,8 +420,9 @@ status_t matmul_inner_product_bwd_weights_t::execute(
 
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, matmul_);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, matmul_->pd()->scratchpad_registry());
+    matmul_ctx.set_scratchpad_grantor(nested_grantor);
     return matmul_->execute(matmul_ctx);
 }
 

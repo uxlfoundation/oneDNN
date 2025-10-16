@@ -856,8 +856,9 @@ rnn_matmul_sig((ref_rnn_common_t<aprop, src_type, weights_type,
     matmul_args[DNNL_ARG_DST] = {dst_mem.get(), false};
 
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
-    nested_scratchpad_t ns(ctx, key_nested_multiple, matmul_prim);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested_multiple, matmul_prim->pd()->scratchpad_registry());
+    matmul_ctx.set_scratchpad_grantor(nested_grantor);
 
     return matmul_prim->execute(matmul_ctx);
 }
@@ -2159,9 +2160,10 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             reorder_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_WEIGHTS_LAYER);
             reorder_args[DNNL_ARG_DST] = {reorder_dst.get(), false};
             exec_ctx_t reorder_ctx(ctx, std::move(reorder_args));
-            nested_scratchpad_t ns(
-                    ctx, key_nested_multiple, bf32_wei_layer_reorder_);
-            reorder_ctx.set_scratchpad_grantor(ns.grantor());
+            auto *nested_grantor = create_nested_grantor(
+                    ctx.get_scratchpad_grantor(), key_nested_multiple,
+                    bf32_wei_layer_reorder_->pd()->scratchpad_registry());
+            reorder_ctx.set_scratchpad_grantor(nested_grantor);
             CHECK(bf32_wei_layer_reorder_->execute(reorder_ctx));
             w_layer = scratchpad.template get<weights_t>(
                     key_rnn_bf32_wei_layer_trans);
@@ -2177,9 +2179,10 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             reorder_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_WEIGHTS_ITER);
             reorder_args[DNNL_ARG_DST] = {reorder_dst.get(), false};
             exec_ctx_t reorder_ctx(ctx, std::move(reorder_args));
-            nested_scratchpad_t ns(
-                    ctx, key_nested_multiple, bf32_wei_iter_reorder_);
-            reorder_ctx.set_scratchpad_grantor(ns.grantor());
+            auto *nested_grantor = create_nested_grantor(
+                    ctx.get_scratchpad_grantor(), key_nested_multiple,
+                    bf32_wei_iter_reorder_->pd()->scratchpad_registry());
+            reorder_ctx.set_scratchpad_grantor(nested_grantor);
             CHECK(bf32_wei_iter_reorder_->execute(reorder_ctx));
             w_iter = scratchpad.template get<weights_t>(
                     key_rnn_bf32_wei_iter_trans);

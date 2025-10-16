@@ -238,12 +238,14 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
     impl::exec_ctx_t tmp_ctx(ctx.stream());
     tmp_ctx.set_resource_mapper(ctx.get_resource_mapper());
     tmp_ctx.set_scratchpad_grantor(&ctx.get_scratchpad_grantor());
-    nested_scratchpad_t ns(
-            tmp_ctx, memory_tracking::names::key_nested_multiple, prim_);
+    auto *nested_grantor
+            = create_nested_grantor(tmp_ctx.get_scratchpad_grantor(),
+                    memory_tracking::names::key_nested_multiple,
+                    prim_->pd()->scratchpad_registry());
 
     exec_ctx_t nested_ctx(ctx.stream(), nested_args, ctx.desc());
     nested_ctx.set_resource_mapper(ctx.get_resource_mapper());
-    nested_ctx.set_scratchpad_grantor(ns.grantor());
+    nested_ctx.set_scratchpad_grantor(nested_grantor);
 
     CHECK(gemm(prim_)->execute(nested_ctx));
 

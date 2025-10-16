@@ -434,9 +434,11 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
 
             exec_ctx_t op_ctx(ctx, std::move(exec_args));
 
-            nested_scratchpad_t ns(ctx,
-                    memory_tracking::names::key_fusion_forward_scratchpad, op);
-            op_ctx.set_scratchpad_grantor(ns.grantor());
+            auto *nested_grantor = create_nested_grantor(
+                    ctx.get_scratchpad_grantor(),
+                    memory_tracking::names::key_fusion_forward_scratchpad,
+                    op->pd()->scratchpad_registry());
+            op_ctx.set_scratchpad_grantor(nested_grantor);
             CHECK(op->execute(op_ctx));
         }
 

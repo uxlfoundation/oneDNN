@@ -510,14 +510,28 @@ protected:
 };
 
 struct grantor_t {
+    // `base_mem_storage` can be either a root storage for a master grantor, or
+    // a sub-storage from some root storage for nested grantors.
+    //
+    // When a master grantor is created, `take_storage_ownership` must be set to
+    // `false` as the storage is either owned by the external party - the
+    // primitive (scratchpad library mode) or the user (scratchpad user mode).
+    //
+    // When a nested grantor is created, `take_storage_ownership` must be set to
+    // `true` to free the memory allocated for a sub-storage object; sub-storage
+    // content won't be touched in that case since it doesn't own it.
     grantor_t(const registry_t &registry,
             const memory_storage_t *base_mem_storage,
-            const void *base_mem_storage_host_ptr);
+            const void *base_mem_storage_host_ptr,
+            bool take_storage_ownership = false);
+
+    // Another version of nested grantor that doesn't manage underlying memory
+    // storage.
     grantor_t(const grantor_t &parent, const key_t &prefix);
 
     template <typename T = void>
     T *get(const key_t &key, size_t *size = nullptr) const {
-        if (!base_mem_storage_) {
+        if (!get_base_storage()) {
             assert(registry_.size() == 0);
             return nullptr;
         }
@@ -526,59 +540,62 @@ struct grantor_t {
         if (size) *size = e.size;
         if (e.size == 0) return nullptr;
 
-        char *host_storage_ptr = host_ptr(base_mem_storage_);
-        char *base_ptr = host_storage_ptr + base_mem_storage_->base_offset();
+        char *host_storage_ptr = host_ptr(get_base_storage());
+        char *base_ptr = host_storage_ptr + get_base_storage()->base_offset();
         return (T *)e.compute_ptr(base_ptr);
     }
 
     std::unique_ptr<memory_storage_t> get_memory_storage(
             const key_t &key) const {
-        if (!base_mem_storage_) {
+        if (!get_base_storage()) {
             assert(registry_.size() == 0);
             return nullptr;
         }
         auto e = registry_.get(make_key(prefix_, key));
         if (e.size == 0) return nullptr;
 
-        if (is_cpu_engine(base_mem_storage_)) {
+        if (is_cpu_engine(get_base_storage())) {
             // For SYCL CPU this interface must be used when returned
             // memory_storage will be wrapped into memory objects which will be
             // passed to nested primitives. It's required to keep host mapping
             // working. It's working because handles in memory storages are keys
             // in mapping.
-            char *host_storage_ptr = host_ptr(base_mem_storage_);
+            char *host_storage_ptr = host_ptr(get_base_storage());
             char *base_ptr
-                    = host_storage_ptr + base_mem_storage_->base_offset();
+                    = host_storage_ptr + get_base_storage()->base_offset();
             char *aligned_ptr = (char *)e.compute_ptr(base_ptr);
             size_t aligned_offset = size_t(aligned_ptr - host_storage_ptr);
             // Note: this interface is broken for SYCL buffer storages as
             // returning sub_storage is basically a base storage itself by
             // design.
-            return base_mem_storage_->get_sub_storage(aligned_offset, e.size);
+            return get_base_storage()->get_sub_storage(aligned_offset, e.size);
         }
 
         const size_t aligned_offset
                 = reinterpret_cast<size_t>(utils::align_ptr<char>(
                         reinterpret_cast<char *>(e.offset), e.alignment));
         assert(aligned_offset + e.size <= registry_.size());
-        return base_mem_storage_->get_sub_storage(aligned_offset, e.size);
+        return get_base_storage()->get_sub_storage(aligned_offset, e.size);
     }
 
     const memory_storage_t *get_base_storage() const {
-        return base_mem_storage_;
+        return base_mem_storage_.get();
     }
     const void *get_base_mem_storage_host_ptr() const {
         return base_mem_storage_host_ptr_;
     }
     const registry_t &get_registry() const { return registry_; }
 
-protected:
+private:
     const registry_t &registry_;
     const key_t prefix_;
-    const memory_storage_t *base_mem_storage_ = nullptr;
+    // The `grantor_t` class is designed to be copyable for convenience.
+    // When `base_mem_storage_` is owned, we need to ensure proper lifetime
+    // management. Therefore, the copy semantics of `grantor_t` are implemented
+    // as reference semantics.
+    std::shared_ptr<const memory_storage_t> base_mem_storage_;
     const void *base_mem_storage_host_ptr_ = nullptr;
 
-private:
     // Same as the one in `exec_ctx_t` but based on `base_mem_storage_host_ptr_`
     char *host_ptr(const memory_storage_t *mem_storage) const;
     bool is_cpu_engine(const memory_storage_t *mem_storage) const;
@@ -587,6 +604,11 @@ private:
 inline registrar_t registry_t::registrar() {
     return registrar_t(*this);
 }
+
+// Similar to `registry_t::create_grantor` except it targets nested grantor
+// creation which owns its underlying memory storage.
+grantor_t *create_nested_grantor(const grantor_t &master_grantor, int key,
+        const registry_t &nested_registry);
 
 } // namespace memory_tracking
 } // namespace impl

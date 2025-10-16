@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2021-2023 Intel Corporation
+# Copyright 2021-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ file(GLOB_RECURSE SOURCES_EXTRA
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/*.[ch]pp
     ${CMAKE_CURRENT_SOURCE_DIR}/passes/*.[ch]pp
     ${CMAKE_CURRENT_SOURCE_DIR}/patterns/*.[ch]pp
+    ${CMAKE_CURRENT_SOURCE_DIR}/executables/*.[ch]pp
     )
 
 foreach(SOURCE_FILE ${SOURCES_EXTRA})

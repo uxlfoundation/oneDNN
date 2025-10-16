@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 * Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -226,8 +226,10 @@ struct miopen_deconvolution_fwd_t : public gpu::primitive_t {
             conv_args[DNNL_ARG_BIAS] = args.at(DNNL_ARG_BIAS);
         exec_ctx_t conv_ctx(ctx.stream(), std::move(conv_args));
 
-        nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-        conv_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        key_nested, conv_p_->pd()->scratchpad_registry());
+        conv_ctx.set_scratchpad_grantor(nested_grantor);
         // Executing the convolution kernel
         status_t status = conv_p_->execute(conv_ctx);
         return status;
@@ -321,8 +323,10 @@ struct miopen_deconvolution_bwd_data_t : public gpu::primitive_t {
             conv_args[DNNL_ARG_SCRATCHPAD] = args.at(DNNL_ARG_SCRATCHPAD);
         exec_ctx_t conv_ctx(ctx.stream(), std::move(conv_args));
 
-        nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-        conv_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        key_nested, conv_p_->pd()->scratchpad_registry());
+        conv_ctx.set_scratchpad_grantor(nested_grantor);
         // Executing the convolution kernel
         status_t status = conv_p_->execute(conv_ctx);
         return status;
@@ -429,8 +433,10 @@ struct miopen_deconvolution_bwd_weights_t : public gpu::primitive_t {
 
         exec_ctx_t conv_ctx(ctx, std::move(conv_args));
 
-        nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-        conv_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        key_nested, conv_p_->pd()->scratchpad_registry());
+        conv_ctx.set_scratchpad_grantor(nested_grantor);
         status_t status = conv_p_->execute(conv_ctx);
         if (status != status::success) return status;
 

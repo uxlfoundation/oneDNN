@@ -302,8 +302,9 @@ status_t jit_uni_ncsp_convolution_fwd_t::reorder_activations(
     r_args[DNNL_ARG_DST] = out;
     exec_ctx_t r_ctx(ctx, std::move(r_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, prim);
-    r_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, prim->pd()->scratchpad_registry());
+    r_ctx.set_scratchpad_grantor(nested_grantor);
     CHECK(prim->execute(r_ctx));
 
     return status::success;
@@ -347,9 +348,10 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute_convolution(
 
     exec_ctx_t nspc_ctx(ctx, std::move(conv_args));
 
-    nested_scratchpad_t ns(
-            ctx, memory_tracking::names::key_nested, nspc_conv_p_);
-    nspc_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            memory_tracking::names::key_nested,
+            nspc_conv_p_->pd()->scratchpad_registry());
+    nspc_ctx.set_scratchpad_grantor(nested_grantor);
     CHECK(nspc_conv_p_->execute(nspc_ctx));
 
     // reorder dst from nspc to ncsp
@@ -373,8 +375,10 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute_matmul(
 
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
 
-    nested_scratchpad_t ns(ctx, memory_tracking::names::key_nested, matmul_p_);
-    matmul_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            memory_tracking::names::key_nested,
+            matmul_p_->pd()->scratchpad_registry());
+    matmul_ctx.set_scratchpad_grantor(nested_grantor);
 
     return matmul_p_->execute(matmul_ctx);
 }
@@ -485,8 +489,9 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::reorder_activations(
     r_args[DNNL_ARG_DST] = out;
     exec_ctx_t r_ctx(ctx, std::move(r_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, prim);
-    r_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, prim->pd()->scratchpad_registry());
+    r_ctx.set_scratchpad_grantor(nested_grantor);
     CHECK(prim->execute(r_ctx));
 
     return status::success;
@@ -528,10 +533,11 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::execute_convolution(
 
     exec_ctx_t nspc_ctx(ctx, std::move(conv_args));
 
-    nested_scratchpad_t ns(
-            ctx, memory_tracking::names::key_nested, nspc_conv_p_);
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            memory_tracking::names::key_nested,
+            nspc_conv_p_->pd()->scratchpad_registry());
 
-    nspc_ctx.set_scratchpad_grantor(ns.grantor());
+    nspc_ctx.set_scratchpad_grantor(nested_grantor);
     CHECK(nspc_conv_p_->execute(nspc_ctx));
 
     return status::success;
@@ -689,8 +695,9 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::reorder_activations(
     r_args[DNNL_ARG_DST] = out;
     exec_ctx_t r_ctx(ctx, std::move(r_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, prim);
-    r_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, prim->pd()->scratchpad_registry());
+    r_ctx.set_scratchpad_grantor(nested_grantor);
     CHECK(prim->execute(r_ctx));
 
     return status::success;
@@ -729,10 +736,11 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_convolution(
 
     exec_ctx_t nspc_ctx(ctx, std::move(conv_args));
 
-    nested_scratchpad_t ns(
-            ctx, memory_tracking::names::key_nested, nspc_conv_p_);
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            memory_tracking::names::key_nested,
+            nspc_conv_p_->pd()->scratchpad_registry());
 
-    nspc_ctx.set_scratchpad_grantor(ns.grantor());
+    nspc_ctx.set_scratchpad_grantor(nested_grantor);
     CHECK(nspc_conv_p_->execute(nspc_ctx));
 
     CHECK(reorder_activations(ctx, src_reorder_p_, engine,
@@ -752,9 +760,10 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_matmul(
 
     exec_ctx_t matmul_src_diff_ctx(ctx, std::move(matmul_src_diff_args));
 
-    nested_scratchpad_t matmul_src_diff_ns(
-            ctx, memory_tracking::names::key_nested, matmul_diff_src_p_);
-    matmul_src_diff_ctx.set_scratchpad_grantor(matmul_src_diff_ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            memory_tracking::names::key_nested,
+            matmul_diff_src_p_->pd()->scratchpad_registry());
+    matmul_src_diff_ctx.set_scratchpad_grantor(nested_grantor);
 
     return matmul_diff_src_p_->execute(matmul_src_diff_ctx);
 }

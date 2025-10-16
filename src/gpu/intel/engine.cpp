@@ -18,6 +18,7 @@
 
 #include "gpu/intel/engine.hpp"
 
+#include "common/rw_mutex.hpp"
 #include "common/utils.hpp"
 
 namespace dnnl {

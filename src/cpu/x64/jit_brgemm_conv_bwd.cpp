@@ -168,8 +168,10 @@ status_t brgemm_convolution_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
     exec_ctx_t fwd_ctx(ctx, std::move(conv_args));
 
-    nested_scratchpad_t ns(ctx, memory_tracking::names::key_nested, fwd_p_);
-    fwd_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            memory_tracking::names::key_nested,
+            fwd_p_->pd()->scratchpad_registry());
+    fwd_ctx.set_scratchpad_grantor(nested_grantor);
     return fwd_p_->execute(fwd_ctx);
 }
 

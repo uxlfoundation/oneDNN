@@ -542,11 +542,9 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         }
     }
 
-    if (problem_.Ta_ext.isInt4() && problem_.Tb_ext.isInt8()
-            && a_quant.zp_ndims >= 0)
+    if (problem_.Ta_ext.isInt4() && problem_.Tb_ext.isInt8())
         problem_.Ta = Type::s8;
-    if (problem_.Tb_ext.isInt4() && problem_.Ta_ext.isInt8()
-            && b_quant.zp_ndims >= 0)
+    if (problem_.Tb_ext.isInt4() && problem_.Ta_ext.isInt8())
         problem_.Tb = Type::s8;
 
     if (problem_.Ta.isInteger()) problem_.Ts = Type::f32;

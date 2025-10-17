@@ -3,8 +3,15 @@
 * Improved performance on future Intel Xeon processors with Intel AVX 10.2 and Intel AMX instruction sets support.
   This functionality is not dispatched by default and requires opt-in with environment variable `ONEDNN_MAX_CPU_ISA=AVX10_2_512_AMX_2`.
 * Improved performance on future Intel Core processors with Intel AVX 10.2 instruction set support. This functionality is not dispatched by default and requires opt-in with environment variable `ONEDNN_MAX_CPU_ISA=AVX10_2_512`.
-* Improved matmul performance with `int4` weights and per-channel zero-points.
+* Improved performance of matmul primitive on processors with Intel AMX support.
+* Improved performance of `f32` matmul primitive for GEMV cases on on processors with Intel AVX2 instruction set support.
+* Improved matmul performance with `int4` and `int8` compressed weights and per-channel zero-points.
+* Improved `f32` matmul performance with `int4` and `int8` compressed weights on processors with Intel AVX2 and Intel AVX512 instruction set support.
+* Improved `bf16` matmul performance with `int4` and `int8` compressed weights on processors with Intel AVX512, Intel DL Boost and bfloat16 instruction set support.
+* Improved performance of `int8` convolution primitive when using zero points.
 * Improved performance of `int8` matmul and inner product primitives with `fp16` destination.
+* Improved performance of `f32` and `bf16` convolution primitive with `int8` destination.
+* Improved performance of RNN primitive on processors with Intel AVX2 instruction set support when using OpenMP runtime.
 * Improved performance of subgraphs containing sequence of multiple binary ops with Graph API.
 
 ## Intel Graphics Products

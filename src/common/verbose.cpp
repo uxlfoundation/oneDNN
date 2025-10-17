@@ -131,18 +131,20 @@ void print_header() noexcept {
         verbose_printf("info,GPU convolution v2 is %s\n",
                 experimental::use_gpu_conv_v2() ? "enabled" : "disabled");
 #endif
-        verbose_printf(
-                "primitive,info,template:%soperation,engine,primitive,"
-                "implementation,prop_kind,memory_descriptors,attributes,"
-                "auxiliary,problem_desc,exec_time\n",
-                get_verbose_timestamp() ? "timestamp," : "");
-
 #ifdef DNNL_EXPERIMENTAL_LOGGING
         const log_manager_t &log_manager = log_manager_t::get_log_manager();
         if (log_manager.is_logger_enabled())
             verbose_printf(
                     "info,experimental functionality for logging is enabled\n");
 #endif
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+        verbose_printf("info,experimental SYCL kernel compiler is enabled\n");
+#endif
+        verbose_printf(
+                "primitive,info,template:%soperation,engine,primitive,"
+                "implementation,prop_kind,memory_descriptors,attributes,"
+                "auxiliary,problem_desc,exec_time\n",
+                get_verbose_timestamp() ? "timestamp," : "");
 
 #ifdef ONEDNN_BUILD_GRAPH
         verbose_printf(

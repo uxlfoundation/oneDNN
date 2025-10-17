@@ -29,7 +29,10 @@
 [Grouped Query Attention (GQA)]: https://uxlfoundation.github.io/oneDNN/v3.10/dev_guide_graph_gqa.html#gqa-for-training-forward-propagation
 [Scaled Dot Product Attention (SDPA)]: https://uxlfoundation.github.io/oneDNN/v3.10/dev_guide_graph_sdpa.html
 ## AArch64-based Processors
-TBD
+* Improved performance of reorder primitive
+* Improved performance of `bf16` convolutions
+* Improved performance of convolutions on 128-bit SVE platforms
+* Improved performance of eltwise on Arm® Neoverse™ N1
 
 # Functionality
 ## Functional API
@@ -58,6 +61,15 @@ TBD
 # Usability
 * Extended diagnostics available in verbose mode for primitive descriptor creation issues.
 * Extended dispatch diagnostics in verbose mode output for primitives implementations on Intel GPUs.
+
+## AArch64-based Processors
+* Fixed crashes in backward-pass convolutions
+* Fixed numerical errors in 4D matmul primitives
+* Fixed numerical errors in low-precision convolutions
+* Fixed numerical errors in reorders with compensation
+* Fixed illegal-instruction crashes on Arm® Neoverse™ N1
+* Fixed crashes in binary primitive in Debug builds
+* Fixed segmentation fault in `eltwise_log` post-ops for large kernels
 
 # Validation
 

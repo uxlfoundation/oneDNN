@@ -1,0 +1,178 @@
+# *******************************************************************************
+# Copyright 2025 Arm Limited and affiliates.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# *******************************************************************************
+
+name: "Build oneDNN AArch64"
+description: "Build oneDNN"
+
+inputs:
+  artifact_name:
+    required: false
+    description: Name of the artifact to upload to. Leave empty to not upload an artifact.
+  threading:
+    required: true
+    description: OMP or SEQ.
+  toolset:
+    required: true
+    description: gcc or clang
+  build:
+    required: true
+    description: Cmake build type. Release, RelWithAssert or Debug.
+  testset:
+    required: true
+    description: SMOKE, CI or NIGHTLY.
+  onednn_hash:
+    required: false
+    description: oneDNN commit to check out.
+  acl_hash:
+    required: false
+    description: ACL hash to checkout.
+  cache:
+    required: false
+    description: Whether to cache the built oneDNN or not.
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout oneDNN
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      with:
+          path: oneDNN
+
+    - name: Read version file
+      shell: bash
+      id: get-versions
+      run: |
+          content=`cat ${{ github.workspace }}/oneDNN/.github/automation/aarch64/ci.json`
+          content="${content//[$'\t\r\n$ ']}"
+          echo "output=$content" >> $GITHUB_OUTPUT
+    
+    - name: Get system name
+      id: get_system_name
+      shell: bash
+      run: (echo "SystemName=$(uname)") >> $GITHUB_OUTPUT
+
+    # Note: This will create a github actions cache
+    - name: Get latest CMake and Ninja
+      uses: lukka/get-cmake@56d043d188c3612951d8755da8f4b709ec951ad6 # v3.31.6
+      with:
+          cmakeVersion: 3.31.0
+          ninjaVersion: 1.12.0
+
+    - if: ${{ (steps.get_system_name.outputs.SystemName == 'Linux') && (inputs.threading == 'OMP') }}
+      name: Install openmp
+      shell: bash
+      run: sudo apt install -y libomp-dev
+
+    - if: ${{ (steps.get_system_name.outputs.SystemName == 'Linux') && (inputs.toolset == 'gcc') }}
+      name: Install gcc
+      shell: bash
+      run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          sudo apt update -y
+          sudo apt install -y g++-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
+
+    - if: ${{ (steps.get_system_name.outputs.SystemName == 'Linux') && (inputs.toolset == 'clang') }}
+      name: Install clang
+      uses: KyleMayes/install-llvm-action@98e68e10c96dffcb7bfed8b2144541a66b49aa02 # v2.0.8
+      with:
+          version: ${{ fromJson(steps.get-versions.outputs.output).dependencies.clang }}
+
+    - name: Build ComputeLibrary
+      uses: ./oneDNN/.github/actions/build-acl-aarch64
+      with:
+          toolset: ${{ inputs.toolset }}
+          build: ${{ inputs.build }}
+          threading: ${{ inputs.threading }}
+          acl_hash: ${{ inputs.acl_hash || fromJson(steps.get-versions.outputs.output).dependencies.acl }}
+          gcc_version: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
+
+    - name: Setup Package
+      shell: bash
+      run: |
+        mkdir -p oneDNN_pkg/oneDNN
+        mv ComputeLibrary oneDNN_pkg
+        ls oneDNN_pkg
+
+    - name: Checkout oneDNN to build
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      with:
+          path: oneDNN_build
+          fetch-depth: 0
+
+    - name: Checkout specified oneDNN
+      if: ${{ inputs.onednn_hash != '' }}
+      working-directory: oneDNN_build
+      shell: bash
+      run: git checkout ${{ inputs.onednn_hash }}
+    
+    - name: Get oneDNN commit hash for cache key
+      id: get_oneDNN_commit_hash
+      shell: bash
+      run: (cd oneDNN_build && echo "oneDNNCommitHash=$(git rev-parse --short HEAD)") >> $GITHUB_OUTPUT
+    
+    - name: Restore cached oneDNN
+      id: cache-onednn-restore
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ inputs.acl_hash || fromJson(steps.get-versions.outputs.output).dependencies.acl }}-onednn-${{ steps.get_onednn_commit_hash.outputs.oneDNNCommitHash }}-${{ inputs.toolset }}-${{ inputs.build }}
+        path: ${{ github.workspace }}/oneDNN_pkg
+
+    - name: Configure oneDNN
+      if: ${{ steps.cache-onednn-restore.outputs.cache-hit != 'true'}}
+      shell: bash
+      run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
+      working-directory: ${{ github.workspace }}/oneDNN_build
+      env:
+          ACL_ROOT_DIR: ${{ github.workspace }}/oneDNN_pkg/ComputeLibrary
+          BUILD_TOOLSET: ${{ inputs.toolset }}
+          CMAKE_BUILD_TYPE: ${{ inputs.build }}
+          CMAKE_GENERATOR: Ninja
+          GCC_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
+          ONEDNN_ACTION: configure
+          ONEDNN_TEST_SET: ${{ inputs.testset }}
+          ONEDNN_THREADING: ${{ inputs.threading }}
+
+    - name: Build oneDNN
+      if: ${{ steps.cache-onednn-restore.outputs.cache-hit != 'true'}}
+      shell: bash
+      run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
+      working-directory: ${{ github.workspace }}/oneDNN_build
+      env:
+          ONEDNN_ACTION: build
+          ACL_ROOT_DIR: oneDNN_pkg/ComputeLibrary
+
+    - name: Package oneDNN & ComputeLibrary
+      if: ${{ steps.cache-onednn-restore.outputs.cache-hit != 'true'}}
+      shell: bash
+      run: mv oneDNN_build/build oneDNN_pkg/oneDNN/build
+    
+    - name: Cache oneDNN
+      if: ${{ inputs.cache == 'true' && steps.cache-onednn-restore.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ inputs.acl_hash || fromJson(steps.get-versions.outputs.output).dependencies.acl }}-onednn-${{ steps.get_onednn_commit_hash.outputs.oneDNNCommitHash }}-${{ inputs.toolset }}-${{ inputs.build }}
+        path: ${{ github.workspace }}/oneDNN_pkg
+
+    - name: Upload artifact
+      if: ${{ inputs.artifact_name != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: ${{ github.workspace }}/oneDNN_pkg
+        if-no-files-found: error
+        include-hidden-files: true
+        retention-days: 1

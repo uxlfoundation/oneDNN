@@ -200,19 +200,21 @@ static constexpr bool is_ppc64() {
 
 size_t get_timestamp();
 
-// using the P-core E-core terminology from Intel
 // P-core: Performance core (high performance, high power consumption)
 // E-core: Efficiency core (low performance, low power consumption)
-// However the naming in the SDM is different: using core (P-core) and atom (E-core)
+// However the naming in the Intel SDM is different:
+//  - core for P-core
+//  - atom for E-core
 enum class core_type : int {
     p_core = 0, // Performance core
     e_core = 1, // Efficiency core
     default_core = p_core // Default core (used for non-hybrid CPUs)
 };
 
-// Assumption each core type on a system is homogeneous in terms of cache topology
-// e.g. all P-cores have the same cache topology, all E-cores have the same cache topology
-// this is true for all Intel hybrid CPUs so far (Alder Lake, Raptor Lake, Lunar Lake)
+// Assumption each core type on a system is homogeneous in terms of cache
+// topology e.g. all P-cores have the same cache topology, all E-cores have the
+// same cache topology this is true for all Intel hybrid CPUs so far
+// (Alder Lake, Raptor Lake, Lunar Lake)
 struct cache_info_t {
     uint8_t level; // cache level (0 - L1i, 1 - L1d, 2 - L2, 3 - L3, etc)
     uint32_t size; // cache size in bytes
@@ -252,18 +254,27 @@ enum class behavior_t {
     p_core, // Performance core
     e_core, // Efficiency core
     current, // Current core
-    min,    // used to select the smallest value for the core_type
-    max,    // used to select the largest value for the core_type
+    min,    // used to select the smallest value for all the cores
+    max,    // used to select the largest value for all the cores
     unknown
 };
-// called in place of get_per_core_cache_size when dealing with hybrid CPUs
-// the core_type argument specifies the type of core to query
-// if behavior_t is current, the function returns the cache size of the core the calling
-// thread is running on.
+// Use OS specific methods to determine the per-core cache size.
 //
-// if core_type is min/max, the function returns the min/max cache size among all cores
-// Examples:
+// This is avoids using CPUID-based methods which can result in inaccurate values
 //
+// Expected to be called in place of get_per_core_cache_size(level) the
+// behavior_t argument specifies the behavior of the query on hybrid CPUs.
+//
+// - if behavior_t is p_core/e_core, the function returns the per-core cache
+//   size for that core type.
+// - if behavior_t is min/max, the function returns the min/max per-core cache
+//   size among all cores
+// - if behavior_t is current, the function returns the cache size of the core
+//   the calling thread is running on.
+// - if behavior_t is unknown, the function behaves like legacy
+//   get_per_core_cache_size(level) function.
+//
+// Examples: (showing KB and MB values for clarity actual function returns bytes)
 // for a hybrid CPU with (e.g. Alder Lake)
 //   48KB L1d cache on P-cores (with hyperthreading) and
 //   32KB L1d cache on E-cores
@@ -294,16 +305,15 @@ enum class behavior_t {
 // get_per_core_cache_size(3, core_type::unknown)
 //   uses the get_per_core_cache_size(int level) function.
 //
-// for non-hybrid CPUs (e.g. SRF/CWF), get_per_core_cache_size(int level, core_type ctype)
-// behaves like get_per_core_cache_size(int level) unless core_type is min/max/current
-// in which case it will consider the cache topology to return the appropriate value.
-// this can be used for CPUs with non-uniform cache topology.
-// TODO: Test This behavior on non-hybrid CPUs.
-//
-// Note: for non-hybrid CPUs, the core_type argument is ignored and the function
-// behaves like get_per_core_cache_size(int level)
+// TODO: Test behavior on non-hybrid CPUs.
 unsigned DNNL_API get_per_core_cache_size(int level, behavior_t btype);
+
+// returns true if the CPU is a hybrid CPU
+// (e.g. Alder Lake, Raptor Lake, Lunar Lake)
 bool is_hybrid();
+
+// get the core_type of the core the calling thread is running on
+// to get the core_type of a specific core, set thread affinity to that core
 core_type get_core_type();
 
 } // namespace platform

@@ -81,7 +81,7 @@
 
 # Breaking Changes
 ## AArch64-based Processors
-* Bumped the minimum required [Arm® Compute Library](https://github.com/ARM-software/ComputeLibrary) 52.4.0
+* Bumped the minimum required [Arm® Compute Library](https://github.com/ARM-software/ComputeLibrary) version to 52.4.0
 
 # Thanks to our Contributors
 This release contains contributions from the [project core team] as well as Andrei Hutu @Anndrey24, 

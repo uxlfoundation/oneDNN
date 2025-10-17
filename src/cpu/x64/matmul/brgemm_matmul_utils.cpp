@@ -1414,9 +1414,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                                 bgmmc.with_wei_decompression),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-        // AVX2 supports f32 scales only
-        VCONDCHECK_BG(IMPLICATION(one_of(isa, avx2, avx2_vnni, avx2_vnni_2),
-                              bgmmc.wei_scales_dt == f32),
+        // Check if isa has support for f16/bf16 weights scales
+        VCONDCHECK_BG(IMPLICATION(bgmmc.wei_scales_dt == f16, isa_has_f16(isa))
+                        && IMPLICATION(
+                                bgmmc.wei_scales_dt == bf16, isa_has_bf16(isa)),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 

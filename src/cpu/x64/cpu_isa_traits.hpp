@@ -477,6 +477,11 @@ inline bool isa_has_bf16(cpu_isa_t isa) {
     return is_superset(isa, avx512_core_bf16);
 }
 
+inline bool isa_has_f16(cpu_isa_t isa) {
+    return is_superset(isa, avx512_core_fp16)
+            || is_superset(isa, avx10_1_512_amx_fp16);
+}
+
 inline bool isa_has_masks(cpu_isa_t isa) {
     return is_superset(isa, avx512_core);
 }

@@ -286,6 +286,7 @@ attr.set_scales(DNNL_ARG_WEIGHTS, 1 << 0, {32}, dnnl::memory::data_type::e8m0,
 // Scaling factors: 32 values (one per group of 32 in K dimension)
 // Usage: Each group of 32 in K dimension gets its own scaling factor
 ~~~
+See example @ref mxfp_matmul_cpp.
 
 ##### Multi-Dimensional Scaling
 

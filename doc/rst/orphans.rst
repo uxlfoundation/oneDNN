@@ -65,6 +65,7 @@ Orphans
     example_weights_decompression_matmul.cpp.rst
     example_matmul_with_host_scalar_scale.cpp.rst
     example_matmul_f8_quantization.cpp.rst
+    example_mxfp_matmul.cpp.rst
     page_augru_example_cpp.rst
     page_batch_normalization_example_cpp.rst
     page_binary_example_cpp.rst
@@ -139,6 +140,7 @@ Orphans
     page_weights_decompression_matmul_cpp.rst
     page_matmul_with_host_scalar_scale_cpp.rst
     page_matmul_f8_quantization_cpp.rst
+    page_mxfp_matmul_cpp.rst
     page_augru_example_cpp_brief.rst
     page_batch_normalization_example_cpp_brief.rst
     page_binary_example_cpp_brief.rst
@@ -177,6 +179,7 @@ Orphans
     page_lstm_example_cpp_brief.rst
     page_matmul_example_cpp_brief.rst
     page_matmul_f8_quantization_cpp_brief.rst
+    page_mxfp_matmul_cpp_brief.rst
     page_matmul_perf_cpp_brief.rst
     page_matmul_with_host_scalar_scale_cpp_brief.rst
     page_memory_format_propagation_cpp_brief.rst

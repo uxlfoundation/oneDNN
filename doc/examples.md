@@ -38,6 +38,7 @@ Quantization flavors:
 | @ref matmul_f8_quantization_cpp | \copybrief matmul_f8_quantization_cpp_brief |
 | @ref cpu_matmul_quantization_cpp | \copybrief cpu_matmul_quantization_cpp_brief |
 | @ref inference_int8_matmul_cpp | \copybrief inference_int8_matmul_cpp_brief |
+| @ref mxfp_matmul_cpp | \copybrief mxfp_matmul_cpp_brief |
 
 Advanced Usages:
 

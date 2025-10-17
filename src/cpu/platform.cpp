@@ -460,46 +460,42 @@ core_type get_core_type_from_processor_info(
     return core_type::p_core;
 }
 
-// Structure to track cache information during enumeration
-struct cache_accumulator_t {
-    // Track which caches we've seen for each core type
-    // [core_type_idx][level] -> cache info
-    // TODO: change std::pair<int, int> to std::pair<core_type, int>
-    //       do this on windows machine to validate the change.
-    //       do this to improve readability and maintainability.
-    std::map<std::pair<int, int>, cache_info_t> cache_map;
-    
-    void add_cache(const CACHE_RELATIONSHIP &cache, core_type ctype) {
-        int level = static_cast<int>(cache.Level);
-        if (level < 1 || level > (int)cache_topology_t::max_cache_levels)
-            return;
-        
-        // Only process data or unified caches
-        if (cache.Type != CacheData && cache.Type != CacheUnified)
-            return;
-        
-        int type_idx = (ctype == core_type::p_core) ? 0 : 1;
-        auto key = std::make_pair(type_idx, level);
-        
-        // Count sharing cores from GroupMask
-        unsigned sharing_cores = count_bits_in_mask(cache.GroupMask.Mask);
-        
-        // If we've seen this cache before, take the maximum sharing count
-        // (different cache descriptors may report different views)
-        auto it = cache_map.find(key);
-        if (it != cache_map.end()) {
-            it->second.num_sharing_cores = 
-                std::max(it->second.num_sharing_cores, sharing_cores);
-        } else {
-            cache_info_t info;
-            info.level = level;
-            info.size = cache.CacheSize;
-            info.num_sharing_cores = sharing_cores;
-            info.ctype = ctype;
-            cache_map[key] = info;
-        }
+// Helper function to add cache info to the cache_map
+// this creates a relationship between core_type and cache level
+// and stores the cache size and number of sharing cores for each entry
+// if an entry already exists, the number of sharing_cores is updated to
+// the maximum. (if the cores are homogeneous, this should not matter)
+void add_cache(std::map<std::pair<core_type, int>, cache_info_t> &cache_map,
+               const CACHE_RELATIONSHIP &cache,
+               core_type ctype) {
+    int level = static_cast<int>(cache.Level);
+    if (level < 1 || level > (int)cache_topology_t::max_cache_levels)
+        return;
+
+    // Only process data or unified caches
+    if (cache.Type != CacheData && cache.Type != CacheUnified)
+        return;
+
+    auto key = std::make_pair(ctype, level);
+
+    // Count sharing cores from GroupMask
+    unsigned sharing_cores = count_bits_in_mask(cache.GroupMask.Mask);
+
+    // If we've seen this cache before, take the maximum sharing count
+    // (different cache descriptors may report different views)
+    auto it = cache_map.find(key);
+    if (it != cache_map.end()) {
+        it->second.num_sharing_cores =
+            std::max(it->second.num_sharing_cores, sharing_cores);
+    } else {
+        cache_info_t info;
+        info.level = level;
+        info.size = cache.CacheSize;
+        info.num_sharing_cores = sharing_cores;
+        info.ctype = ctype;
+        cache_map[key] = info;
     }
-};
+}
 
 // Function to initialize cache topology using Windows APIs
 // 1. Query CPUID to check if system is hybrid
@@ -557,11 +553,10 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
     // Second pass: for each cache, determine which core types use which caches.
     // This is a little backwards since we have to check each cache against all cores
     // to see which core types intersect with the cache's processor affinity mask.
-    // This this will map each cache to the core type that uses it.
-    // The `add_cache` method in `cache_accumulator_t` is responsible for
-    // finding the cache level and size, and sharing cores. And placing those
-    // values in the map found in the cache_accumulator_t structure.
-    cache_accumulator_t accumulator;
+    // This this will map each cache to the core_type that uses it.
+    // The `add_cache` helper function is responsible for finding the cache level,
+    // size, and sharing cores. And placing those values in the cache_map.
+    std::map<std::pair<core_type, int>, cache_info_t> cache_map;
 
     offset = 0;
     while (offset < bufferSize) {
@@ -590,16 +585,15 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
                 }
                 // Add cache entry for each core type that uses it
                 if (has_p_core) {
-                    accumulator.add_cache(cache, core_type::p_core);
+                    add_cache(cache_map, cache, core_type::p_core);
                 }
                 if (has_e_core) {
-                    accumulator.add_cache(cache, core_type::e_core);
-                }
+                    add_cache(cache_map, cache, core_type::e_core);
                 }
                 // If no specific assignment, this might be a shared cache
                 if (!has_p_core && !has_e_core) {
-                    accumulator.add_cache(cache, core_type::p_core);
-                    accumulator.add_cache(cache, core_type::e_core);
+                    add_cache(cache_map, cache, core_type::p_core);
+                    add_cache(cache_map, cache, core_type::e_core);
                 }
             }
         }
@@ -607,12 +601,12 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
     }
 
     // Third pass: populate cache_topology structure from accumulator
-    for (const auto &entry : accumulator.cache_map) {
-        int type_idx = entry.first.first;
-        int level = entry.first.second;
+    for (const auto &entry : cache_map) {
+        int type_idx = (entry.first.first == core_type::p_core) ? 0 : 1;
+        //int level = entry.second.level;
         const auto &cache_info = entry.second;
 
-        size_t idx = type_idx * cache_topology_t::max_cache_levels + (level);
+        size_t idx = type_idx * cache_topology_t::max_cache_levels + (cache_info.level);
         if (idx < cache_topology_t::max_cache_levels * cache_topology_t::max_core_types) {
             cache_topology.caches[idx] = cache_info;
         }

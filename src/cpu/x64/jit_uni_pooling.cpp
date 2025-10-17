@@ -274,7 +274,7 @@ public:
         , execute_transpose_input_(nullptr)
         , execute_transpose_output_(nullptr) {
 
-        auto scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
 
         if (transpose_src_)
             cvt_slice_src_wsp_ = scratchpad.template get<wsp_data_t>(
@@ -523,7 +523,7 @@ bwd_f32_accum_for_bf16_t::bwd_f32_accum_for_bf16_t(
     : jpp_ {jpp} {
     if (jpp_.needs_f32_accum_for_bf16) {
         accum_d_ = memory_desc_wrapper(jpp_.tmp_md);
-        auto &scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
         wsp_ = scratchpad.template get<value_type>(
                 memory_tracking::names::key_pool_src_f32_accum);
         assert(wsp_);

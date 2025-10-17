@@ -2376,7 +2376,7 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::execute(
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
     auto ws = CTX_OUT_MEM(uint8_t *, DNNL_ARG_WORKSPACE);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     bnorm_driver_->init_barriers(scratchpad);
     const int nthr = pd()->nthr_;
@@ -2487,7 +2487,7 @@ status_t jit_uni_batch_normalization_bwd_t<isa>::execute(
     auto diff_scale = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SCALE);
     auto diff_shift = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SHIFT);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     bnorm_driver_->init_barriers(scratchpad);
     const int nthr = pd()->nthr_;

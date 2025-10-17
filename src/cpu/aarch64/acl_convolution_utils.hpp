@@ -132,7 +132,7 @@ status_t execute_forward_conv_acl(const exec_ctx_t &ctx,
     src_tensor.allocator()->import_memory(const_cast<src_data_t *>(src_base));
     wei_tensor.allocator()->import_memory(const_cast<wei_data_t *>(wei_base));
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     // If we have an unfused sum post op, put the result in a scratchpad tensor.
     // Result will be summed to the dst during acl_post_ops.execute
@@ -202,7 +202,7 @@ status_t execute_forward_conv_acl(
     acl_conv_obj.wei_tensor.allocator()->import_memory(
             const_cast<wei_data_t *>(wei_base));
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     // If we have an unfused sum post op, put the result in a scratchpad tensor.
     // Result will be summed to the dst during acl_post_ops.execute

@@ -320,7 +320,7 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
     auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     auto ws = CTX_OUT_MEM(unsigned char *, DNNL_ARG_WORKSPACE);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     float *const cvt_src_wsp = scratchpad.template get<float>(
             memory_tracking::names::key_pool_src_bf16cvt);
     float *const cvt_dst_wsp = scratchpad.template get<float>(
@@ -629,7 +629,7 @@ status_t nhwc_pooling_bwd_t<d_type>::execute_backward(
     auto ws = CTX_IN_MEM(const unsigned char *, DNNL_ARG_WORKSPACE);
     auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     float *cvt_dsrc = scratchpad.template get<float>(
             memory_tracking::names::key_pool_src_bf16cvt);
     float *cvt_ddst = scratchpad.template get<float>(

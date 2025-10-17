@@ -207,7 +207,7 @@ status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
         const dim_t nelems_single_mb
                 = utils::array_product(src_d.padded_dims() + 1, ndims - 1);
 
-        auto scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
         float *const weights_diff_scratchpad = scratchpad.template get<float>(
                 memory_tracking::names::key_prelu_reduction);
         const auto C_cache_line_aligned = utils::rnd_up(C, alignment);

@@ -61,7 +61,7 @@ void jit_sve_1x1_convolution_fwd_t<src_type, wei_type, dst_type,
                     pd()->jcp_.post_ops.entry_.size() + 1)
             : std::vector<const void *> {};
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     if (pd()->wants_padded_bias()) {
         auto padded_bias
@@ -640,7 +640,7 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
 
     const auto &jcp = kernel_->jcp;
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto rtus_space = pd()->rtus_.reduce_src_
             ? scratchpad.get<data_t>(key_conv_rtus_space)
             : nullptr;
@@ -659,8 +659,8 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
     simple_barrier::ctx_t reduction_barrier;
     simple_barrier::ctx_init(&reduction_barrier);
 
-    const auto reducer_bia_scratchpad
-            = memory_tracking::grantor_t(scratchpad, prefix_reducer_bia);
+    memory_tracking::grantor_t reducer_bia_scratchpad(
+            scratchpad, prefix_reducer_bia);
     auto rb = this->reducer_bias_.get();
     rb->init(reducer_bia_scratchpad);
 

@@ -157,7 +157,7 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
          * input/output statistics are reordered if necessary */
         using namespace memory_tracking::names;
         engine_t *engine = ctx.stream()->engine();
-        auto scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
 
         bool skip_mean = pd()->skip_mean();
 
@@ -338,7 +338,7 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
 
         if (reorder_) {
             engine_t *engine = ctx.stream()->engine();
-            auto scratchpad = ctx.get_scratchpad_grantor();
+            const auto &scratchpad = ctx.get_scratchpad_grantor();
 
             std::unique_ptr<memory_t, memory_deleter_t> mean;
             if (!skip_mean) {

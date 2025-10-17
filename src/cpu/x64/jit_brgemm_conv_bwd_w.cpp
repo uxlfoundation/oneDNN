@@ -316,7 +316,7 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
     const char *diff_bias = nullptr;
 
     const brgemm_convolution_bwd_weights_t *self;
-    const memory_tracking::grantor_t scratchpad;
+    const memory_tracking::grantor_t &scratchpad;
 
     char *tr_src = nullptr;
     char *tr_diff_dst = nullptr;
@@ -1466,7 +1466,7 @@ void brgemm_convolution_bwd_weights_t::reduce_and_convert_diff_weights_and_bias(
 
 void brgemm_convolution_bwd_weights_t::prepare_scratchpad_data(
         const exec_ctx_t &ctx) const {
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     const auto &jcp = pd()->jcp_;
 

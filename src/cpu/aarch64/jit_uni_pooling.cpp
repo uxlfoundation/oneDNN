@@ -277,7 +277,7 @@ public:
         , execute_transpose_input_(nullptr)
         , execute_transpose_output_(nullptr) {
 
-        auto scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
 
         if (transpose_src_)
             cvt_slice_src_wsp_ = scratchpad.template get<wsp_data_t>(

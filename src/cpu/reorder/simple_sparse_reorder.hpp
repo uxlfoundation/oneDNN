@@ -114,7 +114,7 @@ struct simple_sparse_reorder_impl_t<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
         auto output_bitmask = CTX_OUT_MEM(uint64_t *, DNNL_ARG_TO, 2);
 
         engine_t *engine = ctx.stream()->engine();
-        const auto scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
         auto wspace_mem_storage = scratchpad.get_memory_storage(
                 memory_tracking::names::key_reorder_space);
 

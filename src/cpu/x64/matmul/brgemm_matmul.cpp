@@ -1394,7 +1394,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                                    DNNL_ARG_WEIGHTS),
                            wei_zp_ptr_, 0)
                                : 0);
-        memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
 
         const auto &bgmmc = pd->get_brgemm_matmul_conf();
 

@@ -431,7 +431,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
 
     brgemm_exec_ctx_t brgemm_ctx(ctx, pd());
 
-    const memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     const auto &jcp = pd()->jcp_;
     const memory_desc_wrapper weights_d(pd()->weights_md(0));

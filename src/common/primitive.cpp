@@ -43,7 +43,7 @@ namespace impl {
 
 nested_scratchpad_t::nested_scratchpad_t(const exec_ctx_t &master_ctx, int key,
         const std::shared_ptr<primitive_t> &nested_p) {
-    auto master_grantor = master_ctx.get_scratchpad_grantor();
+    const auto &master_grantor = master_ctx.get_scratchpad_grantor();
     scratchpad_mem_storage_ = master_grantor.get_memory_storage(key);
     grantor_ = nested_p->pd()->scratchpad_registry().create_grantor(
             scratchpad_mem_storage_.get(),

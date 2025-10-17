@@ -247,7 +247,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
     bool with_dropout = !pd()->attr()->dropout_.has_default_values();
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     float *temp_dst = scratchpad.template get<float>(
             memory_tracking::names::key_matmul_dst_in_acc_dt);
 

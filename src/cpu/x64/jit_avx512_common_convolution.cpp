@@ -1160,7 +1160,7 @@ struct jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     const diff_weights_data_t *diff_weights;
     diff_weights_data_t *diff_bias;
 
-    const memory_tracking::grantor_t scratchpad;
+    const memory_tracking::grantor_t &scratchpad;
 
     src_data_t *tr_src;
     diff_dst_data_t *tr_diff_dst;
@@ -1709,8 +1709,8 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     auto rb = this->reducer_bias_.get();
     assert(nthr_ == rb->balancer().nthr_);
 
-    const auto reducer_bia_scratchpad
-            = memory_tracking::grantor_t(ti->scratchpad, prefix_reducer_bia);
+    memory_tracking::grantor_t reducer_bia_scratchpad(
+            ti->scratchpad, prefix_reducer_bia);
 
     const auto &jcp = kernel_->jcp;
 
@@ -1792,15 +1792,15 @@ template <data_type_t src_type, data_type_t diff_dst_type,
 void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
         diff_weights_type>::prepare_scratchpad_data(const exec_ctx_t &ctx)
         const {
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     if (dnnl_thr_syncable() && nthr_mb_ > 1) {
         simple_barrier::ctx_init(scratchpad.template get<simple_barrier::ctx_t>(
                 key_conv_wei_bia_reduction_bctx));
     }
 
-    const auto reducer_bia_scratchpad
-            = memory_tracking::grantor_t(scratchpad, prefix_reducer_bia);
+    memory_tracking::grantor_t reducer_bia_scratchpad(
+            scratchpad, prefix_reducer_bia);
     auto rb = this->reducer_bias_.get();
     rb->init(reducer_bia_scratchpad);
 }
@@ -1890,9 +1890,8 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
                     auto rb = this->reducer_bias_.get();
                     assert(nthr == rb->balancer().nthr_);
                     if (rb->balancer().ithr_njobs(ithr) == 0) return;
-                    const auto reducer_bia_scratchpad
-                            = memory_tracking::grantor_t(
-                                    thread_info.scratchpad, prefix_reducer_bia);
+                    memory_tracking::grantor_t reducer_bia_scratchpad(
+                            thread_info.scratchpad, prefix_reducer_bia);
                     rb->reduce_nolock(thread_info.ithr, thread_info.diff_bias,
                             reducer_bia_scratchpad);
                 } break;

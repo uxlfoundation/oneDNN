@@ -2027,7 +2027,7 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             iter_weights_n_comp + rnn.weights_iter_comp_offset);
     auto w_projection_comp = reinterpret_cast<const float *>(
             projection_weights_n_comp + rnn.weights_projection_comp_offset);
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     auto ptr_wei_layer
             = scratchpad.template get<weights_t *>(key_rnn_ptrs_wei_layer);

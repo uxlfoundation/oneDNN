@@ -135,7 +135,7 @@ struct ref_concat_t : public primitive_t {
 
         if (pd()->use_tent_dst()) {
             using namespace memory_tracking::names;
-            auto scratchpad = ctx.get_scratchpad_grantor();
+            const auto &scratchpad = ctx.get_scratchpad_grantor();
             auto tent_dst_storage
                     = scratchpad.get_memory_storage(key_concat_tent_dst);
 

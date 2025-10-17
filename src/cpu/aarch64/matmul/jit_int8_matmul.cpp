@@ -1035,7 +1035,7 @@ status_t jit_int8_matmul_t::execute(const exec_ctx_t &ctx) const {
     const auto &b = pd()->get_b();
     const auto &d = pd()->get_d();
 
-    auto &scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     int num_threads = dnnl_get_current_num_threads();
     char *src = scratchpad.template get<char>(key_brgemm_primitive_buffer_a);

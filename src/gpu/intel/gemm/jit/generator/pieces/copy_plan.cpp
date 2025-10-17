@@ -2561,6 +2561,17 @@ inline bool legalPackedBF(HW hw, const CopyOperand &op)
     return (op.stride == 1 && (op.offset & (align - 1)) == 0);
 }
 
+inline bool isCommutative(Opcode op) {
+    switch (op) {
+        case Opcode::add:
+        case Opcode::mul:
+        case Opcode::and_:
+        case Opcode::or_:
+        case Opcode::xor_:
+        default: return false;
+    }
+}
+
 void CopyPlan::planEmulatedSIMD1(CopyInstruction &i)
 {
     // Convert SIMD1 instruction to SIMD2.
@@ -2686,13 +2697,7 @@ void CopyPlan::legalizeRegions()
         }
 
         int dstBO  = i.dst.byteOffset();
-        int src0BO = i.src0.byteOffset();
-        int src1BO = i.src1.byteOffset();
-        int src2BO = i.src2.byteOffset();
         int dstBS  = i.dst.byteStride();
-        int src0BS = i.src0.byteStride();
-        int src1BS = i.src1.byteStride();
-        int src2BS = i.src2.byteStride();
 
         /* Check for swizzling */
         bool canSwizzle = true, splitQWMov = false;
@@ -2705,11 +2710,32 @@ void CopyPlan::legalizeRegions()
             }
             if (isFP(dt))
                 canSwizzle = false;
-#if XE3P
-            if (hw >= HW::Xe3p)
-                canSwizzle &= (!i.src1 || isBroadcast(i.src1) || (src1BO == dstBO && src1BS == dstBS));
-#endif
         }
+#if XE3P
+        if (hw >= HW::Xe3p) {
+            auto isFlat = [&] (const CopyOperand &op) {
+                if (!op) return true;
+                if (isBroadcast(op)) return true;
+                auto bo = op.byteOffset();
+                auto bs = op.byteStride();
+                return (bo == dstBO) && (bs == dstBS);
+            };
+
+            if (!isFlat(i.src1)) {
+                if (isCommutative(i.op) && i.src0.kind == CopyOperand::GRF && isFlat(i.src0))
+                    std::swap(i.src0, i.src1);
+                else
+                    canSwizzle = false;
+            }
+        }
+#endif
+
+        int src0BO = i.src0.byteOffset();
+        int src1BO = i.src1.byteOffset();
+        int src2BO = i.src2.byteOffset();
+        int src0BS = i.src0.byteStride();
+        int src1BS = i.src1.byteStride();
+        int src2BS = i.src2.byteStride();
 
         if (!canSwizzle) {
             int dboMask = GRF::bytes(hw) - (isFP(dt) ? 1 : 4);

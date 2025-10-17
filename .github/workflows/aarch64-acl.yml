@@ -28,24 +28,8 @@ on:
 
   workflow_dispatch:
 
-# Declare default permissions as read only.
-# We have to declare each permission individually as
-# setting this to read-all causes issues with the id-tokens permission
 permissions:
-  actions: read
-  checks: read
   contents: read
-  deployments: read
-  discussions: read
-  issues: read
-  packages: read
-  pages: read
-  pull-requests: read
-  repository-projects: read
-  security-events: read
-  statuses: read
-  attestations: read
-  models: read
   id-token: none
 
 jobs:

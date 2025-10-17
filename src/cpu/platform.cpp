@@ -256,7 +256,7 @@ unsigned get_per_core_cache_size(int level) {
 #if DNNL_X64
     using namespace x64;
     if (cpu().getDataCacheLevels() == 0) return guess(level);
-    
+
     if (level > 0 && (unsigned)level <= cpu().getDataCacheLevels()) {
         unsigned l = level - 1;
         return cpu().getDataCacheSize(l) / cpu().getCoresSharingDataCache(l);
@@ -440,6 +440,13 @@ inline unsigned count_bits_in_mask(KAFFINITY mask) {
 
 // Helper function to determine core type from processor info
 // Returns p_core for performance cores, e_core for efficiency cores
+//
+// **Helper function assumes that is_hybrid() has already returned true**
+//
+// If not hybrid, this function is unreliable it can return either core type
+// depending on if the EfficiencyClass field is present or not.
+// TODO: revisit this helper function considering that EfficiencyClass can be
+// `0` for for P-cores when there are only P-cores present in the system.
 core_type get_core_type_from_processor_info(
         const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX *info) {
     // For hybrid CPUs, we need to distinguish between P-cores and E-cores
@@ -456,7 +463,7 @@ core_type get_core_type_from_processor_info(
             return core_type::p_core;
 #endif
     }
-    // Default to p_core for non-hybrid or if we can't determine
+    // Default to p_core if we can't determine the core_type
     return core_type::p_core;
 }
 
@@ -541,7 +548,10 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
         auto *info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(
             reinterpret_cast<BYTE*>(info_base_ptr) + offset);
         if (info->Relationship == RelationProcessorCore) {
-            core_type ctype = get_core_type_from_processor_info(info);
+            core_type ctype = core_type::default_core;
+            if (cache_topology.is_hybrid)
+                ctype = get_core_type_from_processor_info(info);
+
             // Store each group mask for this core type
             for (WORD i = 0; i < info->Processor.GroupCount; i++) {
                 core_info.push_back({ctype, info->Processor.GroupMask[i]});
@@ -885,7 +895,7 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
             cache_topology.caches[idx] = cache_info;
         }
     }
-    
+
     // If not hybrid, copy P-core data to E-core slots
     if (!cache_topology.is_hybrid) {
         for (size_t level = 0; level < cache_topology_t::max_cache_levels; level++) {
@@ -918,25 +928,31 @@ void init_cache_topology() {
 unsigned get_per_core_cache_size(int level, behavior_t btype) {
 #if DNNL_X64
     init_cache_topology();
-    
-    // Convert 1-based level to 0-based for array access
+
     if (level < 1 || level > (int)cache_topology_t::max_cache_levels) {
         return 0;
     }
-    
+
     auto pcore_cache = global_cache_topology.get_cache(level, core_type::p_core);
-    auto ecore_cache = global_cache_topology.get_cache(level, core_type::e_core);
-    
+
     // Calculate effective cache size per core (considering sharing)
     auto pcore_size = pcore_cache.size;
     if (pcore_cache.num_sharing_cores > 0) {
         pcore_size /= pcore_cache.num_sharing_cores;
     }
-    
+
+    if (!global_cache_topology.is_hybrid) {
+        // For Non-hybrid system, all cores are assumed to be p-core
+        return pcore_size;
+    }
+
+    auto ecore_cache = global_cache_topology.get_cache(level, core_type::e_core);
+
     auto ecore_size = ecore_cache.size;
     if (ecore_cache.num_sharing_cores > 0) {
         ecore_size /= ecore_cache.num_sharing_cores;
     }
+
     switch (btype)
     {
     case behavior_t::p_core:

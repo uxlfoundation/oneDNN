@@ -10,7 +10,7 @@ The graph dumping feature only works when `ONEDNN_BUILD_GRAPH` is ON.
 
 | CMake Option                | Supported values (defaults in bold) | Description                                                  |
 | :---                        | :---                                | :---                                                         |
-| ONEDNN_ENABLE_GRAPH_DUMP    | ON, **OFF**                         | Controls dumping (@ref dev_guide_graph_dump) graph artifacts |
+| ONEDNN_ENABLE_GRAPH_DUMP    | **ON**, OFF                         | Controls dumping (@ref dev_guide_graph_dump) graph artifacts |
 
 ## Run-Time Controls
 

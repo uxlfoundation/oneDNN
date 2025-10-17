@@ -383,9 +383,7 @@ status_t DNNL_API dnnl_graph_graph_filter(
     }
     graph->clean_partitions();
 
-#ifdef DNNL_ENABLE_GRAPH_DUMP
-    if (dnnl::impl::getenv_int_user("GRAPH_DUMP", 0) > 0
-            || utils::check_verbose_string_user("GRAPH_DUMP", "graph")) {
+    if (utils::get_graph_dump_mode(utils::graph_dump_mode_t::graph)) {
         // deep copy for graph serialization. note that this is for
         // visualization purpose
         graph_t agraph(*graph);
@@ -393,7 +391,6 @@ status_t DNNL_API dnnl_graph_graph_filter(
         filename << "graph-" << agraph.id() << ".json";
         agraph.serialize(filename.str());
     }
-#endif
 
     // Get partition_impl by calling each backends
     std::vector<const backend_t *> &backends
@@ -437,9 +434,8 @@ status_t DNNL_API dnnl_graph_graph_get_partitions(
     // initialize partitions
     std::vector<partition_t *> partitions {partition, partition + num};
     graph->get_ordered_partitions(partitions);
-#ifdef DNNL_ENABLE_GRAPH_DUMP
-    if (dnnl::impl::getenv_int_user("GRAPH_DUMP", 0) > 0
-            || utils::check_verbose_string_user("GRAPH_DUMP", "graph")) {
+
+    if (utils::get_graph_dump_mode(utils::graph_dump_mode_t::graph)) {
         // graph serialization after partitioning. note that this is for
         // visualization purpose
         graph_t agraph(*graph);
@@ -458,6 +454,6 @@ status_t DNNL_API dnnl_graph_graph_get_partitions(
         filename << "graph-" << agraph.id() << "-partitioning.json";
         agraph.serialize(filename.str());
     }
-#endif
+
     return status::success;
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ status_t ref_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
     const dim_t K = src_d.dims()[1];
 
     const data_type_t mm_dt = src_d.data_type();
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     parallel_nd(M, N, [&](dim_t i, dim_t j) {
         const dim_t dst_idx = i * N + j;

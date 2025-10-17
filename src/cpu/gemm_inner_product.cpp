@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2023 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ status_t gemm_inner_product_fwd_t<data_type>::execute_forward(
             = binary_injector_utils::prepare_binary_args(
                     this->pd()->attr()->post_ops_, ctx);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto acc_ptr = scratchpad.template get<data_t>(
             memory_tracking::names::key_gemm_tmp_buffer);
     auto acc = pd()->sum_through_pp_kernel_ ? acc_ptr : dst;

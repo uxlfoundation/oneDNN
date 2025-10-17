@@ -27,7 +27,7 @@ status_t acl_deconvolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     // concurrent multithreaded access.
     std::lock_guard<std::mutex> _lock {this->mtx};
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     auto src_base = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto wei_base = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);

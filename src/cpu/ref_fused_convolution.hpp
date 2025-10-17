@@ -402,7 +402,7 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
 
     status_t execute(const exec_ctx_t &ctx) const override {
         engine_t *engine = ctx.stream()->engine();
-        const auto scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
 
         const auto inout_buffer = scratchpad.get_memory_storage(
                 memory_tracking::names::key_fusion_inout_buffer);

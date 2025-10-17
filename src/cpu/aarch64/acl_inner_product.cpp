@@ -50,7 +50,7 @@ status_t acl_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     auto src_base = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto wei_base = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     // If we have an unfused sum post op, put the result in a scratchpad tensor.
     // Result will be summed to the dst during acl_post_ops.execute

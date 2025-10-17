@@ -239,7 +239,7 @@ status_t ref_eltwise_bwd_t<data_type>::execute_backward_dense(
         diff_src_ptr += diff_data_d.offset0();
 
         using namespace memory_tracking::names;
-        auto scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
         auto *src_f32 = scratchpad.template get<float>(key_eltwise_src);
         auto *diff_dst_f32
                 = scratchpad.template get<float>(key_eltwise_diff_dst);

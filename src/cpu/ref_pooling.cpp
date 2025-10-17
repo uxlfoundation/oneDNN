@@ -209,7 +209,7 @@ status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper diff_src_d(pd()->diff_src_md());
     const memory_desc_wrapper ws_d(pd()->workspace_md());
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     float *cvt_src = scratchpad.template get<float>(
             memory_tracking::names::key_pool_src_bf16cvt);
     void *diff_src = (diff_src_d.data_type() != data_type::f32)

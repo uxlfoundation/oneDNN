@@ -356,7 +356,7 @@ status_t gemm_bf16_convolution_fwd_t<dst_data_type>::execute_forward_nspc(
             = binary_injector::prepare_binary_args(
                     this->pd()->attr()->post_ops_, ctx);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     const conv_gemm_conf_t &jcp = pd()->jcp_;
 
     float *bia_base = nullptr;
@@ -672,7 +672,7 @@ status_t gemm_bf16_convolution_bwd_data_t<diff_src_data_type>::
     auto wei_base = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
     auto diff_src_base = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     const conv_gemm_conf_t &jcp = pd()->jcp_;
 
     std::atomic<status_t> st(status::success);

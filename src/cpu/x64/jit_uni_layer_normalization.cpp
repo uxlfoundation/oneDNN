@@ -1282,7 +1282,7 @@ status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
 
 status_t jit_uni_layer_normalization_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     const auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
@@ -1352,7 +1352,7 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
         const exec_ctx_t &ctx) const {
     status_t status = status::success;
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
     auto diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     auto scale = CTX_IN_MEM(float *, DNNL_ARG_SCALE);

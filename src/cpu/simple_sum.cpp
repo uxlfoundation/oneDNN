@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2022 Intel Corporation
+* Copyright 2017-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ status_t simple_sum_t<src_data_type, dst_data_type>::execute(
         const bool is_dst_xf16
                 = utils::one_of(dst_data_type, data_type::bf16, data_type::f16);
         const auto xf16_params = pd()->xf16_params_;
-        const auto scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
         acc_data_t *wspace = scratchpad.template get<acc_data_t>(
                 memory_tracking::names::key_sum_srcs_cvt);
         acc_data_t *my_ws = &wspace[ithr * xf16_params.ws_elements_per_thread_];

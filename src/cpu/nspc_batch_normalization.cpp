@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ status_t nspc_batch_normalization_fwd_t<d_type>::execute_forward(
     const auto use_scale = pd()->use_scale();
     const auto use_shift = pd()->use_shift();
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto tmp_mean = scratchpad.template get<acc_data_t>(key_bnorm_tmp_mean);
     auto tmp_var = scratchpad.template get<acc_data_t>(key_bnorm_tmp_var);
     auto *ws_reduce = scratchpad.template get<acc_data_t>(key_bnorm_reduction);
@@ -259,7 +259,7 @@ status_t nspc_batch_normalization_bwd_t<d_type>::execute_backward(
     auto diff_scale = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SCALE);
     auto diff_shift = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SHIFT);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto tmp_diff_ss
             = scratchpad.template get<acc_data_t>(key_bnorm_tmp_diff_ss);
 

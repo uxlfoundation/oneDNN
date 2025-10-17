@@ -1435,7 +1435,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
     const auto &jcp = pd()->jcp_;
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     int32_t *zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
@@ -1544,7 +1544,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
 
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     int32_t *zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))
@@ -1715,7 +1715,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
 
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     int32_t *zp_src_comp_scratch = scratchpad.get<int32_t>(key_deconv_zp);
 
     if (zp::should_calculate_deconv_zp_src_pad_str_comp(jcp))

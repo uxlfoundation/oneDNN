@@ -299,7 +299,7 @@ static void compute_src_zp_compensation(const exec_ctx_t &ctx,
         const cpu_deconvolution_fwd_pd_t *pd) {
     using namespace memory_tracking::names;
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     int32_t *zp_compensation = scratchpad.get<int32_t>(key_deconv_zp);
     const auto G = pd->G();
     const auto KH = pd->KH();
@@ -429,7 +429,7 @@ static status_t apply_src_zero_point(const exec_ctx_t &ctx,
     const bool is_src_zp_common
             = pd->attr()->zero_points_.get_mask(DNNL_ARG_SRC) == 0;
 
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     const int32_t *const zp_src_compensation
             = scratchpad.get<int32_t>(key_deconv_zp);
     const memory_desc_wrapper dst_d(pd->dst_md());
@@ -469,7 +469,7 @@ static status_t apply_src_zero_point(const exec_ctx_t &ctx,
 
 status_t ref_deconvolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     const bool ref_bias = pd()->with_bias() && !pd()->conv_supports_bias_;
     const bool non_default_attr = !pd()->attr()->has_default_values();
 

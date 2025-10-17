@@ -297,7 +297,7 @@ status_t acl_lowp_matmul_t::init(engine_t *engine) {
 
 status_t acl_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
     std::lock_guard<std::mutex> _lock {this->mtx_};
-    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
 
     auto alcm = pd()->almc_;
     bool with_bias = pd()->almc_.with_bias;

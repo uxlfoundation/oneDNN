@@ -42,10 +42,10 @@
 [host-side scalar memory objects]: https://uxlfoundation.github.io/oneDNN/v3.10/dev_guide_host_side_scalars.html
 * Introduced support for pre-computed reductions in matmul primitive. This functionality is intended to improve performance in case of `int8` activations and `int8` weights with zero-point.
 
-## Graph API 
+## Graph API
 
 * Introduced [`host_scalar` property] for logical tensors. This functionality allows passing host-side scalars instead of device memory objects when using oneDNN with OpenCL or SYCL runtimes. Host-side scalars are currently supported to define attention scale, sequence length, and the negative infinity value in SDPA/GQA subgraphs.
-* Introduced [accumulation mode attribute] support in `Matmul` op. This attribute allows relaxing `fp32` accumulation requirements to achieve performance benefits on some platforms. 
+* Introduced [accumulation mode attribute] support in `Matmul` op. This attribute allows relaxing `fp32` accumulation requirements to achieve performance benefits on some platforms.
 
 [`host_scalar` property]: https://uxlfoundation.github.io/oneDNN/v3.10/enum_dnnl_graph_logical_tensor_property_type.html
 [accumulation mode attribute]: https://uxlfoundation.github.io/oneDNN/v3.10/dev_guide_op_matmul.html
@@ -80,6 +80,8 @@
 [matmul primitive]: https://uxlfoundation.github.io/oneDNN/v3.10/dev_guide_matmul.html
 
 # Breaking Changes
+## AArch64-based Processors
+* Bumped the minimum required [Arm® Compute Library](https://github.com/ARM-software/ComputeLibrary) 52.4.0
 
 # Thanks to our Contributors
 This release contains contributions from the [project core team] as well as Andrei Hutu @Anndrey24, 

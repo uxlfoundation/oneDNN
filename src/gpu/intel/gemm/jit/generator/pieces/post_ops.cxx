@@ -596,9 +596,10 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
         int n_elems = (unrollN / problem.cqGroupN) * (unrollM / problem.cqGroupM);
         int n_regs = std::max(1, n_elems / GRF::bytes(hw));
         auto tmpCScales = state.ra.alloc_range(n_regs);
-        auto cs_layout = RegisterLayout(hw, Type::f8_e8m0, unrollM * (unrollN/problem.cqGroupN), 1,  true, 1);
+
+        //auto cs_layout = RegisterLayout(hw, Type::f8_e8m0, (unrollM/problem.cqGroupM)* (unrollN/problem.cqGroupN), 1, problem.C, state.Cext_strategy, false, false, true);
         problem.postOps.injectMXScale(this, state.ra, C_grfs, C_ngrf, tmpCScales.sub(hw, 0, ngen::DataType::ub), problem.Tc_ext.ngen(), unrollN);
-        storeMatrix(tmpCScales, cs_layout, state.C_scaleAddrs, strategy, state);
+        storeMatrix(tmpCScales, state.C_scaleLayout, state.C_scaleAddrs, strategy, state);
         state.ra.safeRelease(tmpCScales);
     }
 

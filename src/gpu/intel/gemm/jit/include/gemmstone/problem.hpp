@@ -161,7 +161,7 @@ struct GEMMProblem : public CommonProblem {
     Scalar alpha, beta;                             // Scaling factors for A*B and C, respectively.
     MatrixAddressing A, B, C;                       // Addressing information for A/B/C matrices.
     MatrixAddressing AO, BO, CO;                    // Addressing information for A/B/C offsets (if 2D).
-    MatrixAddressing A_scale, B_scale;              // Addressing information for A/B scales (if 2D).
+    MatrixAddressing A_scale, B_scale, C_scale;     // Addressing information for A/B scales (if 2D).
     MatrixAddressing Ag, Bg;                        // Addressing information for A/B group sums.
 
     bool checkBeta0 = true;                         // If true, check for beta = 0 and handle specially.

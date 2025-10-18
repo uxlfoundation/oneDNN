@@ -314,14 +314,15 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
     assert(simd == 32);
     //assert(utils::one_of(dst_dt, ngen::DataType::f8_e5m2, ngen::DataType::f4_e2m1));
     assert(dst_dt == ngen::DataType::bf8);
-    GRFRange r_range(r, nreg);
+    //GRFRange r_range(r, nreg);
     ngen::GRF r_alt(off);
     auto max = scratch_[0].f();
     auto tmp = scratch_[1].f();
     auto fmax = (dst_dt == ngen::DataType::bf8) ? Immediate::f(57344)
                                                 : Immediate::f(6);
-    auto scale_dst = seed.offset(off / nreg);
-    h->template mov<float>(4, max, Immediate::f(0));
+    auto scale_dst = seed.ub(phase / nreg);
+    h->template mov<float>(16, max, Immediate::f(0));
+    h->template mov<float>(16, tmp, Immediate::f(0));
 
     // Get Max value from group.
     h->sel(16 | ge, max.f(0)(1), abs(r.f(0)(1)), abs(r_alt.f(0)(1)));

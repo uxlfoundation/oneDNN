@@ -541,6 +541,11 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
                     int(types::data_type_size(b_quant.scales_type)));
         }
     }
+
+    /*problem_.C_scale = problem_.C;
+    problem_.C_scale.setAlignment(
+                    int(types::data_type_size(c_quant.scales_type)));*/
+
     problem_.cqGroupM = c_quant.group_m;
     problem_.cqGroupN = c_quant.group_n;
 
@@ -1015,6 +1020,7 @@ void gen_kernel_t::init_interface() {
         interface_.newArgument("ldaq", DataType::d);
     if (problem.bOffset2D() || problem.bScale2D() || problem.needsBGroupSums())
         interface_.newArgument("ldbq", DataType::d);
+    if (problem.postOps.cMXScale) interface_.newArgument("ldcq", DataType::d);
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         interface_.newArgument(
                 "CO", ExternalArgumentType::GlobalPtr, co_access);

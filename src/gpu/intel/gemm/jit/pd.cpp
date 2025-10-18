@@ -278,8 +278,8 @@ status_t pd_t::init_attrs() {
     }
     c_scales_type_ = c_scales.get_data_type();
     if (!c_scales.has_default_groups()) {
-        c_scales_group_m_ = c_scales.get_group(0);
-        c_scales_group_n_ = c_scales.get_group(1);
+        c_scales_group_m_ = c_scales.get_group(1);
+        c_scales_group_n_ = c_scales.get_group(0);
         with_mx_scale_ = c_scales.is_mx();
     }
     return status::success;

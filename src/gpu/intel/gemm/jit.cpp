@@ -110,6 +110,10 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                         : utils::div_up(pd()->desc()->k(), problem->bqGroupK));
         arg_list.set(argn++, ldbq);
     }
+    if (pd()->with_mx_scale()) {
+        auto ldcq = pd()->eff_n(); // / problem->cqGroupN;
+        arg_list.set(argn++, ldcq);
+    }
     if (pd()->with_c_zero_points() || pd()->with_bias()
             || pd()->with_sum_ab()) {
         arg_list.set(argn++, co);

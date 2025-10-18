@@ -921,7 +921,7 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
         }
     }
 
-    auto ldaq = inputs.ldaq, ldbq = inputs.ldbq;
+    auto ldaq = inputs.ldaq, ldbq = inputs.ldbq, ldcq = inputs.ldcq;
     if (ldaq.isInvalid()) ldaq = inputs.m;
     if (ldbq.isInvalid()) ldbq = inputs.n;
 
@@ -941,10 +941,8 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
         scale(problem.Tb_scale, inputs.ldbScale, ldbq);
         scale(problem.Tb_scale, inputs.offsetBScale, inputs.offsetBq);
     }
-    if (problem.postOps.cMXScale){
-        inputs.ldcScale = state.ra.alloc_sub(inputs.n.getType(), getHint(HintType::LongTerm, strategy));
-        divDown(inputs.ldcScale, inputs.n, problem.cqGroupN, strategy, state);
-        emul(1, inputs.ldcScale, inputs.ldcScale, inputs.m, strategy, state);
+    if (problem.postOps.cMXScale) {
+        scale(Type::f8_e8m0, inputs.ldcScale, ldcq);
     }
     if (problem.needsAGroupSums()) {
         scale(problem.Tag, inputs.ldag, ldaq);
@@ -965,6 +963,7 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
 
     state.ra.safeRelease(inputs.ldaq);
     state.ra.safeRelease(inputs.ldbq);
+    //state.ra.safeRelease(inputs.ldcq);
     state.ra.safeRelease(inputs.offsetAq);
     state.ra.safeRelease(inputs.offsetBq);
 }
@@ -1745,6 +1744,10 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
 
     gemmCalcQuantizationIncrements(problem, strategy, state);
 
+    if (problem.postOps.cMXScale)
+    state.C_scaleLayout = RegisterLayout::tryCreate(hw, Type::f8_e8m0,(unrollN / problem.cqGroupN),(unrollM / problem.cqGroupM),  problem.C, strategy.C, false, false);
+            //state.C_layout = RegisterLayout(hw, Tc, unrollM, unrollN, cColMajor, 1, strategy.C.tileR, strategy.C.tileC, false);
+
     // Grab flag registers now for named barriers. TODO: unlock these.
     if (strategy.needsNamedBarriersM(problem))
         state.barrierM = state.raVFlag.allocSubreg0();
@@ -1970,9 +1973,12 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
                    B_h0qLate, j0qLate, state.inputs.ldbg, state.inputs.offsetBg);
     }
 
-    if (problem.postOps.cMXScale){
+    if (problem.postOps.cMXScale) {
+        auto i0qs = state.ra.alloc_sub(j0q.getType(), getHint(HintType::LongTerm, strategy));
+        divDown(i0qs, i0q, problem.cqGroupM, strategy, state);
+        //emul(1, state.inputs.ldcScale, stat, state.inputs.ldcScale, strategy, state);
         setupQAddr(Type::u8, state.C_scaleAddrs, state.C_scaleLayout, state.inputs.cScalePtr,
-                   i0q, j0q, state.inputs.ldcScale, state.offsetBs);
+                   j0q, i0qs, state.inputs.ldcScale);
     }
 
     if (i0qLate != state.i0) state.ra.safeRelease(i0qLate);
@@ -2708,10 +2714,12 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     state.inputs.ldco = interface.getArgumentIfExists("ldco");
     state.inputs.ldaScale = interface.getArgumentIfExists("lda_scale");
     state.inputs.ldbScale = interface.getArgumentIfExists("ldb_scale");
+    state.inputs.ldcScale = interface.getArgumentIfExists("ldc_scale");
     state.inputs.ldag = interface.getArgumentIfExists("ldag");
     state.inputs.ldbg = interface.getArgumentIfExists("ldbg");
     state.inputs.ldaq = interface.getArgumentIfExists("ldaq");
     state.inputs.ldbq = interface.getArgumentIfExists("ldbq");
+    state.inputs.ldcq = interface.getArgumentIfExists("ldcq");
     state.inputs.m = interface.getArgumentIfExists("m");
     state.inputs.n = interface.getArgumentIfExists("n");
     state.inputs.k = interface.getArgumentIfExists("k");
@@ -2894,6 +2902,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
 
     claimIfValid(state.inputs.ldaq);
     claimIfValid(state.inputs.ldbq);
+    claimIfValid(state.inputs.ldcq);
     claimIfValid(state.inputs.offsetAq);
     claimIfValid(state.inputs.offsetBq);
 
@@ -2921,6 +2930,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         state.ra.claim(state.inputs.ldco);
     claimIfValid(state.inputs.ldaScale);
     claimIfValid(state.inputs.ldbScale);
+    claimIfValid(state.inputs.ldcScale);
     claimIfValid(state.inputs.ldag);
     claimIfValid(state.inputs.ldbg);
     state.ra.claim(state.inputs.m);

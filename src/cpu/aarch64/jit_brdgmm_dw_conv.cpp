@@ -101,27 +101,40 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     // TODO: support s8s8 conv
     const bool is_f32 = everyone_is(f32, src_type, wei_type, dst_type);
-    const bool is_bf16 = everyone_is(bf16, src_type, wei_type, dst_type);
+    const bool is_bf16 = everyone_is(bf16, src_type, wei_type)
+            && one_of(dst_type, bf16, f32);
+    const bool is_f32_bf16
+            = everyone_is(f32, src_type, dst_type) && wei_type == bf16;
     const bool is_int8 = one_of(src_type, u8) && wei_type == s8
             && one_of(dst_type, s32, f32, u8, s8);
-
-    //     const auto isa = sve_512;
 
     auto skip_mask = skip_mask_t::post_ops;
     if (is_int8) skip_mask |= skip_mask_t::scales;
 
-    bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
-            && one_of(true, is_f32, is_int8, is_bf16) && (isa != isa_undef)
-            && mayiuse(isa)
-            && IMPLICATION(is_int8,
-                    one_of(bia_type, data_type::undef, f32, s32, s8, u8))
-            && IMPLICATION(
-                    is_bf16, one_of(bia_type, data_type::undef, bf16, f32))
-            && IMPLICATION(!is_int8 && !is_bf16,
-                    one_of(bia_type, data_type::undef, src_type, dst_type))
-            && attr()->has_default_values(skip_mask) && !has_zero_dim_memory()
-            && impl::is_dense_format_kind({src_md(), weights_md(), dst_md()});
-    if (!ok) { return status::unimplemented; }
+    VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
+    VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
+            VERBOSE_BAD_ALGORITHM);
+    VDISPATCH_CONV(one_of(true, is_f32, is_int8, is_bf16, is_f32_bf16),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_CONV(
+            IMPLICATION(is_int8,
+                    one_of(bia_type, data_type::undef, f32, s32, s8, u8)),
+            VERBOSE_UNSUPPORTED_BIAS_CFG);
+    VDISPATCH_CONV(
+            IMPLICATION(is_bf16, one_of(bia_type, data_type::undef, bf16, f32)),
+            VERBOSE_UNSUPPORTED_BIAS_CFG);
+    VDISPATCH_CONV(
+            IMPLICATION(!is_int8 && !is_bf16,
+                    one_of(bia_type, data_type::undef, src_type, dst_type)),
+            VERBOSE_UNSUPPORTED_BIAS_CFG);
+    VDISPATCH_CONV(
+            attr()->has_default_values(skip_mask), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_CONV(
+            (isa != isa_undef) && mayiuse(isa), "undefined or unsupported isa");
+    VDISPATCH_CONV(
+            impl::is_dense_format_kind({src_md(), weights_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     auto &jcp = jcp_;
 
@@ -133,13 +146,16 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     const int ndims = src_d.ndims();
     const bool is_3d = ndims == 5;
     // Currently this kernel only supports 2D and 3D convolutions.
-    if (!utils::one_of(ndims, 4, 5)) { return status::unimplemented; }
+    VDISPATCH_CONV(utils::one_of(ndims, 4, 5), VERBOSE_UNSUPPORTED_FEATURE,
+            "only 2D/3D convolutions are supported");
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
-    if (!with_groups) { return status::unimplemented; }
+    VDISPATCH_CONV(with_groups, VERBOSE_UNSUPPORTED_FEATURE,
+            "Grouped convolution expected for depthwise convolution "
+            "implementation");
     // dilations are not supported
-    if (cd.dilates[0] != 0 || cd.dilates[1] != 0
-            || (is_3d && cd.dilates[2] != 0))
-        return status::unimplemented;
+    VDISPATCH_CONV(!(cd.dilates[0] != 0 || cd.dilates[1] != 0
+                           || (is_3d && cd.dilates[2] != 0)),
+            VERBOSE_UNSUPPORTED_FEATURE, "dilations are not supported");
 
     jcp = zero<decltype(jcp)>();
     jcp.ngroups = weights_d.dims()[0];
@@ -174,7 +190,9 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     jcp.with_bias = with_bias();
     jcp.bia_dt = jcp.with_bias ? cd.bias_desc.data_type : data_type::undef;
 
-    if (!(everyone_is(1, jcp.ic, jcp.oc))) { return status::unimplemented; }
+    VDISPATCH_CONV((everyone_is(1, jcp.ic, jcp.oc)),
+            "Depthwise BRGEMM implementation supports only 1 input and 1 "
+            "output channel per group");
 
     const auto def_data_tag = is_3d ? format_tag::ndhwc : format_tag::nhwc;
     CHECK(init_tag(src_md_, src_d, def_data_tag, true));
@@ -186,7 +204,8 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     }
 
     CHECK(attr_.set_default_formats(dst_md()));
-    if (!post_ops_ok(jcp, *attr(), dst_d)) { return status::unimplemented; }
+    VDISPATCH_CONV(
+            post_ops_ok(jcp, *attr(), dst_d), VERBOSE_UNSUPPORTED_POSTOP);
     jcp.with_post_ops = attr()->post_ops_.len() > 0;
 
     jcp.isa = isa;

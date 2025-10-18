@@ -51,9 +51,26 @@ void horizontal_add_ps(
     const Xbyak::Ymm ymm_ws {workspace.getIdx()};
     const Xbyak::Ymm ymm_src {src.getIdx()};
 
-    code->vextractf64x4(ymm_ws, src, 1);
+    // Extract upper 256 bits and add to lower 256 bits
+    code->vextractf32x8(ymm_ws, src, 1);
     code->vaddps(ymm_src, ymm_src, ymm_ws);
-    horizontal_add_ps(code, ymm_src, ymm_ws);
+
+    const Xbyak::Xmm xmm_ws {workspace.getIdx()};
+    const Xbyak::Xmm xmm_src {src.getIdx()};
+
+    // Add upper 128 bits to lower 128 bits within the YMM
+    code->vextractf32x4(xmm_ws, ymm_src, 1);
+    code->vaddps(xmm_src, xmm_src, xmm_ws);
+
+    // Horizontal add within 128 bits - swap 64-bit lanes and add
+    code->vshufps(
+            xmm_ws, xmm_src, xmm_src, 0x4E); // swap 64-bit lanes: [2,3,0,1]
+    code->vaddps(xmm_src, xmm_src, xmm_ws);
+
+    // Horizontal add within 64 bits - swap 32-bit elements and add
+    code->vpshufd(
+            xmm_ws, xmm_src, 0xB1); // swap adjacent 32-bit elements: [1,0,3,2]
+    code->vaddps(xmm_src, xmm_src, xmm_ws);
 }
 
 } // namespace regops

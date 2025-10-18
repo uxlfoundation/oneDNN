@@ -58,7 +58,6 @@ void *thr_ctx_t::get_interop_obj() const {
 #endif
 
 #include "oneapi/dnnl/dnnl_threadpool_iface.hpp"
-#include "src/common/counting_barrier.hpp"
 
 #if !defined(DNNL_TEST_THREADPOOL_USE_TBB)
 
@@ -101,6 +100,10 @@ inline int read_num_threads_from_env() {
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
+#include "absl/synchronization/blocking_counter.h"
+
+#include "common/compiler_workarounds.hpp"
+
 #include <memory>
 
 namespace dnnl {
@@ -109,6 +112,30 @@ namespace testing {
 class threadpool_t : public dnnl::threadpool_interop::threadpool_iface {
 private:
     std::unique_ptr<Eigen::ThreadPool> tp_;
+
+    static void balance211(int n, int team, int tid, int *n_start, int *n_end) {
+        if (team <= 1 || n == 0) {
+            *n_start = 0;
+            *n_end = n;
+            return;
+        }
+        int min_per_team = n / team;
+        int remainder = n - min_per_team * team; // i.e., n % teams.
+        *n_start = tid * min_per_team + std::min(tid, remainder);
+        *n_end = *n_start + min_per_team + (tid < remainder);
+    }
+
+    static void run_jobs(bool balance, int i, int n, int njobs,
+            const std::function<void(int, int)> &fn) {
+        if (balance) {
+            int start, end;
+            balance211(n, njobs, i, &start, &end);
+            for (int j = start; j < end; j++)
+                fn(j, n);
+        } else {
+            fn(i, n);
+        }
+    }
 
 public:
     explicit threadpool_t(int num_threads = 0) {
@@ -119,19 +146,45 @@ public:
     bool get_in_parallel() const override {
         return tp_->CurrentThreadId() != -1;
     }
-    uint64_t get_flags() const override { return ASYNCHRONOUS; }
+    uint64_t get_flags() const override { return 0; }
     void parallel_for(int n, const std::function<void(int, int)> &fn) override {
+        // Should never happen.
+        if (n == 0) { return; }
+
+        // Should never happen.
+        if (n == 1) {
+            fn(0, 1);
+            return;
+        }
+
         int nthr = get_num_threads();
         int njobs = std::min(n, nthr);
+        bool balance = (nthr < n);
 
-        for (int i = 0; i < njobs; i++) {
-            tp_->Schedule([i, n, njobs, fn]() {
-                int start, end;
-                impl::balance211(n, njobs, i, start, end);
-                for (int j = start; j < end; j++)
-                    fn(j, n);
-            });
-        }
+        absl::BlockingCounter counter(njobs);
+        std::function<void(int, int)> handle_range
+                = [= WA_THIS_COPY_CAPTURE, &handle_range, &counter](
+                          int first, int last) {
+                      while (last - first > 1) {
+                          const auto mid = first + (last - first) / 2;
+                          // Find something near the midpoint which is a
+                          // multiple of block size.
+                          tp_->ScheduleWithHint(
+                                  [=]() { handle_range(mid, last); }, mid,
+                                  mid + 1);
+                          last = mid;
+                      }
+                      run_jobs(balance, first, n, njobs, fn);
+                      counter.DecrementCount();
+                  };
+
+        // Eigen avoids a thread hop by running the root of the tree on the main
+        // thread. We have disabled this because it actually slows things down
+        // relative to base because base cheats and uses n threads while letting
+        // main continue doing other work
+        tp_->ScheduleWithHint([=]() { handle_range(0, njobs); }, 0, 1);
+
+        counter.Wait();
     };
 };
 
@@ -163,6 +216,8 @@ public:
 } // namespace dnnl
 
 #else
+
+#include "src/common/counting_barrier.hpp"
 
 #include <atomic>
 #include <thread>

@@ -311,6 +311,14 @@ const attribute_kind_t b = 5;
 const attribute_kind_t fusion_info = 6; //special attribute kind for fusion info
 } // namespace attribute_kind
 
+enum class graph_dump_mode_t : uint8_t {
+    none = dnnl_graph_dump_mode_none,
+    subgraph = dnnl_graph_dump_mode_subgraph,
+    graph = dnnl_graph_dump_mode_graph,
+    // Internal-only flag for dumping partition patterns.
+    pattern = 0x4U,
+};
+
 using allocator_t = dnnl_graph_allocator;
 using host_allocate_f = dnnl_graph_host_allocate_f;
 using host_deallocate_f = dnnl_graph_host_deallocate_f;

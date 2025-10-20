@@ -600,7 +600,7 @@ status_t dnnl_graph_partition::compile(compiled_partition_t *cp,
             ->set_use_blocked_layout(can_use_blocked_layout);
 
     if (dnnl::impl::graph::utils::get_graph_dump_mode(
-                dnnl::impl::graph::utils::graph_dump_mode_t::subgraph)) {
+                dnnl::impl::graph::graph_dump_mode_t::subgraph)) {
         if (!is_supported()) return status::unimplemented;
         // deep copy for graph serialization
         auto part = pimpl_->clone();

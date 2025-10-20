@@ -135,7 +135,7 @@ public:
             if (!fusion_ops.empty()) {
                 // temporary solution here for showing which pattern matched
                 if (graph::utils::get_graph_dump_mode(
-                            graph::utils::graph_dump_mode_t::pattern)) {
+                            graph::graph_dump_mode_t::pattern)) {
                     verbose_printf("graph,info,pattern,hit,%s\n",
                             get_pass_name().c_str());
                 }

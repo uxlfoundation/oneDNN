@@ -292,24 +292,20 @@ bool get_graph_dump_mode(graph_dump_mode_t mode) {
 } // namespace impl
 } // namespace dnnl
 
-dnnl::impl::graph::status_t dnnl_graph_set_dump_mode(const char *modes) {
+dnnl::impl::graph::status_t dnnl_graph_set_dump_mode(
+        dnnl_graph_dump_mode_t modes) {
 #ifdef DNNL_DISABLE_GRAPH_DUMP
     return dnnl::impl::graph::status::invalid_arguments;
 #else
-    // modes == nullptr is invalid
-    if (!modes) return dnnl::impl::graph::status::invalid_arguments;
+    const uint8_t mask = static_cast<uint8_t>(modes);
+    const uint8_t allowed_mask
+            = static_cast<uint8_t>(dnnl_graph_dump_mode_graph)
+            | static_cast<uint8_t>(dnnl_graph_dump_mode_subgraph);
 
-    std::string mode_str = std::string(modes);
-    uint8_t mode_int
-            = dnnl::impl::graph::utils::parse_graph_dump_mode(mode_str);
-    // mode_int == 0 is valid when mode_str is empty, which means to disable
-    // graph dump.
-    // mode_int == 0 is invalid when mode_str is not empty, which means user
-    // passed in some invalid mode strings.
-    if (mode_int == 0 && !mode_str.empty())
+    if ((mask & ~allowed_mask) != 0)
         return dnnl::impl::graph::status::invalid_arguments;
 
-    dnnl::impl::graph::utils::graph_dump_modes.set(mode_int);
+    dnnl::impl::graph::utils::graph_dump_modes.set(mask);
     return dnnl::impl::graph::status::success;
 #endif
 }

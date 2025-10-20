@@ -112,7 +112,7 @@ public:
         graph::pass::pass_manager_t pm(pass_registry);
 
         if (graph::utils::get_graph_dump_mode(
-                    graph::utils::graph_dump_mode_t::pattern)) {
+                    graph::graph_dump_mode_t::pattern)) {
             std::string pass_config_json = "dnnl_graph_passes.json";
             std::ifstream fs(pass_config_json.c_str());
             if (fs) {

@@ -544,8 +544,44 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         scale *= 1.442695f; // log2(e)
     }
 
-#if PREFETCH_K0
     if (k0end > 0) {
+        /* Initialize S column sums in SLM to -inf */
+        const uint n_col_sg
+                = DIV_UP(ugemm_kq_wg_tile_n, SUBGROUP_SIZE * sg_per_wg);
+        const float neg_inf = -INFINITY;
+
+#pragma unroll
+        for (int q = 0; q < n_col_sg; q++)
+            intel_sub_group_block_write(
+                    (local uint *)&S_max_slm[(q + sg_ij * n_col_sg)
+                            * SUBGROUP_SIZE],
+                    as_uint(neg_inf));
+    }
+
+#if VS_F16_ACC
+    a_tile_type_float A_tile;
+#else
+    a_tile_type A_tile;
+#endif
+    s_sum_tile_type S_sum_tile;
+    s_sum_tile_type S_max_tile, S_max_tile_old;
+
+    if (k0end > 0) {
+        /* Clear accumulator */
+        tile_fill(A_tile, 0.0f);
+
+        /* Clear S column sums/maxes */
+        tile_fill(S_sum_tile, 0.0f);
+        tile_fill(S_max_tile, -INFINITY);
+
+        /* Wait for Q data to reach SLM */
+#if Q_ARRIVE_AWAIT_BARRIER
+        intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
+#else
+        barrier(CLK_LOCAL_MEM_FENCE);
+#endif
+
+#if PREFETCH_K0
         /* Prefetch first K tile. */
         cooperative_prefetch_2d_k(
                 /* ptr */ K,
@@ -585,44 +621,6 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 /* sg_size */ SUBGROUP_SIZE,
                 /* cache */ LSC_LDCC_L1C_L3C);
 #endif
-    }
-#endif
-
-    if (k0end > 0) {
-        /* Initialize S column sums in SLM to -inf */
-        const uint n_col_sg
-                = DIV_UP(ugemm_kq_wg_tile_n, SUBGROUP_SIZE * sg_per_wg);
-        const float neg_inf = -INFINITY;
-
-#pragma unroll
-        for (int q = 0; q < n_col_sg; q++)
-            intel_sub_group_block_write(
-                    (local uint *)&S_max_slm[(q + sg_ij * n_col_sg)
-                            * SUBGROUP_SIZE],
-                    as_uint(neg_inf));
-    }
-
-#if VS_F16_ACC
-    a_tile_type_float A_tile;
-#else
-    a_tile_type A_tile;
-#endif
-    s_sum_tile_type S_sum_tile;
-    s_sum_tile_type S_max_tile, S_max_tile_old;
-
-    if (k0end > 0) {
-        /* Clear accumulator */
-        tile_fill(A_tile, 0.0f);
-
-        /* Clear S column sums/maxes */
-        tile_fill(S_sum_tile, 0.0f);
-        tile_fill(S_max_tile, -INFINITY);
-
-        /* Wait for Q data to reach SLM */
-#if Q_ARRIVE_AWAIT_BARRIER
-        intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
-#else
-        barrier(CLK_LOCAL_MEM_FENCE);
 #endif
     }
 

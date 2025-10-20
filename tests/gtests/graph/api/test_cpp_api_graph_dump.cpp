@@ -21,11 +21,17 @@
 #include "oneapi/dnnl/dnnl_graph.hpp"
 
 TEST(APIGraphDump, SetDumpMode) {
-    ASSERT_EQ(dnnl::graph::set_dump_mode("subgraph"),
+    using dnnl::graph::graph_dump_mode;
+
+    ASSERT_EQ(dnnl::graph::set_dump_mode(graph_dump_mode::subgraph),
             dnnl::graph::status::success);
-    ASSERT_EQ(
-            dnnl::graph::set_dump_mode("graph"), dnnl::graph::status::success);
-    ASSERT_EQ(dnnl::graph::set_dump_mode(""), dnnl::graph::status::success);
-    ASSERT_EQ(dnnl::graph::set_dump_mode("unknown"),
+    ASSERT_EQ(dnnl::graph::set_dump_mode(graph_dump_mode::graph),
+            dnnl::graph::status::success);
+    ASSERT_EQ(dnnl::graph::set_dump_mode(
+                      graph_dump_mode::graph | graph_dump_mode::subgraph),
+            dnnl::graph::status::success);
+    ASSERT_EQ(dnnl::graph::set_dump_mode(graph_dump_mode::none),
+            dnnl::graph::status::success);
+    ASSERT_EQ(dnnl::graph::set_dump_mode(static_cast<graph_dump_mode>(0x4U)),
             dnnl::graph::status::invalid_arguments);
 }

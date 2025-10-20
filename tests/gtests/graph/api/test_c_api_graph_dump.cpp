@@ -19,8 +19,17 @@
 #include "oneapi/dnnl/dnnl_graph.h"
 
 TEST(CAPI, GraphDump) {
-    ASSERT_EQ(dnnl_graph_set_dump_mode("subgraph"), dnnl_success);
-    ASSERT_EQ(dnnl_graph_set_dump_mode("graph"), dnnl_success);
-    ASSERT_EQ(dnnl_graph_set_dump_mode(""), dnnl_success);
-    ASSERT_EQ(dnnl_graph_set_dump_mode("unknown"), dnnl_invalid_arguments);
+    ASSERT_EQ(dnnl_graph_set_dump_mode(dnnl_graph_dump_mode_subgraph),
+            dnnl_success);
+    ASSERT_EQ(
+            dnnl_graph_set_dump_mode(dnnl_graph_dump_mode_graph), dnnl_success);
+    ASSERT_EQ(dnnl_graph_set_dump_mode(static_cast<dnnl_graph_dump_mode_t>(
+                      dnnl_graph_dump_mode_graph
+                      | dnnl_graph_dump_mode_subgraph)),
+            dnnl_success);
+    ASSERT_EQ(
+            dnnl_graph_set_dump_mode(dnnl_graph_dump_mode_none), dnnl_success);
+    ASSERT_EQ(
+            dnnl_graph_set_dump_mode(static_cast<dnnl_graph_dump_mode_t>(0x4U)),
+            dnnl_invalid_arguments);
 }

@@ -105,38 +105,58 @@ TEST(test_utils_utils, GetGraphDumpSetByEnv) {
     custom_setenv("ONEDNN_GRAPH_DUMP", "subgraph", 1);
     ASSERT_EQ(dnnl::impl::getenv_string_user("GRAPH_DUMP"), "subgraph");
     ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
-            dnnl::impl::graph::utils::graph_dump_mode_t::subgraph));
+            dnnl::impl::graph::graph_dump_mode_t::subgraph));
     ASSERT_FALSE(dnnl::impl::graph::utils::get_graph_dump_mode(
-            dnnl::impl::graph::utils::graph_dump_mode_t::graph));
+            dnnl::impl::graph::graph_dump_mode_t::graph));
 
     custom_setenv("ONEDNN_GRAPH_DUMP", "graph,subgraph", 1);
     ASSERT_EQ(dnnl::impl::getenv_string_user("GRAPH_DUMP"), "graph,subgraph");
     // environment variable can only be set once
     ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
-            dnnl::impl::graph::utils::graph_dump_mode_t::subgraph));
+            dnnl::impl::graph::graph_dump_mode_t::subgraph));
     ASSERT_FALSE(dnnl::impl::graph::utils::get_graph_dump_mode(
-            dnnl::impl::graph::utils::graph_dump_mode_t::graph));
+            dnnl::impl::graph::graph_dump_mode_t::graph));
 }
 
 TEST(test_utils_utils, GetGraphDumpSetByAPI) {
-    ASSERT_EQ(dnnl::graph::set_dump_mode("subgraph"),
+    using dnnl::graph::graph_dump_mode;
+
+    ASSERT_EQ(dnnl::graph::set_dump_mode(graph_dump_mode::subgraph),
             dnnl::graph::status::success);
     ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
-            dnnl::impl::graph::utils::graph_dump_mode_t::subgraph));
+            dnnl::impl::graph::graph_dump_mode_t::subgraph));
     ASSERT_FALSE(dnnl::impl::graph::utils::get_graph_dump_mode(
-            dnnl::impl::graph::utils::graph_dump_mode_t::graph));
+            dnnl::impl::graph::graph_dump_mode_t::graph));
 
     // API can be used as many times as possible to change the mode
-    ASSERT_EQ(dnnl::graph::set_dump_mode("subgraph,graph"),
+    ASSERT_EQ(dnnl::graph::set_dump_mode(
+                      graph_dump_mode::subgraph | graph_dump_mode::graph),
             dnnl::graph::status::success);
     ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
-            dnnl::impl::graph::utils::graph_dump_mode_t::subgraph));
+            dnnl::impl::graph::graph_dump_mode_t::subgraph));
     ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
-            dnnl::impl::graph::utils::graph_dump_mode_t::graph));
+            dnnl::impl::graph::graph_dump_mode_t::graph));
 
-    ASSERT_EQ(dnnl::graph::set_dump_mode(""), dnnl::graph::status::success);
+    ASSERT_EQ(dnnl::graph::set_dump_mode(graph_dump_mode::none),
+            dnnl::graph::status::success);
     ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
-            dnnl::impl::graph::utils::graph_dump_mode_t::none));
+            dnnl::impl::graph::graph_dump_mode_t::none));
     ASSERT_FALSE(dnnl::impl::graph::utils::get_graph_dump_mode(
-            dnnl::impl::graph::utils::graph_dump_mode_t::graph));
+            dnnl::impl::graph::graph_dump_mode_t::graph));
+
+    ASSERT_EQ(dnnl::graph::set_dump_mode(
+                      graph_dump_mode::graph | graph_dump_mode::none),
+            dnnl::graph::status::success);
+    ASSERT_FALSE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::graph_dump_mode_t::none));
+    ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::graph_dump_mode_t::graph));
+
+    ASSERT_EQ(dnnl::graph::set_dump_mode(
+                      graph_dump_mode::graph & graph_dump_mode::none),
+            dnnl::graph::status::success);
+    ASSERT_TRUE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::graph_dump_mode_t::none));
+    ASSERT_FALSE(dnnl::impl::graph::utils::get_graph_dump_mode(
+            dnnl::impl::graph::graph_dump_mode_t::graph));
 }

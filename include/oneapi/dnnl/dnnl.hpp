@@ -14201,8 +14201,6 @@ inline void primitive::execute(const stream &astream,
 
 /// @endcond
 
-#undef DNNL_DEFINE_BITMASK_OPS
-
 } // namespace dnnl
 
 /// oneAPI namespace

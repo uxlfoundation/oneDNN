@@ -474,6 +474,10 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         if (checkA) emov(1 | f0[1], state.offsetA, 0, strategy, state);
         if (checkB) emov(1 | f1[1], state.offsetB, 0, strategy, state);
     }
+           cmp(1 | ge | f0[1], state.i0, state.inputs.m);
+           cmp(1 | ge | f1[1], state.j0, state.inputs.n);
+           jmpi(1 | f0[1], lKernelDone);
+           jmpi(1 | f1[1], lKernelDone);
 
     gemmSetupABC(problem, strategy, state);
     gemmSubkernel(problem, strategy, state);

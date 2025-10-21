@@ -1192,8 +1192,8 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::pow_compute_vector_fwd(
     } else { // general path
         // caller obligation to save gprs as callee may use them
         size_t gpr_size = 8;
-        Xbyak::Operand gprs_to_save[] = {h->r8, h->r9, h->r10, h->r11, h->rax,
-                h->rcx, h->rdx, h->rdi, h->rsi, h->rbp, h->rbx};
+        Xbyak::Operand gprs_to_save[] = {h->r8, h->r9, h->r10, h->r11, h->r12,
+                h->rax, h->rcx, h->rdx, h->rdi, h->rsi, h->rbx};
         size_t n_gprs_to_save = sizeof(gprs_to_save) / sizeof(gprs_to_save[0]);
 
         h->sub(h->rsp, n_gprs_to_save * gpr_size);
@@ -1227,7 +1227,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::pow_compute_vector_fwd(
         h->uni_vmovups(h->ptr[reg_vmm_stack_ptr_ + 1 * vlen_], vmm_src); // beta
 
         // save function address in gpr to pass in in call instruction
-        h->mov(h->rbp, reinterpret_cast<uintptr_t>(powf));
+        h->mov(h->r12, reinterpret_cast<uintptr_t>(powf));
 
         // The 64-bit Windows ABI requires the caller to allocate 32 bytes of
         // a so called "shadow space" for the callee.  It also requires that
@@ -1252,7 +1252,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::pow_compute_vector_fwd(
             h->uni_vmovss(xmm0, source);
             h->uni_vmovss(xmm1, h->ptr[reg_vmm_stack_ptr_ + vlen_]); // beta
             h->uni_vzeroupper(); // eliminate performance penalties on avx
-            h->call(h->rbp);
+            h->call(h->r12);
             // eliminate performance penalties on sse isa
             if (isa == sse41) h->uni_vzeroupper();
             h->uni_vmovss(source, xmm0);

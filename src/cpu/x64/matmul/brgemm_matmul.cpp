@@ -111,12 +111,11 @@ bool brgemm_matmul_t<isa>::pd_t::can_use_gemm_fallback(engine_t *engine) const {
 
     status_t st = status::unimplemented;
 
-    std::unique_ptr<primitive_desc_t> pd;
-    primitive_desc_t *pd_raw = pd.get();
+    primitive_desc_t *pd = nullptr;
 
 #define TRY_CREATE_FALLBACK_PD(pd_type) \
     primitive_desc_t::create<pd_type>( \
-            &pd_raw, op_desc(), &orig_attr, engine, nullptr)
+            &pd, op_desc(), &orig_attr, engine, nullptr)
 
     // Try to create GEMM-based matmul implementation directly to avoid
     // primitive descriptor iterator overhead.
@@ -132,6 +131,7 @@ bool brgemm_matmul_t<isa>::pd_t::can_use_gemm_fallback(engine_t *engine) const {
         assert(!"unknown fallback configuration");
 
 #undef TRY_CREATE_FALLBACK_PD
+    delete pd;
 
     return st == status::success;
 }

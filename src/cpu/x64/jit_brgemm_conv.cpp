@@ -736,14 +736,14 @@ status_t brgemm_convolution_fwd_t<isa>::add_po_kernel(
 }
 
 template <cpu_isa_t isa>
-void brgemm_convolution_fwd_t<isa>::add_po_kernels(
+status_t brgemm_convolution_fwd_t<isa>::add_po_kernels(
         int i_N, int init_bcast_dim, int po_bcast_dim) {
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;
     const auto &brgs = *(_pd->brgemm_descriptors_);
 
     auto N = (i_N) ? jcp.N_tail : jcp.N;
-    if (N <= 0) return;
+    if (N <= 0) return status::success;
     auto i_K = (jcp.K_tail > 0);
 
     const auto brg_idx = _pd->get_any_brg_idx(i_N, i_K);
@@ -766,7 +766,7 @@ void brgemm_convolution_fwd_t<isa>::add_po_kernels(
             auto ker_init_idx = get_ker_po_idx(init_bcast_dim - 1, false, i_N);
             if (init_cfg.load_dim > 0 && kernels_po_[ker_init_idx] == nullptr) {
                 init_cfg.bcast_dim = init_bcast_dim;
-                add_po_kernel(&init_cfg, ker_init_idx, true);
+                CHECK(add_po_kernel(&init_cfg, ker_init_idx, true));
             }
         }
     }
@@ -777,10 +777,11 @@ void brgemm_convolution_fwd_t<isa>::add_po_kernels(
             auto ker_po_idx = get_ker_po_idx(po_bcast_dim - 1, true, i_N);
             if (po_cfg.load_dim > 0 && kernels_po_[ker_po_idx] == nullptr) {
                 po_cfg.bcast_dim = po_bcast_dim;
-                add_po_kernel(&po_cfg, ker_po_idx, false);
+                CHECK(add_po_kernel(&po_cfg, ker_po_idx, false));
             }
         }
     }
+    return status::success;
 }
 
 template <cpu_isa_t isa>
@@ -1012,7 +1013,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 
     for (const auto &key_value_pair : _pd->brg_indices) {
         const int brg_idx = key_value_pair.second;
-        add_brg_kernel(brg_idx);
+        CHECK(add_brg_kernel(brg_idx));
     }
 
     for_(int i_N = N_begin; i_N < N_end; i_N++)
@@ -1029,7 +1030,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                 = jcp.dilate_d >= jcp.id || jcp.dilate_h >= jcp.ih;
         if (filter_in_padding || dilate_no_overlap) {
             auto M = (i_M) ? jcp.M_tail : jcp.M;
-            add_po_kernels(i_N, M, M);
+            CHECK(add_po_kernels(i_N, M, M));
         }
     }
 
@@ -1054,7 +1055,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                         jcp, ow, kw_f - 1, ow_s, ow_f);
                 const auto po_bcast_dim
                         = (i_side == 0) ? (ow_s - ow) : (ow + M - ow_f);
-                add_po_kernels(i_N, init_bcast_dim, po_bcast_dim);
+                CHECK(add_po_kernels(i_N, init_bcast_dim, po_bcast_dim));
             }
 
             if (kw_f == jcp.kw && kw_s == 0) break;
@@ -1079,7 +1080,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                         jcp, ow, kw_f - 1, ow_s, ow_f);
                 const auto po_bcast_dim
                         = (i_side == 0) ? (ow_s - ow) : (ow + M - ow_f);
-                add_po_kernels(i_N, init_bcast_dim, po_bcast_dim);
+                CHECK(add_po_kernels(i_N, init_bcast_dim, po_bcast_dim));
             }
 
             if (kw_f == jcp.kw && kw_s == 0) break;

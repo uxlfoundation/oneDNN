@@ -1339,11 +1339,12 @@ int doit(const prb_t *prb, res_t *res) {
     DNN_SAFE(dnnl_ukernel_attr_params_set_post_ops_args(
                      attr_params, binary_po_v.data()),
             WARN);
-
+#if defined(brg_x64)
     DNN_SAFE(dnnl_ukernel_attr_params_set_A_scales(attr_params, src_scales_ptr),
             WARN);
     DNN_SAFE(dnnl_ukernel_attr_params_set_B_scales(attr_params, wei_scales_ptr),
             WARN);
+#endif
     DNN_SAFE(dnnl_ukernel_attr_params_set_D_scales(attr_params, dst_scales_ptr),
             WARN);
 #endif

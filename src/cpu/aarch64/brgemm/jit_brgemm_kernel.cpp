@@ -149,11 +149,12 @@ private:
     const XReg reg_a_offset = x2;
     const XReg reg_b_offset = x6;
 
-    const XReg reg_aux1_batch = x5;
-    const XReg reg_aux1_A = x5;
-    const XReg reg_aux1_B = x7; //from jit_generator.hpp in x64
+    const XReg reg_aux1_A = x4;
+    const XReg reg_aux1_batch = reg_aux1_A;
 
-    const XReg reg_offs_batch = reg_aux1_A;
+    const XReg reg_aux1_B = x7; //from jit_generator_t.hpp in x64
+
+    const XReg reg_offs_batch = x5;
     const XReg reg_strd_batch = reg_rdb_loop;
 
     const XReg reg_bias = reg_rdb_loop;
@@ -1339,8 +1340,9 @@ void jit_brgemm_kernel_t::set_A_B_matrices() {
         add(reg_aux_A, reg_aux_A, X_TMP_0);
         ldr(X_TMP_1, ptr(reg_offs_batch, GET_OFF_BATCH_ELEMENT(offset.B)));
         add(reg_aux_B, reg_aux_B, X_TMP_1);
-        mov_imm(X_TMP_2, sizeof(brgemm_batch_element_t));
-        add(reg_offs_batch, reg_offs_batch, X_TMP_2);
+        if (brg.brgattr.max_bs > 1)
+            add_imm(reg_offs_batch, reg_offs_batch,
+                    sizeof(brgemm_batch_element_t), X_TMP_2);
     } else if (brg.type == brgemm_strd) {
         mov(reg_aux_A, reg_aux1_A);
         mov(reg_aux_B, reg_aux1_B);

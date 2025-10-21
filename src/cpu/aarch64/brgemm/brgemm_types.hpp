@@ -215,7 +215,7 @@ struct brgemm_desc_t {
     dim_t stride_b = 0;
 
     brgemm_layout_t layout = brgemm_layout_undef;
-    brgemm_batch_kind_t type;
+    brgemm_batch_kind_t type = brgemm_batch_kind_t::brgemm_addr;
     bool is_dgmm = false; // set to true in brdgmm_desc_init
     bool with_sum = false;
     bool req_cal_comp_pads = false;
@@ -298,7 +298,22 @@ struct brgemm_desc_t {
         return sz;
     }
 
-    bool is_b_data_layout_vnni() { return true; }
+    // A class version of the `static` version of the function.
+    // Note: used in benchdnn only, not used inside the library.
+    bool is_b_data_layout_vnni() const { return is_b_data_layout_vnni(dt_b); }
+
+    static bool is_b_data_layout_vnni(data_type_t dt_b) {
+        using namespace data_type;
+        return utils::one_of(dt_b, s8, u8, bf16);
+    }
+
+    bool are_post_ops_applicable() const {
+        const bool has_zero_points = !utils::everyone_is(
+                brgemm_broadcast_t::none, zp_type_a, zp_type_b, zp_type_c);
+        return dt_c != dt_d || with_eltwise || with_binary || with_bias
+                || with_sum || req_s8s8_compensation || has_zero_points
+                || with_scales || with_dst_scales;
+    }
 
     bool operator==(const brgemm_desc_t &rhs) const;
     bool operator<(const brgemm_desc_t &rhs) const;

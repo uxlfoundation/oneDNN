@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -49,8 +50,6 @@
 #define namespace_impl dnnl::impl::cpu::x64
 #elif defined(DNNL_AARCH64) && DNNL_AARCH64 == 1
 #define namespace_impl dnnl::impl::cpu::aarch64
-// TODO: remove when `brgemm_t` type gets renamed.
-using brgemm_desc_t = namespace_impl::brgemm_t;
 #endif
 
 #if defined(brg_x64) || defined(brg_aarch64)

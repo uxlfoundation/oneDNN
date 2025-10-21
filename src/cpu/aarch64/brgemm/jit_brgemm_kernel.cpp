@@ -63,7 +63,7 @@ namespace aarch64 {
 using namespace dnnl::impl::utils;
 
 struct jit_brgemm_kernel_t : public jit_generator_t {
-    jit_brgemm_kernel_t(const brgemm_t &abrg)
+    jit_brgemm_kernel_t(const brgemm_desc_t &abrg)
         : jit_generator_t(nullptr, MAX_CODE_SIZE, true, sve_512)
         , brg(abrg)
         , postops_injector_(nullptr)
@@ -113,7 +113,7 @@ struct jit_brgemm_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_t)
 
-    brgemm_t brg;
+    brgemm_desc_t brg;
 
 private:
     using po_injector_t = injector::jit_uni_postops_injector_t<sve_512>;
@@ -144,7 +144,7 @@ private:
 
     const XReg reg_BS_loop = x0;
     const XReg reg_rdb_loop = x3;
-    const XReg reg_BS = x1; //from jit_generator.hpp in x64
+    const XReg reg_BS = x1; //from jit_generator_t.hpp in x64
 
     const XReg reg_a_offset = x2;
     const XReg reg_b_offset = x6;
@@ -1335,7 +1335,6 @@ void jit_brgemm_kernel_t::set_A_B_matrices() {
     } else if (brg.type == brgemm_offs) {
         mov(reg_aux_A, reg_A);
         mov(reg_aux_B, reg_B);
-
         ldr(X_TMP_0, ptr(reg_offs_batch, GET_OFF_BATCH_ELEMENT(offset.A)));
         add(reg_aux_A, reg_aux_A, X_TMP_0);
         ldr(X_TMP_1, ptr(reg_offs_batch, GET_OFF_BATCH_ELEMENT(offset.B)));
@@ -1356,7 +1355,6 @@ void jit_brgemm_kernel_t::set_A_B_matrices() {
             str(reg_strd_batch, ptr(X_SP, origin_strd_batch_offs_));
         }
     }
-
     add(reg_aux_A, reg_aux_A, reg_a_offset);
     add(reg_aux_B, reg_aux_B, reg_b_offset);
 }
@@ -1730,7 +1728,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                     const auto vpad_first = -brg.brgattr.max_bottom_vpad;
                     const auto vpad_last = brg.brgattr.max_top_vpad;
                     const auto n_vpads = vpad_last - vpad_first + 2;
-                    constexpr auto MAX_N_VPADS = 2 * brgemm_t::MAX_VPAD;
+                    constexpr auto MAX_N_VPADS = 2 * brgemm_desc_t::MAX_VPAD;
                     assert(n_vpads < MAX_N_VPADS);
 
                     Label Vpad_loop_end_label;
@@ -2089,7 +2087,7 @@ brgemm_attr_t::brgemm_attr_t()
     , bd_mask(nullptr)
     , static_offsets(nullptr) {}
 
-brgemm_kernel_common_t::brgemm_kernel_common_t(const brgemm_t abrd)
+brgemm_kernel_common_t::brgemm_kernel_common_t(const brgemm_desc_t abrd)
     : brgemm_kernel_(new jit_brgemm_kernel_t(abrd)) {}
 
 status_t brgemm_kernel_common_t::create_kernel() {

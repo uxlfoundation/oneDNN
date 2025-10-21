@@ -17,6 +17,7 @@
 *******************************************************************************/
 
 #include "cpu/aarch64/brgemm/brgemm.hpp"
+#include "cpu/aarch64/brgemm/brgemm_types.hpp"
 #include "cpu/aarch64/brgemm/brgemm_utils.hpp"
 
 #include "common/c_types_map.hpp"
@@ -148,7 +149,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     (*brg_kernel)(&brgemm_p);
 }
 
-status_t brgemm_desc_init(brgemm_t *brg, cpu_isa_t isa,
+status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_b, bool transA, bool transB,
         brgemm_layout_t layout, float alpha, float beta, dim_t LDA, dim_t LDB,
@@ -189,7 +190,7 @@ status_t brgemm_desc_init(brgemm_t *brg, cpu_isa_t isa,
     return status::success;
 }
 
-status_t brdgmm_desc_init(brgemm_t *brg, cpu_isa_t isa,
+status_t brdgmm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_b, bool transA, brgemm_layout_t layout,
         float alpha, float beta, dim_t LDA, dim_t LDC, dim_t M, dim_t N,
@@ -214,8 +215,9 @@ status_t brdgmm_desc_init(brgemm_t *brg, cpu_isa_t isa,
     return status::success;
 }
 
-status_t brgemm_desc_set_postops(brgemm_t *brg, const primitive_attr_t *attr,
-        const memory_desc_t *dst_md, int LDD, impl::data_type_t dt_bias) {
+status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
+        const primitive_attr_t *attr, const memory_desc_t *dst_md, int LDD,
+        impl::data_type_t dt_bias) {
     if (!brg || !dst_md) return status::invalid_arguments;
 
     brg->attr = attr;
@@ -356,7 +358,8 @@ status_t brgemm_desc_set_postops(brgemm_t *brg, const primitive_attr_t *attr,
     return status::success;
 }
 
-status_t brgemm_desc_set_attr(brgemm_t *brg, const brgemm_attr_t &brgattr) {
+status_t brgemm_desc_set_attr(
+        brgemm_desc_t *brg, const brgemm_attr_t &brgattr) {
     if (brg == nullptr) return status::invalid_arguments;
 
     // negative padding is not supported
@@ -365,8 +368,8 @@ status_t brgemm_desc_set_attr(brgemm_t *brg, const brgemm_attr_t &brgattr) {
 
     if (!brg->is_dgmm) {
         // virtual padding size is restricted by MAX_VPAD value
-        if (brgattr.max_top_vpad > brgemm_t::MAX_VPAD
-                || brgattr.max_bottom_vpad > brgemm_t::MAX_VPAD)
+        if (brgattr.max_top_vpad > brgemm_desc_t::MAX_VPAD
+                || brgattr.max_bottom_vpad > brgemm_desc_t::MAX_VPAD)
             return status::unimplemented;
     }
 
@@ -430,13 +433,13 @@ status_t brgemm_desc_set_attr(brgemm_t *brg, const brgemm_attr_t &brgattr) {
     return status::success;
 }
 
-status_t brgemm_desc_finalize(brgemm_t *brg) {
+status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     // TODO: implement functionality here similar to corresponding one in x64
     return status::success;
 }
 
 status_t brgemm_kernel_create(
-        brgemm_kernel_t **brg_kernel, const brgemm_t &brg) {
+        brgemm_kernel_t **brg_kernel, const brgemm_desc_t &brg) {
     if (!brg_kernel) return status::invalid_arguments;
     *brg_kernel = nullptr;
 
@@ -456,7 +459,7 @@ status_t brgemm_kernel_destroy(brgemm_kernel_t *brg_kernel) {
     return status::success;
 }
 
-status_t brgemm_init_tiles(const brgemm_t &brg, char palette[64]) {
+status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
     return status::unimplemented;
 }
 
@@ -466,17 +469,17 @@ inline int sign(T v) {
     return (v > 0) ? 1 : ((v < 0) ? -1 : 0);
 }
 
-int brgemm_cmp(const brgemm_t &lhs, const brgemm_t &rhs) {
+int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     // The macro CMP_BRGEMM_FIELD is designed to compare numerical parameters.
     // Float parameters must not be NaN
 #define CMP_BRGEMM_FIELD(x) \
     if ((lhs.x) != (rhs.x)) return sign((lhs.x) - (rhs.x))
 
-    // This function compares brgemm_t objects within a single brgemm primitive.
+    // This function compares brgemm_desc_t objects within a single brgemm primitive.
     // Comparison of objects from different primitives is not guaranteed due to
     // dependencies of brgemm descriptor on a primitive attributes.
 
-    // Compare all non-pointer parameters of brgemm_t except derived
+    // Compare all non-pointer parameters of brgemm_desc_t except derived
     CMP_BRGEMM_FIELD(bcast_dim);
     CMP_BRGEMM_FIELD(load_dim);
     CMP_BRGEMM_FIELD(reduce_dim);
@@ -572,11 +575,11 @@ int brgemm_cmp(const brgemm_t &lhs, const brgemm_t &rhs) {
 }
 } // namespace
 
-bool brgemm_t::operator==(const brgemm_t &rhs) const {
+bool brgemm_desc_t::operator==(const brgemm_desc_t &rhs) const {
     return (brgemm_cmp(*this, rhs) == 0);
 }
 
-bool brgemm_t::operator<(const brgemm_t &rhs) const {
+bool brgemm_desc_t::operator<(const brgemm_desc_t &rhs) const {
     return (brgemm_cmp(*this, rhs) < 0);
 }
 

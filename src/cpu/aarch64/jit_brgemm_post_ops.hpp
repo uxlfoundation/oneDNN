@@ -53,7 +53,7 @@ struct brgemm_kernel_diff_bias_t {
 
 struct jit_brgemm_kernel_diff_bias_t : public jit_generator_t {
     jit_brgemm_kernel_diff_bias_t(
-            const jit_brgemm_primitive_conf_t &ajbgp, const brgemm_t &abrg)
+            const jit_brgemm_primitive_conf_t &ajbgp, const brgemm_desc_t &abrg)
         : brg_(abrg)
         , ddst_dt_(ajbgp.dst_dt)
         , bia_dt_(ajbgp.bia_dt)
@@ -66,7 +66,7 @@ struct jit_brgemm_kernel_diff_bias_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_diff_bias_t)
 
 private:
-    brgemm_t brg_;
+    brgemm_desc_t brg_;
     data_type_t ddst_dt_;
     data_type_t bia_dt_;
     data_type_t acc_dt_;
@@ -279,7 +279,7 @@ template <cpu_isa_t isa>
 struct jit_brgemm_kernel_post_ops_t : public jit_generator_t {
 
     jit_brgemm_kernel_post_ops_t(const jit_brgemm_conv_conf_t &ajcp,
-            const brgemm_t &abrg, const primitive_attr_t &aattr)
+            const brgemm_desc_t &abrg, const primitive_attr_t &aattr)
         : brg(abrg)
         , jcp(ajcp)
         , attr(aattr)
@@ -335,7 +335,7 @@ struct jit_brgemm_kernel_post_ops_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_post_ops)
 
-    brgemm_t brg;
+    brgemm_desc_t brg;
     jit_brgemm_conv_conf_t jcp;
     const primitive_attr_t &attr;
 

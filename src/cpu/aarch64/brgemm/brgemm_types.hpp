@@ -18,7 +18,9 @@
 #ifndef CPU_AARCH64_BRGEMM_BRGEMM_TYPES_HPP
 #define CPU_AARCH64_BRGEMM_BRGEMM_TYPES_HPP
 
+#include "common/c_types_map.hpp"
 #include "common/primitive_attr.hpp"
+#include "common/utils.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/platform.hpp"
 
@@ -184,7 +186,7 @@ struct DNNL_API brgemm_attr_t {
     const brgemm_batch_element_t *static_offsets;
 };
 
-struct brgemm_t {
+struct brgemm_desc_t {
     // Note: new added parameters must be taken into account in the brgemm
     // comparison function
     int bcast_dim = 0; // M;
@@ -292,8 +294,8 @@ struct brgemm_t {
 
     bool is_b_data_layout_vnni() { return true; }
 
-    bool operator==(const brgemm_t &rhs) const;
-    bool operator<(const brgemm_t &rhs) const;
+    bool operator==(const brgemm_desc_t &rhs) const;
+    bool operator<(const brgemm_desc_t &rhs) const;
 };
 
 struct brgemm_kernel_params_t {
@@ -349,7 +351,7 @@ struct brgemm_kernel_t {
 };
 
 struct brgemm_kernel_common_t : public brgemm_kernel_t {
-    brgemm_kernel_common_t(const brgemm_t abrd);
+    brgemm_kernel_common_t(const brgemm_desc_t abrd);
     ~brgemm_kernel_common_t() override;
 
     status_t create_kernel() override;
@@ -363,7 +365,7 @@ private:
 };
 
 struct brdgmm_kernel_t : public brgemm_kernel_t {
-    brdgmm_kernel_t(const brgemm_t abrd);
+    brdgmm_kernel_t(const brgemm_desc_t abrd);
     ~brdgmm_kernel_t() override;
 
     status_t create_kernel() override;
@@ -378,7 +380,7 @@ private:
 
 /// @param bias Vector of bias (vector length is N)
 /// @param scales - Vector of scale factor values which represents combination
-///     scale factors for matrixes A and B. If brgemm_t::is_oc_scale = true
+///     scale factors for matrixes A and B. If brgemm_desc_t::is_oc_scale = true
 ///     vector length is N otherwise it must be broadcasted to vector of simd
 ///     width length
 /// @param binary_post_ops_rhs - Ptr to table of pointers to tensors used as rhs
@@ -408,6 +410,7 @@ private:
 ///
 struct brgemm_post_ops_data_t {
     brgemm_post_ops_data_t() = default;
+
     brgemm_post_ops_data_t(const void *bias, const float *scales,
             const void *binary_post_ops_rhs, size_t oc_logical_off,
             const size_t dst_row_logical_off = 0,

@@ -166,7 +166,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
                                  : vM;
     auto brg_idx
             = get_brg_idx(vM - 1, i_init, i_N, i_K, kd_b, kd_e, kh_b, kh_e);
-    // if brgemm_t already created then skip this iteration
+    // if brgemm_desc_t already created then skip this iteration
     if ((*brgemm_descriptors_)[brg_idx] != nullptr) return status::success;
     if (vN == 0 || vK == 0) return status::success;
 
@@ -241,7 +241,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
     const auto kh_l = nstl::min(KH_BLOCK, kh_e - kh_b);
     const auto bs = kd_l * kh_l * jcp_.kw;
 
-    brgemm_t brg;
+    brgemm_desc_t brg;
     brgattr.bd_mask = bd_mask.data();
     brgattr.static_offsets = stoffs.data();
     brgemm_strides_t brg_strides;
@@ -653,7 +653,7 @@ status_t brgemm_convolution_fwd_t<isa>::add_brg_kernel(int M, int i_N, int i_K,
 
 template <cpu_isa_t isa>
 status_t brgemm_convolution_fwd_t<isa>::add_po_kernel(
-        brgemm_t *bcfg, int ker_idx, bool is_init) {
+        brgemm_desc_t *bcfg, int ker_idx, bool is_init) {
     if (!bcfg) return status::success;
     const auto _pd = pd();
     const auto &jcp = _pd->jcp_;

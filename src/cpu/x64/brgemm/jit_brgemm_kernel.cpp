@@ -206,11 +206,10 @@ private:
     const reg64_t reg_a_offset = rdx;
     const reg64_t reg_b_offset = rsi;
 
-    const reg64_savable_t reg_aux1_A {regscratchpad_, rbp};
+    const reg64_savable_t reg_aux1_A {regscratchpad_, rbx, rbp, may_use_rbp()};
     const reg64_t reg_aux1_B = abi_param1;
 
-    const reg64_savable_t reg_batch {
-            regscratchpad_, rbp, brg.type != brgemm_addr};
+    const reg64_savable_t reg_batch {regscratchpad_, r10};
     const reg64_savable_t reg_aux_batch {regscratchpad_, rbx};
 
     const reg64_savable_t reg_bias {regscratchpad_, rbx, r24};
@@ -1926,19 +1925,15 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::restore_A_B_matrices() {
     // called at the start of bs loop
-    if (brg.type == brgemm_addr) {
-        if (brg.brgattr.max_bs > 1 || vpad_exist) {
-            // restore batch pointer in reg_aux_batch
-            reg_batch.saveTo(reg_aux_batch);
-        }
-    } else {
-        mov(reg_aux1_A, reg_A);
-        mov(reg_aux1_B, reg_B);
+    // restore batch pointer
+    reg_batch.restore();
+    // save batch pointer in reg_aux_batch
+    reg_batch.saveTo(reg_aux_batch);
 
-        // restore batch pointer
-        reg_batch.restore();
-        // restore batch pointer in reg_aux_batch
-        reg_batch.saveTo(reg_aux_batch);
+    if (brg.type != brgemm_addr) {
+        mov(reg_aux1_A, reg_A);
+        reg_aux1_A.save();
+        mov(reg_aux1_B, reg_B);
     }
 }
 
@@ -1992,6 +1987,7 @@ void jit_brgemm_kernel_t<Wmm>::set_A_B_matrices() {
 
         // Add strides (safe_add handles large immediates)
         safe_add(reg_aux1_A, brg.stride_a, reg_tmp_gpr);
+        reg_aux1_A.save();
         safe_add(reg_aux1_B, brg.stride_b, reg_tmp_gpr);
         if (vpad_exist) {
             reg_aux_batch.restore();
@@ -2890,7 +2886,6 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
 
             if (brg.type == brgemm_strd) {
                 // if batch is nullptr then it means no vpadding in this call
-                //                reg_relative_batch.restore();
                 reg_aux_batch.restore();
                 cmp(reg_aux_batch, 0);
                 je(no_vpad_label, T_NEAR);
@@ -3022,6 +3017,7 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
     auto bdb_loop_general = [&](bool skip_accumulation) {
         if (brg.type == brgemm_addr && brg.brgattr.max_bs == 1 && !vpad_exist
                 && !skip_accumulation) {
+            reg_batch.restore();
             mov(reg_aux1_A, ptr[reg_batch + GET_OFF_BATCH_ELEMENT(ptr.A)]);
             reg_aux1_A.save();
             mov(reg_aux1_B, ptr[reg_batch + GET_OFF_BATCH_ELEMENT(ptr.B)]);

@@ -194,7 +194,8 @@ private:
     const reg64_t reg_BS_loop = r12;
     const reg64_t reg_aux_M = r13;
     const reg64_t reg_aux_D = rbx;
-    const reg64_t reg_aux_C = rdx;
+    const injector_utils::reg64_savable_t reg_aux_C {
+            regscratchpad_, rdx, rdx, may_use_rbp()};
     const reg64_t reg_aux_A = r10;
     const reg64_t reg_aux_B = abi_param1;
     const injector_utils::reg64_savable_t reg_aux1_A {
@@ -205,7 +206,8 @@ private:
     const reg64_t reg_aux_N = r11;
 
     const reg64_t reg_aux_A_vpad_top = r14;
-    const reg64_t reg_aux_A_vpad_bottom = rbp;
+    const injector_utils::reg64_savable_t reg_aux_A_vpad_bottom {
+            regscratchpad_, rdx, rbp, may_use_rbp()};
 
     const reg64_t reg_table_base = rax;
     const reg64_t reg_tmp = reg_table_base;
@@ -225,7 +227,7 @@ private:
     const injector_utils::reg64_savable_t reg_src_zero_point {
             regscratchpad_, rax, r24};
     const injector_utils::reg64_savable_t reg_zp_compensation {
-            regscratchpad_, rbp, r25};
+            regscratchpad_, abi_param1, r25};
     // abi_param1 is used in post-ops injector and by reg_aux_B,
     // so need to be savable or use other registers
     const injector_utils::reg64_savable_t reg_binary_params {
@@ -233,7 +235,7 @@ private:
     const injector_utils::reg64_savable_t reg_ptr_sum_scale {
             regscratchpad_, r14, r27};
     const injector_utils::reg64_savable_t reg_ptr_sum_zp {
-            regscratchpad_, rbp, r28};
+            regscratchpad_, rax, r28};
     const injector_utils::reg64_savable_t reg_s8s8_comp {
             regscratchpad_, r14, r29};
 

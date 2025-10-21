@@ -102,6 +102,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::read_params() {
 
     mov(reg_BS, ptr[param1 + GET_OFF(BS)]);
     mov(reg_aux_C, ptr[param1 + GET_OFF(ptr_C)]);
+    reg_aux_C.save();
     mov(reg_aux_D, ptr[param1 + GET_OFF(ptr_D)]);
 
     if (brg.type == brgemm_offs) {
@@ -628,6 +629,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_without_post_ops(
                 brg.dt_d, false, use_sat_cvt);
     }
 
+    reg_aux_C.restore();
     for_(int m = 0; m < m_blocks; m++)
     for_(int n = 0; n < n_blocks; n++)
     for (int v_i = 0; v_i < vnni_substep(); ++v_i) {
@@ -1381,7 +1383,9 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
             if (loop_n_update_aux_ptrs) {
                 add(reg_aux_N, n_loop_step);
                 add(reg_a_offset, n_loop_step * brg.typesize_A);
+                reg_aux_C.restore();
                 add(reg_aux_C, n_loop_step * brg.typesize_C);
+                reg_aux_C.save();
                 add(reg_aux_D, n_loop_step * brg.typesize_D);
             }
 
@@ -1418,7 +1422,9 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
                 const int n_loop_offset
                         = loop_n_update_aux_ptrs * loop_n * n_block2();
                 add(reg_a_offset, A_offset(m_blocks, -n_loop_offset));
+                reg_aux_C.restore();
                 add(reg_aux_C, C_offset(m_blocks, -n_loop_offset, 0));
+                reg_aux_C.save();
                 add(reg_aux_D, D_offset(m_blocks, -n_loop_offset, 0));
             }
 

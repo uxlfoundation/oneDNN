@@ -285,10 +285,7 @@ struct gen_t : public primitive_t {
             auto bg_type = with_b_group_sums()
                     ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                     : data_type::s32;
-            bool int_acc = (arch_ != arch_t::xe2)
-                    ? utils::one_of(eff_a_type(), s8, u8)
-                    : utils::one_of(eff_a_type(), s8, u8, s4, u4)
-                            && !wei_decomp_;
+            bool int_acc = utils::one_of(eff_a_type(), s8, u8);
             int_acc &= (!(a_scales_grouped() || b_scales_grouped())
                     && !(a_zp_grouped() || b_zp_grouped()));
             auto co_type = with_bias() ? d->bias_type()
@@ -335,7 +332,7 @@ struct gen_t : public primitive_t {
                 set_mode(mode, kernel_desc_t::mode_relaxed_acc);
 
             if (wei_decomp_) {
-                if (arch_ != arch_t::xe2) acc_type = data_type::f32;
+                acc_type = data_type::f32;
                 set_mode(mode, kernel_desc_t::mode_w_decomp);
             }
 

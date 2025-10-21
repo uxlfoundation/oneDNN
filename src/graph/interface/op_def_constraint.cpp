@@ -106,8 +106,10 @@ bool check_matmul_dtype(const op_t *mm) {
     return true;
 }
 
-// For SoftMax, if the src is f32, dst can be xf16. Otherwise, src and dst
-// should have the same data type.
+// softmax:
+//   1. f32 -> f32/bf16/f16
+//   2. bf16 -> f32/bf16
+//   3. f16 -> f32/f16
 bool check_softmax_dtype(const op_t *n) {
     const auto &inputs = n->get_input_values();
     const auto &outputs = n->get_output_values();
@@ -115,7 +117,8 @@ bool check_softmax_dtype(const op_t *n) {
     const logical_tensor_t &src = inputs[0]->get_logical_tensor();
     const logical_tensor_t &dst = outputs[0]->get_logical_tensor();
     if (src.data_type != dst.data_type) {
-        if (src.data_type != data_type::f32) {
+        if (src.data_type != data_type::f32
+                && dst.data_type != data_type::f32) {
             VCHECK_SHAPE_INFER(false, "%s, %s src + %s dst is not supported",
                     op_t::kind2str(n->get_kind()).c_str(),
                     dnnl_dt2str(src.data_type), dnnl_dt2str(dst.data_type));

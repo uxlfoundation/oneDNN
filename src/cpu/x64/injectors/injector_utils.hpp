@@ -123,6 +123,10 @@ class reg64_savable_t : public Xbyak::Reg64 {
 public:
     DNNL_DISALLOW_COPY_AND_ASSIGN(reg64_savable_t);
 
+    // base constructor
+    reg64_savable_t(registry_scratchpad_t &regscratchpad,
+            const Xbyak::Reg64 &reg, bool is_storable);
+
     reg64_savable_t(
             registry_scratchpad_t &regscratchpad, const Xbyak::Reg64 &reg);
 
@@ -131,6 +135,10 @@ public:
     // then we use it and then operations of saving/restoring will be dummy.
     reg64_savable_t(registry_scratchpad_t &regscratchpad,
             const Xbyak::Reg64 &reg, const Xbyak::Reg64 &ext_reg);
+
+    reg64_savable_t(registry_scratchpad_t &regscratchpad,
+            const Xbyak::Reg64 &reg, const Xbyak::Reg64 &alternative_reg,
+            bool use_alternative);
 
     inline int booking() const { return booking_; }
 

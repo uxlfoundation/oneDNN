@@ -661,6 +661,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
                                        : brgemm_broadcast_t::none;
     }
     brgemm_attr_t brgattr;
+    brgattr.use_uker = use_uker;
     brgattr.max_bs = max_batch;
     max_vpad = exec_type == exec_vpad ? nstl::max(l_pad, r_pad) : 0;
     brgattr.max_top_vpad = max_vpad;
@@ -760,6 +761,7 @@ status_t brg_blocking_t::get_brgemm_ur(
                 vK, strides_ptr, is_bf32, is_tf32));
 
         brgemm_attr_t brgattr;
+        brgattr.use_uker = use_uker;
         brgattr.max_bs = max_batch;
         max_vpad = exec_type == exec_vpad ? nstl::max(l_pad, r_pad) : 0;
         brgattr.max_top_vpad = max_vpad;
@@ -2282,7 +2284,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                         /* heuristic */ jcp.ow < 256)) {
             jcp.use_M_mask = jcp.is_os_blocking ? 2 : 0;
             jcp.use_uker = true;
-            jcp.use_interleave_stores = true;
+            jcp.use_interleave_stores = jcp.use_uker;
             jcp.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf0;
             // assuming 2x2 decomposition in amx brgemm kernel
             // and overlap of input by kw
@@ -2317,7 +2319,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         jcp.exec_type = exec_base;
         if (is_amx(isa) && jcp.ow < (8 * 1024)) {
             jcp.use_uker = true;
-            jcp.use_interleave_stores = true;
+            jcp.use_interleave_stores = jcp.use_uker;
             jcp.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf0;
         }
 
@@ -2611,7 +2613,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         // non-unrolled kernel does not support bf32, only dispatch unrolled
         // kernel for now
         jcp.use_uker = jcp.is_bf32 || !is_small_mb;
-        jcp.use_interleave_stores = true;
+        jcp.use_interleave_stores = jcp.use_uker;
     }
 
     // TODO: heuristic to dispatch BF32 BRGeMM

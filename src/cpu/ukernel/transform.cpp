@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,6 +23,8 @@
 
 #if DNNL_X64
 #include "cpu/x64/ukernel/transform.hpp"
+#elif DNNL_AARCH64
+#include "cpu/aarch64/ukernel/transform.hpp"
 #endif
 
 #ifdef DNNL_EXPERIMENTAL_UKERNEL
@@ -36,6 +39,9 @@ status_t dnnl_transform_create(transform_t **transform, dim_t K, dim_t N,
 #if DNNL_X64
     return x64::ukernel::dnnl_transform_create(
             transform, K, N, in_pack_type, in_ld, out_ld, in_dt, out_dt);
+#elif DNNL_AARCH64
+    return aarch64::ukernel::dnnl_transform_create(
+            transform, K, N, in_pack_type, in_ld, out_ld, in_dt, out_dt);
 #endif
     return status::unimplemented;
 }
@@ -43,6 +49,8 @@ status_t dnnl_transform_create(transform_t **transform, dim_t K, dim_t N,
 status_t dnnl_transform_generate(transform_t *transform) {
 #if DNNL_X64
     return x64::ukernel::dnnl_transform_generate(transform);
+#elif DNNL_AARCH64
+    return aarch64::ukernel::dnnl_transform_generate(transform);
 #endif
     return status::unimplemented;
 }
@@ -51,6 +59,8 @@ status_t dnnl_transform_execute(
         const transform_t *transform, const void *in_ptr, void *out_ptr) {
 #if DNNL_X64
     return x64::ukernel::dnnl_transform_execute(transform, in_ptr, out_ptr);
+#elif DNNL_AARCH64
+    return aarch64::ukernel::dnnl_transform_execute(transform, in_ptr, out_ptr);
 #endif
     return status::unimplemented;
 }
@@ -58,6 +68,8 @@ status_t dnnl_transform_execute(
 status_t dnnl_transform_destroy(transform_t *transform) {
 #if DNNL_X64
     return x64::ukernel::dnnl_transform_destroy(transform);
+#elif DNNL_AARCH64
+    return aarch64::ukernel::dnnl_transform_destroy(transform);
 #endif
     return status::unimplemented;
 }

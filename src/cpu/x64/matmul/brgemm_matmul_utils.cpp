@@ -250,8 +250,8 @@ status_t check_isa_with_datatype(
                     is_superset(isa, avx512_core_bf16))
             && IMPLICATION(bm_conf_utils.is_f16_with_int_wei(),
                     one_of(isa, avx512_core_amx_fp16, avx512_core_fp16))
-            && IMPLICATION(bm_conf_utils.is_f32_with_int_wei(),
-                    one_of(isa, avx512_core, avx2))
+            && IMPLICATION(
+                    bm_conf_utils.is_f32_with_int_wei(), is_superset(isa, avx2))
             && IMPLICATION(bm_conf_utils.is_f8(),
                     is_superset(isa, avx512_core_amx_fp16)
                             || is_superset(isa, avx10_2_512))
@@ -274,7 +274,8 @@ status_t check_datatype_cfg(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
                       bm_conf_utils.is_f16_with_int_wei(),
                       bm_conf_utils.is_f32_with_int_wei())
             && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei()
-                            || bm_conf_utils.is_f16_with_int_wei(),
+                            || bm_conf_utils.is_f16_with_int_wei()
+                            || bm_conf_utils.is_f32_with_int_wei(),
                     bm_conf_utils.with_weights_decompression());
     return ok ? status::success : status::unimplemented;
 }
@@ -661,7 +662,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
     const bool is_amx_or_avx2_vnni_2 = is_superset(bgmmc.isa, avx512_core_amx)
             || is_superset(bgmmc.isa, avx2_vnni_2);
     const bool prefer_amx_or_avx2_vnni_2 = is_f16() || is_f32_f16()
-            || is_f32_bf16() || is_f16_with_int_wei() || is_f32_with_int_wei();
+            || is_f32_bf16() || is_f16_with_int_wei();
 
     if ((prefer_amx_or_avx2_vnni_2 && is_amx_or_avx2_vnni_2) || is_bf16()
             || is_bf16_with_int_wei()) {
@@ -1415,7 +1416,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
 
         // Check if isa has support for f16/bf16 weights scales
-        VCONDCHECK_BG(IMPLICATION(bgmmc.wei_scales_dt == f16, isa_has_f16(isa))
+        // AVX2_VNNI_2 can only convert f16->f32
+        // isa_has_f16() consider AVX512_FP16, AVX512_CORE_AMX_FP16
+        // Added explicit check for AVX2_VNNI_2
+        VCONDCHECK_BG(IMPLICATION(bgmmc.wei_scales_dt == f16,
+                              isa_has_f16(isa) || isa == avx2_vnni_2)
                         && IMPLICATION(
                                 bgmmc.wei_scales_dt == bf16, isa_has_bf16(isa)),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);

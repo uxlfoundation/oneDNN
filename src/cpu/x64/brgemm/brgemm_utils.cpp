@@ -140,7 +140,10 @@ void set_isa_impl(brgemm_desc_t *brg) {
     } else if (brg->is_f32) {
         brg->isa_impl = utils::map(true, isa_undef,
                 is_isa_ok(avx512_core) || is_isa_ok(avx512_core_amx) /*bf32*/,
-                avx512_core, is_isa_ok(avx2), avx2,
+                avx512_core,
+                is_isa_ok(avx2_vnni_2) /*f16 cvtph2ps scales quant*/
+                        || is_isa_ok(avx2),
+                avx2,
                 // Allow avx512_core_fp16 isa in case of a f16 primitive that
                 // is implemented using pre-conversion of inputs to f32.
                 // This is needed to support f16 binary post-ops.

@@ -2375,7 +2375,7 @@ protected:
                 uni_vpmovzxwd(masked_vmm, op);
                 uni_vpslld(vmm, vmm, 16);
                 break;
-            case data_type::f16: vcvtph2ps(masked_vmm, op); break;
+            case data_type::f16: vcvtph2psx(masked_vmm, op); break;
             default: assert(!"unsupported wei_scales data type");
         }
     }
@@ -4440,7 +4440,15 @@ private:
                 vpbroadcastw(masked_vmm, addr);
                 uni_vpslld(vmm_wei_scales, vmm_wei_scales, 16);
                 break;
-            case data_type::f16: vcvtph2psx(vmm_wei_scales, addr); break;
+            case data_type::f16: {
+                // AVX2 can only convert, not broadcast f16 value
+                if (conf_->isa == avx2_vnni_2) {
+                    vpbroadcastw(vmm_wei_scales, addr);
+                    vcvtph2ps(vmm_wei_scales, Xmm(vmm_wei_scales.getIdx()));
+                } else
+                    vcvtph2psx(vmm_wei_scales, addr);
+                break;
+            }
             default: assert(!"unsupported wei_scales data type");
         }
     }

@@ -1708,6 +1708,7 @@ void CopyPlan::planEmulatedHF8ToBF(CopyInstruction &i)
     ie[2]->src0 = abs(yHF);
     ie[2]->src1 = Immediate::hf(0x07F0);
     ie[2]->dst = CopyOperand();
+    ie[2]->dst.stride = yHF.stride;
     ie[2]->dst.type = DataType::hf;
     ie[2]->cmod = ConditionModifier::ge;
     ie[2]->flag = f;

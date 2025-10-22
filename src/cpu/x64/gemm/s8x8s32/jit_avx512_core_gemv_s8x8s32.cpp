@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2020 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -142,6 +142,7 @@ int gemv_threading_driver(gemm_info_t<int8_t, b_type, int32_t> *arg) {
                 PAGE_4K);
         if (tmp_y == nullptr) {
             if (arg->ldb != 1) { free(new_x); }
+            if (arg->ldc != 1) { free(new_y); }
             return 0;
         }
     }

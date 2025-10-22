@@ -72,6 +72,11 @@ if(DNNL_DEV_MODE)
   message(STATUS "Developer mode enabled")
 endif()
 
+if(DNNL_SAFE_RBP)
+  add_definitions_with_host_compiler(-DDNNL_SAFE_RBP)
+  message(STATUS "Safe RBP mode enabled")
+endif()
+
 if(DNNL_EXPERIMENTAL)
     message(STATUS "Experimental features are enabled")
 endif()

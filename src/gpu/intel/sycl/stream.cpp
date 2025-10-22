@@ -96,6 +96,67 @@ void stream_t::after_exec_hook() {
     if (is_profiling_enabled()) profiler_->stop_profiling();
 }
 
+status_t stream_t::set_verbose_profiler(
+        std::string &pd_info, double start_ms) const {
+    // Utilize the verbose profiler only for profile_exec verbose levels.
+    if (!is_verbose_profiler_enabled()) return status::invalid_arguments;
+
+    // Captured output event acts as the anchor to track primitive execution
+    cl_event out_evt = get_output_event();
+    if (out_evt == ::sycl::event {}) {
+        VWARN(primitive, exec,
+                "%s, profiling error: failed to record output event in context",
+                pd_info.c_str());
+        VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(), 0.f);
+        return status::success;
+    }
+
+    auto &q = queue();
+
+    struct payload_t {
+        const stream_t *s;
+        std::string info_str;
+        double start;
+    };
+
+    auto payload
+            = std::make_shared<payload_t>(payload_t {this, pd_info, start_ms});
+
+    ::sycl::event marker = q.submit([&](sycl::handler &cgh) {
+        cgh.depends_on(out_evt);
+        cgh.host_task([payload]() {
+            int num_entries;
+            payload->s->get_profiling_data(
+                    profiling_data_kind::time, &num_entries, nullptr);
+
+            if (num_entries == 0) {
+                VWARN(primitive, exec,
+                        "%s, profiling error: profiler failed to capture "
+                        "kernel events",
+                        hold->info_str.c_str());
+            }
+
+            std::vector<uint64_t> timing_data(num_entries);
+            hold->s->get_profiling_data(profiling_data_kind::time, &num_entries,
+                    timing_data.data());
+
+            double duration_ms = 0.0;
+            for (const auto &t : timing_data)
+                duration_ms += static_cast<double>(t);
+            duration_ms *= 1e-6;
+
+            VPROF(payload->start, primitive, exec, VERBOSE_profile,
+                    payload->info_str.c_str(), duration_ms);
+
+            auto st = payload->s->reset_profiling();
+        });
+    });
+
+    static_cast<void>(marker);
+
+    return status::success;
+}
+
 // The following code needs sycl::queue::ext_oneapi_get_graph(), but it may
 //  not be defined. Some SFINAE is needed to avoid compile errors in this case.
 namespace syclex = ::sycl::ext::oneapi::experimental;

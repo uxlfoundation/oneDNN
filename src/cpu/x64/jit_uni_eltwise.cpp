@@ -276,9 +276,10 @@ private:
 
 } // namespace
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(engine_t *engine) {
     using namespace alg_kind;
+    using namespace data_type;
 
     const memory_desc_wrapper src_d(src_md());
 
@@ -289,20 +290,26 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
             = isa == avx512_core_amx ? avx512_core : isa;
 
     VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_ELTWISE(utils::everyone_is(
-                              d_type, src_md()->data_type, dst_md()->data_type),
+    VDISPATCH_ELTWISE(utils::one_of(src_md()->data_type, f32, bf16, f16,
+                              f8_e5m2, f8_e4m3),
             VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_ELTWISE(IMPLICATION(src_md()->data_type == data_type::bf16,
+    VDISPATCH_ELTWISE(src_md()->data_type == dst_md()->data_type,
+            VERBOSE_INCONSISTENT_DT, "src", "dst");
+    VDISPATCH_ELTWISE(IMPLICATION(src_md()->data_type == bf16,
                               mayiuse(avx512_core) || mayiuse(avx2_vnni_2)),
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_ELTWISE(
-            IMPLICATION(src_md()->data_type == data_type::f16,
+            IMPLICATION(src_md()->data_type == f16,
                     mayiuse(avx512_core_fp16) || mayiuse(avx2_vnni_2)),
+            VERBOSE_ISA_DT_MISMATCH);
+    VDISPATCH_ELTWISE(
+            IMPLICATION(utils::one_of(src_md()->data_type, f8_e5m2, f8_e4m3),
+                    mayiuse(avx10_2_512) || mayiuse(avx512_core_amx)),
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "data");
     VDISPATCH_ELTWISE(src_d.is_dense(true), VERBOSE_UNSUPPORTED_SPARSE_CFG);
-    VDISPATCH_ELTWISE(eltwise_injector::is_supported(
-                              injector_isa, desc_.alg_kind, data_type::f32),
+    VDISPATCH_ELTWISE(
+            eltwise_injector::is_supported(injector_isa, desc_.alg_kind, f32),
             VERBOSE_BAD_ALGORITHM);
     // refer to a comment in jit_uni_kernel why this is needed
     VDISPATCH_ELTWISE(IMPLICATION(!src_d.is_dense(), is_zero_preserved()),
@@ -315,31 +322,30 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_fwd_t<isa, d_type>::jit_uni_eltwise_fwd_t(const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_eltwise_fwd_t<isa>::jit_uni_eltwise_fwd_t(const pd_t *apd)
     : primitive_t(apd) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_fwd_t<isa, d_type>::~jit_uni_eltwise_fwd_t() = default;
+template <cpu_isa_t isa>
+jit_uni_eltwise_fwd_t<isa>::~jit_uni_eltwise_fwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_fwd_t<isa>::init(engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t<isa>(pd())));
     return kernel_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::execute(
-        const exec_ctx_t &ctx) const {
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
 
     const memory_desc_wrapper data_d(pd()->src_md());
     const auto nelems = data_d.nelems(true);
     const int simd_w = 64 / data_d.data_type_size();
 
-    src += data_d.offset0();
-    dst += data_d.offset0();
+    src += data_d.data_type_size() * data_d.offset0();
+    dst += data_d.data_type_size() * data_d.offset0();
 
     parallel(0, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
@@ -350,8 +356,8 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::execute(
         if (start == end) return;
 
         jit_args_t args;
-        args.src = src + start;
-        args.dst = dst + start;
+        args.src = src + data_d.data_type_size() * start;
+        args.dst = dst + data_d.data_type_size() * start;
         args.diff_dst = nullptr;
         args.work_amount = end - start;
         (*kernel_)(&args);
@@ -360,28 +366,37 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::execute(
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(engine_t *engine) {
     using namespace alg_kind;
+    using namespace data_type;
 
     const memory_desc_wrapper data_d(data_md());
 
-    // disabling verbose dispatch messages for unsupported isa for better readability
+    // disabling verbose dispatch messages for unsupported isa for better
+    // readability
     if (!mayiuse(isa)) return status::unimplemented;
 
     static constexpr cpu_isa_t injector_isa
             = isa == avx512_core_amx ? avx512_core : isa;
 
     VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_ELTWISE(
-            utils::everyone_is(d_type, data_md()->data_type,
-                    diff_src_md()->data_type, diff_dst_md()->data_type),
+    VDISPATCH_ELTWISE(utils::one_of(data_md()->data_type, f32, bf16, f16,
+                              f8_e5m2, f8_e4m3),
             VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_ELTWISE(IMPLICATION(data_md()->data_type == data_type::bf16,
-                              mayiuse(avx512_core)),
+    VDISPATCH_ELTWISE(
+            utils::everyone_is(data_md()->data_type, diff_src_md()->data_type,
+                    diff_dst_md()->data_type),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_ELTWISE(
+            IMPLICATION(data_md()->data_type == bf16, mayiuse(avx512_core)),
             VERBOSE_ISA_DT_MISMATCH);
-    VDISPATCH_ELTWISE(IMPLICATION(data_md()->data_type == data_type::f16,
-                              mayiuse(avx512_core_fp16)),
+    VDISPATCH_ELTWISE(
+            IMPLICATION(data_md()->data_type == f16, mayiuse(avx512_core_fp16)),
+            VERBOSE_ISA_DT_MISMATCH);
+    VDISPATCH_ELTWISE(
+            IMPLICATION(utils::one_of(data_md()->data_type, f8_e5m2, f8_e4m3),
+                    mayiuse(avx10_2_512) || mayiuse(avx512_core_amx)),
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "data");
     VDISPATCH_ELTWISE(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
@@ -403,35 +418,34 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_bwd_t<isa, d_type>::jit_uni_eltwise_bwd_t(const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_eltwise_bwd_t<isa>::jit_uni_eltwise_bwd_t(const pd_t *apd)
     : primitive_t(apd) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_bwd_t<isa, d_type>::~jit_uni_eltwise_bwd_t() = default;
+template <cpu_isa_t isa>
+jit_uni_eltwise_bwd_t<isa>::~jit_uni_eltwise_bwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_bwd_t<isa>::init(engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t<isa>(pd())));
     return kernel_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
-        const exec_ctx_t &ctx) const {
-    auto src = pd()->use_dst() ? CTX_IN_MEM(const data_t *, DNNL_ARG_DST)
-                               : CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
-    auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+    auto src = pd()->use_dst() ? CTX_IN_MEM(const char *, DNNL_ARG_DST)
+                               : CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
+    auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
 
     const memory_desc_wrapper data_d(pd()->data_md());
     const memory_desc_wrapper diff_data_d(pd()->diff_src_md());
     const auto nelems = data_d.nelems(true);
     const int simd_w = 64 / data_d.data_type_size();
 
-    src += data_d.offset0();
-    diff_dst += diff_data_d.offset0();
-    diff_src += diff_data_d.offset0();
+    src += data_d.data_type_size() * data_d.offset0();
+    diff_dst += diff_data_d.data_type_size() * diff_data_d.offset0();
+    diff_src += diff_data_d.data_type_size() * diff_data_d.offset0();
 
     parallel(0, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
@@ -442,9 +456,9 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
         if (start == end) return;
 
         jit_args_t args;
-        args.src = src + start;
-        args.dst = diff_src + start;
-        args.diff_dst = diff_dst + start;
+        args.src = src + data_d.data_type_size() * start;
+        args.dst = diff_src + diff_data_d.data_type_size() * start;
+        args.diff_dst = diff_dst + diff_data_d.data_type_size() * start;
         args.work_amount = end - start;
         (*kernel_)(&args);
     });
@@ -452,29 +466,24 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
     return status::success;
 }
 
-template struct jit_uni_eltwise_fwd_t<sse41, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<avx, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<avx2, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<avx2_vnni_2, data_type::bf16>;
-template struct jit_uni_eltwise_fwd_t<avx2_vnni_2, data_type::f16>;
-template struct jit_uni_eltwise_fwd_t<avx512_core, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<avx512_core, data_type::bf16>;
-template struct jit_uni_eltwise_fwd_t<avx512_core_fp16, data_type::f16>;
-template struct jit_uni_eltwise_fwd_t<avx10_2_512, data_type::f8_e5m2>;
-template struct jit_uni_eltwise_fwd_t<avx10_2_512, data_type::f8_e4m3>;
-template struct jit_uni_eltwise_fwd_t<avx512_core_amx, data_type::f8_e5m2>;
-template struct jit_uni_eltwise_fwd_t<avx512_core_amx, data_type::f8_e4m3>;
+template struct jit_uni_eltwise_fwd_t<sse41>;
+template struct jit_uni_eltwise_fwd_t<avx>;
+template struct jit_uni_eltwise_fwd_t<avx2>;
+template struct jit_uni_eltwise_fwd_t<avx2_vnni_2>;
+template struct jit_uni_eltwise_fwd_t<avx512_core>;
+template struct jit_uni_eltwise_fwd_t<avx512_core_bf16>;
+template struct jit_uni_eltwise_fwd_t<avx512_core_fp16>;
+template struct jit_uni_eltwise_fwd_t<avx10_2_512>;
+template struct jit_uni_eltwise_fwd_t<avx512_core_amx>;
 
-template struct jit_uni_eltwise_bwd_t<sse41, data_type::f32>;
-template struct jit_uni_eltwise_bwd_t<avx, data_type::f32>;
-template struct jit_uni_eltwise_bwd_t<avx2, data_type::f32>;
-template struct jit_uni_eltwise_bwd_t<avx512_core, data_type::f32>;
-template struct jit_uni_eltwise_bwd_t<avx512_core, data_type::bf16>;
-template struct jit_uni_eltwise_bwd_t<avx512_core_fp16, data_type::f16>;
-template struct jit_uni_eltwise_bwd_t<avx10_2_512, data_type::f8_e5m2>;
-template struct jit_uni_eltwise_bwd_t<avx10_2_512, data_type::f8_e4m3>;
-template struct jit_uni_eltwise_bwd_t<avx512_core_amx, data_type::f8_e5m2>;
-template struct jit_uni_eltwise_bwd_t<avx512_core_amx, data_type::f8_e4m3>;
+template struct jit_uni_eltwise_bwd_t<sse41>;
+template struct jit_uni_eltwise_bwd_t<avx>;
+template struct jit_uni_eltwise_bwd_t<avx2>;
+template struct jit_uni_eltwise_bwd_t<avx512_core>;
+template struct jit_uni_eltwise_bwd_t<avx512_core_bf16>;
+template struct jit_uni_eltwise_bwd_t<avx512_core_fp16>;
+template struct jit_uni_eltwise_bwd_t<avx10_2_512>;
+template struct jit_uni_eltwise_bwd_t<avx512_core_amx>;
 
 } // namespace x64
 } // namespace cpu

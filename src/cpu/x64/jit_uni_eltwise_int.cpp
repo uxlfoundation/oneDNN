@@ -497,7 +497,7 @@ status_t jit_uni_eltwise_int_fwd_t<isa>::execute_forward(
     dst += src_d.data_type_size() * src_d.offset0();
 
     const int cache_line = 64 / src_d.data_type_size();
-    parallel(0, [&](const int ithr, const int nthr) {
+    parallel(0, [=](const int ithr, const int nthr) {
         size_t start {0}, end {0};
 
         balance211(utils::div_up(nelems, cache_line), nthr, ithr, start, end);

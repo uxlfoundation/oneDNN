@@ -63,7 +63,7 @@ status_t ref_eltwise_fwd_t::execute_forward_generic(
     const int ndims = pd()->ndims();
 
     parallel_nd(
-            MB, C, D, H, W, [&](dim_t n, dim_t c, dim_t d, dim_t h, dim_t w) {
+            MB, C, D, H, W, [=](dim_t n, dim_t c, dim_t d, dim_t h, dim_t w) {
                 auto data_p_off = DATA_OFF(src_d, n, c, d, h, w);
                 const float s = io::load_float_value(
                         src_d.data_type(), src, data_p_off);
@@ -102,7 +102,7 @@ status_t ref_eltwise_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
 
     // a fast path for relu as the most popular activation
     if (alg_kind == alg_kind::eltwise_relu && alpha == 0) {
-        parallel_nd(nelems, [&](dim_t e) {
+        parallel_nd(nelems, [=](dim_t e) {
             const float s = io::load_float_value(src_d.data_type(), src, e);
             float res = math::relu_fwd(s, alpha);
             io::store_float_value(dst_d.data_type(), res, dst, e);
@@ -110,7 +110,7 @@ status_t ref_eltwise_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
         return status::success;
     }
 
-    parallel_nd(nelems, [&](dim_t e) {
+    parallel_nd(nelems, [=](dim_t e) {
         const float s = io::load_float_value(src_d.data_type(), src, e);
         float res = compute_eltwise_scalar_fwd(alg_kind, s, alpha, beta);
         io::store_float_value(dst_d.data_type(), res, dst, e);
@@ -144,7 +144,7 @@ status_t ref_eltwise_bwd_t::execute_backward_generic(
     const int ndims = pd()->ndims();
 
     parallel_nd(
-            MB, C, D, H, W, [&](dim_t n, dim_t c, dim_t d, dim_t h, dim_t w) {
+            MB, C, D, H, W, [=](dim_t n, dim_t c, dim_t d, dim_t h, dim_t w) {
                 auto data_off = DATA_OFF(data_d, n, c, d, h, w);
                 auto diff_data_off = DATA_OFF(diff_data_d, n, c, d, h, w);
                 const float s = io::load_float_value(
@@ -184,7 +184,7 @@ status_t ref_eltwise_bwd_t::execute_backward_dense(
             + diff_data_d.data_type_size() * diff_data_d.offset0();
 
     if (data_d.data_type() == data_type::f32) {
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [=](const int ithr, const int nthr) {
             dim_t start = 0, end = 0;
             balance211(nelems, nthr, ithr, start, end);
             if (start == end) return;
@@ -209,7 +209,7 @@ status_t ref_eltwise_bwd_t::execute_backward_dense(
         auto *diff_dst_f32
                 = scratchpad.template get<float>(key_eltwise_diff_dst);
 
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [=](const int ithr, const int nthr) {
             dim_t start = 0, end = 0;
             balance211(nelems, nthr, ithr, start, end);
             if (start == end) return;

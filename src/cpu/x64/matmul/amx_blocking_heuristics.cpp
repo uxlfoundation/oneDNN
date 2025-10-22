@@ -843,6 +843,7 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
 bool matmul_amx_blocking_params_macro_t::skip_extendable_k() const {
 
     auto skip_for_k_blk = [&](size_t k_to_check) {
+        assert(data_type_vnni_granularity(wei_dt) != 0);
         size_t num_amx_ops_over_k = div_up(k_to_check, 64 / gemm_dt_sz);
         bool common_k_tile_exists = k_to_check % num_amx_ops_over_k == 0;
         size_t k_tile = k_to_check / num_amx_ops_over_k;

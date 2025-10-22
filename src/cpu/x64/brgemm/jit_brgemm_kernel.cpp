@@ -610,6 +610,7 @@ dim_t jit_brgemm_kernel_t<Wmm>::bd_compensation_offset(
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::wei_scales_offset(
         dim_t ld, bool is_tail) const noexcept {
+    assert(types::data_type_size(brg.dt_wei_scales) > 0);
     const dim_t ld_offset = is_tail ? brg.ldb_tail : ld * brg.ld_block;
     return ld_offset * brg.is_oc_scale
             * types::data_type_size(brg.dt_wei_scales);

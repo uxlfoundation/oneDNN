@@ -306,7 +306,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
             brgemm_palettes_.maybe_tile_configure(
                     is_amx, prev_ker_idx, brg_ker_ic_tail_idx);
 
-            int ic_block = gemm_batch * ic_blocks_per_batch;
+            const dim_t ic_block = gemm_batch * ic_blocks_per_batch;
             addr_batch[0].ptr.A = src
                     + blk_off(src_d, n, ic + ic_block * jbgp.ic_block, kd, kh,
                             kw);

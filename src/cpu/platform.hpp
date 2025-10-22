@@ -230,8 +230,11 @@ struct cache_info_t {
 //    caches[0..3] - L1i, L1d, L2, L3 P-core
 //    caches[4..7] - L1i, L1d, L2, L3 E-core
 //
-// Currently no error checking is performed on the indices passed to get_cache()
-// it is assumed the caller knows the valid cache levels for the CPU
+// Currently the L1 instruction cache (L1i) entries are not populated by any
+// of the platform initialization functions, thus, caches[0] and caches[4]
+// will have size 0.
+// TODO: consider populating L1i cache or remove it from the topology making
+// the 0 entry the L1d cache.
 struct cache_topology_t {
     static constexpr size_t max_cache_levels = 4;
     static constexpr size_t max_core_types = 2;
@@ -241,11 +244,18 @@ struct cache_topology_t {
         size_t type_idx = (ctype == core_type::p_core) ? 0
                           : (ctype == core_type::e_core) ? 1
                           : 0;
-        // do I need to check if type_idx is a valid index?
-        size_t idx = type_idx * max_cache_levels + level;
-        // do I need to check if idx is less than max_cache_levels * max_core_types?
-        const auto &cache = caches[idx];
-        return cache;
+        // Validate level and computed index to avoid out-of-bounds access.
+        const size_t lvl = static_cast<size_t>(level);
+        const size_t total = max_cache_levels * max_core_types;
+        size_t idx = type_idx * max_cache_levels + lvl;
+        if (lvl >= max_cache_levels || idx >= total) {
+            // Fallback to a safe, well-defined element
+            // (L1i of default core) on invalid input.
+            // Currently the L1i cache entry is not populated,
+            // so this will return an element with cache size 0.
+            return caches[0];
+        }
+        return caches[idx];
     }
 };
 

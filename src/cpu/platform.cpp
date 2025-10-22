@@ -17,6 +17,7 @@
 *******************************************************************************/
 
 #include <thread>
+#include <mutex>
 
 #include "cpu/platform.hpp"
 
@@ -350,7 +351,6 @@ size_t get_timestamp() {
 #endif
 }
 
-#if DNNL_X64
 bool is_hybrid() {
 #if DNNL_X64
     // currently only Intel is using hybrid architecture
@@ -361,10 +361,31 @@ bool is_hybrid() {
     const bool hybrid_flag = (data_7[3] & (1u << 15)) != 0;
     return hybrid_flag;
 #else
-return false;
+    return false;
 #endif
 }
 
+core_type get_core_type() {
+#if DNNL_X64
+    // These correspond to values returned in CPUID leaf 0x1A core-type field.
+    constexpr uint32_t CPUID_CORE_TYPE_ATOM = 0x20; // Intel Atom / E-core
+    constexpr uint32_t CPUID_CORE_TYPE_CORE = 0x40; // Intel Core / P-core
+    uint32_t data[4] = {0};
+    x64::cpu().getCpuidEx(0x1A, 0, data);
+    uint32_t core_type_field = (data[0] >> 24) & 0xFF;
+    switch (core_type_field) {
+        case CPUID_CORE_TYPE_ATOM: // Intel Atom
+            return core_type::e_core;
+        case CPUID_CORE_TYPE_CORE: // Intel Core
+            return core_type::p_core;
+        default:
+            return core_type::p_core;
+    }
+#endif
+    return core_type::default_core;
+}
+
+#if DNNL_X64
 // Global cache topology (lazy-initialized)
 cache_topology_t global_cache_topology = {
     // caches
@@ -384,26 +405,7 @@ cache_topology_t global_cache_topology = {
     false
 };
 
-bool global_cache_topology_initialized = false;
 
-
-
-core_type get_core_type() {
-#if DNNL_X64
-    uint32_t data[4] = {0};
-    x64::cpu().getCpuidEx(0x1A, 0, data);
-    uint32_t core_type_field = (data[0] >> 24) & 0xFF;
-    switch (core_type_field) {
-        case 0x20: // Intel Atom
-            return core_type::e_core;
-        case 0x40: // Intel Core
-            return core_type::p_core;
-        default:
-            return core_type::p_core;
-    }
-#endif
-    return core_type::default_core;
-}
 
 //------------------Start CPUID cache topology code-----------------------------
 
@@ -599,12 +601,16 @@ void init_cache_topology_cpuid(cache_topology_t &cache_topology)
 #if defined(_WIN32)
 // inline helper to count bits in KAFFINITY processor mask
 inline unsigned count_bits_in_mask(KAFFINITY mask) {
+#if defined(_MSC_VER)
+    return static_cast<unsigned>(__popcnt64(mask));
+#else
     unsigned count = 0;
     while (mask) {
         count += (mask & 1);
         mask >>= 1;
     }
     return count;
+#endif
 }
 
 // Helper function to determine core type from processor info
@@ -1069,8 +1075,9 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
 //------------------End linux specific cache topology code----------------------
 
 // Lazy initialization of global cache topology
+static std::once_flag g_cache_topology_once_flag;
 void init_cache_topology() {
-    if (global_cache_topology_initialized) return;
+    std::call_once(g_cache_topology_once_flag, []() {
 #if defined(_WIN32)
     init_cache_topology_windows(global_cache_topology);
 #elif defined(__linux__)
@@ -1091,7 +1098,7 @@ void init_cache_topology() {
                  ++level_slot) {
                 size_t idx = type_idx * cache_topology_t::max_cache_levels + level_slot;
                 const auto &ci = global_cache_topology.caches[idx];
-                if (ci.level == 0) continue; // skip empty slots
+                if (ci.size == 0) continue; // skip empty slots
 
                 const char *ctype_str = (ci.ctype == core_type::p_core)
                         ? "p_core"
@@ -1104,9 +1111,17 @@ void init_cache_topology() {
         }
     }
 #endif
-    global_cache_topology_initialized = true;
+    });
 }
 #endif // DNNL_X64
+
+// Explicit, unambiguous wrapper that forwards to the single-arg API.
+// This prevents accidental ambiguity/recursion if function signatures
+// change.
+static inline unsigned get_per_core_cache_size_legacy(int level) {
+    return get_per_core_cache_size(level);
+}
+
 unsigned get_per_core_cache_size(int level, behavior_t btype) {
 #if DNNL_X64
     init_cache_topology();
@@ -1162,11 +1177,11 @@ unsigned get_per_core_cache_size(int level, behavior_t btype) {
     case behavior_t::unknown:// [[fallthrough]]; // fallthrough attribute is a C++17 feature
     default:
         // unknown behavior, fallback to non-hybrid behavior
-        return get_per_core_cache_size(level);
+        return get_per_core_cache_size_legacy(level);
         break;
     }
 #endif // DNNL_X64
-    return get_per_core_cache_size(level);
+    return get_per_core_cache_size_legacy(level);
 }
 
 } // namespace platform

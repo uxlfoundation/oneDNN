@@ -32,7 +32,8 @@ if("${DNNL_CPU_THREADING_RUNTIME}" STREQUAL "THREADPOOL")
         endif()
     endif()
 
-    if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN")
+    if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN" OR
+            "${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN_ASYNC")
         find_package(Eigen3 5.0 REQUIRED NO_MODULE)
         if(Eigen3_FOUND)
             list(APPEND EXTRA_STATIC_LIBS Eigen3::Eigen)
@@ -43,6 +44,12 @@ if("${DNNL_CPU_THREADING_RUNTIME}" STREQUAL "THREADPOOL")
         if(absl_FOUND)
             list(APPEND EXTRA_STATIC_LIBS absl::synchronization)
             message(STATUS "Found abseil-cpp: ${PACKAGE_PREFIX_DIR}")
+        endif()
+
+        find_package(xla REQUIRED CONFIG)
+        if(xla_FOUND)
+            list(APPEND EXTRA_STATIC_LIBS xla)
+            message(STATUS "Found XLA: ${PACKAGE_PREFIX_DIR}")
         endif()
     endif()
 

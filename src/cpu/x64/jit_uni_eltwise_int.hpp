@@ -17,12 +17,9 @@
 #ifndef CPU_X64_JIT_UNI_ELTWISE_INT_HPP
 #define CPU_X64_JIT_UNI_ELTWISE_INT_HPP
 
-#include <assert.h>
-
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
 #include "common/type_helpers.hpp"
-#include "common/utils.hpp"
 
 #include "cpu/cpu_eltwise_pd.hpp"
 
@@ -35,7 +32,7 @@ namespace x64 {
 
 struct jit_uni_eltwise_int_kernel_t;
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
+template <cpu_isa_t isa>
 struct jit_uni_eltwise_int_fwd_t : public primitive_t {
     struct pd_t : public cpu_eltwise_fwd_pd_t {
         using cpu_eltwise_fwd_pd_t::cpu_eltwise_fwd_pd_t;
@@ -49,8 +46,6 @@ struct jit_uni_eltwise_int_fwd_t : public primitive_t {
     jit_uni_eltwise_int_fwd_t(const pd_t *apd);
 
     ~jit_uni_eltwise_int_fwd_t() override;
-
-    using data_t = typename prec_traits_t<d_type>::type;
 
     status_t init(engine_t *engine) override;
 

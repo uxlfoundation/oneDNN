@@ -116,14 +116,14 @@ public:
 
     const compute::nd_range_t &nd_range() const { return nd_range_; }
 
-    void register_internal_arg(
-            const expr_t &var, const expr_t &value = expr_t()) {
-        register_arg(
-                var, arg_kind_t::internal, DNNL_ARG_UNDEF, /*is_input=*/true);
-        set_internal_arg(var.as<var_t>().name, value);
+    void register_immediate_arg(const expr_t &var,
+            const expr_t &value = expr_t(), int dnnl_arg = DNNL_ARG_UNDEF) {
+        gpu_assert(value.is_empty() || (dnnl_arg == DNNL_ARG_UNDEF));
+        register_arg(var, arg_kind_t::immediate, dnnl_arg, /*is_input=*/true);
+        set_immediate_arg(var.as<var_t>().name, value);
     }
 
-    void set_internal_arg(const std::string &name, const expr_t &value) {
+    void set_immediate_arg(const std::string &name, const expr_t &value) {
         auto *arg = find_arg_impl(name);
         gpu_assert(arg) << "Cannot find argument: " << name;
         arg->value = value;
@@ -206,12 +206,13 @@ public:
         switch (args_[idx].kind) {
             case arg_kind_t::scratchpad:
                 return ctx.get_scratchpad_grantor().get_memory_storage(key);
-            case arg_kind_t::user: {
-                if (is_input) return CTX_IN_STORAGE(args_[idx].key);
-                return CTX_OUT_STORAGE(args_[idx].key);
-            }
-            // No storage for internal arguments.
-            case arg_kind_t::internal: return memory_storage_wrapper_t();
+            case arg_kind_t::user:
+                if (!is_input) return CTX_OUT_STORAGE(key);
+                return CTX_IN_STORAGE(key);
+            // No storage for immediate arguments unless host-scalar
+            case arg_kind_t::immediate:
+                if (key == DNNL_ARG_UNDEF) return memory_storage_wrapper_t();
+                return CTX_IN_STORAGE(key);
             default: gpu_error_not_expected();
         }
         return memory_storage_wrapper_t();
@@ -239,30 +240,47 @@ public:
 
     void set_args(compute::kernel_arg_list_t &arg_list,
             const std::vector<memory_storage_wrapper_t> &storage_list) const {
-        for (int i = 0; i < nargs(); i++) {
-            switch (args_[i].kind) {
-                case arg_kind_t::internal: {
-                    auto &value = args_[i].value;
-                    auto &type = args_[i].var.type();
-
-                    do {
-#define CASE(ir_type, cpp_type) \
-    if (type == type_t::ir_type()) { \
-        arg_list.set(i, to_cpp<cpp_type>(value)); \
+#define CASE_IF(type, ir_type, cpp_type) \
+    if ((type) == type_t::ir_type()) { \
+        CASE(cpp_type); \
         break; \
     }
+#define ALL_CASES(type) \
+    do { \
+        CASE_IF(type, f32, float) \
+        CASE_IF(type, s8, int8_t) \
+        CASE_IF(type, s16, int16_t) \
+        CASE_IF(type, s32, int32_t) \
+        CASE_IF(type, s64, int64_t) \
+        CASE_IF(type, u8, uint8_t) \
+        CASE_IF(type, u16, uint16_t) \
+        CASE_IF(type, u32, uint32_t) \
+        CASE_IF(type, u64, uint64_t) \
+        gpu_error_not_expected() << (type); \
+    } while (false);
 
-                        CASE(f32, float)
-                        CASE(s16, int16_t)
-                        CASE(s32, int32_t)
-                        CASE(s64, int64_t)
-                        CASE(u16, uint16_t)
-                        CASE(u32, uint32_t)
-                        CASE(u64, uint64_t)
+        for (int i = 0; i < nargs(); i++) {
+            switch (args_[i].kind) {
+                case arg_kind_t::immediate: {
+                    auto value = args_[i].value;
+                    if (value.is_empty()) {
+                        auto storage = storage_list[i].get();
+                        gpu_assert(storage && storage->is_host_scalar());
+                        auto *host_storage = utils::downcast<
+                                const host_scalar_memory_storage_t *>(storage);
+                        auto type = to_ir(host_storage->data_type());
+#define CASE(cpp_type) \
+    cpp_type buf = 0; \
+    auto status = host_storage->get_scalar_value(&buf, sizeof(buf)); \
+    gpu_assert(status == status::success); \
+    value = expr_t(buf);
+                        ALL_CASES(type)
 #undef CASE
-
-                        gpu_error_not_expected() << type;
-                    } while (false);
+                    }
+                    auto &type = args_[i].var.type();
+#define CASE(cpp_type) arg_list.set(i, to_cpp<cpp_type>(value));
+                    ALL_CASES(type)
+#undef CASE
                     break;
                 }
                 case arg_kind_t::scratchpad:
@@ -273,10 +291,12 @@ public:
                 default: gpu_error_not_expected();
             }
         }
+#undef ALL_CASES
+#undef CASE_IF
     }
 
 private:
-    enum class arg_kind_t { internal, scratchpad, user };
+    enum class arg_kind_t { immediate, scratchpad, user };
 
     struct arg_t {
         arg_t(const expr_t &var, arg_kind_t kind, int key, bool is_input,
@@ -293,7 +313,7 @@ private:
         arg_kind_t kind;
         int key; // Unique key across arguments with the same kind.
         bool is_input;
-        expr_t value; // For internal arguments, must be a constant.
+        expr_t value; // For immediate arguments; must be a constant.
         size_t scratchpad_size; // For scratchpad arguments only.
     };
 

@@ -84,7 +84,7 @@ kernel_info_t primitive_init_plan_t::create_kernel_info(
         auto &name = var.as<var_t>().name;
         auto buf = find_buf(buf_map.count(name) == 0 ? name : buf_map.at(name));
         if (!buf) {
-            info.register_internal_arg(var);
+            info.register_immediate_arg(var);
         } else if (buf.is_user()) {
             info.register_user_arg(var, buf.arg_key, buf.is_user_input);
         } else {

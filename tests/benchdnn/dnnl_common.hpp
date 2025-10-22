@@ -665,6 +665,8 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
 int execute_and_wait(
         dnnl_primitive_t prim, const args_t &args, res_t *res = nullptr);
 
+bool is_verbose_profiler_enabled();
+
 void reset_gpu_profiling(dnnl_stream_t stream);
 
 void finalize();

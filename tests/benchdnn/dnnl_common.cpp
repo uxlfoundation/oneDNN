@@ -15,14 +15,14 @@
 *******************************************************************************/
 
 #include <algorithm> // for std::reverse and std::copy
+#include <assert.h>
 #include <functional> // for std::bind and std::placeholders
 #include <list>
 #include <numeric>
+#include <regex> // for std::regex
 #include <string> // for std::string
 #include <utility> // for std::pair
 #include <vector> // for std::vector
-
-#include <assert.h>
 
 #include "oneapi/dnnl/dnnl.hpp"
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
@@ -433,6 +433,23 @@ int execute_and_wait(dnnl_primitive_t prim, const args_t &args, res_t *res) {
     return execute_and_wait(exec_func, engine, args, res);
 }
 
+bool is_verbose_profiler_enabled() {
+    static const bool enabled = []() -> bool {
+        static const std::regex profiling_pattern(
+                R"((^|,)(profile_exec|profile|all|1|2)(,|$))");
+
+        auto matches_level = [&](const std::string &val) -> bool {
+            if (val.empty()) return false;
+            return std::regex_search(val, profiling_pattern);
+        };
+
+        return matches_level(benchdnn_getenv_string("DNNL_VERBOSE"))
+                || matches_level(benchdnn_getenv_string("ONEDNN_VERBOSE"));
+    }();
+
+    return enabled;
+}
+
 void reset_gpu_profiling(dnnl_stream_t stream) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
         || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
@@ -523,6 +540,13 @@ inline int measure_perf_aggregate(timer::timer_t &t,
 
     // Nvidia/AMD don't support profiling.
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
+
+    // When verbose profiling is enabled, the stream profiler is reset after
+    // primitive execution - this is not helpful when measuring aggregate
+    // performance when profiling data is collected post execution.
+    // Hence, the verbose mode is forced disabled whenever the perf mode
+    // demands using the profiler.
+    if (use_profiling && is_verbose_profiler_enabled()) dnnl_set_verbose(0);
 
     for (size_t j = 0; j < v_stream.size(); j++) {
         // Warm-up run, this is not measured due to possibility the associated

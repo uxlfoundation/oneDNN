@@ -33,7 +33,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <impl::data_type_t data_type>
 struct ref_eltwise_fwd_t : public primitive_t {
     struct pd_t : public cpu_eltwise_fwd_pd_t {
         using cpu_eltwise_fwd_pd_t::cpu_eltwise_fwd_pd_t;
@@ -42,17 +41,21 @@ struct ref_eltwise_fwd_t : public primitive_t {
 
         status_t init(engine_t *engine) {
             using namespace utils;
+            using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
 
             const memory_desc_wrapper src_d(src_md());
             const memory_desc_wrapper dst_d(dst_md());
 
             VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_ELTWISE(utils::everyone_is(data_type, src_md()->data_type,
-                                      dst_md()->data_type),
+            VDISPATCH_ELTWISE(utils::one_of(src_md()->data_type, f32, bf16, f16,
+                                      s32, s8, u8, f8_e4m3, f8_e5m2),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_ELTWISE(platform::has_data_type_support(data_type),
-                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_ELTWISE(src_md()->data_type == dst_md()->data_type,
+                    VERBOSE_INCONSISTENT_DT, "src", "dst");
+            VDISPATCH_ELTWISE(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_ISA_DT_MISMATCH);
             VDISPATCH_ELTWISE(attr()->has_default_values(sm::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_ELTWISE(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
@@ -69,20 +72,14 @@ struct ref_eltwise_fwd_t : public primitive_t {
                     && IMPLICATION(!src_d.is_dense() || !dst_d.is_dense(),
                             is_zero_preserved());
 
-            use_nCspBc_padded_ = !use_dense_
-                    && src_d.blocking_desc().inner_nblks == 1
-                    && one_of(src_d.blocking_desc().inner_blks[0], 8, 16)
-                    && src_d.blocking_desc().inner_idxs[0] == 1
-                    && src_d.only_padded_dim(1) && src_d.is_dense(true);
-
             const auto &po = attr()->post_ops_;
             if (has_zero_dim_memory() || !po.has_default_values())
-                use_dense_ = use_nCspBc_padded_ = false;
+                use_dense_ = false;
 
             return status::success;
         }
 
-        bool use_dense_, use_nCspBc_padded_;
+        bool use_dense_;
     };
 
     ref_eltwise_fwd_t(const pd_t *apd) : primitive_t(apd) {}
@@ -95,13 +92,9 @@ struct ref_eltwise_fwd_t : public primitive_t {
         return status::success;
     }
 
-    using data_t = typename prec_traits_t<data_type>::type;
-
     status_t execute(const exec_ctx_t &ctx) const override {
         if (pd()->use_dense_)
             return execute_forward_dense(ctx);
-        else if (pd()->use_nCspBc_padded_)
-            return execute_forward_nCspBc_padded(ctx);
         else
             return execute_forward_generic(ctx);
     }
@@ -114,7 +107,6 @@ private:
     std::unique_ptr<ref_post_ops_t> ref_post_ops;
 };
 
-template <impl::data_type_t data_type>
 struct ref_eltwise_bwd_t : public primitive_t {
     struct pd_t : public cpu_eltwise_bwd_pd_t {
         using cpu_eltwise_bwd_pd_t::cpu_eltwise_bwd_pd_t;
@@ -129,12 +121,16 @@ struct ref_eltwise_bwd_t : public primitive_t {
             const memory_desc_wrapper diff_dst_d(diff_dst_md());
 
             VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_ELTWISE(utils::one_of(data_md()->data_type, f32, bf16,
+                                      f16, f8_e4m3, f8_e5m2),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(
-                    utils::everyone_is(data_type, data_md()->data_type,
+                    utils::everyone_is(data_md()->data_type,
                             diff_src_md()->data_type, diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_ELTWISE(platform::has_data_type_support(data_type),
-                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_ELTWISE(
+                    platform::has_data_type_support(data_md()->data_type),
+                    VERBOSE_ISA_DT_MISMATCH);
             VDISPATCH_ELTWISE(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_ELTWISE(
@@ -149,7 +145,8 @@ struct ref_eltwise_bwd_t : public primitive_t {
             if (diff_dst_d != memory_desc_wrapper(data_md()))
                 use_dense_ = false;
 
-            if (utils::one_of(data_type, bf16, f16, f8_e5m2, f8_e4m3))
+            if (utils::one_of(
+                        data_md()->data_type, bf16, f16, f8_e5m2, f8_e4m3))
                 init_scratchpad();
 
             return status::success;
@@ -172,7 +169,6 @@ struct ref_eltwise_bwd_t : public primitive_t {
     };
 
     ref_eltwise_bwd_t(const pd_t *apd) : primitive_t(apd) {}
-    using data_t = typename prec_traits_t<data_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         if (pd()->use_dense_)

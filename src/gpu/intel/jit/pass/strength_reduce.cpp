@@ -56,6 +56,9 @@ public:
 
     object_t _mutate(const stmt_group_t &obj) override {
         gpu_assert(post_inc_stores_.empty());
+        if ((compute_loop_level_ == -1)
+                && (obj.label == stmt_label_t::compute_loop()))
+            compute_loop_level_ = int(loops_.size());
         stmt_t new_obj;
         if (obj.body.is<for_t>()) {
             loops_.emplace_back(obj.body);
@@ -120,7 +123,8 @@ public:
         }
 
         // Can't do anything, return as is.
-        if (init_store_level == -1) return ir_mutator_t::_mutate(obj);
+        if ((init_store_level <= 0) || (init_store_level > compute_loop_level_))
+            return ir_mutator_t::_mutate(obj);
 
         // Move this store up, remove from here.
         loops_[init_store_level].init_stores.push_back(init_store_stmt);
@@ -231,6 +235,9 @@ private:
         }
         return std::move(s);
     }
+
+    // The outermost loop level that belongs to the compute loop.
+    int compute_loop_level_ = -1;
 
     // Loops, ordered from outermost to innermost. The first loop is dummy, to
     // represent let statements in the top-level scope.

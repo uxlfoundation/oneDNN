@@ -822,7 +822,7 @@ void kernel_desc_t::init_kernel_iface(kernel::iface_t &kernel_iface) const {
     }
 }
 
-static bool try_parse_internal_arg(std::string s, std::string &base_name,
+static bool try_parse_immediate_arg(std::string s, std::string &base_name,
         dim_t &denom, const std::string &suffix = {}) {
     size_t pos;
     if (suffix.empty()) {
@@ -844,29 +844,29 @@ static bool try_parse_internal_arg(std::string s, std::string &base_name,
     return true;
 }
 
-bool try_register_internal_arg(kernel_info_t &kernel_info, const expr_t &var,
+bool try_register_immediate_arg(kernel_info_t &kernel_info, const expr_t &var,
         const std::unordered_map<std::string, dim_t> &var_map) {
     auto &type = var.type();
     auto &name = var.as<var_t>().name;
     std::string base_name;
     dim_t denom = 1;
-    if (try_parse_internal_arg(name, base_name, denom, "_magic")) {
+    if (try_parse_immediate_arg(name, base_name, denom, "_magic")) {
         gpu_assert(var.type().is_u64());
         uint64_t value = ir_utils::idiv_magicgu_packed(
                 into<uint32_t>(utils::div_up(var_map.at(base_name), denom)));
-        kernel_info.set_internal_arg(name, value);
+        kernel_info.set_immediate_arg(name, value);
         return true;
     }
-    if (try_parse_internal_arg(name, base_name, denom)) {
+    if (try_parse_immediate_arg(name, base_name, denom)) {
         gpu_assert(!base_name.empty());
         if (type == type_t::s32()) {
             int32_t value = into<int32_t>(
                     utils::div_up(var_map.at(base_name), denom));
-            kernel_info.set_internal_arg(name, value);
+            kernel_info.set_immediate_arg(name, value);
         } else if (type == type_t::u32()) {
             uint32_t value = into<uint32_t>(
                     utils::div_up(var_map.at(base_name), denom));
-            kernel_info.set_internal_arg(name, value);
+            kernel_info.set_immediate_arg(name, value);
         }
         return true;
     }
@@ -960,7 +960,7 @@ void init_kernel_info(kernel_info_t &kernel_info, const problem_t &prb,
     for (int i = 0; i < kernel_info.nargs(); i++) {
         auto &var = kernel_info.arg_var(i);
         if (var.type().is_scalar()) {
-            bool ok = try_register_internal_arg(kernel_info, var, var_map);
+            bool ok = try_register_immediate_arg(kernel_info, var, var_map);
             gpu_assert(ok) << "Cannot handle argument: " << var;
         }
     }

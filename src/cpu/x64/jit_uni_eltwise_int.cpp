@@ -23,6 +23,8 @@
 
 #include "cpu/x64/jit_uni_eltwise_int.hpp"
 
+#include <cassert>
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -439,16 +441,18 @@ void jit_uni_subkernel_int_t<avx512_core>::store_8bit(const bool vectorize,
 
 } /* namespace */
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_int_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_int_fwd_t<isa>::pd_t::init(engine_t *engine) {
+    using namespace data_type;
     // disabling verbose dispatch messages for unsupported isa for better readability
     if (!mayiuse(isa)) return status::unimplemented;
 
     VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_ELTWISE(utils::everyone_is(
-                              d_type, src_md()->data_type, dst_md()->data_type),
+    VDISPATCH_ELTWISE(utils::one_of(src_md()->data_type, s32, s8, u8),
             VERBOSE_UNSUPPORTED_DT);
-    // only relu and linear so far
+    VDISPATCH_ELTWISE(src_md()->data_type == dst_md()->data_type,
+            VERBOSE_INCONSISTENT_DT, "src", "dst");
+    // A set of algs for integer input is limited due to numeric nature.
     VDISPATCH_ELTWISE(utils::one_of(desc()->alg_kind, alg_kind::eltwise_relu,
                               alg_kind::eltwise_linear, alg_kind::eltwise_clip),
             VERBOSE_BAD_ALGORITHM);
@@ -464,34 +468,33 @@ status_t jit_uni_eltwise_int_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_int_fwd_t<isa, d_type>::jit_uni_eltwise_int_fwd_t(
-        const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_eltwise_int_fwd_t<isa>::jit_uni_eltwise_int_fwd_t(const pd_t *apd)
     : primitive_t(apd) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_int_fwd_t<isa, d_type>::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_int_fwd_t<isa>::init(engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_, new jit_uni_subkernel_int_t<isa>(pd())));
     return kernel_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_int_fwd_t<isa, d_type>::~jit_uni_eltwise_int_fwd_t() {
+template <cpu_isa_t isa>
+jit_uni_eltwise_int_fwd_t<isa>::~jit_uni_eltwise_int_fwd_t() {
     delete kernel_;
 }
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
-status_t jit_uni_eltwise_int_fwd_t<isa, d_type>::execute_forward(
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_int_fwd_t<isa>::execute_forward(
         const exec_ctx_t &ctx) const {
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
 
     const memory_desc_wrapper src_d(pd()->src_md());
 
     const size_t nelems = src_d.nelems(true);
 
-    src += src_d.offset0();
-    dst += src_d.offset0();
+    src += src_d.data_type_size() * src_d.offset0();
+    dst += src_d.data_type_size() * src_d.offset0();
 
     const int cache_line = 64 / src_d.data_type_size();
     parallel(0, [&](const int ithr, const int nthr) {
@@ -500,30 +503,21 @@ status_t jit_uni_eltwise_int_fwd_t<isa, d_type>::execute_forward(
         balance211(utils::div_up(nelems, cache_line), nthr, ithr, start, end);
         start = nstl::min(nelems, start * cache_line);
         end = nstl::min(nelems, end * cache_line);
+        if (start == end) return;
 
-        auto arg = jit_args_int8_t();
-        arg.from = (const void *)&src[start];
-        arg.for_comparison = (const void *)&src[start];
-        arg.to = (const void *)&dst[start];
+        jit_args_int8_t arg;
+        arg.from = src + src_d.data_type_size() * start;
+        arg.for_comparison = src + src_d.data_type_size() * start;
+        arg.to = dst + src_d.data_type_size() * start;
         arg.work_amount = end - start;
-        if (arg.work_amount) (*kernel_)(&arg);
+        (*kernel_)(&arg);
     });
     return status::success;
 }
 
-using namespace data_type;
-
-template struct jit_uni_eltwise_int_fwd_t<sse41, s32>;
-template struct jit_uni_eltwise_int_fwd_t<avx2, s32>;
-template struct jit_uni_eltwise_int_fwd_t<avx512_core, s32>;
-
-template struct jit_uni_eltwise_int_fwd_t<sse41, s8>;
-template struct jit_uni_eltwise_int_fwd_t<avx2, s8>;
-template struct jit_uni_eltwise_int_fwd_t<avx512_core, s8>;
-
-template struct jit_uni_eltwise_int_fwd_t<sse41, u8>;
-template struct jit_uni_eltwise_int_fwd_t<avx2, u8>;
-template struct jit_uni_eltwise_int_fwd_t<avx512_core, u8>;
+template struct jit_uni_eltwise_int_fwd_t<sse41>;
+template struct jit_uni_eltwise_int_fwd_t<avx2>;
+template struct jit_uni_eltwise_int_fwd_t<avx512_core>;
 
 } // namespace x64
 } // namespace cpu

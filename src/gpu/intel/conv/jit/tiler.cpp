@@ -25,6 +25,7 @@
 #include "gpu/intel/conv/jit/config.hpp"
 #include "gpu/intel/conv/jit/lookup_table.hpp"
 #include "gpu/intel/conv/jit/model_bridge.hpp"
+#include "gpu/intel/conv/jit/plan.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
@@ -1533,6 +1534,36 @@ public:
         return cur_usage_bytes < grf_usage_limit_;
     }
 
+    bool is_slm_limit_ok(const config_t &cfg, const int tg_size) const {
+        const auto &plan = cfg.plan();
+        const auto &gemm_schedule = plan.gemm_schedule;
+        // logic from compute_builder_t::build_c_store
+        if (gemm_schedule.with_thread_group_k_slicing()) {
+            const auto &reg_layout = plan.fma.c_prb_layout;
+            const auto &tg_grid = gemm_schedule.tg_grid();
+            const auto dim = 2;
+
+            // code from slm_reduce_builder_t
+            const auto tg_ndims
+                    = (dim != dim_idx_t(2)) ? dim + 1 : tg_grid.ndims();
+            const auto ndims = reg_layout.ndims();
+            // Create SLM layout to store all intermediate buffers from the thread group.
+            layout_t slm_layout(reg_layout.type(), reg_layout.blocks(),
+                    reg_layout.offset(), ndims + tg_ndims);
+            for (int i = tg_ndims - 1; i >= 0; i--) {
+                slm_layout = slm_layout.with_block({ndims + i, tg_grid.dim(i)});
+            }
+
+            const auto slm_size = into<uint32_t>(size_bytes(slm_layout));
+            const uint32_t max_slm_size
+                    = compute::device_info_t::max_slm_size_per_tg(
+                            convert_ngen_arch_to_dnnl(cfg.hw()), tg_size,
+                            cfg.regs() > 128);
+            return slm_size <= max_slm_size;
+        }
+        return true;
+    }
+
     void print_all() const {
         if (is_tuning_mode()) {
             tuner_->print_all();
@@ -1683,6 +1714,9 @@ void tiler_t::notify_out_of_registers(const config_t &cfg) {
 
 bool tiler_t::is_grf_limit_ok(const config_t &cfg) const {
     return impl_->is_grf_limit_ok(cfg);
+}
+bool tiler_t::is_slm_limit_ok(const config_t &cfg, const int tg_size) const {
+    return impl_->is_slm_limit_ok(cfg, tg_size);
 }
 void tiler_t::after_create_hook(
         const config_t &cfg, const impl::primitive_t *primitive) {

@@ -46,6 +46,7 @@ public:
     void set_params(config_t &cfg);
     void notify_out_of_registers(const config_t &cfg);
     bool is_grf_limit_ok(const config_t &cfg) const;
+    bool is_slm_limit_ok(const config_t &cfg, const int tg_size) const;
     static void after_create_hook(
             const config_t &cfg, const impl::primitive_t *primitive);
     static void before_exec_hook(

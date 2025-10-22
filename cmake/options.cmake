@@ -228,6 +228,10 @@ option(DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
     works independently from DNNL_EXPERIMENTAL."
     OFF) # disabled by default
 
+option(DNNL_SAFE_RBP
+    "Make RBP register untouchable in JIT kernels to allow stack unwind"
+    OFF) # disabled by default
+
 # ======================
 # Profiling capabilities
 # ======================

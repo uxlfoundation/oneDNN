@@ -175,6 +175,10 @@
 // When defined, experimental logging capabilities are enabled.
 #cmakedefine DNNL_EXPERIMENTAL_LOGGING
 
+// When defined, RBP register is untouchable in JIT kernels
+// to allow stack unwind
+#cmakedefine DNNL_SAFE_RBP
+
 // When defined, experimental SYCL capabilities are enabled.
 #cmakedefine DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
 

@@ -27,6 +27,7 @@ oneDNN supports the following build-time options.
 | ONEDNN_ENABLE_PRIMITIVE_GPU_ISA | **ALL**, GPU_ISA_NAME                               | Specifies a set of functionality to be available for GPU backend based on GPU ISA                                  |
 | ONEDNN_ENABLE_GEMM_KERNELS_ISA  | **ALL**, NONE, ISA_NAME                             | Specifies a set of functionality to be available for GeMM kernels for CPU backend based on ISA                     |
 | ONEDNN_EXPERIMENTAL             | ON, **OFF**                                         | Enables [experimental features](@ref dev_guide_experimental)                                                       |
+| ONEDNN_SAFE_RBP                 | ON, **OFF**                                         | Enables restriction for JIT kernels to pollute RBP vector register content                                         |
 | ONEDNN_VERBOSE                  | **ON**, OFF                                         | Enables [verbose mode](@ref dev_guide_verbose)                                                                     |
 | ONEDNN_DEV_MODE                 | ON, **OFF**                                         | Enables internal tracing and `debuginfo` logging in verbose output (for oneDNN developers)                         |
 | ONEDNN_AARCH64_USE_ACL          | ON, **OFF**                                         | Enables integration with Arm Compute Library for AArch64 builds                                                    |
@@ -138,6 +139,14 @@ AVX2 sets, but removes AVX512 and AMX kernels:
 ```
 -DONEDNN_ENABLE_GEMM_KERNELS_ISA=AVX2
 ```
+
+#### ONEDNN_SAFE_RBP
+Supported exclusively on x64 CPU architectures for BRGEMM-based primitives.
+When enabled (`ON`), this control ensures that JIT-generated kernels preserve
+the RBP register state, preventing corruption of frame pointers. This
+facilitates accurate stack unwinding and profiler trace collection from
+JIT-compiled code regions. Enabling this feature may introduce performance
+overhead due to additional register management.
 
 ### Configuring testing
 

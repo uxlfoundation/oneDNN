@@ -188,6 +188,8 @@ public:
     }
 
     inline bool may_use_rbp() const {
+        return false; //!!!!!!!!!
+
         bool use_rbp = true;
 #if defined(DNNL_ENABLE_MEM_DEBUG) || defined(DNNL_SAFE_RBP)
         // Disable RBP usage to preserve call stack for debugging/backtracing.

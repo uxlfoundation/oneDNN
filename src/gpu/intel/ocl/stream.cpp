@@ -120,6 +120,97 @@ void stream_t::after_exec_hook() {
     if (is_profiling_enabled()) profiler_->stop_profiling();
 }
 
+status_t stream_t::set_verbose_profiler(
+        std::string &pd_info, double start_ms) const {
+
+    // Utilize the verbose profiler only for profile_exec verbose levels.
+    if (!is_verbose_profiler_enabled()) return status::invalid_arguments;
+
+    // The prompt ensures the verbose headers are printed if they aren't
+    // already. Printing the headers asynchronously during the callback can
+    // result in access failures when printing engine-specific info.
+    verbose_printf(verbose_t::exec_profile, "");
+
+    // Captured output event acts as the anchor to track primitive execution
+    cl_event out_evt = get_output_event();
+    if (!out_evt) {
+        VWARN(primitive, exec,
+                "%s, profiling error: failed to record output event in context",
+                pd_info.c_str());
+        VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(), 0.f);
+        return status::success;
+    }
+
+    // An OpenCL marker is used for asynchronous printing of profiling info.
+    // The callback triggered after primitive execution calculates and prints
+    // the execution times.
+    cl_command_queue q = queue();
+    cl_event marker = nullptr;
+    cl_int err = clEnqueueMarkerWithWaitList(q, 1, &out_evt, &marker);
+
+    if (err != CL_SUCCESS || !marker) {
+        VWARN(primitive, exec,
+                "%s, profiling error: failed to attach OpenCL marker to output "
+                "event",
+                pd_info.c_str());
+        VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(), 0.f);
+        return status::success;
+    }
+
+    struct payload_t {
+        const stream_t *s;
+        std::string info_str;
+        double start;
+    };
+
+    auto *payload = new payload_t {this, pd_info, start_ms};
+
+    err = clSetEventCallback(
+            marker, CL_COMPLETE,
+            [](cl_event ev, cl_int, void *user) {
+                std::unique_ptr<payload_t> hold(static_cast<payload_t *>(user));
+
+                int num_entries;
+                hold->s->get_profiling_data(
+                        profiling_data_kind::time, &num_entries, nullptr);
+
+                if (num_entries == 0) {
+                    VWARN(primitive, exec,
+                            "%s, profiling error: profiler failed to capture "
+                            "kernel events",
+                            hold->info_str.c_str());
+                }
+
+                std::vector<uint64_t> timing_data(num_entries);
+                hold->s->get_profiling_data(profiling_data_kind::time,
+                        &num_entries, timing_data.data());
+
+                double duration_ms = 0.0;
+                for (const auto &t : timing_data)
+                    duration_ms += static_cast<double>(t);
+                duration_ms *= 1e-6;
+
+                VPROF(hold->start, primitive, exec, VERBOSE_profile,
+                        hold->info_str.c_str(), duration_ms);
+
+                clReleaseEvent(ev);
+            },
+            payload);
+
+    if (err != CL_SUCCESS) {
+        delete payload;
+        clReleaseEvent(marker);
+        VWARN(primitive, exec,
+                "%s, profiling error: failed to set event callback for "
+                "printing exec info",
+                pd_info.c_str());
+        VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(), 0.f);
+        return status::success;
+    }
+
+    return status::success;
+}
+
 status_t stream_t::copy(const memory_storage_t &src,
         const memory_storage_t &dst, size_t size, const xpu::event_t &deps,
         xpu::event_t &out_dep) {

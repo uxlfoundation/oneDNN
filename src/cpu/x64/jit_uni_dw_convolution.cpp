@@ -329,6 +329,28 @@ jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::
     : primitive_t(apd), acc_ker_(nullptr), kernel_(nullptr) {}
 
 template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
+status_t
+jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::execute(
+        const exec_ctx_t &ctx) const {
+    switch (pd()->jcp_.harness) {
+        case harness_nxc:
+            execute_backward_weights_nxc(ctx);
+            parallel(1, [=](const int ithr, const int nthr) {
+                execute_reduction_nxc(ctx);
+            });
+            break;
+        case harness_mb_reduction:
+            execute_backward_weights(ctx);
+            parallel(1, [=](const int ithr, const int nthr) {
+                execute_reduction(ctx);
+            });
+            break;
+        default: assert(!"Invalid harness type");
+    }
+    return status::success;
+}
+
+template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
 void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         diff_weights_type>::execute_backward_weights_nxc(const exec_ctx_t &ctx)
         const {
@@ -354,7 +376,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
             : CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_BIAS);
 
     const int ch_block = jcp.ch_block;
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         auto conv_params = jit_dw_conv_args_t();
         const int h_block_size = jcp.oh_blk_size;
 
@@ -481,7 +503,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
     const int ch_block = jcp.ch_block;
 
     auto set_kernel_params
-            = [&](jit_dw_conv_args_t *conv_params, const int batch,
+            = [=](jit_dw_conv_args_t *conv_params, const int batch,
                       const int group, const int oh_start, const int work_size,
                       const unsigned char exec_flag, const size_t kh_padding,
                       const size_t filter_off) {
@@ -513,7 +535,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                   conv_params->input = &src[src_off * ch_block];
               };
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
         assert(nthr == jcp.nthr);
 
         auto conv_params = jit_dw_conv_args_t();
@@ -810,7 +832,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 
     // TODO: maybe add 'KH' as another parallel dimension to increase partition
     // space
-    parallel_nd(jcp.nb_ch, [&](int NB_CH) {
+    parallel_nd(jcp.nb_ch, [=](int NB_CH) {
         const size_t nb_ch_step
                 = static_cast<size_t>(jcp.kh * jcp.kw * jcp.ch_block);
         const size_t wei_offset = NB_CH * nb_ch_step;

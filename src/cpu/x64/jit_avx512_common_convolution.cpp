@@ -1813,7 +1813,7 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     prepare_scratchpad_data(ctx);
 
 #if DNNL_THR_SYNC == 1
-    parallel(nthr_, [&](const int ithr, const int nthr) {
+    parallel(nthr_, [=](const int ithr, const int nthr) {
         assert(nthr_ == nthr);
 
         thread_info_t thread_info(this, ctx, ithr);
@@ -1843,7 +1843,7 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
         }
     });
 #else
-    parallel(nthr_, [&](const int ithr, const int nthr) {
+    parallel(nthr_, [=](const int ithr, const int nthr) {
         thread_info_t thread_info(this, ctx, ithr);
         switch (pd()->jcp_.harness) {
             case harness_nxc:
@@ -1864,7 +1864,7 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
         }
     });
 
-    parallel(nthr_, [&](const int ithr, const int nthr) {
+    parallel(nthr_, [=](const int ithr, const int nthr) {
         thread_info_t thread_info(this, ctx, ithr);
         if (nthr_mb_ > 1) {
             switch (pd()->jcp_.harness) {
@@ -1901,21 +1901,23 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     });
 #endif
 
-    /* TODO: put that into compute_diff_bias() */
-    auto &jcp = pd()->jcp_;
-    if (pd()->with_bias() && jcp.oc_without_padding % jcp.oc_block != 0) {
-        auto diff_bias = ctx.get_scratchpad_grantor()
-                                 .template get<const diff_weights_data_t>(
-                                         key_conv_padded_bias);
-        auto diff_bias_in
-                = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_BIAS);
-        const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
-        const int stride = jcp.oc_without_padding;
-        for (int g = 0; g < jcp.ngroups; ++g) {
-            utils::array_copy(diff_bias_in + g * stride,
-                    diff_bias + g * padded_stride, stride);
+    parallel(1, [=](const int ithr, const int nthr) {
+        /* TODO: put that into compute_diff_bias() */
+        auto &jcp = pd()->jcp_;
+        if (pd()->with_bias() && jcp.oc_without_padding % jcp.oc_block != 0) {
+            auto diff_bias = ctx.get_scratchpad_grantor()
+                                     .template get<const diff_weights_data_t>(
+                                             key_conv_padded_bias);
+            auto diff_bias_in
+                    = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_BIAS);
+            const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
+            const int stride = jcp.oc_without_padding;
+            for (int g = 0; g < jcp.ngroups; ++g) {
+                utils::array_copy(diff_bias_in + g * stride,
+                        diff_bias + g * padded_stride, stride);
+            }
         }
-    }
+    });
 }
 
 template struct jit_avx512_common_convolution_bwd_weights_t<data_type::f32>;

@@ -47,7 +47,7 @@ status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *device_info = intel_engine->device_info();
-    int sub_group_size = 1;
+    int sub_group_size = 32;
     if (device_info->mayiuse_sub_group(16)) sub_group_size = 16;
     conf.sub_group_size = sub_group_size;
 
@@ -128,15 +128,17 @@ void ref_t::pd_t::init_scratchpad() {
 status_t ref_t::execute(const exec_ctx_t &ctx) const {
     auto &src = CTX_IN_STORAGE(DNNL_ARG_FROM);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_TO);
-    auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
-            memory_tracking::names::key_reorder_space);
-
     const auto &conf = pd()->conf;
+    auto tmp_dst = conf.subbyte_pack
+            ? ctx.get_scratchpad_grantor().get_memory_storage(
+                    memory_tracking::names::key_reorder_space)
+            : dst;
+
     if (conf.nelems == 0) return status::success;
 
     compute::kernel_arg_list_t arg_list;
     arg_list.append(src);
-    arg_list.append(conf.subbyte_pack ? *tmp : dst);
+    arg_list.append(*tmp_dst);
 
     arg_list.append(conf.src_quant.scales(ctx));
     arg_list.append(conf.src_quant.zero_points(ctx));
@@ -155,7 +157,7 @@ status_t ref_t::execute(const exec_ctx_t &ctx) const {
 
     if (conf.subbyte_pack) {
         compute::kernel_arg_list_t repack_arg_list;
-        repack_arg_list.set(0, *tmp);
+        repack_arg_list.set(0, *tmp_dst);
         repack_arg_list.set(1, dst);
         repack_arg_list.set(2, into<dim_t>(conf.nelems));
         repack_arg_list.set(3, 4);

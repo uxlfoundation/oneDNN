@@ -591,6 +591,7 @@ void MatrixAddressingStrategy::preflight(HW hw)
 void MatrixAddressingStrategy::forceA64()
 {
     base = AddressBase::createA64(true);
+    padded = false;
     if (accessType == AccessType::ChannelScattered && !newDP)
         accessType = AccessType::Scattered;
 }

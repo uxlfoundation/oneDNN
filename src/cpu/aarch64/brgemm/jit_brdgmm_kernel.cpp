@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2024-2025 FUJITSU LIMITED
 * Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -226,6 +226,23 @@ void jit_brdgmm_kernel_base_t::cvt2ps(data_type_t type_in, const ZReg vmm_in,
                 lsl(vmm_in.s, vmm_in.s, 16);
             }
             break;
+        case data_type::s8:
+            if (mask_flag && store) {
+                ld1sb(vmm_tmp(0).s, mask / T_z, op);
+                mov(vmm_in.s, mask / T_m, vmm_tmp(0).s);
+            } else {
+                ld1sb(vmm_in.s, mask / T_z, op);
+            }
+            break;
+        case data_type::u8:
+            if (mask_flag && store) {
+                ld1b(vmm_tmp(0).s, mask / T_z, op);
+                mov(vmm_in.s, mask / T_m, vmm_tmp(0).s);
+            } else {
+                ld1b(vmm_in.s, mask / T_z, op);
+            }
+            break;
+
         default: assert(!"unsupported data type");
     }
     if (types::is_integral_dt(type_in)) {
@@ -334,7 +351,7 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
     const bool dq2ps_required = brg.is_int8;
     const int v_substep = vnni_substep();
     if (brg.with_scales) {
-        add_imm(reg_aux_scales, X_SP, reg_scales_offs_, X_TMP_0); //rsp=X_SP
+        add_imm(X_DEFAULT_ADDR, X_SP, reg_scales_offs_, X_TMP_0); //rsp=X_SP
         ldr(reg_aux_scales, ptr(X_DEFAULT_ADDR));
         if (brg.is_oc_scale) {
             mov_imm(X_TMP_1, sizeof(float));
@@ -398,7 +415,8 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
         }
         for (int m = 0; m < m_blocks; m++) {
             auto vmm = accm(m_blocks, n_blocks, m, n, v_i);
-            if (dq2ps_required) scvtf(vmm.s, P_ALL_ONE / T_m, vmm.s);
+            if (dq2ps_required && !brg.with_scales)
+                scvtf(vmm.s, P_ALL_ONE / T_m, vmm.s);
             if (brg.with_bias) { fadd(vmm.s, vmm.s, vmm_bias.s); }
         }
     }
@@ -508,8 +526,6 @@ void jit_brdgmm_kernel_base_t::store_accumulators(
 
     maybe_transpose_interleaved_vnni_to_plain(m_blocks, n_blocks, has_n_tail);
 
-    if (is_fast_vnni_int8()) { assert(!"unsupported\n"); }
-
     const bool are_post_ops_applicable = one_of(true, brg.with_eltwise,
             brg.with_binary, brg.with_scales, brg.with_bias, brg.with_sum,
             brg.dt_d != brg.dt_c, brg.with_dst_scales);
@@ -539,7 +555,7 @@ void jit_brdgmm_kernel_base_t::load_a(
     } else if (brg.is_bf16) {
         ld1h(vmma.s, mask, addr);
     } else if (brg.is_int8) {
-        assert(!"unsupported\n");
+        ld1b(vmma.s, mask, addr);
     }
 }
 
@@ -554,11 +570,11 @@ void jit_brdgmm_kernel_base_t::load_b(
             B_offset(n_i) + is_tail_block * v_i * simd_w_ * brg.typesize_B,
             X_TMP_0);
     const auto addr = ptr(X_DEFAULT_ADDR);
-    if (brg.is_f32) {
+    if (brg.dt_b == data_type::f32) {
         ld1w(vmmb.s, P_ALL_ONE / T_z, addr);
-    } else if (brg.is_int8) {
-        assert(!"unsupported\n");
-    } else if (brg.is_bf16) {
+    } else if (brg.dt_b == data_type::s8) {
+        ld1sb(vmmb.s, P_ALL_ONE / T_z, addr); //dtype is s8
+    } else if (brg.dt_b == data_type::bf16) {
         ld1h(vmmb.s, P_ALL_ONE / T_z, addr);
     }
 }
@@ -589,7 +605,18 @@ void jit_brdgmm_kernel_base_t::brdgmm_microkernel(int m_blocks, int n_blocks,
         } else if (brg.is_bf16) {
             bfdot(vmm_acc.s, vmmb.h, vmma.h);
         } else if (brg.is_int8) {
-            assert(!"unsupported\n");
+            if ((brg.dt_a == data_type::u8 && brg.dt_b == data_type::u8)
+                    && isa_has_s8s8(brg.isa_impl))
+                udot(vmm_acc.s, vmmb.b, vmma.b);
+            else if ((brg.dt_a == data_type::s8 && brg.dt_b == data_type::s8)
+                    && isa_has_s8s8(brg.isa_impl))
+                sdot(vmm_acc.s, vmma.b, vmmb.b);
+            else if ((brg.dt_a == data_type::u8 && brg.dt_b == data_type::s8)
+                    && isa_has_s8s8(brg.isa_impl))
+                usdot(vmm_acc.s, vmma.b, vmmb.b);
+            else if ((brg.dt_a == data_type::s8 && brg.dt_b == data_type::u8)
+                    && isa_has_s8s8(brg.isa_impl))
+                assert(!"unsupported\n");
         }
     };
 
@@ -868,7 +895,6 @@ void jit_brdgmm_kernel_base_t::compute_loop() {
 }
 
 void jit_brdgmm_kernel_base_t::init_masks() {
-    if (is_fast_vnni_int8()) { assert(!"unsupported\n"); }
 
     if (n_block1_tail() != 0) {
         const bool has_n_block2_tail = n_block2_tail() > 0;
@@ -894,8 +920,6 @@ void jit_brdgmm_kernel_base_t::generate() {
 
     init_masks();
 
-    if (is_fast_vnni_int8() && !brg.is_bf16_emu) { assert(!"unsupported\n"); }
-
     read_params();
     compute_loop();
 
@@ -903,8 +927,6 @@ void jit_brdgmm_kernel_base_t::generate() {
     postamble();
 
     if (brg.with_eltwise) postops_injector_->prepare_table();
-
-    if (is_fast_vnni_int8()) { assert(!"unsupported\n"); }
 }
 
 brdgmm_kernel_t::brdgmm_kernel_t(const brgemm_t abrd)

@@ -901,12 +901,13 @@ status_t jit_sve_conv_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
 
     const auto dat_tag_nxc = pick(ndims - 3, nwc, nhwc, ndhwc);
     const auto dat_tag_ncx = pick(ndims - 3, ncw, nchw, ncdhw);
+    const auto dat_tag_nCx4c = pick(ndims - 3, nCw4c, nChw4c, nCdhw4c);
     const auto dat_tag_nCx8c = pick(ndims - 3, nCw8c, nChw8c, nCdhw8c);
     const auto dat_tag_nCx16c = pick(ndims - 3, nCw16c, nChw16c, nCdhw16c);
-    auto curr_src_tag = src_d.matches_one_of_tag(
-            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c, dat_tag_ncx);
+    auto curr_src_tag = src_d.matches_one_of_tag(dat_tag_nxc, dat_tag_nCx16c,
+            dat_tag_nCx8c, dat_tag_nCx4c, dat_tag_ncx);
     auto curr_dst_tag = dst_d.matches_one_of_tag(
-            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c);
+            dat_tag_nxc, dat_tag_nCx16c, dat_tag_nCx8c, dat_tag_nCx4c);
     bool is_data_layout_nxc
             = utils::everyone_is(dat_tag_nxc, curr_src_tag, curr_dst_tag);
 
@@ -965,7 +966,13 @@ status_t jit_sve_conv_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
             wei_tag = pick(2 * ndims - 6 + with_groups, OIw8i8o, gOIw8i8o,
                     OIhw8i8o, gOIhw8i8o, OIdhw8i8o, gOIdhw8i8o);
             break;
-        default: break;
+        case sve_128:
+            dst_tag = dat_tag_nCx4c;
+            src_tag = jcp.is_1stconv ? dat_tag_ncx : dat_tag_nCx4c;
+            wei_tag = pick(2 * ndims - 6 + with_groups, OIw4i4o, gOIw4i4o,
+                    OIhw4i4o, gOIhw4i4o, OIdhw4i4o, gOIdhw4i4o);
+            break;
+        default: return status::unimplemented;
     }
 
     if (src_md.format_kind == format_kind::any)
@@ -1005,7 +1012,12 @@ status_t jit_sve_conv_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
                             ? pick(ndims - 3, gOwi8o, gOhwi8o, gOdhwi8o)
                             : pick(ndims - 3, Owi8o, Ohwi8o, Odhwi8o);
                     break;
-                default: break;
+                case sve_128:
+                    wei_tag = with_groups
+                            ? pick(ndims - 3, gOwi4o, gOhwi4o, gOdhwi4o)
+                            : pick(ndims - 3, Owi4o, Ohwi4o, Odhwi4o);
+                    break;
+                default: return status::unimplemented;
             }
         }
     } else {
@@ -4460,6 +4472,7 @@ void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::balance(
 /*struct instantiation*/
 template struct jit_sve_conv_fwd_kernel_t<sve_512>;
 template struct jit_sve_conv_fwd_kernel_t<sve_256>;
+template struct jit_sve_conv_fwd_kernel_t<sve_128>;
 template struct jit_sve_conv_bwd_data_kernel_f32_t<sve_512>;
 template struct jit_sve_conv_bwd_data_kernel_f32_t<sve_256>;
 template struct jit_sve_conv_bwd_weights_kernel_f32_t<sve_512>;

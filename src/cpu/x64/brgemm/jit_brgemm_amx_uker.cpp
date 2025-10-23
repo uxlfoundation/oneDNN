@@ -2238,7 +2238,7 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     if (buf_offt) add(reg_buf, buf_offt);
     mov(reg_converted_stride, zmm_width_in_bytes);
 
-    const int max_tiles = amx::get_max_tiles(amx::get_target_palette());
+    const int max_tiles = amx::get_max_palette_size();
     JIT_ASSERT(t1.getIdx() >= 0 && t1.getIdx() < max_tiles);
     const auto num_rows = palette_.rows[t1.getIdx()];
     const auto num_col_bytes = palette_.cols[t1.getIdx()];
@@ -2307,6 +2307,8 @@ void jit_brgemm_amx_uker_base_t::copy_k_tail_to_wsp(const Tmm &t1,
         jit_brgemm_amx_uker_base_t::reg64_t &reg_base, dim_t src_offset,
         jit_brgemm_amx_uker_base_t::reg64_t &reg_src_stride,
         bool use_memadvice) {
+    const int max_tiles = amx::get_max_palette_size();
+    JIT_ASSERT(t1.getIdx() >= 0 && t1.getIdx() < max_tiles);
     const auto num_rows = palette_.rows[t1.getIdx()];
     const auto num_col_bytes = palette_.cols[t1.getIdx()];
 

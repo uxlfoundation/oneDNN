@@ -249,11 +249,12 @@ struct cpu_isa_traits_t {}; /* ::vlen -> 32 (for avx2) */
 // pack struct so it can fit into a single 64-byte cache line
 #pragma pack(push, 1)
 struct palette_config_t {
+    static constexpr int max_size = 16;
     uint8_t palette_id;
     uint8_t startRow;
     uint8_t reserved[14];
-    uint16_t cols[16];
-    uint8_t rows[16];
+    uint16_t cols[max_size];
+    uint8_t rows[max_size];
 };
 #pragma pack(pop)
 
@@ -379,6 +380,13 @@ int get_max_tiles(int palette);
 int get_max_column_bytes(int palette);
 int get_max_rows(int palette);
 bool DNNL_API is_available();
+
+// Helper function to get the maximum safe palette size for bounds checking
+inline int get_max_palette_size() {
+    const int max_tiles = get_max_tiles(get_target_palette());
+    constexpr int max_palette_size = palette_config_t::max_size;
+    return nstl::min(max_tiles, max_palette_size);
+}
 
 } // namespace amx
 

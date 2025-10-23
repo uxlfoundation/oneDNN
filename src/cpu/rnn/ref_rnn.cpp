@@ -664,6 +664,9 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
         set_gemm_funcs(pd()->rnn_.use_projection_packed_gemm,
                 gemm_projection_func, weights_projection_assign_func,
                 pd()->rnn_.is_brgemm);
+    } else {
+        gemm_projection_func = nullptr;
+        weights_projection_assign_func = nullptr;
     }
 
     rnn_postgemm_ = new postgemm_t(pd()->rnn_, pd());

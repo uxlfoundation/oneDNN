@@ -351,7 +351,7 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
 
 int brgemm_matmul_conf_utils_t::get_default_n_block(
         format_tag_t matrix_b_tag) const {
-    if (bgmmc.is_gemv) return 1;
+    if (bgmmc.is_gemv && !bgmmc.swap_a_b) return 1;
 
     const int n_blk = get_n_block_from_tag(matrix_b_tag);
     if (n_blk > 0) return n_blk;
@@ -370,10 +370,15 @@ int brgemm_matmul_conf_utils_t::get_default_n_block(
  */
 format_tag_t brgemm_matmul_conf_utils_t::get_gemv_A_tag(
         const memory_desc_t &A_md) const {
-    if (A_any_layout)
-        return plain_tensor_layout_tag;
-    else
-        return memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag);
+    assert(utils::one_of(1, bgmmc.N, bgmmc.M));
+    const bool is_m1 = bgmmc.M == 1;
+
+    if (A_any_layout) return plain_tensor_layout_tag;
+
+    return is_m1
+            ? memory_desc_matches_one_of_tag(
+                    A_md, plain_tensor_layout_tag, transposed_tensor_layout_tag)
+            : memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag);
 }
 
 /**
@@ -383,15 +388,19 @@ format_tag_t brgemm_matmul_conf_utils_t::get_gemv_A_tag(
  */
 format_tag_t brgemm_matmul_conf_utils_t::get_gemv_B_tag(
         const memory_desc_t &B_md) const {
+    assert(utils::one_of(1, bgmmc.N, bgmmc.M));
+    const bool is_n1 = bgmmc.N == 1;
+
     if (B_any_layout) {
         // Plain and transposed layouts are identical for B in GEMV cases,
         // so we simply choose the plain one.
-        return plain_tensor_layout_tag;
+        return is_n1 ? plain_tensor_layout_tag : transposed_tensor_layout_tag;
     } else {
         if (B_md.format_kind != format_kind::blocked) return format_tag::undef;
 
         // Elements of B, which is a vector in the case of GEMV, must be
         // contiguous in memory.
+// in case m1 it must be transposed
         const bool wei_format_compatible
                 = B_md.format_desc.blocking.strides[bgmmc.ndims - 2] == 1;
         if (!wei_format_compatible) return format_tag::undef;
@@ -400,8 +409,10 @@ format_tag_t brgemm_matmul_conf_utils_t::get_gemv_B_tag(
         // we still need to do that even though the provided format is
         // compatible. For now, allow both plain and trans formats. Consider
         // removing the need to infer the wei_tag in the future.
-        return memory_desc_matches_one_of_tag(
-                B_md, plain_tensor_layout_tag, transposed_tensor_layout_tag);
+        return is_n1 ? memory_desc_matches_one_of_tag(B_md,
+                       plain_tensor_layout_tag, transposed_tensor_layout_tag)
+                     : memory_desc_matches_one_of_tag(
+                             B_md, transposed_tensor_layout_tag);
     }
 }
 
@@ -413,12 +424,13 @@ format_tag_t brgemm_matmul_conf_utils_t::get_gemv_B_tag(
  */
 bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
-        const memory_desc_t &A_md, const memory_desc_t &B_md) {
+        const memory_desc_t &A_md,
+        const memory_desc_t &B_md) {
 
     // Only the N=1 case is supported currently.
     // TODO: The existing GEMV code path could also support the M=1 case when
     // B tensor has a transposed format. Enable this by swapping A and B.
-    if (bgmmc.N != 1) return false;
+    if (bgmmc.N != 1 && bgmmc.M != 1) return false;
 
     // Reduction is not supported for GEMV code path.
     if (bgmmc.with_reduce) return false;
@@ -427,7 +439,8 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
     if (utils::one_of(false, bm_conf_utils.is_f32(), bgmmc.isa == avx2))
         return false;
 
-    if (utils::one_of(format_tag::undef, bm_conf_utils.get_gemv_A_tag(A_md),
+    if (utils::one_of(format_tag::undef,
+                bm_conf_utils.get_gemv_A_tag(A_md),
                 bm_conf_utils.get_gemv_B_tag(B_md)))
         return false;
 
@@ -521,8 +534,7 @@ status_t brgemm_matmul_conf_utils_t::update_and_check_B_tag(memory_desc_t &B_md,
 }
 
 status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
-        memory_desc_t &C_md, memory_desc_t &bias_md,
-        const matmul_helper_t &helper) const {
+        memory_desc_t &C_md, memory_desc_t &bias_md, const matmul_helper_t &helper) const {
     if (A_any_layout) {
         const format_tag_t desired_A_tag = bgmmc.is_gemv
                 ? get_gemv_A_tag(A_md)
@@ -1102,6 +1114,9 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
     }
 
     max_m_blk = nstl::max(max_m_blk, min_m_blk);
+
+    if (bgmmc.is_gemv && bgmmc.swap_a_b) min_m_blk = max_m_blk = 1;
+
     for_(int nthr_k = start_nthr_k; nthr_k >= 1; --nthr_k)
     for_(int n_chunk_size = n_chunks_start; n_chunk_size >= 1; --n_chunk_size)
     for (int m_blk = max_m_blk; m_blk >= min_m_blk; --m_blk) {
@@ -1481,6 +1496,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.is_gemv
             = is_gemv_applicable(bgmmc, bm_conf_utils, src_md, weights_md);
+    bgmmc.swap_a_b = bgmmc.is_gemv && bgmmc.M == 1;
 
     if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.isa == avx2
             && (bgmmc.N == 1 || bgmmc.M == 1)) {
@@ -1762,13 +1778,20 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             "The first coordinate of every N_blk that is larger than LDB "
             "needs to be divisible by LDB");
 
-    bgmmc.LDD = dst_d.ndims() == 2 && bgmmc.M == 1
+    bgmmc.LDD = dst_d.ndims() == 2 && bgmmc.M == 1 && !bgmmc.swap_a_b
             ? bgmmc.N
             : dst_d.blocking_desc().strides[bgmmc.ndims - 2];
     bgmmc.LDC = bgmmc.use_buffer_c && bgmmc.nthr_k <= 1
             ? (bgmmc.is_amx ? nstl::min((dim_t)32, bgmmc.N_blk) : bgmmc.N_blk)
                     * (bgmmc.is_runtime_N ? bgmmc.N_chunk_size : 1)
             : bgmmc.LDD;
+
+    if (bgmmc.is_gemv && bgmmc.swap_a_b) {
+        bgmmc.LDD = dst_d.ndims() == 2 && bgmmc.M == 1
+                ? bgmmc.M
+                : dst_d.blocking_desc().strides[bgmmc.ndims - 2];
+        bgmmc.LDC = bgmmc.LDD;
+    }
 
     bgmmc.is_src_batch_layout_trivial
             = is_batch_layout_trivial(src_d, bgmmc.batch);

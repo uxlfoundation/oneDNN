@@ -251,6 +251,7 @@ struct brgemm_matmul_conf_t {
     data_type_t wei_zp_dt = data_type::undef;
 
     bool is_gemv = false;
+    bool swap_a_b = false;
 
     inline bool lda_big_pow2() const {
         const dim_t big_stride_threshold_in_bytes = 8192;

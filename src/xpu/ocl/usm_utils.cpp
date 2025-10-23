@@ -45,8 +45,24 @@ void *malloc_host(impl::engine_t *engine, size_t size) {
     HANDLE_USM_CALL(engine, malloc_host(engine, size));
 }
 
+static std::unordered_map<void *, void *> ptr_map;
+
 void *malloc_device(impl::engine_t *engine, size_t size) {
-    HANDLE_USM_CALL(engine, malloc_device(engine, size));
+    // 1. Round up size to 64 kb page
+    // 2. Shift the pointer so that the region end was close to the page boundary
+    size_t align = (1 << 16);
+    size_t size_aligned = (size + align - 1) / align * align;
+    size_t pad = size_aligned - size;
+    // Make sure that the pointer is aligned to 64 bytes as required by oneDNN.
+    size_t shift = pad / 64 * 64;
+    auto *raw_ptr = (uint8_t *)gpu::intel::ocl::usm::malloc_device(
+            engine, size_aligned);
+    auto *ret_ptr = raw_ptr + shift;
+    printf("malloc_device size = %d size_aligned = %d raw_ptr = %p ret_ptr = "
+           "%p\n",
+            (int)size, (int)size_aligned, raw_ptr, ret_ptr);
+    ptr_map[ret_ptr] = raw_ptr;
+    return ret_ptr;
 }
 
 void *malloc_shared(impl::engine_t *engine, size_t size) {
@@ -54,6 +70,12 @@ void *malloc_shared(impl::engine_t *engine, size_t size) {
 }
 
 void free(impl::engine_t *engine, void *ptr) {
+    if (ptr_map.count(ptr) > 0) {
+        auto *old_ptr = ptr;
+        ptr = ptr_map[old_ptr];
+        ptr_map.erase(old_ptr);
+    }
+    printf("free %p\n", ptr);
     HANDLE_USM_CALL_V(engine, free(engine, ptr));
 }
 

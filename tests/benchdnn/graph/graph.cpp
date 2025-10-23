@@ -27,6 +27,8 @@
 #include "ref_partition.hpp"
 #include "utils/stream_kind.hpp"
 
+void free_memory_guards();
+
 namespace {
 
 /// Set any layout according to the connection relationship of partitions
@@ -725,6 +727,7 @@ int doit(const prb_t *prb, res_t *res) {
         BENCHDNN_PRINT(3, "[INFO]: Start execution of partition #%zd.\n", i);
         // Need following clean-up steps as the memories have been mappped to
         // device. Otherwise the deconstruction will fail.
+        free_memory_guards();
         DNN_GRAPH_SAFE(
                 c_partitions[i - idx_offset].execute(strm, input_ts, output_ts),
                 (WARN | NEED_CLEANUP), res);

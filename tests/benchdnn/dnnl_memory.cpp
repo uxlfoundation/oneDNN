@@ -426,6 +426,14 @@ int64_t dnn_mem_t::get_idx(int64_t logical_idx, int dims_mask, const int ndims,
     return offset;
 }
 
+std::vector<std::pair<dnnl_engine_t, void *>> guard_ptrs;
+
+void free_memory_guards() {
+    for (auto &p : guard_ptrs)
+        dnnl::impl::xpu::ocl::usm::free(p.first, p.second);
+    guard_ptrs.clear();
+}
+
 // Creates a memory object from the underlying buffer of an existing memory
 // object `mem`. The size of `mem` must not be less than the size of `md`.
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL || defined(DNNL_WITH_SYCL)
@@ -434,6 +442,8 @@ static int init_memory(
 
     dnnl_engine_t engine;
     DNN_SAFE(dnnl_memory_get_engine(mem, &engine), CRIT);
+
+    guard_ptrs.emplace_back(engine, dnnl::impl::xpu::ocl::usm::malloc_device(engine, 65536));
 
     bool is_sycl = is_sycl_engine(engine);
     bool is_opencl = is_opencl_engine(engine);
@@ -604,6 +614,7 @@ dnn_mem_t dnn_mem_t::create_from_host_ptr(
 size_t dnn_mem_t::pad_memory_size(
         size_t sz, dnnl_engine_kind_t engine_kind, bool *was_padded) {
     if (was_padded) *was_padded = false;
+    return sz;
     if (sz == 0 || !has_bench_mode_bit(mode_bit_t::corr)
             || engine_kind == dnnl_cpu)
         return sz;

@@ -686,8 +686,22 @@ void brgemm_matmul_t<isa>::compute_kernel(
 
     const auto zp_comp_a
             = brgmm_ctx.get_zp_a_compensation_ptr(ithr, b_idx, n_blk_idx);
-    const auto zp_comp_b
+    auto zp_comp_b
             = brgmm_ctx.get_zp_b_compensation_result_ptr(ithr, m_blk_idx);
+
+    // This is done here instead of in copy_a because copy_a is called once per M/K,
+    // but we need different -zp_b values for each N
+    std::vector<int32_t> zp_comp_b_adjusted;
+    if (bgmmc.wei_zp_type == brgemm_broadcast_t::per_n && zp_comp_b) {
+        const auto m_size = brgmm_ctx.get_M_kernel_size(m_blk_idx);
+        zp_comp_b_adjusted.resize(m_size);
+        const auto *zp_b_neg_vals = brgmm_ctx.get_zp_b_neg_val_ptr(n);
+        for (int i = 0; i < m_size; i++) {
+            zp_comp_b_adjusted[i] = zp_comp_b[i] * zp_b_neg_vals[0];
+        }
+        zp_comp_b = zp_comp_b_adjusted.data();
+    }
+
     const auto zp_c_val_ptr = brgmm_ctx.get_zp_c_val_ptr(n);
     const auto &post_ops_binary_rhs_arg_vec
             = brgmm_ctx.get_post_ops_binary_rhs_arg_vec();
@@ -1341,6 +1355,16 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
             zero_point_b_per_oc_ptr_ = wei_zero_points;
             zero_point_b_val_ = 0;
             zero_point_b_negative_val_ = 0;
+
+            const auto &bgmmc = pd->get_brgemm_matmul_conf();
+            const auto zp_data_type
+                    = pd->attr()->zero_points_.get_data_type(DNNL_ARG_WEIGHTS);
+            zero_point_b_neg_per_oc_buf_.resize(bgmmc.N);
+            for (int i = 0; i < bgmmc.N; i++) {
+                int32_t zp_val = cpu::io::load_int_value(
+                        zp_data_type, wei_zero_points, i);
+                zero_point_b_neg_per_oc_buf_[i] = -zp_val;
+            }
 
         } else {
             zero_point_b_val_ = wei_zero_points ? cpu::io::load_int_value(
@@ -2144,6 +2168,14 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return &zero_point_b_negative_val_;
     }
 
+    const int32_t *get_zp_b_neg_val_ptr(int n_offset) const {
+        if (!zero_point_b_neg_per_oc_buf_.empty()) {
+            return zero_point_b_neg_per_oc_buf_.data() + n_offset;
+        } else {
+            return &zero_point_b_negative_val_;
+        }
+    }
+
     const int32_t *get_zp_b_val_ptr(int n_offset) const {
         if (zero_point_b_per_oc_ptr_ != nullptr) {
             return static_cast<const int32_t *>(zero_point_b_per_oc_ptr_)
@@ -2525,6 +2557,7 @@ private:
     int32_t zero_point_c_val_;
     const void *zero_point_c_per_oc_ptr_;
     const void *zero_point_b_per_oc_ptr_;
+    std::vector<int32_t> zero_point_b_neg_per_oc_buf_;
     std::vector<const void *> post_ops_binary_rhs_arg_vec_;
 
     int base_brg_ker_idx_;

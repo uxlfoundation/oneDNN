@@ -1554,7 +1554,15 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
             VERBOSE_BLOCKING_FAIL, "");
 
-    if (bgmmc.wei_n_blk > bgmmc.N_blk
+    // For per_n wei zero points, force N_blk=1 to ensure each N gets its own compensation value
+    if (bgmmc.wei_zp_type == brgemm_broadcast_t::per_n && !bgmmc.is_runtime_N) {
+        bgmmc.N_blk = 1;
+    }
+
+    const bool skip_wei_tag_update
+            = bgmmc.wei_zp_type == brgemm_broadcast_t::per_n;
+
+    if (bgmmc.wei_n_blk > bgmmc.N_blk && !skip_wei_tag_update
             && IMPLICATION(
                     bgmmc.N == bgmmc.N_blk, bgmmc.N >= bgmmc.wei_n_blk)) {
         assert(!bgmmc.is_runtime_N
@@ -1684,6 +1692,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // This is the only implementation that support the packed_sparse_weights
     // case therefore there is no fallback for it.
     is_small_shapes = is_small_shapes && !bgmmc.packed_sparse_weights;
+
+    // For per_n zp compensation calculation requires N_blk=1 which only BRGEMM supports
+    const bool requires_brgemm = bgmmc.wei_zp_type == brgemm_broadcast_t::per_n;
+    is_small_shapes = is_small_shapes && !requires_brgemm;
+
     VCONDCHECK_BG(!is_small_shapes, VERBOSE_SMALL_SHAPES);
 
     if (bgmmc.use_buffer_b) {

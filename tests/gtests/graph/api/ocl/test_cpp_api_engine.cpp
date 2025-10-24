@@ -26,6 +26,9 @@
 using namespace dnnl::graph;
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#define CL_MEM_FLAGS_INTEL 0x10001
+#define CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL (1 << 23)
+
 #define GRAPH_TEST_OCL_CHECK(x) \
     do { \
         cl_int s = (x); \
@@ -48,8 +51,11 @@ static void *ocl_malloc_shared(
     const char *f_name = "clSharedMemAllocINTEL";
     auto f = reinterpret_cast<F>(
             clGetExtensionFunctionAddressForPlatform(platform, f_name));
+    cl_bitfield properties[]
+            = {CL_MEM_FLAGS_INTEL, CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL, 0};
     cl_int err;
-    void *p = f(ctx, dev, nullptr, size, static_cast<cl_uint>(alignment), &err);
+    void *p = f(
+            ctx, dev, properties, size, static_cast<cl_uint>(alignment), &err);
     GRAPH_TEST_OCL_CHECK(err);
     return p;
 }

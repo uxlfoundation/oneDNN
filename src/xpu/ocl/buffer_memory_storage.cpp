@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2024 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,8 +34,9 @@ status_t buffer_memory_storage_t::init_allocate(size_t size) {
             = utils::downcast<const xpu::ocl::engine_impl_t *>(engine()->impl())
                       ->context();
     cl_int err;
-    mem_object_ = clCreateBuffer_wrapper(
-            context, CL_MEM_READ_WRITE, size, nullptr, &err);
+    mem_object_ = clCreateBuffer_wrapper(context,
+            CL_MEM_READ_WRITE | CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL, size,
+            nullptr, &err);
     OCL_CHECK(err);
     return status::success;
 }

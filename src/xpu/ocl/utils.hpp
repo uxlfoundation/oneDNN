@@ -28,6 +28,9 @@
 
 #include "xpu/utils.hpp"
 
+#define CL_MEM_FLAGS_INTEL 0x10001
+#define CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL (1 << 23)
+
 namespace dnnl {
 namespace impl {
 namespace xpu {

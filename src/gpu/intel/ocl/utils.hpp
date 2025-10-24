@@ -38,6 +38,8 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
+const dim_t max_small_buffer_size = 4294967295;
+
 bool try_building(
         cl_context context, cl_device_id device, const char *kernel_code);
 

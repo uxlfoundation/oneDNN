@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -60,8 +60,11 @@ void *malloc_host(impl::engine_t *engine, size_t size) {
 
     static xpu::ocl::ext_func_t<clHostMemAllocINTEL_func_t> ext_func(
             "clHostMemAllocINTEL");
+    cl_bitfield properties[]
+            = {CL_MEM_FLAGS_INTEL, CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL, 0};
     cl_int err;
-    void *p = ext_func(engine, get_ocl_context(engine), nullptr, size, 0, &err);
+    void *p = ext_func(
+            engine, get_ocl_context(engine), properties, size, 0, &err);
     assert(utils::one_of(err, CL_SUCCESS, CL_OUT_OF_RESOURCES,
             CL_OUT_OF_HOST_MEMORY, CL_INVALID_BUFFER_SIZE));
     return p;
@@ -75,9 +78,11 @@ void *malloc_device(impl::engine_t *engine, size_t size) {
 
     static xpu::ocl::ext_func_t<clDeviceMemAllocINTEL_func_t> ext_func(
             "clDeviceMemAllocINTEL");
+    cl_bitfield properties[]
+            = {CL_MEM_FLAGS_INTEL, CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL, 0};
     cl_int err;
     void *p = ext_func(engine, get_ocl_context(engine), get_ocl_device(engine),
-            nullptr, size, 0, &err);
+            properties, size, 0, &err);
     assert(utils::one_of(err, CL_SUCCESS, CL_OUT_OF_RESOURCES,
             CL_OUT_OF_HOST_MEMORY, CL_INVALID_BUFFER_SIZE));
     return p;
@@ -91,9 +96,11 @@ void *malloc_shared(impl::engine_t *engine, size_t size) {
 
     static xpu::ocl::ext_func_t<clSharedMemAllocINTEL_func_t> ext_func(
             "clSharedMemAllocINTEL");
+    cl_bitfield properties[]
+            = {CL_MEM_FLAGS_INTEL, CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL, 0};
     cl_int err;
     void *p = ext_func(engine, get_ocl_context(engine), get_ocl_device(engine),
-            nullptr, size, 0, &err);
+            properties, size, 0, &err);
     assert(utils::one_of(err, CL_SUCCESS, CL_OUT_OF_RESOURCES,
             CL_OUT_OF_HOST_MEMORY, CL_INVALID_BUFFER_SIZE));
     return p;

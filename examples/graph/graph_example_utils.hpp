@@ -24,6 +24,8 @@
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "oneapi/dnnl/dnnl_graph_ocl.hpp"
 #include "oneapi/dnnl/dnnl_ocl.hpp"
+#define CL_MEM_FLAGS_INTEL 0x10001
+#define CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL (1 << 23)
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 #include "oneapi/dnnl/dnnl_graph_sycl.hpp"
 #include "oneapi/dnnl/dnnl_sycl.hpp"
@@ -266,8 +268,11 @@ static void *ocl_malloc_device(
     const char *f_name = "clDeviceMemAllocINTEL";
     auto f = reinterpret_cast<F>(
             clGetExtensionFunctionAddressForPlatform(platform, f_name));
+    cl_bitfield properties[]
+            = {CL_MEM_FLAGS, CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL, 0};
     cl_int err;
-    void *p = f(ctx, dev, nullptr, size, static_cast<cl_uint>(alignment), &err);
+    void *p = f(
+            ctx, dev, properties, size, static_cast<cl_uint>(alignment), &err);
     OCL_CHECK(err);
     return p;
 }

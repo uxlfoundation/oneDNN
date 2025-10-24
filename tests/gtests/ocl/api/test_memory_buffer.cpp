@@ -25,6 +25,9 @@
 #include <vector>
 #include <CL/cl.h>
 
+#define CL_MEM_FLAGS_INTEL 0x10001
+#define CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL (1 << 23)
+
 namespace dnnl {
 
 class ocl_memory_buffer_test_c_t : public ::testing::Test {
@@ -78,7 +81,8 @@ HANDLE_EXCEPTIONS_FOR_TEST_F(ocl_memory_buffer_test_c_t, BasicInteropC) {
     ASSERT_EQ(ocl_mem, nullptr);
 
     cl_int err;
-    cl_mem interop_ocl_mem = clCreateBuffer(ocl_ctx, CL_MEM_READ_WRITE,
+    cl_mem interop_ocl_mem = clCreateBuffer(ocl_ctx,
+            CL_MEM_READ_WRITE | CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL,
             sizeof(float) * N * C * H * W, nullptr, &err);
     TEST_OCL_CHECK(err);
 
@@ -109,7 +113,8 @@ HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_buffer_test_cpp_t, BasicInteropCpp) {
     cl_context ocl_ctx = ocl_interop::get_context(eng);
 
     cl_int err;
-    cl_mem interop_ocl_mem = clCreateBuffer(ocl_ctx, CL_MEM_READ_WRITE,
+    cl_mem interop_ocl_mem = clCreateBuffer(ocl_ctx,
+            CL_MEM_READ_WRITE | CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL,
             sizeof(float) * tz[0] * tz[1] * tz[2] * tz[3], nullptr, &err);
     TEST_OCL_CHECK(err);
 
@@ -151,8 +156,9 @@ HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_buffer_test_cpp_t, BasicInteropCtor) {
     cl_context ocl_ctx = ocl_interop::get_context(eng);
 
     cl_int err;
-    cl_mem ocl_mem = clCreateBuffer(
-            ocl_ctx, CL_MEM_READ_WRITE, sizeof(float) * sz, nullptr, &err);
+    cl_mem ocl_mem = clCreateBuffer(ocl_ctx,
+            CL_MEM_READ_WRITE | CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL,
+            sizeof(float) * sz, nullptr, &err);
 
     memory::desc mem_d(tz, memory::data_type::f32, memory::format_tag::nchw);
 
@@ -181,9 +187,11 @@ HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_buffer_test_cpp_t, BufferMapUnmap) {
     memory::desc mem_d({n}, memory::data_type::f32, memory::format_tag::x);
 
     cl_context ocl_ctx = ocl_interop::get_context(eng);
+
     cl_int err;
-    cl_mem ocl_mem = clCreateBuffer(
-            ocl_ctx, CL_MEM_READ_WRITE, mem_d.get_size(), nullptr, &err);
+    cl_mem ocl_mem = clCreateBuffer(ocl_ctx,
+            CL_MEM_READ_WRITE | CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL,
+            mem_d.get_size(), nullptr, &err);
     TEST_OCL_CHECK(err);
     ASSERT_NE(ocl_mem, nullptr);
 
@@ -241,19 +249,21 @@ HANDLE_EXCEPTIONS_FOR_TEST(
 
     // User provided buffers.
     cl_context ocl_ctx = ocl_interop::get_context(eng);
+    cl_mem_flags flags = CL_MEM_READ_WRITE;
+    flags |= CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL;
     cl_int err;
-    cl_mem ocl_values = clCreateBuffer(
-            ocl_ctx, CL_MEM_READ_WRITE, md.get_size(0), nullptr, &err);
+    cl_mem ocl_values
+            = clCreateBuffer(ocl_ctx, flags, md.get_size(0), nullptr, &err);
     TEST_OCL_CHECK(err);
     ASSERT_NE(ocl_values, nullptr);
 
-    cl_mem ocl_row_indices = clCreateBuffer(
-            ocl_ctx, CL_MEM_READ_WRITE, md.get_size(1), nullptr, &err);
+    cl_mem ocl_row_indices
+            = clCreateBuffer(ocl_ctx, flags, md.get_size(1), nullptr, &err);
     TEST_OCL_CHECK(err);
     ASSERT_NE(ocl_row_indices, nullptr);
 
-    cl_mem ocl_col_indices = clCreateBuffer(
-            ocl_ctx, CL_MEM_READ_WRITE, md.get_size(2), nullptr, &err);
+    cl_mem ocl_col_indices
+            = clCreateBuffer(ocl_ctx, flags, md.get_size(2), nullptr, &err);
     TEST_OCL_CHECK(err);
     ASSERT_NE(ocl_col_indices, nullptr);
 
@@ -286,22 +296,22 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     std::vector<int> col_indices = {0, 1};
 
     cl_context ocl_ctx = ocl_interop::get_context(eng);
+    cl_mem_flags flags = CL_MEM_READ_WRITE;
+    flags |= CL_MEM_USE_HOST_PTR;
+    flags |= CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL;
     cl_int err;
-    cl_mem ocl_values
-            = clCreateBuffer(ocl_ctx, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,
-                    md.get_size(0), coo_values.data(), &err);
+    cl_mem ocl_values = clCreateBuffer(
+            ocl_ctx, flags, md.get_size(0), coo_values.data(), &err);
     TEST_OCL_CHECK(err);
     ASSERT_NE(ocl_values, nullptr);
 
-    cl_mem ocl_row_indices
-            = clCreateBuffer(ocl_ctx, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,
-                    md.get_size(1), row_indices.data(), &err);
+    cl_mem ocl_row_indices = clCreateBuffer(
+            ocl_ctx, flags, md.get_size(1), row_indices.data(), &err);
     TEST_OCL_CHECK(err);
     ASSERT_NE(ocl_row_indices, nullptr);
 
-    cl_mem ocl_col_indices
-            = clCreateBuffer(ocl_ctx, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,
-                    md.get_size(2), col_indices.data(), &err);
+    cl_mem ocl_col_indices = clCreateBuffer(
+            ocl_ctx, flags, md.get_size(2), col_indices.data(), &err);
     TEST_OCL_CHECK(err);
     ASSERT_NE(ocl_col_indices, nullptr);
 

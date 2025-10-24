@@ -245,6 +245,7 @@ struct dispatch_compile_params_t {
     subgroup_data_t subgroup;
     int32_t num_terms = 0;
     bool use_int32_offset = false;
+    bool use_4gb_buffers = false;
     uint8_t padding[3] = {0};
     gws_indexing_term_t::compile_params_t terms[MAX_INDEXING_TERMS]
             = {{gws_op_t::SOLO, 0}};
@@ -549,6 +550,8 @@ public:
         }
 
         compile_params.use_int32_offset = max_buffer_size <= INT32_MAX;
+        compile_params.use_4gb_buffers
+                = max_buffer_size > ocl::max_small_buffer_size;
         compile_params.subgroup = subgroup;
 
         // Set runtime params

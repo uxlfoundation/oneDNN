@@ -52,11 +52,8 @@ public:
         for (auto &opt : option_set_)
             oss << " " << opt;
 
-        if (use_int32_offset_) {
-            oss << " -DUSE_INT32_OFFSET";
-        } else {
-            // TODO: Determine if specialization for buffers between 2GB and 4GB
-            // is worthwhile
+        if (use_int32_offset_) { oss << " -DUSE_INT32_OFFSET"; }
+        if (use_4gb_buffers_) {
             oss << " -cl-intel-greater-than-4GB-buffer-required";
         }
 
@@ -96,6 +93,10 @@ public:
     // case, int32_t types can be used for data offsets and avoid int64_t
     // operations when native 64-bit operations are unsupported.
     void use_int32_offset(bool value) { use_int32_offset_ = value; }
+
+    // Enable '-cl-intel-greater-than-4GB-buffer-required' flag
+    // to correctly process big buffers.
+    void use_4gb_buffers(bool value) { use_4gb_buffers_ = value; }
 
     void define_int(const char *variable, int64_t value) {
         set_macro(variable, value, int_var_map_);
@@ -216,6 +217,7 @@ private:
     std::set<std::string> option_set_;
     std::unordered_map<std::string, std::string> custom_headers_;
     bool use_int32_offset_ = true;
+    bool use_4gb_buffers_ = true;
 };
 
 } // namespace compute

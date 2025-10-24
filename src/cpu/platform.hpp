@@ -211,63 +211,23 @@ enum class core_type : int {
     default_core = p_core // Default core (used for non-hybrid CPUs)
 };
 
-// Assumption each core type on a system is homogeneous in terms of cache
-// topology e.g. all P-cores have the same cache topology, all E-cores have the
-// same cache topology this is true for all Intel hybrid CPUs so far
-// (Alder Lake, Raptor Lake, Lunar Lake)
-struct cache_info_t {
-    uint8_t level; // cache level (0 - L1i, 1 - L1d, 2 - L2, 3 - L3, etc)
-    uint32_t size; // cache size in bytes
-    uint32_t num_sharing_cores; // number of cores sharing this cache
-    core_type ctype; // core type (used for hybrid CPUs)
-};
-
-// Cache topology for hybrid CPUs
-// For non-hybrid CPUs, the entries only the first entries should be used
-//    e.g. caches[0..3] - L1i, L1d, L2, L3
-//    caches[4..7] expected to be a copy of caches[0..3] but not guaranteed
-// For hybrid CPUs with 2 core types (e.g. Alder Lake) the entries are as follows:
-//    caches[0..3] - L1i, L1d, L2, L3 P-core
-//    caches[4..7] - L1i, L1d, L2, L3 E-core
-//
-// Currently the L1 instruction cache (L1i) entries are not populated by any
-// of the platform initialization functions, thus, caches[0] and caches[4]
-// will have size 0.
-// TODO: consider populating L1i cache or remove it from the topology making
-// the 0 entry the L1d cache.
-struct cache_topology_t {
-    static constexpr size_t max_cache_levels = 4;
-    static constexpr size_t max_core_types = 2;
-    cache_info_t caches[max_cache_levels * max_core_types];
-    bool is_hybrid;
-    const cache_info_t &get_cache(int level, core_type ctype = core_type::default_core) const {
-        size_t type_idx = (ctype == core_type::p_core) ? 0
-                          : (ctype == core_type::e_core) ? 1
-                          : 0;
-        // Validate level and computed index to avoid out-of-bounds access.
-        const size_t lvl = static_cast<size_t>(level);
-        const size_t total = max_cache_levels * max_core_types;
-        size_t idx = type_idx * max_cache_levels + lvl;
-        if (lvl >= max_cache_levels || idx >= total) {
-            // Fallback to a safe, well-defined element
-            // (L1i of default core) on invalid input.
-            // Currently the L1i cache entry is not populated,
-            // so this will return an element with cache size 0.
-            return caches[0];
-        }
-        return caches[idx];
-    }
-};
-
+// returns true if the CPU is a hybrid CPU
+// (e.g. Alder Lake, Raptor Lake, Lunar Lake)
+bool is_hybrid();
 
 enum class behavior_t {
     p_core, // Performance core
     e_core, // Efficiency core
     current, // Current core
-    min,    // used to select the smallest value for all the cores
-    max,    // used to select the largest value for all the cores
+    min, // used to select the smallest value for all the cores
+    max, // used to select the largest value for all the cores
     unknown
 };
+
+// get the core_type of the core the calling thread is running on
+// to get the core_type of a specific core, set thread affinity to that core
+core_type get_core_type();
+
 // Use OS specific methods to determine the per-core cache size.
 //
 // This is avoids using CPUID-based methods which can result in inaccurate values
@@ -318,14 +278,6 @@ enum class behavior_t {
 // TODO: Test behavior on non-hybrid CPUs.
 unsigned DNNL_API get_per_core_cache_size(int level, behavior_t btype);
 
-// returns true if the CPU is a hybrid CPU
-// (e.g. Alder Lake, Raptor Lake, Lunar Lake)
-bool is_hybrid();
-
-// get the core_type of the core the calling thread is running on
-// to get the core_type of a specific core, set thread affinity to that core
-core_type get_core_type();
-
 } // namespace platform
 
 // XXX: find a better place for these values?
@@ -333,7 +285,6 @@ enum {
     PAGE_4K = 4096,
     PAGE_2M = 2097152,
 };
-
 
 } // namespace cpu
 } // namespace impl

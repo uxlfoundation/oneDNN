@@ -6109,6 +6109,8 @@ TEST(test_convolution_execute_subgraph_int8, QuantWeiConv2dSumRelu) {
                 && wei_qtype == "per_channel" && g == 4)
             continue;
         // prepare fp32 data
+        std::cout << scale << "," << zp << "," << g << "," << with_bias << ","
+                  << wei_qtype << std::endl;
         int64_t in_channel = 8, out_channel = 8;
         int64_t kernel_size = 3;
         std::vector<int64_t> src_shape {1, in_channel, 112, 112};

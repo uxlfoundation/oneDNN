@@ -1656,25 +1656,33 @@ void CopyPlan::planE8M0ToF(CopyInstruction &i)
     if (i.src0.neg || i.sat || i.hasCMod()) stub("Unsupported modifier");
 
     // Emulation sequence for mov y:f x:e8m0:
-    //   shl       y.hi:uw  x:ub  7
-    //   add (sat) y.lo:uw  x:ub  -254
+    //   shl         y.hi:uw  x:ub     7
+    //   add (sat)   y.lo:uw  x:ub     -254
+    //   sel (ge)    y.hi:uw  y.hi:uw  0x40
+    // Note:
+    //  * 0x00:e8m0 -> 0x00400000:f
+    //  * 0xFF:e8m0 -> 0x7F800001:f (nan)
 
-    auto &i0 = i, &i1 = split(i);
+    i.dst.type = DataType::uw;
+    i.dst.offset *= 2;
+    i.dst.stride *= 2;
+    i.src0.type = DataType::ub;
 
-    i0.op = Opcode::shl;
-    i0.dst.type = DataType::uw;
-    i0.dst.offset *= 2;
-    i0.dst.stride *= 2;
-    i0.src0.type = DataType::ub;
-    i0.src1 = 7;
+    auto ie = splitMultiple<3>(i);
 
-    i1.op = Opcode::add;
-    i1.dst = i0.dst;
-    i1.src0 = i0.src0;
-    i1.src1 = -254;
-    i1.sat = true;
+    ie[0]->op = Opcode::shl;
+    ie[0]->dst.offset += 1;
+    ie[0]->src1 = 7;
 
-    i0.dst.offset++;
+    ie[1]->op = Opcode::add;
+    ie[1]->src1 = -254;
+    ie[1]->sat = true;
+
+    ie[2]->op = Opcode::sel;
+    ie[2]->cmod = ConditionModifier::ge;
+    ie[2]->dst.offset += 1;
+    ie[2]->src0 = ie[2]->dst;
+    ie[2]->src1 = 0x40;
 }
 
 // Emulation sequence for bf8->bf conversion.

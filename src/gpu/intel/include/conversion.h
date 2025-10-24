@@ -230,11 +230,8 @@ IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f4_e3m0, float));
 #endif // MATH_UTILS_DECLARE_F4_E3M0
 
 #ifdef MATH_UTILS_DECLARE_E8M0
-// Copy-paste from `cvt_e8m0_to_f32`.
 float __attribute__((overloadable)) into_float(e8m0 b) {
-    if (b.data == (char)0xff) return as_float(0xffc00000);
-    uint bits = b.data << 23;
-    return as_float(bits);
+    return cvt_e8m0_to_f32(b.data);
 }
 #endif
 

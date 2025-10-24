@@ -176,8 +176,7 @@ struct ref_rnn_common_t : public primitive_t {
         void init_scratchpad(size_t scratchpad_sz);
     };
 
-    ref_rnn_common_t(const pd_t *apd)
-        : primitive_t(apd), rnn_postgemm_(nullptr) {}
+    ref_rnn_common_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t init(engine_t *engine) override;
     ~ref_rnn_common_t() override { delete rnn_postgemm_; }
@@ -245,31 +244,31 @@ protected:
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    size_t ws_gates_offset_;
-    size_t ws_ht_offset_;
-    size_t ws_states_layer_offset_;
-    size_t ws_states_iter_offset_;
-    size_t ws_states_iter_c_offset_;
-    size_t ws_bias_offset_;
-    size_t ws_diff_states_layer_offset_;
-    size_t ws_diff_states_iter_offset_;
-    size_t ws_diff_states_iter_c_offset_;
-    size_t ws_grid_comp_offset_;
-    size_t scratch_gates_offset_;
-    size_t scratch_ht_offset_;
-    size_t scratch_diff_ht_offset_;
-    size_t scratch_cell_offset_;
-    postgemm_t *rnn_postgemm_;
+    size_t ws_gates_offset_ {};
+    size_t ws_ht_offset_ {};
+    size_t ws_states_layer_offset_ {};
+    size_t ws_states_iter_offset_ {};
+    size_t ws_states_iter_c_offset_ {};
+    size_t ws_bias_offset_ {};
+    size_t ws_diff_states_layer_offset_ {};
+    size_t ws_diff_states_iter_offset_ {};
+    size_t ws_diff_states_iter_c_offset_ {};
+    size_t ws_grid_comp_offset_ {};
+    size_t scratch_gates_offset_ {};
+    size_t scratch_ht_offset_ {};
+    size_t scratch_diff_ht_offset_ {};
+    size_t scratch_cell_offset_ {};
+    postgemm_t *rnn_postgemm_ {};
 
-    grid_execution_f grid_computation;
-    cell_execution_f cell_func;
-    merged_layer_execution_f merged_layer_func;
+    grid_execution_f grid_computation {};
+    cell_execution_f cell_func {};
+    merged_layer_execution_f merged_layer_func {};
 
-    bias_prepare_t bias_preparation_func;
-    bias_finalize_t bias_finalization_func;
-    weights_assign_t weights_layer_assign_func;
-    weights_assign_t weights_iter_assign_func;
-    weights_assign_t weights_projection_assign_func;
+    bias_prepare_t bias_preparation_func {};
+    bias_finalize_t bias_finalization_func {};
+    weights_assign_t weights_layer_assign_func {};
+    weights_assign_t weights_iter_assign_func {};
+    weights_assign_t weights_projection_assign_func {};
 
     // While using Matmul instead of GeMM, we require multiple matmuls, due to
     // differences in M, N, K, LDB and post-ops at different cell_positions.
@@ -285,9 +284,9 @@ protected:
     std::shared_ptr<primitive_t> matmul_part2_3_;
     std::shared_ptr<primitive_t> matmul_part2_4_;
 
-    gemm_t gemm_layer_func;
-    gemm_t gemm_iter_func;
-    gemm_t gemm_projection_func;
+    gemm_t gemm_layer_func {};
+    gemm_t gemm_iter_func {};
+    gemm_t gemm_projection_func {};
 };
 
 template <impl::data_type_t src_type, impl::data_type_t weights_type,

@@ -25,6 +25,7 @@
 #include "cpu/x64/brgemm/brgemm.hpp"
 #include "cpu/x64/brgemm/brgemm_types.hpp"
 #include "cpu/x64/cpu_barrier.hpp"
+#include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/jit_avx512_core_bf16cvt.hpp"
 #include "cpu/x64/jit_avx512_core_fp8cvt.hpp"
@@ -2114,6 +2115,8 @@ bool jit_brgemm_kernel_t<Wmm>::maybe_pre_process_k_tail(bool last_bdb,
             + brg.get_convert_wsp_buffer_size();
 
     //TODO: reuse transformed data from matrix A for ldi > 0
+    const int max_tiles = amx::get_max_palette_size();
+    JIT_ASSERT_RET(t1.getIdx() >= 0 && t1.getIdx() < max_tiles, false);
     const dim_t num_rows = palette_.rows[t1.getIdx()];
     const dim_t num_col_bytes = palette_.cols[t1.getIdx()];
 

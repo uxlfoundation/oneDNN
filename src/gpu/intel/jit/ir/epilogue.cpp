@@ -311,8 +311,9 @@ public:
                 gpu_assert(t.is_f32_scalar())
                         << "All tensors in the compute expression must be f32 "
                            "scalars.";
-                gpu_assert(t.do_preload()) << "All tensors in the compute "
-                                              "expression must be preloaded.";
+                gpu_assert(t.do_preload() || !t.reg_buf().type().is_ptr())
+                        << "All non-immediate tensors in the compute"
+                           "expression must be preloaded.";
                 e = substitute(e, t.op_var(), t.load_expr(tile, 0));
             }
         }

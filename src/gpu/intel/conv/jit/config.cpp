@@ -986,8 +986,6 @@ bool post_ops_ok(const problem_t &prb, const hw_t &hw) {
                 prb.c_data_type, utils::one_of(input_type, s8, u8), true))
         return false;
 
-    if (attr->scales_.has_host_scalars()) return false;
-
     if (!attr->scales_.has_default_values())
         if (!prb.is_s32_accumulator() && !prb.is_fp8_conv()) return false;
     auto scale_args = get_scale_args();

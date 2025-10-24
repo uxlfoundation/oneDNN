@@ -441,6 +441,8 @@ void jit_sve_1x1_convolution_fwd_t<src_type, wei_type, dst_type,
 }
 
 template struct jit_sve_1x1_convolution_fwd_t<data_type::f32, data_type::f32,
+        data_type::f32, sve_128>;
+template struct jit_sve_1x1_convolution_fwd_t<data_type::f32, data_type::f32,
         data_type::f32, sve_256>;
 template struct jit_sve_1x1_convolution_fwd_t<data_type::f32, data_type::f32,
         data_type::f32, sve_512>;

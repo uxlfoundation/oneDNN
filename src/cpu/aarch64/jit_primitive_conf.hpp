@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2016-2022 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -37,6 +38,7 @@ enum conv_version_t {
     ver_fma,
     ver_sve_512,
     ver_sve_256,
+    ver_sve_128,
 };
 
 enum conv_loop_order_t {

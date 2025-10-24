@@ -351,7 +351,7 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
 
 int brgemm_matmul_conf_utils_t::get_default_n_block(
         format_tag_t matrix_b_tag) const {
-    if (bgmmc.is_gemv && !bgmmc.swap_a_b) return 1;
+      if (bgmmc.is_gemv) return 1;
 
     const int n_blk = get_n_block_from_tag(matrix_b_tag);
     if (n_blk > 0) return n_blk;
@@ -1069,9 +1069,14 @@ float compute_blocking_heuristic_avx2(brgemm_matmul_conf_t &bgmmc,
 
 float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
-        const matmul_avx512_blocking_params_t::matmul_params_t &matmul,
+        const matmul_avx512_blocking_params_t::matmul_params_t &matmul_,
         matmul_avx512_blocking_params_t &best_blocking) {
     float best_imbalance = 1.f; // reduce
+
+    const auto &matmul = (bgmmc.is_gemv && bgmmc.swap_a_b)
+            ? matmul_avx512_blocking_params_t::matmul_params_t(
+                    matmul_.N, matmul_.M, matmul_.K, matmul_.batch)
+            : matmul_;
 
     const int nthr = bgmmc.nthr;
 
@@ -1115,8 +1120,6 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
 
     max_m_blk = nstl::max(max_m_blk, min_m_blk);
 
-    if (bgmmc.is_gemv && bgmmc.swap_a_b) min_m_blk = max_m_blk = 1;
-
     for_(int nthr_k = start_nthr_k; nthr_k >= 1; --nthr_k)
     for_(int n_chunk_size = n_chunks_start; n_chunk_size >= 1; --n_chunk_size)
     for (int m_blk = max_m_blk; m_blk >= min_m_blk; --m_blk) {
@@ -1130,6 +1133,14 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
             best_blocking = cur_params;
         }
     }
+
+    // Swap blocks
+    if (bgmmc.is_gemv && bgmmc.swap_a_b) {
+        std::swap(best_blocking.m_chunks, best_blocking.n_chunks);
+        std::swap(best_blocking.m_blk, best_blocking.n_blk);
+        std::swap(best_blocking.m_tail, best_blocking.n_tail);
+    }
+
     return best_imbalance;
 }
 

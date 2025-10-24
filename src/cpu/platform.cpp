@@ -673,40 +673,6 @@ core_type get_core_type_from_processor_info(
     return core_type::p_core;
 }
 
-// Helper function to add cache info to the cache_map
-// this creates a relationship between core_type and cache level
-// and stores the cache size and number of sharing cores for each entry
-// if an entry already exists, the number of sharing_cores is updated to
-// the maximum. (if the cores are homogeneous, this should not matter)
-void add_cache(std::map<std::pair<core_type, int>, cache_info_t> &cache_map,
-        const CACHE_RELATIONSHIP &cache, core_type ctype) {
-    int level = static_cast<int>(cache.Level);
-    if (level < 1 || level > (int)cache_topology_t::max_cache_levels) return;
-
-    // Only process data or unified caches
-    if (cache.Type != CacheData && cache.Type != CacheUnified) return;
-
-    auto key = std::make_pair(ctype, level);
-
-    // Count sharing cores from GroupMask
-    unsigned sharing_cores = count_bits_in_mask(cache.GroupMask.Mask);
-
-    // If we've seen this cache before, take the maximum sharing count
-    // (different cache descriptors may report different views)
-    auto it = cache_map.find(key);
-    if (it != cache_map.end()) {
-        it->second.num_sharing_cores
-                = std::max(it->second.num_sharing_cores, sharing_cores);
-    } else {
-        cache_info_t info;
-        info.level = level;
-        info.size = cache.CacheSize;
-        info.num_sharing_cores = sharing_cores;
-        info.ctype = ctype;
-        cache_map[key] = info;
-    }
-}
-
 // Function to initialize cache topology using Windows APIs
 // 1. Query CPUID to check if system is hybrid
 // 2. Use GetLogicalProcessorInformationEx to enumerate all processor cores
@@ -797,17 +763,52 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
                             has_e_core = true;
                     }
                 }
-                // Add cache entry for each core type that uses it
-                if (has_p_core) {
-                    add_cache(cache_map, cache, core_type::p_core);
+                // Normalize level and validate.
+                int level = static_cast<int>(cache.Level);
+                if (level < 0
+                        || level > (int)cache_topology_t::max_cache_levels) {
+                    offset += info->Size;
+                    continue;
                 }
-                if (has_e_core) {
-                    add_cache(cache_map, cache, core_type::e_core);
-                }
-                // If no specific assignment, this might be a shared cache
+
+                // Count sharing cores for this cache descriptor.
+                unsigned sharing_cores
+                        = count_bits_in_mask(cache.GroupMask.Mask);
+
+                // Helper to set or merge an entry in cache_topology.
+                auto set_cache_topology_entry = [&](core_type ctype) {
+                    int type_idx = (ctype == core_type::p_core) ? 0 : 1;
+                    size_t idx = type_idx * cache_topology_t::max_cache_levels
+                            + static_cast<size_t>(level);
+                    const size_t total_slots
+                            = cache_topology_t::max_cache_levels
+                            * cache_topology_t::max_core_types;
+                    if (idx >= total_slots) return;
+
+                    // If slot not yet populated (size == 0), set it.
+                    if (cache_topology.caches[idx].size == 0) {
+                        cache_info_t info;
+                        info.level = static_cast<uint8_t>(level);
+                        info.size = cache.CacheSize;
+                        info.num_sharing_cores = sharing_cores;
+                        info.ctype = ctype;
+                        cache_topology.caches[idx] = info;
+                    } else {
+                        // Merge sharing information conservatively.
+                        cache_topology.caches[idx].num_sharing_cores = std::max(
+                                cache_topology.caches[idx].num_sharing_cores,
+                                sharing_cores);
+                    }
+                };
+
+                // Assign to p_core/e_core based on which core types are present.
+                if (has_p_core) set_cache_topology_entry(core_type::p_core);
+                if (has_e_core) set_cache_topology_entry(core_type::e_core);
+                // If neither was set, this is likely a shared cache: populate both
+                // core slots unless already present.
                 if (!has_p_core && !has_e_core) {
-                    add_cache(cache_map, cache, core_type::p_core);
-                    add_cache(cache_map, cache, core_type::e_core);
+                    set_cache_topology_entry(core_type::p_core);
+                    set_cache_topology_entry(core_type::e_core);
                 }
             }
         }
@@ -1119,9 +1120,10 @@ void init_cache_topology(cache_topology_t &cache_topology) {
         // - all cache entries zeroed
         // - default core type
         cache_topology.is_hybrid = false;
-        for (size_t i = 0; i < cache_topology_t::max_cache_levels
-                        * cache_topology_t::max_core_types;
-                ++i) {
+        size_t max_entries
+                = cache_topology_t::max_cache_levels
+                * cache_topology_t::max_core_types;
+        for (size_t i = 0; i < max_entries; ++i) {
             cache_topology.caches[i].level = 0;
             cache_topology.caches[i].size = 0;
             cache_topology.caches[i].num_sharing_cores = 0;

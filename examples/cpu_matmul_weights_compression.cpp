@@ -22,7 +22,7 @@
 /// [MatMul](@ref dev_guide_matmul) primitive that uses a weights tensor
 /// encoded with the packed sparse encoding.
 
-/// @page cpu_matmul_weights_compression_cpp MatMul Primitive Example
+/// @page cpu_matmul_weights_compression_cpp MatMul with Packed Sparse Weights
 /// \copybrief cpu_matmul_weights_compression_cpp_brief
 ///
 /// @include cpu_matmul_weights_compression.cpp

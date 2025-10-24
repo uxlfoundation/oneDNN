@@ -118,4 +118,5 @@ N/A
 
 ## Examples
 
-* @ref shuffle_example_cpp
+See @ref dev_guide_examples page for a complete list. Shuffle examples are listed in the
+[Tensor Operations](@ref examples_tensor_operations) section.

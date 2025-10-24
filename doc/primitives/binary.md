@@ -16,13 +16,13 @@ between tensors source 0 and source 1 (the variable names follow the standard
         \src_0(\overline{x}) \mathbin{op} \src_1(\overline{x}),
 \f]
 
-where \f$op\f$ is one of the following operators: addition (\f$+\f$), 
-subtraction (\f$-\f$), multiplication (\f$\times\f$), division (\f$\div\f$), 
-greater than or equal to (\f$\geq\f$), greater than (\f$>\f$), 
-less than or equal to (\f$\leq\f$), less than (\f$<\f$), equal to (\f$=\f$), 
-not equal to (\f$\neq\f$), get maximum value (\f$\max(\cdot)\f$), 
+where \f$op\f$ is one of the following operators: addition (\f$+\f$),
+subtraction (\f$-\f$), multiplication (\f$\times\f$), division (\f$\div\f$),
+greater than or equal to (\f$\geq\f$), greater than (\f$>\f$),
+less than or equal to (\f$\leq\f$), less than (\f$<\f$), equal to (\f$=\f$),
+not equal to (\f$\neq\f$), get maximum value (\f$\max(\cdot)\f$),
 get minimum value (\f$\min(\cdot)\f$), and conditional select operation.
-For the conditional select operation, the binary primitive uses a third input 
+For the conditional select operation, the binary primitive uses a third input
 tensor \f$src_2\f$ to select between the two source tensors:
 
 \f[
@@ -76,9 +76,9 @@ argument index as specified by the following table.
    be overwritten. In-place mode requires the \dst and source 0 data types to be
    the same. Different data types will unavoidably lead to correctness issues.
 
- * For the binary select operation, broadcast semantics are not supported for 
-   the third conditional input tensor. For this case, the dimensions and layout 
-   of the conditional input tensor must match that of the source 0 tensor. 
+ * For the binary select operation, broadcast semantics are not supported for
+   the third conditional input tensor. For this case, the dimensions and layout
+   of the conditional input tensor must match that of the source 0 tensor.
 
 ### Post-Ops and Attributes
 
@@ -95,8 +95,8 @@ The following attributes are supported:
 
 The source and destination tensors may have `f32`, `bf16`, `f16`, `s32` or `s8/u8`
 data types.
-For the binary select operation, the conditional input tensor can only be 
-of `s8` data type. 
+For the binary select operation, the conditional input tensor can only be
+of `s8` data type.
 The binary primitive supports the following combinations of data types:
 
 | Source 0 / 1                | Destination                 |
@@ -131,5 +131,5 @@ meaning associated with any of tensors dimensions.
 
 ## Examples
 
-* @ref binary_example_cpp
-* @ref bnorm_u8_via_binary_postops_cpp
+See @ref dev_guide_examples page for a complete list. Binary examples are listed in the
+[Tensor Operations](@ref examples_tensor_operations) section.

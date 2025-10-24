@@ -22,6 +22,7 @@ The Functional API provides access to individual oneDNN primitives.
 | @ref sycl_interop_usm_cpp | \copybrief sycl_interop_usm_cpp_brief |
 | @ref gpu_opencl_interop_cpp | \copybrief gpu_opencl_interop_cpp_brief |
 
+@anchor examples_matmul
 ### Matrix Multiplication with Different oneDNN Features
 
 Basic Operations:
@@ -64,6 +65,7 @@ Neural network implementations demonstrating inference and training workflows:
 | RNN | int8 | Inference | @ref cpu_rnn_inference_int8_cpp | \copybrief cpu_rnn_inference_int8_cpp_brief |
 | RNN | f32 | Training | @ref rnn_training_f32_cpp | \copybrief rnn_training_f32_cpp_brief |
 
+@anchor examples_rnn
 ### Recurrent Neural Networks
 
 | Example | Description |
@@ -84,6 +86,7 @@ A few techniques for performance measurements:
 
 ### Individual Primitives
 
+@anchor examples_convolution
 Convolution Operations:
 
 | Example | Description |
@@ -91,12 +94,14 @@ Convolution Operations:
 | @ref convolution_example_cpp | \copybrief convolution_example_cpp_brief |
 | @ref deconvolution_example_cpp | \copybrief deconvolution_example_cpp_brief |
 
+@anchor examples_inner_product
 Linear Operations:
 
 | Example | Description |
 |:--------|:------------|
 | @ref inner_product_example_cpp | \copybrief inner_product_example_cpp_brief |
 
+@anchor examples_pooling
 Pooling and Sampling:
 
 | Example | Description |
@@ -104,6 +109,7 @@ Pooling and Sampling:
 | @ref pooling_example_cpp | \copybrief pooling_example_cpp_brief |
 | @ref resampling_example_cpp | \copybrief resampling_example_cpp_brief |
 
+@anchor examples_normalization
 Normalization Primitives:
 
 | Example | Description |
@@ -113,6 +119,7 @@ Normalization Primitives:
 | @ref layer_normalization_example_cpp | \copybrief layer_normalization_example_cpp_brief |
 | @ref lrn_example_cpp | \copybrief lrn_example_cpp_brief |
 
+@anchor examples_activation
 Activation Functions:
 
 | Example | Description |
@@ -121,6 +128,7 @@ Activation Functions:
 | @ref prelu_example_cpp | \copybrief prelu_example_cpp_brief |
 | @ref softmax_example_cpp | \copybrief softmax_example_cpp_brief |
 
+@anchor examples_tensor_operations
 Tensor Operations:
 
 | Example | Description |
@@ -132,6 +140,7 @@ Tensor Operations:
 | @ref sum_example_cpp | \copybrief sum_example_cpp_brief |
 | @ref shuffle_example_cpp | \copybrief shuffle_example_cpp_brief |
 
+@anchor examples_reorder
 Memory Transformations:
 
 | Example | Description |

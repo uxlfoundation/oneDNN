@@ -150,4 +150,5 @@ N/A
 
 ## Examples
 
-* @ref resampling_example_cpp
+See @ref dev_guide_examples page for a complete list. Resampling examples are listed in the
+[Pooling and Sampling](@ref examples_pooling) section.

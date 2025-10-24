@@ -156,4 +156,5 @@ typically referred to as channels (hence in formulas \f$c\f$ is used).
 
 ## Examples
 
-* @ref softmax_example_cpp
+See @ref dev_guide_examples page for a complete list. Softmax examples are listed in the
+[Activation Functions](@ref examples_activation) section.

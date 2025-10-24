@@ -246,4 +246,5 @@ The layer normalization primitive is optimized for the following memory formats:
 
 ## Examples
 
-* @ref layer_normalization_example_cpp
+See @ref dev_guide_examples page for a complete list. Layer normalization examples are listed in the
+[Normalization Primitives](@ref examples_normalization) section.

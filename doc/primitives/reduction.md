@@ -108,5 +108,6 @@ meaning associated with any of the dimensions of a tensor.
 
 ## Examples
 
-* @ref reduction_example_cpp
+See @ref dev_guide_examples page for a complete list. Reduction examples are listed in the
+[Tensor Operations](@ref examples_tensor_operations) section.
 

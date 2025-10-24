@@ -301,9 +301,5 @@ information on sparse encding.
 
 ## Examples
 
-* @ref matmul_example_cpp
-* @ref cpu_sgemm_and_matmul_cpp
-* @ref inference_int8_matmul_cpp
-* @ref cpu_matmul_quantization_cpp
-* @ref weights_decompression_matmul_cpp
-* @ref mxfp_matmul_cpp
+See @ref dev_guide_examples page for a complete list. MatMul examples are listed in the
+[Matrix Multiplication](@ref examples_matmul) section.

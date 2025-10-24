@@ -133,4 +133,5 @@ The LRN primitive does not support any post-ops or attributes.
 
 ## Examples
 
-* @ref lrn_example_cpp
+See @ref dev_guide_examples page for a complete list. LRN examples are listed in the
+[Normalization Primitives](@ref examples_normalization) section.

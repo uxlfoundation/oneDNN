@@ -60,17 +60,17 @@
 // Defines (for example) float_zero, float_one, float_min, and float_max
 // Can be used in a data-type agnostic way with the SPECIAL macro below
 #define DEF_special_vals(dt, zero_val, one_val, min_val, max_val) \
-    __constant dt CONCAT2(dt, _zero) = zero_val; \
-    __constant dt CONCAT2(dt, _one) = one_val; \
-    __constant dt CONCAT2(dt, _min) = min_val; \
-    __constant dt CONCAT2(dt, _max) = max_val;
+    dt CONCAT2(dt, _zero)() { return zero_val; } \
+    dt CONCAT2(dt, _one)() { return one_val; } \
+    dt CONCAT2(dt, _min)() { return min_val; } \
+    dt CONCAT2(dt, _max)() { return max_val; }
 
 DEF_special_vals(float, 0.0f, 1.0f, -FLT_MAX, FLT_MAX);
 DEF_special_vals(int, 0, 1, INT_MIN, INT_MAX);
 IF_DOUBLE_SUPPORTED(DEF_special_vals(double, 0.0, 1.0, -DBL_MAX, DBL_MAX));
 IF_HALF_SUPPORTED(DEF_special_vals(half, 0.0h, 1.0h, -HALF_MAX, HALF_MAX));
 
-#define SPECIAL(dt, val) CONCAT3(dt, _, val)
+#define SPECIAL(dt, val) CONCAT3(dt, _, val)()
 
 #ifdef ENABLE_CHECK_ASSUMPTIONS
 // Don't actually inform the compiler about the assumption

@@ -77,6 +77,64 @@ struct memory_desc_wrapper : public c_compatible {
         return format_kind() == format_kind::host_scalar;
     }
 
+    /**
+     * Checks whether the memory descriptor represents a canonical (row-major)
+     * layout.
+     *
+     * A canonical layout is defined as one where the strides follow the
+     * standard row-major ordering of the remaining dimensions, ignoring any
+     * dimensions of size 1.
+     *
+     * @note Format tags (e.g., "abc", "acb") may correspond to different
+     *   stride arrays but the same physical layout when unit dimensions are
+     *   present. Therefore, checking for canonical layout is more reliable than
+     *   matching a specific tag.
+     *
+     * Example:
+     *   dims    = [10, 12, 1]
+     *   strides = [12, 1, 1]
+     *   tag     = "abc"
+     *   -> remove unit dims: dims = [10,12], strides = [12,1]
+     *   -> canonical (true)
+     *
+     *   dims    = [10, 1, 12]
+     *   strides = [12, 12, 1]
+     *   tag     = "acb"
+     *   -> remove unit dims: dims = [10,12], strides = [12,1]
+     *   -> canonical (true)
+     *
+     *   dims    = [10, 12, 3]
+     *   strides = [36, 1, 3]
+     *   tag     = "acb"
+     *   -> canonical (false)
+     *
+     * @return true if the descriptor has canonical layout, false otherwise.
+     */
+    bool is_canonical() const {
+        if (!is_plain()) return false;
+
+        dims_t normalized_dims = {};
+        dims_t normalized_strides = {};
+
+        int normalized_ndims = 0;
+        for (int i = 0; i < ndims(); ++i) {
+            if (dims()[i] != 1) {
+                normalized_dims[normalized_ndims] = dims()[i];
+                normalized_strides[normalized_ndims] = strides()[i];
+                normalized_ndims++;
+            }
+        }
+
+        if (normalized_ndims == 0) return true;
+
+        dim_t expected_stride = 1;
+        for (int i = normalized_ndims - 1; i >= 0; --i) {
+            if (normalized_strides[i] != expected_stride) return false;
+            expected_stride *= normalized_dims[i];
+        }
+        return true;
+    }
+
     const blocking_desc_t &blocking_desc() const {
         assert(is_blocking_desc() || is_sparse_packed_desc());
         if (!is_sparse_desc()) return md_->format_desc.blocking;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ public:
     }
 
     ~stream_impl_t() override {
-        if (queue_) { clReleaseCommandQueue(queue_); }
+        if (queue_) { xpu::ocl::clReleaseCommandQueue(queue_); }
     }
 
     status_t set_queue(cl_command_queue queue) {
@@ -53,7 +53,7 @@ public:
     cl_command_queue queue() { return queue_; }
 
     status_t wait() {
-        OCL_CHECK(clFinish(queue()));
+        OCL_CHECK(xpu::ocl::clFinish(queue()));
         return status::success;
     }
 
@@ -79,7 +79,7 @@ public:
         *flags = 0;
         // Determine if the passed queue is in-order/out-of-order
         cl_command_queue_properties props;
-        OCL_CHECK(clGetCommandQueueInfo(queue, CL_QUEUE_PROPERTIES,
+        OCL_CHECK(xpu::ocl::clGetCommandQueueInfo(queue, CL_QUEUE_PROPERTIES,
                 sizeof(cl_command_queue_properties), &props, nullptr));
 
         *flags |= (props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE)

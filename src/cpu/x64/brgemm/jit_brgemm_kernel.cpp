@@ -1739,7 +1739,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
             if (brg.brgattr.max_bs > 1) reg_aux_D.restore();
 
             reg64_savable_guard_t reg_aux_D_bdb_loop_backup_guard(
-                    {{{&reg_C_backup}, !apply_post_ops},
+                    {{{&reg_C_backup}, true},
                             {{&reg_aux_D_bdb_loop_backup}, apply_post_ops}});
 
             const bool do_accum_ops = need_to_apply_alpha_beta
@@ -1806,9 +1806,11 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                         } else {
                             store_accumulators_without_post_ops(
                                     adj_bd_block, 1, is_ld_tail);
-                            if (ldb < ld_block2 - 1)
-                                add(reg_aux_C, ldb_C_offset(1));
                         }
+
+                        if (ldb < ld_block2 - 1)
+                            add(reg_aux_C, ldb_C_offset(1));
+
                         reg_buf.restore();
                     } else {
                         auto tmm = Tmm(c_tensor);

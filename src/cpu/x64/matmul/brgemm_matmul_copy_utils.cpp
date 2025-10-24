@@ -5429,7 +5429,7 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::get_zero_points(
         const auto zp_dt_sz = types::data_type_size(zp_dt);
         const auto elems_per_byte
                 = one_of(zp_dt, data_type::s4, data_type::u4) ? 2 : 1;
-        return n_idx * zp_dt_sz / elems_per_byte;
+        return static_cast<size_t>(n_idx) * zp_dt_sz / elems_per_byte;
     };
 
     const auto addr = maybe_EVEX_compress_addr(reg_wei_zp, base_offset(n));

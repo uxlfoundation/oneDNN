@@ -732,7 +732,16 @@ status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
             required_dat_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx8c;
             break;
         }
-        default: break;
+        case sve_128: {
+            const auto dat_tag_nCx4c = pick(ndims - 3, nCw4c, nChw4c, nCdhw4c);
+            jcp.src_tag = src_d.matches_one_of_tag(dat_tag_nxc, dat_tag_nCx4c);
+            jcp.dst_tag = dst_d.matches_one_of_tag(dat_tag_nxc, dat_tag_nCx4c);
+            is_data_layout_nxc
+                    = utils::everyone_is(dat_tag_nxc, jcp.src_tag, jcp.dst_tag);
+            required_dat_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx4c;
+            break;
+        }
+        default: return status::unimplemented;
     }
     /* Channel padding check */
     bool ok_to_pad_channels = true && !is_data_layout_nxc && jcp.ngroups == 1
@@ -776,7 +785,11 @@ status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
             jcp.ver = ver_sve_256;
             break;
         }
-        default: break;
+        case sve_128: {
+            jcp.ver = ver_sve_128;
+            break;
+        }
+        default: return status::unimplemented;
     }
 
     if (everyone_is(data_type::f32, src_d.data_type(), weights_d.data_type(),
@@ -804,14 +817,21 @@ status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
                                 OIhw8i8o, IOhw8o8i, OIdhw8i8o, IOdhw8o8i);
                 break;
             }
-            default: break;
+            case sve_128: {
+                wei_tag = with_groups
+                        ? pick(2 * ndims - 6 + is_bwd_d, gOIw4i4o, gIOw4o4i,
+                                gOIhw4i4o, gIOhw4o4i, gOIdhw4i4o, gIOdhw4o4i)
+                        : pick(2 * ndims - 6 + is_bwd_d, OIw4i4o, IOw4o4i,
+                                OIhw4i4o, IOhw4o4i, OIdhw4i4o, IOdhw4o4i);
+                break;
+            }
+            default: return status::unimplemented;
         }
 
         jcp.wei_tag = weights_d.matches_one_of_tag(wei_tag);
 
         if (jcp.wei_tag != wei_tag) return status::unimplemented;
 
-        //        jcp.fma_step = 1;
         jcp.typesize_in = sizeof(prec_traits_t<data_type::f32>::type);
         jcp.typesize_out = sizeof(prec_traits_t<data_type::f32>::type);
     } else {
@@ -1392,6 +1412,7 @@ void jit_sve_1x1_conv_kernel_t<isa_>::balance(jit_1x1_conv_conf_t &jcp) {
 
 template struct jit_sve_1x1_conv_kernel_t<sve_512>;
 template struct jit_sve_1x1_conv_kernel_t<sve_256>;
+template struct jit_sve_1x1_conv_kernel_t<sve_128>;
 } // namespace aarch64
 } // namespace cpu
 } // namespace impl

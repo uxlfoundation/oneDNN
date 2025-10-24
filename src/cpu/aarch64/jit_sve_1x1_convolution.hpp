@@ -185,7 +185,27 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
                             gOIdhw8i8o);
                     break;
                 }
-                default: break;
+                case sve_128: {
+                    const auto dat_tag_nCx4c
+                            = utils::pick(ndims() - 3, nCw4c, nChw4c, nCdhw4c);
+                    const auto curr_src_tag = src_d.matches_one_of_tag(
+                            dat_tag_nxc, dat_tag_nCx4c);
+                    const auto curr_dst_tag = dst_d.matches_one_of_tag(
+                            dat_tag_nxc, dat_tag_nCx4c);
+                    const auto is_data_layout_nxc
+                            = IMPLICATION(curr_src_tag != dat_tag_nxc,
+                                      src_d.format_kind() == format_kind::any)
+                            && IMPLICATION(curr_dst_tag != dat_tag_nxc,
+                                    dst_d.format_kind() == format_kind::any)
+                            && utils::one_of(
+                                    dat_tag_nxc, curr_src_tag, curr_dst_tag);
+                    dat_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx4c;
+                    wei_tag = utils::pick(2 * ndims() - 6 + with_groups(),
+                            OIw4i4o, gOIw4i4o, OIhw4i4o, gOIhw4i4o, OIdhw4i4o,
+                            gOIdhw4i4o);
+                    break;
+                }
+                default: return status::unimplemented;
             }
             return set_default_formats_common(dat_tag, wei_tag, dat_tag);
         }
@@ -369,6 +389,9 @@ private:
     std::unique_ptr<dw_conv_kernel_t> kernel_dw_;
 };
 
+using jit_sve_128_1x1_convolution_fwd_f32_t
+        = jit_sve_1x1_convolution_fwd_t<data_type::f32, data_type::f32,
+                data_type::f32, sve_128>;
 using jit_sve_256_1x1_convolution_fwd_f32_t
         = jit_sve_1x1_convolution_fwd_t<data_type::f32, data_type::f32,
                 data_type::f32, sve_256>;

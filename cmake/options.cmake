@@ -248,6 +248,12 @@ option(DNNL_ENABLE_ITT_TASKS
     on those ITT tasks and show corresponding timeline information."
     ON)
 
+option(DNNL_ENABLE_MEM_ADVISE "enables memory advise support. " ON)
+    # enabled by default
+
+option(DNNL_ENABLE_SAT_CVT "enables saturate conversion support. " ON)
+    # enabled by default
+
 # ===================
 # Engine capabilities
 # ===================

@@ -488,12 +488,26 @@ inline bool isa_has_masks(cpu_isa_t isa) {
 
 // Check if the ISA has saturating conversion support
 inline bool isa_has_sat_cvt(cpu_isa_t isa, data_type_t dt) {
-    return utils::one_of(dt, data_type::u8, data_type::s8)
+#ifdef DNNL_ENABLE_SAT_CVT
+    static std::string sat_cvt_flag = getenv_string_user("USE_SAT_CVT");
+    const auto use_sat_cvt
+            = sat_cvt_flag.empty() || std::stoi(sat_cvt_flag) > 0;
+    return use_sat_cvt && utils::one_of(dt, data_type::u8, data_type::s8)
             && is_superset(isa, avx10_2_512);
+#else
+    return false;
+#endif
 }
 
 inline bool isa_has_mem_advise(cpu_isa_t isa) {
-    return is_superset(isa, avx10_2_512);
+#ifdef DNNL_ENABLE_MEM_ADVISE
+    static std::string mem_advise_flag = getenv_string_user("USE_MEM_ADVISE");
+    const auto use_mem_advise
+            = mem_advise_flag.empty() || std::stoi(mem_advise_flag) > 0;
+    return use_mem_advise && is_superset(isa, avx10_2_512);
+#else
+    return false;
+#endif
 }
 
 inline int isa_max_vlen(cpu_isa_t isa) {

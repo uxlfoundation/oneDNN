@@ -111,6 +111,16 @@ if(DNNL_ENABLE_CPU_ISA_HINTS)
     add_definitions_with_host_compiler(-DDNNL_ENABLE_CPU_ISA_HINTS)
 endif()
 
+if (DNNL_ENABLE_MEM_ADVISE)
+    message(STATUS "Memory advise support is enabled")
+    add_definitions_with_host_compiler(-DDNNL_ENABLE_MEM_ADVISE)
+endif()
+
+if (DNNL_ENABLE_SAT_CVT)
+    message(STATUS "Saturate conversion support is enabled")
+    add_definitions_with_host_compiler(-DDNNL_ENABLE_SAT_CVT)
+endif()
+
 if(WIN32)
     add_definitions_with_host_compiler(-D_WIN)
     add_definitions_with_host_compiler(-DNOMINMAX)

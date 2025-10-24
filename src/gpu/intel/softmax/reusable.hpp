@@ -172,7 +172,7 @@ struct reusable_fwd_t : public primitive_t {
 
             // utilize largest supported subgroup size
             conf.subgroup_size = [=] {
-                for (int size : {16, 8}) {
+                for (int size : {16, 8, 32}) {
                     if (intel_engine->mayiuse_sub_group(size)
                             && intel_engine
                                        ->mayiuse_block_reads_writes_with_sub_group(

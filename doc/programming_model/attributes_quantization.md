@@ -136,6 +136,7 @@ parameter of the appropriate post-operation.
 oneDNN provides APIs to set scales, zero-points, and precomputed reductions
 for different quantization levels from global (per-tensor) to fine-grained block-wise.
 
+@anchor dgaq_scaling
 ### Argument Scaling
 
 The library uses @ref dev_guide_attributes API for setting the scaling factors
@@ -313,6 +314,7 @@ See examples:
 - [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
 - @ref weights_decompression_matmul_cpp
 
+@anchor dgaq_zps
 ### Argument Zero-Points
 
 Zero-points handle the quantization case where the quantized integer range
@@ -412,6 +414,7 @@ attr.set_host_zero_point(DNNL_ARG_DST,
 See examples:
 - @ref matmul_with_host_scalar_scale_cpp
 
+@anchor dgaq_precomputed_reductions
 ### Precomputed Reductions
 
 Precomputed reductions could help optimize performance for Large Language Models (LLM).

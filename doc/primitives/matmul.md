@@ -29,7 +29,7 @@ multiplication operations, in which case the tensors can be up to 12D:
             \weights(bs_0, bs_1, \ldots, k, n) \right) + \bias(bs_0, bs_1, \ldots, m, n)
 \f]
 
-MatMul also supports implicit broadcast semantics i.e., \src can be broadcasted
+MatMul also supports implicit broadcast semantics, i.e., \src can be broadcasted
 into \weights if the corresponding dimension in \src is 1 (and vice versa).
 However, all tensors (including \bias, if it exists) must have the same number
 of dimensions.
@@ -46,16 +46,16 @@ argument index as specified by the following table.
 
 | Primitive input/output           | Execution argument index                                                   |
 |----------------------------------|----------------------------------------------------------------------------|
-| \src                             | DNNL_ARG_SRC                                                               |
-| \weights                         | DNNL_ARG_WEIGHTS                                                           |
-| \bias                            | DNNL_ARG_BIAS                                                              |
-| \dst                             | DNNL_ARG_DST                                                               |
-| \f$\text{dropout output mask}\f$ | DNNL_ARG_ATTR_DROPOUT_MASK                                                 |
-| \f$\text{dropout probability}\f$ | DNNL_ARG_ATTR_DROPOUT_PROBABILITY                                          |
-| \f$\text{dropout rng seed}\f$    | DNNL_ARG_ATTR_DROPOUT_SEED                                                 |
-| \f$\text{binary post-op}\f$      | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_1, |
-|                                  | DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| DNNL_ARG_SRC_2  |
-| \f$\text{prelu post-op}\f$       | DNNL_ARG_ATTR_MULTIPLE_POST_OP(prelu_post_op_position) \| DNNL_ARG_WEIGHTS |
+| \src                             | #DNNL_ARG_SRC                                                               |
+| \weights                         | #DNNL_ARG_WEIGHTS                                                           |
+| \bias                            | #DNNL_ARG_BIAS                                                              |
+| \dst                             | #DNNL_ARG_DST                                                               |
+| \f$\text{dropout output mask}\f$ | #DNNL_ARG_ATTR_DROPOUT_MASK                                                 |
+| \f$\text{dropout probability}\f$ | #DNNL_ARG_ATTR_DROPOUT_PROBABILITY                                          |
+| \f$\text{dropout rng seed}\f$    | #DNNL_ARG_ATTR_DROPOUT_SEED                                                 |
+| \f$\text{binary post-op}\f$      | #DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| #DNNL_ARG_SRC_1, |
+|                                  | #DNNL_ARG_ATTR_MULTIPLE_POST_OP(binary_post_op_position) \| #DNNL_ARG_SRC_2  |
+| \f$\text{prelu post-op}\f$       | #DNNL_ARG_ATTR_MULTIPLE_POST_OP(prelu_post_op_position) \| #DNNL_ARG_WEIGHTS |
 
 ## Implementation Details
 
@@ -65,17 +65,17 @@ argument index as specified by the following table.
    specified shapes and memory formats. The run-time specified dimensions or
    strides are specified using the #DNNL_RUNTIME_DIM_VAL wildcard value during
    the primitive initialization and creation stage. At the execution stage, the
-   user must pass fully specified memory objects so that the primitive is able
+   the user must pass fully specified memory objects so that the primitive is able
    to perform the computations. Note that the less information about shapes
-   or format is available at the creation stage, the less performant execution
-   will be.  In particular, if the shape is not known at the creation stage, you
+   or format is available at the creation stage, the less performant the execution
+   will be. In particular, if the shape is not known at the creation stage, you
    cannot use the special format tag #dnnl::memory::format_tag::any to enable an
    implementation to choose the most appropriate memory format for the
    corresponding input or output shapes. On the other hand, run-time specified
    shapes enable users to create a primitive once and use it in different
    situations.
 
-2. Inconsistency with dimensions being "primitive-creation-time-defined" vs
+2. Inconsistency with dimensions being "primitive-creation-time-defined" vs.
    "runtime-defined" is invalid. For example, \src and \weights with dimensions
    set to `{3, 4, 4}` and `{DNNL_RUNTIME_DIM_VAL, 4, 4}` respectively is
    invalid.
@@ -84,10 +84,11 @@ argument index as specified by the following table.
    #DNNL_RUNTIME_DIM_VAL. Make sure the dimensions
    for the tensors are valid.
 
-4. Multiple batch dimensions and broadcasting of batch dimensions of `src` and
-   `weights` are supported for both CPU and GPU engines.
+4. Multiple batch dimensions and broadcasting of batch dimensions of \src
+   and \weights are supported for both CPU and GPU engines.
 
-   Check the tutorials below to see #DNNL_RUNTIME_DIM_VAL support in use.
+@note Check the @ref inference_int8_matmul_cpp and @ref cpu_sgemm_and_matmul_cpp
+to see #DNNL_RUNTIME_DIM_VAL support in use.
 
 ### Data Types
 
@@ -109,7 +110,6 @@ types for source, destination, weights, and bias tensors:
 | u8, s8           | u8, s8, u4, s4                         | u8, s8, s32, f32, f16, bf16      | u8, s8, s32, f32, f16, bf16 |
 
 
-
 ### Data Representation
 
 The MatMul primitive expects the following tensors:
@@ -128,7 +128,7 @@ D = \prod_{i = 0}^{ND - 3} \mathrm{\dst\_dims}[i], \; B = \prod_{i = 0}^{ND - 1}
 
 The MatMul primitive is generally optimized for the case in which memory objects
 use plain memory formats. Additionally, the \src and \weights must have at least
-one of the axes `m` or `k` and `n` or `k` contiguous (i.e., stride=1)
+one of the axes `m` or `k` and `n` or `k` contiguous (i.e., `stride=1`)
 respectively. However, it is recommended to use the placeholder memory format
 #dnnl::memory::format_tag::any if an input tensor is reused across multiple
 executions. In this case, the primitive will set the most appropriate memory
@@ -145,23 +145,23 @@ The following attributes and post-ops are supported:
 
 | Type      | Operation                                                      | Description                                                                   | Restrictions                        |
 |:----------|:---------------------------------------------------------------|:------------------------------------------------------------------------------|:------------------------------------|
-| Attribute | [Scales](@ref dnnl::primitive_attr::set_scales_mask)           | Scales the result by given scaling factor(s)                                  |                                     |
-| Attribute | [Zero-points](@ref dnnl::primitive_attr::set_zero_points_mask) | Sets zero-point(s) for the corresponding tensors                              |                                     |
-| Attribute | [Dropout](@ref dnnl::primitive_attr::set_dropout)              | Applies pseudo-random dropout to destination buffer, also fills mask buffer   |                                     |
-| Attribute | [Precomputed reductions](@ref dnnl::primitive_attr::set_precomputed_reductions) | Sets precomputed reductions for the corresponding tensors  |  Requires weight zero-points and full matrix mask |
+| Attribute | [Scales](@ref dnnl::primitive_attr::set_scales_mask)           | [Scales](@ref dgaq_scaling)  the result by given scaling factor(s)                                |                                     |
+| Attribute | [Zero-points](@ref dnnl::primitive_attr::set_zero_points_mask) | Sets [zero-point(s)](@ref dgaq_zps) for the corresponding tensors                             |                     |
+| Attribute | [Dropout](@ref dnnl::primitive_attr::set_dropout)              | Applies pseudo-random [dropout](@ref dev_guide_attributes_dropout) to destination buffer, also fills mask buffer   |                                     |
+| Attribute | [Precomputed reductions](@ref dnnl::primitive_attr::set_precomputed_reductions) | Sets [precomputed reductions](@ref dgaq_precomputed_reductions) for the corresponding tensors  |  Requires weight zero-points and full matrix mask |
 | Post-op   | [Eltwise](@ref dnnl::post_ops::append_eltwise)                 | Applies an @ref dnnl_api_eltwise operation to the result                      |                                     |
-| Post-op   | [Sum](@ref dnnl::post_ops::append_sum)                         | Adds the operation result to the destination tensor instead of overwriting it |                                     |
+| Post-op   | [Sum](@ref dnnl::post_ops::append_sum)                         | [Adds](@ref dnnl_api_sum) the operation result to the destination tensor instead of overwriting it |                                     |
 | Post-op   | [Binary](@ref dnnl::post_ops::append_binary)                   | Applies a @ref dnnl_api_binary operation to the result                        | General binary post-op restrictions |
 | Post-op   | [Prelu](@ref dnnl::post_ops::append_prelu)                     | Applies an @ref dnnl_api_prelu operation to the result                        |                                     |
 
 The following masks are supported by the primitive:
 - 0, which applies one scale / zero point value to an entire tensor
 - 1, which applies a scale / zero point values along `k`-dimension
-  for `DNNL_ARG_WEIGHTS`. Values could be grouped along this dimension
+  for #DNNL_ARG_WEIGHTS. Values could be grouped along this dimension
   via specifying scales / zero points shapes for the attribute
   (see the code example @ref weights_decompression_matmul_cpp).
 - 2, which applies a scale / zero point values per column along the
-  `n`-dimension for `DNNL_ARG_WEIGHTS`.
+  `n`-dimension for #DNNL_ARG_WEIGHTS.
 
 When scales and/or zero-points masks are specified, the user must
 provide the corresponding scales and/or zero-points as additional
@@ -172,16 +172,18 @@ source tensor zero points memory argument would be passed with index
 (`DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC`).
 
 When Dropout is specified, at the execution stage the user must provide 2 input
-memory objects with `DNNL_ARG_ATTR_DROPOUT_PROBABILITY` (1x1x...x1 f32 value
-from 0.f to 1.f) and `DNNL_ARG_DROPOUT_SEED` (1x1x...x1 s32 value from INT_MIN
-to INT_MAX), and 1 output memory object with `DNNL_ARG_ATTR_DROPOUT_MASK` (u8
+memory objects with #DNNL_ARG_ATTR_DROPOUT_PROBABILITY (1x1x...x1 f32 value
+from 0.f to 1.f) and #DNNL_ARG_ATTR_DROPOUT_SEED (1x1x...x1 s32 value from INT_MIN
+to INT_MAX), and 1 output memory object with #DNNL_ARG_ATTR_DROPOUT_MASK (u8
 memory buffer that shares its shape with the destination buffer).
 
-@note Please check tutorials below to see run-time attributes in use.
+@note Check the [list of examples and tutorials](#examples) below to see
+run-time attributes in use.
 
 ### Sparsity
 
 #### CSR encoding
+
 Supported only for the CPU engine. Only one of the input tensors can be sparse.
 The output tensor is always dense.
 
@@ -197,15 +199,16 @@ tensors:
 
 * ab
 
-See the example [here](@ref cpu_matmul_csr_cpp).
+@note Check the example @ref cpu_matmul_csr_cpp.
 
 Benchdnn can be used to test matmul with a CSR input tensor as follows:
 `./benchdnn --matmul --encoding=csr+0.99:: --wtag=ab --dtag=ab 4x1000000:1000000x128`
 
 For the case above, the number of non-zero elements for the source tensor is
-calculated as max(4 * 1000000 * (1 - 0.99), 1).
+calculated as `max(4 * 1000000 * (1 - 0.99), 1)`.
 
 #### COO encoding
+
 Supported only for the CPU and GPU engines. Only one of the input tensors can
 be sparse. The output tensor is always dense.
 
@@ -225,13 +228,13 @@ The following format tags are supported for dense destination tensor:
 
 * ab
 
-See the example [here](@ref cpu_matmul_coo_cpp).
+@note Check the example @ref cpu_matmul_coo_cpp.
 
 Benchdnn can be used to test matmul with a COO input tensor as follows:
 `./benchdnn --matmul --encoding=coo+0.99:: --wtag=ab --dtag=ab 4x1000000:1000000x128`
 
 For the case above, the number of non-zero elements for the source tensor is
-calculated as max(4 * 1000000 * (1 - 0.99), 1).
+calculated as `max(4 * 1000000 * (1 - 0.99), 1)`.
 
 #### PACKED encoding
 
@@ -249,16 +252,16 @@ architecture (ISA) is supported
 * Only `s8` data type for the weights is supported
 * Only 1 batch dimension is supported
 
-See the example [here](@ref cpu_matmul_weights_compression_cpp).
+@note Check the example @ref cpu_matmul_weights_compression_cpp.
 
 Benchdnn can be used to test matmul with the PACKED weights tensor as follows:
 `./benchdnn --matmul --dt=s8:s8:s32 --encoding=:packed+0.99: 3x512x1024:1x1024x512`
 
 For the case above, the number of non-zero elements for the weights tensor is
-calculated as max(1024 * 512 * (1 - 0.99), 1).
+calculated as `max(1024 * 512 * (1 - 0.99), 1)`.
 
 Refer to [Sparsity Advanced Topic](@ref dev_guide_sparsity) page for more
-information on sparse encding.
+information on sparse encoding.
 
 ## Implementation Limitations
 
@@ -267,24 +270,24 @@ information on sparse encding.
 2. **GPU**
    - Supports up to 6 dimensions.
    - Source zero point mask of `0` is only supported.
-   - Sum post-op doesn't support data type other than destination data type.
-   - Bias of bf16 data type is supported for configuration with bf16 source data
-     type and weights bf16 data type, and up to three dimensional matrices.
+   - Sum post-op doesn't support data types other than destination data type.
+   - Bias of bf16 data type is supported for configurations with bf16 source data
+     type and weights bf16 data type, and up to three-dimensional matrices.
    - Optimized implementations for fp8 data type are available only on Intel(R)
      Data Center GPU Max Series and Intel(R) Xe2 Graphics.
    - Configuration with int8 source data type, s8 weight data type and bf16
-     destination data type don't support:
+     destination data type doesn't support:
      * Destination zero point.
      * Runtime dimensions.
-     * Three and higher dimensional matrices.
+     * Three and higher-dimensional matrices.
    - The layout of dropout mask has to be exactly the same as that of dst.
 
 
 3. **CPU**
-   - Configuration with int8 source data type, s8 weight data type and f16
-     destination data type isn't supported.
-   - Configuration with floating point source data type, integer weights data
-     type and floating point destination data type is not optimized.
+   - Configurations with int8 source data type, s8 weight data type and f16
+     destination data type aren't supported.
+   - Configurations with floating point source data type, integer weights data
+     type and floating point destination data type are not optimized.
    - The layout of dropout mask has to be exactly the same as that of dst.
 
 ## Performance Tips

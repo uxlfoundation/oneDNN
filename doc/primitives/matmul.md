@@ -303,3 +303,4 @@ information on sparse encding.
 * @ref inference_int8_matmul_cpp
 * @ref cpu_matmul_quantization_cpp
 * @ref weights_decompression_matmul_cpp
+* @ref mxfp_matmul_cpp

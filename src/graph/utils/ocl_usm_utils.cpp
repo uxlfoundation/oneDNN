@@ -100,8 +100,11 @@ void *malloc_shared(
     UNUSED_OCL_RESULT(clGetDeviceInfo(
             dev, CL_DEVICE_PLATFORM, sizeof(platform), &platform, nullptr));
 
+    cl_bitfield properties[]
+            = {CL_MEM_FLAGS_INTEL, CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL, 0};
+
     cl_int err;
-    void *p = ext_func(platform, ctx, dev, nullptr, size,
+    void *p = ext_func(platform, ctx, dev, properties, size,
             static_cast<cl_uint>(alignment), &err);
     assert(dnnl::impl::utils::one_of(err, CL_SUCCESS, CL_OUT_OF_RESOURCES,
             CL_OUT_OF_HOST_MEMORY, CL_INVALID_BUFFER_SIZE));
@@ -120,8 +123,11 @@ void *malloc_device(
     UNUSED_OCL_RESULT(clGetDeviceInfo(
             dev, CL_DEVICE_PLATFORM, sizeof(platform), &platform, nullptr));
 
+    cl_bitfield properties[]
+            = {CL_MEM_FLAGS_INTEL, CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL, 0};
+
     cl_int err;
-    void *p = ext_func(platform, ctx, dev, nullptr, size,
+    void *p = ext_func(platform, ctx, dev, properties, size,
             static_cast<cl_uint>(alignment), &err);
     assert(dnnl::impl::utils::one_of(err, CL_SUCCESS, CL_OUT_OF_RESOURCES,
             CL_OUT_OF_HOST_MEMORY, CL_INVALID_BUFFER_SIZE));

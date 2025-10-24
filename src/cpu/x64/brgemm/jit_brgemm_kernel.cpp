@@ -206,12 +206,12 @@ private:
     const reg64_t reg_a_offset = rdx;
     const reg64_t reg_b_offset = rsi;
 
-    const reg64_t reg_aux1_A = rbp;
+    const reg64_savable_t reg_aux1_A {regscratchpad_, rbx, rbp, may_use_rbp()};
     const reg64_t reg_aux1_B = abi_param1;
 
     const reg64_t reg_addr_batch = r13;
-    const reg64_t reg_aux1_batch = rbp;
-    const reg64_savable_t reg_relative_batch {regscratchpad_, rbp};
+    const reg64_savable_t reg_aux1_batch {regscratchpad_, rbx};
+    const reg64_savable_t reg_relative_batch {regscratchpad_, rbx};
 
     const reg64_savable_t reg_bias {regscratchpad_, rbx, r24};
     const reg64_savable_t reg_src_scales {regscratchpad_, rbx, r23};
@@ -1930,9 +1930,13 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::restore_A_B_matrices() {
     auto restore_reg_batch = brg.brgattr.max_bs > 1 || vpad_exist;
     if (brg.type == brgemm_addr) {
-        if (restore_reg_batch) mov(reg_aux1_batch, reg_addr_batch);
+        if (restore_reg_batch) {
+            mov(reg_aux1_batch, reg_addr_batch);
+            reg_aux1_batch.save();
+        }
     } else {
         mov(reg_aux1_A, reg_A);
+        reg_aux1_A.save();
         mov(reg_aux1_B, reg_B);
 
         reg_relative_batch.restore();
@@ -1943,6 +1947,7 @@ template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::set_A_B_matrices() {
     if (brg.type == brgemm_addr) {
         if (brg.brgattr.max_bs > 1) {
+            reg_aux1_batch.restore();
             if (brg.layout == brgemm_row_major) {
                 mov(reg_aux_A,
                         ptr[reg_aux1_batch + GET_OFF_BATCH_ELEMENT(ptr.A)]);
@@ -1957,6 +1962,7 @@ void jit_brgemm_kernel_t<Wmm>::set_A_B_matrices() {
         } else {
             // for max_batch == 1 we stored A and B pointers at the beginning
             // of kernel in reg_aux1_A and reg_aux1_B
+            reg_aux1_A.restore();
             if (brg.layout == brgemm_row_major) {
                 mov(reg_aux_A, reg_aux1_A);
                 mov(reg_aux_B, reg_aux1_B);
@@ -1967,23 +1973,29 @@ void jit_brgemm_kernel_t<Wmm>::set_A_B_matrices() {
         }
 
         if (brg.brgattr.max_bs > 1) {
+            reg_aux1_batch.restore();
             add(reg_aux1_batch, sizeof(brgemm_batch_element_t));
+            reg_aux1_batch.save();
             prefetcht0(ptr[reg_aux1_batch]);
         }
     } else if (brg.type == brgemm_offs) {
         mov(reg_aux_A, reg_A);
         mov(reg_aux_B, reg_B);
 
+        reg_relative_batch.restore();
         add(reg_aux_A,
                 ptr[reg_relative_batch + GET_OFF_BATCH_ELEMENT(offset.A)]);
         add(reg_aux_B,
                 ptr[reg_relative_batch + GET_OFF_BATCH_ELEMENT(offset.B)]);
         add(reg_relative_batch, sizeof(brgemm_batch_element_t));
+        reg_relative_batch.save();
     } else if (brg.type == brgemm_strd) {
+        reg_aux1_A.restore();
         mov(reg_aux_A, reg_aux1_A);
         mov(reg_aux_B, reg_aux1_B);
 
         safe_add(reg_aux1_A, brg.stride_a, reg_tmp_gpr);
+        reg_aux1_A.save();
         safe_add(reg_aux1_B, brg.stride_b, reg_tmp_gpr);
         if (vpad_exist) {
             reg_relative_batch.restore();
@@ -2690,6 +2702,7 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
                             ? reg_aux1_batch
                             : ((brg.type == brgemm_offs) ? reg_addr_batch
                                                          : reg_relative_batch);
+                    if (brg.type == brgemm_addr) reg_aux1_batch.restore();
                     if (brg.type == brgemm_strd) reg_relative_batch.restore();
 
                     mov(reg_aux_A_vpad,
@@ -2884,6 +2897,7 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
 
             if (brg.type == brgemm_strd) {
                 // if batch is nullptr then it means no vpadding in this call
+                reg_relative_batch.restore();
                 cmp(reg_relative_batch, 0);
                 je(no_vpad_label, T_NEAR);
             }
@@ -3015,6 +3029,7 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         if (brg.type == brgemm_addr && brg.brgattr.max_bs == 1 && !vpad_exist
                 && !skip_accumulation) {
             mov(reg_aux1_A, ptr[reg_addr_batch + GET_OFF_BATCH_ELEMENT(ptr.A)]);
+            reg_aux1_A.save();
             mov(reg_aux1_B, ptr[reg_addr_batch + GET_OFF_BATCH_ELEMENT(ptr.B)]);
         }
 

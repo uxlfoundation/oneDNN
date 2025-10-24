@@ -164,7 +164,8 @@ private:
     const reg64_savable_t reg_iter_labels_list {regscratchpad_, rax, r16};
 
     const reg64_t reg_addr_batch = r13;
-    const reg64_t reg_aux1_batch = rbp;
+    const reg64_savable_t reg_aux1_batch {
+            regscratchpad_, rbx, rbp, may_use_rbp()};
     const reg64_t reg_A = r11;
     const reg64_t reg_B = r10;
     const reg64_t reg_stride_lda = r14;
@@ -1784,6 +1785,7 @@ void jit_brgemm_amx_uker_base_t::set_A_B_matrices() {
     if (brg.brgattr.max_bs == 1) return;
 
     if (brg.type == brgemm_addr) {
+        reg_aux1_batch.restore();
         if (brg.layout == brgemm_row_major) {
             mov(reg_A, ptr[reg_aux1_batch + GET_OFF_BATCH_ELEMENT(ptr.A)]);
             mov(reg_B, ptr[reg_aux1_batch + GET_OFF_BATCH_ELEMENT(ptr.B)]);
@@ -1792,6 +1794,7 @@ void jit_brgemm_amx_uker_base_t::set_A_B_matrices() {
             mov(reg_B, ptr[reg_aux1_batch + GET_OFF_BATCH_ELEMENT(ptr.A)]);
         }
     } else if (brg.type == brgemm_offs) {
+        reg_aux1_batch.restore();
         if (brg.layout == brgemm_row_major) {
             mov(reg_A, ptr[param1 + GET_OFF(ptr_A)]);
             mov(reg_B, ptr[param1 + GET_OFF(ptr_B)]);
@@ -2411,8 +2414,10 @@ void jit_brgemm_amx_uker_base_t::rdb_loop(brgemm_iteration_t &bi) {
 void jit_brgemm_amx_uker_base_t::bs_loop_body(brgemm_iteration_t &bi) {
     if (brg.brgattr.var_bs) {
         set_A_B_matrices();
+        reg_aux1_batch.restore();
         add(reg_aux1_batch, sizeof(brgemm_batch_element_t));
         prefetcht0(ptr[reg_aux1_batch]);
+        reg_aux1_batch.save();
     } else {
         set_A_B_matrices(bi.bsi->pos);
     }
@@ -2466,6 +2471,7 @@ void jit_brgemm_amx_uker_base_t::bs_loop(brgemm_iteration_t &bi) {
             jz(end_BS_loop_label, T_NEAR);
 
             mov(reg_aux1_batch, reg_addr_batch);
+            reg_aux1_batch.save();
             // first bs iteration
             cmp(reg_BS_loop, 1);
             jg(first_BS_loop_label, T_NEAR);

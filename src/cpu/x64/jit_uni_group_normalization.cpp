@@ -874,7 +874,7 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
     auto scale = CTX_IN_MEM(const float *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const float *, DNNL_ARG_SHIFT);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto stat_reduction = scratchpad.template get<float>(key_gnorm_reduction);
     auto tmp_mean = scratchpad.template get<float>(key_gnorm_tmp_mean);
     auto tmp_var = scratchpad.template get<float>(key_gnorm_tmp_var);

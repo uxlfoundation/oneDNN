@@ -83,7 +83,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
             = binary_injector::prepare_binary_args(
                     pd()->attr()->post_ops_, ctx);
 
-    memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -683,7 +683,7 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
 
     const dim_t wei_dt_size = types::data_type_size(jbgp.wei_dt);
 
-    memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     brgemm_batch_element_t *addr_batch_global
             = scratchpad.template get<brgemm_batch_element_t>(
                     key_brgemm_primitive_batch);
@@ -1049,7 +1049,7 @@ struct brgemm_inner_product_bwd_weights_t<isa>::thread_info_t {
     char *diff_weights;
     char *diff_bias;
 
-    const memory_tracking::grantor_t scratchpad;
+    const memory_tracking::grantor_t &scratchpad;
 
     char *buffer_c = nullptr;
     char *buffer_bias = nullptr;
@@ -1781,7 +1781,7 @@ void brgemm_inner_product_bwd_weights_t<isa>::execute_backward_weights(
     const auto &jbgp = pd()->jbgp_;
 
     if (dnnl_thr_syncable() && jbgp.nthr > 1) {
-        auto scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
         simple_barrier::ctx_init(scratchpad.template get<simple_barrier::ctx_t>(
                 key_conv_wei_bia_reduction_bctx));
     }

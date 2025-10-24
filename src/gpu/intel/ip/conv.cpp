@@ -168,9 +168,11 @@ status_t conv_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         r_args[DNNL_ARG_FROM] = memory_arg_t {in, true};
         r_args[DNNL_ARG_TO] = memory_arg_t {out, false};
         exec_ctx_t r_ctx(ctx, std::move(r_args));
-        nested_scratchpad_t ns(
-                ctx, memory_tracking::names::key_nested_multiple + r_num, prim);
-        r_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        memory_tracking::names::key_nested_multiple + r_num,
+                        prim->pd()->scratchpad_registry());
+        r_ctx.set_scratchpad_grantor(nested_grantor);
         return prim->execute(r_ctx);
     };
     if (conf.reorder_dst) {
@@ -209,9 +211,10 @@ status_t conv_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     }
 
     exec_ctx_t c_ctx(ctx, std::move(c_args));
-    nested_scratchpad_t ns(
-            ctx, memory_tracking::names::key_nested_multiple, conv_);
-    c_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            memory_tracking::names::key_nested_multiple,
+            conv_->pd()->scratchpad_registry());
+    c_ctx.set_scratchpad_grantor(nested_grantor);
     CHECK(conv_->execute(c_ctx));
 
     if (conf.reorder_dst) {

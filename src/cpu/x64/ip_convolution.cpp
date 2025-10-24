@@ -190,8 +190,9 @@ status_t ip_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
 
     exec_ctx_t conv_ctx(ctx, std::move(ip_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, ip_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, ip_p_->pd()->scratchpad_registry());
+    conv_ctx.set_scratchpad_grantor(nested_grantor);
 
     return ip_p_->execute(conv_ctx);
 }
@@ -245,8 +246,9 @@ status_t ip_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
 
     exec_ctx_t conv_ctx(ctx, std::move(ip_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, ip_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, ip_p_->pd()->scratchpad_registry());
+    conv_ctx.set_scratchpad_grantor(nested_grantor);
 
     return ip_p_->execute(conv_ctx);
 }
@@ -300,8 +302,9 @@ status_t ip_convolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
 
     exec_ctx_t conv_ctx(ctx, std::move(ip_args));
 
-    nested_scratchpad_t ns(ctx, key_nested, ip_p_);
-    conv_ctx.set_scratchpad_grantor(ns.grantor());
+    auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
+            key_nested, ip_p_->pd()->scratchpad_registry());
+    conv_ctx.set_scratchpad_grantor(nested_grantor);
 
     return ip_p_->execute(conv_ctx);
 }

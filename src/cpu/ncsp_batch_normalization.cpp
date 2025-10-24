@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2024 Intel Corporation
+* Copyright 2018-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ status_t ncsp_batch_normalization_fwd_t<d_type>::execute_forward(
     auto scale = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SHIFT);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto *ws_reduce = scratchpad.template get<acc_data_t>(key_bnorm_reduction);
 
     acc_data_t *mean, *variance;
@@ -313,7 +313,7 @@ status_t ncsp_batch_normalization_bwd_t<d_type>::execute_backward(
     auto diff_scale = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SCALE);
     auto diff_shift = CTX_OUT_MEM(acc_data_t *, DNNL_ARG_DIFF_SHIFT);
 
-    auto scratchpad = ctx.get_scratchpad_grantor();
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto *ws_reduce = scratchpad.template get<acc_data_t>(key_bnorm_reduction);
     acc_data_t *tmp_data_ = scratchpad.template get<acc_data_t>(key_bnorm_cvt);
 

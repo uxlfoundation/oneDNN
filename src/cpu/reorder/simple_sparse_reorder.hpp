@@ -114,7 +114,7 @@ struct simple_sparse_reorder_impl_t<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
         auto output_bitmask = CTX_OUT_MEM(uint64_t *, DNNL_ARG_TO, 2);
 
         engine_t *engine = ctx.stream()->engine();
-        const auto scratchpad = ctx.get_scratchpad_grantor();
+        const auto &scratchpad = ctx.get_scratchpad_grantor();
         auto wspace_mem_storage = scratchpad.get_memory_storage(
                 memory_tracking::names::key_reorder_space);
 
@@ -128,9 +128,11 @@ struct simple_sparse_reorder_impl_t<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
         r_args[DNNL_ARG_DST] = {wspace_mem.get(), false};
         exec_ctx_t r_ctx(ctx, std::move(r_args));
 
-        nested_scratchpad_t ns(
-                ctx, memory_tracking::names::key_nested, reorder);
-        r_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        memory_tracking::names::key_nested,
+                        reorder->pd()->scratchpad_registry());
+        r_ctx.set_scratchpad_grantor(nested_grantor);
         reorder->execute(r_ctx);
 
         auto *wspace = scratchpad.template get<data_t<type_o>>(

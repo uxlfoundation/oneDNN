@@ -233,8 +233,10 @@ struct convolution_deconvolution_fwd_t : public gpu::primitive_t {
 
         exec_ctx_t conv_ctx(ctx, std::move(conv_args));
 
-        nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-        conv_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        key_nested, conv_p_->pd()->scratchpad_registry());
+        conv_ctx.set_scratchpad_grantor(nested_grantor);
         // Executing the convolution kernel
         return conv_p_->execute(conv_ctx);
     }
@@ -347,8 +349,10 @@ struct convolution_deconvolution_bwd_data_t : public gpu::primitive_t {
             conv_args[DNNL_ARG_SCRATCHPAD] = args.at(DNNL_ARG_SCRATCHPAD);
         exec_ctx_t conv_ctx(ctx, std::move(conv_args));
 
-        nested_scratchpad_t ns(ctx, key_nested, conv_p_);
-        conv_ctx.set_scratchpad_grantor(ns.grantor());
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        key_nested, conv_p_->pd()->scratchpad_registry());
+        conv_ctx.set_scratchpad_grantor(nested_grantor);
         // Executing the convolution kernel
         return conv_p_->execute(conv_ctx);
     }

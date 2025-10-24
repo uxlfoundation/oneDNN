@@ -128,14 +128,16 @@ struct ref_concat_t : public primitive_t {
                 r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC] = *src_scales;
             exec_ctx_t r_ctx(ctx, std::move(r_args));
 
-            nested_scratchpad_t ns(ctx, key_nested_multiple + r_num, reorder);
-            r_ctx.set_scratchpad_grantor(ns.grantor());
+            auto *nested_grantor = create_nested_grantor(
+                    ctx.get_scratchpad_grantor(), key_nested_multiple + r_num,
+                    reorder->pd()->scratchpad_registry());
+            r_ctx.set_scratchpad_grantor(nested_grantor);
             reorder->execute(r_ctx);
         };
 
         if (pd()->use_tent_dst()) {
             using namespace memory_tracking::names;
-            auto scratchpad = ctx.get_scratchpad_grantor();
+            const auto &scratchpad = ctx.get_scratchpad_grantor();
             auto tent_dst_storage
                     = scratchpad.get_memory_storage(key_concat_tent_dst);
 

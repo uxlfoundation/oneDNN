@@ -55,7 +55,7 @@ and #dnnl_forward_inference propagation kinds.
 The backward propagation computes \f$\diffsrc\f$ and \f$\diffweights\f$.
 For no broadcast case, results are calculated using formula:
 
-\f[    
+\f[
     \diffdst(n, c, h, w) &=
         \begin{cases}
         \diffdst(n, c, h, w)  & \mbox{if } \src(n, c, h, w) > 0 \\
@@ -130,4 +130,5 @@ data memory format.
 
 ## Examples
 
-* @ref prelu_example_cpp
+See @ref dev_guide_examples page for a complete list. PReLU examples are listed in the
+[Activation Functions](@ref examples_activation) section.

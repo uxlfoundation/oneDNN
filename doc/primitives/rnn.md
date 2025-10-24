@@ -460,7 +460,5 @@ details on how to use and set these quantization parameters.
 
 ## Examples
 
-* @ref lstm_example_cpp
-* @ref vanilla_rnn_example_cpp
-* @ref augru_example_cpp
-* @ref lbr_gru_example_cpp
+See @ref dev_guide_examples page for a complete list. RNN examples are listed in the
+[Recurrent Neural Networks](@ref examples_rnn) section.

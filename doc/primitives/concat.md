@@ -94,4 +94,5 @@ meaning associated with any logical dimensions.
 
 ## Examples
 
-* @ref concat_example_cpp
+See @ref dev_guide_examples page for a complete list. Concat examples are listed in the
+[Tensor Operations](@ref examples_tensor_operations) section.

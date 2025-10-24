@@ -178,4 +178,5 @@ meaning associated with any logical dimensions.
 
 ## Examples
 
-* @ref eltwise_example_cpp
+See @ref dev_guide_examples page for a complete list. Eltwise examples are listed in the
+[Activation Functions](@ref examples_activation) section.

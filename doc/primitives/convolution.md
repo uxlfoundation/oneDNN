@@ -459,5 +459,5 @@ of Winograd algorithm implementations.
 
 ## Examples
 
-* @ref convolution_example_cpp
-* @ref deconvolution_example_cpp
+See @ref dev_guide_examples page for a complete list. Convolution examples are listed in the
+[Convolution Operations](@ref examples_convolution) section.

@@ -32,8 +32,6 @@ struct rvv_matmul_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("RISCV64GCV", rvv_matmul_t)
 
-        static constexpr data_type_t d_type = data_type::f32;
-
         status_t init(engine_t *engine) {
             UNUSED(engine);
 
@@ -50,11 +48,24 @@ struct rvv_matmul_t : public primitive_t {
                             && !bias_mdw.has_runtime_dims_or_strides(),
                     VERBOSE_UNSUPPORTED_TAG);
 
-            const bool types_ok = src_mdw.data_type() == d_type
-                    && weights_mdw.data_type() == d_type
-                    && dst_mdw.data_type() == d_type
-                    && desc()->accum_data_type == d_type;
+            using namespace dnnl::impl::data_type;
+            const auto sdt = src_mdw.data_type();
+            const auto wdt = weights_mdw.data_type();
+            const auto ddt = dst_mdw.data_type();
+            const auto accdt = desc()->accum_data_type;
+
+            const bool f32_ok
+                    = (sdt == f32 && wdt == f32 && ddt == f32 && accdt == f32);
+            const bool f16_ok
+                    = (sdt == f16 && wdt == f16 && (ddt == f16 || ddt == f32)
+                            && (accdt == f32 || (ddt == f16 && accdt == f16)));
+            const bool types_ok = f32_ok || f16_ok;
             VDISPATCH_MATMUL(types_ok, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(platform::has_data_type_support(sdt)
+                            && platform::has_data_type_support(wdt)
+                            && platform::has_data_type_support(ddt)
+                            && platform::has_data_type_support(accdt),
+                    VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_MATMUL(attr()->scales_.has_default_values(),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -133,7 +144,7 @@ struct rvv_matmul_t : public primitive_t {
                 const memory_desc_wrapper &bias_mdw) const {
             if (bias_mdw.is_zero()) return true;
 
-            if (bias_mdw.data_type() != d_type) return false;
+            if (bias_mdw.data_type() != dst_mdw.data_type()) return false;
 
             const int dst_ndims = dst_mdw.ndims();
             const int bias_ndims = bias_mdw.ndims();

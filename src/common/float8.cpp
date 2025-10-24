@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,6 +38,8 @@ float8_e8m0_t::operator float() const {
     // no inf, only NaN in e8m0
     // we return Real Indefinite NaN
     if (raw_bits_ == 0xff) return utils::bit_cast<float>(0xffc00000);
+    // no zero, return subnormal float 2^-127
+    if (raw_bits_ == 0x00) return utils::bit_cast<float>(0x00400000);
     return utils::bit_cast<float>(raw_bits_ << 23);
 }
 

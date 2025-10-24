@@ -194,7 +194,7 @@ struct numeric_limits<float8_e8m0_t> {
     static constexpr float8_e8m0_t lowest() {
         return float8_e8m0_t(0x00, true);
     }
-    static constexpr float8_e8m0_t min() { return float8_e8m0_t(0x7f, true); }
+    static constexpr float8_e8m0_t min() { return float8_e8m0_t(0x01, true); }
     static constexpr float8_e8m0_t max() { return float8_e8m0_t(0xfe, true); }
 
     static constexpr int bias = 0x7f;

@@ -941,6 +941,12 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(BA8b8a);
     CASE(BA16b8a);
     CASE(AB2a4b);
+    CASE(aCBd4b4c);
+    CASE(aCBde4b4c);
+    CASE(aCBdef4b4c);
+    CASE(BAc4a4b);
+    CASE(BAcd4a4b);
+    CASE(BAcde4a4b);
     CASE(x);
     CASE(nc);
     CASE(cn);
@@ -1047,6 +1053,7 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(OI8i24o);
     CASE(OI8i16o);
     CASE(OI8i8o);
+    CASE(IOw4o4i);
     CASE(IOw8o8i);
     CASE(IOw16o16i);
     CASE(IOw16i16o);
@@ -1116,6 +1123,7 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(OwI8i16o);
     CASE(OwI8o4i);
     CASE(IOhw16i16o);
+    CASE(IOhw4o4i);
     CASE(IOhw8o8i);
     CASE(IOhw16o16i);
     CASE(Ohwi16o);
@@ -1247,6 +1255,7 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(OIdhw8o4i);
     CASE(IOdhw16i16o);
     CASE(OIdhw4o8i8o4i);
+    CASE(IOdhw4o4i);
     CASE(IOdhw8o8i);
     CASE(IOdhw16o16i);
     CASE(OIdhw16o16i2o);
@@ -1259,6 +1268,7 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(Goiw16g);
     CASE(Goiw8g);
     CASE(Goiw4g);
+    CASE(gIOw4o4i);
     CASE(gIOw8o8i);
     CASE(gIOw16o16i);
     CASE(gIOw16i16o);
@@ -1303,6 +1313,7 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(goIw4i);
     CASE(goIw32i);
     CASE(gIOhw16i16o);
+    CASE(gIOhw4o4i);
     CASE(gIOhw8o8i);
     CASE(gIOhw16o16i);
     CASE(gOhwi16o);
@@ -1367,6 +1378,7 @@ dnnl_format_tag_t str2fmt_tag(const char *str) {
     CASE(gOIhw4i8o2i);
     CASE(gOIhw4o8i2o);
     CASE(gIOdhw16i16o);
+    CASE(gIOdhw4o4i);
     CASE(gIOdhw8o8i);
     CASE(gIOdhw16o16i);
     CASE(gOdhwi16o);

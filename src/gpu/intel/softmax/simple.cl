@@ -17,7 +17,7 @@
 
 #if IS_FWD
 
-#if SUB_GROUP_SIZE == 16
+#if SUB_GROUP_SIZE >= 16
 __attribute__((reqd_work_group_size(GROUP_SIZE, 1, 1)))
 __attribute__((intel_reqd_sub_group_size(SUB_GROUP_SIZE)))
 #endif
@@ -40,7 +40,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
     scale *= src_scale[0];
 #endif
 
-#if SUB_GROUP_SIZE == 16
+#if SUB_GROUP_SIZE >= 16
     const int local_id = get_local_id(0);
 
     // SOFTMAX_AXIS is the size of axis around which softmax operation is
@@ -91,7 +91,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
             max_ = max(max_, d[i - begin]);
         }
     }
-#if SUB_GROUP_SIZE == 16
+#if SUB_GROUP_SIZE >= 16
     // reduce using work_group_reduce if no. of subgroups > 1, for e.g.
     // if group_size is 32, there will be 2 sub-groups (size of each sub-group
     // is 16 which is an optimal value)
@@ -113,7 +113,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
 #endif
         }
     }
-#if SUB_GROUP_SIZE == 16
+#if SUB_GROUP_SIZE >= 16
 #if GROUP_SIZE == SUB_GROUP_SIZE
     denom_ = sub_group_reduce_add(denom_);
 #else

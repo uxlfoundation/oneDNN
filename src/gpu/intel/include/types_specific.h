@@ -793,6 +793,8 @@
 #define WEI_SCALES_TO_REF(x) convert_float(x)
 #elif WEI_SCALES_DT_BF16
 #define WEI_SCALES_TO_REF(x) cvt_bf16_to_f32(x)
+#elif WEI_SCALES_DT_E8M0
+#define WEI_SCALES_TO_REF(x) cvt_e8m0_to_f32(x)
 #else
 #define WEI_SCALES_TO_REF(x) (x)
 #endif
@@ -807,6 +809,8 @@
 #define SRC_SCALES_TO_REF(x) convert_float(x)
 #elif SRC_SCALES_DT_BF16
 #define SRC_SCALES_TO_REF(x) cvt_bf16_to_f32(x)
+#elif SRC_SCALES_DT_E8M0
+#define SRC_SCALES_TO_REF(x) cvt_e8m0_to_f32(x)
 #else
 #define SRC_SCALES_TO_REF(x) (x)
 #endif

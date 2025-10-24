@@ -20,6 +20,7 @@
 
 #include "common/primitive.hpp"
 #include "cpu/cpu_pooling_pd.hpp"
+#include "cpu/rv64/rvv_postops.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -57,7 +58,11 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
             VDISPATCH_POOLING(!is_dilated(), VERBOSE_UNSUPPORTED_FEATURE,
                     "does not support dilations");
             VDISPATCH_POOLING(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+                    attr()->has_default_values(
+                            primitive_attr_t::skip_mask_t::post_ops, d_type),
+                    VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_POOLING(rvv_postops_t::post_ops_ok(attr()->post_ops_),
+                    VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_POOLING(
                     memory_desc_matches_tag(*src_md(), desired_fmt_tag),
                     VERBOSE_UNSUPPORTED_TAG_S, "src");

@@ -112,6 +112,14 @@ inline int measure_perf_aggregate(timer::timer_t &t,
     const int max_batch_times = 4096;
     // Nvidia/AMD don't support profiling.
     const bool use_profiling = is_gpu() && !is_nvidia_gpu() && !is_amd_gpu();
+
+    // When verbose profiling is enabled, the stream profiler is reset after
+    // primitive execution - this is not helpful when measuring aggregate
+    // performance when profiling data is collected post execution.
+    // Hence, the verbose mode is forced disabled whenever the perf mode
+    // demands using the profiler.
+    if (use_profiling && is_verbose_profiler_enabled()) dnnl_set_verbose(0);
+
     const dnnl::stream::flags flags = use_profiling
             ? dnnl::stream::flags::default_flags | get_profiling_flags()
             : dnnl::stream::flags::default_flags;

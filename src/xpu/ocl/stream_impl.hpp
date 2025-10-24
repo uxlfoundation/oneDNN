@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -81,6 +81,13 @@ public:
         cl_command_queue_properties props;
         OCL_CHECK(clGetCommandQueueInfo(queue, CL_QUEUE_PROPERTIES,
                 sizeof(cl_command_queue_properties), &props, nullptr));
+
+        // Profiling capabilities are enabled on the stream to allow
+        // printing the info in verbose profiling mode
+        if (get_verbose(verbose_t::exec_profile)) {
+            props |= CL_QUEUE_PROFILING_ENABLE;
+            *flags |= stream_flags::profiling;
+        }
 
         *flags |= (props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE)
                 ? stream_flags::out_of_order

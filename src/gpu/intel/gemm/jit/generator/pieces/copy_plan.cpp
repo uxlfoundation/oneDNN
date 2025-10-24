@@ -2715,7 +2715,7 @@ void CopyPlan::legalizeRegions()
                 canSwizzle = false;
         }
 #if XE3P
-        if (hw >= HW::Xe3p) {
+        if (hw >= HW::XE3P_35_10) {
             auto isFlat = [&] (const CopyOperand &op) {
                 if (!op) return true;
                 if (isBroadcast(op)) return true;

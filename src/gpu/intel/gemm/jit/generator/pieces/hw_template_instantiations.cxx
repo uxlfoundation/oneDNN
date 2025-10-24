@@ -33,7 +33,9 @@ REG_XE2_ISA(template class Generator<HW::Xe2>);
 REG_XE3_ISA(template class Generator<HW::Xe3>);
 #if XE3P
 #elif defined(DNNL_GPU_ISA_XE3P)
-REG_XE3P_ISA(template class BLASKernelGenerator<HW::Xe3p>);
+REG_XE3P_ISA(template class BLASKernelGenerator<HW::XE3P_35_10>);
+REG_XE3P_ISA(template class BLASKernelGenerator<HW::XE3P_35_11>);
+REG_XE3P_ISA(template class BLASKernelGenerator<HW::XE3P_UNKNOWN>);
 #endif
 #else
 // Default to instantiating all classes

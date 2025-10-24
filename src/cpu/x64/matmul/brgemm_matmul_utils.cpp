@@ -1568,11 +1568,12 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 VERBOSE_UNSUPPORTED_TAG);
 
     const bool transposed_A = bm_conf_utils.check_is_transposed(bgmmc.src_tag);
-    // When M == 1 MatMul always considers A to be non-transposed even if A md
-    // was created using "ba" tag. It is not plain in cab layout.
-    bgmmc.treat_A_as_plain = bgmmc.M == 1
-            && IMPLICATION(bgmmc.batch != 1,
-                    bm_conf_utils.check_is_plain(bgmmc.src_tag));
+    // When M == 1, MatMul always treats A as non-transposed, even if the A
+    // memory descriptor was created using the "ba" tag. Additionally, we need
+    // to ensure that the layout is canonical (a.k.a. `plain` in the context of
+    // brgemm MatMul) to properly handle cases where batch > 1.
+    bgmmc.treat_A_as_plain
+            = bgmmc.M == 1 && memory_desc_wrapper(src_md).is_canonical();
     bgmmc.transposed_A = ((transposed_A && !bgmmc.treat_A_as_plain)
             || bgmmc.src_tag == adbc);
     // For batched problems with plain A and C and fully broadcasted across B

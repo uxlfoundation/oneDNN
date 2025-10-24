@@ -219,7 +219,8 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
     const int channel_block = channel_id / CHANNELS;
     const int channel_in_block = channel_id % CHANNELS;
 
-    int data_off = mb * CHANNELS * SOFTMAX_AXIS_SIZE + channel_offset
+    int data_off = mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE
+            + channel_block * SOFTMAX_AXIS_SIZE * CHANNELS + channel_offset
             + channel_in_block;
     const int buf_reads = THREAD_BUF_SIZE;
 #else

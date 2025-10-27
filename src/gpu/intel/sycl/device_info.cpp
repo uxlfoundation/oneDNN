@@ -142,6 +142,8 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
             = device.get_info<::sycl::info::device::global_mem_cache_size>();
     mayiuse_system_memory_allocators_
             = device.has(::sycl::aspect::usm_system_allocations);
+    max_allocation_size_
+            = device.get_info<::sycl::info::device::max_mem_alloc_size>();
     return status::success;
 }
 

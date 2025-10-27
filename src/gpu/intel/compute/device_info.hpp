@@ -220,6 +220,7 @@ public:
     size_t icache_size() const;
     size_t max_kernel_param_size() const { return max_kernel_param_size_; }
     uint32_t device_address_bits() const { return device_address_bits_; }
+    uint64_t max_allocation_size() const { return max_allocation_size_; }
 
     const xpu::runtime_version_t &runtime_version() const {
         return runtime_version_;
@@ -290,6 +291,7 @@ protected:
     size_t l3_cache_size_ = 0;
     size_t max_kernel_param_size_ = 1024;
     uint32_t device_address_bits_ = 64;
+    uint64_t max_allocation_size_ = 0;
 
     // extensions_ and gpu_arch_ describe effective extensions and GPU architecture.
     uint64_t extensions_ = 0;

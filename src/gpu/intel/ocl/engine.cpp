@@ -243,6 +243,12 @@ status_t engine_t::build_program_from_source(
     auto *dev_info = utils::downcast<const device_info_t *>(device_info());
     options += " " + dev_info->get_cl_ext_options();
 
+    // Compile kernel in a stateless addressing model allowing usage of
+    // allocations of any size. Not needed if allowed allocation is already > 4GB.
+    if (kernel_ctx.has_large_buffers()
+            && dev_info->max_allocation_size() <= UINT32_MAX)
+        options += " -cl-intel-greater-than-4GB-buffer-required";
+
     cl_int err;
     stringstream_t pp_code;
     // The `cl_cache` requires using `clBuildProgram`. Unfortunately, unlike

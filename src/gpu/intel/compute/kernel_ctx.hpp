@@ -52,13 +52,7 @@ public:
         for (auto &opt : option_set_)
             oss << " " << opt;
 
-        if (use_int32_offset_) {
-            oss << " -DUSE_INT32_OFFSET";
-        } else {
-            // TODO: Determine if specialization for buffers between 2GB and 4GB
-            // is worthwhile
-            oss << " -cl-intel-greater-than-4GB-buffer-required";
-        }
+        if (use_int32_offset_) { oss << " -DUSE_INT32_OFFSET"; }
 
         for (auto &int_var : int_var_map_) {
             // C tokens are parsed as (-)(integer_literal). As abs(INT_MIN) >
@@ -85,6 +79,7 @@ public:
 
     void register_buffer_size(size_t size) {
         if (size > INT_MAX) use_int32_offset(false);
+        if (size > UINT32_MAX) require_large_buffers(true);
     }
 
     void register_buffer_size(const memory_desc_wrapper &mdw) {
@@ -96,6 +91,9 @@ public:
     // case, int32_t types can be used for data offsets and avoid int64_t
     // operations when native 64-bit operations are unsupported.
     void use_int32_offset(bool value) { use_int32_offset_ = value; }
+
+    void require_large_buffers(bool value) { require_large_buffers_ = value; }
+    bool has_large_buffers() const { return require_large_buffers_; }
 
     void define_int(const char *variable, int64_t value) {
         set_macro(variable, value, int_var_map_);
@@ -216,6 +214,7 @@ private:
     std::set<std::string> option_set_;
     std::unordered_map<std::string, std::string> custom_headers_;
     bool use_int32_offset_ = true;
+    bool require_large_buffers_ = false;
 };
 
 } // namespace compute

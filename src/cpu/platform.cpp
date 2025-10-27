@@ -1002,6 +1002,11 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
                 fclose(level_file);
             }
 
+            // Validate cache level
+            if ( cache_level < 0 || cache_level > (int)cache_topology_t::max_cache_levels) {
+                continue;
+            }
+
             // Read cache type to filter for data/unified caches
             char type_path[768];
             snprintf(type_path, sizeof(type_path), "%s/type", cache_path);
@@ -1059,40 +1064,45 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
                 fclose(shared_file);
             }
 
-            // Create cache info entry
-            std::pair<core_type, int> key = std::make_pair(ctype, cache_level);
-            std::map<std::pair<core_type, int>, cache_info_t>::iterator cache_it
-                    = cache_map.find(key);
-            if (cache_it == cache_map.end()) {
+            // Directly write into cache_topology if size == 0, otherwise merge
+            int type_idx = (ctype == core_type::p_core) ? 0 : 1;
+            size_t idx = type_idx * cache_topology_t::max_cache_levels
+                    + static_cast<size_t>(cache_level);
+            const size_t total_slots = cache_topology_t::max_cache_levels
+                    * cache_topology_t::max_core_types;
+            if (idx >= total_slots) continue;
+
+            if (cache_topology.caches[idx].size == 0) {
                 cache_info_t info;
-                info.level = cache_level;
+                info.level = static_cast<uint8_t>(cache_level);
                 info.size = cache_size;
                 info.num_sharing_cores = num_sharing_cores;
                 info.ctype = ctype;
-                cache_map[key] = info;
+                cache_topology.caches[idx] = info;
+            } else {
+                // Merge sharing information conservatively.
+                cache_topology.caches[idx].num_sharing_cores = std::max(
+                        cache_topology.caches[idx].num_sharing_cores,
+                        num_sharing_cores);
             }
         }
     }
 
-    if (cache_map.empty()) {
+    // TODO do we need a fallback? It is unlikely that no caches were detected
+    // Check whether we managed to populate any entries
+    bool any_detected = false;
+    for (size_t i = 0; i < cache_topology_t::max_cache_levels
+            * cache_topology_t::max_core_types; ++i) {
+        if (cache_topology.caches[i].size != 0) {
+            any_detected = true;
+            break;
+        }
+    }
+
+    if (!any_detected) {
         // Failed to detect any caches, fallback to CPUID-based method
         init_cache_topology_cpuid(cache_topology);
         return;
-    }
-
-    // Populate cache_topology structure from cache_map
-    for (const auto &entry : cache_map) {
-        core_type ctype = entry.first.first;
-        int level = entry.first.second;
-        const auto &cache_info = entry.second;
-
-        int type_idx = (ctype == core_type::p_core) ? 0 : 1;
-        size_t idx = type_idx * cache_topology_t::max_cache_levels + level;
-
-        if (idx < cache_topology_t::max_cache_levels
-                        * cache_topology_t::max_core_types) {
-            cache_topology.caches[idx] = cache_info;
-        }
     }
 
     // If not hybrid, copy P-core data to E-core slots

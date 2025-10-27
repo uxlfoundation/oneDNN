@@ -436,8 +436,7 @@ struct cache_topology_t {
 
 //------------------Start CPUID cache topology code-----------------------------
 
-void populate_cache_map_cpuid(
-        std::map<std::pair<core_type, int>, cache_info_t> &cache_map) {
+void populate_cache_topology_from_cpuid(cache_topology_t &cache_topology) {
     static constexpr uint32_t MAX_SUBLEAF_GUARD = 16;
     uint32_t regs[4] = {0};
 
@@ -462,18 +461,24 @@ void populate_cache_map_cpuid(
         // number of sharing cores
         uint32_t max_cores_sharing = ((regs[0] >> 14) & 0xFFF) + 1;
 
-        auto key = std::make_pair(ctype, level);
-        auto it = cache_map.find(key);
-        if (it == cache_map.end()) {
+        int type_idx = (ctype == core_type::p_core) ? 0 : 1;
+        size_t idx = type_idx * cache_topology_t::max_cache_levels
+                + static_cast<size_t>(level);
+        const size_t total_slots = cache_topology_t::max_cache_levels
+                * cache_topology_t::max_core_types;
+        if (idx >= total_slots) continue;
+
+        if (cache_topology.caches[idx].size == 0) {
             cache_info_t info;
-            info.level = level;
+            info.level = static_cast<uint8_t>(level);
             info.size = cache_size;
             info.num_sharing_cores = max_cores_sharing;
             info.ctype = ctype;
-            cache_map[key] = info;
+            cache_topology.caches[idx] = info;
         }
     }
 
+    // refine sharing counts using topology leaf if available
     x64::cpu().getCpuidEx(0x0, 0x0, regs);
     uint32_t max_basic_leaf = regs[0];
     uint32_t topo_leaf = 0;
@@ -494,31 +499,35 @@ void populate_cache_map_cpuid(
     if (topo_leaf != 0) {
         for (uint32_t subleaf = 0; subleaf < MAX_SUBLEAF_GUARD; ++subleaf) {
             x64::cpu().getCpuidEx(topo_leaf, subleaf, regs);
-            uint32_t level_type
-                    = (regs[2] >> 8) & 0xFF; // CPUID(0x1F).ECX[15:8]
+            uint32_t level_type = (regs[2] >> 8) & 0xFF; // CPUID(0x1F).ECX[15:8]
             if (level_type == 0) break; // no more levels
             if (level_type == 1 || level_type == 2) {
                 int level = 1; // assume SMT level corresponds to L1d
                 if (level_type == 2) level = 3; // Core level corresponds to L3
-                auto key = std::make_pair(ctype, level);
-                auto it = cache_map.find(key);
-                if (it != cache_map.end()) {
-                    uint32_t logical_processors_at_level
-                            = regs[1]; // CPUID(0x1F).EBX
-                    uint32_t existing = it->second.num_sharing_cores;
-                    uint32_t newval
-                            = std::min(existing, logical_processors_at_level);
+                int type_idx = (ctype == core_type::p_core) ? 0 : 1;
+                size_t idx = type_idx * cache_topology_t::max_cache_levels
+                        + static_cast<size_t>(level);
+                const size_t total_slots = cache_topology_t::max_cache_levels
+                        * cache_topology_t::max_core_types;
+                if (idx >= total_slots) continue;
+
+                if (cache_topology.caches[idx].size != 0) {
+                    uint32_t logical_processors_at_level = regs[1]; // EBX
+                    uint32_t existing = cache_topology.caches[idx].num_sharing_cores;
+                    uint32_t newval = std::min(existing, logical_processors_at_level);
                     if (newval != existing)
-                        it->second.num_sharing_cores = newval;
+                        cache_topology.caches[idx].num_sharing_cores = newval;
                 }
             }
         }
     }
 }
+
 // The init_cache_topology_cpuid function is a fallback method to initialize
 // the cache topology using only CPUID instructions. This method is less
 // accurate than the Windows API or Linux methods, but can be used on
 // systems where those methods are not available.
+//
 // The function works as follows:
 // 1. Check if the system is hybrid using CPUID.07H:EDX[15] see is_hybrid()
 // 2. Use OS specific methods to set thread affinity to each logical core:
@@ -527,9 +536,8 @@ void populate_cache_map_cpuid(
 //   3b. Use CPUID(0x1A) to get the core type of the current core see get_core_type()
 //   3c. if available Use CPUID(0x0B) or CPUID(0x1F) to refine the number of sharing cores
 //
-// 4. Populate the cache_topology structure from the cache_map
-// 5. If no caches were detected, populate with guessed defaults
-// 6. If the system is not hybrid, copy the P-core cache information to the E-core entries
+// 4. If no caches were detected, populate with guessed defaults
+// 5. If the system is not hybrid, copy the P-core cache information to the E-core entries
 //
 // This function is considered the fallback method and may give incorrect
 // results. The actual cache topology should be obtained through the OS interfaces.
@@ -543,8 +551,8 @@ void init_cache_topology_cpuid(cache_topology_t &cache_topology) {
             default: return 0U;
         }
     };
+
     cache_topology.is_hybrid = is_hybrid();
-    std::map<std::pair<core_type, int>, cache_info_t> cache_map;
 
 #if defined(_WIN32)
     SYSTEM_INFO sysinfo;
@@ -556,7 +564,7 @@ void init_cache_topology_cpuid(cache_topology_t &cache_topology) {
         DWORD_PTR cpu_mask = 1ULL << cpu;
         DWORD_PTR oldMask = SetThreadAffinityMask(current_thread, cpu_mask);
 
-        if (oldMask != 0) { populate_cache_map_cpuid(cache_map); }
+        if (oldMask != 0) { populate_cache_topology_from_cpuid(cache_topology); }
         SetThreadAffinityMask(current_thread, oldMask);
     }
 #elif defined(__linux__)
@@ -572,38 +580,32 @@ void init_cache_topology_cpuid(cache_topology_t &cache_topology) {
         CPU_ZERO(&cpu_mask);
         CPU_SET(cpu, &cpu_mask);
         if (sched_setaffinity(0, sizeof(cpu_set_t), &cpu_mask) == 0) {
-            populate_cache_map_cpuid(cache_map);
+            populate_cache_topology_from_cpuid(cache_topology);
         }
     }
     // Restore original affinity mask
     sched_setaffinity(0, sizeof(cpu_set_t), &original_mask);
 #endif
-    // Populate cache_topology structure from cache_map
-    for (const auto &entry : cache_map) {
-        core_type ctype = entry.first.first;
-        int level = entry.first.second;
-        const auto &cache_info = entry.second;
 
-        int type_idx = (ctype == core_type::p_core) ? 0 : 1;
-        size_t idx = type_idx * cache_topology_t::max_cache_levels + level;
-
-        if (idx < cache_topology_t::max_cache_levels
-                        * cache_topology_t::max_core_types) {
-            cache_topology.caches[idx] = cache_info;
+    // Check whether we managed to populate any entries
+    bool any_detected = false;
+    for (size_t i = 0; i < cache_topology_t::max_cache_levels
+            * cache_topology_t::max_core_types; ++i) {
+        if (cache_topology.caches[i].size != 0) {
+            any_detected = true;
+            break;
         }
     }
 
     // If we couldn't detect any caches, populate with defaults from guess function
-    if (cache_map.empty()) {
-        printf("Failed to detect caches via CPUID, using guessed defaults\n");
+    if (!any_detected) {
         for (int type_idx = 0; type_idx < (int)cache_topology_t::max_core_types;
                 ++type_idx) {
             for (size_t level = 0; level < cache_topology_t::max_cache_levels;
                     ++level) {
-                size_t idx
-                        = type_idx * cache_topology_t::max_cache_levels + level;
+                size_t idx = type_idx * cache_topology_t::max_cache_levels + level;
                 cache_info_t info;
-                info.level = static_cast<uint32_t>(level);
+                info.level = static_cast<uint8_t>(level);
                 info.size = guess(static_cast<int>(level));
                 info.num_sharing_cores = 1; // assume per-core by default
                 info.ctype = (type_idx == 0) ? core_type::p_core
@@ -614,7 +616,6 @@ void init_cache_topology_cpuid(cache_topology_t &cache_topology) {
     }
 
     // If this is not a hybrid system, copy P-core data to E-core slots
-    // so that queries work regardless of which core type is specified
     if (!cache_topology.is_hybrid) {
         for (size_t level = 0; level < cache_topology_t::max_cache_levels;
                 level++) {

@@ -36,9 +36,10 @@
 namespace binary {
 
 int fill_mem(
-        const prb_t *prb, int input_idx, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+        int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -58,7 +59,7 @@ int fill_mem(
 
     int min_val = static_cast<int>(MAX2(-8.f, lowest_dt(mem_dt.dt())));
     // Tenrary op supports a third input which can't be negative so far.
-    if (input_idx == 2) min_val = 0;
+    if (exec_arg == DNNL_ARG_SRC_2) min_val = 0;
 
     /* Do fixed partitioning to have same filling for any number of threads */
     static constexpr int64_t chunk_size = 64;
@@ -70,7 +71,7 @@ int fill_mem(
         // repeating patterns. We could use discard(idx_start) too but
         // it has a complexity in O(idx_start). We also add 1 to avoid
         // seeding with 0.
-        std::minstd_rand int_seed(idx_start + nelems * input_idx + 1);
+        std::minstd_rand int_seed(idx_start + nelems * exec_arg + 1);
         int_seed.discard(1);
 
         std::uniform_int_distribution<> gen(min_val, 8);
@@ -79,9 +80,9 @@ int fill_mem(
             float val = gen(int_seed);
             // Make floating-point values only for src0 as src1 filling can be
             // used in other drivers and preferred to be integer.
-            if (input_idx == 0) val *= 0.5f;
+            if (exec_arg == DNNL_ARG_SRC_0) val *= 0.5f;
             // Remove zeroes in src1 to avoid division by zero.
-            if (input_idx == 1 && val == 0.0f) val = 1.0f;
+            if (exec_arg == DNNL_ARG_SRC_1 && val == 0.0f) val = 1.0f;
             val = round_to_nearest_representable(mem_dt.dt(), val);
             mem_fp.set_f32_elem(idx, val);
         }
@@ -248,7 +249,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC_0:
-                SAFE(fill_mem(prb, 0, mem, ref_mem), WARN);
+                SAFE(fill_mem(exec_arg, prb, mem, ref_mem), WARN);
                 // Need a copy of source data for inplace mode for bitwise
                 // testing.
                 if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {
@@ -258,14 +259,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 }
                 break;
             case DNNL_ARG_SRC_1:
-                SAFE(fill_mem(prb, 1, mem, ref_mem), WARN);
+                SAFE(fill_mem(exec_arg, prb, mem, ref_mem), WARN);
                 break;
             case DNNL_ARG_SRC_2:
-                SAFE(fill_mem(prb, 2, mem, ref_mem), WARN);
+                SAFE(fill_mem(exec_arg, prb, mem, ref_mem), WARN);
                 break;
             case DNNL_ARG_DST:
                 if (prb->attr.post_ops.find(alg_t::SUM) >= 0) {
-                    SAFE(fill_mem(prb, 3, mem, ref_mem), WARN);
+                    SAFE(fill_mem(exec_arg, prb, mem, ref_mem), WARN);
 
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.

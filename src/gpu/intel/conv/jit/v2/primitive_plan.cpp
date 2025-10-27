@@ -76,20 +76,20 @@ primitive_init_plan_t::buffer_entry_t primitive_init_plan_t::find_buf(
 kernel_info_t primitive_init_plan_t::create_kernel_info(
         const kernel_desc_base_t &desc,
         const std::unordered_map<std::string, std::string> &buf_map) const {
-    kernel_iface_t iface(desc.kernel_name());
+    kernel::iface_t iface(desc.kernel_name());
     desc.init_kernel_iface(iface);
     kernel_info_t info;
-    for (int i = 0; i < iface.nargs(); i++) {
-        auto &name = iface.arg_name(i);
-        auto &var = iface.arg_var(i);
+    for (size_t i = 0; i < iface.nargs(); i++) {
+        auto &var = iface[i];
+        auto &name = var.as<var_t>().name;
         auto buf = find_buf(buf_map.count(name) == 0 ? name : buf_map.at(name));
         if (!buf) {
             info.register_internal_arg(var);
         } else if (buf.is_user()) {
             info.register_user_arg(var, buf.arg_key, buf.is_user_input);
         } else {
-            info.register_scratchpad_arg(
-                    var, buf.arg_key, /*is_input=*/false, buf.layout.size());
+            info.register_scratchpad_arg(var, buf.arg_key, /*is_input=*/false,
+                    size_bytes(buf.layout));
         }
     }
     return info;
@@ -113,7 +113,7 @@ status_t primitive_init_plan_t::add_zero_out_kernel(
     auto desc = std::make_shared<conv::jit::zero_out_kernel_desc_t>(
             regs_, simd_, dpas_);
     auto params = std::make_shared<conv::jit::zero_out_kernel_params_t>(
-            buf.layout.size());
+            size_bytes(buf.layout));
     std::unordered_map<std::string, std::string> buf_map;
     buf_map["ptr"] = buf.name;
     return add_kernel(exec_plan, *desc, *params, primitive, engine, buf_map);
@@ -131,11 +131,11 @@ status_t primitive_init_plan_t::add_reorder_kernel(
                     buf_var, e->arg_key, /*is_input=*/e == &src);
         } else {
             kernel_info.register_scratchpad_arg(buf_var, e->arg_key,
-                    /*is_input=*/e == &src, e->layout.size());
+                    /*is_input=*/e == &src, size_bytes(e->layout));
         }
     }
-    exec_config_t exec_cfg(hw_t(engine), regs_, simd_);
-    reorder::jit::config_t cfg(exec_cfg, src.layout, dst.layout);
+    kernel::options_t options(make_ir_hw(engine), regs_, simd_);
+    reorder::jit::config_t cfg(options, src.layout, dst.layout);
     kernel_info.set_nd_range(cfg.nd_range());
     auto kernel = make_kernel<reorder::jit::kernel_t>(primitive,
             /*register_kernel=*/true, engine, cfg, "reorder", kernel_info,

@@ -190,7 +190,11 @@ struct jit_conv_conf_t {
     bool req_zero_point_buffer; // used for calculating padding compensation
     bool zp_pbuff_outer_compute; // indicates if zp_bbuff is computed in
 
-    bool dst_scale;
+    bool dst_scale = false; // TODO: delete me
+
+    bool with_src_scales = false;
+    bool with_wei_scales = false;
+    bool with_dst_scales = false;
 
     // a separate parallel region
     int ow_pad, oh_pad, od_pad; // output elements with padding & filter overlap
@@ -312,7 +316,6 @@ struct jit_conv_args_t {
     const void *dst_prf = nullptr;
     const void *filt_prf = nullptr;
     const void *bias_prf = nullptr;
-    const void *scales = nullptr;
     const void *acc_s32 = nullptr;
     const void *compensation = nullptr;
     const int32_t *zp_compensation = nullptr;
@@ -321,7 +324,12 @@ struct jit_conv_args_t {
     const int32_t *dst_zero_point = nullptr;
     const void *tile_cfg = nullptr;
     const void *tile_cfg_tail = nullptr;
-    const void *dst_scale = nullptr;
+    const void *scales = nullptr; // TODO: delete me
+    const void *dst_scale = nullptr; // TODO: delete me
+
+    const void *src_scales = nullptr;
+    const void *wei_scales = nullptr;
+    const void *dst_scales = nullptr;
 
     // ptr to table of void * elements that are pointers to
     // post_op binary src1 tensors
@@ -478,7 +486,11 @@ struct jit_1x1_conv_conf_t {
     bool dst_zero_point;
     bool zp_src_is_common; // common, otherwise (TODO) per-channel
 
-    bool dst_scale;
+    bool dst_scale; // TODO: delete me
+
+    bool with_src_scales = false;
+    bool with_wei_scales = false;
+    bool with_dst_scales = false;
 
     cpu_isa_t isa;
     bool uses_permw_transposition;
@@ -491,13 +503,17 @@ struct jit_1x1_conv_args_t {
     // Used in forward and backward_weights only
     const void *bias_data = nullptr;
     const void *acc_s32 = nullptr;
-    const void *scales = nullptr;
     const void *compensation = nullptr;
     const void *store_buffer = nullptr;
     const int32_t *zp_compensation = nullptr;
     const int32_t *src_zero_point = nullptr;
     const int32_t *dst_zero_point = nullptr;
-    const void *dst_scale = nullptr;
+    const void *scales = nullptr; // TODO: delete me
+    const void *dst_scale = nullptr; // TODO: delete me
+
+    const void *src_scales = nullptr;
+    const void *wei_scales = nullptr;
+    const void *dst_scales = nullptr;
 
     // ptr to table of void * elements that are pointers to
     // post_op binary src1 tensors
@@ -780,6 +796,7 @@ struct jit_brgemm_conv_conf_t {
 
     bool use_buffer;
     dim_t buffer_size;
+    dim_t comp_ow_size;
     dim_t ker_ranges_size;
     dim_t comp_a_buffer_size;
     dim_t s8s8_comp_buffer_size;

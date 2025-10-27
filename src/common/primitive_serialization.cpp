@@ -187,6 +187,7 @@ void serialize(serialization_stream_t &sstream, const primitive_attr_t &attr) {
     // acc_mode
     sstream.append(attr.acc_mode_);
 
+    // scales
     if (!attr.scales_.has_default_values()) {
         sstream.append('s');
         attr.scales_.serialize(sstream);
@@ -589,7 +590,7 @@ void serialize(serialization_stream_t &sstream, const sdpa_desc_t &desc) {
     desc.vs_zero_points.serialize(sstream);
     serialize(sstream, desc.dst_desc);
     serialize(sstream, desc.attn_mask_desc);
-    sstream.append(desc.scale_dt);
+    serialize(sstream, desc.scale_desc);
     sstream.append(desc.kq_acc_dt);
     sstream.append(desc.vs_acc_dt);
     sstream.append(desc.invert_scale);

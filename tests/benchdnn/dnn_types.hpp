@@ -72,6 +72,7 @@ struct attr_t {
         PER_DIM_3, // ... dims[3] point.
         PER_TENSOR, // ... point in the tensor.
         HOST_SCALAR, // same as COMMON, but uses host-side scalar memory
+        MX, // uses {1, ..., 32} groups and dynamic_mx formula
         POLICY_TOTAL // guard
     };
 
@@ -81,6 +82,7 @@ struct attr_t {
     static int policy2mask(int arg, policy_t policy, int ndims = -1,
             dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive,
             bool has_groups = false);
+    static dnnl_quantization_mode_t policy2quantization_mode(policy_t policy);
 
     struct zero_points_t {
         struct entry_t {
@@ -224,6 +226,7 @@ struct attr_t {
             }
 
             bool is_host_scalar() const { return policy == HOST_SCALAR; }
+            bool is_mx() const { return policy == MX; }
 
             policy_t policy = COMMON;
             float scale = 1.f;

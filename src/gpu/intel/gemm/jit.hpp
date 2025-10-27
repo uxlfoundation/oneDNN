@@ -59,13 +59,14 @@ struct gen_t : public primitive_t {
             auto attr_skip_mask = smask_t::post_ops | smask_t::fpmath_mode
                     | smask_t::accumulation_mode | smask_t::rounding_mode
                     | smask_t::scales | smask_t::scales_data_type
-                    | smask_t::scales_groups | smask_t::zero_points
-                    | smask_t::zero_points_data_type
+                    | smask_t::scales_groups | smask_t::precomputed_reductions
+                    | smask_t::zero_points | smask_t::zero_points_data_type
                     | smask_t::zero_points_groups;
             VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
 
             auto &attr_zps = attr()->zero_points_;
+            auto &attr_gs = attr()->precomputed_reductions_;
             auto &attr_scales = attr()->scales_;
 
             dev_info_ = intel_engine->device_info();
@@ -75,17 +76,27 @@ struct gen_t : public primitive_t {
 
             // If we have both grouped scales and grouped zero-points, they must
             // have the same group size
-            if (a_scales_2d() && a_zp_2d()) {
+            if (a_scales_2d() && (a_zp_2d() || a_gs_2d())) {
                 auto asc_group_k = attr_scales.get_group(DNNL_ARG_A, 0);
                 auto azp_group_k = attr_zps.get_group(DNNL_ARG_A, 0);
+                auto ags_group_k = attr_gs.get_group(DNNL_ARG_A, 0);
                 VDISPATCH_GEMM(
-                        asc_group_k == azp_group_k, VERBOSE_UNSUPPORTED_ZP_CFG);
+                        IMPLICATION(a_zp_2d(), asc_group_k == azp_group_k),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                VDISPATCH_GEMM(
+                        IMPLICATION(a_gs_2d(), asc_group_k == ags_group_k),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
             }
-            if (b_scales_2d() && b_zp_2d()) {
+            if (b_scales_2d() && (b_zp_2d() || b_gs_2d())) {
                 auto bsc_group_k = attr_scales.get_group(DNNL_ARG_B, 1);
                 auto bzp_group_k = attr_zps.get_group(DNNL_ARG_B, 1);
+                auto bgs_group_k = attr_gs.get_group(DNNL_ARG_B, 1);
                 VDISPATCH_GEMM(
-                        bsc_group_k == bzp_group_k, VERBOSE_UNSUPPORTED_ZP_CFG);
+                        IMPLICATION(b_zp_2d(), bsc_group_k == bzp_group_k),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                VDISPATCH_GEMM(
+                        IMPLICATION(b_gs_2d(), bsc_group_k == bgs_group_k),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
             }
 
             const auto d = desc();
@@ -214,9 +225,12 @@ struct gen_t : public primitive_t {
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             if (!attr()->zero_points_.has_default_values()) {
-
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
                 if (swap_ab_) std::swap(ao_dims_, bo_dims_);
+            }
+            if (!attr()->precomputed_reductions_.has_default_values()) {
+                VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
+                if (swap_ab_) std::swap(ag_dims_, bg_dims_);
             }
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
@@ -268,8 +282,13 @@ struct gen_t : public primitive_t {
             auto bo_type = with_b_zero_points()
                     ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                     : data_type::s32;
-            bool int_acc = utils::one_of(eff_a_type(), s8, u8, s4, u4)
-                    && !wei_decomp_;
+            auto ag_type = with_a_group_sums()
+                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
+                    : data_type::s32;
+            auto bg_type = with_b_group_sums()
+                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
+                    : data_type::s32;
+            bool int_acc = utils::one_of(eff_a_type(), s8, u8);
             int_acc &= (!(a_scales_grouped() || b_scales_grouped())
                     && !(a_zp_grouped() || b_zp_grouped()));
             auto co_type = with_bias() ? d->bias_type()
@@ -315,7 +334,10 @@ struct gen_t : public primitive_t {
             if (attr()->acc_mode_ == accumulation_mode::relaxed)
                 set_mode(mode, kernel_desc_t::mode_relaxed_acc);
 
-            if (wei_decomp_) { set_mode(mode, kernel_desc_t::mode_w_decomp); }
+            if (wei_decomp_) {
+                acc_type = data_type::f32;
+                set_mode(mode, kernel_desc_t::mode_w_decomp);
+            }
 
             // GEMM kernels down convert the following parameters to
             // int/uint32_t
@@ -331,48 +353,114 @@ struct gen_t : public primitive_t {
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
                     get_post_op_specializations()));
 
-            jit::quant_params a_quant = {a_scales_type_, ao_type, ao_dims_,
-                    asc_dims_, a_q2d_group_k(), a_q2d_group_m()};
-            jit::quant_params b_quant = {b_scales_type_, bo_type, bo_dims_,
-                    bsc_dims_, b_q2d_group_k(), b_q2d_group_n()};
+            auto has_gs = [&](int idx) {
+                return !attr()->precomputed_reductions_.has_default_values(idx);
+            };
+            jit::quant_params a_quant = {a_scales_type_, ao_type, ag_type,
+                    asc_dims_, ao_dims_, ag_dims_, a_q2d_group_k(),
+                    a_q2d_group_m(), has_gs(DNNL_ARG_A)};
+            jit::quant_params b_quant = {b_scales_type_, bo_type, bg_type,
+                    bsc_dims_, bo_dims_, bg_dims_, b_q2d_group_k(),
+                    b_q2d_group_n(), has_gs(DNNL_ARG_B)};
 
 #if XE3P
             if (arch_ >= arch_t::xe3p_35_10)
                 kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
 #endif
 
-            VDISPATCH_GEMM_SC(
-                    kernel_desc_.select_kernel(arch_, stepping,
-                            dev_info_->eu_count(), has_systolic, is_integrated,
-                            mode, batch_dims(), eff_transa(), eff_transb(),
-                            eff_trans_bias(), swap_ab(), a_quant, b_quant,
-                            with_sround_, with_c_zero_points(), with_bias(),
-                            eff_sum_ab(), alpha(), beta(), eff_a_type(),
-                            eff_b_type(), desc()->c_type(), co_type, acc_type,
-                            eff_align_a(), eff_align_b(), align_c(), eff_m(),
-                            eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
-                            d->batch(), std::move(gpu_post_ops)),
-                    VERBOSE_UNSUPPORTED_FEATURE,
-                    "matching kernel not found in catalog");
+            bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
+            bool kernel_success = false;
+            auto entries = kernel_desc_.select_kernel(arch_, stepping,
+                    dev_info_->eu_count(), has_systolic, is_integrated, mode,
+                    batch_dims(), eff_transa(), eff_transb(), eff_trans_bias(),
+                    swap_ab(), a_quant, b_quant, with_sround_,
+                    with_c_zero_points(), with_bias(), eff_sum_ab(), alpha(),
+                    beta(), eff_a_type(), eff_b_type(), desc()->c_type(),
+                    co_type, acc_type, eff_align_a(), eff_align_b(), align_c(),
+                    eff_m(), eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
+                    d->batch(), std::move(gpu_post_ops));
+            for (auto &entry : entries) {
+                kernel_desc_.set_entry(entry);
+                auto status = kernel_desc_.finalize();
+                // select_kernel can return a strategy that failed in the finalize call
+                bool valid = status == status::success;
+                if (!valid && print_verbose)
+                    dnnl::impl::verbose_printf(
+                            "info,gpu,gemm,skipping:%s,Strategy finalization "
+                            "failed.\n",
+                            kernel_desc_.entry().str().c_str());
+                // Global k-parallel kernels don't support post-ops or non-f32/s32
+                //   accumulation unless fusion is enabled.
+                if (kernel_desc_.driver_info()->kParallel()
+                        && !kernel_desc_.driver_info()->fusedPostOps()) {
+                    bool po_valid = !non_scale_po_
+                            && !(with_sum_ && with_c_scales())
+                            && utils::one_of(d->c_type(), f32, s32);
+                    if (!po_valid && print_verbose)
+                        dnnl::impl::verbose_printf(
+                                "info,gpu,gemm,skipping:%s,Invalid post op.\n",
+                                kernel_desc_.entry().str().c_str());
+                    valid &= po_valid;
+                }
+                // Limited post-op support for low-precision accumulation.
+                if (kernel_desc_.problem()->Tc.size() < 4) {
+                    valid &= !need_x32_acc;
+                    if (need_x32_acc && print_verbose)
+                        dnnl::impl::verbose_printf(
+                                "info,gpu,gemm,skipping:%s,Invalid post op.\n",
+                                kernel_desc_.entry().str().c_str());
+                }
+                // Ensure kernel can be run deterministically if required.
+                if (attr()->deterministic_) {
+                    bool deterministic
+                            = !kernel_desc_.driver_info()->nondeterministic();
+                    valid &= deterministic;
+                    if (!deterministic && print_verbose)
+                        dnnl::impl::verbose_printf(
+                                "info,gpu,gemm,skipping:%s,Non deterministic "
+                                "kernel.\n",
+                                kernel_desc_.entry().str().c_str());
+                }
 
-            // Global k-parallel kernels don't support post-ops or non-f32/s32
-            //   accumulation unless fusion is enabled.
-            if (kernel_desc_.driver_info()->kParallel()
-                    && !kernel_desc_.driver_info()->fusedPostOps()) {
-                VDISPATCH_GEMM(
-                        !non_scale_po_ && utils::one_of(d->c_type(), f32, s32),
-                        VERBOSE_UNSUPPORTED_POSTOP);
+                if (valid) {
+                    auto try_create = [&]() {
+                        std::vector<compute::kernel_t> kernel_(1);
+                        auto *intel_engine
+                                = utils::downcast<intel::engine_t *>(engine);
+                        auto key = std::make_shared<
+                                trivial_key_container_t<dnnl::impl::gpu::intel::
+                                                gemm::jit::gen_nocopy_desc_t>>(
+                                kernel_desc_, intel_engine->engine_id());
+                        cache_state_t kernel_cache_status;
+                        auto kernel_name = "gemm_kernel";
+                        auto verbose
+                                = get_verbose(verbose_t::create_profile) >= 1;
+                        double start_ms = 0;
+                        if (verbose) start_ms = get_msec();
+                        status = get_cached_kernels<typename trivial_key_t<
+                                dnnl::impl::gpu::intel::gemm::jit::
+                                        gen_nocopy_desc_t>::value_type>(
+                                std::move(key), intel_engine, kernel_,
+                                {kernel_name}, kernel_cache_status);
+                        if (verbose && status == status::success) {
+                            double duration_ms = get_msec() - start_ms;
+                            const char *str
+                                    = cache_state2str(kernel_cache_status);
+                            VPROF(start_ms, primitive, create, str,
+                                    info(engine), duration_ms);
+                        }
+                        return status;
+                    };
+                    status = try_create();
+                    if (status == status::success) {
+                        kernel_success = true;
+                        break;
+                    }
+                }
             }
 
-            // Limited post-op support for low-precision accumulation.
-            if (kernel_desc_.problem()->Tc.size() < 4) {
-                VDISPATCH_GEMM(!need_x32_acc, VERBOSE_UNSUPPORTED_POSTOP);
-            }
-
-            // Ensure kernel can be run deterministically if required.
-            if (attr()->deterministic_)
-                VDISPATCH_GEMM(!kernel_desc_.driver_info()->nondeterministic(),
-                        VERBOSE_DETERMINISTIC_FAIL);
+            VDISPATCH_GEMM(
+                    kernel_success, "matching kernel not found in catalog");
 
             init_scratchpad();
 
@@ -571,7 +659,6 @@ struct gen_t : public primitive_t {
 
     status_t init_nocopy(impl::engine_t *engine) {
         using namespace data_type;
-
         auto kd = pd()->kernel_desc();
 
         CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));
@@ -607,6 +694,7 @@ private:
             const memory_storage_t &b, const memory_storage_t &c,
             const memory_storage_t *ao, const memory_storage_t *bo,
             const memory_storage_t *a_scales, const memory_storage_t *b_scales,
+            const memory_storage_t *ag, const memory_storage_t *bg,
             const memory_storage_t &co, const memory_storage_t *c_temp,
             const memory_storage_t *sround_seed, int po_count,
             const memory_storage_t **po_src, int64_t offset_a, int64_t offset_b,

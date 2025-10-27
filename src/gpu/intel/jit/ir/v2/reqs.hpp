@@ -31,6 +31,11 @@ namespace intel {
 namespace jit {
 namespace v2 {
 
+const expr_t &index_var(const pvar_t &p);
+const expr_t &var(const pvar_t &p);
+pvar_t to_pvar(const expr_t &var);
+pvar_t to_index_pvar(const expr_t &index_var);
+
 class prb_reqs_t;
 
 class prover_t {

@@ -78,7 +78,7 @@ struct ref_inner_product_int8_fwd_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(
                     attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_INNER_PRODUCT(
-                    ref_post_ops_t::primitive_kind_ok(attr()->post_ops_),
+                    ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_INNER_PRODUCT(
                     attr_.set_default_formats(dst_md(0)) == status::success,

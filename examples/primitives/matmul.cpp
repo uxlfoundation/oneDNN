@@ -16,9 +16,12 @@
 
 /// @example matmul.cpp
 
-/// @page matmul_example_cpp Matmul Primitive Example
-/// This C++ API example demonstrates how to create and execute a
+/// @page matmul_example_cpp_brief
+/// @brief This C++ API example demonstrates how to create and execute a
 /// [MatMul](@ref dev_guide_matmul) primitive.
+
+/// @page matmul_example_cpp Matmul Primitive Example
+/// \copybrief matmul_example_cpp_brief
 ///
 /// Key optimizations included in this example:
 /// - Primitive attributes with fused post-ops.

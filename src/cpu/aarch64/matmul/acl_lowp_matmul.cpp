@@ -239,7 +239,7 @@ status_t acl_lowp_matmul_t::pd_t::init_scratchpad(
         memory_tracking::registrar_t &scratchpad,
         const arm_compute::experimental::MemoryRequirements &aux_mem_req) {
 
-    if (aux_mem_req.size() != 0) {
+    if (!aux_mem_req.empty()) {
         for (size_t id = 0; id < lowp_matmul_keys.size(); id++) {
             if (aux_mem_req[id].size > 0) {
                 scratchpad.book(lowp_matmul_keys[id], aux_mem_req[id].size, 1,

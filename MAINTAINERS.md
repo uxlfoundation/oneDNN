@@ -165,11 +165,12 @@ Team: @uxlfoundation/onednn-cpu-aarch64
 | Crefeda Rodrigues  | @cfrod                | Arm Ltd           | Code Owner |
 | David Svantesson   | @davsva01             | Arm Ltd           | Code Owner |
 | Jonathan Deakin    | @jondea               | Arm Ltd           | Code Owner |
+| Marek Michałowski  | @michalowski-arm      | Arm Ltd           | Code Owner |
 | Radu Salavat       | @Radu2k               | Arm Ltd           | Code Owner |
+| Renato Arantes     | @renato-arantes       | Arm Ltd           | Code Owner |
+| Ryo Suzuki         | @Ryo-not-rio          | Arm Ltd           | Code Owner |
 | Siddhartha Menon   | @Sqvid                | Arm Ltd           | Code Owner |
 | Sunita Nadampalli  | @snadampal            | Amazon.com, Inc.  | Code Owner |
-| Ryo Suzuki         | @Ryo-not-rio          | Arm Ltd           | Code Owner |
-| Renato Arantes     | @renato-arantes       | Arm Ltd           | Code Owner |
 
 ### OpenPOWER (PPC64)
 

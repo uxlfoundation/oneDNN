@@ -45,12 +45,13 @@ status_t gen_t::pd_t::init_conf(impl::engine_t *engine) {
     bool plain_case = true;
     plain_case &= (src_mdw.blocking_desc().inner_nblks == 0);
     plain_case &= (dst_mdw.blocking_desc().inner_nblks == 0);
-    if (!plain_case) return status::unimplemented;
+    VDISPATCH_REDUCTION_IC(plain_case, VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     // Allow only 1 reduced dimension, for now
     for (int i = 0; i < ndims; i++) {
         bool is_reduced = (src_dims[i] != dst_dims[i]);
-        if (is_reduced && reduction_size) return status::unimplemented;
+        VDISPATCH_REDUCTION_IC(!(is_reduced && reduction_size),
+                VERBOSE_INCONSISTENT_DIM, "src", i, "dst", i);
         if (is_reduced) {
             reduction_size = src_dims[i];
             reduction_stride = src_mdw.blocking_desc().strides[i];
@@ -73,8 +74,8 @@ status_t gen_t::pd_t::init_conf(impl::engine_t *engine) {
     nregs = dev_getenv("jit_reduction_nregs", into<int>(default_nregs));
 
     // Only allow cases where inner size aligns with register size
-    if (inner_nelems % (elems_per_reg * nregs) != 0)
-        return status::unimplemented;
+    VDISPATCH_REDUCTION_IC(inner_nelems % (elems_per_reg * nregs) == 0,
+            "register size mismatch");
 
     // Grouping threads into threadgroups: ensures better access patterns (we can use barriers)
     // --> Use the largest threadgroup possible, must fit within the inner dimension

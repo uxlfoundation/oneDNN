@@ -93,6 +93,8 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_mul_scales, 1,
                         executable_creator<reorder_executable_t>)
                 .SET_ARG_INDICES_GETTER(reorder_executable_t))
 
+// We define this op to convert a host scalar tensor to a device tensor, as some
+// kernels/primitives may not accept host scalar tensor as input.
 DNNL_GRAPH_OP_SCHEMA(dnnl_host_scalar, 1,
         op_schema_t()
                 .set_num_inputs(1)
@@ -1180,6 +1182,8 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_sdpa, 1,
                 // top-left implicit causal mask or bottm-right implicit causal mask
                 .set_attr(op_attr::mask_type, true, attribute_kind::i)
                 .set_attr(op_attr::mode, true, attribute_kind::s)
+                .set_attr(op_attr::qk_acc_mode, true, attribute_kind::s)
+                .set_attr(op_attr::vs_acc_mode, true, attribute_kind::s)
                 .set_shape_inference_function(infer_dnnl_sdpa_output_shape)
                 .SET_LAYOUT_PROPAGATOR(layout_propagator_for_sdpa)
                 .SET_EXECUTABLE_CREATOR(executable_creator<sdpa_executable_t>)

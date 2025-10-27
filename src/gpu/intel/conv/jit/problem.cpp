@@ -27,6 +27,27 @@ namespace intel {
 namespace conv {
 namespace jit {
 
+char to_spatial(const pvar_t &p) {
+    auto s = p.str();
+    if (s.size() != 2) return ' ';
+    char c0 = s[0];
+    char c1 = s[1];
+    if (!std::strchr("dikops", c0)) return ' ';
+    if (!std::strchr("dhw", c1)) return ' ';
+    return c1;
+}
+
+int spatial_index(const pvar_t &p) {
+    char sp = to_spatial(p);
+    switch (sp) {
+        case 'd': return 0;
+        case 'h': return 1;
+        case 'w': return 2;
+        default: return -1;
+    }
+    return -1;
+}
+
 const std::vector<pvar_t> &dims() {
     static std::vector<pvar_t> dims = []() {
         std::vector<pvar_t> ret;
@@ -52,8 +73,8 @@ pvar_t prb_stride(const pvar_t &dim, tensor_kind_t tensor_kind) {
     auto dims = layout_dims(tensor_kind, true);
     for (auto &d : dims) {
         if (d == dim) {
-            auto str = to_string(tensor_kind) + "_";
-            return pvar_t(str + dim.str() + "_stride");
+            auto prefix = to_string(tensor_kind)[0] + std::string("_");
+            return pvar_t(prefix + dim.str() + "_s");
         }
     }
     return pvar_t();
@@ -337,9 +358,9 @@ void problem_t::init_transpose(const hw_t &hw) {
     if (is_fwd) ab_swap_transpose &= allow_fwd;
     if (is_bwd_d) ab_swap_transpose &= allow_bwd_d;
     if (is_bwd_w) ab_swap_transpose &= allow_bwd_w;
-    if (is_fwd && is_nchw_ok(*this, hw.to_ngen(), tensor_kind_t::src))
+    if (is_fwd && is_nchw_ok(*this, hw, tensor_kind_t::src))
         ab_swap_transpose = true;
-    if (is_bwd_d && is_nchw_ok(*this, hw.to_ngen(), tensor_kind_t::dst))
+    if (is_bwd_d && is_nchw_ok(*this, hw, tensor_kind_t::dst))
         ab_swap_transpose = true;
     ab_swap_transpose
             = gpu_utils::dev_getenv("ab_swap_transpose", ab_swap_transpose);

@@ -39,6 +39,12 @@ struct memory_registry_t {
     // mapped regions.
     void remove_mapped(void *ptr, size_t size);
 
+    // Increases the registered physically allocated memory on a device.
+    void add_device(void *ptr, size_t size);
+
+    // Decreases the registered physically allocated memory on a device.
+    void remove_device(void *ptr, size_t size);
+
     // Uses `size` as an upper limit to check if allocations fit the
     // expectation. The check takes into account `expected_trh_` which increases
     // the `size`.
@@ -50,10 +56,13 @@ private:
     static constexpr float expected_trh_ = 1.1f;
     static constexpr size_t unset_ = 0;
     size_t expected_max_ = unset_;
-    size_t total_size_ = 0;
+    size_t total_size_cpu_ = 0;
+    size_t total_size_gpu_ = 0;
     bool has_warned_ = false;
     // For physically allocated memory.
     std::unordered_map<void *, size_t> allocations_;
+    // For physically allocated memory on a device.
+    std::unordered_map<void *, size_t> allocations_device_;
     // For mapped memory. Mapped memory can overflow the upper limit as it
     // happens in sporadic places.
     std::unordered_map<void *, size_t> mapped_allocations_;
@@ -62,8 +71,6 @@ private:
     memory_registry_t() = default;
 
     ~memory_registry_t();
-
-    size_t size() const { return total_size_; }
 
     void warn_size_check();
 };

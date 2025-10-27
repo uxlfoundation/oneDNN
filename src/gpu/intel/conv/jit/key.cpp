@@ -311,7 +311,7 @@ struct key_type_info_t {
 
 bool is_mb_blocked(const layout_t &layout) {
     dim_t blk
-            = layout.inner_block(0, /*skip_outer=*/true, /*inner_only=*/false);
+            = inner_block(layout, 0, /*skip_outer=*/true, /*inner_only=*/false);
     return blk > 1;
 }
 
@@ -505,7 +505,7 @@ private:
 
 key_t::key_t(const config_t &cfg, bool make_filter) {
     auto &prb = cfg.prb();
-    auto hw = key_hw_t(cfg.hw().to_ngen(), cfg.hw().product_family());
+    auto hw = key_hw_t(cfg.hw(), cfg.hw().family());
     auto fma = key_fma_t(to_key(cfg.fma_kind()));
     auto prop = key_prop_t(prb.prop_kind());
     auto type_info = key_type_info_t(cfg);

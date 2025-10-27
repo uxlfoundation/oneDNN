@@ -67,8 +67,7 @@ struct weights_reorder_t : public primitive_t {
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-
-            VDISPATCH_REORDER_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             init_scratchpad();
             return status::success;
         }

@@ -48,8 +48,7 @@ struct ref_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_RESAMPLING_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_TAG);
-
-            VDISPATCH_RESAMPLING_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
         compute::dispatch_t dispatch;
@@ -99,8 +98,7 @@ struct ref_bwd_t : public primitive_t {
                     set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_RESAMPLING(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-
-            VDISPATCH_RESAMPLING_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
         conf_t conf;

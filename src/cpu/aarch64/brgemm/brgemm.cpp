@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2025 Intel Corporation
 * Copyright 2023-2025 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -233,8 +233,8 @@ status_t brgemm_desc_set_postops(brgemm_t *brg, const primitive_attr_t *attr,
         if ((brg->dt_a == data_type::s8 && brg->dt_b == data_type::u8)
                 || (!one_of(dt_bias, data_type::undef, data_type::s8,
                         data_type::u8, data_type::f32))
-                || (!one_of(
-                        dt_d, data_type::s8, data_type::u8, data_type::f32)))
+                || (!one_of(dt_d, data_type::s8, data_type::u8, data_type::s32,
+                        data_type::f32)))
             return status::unimplemented;
     }
     if ((brg->dt_a == data_type::bf16 && brg->dt_b == data_type::bf16)
@@ -461,7 +461,7 @@ status_t brgemm_init_tiles(const brgemm_t &brg, char palette[64]) {
 
 namespace {
 template <typename T>
-static inline int sign(T v) {
+inline int sign(T v) {
     return (v > 0) ? 1 : ((v < 0) ? -1 : 0);
 }
 

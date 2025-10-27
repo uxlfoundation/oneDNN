@@ -17,10 +17,13 @@
 /// @example lrn.cpp
 /// > Annotated version: @ref lrn_example_cpp
 
-/// @page lrn_example_cpp Local Response Normalization Primitive Example
-/// This C++ API demonstrates how to create and execute a
+/// @page lrn_example_cpp_brief
+/// @brief This C++ API demonstrates how to create and execute a
 /// [Local response normalization](@ref dev_guide_lrn) primitive in forward
 /// training propagation mode.
+
+/// @page lrn_example_cpp Local Response Normalization Primitive Example
+/// \copybrief lrn_example_cpp_brief
 ///
 /// @include lrn.cpp
 

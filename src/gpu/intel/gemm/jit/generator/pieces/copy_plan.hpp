@@ -145,8 +145,9 @@ struct CopyResource
 {
     friend class CopyPlan;
 
-    enum Kind : uint32_t {
+    enum Kind : uint64_t {
         null = 0,
+	constantBase = 0x100000000,
 #if XE3P
         shflLUTBase = 0x80000000,
 #endif
@@ -158,6 +159,7 @@ struct CopyResource
 
     template <typename Generator>
     inline void initialize(Generator &g);
+    static Kind makeConstant32(uint32_t c);
 
 #if XE3P
     static Kind makeShflLUT(ngen::DataType from, ngen::DataType to);
@@ -221,7 +223,7 @@ protected:
     CopyInstruction &join(CopyInstruction &i1, CopyInstruction &i2, int maxGap = 3);
     void mergeChanges();
 
-    void copyThrough(CopyInstruction &i, ngen::DataType type, int stride = 0, bool strideOff0 = false);
+    void copyThrough(CopyInstruction &i, ngen::DataType type, int stride = 0, bool strideOff0 = false, bool movAfter = false);
     void restrideSrc0(CopyInstruction &i, int stride, bool strideOff0 = false);
     void restrideDst(CopyInstruction &i, int stride, bool strideOff0 = false);
 
@@ -237,16 +239,16 @@ protected:
     void planTypeConversions();
     void planEarlyInt4Upconversions();
     void planEmulatedHalveFloat(CopyInstruction &i);
-    void planSmallUWToHF(CopyInstruction &i);
-    void planSmallUWToBF(CopyInstruction &i);
-    void planBToHF(CopyInstruction &i);
-    void planBToBF(CopyInstruction &i);
-    void planS4ToF16(CopyInstruction &i);
+    void planInt8ToHF(CopyInstruction &i);
+    void planInt8ToBF(CopyInstruction &i);
+    void planInt4ToF16(CopyInstruction &i);
     void planUnpack4To16(CopyInstruction &i);
     void planUnpack8To16High(CopyInstruction &i);
     void planInt4Upconversion(CopyInstruction &i);
+    void plan4BitShifts(CopyInstruction &i);
     void planInt4Downconversion(CopyInstruction &i);
     void planEmulatedSIMD1(CopyInstruction &i);
+    void planEmulatedBF8ToBF(CopyInstruction &i);
     void planEmulatedHF8ToHF(CopyInstruction &i);
     void planEmulatedHF8ToBF(CopyInstruction &i);
     void planEmulatedHFToHF8(CopyInstruction &i);
@@ -255,6 +257,7 @@ protected:
     void planEmulatedNF4ToHF(CopyInstruction &i);
     void planEmulatedHFToF4(CopyInstruction &i);
     void planE8M0ToF(CopyInstruction &i);
+    void planBFNEmulation();
     void emulateBooleanFunction();
 #if XE3P
     void planSmallUWToBFXe3p(CopyInstruction &i);
@@ -266,7 +269,7 @@ protected:
     void legalizeNegation();
     void legalizeImmediateTypes();
     void sort(SortType type);
-    void optimizeZip();
+    void optimizeZip(bool zip2DSrc0 = false);
     void optimizeZipAdjacent();
     void optimizeWidenIntegers();
     void optimizeConcatenate(bool initial = false);
@@ -275,6 +278,11 @@ protected:
     void optimizeIntegerDownconvert();
     void optimizeSaturate();
     void optimizeMoveToIntPipe();
+
+    CopyOperand bfImmediate(uint16_t bits, bool ternary);
+    CopyOperand zipImmediates(const CopyOperand &o1, const CopyOperand &o2);
+
+    bool bfArithmeticOK(const CopyInstruction &i) const;
 };
 
 
@@ -389,11 +397,11 @@ void CopyResource::initialize(Generator &g)
     auto dataDF = (const double *)   data;
     auto dataUD = (const uint32_t *) data;
     auto dataF = (const float *)     data;
-    int n64 = (n + 7) >> 3;
+    int n32 = (n + 3) >> 2;
 
     bool do64 = (g.getHardware() >= HW::XeHPC);
     GRF r(src.ngen().getBase());
-    for (int i = 0; i < n64; i++) {
+    for (int i = 0; 2*i+1 < n32; i++) {
         if (do64) {
             (i & 1) ? g.mov(1, r.uq(i), Immediate::uq(dataUQ[i]))
                     : g.mov(1, r.df(i), Immediate::df(dataDF[i]));
@@ -402,6 +410,8 @@ void CopyResource::initialize(Generator &g)
             g.mov(1, r.f(2*i + 1), Immediate::f(dataF[2*i + 1]));
         }
     }
+    if (n32 & 1)
+        g.mov(1, r.ud(n32 - 1), Immediate::ud(dataUD[n32 - 1]));
 }
 
 GEMMSTONE_NAMESPACE_END

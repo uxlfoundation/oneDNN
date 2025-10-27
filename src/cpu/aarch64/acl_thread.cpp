@@ -44,7 +44,7 @@ void acl_set_benchmark_scheduler_default() {
     static std::once_flag flag_once;
     arm_compute::IScheduler *_real_scheduler = &arm_compute::Scheduler::get();
     std::shared_ptr<arm_compute::IScheduler> benchmark_scheduler
-            = std::make_unique<BenchmarkScheduler>(*_real_scheduler);
+            = std::make_unique<benchmark_scheduler_t>(*_real_scheduler);
     // set Benchmark scheduler in ACL
     std::call_once(flag_once, [&]() {
         arm_compute::Scheduler::set(

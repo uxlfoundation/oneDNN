@@ -20,12 +20,15 @@
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/nstl.hpp"
+#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/aarch64/jit_generator.hpp"
 
 #include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
 #include "cpu/aarch64/jit_uni_eltwise.hpp"
+
+#include <cstdint>
 
 #define GET_OFF(field) offsetof(jit_args_t, field)
 
@@ -43,10 +46,10 @@ struct jit_args_t {
     size_t work_amount;
 };
 
-struct jit_uni_eltwise_kernel_t : public jit_generator {
+struct jit_uni_eltwise_kernel_t : public jit_generator_t {
     jit_uni_eltwise_kernel_t(const eltwise_pd_t *pd) : pd_(pd) {}
 
-    void operator()(jit_args_t *p) { jit_generator::operator()(p); }
+    void operator()(jit_args_t *p) { jit_generator_t::operator()(p); }
 
 protected:
     const eltwise_pd_t *pd_;
@@ -58,6 +61,23 @@ protected:
     bool is_bf16() const { return data_type() == data_type::bf16; }
     bool is_f16() const { return data_type() == data_type::f16; }
     int dtype_size() const { return types::data_type_size(data_type()); }
+    // Simple operations can be done in F16 without conversion to/from F32
+    bool can_compute_as_f16() const {
+        const auto &desc = *pd_->desc();
+        return pd_->is_fwd()
+                && (((is_f16() || is_bf16()) // if F16 or BF16 data type
+                            // ABS and non-leaky ReLU depend only on sign bit
+                            // Therefore, BF16 values can also be computed as F16
+                            && ((desc.alg_kind == alg_kind::eltwise_relu
+                                        && desc.alpha == 0.0f)
+                                    || desc.alg_kind == alg_kind::eltwise_abs))
+                        || (is_f16() // only if F16 data type
+                                && utils::one_of(desc.alg_kind,
+                                        alg_kind::eltwise_clip,
+                                        alg_kind::eltwise_clip_v2,
+                                        alg_kind::eltwise_square,
+                                        alg_kind::eltwise_sqrt)));
+    }
 };
 
 // jit kernels
@@ -72,10 +92,11 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         // there's no auxiliary vregs on fwd path
         const bool is_fwd = pd_->is_fwd();
         const bool save_state = is_fwd ? false : true;
-        eltwise_injector_.reset(new jit_uni_eltwise_injector_f32<isa>(this,
+        eltwise_injector_.reset(new jit_uni_eltwise_injector_t<isa>(this,
                 desc.alg_kind, desc.alpha, desc.beta, 1.f, save_state,
                 reg_injector_table, injector_mask, injector_p_tmp0, is_fwd,
-                pd_->use_dst()));
+                pd_->use_dst(), true, true,
+                can_compute_as_f16() ? data_type::f16 : data_type::f32));
     }
 
     void generate() override {
@@ -111,25 +132,29 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         // perspective and will complicate the compute logic significantly.
 
         load_vector(vmm_src.s, reg_src);
-        if (is_bf16()) {
-            // Convert BF16 input to FP32, apply eltwise op, then convert back to BF16:
-            // - unpack BF16 to FP32 by zero-extending
-            // - compute eltwise alg in FP32
+        if (can_compute_as_f16()) {
+            // For F16-computable algorithms, we keep the data in 16-bit format
+            // throughout the computation, avoiding the need for conversion to/from F32.
+            eltwise_injector_->compute_vector(vmm_src.getIdx());
+        } else if (is_bf16()) {
+            // Convert BF16 input to F32, apply eltwise op, then convert back to BF16:
+            // - unpack BF16 to F32 by zero-extending
+            // - compute eltwise alg in F32
             // - down convert back to BF16 using bfcvt, and pack result
             unpack_bf16(vmm_src, tmp0);
             eltwise_injector_->compute_vector_range(
                     {vmm_src.getIdx(), tmp0.getIdx()});
             pack_bf16(vmm_src, tmp0);
         } else if (is_f16()) {
-            // Convert FP16 to FP32, apply eltwise op, then convert back to FP16:
-            // - upcast FP16 to FP32 using fcvt
-            // - compute eltwise alg in FP32
-            // - downcast FP32 back to FP16 using fcvt, and pack result
+            // Convert F16 to F32, apply eltwise op, then convert back to F16:
+            // - upcast F16 to F32 using fcvt
+            // - compute eltwise alg in F32
+            // - downcast F32 back to F16 using fcvt, and pack result
             unpack_fp16(vmm_src, tmp0);
             eltwise_injector_->compute_vector_range(
                     {vmm_src.getIdx(), tmp0.getIdx()});
             pack_fp16(vmm_src, tmp0);
-        } else { // f32
+        } else { // F32
             eltwise_injector_->compute_vector(vmm_src.getIdx());
             if (!is_fwd) {
                 load_vector(vmm_diff_dst, reg_diff_dst);
@@ -157,7 +182,10 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         cmp(reg_work_amount, 0);
         b(LE, remainder_loop_end);
 
-        if (is_bf16()) {
+        if (can_compute_as_f16()) {
+            ld1(v_f16[0], ptr(reg_src));
+            eltwise_injector_->compute_vector(vmm_src.getIdx());
+        } else if (is_bf16()) {
             ld1(v_bf16[0], ptr(reg_src));
             unpack_bf16(vmm_src, tmp0);
             eltwise_injector_->compute_vector(vmm_src.getIdx());
@@ -226,7 +254,7 @@ private:
     TRegS vmm_diff_dst {2};
     TReg tmp0 {2};
     TReg tmp1 {7};
-    std::unique_ptr<jit_uni_eltwise_injector_f32<isa>> eltwise_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<isa>> eltwise_injector_;
 
     PReg p_tmp0 {4}; /* Index is temporal. */
 
@@ -260,7 +288,7 @@ private:
 
     /**
      * @brief Unpack two BFloat16 values from a single register into two target registers.
-    * 
+    *
     * ASIMD (NEON) version: unpack in low/high half order.
     * SVE version: unpack in even/odd element order.
     *
@@ -271,7 +299,7 @@ private:
 
     /**
      * @brief Pack two BFloat16 values from two registers into a single register.
-     * 
+     *
      * ASIMD (NEON) version: pack from low/high half order.
      * SVE version: pack from even/odd element order.
      *
@@ -282,7 +310,7 @@ private:
 
     /**
      * @brief Unpack two IEEE‑754 FP16 values from a single register into two target registers.
-     * 
+     *
      * ASIMD (NEON) version: unpack in low/high half order.
      * SVE version: unpack in even/odd element order.
      *
@@ -293,7 +321,7 @@ private:
 
     /**
      * @brief Pack two IEEE‑754 FP16 values from two registers into a single register.
-     * 
+     *
      * ASIMD (NEON) version: pack from low/high half order.
      * SVE version: pack from even/odd element order.
      *
@@ -396,49 +424,66 @@ inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::pack_fp16(
 }
 } // namespace
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(engine_t *engine) {
     using namespace alg_kind;
 
     const memory_desc_wrapper src_d(src_md());
 
-    bool ok = mayiuse(isa) && is_fwd()
-            && utils::everyone_is(
-                    d_type, src_md()->data_type, dst_md()->data_type)
-            && !has_zero_dim_memory() && src_d.is_dense(true)
-            && eltwise_injector::is_supported(isa, desc_.alg_kind)
-            // refer to a comment in jit_uni_kernel why this is needed
-            && IMPLICATION(!src_d.is_dense(), is_zero_preserved())
-            && attr()->has_default_values() && set_default_formats_common()
-            && src_d == memory_desc_wrapper(dst_md());
-    return ok ? status::success : status::unimplemented;
+    VDISPATCH_ELTWISE(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
+    VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
+
+    VDISPATCH_ELTWISE((src_md()->data_type == dst_md()->data_type),
+            VERBOSE_INCONSISTENT_DT, "src", "dst");
+    VDISPATCH_ELTWISE(utils::one_of(src_md()->data_type, data_type::f32,
+                              data_type::bf16, data_type::f16),
+            VERBOSE_UNSUPPORTED_DT);
+
+    VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "data");
+    VDISPATCH_ELTWISE(src_d.is_dense(true), VERBOSE_NONTRIVIAL_STRIDE);
+
+    VDISPATCH_ELTWISE(eltwise_injector::is_supported(isa, desc_.alg_kind),
+            VERBOSE_BAD_ALGORITHM);
+    // refer to a comment in jit_uni_kernel why this is needed
+    VDISPATCH_ELTWISE(IMPLICATION(!src_d.is_dense(), is_zero_preserved()),
+            VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_ELTWISE(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_ELTWISE(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_ELTWISE(src_d == memory_desc_wrapper(dst_md()),
+            VERBOSE_INCONSISTENT_MDS, "src", "dst");
+
+    return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_fwd_t<isa, d_type>::jit_uni_eltwise_fwd_t(const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_eltwise_fwd_t<isa>::jit_uni_eltwise_fwd_t(const pd_t *apd)
     : primitive_t(apd) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_fwd_t<isa, d_type>::~jit_uni_eltwise_fwd_t() = default;
+template <cpu_isa_t isa>
+jit_uni_eltwise_fwd_t<isa>::~jit_uni_eltwise_fwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_fwd_t<isa>::init(engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t<isa>(pd())));
     return kernel_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_fwd_t<isa, d_type>::execute(
-        const exec_ctx_t &ctx) const {
-    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+
+    auto src = CTX_IN_MEM(const uint8_t *, DNNL_ARG_SRC);
+    auto dst = CTX_OUT_MEM(uint8_t *, DNNL_ARG_DST);
 
     const memory_desc_wrapper data_d(pd()->src_md());
     const auto nelems = data_d.nelems(true);
     const int simd_w = 64 / data_d.data_type_size();
 
-    src += data_d.offset0();
-    dst += data_d.offset0();
+    const data_type_t src_dt = pd()->src_md()->data_type;
+    const auto offset_bytes
+            = types::elements_to_bytes(src_dt, data_d.offset0());
+
+    src += offset_bytes;
+    dst += offset_bytes;
 
     parallel(0, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
@@ -449,8 +494,8 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::execute(
         if (start == end) return;
 
         jit_args_t args;
-        args.src = src + start;
-        args.dst = dst + start;
+        args.src = src + types::elements_to_bytes(src_dt, start);
+        args.dst = dst + types::elements_to_bytes(src_dt, start);
         args.diff_dst = nullptr;
         args.work_amount = end - start;
         (*kernel_)(&args);
@@ -459,56 +504,81 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::execute(
     return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(engine_t *engine) {
     using namespace alg_kind;
 
     const memory_desc_wrapper data_d(data_md());
+    const char *data_tensor_name = use_dst() ? "dst" : "src";
 
-    bool ok = mayiuse(isa) && !is_fwd()
-            && utils::everyone_is(d_type, data_md()->data_type,
-                    diff_src_md()->data_type, diff_dst_md()->data_type)
-            && !has_zero_dim_memory() && set_default_formats_common()
-            && data_d.is_dense(true)
-            && eltwise_injector::is_supported(isa, desc_.alg_kind)
-            // refer to a comment in jit_uni_kernel why this is needed
-            && IMPLICATION(!data_d.is_dense(), is_zero_preserved())
-            && data_d == memory_desc_wrapper(diff_dst_md())
-            && memory_desc_wrapper(diff_src_md())
-                    == memory_desc_wrapper(diff_dst_md())
-            && attr()->has_default_values();
-    return ok ? status::success : status::unimplemented;
+    VDISPATCH_ELTWISE(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
+    VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
+    VDISPATCH_ELTWISE(
+            utils::everyone_is(data_md()->data_type, diff_src_md()->data_type,
+                    diff_dst_md()->data_type),
+            VERBOSE_INCONSISTENT_DT, data_tensor_name, "diff_src");
+    VDISPATCH_ELTWISE(((use_dst() ? dst_md()->data_type : src_md()->data_type)
+                              == data_type::f32),
+            VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_ELTWISE(
+            !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, data_tensor_name);
+    VDISPATCH_ELTWISE(set_default_formats_common(),
+            VERBOSE_TENSOR_FORMAT_MISMATCH, "diff_src/diff_dst",
+            data_tensor_name);
+    VDISPATCH_ELTWISE(data_d.is_dense(true), VERBOSE_NONTRIVIAL_STRIDE);
+    VDISPATCH_ELTWISE(eltwise_injector::is_supported(isa, desc_.alg_kind),
+            VERBOSE_BAD_ALGORITHM);
+
+    // refer to a comment in jit_uni_kernel why this is needed
+    VDISPATCH_ELTWISE(IMPLICATION(!data_d.is_dense(), is_zero_preserved()),
+            VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_ELTWISE(data_d == memory_desc_wrapper(diff_dst_md()),
+            VERBOSE_INCONSISTENT_MDS, data_tensor_name, "diff_dst");
+    VDISPATCH_ELTWISE(memory_desc_wrapper(diff_src_md())
+                    == memory_desc_wrapper(diff_dst_md()),
+            VERBOSE_INCONSISTENT_MDS, "diff_src", "diff_dst");
+
+    VDISPATCH_ELTWISE(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+
+    return status::success;
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_bwd_t<isa, d_type>::jit_uni_eltwise_bwd_t(const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_eltwise_bwd_t<isa>::jit_uni_eltwise_bwd_t(const pd_t *apd)
     : primitive_t(apd) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_eltwise_bwd_t<isa, d_type>::~jit_uni_eltwise_bwd_t() = default;
+template <cpu_isa_t isa>
+jit_uni_eltwise_bwd_t<isa>::~jit_uni_eltwise_bwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_bwd_t<isa>::init(engine_t *engine) {
     CHECK(safe_ptr_assign(kernel_, new jit_uni_kernel_t<isa>(pd())));
     return kernel_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
-        const exec_ctx_t &ctx) const {
-    auto src = pd()->use_dst() ? CTX_IN_MEM(const data_t *, DNNL_ARG_DST)
-                               : CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
-    auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
+template <cpu_isa_t isa>
+status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+
+    auto src = pd()->use_dst() ? CTX_IN_MEM(const uint8_t *, DNNL_ARG_DST)
+                               : CTX_IN_MEM(const uint8_t *, DNNL_ARG_SRC);
+    auto diff_dst = CTX_IN_MEM(const uint8_t *, DNNL_ARG_DIFF_DST);
+    auto diff_src = CTX_OUT_MEM(uint8_t *, DNNL_ARG_DIFF_SRC);
 
     const memory_desc_wrapper data_d(pd()->data_md());
     const memory_desc_wrapper diff_data_d(pd()->diff_src_md());
     const auto nelems = data_d.nelems(true);
     const int simd_w = 64 / data_d.data_type_size();
 
-    src += data_d.offset0();
-    diff_dst += diff_data_d.offset0();
-    diff_src += diff_data_d.offset0();
+    const data_type_t data_dt = pd()->use_dst() ? pd()->dst_md()->data_type
+                                                : pd()->src_md()->data_type;
+    const auto data_off_bytes
+            = types::elements_to_bytes(data_dt, data_d.offset0());
+    const auto diff_off_bytes
+            = types::elements_to_bytes(data_dt, diff_data_d.offset0());
+
+    src += data_off_bytes;
+    diff_dst += diff_off_bytes;
+    diff_src += diff_off_bytes;
 
     parallel(0, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
@@ -519,9 +589,9 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
         if (start == end) return;
 
         jit_args_t args;
-        args.src = src + start;
-        args.dst = diff_src + start;
-        args.diff_dst = diff_dst + start;
+        args.src = src + types::elements_to_bytes(data_dt, start);
+        args.dst = diff_src + types::elements_to_bytes(data_dt, start);
+        args.diff_dst = diff_dst + types::elements_to_bytes(data_dt, start);
         args.work_amount = end - start;
         (*kernel_)(&args);
     });
@@ -531,13 +601,9 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::execute(
 
 // Jit uni eltwise is fully vector length agnostic, so we use sve_128
 // as alias for VLA SVE.
-template struct jit_uni_eltwise_fwd_t<asimd, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<asimd, data_type::bf16>;
-template struct jit_uni_eltwise_fwd_t<asimd, data_type::f16>;
-template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f32>;
-template struct jit_uni_eltwise_fwd_t<sve_128, data_type::bf16>;
-template struct jit_uni_eltwise_fwd_t<sve_128, data_type::f16>;
-template struct jit_uni_eltwise_bwd_t<sve_128, data_type::f32>;
+template struct jit_uni_eltwise_fwd_t<asimd>;
+template struct jit_uni_eltwise_fwd_t<sve_128>;
+template struct jit_uni_eltwise_bwd_t<sve_128>;
 
 } // namespace aarch64
 } // namespace cpu

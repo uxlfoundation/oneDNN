@@ -55,9 +55,16 @@ if(DPCPP_HOST_COMPILER_KIND MATCHES "^(GNU|CLANG)$")
         append(DPCPP_HOST_COMPILER_OPTS "${CMAKE_CXX_FLAGS_DEBUG}")
     endif()
 
-    # When a custom host compiler is used some deprecation warnings come
-    # from sycl.hpp header. Suppress the warnings for now.
-    append(DPCPP_HOST_COMPILER_OPTS "-Wno-deprecated-declarations")
+    # Intel oneAPI DPC++/C++ Compiler version 2025.2 and earlier emits spurious
+    # deprecation warnings from system headers when used
+    # with '-fsycl-host-compiler' option.
+    # Open source version identifies as Clang and does not offer a reliable way
+    # to detect version. Warning is suppressed unconditionally in this case.
+    if((CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM"
+        AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "2025.3")
+        OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        append(DPCPP_HOST_COMPILER_OPTS "-Wno-deprecated-declarations")
+    endif()
 
     # Using single_task, cgh.copy, cgh.fill may cause the following warning:
     # "warning: `clang::sycl_kernel` scoped attribute directive ignored [-Wattributes]"

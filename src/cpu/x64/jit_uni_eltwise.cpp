@@ -299,7 +299,7 @@ status_t jit_uni_eltwise_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
             IMPLICATION(src_md()->data_type == data_type::f16,
                     mayiuse(avx512_core_fp16) || mayiuse(avx2_vnni_2)),
             VERBOSE_ISA_DT_MISMATCH);
-    VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "data");
     VDISPATCH_ELTWISE(src_d.is_dense(true), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_ELTWISE(eltwise_injector::is_supported(
                               injector_isa, desc_.alg_kind, data_type::f32),
@@ -383,7 +383,7 @@ status_t jit_uni_eltwise_bwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
     VDISPATCH_ELTWISE(IMPLICATION(data_md()->data_type == data_type::f16,
                               mayiuse(avx512_core_fp16)),
             VERBOSE_ISA_DT_MISMATCH);
-    VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "data");
     VDISPATCH_ELTWISE(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_ELTWISE(data_d.is_dense(true), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_ELTWISE(eltwise_injector::is_isa_supported(injector_isa),

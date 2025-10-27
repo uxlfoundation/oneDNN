@@ -1,7 +1,8 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
+*
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
@@ -18,7 +19,6 @@
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
-#include "common/tag_traits.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
@@ -727,13 +727,14 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     brg_matmul_exec_ctx_t(const exec_ctx_t &ctx, const pd_t *pd,
             const float *oscales, const float *dst_scales,
             matmul_helper_t &helper)
-        : bgmmc_(pd->get_brgemm_matmul_conf()) {
-
-        data_A_ptr_ = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
-        data_B_ptr_ = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
-        data_C_ptr_ = CTX_OUT_MEM(char *, DNNL_ARG_DST);
-
-        bias_ptr_ = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
+        : bgmmc_(pd->get_brgemm_matmul_conf())
+        , data_A_ptr_(CTX_IN_MEM(const char *, DNNL_ARG_SRC))
+        , data_B_ptr_(CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS))
+        , data_C_ptr_(CTX_OUT_MEM(char *, DNNL_ARG_DST))
+        , wsp_tile_ptr_(nullptr)
+        , bias_ptr_(CTX_IN_MEM(const char *, DNNL_ARG_BIAS))
+        , oscales_ptr_(oscales)
+        , dst_scales_ptr_(dst_scales) {
 
         // setup scales / zp pointers
         const void *src_zero_points = CTX_IN_MEM(
@@ -761,8 +762,6 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                         dst_zero_points, 0)
                 : 0;
 
-        oscales_ptr_ = oscales;
-        dst_scales_ptr_ = dst_scales;
         memory_tracking::grantor_t scratchpad = ctx.get_scratchpad_grantor();
         const auto &bgmmc = pd->get_brgemm_matmul_conf();
 
@@ -786,8 +785,6 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         buf_D_ptr_ = (bgmmc.is_runtime_M)
                 ? scratchpad.template get<char>(key_brgemm_primitive_buffer_d)
                 : nullptr;
-
-        wsp_tile_ptr_ = nullptr;
 
         const memory_desc_wrapper weights_d(pd->weights_md(0));
         const dim_t comp_offset = bgmmc_.b_dt_sz
@@ -1129,11 +1126,15 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     }
 
     // Auxiliary functions for getting offsets with pre-calculated memory
-    // strides for each tensor to get general sulution for all possible
+    // strides for each tensor to get general solution for all possible
     // dimension without significant overhead
     dim_t get_data_A_off(int b, int m, int k) const {
         using namespace format_tag;
-        if (bgmmc_.src_tag == acbd || bgmmc_.src_tag == adbc) {
+        if (one_of(bgmmc_.src_tag, acbd, adbc)
+                /* this is a special case when src can be represented
+                   by plain and transposed tags due to a batch dim equal to 1 */
+                || (one_of(bgmmc_.src_tag, abcd, abdc)
+                        && bgmmc_.A_ptr_shift_b != 0)) {
             dim_t b_off = 0;
             if (!bgmmc_.bcast_A_desc.bcast_mask) { // no broadcast
                 const dim_t batch_dim1 = bgmmc_.bcast_A_desc.batch_dims[1];
@@ -1150,7 +1151,11 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
     dim_t get_data_B_off(int b, int k, int n) const {
         using namespace format_tag;
-        if (bgmmc_.wei_tag == acbd || bgmmc_.wei_tag == adbc) {
+        if (one_of(bgmmc_.wei_tag, acbd, adbc)
+                /* this is a special case when weights can be represented
+                   by plain and transposed tags due to a batch dim equal to 1 */
+                || (one_of(bgmmc_.wei_tag, abcd, abdc)
+                        && bgmmc_.B_ptr_shift_b != 0)) {
             dim_t b_off = 0;
             if (!bgmmc_.bcast_B_desc.bcast_mask) { // no broadcast
                 const dim_t batch_dim1 = bgmmc_.bcast_B_desc.batch_dims[1];
@@ -1187,7 +1192,9 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     dim_t get_data_C_off(int b, int m, int n) const {
         using namespace format_tag;
         assert(bgmmc_.dst_tag != adbc);
-        if (bgmmc_.dst_tag == acbd) {
+        if (bgmmc_.dst_tag == acbd
+                || (one_of(bgmmc_.dst_tag, abcd, abdc)
+                        && bgmmc_.C_ptr_shift_b != 0)) {
             const dim_t batch_dim1 = bgmmc_.bcast_A_desc.batch_dims[1];
             dim_t b_off = bgmmc_.C_strides[2] * (b % batch_dim1)
                     + (b / batch_dim1) * bgmmc_.C_ptr_shift_b;

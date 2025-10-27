@@ -52,12 +52,27 @@ expr_t expr_t::operator[](const expr_t &off) const {
     if (is<shuffle_t>()) {
         gpu_assert(is_const(off)) << "Offset is not constant.";
         auto &shuffle = as<shuffle_t>();
-        int idx = shuffle.idx[to_cpp<int>(off)];
+        int i_off = to_cpp<int>(off);
+        gpu_assert(i_off < (int)shuffle.idx.size());
+        int idx = shuffle.idx[i_off];
         return shuffle.vec[idx];
     }
-    gpu_assert(type().is_ptr()
-            || (is_const(off) && to_cpp<int>(off) < type().size()));
-    return shift_ptr(op_kind_t::_add, *this, off);
+    if (type().is_ptr()) return shift_ptr(op_kind_t::_add, *this, off);
+    if (is<var_t>() || is<ref_t>()) {
+        gpu_assert(is_const(off)) << "var/ref requires constant offset.";
+        return ref_t::make(*this, to_cpp<int>(off), 1);
+    }
+    gpu_error_not_expected() << "Unexpected expression: " << str();
+    return expr_t();
+}
+
+expr_t expr_t::ptr(const expr_t &off) const {
+    if (is<var_t>()) return ptr_t::make(*this, off);
+    if (auto *ref = as_ptr<ref_t>()) {
+        return ptr_t::make(ref->var, ref->off + off);
+    }
+    gpu_error_not_expected() << "Unexpected expression: " << str();
+    return expr_t();
 }
 
 expr_t::expr_t(bool value) : object_t(new bool_imm_t(value)) {}
@@ -73,6 +88,10 @@ expr_t::expr_t(uint64_t value) : object_t(new int_imm_t(value)) {}
 
 bool is_const(const expr_t &e) {
     return e.is<bool_imm_t>() || e.is<int_imm_t>() || e.is<float_imm_t>();
+}
+bool is_const(const expr_t &e, int value) {
+    if (!is_const(e)) return false;
+    return e.is_equal(to_expr(value, e.type()));
 }
 
 bool to_bool(const expr_t &e) {

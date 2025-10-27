@@ -47,7 +47,8 @@ while the brown nodes are optional.
 
    - **BiasAdd**: If present, must be the first op in the epilogue subgraph and
      can only appear once.
-   - 0 to 4 Binary or Unary operations are supported in the epilogue subgraph.
+   - N=20, 0 to 20 Binary or Unary operations are supported in the epilogue
+     subgraph.
 
 5. **F2F/F2Q Conversion Subgraph**: Converts the output
    tensor from floating-point to floating-point or quantized data type. It can

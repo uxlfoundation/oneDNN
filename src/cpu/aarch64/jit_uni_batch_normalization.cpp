@@ -35,13 +35,17 @@
 
 #include "cpu/aarch64/jit_uni_batch_normalization.hpp"
 
-#define IDX(a) static_cast<uint32_t>(a.getIdx())
+#define IDX(a) static_cast<uint32_t>((a).getIdx())
 #define LDR_ASSERT(r, addr, offt) \
-    assert(offt < 256); \
-    ldr(r, ptr(addr, (int)offt));
+    do { \
+        assert((offt) < 256); \
+        ldr(r, ptr(addr, (int)(offt))); \
+    } while (0)
 #define STR_ASSERT(r, addr, offt) \
-    assert(offt < 256); \
-    str(r, ptr(addr, (int)offt));
+    do { \
+        assert((offt) < 256); \
+        str(r, ptr(addr, (int)(offt))); \
+    } while (0)
 
 namespace dnnl {
 namespace impl {
@@ -91,7 +95,9 @@ struct jit_bnorm_conf_t {
     int S_nthr_last_iter_ {0};
 
     jit_bnorm_conf_t(const batch_normalization_pd_t *pd, int nthr, int simd_w)
-        : pd_(pd), simd_w_(simd_w) {
+        : pd_(pd)
+        , simd_w_(simd_w)
+        , dt_size_(types::data_type_size(pd_->src_md()->data_type)) {
 
         const dim_t N = pd_->MB();
         const dim_t C_PADDED = get_c_padded(pd_);
@@ -103,7 +109,6 @@ struct jit_bnorm_conf_t {
         const memory_desc_wrapper src_d(pd_->src_md());
         is_nspc_ = is_nspc(src_d);
 
-        dt_size_ = types::data_type_size(pd_->src_md()->data_type);
         size_t data_size = dt_size_ * N * C_PADDED * SP;
         const size_t l3_size = platform::get_per_core_cache_size(3) * nthr;
         // TODO: cache balancing for nspc
@@ -144,7 +149,8 @@ struct jit_bnorm_conf_t {
     // given nthr and shape of problem, choose the thread partition
     // to use (ie set N_nthr, C_nthr, and S_nthr)
     bool thread_partition(bool spatial_thr_allowed, int nthr, dim_t N,
-            dim_t C_blks, dim_t SP, int &C_nthr, int &N_nthr, int &S_nthr) {
+            dim_t C_blks, dim_t SP, int &C_nthr, int &N_nthr,
+            int &S_nthr) const {
         if (((nthr <= C_blks) && IMPLICATION(is_nspc_, N == 1))
                 || !dnnl_thr_syncable()) {
             C_nthr = nthr;
@@ -197,7 +203,7 @@ struct jit_bnorm_conf_t {
 };
 
 template <cpu_isa_t isa>
-struct jit_bnorm_t : public jit_generator {
+struct jit_bnorm_t : public jit_generator_t {
     struct call_params_t {
         // keep all sizes at 8 bytes -- jit code expects this
         size_t N_ithr, N_nthr;
@@ -225,13 +231,13 @@ struct jit_bnorm_t : public jit_generator {
     using TRegS =
             typename utils::conditional<isa == asimd, VReg4S, ZRegS>::type;
 
-    const int vlen = isa == asimd ? 32 : cpu_isa_traits<isa>::vlen;
-    int vlen_spat_data_; // set by ctor depending on data type (BF16 or FP32);
-
     const batch_normalization_pd_t *pd_ = nullptr;
     const jit_bnorm_conf_t *jbp_ = nullptr;
     bool is_bf16_ = false;
     bool is_f16_ = false;
+
+    const int vlen = isa == asimd ? 32 : cpu_isa_traits<isa>::vlen;
+    int vlen_spat_data_; // set by ctor depending on data type (BF16 or FP32);
 
     XReg reg_param = abi_param1;
 
@@ -357,8 +363,8 @@ struct jit_bnorm_t : public jit_generator {
     }
 #define STR_PARAM(r, offt) \
     { \
-        assert(offt <= 256); \
-        str(r, ptr(X_DEFAULT_ADDR, (int32_t)offt)); \
+        assert((offt) <= 256); \
+        str(r, ptr(X_DEFAULT_ADDR, (int32_t)(offt))); \
     }
 
         LDR_PARAM(reg_rbuf1, rbuf1);
@@ -2001,8 +2007,10 @@ struct jit_bnorm_t : public jit_generator {
         }
         if (jbp_->is_nspc_) {
             // comeback
-            if (!pd_->use_global_stats())
+            if (!pd_->use_global_stats()) {
                 LDR_ASSERT(reg_src, sp, (int)stack_off_src);
+            }
+
             LDR_ASSERT(reg_diff_dst, sp, (int)stack_off_diff_dst);
             LDR_ASSERT(reg_diff_src, sp, (int)stack_off_diff_src);
             if (with_relu) { LDR_ASSERT(reg_ws, sp, (int)stack_off_ws); }
@@ -2010,22 +2018,21 @@ struct jit_bnorm_t : public jit_generator {
     }
 
     jit_bnorm_t(const batch_normalization_pd_t *pd, const jit_bnorm_conf_t *jbp)
-        : pd_(pd), jbp_(jbp) {
+        : pd_(pd)
+        , jbp_(jbp)
+        , is_bf16_(pd_->src_md()->data_type == data_type::bf16)
+        , is_f16_(pd_->src_md()->data_type == data_type::f16)
+        , vlen_spat_data_(vlen / (1 + is_xf16())) // 32B of xF16 -> 64B of FP32
+        , unroll_blocks(
+                  (isa == sve_256 || isa == sve_512) && !jbp_->is_spatial_thr_
+                          ? 4
+                          : 1)
+        , unroll_regs(
+                  (isa == sve_256 || isa == sve_512) && !jbp_->is_spatial_thr_
+                          ? 4
+                          : 1) {
         static_assert(isa == asimd || isa == sve_256 || isa == sve_512,
                 "unsupported isa");
-
-        is_bf16_ = pd_->src_md()->data_type == data_type::bf16;
-        is_f16_ = pd_->src_md()->data_type == data_type::f16;
-        vlen_spat_data_ = vlen / (1 + is_xf16()); // 32B of xF16 -> 64B of FP32
-
-        unroll_blocks
-                = (isa == sve_256 || isa == sve_512) && !jbp_->is_spatial_thr_
-                ? 4
-                : 1;
-        unroll_regs
-                = (isa == sve_256 || isa == sve_512) && !jbp_->is_spatial_thr_
-                ? 4
-                : 1;
     }
 
     void generate() override {
@@ -2055,9 +2062,9 @@ struct jit_bnorm_t : public jit_generator {
         postamble();
     }
 
-    void operator()(const call_params_t *p) { jit_generator::operator()(p); }
+    void operator()(const call_params_t *p) { jit_generator_t::operator()(p); }
 
-    ~jit_bnorm_t() override {}
+    ~jit_bnorm_t() override = default;
 };
 
 namespace bnorm_impl {

@@ -297,6 +297,37 @@ inline T digits(data_type_t data_type) {
 #undef CASE
 }
 
+inline float round_to_dt(data_type_t data_type, float val) {
+    using namespace data_type;
+
+#define CASE(x) \
+    case x: \
+        return static_cast<float>( \
+                static_cast<typename prec_traits_t<x>::type>(val))
+
+    switch (data_type) {
+        CASE(f4_e3m0);
+        CASE(f4_e2m1);
+        CASE(e8m0);
+        CASE(f8_e5m2);
+        CASE(f8_e4m3);
+        CASE(f16);
+        CASE(bf16);
+        CASE(f32);
+        CASE(f64);
+        CASE(s32);
+        CASE(s8);
+        CASE(u8);
+        CASE(s4);
+        CASE(u4);
+        case data_type::undef:
+        default: assert(!"unknown data_type");
+    }
+
+    return 0.0f; /* not supposed to be reachable */
+#undef CASE
+}
+
 inline format_kind_t format_tag_to_kind(format_tag_t tag) {
     switch (tag) {
         case format_tag::undef: return format_kind::undef;
@@ -985,7 +1016,7 @@ inline bool operator==(const sdpa_desc_t &lhs, const sdpa_desc_t &rhs) {
             && COMPARE_DESC_MEMBERS(vs_zero_points)
             && COMPARE_DESC_MEMBERS(dst_desc)
             && COMPARE_DESC_MEMBERS(attn_mask_desc)
-            && COMPARE_DESC_MEMBERS(scale_dt)
+            && COMPARE_DESC_MEMBERS(scale_desc)
             && COMPARE_DESC_MEMBERS(kq_acc_dt)
             && COMPARE_DESC_MEMBERS(vs_acc_dt)
             && COMPARE_DESC_MEMBERS(invert_scale)

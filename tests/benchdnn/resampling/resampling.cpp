@@ -32,10 +32,11 @@
 
 namespace resampling {
 
-int fill_dat(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
-        dnn_mem_t &mem_fp) {
+int fill_dat(int exec_arg, const prb_t *prb, data_kind_t kind,
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -64,12 +65,14 @@ int fill_dat(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
     return OK;
 }
 
-int fill_src(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
-    return fill_dat(prb, SRC, mem_dt, mem_fp);
+int fill_src(
+        int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+    return fill_dat(exec_arg, prb, SRC, mem_dt, mem_fp);
 }
 
-int fill_dst(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
-    return fill_dat(prb, DST, mem_dt, mem_fp);
+int fill_dst(
+        int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+    return fill_dat(exec_arg, prb, DST, mem_dt, mem_fp);
 }
 
 dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
@@ -204,11 +207,13 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
-            case DNNL_ARG_SRC: SAFE(fill_src(prb, mem, ref_mem), WARN); break;
+            case DNNL_ARG_SRC:
+                SAFE(fill_src(exec_arg, prb, mem, ref_mem), WARN);
+                break;
             case DNNL_ARG_DST:
                 if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM)
                         >= 0) {
-                    SAFE(fill_dst(prb, mem, ref_mem), WARN);
+                    SAFE(fill_dst(exec_arg, prb, mem, ref_mem), WARN);
 
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.
@@ -218,7 +223,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 }
                 break;
             case DNNL_ARG_DIFF_DST:
-                SAFE(fill_dst(prb, mem, ref_mem), WARN);
+                SAFE(fill_dst(exec_arg, prb, mem, ref_mem), WARN);
                 break;
             default: {
                 std::unordered_map<int, fill_cfg_t> fill_cfg_map;

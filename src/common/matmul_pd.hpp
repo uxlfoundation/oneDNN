@@ -33,6 +33,10 @@
 #define VDISPATCH_MATMUL_SC(f, msg, ...) \
     VCHECK(primitive, create, dispatch, matmul, f, msg, ##__VA_ARGS__);
 
+#define VDISPATCH_MATMUL_IC(cond, msg, ...) \
+    VCONDCHECK(primitive, create, dispatch, matmul, (cond), \
+            status::unimplemented, msg, ##__VA_ARGS__)
+
 namespace dnnl {
 namespace impl {
 
@@ -203,16 +207,19 @@ struct matmul_pd_t : public primitive_desc_t {
 
                 ok = ok && wei_k_group_ok && wei_n_group_ok;
 
-                // Mask over K dim is allowed for decompression feature only.
-                const bool is_decompression_or_dynquant
-                        = utils::one_of(weights_md(0)->data_type, data_type::s8,
-                                  data_type::u8, data_type::s4, data_type::u4)
-                        && IMPLICATION(
-                                !types::is_integral_dt(src_md()->data_type),
-                                attr()->fpmath_.apply_to_int_);
-                ok = ok
-                        && IMPLICATION((mask & wei_qmask_K()),
-                                is_decompression_or_dynquant);
+                // Mask over K dim is allowed for fp types or weights decompression only.
+                if (types::is_integral_dt(weights_md(0)->data_type)) {
+                    const bool is_decompression
+                            = utils::one_of(weights_md(0)->data_type,
+                                      data_type::s8, data_type::u8,
+                                      data_type::s4, data_type::u4)
+                            && IMPLICATION(
+                                    !types::is_integral_dt(src_md()->data_type),
+                                    attr()->fpmath_.apply_to_int_);
+                    ok = ok
+                            && IMPLICATION(
+                                    (mask & wei_qmask_K()), is_decompression);
+                }
             } else if (arg == DNNL_ARG_SRC) {
                 ok = ok
                         && utils::one_of(mask, 0, src_qmask_K(),
@@ -228,11 +235,12 @@ struct matmul_pd_t : public primitive_desc_t {
             } else if (arg == DNNL_ARG_DST) {
                 ok = ok
                         && utils::one_of(mask, 0, dst_qmask_N(),
-                                dst_qmask_M() + dst_qmask_N());
+                                dst_qmask_M() + dst_qmask_N(),
+                                full_tensor_mask());
                 ok = ok
                         && IMPLICATION(!scales.get(arg).has_default_groups(),
-                                scales.get_group(arg, 1) == 1
-                                        && (M() % scales.get_group(arg, 0))
+                                (M() % scales.get_group(arg, -2)) == 0
+                                        && (N() % scales.get_group(arg, -1))
                                                 == 0);
             } else {
                 assert(!"Unsupported arg");

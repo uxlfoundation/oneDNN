@@ -402,6 +402,7 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::generate() {
 
 template struct jit_uni_dw_conv_fwd_kernel_f32_t<sve_512>;
 template struct jit_uni_dw_conv_fwd_kernel_f32_t<sve_256>;
+template struct jit_uni_dw_conv_fwd_kernel_f32_t<sve_128>;
 
 template <cpu_isa_t isa>
 inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::load_ddst(

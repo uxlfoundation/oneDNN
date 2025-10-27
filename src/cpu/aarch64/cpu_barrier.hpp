@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2021 Intel Corporation
 * Copyright 2020-2021 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -69,7 +70,7 @@ void barrier(ctx_t *ctx, int nthr);
  *   reg_ctx   -- read-only register with pointer to the barrier context
  *   reg_nnthr -- read-only register with the # of synchronizing threads
  */
-void generate(jit_generator &code, Xbyak_aarch64::XReg reg_ctx,
+void generate(jit_generator_t &code, Xbyak_aarch64::XReg reg_ctx,
         Xbyak_aarch64::XReg reg_nthr, bool usedAsFunc = false);
 
 } // namespace simple_barrier

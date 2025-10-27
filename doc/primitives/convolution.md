@@ -442,7 +442,7 @@ of Winograd algorithm implementations.
 
 3. **GPU**
    - Depthwise post-op is not supported
-   - `f8` iplementation uses Intel XMX cores only on Intel GPUs based on
+   - `f8` implementation uses Intel XMX cores only on Intel GPUs based on
      Xe-HPC and Xe2-LPG, and Xe2-HPG uArch.
 
 4. **CPU**

@@ -17,11 +17,15 @@
 /// @example  sycl_interop_buffer.cpp
 /// > Annotated version: @ref sycl_interop_buffer_cpp
 
-/// @page  sycl_interop_buffer_cpp Getting started on both CPU and GPU with SYCL extensions API
+/// @page sycl_interop_buffer_cpp_brief
+/// @brief This C++ API example demonstrates programming for Intel(R) Processor
+/// Graphics with SYCL extensions API in oneDNN.
+
+/// @page  sycl_interop_buffer_cpp Getting Started with SYCL Extensions API
+/// \copybrief sycl_interop_buffer_cpp_brief
+///
 /// Full example text: @ref sycl_interop_buffer.cpp
 ///
-/// This C++ API example demonstrates programming for Intel(R) Processor
-/// Graphics with SYCL extensions API in oneDNN.
 /// The workflow includes following steps:
 ///   - Create a GPU or CPU engine. It uses DPC++ as the runtime in this sample.
 ///   - Create a memory descriptor/object.
@@ -146,8 +150,10 @@ void sycl_interop_buffer_tutorial(engine::kind engine_kind) {
 
     /// We are going to create an SYCL kernel that should initialize our data.
     /// To execute SYCL kernel we need a SYCL queue.
-    /// For simplicity we can construct a stream and extract the SYCL queue from it.
-    /// The kernel initializes the data by the `0, -1, 2, -3, ...` sequence: `data[i] = (-1)^i * i`.
+    /// For simplicity we can construct a stream and extract the SYCL queue from
+    /// it.
+    /// The kernel initializes the data by the `0, -1, 2, -3, ...` sequence:
+    /// `data[i] = (-1)^i * i`.
     /// @snippet sycl_interop_buffer.cpp sycl kernel exec
     // [sycl kernel exec]
     queue q = sycl_interop::get_queue(strm);
@@ -185,8 +191,10 @@ void sycl_interop_buffer_tutorial(engine::kind engine_kind) {
     // [relu exec]
     ///
     ///@note
-    ///    With DPC++ runtime, both CPU and GPU have asynchronous execution; However, the user can
-    ///    call dnnl::stream::wait() to synchronize the stream and ensure that all
+    ///    With DPC++ runtime, both CPU and GPU have asynchronous execution;
+    ///    However, the user can
+    ///    call dnnl::stream::wait() to synchronize the stream and ensure that
+    ///    all
     ///    previously submitted primitives are completed.
     ///
 
@@ -196,8 +204,10 @@ void sycl_interop_buffer_tutorial(engine::kind engine_kind) {
     /// Before running validation codes, we need to access the SYCL memory on
     /// the host.
     /// The simplest way to access the SYCL-backed memory on the host is to
-    /// construct a host accessor. Then we can directly read and write this data on the host.
-    /// However no any conflicting operations are allowed until the host accessor is destroyed.
+    /// construct a host accessor. Then we can directly read and write this data
+    /// on the host.
+    /// However no any conflicting operations are allowed until the host
+    /// accessor is destroyed.
     /// We can run validation codes on the host accordingly.
     /// @snippet sycl_interop_buffer.cpp Check the results
     // [Check the results]

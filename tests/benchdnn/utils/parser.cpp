@@ -18,8 +18,10 @@
 #include <cctype>
 
 #include "utils/cold_cache.hpp"
+#include "utils/fill.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
+#include "utils/summary.hpp"
 
 #include "dnnl_common.hpp"
 
@@ -495,6 +497,10 @@ summary_t parse_summary_str(const std::string &s) {
         auto option = parser::get_substr(subs, subs_pos, '\0');
         if (option == "failures") {
             v.failed_cases = !negate_option;
+        } else if (option == "impl") {
+            v.impl_names = !negate_option;
+        } else if (option == "impl-csv") {
+            v.impl_names_csv = !negate_option;
         } else {
             BENCHDNN_PRINT(0,
                     "Error: unsupported option-value combination "
@@ -660,8 +666,7 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
     static const std::string help
             = "ENCODING[+SPARSITY]:ENCODING[+SPARSITY]:ENCODING[+SPARSITY]\n   "
               "Specifies sparse encodings and sparsity.\n    More details at "
-              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-              "benchdnn/doc/knobs_encoding.md\n";
+            + doc_url + "knobs_encoding.md\n";
 
     std::vector<sparse_options_t> def {sparse_options_t()};
     auto parse_sparse_options_func = [](const std::string &s) {
@@ -704,8 +709,7 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
               "is one of those:\n    * SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]\n  "
               "  * ELTWISE[:ALPHA[:BETA[:SCALE]]]\n    * DW:KkSsPp[:DST_DT]\n  "
               "  * BINARY:DT[:MASK_INPUT[:TAG]]\n    More details at "
-              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-              "benchdnn/doc/knobs_attr.md\n";
+            + doc_url + "knobs_attr.md\n";
     std::vector<attr_t::post_ops_t> def {attr_t::post_ops_t()};
     return parse_vector_option(po, def, parser_utils::parse_attr_post_ops_func,
             str, option_name, help);
@@ -714,20 +718,20 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
 bool parse_attr_scales(std::vector<attr_t::arg_scales_t> &scales,
         const char *str, const std::string &option_name = "attr-scales") {
     static const std::string help
-            = "ARG:POLICY[:SCALE][+...]\n    Specifies input scales "
-              "attribute.\n    More details at "
-              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-              "benchdnn/doc/knobs_attr.md\n";
+            = "ARG:POLICY[:SCALE[:DATA_TYPE[:GROUPS]]][+...]\n"
+              "    Specifies input scales attribute.\n"
+              "    More details at "
+            + doc_url + "knobs_attr.md\n";
     return parse_subattr(scales, str, option_name, help);
 }
 
 bool parse_attr_zero_points(std::vector<attr_t::zero_points_t> &zp,
         const char *str, const std::string &option_name = "attr-zero-points") {
     static const std::string help
-            = "ARG:POLICY[:ZEROPOINT][+...]\n    Specifies zero-points "
-              "attribute.\n    More details at "
-              "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-              "benchdnn/doc/knobs_attr.md\n";
+            = "ARG:POLICY[:ZEROPOINT[:DATA_TYPE[:GROUPS]]][+...]\n"
+              "    Specifies zero-points attribute.\n"
+              "    More details at "
+            + doc_url + "knobs_attr.md\n";
     return parse_subattr(zp, str, option_name, help);
 }
 
@@ -1497,6 +1501,20 @@ static bool parse_start(
             test_start, 0, parser_utils::stoll_safe, str, option_name, help);
 }
 
+static bool parse_buffer_prefix(
+        const char *str, const std::string &option_name = "buffer-prefix") {
+    static const std::string help
+            = "PREFIX    (Default: not specified)\n    Instructs the driver to "
+              "fill specified buffers with the data from the files provided by "
+              "`PREFIX`.\n    The expected filename format is "
+              "\'PREFIX.ID.bin\'; the files must have binary data in them.\n   "
+              " More details at "
+            + doc_url + "knobs_common.md#--buffer-prefix\n";
+    const auto str2self = [](const std::string &str) { return str; };
+    return parse_single_value_option(
+            buffer_prefix, std::string(), str2self, str, option_name, help);
+}
+
 static bool parse_stream_kind(
         const char *str, const std::string &option_name = "stream-kind") {
     static const std::string help
@@ -1583,9 +1601,8 @@ bool parse_bench_settings(const char *str) {
         help_ss << "===================\n";
         help_ss << "= Global options: =\n";
         help_ss << "===================\n";
-        help_ss << "(More technical details available at "
-                   "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-                   "benchdnn/doc/knobs_common.md)\n\n";
+        help_ss << "(More technical details available at " + doc_url
+                        + "knobs_common.md)\n\n";
         start_msg = true;
     }
 
@@ -1600,7 +1617,8 @@ bool parse_bench_settings(const char *str) {
             || parse_memory_kind(str) || parse_mode(str)
             || parse_mode_modifier(str) || parse_start(str)
             || parse_stream_kind(str) || parse_summary(str)
-            || parse_verbose(str) || parse_execution_mode(str);
+            || parse_verbose(str) || parse_execution_mode(str)
+            || parse_buffer_prefix(str);
 
     // Last condition makes this help message to be triggered once driver_name
     // is already known.
@@ -1608,9 +1626,7 @@ bool parse_bench_settings(const char *str) {
         help_ss << "===================\n";
         help_ss << "= Driver options: =\n";
         help_ss << "===================\n";
-        help_ss << "(More technical details available at "
-                   "https://github.com/uxlfoundation/oneDNN/blob/main/tests/"
-                   "benchdnn/doc/driver_"
+        help_ss << "(More technical details available at " + doc_url + "driver_"
                 << driver_name << ".md)\n\n";
         end_msg = true;
     }

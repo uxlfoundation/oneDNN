@@ -452,7 +452,7 @@ status_t jit_uni_eltwise_int_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
     VDISPATCH_ELTWISE(utils::one_of(desc()->alg_kind, alg_kind::eltwise_relu,
                               alg_kind::eltwise_linear, alg_kind::eltwise_clip),
             VERBOSE_BAD_ALGORITHM);
-    VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+    VDISPATCH_ELTWISE(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "data");
     VDISPATCH_ELTWISE(memory_desc_wrapper(src_md()).is_dense(true),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_ELTWISE(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

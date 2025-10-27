@@ -25,6 +25,7 @@
 #include "gpu/intel/jit/codegen/register_scope.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/logging.hpp"
 #include "ngen.hpp"
 
 namespace dnnl {
@@ -204,7 +205,8 @@ struct reorder_operand_t {
                                                        : to_ir(buffer.range);
     }
     bool operator==(const reorder_operand_t &other) const {
-        return layout == other.layout && buffer == other.buffer;
+        return layout.is_equal_normalized(other.layout)
+                && buffer == other.buffer;
     }
 };
 
@@ -329,7 +331,7 @@ public:
     reorder_impl_t(
             ngen::HW hw, const layout_t &src_layout, const layout_t &dst_layout)
         : hw_(hw), src_layout_(src_layout), dst_layout_(dst_layout) {
-        layout_t::try_reinterpret_to_wider_type(src_layout_, dst_layout_);
+        try_reinterpret_to_wider_type(src_layout_, dst_layout_);
     }
 
     reorder_impl_t(ngen::HW hw, const reorder_t &reorder)
@@ -383,12 +385,12 @@ private:
     bool layouts_compatible(const layout_t &a, const layout_t &b) const;
 
     reorder_operand_t init_operand(layout_t layout, const op_init_t &init) {
-        if (layout.type().is_tf32()) layout = layout.retype(type_t::f32());
+        if (layout.type().is_tf32()) layout = layout.with(type_t::f32());
         auto elems = size_in_elems(layout);
         auto dt = to_ngen(layout.type());
         auto buffer = init(into<int>(elems), dt);
         buffer.stride = (uint8_t)1;
-        return {std::move(layout), buffer};
+        return {std::move(layout), std::move(buffer)};
     }
 
     layout_t make_retyped_layout(
@@ -398,7 +400,7 @@ private:
 
     dim_t size_in_elems(const layout_t &layout) {
         const auto &type = layout.type();
-        return layout.size() * type.packing() / type.size();
+        return size_bytes(layout) * type.packing() / type.size();
     }
 
     type_t intermediate_data_type(const type_t &s, const type_t &d) const {

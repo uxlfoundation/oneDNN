@@ -66,7 +66,7 @@ struct simple_resampling_fwd_t : public primitive_t {
 
             VDISPATCH_RESAMPLING(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_RESAMPLING(
-                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
             VDISPATCH_RESAMPLING(utils::one_of(src_md()->data_type, f32, s32,
                                          bf16, f16, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
@@ -80,7 +80,7 @@ struct simple_resampling_fwd_t : public primitive_t {
                     platform::has_data_type_support(dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(set_default_params() == status::success,
-                    VERBOSE_BAD_PARAM, "");
+                    VERBOSE_BAD_PARAM, "cannot set default parameters");
             VDISPATCH_RESAMPLING(attr()->has_default_values(
                                          sm::post_ops, dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_ATTR);
@@ -131,7 +131,7 @@ struct simple_resampling_bwd_t : public primitive_t {
             using namespace data_type;
             VDISPATCH_RESAMPLING(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_RESAMPLING(
-                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
             VDISPATCH_RESAMPLING(utils::one_of(diff_dst_md()->data_type, f32,
                                          s32, bf16, f16, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
@@ -145,7 +145,7 @@ struct simple_resampling_bwd_t : public primitive_t {
                     platform::has_data_type_support(diff_src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_RESAMPLING(set_default_params() == status::success,
-                    VERBOSE_BAD_PARAM, "");
+                    VERBOSE_BAD_PARAM, "cannot set default parameters");
             VDISPATCH_RESAMPLING(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 

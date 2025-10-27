@@ -1,5 +1,5 @@
-Primitive Attributes: Post-ops {#dev_guide_attributes_post_ops}
-===============================================================
+Post-ops {#dev_guide_attributes_post_ops}
+=========================================
 
 oneDNN implements some basic capabilities of operation fusion using the
 **post-ops attributes** API. The operation fusion typically reduces the memory
@@ -281,7 +281,7 @@ Currently the following scenarios are optimized:
   post-operation which format may be queried from attributes using
   `dnnl::post_ops::get_params_binary(...)` function call.
 
-For the binary select operation, an additional conditional tensor is required 
+For the binary select operation, an additional conditional tensor is required
 to execute the operation which is implemented using:
 
 ~~~cpp
@@ -292,7 +292,7 @@ void dnnl::post_ops::append_binary(
         );
 ~~~
 
-The `alg`, `src1`, and `src2` parameters are the same as in 
+The `alg`, `src1`, and `src2` parameters are the same as in
 @ref dev_guide_binary for the select operation.
 
 The binary post-op thus becomes:
@@ -301,7 +301,7 @@ The binary post-op thus becomes:
     \dst[:] = \operatorname{binary}(\operatorname{Op}(...), Source\_1[:], Source\_2[:])
 \f]
 
-There is no broadcasting support for the conditional tensor. The select op is only 
+There is no broadcasting support for the conditional tensor. The select op is only
 supported for CPU implementations.
 
 @anchor dev_guide_attributes_post_ops_prelu

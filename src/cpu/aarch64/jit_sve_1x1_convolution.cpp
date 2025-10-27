@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -608,7 +609,7 @@ status_t jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
         diff_src_type, isa_>::init(engine_t *engine) {
 
     CHECK(safe_ptr_assign(kernel_,
-            new jit_sve_1x1_conv_kernel<isa_>(
+            new jit_sve_1x1_conv_kernel_t<isa_>(
                     pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
     CHECK(safe_ptr_assign(
             acc_ker_, new cpu_accumulator_1d_t<data_type::f32, isa_>()));
@@ -640,7 +641,7 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
     const auto scratchpad = ctx.get_scratchpad_grantor();
     auto rtus_space = pd()->rtus_.reduce_src_
             ? scratchpad.get<data_t>(key_conv_rtus_space)
-            : NULL;
+            : nullptr;
     const bool is_bias_padded
             = pd()->with_bias() && jcp.oc_without_padding % jcp.oc_block != 0;
 

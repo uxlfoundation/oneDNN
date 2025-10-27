@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,6 +50,8 @@ private:
 
     std::once_flag initialization_flag_;
 };
+
+bool get_graph_dump_mode(graph_dump_mode_t mode);
 
 } // namespace utils
 } // namespace graph

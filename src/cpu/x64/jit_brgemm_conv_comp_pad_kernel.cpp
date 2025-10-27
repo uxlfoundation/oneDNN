@@ -56,7 +56,7 @@ jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::
     , out_ker_sz_(static_cast<size_t>(out_ow_sz_)
               * (jcp_.exec_type == exec_trans ? jcp_.prop_kind == backward_data
                                       ? jcp_.iw
-                                      : jcp_.ow
+                                      : jcp_.comp_ow_size
                                               : 1))
     , isa_max_regs(isa_num_vregs(jcp_.isa)) {}
 
@@ -335,27 +335,48 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::fwd_kw_ow_loop(const int icb,
         const int mb_tail, const int n_block, const bool use_inversion) {
     vector<int> kw_ow_b(jcp_.kw, -1);
     vector<int> kw_ow_e(jcp_.kw, -1);
+    vector<int> comp_ow_kw_s(jcp_.comp_ow_size, -1);
+    vector<int> comp_ow_kw_f(jcp_.comp_ow_size, -1);
+    dim_t comp_ow_l = 0;
     const auto DW = jcp_.dilate_w + 1;
 
-    for (int ow = 0; ow < jcp_.ow; ow++) {
+    for (int ow = 0; ow < jcp_.ow;) {
         const auto iiw = ow * jcp_.stride_w - jcp_.l_pad;
         const auto kw_s = div_up(nstl::max(0, -iiw), DW);
         const auto kw_f = jcp_.kw
                 - div_up(nstl::max(0, iiw - jcp_.iw + (jcp_.kw - 1) * DW + 1),
                         DW);
-        for (int kw = 0; kw < jcp_.kw; kw++) {
-            if (kw >= kw_s && kw < kw_f) {
-                const auto inv_kw = use_inversion ? jcp_.kw - 1 - kw : kw;
-                kw_ow_b[inv_kw] = kw_ow_b[inv_kw] == -1 ? ow : kw_ow_b[inv_kw];
-                kw_ow_e[inv_kw] = ow + 1;
+        int ow_e = ow;
+        while (ow_e < jcp_.ow) {
+            const auto iiw_e = ow_e * jcp_.stride_w - jcp_.l_pad;
+            const auto cur_kw_s = div_up(nstl::max(0, -iiw_e), DW);
+            const auto cur_kw_f = jcp_.kw
+                    - div_up(nstl::max(0,
+                                     iiw_e - jcp_.iw + (jcp_.kw - 1) * DW + 1),
+                            DW);
+            if (cur_kw_s != kw_s || cur_kw_f != kw_f) break;
+            if (ow_e - ow < jcp_.ow_block) {
+                comp_ow_kw_s[comp_ow_l] = kw_s;
+                comp_ow_kw_f[comp_ow_l] = kw_f;
+                comp_ow_l++;
             }
+            ow_e++;
+        }
+        ow = ow_e;
+    }
+
+    for_(int ow = 0; ow < comp_ow_l; ow++)
+    for (int kw = 0; kw < jcp_.kw; kw++) {
+        if (kw >= comp_ow_kw_s[ow] && kw < comp_ow_kw_f[ow]) {
+            const auto inv_kw = use_inversion ? jcp_.kw - 1 - kw : kw;
+            kw_ow_b[inv_kw] = kw_ow_b[inv_kw] == -1 ? ow : kw_ow_b[inv_kw];
+            kw_ow_e[inv_kw] = ow + 1;
         }
     }
 
     for (int kw = 0; kw < jcp_.kw; kw++) {
         const auto ow_b = kw_ow_b[kw];
         const auto ow_e = kw_ow_e[kw];
-
         if (ow_b < ow_e) {
             zero_accumulators(m_block, n_block);
             kdh_loop(icb, icb_tail, ic_step, m_block, mb_tail, n_block);
@@ -366,7 +387,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::fwd_kw_ow_loop(const int icb,
                                                 : inp_kw_sz_);
     }
 
-    copy_ow(m_block, n_block, 0, jcp_.ow);
+    copy_ow(m_block, n_block, 0, comp_ow_l);
 }
 template <typename Vmm>
 void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::kw_loop_base(const int icb,
@@ -590,6 +611,7 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::kw_loop(
         const int n_block) {
     vector<int> ow_kw_b(jcp_.ow, -1);
     vector<int> ow_kw_e(jcp_.ow, -1);
+    int prev_comp_ow = 0;
     const auto DW = jcp_.dilate_w + 1;
     for (int ow = 0; ow < jcp_.ow; ow++) {
         const auto iiw = ow * jcp_.stride_w - jcp_.l_pad;
@@ -609,12 +631,15 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::kw_loop(
             if (ow_kw_b[ow_e] != kw_b || ow_kw_e[ow_e] != kw_e) break;
             ow_e++;
         }
+        const auto ow_l = nstl::min(ow_e - ow, jcp_.ow_block);
+
         if (kw_b < kw_e) {
             zero_accumulators(n_block);
             compute(n_block, kw_b, kw_e);
-            store(n_block, ow, ow_e);
+            store(n_block, prev_comp_ow, prev_comp_ow + ow_l);
         }
         ow = ow_e;
+        prev_comp_ow += ow_l;
     }
 }
 
@@ -707,7 +732,7 @@ jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::
               * (jcp_.is_relo_whi() ? 1 : jcp_.kw))
     , inp_oc_sz_(static_cast<size_t>(inp_ic_sz_) * jcp_.ic * jcp_.kh * jcp_.kw)
     , out_ow_sz_(static_cast<size_t>(out_dsz_) * jcp_.oc_block)
-    , out_ker_sz_(static_cast<size_t>(out_ow_sz_) * jcp_.ow)
+    , out_ker_sz_(static_cast<size_t>(out_ow_sz_) * jcp_.comp_ow_size)
     , isa_max_regs_(isa_num_vregs(jcp_.isa)) {}
 
 template struct jit_uni_brgemm_conv_comp_pad_kernel_t<Xbyak::Zmm>;

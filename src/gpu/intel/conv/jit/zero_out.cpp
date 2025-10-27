@@ -29,16 +29,16 @@ std::string zero_out_kernel_desc_t::kernel_name() const {
     return "zero_out";
 }
 
-exec_config_t zero_out_kernel_desc_t::exec_cfg(
+kernel::options_t zero_out_kernel_desc_t::options(
         const impl::engine_t *engine) const {
-    return exec_config_t(hw_t(engine), regs_, simd_);
+    return kernel::options_t(make_ir_hw(engine), regs_, simd_);
 }
 compute::range_t zero_out_kernel_desc_t::local_range() const {
     return compute::range_t(into<size_t>(simd_));
 }
 
 void zero_out_kernel_desc_t::init_kernel_iface(
-        kernel_iface_t &kernel_iface) const {
+        kernel::iface_t &kernel_iface) const {
     kernel_iface.register_arg("size", type_t::u32());
     kernel_iface.register_arg("ptr", type_t::byte(type::attr_t::ptr));
 }

@@ -185,7 +185,9 @@ static status_t init_conf_common(
                         || (ndims == 3 && src_mdw.matches_tag(abc)
                                 && dims[0] == 1))
                 && utils::one_of(data_type::f64, conf.src_dt, conf.dst_dt);
-        if (!conf.vectorize_bwd_scaleshift) { return status::unimplemented; }
+        VDISPATCH_LNORM_IC(conf.vectorize_bwd_scaleshift,
+                VERBOSE_UNSUPPORTED_FEATURE, "scaleshift vectorization");
+
         // Use partial reduction in order to increase number of used threads
         conf.vector_size_scaleshift = c_block == sg_size ? 8 : 1;
         const dim_t first_dim = ndims == 2 ? dims[0] : dims[1];

@@ -46,7 +46,7 @@ macro(handle_tbb_target)
     get_filename_component(_tbb_lib_dir "${_tbb_lib_path}" PATH)
 
     # XXX: workaround - Intel oneAPI DPC++ Compiler "unbundles" tbb.lib
-    # and loses its abosulte path
+    # and loses its absolute path
     if(DNNL_WITH_SYCL)
         link_directories(${_tbb_lib_dir})
     endif()
@@ -55,7 +55,7 @@ macro(handle_tbb_target)
     string(REPLACE "/lib/" "/redist/" _tbb_redist_dir "${_tbb_lib_dir}")
     append_to_windows_path_list(CTESTCONFIG_PATH "${_tbb_redist_dir}")
 
-    # Adds definitions for heterogenous ISA testing
+    # Adds definitions for heterogeneous ISA testing
     add_definitions(-DTBB_PREVIEW_TASK_ARENA_CONSTRAINTS_EXTENSION=1)
 endmacro()
 

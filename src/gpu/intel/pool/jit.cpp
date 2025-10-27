@@ -85,10 +85,11 @@ status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
                               arch >= compute::gpu_arch_t::xe_hpc),
             VERBOSE_UNSUPPORTED_DT_CFG);
 
-    src = std::make_shared<layout_t>(invariant_src_md());
-    dst = std::make_shared<layout_t>(invariant_dst_md());
-    VDISPATCH_POOLING(src->ndims() == dst->ndims(), VERBOSE_INCONSISTENT_NDIMS,
-            "src->ndims()", "dst_ndims()");
+    src = std::make_shared<layout_t>(make_layout(*invariant_src_md()));
+    dst = std::make_shared<layout_t>(make_layout(*invariant_dst_md()));
+    VDISPATCH_POOLING(src->ndims() == dst->ndims(),
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst",
+            into<int>(src->ndims()), into<int>(dst->ndims()));
 
     conf = std::make_shared<conf_t>();
     set_default_conf(
@@ -96,19 +97,19 @@ status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
 
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-    hw_t hw(engine);
-    exec_cfg = std::make_shared<exec_config_t>(hw);
-    exec_cfg->set_regs(hw.prefer_large_grf(gpu_attr) ? 256 : 128);
-    exec_cfg->set_simd(16);
+    hw_t hw(make_ir_hw(engine));
+    options = std::make_shared<kernel::options_t>(hw);
+    options->set_regs(prefer_large_grf(hw, gpu_attr) ? 256 : 128);
+    options->set_simd(16);
 
-    VDISPATCH_POOLING(config_t::check_compatibility(*conf, *exec_cfg, *src,
+    VDISPATCH_POOLING(config_t::check_compatibility(*conf, *options, *src,
                               attr()->post_ops_, dst->type()),
             "incompatible pooling configuration");
     return status::success;
 }
 
 status_t gen_fwd_t::init(impl::engine_t *engine) {
-    cfg_ = config_t(*pd()->exec_cfg, *pd()->conf, *pd()->src, *pd()->dst);
+    cfg_ = config_t(*pd()->options, *pd()->conf, *pd()->src, *pd()->dst);
     zero_points_config_t zp_cfg(pd());
     cfg_.set_zp_cfg(zp_cfg);
     cfg_.compute_grid();

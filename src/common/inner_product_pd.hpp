@@ -32,6 +32,10 @@
     VCHECK(primitive, create, dispatch, inner_product, (f), "%s," msg, \
             this->info(engine), ##__VA_ARGS__)
 
+#define VDISPATCH_INNER_PRODUCT_IC(cond, msg, ...) \
+    VCONDCHECK(primitive, create, dispatch, inner_product, (cond), \
+            status::unimplemented, msg, ##__VA_ARGS__)
+
 namespace dnnl {
 namespace impl {
 

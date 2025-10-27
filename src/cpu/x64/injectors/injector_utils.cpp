@@ -121,7 +121,7 @@ conditional_register_preserve_guard_t::conditional_register_preserve_guard_t(
 */
 
 int registry_scratchpad_t::book(int size /*= DefaultRegSize*/) {
-    auto currentOffset = size_;
+    const auto currentOffset = size_;
     size_ += size;
     return currentOffset;
 }
@@ -219,7 +219,7 @@ void reg64_savable_t::imulTo(const Xbyak::Reg64 &reg, int imm) const {
 }
 
 reg64_savable_guard_t::reg64_savable_guard_t(
-        std::initializer_list<reg64_savable_t> regs,
+        std::initializer_list<const reg64_savable_t *> regs,
         bool condition /*= true*/) {
     if (!condition) return;
 
@@ -228,13 +228,13 @@ reg64_savable_guard_t::reg64_savable_guard_t(
     for (const auto &reg : regs) {
         if (std::find(regs_.begin(), regs_.end(), reg) == regs_.end()) {
             regs_.push_back(reg);
-            reg.save();
+            reg->save();
         }
     }
 }
 
 reg64_savable_guard_t::reg64_savable_guard_t(std::initializer_list<
-        std::pair<std::initializer_list<reg64_savable_t>, bool>>
+        std::pair<std::initializer_list<const reg64_savable_t *>, bool>>
                 init_list) {
     // Reserve space
     size_t max_total_regs = 0;
@@ -248,7 +248,7 @@ reg64_savable_guard_t::reg64_savable_guard_t(std::initializer_list<
             for (const auto &reg : pair.first) {
                 if (std::find(regs_.begin(), regs_.end(), reg) == regs_.end()) {
                     regs_.push_back(reg);
-                    reg.save();
+                    reg->save();
                 }
             }
         }
@@ -258,7 +258,7 @@ reg64_savable_guard_t::reg64_savable_guard_t(std::initializer_list<
 reg64_savable_guard_t::~reg64_savable_guard_t() {
     // Restore in reverse order
     for (auto it = regs_.rbegin(); it != regs_.rend(); ++it)
-        it->restore();
+        (*it)->restore();
 }
 
 } // namespace injector_utils

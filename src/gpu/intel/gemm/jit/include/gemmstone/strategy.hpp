@@ -403,7 +403,7 @@ struct GEMMStrategy : public GEMMStrategyPOD
 
     int aqGroupKGranularity() const { return groupKReduce(slmA ? unrollKSLM : ka_load); }
     int bqGroupKGranularity() const { return groupKReduce(slmB ? unrollKSLM : kb_load); }
-    static int groupKReduce(int x) { while (x > 32 && (x & 1) == 0) x >>= 1; return x; }
+    static int groupKReduce(int x) { while (x > 16 && (x & 1) == 0) x >>= 1; return x; }
 
     void serialize(SerializationStream &s) const
     {

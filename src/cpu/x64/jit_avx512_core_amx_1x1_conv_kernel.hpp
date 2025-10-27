@@ -75,7 +75,9 @@ private:
     const Xbyak::Reg64 wsp_ptr = r12;
 
     const Xbyak::Reg64 reg_bias = r11;
-    const Xbyak::Reg64 reg_ptr_scales = r10;
+    const Xbyak::Reg64 reg_ptr_src_scales = r10;
+    const Xbyak::Reg64 reg_ptr_wei_scales = r10;
+    const Xbyak::Reg64 reg_ptr_dst_scales = r10;
     const Xbyak::Reg64 reg_ptr_sum_scale = r9;
     const Xbyak::Reg64 reg_ptr_sum_zp = rax;
     const Xbyak::Reg64 aux_reg_saturation = reg_ptr_sum_scale;
@@ -89,14 +91,11 @@ private:
     const Xbyak::Reg64 reg_is_osb = rsi;
     const Xbyak::Reg64 reg_postop = abi_not_param1;
     const Xbyak::Reg64 reg_scratch = reg_bias;
-    const Xbyak::Reg64 reg_tilebuff = reg_ptr_scales;
+    const Xbyak::Reg64 reg_tilebuff = reg_ptr_wei_scales;
     /* zero-point */
     const Xbyak::Reg64 reg_zp_compensation = reg_last_h;
     const Xbyak::Reg64 reg_src_zero_point = reg_oc_blocks;
     const Xbyak::Reg64 reg_dst_zero_point = rax;
-
-    /* scale */
-    const Xbyak::Reg64 reg_ptr_dst_scale = reg_ptr_scales;
 
     const Xbyak::Zmm zmm_bias = zmm31;
     const Xbyak::Zmm zmm_saturation = zmm_bias;

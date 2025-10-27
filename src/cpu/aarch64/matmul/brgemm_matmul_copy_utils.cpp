@@ -39,7 +39,7 @@ using namespace Xbyak_aarch64;
 #define LDR_IMM(reg, addr, off) \
     { \
         const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if ((off & IMM12_MASK) == 0) { \
+        if (((off)&IMM12_MASK) == 0) { \
             ldr(reg, ptr(addr, off)); \
         } else { \
             add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
@@ -50,7 +50,7 @@ using namespace Xbyak_aarch64;
 #define STR_IMM(reg, addr, off) \
     { \
         const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if ((off & IMM12_MASK) == 0) { \
+        if (((off)&IMM12_MASK) == 0) { \
             str(reg, ptr(addr, off)); \
         } else { \
             add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
@@ -60,12 +60,11 @@ using namespace Xbyak_aarch64;
 
 template <cpu_isa_t isa>
 struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
-                                         public jit_generator {
+                                         public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_a_impl_t)
 
     jit_brgemm_matmul_copy_a_impl_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
-        , jit_generator()
         , typesize_(conf_->a_dt_sz)
         , tr_typesize_(conf_->tr_a_dt_sz)
         , vnni_granularity_(data_type_vnni_granularity(conf_->src_dt))
@@ -79,8 +78,10 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
         , k_loop_unroll_(is_sve256_ ? 7 : 16)
         , vmm_copy_idx_(29) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak_aarch64::XReg;
@@ -232,12 +233,11 @@ template struct jit_brgemm_matmul_copy_a_impl_t<sve_256>;
 
 struct jit_brgemm_matmul_copy_a_transposed_impl_t
     : public jit_brgemm_matmul_copy_a_t,
-      public jit_generator {
+      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_a_transposed_impl_t)
 
     jit_brgemm_matmul_copy_a_transposed_impl_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
-        , jit_generator()
         , typesize(conf_->a_dt_sz)
         , tr_typesize(conf_->tr_a_dt_sz)
         , src_stride(conf_->copy_A_src_stride)
@@ -257,8 +257,10 @@ struct jit_brgemm_matmul_copy_a_transposed_impl_t
         MAYBE_UNUSED(k_loop_dst_shift);
     }
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak_aarch64::XReg;
@@ -358,12 +360,11 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t::generate() {
 
 template <cpu_isa_t isa>
 struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
-                                         public jit_generator {
+                                         public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_int8_t)
 
     jit_brgemm_matmul_copy_b_int8_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator()
         , src_stride_(conf->wei_tag == format_tag::acbd
                           ? conf->copy_B_wei_stride
                           : conf->N * sizeof(int8_t))
@@ -372,8 +373,10 @@ struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
                   conf->s8s8_compensation_required || conf->has_zero_point_a)
         , comp_acc_idx_(25) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 protected:
     using reg64_t = const Xbyak_aarch64::XReg;
@@ -498,12 +501,11 @@ void jit_brgemm_matmul_copy_b_int8_t<isa>::generate() {
 }
 
 struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
-                                        public jit_generator {
+                                        public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_f32_t)
 
     jit_brgemm_matmul_copy_b_f32_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator()
         , dt_in_(data_type::f32)
         , typesize_in_(types::data_type_size(dt_in_))
         , src_stride_(conf_->wei_tag == acbd ? conf_->copy_B_wei_stride
@@ -513,8 +515,10 @@ struct jit_brgemm_matmul_copy_b_f32_t : public jit_brgemm_matmul_copy_b_t,
         MAYBE_UNUSED(tr_src_stride_);
     }
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak_aarch64::XReg;
@@ -644,12 +648,11 @@ void jit_brgemm_matmul_copy_b_f32_t::generate() {
 template <cpu_isa_t isa>
 struct jit_brgemm_matmul_copy_b_transposed_t
     : public jit_brgemm_matmul_copy_b_t,
-      public jit_generator {
+      public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_transposed_t)
 
     jit_brgemm_matmul_copy_b_transposed_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator()
         , typesize_(conf_->b_dt_sz)
         , tr_typesize_(conf_->tr_b_dt_sz)
         , vnni_granularity_(data_type_vnni_granularity(conf_->wei_dt))
@@ -665,14 +668,15 @@ struct jit_brgemm_matmul_copy_b_transposed_t
                           : conf_->K * typesize_)
         , tr_src_stride_(conf_->LDB * vnni_granularity_ * tr_typesize_) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator::operator()(ctx); }
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
 private:
     using reg64_t = const Xbyak_aarch64::XReg;
     using reg32_t = const Xbyak_aarch64::WReg;
     using opmask_t = const Xbyak_aarch64::PReg;
-    using ZReg = const Xbyak_aarch64::ZReg;
 
     static constexpr bool is_sve256_ = isa == sve_256;
     static constexpr cpu_isa_t isa_ = isa;
@@ -720,20 +724,20 @@ private:
 
     // Note: for the SVE256 implementation, reserve ZReg(8) and ZReg(9) as
     // temporary compute registers.
-    ZReg vmm_comp_mul = Xbyak_aarch64::ZReg(max_vmm_regs_ - 1);
-    ZReg vmm_comp_acc = Xbyak_aarch64::ZReg(max_vmm_regs_ - 2);
-    ZReg vmm_zp_a_neg_val = Xbyak_aarch64::ZReg(max_vmm_regs_ - 3);
-    ZReg vmm_s8s8_comp_acc = Xbyak_aarch64::ZReg(max_vmm_regs_ - 4);
-    ZReg vmm_all_bits_1 = Xbyak_aarch64::ZReg(max_vmm_regs_ - 5);
-    ZReg vmm_one_s32 = Xbyak_aarch64::ZReg(max_vmm_regs_ - 6);
+    const ZReg vmm_comp_mul {max_vmm_regs_ - 1};
+    const ZReg vmm_comp_acc {max_vmm_regs_ - 2};
+    const ZReg vmm_zp_a_neg_val {max_vmm_regs_ - 3};
+    const ZReg vmm_s8s8_comp_acc {max_vmm_regs_ - 4};
+    const ZReg vmm_all_bits_1 {max_vmm_regs_ - 5};
+    const ZReg vmm_one_s32 {max_vmm_regs_ - 6};
+    const ZReg vmm_ones_words {max_vmm_regs_ - 7};
+    const ZReg vmm_dot_product_temp {max_vmm_regs_ - 8};
 
-    ZReg vmm_ones_words = ZReg(max_vmm_regs_ - 7);
-    ZReg vmm_dot_product_temp = ZReg(max_vmm_regs_ - 8);
+    const ZReg z_tmp_0 {28};
+    const ZReg z_tmp_1 {29};
+    const ZReg z_tmp_3 {30};
+    const ZReg z_tmp_2 {27};
 
-    ZReg z_tmp_0 = ZReg(28);
-    ZReg z_tmp_1 = ZReg(29);
-    ZReg z_tmp_3 = ZReg(30);
-    ZReg z_tmp_2 = ZReg(27);
     PReg p_tmp_0 = p7;
     PReg p_02 = p8;
     PReg p_AA = p9;

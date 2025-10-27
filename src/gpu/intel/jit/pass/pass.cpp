@@ -90,7 +90,7 @@ public:
 
     object_t _mutate(const store_t &obj) override {
         int elems = obj.value.type().elems();
-        int elem_size = obj.value.type().scalar().size();
+        int elem_size = obj.value.type().base().size();
         int stride = (obj.has_default_stride() ? 1 : obj.stride / elem_size);
         int store_size = elem_size * stride * elems;
         const auto grf_size = hw_.grf_size();
@@ -123,7 +123,7 @@ private:
         auto *load = e.as_ptr<load_t>();
         if (load) {
             int stride = load->stride;
-            if (load->has_default_stride()) stride = load->type.scalar().size();
+            if (load->has_default_stride()) stride = load->type.base().size();
             return load_t::make(load->type.with_elems(end - beg), load->buf,
                     load->off + beg * stride, load->stride);
         }
@@ -186,7 +186,7 @@ private:
 
 stmt_t fixup_if_conditions(const stmt_t &s, ir_context_t &ir_ctx) {
     trace_start();
-    auto ret = if_condition_fixer_t(ir_ctx.exec_cfg().simd()).mutate(s);
+    auto ret = if_condition_fixer_t(ir_ctx.options().simd()).mutate(s);
     trace_pass("fixup_if_conditions", ret, ir_ctx);
     return ret;
 }

@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2017-2021 Intel Corporation
 * Copyright 2021 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,7 +37,7 @@ namespace aarch64 {
 
 struct jit_uni_eltwise_kernel_t;
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
+template <cpu_isa_t isa>
 struct jit_uni_eltwise_fwd_t : public primitive_t {
     struct pd_t : public cpu_eltwise_fwd_pd_t {
         using cpu_eltwise_fwd_pd_t::cpu_eltwise_fwd_pd_t;
@@ -48,9 +49,7 @@ struct jit_uni_eltwise_fwd_t : public primitive_t {
     };
 
     jit_uni_eltwise_fwd_t(const pd_t *apd);
-    virtual ~jit_uni_eltwise_fwd_t();
-
-    typedef typename prec_traits_t<d_type>::type data_t;
+    ~jit_uni_eltwise_fwd_t() override;
 
     status_t init(engine_t *engine) override;
 
@@ -61,7 +60,7 @@ private:
     std::unique_ptr<jit_uni_eltwise_kernel_t> kernel_;
 };
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
+template <cpu_isa_t isa>
 struct jit_uni_eltwise_bwd_t : public primitive_t {
     struct pd_t : public cpu_eltwise_bwd_pd_t {
         using cpu_eltwise_bwd_pd_t::cpu_eltwise_bwd_pd_t;
@@ -73,9 +72,7 @@ struct jit_uni_eltwise_bwd_t : public primitive_t {
     };
 
     jit_uni_eltwise_bwd_t(const pd_t *apd);
-    virtual ~jit_uni_eltwise_bwd_t();
-
-    typedef typename prec_traits_t<d_type>::type data_t;
+    ~jit_uni_eltwise_bwd_t() override;
 
     status_t init(engine_t *engine) override;
 

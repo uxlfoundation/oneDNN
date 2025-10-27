@@ -17,10 +17,13 @@
 /// @example cpu_matmul_coo.cpp
 /// > Annotated version: @ref cpu_matmul_coo_cpp
 
-/// @page cpu_matmul_coo_cpp MatMul Primitive with Sparse Memory in COO Format
-/// This C++ API example demonstrates how to create and execute a
+/// @page cpu_matmul_coo_cpp_brief
+/// @brief This C++ API example demonstrates how to create and execute a
 /// [MatMul](@ref dev_guide_matmul) primitive that uses a source tensor
 /// encoded with the COO sparse encoding.
+
+/// @page cpu_matmul_coo_cpp MatMul Primitive with Sparse Memory in COO Format
+/// \copybrief cpu_matmul_coo_cpp_brief
 ///
 /// @include cpu_matmul_coo.cpp
 

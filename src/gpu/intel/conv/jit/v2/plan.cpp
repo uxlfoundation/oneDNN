@@ -334,9 +334,9 @@ private:
             const layout_desc_t &desc, std::vector<fused_dim_t> dims) {
         v2::layout_t ret(desc, layout.type());
         for (auto &b : layout.blocks()) {
-            dim_t block = b.block;
+            dim_t block = b.size;
             while (block > 1) {
-                auto dim_block = dims[b.dim].pop(block);
+                auto dim_block = dims[b.idx].pop(block);
                 ret.add_block(dim_block.first, dim_block.second);
             }
         }
@@ -836,7 +836,7 @@ private:
                 << "Plan:\n"
                 << plan.str() << "\ncheck_plan: out of registers";
         int slm_bound = compute::device_info_t::max_slm_size_per_tg(
-                convert_ngen_arch_to_dnnl(hw_.to_ngen()),
+                convert_ngen_arch_to_dnnl(hw_),
                 into<int>(desc_.thread_group_tile.elems()), desc_.regs > 128);
         int slm_bytes = plan.slm_usage_bytes();
         gpu_check(slm_bytes <= slm_bound)

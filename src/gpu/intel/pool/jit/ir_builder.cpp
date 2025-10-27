@@ -28,7 +28,7 @@
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
-#include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/ir/tensor_config.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 
@@ -53,24 +53,24 @@ public:
     view_t create_view(const memory_desc_t &md) const override {
         dim_idx_t cp_ndims = cp_view().nvdims();
         gpu_assert(cp_ndims >= 3);
-        layout_t layout(md, /*do_normalize=*/false);
+        layout_t layout = make_layout(md);
         std::vector<dim_t> dims(md.dims, md.dims + md.ndims);
         std::vector<dim_t> pad_dims(md.padded_dims, md.padded_dims + md.ndims);
         maybe_reshape_dims(ndims_, layout, dims, pad_dims);
         layout = spatials_to_3d(layout, false, {0, 1, 2});
-        dims = dims_to_3d(dims);
-        pad_dims = dims_to_3d(pad_dims);
+        auto tile = dims_to_3d(dims);
+        auto pad_tile = dims_to_3d(pad_dims);
         gpu_assert(layout.ndims() == cp_ndims) << "Incompatible dimensions.";
         uint32_t bound_check_mask = 0;
         for (dim_idx_t i = 0; i < cp_ndims; i++) {
-            if (dims[i] == 1) continue; // Broadcast, no bound check needed.
-            if (pad_dims[i] != cp_view().tlayout().dim(i)) {
+            if (tile[i] == 1) continue; // Broadcast, no bound check needed.
+            if (pad_tile[i] != cp_view().tlayout().elems(i)) {
                 bound_check_mask |= (1 << i);
             } else if (cp_view().has_tmask(i)) {
                 bound_check_mask |= (1 << i);
             }
         }
-        return view_t(layout, cp_view().vvars(), dims, bound_check_mask);
+        return view_t(layout, cp_view().vvars(), tile, bound_check_mask);
     }
 
     bool need_to_restore_zero_padding() const override { return true; }
@@ -80,16 +80,16 @@ private:
             std::vector<dim_t> &dims, std::vector<dim_t> &padded_dims) {
         gpu_assert(layout.ndims() == dims.size());
         if (layout.ndims() < ndims) {
-            layout = layout_t(layout.type(), ndims, layout.offset(),
-                    layout.blocks(), /*do_normalize=*/false);
+            layout = layout_t(layout.type(), layout.blocks(), layout.offset(),
+                    ndims, /*do_normalize=*/false);
             dims.resize(ndims, 1);
             padded_dims.resize(ndims, 1);
         }
     }
 
-    static std::vector<dim_t> dims_to_3d(const std::vector<dim_t> &dims) {
-        layout_t dummy_layout(type_t::u8(), 0, dims);
-        return spatials_to_3d(dummy_layout, false, {0, 1, 2}).dims();
+    static tile_t dims_to_3d(const std::vector<dim_t> &dims) {
+        layout_t dummy_layout(type_t::u8(), dims);
+        return spatials_to_3d(dummy_layout, false, {0, 1, 2}).tile();
     }
 
     uint32_t normalize_mask(uint32_t orig_mask) const {
@@ -133,15 +133,15 @@ private:
 
 stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
         const config_t &cfg, const primitive_desc_t &pd) {
-    const auto &exec = cfg.exec_cfg();
+    const auto &exec = cfg.options();
     const auto &prb = cfg.problem();
     const auto &src_layout = cfg.src_layout().user();
     const auto &dst_layout = cfg.dst_layout().user();
 
     const bool is_xe2_or_xe3_small_kdhw = !(prb.kd * prb.kh * prb.kw == 1)
             && (prb.kh * prb.kw <= 9)
-            && (exec.hw().to_ngen() == ngen::HW::Xe2
-                    || exec.hw().to_ngen() == ngen::HW::Xe3);
+            && (exec.hw().ngen_hw() == ngen::HW::Xe2
+                    || exec.hw().ngen_hw() == ngen::HW::Xe3);
 
     gpu_assert(src_layout.ndims() == dst_layout.ndims());
 
@@ -182,8 +182,8 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     for (dim_idx_t i = 0; i < padded_dims.size(); i++)
         padded_dims[i] = dims_grid[i];
     gpu_assert(padded_dims.size() == 5);
-    std::vector<dim_t> dims {padded_dims[0], src_layout.dim(1), padded_dims[2],
-            padded_dims[3], padded_dims[4]};
+    std::vector<dim_t> dims {padded_dims[0], src_layout.elems(1),
+            padded_dims[2], padded_dims[3], padded_dims[4]};
 
     // Source.
     auto src_view = view_t({mb, oc, od, oh, ow, kd, kh, kw}, 5);
@@ -376,7 +376,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     auto acc_type = cfg.acc_type(simd);
     auto acc_buf
             = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr), "acc");
-    const auto acc_sc_size = acc_type.scalar().size();
+    const auto acc_sc_size = acc_type.base().size();
     const auto acc_size = acc_sc_size * lg[4] * lg[3] * lg[2] * lg[1] * lg[0];
 
     auto read_buf
@@ -399,8 +399,8 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     const auto &write_layout = write.reg_layout();
     auto write_stmt = write.stmt();
 
-    tile_t src_tile(read_layout.split_into_max_tile(simd, true));
-    tile_t dst_tile(write_layout.split_into_max_tile(simd, true));
+    tile_t src_tile(read_layout.max_subtile(simd));
+    tile_t dst_tile(write_layout.max_subtile(simd));
     gpu_assert(src_tile.elems() == simd);
     gpu_assert(dst_tile.elems() == simd);
 
@@ -411,11 +411,11 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     stmt_t stmt;
 
     auto gen_fill_values = [](int simd, bool isneg, type_t type) {
-        gpu_assert(type.scalar().size() <= 4);
-        const int mult = 4 / type.scalar().size();
+        gpu_assert(type.base().size() <= 4);
+        const int mult = 4 / type.base().size();
         expr_t v = 0;
         if (isneg) {
-            switch (to_ngen(type.scalar())) {
+            switch (to_ngen(type.base())) {
                 case ngen::DataType::f: v = 0xFF7FFFFF; break;
                 case ngen::DataType::bf: v = 0xFF7FFF7F; break;
                 case ngen::DataType::hf: v = 0xFBFFFBFF; break;
@@ -433,13 +433,13 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
                                 const tile_t &tile, const layout_t &layout) {
         stmt_t retn;
         const auto values = gen_fill_values(simd, isneg, layout.type());
-        layout.for_each_tile(tile, [&](const icoord_t &s) {
+        for (auto &s : layout.iter(tile)) {
             const dim_t off = layout.offset<dim_t>(s) * layout.type().size();
-            if (off >= utils::rnd_dn(layout.size(), simd * 4))
+            if (off >= utils::rnd_dn(size_bytes(layout), simd * 4))
                 retn = retn.append(store_t::make(buf, off, values.first));
             else if (off % (simd * 4) == 0)
                 retn = retn.append(store_t::make(buf, off, values.second));
-        });
+        }
         return retn;
     };
     const bool is_neg
@@ -468,7 +468,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
                     (acc_size - i < simd * 4) ? a_fv.first : a_fv.second));
         fill_stmt = gen_zero_out(simd, is_neg, read_buf, src_tile, read_layout);
 
-        read_layout.for_each_tile(src_tile, [&](const icoord_t &s) {
+        for (auto &s : read_layout.iter(src_tile)) {
             const dim_t off_l
                     = read_layout.offset<dim_t>(s) * read_layout.type().size();
             const dim_t off_a = (s.get(0) * lg[1] + s.get(1)) * acc_sc_size;
@@ -480,7 +480,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
             auto op = binary_op_t::make(op_kind, acc, load);
             compute_stmt
                     = compute_stmt.append(store_t::make(acc_buf, off_a, op));
-        });
+        }
 
         stmt = stmt.append(schedule.create_loop_nest((check_idhw)
                         ? fill_stmt.append(compute_stmt)
@@ -517,8 +517,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
             *pd.invariant_dst_md(), *pd.invariant_dst_md(), view_mapper);
     stmt = stmt.append(create_epilogue_stmt(exec, ir_ctx, schedule,
             /*force_c_reorder=*/false, post_op_ctx, dst_thr_tile_coord,
-            write_layout.retype(acc_type.scalar()), dst_buf, acc_buf,
-            buf_size));
+            write_layout.with(acc_type.base()), dst_buf, acc_buf, buf_size));
 
     loop_bound_counter_t lbc(schedule);
     auto exit_cond = (lbc.count(ow) >= prb.ow) ? (ow < prb.ow) : expr_t();

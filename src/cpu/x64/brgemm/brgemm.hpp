@@ -69,6 +69,37 @@ status_t DNNL_API brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         dim_t LDC, dim_t M, dim_t N, dim_t K,
         const brgemm_strides_t *strides = nullptr, bool is_tf32 = false);
 
+/// Initializes a BRGEMM descriptor configured for batched matrix-vector
+/// multiplication.
+///
+/// @param brg     Output BRGEMM descriptor.
+/// @param dt_a    Data type of matrix A. Supported types: f32.
+/// @param dt_x    Data type of input vector x. Supported types: f32.
+///
+/// @note
+///     The data type of output vector y depends on dt_a and dt_x:
+///     - If dt_a and dt_x are integer types (u8/s8), y has int32 data type.
+///     - If dt_a and dt_x are bf16, f16, or f32, y has f32 data type.
+/// @param transA  Specifies whether matrix A is transposed:
+///                'false' - A is not transposed,
+///                'true'  - A is transposed.
+/// @param alpha   Scalar multiplier alpha.
+/// @param beta    Scalar multiplier beta.
+/// @param LDA     Leading dimension of matrix A.
+///                Must be at least max(1, N).
+/// @param INCY    Stride between elements of output vector y.
+/// @param M       Number of rows of matrix A if not transposed, or columns if
+///                transposed. Also the size of output vector y.
+/// @param N       Number of columns of matrix A if not transposed, or rows if
+///                transposed. Also the size of input vector x.
+///
+/// @return status::success on success and a status describing the error
+///     otherwise.
+status_t brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
+        brgemm_batch_kind_t type, impl::data_type_t dt_a,
+        impl::data_type_t dt_x, bool transA, float alpha, float beta, dim_t LDA,
+        dim_t INCY, dim_t M, dim_t N);
+
 /// Initializes a BRGEMM descriptor with B matrix as a diagonal matrix
 /// represented in packed vector format.
 ///

@@ -77,28 +77,33 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
             const memory_desc_t *src_d = src_md();
             rtus_prepare(this, conv_d, src_d, dst_md());
 
-            CHECK(jit_sve_1x1_conv_kernel<isa_>::init_conf(jcp_, *conv_d,
+            CHECK(jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jcp_, *conv_d,
                     *src_d, *weights_md(), *dst_md(), *attr(),
                     dnnl_get_max_threads(), rtus_.reduce_src_));
             if (jcp_.with_dw_conv) CHECK(depthwise_po_init(engine));
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_sve_1x1_conv_kernel<isa_>::init_scratchpad(scratchpad, jcp_);
+            jit_sve_1x1_conv_kernel_t<isa_>::init_scratchpad(scratchpad, jcp_);
 
             rtus_prepare_space_info(this, scratchpad, jcp_.nthr);
 
             return status::success;
         }
 
-        const memory_desc_t *dst_md(
-                int index = 0, bool user_input = false) const override {
+        const memory_desc_t *dst_md() const { return dst_md(0, false); }
+        const memory_desc_t *dst_md(int index) const {
+            return dst_md(index, false);
+        }
+        const memory_desc_t *dst_md(int index, bool user_input) const override {
             return jcp_.with_dw_conv
                     ? dw_conv_pd_->dst_md(index, user_input)
                     : cpu_convolution_fwd_pd_t::dst_md(index, user_input);
         }
 
-        const memory_desc_t *arg_md(
-                int arg, bool user_input = false) const override {
+        const memory_desc_t *arg_md(int arg) const {
+            return arg_md(arg, false);
+        }
+        const memory_desc_t *arg_md(int arg, bool user_input) const override {
             if (jcp_.with_dw_conv) {
                 switch (arg) {
                     case DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_SRC:
@@ -323,13 +328,13 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
 
     jit_sve_1x1_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
-    typedef typename prec_traits_t<src_type>::type src_data_t;
-    typedef typename prec_traits_t<wei_type>::type wei_data_t;
-    typedef typename prec_traits_t<dst_type>::type dst_data_t;
+    using src_data_t = typename prec_traits_t<src_type>::type;
+    using wei_data_t = typename prec_traits_t<wei_type>::type;
+    using dst_data_t = typename prec_traits_t<dst_type>::type;
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_sve_1x1_conv_kernel<isa_>(
+                new jit_sve_1x1_conv_kernel_t<isa_>(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
         CHECK(kernel_->create_kernel());
 
@@ -358,7 +363,7 @@ private:
             const void *post_ops_binary_rhs_arg_vec_dw) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_sve_1x1_conv_kernel<isa_>> kernel_;
+    std::unique_ptr<jit_sve_1x1_conv_kernel_t<isa_>> kernel_;
     std::unique_ptr<rtus_driver_t<isa_>> rtus_driver_;
     using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_f32_t<isa_>;
     std::unique_ptr<dw_conv_kernel_t> kernel_dw_;
@@ -395,13 +400,13 @@ struct jit_sve_1x1_convolution_bwd_data_t : public primitive_t {
             const memory_desc_t *diff_src_d = diff_src_md();
             rtus_prepare(this, conv_d, diff_src_d, diff_dst_md());
 
-            status_t status = jit_sve_1x1_conv_kernel<isa_>::init_conf(jcp_,
+            status_t status = jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jcp_,
                     *conv_d, *diff_src_d, *weights_md(), *diff_dst_md(),
                     *attr(), dnnl_get_max_threads(), rtus_.reduce_src_);
             if (status != status::success) return status;
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_sve_1x1_conv_kernel<isa_>::init_scratchpad(scratchpad, jcp_);
+            jit_sve_1x1_conv_kernel_t<isa_>::init_scratchpad(scratchpad, jcp_);
 
             rtus_prepare_space_info(this, scratchpad, jcp_.nthr);
 
@@ -478,13 +483,13 @@ struct jit_sve_1x1_convolution_bwd_data_t : public primitive_t {
 
     jit_sve_1x1_convolution_bwd_data_t(const pd_t *apd) : primitive_t(apd) {}
 
-    typedef typename prec_traits_t<diff_dst_type>::type diff_dst_data_t;
-    typedef typename prec_traits_t<wei_type>::type wei_data_t;
-    typedef typename prec_traits_t<diff_src_type>::type diff_src_data_t;
+    using diff_dst_data_t = typename prec_traits_t<diff_dst_type>::type;
+    using wei_data_t = typename prec_traits_t<wei_type>::type;
+    using diff_src_data_t = typename prec_traits_t<diff_src_type>::type;
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_sve_1x1_conv_kernel<isa_>(
+                new jit_sve_1x1_conv_kernel_t<isa_>(
                         pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
         CHECK(kernel_->create_kernel());
         CHECK(init_rtus_driver<isa_>(this));
@@ -499,7 +504,7 @@ struct jit_sve_1x1_convolution_bwd_data_t : public primitive_t {
 private:
     void execute_backward_data(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<jit_sve_1x1_conv_kernel<isa_>> kernel_;
+    std::unique_ptr<jit_sve_1x1_conv_kernel_t<isa_>> kernel_;
     std::unique_ptr<rtus_driver_t<isa_>> rtus_driver_;
 };
 using jit_sve_256_1x1_convolution_bwd_data_f32_t
@@ -536,7 +541,7 @@ struct jit_sve_1x1_convolution_bwd_weights_t : public primitive_t {
             const memory_desc_t *src_d = src_md();
             rtus_prepare(this, conv_d, src_d, diff_dst_md());
 
-            status_t status = jit_sve_1x1_conv_kernel<isa_>::init_conf(jcp_,
+            status_t status = jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jcp_,
                     *conv_d, *src_d, *diff_weights_md(), *diff_dst_md(),
                     *attr(), dnnl_get_max_threads(), rtus_.reduce_src_);
             if (status != status::success) return status;
@@ -544,7 +549,7 @@ struct jit_sve_1x1_convolution_bwd_weights_t : public primitive_t {
             init_balancers();
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_sve_1x1_conv_kernel<isa_>::init_scratchpad(scratchpad, jcp_);
+            jit_sve_1x1_conv_kernel_t<isa_>::init_scratchpad(scratchpad, jcp_);
 
             auto reducer_bia_scratchpad = memory_tracking::registrar_t(
                     scratchpad, memory_tracking::names::prefix_reducer_bia);
@@ -636,7 +641,7 @@ struct jit_sve_1x1_convolution_bwd_weights_t : public primitive_t {
 
     jit_sve_1x1_convolution_bwd_weights_t(const pd_t *apd) : primitive_t(apd) {}
 
-    typedef typename prec_traits_t<data_type::f32>::type data_t;
+    using data_t = typename prec_traits_t<data_type::f32>::type;
 
     status_t init(engine_t *engine) override;
 
@@ -649,7 +654,7 @@ private:
     void execute_backward_weights(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_sve_1x1_conv_kernel<isa_>> kernel_;
+    std::unique_ptr<jit_sve_1x1_conv_kernel_t<isa_>> kernel_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32, isa_>> acc_ker_;
     std::unique_ptr<cpu_reducer_t<data_type::f32, isa_>> reducer_bias_;
     // std::unique_ptr<jit_transpose4x16_src> trans_kernel_;

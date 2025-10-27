@@ -47,12 +47,12 @@ public:
 
     int pad_block(const pvar_t &d) const override { return 0; }
 
-    int simd() const { return exec_cfg().simd(); }
+    int simd() const { return options().simd(); }
     compute::nd_range_t nd_range() const;
     const std::vector<tile_t> &tiles() const { return tiles_; }
     const std::array<tile_t, 3> &grid() const { return grid_; }
 
-    config_t(const exec_config_t &ec, layout_t src, layout_t dst);
+    config_t(const kernel::options_t &ec, layout_t src, layout_t dst);
 
 private:
     std::vector<tile_t> tiles_;

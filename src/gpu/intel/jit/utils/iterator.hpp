@@ -218,7 +218,7 @@ public:
         iterator_t &operator++() {
             if (it_ == end_) return *this;
 
-            auto block = (*it_).block;
+            auto block = (*it_).size;
             auto size = block / scale();
             if ((size & 1) == 0) {
                 log2scale_++;
@@ -228,7 +228,7 @@ public:
                 if (size % factor_ == 0) return *this;
             }
 
-            dims_[(*it_).dim] *= block;
+            dims_[(*it_).idx] *= block;
             ++it_;
             factor_ = 1;
             log2scale_ = 0;
@@ -237,11 +237,12 @@ public:
 
         tile_t operator*() const {
             auto dims = dims_;
-            dims[(*it_).dim] *= factor();
+            dims[(*it_).idx] *= factor();
             return tile_t(dims);
         }
 
-        iterator_t(const inner_iter_t &it, const inner_iter_t &end, int ndims)
+        iterator_t(
+                const inner_iter_t &it, const inner_iter_t &end, size_t ndims)
             : it_(it), end_(end), dims_(ndims, 1), factor_(1) {}
 
     private:
@@ -257,16 +258,16 @@ public:
     iterator_t begin() const { return {begin_, end_, ndims_}; }
     iterator_t end() const { return {end_, end_, ndims_}; }
 
-    inner_tiles_t(const IterT &iterable, int ndims)
+    inner_tiles_t(const IterT &iterable, size_t ndims)
         : begin_(iterable.begin()), end_(iterable.end()), ndims_(ndims) {}
 
 private:
     inner_iter_t begin_, end_;
-    int ndims_;
+    size_t ndims_;
 };
 
 template <typename IterT>
-inner_tiles_t<IterT> inner_tiles(const IterT &iter, int ndims) {
+inner_tiles_t<IterT> inner_tiles(const IterT &iter, size_t ndims) {
     return {iter, ndims};
 }
 

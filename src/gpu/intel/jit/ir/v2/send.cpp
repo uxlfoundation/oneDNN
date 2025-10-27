@@ -42,7 +42,7 @@ bool process_coef_y_stride(
         return process_coef_y_stride(plane, a, v, prover);
     }
     for (auto &size_val : {std::make_pair(u, 0), std::make_pair(v, 1)}) {
-        auto dim = pvar_t::from_var(size_val.first);
+        auto dim = to_pvar(size_val.first);
         if (!dim.is_undef()) {
             if (!prover.require((plane.y_stride == 1)
                         | (size_val.first == size_val.second)))
@@ -58,13 +58,13 @@ bool process_coef_y_stride(
 bool adjust_for_non_unit_y_stride(
         plane_t &plane, const coord_t &coord, const prover_t &prover) {
     if (is_one(plane.y_stride)) return true;
-    auto y_stride_dim = pvar_t::from_var(plane.y_stride);
+    auto y_stride_dim = to_pvar(plane.y_stride);
     if (y_stride_dim.is_undef()) return false;
     auto _y = to_linear(plane.y);
     auto &y = _y.as<linear_t>();
     auto to_size = [&](const expr_t &idx) {
         for (auto &d : coord) {
-            if (coord[d].is_equal(idx)) return d.var();
+            if (coord[d].is_equal(idx)) return var(d);
         }
         return expr_t();
     };

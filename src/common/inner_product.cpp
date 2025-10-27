@@ -68,8 +68,7 @@ status_t ip_desc_init(inner_product_desc_t *ip_desc, prop_kind_t prop_kind,
     if (with_bias)
         runtime_dims_or_strides = runtime_dims_or_strides
                 || memory_desc_wrapper(bias_desc).has_runtime_dims_or_strides();
-    VCONDCHECK(primitive, create, check, ip, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_IP_UNIMPL(!runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     (prop_kind == backward_data ? id.diff_src_desc : id.src_desc) = *src_desc;
     (is_fwd ? id.dst_desc : id.diff_dst_desc) = *dst_desc;
@@ -90,7 +89,8 @@ status_t ip_desc_init(inner_product_desc_t *ip_desc, prop_kind_t prop_kind,
             src_desc->ndims);
     VCHECK_IP(dst_desc->ndims == 2, VERBOSE_BAD_NDIMS, "dst", dst_desc->ndims);
     VCHECK_IP(weights_desc->ndims == src_desc->ndims,
-            VERBOSE_INCONSISTENT_NDIMS, "weights", "src");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "weights", "src",
+            weights_desc->ndims, src_desc->ndims);
     VCHECK_IP((with_bias ? bias_desc->ndims == 1 : true), VERBOSE_BAD_NDIMS,
             "bias", bias_desc->ndims);
     VCHECK_IP((with_bias ? bias_desc->dims[0] == dst_desc->dims[1] : true),

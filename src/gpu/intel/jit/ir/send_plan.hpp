@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2024 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -68,8 +68,9 @@ private:
 
 bool can_use_send_plan(const view_t &view);
 
-send_plan_t create_send_plan(const exec_config_t &exec_cfg, const view_t &view,
-        const send_params_t &send_params, bool zero_out = true);
+send_plan_t create_send_plan(const kernel::options_t &options,
+        const view_t &view, const send_params_t &send_params,
+        bool zero_out = true);
 
 } // namespace jit
 } // namespace intel

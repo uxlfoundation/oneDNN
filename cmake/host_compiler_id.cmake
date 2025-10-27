@@ -47,7 +47,7 @@ endif()
 # The code in this file does the following:
 # - Checks that the provided host compiler exists
 # - Identifies the host compiler kind
-# - Performs nessasary checks (e.g. check for minimum version)
+# - Performs necessary checks (e.g. check for minimum version)
 #
 # This code also fills out the following variables that can be
 # used throughout the build system:

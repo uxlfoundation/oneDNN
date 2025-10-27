@@ -453,7 +453,11 @@ struct host_scalar_executable_t : public op_executable_t {
 
         const memory &src_mem = it_src->second;
         const memory &dst_mem = it_dst->second;
-        dst_mem.set_data_handle(src_mem.get_data_handle());
+        DNNL_HOST_SCALAR_TYPE_SWITCH(
+                src_mem.get_desc().get_data_type(), DType, {
+                    const DType val = src_mem.get_host_scalar_value<DType>();
+                    std::memcpy(dst_mem.get_data_handle(), &val, sizeof(DType));
+                });
     }
 
 #ifdef DNNL_WITH_SYCL
@@ -471,22 +475,23 @@ struct host_scalar_executable_t : public op_executable_t {
         const memory &src_mem = it_src->second;
         const memory &dst_mem = it_dst->second;
 
-        auto prim = dnnl::reorder(src_mem, dst_mem);
-
-        // TODO(xxx): workaround reorder execution which requires the primitive
-        // to have the same engine as stream has.
-        const engine &src_eng = src_mem.get_engine();
-        const engine &dst_eng = dst_mem.get_engine();
-        if (src_eng.get_kind() == engine::kind::cpu
-                && dst_eng.get_kind() == engine::kind::cpu) {
-            auto src_temp = memory(
-                    src_mem.get_desc(), dst_eng, src_mem.get_data_handle());
-            prim = dnnl::reorder(src_temp, dst_mem);
-        }
-
-        auto e = dnnl::sycl_interop::execute(prim, stream, args, deps);
-        if (stream.get_engine().get_kind() == engine::kind::cpu) e.wait();
-        return e;
+        // Use queue.memcpy() to copy the host scalar value to device memory. We
+        // have to wait here as the val is on stack and will become invalid if
+        // queue.memcpy() is asynchronous. A better solution may be supporting
+        // host scalar memory to device memory reorder primitive.
+        auto sycl_queue = dnnl::sycl_interop::get_queue(stream);
+        const size_t size = src_mem.get_desc().get_size();
+        const auto dt = src_mem.get_desc().get_data_type();
+        assert(size
+                == types::data_type_size(static_cast<impl::data_type_t>(dt)));
+        DNNL_HOST_SCALAR_TYPE_SWITCH(dt, DType, {
+            const DType val = src_mem.get_host_scalar_value<DType>();
+            sycl_queue
+                    .memcpy(dst_mem.get_data_handle(),
+                            static_cast<const void *>(&val), size)
+                    .wait();
+        });
+        return {};
     }
 #endif
 
@@ -505,12 +510,26 @@ struct host_scalar_executable_t : public op_executable_t {
         const memory &src_mem = it_src->second;
         const memory &dst_mem = it_dst->second;
 
-        auto prim = dnnl::reorder(src_mem, dst_mem);
-
-        auto e = dnnl::ocl_interop::execute(prim, stream, args, deps);
+        assert(deps.size() <= 1);
+        // Passing the empty event to memcpy below causes failure.
+        const bool empty = deps.empty() || deps[0] == nullptr;
+        const cl_uint num = empty ? 0 : static_cast<cl_uint>(deps.size());
+        const size_t size = src_mem.get_desc().get_size();
+        const auto dt = src_mem.get_desc().get_data_type();
+        assert(size
+                == types::data_type_size(static_cast<impl::data_type_t>(dt)));
+        cl_event e = nullptr;
+        DNNL_HOST_SCALAR_TYPE_SWITCH(dt, DType, {
+            const DType val = src_mem.get_host_scalar_value<DType>();
+            UNUSED_STATUS(xpu::ocl::usm::memcpy(stream.get(),
+                    dst_mem.get_data_handle(), static_cast<const void *>(&val),
+                    size, num, empty ? nullptr : deps.data(), &e));
+            clWaitForEvents(1, &e);
+        });
         return e;
     }
 #endif
+
     status_t reset_engine(const dnnl::engine &p_engine) override {
         UNUSED(p_engine);
         return status::success;
@@ -2918,12 +2937,11 @@ struct sdpa_executable_t : public op_executable_t {
         auto md_dst = make_dnnl_memory_desc(
                 op->get_output_value(0)->get_logical_tensor());
 
-        auto scale_dt = impl::data_type::undef;
+        auto md_scale = dnnl::memory::desc();
         size_t idx = 3;
         if (with_scale_)
-            scale_dt = op->get_input_value(idx++)
-                               ->get_logical_tensor()
-                               .data_type;
+            md_scale = make_dnnl_memory_desc(
+                    op->get_input_value(idx++)->get_logical_tensor());
 
         dnnl::memory::desc md_mask;
         with_explicit_mask_ = mask_type_ == attn_mask_type::buffer;
@@ -2934,8 +2952,10 @@ struct sdpa_executable_t : public op_executable_t {
         dnnl::primitive_attr attr, qk_attr, vs_attr;
         attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
         attr.set_fpmath_mode(static_cast<dnnl::fpmath_mode>(fpmath.mode_));
-        if (op->has_attr(op_attr::is_invert_scale))
-            is_invert_scale_ = op->get_attr<bool>(op_attr::is_invert_scale);
+
+        is_invert_scale_ = op->has_attr(op_attr::is_invert_scale)
+                ? op->get_attr<bool>(op_attr::is_invert_scale)
+                : false;
 
         if (op->has_attr(op_attr::fusion_info)) {
             const auto &sdpa_fusion_info
@@ -2946,6 +2966,13 @@ struct sdpa_executable_t : public op_executable_t {
                     op, sdpa_fusion_info, attr_type_t::VS);
         }
 
+        // Set accumulation mode: the two attributes are requested for
+        // dnnl_sdpa, so we can get them directly without calling has_attr().
+        qk_attr.set_accumulation_mode(str2accumulation_mode(
+                op->get_attr<std::string>(op_attr::qk_acc_mode)));
+        vs_attr.set_accumulation_mode(str2accumulation_mode(
+                op->get_attr<std::string>(op_attr::vs_acc_mode)));
+
         dim_t kv_head_number
                 = op->get_input_value(1)->get_logical_tensor().dims[1];
 
@@ -2955,9 +2982,9 @@ struct sdpa_executable_t : public op_executable_t {
                 ? alg_kind::softmax_accurate_inf_as_zero
                 : alg_kind::softmax_accurate;
         status_t s = create_sdpa_pd(sdpa_pd_, p_engine.get(), md_q.get(),
-                md_k.get(), md_v.get(), md_dst.get(), md_mask.get(), scale_dt,
-                is_invert_scale_, kv_head_number, mask_type_, softmax_alg,
-                attr.get(), qk_attr.get(), vs_attr.get());
+                md_k.get(), md_v.get(), md_dst.get(), md_mask.get(),
+                md_scale.get(), is_invert_scale_, kv_head_number, mask_type_,
+                softmax_alg, attr.get(), qk_attr.get(), vs_attr.get());
         if (s != dnnl::impl::status::success) {
             is_initialized_ = false;
         } else {

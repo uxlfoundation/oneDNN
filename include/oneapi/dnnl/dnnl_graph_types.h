@@ -168,6 +168,16 @@ typedef struct dnnl_graph_graph *dnnl_graph_graph_t;
 /// A constant graph handle.
 typedef const struct dnnl_graph_graph *const_dnnl_graph_graph_t;
 
+/// Dump mode bitmask for graph debugging utilities.
+typedef enum {
+    /// Disable all graph dumps.
+    dnnl_graph_dump_mode_none = 0x0U,
+    /// Dump subgraphs extracted during partitioning.
+    dnnl_graph_dump_mode_subgraph = 0x1U,
+    /// Dump the full graph prior to partitioning.
+    dnnl_graph_dump_mode_graph = 0x2U,
+} dnnl_graph_dump_mode_t;
+
 /// @} dnnl_graph_api_graph
 
 /// @addtogroup dnnl_graph_api_op
@@ -385,6 +395,9 @@ typedef enum {
     /// Specifies a weights_format of an op. The value can be "OIX", "XIO",
     /// "IOX", or "XOI". Different operations may support different values.
     dnnl_graph_op_attr_weights_format,
+    /// Specifies an accumulation_mode attribute to an op. The value can be
+    /// "strict", "relaxed", "any", "f32", "s32", or "f16".
+    dnnl_graph_op_attr_accumulation_mode,
 
     /// Specifies the end of all above exteral attributes for check.
     dnnl_graph_op_attr_end = 0xFF,

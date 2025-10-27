@@ -183,6 +183,8 @@ dnnl::memory::desc make_dnnl_memory_desc(const logical_tensor_t &lt) {
             ? data_type::u8
             : static_cast<data_type>(ltw.data_type());
 
+    if (ltw.is_host_scalar()) { return dnnl::memory::desc::host_scalar(dtype); }
+
     if (ltw.is_opaque()) {
 #ifdef DNNL_GRAPH_LAYOUT_DEBUG
         const auto format_tag
@@ -254,8 +256,17 @@ dnnl::memory make_dnnl_memory(const dnnl::memory::desc &md,
 
 dnnl::memory make_dnnl_memory(
         const tensor_t &atensor, const dnnl::engine &p_engine) {
-    dnnl::memory::desc md = make_dnnl_memory_desc(atensor.get_logical_tensor());
-    return make_dnnl_memory(md, p_engine, atensor.get_data_handle());
+    const logical_tensor_t lt = atensor.get_logical_tensor();
+    const dnnl::memory::desc md = make_dnnl_memory_desc(lt);
+    const logical_tensor_wrapper_t ltw(lt);
+    if (ltw.is_host_scalar()) {
+        // It turns out this is not used anywhere. Let's just assert and return
+        // an empty memory.
+        assert(!"make_dnnl_memory: got host scalar tensor.");
+        return {};
+    } else {
+        return make_dnnl_memory(md, p_engine, atensor.get_data_handle());
+    }
 }
 
 // fill 1 in the front of adesc, to make its ndims to be same as tgt_ndims
@@ -662,6 +673,26 @@ size_t generate_constant_md_hash(
         key = hash_combine(key, md_hash);
     }
     return key;
+}
+
+dnnl::accumulation_mode str2accumulation_mode(
+        const std::string &accumulation_mode_str) {
+    if (accumulation_mode_str == "strict") {
+        return dnnl::accumulation_mode::strict;
+    } else if (accumulation_mode_str == "relaxed") {
+        return dnnl::accumulation_mode::relaxed;
+    } else if (accumulation_mode_str == "any") {
+        return dnnl::accumulation_mode::any;
+    } else if (accumulation_mode_str == "s32") {
+        return dnnl::accumulation_mode::s32;
+    } else if (accumulation_mode_str == "f32") {
+        return dnnl::accumulation_mode::f32;
+    } else if (accumulation_mode_str == "f16") {
+        return dnnl::accumulation_mode::f16;
+    } else {
+        assert(!"unknown accumulation mode");
+        return dnnl::accumulation_mode::strict;
+    }
 }
 
 } // namespace dnnl_impl

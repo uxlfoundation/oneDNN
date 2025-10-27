@@ -25,12 +25,12 @@ The general steps involved in building the library are as follows:
 
 1. Set up the environment for the compiler
 
-   Configure your operating system's 
+   Configure your operating system's
    environment variables to point to the compiler's location.
-   
+
 2. Generate the build system
 
-   The oneDNN build system is based on [CMake](https://cmake.org/cmake/help/latest/manual/cmake.1.html). 
+   The oneDNN build system is based on [CMake](https://cmake.org/cmake/help/latest/manual/cmake.1.html).
    Use the following command to generate a build system:
    ~~~sh
    mkdir -p build ; cd build
@@ -40,7 +40,7 @@ The general steps involved in building the library are as follows:
    - `-B <path-to-build>`: Specify the path where the build files will be generated.
    - `-S <path-to-source>`: Specify the path to the source directory containing the source files, dependencies, compiler options etc.
 
-   
+
    The following are a few useful options defined by CMake:
 
    - `-G <generator-name>` to specify build system generator (e.g. `"Visual Studio 17 2022"`,
@@ -167,7 +167,7 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
    ~~~
 
 3. Build the library
-   
+
    **For Linux:**
    ~~~sh
    cmake --build . --parallel $(nproc)
@@ -246,11 +246,11 @@ generators. Build configuration is based on the `CMAKE_BUILD_TYPE` option
 the build type changes to apply the new build configuration. You can choose
 a specific build type with the `--config` option (the solution file supports
 both `Debug` and `Release` builds), but it must refer to the same build type
-(`Release`, `Debug`, etc.) as selected with the `CMAKE_BUILD_TYPE` option. 
+(`Release`, `Debug`, etc.) as selected with the `CMAKE_BUILD_TYPE` option.
 
 @note Alternatively, you can open `oneDNN.sln` to build the project from the
 Microsoft Visual Studio IDE.
-   
+
 #### Use Intel oneAPI DPC++/C++ Compiler with SYCL Runtime
 
 1. Set up the environment for the compiler
@@ -265,7 +265,7 @@ Microsoft Visual Studio IDE.
    set CC=icx
    set CXX=icx
    ~~~
-   or open `Intel oneAPI Commmand Prompt` from start menu instead.
+   or open `Intel oneAPI Command Prompt` from start menu instead.
 
 2. Generate the build system
    ~~~bat
@@ -295,7 +295,7 @@ Microsoft Visual Studio IDE.
 
 ## Step 3. (Optional) Validate the Build
 
-After building the library, you can run a predefined test set using: 
+After building the library, you can run a predefined test set using:
 
 ~~~sh
 ctest

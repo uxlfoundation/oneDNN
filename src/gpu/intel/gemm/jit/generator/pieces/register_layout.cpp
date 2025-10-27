@@ -92,10 +92,10 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
         // Don't cross nonconsecutive tiles in a packed layout.
         bool cm = isColMajor(atype.layout) ^ isTransposing(astrategy.accessType);
         if (cm) {
-            if (maxRBlock < atype.packSize && atype.tileC > 0)
+            if (static_cast<uint32_t>(maxRBlock) < atype.packSize && atype.tileC > 0)
                 maxCBlock = std::min<int>(maxCBlock, atype.tileC);
         } else {
-            if (maxCBlock < atype.packSize && atype.tileR > 0)
+            if (static_cast<uint32_t>(maxCBlock) < atype.packSize && atype.tileR > 0)
                 maxRBlock = std::min<int>(maxRBlock, atype.tileR);
         }
     }
@@ -336,10 +336,10 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
         case AccessType::PseudoBlock:
         {
             // Three types of block messages:
-            //    block_oword: 16 byte align, BLK masking (= dw except ow channel on R Gen9 only -- silently ignore, can't fault)
+            //    block_oword: 16 byte align, BLK masking (= dw)
             //  aligned_oword:  4 byte align, no masking, read only
-            //    block_hword: [Gen9-12LP] A64; 4 byte align R, BLKCM masking (= dw but can do ow channel on Gen9 only)
-            //                             A64; 16 byte align W
+            //    block_hword: [12LP] A64; 4 byte align R, BLKCM masking (= dw)
+            //                        A64; 16 byte align W
             //                 [XeHP]   A64/BTS; 32 byte align R/W
             // New dataport messages support {DW, QW}x{1...64} with DW/QW alignment, no masking.
             //
@@ -420,10 +420,10 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
 
                 if (tileX) {
                     int ntileY = tileY ? (maxElements / (xblock * tileY)) : 0;
-                    if (xblock < atype.packSize || Y < tileY || ntileY == 0)
+                    if (static_cast<uint32_t>(xblock) < atype.packSize || Y < tileY || ntileY == 0)
                         xblock = std::min<int>(xblock, tileX);
                 }
-                if ((tileX ? tileX : atype.packSize) <= xblock) {
+                if ((tileX ? tileX : atype.packSize) <= static_cast<uint32_t>(xblock)) {
                     yblock = std::min<int>(maxElements / xblock, Y);
                     if (yblock < atype.crosspack && isLargeCrosspack(T, atype.crosspack)) {
                         yblock = atype.crosspack;
@@ -509,7 +509,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
                         if (!pseudo && oword && aoword)
                             hw_unsupported();
 
-                        if (!pseudo && !(isPacked(atype.layout) && (atype.packSize == rblock))) cblock = 1;
+                        if (!pseudo && !(isPacked(atype.layout) && (atype.packSize == static_cast<uint32_t>(rblock)))) cblock = 1;
 
                         vrmask.isFixed = false;
                         vrmask.rsize = rblock;
@@ -547,7 +547,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
                         if (!pseudo && oword && aoword)
                             hw_unsupported();
 
-                        if (!pseudo && !(isPacked(atype.layout) && (atype.packSize == cblock))) rblock = 1;
+                        if (!pseudo && !(isPacked(atype.layout) && (atype.packSize == static_cast<uint32_t>(cblock)))) rblock = 1;
 
                         vcmask.isFixed = false;
                         vcmask.rsize = cblock;
@@ -669,7 +669,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             xblock = std::max(xblock, 4 / Tblock);
             int yblockLimit = writable ? 8 : 32;
 
-            if (isPacked(atype.layout) && 2 * xblock <= X && X_logical == atype.packSize) {
+            if (isPacked(atype.layout) && 2 * xblock <= X && static_cast<uint32_t>(X_logical) == atype.packSize) {
                 // Split logical x dimension into multiple spans to accomodate width restriction.
                 if (astrategy.address2D) stub();
                 int multiX = X / xblock;
@@ -1175,8 +1175,8 @@ RegisterLayout::RegisterLayout(HW hw_, Type T_, int r, int c, const MatrixAddres
     // Two separate strategies for creating register layout:
     //    - standard 2D partitioning
     //    - special 1D partitioning for block access to packed inputs.
-    if (((atype.layout == MatrixLayout::Pc && atype.packSize == r)
-      || (atype.layout == MatrixLayout::Pr && atype.packSize == c))
+    if (((atype.layout == MatrixLayout::Pc && atype.packSize == static_cast<uint32_t>(r))
+      || (atype.layout == MatrixLayout::Pr && atype.packSize == static_cast<uint32_t>(c)))
             && (astrategy.accessType == AccessType::Block)
             && !remainderR && !remainderC
             && !atype.tileR && !atype.tileC

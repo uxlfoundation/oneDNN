@@ -75,7 +75,7 @@ int consecutiveElements(int r, int c, const MatrixAddressing &atype)
         if (!effTileY) effTileY = atype.crosspack;
 
         if (y % effTileY == 0) {
-            if (x == atype.packSize)
+            if (static_cast<uint32_t>(x) == atype.packSize)
                 return x * y;
             else if (x % effTileX == 0)
                 return x * effTileY;

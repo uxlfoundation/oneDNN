@@ -6,10 +6,10 @@ Sparse memory formats {#dev_guide_sparsity}
 oneDNN support format kind dnnl::memory::format_kind::sparse to describe sparse tensors.
 Sparse encoding (a.k.a. sparse format) is an enumeration type that specifies
 how data is encoded. Currently, oneDNN supports Compressed Sparse Row (CSR),
-Sorted Co-ordinate (COO) Sparse Format, and PACKED sparse encodings
+Sorted Coordinate (COO) Sparse Format, and PACKED sparse encodings
 (dnnl::memory::sparse_encoding::csr, dnnl::memory::sparse_encoding::coo,
 dnnl::memory::sparse_encoding::packed) for CPU engine, and, only sorted
-COO (Co-ordinate Sparse Format) for GPU engine.
+COO for GPU engine.
 
 The memory descriptor has dedicated static member functions for creating memory
 descriptors for different sparse encodings.

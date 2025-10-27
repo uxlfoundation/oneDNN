@@ -74,10 +74,11 @@ block_t merge_blocks(
 subproblem_t chain_reductions(
         const subproblem_t &prev_subprb, const block_t &red_block) {
     // Copy shape/block layout to the next subproblem
-    const dim_t outer_stride = red_block.stride * red_block.block;
+    const dim_t outer_stride = dim_t(red_block.stride) * red_block.block;
     const dim_t nelems
             = prev_subprb.inner_block.block * prev_subprb.outer_block.block;
-    subproblem_t ret(red_block.stride, red_block.block, nelems / outer_stride);
+    subproblem_t ret(
+            dim_t(red_block.stride), red_block.block, nelems / outer_stride);
 
     ret.src_zpads = prev_subprb.dst_zpads;
     return ret;

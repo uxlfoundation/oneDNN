@@ -58,7 +58,7 @@ struct simple_fwd_t : public primitive_t {
                                             compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_LNORM(memory_desc_ndims_ok(src_md(), dst_md(), stat_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src", "dst stat");
+                    VERBOSE_INCONSISTENT_NDIMS, "src, dst", "stat");
             VDISPATCH_LNORM(
                     stat_md()->data_type == f32, VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_LNORM(check_scale_shift_data_type({f32, bf16, f16}),
@@ -68,7 +68,7 @@ struct simple_fwd_t : public primitive_t {
             VDISPATCH_LNORM(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_LNORM_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 
@@ -146,7 +146,7 @@ struct simple_bwd_t : public primitive_t {
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_LNORM(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_LNORM_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             init_scratchpad();
             return status::success;
         }

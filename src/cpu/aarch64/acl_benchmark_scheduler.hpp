@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Arm Ltd. and affiliates
+* Copyright 2023, 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,11 +26,11 @@ namespace aarch64 {
 // BenchmarkScheduler implement's ACL IScheduler interface and acts as an interceptor scheduler
 // when DNNL_VERBOSE=profile,profile_externals. It intercepts calls made by the actual scheduler used by ACL and adds
 // timers to benchmark execution time of ACL kernels and store kernel information.
-class BenchmarkScheduler final : public arm_compute::IScheduler {
+class benchmark_scheduler_t final : public arm_compute::IScheduler {
 public:
-    BenchmarkScheduler(IScheduler &real_scheduler);
+    benchmark_scheduler_t(IScheduler &real_scheduler);
 
-    ~BenchmarkScheduler();
+    ~benchmark_scheduler_t() override;
 
     void set_num_threads(unsigned int num_threads) override;
     unsigned int num_threads() const override;

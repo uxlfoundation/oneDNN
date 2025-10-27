@@ -195,6 +195,8 @@ class Converter(metaclass=ConverterMeta):
             # Set policy to "host_scalar" if is_host_scalar is True
             if param.is_host_scalar:
                 policy = "host_scalar"
+            if param.quantization_mode == "dynamic_mx":
+                policy = "mx"
             result = f"{arg}:{policy}"
             if policy == "common" or policy == "host_scalar":
                 result += f":{def_value}"

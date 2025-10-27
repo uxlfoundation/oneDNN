@@ -16,10 +16,13 @@
 
 /// @example weights_decompression_matmul.cpp
 /// > Annotated version: @ref weights_decompression_matmul_cpp
-///
-/// @page weights_decompression_matmul_cpp MatMul Tutorial: weights decompression
-/// C++ API example demonstrating how one can use
+
+/// @page weights_decompression_matmul_cpp_brief
+/// @brief C++ API example demonstrating how one can use
 /// [MatMul](@ref dev_guide_matmul) with compressed weights.
+
+/// @page weights_decompression_matmul_cpp MatMul Tutorial: Weights Decompression
+/// \copybrief weights_decompression_matmul_cpp_brief
 ///
 /// Concepts:
 /// - Asymmetric quantization

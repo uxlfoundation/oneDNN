@@ -17,10 +17,13 @@
 /// @example cpu_matmul_quantization.cpp
 /// > Annotated version: @ref cpu_matmul_quantization_cpp
 
-/// @page cpu_matmul_quantization_cpp MatMul Tutorial: Quantization
-/// C++ API example demonstrating how one can perform reduced precision
+/// @page cpu_matmul_quantization_cpp_brief
+/// @brief C++ API example demonstrating how one can perform reduced precision
 /// matrix-matrix multiplication using [MatMul](@ref dev_guide_matmul) and the
 /// accuracy of the result compared to the floating point computations.
+
+/// @page cpu_matmul_quantization_cpp MatMul Tutorial: Quantization
+/// \copybrief cpu_matmul_quantization_cpp_brief
 ///
 /// Concepts:
 /// - **Static** and **dynamic** quantization

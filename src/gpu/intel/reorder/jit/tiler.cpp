@@ -108,13 +108,13 @@ message_info_t estimate_message_info(
         const hw_t &hw, const layout_t &layout, const tile_t &tile) {
     const auto grf_size = hw.grf_size();
     bool can_use_block_messages = true;
-    std::vector<dim_t> outer = tile.values();
+    tile_t outer = tile;
     dim_t inner_elems = 1;
     int item_size = 16;
 
     for (auto &blk : layout.blocks()) {
-        auto block = blk.block;
-        auto dim = blk.dim;
+        auto block = blk.size;
+        auto dim = blk.idx;
         if (block == 1) continue;
         if (outer[dim] < block) {
             if (block % outer[dim] == 0) {
@@ -131,7 +131,7 @@ message_info_t estimate_message_info(
 
     auto inner_bytes = utils::div_up(
             layout.type().with_elems(8).size() * inner_elems, 8);
-    auto iterations = tile_t(outer).elems();
+    auto iterations = outer.elems();
     can_use_block_messages &= (inner_bytes % 16 == 0);
     can_use_block_messages &= (iterations == 1 || inner_bytes % grf_size == 0);
 
@@ -152,35 +152,36 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
 
     std::vector<dim_t> dims(a.ndims());
     for (dim_idx_t i = 0; i < a.ndims(); ++i)
-        dims[i] = std::max(a.dim(i), b.dim(i));
+        dims[i] = std::max(a.elems(i), b.elems(i));
 
     // Pad src/dst layouts to match each other.
     auto pad_layout = [&](layout_t &l) {
         std::vector<layout_block_t> padded_blocks;
-        for (auto &eb : l.enumerated_blocks()) {
-            auto b = eb.second;
-            if (l.is_outermost(eb)) {
-                dim_t inner = l.dim(b.dim) / b.block;
-                b.block = ir_utils::safe_divide(dims[b.dim], inner);
+        for (auto &b : l.blocks()) {
+            if (l.is_outermost(b)) {
+                dim_t inner = l.elems(b.idx) / b.size;
+                padded_blocks.emplace_back(b.idx,
+                        ir_utils::safe_divide(dims[b.idx], inner), b.stride);
+            } else {
+                padded_blocks.emplace_back(b);
             }
-            padded_blocks.push_back(b);
         }
-        l = {l.type(), l.ndims(), 0, padded_blocks, /*do_normalize=*/false};
+        l = l.with(padded_blocks, false);
     };
     pad_layout(a);
     pad_layout(b);
-    gpu_assert(ir_utils::is_equal(a.dims(), b.dims()));
+    gpu_assert(a.tile() == b.tile());
 
     auto can_be_mapped = [](const layout_t &l, const tile_t &t) {
         std::vector<dim_t> rem_dims = t.values();
         for (auto &b : l.blocks()) {
-            auto &rem_dim = rem_dims[b.dim];
-            if (rem_dim >= b.block) {
-                if (rem_dim % b.block != 0) return false;
-                rem_dim /= b.block;
+            auto &rem_dim = rem_dims[b.idx];
+            if (rem_dim >= b.size) {
+                if (rem_dim % b.size != 0) return false;
+                rem_dim /= b.size;
                 continue;
             }
-            if (b.block % rem_dim != 0) return false;
+            if (b.size % rem_dim != 0) return false;
             rem_dim = 1;
         }
         for (auto d : rem_dims)
@@ -189,7 +190,7 @@ std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
     };
 
     auto add_pseudo_dimension = [](const layout_t &l) {
-        auto layout_size = l.size();
+        auto layout_size = size_bytes(l);
         return [=](const tile_t &t) {
             auto dims = t.values();
             dims.push_back(layout_size);

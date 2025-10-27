@@ -31,15 +31,15 @@ struct generator_dsl_desc_t {
         : problem(problem)
         , strategy(strategy)
         , iface(ngen_iface)
-        , exec_cfg(hw, strategy.GRFs, strategy.subgroupSize) {}
+        , options(hw, strategy.GRFs, strategy.subgroupSize) {}
 
     const std::string &kernel_name() const { return iface.kernel_name(); }
-    const ir::kernel_iface_t &kernel_iface() const { return iface; }
+    const ir::kernel::iface_t &kernel_iface() const { return iface; }
 
     const GEMMProblem &problem;
     const GEMMStrategy &strategy;
-    ir::kernel_iface_t iface;
-    ir::exec_config_t exec_cfg;
+    ir::kernel::iface_t iface;
+    ir::kernel::options_t options;
 };
 
 // Not all strategies parameters are supported via DSL. This attempts to fixup

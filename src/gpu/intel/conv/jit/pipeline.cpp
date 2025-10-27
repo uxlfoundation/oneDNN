@@ -830,7 +830,7 @@ public:
 class sbid_manager_t {
 public:
     sbid_manager_t(const hw_t &hw = hw_t(), const int regs = 128)
-        : sbid_count_(ngen::tokenCount(hw.to_ngen(), regs))
+        : sbid_count_(ngen::tokenCount(hw, regs))
         , tuple_func_(builtin_t::make("tuple")) {
         gpu_assert(sbid_count_ <= max_sbid_count);
     }

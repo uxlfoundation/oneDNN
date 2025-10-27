@@ -55,6 +55,10 @@ namespace aarch64 {
 
 namespace tr {
 
+static inline bool is_direct_copy(const prb_t &prb) {
+    return prb.ndims == 1 && prb.nodes[0].is == 1 && prb.nodes[0].os == 1;
+}
+
 static bool prb_has_small_strides(const prb_t &prb) {
     constexpr ptrdiff_t max_stride = (1LL << 31) - 1;
     for (int d = 0; d < prb.ndims; ++d) {
@@ -73,17 +77,19 @@ static bool prb_has_small_strides(const prb_t &prb) {
 const size_t ker_prb_size_min = 64;
 
 /* kernel */
-struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
+struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_reorder_kernel_f32)
 
     void operator()(const call_param_t *c) const override {
-        jit_generator::operator()(c);
+        jit_generator_t::operator()(c);
     }
     void operator()(const tail_call_param_t *c) const override {
-        jit_generator::operator()(c);
+        jit_generator_t::operator()(c);
     }
 
-    status_t create_kernel() override { return jit_generator::create_kernel(); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
 
     enum class scale_arg_t { NONE, SRC, DST };
 
@@ -712,11 +718,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         /* check whether loading 4 values at once is possible */
         static constexpr int xmm_vlen = 4;
         bool can_load_xmm = reg_unroll % xmm_vlen == 0;
-        for (int ur = 1; ur < reg_unroll; ++ur)
-            if (i_off[ur] != i_off[ur - 1] + 1) {
-                can_load_xmm = false;
-                break;
-            }
+        int registers_total = reg_unroll / 4;
+        for (int reg = 0; reg < registers_total; reg++) {
+            for (int ur = 1 + (reg * 4); ur < ((reg + 1) * 4); ur++)
+                if (i_off[ur] != i_off[ur - 1] + 1) {
+                    can_load_xmm = false;
+                    break;
+                }
+        }
         const int load_step = can_load_xmm ? xmm_vlen : 1;
 
         /* check whether storing 4 values at once is possible */
@@ -2037,7 +2046,7 @@ private:
 };
 
 // Seperate class for no unroll/threading burden
-struct jit_single_blk_kernel_t : public jit_generator {
+struct jit_single_blk_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_single_blk_kernel)
     static bool applicable(const prb_t &p) {
 
@@ -2085,8 +2094,7 @@ struct jit_single_blk_kernel_t : public jit_generator {
     }
 
     jit_single_blk_kernel_t(const tr::prb_t &prb)
-        : jit_generator()
-        , prb_(prb)
+        : prb_(prb)
         , itype_sz_(data_type_size(prb_.itype))
         , otype_sz_(data_type_size(prb_.otype))
         , block_sz(prb.nodes[0].n) {}
@@ -2602,7 +2610,7 @@ static void prb_block_for_cache(tr::prb_t &prb) {
 
     const bool cache_blocking_needed
             = stride_cache_friendly || requires_inner_blocking;
-    if (!cache_blocking_needed) return;
+    if (!cache_blocking_needed || is_direct_copy(prb)) return;
 
     int unit_input_stride_idx = -1;
     for (auto idx = 0; idx < prb.ndims; ++idx) {
@@ -2686,7 +2694,10 @@ static void prb_thread_kernel_balance(
      * size_drv_min = C0 + FC * (nthr > 1 ? 1 : 0) + VC * (nthr - 1)
      * where FC and VC are fixed and variable costs respectively.
      * Though for now, the below heuristic seems to be good enough */
-    const size_t size_drv_thr = (nthr > 1) ? 16 * nthr : 1;
+    // Note: direct copy needs only as many kernels as nthr.
+    const size_t size_drv_thr = is_direct_copy(prb) ? nthr
+            : (nthr > 1)                            ? 16 * nthr
+                                                    : 1;
 
     /* size_drv_min is the minimal size for the parallel
      * driver required for good parallelization */

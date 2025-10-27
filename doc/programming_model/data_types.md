@@ -65,6 +65,7 @@ See topics for the corresponding data types details:
  * @ref dev_guide_training_bf16
  * @ref dev_guide_attributes_fpmath_mode
  * @ref weights_decompression_matmul_cpp
+ * @ref matmul_f8_quantization_cpp
 
 Individual primitives may have additional limitations with respect to data type
 by each primitive is included in the corresponding sections of the developer
@@ -113,7 +114,7 @@ intermediate data type (for example f16 or bf16), which may result in
 rounding](https://en.wikipedia.org/wiki/Rounding#Double_rounding).
 
 Conversions to integral datatypes saturate upon overflow, whereas
-conversions to floating-point datatypes don't. To force saturation behavior for 
+conversions to floating-point datatypes don't. To force saturation behavior for
 floating-point datatypes use @ref dev_guide_attributes_post_ops_eltwise with clip algorithm.
 
 

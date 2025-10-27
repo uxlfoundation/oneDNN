@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
 * Copyright 2022-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -391,7 +392,7 @@ class jit_uni_binary_injector_t {
 
 public:
     jit_uni_binary_injector_t(
-            jit_generator *host, const static_params_t &static_params);
+            jit_generator_t *host, const static_params_t &static_params);
 
     /*
      * Generates code of binary post_op injected to host primitive. Applied to
@@ -607,7 +608,7 @@ private:
      */
     rhs_address_t remove_bcast_bit(const rhs_address_t &rhs_addr) const;
 
-    jit_generator *host_;
+    jit_generator_t *host_;
     const rhs_arg_static_params_t rhs_arg_static_params_;
     const Xbyak_aarch64::XReg param1_;
     const bcast_set_t supported_strategy_set_;

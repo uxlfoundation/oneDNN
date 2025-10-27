@@ -406,7 +406,7 @@ int flex_rewrite_t::linked_shape_and_attr_rewrite(
                     SAFE(FAIL, WARN);
                 }
 
-                std::vector<int64_t> new_group_shape(src_lt.shape_.size(), 1);
+                group_shape = std::vector<int64_t>(src_lt.shape_.size(), 1);
                 for (size_t idx = 0; idx < src_lt.shape_.size(); ++idx) {
                     if (src_lt.shape_[idx] % scale_lt.shape_[idx] != 0) {
                         BENCHDNN_PRINT(0,
@@ -418,11 +418,9 @@ int flex_rewrite_t::linked_shape_and_attr_rewrite(
                                 (long long)src_lt.shape_[idx]);
                         SAFE(FAIL, WARN);
                     }
-                    new_group_shape[idx]
+                    group_shape[idx]
                             = src_lt.shape_[idx] / scale_lt.shape_[idx];
                 }
-
-                group_shape = new_group_shape;
             }
         }
     }
@@ -1285,14 +1283,20 @@ int flex_rewrite_t::op_attrs_rewrite(deserialized_graph_t &dgraph) {
         const auto attrs = parse_attrs(temp_attrs.second);
         for (const auto &new_attr : attrs) {
             const auto &attr_name = new_attr.first;
-            if (!temp_op.attrs_.count(attr_name)) {
-                BENCHDNN_PRINT(0,
-                        "graph: rewrite: no attr name `%s` in op %zd.\n",
-                        attr_name.c_str(), temp_attrs.first);
-                SAFE(FAIL, WARN);
-            }
             const auto &new_val = new_attr.second;
-            const auto &attr_type = temp_op.attrs_[attr_name].type_;
+            std::string attr_type = "undef";
+            // If the `new_attr` is missing from the original JSON (hence not in
+            // `temp_op.attrs_`), deduce the attribute value type using
+            // `attrstr2type()` and inject the attribute and value to
+            // `temp_op.attrs_`. This allows users to rewrite op attributes not
+            // present in the target JSON file.
+            if (temp_op.attrs_.count(attr_name)) {
+                attr_type = temp_op.attrs_[attr_name].type_;
+            } else {
+                attr_type = attrstr2type(attr_name);
+                temp_op.attrs_[attr_name].type_ = attr_type;
+            }
+
             if (attr_type == "string") {
                 temp_op.attrs_[attr_name].str_value_ = new_val;
             } else if (attr_type == "bool") {
@@ -1308,6 +1312,12 @@ int flex_rewrite_t::op_attrs_rewrite(deserialized_graph_t &dgraph) {
             } else if (attr_type == "f32[]") {
                 temp_op.attrs_[attr_name].f32_vector_
                         = string_to_f32_vec(new_val);
+            } else {
+                BENCHDNN_PRINT(0,
+                        "graph: rewrite: unsupported attribute type `%s` for "
+                        "attr `%s` in op %zd.\n",
+                        attr_type.c_str(), attr_name.c_str(), temp_attrs.first);
+                SAFE(FAIL, WARN);
             }
         }
     }
@@ -1724,7 +1734,6 @@ int flex_rewrite_t::update_output_info(deserialized_op_t &aop,
         default:
             BENCHDNN_PRINT(0, "%s is not supported\n", aop.kind_.c_str());
             SAFE(FAIL, WARN);
-            break;
     }
 
     return OK;

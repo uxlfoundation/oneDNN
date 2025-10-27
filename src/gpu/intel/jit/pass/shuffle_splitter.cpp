@@ -80,7 +80,7 @@ public:
 
         std::vector<object_eq_map_t<expr_t, int>> args;
         bool can_split = false;
-        const expr_t zero = cast(0, o.type.scalar());
+        const expr_t zero = cast(0, o.type.base());
 
         for (auto &v : o.vec) {
             // Only supports integer arithmetic

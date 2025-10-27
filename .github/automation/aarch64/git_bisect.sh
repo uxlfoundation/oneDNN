@@ -36,5 +36,5 @@ git bisect reset
 git bisect start
 git bisect good ${GOOD}
 git bisect bad ${BAD}
-git bisect run sh -c "make -j`nproc` -C ${BUILD_DIR} && ${BUILD_DIR}/tests/benchdnn/benchdnn ${CMD}"
+git bisect run sh -c "cmake --build ${BUILD_DIR} && ${BUILD_DIR}/tests/benchdnn/benchdnn ${CMD}"
 git bisect log

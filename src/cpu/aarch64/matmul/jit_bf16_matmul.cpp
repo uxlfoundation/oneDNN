@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2023 Intel Corporation
 * Copyright 2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,7 +46,7 @@
 #define LDR_IMM(reg, addr, off) \
     { \
         const uint64_t IMM12_MASK = ~uint64_t(0xfff); \
-        if ((off & IMM12_MASK) == 0) { \
+        if (((off)&IMM12_MASK) == 0) { \
             ldr(reg, ptr(addr, off)); \
         } else { \
             add_imm(X_DEFAULT_ADDR, addr, off, X_TMP_0); \
@@ -72,7 +73,7 @@ using namespace nstl;
 
 using namespace data_type;
 
-struct jit_bf16_matmul_kernel_t : public jit_generator {
+struct jit_bf16_matmul_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bf16_matmul_kernel_t)
 
@@ -97,12 +98,12 @@ struct jit_bf16_matmul_kernel_t : public jit_generator {
     call_params_t inp;
 
     void operator()(const call_params_t *p) {
-        return jit_generator::operator()(p);
+        return jit_generator_t::operator()(p);
     }
 
     ZReg loadb(int ld) { return ZReg(ld + 1); }
 
-    ZReg acc(int bd, int ld) {
+    ZReg acc(int bd, int ld) const {
         return ZReg(bd * brg.ld_block + ld + brg.ld_block + 1);
     }
 

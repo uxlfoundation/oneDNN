@@ -134,9 +134,8 @@ public:
             pu.match(agraph, pgraph, fusion_ops);
             if (!fusion_ops.empty()) {
                 // temporary solution here for showing which pattern matched
-                if (getenv_int_user("GRAPH_DUMP", 0) > 0
-                        || graph::utils::check_verbose_string_user(
-                                "GRAPH_DUMP", "pattern")) {
+                if (graph::utils::get_graph_dump_mode(
+                            graph::graph_dump_mode_t::pattern)) {
                     verbose_printf("graph,info,pattern,hit,%s\n",
                             get_pass_name().c_str());
                 }
@@ -157,7 +156,7 @@ public:
     void register_##pattern_class_(graph::pass::pass_registry_t &registry) {
 #define DNNL_BACKEND_REGISTER_PATTERN_DEF_END }
 
-#define MAX_REPETITION 5
+#define MAX_REPETITION 20
 } // namespace pattern
 } // namespace dnnl_impl
 } // namespace graph

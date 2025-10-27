@@ -354,11 +354,12 @@ int fill_sparse_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
     return OK;
 }
 
-int fill_data(data_kind_t kind, const prb_t *prb, const cfg_t &cfg,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
+int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
+        const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
 
     const auto nelems = mem_dt.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     bool is_sparse_packed = false;
     bool is_any_sparse = false;
@@ -576,11 +577,11 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
         }
 
         if (!prb->attr.scales.is_def(DNNL_ARG_DST)
-                && prb->attr.scales.get(DNNL_ARG_DST).policy
-                        != attr_t::COMMON) {
+                && prb->attr.scales.get(DNNL_ARG_DST).policy != attr_t::COMMON
+                && prb->attr.scales.get(DNNL_ARG_DST).policy != attr_t::MX) {
             BENCHDNN_PRINT(2,
-                    "[SKIP][%s:%d]: Only Common dst scales are supported "
-                    "on CPU.\n",
+                    "[SKIP][%s:%d]: Only Common and MX dst scales are "
+                    "supported on CPU.\n",
                     __FILE__, __LINE__);
             res->state = SKIPPED;
             res->reason = skip_reason::case_not_supported;
@@ -957,19 +958,23 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
-                SAFE(fill_data(SRC, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(SRC, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_WEIGHTS:
-                SAFE(fill_data(WEI, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(WEI, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_BIAS:
-                SAFE(fill_data(BIA, prb, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(BIA, exec_arg, prb, cfg, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_DST: {
                 const auto &po = prb->attr.post_ops;
                 const int sum_idx = po.find(attr_t::post_ops_t::SUM);
                 if (sum_idx >= 0) {
-                    SAFE(fill_data(DST, prb, cfg, mem, ref_mem, res), WARN);
+                    SAFE(fill_data(DST, exec_arg, prb, cfg, mem, ref_mem, res),
+                            WARN);
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.
                     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -1005,8 +1010,13 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC)) {
         auto &mem = mem_map.at(
                 DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
-        const auto &ref_mem = ref_mem_map.at(
+        auto &ref_mem = ref_mem_map.at(
                 DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
+        // TODO: will be handled by `init_ref_memory_args_default_case` once
+        // memory argument dependency is resolved.
+        if (fill_from_file(DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC,
+                    mem, ref_mem))
+            return OK;
         const auto &ref_mem_src = ref_mem_map.at(DNNL_ARG_SRC);
         const auto src_precomputed_reductions_gs
                 = prb->attr.precomputed_reductions.get(DNNL_ARG_SRC).groups[1];
@@ -1072,6 +1082,9 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
     //       e.g. get_kinds_to_check_default_case
     std::vector<data_kind_t> check_kinds = {DST};
     if (!prb->attr.dropout.is_def()) check_kinds.push_back(DROPOUT_MASK);
+    if (!prb->attr.scales.get(DNNL_ARG_DST).is_def()
+            && prb->attr.scales.get(DNNL_ARG_DST).is_mx())
+        check_kinds.push_back(DST_SCALES);
     return check_kinds;
 }
 

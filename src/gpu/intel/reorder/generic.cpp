@@ -790,7 +790,8 @@ status_t generic_t::pd_t::init_conf(impl::engine_t *engine) {
     if (src_mask >= 0) { CHECK(attr_copy.scales_.set(DNNL_ARG_SRC, src_mask)); }
     if (dst_mask >= 0) { CHECK(attr_copy.scales_.set(DNNL_ARG_DST, dst_mask)); }
 
-    if (!is_generic_faster_than_ref(new_a, new_b)) return status::unimplemented;
+    VDISPATCH_REORDER_IC(is_generic_faster_than_ref(new_a, new_b),
+            VERBOSE_SKIP_PRIMITIVE_IMPL);
 
     const memory_desc_wrapper src_mdw(new_a);
     const memory_desc_wrapper dst_mdw(new_b);
@@ -823,11 +824,11 @@ status_t generic_t::pd_t::init_conf(impl::engine_t *engine) {
     int vect_size = 1;
     dim_idx_t vect_dim = 0;
 
-    if (!fill_conf_vld(src_mdw, dst_mdw, src_mask | dst_mask, memlimit_bytes,
-                optimal_burst_bytes, conf.aux_data.vld, vect_dim, vect_size,
-                &blocks[0])) {
-        return status::unimplemented;
-    }
+    VDISPATCH_REORDER_IC(
+            fill_conf_vld(src_mdw, dst_mdw, src_mask | dst_mask, memlimit_bytes,
+                    optimal_burst_bytes, conf.aux_data.vld, vect_dim, vect_size,
+                    &blocks[0]),
+            VERBOSE_BAD_PARAM, "conf_vld");
 
     conf.sub_group_size = vect_size;
 

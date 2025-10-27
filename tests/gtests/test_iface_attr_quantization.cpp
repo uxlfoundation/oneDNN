@@ -41,9 +41,10 @@ protected:
     }
 
     static primitive_attr gen_attr_with_scales(int arg, int mask = 0,
-            data_type dt = data_type::f32, const memory::dims &groups = {}) {
+            data_type dt = data_type::f32, const memory::dims &groups = {},
+            quantization_mode qmode = quantization_mode::static_sazp) {
         primitive_attr attr;
-        attr.set_scales(arg, mask, groups, dt);
+        attr.set_scales(arg, mask, groups, dt, false, qmode);
         return attr;
     }
 
@@ -644,11 +645,40 @@ CPU_TEST_F(attr_quantization_test_t, TestMatmulBatch) {
                         gen_attr_with_scales(
                                 arg, per_ocic_mask, data_type::f32, {1, 32})));
             } else {
-                CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
                         gen_attr_with_scales(arg, per_tensor_mask)));
             }
         }
     }
+}
+
+CPU_TEST_F(attr_quantization_test_t, TestMatmulBatchMXFP) {
+    SKIP_IF(unsupported_data_type(data_type::f8_e4m3),
+            "Engine does not support f8_e4m3 data type.");
+
+    const auto a_dt = data_type::f8_e4m3;
+    const auto b_dt = data_type::f8_e4m3;
+    memory::desc a_md {{2, 5, 10, 64}, a_dt, tag::abcd};
+    memory::desc b_md {{2, 5, 64, 128}, b_dt, tag::abdc};
+    memory::desc c_md {{2, 5, 10, 128}, data_type::f32, tag::abcd};
+    const auto ndims = a_md.get_ndims();
+    const auto per_tensor_mask = (1 << ndims) - 1;
+
+    // Plain without MX
+    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md));
+    // MX weights only
+    primitive_attr attr;
+    attr.set_scales(
+            DNNL_ARG_WEIGHTS, per_tensor_mask, {32, 1}, data_type::e8m0);
+    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md, attr));
+    // MX input non-MX output
+    attr.set_scales(DNNL_ARG_SRC, per_tensor_mask, {1, 32}, data_type::e8m0);
+    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md, attr));
+    // Full MX
+    memory::desc q_c_md {{2, 5, 10, 128}, data_type::f8_e4m3, tag::abcd};
+    attr.set_scales(DNNL_ARG_DST, per_tensor_mask, {1, 32}, data_type::e8m0,
+            false, quantization_mode::dynamic_mx);
+    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, q_c_md, attr));
 }
 
 TEST_F(attr_quantization_test_t, TestPool) {

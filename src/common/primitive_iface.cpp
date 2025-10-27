@@ -329,8 +329,16 @@ status_t dnnl_primitive::execute(exec_ctx_t &ctx) const {
         mem_storage = scratchpad_->get_memory_storage();
     }
 
-    auto scratchpad_grantor
-            = primitive_->pd()->scratchpad_registry().grantor(mem_storage, ctx);
+    // Obtain a scratchpad memory storage host ptr from the context.
+    // `require_host_ptr = true` guarantees a nullptr will be returned if the
+    // usage model doesn't assume memory mapping.
+    // It's the only pointer that a grantor object requires to provide to
+    // sub-storages for nested primitives.
+    const void *mapped_mem_storage_ptr
+            = ctx.host_ptr(mem_storage, /* require_host_ptr = */ true);
+
+    auto scratchpad_grantor = primitive_->pd()->scratchpad_registry().grantor(
+            mem_storage, mapped_mem_storage_ptr);
     ctx.set_scratchpad_grantor(&scratchpad_grantor);
     ctx.set_resource_mapper(&resource_mapper_);
 

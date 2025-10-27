@@ -56,7 +56,7 @@ option(ONEDNN_BUILD_GRAPH "builds graph component" ON)
 
 option(ONEDNN_ENABLE_GRAPH_DUMP "enables control of dumping graph artifacts via
     ONEDNN_GRAPH_DUMP environment variable. The option and feature are valid only
-    when ONEDNN_BUILD_GRAPH is ON" OFF)
+    when ONEDNN_BUILD_GRAPH is ON" ON) # enabled by default
 
 # =============================
 # Building properties and scope
@@ -369,7 +369,7 @@ set(DNNL_USE_CLANG_SANITIZER "" CACHE STRING
 
 option(DNNL_ENABLE_MEM_DEBUG "enables memory-related debug functionality,
     such as buffer overflow (default) and underflow, using gtests and benchdnn.
-    Additionaly, this option enables testing of out-of-memory handling by the
+    Additionally, this option enables testing of out-of-memory handling by the
     library, such as failed memory allocations, using primitive-related gtests.
     This feature is experimental and is only available on Linux." OFF)
 

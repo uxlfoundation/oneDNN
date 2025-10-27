@@ -80,8 +80,8 @@ status_t conv_desc_init(convolution_desc_t *conv_desc, prop_kind_t prop_kind,
     if (with_bias)
         runtime_dims_or_strides = runtime_dims_or_strides
                 || memory_desc_wrapper(bias_desc).has_runtime_dims_or_strides();
-    VCONDCHECK(primitive, create, check, conv, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_CONV_UNIMPL(
+            !runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     (prop_kind == backward_data ? cd.diff_src_desc : cd.src_desc) = *src_desc;
     (is_fwd ? cd.dst_desc : cd.diff_dst_desc) = *dst_desc;
@@ -98,13 +98,15 @@ status_t conv_desc_init(convolution_desc_t *conv_desc, prop_kind_t prop_kind,
 
     VCHECK_CONV(memory_desc_wrapper(weights_desc).nelems(),
             VERBOSE_EMPTY_TENSOR, "weights");
-    VCHECK_CONV(src_desc->ndims == dst_desc->ndims, VERBOSE_INCONSISTENT_NDIMS,
-            "src", "dst");
+    VCHECK_CONV(src_desc->ndims == dst_desc->ndims,
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst", src_desc->ndims,
+            dst_desc->ndims);
     VCHECK_CONV(utils::one_of(src_desc->ndims, 3, 4, 5), VERBOSE_BAD_NDIMS,
             "src", src_desc->ndims);
     VCHECK_CONV(utils::one_of(weights_desc->ndims, src_desc->ndims,
                         src_desc->ndims + 1),
-            VERBOSE_INCONSISTENT_NDIMS, "src", "weights");
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "weights",
+            weights_desc->ndims, src_desc->ndims);
 
     const dim_t g = with_groups ? weights_desc->dims[0] : 1;
     const dim_t bias_dim = prop_kind == backward_data ? src_desc->dims[1]
@@ -151,10 +153,23 @@ status_t conv_desc_init(convolution_desc_t *conv_desc, prop_kind_t prop_kind,
         dim_t dst = dst_desc->dims[i];
         dim_t ker_range = 1 + (ker - 1) * (dil + 1);
         VCHECK_CONV(str > 0, VERBOSE_BAD_DIM, "strides", i - 2);
-        VCHECK_CONV(dil >= 0 && pad_l >= 0 && pad_r + str > 0,
-                VERBOSE_INCONSISTENT_PRB);
+        VCHECK_CONV(dil >= 0, "%s: dilation (%d) must be non-negative",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(dil));
+        VCHECK_CONV(pad_l >= 0,
+                "%s: left padding value (%d) must be non-negative",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(pad_l));
+        VCHECK_CONV(pad_r + str > 0,
+                "%s: right padding (%d) and stride (%d) must sum up to a "
+                "positive value",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(pad_r),
+                static_cast<int>(str));
         VCHECK_CONV((src - ker_range + pad_l + pad_r) / str + 1 == dst,
-                VERBOSE_INCONSISTENT_PRB);
+                "%s: mismatch between actual and computed dst dims, dst (%d) "
+                "!= (src(%d) - ker(%d) + pad_l(%d) + pad_r(%d))/ str(%d) + 1",
+                VERBOSE_INCONSISTENT_PRB, static_cast<int>(dst),
+                static_cast<int>(src), static_cast<int>(ker_range),
+                static_cast<int>(pad_l), static_cast<int>(pad_r),
+                static_cast<int>(str));
     }
 
     *conv_desc = cd;

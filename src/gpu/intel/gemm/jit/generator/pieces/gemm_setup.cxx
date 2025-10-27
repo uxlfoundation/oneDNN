@@ -550,23 +550,30 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
         Subregister bOffsetA[4], bOffsetB[4], bOffsetC[4];
         Subregister bOffsetAs[4], bOffsetBs[4];
         Subregister bOffsetAo[4], bOffsetBo[4];
+        Subregister bOffsetAg[4], bOffsetBg[4];
 
         for (int b = 0; b < problem.batchDims; b++) {
             bOffsetA[b] = state.inputs.strideA[b];
             bOffsetB[b] = state.inputs.strideB[b];
             bOffsetC[b] = state.inputs.strideC[b];
-	        if(problem.hasAScale()){
-		        bOffsetAs[b] = state.inputs.strideScaleA[b];
-	        }
-	        if(problem.hasBScale()){
-		        bOffsetBs[b] = state.inputs.strideScaleB[b];
-	        }
-	        if(problem.hasAOffset()){
-		        bOffsetAo[b] = state.inputs.strideOffsetA[b];
-	        }
-	        if(problem.hasBOffset()){
-		        bOffsetBo[b] = state.inputs.strideOffsetB[b];
-	        }
+            if(problem.hasAScale()){
+                bOffsetAs[b] = state.inputs.strideScaleA[b];
+            }
+            if(problem.hasBScale()){
+                bOffsetBs[b] = state.inputs.strideScaleB[b];
+            }
+            if(problem.hasAOffset()){
+                bOffsetAo[b] = state.inputs.strideOffsetA[b];
+            }
+            if(problem.hasBOffset()){
+                bOffsetBo[b] = state.inputs.strideOffsetB[b];
+            }
+            if(problem.needsAGroupSums()){
+                bOffsetAg[b] = state.inputs.strideGroupSumsA[b];
+            }
+            if(problem.needsBGroupSums()){
+                bOffsetBg[b] = state.inputs.strideGroupSumsB[b];
+            }
             if (strategy.A.base.isStateless()) bOffsetA[b] = state.ra.alloc_sub<uint64_t>();
             if (strategy.B.base.isStateless()) bOffsetB[b] = state.ra.alloc_sub<uint64_t>();
             if (strategy.C.base.isStateless()) bOffsetC[b] = state.ra.alloc_sub<uint64_t>();
@@ -576,36 +583,50 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
             emul(1, bOffsetA[b], state.inputs.strideA[b], state.batchID[b], strategy, state);
             emul(1, bOffsetB[b], state.inputs.strideB[b], state.batchID[b], strategy, state);
             emul(1, bOffsetC[b], state.inputs.strideC[b], state.batchID[b], strategy, state);
-	        if(problem.hasAScale()){
+            if(problem.hasAScale()){
                     emul(1, bOffsetAs[b], state.inputs.strideScaleA[b], state.batchID[b], strategy, state);
-	        }
-	        if(problem.hasBScale()){
+            }
+            if(problem.hasBScale()){
                     emul(1, bOffsetBs[b], state.inputs.strideScaleB[b], state.batchID[b], strategy, state);
-	        }
-	        if(problem.hasAOffset()){
+            }
+            if(problem.hasAOffset()){
                     emul(1, bOffsetAo[b], state.inputs.strideOffsetA[b], state.batchID[b], strategy, state);
-	        }
-	        if(problem.hasBOffset()){
+            }
+            if(problem.hasBOffset()){
                     emul(1, bOffsetBo[b], state.inputs.strideOffsetB[b], state.batchID[b], strategy, state);
-	        }
+            }
+            if(problem.needsAGroupSums()){
+                    emul(1, bOffsetAg[b], state.inputs.strideGroupSumsA[b], state.batchID[b], strategy, state);
+            }
+            if(problem.needsBGroupSums()){
+                    emul(1, bOffsetBg[b], state.inputs.strideGroupSumsB[b], state.batchID[b], strategy, state);
+            }
         }
 
-	    if(problem.hasAScale() && state.offsetAs.isInvalid()){
-	        state.offsetAs = state.ra.alloc_sub(state.offsetA.getType());
-	        emov(1, state.offsetAs, 0, strategy, state);
-	    }
-	    if(problem.hasBScale() && state.offsetBs.isInvalid()){
-	        state.offsetBs = state.ra.alloc_sub(state.offsetB.getType());
-	        emov(1, state.offsetBs, 0, strategy, state);
-	    }
-	    if(problem.hasAOffset() && state.offsetAo.isInvalid()){
-	        state.offsetAo = state.ra.alloc_sub(state.offsetA.getType());
-	        emov(1, state.offsetAo, 0, strategy, state);
-	    }
-	    if(problem.hasBOffset() && state.offsetBo.isInvalid()){
-	        state.offsetBo = state.ra.alloc_sub(state.offsetB.getType());
-	        emov(1, state.offsetBo, 0, strategy, state);
-	    }
+        if(problem.hasAScale() && state.offsetAs.isInvalid()){
+            state.offsetAs = state.ra.alloc_sub(state.offsetA.getType());
+            emov(1, state.offsetAs, 0, strategy, state);
+        }
+        if(problem.hasBScale() && state.offsetBs.isInvalid()){
+            state.offsetBs = state.ra.alloc_sub(state.offsetB.getType());
+            emov(1, state.offsetBs, 0, strategy, state);
+        }
+        if(problem.hasAOffset() && state.offsetAo.isInvalid()){
+            state.offsetAo = state.ra.alloc_sub(state.offsetA.getType());
+            emov(1, state.offsetAo, 0, strategy, state);
+        }
+        if(problem.hasBOffset() && state.offsetBo.isInvalid()){
+            state.offsetBo = state.ra.alloc_sub(state.offsetB.getType());
+            emov(1, state.offsetBo, 0, strategy, state);
+        }
+        if(problem.needsAGroupSums() && state.inputs.offsetAg.isInvalid()){
+            state.inputs.offsetAg = state.ra.alloc_sub(state.offsetA.getType());
+            emov(1, state.inputs.offsetAg, 0, strategy, state);
+        }
+        if(problem.needsBGroupSums() && state.inputs.offsetBg.isInvalid()){
+            state.inputs.offsetBg = state.ra.alloc_sub(state.offsetB.getType());
+            emov(1, state.inputs.offsetBg, 0, strategy, state);
+        }
 
         for (int b = 0; b < problem.batchDims; b++) {
             eadd(1, state.offsetA, state.offsetA, bOffsetA[b], strategy, state);
@@ -614,18 +635,24 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
                 auto offsetC = state.offsetC[q];
                 eadd(1, offsetC, offsetC, bOffsetC[b], strategy, state);
             }
-	        if(problem.hasAScale()){
+            if(problem.hasAScale()){
                     eadd(1, state.offsetAs, state.offsetAs, bOffsetAs[b], strategy, state);
-	        }
-	        if(problem.hasBScale()){
+            }
+            if(problem.hasBScale()){
                     eadd(1, state.offsetBs, state.offsetBs, bOffsetBs[b], strategy, state);
-	        }
-	        if(problem.hasAOffset()){
+            }
+            if(problem.hasAOffset()){
                     eadd(1, state.offsetAo, state.offsetAo, bOffsetAo[b], strategy, state);
-	        }
-	        if(problem.hasBOffset()){
+            }
+            if(problem.hasBOffset()){
                     eadd(1, state.offsetBo, state.offsetBo, bOffsetBo[b], strategy, state);
-	        }
+            }
+            if(problem.needsAGroupSums()){
+                    eadd(1, state.inputs.offsetAg, state.inputs.offsetAg, bOffsetAg[b], strategy, state);
+            }
+            if(problem.needsBGroupSums()){
+                    eadd(1, state.inputs.offsetBg, state.inputs.offsetBg, bOffsetBg[b], strategy, state);
+            }
             if (!strategy.persistentLoop()) {
                 state.ra.safeRelease(state.inputs.strideA[b]);
                 state.ra.safeRelease(state.inputs.strideB[b]);
@@ -857,26 +884,36 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
     }
 
     if (problem.batch == BatchMode::Strided){
-	    if(problem.hasAScale()){
+        if(problem.hasAScale()){
                 for (int b = 0; b < problem.batchDims; b++) {
-	        scale(problem.Ta_scale, state.inputs.strideScaleA[b]);
-	        }
-	    }
-	    if(problem.hasBScale()){
+            scale(problem.Ta_scale, state.inputs.strideScaleA[b]);
+            }
+        }
+        if(problem.hasBScale()){
                 for (int b = 0; b < problem.batchDims; b++) {
-	        scale(problem.Tb_scale, state.inputs.strideScaleB[b]);
-	        }
-	    }
-	    if(problem.hasAOffset()){
+            scale(problem.Tb_scale, state.inputs.strideScaleB[b]);
+            }
+        }
+        if(problem.hasAOffset()){
                 for (int b = 0; b < problem.batchDims; b++) {
-	        scale(problem.Tao, state.inputs.strideOffsetA[b]);
-	        }
-	    }
-	    if(problem.hasBOffset()){
+            scale(problem.Tao, state.inputs.strideOffsetA[b]);
+            }
+        }
+        if(problem.hasBOffset()){
                 for (int b = 0; b < problem.batchDims; b++) {
-	        scale(problem.Tbo, state.inputs.strideOffsetB[b]);
-	        }
-	    }
+            scale(problem.Tbo, state.inputs.strideOffsetB[b]);
+            }
+        }
+        if(problem.needsAGroupSums()){
+                for (int b = 0; b < problem.batchDims; b++) {
+            scale(problem.Tag, state.inputs.strideGroupSumsA[b]);
+            }
+        }
+        if(problem.needsBGroupSums()){
+                for (int b = 0; b < problem.batchDims; b++) {
+            scale(problem.Tbg, state.inputs.strideGroupSumsB[b]);
+            }
+        }
         for (int b = 0; b < problem.batchDims; b++) {
             scale(Ta_ext, inputs.strideA[b]);
             scale(Tb_ext, inputs.strideB[b]);
@@ -1196,7 +1233,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             }
             if ((state.ka_slm < A_slmCP) && (unrollKSLM != A_slmCP) && (A_tileC != A_slmCP))
                 stub("ka_slm must be a multiple of crosspack, or unrollKSLM = crosspack.");
-            if (isPacked(problem.A.layout) && problem.A.packSize != unrollM)
+            if (isPacked(problem.A.layout) && problem.A.packSize != static_cast<uint32_t>(unrollM))
                 stub("A panel height must match unroll");
 
             // Layout in from memory...
@@ -1341,7 +1378,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             }
             if ((state.kb_slm < B_slmCP) && (unrollKSLM != B_slmCP) && (B_tileR != B_slmCP))
                 stub("kb_slm must be a multiple of crosspack, or unrollKSLM = crosspack.");
-            if (isPacked(problem.B.layout) && problem.B.packSize != unrollN)
+            if (isPacked(problem.B.layout) && problem.B.packSize != static_cast<uint32_t>(unrollN))
                 stub("B panel height must match unroll");
 
             // Layout in from memory...
@@ -1608,7 +1645,12 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         bool lazyRepack = state.Ta_load.is4() && one_of(Ta, Type::f16, Type::bf16, Type::f32);    // Other cases are unimplemented
         if (lazyRepack)
             state.ka_repack = std::min(state.ka_repack, strategy.kb_load);
-        state.Ar_layout = RegisterLayout(hw, Ta, unrollM, state.ka_repack, state.A_layout.colMajor(), crosspackA, tileM_A, tileK_A, true, splitA);
+        int repackN = state.ka_repack;
+        if (problem.aqGroupK % state.ka_repack != 0 && state.ka_repack % problem.aqGroupK != 0){
+                state.ka_repack = gcd(problem.aqGroupK, state.ka_repack);
+                repackN = std::max(state.ka_repack, outerProductCount(hw, problem, strategy));
+        }
+        state.Ar_layout = RegisterLayout(hw, Ta, unrollM, repackN, state.A_layout.colMajor(), crosspackA, tileM_A, tileK_A, true, splitA);
     }
 
     if (state.repackB)
@@ -1902,7 +1944,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     }
     if (ag2D) {
         setupQAddr(Tag, state.Ag_addrs, state.Ag_layout, state.inputs.agPtr,
-                   i0qLate, A_h0qLate, state.inputs.ldag);
+                   i0qLate, A_h0qLate, state.inputs.ldag, state.inputs.offsetAg);
     }
     if (bo2D) {
         auto &j0o   = lateOffsetB ? j0qLate   : j0q;
@@ -1918,7 +1960,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     }
     if (bg2D) {
         setupQAddr(Tbg, state.Bg_addrs, state.Bg_layout, state.inputs.bgPtr,
-                   B_h0qLate, j0qLate, state.inputs.ldbg);
+                   B_h0qLate, j0qLate, state.inputs.ldbg, state.inputs.offsetBg);
     }
 
     if (i0qLate != state.i0) state.ra.safeRelease(i0qLate);
@@ -1934,16 +1976,17 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         GRFRange aoLoad;
         bool releaseAOLoad = true;
         if (problem.aoPtrDims == 1) {
+            bool slmAO = slmA && !lateOffsetA;
             reclaimRanges(state.C_regs, state);
             auto aoBase = state.ra.alloc_sub<uint64_t>();
             if (problem.batch == BatchMode::Strided) {
                 eadd(1, aoBase, state.inputs.aoPtr, state.offsetAo, strategy, state);
-                eaddScaled(1, aoBase, aoBase, slmA ? i0q : state.i0, problem.Tao, strategy, state);
+                eaddScaled(1, aoBase, aoBase, slmAO ? i0q : state.i0, problem.Tao, strategy, state);
             } else {
-                eaddScaled(1, aoBase, state.inputs.aoPtr, slmA ? i0q : state.i0, problem.Tao, strategy, state);
+                eaddScaled(1, aoBase, state.inputs.aoPtr, slmAO ? i0q : state.i0, problem.Tao, strategy, state);
             }
-            auto rem = slmA ? state.remaindersCoop[LoopM] : state.remainders[LoopM];
-            auto r = slmA ? state.ma_slm : strategy.unroll[LoopM];
+            auto rem = slmAO ? state.remaindersCoop[LoopM] : state.remainders[LoopM];
+            auto r = slmAO ? state.ma_slm : strategy.unroll[LoopM];
             aoLoad = loadVector(problem.Tao, problem.Tao, aoBase, r, rem, strategy, state);
             A_offsetLayout = RegisterLayout(hw, problem.Tao, r, 1, true);
             state.ra.safeRelease(aoBase);
@@ -1971,15 +2014,16 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         GRFRange boLoad;
         bool releaseBOLoad = true;
         if (problem.boPtrDims == 1) {
+            bool slmBO = slmB && !lateOffsetB;
             reclaimRanges(state.C_regs, state);
             auto boBase = state.ra.alloc_sub<uint64_t>();
-            auto rem = slmB ? state.remaindersCoop[LoopN] : state.remainders[LoopN];
-            auto c = slmB ? state.nb_slm : strategy.unroll[LoopN];
+            auto rem = slmBO ? state.remaindersCoop[LoopN] : state.remainders[LoopN];
+            auto c = slmBO ? state.nb_slm : strategy.unroll[LoopN];
             if (problem.batch == BatchMode::Strided) {
                 eadd(1, boBase, state.inputs.boPtr, state.offsetBo, strategy, state);
-                eaddScaled(1, boBase, boBase, slmB ? j0q : state.j0, Tbo, strategy, state);
+                eaddScaled(1, boBase, boBase, slmBO ? j0q : state.j0, Tbo, strategy, state);
             } else {
-                eaddScaled(1, boBase, state.inputs.boPtr, slmB ? j0q : state.j0, Tbo, strategy, state);
+                eaddScaled(1, boBase, state.inputs.boPtr, slmBO ? j0q : state.j0, Tbo, strategy, state);
             }
             boLoad = loadVector(problem.Tbo, problem.Tbo, boBase, c, rem, strategy, state);
             B_offsetLayout = RegisterLayout(hw, problem.Tbo, 1, c, false);
@@ -2610,18 +2654,24 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             state.inputs.strideA.push_back(interface.getArgument("stride_A" + istr));
             state.inputs.strideB.push_back(interface.getArgument("stride_B" + istr));
             state.inputs.strideC.push_back(interface.getArgument("stride_C" + istr));
-	        if(problem.hasAScale()){
+            if(problem.hasAScale()){
                     state.inputs.strideScaleA.push_back(interface.getArgument("scale_stride_A" + istr));
-	        }
-	        if(problem.hasBScale()){
+            }
+            if(problem.hasBScale()){
                     state.inputs.strideScaleB.push_back(interface.getArgument("scale_stride_B" + istr));
-	        }
-	        if(problem.hasAOffset()){
+            }
+            if(problem.hasAOffset()){
                     state.inputs.strideOffsetA.push_back(interface.getArgument("offset_stride_A" + istr));
-	        }
-	        if(problem.hasBOffset()){
+            }
+            if(problem.hasBOffset()){
                     state.inputs.strideOffsetB.push_back(interface.getArgument("offset_stride_B" + istr));
-	        }
+            }
+            if(problem.needsAGroupSums()){
+                    state.inputs.strideGroupSumsA.push_back(interface.getArgument("group_sums_stride_A" + istr));
+            }
+            if(problem.needsBGroupSums()){
+                    state.inputs.strideGroupSumsB.push_back(interface.getArgument("group_sums_stride_B" + istr));
+            }
             if (i < problem.batchDims - 1) {
                 state.inputs.batchSize.push_back(interface.getArgument("batch_size" + istr));
                 state.inputs.recipBatchSize.push_back(interface.getArgument("recip_batch_size" + istr));
@@ -2895,18 +2945,24 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             state.ra.claim(state.inputs.strideA[i]);
             state.ra.claim(state.inputs.strideB[i]);
             state.ra.claim(state.inputs.strideC[i]);
-	        if(problem.hasAScale()){
+            if(problem.hasAScale()){
                     state.ra.claim(state.inputs.strideScaleA[i]);
-	        }
-	        if(problem.hasBScale()){
+            }
+            if(problem.hasBScale()){
                     state.ra.claim(state.inputs.strideScaleB[i]);
-	        }
-	        if(problem.hasAOffset()){
+            }
+            if(problem.hasAOffset()){
                     state.ra.claim(state.inputs.strideOffsetA[i]);
-	        }
-	        if(problem.hasBOffset()){
+            }
+            if(problem.hasBOffset()){
                     state.ra.claim(state.inputs.strideOffsetB[i]);
-	        }
+            }
+            if(problem.needsAGroupSums()){
+                    state.ra.claim(state.inputs.strideGroupSumsA[i]);
+            }
+            if(problem.needsBGroupSums()){
+                    state.ra.claim(state.inputs.strideGroupSumsB[i]);
+            }
         }
         for (int i = 0; i < problem.batchDims - 1; i++) {
             state.ra.claim(state.inputs.batchSize[i]);

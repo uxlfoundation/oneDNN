@@ -33,7 +33,7 @@
 #define LDRWMAX 252
 #define ADDMAX 4095
 /* Get vector offsets, ofs / VL(eg VL: 512bits = 64Bytes ) */
-#define VL_OFS(ofs, isa) (ofs >> cpu_isa_traits<isa>::vlen_shift)
+#define VL_OFS(ofs, isa) ((ofs) >> cpu_isa_traits<isa>::vlen_shift)
 
 using namespace Xbyak_aarch64;
 
@@ -43,17 +43,17 @@ namespace cpu {
 namespace aarch64 {
 
 template <cpu_isa_t isa = isa_undef>
-struct jit_sve_conv_fwd_kernel : public jit_generator {
-    jit_sve_conv_fwd_kernel(
+struct jit_sve_conv_fwd_kernel_t : public jit_generator_t {
+    jit_sve_conv_fwd_kernel_t(
             const jit_conv_conf_t &ajcp, const primitive_attr_t &attr)
         : jcp(ajcp), attr_(attr), eltwise_injector_(nullptr) {
         if (jcp.with_eltwise)
             eltwise_injector_ = utils::make_unique<
-                    jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>(
+                    jit_uni_eltwise_injector_t<to_vla_sve(isa)>>(
                     this, jcp.eltwise);
     }
 
-    ~jit_sve_conv_fwd_kernel() = default;
+    ~jit_sve_conv_fwd_kernel_t() override = default;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sve_conv_fwd_kernel)
 
@@ -110,8 +110,8 @@ private:
     reg64_t reg_ker_org = x21; // ker base addr (3d)
     reg64_t reg_inp_org = x29; // src base addr (3d)
 
-    void prefetch(
-            const std::string prfop, int level, reg64_t in, long long int ofs) {
+    void prefetch(const std::string &prfop, int level, reg64_t in,
+            long long int ofs) {
         bool for_load = false;
         if (prfop == "LD") {
             for_load = true;
@@ -163,7 +163,7 @@ private:
         }
     }
 
-    std::unique_ptr<jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>
+    std::unique_ptr<jit_uni_eltwise_injector_t<to_vla_sve(isa)>>
             eltwise_injector_;
 
     inline void prepare_output(int ur_w);
@@ -226,9 +226,10 @@ private:
 };
 
 template <cpu_isa_t isa = isa_undef>
-struct jit_sve_conv_bwd_data_kernel_f32 : public jit_generator {
+struct jit_sve_conv_bwd_data_kernel_f32_t : public jit_generator_t {
 
-    jit_sve_conv_bwd_data_kernel_f32(const jit_conv_conf_t &ajcp) : jcp(ajcp) {}
+    jit_sve_conv_bwd_data_kernel_f32_t(const jit_conv_conf_t &ajcp)
+        : jcp(ajcp) {}
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sve_conv_bwd_data_kernel_f32)
     jit_conv_conf_t jcp;
@@ -293,7 +294,7 @@ private:
     reg64_t reg_input_org = x22;
     reg64_t reg_kernel_org = x26;
 
-    long long int prefetch(const std::string prfop, int level, reg64_t in,
+    long long int prefetch(const std::string &prfop, int level, reg64_t in,
             long long int ofs, long long int prev_ofs) {
         bool for_load = false;
         if (prfop == "LD") {
@@ -420,9 +421,9 @@ private:
 };
 
 template <cpu_isa_t isa = isa_undef>
-struct jit_sve_conv_bwd_weights_kernel_f32 : public jit_generator {
+struct jit_sve_conv_bwd_weights_kernel_f32_t : public jit_generator_t {
 
-    jit_sve_conv_bwd_weights_kernel_f32(const jit_conv_conf_t &ajcp)
+    jit_sve_conv_bwd_weights_kernel_f32_t(const jit_conv_conf_t &ajcp)
         : jcp(ajcp) {}
 
     void generate() override {
@@ -491,8 +492,8 @@ private:
     reg64_t reg_ker_start_addr = x27;
     reg64_t reg_addr_diff_input = x18;
 
-    void prefetch(
-            const std::string prfop, int level, reg64_t in, long long int ofs) {
+    void prefetch(const std::string &prfop, int level, reg64_t in,
+            long long int ofs) {
         bool for_load = false;
         if (prfop == "LD") {
             for_load = true;

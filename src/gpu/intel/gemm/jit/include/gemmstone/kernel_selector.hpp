@@ -93,8 +93,8 @@ struct MatchParams : public MatchParamsBase
 
 using SelectionObserver = std::function<void (const kcatalog::Entry *entry, double score, EvaluateAuxOutput aux)>;
 
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer = nullptr);
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer = nullptr);
+const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer = nullptr);
+const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer = nullptr);
 
 // Extended API for iterating over all matching kernels.
 bool matches(const kcatalog::Entry &e, const MatchParams &pattern);

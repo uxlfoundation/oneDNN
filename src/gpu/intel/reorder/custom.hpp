@@ -74,7 +74,8 @@ struct custom_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_REORDER(memory_desc_ndims_ok(src_md(), dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst",
+                    src_md()->ndims, dst_md()->ndims);
             VDISPATCH_REORDER(intel_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroups");
@@ -86,9 +87,7 @@ struct custom_t : public primitive_t {
                                             compute::device_ext_t::
                                                     intel_subgroups_short)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-
-            VDISPATCH_REORDER_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "reorder");
+            CHECK(init_conf(engine));
             init_scratchpad();
 
             return status::success;

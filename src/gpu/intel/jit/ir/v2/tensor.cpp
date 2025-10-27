@@ -140,11 +140,11 @@ std::string layout_desc_t::str() const {
 
 void dim_mapper_t::set_dim(
         const pvar_t &dim, const expr_t &expr, bool has_underflow) {
-    map_.set(dim, {expr.is_empty() ? dim.index_var() : expr, has_underflow});
+    map_.set(dim, {expr.is_empty() ? index_var(dim) : expr, has_underflow});
 }
 
 const expr_t &dim_mapper_t::expr(const pvar_t &dim) const {
-    if (is_empty()) return dim.index_var();
+    if (is_empty()) return index_var(dim);
     return map_[dim].expr;
 }
 
@@ -731,7 +731,7 @@ layout_t layout_t::sub(const dim_mapper_t &dim_mapper, const coord_t &coord,
         auto &linear = _linear.as<linear_t>();
         expr_t off = linear.c;
         for (int i = 0; i < linear.nargs(); i++) {
-            auto dim = pvar_t::from_index_var(linear.v_vec[i]);
+            auto dim = to_index_pvar(linear.v_vec[i]);
             if (!idxs.has(dim)) idxs[dim] = expr_t(0);
             if (!rem_sizes.has(dim)) rem_sizes[dim] = 1;
             dim_t &cur_size = rem_sizes[dim];
@@ -881,20 +881,22 @@ std::string layout_t::str() const {
 std::string layout_t::str_with_size(const hw_t &hw) const {
     ostringstream_t oss;
     oss << str();
-    int regs = (hw.is_undef() ? 0 : utils::div_up(size(), hw.grf_size()));
+    int regs = (hw.ngen_hw() == ngen::HW::Unknown
+                    ? 0
+                    : utils::div_up(size(), hw.grf_size()));
     oss << " (" << size() << " bytes, ";
     oss << regs << " regs)";
     return oss.str();
 }
 
 void for_each(const tile_t &base_tile, const tile_t &tile,
-        const std::function<void(const coord_t &)> &func) {
+        const std::function<void(const icoord_t &)> &func) {
     for_each(base_tile, tile, {}, func);
 }
 
 void for_each(const tile_t &base_tile, const tile_t &_tile,
         const std::vector<pvar_t> &idx_order,
-        const std::function<void(const coord_t &)> &func) {
+        const std::function<void(const icoord_t &)> &func) {
     auto tile = _tile;
     for (auto &d : tile) {
         gpu_assert(base_tile.has(d));
@@ -1047,8 +1049,8 @@ int layout_iterator_t::offset(const pvar_t &dim) const {
     return ret;
 }
 
-coord_t layout_iterator_t::coord() const {
-    coord_t ret;
+icoord_t layout_iterator_t::coord() const {
+    icoord_t ret;
     tile_t sizes;
     for (int i = 0; i < parent_->nblocks(); i++) {
         auto &b = parent_->blocks()[i];
@@ -1059,7 +1061,7 @@ coord_t layout_iterator_t::coord() const {
 }
 
 std::string layout_iterator_t::str() const {
-    using namespace ir_utils;
+    using ir_utils::operator<<;
     ostringstream_t oss;
     oss << "offset:    " << offset_ << std::endl;
     oss << "block_off: " << block_off_;
@@ -1126,8 +1128,8 @@ void dim_mask_desc_t::init_abc_xy(const expr_t &expr) {
         b = linear.u_vec[1];
         y = linear.v_vec[1];
     }
-    x_dim = pvar_t::from_index_var(x);
-    y_dim = pvar_t::from_index_var(y);
+    x_dim = to_index_pvar(x);
+    y_dim = to_index_pvar(y);
 }
 
 mask_desc_t::mask_desc_t(

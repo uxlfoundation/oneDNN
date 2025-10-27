@@ -114,7 +114,7 @@ status_t engine_t::create_kernels(
 
     const char *source = nullptr;
     for (size_t i = 0; source == nullptr && i < kernel_names.size(); i++)
-        source = ocl::get_kernel_source(kernel_names[i]);
+        source = get_kernel_source(kernel_names[i]);
     VERROR_ENGINE(source, status::runtime_error,
             "No OpenCL source was found for kernel");
 

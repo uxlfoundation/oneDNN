@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -166,7 +167,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
 
     brgemm_convolution_fwd_t(const pd_t *apd);
 
-    ~brgemm_convolution_fwd_t() = default;
+    ~brgemm_convolution_fwd_t() override = default;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 
@@ -249,11 +250,11 @@ private:
 
     brgemm_containers::brgemm_kernel_container_t brgemm_kernels_;
 
-    std::vector<std::unique_ptr<jit_brgemm_kernel_post_ops<isa>>> kernels_po_;
+    std::vector<std::unique_ptr<jit_brgemm_kernel_post_ops_t<isa>>> kernels_po_;
     std::unique_ptr<jit_sve_core_brgemm_conv_trans_kernel::
                     jit_sve_core_brgemm_conv_trans_kernel_t>
             copy_to_pbuffer_;
-    std::unique_ptr<jit_generator> comp_vpad_pbuffer_;
+    std::unique_ptr<jit_generator_t> comp_vpad_pbuffer_;
 
     size_t acc_dsz, bia_dsz, src_dsz, wei_dsz, dst_dsz;
 

@@ -158,8 +158,8 @@ type_t common_int_type_impl(const type_t &_a, const type_t &_b) {
     // Promote to s32 first.
     type_t a = _a.size() < int(sizeof(int32_t)) ? type_t::s32() : _a;
     type_t b = _b.size() < int(sizeof(int32_t)) ? type_t::s32() : _b;
-    a = a.scalar();
-    b = b.scalar();
+    a = a.base();
+    b = b.base();
 
     // Integer promotion, follow C++ rules.
     int common_bits = 8 * std::max(a.size(), b.size());
@@ -217,7 +217,8 @@ type_t binary_op_type(op_kind_t op_kind, const type_t &a, const type_t &b,
     }
     if (utils::one_of(op_kind, op_kind_t::_div, op_kind_t::_mod) && a.is_int()
             && b.is_int()) {
-        return (a.is_signed() ? type_t::s32() : type_t::u32()).with_attr(attr);
+        return (a.is_signed() ? type_t::s32() : type_t::u32())[elems].with_attr(
+                attr);
     }
     return common_type(a, b);
 }
@@ -281,9 +282,16 @@ void normalize_ptr(const type_t &type, expr_t &base_expr, expr_t &off) {
     if (base_expr.is<ptr_t>()) {
         off = const_fold_non_recursive(base_expr.as<ptr_t>().off + off);
         base_expr = base_expr.as<ptr_t>().base;
+        return;
     }
-    gpu_assert(to_cpp<int64_t>(off) % type.scalar().size() == 0)
-            << "Incompatible offset: " << off;
+    gpu_assert(is_const(off)) << "var/ref requires constant offset.";
+    if (auto *ref = base_expr.as_ptr<ref_t>()) {
+        off = const_fold_non_recursive(ref->off + off);
+        base_expr = ref->var;
+        return;
+    }
+    if (base_expr.is<var_t>()) return;
+    gpu_error_not_expected() << "Unexpected expression: " << base_expr.str();
 }
 
 expr_t linear_t::to_expr() const {

@@ -502,7 +502,7 @@ private:
         for (size_t i = 0; i < static_cast<size_t>(ndims); i++) {
             if (blk.strides[i] > outer_stride) continue;
             for (const auto &block : blocks) {
-                if (blk.strides[i] >= block.stride)
+                if (stride_t(blk.strides[i]) >= block.stride)
                     blk.strides[i] /= block.block;
             }
         }

@@ -80,13 +80,13 @@ public:
         } else if (auto *reduce = func.as_ptr<reduce_t>()) {
             auto &dst_buf = reduce_t::arg_dst_buf(obj);
             auto &src_buf = reduce_t::arg_src_buf(obj);
-            check_access(dst_buf, reduce->dst_layout.size(), obj);
-            check_access(src_buf, reduce->src_layout.size(), obj);
+            check_access(dst_buf, size_bytes(reduce->dst_layout), obj);
+            check_access(src_buf, size_bytes(reduce->src_layout), obj);
         } else if (auto *reorder = func.as_ptr<reorder_t>()) {
             auto &dst_buf = reorder_t::arg_dst_buf(obj);
             auto &src_buf = reorder_t::arg_src_buf(obj);
-            check_access(dst_buf, reorder->dst_layout.size(), obj);
-            check_access(src_buf, reorder->src_layout.size(), obj);
+            check_access(dst_buf, size_bytes(reorder->dst_layout), obj);
+            check_access(src_buf, size_bytes(reorder->src_layout), obj);
             return;
         } else if (auto *send = func.as_ptr<send_t>()) {
             if (!send->is_prefetch() && !send->is_prefetch_2d()) {
@@ -105,7 +105,7 @@ public:
     }
 
     void _visit(const load_t &obj) override {
-        auto elem_type = obj.type.scalar();
+        auto elem_type = obj.type.base();
         int stride_bytes
                 = (obj.has_default_stride() ? elem_type.size() : obj.stride);
         int off = to_cpp<int>(obj.off);
@@ -115,7 +115,7 @@ public:
     }
 
     void _visit(const store_t &obj) override {
-        auto elem_type = obj.value.type().scalar();
+        auto elem_type = obj.value.type().base();
         int stride_bytes
                 = (obj.has_default_stride() ? elem_type.size() : obj.stride);
         int off = to_cpp<int>(obj.off);
@@ -180,9 +180,11 @@ public:
         , buf_mgr_(ir_ctx)
         , zp_dst_(zp_dst) {
         if (plan_.slm.has_a())
-            (void)buf_mgr_.get("a_slm", into<int>(plan_.slm.a_layout.size()));
+            (void)buf_mgr_.get(
+                    "a_slm", into<int>(size_bytes(plan_.slm.a_layout)));
         if (plan_.slm.has_b())
-            (void)buf_mgr_.get("b_slm", into<int>(plan_.slm.b_layout.size()));
+            (void)buf_mgr_.get(
+                    "b_slm", into<int>(size_bytes(plan_.slm.b_layout)));
     }
 
     // Setters for original AP/BP/CP buffers (P - problem notation).
@@ -308,7 +310,7 @@ private:
         }
         if (g2s_reorder) {
             g2s_buf = buf_mgr_.get(
-                    prefix + "_g2s", into<int>(g2s_reorder.src.size()));
+                    prefix + "_g2s", into<int>(size_bytes(g2s_reorder.src)));
         }
         bool do_reduce = ((cfg_.prb().ab_swap_transpose && prefix == "a")
                 || (!cfg_.prb().ab_swap_transpose && prefix == "b"));
@@ -528,9 +530,9 @@ private:
         bool force_c_reorder = cfg_.fma_kind() == fma_kind_t::dpasw;
 
         int c_buf_size = 0;
-        auto stmt = create_epilogue_stmt(cfg_.exec_cfg(), ir_ctx_,
-                gemm_schedule, force_c_reorder, post_op_ctx, thr_tile_coord,
-                c_thr_reg_layout, cp_buf_, c_buf, c_buf_size);
+        auto stmt = create_epilogue_stmt(cfg_.options(), ir_ctx_, gemm_schedule,
+                force_c_reorder, post_op_ctx, thr_tile_coord, c_thr_reg_layout,
+                cp_buf_, c_buf, c_buf_size);
         (void)buf_mgr_.get("c", c_buf_size);
         if (reduce_cond) stmt = if_t::make(reduce_cond, stmt);
         c_store_stmt_ = c_store_stmt_.append(stmt);
@@ -576,13 +578,13 @@ private:
         if (x_reduce_type.is_undef())
             x_reduce_type = plan_.x2r.x_reduce.dst.type();
         layout_t x_reduce_reg_layout
-                = r2g.reg_layout().retype(x_reduce_type).make_dense();
+                = r2g.reg_layout().with(x_reduce_type).make_dense();
         stmt_t stmt = r2g.stmt();
-        if (r2g.reg_layout() == x_reduce_reg_layout) {
+        if (r2g.reg_layout().is_equal_normalized(x_reduce_reg_layout)) {
             stmt = substitute(stmt, x_reduce_dummy_buf, x_reduce_buf);
         } else {
             auto x_reduce_tmp_buf = buf_mgr_.get(
-                    "x_reduce_tmp", into<int>(r2g.reg_layout().size()));
+                    "x_reduce_tmp", into<int>(size_bytes(r2g.reg_layout())));
             auto reorder_stmt = create_reorder_stmt(x_reduce_reg_layout,
                     r2g.reg_layout(), x_reduce_buf, x_reduce_tmp_buf);
             stmt = reorder_stmt.append(stmt);
@@ -684,7 +686,7 @@ void builder_t::build() {
 
     trace_stamp("GEMM Schedule");
 
-    ir_context_t ir_ctx(cfg_.exec_cfg(), init_cset);
+    ir_context_t ir_ctx(cfg_.options(), init_cset);
     compute_builder_t cb(cfg_, ir_ctx, kernel_info_, zp_dst_);
     cb.set_ap_buf(ap_buf);
     cb.set_bp_buf(bp_buf);

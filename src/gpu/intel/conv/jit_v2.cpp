@@ -43,7 +43,7 @@ void maybe_init_layout(
     // The user layout should be set to a plain layout for consistency with
     // other layers.
     auto layout = to_layout(_tag, md, remove_a_dim);
-    md = layout.to_dnnl(md.dims);
+    md = to_md(layout, md);
 }
 
 status_t init_default_layouts(pd_t *pd) {

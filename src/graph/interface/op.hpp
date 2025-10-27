@@ -354,6 +354,7 @@ public:
             CASE(backend);
             CASE(partition_id);
             CASE(op_depth);
+            CASE(accumulation_mode);
             default: return "undefined_attr";
         }
 #undef CASE

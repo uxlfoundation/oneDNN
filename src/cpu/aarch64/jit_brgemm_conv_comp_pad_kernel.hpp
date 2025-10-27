@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2022-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ struct jit_brgemm_conv_comp_pad_args_t {
 };
 
 template <cpu_isa_t isa>
-struct jit_uni_brgemm_conv_comp_pad_kernel_t : public jit_generator {
+struct jit_uni_brgemm_conv_comp_pad_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_brgemm_conv_comp_pad_kernel_t)
 
@@ -46,7 +46,7 @@ struct jit_uni_brgemm_conv_comp_pad_kernel_t : public jit_generator {
 
     jit_uni_brgemm_conv_comp_pad_kernel_t(const jit_brgemm_conv_conf_t &ajcp);
 
-    ~jit_uni_brgemm_conv_comp_pad_kernel_t() = default;
+    ~jit_uni_brgemm_conv_comp_pad_kernel_t() override = default;
 
 protected:
     static constexpr bool is_ymm_ = true;

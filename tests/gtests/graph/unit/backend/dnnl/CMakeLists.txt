@@ -17,8 +17,8 @@
 set(TEST_EXE test_graph_unit_dnnl)
 
 # make gtest and library same definition for subgraph_visualizer_t
-if(ONEDNN_ENABLE_GRAPH_DUMP)
-    add_definitions_with_host_compiler(-DDNNL_ENABLE_GRAPH_DUMP)
+if(NOT ONEDNN_ENABLE_GRAPH_DUMP)
+    add_definitions_with_host_compiler(-DDNNL_DISABLE_GRAPH_DUMP)
 endif()
 
 FILE(GLOB DNNL_COMMON_TEST_SOURCES

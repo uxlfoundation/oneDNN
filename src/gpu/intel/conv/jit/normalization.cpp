@@ -25,48 +25,46 @@ namespace intel {
 namespace conv {
 namespace jit {
 
-layout_t insert_dimension(const layout_t &layout, const pvar_t &dim) {
+layout_t insert_dimension(const layout_t &layout, const pvar_t &idx) {
     auto new_blocks = layout.blocks();
     for (auto &b : new_blocks) {
-        if (b.dim.index() >= dim.index()) b.dim = pvar_t((dim_idx_t)b.dim + 1);
+        if (b.idx.index() >= idx.index()) b.idx = b.idx + 1;
     }
-    return layout_t(layout.type(), layout.ndims() + 1, layout.offset(),
-            new_blocks,
+    return layout_t(layout.type(), new_blocks, layout.offset(),
+            layout.ndims() + 1,
             /*do_normalize=*/false);
 }
 
-layout_t remove_size_1_dimension(const layout_t &layout, const pvar_t &dim) {
-    gpu_assert(layout.with_ndims());
-    gpu_assert(dim.index() < layout.ndims());
-    gpu_assert(layout.dim(dim) == 1);
+layout_t remove_size_1_dimension(const layout_t &layout, const pvar_t &idx) {
+    gpu_assert(idx.index() < layout.ndims());
+    gpu_assert(layout.elems(idx) == 1);
     dim_assignment_t a(layout.ndims(), layout.ndims() - 1);
     for (dim_idx_t i = 0; i < layout.ndims(); i++) {
-        if (i == dim.index()) continue;
-        a.assign(i, i < dim.index() ? i : i - 1);
+        if (i == idx.index()) continue;
+        a.assign(i, i < idx.index() ? i : i - 1);
     }
     return a.map(layout);
 }
 
 layout_t split_dimension(
-        const layout_t &_layout, const pvar_t &dim, dim_t outer_block) {
-    dim_t rem_inner_block
-            = ir_utils::safe_divide(_layout.dim(dim), outer_block);
-    auto layout = insert_dimension(_layout, dim);
+        const layout_t &_layout, const pvar_t &idx, dim_t outer_size) {
+    dim_t rem_inner_size
+            = ir_utils::safe_divide(_layout.elems(idx), outer_size);
+    auto layout = insert_dimension(_layout, idx);
     std::vector<layout_block_t> new_blocks;
-    for (auto &eb : layout.enumerated_blocks()) {
-        auto &b = eb.second;
-        if (b.dim.index() != dim.index() + 1) {
+    for (auto &b : layout.blocks()) {
+        if (b.idx.index() != idx.index() + 1) {
             new_blocks.push_back(b);
             continue;
         }
-        if (b.block % rem_inner_block == 0) {
-            new_blocks.emplace_back(dim.index() + 1, rem_inner_block, b.stride);
-            new_blocks.emplace_back(dim, b.block / rem_inner_block,
-                    dim_t(b.stride) * rem_inner_block);
-            rem_inner_block = 1;
+        if (b.size % rem_inner_size == 0) {
+            new_blocks.emplace_back(idx.index() + 1, rem_inner_size, b.stride);
+            new_blocks.emplace_back(idx, b.size / rem_inner_size,
+                    dim_t(b.stride) * rem_inner_size);
+            rem_inner_size = 1;
         } else {
             new_blocks.push_back(b);
-            rem_inner_block = ir_utils::safe_divide(rem_inner_block, b.block);
+            rem_inner_size = ir_utils::safe_divide(rem_inner_size, b.size);
         }
     }
 
@@ -74,13 +72,12 @@ layout_t split_dimension(
     std::vector<layout_block_t> _new_blocks;
     pvar_map_t<bool> seen;
     for (auto it = new_blocks.rbegin(); it != new_blocks.rend(); ++it) {
-        if (it->block == 1 && seen[it->dim]) continue;
+        if (it->size == 1 && seen[it->idx]) continue;
         _new_blocks.push_back(*it);
-        seen[it->dim] = true;
+        seen[it->idx] = true;
     }
     std::reverse(_new_blocks.begin(), _new_blocks.end());
-    return layout_t(layout.type(), layout.ndims(), layout.offset(), _new_blocks,
-            /*do_normalize=*/false);
+    return layout.with(_new_blocks, false);
 }
 
 layout_t normalize_conv_groups(const layout_t &layout, bool with_groups,
@@ -94,8 +91,8 @@ layout_t normalize_conv_groups(const layout_t &layout, bool with_groups,
     }
 
     gpu_assert(!with_groups) << "Unexpected groups in source/destination.";
-    if (is_dw) groups = layout.dim(1);
-    if (layout.dim(1) == 1) groups = 1;
+    if (is_dw) groups = layout.elems(1);
+    if (layout.elems(1) == 1) groups = 1;
     return split_dimension(layout, /*dim=*/1, groups);
 }
 
@@ -110,13 +107,13 @@ layout_t normalize_layout(const layout_t &_layout, bool with_groups,
     return layout;
 }
 
-std::vector<dim_t> normalize_dims(std::vector<dim_t> &dims, bool with_groups,
-        dim_t groups, bool is_dw, const std::array<int, 3> &dhw_map,
-        bool add_groups, bool is_wei) {
-    layout_t dummy_layout(type_t::u8(), 0, dims);
+tile_t normalize_tile(std::vector<dim_t> &dims, bool with_groups, dim_t groups,
+        bool is_dw, const std::array<int, 3> &dhw_map, bool add_groups,
+        bool is_wei) {
+    layout_t dummy_layout(type_t::u8(), dims);
     return normalize_layout(dummy_layout, with_groups, groups, is_dw, dhw_map,
             add_groups, is_wei)
-            .dims();
+            .tile();
 }
 
 void normalize_layouts(layout_t &src_layout, layout_t &wei_layout,
@@ -124,12 +121,12 @@ void normalize_layouts(layout_t &src_layout, layout_t &wei_layout,
         dim_t ic, dim_t oc, bool is_dw, const std::array<int, 3> &dhw_map,
         bool add_groups) {
     src_layout = normalize_layout(src_layout, /*with_groups=*/false,
-            g > 1 ? src_layout.dim(1) / ic : 1, is_dw, dhw_map, add_groups,
+            g > 1 ? src_layout.elems(1) / ic : 1, is_dw, dhw_map, add_groups,
             /*is_wei=*/false);
     wei_layout = normalize_layout(wei_layout, with_groups, g, is_dw, dhw_map,
             add_groups, /*is_wei=*/true);
     dst_layout = normalize_layout(dst_layout, /*with_groups=*/false,
-            g > 1 ? dst_layout.dim(1) / oc : 1, is_dw, dhw_map, add_groups,
+            g > 1 ? dst_layout.elems(1) / oc : 1, is_dw, dhw_map, add_groups,
             /*is_wei=*/false);
     if (add_groups && !bia_layout.is_empty()) {
         gpu_assert(bia_layout.ndims() == 1) << bia_layout;
@@ -149,12 +146,18 @@ uint32_t post_op_view_mapper_t::normalize_mask(uint32_t orig_mask) const {
     for (int i = 0; i < orig_ndims; i++) {
         if ((orig_mask & (1 << i)) != 0) dummy_dims[i] = mask_set_value;
     }
-    auto cvt_dims = normalize_dims(dummy_dims, /*with_groups=*/false, prb_.g,
+    auto cvt_dims = normalize_tile(dummy_dims, /*with_groups=*/false, prb_.g,
             prb_.is_dw, prb_.dhw_map,
             /*add_groups=*/false, /*is_wei=*/false);
     // Split channels into groups and channels to match ngcdhw layout.
-    if (add_groups) cvt_dims.insert(cvt_dims.begin() + 1, cvt_dims[1]);
-    gpu_assert(cvt_dims.size() == cp_ndims);
+    if (add_groups) {
+        tile_t new_tile;
+        for (auto &b : cvt_dims) {
+            if (b > 0) new_tile.set(b + 1, cvt_dims[b]);
+        }
+        new_tile[1] = cvt_dims[1];
+        cvt_dims = std::move(new_tile);
+    }
 
     uint32_t mask = 0;
     for (dim_idx_t i = 0; i < cp_ndims; i++) {
@@ -167,8 +170,8 @@ void maybe_reshape_dims(dim_idx_t ndims, layout_t &layout,
         std::vector<dim_t> &dims, std::vector<dim_t> &padded_dims) {
     gpu_assert(layout.ndims() == dim_idx_t(dims.size()));
     if (layout.ndims() < ndims) {
-        layout = layout_t(layout.type(), ndims, layout.offset(),
-                layout.blocks(), /*do_normalize=*/false);
+        layout = layout_t(layout.type(), layout.blocks(), layout.offset(),
+                ndims, /*do_normalize=*/false);
         dims.resize(ndims, 1);
         padded_dims.resize(ndims, 1);
     }
@@ -219,15 +222,15 @@ view_t post_op_view_mapper_t::create_src_zp_view(uint32_t mask) const {
     bool non_1_spatials[3] = {false, false, false};
     std::vector<layout_block_t> new_blk;
     for (auto &b : dst.blocks()) {
-        if ((b.dim >= 3) && (b.dim <= 5)) {
-            if (b.block > 1)
-                non_1_spatials[b.dim - 3] = true;
-            else if (non_1_spatials[b.dim - 3])
+        if ((b.idx >= 3) && (b.idx <= 5)) {
+            if (b.size > 1)
+                non_1_spatials[b.idx - 3] = true;
+            else if (non_1_spatials[b.idx - 3])
                 continue;
         }
         new_blk.emplace_back(b);
     }
-    dst = layout_t(dst.type(), dst.ndims(), dst.offset(), new_blk, false);
+    dst = dst.with(new_blk, false);
 
     view_t view(vars, 6);
     view.set_vdim(vars[0], 1); // mb
@@ -248,29 +251,29 @@ view_t post_op_view_mapper_t::create_view(const memory_desc_t &md) const {
     gpu_assert(cp_ndims >= 3);
     // Add groups to match ngcdhw layout.
     bool add_groups = (cp_view().vvars()[1].as<var_t>().name == "g");
-    layout_t layout(md, /*do_normalize=*/false);
+    layout_t layout = make_layout(md);
     std::vector<dim_t> dims(md.dims, md.dims + md.ndims);
     std::vector<dim_t> padded_dims(md.padded_dims, md.padded_dims + md.ndims);
     maybe_reshape_dims(prb_.ndims, layout, dims, padded_dims);
     layout = normalize_layout(layout, /*with_groups=*/false, prb_.g, prb_.is_dw,
             prb_.dhw_map, add_groups,
             /*is_wei=*/false);
-    dims = normalize_dims(dims, /*with_groups=*/false, prb_.g, prb_.is_dw,
+    auto tile = normalize_tile(dims, /*with_groups=*/false, prb_.g, prb_.is_dw,
             prb_.dhw_map, add_groups, /*is_wei=*/false);
-    padded_dims = normalize_dims(padded_dims, /*with_groups=*/false, prb_.g,
-            prb_.is_dw, prb_.dhw_map, add_groups,
+    auto padded_tile = normalize_tile(padded_dims, /*with_groups=*/false,
+            prb_.g, prb_.is_dw, prb_.dhw_map, add_groups,
             /*is_wei=*/false);
     gpu_assert(layout.ndims() == cp_ndims) << "Incompatible dimensions.";
     uint32_t bound_check_mask = 0;
     for (dim_idx_t i = 0; i < cp_ndims; i++) {
-        if (dims[i] == 1) continue; // Broadcast, no bound check needed.
-        if (padded_dims[i] != cp_view().tlayout().dim(i)) {
+        if (tile[i] == 1) continue; // Broadcast, no bound check needed.
+        if (padded_tile[i] != cp_view().tlayout().elems(i)) {
             bound_check_mask |= (1 << i);
         } else if (cp_view().has_tmask(i)) {
             bound_check_mask |= (1 << i);
         }
     }
-    return view_t(layout, cp_view().vvars(), dims, bound_check_mask);
+    return view_t(layout, cp_view().vvars(), tile, bound_check_mask);
 }
 
 view_t post_op_view_mapper_t::try_create_bias_view(uint32_t mask) const {

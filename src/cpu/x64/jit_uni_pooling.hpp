@@ -52,7 +52,8 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
             using namespace utils;
 
             VDISPATCH_POOLING(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_POOLING(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
             VDISPATCH_POOLING(everyone_is(d_type, src_md()->data_type,
                                       dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
@@ -130,7 +131,8 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
             VDISPATCH_POOLING(set_default_params() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(!is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_POOLING(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
             VDISPATCH_POOLING(everyone_is(d_type, diff_src_md()->data_type,
                                       diff_dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);

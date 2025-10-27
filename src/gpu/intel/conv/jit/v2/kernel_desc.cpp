@@ -86,7 +86,7 @@ prb_reqs_t specialization_t::reqs() const {
     prb_reqs_t reqs;
     reqs.add(dim_values);
     for (auto &d : dim_mods) {
-        reqs.add(d.var() % dim_mods[d] == 0);
+        reqs.add(var(d) % dim_mods[d] == 0);
     }
     return reqs;
 }
@@ -258,9 +258,9 @@ prb_reqs_t kernel_desc_t::reqs() const {
 bool kernel_desc_t::is_supported(const hw_t &hw, const problem_t *prb) const {
     gpu_check(prop != prop_kind::undef)
             << "Invalid prop: " << ir_utils::to_string(prop);
-    gpu_check(!prb || (hw_desc.hw == prb->hw().to_ngen()))
+    gpu_check(!prb || (hw_desc.hw == prb->hw().ngen_hw()))
             << "HW mismatch, desc: " << jit::to_string(hw_desc.hw)
-            << ", problem: " << jit::to_string(prb->hw().to_ngen());
+            << ", problem: " << jit::to_string(prb->hw().ngen_hw());
     gpu_check(fma != fma_kind_t::undef)
             << "Invalid fma: " << jit::to_string(fma);
     gpu_check(simd != 0) << "Invalid simd: " << simd;
@@ -341,7 +341,7 @@ void kernel_desc_t::set_stride_reqs(const tensor_kind_t kind,
     auto tag = append_groups(kind, desc_tag, is_dw);
     auto &entries = tag.raw_tag().entries();
     auto dim = tag.desc().prb_dim(entries.rbegin()->index());
-    reqs.add(prb_stride(dim, kind).var() == expr_t(1));
+    reqs.add(var(prb_stride(dim, kind)) == expr_t(1));
 }
 
 bool is_compatible(tensor_kind_t abc, const kernel_desc_t &kernel_desc,
@@ -371,11 +371,11 @@ bool is_compatible(const hw_desc_t &hw_desc, const hw_t &hw, bool exact) {
         switch (hw_desc.hw) {
             case ngen::HW::XeHPC:
                 return utils::one_of(
-                        hw.to_ngen(), ngen::HW::Xe2, ngen::HW::Xe3);
+                        hw.ngen_hw(), ngen::HW::Xe2, ngen::HW::Xe3);
             default: break;
         }
     }
-    return hw_desc.hw == hw.to_ngen();
+    return hw_desc.hw == hw.ngen_hw();
 }
 
 bool is_compatible(
@@ -427,7 +427,7 @@ void fit_tag_to(
 }
 
 void fit_to_impl(kernel_desc_t &desc, const problem_t &prb) {
-    desc.hw_desc = hw_desc_t(prb.hw().to_ngen());
+    desc.hw_desc = hw_desc_t(prb.hw().ngen_hw());
     fit_tag_to(tensor_kind_t::a, desc, prb);
     fit_tag_to(tensor_kind_t::b, desc, prb);
     fit_tag_to(tensor_kind_t::c, desc, prb);
@@ -718,7 +718,8 @@ tensor_config_t get_tensor_config(
         if (!is_input && !is_output) continue;
         int key = h.key(t);
         tensor_cfg.add_tensor(t, key, is_input, is_output,
-                pd ? jit::layout_t(pd->arg_md(key)) : jit::layout_t());
+                pd ? jit::make_layout(*pd->arg_md(key), true)
+                   : jit::layout_t());
     }
     for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
         if (desc.scales.get(arg).has_default_values()) continue;
@@ -732,7 +733,8 @@ tensor_config_t get_tensor_config(
         int key = h.post_op_key(i);
         tensor_cfg.add_tensor(name, key, /*is_input=*/true,
                 /*is_output=*/false,
-                pd ? jit::layout_t(pd->arg_md(key)) : jit::layout_t());
+                pd ? jit::make_layout(*pd->arg_md(key), true)
+                   : jit::layout_t());
     }
     return tensor_cfg;
 }
@@ -755,7 +757,7 @@ compute::range_t kernel_desc_t::local_range() const {
     return lws;
 }
 
-void kernel_desc_t::init_kernel_iface(kernel_iface_t &kernel_iface) const {
+void kernel_desc_t::init_kernel_iface(kernel::iface_t &kernel_iface) const {
     auto tensor_config = get_tensor_config(*this);
     for (auto &t : tensor_config.tensors()) {
         kernel_iface.register_arg(t.name, type_t::byte(type::attr_t::ptr));
@@ -838,7 +840,7 @@ static bool try_parse_internal_arg(std::string s, std::string &base_name,
         denom = std::stoi(s.substr(pos));
         s = s.substr(0, divup_pos);
     }
-    base_name = s;
+    base_name = std::move(s);
     return true;
 }
 
@@ -882,7 +884,7 @@ dim_t stream_k_k_batches(const kernel_desc_t &desc, const problem_t &prb) {
     const size_t l3_size = prb.hw().l3_cache_size();
     auto a = to_layout(desc.layout_tag(tensor_kind_t::a), prb.shape());
     auto b = to_layout(desc.layout_tag(tensor_kind_t::b), prb.shape());
-    dim_t ab_size = a.size() + b.size();
+    dim_t ab_size = size_bytes(a) + size_bytes(b);
     return utils::div_up(2 * ab_size, l3_size);
 }
 
@@ -978,7 +980,7 @@ void kernel_desc_t::init_kernel_info(kernel_info_t &kernel_info,
         grid_dims[d] = utils::div_up(shape.at(d), tg_size * iter_size);
     }
     dim_t max_tgs = prim_config_t::get_max_threadgroups_per_wave(
-            exec_cfg(engine), thread_group_tile.elems());
+            options(engine), thread_group_tile.elems());
     dim_t stream_k_tg0 = 0;
     dim_t stream_k_tg1 = 0;
     v2::init_kernel_info(kernel_info, prb, *this, tg_grid, grid_dims, max_tgs,
@@ -1034,7 +1036,7 @@ jit::layout_t get_kernel_layout(const std::string &name,
     }
     gpu_assert(!tag.is_empty()) << "Unknown tensor: " << name;
     auto layout = to_layout(tag, md, name == "wei" && !pd->with_groups());
-    if (layout.type() != tag.type()) layout = layout.retype(tag.type());
+    if (layout.type() != tag.type()) layout = layout.with(tag.type());
     return layout;
 }
 
@@ -1047,18 +1049,17 @@ status_t kernel_desc_t::init_primitive_plan(
         auto &md = *pd->arg_md(t.arg_key);
         auto compute_layout = get_kernel_layout(t.name, *this, md, pd);
         const auto &user_layout
-                = (md.ndims == 0 ? jit::layout_t()
-                                 : jit::layout_t(md, /*do_normalize=*/false));
+                = (md.ndims == 0 ? jit::layout_t() : jit::make_layout(md));
         bool is_out_stream_k = use_stream_k && t.is_output;
         bool zero_out = is_out_stream_k;
-        if (compute_layout != user_layout
+        if (!compute_layout.is_equal_normalized(user_layout)
                 && !compute_layout.normalize().is_strictly_equal(
                         user_layout.normalize(), true, false)) {
             user_name += "_user";
             scratchpad_key++;
             pd->scratchpad_registry().registrar().book(
-                    into<uint32_t>(scratchpad_key), compute_layout.size(), 1,
-                    OCL_BUFFER_ALIGNMENT);
+                    into<uint32_t>(scratchpad_key), size_bytes(compute_layout),
+                    1, OCL_BUFFER_ALIGNMENT);
             plan.add_internal_buffer(t.name, compute_layout, user_name,
                     scratchpad_key, zero_out);
             zero_out = false;

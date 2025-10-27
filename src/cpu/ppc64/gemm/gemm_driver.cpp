@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#ifdef __MMA__
+
 #include <cstdint>
 #if defined(_MSC_VER)
 #include <malloc.h>
@@ -1590,3 +1592,4 @@ template // Instantiate gemm_s8u8s32
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl
+#endif

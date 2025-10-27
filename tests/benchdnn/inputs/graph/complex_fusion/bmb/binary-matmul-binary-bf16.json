@@ -1,0 +1,1580 @@
+{
+  "version": "3.10.0",
+  "engine_kind": "cpu",
+  "fpmath_mode": "strict",
+  "fpmath_mode_apply_to_int": "false",
+  "input_ports": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21
+  ],
+  "output_ports": [
+    67
+  ],
+  "graph": [
+    {
+      "id": 23,
+      "name": "binary_0",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 0,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 1,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 22,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "name": "binary_1",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 22,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 2,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 24,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "name": "binary_2",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 24,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 3,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 26,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "name": "binary_3",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 26,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 4,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 28,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "name": "binary_4",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 28,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 5,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 30,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "name": "binary_5",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 30,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 6,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 32,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "name": "binary_6",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 32,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 7,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 34,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "name": "binary_7",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 34,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 8,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 36,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 39,
+      "name": "binary_8",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 36,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 9,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 38,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "name": "binary_9",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 38,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 10,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 40,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "name": "tc_0",
+      "kind": "TypeCast",
+      "attrs": {},
+      "inputs": [
+        {
+          "id": 40,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 43,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 45,
+      "name": "matmul",
+      "kind": "MatMul",
+      "attrs": {
+        "transpose_a": {
+          "type": "bool",
+          "value": 0
+        },
+        "transpose_b": {
+          "type": "bool",
+          "value": 0
+        }
+      },
+      "inputs": [
+        {
+          "id": 43,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 11,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 44,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 47,
+      "name": "binary_10",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 44,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 12,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 46,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 49,
+      "name": "binary_11",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 46,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 13,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 48,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "name": "binary_12",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 48,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 14,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 50,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 53,
+      "name": "binary_13",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 50,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 15,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 52,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 55,
+      "name": "binary_14",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 52,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 16,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 54,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 57,
+      "name": "binary_15",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 54,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 17,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 56,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 59,
+      "name": "binary_16",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 56,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 18,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 58,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 61,
+      "name": "binary_17",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 58,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 19,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 60,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 63,
+      "name": "binary_18",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 60,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 20,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 62,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 65,
+      "name": "binary_19",
+      "kind": "Multiply",
+      "attrs": {
+        "auto_broadcast": {
+          "type": "string",
+          "value": "numpy"
+        }
+      },
+      "inputs": [
+        {
+          "id": 62,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+          "id": 21,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 64,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    },
+    {
+      "id": 66,
+      "name": "tc_1",
+      "kind": "TypeCast",
+      "attrs": {},
+      "inputs": [
+        {
+          "id": 64,
+          "dtype": "f32",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 67,
+          "dtype": "bf16",
+          "shape": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "stride": [
+            512,
+            64,
+            8,
+            1
+          ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    }
+  ]
+}

@@ -63,7 +63,8 @@ struct gen_t : public primitive_t {
             VDISPATCH_REDUCTION(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_REDUCTION(memory_desc_ndims_ok(src_md(), dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst",
+                    src_md()->ndims, dst_md()->ndims);
             VDISPATCH_REDUCTION_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_TAG);
             // Only f32 supported for now
@@ -75,8 +76,7 @@ struct gen_t : public primitive_t {
             VDISPATCH_REDUCTION(
                     jit::reduction_injector_f32_is_supported(desc()->alg_kind),
                     VERBOSE_BAD_ALGORITHM);
-
-            VDISPATCH_REDUCTION_SC(init_conf(engine), "init_conf");
+            CHECK(init_conf(engine));
 
             return status::success;
         }

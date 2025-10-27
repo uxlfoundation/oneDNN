@@ -26,7 +26,6 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
-template <data_type_t d_type>
 struct riscv_nchw_pooling_fwd_t : public primitive_t {
     struct pd_t : public cpu_pooling_fwd_pd_t {
         using cpu_pooling_fwd_pd_t::cpu_pooling_fwd_pd_t;
@@ -50,11 +49,10 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(memory_desc_wrapper(dst_md()).is_dense(false),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            VDISPATCH_POOLING(utils::everyone_is(d_type, src_md()->data_type,
-                                      dst_md()->data_type),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_POOLING(platform::has_data_type_support(d_type),
-                    VERBOSE_UNSUPPORTED_DT);
+            static constexpr data_type_t d_type = data_type::f32;
+            const bool types_ok = src_md()->data_type == d_type
+                    && dst_md()->data_type == d_type;
+            VDISPATCH_POOLING(types_ok, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_POOLING(!is_dilated(), VERBOSE_UNSUPPORTED_FEATURE,
                     "does not support dilations");
@@ -69,8 +67,7 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
             VDISPATCH_POOLING(
                     attr_.set_default_formats(dst_md(0)) == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_POOLING(
-                    KW() < riscv_nchw_pooling_fwd_t<d_type>::max_kernel_width,
+            VDISPATCH_POOLING(KW() < max_kernel_width,
                     VERBOSE_UNSUPPORTED_FEATURE,
                     "kernel width exceeds maximum");
 
@@ -79,8 +76,6 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
     };
 
     riscv_nchw_pooling_fwd_t(const pd_t *apd);
-
-    using data_t = typename prec_traits_t<d_type>::type;
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);

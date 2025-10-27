@@ -42,7 +42,7 @@ namespace aarch64 {
 using namespace Xbyak_aarch64;
 
 template <cpu_isa_t isa>
-struct jit_softmax_base_t : public jit_generator {
+struct jit_softmax_base_t : public jit_generator_t {
     struct call_params_t {
         // keep all sizes at 8 bytes -- jit code expects this
         const void *src, *dst, *diff_dst; // src dubs as diff_src
@@ -62,10 +62,8 @@ struct jit_softmax_base_t : public jit_generator {
     const memory_desc_wrapper src_d_, dst_d_, diff_dst_d_;
 
     virtual void operator()(const call_params_t *p) = 0;
-    std::unique_ptr<jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>
-            exp_injector_;
-    std::unique_ptr<jit_uni_eltwise_injector_f32<to_vla_sve(isa)>>
-            log_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<to_vla_sve(isa)>> exp_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<to_vla_sve(isa)>> log_injector_;
 
     XReg reg_param = abi_param1;
 
@@ -589,15 +587,13 @@ struct jit_softmax_base_t : public jit_generator {
     // initialization.
     void generate() override {
         if (pd_->is_fwd() || is_logsoftmax_)
-            exp_injector_.reset(new jit_uni_eltwise_injector_f32<sve_128>(this,
+            exp_injector_.reset(new jit_uni_eltwise_injector_t<sve_128>(this,
                     alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, true,
                     reg_exp_injector_table, injector_mask, injector_tmp));
         if (pd_->is_fwd() && is_logsoftmax_) {
-            log_injector_.reset(
-                    new jit_uni_eltwise_injector_f32<to_vla_sve(isa)>(this,
-                            alg_kind::eltwise_log, 0.0f, 0.0f, 1.0f, true,
-                            reg_log_injector_table, injector_mask,
-                            injector_tmp));
+            log_injector_.reset(new jit_uni_eltwise_injector_t<to_vla_sve(isa)>(
+                    this, alg_kind::eltwise_log, 0.0f, 0.0f, 1.0f, true,
+                    reg_log_injector_table, injector_mask, injector_tmp));
         }
 
         compute_predefined_variables();
@@ -622,15 +618,15 @@ struct jit_softmax_base_t : public jit_generator {
     }
 
     jit_softmax_base_t(const softmax_pd_t *pd)
-        : jit_generator(nullptr, MAX_CODE_SIZE, true)
+        : jit_generator_t(nullptr, MAX_CODE_SIZE, true)
         , pd_(pd)
         , src_d_(pd_->is_fwd() ? pd_->src_md() : pd_->diff_src_md())
         , dst_d_(pd_->dst_md())
-        , diff_dst_d_(pd_->diff_dst_md()) {
-        simd_w_ = vlen / sizeof(float); // bf16 works on ymms
-        need_scratchpad_ = utils::one_of(
-                dst_d_.data_type(), data_type::u8, data_type::s8);
-    }
+        , diff_dst_d_(pd_->diff_dst_md())
+        , need_scratchpad_(utils::one_of(
+                  dst_d_.data_type(), data_type::u8, data_type::s8))
+        , simd_w_(vlen / sizeof(float)) // bf16 works on ymms
+    {}
 };
 
 template <cpu_isa_t isa>
@@ -643,7 +639,7 @@ struct jit_softmax_t<sve_512> : public jit_softmax_base_t<sve_512> {
     jit_softmax_t(const softmax_pd_t *pd) : jit_softmax_base_t(pd) {}
 
     void operator()(const call_params_t *p) override {
-        return jit_generator::operator()(p);
+        return jit_generator_t::operator()(p);
     }
 }; // namespace aarch64
 
@@ -655,7 +651,7 @@ struct jit_softmax_t<sve_256> : public jit_softmax_base_t<sve_256> {
     jit_softmax_t(const softmax_pd_t *pd) : jit_softmax_base_t(pd) {}
 
     void operator()(const call_params_t *p) override {
-        return jit_generator::operator()(p);
+        return jit_generator_t::operator()(p);
     }
 }; // namespace aarch64
 
@@ -667,7 +663,7 @@ struct jit_softmax_t<sve_128> : public jit_softmax_base_t<sve_128> {
     jit_softmax_t(const softmax_pd_t *pd) : jit_softmax_base_t(pd) {}
 
     void operator()(const call_params_t *p) override {
-        return jit_generator::operator()(p);
+        return jit_generator_t::operator()(p);
     }
 }; // namespace aarch64
 

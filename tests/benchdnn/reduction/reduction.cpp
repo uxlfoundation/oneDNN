@@ -176,9 +176,11 @@ int fill_mem(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp,
     return OK;
 }
 
-int fill_src(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+int fill_src(
+        int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const auto nelems = mem_fp.nelems();
     if (!nelems) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     int nelems_to_reduce = 1;
     for (int dim = 0; dim < prb->ndims; dim++) {
@@ -197,7 +199,9 @@ int fill_src(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     return fill_mem(prb, mem_dt, mem_fp, non_neutral_prob, false, false);
 }
 
-int fill_dst(const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+int fill_dst(
+        int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
     const bool only_positive_values = is_norm_alg(prb->alg);
     return fill_mem(prb, mem_dt, mem_fp, 1.0f, true, only_positive_values);
 }
@@ -296,11 +300,13 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         auto &ref_mem = ref_mem_map[exec_arg];
 
         switch (exec_arg) {
-            case DNNL_ARG_SRC: SAFE(fill_src(prb, mem, ref_mem), WARN); break;
+            case DNNL_ARG_SRC:
+                SAFE(fill_src(exec_arg, prb, mem, ref_mem), WARN);
+                break;
             case DNNL_ARG_DST:
                 if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM)
                         >= 0) {
-                    SAFE(fill_dst(prb, mem, ref_mem), WARN);
+                    SAFE(fill_dst(exec_arg, prb, mem, ref_mem), WARN);
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.
                     if (has_bench_mode_bit(mode_bit_t::bitwise)) {

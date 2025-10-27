@@ -156,69 +156,56 @@ bool lessAligned(int alignA1, int alignB1, int alignA2, int alignB2)
 
 // Inner kernel selection logic.
 // Choose the best entry, if any, matching one of the given patterns.
-const kcatalog::Entry *select1(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
+const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux,  SelectionObserver * observer)
 {
-    double bestScore = std::numeric_limits<double>::infinity();
-    const kcatalog::Entry *bestEntry = nullptr;
-    int bestIPattern = -1;
-    bool bestIsFallback = false;
-    int bestAlignA = 0, bestAlignB = 0;
-
+    std::vector<const kcatalog::Entry *> entries;
     // TODO: omit evaluation if only one match, if aux output not needed.
     for (int ipattern = 0; ipattern < npatterns; ipattern++) {
         for (auto it = match(catalog, patterns[ipattern]); it; it++) {
-            EvaluateAuxOutput thisAux;
-
-            bool fallback = (it->restrictions.tags[0] == kcatalog::ReqAlignFallback);
-            int alignA = std::max(it->restrictions.alignment[0], 4);
-            int alignB = std::max(it->restrictions.alignment[1], 4);
-
-            if (fallback && lessAligned(alignA, alignB, bestAlignA, bestAlignB))
-                continue;
-
-            double score = evaluate(*it, eparams, thisAux);
-
-            bool better = (score < bestScore)
-                        | (bestIsFallback && lessAligned(bestAlignA, bestAlignB, alignA, alignB));
-
-            if (better) {
-                bestEntry = &*it;
-                bestScore = score;
-                bestIPattern = ipattern;
-                bestAlignA = alignA;
-                bestAlignB = alignB;
-                bestIsFallback = fallback;
-                aux = thisAux;
-            }
-
-            if (observer) (*observer)(&*it, score, aux);
+             // Late tag checking. If late tags do not match, we skip entry.
+             if (tagMatch(it->restrictions.tags, patterns[ipattern].lateTags))
+                 entries.push_back(&*it);
         }
     }
+    auto less = [&](const kcatalog::Entry * lhs, const kcatalog::Entry * rhs){
+                      EvaluateAuxOutput thisAux;
+                      bool lhsFallback = (lhs->restrictions.tags[0] == kcatalog::ReqAlignFallback);
+                      int  lhsAlignA = std::max(lhs->restrictions.alignment[0], 4);
+                      int  lhsAlignB = std::max(lhs->restrictions.alignment[1], 4);
+                      bool rhsFallback = (rhs->restrictions.tags[0] == kcatalog::ReqAlignFallback);
+                      int  rhsAlignA = std::max(rhs->restrictions.alignment[0], 4);
+                      int  rhsAlignB = std::max(rhs->restrictions.alignment[1], 4);
+                      if (rhsFallback && lessAligned(rhsAlignA, rhsAlignB, lhsAlignA, lhsAlignB)) return true;
+                      if (lhsFallback && lessAligned(lhsAlignA, lhsAlignB, rhsAlignA, rhsAlignB)) return false;
+                      double lhs_score = evaluate(*lhs, eparams, thisAux);
+                      double rhs_score = evaluate(*rhs, eparams, thisAux);
+                      if (lhs_score < rhs_score) return true;
+                      if (lhs_score > rhs_score) return false;
+                      return (lhs < rhs);
+    };
+    std::sort(entries.begin(), entries.end(), less);
+    if (entries.size() > 0)
+	    evaluate(*entries[0], eparams, aux);
 
-    // Late tag checking. If late tags do not match, we abandon the kernel and
-    //  force the calling code to take another path.
-    if (bestEntry && !tagMatch(bestEntry->restrictions.tags, patterns[bestIPattern].lateTags))
-        return nullptr;
-
-    return bestEntry;
+    return entries;
 }
 
 // User-facing kernel selection logic.
 // Includes architecture and data type fallbacks.
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
+const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
 {
     return select(catalog, 1, &pattern, eparams, aux, observer);
 }
 
-const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
+const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
 {
     using namespace kcatalog;
 
+    std::vector<const kcatalog::Entry *> entries;
     if (npatterns == 0 || !patterns)
-        return nullptr;
+        return entries;
 
-    auto result = select1(catalog, npatterns, patterns, eparams, aux, observer);
-    if (result) return result;
+    auto result = getEntries(catalog, npatterns, patterns, eparams, aux, observer);
 
     // Architecture fallback loop.
     bool first = true;
@@ -234,8 +221,8 @@ const kcatalog::Entry *select(const kcatalog::Catalog &catalog, int npatterns, c
         // Type fallback loop.
         while (true) {
             if (!first) {
-                result = select1(catalog, npatterns, modPatterns.data(), eparams, aux, observer);
-                if (result) return result;
+                auto entries =  getEntries(catalog, npatterns, modPatterns.data(), eparams, aux, observer);
+                result.insert(result.end(), entries.begin(), entries.end());
             }
             first = false;
 
@@ -351,9 +338,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         equivCLayout = (colMajor ? MatrixLayout::N : MatrixLayout::T);
     }
 
-    auto makeABConvert = [](Type T, Type T_ext, char *out) {
-        if (T == T_ext)
-            out[0] = precisionChar(T);
+    auto makeABConvert = [](Type T, Type T_ext, bool mixed_fp, char *out) {
+        if ((mixed_fp && T_ext.isSubsetOf(T)) || (T == T_ext))
+            out[0] = precisionChar(T_ext);
         else {
             out[0] = '[';
             out[1] = precisionChar(T_ext);
@@ -366,8 +353,9 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
 
     std::fill(temp.begin(), temp.end(), '\0');
 
-    makeABConvert(problem.Ta, problem.Ta_ext, &temp[0]);
-    makeABConvert(problem.Tb, problem.Tb_ext, &temp[5]);
+    const bool mixed_fp = problem.Ta_ext.isFP() != problem.Tb_ext.isFP();
+    makeABConvert(problem.Ta, problem.Ta_ext, mixed_fp, &temp[0]);
+    makeABConvert(problem.Tb, problem.Tb_ext, mixed_fp, &temp[5]);
     temp[10] = precisionChar(problem.Tc);
     temp[12] = layoutChar(problem.A.layout);
     temp[14] = layoutChar(problem.B.layout);

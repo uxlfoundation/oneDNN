@@ -109,7 +109,7 @@ int type_t::size() const {
     if (is_bool()) return utils::div_up(elems(), 8);
     if (is_x4() || is_fp4()) return utils::div_up(elems(), 2);
 
-    if (elems() != 1) return elems() * scalar().size();
+    if (elems() != 1) return elems() * base().size();
 
     switch (kind()) {
         case kind_t::u8:
@@ -159,7 +159,8 @@ std::string type_t::str() const {
     ostringstream_t oss;
     oss << type::to_string(kind());
     if (elems() > 1) oss << "x" << elems();
-    if (is_ptr()) oss << "*";
+    if (is_ptr()) oss << ".ptr";
+    if (is_simd()) oss << ".simd";
     if (is_mutable()) oss << ".mut";
     if (is_slm()) oss << ".slm";
     return oss.str();
@@ -183,7 +184,8 @@ void type_t::parse(std::istream &in) {
     if (stream_try_match(in, "x")) { in >> elems; }
 
     attr_t attr {};
-    if (stream_try_match(in, "*")) { attr |= attr_t::ptr; }
+    if (stream_try_match(in, ".ptr")) { attr |= attr_t::ptr; }
+    if (stream_try_match(in, ".simd")) { attr |= attr_t::simd; }
     if (stream_try_match(in, ".mut")) { attr |= attr_t::mut; }
     if (stream_try_match(in, ".slm")) { attr |= attr_t::slm; }
     *this = type_t(kind, elems, attr);
@@ -203,8 +205,8 @@ bool is_subset(const type_t &a, const type_t &b) {
     if (a.is_tf32() && b.is_f32()) return true;
     if (a.is_fp() && b.is_int()) return false;
 
-    const auto a_bits = a.scalar().bitsize();
-    const auto b_bits = b.scalar().bitsize();
+    const auto a_bits = a.base().bitsize();
+    const auto b_bits = b.base().bitsize();
     if (is_untyped(a) && is_untyped(b)) return a_bits <= b_bits;
     if (is_untyped(a) || is_untyped(b)) return false; // unordered
     if (a.is_int() && b.is_fp())

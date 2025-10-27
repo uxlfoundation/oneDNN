@@ -17,14 +17,27 @@
 #ifndef GPU_INTEL_JIT_DSL_DECL_HPP
 #define GPU_INTEL_JIT_DSL_DECL_HPP
 
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/include/ir.hpp"
+#include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+
+// TODO: re-evaluate naming within op_kind_t to remove '_' prefix
+enum class op_kind_t;
+
+// TODO: ir_context_t should be removed from the DSL API. All necessary
+// information should be passed in either via kernel::interface and
+// kernel::options.
+class ir_context_t;
+
 namespace dsl {
+
+using jit::operator<<;
+using jit::ir_utils::operator<<;
 
 static type_t _bool = type_t::_bool();
 static type_t s8 = type_t::s8();
@@ -40,6 +53,9 @@ static type_t f16 = type_t::f16();
 static type_t bf16 = type_t::bf16();
 
 using expr_t = jit::expr_t;
+using type_t = jit::type_t;
+using kernel_t = jit::kernel_t;
+using send_cache_hint_t = jit::send_cache_hint_t;
 
 } // namespace dsl
 } // namespace jit

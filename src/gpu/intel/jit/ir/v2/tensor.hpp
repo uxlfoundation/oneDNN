@@ -31,6 +31,8 @@ namespace intel {
 namespace jit {
 namespace v2 {
 
+using jit::operator<<;
+
 // Stores upper bounds for variables.
 class var_range_info_t {
 public:
@@ -444,10 +446,10 @@ private:
 };
 
 void for_each(const tile_t &base_tile, const tile_t &tile,
-        const std::function<void(const coord_t &)> &func);
+        const std::function<void(const icoord_t &)> &func);
 void for_each(const tile_t &base_tile, const tile_t &tile,
         const std::vector<pvar_t> &idx_order,
-        const std::function<void(const coord_t &)> &func);
+        const std::function<void(const icoord_t &)> &func);
 
 class block_iterator_t {
 public:
@@ -530,7 +532,7 @@ public:
     bool has_next(int elems) const { return offset_ + elems < total_elems_; }
     void next(int elems);
     int offset(const pvar_t &dim) const;
-    coord_t coord() const;
+    icoord_t coord() const;
     std::string str() const;
     IR_DEFINE_DUMP()
 

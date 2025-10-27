@@ -167,34 +167,25 @@ void larger_partition_kernel_t::setup_pipeline(pass_pipeline_t &pipeline,
     setup_pipeline_stage2(pipeline, mem_planner, enable_constant_cache);
 }
 
-void larger_partition_kernel_t::prepare_host_scalar_args(
-        execution_args_set_t *res, const std::vector<tensor_t> &inputs) {
-    for (const auto &host_scalar_info : res->get_host_scalar_infos()) {
-        const engine_t *eng_ptr
-                = inputs[host_scalar_info.input_idx].get_engine();
-        // For host scalar tensor, if it contains an engine, use it. Otherwise,
-        // create a host engine for it. This can be changed once dnnl::memory
-        // supports host scalar memory creation without engine and also supports
-        // reorder from a host scalar memory to a gpu device memory.
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE
-        assert(eng_ptr);
-#endif
-        auto eng = eng_ptr ? make_dnnl_engine(*eng_ptr) : make_host_engine();
-        auto mem = make_dnnl_memory(host_scalar_info.md, eng,
-                inputs[host_scalar_info.input_idx].get_data_handle());
-        auto args = res->get_exec_args()[host_scalar_info.exec_idx];
-        args.insert({host_scalar_info.arg, mem});
-        res->reset_exec_args(host_scalar_info.exec_idx, args);
-    }
-}
-
 void larger_partition_kernel_t::prepare_args_set(
         const execution_args_set_t *res, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const scratchpad_t &scratchpad) {
     // update the data of partition in/outputs args
     for (const auto &mem_idx : res->get_mems_use_external_inputs()) {
-        mem_idx.first.set_data_handle(inputs[mem_idx.second].get_data_handle());
+        const dnnl::memory &mem = mem_idx.first;
+        const tensor_t &ts = inputs[mem_idx.second];
+        const logical_tensor_t lt = ts.get_logical_tensor();
+        const logical_tensor_wrapper_t ltw(lt);
+        if (ltw.is_host_scalar()) {
+            DNNL_HOST_SCALAR_TYPE_SWITCH(ltw.data_type(), DType, {
+                mem.set_host_scalar_value(
+                        *static_cast<DType *>(ts.get_data_handle()));
+            });
+        } else {
+            mem.set_data_handle(ts.get_data_handle());
+        }
     }
+
     for (const auto &mem_idx : res->get_mems_use_external_outputs()) {
         mem_idx.first.set_data_handle(
                 outputs[mem_idx.second].get_data_handle());
@@ -273,7 +264,6 @@ status_t larger_partition_kernel_t::execute_impl(const stream_t *g_stream,
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
-    prepare_host_scalar_args(res, inputs);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     constant_tensor_cache_t::cached_t c_buffer;
@@ -344,7 +334,6 @@ status_t larger_partition_kernel_t::sycl_execute_impl(const stream_t *g_stream,
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
-    prepare_host_scalar_args(res, inputs);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     constant_tensor_cache_t::cached_t c_buffer;
@@ -420,7 +409,6 @@ status_t larger_partition_kernel_t::ocl_execute_impl(const stream_t *g_stream,
     assertm(scratchpad.size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
-    prepare_host_scalar_args(res, inputs);
     prepare_args_set(res, inputs, outputs, scratchpad);
 
     constant_tensor_cache_t::cached_t c_buffer;

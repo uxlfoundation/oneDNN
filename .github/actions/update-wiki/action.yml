@@ -1,0 +1,60 @@
+# *******************************************************************************
+# Copyright 2025 Arm Limited and affiliates.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# *******************************************************************************
+
+name: "Update Wiki"
+description: "Update wiki"
+inputs:
+  command:
+    description: "add-unit or add-perf"
+    required: true
+  title:
+    description: "title of section to add"
+    required: true
+  in-file:
+    description: "test results file to read from"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout oneDNN wiki
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      with:
+        repository: "${{ github.repository }}.wiki"
+        ref: master
+        path: .wiki
+
+    - name: Generate the Wiki Page
+      shell: bash
+      run: python oneDNN/.github/automation/aarch64/wiki_utils.py ${{ inputs.command }} --title ${{ inputs.title }} --in-file ${{ inputs.in-file }} --out-file .wiki/AArch64-status.md
+
+    - name: Configure the GitHub wiki identity
+      shell: bash
+      working-directory: .wiki
+      # "${GITHUB_ACTOR}@users.noreply.github.com" is associated to the actor without real emails
+      run: |
+        set -xe
+        git config user.name  "[bot] ${GITHUB_ACTOR}"
+        git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+
+    - name: Update the wiki page
+      shell: bash
+      working-directory: .wiki
+      run: |
+        set -xe
+        git add .
+        git commit --allow-empty -m "update the wiki page by bot (${GITHUB_WORKFLOW})"
+        git push origin master

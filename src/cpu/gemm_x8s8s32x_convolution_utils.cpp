@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,12 +15,12 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <algorithm>
 #include <cstdlib>
 #include <memory>
 
-#include "common/math_utils.hpp"
-
+#include "common/broadcast_strategy.hpp"
+#include "common/c_types_map.hpp"
+#include "common/verbose.hpp"
 #include "cpu/platform.hpp"
 #include "cpu/primitive_attr_postops.hpp"
 #include "cpu/ref_io_helper.hpp"
@@ -36,6 +37,9 @@ namespace impl {
 namespace cpu {
 namespace gemm_x8s8s32x_convolution_utils {
 
+#define VCHECK_PO_BOOL(cond, msg) \
+    VCONDCHECK(primitive, create, check, gemm_x8s8s32x, cond, false, msg);
+
 template <typename dst_data_t>
 struct ref_pp_ker_t : pp_ker_t {
     ref_pp_ker_t(const convolution_pd_t *pd, const conv_gemm_conf_t &jcp)
@@ -45,7 +49,7 @@ struct ref_pp_ker_t : pp_ker_t {
 
     void operator()(void *dst, const acc_data_t *acc, const char *bias,
             const float *scales, float dst_scale, float sum_scale,
-            float signed_scale, int g, size_t start, size_t end,
+            float signed_scale, int g, int mb, size_t start, size_t end,
             const zero_point_call_params_t &zp,
             const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
             const exec_ctx_t &ctx, const memory_desc_t &dst_md,
@@ -69,7 +73,7 @@ private:
 template <typename dst_data_t>
 void ref_pp_ker_t<dst_data_t>::operator()(void *void_dst, const acc_data_t *acc,
         const char *bias, const float *scales, float dst_scale, float sum_scale,
-        float signed_scale, int g, size_t start, size_t end,
+        float signed_scale, int g, int mb, size_t start, size_t end,
         const zero_point_call_params_t &zp,
         const void * /* post_ops_binary_rhs_arg_vec */,
         const void * /* dst_orig */, const exec_ctx_t &ctx,
@@ -124,7 +128,9 @@ void ref_pp_ker_t<dst_data_t>::operator()(void *void_dst, const acc_data_t *acc,
                         * io::load_float_value(
                                 jcp_.sum_data_type, void_dst, dst_off);
             if (jcp_.with_eltwise || jcp_.with_binary) {
-                args.l_offset = (g * jcp_.oc + oc) * jcp_.os * jcp_.od + os;
+                args.l_offset = ((mb * jcp_.ngroups + g) * jcp_.oc + oc)
+                                * jcp_.os * jcp_.od
+                        + os;
                 ref_post_ops_->execute(data, args);
             }
 
@@ -161,14 +167,49 @@ pp_ker_t *pp_ker_t::create(
 }
 
 bool post_ops_ok(const post_ops_t &post_ops, const memory_desc_wrapper *dst_d) {
+// TODO: Align x64 and non-x64 support-scopes to avoid implementation surprises.
 #if DNNL_X64
     return x64::gemm_x8s8s32x_convolution_utils::post_ops_ok(post_ops, dst_d);
 #endif
-    return std::all_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
-            [](const dnnl_post_ops::entry_t &post_op) {
-                return post_op.is_eltwise() || post_op.is_sum()
-                        || post_op.is_binary() || post_op.is_prelu();
-            });
+
+    for (size_t po_index = 0; po_index < post_ops.entry_.size(); ++po_index) {
+        const auto &post_op = post_ops.entry_[po_index];
+
+        bool alg_kind_ok = post_op.is_eltwise() || post_op.is_sum()
+                || post_op.is_prelu()
+                || (post_op.is_binary()
+                        && !post_op.is_binary_with_ternary_op());
+
+        VCHECK_PO_BOOL(alg_kind_ok, "unsupported post-op alg kind");
+
+        if (post_op.is_prelu()) {
+            VCHECK_PO_BOOL(post_op.prelu.mask <= 3, "unsupported PReLU mask");
+
+        } else if (post_op.is_binary()) {
+            // The intent here is to limit the MASK_INPUT parameter of
+            // binary attr-post-ops to {0, 1, 2, 3}. However, there is no
+            // standard utility function for doing this, so we use the
+            // one provided for broadcasting_strategy_t because the
+            // logic is the same as it would be for MASK_INPUT.
+            //
+            // See the discussion in:
+            // https://github.com/uxlfoundation/oneDNN/issues/3803
+            const auto &bcast_type = get_rhs_arg_broadcasting_strategy(
+                    post_op.binary.src1_desc, *dst_d,
+                    {broadcasting_strategy_t::scalar,
+                            broadcasting_strategy_t::per_mb,
+                            broadcasting_strategy_t::per_oc,
+                            broadcasting_strategy_t::spatial});
+
+            VCHECK_PO_BOOL(bcast_type != broadcasting_strategy_t::unsupported,
+                    "unsupported binary post-op mask")
+        } else if (post_op.is_sum()) {
+            VCHECK_PO_BOOL(
+                    po_index == 0, "unsupported position for sum post-op")
+        }
+    }
+
+    return true;
 }
 
 bool post_ops_ok(const post_ops_t &post_ops, const memory_desc_t *dst_d) {

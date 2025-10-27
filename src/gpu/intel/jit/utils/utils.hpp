@@ -266,45 +266,6 @@ inline std::ostream &operator<<(std::ostream &out, const std::vector<T> &v) {
     return out;
 }
 
-template <typename T, typename = void>
-struct str_ostream_helper_t {
-    static std::string call(const T &t) {
-        gpu_error_not_expected();
-        return {};
-    }
-};
-
-template <typename T>
-struct str_ostream_helper_t<T,
-        decltype(std::declval<std::ostream>() << std::declval<T>(), void())> {
-    static std::string call(const T &t) {
-        ostringstream_t oss;
-        oss << t;
-        return oss.str();
-    }
-};
-
-template <typename T, typename = void>
-struct str_helper_t {
-    static std::string call(const T &t) {
-        return str_ostream_helper_t<T>::call(t);
-    }
-};
-
-template <typename T>
-struct str_helper_t<T, decltype(std::declval<T>().str(), void())> {
-    static std::string call(const T &t) { return t.str(); }
-};
-
-template <typename T>
-struct str_helper_t<std::vector<T>, void> {
-    static std::string call(const std::vector<T> &v) {
-        ostringstream_t oss;
-        oss << v;
-        return oss.str();
-    }
-};
-
 // Helper class to pretty-print tables.
 // Each operator<<() call corresponds to one cell/header. std::endl or '/n'
 // moves to the next row.

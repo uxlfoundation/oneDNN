@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,18 +37,17 @@ namespace jit_sve_core_brgemm_conv_trans_kernel {
 jit_sve_core_brgemm_conv_trans_kernel_t::
         jit_sve_core_brgemm_conv_trans_kernel_t(
                 const jit_brgemm_conv_conf_t &ajcp)
-    : jcp(ajcp) {
-    inp_dsz = jcp.src_dsz;
-    ic_block_sz = inp_dsz * jcp.ic_block;
-    dst_w_block = dst_w(jcp, jcp.ow_block);
-    dst_stride = jcp.copy_block_only ? dst_w_block : jcp.iwp;
-    dst_w_offset = jcp.kh_sets * jcp.kw_sets * ic_block_sz;
-    dst_h_offset = dst_stride * dst_w_offset;
-    iw_size = inp_dsz * jcp.ngroups * jcp.ic_without_padding;
-    VL = cpu_isa_traits<sve_512>::vlen;
-    n_vec = jcp.ic_block / jcp.simd_w;
-    n_tail_vec = (jcp.ic_without_padding % jcp.ic_block) / jcp.simd_w;
-}
+    : jcp(ajcp)
+    , inp_dsz(jcp.src_dsz)
+    , ic_block_sz(inp_dsz * jcp.ic_block)
+    , dst_w_block(dst_w(jcp, jcp.ow_block))
+    , dst_stride(jcp.copy_block_only ? dst_w_block : jcp.iwp)
+    , dst_w_offset(jcp.kh_sets * jcp.kw_sets * ic_block_sz)
+    , dst_h_offset(dst_stride * dst_w_offset)
+    , iw_size(inp_dsz * jcp.ngroups * jcp.ic_without_padding)
+    , VL(cpu_isa_traits<sve_512>::vlen)
+    , n_vec(jcp.ic_block / jcp.simd_w)
+    , n_tail_vec((jcp.ic_without_padding % jcp.ic_block) / jcp.simd_w) {}
 
 int get_inp_size(int dst_size, int ext_k, int stride, int dilate) {
     const auto res = calculate_end_padding(0, dst_size, 0, stride, ext_k);

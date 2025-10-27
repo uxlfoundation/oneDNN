@@ -84,13 +84,25 @@
 --attr-fpmath=f16:true
 1x4096:4096x4096
 
+--reset
+--bia_mask=4
+--dt=f16:u8:f16
+--bia-dt=f16
+--stag=abc
+--wtag=cab
+--dtag=abc
+--attr-scales=wei:per_tensor:f16:16x1
+--attr-zero-points=wei:per_tensor:u8:16x1
+--attr-fpmath=f16:true
+64x1x2048:1x2048x2560
+
 ## 4D cases with full mask
 --reset
 --skip-impl=ref
 --dt=bf16:s8:bf16,bf16:u8:bf16
 --wtag=any,abcd,abdc
---attr-scales=wei:per_tensor:bf16:128x1,wei:per_tensor:bf16:1x128
---attr-zero-points=wei:per_tensor:u8:128x1,wei:per_tensor:u8:1x128
+--attr-scales=wei:per_tensor:bf16:128x1
+--attr-zero-points=wei:per_tensor:u8:128x1
 --attr-fpmath=bf16:true
 2x3x5x512:2x3x512x1024
 
@@ -158,8 +170,8 @@
 --skip-impl=ref
 --dt=bf16:s4:bf16,bf16:u4:bf16
 --wtag=any,abcd,abdc
---attr-scales=wei:per_tensor:bf16:128x1,wei:per_tensor:bf16:1x128
---attr-zero-points=wei:per_tensor:u4:128x1,wei:per_tensor:u4:1x128
+--attr-scales=wei:per_tensor:bf16:128x1
+--attr-zero-points=wei:per_tensor:u4:128x1
 --attr-fpmath=bf16:true
 2x3x5x512:2x3x512x1024
 
@@ -167,8 +179,8 @@
 --skip-impl=ref
 --dt=f16:s4:f16,f16:u4:f16
 --wtag=any,abcd,abdc
---attr-scales=wei:per_tensor:f16:128x1,wei:per_tensor:f16:1x128
---attr-zero-points=wei:per_tensor:u4:128x1,wei:per_tensor:u4:1x128
+--attr-scales=wei:per_tensor:f16:128x1
+--attr-zero-points=wei:per_tensor:u4:128x1
 --attr-fpmath=f16:true
 2x3x5x512:2x3x512x1024
 
@@ -179,6 +191,18 @@
 --attr-scales=wei:per_tensor:f16:127x1
 --attr-fpmath=f16:true
 32x127:127x63_n"odd_k_single_group"
+
+--reset
+--bia_mask=4
+--dt=f16:u4:f16
+--bia-dt=f16
+--stag=abc
+--wtag=cab
+--dtag=abc
+--attr-scales=wei:per_tensor:f16:16x1
+--attr-zero-points=wei:per_tensor:u8:16x1
+--attr-fpmath=f16:true
+64x1x2048:1x2048x2560
 
 # fp8 weights decompression
 --reset
@@ -273,3 +297,62 @@
 --attr-zero-points=wei:per_tensor:s4:128x1,src:per_ocic:u4:1x256+wei:per_tensor:s4:128x1
 2x3x4x256:2x3x256x64
 2x3x6x256:2x3x256x100
+
+# f32 + weight decomression
+--reset
+--skip-impl=ref
+--dt=f32:s4:f32,f32:u4:f32,f32:s8:f32,f32:u8:f32
+--wtag=any,ab,ba
+--attr-fpmath=strict:true
+1x4096:4096x4096
+
+--skip-impl=ref
+--dt=f32:s4:f32,f32:u4:f32,f32:s8:f32,f32:u8:f32
+--wtag=any,abc,acb
+--attr-fpmath=strict:true
+2x40x256:2x256x64
+7x41x256:1x256x64
+3x96x512:3x512x64
+3x6x512:1x512x62
+
+--skip-impl=ref
+--dt=f32:s4:f32,f32:u4:f32
+--wtag=any,ab,ba
+--attr-scales=,wei:common:0.5:f32,wei:per_ocic:f32:32x1
+--attr-zero-points=,wei:common:2,wei:per_oc:s4
+--attr-fpmath=strict:true
+1x4096:4096x4096
+
+--skip-impl=ref
+--dt=f32:s8:f32,f32:u8:f32
+--wtag=any,ab,ba
+--attr-scales=,wei:common:0.5:f32,wei:per_ocic:f32:32x1
+--attr-zero-points=,wei:common:2,wei:per_ocic:s8:32x1
+--attr-fpmath=strict:true
+1x4096:4096x4096
+
+
+## Additional grouped scales/ZP testing
+--reset
+--dt=f16:s4:f16
+--wtag=abc,acb
+--attr-scales=,wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:192x1
+--attr-zero-points=,wei:common:2,wei:per_oc:s4,wei:per_ocic:s4:192x1
+--attr-fpmath=f16:true
+12x4x576:12x576x192
+
+--reset
+--dt=bf16:s4:bf16
+--wtag=abc,acb
+--attr-scales=,wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:192x1
+--attr-zero-points=,wei:common:2,wei:per_oc:s4,wei:per_ocic:s4:192x1
+--attr-fpmath=bf16:true
+12x4x576:12x576x192
+
+--reset
+--dt=f32:s4:f32
+--wtag=abc,acb
+--attr-scales=,wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:192x1
+--attr-zero-points=,wei:common:2,wei:per_oc:s4,wei:per_ocic:s4:192x1
+--attr-fpmath=strict:true
+12x4x576:12x576x192

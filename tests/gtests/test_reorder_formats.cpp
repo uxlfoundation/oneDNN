@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2023 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,11 +15,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <memory>
-#include <numeric>
-#include <utility>
-#include <type_traits>
-
 #include "dnnl_test_common.hpp"
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
@@ -28,7 +24,6 @@
 #include "gtest/gtest.h"
 
 #include "oneapi/dnnl/dnnl.hpp"
-#include "oneapi/dnnl/dnnl_debug.h"
 
 namespace dnnl {
 
@@ -36,7 +31,7 @@ using dt = memory::data_type;
 using tag = memory::format_tag;
 using md = memory::desc;
 
-class reorder_formats_test : public ::testing::Test {
+class reorder_formats_test_t : public ::testing::Test {
 public:
     engine e;
 
@@ -161,6 +156,6 @@ protected:
     }
 };
 
-TEST_F(reorder_formats_test, TestChecksAllFormats) {}
+TEST_F(reorder_formats_test_t, TestChecksAllFormats) {}
 
 } // namespace dnnl

@@ -43,9 +43,12 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
     CHECK(status);
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *wei_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const int32_t *src_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
@@ -61,11 +64,6 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
     const auto bia_d = ctx.memory_mdw(DNNL_ARG_BIAS, pd()->weights_md(1));
-
-    const auto src_scales_d
-            = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
-    const auto wei_scales_d
-            = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
 
     if (src_d.has_zero_dim() || weights_d.has_zero_dim()
             || dst_d.has_zero_dim())
@@ -114,13 +112,12 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const int dst_zp_idx_mult = !attr_zps.has_default_values(DNNL_ARG_DST)
             && attr_zps.get_mask(DNNL_ARG_DST) > 0;
 
-    // arg scales section
+    // Scales section
     const auto &attr_scales = pd()->attr()->scales_;
     const bool with_wei_scales
             = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
-    const bool with_dst_scales = !attr_scales.has_default_values(DNNL_ARG_DST);
     const int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
-    const auto &wei_scale_dt = attr_scales.get_data_type(DNNL_ARG_WEIGHTS);
+    const auto wei_scale_dt = attr_scales.get_data_type(DNNL_ARG_WEIGHTS);
     const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
     const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
     const auto wei_scale_ngroups_k
@@ -132,13 +129,16 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
 
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
     const int src_scale_mask = attr_scales.get_mask(DNNL_ARG_SRC);
-    const auto &src_scale_dt = attr_scales.get_data_type(DNNL_ARG_SRC);
+    const auto src_scale_dt = attr_scales.get_data_type(DNNL_ARG_SRC);
     const auto src_scale_group_k = attr_scales.get_group(DNNL_ARG_SRC, 1);
     const auto src_scale_ngroups_k
             = src_scale_group_k > 1 ? K / src_scale_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t src_scale_md {};
     CHECK(attr_scales.get(DNNL_ARG_SRC).get_md(src_scale_md, *src_d.md_));
+
+    const bool with_dst_scales = !attr_scales.has_default_values(DNNL_ARG_DST);
+    const auto dst_scale_dt = attr_scales.get_data_type(DNNL_ARG_DST);
 
     // precomputed reductions section
     const auto &attr_pr = pd()->attr()->precomputed_reductions_;
@@ -229,22 +229,16 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
                 const dim_t src_scale_offset = matmul_helper_t::get_quant_off(
                         src_dims_idx, ndims, src_scale_mask, 1,
                         src_scale_group_k, src_scale_md);
-                // Single scale value was already converted into f32.
-                const float src_scale = src_scales_d.nelems() == 1
-                        ? src_scales[0]
-                        : io::load_float_value(
-                                src_scale_dt, src_scales, src_scale_offset);
+                const float src_scale = io::load_float_value(
+                        src_scale_dt, src_scales, src_scale_offset);
                 acc_f *= src_scale;
             }
             if (with_wei_scales) {
                 const dim_t wei_scale_offset = matmul_helper_t::get_quant_off(
                         weights_dims_idx, ndims, wei_scale_mask,
                         wei_scale_group_k, wei_scale_group_n, wei_scale_md);
-                // Single scale value was already converted into f32.
-                const float wei_scale = wei_scales_d.nelems() == 1
-                        ? wei_scales[0]
-                        : io::load_float_value(
-                                wei_scale_dt, wei_scales, wei_scale_offset);
+                const float wei_scale = io::load_float_value(
+                        wei_scale_dt, wei_scales, wei_scale_offset);
                 acc_f *= wei_scale;
             }
             d += acc_f;
@@ -281,7 +275,11 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
             args.dst_md = pd()->dst_md();
             ref_post_ops->execute(d, args);
 
-            if (with_dst_scales) d *= dst_scales[0];
+            if (with_dst_scales) {
+                const float dst_scale
+                        = io::load_float_value(dst_scale_dt, dst_scales, 0);
+                d /= dst_scale;
+            }
             if (dst_zero_points) {
                 const int dst_zp = io::load_int_value(
                         data_type::s32, dst_zero_points, dst_zp_idx_mult * n);

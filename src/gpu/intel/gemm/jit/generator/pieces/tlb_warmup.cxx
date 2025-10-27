@@ -48,7 +48,7 @@ void Generator<hw>::gemmTLBWarmup(const GEMMProblem &problem, const GEMMStrategy
             tlbWarmup(problem.A_scale, strategy.A_scale, state.inputs.aScalePtr,
                       mq, kq, state.ldaScale, lid, whose++, problem, strategy, state);
         }
-        if (problem.aoPtrDims == 2) {
+        if (problem.aOffset2D()) {
             tlbWarmup(problem.AO, strategy.AO, state.inputs.aoPtr,
                       mq, kq, state.ldao, lid, whose++, problem, strategy, state);
         }
@@ -65,7 +65,7 @@ void Generator<hw>::gemmTLBWarmup(const GEMMProblem &problem, const GEMMStrategy
             tlbWarmup(problem.B_scale, strategy.B_scale, state.inputs.bScalePtr,
                       kq, nq, state.ldbScale, lid, whose++, problem, strategy, state);
         }
-        if (problem.boPtrDims == 2) {
+        if (problem.bOffset2D()) {
             tlbWarmup(problem.BO, strategy.BO, state.inputs.boPtr,
                       kq, nq, state.ldbo, lid, whose++, problem, strategy, state);
         }

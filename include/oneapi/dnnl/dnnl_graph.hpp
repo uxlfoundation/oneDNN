@@ -997,6 +997,9 @@ public:
         /// Specifies a weights_format of an op. The value can be "OIX", "XIO",
         /// "IOX", or "XOI". Different operations may support different values.
         weights_format = dnnl_graph_op_attr_weights_format,
+        /// Specifies an accumulation_mode attribute to an op. The value can be
+        /// "strict", "relaxed", "any", "f32", "s32", or "f16".
+        accumulation_mode = dnnl_graph_op_attr_accumulation_mode,
 
         /// Specifies the end of all above exteral attributes for check.
         end = dnnl_graph_op_attr_end,
@@ -1633,6 +1636,36 @@ inline size_t get_constant_tensor_cache_capacity(engine::kind kind) {
 }
 
 /// @} dnnl_graph_api_constant_tensor_cache
+
+/// @addtogroup dnnl_graph_api_dump_mode Dump Mode
+///
+/// Control graph dumping behavior
+///
+/// @{
+
+enum class graph_dump_mode : unsigned {
+    none = dnnl_graph_dump_mode_none,
+    subgraph = dnnl_graph_dump_mode_subgraph,
+    graph = dnnl_graph_dump_mode_graph,
+};
+
+DNNL_DEFINE_BITMASK_OPS(graph_dump_mode)
+
+/// Sets the graph dump mode used by the library.
+///
+/// The mode value is interpreted as a bit mask composed of
+/// #dnnl::graph::graph_dump_mode flags. Unsupported combinations
+/// cause #status::invalid_arguments to be returned.
+///
+/// @param modes Bitmask selecting which graph dumps to enable.
+/// @returns Status code reporting the outcome of the operation.
+/// @returns #status::success or #status::invalid_arguments.
+inline status set_dump_mode(graph_dump_mode modes) {
+    return static_cast<status>(dnnl_graph_set_dump_mode(
+            static_cast<dnnl_graph_dump_mode_t>(static_cast<unsigned>(modes))));
+}
+
+/// @} dnnl_graph_api_dump_mode
 
 } // namespace graph
 

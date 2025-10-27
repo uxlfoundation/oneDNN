@@ -76,8 +76,8 @@ status_t softmax_desc_init(softmax_desc_t *softmax_desc, prop_kind_t prop_kind,
                 || memory_desc_wrapper(diff_dst_desc)
                            .has_runtime_dims_or_strides();
     }
-    VCONDCHECK(primitive, create, check, softmax, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_SOFTMAX_UNIMPL(
+            !runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     auto sd = softmax_desc_t();
     sd.primitive_kind = primitive_kind::softmax;

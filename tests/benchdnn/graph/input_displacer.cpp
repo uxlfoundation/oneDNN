@@ -73,7 +73,9 @@ void handle_special_dt_set(
 
     ref_prim->init_memory_args(::get_test_engine());
     ref_prim->init_ref_memory_args(::get_test_engine(), res);
-    if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return nullptr;
+    if (res->state == SKIPPED || res->state == UNIMPLEMENTED
+            || res->state == DEFERRED)
+        return nullptr;
     return ref_prim;
 }
 
@@ -553,12 +555,13 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
             case ::graph::op::kind::StaticTranspose: {
                 ::std::vector<int64_t> order;
                 op.get_attr_s64_vector(order, "order");
-                size_t ndims = order.size();
-                ::std::vector<int64_t> new_order(ndims, 0);
+                const size_t ndims = order.size();
+                op.attrs_["order"].s64_vector_
+                        = ::std::vector<int64_t>(ndims, 0);
                 for (size_t i = 0; i < ndims; i++) {
-                    new_order[(order[i] + ndims) % ndims] = i;
+                    op.attrs_["order"].s64_vector_[(order[i] + ndims) % ndims]
+                            = i;
                 }
-                op.attrs_["order"].s64_vector_ = new_order;
                 break;
             }
             case ::graph::op::kind::TypeCast:
@@ -666,8 +669,11 @@ int partition_data_displacer_t::gen_compressed_sdpa_filling(
 
     auto ref_prim_ptr = init_ref_prim_and_fill_data(op, res);
     if (!ref_prim_ptr) {
-        if (res->state == INVALID_ARGUMENTS) return FAIL;
-        if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
+        if (res->state == SKIPPED || res->state == UNIMPLEMENTED
+                || res->state == DEFERRED)
+            return OK;
+        else
+            return FAIL;
     }
 
     auto &gen_mem = const_cast<dnn_mem_t &>(ref_prim_ptr->get_arg(arg));

@@ -41,7 +41,7 @@ stmt_t send_t::create_offset_store(const expr_t &header_buf,
     if (!is_lsc && is_block() && is_slm()) {
         header_off = 2 * address_type().size();
         // Convert byte offset to dwords/owords/hwords offset.
-        unit_size = type.scalar().size();
+        unit_size = type.base().size();
     }
 
     expr_t mem_off = _mem_off;
@@ -154,7 +154,7 @@ std::vector<func_t> send_t::get_all(const hw_t &hw, send_op_t op,
                 // Prefer messages with a smaller type as they have less strict
                 // alignment requirements.
                 if (a_sz == b_sz)
-                    return a.type.scalar().size() < b.type.scalar().size();
+                    return a.type.base().size() < b.type.base().size();
                 return a_sz > b_sz;
             });
 
@@ -181,7 +181,7 @@ ngen::CacheSettingsLSC get_cache_settings(const send_t &send, const hw_t &hw) {
     bool is_prefetch = send.is_prefetch() || send.is_prefetch_2d();
     switch (send.cache_hint) {
         case send_cache_hint_t::undef:
-            switch (send.hw.to_ngen()) {
+            switch (send.hw.ngen_hw()) {
                 case ngen::HW::XeHPG:
                     // Use default cache policy on xelpg to avoid suspected driver issue.
                     if (is_store && hw.systolic_support())
@@ -341,14 +341,14 @@ private:
         tile_t tile;
         for (auto &b : l.blocks()) {
             if (b.stride != stride) break;
-            tile[b.dim] *= b.block;
-            stride = b.block * b.stride;
+            tile[b.idx] *= b.size;
+            stride = b.size * b.stride;
         }
         dense_block_size_ = tile.elems() * type().size() / type().packing();
         // Split the memory view into dense blocks and precompute block offsets
         // and alignments.
         view_.for_each_tile(tile, [&](const icoord_t &start) {
-            auto off = view_.offset_in_bytes(start);
+            auto off = view_.offset_bytes(start);
             off = simplify(off, cset);
 
             const int base_alignment = 128;
@@ -366,7 +366,7 @@ private:
 
         std::vector<dim_t> sub_dims
                 = {(dim_t)size * type().packing() / type().size()};
-        layout_t sub_layout(type(), 0, sub_dims);
+        layout_t sub_layout(type(), sub_dims);
         mask_tensor_t sub_mask_tensor(sub_layout);
         int beg = (cur_off_ + off) * type().packing() / type().size();
         int end = (cur_off_ + off + size) * type().packing() / type().size();
@@ -444,20 +444,18 @@ public:
 private:
     const type_t &type() const { return layout_.type(); }
 
-    int max_offset_bytes() const {
-        return utils::rnd_up((int)layout_.size(), grf_size_);
-    }
+    int max_offset_bytes() const { return (int)size_bytes(layout_, grf_size_); }
 
     int remaining_elems() const { return layout_.elems() - elems_; }
 
     int advance(std::vector<int> &idxs, int off_bytes) const {
         for (size_t i = 0; i < idxs.size(); i++) {
-            if (++idxs[i] < layout_.blocks()[i].block) break;
+            if (++idxs[i] < layout_[i].size) break;
             idxs[i] = 0;
         }
         int off = 0;
         for (size_t i = 0; i < idxs.size(); i++) {
-            int stride = (int)layout_.blocks()[i].stride;
+            int stride = (int)layout_[i].stride;
             off += idxs[i] * stride;
         }
         return utils::div_up(off * type().size(), type().packing());
@@ -486,7 +484,7 @@ access_builder_t::access_builder_t(ir_context_t &ir_ctx, const view_t &mem_view,
     , zero_out_(zero_out) {
     if (send_params.use_send_plan) {
         auto sp = create_send_plan(
-                ir_ctx.exec_cfg(), mem_view, send_params, zero_out);
+                ir_ctx.options(), mem_view, send_params, zero_out);
         if (sp && !sp.is_2d()) send_params.hint_2d = send_2d_hint_t();
         if (!sp) return;
         reg_layout_ = sp.reg_layout();
@@ -522,8 +520,8 @@ void access_builder_t::build() {
     gpu_assert(ok) << "Can't generate send decomposition.";
 }
 
-static bool stride_dimension_ok(const view_t &view, int stride_tidx,
-        dim_idx_t stride_vidx, const coord_t &vstart) {
+static bool stride_dimension_ok(const view_t &view, size_t stride_tidx,
+        size_t stride_vidx, const coord_t &vstart) {
     auto &tdim = view.tdim(stride_tidx);
     auto e = tdim.expr();
     for (dim_idx_t i = 0; i < tdim.nvargs(); i++) {
@@ -582,7 +580,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     auto vlayout = mem_view_.create_pseudo_vlayout();
     auto &hint = send_params.hint_2d;
     // The data may be loaded in a wider data type to get a proper GRF layout.
-    if (!hint.type.is_undef()) vlayout = vlayout.reinterpret(hint.type);
+    if (!hint.type.is_undef()) vlayout = reinterpret(vlayout, hint.type);
 
     bool is_store = (send_op_ == send_op_t::store);
     bool is_prefetch = (send_op_ == send_op_t::prefetch);
@@ -592,12 +590,12 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     auto &b0 = blocks[0];
     auto &b1 = blocks[1];
-    gpu_assert(b0.dim != b1.dim);
+    gpu_assert(b0.idx != b1.idx);
     if (b0.stride != stride_t(1)) return false;
     if (!b1.stride.is_fixed()) return false;
 
-    auto get_tdim_idx = [&](dim_idx_t vdim_idx, int &stride) {
-        dim_idx_t ret = dim_idx::invalid;
+    auto get_tdim_idx = [&](size_t vdim_idx, int &stride) {
+        size_t ret = dim_idx::invalid;
         for (dim_idx_t i = 0; i < mem_view_.ntdims(); i++) {
             auto &tdim = mem_view_.tdim(i);
             for (dim_idx_t j = 0; j < tdim.nvargs(); j++) {
@@ -613,31 +611,31 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
     int w_tstride = 0;
     int h_tstride = 0;
-    dim_idx_t w_dim_idx = get_tdim_idx(b0.dim, w_tstride);
-    dim_idx_t h_dim_idx = get_tdim_idx(b1.dim, h_tstride);
+    size_t w_dim_idx = get_tdim_idx(b0.idx, w_tstride);
+    size_t h_dim_idx = get_tdim_idx(b1.idx, h_tstride);
 
     if (w_tstride != 1) return false;
 
     auto &tlayout = mem_view_.tlayout();
-    auto get_2d_dim = [&](dim_idx_t tidx) {
-        return tlayout.inner_block(tidx, /*skip_outer=*/false);
+    auto get_2d_dim = [&](size_t tidx) {
+        return inner_block(tlayout, tidx, /*skip_outer=*/false);
     };
 
     int surface_width = 0;
     int surface_height = 0;
-    int surface_pitch = b1.stride;
-    bool is_w_blocked = (get_2d_dim(w_dim_idx) != tlayout.dim(w_dim_idx));
-    bool is_h_blocked = (get_2d_dim(h_dim_idx) != tlayout.dim(h_dim_idx));
+    int surface_pitch = int(b1.stride);
+    bool is_w_blocked = (get_2d_dim(w_dim_idx) != tlayout.elems(w_dim_idx));
+    bool is_h_blocked = (get_2d_dim(h_dim_idx) != tlayout.elems(h_dim_idx));
     // Virtual surface means loading from the innermost block of a block layout
     // which implies no bound checks embedded into 2D block message.
     bool use_virtual_surface = is_w_blocked || is_h_blocked;
     if (use_virtual_surface) {
         if (h_tstride != 1) return false;
-        surface_width = b0.block;
-        surface_height = b1.block;
+        surface_width = b0.size;
+        surface_height = b1.size;
     } else {
-        surface_width = tlayout.dim(w_dim_idx);
-        surface_height = tlayout.dim(h_dim_idx);
+        surface_width = tlayout.elems(w_dim_idx);
+        surface_height = tlayout.elems(h_dim_idx);
         if (surface_height % h_tstride != 0) return false;
         surface_height = surface_height / h_tstride;
     }
@@ -655,7 +653,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     int max_count
             = block_2d_max_count(ir_ctx_->hw(), is_prefetch, is_store, transpose, width, mem_type_.size());
     while (try_count <= max_count) {
-        if (b0.block % (try_count * width) != 0) break;
+        if (b0.size % (try_count * width) != 0) break;
         count = try_count;
         try_count *= 2;
     }
@@ -672,40 +670,41 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
         return false;
 
     tile_t tile;
-    tile[b0.dim] = count * width;
-    tile[b1.dim] = height;
+    tile[b0.idx] = count * width;
+    tile[b1.idx] = height;
 
-    reg_layout_ = layout_t(type_factor == 1 ? mem_type_ : send_type, 0,
+    reg_layout_ = layout_t(type_factor == 1 ? mem_type_ : send_type,
             std::vector<dim_t>(vlayout.ndims(), 1));
     int h_inner = vnni ? 4 / send_type.size() : 1;
     int h_outer = ir_utils::safe_divide(height, h_inner);
-    reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_inner);
+    reg_layout_ = reg_layout_.with_block({b1.idx, h_inner});
     if (transpose) {
-        reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_outer);
-        reg_layout_ = reg_layout_.add_outer_block(b0.dim, width);
+        reg_layout_ = reg_layout_.with_block({b1.idx, h_outer});
+        reg_layout_ = reg_layout_.with_block({b0.idx, width});
     } else {
-        reg_layout_ = reg_layout_.add_outer_block(b0.dim, width);
-        reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_outer);
+        reg_layout_ = reg_layout_.with_block({b0.idx, width});
+        reg_layout_ = reg_layout_.with_block({b1.idx, h_outer});
     }
-    reg_layout_ = reg_layout_.add_outer_block(b0.dim, count);
+    reg_layout_ = reg_layout_.with_block({b0.idx, count});
 
-    int w_outermost = ir_utils::safe_divide(vlayout.dim(b0.dim), count * width);
-    int h_outermost = ir_utils::safe_divide(vlayout.dim(b1.dim), height);
-    reg_layout_ = reg_layout_.add_outer_block(b0.dim, w_outermost);
-    reg_layout_ = reg_layout_.add_outer_block(b1.dim, h_outermost);
+    int w_outermost
+            = ir_utils::safe_divide(vlayout.elems(b0.idx), count * width);
+    int h_outermost = ir_utils::safe_divide(vlayout.elems(b1.idx), height);
+    reg_layout_ = reg_layout_.with_block({b0.idx, w_outermost});
+    reg_layout_ = reg_layout_.with_block({b1.idx, h_outermost});
 
     if (type_factor != 1) {
         auto blocks = reg_layout_.blocks();
-        reg_layout_ = layout_t(
-                mem_type_, 0, std::vector<dim_t>(vlayout.ndims(), 1));
-        reg_layout_ = reg_layout_.add_outer_block(b0.dim, type_factor);
+        reg_layout_
+                = layout_t(mem_type_, std::vector<dim_t>(vlayout.ndims(), 1));
+        reg_layout_ = reg_layout_.with_block({b0.idx, type_factor});
         for (auto &b : blocks)
-            reg_layout_ = reg_layout_.add_outer_block(b.dim, b.block);
+            reg_layout_ = reg_layout_.with_block({b.idx, b.size});
     }
 
     for (auto &b : blocks) {
-        if (utils::one_of(b.dim, b0.dim, b1.dim)) continue;
-        reg_layout_ = reg_layout_.add_outer_block(b.dim, b.block);
+        if (utils::one_of(b.idx, b0.idx, b1.idx)) continue;
+        reg_layout_ = reg_layout_.with_block({b.idx, b.size});
     }
 
     reg_layout_walker_
@@ -724,11 +723,8 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     auto &send = _send.as<send_t>();
 
     stmt_ = stmt_t();
-    bool ok = true;
-    auto vstart0 = mem_view_.vstart();
-    vlayout.for_each_tile(tile, [&](const icoord_t &start) {
-        if (!ok) return;
-
+    const auto &vstart0 = mem_view_.vstart();
+    for (auto &start : vlayout.iter(tile)) {
         int access_size = send.access_size();
         int access_elems = access_size / mem_type_.size();
 
@@ -736,26 +732,23 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
         expr_t mask;
         if (!check_2d_mask(tile, start, use_virtual_surface, w_dim_idx,
                     h_dim_idx, mask)) {
-            ok = false;
-            return;
+            return false;
         }
 
         if (!send.is_prefetch_2d()) {
             if (!reg_layout_walker_->can_advance(1, access_elems)) {
-                ok = false;
-                return;
+                return false;
             }
 
             if (!reg_layout_walker_->can_access(send.payload_size())) {
-                ok = false;
-                return;
+                return false;
             }
         }
 
         auto vstart = vstart0;
         for (dim_idx_t i = 0; i < into<dim_idx_t>(vlayout.ndims()); i++) {
             if (start.get(i) == 0) continue;
-            int factor = (i == b0.dim.index() ? type_factor : 1);
+            int factor = (i == b0.idx.index() ? type_factor : 1);
             vstart[i] += factor * start[i];
         }
         auto tstart
@@ -775,12 +768,11 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
 
             if (h_tstride != 1) {
                 if (!stride_dimension_ok(
-                            mem_view_, h_dim_idx, b1.dim, vstart)) {
+                            mem_view_, h_dim_idx, b1.idx, vstart)) {
                     if (send.is_prefetch_2d()) {
                         skip_send = true;
                     } else {
-                        ok = false;
-                        return;
+                        break;
                     }
                 }
                 y /= h_tstride;
@@ -788,20 +780,18 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
         }
 
         auto off = simplify(
-                mem_view_.tlayout().offset_in_bytes(tstart), ir_ctx_->cset());
+                offset_bytes(mem_view_.tlayout(), tstart), ir_ctx_->cset());
 
         // Check alignment requirements.
         int64_t align = get_max_const_factor(off, ir_ctx_->cset());
         if (align % block_2d_base_alignment(ir_ctx_->hw()) != 0) {
-            ok = false;
-            return;
+            return false;
         }
 
         if (!skip_send) {
             if (!ir_ctx_->cset().can_prove(
                         x % block_2d_x_alignment(send_type.size()) == 0)) {
-                ok = false;
-                return;
+                break;
             }
             auto reg_buf = (send.is_prefetch_2d()
                             ? expr_t()
@@ -811,9 +801,9 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
         }
 
         reg_layout_walker_->advance(send.access_size() / mem_type_.size());
-    });
+    }
 
-    return ok;
+    return true;
 }
 
 bool access_builder_t::fixup_send_2d_params(const type_t &send_type, bool vnni,
@@ -864,7 +854,7 @@ bool access_builder_t::fixup_send_2d_params(const type_t &send_type, bool vnni,
 }
 
 bool access_builder_t::check_2d_mask(const tile_t &tile, const coord_t &coord,
-        bool use_virtual_surface, dim_idx_t w_dim_idx, dim_idx_t h_dim_idx,
+        bool use_virtual_surface, size_t w_dim_idx, size_t h_dim_idx,
         expr_t &mask) const {
     auto sub_view = mem_view_.create_sub_view(tile, coord);
     auto mask_tensor = sub_view.create_mask_tensor(ir_ctx_->cset());
@@ -985,9 +975,9 @@ std::vector<layout_t> access_builder_t::candidate_payload_layouts() const {
 
     // These payload layouts are to match payload for byte x {1,2} scattered
     // messages (they are dword-strided).
-    if (type_size == 2) ret.push_back(vlayout.make_strided(2));
+    if (type_size == 2) ret.push_back(make_strided(vlayout, 2));
     if (type_size == 1 && mem_type_.bitsize() == 8)
-        ret.push_back(vlayout.make_strided(4));
+        ret.push_back(make_strided(vlayout, 4));
 
     return ret;
 }
@@ -1115,8 +1105,8 @@ send_2d_hint_t get_send_2d_hint(send_op_t send_op, const type_t &type,
     return hint;
 }
 
-bool send_2d_params_ok(const exec_config_t &exec_cfg, send_op_t send_op) {
-    if (exec_cfg.hw() < ngen::HW::XeHPC) return false;
+bool send_2d_params_ok(const kernel::options_t &options, send_op_t send_op) {
+    if (options.hw() < ngen::HW::XeHPC) return false;
     if (!utils::one_of(send_op, send_op_t::load, send_op_t::prefetch,
                 send_op_t::store))
         return false;
@@ -1129,34 +1119,34 @@ bool send_2d_vlayout_ok(const layout_t &vlayout) {
 
     const auto &b0 = blocks[0];
     const auto &b1 = blocks[1];
-    if (b0.dim == b1.dim) return false;
+    if (b0.idx == b1.idx) return false;
     if (b0.stride != stride_t(1)) return false;
     if (b1.stride.is_unknown()) return false;
     return true;
 }
 
-send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
+send_2d_hint_t get_send_2d_hint(const kernel::options_t &options,
         send_op_t send_op, const view_t &view, bool allow_2d,
         bool use_send_plan) {
     send_2d_hint_t hint;
-    if (!allow_2d || !send_2d_params_ok(exec_cfg, send_op)) return hint;
+    if (!allow_2d || !send_2d_params_ok(options, send_op)) return hint;
     auto vlayout = view.create_pseudo_vlayout();
     if (!send_2d_vlayout_ok(vlayout)) return hint;
     auto blocks = vlayout.blocks();
     auto &b0 = blocks[0];
     auto &b1 = blocks[1];
 
-    if (b0.block >= 128) return hint;
+    if (b0.size >= 128) return hint;
     return get_send_2d_hint(
-            send_op, view.type(), false, false, b0.block, b1.block);
+            send_op, view.type(), false, false, b0.size, b1.size);
 }
 
-send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
+send_2d_hint_t get_send_2d_hint(const kernel::options_t &options,
         send_op_t send_op, fma_kind_t fma_kind, abc_kind_t abc_kind,
         const view_t &view, const gemm_schedule_t &gemm_schedule, bool allow_2d,
         bool use_send_plan) {
     send_2d_hint_t hint;
-    if (!allow_2d || !send_2d_params_ok(exec_cfg, send_op)) return hint;
+    if (!allow_2d || !send_2d_params_ok(options, send_op)) return hint;
     auto vlayout = view.create_pseudo_vlayout();
     if (!send_2d_vlayout_ok(vlayout)) return hint;
     auto blocks = vlayout.blocks();
@@ -1171,25 +1161,25 @@ send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
         // src2, KxN: 16a16b -> 16b16a            (transpose)
         // src2, NxK: 16a16b -> 16a16b            ()
         bool is_dpas_src1 = (abc_kind == abc_kind_t::b);
-        int m_blk = exec_cfg.simd();
+        int m_blk = options.simd();
         int n_blk = any_block;
         int mn_blk = (is_dpas_src1 ? m_blk : n_blk);
         int k_blk = 32 / view.type().size();
         auto &bmnk_mapper = gemm_schedule.bmnk_mapper();
         bool is_b0_k
-                = (bmnk_mapper.bmnk_kind(abc_kind, b0.dim) == bmnk_kind_t::k);
+                = (bmnk_mapper.bmnk_kind(abc_kind, b0.idx) == bmnk_kind_t::k);
         bool transpose = (is_dpas_src1 == is_b0_k);
         int b0_blk = is_b0_k ? k_blk : mn_blk;
         int b1_blk = !is_b0_k ? k_blk : mn_blk;
-        if (b0_blk != any_block && b0.block % b0_blk != 0) return hint;
-        if (b1_blk != any_block && b1.block % b1_blk != 0) return hint;
+        if (b0_blk != any_block && b0.size % b0_blk != 0) return hint;
+        if (b1_blk != any_block && b1.size % b1_blk != 0) return hint;
         bool vnni = is_dpas_src1 && !transpose;
-        hint = get_send_2d_hint(send_op, view.type(), vnni, transpose, b0.block,
-                b1.block, b0_blk, b1_blk);
+        hint = get_send_2d_hint(send_op, view.type(), vnni, transpose, b0.size,
+                b1.size, b0_blk, b1_blk);
     } else {
-        if (b0.block >= 128) return hint;
+        if (b0.size >= 128) return hint;
         hint = get_send_2d_hint(
-                send_op, view.type(), false, false, b0.block, b1.block);
+                send_op, view.type(), false, false, b0.size, b1.size);
     }
 
     // XXX: Special VNNI permute hint to use with Xa16b:bf16 layout which can't
@@ -1208,20 +1198,20 @@ send_2d_hint_t get_send_2d_hint(const exec_config_t &exec_cfg,
     if (use_send_plan && send_op == send_op_t::load && hint.vnni
             && !hint.transpose && view.type().size() == 2
             && utils::one_of(abc_kind, abc_kind_t::a, abc_kind_t::b)
-            && b0.block == 16 && (dim_t)b1.stride == 16
-            && utils::one_of(b1.block, 8, 16, 32)) {
+            && b0.size == 16 && (dim_t)b1.stride == 16
+            && utils::one_of(b1.size, 8, 16, 32)) {
         hint.vnni_permute_factor = 2;
     }
 
     return hint;
 }
 
-send_params_t get_send_params(const exec_config_t &exec_cfg, send_op_t send_op,
-        send_address_t send_address, const view_t &view,
+send_params_t get_send_params(const kernel::options_t &options,
+        send_op_t send_op, send_address_t send_address, const view_t &view,
         send_cache_hint_t cache_hint, fma_kind_t fma_kind, abc_kind_t abc_kind,
         bool allow_2d) {
     send_params_t params;
-    params.hw = exec_cfg.hw();
+    params.hw = options.hw();
     params.mem_type = view.type();
     params.send_op = send_op;
     params.send_address = send_address;
@@ -1230,17 +1220,17 @@ send_params_t get_send_params(const exec_config_t &exec_cfg, send_op_t send_op,
     params.prefer_dense
             = (fma_kind == fma_kind_t::dpas && abc_kind == abc_kind_t::a);
     params.hint_2d = get_send_2d_hint(
-            exec_cfg, send_op, view, allow_2d, params.use_send_plan);
+            options, send_op, view, allow_2d, params.use_send_plan);
     return params;
 }
 
-send_params_t get_send_params(const exec_config_t &exec_cfg, send_op_t send_op,
-        send_address_t send_address, fma_kind_t fma_kind, abc_kind_t abc_kind,
-        const view_t &view, const gemm_schedule_t &gemm_schedule,
-        bool allow_2d) {
-    auto params = get_send_params(exec_cfg, send_op, send_address, view,
+send_params_t get_send_params(const kernel::options_t &options,
+        send_op_t send_op, send_address_t send_address, fma_kind_t fma_kind,
+        abc_kind_t abc_kind, const view_t &view,
+        const gemm_schedule_t &gemm_schedule, bool allow_2d) {
+    auto params = get_send_params(options, send_op, send_address, view,
             send_cache_hint_t::undef, fma_kind, abc_kind, false);
-    params.hint_2d = get_send_2d_hint(exec_cfg, send_op, fma_kind, abc_kind,
+    params.hint_2d = get_send_2d_hint(options, send_op, fma_kind, abc_kind,
             view, gemm_schedule, allow_2d, params.use_send_plan);
     return params;
 }

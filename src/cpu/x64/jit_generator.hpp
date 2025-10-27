@@ -508,13 +508,13 @@ public:
             movups(addr, x);
     }
 
-    void uni_vmovdqu16(const Xbyak::Xmm &x, const Xbyak::Address &addr) {
+    void uni_vmovdqu16(const Xbyak::Xmm &x, const Xbyak::Operand &op) {
         if (is_valid_isa(avx512_core))
-            vmovdqu16(x, addr);
+            vmovdqu16(x, op);
         else if (is_valid_isa(avx))
-            vmovups(x, addr);
+            vmovups(x, op);
         else
-            movups(x, addr);
+            movups(x, op);
     }
 
     void uni_vmovups(const Xbyak::Address &addr, const Xbyak::Xmm &x) {
@@ -2773,6 +2773,10 @@ public:
 
     inline cpu_isa_t max_cpu_isa() const noexcept { return max_cpu_isa_; }
 
+    inline bool is_valid_isa(cpu_isa_t isa) {
+        return is_subset(isa, max_cpu_isa_) && mayiuse(isa);
+    }
+
 private:
     const cpu_isa_t max_cpu_isa_;
     const Xbyak::uint8 *getCode() {
@@ -2781,10 +2785,6 @@ private:
         const Xbyak::uint8 *code = CodeGenerator::getCode();
         register_jit_code(code, getSize());
         return code;
-    }
-
-    inline bool is_valid_isa(cpu_isa_t isa) {
-        return is_subset(isa, max_cpu_isa_) && mayiuse(isa);
     }
 
     static inline bool is_initialized() {

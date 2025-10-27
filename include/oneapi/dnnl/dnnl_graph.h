@@ -773,6 +773,32 @@ dnnl_status_t DNNL_API dnnl_graph_get_constant_tensor_cache_capacity(
 
 /// @} dnnl_graph_api_constant_tensor_cache
 
+/// @addtogroup dnnl_graph_api_dump_mode
+/// @{
+
+/// Configures graph dump modes at runtime.
+///
+/// @note
+///     Enabling graph dump affects performance.
+///     This setting overrides the ONEDNN_GRAPH_DUMP environment variable.
+///
+/// @param modes Bitmask composed of values from #dnnl_graph_dump_mode_t.
+///     Accepted values:
+///      - #dnnl_graph_dump_mode_graph: dump the full graph prior to
+///        partitioning.
+///      - #dnnl_graph_dump_mode_subgraph: dump each partitioned subgraph.
+///      - #dnnl_graph_dump_mode_none: disable all graph dumping.
+///
+///     Bitmask combinations using bitwise operators are supported. For
+///     instance, `graph | subgraph` enables both modes, `none | graph`
+///     behaves like `graph`, and `none & graph` behaves like `none`.
+/// @returns #dnnl_invalid_arguments/#dnnl::status::invalid_arguments if the
+///     @p modes value contains unsupported bits or graph dump is disabled,
+///     and #dnnl_success/#dnnl::status::success on success.
+dnnl_status_t DNNL_API dnnl_graph_set_dump_mode(dnnl_graph_dump_mode_t modes);
+
+/// @} dnnl_graph_api_dump_mode
+
 /// @} dnnl_graph_api
 
 /// @} dnnl_api

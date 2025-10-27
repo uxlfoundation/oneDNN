@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2022 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -72,7 +73,7 @@ template <cpu_isa_t isa>
 class register_preserve_guard_t {
 
 public:
-    register_preserve_guard_t(jit_generator *host,
+    register_preserve_guard_t(jit_generator_t *host,
             std::initializer_list<Xbyak_aarch64::XReg> reg64_to_preserve,
             std::initializer_list<Xbyak_aarch64::VReg> vmm_to_preserve = {});
     register_preserve_guard_t(register_preserve_guard_t &&other) = default;
@@ -86,7 +87,7 @@ public:
     size_t stack_space_occupied() const;
 
 private:
-    jit_generator *host_;
+    jit_generator_t *host_;
     std::stack<Xbyak_aarch64::XReg> reg64_stack_;
     std::stack<Xbyak_aarch64::VReg> vmm_stack_;
     const uint64_t cpu_sveLen_ = get_sve_length();
@@ -98,7 +99,7 @@ class conditional_register_preserve_guard_t
     : public register_preserve_guard_t<isa> {
 public:
     conditional_register_preserve_guard_t(bool condition_to_be_met,
-            jit_generator *host,
+            jit_generator_t *host,
             std::initializer_list<Xbyak_aarch64::XReg> reg64_to_preserve,
             std::initializer_list<Xbyak_aarch64::VReg> vmm_to_preserve = {});
     DNNL_DISALLOW_COPY_AND_ASSIGN(conditional_register_preserve_guard_t);

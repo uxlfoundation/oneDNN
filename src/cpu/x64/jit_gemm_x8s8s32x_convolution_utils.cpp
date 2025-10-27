@@ -42,7 +42,7 @@ struct jit_pp_ker_t : pp_ker_t, public jit_generator_t {
     }
     void operator()(void *void_dst, const acc_data_t *acc, const char *bias,
             const float *scales, float dst_scale, float sum_scale,
-            float signed_scale, int g, size_t start, size_t end,
+            float signed_scale, int g, int /* mb */, size_t start, size_t end,
             const zero_point_call_params_t &zp,
             const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
             const exec_ctx_t & /* ctx */, const memory_desc_t & /* dst_md */,
@@ -204,7 +204,7 @@ jit_pp_ker_t::jit_pp_ker_t(
 
 void jit_pp_ker_t::operator()(void *void_dst, const acc_data_t *acc,
         const char *bias, const float *scales, float dst_scale, float sum_scale,
-        float signed_scale, int g, size_t start, size_t end,
+        float signed_scale, int g, int /* mb */, size_t start, size_t end,
         const zero_point_call_params_t &zp,
         const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
         const exec_ctx_t & /* ctx */, const memory_desc_t & /* dst_md */,

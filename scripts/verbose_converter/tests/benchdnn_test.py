@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 ################################################################################
-# Copyright 2021-2024 Intel Corporation
+# Copyright 2021-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import subprocess
 import sys
 from argparse import RawTextHelpFormatter
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict, List, IO
 
 
 class TestingException(RuntimeError):
@@ -48,10 +48,10 @@ def convert_dir_benchdnn2verbose(dir):
     return mapping.get(dir, "undef")
 
 
-def filter_verbose(verbose: str, driver: str, filter_event: str):
+def filter_verbose(verbose: IO[str], driver: str, filter_event: str):
     found_cases: List[str] = []
     tentative_cases: Dict[str, List[str]] = defaultdict(list)
-    for line in verbose.split("\n"):
+    for line in iter(verbose.readline, ''):
         if "__REPRO" in line:
             # n: STATUS (Status message) __REPRO: repro
             _, status_info, repro = map(str.strip, line.split(":", 2))
@@ -127,6 +127,8 @@ def generate_verbose(path_to_benchdnn, engine, driver, batch):
     if driver in ("matmul", "reorder", "brgemm"):
         profile_mode = "exec"
         benchdnn_mode = "R"
+    filter_event = "exec" if benchdnn_mode == "R" else "create"
+
     # Add extra noise (dispatch, etc.) to ensure it gets filtered out
     sub_env["ONEDNN_VERBOSE"] = f"dispatch,error,check,profile_{profile_mode}"
 
@@ -138,29 +140,33 @@ def generate_verbose(path_to_benchdnn, engine, driver, batch):
         f"--batch={batch}",
     ]
     try:
-        sub = subprocess.run(
+        sub = subprocess.Popen(
             sub_args,
-            capture_output=True,
             text=True,
             env=sub_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
+
+        if sub.stdout is None:
+            raise TestingException("Could not capture output from benchdnn")
+        results = filter_verbose(sub.stdout, driver, filter_event)
     except Exception as e:
-        raise TestingException(
-            f"subprocess.run() raised exception: {e!s}"
-        ) from None
-
-    if sub.returncode != 0:
-        # most likely converter generated incorrect batch file
-        raise TestingException(
-            f"""
-             subprocess.run() returned {sub.returncode},
-             args: {sub_args}
-             stderr: {sub.stderr}
-             """
-        )
-
-    filter_event = "exec" if benchdnn_mode == "R" else "create"
-    return filter_verbose(sub.stdout, driver, filter_event)
+        raise TestingException(f"failed to run benchdnn: {e!s}")
+    exit_code = sub.wait()
+    if not exit_code:
+        return results
+    stderr = ""
+    if sub.stderr is not None:
+        stderr = sub.stderr.read()
+    # most likely converter generated incorrect batch file
+    raise TestingException(
+        f"""
+         benchdnn returned {exit_code},
+         args: {sub_args}
+         stderr: {stderr}
+         """
+    )
 
 
 def generate_batch(verbose, driver):

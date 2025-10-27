@@ -48,7 +48,8 @@ struct ref_t : public primitive_t {
             VDISPATCH_REORDER(
                     src_engine == dst_engine, VERBOSE_BAD_ENGINE_KIND);
             VDISPATCH_REORDER(memory_desc_ndims_ok(src_md(), dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst",
+                    src_md()->ndims, dst_md()->ndims);
             VDISPATCH_REORDER(src_engine->kind() == engine_kind::gpu,
                     VERBOSE_BAD_ENGINE_KIND);
             VDISPATCH_REORDER(
@@ -105,8 +106,7 @@ struct ref_t : public primitive_t {
                                     || utils::one_of(data_type::s4, sdt, ddt)),
                             attr()->post_ops_.has_default_values()),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-
-            VDISPATCH_REORDER_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             VDISPATCH_REORDER_SC(maybe_create_zp_precompute_conv_pd(dst_engine),
                     "failed to create nested zp precompute convolution");
 

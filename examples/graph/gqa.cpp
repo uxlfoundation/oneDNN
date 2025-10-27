@@ -32,6 +32,7 @@ using namespace dnnl;
 
 using namespace dnnl::graph;
 using layout_type = logical_tensor::layout_type;
+using property_type = logical_tensor::property_type;
 using dim = logical_tensor::dim;
 using dims = logical_tensor::dims;
 
@@ -119,7 +120,6 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     const dims q_sz = {p.mb, p.kv_head_num, head_rep, p.seq_len, p.head_size};
     const dims kv_sz = {p.mb, p.kv_head_num, 1, p.seq_len, p.head_size};
     const dims score_sz = {p.mb, p.kv_head_num, head_rep, p.seq_len, p.seq_len};
-    const dims scale_sz = {1};
     const dims mask_sz = {p.mb, 1, 1, 1, p.seq_len};
 
     // Incremental IDs used to create logical tensors and operations.
@@ -136,7 +136,9 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     bmm1.add_outputs({score});
 
     // scaled_score = score / scale
-    auto scale = logical_tensor(id++, dt, scale_sz, layout_type::strided);
+    const logical_tensor::data_type dt_scale = logical_tensor::data_type::f32;
+    auto scale = logical_tensor(id++, dt_scale, 0, layout_type::strided,
+            property_type::host_scalar);
     auto scaled_score
             = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
     auto scale_div = op(id++, op::kind::Divide, "scale_div");
@@ -190,18 +192,9 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     compiled_partition cp = partitions[0].compile(
             {query, key, scale, mask, value}, {output}, eng);
 
-    // Create tensor objects
-    auto ts_query = tensor(query, eng);
-    auto ts_key = tensor(key, eng);
-    auto ts_scale = tensor(scale, eng);
-    auto ts_mask = tensor(mask, eng);
-    auto ts_value = tensor(value, eng);
-    auto ts_output = tensor(output, eng);
-
     // Allocate user data.
     std::vector<float> query_data(product(q_sz));
     std::vector<float> key_data(product(kv_sz));
-    std::vector<float> scale_data(product(scale_sz), std::sqrt(p.head_size));
     std::vector<float> mask_data(product(mask_sz));
     std::vector<float> value_data(product(kv_sz));
     std::vector<float> output_data(product(kv_sz));
@@ -211,10 +204,19 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     fill_random(value_data);
     fill_mask(mask_data, static_cast<size_t>(p.seq_len));
 
+    // Create tensor objects
+    auto ts_query = tensor(query, eng);
+    auto ts_key = tensor(key, eng);
+    auto ts_mask = tensor(mask, eng);
+    auto ts_value = tensor(value, eng);
+    auto ts_output = tensor(output, eng);
+
+    float scale_data = std::sqrt(p.head_size);
+    auto ts_scale = tensor::make_scalar_tensor(scale, &scale_data);
+
     // Write data to tensor object's handle.
     write_to_dnnl_tensor(query_data.data(), ts_query);
     write_to_dnnl_tensor(key_data.data(), ts_key);
-    write_to_dnnl_tensor(scale_data.data(), ts_scale);
     write_to_dnnl_tensor(mask_data.data(), ts_mask);
     write_to_dnnl_tensor(value_data.data(), ts_value);
 

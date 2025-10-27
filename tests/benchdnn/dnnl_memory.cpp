@@ -438,6 +438,7 @@ static int init_memory(
     bool is_sycl = is_sycl_engine(engine);
     bool is_opencl = is_opencl_engine(engine);
 
+    if (ret == nullptr) return FAIL;
     *ret = nullptr;
 
     const int nhandles = query_md_num_handles(md);
@@ -465,7 +466,17 @@ static int init_memory(
     }
 
     // Memory must be initialized at this point in some of the branches above.
-    if (!*ret) assert(!"not expected");
+    if (!*ret) { assert(!"not expected"); }
+
+    // Register device memory
+    for (int i = 0; i < nhandles; i++) {
+        size_t sz = dnnl_memory_desc_get_size_v2(md, i);
+        if (*ret) {
+            DNN_SAFE(
+                    dnnl_memory_get_data_handle_v2(*ret, &handles[i], i), CRIT);
+        }
+        memory_registry_t::get_instance().add_device(handles[i], sz);
+    }
 
     return OK;
 }
@@ -696,6 +707,14 @@ int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
                          dnnl_sycl_interop_usm, (int)handles.size(),
                          handles.data()),
                 CRIT);
+
+        // Register device memory, happens on CPU SYCL path.
+        for (int i = 0; i < nhandles; i++) {
+            size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
+            DNN_SAFE(dnnl_memory_get_data_handle_v2(m_, &handles[i], i), CRIT);
+            memory_registry_t::get_instance().add_device(handles[i], sz);
+        }
+
         return OK;
     }
 
@@ -962,6 +981,20 @@ static int cleanup_opencl(
 int dnn_mem_t::cleanup() {
     if (!active_) return OK;
     if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) unmap();
+
+    // Unregister device memory.
+    // Done it here to account memory allocated inside the library for
+    // correspondent memory objects.
+    if (is_sycl_engine(engine_) || is_opencl_engine(engine_)) {
+        const int nhandles = query_md_num_handles(md_);
+        std::vector<void *> handles(nhandles);
+        for (int i = 0; i < nhandles; i++) {
+            size_t sz = dnnl_memory_desc_get_size_v2(md_, i);
+            DNN_SAFE(dnnl_memory_get_data_handle_v2(m_, &handles[i], i), CRIT);
+            memory_registry_t::get_instance().remove_device(handles[i], sz);
+        }
+    }
+
     DNN_SAFE(dnnl_memory_desc_destroy(md_), CRIT);
     DNN_SAFE(dnnl_memory_destroy(m_), CRIT);
     if (is_data_owner_) {

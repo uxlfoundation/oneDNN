@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2020 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 #include "memory_tracking.hpp"
-#include "primitive_exec_types.hpp"
 
 #include "engine.hpp"
 
@@ -42,9 +41,27 @@ const void *registry_t::entry_t::compute_ptr(const void *base_ptr) const {
     return (const void *)aligned_ptr;
 }
 
-char *grantor_t::get_host_storage_ptr(const memory_storage_t *storage) const {
-    assert(storage != nullptr);
-    return (char *)exec_ctx_->host_ptr(storage);
+grantor_t registry_t::grantor(const memory_storage_t *mem_storage,
+        const void *base_mem_storage_host_ptr) const {
+    // Empty memory storage implies its mapped ptr is empty as well.
+    assert(IMPLICATION(!mem_storage, !base_mem_storage_host_ptr));
+    return grantor_t(*this, mem_storage, base_mem_storage_host_ptr);
+}
+
+char *grantor_t::host_ptr(const memory_storage_t *mem_storage) const {
+    if (!mem_storage || mem_storage->is_null()) return nullptr;
+
+    void *handle = mem_storage->root_storage()->data_handle();
+    char *base_ptr = nullptr;
+    if (base_mem_storage_host_ptr_) {
+        base_ptr = reinterpret_cast<char *>(
+                           const_cast<void *>(base_mem_storage_host_ptr_))
+                + mem_storage->base_offset();
+    } else {
+        assert(mem_storage->is_host_accessible());
+        base_ptr = static_cast<char *>(handle);
+    }
+    return base_ptr;
 }
 
 bool grantor_t::is_cpu_engine(const memory_storage_t *mem_storage) const {

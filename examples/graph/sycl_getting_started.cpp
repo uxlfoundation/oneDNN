@@ -17,9 +17,12 @@
 /// @example sycl_getting_started.cpp
 /// > Annotated version: @ref graph_sycl_getting_started_cpp
 
-/// @page graph_sycl_getting_started_cpp Getting started with SYCL extensions API and Graph API
-/// This is an example to demonstrate how to build a simple graph and run on
+/// @page graph_sycl_getting_started_cpp_brief
+/// @brief This is an example to demonstrate how to build a simple graph and run on
 /// SYCL device.
+
+/// @page graph_sycl_getting_started_cpp Getting started with SYCL extensions API and Graph API
+/// \copybrief graph_sycl_getting_started_cpp_brief
 ///
 /// > Example code: @ref sycl_getting_started.cpp
 ///

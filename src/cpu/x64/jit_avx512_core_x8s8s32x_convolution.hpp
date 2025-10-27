@@ -18,7 +18,6 @@
 #define CPU_X64_JIT_AVX512_CORE_X8S8S32X_CONVOLUTION_HPP
 
 #include "common/c_types_map.hpp"
-#include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
@@ -121,8 +120,6 @@ private:
     status_t execute_forward_2d_dw(const exec_ctx_t &ctx) const;
     status_t execute_forward_3d(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    const float *adjust_oscales(const memory_tracking::grantor_t &scratchpad,
-            const float *src_scales, const float *wei_scales) const;
 
     std::unique_ptr<jit_avx512_core_x8s8s32x_fwd_kernel_t> kernel_;
 };

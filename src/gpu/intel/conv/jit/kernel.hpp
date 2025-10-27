@@ -35,8 +35,7 @@ class conv_kernel_t : public ir_kernel_t {
 public:
     conv_kernel_t(const config_t &cfg, const kernel_info_t &kernel_info,
             const compute::range_t &local_range, const layout_t &zp_dst)
-        : ir_kernel_t(kernel_info.iface("gen_conv"), cfg.exec_cfg(),
-                local_range,
+        : ir_kernel_t(kernel_info.iface("gen_conv"), cfg.options(), local_range,
                 utils::one_of(
                         cfg.fma_kind(), fma_kind_t::dpas, fma_kind_t::dpasw),
                 {GENERATOR_NAME, GENERATOR_LINE})
@@ -46,7 +45,7 @@ public:
         // XXX: BWD_W does 32x32 multiplication in the inner loop which may cause
         // hangs when using with split barrier. Switch to emulation to work around
         // the issue.
-        if (prb_.is_bwd_w && exec_cfg().hw() < ngen::HW::XeHPC)
+        if (prb_.is_bwd_w && options().hw() < ngen::HW::XeHPC)
             force_emulate64();
 
         ir_utils::debug_profiler_t profile("Conv Kernel Construction Profile");

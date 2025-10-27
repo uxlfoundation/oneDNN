@@ -101,8 +101,7 @@ struct ref_matmul_t : public primitive_t {
             VDISPATCH_MATMUL(attr_.post_ops_.check_sum_consistency(dst_type,
                                      /* is_int8 */ false),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_MATMUL(
-                    ref_post_ops_t::primitive_kind_ok(attr()->post_ops_),
+            VDISPATCH_MATMUL(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_MATMUL(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
@@ -122,10 +121,17 @@ struct ref_matmul_t : public primitive_t {
                                     attr_.dropout_.dropout_desc_, true, false)),
                     VERBOSE_UNSUPPORTED_ATTR);
 
+            init_scratchpad();
+
             return status::success;
         }
 
+        int nthr_;
+        int ntasks_;
+
     private:
+        void init_scratchpad();
+
         bool zero_points_ok() const {
             const auto &zp = attr()->zero_points_;
             if (!zp.has_default_values(DNNL_ARG_SRC)) { return false; }

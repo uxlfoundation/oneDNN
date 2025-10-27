@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Arm Ltd. and affiliates
+* Copyright 2022-2024 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 #ifndef CPU_AARCH64_ACL_POST_OPS_HPP
 #define CPU_AARCH64_ACL_POST_OPS_HPP
 
-#include "common/primitive_desc_iterator.hpp"
 #include "cpu/aarch64/acl_binary.hpp"
 #include "cpu/aarch64/acl_eltwise.hpp"
 
@@ -98,29 +97,31 @@ struct acl_post_ops_t {
                 ACL_CHECK_SUPPORT(po.eltwise.scale != 1.0f,
                         "eltwise post op scale must be 1 (no scale)");
 
-                // Use the helper function to validate the descriptor arguments and
-                // assign them to our eltwise_desc_t
-                eltwise_desc_t ed;
-                CHECK(eltwise_desc_init(&ed, prop_kind_t::dnnl_forward,
-                        po.eltwise.alg, &dst_md, &dst_md, nullptr, nullptr,
-                        po.eltwise.alpha, po.eltwise.beta));
-
-                // Use an iterator to locate an implementation for this engine
+                eltwise_desc_t eltwise_desc;
+                eltwise_desc.primitive_kind = primitive_kind::eltwise;
+                eltwise_desc.alg_kind = po.eltwise.alg;
+                eltwise_desc.alpha = po.eltwise.alpha;
+                eltwise_desc.beta = po.eltwise.beta;
+                memory_desc_t temp_dst = dst_md;
+                // pass eltwise a desc with f32 datatype to perform the operation in fp32 rather than fp16
+                // since oneDNN requires all post-ops to run in fp32.
+                // we don't need to do that to the other post-ops as executing them in fp16 yields the same result.
+                if (dst_data_type == data_type::f16) {
+                    temp_dst.data_type = data_type::f32;
+                }
+                eltwise_desc.src_desc = temp_dst;
+                eltwise_desc.dst_desc = temp_dst;
+                eltwise_desc.prop_kind = prop_kind_t::dnnl_forward;
                 auto empty_attr = dnnl_primitive_attr();
-                primitive_desc_iterator_t it(engine,
-                        reinterpret_cast<const op_desc_t *>(&ed), &empty_attr,
-                        nullptr);
+                typename acl_eltwise_fwd_t::pd_t acl_eltwise_pd(
+                        &eltwise_desc, &empty_attr, nullptr);
+                CHECK(acl_eltwise_pd.init(engine));
 
-                // No implementations available
-                if (++it == it.end()) { return status::unimplemented; }
+                auto acl_eltwise
+                        = std::make_shared<acl_eltwise_fwd_t>(&acl_eltwise_pd);
+                CHECK(acl_eltwise->init(engine));
+                post_op_primitives.push_back(acl_eltwise);
 
-                // We found an implementation; grab the first implementation descriptor
-                std::shared_ptr<primitive_desc_t> eltwise_pd = *it;
-
-                // Construct the primitive
-                std::shared_ptr<primitive_t> eltwise_prim;
-                CHECK(eltwise_pd->create_primitive(eltwise_prim, engine));
-                post_op_primitives.push_back(eltwise_prim);
             } else {
                 // Unsupported catchall
                 return status::unimplemented;
@@ -138,23 +139,21 @@ struct acl_post_ops_t {
             const memory_desc_t &dst_md,
             arm_compute::ActivationLayerInfo &act_info_to_fuse,
             int post_op_start_index = 0) {
+
         CHECK(base_post_ops.set_default_formats(&dst_md));
         dst_data_type = dst_md.data_type;
         // If the first entry is eltwise, we fuse it, except when the datatype
         // is fp16 because in this case we want to execute the eltwise in fp32.
         if (base_post_ops.len() >= 1 && base_post_ops.entry_[0].is_eltwise()
                 && dst_data_type != data_type::f16) {
+
             const auto &first_po = base_post_ops.entry_[0].eltwise;
             ACL_CHECK_SUPPORT(first_po.scale != 1.0f,
                     "eltwise post op scale must be 1 (no scale)");
-
-            auto offset
-                    = (acl_utils::convert_to_acl_act(first_po, act_info_to_fuse)
-                            == status::success);
+            CHECK(acl_utils::convert_to_acl_act(first_po, act_info_to_fuse));
 
             // post_op_start_index + 1 to skip the fused eltwise
-            return init(engine, base_post_ops, dst_md,
-                    post_op_start_index + offset);
+            return init(engine, base_post_ops, dst_md, post_op_start_index + 1);
         } else {
             // Nothing to fuse, just copy all post ops
             return init(engine, base_post_ops, dst_md, post_op_start_index);

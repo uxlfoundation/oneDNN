@@ -25,8 +25,8 @@ namespace intel {
 namespace reorder {
 namespace jit {
 
-config_t::config_t(const exec_config_t &ec, layout_t src, layout_t dst) {
-    set_exec_cfg(ec);
+config_t::config_t(const kernel::options_t &ec, layout_t src, layout_t dst) {
+    set_options(ec);
 
     jit::normalize(src, dst);
     src_layout().set_user(src);
@@ -35,7 +35,7 @@ config_t::config_t(const exec_config_t &ec, layout_t src, layout_t dst) {
     auto rev_tiles = jit::tiles(ec.hw(), src, dst);
     tiles_.assign(rev_tiles.rbegin(), rev_tiles.rend());
 
-    dim_idx_t ndims = src.ndims();
+    auto ndims = src.ndims();
     const auto &thr_tile = tiles_.front();
 
     tile_t iter_tile;
@@ -45,20 +45,20 @@ config_t::config_t(const exec_config_t &ec, layout_t src, layout_t dst) {
     tile_t dims;
     dim_idx_t grid_idx = 0;
 
-    for (dim_idx_t i = 0; i < ndims; ++i) {
+    for (size_t i = 0; i < ndims; ++i) {
         pvar_t d(i);
 
         dim_t tg_dim = thr_tile[i];
-        dim_t outer = utils::div_up(dst.dim(i), tg_dim);
+        dim_t outer = utils::div_up(dst.elems(i), tg_dim);
         iter_tile[d] = tg_dim;
         loop_tile[d] = 1;
-        dims[d] = std::max(src.dim(i), dst.dim(i));
+        dims[d] = std::max(src.elems(i), dst.elems(i));
         grid_[grid_idx][d] = 1;
 
         if (outer != 1) grid_idx = std::min<dim_idx_t>(grid_idx + 1, 2);
     }
 
-    for (dim_idx_t i = 0; i < ndims; ++i) {
+    for (size_t i = 0; i < ndims; ++i) {
         pvar_t d(i);
         dim_t tg_dim = thr_tile[i];
         dim_t outer = utils::div_up(dims[d], tg_dim);

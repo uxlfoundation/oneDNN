@@ -196,7 +196,8 @@ inline void linear_order_args(compute::kernel_arg_list_t &arg_list, int &argn,
             group_count += k_parallel_groups * k_sliced_phases;
 
             if (tiles_per_phase > 0) {
-                k_sync_slabs = k_parallel_groups + (tiles_per_phase >> 1);
+                k_sync_slabs = (k_parallel_groups + (tiles_per_phase >> 1))
+                        / tiles_per_phase;
                 if (k_sync_slabs > 0) k_sync_slabs--;
                 k_sync_slabs = std::min(k_sync_slabs, (k_padded - 1) / k0);
             }

@@ -17,9 +17,12 @@
 /// @example cpu_inference_int8.cpp
 /// Annotated version: @ref graph_cpu_inference_int8_cpp
 
+/// @page graph_cpu_inference_int8_cpp_brief
+/// @brief This is an example to demonstrate how to build an int8 graph with Graph API
+/// and run it on CPU.
+
 /// @page graph_cpu_inference_int8_cpp Convolution int8 inference example with Graph API
-/// This is an example to demonstrate how to build an int8 graph with Graph
-/// API and run it on CPU.
+/// \copybrief graph_cpu_inference_int8_cpp_brief
 ///
 /// > Example code: @ref cpu_inference_int8.cpp
 ///

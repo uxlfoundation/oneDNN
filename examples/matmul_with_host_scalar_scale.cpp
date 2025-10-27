@@ -28,10 +28,13 @@ using namespace dnnl;
 /// @example matmul_with_host_scalar_scale.cpp
 /// > Annotated version: @ref matmul_with_host_scalar_scale_cpp
 
+/// @page matmul_with_host_scalar_scale_cpp_brief
+/// @brief This C++ API example demonstrates matrix multiplication (C = alpha * A * B)
+/// with a scalar scaling factor residing on the host.
+
 /// @page matmul_with_host_scalar_scale_cpp MatMul with Host Scalar Scale example
+/// \copybrief matmul_with_host_scalar_scale_cpp_brief
 ///
-/// This C++ API example demonstrates matrix multiplication (C = alpha * A * B)
-/// with a scalar scale factor using oneDNN.
 /// The workflow includes following steps:
 /// - Initialize a oneDNN engine and stream for computation.
 /// - Allocate and initialize matrices A and B.

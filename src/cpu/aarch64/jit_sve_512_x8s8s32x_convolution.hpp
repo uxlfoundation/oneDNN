@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -55,13 +56,13 @@ struct jit_sve_512_x8s8s32x_convolution_fwd_t : public primitive_t {
                     && !has_zero_dim_memory();
             if (!ok) return status::unimplemented;
 
-            status_t status = jit_sve_512_x8s8s32x_fwd_kernel::init_conf(jcp_,
+            status_t status = jit_sve_512_x8s8s32x_fwd_kernel_t::init_conf(jcp_,
                     *desc(), src_md_, weights_md_, dst_md_, bias_md_, *attr(),
                     dnnl_get_max_threads());
             if (status != status::success) return status;
 
             auto scratchpad = scratchpad_registry().registrar();
-            jit_sve_512_x8s8s32x_fwd_kernel::init_scratchpad(
+            jit_sve_512_x8s8s32x_fwd_kernel_t::init_scratchpad(
                     scratchpad, jcp_, *attr());
 
             return status;
@@ -73,13 +74,13 @@ struct jit_sve_512_x8s8s32x_convolution_fwd_t : public primitive_t {
     jit_sve_512_x8s8s32x_convolution_fwd_t(const pd_t *apd)
         : primitive_t(apd) {}
 
-    typedef typename prec_traits_t<src_type>::type src_data_t;
-    typedef typename prec_traits_t<data_type::s8>::type wei_data_t;
-    typedef typename prec_traits_t<dst_type>::type dst_data_t;
+    using src_data_t = typename prec_traits_t<src_type>::type;
+    using wei_data_t = typename prec_traits_t<data_type::s8>::type;
+    using dst_data_t = typename prec_traits_t<dst_type>::type;
 
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
-                new jit_sve_512_x8s8s32x_fwd_kernel(
+                new jit_sve_512_x8s8s32x_fwd_kernel_t(
                         pd()->jcp_, *pd()->attr())));
         return kernel_->create_kernel();
     }
@@ -105,7 +106,7 @@ private:
     status_t execute_forward_3d(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<jit_sve_512_x8s8s32x_fwd_kernel> kernel_;
+    std::unique_ptr<jit_sve_512_x8s8s32x_fwd_kernel_t> kernel_;
 };
 
 } // namespace aarch64

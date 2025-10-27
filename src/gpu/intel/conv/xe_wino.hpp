@@ -79,9 +79,7 @@ struct xe_wino_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_CONV(post_ops_with_binary_ok(attr(), desc()->dst_desc),
                     VERBOSE_UNSUPPORTED_POSTOP);
-
-            VDISPATCH_CONV_SC(init_conf(intel_engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "convolution");
+            CHECK(init_conf(intel_engine));
 
             int sub_group_size = conf.wino_ic_block / 2; // LWX
             VDISPATCH_CONV(intel_engine->mayiuse_sub_group(sub_group_size),

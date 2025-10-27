@@ -102,7 +102,7 @@ public:
             = {})
         : enabled_(false)
         , mem_info_func_(mem_info_func)
-#ifdef DNNL_ENABLE_GRAPH_DUMP
+#ifndef DNNL_DISABLE_GRAPH_DUMP
         , partition_id_(partition_id)
         , index_(0)
 #endif
@@ -121,7 +121,7 @@ public:
 private:
     bool enabled_ = false;
     std::function<std::string(const value_t *)> mem_info_func_;
-#ifdef DNNL_ENABLE_GRAPH_DUMP
+#ifndef DNNL_DISABLE_GRAPH_DUMP
     size_t partition_id_;
     size_t index_;
 #endif

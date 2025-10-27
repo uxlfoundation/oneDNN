@@ -55,7 +55,6 @@ struct xe_global_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-
             CHECK(init_conf(engine));
 
             bool is_training = desc_.prop_kind == forward_training;
@@ -67,7 +66,8 @@ struct xe_global_fwd_t : public primitive_t {
                 init_default_ws(s32);
             }
 
-            VDISPATCH_POOLING_SC(init_reduction(engine), "init_reduction()");
+            VDISPATCH_POOLING_SC(init_reduction(engine),
+                    VERBOSE_PRIMITIVE_CREATION_FAIL, "reduction");
             init_scratchpad();
             return status::success;
         }
@@ -185,7 +185,6 @@ struct xe_global_bwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT_CFG);
             VDISPATCH_POOLING(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-
             CHECK(init_conf(engine));
 
             if (desc()->alg_kind == pooling_max) {

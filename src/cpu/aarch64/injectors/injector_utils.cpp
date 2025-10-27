@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2021 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,7 +26,7 @@ namespace aarch64 {
 namespace injector_utils {
 
 template <cpu_isa_t isa>
-register_preserve_guard_t<isa>::register_preserve_guard_t(jit_generator *host,
+register_preserve_guard_t<isa>::register_preserve_guard_t(jit_generator_t *host,
         std::initializer_list<Xbyak_aarch64::XReg> reg64_to_preserve,
         std::initializer_list<Xbyak_aarch64::VReg> vmm_to_preserve)
     : host_(host)
@@ -127,7 +128,7 @@ size_t register_preserve_guard_t<isa>::stack_space_occupied() const {
 template <cpu_isa_t isa>
 conditional_register_preserve_guard_t<
         isa>::conditional_register_preserve_guard_t(bool condition_to_be_met,
-        jit_generator *host,
+        jit_generator_t *host,
         std::initializer_list<Xbyak_aarch64::XReg> reg64_to_preserve,
         std::initializer_list<Xbyak_aarch64::VReg> vmm_to_preserve)
     : register_preserve_guard_t<isa> {condition_to_be_met

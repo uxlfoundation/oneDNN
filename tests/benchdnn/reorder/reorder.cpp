@@ -36,10 +36,11 @@
 
 namespace reorder {
 
-int fill_mem(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
-        dnn_mem_t &mem_fp) {
+int fill_mem(int exec_arg, const prb_t *prb, data_kind_t kind,
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -541,7 +542,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_FROM: {
-                SAFE(fill_mem(prb, SRC, mem, ref_mem), WARN);
+                SAFE(fill_mem(exec_arg, prb, SRC, mem, ref_mem), WARN);
                 // Additional inputs to compare compensation buffers.
                 ref_mem_map.emplace(DNNL_ARG_SRC_1,
                         setup_compensation_memory(prb, FLAG_S8S8_COMP));
@@ -553,7 +554,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 const int sum_idx = po.find(attr_t::post_ops_t::SUM);
                 // MIOpen doesn't work properly when tensors are filled with 0xFF.
                 if (sum_idx >= 0 || is_amd_gpu()) {
-                    SAFE(fill_mem(prb, DST, mem, ref_mem), WARN);
+                    SAFE(fill_mem(exec_arg, prb, DST, mem, ref_mem), WARN);
 
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.

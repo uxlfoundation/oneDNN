@@ -17,9 +17,12 @@
 /// @example gpu_opencl_getting_started.cpp
 /// > Annotated version: @ref graph_gpu_opencl_getting_started_cpp
 
-/// @page graph_gpu_opencl_getting_started_cpp Getting started with OpenCL extensions and Graph API
-/// This is an example to demonstrate how to build a simple graph and run on
+/// @page graph_gpu_opencl_getting_started_cpp_brief
+/// @brief This is an example to demonstrate how to build a simple graph and run on
 /// OpenCL GPU runtime.
+
+/// @page graph_gpu_opencl_getting_started_cpp Getting started with OpenCL extensions and Graph API
+/// \copybrief graph_gpu_opencl_getting_started_cpp_brief
 ///
 /// > Example code: @ref gpu_opencl_getting_started.cpp
 ///
@@ -190,7 +193,7 @@ void ocl_getting_started_tutorial() {
     ///
     /// @snippet gpu_opencl_getting_started.cpp Create graph and add ops
     //[Create graph and add ops]
-    graph g(engine::kind::gpu);
+    graph g(validate_engine_kind(engine::kind::gpu));
 
     g.add_op(conv0);
     g.add_op(conv0_bias_add);

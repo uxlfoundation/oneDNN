@@ -321,19 +321,14 @@ private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     void execute_forward_thr(const int ithr, const int nthr, const char *src,
             const char *weights, const char *bias, const char *weights_dw,
-            const char *bias_dw, char *dst, const float *oscales,
-            const float *dst_scales, const float *dw_oscales,
-            const float *dw_dst_scales, const int32_t *src_zero_point,
-            const int32_t *dst_zero_point,
+            const char *bias_dw, char *dst, const void *src_oscales,
+            const void *wei_scales, const void *dst_scales,
+            const void *dw_wei_scales, const void *dw_dst_scales,
+            const int32_t *src_zero_point, const int32_t *dst_zero_point,
             const memory_tracking::grantor_t &scratchpad,
             const void *post_ops_binary_rhs_arg_vec,
             const void *post_ops_binary_rhs_arg_vec_dw) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    const float *adjust_oscales(const memory_tracking::grantor_t &scratchpad,
-            const float *src_scales, const float *wei_scales) const;
-    const float *maybe_adjust_dw_oscales(
-            const memory_tracking::grantor_t &scratchpad,
-            const float *dst_scales, const float *dw_wei_scales) const;
 
     std::unique_ptr<jit_avx512_core_x8s8s32x_1x1_conv_kernel_t> kernel_;
     std::unique_ptr<rtus_driver_t<avx512_core>> rtus_driver_;

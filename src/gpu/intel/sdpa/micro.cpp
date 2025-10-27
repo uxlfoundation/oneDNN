@@ -21,6 +21,7 @@
 #include "common/sdpa_utils.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/ref_io_helper.hpp"
 #include "gemmstone/microkernel_provider.hpp"
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
@@ -126,8 +127,13 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             && !is_f32; // f32 -> non-systolic kernel only
 
     bool use_fma_config = !use_systolic_ukernel_;
+    bool is_f16_accumulate_gemm = (kq_acc_dt() == data_type::f16)
+            || (vs_acc_dt() == data_type::f16);
+    VCHECK_SDPA_COND(
+            IMPLICATION(is_f16_accumulate_gemm, !use_systolic_ukernel_),
+            "f16 accumulate only available with FMA matmul."); //TODO: update once matmul primitive supports systolic f16 accumulate for testing
     config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
-            is_integrated, use_fma_config, is_f32);
+            is_integrated, use_fma_config, is_f32, is_f16_accumulate_gemm);
 
     VCHECK_SDPA_COND(config != nullptr,
             "No suitable kernel configuration found for the given problem "
@@ -217,12 +223,6 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem.Ts = problem.Tc;
 
     auto problem_kq = problem;
-
-    bool is_f16_accumulate_gemm = (kq_acc_dt() == data_type::f16)
-            || (vs_acc_dt() == data_type::f16);
-    VCHECK_SDPA_COND(
-            IMPLICATION(is_f16_accumulate_gemm, !use_systolic_ukernel_),
-            "f16 accumulate only available with FMA matmul."); //TODO: update once matmul primitive supports systolic f16 accumulate for testing
     problem_kq.Tc = problem_kq.Ts
             = (kq_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
 
@@ -281,9 +281,9 @@ status_t micro_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     SizeParams heuristic_sizes;
     // quanatizing sizes to large intervals allows kernel
     // selection search while avoiding recompilation for every new size
-    heuristic_sizes.m
-            = nearest_conf_seq_interval(arch_, d->head_size(), d->keys(),
-                    thin_q, quantized, is_integrated, use_fma_config, is_f32);
+    heuristic_sizes.m = nearest_conf_seq_interval(arch_, d->head_size(),
+            d->keys(), thin_q, quantized, is_integrated, use_fma_config, is_f32,
+            is_f16_accumulate_gemm);
     // query size is only tuned to thin_q/non-thin_q cases
     heuristic_sizes.n = (queries <= thin_q_threshold)
             ? thin_q_threshold
@@ -456,7 +456,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     if (pd->with_value_scales() || pd->with_value_zp())
         conf.val_group_size = pd->value_group_size();
 
-    conf.scale_data_t = d->scale_dt;
+    conf.scale_data_t = pd->scale_md()->data_type;
 
     conf.attn_mask_undef = attn_mask_type::undef;
     conf.attn_mask_buffer = attn_mask_type::buffer;
@@ -465,6 +465,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.invert_scale = d->invert_scale;
     conf.with_attn_scale = pd->with_attn_scale();
+    conf.with_host_scale = pd->with_host_scale();
     conf.with_attn_mask = (pd->with_attn_mask() && !pd->with_causal_mask());
     conf.broadcast_mask_q = (msk_mdw.dims()[pd_t::mask_q_index] == 1);
     conf.with_causal_mask = pd->with_causal_mask();
@@ -541,6 +542,7 @@ status_t micro_params_t::get_kernel_ctx(
     def_data_type(kernel_ctx, qry_data_t, "QRY");
     def_data_type(kernel_ctx, val_data_t, "VAL");
     def_data_type(kernel_ctx, dst_data_t, "DST");
+    def_data_type(kernel_ctx, scale_data_t, "SCALE", !with_host_scale);
 
     if (with_attn_mask) { def_data_type(kernel_ctx, msk_data_t, "MSK"); }
 
@@ -572,9 +574,9 @@ status_t micro_params_t::get_kernel_ctx(
     kernel_ctx.define_int("KEY_GROUP_SIZE", key_group_size);
     kernel_ctx.define_int("VAL_GROUP_SIZE", val_group_size);
 
-    def_data_type(kernel_ctx, scale_data_t, "SCALE");
     kernel_ctx.define_int("INVERT_SCALE", invert_scale);
     kernel_ctx.define_int("WITH_ATTN_SCALE", with_attn_scale);
+    kernel_ctx.define_int("WITH_HOST_SCALE", with_host_scale);
     kernel_ctx.define_int("ATTN_MASK_UNDEF", attn_mask_undef);
     kernel_ctx.define_int("ATTN_MASK_BUFFER", attn_mask_buffer);
     kernel_ctx.define_int("ATTN_MASK_TOP_LEFT", attn_mask_top_left);
@@ -752,11 +754,32 @@ status_t micro_t::execute(const exec_ctx_t &ctx) const {
 
     int mask_type = static_cast<int>(pd()->desc()->mask_type);
     compute::kernel_arg_list_t arg_list;
+
+    const memory_desc_wrapper scale_mdw(pd()->scale_md());
+    float scalar_scale = 1.f;
+    float inv_scalar_scale = 1.f;
+    if (pd()->with_host_scale()) {
+        auto scalar_storage = utils::downcast<
+                const dnnl::impl::host_scalar_memory_storage_t *>(&scale);
+        auto status = scalar_storage->get_scalar_value(
+                &scalar_scale, scale_mdw.data_type_size());
+        assert(status == status::success);
+        if (status != status::success) return status;
+        scalar_scale = dnnl::impl::cpu::io::load_float_value(
+                pd()->scale_md()->data_type, &scalar_scale, 0);
+        inv_scalar_scale = 1. / scalar_scale;
+    }
+
     arg_list.append(key);
     arg_list.append(qry);
     arg_list.append(val);
     arg_list.append(dst);
-    arg_list.append(scale);
+    if (pd()->with_host_scale()) {
+        arg_list.append(scalar_scale);
+        arg_list.append(inv_scalar_scale);
+    } else {
+        arg_list.append(scale);
+    }
     arg_list.append((int)D);
     arg_list.append((int)K);
     arg_list.append((int)Q);

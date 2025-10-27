@@ -30,7 +30,7 @@ struct normalization_stage_t {
     layout_block_t curr, last;
     std::array<dim_t, 2> tile;
 
-    bool is_dense() const { return curr.stride == last.stride * last.block; }
+    bool is_dense() const { return curr.stride == last.stride * last.size; }
 
     dim_t elems() const { return tile[0]; }
 
@@ -40,7 +40,7 @@ struct normalization_stage_t {
         : idx(idx)
         , curr(curr)
         , last(last)
-        , tile({tile[curr.dim], tile[last.dim]}) {}
+        , tile({tile[curr.idx], tile[last.idx]}) {}
 };
 
 struct merge_info_t {
@@ -56,13 +56,13 @@ struct merge_info_t {
 merge_info_t::merge_direction_t merge_direction(
         const normalization_stage_t &l, const normalization_stage_t &r) {
     using direction_t = merge_info_t::merge_direction_t;
-    if (l.curr.dim != r.curr.dim) return direction_t::none;
-    if (l.last.dim != r.last.dim) return direction_t::none;
+    if (l.curr.idx != r.curr.idx) return direction_t::none;
+    if (l.last.idx != r.last.idx) return direction_t::none;
     if (l.tile[0] != r.tile[0]) return direction_t::none;
-    if (l.curr.block == r.curr.block
-            && l.tile[1] * l.last.block == r.tile[1] * r.last.block)
+    if (l.curr.size == r.curr.size
+            && l.tile[1] * l.last.size == r.tile[1] * r.last.size)
         return direction_t::backward;
-    if (l.tile[1] == r.tile[1] && l.last.block == r.last.block)
+    if (l.tile[1] == r.tile[1] && l.last.size == r.last.size)
         return direction_t::forward;
     return direction_t::none;
 }
@@ -79,14 +79,14 @@ struct layout_normalization_t {
         iterator_t &operator++() {
             if (curr_ == end_) return *this;
             auto blk = *last_;
-            tile_[blk.dim] *= blk.block;
+            tile_[blk.idx] *= blk.size;
             last_ = curr_;
             ++curr_;
             ++idx_;
             return *this;
         }
 
-        iterator_t(dim_idx_t ndims, block_iterator_t it, block_iterator_t end)
+        iterator_t(size_t ndims, block_iterator_t it, block_iterator_t end)
             : curr_(it == end ? end : it + 1)
             , last_(it)
             , end_(end)
@@ -99,13 +99,13 @@ struct layout_normalization_t {
         std::vector<dim_t> tile_;
     };
 
-    int ndims() const { return ndims_; }
+    size_t ndims() const { return ndims_; }
     const blocks_t &blocks() const { return blocks_; }
 
     bool empty() const { return begin() == end(); }
-    bool contains_dim(const pvar_t &dim) const {
+    bool contains_dim(const pvar_t &idx) const {
         for (auto &blk : blocks_)
-            if (blk.dim == dim) return true;
+            if (blk.idx == idx) return true;
         return false;
     }
 
@@ -127,8 +127,8 @@ struct layout_normalization_t {
         for (auto s : *this) {
             if (merge_it != merge_end && merge_it->iter_idx == s.idx) {
                 if (merge_it->direction == direction_t::backward)
-                    s.curr.dim = last.dim;
-                s.curr.block *= last.block;
+                    s.curr.idx = last.idx;
+                s.curr.size *= last.size;
                 s.curr.stride = last.stride;
                 ++merge_it;
             } else
@@ -142,11 +142,11 @@ struct layout_normalization_t {
     void reindex(int ndims, const std::vector<int> &map) {
         ndims_ = ndims;
         for (auto &blk : blocks_)
-            blk.dim = map[blk.dim];
+            blk.idx = map[blk.idx];
     }
 
     layout_t layout() const {
-        return {type_, ndims_, offset_, blocks_, /*do_normalize=*/false};
+        return {type_, blocks_, offset_, ndims_, /*do_normalize=*/false};
     }
 
     iterator_t begin() const {
@@ -164,24 +164,23 @@ struct layout_normalization_t {
 private:
     static bool can_combine(
             const layout_block_t &last, const layout_block_t &next) {
-        if (last.dim != next.dim) return false;
-        if (last.stride * last.block != next.stride) return false;
+        if (last.idx != next.idx) return false;
+        if (last.stride * last.size != next.stride) return false;
         return true;
     }
 
     static std::vector<layout_block_t> normalized_blocks(
             const layout_t &layout, std::vector<bool> dim_empty) {
         std::vector<layout_block_t> normalized_blocks;
-        for (auto &eb : layout.enumerated_blocks()) {
-            auto &blk = eb.second;
-            if (blk.block != 1
-                    || (layout.is_outermost(eb) && !dim_empty[blk.dim])) {
+        for (auto &blk : layout.blocks()) {
+            if (blk.size != 1
+                    || (layout.is_outermost(blk) && !dim_empty[blk.idx])) {
                 if (normalized_blocks.empty()
                         || !can_combine(normalized_blocks.back(), blk)) {
                     normalized_blocks.push_back(blk);
-                    dim_empty[blk.dim] = true;
+                    dim_empty[blk.idx] = true;
                 } else {
-                    normalized_blocks.back().block *= blk.block;
+                    normalized_blocks.back().size *= blk.size;
                 }
             }
         }
@@ -189,7 +188,7 @@ private:
     }
 
     type_t type_;
-    dim_idx_t ndims_;
+    size_t ndims_;
     expr_t offset_;
     blocks_t blocks_;
 };
@@ -210,22 +209,22 @@ private:
 //    re-index the dimensions so that the new layouts are 2D.
 void normalize(layout_t &a, layout_t &b) {
     using direction_t = merge_info_t::merge_direction_t;
-    int ndims = a.ndims();
+    auto ndims = a.ndims();
     auto cmp = [](const normalization_stage_t &a,
                        const normalization_stage_t &b) {
         return a.elems() <= b.elems();
     };
-    auto dim_blocks = [](const pvar_t &dim) {
+    auto dim_blocks = [](const pvar_t &idx) {
         return [=](const normalization_stage_t &s) {
-            return s.curr.dim == dim;
+            return s.curr.idx == idx;
         };
     };
 
     std::vector<bool> empty_dimension(ndims, true);
     for (auto &blk : a.blocks())
-        if (blk.block != 1) empty_dimension[blk.dim] = false;
+        if (blk.size != 1) empty_dimension[blk.idx] = false;
     for (auto &blk : b.blocks())
-        if (blk.block != 1) empty_dimension[blk.dim] = false;
+        if (blk.size != 1) empty_dimension[blk.idx] = false;
 
     layout_normalization_t a_normalization {a, empty_dimension};
     layout_normalization_t b_normalization {b, empty_dimension};
@@ -233,7 +232,7 @@ void normalize(layout_t &a, layout_t &b) {
     std::vector<merge_info_t> a_merges;
     std::vector<merge_info_t> b_merges;
     // Find pairs of consecutive blocks which can be combined
-    for (int i = 0; i < ndims; ++i) {
+    for (size_t i = 0; i < ndims; ++i) {
         auto dim_i_blocks = dim_blocks(i);
         auto a_stages = a_normalization | filter(dim_i_blocks);
         auto b_stages = b_normalization | filter(dim_i_blocks);
@@ -252,7 +251,7 @@ void normalize(layout_t &a, layout_t &b) {
     // new dimension indices
     int curr_dim = 0;
     std::vector<int> dim_map(ndims);
-    for (int i = 0; i < ndims; ++i)
+    for (size_t i = 0; i < ndims; ++i)
         if (a_normalization.contains_dim(i) || b_normalization.contains_dim(i))
             dim_map[i] = curr_dim++;
     a_normalization.reindex(curr_dim, dim_map);

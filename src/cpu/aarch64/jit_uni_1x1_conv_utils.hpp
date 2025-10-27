@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -120,7 +121,7 @@ inline void rtus_prepare_space_info(conv_pd_t *self,
 }
 
 template <cpu_isa_t isa>
-struct rtus_driver_t : public jit_generator {
+struct rtus_driver_t : public jit_generator_t {
 
     struct call_params_t {
         const void *ws; /* reduced image (w/ strides = 1) */
@@ -569,7 +570,7 @@ inline int best_divider(int value, int min_divider, int max_divider,
     return x_divider;
 }
 
-typedef jit_1x1_conv_conf_t jcp_t;
+using jcp_t = jit_1x1_conv_conf_t;
 
 inline bool is_bcast_layout_nxc(const jcp_t &jcp) {
     switch (jcp.prop_kind) {

@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,7 +40,7 @@ namespace aarch64 {
 
 using namespace Xbyak_aarch64;
 
-struct binary_kernel_t : public jit_generator {
+struct binary_kernel_t : public jit_generator_t {
     using op_t = binary_op_t;
     using bcast_t = binary_bcast_t;
 
@@ -47,7 +48,9 @@ struct binary_kernel_t : public jit_generator {
             const jit_binary_conf_t conf, bool tail_kernel = false);
     ~binary_kernel_t() override = default;
 
-    void operator()(jit_uni_binary_args_t *p) { jit_generator::operator()(p); }
+    void operator()(jit_uni_binary_args_t *p) {
+        jit_generator_t::operator()(p);
+    }
 
     size_t simd_w() const noexcept { return simd_w_; }
     size_t vlen() const noexcept { return vlen_; }

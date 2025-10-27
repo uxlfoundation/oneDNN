@@ -17,9 +17,12 @@
 /// @example cross_engine_reorder.c
 /// > Annotated version: @ref cross_engine_reorder_c
 
-/// @page cross_engine_reorder_c Reorder between CPU and GPU engines
-/// This C API example demonstrates programming flow when reordering memory
+/// @page cross_engine_reorder_c_brief
+/// @brief This C API example demonstrates programming flow when reordering memory
 /// between CPU and GPU engines.
+
+/// @page cross_engine_reorder_c Reorder between CPU and GPU engines
+/// \copybrief cross_engine_reorder_c_brief
 ///
 /// @include cross_engine_reorder.c
 

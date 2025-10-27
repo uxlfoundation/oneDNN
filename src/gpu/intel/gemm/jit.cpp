@@ -19,9 +19,11 @@
 #include "common/type_helpers.hpp"
 #include "gemmstone/driver_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/gemm/host_scalars.hpp"
 #include "gpu/intel/gemm/jit/walk_orders.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/logging.hpp"
 
 #ifdef DNNL_WITH_SYCL
 #include "gpu/intel/sycl/stream.hpp"
@@ -38,7 +40,8 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         const memory_storage_t &a, const memory_storage_t &b,
         const memory_storage_t &c, const memory_storage_t *ao,
         const memory_storage_t *bo, const memory_storage_t *a_scales,
-        const memory_storage_t *b_scales, const memory_storage_t &co,
+        const memory_storage_t *b_scales, const memory_storage_t *ag,
+        const memory_storage_t *bg, const memory_storage_t &co,
         const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
         int po_count, const memory_storage_t **po_srcs, int64_t offset_a,
         int64_t offset_b, int64_t offset_c, int64_t offset_aq,
@@ -82,17 +85,24 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     if (pd()->with_b_zero_points()) arg_list.set(argn++, *bo);
     if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
     if (problem->bScale2D()) arg_list.set(argn++, *b_scales);
-    if (problem->aOffset2D() || problem->aScale2D()) {
-        auto layout = problem->aScale2D() ? problem->A_scale.layout
-                                          : problem->AO.layout;
+    if (problem->needsAGroupSums()) arg_list.set(argn++, *ag);
+    if (problem->needsBGroupSums()) arg_list.set(argn++, *bg);
+
+    if (problem->aOffset2D() || problem->aScale2D()
+            || problem->needsAGroupSums()) {
+        auto layout = problem->needsAGroupSums() ? problem->Ag.layout
+                : problem->aScale2D()            ? problem->A_scale.layout
+                                                 : problem->AO.layout;
         auto ldaq = into<int32_t>(isColMajor(layout)
                         ? pd()->eff_m()
                         : utils::div_up(pd()->desc()->k(), problem->aqGroupK));
         arg_list.set(argn++, ldaq);
     }
-    if (problem->bOffset2D() || problem->bScale2D()) {
-        auto layout = problem->bScale2D() ? problem->B_scale.layout
-                                          : problem->BO.layout;
+    if (problem->bOffset2D() || problem->bScale2D()
+            || problem->needsBGroupSums()) {
+        auto layout = problem->needsBGroupSums() ? problem->Bg.layout
+                : problem->bScale2D()            ? problem->B_scale.layout
+                                                 : problem->BO.layout;
         auto ldbq = into<int32_t>(!isColMajor(layout)
                         ? pd()->eff_n()
                         : utils::div_up(pd()->desc()->k(), problem->bqGroupK));
@@ -174,6 +184,12 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             }
             if (problem->hasBOffset()) {
                 arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_B));
+            }
+            if (problem->needsAGroupSums()) {
+                arg_list.set(argn++, pd()->eff_gs_stride(i, DNNL_ARG_A));
+            }
+            if (problem->needsBGroupSums()) {
+                arg_list.set(argn++, pd()->eff_gs_stride(i, DNNL_ARG_B));
             }
         }
         for (int i = 0; i < po_count; i++) {
@@ -328,6 +344,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     auto *co = &c_zp;
     const memory_storage_t *ao = nullptr, *bo = nullptr;
     const memory_storage_t *a_scales = nullptr, *b_scales = nullptr;
+    const memory_storage_t *ag = nullptr, *bg = nullptr;
 
     std::unique_ptr<memory_storage_t> c_temp;
     if (nocopy_info()->needsTempC()) {
@@ -412,15 +429,45 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
-        if (swapab) std::swap(ao, bo);
+    }
+
+    // Convert host scalar scales to Alpha
+    if (pd()->attr()->scales_.has_host_scalars()) {
+        const auto &a_scales = pd()->attr()->scales_.get(DNNL_ARG_A);
+        const auto &b_scales = pd()->attr()->scales_.get(DNNL_ARG_B);
+        const auto &c_scales = pd()->attr()->scales_.get(DNNL_ARG_C);
+        const auto &a_scales_storage = GEMM_CTX_ARG_STORAGE(a_scales);
+        const auto &b_scales_storage = GEMM_CTX_ARG_STORAGE(b_scales);
+        const auto &c_scales_storage = GEMM_CTX_ARG_STORAGE(c_scales);
+        alpha = 1.0f;
+        float scale_val = 0;
+        if (a_scales.is_host_scalar()) {
+            CHECK(maybe_get_scale_as_float(a_scales_storage, scale_val));
+            alpha *= scale_val;
+        }
+        if (b_scales.is_host_scalar()) {
+            CHECK(maybe_get_scale_as_float(b_scales_storage, scale_val));
+            alpha *= scale_val;
+        }
+        // Limited support of host scalar dst scales
+        if (c_scales.is_host_scalar() && pd()->attr()->post_ops_.len() == 0) {
+            CHECK(maybe_get_scale_as_float(c_scales_storage, scale_val));
+            gpu_assert(scale_val != 0);
+            alpha /= scale_val;
+        }
     }
 
     if (pd()->a_scales_2d()) { a_scales = &GEMM_CTX_ARG_STORAGE(a_scales); }
-
     if (pd()->b_scales_2d()) { b_scales = &GEMM_CTX_ARG_STORAGE(b_scales); }
-    if (swapab) std::swap(a_scales, b_scales);
+
+    if (problem.needsAGroupSums()) ag = &GEMM_CTX_ARG_STORAGE(a_group_sums);
+    if (problem.needsBGroupSums()) bg = &GEMM_CTX_ARG_STORAGE(b_group_sums);
 
     if (swapab) {
+        std::swap(ao, bo);
+        std::swap(a_scales, b_scales);
+        std::swap(ag, bg);
+
         uint8_t swap_table[4] = {0, 2, 1, 3};
         cmask = (cmask & ~3) | swap_table[cmask & 3];
     }
@@ -457,10 +504,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         if (k_parallel_global && !nocopy_info()->fusedBeta() && beta != 1.0f
                 && (k > k0 * pd()->kernel_desc()->aux_params()->wgK)) {
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
-                    bo, a_scales, b_scales, *co, nullptr, sround_seed, po_count,
-                    po_srcs, off_a0, off_b0, off_c0, off_aq0, off_bq0, off_co0,
-                    po_offsets0, lda, ldb, ldc, m, n, 0, 1, 1.0f, beta, 0,
-                    false, swapab, true);
+                    bo, a_scales, b_scales, ag, bg, *co, nullptr, sround_seed,
+                    po_count, po_srcs, off_a0, off_b0, off_c0, off_aq0, off_bq0,
+                    off_co0, po_offsets0, lda, ldb, ldc, m, n, 0, 1, 1.0f, beta,
+                    0, false, swapab, true);
             if (status) return status;
             beta = 1.0f;
         }
@@ -520,7 +567,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
                 float eff_beta = (Bk == 0) ? beta : 1.0f;
                 status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c,
-                        ao, bo, a_scales, b_scales, *co, c_temp.get(),
+                        ao, bo, a_scales, b_scales, ag, bg, *co, c_temp.get(),
                         sround_seed, po_count, po_srcs, off_a_src, off_b_src,
                         off_c, off_aq, off_bq, off_co, po_offsets, lda, ldb,
                         ldc, into<int32_t>(size_m), into<int32_t>(size_n),

@@ -72,8 +72,8 @@ status_t prelu_desc_init(prelu_desc_t *prelu_desc, prop_kind_t prop_kind,
                                 .has_runtime_dims_or_strides()
                         || memory_desc_wrapper(diff_weights_desc)
                                    .has_runtime_dims_or_strides());
-    VCONDCHECK(primitive, create, check, prelu, !runtime_dims_or_strides,
-            status::unimplemented, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VCHECK_PRELU_UNIMPL(
+            !runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     auto pd = prelu_desc_t();
     pd.primitive_kind = primitive_kind::prelu;

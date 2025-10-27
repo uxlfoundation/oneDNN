@@ -45,7 +45,7 @@ struct xe_t : public primitive_t {
             VDISPATCH_BINARY_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_BINARY(
                     memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
+                    VERBOSE_INCONSISTENT_NDIMS, "src0, src1", "dst");
             VDISPATCH_BINARY(
                     ((utils::everyone_is(
                               bf16, src_md(0)->data_type, src_md(1)->data_type)
@@ -100,8 +100,7 @@ struct xe_t : public primitive_t {
                                      && dst_md()->data_type == u8),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
-            VDISPATCH_BINARY_SC(init_conf(engine),
-                    VERBOSE_PRIMITIVE_CREATION_FAIL, "binary");
+            CHECK(init_conf(engine));
             return status::success;
         }
 

@@ -87,32 +87,31 @@ bool dpas_t::is_src_type(type_t type) {
     return type.is_x8() || type.is_bf16() || type.is_f16() || type.is_tf32();
 }
 
-layout_t dpas_t::a_layout() const {
+layout_t dpas_t::a_layout(std::array<pvar_t, 2> dims) const {
     if (!is_src_type(src1_type)) gpu_error_not_expected();
 
     int m_blk = exec_size;
     int inner_blk = 4 / src1_type.size();
     int outer_blk = sdepth;
-    std::vector<std::pair<pvar_t, dim_t>> blocks
-            = {{1, outer_blk}, {0, m_blk}, {1, inner_blk}};
-    return layout_t(src1_type, 0, 2, blocks);
+    std::vector<layout_block_t> blocks
+            = {{dims[1], inner_blk}, {dims[0], m_blk}, {dims[1], outer_blk}};
+    return layout_t(src1_type, blocks);
 }
 
-layout_t dpas_t::b_layout() const {
+layout_t dpas_t::b_layout(std::array<pvar_t, 2> dims) const {
     if (!is_src_type(src2_type)) gpu_error_not_expected();
 
     int n_blk = rcount;
     int k_blk = sdepth * 4 / src2_type.size();
-    std::vector<dim_t> blocks = {n_blk, k_blk};
-    auto tmp = layout_t(src2_type, 0, blocks);
-    return tmp.transpose();
+    std::vector<layout_block_t> blocks = {{dims[0], k_blk}, {dims[1], n_blk}};
+    return layout_t(src2_type, blocks);
 }
 
-layout_t dpas_t::c_layout() const {
+layout_t dpas_t::c_layout(std::array<pvar_t, 2> dims) const {
     int m_blk = exec_size;
     int n_blk = rcount;
-    std::vector<dim_t> dims = {n_blk, m_blk};
-    return layout_t(dst_type, 0, dims).transpose();
+    std::vector<layout_block_t> blocks = {{dims[0], m_blk}, {dims[1], n_blk}};
+    return layout_t(dst_type, blocks);
 }
 
 bool dpas_t::matches(const multiply_desc_t &desc) const {
@@ -127,8 +126,8 @@ bool dpas_t::matches(const multiply_desc_t &desc) const {
     auto b_blk_layout
             = desc.b_layout().sub(tile_t(std::vector<dim_t> {k_blk, n_blk}));
 
-    if (a_blk_layout != a_layout()) return false;
-    if (b_blk_layout != b_layout()) return false;
+    if (!a_blk_layout.is_equal_normalized(a_layout())) return false;
+    if (!b_blk_layout.is_equal_normalized(b_layout())) return false;
 
     return true;
 }

@@ -411,7 +411,7 @@ class ParserImpl:
     @staticmethod
     def parse_quantization_param(spec, read_value, param_type):
         # Old style: mask[:[value[*]|*]]
-        # New style: mask[:data_type[:groups]]
+        # New style: mask[:data_type[:host_scalar[:groups[:quantization_mode]]]]
         param = param_type()
         param.mask = spec.read_uint()
         if spec.read_literal(":"):
@@ -429,6 +429,9 @@ class ParserImpl:
                         param.is_host_scalar = True
                     else:
                         param.groups = groups_or_host_flag
+                    if spec.read_literal(":"):
+                        param.quantization_mode = spec.read_str()
+
         return param
 
     # v2.7 and below

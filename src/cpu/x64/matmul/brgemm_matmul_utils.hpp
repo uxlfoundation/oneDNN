@@ -90,6 +90,7 @@ struct brgemm_matmul_conf_t {
     int M_chunk_size, N_chunk_size, K_chunk_size;
     bool is_a_nt, is_b_nt, set_nt;
     bool need_prefetch_a, need_prefetch_b;
+    bool use_fused_copy_a;
     dim_t LDA, LDB, LDC, LDD;
     dim_t LDB2;
     int brgemm_batch_size, brgemm_batch_tail_size;
@@ -135,6 +136,7 @@ struct brgemm_matmul_conf_t {
     data_type_t reduce_dt;
     data_type_t orig_src_dt;
     data_type_t orig_wei_dt;
+
     int nthr;
     int nthr_k = 1, nthr_m = 1, nthr_n = 1, nthr_b = 1;
 
@@ -216,32 +218,39 @@ struct brgemm_matmul_conf_t {
     bool is_bf32 = false;
     bool is_bf16_with_int_wei = false;
     bool is_f16_with_int_wei = false;
+    bool is_f32_with_int_wei = false;
     bool is_f32_f16 = false;
     bool is_f32_bf16 = false;
     bool is_int4_weights = false;
+    bool is_f4_via_convert = false;
     bool is_tf32 = false;
     bool req_wei_vnni_downconvert = false;
     bool is_runtime_M = false;
     bool is_runtime_N = false;
     bool is_runtime_K = false;
+    bool extendable_k = false;
     bool is_src_batch_layout_trivial = false;
     bool is_wei_batch_layout_trivial = false;
     bool is_dst_batch_layout_trivial = false;
+
+    // Attributes related to quantization
+    // Scales
+    bool apply_scales_in_buffer_b = false;
+    size_t wei_scales_dt_sz = 0;
     bool is_wei_scale_per_n = false;
     bool is_wei_scale_per_k = false;
-    bool req_transpose_scales = false;
-    bool apply_scales_in_buffer_b = false;
-    // For generic cases, when groups are selected the way they can't divide a
-    // K_blk in equal pieces, it gets really hard to call a kernel with a
-    // single "per_N line" of scales. In this case weights will be copied
-    // to a larger memory buffer and used like a full tensor.
-    // TODO: convert to a method. State must be set in a specific place of the
-    // initialization as relies on blocking.
-    bool gK_and_K_blk_are_divisible = false;
-    size_t wei_scales_dt_sz = 0;
-    dim_t wei_scales_k_group_size = 0;
+    bool is_wei_scale_common = false;
+    dim_t wei_scales_k_gsize = 0;
     data_type_t wei_scales_dt = data_type::undef;
-    bool extendable_k = false;
+
+    // Zero points
+    dim_t wei_zp_k_gsize = 0;
+    bool is_wei_zp_per_k = false;
+    bool is_wei_zp_per_n = false;
+    bool is_wei_zp_common = false;
+    data_type_t wei_zp_dt = data_type::undef;
+
+    bool is_gemv = false;
 
     inline bool lda_big_pow2() const {
         const dim_t big_stride_threshold_in_bytes = 8192;
@@ -260,8 +269,7 @@ struct brgemm_matmul_conf_utils_t {
         return blocked_B_layouts_allowed && !bgmmc.is_runtime_N
                 && utils::one_of(matrix_b_tag, blocked_64n_B_layout_tag,
                         blocked_48n_B_layout_tag, blocked_32n_B_layout_tag,
-                        blocked_24n_B_layout_tag, blocked_16n_B_layout_tag,
-                        blocked_8n_B_layout_tag);
+                        blocked_16n_B_layout_tag);
     }
 
     inline bool check_b_layout_blocked_32_by_n(
@@ -279,7 +287,9 @@ struct brgemm_matmul_conf_utils_t {
         if (bgmmc.is_runtime_N) return true;
         if (bgmmc.is_bf16_with_int_wei) return true;
         if (bgmmc.is_f16_with_int_wei) return true;
+        if (bgmmc.is_f32_with_int_wei) return true;
         if (bgmmc.apply_scales_in_buffer_b) return true;
+        if (bgmmc.is_gemv) return false;
 
         if (bgmmc.is_amx)
             // use b_buffer for AMX when:
@@ -347,6 +357,8 @@ struct brgemm_matmul_conf_utils_t {
 
     inline bool is_f16() const { return f16_dt; }
 
+    inline bool is_f4_via_convert() const { return f4_via_convert_dt; }
+
     inline bool is_f8() const { return f8_dt; }
 
     inline bool is_bf8() const { return bf8_dt; }
@@ -364,6 +376,8 @@ struct brgemm_matmul_conf_utils_t {
     inline bool is_f32_bf16() const { return f32_bf16_dt; }
 
     inline bool is_f16_with_int_wei() const { return f16_with_int_wei_dt; }
+
+    inline bool is_f32_with_int_wei() const { return f32_with_int_wei_dt; }
 
     inline bool with_weights_decompression() const {
         return !utils::one_of(bgmmc.src_dt, data_type::s8, data_type::u8,
@@ -397,13 +411,16 @@ struct brgemm_matmul_conf_utils_t {
     status_t set_B_flags(memory_desc_t &B_md) const;
     format_tag_t pick_blocked_B_layout(int n_blk) const;
 
+    format_tag_t get_gemv_A_tag(const memory_desc_t &A_md) const;
+    format_tag_t get_gemv_B_tag(const memory_desc_t &B_md) const;
+
 private:
     brgemm_matmul_conf_t &bgmmc;
 
-    const bool f32_dt, bf16_dt, f16_dt, f8_dt, bf8_dt, int8_dt, bf32_dt,
-            tf32_dt;
+    const bool f32_dt, bf16_dt, f16_dt, f4_via_convert_dt, f8_dt, bf8_dt,
+            int8_dt, bf32_dt, tf32_dt;
     const bool weights_decompression_support, bf16_with_int_wei_dt, f32_f16_dt,
-            f32_bf16_dt, f16_with_int_wei_dt;
+            f32_bf16_dt, f16_with_int_wei_dt, f32_with_int_wei_dt;
     const bool A_any_layout;
     const bool B_any_layout;
     const bool C_any_layout;
@@ -412,8 +429,7 @@ private:
     const format_tag_t plain_tensor_layout_tag;
     const format_tag_t transposed_tensor_layout_tag;
     const format_tag_t blocked_64n_B_layout_tag, blocked_48n_B_layout_tag,
-            blocked_32n_B_layout_tag, blocked_24n_B_layout_tag,
-            blocked_16n_B_layout_tag, blocked_8n_B_layout_tag;
+            blocked_32n_B_layout_tag, blocked_16n_B_layout_tag;
     const bool blocked_B_layouts_allowed;
     const bool n_blk_fixed;
     const cpu_isa_t isa_;
@@ -432,7 +448,8 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
 status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         const matmul_desc_t &mmd, memory_desc_t &src_md,
         memory_desc_t &weights_md, memory_desc_t &dst_md,
-        memory_desc_t &bias_md, primitive_attr_t &attr);
+        memory_desc_t &bias_md, primitive_attr_t &attr,
+        const std::function<bool()> &can_use_gemm_fallback);
 
 void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         const brgemm_matmul_conf_t &bgmmc);
@@ -442,6 +459,19 @@ int get_n_block_from_tag(format_tag_t matrix_b_tag);
 void mem_advice_init(brgemm_matmul_conf_t &bgmmc);
 
 bool is_batch_layout_trivial(const memory_desc_wrapper &mdw, const dim_t batch);
+
+/**
+ * Returns the total block size along the K dimension, as the product of
+ * the fixed outer block size and the VNNI granularity.
+ *
+ * Example: For format tag BA16a16b4a, the block size is
+ * 16 (outer) * 4 (VNNI granularity) = 64.
+ *
+ * @param wei_dt Weights data type.
+ *
+ * @return The total K dimension block size.
+ */
+int get_wei_k_blk(data_type_t wei_dt);
 
 } // namespace matmul
 } // namespace x64

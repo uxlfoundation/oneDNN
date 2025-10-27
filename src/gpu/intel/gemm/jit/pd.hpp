@@ -59,6 +59,7 @@ struct pd_t : public gemm::pd_t {
     status_t init_attrs();
     bool scales_ok();
     bool zp_ok();
+    bool gs_ok();
 
     dim_t ld_binary(int idx) const;
     dim_t stride_binary(int idx, int stride = 0) const;
@@ -82,11 +83,14 @@ struct pd_t : public gemm::pd_t {
     int b_scales_group_k_ = 0, b_scales_group_n_ = 0;
     int a_zp_group_k_ = 0, a_zp_group_m_ = 0;
     int b_zp_group_k_ = 0, b_zp_group_n_ = 0;
+    int a_gs_group_k_ = 0, a_gs_group_m_ = 0;
+    int b_gs_group_k_ = 0, b_gs_group_n_ = 0;
     bool non_scale_po_ = false;
     data_type_t a_scales_type_ = data_type::undef;
     data_type_t b_scales_type_ = data_type::undef;
 
     int ao_dims_ = -1, bo_dims_ = -1;
+    int ag_dims_ = -1, bg_dims_ = -1;
     int asc_dims_ = -1, bsc_dims_ = -1;
     post_ops_t post_ops_;
     std::vector<binary_src_t> binary_srcs_;
@@ -102,12 +106,23 @@ struct pd_t : public gemm::pd_t {
     const int idx_a = DNNL_ARG_WEIGHTS;
     memory_desc_t prelu_wei_md, a_scale_md_, b_scale_md_, c_scale_md_;
     memory_desc_t a_zp_md_, b_zp_md_;
+    memory_desc_t a_gs_md_, b_gs_md_;
     bool swap_ab_ = false;
     dim_t eff_lda_ = 0, eff_ldb_ = 0;
     bool eff_transa_ = false, eff_transb_ = false;
     bool with_sround_ = false;
 
-    float alpha() const { return 1.0f; }
+    float alpha() const {
+        auto attr_info = attr_info_t::create(attr());
+        bool host_scales_by_alpha = attr_info.with_host_src_scale
+                || attr_info.with_host_wei_scale
+                || (attr_info.with_host_dst_scale
+                        && attr()->post_ops_.len() == 0);
+        // Bogus non-one value for host scalar.
+        // Actual value will be passed on execution step
+        if (host_scales_by_alpha) return 9.99f;
+        return 1.0f;
+    }
 
     float beta() const { return beta_; }
 
@@ -133,6 +148,9 @@ struct pd_t : public gemm::pd_t {
     bool a_zp_2d() const { return ao_dims_ >= 2; }
     bool b_zp_2d() const { return bo_dims_ >= 2; }
 
+    bool a_gs_2d() const { return ag_dims_ >= 2; }
+    bool b_gs_2d() const { return bg_dims_ >= 2; }
+
     bool with_sum_ab() const { return sum_ab() != sum_ab::sum_none; }
 
     int sum_ab_cmask() const {
@@ -154,6 +172,10 @@ struct pd_t : public gemm::pd_t {
     bool with_c_zero_points() const {
         return !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
     }
+
+    bool with_a_group_sums() const { return (ag_dims_ >= 0); }
+    bool with_b_group_sums() const { return (bg_dims_ >= 0); }
+
     bool with_sround() const { return with_sround_; }
 
     bool a_scales_2d() const { return asc_dims_ > 1; }
@@ -190,6 +212,7 @@ struct pd_t : public gemm::pd_t {
     }
     dim_t eff_scale_stride(int idx, int arg) const;
     dim_t eff_zp_stride(int idx, int arg) const;
+    dim_t eff_gs_stride(int idx, int arg) const;
     bool a_scales_grouped() const {
         bool k_grouped
                 = 1 < a_scales_group_k_ && a_scales_group_k_ < desc()->k();
@@ -219,6 +242,8 @@ struct pd_t : public gemm::pd_t {
             return a_zp_group_k_;
         } else if (a_scales_2d()) {
             return a_scales_group_k_;
+        } else if (with_a_group_sums()) {
+            return a_gs_group_k_;
         }
         return 0;
     }
@@ -227,6 +252,8 @@ struct pd_t : public gemm::pd_t {
             return a_zp_group_m_;
         } else if (a_scales_2d()) {
             return a_scales_group_m_;
+        } else if (with_a_group_sums()) {
+            return a_gs_group_m_;
         }
         return 0;
     }
@@ -235,6 +262,8 @@ struct pd_t : public gemm::pd_t {
             return b_zp_group_k_;
         } else if (b_scales_2d()) {
             return b_scales_group_k_;
+        } else if (with_b_group_sums()) {
+            return b_gs_group_k_;
         }
         return 0;
     }
@@ -243,6 +272,8 @@ struct pd_t : public gemm::pd_t {
             return b_zp_group_n_;
         } else if (b_scales_2d()) {
             return b_scales_group_n_;
+        } else if (with_b_group_sums()) {
+            return b_gs_group_n_;
         }
         return 0;
     }

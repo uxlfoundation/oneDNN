@@ -65,7 +65,7 @@ struct simple_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BINARY(
                     memory_desc_ndims_ok(src_md(0), src_md(1), dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src_0", "dst");
+                    VERBOSE_INCONSISTENT_NDIMS, "src_0, src_1", "dst");
 
             VDISPATCH_BINARY(IMPLICATION(!attr()->scales_.has_default_values(),
                                      check_scales_mask()),
@@ -86,8 +86,7 @@ struct simple_t : public primitive_t {
                                      && src_md(1)->data_type == bf16
                                      && dst_md()->data_type == u8),
                     VERBOSE_UNSUPPORTED_POSTOP);
-
-            VDISPATCH_BINARY_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             return status::success;
         }
 

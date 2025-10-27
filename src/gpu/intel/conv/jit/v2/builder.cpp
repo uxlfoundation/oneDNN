@@ -109,7 +109,7 @@ type_t to_send_type(const send_1d_desc_t &desc) {
     return type_t::oword(desc.type_size / 16);
 }
 
-int get_reg_off(const send_1d_plan_t &plan, const coord_t &coord) {
+int get_reg_off(const send_1d_plan_t &plan, const icoord_t &coord) {
     return into<int>(plan.reg_layout.offset_in_bytes(coord));
 }
 
@@ -421,7 +421,7 @@ private:
             default: gpu_error_not_expected();
         }
         stmt_t call_stmt;
-        for_each(sizes, fma.inst_tile, dim_order, [&](const coord_t &coord) {
+        for_each(sizes, fma.inst_tile, dim_order, [&](const icoord_t &coord) {
             dim_t a_off = a_layout.offset_in_bytes(coord);
             dim_t b_off = b_layout.offset_in_bytes(coord);
             dim_t c_off = c_layout.offset_in_bytes(coord);
@@ -557,7 +557,7 @@ private:
         elems = (elems < 8 ? 1 : elems);
         tile_t tile;
         tile[lhs0.dim] = elems;
-        for_each(lhs.int_dim_sizes(), tile, [&](const coord_t &coord) {
+        for_each(lhs.int_dim_sizes(), tile, [&](const icoord_t &coord) {
             auto lhs_off = lhs.offset_in_bytes(coord);
             auto rhs_off = rhs.offset_in_bytes(coord);
             auto e_l = load_t::make(
@@ -582,7 +582,7 @@ public:
     epilogue_tile_builder_t(ir_builder_t &parent, const buffer_info_t &buf_info,
             const kernel_desc_t &desc, const v2::layout_t &c_layout,
             const expr_t &c_mem_buf, const expr_t &c_reg_buf,
-            const coord_t &c_coord, const coord_t &coord,
+            const coord_t &c_coord, const icoord_t &coord,
             const epilogue_store_plan_t &store_plan)
         : ir_builder_t(parent, loop_nest_t())
         , buf_info_(buf_info)
@@ -738,7 +738,7 @@ private:
         const auto &c_mem_buf = buf_info_.mem_buf("c");
         const auto &c_reg_buf = buf_info_.reg_buf("c");
         for_each(c_layout.int_dim_sizes(), store_plan.tile,
-                [&](const coord_t &coord) {
+                [&](const icoord_t &coord) {
                     epilogue_tile_builder_t builder(*this, buf_info_, desc_,
                             c_layout, c_mem_buf, c_reg_buf, plan_.c_coord,
                             coord, store_plan);
@@ -1031,16 +1031,16 @@ private:
     buffer_info_t buf_info_;
 };
 
-stmt_t build_ir(const exec_config_t &exec_cfg, const kernel_desc_t &desc,
+stmt_t build_ir(const kernel::options_t &options, const kernel_desc_t &desc,
         var_manager_t &var_mgr) {
-    auto plan = create_plan(desc, exec_cfg.hw());
+    auto plan = create_plan(desc, options.hw());
     if (!plan) gpu_except_not_implemented("Cannot create plan.");
 
     gpu_info() << desc;
     gpu_trace() << plan;
 
     constraint_set_t cset;
-    ir_context_t ir_ctx(exec_cfg, cset);
+    ir_context_t ir_ctx(options, cset);
     builder_t builder(ir_ctx, desc, var_mgr, plan);
     auto stmt = builder.get_stmt();
     gpu_trace() << "Convolution kernel body:\n" << stmt;

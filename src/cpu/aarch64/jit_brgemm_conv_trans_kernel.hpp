@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,7 +40,7 @@ struct jit_brgemm_conv_trans_kernel_args_t {
     size_t b_pad;
 };
 
-struct jit_sve_core_brgemm_conv_trans_kernel_t : public jit_generator {
+struct jit_sve_core_brgemm_conv_trans_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sve_core_brgemm_conv_trans_kernel_t)
 
     jit_sve_core_brgemm_conv_trans_kernel_t(const jit_brgemm_conv_conf_t &ajcp);
@@ -50,8 +51,9 @@ protected:
     jit_brgemm_conv_conf_t jcp;
     dim_t inp_dsz;
     dim_t ic_block_sz;
-    dim_t iw_size, dst_w_block, dst_stride;
-    dim_t dst_h_offset, dst_w_offset;
+    dim_t dst_w_block, dst_stride;
+    dim_t dst_w_offset, dst_h_offset;
+    dim_t iw_size;
     dim_t VL, n_vec, n_tail_vec;
 
     const XReg inp_ptr = x15;

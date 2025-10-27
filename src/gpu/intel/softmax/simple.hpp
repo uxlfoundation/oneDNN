@@ -73,7 +73,8 @@ struct simple_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(intel_engine->mayiuse_sub_group(subgroup_size),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
             VDISPATCH_SOFTMAX(memory_desc_ndims_ok(src_md(), dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "src", "dst");
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst",
+                    src_md()->ndims, dst_md()->ndims);
             VDISPATCH_SOFTMAX(attr()->has_default_values(skip_mask_t::scales
                                       | skip_mask_t::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
@@ -235,7 +236,8 @@ struct simple_bwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
             VDISPATCH_SOFTMAX(memory_desc_ndims_ok(
                                       dst_md(), diff_src_md(), diff_dst_md()),
-                    VERBOSE_INCONSISTENT_NDIMS, "dst, diff_src", "diff_dst");
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "dst, diff_src",
+                    "diff_dst", dst_md()->ndims, diff_dst_md()->ndims);
             VDISPATCH_SOFTMAX(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_SOFTMAX_SC(

@@ -53,7 +53,7 @@
 #define VERBOSE_BAD_PROPKIND "bad propagation kind"
 #define VERBOSE_BAD_AXIS "bad axis"
 #define VERBOSE_BAD_FLAGS "bad flags"
-#define VERBOSE_BAD_PARAM "bad param %s"
+#define VERBOSE_BAD_PARAM "bad param: %s"
 #define VERBOSE_RUNTIMEDIM_UNSUPPORTED "runtime dimension is not supported"
 #define VERBOSE_RUNTIMEDIM_INCONSISTENT \
     "runtime dimension %d is inconsistent across tensors"
@@ -65,7 +65,6 @@
 #define VERBOSE_INCONSISTENT_DIM "dimension %s:%d is inconsistent with %s:%d"
 #define VERBOSE_INCONSISTENT_NDIMS \
     "tensors %s and %s have inconsistent number of dimensions"
-// TODO: replace the version above with the version below.
 #define VERBOSE_INCONSISTENT_NDIMS_WITH_VALS \
     "tensors %s and %s have inconsistent number of dimensions (%d) and (%d)"
 #define VERBOSE_INCONSISTENT_DT "tensors %s and %s have inconsistent datatypes"

@@ -62,7 +62,7 @@ subgraph_t::subgraph_t(const std::vector<op_ptr> &ops, const dnnl::engine &eng,
 }
 
 subgraph_t::subgraph_t(const std::vector<op_ptr> &ops, bool reset_layout)
-    : graph_t(ops), p_engine_(nullptr) {
+    : graph_t(ops), p_engine_(nullptr), can_use_blocked_layout_(false) {
     if (reset_layout) { set_all_layout_to_any(get_mutable_ops()); }
 }
 
@@ -88,7 +88,7 @@ std::string kind2str(op_kind_t kind) {
     }
 }
 
-#ifdef DNNL_ENABLE_GRAPH_DUMP
+#ifndef DNNL_DISABLE_GRAPH_DUMP
 namespace {
 std::string layout2str(const dnnl::memory::desc &md) {
     std::string str;
@@ -154,6 +154,7 @@ std::string property2str(property_type_t ptype) {
         case property_type::undef: str = "undef"; break;
         case property_type::variable: str = "variable"; break;
         case property_type::constant: str = "constant"; break;
+        case property_type::host_scalar: str = "host_scalar"; break;
         default: break;
     }
     return str;
@@ -164,7 +165,13 @@ std::string property2str(property_type_t ptype) {
 status_t subgraph_visualizer_t::run(const std::shared_ptr<subgraph_t> &sg,
         const std::string &name_suffix, bool is_layout_sensitive,
         bool is_memory_sensitive) {
-#ifdef DNNL_ENABLE_GRAPH_DUMP
+#ifdef DNNL_DISABLE_GRAPH_DUMP
+    UNUSED(sg);
+    UNUSED(name_suffix);
+    UNUSED(is_layout_sensitive);
+    UNUSED(is_memory_sensitive);
+    return status::success;
+#else
     if (!enabled_) return status::success;
 
     std::ofstream out;
@@ -274,14 +281,8 @@ status_t subgraph_visualizer_t::run(const std::shared_ptr<subgraph_t> &sg,
 
     out << "}\n";
     out.close();
-#else
-    UNUSED(sg);
-    UNUSED(name_suffix);
-    UNUSED(is_layout_sensitive);
-    UNUSED(is_memory_sensitive);
-#endif
-
     return status::success;
+#endif
 }
 
 status_t subgraph_validator_t::run(const std::shared_ptr<subgraph_t> &sg) {

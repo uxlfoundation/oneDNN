@@ -226,7 +226,7 @@ private:
     }
 
     static std::pair<ngen::DataSizeLSC, int> to_data_lsc(const type_t &type) {
-        switch (type.scalar().size()) {
+        switch (type.base().size()) {
             case 1: {
                 if (type.elems() == 1)
                     return std::make_pair(ngen::DataSizeLSC::D8U32, 1);

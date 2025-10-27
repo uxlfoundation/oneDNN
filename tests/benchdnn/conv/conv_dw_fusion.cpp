@@ -32,6 +32,12 @@
 
 namespace conv_dw_fusion {
 
+int fill_scales(int exec_arg, const attr_t &attr, int arg, dnn_mem_t &mem_dt,
+        dnn_mem_t &mem_fp) {
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    return fill_scales(attr, arg, mem_dt, mem_fp);
+}
+
 std::unique_ptr<prb_t> get_first_conv_prb(const prb_t *prb) {
     const auto &po = prb->attr.post_ops;
     int fusion_index = po.convolution_index();
@@ -159,27 +165,32 @@ int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
-                SAFE(fill_data(SRC, prb0, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(SRC, exec_arg, prb0, cfg, mem, ref_mem, res),
+                        WARN);
                 if (has_bench_mode_bit(mode_bit_t::corr))
                     SAFE(mem_map0.at(exec_arg).reorder(ref_mem), WARN);
                 break;
             case DNNL_ARG_WEIGHTS:
-                SAFE(fill_data(WEI, prb0, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(WEI, exec_arg, prb0, cfg, mem, ref_mem, res),
+                        WARN);
                 if (has_bench_mode_bit(mode_bit_t::corr))
                     SAFE(mem_map0.at(exec_arg).reorder(ref_mem), WARN);
                 break;
             case DNNL_ARG_BIAS:
-                SAFE(fill_data(BIA, prb0, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(BIA, exec_arg, prb0, cfg, mem, ref_mem, res),
+                        WARN);
                 if (has_bench_mode_bit(mode_bit_t::corr))
                     SAFE(mem_map0.at(exec_arg).reorder(ref_mem), WARN);
                 break;
             case (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS):
-                SAFE(fill_data(WEI, prb1, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(WEI, exec_arg, prb1, cfg, mem, ref_mem, res),
+                        WARN);
                 if (has_bench_mode_bit(mode_bit_t::corr))
                     SAFE(mem_map1.at(DNNL_ARG_WEIGHTS).reorder(ref_mem), WARN);
                 break;
             case (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS):
-                SAFE(fill_data(BIA, prb1, cfg, mem, ref_mem, res), WARN);
+                SAFE(fill_data(BIA, exec_arg, prb1, cfg, mem, ref_mem, res),
+                        WARN);
                 if (has_bench_mode_bit(mode_bit_t::corr))
                     SAFE(mem_map1.at(DNNL_ARG_BIAS).reorder(ref_mem), WARN);
                 break;
@@ -203,14 +214,16 @@ int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
                             /* int = */ true, attr_t::post_ops_t::kind_t::ADD,
                             "binary post-op");
                     if (exec_arg & DNNL_ARG_SRC_1) {
-                        SAFE(fill_random_real(
-                                     mem, ref_mem, res, binary_fill_cfg),
-                                WARN);
+                        if (!fill_from_file(exec_arg, mem, ref_mem))
+                            SAFE(fill_random_real(
+                                         mem, ref_mem, res, binary_fill_cfg),
+                                    WARN);
                         SAFE(mem_map0.at(exec_arg).reorder(ref_mem), WARN);
                     }
                 } else if (is_pre_dw_scales_arg && !is_post_dw_scales_arg) {
                     int local_exec_arg = exec_arg ^ DNNL_ARG_ATTR_SCALES;
-                    SAFE(fill_scales(prb0->attr, local_exec_arg, mem, ref_mem),
+                    SAFE(fill_scales(exec_arg, prb0->attr, local_exec_arg, mem,
+                                 ref_mem),
                             WARN);
                     SAFE(mem_map0.at(exec_arg).reorder(mem), WARN);
                 }
@@ -236,7 +249,9 @@ int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
             // Binary post-op filling config.
             fill_cfg_t binary_fill_cfg(mem.dt(), -16.f, 16.f, /* int = */ true,
                     attr_t::post_ops_t::kind_t::ADD, "binary post-op");
-            SAFE(fill_random_real(mem, ref_mem, res, binary_fill_cfg), WARN);
+            if (!fill_from_file(orig_idx, mem, ref_mem))
+                SAFE(fill_random_real(mem, ref_mem, res, binary_fill_cfg),
+                        WARN);
         }
     }
 
@@ -257,7 +272,7 @@ int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
         const auto &wei_scale_md = mem_map1.at(wei_scale_arg).md_;
         mem_map[dw_wei_scale_arg] = dnn_mem_t(
                 wei_scale_md, get_test_engine(), /* prefill = */ true);
-        SAFE(fill_scales(prb1->attr, DNNL_ARG_WEIGHTS,
+        SAFE(fill_scales(dw_wei_scale_arg, prb1->attr, DNNL_ARG_WEIGHTS,
                      mem_map.at(dw_wei_scale_arg), mem_map1.at(wei_scale_arg)),
                 WARN);
     }
@@ -268,8 +283,8 @@ int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
         const auto &dst_scale_md = mem_map1.at(dst_scale_arg).md_;
         mem_map[dw_dst_scale_arg] = dnn_mem_t(
                 dst_scale_md, get_test_engine(), /* prefill = */ true);
-        SAFE(fill_scales(prb1->attr, DNNL_ARG_DST, mem_map.at(dw_dst_scale_arg),
-                     mem_map1.at(dst_scale_arg)),
+        SAFE(fill_scales(dw_dst_scale_arg, prb1->attr, DNNL_ARG_DST,
+                     mem_map.at(dw_dst_scale_arg), mem_map1.at(dst_scale_arg)),
                 WARN);
     }
 

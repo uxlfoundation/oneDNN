@@ -1,6 +1,8 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
+*
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
@@ -43,7 +45,7 @@ struct jit_brgemm_matmul_copy_b_t {
 
     jit_brgemm_matmul_copy_b_t(const brgemm_matmul_conf_t *conf)
         : conf_(conf) {}
-    virtual ~jit_brgemm_matmul_copy_b_t() {}
+    virtual ~jit_brgemm_matmul_copy_b_t() = default;
 
     const brgemm_matmul_conf_t *conf_;
 };
@@ -68,7 +70,7 @@ struct jit_brgemm_matmul_copy_a_t {
 
     jit_brgemm_matmul_copy_a_t(const brgemm_matmul_conf_t *conf)
         : conf_(conf) {}
-    virtual ~jit_brgemm_matmul_copy_a_t() {}
+    virtual ~jit_brgemm_matmul_copy_a_t() = default;
 
     const brgemm_matmul_conf_t *conf_;
 };

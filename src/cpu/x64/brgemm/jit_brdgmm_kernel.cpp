@@ -313,9 +313,9 @@ void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
         const bool p_sum_zp_reg_set = *p_sum_zp != 0;
 
         const reg64_savable_guard_t register_guard_sum(
-                {{{reg_ptr_sum_scale},
+                {{{&reg_ptr_sum_scale},
                          with_binary_non_scalar_bcast_ && p_sum_scale_reg_set},
-                        {{reg_ptr_sum_zp}, p_sum_zp_reg_set}});
+                        {{&reg_ptr_sum_zp}, p_sum_zp_reg_set}});
 
         if (p_sum_scale_reg_set)
             mov(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));
@@ -540,8 +540,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
 
     for (int m = 0; m < m_blocks; m++) {
         auto vmm_lbound = vmm_tmp(0);
-        auto vmm_ubound = vmm_tmp(1);
         if (dt_requires_saturation) {
+            auto vmm_ubound = vmm_tmp(1);
             for_(int n = 0; n < n_blocks; n++)
             for (int v_i = 0; v_i < v_substep; ++v_i) {
                 if (get_substep_simd(n, v_i, has_n_tail) <= 0) continue;
@@ -565,6 +565,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
             const Vmm_low_t r_vmm_low = maybe_mask(vmm_low, mask_flag, true);
             const Xmm r_xmm = maybe_mask(xmm, mask_flag, true);
             if (use_sat_cvt) {
+                auto vmm_ubound = vmm_tmp(1);
                 assert(one_of(brg.dt_d, data_type::s8, data_type::u8));
                 auto vmm_perm = Vmm(vmm_ubound.getIdx());
                 vpermb(vmm, vmm_perm, vmm);

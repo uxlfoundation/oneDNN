@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2020-2024 Intel Corporation
+ * Copyright 2020-2025 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,6 +67,7 @@ pass::pass_registry_t dnnl_backend_t::register_passes() {
     DNNL_BACKEND_REGISTER_PATTERN_CALL(reduction_fusion, pass_registry);
     DNNL_BACKEND_REGISTER_PATTERN_CALL(groupnorm_fusion, pass_registry);
     DNNL_BACKEND_REGISTER_PATTERN_CALL(mlp, pass_registry);
+    DNNL_BACKEND_REGISTER_PATTERN_CALL(bmb, pass_registry);
 
     const std::vector<data_type_t> dtypes_to_check
             = {dnnl_bf16, dnnl_f16, dnnl_f8_e4m3, dnnl_f8_e5m2};

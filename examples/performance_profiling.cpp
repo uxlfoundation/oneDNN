@@ -17,9 +17,12 @@
 /// @example performance_profiling.cpp
 /// > Annotated version: @ref performance_profiling_cpp
 
-/// @page performance_profiling_cpp Performance Profiling Example
-/// This example demonstrates the best practices for application performance
+/// @page performance_profiling_cpp_brief
+/// @brief This example demonstrates the best practices for application performance
 /// optimizations with oneDNN.
+
+/// @page performance_profiling_cpp Performance Profiling Example
+/// \copybrief performance_profiling_cpp_brief
 ///
 /// > Example code: @ref performance_profiling.cpp
 ///

@@ -17,10 +17,13 @@
 /// @example eltwise.cpp
 /// > Annotated version: @ref eltwise_example_cpp
 
-/// @page eltwise_example_cpp Element-Wise Primitive Example
-/// This C++ API example demonstrates how to create and execute an
+/// @page eltwise_example_cpp_brief
+/// @brief This C++ API example demonstrates how to create and execute an
 /// [Element-wise](@ref dev_guide_eltwise) primitive in forward training
 /// propagation mode.
+
+/// @page eltwise_example_cpp Element-Wise Primitive Example
+/// \copybrief eltwise_example_cpp_brief
 ///
 /// @include eltwise.cpp
 

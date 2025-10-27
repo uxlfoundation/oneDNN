@@ -20,6 +20,7 @@
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/scale_utils.hpp"
 
@@ -317,8 +318,9 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
             && IMPLICATION(is_int8,
-                    one_of(bias_md_.data_type, data_type::undef, f32, s32, s8,
-                            u8))
+                    one_of(dst_type, s8, u8, s32, f32)
+                            && one_of(bias_md_.data_type, data_type::undef, f32,
+                                    s32, s8, u8))
             && IMPLICATION(!is_int8,
                     one_of(bias_md_.data_type, data_type::undef, f32, src_type))
             && attr()->has_default_values(skip_mask, dst_type)
@@ -479,8 +481,31 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     brgemm_descriptors_->resize(brgs_sz_);
 
     const auto &p = attr()->post_ops_;
+
+    // TODO: fix failing post ops for bf16 on sve 128
+    const bool is_bf16
+            = src_type == data_type::bf16 && wei_type == data_type::bf16;
+    if (is_bf16 && get_max_cpu_isa() == sve_128) {
+        for (auto const &entry : p.entry_) {
+            const bool is_failing_po = entry.is_eltwise()
+                    && one_of(entry.eltwise.alg,
+                            // these fail due to label offset being too large
+                            alg_kind::eltwise_tanh, alg_kind::eltwise_gelu_tanh,
+                            alg_kind::eltwise_gelu_erf);
+            VDISPATCH_CONV(!is_failing_po, VERBOSE_BAD_ALGORITHM);
+        }
+    }
+
     const int sum_idx = p.find(primitive_kind::sum);
     with_sum = (sum_idx != -1);
+
+    // Check if postop sum datatype is supported
+    if (with_sum) {
+        const auto &sum_po = p.entry_[sum_idx];
+        if (!one_of(sum_po.sum.dt, data_type::undef, data_type::f32,
+                    data_type::s32, data_type::u8, data_type::s8))
+            return status::unimplemented;
+    }
 
     // os_blocking is supported for exec_trans only
     assert(IMPLICATION(jcp_.exec_type != exec_trans, !jcp_.is_os_blocking));
@@ -535,9 +560,6 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     if (jcp_.with_scales)
         book_precomputed_scales(scratchpad, attr()->scales_, OC(),
                 jcp_.scale_adjust_factor != 1.0f);
-
-    // temporary fix for large l_pad failing test caused by PR #3552
-    if (2 * jcp_.l_pad > jcp_.ow_block) return status::unimplemented;
 
     return status::success;
 }
@@ -642,7 +664,7 @@ status_t brgemm_convolution_fwd_t<isa>::add_po_kernel(
     bcfg->alpha = !is_init && IMPLICATION(jcp.with_sum, jcp.use_buffer);
     bcfg->beta = is_init ? 0 : 1;
     CHECK(safe_ptr_assign(kernels_po_[ker_idx],
-            new jit_brgemm_kernel_post_ops<isa>(jcp, *bcfg, *_pd->attr())));
+            new jit_brgemm_kernel_post_ops_t<isa>(jcp, *bcfg, *_pd->attr())));
     kernels_po_[ker_idx]->create_kernel();
     return status::success;
 }

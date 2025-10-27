@@ -109,22 +109,21 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
             VERBOSE_INCONSISTENT_MDS, "src", "dst");
     int ndims = src_mdw.ndims();
 
-    layout_t src_layout {src_mdw, /*do_normalize=*/false};
-    layout_t dst_layout {dst_mdw, /*do_normalize=*/false};
+    layout_t src_layout = make_layout(*src_md());
+    layout_t dst_layout = make_layout(*dst_md());
 
     VDISPATCH_REORDER(!(src_layout.elems() == 0 || dst_layout.elems() == 0),
             VERBOSE_EMPTY_TENSOR, "src_layout || dst_layout");
 
     std::vector<dim_t> dims(ndims);
     for (int i = 0; i < ndims; ++i)
-        dims[i] = std::max(src_layout.dim(i), dst_layout.dim(i));
+        dims[i] = std::max(src_layout.elems(i), dst_layout.elems(i));
 
     auto check_layout = [&](const layout_t &l) {
-        for (auto &eb : l.enumerated_blocks()) {
-            auto &b = eb.second;
-            if (l.is_outermost(eb)) {
-                dim_t inner = l.dim(b.dim) / b.block;
-                if (dims[b.dim] % inner) return false;
+        for (auto &b : l.blocks()) {
+            if (l.is_outermost(b)) {
+                dim_t inner = l.elems(b.idx) / b.size;
+                if (dims[b.idx] % inner) return false;
             }
         }
         return true;
@@ -139,11 +138,11 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
 
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-    hw_t hw(engine);
-    exec_config_t exec_cfg(hw);
-    exec_cfg.set_regs(hw.prefer_large_grf(gpu_attr) ? 256 : 128);
-    exec_cfg.set_simd(16);
-    cfg = std::make_shared<config_t>(exec_cfg, src_layout, dst_layout);
+    hw_t hw(make_ir_hw(engine));
+    kernel::options_t options(hw);
+    options.set_regs(prefer_large_grf(hw, gpu_attr) ? 256 : 128);
+    options.set_simd(16);
+    cfg = std::make_shared<config_t>(options, src_layout, dst_layout);
     cfg->set_zp_cfg(zp_cfg);
 
     auto byte_aligned = [&](const layout_t &layout) {
@@ -153,16 +152,16 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
         const auto packing = layout.type().packing();
         if (packing == 1) return true;
         for (auto &b : layout.blocks()) {
-            if (b.block == 1) continue;
+            if (b.size == 1) continue;
             if ((dim_t)b.stride != contiguous_inner_elems) break;
-            if (innermost_elems == 1) innermost_elems = b.block;
-            if (b.block > dims[b.dim]) {
-                if (b.block % dims[b.dim] == 0)
-                    contiguous_inner_elems *= dims[b.dim];
+            if (innermost_elems == 1) innermost_elems = b.size;
+            if (b.size > dims[b.idx]) {
+                if (b.size % dims[b.idx] == 0)
+                    contiguous_inner_elems *= dims[b.idx];
                 break;
             }
-            contiguous_inner_elems *= b.block;
-            dims[b.dim] /= b.block;
+            contiguous_inner_elems *= b.size;
+            dims[b.idx] /= b.size;
         }
         return innermost_elems % packing == 0
                 || contiguous_inner_elems % (4 * packing) == 0;

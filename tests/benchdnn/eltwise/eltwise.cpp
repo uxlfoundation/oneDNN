@@ -195,10 +195,11 @@ static float get_eltwise_zero_trust_percent(const prb_t *prb) {
     return ztp;
 }
 
-int fill_data(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
-        dnn_mem_t &mem_fp) {
+int fill_data(int exec_arg, const prb_t *prb, data_kind_t kind,
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -400,11 +401,32 @@ std::vector<int> supported_exec_args(dir_t dir) {
     };
     static const std::vector<int> exec_bwd_args = {
             DNNL_ARG_SRC,
+            DNNL_ARG_DIFF_DST,
+            DNNL_ARG_DIFF_SRC,
+    };
+    // Use these args when `dir & FLAG_WEI` or `dir == BWD_W` indicating its
+    // `use_dst` case.
+    static const std::vector<int> exec_bwd_use_dst_args = {
             DNNL_ARG_DST,
             DNNL_ARG_DIFF_DST,
             DNNL_ARG_DIFF_SRC,
     };
-    return (dir & FLAG_FWD) ? exec_fwd_args : exec_bwd_args;
+    // Since it costs much to enable a work around for `use_dst` at graph
+    // driver, just pass all of args there.
+    static const std::vector<int> exec_bwd_args_graph = {
+            DNNL_ARG_SRC,
+            DNNL_ARG_DST,
+            DNNL_ARG_DIFF_DST,
+            DNNL_ARG_DIFF_SRC,
+    };
+    // This driver uses additional information coming only from `prb` through
+    // the `dir` variable, which is not a clean solution, but the alternative
+    // is to modify the `supported_exec_args` signature and introduce a `param`
+    // struct to pass it to the call and fill according driver needs.
+    return (dir & FLAG_FWD)            ? exec_fwd_args
+            : (driver_name == "graph") ? exec_bwd_args_graph
+            : (dir & FLAG_WEI)         ? exec_bwd_use_dst_args
+                                       : exec_bwd_args;
 };
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
@@ -415,6 +437,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
     if (!ref_mem_map.empty()) { erase_unused_args(ref_mem_map, mem_map); }
 
     const auto &ref_engine = get_cpu_engine();
+
+    const bool is_fwd_prim = is_fwd_prop_kind(query_prop_kind(query_pd(prim)));
 
     for (auto &entry : mem_map) {
         const int exec_arg = entry.first;
@@ -436,7 +460,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
-                SAFE(fill_data(prb, SRC, mem, ref_mem), WARN);
+                if (is_fwd_prim)
+                    SAFE(fill_data(exec_arg, prb, SRC, mem, ref_mem), WARN);
                 // Need a copy of source data for inplace mode for bitwise
                 // testing.
                 if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {
@@ -446,7 +471,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 }
                 break;
             case DNNL_ARG_DIFF_DST:
-                SAFE(fill_data(prb, DST, mem, ref_mem), WARN);
+                SAFE(fill_data(exec_arg, prb, DST, mem, ref_mem), WARN);
                 // Need a copy of source data for inplace mode for bitwise
                 // testing.
                 if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {
@@ -541,8 +566,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     if (prb->dir & FLAG_BWD) {
         // Pass same memory map as we need data from forward on backward.
-        init_memory_args<prb_t>(
-                mem_map, prb, v_prim[1], supported_exec_args(FLAG_BWD));
+        init_memory_args<prb_t>(mem_map, prb, v_prim[1],
+                supported_exec_args(prb->use_dst() ? FLAG_WEI : FLAG_BWD));
         TIME_FILL(SAFE(
                 init_ref_memory_args(ref_mem_map, mem_map, v_prim[1], prb, res),
                 WARN));

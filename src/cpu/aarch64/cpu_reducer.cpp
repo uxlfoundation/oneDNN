@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2021 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -98,7 +99,7 @@ void reduce_balancer_t::balance() {
 using namespace Xbyak_aarch64;
 
 template <impl::data_type_t data_type, cpu_isa_t isa>
-struct reducer_2d_driver_t : public jit_generator {
+struct reducer_2d_driver_t : public jit_generator_t {
     using data_t = typename prec_traits_t<data_type>::type;
 
     reducer_2d_driver_t(int n_src, size_t src_ld, size_t src_step,
@@ -126,7 +127,7 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type, isa> {
 
     void operator()(
             data_t *dst, const data_t *srcs, size_t ny, size_t nx) override {
-        jit_generator::operator()(dst, srcs, ny, nx);
+        jit_generator_t::operator()(dst, srcs, ny, nx);
     }
 
     /* cpu specific part */
@@ -574,9 +575,8 @@ template struct cpu_reducer_2d_t<data_type::s32, sve_256>;
 /* accumulator section */
 
 template <impl::data_type_t data_type, cpu_isa_t isa>
-cpu_accumulator_1d_t<data_type, isa>::cpu_accumulator_1d_t() : drv_(nullptr) {
-    drv_ = create_reduce_2d_drv<data_type, isa>(1, 0, 0, 0, false);
-}
+cpu_accumulator_1d_t<data_type, isa>::cpu_accumulator_1d_t()
+    : drv_(create_reduce_2d_drv<data_type, isa>(1, 0, 0, 0, false)) {}
 
 template <impl::data_type_t data_type, cpu_isa_t isa>
 cpu_accumulator_1d_t<data_type, isa>::~cpu_accumulator_1d_t() {

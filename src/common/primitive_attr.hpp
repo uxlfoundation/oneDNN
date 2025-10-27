@@ -572,6 +572,40 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
         return status::success;
     }
 
+    /**
+     * This function returns a copy of the attributes with the parameters reset
+     * to the user-provided ones.
+     *
+     * This can be helpful in situations where an implementation has already
+     * modified the attributes via `set_default_formats`, but later needs the
+     * original attributes to decide whether a fallback is possible.
+     *
+     * For example, brgemm matmul must ensure that a gemm primitive descriptor
+     * can be created before making a final decision on fallback. At that point,
+     * the attributes may have already been modified. It is not always trivial
+     * to rearrange the initialization order of the implementation configuration
+     * to reach the decision point before the attributes are modified.
+     * Therefore, it is more robust to have the ability to query the original
+     * attributes.
+     */
+    dnnl::impl::status_t copy_from_and_reset(const dnnl_primitive_attr &other) {
+        CHECK(copy_from(other));
+
+        // Restore user provided parameters for the binary post-op.
+        auto &entries = post_ops_.entry_;
+        for (int idx = 0; idx < post_ops_.len(); ++idx) {
+            if (!post_ops_.contain(dnnl::impl::primitive_kind::binary, idx))
+                continue;
+            entries[idx].binary.src1_desc = entries[idx].binary.user_src1_desc;
+            entries[idx].binary.src2_desc = entries[idx].binary.user_src2_desc;
+        }
+
+        // Restore user provided parameters for the dropout attribute.
+        dropout_.dropout_desc_ = dropout_.user_dropout_desc_;
+
+        return dnnl::impl::status::success;
+    }
+
     bool is_initialized() const { return is_initialized_; }
 
     enum class skip_mask_t : unsigned {

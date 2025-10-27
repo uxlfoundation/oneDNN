@@ -312,7 +312,6 @@ inline const type_t &expr_t::type() const {
 }
 
 // Helper functions.
-inline bool is_const(const expr_t &e, int value);
 inline bool is_var(const expr_t &e);
 inline bool is_ref(const expr_t &e);
 inline bool all_of(const expr_t &e, const expr_t &value);
@@ -697,7 +696,7 @@ void normalize_ptr(const type_t &type, expr_t &base, expr_t &off);
 class load_t : public expr_iface_t<load_t> {
 public:
     // offset and stride are expressed in bytes.
-    // default stride means unit stride (in terms of type.scalar() elements).
+    // default stride means unit stride (in terms of type.base() elements).
     static expr_t make(const type_t &type, const expr_t &buf, const expr_t &off,
             int stride = default_stride) {
         return expr_t(new load_t(type, buf, off, stride));
@@ -726,14 +725,14 @@ private:
         : expr_iface_t(_type), buf(_buf), off(_off), stride(_stride) {
         normalize_ptr(type, buf, off);
         gpu_assert(is_var(buf) || is_ref(buf)) << buf;
-        if (stride == type.scalar().size()) stride = default_stride;
+        if (stride == type.base().size()) stride = default_stride;
     }
 };
 
 // Pointer expression: (base_ptr + off).
 class ptr_t : public expr_iface_t<ptr_t> {
 public:
-    // off - offset in bytes.
+    // off - offset in elements of the base type.
     static expr_t make(const expr_t &base, const expr_t &off) {
         return expr_t(new ptr_t(base, off));
     }
@@ -757,7 +756,7 @@ public:
 
 private:
     ptr_t(const expr_t &base, const expr_t &off)
-        : expr_iface_t(base.type()), base(base), off(off) {
+        : expr_iface_t(base.type().with_ptr()), base(base), off(off) {
         normalize(this->base, this->off);
     }
 };
@@ -773,15 +772,13 @@ inline const expr_t &get_base(const expr_t &e) {
 class shuffle_t : public expr_iface_t<shuffle_t> {
 public:
     static expr_t make(const expr_t &vec_expr, const std::vector<int> &idx) {
-        check_indices(idx, vec_expr.type().elems());
-        std::vector<expr_t> vec {vec_expr};
-        return expr_t(new shuffle_t(vec, idx));
+        return make(std::vector<expr_t> {vec_expr}, idx);
     }
 
     static expr_t make(
             const std::vector<expr_t> &vec, const std::vector<int> &idx) {
-        check_indices(idx, (int)vec.size());
-        if (idx.size() == 1) return vec[idx[0]];
+        check_indices(vec, idx);
+        if (!vec[0].type().is_simd() && idx.size() == 1) return vec[idx[0]];
         return expr_t(new shuffle_t(vec, idx));
     }
 
@@ -851,7 +848,9 @@ public:
         return true;
     }
 
-    bool is_broadcast() const { return vec.size() == 1; }
+    bool is_broadcast() const {
+        return !vec[0].type().is_simd() && vec.size() == 1;
+    }
 
     std::vector<expr_t> vec;
     std::vector<int> idx;
@@ -860,7 +859,14 @@ private:
     shuffle_t(const std::vector<expr_t> &vec, const std::vector<int> &idx)
         : expr_iface_t(shuffle_type(vec, idx)), vec(vec), idx(idx) {}
 
-    static void check_indices(const std::vector<int> &idx, int elems) {
+    static void check_indices(
+            const std::vector<expr_t> &vec, const std::vector<int> &idx) {
+        gpu_assert(!vec.empty() && !idx.empty());
+        bool is_simd = (vec.size() == 1 && vec[0].type().is_simd());
+        for (auto &v : vec) {
+            gpu_assert(v.type().is_simd() == is_simd);
+        }
+        int elems = (is_simd ? vec[0].type().elems() : (int)vec.size());
         for (int i : idx) {
             gpu_assert(i >= 0 && i < elems);
         }
@@ -868,12 +874,10 @@ private:
 
     static type_t shuffle_type(
             const std::vector<expr_t> &vec, const std::vector<int> &idx) {
-        gpu_assert(!vec.empty() && !idx.empty());
-
         auto elem_type = vec[0].type();
         if (vec.size() == 1 && elem_type.is_simd()) {
             gpu_assert(idx.size() == 1);
-            return elem_type.scalar();
+            return elem_type.base();
         }
 
         for (auto &v : vec)
@@ -1014,7 +1018,22 @@ private:
         : expr_iface_t(var.type().with_elems(elems))
         , var(var)
         , off(off)
-        , elems(elems) {}
+        , elems(elems) {
+        gpu_assert(off >= 0) << "Invalid offset: " << off;
+        gpu_assert(elems > 0) << "Invalid elems: " << elems;
+        gpu_assert(off + elems <= var.type().elems())
+                << "Incompatible (off, elems): (" << off << ", " << elems
+                << "), the base type: " << var.type().str();
+        normalize();
+    }
+
+    void normalize() {
+        if (var.is<var_t>()) return;
+        auto *ref = var.as_ptr<ref_t>();
+        gpu_assert(ref) << "Expected var or ref, got: " << var.str();
+        var = ref->var;
+        off += ref->off;
+    }
 };
 
 // Convertor from C++ type to IR expression.
@@ -1061,11 +1080,6 @@ inline bool is_binary_cmp_op(const expr_t &e) {
     return is_cmp_op(e.as<binary_op_t>().op_kind);
 }
 
-inline bool is_const(const expr_t &e, int value) {
-    if (!is_const(e)) return false;
-    return e.is_equal(to_expr(value, e.type()));
-}
-
 inline bool all_of(const expr_t &e, const expr_t &value) {
     auto *shuffle = e.as_ptr<shuffle_t>();
     if (!shuffle) return e.is_equal(value);
@@ -1108,7 +1122,7 @@ inline int to_int(const expr_t &e) {
     return to_cpp<int>(e);
 }
 
-// Returns a shifted pointer with base `a` (pointer) and offset `b` (in bytes).
+// Returns a shifted pointer with base `a` (pointer) and offset `b` (in elements).
 // shift_ptr(op, a, b) returns &(a op b) in C++ terms (op is either addition or
 // subtraction).
 expr_t shift_ptr(op_kind_t op_kind, const expr_t &a, const expr_t &b);
@@ -1362,7 +1376,7 @@ private:
 class store_t : public stmt_iface_t<store_t> {
 public:
     // offset and stride are expressed in bytes.
-    // default stride means unit stride (in terms of value.type().scalar()
+    // default stride means unit stride (in terms of value.type().base()
     // elements).
     static stmt_t make(const expr_t &buf, const expr_t &off,
             const expr_t &_value, int stride = default_stride,
@@ -1378,7 +1392,7 @@ public:
                 if (!fill_mask0) return stmt_t();
                 auto type = value.type();
                 value = shuffle_t::make_broadcast(
-                        cast_t::make(type.scalar(), 0), type.elems());
+                        cast_t::make(type.base(), 0), type.elems());
                 mask = expr_t();
             }
         }
@@ -1429,7 +1443,7 @@ private:
         , fill_mask0(_fill_mask0) {
         normalize_ptr(value.type(), buf, off);
         gpu_assert(is_var(buf) || is_ref(buf)) << buf;
-        if (stride == value.type().scalar().size()) stride = default_stride;
+        if (stride == value.type().base().size()) stride = default_stride;
         if (mask)
             gpu_assert(mask.type() == type_t::_bool(value.type().elems()));
     }

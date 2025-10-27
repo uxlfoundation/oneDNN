@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2016-2023 Intel Corporation
-* Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2020-2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,6 +39,27 @@
     const char *name() const override { return STRINGIFY(jit_name); } \
     const char *source_file() const override { return __FILE__; }
 
+#define LD_MUL_VL(mn, op, mask, addr, off, size) \
+    do { \
+        if (use_mul_vl(off, size, cpu_sveLen)) \
+            mn(op, (mask) / T_z, \
+                    ptr(addr, compute_off_mul_vl(off, size, cpu_sveLen), \
+                            MUL_VL)); \
+        else \
+            mn(op, (mask) / T_z, \
+                    ptr(addr_off(addr, off, X_DEFAULT_ADDR, X_TMP_0))); \
+    } while (0)
+
+#define ST_MUL_VL(mn, op, mask, addr, off, size) \
+    do { \
+        if (use_mul_vl(off, size, cpu_sveLen)) \
+            mn(op, (mask), \
+                    ptr(addr, compute_off_mul_vl(off, size, cpu_sveLen), \
+                            MUL_VL)); \
+        else \
+            mn(op, (mask), ptr(addr_off(addr, off, X_DEFAULT_ADDR, X_TMP_0))); \
+    } while (0)
+
 static const size_t CSIZE = sizeof(uint32_t);
 
 namespace dnnl {
@@ -48,9 +70,9 @@ namespace aarch64 {
 // TODO: move this to jit_generator class?
 namespace {
 
-typedef enum {
+enum max_code_size_t {
     MAX_CODE_SIZE = 256 * 1024,
-} max_code_size_t;
+};
 
 // Callee-saved registers
 constexpr Xbyak_aarch64::Operand::Code abi_save_gpr_regs[]
@@ -62,7 +84,7 @@ constexpr Xbyak_aarch64::Operand::Code abi_save_gpr_regs[]
                 Xbyak_aarch64::Operand::X27, Xbyak_aarch64::Operand::X28};
 
 // See "Procedure Call Standsard for the ARM 64-bit Architecture (AArch64)"
-static const Xbyak_aarch64::XReg abi_param1(Xbyak_aarch64::Operand::X0),
+const Xbyak_aarch64::XReg abi_param1(Xbyak_aarch64::Operand::X0),
         abi_param2(Xbyak_aarch64::Operand::X1),
         abi_param3(Xbyak_aarch64::Operand::X2),
         abi_param4(Xbyak_aarch64::Operand::X3),
@@ -73,7 +95,8 @@ static const Xbyak_aarch64::XReg abi_param1(Xbyak_aarch64::Operand::X0),
         abi_not_param1(Xbyak_aarch64::Operand::X15);
 } // namespace
 
-class jit_generator : public Xbyak_aarch64::CodeGenerator, public c_compatible {
+class jit_generator_t : public Xbyak_aarch64::CodeGenerator,
+                        public c_compatible {
 public:
     using c_compatible::operator new;
     using c_compatible::operator new[];
@@ -138,7 +161,9 @@ public:
     constexpr static size_t translator_stack_offset = 1024 * 128;
     constexpr static uint32_t DUMMY_IDX = 99;
 
-    inline size_t get_size_of_abi_save_regs() { return size_of_abi_save_regs; }
+    inline size_t get_size_of_abi_save_regs() const {
+        return size_of_abi_save_regs;
+    }
 
     void preamble() {
         using namespace Xbyak_aarch64::util;
@@ -218,6 +243,18 @@ public:
 
         add_imm(addr, base, off, x_tmp);
         return addr;
+    }
+
+    inline int compute_off_mul_vl(int off, int size, int cpu_sveLen) {
+        const int mul_vl_len = (cpu_sveLen / 4) * size;
+        return off / mul_vl_len;
+    }
+
+    inline bool use_mul_vl(int off, int size, int cpu_sveLen) {
+        const int mul_vl_len = (cpu_sveLen / 4) * size;
+        int off_mod = off % mul_vl_len;
+        int off_mul_vl = off / mul_vl_len;
+        return (off_mod == 0 && -8 <= off_mul_vl && off_mul_vl <= 7);
     }
 
     template <typename PRegBHSD, typename T>
@@ -667,16 +704,15 @@ public:
         L(label_tbl_end);
     }
 
-    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_generator);
+    DNNL_DISALLOW_COPY_AND_ASSIGN(jit_generator_t);
 
-public:
-    jit_generator(void *code_ptr = nullptr, size_t code_size = MAX_CODE_SIZE,
+    jit_generator_t(void *code_ptr = nullptr, size_t code_size = MAX_CODE_SIZE,
             bool use_autogrow = true, cpu_isa_t max_cpu_isa = isa_all)
         : Xbyak_aarch64::CodeGenerator(code_size,
                 (code_ptr == nullptr && use_autogrow) ? Xbyak_aarch64::AutoGrow
                                                       : code_ptr)
         , max_cpu_isa_(max_cpu_isa) {}
-    virtual ~jit_generator() {}
+    ~jit_generator_t() override = default;
 
     virtual const char *name() const = 0;
     virtual const char *source_file() const = 0;

@@ -115,7 +115,8 @@ struct nhwc_reusable_fwd_t : public primitive_t {
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
 
             VDISPATCH_BNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_BNORM(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
             VDISPATCH_BNORM(
                     utils::one_of(src_md()->data_type, f32, bf16, f16, s8),
                     VERBOSE_UNSUPPORTED_DT);
@@ -150,8 +151,7 @@ struct nhwc_reusable_fwd_t : public primitive_t {
             if (is_training() && (fuse_norm_relu() || fuse_norm_add_relu())) {
                 VDISPATCH_BNORM_SC(init_default_ws(8), VERBOSE_WS_INIT);
             }
-
-            VDISPATCH_BNORM_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             init_scratchpad();
 
             return status::success;
@@ -199,7 +199,8 @@ struct nhwc_reusable_bwd_t : public primitive_t {
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+            VDISPATCH_BNORM(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
             VDISPATCH_BNORM(utils::one_of(src_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_BNORM(IMPLICATION(f16 == src_md()->data_type,
@@ -229,8 +230,7 @@ struct nhwc_reusable_bwd_t : public primitive_t {
                 VDISPATCH_BNORM_SC(init_default_ws(8), VERBOSE_WS_INIT);
                 VDISPATCH_BNORM(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
             }
-
-            VDISPATCH_BNORM_SC(init_conf(engine), "init_conf()");
+            CHECK(init_conf(engine));
             init_scratchpad();
 
             return status::success;

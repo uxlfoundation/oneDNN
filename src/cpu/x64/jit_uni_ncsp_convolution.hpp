@@ -76,7 +76,7 @@ struct jit_uni_ncsp_convolution_fwd_t : public primitive_t {
         status_t init_matmul(engine_t *engine);
         reduction_helper_t reduction_helper_;
         bool is_matmul_ = false;
-        std::string name_ = "jit_uni_ncsp_convolution:";
+        std::string name_ = "jit_uni_ncsp:";
         void init_name() {
             std::string suffix = is_matmul_ ? "matmul" : "conv";
             name_ += suffix + "+";
@@ -130,7 +130,7 @@ struct jit_uni_ncsp_convolution_bwd_weights_t : public primitive_t {
         std::string name_;
         void init_scratchpad();
         void init_name() {
-            name_ = "jit_uni_ncsp_convolution:conv+";
+            name_ = "jit_uni_ncsp:conv+";
             name_.append(nspc_conv_pd_->name());
         }
     };
@@ -182,7 +182,7 @@ struct jit_uni_ncsp_convolution_bwd_data_t : public primitive_t {
         void init_scratchpad();
         void init_name() {
             std::string suffix = is_matmul_ ? "matmul" : "conv";
-            name_ = "jit_uni_ncsp_convolution:" + suffix + "+";
+            name_ = "jit_uni_ncsp:" + suffix + "+";
             name_.append(is_matmul_ ? matmul_diff_src_pd_->name()
                                     : nspc_conv_pd_->name());
         }

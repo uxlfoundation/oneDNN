@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2022-2023 Intel Corporation
 * Copyright 2022-2023 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -34,8 +35,7 @@ static bcast_set_t get_supported_postops_bcast_strategies() {
 
 binary_kernel_t::binary_kernel_t(const size_t vlen, const binary_pd_t *pd,
         const jit_binary_conf_t conf, bool tail_kernel)
-    : jit_generator()
-    , vlen_(vlen)
+    : vlen_(vlen)
     , simd_w_(vlen / sizeof(float))
     , pd_(pd)
     , conf_(conf)

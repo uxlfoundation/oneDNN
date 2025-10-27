@@ -269,6 +269,7 @@ const op_attr_t weights_format = dnnl_graph_op_attr_weights_format;
 const op_attr_t mode = dnnl_graph_op_attr_mode;
 const op_attr_t qtype = dnnl_graph_op_attr_qtype;
 const op_attr_t rounding_type = dnnl_graph_op_attr_rounding_type;
+const op_attr_t accumulation_mode = dnnl_graph_op_attr_accumulation_mode;
 
 // Used to indicate the end of all external attributes, note all the new
 // attribute should be added above this one.
@@ -309,6 +310,14 @@ const attribute_kind_t s = 4;
 const attribute_kind_t b = 5;
 const attribute_kind_t fusion_info = 6; //special attribute kind for fusion info
 } // namespace attribute_kind
+
+enum class graph_dump_mode_t : uint8_t {
+    none = dnnl_graph_dump_mode_none,
+    subgraph = dnnl_graph_dump_mode_subgraph,
+    graph = dnnl_graph_dump_mode_graph,
+    // Internal-only flag for dumping partition patterns.
+    pattern = 0x4U,
+};
 
 using allocator_t = dnnl_graph_allocator;
 using host_allocate_f = dnnl_graph_host_allocate_f;

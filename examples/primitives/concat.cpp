@@ -17,9 +17,12 @@
 /// @example concat.cpp
 /// > Annotated version: @ref concat_example_cpp
 
-/// @page concat_example_cpp Concat Primitive Example
-/// This C++ API example demonstrates how to create and execute a
+/// @page concat_example_cpp_brief
+/// @brief This C++ API example demonstrates how to create and execute a
 /// [Concat](@ref dev_guide_concat) primitive.
+
+/// @page concat_example_cpp Concat Primitive Example
+/// \copybrief concat_example_cpp_brief
 ///
 /// Key optimizations included in this example:
 /// - Identical source (src) memory formats.

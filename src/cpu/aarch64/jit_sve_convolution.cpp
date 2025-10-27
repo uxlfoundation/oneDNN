@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020-2021 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -631,6 +632,8 @@ template struct jit_sve_convolution_fwd_t<data_type::f32, data_type::f32,
         data_type::f32, sve_512>;
 template struct jit_sve_convolution_fwd_t<data_type::f32, data_type::f32,
         data_type::f32, sve_256>;
+template struct jit_sve_convolution_fwd_t<data_type::f32, data_type::f32,
+        data_type::f32, sve_128>;
 
 template <data_type_t diff_dst_type, data_type_t wei_type,
         data_type_t diff_src_type, cpu_isa_t isa>
@@ -715,8 +718,8 @@ void jit_sve_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
                     }
 
                     jit_conv_ker_pipeline_iw_thr(jit_ker, par_conv, diff_src_w,
-                            diff_dst_w, wht_w, 0, ocb, 1, iwb, reduce_work,
-                            load_work);
+                            diff_dst_w, wht_w, nullptr, ocb, 1, iwb,
+                            reduce_work, load_work);
                     diff_dst_w += diff_dst_c_stride;
                     wht_w += wht_oc_stride;
                 }
@@ -744,7 +747,7 @@ void jit_sve_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
         // here as call parameters to avoid execution of prefetch instructions
         // with nullptr, other parameters are not used in real jit call here
         jit_conv_ker_pipeline_iw_thr(jit_ker, par_conv, diff_src, diff_dst,
-                weights, 0, 0, 0, 0, 0, 0);
+                weights, nullptr, 0, 0, 0, 0, 0);
     });
 }
 
@@ -885,8 +888,8 @@ void jit_sve_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
                         jit_conv_ker_pipeline_iw_thr(jit_ker, par_conv,
                                 diff_src_w + ij * diff_src_h_stride,
                                 diff_dst_w + oj * diff_dst_h_stride,
-                                wht_w + k_lo * wht_h_stride, 0, ocb, k_len, iwb,
-                                reduce_work, load_work);
+                                wht_w + k_lo * wht_h_stride, nullptr, ocb,
+                                k_len, iwb, reduce_work, load_work);
                     }
                     diff_dst_w += diff_dst_c_stride;
                     wht_w += wht_oc_stride;
@@ -912,7 +915,7 @@ void jit_sve_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
         // here as call parameters to avoid execution of prefetch instructions
         // with nullptr, other parameters are not used in real jit call here
         jit_conv_ker_pipeline_iw_thr(jit_ker, par_conv, diff_src, diff_dst,
-                weights, 0, 0, 0, 0, 0, 0);
+                weights, nullptr, 0, 0, 0, 0, 0);
     });
 }
 
@@ -1099,8 +1102,8 @@ void jit_sve_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
                         jit_sve_conv_3d_ker_pipeline(jit_ker, par_conv,
                                 diff_src_w + ij * diff_src_h_stride,
                                 diff_dst_w + oj * diff_dst_h_stride,
-                                wht_w + k_lo * wht_h_stride, 0, ocb, k_len,
-                                d_len, reduce_work, load_work);
+                                wht_w + k_lo * wht_h_stride, nullptr, ocb,
+                                k_len, d_len, reduce_work, load_work);
                     }
                     diff_dst_w += diff_dst_c_stride;
                     wht_w += wht_oc_stride;
@@ -1126,7 +1129,7 @@ void jit_sve_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
         // here as call parameters to avoid execution of prefetch instructions
         // with nullptr, other parameters are not used in real jit call here
         jit_sve_conv_3d_ker_pipeline(jit_ker, par_conv, diff_src, diff_dst,
-                weights, 0, 0, 1, 1, 0, 0);
+                weights, nullptr, 0, 1, 1, 0, 0);
     });
 }
 
@@ -1147,7 +1150,7 @@ status_t jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
     nthr_ic_b_ = j.nthr_ic_b;
 
     CHECK(safe_ptr_assign(
-            kernel_, new jit_sve_conv_bwd_weights_kernel_f32<isa>(j)));
+            kernel_, new jit_sve_conv_bwd_weights_kernel_f32_t<isa>(j)));
     CHECK(kernel_->create_kernel());
 
     if (nthr_mb_ > 1) {
@@ -1195,11 +1198,31 @@ struct jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
 
     thread_info_t(const jit_sve_convolution_bwd_weights_t *self,
             const exec_ctx_t &ctx, int ithr)
-        : scratchpad(ctx.get_scratchpad_grantor()), ithr(ithr) {
-        diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
-        src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
-        diff_weights
-                = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_WEIGHTS);
+        : src(CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC))
+        , diff_dst(CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST))
+        , diff_weights(
+                  CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_WEIGHTS))
+        , scratchpad(ctx.get_scratchpad_grantor())
+        , tr_src(scratchpad.template get<src_data_t>(key_conv_tr_src))
+        , tr_src_bctx(scratchpad.template get<simple_barrier::ctx_t>(
+                  key_conv_tr_src_bctx))
+        , tr_diff_dst(scratchpad.template get<diff_dst_data_t>(
+                  key_conv_tr_diff_dst))
+        , tr_diff_dst_bctx(scratchpad.template get<simple_barrier::ctx_t>(
+                  key_conv_tr_diff_dst_bctx))
+        , wei_bia_reduction(scratchpad.template get<diff_weights_data_t>(
+                  key_conv_wei_bia_reduction))
+        , wei_bia_reduction_bctx(scratchpad.template get<simple_barrier::ctx_t>(
+                  key_conv_wei_bia_reduction_bctx))
+        , ithr(ithr)
+        , ithr_ic_b(ithr % self->nthr_ic_b_)
+        , ithr_oc_b(ithr / self->nthr_ic_b_ % self->nthr_oc_b_)
+        , ithr_g(ithr / self->nthr_ic_b_ / self->nthr_oc_b_ % self->nthr_g_)
+        , ithr_mb(ithr / self->nthr_ic_b_ / self->nthr_oc_b_ / self->nthr_g_)
+        , ithr_but_oc((ithr_mb * self->nthr_g_ + ithr_g) * self->nthr_ic_b_
+                  + ithr_ic_b)
+        , ithr_but_ic((ithr_mb * self->nthr_g_ + ithr_g) * self->nthr_oc_b_
+                  + ithr_oc_b) {
         const auto &jcp = self->kernel_->jcp;
         const bool is_bias_padded = self->pd()->with_bias()
                 && jcp.oc_without_padding % jcp.oc_block != 0;
@@ -1208,47 +1231,26 @@ struct jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
                         key_conv_padded_bias)
                 : CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_BIAS);
 
-        tr_src = scratchpad.template get<src_data_t>(key_conv_tr_src);
-        tr_src_bctx = scratchpad.template get<simple_barrier::ctx_t>(
-                key_conv_tr_src_bctx);
-
-        tr_diff_dst = scratchpad.template get<diff_dst_data_t>(
-                key_conv_tr_diff_dst);
-        tr_diff_dst_bctx = scratchpad.template get<simple_barrier::ctx_t>(
-                key_conv_tr_diff_dst_bctx);
-
-        wei_bia_reduction = scratchpad.template get<diff_weights_data_t>(
-                key_conv_wei_bia_reduction);
-        wei_bia_reduction_bctx = scratchpad.template get<simple_barrier::ctx_t>(
-                key_conv_wei_bia_reduction_bctx);
-
-        ithr_ic_b = ithr % self->nthr_ic_b_;
-        ithr_oc_b = ithr / self->nthr_ic_b_ % self->nthr_oc_b_;
-        ithr_g = ithr / self->nthr_ic_b_ / self->nthr_oc_b_ % self->nthr_g_;
-        ithr_mb = ithr / self->nthr_ic_b_ / self->nthr_oc_b_ / self->nthr_g_;
-
-        ithr_but_oc = (ithr_mb * self->nthr_g_ + ithr_g) * self->nthr_ic_b_
-                + ithr_ic_b;
-
-        ithr_but_ic = (ithr_mb * self->nthr_g_ + ithr_g) * self->nthr_oc_b_
-                + ithr_oc_b;
-
         /* reduction dimension */
         int oh_reduce = jcp.harness == harness_2d_reduction ? jcp.oh : 1;
         balance211(jcp.mb * jcp.od * oh_reduce, self->nthr_mb_, ithr_mb,
                 img_start, img_end);
+        // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
         img_work = img_end - img_start;
 
         /* independent dimensions */
         balance211(jcp.ngroups, self->nthr_g_, ithr_g, g_start, g_end);
+        // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
         g_work = g_end - g_start;
 
         balance211(
                 jcp.nb_oc, self->nthr_oc_b_, ithr_oc_b, oc_b_start, oc_b_end);
+        // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
         oc_b_work = oc_b_end - oc_b_start;
 
         balance211(
                 jcp.nb_ic, self->nthr_ic_b_, ithr_ic_b, ic_b_start, ic_b_end);
+        // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
         ic_b_work = ic_b_end - ic_b_start;
     }
 };
@@ -1306,8 +1308,9 @@ void jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
             jit_conv_ker_pipeline_bwd_w(jit_ker, p,
                     &ti->src[src_d.blk_off(img, ic_off_idx)],
                     &ti->diff_dst[diff_dst_d.blk_off(img, oc_off_idx)],
-                    diff_wei + wht_blk_off(diff_weights_d, g, oc_b, ic_b), 0,
-                    (img == ti->img_start), 0, ic_to_compute, oc_to_compute);
+                    diff_wei + wht_blk_off(diff_weights_d, g, oc_b, ic_b),
+                    nullptr, (img == ti->img_start), 0, ic_to_compute,
+                    oc_to_compute);
         }
 
         const int _oc = ti->g_start * jcp.nb_oc + ti->oc_b_start;
@@ -1329,7 +1332,7 @@ void jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
                 diff_wei
                         + wht_blk_off(diff_weights_d, ti->g_start,
                                 ti->oc_b_start, ti->ic_b_start),
-                0, 0, 0, 0, 0);
+                nullptr, 0, 0, 0, 0);
     }
 }
 

@@ -279,6 +279,27 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     return status::success;
 }
 
+status_t brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
+        brgemm_batch_kind_t type, impl::data_type_t dt_a,
+        impl::data_type_t dt_x, bool transA, float alpha, float beta, dim_t LDA,
+        dim_t INCY, dim_t M, dim_t N) {
+
+    // Only f32 is supported for now.
+    if (!utils::everyone_is(data_type::f32, dt_a, dt_x))
+        return status::unimplemented;
+
+    // y = x*A^t is not yet implemented.
+    if (transA) return status::unimplemented;
+
+    CHECK(brgemm_desc_init(brg, isa, type, dt_a, dt_x, transA, false,
+            brgemm_row_major, alpha, beta, LDA, 1, INCY, M, 1, N, nullptr,
+            false));
+
+    brg->is_gemv = true;
+
+    return status::success;
+}
+
 status_t brdgmm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_b, bool transA, brgemm_layout_t layout,
@@ -351,10 +372,15 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
             && (!one_of(dt_d, data_type::f32))
             && (!one_of(dt_bias, data_type::undef, data_type::f32, dt_d)))
         return status::unimplemented;
+    if (!IMPLICATION(brg->is_bf16,
+                one_of(dt_d, data_type::f32, data_type::bf16, data_type::f16)
+                        && one_of(dt_bias, data_type::undef, data_type::f32,
+                                data_type::bf16, data_type::f16)))
+        return status::unimplemented;
     if (!IMPLICATION(brg->is_f16,
                 one_of(dt_d, data_type::f32, data_type::f16)
                         && one_of(dt_bias, data_type::undef, data_type::f32,
-                                data_type::f16)))
+                                data_type::bf16, data_type::f16)))
         return status::unimplemented;
     const auto bias_f8_e5m2_compatible
             = one_of(dt_d, data_type::f32, data_type::f16, data_type::bf16,
@@ -532,6 +558,17 @@ status_t brgemm_desc_set_attr(
         return status::unimplemented;
     }
 
+    // fused copy A already copies A for the BRGEMM. No need for partial copy.
+    if (brgattr.hint_fused_copy_a
+            && (brgattr.extendable_k || brgattr.wary_A_k_tail_read)) {
+        return status::unimplemented;
+    }
+
+    if (!IMPLICATION(brgattr.hint_fused_copy_a,
+                is_superset(brg->isa_impl, amx_tile))) {
+        return status::unimplemented;
+    }
+
     brg->prfA = brgattr.hint_prfA;
     brg->prfB = brgattr.hint_prfB;
     brg->prfC = brgattr.hint_prfC;
@@ -547,6 +584,8 @@ status_t brgemm_desc_set_attr(
     if (brgattr.hint_prefetching == brgemm_kernel_prefetching_t::brgemm_prf2
             && brg->prfC.dist2 < 0)
         brg->prfC.dist2 = 0;
+
+    if (brgattr.hint_fused_copy_a) brg->fused_copy_a = true;
 
     if (brg->is_fp8
             && !utils::one_of(true,

@@ -31,7 +31,7 @@
 
 #define VDISPATCH_POOLING_IC(cond, msg, ...) \
     VCONDCHECK(primitive, create, dispatch, pooling, (cond), \
-            status::unimplemented, msg, ##__VA_ARGS__);
+            status::unimplemented, msg, ##__VA_ARGS__)
 
 #define VDISPATCH_POOLING_SC(f, msg, ...) \
     VCHECK(primitive, create, dispatch, pooling, (f), "%s," msg, \

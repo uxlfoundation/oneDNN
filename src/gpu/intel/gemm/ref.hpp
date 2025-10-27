@@ -63,6 +63,9 @@ struct ref_jit_params_t : public trivially_serializable_t<ref_jit_params_t> {
         kernel_ctx.define_int("WITH_SRC_ZPOINTS", with_src_zpoints);
         kernel_ctx.define_int("WITH_WEI_ZPOINTS", with_wei_zpoints);
         kernel_ctx.define_int("WITH_DST_ZPOINTS", with_dst_zpoints);
+        kernel_ctx.define_int("WITH_HOST_SRC_ZP", with_host_src_zp);
+        kernel_ctx.define_int("WITH_HOST_WEI_ZP", with_host_wei_zp);
+        kernel_ctx.define_int("WITH_HOST_DST_ZP", with_host_dst_zp);
 
         return kernel_ctx;
     };
@@ -77,9 +80,12 @@ struct ref_jit_params_t : public trivially_serializable_t<ref_jit_params_t> {
     bool with_src_zpoints = {};
     bool with_wei_zpoints = {};
     bool with_dst_zpoints = {};
+    bool with_host_src_zp = {};
+    bool with_host_wei_zp = {};
+    bool with_host_dst_zp = {};
     // NOTE: Padding required for trivial serialization alignment.
     // When adding bool fields, might need to adjust padding.
-    uint8_t pad[3] = {};
+    // uint8_t pad[0] = {};
     int eltwise_alg = {};
 };
 
@@ -125,8 +131,9 @@ struct ref_t : public primitive_t {
             VDISPATCH_GEMM(
                     IMPLICATION(desc()->is_batched(),
                             desc()->a_desc.dims[0] == desc()->b_desc.dims[0]),
-                    VERBOSE_INCONSISTENT_NDIMS, "desc()->a_desc.dims[0]",
-                    "desc()->b_desc.dims[0]");
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "desc()->a_desc",
+                    "desc()->b_desc", static_cast<int>(desc()->a_desc.dims[0]),
+                    static_cast<int>(desc()->b_desc.dims[0]));
             VDISPATCH_GEMM(IMPLICATION(acc_dt != s32 && !wei_decompress,
                                    attr()->zero_points_.has_default_values()),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -188,6 +195,9 @@ struct ref_t : public primitive_t {
             conf.with_src_zpoints = attr_info.with_src_zpoints;
             conf.with_wei_zpoints = attr_info.with_wei_zpoints;
             conf.with_dst_zpoints = attr_info.with_dst_zpoints;
+            conf.with_host_src_zp = attr_info.with_host_src_zp;
+            conf.with_host_wei_zp = attr_info.with_host_wei_zp;
+            conf.with_host_dst_zp = attr_info.with_host_dst_zp;
             conf.eltwise_alg = attr_info.eltwise_alg;
 
             return status::success;

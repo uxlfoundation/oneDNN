@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2023 Intel Corporation
-* Copyright 2024 FUJITSU LIMITED
+* Copyright 2024-2025 FUJITSU LIMITED
 * Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,8 +62,9 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             && expect_data_types(src_type, wei_type, data_type::undef, dst_type,
                     data_type::undef)
             && IMPLICATION(is_int8,
-                    one_of(bias_md_.data_type, data_type::undef, f32, s32, s8,
-                            u8))
+                    one_of(dst_type, u8, f32)
+                            && one_of(bias_md_.data_type, data_type::undef, f32,
+                                    s32, s8, u8))
             && IMPLICATION(!is_int8,
                     one_of(bias_md_.data_type, data_type::undef, f32, src_type))
             && attr()->has_default_values(skip_mask, dst_type)
@@ -78,16 +79,41 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             weights_md_, dst_md_, bias_md_, attr_, dnnl_get_max_threads()));
 
     // brgemm is slower than jit_sve when combined with reorders for shapes where strides < 2
-    if (jcp_.stride_w < 2 || jcp_.stride_h < 2) {
+    const convolution_desc_t &cd = *desc();
+    if (!cd.use_inversion && one_of(data_type::f32, src_type, wei_type)
+            && (jcp_.stride_w < 2 || jcp_.stride_h < 2)) {
         return status::unimplemented;
     }
+
     brgs_ = std::make_shared<brgemm_containers::brgemm_desc_container_t>(16);
 
     const float alpha = 1.0;
     const float beta = 1.0;
     const auto &p = attr()->post_ops_;
+
+    // TODO: fix failing post ops for bf16 on sve 128
+    const bool is_bf16
+            = src_type == data_type::bf16 && wei_type == data_type::bf16;
+    if (is_bf16 && get_max_cpu_isa() == sve_128) {
+        for (auto const &entry : p.entry_) {
+            const bool is_failing_po = entry.is_eltwise()
+                    && one_of(entry.eltwise.alg,
+                            // these fail due to label offset being too large
+                            alg_kind::eltwise_tanh, alg_kind::eltwise_gelu_tanh,
+                            alg_kind::eltwise_gelu_erf);
+            VDISPATCH_CONV(!is_failing_po, VERBOSE_BAD_ALGORITHM);
+        }
+    }
+
     const int sum_idx = p.find(primitive_kind::sum);
     with_sum = (sum_idx != -1);
+    // Check if postop sum datatype is supported
+    if (with_sum) {
+        const auto &sum_po = p.entry_[sum_idx];
+        if (!one_of(sum_po.sum.dt, data_type::undef, data_type::f32,
+                    data_type::s32, data_type::u8, data_type::s8))
+            return status::unimplemented;
+    }
     sum_scale = with_sum ? p.entry_[sum_idx].sum.scale : 0.0;
 
     ic_chunks = div_up(jcp_.nb_ic, jcp_.nb_ic_blocking);

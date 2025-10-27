@@ -666,6 +666,15 @@ running Large Language Models (LLM). The advanced quantization here implies
 additional grouping introduced over reduction dimension besides traditional
 per-N quantization.
 
+**Weight decompression** is the runtime process of converting compressed
+integer weights back to floating-point format during computations.
+The primitive dequantizes weights using provided scales and zero-points,
+and converts them to the computation precision specified by
+@ref dnnl::primitive_attr::set_fpmath_mode.
+See @ref dev_guide_attributes_fpmath_mode for details, and the code snippet
+below for an example of setting fpmath mode.
+For a full tutorial, refer to @ref weights_decompression_matmul_cpp.
+
 ~~~cpp
    // Src, weights, and dst memory descriptors for matmul.
    // Consider simple 2D matmul case.

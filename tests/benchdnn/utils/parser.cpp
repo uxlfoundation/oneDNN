@@ -356,7 +356,7 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
             };
 
             bool is_ternary_input = false;
-            for (const auto &s : {src1_subs, src2_subs}) {
+            for (const auto &s : {std::move(src1_subs), std::move(src2_subs)}) {
                 parse_src_input_specs(s, src_delim, is_ternary_input);
                 if (!has_src2_specs)
                     break;

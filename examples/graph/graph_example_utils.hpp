@@ -206,7 +206,7 @@ inline void allocate_sycl_graph_mem(std::vector<dnnl::graph::tensor> &tensors,
                                          q.get_context()),
                 sycl_deletor_t {q.get_context()});
 
-        tensors.emplace_back(lt, eng, data_buffer.back().get());
+        tensors.emplace_back(lt, eng, std::move(data_buffer.back()));
     }
 }
 
@@ -235,7 +235,7 @@ inline void allocate_sycl_graph_mem(std::vector<dnnl::graph::tensor> &tensors,
                                          q.get_context()),
                 sycl_deletor_t {q.get_context()});
 
-        tensors.emplace_back(lt, eng, data_buffer.back().get());
+        tensors.emplace_back(lt, eng, std::move(data_buffer.back()));
 
         // record the connection relationship between partitions
         if (!is_input) global_outputs_ts_map[lt_id] = tensors.back();

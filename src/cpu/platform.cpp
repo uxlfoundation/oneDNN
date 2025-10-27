@@ -499,7 +499,8 @@ void populate_cache_topology_from_cpuid(cache_topology_t &cache_topology) {
     if (topo_leaf != 0) {
         for (uint32_t subleaf = 0; subleaf < MAX_SUBLEAF_GUARD; ++subleaf) {
             x64::cpu().getCpuidEx(topo_leaf, subleaf, regs);
-            uint32_t level_type = (regs[2] >> 8) & 0xFF; // CPUID(0x1F).ECX[15:8]
+            uint32_t level_type
+                    = (regs[2] >> 8) & 0xFF; // CPUID(0x1F).ECX[15:8]
             if (level_type == 0) break; // no more levels
             if (level_type == 1 || level_type == 2) {
                 int level = 1; // assume SMT level corresponds to L1d
@@ -513,8 +514,10 @@ void populate_cache_topology_from_cpuid(cache_topology_t &cache_topology) {
 
                 if (cache_topology.caches[idx].size != 0) {
                     uint32_t logical_processors_at_level = regs[1]; // EBX
-                    uint32_t existing = cache_topology.caches[idx].num_sharing_cores;
-                    uint32_t newval = std::min(existing, logical_processors_at_level);
+                    uint32_t existing
+                            = cache_topology.caches[idx].num_sharing_cores;
+                    uint32_t newval
+                            = std::min(existing, logical_processors_at_level);
                     if (newval != existing)
                         cache_topology.caches[idx].num_sharing_cores = newval;
                 }
@@ -564,7 +567,9 @@ void init_cache_topology_cpuid(cache_topology_t &cache_topology) {
         DWORD_PTR cpu_mask = 1ULL << cpu;
         DWORD_PTR oldMask = SetThreadAffinityMask(current_thread, cpu_mask);
 
-        if (oldMask != 0) { populate_cache_topology_from_cpuid(cache_topology); }
+        if (oldMask != 0) {
+            populate_cache_topology_from_cpuid(cache_topology);
+        }
         SetThreadAffinityMask(current_thread, oldMask);
     }
 #elif defined(__linux__)
@@ -590,7 +595,8 @@ void init_cache_topology_cpuid(cache_topology_t &cache_topology) {
     // Check whether we managed to populate any entries
     bool any_detected = false;
     for (size_t i = 0; i < cache_topology_t::max_cache_levels
-            * cache_topology_t::max_core_types; ++i) {
+                    * cache_topology_t::max_core_types;
+            ++i) {
         if (cache_topology.caches[i].size != 0) {
             any_detected = true;
             break;
@@ -603,7 +609,8 @@ void init_cache_topology_cpuid(cache_topology_t &cache_topology) {
                 ++type_idx) {
             for (size_t level = 0; level < cache_topology_t::max_cache_levels;
                     ++level) {
-                size_t idx = type_idx * cache_topology_t::max_cache_levels + level;
+                size_t idx
+                        = type_idx * cache_topology_t::max_cache_levels + level;
                 cache_info_t info;
                 info.level = static_cast<uint8_t>(level);
                 info.size = guess(static_cast<int>(level));
@@ -1004,7 +1011,8 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
             }
 
             // Validate cache level
-            if ( cache_level < 0 || cache_level > (int)cache_topology_t::max_cache_levels) {
+            if (cache_level < 0
+                    || cache_level > (int)cache_topology_t::max_cache_levels) {
                 continue;
             }
 
@@ -1082,9 +1090,9 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
                 cache_topology.caches[idx] = info;
             } else {
                 // Merge sharing information conservatively.
-                cache_topology.caches[idx].num_sharing_cores = std::max(
-                        cache_topology.caches[idx].num_sharing_cores,
-                        num_sharing_cores);
+                cache_topology.caches[idx].num_sharing_cores
+                        = std::max(cache_topology.caches[idx].num_sharing_cores,
+                                num_sharing_cores);
             }
         }
     }
@@ -1093,7 +1101,8 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
     // Check whether we managed to populate any entries
     bool any_detected = false;
     for (size_t i = 0; i < cache_topology_t::max_cache_levels
-            * cache_topology_t::max_core_types; ++i) {
+                    * cache_topology_t::max_core_types;
+            ++i) {
         if (cache_topology.caches[i].size != 0) {
             any_detected = true;
             break;
@@ -1131,8 +1140,7 @@ void init_cache_topology(cache_topology_t &cache_topology) {
         // - all cache entries zeroed
         // - default core type
         cache_topology.is_hybrid = false;
-        size_t max_entries
-                = cache_topology_t::max_cache_levels
+        size_t max_entries = cache_topology_t::max_cache_levels
                 * cache_topology_t::max_core_types;
         for (size_t i = 0; i < max_entries; ++i) {
             cache_topology.caches[i].level = 0;

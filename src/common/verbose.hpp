@@ -259,6 +259,10 @@ inline component_t::flag_kind prim_kind2_comp_kind(
         const primitive_kind_t prim_kind) {
     if (prim_kind >= primitive_kind::internal_only_start)
         return component_t::all;
+    // NOTE: current design has flag_kind mask is indexed by prim_kind
+    // As long is prim_kind < 32, we are fine, but if that is no more true
+    // we will need to adapt
+    assert(prim_kind < sizeof(component_t::flag_kind) * 8);
     return static_cast<component_t::flag_kind>(1 << prim_kind | 1 << 0);
 }
 

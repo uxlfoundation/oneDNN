@@ -46,27 +46,11 @@ public:
 
     size_t nargs() const { return args_.size(); }
     const std::string &kernel_name() const { return kernel_name_; }
-    const expr_t &operator[](size_t idx) const {
-        gpu_assert(idx < nargs());
-        return args_[idx].var;
-    }
+    const expr_t &operator[](size_t idx) const;
     bool has(const std::string &name) const { return find_arg_impl(name); }
 
-    expr_t find_arg(const std::string &name, bool allow_empty = false) const {
-        auto *arg = find_arg_impl(name);
-        if (arg) return arg->var;
-        if (!allow_empty)
-            gpu_error_not_expected() << "Argument not found: " << name;
-        return expr_t();
-    }
-
-    size_t index(const std::string &name) const {
-        for (size_t i = 0; i < nargs(); i++) {
-            if (args_[i].name() == name) return i;
-        }
-        return -1;
-    }
-
+    expr_t find_arg(const std::string &name, bool allow_empty = false) const;
+    size_t index(const std::string &name) const;
     void register_arg(const expr_t &var) { args_.emplace_back(var); }
     void register_arg(const std::string &name, const type_t &type);
 

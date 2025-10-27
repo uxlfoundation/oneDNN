@@ -69,10 +69,12 @@ status_t ref_conf_t::init_dispatcher(const subproblem_t &subprb,
         const intel::engine_t &engine, gpu_primitive_attr_t *gpu_attr) {
 
     compute::named_buffer_t src_buf("SRC");
+    src_buf.data_type = conf.src_dt;
     src_buf.append_block(dims::outer, subprb.outer_block.block);
     src_buf.append_block(dims::reduction, subprb.reduction_block.block);
     src_buf.append_block(dims::inner, subprb.inner_block.block);
     compute::named_buffer_t dst_buf("DST", src_buf);
+    dst_buf.data_type = conf.dst_dt;
     dst_buf.remove_dim(dims::reduction);
 
     compute::reusable_dispatch_config_t config(&engine, dispatch_dims);
@@ -110,6 +112,9 @@ status_t reusable_ref_t::pd_t::init_conf(impl::engine_t *engine) {
     const dim_t *src_dims = src_mdw.dims();
     const dim_t *src_padded_dims = src_mdw.padded_dims();
     const dim_t *dst_dims = dst_mdw.dims();
+    const bool require_large_buffers
+            = std::max(src_mdw.size(0, true, true), dst_mdw.size(0, true, true))
+            > UINT32_MAX;
 
     bool is_reduction_dim[DNNL_MAX_NDIMS];
     for (int i = 0; i < ndims; i++) {
@@ -182,6 +187,7 @@ status_t reusable_ref_t::pd_t::init_conf(impl::engine_t *engine) {
                 phase.init_dispatcher(subprbs[i], *intel_engine, gpu_attr)
                         == status::success,
                 "failed to initialize dispatcher for subproblem");
+        phase.conf.params.require_large_buffers = require_large_buffers;
     }
 
     // Compute div from basic mdw dims
@@ -199,6 +205,9 @@ static void init_kernel_ctx_common(
     // Data types
     kernel_ctx.set_data_type(conf.src_dt);
     def_data_type(kernel_ctx, conf.dst_dt, "DST");
+
+    // Stateless addressing model
+    kernel_ctx.require_large_buffers(conf.params.require_large_buffers);
 
     // Dispatcher
     conf.params.def_kernel_macros(kernel_ctx);

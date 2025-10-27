@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2025 Intel Corporation
+* Copyright 2017 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1027,21 +1027,17 @@ int get_gpu_ram_sizes(size_t &ram_size, size_t &max_alloc_size) {
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     auto eng = dnnl::engine(get_test_engine(), true);
-    cl_int status = CL_SUCCESS;
     cl_device_id ocl_device = dnnl::ocl_interop::get_device(eng);
 
     cl_ulong ram_sz = 0;
-    status = clGetDeviceInfo(ocl_device, CL_DEVICE_GLOBAL_MEM_SIZE,
+    cl_int status = clGetDeviceInfo(ocl_device, CL_DEVICE_GLOBAL_MEM_SIZE,
             sizeof(cl_ulong), &ram_sz, nullptr);
     if (status != CL_SUCCESS) return FAIL;
 
-    cl_ulong max_alloc_sz = 0;
-    status = clGetDeviceInfo(ocl_device, CL_DEVICE_MAX_MEM_ALLOC_SIZE,
-            sizeof(cl_ulong), &max_alloc_sz, nullptr);
-    if (status != CL_SUCCESS) return FAIL;
-
     ram_size = (size_t)ram_sz;
-    max_alloc_size = (size_t)max_alloc_sz;
+    // For OCL runtime we allow allocation of buffers up to VRAM size,
+    // with the usage of CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL flag.
+    max_alloc_size = (size_t)ram_sz;
     return OK;
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
     auto eng = dnnl::engine(get_test_engine(), true);

@@ -527,10 +527,19 @@ status_t xe_hp_systolic_t::init(impl::engine_t *engine) {
 
             auto trans
                     = !copy_b ? pd()->desc()->transa() : pd()->desc()->transb();
+            bool require_large_buffers
+                    = std::max({memory_desc_wrapper(pd()->desc()->a_desc)
+                                        .size(0, true, true),
+                              memory_desc_wrapper(pd()->desc()->b_desc)
+                                      .size(0, true, true),
+                              memory_desc_wrapper(pd()->desc()->c_desc)
+                                      .size(0, true, true)})
+                    > UINT32_MAX;
             copy_kernel_params_t params;
             CHECK(params.init(arch_, !copy_b ? a_type : b_type,
                     pd()->unroll_n(), copy_b, trans,
-                    pd()->with_ab_zero_points(), clear_sum));
+                    pd()->with_ab_zero_points(), clear_sum,
+                    require_large_buffers));
 
             // TODO: Refactor so this can be switched to 1 batch compilation.
             // Having up to 4 calls to the OpenCL compiler is sub-optimal.

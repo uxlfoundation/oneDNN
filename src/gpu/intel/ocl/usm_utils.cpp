@@ -14,10 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "xpu/ocl/engine_impl.hpp"
-#include "xpu/ocl/stream_impl.hpp"
-
 #include "gpu/intel/ocl/usm_utils.hpp"
+#include "gpu/intel/ocl/engine.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -42,6 +40,28 @@ cl_command_queue get_ocl_queue(impl::stream_t *stream) {
     return utils::downcast<xpu::ocl::stream_impl_t *>(stream->impl())->queue();
 }
 
+const compute::device_info_t *get_device_info(impl::engine_t *engine) {
+    return utils::downcast<const ocl::engine_t *>(engine)->device_info();
+}
+
+template <typename F>
+void *usm_malloc_common(
+        impl::engine_t *engine, size_t size, const F &ext_func) {
+    auto device_info = get_device_info(engine);
+
+    if (size == 0 || size > device_info->memory_size()) return nullptr;
+    bool large_buffer = size > device_info->max_allocation_size();
+    cl_bitfield large_buffer_flag[]
+            = {CL_MEM_FLAGS_INTEL, CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL, 0};
+
+    cl_int err;
+    void *p = ext_func(engine, get_ocl_context(engine), get_ocl_device(engine),
+            large_buffer ? large_buffer_flag : nullptr, size, 0, &err);
+    assert(utils::one_of(err, CL_SUCCESS, CL_OUT_OF_RESOURCES,
+            CL_OUT_OF_HOST_MEMORY, CL_INVALID_BUFFER_SIZE));
+    return p;
+}
+
 } // namespace
 
 bool is_usm_supported(impl::engine_t *engine) {
@@ -55,13 +75,18 @@ bool is_usm_supported(impl::engine_t *engine) {
 void *malloc_host(impl::engine_t *engine, size_t size) {
     using clHostMemAllocINTEL_func_t = void *(*)(cl_context, const cl_ulong *,
             size_t, cl_uint, cl_int *);
-
-    if (size == 0) return nullptr;
-
     static xpu::ocl::ext_func_t<clHostMemAllocINTEL_func_t> ext_func(
             "clHostMemAllocINTEL");
+    auto device_info = get_device_info(engine);
+
+    if (size == 0 || size > device_info->memory_size()) return nullptr;
+    bool large_buffer = size > device_info->max_allocation_size();
+    cl_bitfield large_buffer_flag[]
+            = {CL_MEM_FLAGS_INTEL, CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL, 0};
+
     cl_int err;
-    void *p = ext_func(engine, get_ocl_context(engine), nullptr, size, 0, &err);
+    void *p = ext_func(engine, get_ocl_context(engine),
+            large_buffer ? large_buffer_flag : nullptr, size, 0, &err);
     assert(utils::one_of(err, CL_SUCCESS, CL_OUT_OF_RESOURCES,
             CL_OUT_OF_HOST_MEMORY, CL_INVALID_BUFFER_SIZE));
     return p;
@@ -70,38 +95,21 @@ void *malloc_host(impl::engine_t *engine, size_t size) {
 void *malloc_device(impl::engine_t *engine, size_t size) {
     using clDeviceMemAllocINTEL_func_t = void *(*)(cl_context, cl_device_id,
             cl_ulong *, size_t, cl_uint, cl_int *);
-
-    if (size == 0) return nullptr;
-
     static xpu::ocl::ext_func_t<clDeviceMemAllocINTEL_func_t> ext_func(
             "clDeviceMemAllocINTEL");
-    cl_int err;
-    void *p = ext_func(engine, get_ocl_context(engine), get_ocl_device(engine),
-            nullptr, size, 0, &err);
-    assert(utils::one_of(err, CL_SUCCESS, CL_OUT_OF_RESOURCES,
-            CL_OUT_OF_HOST_MEMORY, CL_INVALID_BUFFER_SIZE));
-    return p;
+    return usm_malloc_common(engine, size, ext_func);
 }
 
 void *malloc_shared(impl::engine_t *engine, size_t size) {
     using clSharedMemAllocINTEL_func_t = void *(*)(cl_context, cl_device_id,
             cl_ulong *, size_t, cl_uint, cl_int *);
-
-    if (size == 0) return nullptr;
-
     static xpu::ocl::ext_func_t<clSharedMemAllocINTEL_func_t> ext_func(
             "clSharedMemAllocINTEL");
-    cl_int err;
-    void *p = ext_func(engine, get_ocl_context(engine), get_ocl_device(engine),
-            nullptr, size, 0, &err);
-    assert(utils::one_of(err, CL_SUCCESS, CL_OUT_OF_RESOURCES,
-            CL_OUT_OF_HOST_MEMORY, CL_INVALID_BUFFER_SIZE));
-    return p;
+    return usm_malloc_common(engine, size, ext_func);
 }
 
 void free(impl::engine_t *engine, void *ptr) {
     using clMemFreeINTEL_func_t = cl_int (*)(cl_context, void *);
-
     if (!ptr) return;
     static xpu::ocl::ext_func_t<clMemFreeINTEL_func_t> ext_func(
             "clMemFreeINTEL");

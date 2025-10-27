@@ -392,6 +392,12 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.val_data_t = val_mdw.data_type();
     conf.dst_data_t = dst_mdw.data_type();
 
+    conf.require_large_buffers
+            = std::max({qry_mdw.size(0, true, true),
+                      key_mdw.size(0, true, true), val_mdw.size(0, true, true),
+                      dst_mdw.size(0, true, true)})
+            > UINT32_MAX;
+
     conf.msk_data_t = data_type::undef;
     if (pd->with_attn_mask()) { conf.msk_data_t = msk_mdw.data_type(); }
 
@@ -531,6 +537,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
 status_t micro_params_t::get_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     using namespace micro;
+    kernel_ctx.require_large_buffers(require_large_buffers);
 
     kernel_ctx.define_int("NDIMS", ndims);
     kernel_ctx.set_data_type(data_t);

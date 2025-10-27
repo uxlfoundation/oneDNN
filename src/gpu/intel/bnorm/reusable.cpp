@@ -161,6 +161,7 @@ static status_t init_conf_common(reusable_params_t &conf,
 
     conf = utils::zero<decltype(conf)>();
     conf.data_type = data_mdw.data_type();
+    conf.require_large_buffers = data_mdw.size(0, true, true) > UINT32_MAX;
 
     conf.use_scale = pd->use_scale();
     conf.use_shift = pd->use_shift();
@@ -207,6 +208,7 @@ static status_t init_conf_common(reusable_params_t &conf,
 static void init_kernel_ctx_common(
         compute::kernel_ctx_t &kernel_ctx, const reusable_params_t &conf) {
     kernel_ctx.set_data_type(conf.data_type, false);
+    kernel_ctx.require_large_buffers(conf.require_large_buffers);
 
     kernel_ctx.define_int("WITH_RELU", conf.with_relu);
     if (conf.with_leaky_relu) kernel_ctx.define_int("WITH_LEAKY_RELU", 1);

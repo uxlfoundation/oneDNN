@@ -134,6 +134,12 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
     OCL_CHECK(err);
     max_wg_size_ = max_wg_size;
 
+    cl_ulong mem_size;
+    err = clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(mem_size),
+            &mem_size, nullptr);
+    OCL_CHECK(err);
+    memory_size_ = mem_size;
+
     cl_ulong mem_cache_size;
     err = clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_CACHE_SIZE,
             sizeof(mem_cache_size), &mem_cache_size, nullptr);
@@ -151,6 +157,12 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
             sizeof(device_address_bits), &device_address_bits, nullptr);
     OCL_CHECK(err);
     device_address_bits_ = device_address_bits;
+
+    cl_ulong max_allocation_size;
+    err = clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE,
+            sizeof(max_allocation_size), &max_allocation_size, nullptr);
+    OCL_CHECK(err);
+    max_allocation_size_ = max_allocation_size;
 
 #ifdef cl_intel_unified_shared_memory
     cl_device_unified_shared_memory_capabilities_intel

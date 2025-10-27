@@ -106,8 +106,6 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
 
     bool a_tag_ok = bgmmc.src_tag == dnnl_format_tag_any
             || bm_conf_utils.check_is_plain(bgmmc.src_tag);
-    bool b_tag_ok = bm_conf_utils.is_any_B_layout()
-            || bm_conf_utils.check_b_layout_blocked_32_by_n(bgmmc.wei_tag);
 
     bool has_zp = bgmmc.src_zp_type != brgemm_broadcast_t::none
             || bgmmc.wei_zp_type != brgemm_broadcast_t::none
@@ -116,8 +114,8 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
     return bgmmc.orig_src_dt == bgmmc.src_dt
             && bgmmc.orig_wei_dt == bgmmc.wei_dt && bgmmc.is_amx
             && !bgmmc.is_runtime_N && !bgmmc.is_runtime_M && a_dt_ok && a_tag_ok
-            && (bgmmc.reduce_kind == matmul_reduce_kind::undef) && b_tag_ok
-            && b_dt_ok && !has_zp && !bgmmc.packed_sparse_weights;
+            && (bgmmc.reduce_kind == matmul_reduce_kind::undef) && b_dt_ok
+            && !has_zp && !bgmmc.packed_sparse_weights;
 }
 
 bool matmul_amx_blocking_params_macro_t::divs_are_acceptable() const {
@@ -144,6 +142,136 @@ size_t determine_tmul_size(size_t num_elements, int full_tile_size) {
     return tmul_size;
 }
 
+bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
+        const brgemm_matmul_conf_t &bgmmc,
+        matmul_amx_blocking_params_macro_t &best_blocking) {
+
+    auto set_common = [&]() {
+        best_blocking.k_blk_ = bgmmc.K;
+        best_blocking.k_chunk_size_ = 1;
+
+        best_blocking.brgemm_batch_size_ = 1;
+        best_blocking.need_buf_c_ = false;
+        best_blocking.need_buf_a_ = false;
+
+        best_blocking.extendable_k_ = bgmmc.K % best_blocking.wei_k_blk != 0
+                && !best_blocking.skip_extendable_k();
+
+        best_blocking.is_a_nt_ = true;
+        best_blocking.is_b_nt = true;
+        best_blocking.set_nt_ = true;
+        best_blocking.need_prefetch_a_ = false;
+        best_blocking.need_prefetch_b_ = false;
+        best_blocking.use_fused_copy_a = false;
+        best_blocking.efficiency_score_ = 1;
+        best_blocking.current_lda_ = best_blocking.get_actual_lda();
+    };
+
+    if (bgmmc.M <= 32 && !(bgmmc.use_buffer_b && !bgmmc.transposed_B)
+            && bgmmc.batch == 1) {
+
+        best_blocking.n_decomposition
+                = nstl::min(bgmmc.N, (dim_t)bgmmc.wei_n_blk);
+        best_blocking.m_decomposition = bgmmc.M;
+        uint32_t n_per_core = div_up(bgmmc.N, bgmmc.nthr);
+        n_per_core = rnd_up(n_per_core, best_blocking.n_decomposition);
+        best_blocking.set_core_divs(1, 1, 1, div_up(bgmmc.N, n_per_core));
+
+        if (best_blocking.nthr_n_ < 0.75 * best_blocking.nthr) { return false; }
+        best_blocking.m_blk_ = bgmmc.M;
+        best_blocking.m_chunk_size_ = 1;
+        best_blocking.n_blk_ = best_blocking.n_decomposition;
+        best_blocking.n_chunk_size_
+                = n_per_core / best_blocking.n_decomposition;
+
+        if (bgmmc.use_buffer_b) {
+            size_t brg_b_size = best_blocking.n_decomposition * bgmmc.K;
+            size_t brg_a_size = best_blocking.M * bgmmc.K;
+            if (brg_a_size > L2_threshold()) { return false; }
+            best_blocking.k_chunk_size_
+                    = div_up(2 * brg_b_size, L2_threshold() - brg_a_size);
+            best_blocking.K_blk = rnd_up(
+                    div_up(best_blocking.K, best_blocking.k_chunk_size_),
+                    best_blocking.wei_k_blk);
+        } else {
+            best_blocking.k_blk_ = bgmmc.K;
+            best_blocking.k_chunk_size_ = 1;
+        }
+
+        set_common();
+        return true;
+
+    } else if (bgmmc.K <= best_blocking.wei_k_blk && bgmmc.batch == 1) {
+
+        uint32_t m_per_core = div_up(bgmmc.M, bgmmc.nthr);
+        best_blocking.set_core_divs(1, div_up(bgmmc.M, m_per_core), 1, 1);
+        best_blocking.set_tmul_sizes();
+        best_blocking.set_decomposition();
+
+        if (best_blocking.nthr_m_ < 0.75 * best_blocking.nthr) { return false; }
+        best_blocking.m_blk_ = best_blocking.m_decomposition;
+        best_blocking.m_chunk_size_
+                = div_up(m_per_core, best_blocking.m_decomposition);
+        best_blocking.n_blk_ = bgmmc.N;
+        best_blocking.n_chunk_size_ = 1;
+
+        if (bgmmc.use_buffer_b) {
+            size_t brg_b_size = best_blocking.N * bgmmc.K;
+            size_t brg_b_size_tr
+                    = best_blocking.N * rnd_up(bgmmc.K, bgmmc.wei_k_blk);
+            size_t brg_d_size = best_blocking.N * best_blocking.m_decomposition;
+            best_blocking.n_chunk_size_ = div_up(
+                    brg_b_size + brg_b_size_tr + brg_d_size, L2_threshold());
+            best_blocking.n_blk_ = rnd_up(
+                    div_up(best_blocking.N, best_blocking.n_chunk_size_),
+                    best_blocking.wei_n_blk);
+        } else {
+            best_blocking.n_blk_ = bgmmc.N;
+            best_blocking.n_chunk_size_ = 1;
+        }
+        set_common();
+        return true;
+
+    } else if (bgmmc.N <= 32 && bgmmc.batch == 1) {
+
+        uint32_t m_per_core = div_up(bgmmc.M, bgmmc.nthr);
+
+        best_blocking.m_per_thread = m_per_core;
+        // in this case 2 full are preferable
+        best_blocking.m_decomposition
+                = determine_tmul_size(best_blocking.m_per_thread, 2 * 16);
+        best_blocking.n_tmul = 16; // B blocked layout is a multiply of 16
+        best_blocking.n_decomposition = 2 * best_blocking.n_tmul;
+        best_blocking.k_tmul = nstl::min(
+                (size_t)best_blocking.wei_k_blk, (size_t)best_blocking.K);
+
+        size_t m_per_core_actual = rnd_up(
+                best_blocking.m_per_thread, best_blocking.m_decomposition);
+        best_blocking.set_core_divs(
+                1, div_up(bgmmc.M, m_per_core_actual), 1, 1);
+
+        if (best_blocking.nthr_m_ < 0.75 * best_blocking.nthr) { return false; }
+
+        best_blocking.m_blk_ = best_blocking.m_decomposition;
+        best_blocking.m_chunk_size_
+                = div_up(m_per_core, best_blocking.m_decomposition);
+        best_blocking.n_blk_ = bgmmc.N;
+        best_blocking.n_chunk_size_ = 1;
+
+        size_t brg_b_size = best_blocking.n_decomposition * bgmmc.K;
+        size_t brg_a_size = best_blocking.m_decomposition * bgmmc.K;
+        best_blocking.k_chunk_size_
+                = div_up(2 * brg_b_size + brg_a_size, L2_threshold());
+        best_blocking.k_blk_
+                = rnd_up(div_up(best_blocking.K, best_blocking.k_chunk_size_),
+                        best_blocking.wei_k_blk);
+        set_common();
+        return true;
+    } else {
+        return false;
+    }
+}
+
 bool matmul_amx_blocking_params_macro_t::find_best_blocking(
         const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
@@ -154,22 +282,11 @@ bool matmul_amx_blocking_params_macro_t::find_best_blocking(
         return false;
     }
 
-    best_blocking = matmul_amx_blocking_params_micro_t(bgmmc);
+    best_blocking = matmul_amx_blocking_params_macro_t(bgmmc);
 
     matmul_amx_blocking_params_macro_t current_blocking(bgmmc);
-    assert(bgmmc.tr_a_dt_sz == bgmmc.tr_b_dt_sz);
-    current_blocking.gemm_dt_sz = bgmmc.tr_a_dt_sz;
-    current_blocking.min_m_elem = matmul_amx_blocking_params_macro_t::min_m_dim;
-    current_blocking.min_k_elem = matmul_amx_blocking_params_macro_t::min_k_dim
-            / current_blocking.gemm_dt_sz;
-    current_blocking.min_n_elem
-            = matmul_amx_blocking_params_macro_t::min_n_dim / bgmmc.c_dt_sz;
-    current_blocking.k_threshold_write_bound_layer_elem
-            = matmul_amx_blocking_params_macro_t::k_threshold_write_bound_layer
-            / current_blocking.gemm_dt_sz;
-    current_blocking.min_n_dim_write_bound_layer_elem
-            = matmul_amx_blocking_params_macro_t::min_n_dim_write_bound_layer
-            / current_blocking.gemm_dt_sz;
+
+    if (maybe_small_dims_heuristics(bgmmc, best_blocking)) { return true; }
 
     for (size_t nthr_to_check = bgmmc.nthr; nthr_to_check > 0;
             nthr_to_check--) {
@@ -199,10 +316,27 @@ bool matmul_amx_blocking_params_macro_t::find_best_blocking(
         }
     }
 
+    if (best_blocking.use_buffer_b && !best_blocking.transposed_B
+            && !best_blocking.is_horizontal) {
+        current_blocking.nthr_ = best_blocking.nthr_b_ * best_blocking.nthr_m_
+                * best_blocking.nthr_n_ * best_blocking.nthr_k_;
+        current_blocking.set_core_divs(best_blocking.nthr_b_,
+                best_blocking.nthr_m_, best_blocking.nthr_n_,
+                best_blocking.nthr_k_);
+        if (current_blocking.set_blocking_parameters(true)
+                && current_blocking > best_blocking) {
+            best_blocking = current_blocking;
+        }
+    }
     return true;
 }
 
 float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
+
+    bool strip1_b_tranform_h = is_horizontal && use_buffer_b;
+    bool strips_b_tranform_v = !is_horizontal && use_buffer_b;
+    bool strip1_b_in_mlc_h
+            = strip1_b_tranform_h && b_transform_fits_in_mlc(n_blk_, k_blk_);
 
     size_t a_size = m_per_thread * k_per_thread * gemm_dt_sz;
     size_t b_size = n_per_thread * k_per_thread * gemm_dt_sz;
@@ -331,23 +465,49 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
             + temporal_matrix_l1_hit / bw_interpulator.l1_load_hit_bw
             + nt_mat_l1_miss / bw_interpulator.l1_load_miss_bw + c_l1_cycles;
 
-    float strip_1_cycles
-            = strip_1_size_shared / bw_interpulator.get_bw(strip_1_share_coef)
-            + strip_1_size_private / bw_interpulator.get_bw(1);
+    float b_transform_cycles_h = strip1_b_tranform_h
+            ? strip_1_size_shared / bw_interpulator.get_bw(strip_1_share_coef)
+            : 0;
 
-    float strip_mid_dram = strip_mid_size_shared
+    float b_transform_cycles_v = strips_b_tranform_v ? strip_mid_size_shared
                     / bw_interpulator.get_bw(strip_mid_share_coef)
-            + strip_mid_size_private / bw_interpulator.get_bw(1);
-    float strip_mid_llc = (strip_mid_size_private + strip_mid_size_shared)
-            / bw_interpulator.llc_bw;
+                                                     : 0;
+
+    float strip_mid_dram;
+    float strip_mid_llc;
+    if (strips_b_tranform_v) {
+        strip_mid_dram = strip_mid_size_private / bw_interpulator.get_bw(1);
+        strip_mid_llc = strip_mid_size_private / bw_interpulator.llc_bw;
+    } else {
+        strip_mid_dram = strip_mid_size_shared
+                        / bw_interpulator.get_bw(strip_mid_share_coef)
+                + strip_mid_size_private / bw_interpulator.get_bw(1);
+
+        strip_mid_llc = (strip_mid_size_private + strip_mid_size_shared)
+                / bw_interpulator.llc_bw;
+    }
+
     float strip_tmul = num_tmuls_per_strip * num_cycles_per_tmul;
 
     float strip_avx
             = this->postops_inst_count * num_postop_cache_lines / avx_ipc;
-    float strip_mid_cycles = std::max(
-            {strip_mid_dram, strip_mid_llc, l1_cycles, strip_tmul, strip_avx});
+    float strip_mid_cycles = b_transform_cycles_v
+            + std::max({strip_mid_dram, strip_mid_llc, l1_cycles, strip_tmul,
+                    strip_avx});
 
-    float gemm_cycles = strip_1_cycles + (num_strip - 1) * strip_mid_cycles;
+    float strip_1_cycles;
+    if (!strip1_b_tranform_h)
+        // default for vertical and horizontal without b transform
+        strip_1_cycles = strip_1_size_shared
+                        / bw_interpulator.get_bw(strip_1_share_coef)
+                + strip_1_size_private / bw_interpulator.get_bw(1);
+    else if (strip1_b_in_mlc_h)
+        strip_1_cycles = strip_mid_cycles; // strip 1 is regular strip;
+    else
+        strip_1_cycles = strip_1_size_shared / bw_interpulator.llc_bw;
+
+    float gemm_cycles = b_transform_cycles_h + strip_1_cycles
+            + (num_strip - 1) * strip_mid_cycles;
 
     // Calculate reduction cycles
     float reduction_cycles;
@@ -355,8 +515,8 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
 
     if (nthr_k_ != 1) {
         if (c_size_per_core * 2 < L2_threshold() && batch == 1) {
-            float reduction_read_bytes = (M * N * acc_dt_sz) * ((nthr_k_ - 1))
-                    / (nthr_m_ * nthr_n_);
+            float reduction_read_bytes = (M * rnd_up(N, 16) * acc_dt_sz)
+                    * ((nthr_k_ - 1)) / (nthr_m_ * nthr_n_);
             float reduction_read_cycles;
             if (a_size + b_size + d_size < L2_threshold()) {
                 reduction_read_cycles
@@ -387,6 +547,26 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     float peak_macs_per_cycle = (macs_per_cycle_base / gemm_dt_sz) * nthr;
     float peak_cycles = total_macs / peak_macs_per_cycle;
     return peak_cycles / total_cycles;
+}
+
+bool matmul_amx_blocking_params_macro_t::b_transform_fits_in_mlc(
+        size_t n_blk, size_t k_blk) const {
+    bool b_transform_in_mlc;
+    auto max_l2_usage = l2_matrix_usage(
+            1, rnd_up(n_per_thread, n_blk), rnd_up(k_per_thread, k_blk), true);
+    if (transposed_B) {
+        b_transform_in_mlc = max_l2_usage
+                        + rnd_up(n_per_thread, n_blk)
+                                * nstl::min(
+                                        (size_t)(K * b_dt_sz), (size_t)PAGE_4K)
+                < L2_threshold();
+    } else {
+        b_transform_in_mlc = max_l2_usage
+                        + nstl::min((size_t)(N * b_dt_sz), (size_t)PAGE_4K)
+                                * rnd_up(k_per_thread, k_blk)
+                < L2_threshold();
+    }
+    return b_transform_in_mlc;
 }
 
 bool matmul_amx_blocking_params_macro_t::operator==(
@@ -609,7 +789,8 @@ bool matmul_amx_blocking_params_macro_t::is_horizontal_selected(
     return is_horizontal_local;
 }
 
-bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
+bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
+        bool force_horizontal) {
     set_tmul_sizes();
     set_decomposition();
 
@@ -621,7 +802,7 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
     dim_t best_m_v, best_k_v;
     float best_score_h = 0, best_score_v = 0;
     bool horizontal_not_possible = false;
-    bool vertical_not_possible = false;
+    bool vertical_not_possible = force_horizontal;
 
     auto calc_horizontal = [&](size_t k_blk_h, dim_t min_k_chunk_size = 0) {
         if (rnd_up(m_per_thread, m_decomposition) * (nthr_m_ - 1) > (size_t)M) {
@@ -877,7 +1058,7 @@ void matmul_amx_blocking_params_macro_t::set_core_divs(
 void matmul_amx_blocking_params_micro_t::find_best_blocking(
         const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
-        matmul_amx_blocking_params_t &best_blocking) {
+        matmul_amx_blocking_params_micro_t &best_blocking) {
 
     matmul_amx_blocking_params_micro_t current_blocking(bgmmc);
 

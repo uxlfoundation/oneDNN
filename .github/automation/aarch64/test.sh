@@ -22,6 +22,8 @@
 set -o errexit -o pipefail -o noclobber
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+OUTPUT_XML=$1
+OUTPUT_LOG=$2
 
 # Defines MP, CC, CXX and OS.
 source ${SCRIPT_DIR}/common.sh

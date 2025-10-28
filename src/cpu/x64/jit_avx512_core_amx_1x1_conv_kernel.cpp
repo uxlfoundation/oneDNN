@@ -1065,7 +1065,7 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     VDISPATCH_CONV_IC(!is_3d_small_ic, VERBOSE_BAD_PARAM,
             "bad output dimensions for 3d cases");
 
-    const auto zp = attr.zero_points_;
+    const auto &zp = attr.zero_points_;
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
     // If it's not per-tensor, then it's per-channel (not supported)

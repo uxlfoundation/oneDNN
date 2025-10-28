@@ -968,7 +968,7 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
         jcp.post_ops = post_ops;
     }
 
-    const auto zp = attr.zero_points_;
+    const auto &zp = attr.zero_points_;
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
     jcp.zp_src_is_common

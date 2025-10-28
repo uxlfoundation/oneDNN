@@ -2773,7 +2773,7 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
                 rdi_prefetch.blocks.emplace_back(rdi_pos, brg.rdb_tail, true);
             }
             rdi.idx = tloop.rdis.size();
-            tloop.rdis.push_back(rdi);
+            tloop.rdis.push_back(std::move(rdi));
         }
 
         // The case where bs_max is > 1, and prefetches are enabled

@@ -164,3 +164,12 @@ onednn_verbose,v1,graph,exec,gpu,100002,sdp,matmul_qk;scale_div;mask_add;softmax
 This RFC targets the graph API, specifically the `partition::compile` and
 `compiled_partition::execute` interfaces. Any usage of internal interfaces (eg.
 OpenVINO) are not guaranteed to get this information.
+
+## Conclusions
+
+Option 3 (Enable `ONEDNN_ENABLE_GRAPH_DUMP` by default) has been selected. With
+this approach, the `ONEDNN_ENABLE_GRAPH_DUMP` CMake option will be enabled by
+default. Users can then set the `ONEDNN_GRAPH_DUMP=subgraph` environment
+variable to generate graph JSON files as needed. Users are expected to
+provide both verbose logs and JSON files to oneDNN team to ensure reliable issue
+reproduction.

@@ -198,7 +198,7 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
                 arg_cache.append_inout_arg(
                         DNNL_ARG_FROM, sp_begin, from_md, true);
                 arg_cache.append_inout_arg(DNNL_ARG_TO, sp_end, to_md, false);
-                args_.push_back(arg_cache);
+                args_.push_back(std::move(arg_cache));
 
                 // Increment scratchpad offsets
                 sp_begin = sp_end;
@@ -248,24 +248,27 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
                     = root_pd->scratchpad_size(attr()->scratchpad_mode_);
 
             // Create arg cache for the root pd
-            arg_cache_t arg_cache;
-            arg_cache.append_ctx_arg(DNNL_ARG_SRC);
-            arg_cache.append_ctx_arg(DNNL_ARG_WEIGHTS);
-            for (auto arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST})
-                if (!attr_1x1.scales_.has_default_values(arg))
-                    arg_cache.append_ctx_arg(DNNL_ARG_ATTR_SCALES | arg);
-            if (desc()->bias_desc.data_type != data_type::undef)
-                arg_cache.append_ctx_arg(DNNL_ARG_BIAS);
-            arg_cache.append_inout_arg(DNNL_ARG_DST, inout_sp_offset_end,
-                    root_pd->dst_md(), false);
-            // Initialize binary post_op.
-            CHECK(attr_1x1.set_default_formats(root_pd->dst_md()));
-            for (int idx = 0; idx < attr_1x1.post_ops_.len(); ++idx) {
-                if (attr_1x1.post_ops_.contain(primitive_kind::binary, idx))
-                    arg_cache.append_ctx_arg(DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
-                            | DNNL_ARG_SRC_1);
+            {
+                arg_cache_t arg_cache;
+                arg_cache.append_ctx_arg(DNNL_ARG_SRC);
+                arg_cache.append_ctx_arg(DNNL_ARG_WEIGHTS);
+                for (auto arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST})
+                    if (!attr_1x1.scales_.has_default_values(arg))
+                        arg_cache.append_ctx_arg(DNNL_ARG_ATTR_SCALES | arg);
+                if (desc()->bias_desc.data_type != data_type::undef)
+                    arg_cache.append_ctx_arg(DNNL_ARG_BIAS);
+                arg_cache.append_inout_arg(DNNL_ARG_DST, inout_sp_offset_end,
+                        root_pd->dst_md(), false);
+                // Initialize binary post_op.
+                CHECK(attr_1x1.set_default_formats(root_pd->dst_md()));
+                for (int idx = 0; idx < attr_1x1.post_ops_.len(); ++idx) {
+                    if (attr_1x1.post_ops_.contain(primitive_kind::binary, idx))
+                        arg_cache.append_ctx_arg(
+                                DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
+                                | DNNL_ARG_SRC_1);
+                }
+                args_.push_back(std::move(arg_cache));
             }
-            args_.push_back(arg_cache);
 
             // Increment scratchpad offsets
             inout_sp_offset_begin = inout_sp_offset_end;
@@ -342,7 +345,7 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
                                         | DNNL_ARG_SRC_1));
                 }
 
-                args_.push_back(arg_cache);
+                args_.push_back(std::move(arg_cache));
 
                 while (++po_op_iter < end) {
                     if (utils::one_of(po.entry_[po_op_iter].kind,

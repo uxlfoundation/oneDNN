@@ -1518,7 +1518,7 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     jcp.simd_w = jcp.is_depthwise ? jcp.ch_block : jcp.ic_block;
 
-    const auto zp = attr.zero_points_;
+    const auto &zp = attr.zero_points_;
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
     jcp.zp_src_is_common

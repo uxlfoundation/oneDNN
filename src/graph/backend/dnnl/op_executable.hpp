@@ -22,6 +22,7 @@
 #include "graph/backend/dnnl/executables/concat.hpp"
 #include "graph/backend/dnnl/executables/const_memory_filler.hpp"
 #include "graph/backend/dnnl/executables/conv.hpp"
+#include "graph/backend/dnnl/executables/deconv.hpp"
 #include "graph/backend/dnnl/executables/eltwise.hpp"
 #include "graph/backend/dnnl/executables/gen_index.hpp"
 #include "graph/backend/dnnl/executables/group_norm.hpp"

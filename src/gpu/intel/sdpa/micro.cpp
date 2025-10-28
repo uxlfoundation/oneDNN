@@ -408,9 +408,6 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     auto ldk = gemm_desc_t::get_ld(*pd->key_md()) * key_mdw.data_type_size();
     auto ldv = gemm_desc_t::get_ld(*pd->val_md()) * val_mdw.data_type_size();
     auto lda = gemm_desc_t::get_ld(*pd->dst_md()) * dst_mdw.data_type_size();
-    auto ldmsk = pd->with_attn_mask()
-            ? msk_mdw.dims()[3] * msk_mdw.data_type_size()
-            : 0;
 
     conf.q_align = alignmentForLD(int(ldq));
     conf.k_align = alignmentForLD(int(ldk));
@@ -497,11 +494,10 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.d_full = d_full;
     conf.arch_gte_hpc = (pd->arch() >= compute::gpu_arch_t::xe_hpc);
 
-    conf.block_q = conf.block_a = conf.block_msk = conf.block_2d_a = false;
+    conf.block_q = conf.block_a = conf.block_2d_a = false;
     if (d_full) {
         conf.block_q = (ldq % 4 == 0);
         conf.block_a = (lda % 4 == 0 && v_full);
-        conf.block_msk = (ldmsk % 4 == 0);
     } else if (pd->arch() >= compute::gpu_arch_t::xe_hpc
             && config.unroll_m_vs < 64) {
         auto vbytes = d->values() * val_mdw.data_type_size();
@@ -591,7 +587,6 @@ status_t micro_params_t::get_kernel_ctx(
 
     kernel_ctx.define_int("BLOCK_Q", block_q);
     kernel_ctx.define_int("BLOCK_A", block_a);
-    kernel_ctx.define_int("BLOCK_MSK", block_msk);
     kernel_ctx.define_int("BLOCK_2D_A", block_2d_a);
 
     kernel_ctx.define_int("PREFETCH_MASK", prefetch_mask);

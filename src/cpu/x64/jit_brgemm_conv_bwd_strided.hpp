@@ -50,7 +50,7 @@ struct brgemm_convolution_bwd_strided_t : public primitive_t {
 
         status_t init(engine_t *engine);
 
-        int brgs_sz_;
+        int brgs_sz_ {};
         std::shared_ptr<brgemm_containers::brgemm_desc_container_t> brgs_;
 
         jit_brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();

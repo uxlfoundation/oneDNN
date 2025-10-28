@@ -14,9 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "gemmstone/config.hpp"
 #include "gemmstone/strategy.hpp"
 #include "gpu/intel/gemm/jit/generator_dsl/kernel_desc.hpp"
-#include "gpu/intel/gemm/jit/include/gemmstone/config.hpp"
 #include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"

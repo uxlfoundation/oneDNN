@@ -697,7 +697,7 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters() {
                 // There is not enough work for nthr_k threads
                 vertical_not_possible = true;
             }
-            size_t l2_util_v;
+            size_t l2_util_v = 0;
 
             if (!vertical_not_possible) {
                 // Figure out if vertical is an option wrt L2 usage

@@ -70,8 +70,8 @@ struct brgemm_1x1_convolution_fwd_t : public primitive_t {
         std::shared_ptr<brgemm_containers::brgemm_desc_container_t> brgs_;
         std::forward_list<brgemm_init_params_t> brgemm_init_params_;
 
-        bool need_postwork_;
-        int ic_chunks_;
+        bool need_postwork_ {};
+        int ic_chunks_ {};
 
         jit_brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
 

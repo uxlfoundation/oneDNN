@@ -114,13 +114,14 @@ private:
     static const dim_t min_n_dim_write_bound_layer = 256;
     dim_t n_decomposition = 32;
     dim_t m_decomposition = 32;
-    size_t gemm_dt_sz;
-    dim_t m_per_thread, k_per_thread, n_per_thread, b_per_thread;
-    bool is_horizontal;
-    dim_t min_m_elem, min_k_elem, min_n_elem;
-    dim_t k_threshold_write_bound_layer_elem, min_n_dim_write_bound_layer_elem;
+    size_t gemm_dt_sz {};
+    dim_t m_per_thread {}, k_per_thread {}, n_per_thread {}, b_per_thread {};
+    bool is_horizontal {};
+    dim_t min_m_elem {}, min_k_elem {}, min_n_elem {};
+    dim_t k_threshold_write_bound_layer_elem {},
+            min_n_dim_write_bound_layer_elem {};
 
-    size_t m_tmul, n_tmul, k_tmul;
+    size_t m_tmul {}, n_tmul {}, k_tmul {};
     bool set_blocking_parameters();
     bool is_horizontal_selected(bool horizontal_not_possible,
             bool vertical_not_possible, size_t best_m_v, size_t best_k_v,

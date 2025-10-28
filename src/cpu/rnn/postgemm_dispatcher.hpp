@@ -224,10 +224,10 @@ protected:
     virtual rnn_postgemm_sig(gru_part2_postgemm) = 0;
     virtual rnn_postgemm_sig(gru_lbr_postgemm) = 0;
 
-    const rnn_pd_t *pd_;
+    const rnn_pd_t *pd_ {};
 
-    postgemm_f postgemm_func;
-    postgemm_f postgemm_part2_func;
+    postgemm_f postgemm_func {};
+    postgemm_f postgemm_part2_func {};
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(rnn_postgemm_dispatcher_t);
 

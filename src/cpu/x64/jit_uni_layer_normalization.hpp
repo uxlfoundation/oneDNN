@@ -99,7 +99,7 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
 
         std::shared_ptr<primitive_desc_t> reorder_pd_;
         memory_desc_t reordered_stat_md_;
-        int nthr_; // To not exceed the limit in execute used for set up.
+        int nthr_ {}; // To not exceed the limit in execute used for set up.
 
     private:
         void init_scratchpad() {

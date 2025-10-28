@@ -230,8 +230,6 @@ struct jit_uni_x8s8s32x_fwd_kernel_t {
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_conv_conf_t &jcp, const primitive_attr_t &attr);
 
-    void (*jit_ker)(jit_conv_args_t *);
-
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_uni_x8s8s32x_fwd_kernel_t);
     std::unique_ptr<jit_generator_t> kernel_;

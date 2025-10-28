@@ -14,7 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 #include "cpu/rv64/rvv_postops.hpp"
-#include "common/verbose.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -25,16 +24,9 @@ status_t rvv_postops_t::execute(
         const exec_ctx_t &ctx, void *src, void *dst) const {
     int post_op_index = post_op_start_index_;
 
-    VINFO(primitive, exec, check, cpu,
-            "rvv_postops.execute,start,post_ops_len=%d",
-            (int)post_op_primitives_.size());
-
     for (auto &post_op : post_op_primitives_) {
         if (post_op->kind() != primitive_kind::binary)
             return status::runtime_error;
-
-        VINFO(primitive, exec, check, cpu,
-                "rvv_postops.execute,binary,post_op_index=%d", post_op_index);
 
         exec_args_t bin_args;
         bin_args[DNNL_ARG_SRC_0] = ctx.args().at(DNNL_ARG_DST);
@@ -55,8 +47,6 @@ status_t rvv_postops_t::execute(
 
         ++post_op_index;
     }
-
-    VINFO(primitive, exec, check, cpu, "rvv_postops.execute,done");
 
     return status::success;
 }

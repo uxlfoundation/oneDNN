@@ -168,6 +168,11 @@ typedef struct dnnl_graph_graph *dnnl_graph_graph_t;
 /// A constant graph handle.
 typedef const struct dnnl_graph_graph *const_dnnl_graph_graph_t;
 
+/// @} dnnl_graph_api_graph
+
+/// @addtogroup dnnl_graph_api_dump_mode
+/// @{
+
 /// Dump mode bitmask for graph debugging utilities.
 typedef enum {
     /// Disable all graph dumps.
@@ -178,7 +183,7 @@ typedef enum {
     dnnl_graph_dump_mode_graph = 0x2U,
 } dnnl_graph_dump_mode_t;
 
-/// @} dnnl_graph_api_graph
+/// @} dnnl_graph_api_dump_mode
 
 /// @addtogroup dnnl_graph_api_op
 /// @{

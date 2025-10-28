@@ -1643,23 +1643,38 @@ inline size_t get_constant_tensor_cache_capacity(engine::kind kind) {
 ///
 /// @{
 
+/// @enum graph_dump_mode
+/// Dump mode bitmask for graph debugging utilities.
 enum class graph_dump_mode : unsigned {
+    /// Disable all graph dumps.
     none = dnnl_graph_dump_mode_none,
+    /// Dump subgraphs extracted during partitioning.
     subgraph = dnnl_graph_dump_mode_subgraph,
+    /// Dump the full graph prior to partitioning.
     graph = dnnl_graph_dump_mode_graph,
 };
 
 DNNL_DEFINE_BITMASK_OPS(graph_dump_mode)
 
-/// Sets the graph dump mode used by the library.
+/// Configures graph dump modes at runtime.
 ///
-/// The mode value is interpreted as a bit mask composed of
-/// #dnnl::graph::graph_dump_mode flags. Unsupported combinations
-/// cause #status::invalid_arguments to be returned.
+/// @note
+///     Enabling graph dump affects performance.
+///     This setting overrides the ONEDNN_GRAPH_DUMP environment variable.
 ///
-/// @param modes Bitmask selecting which graph dumps to enable.
-/// @returns Status code reporting the outcome of the operation.
-/// @returns #status::success or #status::invalid_arguments.
+/// @param modes Bitmask composed of values from #dnnl::graph::graph_dump_mode.
+///     Accepted values:
+///      - #dnnl::graph::graph_dump_mode::graph: dump the full graph prior to
+///        partitioning.
+///      - #dnnl::graph::graph_dump_mode::subgraph: dump each partitioned subgraph.
+///      - #dnnl::graph::graph_dump_mode::none: disable all graph dumping.
+///
+///     Bitmask combinations using bitwise operators are supported. For
+///     instance, `graph | subgraph` enables both modes, `none | graph`
+///     behaves like `graph`, and `none & graph` behaves like `none`.
+/// @returns #dnnl::status::invalid_arguments if the
+///     @p modes value contains unsupported bits or graph dump is disabled,
+///     and #dnnl::status::success on success.
 inline status set_dump_mode(graph_dump_mode modes) {
     return static_cast<status>(dnnl_graph_set_dump_mode(
             static_cast<dnnl_graph_dump_mode_t>(static_cast<unsigned>(modes))));

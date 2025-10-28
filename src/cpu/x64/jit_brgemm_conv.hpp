@@ -59,22 +59,22 @@ struct brgemm_convolution_fwd_t : public primitive_t {
 
         status_t init(engine_t *engine);
 
-        int brgs_sz_;
+        int brgs_sz_ {};
         std::shared_ptr<brgemm_containers::brgemm_desc_container_t>
                 brgemm_descriptors_;
         bool with_sum_ = false;
         jit_brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
 
-        int ic_chunks;
-        bool need_postwork;
-        dim_t wei_g_stride, wei_ic_stride, wei_ocb_stride;
-        dim_t wei_kw_stride, wei_kh_stride, wei_kd_stride;
-        dim_t pbuf_w_sz, pbuf_h_sz, pbuf_d_sz;
+        int ic_chunks {};
+        bool need_postwork {};
+        dim_t wei_g_stride {}, wei_ic_stride {}, wei_ocb_stride {};
+        dim_t wei_kw_stride {}, wei_kh_stride {}, wei_kd_stride {};
+        dim_t pbuf_w_sz {}, pbuf_h_sz {}, pbuf_d_sz {};
         int ndims {0};
         int rd {0};
 
         // batch sizes info for unrolled kernels
-        int bs_c;
+        int bs_c {};
         // need custom hasher to use array as key in unordered_map
         template <int asize>
         struct hasher_t {
@@ -128,13 +128,16 @@ struct brgemm_convolution_fwd_t : public primitive_t {
                 bool do_init, int kd_b, int kd_e, int kh_b, int kh_e);
 
     protected:
-        int KD, KH, KW, EXT_KD, EXT_KH, EXT_KW, KS, KD_BLOCK, KH_BLOCK,
-                KW_BLOCK, KD_BLOCK_PAD, KH_BLOCK_PAD, ID, IH, IW, IDP, IHP, IWP,
-                OD, OH, OW, SD, SH, SW, FP, TP, LP, DD, DH, DW;
-        size_t acc_dsz, bia_dsz, src_dsz, wei_dsz, dst_dsz;
-        dim_t src_w_sz, src_h_sz, dst_w_sz, dst_h_sz, wei_ocb_sz;
-        dim_t adj_src_h_sz, adj_src_h_offset, src_iw_offset, src_d_offset,
-                wei_ic_offset, wei_kd_offset, wei_kh_offset, wei_kw_offset;
+        int KD {}, KH {}, KW {}, EXT_KD {}, EXT_KH {}, EXT_KW {}, KS {},
+                KD_BLOCK {}, KH_BLOCK {}, KW_BLOCK {}, KD_BLOCK_PAD {},
+                KH_BLOCK_PAD {}, ID {}, IH {}, IW {}, IDP {}, IHP {}, IWP {},
+                OD {}, OH {}, OW {}, SD {}, SH {}, SW {}, FP {}, TP {}, LP {},
+                DD {}, DH {}, DW {};
+        size_t acc_dsz {}, bia_dsz {}, src_dsz {}, wei_dsz {}, dst_dsz {};
+        dim_t src_w_sz {}, src_h_sz {}, dst_w_sz {}, dst_h_sz {}, wei_ocb_sz {};
+        dim_t adj_src_h_sz {}, adj_src_h_offset {}, src_iw_offset {},
+                src_d_offset {}, wei_ic_offset {}, wei_kd_offset {},
+                wei_kh_offset {}, wei_kw_offset {};
     };
 
     brgemm_convolution_fwd_t(const pd_t *apd);

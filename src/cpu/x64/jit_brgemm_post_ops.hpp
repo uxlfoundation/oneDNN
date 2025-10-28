@@ -209,8 +209,6 @@ private:
     int out_typesize_;
     int bia_typesize_;
 
-    int is_oc_scale_;
-
     using reg64_t = const Xbyak::Reg64;
 
     // Register decomposition

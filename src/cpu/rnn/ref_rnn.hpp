@@ -241,7 +241,7 @@ protected:
     const std::shared_ptr<primitive_t> &get_matmul_part2(
             rnn_utils::cell_position_t cell_position) const;
 
-    float (*activation_func)(float s, float alpha, float cliping);
+    float (*activation_func)(float s, float alpha, float cliping) = nullptr;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 

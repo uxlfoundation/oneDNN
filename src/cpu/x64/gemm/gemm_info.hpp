@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2023 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -68,8 +68,8 @@ struct gemm_info_t {
     std::shared_ptr<const gemm_pack_storage_t> a_packed, b_packed;
 
     // Kernel parameters.
-    dim_t um, un, uk, bm, bn, bk;
-    dim_t bn_small_k, bk_traditional, blocking_small_k;
+    dim_t um {}, un {}, uk {}, bm {}, bn {}, bk {};
+    dim_t bn_small_k {}, bk_traditional {}, blocking_small_k {};
 
     // Gemv parameters
     int swap = false;

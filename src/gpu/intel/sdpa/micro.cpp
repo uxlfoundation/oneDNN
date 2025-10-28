@@ -497,7 +497,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.block_q = conf.block_a = conf.block_2d_a = false;
     if (d_full) {
         conf.block_q = (ldq % 4 == 0);
-        conf.block_a = (lda % 4 == 0 && v_full);
+        conf.block_a = (lda % 16 == 0 && v_full);
     } else if (pd->arch() >= compute::gpu_arch_t::xe_hpc
             && config.unroll_m_vs < 64) {
         auto vbytes = d->values() * val_mdw.data_type_size();

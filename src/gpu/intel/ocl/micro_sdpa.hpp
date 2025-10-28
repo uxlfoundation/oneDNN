@@ -85,7 +85,7 @@ struct micro_sdpa_params_t : trivially_serializable_t<micro_sdpa_params_t> {
     int subgroup_size, d_max;
 
     bool d_full, arch_gte_hpc;
-    bool block_q, block_a, block_msk, block_2d_a;
+    bool block_q, block_a, block_2d_a;
     bool prefetch_mask, prefetch_k0, prefetch_k, prefetch_v, prefetch_remainder;
     uint8_t padding2[5] = {0};
     int prefetch_d_max;

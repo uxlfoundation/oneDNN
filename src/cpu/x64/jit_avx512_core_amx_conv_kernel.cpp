@@ -2373,7 +2373,7 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
             !((is_small_shape || is_3d_small_ic) && !is_supported_small_ic),
             VERBOSE_SHAPE_RESTRICTION);
 
-    const auto zp = attr.zero_points_;
+    const auto &zp = attr.zero_points_;
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
     // If it's not per-tensor, then it's per-channel (not supported)

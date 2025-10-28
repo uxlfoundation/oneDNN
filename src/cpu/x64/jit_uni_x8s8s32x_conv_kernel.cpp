@@ -1376,7 +1376,7 @@ status_t jit_uni_x8s8s32x_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
             = !attr.scales_.get(DNNL_ARG_WEIGHTS).has_default_values();
     jcp.with_dst_scales = !attr.scales_.get(DNNL_ARG_DST).has_default_values();
 
-    const auto zp = attr.zero_points_;
+    const auto &zp = attr.zero_points_;
     jcp.dst_zero_point = !zp.has_default_values(DNNL_ARG_DST);
     jcp.src_zero_point = !zp.has_default_values(DNNL_ARG_SRC);
     jcp.zp_src_is_common

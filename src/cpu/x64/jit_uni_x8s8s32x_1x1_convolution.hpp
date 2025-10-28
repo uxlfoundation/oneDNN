@@ -186,7 +186,7 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
         bool set_or_check_wei_format() {
             using namespace format_tag;
             using namespace memory_extra_flags;
-            const auto zp = attr()->zero_points_;
+            const auto &zp = attr()->zero_points_;
             const int c_mask = 0x1,
                       g_mask = 0x3; // mask for i/o-channel and ngroups
 

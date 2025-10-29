@@ -18,7 +18,11 @@
 
 #include <cstdint>
 #include <cstring>
+#include <iomanip>
+#include <limits>
+#include <map>
 #include <string>
+#include <unordered_map>
 
 #include "gpu/intel/jit/dsl/decl.hpp"
 

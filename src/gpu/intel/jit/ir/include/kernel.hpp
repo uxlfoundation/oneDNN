@@ -17,9 +17,13 @@
 #ifndef GPU_INTEL_JIT_IR_INCLUDE_KERNEL_HPP
 #define GPU_INTEL_JIT_IR_INCLUDE_KERNEL_HPP
 
+#include <vector>
+
 #include "gpu/intel/jit/ir/include/hw.hpp"
 #include "gpu/intel/jit/ir/include/object.hpp"
 #include "gpu/intel/jit/ir/include/type.hpp"
+
+#include "ngen_debuginfo.hpp"
 
 // NOLINTBEGIN(readability-identifier-naming)
 namespace ngen {

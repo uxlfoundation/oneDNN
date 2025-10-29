@@ -60,7 +60,7 @@ argument index as specified by the following table.
 
    - Only reference support is available for reorders to or from f8_e4m3.
 
-   - Optimized implementation of reorders to or from f8_e5m2 is available on 
+   - Optimized implementation of reorders to or from f8_e5m2 is available on
      Intel(R) Data Center GPU Max Series Only.
 
 3. To alleviate the problem a user may rely on fact that the reorder from
@@ -165,5 +165,6 @@ N/A
 
 ## Examples
 
-* @ref reorder_example_cpp
+See @ref dev_guide_examples page for a complete list. Reorder examples are listed in the
+[Memory Transformations](@ref examples_reorder) section.
 

@@ -169,4 +169,5 @@ N/A
 
 ## Examples
 
-* @ref pooling_example_cpp
+See @ref dev_guide_examples page for a complete list. Pooling examples are listed in the
+[Pooling and Sampling](@ref examples_pooling) section.

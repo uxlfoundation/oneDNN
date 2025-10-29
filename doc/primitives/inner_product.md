@@ -157,4 +157,5 @@ stage.
 
 ## Examples
 
-* @ref inner_product_example_cpp
+See @ref dev_guide_examples page for a complete list. Inner product examples are listed in the
+[Linear Operations](@ref examples_inner_product) section.

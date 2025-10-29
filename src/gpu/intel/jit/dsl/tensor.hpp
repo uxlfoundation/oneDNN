@@ -424,7 +424,7 @@ public:
         return true;
     }
 
-    tile_t with(const idx_t &key, dim_t value) const {
+    tile_t with(const idx_t &key, int64_t value) const {
         return idx_map_t<int64_t>::with_impl<tile_t>(key, value);
     }
 

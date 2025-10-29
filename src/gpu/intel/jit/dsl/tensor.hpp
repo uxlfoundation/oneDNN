@@ -57,7 +57,10 @@ private:
     class name_t {
     public:
         name_t() = default;
-        explicit name_t(size_t idx) { data_[0] = into<char>('a' + idx); }
+        explicit name_t(size_t idx) {
+            gpu_assert(idx < 26);
+            data_[0] = static_cast<char>('a' + idx);
+        }
         explicit name_t(const std::string &s) {
             gpu_assert(!s.empty() && s.length() <= max_len);
             s.copy(data_, s.length());
@@ -245,7 +248,7 @@ public:
     }
 
     explicit idx_map_t(const std::string &s) {
-        for (auto &kv : ir_utils::to_string_int_pairs(s)) {
+        for (auto &kv : to_string_int_pairs(s)) {
             operator[](idx_t(kv.first)) = ValueT(kv.second);
         }
     }
@@ -331,8 +334,7 @@ public:
         auto it2 = other.map_.begin();
         for (size_t i = 0; i < size(); i++) {
             if (it1->first != it2->first) return false;
-            if (!ir_utils::is_equal_helper_t<ValueT, ValueT>::call(
-                        it1->second, it2->second))
+            if (!is_equal_t<ValueT, ValueT>::call(it1->second, it2->second))
                 return false;
             it1++;
             it2++;
@@ -345,8 +347,7 @@ public:
     idx_map_t drop_defaults() const {
         idx_map_t ret;
         for (auto &d : *this) {
-            if (ir_utils::is_equal_helper_t<ValueT, ValueT>::call(
-                        at(d), default_value()))
+            if (is_equal_t<ValueT, ValueT>::call(at(d), default_value()))
                 continue;
             ret[d] = at(d);
         }
@@ -356,9 +357,10 @@ public:
     size_t get_hash() const { return ir_utils::get_hash(map_); }
 
     void parse(std::istream &in) {
-        auto s = stream_parse<std::string>(in);
+        std::string s;
+        in >> s;
         if (s == "x") return;
-        for (auto &kv : ir_utils::to_string_int_pairs(s)) {
+        for (auto &kv : to_string_int_pairs(s)) {
             operator[](idx_t(kv.first)) = ValueT(kv.second);
         }
     }
@@ -386,6 +388,40 @@ public:
     }
 
 private:
+    static std::vector<std::pair<std::string, int>> to_string_int_pairs(
+            const std::string &s) {
+        std::vector<std::pair<std::string, int>> ret;
+        int name_beg = -1;
+        int value_beg = -1;
+        for (int pos = 0; pos < (int)s.size() + 1; pos++) {
+            bool prev_digit = pos > 0 && std::isdigit(s[pos - 1]);
+            bool cur_digit = pos < (int)s.size() && std::isdigit(s[pos]);
+            if ((pos == 0 || prev_digit) && !cur_digit) {
+                if (name_beg != -1 && value_beg != -1) {
+                    auto key = s.substr(name_beg, value_beg - name_beg);
+                    auto value
+                            = std::stoi(s.substr(value_beg, pos - value_beg));
+                    ret.emplace_back(key, value);
+                }
+                name_beg = pos;
+                value_beg = -1;
+            }
+            if (!prev_digit && cur_digit) value_beg = pos;
+        }
+        return ret;
+    }
+
+    template <typename T, typename U, typename = void>
+    struct is_equal_t {
+        static bool call(const T &t, const U &u) { return t == u; }
+    };
+
+    template <typename T, typename U>
+    struct is_equal_t<T, U,
+            decltype(std::declval<T>().is_equal(std::declval<U>()), void())> {
+        static bool call(const T &t, const U &u) { return t.is_equal(u); }
+    };
+
     std::map<idx_t, ValueT> map_;
 };
 

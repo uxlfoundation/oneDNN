@@ -16,8 +16,6 @@
 
 #include "gpu/intel/jit/pass/pass.hpp"
 
-#include "gpu/intel/jit/ir/message.hpp"
-#include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/pass/simplify.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 
@@ -53,35 +51,6 @@ stmt_t inject_external_var_let(const stmt_t &_stmt, ir_context_t &ir_ctx) {
 
     trace_pass("inject_external_var_let", stmt, ir_ctx);
     return stmt;
-}
-
-class spurious_send_mask_cast_remover_t : public ir_mutator_t {
-public:
-    object_t _mutate(const cast_t &obj) override {
-        if (in_send_ && obj.is_bool_vec_u16() && obj.expr.type().is_bool())
-            return mutate(obj.expr);
-        return ir_mutator_t::_mutate(obj);
-    }
-
-    object_t _mutate(const func_call_t &obj) override {
-        if (!is_func_call<send_t>(obj)) return obj;
-
-        in_send_ = true;
-        auto new_obj = ir_mutator_t::_mutate(obj);
-        in_send_ = false;
-        return new_obj;
-    }
-
-private:
-    bool in_send_ = false;
-};
-
-stmt_t remove_spurious_send_mask_cast(const stmt_t &s, ir_context_t &ir_ctx) {
-    spurious_send_mask_cast_remover_t mutator;
-    trace_start();
-    auto ret = mutator.mutate(s);
-    trace_pass("remove_spurious_send_mask_cast", ret, ir_ctx);
-    return ret;
 }
 
 class store_splitter_t : public ir_mutator_t {

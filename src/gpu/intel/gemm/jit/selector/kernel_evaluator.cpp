@@ -416,11 +416,16 @@ double evaluateE(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
                 score = scoreKV;
                 aux = auxKV;
 
+                // Switch to fixed global k-slicing if the remainder slices can be split
+                //   evenly among threads, or if k0 is too small.
                 auto approxK0 = dp.threadCount * dp.sizes.k / dp.hwThreadCapacity;
-                if (approxK0 <= 32 && !dp.deterministic) {
-                    aux.kParallel = true;     /* Switch to fixed global k-slicing if k0 is too small */
+                bool smallK0 = (approxK0 <= 32);
+                bool useKB = smallK0 || (dp.hwThreadCapacity % tcount == 0);
+                if (useKB && !dp.deterministic) {
+                    aux.kParallel = true;
                     aux.kParallelVariable = false;
-                    int padWGs = e.driverInfo.kPadding() ? 1 : 0;
+                    aux.disableKPadding = !smallK0;
+                    int padWGs = (e.driverInfo.kPadding() && !aux.disableKPadding) ? 1 : 0;
                     int wgCountK = std::max(1, int(dp.hwThreadCapacity / dp.threadCount) - padWGs);
                     aux.k0 = alignUp(divUp(dp.sizes.k, wgCountK * aux.wgK), e.driverInfo.unroll[LoopK]);
                 }
@@ -555,6 +560,8 @@ void modifyStrategy(GEMMStrategy &strategy, const EvaluateAuxOutput &aux)
     if (strategy.kParallelVariable && !aux.kParallelVariable && !aux.kParallel)
         strategy.C.atomic = strategy.CO.atomic = false;
     strategy.kParallelVariable = aux.kParallelVariable;
+    if (aux.disableKPadding)
+        strategy.kPadding = 0;
 }
 
 GEMMSTONE_NAMESPACE_END

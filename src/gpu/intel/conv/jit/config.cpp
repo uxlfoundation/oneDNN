@@ -22,10 +22,10 @@
 
 #include "common/utils.hpp"
 #include "gpu/intel/conv/jit/config.hpp"
-#include "gpu/intel/conv/jit/message_patterns.hpp"
 #include "gpu/intel/conv/jit/normalization.hpp"
 #include "gpu/intel/conv/jit/plan.hpp"
 #include "gpu/intel/conv/jit/problem.hpp"
+#include "gpu/intel/conv/jit/send_patterns.hpp"
 #include "gpu/intel/conv/jit/tiler.hpp"
 #include "gpu/intel/jit/eltwise_injector.hpp"
 #include "gpu/intel/jit/ir/config.hpp"

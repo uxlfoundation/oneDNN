@@ -14,12 +14,12 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_IR_MESSAGE_PATTERNS_HPP
-#define GPU_INTEL_JIT_IR_MESSAGE_PATTERNS_HPP
+#ifndef GPU_INTEL_JIT_IR_SEND_PATTERNS_HPP
+#define GPU_INTEL_JIT_IR_SEND_PATTERNS_HPP
 
 #include <string>
 
-#include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/send.hpp"
 #include "gpu/intel/logging.hpp"
 
 namespace dnnl {

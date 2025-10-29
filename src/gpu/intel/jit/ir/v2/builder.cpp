@@ -15,7 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/jit/ir/v2/builder.hpp"
-#include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/send.hpp"
 
 namespace dnnl {
 namespace impl {

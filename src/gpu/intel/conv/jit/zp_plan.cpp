@@ -19,7 +19,7 @@
 #include "common/utils.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
-#include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/send_builder.hpp"
 #include "gpu/intel/jit/ir/send_plan.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"

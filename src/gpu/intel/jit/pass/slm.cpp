@@ -16,8 +16,8 @@
 
 #include "gpu/intel/jit/pass/slm.hpp"
 
-#include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
+#include "gpu/intel/jit/ir/send.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 

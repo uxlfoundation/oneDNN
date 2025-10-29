@@ -16,9 +16,9 @@
 
 #include "gpu/intel/jit/ir/epilogue.hpp"
 
-#include "gpu/intel/jit/ir/message.hpp"
 #include "gpu/intel/jit/ir/reduce.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
+#include "gpu/intel/jit/ir/send_builder.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {

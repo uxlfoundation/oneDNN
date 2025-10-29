@@ -923,7 +923,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #if BROADCAST_MASK_Q
             cooperative_prefetch_2d_maybe_rem(
                     /* ptr */ msk + knext,
-                    /* r */ k0end - k0,
+                    /* r */ k0end - k0 - ugemm_kq_wg_tile_m,
                     /* c */ 1,
                     /* rmax */ ugemm_kq_wg_tile_m,
                     /* cmax */ 1,

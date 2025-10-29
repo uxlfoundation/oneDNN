@@ -1654,6 +1654,13 @@ enum class graph_dump_mode : unsigned {
     graph = dnnl_graph_dump_mode_graph,
 };
 
+/// Converts graph dump mode enum value from C++ API to C API type.
+/// @param mode C++ API graph dump mode enum value.
+/// @returns Corresponding C API graph dump mode enum value.
+inline dnnl_graph_dump_mode_t convert_to_c(graph_dump_mode mode) {
+    return static_cast<dnnl_graph_dump_mode_t>(mode);
+}
+
 DNNL_DEFINE_BITMASK_OPS(graph_dump_mode)
 
 /// Configures graph dump modes at runtime.
@@ -1676,8 +1683,7 @@ DNNL_DEFINE_BITMASK_OPS(graph_dump_mode)
 ///     @p modes value contains unsupported bits or graph dump is disabled,
 ///     and #dnnl::status::success on success.
 inline status set_dump_mode(graph_dump_mode modes) {
-    return static_cast<status>(dnnl_graph_set_dump_mode(
-            static_cast<dnnl_graph_dump_mode_t>(static_cast<unsigned>(modes))));
+    return static_cast<status>(dnnl_graph_set_dump_mode(convert_to_c(modes)));
 }
 
 /// @} dnnl_graph_api_dump_mode

@@ -795,7 +795,7 @@ dnnl_status_t DNNL_API dnnl_graph_get_constant_tensor_cache_capacity(
 /// @returns #dnnl_invalid_arguments if the
 ///     @p modes value contains unsupported bits or graph dump is disabled,
 ///     and #dnnl_success on success.
-dnnl_status_t DNNL_API dnnl_graph_set_dump_mode(dnnl_graph_dump_mode_t modes);
+dnnl_status_t DNNL_API dnnl_graph_set_dump_mode(unsigned modes);
 
 /// @} dnnl_graph_api_dump_mode
 

@@ -18,7 +18,8 @@
 #include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
 #include "gpu/intel/jit/ir/builder.hpp"
-#include "gpu/intel/jit/ir/message_patterns.hpp"
+#include "gpu/intel/jit/ir/fma.hpp"
+#include "gpu/intel/jit/ir/send.hpp"
 #include "gpu/intel/jit/pass/dpas.hpp"
 #include "gpu/intel/logging.hpp"
 

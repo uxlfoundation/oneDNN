@@ -17,8 +17,9 @@
 #include "gpu/intel/jit/grf_usage.hpp"
 
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
-#include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
+#include "gpu/intel/jit/ir/send.hpp"
 
 namespace dnnl {
 namespace impl {

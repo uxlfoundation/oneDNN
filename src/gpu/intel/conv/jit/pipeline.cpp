@@ -16,7 +16,7 @@
 
 #include "gpu/intel/conv/jit/pipeline.hpp"
 
-#include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/send.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {

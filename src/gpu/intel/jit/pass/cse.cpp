@@ -24,7 +24,7 @@
 #include <unordered_map>
 
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
-#include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/send.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 

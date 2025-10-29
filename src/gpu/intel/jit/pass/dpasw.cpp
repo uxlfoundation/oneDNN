@@ -18,7 +18,8 @@
 
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/grf_permutation.hpp"
-#include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/send.hpp"
+#include "gpu/intel/jit/pass/simplify.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {

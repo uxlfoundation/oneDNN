@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "gpu/intel/jit/ir/core.hpp"
-#include "gpu/intel/jit/ir/hw.hpp"
+#include "gpu/intel/jit/ir/include/hw.hpp"
 
 namespace dnnl {
 namespace impl {

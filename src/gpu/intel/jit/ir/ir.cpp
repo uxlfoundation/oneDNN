@@ -791,7 +791,7 @@ expr_t make_buffer(const std::string &name) {
 
 // Returns number of occurrences of `obj` in `root` (based on identity equality).
 int count_object(const object_t &root, const object_t &obj) {
-    gpu_assert(obj);
+    if (!obj) return 0;
 
     std::vector<object_t> found;
     do {

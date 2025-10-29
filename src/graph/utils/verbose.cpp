@@ -292,8 +292,7 @@ bool get_graph_dump_mode(graph_dump_mode_t mode) {
 } // namespace impl
 } // namespace dnnl
 
-dnnl::impl::graph::status_t dnnl_graph_set_dump_mode(
-        dnnl_graph_dump_mode_t modes) {
+dnnl::impl::graph::status_t dnnl_graph_set_dump_mode(unsigned modes) {
 #ifdef DNNL_DISABLE_GRAPH_DUMP
     return dnnl::impl::graph::status::invalid_arguments;
 #else

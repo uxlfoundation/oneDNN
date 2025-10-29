@@ -19,17 +19,19 @@
 #include "oneapi/dnnl/dnnl_graph.h"
 
 TEST(CAPI, GraphDump) {
-    ASSERT_EQ(dnnl_graph_set_dump_mode(dnnl_graph_dump_mode_subgraph),
+    ASSERT_EQ(dnnl_graph_set_dump_mode(
+                      static_cast<unsigned>(dnnl_graph_dump_mode_subgraph)),
             dnnl_success);
-    ASSERT_EQ(
-            dnnl_graph_set_dump_mode(dnnl_graph_dump_mode_graph), dnnl_success);
-    ASSERT_EQ(dnnl_graph_set_dump_mode(static_cast<dnnl_graph_dump_mode_t>(
-                      dnnl_graph_dump_mode_graph
-                      | dnnl_graph_dump_mode_subgraph)),
+    ASSERT_EQ(dnnl_graph_set_dump_mode(
+                      static_cast<unsigned>(dnnl_graph_dump_mode_graph)),
             dnnl_success);
-    ASSERT_EQ(
-            dnnl_graph_set_dump_mode(dnnl_graph_dump_mode_none), dnnl_success);
-    ASSERT_EQ(
-            dnnl_graph_set_dump_mode(static_cast<dnnl_graph_dump_mode_t>(0x4U)),
+    ASSERT_EQ(dnnl_graph_set_dump_mode(
+                      static_cast<unsigned>(dnnl_graph_dump_mode_graph
+                              | dnnl_graph_dump_mode_subgraph)),
+            dnnl_success);
+    ASSERT_EQ(dnnl_graph_set_dump_mode(
+                      static_cast<unsigned>(dnnl_graph_dump_mode_none)),
+            dnnl_success);
+    ASSERT_EQ(dnnl_graph_set_dump_mode(static_cast<unsigned>(0x4U)),
             dnnl_invalid_arguments);
 }

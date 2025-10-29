@@ -392,7 +392,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     msk += MSK_BATCH(b1 % MSK_D0, b0 % MSK_D1);
     int mask_aligned = (((size_t)msk) % 4) == 0;
     bool block_msk = (b1 < MSK_D0 - ceil((float)ugemm_kq_wg_tile_m / k))
-            && !remainder_k && mask_aligned;
+            && mask_aligned;
 #endif
 
 #if KEY_SCALES

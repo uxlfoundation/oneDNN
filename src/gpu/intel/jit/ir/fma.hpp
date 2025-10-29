@@ -20,7 +20,8 @@
 #include <sstream>
 #include <string>
 
-#include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/dsl/tensor.hpp"
+#include "gpu/intel/jit/ir/core.hpp"
 #include "ngen.hpp"
 
 namespace dnnl {
@@ -132,9 +133,9 @@ public:
         return is_dpasw ? dpas_size / 2 : dpas_size;
     }
 
-    layout_t a_layout(std::array<pvar_t, 2> dims = {0, 1}) const;
-    layout_t b_layout(std::array<pvar_t, 2> dims = {0, 1}) const;
-    layout_t c_layout(std::array<pvar_t, 2> dims = {0, 1}) const;
+    dsl::layout_t a_layout(std::array<dsl::idx_t, 2> dims = {0, 1}) const;
+    dsl::layout_t b_layout(std::array<dsl::idx_t, 2> dims = {0, 1}) const;
+    dsl::layout_t c_layout(std::array<dsl::idx_t, 2> dims = {0, 1}) const;
 
     static bool matches_types(
             const hw_t &hw, const type_t &a, const type_t &b, const type_t &c);

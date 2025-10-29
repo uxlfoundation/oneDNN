@@ -53,33 +53,6 @@ int get_simd_size(const hw_t &hw, const fma_kind_t kind, const type_t &a,
     return ret;
 }
 
-type_t multiply_desc_t::get_c_type(
-        const type_t &a, const type_t &b, bool force_c_upconvert) {
-    if (utils::one_of(
-                a, type_t::s8(), type_t::u8(), type_t::s16(), type_t::s32())
-            && utils::one_of(b, type_t::s8(), type_t::u8(), type_t::s16(),
-                    type_t::s32()))
-        return type_t::s32();
-
-    if (a == type_t::bf16() && b == type_t::bf16()) return type_t::f32();
-    if (a == type_t::tf32() && b == type_t::tf32()) return type_t::f32();
-    if (a == type_t::f32() && b == type_t::f32()) return type_t::f32();
-    if (a == type_t::f64() && b == type_t::f64()) return type_t::f64();
-
-    if (utils::one_of(a, type_t::f16(), type_t::bf16()) && b == type_t::f32()) {
-        return type_t::f32();
-    }
-
-    if (a == type_t::f16() && b == type_t::f16()) {
-        if (force_c_upconvert) return type_t::f32();
-        return type_t::f16();
-    }
-
-    gpu_error_not_expected()
-            << "Can't deduce C type. A type: " << a << " B type: " << b;
-    return type_t::undef();
-}
-
 bool dpas_t::is_src_type(type_t type) {
     return type.is_x8() || type.is_bf16() || type.is_f16() || type.is_tf32();
 }
@@ -109,24 +82,6 @@ layout_t dpas_t::c_layout(std::array<pvar_t, 2> dims) const {
     int n_blk = rcount;
     std::vector<layout_block_t> blocks = {{dims[0], m_blk}, {dims[1], n_blk}};
     return layout_t(dst_type, blocks);
-}
-
-bool dpas_t::matches(const multiply_desc_t &desc) const {
-    int m_blk = exec_size;
-    int n_blk = rcount;
-    int k_blk = sdepth * 4 / src1_type.size();
-
-    if (desc.m() % m_blk != 0 || desc.k() % k_blk != 0) return false;
-
-    auto a_blk_layout
-            = desc.a_layout().sub(tile_t(std::vector<dim_t> {m_blk, k_blk}));
-    auto b_blk_layout
-            = desc.b_layout().sub(tile_t(std::vector<dim_t> {k_blk, n_blk}));
-
-    if (!a_blk_layout.is_equal_normalized(a_layout())) return false;
-    if (!b_blk_layout.is_equal_normalized(b_layout())) return false;
-
-    return true;
 }
 
 bool dpas_t::matches_types(

@@ -62,41 +62,6 @@ fma_kind_t get_supported_fma_kind(
 int get_simd_size(const hw_t &hw, fma_kind_t kind, const type_t &a,
         const type_t &b, const type_t &c);
 
-class multiply_desc_t {
-public:
-    multiply_desc_t() = default;
-
-    multiply_desc_t(const layout_t &a_layout, const layout_t &b_layout,
-            bool force_c_upconvert)
-        : a_layout_(a_layout), b_layout_(b_layout) {
-        gpu_assert(a_layout.ndims() == dim_idx_t(2)
-                && b_layout.ndims() == dim_idx_t(2))
-                << "Expected 2D layouts, A layout: " << a_layout
-                << " B layout: " << b_layout;
-
-        c_type_ = get_c_type(a_type(), b_type(), force_c_upconvert);
-    }
-
-    const layout_t &a_layout() const { return a_layout_; }
-    const layout_t &b_layout() const { return b_layout_; }
-
-    const type_t &a_type() const { return a_layout_.type(); }
-    const type_t &b_type() const { return b_layout_.type(); }
-    const type_t &c_type() const { return c_type_; }
-
-    dim_t m() const { return a_layout_.tile()[0]; }
-    dim_t n() const { return b_layout_.tile()[1]; }
-    dim_t k() const { return a_layout_.tile()[1]; }
-
-    static type_t get_c_type(
-            const type_t &a, const type_t &b, bool force_c_upconvert);
-
-private:
-    layout_t a_layout_;
-    layout_t b_layout_;
-    type_t c_type_;
-};
-
 // Function representing DPAS instruction.
 class dpas_t : public func_impl_t, public object::info_t<dpas_t> {
 public:
@@ -170,8 +135,6 @@ public:
     layout_t a_layout(std::array<pvar_t, 2> dims = {0, 1}) const;
     layout_t b_layout(std::array<pvar_t, 2> dims = {0, 1}) const;
     layout_t c_layout(std::array<pvar_t, 2> dims = {0, 1}) const;
-
-    bool matches(const multiply_desc_t &desc) const;
 
     static bool matches_types(
             const hw_t &hw, const type_t &a, const type_t &b, const type_t &c);

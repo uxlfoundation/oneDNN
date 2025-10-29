@@ -522,7 +522,8 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.prefetch_d_max = 0;
     }
 
-    conf.q_arrive_await_barrier = (Q > 1);
+    const bool is_xe2 = pd->arch() == compute::gpu_arch_t::xe2;
+    conf.q_arrive_await_barrier = (Q > 1) && !is_xe2;
     conf.softmax_inf_as_zero
             = (d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
     conf.use_systolic_ukernel = pd->use_systolic_ukernel();

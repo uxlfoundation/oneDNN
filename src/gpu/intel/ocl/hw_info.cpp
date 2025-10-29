@@ -19,7 +19,7 @@
 
 #include "gpu/intel/jit/binary_format.hpp"
 #include "gpu/intel/jit/generator.hpp"
-#include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
+#include "gpu/intel/jit/utils/type_bridge.hpp"
 
 #ifndef CL_DEVICE_IP_VERSION_INTEL
 #define CL_DEVICE_IP_VERSION_INTEL 0x4250

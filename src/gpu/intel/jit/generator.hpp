@@ -27,7 +27,7 @@
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/engine.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
-#include "gpu/intel/jit/utils/ngen_type_bridge.hpp"
+#include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "xpu/utils.hpp"

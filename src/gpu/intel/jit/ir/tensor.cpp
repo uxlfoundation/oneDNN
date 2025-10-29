@@ -19,6 +19,7 @@
 #include <thread>
 
 #include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/utils/type_bridge.hpp"
 
 namespace dnnl {
 namespace impl {

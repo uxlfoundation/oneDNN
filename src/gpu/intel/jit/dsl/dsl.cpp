@@ -352,7 +352,7 @@ tensor_t def(const std::string &name, layout_t layout, const expr_t &value,
         auto &back = layout.blocks().back();
         auto alloc_elems = into<int>(back.size * back.stride);
 
-        // Padding allocations associated with overlapping dimensions have
+        // Padding allocations due to strides with overlapping dimensions have
         // unclear semantics, disallow their use.
         gpu_assert([&]() {
             int64_t max_off = 0;

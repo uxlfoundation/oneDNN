@@ -135,33 +135,6 @@ bool is_cpp(const type_t &t) {
 
 bool is_subset(const type_t &a, const type_t &b);
 
-// type_t and dnnl_data_type_t convertors.
-data_type_t to_dnnl(const type_t &type);
-inline type_t to_ir(const data_type_t &dt) {
-    if (dt == data_type::undef) return type_t();
-    switch ((int)dt) {
-#define CASE(x) \
-    case data_type::x: return type_t::x();
-        CASE(f4_e3m0);
-        CASE(f4_e2m1);
-        CASE(f8_e5m2);
-        CASE(f8_e4m3);
-        CASE(bf16);
-        CASE(f16);
-        CASE(tf32);
-        CASE(f32);
-        CASE(f64);
-        CASE(s32);
-        CASE(s8);
-        CASE(u8);
-        CASE(s4);
-        CASE(u4);
-#undef CASE
-        default: gpu_error_not_expected();
-    }
-    return type_t();
-}
-
 // clang-tidy doesn't like the semicolon next to the class name.
 #define CLASS_DECLARATION(name) class name
 #define HANDLE_IR_OBJECT(type) CLASS_DECLARATION(type);

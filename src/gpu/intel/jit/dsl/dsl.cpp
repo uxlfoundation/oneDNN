@@ -348,7 +348,19 @@ tensor_t def(const std::string &name, layout_t layout, const expr_t &value,
         type::attr_t attr) {
     if (any(attr & type::attr_t::slm)) {
         gpu_assert(value.is_empty());
-        auto alloc_elems = into<int>(size_bytes(layout) / layout.type().size());
+        auto &back = layout.blocks().back();
+        auto alloc_elems = into<int>(back.size * back.stride);
+
+        // Padding allocations associated with overlapping dimensions have
+        // unclear semantics, disallow their use.
+        gpu_assert([&]() {
+            int64_t max_off = 0;
+            for (auto &b : layout.blocks()) {
+                max_off += (b.size - 1) * int64_t(b.stride);
+            }
+            return max_off < alloc_elems;
+        }());
+
         auto buf = def(name, layout.type().with_slm()[alloc_elems]);
         int bytes = (to_cpp<int>(layout.offset()) + alloc_elems)
                 * layout.type().size();

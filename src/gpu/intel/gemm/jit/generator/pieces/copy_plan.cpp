@@ -3606,15 +3606,15 @@ std::tuple<const uint8_t*, int> CopyResource::getData() const
 {
     const uint8_t *base = nullptr;
     size_t n = 0;
+    if (kind & constantBase){
+        static std::array<uint8_t, 64> data;
+        std::memcpy(&data[0], &kind, sizeof(uint32_t));
+        base = (const uint8_t *) &data[0];
+        n=sizeof(uint32_t);
+    }
 
     switch (kind) {
         case null: break;
-	case constantBase:{
-        uint8_t * tmp;
-	std::memcpy(tmp, &kind, sizeof(uint32_t));
-	base = (const uint8_t *) tmp;
-        n=sizeof(uint32_t);
-	break;}
 #if XE3P
         default: {
             DataType st, dt;

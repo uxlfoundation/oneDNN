@@ -16,9 +16,7 @@
 #ifndef GPU_INTEL_JIT_CODEGEN_CODEGEN_HPP
 #define GPU_INTEL_JIT_CODEGEN_CODEGEN_HPP
 
-#include "gpu/intel/jit/ir/core.hpp"
-#include "gpu/intel/jit/ir/hw.hpp"
-#include "gpu/intel/jit/ir/kernel_info.hpp"
+#include "gpu/intel/jit/ir/include/kernel.hpp"
 #include "oneapi/dnnl/dnnl_config.h"
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL

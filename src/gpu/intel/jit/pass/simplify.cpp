@@ -25,7 +25,6 @@
 #include "common/cpp_compat.hpp"
 #include "common/math_utils.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/ir/linear_expr.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 

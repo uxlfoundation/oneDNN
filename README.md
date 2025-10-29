@@ -186,33 +186,12 @@ details. The minimum supported version of ACL is 52.4.0.
 
 #### GPU Engine
 
-Intel Processor Graphics and Xe Architecture graphics are supported by
-the oneDNN GPU engine. The GPU engine is disabled in the default build
-configuration. The following additional requirements apply when GPU engine
-is enabled:
-* OpenCL runtime requires
-    * OpenCL\* runtime library (OpenCL version 1.2 or later)
-    * OpenCL driver (with kernel language support for OpenCL C 2.0 or later)
-      with Intel subgroups and USM extensions support
-* SYCL runtime requires
-    * [Intel oneAPI DPC++/C++ Compiler]
-    * OpenCL runtime library (OpenCL version 3.0 or later)
-    * [oneAPI Level Zero]
-* SYCL runtime with NVIDIA GPU support requires
-    * [oneAPI DPC++ Compiler with support for CUDA] or [oneAPI for NVIDIA GPUs]
-    * NVIDIA CUDA\* driver
-    * cuBLAS 10.1 or later
-    * cuDNN 7.6 or later
-* SYCL runtime with AMD GPU support requires
-    * [oneAPI DPC++ Compiler with support for HIP AMD] or [oneAPI for AMD GPUs]
-    * [AMD ROCm] version 5.3 or later
-    * [MIOpen] version 2.18 or later (optional if AMD ROCm includes the required
-    version of MIOpen)
-    * [rocBLAS] version 2.45.0 or later (optional if AMD ROCm includes
-    the required version of rocBLAS)
-* SYCL runtime with a generic GPU support requires
-    * oneAPI DPC++/C++ Compiler that supports the target GPU. Refer to the
-    [generic GPU vendor readme](src/gpu/generic/sycl/README.md) for more information.
+oneDNN GPU engine is used to execute primitives on various accelerators
+including Intel integrated and discrete GPUs, NVIDIA GPUs, AMD GPUs, and
+other devices supporting SYCL programming language. The GPU engine is disabled
+in the default build configuration and can be enabled by setting
+`ONEDNN_GPU_RUNTIME` build option to value other than `NONE`. Target accelerator
+vendor must be selected at build time using `ONEDNN_GPU_VENDOR` build option.
 
 > **WARNING**
 >
@@ -222,17 +201,48 @@ is enabled:
 > in similar behavior. The user can prevent this behavior by increasing the
 > [TdrDelay] value.
 
+The following additional requirements apply for Intel integrated and discrete
+GPUs:
+* With OpenCL(TM) runtime:
+  * OpenCL SDK (with OpenCL 1.2 support)
+  * Intel Graphics Driver with support for OpenCL C 2.0, Intel subgroups
+  support, and USM extensions support
+* With SYCL runtime:
+  * [Intel oneAPI DPC++/C++ Compiler]
+  * OpenCL SDK (with OpenCL 3.0 support)
+  * [oneAPI Level Zero]
+  * Intel Graphics Driver with support for OpenCL C 2.0, Intel subgroups
+    support, and USM extensions support
+
+The following additional requirements apply for NVIDIA GPUs:
+* [oneAPI DPC++ Compiler with support for CUDA] or [oneAPI for NVIDIA GPUs]
+* NVIDIA CUDA\* driver
+* cuBLAS 10.1 or later
+* cuDNN 7.6 or later
+
 > **WARNING**
 >
 > NVIDIA GPU support is experimental. General information, build instructions,
 > and implementation limitations are available in the
 > [NVIDIA backend readme](src/gpu/nvidia/README.md).
 
+The following additional requirements apply for AMD GPUs:
+* [oneAPI DPC++ Compiler with support for HIP AMD] or [oneAPI for AMD GPUs]
+* [AMD ROCm] version 5.3 or later
+* [MIOpen] version 2.18 or later (optional if AMD ROCm includes
+  the required version of MIOpen)
+* [rocBLAS] version 2.45.0 or later (optional if AMD ROCm includes
+  the required version of rocBLAS)
+
 > **WARNING**
 >
 > AMD GPU support is experimental. General information, build instructions,
 > and implementation limitations are available in the
 > [AMD backend readme](src/gpu/amd/README.md).
+
+Other devices supporting SYCL programming model require
+oneAPI DPC++/C++ Compiler that supports the target GPU. Refer to
+[generic GPU vendor] documentation for additional details.
 
 [oneAPI Level Zero]: https://github.com/oneapi-src/level-zero
 [oneAPI DPC++ Compiler with support for CUDA]: https://github.com/intel/llvm/blob/sycl/sycl/doc/GetStartedGuide.md#build-dpc-toolchain-with-support-for-nvidia-cuda
@@ -245,6 +255,7 @@ is enabled:
 [disabling hangcheck]: https://www.intel.com/content/www/us/en/docs/oneapi/installation-guide-linux/2023-0/gpu-disable-hangcheck.html
 [timeout detection and recovery]: https://learn.microsoft.com/en-us/windows-hardware/drivers/display/timeout-detection-and-recovery
 [TdrDelay]: https://learn.microsoft.com/en-us/windows-hardware/drivers/display/tdr-registry-keys#tdrdelay
+[generic GPU vendor](src/gpu/generic/sycl/README.md)
 
 ### Runtime Dependencies
 

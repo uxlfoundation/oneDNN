@@ -2589,6 +2589,37 @@ kernel_t *kernel_t::create(const kernel_t::desc_t &desc) {
 } // namespace tr
 
 static void prb_block_for_cache(tr::prb_t &prb) {
+    // Performance improvements when doing simple inner blocking of 8 or 4
+    // This covers ab->Ba8b, ab->Ba4b, ba->Ab8a, ba->Ab4a and cdba->Acdb8a
+    // Split middle node, then swap to improve cache locality
+    // Before split+swap we traverse src column-wise 8 row elements at a time from top to bottom
+    // After split+swap in src we traverse split_countx8 row-wise for inner_blk=8, and split_countx4 for inner_blk=4
+    if (prb.ndims == 3) {
+        const int inner_blk = prb.nodes[0].n;
+        if ((inner_blk == 8 || inner_blk == 4) && prb.nodes[0].is == 1
+                && prb.nodes[0].os == 1 && prb.nodes[1].os == inner_blk
+                && prb.nodes[2].is == inner_blk) {
+
+            // Try finding value to split on
+            // prb.nodes[1].n > 32 to ensure we only split if enough rows for split to have cache benefit
+            size_t split_value = 0;
+            for (size_t d = 8; d >= 2; --d) {
+                if (prb.nodes[1].n % d == 0 && prb.nodes[1].n != d
+                        && prb.nodes[1].n > 32) {
+                    split_value = d;
+                    break;
+                }
+            }
+
+            // Split on found split_value, if any
+            if (split_value) {
+                prb_node_split(prb, 1, split_value);
+                prb_node_swap(prb, 3, 2);
+                prb_node_dependency(prb);
+            }
+        }
+    }
+
     /* If strides for 0th and 1st nodes are cache friendly
      * then one can altogether do away with blocking ! */
     static constexpr int num_elems_thr = 16;

@@ -2157,8 +2157,10 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
                     new memory_t(engine, &wei_layer_desc,
                             std::move(wei_layer_mem))));
             exec_args_t reorder_args;
-            reorder_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_WEIGHTS_LAYER);
-            reorder_args[DNNL_ARG_DST] = {reorder_dst.get(), false};
+            reorder_args[DNNL_ARG_SRC]
+                    = ctx.args().at(DNNL_ARG_WEIGHTS_LAYER).clone();
+            reorder_args[DNNL_ARG_DST] = {reorder_dst.get(), false,
+                    /* take_memory_ownership = */ true};
             exec_ctx_t reorder_ctx(ctx, std::move(reorder_args));
             auto *nested_grantor = create_nested_grantor(
                     ctx.get_scratchpad_grantor(), key_nested_multiple,
@@ -2176,8 +2178,10 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
                     new memory_t(
                             engine, &wei_iter_desc, std::move(wei_iter_mem))));
             exec_args_t reorder_args;
-            reorder_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_WEIGHTS_ITER);
-            reorder_args[DNNL_ARG_DST] = {reorder_dst.get(), false};
+            reorder_args[DNNL_ARG_SRC]
+                    = ctx.args().at(DNNL_ARG_WEIGHTS_ITER).clone();
+            reorder_args[DNNL_ARG_DST] = {reorder_dst.get(), false,
+                    /* take_memory_ownership = */ true};
             exec_ctx_t reorder_ctx(ctx, std::move(reorder_args));
             auto *nested_grantor = create_nested_grantor(
                     ctx.get_scratchpad_grantor(), key_nested_multiple,

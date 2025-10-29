@@ -98,7 +98,7 @@ private:
     status_t execute_matmul(const exec_ctx_t &ctx) const;
     status_t reorder_activations(const exec_ctx_t &ctx,
             const std::shared_ptr<primitive_t> &prim, engine_t *engine,
-            const memory_arg_t &in, const memory_arg_t &out) const;
+            exec_args_t &&r_args) const;
     const pd_t *pd() const {
         return static_cast<const pd_t *>(primitive_t::pd().get());
     }
@@ -146,7 +146,7 @@ private:
     status_t execute_convolution(const exec_ctx_t &ctx) const;
     status_t reorder_activations(const exec_ctx_t &ctx,
             const std::shared_ptr<primitive_t> &prim, engine_t *engine,
-            const memory_arg_t &in, const memory_arg_t &out) const;
+            exec_args_t &&r_args) const;
     const pd_t *pd() const {
         return static_cast<const pd_t *>(primitive_t::pd().get());
     }
@@ -199,7 +199,7 @@ private:
     status_t execute_matmul(const exec_ctx_t &ctx) const;
     status_t reorder_activations(const exec_ctx_t &ctx,
             const std::shared_ptr<primitive_t> &prim, engine_t *engine,
-            const memory_arg_t &in, const memory_arg_t &out) const;
+            exec_args_t &&r_args) const;
     const pd_t *pd() const {
         return static_cast<const pd_t *>(primitive_t::pd().get());
     }

@@ -53,14 +53,15 @@ struct exec_args_t {
     impl::exec_args_t exec_args;
 };
 
+// TODO: get rid of this type in favor of impl::exec_ctx_t.
 struct exec_ctx_t {
-    exec_ctx_t(impl::stream_t *stream, const exec_args_t &args,
+    exec_ctx_t(impl::stream_t *stream, exec_args_t &&args,
             const desc_t *desc = nullptr)
-        : stream_(stream), args_(args), desc_(desc) {}
-    exec_ctx_t(const impl::exec_ctx_t &other, const exec_args_t &args,
+        : stream_(stream), args_(std::move(args)), desc_(desc) {}
+    exec_ctx_t(const impl::exec_ctx_t &other, exec_args_t &&args,
             const desc_t *desc = nullptr)
         : stream_(other.stream())
-        , args_(args)
+        , args_(std::move(args))
         , desc_(desc)
         , resource_mapper_(other.get_resource_mapper())
         , scratchpad_grantor_(&other.get_scratchpad_grantor()) {}

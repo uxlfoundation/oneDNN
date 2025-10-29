@@ -552,8 +552,9 @@ status_t atomic_t::execute_atomic(const exec_ctx_t &ctx) const {
         CHECK(safe_ptr_assign(eltwise_src,
                 new memory_t(ctx.stream()->engine(), pd()->dst_md(0),
                         std::move(sp_reduce[(num_phases - 1) % 2]))));
-        eltwise_args[DNNL_ARG_SRC] = memory_arg_t {eltwise_src.get(), true};
-        eltwise_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
+        eltwise_args[DNNL_ARG_SRC] = memory_arg_t {
+                eltwise_src.get(), true, /* take_memory_ownership = */ true};
+        eltwise_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST).clone();
         exec_ctx_t eltwise_ctx(ctx, std::move(eltwise_args));
 
         auto *nested_grantor

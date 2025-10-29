@@ -161,10 +161,11 @@ template <cpu_isa_t isa>
 status_t brgemm_convolution_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     const auto &args = ctx.args();
     exec_args_t conv_args;
-    conv_args[DNNL_ARG_DST] = args.at(DNNL_ARG_DIFF_SRC);
-    conv_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST);
-    conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
-    if (pd()->with_bias()) conv_args[DNNL_ARG_BIAS] = args.at(DNNL_ARG_BIAS);
+    conv_args[DNNL_ARG_DST] = args.at(DNNL_ARG_DIFF_SRC).clone();
+    conv_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST).clone();
+    conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS).clone();
+    if (pd()->with_bias())
+        conv_args[DNNL_ARG_BIAS] = args.at(DNNL_ARG_BIAS).clone();
 
     exec_ctx_t fwd_ctx(ctx, std::move(conv_args));
 

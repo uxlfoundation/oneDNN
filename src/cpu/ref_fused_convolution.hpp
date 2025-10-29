@@ -425,13 +425,15 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
 
             for (const auto &arg_info : arg_cache.info()) {
                 if (arg_info.is_ctx_arg) {
-                    exec_args[arg_info.op_arg] = ctx_args.at(arg_info.ctx_arg);
+                    exec_args[arg_info.op_arg]
+                            = ctx_args.at(arg_info.ctx_arg).clone();
                 } else {
                     inout_memory.emplace_back(new memory_t(engine, &arg_info.md,
                             inout_buffer->get_sub_storage(arg_info.offset,
                                     memory_desc_wrapper(arg_info.md).size())));
-                    exec_args[arg_info.op_arg].mem = inout_memory.back().get();
-                    exec_args[arg_info.op_arg].is_const = arg_info.is_const;
+                    exec_args[arg_info.op_arg]
+                            = {inout_memory.back().get(), arg_info.is_const,
+                                    /* take_memory_ownership = */ true};
                 }
             }
 

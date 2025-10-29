@@ -47,9 +47,11 @@ status_t gemm_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
-    args.exec_args = ctx.args();
+    for (const auto &arg : ctx.args()) {
+        args.exec_args[arg.first] = arg.second.clone();
+    }
 
-    gemm::exec_ctx_t gemm_ctx(ctx, args);
+    gemm::exec_ctx_t gemm_ctx(ctx, std::move(args));
 
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
             key_nested, gemm_->pd()->scratchpad_registry());
@@ -70,7 +72,7 @@ status_t gemm_bwd_data_t::execute_backward_data(const exec_ctx_t &ctx) const {
     args.b = &CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
     args.c = &CTX_OUT_STORAGE(DNNL_ARG_DIFF_SRC);
 
-    gemm::exec_ctx_t gemm_ctx(ctx, args);
+    gemm::exec_ctx_t gemm_ctx(ctx, std::move(args));
 
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
             key_nested, gemm_->pd()->scratchpad_registry());
@@ -97,7 +99,7 @@ status_t gemm_bwd_weights_t::execute_backward_weights(
     gemm_args.c = &CTX_OUT_STORAGE(DNNL_ARG_DIFF_WEIGHTS);
     if (!pd()->reduction_pd_)
         gemm_args.sum_ab = &CTX_OUT_STORAGE(DNNL_ARG_DIFF_BIAS);
-    gemm::exec_ctx_t gemm_ctx(ctx, gemm_args);
+    gemm::exec_ctx_t gemm_ctx(ctx, std::move(gemm_args));
 
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
             key_nested_multiple, gemm_->pd()->scratchpad_registry());

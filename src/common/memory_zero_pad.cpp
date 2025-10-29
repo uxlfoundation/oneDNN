@@ -327,7 +327,8 @@ extern "C" dnnl_status_t DNNL_API dnnl_impl_zero_pad(
         const memory_t *memory, stream_t *stream) {
     if (memory == nullptr || stream == nullptr)
         return status::invalid_arguments;
-    memory_arg_t mem_arg = {const_cast<memory_t *>(memory), true};
-    exec_args_t args = {{0, mem_arg}};
+    exec_args_t args;
+    args[0] = {const_cast<memory_t *>(memory), true,
+            /* take_memory_ownership = */ false};
     return memory->zero_pad(exec_ctx_t(stream, std::move(args)));
 }

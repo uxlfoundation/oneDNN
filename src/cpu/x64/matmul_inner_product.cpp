@@ -379,7 +379,11 @@ status_t matmul_inner_product_bwd_weights_t::pd_t::init_matmul_params(
 status_t matmul_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
-    exec_args_t matmul_args = ctx.args();
+    exec_args_t matmul_args;
+    for (const auto &arg : ctx.args()) {
+        matmul_args[arg.first] = arg.second.clone();
+    }
+
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
 
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
@@ -393,9 +397,9 @@ status_t matmul_inner_product_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
     exec_args_t matmul_args;
-    matmul_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_DIFF_DST);
-    matmul_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_WEIGHTS);
-    matmul_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DIFF_SRC);
+    matmul_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_DIFF_DST).clone();
+    matmul_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_WEIGHTS).clone();
+    matmul_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DIFF_SRC).clone();
 
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
 
@@ -411,12 +415,13 @@ status_t matmul_inner_product_bwd_weights_t::execute(
     using namespace memory_tracking::names;
 
     exec_args_t matmul_args;
-    matmul_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_DIFF_DST);
-    matmul_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_SRC);
-    matmul_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DIFF_WEIGHTS);
+    matmul_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_DIFF_DST).clone();
+    matmul_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_SRC).clone();
+    matmul_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DIFF_WEIGHTS).clone();
 
     if (pd()->with_bias())
-        matmul_args[DNNL_ARG_REDUCE] = ctx.args().at(DNNL_ARG_DIFF_BIAS);
+        matmul_args[DNNL_ARG_REDUCE]
+                = ctx.args().at(DNNL_ARG_DIFF_BIAS).clone();
 
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
 

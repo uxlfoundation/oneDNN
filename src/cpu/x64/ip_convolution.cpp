@@ -186,7 +186,10 @@ status_t ip_convolution_fwd_t::pd_t::ip_desc_create(inner_product_desc_t *ipd) {
 status_t ip_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
-    exec_args_t ip_args = ctx.args();
+    exec_args_t ip_args;
+    for (const auto &arg : ctx.args()) {
+        ip_args[arg.first] = arg.second.clone();
+    }
 
     exec_ctx_t conv_ctx(ctx, std::move(ip_args));
 
@@ -242,7 +245,10 @@ status_t ip_convolution_bwd_data_t::pd_t::ip_desc_create(
 status_t ip_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
-    exec_args_t ip_args = ctx.args();
+    exec_args_t ip_args;
+    for (const auto &arg : ctx.args()) {
+        ip_args[arg.first] = arg.second.clone();
+    }
 
     exec_ctx_t conv_ctx(ctx, std::move(ip_args));
 
@@ -298,7 +304,10 @@ status_t ip_convolution_bwd_weights_t::pd_t::ip_desc_create(
 status_t ip_convolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
 
-    exec_args_t ip_args = ctx.args();
+    exec_args_t ip_args;
+    for (const auto &arg : ctx.args()) {
+        ip_args[arg.first] = arg.second.clone();
+    }
 
     exec_ctx_t conv_ctx(ctx, std::move(ip_args));
 

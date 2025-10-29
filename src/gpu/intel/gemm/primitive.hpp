@@ -49,7 +49,8 @@ struct primitive_t : public intel::primitive_t {
         args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_A);
         args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_B);
         args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_C);
-        return execute({ctx, args});
+        exec_ctx_t gemm_ctx(ctx, std::move(args));
+        return execute(gemm_ctx);
     }
 };
 

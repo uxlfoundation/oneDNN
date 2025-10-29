@@ -203,32 +203,37 @@ struct convolution_deconvolution_fwd_t : public gpu::primitive_t {
         using namespace memory_tracking::names;
         const auto &args = ctx.args();
         exec_args_t conv_args;
-        conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC);
-        conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
-        conv_args[DNNL_ARG_DIFF_SRC] = args.at(DNNL_ARG_DST);
+        conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC).clone();
+        conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS).clone();
+        conv_args[DNNL_ARG_DIFF_SRC] = args.at(DNNL_ARG_DST).clone();
         if (pd()->with_bias())
-            conv_args[DNNL_ARG_BIAS] = args.at(DNNL_ARG_BIAS);
+            conv_args[DNNL_ARG_BIAS] = args.at(DNNL_ARG_BIAS).clone();
 
         for (int idx = 0; idx < pd()->attr()->post_ops_.len(); ++idx) {
             if (pd()->attr()->post_ops_.entry_[idx].is_binary()) {
                 conv_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1]
                         = args.at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
-                                | DNNL_ARG_SRC_1);
+                                      | DNNL_ARG_SRC_1)
+                                  .clone();
             } else if (pd()->attr()->post_ops_.entry_[idx].is_prelu()) {
                 conv_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
                         | DNNL_ARG_WEIGHTS]
                         = args.at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
-                                | DNNL_ARG_WEIGHTS);
+                                      | DNNL_ARG_WEIGHTS)
+                                  .clone();
             }
         }
         const auto z_src = DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC;
         const auto z_dst = DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST;
-        if (args.find(z_src) != args.end()) conv_args[z_src] = args.at(z_src);
-        if (args.find(z_dst) != args.end()) conv_args[z_dst] = args.at(z_dst);
+        if (args.find(z_src) != args.end())
+            conv_args[z_src] = args.at(z_src).clone();
+        if (args.find(z_dst) != args.end())
+            conv_args[z_dst] = args.at(z_dst).clone();
 
         for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
             int key = DNNL_ARG_ATTR_SCALES | arg;
-            if (args.find(key) != args.end()) conv_args[key] = args.at(key);
+            if (args.find(key) != args.end())
+                conv_args[key] = args.at(key).clone();
         }
 
         exec_ctx_t conv_ctx(ctx, std::move(conv_args));
@@ -342,11 +347,12 @@ struct convolution_deconvolution_bwd_data_t : public gpu::primitive_t {
         using namespace memory_tracking::names;
         const auto &args = ctx.args();
         exec_args_t conv_args;
-        conv_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST);
-        conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
-        conv_args[DNNL_ARG_DST] = args.at(DNNL_ARG_DIFF_SRC);
+        conv_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST).clone();
+        conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS).clone();
+        conv_args[DNNL_ARG_DST] = args.at(DNNL_ARG_DIFF_SRC).clone();
         if (!types::is_zero_md(pd()->scratchpad_md()))
-            conv_args[DNNL_ARG_SCRATCHPAD] = args.at(DNNL_ARG_SCRATCHPAD);
+            conv_args[DNNL_ARG_SCRATCHPAD]
+                    = args.at(DNNL_ARG_SCRATCHPAD).clone();
         exec_ctx_t conv_ctx(ctx, std::move(conv_args));
 
         auto *nested_grantor

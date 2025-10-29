@@ -117,15 +117,7 @@ struct ref_concat_t : public primitive_t {
         const auto n = pd()->n_inputs();
 
         auto execute_reorder = [&](const std::shared_ptr<primitive_t> &reorder,
-                                       const memory_arg_t &src,
-                                       const memory_arg_t &dst,
-                                       const memory_arg_t *src_scales,
-                                       int r_num) {
-            exec_args_t r_args;
-            r_args[DNNL_ARG_SRC] = src;
-            r_args[DNNL_ARG_DST] = dst;
-            if (src_scales)
-                r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC] = *src_scales;
+                                       exec_args_t &&r_args, int r_num) {
             exec_ctx_t r_ctx(ctx, std::move(r_args));
 
             auto *nested_grantor = create_nested_grantor(
@@ -148,20 +140,31 @@ struct ref_concat_t : public primitive_t {
                                 tent_dst_storage->clone())));
                 const auto &src_scales_arg = ctx.args().find(
                         DNNL_ARG_ATTR_SCALES | (DNNL_ARG_MULTIPLE_SRC + i));
-                const memory_arg_t *src_scales = nullptr;
-                if (src_scales_arg != ctx.args().end())
-                    src_scales = &src_scales_arg->second;
-                execute_reorder(reorders_[i],
-                        ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i),
-                        {tent_dst_i.get(), false}, src_scales, i);
-            }
 
-            std::unique_ptr<memory_t, memory_deleter_t> tent_dst;
-            CHECK(safe_ptr_assign(tent_dst,
-                    new memory_t(engine, &pd()->tent_dst_md_,
-                            tent_dst_storage->clone())));
-            execute_reorder(reorders_[n], {tent_dst.get(), true},
-                    ctx.args().at(DNNL_ARG_DST), nullptr, n);
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC]
+                        = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i).clone();
+                r_args[DNNL_ARG_DST] = {tent_dst_i.get(), false,
+                        /* take_memory_ownership = */ true};
+                if (src_scales_arg != ctx.args().end())
+                    r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC]
+                            = src_scales_arg->second.clone();
+
+                execute_reorder(reorders_[i], std::move(r_args), i);
+            }
+            {
+                std::unique_ptr<memory_t, memory_deleter_t> tent_dst;
+                CHECK(safe_ptr_assign(tent_dst,
+                        new memory_t(engine, &pd()->tent_dst_md_,
+                                tent_dst_storage->clone())));
+
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC] = {tent_dst.get(), true,
+                        /* take_memory_ownership = */ true};
+                r_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST).clone();
+
+                execute_reorder(reorders_[n], std::move(r_args), n);
+            }
         } else {
             auto &dst_mem_storage = CTX_OUT_STORAGE(DNNL_ARG_DST);
             for (int i = 0; i < n; ++i) {
@@ -171,12 +174,17 @@ struct ref_concat_t : public primitive_t {
                                 dst_mem_storage.clone())));
                 const auto &src_scales_arg = ctx.args().find(
                         DNNL_ARG_ATTR_SCALES | (DNNL_ARG_MULTIPLE_SRC + i));
-                const memory_arg_t *src_scales = nullptr;
+
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC]
+                        = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i).clone();
+                r_args[DNNL_ARG_DST] = {tent_dst_i.get(), false,
+                        /* take_memory_ownership = */ true};
                 if (src_scales_arg != ctx.args().end())
-                    src_scales = &src_scales_arg->second;
-                execute_reorder(reorders_[i],
-                        ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i),
-                        {tent_dst_i.get(), false}, src_scales, i);
+                    r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC]
+                            = src_scales_arg->second.clone();
+
+                execute_reorder(reorders_[i], std::move(r_args), i);
             }
         }
         return status::success;

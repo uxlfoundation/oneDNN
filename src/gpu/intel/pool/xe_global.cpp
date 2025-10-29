@@ -196,8 +196,8 @@ status_t xe_global_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     } else {
 
         exec_args_t reduction_args;
-        reduction_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_SRC);
-        reduction_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
+        reduction_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_SRC).clone();
+        reduction_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST).clone();
         exec_ctx_t reduction_ctx(ctx, std::move(reduction_args));
 
         auto *nested_grantor

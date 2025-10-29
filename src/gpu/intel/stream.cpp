@@ -58,8 +58,9 @@ status_t stream_t::zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
             zero_pad_primitive, mapper));
 
     exec_args_t zero_pad_args;
-    memory_arg_t arg = {const_cast<memory_t *>(memory), true};
-    zero_pad_args[DNNL_ARG_SRC] = arg;
+    memory_arg_t arg = {const_cast<memory_t *>(memory), true,
+            /* take_memory_ownership = */ false};
+    zero_pad_args[DNNL_ARG_SRC] = std::move(arg);
     exec_ctx_t zero_pad_ctx(this, std::move(zero_pad_args));
     zero_pad_ctx.set_resource_mapper(mapper);
 

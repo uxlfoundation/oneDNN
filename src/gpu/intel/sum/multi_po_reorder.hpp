@@ -156,8 +156,9 @@ struct multi_po_reorder_t : public primitive_t {
                             std::move(scratchpad))));
         }
 
-        auto dst = ctx.args().at(DNNL_ARG_DST);
-        memory_arg_t dst_acc = {p_temp_dst_acc.get(), false};
+        const auto &dst = ctx.args().at(DNNL_ARG_DST);
+        memory_arg_t dst_acc = {p_temp_dst_acc.get(), false,
+                /* take_memory_ownership = */ false};
 
         auto has_bin = [](const post_ops_t &po) {
             bool retn = false;
@@ -169,21 +170,26 @@ struct multi_po_reorder_t : public primitive_t {
             exec_args_t r_args;
             const bool final_reorder = r == int(reorders_.size()) - 1;
             const auto &post_ops = reorders_[r]->pd()->attr()->post_ops_;
-            if (final_reorder) dst_acc = {p_temp_dst_acc.get(), true};
-            r_args[DNNL_ARG_SRC] = dst_acc;
-            r_args[DNNL_ARG_DST] = dst;
+            if (final_reorder) {
+                // The final reorder is responsible for cleaning the memory.
+                dst_acc = {p_temp_dst_acc.get(), true,
+                        /* take_memory_ownership = */ true};
+            }
+            r_args[DNNL_ARG_SRC] = std::move(dst_acc);
+            r_args[DNNL_ARG_DST] = dst.clone();
             if (!final_reorder || !need_output_reorder || has_bin(post_ops)) {
                 r_args[DNNL_ARG_SRC]
-                        = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + s++);
+                        = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + s++).clone();
                 if (need_output_reorder && !final_reorder)
-                    r_args[DNNL_ARG_DST] = dst_acc;
+                    r_args[DNNL_ARG_DST] = std::move(dst_acc);
                 for (int p = 0, pl = post_ops.len(); p < pl; p++) {
                     if (!post_ops.entry_[p].is_binary()) continue;
-                    memory_arg_t arg = dst_acc;
-                    if (!need_output_reorder || !final_reorder || (p < pl - 1))
-                        arg = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + s++);
+                    const bool use_orig_src = !need_output_reorder
+                            || !final_reorder || (p < pl - 1);
                     r_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(p) | DNNL_ARG_SRC_1]
-                            = arg;
+                            = use_orig_src
+                            ? ctx.args().at(DNNL_ARG_MULTIPLE_SRC + s++).clone()
+                            : std::move(dst_acc);
                 }
             }
             exec_ctx_t r_ctx(ctx, std::move(r_args));

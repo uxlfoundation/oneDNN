@@ -138,11 +138,8 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
     ~jit_uni_layer_normalization_fwd_t() override = default;
 
     void reorder_stat(const exec_ctx_t &ctx, engine_t *engine,
-            const memory_arg_t &in, const memory_arg_t &out) const {
+            exec_args_t &&r_args) const {
         using namespace memory_tracking::names;
-        exec_args_t r_args;
-        r_args[DNNL_ARG_SRC] = in;
-        r_args[DNNL_ARG_DST] = out;
         exec_ctx_t r_ctx(ctx, std::move(r_args));
 
         auto *nested_grantor
@@ -179,11 +176,21 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
         // reorder input stats
         if (pd()->stats_are_src() && reorder_) {
             if (!skip_mean) {
-                reorder_stat(ctx, engine, ctx.args().at(DNNL_ARG_MEAN),
-                        {mean.get(), false});
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_MEAN).clone();
+                r_args[DNNL_ARG_DST] = {
+                        mean.get(), false, /* take_memory_ownership = */ false};
+
+                reorder_stat(ctx, engine, std::move(r_args));
             }
-            reorder_stat(ctx, engine, ctx.args().at(DNNL_ARG_VARIANCE),
-                    {variance.get(), false});
+            {
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_VARIANCE).clone();
+                r_args[DNNL_ARG_DST] = {variance.get(), false,
+                        /* take_memory_ownership = */ false};
+
+                reorder_stat(ctx, engine, std::move(r_args));
+            }
         }
 
         status_t status = execute_forward(ctx);
@@ -192,11 +199,21 @@ struct jit_uni_layer_normalization_fwd_t : public primitive_t {
         // reorder output stats
         if (!pd()->stats_are_src() && reorder_) {
             if (!skip_mean) {
-                reorder_stat(ctx, engine, {mean.get(), true},
-                        ctx.args().at(DNNL_ARG_MEAN));
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC] = {
+                        mean.get(), true, /* take_memory_ownership = */ true};
+                r_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_MEAN).clone();
+
+                reorder_stat(ctx, engine, std::move(r_args));
             }
-            reorder_stat(ctx, engine, {variance.get(), true},
-                    ctx.args().at(DNNL_ARG_VARIANCE));
+            {
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC] = {variance.get(), true,
+                        /* take_memory_ownership = */ true};
+                r_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_VARIANCE).clone();
+
+                reorder_stat(ctx, engine, std::move(r_args));
+            }
         }
 
         return status::success;
@@ -317,11 +334,8 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
     ~jit_uni_layer_normalization_bwd_t() override = default;
 
     void reorder_stat(const exec_ctx_t &ctx, engine_t *engine,
-            const memory_arg_t &in, const memory_arg_t &out) const {
+            exec_args_t &&r_args) const {
         using namespace memory_tracking::names;
-        exec_args_t r_args;
-        r_args[DNNL_ARG_SRC] = in;
-        r_args[DNNL_ARG_DST] = out;
         exec_ctx_t r_ctx(ctx, std::move(r_args));
 
         auto *nested_grantor
@@ -344,27 +358,36 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
             engine_t *engine = ctx.stream()->engine();
             const auto &scratchpad = ctx.get_scratchpad_grantor();
 
-            std::unique_ptr<memory_t, memory_deleter_t> mean;
             if (!skip_mean) {
+                std::unique_ptr<memory_t, memory_deleter_t> mean;
                 auto mean_mem
                         = scratchpad.get_memory_storage(key_lnorm_tmp_mean);
                 CHECK(safe_ptr_assign(mean,
                         new memory_t(engine, &(pd()->reordered_stat_md_),
                                 std::move(mean_mem))));
-            }
-            auto variance_mem
-                    = scratchpad.get_memory_storage(key_lnorm_tmp_var);
-            std::unique_ptr<memory_t, memory_deleter_t> variance;
-            CHECK(safe_ptr_assign(variance,
-                    new memory_t(engine, &(pd()->reordered_stat_md_),
-                            std::move(variance_mem))));
 
-            if (!skip_mean) {
-                reorder_stat(ctx, engine, ctx.args().at(DNNL_ARG_MEAN),
-                        {mean.get(), false});
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_MEAN).clone();
+                r_args[DNNL_ARG_DST] = {
+                        mean.get(), false, /* take_memory_ownership = */ true};
+
+                reorder_stat(ctx, engine, std::move(r_args));
             }
-            reorder_stat(ctx, engine, ctx.args().at(DNNL_ARG_VARIANCE),
-                    {variance.get(), false});
+            {
+                auto variance_mem
+                        = scratchpad.get_memory_storage(key_lnorm_tmp_var);
+                std::unique_ptr<memory_t, memory_deleter_t> variance;
+                CHECK(safe_ptr_assign(variance,
+                        new memory_t(engine, &(pd()->reordered_stat_md_),
+                                std::move(variance_mem))));
+
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_VARIANCE).clone();
+                r_args[DNNL_ARG_DST] = {variance.get(), false,
+                        /* take_memory_ownership = */ true};
+
+                reorder_stat(ctx, engine, std::move(r_args));
+            }
         }
 
         return execute_backward(ctx);

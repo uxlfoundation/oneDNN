@@ -62,12 +62,14 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
     args.b_group_sums = &CTX_IN_STORAGE(
             DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC);
     args.sround_seed = &CTX_IN_STORAGE(DNNL_ARG_ATTR_ROUNDING_SEED);
-    args.exec_args = ctx.args();
+    for (const auto &arg : ctx.args()) {
+        args.exec_args[arg.first] = arg.second.clone();
+    }
     gemm::desc_t desc;
     CHECK(create_gemm_desc(&desc, src_d.md_, weights_d.md_, dst_d.md_,
             bia_d.md_, pd()->desc()->accum_data_type, ctx.stream()->engine()));
 
-    gemm::exec_ctx_t gemm_ctx(ctx, args, &desc);
+    gemm::exec_ctx_t gemm_ctx(ctx, std::move(args), &desc);
 
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
             key_nested, gemm_->pd()->scratchpad_registry());

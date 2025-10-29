@@ -130,14 +130,7 @@ struct ref_concat_t : public gpu::primitive_t {
 
         auto execute_reorder
                 = [&](const std::shared_ptr<impl::primitive_t> &reorder,
-                          const memory_arg_t &src, const memory_arg_t &dst,
-                          const memory_arg_t *src_scales, int r_num) {
-                      exec_args_t r_args;
-                      r_args[DNNL_ARG_SRC] = src;
-                      r_args[DNNL_ARG_DST] = dst;
-                      if (src_scales)
-                          r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC]
-                                  = *src_scales;
+                          exec_args_t &&r_args, int r_num) {
                       exec_ctx_t r_ctx(ctx, std::move(r_args));
 
                       auto *nested_grantor = create_nested_grantor(
@@ -161,28 +154,39 @@ struct ref_concat_t : public gpu::primitive_t {
                 const auto &src_scales_arg = ctx.args().find(
                         DNNL_ARG_ATTR_SCALES | (DNNL_ARG_MULTIPLE_SRC + i));
 
-                const memory_arg_t *src_scales = nullptr;
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC]
+                        = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i).clone();
+                r_args[DNNL_ARG_DST] = {tent_dst.get(), false,
+                        /* take_memory_ownership = */ false};
                 if (src_scales_arg != ctx.args().end())
-                    src_scales = &src_scales_arg->second;
-                CHECK(execute_reorder(reorders_[i],
-                        ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i),
-                        {tent_dst.get(), false}, src_scales, i));
-            }
+                    r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC]
+                            = src_scales_arg->second.clone();
 
-            CHECK(execute_reorder(reorders_[n], {tent_dst.get(), true},
-                    ctx.args().at(DNNL_ARG_DST), nullptr, n));
+                CHECK(execute_reorder(reorders_[i], std::move(r_args), i));
+            }
+            {
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC] = {tent_dst.get(), true,
+                        /* take_memory_ownership = */ true};
+                r_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST).clone();
+
+                CHECK(execute_reorder(reorders_[n], std::move(r_args), n));
+            }
         } else {
             for (int i = 0; i < n; ++i) {
                 const auto &src_scales_arg = ctx.args().find(
                         DNNL_ARG_ATTR_SCALES | (DNNL_ARG_MULTIPLE_SRC + i));
 
-                const memory_arg_t *src_scales = nullptr;
-                if (src_scales_arg != ctx.args().end()) {
-                    src_scales = &src_scales_arg->second;
-                }
-                CHECK(execute_reorder(reorders_[i],
-                        ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i),
-                        ctx.args().at(DNNL_ARG_DST), src_scales, i));
+                exec_args_t r_args;
+                r_args[DNNL_ARG_SRC]
+                        = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i).clone();
+                r_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST).clone();
+                if (src_scales_arg != ctx.args().end())
+                    r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC]
+                            = src_scales_arg->second.clone();
+
+                CHECK(execute_reorder(reorders_[i], std::move(r_args), i));
             }
         }
 

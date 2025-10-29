@@ -283,10 +283,13 @@ status_t brgemm_deconvolution_fwd_t<isa>::init(engine_t *engine) {
 template <cpu_isa_t isa>
 status_t brgemm_deconvolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     const auto &args = ctx.args();
-    exec_args_t conv_args(args);
+    exec_args_t conv_args;
+    for (const auto &arg : args) {
+        conv_args[arg.first] = arg.second.clone();
+    }
     if (pd()->has_strides_) {
-        conv_args[DNNL_ARG_DIFF_SRC] = args.at(DNNL_ARG_DST);
-        conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC);
+        conv_args[DNNL_ARG_DIFF_SRC] = args.at(DNNL_ARG_DST).clone();
+        conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC).clone();
         conv_args.erase(DNNL_ARG_DST);
         conv_args.erase(DNNL_ARG_SRC);
     }

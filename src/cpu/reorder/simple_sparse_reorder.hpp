@@ -124,8 +124,9 @@ struct simple_sparse_reorder_impl_t<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
                         std::move(wspace_mem_storage))));
 
         exec_args_t r_args;
-        r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_FROM);
-        r_args[DNNL_ARG_DST] = {wspace_mem.get(), false};
+        r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_FROM).clone();
+        r_args[DNNL_ARG_DST]
+                = {wspace_mem.get(), false, /* take_memory_ownership = */ true};
         exec_ctx_t r_ctx(ctx, std::move(r_args));
 
         auto *nested_grantor

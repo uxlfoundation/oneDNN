@@ -121,9 +121,12 @@ struct multi_t : public primitive_t {
                     exec_args_t r_args;
                     const auto arg_offset = DNNL_ARG_MULTIPLE_SRC;
                     for (int i = 0; i < n_inputs; ++i)
-                        r_args[arg_offset + i] = ctx.args().at(
-                                arg_offset + max_batch_size * c_num + i);
-                    r_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
+                        r_args[arg_offset + i]
+                                = ctx.args()
+                                          .at(arg_offset
+                                                  + max_batch_size * c_num + i)
+                                          .clone();
+                    r_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST).clone();
                     exec_ctx_t r_ctx(ctx, std::move(r_args));
 
                     r_ctx.set_scratchpad_grantor(&ctx.get_scratchpad_grantor());

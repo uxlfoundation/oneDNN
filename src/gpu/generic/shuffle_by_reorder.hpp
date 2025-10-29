@@ -120,8 +120,8 @@ struct shuffle_by_reorder_t : public gpu::primitive_t {
         auto src = pd()->is_fwd() ? DNNL_ARG_SRC : DNNL_ARG_DIFF_DST;
         auto dst = pd()->is_fwd() ? DNNL_ARG_DST : DNNL_ARG_DIFF_SRC;
 
-        r_args[DNNL_ARG_SRC] = ctx.args().at(src);
-        r_args[DNNL_ARG_DST] = ctx.args().at(dst);
+        r_args[DNNL_ARG_SRC] = ctx.args().at(src).clone();
+        r_args[DNNL_ARG_DST] = ctx.args().at(dst).clone();
         exec_ctx_t r_ctx(ctx, std::move(r_args));
 
         return reorder_->execute(r_ctx);

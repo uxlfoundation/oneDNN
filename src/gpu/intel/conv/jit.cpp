@@ -296,10 +296,13 @@ public:
 
                     exec_args_t e_args;
                     auto src_zp_idx = DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC;
-                    e_args[src_zp_idx] = ctx.args().at(src_zp_idx);
-                    e_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_WEIGHTS);
-                    e_args[DNNL_ARG_SRC] = memory_arg_t {zp_src.get(), true};
-                    e_args[DNNL_ARG_DST] = memory_arg_t {zp_dst.get(), false};
+                    e_args[src_zp_idx] = ctx.args().at(src_zp_idx).clone();
+                    e_args[DNNL_ARG_WEIGHTS]
+                            = ctx.args().at(DNNL_ARG_WEIGHTS).clone();
+                    e_args[DNNL_ARG_SRC] = memory_arg_t {zp_src.get(), true,
+                            /* take_memory_ownership = */ true};
+                    e_args[DNNL_ARG_DST] = memory_arg_t {zp_dst.get(), false,
+                            /* take_memory_ownership = */ true};
                     exec_ctx_t e_ctx(ctx, std::move(e_args));
                     const auto nm = memory_tracking::names::key_nested_multiple;
                     auto *nested_grantor = create_nested_grantor(

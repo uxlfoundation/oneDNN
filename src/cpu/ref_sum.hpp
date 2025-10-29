@@ -116,25 +116,34 @@ struct ref_sum_t : public primitive_t {
                 ? ctx.get_scratchpad_grantor().get_memory_storage(
                         key_sum_reduction)
                 : nullptr;
-        auto dst = ctx.args().at(DNNL_ARG_DST);
+        const auto &dst = ctx.args().at(DNNL_ARG_DST);
 
         std::unique_ptr<memory_t, memory_deleter_t> acc;
         CHECK(safe_ptr_assign(acc,
-                new memory_t(dst.mem->engine(), pd()->dst_acc_md(),
+                new memory_t(dst.mem()->engine(), pd()->dst_acc_md(),
                         std::move(sum_reduce))));
-        memory_arg_t dst_acc = {acc.get(), false};
+        // First time is used as output, don't claim ownership to clean.
+        memory_arg_t dst_acc_out(
+                acc.get(), false, /* take_memory_ownership = */ false);
+        // Second time is used as input, claim ownership here to clean.
+        memory_arg_t dst_acc_in(
+                acc.get(), true, /* take_memory_ownership = */ true);
 
         /* fix: clang MemorySanitizer: use-of-uninitialized-value */
+        // TODO: should rely on unpoison_msan instead.
         if (pd()->need_output_reorder()) {
             const memory_desc_wrapper acc_d(acc->md());
             std::memset(acc->memory_storage()->data_handle(), 0, acc_d.size());
         }
 
         for (int i = 0; i < n; ++i) {
-            r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i);
-            r_args[DNNL_ARG_DST] = pd()->need_output_reorder() ? dst_acc : dst;
-            r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC]
-                    = {scales_mem_[i].get(), true};
+            r_args[DNNL_ARG_SRC]
+                    = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i).clone();
+            r_args[DNNL_ARG_DST] = pd()->need_output_reorder()
+                    ? std::move(dst_acc_out)
+                    : dst.clone();
+            r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC] = {scales_mem_[i].get(),
+                    true, /* take_memory_ownership = */ false};
 
             exec_ctx_t r_ctx(ctx, std::move(r_args));
 
@@ -146,9 +155,8 @@ struct ref_sum_t : public primitive_t {
         }
 
         if (pd()->need_output_reorder()) {
-            dst_acc.is_const = true;
-            r_args[DNNL_ARG_SRC] = dst_acc;
-            r_args[DNNL_ARG_DST] = dst;
+            r_args[DNNL_ARG_SRC] = std::move(dst_acc_in);
+            r_args[DNNL_ARG_DST] = dst.clone();
             exec_ctx_t r_ctx(ctx, std::move(r_args));
 
             auto *nested_grantor = create_nested_grantor(

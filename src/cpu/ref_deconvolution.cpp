@@ -475,21 +475,23 @@ status_t ref_deconvolution_fwd_t::execute(const exec_ctx_t &ctx) const {
 
     const auto &args = ctx.args();
     exec_args_t conv_args;
-    conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC);
-    conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
+    conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC).clone();
+    conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS).clone();
     if (pd()->with_bias() && pd()->conv_supports_bias_)
-        conv_args[DNNL_ARG_BIAS] = args.at(DNNL_ARG_BIAS);
+        conv_args[DNNL_ARG_BIAS] = args.at(DNNL_ARG_BIAS).clone();
 
     // Create intermediate memory for f32 output if needed.
-    auto dst = args.at(DNNL_ARG_DST);
+    const auto &dst = args.at(DNNL_ARG_DST);
     std::unique_ptr<memory_t, memory_deleter_t> tmp_memory;
     CHECK(safe_ptr_assign(tmp_memory,
-            new memory_t(dst.mem->engine(), pd()->conv_pd_->diff_src_md(),
+            new memory_t(dst.mem()->engine(), pd()->conv_pd_->diff_src_md(),
                     scratchpad.get_memory_storage(key_deconv_bias))));
-    memory_arg_t tmp_conv_output = {tmp_memory.get(), false};
+    memory_arg_t tmp_conv_output(
+            tmp_memory.get(), false, /* take_memory_ownership = */ true);
 
-    conv_args[DNNL_ARG_DIFF_SRC]
-            = ref_bias || non_default_attr ? tmp_conv_output : dst;
+    conv_args[DNNL_ARG_DIFF_SRC] = ref_bias || non_default_attr
+            ? std::move(tmp_conv_output)
+            : dst.clone();
 
     // When sum post-op happens, we need to copy original destination memory
     // prior call to external convolution happens.
@@ -557,9 +559,9 @@ status_t ref_deconvolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
     const auto &args = ctx.args();
     exec_args_t conv_args;
-    conv_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST);
-    conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
-    conv_args[DNNL_ARG_DST] = args.at(DNNL_ARG_DIFF_SRC);
+    conv_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST).clone();
+    conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS).clone();
+    conv_args[DNNL_ARG_DST] = args.at(DNNL_ARG_DIFF_SRC).clone();
     exec_ctx_t conv_ctx(ctx, std::move(conv_args));
 
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
@@ -718,9 +720,9 @@ status_t ref_deconvolution_bwd_weights_t::execute(const exec_ctx_t &ctx) const {
     using namespace memory_tracking::names;
     const auto &args = ctx.args();
     exec_args_t conv_args;
-    conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC);
-    conv_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST);
-    conv_args[DNNL_ARG_DIFF_WEIGHTS] = args.at(DNNL_ARG_DIFF_WEIGHTS);
+    conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC).clone();
+    conv_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST).clone();
+    conv_args[DNNL_ARG_DIFF_WEIGHTS] = args.at(DNNL_ARG_DIFF_WEIGHTS).clone();
     exec_ctx_t conv_ctx(ctx, std::move(conv_args));
 
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),

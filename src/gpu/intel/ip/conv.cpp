@@ -199,14 +199,15 @@ status_t conv_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         if (pd()->attr()->scales_.has_default_values(arg)) continue;
 
         c_args[DNNL_ARG_ATTR_SCALES | arg]
-                = args.at(DNNL_ARG_ATTR_SCALES | arg);
+                = args.at(DNNL_ARG_ATTR_SCALES | arg).clone();
     }
 
     for (int idx = 0; idx < pd()->attr()->post_ops_.len(); ++idx) {
         if (pd()->attr()->post_ops_.entry_[idx].is_binary()) {
             c_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1]
                     = args.at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
-                            | DNNL_ARG_SRC_1);
+                                  | DNNL_ARG_SRC_1)
+                              .clone();
         }
     }
 

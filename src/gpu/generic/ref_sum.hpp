@@ -157,8 +157,9 @@ struct ref_sum_t : public gpu::primitive_t {
                             std::move(scratchpad))));
         }
 
-        auto dst = ctx.args().at(DNNL_ARG_DST);
-        memory_arg_t dst_acc = {p_temp_dst_acc.get(), false};
+        const auto &dst = ctx.args().at(DNNL_ARG_DST);
+        memory_arg_t dst_acc = {p_temp_dst_acc.get(), false,
+                /* take_memory_ownership = */ false};
 
         for (int i = 0; i < n; ++i) {
             std::unique_ptr<memory_t, memory_deleter_t> scales_mem;
@@ -167,10 +168,13 @@ struct ref_sum_t : public gpu::primitive_t {
                             nullptr)));
             CHECK(scales_mem->set_data_handle(
                     CTX_GPU_RES_STORAGE(i).data_handle()));
-            r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i);
-            r_args[DNNL_ARG_DST] = pd()->need_output_reorder() ? dst_acc : dst;
-            r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC]
-                    = {scales_mem.get(), true};
+            r_args[DNNL_ARG_SRC]
+                    = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i).clone();
+            r_args[DNNL_ARG_DST] = pd()->need_output_reorder()
+                    ? std::move(dst_acc)
+                    : dst.clone();
+            r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC] = {scales_mem.get(),
+                    true, /* take_memory_ownership = */ false};
             exec_ctx_t r_ctx(ctx, std::move(r_args));
 
             auto *nested_grantor = create_nested_grantor(
@@ -181,9 +185,10 @@ struct ref_sum_t : public gpu::primitive_t {
         }
 
         if (pd()->need_output_reorder()) {
-            dst_acc = {p_temp_dst_acc.get(), true};
-            r_args[DNNL_ARG_SRC] = dst_acc;
-            r_args[DNNL_ARG_DST] = dst;
+            dst_acc = {p_temp_dst_acc.get(), true,
+                    /* take_memory_ownership = */ true};
+            r_args[DNNL_ARG_SRC] = std::move(dst_acc);
+            r_args[DNNL_ARG_DST] = dst.clone();
             exec_ctx_t r_ctx(ctx, std::move(r_args));
 
             auto *nested_grantor = create_nested_grantor(

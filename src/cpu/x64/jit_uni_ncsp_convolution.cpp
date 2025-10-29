@@ -294,12 +294,8 @@ status_t jit_uni_ncsp_convolution_fwd_t::init(engine_t *engine) {
 
 status_t jit_uni_ncsp_convolution_fwd_t::reorder_activations(
         const exec_ctx_t &ctx, const std::shared_ptr<primitive_t> &prim,
-        engine_t *engine, const memory_arg_t &in,
-        const memory_arg_t &out) const {
+        engine_t *engine, exec_args_t &&r_args) const {
     using namespace memory_tracking::names;
-    exec_args_t r_args;
-    r_args[DNNL_ARG_SRC] = in;
-    r_args[DNNL_ARG_DST] = out;
     exec_ctx_t r_ctx(ctx, std::move(r_args));
 
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
@@ -331,20 +327,35 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute_convolution(
             new memory_t(
                     engine, &(pd()->nspc_dst_md_), std::move(nspc_dst_mem))));
 
-    // reorder src from ncsp to nspc
-    CHECK(reorder_activations(ctx, src_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_SRC), {nspc_src.get(), false}));
+    {
+        // reorder src from ncsp to nspc
+        exec_args_t r_args;
+        r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_SRC).clone();
+        r_args[DNNL_ARG_DST]
+                = {nspc_src.get(), false, /* take_memory_ownership = */ false};
+        CHECK(reorder_activations(
+                ctx, src_reorder_p_, engine, std::move(r_args)));
+    }
 
-    // maybe reorder dst from ncsp to nspc
-    if (pd()->dst_pre_reorder_pd_)
-        CHECK(reorder_activations(ctx, dst_pre_reorder_p_, engine,
-                ctx.args().at(DNNL_ARG_DST), {nspc_dst.get(), false}));
+    if (pd()->dst_pre_reorder_pd_) {
+        // maybe reorder dst from ncsp to nspc
+        exec_args_t r_args;
+        r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_DST).clone();
+        r_args[DNNL_ARG_DST]
+                = {nspc_dst.get(), false, /* take_memory_ownership = */ false};
+        CHECK(reorder_activations(
+                ctx, dst_pre_reorder_p_, engine, std::move(r_args)));
+    }
 
     // execute nspc convolution
-    const auto &args = ctx.args();
-    exec_args_t conv_args = args; // copy args to include postops mem.
-    conv_args[DNNL_ARG_DST] = {nspc_dst.get(), false};
-    conv_args[DNNL_ARG_SRC] = {nspc_src.get(), true};
+    exec_args_t conv_args;
+    for (const auto &arg : ctx.args()) {
+        conv_args[arg.first] = arg.second.clone();
+    }
+    conv_args[DNNL_ARG_SRC]
+            = {nspc_src.get(), true, /* take_memory_ownership = */ true};
+    conv_args[DNNL_ARG_DST]
+            = {nspc_dst.get(), false, /* take_memory_ownership = */ false};
 
     exec_ctx_t nspc_ctx(ctx, std::move(conv_args));
 
@@ -354,9 +365,15 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute_convolution(
     nspc_ctx.set_scratchpad_grantor(nested_grantor);
     CHECK(nspc_conv_p_->execute(nspc_ctx));
 
-    // reorder dst from nspc to ncsp
-    CHECK(reorder_activations(ctx, dst_post_reorder_p_, engine,
-            {nspc_dst.get(), false}, ctx.args().at(DNNL_ARG_DST)));
+    {
+        // reorder dst from nspc to ncsp
+        exec_args_t r_args;
+        r_args[DNNL_ARG_SRC]
+                = {nspc_dst.get(), true, /* take_memory_ownership = */ true};
+        r_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST).clone();
+        CHECK(reorder_activations(
+                ctx, dst_post_reorder_p_, engine, std::move(r_args)));
+    }
 
     return status::success;
 }
@@ -365,13 +382,13 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute_matmul(
         const exec_ctx_t &ctx) const {
 
     exec_args_t matmul_args;
-    matmul_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_WEIGHTS);
-    matmul_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_SRC);
-    matmul_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
+    matmul_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_WEIGHTS).clone();
+    matmul_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_SRC).clone();
+    matmul_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST).clone();
 
     if (pd()->with_bias())
         matmul_args[DNNL_ARG_SRC_1 | DNNL_ARG_ATTR_MULTIPLE_POST_OP(0)]
-                = ctx.args().at(DNNL_ARG_BIAS);
+                = ctx.args().at(DNNL_ARG_BIAS).clone();
 
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
 
@@ -481,12 +498,8 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::init(engine_t *engine) {
 
 status_t jit_uni_ncsp_convolution_bwd_weights_t::reorder_activations(
         const exec_ctx_t &ctx, const std::shared_ptr<primitive_t> &prim,
-        engine_t *engine, const memory_arg_t &in,
-        const memory_arg_t &out) const {
+        engine_t *engine, exec_args_t &&r_args) const {
     using namespace memory_tracking::names;
-    exec_args_t r_args;
-    r_args[DNNL_ARG_SRC] = in;
-    r_args[DNNL_ARG_DST] = out;
     exec_ctx_t r_ctx(ctx, std::move(r_args));
 
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
@@ -518,18 +531,32 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::execute_convolution(
             new memory_t(engine, &(pd()->nspc_diff_dst_md_),
                     std::move(nspc_diff_dst_mem))));
 
-    CHECK(reorder_activations(ctx, dst_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_DIFF_DST), {nspc_diff_dst.get(), false}));
-    CHECK(reorder_activations(ctx, src_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_SRC), {nspc_src.get(), false}));
+    {
+        exec_args_t r_args;
+        r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_SRC).clone();
+        r_args[DNNL_ARG_DST]
+                = {nspc_src.get(), false, /* take_memory_ownership = */ false};
+        CHECK(reorder_activations(
+                ctx, src_reorder_p_, engine, std::move(r_args)));
+    }
+    {
+        exec_args_t r_args;
+        r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_DIFF_DST).clone();
+        r_args[DNNL_ARG_DST] = {nspc_diff_dst.get(), false,
+                /* take_memory_ownership = */ false};
+        CHECK(reorder_activations(
+                ctx, dst_reorder_p_, engine, std::move(r_args)));
+    }
 
     const auto &args = ctx.args();
     exec_args_t conv_args;
-    conv_args[DNNL_ARG_DIFF_DST] = {nspc_diff_dst.get(), true};
-    conv_args[DNNL_ARG_SRC] = {nspc_src.get(), true};
-    conv_args[DNNL_ARG_DIFF_WEIGHTS] = args.at(DNNL_ARG_DIFF_WEIGHTS);
+    conv_args[DNNL_ARG_DIFF_DST]
+            = {nspc_diff_dst.get(), true, /* take_memory_ownership = */ true};
+    conv_args[DNNL_ARG_SRC]
+            = {nspc_src.get(), true, /* take_memory_ownership = */ true};
+    conv_args[DNNL_ARG_DIFF_WEIGHTS] = args.at(DNNL_ARG_DIFF_WEIGHTS).clone();
     if (pd()->with_bias())
-        conv_args[DNNL_ARG_DIFF_BIAS] = args.at(DNNL_ARG_DIFF_BIAS);
+        conv_args[DNNL_ARG_DIFF_BIAS] = args.at(DNNL_ARG_DIFF_BIAS).clone();
 
     exec_ctx_t nspc_ctx(ctx, std::move(conv_args));
 
@@ -687,12 +714,8 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::init(engine_t *engine) {
 
 status_t jit_uni_ncsp_convolution_bwd_data_t::reorder_activations(
         const exec_ctx_t &ctx, const std::shared_ptr<primitive_t> &prim,
-        engine_t *engine, const memory_arg_t &in,
-        const memory_arg_t &out) const {
+        engine_t *engine, exec_args_t &&r_args) const {
     using namespace memory_tracking::names;
-    exec_args_t r_args;
-    r_args[DNNL_ARG_SRC] = in;
-    r_args[DNNL_ARG_DST] = out;
     exec_ctx_t r_ctx(ctx, std::move(r_args));
 
     auto *nested_grantor = create_nested_grantor(ctx.get_scratchpad_grantor(),
@@ -709,7 +732,6 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_convolution(
     engine_t *engine = ctx.stream()->engine();
     const auto &scratchpad = ctx.get_scratchpad_grantor();
 
-    // initialize nspc src memory
     auto nspc_diff_src_mem
             = scratchpad.get_memory_storage(key_conv_ncsp_diff_src);
     std::unique_ptr<memory_t, memory_deleter_t> nspc_diff_src;
@@ -717,7 +739,6 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_convolution(
             new memory_t(engine, &(pd()->nspc_diff_src_md_),
                     std::move(nspc_diff_src_mem))));
 
-    // initialize nspc dst memory
     auto nspc_diff_dst_mem
             = scratchpad.get_memory_storage(key_conv_ncsp_diff_dst);
     std::unique_ptr<memory_t, memory_deleter_t> nspc_diff_dst;
@@ -725,14 +746,22 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_convolution(
             new memory_t(engine, &(pd()->nspc_diff_dst_md_),
                     std::move(nspc_diff_dst_mem))));
 
-    CHECK(reorder_activations(ctx, dst_reorder_p_, engine,
-            ctx.args().at(DNNL_ARG_DIFF_DST), {nspc_diff_dst.get(), false}));
+    {
+        exec_args_t r_args;
+        r_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_DIFF_DST).clone();
+        r_args[DNNL_ARG_DST] = {nspc_diff_dst.get(), false,
+                /* take_memory_ownership = */ false};
+        CHECK(reorder_activations(
+                ctx, dst_reorder_p_, engine, std::move(r_args)));
+    }
 
     const auto &args = ctx.args();
     exec_args_t conv_args;
-    conv_args[DNNL_ARG_DIFF_DST] = {nspc_diff_dst.get(), true};
-    conv_args[DNNL_ARG_DIFF_SRC] = {nspc_diff_src.get(), false};
-    conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
+    conv_args[DNNL_ARG_DIFF_DST]
+            = {nspc_diff_dst.get(), true, /* take_memory_ownership = */ true};
+    conv_args[DNNL_ARG_DIFF_SRC]
+            = {nspc_diff_src.get(), false, /* take_memory_ownership = */ false};
+    conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS).clone();
 
     exec_ctx_t nspc_ctx(ctx, std::move(conv_args));
 
@@ -743,8 +772,14 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_convolution(
     nspc_ctx.set_scratchpad_grantor(nested_grantor);
     CHECK(nspc_conv_p_->execute(nspc_ctx));
 
-    CHECK(reorder_activations(ctx, src_reorder_p_, engine,
-            {nspc_diff_src.get(), false}, ctx.args().at(DNNL_ARG_DIFF_SRC)));
+    {
+        exec_args_t r_args;
+        r_args[DNNL_ARG_SRC] = {
+                nspc_diff_src.get(), true, /* take_memory_ownership = */ true};
+        r_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DIFF_DST).clone();
+        CHECK(reorder_activations(
+                ctx, src_reorder_p_, engine, std::move(r_args)));
+    }
 
     return status::success;
 }
@@ -754,9 +789,12 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::execute_matmul(
     using namespace memory_tracking::names;
 
     exec_args_t matmul_src_diff_args;
-    matmul_src_diff_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_WEIGHTS);
-    matmul_src_diff_args[DNNL_ARG_WEIGHTS] = ctx.args().at(DNNL_ARG_DIFF_DST);
-    matmul_src_diff_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DIFF_SRC);
+    matmul_src_diff_args[DNNL_ARG_SRC]
+            = ctx.args().at(DNNL_ARG_WEIGHTS).clone();
+    matmul_src_diff_args[DNNL_ARG_WEIGHTS]
+            = ctx.args().at(DNNL_ARG_DIFF_DST).clone();
+    matmul_src_diff_args[DNNL_ARG_DST]
+            = ctx.args().at(DNNL_ARG_DIFF_SRC).clone();
 
     exec_ctx_t matmul_src_diff_ctx(ctx, std::move(matmul_src_diff_args));
 

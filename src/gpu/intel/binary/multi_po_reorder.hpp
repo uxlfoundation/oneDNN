@@ -160,20 +160,20 @@ struct multi_po_reorder_t : public primitive_t {
     status_t execute(const exec_ctx_t &ctx) const override {
         for (int id = 0; id < int(reorder_primitive_list.size()); id++) {
             exec_args_t r_args;
-            auto dst = ctx.args().at(DNNL_ARG_DST);
-            r_args[DNNL_ARG_DST] = dst;
+            const auto &dst = ctx.args().at(DNNL_ARG_DST);
+            r_args[DNNL_ARG_DST] = dst.clone();
 
             if (pd()->need_input_reorder) {
-                r_args[DNNL_ARG_SRC] = id == 0 ? ctx.args().at(DNNL_ARG_SRC_0)
-                                               : ctx.args().at(DNNL_ARG_SRC_1);
+                const int arg = id == 0 ? DNNL_ARG_SRC_0 : DNNL_ARG_SRC_1;
+                r_args[DNNL_ARG_SRC] = ctx.args().at(arg).clone();
             } else {
-                r_args[DNNL_ARG_SRC] = !pd()->src_index
-                        ? ctx.args().at(DNNL_ARG_SRC_1)
-                        : ctx.args().at(DNNL_ARG_SRC_0);
-
+                const int arg
+                        = !pd()->src_index ? DNNL_ARG_SRC_1 : DNNL_ARG_SRC_0;
+                const int arg_po
+                        = pd()->src_index ? DNNL_ARG_SRC_1 : DNNL_ARG_SRC_0;
+                r_args[DNNL_ARG_SRC] = ctx.args().at(arg).clone();
                 r_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1]
-                        = pd()->src_index ? ctx.args().at(DNNL_ARG_SRC_1)
-                                          : ctx.args().at(DNNL_ARG_SRC_0);
+                        = ctx.args().at(arg_po).clone();
             }
             exec_ctx_t r_ctx(ctx, std::move(r_args));
             CHECK(reorder_primitive_list[id]->execute(r_ctx));

@@ -46,8 +46,8 @@ namespace {
 // A proper approach would be an implementation-specific unpoisoning.
 void unpoison_outputs(const exec_args_t &args) {
     for (const auto &arg : args) {
-        if (arg.second.is_const) continue;
-        auto *mem = arg.second.mem;
+        if (arg.second.is_const()) continue;
+        auto *mem = arg.second.mem();
         void *p;
         mem->get_data_handle(&p);
         size_t s = memory_desc_wrapper(*mem->md()).size();

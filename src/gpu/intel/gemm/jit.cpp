@@ -366,7 +366,8 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                                   .exec_args
                                   .at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(src.index)
                                           | DNNL_ARG_SRC_1)
-                                  .mem->memory_storage();
+                                  .mem()
+                                  ->memory_storage();
                 break;
             case pd_t::binary_src_t::prelu:
                 po_srcs[i]
@@ -374,7 +375,8 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                                   .exec_args
                                   .at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(src.index)
                                           | DNNL_ARG_WEIGHTS)
-                                  .mem->memory_storage();
+                                  .mem()
+                                  ->memory_storage();
                 break;
             case pd_t::binary_src_t::bias: po_srcs[i] = &bias; break;
             case pd_t::binary_src_t::scales:

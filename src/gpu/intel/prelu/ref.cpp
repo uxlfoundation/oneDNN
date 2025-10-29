@@ -185,8 +185,10 @@ status_t ref_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     if (conf.reduce_diff_weights) {
         exec_args_t reduction_args;
         reduction_args[DNNL_ARG_SRC]
-                = memory_arg_t {diff_weights_to_reduce.get(), true};
-        reduction_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DIFF_WEIGHTS);
+                = memory_arg_t {diff_weights_to_reduce.get(), true,
+                        /* take_memory_ownership = */ true};
+        reduction_args[DNNL_ARG_DST]
+                = ctx.args().at(DNNL_ARG_DIFF_WEIGHTS).clone();
         exec_ctx_t reduction_ctx(ctx, std::move(reduction_args));
 
         auto *nested_grantor

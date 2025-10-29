@@ -1075,7 +1075,7 @@ gemm_sig((simple_common_t<aprop>::gemm_primitive)) {
     gemm_args.b = a.get();
     gemm_args.c = c.get();
 
-    auto gemm_ctx = gemm::exec_ctx_t(ctx, gemm_args);
+    gemm::exec_ctx_t gemm_ctx(ctx, std::move(gemm_args));
 
     const auto init_gemm_nested_scratchpad
             = [&](const std::shared_ptr<impl::primitive_t> &gemm, int key) {

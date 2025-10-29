@@ -220,11 +220,13 @@ struct conv_bwd_weights_t : public primitive_t {
 
         const auto &args = ctx.args();
         exec_args_t nested_args;
-        nested_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC);
-        nested_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST);
-        nested_args[DNNL_ARG_DIFF_WEIGHTS] = args.at(DNNL_ARG_DIFF_WEIGHTS);
+        nested_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC).clone();
+        nested_args[DNNL_ARG_SRC] = args.at(DNNL_ARG_DIFF_DST).clone();
+        nested_args[DNNL_ARG_DIFF_WEIGHTS]
+                = args.at(DNNL_ARG_DIFF_WEIGHTS).clone();
         if (!types::is_zero_md(pd()->scratchpad_md()))
-            nested_args[DNNL_ARG_SCRATCHPAD] = args.at(DNNL_ARG_SCRATCHPAD);
+            nested_args[DNNL_ARG_SCRATCHPAD]
+                    = args.at(DNNL_ARG_SCRATCHPAD).clone();
         exec_ctx_t nested_ctx(ctx, std::move(nested_args));
 
         auto *nested_grantor

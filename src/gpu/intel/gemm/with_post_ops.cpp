@@ -222,7 +222,10 @@ void with_post_ops_t::pd_t::init_scratchpad() {
 
 status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
     std::unique_ptr<memory_t, memory_deleter_t> c_mem_before_po_worker;
-    exec_args_t nested_args(ctx.args());
+    exec_args_t nested_args;
+    for (const auto &arg : ctx.args().exec_args) {
+        nested_args.exec_args[arg.first] = arg.second.clone();
+    }
 
     if (pd()->use_scratchpad()) {
         auto scratchpad = ctx.get_scratchpad_grantor().get_memory_storage(
@@ -243,7 +246,7 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
                     memory_tracking::names::key_nested_multiple,
                     prim_->pd()->scratchpad_registry());
 
-    exec_ctx_t nested_ctx(ctx.stream(), nested_args, ctx.desc());
+    exec_ctx_t nested_ctx(ctx.stream(), std::move(nested_args), ctx.desc());
     nested_ctx.set_resource_mapper(ctx.get_resource_mapper());
     nested_ctx.set_scratchpad_grantor(nested_grantor);
 

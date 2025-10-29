@@ -155,7 +155,10 @@ html_theme_options = {
     "path_to_docs": "doc",
     "use_issues_button": True,
     "check_switcher": False,
-    "extra_footer": "oneDNN is licensed under Apache License Version 2.0. Refer to the <a href='https://github.com/uxlfoundation/oneDNN/blob/main/LICENSE'>LICENSE</a> file for the full license text and copyright notice."
+    "extra_footer": "oneDNN is licensed under Apache License Version 2.0. "
+"Refer to the <a href='https://github.com/uxlfoundation/oneDNN/blob/main/LICENSE'>LICENSE</a> "
+"file for the full license text and copyright notice.<br>"
+"<a href='page_legal_information.html'>Legal Information</a>"
 }
 
 # Adding version switcher if ONEDNN_DOC_VERSIONS_JSON is provided

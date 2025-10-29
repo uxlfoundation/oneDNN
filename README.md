@@ -461,21 +461,6 @@ set forth in the "[THIRD-PARTY-PROGRAMS](THIRD-PARTY-PROGRAMS)" file.
 for ensuring the highest level of security and trust for our users
 who consume oneDNN.
 
-## Trademark Information
+-------------------------------------------------------------------------------
 
-Intel, the Intel logo, Arc, Intel Atom, Intel Core, Iris,
-OpenVINO, the OpenVINO logo, Pentium, VTune, and Xeon are trademarks
-of Intel Corporation or its subsidiaries.
-
-Arm and Neoverse are trademarks, or registered trademarks of Arm Ltd.
-
-\* Other names and brands may be claimed as the property of others.
-
-Microsoft, Windows, and the Windows logo are trademarks, or registered
-trademarks of Microsoft Corporation in the United States and/or other
-countries.
-
-OpenCL and the OpenCL logo are trademarks of Apple Inc. used by permission
-by Khronos.
-
-(C) Intel Corporation
+[Legal Information](doc/legal_information.md)

@@ -167,6 +167,8 @@ private:
         for (auto &p : mn_blocks) {
             auto b = p.second;
             const auto &var = bmnk_mapper_.var(p.first, b.idx);
+            auto idx = bmnk_mapper_.dim_idx(abc_kind, var);
+            if (idx == -1) continue;
             b.idx = bmnk_mapper_.dim_idx(abc_kind, var);
             ret.push_back(b);
         }

@@ -300,7 +300,7 @@ if(NOT "${DNNL_GPU_VENDOR}" MATCHES "^(NONE|INTEL|NVIDIA|AMD|GENERIC)$")
 endif()
 
 set(OPENCLROOT "" CACHE STRING
-    "path to Intel SDK for OpenCL applications.
+    "Path to OpenCL SDK.
     Use this option to specify custom location for OpenCL.")
 
 # TODO: move logic to other cmake files?

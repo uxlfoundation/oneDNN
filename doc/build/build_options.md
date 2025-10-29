@@ -317,9 +317,9 @@ To enable GPU support you need to specify the GPU runtime by setting
 `ONEDNN_GPU_RUNTIME` CMake option. The default value is `"NONE"` which
 corresponds to no GPU support in the library.
 
-#### OpenCL\*
-OpenCL runtime requires Intel(R) SDK for OpenCL\* applications. You can
-explicitly specify the path to the SDK using `-DOPENCLROOT` CMake option.
+#### OpenCL
+Building oneDNN with OpenCL runtime requires an OpenCL SDK. You can
+explicitly specify the path to the SDK using CMake option `-DOPENCLROOT`.
 
 ~~~sh
 $ cmake -DONEDNN_GPU_RUNTIME=OCL -DOPENCLROOT=/path/to/opencl/sdk ..

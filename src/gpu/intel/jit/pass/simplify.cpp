@@ -1451,8 +1451,7 @@ public:
         int64_t max_gcd = 0;
         auto *a_nary = a.as_ptr<nary_op_t>();
         for (auto &e : a_nary->args) {
-            int64_t gcd = math::gcd(b_gcd, const_factor(e));
-            if (gcd > max_gcd) max_gcd = gcd;
+            max_gcd = std::max(max_gcd, math::gcd(b_gcd, const_factor(e)));
         }
 
         if (max_gcd == 0) return expr_t();

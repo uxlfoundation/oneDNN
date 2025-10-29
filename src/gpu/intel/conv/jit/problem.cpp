@@ -289,20 +289,20 @@ status_t problem_t::init_abc_data_types(const hw_t &hw) {
         if (use_matching_fpmath
                 && attr->mayiconvert(data_type::f32, data_type::bf16)
                 && get_supported_fma_kind(
-                           hw, data_type::bf16, data_type::bf16, data_type::f32)
+                           hw, type_t::bf16(), type_t::bf16(), type_t::f32())
                         != fma_kind_t::undef) {
             a_data_type = data_type::bf16;
             b_data_type = data_type::bf16;
         } else if (use_matching_fpmath
                 && attr->mayiconvert(data_type::f32, data_type::f16)
                 && get_supported_fma_kind(
-                           hw, data_type::f16, data_type::f16, data_type::f32)
+                           hw, type_t::f16(), type_t::f16(), type_t::f32())
                         != fma_kind_t::undef) {
             a_data_type = data_type::f16;
             b_data_type = data_type::f16;
         } else if (attr->mayiconvert(data_type::f32, data_type::tf32)
                 && get_supported_fma_kind(
-                           hw, data_type::tf32, data_type::tf32, data_type::f32)
+                           hw, type_t::tf32(), type_t::tf32(), type_t::f32())
                         != fma_kind_t::undef) {
             a_data_type = data_type::tf32;
             b_data_type = data_type::tf32;

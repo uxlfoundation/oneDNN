@@ -20,6 +20,7 @@
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
+#include "common/utils.hpp"
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 
 #include "cpu/binary_injector_utils.hpp"
@@ -146,12 +147,9 @@ bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
 }
 
 status_t check_datatype(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
-    if (bm_conf_utils.is_f32() && !bm_conf_utils.is_bf32()
-            && !bm_conf_utils.is_bf16() && !bm_conf_utils.is_f16()
-            && !bm_conf_utils.is_int8())
+    if (one_of(true, bm_conf_utils.is_f32(), bm_conf_utils.is_bf16()))
         return status::success;
-    else
-        return status::unimplemented;
+    return status::unimplemented;
 }
 
 brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
@@ -191,15 +189,27 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
 
 status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
         memory_desc_t &B_md, bool init_n_tag) const {
-
+    using namespace data_type;
     if (B_any_layout) {
         const int default_n_block = init_n_tag
                 ? get_default_n_block(format_tag::undef, bgmmc)
                 : bgmmc.N_blk;
-        bgmmc.wei_tag = blocked_B_layouts_allowed
-                ? this->pick_blocked_B_layout(default_n_block)
-                : plain_tensor_layout_tag;
-        if (format_tag::undef == bgmmc.wei_tag) return status::unimplemented;
+        switch (bgmmc.wei_dt) {
+            case f32:
+                bgmmc.wei_tag = blocked_B_layouts_allowed
+                        ? this->pick_blocked_B_layout(default_n_block)
+                        : plain_tensor_layout_tag;
+                break;
+
+            case bf16:
+                if (!blocked_B_layouts_allowed) return status::unimplemented;
+                bgmmc.wei_tag = this->pick_blocked_B_layout(default_n_block);
+                break;
+
+            default: return status::unimplemented;
+        }
+
+        if (bgmmc.wei_tag == format_tag::undef) return status::unimplemented;
 
         VCHECK_BG(memory_desc_init_by_tag(B_md, bgmmc.wei_tag),
                 VERBOSE_UNSUPPORTED_TAG);
@@ -211,27 +221,32 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
                     = bgmmc.b_dt_sz * B_d.blocking_desc().strides[dim];
         }
     } else {
-        bgmmc.wei_tag = blocked_B_layouts_allowed
-                ? memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
-                          transposed_tensor_layout_tag,
-                          blocked_64n_B_layout_tag, blocked_48n_B_layout_tag,
-                          blocked_32n_B_layout_tag, blocked_16n_B_layout_tag)
-                : memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
-                          transposed_tensor_layout_tag, acbd, adbc);
+        switch (bgmmc.wei_dt) {
+            case f32:
+                if (blocked_B_layouts_allowed) {
+                    bgmmc.wei_tag = memory_desc_matches_one_of_tag(B_md,
+                            plain_tensor_layout_tag, blocked_64n_B_layout_tag,
+                            blocked_48n_B_layout_tag, blocked_32n_B_layout_tag,
+                            blocked_16n_B_layout_tag);
+                } else {
+                    bgmmc.wei_tag = memory_desc_matches_one_of_tag(
+                            B_md, plain_tensor_layout_tag);
+                    if (bgmmc.wei_tag != plain_tensor_layout_tag)
+                        return status::unimplemented;
+                }
+                break;
 
-        // If the B memory descriptor matches both the transposed and plain
-        // version that means that for dims = [P, Q, K, N] in the weight matrix,
-        // then (K || N) == 1. That is, B is either a row or column vector. In
-        // this case it makes no difference if we treat B as row-major or
-        // column-major since they are identical for a vector. Therefore we
-        // chose to treat it as "plain" since that saves us the extra time and
-        // scratchpad memory we would need for an unnecessary transpose.
-        if (memory_desc_matches_tag(B_md, transposed_tensor_layout_tag)
-                && memory_desc_matches_tag(B_md, plain_tensor_layout_tag)) {
-            bgmmc.wei_tag = plain_tensor_layout_tag;
+            case bf16:
+                if (!blocked_B_layouts_allowed) return status::unimplemented;
+                bgmmc.wei_tag = memory_desc_matches_one_of_tag(B_md,
+                        blocked_64n_B_layout_tag, blocked_48n_B_layout_tag,
+                        blocked_32n_B_layout_tag, blocked_16n_B_layout_tag);
+                break;
+
+            default: return status::unimplemented;
         }
 
-        if (format_tag::undef == bgmmc.wei_tag) return status::unimplemented;
+        if (bgmmc.wei_tag == format_tag::undef) return status::unimplemented;
     }
 
     return status::success;
@@ -327,11 +342,20 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
         int n_blk) const {
 
     if (bgmmc.ndims > 3) return format_tag::undef;
+
     if (this->is_int8()) switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c4b : BA16a64b4a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c4b : BA16a48b4a;
             case 32: return bgmmc.ndims == 3 ? aCB16b32c4b : BA16a32b4a;
             case 16: return bgmmc.ndims == 3 ? aCB16b16c4b : BA16a16b4a;
+            default: return format_tag::undef;
+        }
+
+    if (this->is_bf16()) switch (n_blk) {
+            case 64: return bgmmc.ndims == 3 ? aCB16b64c2b : BA16a64b2a;
+            case 48: return bgmmc.ndims == 3 ? aCB16b48c2b : BA16a48b2a;
+            case 32: return bgmmc.ndims == 3 ? aCB16b32c2b : BA16a32b2a;
+            case 16: return bgmmc.ndims == 3 ? aCB16b16c2b : BA16a16b2a;
             default: return format_tag::undef;
         }
 
@@ -352,7 +376,7 @@ brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
             : brgemm_broadcast_t::per_tensor;
 }
 
-struct matmul_sve512_blocking_params_t {
+struct matmul_brgemm_blocking_params_t {
     struct matmul_params_t {
 
         matmul_params_t(int m, int n, int k, int od)
@@ -364,7 +388,7 @@ struct matmul_sve512_blocking_params_t {
         const int batch;
     };
 
-    matmul_sve512_blocking_params_t(const matmul_params_t &m, const int nthr)
+    matmul_brgemm_blocking_params_t(const matmul_params_t &m, const int nthr)
         : mp(m)
         , m_chunks(1)
         , m_blk(1)
@@ -378,8 +402,8 @@ struct matmul_sve512_blocking_params_t {
         , nthr_k(1)
         , nthr(nthr) {}
 
-    matmul_sve512_blocking_params_t &operator=(
-            const matmul_sve512_blocking_params_t &brgemm_params) {
+    matmul_brgemm_blocking_params_t &operator=(
+            const matmul_brgemm_blocking_params_t &brgemm_params) {
         m_chunks = brgemm_params.m_chunks;
         m_blk = brgemm_params.m_blk;
         m_tail = brgemm_params.m_tail;
@@ -501,10 +525,10 @@ struct matmul_sve512_blocking_params_t {
     }
 };
 
-float compute_blocking_heuristic_sve512(brgemm_matmul_conf_t &bgmmc,
+float compute_blocking_heuristic_sve_512(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
-        const matmul_sve512_blocking_params_t::matmul_params_t &matmul,
-        matmul_sve512_blocking_params_t &best_blocking) {
+        const matmul_brgemm_blocking_params_t::matmul_params_t &matmul,
+        matmul_brgemm_blocking_params_t &best_blocking) {
 
     const int nthr = bgmmc.nthr;
 
@@ -570,7 +594,7 @@ float compute_blocking_heuristic_sve512(brgemm_matmul_conf_t &bgmmc,
     for_(int n_chunk_size = n_chunks_start; n_chunk_size >= 1; --n_chunk_size)
     for (int m_blk = max_m_blk; m_blk >= min_m_blk; --m_blk) {
 
-        matmul_sve512_blocking_params_t cur_params(matmul, nthr);
+        matmul_brgemm_blocking_params_t cur_params(matmul, nthr);
         cur_params.update_params(
                 1, m_blk, n_chunk_size, n_blk, 1, k_blk, nthr_k);
 
@@ -585,8 +609,8 @@ float compute_blocking_heuristic_sve512(brgemm_matmul_conf_t &bgmmc,
 
 float compute_blocking_heuristic_sve_256(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
-        const matmul_sve512_blocking_params_t::matmul_params_t &matmul,
-        matmul_sve512_blocking_params_t &best_blocking) {
+        const matmul_brgemm_blocking_params_t::matmul_params_t &matmul,
+        matmul_brgemm_blocking_params_t &best_blocking) {
 
     const int nthr = bgmmc.nthr;
 
@@ -645,7 +669,82 @@ float compute_blocking_heuristic_sve_256(brgemm_matmul_conf_t &bgmmc,
     for_(int n_chunk_size = n_chunks_start; n_chunk_size >= 1; --n_chunk_size)
     for (int m_blk = max_m_blk; m_blk >= min_m_blk; --m_blk) {
 
-        matmul_sve512_blocking_params_t cur_params(matmul, nthr);
+        matmul_brgemm_blocking_params_t cur_params(matmul, nthr);
+        cur_params.update_params(
+                1, m_blk, n_chunk_size, n_blk, 1, k_blk, nthr_k);
+
+        float cur_imbalance = cur_params.get_imbalance();
+        if (cur_imbalance < best_imbalance) {
+            best_imbalance = cur_imbalance;
+            best_blocking = cur_params;
+        }
+    }
+    return best_imbalance;
+}
+
+// This is a direct copy of compute_blocking_heuristic_sve_256
+// with basic parameters halved; TODO: develop a good sve_128 heuristic
+float compute_blocking_heuristic_sve_128(brgemm_matmul_conf_t &bgmmc,
+        const brgemm_matmul_conf_utils_t &bm_conf_utils,
+        const matmul_brgemm_blocking_params_t::matmul_params_t &matmul,
+        matmul_brgemm_blocking_params_t &best_blocking) {
+
+    const int nthr = bgmmc.nthr;
+
+    const int max_m_blk = nstl::min(128, matmul.M);
+    int min_m = (matmul.batch > 1) ? 16 : 64;
+    int min_m_blk = nstl::min(min_m, matmul.M); // max_m_blk
+
+    int n_blk = bgmmc.N_blk;
+    const int n_chunks = div_up(matmul.N, n_blk);
+    const int max_n_chunks = bgmmc.use_buffer_a ? 4 : 1;
+    const int n_chunks_start = nstl::min(max_n_chunks, n_chunks);
+
+    int default_k_blk = (matmul.M >= 256) ? 512 : 64;
+    int k_blk = nstl::min(matmul.K, default_k_blk);
+    int start_nthr_k = 1;
+
+    // for cases with low parallel work, reduce 'min_m_blk' to
+    // increase potential parallelization balance.
+    const size_t max_parallel = matmul.batch * n_chunks;
+    const bool low_parallel_work = static_cast<size_t>(nthr) > max_parallel;
+    if (low_parallel_work) {
+
+        int best_m_blk = 0;
+        float scr = 0, best_scr = 16 * nthr;
+        for (int i = 16; i >= 4; i--) {
+            scr = 0.7 * (matmul.M % i)
+                    + 0.3 * std::abs(nthr - ((float)matmul.M / (float)i));
+            if (scr < best_scr) {
+                best_scr = scr;
+                best_m_blk = i;
+            }
+        }
+        min_m_blk = nstl::min(matmul.M, best_m_blk);
+        // Here min_m_blk is set based on M value and no.of threads. Decreasing m_blk size will
+        // increase no.of m blocks which might make better utilisation of threads. But it is found
+        // that m_blk being a factor of M is more important than max thread utilisation.Therefore
+        // in scoring that has been given more weightage(0.7). This was experimentally verified to
+        // be the best hueristics with multiple shapes.
+
+        bool low_spatial_work = matmul.M <= 40;
+        if (low_spatial_work) {
+
+            // Reduce n_blk size to increase parallel space
+            // note: over reduction of n_blk size on 2d shapes when n_chunks == 1
+            // showed significant performance degradation
+            if (!bm_conf_utils.check_n_blk_fixed()
+                    && IMPLICATION(n_chunks == 1, bgmmc.batch_ndims > 0))
+                n_blk = nstl::min(matmul.N, 32);
+        }
+    }
+
+    float best_imbalance = 1.f; // reduce
+    for_(int nthr_k = start_nthr_k; nthr_k >= 1; --nthr_k)
+    for_(int n_chunk_size = n_chunks_start; n_chunk_size >= 1; --n_chunk_size)
+    for (int m_blk = max_m_blk; m_blk >= min_m_blk; --m_blk) {
+
+        matmul_brgemm_blocking_params_t cur_params(matmul, nthr);
         cur_params.update_params(
                 1, m_blk, n_chunk_size, n_blk, 1, k_blk, nthr_k);
 
@@ -665,12 +764,17 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.M_chunk_size = bgmmc.N_chunk_size = 1;
 
-    if (is_superset(bm_conf_utils.get_isa(), sve_512)) {
+    const matmul_brgemm_blocking_params_t::matmul_params_t matmul(
+            bgmmc.M, bgmmc.N, bgmmc.K, bgmmc.batch);
+    matmul_brgemm_blocking_params_t best_blocking(matmul, bgmmc.nthr);
+
+    float best_imbalance;
+    switch (get_max_cpu_isa()) {
         // TODO:
         // *) adjust K_BLK using 'rnd_up(bgmmc.K, bgmmc.required_k_granularity)'
         //    for non-f32 datatypes.
         // *) optimize param search complexity
-
+        //
         // Approach for selecting ideal 'blocking parameters':
         // M_blk:
         // - main param for having parallel_work optimally distributed.
@@ -702,33 +806,25 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
         //
         // Batch_Size:
         // - unused.
+        case sve_512:
+            best_imbalance = compute_blocking_heuristic_sve_512(
+                    bgmmc, bm_conf_utils, matmul, best_blocking);
+            break;
 
-        const matmul_sve512_blocking_params_t::matmul_params_t matmul(
-                bgmmc.M, bgmmc.N, bgmmc.K, bgmmc.batch);
+        case sve_256:
+            best_imbalance = compute_blocking_heuristic_sve_256(
+                    bgmmc, bm_conf_utils, matmul, best_blocking);
+            break;
 
-        matmul_sve512_blocking_params_t best_blocking(matmul, bgmmc.nthr);
+        case sve_128:
+            best_imbalance = compute_blocking_heuristic_sve_128(
+                    bgmmc, bm_conf_utils, matmul, best_blocking);
+            break;
 
-        const float best_imbalance = compute_blocking_heuristic_sve512(
-                bgmmc, bm_conf_utils, matmul, best_blocking);
-
-        if (best_imbalance == 1.f) return status::unimplemented;
-
-        best_blocking.update_configuration(bgmmc);
-    } else {
-        assert(one_of(bm_conf_utils.get_isa(), sve_256));
-
-        const matmul_sve512_blocking_params_t::matmul_params_t matmul(
-                bgmmc.M, bgmmc.N, bgmmc.K, bgmmc.batch);
-
-        matmul_sve512_blocking_params_t best_blocking(matmul, bgmmc.nthr);
-
-        const float best_imbalance = compute_blocking_heuristic_sve_256(
-                bgmmc, bm_conf_utils, matmul, best_blocking);
-
-        if (best_imbalance == 1.f) return status::unimplemented;
-
-        best_blocking.update_configuration(bgmmc);
+        default: return status::unimplemented;
     }
+    if (best_imbalance == 1.f) return status::unimplemented;
+    best_blocking.update_configuration(bgmmc);
 
     return status::success;
 }
@@ -857,7 +953,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     VCHECK_BG(bm_conf_utils.set_or_check_tags(src_md, dst_md, bias_md),
             VERBOSE_UNSUPPORTED_TAG);
     VCHECK_BG(bm_conf_utils.set_or_check_B_tag(weights_md),
-            VERBOSE_UNSUPPORTED_TAG);
+            VERBOSE_UNSUPPORTED_TAG_S, "wei");
 
     bgmmc.req_wei_vnni_downconvert = bm_conf_utils.wei_down_convert_to_vnni();
 

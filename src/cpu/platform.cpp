@@ -268,6 +268,7 @@ unsigned get_per_core_cache_size(int level) {
     } else
         return 0;
 #else
+    if (x64::cpu().getDataCacheLevels() == 0) return guess(level);
     return x64::platform::get_per_core_cache_size(level, x64::platform::behavior_t::min);
 #endif
 #else

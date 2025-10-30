@@ -346,7 +346,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     case s8:
                     case u8: vpmovusdb(xmm, ymm); break;
                     case s32: break; // nothing to do
-                    default: assert("unsupported data type");
+                    default: assert(!"unsupported data type");
                 }
                 return;
             }
@@ -652,7 +652,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     case s8:
                     case u8: vpmovusdb(xmm, xmm); break;
                     case s32: break; // nothing to do
-                    default: assert("unsupported data type");
+                    default: assert(!"unsupported data type");
                 }
                 return;
             }

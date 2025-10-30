@@ -83,3 +83,6 @@
 1x512x256x1x1
 
 --reset --sdt=f16 --ddt=f32 --stag=aBCd8c16b2c --dtag=abcd 1x32x32x1
+
+# Hits qw -> 2d dw mov decomposition
+--reset --sdt=f64 --ddt=f64 --stag=abc --dtag=aBc8b 2x5x2

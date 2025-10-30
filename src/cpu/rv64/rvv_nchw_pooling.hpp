@@ -82,8 +82,7 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
             if (!attr()->post_ops_.has_default_values()) {
                 const auto &po = attr()->post_ops_;
                 if (po.len() == 1 && po.entry_[0].is_binary()) {
-                    post_ops_t local_po = po;
-                    CHECK(postops_.init(engine, local_po, *dst_md()));
+                    CHECK(postops_.init(engine, po, *dst_md()));
                 }
             }
             return status::success;

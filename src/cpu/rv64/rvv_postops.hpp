@@ -42,20 +42,21 @@ struct rvv_postops_t {
 
     rvv_postops_t() = default;
 
-    status_t init(engine_t *engine, post_ops_t &post_ops,
+    status_t init(engine_t *engine, const post_ops_t &post_ops,
             const memory_desc_t &dst_md, int post_op_start_index = 0) {
         post_op_start_index_ = post_op_start_index;
 
-        CHECK(post_ops.set_default_formats(&dst_md));
+        post_ops_t local_post_ops = post_ops;
+        CHECK(local_post_ops.set_default_formats(&dst_md));
         dst_data_type_ = dst_md.data_type;
 
         if (dst_data_type_ != data_type::f32) return status::unimplemented;
 
         post_op_primitives_.clear();
-        po_ = post_ops;
+        po_ = local_post_ops;
 
-        for (int i = post_op_start_index_; i < post_ops.len(); i++) {
-            auto &po = post_ops.entry_[i];
+        for (int i = post_op_start_index_; i < local_post_ops.len(); i++) {
+            auto &po = local_post_ops.entry_[i];
 
             if (po.is_binary()) {
                 binary_desc_t po_desc;

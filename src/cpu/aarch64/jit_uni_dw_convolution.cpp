@@ -381,11 +381,21 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 
             for (int mb = mb_start; mb < mb_end; ++mb) {
                 for (int oh = 0; oh < jcp.oh; ++oh) {
-                    const int kh_t_padding = nstl::max(0, jcp.t_pad - oh);
-                    const int bottom_excess = (oh * jcp.stride_h + jcp.kh)
-                            - (jcp.ih + jcp.t_pad);
+                    // oh_inp: top input row (no padding) for this output row
+                    /**
+                     * Calculate the input height coordinate corresponding to the current output height.
+                     * This maps from output to input by multiplying by the stride, necessary when stride > 1.
+                     */
+                    const int oh_inp = oh * jcp.stride_h;
+                    // kh_t_padding: kernel rows above valid input
+                    const int kh_t_padding = nstl::max(0, jcp.t_pad - oh_inp);
+                    // bottom_excess: kernel rows past bottom of padded input
+                    const int bottom_excess
+                            = (oh_inp + jcp.kh) - (jcp.ih + jcp.t_pad);
+                    // kh_b_padding: kernel rows below valid input
                     const int kh_b_padding
                             = bottom_excess > 0 ? bottom_excess : 0;
+                    // kh_padding = rows to skip (top + bottom); filter_off = top skip
                     set_kernel_params(&conv_params, mb, g, oh, 1,
                             zero_filter_flag | zero_bias_flag,
                             kh_t_padding + kh_b_padding, kh_t_padding);

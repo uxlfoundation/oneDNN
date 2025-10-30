@@ -208,6 +208,7 @@ struct GEMMStrategyPOD : public CommonStrategy {
     MatrixAddressingStrategy Ag, Bg;             // Strategies for accessing A/B groupwise reductions.
     int ka_load, kb_load;                        // How much of A/B is loaded at once, in k dimension
     int ka_load_masked = 0, kb_load_masked = 0;  // Same as above, when masking m/n (0 = default = same as ka/kb_load)
+    int kaq_align = 0, kbq_align = 0;            // k chunk size alignment for A/B quantization parameters (0 = default)
     bool loadBFirst = false;                     // If true, load B before A (default A then B).
     bool doubleMasking = false;                  // Allow A/B to be masked in both dimensions.
     bool kDescRem = false;                       // Allow descriptor-based k remainder handling for A/B.

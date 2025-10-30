@@ -282,6 +282,31 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         kb_load_masked = align_up(kb_load_masked, minOPCount);
     }
 
+    // Handle k load size for quantization parameter loads.
+    // Enlarge k dimensions for scattered quantization parameter loads to get full DWords, if configured.
+    auto autoQAlign = [&](bool isA, Type Txo, Type Txs, const MatrixAddressing &XO, const MatrixAddressing &XS) {
+        auto slayout  = isA ? MatrixLayout::T : MatrixLayout::N;
+        auto xqGroupK = isA ? problem.aqGroupK : problem.bqGroupK;
+        auto &align   = isA ? kaq_align : kbq_align;
+        bool xo2D     = (isA ? problem.aoPtrDims : problem.boPtrDims) >= 2;
+        bool xs2D     = (isA ? problem.asPtrDims : problem.bsPtrDims) >= 2;
+
+        if (xqGroupK == 0)
+            return;
+        else if (align > 0)
+            align = align_up(align, xqGroupK);
+        else {
+            align = xqGroupK;
+            if (xo2D && XO.layout == slayout && Txo.paddedSize() < 4)
+                align = std::max(align, xqGroupK * 4 / Txo);
+            if (xs2D && XS.layout == slayout && Txs.paddedSize() < 4)
+                align = std::max(align, xqGroupK * 4 / Txs);
+        }
+    };
+
+    autoQAlign(true,  problem.Tao, problem.Ta_scale, problem.AO, problem.A_scale);
+    autoQAlign(false, problem.Tbo, problem.Tb_scale, problem.BO, problem.B_scale);
+
     // Systolic handling.
     if (systolic) {
         auto params = systolicParams(hw, problem, *this);
@@ -384,8 +409,8 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (kInterleave) ukAlign = lcm(ukAlign, kInterleaveChunk);
     if (repackC) ukAlign = lcm(ukAlign, repackC);
 
-    if (problem.quantized2DA()) ukAlign = lcm(ukAlign, problem.aqGroupK);
-    if (problem.quantized2DB()) ukAlign = lcm(ukAlign, problem.bqGroupK);
+    if (problem.quantized2DA()) ukAlign = lcm(ukAlign, kaq_align);
+    if (problem.quantized2DB()) ukAlign = lcm(ukAlign, kbq_align);
     if (l3PrefetchA) ukAlign = lcm(ukAlign, ka_prefetchL3);
     if (l3PrefetchB) ukAlign = lcm(ukAlign, kb_prefetchL3);
 
@@ -506,6 +531,10 @@ bool GEMMStrategy::minimize(HW hw, const GEMMProblem &problem)
 
     // Remove k chaining.
     kChain = 1;
+
+    // Minimize scale/offset loads.
+    kaq_align = problem.aqGroupK;
+    kbq_align = problem.bqGroupK;
 
     // Reduce k unroll for SLM copies.
     if (slmA || slmB) {

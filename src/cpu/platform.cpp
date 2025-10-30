@@ -32,8 +32,8 @@
 #endif
 
 #if DNNL_X64
-#include "cpu/x64/platform.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
+#include "cpu/x64/platform.hpp"
 #elif DNNL_AARCH64
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #if defined(DNNL_AARCH64_USE_ACL)
@@ -269,7 +269,7 @@ unsigned get_per_core_cache_size(int level) {
         return 0;
 #else
     if (x64::cpu().getDataCacheLevels() == 0) return guess(level);
-    return x64::platform::get_per_core_cache_size(level, x64::platform::behavior_t::min);
+    return x64::platform::get_per_core_cache_size(level);
 #endif
 #else
     return guess(level);

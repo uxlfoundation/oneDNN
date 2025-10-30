@@ -226,7 +226,7 @@ struct dummy_impl_t : public op_executable_t {
         // Otherwise, gather all dependencies.
         auto q = dnnl::ocl_interop::get_command_queue(stream);
         cl_event e;
-        auto err = clEnqueueMarkerWithWaitList(
+        auto err = xpu::ocl::clEnqueueMarkerWithWaitList(
                 q, static_cast<cl_uint>(deps.size()), deps.data(), &e);
         assert(err == CL_SUCCESS);
         MAYBE_UNUSED(err);
@@ -524,7 +524,7 @@ struct host_scalar_executable_t : public op_executable_t {
             UNUSED_STATUS(xpu::ocl::usm::memcpy(stream.get(),
                     dst_mem.get_data_handle(), static_cast<const void *>(&val),
                     size, num, empty ? nullptr : deps.data(), &e));
-            clWaitForEvents(1, &e);
+            xpu::ocl::clWaitForEvents(1, &e);
         });
         return e;
     }
@@ -1904,7 +1904,7 @@ struct bn_folding_t : public op_executable_t {
         xpu::ocl::usm::memcpy(stream.get(), epsilon_mem.get_data_handle(),
                 &desc_.epsilon_, epsilon_mem.get_desc().get_size(), 0, nullptr,
                 &e);
-        clWaitForEvents(1, &e);
+        xpu::ocl::clWaitForEvents(1, &e);
 
         auto ocl_deps = dnnl::ocl_interop::execute(add_prim_, stream,
                 {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
@@ -1935,7 +1935,7 @@ struct bn_folding_t : public op_executable_t {
             xpu::ocl::usm::memcpy(stream.get(), valid_bias.get_data_handle(),
                     zero.data(), valid_bias.get_desc().get_size(), 0, nullptr,
                     &e);
-            clWaitForEvents(1, &e);
+            xpu::ocl::clWaitForEvents(1, &e);
 
             auto ocl_deps3 = dnnl::ocl_interop::execute(sub_prim_, stream,
                     {{DNNL_ARG_SRC_0, valid_bias}, {DNNL_ARG_SRC_1, mean},

@@ -22,6 +22,12 @@ endif()
 append(CMAKE_C_FLAGS "${CMAKE_EXAMPLE_CCXX_FLAGS}")
 append(CMAKE_CXX_FLAGS "${CMAKE_EXAMPLE_CCXX_FLAGS}")
 
+# link examples directly to OCL
+if(DNNL_GPU_RUNTIME STREQUAL "OCL" OR (DNNL_GPU_SYCL AND DNNL_GPU_VENDOR STREQUAL "INTEL"))
+    find_package(OpenCL REQUIRED)
+    list(APPEND EXTRA_SHARED_LIBS OpenCL::OpenCL)
+endif()
+
 if(DNNL_WITH_SYCL)
     if(DNNL_SYCL_GENERIC)
         CHECK_CXX_COMPILER_FLAG("-fsycl -fsycl-targets=nvptx64-nvidia-cuda" NVIDIA_TARGET_SUPPORTED)

@@ -154,6 +154,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_NONTRIVIAL_STRIDE);
     VDISPATCH_MATMUL(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_MATMUL(!(is_bf16 && !mayiuse_bf16()), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
     VDISPATCH_MATMUL(
             no_dynamic_strides_for_B_and_C, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
@@ -180,7 +181,6 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     const int max_m_ker_idx
             = bgmmc_.is_runtime_M ? max_num_dynamic_m_tails + 1 : 2;
 
-    assert(!is_bf16);
     const auto backup_isa = isa;
     for_(int i_bs = 0; i_bs < 2; i_bs++)
     for_(int i_init = 0; i_init < 2; i_init++)
@@ -1518,6 +1518,7 @@ private:
 
 template struct brgemm_matmul_t<sve_512>;
 template struct brgemm_matmul_t<sve_256>;
+template struct brgemm_matmul_t<sve_128>;
 
 } // namespace matmul
 } // namespace aarch64

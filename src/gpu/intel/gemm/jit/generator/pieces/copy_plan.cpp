@@ -2523,6 +2523,7 @@ void CopyPlan::legalizeRegions()
             i.src0.offset *= 2;
             if (i.dst.stride == 2) {
                 /* Use 2D regioned src */
+                i.simd *= 2;
                 i.dst.stride = 1;
                 i.src0.vs = i.src0.stride;
                 i.src0.stride = 1;

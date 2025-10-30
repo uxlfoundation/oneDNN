@@ -1,13 +1,13 @@
 #include <algorithm>
-#include "cpu/x64/platform.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
+#include "cpu/x64/platform.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace x64 {
 namespace platform {
-    bool is_hybrid() {
+bool is_hybrid() {
     // currently only Intel is using hybrid architecture
     if (!x64::cpu().has(Xbyak::util::Cpu::tINTEL)) return false;
     // check CPUID.07H:EDX[15] (Hybrid bit)
@@ -165,7 +165,7 @@ void populate_cache_topology_from_cpuid(cache_topology_t &cache_topology) {
                     uint32_t existing
                             = cache_topology.caches[idx].num_sharing_cores;
                     uint32_t newval
-                            = std::min(existing, logical_processors_at_level);
+                            = (std::min)(existing, logical_processors_at_level);
                     if (newval != existing)
                         cache_topology.caches[idx].num_sharing_cores = newval;
                 }
@@ -390,10 +390,6 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
     // This is a little backwards since we have to check each cache against all cores
     // to see which core types intersect with the cache's processor affinity mask.
     // This this will map each cache to the core_type that uses it.
-    // The `add_cache` helper function is responsible for finding the cache level,
-    // size, and sharing cores. And placing those values in the cache_map.
-    std::map<std::pair<core_type, int>, cache_info_t> cache_map;
-
     offset = 0;
     while (offset < bufferSize) {
         auto *info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(
@@ -451,9 +447,10 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
                         cache_topology.caches[idx] = info;
                     } else {
                         // Merge sharing information conservatively.
-                        cache_topology.caches[idx].num_sharing_cores = std::max(
-                                cache_topology.caches[idx].num_sharing_cores,
-                                sharing_cores);
+                        cache_topology.caches[idx].num_sharing_cores
+                                = (std::max)(cache_topology.caches[idx]
+                                                     .num_sharing_cores,
+                                        sharing_cores);
                     }
                 };
 
@@ -469,20 +466,6 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
             }
         }
         offset += info->Size;
-    }
-
-    // Third pass: populate cache_topology structure from accumulator
-    for (const auto &entry : cache_map) {
-        int type_idx = (entry.first.first == core_type::p_core) ? 0 : 1;
-        //int level = entry.second.level;
-        const auto &cache_info = entry.second;
-
-        size_t idx = type_idx * cache_topology_t::max_cache_levels
-                + (cache_info.level);
-        if (idx < cache_topology_t::max_cache_levels
-                        * cache_topology_t::max_core_types) {
-            cache_topology.caches[idx] = cache_info;
-        }
     }
 
     // If this is not a hybrid system, copy P-core data to E-core slots
@@ -808,38 +791,42 @@ void init_cache_topology(cache_topology_t &cache_topology) {
 //TODO: George remove before final PR
 #define DEBUG_PRINT_CACHE_TOPOLOGY 0
 #if DEBUG_PRINT_CACHE_TOPOLOGY
-    {
-        // Debug printout of the discovered global cache topology
-        printf("Global cache topology initialized: is_hybrid=%d\n",
-               cache_topology.is_hybrid ? 1 : 0);
+        {
+            // Debug printout of the discovered global cache topology
+            printf("Global cache topology initialized: is_hybrid=%d\n",
+                    cache_topology.is_hybrid ? 1 : 0);
 
-        for (size_t type_idx = 0; type_idx < cache_topology_t::max_core_types;
-             ++type_idx) {
-            for (size_t level_slot = 0; level_slot < cache_topology_t::max_cache_levels;
-                 ++level_slot) {
-                size_t idx = type_idx * cache_topology_t::max_cache_levels + level_slot;
-                const auto &ci = cache_topology.caches[idx];
-                if (ci.size == 0) continue; // skip empty slots
+            for (size_t type_idx = 0;
+                    type_idx < cache_topology_t::max_core_types; ++type_idx) {
+                for (size_t level_slot = 0;
+                        level_slot < cache_topology_t::max_cache_levels;
+                        ++level_slot) {
+                    size_t idx = type_idx * cache_topology_t::max_cache_levels
+                            + level_slot;
+                    const auto &ci = cache_topology.caches[idx];
+                    if (ci.size == 0) continue; // skip empty slots
 
-                const char *ctype_str = (ci.ctype == core_type::p_core)
-                        ? "p_core"
-                        : (ci.ctype == core_type::e_core) ? "e_core" : "default_core";
+                    const char *ctype_str = (ci.ctype == core_type::p_core)
+                            ? "p_core"
+                            : (ci.ctype == core_type::e_core) ? "e_core"
+                                                              : "default_core";
 
-                printf("cache[%zu] type_idx=%zu slot=%zu: level=%u size=%u shared=%u ctype=%s\n",
-                       idx, type_idx, level_slot, (unsigned)ci.level, (unsigned)ci.size,
-                       (unsigned)ci.num_sharing_cores, ctype_str);
+                    printf("cache[%zu] type_idx=%zu slot=%zu: level=%u size=%u "
+                           "shared=%u ctype=%s\n",
+                            idx, type_idx, level_slot, (unsigned)ci.level,
+                            (unsigned)ci.size, (unsigned)ci.num_sharing_cores,
+                            ctype_str);
+                }
             }
         }
-    }
 #endif
     });
 }
 
-
 // This is the legacy implementation of get_per_core_cache_size
 // which does not consider hybrid architectures. An only uses
 // cpuid to get the cache size per core. Which can be inaccurate
-// due to the 0x1A leaf often reporting the maximum number of 
+// due to the 0x1A leaf often reporting the maximum number of
 // cores sharing a cache instead of the actual number of cores
 // sharing a cache. This is compensated by using the topology
 // leaf (0x0B or 0x1F) to refine the number of sharing cores.
@@ -912,7 +899,7 @@ unsigned get_per_core_cache_size(int level, behavior_t btype) {
                 }
             }
 
-        case behavior_t::max: return std::max(pcore_size, ecore_size); break;
+        case behavior_t::max: return (std::max)(pcore_size, ecore_size); break;
         case behavior_t::
                 unknown: // [[fallthrough]]; // fallthrough attribute is a C++17 feature
         default:
@@ -923,8 +910,8 @@ unsigned get_per_core_cache_size(int level, behavior_t btype) {
     return get_per_core_cache_size_legacy(level);
 }
 
-} // namespace dnnl::impl::cpu::x64::platform
-} // namespace dnnl::impl::cpu::x64
-} // namespace dnnl::impl::cpu
-} // namespace dnnl::impl
+} // namespace platform
+} // namespace x64
+} // namespace cpu
+} // namespace impl
 } // namespace dnnl

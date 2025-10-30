@@ -19,7 +19,6 @@ enum class core_type : int {
     default_core = p_core // Default core (used for non-hybrid CPUs)
 };
 
-
 // get the core_type of the core the calling thread is running on
 // to get the core_type of a specific core, set thread affinity
 // to that core
@@ -82,12 +81,12 @@ enum class behavior_t {
 //   uses the get_per_core_cache_size(int level) function.
 //
 // TODO: George test on systems that only have E-cores
-unsigned get_per_core_cache_size(int level, behavior_t btype);
+unsigned get_per_core_cache_size(int level, behavior_t btype = behavior_t::min);
 
-} // namespace dnnl::impl::cpu::x64::platform
-} // namespace dnnl::impl::cpu::x64
-} // namespace dnnl::impl::cpu
-} // namespace dnnl::impl
+} // namespace platform
+} // namespace x64
+} // namespace cpu
+} // namespace impl
 } // namespace dnnl
 
 #endif

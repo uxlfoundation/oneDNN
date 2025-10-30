@@ -221,7 +221,8 @@ a non-negative integer value. The default value is `0`. Refer to
 is set to `direct` (the default), the driver will execute normally. When `MODE`
 is set to `graph` it instructs the driver to execute on a graph backend.
 Currently this feature is limited to the experimental SYCL Graph feature on
-DPC++ runtime with Level Zero backend.
+DPC++ runtime for devices that support the `sycl_ext_oneapi_limited_graph`
+aspect.
 
 ## Correctness mode settings
 

@@ -178,7 +178,7 @@ struct ref_concat_t : public primitive_t {
                 exec_args_t r_args;
                 r_args[DNNL_ARG_SRC]
                         = ctx.args().at(DNNL_ARG_MULTIPLE_SRC + i).clone();
-                r_args[DNNL_ARG_DST] = {tent_dst_i.get(), false,
+                r_args[DNNL_ARG_DST] = {tent_dst_i.release(), false,
                         /* take_memory_ownership = */ true};
                 if (src_scales_arg != ctx.args().end())
                     r_args[DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC]

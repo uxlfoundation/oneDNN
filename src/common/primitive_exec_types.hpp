@@ -78,9 +78,9 @@ struct memory_arg_t {
     bool is_const() const { return is_const_; }
 
 private:
-    memory_t *mem_;
-    bool is_const_;
-    bool take_memory_ownership_;
+    memory_t *mem_ = nullptr;
+    bool is_const_ = false;
+    bool take_memory_ownership_ = false;
 };
 
 struct primitive_desc_t;

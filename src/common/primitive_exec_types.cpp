@@ -41,6 +41,10 @@ memory_arg_t &memory_arg_t::operator=(memory_arg_t &&other) {
     is_const_ = other.is_const_;
     take_memory_ownership_ = other.take_memory_ownership_;
 
+    other.mem_ = nullptr;
+    other.is_const_ = false;
+    other.take_memory_ownership_ = false;
+
     return *this;
 }
 

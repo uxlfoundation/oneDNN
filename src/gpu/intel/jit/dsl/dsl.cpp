@@ -18,8 +18,8 @@
 #include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
 #include "gpu/intel/jit/ir/builder.hpp"
-#include "gpu/intel/jit/ir/message_patterns.hpp"
-#include "gpu/intel/jit/ir/v2/tensor.hpp"
+#include "gpu/intel/jit/ir/fma.hpp"
+#include "gpu/intel/jit/ir/send.hpp"
 #include "gpu/intel/jit/pass/dpas.hpp"
 #include "gpu/intel/logging.hpp"
 
@@ -349,7 +349,7 @@ tensor_t def(const std::string &name, layout_t layout, const expr_t &value,
         type::attr_t attr) {
     if (any(attr & type::attr_t::slm)) {
         gpu_assert(value.is_empty());
-        auto alloc_elems = into<int>(size_bytes(layout) / layout.type().size());
+        auto alloc_elems = into<int>(layout.elems());
         auto buf = def(name, layout.type().with_slm()[alloc_elems]);
         int bytes = (to_cpp<int>(layout.offset()) + alloc_elems)
                 * layout.type().size();
@@ -411,6 +411,16 @@ void scatter_send(const tensor_t &t, const global_tensor_t &g,
     gpu_warning() << "Scatter messages are not yet implemented";
 };
 
+layout_t prefetch_layout(const global_tensor_t &g, const idx_t &w_idx) {
+    std::vector<layout::block_t> blocks;
+    blocks.reserve(g.tile.size());
+    blocks.emplace_back(w_idx, g.tile[w_idx]);
+    for (auto &idx : g.tile) {
+        if (idx != w_idx) blocks.emplace_back(idx, g.tile[idx]);
+    }
+    return layout_t(g.type, blocks);
+}
+
 void block_send(const tensor_t &t, const global_tensor_t &g,
         send_kind_t &op_kind, const icoord_t &base, const send_hint_t &hint) {
     bool is_prefetch = t.buf.is_empty();
@@ -430,7 +440,8 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
     }
     auto type = g.type;
 
-    v2::for_each(operation_tile, tile, [&](const icoord_t &coord) {
+    auto operation_layout = is_prefetch ? prefetch_layout(g, w_idx) : t.layout;
+    for (auto &coord : operation_layout.iter(tile)) {
         auto buffer = is_prefetch ? expr_t() : t.subbuf(coord);
         auto width = !w_idx.is_undef()
                 ? std::min(tile[w_idx], operation_tile[w_idx] - coord[w_idx])
@@ -461,7 +472,7 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
             width_bytes -= send_type.size();
             coord_local[w_idx] += send_type.size() / type.size();
         }
-    });
+    }
 }
 
 struct conf_2d_t {
@@ -510,7 +521,8 @@ void block_2d_send(const conf_2d_t &conf, const tensor_t &t,
     auto type = g.type;
     auto tile = conf.get_tile({w_idx, h_idx});
 
-    v2::for_each(operation_tile, tile, [&](const icoord_t &coord) {
+    auto operation_layout = is_prefetch ? prefetch_layout(g, w_idx) : t.layout;
+    for (auto &coord : operation_layout.iter(tile)) {
         auto buffer = is_prefetch ? expr_t() : t.subbuf(coord);
         int width = into<int>(
                 std::min(tile[w_idx], operation_tile[w_idx] - coord[w_idx]));
@@ -537,7 +549,7 @@ void block_2d_send(const conf_2d_t &conf, const tensor_t &t,
 
         append(send_func.as<send_t>()(g.buf, g.base_offset * type.size(),
                 buffer, {}, width_idx, height_idx));
-    });
+    }
 }
 
 void send(const tensor_t &t, const global_tensor_t &g, send_kind_t op_kind,
@@ -618,7 +630,7 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         gpu_assert(C.layout[0].size == simd);
         std::vector<stmt_t> dpas_stmts;
 
-        v2::for_each(tile, inst_tile, [&](const icoord_t &coord) {
+        for (auto &coord : C.layout.iter(inst_tile)) {
             int simd = (int)inst_tile[simd_idx];
             auto sdepth = inst_tile[sdepth_idx] / sdepth_pack;
             auto rcount = std::min(inst_tile[rcount_idx],
@@ -639,7 +651,7 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
             auto src1 = A.subbuf(get_coord(A, base + coord));
             auto src2 = B.subbuf(get_coord(B, base + coord));
             dpas_stmts.emplace_back(dpas.as<dpas_t>()(dst, dst, src1, src2));
-        });
+        }
         append(inject_dpas_atomic(stmt_seq_t::make(dpas_stmts),
                 /*filter_by_label=*/false));
     } else {
@@ -664,7 +676,7 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         int b_stride = is_b_bcast ? 0 : int(B.layout.stride(n_idx));
 
         gpu_assert(tile[simd_idx] * C.layout.type().size() % grf_size() == 0);
-        v2::for_each(tile, inst_tile, [&](const icoord_t &coord) {
+        for (auto &coord : C.layout.iter(inst_tile)) {
             int simd = (int)std::min(
                     inst_tile[simd_idx], tile[simd_idx] - coord[simd_idx]);
 
@@ -677,7 +689,7 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
             auto src2 = B.subbuf(base + coord);
 
             append(mad.as<mad_t>()(dst, dst, src1, src2));
-        });
+        }
     }
 }
 
@@ -722,7 +734,7 @@ void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
 
     auto subtile_elems = matching_subtile.elems();
 
-    v2::for_each(tile, matching_subtile, [&](const icoord_t &coord) {
+    for (auto &coord : dst.layout.iter(matching_subtile)) {
         auto dst_buf = dst.subbuf(coord);
         auto src0_buf = src0.subbuf(coord);
         auto src1_buf = src1.subbuf(coord);
@@ -737,7 +749,7 @@ void binary(op_kind_t op, const tensor_t &dst, const tensor_t &src0,
             assign(dst_buf[dst.layout.type().size() * idx],
                     binary_op_t::make(op, s0, s1));
         }
-    });
+    }
 }
 
 void barrier() {

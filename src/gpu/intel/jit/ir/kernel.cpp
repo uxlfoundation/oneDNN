@@ -41,6 +41,26 @@ kernel::iface_t::iface_t(const ngen::InterfaceHandler &iface)
     }
 }
 
+const expr_t &kernel::iface_t::operator[](size_t idx) const {
+    gpu_assert(idx < nargs());
+    return args_[idx].var;
+}
+expr_t kernel::iface_t::find_arg(
+        const std::string &name, bool allow_empty) const {
+    auto *arg = find_arg_impl(name);
+    if (arg) return arg->var;
+    if (!allow_empty)
+        gpu_error_not_expected() << "Argument not found: " << name;
+    return expr_t();
+}
+
+size_t kernel::iface_t::index(const std::string &name) const {
+    for (size_t i = 0; i < nargs(); i++) {
+        if (args_[i].name() == name) return i;
+    }
+    return -1;
+}
+
 void kernel::iface_t::register_arg(
         const std::string &name, const type_t &type) {
     register_arg(var_t::make(type, name));

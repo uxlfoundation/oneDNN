@@ -23,6 +23,7 @@
 #include "gpu/intel/jit/ir/v2/plan_utils.hpp"
 #include "gpu/intel/jit/ir/v2/reqs.hpp"
 #include "gpu/intel/jit/ir/v2/tensor.hpp"
+#include "gpu/intel/jit/pass/simplify.hpp"
 
 #include <string>
 

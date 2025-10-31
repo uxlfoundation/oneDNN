@@ -54,15 +54,15 @@ inline int block_2d_w_alignment(int type_size) {
     return std::max(4, type_size);
 }
 
-inline bool block_2d_width_ok(dim_t width, int type_size) {
-    dim_t width_bytes = width * type_size;
+inline bool block_2d_width_ok(int64_t width, int type_size) {
+    int64_t width_bytes = width * type_size;
     if (width_bytes < block_2d_min_dim()) return false;
     if (width_bytes > block_2d_max_dim()) return false;
     if (width_bytes % block_2d_w_alignment(type_size) != 0) return false;
     return true;
 }
 
-inline bool block_2d_height_ok(dim_t height) {
+inline bool block_2d_height_ok(int64_t height) {
     if (height > block_2d_max_dim()) return false;
     return true;
 }
@@ -78,8 +78,8 @@ inline int block_2d_pitch_alignment(ngen::HW hw) {
 }
 
 inline bool block_2d_pitch_ok(
-        ngen::HW hw, dim_t pitch, int type_size, bool use_xy = true) {
-    dim_t pitch_bytes = pitch * type_size;
+        ngen::HW hw, int64_t pitch, int type_size, bool use_xy = true) {
+    int64_t pitch_bytes = pitch * type_size;
     if (pitch_bytes < block_2d_min_dim()) return false;
     // 2^24 Pitch does not work on Xe2/Xe3
     if (pitch_bytes > block_2d_max_dim() - 1) return false;

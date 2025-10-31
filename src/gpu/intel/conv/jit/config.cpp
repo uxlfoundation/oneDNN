@@ -1049,8 +1049,8 @@ status_t init_fma_kind(
         config_t &cfg, convolution_pd_t *pd, impl::engine_t *engine) {
     if (cfg.fma_kind_param().is_overridden()) return status::success;
     const auto &prb = cfg.prb();
-    auto fma_kind = get_supported_fma_kind(
-            cfg.hw(), prb.a_data_type, prb.b_data_type, prb.acc_data_type);
+    auto fma_kind = get_supported_fma_kind(cfg.hw(), to_ir(prb.a_data_type),
+            to_ir(prb.b_data_type), to_ir(prb.acc_data_type));
     // Force mad for some cases
     if (should_use_mad(prb)) fma_kind = fma_kind_t::mad;
     VDISPATCH_CHECK(pd, engine, fma_kind != fma_kind_t::undef,

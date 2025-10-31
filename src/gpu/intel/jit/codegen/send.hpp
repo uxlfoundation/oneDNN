@@ -19,7 +19,7 @@
 
 #include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
-#include "gpu/intel/jit/ir/message.hpp"
+#include "gpu/intel/jit/ir/send.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "ngen.hpp"
 
@@ -28,6 +28,40 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+
+inline ngen::CacheSettingsLSC get_cache_settings(
+        const send_t &send, const hw_t &hw) {
+    auto ret = ngen::CacheSettingsLSC::Default;
+    bool is_load = send.is_load() || send.is_load_2d();
+    bool is_store = send.is_store() || send.is_store_2d();
+    bool is_prefetch = send.is_prefetch() || send.is_prefetch_2d();
+    switch (send.cache_hint) {
+        case send_cache_hint_t::undef:
+            switch (send.hw.ngen_hw()) {
+                case ngen::HW::XeHPG:
+                    // Use default cache policy on xelpg to avoid suspected driver issue.
+                    if (is_store && hw.systolic_support())
+                        ret = ngen::CacheSettingsLSC::L1WB_L3WB;
+                    break;
+                case ngen::HW::XeHPC:
+                    if (is_store) {
+                        ret = ngen::CacheSettingsLSC::L1UC_L3WB;
+                    } else if (is_load || is_prefetch) {
+                        ret = ngen::CacheSettingsLSC::L1C_L3C;
+                    }
+                    break;
+                default: break;
+            }
+            break;
+        case send_cache_hint_t::load_once:
+            ret = ngen::CacheSettingsLSC::L1C_L3C;
+            break;
+        case send_cache_hint_t::hw_default:
+            ret = ngen::CacheSettingsLSC::Default;
+            break;
+    }
+    return ret;
+}
 
 template <typename DataSpecT, typename = void>
 struct atomic_helper_t {

@@ -14,11 +14,12 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_UTILS_NGEN_TYPE_BRIDGE_HPP
-#define GPU_INTEL_JIT_UTILS_NGEN_TYPE_BRIDGE_HPP
+#ifndef GPU_INTEL_JIT_UTILS_TYPE_BRIDGE_HPP
+#define GPU_INTEL_JIT_UTILS_TYPE_BRIDGE_HPP
 
 #include "common/c_types_map.hpp"
 #include "gpu/intel/compute/device_info.hpp"
+#include "gpu/intel/jit/ir/include/type.hpp"
 #include "ngen.hpp"
 
 namespace dnnl {
@@ -103,6 +104,51 @@ inline compute::gpu_arch_t convert_ngen_arch_to_dnnl(ngen::HW gpu_arch) {
         case ngen::HW::Unknown: return compute::gpu_arch_t::unknown;
     }
     return compute::gpu_arch_t::unknown;
+}
+
+// type_t and dnnl_data_type_t convertors.
+inline data_type_t to_dnnl(const type_t &type) {
+    gpu_assert(type.elems() == 1) << type;
+    gpu_assert(!type.is_ptr() == 1) << type;
+    if (type.is_f4_e3m0()) return data_type::f4_e3m0;
+    if (type.is_f4_e2m1()) return data_type::f4_e2m1;
+    if (type.is_bf8()) return data_type::f8_e5m2;
+    if (type.is_hf8()) return data_type::f8_e4m3;
+    if (type.is_bf16()) return data_type::bf16;
+    if (type.is_f16()) return data_type::f16;
+    if (type.is_tf32()) return data_type::tf32;
+    if (type.is_f32()) return data_type::f32;
+    if (type.is_f64()) return data_type::f64;
+    if (type.is_s32()) return data_type::s32;
+    if (type.is_s8()) return data_type::s8;
+    if (type.is_u8()) return data_type::u8;
+    gpu_error_not_expected();
+    return data_type::undef;
+}
+
+inline type_t to_ir(const data_type_t &dt) {
+    if (dt == data_type::undef) return type_t();
+    switch ((int)dt) {
+#define CASE(x) \
+    case data_type::x: return type_t::x();
+        CASE(f4_e3m0);
+        CASE(f4_e2m1);
+        CASE(f8_e5m2);
+        CASE(f8_e4m3);
+        CASE(bf16);
+        CASE(f16);
+        CASE(tf32);
+        CASE(f32);
+        CASE(f64);
+        CASE(s32);
+        CASE(s8);
+        CASE(u8);
+        CASE(s4);
+        CASE(u4);
+#undef CASE
+        default: gpu_error_not_expected();
+    }
+    return type_t();
 }
 
 } // namespace jit

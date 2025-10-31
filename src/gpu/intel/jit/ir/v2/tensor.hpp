@@ -33,6 +33,11 @@ namespace v2 {
 
 using jit::operator<<;
 
+inline expr_t div_up(const expr_t &a, const expr_t &b) {
+    return const_fold_non_recursive(
+            binary_op_t::make(op_kind_t::_div_up, a, b));
+}
+
 // Stores upper bounds for variables.
 class var_range_info_t {
 public:

@@ -16,7 +16,7 @@
 
 #include "gpu/intel/gemm/jit/pd.hpp"
 #include "common/c_types_map.hpp"
-#include "common/tag_traits.hpp"
+#include "gpu/intel/gemm/exec_types.hpp"
 #include "gpu/intel/jit/eltwise_injector.hpp"
 #include "gpu/intel/utils.hpp"
 

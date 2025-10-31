@@ -53,54 +53,20 @@ struct exec_args_t {
     impl::exec_args_t exec_args;
 };
 
-struct exec_ctx_t {
+struct exec_ctx_t : impl::exec_ctx_t {
     exec_ctx_t(impl::stream_t *stream, const exec_args_t &args,
             const desc_t *desc = nullptr)
-        : stream_(stream), args_(args), desc_(desc) {}
+        : impl::exec_ctx_t(stream), args_(args), desc_(desc) {}
     exec_ctx_t(const impl::exec_ctx_t &other, const exec_args_t &args,
             const desc_t *desc = nullptr)
-        : stream_(other.stream())
-        , args_(args)
-        , desc_(desc)
-        , resource_mapper_(other.get_resource_mapper())
-        , scratchpad_grantor_(&other.get_scratchpad_grantor()) {}
+        : impl::exec_ctx_t(other, {}), args_(args), desc_(desc) {}
 
-    impl::stream_t *stream() const { return stream_; }
     const exec_args_t &args() const { return args_; }
     const desc_t *desc() const { return desc_; }
 
-    impl::exec_ctx_t into_exec_ctx_t(impl::exec_args_t &&args) const {
-        impl::exec_ctx_t ctx(stream(), std::move(args));
-        ctx.set_scratchpad_grantor(scratchpad_grantor_);
-        ctx.set_resource_mapper(resource_mapper_);
-        return ctx;
-    };
-
-    void set_scratchpad_grantor(
-            const memory_tracking::grantor_t *scratchpad_grantor) {
-        scratchpad_grantor_ = scratchpad_grantor;
-    }
-
-    const memory_tracking::grantor_t &get_scratchpad_grantor() const {
-        assert(scratchpad_grantor_);
-        return *scratchpad_grantor_;
-    }
-
-    const resource_mapper_t *get_resource_mapper() const {
-        assert(resource_mapper_);
-        return resource_mapper_;
-    }
-
-    void set_resource_mapper(const resource_mapper_t *resource_mapper) {
-        resource_mapper_ = resource_mapper;
-    }
-
 private:
-    impl::stream_t *stream_;
     exec_args_t args_;
     const desc_t *desc_ = nullptr;
-    const resource_mapper_t *resource_mapper_ = nullptr;
-    const memory_tracking::grantor_t *scratchpad_grantor_ = nullptr;
 };
 
 } // namespace gemm

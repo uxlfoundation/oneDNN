@@ -26,7 +26,6 @@
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/compute/types_interop.hpp"
 #include "gpu/intel/engine.hpp"
-#include "gpu/intel/gemm/exec_types.hpp"
 #include "gpu/intel/kernel_cache.hpp"
 #include "gpu/intel/stream.hpp"
 #include "xpu/context.hpp"
@@ -138,16 +137,6 @@ struct primitive_t : public gpu::primitive_t {
                 VERBOSE_KERNEL_CREATION_FAIL, kernel_name);
         kernel = kernels[0];
         return status::success;
-    }
-
-    // TODO: use inheritance for exec_ctx_t to get rid of such places...
-    static status_t parallel_for(const gemm::exec_ctx_t &ctx,
-            const compute::nd_range_t &range, const compute::kernel_t &kernel,
-            const compute::kernel_arg_list_t &arg_list) {
-        auto compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
-        return parallel_for(*compute_stream, range, kernel, arg_list,
-                compute_stream->ctx().get_deps(),
-                compute_stream->ctx().get_deps());
     }
 
     static status_t parallel_for(const exec_ctx_t &ctx,

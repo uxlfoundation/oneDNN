@@ -82,6 +82,36 @@ struct cache_topology_t {
     }
 };
 
+// If this is not a hybrid system, and the current core is a P-core,
+// copy P-core cache info to E-core slots
+// else if current core is E-core, copy E-core info to P-core slots
+// This is to make sure that non-hybrid systems have both core types populated
+// with the same cache info.
+void copy_cache_topology_non_hybrid(cache_topology_t &cache_topology) {
+    core_type ctype = get_core_type();
+    if (ctype == core_type::p_core) {
+        for (size_t level = 0; level < cache_topology_t::max_cache_levels;
+                level++) {
+            size_t p_idx = 0 * cache_topology_t::max_cache_levels + level;
+            size_t e_idx = 1 * cache_topology_t::max_cache_levels + level;
+            if (cache_topology.caches[p_idx].level > 0) {
+                cache_topology.caches[e_idx] = cache_topology.caches[p_idx];
+                cache_topology.caches[e_idx].ctype = core_type::e_core;
+            }
+        }
+    } else {
+        for (size_t level = 0; level < cache_topology_t::max_cache_levels;
+                level++) {
+            size_t e_idx = 1 * cache_topology_t::max_cache_levels + level;
+            size_t p_idx = 0 * cache_topology_t::max_cache_levels + level;
+            if (cache_topology.caches[e_idx].level > 0) {
+                cache_topology.caches[p_idx] = cache_topology.caches[e_idx];
+                cache_topology.caches[p_idx].ctype = core_type::p_core;
+            }
+        }
+    }
+}
+
 //------------------Start CPUID cache topology code-----------------------------
 
 void populate_cache_topology_from_cpuid(cache_topology_t &cache_topology) {
@@ -204,41 +234,44 @@ void init_cache_topology_cpuid(cache_topology_t &cache_topology) {
     };
 
     cache_topology.is_hybrid = is_hybrid();
-
+    if (cache_topology.is_hybrid) {
 #if defined(_WIN32)
-    SYSTEM_INFO sysinfo;
-    GetSystemInfo(&sysinfo);
+        SYSTEM_INFO sysinfo;
+        GetSystemInfo(&sysinfo);
 
-    DWORD num_processors = sysinfo.dwNumberOfProcessors;
-    for (DWORD cpu = 0; cpu < num_processors; cpu++) {
-        HANDLE current_thread = GetCurrentThread();
-        DWORD_PTR cpu_mask = 1ULL << cpu;
-        DWORD_PTR oldMask = SetThreadAffinityMask(current_thread, cpu_mask);
+        DWORD num_processors = sysinfo.dwNumberOfProcessors;
+        for (DWORD cpu = 0; cpu < num_processors; cpu++) {
+            HANDLE current_thread = GetCurrentThread();
+            DWORD_PTR cpu_mask = 1ULL << cpu;
+            DWORD_PTR oldMask = SetThreadAffinityMask(current_thread, cpu_mask);
 
-        if (oldMask != 0) {
-            populate_cache_topology_from_cpuid(cache_topology);
+            if (oldMask != 0) {
+                populate_cache_topology_from_cpuid(cache_topology);
+            }
+            SetThreadAffinityMask(current_thread, oldMask);
         }
-        SetThreadAffinityMask(current_thread, oldMask);
-    }
 #elif defined(__linux__)
-    int num_processors = (int)sysconf(_SC_NPROCESSORS_CONF);
-    if (num_processors < 1) num_processors = 1;
+        int num_processors = (int)sysconf(_SC_NPROCESSORS_CONF);
+        if (num_processors < 1) num_processors = 1;
 
-    cpu_set_t original_mask;
-    CPU_ZERO(&original_mask);
-    sched_getaffinity(0, sizeof(cpu_set_t), &original_mask);
+        cpu_set_t original_mask;
+        CPU_ZERO(&original_mask);
+        sched_getaffinity(0, sizeof(cpu_set_t), &original_mask);
 
-    for (int cpu = 0; cpu < num_processors; cpu++) {
-        cpu_set_t cpu_mask;
-        CPU_ZERO(&cpu_mask);
-        CPU_SET(cpu, &cpu_mask);
-        if (sched_setaffinity(0, sizeof(cpu_set_t), &cpu_mask) == 0) {
-            populate_cache_topology_from_cpuid(cache_topology);
+        for (int cpu = 0; cpu < num_processors; cpu++) {
+            cpu_set_t cpu_mask;
+            CPU_ZERO(&cpu_mask);
+            CPU_SET(cpu, &cpu_mask);
+            if (sched_setaffinity(0, sizeof(cpu_set_t), &cpu_mask) == 0) {
+                populate_cache_topology_from_cpuid(cache_topology);
+            }
         }
-    }
-    // Restore original affinity mask
-    sched_setaffinity(0, sizeof(cpu_set_t), &original_mask);
+        // Restore original affinity mask
+        sched_setaffinity(0, sizeof(cpu_set_t), &original_mask);
 #endif
+    } else {
+        populate_cache_topology_from_cpuid(cache_topology);
+    }
 
     // Check whether we managed to populate any entries
     bool any_detected = false;
@@ -262,7 +295,8 @@ void init_cache_topology_cpuid(cache_topology_t &cache_topology) {
                 cache_info_t info;
                 info.level = static_cast<uint8_t>(level);
                 info.size = guess(static_cast<int>(level));
-                info.num_sharing_cores = 1; // assume per-core by default
+                info.num_sharing_cores
+                        = 1; // assume 1 cache per-core by default
                 info.ctype = (type_idx == 0) ? core_type::p_core
                                              : core_type::e_core;
                 cache_topology.caches[idx] = info;
@@ -270,17 +304,11 @@ void init_cache_topology_cpuid(cache_topology_t &cache_topology) {
         }
     }
 
-    // If this is not a hybrid system, copy P-core data to E-core slots
+    // If this is not a hybrid system, and the current core is a P-core,
+    // copy P-core cache info to E-core slots
+    // else if current core is E-core, copy E-core info to P-core slots
     if (!cache_topology.is_hybrid) {
-        for (size_t level = 0; level < cache_topology_t::max_cache_levels;
-                level++) {
-            size_t p_idx = 0 * cache_topology_t::max_cache_levels + level;
-            size_t e_idx = 1 * cache_topology_t::max_cache_levels + level;
-            if (cache_topology.caches[p_idx].level > 0) {
-                cache_topology.caches[e_idx] = cache_topology.caches[p_idx];
-                cache_topology.caches[e_idx].ctype = core_type::e_core;
-            }
-        }
+        copy_cache_topology_non_hybrid(cache_topology);
     }
 }
 //------------------End CPUID cache topology code-------------------------------
@@ -374,7 +402,7 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
         auto *info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(
                 reinterpret_cast<BYTE *>(info_base_ptr) + offset);
         if (info->Relationship == RelationProcessorCore) {
-            core_type ctype = core_type::default_core;
+            core_type ctype = core_type::p_core;
             if (cache_topology.is_hybrid)
                 ctype = get_core_type_from_processor_info(info);
 
@@ -468,8 +496,11 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
         offset += info->Size;
     }
 
-    // If this is not a hybrid system, copy P-core data to E-core slots
-    // so that queries work regardless of which core type is specified
+    // For non-hybrid systems the cache enumeration populates only the P-core
+    // slots (all detected cores are treated as p_core see first pass above).
+    // Copy those P-core entries into the E-core slots so callers asking for
+    // e_core cache info still receive sensible values. If no P-core data was
+    // populated, E-core slots are left unchanged.
     if (!cache_topology.is_hybrid) {
         for (size_t level = 0; level < cache_topology_t::max_cache_levels;
                 level++) {
@@ -746,23 +777,20 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
         return;
     }
 
-    // If not hybrid, copy P-core data to E-core slots
+    // If not hybrid, and core_type is P-core copy P-core data to E-core slots
+    // if not hybrid, and core_type is E-core copy E-core data to P-core slots
     if (!cache_topology.is_hybrid) {
-        for (size_t level = 0; level < cache_topology_t::max_cache_levels;
-                level++) {
-            size_t p_idx = 0 * cache_topology_t::max_cache_levels + level;
-            size_t e_idx = 1 * cache_topology_t::max_cache_levels + level;
-            if (cache_topology.caches[p_idx].level > 0) {
-                cache_topology.caches[e_idx] = cache_topology.caches[p_idx];
-                cache_topology.caches[e_idx].ctype = core_type::e_core;
-            }
-        }
+        copy_cache_topology_non_hybrid(cache_topology);
     }
 }
 #endif
 //------------------End linux specific cache topology code----------------------
 
-// Lazy initialization of global cache topology
+// Lazy initialization cache topology
+// This function is thread-safe and will only initialize the cache_topology
+// once, on the first call. Subsequent calls will return immediately.
+// The functions init_cache_topology_windows/linux/cpuid have no thread-safety
+// guarantees and are intended to only be called once from this function.
 static std::once_flag g_cache_topology_once_flag;
 void init_cache_topology(cache_topology_t &cache_topology) {
     std::call_once(g_cache_topology_once_flag, [&cache_topology]() {

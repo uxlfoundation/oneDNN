@@ -155,13 +155,13 @@ struct GEMMProblem : public CommonProblem {
     Type Ta, Tb, Tc, Ts;                            // Types for A/B/C/scalars in registers.
     Type Ta_ext, Tb_ext, Tc_ext;                    // Types for A/B/C data in memory.
     Type Tao, Tbo, Tco;                             // Types for A/B/C offsets.
-    Type Ta_scale, Tb_scale;                        // Types for A/B scales.
+    Type Ta_scale, Tb_scale, Tc_scale;              // Types for A/B/C scales.
     Type Tag, Tbg;                                  // Types for A/B group sums.
 
     Scalar alpha, beta;                             // Scaling factors for A*B and C, respectively.
     MatrixAddressing A, B, C;                       // Addressing information for A/B/C matrices.
     MatrixAddressing AO, BO, CO;                    // Addressing information for A/B/C offsets (if 2D).
-    MatrixAddressing A_scale, B_scale;              // Addressing information for A/B scales (if 2D).
+    MatrixAddressing A_scale, B_scale, C_scale;     // Addressing information for A/B scales (if 2D).
     MatrixAddressing Ag, Bg;                        // Addressing information for A/B group sums.
 
     bool checkBeta0 = true;                         // If true, check for beta = 0 and handle specially.
@@ -171,6 +171,7 @@ struct GEMMProblem : public CommonProblem {
     int asPtrDims = -1, bsPtrDims = -1;           // A/B scale dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
     int aqGroupM = 0, aqGroupK = 0;                 // Group sizes for A quantization parameters (offsets and scales)
     int bqGroupN = 0, bqGroupK = 0;                 // Group sizes for B quantization parameters (offsets and scales)
+    int cqGroupM = 0, cqGroupN = 0;                 // Group sizes for C quantization parameters (offsets and scales)
     COffset cOffset = COffset::None;                // C offset mode.
     BatchMode batch = BatchMode::None;              // Batch mode.
     int batchDims = 0;                              // # of batch dimensions (strided batch only).
@@ -227,6 +228,7 @@ struct GEMMProblem : public CommonProblem {
 
     bool hasAScale() const { return (asPtrDims > -1); }
     bool hasBScale() const { return (bsPtrDims > -1); }
+    bool hasCScale() const { return (postOps.cMXScale); }
     bool hasAOffset() const { return (aoPtrDims > -1); }
     bool hasBOffset() const { return (boPtrDims > -1); }
 

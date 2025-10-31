@@ -29,6 +29,8 @@ struct rvv_postops_t {
         assert(po.len() <= 1 && "rvv_postops_t supports at most one post-op");
     }
 
+    explicit rvv_postops_t(alg_kind_t alg) : alg_(alg) {}
+
     static bool post_ops_ok(const post_ops_t &po) {
         if (po.len() == 0) return true;
         if (po.len() > 1) return false;

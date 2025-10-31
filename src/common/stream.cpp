@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2024 Intel Corporation
+* Copyright 2016-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -48,6 +48,13 @@ status_t dnnl_stream_create(
             && (flags & stream_flags::profiling)) {
         return status::unimplemented;
     }
+
+    // enables profiling capabilities to allow the verbose mode to print
+    // profiling info using device measured times
+    const bool enable_verbose_profiler = engine->kind() == engine_kind::gpu
+            && get_verbose(verbose_t::exec_profile)
+            && (getenv_int_user("DISABLE_ASYNC_VERBOSE", 0) == 0);
+    if (enable_verbose_profiler) { flags |= stream_flags::profiling; }
 
     return engine->create_stream(stream, flags);
 }

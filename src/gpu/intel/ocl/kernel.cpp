@@ -232,6 +232,10 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     }
 
     if (stream.is_profiling_enabled()) {
+        if (stream.is_verbose_profiler_enabled()) {
+            xpu::ocl::event_t::from(out_dep).events = {event};
+        }
+
         ocl_stream->profiler().register_event(
                 utils::make_unique<xpu::ocl::event_t>(std::move(event)));
     }

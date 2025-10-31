@@ -396,10 +396,13 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_K_loop(
         }
 
         // step 3: multiply by zp_b_val
-        mov(reg_zp_b_neg_val_ptr, ptr[param1 + GET_OFF(zp_b_neg_val_ptr)]);
-        const auto vmm_zp_b_neg_val = get_vmm_comp_acc(is_ymm_ ? 2 : 1);
-        uni_vbroadcastss(vmm_zp_b_neg_val, ptr[reg_zp_b_neg_val_ptr]);
-        uni_vpmulld(get_vmm_comp_acc(0), get_vmm_comp_acc(0), vmm_zp_b_neg_val);
+        if (conf_->wei_zp_type != brgemm_broadcast_t::per_n) {
+            mov(reg_zp_b_neg_val_ptr, ptr[param1 + GET_OFF(zp_b_neg_val_ptr)]);
+            const auto vmm_zp_b_neg_val = get_vmm_comp_acc(is_ymm_ ? 2 : 1);
+            uni_vbroadcastss(vmm_zp_b_neg_val, ptr[reg_zp_b_neg_val_ptr]);
+            uni_vpmulld(
+                    get_vmm_comp_acc(0), get_vmm_comp_acc(0), vmm_zp_b_neg_val);
+        }
 
         // step 4: store the final result value
         if (is_ymm_)
@@ -488,7 +491,8 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::generate() {
 
     Label done;
     if (do_compute_compensation_) {
-        assert(conf_->wei_zp_type == brgemm_broadcast_t::per_tensor);
+        assert(conf_->wei_zp_type == brgemm_broadcast_t::per_tensor
+                || conf_->wei_zp_type == brgemm_broadcast_t::per_n);
 
         mov(reg_K_start, ptr[param1 + GET_OFF(current_K_start)]);
         const auto last_K_threshold
@@ -1891,10 +1895,12 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::compute_k_loop(
                 vpaddd(zmm_comp_acc_, zmm_comp_acc_, get_zmm_src(0));
             }
 
-            // multiply by zp_b_val
-            mov(reg_tmp_, ptr[param1 + GET_OFF(zp_b_neg_val_ptr)]);
-            vbroadcastss(get_zmm_src(0), ptr[reg_tmp_]);
-            vpmulld(zmm_comp_acc_, zmm_comp_acc_, get_zmm_src(0));
+            // multiply by zp_b_val (skip for per_n/per_oc, will be done in compute kernel)
+            if (conf_->wei_zp_type != brgemm_broadcast_t::per_n) {
+                mov(reg_tmp_, ptr[param1 + GET_OFF(zp_b_neg_val_ptr)]);
+                vbroadcastss(get_zmm_src(0), ptr[reg_tmp_]);
+                vpmulld(zmm_comp_acc_, zmm_comp_acc_, get_zmm_src(0));
+            }
 
             // store the final result value
             vmovups(ptr[reg_zp_comp_res_ptr_], zmm_comp_acc_);
@@ -2026,7 +2032,8 @@ void jit_brgemm_matmul_copy_a_transposed_int8_impl_t::generate() {
 
     Label done;
     if (do_compute_compensation_) {
-        assert(conf_->wei_zp_type == brgemm_broadcast_t::per_tensor);
+        assert(conf_->wei_zp_type == brgemm_broadcast_t::per_tensor
+                || conf_->wei_zp_type == brgemm_broadcast_t::per_n);
 
         mov(reg_tmp_, ptr[param1 + GET_OFF(current_K_start)]);
         const auto last_K_threshold

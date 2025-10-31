@@ -96,9 +96,9 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
     // use_global_stats is set, to avoid creating 2 kernels just
     // for this
     cloned_args[DNNL_ARG_MEAN]
-            = memory_arg_t {cloned_args[DNNL_ARG_MEAN].mem, false};
+            = memory_arg_t {cloned_args[DNNL_ARG_MEAN].mem(), false};
     cloned_args[DNNL_ARG_VARIANCE]
-            = memory_arg_t {cloned_args[DNNL_ARG_VARIANCE].mem, false};
+            = memory_arg_t {cloned_args[DNNL_ARG_VARIANCE].mem(), false};
 
     exec_ctx_t exec_ctx(ctx.stream(), std::move(cloned_args));
     auto &conf_ = pd()->conf_;

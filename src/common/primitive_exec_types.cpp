@@ -21,8 +21,59 @@
 #include "common/memory_tracking.hpp"
 #include "common/primitive_desc.hpp"
 
+#include <cassert>
+
 namespace dnnl {
 namespace impl {
+
+memory_arg_t::memory_arg_t(memory_t *mem, bool is_const)
+    : mem_(mem), is_const_(is_const) {
+    if (mem_) mem_->retain();
+}
+
+memory_arg_t::~memory_arg_t() {
+    if (mem_) mem_->release();
+}
+
+memory_arg_t::memory_arg_t(const memory_arg_t &other)
+    : mem_(other.mem_), is_const_(other.is_const_) {
+    if (mem_) mem_->retain();
+}
+
+memory_arg_t &memory_arg_t::operator=(const memory_arg_t &other) {
+    if (this == &other) return *this;
+
+    if (mem_) memory_deleter_t {}(mem_);
+
+    mem_ = other.mem_;
+    is_const_ = other.is_const_;
+    if (mem_) mem_->retain();
+
+    return *this;
+}
+
+memory_arg_t::memory_arg_t(memory_arg_t &&other)
+    : mem_(other.mem_), is_const_(other.is_const_) {
+    other.mem_ = nullptr;
+    other.is_const_ = false;
+}
+
+memory_arg_t &memory_arg_t::operator=(memory_arg_t &&other) {
+    if (this == &other) {
+        assert(!"self move assign is not expected");
+        return *this;
+    }
+
+    if (mem_) memory_deleter_t {}(mem_);
+
+    mem_ = other.mem_;
+    is_const_ = other.is_const_;
+
+    other.mem_ = nullptr;
+    other.is_const_ = false;
+
+    return *this;
+}
 
 status_t cvt_primitive_args(const primitive_desc_t *pd, int nargs,
         const dnnl_exec_arg_t *c_args, exec_args_t &args) {
@@ -151,7 +202,7 @@ void *exec_ctx_t::host_ptr(
 
     if (impl_->args().count(arg) != 1) return nullptr;
 
-    auto *mem = args().at(arg).mem;
+    auto *mem = args().at(arg).mem();
     if (do_zeropad) local_status = mem->zero_pad(*this);
     if (status) *status = local_status;
 
@@ -198,23 +249,23 @@ exec_ctx_impl_t::get_scratchpad_grantor() const {
 
 memory_t *exec_ctx_impl_t::input(int arg) const {
     if (args_.count(arg) != 1) return nullptr;
-    const auto ma = args_.at(arg);
-    assert(ma.is_const);
-    return ma.mem;
+    const auto &ma = args_.at(arg);
+    assert(ma.is_const());
+    return ma.mem();
 }
 
 memory_t *exec_ctx_impl_t::output(int arg) const {
     if (args_.count(arg) != 1) return nullptr;
-    const auto ma = args_.at(arg);
-    assert(!ma.is_const);
-    return ma.mem;
+    const auto &ma = args_.at(arg);
+    assert(!ma.is_const());
+    return ma.mem();
 }
 
 memory_t *exec_ctx_impl_t::memory(int arg) const {
     assert(args_.count(arg) == 1);
-    const auto ma = args_.at(arg);
-    assert(!ma.is_const);
-    return ma.mem;
+    const auto &ma = args_.at(arg);
+    assert(!ma.is_const());
+    return ma.mem();
 }
 
 void *exec_ctx_impl_t::host_ptr(
@@ -267,7 +318,7 @@ memory_desc_wrapper exec_ctx_impl_t::memory_mdw(
             return mdw_from_primitive_desc;
     }
     if (args_.count(arg) != 1) return memory_desc_wrapper(&glob_zero_md);
-    return memory_desc_wrapper(args_.at(arg).mem->md());
+    return memory_desc_wrapper(args_.at(arg).mem()->md());
 }
 
 exec_ctx_impl_t::exec_ctx_impl_t(stream_t *stream, exec_args_t &&args)

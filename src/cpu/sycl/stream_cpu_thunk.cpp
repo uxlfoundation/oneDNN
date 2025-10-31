@@ -42,7 +42,7 @@ void dnnl_impl_sycl_cpu_thunk(const thunk_params_t *params) {
     prim_iface->execute(submit_ctx->exec_ctx);
 
     for (auto &m : submit_ctx->exec_ctx.args())
-        m.second.mem->release();
+        m.second.mem()->release();
 
     const_cast<primitive_iface_t *>(prim_iface)->release();
 

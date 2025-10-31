@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2023 Intel Corporation
+* Copyright 2022-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -42,8 +42,8 @@ status_t ref_sum_many_inputs_t::init(engine_t *engine) {
 }
 
 status_t ref_sum_many_inputs_t::execute(const exec_ctx_t &ctx) const {
-    memory_arg_t dst_mem_arg = {ctx.args().at(DNNL_ARG_DST).mem, false};
-    memory_arg_t dst_read_mem_arg = {ctx.args().at(DNNL_ARG_DST).mem, true};
+    memory_arg_t dst_mem_arg = {ctx.args().at(DNNL_ARG_DST).mem(), false};
+    memory_arg_t dst_read_mem_arg = {ctx.args().at(DNNL_ARG_DST).mem(), true};
 
     int n_remaining = pd()->conf_.n;
     int in_arg_offset = 0;

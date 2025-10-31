@@ -60,8 +60,25 @@ struct grantor_t;
 } // namespace memory_tracking
 
 struct memory_arg_t {
-    memory_t *mem;
-    bool is_const;
+    memory_arg_t() = default;
+    memory_arg_t(memory_t *mem, bool is_const);
+
+    ~memory_arg_t();
+
+    // All operators are mandatory to handle ref counter for underlying memory
+    // object.
+    memory_arg_t(const memory_arg_t &other);
+    memory_arg_t &operator=(const memory_arg_t &other);
+
+    memory_arg_t(memory_arg_t &&other);
+    memory_arg_t &operator=(memory_arg_t &&other);
+
+    memory_t *mem() const { return mem_; }
+    bool is_const() const { return is_const_; }
+
+private:
+    memory_t *mem_ = nullptr;
+    bool is_const_ = false;
 };
 
 struct primitive_desc_t;

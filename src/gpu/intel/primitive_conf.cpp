@@ -645,10 +645,10 @@ int append_post_ops_to_arg_list_base(const exec_args_t &args,
         if (e.is_binary() || e.is_prelu()) {
             auto arg = args.at(DNNL_ARG_ATTR_MULTIPLE_POST_OP(po_idx)
                     | (e.is_binary() ? DNNL_ARG_SRC_1 : DNNL_ARG_WEIGHTS));
-            gpu_assert(arg.is_const);
+            gpu_assert(arg.is_const());
 
-            auto &binary_arg = arg.mem
-                    ? *(arg.mem->memory_storage())
+            auto &binary_arg = arg.mem()
+                    ? *(arg.mem()->memory_storage())
                     : dnnl::impl::memory_storage_t::empty_storage();
             arg_list.set(post_op_idx++, binary_arg);
 

@@ -116,15 +116,16 @@ struct ref_sum_t : public primitive_t {
                 ? ctx.get_scratchpad_grantor().get_memory_storage(
                         key_sum_reduction)
                 : nullptr;
-        auto dst = ctx.args().at(DNNL_ARG_DST);
+        const auto &dst = ctx.args().at(DNNL_ARG_DST);
 
         std::unique_ptr<memory_t, memory_deleter_t> acc;
         CHECK(safe_ptr_assign(acc,
-                new memory_t(dst.mem->engine(), pd()->dst_acc_md(),
+                new memory_t(dst.mem()->engine(), pd()->dst_acc_md(),
                         std::move(sum_reduce))));
         memory_arg_t dst_acc = {acc.get(), false};
 
         /* fix: clang MemorySanitizer: use-of-uninitialized-value */
+        // TODO: should rely on unpoison_msan instead.
         if (pd()->need_output_reorder()) {
             const memory_desc_wrapper acc_d(acc->md());
             std::memset(acc->memory_storage()->data_handle(), 0, acc_d.size());
@@ -146,7 +147,7 @@ struct ref_sum_t : public primitive_t {
         }
 
         if (pd()->need_output_reorder()) {
-            dst_acc.is_const = true;
+            dst_acc = {acc.get(), true};
             r_args[DNNL_ARG_SRC] = dst_acc;
             r_args[DNNL_ARG_DST] = dst;
             exec_ctx_t r_ctx(ctx, std::move(r_args));

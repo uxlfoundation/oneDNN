@@ -123,8 +123,16 @@ class reg64_savable_t : public Xbyak::Reg64 {
 public:
     DNNL_DISALLOW_COPY_AND_ASSIGN(reg64_savable_t);
 
-    reg64_savable_t(
-            registry_scratchpad_t &regscratchpad, const Xbyak::Reg64 &reg);
+    // base constructor
+    reg64_savable_t(registry_scratchpad_t &regscratchpad,
+            const Xbyak::Reg64 &reg, bool is_storable = true);
+
+    // This constructor provides conditional substitution:
+    // choose a different register when a condition is met
+    // (e.g., to avoid booking scratchpad by using a truly free register).
+    reg64_savable_t(registry_scratchpad_t &regscratchpad,
+            const Xbyak::Reg64 &reg, const Xbyak::Reg64 &alternative_reg,
+            bool use_alternative);
 
     // This constructor is used to utilize extended registers (e.g. r16-r31).
     // If second register is provided and the ISA allows using extended registers

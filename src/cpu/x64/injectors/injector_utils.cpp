@@ -154,21 +154,24 @@ Xbyak::Address registry_scratchpad_t::getPtr(int booking) const {
     return jit_.ptr[jit_.rsp + booking];
 }
 
-reg64_savable_t::reg64_savable_t(
-        registry_scratchpad_t &regscratchpad, const Xbyak::Reg64 &reg)
-    : Xbyak::Reg64(reg)
-    , regscratchpad_(regscratchpad)
-    , booking_(regscratchpad_.book())
-    , storable_(true) {}
+reg64_savable_t::reg64_savable_t(registry_scratchpad_t &regscratchpad,
+        const Xbyak::Reg64 &reg, bool is_storable)
+    : Xbyak::Reg64(reg), regscratchpad_(regscratchpad), storable_(is_storable) {
+    if (storable_) booking_ = regscratchpad_.book();
+}
+
+reg64_savable_t::reg64_savable_t(registry_scratchpad_t &regscratchpad,
+        const Xbyak::Reg64 &reg, const Xbyak::Reg64 &alternative_reg,
+        bool use_alternative)
+    : reg64_savable_t(regscratchpad, use_alternative ? alternative_reg : reg,
+            !use_alternative) {}
 
 reg64_savable_t::reg64_savable_t(registry_scratchpad_t &regscratchpad,
         const Xbyak::Reg64 &reg, const Xbyak::Reg64 &ext_reg)
-    : Xbyak::Reg64(regscratchpad.ExtendedRegisters() ? ext_reg : reg)
-    , regscratchpad_(regscratchpad)
-    , storable_(!regscratchpad.ExtendedRegisters()) {
+    : reg64_savable_t(
+            regscratchpad, reg, ext_reg, regscratchpad.ExtendedRegisters()) {
     // We expect ext_reg from extended registers set
     assert(16 <= ext_reg.getIdx() && ext_reg.getIdx() <= 31);
-    if (storable_) booking_ = regscratchpad_.book();
 }
 
 void reg64_savable_t::save() const {

@@ -52,6 +52,16 @@ struct rvv_postops_t {
         }
     }
 
+    inline vfloat32m2_t apply(vfloat32m2_t v, size_t vl) const {
+        switch (alg_) {
+            case alg_kind::eltwise_relu: {
+                vfloat32m2_t zero = __riscv_vfmv_v_f_f32m2(0.f, vl);
+                return __riscv_vfmax_vv_f32m2(v, zero, vl);
+            }
+            default: return v;
+        }
+    }
+
 private:
     alg_kind_t alg_;
 };

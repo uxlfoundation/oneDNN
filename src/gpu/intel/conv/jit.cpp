@@ -162,6 +162,7 @@ public:
                 init_nd_ranges(primitive, cfg);
                 auto &kernel_infos = data.kernel_infos;
 
+                std::vector<int> conv_tg_sizes;
                 // This absolutely HAS to be executed first if present,
                 // since it adds its own version mark to the cache blob
                 for (int i = 0; i < int(kernel_infos.size()); i++)
@@ -169,7 +170,20 @@ public:
                         gpu_assert(data.zp_pd);
                         CONV_CHECK(primitive->create_nested_primitive(
                                 zp_prim_, data.zp_pd, engine));
+                    } else if (kernel_infos[i].id()
+                            == kernel_id_t::convolution) {
+                        const auto &local_range = nd_ranges_[i].local_range();
+                        const auto tg_size = ir_utils::safe_divide(
+                                into<int>(local_range.nelems()), cfg.simd());
+                        conv_tg_sizes.emplace_back(tg_size);
                     }
+
+                // Perform early check to ensure no exceeding SLM size
+                if (!std::all_of(conv_tg_sizes.begin(), conv_tg_sizes.end(),
+                            [&](const int tg_size) {
+                                return tiler->is_slm_limit_ok(cfg, tg_size);
+                            }))
+                    continue;
 
                 std::vector<compute::kernel_t> tmp_kernels;
                 for (int i = 0; i < int(kernel_infos.size()); i++) {

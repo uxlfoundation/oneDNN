@@ -293,7 +293,10 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
         int ithr_ = omp_get_thread_num();
         assert(nthr_ == nthr);
 #if defined(DNNL_ENABLE_ITT_TASKS)
-        if (ithr_ && itt_enable) itt::primitive_task_start(task_primitive_kind);
+        if (ithr_ && itt_enable) {
+            itt::primitive_task_start(task_primitive_kind);
+            itt::add_formatted_metadata_parallel_task(ithr_, nthr_);
+        }
 #endif
         f(ithr_, nthr_);
 #if defined(DNNL_ENABLE_ITT_TASKS)
@@ -307,8 +310,10 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
 #if defined(DNNL_ENABLE_ITT_TASKS)
                 bool mark_task = itt::primitive_task_get_current_kind()
                         == primitive_kind::undefined;
-                if (mark_task && itt_enable)
+                if (mark_task && itt_enable) {
                     itt::primitive_task_start(task_primitive_kind);
+                    itt::add_formatted_metadata_parallel_task(ithr, nthr);
+                }
 #endif
                 f(ithr, nthr);
 #if defined(DNNL_ENABLE_ITT_TASKS)
@@ -331,7 +336,10 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
             if (!is_master) {
                 threadpool_utils::activate_threadpool(tp);
 #if defined(DNNL_ENABLE_ITT_TASKS)
-                if (itt_enable) itt::primitive_task_start(task_primitive_kind);
+                if (itt_enable) {
+                    itt::primitive_task_start(task_primitive_kind);
+                    itt::add_formatted_metadata_parallel_task(ithr, nthr);
+                }
 #endif
             }
             f(ithr, nthr);

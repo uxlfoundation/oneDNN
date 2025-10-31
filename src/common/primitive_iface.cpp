@@ -91,11 +91,30 @@ status_t primitive_execute(
         const primitive_iface_t *primitive_iface, exec_ctx_t &ctx) {
     auto stream = ctx.stream();
     status_t status = success;
+    auto pd = primitive_iface->pd();
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
-    if (enable_itt)
-        itt::primitive_task_start(primitive_iface->pd()->impl()->kind());
+    if (enable_itt) {
+        // Find key delimiter positions
+        std::string primitive_info = pd->info();
+        size_t src_pos = primitive_info.find(",src");
+        std::string param_info; // Algorithm parameters
+
+        // First segment: everything before ",src" (or whole string if not found)
+        std::string prim_info = (src_pos != std::string::npos)
+                ? primitive_info.substr(0, src_pos)
+                : primitive_info;
+
+        // Second segment: from ",src" to ",,alg" (if both exist)
+
+        if (src_pos != std::string::npos) {
+            param_info = primitive_info.substr(src_pos);
+        }
+
+        // Pass segments to ITT profiler
+        itt::add_formatted_metadata_task(prim_info.c_str(), param_info.c_str());
+    }
 #endif
 
     if (get_verbose(verbose_t::exec_profile,

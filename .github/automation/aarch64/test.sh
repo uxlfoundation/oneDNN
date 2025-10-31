@@ -22,6 +22,8 @@
 set -o errexit -o pipefail -o noclobber
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+OUTPUT_XML=$1
+OUTPUT_LOG=$2
 
 # Defines MP, CC, CXX and OS.
 source ${SCRIPT_DIR}/common.sh
@@ -32,5 +34,5 @@ if [[ "$ONEDNN_THREADING" == "SEQ" ]]; then
 fi
 
 set -x
-ctest --no-tests=error --output-on-failure -E $("${SCRIPT_DIR}"/skipped-tests.sh) --output-junit $1
+ctest --no-tests=error --output-on-failure -E $("${SCRIPT_DIR}"/skipped-tests.sh) --output-junit ${OUTPUT_XML} | tee ${OUTPUT_LOG}
 set +x

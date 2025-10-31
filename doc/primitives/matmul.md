@@ -159,7 +159,7 @@ The following masks are supported by the primitive:
 - 1, which applies a scale / zero point values along `k`-dimension
   for #DNNL_ARG_WEIGHTS. Values could be grouped along this dimension
   via specifying scales / zero points shapes for the attribute
-  (see the code example @ref weights_decompression_matmul_cpp).
+  (see the code example @ref matmul_with_weight_only_quantization_cpp).
 - 2, which applies a scale / zero point values per column along the
   `n`-dimension for #DNNL_ARG_WEIGHTS.
 

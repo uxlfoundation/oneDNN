@@ -14,15 +14,15 @@
 * limitations under the License.
 *******************************************************************************/
 
-/// @example weights_decompression_matmul.cpp
-/// > Annotated version: @ref weights_decompression_matmul_cpp
+/// @example matmul_with_weight_only_quantization.cpp
+/// > Annotated version: @ref matmul_with_weight_only_quantization_cpp
 
-/// @page weights_decompression_matmul_cpp_brief
+/// @page matmul_with_weight_only_quantization_cpp_brief
 /// @brief C++ API example demonstrating how one can use
-/// [MatMul](@ref dev_guide_matmul) with compressed weights.
+/// [MatMul](@ref dev_guide_matmul) with quantized weights.
 
-/// @page weights_decompression_matmul_cpp MatMul Tutorial: Weights Decompression
-/// \copybrief weights_decompression_matmul_cpp_brief
+/// @page matmul_with_weight_only_quantization_cpp MatMul Tutorial: Weight-only Quantization
+/// \copybrief matmul_with_weight_only_quantization_cpp_brief
 ///
 /// Concepts:
 /// - Asymmetric quantization
@@ -47,7 +47,7 @@
 /// The format tag #dnnl::memory::format_tag::any doesn't work for memory
 /// descriptors that have one or more unknown dimensions and/or strides.
 ///
-/// @include weights_decompression_matmul.cpp
+/// @include matmul_with_weight_only_quantization.cpp
 
 #include <cassert>
 #include <cctype>
@@ -90,7 +90,7 @@ int number_of_runs = 1;
 // Here:
 // - Matrices A and C are of f32 data type.
 // - The B matrix is stored as int8_t, its zero point is zp_B, and all its
-//   dimensions are known. This matrix can be a matrix of compressed weights
+//   dimensions are known. This matrix can be a matrix of quantized weights
 //   in an MLP topology.
 // - The weights scaling values are not known at the primitive creation time.
 matmul::primitive_desc matmul_pd_create(
@@ -165,7 +165,7 @@ void infer(const matmul &matmul_p, int64_t M, int64_t N, int64_t K, int64_t G,
     s.wait();
 }
 
-void weights_decompression_matmul(engine::kind engine_kind) {
+void matmul_with_weight_only_quantization(engine::kind engine_kind) {
     engine eng(engine_kind, 0);
 
     const int64_t K = 64;
@@ -200,5 +200,6 @@ int main(int argc, char **argv) {
     engine::kind engine_kind = parse_engine_kind(argc, argv);
     // GPU is not supported
     if (engine_kind != engine::kind::cpu) return 0;
-    return handle_example_errors(weights_decompression_matmul, engine_kind);
+    return handle_example_errors(
+            matmul_with_weight_only_quantization, engine_kind);
 }

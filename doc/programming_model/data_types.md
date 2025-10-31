@@ -47,8 +47,8 @@ Footnotes:
 1. f64 support is limited to matmul, convolution, reorder, layer normalization, and
    pooling primitives on Intel GPUs.
 2. s4/u4 data types are only supported as a storage data type for weights argument
-   in case of weights decompression. For more details, refer to
-   [Matmul Tutorial: weights decompression](@ref weights_decompression_matmul_cpp).
+   in case of weight-only quantization. For more details, refer to
+   [Matmul Tutorial: weight-only quantization](@ref matmul_with_weight_only_quantization_cpp).
 
 @note
     Data type support may also be limited by hardware capabilities. Refer to
@@ -64,7 +64,7 @@ See topics for the corresponding data types details:
  * @ref dev_guide_attributes_quantization
  * @ref dev_guide_training_bf16
  * @ref dev_guide_attributes_fpmath_mode
- * @ref weights_decompression_matmul_cpp
+ * @ref matmul_with_weight_only_quantization_cpp
  * @ref matmul_f8_quantization_cpp
 
 Individual primitives may have additional limitations with respect to data type

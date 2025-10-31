@@ -122,7 +122,7 @@ scale value. Supported values are:
   - `per_tensor`     means each element of original tensor will be multiplied
                      by a unique number. Number of scale factor is equal to
                      `nelems`. As of now supported only by binary post-ops.
-  - `mx`             scales are output, computed by the primitive itself, following 
+  - `mx`             scales are output, computed by the primitive itself, following
                      the OCP MX specification.
 
 `SCALE` is required for the `common` policy only, and specifies a floating-point
@@ -344,7 +344,7 @@ value to the destination memory, second one adds a tensor of same size with
              ic16oc16ih4oh4kh1ph0
 ```
 
-Run a matmul problem with weights decompression where weights `bf16` scales and
+Run a matmul problem with weight-only quantization where weights `bf16` scales and
 `s8` zero points have scales along `ic` and `oc` dimensions, have groups along
 `ic` dimension:
 ``` sh

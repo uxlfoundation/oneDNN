@@ -43,7 +43,7 @@ computation data-types. The de-quantization parameters of this up-conversion can
 be specified using
 [quantization attributes](@ref dev_guide_attributes_quantization).
 For more details, refer to
-[Matmul Tutorial: weights decompression](@ref weights_decompression_matmul_cpp).
+[Matmul Tutorial: Weight-only Quantization](@ref matmul_with_weight_only_quantization_cpp).
 
 ## A note on the default floating-point math mode.
 

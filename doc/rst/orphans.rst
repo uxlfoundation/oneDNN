@@ -62,7 +62,7 @@ Orphans
     example_sycl_interop_usm.cpp.rst
     example_sycl_single_op_partition.cpp.rst
     example_vanilla_rnn.cpp.rst
-    example_weights_decompression_matmul.cpp.rst
+    example_matmul_with_weight_only_quantization.cpp.rst
     example_matmul_with_host_scalar_scale.cpp.rst
     example_matmul_f8_quantization.cpp.rst
     example_mxfp_matmul.cpp.rst
@@ -137,7 +137,7 @@ Orphans
     page_sycl_interop_buffer_cpp
     page_sycl_interop_usm_cpp.rst
     page_vanilla_rnn_example_cpp.rst
-    page_weights_decompression_matmul_cpp.rst
+    page_matmul_with_weight_only_quantization_cpp.rst
     page_matmul_with_host_scalar_scale_cpp.rst
     page_matmul_f8_quantization_cpp.rst
     page_mxfp_matmul_cpp.rst
@@ -196,7 +196,7 @@ Orphans
     page_sycl_interop_buffer_cpp_brief.rst
     page_sycl_interop_usm_cpp_brief.rst
     page_vanilla_rnn_example_cpp_brief.rst
-    page_weights_decompression_matmul_cpp_brief.rst
+    page_matmul_with_weight_only_quantization_cpp_brief.rst
     page_cnn_inference_f32_c_brief.rst
     page_cpu_cnn_training_f32_c_brief.rst
     page_cross_engine_reorder_c_brief.rst

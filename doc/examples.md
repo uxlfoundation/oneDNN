@@ -49,7 +49,7 @@ Advanced Usages:
 | @ref cpu_matmul_coo_cpp | \copybrief cpu_matmul_coo_cpp_brief |
 | @ref cpu_matmul_csr_cpp | \copybrief cpu_matmul_csr_cpp_brief |
 | @ref cpu_matmul_weights_compression_cpp | \copybrief cpu_matmul_weights_compression_cpp_brief |
-| @ref weights_decompression_matmul_cpp | \copybrief weights_decompression_matmul_cpp_brief |
+| @ref matmul_with_weight_only_quantization_cpp | \copybrief matmul_with_weight_only_quantization_cpp_brief |
 
 ### Inference and Training
 

@@ -212,8 +212,7 @@ struct conv_t : public primitive_t {
         args[DNNL_ARG_DST] = {c.get(), false};
         if (bias) args[DNNL_ARG_BIAS] = {bias.get(), true};
 
-        auto exec_ctx = ctx.into_exec_ctx_t(std::move(args));
-
+        impl::exec_ctx_t exec_ctx {ctx, std::move(args)};
         auto *nested_grantor
                 = create_nested_grantor(exec_ctx.get_scratchpad_grantor(),
                         memory_tracking::names::key_nested,

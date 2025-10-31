@@ -92,9 +92,9 @@ int reorder_dimensions_by_stride(std::vector<memory_desc_t *> permuted_mds,
 //            matmul, ordered from innermost to outermost. ACL calls these
 //            the multi_stride_b. These will become the outermost (least dense)
 //            dimensions and will be collapsed.
-void reorder_to_weight_format(arm_compute::TensorInfo &info, memory_desc_t &md,
-        arm_compute::WeightFormat wf, dim_t I_dim, dim_t O_dim,
-        const std::vector<dim_t> &spatial_dims,
+status_t reorder_to_weight_format(arm_compute::TensorInfo &info,
+        memory_desc_t &md, arm_compute::WeightFormat wf, dim_t I_dim,
+        dim_t O_dim, const std::vector<dim_t> &spatial_dims,
         const std::vector<dim_t> &batch_dims = {});
 
 // Logs a custom 'info' line describing an unsupported case

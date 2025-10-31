@@ -215,8 +215,8 @@ status_t init_conf_matmul(acl_matmul_conf_t &amp, memory_desc_t &src_md,
         for (dim_t i = K_dim - 1; i >= 0; --i)
             batch_dims.push_back(i);
 
-        acl_utils::reorder_to_weight_format(amp.wei_tensor_info, wei_md,
-                expected_weight_format, K_dim, N_dim, {}, batch_dims);
+        CHECK(acl_utils::reorder_to_weight_format(amp.wei_tensor_info, wei_md,
+                expected_weight_format, K_dim, N_dim, {}, batch_dims));
     }
 
     return status::success;

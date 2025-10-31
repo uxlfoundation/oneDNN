@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Arm Ltd. and affiliates
+* Copyright 2021-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "cpu/aarch64/acl_utils.hpp"
+#include <limits>
 
 namespace dnnl {
 namespace impl {
@@ -154,8 +155,12 @@ status_t tensor_info(
     for (int i = md.ndims() - 1; i >= 0; --i) {
         // ACL strides are in bytes, oneDNN strides are in numbers of elements,
         // multiply by data type size to convert
-        strides_in_bytes.set(
-                acl_stride_i, blocking_desc.strides[i] * md.data_type_size());
+        size_t size = blocking_desc.strides[i] * md.data_type_size();
+        // ACL stride value is uint32, check for overflow
+        if (size > std::numeric_limits<uint32_t>::max()) {
+            return status::unimplemented;
+        }
+        strides_in_bytes.set(acl_stride_i, size);
         ++acl_stride_i;
     }
 

@@ -80,6 +80,7 @@ status_t DNNL_API brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
 ///     The data type of output vector y depends on dt_a and dt_x:
 ///     - If dt_a and dt_x are integer types (u8/s8), y has int32 data type.
 ///     - If dt_a and dt_x are bf16, f16, or f32, y has f32 data type.
+///
 /// @param transA  Specifies whether matrix A is transposed:
 ///                'false' - A is not transposed,
 ///                'true'  - A is transposed.
@@ -92,13 +93,18 @@ status_t DNNL_API brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
 ///                transposed. Also the size of output vector y.
 /// @param N       Number of columns of matrix A if not transposed, or rows if
 ///                transposed. Also the size of input vector x.
+/// @param broadcast_bias Specifies whether the bias should be broadcasted.
+///                The bias can be a scalar or a vector of size M.
+///                'false' - bias is a vector of size M (not broadcasted).
+///                'true'  - bias is a scalar that is broadcast over the M
+///                elements of the output vector y.
 ///
 /// @return status::success on success and a status describing the error
 ///     otherwise.
 status_t brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_x, bool transA, float alpha, float beta, dim_t LDA,
-        dim_t INCY, dim_t M, dim_t N);
+        dim_t INCY, dim_t M, dim_t N, bool broadcast_bias);
 
 /// Initializes a BRGEMM descriptor with B matrix as a diagonal matrix
 /// represented in packed vector format.

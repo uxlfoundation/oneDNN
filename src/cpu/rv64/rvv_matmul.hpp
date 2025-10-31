@@ -36,6 +36,7 @@ struct rvv_matmul_t : public primitive_t {
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
+            using smask_t = primitive_attr_t::skip_mask_t;
 
             const memory_desc_wrapper src_mdw(src_md(0));
             const memory_desc_wrapper weights_mdw(weights_md(0));
@@ -56,8 +57,9 @@ struct rvv_matmul_t : public primitive_t {
                     && desc()->accum_data_type == d_type;
             VDISPATCH_MATMUL(types_ok, VERBOSE_UNSUPPORTED_DT);
 
-            VDISPATCH_MATMUL(attr()->scales_.has_default_values(),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDISPATCH_MATMUL(
+                    attr()->has_default_values(smask_t::post_ops, d_type),
+                    VERBOSE_UNSUPPORTED_ATTR);
 
             VDISPATCH_MATMUL(rvv_postops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);

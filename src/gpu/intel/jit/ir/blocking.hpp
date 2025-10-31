@@ -123,6 +123,27 @@ public:
         return ret;
     }
 
+    // Arbitrary lexicographic ordering to enable deterministic operation.
+    bool operator<(const blocking_t &other) const {
+        if (simd_ != other.simd_) return simd_ < other.simd_;
+        auto tile_compare = [](const tile_t &a, const tile_t &b) {
+            auto a_it = a.begin(), b_it = b.begin();
+            auto a_end = a.end(), b_end = b.end();
+            while (a_it != a_end && b_it != b_end) {
+                if (a_it.idx() != b_it.idx()) return a_it.idx() < b_it.idx();
+                if (a_it.value() != b_it.value())
+                    return a_it.value() < b_it.value();
+                a_it++;
+                b_it++;
+            }
+            return a_it == a_end && b_it != b_end;
+        };
+        if (loop_ != other.loop_) return tile_compare(loop_, other.loop_);
+        if (thread_group_ != other.thread_group_)
+            return tile_compare(thread_group_, other.thread_group_);
+        return tile_compare(iter_, other.iter_);
+    }
+
     IR_DEFINE_DUMP()
 
 private:
@@ -130,10 +151,6 @@ private:
     tile_t loop_;
     tile_t thread_group_;
     tile_t iter_;
-};
-
-struct blocking_hash_t {
-    size_t operator()(const blocking_t &b) const { return b.get_hash(); }
 };
 
 // Flags specifying blocking restrictions for a prb dimension.
@@ -450,7 +467,7 @@ private:
     void generate_sample(int vec_size, const blocking_checker_t &chk,
             const level_tile_set_t &level_tile_set);
 
-    std::unordered_set<blocking_t, blocking_hash_t> blockings_;
+    std::set<blocking_t> blockings_;
 };
 
 class blocking_params_t {
@@ -558,7 +575,10 @@ public:
         gpu_assert(end >= beg && end <= configs());
         std::sort(params_vec_.begin() + beg, params_vec_.begin() + end,
                 [&](const blocking_params_t &a, const blocking_params_t &b) {
-                    return key_func(a) < key_func(b);
+                    auto a_eval = key_func(a);
+                    auto b_eval = key_func(b);
+                    if (a_eval == b_eval) return a.id() < b.id();
+                    return a_eval < b_eval;
                 });
     }
 

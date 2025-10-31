@@ -232,7 +232,7 @@ private:
     int vlen() {
         // TODO: If we do decide to add a different enum for
         // VLA SVE, we should handle this in cpu_isa_traits
-        return isa == asimd ? cpu_isa_traits<isa>::vlen : get_sve_length();
+        return isa == asimd ? cpu_isa_traits<asimd>::vlen : get_sve_length();
     }
     int simd_w() { return vlen() / dtype_size(); }
 
@@ -339,7 +339,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::load_vector(
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::load_vector(
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::load_vector(
         TRegS &dst, const XReg addr) {
     ld1w(dst, P_ALL_ONE / T_z, ptr(addr));
 }
@@ -352,7 +352,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::store_vector(
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::store_vector(
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::store_vector(
         const XReg &addr, const TRegS src) {
     st1w(src, P_ALL_ONE / T_z, ptr(addr));
 }
@@ -367,8 +367,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::unpack_bf16(
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::unpack_bf16(
-        TReg &v0, TReg &v1) {
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::unpack_bf16(TReg &v0, TReg &v1) {
     mov(v1.s, P_ALL_ONE, v0.s);
     lsl(v0.s, v0.s, 16);
     and_(v1.s, 0xFFFF0000);
@@ -381,8 +380,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::pack_bf16(TReg &v0, TReg &v1) {
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::pack_bf16(
-        TReg &v0, TReg &v1) {
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::pack_bf16(TReg &v0, TReg &v1) {
     bfcvt(v0.h, P_ALL_ONE, v0.s);
     bfcvtnt(v0.h, P_ALL_ONE, v1.s);
 }
@@ -397,8 +395,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::unpack_fp16(
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::unpack_fp16(
-        TReg &v0, TReg &v1) {
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::unpack_fp16(TReg &v0, TReg &v1) {
     mov(v1.s, P_ALL_ONE, v0.s);
     fcvt(v0.s, P_ALL_ONE, v0.h);
     lsr(v1.s, v1.s, 16);
@@ -413,8 +410,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::pack_fp16(TReg &v0, TReg &v1) {
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::pack_fp16(
-        TReg &v0, TReg &v1) {
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::pack_fp16(TReg &v0, TReg &v1) {
     fcvt(v0.h, P_ALL_ONE, v0.s);
     // Next three lines could be replaced by fcvtnt(vmm_src.h, P_ALL_ONE, tmp0.s)
     // Not currently implemented in xbyak
@@ -599,11 +595,11 @@ status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-// Jit uni eltwise is fully vector length agnostic, so we use sve_128
+// Jit uni eltwise is fully vector length agnostic, so we use sve
 // as alias for VLA SVE.
 template struct jit_uni_eltwise_fwd_t<asimd>;
-template struct jit_uni_eltwise_fwd_t<sve_128>;
-template struct jit_uni_eltwise_bwd_t<sve_128>;
+template struct jit_uni_eltwise_fwd_t<sve>;
+template struct jit_uni_eltwise_bwd_t<sve>;
 
 } // namespace aarch64
 } // namespace cpu

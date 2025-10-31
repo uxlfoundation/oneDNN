@@ -587,7 +587,7 @@ struct jit_softmax_base_t : public jit_generator_t {
     // initialization.
     void generate() override {
         if (pd_->is_fwd() || is_logsoftmax_)
-            exp_injector_.reset(new jit_uni_eltwise_injector_t<sve_128>(this,
+            exp_injector_.reset(new jit_uni_eltwise_injector_t<sve>(this,
                     alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, true,
                     reg_exp_injector_table, injector_mask, injector_tmp));
         if (pd_->is_fwd() && is_logsoftmax_) {

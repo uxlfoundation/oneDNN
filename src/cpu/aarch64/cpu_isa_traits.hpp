@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2023, 2025 Arm Ltd. and affiliates 
+* Copyright 2023, 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -47,33 +47,33 @@ namespace aarch64 {
    defined in dnnl_cpu_isa_t are temporaly used. */
 /// CPU instruction set flags
 enum {
-    /// AARCH64 Advanced SIMD & floating-point
+    /// AArch64 Advanced SIMD & floating-point
     dnnl_cpu_isa_asimd = 0x1,
-    /// AARCH64 SVE 128 bits
-    dnnl_cpu_isa_sve_128 = 0x3,
-    /// AARCH64 SVE 256 bits
-    dnnl_cpu_isa_sve_256 = 0x7,
-    /// AARCH64 SVE 384 bits
-    dnnl_cpu_isa_sve_384 = 0xf,
-    /// AARCH64 SVE 512 bits
+    /// AArch64 SVE Vector Length Agnostic
+    dnnl_cpu_isa_sve = 0x3,
+    /// AArch64 SVE 128 bits
+    dnnl_cpu_isa_sve_128 = 0x7,
+    /// AArch64 SVE 256 bits
+    dnnl_cpu_isa_sve_256 = 0xf,
+    /// AArch64 SVE 512 bits
     dnnl_cpu_isa_sve_512 = 0x27,
 };
 
 enum cpu_isa_bit_t : unsigned {
     asimd_bit = 1u << 0,
-    sve_128_bit = 1u << 1,
-    sve_256_bit = 1u << 2,
-    sve_384_bit = 1u << 3,
+    sve_bit = 1u << 1,
+    sve_128_bit = 1u << 2,
+    sve_256_bit = 1u << 3,
     sve_512_bit = 1u << 4,
 };
 
 enum cpu_isa_t : unsigned {
     isa_undef = 0u,
     asimd = asimd_bit,
-    sve_128 = sve_128_bit | asimd,
+    sve = sve_bit | asimd,
+    sve_128 = sve_128_bit | sve,
     sve_256 = sve_256_bit | sve_128,
-    sve_384 = sve_384_bit | sve_256,
-    sve_512 = sve_512_bit | sve_384,
+    sve_512 = sve_512_bit | sve_256,
     isa_all = ~0u,
 };
 
@@ -102,9 +102,9 @@ cpu_isa_t DNNL_API get_max_cpu_isa_mask(bool soft = false);
 status_t set_max_cpu_isa(dnnl_cpu_isa_t isa);
 dnnl_cpu_isa_t get_effective_cpu_isa();
 
-// If isa is a superset of sve_128, return sve_128, else return isa
+// Reduce any vector length specific cpu_isa_t to vector length agnostic (VLA) sve
 constexpr cpu_isa_t to_vla_sve(const cpu_isa_t isa) {
-    return (cpu_isa_t)(isa & sve_128);
+    return (cpu_isa_t)(isa & sve);
 }
 
 static inline bool compare_isa(
@@ -153,6 +153,19 @@ struct cpu_isa_traits<asimd> {
     static constexpr const char *user_option_env = "advanced_simd";
 };
 
+template <>
+struct cpu_isa_traits<sve> {
+    typedef Xbyak_aarch64::ZReg TReg;
+    typedef Xbyak_aarch64::ZRegB TRegB;
+    typedef Xbyak_aarch64::ZRegH TRegH;
+    typedef Xbyak_aarch64::ZRegS TRegS;
+    typedef Xbyak_aarch64::ZRegD TRegD;
+    static constexpr int n_vregs = 32;
+    static constexpr dnnl_cpu_isa_t user_option_val
+            = static_cast<dnnl_cpu_isa_t>(dnnl_cpu_isa_sve);
+    static constexpr const char *user_option_env = "sve";
+};
+
 #define CPU_ISA_SVE(bits, shift) \
     template <> \
     struct cpu_isa_traits<sve_##bits> { \
@@ -189,15 +202,13 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
 
     switch (cpu_isa) {
         case asimd: return cpu().has(XBYAK_AARCH64_HWCAP_ADVSIMD);
+        case sve: return cpu().has(XBYAK_AARCH64_HWCAP_SVE);
         case sve_128:
             return cpu().has(XBYAK_AARCH64_HWCAP_SVE)
                     && cpu().getSveLen() >= SVE_128;
         case sve_256:
             return cpu().has(XBYAK_AARCH64_HWCAP_SVE)
                     && cpu().getSveLen() >= SVE_256;
-        case sve_384:
-            return cpu().has(XBYAK_AARCH64_HWCAP_SVE)
-                    && cpu().getSveLen() >= SVE_384;
         case sve_512:
             return cpu().has(XBYAK_AARCH64_HWCAP_SVE)
                     && cpu().getSveLen() >= SVE_512;
@@ -214,6 +225,8 @@ inline int isa_max_vlen(cpu_isa_t isa) {
         return cpu_isa_traits<sve_256>::vlen;
     else if (isa == sve_128)
         return cpu_isa_traits<sve_128>::vlen;
+    else if (isa == asimd)
+        return cpu_isa_traits<asimd>::vlen;
     else
         return 0;
 }
@@ -238,14 +251,7 @@ inline bool mayiuse_bf16() {
 }
 
 inline int isa_num_vregs(cpu_isa_t isa) {
-    if (isa == sve_512)
-        return cpu_isa_traits<sve_512>::n_vregs;
-    else if (isa == sve_256)
-        return cpu_isa_traits<sve_256>::n_vregs;
-    else if (isa == sve_128)
-        return cpu_isa_traits<sve_128>::n_vregs;
-    else
-        return 0;
+    return isa == isa_undef ? 0 : 32;
 }
 
 } // namespace
@@ -256,10 +262,11 @@ inline int isa_num_vregs(cpu_isa_t isa) {
 #define JIT_IMPL_NAME_HELPER(prefix, isa, suffix_if_any) \
     ((isa) == isa_undef ? prefix STRINGIFY(any) : \
     ((isa) == asimd ? prefix STRINGIFY(asimd) : \
+    ((isa) == sve ? prefix STRINGIFY(sve) : \
     ((isa) == sve_128 ? prefix STRINGIFY(sve_128) : \
     ((isa) == sve_256 ? prefix STRINGIFY(sve_256) : \
     ((isa) == sve_512 ? prefix STRINGIFY(sve_512) : \
-    prefix suffix_if_any)))))
+    prefix suffix_if_any))))))
 /* clang-format on */
 
 inline size_t data_type_vnni_granularity(data_type_t data_type) {

@@ -424,7 +424,8 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
     if (bgmmc.with_reduce) return false;
 
     // BRGEMV currently supports only f32 and AVX2.
-    if (utils::one_of(false, bm_conf_utils.is_f32(), bgmmc.isa == avx2))
+    if (utils::one_of(false, bm_conf_utils.is_f32(),
+                bgmmc.isa == avx2 || bgmmc.isa == avx512_core))
         return false;
 
     if (utils::one_of(format_tag::undef, bm_conf_utils.get_gemv_A_tag(A_md),
@@ -1481,6 +1482,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.is_gemv
             = is_gemv_applicable(bgmmc, bm_conf_utils, src_md, weights_md);
+
+    VCONDCHECK_BG(IMPLICATION(bgmmc.is_gemv, isa == avx2),
+            "Fall back to the AVX2 implementation for the GEMV code path");
 
     if (!bgmmc.is_gemv && bm_conf_utils.is_f32() && bgmmc.isa == avx2
             && (bgmmc.N == 1 || bgmmc.M == 1)) {

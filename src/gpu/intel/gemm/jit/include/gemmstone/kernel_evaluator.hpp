@@ -56,6 +56,7 @@ struct EvaluateAuxOutput {
     int wgK = 1;
     bool kParallel = false;
     bool kParallelVariable = false;
+    bool disableKPadding = false;
 };
 
 DerivedEvaluateParams getDerivedParams(const kcatalog::Entry &e, const EvaluateParams &p);

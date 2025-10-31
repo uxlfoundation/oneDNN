@@ -1422,7 +1422,15 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         for (dim_t bd = 0; bd < bd_block; bd++) {
             auto vmm = accm(ld_block2, bd, ld);
             if (dq2ps_required && !dq2ps_cvt_done) uni_vcvtdq2ps(vmm, vmm);
-            if (brg.with_bias) uni_vaddps(vmm, vmm, vmm_bias);
+            if (brg.with_bias) {
+                if (brg.broadcast_bias) {
+                    uni_vaddps(vmm, vmm, vmm_bias);
+                } else {
+                    auto ptr_bias = ptr[reg_aux_bias + bias_offset(bd)];
+                    uni_vmovss(Xmm(vmm_bias.getIdx()), ptr_bias);
+                    uni_vaddss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()), vmm_bias);
+                }
+            }
         }
     }
     if (brg.is_fp8_via_convert()) reg64_fp8_aux.restore();
@@ -2854,6 +2862,12 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
             add(reg_D, bdb_D_offset(bd_block2));
         }
         add(reg_a_offset, bdb_A_offset(bd_block2));
+
+        if (brg.is_gemv && !brg.broadcast_bias) {
+            reg_bias.restore();
+            add(reg_bias, bias_offset(brg.bd_block));
+            reg_bias.save();
+        }
 
         advance_bd_block2_post_op_regs(bd_block2);
     };

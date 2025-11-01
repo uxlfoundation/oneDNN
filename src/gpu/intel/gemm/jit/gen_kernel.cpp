@@ -1142,6 +1142,16 @@ dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
     return make_kernel(gemm_desc, std::move(cset));
 };
 
+std::string dump_kernel(ngen::HW hw, const gemmstone::GEMMProblem &problem,
+        const gemmstone::GEMMStrategy &strategy) {
+    auto pstr = problem.toString();
+    auto astr = problem.scalarsToString();
+    auto sstr = unparseStrategy(hw, problem, strategy);
+    if (!astr.empty()) astr += ' ';
+    return pstr + ' ' + std::to_string(strategy.unroll[LoopM]) + ' '
+            + std::to_string(strategy.unroll[LoopN]) + ' ' + astr + sstr;
+}
+
 status_t gen_kernel_t::get_kernel(
         compute::kernel_t &kernel, const intel::engine_t *engine) {
     init_interface();
@@ -1174,6 +1184,11 @@ status_t gen_kernel_t::get_kernel(
             REG_XE3_ISA(ARCH_DISPATCH(Xe3))
             default: assert(!"Unsupported architecture"); break;
         }
+    } catch (const ngen::out_of_registers_exception &err) {
+        // OOR is not an unrecoverable error, so let's not scare the user
+        VDEBUGINFO(1, primitive, gpu, "%s,%s,%s", "jit::gemm", err.what(),
+                dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_)
+                        .c_str());
     } catch (const std::runtime_error &err) {
         VERROR(primitive, gpu, "%s,%s", "jit::gemm", err.what());
     }
@@ -1186,22 +1201,13 @@ void gen_kernel_t::maybe_print_verbose() {
     int level = get_verbose(verbose_t::debuginfo);
     if (level < 2) return;
 
-    const auto &problem = desc()->problem_;
-    const auto &strategy = desc()->strategy_;
-
-    auto pstr = problem.toString();
-    auto astr = problem.scalarsToString();
-    auto sstr = unparseStrategy(desc()->hw_, problem, strategy);
-
-    if (!astr.empty()) astr += ' ';
-
     if (level >= 10)
         verbose_printf("info,gpu,gemm,catalog entry:%s\n",
                 desc()->entry().str().c_str());
 
-    verbose_printf("info,gpu,gemm,kernel:%s %d %d %s%s\n", pstr.c_str(),
-            strategy.unroll[LoopM], strategy.unroll[LoopN], astr.c_str(),
-            sstr.c_str());
+    verbose_printf("info,gpu,gemm,kernel:%s\n",
+            dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_)
+                    .c_str());
 }
 
 } // namespace jit

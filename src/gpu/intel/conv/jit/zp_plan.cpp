@@ -1572,13 +1572,19 @@ stmt_t zp_plan_t::src_init_create_stmt(
 stmt_t zp_plan_t::load_create_stmt(
         const expr_t &mem_buf, const expr_t &reg_buf, int subtile_idx) const {
     if (subtile_idx > 0) return stmt_t();
-    return impl->load.create_stmt(mem_buf, reg_buf, subtile_idx);
+    if (mem_buf.type().is_ptr())
+        return impl->load.create_stmt(mem_buf, reg_buf, subtile_idx);
+    else
+        return store_t::make(reg_buf, 0, mem_buf);
 }
 
 stmt_t zp_plan_t::wei_load_create_stmt(
         const expr_t &mem_buf, const expr_t &reg_buf, int subtile_idx) const {
     if (subtile_idx > 0) return stmt_t();
-    return impl->wei_load.create_stmt(mem_buf, reg_buf, subtile_idx);
+    if (mem_buf.type().is_ptr())
+        return impl->wei_load.create_stmt(mem_buf, reg_buf, subtile_idx);
+    else
+        return store_t::make(reg_buf, 0, mem_buf);
 }
 
 stmt_t zp_plan_t::comp_init_create_stmt(buffer_manager_t &buf_mgr,

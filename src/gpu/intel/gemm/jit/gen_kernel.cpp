@@ -1174,6 +1174,9 @@ status_t gen_kernel_t::get_kernel(
             REG_XE3_ISA(ARCH_DISPATCH(Xe3))
             default: assert(!"Unsupported architecture"); break;
         }
+    } catch (const ngen::out_of_registers_exception &err) {
+        // OOR is not an unrecoverable error, so let's not scare the user
+        VDEBUGINFO(1, primitive, gpu, "%s,%s", "jit::gemm", err.what());
     } catch (const std::runtime_error &err) {
         VERROR(primitive, gpu, "%s,%s", "jit::gemm", err.what());
     }

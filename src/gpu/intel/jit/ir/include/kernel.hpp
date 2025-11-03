@@ -36,6 +36,11 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+
+struct codegen_extension_iface_t;
+using codegen_extension_handler_t
+        = void (*)(const object_t &, codegen_extension_iface_t &);
+
 namespace kernel {
 
 // Representation for a kernel's function prototype
@@ -75,6 +80,8 @@ private:
     std::vector<arg_t> args_;
 };
 
+extern codegen_extension_handler_t default_extension_handler;
+
 // Compilation options used for IR generation and lowering
 class options_t {
 public:
@@ -90,6 +97,14 @@ public:
     void set_regs(int regs) { regs_ = regs; }
     void set_simd(int simd) { simd_ = simd; }
 
+    // Handler which can be used for code-generation for custom IR objects.
+    codegen_extension_handler_t extension_handler() const {
+        return extension_handler_;
+    }
+    void set_extension_handler(codegen_extension_handler_t extension_handler) {
+        extension_handler_ = extension_handler;
+    }
+
     std::string str() const {
         ostringstream_t oss;
         oss << hw_.str();
@@ -102,6 +117,7 @@ private:
     hw_t hw_;
     int regs_ = 0;
     int simd_ = 0;
+    codegen_extension_handler_t extension_handler_ = default_extension_handler;
 };
 
 } // namespace kernel

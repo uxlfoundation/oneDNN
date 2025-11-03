@@ -19,8 +19,11 @@
 #pragma clang diagnostic ignored "-Wimplicit-int-conversion"
 #endif
 
-#include "gpu/intel/jit/codegen/codegen.hpp"
+#include <typeinfo>
+
 #include "gpu/intel/jit/codegen/bank_conflict_allocation.hpp"
+#include "gpu/intel/jit/codegen/codegen.hpp"
+#include "gpu/intel/jit/codegen/extensions.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/codegen/reduce.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
@@ -60,7 +63,8 @@ inline ngen::ConditionModifier cmp_op_to_ngen(op_kind_t op_kind) {
 
 // Lowers IR to nGEN.
 template <typename ngen_generator_t>
-class ir_to_ngen_t : public ir_visitor_t {
+class ir_to_ngen_t final : public codegen_extension_iface_t,
+                           public ir_visitor_t {
 public:
     ir_to_ngen_t(ngen_generator_t *host, const expr_binding_t &expr_binding)
         : host_(host)
@@ -79,6 +83,33 @@ public:
 #else
             = default;
 #endif
+
+    host_t root_code_generator() const override {
+        return {static_cast<typename ngen_generator_t::RootCodeGenerator *>(
+                        host_),
+                typeid(typename ngen_generator_t::RootCodeGenerator),
+                host_->getHardware()};
+    }
+    const kernel::options_t &options() const override {
+        return host_->options();
+    }
+    reg_allocator_t &allocator() override { return host_->ra(); }
+
+    std::vector<ngen_operand_t> evaluate(const std::vector<expr_t> &exprs,
+            ngen_register_scope_t &scope) override {
+        expr_evaluator_t<ngen_generator_t> expr_evaluator(
+                host_, expr_binding_, scope);
+        return expr_evaluator.eval(exprs);
+    }
+
+    // Not currently provided via codegen_extension_iface_t due to no users
+    ngen_operand_t evaluate(const expr_t &e, ngen_register_scope_t &scope,
+            const ngen_operand_t &dst_operand = ngen_operand_t(),
+            bool fill_mask0 = false) const {
+        expr_evaluator_t<ngen_generator_t> expr_evaluator(
+                host_, expr_binding_, scope);
+        return expr_evaluator.eval(e, dst_operand, fill_mask0);
+    }
 
     ngen::HW hw() const { return host_->getHardware(); }
 
@@ -121,9 +152,9 @@ public:
         auto scope = register_scope();
         auto var_op = scope.alloc_reg_data(obj.var.type());
         bool dynamic_loop = !is_const(obj.init) || !is_const(obj.bound);
-        auto init_op = eval(obj.init, scope);
-        auto bound_op = eval(obj.bound, scope);
-        auto step_op = eval(obj.step, scope);
+        auto init_op = evaluate(obj.init, scope);
+        auto bound_op = evaluate(obj.bound, scope);
+        auto step_op = evaluate(obj.step, scope);
 
         expr_binding_.bind(obj.var, var_op);
         host_->comment(
@@ -164,10 +195,10 @@ public:
 
         auto &func = obj.func;
         if (func.is<dpas_t>()) {
-            auto arg_ops = eval(obj.args, scope);
+            auto arg_ops = evaluate(obj.args, scope);
             dpas(func.as<dpas_t>(), arg_ops, obj.attr);
         } else if (func.is<mad_t>()) {
-            auto arg_ops = eval(obj.args, scope);
+            auto arg_ops = evaluate(obj.args, scope);
             mad(scope, func.as<mad_t>(), arg_ops, obj.attr);
         } else if (func.is<send_t>()) {
             auto &send_func = func.as<send_t>();
@@ -176,28 +207,29 @@ public:
             // If all channels are disabled for writing, quick return.
             if (all_of(mask, expr_t(false))) {
                 if (send_func.is_load() || send_func.is_load_2d()) {
-                    auto reg_buf_op = eval(send_t::arg_reg_buf(args), scope);
+                    auto reg_buf_op
+                            = evaluate(send_t::arg_reg_buf(args), scope);
                     auto pattern_op
-                            = eval(send_t::arg_fill_pattern(args), scope);
+                            = evaluate(send_t::arg_fill_pattern(args), scope);
                     fill_buf(reg_buf_op, send_func.payload_size(), pattern_op);
                 }
                 return;
             }
             // If all channels are enabled, do not use mask.
             if (all_of(mask, expr_t(true))) mask = expr_t();
-            auto arg_ops = eval(args, scope);
+            auto arg_ops = evaluate(args, scope);
             send(scope, func.as<send_t>(), arg_ops, obj.attr);
         } else if (func.is<reorder_t>()) {
-            auto arg_ops = eval(obj.args, scope);
+            auto arg_ops = evaluate(obj.args, scope);
             gpu_assert(obj.attr.is_empty()) << "Unexpected attribute.";
             reorder(scope, func.as<reorder_t>(), arg_ops);
         } else if (func.is<reduce_t>()) {
-            auto arg_ops = eval(obj.args, scope);
+            auto arg_ops = evaluate(obj.args, scope);
             gpu_assert(obj.attr.is_empty()) << "Unexpected attribute.";
             reduce(scope, func.as<reduce_t>(), arg_ops);
         } else if (func.is<eltwise_t>()) {
             auto &eltwise_func = func.as<eltwise_t>();
-            auto arg_ops = eval(obj.args, scope);
+            auto arg_ops = evaluate(obj.args, scope);
             eltwise(scope, eltwise_func, arg_ops);
         } else if (func.is_same(funcs::barrier_func())) {
             barrier(obj.attr);
@@ -208,8 +240,10 @@ public:
         } else if (func.is_same(funcs::slm_fence_func())) {
             slm_fence(obj.attr);
         } else if (func.is_same(funcs::zero_out_func())) {
-            auto buf_op = eval(obj.args[0], scope);
+            auto buf_op = evaluate(obj.args[0], scope);
             fill_buf(buf_op.reg_buf_data(), to_cpp<int>(obj.args[1]));
+        } else if (options().extension_handler()) {
+            options().extension_handler()(obj, *this);
         } else {
             gpu_error_not_expected() << object_t(obj);
         }
@@ -221,7 +255,7 @@ public:
 
         bool has_else = bool(obj.else_body);
         auto scope = register_scope();
-        auto cond_op = eval(obj.cond, scope);
+        auto cond_op = evaluate(obj.cond, scope);
 
         ngen::Label l_else;
         ngen::Label l_endif;
@@ -258,10 +292,11 @@ public:
             auto var_op = (var_type.is_bool())
                     ? ngen_operand_t(scope.alloc_flag(var_type.elems()))
                     : ngen_operand_t(scope.alloc_reg_data(var_type));
-            eval(obj.value, scope, ngen_operand_t(var_op, var_type.elems()));
+            evaluate(
+                    obj.value, scope, ngen_operand_t(var_op, var_type.elems()));
             expr_binding_.bind(obj.var, var_op);
         } else {
-            auto value_op = eval(obj.value, scope);
+            auto value_op = evaluate(obj.value, scope);
             expr_binding_.bind(obj.var, value_op);
         }
 
@@ -300,9 +335,9 @@ public:
     void _visit(const store_t &obj) override {
         host_->comment(obj.line_str());
         auto scope = register_scope();
-        auto buf_op = eval(obj.buf, scope);
+        auto buf_op = evaluate(obj.buf, scope);
         auto off = to_cpp<int>(obj.off);
-        auto mask_op = eval(obj.mask, scope);
+        auto mask_op = evaluate(obj.mask, scope);
 
         auto &type = obj.value.type();
         auto base_type = type.base();
@@ -320,7 +355,8 @@ public:
         auto dst_rbd = buf_op.reg_buf_data().format(off / base_type.size(),
                 type.elems(), stride, to_ngen(base_type));
         ngen_operand_t dst(dst_rbd, mod);
-        eval(obj.value, scope, dst, obj.fill_mask0 && !mask_op.is_invalid());
+        evaluate(
+                obj.value, scope, dst, obj.fill_mask0 && !mask_op.is_invalid());
     }
 
     void _visit(const while_t &obj) override {
@@ -331,7 +367,7 @@ public:
         ngen::Label loop_begin_label;
 
         host_->mark(loop_begin_label);
-        auto cond_op = eval(obj.cond, scope);
+        auto cond_op = evaluate(obj.cond, scope);
         host_->jmpi(1 | ~cond_op.flag_register_mod(), loop_end_label);
         visit(obj.body);
         host_->jmpi(1, loop_begin_label);
@@ -836,23 +872,6 @@ private:
         }
     }
 
-protected:
-    ngen_operand_t eval(const expr_t &e, ngen_register_scope_t &scope,
-            const ngen_operand_t &dst_operand = ngen_operand_t(),
-            bool fill_mask0 = false) const {
-        expr_evaluator_t<ngen_generator_t> expr_evaluator(
-                host_, expr_binding_, scope);
-        return expr_evaluator.eval(e, dst_operand, fill_mask0);
-    }
-
-    std::vector<ngen_operand_t> eval(const std::vector<expr_t> &exprs,
-            ngen_register_scope_t &scope) const {
-        expr_evaluator_t<ngen_generator_t> expr_evaluator(
-                host_, expr_binding_, scope);
-        return expr_evaluator.eval(exprs);
-    }
-
-private:
     ngen_generator_t *host_;
     expr_binding_t expr_binding_;
     int simd_size_;

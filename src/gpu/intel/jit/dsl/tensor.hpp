@@ -627,6 +627,10 @@ struct layout_t {
     // the previous block.
     layout_t with_block(block_t block) const;
 
+    layout_t with_offset(const expr_t &offset) const {
+        return {type_, blocks_, offset, ndims_, false};
+    }
+
     bool is_empty() const {
         if (type_.is_undef()) gpu_assert(*this == layout_t());
         return type_.is_undef();

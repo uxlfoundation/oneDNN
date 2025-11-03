@@ -145,14 +145,37 @@ struct ctx_t {
 
     tensor_t def(const std::string &name, const layout_t &layout,
             type::attr_t attr, const expr_t &value = {}) {
+        auto &back = layout.blocks().back();
+        auto size = into<int>(back.size * int64_t(back.stride));
+
+        // Padding allocations due to strides with overlapping dimensions have
+        // unclear semantics, disallow their use.
+        gpu_assert([&]() {
+            int64_t max_off = 0;
+            for (auto &b : layout.blocks()) {
+                max_off += (b.size - 1) * int64_t(b.stride);
+            }
+            return max_off < size;
+        }());
+
+        gpu_assert(is_zero(layout.offset()));
+        auto t = layout.type().with_attr(attr);
+        if (any(attr & type::attr_t::slm)) {
+            gpu_assert(value.is_empty());
+            auto buf = def(name, t[size]);
+            auto size_bytes = size * layout.type().size();
+            auto off = utils::div_up(slm_byte_offset(), layout.type().size());
+            auto off_bytes = off * layout.type().size();
+            reserve_slm((off_bytes - slm_byte_offset()) + size_bytes);
+            return {buf.ptr(), layout.with_offset(off)};
+        }
+
         // Tensors need to be grf-aligned for loading/storing
         // TODO: IR should be modified to enable loading small tensors (such as
         // scalar values) without GRF alignment.
-        auto elems = std::max(into<int>(layout.type().elems() * layout.elems()),
-                grf_size() / layout.type().base().size());
-        auto t = layout.type()[elems].with_attr(attr);
-        auto buf = def(name, t, value, /*force_alloc=*/!new_ir_api_).ptr();
-        return {buf, layout};
+        size = std::max(size, grf_size() / layout.type().size());
+        auto buf = def(name, t[size], value, /*force_alloc=*/!new_ir_api_);
+        return {buf.ptr(), layout};
     }
 
     expr_t let(
@@ -345,33 +368,9 @@ lval_t def(const std::string &name, const expr_t &value) {
     return def(name, value.type(), value);
 }
 
-tensor_t def(const std::string &name, layout_t layout, const expr_t &value,
-        type::attr_t attr) {
-    if (any(attr & type::attr_t::slm)) {
-        gpu_assert(value.is_empty());
-        auto &back = layout.blocks().back();
-        auto alloc_elems = into<int>(back.size * back.stride);
-
-        // Padding allocations due to strides with overlapping dimensions have
-        // unclear semantics, disallow their use.
-        gpu_assert([&]() {
-            int64_t max_off = 0;
-            for (auto &b : layout.blocks()) {
-                max_off += (b.size - 1) * int64_t(b.stride);
-            }
-            return max_off < alloc_elems;
-        }());
-
-        auto buf = def(name, layout.type().with_slm()[alloc_elems]);
-        int bytes = (to_cpp<int>(layout.offset()) + alloc_elems)
-                * layout.type().size();
-        auto off = utils::div_up(
-                default_ctx().slm_byte_offset(), layout.type().size());
-        layout.set_offset(off);
-        default_ctx().reserve_slm(bytes);
-        return tensor_t(buf.ptr(), layout);
-    }
-    return default_ctx().def(name, layout, attr);
+tensor_t def(const std::string &name, const layout_t &layout,
+        const expr_t &value, type::attr_t attr) {
+    return default_ctx().def(name, layout, attr, value);
 }
 
 tensor_t def(

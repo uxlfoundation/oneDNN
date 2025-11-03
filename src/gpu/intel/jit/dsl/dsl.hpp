@@ -101,8 +101,8 @@ lval_t def(const std::string &name, const type_t &type,
 lval_t def(const std::string &name, const expr_t &value);
 tensor_t def(const std::string &name, const layout_t &layout,
         type::attr_t attr = {});
-tensor_t def(const std::string &name, layout_t layout, const expr_t &value,
-        type::attr_t attr = {});
+tensor_t def(const std::string &name, const layout_t &layout,
+        const expr_t &value, type::attr_t attr = {});
 expr_t let(const std::string &name, const type_t &type, const expr_t &value);
 expr_t let(const std::string &name, const expr_t &value);
 

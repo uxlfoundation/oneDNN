@@ -30,7 +30,7 @@ enum class behavior_t {
     current, // Current core
     min, // used to select the smallest value for all the cores
     max, // used to select the largest value for all the cores
-    unknown
+    legacy // legacy get_per_core_cache_size behavior (uses CPUID doesn't consider hybrid)
 };
 
 // Use OS specific methods to determine the per-core cache size.
@@ -46,8 +46,14 @@ enum class behavior_t {
 //   size among all cores
 // - if behavior_t is current, the function returns the cache size of the core
 //   the calling thread is running on.
-// - if behavior_t is unknown, the function behaves like legacy
-//   get_per_core_cache_size(level) function.
+// - if behavior_t is legacy, the function behaves like the legacy
+//   get_per_core_cache_size(level) function using CPUID with no consideration of
+//   hybrid CPUs.
+//
+// Assumption each core type on a system is homogeneous in terms of cache
+// topology e.g. all P-cores have the same cache topology, all E-cores have the
+// same cache topology this is true for all Intel hybrid CPUs so far
+// (Alder Lake, Raptor Lake, Lunar Lake)
 //
 // Examples: (showing KB and MB values for clarity actual function returns bytes)
 // for a hybrid CPU with (e.g. Alder Lake)

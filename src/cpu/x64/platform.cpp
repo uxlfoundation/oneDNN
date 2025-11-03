@@ -21,14 +21,19 @@ core_type get_core_type() {
     // These correspond to values returned in CPUID leaf 0x1A core-type field.
     constexpr uint32_t CPUID_CORE_TYPE_ATOM = 0x20; // Intel Atom / E-core
     constexpr uint32_t CPUID_CORE_TYPE_CORE = 0x40; // Intel Core / P-core
-    uint32_t data[4] = {0};
-    Xbyak::util::Cpu::getCpuidEx(0x1A, 0, data);
-    uint32_t core_type_field = (data[0] >> 24) & 0xFF;
+    uint32_t regs[4] = {0};
+
+    // Get max basic CPUID leaf
+    Xbyak::util::Cpu::getCpuidEx(0x0, 0, regs);
+    uint32_t max_basic_leaf = regs[0];
+    // If 0x1A is not supported, default to p_core
+    if (max_basic_leaf < 0x1A) return core_type::p_core;
+
+    Xbyak::util::Cpu::getCpuidEx(0x1A, 0, regs);
+    uint32_t core_type_field = (regs[0] >> 24) & 0xFF;
     switch (core_type_field) {
-        case CPUID_CORE_TYPE_ATOM: // Intel Atom
-            return core_type::e_core;
-        case CPUID_CORE_TYPE_CORE: // Intel Core
-            return core_type::p_core;
+        case CPUID_CORE_TYPE_ATOM: return core_type::e_core;
+        case CPUID_CORE_TYPE_CORE: return core_type::p_core;
         default: return core_type::p_core;
     }
 }
@@ -752,9 +757,9 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
                 cache_topology.caches[idx] = info;
             } else {
                 // Merge sharing information conservatively.
-                cache_topology.caches[idx].num_sharing_cores
-                        = std::max(cache_topology.caches[idx].num_sharing_cores,
-                                num_sharing_cores);
+                cache_topology.caches[idx].num_sharing_cores = (std::max)(
+                        cache_topology.caches[idx].num_sharing_cores,
+                        num_sharing_cores);
             }
         }
     }
@@ -929,7 +934,7 @@ unsigned get_per_core_cache_size(int level, behavior_t btype) {
 
         case behavior_t::max: return (std::max)(pcore_size, ecore_size); break;
         case behavior_t::
-                unknown: // [[fallthrough]]; // fallthrough attribute is a C++17 feature
+                legacy: // [[fallthrough]]; // fallthrough attribute is a C++17 feature
         default:
             // unknown behavior, fallback to non-hybrid behavior
             return get_per_core_cache_size_legacy(level);

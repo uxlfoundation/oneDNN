@@ -19,8 +19,11 @@
 #pragma clang diagnostic ignored "-Wimplicit-int-conversion"
 #endif
 
-#include "gpu/intel/jit/codegen/codegen.hpp"
+#include <typeinfo>
+
 #include "gpu/intel/jit/codegen/bank_conflict_allocation.hpp"
+#include "gpu/intel/jit/codegen/codegen.hpp"
+#include "gpu/intel/jit/codegen/codegen_extensions.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/codegen/reduce.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
@@ -60,7 +63,7 @@ inline ngen::ConditionModifier cmp_op_to_ngen(op_kind_t op_kind) {
 
 // Lowers IR to nGEN.
 template <typename ngen_generator_t>
-class ir_to_ngen_t : public ir_visitor_t {
+class ir_to_ngen_t : public codegen_extension_interface_t, public ir_visitor_t {
 public:
     ir_to_ngen_t(ngen_generator_t *host, const expr_binding_t &expr_binding)
         : host_(host)
@@ -79,6 +82,19 @@ public:
 #else
             = default;
 #endif
+
+    host_t root_code_generator() const override {
+        return {static_cast<ngen_generator_t::RootCodeGenerator *>(host_),
+                typeid(typename ngen_generator_t::RootCodeGenerator)};
+    }
+    const kernel::options_t &options() const override {
+        return host_->options();
+    }
+    reg_allocator_t &allocator() override { return host_->ra(); }
+    std::vector<ngen_operand_t> evaluate(const std::vector<expr_t> &exprs,
+            ngen_register_scope_t &scope) override {
+        return eval(exprs, scope);
+    }
 
     ngen::HW hw() const { return host_->getHardware(); }
 
@@ -210,6 +226,8 @@ public:
         } else if (func.is_same(funcs::zero_out_func())) {
             auto buf_op = eval(obj.args[0], scope);
             fill_buf(buf_op.reg_buf_data(), to_cpp<int>(obj.args[1]));
+        } else if (options().extension_handler()) {
+            options().extension_handler()(obj, *this);
         } else {
             gpu_error_not_expected() << object_t(obj);
         }

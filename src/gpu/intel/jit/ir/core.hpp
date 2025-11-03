@@ -1846,9 +1846,13 @@ public:
         return *this;
     }
 
+    const func_impl_t &func_impl() const {
+        return *static_cast<func_impl_t *>(impl());
+    }
+
     stmt_t call(const std::vector<expr_t> &args = {},
             const func_call_attr_t &attr = {}) const {
-        return ((const func_impl_t *)impl())->call(args, attr);
+        return func_impl().call(args, attr);
     }
 
     stmt_t operator()(const std::vector<expr_t> &args = {}) const {

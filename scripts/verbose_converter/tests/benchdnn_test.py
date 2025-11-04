@@ -92,7 +92,9 @@ def filter_verbose(verbose: IO[str], driver: str, filter_event: str):
                 prop_kind = parts[7]
             except IndexError:
                 continue
-            if component != "primitive" or event not in filter_event:
+            if component != "primitive" and component != "ukernel":
+                continue
+            if event not in filter_event:
                 continue
             if get_driver(primitive) != driver:
                 continue

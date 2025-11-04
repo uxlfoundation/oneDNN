@@ -764,7 +764,6 @@ status_t memory_planner_t::prepare_execution_args_set(
     // create memory object for each value, and classify the memory objects into
     // different categories
     std::unordered_set<value_t *> prepared;
-    std::unordered_map<value_t *, dnnl::memory::desc> host_scalar_mds;
     ret = topo_order_visit(sg->get_output_ops(), [&](op_t *op) {
         for (auto &in : op->get_input_values()) {
             if (prepared.count(in.get())) continue;

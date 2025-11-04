@@ -18,6 +18,7 @@
 #define UTILS_DATA_KIND_HPP
 
 enum data_kind_t {
+    DAT_UNDEF = -1,
     SRC = 0,
     WEI,
     BIA,

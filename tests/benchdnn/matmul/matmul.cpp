@@ -355,7 +355,8 @@ int fill_sparse_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
 }
 
 int maybe_fill_tiled_mn_data(int exec_arg, const prb_t *prb, const cfg_t &cfg,
-        dnn_mem_t &mem_fp, dnn_mem_t *mem_dt = nullptr) {
+        dnn_mem_t &mem_fp, dnn_mem_t *mem_dt = nullptr,
+        data_kind_t kind = DAT_UNDEF, int zp = 0) {
     if (!tiled_mn_data_t::is_enabled()) return OK;
     if (mem_fp.nelems() == 0) return OK;
     int m_idx = -1, n_idx = -1, k_idx = -1;
@@ -403,20 +404,58 @@ int maybe_fill_tiled_mn_data(int exec_arg, const prb_t *prb, const cfg_t &cfg,
     dnnl_dim_t k_stride = (k_idx != -1 ? strides[k_idx] : 0);
 
     const int64_t TILE = tiled_mn_data_t::TILE;
-    benchdnn_parallel_nd(MB, TILE, TILE, [&](int64_t mb, int64_t m, int64_t n) {
-        dnnl_dim_t off0 = mb * (M * N * K) + m * m_stride + n * n_stride;
-        for (int64_t _m = m; _m < M; _m += TILE) {
-            for (int64_t _n = n; _n < N; _n += TILE) {
-                dnnl_dim_t off
-                        = mb * (M * N * K) + _m * m_stride + _n * n_stride;
-                for (int64_t k = 0; k < K; k++) {
-                    float elem = mem_fp.get_f32_elem(off0 + k * k_stride);
-                    mem_fp.set_f32_elem(off + k * k_stride, elem);
+
+    const auto density = [&]() {
+        cfg_t::density_args_t density_args;
+        density_args.data_kind = kind;
+        density_args.n_acc = prb->k;
+        return cfg.get_density(density_args);
+    }();
+    auto dt = (kind == DAT_UNDEF ? dnnl_data_type_undef : cfg.get_dt(kind));
+
+    benchdnn_parallel_nd(MB, std::min(TILE, M), std::min(TILE, N),
+            [&](int64_t mb, int64_t m, int64_t n) {
+                dnnl_dim_t off0
+                        = mb * (M * N * K) + m * m_stride + n * n_stride;
+
+                if (kind != DAT_UNDEF) {
+                    std::minstd_rand seed(off0 * K);
+                    std::uniform_int_distribution<> gen(
+                            cfg.get_range_min(kind), cfg.get_range_max(kind));
+                    std::bernoulli_distribution b_dist(density);
+                    for (int64_t k = 0; k < K; k++) {
+                        dnnl_dim_t off = off0 + k * k_stride;
+                        bool is_one = density == 1.f ? true : b_dist(seed);
+                        if (!is_one) {
+                            mem_fp.set_f32_elem(off, 0.f);
+                        } else {
+                            float val = gen(seed) + zp;
+                            mem_fp.set_f32_elem(off,
+                                    round_to_nearest_representable(dt, val));
+                        }
+                    }
                 }
-            }
+
+                for (int64_t _m = m; _m < M; _m += TILE) {
+                    for (int64_t _n = n; _n < N; _n += TILE) {
+                        dnnl_dim_t off = mb * (M * N * K) + _m * m_stride
+                                + _n * n_stride;
+                        for (int64_t k = 0; k < K; k++) {
+                            float elem
+                                    = mem_fp.get_f32_elem(off0 + k * k_stride);
+                            mem_fp.set_f32_elem(off + k * k_stride, elem);
+                        }
+                    }
+                }
+            });
+    if (mem_dt) {
+        if (mem_fp.nelems() == 1) {
+            float elem = mem_fp.get_f32_elem(0);
+            mem_fp.set_f32_elem(0, elem);
+        } else {
+            SAFE(mem_dt->reorder(mem_fp), WARN);
         }
-    });
-    if (mem_dt) SAFE(mem_dt->reorder(mem_fp), WARN);
+    }
     return OK;
 }
 
@@ -492,61 +531,67 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
     const int64_t chunk_size = 64;
     const int64_t n_chunks = div_up(nelems, chunk_size);
 
-    benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
-        int64_t idx_start = idx_chunk * chunk_size;
-        int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
-        // Note: we use a different seed for each chunk to avoid
-        // repeating patterns. We could use discard(idx_start) too but
-        // it has a complexity in O(idx_start). We also add 1 to avoid
-        // seeding with 0.
-        std::minstd_rand int_seed(kind * nelems + idx_start + 1);
-        int_seed.discard(1);
-        std::minstd_rand b_seed(kind * nelems + idx_start + 1);
-        b_seed.discard(10);
+    if (false) {
+        benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
+            int64_t idx_start = idx_chunk * chunk_size;
+            int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
+            // Note: we use a different seed for each chunk to avoid
+            // repeating patterns. We could use discard(idx_start) too but
+            // it has a complexity in O(idx_start). We also add 1 to avoid
+            // seeding with 0.
+            std::minstd_rand int_seed(kind * nelems + idx_start + 1);
+            int_seed.discard(1);
+            std::minstd_rand b_seed(kind * nelems + idx_start + 1);
+            b_seed.discard(10);
 
-        std::uniform_int_distribution<> gen(
-                cfg.get_range_min(kind), cfg.get_range_max(kind));
-        std::bernoulli_distribution b_dist(density);
+            std::uniform_int_distribution<> gen(
+                    cfg.get_range_min(kind), cfg.get_range_max(kind));
+            std::bernoulli_distribution b_dist(density);
 
-        // make sure the first element is positive
-        if (idx_start == 0 && !is_sparse_packed) {
-            float val = 0;
-            while (val <= 0)
-                val = gen(int_seed);
-            val += src_zp + wei_zp; // Add zp so that it will be subtracted.
-            mem_fp.set_f32_elem(
-                    0, round_to_nearest_representable(cfg.get_dt(kind), val));
-            idx_start += 1;
-        }
-
-        if (is_sparse_packed) {
-            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-                const bool is_one = nnz_mask[idx];
-                if (!is_one) {
-                    mem_fp.set_f32_elem(idx, 0.f);
-                    continue;
-                }
-                float val = 0.f;
-                while (val == 0.f)
+            // make sure the first element is positive
+            if (idx_start == 0 && !is_sparse_packed) {
+                float val = 0;
+                while (val <= 0)
                     val = gen(int_seed);
-                mem_fp.set_f32_elem(idx,
-                        round_to_nearest_representable(cfg.get_dt(kind), val));
-            }
-        } else {
-            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-                bool is_one = density == 1.f ? true : b_dist(b_seed);
-                if (!is_one) {
-                    mem_fp.set_f32_elem(idx, 0.f);
-                    continue;
-                }
-                float val = gen(int_seed);
                 val += src_zp + wei_zp; // Add zp so that it will be subtracted.
-                mem_fp.set_f32_elem(idx,
+                mem_fp.set_f32_elem(0,
                         round_to_nearest_representable(cfg.get_dt(kind), val));
+                idx_start += 1;
             }
-        }
-    });
-    maybe_fill_tiled_mn_data(exec_arg, prb, cfg, mem_fp, &mem_dt);
+
+            if (is_sparse_packed) {
+                for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                    const bool is_one = nnz_mask[idx];
+                    if (!is_one) {
+                        mem_fp.set_f32_elem(idx, 0.f);
+                        continue;
+                    }
+                    float val = 0.f;
+                    while (val == 0.f)
+                        val = gen(int_seed);
+                    mem_fp.set_f32_elem(idx,
+                            round_to_nearest_representable(
+                                    cfg.get_dt(kind), val));
+                }
+            } else {
+                for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                    bool is_one = density == 1.f ? true : b_dist(b_seed);
+                    if (!is_one) {
+                        mem_fp.set_f32_elem(idx, 0.f);
+                        continue;
+                    }
+                    float val = gen(int_seed);
+                    val += src_zp
+                            + wei_zp; // Add zp so that it will be subtracted.
+                    mem_fp.set_f32_elem(idx,
+                            round_to_nearest_representable(
+                                    cfg.get_dt(kind), val));
+                }
+            }
+        });
+    }
+    maybe_fill_tiled_mn_data(
+            exec_arg, prb, cfg, mem_fp, &mem_dt, kind, src_zp + wei_zp);
     SAFE(mem_dt.reorder(mem_fp, cfg.get_swapped_dt(kind)), WARN);
 
     return OK;

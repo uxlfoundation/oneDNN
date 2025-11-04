@@ -268,8 +268,12 @@ struct tiled_mn_data_t {
     }
 
     static bool is_enabled() {
+#if 1
+        return true;
+#else
         static bool ret = ::getenv("FAST");
         return ret;
+#endif
     }
 
     bool get(dnnl_dim_t mb, dnnl_dim_t m, dnnl_dim_t n, float &res) {

@@ -1776,8 +1776,14 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         const bool small_K = bgmmc.N <= 14528
                 && ((bgmmc.M <= 768 && bgmmc.K <= 128)
                         || bgmmc.K * bgmmc.M <= 49152);
-        VCONDCHECK_BG(IMPLICATION(bgmmc.ndims == 2,
-                              !small_K || !can_use_gemm_fallback()),
+        // We need to exclude certain shapes as brgemm matmul performs better
+        // for them.
+        const bool exception
+                = (bgmmc.M >= 1000 && bgmmc.K <= 16 && bgmmc.N <= 16)
+                || (bgmmc.M <= 256 && bgmmc.K <= 8 && bgmmc.N <= 1024);
+        VCONDCHECK_BG(
+                IMPLICATION(bgmmc.ndims == 2,
+                        exception || !small_K || !can_use_gemm_fallback()),
                 VERBOSE_SMALL_SHAPES);
     }
 

@@ -135,7 +135,6 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
 
     typename io_mdt_helper::saturation_map_t saturation_confs;
     if (jpp.dst_dt == data_type::u8) {
-
         uni_vxorps(vmm_zero, vmm_zero, vmm_zero);
         mov(tmp_gpr, float2int(255.0f));
         uni_vmovq(xmm_tmp, tmp_gpr);
@@ -144,6 +143,8 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
         io::io_saturation_conf_t io_saturation_conf(
                 vmm_zero.getIdx(), vmm_saturation_ubound.getIdx(), tmp_gpr);
         saturation_confs.insert({data_type::u8, io_saturation_conf});
+
+        reserved_vmms += 2;
     }
 
     io_ = io_mdt_helper(this, jpp.isa, dtypes, io_conf, io_tail_conf,
@@ -565,6 +566,8 @@ inline void jit_uni_pool_kernel_t<isa>::store(const data_type_t dt,
         const bool is_c_tail_proccessing) {
     if (is_c_tail_proccessing && jpp.is_c_padded && jpp.with_postops)
         pad_with_zeros(idx);
+    if (utils::one_of(dt, data_type::u8, data_type::s8, data_type::s32))
+        io_.init_saturate_f32({dt});
     io_[dt]->store(Vmm(idx), vmmword[reg_ptr + offset],
             is_c_tail_proccessing && !jpp.is_c_padded);
 }
@@ -763,11 +766,10 @@ template <cpu_isa_t isa>
 void jit_uni_pool_kernel_t<isa>::apply_postops(int ur_bc, int ur_w, int c_block,
         const std::function<bool(int, bool)> &is_tail_predicate) {
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
-    const int end_idx = vmm_idx_upper_bound() + 1;
-    const int start_idx = end_idx - (ur_bc * ur_w);
+    injector_utils::vmm_index_set_t vmm_idxs;
     const bool sse41_postops_disabled
             = isa == sse41 && disable_postops_when_sse_high_half_processed_;
-    if (end_idx - start_idx == 0) return;
+    if (ur_bc <= 0 || ur_w <= 0) return;
     if (jpp.with_binary && !sse41_postops_disabled) {
 
         const int c_off = (jpp.tag_kind == jit_memory_tag_kind_t::nspc)
@@ -782,8 +784,8 @@ void jit_uni_pool_kernel_t<isa>::apply_postops(int ur_bc, int ur_w, int c_block,
 
         for (int jj = 0; jj < ur_w; jj++) {
             for (int bci = 0; bci < ur_bc; bci++) {
-                const auto vmm_idx
-                        = vreg(reg_ind(0, bci, jj, ur_bc, ur_w)).getIdx();
+                const auto vmm_idx = static_cast<size_t>(
+                        vreg(reg_ind(0, bci, jj, ur_bc, ur_w)).getIdx());
 
                 const size_t output_offset
                         = jpp.dt_size * (jj * c_off + bci * c_block);
@@ -799,10 +801,22 @@ void jit_uni_pool_kernel_t<isa>::apply_postops(int ur_bc, int ur_w, int c_block,
                                 bci, true /*process_with_postops*/)) {
                     rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
                 }
+
+                vmm_idxs.emplace(vmm_idx);
             }
         }
     }
-    postops_injector_->compute_vector_range(start_idx, end_idx, rhs_arg_params);
+
+    if (vmm_idxs.empty()) {
+        for (int jj = 0; jj < ur_w; jj++) {
+            for (int bci = 0; bci < ur_bc; bci++) {
+                vmm_idxs.emplace(static_cast<size_t>(
+                        vreg(reg_ind(0, bci, jj, ur_bc, ur_w)).getIdx()));
+            }
+        }
+    }
+
+    postops_injector_->compute_vector_range(vmm_idxs, rhs_arg_params);
 }
 
 template <cpu_isa_t isa>

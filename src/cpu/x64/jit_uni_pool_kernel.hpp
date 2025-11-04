@@ -61,11 +61,14 @@ private:
 
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
+    int reserved_vmms = 0;
     int vmm_idx_upper_bound() const noexcept {
         return is_superset(isa, avx512_core) ? 31 : 15;
     }
 
-    int reg_idx(int idx) const noexcept { return vmm_idx_upper_bound() - idx; }
+    int reg_idx(int idx) const noexcept {
+        return vmm_idx_upper_bound() - idx - reserved_vmms;
+    }
 
     Xmm xreg(int idx) const noexcept { return Xmm(reg_idx(idx)); }
     Ymm yreg(int idx) const noexcept { return Ymm(reg_idx(idx)); }
@@ -91,8 +94,8 @@ private:
 
     Vmm vmm_k_offset = Vmm(1);
 
-    Vmm vmm_zero = Vmm(5);
-    Vmm vmm_saturation_ubound = Vmm(6);
+    Vmm vmm_zero = Vmm(vmm_idx_upper_bound() - 1);
+    Vmm vmm_saturation_ubound = Vmm(vmm_idx_upper_bound());
 
     Zmm bf16_emu_reserv_1 = Zmm(5);
     Zmm bf16_emu_reserv_2 = Zmm(6);

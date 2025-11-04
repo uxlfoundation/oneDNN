@@ -190,13 +190,23 @@ struct matmul_pd_t : public primitive_desc_t {
     int dst_qmask_M() const { return src_qmask_M(); }
 
     virtual bool attr_scales_ok(const std::vector<int> &supported_args
-            = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) const {
+            = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
+            const std::vector<int> &supported_qmodes
+            = {quantization_mode::static_sazp}) const {
         const auto &scales = attr()->scales_;
         if (scales.has_default_values()) return true;
 
         bool ok = scales.has_default_values(supported_args);
         for (int arg : supported_args) {
             if (scales.has_default_values(arg)) { continue; }
+
+            // Fold-left to check if quantization mode is supported
+            bool is_qmode_supported = false;
+            for (auto &qmode : supported_qmodes) {
+                is_qmode_supported = is_qmode_supported
+                        || (scales.get(arg).get_quantization_mode() == qmode);
+            }
+            ok = ok && is_qmode_supported;
 
             const auto &mask = scales.get_mask(arg);
             if (arg == DNNL_ARG_WEIGHTS) {

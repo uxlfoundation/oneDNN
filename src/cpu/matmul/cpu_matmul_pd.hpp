@@ -30,8 +30,10 @@ struct cpu_matmul_pd_t : public matmul_pd_t {
     using matmul_pd_t::matmul_pd_t;
     // NOLINTBEGIN(google-default-arguments)
     bool attr_scales_ok(const std::vector<int> &supported_args
-            = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) const override {
-        bool ok = matmul_pd_t::attr_scales_ok(supported_args);
+            = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
+            const std::vector<int> &supported_qmodes
+            = {quantization_mode::static_sazp}) const override {
+        bool ok = matmul_pd_t::attr_scales_ok(supported_args, supported_qmodes);
         const auto &scales = attr()->scales_;
         for (int arg : supported_args) {
             if (scales.has_default_values(arg)) { continue; }

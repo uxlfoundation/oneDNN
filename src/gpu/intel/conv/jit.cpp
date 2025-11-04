@@ -145,9 +145,15 @@ public:
             tiler->set_cur_version(primitive->version());
         }
 
+        int desc_idx = gpu_utils::dev_getenv("desc_idx", -1);
         for (int try_iter = 0; try_iter < max_tries; try_iter++) {
-            if (try_iter != 0 && !tiler->is_tuning_mode())
+            if (try_iter < desc_idx) {
                 tiler->move_next(cfg);
+                continue;
+            }
+            if ((try_iter != 0 && !tiler->is_tuning_mode())) {
+                tiler->move_next(cfg);
+            }
             try {
                 cfg = data.pd_cfg;
                 cfg.set_pd(pd);

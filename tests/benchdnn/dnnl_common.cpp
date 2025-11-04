@@ -389,13 +389,20 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
                 {sycl::ext::oneapi::experimental::property::graph::
                                 assume_buffer_outlives_graph {}}};
 
-        graph.begin_recording(queue);
-        status = exec_func(stream, dnnl_args);
-        graph.end_recording(queue);
-        DNN_SAFE(dnnl_stream_wait(stream), CRIT);
+        try {
+            graph.begin_recording(queue);
+            status = exec_func(stream, dnnl_args);
+            graph.end_recording(queue);
+            DNN_SAFE(dnnl_stream_wait(stream), CRIT);
 
-        auto exec = graph.finalize();
-        queue.ext_oneapi_graph(exec).wait();
+            auto exec = graph.finalize();
+            queue.ext_oneapi_graph(exec).wait();
+        } catch (const sycl::exception &e) {
+            BENCHDNN_PRINT(0, "%s %s\n",
+                    "[ERROR] SYCL graph execution exception:", e.what());
+            if (res) res->state = FAILED;
+            return FAIL;
+        }
 
         // SYCL graph feature completed submission and execution, no need to
         // have a regular run.

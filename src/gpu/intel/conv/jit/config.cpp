@@ -1644,6 +1644,25 @@ walk_order_t compute_walk_order(const config_t &cfg) {
         size_t ab_bytes = get_memory_footprint(cfg, inner, outer);
         if (ab_bytes <= l3_size) grid_inner = std::move(outer);
     }
+
+    // Prefer square spatial dimensions to increase cache reuse due to iteration
+    // over kernel spatial dimensions.
+    if (cfg.prb().is_fwd && cfg.loop_dim(pvars::kh) > 1 && cfg.prb().sh == 1) {
+        auto &w_inner = grid_inner[pvars::ow];
+        auto &h_inner = grid_inner[pvars::oh];
+        auto rebalance_spatial = [&]() {
+            if (grid_tile[pvars::oh] % (h_inner * 2)) return false;
+            if (w_inner % 2) return false;
+            if (w_inner < h_inner * 4) return false;
+            return true;
+        };
+
+        while (rebalance_spatial()) {
+            w_inner /= 2;
+            h_inner *= 2;
+        }
+    }
+
     // Add the blocks in this order:
     // - Step 1. Add grid_inner blocks (fitting L3 cache)
     // - Step 2. Add the remaining M/N blocks

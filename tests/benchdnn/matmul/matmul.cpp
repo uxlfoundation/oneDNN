@@ -354,6 +354,72 @@ int fill_sparse_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
     return OK;
 }
 
+int maybe_fill_tiled_mn_data(int exec_arg, const prb_t *prb, const cfg_t &cfg,
+        dnn_mem_t &mem_fp, dnn_mem_t *mem_dt = nullptr) {
+    if (!tiled_mn_data_t::is_enabled()) return OK;
+    if (mem_fp.nelems() == 0) return OK;
+    int m_idx = -1, n_idx = -1, k_idx = -1;
+    int ndims = mem_fp.ndims();
+    switch (exec_arg) {
+        case DNNL_ARG_SRC:
+            m_idx = ndims - 2;
+            k_idx = ndims - 1;
+            break;
+        case DNNL_ARG_WEIGHTS:
+            k_idx = ndims - 2;
+            n_idx = ndims - 1;
+            break;
+        case DNNL_ARG_DST:
+        case DNNL_ARG_BIAS:
+            m_idx = ndims - 2;
+            n_idx = ndims - 1;
+            break;
+        default: {
+            int local_exec_arg = 0;
+            if (exec_arg & DNNL_ARG_ATTR_SCALES) {
+                local_exec_arg = exec_arg ^ DNNL_ARG_ATTR_SCALES;
+            } else if (exec_arg & DNNL_ARG_ATTR_ZERO_POINTS) {
+                local_exec_arg = exec_arg ^ DNNL_ARG_ATTR_ZERO_POINTS;
+            } else {
+                return OK;
+            }
+            if (local_exec_arg == DNNL_ARG_SRC) {
+                m_idx = ndims - 2;
+                k_idx = ndims - 1;
+            } else if (local_exec_arg == DNNL_ARG_WEIGHTS) {
+                k_idx = ndims - 2;
+                n_idx = ndims - 1;
+            }
+            break;
+        }
+    }
+    dnnl_dim_t M = (m_idx == -1) ? 1 : mem_fp.dims()[m_idx];
+    dnnl_dim_t N = (n_idx == -1) ? 1 : mem_fp.dims()[n_idx];
+    dnnl_dim_t K = (k_idx == -1) ? 1 : mem_fp.dims()[k_idx];
+    dnnl_dim_t MB = mem_fp.nelems() / (M * N * K);
+    const auto strides = query_md_strides(mem_fp.md_);
+    dnnl_dim_t m_stride = (m_idx != -1 ? strides[m_idx] : 0);
+    dnnl_dim_t n_stride = (n_idx != -1 ? strides[n_idx] : 0);
+    dnnl_dim_t k_stride = (k_idx != -1 ? strides[k_idx] : 0);
+
+    const int64_t TILE = tiled_mn_data_t::TILE;
+    benchdnn_parallel_nd(MB, TILE, TILE, [&](int64_t mb, int64_t m, int64_t n) {
+        dnnl_dim_t off0 = mb * (M * N * K) + m * m_stride + n * n_stride;
+        for (int64_t _m = m; _m < M; _m += TILE) {
+            for (int64_t _n = n; _n < N; _n += TILE) {
+                dnnl_dim_t off
+                        = mb * (M * N * K) + _m * m_stride + _n * n_stride;
+                for (int64_t k = 0; k < K; k++) {
+                    float elem = mem_fp.get_f32_elem(off0 + k * k_stride);
+                    mem_fp.set_f32_elem(off + k * k_stride, elem);
+                }
+            }
+        }
+    });
+    if (mem_dt) SAFE(mem_dt->reorder(mem_fp), WARN);
+    return OK;
+}
+
 int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
 
@@ -480,7 +546,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
             }
         }
     });
-
+    maybe_fill_tiled_mn_data(exec_arg, prb, cfg, mem_fp, &mem_dt);
     SAFE(mem_dt.reorder(mem_fp, cfg.get_swapped_dt(kind)), WARN);
 
     return OK;
@@ -996,6 +1062,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 SAFE(init_ref_memory_args_default_case(
                              exec_arg, mem, ref_mem, prb->attr, res),
                         WARN);
+                maybe_fill_tiled_mn_data(exec_arg, prb, cfg, ref_mem, &mem);
                 break;
         }
 

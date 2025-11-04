@@ -132,6 +132,8 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const int64_t M_chunks = div_up(M, dst_M_group);
     const int64_t N_chunks = div_up(N, dst_N_group);
 
+    tiled_mn_data_t tiled_data(MB);
+
     benchdnn_parallel_nd(
             MB, M_chunks, N_chunks, [&](int64_t mb, int64_t mc, int64_t nc) {
                 int64_t src_mb = 0;
@@ -156,7 +158,8 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
                         n < MIN2((nc + 1) * dst_N_group, N); ++n)
                 {
                     float dst = 0;
-                    for (int64_t gK = 0; gK < n_k_groups; gK++) {
+                    bool cached = tiled_data.get(mb, m, n, dst);
+                    for (int64_t gK = 0; !cached && gK < n_k_groups; gK++) {
                         const auto src_gK_off = src_off_f(
                                 prb, src_mb, m, gK * smallest_k_group);
                         // Note: scales/zero-points are still always in `tag::abx` format.
@@ -201,6 +204,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
                             dst += s * w;
                         }
                     }
+                    if (!cached) tiled_data.set(mb, m, n, dst);
 
                     const auto dst_off = dst_off_f(prb, mb, m, n);
                     if (prb->bia_dt != dnnl_data_type_undef) {

@@ -260,6 +260,49 @@ struct cfg_t : public base_cfg_t {
     float get_density(const density_args_t &density_args) const override;
 };
 
+struct tiled_mn_data_t {
+    static const int TILE = 129;
+
+    tiled_mn_data_t(dnnl_dim_t mb) {
+        if (is_enabled()) cache_.resize(mb * TILE * TILE, NAN);
+    }
+
+    static bool is_enabled() {
+        static bool ret = ::getenv("FAST");
+        return ret;
+    }
+
+    bool get(dnnl_dim_t mb, dnnl_dim_t m, dnnl_dim_t n, float &res) {
+        if (!is_enabled()) return false;
+        m %= TILE;
+        n %= TILE;
+        dnnl_dim_t idx = (mb * TILE + m) * TILE + n;
+        if ((size_t)cache_elems_ == cache_.size()) {
+            res = cache_[idx];
+            return true;
+        }
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (std::isnan(cache_[idx])) return false;
+        res = cache_[idx];
+        return true;
+    };
+
+    void set(dnnl_dim_t mb, dnnl_dim_t m, dnnl_dim_t n, float res) {
+        if (!is_enabled()) return;
+        m %= TILE;
+        n %= TILE;
+        dnnl_dim_t idx = (mb * TILE + m) * TILE + n;
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (std::isnan(cache_[idx])) cache_elems_++;
+        cache_[idx] = res;
+    };
+
+private:
+    std::atomic<int> cache_elems_;
+    std::vector<float> cache_;
+    std::mutex mutex_;
+};
+
 inline int64_t src_off_f(const prb_t *prb, int64_t mb, int64_t m, int64_t k) {
     return (mb * prb->m + m) * prb->k + k;
 }

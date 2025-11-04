@@ -25,25 +25,36 @@ status_t rvv_postops_t::execute(
     int post_op_index = post_op_start_index_;
 
     for (auto &post_op : post_op_primitives_) {
-        if (post_op->kind() != primitive_kind::binary)
+        if (post_op->kind() == primitive_kind::binary) {
+            exec_args_t bin_args;
+            bin_args[DNNL_ARG_SRC_0] = ctx.args().at(DNNL_ARG_DST);
+            bin_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
+            const int rhs_arg = (DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_op_index)
+                    | DNNL_ARG_SRC_1);
+            bin_args[DNNL_ARG_SRC_1] = ctx.args().at(rhs_arg);
+
+            const auto &po = po_.entry_[post_op_index];
+            if (po.is_binary() && po.binary.alg == alg_kind::binary_select) {
+                const int rhs2_arg
+                        = (DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_op_index)
+                                | DNNL_ARG_SRC_2);
+                bin_args[DNNL_ARG_SRC_2] = ctx.args().at(rhs2_arg);
+            }
+
+            exec_ctx_t bin_ctx(ctx, std::move(bin_args));
+            CHECK(post_op->execute(bin_ctx));
+
+        } else if (post_op->kind() == primitive_kind::eltwise) {
+            exec_args_t elt_args;
+            elt_args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_DST);
+            elt_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
+
+            exec_ctx_t elt_ctx(ctx, std::move(elt_args));
+            CHECK(post_op->execute(elt_ctx));
+
+        } else {
             return status::runtime_error;
-
-        exec_args_t bin_args;
-        bin_args[DNNL_ARG_SRC_0] = ctx.args().at(DNNL_ARG_DST);
-        bin_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
-        const int rhs_arg = (DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_op_index)
-                | DNNL_ARG_SRC_1);
-        bin_args[DNNL_ARG_SRC_1] = ctx.args().at(rhs_arg);
-
-        const auto &po = po_.entry_[post_op_index];
-        if (po.is_binary() && po.binary.alg == alg_kind::binary_select) {
-            const int rhs2_arg = (DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_op_index)
-                    | DNNL_ARG_SRC_2);
-            bin_args[DNNL_ARG_SRC_2] = ctx.args().at(rhs2_arg);
         }
-
-        exec_ctx_t bin_ctx(ctx, std::move(bin_args));
-        CHECK(post_op->execute(bin_ctx));
 
         ++post_op_index;
     }

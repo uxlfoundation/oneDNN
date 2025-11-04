@@ -60,10 +60,12 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
             using sm = primitive_attr_t::skip_mask_t;
             VDISPATCH_POOLING(attr()->has_default_values(sm::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
-            // Enforce binary-only post-ops handled via primitives.
+
             if (!attr()->post_ops_.has_default_values()) {
                 const auto &po = attr()->post_ops_;
-                const bool ok = (po.len() == 1) && po.entry_[0].is_binary();
+                const bool ok = (po.len() == 1)
+                        && (po.entry_[0].is_binary()
+                                || po.entry_[0].is_eltwise());
                 VDISPATCH_POOLING(ok, VERBOSE_UNSUPPORTED_POSTOP);
             }
             VDISPATCH_POOLING(
@@ -81,7 +83,9 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
 
             if (!attr()->post_ops_.has_default_values()) {
                 const auto &po = attr()->post_ops_;
-                if (po.len() == 1 && po.entry_[0].is_binary()) {
+                if (po.len() == 1
+                        && (po.entry_[0].is_binary()
+                                || po.entry_[0].is_eltwise())) {
                     CHECK(postops_.init(engine, po, *dst_md()));
                 }
             }

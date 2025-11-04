@@ -467,6 +467,40 @@ class BRGEMMConverter(MultiDataTypeMixin, Converter):
         beta = self.entry.aux.get("beta", "")
         return f"--bs={bs} --beta={beta}"
 
+    @property
+    def tags(self):
+        tags = []
+        strides = []
+        lds = []
+
+        def add_strides_or_tag(arg, md):
+            tag = maybe_make_any_tag(md)
+            if arg == "wei":
+                if str(md.flags.value) != "f0":
+                    tag = "any"
+                if tag != "any" and tag.lower() == tag and md.strides:
+                    strides.append(md.strides)
+                    lds.append("")
+                else:
+                    tags.append(f"--{arg[0]}tag={tag}")
+                    strides.append("")
+                    lds.append("")
+            else:
+                ld_val = md.strides.split("x")[0]
+                lds.append(f"{ld_val}")
+                strides.append("")
+
+        md_map = {md.arg: md for md in self.entry.mds}
+        args = "src", "wei", "dst"
+        for arg in args:
+            if arg not in md_map:
+                continue
+            md = md_map[arg]
+            add_strides_or_tag(arg, md)
+        stride_flag = "--strides=" + ":".join(strides)
+        ld_flag = "--ld=" + ":".join(lds)
+        return " ".join(tags + [stride_flag] + [ld_flag])
+
 
 class ConcatConverter(CommonDataTypeMixin, MultiSourceMixin, Converter):
     driver: str = "concat"

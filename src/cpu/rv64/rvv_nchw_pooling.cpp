@@ -316,7 +316,9 @@ status_t riscv_nchw_pooling_fwd_t::execute_forward(
     }
 
     const post_ops_t &post_ops = pd()->attr()->post_ops_;
-    if (post_ops.len() == 1 && post_ops.entry_[0].is_binary()) {
+    if (post_ops.len() == 1
+            && (post_ops.entry_[0].is_binary()
+                    || post_ops.entry_[0].is_eltwise())) {
         CHECK(pd()->postops_.execute(ctx, dst, dst));
     }
 

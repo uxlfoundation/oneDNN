@@ -407,19 +407,15 @@ int64_t dnn_mem_t::get_idx(int64_t logical_idx, int dims_mask, const int ndims,
 
     assert(groups.empty() || groups.size() == 2);
     assert(groups.size() <= static_cast<size_t>(ndims));
-    dims_t groups_ext(ndims, 1);
-    if (!groups.empty()) {
-        groups_ext[ndims - 2] = groups[0];
-        groups_ext[ndims - 1] = groups[1];
-    }
 
     for (int i = 0; i < ndims; ++i) {
         int d = ndims - 1 - i;
+        dnnl_dim_t g = (groups.empty() || i > 1 ? 1 : groups[1 - i]);
         auto pos = logical_idx % dims[d];
         logical_idx /= dims[d];
         if (dims_mask & (1 << d)) {
-            offset += (pos / groups_ext[d]) * stride;
-            stride *= (dims[d] / groups_ext[d]);
+            offset += (pos / g) * stride;
+            stride *= (dims[d] / g);
         }
     }
 

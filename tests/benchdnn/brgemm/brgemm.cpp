@@ -583,9 +583,10 @@ void skip_invalid_prb(const prb_t *prb, res_t *res) {
     const bool ldb_ok = prb->get_ldb() == 16 || prb->get_ldb() == 32
             || prb->get_ldb() == 48 || prb->get_ldb() == 64;
     if (!ldb_ok) {
-        BENCHDNN_PRINT(2, "%s\n",
+        BENCHDNN_PRINT(2,
                 "Unsupported leading B dimension. Only 16, 32, 48, and 64 are "
-                "supported");
+                "supported. Actual value is \'%zu\'.\n",
+                (size_t)prb->get_ldb());
         res->state = SKIPPED;
         res->reason = skip_reason::case_not_supported;
         return;

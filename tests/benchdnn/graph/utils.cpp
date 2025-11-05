@@ -1227,4 +1227,38 @@ dnnl_data_type_t convert_dt(const dnnl::graph::logical_tensor::data_type dt) {
     }
 }
 
+stream_staller_t::stream_staller_t(graph::cpp_stream_t &stream) {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    auto tp = dnnl::threadpool_interop::get_threadpool(stream);
+
+    // Only relevant for asynchronous threadpool, synchronous will
+    // deadlock.
+    if (tp->get_flags()
+            != dnnl::threadpool_interop::threadpool_iface::ASYNCHRONOUS)
+        return;
+
+    // Each thread from the threadpool should get the task to be stalled.
+    const int num_tasks = tp->get_num_threads();
+
+    // The main thread must be let through, otherwise it deadlocks as
+    // task submission won't happen.
+    std::thread::id main_thr_id = std::this_thread::get_id();
+
+    // Shared future allows to pass all waiting threads at once inside the
+    // palallel call.
+    std::shared_future<void> fut(prom_.get_future());
+
+    tp->parallel_for(num_tasks, [=](int, int) {
+        std::thread::id id_thr = std::this_thread::get_id();
+        if (id_thr != main_thr_id) fut.wait();
+    });
+#endif
+}
+
+void stream_staller_t::release() {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    prom_.set_value();
+#endif
+}
+
 } // namespace graph

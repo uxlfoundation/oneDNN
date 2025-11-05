@@ -16,6 +16,7 @@
 
 #include <algorithm> // for std::reverse and std::copy
 #include <functional> // for std::bind and std::placeholders
+#include <future> // for std::promise and std::future
 #include <list>
 #include <numeric>
 #include <string> // for std::string
@@ -409,6 +410,42 @@ void args_t::replace(int arg, const dnn_mem_t *mem) {
     }
 }
 
+stream_staller_t::stream_staller_t(stream_t &stream) {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    void *tp_ptr;
+    dnnl_threadpool_interop_stream_get_threadpool(stream, &tp_ptr);
+    auto tp = static_cast<dnnl::threadpool_interop::threadpool_iface *>(tp_ptr);
+
+    // Only relevant for asynchronous threadpool, synchronous will
+    // deadlock.
+    if (tp->get_flags()
+            != dnnl::threadpool_interop::threadpool_iface::ASYNCHRONOUS)
+        return;
+
+    // Each thread from the threadpool should get the task to be stalled.
+    const int num_tasks = tp->get_num_threads();
+
+    // The main thread must be let through, otherwise it deadlocks as
+    // task submission won't happen.
+    std::thread::id main_thr_id = std::this_thread::get_id();
+
+    // Shared future allows to pass all waiting threads at once inside the
+    // palallel call.
+    std::shared_future<void> fut(prom_.get_future());
+
+    tp->parallel_for(num_tasks, [=](int, int) {
+        std::thread::id id_thr = std::this_thread::get_id();
+        if (id_thr != main_thr_id) fut.wait();
+    });
+#endif
+}
+
+void stream_staller_t::release() {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    prom_.set_value();
+#endif
+}
+
 // Unmap before passing the memory to execute
 void execute_unmap_args(
         const args_t &args, std::vector<dnnl_exec_arg_t> &dnnl_args) {
@@ -469,7 +506,10 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
     }
 #endif
     if (run_regular_exec) {
+        stream_staller_t staller(stream);
         TIME_EXECUTE(status = exec_func(stream, dnnl_args));
+        staller.release();
+
         TIME_EXECUTE(DNN_SAFE(dnnl_stream_wait(stream), CRIT));
     }
     if (res) res->state = EXECUTED;

@@ -723,11 +723,15 @@ int doit(const prb_t *prb, res_t *res) {
         auto &graph_mem_mgr = graph_mem_manager_t::get_instance();
         graph_mem_mgr.start_graph_mem_check();
         BENCHDNN_PRINT(3, "[INFO]: Start execution of partition #%zd.\n", i);
+
+        stream_staller_t staller(strm);
         // Need following clean-up steps as the memories have been mappped to
         // device. Otherwise the deconstruction will fail.
         DNN_GRAPH_SAFE(
                 c_partitions[i - idx_offset].execute(strm, input_ts, output_ts),
                 (WARN | NEED_CLEANUP), res);
+        staller.release();
+
         DNN_GRAPH_SAFE(strm.wait(), WARN, res);
         graph_mem_mgr.stop_graph_mem_check();
 

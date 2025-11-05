@@ -18,6 +18,7 @@
 #define DNNL_COMMON_HPP
 
 #include <functional>
+#include <future> // for std::promise and std::future
 #include <stddef.h>
 #include <stdint.h>
 #include <vector>
@@ -182,6 +183,18 @@ struct args_t {
 
 private:
     std::vector<std::pair<int, const dnn_mem_t *>> args_;
+};
+
+struct stream_staller_t {
+    // Enqueue tasks to stall a primitive execution tasks for asynchronous
+    // threadpool runtime. For rest runtimes does nothing.
+    stream_staller_t(stream_t &stream);
+
+    // A signal the submission has completed and ready for execution.
+    void release();
+
+private:
+    std::promise<void> prom_;
 };
 
 template <typename prb_t>

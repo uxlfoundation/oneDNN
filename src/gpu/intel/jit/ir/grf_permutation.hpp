@@ -19,6 +19,7 @@
 
 #include <array>
 
+#include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
@@ -66,6 +67,28 @@ private:
 
     std::array<int, max_regs> permutation_;
     bool is_empty_ = true;
+};
+
+// Allocation attribute specifying permutation for a GRF buffer.
+class grf_permute_attr_t : public alloc_attr_impl_t,
+                           public object::info_t<grf_permute_attr_t> {
+public:
+    static alloc_attr_t make(
+            const std::shared_ptr<grf_permutation_t> &grf_perm) {
+        return alloc_attr_t(new grf_permute_attr_t(grf_perm));
+    }
+
+    bool is_equal(const object::impl_t &obj) const override {
+        return this == &obj;
+    }
+
+    size_t get_hash() const override { return 0; }
+
+    std::shared_ptr<grf_permutation_t> grf_perm;
+
+private:
+    grf_permute_attr_t(const std::shared_ptr<grf_permutation_t> &grf_perm)
+        : alloc_attr_impl_t(get_info()), grf_perm(grf_perm) {}
 };
 
 } // namespace jit

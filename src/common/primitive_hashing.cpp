@@ -100,6 +100,7 @@ bool key_t::operator==(const key_t &rhs) const {
             CASE(softmax)
             CASE(sum)
             CASE(zero_pad)
+            CASE(grouped_gemm)
             default: assert(!"unknown primitive kind");
         }
 #undef CASE
@@ -754,6 +755,25 @@ size_t get_desc_hash(const sdpa_desc_t &desc) {
     seed = hash_combine(seed, static_cast<size_t>(desc.mask_type));
     seed = hash_combine(seed, static_cast<size_t>(desc.softmax_alg));
     // Combined hash for sdpa desc
+    return seed;
+}
+
+// currently aligned to grouped_gemm_desc_t to src/common/opdesc.hpp
+size_t get_desc_hash(const grouped_gemm_desc_t &desc) {
+    size_t seed = 0;
+    // Kinds
+    seed = hash_combine(seed, static_cast<size_t>(desc.primitive_kind));
+    seed = hash_combine(seed, desc.group_size);
+    // Memory descriptors
+    seed = get_array_hash(seed, desc.src_mds);
+    seed = get_array_hash(seed, desc.wei_mds);
+    // todo: any changes if not in use?
+    seed = get_array_hash(seed, desc.bias_mds);
+    seed = get_array_hash(seed, desc.dst_mds);
+
+    // Accumulator type
+    seed = hash_combine(seed, static_cast<size_t>(desc.accum_data_type));
+    // Combined hash for grouped_gemm desc
     return seed;
 }
 

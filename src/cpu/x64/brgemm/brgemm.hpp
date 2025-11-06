@@ -80,6 +80,7 @@ status_t DNNL_API brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
 ///     The data type of output vector y depends on dt_a and dt_x:
 ///     - If dt_a and dt_x are integer types (u8/s8), y has int32 data type.
 ///     - If dt_a and dt_x are bf16, f16, or f32, y has f32 data type.
+///
 /// @param transA  Specifies whether matrix A is transposed:
 ///                'false' - A is not transposed,
 ///                'true'  - A is transposed.
@@ -92,13 +93,19 @@ status_t DNNL_API brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
 ///                transposed. Also the size of output vector y.
 /// @param N       Number of columns of matrix A if not transposed, or rows if
 ///                transposed. Also the size of input vector x.
+/// @param treat_y_as_row Specifies whether the y vector should be treated as
+///                a row when the post-ops are applied.
+///                Some post-op parameters can be scalars or vectors of size M.
+///                'true'  - parameter is a vector of size M (applied elementwise)
+///                'false' - parameter is a scalar broadcast over the M
+///                          elements of the output vector y.
 ///
 /// @return status::success on success and a status describing the error
 ///     otherwise.
 status_t brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_x, bool transA, float alpha, float beta, dim_t LDA,
-        dim_t INCY, dim_t M, dim_t N);
+        dim_t INCY, dim_t M, dim_t N, bool treat_y_as_row);
 
 /// Initializes a BRGEMM descriptor with B matrix as a diagonal matrix
 /// represented in packed vector format.

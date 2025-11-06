@@ -181,6 +181,7 @@ public:
         , kernel_iface_(kernel_iface)
         , options_(options)
         , ra_(getHardware())
+        , expr_binding_(getHardware())
         , emu_strategy_(getHardware(), options_.hw().stepping()) {
         ra_.setRegisterCount(options_.regs());
     }
@@ -189,6 +190,9 @@ public:
 
     reg_allocator_t &ra() { return ra_; };
     const reg_allocator_t &ra() const { return ra_; };
+
+    expr_binding_t &expr_binding() { return expr_binding_; };
+    const expr_binding_t &expr_binding() const { return expr_binding_; };
 
     ngen::Subregister grid_ids[3] = {r0.ud(1), r0.ud(6), r0.ud(7)};
 
@@ -209,8 +213,8 @@ public:
         or_(1, BaseGeneratorT::cr0, BaseGeneratorT::cr0, uint16_t(0x14C0));
     }
 
-    void bind_external_vars(const stmt_t &kernel_body,
-            expr_binding_t &expr_binding, const walk_order_t *walk_order) {
+    void bind_external_vars(
+            const stmt_t &kernel_body, const walk_order_t *walk_order) {
         alloc_manager_t alloc_mgr(kernel_body);
 
         // Bind local IDs.
@@ -219,14 +223,14 @@ public:
             if (!local_id.is_empty()) {
                 auto local_id_reg = BaseGeneratorT::getLocalID(i).uw(0);
                 ra_.claim(local_id_reg);
-                expr_binding.bind(local_id, local_id_reg);
+                expr_binding().bind(local_id, local_id_reg);
             }
             auto local_size
                     = alloc_mgr.find_var(ir_builder_t::local_size(i), true);
             if (!local_size.is_empty()) {
                 auto local_size_reg = BaseGeneratorT::getLocalSize(i).uw(0);
                 ra_.claim(local_size_reg);
-                expr_binding.bind(local_size, local_size_reg);
+                expr_binding().bind(local_size, local_size_reg);
             }
         }
 
@@ -245,12 +249,12 @@ public:
             }
             auto arg_reg = BaseGeneratorT::getArgument(name);
             ra_.claim(arg_reg);
-            expr_binding.bind(arg_var, arg_reg);
+            expr_binding().bind(arg_var, arg_reg);
         }
 
         // Bind SLM buffer (SLM loads/stores use 0-based offsets).
         auto slm_buf = alloc_mgr.find_buffer("slm", /*allow_empty=*/true);
-        if (slm_buf) expr_binding.bind(slm_buf, to_ngen(expr_t(0)));
+        if (slm_buf) expr_binding().bind(slm_buf, to_ngen(expr_t(0)));
 
         // Workaround a hardware bug on MTL and ARL. In some scenarios, a read
         // suppression bug results in incorrect results when using r0. This
@@ -273,7 +277,7 @@ public:
             auto tg_idx = alloc_mgr.find_var(ir_builder_t::tg_idx(i), true);
             if (tg_idx) {
                 ngen::Subregister tg_reg = r0_info.ud(r0_sub_idxs[i]);
-                expr_binding.bind(tg_idx, tg_reg);
+                expr_binding().bind(tg_idx, tg_reg);
                 ra_.claim(tg_reg);
                 grid_ids[i] = tg_reg;
             } else if (walk_order) {
@@ -303,8 +307,8 @@ public:
 
     void bind_kernel_grid_walk_order_blocked(const ngen::Subregister &id,
             const std::vector<std::pair<int, int>> &blocks,
-            const std::vector<int> &dims, const std::vector<expr_t> &grid_vars,
-            expr_binding_t &expr_binding) {
+            const std::vector<int> &dims,
+            const std::vector<expr_t> &grid_vars) {
         int ndims = (int)dims.size();
         int nblocks = (int)blocks.size();
         std::vector<ngen::Subregister> rem_dims(ndims);
@@ -370,18 +374,17 @@ public:
             ra_.safeRelease(rem_dims[i]);
 
         for (int i = 0; i < ndims; i++) {
-            expr_binding.bind(grid_vars[i], dim_idxs[i]);
+            expr_binding().bind(grid_vars[i], dim_idxs[i]);
         }
     }
 
     void bind_kernel_grid_walk_order_non_blocked(const ngen::Subregister &id,
             const std::vector<std::pair<int, int>> &blocks,
-            const std::vector<expr_t> &grid_vars,
-            expr_binding_t &expr_binding) {
+            const std::vector<expr_t> &grid_vars) {
         int nblocks = (int)blocks.size();
         gpu_assert((int)grid_vars.size() == nblocks);
         if (nblocks == 1) {
-            expr_binding.bind(grid_vars[0], id);
+            expr_binding().bind(grid_vars[0], id);
             return;
         }
         auto _id = ra_.alloc_sub<int32_t>();
@@ -390,13 +393,12 @@ public:
             int dim_idx = blocks[i].first;
             auto idx = ra_.alloc_sub<int32_t>();
             eidiv(1, _id, idx, _id, (uint32_t)blocks[i].second);
-            expr_binding.bind(grid_vars[dim_idx], idx);
+            expr_binding().bind(grid_vars[dim_idx], idx);
         }
         ra_.safeRelease(_id);
     }
 
-    void bind_kernel_grid_walk_order(
-            const walk_order_t &walk_order, expr_binding_t &expr_binding) {
+    void bind_kernel_grid_walk_order(const walk_order_t &walk_order) {
         const int grid_ndims = 3;
         for (int i = 0; i < grid_ndims; i++) {
             std::vector<std::pair<int, int>> blocks;
@@ -422,10 +424,10 @@ public:
             }
             if (walk_order.is_blocked(i) || gpu_utils::dev_getenv("B", false)) {
                 bind_kernel_grid_walk_order_blocked(
-                        grid_ids[i], blocks, dims, grid_vars, expr_binding);
+                        grid_ids[i], blocks, dims, grid_vars);
             } else {
                 bind_kernel_grid_walk_order_non_blocked(
-                        grid_ids[i], blocks, grid_vars, expr_binding);
+                        grid_ids[i], blocks, grid_vars);
             }
         }
     }
@@ -1157,6 +1159,7 @@ protected:
     kernel::iface_t kernel_iface_;
     kernel::options_t options_;
     reg_allocator_t ra_;
+    expr_binding_t expr_binding_;
     ngen::GRF signal_header_;
 
     ngen::EmulationStrategy emu_strategy_;

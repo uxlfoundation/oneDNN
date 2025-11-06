@@ -64,9 +64,8 @@ template <typename ngen_generator_t>
 class ir_to_ngen_t final : public codegen_extension_iface_t,
                            public ir_visitor_t {
 public:
-    ir_to_ngen_t(ngen_generator_t *host, const expr_binding_t &expr_binding)
+    ir_to_ngen_t(ngen_generator_t *host)
         : host_(host)
-        , expr_binding_(expr_binding)
         , simd_size_(host->getSIMD())
         , with_atomic_fp64_(host->hw_info().has_fp64_atomic_support()) {}
 
@@ -95,8 +94,7 @@ public:
 
     std::vector<ngen_operand_t> evaluate(const std::vector<expr_t> &exprs,
             ngen_register_scope_t &scope) override {
-        expr_evaluator_t<ngen_generator_t> expr_evaluator(
-                host_, expr_binding_, scope);
+        expr_evaluator_t<ngen_generator_t> expr_evaluator(host_, scope);
         return expr_evaluator.eval(exprs);
     }
 
@@ -104,8 +102,7 @@ public:
     ngen_operand_t evaluate(const expr_t &e, ngen_register_scope_t &scope,
             const ngen_operand_t &dst_operand = ngen_operand_t(),
             bool fill_mask0 = false) const {
-        expr_evaluator_t<ngen_generator_t> expr_evaluator(
-                host_, expr_binding_, scope);
+        expr_evaluator_t<ngen_generator_t> expr_evaluator(host_, scope);
         return expr_evaluator.eval(e, dst_operand, fill_mask0);
     }
 
@@ -136,12 +133,12 @@ public:
                 auto &attr = obj.get_attr<grf_permute_attr_t>();
                 rbd.set_grf_permutation(*attr.grf_perm);
             }
-            expr_binding_.bind(obj.buf, rbd);
+            host_->expr_binding().bind(obj.buf, rbd);
         }
-        host_->comment(
-                obj.line_str() + " -> " + expr_binding_.get(obj.buf).str());
+        host_->comment(obj.line_str() + " -> "
+                + host_->expr_binding().get(obj.buf).str());
         visit(obj.body);
-        if (do_alloc) expr_binding_.unbind(obj.buf);
+        if (do_alloc) host_->expr_binding().unbind(obj.buf);
         if (use_bc_alloc) release_bank_conflict_allocation(obj);
     }
 
@@ -154,9 +151,9 @@ public:
         auto bound_op = evaluate(obj.bound, scope);
         auto step_op = evaluate(obj.step, scope);
 
-        expr_binding_.bind(obj.var, var_op);
-        host_->comment(
-                obj.var.str() + " -> " + expr_binding_.get(obj.var).str());
+        host_->expr_binding().bind(obj.var, var_op);
+        host_->comment(obj.var.str() + " -> "
+                + host_->expr_binding().get(obj.var).str());
 
         host_->emov(1, var_op, init_op);
 
@@ -183,7 +180,7 @@ public:
             host_->jmpi(1 | host_->f0[0], loop_label);
         }
 
-        expr_binding_.unbind(obj.var);
+        host_->expr_binding().unbind(obj.var);
         host_->comment("end " + obj.line_str());
     }
 
@@ -269,10 +266,10 @@ public:
 
     void _visit(const let_t &obj) override {
         if (obj.value.is_empty()) {
-            auto var_op = expr_binding_.get(obj.var);
+            auto var_op = host_->expr_binding().get(obj.var);
             host_->comment(obj.line_str() + " -> " + var_op.str());
             // External variable, must be already bound.
-            gpu_assert(expr_binding_.is_bound(obj.var))
+            gpu_assert(host_->expr_binding().is_bound(obj.var))
                     << "Variable is not defined: " << obj.var;
             visit(obj.body);
             return;
@@ -288,13 +285,13 @@ public:
                     : ngen_operand_t(scope.alloc_reg_data(var_type));
             evaluate(
                     obj.value, scope, ngen_operand_t(var_op, var_type.elems()));
-            expr_binding_.bind(obj.var, var_op);
+            host_->expr_binding().bind(obj.var, var_op);
         } else {
             auto value_op = evaluate(obj.value, scope);
-            expr_binding_.bind(obj.var, value_op);
+            host_->expr_binding().bind(obj.var, value_op);
         }
 
-        auto var_op = expr_binding_.get(obj.var);
+        auto var_op = host_->expr_binding().get(obj.var);
         host_->comment(obj.var.str() + " -> " + var_op.str());
 
         // At this point the scope contains allocations for temporary
@@ -323,7 +320,7 @@ public:
         }
 
         visit(obj.body);
-        expr_binding_.unbind(obj.var);
+        host_->expr_binding().unbind(obj.var);
     }
 
     void _visit(const store_t &obj) override {
@@ -812,7 +809,6 @@ private:
     }
 
     ngen_generator_t *host_;
-    expr_binding_t expr_binding_;
     int simd_size_;
     bool with_atomic_fp64_;
 
@@ -831,9 +827,8 @@ private:
 template <typename ngen_generator_t>
 class expr_evaluator_t : public ir_visitor_t {
 public:
-    expr_evaluator_t(ngen_generator_t *host, const expr_binding_t &expr_binding,
-            ngen_register_scope_t &scope)
-        : host_(host), expr_binding_(expr_binding), scope_(scope) {}
+    expr_evaluator_t(ngen_generator_t *host, ngen_register_scope_t &scope)
+        : host_(host), expr_binding_(host->expr_binding()), scope_(scope) {}
 
     constexpr ngen::HW hw() const { return host_->getHardware(); }
 
@@ -1624,16 +1619,15 @@ setup_flags_t get_setup_flags(const stmt_t &s) {
 template <typename GeneratorT>
 void convert_ir_to_ngen(const stmt_t &body, GeneratorT &host,
         const walk_order_t *kernel_grid_walk_order = nullptr) {
-    expr_binding_t expr_binding(host.getHardware());
     host.comment("Prologue");
     host.generate_prologue();
 
-    host.bind_external_vars(body, expr_binding, kernel_grid_walk_order);
+    host.bind_external_vars(body, kernel_grid_walk_order);
     if (kernel_grid_walk_order)
-        host.bind_kernel_grid_walk_order(*kernel_grid_walk_order, expr_binding);
+        host.bind_kernel_grid_walk_order(*kernel_grid_walk_order);
 
     host.comment("IR");
-    ir_to_ngen_t<GeneratorT> visitor(&host, expr_binding);
+    ir_to_ngen_t<GeneratorT> visitor(&host);
     visitor.visit(body);
 
     host.comment("Epilogue");

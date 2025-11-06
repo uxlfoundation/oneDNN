@@ -327,20 +327,16 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
         threadpool_utils::activate_threadpool(tp);
     } else {
         tp->parallel_for(nthr, [=](int ithr, int nthr) {
+#if defined(DNNL_ENABLE_ITT_TASKS)
             bool is_master = threadpool_utils::get_active_threadpool() == tp;
-            if (!is_master) {
-                threadpool_utils::activate_threadpool(tp);
-#if defined(DNNL_ENABLE_ITT_TASKS)
-                if (itt_enable) itt::primitive_task_start(task_primitive_kind);
-#endif
+            if (!is_master && itt_enable) {
+                itt::primitive_task_start(task_primitive_kind);
             }
+#endif
             f(ithr, nthr);
-            if (!is_master) {
 #if defined(DNNL_ENABLE_ITT_TASKS)
-                if (itt_enable) itt::primitive_task_end();
+            if (!is_master && itt_enable) { itt::primitive_task_end(); }
 #endif
-                threadpool_utils::deactivate_threadpool();
-            }
         });
     }
 #endif

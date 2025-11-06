@@ -2066,6 +2066,9 @@ typedef enum {
     /// A group normalization primitive.
     dnnl_group_normalization,
 
+    /// A grouped gemm primitive.
+    dnnl_grouped_gemm,
+
     // Max value to prevent UB for internal-use-only values.
     dnnl_primitive_kind_max = 0x7fff,
 } dnnl_primitive_kind_t;
@@ -2743,6 +2746,14 @@ typedef const struct dnnl_primitive *const_dnnl_primitive_t;
 
 // Dev note: `idx=31` for `DNNL_ARG_ATTR_MULTIPLE_POST_OP` stands right on
 // `1 << 20` (or `1048576`), thus, this value can't be used until future rework.
+
+/// Starting index for weights arguments for primitives that take a variable
+/// number of weights arguments.
+#define DNNL_ARG_MULTIPLE_WEIGHTS 65536
+
+/// Starting index for bias arguments for primitives that take a variable
+/// number of bias arguments.
+#define DNNL_ARG_MULTIPLE_BIAS 131072
 
 /// A structure that contains an index and a memory object, and is used to pass
 /// arguments to dnnl_primitive_execute().

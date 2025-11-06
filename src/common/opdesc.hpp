@@ -680,6 +680,44 @@ struct rnn_desc_t : public op_desc_t {
     float beta {};
 };
 
+// A descriptor for grouped gemm
+struct grouped_gemm_desc_t : public op_desc_t {
+    // TODO: figure out the need
+    grouped_gemm_desc_t() = default;
+
+    grouped_gemm_desc_t(primitive_kind_t primitive_kind, int group_size,
+            const memory_desc_t *const *src_mds,
+            const memory_desc_t *const *weights_mds,
+            const memory_desc_t *const *bias_mds,
+            const memory_desc_t *const *dst_mds)
+        : op_desc_t(primitive_kind), group_size(group_size) {
+        for (dim_t i = 0; i < group_size; i++) {
+            this->src_mds.push_back(src_mds[i]);
+            this->wei_mds.push_back(weights_mds[i]);
+            this->dst_mds.push_back(dst_mds[i]);
+            if (bias_mds) this->bias_mds.push_back(bias_mds[i]);
+        }
+    }
+
+    DECLARE_COMMON_OP_DESC_CLONE(grouped_gemm_desc_t);
+
+    // Group size
+    int group_size;
+
+    // Vector of source memory descriptors.
+    std::vector<const memory_desc_t *> src_mds;
+    // Vector of weights memory descriptors.
+    std::vector<const memory_desc_t *> wei_mds;
+    // Vector of bias memory descriptors.
+    std::vector<const memory_desc_t *> bias_mds;
+    // Vector of destination memory descriptors.
+    std::vector<const memory_desc_t *> dst_mds;
+
+    // TODO: figure out
+    // The accumulator data type. Initialized automatically.
+    data_type_t accum_data_type {};
+};
+
 #undef DECLARE_COMMON_OP_DESC_CLONE
 
 } // namespace impl

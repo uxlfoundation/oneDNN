@@ -13916,6 +13916,129 @@ struct reduction : public primitive {
 
 /// @} dnnl_api_reduction
 
+/// @addtogroup dnnl_api_grouped_gemm Grouped GEMM
+///
+/// A primitive to perform grouped GEMM operation.
+///
+/// @{
+
+/// Grouped GEMM primitive.
+struct grouped_gemm : public primitive {
+    /// Primitive descriptor for a grouped GEMM primitive.
+    struct primitive_desc : public primitive_desc_base {
+        using primitive_desc_base::primitive_desc_base;
+
+        /// Default constructor.
+        primitive_desc() = default;
+
+        /// TODO: maybe not needed
+        /// Constructs a primitive descriptor for a grouped GEMM
+        /// without Bias
+        ///
+        /// @param aengine Engine to use.
+        /// @param src_mds Vector of source memory descriptors
+        /// @param weights_mds Vector of weights memory descriptors
+        /// @param dst_mds Vector of destination memory descriptors
+        /// @param attr Primitive attributes to use. Attributes are optional
+        ///     and default to empty attributes.
+        /// @param allow_empty A flag signifying whether construction is
+        ///     allowed to fail without throwing an exception. In this case an
+        ///     empty object will be produced. This flag is optional and
+        ///     defaults to false.
+        primitive_desc(const engine &aengine,
+                const std::vector<memory::desc> &src_mds,
+                const std::vector<memory::desc> &weight_mds,
+                const std::vector<memory::desc> &dst_mds,
+                const primitive_attr &attr = default_attr(),
+                bool allow_empty = false) {
+
+            auto c_api_srcs = convert_to_c(src_mds);
+            auto c_api_weights = convert_to_c(weight_mds);
+            auto c_api_dsts = convert_to_c(dst_mds);
+
+            dnnl_primitive_desc_t result;
+            dnnl_status_t status = dnnl_grouped_gemm_primitive_desc_create(
+                    &result, aengine.get(), (int)c_api_srcs.size(),
+                    c_api_srcs.data(), c_api_weights.data(), nullptr,
+                    c_api_dsts.data(), attr.get());
+            if (!allow_empty)
+                error::wrap_c_api(status,
+                        "could not create a primitive descriptor for "
+                        "the grouped GEMM primitive. Run workload with "
+                        "environment variable ONEDNN_VERBOSE=all to get "
+                        "additional diagnostic information.");
+            reset(status == dnnl_success ? result : dnnl_primitive_desc_t());
+        }
+
+        /// Constructs a primitive descriptor for a grouped GEMM
+        ///
+        /// @param aengine Engine to use.
+        /// @param src_mds Vector of source memory descriptors
+        /// @param weights_mds Vector of weights memory descriptors
+        /// @param bias_mds Vector of bias memory descriptors
+        /// @param dst_mds Vector of destination memory descriptors
+        /// @param attr Primitive attributes to use. Attributes are optional
+        ///     and default to empty attributes.
+        /// @param allow_empty A flag signifying whether construction is
+        ///     allowed to fail without throwing an exception. In this case an
+        ///     empty object will be produced. This flag is optional and
+        ///     defaults to false.
+        primitive_desc(const engine &aengine,
+                const std::vector<memory::desc> &src_mds,
+                const std::vector<memory::desc> &weight_mds,
+                const std::vector<memory::desc> &bias_mds,
+                const std::vector<memory::desc> &dst_mds,
+                const primitive_attr &attr = default_attr(),
+                bool allow_empty = false) {
+
+            auto c_api_srcs = convert_to_c(src_mds);
+            auto c_api_weights = convert_to_c(weight_mds);
+            auto c_api_biases = convert_to_c(bias_mds);
+            auto c_api_dsts = convert_to_c(dst_mds);
+
+            dnnl_primitive_desc_t result;
+            dnnl_status_t status = dnnl_grouped_gemm_primitive_desc_create(
+                    &result, aengine.get(), (int)c_api_srcs.size(),
+                    c_api_srcs.data(), c_api_weights.data(),
+                    c_api_biases.data(), c_api_dsts.data(), attr.get());
+            if (!allow_empty)
+                error::wrap_c_api(status,
+                        "could not create a primitive descriptor for "
+                        "the grouped GEMM primitive. Run workload with "
+                        "environment variable ONEDNN_VERBOSE=all to get "
+                        "additional diagnostic information.");
+            reset(status == dnnl_success ? result : dnnl_primitive_desc_t());
+        }
+
+        /// @copydoc dnnl::primitive_desc_base::src_desc(int)const
+        memory::desc src_desc(int idx = 0) const { return base::src_desc(idx); }
+
+        /// @copydoc dnnl::primitive_desc_base::weights_desc(int)const
+        memory::desc weights_desc(int idx = 0) const {
+            return base::weights_desc(idx);
+        }
+
+        /// @copydoc dnnl::primitive_desc_base::dst_desc()const
+        memory::desc dst_desc(int idx = 0) const { return base::dst_desc(idx); }
+    };
+
+    /// Default constructor. Produces an empty object.
+    grouped_gemm() = default;
+
+    /// TODO: figure out if needed and how to enable correctly
+    /// Constructs a grouped GEMM primitive.
+    /// @param pd Primitive descriptor for grouped GEMM primitive.
+    grouped_gemm(const primitive_desc &pd) : primitive(pd.get()) {}
+
+    /// TODO: figure out if needed and how to enable correctly
+    /// Constructs a grouped GEMM primitive from a cache blob.
+    /// @param pd Primitive descriptor for grouped GEMM primitive.
+    /// @param cache_blob Cache blob.
+    grouped_gemm(
+            const primitive_desc &pd, const std::vector<uint8_t> &cache_blob)
+        : primitive(pd.get(), cache_blob) {}
+};
+
 /// @} dnnl_api_primitives
 
 /// @addtogroup dnnl_api_service Service

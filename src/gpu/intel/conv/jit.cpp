@@ -191,8 +191,7 @@ public:
                                     make_kernel<reorder::jit::kernel_t>(
                                             primitive,
                                             /*register_kernel=*/false, engine,
-                                            reorder_cfg, "conv_reorder", info,
-                                            cfg.is_dpas_or_dpasw_fma()));
+                                            reorder_cfg, "conv_reorder", info));
                             break;
                         }
                         case kernel_id_t::post_reorder: {
@@ -203,8 +202,7 @@ public:
                                     make_kernel<reorder::jit::kernel_t>(
                                             primitive,
                                             /*register_kernel=*/false, engine,
-                                            reorder_cfg, "conv_reorder", info,
-                                            cfg.is_dpas_or_dpasw_fma()));
+                                            reorder_cfg, "conv_reorder", info));
                             break;
                         }
                         case kernel_id_t::zero_out:
@@ -215,9 +213,7 @@ public:
                             tmp_kernels.push_back(
                                     make_kernel<zero_out_kernel_t>(primitive,
                                             /*register_kernel=*/false, engine,
-                                            cfg.options(), info,
-                                            cfg.is_dpas_or_dpasw_fma(),
-                                            engine));
+                                            cfg.options(), info, engine));
                             break;
 
                         case kernel_id_t::zp_precalc:

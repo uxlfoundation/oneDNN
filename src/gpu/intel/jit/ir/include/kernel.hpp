@@ -91,11 +91,19 @@ public:
         : hw_(hw), regs_(regs), simd_(simd) {}
 
     const hw_t &hw() const { return hw_; }
+
+    // Set number of GRFs. This can be used to avoid context switch overhead on
+    // Xe and Xe2 architectures.
     int regs() const { return regs_; }
-    int simd() const { return simd_; }
-    int grf_size() const { return hw_.grf_size(); }
     void set_regs(int regs) { regs_ = regs; }
+
+    int simd() const { return simd_; }
     void set_simd(int simd) { simd_ = simd; }
+
+    // Override default dpas kernel annotation. This helps avoid overhead on
+    // XeHPG when switching between kernels with and without dpas support.
+    bool require_dpas() const { return require_dpas_; }
+    void set_require_dpas(bool value) { require_dpas_ = value; }
 
     // Handler which can be used for code-generation for custom IR objects.
     codegen_extension_handler_t extension_handler() const {
@@ -104,6 +112,8 @@ public:
     void set_extension_handler(codegen_extension_handler_t extension_handler) {
         extension_handler_ = extension_handler;
     }
+
+    int grf_size() const { return hw_.grf_size(); }
 
     std::string str() const {
         ostringstream_t oss;
@@ -117,6 +127,7 @@ private:
     hw_t hw_;
     int regs_ = 0;
     int simd_ = 0;
+    bool require_dpas_ = false;
     codegen_extension_handler_t extension_handler_ = default_extension_handler;
 };
 

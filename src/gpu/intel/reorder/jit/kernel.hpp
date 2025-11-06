@@ -30,10 +30,10 @@ namespace jit {
 class kernel_t : public ir_kernel_t {
 public:
     kernel_t(const config_t &cfg, const std::string &kernel_name,
-            const kernel_info_t &kernel_info, bool require_dpas,
+            const kernel_info_t &kernel_info,
             const primitive_desc_t *pd = nullptr)
         : ir_kernel_t(kernel_info.iface(kernel_name), cfg.options(),
-                kernel_info.nd_range().local_range(), require_dpas,
+                kernel_info.nd_range().local_range(),
                 {GENERATOR_NAME, GENERATOR_LINE}) {
         const primitive_attr_t *attr = (pd) ? pd->attr() : nullptr;
         const memory_desc_t *dst_md = (pd) ? pd->dst_md() : nullptr;

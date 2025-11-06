@@ -595,6 +595,12 @@ public:
         set_options(tmp);
     }
 
+    void set_require_dpas(bool value) {
+        auto tmp = options();
+        tmp.set_require_dpas(value);
+        set_options(tmp);
+    }
+
     void set_vec_size(int vec_size) { vec_size_ = vec_size; }
 
     void set_tiler(const std::shared_ptr<tiler_t> &tiler);

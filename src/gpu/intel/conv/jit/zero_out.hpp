@@ -40,7 +40,6 @@ public:
         : regs_(regs), simd_(simd), dpas_(dpas) {}
     std::string kernel_name() const override;
     kernel::options_t options(const impl::engine_t *engine) const override;
-    bool with_dpas() const override { return dpas_; }
     compute::range_t local_range() const override;
     void init_kernel_iface(kernel::iface_t &kernel_iface) const override;
     void init_kernel_info(kernel_info_t &kernel_info,
@@ -79,10 +78,9 @@ public:
     using base_type = ir_to_ngen_generator_t<generator_t<hw>>;
 
     zero_out_kernel_t(const kernel::options_t &options,
-            const kernel_info_t &kernel_info, bool require_dpas,
-            const impl::engine_t *engine)
+            const kernel_info_t &kernel_info, const impl::engine_t *engine)
         : zero_out_kernel_t(zero_out_kernel_desc_t(options.regs(),
-                                    options.simd(), require_dpas),
+                                    options.simd(), options.require_dpas()),
                 engine) {}
 
     zero_out_kernel_t(

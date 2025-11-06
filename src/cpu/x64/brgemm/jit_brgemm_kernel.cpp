@@ -1357,10 +1357,12 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
                 if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
                     switch (brg.dt_wei_scales) {
                         case data_type::f32:
-                            if (brg.is_gemv)
-                                uni_vmovss(vmm_wei_scales_masked, addr);
-                            else
+                            if (brg.is_gemv) {
+                                if (!brg.treat_y_as_row)
+                                    uni_vmovss(vmm_wei_scales_masked, addr);
+                            } else {
                                 uni_vmovups(vmm_wei_scales_masked, addr);
+                            }
                             break;
                         case data_type::bf16:
                             uni_vpmovzxwd(vmm_wei_scales_masked, addr);
@@ -1380,7 +1382,21 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
             for (dim_t bd = 0; bd < bd_block; bd++) {
                 auto vmm = accm(ld_block2, bd, ld);
                 if (dq2ps_required && !dq2ps_cvt_done) uni_vcvtdq2ps(vmm, vmm);
-                uni_vmulps(vmm, vmm, vmm_wei_scales);
+
+                if (brg.is_gemv) {
+                    if (!brg.treat_y_as_row) {
+                        uni_vmulss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()),
+                                vmm_wei_scales);
+                    } else {
+                        auto addr = ptr[reg_aux_wei_scales
+                                + wei_scales_offset(bd)];
+                        uni_vmovss(Xmm(vmm_wei_scales_masked.getIdx()), addr);
+                        uni_vmulss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()),
+                                vmm_wei_scales);
+                    }
+                } else {
+                    uni_vmulps(vmm, vmm, vmm_wei_scales);
+                }
             }
         }
         dq2ps_cvt_done = true;
@@ -1418,7 +1434,15 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         for (dim_t bd = 0; bd < bd_block; bd++) {
             auto vmm = accm(ld_block2, bd, ld);
             if (dq2ps_required && !dq2ps_cvt_done) uni_vcvtdq2ps(vmm, vmm);
-            if (brg.with_bias) uni_vaddps(vmm, vmm, vmm_bias);
+            if (brg.with_bias) {
+                if (!brg.treat_y_as_row) {
+                    uni_vaddps(vmm, vmm, vmm_bias);
+                } else {
+                    auto ptr_bias = ptr[reg_aux_bias + bias_offset(bd)];
+                    uni_vmovss(Xmm(vmm_bias.getIdx()), ptr_bias);
+                    uni_vaddss(Xmm(vmm.getIdx()), Xmm(vmm.getIdx()), vmm_bias);
+                }
+            }
         }
     }
     if (brg.is_fp8_via_convert()) reg64_fp8_aux.restore();
@@ -2856,6 +2880,20 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
             add(reg_D, bdb_D_offset(bd_block2));
         }
         add(reg_a_offset, bdb_A_offset(bd_block2));
+
+        if (brg.is_gemv && brg.treat_y_as_row) {
+            if (brg.with_bias) {
+                reg_bias.restore();
+                add(reg_bias, bias_offset(brg.bd_block));
+                reg_bias.save();
+            }
+
+            if (brg.with_wei_scales) {
+                reg_wei_scales.restore();
+                add(reg_wei_scales, wei_scales_offset(brg.bd_block));
+                reg_wei_scales.save();
+            }
+        }
 
         advance_bd_block2_post_op_regs(bd_block2);
     };

@@ -282,13 +282,13 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
 status_t brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_x, bool transA, float alpha, float beta, dim_t LDA,
-        dim_t INCY, dim_t M, dim_t N) {
+        dim_t INCY, dim_t M, dim_t N, bool treat_y_as_row) {
 
     // Only f32 is supported for now.
     if (!utils::everyone_is(data_type::f32, dt_a, dt_x))
         return status::unimplemented;
 
-    // y = x*A^t is not yet implemented.
+    // y = A^t * x is not yet implemented.
     if (transA) return status::unimplemented;
 
     CHECK(brgemm_desc_init(brg, isa, type, dt_a, dt_x, transA, false,
@@ -296,6 +296,7 @@ status_t brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
             false));
 
     brg->is_gemv = true;
+    brg->treat_y_as_row = treat_y_as_row;
 
     return status::success;
 }

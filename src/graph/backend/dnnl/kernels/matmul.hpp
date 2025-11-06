@@ -51,6 +51,11 @@ private:
 
     size_t const_md_hash_ = 0;
 
+    // Scratchpad pool for lazy allocation
+    std::atomic<size_t> global_id_ {0}; // Per-kernel atomic counter
+    std::vector<std::unique_ptr<temporary_scratchpad_t>> scratchpad_pool_;
+    size_t scratchpad_size_ = 0;
+
 public:
     matmul_t() {
         thread_local_cache_t<execution_args_set_t> res_cache;
@@ -61,6 +66,7 @@ public:
         thread_local_cache_t<execution_args_set_t> res_cache;
         res_cache.remove_if_exist(reinterpret_cast<size_t>(this));
         res_cache.release();
+        scratchpad_pool_.clear(); // Cleanup scratchpad pool
     }
 
     status_t compile_impl(const dnnl_partition_impl_t *part,

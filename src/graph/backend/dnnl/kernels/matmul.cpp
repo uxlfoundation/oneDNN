@@ -16,6 +16,7 @@
 
 #include "graph/backend/dnnl/kernels/matmul.hpp"
 
+#include "common/dnnl_thread.hpp"
 #include "graph/backend/dnnl/passes/compile_ops.hpp"
 #include "graph/backend/dnnl/passes/constant_propagation.hpp"
 #include "graph/backend/dnnl/passes/insert_ops.hpp"
@@ -158,6 +159,11 @@ status_t matmul_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
     const_md_hash_ = generate_constant_md_hash(part->id(),
             memory_planner_.get_exec_args_set().get_persistent_mem_desc_list());
 
+    // Initialize scratchpad pool for lazy allocation
+    scratchpad_size_ = memory_planner_.total_internal_temporary_size();
+    int max_thread_num = dnnl_get_max_threads();
+    scratchpad_pool_.resize(max_thread_num); // Elements are nullptr
+
     return status::success;
 }
 
@@ -193,11 +199,19 @@ status_t matmul_t<quantized>::execute_impl(const stream_t *g_stream,
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    auto scratchpad = std::make_shared<temporary_scratchpad_t>(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
-    assertm(scratchpad->size()
-                    >= memory_planner_.total_internal_temporary_size(),
+    // lazy allocation: each thread gets a unique id for this kernel
+    thread_local size_t logical_thread_id = global_id_.fetch_add(1);
+    assertm(logical_thread_id < scratchpad_pool_.size(),
+            "exceed pre-allocated scratchpad pool size");
+
+    // each thread allocates its own scratchpad on first use
+    if (!scratchpad_pool_[logical_thread_id]) {
+        scratchpad_pool_[logical_thread_id]
+                = std::make_unique<temporary_scratchpad_t>(
+                        scratchpad_size_, p_engine_, *g_alloc_);
+    }
+    auto scratchpad = scratchpad_pool_[logical_thread_id].get();
+    assertm(scratchpad->size() >= scratchpad_size_,
             "no enough scratchpad memory");
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
@@ -244,17 +258,6 @@ status_t matmul_t<quantized>::execute_impl(const stream_t *g_stream,
         if (subgraph_->is_constant_[i]) continue;
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
     }
-
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-    auto *tp_stream
-            = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
-                    const_cast<stream_t *>(g_stream));
-    tp_stream->before_exec_hook();
-    parallel_nd_ext(
-            1, 1, [=](int tid, int nthr, int bo) { UNUSED(scratchpad); });
-
-    tp_stream->after_exec_hook();
-#endif
     return status::success;
 }
 
@@ -275,11 +278,15 @@ status_t matmul_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
-    assertm(scratchpad.size()
-                    >= memory_planner_.total_internal_temporary_size(),
+    // Lazy allocation: each thread gets a unique id for this kernel
+    thread_local size_t logical_thread_id = global_id_.fetch_add(1);
+    if (!scratchpad_pool_[logical_thread_id]) {
+        scratchpad_pool_[logical_thread_id]
+                = std::make_unique<temporary_scratchpad_t>(
+                        scratchpad_size_, p_engine_, *g_alloc_);
+    }
+    temporary_scratchpad_t &scratchpad = *scratchpad_pool_[logical_thread_id];
+    assertm(scratchpad.size() >= scratchpad_size_,
             "no enough scratchpad memory");
     prepare_args_set(res, inputs, outputs, scratchpad);
 
@@ -353,11 +360,15 @@ status_t matmul_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
-    assertm(scratchpad.size()
-                    >= memory_planner_.total_internal_temporary_size(),
+    // Lazy allocation: each thread gets a unique id for this kernel
+    thread_local size_t logical_thread_id = global_id_.fetch_add(1);
+    if (!scratchpad_pool_[logical_thread_id]) {
+        scratchpad_pool_[logical_thread_id]
+                = std::make_unique<temporary_scratchpad_t>(
+                        scratchpad_size_, p_engine_, *g_alloc_);
+    }
+    temporary_scratchpad_t &scratchpad = *scratchpad_pool_[logical_thread_id];
+    assertm(scratchpad.size() >= scratchpad_size_,
             "no enough scratchpad memory");
     prepare_args_set(res, inputs, outputs, scratchpad);
 

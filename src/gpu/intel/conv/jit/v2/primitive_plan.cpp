@@ -135,11 +135,11 @@ status_t primitive_init_plan_t::add_reorder_kernel(
         }
     }
     kernel::options_t options(make_ir_hw(engine), regs_, simd_);
+    options.set_require_dpas(dpas_);
     reorder::jit::config_t cfg(options, src.layout, dst.layout);
     kernel_info.set_nd_range(cfg.nd_range());
     auto kernel = make_kernel<reorder::jit::kernel_t>(primitive,
-            /*register_kernel=*/true, engine, cfg, "reorder", kernel_info,
-            dpas_);
+            /*register_kernel=*/true, engine, cfg, "reorder", kernel_info);
     exec_plan.add_kernel(kernel, kernel_info);
     return status::success;
 }

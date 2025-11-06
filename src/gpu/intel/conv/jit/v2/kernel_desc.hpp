@@ -339,14 +339,13 @@ public:
     std::string kernel_name() const override { return "gen_conv_v2"; }
 
     kernel::options_t options(const impl::engine_t *engine) const override {
-        return kernel::options_t(make_ir_hw(engine), regs, simd);
+        auto ret = kernel::options_t(make_ir_hw(engine), regs, simd);
+        ret.set_require_dpas(
+                utils::one_of(fma, fma_kind_t::dpas, fma_kind_t::dpasw));
+        return ret;
     }
 
     compute::range_t local_range() const override;
-
-    bool with_dpas() const override {
-        return utils::one_of(fma, fma_kind_t::dpas, fma_kind_t::dpasw);
-    }
 
     void specialize(const problem_t &prb) { spec.specialize(prb); }
 

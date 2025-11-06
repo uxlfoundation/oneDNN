@@ -36,8 +36,6 @@ public:
     conv_kernel_t(const config_t &cfg, const kernel_info_t &kernel_info,
             const compute::range_t &local_range, const layout_t &zp_dst)
         : ir_kernel_t(kernel_info.iface("gen_conv"), cfg.options(), local_range,
-                utils::one_of(
-                        cfg.fma_kind(), fma_kind_t::dpas, fma_kind_t::dpasw),
                 {GENERATOR_NAME, GENERATOR_LINE})
         , prb_(cfg.prb())
         , cfg_(cfg) {

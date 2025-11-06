@@ -1052,6 +1052,8 @@ status_t init_fma_kind(
     VDISPATCH_CHECK(pd, engine, fma_kind != fma_kind_t::undef,
             VERBOSE_UNSUPPORTED_DT_CFG);
     cfg.set_fma_kind(fma_kind);
+    cfg.set_require_dpas(
+            utils::one_of(fma_kind, fma_kind_t::dpas, fma_kind_t::dpasw));
     return status::success;
 }
 

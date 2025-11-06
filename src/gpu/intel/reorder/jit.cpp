@@ -216,8 +216,8 @@ status_t gen_t::init(impl::engine_t *engine) {
     auto &cfg = *pd()->cfg;
     auto &info = *pd()->kernel_info;
 
-    kernel_ = make_kernel<kernel_t>(this, engine, cfg, "gen_reorder", info,
-            /*require_dpas=*/false, pd());
+    kernel_ = make_kernel<kernel_t>(
+            this, engine, cfg, "gen_reorder", info, pd());
     if (!kernel_) return status::runtime_error;
     return status::success;
 }

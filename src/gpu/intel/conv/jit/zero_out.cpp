@@ -31,7 +31,9 @@ std::string zero_out_kernel_desc_t::kernel_name() const {
 
 kernel::options_t zero_out_kernel_desc_t::options(
         const impl::engine_t *engine) const {
-    return kernel::options_t(make_ir_hw(engine), regs_, simd_);
+    auto ret = kernel::options_t(make_ir_hw(engine), regs_, simd_);
+    ret.set_require_dpas(dpas_);
+    return ret;
 }
 compute::range_t zero_out_kernel_desc_t::local_range() const {
     return compute::range_t(into<size_t>(simd_));

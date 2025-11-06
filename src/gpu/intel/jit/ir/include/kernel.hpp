@@ -91,19 +91,30 @@ public:
         : hw_(hw), regs_(regs), simd_(simd) {}
 
     const hw_t &hw() const { return hw_; }
-    int regs() const { return regs_; }
-    int simd() const { return simd_; }
-    int grf_size() const { return hw_.grf_size(); }
+
+    // Maximum number of GRF registers used by the kernel. This can be used to
+    // avoid a stall on Xe and Xe2 architectures when switching between kernels
+    // with different GRF modes.
     void set_regs(int regs) { regs_ = regs; }
+    int regs() const { return regs_; }
+
     void set_simd(int simd) { simd_ = simd; }
+    int simd() const { return simd_; }
+
+    // Override default dpas kernel annotation. This helps avoid a stall on
+    // XeHPG when switching between kernels with and without dpas support.
+    void set_require_dpas(bool value) { require_dpas_ = value; }
+    bool require_dpas() const { return require_dpas_; }
 
     // Handler which can be used for code-generation for custom IR objects.
-    codegen_extension_handler_t extension_handler() const {
-        return extension_handler_;
-    }
     void set_extension_handler(codegen_extension_handler_t extension_handler) {
         extension_handler_ = extension_handler;
     }
+    codegen_extension_handler_t extension_handler() const {
+        return extension_handler_;
+    }
+
+    int grf_size() const { return hw_.grf_size(); }
 
     std::string str() const {
         ostringstream_t oss;
@@ -117,6 +128,7 @@ private:
     hw_t hw_;
     int regs_ = 0;
     int simd_ = 0;
+    bool require_dpas_ = false;
     codegen_extension_handler_t extension_handler_ = default_extension_handler;
 };
 

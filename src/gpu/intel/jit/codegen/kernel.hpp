@@ -1186,19 +1186,17 @@ public:
         : kernel_iface_(desc.kernel_name())
         , options_(desc.options(engine))
         , local_range_(desc.local_range())
-        , require_dpas_(desc.with_dpas())
         , debug_config_(debug_config) {
         desc.init_kernel_iface(kernel_iface_);
     }
 
     ir_kernel_t(const kernel::iface_t &kernel_iface,
             const kernel::options_t &options,
-            const compute::range_t &local_range, bool require_dpas,
+            const compute::range_t &local_range,
             const debug_config_t &debug_config)
         : kernel_iface_(kernel_iface)
         , options_(options)
         , local_range_(local_range)
-        , require_dpas_(require_dpas)
         , debug_config_(debug_config) {}
 
     const kernel::options_t &options() const { return options_; }
@@ -1232,7 +1230,6 @@ private:
     kernel::iface_t kernel_iface_;
     kernel::options_t options_;
     compute::range_t local_range_;
-    bool require_dpas_;
 
     debug_config_t debug_config_;
 

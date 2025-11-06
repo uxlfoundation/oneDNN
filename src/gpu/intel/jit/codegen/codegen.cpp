@@ -1671,7 +1671,7 @@ void generate_from_ir(const stmt_t &kernel_body, GeneratorT *host,
 
 ngen::NEOInterfaceHandler generate_ngen_interface(
         const kernel::iface_t &kernel_iface, const kernel::options_t &options,
-        bool require_dpas, const stmt_t &kernel_body) {
+        const stmt_t &kernel_body) {
 
     ngen::NEOInterfaceHandler interface(options.hw());
     interface.externalName(kernel_iface.kernel_name());
@@ -1683,7 +1683,7 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
     auto setup_flags = get_setup_flags(kernel_body);
 
     // Allow dpas override to avoid context switch overhead on XeHPG
-    if (setup_flags.has_dpas || require_dpas) interface.requireDPAS();
+    if (setup_flags.has_dpas || options.require_dpas()) interface.requireDPAS();
     if (setup_flags.has_send_atomics) interface.requireGlobalAtomics();
 
     for (size_t i = 0; i < kernel_iface.nargs(); i++) {
@@ -1710,7 +1710,7 @@ void ir_kernel_t::generate_from_ir(
             << "ir_kernel_t::generate_from_ir() was called already.";
 
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
-            kernel_iface_, options_, require_dpas_, kernel_body);
+            kernel_iface_, options_, kernel_body);
 
     if (local_range_) {
         size_t max_slm_size = compute::device_info_t::max_slm_size_per_tg(
@@ -1728,8 +1728,8 @@ void ir_kernel_t::generate_from_ir(
     generator_ = utils::make_unique<gen_type>( \
             kernel_iface_, options_, debug_config_); \
     auto *gen = static_cast<gen_type *>(generator_.get()); \
-    gen->setInterface(generate_ngen_interface( \
-            kernel_iface_, options_, require_dpas_, kernel_body)); \
+    gen->setInterface( \
+            generate_ngen_interface(kernel_iface_, options_, kernel_body)); \
     if (force_emulate64_) gen->force_emulate64(); \
     jit::generate_from_ir(kernel_body, gen, kernel_grid_walk_order, peak_regs_);
 
@@ -1744,7 +1744,7 @@ void ir_kernel_t::generate_from_ir(
         ::sycl::context ctx, ::sycl::device dev) {
 
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
-            iface, options, false, body);
+            iface, options, body);
     std::optional<::sycl::kernel> kernel;
 
 #define GPU_HW_CASE(hw) \
@@ -1765,7 +1765,7 @@ cl_kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
         const kernel::options_t &options, const ngen::DebugConfig &debug_cfg,
         cl_context ctx, cl_device_id dev) {
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
-            iface, options, false, body);
+            iface, options, body);
 
 #define GPU_HW_CASE(hw) \
     ir_to_ngen_generator_t<ngen::OpenCLCodeGenerator<(hw)>> g( \

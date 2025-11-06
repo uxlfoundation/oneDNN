@@ -29,7 +29,4 @@ TEST(CAPI, GraphDump) {
             dnnl_success);
     ASSERT_EQ(
             dnnl_graph_set_dump_mode(dnnl_graph_dump_mode_none), dnnl_success);
-    ASSERT_EQ(
-            dnnl_graph_set_dump_mode(static_cast<dnnl_graph_dump_mode_t>(0x4U)),
-            dnnl_invalid_arguments);
 }

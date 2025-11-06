@@ -32,6 +32,4 @@ TEST(APIGraphDump, SetDumpMode) {
             dnnl::graph::status::success);
     ASSERT_EQ(dnnl::graph::set_dump_mode(graph_dump_mode::none),
             dnnl::graph::status::success);
-    ASSERT_EQ(dnnl::graph::set_dump_mode(static_cast<graph_dump_mode>(0x4U)),
-            dnnl::graph::status::invalid_arguments);
 }

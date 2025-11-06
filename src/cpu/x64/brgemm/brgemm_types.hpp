@@ -362,6 +362,7 @@ struct brgemm_desc_t {
     bool is_runtime_ldd = false;
 
     bool is_gemv = false;
+    bool treat_y_as_row = false;
 
     static constexpr int MAX_VPAD = 100;
     static constexpr int AMX_TILES_NUM = 8;

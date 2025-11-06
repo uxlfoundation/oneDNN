@@ -77,6 +77,9 @@ int get_brg_kernel_index(const brgemm_matmul_conf_t &bgmmc, bool is_bs_tail,
             ? (bgmmc.is_runtime_N ? dynamic_n_tails[n_ker_idx - 1]
                                   : bgmmc.N_tail)
             : bgmmc.N_blk;
+
+    if (bgmmc.gemv_swap_a_b) std::swap(vM, vN);
+
     auto vK = (is_K_tail) ? bgmmc.K_tail : bgmmc.K_blk;
     if (vM == 0 || vN == 0 || vK == 0 || bs == 0 || bgmmc.LDA < vK
             || (bgmmc.LDB < vN && !bgmmc.is_amx)
@@ -375,15 +378,18 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 : bgmmc_.LDA;
         const auto kernel_isa = i_M == max_m_ker_idx - 1 ? backup_isa : isa;
 
-        if (bgmmc_.is_gemv)
+        if (bgmmc_.is_gemv) {
+            const dim_t gemv_m = bgmmc_.gemv_swap_a_b ? vN : vM;
+            const bool treat_y_as_row = bgmmc_.gemv_swap_a_b;
             CHECK(brgemv_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
                     bgmmc_.src_dt, bgmmc_.wei_dt, false, alpha, vbeta, LDA,
-                    bgmmc_.LDC, vM, vK));
-        else
+                    bgmmc_.LDC, gemv_m, vK, treat_y_as_row));
+        } else {
             CHECK(brgemm_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
                     bgmmc_.src_dt, bgmmc_.wei_dt, false, false,
                     brgemm_row_major, alpha, vbeta, LDA, bgmmc_.LDB, bgmmc_.LDC,
                     vM, vN, vK, nullptr, bgmmc_.is_tf32));
+        }
 
         auto LDD = bgmmc_.LDD;
         if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
@@ -1843,6 +1849,9 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
             addr_batch[b_iter].ptr.B = (bgmmc_.use_buffer_b)
                     ? get_buf_B_ptr(ithr, k_blk_idx, n_blk_idx, brg_batch_idx)
                     : get_data_B_kn_ptr(B_data_batch_ptr, k, n);
+
+            if (bgmmc_.gemv_swap_a_b)
+                std::swap(addr_batch[b_iter].ptr.A, addr_batch[b_iter].ptr.B);
         }
     }
 

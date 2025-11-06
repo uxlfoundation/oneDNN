@@ -255,6 +255,11 @@ struct brgemm_matmul_conf_t {
     dim_t zp_b_comp_elems_per_thr;
 
     bool is_gemv = false;
+    // Currently, it's only used to enable the N=1 code path for M=1, when B
+    // is transposed.
+    // TODO: Generalize when a new code path to support M=1, when B is plain
+    // is added.
+    bool gemv_swap_a_b = false;
 
     inline bool lda_big_pow2() const {
         const dim_t big_stride_threshold_in_bytes = 8192;

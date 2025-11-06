@@ -1647,6 +1647,14 @@ std::string init_info_sdpa(const engine_t *e, const pd_t *pd) {
     return ss.str();
 }
 
+template <typename pd_t>
+std::string init_info_grouped_gemm(const engine_t *e, const pd_t *pd) {
+    stringstream_t ss;
+    // todo: finish implementation
+
+    return ss.str();
+}
+
 } // namespace
 
 std::string rt_mds2str(primitive_kind_t prim_kind, const memory_desc_t *src_md,
@@ -1795,6 +1803,7 @@ void pd_info_t::init(engine_t *engine, const primitive_desc_t *pd) {
             CASE(softmax);
             CASE(sum);
             CASE(sdpa);
+            CASE(grouped_gemm);
             case primitive_kind::zero_pad:
               str_ = "zero_pad, unknown info";
               break;

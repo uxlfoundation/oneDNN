@@ -238,6 +238,7 @@ struct component_t {
         graph = 1 << 22,
         gemm_api = 1 << 23,
         ukernel = 1 << 24,
+        grouped_gemm = 1 << 25,
         all = (uint32_t)-1,
     };
 };

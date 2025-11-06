@@ -1000,6 +1000,22 @@ inline bool operator==(const sum_desc_t &lhs, const sum_desc_t &rhs) {
     return ret;
 }
 
+inline bool operator==(const grouped_gemm_desc_t &lhs, const grouped_gemm_desc_t &rhs) {
+    bool ret = COMPARE_DESC_MEMBERS(primitive_kind)
+            && COMPARE_DESC_MEMBERS(group_size);
+    if (!ret) return ret;
+
+    for (int i = 0; i < lhs.group_size; i++) {
+        ret = *lhs.src_mds[i] == *rhs.src_mds[i]
+            && *lhs.wei_mds[i] == *rhs.wei_mds[i]
+            && *lhs.dst_mds[i] == *rhs.dst_mds[i]
+            && ((lhs.bias_mds.size() && rhs.bias_mds.size()) ? *lhs.bias_mds[i] == *rhs.bias_mds[i] : true);
+        if (!ret) break;
+    }
+
+    return ret;
+}
+
 inline bool operator==(const zero_pad_desc_t &lhs, const zero_pad_desc_t &rhs) {
     bool ret = COMPARE_DESC_MEMBERS(primitive_kind);
     return ret;

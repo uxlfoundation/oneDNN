@@ -64,10 +64,7 @@ template <typename ngen_generator_t>
 class ir_to_ngen_t final : public codegen_extension_iface_t,
                            public ir_visitor_t {
 public:
-    ir_to_ngen_t(ngen_generator_t *host)
-        : host_(host)
-        , simd_size_(host->getSIMD())
-        , with_atomic_fp64_(host->hw_info().has_fp64_atomic_support()) {}
+    ir_to_ngen_t(ngen_generator_t *host) : host_(host) {}
 
     ~ir_to_ngen_t() override
 #ifdef DNNL_DEV_MODE
@@ -241,7 +238,7 @@ public:
     }
 
     void _visit(const if_t &obj) override {
-        gpu_assert(obj.cond.type().elems() == simd_size_);
+        gpu_assert(obj.cond.type().elems() == host_->getSIMD());
         host_->comment(obj.line_str());
 
         bool has_else = bool(obj.else_body);
@@ -250,17 +247,17 @@ public:
 
         ngen::Label l_else;
         ngen::Label l_endif;
-        host_->if_(simd_size_ | cond_op.flag_register(),
+        host_->if_(host_->getSIMD() | cond_op.flag_register(),
                 has_else ? l_else : l_endif, l_endif);
         visit(obj.body);
         if (has_else) {
             host_->comment("else // " + obj.line_str());
-            host_->else_(simd_size_, l_endif, l_endif);
+            host_->else_(host_->getSIMD(), l_endif, l_endif);
             host_->mark(l_else);
             visit(obj.else_body);
         }
         host_->mark(l_endif);
-        host_->endif(simd_size_);
+        host_->endif(host_->getSIMD());
         host_->comment("end " + obj.line_str());
     }
 
@@ -780,7 +777,8 @@ private:
         }
         if ((hw() <= ngen::HW::XeLP && send_func.is_atomic())
                 || (hw() == ngen::HW::XeHPG && send_func.is_atomic()
-                        && send_func.type.is_qword() && !with_atomic_fp64_)) {
+                        && send_func.type.is_qword()
+                        && !(host_->hw_info().has_fp64_atomic_support()))) {
             send_atomic_add_emu(
                     scope, send_func, mask_op, mod, mem_off_op.reg_data(), rd);
         } else {
@@ -803,14 +801,12 @@ private:
         auto &src_op = reduce_t::arg_src_buf(args);
         auto &dst_op = reduce_t::arg_dst_buf(args);
 
-        reduce_impl_t reduce_impl(hw(), reduce_func, simd_size_);
+        reduce_impl_t reduce_impl(hw(), reduce_func, host_->getSIMD());
         reduce_impl.emit(
                 host_, scope, src_op.reg_buf_data(), dst_op.reg_buf_data());
     }
 
     ngen_generator_t *host_;
-    int simd_size_;
-    bool with_atomic_fp64_;
 
 #ifdef DNNL_DEV_MODE
     int bank_conflicts_ = 0;

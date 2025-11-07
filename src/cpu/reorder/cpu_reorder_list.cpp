@@ -35,6 +35,9 @@
 #if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/reorder/acl_reorder.hpp"
 #endif
+#if DNNL_AARCH64_USE_KAI
+#include "cpu/aarch64/kai_wino_reorder.hpp"
+#endif
 #elif DNNL_PPC64
 #include "cpu/ppc64/ppc64_gemm_reorder.hpp"
 #elif DNNL_RV64
@@ -63,6 +66,7 @@ const impl_list_item_t *get_reorder_impl_list(const reorder_desc_t *) {
             CPU_INSTANCE_X64(x64::jit_blk_reorder_t)
             CPU_INSTANCE_X64(x64::jit_uni_reorder_t)
 
+            CPU_INSTANCE_AARCH64_KAI(aarch64::kai_wino_reorder_t)
             CPU_INSTANCE_AARCH64_ACL(aarch64::acl_reorder_fwd_t)
             CPU_INSTANCE_AARCH64(aarch64::brgemm_matmul_copy_reorder_t)
             CPU_INSTANCE_AARCH64(aarch64::jit_blk_reorder_t)

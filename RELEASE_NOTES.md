@@ -75,6 +75,16 @@
 * Extended diagnostics available in verbose mode for primitive descriptor creation issues.
 * Extended dispatch diagnostics in verbose mode output for primitives implementations on Intel GPUs.
 
+# Known Limitations
+* Convolution primitive may require excessive amount of scratchpad memory for shapes with large input width value on Intel CPUs.
+* `bf16` convolution primitive has a performance regression on Intel Arc B-series graphics.
+* Reduction primitive may produce incorrect results for tensors exceeding 4 GB on Intel Arc graphics (formerly DG2) and Intel Arc Graphics for Intel Core Ultra processors (formerly Arrow Lake-H).
+* Concat primitive may produce incorrect results for certain shapes on Intel Arc A-series GPUs.
+* `fp16` matmul primitive has a performance regression on Intel GPUs based on Xe2 architecture.
+* `f32` matmul primitive may sporadically produce incorrect results on Intel Arc B-series graphics.
+* `int8` inner product primitive with tensors exceeding 4 Gb in size may produce incorrect results on Intel Datacenter GPU Max series.
+* `bf16` layer normalization backpropagation may produce incorrect results on Intel Datacenter GPU Max Series.	
+
 # Deprecated Functionality
 * [BLAS-like API] including `dnnl::sgemm`, `dnnl::gemm_u8s8s32`, and `dnnl::gemm_s8s8s32` functions is deprecated
   and will be removed in future releases. If you are using this API consider switching to [matmul primitive].

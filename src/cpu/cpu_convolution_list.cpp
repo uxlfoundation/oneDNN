@@ -67,6 +67,7 @@ using namespace dnnl::impl::cpu::x64;
 #include "cpu/aarch64/jit_uni_dw_convolution.hpp"
 #if DNNL_AARCH64_USE_KAI
 #include "cpu/aarch64/kai_convolution.hpp"
+#include "cpu/aarch64/kai_wino_convolution.hpp"
 #endif
 #if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_depthwise_convolution.hpp"
@@ -111,6 +112,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2>)
             CPU_INSTANCE_AVX2(jit_avx2_1x1_convolution_fwd_t)
             CPU_INSTANCE_AVX2(jit_avx2_convolution_fwd_t)
+            CPU_INSTANCE_AARCH64_KAI(kai_wino_convolution_fwd_t)
             CPU_INSTANCE_AARCH64_ACL(acl_wino_convolution_fwd_t)
             CPU_INSTANCE_AARCH64(brdgmm_dw_convolution_fwd_t<sve_512>)
             CPU_INSTANCE_AARCH64(brgemm_1x1_convolution_fwd_t<sve_512>)
@@ -202,6 +204,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX2(brgemm_1x1_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2_vnni_2>)
             CPU_INSTANCE_AARCH64(jit_uni_dw_convolution_fwd_t<asimd>)
+            CPU_INSTANCE_AARCH64_KAI(kai_wino_convolution_fwd_t)
             CPU_INSTANCE_AARCH64_ACL(acl_wino_convolution_fwd_t)
             CPU_INSTANCE_AARCH64_ACL(acl_depthwise_convolution_fwd_t)
             CPU_INSTANCE_AARCH64_KAI(kai_convolution_t)

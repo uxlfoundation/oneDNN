@@ -169,7 +169,6 @@ status_t sdp_primitive_config_t::initial_check(
     VCHECK_SDP_PRIMITIVE(
             mm1 && mm2, status::invalid_graph, "mm1 or mm2 is not found");
 
-    // step3(dims check): only support 4-dims now.
     int q_id = find_graph_inport(mm1->get_input_value(0));
     int k_id = find_graph_inport(mm1->get_input_value(1));
     int v_id = find_graph_inport(mm2->get_input_value(1));
@@ -178,19 +177,17 @@ status_t sdp_primitive_config_t::initial_check(
             status::unimplemented, "Q, K, V are not found");
 
     dims q_dims = ltw(inputs[q_id]).vdims();
-    const size_t q_ndims = q_dims.size();
-    VCHECK_SDP_PRIMITIVE(q_ndims == 4, status::unimplemented,
-            "input ndims (Q) can only be == 4");
-    const dim_t seq_len_q = q_dims[2];
-    const dim_t head_size_qk = q_dims[3];
+    size_t q_ndims = q_dims.size();
+    const dim_t seq_len_q = q_dims[q_ndims - 2];
+    const dim_t head_size_qk = q_dims[q_ndims - 1];
     const bool thinq = seq_len_q < 16;
     const bool opt_prefill = head_size_qk <= 64 && !thinq;
 
-    if (is_f32 && !(has_genindex || opt_prefill)) {
-        VCHECK_SDP_PRIMITIVE(false, status::unimplemented,
-                "f32 fused sdpa supported for: causal mask or cases with "
-                "head_size <= 64, seq_len >= 16");
-    }
+    VCHECK_SDP_PRIMITIVE(!is_f32 || (!has_genindex && !opt_prefill),
+            status::unimplemented,
+            "f32 fused sdpa supported for: causal mask or cases with "
+            "head_size(%d) <= 64, seq_len(%d) >= 16",
+            static_cast<int>(head_size_qk), static_cast<int>(seq_len_q));
 
     // sdp_primitive only supports single scale value.
     if (scale) {

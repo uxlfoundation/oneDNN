@@ -1,6 +1,7 @@
 #===============================================================================
 # Copyright 2018 Intel Corporation
 # Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright 2026 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -373,6 +374,9 @@ onednn_option(AARCH64_USE_ACL OFF "Enables use of AArch64 optimised functions
     This is only supported on AArch64 builds and assumes there is a
     functioning Compute Library build available at the location specified by the
     environment variable ACL_ROOT_DIR.")
+
+onednn_option(AARCH64_DISABLE_KAI OFF
+    "Disables AArch64 KleidiAI-based implementations.")
 
 # ===========
 # GPU options

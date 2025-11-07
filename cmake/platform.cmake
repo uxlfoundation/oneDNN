@@ -137,6 +137,11 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
 endif()
 
 if(MSVC)
+    if(DNNL_TARGET_ARCH STREQUAL "AARCH64")
+        set(DNNL_AARCH64_DISABLE_KAI ON CACHE BOOL)
+        message(STATUS "KleidiAI disabled for MSVC")
+    endif()
+
     set(USERCONFIG_PLATFORM "x64")
     append_if(DNNL_WERROR CMAKE_CCXX_FLAGS "/WX")
 

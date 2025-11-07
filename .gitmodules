@@ -1,0 +1,2 @@
+[submodule "third_party/kleidiai"]
+	url = https://gitlab.arm.com/kleidi/kleidiai.git

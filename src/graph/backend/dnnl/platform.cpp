@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2024 Intel Corporation
-* Copyright 2024 Arm Ltd. and affiliates
+* Copyright 2024, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -23,10 +23,7 @@
 #elif DNNL_RV64
 #include "cpu/rv64/cpu_isa_traits.hpp"
 #elif DNNL_AARCH64
-#if defined(DNNL_AARCH64_USE_ACL)
-// For checking if fp16 isa is supported on the platform
-#include "arm_compute/core/CPP/CPPTypes.h"
-#endif
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 #endif
 #endif
 
@@ -109,8 +106,8 @@ bool has_cpu_data_type_support(data_type_t data_type) {
 #if defined(USE_CBLAS) && defined(BLAS_HAS_SBGEMM) && defined(__MMA__)
             return true;
 #endif
-#elif defined(DNNL_AARCH64_USE_ACL)
-            return arm_compute::CPUInfo::get().has_bf16();
+#elif defined(DNNL_AARCH64)
+            return dnnl::impl::cpu::aarch64::mayiuse_bf16();
 #else
             return false;
 #endif
@@ -120,8 +117,8 @@ bool has_cpu_data_type_support(data_type_t data_type) {
 #elif DNNL_RV64
             using namespace dnnl::impl::cpu::rv64;
             return mayiuse(zvfh);
-#elif defined(DNNL_AARCH64_USE_ACL)
-            return arm_compute::CPUInfo::get().has_fp16();
+#elif defined(DNNL_AARCH64)
+            return dnnl::impl::cpu::aarch64::mayiuse_f16();
 #else
             return false;
 #endif
@@ -150,8 +147,8 @@ bool has_cpu_training_support(data_type_t data_type) {
 #if defined(USE_CBLAS) && defined(BLAS_HAS_SBGEMM) && defined(__MMA__)
             return true;
 #endif
-#elif defined(DNNL_AARCH64_USE_ACL)
-            return arm_compute::CPUInfo::get().has_bf16();
+#elif defined(DNNL_AARCH64)
+            return dnnl::impl::cpu::aarch64::mayiuse_bf16();
 #else
             return false;
 #endif
@@ -161,8 +158,8 @@ bool has_cpu_training_support(data_type_t data_type) {
 #elif DNNL_RV64
             using namespace dnnl::impl::cpu::rv64;
             return mayiuse(zvfh);
-#elif defined(DNNL_AARCH64_USE_ACL)
-            return arm_compute::CPUInfo::get().has_fp16();
+#elif defined(DNNL_AARCH64)
+            return dnnl::impl::cpu::aarch64::mayiuse_f16();
 #else
             return false;
 #endif

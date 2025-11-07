@@ -117,11 +117,11 @@ struct ref_grouped_gemm_t : public primitive_t {
             }
 
             // GEMM with scaling
-            // Output = ((A * scale_A) * (B * scale_B)) * scale_dst + bias
+            // Output = ((A * scale_A) * (B * scale_B) + bias) / scale_dst
             // TODO: only supports mask == 0 or row-wise for src and col-wise for wei
             for (dim_t m = 0; m < M; ++m) {
                 for (dim_t n = 0; n < N; ++n) {
-                    float sum = b ? b[n] : 0.0f;
+                    float sum = 0.0f;
 
                     for (dim_t k = 0; k < K; ++k) {
                         float a_val = group_input[m * K + k];
@@ -142,7 +142,9 @@ struct ref_grouped_gemm_t : public primitive_t {
                         sum += a_val * b_val;
                     }
 
-                    if (scale_dst) { sum *= scale_dst[0]; }
+                    if (b) { sum += b[n]; }
+
+                    if (scale_dst) { sum /= scale_dst[0]; }
 
                     group_output[m * N + n] = sum;
                 }

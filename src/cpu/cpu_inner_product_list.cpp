@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -29,8 +29,9 @@ using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/acl_inner_product.hpp"
-using namespace dnnl::impl::cpu::aarch64;
 #endif
+#include "cpu/aarch64/matmul_inner_product.hpp"
+using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
 #include "cpu/rv64/rvv_brgemm_inner_product.hpp"
 #include "cpu/rv64/rvv_gemm_inner_product.hpp"
@@ -52,6 +53,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         {{forward, "f32:xf:*"}, {
             CPU_INSTANCE_X64(matmul_inner_product_fwd_t)
             CPU_INSTANCE_AARCH64_ACL(acl_inner_product_fwd_t)
+            CPU_INSTANCE_AARCH64(matmul_inner_product_fwd_t)
             CPU_INSTANCE_RV64(rvv_brgemm_inner_product_fwd_t)
             CPU_INSTANCE_RV64(rvv_gemm_inner_product_fwd_t)
             CPU_INSTANCE(gemm_inner_product_fwd_t<f32>)
@@ -63,6 +65,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX512(gemm_bf16_inner_product_fwd_t<f32>)
             CPU_INSTANCE_AVX512(gemm_bf16_inner_product_fwd_t<bf16>)
             CPU_INSTANCE_AARCH64_ACL(acl_inner_product_fwd_t)
+            CPU_INSTANCE_AARCH64(matmul_inner_product_fwd_t)
             CPU_INSTANCE_RV64(rvv_brgemm_inner_product_fwd_t)
             CPU_INSTANCE(ref_inner_product_fwd_t)
             nullptr,
@@ -70,6 +73,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         {{forward, "f16:f16:*"}, {
             CPU_INSTANCE_X64(matmul_inner_product_fwd_t)
             CPU_INSTANCE_AARCH64_ACL(acl_inner_product_fwd_t)
+            CPU_INSTANCE_AARCH64(matmul_inner_product_fwd_t)
             CPU_INSTANCE_RV64(rvv_brgemm_inner_product_fwd_t)
             CPU_INSTANCE(ref_inner_product_fwd_t)
             nullptr,

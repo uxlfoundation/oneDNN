@@ -66,6 +66,7 @@ jobs:
         with:
           persist-credentials: false
           path: oneDNN
+          submodules: true
   
       - name: Read version file
         id: get-versions
@@ -94,6 +95,7 @@ jobs:
         with:
           persist-credentials: false
           path: oneDNN
+          submodules: true
 
       - name: Build oneDNN new
         uses: ./oneDNN/.github/actions/build-onednn-aarch64
@@ -126,6 +128,7 @@ jobs:
         with:
           persist-credentials: false
           path: oneDNN
+          submodules: true
 
       - name: Read version file
         id: get-versions

@@ -43,3 +43,10 @@ set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
     $<TARGET_OBJECTS:${OBJ_LIB}>)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/xbyak_aarch64 xbyak_aarch64)
+
+add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/kleidiai/experimental/ops kleidiai_ops)
+
+target_link_libraries(${OBJ_LIB} PRIVATE kleidiai_ops)
+
+set_property(GLOBAL APPEND PROPERTY DNNL_SUBDIR_EXTRA_STATIC_LIBS
+    kleidiai_ops)

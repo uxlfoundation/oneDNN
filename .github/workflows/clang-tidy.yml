@@ -70,6 +70,7 @@ jobs:
           persist-credentials: false
           path: oneDNN
           fetch-depth: 0
+          submodules: true
 
       - if: ${{ matrix.config.compiler == 'clang' }}
         name: Install clang

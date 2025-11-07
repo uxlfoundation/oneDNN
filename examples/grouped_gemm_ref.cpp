@@ -16,16 +16,14 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
 #include <iostream>
 #include <numeric>
 #include <vector>
 
 // Configuration constants
 constexpr int NUM_EXPERTS = 4;
-constexpr int TOP_K = 2;
-constexpr int TOKENS_TO_PROCESS = 8; // also a batch size
+constexpr int TOP_K = 2; // number of top experts to select per token
+constexpr int TOKENS_TO_PROCESS = 8;
 constexpr int INPUT_DIM = 16;
 constexpr int HIDDEN_DIM = 32;
 constexpr int OUTPUT_DIM = 16;
@@ -41,19 +39,21 @@ void init_matrix(float *data, int rows, int cols, float seed = 1.0f) {
 
 /// Print a matrix for debugging
 void print_matrix(const char *name, const float *data, int rows, int cols,
-        int max_rows = 5, int max_cols = 8) {
-    printf("%s (%dx%d):\n", name, rows, cols);
-    for (int i = 0; i < std::min(rows, max_rows); ++i) {
-        printf("  [");
-        for (int j = 0; j < std::min(cols, max_cols); ++j) {
-            printf("%7.3f", data[i * cols + j]);
-            if (j < std::min(cols, max_cols) - 1) printf(", ");
+        int max_rows = 3, int max_cols = 5) {
+    std::cout << name << " (" << rows << "x" << cols << "):\n";
+    for (int i = 0; i < std::min(rows, max_rows); i++) {
+        std::cout << "  [";
+        for (int j = 0; j < std::min(cols, max_cols); j++) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%7.3f", data[i * cols + j]);
+            std::cout << buf;
+            if (j < std::min(cols, max_cols) - 1) std::cout << ", ";
         }
-        if (cols > max_cols) printf(", ...");
-        printf("]\n");
+        if (cols > max_cols) std::cout << ", ...";
+        std::cout << "]\n";
     }
-    if (rows > max_rows) printf("  ...\n");
-    printf("\n");
+    if (rows > max_rows) std::cout << "  ...\n";
+    std::cout << "\n";
 }
 
 /// Apply ReLU activation
@@ -216,35 +216,77 @@ void scatter_grouped_output(float *output, const float *grouped_output,
     }
 }
 
-/// Pure grouped GEMM: loops over experts and performs GEMM + bias
-/// This function only performs a single matrix multiplication per expert (no multi-layer logic)
-/// Note: num_experts should be the number of ACTIVE experts (with tokens assigned)
+/// Reference Grouped GEMM with optional scales support
+/// Supports per-tensor, row-wise (src), and column-wise (wei) scales
+/// Computes: output = ((input * scale_src) * (weights * scale_wei) + bias) / scale_dst
 ///
-/// Performs: output = input * weights + bias for each expert
+/// @param scale_src_ptrs Array of pointers to src scales per expert (nullptr = no scaling)
+/// @param scale_wei_ptrs Array of pointers to wei scales per expert (nullptr = no scaling)
+/// @param scale_dst_ptrs Array of pointers to dst scales per expert (nullptr = no scaling)
+/// @param src_scale_size Size of src scales: 1 for per-tensor, M for row-wise (nullptr if no scaling)
+/// @param wei_scale_size Size of wei scales: 1 for per-tensor, N for column-wise (nullptr if no scaling)
 void ref_grouped_gemm(const float **input_ptrs, float **output_ptrs,
         const float **weight_ptrs, const float **bias_ptrs,
-        const int *M_per_expert, int num_experts, int K_dim, int N_dim) {
+        const int *M_per_expert, int num_experts, int K_dim, int N_dim,
+        const float **scale_src_ptrs = nullptr,
+        const float **scale_wei_ptrs = nullptr,
+        const float **scale_dst_ptrs = nullptr,
+        const int *src_scale_size = nullptr,
+        const int *wei_scale_size = nullptr) {
 
-    // Process each active expert using pointer arrays
     for (int expert_id = 0; expert_id < num_experts; ++expert_id) {
         int num_expert_tokens = M_per_expert[expert_id];
 
-        // Direct pointer access - no offset calculations needed
         const float *expert_input = input_ptrs[expert_id];
         float *expert_output = output_ptrs[expert_id];
         const float *W = weight_ptrs[expert_id];
         const float *b = bias_ptrs[expert_id];
 
-        // GEMM: output = input * W + bias (fused)
+        const float *src_scales
+                = scale_src_ptrs ? scale_src_ptrs[expert_id] : nullptr;
+        const float *wei_scales
+                = scale_wei_ptrs ? scale_wei_ptrs[expert_id] : nullptr;
+        const float *dst_scales
+                = scale_dst_ptrs ? scale_dst_ptrs[expert_id] : nullptr;
+
+        // Using size here to determine scaling strategy (row-wise, column-wise, per-tensor)
+        int src_scale_sz = src_scale_size ? src_scale_size[expert_id] : 0;
+        int wei_scale_sz = wei_scale_size ? wei_scale_size[expert_id] : 0;
+
+        // GEMM with optional scales: output = ((input * scale_src) * (W * scale_wei) + bias) / scale_dst
+        //
+        // Input: (num_expert_tokens x K_dim)
+        // Weights: (K_dim x N_dim)
         // Output dimensions: (num_expert_tokens x N_dim)
-        // Input: (num_expert_tokens x K_dim), Weights: (K_dim x N_dim)
         for (int m = 0; m < num_expert_tokens; ++m) {
+            // Get src scale: per-tensor (size == 1) or row-wise (size == M)
+            float src_scale = 1.0f;
+            if (src_scales) {
+                src_scale = (src_scale_sz == 1) ? src_scales[0] : src_scales[m];
+            }
+
             for (int n = 0; n < N_dim; ++n) {
-                float sum = b[n]; // Initialize with bias
-                for (int k = 0; k < K_dim; ++k) {
-                    sum += expert_input[m * K_dim + k] * W[k * N_dim + n];
+                // Get wei scale: per-tensor (size == 1) or column-wise (size == N)
+                float wei_scale = 1.0f;
+                if (wei_scales) {
+                    wei_scale = (wei_scale_sz == 1) ? wei_scales[0]
+                                                    : wei_scales[n];
                 }
-                expert_output[m * N_dim + n] = sum;
+
+                float sum = 0.0f;
+                for (int k = 0; k < K_dim; ++k) {
+                    float scaled_input
+                            = expert_input[m * K_dim + k] * src_scale;
+                    float scaled_weight = W[k * N_dim + n] * wei_scale;
+                    sum += scaled_input * scaled_weight;
+                }
+
+                // Add bias before dst scale division (quantization semantics)
+                sum += b[n];
+
+                // Get dst scale (always per-tensor) and divide
+                float dst_scale = dst_scales ? dst_scales[0] : 1.0f;
+                expert_output[m * N_dim + n] = sum / dst_scale;
             }
         }
     }
@@ -259,19 +301,24 @@ const engine &eng() {
     return eng;
 }
 
-/// oneDNN-style Grouped GEMM Implementation
+/// oneDNN-style Grouped GEMM Implementation with optional scales support
+/// @param use_scales If true, applies row-wise src scales,
+/// column-wise wei scales, and per-tensor dst scales
 void onednn_style_grouped_gemm(const float **input_ptrs, float **output_ptrs,
         const float **weight_ptrs, const float **bias_ptrs,
         const int *M_per_expert, int num_experts /* active experts */,
-        int K_dim, int N_dim) {
+        int K_dim, int N_dim, bool use_scales = false) {
 
-    std::cout << "Grouped GEMM with Bias\n";
-    std::cout << "num_experts: " << num_experts << "\n";
+    if (use_scales) {
+        std::cout << "Grouped GEMM with Bias and Scales\n";
+    } else {
+        std::cout << "Grouped GEMM with Bias\n";
+    }
 
     // Step 1: Create memory descriptors with runtime dimensions
     //
     // Use DNNL_RUNTIME_DIM_VAL for dimensions that vary per expert
-    // - Input(A):   shape = [RUNTIME, K_dim] - batch size varies per expert
+    // - Input(A):   shape = [RUNTIME, K_dim] - size varies per expert
     // - Weights(B): shape = [K_dim, N_dim]   - fixed size for all experts
     // - Output(C):  shape = [RUNTIME, N_dim]
     //
@@ -294,22 +341,33 @@ void onednn_style_grouped_gemm(const float **input_ptrs, float **output_ptrs,
     // NOTE: Since assumption that weight matrices are the same size for all experts,
     // we can reuse the same memory descriptor for weights across all experts.
     // Same logic for inputs and outputs, since we're using wildcard dimensions.
-    std::vector<memory::desc> a_mds, b_mds, bias_mds, c_mds;
-    for (int i = 0; i < num_experts; i++) {
-        a_mds.push_back(a_md); // Input descriptor for expert i
-        b_mds.push_back(b_md); // Weight descriptor for expert i
-        bias_mds.push_back(bias_md); // Bias descriptor for expert i
-        c_mds.push_back(c_md); // Output descriptor for expert i
+    std::vector<memory::desc> a_mds(num_experts, a_md);
+    std::vector<memory::desc> b_mds(num_experts, b_md);
+    std::vector<memory::desc> bias_mds(num_experts, bias_md);
+    std::vector<memory::desc> c_mds(num_experts, c_md);
+
+    // Step 3: Create primitive attributes with optional scales
+    primitive_attr attr;
+    if (use_scales) {
+        // Assuming all experts have the same scaling strategy, but different scaling factors values
+        for (int i = 0; i < num_experts; i++) {
+            attr.set_scales_mask(
+                    DNNL_ARG_MULTIPLE_SRC + i, 1); // row-wise src mask
+            attr.set_scales_mask(
+                    DNNL_ARG_MULTIPLE_WEIGHTS + i, 2); // column-wise wei mask
+            attr.set_scales_mask(
+                    DNNL_ARG_MULTIPLE_DST + i, 0); // per-tensor dst mask
+        }
     }
 
-    // Step 3: Create primitive descriptor
+    // Step 4: Create primitive descriptor
     //
     // - The number of experts is determined by vector sizes (a_mds.size())
     // - Actual sizes (M_per_expert) will be specified during execution
     auto grouped_gemm_pd = grouped_gemm::primitive_desc(
-            eng(), a_mds, b_mds, bias_mds, c_mds);
+            eng(), a_mds, b_mds, bias_mds, c_mds, attr);
 
-    // Step 4: Wrap user data in oneDNN memory objects
+    // Step 5: Wrap user data in oneDNN memory objects
     //
     // NOTE: zero-copy approach to translate to oneDNN memory objects.
     // - In Pytorch and OpenVINO, memory is a contiguous buffer.
@@ -317,9 +375,6 @@ void onednn_style_grouped_gemm(const float **input_ptrs, float **output_ptrs,
     //   once the dimensions M_per_expert are known.
     std::vector<memory> a_mem, b_mem, bias_mem, c_mem;
     for (int i = 0; i < num_experts; i++) {
-        std::cout << "expert #" << i << " M K N " << M_per_expert[i] << " "
-                  << K_dim << " " << N_dim << std::endl;
-
         // Wrap input data: shape [M_per_expert[i] x K_dim]
         a_mem.push_back(
                 memory({{M_per_expert[i], K_dim}, memory::data_type::f32,
@@ -343,10 +398,62 @@ void onednn_style_grouped_gemm(const float **input_ptrs, float **output_ptrs,
                         eng(), (void *)output_ptrs[i]));
     }
 
-    // Step 5: Create primitive
+    // Step 6: Fill scaling factors and create memory objects (if using scales)
+    std::vector<std::vector<float>> scale_src_data;
+    std::vector<std::vector<float>> scale_wei_data;
+    std::vector<std::vector<float>> scale_dst_data;
+    std::vector<memory> scale_src_mem, scale_wei_mem, scale_dst_mem;
+
+    if (use_scales) {
+        scale_src_data.resize(num_experts);
+        scale_wei_data.resize(num_experts);
+        scale_dst_data.resize(num_experts);
+
+        // NOTE: Row of scales for source, column of scales for weights, single scale for dst
+        for (int i = 0; i < num_experts; i++) {
+            int M = M_per_expert[i];
+            scale_src_data[i].resize(M);
+            for (int m = 0; m < M; ++m) {
+                scale_src_data[i][m] = 0.8f + m * 0.06f;
+            }
+            scale_wei_data[i].resize(N_dim);
+            for (int n = 0; n < N_dim; ++n) {
+                scale_wei_data[i][n] = 1.2f + n * 0.04f;
+            }
+            scale_dst_data[i] = {0.5f};
+        }
+
+        for (int i = 0; i < num_experts; i++) {
+            // Source scales
+            if (!scale_src_data[i].empty()) {
+                scale_src_mem.push_back(memory(
+                        {{(int)scale_src_data[i].size()},
+                                memory::data_type::f32, memory::format_tag::a},
+                        eng(), scale_src_data[i].data()));
+            }
+
+            // Weight scales
+            if (!scale_wei_data[i].empty()) {
+                scale_wei_mem.push_back(memory(
+                        {{(int)scale_wei_data[i].size()},
+                                memory::data_type::f32, memory::format_tag::a},
+                        eng(), scale_wei_data[i].data()));
+            }
+
+            // Destination scales
+            if (!scale_dst_data[i].empty()) {
+                scale_dst_mem.push_back(memory(
+                        {{(int)scale_dst_data[i].size()},
+                                memory::data_type::f32, memory::format_tag::a},
+                        eng(), scale_dst_data[i].data()));
+            }
+        }
+    }
+
+    // Step 7: Create primitive
     auto grouped_gemm_prim = grouped_gemm(grouped_gemm_pd);
 
-    // Step 6: Build argument map for execution
+    // Step 8: Build argument map for execution
     //
     // Map each expert's data to the appropriate primitive argument:
     //      DNNL_ARG_MULTIPLE_SRC + i      -> input for expert i
@@ -359,146 +466,21 @@ void onednn_style_grouped_gemm(const float **input_ptrs, float **output_ptrs,
         grouped_gemm_args.insert({DNNL_ARG_MULTIPLE_WEIGHTS + i, b_mem[i]});
         grouped_gemm_args.insert({DNNL_ARG_MULTIPLE_BIAS + i, bias_mem[i]});
         grouped_gemm_args.insert({DNNL_ARG_MULTIPLE_DST + i, c_mem[i]});
-    }
 
-    // Step 7: Execute the grouped GEMM
-    dnnl::stream engine_stream(eng());
-    grouped_gemm_prim.execute(engine_stream, grouped_gemm_args);
-    engine_stream.wait();
-
-    // Temporary step to get same output as ref implementation
-    for (int i = 0; i < num_experts; i++) {
-        read_from_dnnl_memory(output_ptrs[i], c_mem[i]);
-    }
-}
-
-/// oneDNN-style Grouped GEMM with Scales
-void onednn_style_grouped_gemm_with_scales(const float **input_ptrs,
-        float **output_ptrs, const float **weight_ptrs, const float **bias_ptrs,
-        const int *M_per_expert, int num_experts, int K_dim, int N_dim) {
-
-    std::cout << "Grouped GEMM with Bias and Scales\n";
-    std::cout << "num_experts: " << num_experts << "\n";
-
-    // Step 1: Create memory descriptors
-    memory::dims a_shape = {DNNL_RUNTIME_DIM_VAL, K_dim};
-    memory::dims b_shape = {K_dim, N_dim};
-    memory::dims bias_shape = {N_dim};
-    memory::dims c_shape = {DNNL_RUNTIME_DIM_VAL, N_dim};
-
-    memory::desc a_md(a_shape, memory::data_type::f32, memory::format_tag::ab);
-    memory::desc b_md(b_shape, memory::data_type::f32, memory::format_tag::ab);
-    memory::desc bias_md(
-            bias_shape, memory::data_type::f32, memory::format_tag::a);
-    memory::desc c_md(c_shape, memory::data_type::f32, memory::format_tag::ab);
-
-    std::vector<memory::desc> a_mds(num_experts, a_md);
-    std::vector<memory::desc> b_mds(num_experts, b_md);
-    std::vector<memory::desc> bias_mds(num_experts, bias_md);
-    std::vector<memory::desc> c_mds(num_experts, c_md);
-
-    // Step 2: Create primitive attributes with scales
-    // Assuming all experts have the same scaling strategy, but different scaling factors values
-    primitive_attr attr;
-    for (int i = 0; i < num_experts; i++) {
-        attr.set_scales_mask(DNNL_ARG_MULTIPLE_SRC + i, 1); // row-wise src
-        attr.set_scales_mask(
-                DNNL_ARG_MULTIPLE_WEIGHTS + i, 2); // column-wise wei
-        attr.set_scales_mask(DNNL_ARG_MULTIPLE_DST + i, 0); // per-tensor dst
-    }
-
-    // Step 3: Create primitive descriptor
-    auto grouped_gemm_pd = grouped_gemm::primitive_desc(
-            eng(), a_mds, b_mds, bias_mds, c_mds, attr);
-
-    // Step 4: Wrap user data
-    std::vector<memory> a_mem, b_mem, bias_mem, c_mem;
-    for (int i = 0; i < num_experts; i++) {
-        a_mem.push_back(
-                memory({{M_per_expert[i], K_dim}, memory::data_type::f32,
-                               memory::format_tag::ab},
-                        eng(), (void *)input_ptrs[i]));
-        b_mem.push_back(memory({{K_dim, N_dim}, memory::data_type::f32,
-                                       memory::format_tag::ab},
-                eng(), (void *)weight_ptrs[i]));
-        bias_mem.push_back(
-                memory({{N_dim}, memory::data_type::f32, memory::format_tag::a},
-                        eng(), (void *)bias_ptrs[i]));
-        c_mem.push_back(
-                memory({{M_per_expert[i], N_dim}, memory::data_type::f32,
-                               memory::format_tag::ab},
-                        eng(), (void *)output_ptrs[i]));
-    }
-
-    // Step 5: Fill scaling factors and create memory objects
-    std::vector<std::vector<float>> scale_src_data(num_experts);
-    std::vector<std::vector<float>> scale_wei_data(num_experts);
-    std::vector<std::vector<float>> scale_dst_data(num_experts);
-
-    // NOTE: Row of scales for source, column of scales for weights, single scale for dst
-    for (int i = 0; i < num_experts; i++) {
-        int M = M_per_expert[i];
-        scale_src_data[i].resize(M);
-        for (int m = 0; m < M; ++m) {
-            scale_src_data[i][m] = 0.8f + m * 0.06f;
-        }
-        scale_wei_data[i].resize(N_dim);
-        for (int n = 0; n < N_dim; ++n) {
-            scale_wei_data[i][n] = 1.2f + n * 0.04f;
-        }
-        scale_dst_data[i] = {0.5f};
-    }
-
-    std::vector<memory> scale_src_mem, scale_wei_mem, scale_dst_mem;
-    for (int i = 0; i < num_experts; i++) {
-        // Source scales
-        if (!scale_src_data[i].empty()) {
-            scale_src_mem.push_back(memory(
-                    {{(int)scale_src_data[i].size()}, memory::data_type::f32,
-                            memory::format_tag::a},
-                    eng(), scale_src_data[i].data()));
-        }
-
-        // Weight scales
-        if (!scale_wei_data[i].empty()) {
-            scale_wei_mem.push_back(memory(
-                    {{(int)scale_wei_data[i].size()}, memory::data_type::f32,
-                            memory::format_tag::a},
-                    eng(), scale_wei_data[i].data()));
-        }
-
-        // Destination scales
-        if (!scale_dst_data[i].empty()) {
-            scale_dst_mem.push_back(memory(
-                    {{(int)scale_dst_data[i].size()}, memory::data_type::f32,
-                            memory::format_tag::a},
-                    eng(), scale_dst_data[i].data()));
+        if (use_scales) {
+            grouped_gemm_args.insert(
+                    {DNNL_ARG_ATTR_SCALES | (DNNL_ARG_MULTIPLE_SRC + i),
+                            scale_src_mem[i]});
+            grouped_gemm_args.insert(
+                    {DNNL_ARG_ATTR_SCALES | (DNNL_ARG_MULTIPLE_WEIGHTS + i),
+                            scale_wei_mem[i]});
+            grouped_gemm_args.insert(
+                    {DNNL_ARG_ATTR_SCALES | (DNNL_ARG_MULTIPLE_DST + i),
+                            scale_dst_mem[i]});
         }
     }
 
-    // Step 6: Create primitive
-    auto grouped_gemm_prim = grouped_gemm(grouped_gemm_pd);
-
-    // Step 7: Build argument map with scales
-    std::unordered_map<int, memory> grouped_gemm_args;
-    for (int i = 0; i < num_experts; i++) {
-        grouped_gemm_args.insert({DNNL_ARG_MULTIPLE_SRC + i, a_mem[i]});
-        grouped_gemm_args.insert({DNNL_ARG_MULTIPLE_WEIGHTS + i, b_mem[i]});
-        grouped_gemm_args.insert({DNNL_ARG_MULTIPLE_BIAS + i, bias_mem[i]});
-        grouped_gemm_args.insert({DNNL_ARG_MULTIPLE_DST + i, c_mem[i]});
-
-        grouped_gemm_args.insert(
-                {DNNL_ARG_ATTR_SCALES | (DNNL_ARG_MULTIPLE_SRC + i),
-                        scale_src_mem[i]});
-        grouped_gemm_args.insert(
-                {DNNL_ARG_ATTR_SCALES | (DNNL_ARG_MULTIPLE_WEIGHTS + i),
-                        scale_wei_mem[i]});
-        grouped_gemm_args.insert(
-                {DNNL_ARG_ATTR_SCALES | (DNNL_ARG_MULTIPLE_DST + i),
-                        scale_dst_mem[i]});
-    }
-
-    // Step 8: Execute
+    // Step 9: Execute the grouped GEMM
     dnnl::stream engine_stream(eng());
     grouped_gemm_prim.execute(engine_stream, grouped_gemm_args);
     engine_stream.wait();
@@ -520,7 +502,7 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     int total_tokens = routing.token_offsets[NUM_EXPERTS];
     std::vector<float> hidden_all(total_tokens * hidden_dim);
 
-    // Identify active experts (those with tokens assigned)
+    // Identify active experts (== those with tokens assigned)
     std::vector<int> active_expert_ids;
     for (int i = 0; i < NUM_EXPERTS; ++i) {
         if (routing.token_counts[i] > 0) { active_expert_ids.push_back(i); }
@@ -559,15 +541,15 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
                 = hidden_all_onednn.data() + token_start * hidden_dim;
     }
 
-    // First layer: input -> hidden (GEMM + bias via ref_grouped_gemm)
+    // First layer: input -> hidden (GEMM + bias via ref_grouped_gemm, no scales)
     ref_grouped_gemm(input_ptrs.data(), hidden_ptrs_ref.data(), W1_ptrs.data(),
             b1_ptrs.data(), M_per_expert.data(), num_active_experts, input_dim,
             hidden_dim);
 
-    // First layer: input -> hidden (GEMM + bias via onednn_style_grouped_gemm)
+    // First layer: input -> hidden (GEMM + bias via onednn_style_grouped_gemm, no scales)
     onednn_style_grouped_gemm(input_ptrs.data(), hidden_ptrs_onednn.data(),
             W1_ptrs.data(), b1_ptrs.data(), M_per_expert.data(),
-            num_active_experts, input_dim, hidden_dim);
+            num_active_experts, input_dim, hidden_dim, false);
 
     // Compare outputs
     float max_diff = 0.0f;
@@ -580,22 +562,27 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     }
     float avg_diff = total_diff / num_elements;
 
-    printf("\n=== Layer 1 GEMM Comparison ===\n");
-    printf("  Max difference: %.10f\n", max_diff);
-    printf("  Avg difference: %.10f\n", avg_diff);
+    std::cout << "=== Layer 1 GEMM Comparison ===\n";
+    char buf[64];
+    snprintf(buf, sizeof(buf), "  Max difference: %.10f\n", max_diff);
+    std::cout << buf;
+    snprintf(buf, sizeof(buf), "  Avg difference: %.10f\n", avg_diff);
+    std::cout << buf;
     if (max_diff < 1e-6f) {
-        printf("  Status: PASS\n");
+        std::cout << "  Status: PASS\n";
     } else {
-        printf("  Status: FAIL\n");
+        std::cout << "  Status: FAIL\n";
         // Print first few values for debugging
-        printf("  First 10 values comparison:\n");
+        std::cout << "  First 10 values comparison:\n";
         for (int i = 0; i < std::min(10, num_elements); ++i) {
-            printf("    [%d] ref=%.6f onednn=%.6f diff=%.6f\n", i,
+            snprintf(buf, sizeof(buf),
+                    "    [%d] ref=%.6f onednn=%.6f diff=%.6f\n", i,
                     hidden_all_ref[i], hidden_all_onednn[i],
                     hidden_all_ref[i] - hidden_all_onednn[i]);
+            std::cout << buf;
         }
     }
-    printf("\n");
+    std::cout << "\n";
 
     // Use ref output for the rest of the pipeline
     hidden_all = hidden_all_ref;
@@ -621,10 +608,105 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
         b2_ptrs[idx] = weights.b2_data + weights.b2_offsets[expert_id];
     }
 
-    // Second layer: hidden -> output (GEMM + bias via grouped_gemm)
-    ref_grouped_gemm((const float **)hidden_ptrs.data(), output_ptrs.data(),
+    // Save output for comparison
+    std::vector<float> output_all_ref(total_tokens * output_dim);
+    std::vector<float> output_all_scaled(total_tokens * output_dim);
+
+    std::vector<float *> output_ptrs_ref(num_active_experts);
+    std::vector<float *> output_ptrs_scaled(num_active_experts);
+    for (int idx = 0; idx < num_active_experts; ++idx) {
+        int expert_id = active_expert_ids[idx];
+        int token_start = routing.token_offsets[expert_id];
+        output_ptrs_ref[idx] = output_all_ref.data() + token_start * output_dim;
+        output_ptrs_scaled[idx]
+                = output_all_scaled.data() + token_start * output_dim;
+    }
+
+    // Prepare scales:
+    //   src: row-wise (0.8 + m*0.06), wei: col-wise (1.2 + n*0.04), dst: 0.5
+    std::vector<std::vector<float>> scale_src_data(num_active_experts);
+    std::vector<std::vector<float>> scale_wei_data(num_active_experts);
+    std::vector<std::vector<float>> scale_dst_data(num_active_experts);
+
+    std::vector<const float *> scale_src_ptrs(num_active_experts);
+    std::vector<const float *> scale_wei_ptrs(num_active_experts);
+    std::vector<const float *> scale_dst_ptrs(num_active_experts);
+    std::vector<int> src_scale_sizes(num_active_experts);
+    std::vector<int> wei_scale_sizes(num_active_experts);
+
+    for (int idx = 0; idx < num_active_experts; ++idx) {
+        int M = M_per_expert[idx];
+
+        // Row-wise src scales
+        scale_src_data[idx].resize(M);
+        for (int m = 0; m < M; ++m) {
+            scale_src_data[idx][m] = 0.8f + m * 0.06f;
+        }
+        scale_src_ptrs[idx] = scale_src_data[idx].data();
+        src_scale_sizes[idx] = M;
+
+        // Column-wise wei scales
+        scale_wei_data[idx].resize(output_dim);
+        for (int n = 0; n < output_dim; ++n) {
+            scale_wei_data[idx][n] = 1.2f + n * 0.04f;
+        }
+        scale_wei_ptrs[idx] = scale_wei_data[idx].data();
+        wei_scale_sizes[idx] = output_dim;
+
+        // Per-tensor dst scale
+        scale_dst_data[idx] = {0.5f};
+        scale_dst_ptrs[idx] = scale_dst_data[idx].data();
+    }
+
+    // Second layer: hidden -> output (ref with scales)
+    ref_grouped_gemm((const float **)hidden_ptrs.data(), output_ptrs_ref.data(),
             W2_ptrs.data(), b2_ptrs.data(), M_per_expert.data(),
-            num_active_experts, hidden_dim, output_dim);
+            num_active_experts, hidden_dim, output_dim, scale_src_ptrs.data(),
+            scale_wei_ptrs.data(), scale_dst_ptrs.data(),
+            src_scale_sizes.data(), wei_scale_sizes.data());
+
+    // Second layer with scales: hidden -> output (oneDNN implementation with scales)
+    onednn_style_grouped_gemm((const float **)hidden_ptrs.data(),
+            output_ptrs_scaled.data(), W2_ptrs.data(), b2_ptrs.data(),
+            M_per_expert.data(), num_active_experts, hidden_dim, output_dim,
+            true);
+
+    // Compare outputs
+    max_diff = 0.0f;
+    total_diff = 0.0f;
+    num_elements = total_tokens * output_dim;
+    for (int i = 0; i < num_elements; ++i) {
+        float diff = std::abs(output_all_ref[i] - output_all_scaled[i]);
+        max_diff = std::max(max_diff, diff);
+        total_diff += diff;
+    }
+    avg_diff = total_diff / num_elements;
+
+    std::cout << "=== Layer 2 GEMM with Scales Comparison ===\n";
+    snprintf(buf, sizeof(buf), "  Max difference: %.10f\n", max_diff);
+    std::cout << buf;
+    snprintf(buf, sizeof(buf), "  Avg difference: %.10f\n", avg_diff);
+    std::cout << buf;
+    if (max_diff < 1e-6f) {
+        std::cout << "  Status: PASS\n";
+    } else {
+        std::cout << "  Status: FAIL\n";
+        // Print first few values for debugging
+        std::cout << "  First 10 values comparison:\n";
+        for (int i = 0; i < std::min(10, num_elements); ++i) {
+            snprintf(buf, sizeof(buf),
+                    "    [%d] ref=%.6f scaled=%.6f diff=%.6f\n", i,
+                    output_all_ref[i], output_all_scaled[i],
+                    output_all_ref[i] - output_all_scaled[i]);
+            std::cout << buf;
+        }
+    }
+    std::cout << "\n";
+
+    // Use ref output for the rest of the pipeline
+    for (int i = 0; i < total_tokens * output_dim; ++i) {
+        grouped_output[i] = output_all_ref[i];
+    }
 }
 
 // ============================================================================
@@ -673,15 +755,16 @@ void toy_moe(const float *input, float *output, const ExpertWeights &weights,
 }
 
 int main(int argc, char **argv) {
-    printf("Grouped GEMM Reference Implementation with 4 Experts (Top-2 "
-           "Routing)\n\n");
+    std::cout << "Toy MoE/Grouped GEMM Implementation with 4 Experts (Top-2 "
+                 "Routing)\n\n";
 
-    printf("    Total Number of experts: %d\n", NUM_EXPERTS);
-    printf("    Number of active experts (Top-K routing): %d\n", TOP_K);
-    printf("    Tokens to process (batch size): %d\n", TOKENS_TO_PROCESS);
-    printf("    Input dimension: %d\n", INPUT_DIM);
-    printf("    Hidden dimension: %d\n", HIDDEN_DIM);
-    printf("    Output dimension: %d\n\n", OUTPUT_DIM);
+    std::cout << "    Total Number of experts: " << NUM_EXPERTS << "\n";
+    std::cout << "    Number of active experts (Top-K routing): " << TOP_K
+              << "\n";
+    std::cout << "    Total Tokens to process: " << TOKENS_TO_PROCESS << "\n";
+    std::cout << "    Input dimension: " << INPUT_DIM << "\n";
+    std::cout << "    Hidden dimension: " << HIDDEN_DIM << "\n";
+    std::cout << "    Output dimension: " << OUTPUT_DIM << "\n\n";
 
     // Allocate input and output
     std::vector<float> input(TOKENS_TO_PROCESS * INPUT_DIM);
@@ -729,36 +812,38 @@ int main(int argc, char **argv) {
         expert_weights.b2_offsets[e] = e * OUTPUT_DIM;
     }
 
-    printf("Expert weights initialized and organized in contiguous memory.\n");
-    printf("  W1 total size: %zu floats\n", W1_all.size());
-    printf("  b1 total size: %zu floats\n", b1_all.size());
-    printf("  W2 total size: %zu floats\n", W2_all.size());
-    printf("  b2 total size: %zu floats\n\n", b2_all.size());
-
     // Compute routing
     RoutingDecision routing;
     compute_routing(input.data(), TOKENS_TO_PROCESS, INPUT_DIM, NUM_EXPERTS,
             TOP_K, routing);
 
     // Print routing decisions
-    printf("Routing Decisions (Top-%d):\n", TOP_K);
-    printf("  Token | Expert_1 (Weight) | Expert_2 (Weight)\n");
-    printf("  ------|-------------------|------------------\n");
+    std::cout << "Routing Decisions (Top-" << TOP_K << "):\n";
+    std::cout << "  Token | Choice#1 | Choice#2\n";
+    std::cout << "  ------|----------|---------\n";
     for (int b = 0; b < TOKENS_TO_PROCESS; ++b) {
-        printf("   %2d   |   %d (%5.3f)      |   %d (%5.3f)\n", b,
+        char buf[64];
+        snprintf(buf, sizeof(buf), "   %2d   |   %d      |   %d\n", b,
                 routing.expert_ids[b * TOP_K + 0],
-                routing.weights[b * TOP_K + 0],
-                routing.expert_ids[b * TOP_K + 1],
-                routing.weights[b * TOP_K + 1]);
+                routing.expert_ids[b * TOP_K + 1]);
+        std::cout << buf;
     }
-    printf("\n");
+    std::cout << "\n";
 
-    printf("Token distribution per expert:\n");
+    std::cout << "Token distribution per expert:\n";
     for (int e = 0; e < NUM_EXPERTS; ++e) {
-        printf("  Expert %d: %d tokens (offset: %d)\n", e,
-                routing.token_counts[e], routing.token_offsets[e]);
+        std::cout << "  Expert " << e << ": " << routing.token_counts[e]
+                  << " tokens (offset in contiguous memory: "
+                  << routing.token_offsets[e] << ")\n";
     }
-    printf("\n");
+    std::cout << "\n";
+
+    std::cout << "Number of active experts (with assigned tokens): ";
+    int active_expert_count = 0;
+    for (int e = 0; e < NUM_EXPERTS; ++e) {
+        if (routing.token_counts[e] > 0) { active_expert_count++; }
+    }
+    std::cout << active_expert_count << " out of " << NUM_EXPERTS << "\n\n";
 
     // Execute grouped GEMM with MoE
     toy_moe(input.data(), output.data(), expert_weights, routing,
@@ -777,10 +862,11 @@ int main(int argc, char **argv) {
     }
 
     if (valid) {
-        printf("SUCCESS: Grouped GEMM reference implementation completed!\n");
+        std::cout << "SUCCESS: Grouped GEMM reference implementation "
+                     "completed!\n";
         return 0;
     } else {
-        printf("FAILED: Invalid output detected!\n");
+        std::cout << "FAILED: Invalid output detected!\n";
         return 1;
     }
 }

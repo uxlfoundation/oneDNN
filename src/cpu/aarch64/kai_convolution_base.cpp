@@ -255,8 +255,7 @@ status_t kai_convolution_fwd_base_t::pd_t::init(const engine_t *engine) {
                 OC(), gemm_k(), gemm_k_sections(), gemm_n_batches(),
                 gemm_n_multi(), uses_indirect_gemm(),
                 post_ops_fusion.activation, dnnl_get_current_num_threads(),
-                fixed_format_, fast_mode, post_ops_fusion.accumulate,
-                cfg_.get());
+                fixed_format_, fast_mode, post_ops_fusion.accumulate);
     };
 
     args_ = make_args();

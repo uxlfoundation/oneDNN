@@ -18,7 +18,6 @@
 #define GPU_INTEL_JIT_IR_REORDER_HPP
 
 #include "gpu/intel/jit/ir/tensor.hpp"
-#include "gpu/intel/reorder/jit/normalization.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -32,10 +31,12 @@ class reorder_t : public func_impl_t, public object::info_t<reorder_t> {
 public:
     static func_t make(layout_t src_layout, layout_t dst_layout,
             bool do_normalize = true) {
-        if (do_normalize) reorder::jit::normalize(src_layout, dst_layout);
+        if (do_normalize) normalize(src_layout, dst_layout);
         return func_t(
                 new reorder_t(std::move(src_layout), std::move(dst_layout)));
     }
+
+    static void normalize(layout_t &a, layout_t &b);
 
     std::string str() const override {
         ostringstream_t oss;

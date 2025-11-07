@@ -14,7 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/reorder/jit/normalization.hpp"
+#include "gpu/intel/jit/ir/reorder.hpp"
+#include "gpu/intel/jit/dsl/tensor.hpp"
 
 #include "gpu/intel/jit/utils/range.hpp"
 
@@ -22,12 +23,13 @@ namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace reorder {
 namespace jit {
+
+using namespace dnnl::impl::gpu::intel::jit::dsl;
 
 struct normalization_stage_t {
     int idx;
-    layout_block_t curr, last;
+    layout::block_t curr, last;
     std::array<dim_t, 2> tile;
 
     bool is_dense() const { return curr.stride == last.stride * last.size; }
@@ -35,8 +37,8 @@ struct normalization_stage_t {
     dim_t elems() const { return tile[0]; }
 
     normalization_stage_t() = default;
-    normalization_stage_t(int idx, const layout_block_t &curr,
-            const layout_block_t &last, std::vector<dim_t> tile)
+    normalization_stage_t(int idx, const layout::block_t &curr,
+            const layout::block_t &last, std::vector<dim_t> tile)
         : idx(idx)
         , curr(curr)
         , last(last)
@@ -68,7 +70,7 @@ merge_info_t::merge_direction_t merge_direction(
 }
 
 struct layout_normalization_t {
-    using blocks_t = std::vector<layout_block_t>;
+    using blocks_t = std::vector<layout::block_t>;
     using block_iterator_t = typename blocks_t::const_iterator;
     using stage_t = normalization_stage_t;
 
@@ -103,7 +105,7 @@ struct layout_normalization_t {
     const blocks_t &blocks() const { return blocks_; }
 
     bool empty() const { return begin() == end(); }
-    bool contains_dim(const pvar_t &idx) const {
+    bool contains_dim(const idx_t &idx) const {
         for (auto &blk : blocks_)
             if (blk.idx == idx) return true;
         return false;
@@ -122,8 +124,8 @@ struct layout_normalization_t {
                 });
         auto merge_it = merges.begin();
         auto merge_end = merges.end();
-        std::vector<layout_block_t> blocks;
-        layout_block_t last = (*begin()).last;
+        std::vector<layout::block_t> blocks;
+        layout::block_t last = (*begin()).last;
         for (auto s : *this) {
             if (merge_it != merge_end && merge_it->iter_idx == s.idx) {
                 if (merge_it->direction == direction_t::backward)
@@ -163,15 +165,15 @@ struct layout_normalization_t {
 
 private:
     static bool can_combine(
-            const layout_block_t &last, const layout_block_t &next) {
+            const layout::block_t &last, const layout::block_t &next) {
         if (last.idx != next.idx) return false;
         if (last.stride * last.size != next.stride) return false;
         return true;
     }
 
-    static std::vector<layout_block_t> normalized_blocks(
+    static std::vector<layout::block_t> normalized_blocks(
             const layout_t &layout, std::vector<bool> dim_empty) {
-        std::vector<layout_block_t> normalized_blocks;
+        std::vector<layout::block_t> normalized_blocks;
         for (auto &blk : layout.blocks()) {
             if (blk.size != 1
                     || (layout.is_outermost(blk) && !dim_empty[blk.idx])) {
@@ -207,14 +209,14 @@ private:
 //    both, we can combine these blocks.
 // 2. The b dimension no longer appears, so we can remove it from the layout and
 //    re-index the dimensions so that the new layouts are 2D.
-void normalize(layout_t &a, layout_t &b) {
+void reorder_t::normalize(layout_t &a, layout_t &b) {
     using direction_t = merge_info_t::merge_direction_t;
     auto ndims = a.ndims();
     auto cmp = [](const normalization_stage_t &a,
                        const normalization_stage_t &b) {
         return a.elems() <= b.elems();
     };
-    auto dim_blocks = [](const pvar_t &idx) {
+    auto dim_blocks = [](const idx_t &idx) {
         return [=](const normalization_stage_t &s) {
             return s.curr.idx == idx;
         };
@@ -262,7 +264,6 @@ void normalize(layout_t &a, layout_t &b) {
 }
 
 } // namespace jit
-} // namespace reorder
 } // namespace intel
 } // namespace gpu
 } // namespace impl

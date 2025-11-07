@@ -64,8 +64,7 @@
 
 ## Intel Graphics Products
 * Introduced support for `fp4` weights in matmul primitive.
-* Introduced support for grouped quantization with group size 16 in matmul with `int8` compressed weights.
-* Introduced support group size 16 `int8` for decompressed weight with regular weights decompression.
+* Introduced support for weight scales and zero-points with group size 16 in matmul with compressed weights.
 
 ## Intel Architecture Processors
 * Introduced `fp4` weights support for `fp32` matmul and convolution  for future Intel Xeon processors with

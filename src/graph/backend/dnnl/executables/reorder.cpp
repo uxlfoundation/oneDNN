@@ -38,17 +38,14 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
     }
 
     // generate mask
-    int mask = 0;
     const auto set_reorder_mask = [&op, &prm_attr](int mask) {
-        std::vector<int64_t> default_groups;
-
         if (op->has_attr(op_attr::with_runtime_scales)
                 && op->get_attr<bool>(op_attr::with_runtime_scales)) {
             auto scale_dt
                     = op->get_input_value(1)->get_logical_tensor().data_type;
             // For runtime arg scales, need to get data type information from
             // the op
-            prm_attr.set_scales(DNNL_ARG_SRC, mask, default_groups,
+            prm_attr.set_scales(DNNL_ARG_SRC, mask, {},
                     static_cast<dnnl::memory::data_type>(scale_dt));
         } else if (op->has_attr(op_attr::scales)) {
             assertm(false, "only support runtime arg scales.\n");
@@ -105,6 +102,7 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
             }
 
         } else { // per channel and per tensor quantization
+            int mask = 0;
             if (qtype == "per_channel") { mask = 1 << axis; }
             set_reorder_mask(mask);
         }

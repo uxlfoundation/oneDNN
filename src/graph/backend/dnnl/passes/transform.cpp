@@ -2881,7 +2881,7 @@ status_t convert_runtime_mul_scales(std::shared_ptr<subgraph_t> &sg) {
 }
 
 status_t convert_runtime_zero_points(std::shared_ptr<subgraph_t> &sg) {
-    std::vector<op_t *> zps;
+    std::vector<op_t *> zps_ops;
     std::set<op_t *> visited;
     for (const auto &cur_op : sg->get_ops()) {
         if ((cur_op->get_kind() != op_kind::dnnl_sub_zps
@@ -2894,12 +2894,12 @@ status_t convert_runtime_zero_points(std::shared_ptr<subgraph_t> &sg) {
                 && cur_op->get_attr<bool>(op_attr::with_runtime_zps);
         if (dync_quantization) continue;
 
-        zps.emplace_back(cur_op.get());
+        zps_ops.emplace_back(cur_op.get());
         visited.insert(cur_op.get());
     }
 
     subgraph_rewriter_t rewriter(sg);
-    for (auto &zp_op : zps) {
+    for (auto &zp_op : zps_ops) {
         // make zps as a constant input
         op_ptr const_data_op;
         auto zps = zp_op->get_attr<std::vector<int64_t>>(op_attr::zps);

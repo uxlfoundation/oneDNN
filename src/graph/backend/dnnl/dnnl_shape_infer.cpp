@@ -44,9 +44,8 @@ static status_t infer_dnnl_conv_common_bwd_weight_output_shape(op_t *n,
         // convert the out shape to uncanonicalized form to reuse the frontend
         // shape infer function.
         auto out_dims = out.vdims();
-        auto groups = out_dims[0];
         out_dims.erase(out_dims.begin());
-        out_dims[axis_with_groups] *= groups;
+        out_dims[axis_with_groups] *= out_dims[0];
         set_shape_and_strides(*outputs[0], out_dims);
     }
 

@@ -136,8 +136,7 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                     // last two dimensions.
                     std::vector<int64_t> groups(
                             group_shape.end() - 2, group_shape.end());
-                    int mask = (1 << group_shape.size()) - 1;
-
+                    mask = (1 << group_shape.size()) - 1;
                     attr.set_scales(DNNL_ARG_WEIGHTS, mask, groups,
                             static_cast<dnnl::memory::data_type>(
                                     scales_data_type));
@@ -338,7 +337,7 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
             auto wei_value = op->get_input_value(wei_idx);
             const auto wei_dt = get_dnn_dt(wei_value);
             const auto dst_dt = get_dnn_dt(op->get_output_value(0));
-            const auto bia_dt = dnnl::memory::data_type::undef;
+            auto bia_dt = dnnl::memory::data_type::undef;
             const int64_t ks = wei_value->get_logical_tensor().dims[3];
             const int64_t stride = fused_op->get_attr<std::vector<int64_t>>(
                     op_attr::strides)[0];
@@ -347,7 +346,7 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
             if (extra_input_indices.size() > 1) {
                 const size_t bias_idx = extra_input_indices[1];
                 auto bias_value = op->get_input_value(bias_idx);
-                const auto bia_dt = get_dnn_dt(bias_value);
+                bia_dt = get_dnn_dt(bias_value);
                 dnnl_pops.append_dw(wei_dt, bia_dt, dst_dt, ks, stride, pad_l);
             } else {
                 dnnl_pops.append_dw(wei_dt, bia_dt, dst_dt, ks, stride, pad_l);
@@ -431,8 +430,7 @@ dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
                     // last two dimensions.
                     std::vector<int64_t> groups(
                             group_shape.end() - 2, group_shape.end());
-                    int mask = (1 << group_shape.size()) - 1;
-
+                    mask = (1 << group_shape.size()) - 1;
                     attr.set_scales(DNNL_ARG_WEIGHTS, mask, groups,
                             static_cast<dnnl::memory::data_type>(
                                     scales_data_type));

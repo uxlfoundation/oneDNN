@@ -114,7 +114,6 @@ status_t insert_reorder_after(op_ptr &op, size_t offset,
 status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
         pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     // always create pd using any format
     const auto &pd = conv_fwd_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
@@ -123,7 +122,7 @@ status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
     insert_reorder_before(op, 0, pd.src_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr src = op->get_input_value(0);
-    status = fill_layout_info(src, pd.src_desc());
+    status_t status = fill_layout_info(src, pd.src_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before conv src");
     insert_reorder_before(op, 1, pd.weights_desc(), p_engine, pd_cache, fpmath,
@@ -223,7 +222,6 @@ status_t layout_propagator_for_conv(op_ptr &op, const dnnl::engine &p_engine,
 status_t layout_propagator_for_deconv(op_ptr &op, const dnnl::engine &p_engine,
         pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = deconv_fwd_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
@@ -231,7 +229,7 @@ status_t layout_propagator_for_deconv(op_ptr &op, const dnnl::engine &p_engine,
     insert_reorder_before(op, 0, pd.src_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr src = op->get_input_value(0);
-    status = fill_layout_info(src, pd.src_desc());
+    status_t status = fill_layout_info(src, pd.src_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before deconv src");
 
@@ -272,7 +270,6 @@ status_t layout_propagator_for_deconv_bwd_data(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     // always create pd using any format
     const auto &pd = deconv_bwd_data_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
@@ -281,7 +278,7 @@ status_t layout_propagator_for_deconv_bwd_data(op_ptr &op,
     insert_reorder_before(op, 0, pd.diff_dst_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr diff_dst = op->get_input_value(0);
-    status = fill_layout_info(diff_dst, pd.diff_dst_desc());
+    status_t status = fill_layout_info(diff_dst, pd.diff_dst_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before deconv_bwd_data "
             "diff_dst");
@@ -317,14 +314,13 @@ status_t layout_propagator_for_deconv_bwd_weights(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = deconv_bwd_weights_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_before(op, 0, pd.src_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr src = op->get_input_value(0);
-    status = fill_layout_info(src, pd.src_desc());
+    status_t status = fill_layout_info(src, pd.src_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before deconv_bwd_weights "
             "src");
@@ -355,7 +351,6 @@ status_t layout_propagator_for_deconv_bwd_weights(op_ptr &op,
 status_t layout_propagator_for_eltwise(op_ptr &op, const dnnl::engine &p_engine,
         pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     // When input's layout is specified (opaque or strided),
     // we can propagate it to output.
     const auto &pd = eltwise_executable_t::create_desc(
@@ -364,7 +359,7 @@ status_t layout_propagator_for_eltwise(op_ptr &op, const dnnl::engine &p_engine,
     insert_reorder_after(op, 0, pd.dst_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr dst = op->get_output_value(0);
-    status = fill_layout_info(dst, pd.dst_desc());
+    status_t status = fill_layout_info(dst, pd.dst_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder after eltwise dst");
 
@@ -377,7 +372,6 @@ status_t layout_propagator_for_eltwise_bwd(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = eltwise_bwd_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
@@ -392,7 +386,7 @@ status_t layout_propagator_for_eltwise_bwd(op_ptr &op,
     insert_reorder_before(op, 0, opt_desc, p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr data = op->get_input_value(0);
-    status = fill_layout_info(data, opt_desc);
+    status_t status = fill_layout_info(data, opt_desc);
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before eltwise_bwd "
             "inputs 0");
@@ -486,7 +480,6 @@ status_t layout_propagator_for_concat(op_ptr &op, const dnnl::engine &p_engine,
 status_t layout_propagator_for_shuffle(op_ptr &op, const dnnl::engine &p_engine,
         pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = shuffle_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
@@ -498,7 +491,7 @@ status_t layout_propagator_for_shuffle(op_ptr &op, const dnnl::engine &p_engine,
 
     insert_reorder_after(op, 0, pd.dst_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
-    status = fill_layout_info(dst, pd.dst_desc());
+    status_t status = fill_layout_info(dst, pd.dst_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder after shuffle dst");
 
@@ -575,14 +568,13 @@ status_t layout_propagator_for_matmul(op_ptr &op, const dnnl::engine &p_engine,
 status_t layout_propagator_for_pool(op_ptr &op, const dnnl::engine &p_engine,
         pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = pool_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_after(op, 0, pd.dst_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr dst = op->get_output_value(0);
-    status = fill_layout_info(dst, pd.dst_desc());
+    status_t status = fill_layout_info(dst, pd.dst_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder after pool dst");
 
@@ -608,14 +600,13 @@ status_t layout_propagator_for_pool_bwd(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = pool_bwd_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_before(op, 0, pd.diff_dst_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr diff_dst = op->get_input_value(0);
-    status = fill_layout_info(diff_dst, pd.diff_dst_desc());
+    status_t status = fill_layout_info(diff_dst, pd.diff_dst_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before pool_bwd "
             "diff_dst");
@@ -637,15 +628,13 @@ status_t layout_propagator_for_batchnorm(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
-
     const auto &pd = batchnorm_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_before(op, 0, pd.src_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr src = op->get_input_value(0);
-    status = fill_layout_info(src, pd.src_desc());
+    status_t status = fill_layout_info(src, pd.src_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before batchnorm src");
 
@@ -699,14 +688,13 @@ status_t layout_propagator_for_batchnorm_bwd(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = batchnorm_bwd_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_before(op, 0, pd.src_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr src = op->get_input_value(0);
-    status = fill_layout_info(src, pd.src_desc());
+    status_t status = fill_layout_info(src, pd.src_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before batchnorm_bwd "
             "src");
@@ -763,14 +751,13 @@ status_t layout_propagator_for_batchnorm_bwd(op_ptr &op,
 status_t layout_propagator_for_prelu(op_ptr &op, const dnnl::engine &p_engine,
         pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = prelu_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_before(op, 0, pd.src_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr src = op->get_input_value(0);
-    status = fill_layout_info(src, pd.src_desc());
+    status_t status = fill_layout_info(src, pd.src_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before prelu src");
 
@@ -798,14 +785,13 @@ status_t layout_propagator_for_prelu_bwd(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = prelu_bwd_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_before(op, 0, pd.src_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr src = op->get_input_value(0);
-    status = fill_layout_info(src, pd.src_desc());
+    status_t status = fill_layout_info(src, pd.src_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before prelu_bwd src");
 
@@ -847,14 +833,13 @@ status_t layout_propagator_for_layernorm(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = layernorm_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_before(op, 0, pd.src_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr src = op->get_input_value(0);
-    status = fill_layout_info(src, pd.src_desc());
+    status_t status = fill_layout_info(src, pd.src_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before layernorm src");
 
@@ -887,7 +872,6 @@ status_t layout_propagator_for_layernorm_bwd(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = layernorm_bwd_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
@@ -895,7 +879,7 @@ status_t layout_propagator_for_layernorm_bwd(op_ptr &op,
     insert_reorder_before(op, in_index, pd.src_desc(), p_engine, pd_cache,
             fpmath, use_block_layout, rewriter);
     value_ptr src = op->get_input_value(in_index++);
-    status = fill_layout_info(src, pd.src_desc());
+    status_t status = fill_layout_info(src, pd.src_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before layernorm_bwd "
             "src");
@@ -1392,14 +1376,13 @@ status_t layout_propagator_for_conv_bwd_data(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = conv_bwd_data_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_before(op, 0, pd.diff_dst_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr diff_dst = op->get_input_value(0);
-    status = fill_layout_info(diff_dst, pd.diff_dst_desc());
+    status_t status = fill_layout_info(diff_dst, pd.diff_dst_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before conv_bwd_data "
             "diff_dst");
@@ -1431,14 +1414,13 @@ status_t layout_propagator_for_conv_bwd_weights(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = conv_bwd_weights_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_before(op, 0, pd.src_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr src = op->get_input_value(0);
-    status = fill_layout_info(src, pd.src_desc());
+    status_t status = fill_layout_info(src, pd.src_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before conv_bwd_weights "
             "src");
@@ -1470,14 +1452,13 @@ status_t layout_propagator_for_resampling(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = resampling_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_after(op, 0, pd.dst_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr dst = op->get_output_value(0);
-    status = fill_layout_info(dst, pd.dst_desc());
+    status_t status = fill_layout_info(dst, pd.dst_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder after interpolate "
             "dst");
@@ -1492,14 +1473,13 @@ status_t layout_propagator_for_resampling_bwd(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     const auto &pd = resampling_bwd_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_after(op, 0, pd.diff_src_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr diff_src = op->get_output_value(0);
-    status = fill_layout_info(diff_src, pd.diff_src_desc());
+    status_t status = fill_layout_info(diff_src, pd.diff_src_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder after interpolate_bwd "
             "diff_src");
@@ -1512,7 +1492,6 @@ status_t layout_propagator_for_resampling_bwd(op_ptr &op,
 status_t layout_propagator_for_sum(op_ptr &op, const dnnl::engine &p_engine,
         pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     value_ptr dst = op->get_output_value(0);
     bool input_has_any_format = false;
     for (const auto &in_val : op->get_input_values()) {
@@ -1535,21 +1514,20 @@ status_t layout_propagator_for_sum(op_ptr &op, const dnnl::engine &p_engine,
         insert_reorder_after(op, 0, pd.dst_desc(), p_engine, pd_cache, fpmath,
                 use_block_layout, rewriter);
         dst = op->get_output_value(0);
-        status = fill_layout_info(dst, pd.dst_desc());
+        status_t status = fill_layout_info(dst, pd.dst_desc());
         VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
                 "failed to fill layout info for reorder after sum dst");
     }
 
     // scratchpad is dnnl_sum's last output
     value_ptr scratchpad_val = op->get_output_values().back();
-    status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
+    status_t status = fill_layout_info(scratchpad_val, pd.scratchpad_desc());
     return status;
 }
 
 status_t layout_propagator_for_softmax(op_ptr &op, const dnnl::engine &p_engine,
         pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     value_ptr src = op->get_input_value(0);
     VCHECK_LAYOUT_PROPAGATOR(!ltw(src->get_logical_tensor()).is_any(),
             status::invalid_arguments,
@@ -1561,7 +1539,7 @@ status_t layout_propagator_for_softmax(op_ptr &op, const dnnl::engine &p_engine,
     insert_reorder_after(op, 0, pd.dst_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr dst = op->get_output_value(0);
-    status = fill_layout_info(dst, pd.dst_desc());
+    status_t status = fill_layout_info(dst, pd.dst_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder after softmax dst");
 
@@ -1574,7 +1552,6 @@ status_t layout_propagator_for_softmax_bwd(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     value_ptr dst = op->get_input_value(1);
     VCHECK_LAYOUT_PROPAGATOR(!ltw(dst->get_logical_tensor()).is_any(),
             status::invalid_arguments,
@@ -1586,7 +1563,7 @@ status_t layout_propagator_for_softmax_bwd(op_ptr &op,
     insert_reorder_before(op, 0, pd.diff_dst_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr diff_dst = op->get_input_value(0);
-    status = fill_layout_info(diff_dst, pd.diff_dst_desc());
+    status_t status = fill_layout_info(diff_dst, pd.diff_dst_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder before softmax_bwd "
             "diff_dst");
@@ -1609,7 +1586,6 @@ status_t layout_propagator_for_reduction(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
     value_ptr src = op->get_input_value(0);
     VCHECK_LAYOUT_PROPAGATOR(!ltw(src->get_logical_tensor()).is_any(),
             status::invalid_arguments, "layout of reduction src can't be any");
@@ -1619,7 +1595,7 @@ status_t layout_propagator_for_reduction(op_ptr &op,
     insert_reorder_after(op, 0, pd.dst_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr dst = op->get_output_value(0);
-    status = fill_layout_info(dst, pd.dst_desc());
+    status_t status = fill_layout_info(dst, pd.dst_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder after reduction dst");
 
@@ -1699,15 +1675,13 @@ status_t layout_propagator_for_groupnorm(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,
         subgraph_rewriter_t &rewriter) {
-    status_t status = status::success;
-
     const auto &pd = groupnorm_executable_t::create_desc(
             op, p_engine, pd_cache, fpmath, use_block_layout);
 
     insert_reorder_after(op, 0, pd.dst_desc(), p_engine, pd_cache, fpmath,
             use_block_layout, rewriter);
     value_ptr dst = op->get_output_value(0);
-    status = fill_layout_info(dst, pd.dst_desc());
+    status_t status = fill_layout_info(dst, pd.dst_desc());
     VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
             "failed to fill layout info for reorder after groupnorm dst");
 

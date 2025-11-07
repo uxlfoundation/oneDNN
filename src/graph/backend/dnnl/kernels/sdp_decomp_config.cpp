@@ -674,17 +674,18 @@ impl::status_t sdp_decomp_config_t::record_input_offset(
         ///                 |                                 |
         ///             Succeeding_op                    Succeeding_op
         ///              (pattern1)                      (pattern2)
-        int cond_id = find_graph_inport(select->get_input_value(0));
-        int src0_id = find_graph_inport(select->get_input_value(1));
-        int src1_id = find_graph_inport(select->get_input_value(2));
-        VCHECK_SDP_DECOMP((src0_id != -1 || src1_id != -1) && cond_id != -1,
+        int sel_cond_id = find_graph_inport(select->get_input_value(0));
+        int sel_src0_id = find_graph_inport(select->get_input_value(1));
+        int sel_src1_id = find_graph_inport(select->get_input_value(2));
+        VCHECK_SDP_DECOMP(
+                (sel_src0_id != -1 || sel_src1_id != -1) && sel_cond_id != -1,
                 status::invalid_graph, "failed to find graph inport");
-        if (src1_id != -1) select_fusiable = true;
-        graph_inport.emplace_back(cond_id);
-        if (src0_id != -1)
-            graph_inport.emplace_back(src0_id);
+        if (sel_src1_id != -1) select_fusiable = true;
+        graph_inport.emplace_back(sel_cond_id);
+        if (sel_src0_id != -1)
+            graph_inport.emplace_back(sel_src0_id);
         else
-            graph_inport.emplace_back(src1_id);
+            graph_inport.emplace_back(sel_src1_id);
     } else {
         //placeholder
         graph_inport.emplace_back(-1);

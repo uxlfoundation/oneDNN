@@ -234,7 +234,7 @@ std::shared_ptr<execution_args_set_t> execution_args_set_t::clone() const {
     ret->topo_ordered_exec_args_.reserve(topo_ordered_exec_args_.size());
     for (const auto &args : topo_ordered_exec_args_) {
         std::unordered_map<int, memory> new_args;
-        for (auto &kv : args) {
+        for (const auto &kv : args) {
             int idx = kv.first;
             const memory &mem = kv.second;
             new_args.insert({idx, ret->value_mem_map_.at(find_val(mem))});
@@ -641,7 +641,7 @@ status_t memory_planner_t::prepare_subgraph_inplace_pairs(
                 // real cases or requests in the future.
                 if (!candidates.empty()) {
                     in_lt = candidates[0];
-                    for (auto &tmp : candidates) {
+                    for (const auto &tmp : candidates) {
                         if (tmp.id > in_lt.id) { in_lt = tmp; }
                     }
                     standard_shared = true;
@@ -653,7 +653,7 @@ status_t memory_planner_t::prepare_subgraph_inplace_pairs(
 
             // Have shared, not re-do
             bool have_shared = false;
-            for (auto &pair : inplace_pairs_) {
+            for (const auto &pair : inplace_pairs_) {
                 if (pair.output_id == out_lt.id || pair.input_id == in_lt.id)
                     have_shared = true;
             }
@@ -863,7 +863,7 @@ status_t memory_planner_t::run(std::shared_ptr<subgraph_t> &sg) {
             edge_ref_count[val.get()]++;
         }
     }
-    for (auto &val : sg->get_output_values()) {
+    for (const auto &val : sg->get_output_values()) {
         edge_ref_count[val]++;
     }
 

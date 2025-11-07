@@ -30,7 +30,8 @@ namespace jit {
 // Implements reduction of GRF buffer for given layout.
 class reduce_t : public func_impl_t, public object::info_t<reduce_t> {
 public:
-    static func_t make(const layout_t &src_layout, const layout_t &dst_layout) {
+    static func_t make(
+            const dsl::layout_t &src_layout, const dsl::layout_t &dst_layout) {
         return func_t(new reduce_t(src_layout, dst_layout));
     }
 
@@ -43,22 +44,22 @@ public:
     IR_DEFINE_ARG_GET(dst_buf, 0)
     IR_DEFINE_ARG_GET(src_buf, 1)
 
-    layout_t src_layout;
-    layout_t dst_layout;
+    dsl::layout_t src_layout;
+    dsl::layout_t dst_layout;
 
 private:
-    reduce_t(const layout_t &src_layout, const layout_t &dst_layout)
+    reduce_t(const dsl::layout_t &src_layout, const dsl::layout_t &dst_layout)
         : func_impl_t(get_info())
         , src_layout(src_layout)
         , dst_layout(dst_layout) {}
 };
 
-stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
+stmt_t create_reduce_stmt(const dsl::layout_t &src, const dsl::layout_t &dst,
         const expr_t &src_buf, const expr_t &dst_buf,
         const tile_coord_t &_sub_tile_coord, uint32_t reduction_mask,
         bool drop_dims = true);
 
-stmt_t create_reduce_stmt(const layout_t &src, const layout_t &dst,
+stmt_t create_reduce_stmt(const dsl::layout_t &src, const dsl::layout_t &dst,
         const expr_t &src_buf, const expr_t &dst_buf);
 
 } // namespace jit

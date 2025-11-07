@@ -51,7 +51,7 @@ public:
 
         std::vector<bool> seen(size_bytes(src_layout_));
 
-        tile_t tile = find_1d_tile(src_layout_, dst_layout_);
+        dsl::tile_t tile = find_1d_tile(src_layout_, dst_layout_);
         int tile_elems = (int)tile.elems();
         auto src_tile_layout = src_layout_.sub(tile);
         auto dst_tile_layout = dst_layout_.sub(tile);
@@ -68,7 +68,7 @@ public:
         for (auto &src_start : src_layout_.iter(tile)) {
             ngen_register_scope_t tile_scope(scope.register_allocator());
             auto dst_start = src_start;
-            for (dim_idx_t i = 0; i < dst_layout_.ndims(); i++) {
+            for (size_t i = 0; i < dst_layout_.ndims(); i++) {
                 if (dst_layout_.tile()[i] == 1) dst_start[i] = 0;
             }
             int src_off = src_layout_.offset<int>(src_start);
@@ -118,7 +118,7 @@ public:
     }
 
 private:
-    tile_t find_1d_tile(layout_t a, layout_t b) const {
+    dsl::tile_t find_1d_tile(dsl::layout_t a, dsl::layout_t b) const {
         align_layouts(a, b);
 
         gpu_assert(!a.blocks().empty());
@@ -137,7 +137,7 @@ private:
                 a = a.with(a_blocks);
                 return find_1d_tile(std::move(a), std::move(b));
             }
-            return tile_t(std::vector<dim_t>(b.ndims(), 1));
+            return dsl::tile_t(std::vector<dim_t>(b.ndims(), 1));
         }
 
         gpu_assert(dim_t(b0.stride) == 1)
@@ -163,12 +163,12 @@ private:
         tile_dims[a0.idx]
                 = ir_utils::max_divisor(int(a0.size), {min_step, max_step});
 
-        return tile_t(tile_dims);
+        return dsl::tile_t(tile_dims);
     }
 
     ngen::HW hw_;
-    layout_t src_layout_;
-    layout_t dst_layout_;
+    dsl::layout_t src_layout_;
+    dsl::layout_t dst_layout_;
     int simd_size_;
 };
 

@@ -204,7 +204,7 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
 }
 
 struct reorder_operand_t {
-    layout_t layout;
+    dsl::layout_t layout;
     copy_operand_t buffer;
 
     type_t type() const {
@@ -227,10 +227,10 @@ class reorder_2d_impl_t {
     struct reorder_step_t;
 
 public:
-    reorder_2d_impl_t(ngen::HW hw, tile_t tile, const layout_t &src_layout,
-            const layout_t &dst_layout);
+    reorder_2d_impl_t(ngen::HW hw, dsl::tile_t tile,
+            const dsl::layout_t &src_layout, const dsl::layout_t &dst_layout);
 
-    const tile_t &tile() const { return tile_; }
+    const dsl::tile_t &tile() const { return tile_; }
     const std::vector<reorder_step_t> &path() const { return path_; }
 
     void emit(copy_plan_t &plan, copy_operand_t &src, copy_operand_t &dst);
@@ -243,7 +243,9 @@ private:
         edge_t() = default;
         edge_t(int idx, int a, int b) : idx(idx), a(a), b(b) {}
 
-        tile_t tile() const { return tile_t(std::vector<dim_t> {a, b}); }
+        dsl::tile_t tile() const {
+            return dsl::tile_t(std::vector<dim_t> {a, b});
+        }
 
         std::string str() const {
             ostringstream_t oss;
@@ -258,7 +260,7 @@ private:
 
     // Represents GRF layout between edges-reorders.
     struct vertex_t {
-        vertex_t(ngen::HW hw, int idx, const layout_t &layout)
+        vertex_t(ngen::HW hw, int idx, const dsl::layout_t &layout)
             : hw(hw), idx(idx), layout(layout) {}
 
         std::string str() const {
@@ -276,14 +278,14 @@ private:
             return false;
         }
 
-        bool can_reorder(const tile_t &tile, const type_t &type) const;
+        bool can_reorder(const dsl::tile_t &tile, const type_t &type) const;
         int cost(const vertex_t &v, const std::vector<edge_t> &edges,
                 edge_t &min_edge, type_t &min_type) const;
         int cost(const edge_t &e, const vertex_t &v, type_t &type) const;
 
         ngen::HW hw;
         int idx; // Identifier of the vertex.
-        layout_t layout; // Layout of the vertex.
+        dsl::layout_t layout; // Layout of the vertex.
         // Specifies a bitmask for every edge: if adj_edge_type_masks[E_idx]
         // has b-th bit set then this vertex can be reordered through E edge
         // using the data type with size 2^b bytes.
@@ -294,49 +296,49 @@ private:
     // Represents a reorder step.
     struct reorder_step_t {
         reorder_step_t() = default;
-        reorder_step_t(
-                const layout_t &layout, const tile_t &tile, const type_t &type)
+        reorder_step_t(const dsl::layout_t &layout, const dsl::tile_t &tile,
+                const type_t &type)
             : layout(layout), tile(tile), type(type) {}
 
-        layout_t layout; // Destination layout.
-        tile_t tile; // Tile corresponding to one instruction.
+        dsl::layout_t layout; // Destination layout.
+        dsl::tile_t tile; // Tile corresponding to one instruction.
         type_t type; // Registers should be reinterpreted to `type` for reorder.
     };
 
     // Extracts dimension sizes and their indices from a multidimensional
     // tensor.
-    static void tile_to_2d_dims(const tile_t &tile, dim_idx_t &a_idx,
+    static void tile_to_2d_dims(const dsl::tile_t &tile, dim_idx_t &a_idx,
             dim_idx_t &b_idx, dim_t &a, dim_t &b);
 
     // Finds the optimal sequence of reorders between src and dst layouts.
     static std::vector<reorder_step_t> find_min_cost_path(ngen::HW hw,
-            const layout_t &src, const layout_t &dst, dim_t tile_a,
+            const dsl::layout_t &src, const dsl::layout_t &dst, dim_t tile_a,
             dim_t tile_b);
 
     // Returns all possible layouts for (a x b) tensor.
-    static std::vector<layout_t> generate_all_layouts(
+    static std::vector<dsl::layout_t> generate_all_layouts(
             const type_t &type, dim_t a, dim_t b) {
-        std::vector<layout_t> ret;
-        std::vector<layout_block_t> blocks;
+        std::vector<dsl::layout_t> ret;
+        std::vector<dsl::layout::block_t> blocks;
         generate_all_layouts_impl(ret, blocks, type, a, b, 1);
         return ret;
     }
 
-    static void generate_all_layouts_impl(std::vector<layout_t> &layouts,
-            std::vector<layout_block_t> &blocks, const type_t &type, dim_t a,
-            dim_t b, dim_t stride);
+    static void generate_all_layouts_impl(std::vector<dsl::layout_t> &layouts,
+            std::vector<dsl::layout::block_t> &blocks, const type_t &type,
+            dim_t a, dim_t b, dim_t stride);
 
     ngen::HW hw_;
-    tile_t tile_;
-    layout_t src_;
-    layout_t dst_;
+    dsl::tile_t tile_;
+    dsl::layout_t src_;
+    dsl::layout_t dst_;
     std::vector<reorder_step_t> path_;
 };
 
 class reorder_impl_t {
 public:
-    reorder_impl_t(
-            ngen::HW hw, const layout_t &src_layout, const layout_t &dst_layout)
+    reorder_impl_t(ngen::HW hw, const dsl::layout_t &src_layout,
+            const dsl::layout_t &dst_layout)
         : hw_(hw), src_layout_(src_layout), dst_layout_(dst_layout) {
         try_reinterpret_to_wider_type(src_layout_, dst_layout_);
     }
@@ -358,7 +360,7 @@ public:
             const auto base_phase = plan.phase;
             auto src_tile = src_layout_.sub(tile);
             auto dst_tile = dst_layout_.sub(tile);
-            auto emit_tile = [&](const icoord_t &start) {
+            auto emit_tile = [&](const dsl::icoord_t &start) {
                 auto src_off = src_layout_.offset<int>(start);
                 auto dst_off = dst_layout_.offset<int>(start);
                 auto src_op = init_operand(src_tile, from_rd(src, src_off));
@@ -387,11 +389,13 @@ public:
 private:
     using op_init_t = std::function<copy_operand_t(int, ngen::DataType)>;
 
-    std::vector<tile_t> tiles() const;
+    std::vector<dsl::tile_t> tiles() const;
 
-    bool layouts_compatible(const layout_t &a, const layout_t &b) const;
+    bool layouts_compatible(
+            const dsl::layout_t &a, const dsl::layout_t &b) const;
 
-    reorder_operand_t init_operand(layout_t layout, const op_init_t &init) {
+    reorder_operand_t init_operand(
+            dsl::layout_t layout, const op_init_t &init) {
         if (layout.type().is_tf32()) layout = layout.with(type_t::f32());
         auto elems = size_in_elems(layout);
         auto dt = to_ngen(layout.type());
@@ -400,12 +404,12 @@ private:
         return {std::move(layout), std::move(buffer)};
     }
 
-    layout_t make_retyped_layout(
-            const layout_t &layout, const type_t &type) const;
-    layout_t make_compact_layout(const layout_t &layout, const type_t &type,
-            bool is_source = false) const;
+    dsl::layout_t make_retyped_layout(
+            const dsl::layout_t &layout, const type_t &type) const;
+    dsl::layout_t make_compact_layout(const dsl::layout_t &layout,
+            const type_t &type, bool is_source = false) const;
 
-    dim_t size_in_elems(const layout_t &layout) {
+    dim_t size_in_elems(const dsl::layout_t &layout) {
         const auto &type = layout.type();
         return size_bytes(layout) * type.packing() / type.size();
     }
@@ -435,18 +439,18 @@ private:
     void emit_1d(copy_plan_t &plan, const reorder_operand_t &dst,
             const reorder_operand_t &src);
 
-    static std::vector<tile_t> find_2d_dense_tiles(
-            const layout_t &a, const layout_t &b);
+    static std::vector<dsl::tile_t> find_2d_dense_tiles(
+            const dsl::layout_t &a, const dsl::layout_t &b);
 
     bool try_emit_2d(copy_plan_t &plan, const reorder_operand_t &dst,
             const reorder_operand_t &src);
 
-    static tile_t find_max_tile_with_fixed_stride(const layout_t &src,
-            const layout_t &dst, int &src_stride, int &dst_stride);
+    static dsl::tile_t find_max_tile_with_fixed_stride(const dsl::layout_t &src,
+            const dsl::layout_t &dst, int &src_stride, int &dst_stride);
 
     ngen::HW hw_;
-    layout_t src_layout_;
-    layout_t dst_layout_;
+    dsl::layout_t src_layout_;
+    dsl::layout_t dst_layout_;
 };
 
 } // namespace jit

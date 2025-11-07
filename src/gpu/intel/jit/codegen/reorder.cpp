@@ -359,7 +359,7 @@ auto reorder_2d_impl_t::find_min_cost_path(ngen::HW hw, const layout_t &src,
 }
 
 void reorder_2d_impl_t::generate_all_layouts_impl(
-        std::vector<layout_t> &layouts, std::vector<layout_block_t> &blocks,
+        std::vector<layout_t> &layouts, std::vector<layout::block_t> &blocks,
         const type_t &type, dim_t a, dim_t b, dim_t stride) {
     if (a == 1 && b == 1) {
         layouts.emplace_back(type, blocks);
@@ -643,7 +643,7 @@ layout_t reorder_impl_t::make_compact_layout(
     const auto grf_elems = grf_size * type.packing() / type.size();
     const auto align_offset = is_source && layout.type().is_hf8();
 
-    std::vector<layout_block_t> blocks;
+    std::vector<layout::block_t> blocks;
     int64_t dense_input_stride = 1;
     int64_t dense_output_stride = 1;
     if (layout.type().is_x8() && type.is_x8() && layout.type() != type)

@@ -402,8 +402,8 @@ public:
         const int grid_ndims = 3;
         for (int i = 0; i < grid_ndims; i++) {
             std::vector<std::pair<int, int>> blocks;
-            std::unordered_map<pvar_t, int> dim_map;
-            auto to_dim_idx = [&](const pvar_t &dim) {
+            std::unordered_map<dsl::idx_t, int> dim_map;
+            auto to_dim_idx = [&](const dsl::idx_t &dim) {
                 if (dim_map.count(dim) != 0) return dim_map.at(dim);
                 int idx = (int)dim_map.size();
                 dim_map.emplace(dim, idx);

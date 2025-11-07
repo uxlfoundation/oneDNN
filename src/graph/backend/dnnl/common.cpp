@@ -30,6 +30,11 @@
 
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/dnnl_backend.hpp"
+#include "graph/backend/dnnl/scratchpad.hpp"
+
+#include "common/primitive_desc_iface.hpp"
+#include "common/primitive_iface.hpp"
+#include "common/stream.hpp"
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
 const size_t DNNL_CPU_MEMALIGNMENT = 64;
@@ -46,6 +51,7 @@ const size_t DNNL_OCL_MEMALIGNMENT = 0;
 #endif
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+#include "cpu/cpu_stream.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
 #endif
 
@@ -693,6 +699,49 @@ dnnl::accumulation_mode str2accumulation_mode(
         assert(!"unknown accumulation mode");
         return dnnl::accumulation_mode::strict;
     }
+}
+
+void prolong_temporary_scratchpad_lifetime(const stream_t *g_stream,
+        const std::shared_ptr<temporary_scratchpad_t> &scratchpad) {
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    auto *tp_stream
+            = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
+                    const_cast<stream_t *>(g_stream));
+    tp_stream->before_exec_hook();
+
+    parallel(1, [=](int, int) { UNUSED(scratchpad); });
+
+    tp_stream->after_exec_hook();
+#endif
+}
+
+status_t dnnl_primitive_execute_without_tp_hook(const primitive &prim,
+        const stream &astream,
+        const std::unordered_map<int, memory> &exec_args) {
+    std::vector<dnnl_exec_arg_t> vec_args;
+    vec_args.reserve(exec_args.size());
+    for (const auto &a : exec_args)
+        vec_args.push_back({a.first, a.second.get(true)});
+
+    const primitive_iface_t *primitive_iface = prim.get();
+    stream_t *stream = astream.get();
+    int nargs = static_cast<int>(vec_args.size());
+    const dnnl_exec_arg_t *c_args = vec_args.data();
+
+    bool ok = true && !dnnl::impl::utils::any_null(primitive_iface, stream)
+            && primitive_iface->engine() == stream->engine()
+            && IMPLICATION(nargs > 0, c_args != nullptr);
+    if (!ok) return status::invalid_arguments;
+
+    exec_args_t args;
+    status_t status = cvt_primitive_args(
+            primitive_iface->pd()->impl().get(), nargs, c_args, args);
+    if (status != status::success) return status;
+
+    exec_ctx_t ctx(stream, std::move(args));
+    status = dnnl::impl::primitive_execute(primitive_iface, ctx);
+
+    return status;
 }
 
 } // namespace dnnl_impl

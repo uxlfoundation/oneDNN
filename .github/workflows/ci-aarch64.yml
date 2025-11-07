@@ -81,6 +81,7 @@ jobs:
         with:
           persist-credentials: false
           path: oneDNN
+          submodules: true
 
       - name: Build oneDNN
         uses: ./oneDNN/.github/actions/build-onednn-aarch64
@@ -117,6 +118,7 @@ jobs:
         with:
           persist-credentials: false
           path: oneDNN
+          submodules: true
 
       - name: Read version file
         id: get-versions
@@ -195,6 +197,7 @@ jobs:
         with:
           persist-credentials: false
           path: oneDNN
+          submodules: true
 
       - name: Read version file
         id: get-versions
@@ -250,6 +253,7 @@ jobs:
         with:
           persist-credentials: false
           path: oneDNN
+          submodules: true
 
       - name: Read version file
         id: get-versions
@@ -327,6 +331,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          submodules: true
 
       - name: Install Build Tools
         run: choco install ninja --force --limit-output --no-progress

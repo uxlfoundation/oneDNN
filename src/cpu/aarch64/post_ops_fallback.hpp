@@ -41,6 +41,8 @@ struct post_ops_fallback_t {
 
     bool has_sum() const { return sum_index >= 0; }
 
+    int len() const { return post_op_pds.size(); }
+
     void init_scratchpad(memory_tracking::registrar_t &scratchpad) const;
 
     status_t execute(

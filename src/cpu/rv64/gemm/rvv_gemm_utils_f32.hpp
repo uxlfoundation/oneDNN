@@ -62,7 +62,7 @@ struct gemm_utils_traits<float> {
 
 private:
     static long get_l1d_cache_size() {
-        long l1d_size = sysconf(_SC_LEVEL1_DCACHE_SIZE);
+        static long l1d_size = sysconf(_SC_LEVEL1_DCACHE_SIZE);
         if (l1d_size == -1) { l1d_size = 32 * 1024; }
         return l1d_size;
     }

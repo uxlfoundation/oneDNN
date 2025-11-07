@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,6 +26,10 @@
 #include "graph/backend/dnnl/passes/utils.hpp"
 
 #include "graph/backend/dnnl/op_executable.hpp"
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+#include "cpu/cpu_stream.hpp"
+#include "oneapi/dnnl/dnnl_threadpool.h"
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -121,17 +125,27 @@ status_t binary_t::execute_impl(const stream_t *g_stream,
                 outputs[mem_idx.second].get_data_handle());
     }
 
-    temporary_scratchpad_t scratchpad(
+    auto scratchpad = std::make_shared<temporary_scratchpad_t>(
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    assertm(scratchpad.size()
+    assertm(scratchpad->size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
-    prepare_args_set(res, inputs, outputs, scratchpad);
+    prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
     }
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    auto *tp_stream
+            = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
+                    const_cast<stream_t *>(g_stream));
+    tp_stream->before_exec_hook();
+    parallel_nd_ext(
+            1, 1, [=](int tid, int nthr, int bo) { UNUSED(scratchpad); });
+
+    tp_stream->after_exec_hook();
+#endif
 
     return status::success;
 }

@@ -455,7 +455,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_mqa_jax_fusion)
                     mqa_base_t<false, memory::data_type::f32>>();
         });
 
-DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, int8_sdp_fusion)
+// int8 or fp8 SDPA fusion pattern with static quantization.
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8_sdpa_fusion)
         .set_priority(22.0f)
         .set_kind(partition_kind_t::quantized_sdp)
         .set_attr<FCreatePattern>("FCreatePattern",

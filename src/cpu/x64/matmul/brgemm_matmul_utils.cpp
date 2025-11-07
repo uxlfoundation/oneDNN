@@ -428,7 +428,8 @@ format_tag_t brgemm_matmul_conf_utils_t::get_gemv_B_tag(
  */
 bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
-        const memory_desc_t &A_md, const memory_desc_t &B_md) {
+        const memory_desc_t &A_md, const memory_desc_t &B_md,
+        const primitive_attr_t &attr) {
 
     // Two cases currently supported:
     // - N=1, when A is plain
@@ -439,8 +440,9 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
     // Reduction is not supported for GEMV code path.
     if (bgmmc.with_reduce) return false;
 
-    // BRGEMV currently supports only f32 and AVX2.
-    if (utils::one_of(false, bm_conf_utils.is_f32(), bgmmc.isa == avx2))
+    // BRGEMV currently supports only f32 and strict fpmath mode.
+    if (utils::one_of(false, bm_conf_utils.is_f32(),
+                attr.fpmath_.mode_ == fpmath_mode::strict))
         return false;
 
     if (utils::one_of(format_tag::undef, bm_conf_utils.get_gemv_A_tag(A_md),
@@ -1516,8 +1518,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_runtime_N = is_runtime_value(bgmmc.N);
     bgmmc.is_runtime_K = is_runtime_value(bgmmc.K);
 
-    bgmmc.is_gemv
-            = is_gemv_applicable(bgmmc, bm_conf_utils, src_md, weights_md);
+    bgmmc.is_gemv = is_gemv_applicable(
+            bgmmc, bm_conf_utils, src_md, weights_md, attr);
+    VCONDCHECK_BG(IMPLICATION(bgmmc.is_gemv, isa == avx2),
+            "Fall back to the AVX2 implementation for the GEMV code path");
     // The M=1 case is currently supported through the code path for the
     // N=1 case, which requires the B tensor to be transposed. If it is
     // transposed (`bgmmc.is_gemv` is `true`), then `bgmmc.gemv_swap_a_b`

@@ -183,6 +183,7 @@ inline const Xbyak_aarch64::util::Cpu &cpu() {
     return cpu_;
 }
 
+bool mayiuse_f16();
 namespace {
 
 inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {

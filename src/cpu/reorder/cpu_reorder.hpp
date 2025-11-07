@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
-* Copyright 2023, 2025 Arm Ltd. and affiliates
+* Copyright 2023, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@
 #include "cpu/x64/zen64/reorder/zen_reorder.hpp"
 #endif
 #elif DNNL_AARCH64
+#include "cpu/aarch64/kai_wino_reorder.hpp"
 #include "cpu/aarch64/matmul/brgemm_matmul_reorders.hpp"
 #include "cpu/aarch64/reorder/jit_blk_reorder.hpp"
 #include "cpu/aarch64/reorder/jit_uni_reorder.hpp"

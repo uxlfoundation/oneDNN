@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
-* Copyright 2020-2023 Arm Ltd. and affiliates
+* Copyright 2020-2023, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,6 +44,8 @@
 #define CPU_INSTANCE_AARCH64(...) DNNL_AARCH64_ONLY(CPU_INSTANCE(__VA_ARGS__))
 #define CPU_INSTANCE_AARCH64_ACL(...) \
     DNNL_AARCH64_ACL_ONLY(CPU_INSTANCE(__VA_ARGS__))
+#define CPU_INSTANCE_AARCH64_KAI(...) \
+    DNNL_AARCH64_KAI_ONLY(CPU_INSTANCE(__VA_ARGS__))
 #define CPU_INSTANCE_X64_ZEN(...) DNNL_X64_ZEN(CPU_INSTANCE(__VA_ARGS__))
 #define CPU_INSTANCE_RV64(...) DNNL_RV64_ONLY(CPU_INSTANCE(__VA_ARGS__))
 #define CPU_INSTANCE_PPC64(...) DNNL_PPC64_ONLY(CPU_INSTANCE(__VA_ARGS__))

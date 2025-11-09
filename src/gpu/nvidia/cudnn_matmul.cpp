@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2024 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 * Copyright 2020 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -89,7 +89,7 @@ status_t cudnn_matmul_lt_t::execute(const exec_ctx_t &ctx) const {
                     = memory_arg_t {scratch_mem.get(), true};
         } else {
             binary_args[DNNL_ARG_SRC_0]
-                    = memory_arg_t {ctx.args().at(DNNL_ARG_DST).mem, true};
+                    = memory_arg_t {ctx.args().at(DNNL_ARG_DST).mem(), true};
         }
         binary_args[DNNL_ARG_SRC_1] = ctx.args().at(DNNL_ARG_BIAS);
         binary_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
@@ -105,9 +105,9 @@ status_t cudnn_matmul_lt_t::execute(const exec_ctx_t &ctx) const {
         // dst scale sycl binary
         exec_args_t dst_scale_binary_args;
         dst_scale_binary_args[DNNL_ARG_SRC_0]
-                = memory_arg_t {ctx.args().at(DNNL_ARG_DST).mem, true};
+                = memory_arg_t {ctx.args().at(DNNL_ARG_DST).mem(), true};
         dst_scale_binary_args[DNNL_ARG_SRC_1] = memory_arg_t {
-                ctx.args().at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST).mem, true};
+                ctx.args().at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST).mem(), true};
         dst_scale_binary_args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
 
         exec_ctx_t binary_ctx(ctx, std::move(dst_scale_binary_args));

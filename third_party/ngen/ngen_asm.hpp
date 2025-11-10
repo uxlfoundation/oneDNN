@@ -23,6 +23,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <sstream>
 #include <string>
 
@@ -460,7 +461,7 @@ class AsmCodeGenerator {
 private:
 #include "ngen_compiler_fix.hpp"
 public:
-    explicit AsmCodeGenerator(Product product_) : hardware(getCore(product_.family)), product(product_), defaultOutput{nullptr}, cancelAutoSWSB_(false),
+    explicit AsmCodeGenerator(Product product_) : hardware(getCore(product_.family)), product(product_), defaultOutput{nullptr},
                                                   sync{this}, load{this}, store{this}, atomic{this}
     {
         isGen12 = (hardware >= HW::Gen12LP);
@@ -488,7 +489,13 @@ public:
     inline void getPartialCode(std::ostream &out);
     void enableLineNumbers(bool enable = true) { lineNumbers = enable; }
     inline void disableAutoSWSB();
-    void cancelAutoSWSB() { cancelAutoSWSB_ = true; }
+    void enableCancelAutoSWSB() {cancelAutoSWSB_.reset(new std::atomic<bool>(false));}
+    void cancelAutoSWSB() {
+#ifdef NGEN_SAFE
+        if(cancelAutoSWSB_ == nullptr) throw invalid_object_exception();
+#endif
+        if(cancelAutoSWSB_) *cancelAutoSWSB_ = true;
+    }
 
     Product getProduct() const { return product; }
     ProductFamily getProductFamily() const { return product.family; }
@@ -544,7 +551,7 @@ private:
     InstructionModifier defaultModifier;
     LabelManager labelManager;
     std::vector<InstructionStream*> streamStack;
-    std::atomic<bool> cancelAutoSWSB_;
+    std::unique_ptr<std::atomic<bool>> cancelAutoSWSB_;
 
     inline void unsupported();
 
@@ -1595,7 +1602,7 @@ void AsmCodeGenerator::getCode(std::ostream &out)
 {
     finalize();
 
-    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(hardware, declaredGRFs, streamStack.back()->buffer, cancelAutoSWSB_);
+    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(hardware, declaredGRFs, streamStack.back()->buffer, cancelAutoSWSB_.get());
     std::multimap<int32_t, autoswsb::SyncInsertion*> syncs;      // Syncs inserted by auto-SWSB.
     std::multimap<int32_t, autoswsb::DummyMovInsertion*> movs;   // Dummy moves inserted by auto-SWSB.
 

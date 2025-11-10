@@ -57,6 +57,10 @@ using type_t = jit::type_t;
 using kernel_t = jit::kernel_t;
 using send_cache_hint_t = jit::send_cache_hint_t;
 
+namespace kernel {
+using iface_t = jit::kernel::iface_t;
+}
+
 } // namespace dsl
 } // namespace jit
 } // namespace intel

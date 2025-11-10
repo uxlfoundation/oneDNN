@@ -380,6 +380,12 @@ struct named_buffer_t : public memory_desc_t {
                 .nelems(with_padding);
     }
 
+    uint64_t size(int index = 0, bool include_additional_size = true,
+            bool include_offset0 = false) const {
+        return memory_desc_wrapper(static_cast<memory_desc_t>(*this))
+                .size(index, include_additional_size, include_offset0);
+    }
+
     const std::string &get_name() const { return name; }
     const std::vector<dim_idx_t> &get_dim_ids() const { return dim_ids; }
 
@@ -547,10 +553,10 @@ public:
             compile_params.buffer_types[buf_idx] = buffer.data_type;
 
             // Check buffer sizes to see if we can use int32_t offsets
+            // or do we need to use stateless addressing model
             max_buffer_size = std::max(max_buffer_size, buffer.nelems(true));
-            max_buffer_size_bytes = std::max(max_buffer_size_bytes,
-                    buffer.nelems(true)
-                            * types::data_type_size(buffer.data_type));
+            max_buffer_size_bytes = std::max(
+                    max_buffer_size_bytes, buffer.size(0, true, true));
         }
 
         compile_params.use_int32_offset = max_buffer_size <= INT32_MAX;

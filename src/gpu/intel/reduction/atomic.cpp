@@ -234,6 +234,7 @@ status_t atomic_conf_t::init_dispatcher(
             dims::subgroup,
     };
     compute::named_buffer_t src("SRC");
+    src.data_type = conf.src_type;
     std::array<dim_t, 6> sizes = {
             outer_block.block,
             conf.global_acc,
@@ -253,6 +254,7 @@ status_t atomic_conf_t::init_dispatcher(
             = dim_t(outer_block.stride / conf.vect_size);
 
     compute::named_buffer_t dst("DST", src);
+    dst.data_type = conf.dst_type;
     dst.remove_dim(dims::loop);
     dst.remove_dim(dims::local); // broadcasted
     dst.remove_dim(dims::global); // broadcasted

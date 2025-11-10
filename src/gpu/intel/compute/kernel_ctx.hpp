@@ -77,14 +77,7 @@ public:
         return oss.str();
     }
 
-    void register_buffer_size(size_t size) {
-        if (size > INT_MAX) use_int32_offset(false);
-        if (size > UINT32_MAX) require_large_buffers(true);
-    }
-
-    void register_buffer_size(const memory_desc_wrapper &mdw) {
-        register_buffer_size(mdw.size(0, true, true));
-    }
+    void register_buffer_size(const memory_desc_wrapper &mdw);
     void register_buffer_size(const memory_desc_info_t &mdi);
 
     // Enable various optimizations when all buffers are < 2GB in size. In this
@@ -167,6 +160,11 @@ public:
     bool has_custom_headers() const { return !custom_headers_.empty(); }
 
 private:
+    void register_buffer_size(dim_t nelems, size_t size) {
+        if (nelems > INT_MAX) use_int32_offset(false);
+        if (size > UINT32_MAX) require_large_buffers(true);
+    }
+
     void set_default_options(const primitive_attr_t *attr) {
         // By default fp32 division and sqrt are not IEEE-compliant
         add_option("-cl-fp32-correctly-rounded-divide-sqrt");

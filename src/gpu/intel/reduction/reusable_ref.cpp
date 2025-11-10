@@ -69,10 +69,12 @@ status_t ref_conf_t::init_dispatcher(const subproblem_t &subprb,
         const intel::engine_t &engine, gpu_primitive_attr_t *gpu_attr) {
 
     compute::named_buffer_t src_buf("SRC");
+    src_buf.data_type = conf.src_dt;
     src_buf.append_block(dims::outer, subprb.outer_block.block);
     src_buf.append_block(dims::reduction, subprb.reduction_block.block);
     src_buf.append_block(dims::inner, subprb.inner_block.block);
     compute::named_buffer_t dst_buf("DST", src_buf);
+    dst_buf.data_type = conf.dst_dt;
     dst_buf.remove_dim(dims::reduction);
 
     compute::reusable_dispatch_config_t config(&engine, dispatch_dims);

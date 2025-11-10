@@ -40,63 +40,18 @@ struct deconv_fwd_executable_t : public op_executable_t {
     }
 
     void execute(const stream &stream,
-            const std::unordered_map<int, memory> &args) const override {
-        if (with_sum_) {
-            const memory &psrc_mem = args.find(DNNL_GRAPH_ARG_POST_SRC)->second;
-            const memory &dst_mem = args.find(DNNL_ARG_DST)->second;
-            if (psrc_mem.get_data_handle() != dst_mem.get_data_handle()) {
-                dnnl::reorder(psrc_mem, dst_mem)
-                        .execute(stream, const_cast<memory &>(psrc_mem),
-                                const_cast<memory &>(dst_mem));
-            }
-        }
-
-        prim_.execute(stream, args);
-    }
+            const std::unordered_map<int, memory> &args) const override;
 
 #ifdef DNNL_WITH_SYCL
     ::sycl::event execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
-            const std::vector<::sycl::event> &deps) const override {
-        auto sycl_deps = deps;
-        if (with_sum_) {
-            const memory &psrc_mem = args.find(DNNL_GRAPH_ARG_POST_SRC)->second;
-            const memory &dst_mem = args.find(DNNL_ARG_DST)->second;
-            if (psrc_mem.get_data_handle() != dst_mem.get_data_handle()) {
-                auto prim = dnnl::reorder(psrc_mem, dst_mem);
-                auto e = dnnl::sycl_interop::execute(prim, stream,
-                        {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
-                                {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
-                        sycl_deps);
-                sycl_deps = {e};
-            }
-        }
-        auto e = dnnl::sycl_interop::execute(prim_, stream, args, sycl_deps);
-        if (stream.get_engine().get_kind() == engine::kind::cpu) e.wait();
-        return e;
-    }
+            const std::vector<::sycl::event> &deps) const override;
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     cl_event execute_ocl(const stream &stream,
             const std::unordered_map<int, memory> &args,
-            const std::vector<cl_event> &deps) const override {
-        auto ocl_deps = deps;
-        if (with_sum_) {
-            const memory &psrc_mem = args.find(DNNL_GRAPH_ARG_POST_SRC)->second;
-            const memory &dst_mem = args.find(DNNL_ARG_DST)->second;
-            if (psrc_mem.get_data_handle() != dst_mem.get_data_handle()) {
-                auto prim = dnnl::reorder(psrc_mem, dst_mem);
-                auto e = dnnl::ocl_interop::execute(prim, stream,
-                        {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
-                                {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
-                        ocl_deps);
-                ocl_deps = {e};
-            }
-        }
-        auto e = dnnl::ocl_interop::execute(prim_, stream, args, ocl_deps);
-        return e;
-    }
+            const std::vector<cl_event> &deps) const override;
 #endif
 
 private:

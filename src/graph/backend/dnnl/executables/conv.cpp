@@ -22,6 +22,162 @@ namespace graph {
 namespace dnnl_impl {
 
 // conv_fwd_executable_t implementations
+void conv_fwd_executable_t::execute(const stream &stream,
+        const std::unordered_map<int, memory> &args) const {
+    if (with_sum_) {
+        const memory &psrc_mem = args.find(DNNL_GRAPH_ARG_POST_SRC)->second;
+        const memory &dst_mem = args.find(DNNL_ARG_DST)->second;
+        if (psrc_mem.get_data_handle() != dst_mem.get_data_handle()) {
+            // psrc_mem and dst_mem may have different data type bug same
+            // buffer size(u8 and s8) for such case, need to reorder
+            // psrc_mem to dst_mem with original data type
+            if (psrc_mem.get_desc().get_data_type()
+                            == dnnl::memory::data_type::s8
+                    && dst_mem.get_desc().get_data_type()
+                            == dnnl::memory::data_type::u8) {
+                dnnl::memory::desc to_desc = dst_mem.get_desc();
+                auto format_tag = get_format_tag_str(to_desc);
+                const auto &dims = to_desc.get_dims();
+                const auto &dtype = psrc_mem.get_desc().get_data_type();
+                dnnl_memory_desc_t new_to_desc_c;
+                dnnl_memory_desc_create_with_string_tag(&new_to_desc_c,
+                        static_cast<int>(dims.size()), dims.data(),
+                        static_cast<dnnl_data_type_t>(dtype),
+                        format_tag.data());
+                dnnl::memory::desc new_to_desc;
+                new_to_desc.reset(new_to_desc_c);
+                const memory to_mem
+                        = dnnl::memory(new_to_desc, psrc_mem.get_engine());
+                to_mem.set_data_handle(dst_mem.get_data_handle());
+                dnnl::reorder(psrc_mem, to_mem)
+                        .execute(stream, const_cast<memory &>(psrc_mem),
+                                const_cast<memory &>(to_mem));
+            } else {
+                dnnl::reorder(psrc_mem, dst_mem)
+                        .execute(stream, const_cast<memory &>(psrc_mem),
+                                const_cast<memory &>(dst_mem));
+            }
+        }
+    }
+
+    prim_.execute(stream, args);
+}
+
+#ifdef DNNL_WITH_SYCL
+::sycl::event conv_fwd_executable_t::execute_sycl(const stream &stream,
+        const std::unordered_map<int, memory> &args,
+        const std::vector<::sycl::event> &deps) const {
+    auto sycl_deps = deps;
+    if (with_sum_) {
+        const memory &psrc_mem = args.find(DNNL_GRAPH_ARG_POST_SRC)->second;
+        const memory &dst_mem = args.find(DNNL_ARG_DST)->second;
+        if (psrc_mem.get_data_handle() != dst_mem.get_data_handle()) {
+            // psrc_mem and dst_mem may have different data type bug same
+            // buffer size(u8 and s8) for such case, need to reorder
+            // psrc_mem to dst_mem with original data type
+            if (psrc_mem.get_desc().get_data_type()
+                            == dnnl::memory::data_type::s8
+                    && dst_mem.get_desc().get_data_type()
+                            == dnnl::memory::data_type::u8) {
+                dnnl::memory::desc to_desc = dst_mem.get_desc();
+                auto format_tag = get_format_tag_str(to_desc);
+                const auto &dims = to_desc.get_dims();
+                const auto &dtype = psrc_mem.get_desc().get_data_type();
+                dnnl_memory_desc_t new_to_desc_c;
+                dnnl_memory_desc_create_with_string_tag(&new_to_desc_c,
+                        static_cast<int>(dims.size()), dims.data(),
+                        static_cast<dnnl_data_type_t>(dtype),
+                        format_tag.data());
+                dnnl::memory::desc new_to_desc;
+                new_to_desc.reset(new_to_desc_c);
+                const memory to_mem
+                        = dnnl::memory(new_to_desc, psrc_mem.get_engine());
+                to_mem.set_data_handle(dst_mem.get_data_handle());
+                auto prim = dnnl::reorder(psrc_mem, to_mem);
+                auto e = dnnl::sycl_interop::execute(prim, stream,
+                        {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
+                                {DNNL_ARG_TO, const_cast<memory &>(to_mem)}},
+                        sycl_deps);
+                sycl_deps = {e};
+                if (stream.get_engine().get_kind() == engine::kind::cpu)
+                    e.wait();
+            } else {
+                auto prim = dnnl::reorder(psrc_mem, dst_mem);
+                auto e = dnnl::sycl_interop::execute(prim, stream,
+                        {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
+                                {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
+                        sycl_deps);
+                sycl_deps = {e};
+            }
+        }
+    }
+    auto e = dnnl::sycl_interop::execute(prim_, stream, args, sycl_deps);
+    if (stream.get_engine().get_kind() == engine::kind::cpu) e.wait();
+    return e;
+}
+#endif
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+cl_event conv_fwd_executable_t::execute_ocl(const stream &stream,
+        const std::unordered_map<int, memory> &args,
+        const std::vector<cl_event> &deps) const {
+    auto ocl_deps = deps;
+    if (with_sum_) {
+        const memory &psrc_mem = args.find(DNNL_GRAPH_ARG_POST_SRC)->second;
+        const memory &dst_mem = args.find(DNNL_ARG_DST)->second;
+        if (psrc_mem.get_data_handle() != dst_mem.get_data_handle()) {
+            // psrc_mem and dst_mem may have different data type bug same
+            // buffer size(u8 and s8) for such case, need to reorder
+            // psrc_mem to dst_mem with original data type
+            if (psrc_mem.get_desc().get_data_type()
+                            == dnnl::memory::data_type::s8
+                    && dst_mem.get_desc().get_data_type()
+                            == dnnl::memory::data_type::u8) {
+                dnnl::memory::desc to_desc = dst_mem.get_desc();
+                auto format_tag = get_format_tag_str(to_desc);
+                const auto &dims = to_desc.get_dims();
+                const auto &dtype = psrc_mem.get_desc().get_data_type();
+                dnnl_memory_desc_t new_to_desc_c;
+                dnnl_memory_desc_create_with_string_tag(&new_to_desc_c,
+                        static_cast<int>(dims.size()), dims.data(),
+                        static_cast<dnnl_data_type_t>(dtype),
+                        format_tag.data());
+                dnnl::memory::desc new_to_desc;
+                new_to_desc.reset(new_to_desc_c);
+
+                const memory to_mem
+                        = dnnl::ocl_interop::get_memory_kind(dst_mem)
+                                == dnnl::ocl_interop::memory_kind::usm
+                        ? dnnl::ocl_interop::make_memory(new_to_desc,
+                                psrc_mem.get_engine(),
+                                dnnl::ocl_interop::memory_kind::usm,
+                                dst_mem.get_data_handle())
+                        : dnnl::ocl_interop::make_memory(new_to_desc,
+                                psrc_mem.get_engine(),
+                                reinterpret_cast<cl_mem>(
+                                        dst_mem.get_data_handle()));
+
+                auto prim = dnnl::reorder(psrc_mem, to_mem);
+                auto e = dnnl::ocl_interop::execute(prim, stream,
+                        {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
+                                {DNNL_ARG_TO, const_cast<memory &>(to_mem)}},
+                        ocl_deps);
+                ocl_deps = {e};
+            } else {
+                auto prim = dnnl::reorder(psrc_mem, dst_mem);
+                auto e = dnnl::ocl_interop::execute(prim, stream,
+                        {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
+                                {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
+                        ocl_deps);
+                ocl_deps = {e};
+            }
+        }
+    }
+    auto e = dnnl::ocl_interop::execute(prim_, stream, args, ocl_deps);
+    return e;
+}
+#endif
+
 conv_fwd_executable_t::desc_t conv_fwd_executable_t::create_desc(
         std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
         pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout) {

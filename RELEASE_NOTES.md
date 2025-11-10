@@ -81,7 +81,7 @@
 * Concat primitive may produce incorrect results for certain shapes on Intel Arc A-series GPUs.
 * `fp16` matmul primitive has a performance regression on Intel GPUs based on Xe2 architecture.
 * `f32` matmul primitive may sporadically produce incorrect results on Intel Arc B-series graphics.
-* `int8` inner product primitive with tensors exceeding 4 Gb in size may produce incorrect results on Intel Data Center GPU Max series.
+* `int8` inner product primitive with tensors exceeding 4 Gb in size may produce incorrect results on Intel Data Center GPU Max Series.
 * `bf16` layer normalization backpropagation may produce incorrect results on Intel Data Center GPU Max Series.	
 
 # Deprecated Functionality

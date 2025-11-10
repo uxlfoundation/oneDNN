@@ -24,9 +24,9 @@
 
 GEMMSTONE_NAMESPACE_START
 
-using namespace dsl;
+using namespace ir::dsl;
 
-inline ir::type_t into_ir(Type t, int elems = 1) {
+inline type_t into_ir(Type t, int elems = 1) {
     using namespace ir;
     switch (t) {
         case Type::invalid: return type_t::undef();
@@ -73,7 +73,7 @@ struct transform_t {
         , cache_hint(to_ir(cache_hint))
         , dims(std::move(dims)) {}
 
-    layout_t get_layout(const ir::tile_t &sizes, ir::type_t type) const {
+    layout_t get_layout(const tile_t &sizes, type_t type) const {
 
         auto col_var = dims[0];
         auto col = sizes[dims[0]];
@@ -123,19 +123,19 @@ struct transform_t {
         }
     }
 
-    static ir::send_cache_hint_t to_ir(ngen::CacheSettingsLSC hint) {
+    static send_cache_hint_t to_ir(ngen::CacheSettingsLSC hint) {
         switch (hint) {
             case ngen::CacheSettingsLSC::L1C_L3C:
-                return ir::send_cache_hint_t::load_once;
+                return send_cache_hint_t::load_once;
             case ngen::CacheSettingsLSC::Default:
-                return ir::send_cache_hint_t::hw_default;
-            default: stub(); return ir::send_cache_hint_t::undef;
+                return send_cache_hint_t::hw_default;
+            default: stub(); return send_cache_hint_t::undef;
         }
     }
 
     kind_t kind = kind_t::none;
     int pack_size = 0;
-    ir::send_cache_hint_t cache_hint = ir::send_cache_hint_t::undef;
+    send_cache_hint_t cache_hint = send_cache_hint_t::undef;
     std::array<idx_t, 2> dims = {};
 };
 
@@ -196,7 +196,7 @@ transform_t get_transform(const MatrixAddressingStrategy &matrix_strategy,
         default: stub(); return {};
     }
 };
-ir::pvar_map_t<expr_t> get_strides(
+idx_map_t<expr_t> get_strides(
         MatrixLayout layout, std::array<idx_t, 2> pvars, expr_t ld) {
     switch (layout) {
         case MatrixLayout::N: return {{pvars[0], 1}, {pvars[1], ld}};
@@ -213,7 +213,7 @@ struct tensor_config_t {
         layout = layout.with_block({k_var, copies});
     }
 
-    ir::tile_t tile;
+    tile_t tile;
     layout_t layout;
 
     transform_t transform;
@@ -233,7 +233,7 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
             std::string stride_prefix = "binary" + i_s + "_stride";
 
             int ndims = (int)dims.size();
-            ir::pvar_map_t<int> dim_to_md;
+            idx_map_t<int> dim_to_md;
             for (int i = 0; i < ndims; i++) {
                 dim_to_md[dims[i]] = i;
             };
@@ -255,8 +255,8 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
                 expr_t src_g_offset = simplify(arg("offset_binary" + i_s)
                         + e.src1_desc.get_offset(idxs, strides));
 
-                ir::pvar_map_t<expr_t> g_strides;
-                ir::pvar_map_t<expr_t> g_sizes;
+                idx_map_t<expr_t> g_strides;
+                idx_map_t<expr_t> g_sizes;
                 for (int i = 0; i < ndims; i++) {
                     g_strides[dims[i]] = strides[i];
                     g_sizes[dims[i]] = e.src1_desc.is_broadcast(i, ndims)
@@ -394,7 +394,7 @@ struct generator_dsl_t {
     generator_dsl_t(const generator_dsl_desc_t &desc)
         : problem(desc.problem), strategy(desc.strategy) {}
 
-    kernel_t build(ir::kernel::iface_t iface, ir::ir_context_t &ctx) {
+    kernel_t build(kernel::iface_t iface, ir::ir_context_t &ctx) {
         if (strategy.kParallel || strategy.kParallelLocal) {
             gpu_warning() << "kParallel support is unimplemented";
             return {};
@@ -452,7 +452,7 @@ struct generator_dsl_t {
                 = get_transform(strategy.B_prefetch, B_vars, true);
         auto B_load_transform = get_transform(strategy.B, B_vars);
 
-        ir::tile_t C_dims {{{m_var, m_blk}, {n_var, n_blk}}};
+        tile_t C_dims {{{m_var, m_blk}, {n_var, n_blk}}};
         auto C_store_transform = get_transform(strategy.C, C_vars);
 
         tensor_t C = def("C_blk",
@@ -702,7 +702,7 @@ struct generator_dsl_t {
 
             if (do_mma) {
                 if (k_offset % mma_k_blk == 0) {
-                    ir::tile_t tile = C.layout.tile();
+                    tile_t tile = C.layout.tile();
                     tile[k_var] = mma_k_blk;
                     mma(C, A, B, tile, {{k_var, k_offset}}, strategy.systolic);
                 }

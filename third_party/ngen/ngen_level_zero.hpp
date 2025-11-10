@@ -90,6 +90,7 @@ public:
     explicit LevelZeroCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : LevelZeroCodeGenerator({genericProductFamily(hw), stepping_, PlatformType::Unknown}, debugConfig) {}
 
     explicit LevelZeroCodeGenerator(DebugConfig debugConfig) : LevelZeroCodeGenerator({genericProductFamily(hw), 0}, debugConfig) {}
+    LevelZeroCodeGenerator(LevelZeroCodeGenerator&&) = default;
 
     inline ze_module_handle_t getModule(ze_context_handle_t context, ze_device_handle_t device, const std::string &options = "");
     static inline HW detectHW(ze_context_handle_t context, ze_device_handle_t device);

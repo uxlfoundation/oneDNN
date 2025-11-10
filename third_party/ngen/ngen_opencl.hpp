@@ -105,6 +105,7 @@ public:
     explicit OpenCLCodeGenerator(Product product_, DebugConfig debugConfig = {})  : ELFCodeGenerator<hw>(product_, debugConfig) {}
     explicit OpenCLCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : ELFCodeGenerator<hw>(stepping_, debugConfig) {}
     explicit OpenCLCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator<hw>(debugConfig) {}
+    OpenCLCodeGenerator(OpenCLCodeGenerator &&) = default;
 
     inline std::vector<uint8_t> getBinary(cl_context context, cl_device_id device, const std::string &options = "-cl-std=CL2.0");
     inline cl_kernel getKernel(cl_context context, cl_device_id device, const std::string &options = "-cl-std=CL2.0");

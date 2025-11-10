@@ -747,8 +747,8 @@ struct generator_dsl_t {
     const GEMMStrategy &strategy;
 };
 
-kernel_t make_kernel(
-        const generator_dsl_desc_t &desc, ir::constraint_set_t cset) {
+kernel_t make_kernel(const generator_dsl_desc_t &desc) {
+    ir::constraint_set_t cset;
     ir::ir_context_t ctx(desc.options, cset);
 
     ir::trace_start();

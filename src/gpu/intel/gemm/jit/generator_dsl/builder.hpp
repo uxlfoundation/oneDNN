@@ -18,15 +18,12 @@
 #define GEMMSTONE_GUARD_BUILDER_HPP
 
 #include "gemmstone/config.hpp"
-#include "gpu/intel/jit/dsl/dsl.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
 
 GEMMSTONE_NAMESPACE_START
 
 struct generator_dsl_desc_t;
 
-dsl::kernel_t make_kernel(
-        const generator_dsl_desc_t &desc, ir::constraint_set_t cset = {});
+dsl::kernel_t make_kernel(const generator_dsl_desc_t &desc);
 
 GEMMSTONE_NAMESPACE_END
 

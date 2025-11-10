@@ -226,11 +226,19 @@ public:
             it_++;
             return *this;
         }
+
+        iterator_t operator++(int) {
+            iterator_t ret = *this;
+            it_++;
+            return ret;
+        }
+
         bool operator!=(const iterator_t &other) const {
             return it_ != other.it_;
         }
 
         const idx_t &operator*() const { return it_->first; }
+        const ValueT &value() const { return it_->second; }
 
     private:
         typename std::map<idx_t, ValueT>::const_iterator it_;

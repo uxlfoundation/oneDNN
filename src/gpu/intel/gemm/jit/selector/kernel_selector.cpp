@@ -16,7 +16,6 @@
 
 #include "gemmstone/kernel_selector.hpp"
 #include "gemmstone/kernel_evaluator.hpp"
-#include "common/verbose.hpp"
 
 #include <cassert>
 #include <cctype>

@@ -48,16 +48,16 @@ Function settings take precedence over environment variables.
 #### ITT Tagging for Primitive Execution
 
 oneDNN supports ITT tagging at primitive execution in order to provide
-performance information on the level of a oneDNN primitive. This feature is
+performance information at the level of a oneDNN primitive. This feature is
 supported on both CPU and GPU.
 
 ITT tagging in oneDNN during primitive execution provides more information
-from VTune Profiler for the items below.
+from VTune Profiler for the following items:
 1. Get the primitives timeline chart from VTune Profiler, and identify
 potential performance issues.
 2. Get platform information such as an L1/L2 cache miss or level of FP
    vectorization on the primitive level.
-3. Map primitive with related computation kernels.
+3. Map primitives with related computation kernels.
 
 ##### Build-Time Controls
 
@@ -71,7 +71,7 @@ At build-time, support for this feature is controlled by the CMake option
 ##### Run-Time Controls
 
 When the feature is enabled at build-time, the `ONEDNN_ITT_TASK_LEVEL` environment
-variable can be used to enable different level of ITT tagging.
+variable can be used to specify the level of ITT tagging.
 
 | Environment Variable  | Value           | Description                                     |
 |:----------------------|:----------------|:------------------------------------------------|
@@ -89,7 +89,7 @@ already set up.
 Collect profiling data:
 
 ~~~sh
-$ amplxe-cl -collect hotspots -q -no-summary -knob sampling-mode=hw -r dnnl-vtune ./benchdnn --mode=P --conv --batch=inputs/conv/shapes_alexnet
+$ vtune -collect hotspots -q -no-summary -knob sampling-mode=hw -r dnnl-vtune ./benchdnn --mode=P --conv --batch=inputs/conv/shapes_alexnet
 amplxe: Warning: To enable hardware event-base sampling, VTune Profiler has disabled the NMI watchdog timer.
 The watchdog timer will be re-enabled after collection completes.
 Output template: perf,%engine%,%impl%,%name%,%prb%,%Gops%,%Gfreq%,%-time%,%-Gflops%,%0time%,%0Gflops%
@@ -108,7 +108,7 @@ variable.
 Below are the top 10 function hotspots using the command-line interface:
 
 ~~~sh
-$ amplxe-cl -report hotspots -q -r dnnl-vtune -format csv -csv-delimiter ';' -group-by process,module,function -column 'CPU Time:Self' | head -n 10 | column -t -s';'
+$ vtune -report hotspots -q -r dnnl-vtune -format csv -csv-delimiter ';' -group-by process,module,function -column 'CPU Time:Self' | head -n 10 | column -t -s';'
 Column filter is ON.
 Process   Module            Function                               CPU Time
 benchdnn  [Dynamic code]    _jit_avx512_common_conv_fwd_kernel     300.128503
@@ -130,7 +130,7 @@ to the `[Dynamic code]` module.
 Below are the top 10 primitive type hotspots using the command-line interface:
 
 ~~~sh
-$ amplxe-cl -report hotspots -q -r dnnl-vtune -format csv -csv-delimiter ';' -group-by task -column 'CPU Time:Self' | head -n 10 | column -t -s';'
+$ vtune -report hotspots -q -r dnnl-vtune -format csv -csv-delimiter ';' -group-by task -column 'CPU Time:Self' | head -n 10 | column -t -s';'
 Column filter is ON.
 Task Type           CPU Time
 convolution         1451.459338
@@ -144,7 +144,7 @@ reorder             10.434821
 Collect profiling data:
 
 ~~~sh
-$ amplxe-cl -collect uarch-exploration -knob sampling-interval=1 -data-limit=2000  -q -no-summary -r dnnl-vtune-ue ./benchdnn --mode=P --conv --batch=inputs/conv/shapes_alexnet
+$ vtune -collect uarch-exploration -knob sampling-interval=1 -data-limit=2000  -q -no-summary -r dnnl-vtune-ue ./benchdnn --mode=P --conv --batch=inputs/conv/shapes_alexnet
 amplxe: Warning: To enable hardware event-base sampling, VTune Profiler has disabled the NMI watchdog timer. The watchdog timer will be re-enabled after collection completes.
 Output template: perf,%engine%,%impl%,%name%,%prb%,%Gops%,%Gfreq%,%-time%,%-Gflops%,%0time%,%0Gflops%
 perf,cpu,jit:avx512_common,"alexnet:conv1",--conv g1mb256ic3ih227oc96oh55kh11sh4ph0n"alexnet:conv1",53.9726,0,17.2344,3131.68,24.1246,2237.24
@@ -161,7 +161,7 @@ Below are L1 Data Cache issues among primitive types using the command-line
 interface:
 
 ~~~sh
-$ amplxe-cl -report hotspots -q -r dnnl-vtune-ue -format csv -csv-delimiter ';' -group-by task -column 'L1 Bound' | head -n 10 | column -t -s';'
+$ vtune -report hotspots -q -r dnnl-vtune-ue -format csv -csv-delimiter ';' -group-by task -column 'L1 Bound' | head -n 10 | column -t -s';'
 Column filter is ON.
 Task Type           Back-End Bound:Memory Bound:L1 Bound(%)  Back-End Bound:Memory Bound:L1 Bound:DTLB Overhead(%)  Back-End Bound:Memory Bound:L1 Bound:Loads Blocked by Store Forwarding(%)  Back-End Bound:Memory Bound:L1 Bound:Lock Latency(%)  Back-End Bound:Memory Bound:L1 Bound:Split Loads(%)  Back-End Bound:Memory Bound:L1 Bound:4K Aliasing(%)  Back-End Bound:Memory Bound:L1 Bound:FB Full(%)
 convolution         8.2                                      0.0                                                    0.0                                                                        0.0                                                   0.0                                                  0.2                                                  26.6
@@ -174,7 +174,7 @@ Below are issues with Instruction Cache misses among primitive types using the
 command-line interface:
 
 ~~~sh
-$ amplxe-cl -report hotspots -q -r dnnl-vtune-ue -format csv -csv-delimiter ';' -group-by task -column 'ICache Misses' | head -n 10 | column -t -s';'
+$ vtune -report hotspots -q -r dnnl-vtune-ue -format csv -csv-delimiter ';' -group-by task -column 'ICache Misses' | head -n 10 | column -t -s';'
 Column filter is ON.
 Task Type           Front-End Bound:Front-End Latency:ICache Misses(%)
 convolution         0.2
@@ -192,7 +192,7 @@ could replace 'ICache Misses' with another column name.
 For getting all column names within your profiling results, you could use the
 command below to get more detailed information.
 ~~~sh
-$ amplxe-cl -report hotspots -q -r dnnl-vtune-ue -format csv -csv-delimiter ';' -group-by task -column=?
+$ vtune -report hotspots -q -r dnnl-vtune-ue -format csv -csv-delimiter ';' -group-by task -column=?
 Available values for '-column' option are:
 CPU Time:Self
 Clockticks:Self
@@ -213,7 +213,7 @@ Front-End Bound:Front-End Latency:ICache Misses:Self
 
 ~~~
 
-See more examples in the [VTune Profiler User Guide](https://www.intel.com/content/www/us/en/docs/vtune-profiler/user-guide/current/tutorials-and-samples.html)
+See more examples in the [VTune Profiler User Guide](https://www.intel.com/content/www/us/en/docs/vtune-profiler/user-guide/2025-4/overview.html)
 
 
 ## Example: Profiling with Linux Perf

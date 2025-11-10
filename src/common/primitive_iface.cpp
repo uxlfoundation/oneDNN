@@ -65,6 +65,13 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
 
     std::pair<primitive_iface_t *, cache_state_t> p_iface;
 
+#if defined(DNNL_ENABLE_ITT_TASKS)
+    const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
+    if (enable_itt)
+        itt::primitive_task_start(primitive_desc_iface->impl()->kind(),
+                primitive_desc_iface->info(), VERBOSE_create);
+#endif
+
     if (get_verbose(verbose_t::create_profile,
                 prim_kind2_comp_kind(primitive_desc_iface->impl()->kind()))) {
         double start_ms = get_msec();
@@ -84,6 +91,11 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
         CHECK(primitive_desc_iface->create_primitive_iface(
                 p_iface, cache_blob));
     }
+
+#if defined(DNNL_ENABLE_ITT_TASKS)
+    if (enable_itt) itt::primitive_task_end(VERBOSE_create);
+#endif
+
     return safe_ptr_assign((*primitive_iface), p_iface.first);
 }
 
@@ -91,6 +103,7 @@ status_t primitive_execute(
         const primitive_iface_t *primitive_iface, exec_ctx_t &ctx) {
     // auto stream = ctx.stream();
     status_t status = success;
+    auto pd = primitive_iface->pd();
 
     static double ms_pd_info = 0;
     static double ms_task_start = 0;
@@ -98,18 +111,19 @@ status_t primitive_execute(
 #if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
     auto ms0 = get_msec();
+    const char *pd_info = pd->info();
     auto ms1 = get_msec();
     ms_pd_info += ms1 - ms0;
     auto ms2 = get_msec();
     if (enable_itt)
-        itt::primitive_task_start(primitive_iface->pd()->impl()->kind());
+        itt::primitive_task_start(pd->impl()->kind(), pd_info, VERBOSE_exec);
     auto ms3 = get_msec();
     ms_task_start += ms3 - ms2;
 #endif
 
 /*
     if (get_verbose(verbose_t::exec_profile,
-                prim_kind2_comp_kind(primitive_iface->pd()->impl()->kind()))) {
+                prim_kind2_comp_kind(pd->impl()->kind()))) {
         bool block_on_wait = true;
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
         dnnl::threadpool_interop::threadpool_iface *tp;
@@ -125,30 +139,26 @@ status_t primitive_execute(
         if (block_on_wait) stream->wait();
 
         double duration_ms = get_msec() - start_ms;
-        if (primitive_iface->pd()->impl()->has_runtime_dims_or_strides()) {
+        if (pd->impl()->has_runtime_dims_or_strides()) {
             // Take out mds from `ctx` here to avoid primitive_desc dependency
             // on `exec_ctx_t` type.
             // TODO: invariant arg names for training?
-            const auto pd_src_md
-                    = primitive_iface->pd()->impl()->invariant_src_md();
+            const auto pd_src_md = pd->impl()->invariant_src_md();
             const auto src_md = ctx.memory_mdw(DNNL_ARG_SRC, pd_src_md).md_;
-            const auto pd_wei_md
-                    = primitive_iface->pd()->impl()->invariant_wei_md();
+            const auto pd_wei_md = pd->impl()->invariant_wei_md();
             const auto wei_md = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd_wei_md).md_;
-            const auto pd_bia_md
-                    = primitive_iface->pd()->impl()->invariant_bia_md();
+            const auto pd_bia_md = pd->impl()->invariant_bia_md();
             const auto bia_md = ctx.memory_mdw(DNNL_ARG_BIAS, pd_bia_md).md_;
-            const auto pd_dst_md
-                    = primitive_iface->pd()->impl()->invariant_dst_md();
+            const auto pd_dst_md = pd->impl()->invariant_dst_md();
             const auto dst_md = ctx.memory_mdw(DNNL_ARG_DST, pd_dst_md).md_;
 
-            std::string info = primitive_iface->pd()->info_with_runtime_dims(
+            std::string info = pd->info_with_runtime_dims(
                     src_md, wei_md, bia_md, dst_md);
             VPROF(start_ms, primitive, exec, VERBOSE_profile, info.c_str(),
                     duration_ms);
         } else {
-            VPROF(start_ms, primitive, exec, VERBOSE_profile,
-                    primitive_iface->pd()->info(), duration_ms);
+            VPROF(start_ms, primitive, exec, VERBOSE_profile, pd->info(),
+                    duration_ms);
         }
     } else {
         status = stream->enqueue_primitive(primitive_iface, ctx);
@@ -156,7 +166,7 @@ status_t primitive_execute(
 */
 #if defined(DNNL_ENABLE_ITT_TASKS)
     auto ms4 = get_msec();
-    if (enable_itt) itt::primitive_task_end();
+    if (enable_itt) itt::primitive_task_end(VERBOSE_exec);
     auto ms5 = get_msec();
     ms_task_end += ms5 - ms4;
 #endif

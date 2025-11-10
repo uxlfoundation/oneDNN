@@ -1869,7 +1869,7 @@ private:
     func_call_t(const func_t &func, const std::vector<expr_t> &args,
             const func_call_attr_t &attr)
         : func(func), args(args), attr(attr) {
-        gpu_assert(func);
+        gpu_assert(bool(func));
     }
 };
 

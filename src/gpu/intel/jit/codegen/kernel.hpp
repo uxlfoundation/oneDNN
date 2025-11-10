@@ -87,13 +87,13 @@ public:
     }
 
     void bind_dst(const expr_t &expr, const ngen_operand_t &operand) {
-        gpu_assert(expr);
+        gpu_assert(bool(expr));
         auto ret = expr2dst_.insert({expr, operand});
         gpu_assert(ret.second) << "Already bound: " << expr;
     }
 
     void unbind_dst(const expr_t &expr) {
-        gpu_assert(expr);
+        gpu_assert(bool(expr));
         auto it = expr2dst_.find(expr);
         gpu_assert(it != expr2dst_.end());
         expr2dst_.erase(it);
@@ -141,7 +141,7 @@ public:
     }
 
     void unbind(const expr_t &expr) {
-        gpu_assert(expr);
+        gpu_assert(bool(expr));
 
         auto it = expr2operand_.find(expr);
         gpu_assert(it != expr2operand_.end());

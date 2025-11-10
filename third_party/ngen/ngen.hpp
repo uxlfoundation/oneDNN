@@ -329,6 +329,8 @@ public:
 
     explicit BinaryCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator({genericProductFamily(hw), stepping_, PlatformType::Unknown}, debugConfig) {}
 
+    BinaryCodeGenerator(BinaryCodeGenerator &&) = default;
+
     ~BinaryCodeGenerator() {
         for (size_t sn = 1; sn < streamStack.size(); sn++)
             delete streamStack[sn];

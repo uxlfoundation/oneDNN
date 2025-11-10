@@ -36,6 +36,7 @@ public:
     explicit ELFCodeGenerator(Product product_, DebugConfig debugConfig = {})  : BinaryCodeGenerator<hw>(product_, debugConfig) {}
     explicit ELFCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : BinaryCodeGenerator<hw>(stepping_, debugConfig) {}
     explicit ELFCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator(0, debugConfig) {}
+    ELFCodeGenerator(ELFCodeGenerator &&) = default;
 
     const NEOInterfaceHandler &getInterface()                            { return interface_; }
     void setInterface(NEOInterfaceHandler i)                             { interface_ = std::move(i); }

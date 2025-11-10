@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 * Copyright 2023 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");

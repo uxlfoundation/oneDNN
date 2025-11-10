@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Intel Corporation
+* Copyright 2023 Intel Corporation
 * Copyright 2024-2025 Codeplay Software Limited
 *
 * Licensed under the Apache License, Version 2.0 (the "License");

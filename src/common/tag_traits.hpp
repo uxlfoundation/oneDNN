@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2025 Intel Corporation
+* Copyright 2018 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");

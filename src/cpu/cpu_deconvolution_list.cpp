@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
 * Copyright 2022, 2024-2025 Arm Ltd. and affiliates
 *

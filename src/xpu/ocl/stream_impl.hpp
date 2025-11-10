@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024 Intel Corporation
+* Copyright 2024-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -82,9 +82,21 @@ public:
         OCL_CHECK(clGetCommandQueueInfo(queue, CL_QUEUE_PROPERTIES,
                 sizeof(cl_command_queue_properties), &props, nullptr));
 
-        *flags |= (props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE)
-                ? stream_flags::out_of_order
-                : stream_flags::in_order;
+        const bool is_ooo_queue
+                = (props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+        *flags |= is_ooo_queue ? stream_flags::out_of_order
+                               : stream_flags::in_order;
+
+        // Profiling capabilities are enabled on the stream to allow
+        // printing the info in verbose profiling mode
+        const bool disable_verbose_profiler = is_ooo_queue
+                || (getenv_int_user("DISABLE_ASYNC_VERBOSE", 0) != 0);
+
+        if (get_verbose(verbose_t::exec_profile) && disable_verbose_profiler) {
+            props |= CL_QUEUE_PROFILING_ENABLE;
+            *flags |= stream_flags::profiling;
+        }
+
 #ifdef DNNL_EXPERIMENTAL_PROFILING
         if (props & CL_QUEUE_PROFILING_ENABLE)
             *flags |= stream_flags::profiling;

@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_CONV_JIT_ZERO_OUT_HPP
 #define GPU_INTEL_CONV_JIT_ZERO_OUT_HPP
 
-#include "gpu/intel/jit/codegen/kernel.hpp"
+#include "gpu/intel/jit/codegen/kernel_ext.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "ngen.hpp"

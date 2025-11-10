@@ -1612,6 +1612,8 @@ setup_flags_t get_setup_flags(const stmt_t &s) {
     return visitor.flags;
 }
 
+// This interface is relied on by the oneDNN ir_kernel_t extensions. Do not
+// modify without propagating this change.
 template <typename GeneratorT>
 void convert_ir_to_ngen(const stmt_t &body, GeneratorT &host,
         const walk_order_t *kernel_grid_walk_order = nullptr) {
@@ -1630,35 +1632,13 @@ void convert_ir_to_ngen(const stmt_t &body, GeneratorT &host,
     host.generate_epilogue();
 }
 
-template <typename GeneratorT>
-std::string get_ngen_str(const stmt_t &body, GeneratorT *host,
-        const walk_order_t *kernel_grid_walk_order) {
 #ifdef NGEN_ASM
-    ir_to_ngen_generator_t<ngen_asm_code_generator_with_interface_t> host_asm(
-            host->kernel_iface(), host->options(), {});
-    host_asm.set_interface(host->getInterface());
-
-    try {
-        convert_ir_to_ngen(body, host_asm, kernel_grid_walk_order);
-        return host_asm.str();
-    } catch (std::runtime_error &e) {
-        return "IR to nGEN Exception: " + std::string(e.what());
-    }
-#else
-    return "";
+template void convert_ir_to_ngen<ir_asm_generator_t>(const stmt_t &body,
+        ir_asm_generator_t &host, const walk_order_t *kernel_grid_walk_order);
 #endif
-}
 
-template <typename GeneratorT>
-void generate_from_ir(const stmt_t &kernel_body, GeneratorT *host,
-        const walk_order_t *kernel_grid_walk_order, int &peak_regs) {
-    gpu_trace() << get_ngen_str(kernel_body, host, kernel_grid_walk_order);
-    convert_ir_to_ngen(kernel_body, *host, kernel_grid_walk_order);
-#ifdef DNNL_DEV_MODE
-    peak_regs = host->ra().get_peak_regs();
-#endif
-}
-
+// This interface is relied on by the oneDNN ir_kernel_t extensions. Do not
+// modify without propagating this change.
 ngen::NEOInterfaceHandler generate_ngen_interface(
         const kernel::iface_t &kernel_iface, const kernel::options_t &options,
         const stmt_t &kernel_body) {
@@ -1694,41 +1674,28 @@ ngen::NEOInterfaceHandler generate_ngen_interface(
     return interface;
 }
 
-void ir_kernel_t::generate_from_ir(
-        const stmt_t &kernel_body, const walk_order_t *kernel_grid_walk_order) {
-    gpu_assert(!generator_)
-            << "ir_kernel_t::generate_from_ir() was called already.";
-
-    ngen::NEOInterfaceHandler interface = generate_ngen_interface(
-            kernel_iface_, options_, kernel_body);
-
-    if (local_range_) {
-        size_t max_slm_size = compute::device_info_t::max_slm_size_per_tg(
-                convert_ngen_arch_to_dnnl(options_.hw()), thread_group_size(),
-                options_.regs() > 128);
-        if (interface.getSLMSize() > max_slm_size) {
-            gpu_trace() << "SLM size limit exceeded: " << interface.getSLMSize()
-                        << " > " << max_slm_size;
-            gpu_except_not_implemented("SLM size limit is exceeded.");
-        }
-    }
-
-#define GPU_HW_CASE(hw) \
-    using gen_type = ir_to_ngen_generator_t<generator_t<(hw)>>; \
-    generator_ = utils::make_unique<gen_type>( \
-            kernel_iface_, options_, debug_config_); \
-    auto *gen = static_cast<gen_type *>(generator_.get()); \
-    gen->setInterface( \
-            generate_ngen_interface(kernel_iface_, options_, kernel_body)); \
-    if (force_emulate64_) gen->force_emulate64(); \
-    jit::generate_from_ir(kernel_body, gen, kernel_grid_walk_order, peak_regs_);
-
-    GPU_HW_SWITCH(options_.hw().ngen_hw());
-
-#undef GPU_HW_CASE
-}
-
 #ifdef WITH_SYCL_RUNTIME
+template <ngen::HW hw>
+using sycl_gen_t = ir_to_ngen_generator_t<ngen::SYCLCodeGenerator<hw>>;
+REG_XELP_ISA(template void convert_ir_to_ngen<sycl_gen_t<ngen::HW::XeLP>>(
+        const stmt_t &body, sycl_gen_t<ngen::HW::XeLP> &host,
+        const walk_order_t *kernel_grid_walk_order));
+REG_XEHP_ISA(template void convert_ir_to_ngen<sycl_gen_t<ngen::HW::XeHP>>(
+        const stmt_t &body, sycl_gen_t<ngen::HW::XeHP> &host,
+        const walk_order_t *kernel_grid_walk_order));
+REG_XEHPG_ISA(template void convert_ir_to_ngen<sycl_gen_t<ngen::HW::XeHPG>>(
+        const stmt_t &body, sycl_gen_t<ngen::HW::XeHPG> &host,
+        const walk_order_t *kernel_grid_walk_order));
+REG_XEHPC_ISA(template void convert_ir_to_ngen<sycl_gen_t<ngen::HW::XeHPC>>(
+        const stmt_t &body, sycl_gen_t<ngen::HW::XeHPC> &host,
+        const walk_order_t *kernel_grid_walk_order));
+REG_XE2_ISA(template void convert_ir_to_ngen<sycl_gen_t<ngen::HW::Xe2>>(
+        const stmt_t &body, sycl_gen_t<ngen::HW::Xe2> &host,
+        const walk_order_t *kernel_grid_walk_order));
+REG_XE3_ISA(template void convert_ir_to_ngen<sycl_gen_t<ngen::HW::Xe3>>(
+        const stmt_t &body, sycl_gen_t<ngen::HW::Xe3> &host,
+        const walk_order_t *kernel_grid_walk_order));
+
 ::sycl::kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
         const kernel::options_t &options, const ngen::DebugConfig &debug_cfg,
         ::sycl::context ctx, ::sycl::device dev) {
@@ -1738,8 +1705,7 @@ void ir_kernel_t::generate_from_ir(
     std::optional<::sycl::kernel> kernel;
 
 #define GPU_HW_CASE(hw) \
-    ir_to_ngen_generator_t<ngen::SYCLCodeGenerator<(hw)>> g( \
-            iface, options, debug_cfg); \
+    sycl_gen_t<(hw)> g(iface, options, debug_cfg); \
     g.setInterface(interface); \
     convert_ir_to_ngen(body, g); \
     kernel = g.getKernel(ctx, dev); \
@@ -1751,6 +1717,27 @@ void ir_kernel_t::generate_from_ir(
 }
 #endif
 #ifdef WITH_OPENCL_RUNTIME
+template <ngen::HW hw>
+using ocl_gen_t = ir_to_ngen_generator_t<ngen::OpenCLCodeGenerator<hw>>;
+REG_XELP_ISA(template void convert_ir_to_ngen<ocl_gen_t<ngen::HW::XeLP>>(
+        const stmt_t &body, ocl_gen_t<ngen::HW::XeLP> &host,
+        const walk_order_t *kernel_grid_walk_order));
+REG_XEHP_ISA(template void convert_ir_to_ngen<ocl_gen_t<ngen::HW::XeHP>>(
+        const stmt_t &body, ocl_gen_t<ngen::HW::XeHP> &host,
+        const walk_order_t *kernel_grid_walk_order));
+REG_XEHPG_ISA(template void convert_ir_to_ngen<ocl_gen_t<ngen::HW::XeHPG>>(
+        const stmt_t &body, ocl_gen_t<ngen::HW::XeHPG> &host,
+        const walk_order_t *kernel_grid_walk_order));
+REG_XEHPC_ISA(template void convert_ir_to_ngen<ocl_gen_t<ngen::HW::XeHPC>>(
+        const stmt_t &body, ocl_gen_t<ngen::HW::XeHPC> &host,
+        const walk_order_t *kernel_grid_walk_order));
+REG_XE2_ISA(template void convert_ir_to_ngen<ocl_gen_t<ngen::HW::Xe2>>(
+        const stmt_t &body, ocl_gen_t<ngen::HW::Xe2> &host,
+        const walk_order_t *kernel_grid_walk_order));
+REG_XE3_ISA(template void convert_ir_to_ngen<ocl_gen_t<ngen::HW::Xe3>>(
+        const stmt_t &body, ocl_gen_t<ngen::HW::Xe3> &host,
+        const walk_order_t *kernel_grid_walk_order));
+
 cl_kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
         const kernel::options_t &options, const ngen::DebugConfig &debug_cfg,
         cl_context ctx, cl_device_id dev) {
@@ -1758,8 +1745,7 @@ cl_kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
             iface, options, body);
 
 #define GPU_HW_CASE(hw) \
-    ir_to_ngen_generator_t<ngen::OpenCLCodeGenerator<(hw)>> g( \
-            iface, options, debug_cfg); \
+    ocl_gen_t<(hw)> g(iface, options, debug_cfg); \
     g.setInterface(std::move(interface)); \
     convert_ir_to_ngen(body, g); \
     return g.getKernel(ctx, dev);

@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_CONV_JIT_KERNEL_HPP
 #define GPU_INTEL_CONV_JIT_KERNEL_HPP
 
-#include "gpu/intel/jit/codegen/kernel.hpp"
+#include "gpu/intel/jit/codegen/kernel_ext.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 
 #include "gpu/intel/conv/jit/config.hpp"

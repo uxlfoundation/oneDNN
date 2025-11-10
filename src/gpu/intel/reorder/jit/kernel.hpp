@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_REORDER_JIT_KERNEL_HPP
 #define GPU_INTEL_REORDER_JIT_KERNEL_HPP
 
-#include "gpu/intel/jit/codegen/kernel.hpp"
+#include "gpu/intel/jit/codegen/kernel_ext.hpp"
 #include "gpu/intel/reorder/jit/ir_builder.hpp"
 
 namespace dnnl {

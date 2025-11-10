@@ -28,6 +28,7 @@
 #include "gpu/intel/gemm/jit/generator_dsl/builder.hpp"
 #include "gpu/intel/gemm/jit/generator_dsl/kernel_desc.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
+#include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
 #include "kernel_evaluator.hpp"

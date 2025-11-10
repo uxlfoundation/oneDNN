@@ -1857,9 +1857,9 @@ PVCWARWA analyzePVCWARWA(HW hw, Program &program, BasicBlock &bb, int phase,
 //   Input: complete list of live dependencies.
 //   All unscoreboarded instructions are reanalyzed and scoreboarded now.
 template <typename Program>
-inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int phase, std::atomic<bool> &cancel)
+inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int phase, std::atomic<bool> *cancel)
 {
-    if (cancel) return;
+    if (cancel && *cancel) return;
     const bool final = (phase == 2);
     const bool computeSWSB = (phase > 0);
     bool forceA1 = false;
@@ -2497,7 +2497,7 @@ inline void loopOptimize(BasicBlock &bb)
 }
 
 // Propagate live dependencies forward through BB flow graph.
-inline void propagate(std::vector<BasicBlock> &BBs, std::atomic<bool> &cancel)
+inline void propagate(std::vector<BasicBlock> &BBs, std::atomic<bool> *cancel)
 {
     auto bbCount = int(BBs.size());
     bool done = false;
@@ -2514,7 +2514,7 @@ inline void propagate(std::vector<BasicBlock> &BBs, std::atomic<bool> &cancel)
     // Main loop: propagate live dependencies until all live tables stabilize.
     // This should require no more than bbCount loops.
     for (int age = 0; (age < bbCount) && !done; age++) {
-        if (cancel) return;
+        if (cancel && *cancel) return;
         done = true;
         for (auto &bb : BBs) {
             // Examine each predecessor of this BB.
@@ -2642,7 +2642,7 @@ inline void adjustTargets(HW hw, Program &program, BasicBlockList &list)
 // Entrypoint for automatic software scoreboarding.
 // Returns the list of basic blocks, containing information on sync instructions to insert.
 template <typename Program>
-inline BasicBlockList autoSWSB(HW hw, int grfCount, Program &program, std::atomic<bool> &cancel)
+inline BasicBlockList autoSWSB(HW hw, int grfCount, Program &program, std::atomic<bool> *cancel)
 {
     if (!hasAutoSWSB(hw, program)) {
         return BasicBlockList();

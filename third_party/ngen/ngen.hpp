@@ -36,6 +36,7 @@
 
 #include <array>
 #include <cstring>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
@@ -96,7 +97,13 @@ public:
     using RootCodeGenerator = BinaryCodeGenerator;
     static constexpr HW hardware = hw;
     static constexpr HW getHardware() { return hardware; }
-    void cancelAutoSWSB() { cancelAutoSWSB_ = true; }
+    void enableCancelAutoSWSB() {cancelAutoSWSB_.reset(new std::atomic<bool>(false));}
+    void cancelAutoSWSB() {
+#ifdef NGEN_SAFE
+        if(cancelAutoSWSB_ == nullptr) throw invalid_object_exception();
+#endif
+        if(cancelAutoSWSB_) *cancelAutoSWSB_ = true;
+    }
 
 protected:
     class InstructionStream {
@@ -193,7 +200,7 @@ protected:
 
     DebugLine debugLine;
 
-    std::atomic<bool> cancelAutoSWSB_;
+    std::unique_ptr<std::atomic<bool>> cancelAutoSWSB_;
 
 private:
     InstructionModifier defaultModifier;
@@ -312,7 +319,7 @@ private:
 
 public:
     explicit BinaryCodeGenerator(Product product_, DebugConfig debugConfig = {})
-        : product{product_}, debugLine(debugConfig), cancelAutoSWSB_(false), defaultModifier{}, labelManager{},
+        : product{product_}, debugLine(debugConfig), defaultModifier{}, labelManager{},
 
                                                      sync{this}, load{this}, store{this}, atomic{this}
     {
@@ -1712,7 +1719,7 @@ std::vector<uint8_t> BinaryCodeGenerator<hw>::getCode()
     rootStream.fixLabels(labelManager);
 
     Program program(rootStream);
-    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(hw, declaredGRFs, program, cancelAutoSWSB_);
+    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(hw, declaredGRFs, program, cancelAutoSWSB_.get());
     std::vector<uint8_t> result;
 
     if (analysis.empty()) {

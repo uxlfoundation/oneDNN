@@ -171,7 +171,7 @@ public:
 private:
     class global_cache_type_t {
     public:
-        global_cache_type_t() : counter_(1) {}
+        global_cache_type_t() : mutex_(), data_(), counter_(1) {}
         ~global_cache_type_t() = default;
         std::mutex &mutex() { return mutex_; }
         std::unordered_map<size_t, std::vector<std::shared_ptr<T>>> &data() {
@@ -181,14 +181,13 @@ private:
         static global_cache_type_t *get_global_cache() {
             // A global table to store cached values in ALL threads. This global
             // table takes the ownership of cached values
-            try {
-                static auto global_cache = std::shared_ptr<global_cache_type_t>(
-                        new global_cache_type_t {},
-                        [](global_cache_type_t *ptr) {
-                            return ptr->release();
-                        });
-                return global_cache.get();
-            } catch (...) { return nullptr; }
+            static std::once_flag flag;
+            static global_cache_type_t *global_cache = nullptr;
+
+            std::call_once(
+                    flag, []() { global_cache = new global_cache_type_t {}; });
+
+            return global_cache;
         }
 
         // This function increments the reference count

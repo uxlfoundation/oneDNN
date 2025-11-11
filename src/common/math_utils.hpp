@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2017 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,7 +37,11 @@ template <typename T>
 inline bool is_prime(T n) {
     static_assert(std::is_integral<T>::value == true, "Not an integral type");
 
-    if (n <= 1 || n % 2 == 0 || n % 3 == 0 || n % 5 == 0) return false;
+    if (n <= 1) { return false; }
+
+    if (n == 2 || n == 3 || n == 5) { return true; }
+
+    if (n % 2 == 0 || n % 3 == 0 || n % 5 == 0) { return false; }
 
     const T sqrtn = static_cast<T>(std::sqrt(n));
     // It is enough to check prime divisors up to `sqrt(n)`.

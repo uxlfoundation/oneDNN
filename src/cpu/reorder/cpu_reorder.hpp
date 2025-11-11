@@ -43,6 +43,7 @@
 #endif
 #elif DNNL_PPC64
 #include "cpu/ppc64/ppc64_gemm_reorder.hpp"
+#include "cpu/ppc64/ppc64_uni_reorder.hpp"
 #endif
 
 #include "cpu/rnn/rnn_reorders.hpp"

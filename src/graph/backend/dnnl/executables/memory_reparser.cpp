@@ -89,11 +89,12 @@ cl_event memory_reparser_t::execute_ocl(const stream &stream,
 #endif
 
 arg_indices_t memory_reparser_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
-    arg_indices.insert(
-            {DNNL_ARG_FROM, indices_t {indices_t::type_t::input, 0}});
-    arg_indices.insert({DNNL_ARG_TO, indices_t {indices_t::type_t::output, 0}});
-    return arg_indices;
+    UNUSED(op);
+
+    arg_indices_t args;
+    args.insert({DNNL_ARG_FROM, {indices_t::type_t::input, 0}});
+    args.insert({DNNL_ARG_TO, {indices_t::type_t::output, 0}});
+    return args;
 }
 
 } // namespace dnnl_impl

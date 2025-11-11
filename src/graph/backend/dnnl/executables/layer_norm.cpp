@@ -121,42 +121,31 @@ arg_indices_t layernorm_executable_t::get_arg_indices(const op_t *op) {
 }
 
 arg_indices_t layernorm_bwd_executable_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
-
-    arg_indices.insert({DNNL_ARG_SRC, indices_t {indices_t::type_t::input, 0}});
-    arg_indices.insert(
-            {DNNL_ARG_DIFF_DST, indices_t {indices_t::type_t::input, 1}});
-    arg_indices.insert(
-            {DNNL_ARG_MEAN, indices_t {indices_t::type_t::input, 2}});
-    arg_indices.insert(
-            {DNNL_ARG_VARIANCE, indices_t {indices_t::type_t::input, 3}});
+    arg_indices_t args;
+    // inputs
+    args.insert({DNNL_ARG_SRC, {indices_t::type_t::input, 0}});
+    args.insert({DNNL_ARG_DIFF_DST, {indices_t::type_t::input, 1}});
+    args.insert({DNNL_ARG_MEAN, {indices_t::type_t::input, 2}});
+    args.insert({DNNL_ARG_VARIANCE, {indices_t::type_t::input, 3}});
 
     if (op->num_inputs() > 4) {
-        arg_indices.insert(
-                {DNNL_ARG_SCALE, indices_t {indices_t::type_t::input, 4}});
-
+        args.insert({DNNL_ARG_SCALE, {indices_t::type_t::input, 4}});
         if (op->num_inputs() > 5) {
-            arg_indices.insert(
-                    {DNNL_ARG_SHIFT, indices_t {indices_t::type_t::input, 5}});
+            args.insert({DNNL_ARG_SHIFT, {indices_t::type_t::input, 5}});
         } else {
             // use scale mem for fake shift
-            arg_indices.insert(
-                    {DNNL_ARG_SHIFT, indices_t {indices_t::type_t::input, 4}});
+            args.insert({DNNL_ARG_SHIFT, {indices_t::type_t::input, 4}});
         }
     }
-
-    size_t out_index = 0;
-    arg_indices.insert({DNNL_ARG_DIFF_SRC,
-            indices_t {indices_t::type_t::output, out_index++}});
+    // outputs
+    size_t ind = 0;
+    args.insert({DNNL_ARG_DIFF_SRC, {indices_t::type_t::output, ind++}});
     if (op->get_attr<bool>(op_attr::use_affine)) {
-        arg_indices.insert({DNNL_ARG_DIFF_SCALE,
-                indices_t {indices_t::type_t::output, out_index++}});
-        arg_indices.insert({DNNL_ARG_DIFF_SHIFT,
-                indices_t {indices_t::type_t::output, out_index++}});
+        args.insert({DNNL_ARG_DIFF_SCALE, {indices_t::type_t::output, ind++}});
+        args.insert({DNNL_ARG_DIFF_SHIFT, {indices_t::type_t::output, ind++}});
     }
-    arg_indices.insert({DNNL_ARG_SCRATCHPAD,
-            indices_t {indices_t::type_t::output, out_index++}});
-    return arg_indices;
+    args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, ind++}});
+    return args;
 }
 
 } // namespace dnnl_impl

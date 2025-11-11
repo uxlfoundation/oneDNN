@@ -289,52 +289,45 @@ cl_event sdpa_executable_t::execute_ocl(const stream &stream,
 #endif
 
 arg_indices_t sdpa_executable_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
-    // Required input args: query, key, value
-    size_t index = 0;
-    arg_indices.insert(
-            {DNNL_ARG_QUERIES, indices_t {indices_t::type_t::input, index++}});
-    arg_indices.insert(
-            {DNNL_ARG_KEYS, indices_t {indices_t::type_t::input, index++}});
-    arg_indices.insert(
-            {DNNL_ARG_VALUES, indices_t {indices_t::type_t::input, index++}});
-    // Optional args: scale, mask
+    arg_indices_t args;
+    // inputs: query, key, value
+    size_t idx = 0;
+    args.insert({DNNL_ARG_QUERIES, {indices_t::type_t::input, idx++}});
+    args.insert({DNNL_ARG_KEYS, {indices_t::type_t::input, idx++}});
+    args.insert({DNNL_ARG_VALUES, {indices_t::type_t::input, idx++}});
+    // Optional inputs: scale, mask
     if (op->get_attr<bool>(op_attr::with_scale)) {
-        arg_indices.insert({DNNL_ARG_SCALE,
-                indices_t {indices_t::type_t::input, index++}});
+        args.insert({DNNL_ARG_SCALE, {indices_t::type_t::input, idx++}});
     }
     if (op->get_attr<int64_t>(op_attr::mask_type)
             == static_cast<int64_t>(attn_mask_type::buffer)) {
-        arg_indices.insert({DNNL_ARG_ATTN_MASK,
-                indices_t {indices_t::type_t::input, index++}});
+        args.insert({DNNL_ARG_ATTN_MASK, {indices_t::type_t::input, idx++}});
     }
 
     const auto &sdpa_fusion_info = op->has_attr(op_attr::fusion_info)
             ? op->get_attr<fusion_info_t>(op_attr::fusion_info)
             : fusion_info_t();
     if (sdpa_fusion_info.with_runtime_scales(true, DNNL_ARG_KEYS)) {
-        arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
-                indices_t {indices_t::type_t::input, index++}});
+        args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
+                {indices_t::type_t::input, idx++}});
     }
     if (sdpa_fusion_info.with_runtime_zero_points(true, DNNL_ARG_KEYS)) {
-        arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
-                indices_t {indices_t::type_t::input, index++}});
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
+                {indices_t::type_t::input, idx++}});
     }
     if (sdpa_fusion_info.with_runtime_scales(true, DNNL_ARG_VALUES)) {
-        arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
-                indices_t {indices_t::type_t::input, index++}});
+        args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
+                {indices_t::type_t::input, idx++}});
     }
     if (sdpa_fusion_info.with_runtime_zero_points(true, DNNL_ARG_VALUES)) {
-        arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES,
-                indices_t {indices_t::type_t::input, index++}});
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES,
+                {indices_t::type_t::input, idx++}});
     }
 
-    // add output args
-    arg_indices.insert(
-            {DNNL_ARG_DST, indices_t {indices_t::type_t::output, 0}});
-    arg_indices.insert(
-            {DNNL_ARG_SCRATCHPAD, indices_t {indices_t::type_t::output, 1}});
-    return arg_indices;
+    // outputs
+    args.insert({DNNL_ARG_DST, {indices_t::type_t::output, 0}});
+    args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, 1}});
+    return args;
 }
 
 } // namespace dnnl_impl

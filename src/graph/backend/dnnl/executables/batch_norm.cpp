@@ -514,35 +514,31 @@ bn_folding_t::desc_t bn_folding_t::create_desc(std::shared_ptr<op_t> &op,
 }
 
 arg_indices_t bn_folding_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
+    arg_indices_t args;
 
     size_t in_idx = 0;
-    arg_indices.insert(
-            {DNNL_ARG_WEIGHTS, indices_t {indices_t::type_t::input, in_idx++}});
+    args.insert({DNNL_ARG_WEIGHTS, {indices_t::type_t::input, in_idx++}});
     if (op->get_attr<bool>(op_attr::with_bias)) {
-        arg_indices.insert({DNNL_ARG_BIAS,
-                indices_t {indices_t::type_t::input, in_idx++}});
+        args.insert({DNNL_ARG_BIAS, {indices_t::type_t::input, in_idx++}});
     }
-    arg_indices.insert({DNNL_ARG_WEIGHTS_1,
-            indices_t {indices_t::type_t::input, in_idx++}}); // scale
-    arg_indices.insert({DNNL_ARG_WEIGHTS_2,
-            indices_t {indices_t::type_t::input, in_idx++}}); // shift
-    arg_indices.insert({DNNL_ARG_MEAN,
-            indices_t {indices_t::type_t::input, in_idx++}}); // mean
-    arg_indices.insert({DNNL_ARG_VARIANCE,
-            indices_t {indices_t::type_t::input, in_idx++}}); // variance
+    args.insert({DNNL_ARG_WEIGHTS_1,
+            {indices_t::type_t::input, in_idx++}}); // scale
+    args.insert({DNNL_ARG_WEIGHTS_2,
+            {indices_t::type_t::input, in_idx++}}); // shift
+    args.insert({DNNL_ARG_MEAN, {indices_t::type_t::input, in_idx++}}); // mean
+    args.insert({DNNL_ARG_VARIANCE,
+            {indices_t::type_t::input, in_idx++}}); // variance
 
     // bind output memory
     size_t out_idx = 0;
-    arg_indices.insert({DNNL_ARG_DST_0,
-            indices_t {
-                    indices_t::type_t::output, out_idx++}}); // updated weight
-    arg_indices.insert({DNNL_ARG_DST_1,
-            indices_t {indices_t::type_t::output, out_idx++}}); // updated bias
-    arg_indices.insert({DNNL_ARG_SCRATCHPAD,
-            indices_t {indices_t::type_t::output, out_idx++}}); // scratchpad
+    args.insert({DNNL_ARG_DST_0,
+            {indices_t::type_t::output, out_idx++}}); // updated weight
+    args.insert({DNNL_ARG_DST_1,
+            {indices_t::type_t::output, out_idx++}}); // updated bias
+    args.insert({DNNL_ARG_SCRATCHPAD,
+            {indices_t::type_t::output, out_idx++}}); // scratchpad
 
-    return arg_indices;
+    return args;
 }
 
 status_t bn_folding_t::reset_engine(const dnnl::engine &p_engine) {
@@ -831,104 +827,78 @@ batchnorm_bwd_executable_t::desc_t batchnorm_bwd_executable_t::create_desc(
 }
 
 arg_indices_t batchnorm_executable_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
+    arg_indices_t args;
 
-    size_t in_index = 0;
-    arg_indices.insert(
-            {DNNL_ARG_SRC, indices_t {indices_t::type_t::input, in_index++}});
+    size_t idx = 0;
+    args.insert({DNNL_ARG_SRC, {indices_t::type_t::input, idx++}});
     if (!op->get_attr<bool>(op_attr::is_training)) { // inference
-        arg_indices.insert({DNNL_ARG_SCALE,
-                indices_t {indices_t::type_t::input, in_index++}});
-        arg_indices.insert({DNNL_ARG_SHIFT,
-                indices_t {indices_t::type_t::input, in_index++}});
-        arg_indices.insert({DNNL_ARG_MEAN,
-                indices_t {indices_t::type_t::input, in_index++}});
-        arg_indices.insert({DNNL_ARG_VARIANCE,
-                indices_t {indices_t::type_t::input, in_index++}});
+        args.insert({DNNL_ARG_SCALE, {indices_t::type_t::input, idx++}});
+        args.insert({DNNL_ARG_SHIFT, {indices_t::type_t::input, idx++}});
+        args.insert({DNNL_ARG_MEAN, {indices_t::type_t::input, idx++}});
+        args.insert({DNNL_ARG_VARIANCE, {indices_t::type_t::input, idx++}});
     } else { // training
         // running_mean/running_variance of last iteration
-        arg_indices.insert({DNNL_ARG_SRC_1,
-                indices_t {indices_t::type_t::input, in_index++}});
-        arg_indices.insert({DNNL_ARG_SRC_2,
-                indices_t {indices_t::type_t::input, in_index++}});
+        args.insert({DNNL_ARG_SRC_1, {indices_t::type_t::input, idx++}});
+        args.insert({DNNL_ARG_SRC_2, {indices_t::type_t::input, idx++}});
 
         if (op->num_inputs() > 3) {
-            arg_indices.insert({DNNL_ARG_SCALE,
-                    indices_t {indices_t::type_t::input, in_index++}});
-            arg_indices.insert({DNNL_ARG_SHIFT,
-                    indices_t {indices_t::type_t::input, in_index++}});
+            args.insert({DNNL_ARG_SCALE, {indices_t::type_t::input, idx++}});
+            args.insert({DNNL_ARG_SHIFT, {indices_t::type_t::input, idx++}});
         }
     }
 
-    size_t out_index = 0;
-    arg_indices.insert(
-            {DNNL_ARG_DST, indices_t {indices_t::type_t::output, out_index++}});
+    idx = 0;
+    args.insert({DNNL_ARG_DST, {indices_t::type_t::output, idx++}});
     if (op->get_attr<bool>(op_attr::is_training)) {
         // running_mean
-        arg_indices.insert({DNNL_ARG_DST_1,
-                indices_t {indices_t::type_t::output, out_index++}});
+        args.insert({DNNL_ARG_DST_1, {indices_t::type_t::output, idx++}});
         // running_variance
-        arg_indices.insert({DNNL_ARG_DST_2,
-                indices_t {indices_t::type_t::output, out_index++}});
+        args.insert({DNNL_ARG_DST_2, {indices_t::type_t::output, idx++}});
         // batch_mean
-        arg_indices.insert({DNNL_ARG_MEAN,
-                indices_t {indices_t::type_t::output, out_index++}});
+        args.insert({DNNL_ARG_MEAN, {indices_t::type_t::output, idx++}});
         // batch_variance
-        arg_indices.insert({DNNL_ARG_VARIANCE,
-                indices_t {indices_t::type_t::output, out_index++}});
+        args.insert({DNNL_ARG_VARIANCE, {indices_t::type_t::output, idx++}});
     }
 
-    if (op->num_outputs() > out_index) {
-        arg_indices.insert({DNNL_ARG_SCRATCHPAD,
-                indices_t {indices_t::type_t::output, out_index++}});
+    if (op->num_outputs() > idx) {
+        args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, idx++}});
     }
 
     // workspace (for BatchNormForwardTraining with ReLU)
-    if (op->num_outputs() > out_index) {
-        arg_indices.insert({DNNL_ARG_WORKSPACE,
-                indices_t {indices_t::type_t::output, out_index++}});
+    if (op->num_outputs() > idx) {
+        args.insert({DNNL_ARG_WORKSPACE, {indices_t::type_t::output, idx++}});
     }
 
-    return arg_indices;
+    return args;
 }
 
 arg_indices_t batchnorm_bwd_executable_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
-    size_t index = 0;
+    arg_indices_t args;
+    size_t idx = 0;
 
-    arg_indices.insert(
-            {DNNL_ARG_SRC, indices_t {indices_t::type_t::input, index++}});
-    arg_indices.insert(
-            {DNNL_ARG_DIFF_DST, indices_t {indices_t::type_t::input, index++}});
+    args.insert({DNNL_ARG_SRC, {indices_t::type_t::input, idx++}});
+    args.insert({DNNL_ARG_DIFF_DST, {indices_t::type_t::input, idx++}});
 
-    arg_indices.insert(
-            {DNNL_ARG_MEAN, indices_t {indices_t::type_t::input, index++}});
-    arg_indices.insert(
-            {DNNL_ARG_VARIANCE, indices_t {indices_t::type_t::input, index++}});
-
+    args.insert({DNNL_ARG_MEAN, {indices_t::type_t::input, idx++}});
+    args.insert({DNNL_ARG_VARIANCE, {indices_t::type_t::input, idx++}});
     if (op->num_outputs() > 2) {
         // oneDNN only need the scales now
-        arg_indices.insert({DNNL_ARG_SCALE,
-                indices_t {indices_t::type_t::input, index++}});
+        args.insert({DNNL_ARG_SCALE, {indices_t::type_t::input, idx++}});
     }
 
-    index = 0;
-    arg_indices.insert({DNNL_ARG_DIFF_SRC,
-            indices_t {indices_t::type_t::output, index++}});
+    idx = 0;
+    args.insert({DNNL_ARG_DIFF_SRC, {indices_t::type_t::output, idx++}});
     // check if has diff_scale and diff_shift outputs
     if (op->num_outputs() > 2) {
-        arg_indices.insert({DNNL_ARG_DIFF_SCALE,
-                indices_t {indices_t::type_t::output, index++}});
-        arg_indices.insert({DNNL_ARG_DIFF_SHIFT,
-                indices_t {indices_t::type_t::output, index++}});
+        args.insert({DNNL_ARG_DIFF_SCALE, {indices_t::type_t::output, idx++}});
+        args.insert({DNNL_ARG_DIFF_SHIFT, {indices_t::type_t::output, idx++}});
     }
 
-    if (op->num_outputs() > index) {
-        arg_indices.insert({DNNL_ARG_SCRATCHPAD,
-                indices_t {indices_t::type_t::output, index++}});
+    if (op->num_outputs() > idx) {
+        args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, idx++}});
     }
 
-    return arg_indices;
+    return args;
 }
 
 } // namespace dnnl_impl

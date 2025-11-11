@@ -126,18 +126,14 @@ arg_indices_t softmax_executable_t::get_arg_indices(const op_t *op) {
 }
 
 arg_indices_t softmax_bwd_executable_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
+    UNUSED(op);
 
-    arg_indices.insert(
-            {DNNL_ARG_DIFF_DST, indices_t {indices_t::type_t::input, 0}});
-    arg_indices.insert({DNNL_ARG_DST, indices_t {indices_t::type_t::input, 1}});
-
-    arg_indices.insert(
-            {DNNL_ARG_DIFF_SRC, indices_t {indices_t::type_t::output, 0}});
-    arg_indices.insert(
-            {DNNL_ARG_SCRATCHPAD, indices_t {indices_t::type_t::output, 1}});
-
-    return arg_indices;
+    arg_indices_t args;
+    args.insert({DNNL_ARG_DIFF_DST, {indices_t::type_t::input, 0}});
+    args.insert({DNNL_ARG_DST, {indices_t::type_t::input, 1}});
+    args.insert({DNNL_ARG_DIFF_SRC, {indices_t::type_t::output, 0}});
+    args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, 1}});
+    return args;
 }
 
 } // namespace dnnl_impl

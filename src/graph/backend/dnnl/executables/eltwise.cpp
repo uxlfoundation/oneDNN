@@ -342,69 +342,56 @@ prelu_bwd_executable_t::desc_t prelu_bwd_executable_t::create_desc(
 }
 
 arg_indices_t binary_executable_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
-    const algorithm algo = static_cast<dnnl::algorithm>(
+    arg_indices_t args;
+    const dnnl::algorithm algo = static_cast<dnnl::algorithm>(
             op->get_attr<int64_t>(op_attr::alg_kind));
 
-    // add input args
+    // inputs
     size_t index = 0;
-    arg_indices.insert(
-            {DNNL_ARG_SRC_0, indices_t {indices_t::type_t::input, index++}});
-    arg_indices.insert(
-            {DNNL_ARG_SRC_1, indices_t {indices_t::type_t::input, index++}});
-    if (algo == algorithm::binary_select) {
-        arg_indices.insert({DNNL_ARG_SRC_2,
-                indices_t {indices_t::type_t::input, index++}});
+    args.insert({DNNL_ARG_SRC_0, {indices_t::type_t::input, index++}});
+    args.insert({DNNL_ARG_SRC_1, {indices_t::type_t::input, index++}});
+    if (algo == dnnl::algorithm::binary_select) {
+        args.insert({DNNL_ARG_SRC_2, {indices_t::type_t::input, index++}});
     }
-    get_arg_indices_for_post_ops(op, arg_indices, index);
+    get_arg_indices_for_post_ops(op, args, index);
 
-    // add output args
-    arg_indices.insert(
-            {DNNL_ARG_DST, indices_t {indices_t::type_t::output, 0}});
-    arg_indices.insert(
-            {DNNL_ARG_SCRATCHPAD, indices_t {indices_t::type_t::output, 1}});
+    // outputs
+    args.insert({DNNL_ARG_DST, {indices_t::type_t::output, 0}});
+    args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, 1}});
 
-    return arg_indices;
+    return args;
 }
 
 arg_indices_t prelu_executable_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
+    UNUSED(op);
+    arg_indices_t args;
 
-    // add input args
-    size_t index = 0;
-    arg_indices.insert(
-            {DNNL_ARG_SRC, indices_t {indices_t::type_t::input, index++}});
-    arg_indices.insert(
-            {DNNL_ARG_WEIGHTS, indices_t {indices_t::type_t::input, index++}});
+    // inputs
+    args.insert({DNNL_ARG_SRC, {indices_t::type_t::input, 0}});
+    args.insert({DNNL_ARG_WEIGHTS, {indices_t::type_t::input, 1}});
 
-    // add output args
-    arg_indices.insert(
-            {DNNL_ARG_DST, indices_t {indices_t::type_t::output, 0}});
-    arg_indices.insert(
-            {DNNL_ARG_SCRATCHPAD, indices_t {indices_t::type_t::output, 1}});
+    // outputs
+    args.insert({DNNL_ARG_DST, {indices_t::type_t::output, 0}});
+    args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, 1}});
 
-    return arg_indices;
+    return args;
 }
 
 arg_indices_t prelu_bwd_executable_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
+    UNUSED(op);
+    arg_indices_t args;
 
-    // add input args
-    arg_indices.insert({DNNL_ARG_SRC, indices_t {indices_t::type_t::input, 0}});
-    arg_indices.insert(
-            {DNNL_ARG_WEIGHTS, indices_t {indices_t::type_t::input, 1}});
-    arg_indices.insert(
-            {DNNL_ARG_DIFF_DST, indices_t {indices_t::type_t::input, 2}});
+    // inputs
+    args.insert({DNNL_ARG_SRC, {indices_t::type_t::input, 0}});
+    args.insert({DNNL_ARG_WEIGHTS, {indices_t::type_t::input, 1}});
+    args.insert({DNNL_ARG_DIFF_DST, {indices_t::type_t::input, 2}});
 
-    // add output args
-    arg_indices.insert(
-            {DNNL_ARG_DIFF_SRC, indices_t {indices_t::type_t::output, 0}});
-    arg_indices.insert(
-            {DNNL_ARG_DIFF_WEIGHTS, indices_t {indices_t::type_t::output, 1}});
-    arg_indices.insert(
-            {DNNL_ARG_SCRATCHPAD, indices_t {indices_t::type_t::output, 2}});
+    // outputs
+    args.insert({DNNL_ARG_DIFF_SRC, {indices_t::type_t::output, 0}});
+    args.insert({DNNL_ARG_DIFF_WEIGHTS, {indices_t::type_t::output, 1}});
+    args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, 2}});
 
-    return arg_indices;
+    return args;
 }
 
 arg_indices_t eltwise_executable_t::get_arg_indices(const op_t *op) {
@@ -412,24 +399,19 @@ arg_indices_t eltwise_executable_t::get_arg_indices(const op_t *op) {
 }
 
 arg_indices_t eltwise_bwd_executable_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
+    arg_indices_t args;
 
     if (op->get_attr<bool>(op_attr::use_dst)) {
-        arg_indices.insert(
-                {DNNL_ARG_DST, indices_t {indices_t::type_t::input, 0}});
+        args.insert({DNNL_ARG_DST, {indices_t::type_t::input, 0}});
     } else {
-        arg_indices.insert(
-                {DNNL_ARG_SRC, indices_t {indices_t::type_t::input, 0}});
+        args.insert({DNNL_ARG_SRC, {indices_t::type_t::input, 0}});
     }
-    arg_indices.insert(
-            {DNNL_ARG_DIFF_DST, indices_t {indices_t::type_t::input, 1}});
+    args.insert({DNNL_ARG_DIFF_DST, {indices_t::type_t::input, 1}});
 
-    arg_indices.insert(
-            {DNNL_ARG_DIFF_SRC, indices_t {indices_t::type_t::output, 0}});
-    arg_indices.insert(
-            {DNNL_ARG_SCRATCHPAD, indices_t {indices_t::type_t::output, 1}});
+    args.insert({DNNL_ARG_DIFF_SRC, {indices_t::type_t::output, 0}});
+    args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, 1}});
 
-    return arg_indices;
+    return args;
 }
 
 } // namespace dnnl_impl

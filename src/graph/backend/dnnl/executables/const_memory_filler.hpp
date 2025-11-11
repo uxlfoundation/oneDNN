@@ -27,11 +27,11 @@ namespace dnnl_impl {
 template <op_attr_t attr_name, typename attr_dt, typename target_dt>
 struct const_memory_filler_t : public op_executable_t {
     static arg_indices_t get_arg_indices(const op_t *op) {
-        arg_indices_t arg_indices;
+        UNUSED(op);
+        arg_indices_t args;
         // We only set dst argument, to which constant data will be copied
-        arg_indices.insert(
-                {DNNL_ARG_TO, indices_t {indices_t::type_t::output, 0}});
-        return arg_indices;
+        args.insert({DNNL_ARG_TO, {indices_t::type_t::output, 0}});
+        return args;
     }
 
     const_memory_filler_t(std::shared_ptr<op_t> &op,

@@ -71,6 +71,8 @@ struct indices_t {
         output = 1,
     };
 
+    indices_t(type_t t, size_t v) : type_(t), value_(v) {}
+
     type_t type_;
     size_t value_;
 };

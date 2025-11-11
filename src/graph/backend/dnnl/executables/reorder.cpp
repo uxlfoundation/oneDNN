@@ -203,11 +203,10 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
 }
 
 arg_indices_t reorder_executable_t::get_arg_indices(const op_t *op) {
-    arg_indices_t arg_indices;
+    arg_indices_t args;
 
-    size_t index = 0;
-    arg_indices.insert(
-            {DNNL_ARG_FROM, indices_t {indices_t::type_t::input, index++}});
+    size_t idx = 0;
+    args.insert({DNNL_ARG_FROM, {indices_t::type_t::input, idx++}});
 
     const fusion_info_t &fusion_info = op->has_attr(op_attr::fusion_info)
             ? op->get_attr<fusion_info_t>(op_attr::fusion_info)
@@ -216,37 +215,37 @@ arg_indices_t reorder_executable_t::get_arg_indices(const op_t *op) {
     if ((op->has_attr(op_attr::with_runtime_scales)
                 && op->get_attr<bool>(op_attr::with_runtime_scales))
             || fusion_info.with_runtime_scales(true, 0)) {
-        arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC,
-                indices_t {indices_t::type_t::input, index++}});
+        args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC,
+                {indices_t::type_t::input, idx++}});
     }
 
     if ((op->has_attr(op_attr::with_runtime_src_zps)
                 && op->get_attr<bool>(op_attr::with_runtime_src_zps))
             || fusion_info.with_runtime_zero_points(true, 0)) {
-        arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC,
-                indices_t {indices_t::type_t::input, index++}});
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC,
+                {indices_t::type_t::input, idx++}});
     }
 
-    get_arg_indices_for_post_ops(op, arg_indices, index);
+    get_arg_indices_for_post_ops(op, args, idx);
 
     if (fusion_info.with_runtime_scales(false, 0)) {
-        arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
-                indices_t {indices_t::type_t::input, index++}});
+        args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
+                {indices_t::type_t::input, idx++}});
     }
 
     if ((op->has_attr(op_attr::with_runtime_dst_zps)
                 && op->get_attr<bool>(op_attr::with_runtime_dst_zps))
             || fusion_info.with_runtime_zero_points(false, 0)) {
-        arg_indices.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST,
-                indices_t {indices_t::type_t::input, index++}});
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST,
+                {indices_t::type_t::input, idx++}});
     }
 
-    arg_indices.insert({DNNL_ARG_TO, indices_t {indices_t::type_t::output, 0}});
+    args.insert({DNNL_ARG_TO, {indices_t::type_t::output, 0}});
     if (op->num_outputs() > 1) {
-        arg_indices.insert({DNNL_ARG_SCRATCHPAD,
-                indices_t {indices_t::type_t::output, 1}});
+        args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, 1}});
     }
-    return arg_indices;
+
+    return args;
 }
 
 } // namespace dnnl_impl

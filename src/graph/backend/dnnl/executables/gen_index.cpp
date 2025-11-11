@@ -178,12 +178,11 @@ cl_event genindex_executable_t::execute_ocl(const stream &stream,
 arg_indices_t genindex_executable_t::get_arg_indices(const op_t *op) {
     UNUSED(op);
 
-    arg_indices_t arg_indices;
-    arg_indices.insert({DNNL_ARG_SRC, indices_t {indices_t::type_t::input, 0}});
-    arg_indices.insert(
-            {DNNL_ARG_DST, indices_t {indices_t::type_t::output, 0}});
+    arg_indices_t args;
+    args.insert({DNNL_ARG_SRC, {indices_t::type_t::input, 0}});
+    args.insert({DNNL_ARG_DST, {indices_t::type_t::output, 0}});
 
-    return arg_indices;
+    return args;
 }
 
 } // namespace dnnl_impl

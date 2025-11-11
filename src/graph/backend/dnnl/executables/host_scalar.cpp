@@ -109,12 +109,11 @@ cl_event host_scalar_executable_t::execute_ocl(const stream &stream,
 
 arg_indices_t host_scalar_executable_t::get_arg_indices(const op_t *op) {
     UNUSED(op);
-    arg_indices_t arg_indices;
+    arg_indices_t args;
 
-    arg_indices.insert(
-            {DNNL_ARG_FROM, indices_t {indices_t::type_t::input, 0}});
-    arg_indices.insert({DNNL_ARG_TO, indices_t {indices_t::type_t::output, 0}});
-    return arg_indices;
+    args.insert({DNNL_ARG_FROM, {indices_t::type_t::input, 0}});
+    args.insert({DNNL_ARG_TO, {indices_t::type_t::output, 0}});
+    return args;
 }
 
 } // namespace dnnl_impl

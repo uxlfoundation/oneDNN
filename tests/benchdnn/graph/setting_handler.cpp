@@ -1259,6 +1259,63 @@ bool get_lnorm_flags(
 
 namespace matmul {
 
+// tensor type for dimension extension in matmul
+enum class matmul_tensor_kind_t {
+    SRC, // first input (query in attention, left matrix)
+    WEI, // second input (key/value in attention, right matrix)
+    DST, // output tensor - standard padding
+    BIAS // bias tensor - standard padding
+};
+
+// extend dims for matmul following numpy broadcast rules:
+// - SRC: 1D: [K] -> [1, ..., 1, K]  (treated as row vector [1,K])
+//        2D+: [M, K] -> [1, ..., 1, M, K] (standard front padding)
+// - WEI: 1D: [K] -> [K, 1] -> [1, ..., 1, K, 1] (first add 1 at end, then front padding)
+//        2D+: [K, N] -> [1, ..., 1, K, N] (standard front padding)
+// - DST/BIAS: standard front padding [1, ..., 1, original_dims]
+void extend_dims_for_matmul(::graph::deserialized_lt_t &lt, size_t ndims,
+        matmul_tensor_kind_t kind) {
+    size_t nelem = 1;
+    for (size_t i = 0; i < lt.shape_.size(); i++) {
+        nelem *= lt.shape_[i];
+    }
+
+    const size_t orig_ndims = lt.shape_.size();
+    if (orig_ndims >= ndims) return; // No need to extend
+
+    if (kind == matmul_tensor_kind_t::SRC) {
+        size_t num_batch_pads = ndims - orig_ndims;
+        for (size_t i = 0; i < num_batch_pads; i++) {
+            lt.shape_.insert(lt.shape_.begin(), 1);
+            lt.stride_.insert(lt.stride_.begin(), nelem);
+        }
+    } else if (kind == matmul_tensor_kind_t::WEI) {
+        if (orig_ndims == 1) {
+            // step 1: [K] -> [K, 1]
+            lt.shape_.push_back(1);
+            lt.stride_.push_back(1);
+            // step 2: [K, 1] -> [1, ..., 1, K, 1]
+            size_t num_batch_pads = ndims - 2;
+            for (size_t i = 0; i < num_batch_pads; i++) {
+                lt.shape_.insert(lt.shape_.begin(), 1);
+                lt.stride_.insert(lt.stride_.begin(), nelem);
+            }
+        } else {
+            size_t num_batch_pads = ndims - orig_ndims;
+            for (size_t i = 0; i < num_batch_pads; i++) {
+                lt.shape_.insert(lt.shape_.begin(), 1);
+                lt.stride_.insert(lt.stride_.begin(), nelem);
+            }
+        }
+    } else {
+        // For dst and bias: standard front padding
+        while (lt.shape_.size() < ndims) {
+            lt.shape_.insert(lt.shape_.begin(), 1);
+            lt.stride_.insert(lt.stride_.begin(), nelem);
+        }
+    }
+}
+
 bool get_matmul_prb_vdims(
         const deserialized_op_t &base_op_ref, prb_vdims_t &prb_vdims) {
 
@@ -1267,30 +1324,47 @@ bool get_matmul_prb_vdims(
     auto &src_dims = base_op.in_lts_[0].shape_;
     auto &wei_dims = base_op.in_lts_[1].shape_;
     auto &dst_dims = base_op.out_lts_[0].shape_;
-    const auto ndims = dst_dims.size();
+    auto src_origin_ndims = src_dims.size();
+    auto wei_origin_ndims = wei_dims.size();
 
-    ::graph::extend_dims(base_op.in_lts_[0], ndims);
-    ::graph::extend_dims(base_op.in_lts_[1], ndims);
+    // step 1: find the max ndims among all inputs
+    size_t max_ndims
+            = std::max({src_dims.size(), wei_dims.size(), dst_dims.size()});
+    // at least 2 for matmul primitive
+    max_ndims = std::max(max_ndims, size_t(2));
+
+    // step 2: extend all dimensions to max_ndims for broadcast calculation
+    // primitive requirement: all tensors must have the same ndims
+    extend_dims_for_matmul(
+            base_op.in_lts_[0], max_ndims, matmul_tensor_kind_t::SRC);
+    extend_dims_for_matmul(
+            base_op.in_lts_[1], max_ndims, matmul_tensor_kind_t::WEI);
+    extend_dims_for_matmul(
+            base_op.out_lts_[0], max_ndims, matmul_tensor_kind_t::DST);
     if (base_op.in_lts_.size() > 2) {
-        ::graph::extend_dims(base_op.in_lts_[2], ndims);
+        extend_dims_for_matmul(
+                base_op.in_lts_[2], max_ndims, matmul_tensor_kind_t::BIAS);
     }
+
+    // step 3: apply transpose and validate inner dimensions
 
     // transpose
     bool transpose_a = false, transpose_b = false;
     base_op_ref.get_attr_bool(transpose_a, "transpose_a");
     base_op_ref.get_attr_bool(transpose_b, "transpose_b");
-    if (ndims >= 2) {
-        if (transpose_a) std::swap(src_dims[ndims - 1], src_dims[ndims - 2]);
-        if (transpose_b) std::swap(wei_dims[ndims - 1], wei_dims[ndims - 2]);
-        if (src_dims[ndims - 1] != wei_dims[ndims - 2]) return false;
-    } else {
-        if (src_dims[0] != wei_dims[0]) return false;
-    }
 
+    // check inner dimensions match (max_ndims is guaranteed >= 2)
+    // only transpose if original ndims > 1
+    if (transpose_a && src_origin_ndims > 1)
+        std::swap(src_dims[max_ndims - 1], src_dims[max_ndims - 2]);
+    if (transpose_b && wei_origin_ndims > 1)
+        std::swap(wei_dims[max_ndims - 1], wei_dims[max_ndims - 2]);
+    if (src_dims[max_ndims - 1] != wei_dims[max_ndims - 2]) return false;
+
+    // step 4: construct prb_vdims
     prb_vdims = prb_vdims_t({src_dims, wei_dims, dst_dims});
-    prb_vdims.dst_dims[ndims - 2] = src_dims[ndims - 2];
-    prb_vdims.dst_dims[ndims - 1] = wei_dims[ndims - 1];
-
+    prb_vdims.dst_dims[max_ndims - 2] = src_dims[max_ndims - 2];
+    prb_vdims.dst_dims[max_ndims - 1] = wei_dims[max_ndims - 1];
     return true;
 }
 

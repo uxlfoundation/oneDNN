@@ -98,10 +98,28 @@
 --reset --case=op/f32/lnorm_bwd.json
 --reset --case=op/f32/logsoftmax.json
 --reset --case=op/f32/logsoftmax_bwd.json
---reset --case=op/f32/matmul_2d_4d.json
---reset --in-shapes=0:32x384*ab+1:384x1024*ab --case=op/f32/matmul_2d_4d.json
---reset --in-shapes=0:384x32*ab+1:384x1024*ab --op-attrs=0:transpose_a:1 --case=op/f32/matmul_2d_4d.json
---reset --in-shapes=0:384x32*ab+1:1024x384*ab --op-attrs=0:transpose_a:1*transpose_b:1 --case=op/f32/matmul_2d_4d.json
+--reset --case=op/f32/matmul.json
+# matmul broadcasting rule tests
+# Basic matmul: standard 2D x 2D case
+--reset --in-shapes=0:128x256+1:256x512 --case=op/f32/matmul.json
+# 1D x 1D: vector dot product, result is scalar
+--reset --in-shapes=0:128+1:128 --case=op/f32/matmul.json
+# 1D x 2D: [K] x [K, N] -> [N]
+--reset --in-shapes=0:256+1:256x512 --case=op/f32/matmul.json
+# 2D x 1D: [M, K] x [K] -> [M]
+--reset --in-shapes=0:128x256+1:256 --case=op/f32/matmul.json
+# 2D x 2D: standard matrix multiplication
+--reset --in-shapes=0:128x256+1:256x512 --case=op/f32/matmul.json
+# 2D x 4D: [M, K] x [B1, B2, K, N] -> [B1, B2, M, N]
+--reset --in-shapes=0:64x128+1:8x4x128x256 --case=op/f32/matmul.json
+# 4D x 2D: [B1, B2, M, K] x [K, N] -> [B1, B2, M, N]
+--reset --in-shapes=0:4x8x32x384+1:384x1024 --case=op/f32/matmul.json
+# Complex broadcasting scenarios
+# Multiple broadcasting: [2, 1, 4, M, K] x [1, 3, 1, K, N] -> [2, 3, 4, M, N]
+--reset --in-shapes=0:2x1x4x16x32+1:1x3x1x32x64 --case=op/f32/matmul.json
+--reset --in-shapes=0:32x384*ab+1:384x1024*ab --case=op/f32/matmul.json
+--reset --in-shapes=0:384x32*ab+1:384x1024*ab --op-attrs=0:transpose_a:1 --case=op/f32/matmul.json
+--reset --in-shapes=0:384x32*ab+1:1024x384*ab --op-attrs=0:transpose_a:1*transpose_b:1 --case=op/f32/matmul.json
 --reset --case=op/f32/maxpool.json
 --reset --op-attrs=0:rounding_type:ceil --case=op/f32/maxpool.json
 --reset --op-attrs=0:auto_pad:SAME_UPPER*kernel:2x2 --case=op/f32/maxpool.json

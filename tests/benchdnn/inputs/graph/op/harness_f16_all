@@ -79,9 +79,9 @@
 --reset --dt=f16 --case=op/f32/lnorm_bwd.json
 --reset --dt=f16 --case=op/f32/logsoftmax.json
 --reset --dt=f16 --case=op/f32/logsoftmax_bwd.json
---reset --dt=f16 --case=op/f32/matmul_2d_4d.json
---reset --dt=f16 --in-shapes=0:384x32 --op-attrs=0:transpose_a:1 --case=op/f32/matmul_2d_4d.json
---reset --dt=f16 --in-shapes=0:384x32+1:1024x384 --op-attrs=0:transpose_a:1*transpose_b:1 --case=op/f32/matmul_2d_4d.json
+--reset --dt=f16 --case=op/f32/matmul.json
+--reset --dt=f16 --in-shapes=0:384x32 --op-attrs=0:transpose_a:1 --case=op/f32/matmul.json
+--reset --dt=f16 --in-shapes=0:384x32+1:1024x384 --op-attrs=0:transpose_a:1*transpose_b:1 --case=op/f32/matmul.json
 --reset --dt=f16 --case=op/f32/maxpool.json
 --reset --dt=f16 --op-attrs=0:rounding_type:ceil --case=op/f32/maxpool.json
 --reset --dt=f16 --op-attrs=0:auto_pad:SAME_UPPER*kernel:2x2 --case=op/f32/maxpool.json

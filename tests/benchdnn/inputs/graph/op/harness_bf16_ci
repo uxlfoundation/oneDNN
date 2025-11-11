@@ -1,6 +1,6 @@
 --reset --dt=bf16 --op-attrs=0:auto_pad:VALID --case=op/f32/conv_2d.json
 --reset --dt=bf16 --op-attrs=0:auto_pad:SAME_LOWER --case=op/f32/conv_2d.json
---reset --dt=bf16 --in-shapes=0:384x32 --op-attrs=0:transpose_a:1 --case=op/f32/matmul_2d_4d.json
+--reset --dt=bf16 --in-shapes=0:384x32 --op-attrs=0:transpose_a:1 --case=op/f32/matmul.json
 --reset --dt=bf16 --op-kind=0:Add,0:Divide,0:Minimum,0:Subtract --case=op/f32/add.json
 --reset --dt=bf16 --op-kind=0:AbsBackward,0:GELUBackward,0:MishBackward --case=op/f32/abs_bwd.json
 --reset --dt=bf16 --in-shapes=0:1x32x32x128 --op-attrs=0:data_format:NXC --case=op/f32/biasadd.json

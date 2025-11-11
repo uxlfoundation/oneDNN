@@ -856,9 +856,7 @@ int flex_rewrite_t::infer_output_shape(
                     gi[out0] = y;
                 } else if (y.size() == 1) {
                     assert(x[x.size() - 1] == y[0]);
-                    n = x[x.size() - 1];
                     x.pop_back();
-                    x[x.size() - 1] = n;
                     gi[out0] = x;
                 } else {
                     // Check that K is consistent in updated inputs.

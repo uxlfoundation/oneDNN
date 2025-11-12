@@ -28,6 +28,7 @@ import argparse
 from collections import defaultdict
 import git
 import json
+import math
 import os
 import pathlib
 from scipy.stats import ttest_ind
@@ -106,8 +107,16 @@ def compare_two_benchdnn(file1, file2, out_file=None):
         ctime_ttest = ttest_ind(ctime2, ctime1, alternative="greater")
         r1_med_exec = statistics.median(exec1)
         r2_med_exec = statistics.median(exec2)
+        r1_mean_exec = statistics.mean(exec1)
+        r2_mean_exec = statistics.mean(exec2)
+        r1_sem_exec = statistics.stdev(exec1) / math.sqrt(r1_mean_exec)
+        r2_sem_exec = statistics.stdev(exec2) / math.sqrt(r2_mean_exec)
         r1_med_ctime = statistics.median(ctime1)
         r2_med_ctime = statistics.median(ctime2)
+        r1_mean_ctime = statistics.mean(ctime1)
+        r2_mean_ctime = statistics.mean(ctime2)
+        r1_sem_ctime = statistics.stdev(ctime1) / math.sqrt(r1_mean_ctime)
+        r2_sem_ctime = statistics.stdev(ctime2) / math.sqrt(r2_mean_ctime)
         use_ttest = len(exec1) >= 3 and len(exec2) >= 3
 
         if 0 in [r1_med_exec, min(exec1), r1_med_ctime, min(ctime1)]:
@@ -139,13 +148,19 @@ def compare_two_benchdnn(file1, file2, out_file=None):
 
         if exec_regressed:
             exec_failures.append(
-                f"{prb} exec: {r1_med_exec:.3g} → {r2_med_exec:.3g} "
+                f"{prb} exec: "
+                f"{r1_mean_exec:.3g}\u00B1{r1_sem_exec:.3g} "
+                "\u2192 "
+                f"{r2_mean_exec:.3g}\u00B1{r2_sem_exec:.3g} "
                 f"(p={exec_regressed_ttest.pvalue:.3g})"
             )
 
         if ctime_regressed:
             ctime_failures.append(
-                f"{prb} ctime: {r1_med_ctime:.3g} → {r2_med_ctime:.3g}"
+                f"{prb} ctime: "
+                f"{r1_mean_ctime:.3g}\u00B1{r1_sem_ctime} "
+                "\u2192 "
+                f"{r2_mean_ctime:.3g}\u00B1{r2_sem_ctime} "
                 f"(p={ctime_ttest.pvalue:.3g})"
             )
 

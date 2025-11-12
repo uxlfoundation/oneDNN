@@ -1,7 +1,8 @@
 {
-  "version": "3.6.0",
+  "version": "3.11.0",
   "engine_kind": "gpu",
   "fpmath_mode": "strict",
+  "fpmath_mode_apply_to_int": "false",
   "input_ports": [
     0,
     1,
@@ -17,6 +18,10 @@
       "name": "matmul_qk",
       "kind": "MatMul",
       "attrs": {
+        "accumulation_mode": {
+          "type": "string",
+          "value": "strict"
+        },
         "transpose_a": {
           "type": "bool",
           "value": 0
@@ -29,7 +34,7 @@
       "inputs": [
         {
           "id": 0,
-          "dtype": "f16",
+          "dtype": "f32",
           "shape": [
             1,
             16,
@@ -47,7 +52,7 @@
         },
         {
           "id": 1,
-          "dtype": "f16",
+          "dtype": "f32",
           "shape": [
             1,
             16,
@@ -67,7 +72,7 @@
       "outputs": [
         {
           "id": 2,
-          "dtype": "f16",
+          "dtype": "f32",
           "shape": [
             1,
             16,
@@ -98,7 +103,7 @@
       "inputs": [
         {
           "id": 2,
-          "dtype": "f16",
+          "dtype": "f32",
           "shape": [
             1,
             16,
@@ -116,7 +121,7 @@
         },
         {
           "id": 5,
-          "dtype": "f16",
+          "dtype": "f32",
           "shape": [
             1,
             1,
@@ -136,7 +141,7 @@
       "outputs": [
         {
           "id": 6,
-          "dtype": "f16",
+          "dtype": "f32",
           "shape": [
             1,
             16,
@@ -164,14 +169,14 @@
           "value": -1
         },
         "mode": {
-           "type": "string",
-           "value": "inf_as_zero"
-         }
+          "type": "string",
+          "value": "inf_as_zero"
+        }
       },
       "inputs": [
         {
           "id": 6,
-          "dtype": "f16",
+          "dtype": "f32",
           "shape": [
             1,
             16,
@@ -191,7 +196,7 @@
       "outputs": [
         {
           "id": 7,
-          "dtype": "f16",
+          "dtype": "f32",
           "shape": [
             1,
             16,
@@ -214,6 +219,10 @@
       "name": "matmul_v",
       "kind": "MatMul",
       "attrs": {
+        "accumulation_mode": {
+          "type": "string",
+          "value": "strict"
+        },
         "transpose_a": {
           "type": "bool",
           "value": 0
@@ -226,7 +235,7 @@
       "inputs": [
         {
           "id": 7,
-          "dtype": "f16",
+          "dtype": "f32",
           "shape": [
             1,
             16,
@@ -244,7 +253,7 @@
         },
         {
           "id": 8,
-          "dtype": "f16",
+          "dtype": "f32",
           "shape": [
             1,
             16,
@@ -264,7 +273,7 @@
       "outputs": [
         {
           "id": 9,
-          "dtype": "f16",
+          "dtype": "f32",
           "shape": [
             1,
             16,

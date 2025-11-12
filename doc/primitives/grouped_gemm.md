@@ -75,12 +75,12 @@ OpenVINO uses **per-expert indexing** with contiguous buffers organized by exper
 ```cpp
 // Inputs organized after moe_gather
 float* input_data;                    // Contiguous: [Expert0_tokens | Expert1_tokens | ...]
-int* input_offset_per_expert;         // Start offset for each expert's tokens
-int* tokens_lens_per_expert;          // Number of tokens per expert
+int *expert_ids;                      // Size = number of experts(?), Expert ids
+int* expert_start_idx;                // Size = number of experts, Start offset for each expert's tokens
+int* tokens_lens_per_expert;          // Size = number of experts, Number of tokens per expert
 
 // Weights organized per expert
 float* weight_data;                   // Contiguous: [Expert0_weights | Expert1_weights | ...]
-int* weight_offset_per_expert;        // Start offset for each expert's weights
 
 // Per-expert scales for quantization
 float* scales_per_expert;             // Dequantization scales
@@ -89,18 +89,24 @@ float* zero_points_per_expert;        // Asymmetric quantization offsets
 
 **Execution Pattern:**
 ```cpp
-for (int batch = 0; batch < total_token_assignments; batch++) {
-    int expert_id = expert_ids[batch];           // Which expert to use
-    int input_offset = input_offset_per_expert[expert_id];
-    int weight_offset = weight_offset_per_expert[expert_id];
+for (int i = 0; batch < total_token_assignments; batch++) {
+    int expert_id = expert_ids[batch]; // Which expert to use
 
-    // Fetch quantized data
+    // Fetch data
+    int input_offset = expert_start_idx[expert_id];
+    int weight_offset = expert_id * K * N; // Since weights shape is uniform across experts
+
     int4 weights = weight_data[weight_offset + ...];
     int8 input = input_data[input_offset + ...];
+
+    // Scales, zero-points
+    // TBD
 
     // Process...
 }
 ```
+
+> **Note:** If expert is not in use, `expert_start_idx[expert_id] == -1`.
 
 ## oneDNN Grouped GEMM Primitive
 
@@ -133,11 +139,10 @@ that can be mapped to pointer-based API:
 
 ```cpp
 // Build pointer array (zero-copy)
-for (int i = 0; i < num_experts; i++) {
+for (int i = 0; i < total_number_of_experts; i++) {
     expert_ptrs[i] = (void*)contiguous_data + offsets_per_expert[i];
     // offset_per_expert[i] is `offs` from PyTorch or
-    // `input_offset_per_expert[i]` for inputs and
-    // `weight_offset_per_expert[i]` for weights from OpenVINO
+    // `expert_start_idx[i]` for inputs from OpenVINO
 }
 ```
 

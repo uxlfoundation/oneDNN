@@ -830,7 +830,7 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
         matmul_avx512_blocking_params_t &best_blocking) {
     const int nthr = bgmmc.nthr;
 
-    const int max_m_blk = nstl::min(256, matmul.M);
+    const int max_m_blk = nstl::min(512, matmul.M);
     int min_m_blk = nstl::min(32, matmul.M);
 
     dim_t min_m_chunks = div_up(matmul.M, max_m_blk);
@@ -1819,7 +1819,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // case therefore there is no fallback for it.
     is_small_shapes = is_small_shapes && !bgmmc.packed_sparse_weights;
     VCONDCHECK_BG(!is_small_shapes, VERBOSE_SMALL_SHAPES);
-
+    printf("M: %d, %d, K: %d, %d, N: %d, %d\n", bgmmc.M, bgmmc.M_blk, bgmmc.K,
+            bgmmc.K_blk, bgmmc.N, bgmmc.N_blk);
     if (bgmmc.use_buffer_b) {
         // If B is copied to a temporary buffer then the layout of B is
         //      [n = n_blk / LDB][k = k_blk / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]

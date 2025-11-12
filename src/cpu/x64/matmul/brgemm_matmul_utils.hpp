@@ -91,6 +91,7 @@ struct brgemm_matmul_conf_t {
     bool is_a_nt, is_b_nt, set_nt;
     bool need_prefetch_a, need_prefetch_b;
     bool use_fused_copy_a;
+    bool use_n_batch;
     dim_t LDA, LDB, LDC, LDD;
     dim_t LDB2;
     int brgemm_batch_size, brgemm_batch_tail_size;

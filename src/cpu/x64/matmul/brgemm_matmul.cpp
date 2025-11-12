@@ -386,11 +386,12 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         brgemm_attr_t brgattr;
         brgattr.generate_skip_accumulation
                 = bgmmc_.post_ops_applicable && bgmmc_.nthr_k > 1;
-        brgattr.max_bs = bs;
+        //        brgattr.max_bs = bs;
         brgattr.mem_advice = bgmmc_.mem_advice;
         if (is_superset(kernel_isa, avx512_core_amx)) {
             brgattr.use_uker = true;
             brgattr.use_interleave_stores = true;
+            brgattr.max_bs = bs;
             brgattr.wary_A_k_tail_read = bgmmc_.extendable_k;
             brgattr.extendable_k = bgmmc_.extendable_k;
             // TODO: change expected sizes to local chunks wrt L2 blocking
@@ -554,7 +555,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     const int K_chunk_size = brgmm_ctx.get_K_chunk_size();
     const int K_chunk_tail = brgmm_ctx.get_K_chunk_tail();
 
-    const int N_chunks = brgmm_ctx.get_N_chunks();
+    const int N_chunks = 1; //brgmm_ctx.get_N_chunks();
     const int N_chunk_tail = brgmm_ctx.get_N_chunk_tail();
     parallel(num_threads, [&](const int ithr, const int nthr) {
         const int ithr_bmn = brgmm_ctx.get_thread_idx_for_bmn_gemm(ithr);

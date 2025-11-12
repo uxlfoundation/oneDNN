@@ -1682,13 +1682,14 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
 
     reg64_savable_guard_t reg_aux_C_guard(
             {&reg_aux_C}, brg.is_runtime_ldc && bd_block > 1);
-
     if (is_superset(brg.isa_impl, avx10_2_512)) prefetchrst2(ptr[reg_aux_C]);
-
+    //    prefetchw(ptr[reg_aux_C]);
+    //    printf("LDC: %d, bd block: %d, blcok2: %d, max offset: %ld\n", brg.LDC, bd_block, ld_block2, C_offset(bd_block - 1, ld_block2 -1));
     if (brg.is_gemv) {
         for_(dim_t bd = 0; bd < bd_block; bd++)
         for (dim_t ld = 0; ld < ld_block2; ld++) {
             const auto addr_c = ptr[reg_aux_C + C_offset(bd, ld)];
+            prefetchw(addr_c);
             auto vmm = accm(ld_block2, bd, ld);
             uni_vmovss(addr_c, Xmm(vmm.getIdx()));
         }
@@ -1698,6 +1699,8 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
             auto vmm = accm(ld_block2, bd, ld);
             const auto addr_c = ptr[reg_aux_C + C_offset(bd, ld)];
             const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
+            //            prefetchw(addr_c);
+            //            if (ld == 0) prefetchw(addr_c);
             if (!is_tail)
                 uni_vmovups(addr_c, vmm);
             else if (isa_has_masks(brg.isa_impl)) { // is_tail
@@ -1723,7 +1726,8 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
             = brg.is_int8 && (brg.req_s8s8_compensation || has_zero_points);
 
     maybe_set_avx_mask(is_ld_tail);
-    printf("brg type: %d, max bs: %d\n", brg.type, brg.brgattr.max_bs);
+    //printf("ld block: %d, ldb: %d, ld block2: %d, ldb2: %d\n", brg.ld_block, brg.ldb, brg.ld_block2, brg.ldb2);
+    //    printf("brg type: %d, max bs: %d, is ldb loop: %d\n", brg.type, brg.brgattr.max_bs, is_ldb_loop_);
     if (brg.is_tmm) {
         if (need_to_apply_alpha_beta || are_post_ops_applicable
                 || need_generate_zp_a_compensation)
@@ -1969,6 +1973,8 @@ void jit_brgemm_kernel_t<Wmm>::set_A_B_matrices() {
         if (brg.brgattr.max_bs > 1) {
             add(reg_aux1_batch, sizeof(brgemm_batch_element_t));
             prefetcht0(ptr[reg_aux1_batch]);
+        } else {
+            //prefetcht0(ptr[reg_aux_A]);
         }
     } else if (brg.type == brgemm_offs) {
         mov(reg_aux_A, reg_A);
@@ -2671,7 +2677,7 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
             mov(reg_stride_ldb, brg.rd_step * brg.typesize_B * brg.LDB);
         }
 
-        if (brg.brgattr.max_bs > 1) mov(reg_BS_loop, reg_BS);
+        if (brg.brgattr.max_bs > 1) mov(reg_BS_loop, 1); //reg_BS);
         L_aligned(BS_loop_label, 64);
         {
             if (first_bdb || last_bdb) {
@@ -2750,51 +2756,60 @@ void jit_brgemm_kernel_t<Wmm>::ldb_loop(dim_t bd_block2, bool is_bdb_tail,
         bool is_ld_tail, bool first_bdb, bool last_bdb, dim_t rows_for_rd_tail,
         bool skip_accumulation) {
 
-    Label ldb_loop_label;
-
-    copy_post_ops_stack_values_to_aux(is_reg_tail);
-
-    if (is_ldb_loop_) {
-        mov(reg_ldb_loop, ldb_loop_length);
-        if (brg.is_tmm) reg_ldb_loop.save();
-    }
-
-    L_aligned(ldb_loop_label, 64);
+    Xbyak::Label label_bdb_loop, label_end;
+    mov(reg_BS, 64);
+    L_aligned(label_bdb_loop, 64);
     {
-        zero_accumulators(bd_block2, is_bdb_tail, ld_block2, is_ld_tail,
-                skip_accumulation);
+        cmp(reg_BS, 0);
+        je(label_end, T_NEAR);
 
-        if (is_ldb_loop_)
-            reg_D.save();
-        else {
-            mov(reg_ldb_loop, reg_D);
-            if (brg.is_tmm) reg_ldb_loop.save();
-        }
+        Label ldb_loop_label;
 
-        bs_loop(bd_block2, is_bdb_tail, ld_block2, is_ld_tail, first_bdb,
-                last_bdb, rows_for_rd_tail, skip_accumulation);
+        copy_post_ops_stack_values_to_aux(is_reg_tail);
 
-        if (is_ldb_loop_)
-            reg_D.restore();
-        else {
-            if (brg.is_tmm) reg_ldb_loop.restore();
-            mov(reg_D, reg_ldb_loop);
-        }
-
-        store_accumulators(bd_block2, is_bdb_tail, ld_block2, is_ld_tail,
-                skip_accumulation);
         if (is_ldb_loop_) {
-            if (brg.is_tmm) reg_ldb_loop.restore();
-            if (!is_ld_tail)
-                ldb_regs_shift(ld_block2);
-            else
-                ldb_regs_shift(1, true);
-            dec(reg_ldb_loop);
+            mov(reg_ldb_loop, ldb_loop_length);
             if (brg.is_tmm) reg_ldb_loop.save();
-            cmp(reg_ldb_loop, 0);
-            jg(ldb_loop_label, T_NEAR);
+        }
+
+        L_aligned(ldb_loop_label, 64);
+        {
+            zero_accumulators(bd_block2, is_bdb_tail, ld_block2, is_ld_tail,
+                    skip_accumulation);
+
+            if (is_ldb_loop_)
+                reg_D.save();
+            else {
+                mov(reg_ldb_loop, reg_D);
+                if (brg.is_tmm) reg_ldb_loop.save();
+            }
+
+            bs_loop(bd_block2, is_bdb_tail, ld_block2, is_ld_tail, first_bdb,
+                    last_bdb, rows_for_rd_tail, skip_accumulation);
+
+            if (is_ldb_loop_)
+                reg_D.restore();
+            else {
+                if (brg.is_tmm) reg_ldb_loop.restore();
+                mov(reg_D, reg_ldb_loop);
+            }
+
+            store_accumulators(bd_block2, is_bdb_tail, ld_block2, is_ld_tail,
+                    skip_accumulation);
+            if (is_ldb_loop_) {
+                if (brg.is_tmm) reg_ldb_loop.restore();
+                if (!is_ld_tail)
+                    ldb_regs_shift(ld_block2);
+                else
+                    ldb_regs_shift(1, true);
+                dec(reg_ldb_loop);
+                if (brg.is_tmm) reg_ldb_loop.save();
+                cmp(reg_ldb_loop, 0);
+                jg(ldb_loop_label, T_NEAR);
+            }
         }
     }
+    L_aligned(label_end);
 }
 
 template <typename Wmm>
@@ -3090,7 +3105,23 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
         // save tiles description for later use
         brgemm_init_tiles(brg, (char *)(&palette_));
     }
+    /*
+Xbyak::Label label_bdb_loop, label_end;
+mov(reg_BS, 223);
 
+L_aligned(label_bdb_loop);
+{
+    cmp(reg_BS, 0);
+    je(label_end, T_NEAR);
+
+    read_params();
+    bdb_loop();
+
+    dec(reg_BS);
+    jmp(label_bdb_loop);
+}
+L_aligned(label_end);
+*/
     read_params();
 
     bdb_loop();

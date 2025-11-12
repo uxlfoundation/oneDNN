@@ -815,7 +815,7 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     }
     brg->bdb = brg->bcast_dim / brg->bd_block;
     brg->bdb_tail = brg->bcast_dim % brg->bd_block;
-
+    //printf("bcast: %d, load: %d, reduce: %d, max bd block: %d, min bd block: %d, bd block: %d, ld block2: %d\n", brg->bcast_dim, brg->load_dim, brg->reduce_dim, max_bcast_block, min_block, brg->bd_block, brg->ld_block2);
     const int rd_unroll = 4;
     const data_type_t rd_block_dt = get_mac_emu_data_type(
             brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);

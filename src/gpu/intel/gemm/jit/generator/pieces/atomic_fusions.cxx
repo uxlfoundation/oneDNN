@@ -530,8 +530,11 @@ bool Generator<hw>::gemmFusedPostOpsFinalize(Label &labelLateExit, GEMMProblem &
     modState.ra.safeRelease(zero);
 
     status << "Load completed C tile" << status_stream::endl;
-    modStrategy.C.atomic = modStrategy.CO.atomic = false;
-    modState.Cext_strategy.atomic = false;
+    if (hw < HW::Xe2) {
+        /* Xe2 + later need atomic loads */
+        modStrategy.C.atomic = modStrategy.CO.atomic = false;
+        modState.Cext_strategy.atomic = false;
+    }
     gemmAccessC(COperation::Load, modProblem, modStrategy, modState);
 
     if (strategy.zeroTempC) {

@@ -377,25 +377,25 @@ public:
         const int grid_ndims = 3;
         for (int i = 0; i < grid_ndims; i++) {
             std::vector<std::pair<int, int>> blocks;
-            std::unordered_map<dsl::idx_t, int> dim_map;
+            dsl::idx_map_t<int> dim_map;
             auto to_dim_idx = [&](const dsl::idx_t &dim) {
-                if (dim_map.count(dim) != 0) return dim_map.at(dim);
+                if (dim_map.has(dim)) return dim_map.at(dim);
                 int idx = (int)dim_map.size();
-                dim_map.emplace(dim, idx);
+                dim_map.set(dim, idx);
                 return idx;
             };
             for (auto &b : walk_order.blocks()) {
                 if (b.grid_id != i) continue;
                 blocks.emplace_back(to_dim_idx(b.dim), b.size);
             }
-            if (dim_map.empty()) continue;
+            if (dim_map.is_empty()) continue;
             std::vector<int> dims;
             std::vector<expr_t> grid_vars;
             dims.resize(dim_map.size());
             grid_vars.resize(dim_map.size());
-            for (auto &kv : dim_map) {
-                dims[kv.second] = walk_order.dim_size(kv.first);
-                grid_vars[kv.second] = walk_order.grid_var(kv.first);
+            for (auto it = dim_map.begin(); it != dim_map.end(); it++) {
+                dims[it.value()] = walk_order.dim_size(*it);
+                grid_vars[it.value()] = walk_order.grid_var(*it);
             }
             if (walk_order.is_blocked(i) || gpu_utils::dev_getenv("B", false)) {
                 bind_kernel_grid_walk_order_blocked(

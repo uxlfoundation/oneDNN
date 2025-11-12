@@ -36,7 +36,7 @@ BENCHDNN_ARGS=("${@:5}")
 REPS=50
 PERF='--perf-template=%prb%,%-time%,%-ctime%'
 MODE='--mode=P'
-TIMELIMIT="--max-ms-per-prb=100"
+TIMELIMIT="--max-ms-per-prb=300"
 
 FINAL_ARGS=("${BENCHDNN_ARGS[0]}" "${PERF}" "${MODE}" "${TIMELIMIT}" "${BENCHDNN_ARGS[@]:1}")
 

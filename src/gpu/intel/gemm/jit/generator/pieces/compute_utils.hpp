@@ -34,6 +34,9 @@ struct SystolicParams {
     int opsPerChan;     // # of FMAs/stage
     int sdepth;         // Number of stages (systolic depth)
     int rcountMax;      // Maximum repeat count (# of RHS)
+#if XE3P
+    int rcountMin;      // Minimum repeat count (# of RHS)
+#endif
     int ksys;           // Total number of FMAs
     int osys;           // Output vector length
 };
@@ -48,6 +51,9 @@ static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem, co
     params.ksys = params.sdepth * params.opsPerChan;
     params.osys = ngen::GRF::bytes(hw) / std::max(problem.Tc_compute().real().size(), 4);
     params.rcountMax = 8;
+#if XE3P
+    params.rcountMin = problem.useBDPAS(hw) ? 8 : 0;
+#endif
 
     return params;
 }
@@ -121,10 +127,18 @@ static inline std::tuple<int,int,int,int> targetKernelTiling(ngen::HW hw, const 
         bool cColMajor = isRegisterColMajor(problem.Tc, problem.C, strategy.C);
         auto tileO_V = params.osys;
         auto tileI_N = params.ksys;
+#if XE3P
+	auto tileI_K = params.rcountMin;
+#endif
         if (strategy.unroll[cColMajor ? LoopN : LoopM] == 1)
             tileI_N = 0;
+#if XE3P
+        return cColMajor ? std::make_tuple(tileO_V, 0, tileI_N, tileI_K)
+                         : std::make_tuple(tileI_K, tileI_N, 0, tileO_V);
+#else
         return cColMajor ? std::make_tuple(tileO_V, 0, tileI_N, 0)
                          : std::make_tuple(0, tileI_N, 0, tileO_V);
+#endif
     }
     return std::make_tuple(0,0,0,0);
 }

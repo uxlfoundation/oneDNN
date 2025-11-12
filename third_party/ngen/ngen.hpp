@@ -4279,6 +4279,7 @@ void BinaryCodeGenerator<hw>::opBdpas(Opcode op, DataType defaultType, const Ins
     if (hw >= HW::Xe4) unsupported();
 #endif
     if (hw < HW::XE3P_35_10) unsupported();
+    if (sdepth != 8 || rcount != 8) unsupported();
 
     Instruction12 i{};
 

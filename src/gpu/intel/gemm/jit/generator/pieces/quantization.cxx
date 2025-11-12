@@ -94,6 +94,9 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     if (lateOffset && (Txo.isInt4() || Txo.isInt8()))
         Txo_int = Type::s32;
 
+    if (Txs == Type::f8_e8m0)
+	Txs_int = Type::f8_e8m0;
+
     // Get tile sizes, depending on whether A/B are copied to SLM.
     // For late scaling (after compute), scales are always applied to the whole tile.
     int r, c, k, rNoSLM, cNoSLM;

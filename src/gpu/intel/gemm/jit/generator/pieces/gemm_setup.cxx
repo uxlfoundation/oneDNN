@@ -3120,9 +3120,7 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
     }
 
 #if XE3P
-    state.useBDPAS = (hw >= HW::XE3P_35_10) && strategy.systolic && (problem.aScale2D() || problem.bScale2D());
-    if (problem.aScale2D()) state.useBDPAS &= (problem.Ta_scale == Type::f8_e8m0) && (problem.aqGroupK % 32 == 0);
-    if (problem.bScale2D()) state.useBDPAS &= (problem.Tb_scale == Type::f8_e8m0) && (problem.bqGroupK % 32 == 0);
+    state.useBDPAS = problem.useBDPAS(hw);
 #endif
 }
 

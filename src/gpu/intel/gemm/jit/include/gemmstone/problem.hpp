@@ -244,6 +244,15 @@ struct GEMMProblem : public CommonProblem {
     bool needsASums() const { return sumA || (bOffset == ABOffset::Calc && !earlyDequantizeB() && !quantized2DB()); }
     bool needsBSums() const { return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA() && !quantized2DA()); }
 
+#if XE3P
+    bool useBDPAS(ngen::HW hw) const {
+        bool useBDPAS = (hw > ngen::HW::XE3P_35_10 && (aScale2D() || bScale2D()));
+        if (aScale2D()) useBDPAS &= (Ta_scale == Type::f8_e8m0) && (aqGroupK % 32 == 0);
+        if (bScale2D()) useBDPAS &= (Tb_scale == Type::f8_e8m0) && (bqGroupK % 32 == 0);
+        return useBDPAS;
+    }
+#endif
+
     bool needsAGroupSums() const { return (bOffset == ABOffset::Calc && quantized2DB() && !earlyDequantizableOffset(Tb_ext, Tbo, Tb)); }
     bool needsBGroupSums() const { return (aOffset == ABOffset::Calc && quantized2DA() && !earlyDequantizableOffset(Ta_ext, Tao, Ta)); }
 

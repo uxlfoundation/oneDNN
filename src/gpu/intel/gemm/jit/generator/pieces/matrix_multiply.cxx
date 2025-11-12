@@ -455,8 +455,9 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                 srcC0 = null.retype(C0.getType());
 
 #if XE3P
-            if (state.useBDPAS)
+            if (state.useBDPAS){
                 bdpas(mod, sdepth, rc, C0, srcC0, V0, N0, AS0, BS0);
+	    }
             else
 #endif
             {

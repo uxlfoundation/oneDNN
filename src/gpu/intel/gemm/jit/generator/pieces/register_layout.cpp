@@ -1732,10 +1732,10 @@ bool RegisterLayout::hasTiling(int tileR, int tileC) const
 {
     for (auto &block: *this) {
         if (tileR > 0)
-            if (block.offsetR / tileR != (block.offsetR + block.nr - 1) / tileR)
+            if (!block.offsetC || (block.offsetR / tileR != (block.offsetR + block.nr - 1) / tileR))
                 return false;
         if (tileC > 0)
-            if (block.offsetC / tileC != (block.offsetC + block.nc - 1) / tileC)
+            if (!block.offsetC || (block.offsetC / tileC != (block.offsetC + block.nc - 1) / tileC))
                 return false;
     }
     return true;

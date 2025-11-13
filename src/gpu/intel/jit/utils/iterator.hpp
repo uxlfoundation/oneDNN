@@ -20,7 +20,7 @@
 #include <functional>
 #include <utility>
 
-#include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/dsl/tensor.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -206,7 +206,8 @@ class inner_tiles_t {
     using inner_iter_t = decltype(std::declval<const IterT>().begin());
     using iter_value_t = decltype(*std::declval<inner_iter_t>());
     using decayed_iter_value_t = typename std::decay<iter_value_t>::type;
-    static_assert(std::is_same<decayed_iter_value_t, layout_block_t>::value,
+    static_assert(
+            std::is_same<decayed_iter_value_t, dsl::layout::block_t>::value,
             "inner_tiles_t only accepts iterables with layout_block_t values");
 
 public:
@@ -235,10 +236,10 @@ public:
             return operator++();
         }
 
-        tile_t operator*() const {
+        dsl::tile_t operator*() const {
             auto dims = dims_;
             dims[(*it_).idx] *= factor();
-            return tile_t(dims);
+            return dsl::tile_t(dims);
         }
 
         iterator_t(

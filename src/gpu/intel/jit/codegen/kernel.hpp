@@ -73,9 +73,8 @@ public:
     expr_binding_t(ngen::HW hw) : hw_(hw) {}
 
     ~expr_binding_t() {
-        if (!cpp_compat::uncaught_exceptions()) {
             gpu_assert(expr2dst_.empty()) << "Detected missing unbind_dst().";
-        }
+        gpu_assert(expr2dst_.empty()) << "Detected missing unbind_dst().";
     }
 
     bool is_dst_bound(const expr_t &expr) const {

@@ -17,7 +17,8 @@
 #ifndef GPU_INTEL_JIT_IR_REORDER_HPP
 #define GPU_INTEL_JIT_IR_REORDER_HPP
 
-#include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/dsl/tensor.hpp"
+#include "gpu/intel/jit/ir/core.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -29,14 +30,14 @@ namespace jit {
 // data types is supported.
 class reorder_t : public func_impl_t, public object::info_t<reorder_t> {
 public:
-    static func_t make(layout_t src_layout, layout_t dst_layout,
+    static func_t make(dsl::layout_t src_layout, dsl::layout_t dst_layout,
             bool do_normalize = true) {
         if (do_normalize) normalize(src_layout, dst_layout);
         return func_t(
                 new reorder_t(std::move(src_layout), std::move(dst_layout)));
     }
 
-    static void normalize(layout_t &a, layout_t &b);
+    static void normalize(dsl::layout_t &a, dsl::layout_t &b);
 
     std::string str() const override {
         ostringstream_t oss;
@@ -47,18 +48,19 @@ public:
     IR_DEFINE_ARG_GET(dst_buf, 0)
     IR_DEFINE_ARG_GET(src_buf, 1)
 
-    layout_t src_layout;
-    layout_t dst_layout;
+    dsl::layout_t src_layout;
+    dsl::layout_t dst_layout;
 
 private:
-    reorder_t(layout_t src_layout, layout_t dst_layout)
+    reorder_t(dsl::layout_t src_layout, dsl::layout_t dst_layout)
         : func_impl_t(get_info())
         , src_layout(std::move(src_layout))
         , dst_layout(std::move(dst_layout)) {}
 };
 
-inline stmt_t create_reorder_stmt(const layout_t &src, const layout_t &dst,
-        const expr_t &src_buf, const expr_t &dst_buf) {
+inline stmt_t create_reorder_stmt(const dsl::layout_t &src,
+        const dsl::layout_t &dst, const expr_t &src_buf,
+        const expr_t &dst_buf) {
     gpu_assert(src.ndims() == dst.ndims()) << "Layouts are incompatible.";
     gpu_assert(src.elems() == dst.elems()) << "Layouts are incompatible.";
     auto func = reorder_t::make(src, dst);

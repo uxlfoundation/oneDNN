@@ -68,10 +68,8 @@ groupnorm_executable_t::desc_t groupnorm_executable_t::create_desc(
     prop_kind pkind = keep_stats ? prop_kind::forward_training
                                  : prop_kind::forward_inference;
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
 
     dst = to_format_any(dst);
 

@@ -47,10 +47,8 @@ eltwise_executable_t::desc_t eltwise_executable_t::create_desc(
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     dst = to_format_any(dst);
 
     const algorithm algo = static_cast<dnnl::algorithm>(
@@ -94,16 +92,13 @@ eltwise_bwd_executable_t::desc_t eltwise_bwd_executable_t::create_desc(
     const auto fwd_algo = static_cast<dnnl::algorithm>(
             op->get_attr<int64_t>(op_attr::fwd_alg_kind));
 
-    auto forward_data = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto forward_data = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     dnnl::eltwise_forward::primitive_desc fwd_hints(p_engine,
             prop_kind::forward_training, fwd_algo, forward_data, forward_data,
             alpha, beta, prm_attr);
 
-    auto diff_dst = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
-    auto diff_src = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto diff_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
+    auto diff_src = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     diff_dst = to_format_any(diff_dst);
     diff_src = to_format_any(diff_src);
     dnnl::eltwise_backward::primitive_desc pd(p_engine, bwd_algo, diff_src,
@@ -223,13 +218,9 @@ binary_executable_t::desc_t binary_executable_t::create_desc(
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto src0 = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto src1 = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
-    auto tmp_dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
-
+    auto src0 = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto src1 = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
+    auto tmp_dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     // For binary, if we set dst memory tag any, it will deduce strange format
     // for dst when src0 shape is 1x1x1x1, such as cdab. It will cause binary
     // performance poor, and the post matmul pattern performance is poor.
@@ -249,8 +240,7 @@ binary_executable_t::desc_t binary_executable_t::create_desc(
 
     dnnl::binary::primitive_desc pd;
     if (algo == algorithm::binary_select) {
-        auto src2 = make_dnnl_memory_desc(
-                op->get_input_value(2)->get_logical_tensor());
+        auto src2 = make_dnnl_memory_desc(op->get_input_logical_tensor(2));
         pd = dnnl::binary::primitive_desc(
                 p_engine, algo, src0, src1, src2, dst, prm_attr);
     } else {
@@ -281,13 +271,10 @@ prelu_executable_t::desc_t prelu_executable_t::create_desc(
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto wei = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto wei = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
     wei = to_format_any(wei);
-    auto dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     dst = to_format_any(dst);
 
     dnnl::prelu_forward::primitive_desc pd(
@@ -316,18 +303,13 @@ prelu_bwd_executable_t::desc_t prelu_bwd_executable_t::create_desc(
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto forward_data = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto wei = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
+    auto forward_data = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto wei = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
     wei = to_format_any(wei);
-    auto diff_dst = make_dnnl_memory_desc(
-            op->get_input_value(2)->get_logical_tensor());
+    auto diff_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(2));
 
-    auto diff_src = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
-    auto diff_wei = make_dnnl_memory_desc(
-            op->get_output_value(1)->get_logical_tensor());
+    auto diff_src = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
+    auto diff_wei = make_dnnl_memory_desc(op->get_output_logical_tensor(1));
     diff_wei = to_format_any(diff_wei);
 
     auto hint_fwd_pd = dnnl::prelu_forward::primitive_desc(p_engine,

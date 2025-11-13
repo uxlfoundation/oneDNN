@@ -33,9 +33,8 @@ matmul_executable_t::matmul_executable_t(std::shared_ptr<op_t> &op,
     using ltw = logical_tensor_wrapper_t;
     // if with zero dimension, the matmul op will take no effect, we
     // construct a dummy kernel
-    if (ltw(op->get_input_value(0)->get_logical_tensor()).has_zero_dim()
-            || ltw(op->get_input_value(1)->get_logical_tensor())
-                       .has_zero_dim()) {
+    if (ltw(op->get_input_logical_tensor(0)).has_zero_dim()
+            || ltw(op->get_input_logical_tensor(1)).has_zero_dim()) {
         is_dummy_ = true;
         return;
     }
@@ -46,8 +45,8 @@ matmul_executable_t::matmul_executable_t(std::shared_ptr<op_t> &op,
     // The scratchpad size of pd created by using any format tag may be
     // different from the scratchpad size of pd created by using queried
     // optimal format tag
-    dnnl::memory::desc stored = make_dnnl_memory_desc(
-            op->get_output_value(1)->get_logical_tensor());
+    dnnl::memory::desc stored
+            = make_dnnl_memory_desc(op->get_output_logical_tensor(1));
     dnnl::memory::desc real = desc.scratchpad_desc();
     if (stored != real) {
         auto scratchpad_val = op->get_output_value(1);
@@ -152,6 +151,8 @@ cl_event matmul_executable_t::execute_ocl(const stream &stream,
 matmul_executable_t::desc_t matmul_executable_t::create_desc(
         std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
         pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout) {
+    using ltw = logical_tensor_wrapper_t;
+
     // first look up the cache
     if (pd_cache.find(op.get()) != pd_cache.end()) {
         auto pd = graph::utils::any_cast<dnnl::matmul::primitive_desc>(
@@ -174,25 +175,17 @@ matmul_executable_t::desc_t matmul_executable_t::create_desc(
         prm_attr.set_accumulation_mode(str2accumulation_mode(acc_mode));
     }
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     // For non-constant activation and weight, create primitive desc with
     // strided layout
-    bool const_activation
-            = logical_tensor_wrapper_t(
-                      op->get_input_value(0)->get_logical_tensor())
-                      .is_constant()
+    bool const_activation = ltw(op->get_input_logical_tensor(0)).is_constant()
             && is_constant_cache_enabled(p_engine);
     if (use_block_layout && const_activation) { src = to_format_any(src); }
-    auto wei = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
-    bool const_weight = logical_tensor_wrapper_t(
-                                op->get_input_value(1)->get_logical_tensor())
-                                .is_constant()
+    auto wei = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
+    bool const_weight = ltw(op->get_input_logical_tensor(1)).is_constant()
             && is_constant_cache_enabled(p_engine);
     if (use_block_layout && const_weight) { wei = to_format_any(wei); }
-    auto dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     const bool keep_dst_layout = op->has_attr(op_attr::keep_dst_layout)
             && op->get_attr<bool>(op_attr::keep_dst_layout);
     if (dst.get_format_kind() == dnnl::memory::format_kind::any
@@ -206,8 +199,7 @@ matmul_executable_t::desc_t matmul_executable_t::create_desc(
     dnnl::matmul::primitive_desc pd;
     if (op->has_attr(op_attr::with_bias)
             && op->get_attr<bool>(op_attr::with_bias)) {
-        auto bias = make_dnnl_memory_desc(
-                op->get_input_value(2)->get_logical_tensor());
+        auto bias = make_dnnl_memory_desc(op->get_input_logical_tensor(2));
         bias = to_format_any(bias);
         pd = dnnl::matmul::primitive_desc(
                 p_engine, src, wei, bias, dst, prm_attr);

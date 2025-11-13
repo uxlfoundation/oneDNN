@@ -108,10 +108,8 @@ reduction_executable_t::desc_t reduction_executable_t::create_desc(
 
     float eps = 0.0f;
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     dst = to_format_any(dst);
 
     dnnl::reduction::primitive_desc pd(

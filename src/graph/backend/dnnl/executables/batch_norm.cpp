@@ -379,19 +379,16 @@ bn_folding_t::desc_t bn_folding_t::create_desc(std::shared_ptr<op_t> &op,
     desc.with_bias_ = op->get_attr<bool>(op_attr::with_bias);
 
     size_t in_idx = 0;
-    auto weights = make_dnnl_memory_desc(
-            op->get_input_value(in_idx++)->get_logical_tensor());
-    auto bias = desc.with_bias_ ? make_dnnl_memory_desc(
-                        op->get_input_value(in_idx++)->get_logical_tensor())
-                                : memory::desc();
-    auto scale = make_dnnl_memory_desc(
-            op->get_input_value(in_idx++)->get_logical_tensor());
-    auto shift = make_dnnl_memory_desc(
-            op->get_input_value(in_idx++)->get_logical_tensor());
-    auto mean = make_dnnl_memory_desc(
-            op->get_input_value(in_idx++)->get_logical_tensor());
-    auto variance = make_dnnl_memory_desc(
-            op->get_input_value(in_idx++)->get_logical_tensor());
+    auto weights
+            = make_dnnl_memory_desc(op->get_input_logical_tensor(in_idx++));
+    auto bias = desc.with_bias_
+            ? make_dnnl_memory_desc(op->get_input_logical_tensor(in_idx++))
+            : memory::desc();
+    auto scale = make_dnnl_memory_desc(op->get_input_logical_tensor(in_idx++));
+    auto shift = make_dnnl_memory_desc(op->get_input_logical_tensor(in_idx++));
+    auto mean = make_dnnl_memory_desc(op->get_input_logical_tensor(in_idx++));
+    auto variance
+            = make_dnnl_memory_desc(op->get_input_logical_tensor(in_idx++));
 
     // 1. sqrt_variance = sqrt(variance + epsilon)
 
@@ -598,10 +595,8 @@ batchnorm_executable_t::desc_t batchnorm_executable_t::create_desc(
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     dst = to_format_any(dst);
 
     if (src.get_inner_nblks() == 1 && src.get_inner_idxs()[0] == 1
@@ -806,8 +801,7 @@ batchnorm_bwd_executable_t::desc_t batchnorm_bwd_executable_t::create_desc(
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
 
     if (src.get_inner_nblks() == 1 && src.get_inner_idxs()[0] == 1
             && src.get_inner_blks()[0] == 4) {

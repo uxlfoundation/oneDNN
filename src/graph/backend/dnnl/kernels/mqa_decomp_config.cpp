@@ -98,8 +98,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     memory::data_type dt_inter = quantized
             ? dt
             : static_cast<memory::data_type>(
-                    ltw(mqa_op[1]->get_output_value(0)->get_logical_tensor())
-                            .data_type());
+                    ltw(mqa_op[1]->get_output_logical_tensor(0)).data_type());
 
     ////////////////////////////////////////////////////////////////////////
     ////////////// Start Creating primitives ///////////////////////////////
@@ -138,7 +137,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
 
     auto original_matmul1 = mqa_op[1];
     auto wei_md = make_dnnl_memory_desc(
-            original_matmul1->get_input_value(1)->get_logical_tensor());
+            original_matmul1->get_input_logical_tensor(1));
     sub_wei1_user_md = memory::desc(
             sub_wei1_dims, dt_wei_user, {1, seq_len * num_head, 1});
     // Flip the format to have `ba` weights MBI item in per thread loop.

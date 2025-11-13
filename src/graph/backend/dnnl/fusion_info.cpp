@@ -236,7 +236,7 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
             int32_t zp = pop->get_zp();
             const auto psrc_val = op->get_input_value(extra_inputs[0]);
             const auto psrc = psrc_val->get_logical_tensor();
-            const auto dst = op->get_output_value(0)->get_logical_tensor();
+            const auto dst = op->get_output_logical_tensor(0);
             // check if can use post-sum, otherwise use binary post ops
             // algorithm should be binary_add
             bool is_post_sum = alg == dnnl::algorithm::binary_add;

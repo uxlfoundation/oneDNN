@@ -39,10 +39,8 @@ softmax_executable_t::desc_t softmax_executable_t::create_desc(
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
 
     int64_t axis = op->get_attr<int64_t>(op_attr::axis);
     if (axis < 0) { axis += src.get_ndims(); }
@@ -82,20 +80,19 @@ softmax_bwd_executable_t::desc_t softmax_bwd_executable_t::create_desc(
     dnnl::primitive_attr prm_attr;
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto diff_dst = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto diff_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     diff_dst = to_format_any(diff_dst);
 
-    auto diff_src_lt = op->get_output_value(0)->get_logical_tensor();
+    auto diff_src_lt = op->get_output_logical_tensor(0);
     auto diff_src = make_dnnl_memory_desc(diff_src_lt);
 
-    const auto rank = op->get_output_value(0)->get_logical_tensor().ndims;
+    const auto rank = op->get_output_logical_tensor(0).ndims;
     const auto res = utils::try_reverse_axis(
             op->get_attr<int64_t>(op_attr::axis), rank);
     assertm(res.first, "Incorrect axis value.");
     const auto axis = res.second;
 
-    auto dst_lt = op->get_input_value(1)->get_logical_tensor();
+    auto dst_lt = op->get_input_logical_tensor(1);
     auto dst = make_dnnl_memory_desc(dst_lt);
 
     // construct src with layout information from dst and data type information

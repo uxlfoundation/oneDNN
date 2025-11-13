@@ -73,10 +73,8 @@ bool check_maxpool_dilations(const op_t *n) {
 // only when data is bf16, gamma/beta/mean/var can be bf16.
 // If data is bf16, gamma/beta/mean/var can be f32 or bf16.
 bool check_bn_data_type(const op_t *n) {
-    const logical_tensor_t &src_lt
-            = n->get_input_value(0)->get_logical_tensor();
-    const logical_tensor_t &aux_lt
-            = n->get_input_value(2)->get_logical_tensor();
+    const logical_tensor_t &src_lt = n->get_input_logical_tensor(0);
+    const logical_tensor_t &aux_lt = n->get_input_logical_tensor(2);
 
     VCHECK_SHAPE_INFER(!(src_lt.data_type != data_type::bf16
                                && aux_lt.data_type == data_type::bf16),
@@ -179,10 +177,8 @@ bool check_ln_gn_data_type(const op_t *n) {
 // check function for data_type of Typecast.
 // for TypeCast, input & output should not have the same dtype
 bool check_typecast_data_type(const op_t *n) {
-    const logical_tensor_t &src_lt
-            = n->get_input_value(0)->get_logical_tensor();
-    const logical_tensor_t &aux_lt
-            = n->get_output_value(0)->get_logical_tensor();
+    const logical_tensor_t &src_lt = n->get_input_logical_tensor(0);
+    const logical_tensor_t &aux_lt = n->get_output_logical_tensor(0);
 
     const auto is_f16_and_bf16_tc
             = (src_lt.data_type == data_type::bf16
@@ -313,10 +309,8 @@ bool check_reduce_axes(const op_t *n) {
 // and zps (if presented) should be same. Especially when qtype == "per-tensor",
 // size of scales/zps should be 1. For f8 quantization, zps is not required.
 bool check_quant_dequant_scales_zps(const op_t *n) {
-    const logical_tensor_t &src_lt
-            = n->get_input_value(0)->get_logical_tensor();
-    const logical_tensor_t &dst_lt
-            = n->get_input_value(0)->get_logical_tensor();
+    const logical_tensor_t &src_lt = n->get_input_logical_tensor(0);
+    const logical_tensor_t &dst_lt = n->get_input_logical_tensor(0);
     const int64_t sz_scales
             = n->get_attr<std::vector<float>>(op_attr::scales).size();
 
@@ -364,8 +358,7 @@ bool check_quant_dequant_scales_zps(const op_t *n) {
 // unlike Quantize/Dequantize, scales and zps are inputs here.
 bool check_dyn_quant_dequant_scales_zps(const op_t *n) {
     const int64_t inputs_num = n->num_inputs();
-    const int64_t sz_scales
-            = n->get_input_value(1)->get_logical_tensor().dims[0];
+    const int64_t sz_scales = n->get_input_logical_tensor(1).dims[0];
     // in case of not setting value for scales
     if (sz_scales == DNNL_GRAPH_UNKNOWN_DIM) { return true; }
 
@@ -385,23 +378,17 @@ bool check_dyn_quant_dequant_scales_zps(const op_t *n) {
 
         return true;
     } else {
-        const int64_t sz_zps
-                = n->get_input_value(2)->get_logical_tensor().dims[0];
+        const int64_t sz_zps = n->get_input_logical_tensor(2).dims[0];
 
         // in case of not setting value for zps
         if (sz_zps == DNNL_GRAPH_UNKNOWN_DIM) { return true; }
 
         if (qtype == "per_group") {
-            const auto &ndims
-                    = n->get_input_value(1)->get_logical_tensor().ndims;
-            const auto &scale_ndims
-                    = n->get_input_value(1)->get_logical_tensor().ndims;
-            const auto &scale_dims
-                    = n->get_input_value(1)->get_logical_tensor().dims;
-            const auto &zp_ndims
-                    = n->get_input_value(2)->get_logical_tensor().ndims;
-            const auto &zp_dims
-                    = n->get_input_value(2)->get_logical_tensor().dims;
+            const auto &ndims = n->get_input_logical_tensor(1).ndims;
+            const auto &scale_ndims = n->get_input_logical_tensor(1).ndims;
+            const auto &scale_dims = n->get_input_logical_tensor(1).dims;
+            const auto &zp_ndims = n->get_input_logical_tensor(2).ndims;
+            const auto &zp_dims = n->get_input_logical_tensor(2).dims;
             VCHECK_SHAPE_INFER((ndims >= 2),
                     "group quantization requires at least two dimensions");
             VCHECK_SHAPE_INFER(((ndims == scale_ndims) && (ndims == zp_ndims)),

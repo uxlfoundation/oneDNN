@@ -107,7 +107,7 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
         if (post_sum_input) {
             bool can_inplace = false;
             auto post_sum_input_lt = post_sum_input->get_logical_tensor();
-            auto output_lt = op.get_output_value(0)->get_logical_tensor();
+            auto output_lt = op.get_output_logical_tensor(0);
             auto post_sum_input_desc = make_dnnl_memory_desc(post_sum_input_lt);
             auto output_desc = make_dnnl_memory_desc(output_lt);
             // allow inplace for conv(u8)+sum(s8)
@@ -128,16 +128,16 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
             if (can_inplace) { pairs.emplace_back(index, 0); }
         }
     } else if (ops.count(op.get_kind())) {
-        auto in0 = op.get_input_value(0)->get_logical_tensor();
-        auto out0 = op.get_output_value(0)->get_logical_tensor();
+        auto in0 = op.get_input_logical_tensor(0);
+        auto out0 = op.get_output_logical_tensor(0);
         // always assume in0 and out0 may inplace here, please swap inputs for
         // binary operators to broadcast on src1 and inplace on src0
         const bool can_inplace
                 = make_dnnl_memory_desc(in0) == make_dnnl_memory_desc(out0);
         if (can_inplace) { pairs.emplace_back(0, 0); }
     } else if (op.get_kind() == op_kind::dnnl_layernorm_bwd) {
-        auto diff_dst = op.get_input_value(1)->get_logical_tensor();
-        auto diff_src = op.get_output_value(0)->get_logical_tensor();
+        auto diff_dst = op.get_input_logical_tensor(1);
+        auto diff_src = op.get_output_logical_tensor(0);
         const bool can_inplace = make_dnnl_memory_desc(diff_dst)
                 == make_dnnl_memory_desc(diff_src);
         if (can_inplace) { pairs.emplace_back(1, 0); }

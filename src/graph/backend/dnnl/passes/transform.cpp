@@ -594,8 +594,7 @@ status_t fuse_to_int8_concat(std::shared_ptr<subgraph_t> &sg) {
 // Avoid the assertion caused by concat with 0-dim src on NV GPU
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
         && DNNL_GPU_VENDOR == DNNL_VENDOR_NVIDIA
-            const auto src_lt
-                    = concat_op->get_input_value(i)->get_logical_tensor();
+            const auto src_lt = concat_op->get_input_logical_tensor(i);
             const auto src_dims = ltw(src_lt).vdims();
             if (std::any_of(src_dims.begin(), src_dims.end(),
                         [](dim_t src_dim) { return src_dim == 0; })) {
@@ -1511,8 +1510,7 @@ status_t convert_bias_to_f32(std::shared_ptr<subgraph_t> &sg) {
                         != op_kind::dnnl_mul_scales
                 || cur_op->get_input_op(1)->get_kind()
                         != op_kind::dnnl_mul_scales
-                || ltw(cur_op->get_input_value(2)->get_logical_tensor())
-                                .data_type()
+                || ltw(cur_op->get_input_logical_tensor(2)).data_type()
                         != impl::data_type::bf16
                 || visited.count(cur_op.get()))
             continue;
@@ -1589,10 +1587,8 @@ status_t insert_bn_folding(std::shared_ptr<subgraph_t> &sg) {
         // primitive requires src0 and src1 has the same dtype. need support
         // dtype promotion when using binary primitive
         if (sg->get_engine_kind() == graph::engine_kind::gpu
-                && cur_op->get_input_value(0)->get_logical_tensor().data_type
-                        != cur_op->get_input_value(1)
-                                   ->get_logical_tensor()
-                                   .data_type) {
+                && cur_op->get_input_logical_tensor(0).data_type
+                        != cur_op->get_input_logical_tensor(1).data_type) {
             continue;
         }
 
@@ -1636,7 +1632,7 @@ status_t insert_bn_folding(std::shared_ptr<subgraph_t> &sg) {
         auto updated_conv_wei = std::make_shared<value_t>(*bn_folding_op, 0,
                 empty_logical_tensor_with_default_id(), true);
         updated_conv_wei->set_data_type(
-                prv_op.get_input_value(1)->get_logical_tensor().data_type);
+                prv_op.get_input_logical_tensor(1).data_type);
         bn_folding_op->add_output(updated_conv_wei);
         updated_conv_wei->add_consumer(prv_op, 1);
         prv_op.connect_input(1, updated_conv_wei);
@@ -1645,7 +1641,7 @@ status_t insert_bn_folding(std::shared_ptr<subgraph_t> &sg) {
                 empty_logical_tensor_with_default_id(), true);
         // when bias is none, f32 zero bias will be allocated
         const auto bias_dtype = prv_op.num_inputs() == 3
-                ? prv_op.get_input_value(2)->get_logical_tensor().data_type
+                ? prv_op.get_input_logical_tensor(2).data_type
                 : graph::data_type::f32;
         updated_conv_bias->set_data_type(bias_dtype);
         bn_folding_op->add_output(updated_conv_bias);
@@ -1718,8 +1714,7 @@ status_t conv_bwd_data_canonicalization(std::shared_ptr<subgraph_t> &sg) {
 
         if (need_permute_0) {
             // input permute
-            auto in_ndims
-                    = cur_op->get_input_value(0)->get_logical_tensor().ndims;
+            auto in_ndims = cur_op->get_input_logical_tensor(0).ndims;
             auto in_perm = get_permutation(in_ndims, "NXC", "NCX");
 
             op_ptr in_perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
@@ -1728,8 +1723,7 @@ status_t conv_bwd_data_canonicalization(std::shared_ptr<subgraph_t> &sg) {
             rewriter.insert_op_before(in_perm_op, cur_op, 0);
 
             // output permute
-            auto out_ndims
-                    = cur_op->get_output_value(0)->get_logical_tensor().ndims;
+            auto out_ndims = cur_op->get_output_logical_tensor(0).ndims;
             auto out_perm = get_permutation(out_ndims, "NCX", "NXC");
 
             op_ptr out_perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
@@ -1746,8 +1740,7 @@ status_t conv_bwd_data_canonicalization(std::shared_ptr<subgraph_t> &sg) {
         }
 
         if (need_permute_1) {
-            auto wei_ndims
-                    = cur_op->get_input_value(1)->get_logical_tensor().ndims;
+            auto wei_ndims = cur_op->get_input_logical_tensor(1).ndims;
             auto wei_perm = get_permutation(wei_ndims, "XIO", "OIX");
 
             op_ptr perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
@@ -1787,8 +1780,7 @@ status_t conv_bwd_weights_canonicalization(std::shared_ptr<subgraph_t> &sg) {
                 [](int64_t d) { return d == 0; });
         if (is_filter_shape_default) {
             const std::vector<int64_t> filter_shape
-                    = ltw(cur_op->get_output_value(0)->get_logical_tensor())
-                              .vdims();
+                    = ltw(cur_op->get_output_logical_tensor(0)).vdims();
             cur_op->set_attr(op_attr::weights_shape, filter_shape);
         }
 
@@ -1803,8 +1795,7 @@ status_t conv_bwd_weights_canonicalization(std::shared_ptr<subgraph_t> &sg) {
 
         if (need_permute_0) {
             // input permute
-            auto in0_ndims
-                    = cur_op->get_input_value(0)->get_logical_tensor().ndims;
+            auto in0_ndims = cur_op->get_input_logical_tensor(0).ndims;
             auto in0_perm = get_permutation(in0_ndims, "NXC", "NCX");
 
             op_ptr in0_perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
@@ -1812,8 +1803,7 @@ status_t conv_bwd_weights_canonicalization(std::shared_ptr<subgraph_t> &sg) {
                     op_attr::permutation, in0_perm);
             rewriter.insert_op_before(in0_perm_op, cur_op, 0);
 
-            auto in1_ndims
-                    = cur_op->get_input_value(1)->get_logical_tensor().ndims;
+            auto in1_ndims = cur_op->get_input_logical_tensor(1).ndims;
             auto in1_perm = get_permutation(in1_ndims, "NXC", "NCX");
 
             op_ptr in1_perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
@@ -1825,8 +1815,7 @@ status_t conv_bwd_weights_canonicalization(std::shared_ptr<subgraph_t> &sg) {
         }
         // output permute
         if (need_permute_1) {
-            auto out_ndims
-                    = cur_op->get_output_value(0)->get_logical_tensor().ndims;
+            auto out_ndims = cur_op->get_output_logical_tensor(0).ndims;
             std::string filter_format
                     = cur_op->get_attr<std::string>(op_attr::weights_format);
             std::vector<int64_t> out_perm
@@ -1888,8 +1877,7 @@ status_t pool_fwd_canonicalization(std::shared_ptr<subgraph_t> &sg) {
             rewriter.insert_op_before(in0_perm_op, cur_op, 0);
 
             // dst permute
-            auto out0_ndims
-                    = cur_op->get_output_value(0)->get_logical_tensor().ndims;
+            auto out0_ndims = cur_op->get_output_logical_tensor(0).ndims;
             auto out0_perm = get_permutation(out0_ndims, "NCX", "NXC");
 
             op_ptr out0_perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
@@ -1942,8 +1930,7 @@ status_t pool_bwd_canonicalization(std::shared_ptr<subgraph_t> &sg) {
             }
 
             // diff_src permute
-            auto out0_ndims
-                    = cur_op->get_output_value(0)->get_logical_tensor().ndims;
+            auto out0_ndims = cur_op->get_output_logical_tensor(0).ndims;
             auto out0_perm = get_permutation(out0_ndims, "NCX", "NXC");
 
             op_ptr out_perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
@@ -2328,8 +2315,7 @@ status_t batchnorm_bwd_canonicalization(std::shared_ptr<subgraph_t> &sg) {
 
         if (need_permute) {
             // input0 permute
-            auto in0_ndims
-                    = cur_op->get_input_value(0)->get_logical_tensor().ndims;
+            auto in0_ndims = cur_op->get_input_logical_tensor(0).ndims;
             auto in0_perm = get_permutation(in0_ndims, "NXC", "NCX");
 
             op_ptr in_perm_op_0 = std::make_shared<op_t>(op_kind::dnnl_permute);
@@ -2338,8 +2324,7 @@ status_t batchnorm_bwd_canonicalization(std::shared_ptr<subgraph_t> &sg) {
             rewriter.insert_op_before(in_perm_op_0, cur_op, 0);
 
             // input1 permute
-            auto in1_ndims
-                    = cur_op->get_input_value(1)->get_logical_tensor().ndims;
+            auto in1_ndims = cur_op->get_input_logical_tensor(1).ndims;
             auto in1_perm = get_permutation(in1_ndims, "NXC", "NCX");
 
             op_ptr in_perm_op_1 = std::make_shared<op_t>(op_kind::dnnl_permute);
@@ -2348,8 +2333,7 @@ status_t batchnorm_bwd_canonicalization(std::shared_ptr<subgraph_t> &sg) {
             rewriter.insert_op_before(in_perm_op_1, cur_op, 1);
 
             // output permute
-            auto out_ndims
-                    = cur_op->get_output_value(0)->get_logical_tensor().ndims;
+            auto out_ndims = cur_op->get_output_logical_tensor(0).ndims;
             auto out_perm = get_permutation(out_ndims, "NCX", "NXC");
 
             op_ptr out_perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
@@ -2467,8 +2451,8 @@ status_t binary_canonicalization(std::shared_ptr<subgraph_t> &sg) {
                 : false;
 
         // check doable
-        auto src0_lt = cur_op->get_input_value(0)->get_logical_tensor();
-        auto src1_lt = cur_op->get_input_value(1)->get_logical_tensor();
+        auto src0_lt = cur_op->get_input_logical_tensor(0);
+        auto src1_lt = cur_op->get_input_logical_tensor(1);
 
         bool shape_check_ok = true;
         if (is_bias_add) {
@@ -2540,12 +2524,10 @@ status_t binary_broadcast_swap(std::shared_ptr<subgraph_t> &sg) {
             continue;
 
         // check doable
-        auto src0_lt = cur_op->get_input_value(0)->get_logical_tensor();
-        auto src1_lt = cur_op->get_input_value(1)->get_logical_tensor();
+        auto src0_lt = cur_op->get_input_logical_tensor(0);
+        auto src1_lt = cur_op->get_input_logical_tensor(1);
 
-        if (logical_tensor_wrapper_t(src0_lt).nelems()
-                >= logical_tensor_wrapper_t(src1_lt).nelems())
-            continue;
+        if (ltw(src0_lt).nelems() >= ltw(src1_lt).nelems()) continue;
 
         op_ptr binary_op = std::make_shared<op_t>(op_kind::dnnl_binary);
         binary_op->merge_attributes(cur_op->get_attributes());
@@ -2633,8 +2615,7 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
             // onednn didn't provide api to check extra flags, here we construct
             // a temp md without extra flag, and then compare it with the origin
             // md. If they are not equal, the origin md may has extra flags.
-            auto fused_out_lt
-                    = next_op.get_output_value(0)->get_logical_tensor();
+            auto fused_out_lt = next_op.get_output_logical_tensor(0);
             auto fused_out_md = make_dnnl_memory_desc(fused_out_lt);
             auto format_tag = get_format_tag_str(fused_out_md);
             const auto &dims = fused_out_md.get_dims();
@@ -3723,10 +3704,8 @@ impl::status_t lift_up_post_add_for_matmul(std::shared_ptr<subgraph_t> &sg) {
             const auto alg_kind = static_cast<dnnl::algorithm>(
                     post_add.get_attr<int64_t>(op_attr::alg_kind));
             if (alg_kind != dnnl::algorithm::binary_add) continue;
-            int32_t add_ndims
-                    = post_add.get_input_value(0)->get_logical_tensor().ndims;
-            int32_t matmul_ndims
-                    = post_add.get_input_value(0)->get_logical_tensor().ndims;
+            int32_t add_ndims = post_add.get_input_logical_tensor(0).ndims;
+            int32_t matmul_ndims = post_add.get_input_logical_tensor(0).ndims;
             // A little bit tricky here, it's only served for MQA case now.
             if (add_ndims != 4 && matmul_ndims != 3) continue;
 
@@ -3784,8 +3763,7 @@ impl::status_t lift_up_weight_reshape_for_depthwiseconv(
         const auto groups = op->get_attr<int64_t>(op_attr::groups);
         const size_t wei_offset = 1;
         const auto wei_dims
-                = ltw(op->get_input_value(wei_offset)->get_logical_tensor())
-                          .vdims();
+                = ltw(op->get_input_logical_tensor(wei_offset)).vdims();
         const auto wei_format = (op->has_attr(op_attr::weights_format))
                 ? op->get_attr<std::string>(op_attr::weights_format)
                 : "XIO";
@@ -3856,8 +3834,7 @@ impl::status_t fuse_src_transpose_to_matmul(std::shared_ptr<subgraph_t> &sg) {
 
     subgraph_rewriter_t rewriter(sg);
     for (auto &transpose_op : transpose_ops) {
-        value_ptr in_val = transpose_op->get_input_value(0);
-        auto in_lt = in_val->get_logical_tensor();
+        auto in_lt = transpose_op->get_input_logical_tensor(0);
         value_ptr out_val = transpose_op->get_output_value(0);
         std::vector<int64_t> order
                 = transpose_op->get_attr<std::vector<int64_t>>(op_attr::order);
@@ -3992,8 +3969,8 @@ impl::status_t fuse_reshape_for_gqa(std::shared_ptr<subgraph_t> &sg) {
     dnnl_dim_t head_num;
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() == op_kind::dnnl_reshape) {
-            auto in = cur_op->get_input_value(0)->get_logical_tensor();
-            auto out = cur_op->get_output_value(0)->get_logical_tensor();
+            auto in = cur_op->get_input_logical_tensor(0);
+            auto out = cur_op->get_output_logical_tensor(0);
             if (ltw(in).ndims() == 5 || ltw(out).ndims() == 5) {
                 reshape_ops.emplace_back(cur_op);
                 if (ltw(in).ndims() == 5) head_num = ltw(out).vdims()[1];
@@ -4003,8 +3980,8 @@ impl::status_t fuse_reshape_for_gqa(std::shared_ptr<subgraph_t> &sg) {
 
     subgraph_rewriter_t rewriter(sg);
     for (auto &reshape_op : reshape_ops) {
-        auto in = reshape_op->get_input_value(0)->get_logical_tensor();
-        auto out = reshape_op->get_output_value(0)->get_logical_tensor();
+        auto in = reshape_op->get_input_logical_tensor(0);
+        auto out = reshape_op->get_output_logical_tensor(0);
         if (ltw(in).ndims() == 5)
             rewriter.fuse_op_to_predecessor(reshape_op->shared_from_this());
         if (ltw(out).ndims() == 5) {
@@ -4035,8 +4012,8 @@ impl::status_t fuse_reshape_for_gqa_gpu(std::shared_ptr<subgraph_t> &sg) {
     std::vector<op_ptr> reshape_ops;
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() == op_kind::dnnl_reshape) {
-            auto in = cur_op->get_input_value(0)->get_logical_tensor();
-            auto out = cur_op->get_output_value(0)->get_logical_tensor();
+            auto in = cur_op->get_input_logical_tensor(0);
+            auto out = cur_op->get_output_logical_tensor(0);
             if (ltw(in).ndims() == 5 || ltw(out).ndims() == 5) {
                 reshape_ops.emplace_back(cur_op);
             }
@@ -4045,8 +4022,8 @@ impl::status_t fuse_reshape_for_gqa_gpu(std::shared_ptr<subgraph_t> &sg) {
     if (reshape_ops.empty()) { return impl::status::success; }
     subgraph_rewriter_t rewriter(sg);
     for (auto &reshape_op : reshape_ops) {
-        auto in = reshape_op->get_input_value(0)->get_logical_tensor();
-        auto out = reshape_op->get_output_value(0)->get_logical_tensor();
+        auto in = reshape_op->get_input_logical_tensor(0);
+        auto out = reshape_op->get_output_logical_tensor(0);
         if (ltw(in).ndims() == 5)
             rewriter.fuse_op_to_predecessor(reshape_op->shared_from_this());
         if (ltw(out).ndims() == 5) {
@@ -4151,7 +4128,7 @@ status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg) {
         if (!in_val1->has_producer()) continue;
         auto &in_op1 = in_val1->get_producer();
         if (in_op1.get_kind() != op_kind::dnnl_gen_index) continue;
-        auto ndim = in_op1.get_input_value(0)->get_logical_tensor().ndims;
+        auto ndim = in_op1.get_input_logical_tensor(0).ndims;
         if (in_op1.get_attr<int64_t>(op_attr::axis) != ndim - 1) continue;
         if (in_op1.get_input_value(0) != out_op.get_input_value(0)) continue;
         op_list.emplace_back(in_op1.shared_from_this());
@@ -4161,7 +4138,7 @@ status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg) {
         if (!in_val0->has_producer()) continue;
         auto &in_op0 = in_val0->get_producer();
         if (in_op0.get_kind() == op_kind::dnnl_gen_index) {
-            auto ndim = in_op0.get_input_value(0)->get_logical_tensor().ndims;
+            auto ndim = in_op0.get_input_logical_tensor(0).ndims;
             if (in_op0.get_attr<int64_t>(op_attr::axis) != ndim - 2) continue;
             op_list.emplace_back(in_op0.shared_from_this());
             matched = true;
@@ -4184,9 +4161,7 @@ status_t fuse_implicit_causal_mask(std::shared_ptr<subgraph_t> &sg) {
                     // Check if the GenIndex op exists
                     if (gen_index_op.get_kind() != op_kind::dnnl_gen_index)
                         continue;
-                    auto ndim = gen_index_op.get_input_value(0)
-                                        ->get_logical_tensor()
-                                        .ndims;
+                    auto ndim = gen_index_op.get_input_logical_tensor(0).ndims;
                     if (gen_index_op.get_attr<int64_t>(op_attr::axis)
                             != ndim - 2)
                         continue;

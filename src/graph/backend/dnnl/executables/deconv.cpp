@@ -111,21 +111,17 @@ deconv_fwd_executable_t::desc_t deconv_fwd_executable_t::create_desc(
     prm_attr.set_fpmath_mode(
             static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     src = to_format_any(src);
-    auto weight = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
+    auto weight = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
     weight = to_format_any(weight);
-    auto dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     dst = to_format_any(dst);
 
     dnnl::deconvolution_forward::primitive_desc pd;
     if (op->has_attr(op_attr::with_bias)
             && op->get_attr<bool>(op_attr::with_bias)) {
-        auto bias = make_dnnl_memory_desc(
-                op->get_input_value(2)->get_logical_tensor());
+        auto bias = make_dnnl_memory_desc(op->get_input_logical_tensor(2));
         bias = to_format_any(bias);
         pd = dnnl::deconvolution_forward::primitive_desc(p_engine,
                 prop_kind::forward_inference, algorithm::deconvolution_direct,
@@ -176,14 +172,11 @@ deconv_bwd_data_executable_t::desc_t deconv_bwd_data_executable_t::create_desc(
     prm_attr.set_fpmath_mode(
             static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
 
-    auto diff_dst = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto diff_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     diff_dst = to_format_any(diff_dst);
-    auto weight = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
+    auto weight = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
     weight = to_format_any(weight);
-    auto diff_src = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto diff_src = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     diff_src = to_format_any(diff_src);
 
     auto fwd_hints = dnnl::deconvolution_forward::primitive_desc(p_engine,
@@ -233,14 +226,11 @@ deconv_bwd_weights_executable_t::create_desc(std::shared_ptr<op_t> &op,
     prm_attr.set_fpmath_mode(
             static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     src = to_format_any(src);
-    auto diff_dst = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
+    auto diff_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
     diff_dst = to_format_any(diff_dst);
-    auto diff_weight = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto diff_weight = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     diff_weight = to_format_any(diff_weight);
 
     auto fwd_hints = dnnl::deconvolution_forward::primitive_desc(p_engine,

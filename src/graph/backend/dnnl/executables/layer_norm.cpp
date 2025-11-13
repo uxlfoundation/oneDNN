@@ -58,13 +58,11 @@ layernorm_executable_t::desc_t layernorm_executable_t::create_desc(
     prop_kind pkind = keep_stats ? prop_kind::forward_training
                                  : prop_kind::forward_inference;
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     // onednn 3.6 spec: Implementations optimized for memory formats ab, abc,
     // bac, abcd
     src = to_ncx_format(src);
-    auto dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     dst = to_format_any(dst);
     dnnl::layer_normalization_forward::primitive_desc pd(
             p_engine, pkind, src, dst, epsilon, flags, prm_attr);
@@ -99,12 +97,9 @@ layernorm_bwd_executable_t::desc_t layernorm_bwd_executable_t::create_desc(
         flags |= dnnl::normalization_flags::use_shift;
     }
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto diff_dst = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
-    auto diff_src = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto diff_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
+    auto diff_src = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     dnnl::layer_normalization_forward::primitive_desc fwd_hints(p_engine,
             prop_kind::forward_training, src, diff_dst, epsilon, flags);
 

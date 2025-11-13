@@ -96,8 +96,7 @@ status_t insert_permute_for_conv_or_deconv(std::shared_ptr<subgraph_t> &sg) {
         for (size_t i = 0; i < op->num_inputs() - with_runtime_dst_scales
                         - with_runtime_dst_points;
                 ++i) {
-            auto val = op->get_input_value(i);
-            auto ndims = val->get_logical_tensor().ndims;
+            auto ndims = op->get_input_logical_tensor(i).ndims;
 
             std::vector<int64_t> perm;
             if (i == 0 && need_permute_src) {
@@ -135,7 +134,7 @@ status_t insert_permute_for_conv_or_deconv(std::shared_ptr<subgraph_t> &sg) {
 
         // permute output back to NXC
         if (need_permute_src) {
-            auto ndims = op->get_output_value(0)->get_logical_tensor().ndims;
+            auto ndims = op->get_output_logical_tensor(0).ndims;
             auto perm = get_permutation(ndims, "NCX", "NXC");
             op_ptr perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
             perm_op->set_attr<std::vector<int64_t>>(op_attr::permutation, perm);
@@ -176,7 +175,7 @@ status_t insert_permute_for_op_only_require_data_format(
 
         // permute explicitly defined inputs
         for (auto idx : in_indices) {
-            auto ndims = op->get_input_value(idx)->get_logical_tensor().ndims;
+            auto ndims = op->get_input_logical_tensor(idx).ndims;
             auto perm = get_permutation(ndims, "NXC", "NCX");
             op_ptr perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
             perm_op->set_attr<std::vector<int64_t>>(op_attr::permutation, perm);
@@ -194,7 +193,7 @@ status_t insert_permute_for_op_only_require_data_format(
             if (!pops[n]->is_post_binary() && !pops[n]->is_post_sum()) continue;
             const size_t idx = pops[n]->get_unfused_input_indices()[0];
 
-            auto ndims = op->get_input_value(idx)->get_logical_tensor().ndims;
+            auto ndims = op->get_input_logical_tensor(idx).ndims;
             auto perm = get_permutation(ndims, "NXC", "NCX");
             op_ptr perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
             perm_op->set_attr<std::vector<int64_t>>(op_attr::permutation, perm);
@@ -203,7 +202,7 @@ status_t insert_permute_for_op_only_require_data_format(
 
         // permute explicitly defined output back to NXC
         for (auto idx : out_indices) {
-            auto ndims = op->get_output_value(idx)->get_logical_tensor().ndims;
+            auto ndims = op->get_output_logical_tensor(idx).ndims;
             auto perm = get_permutation(ndims, "NCX", "NXC");
             op_ptr perm_op = std::make_shared<op_t>(op_kind::dnnl_permute);
             perm_op->set_attr<std::vector<int64_t>>(op_attr::permutation, perm);
@@ -225,10 +224,8 @@ status_t insert_permute_for_shuffle(std::shared_ptr<subgraph_t> &sg) {
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() != op_kind::dnnl_shuffle) continue;
 
-        logical_tensor_t src_lt
-                = cur_op->get_input_value(0)->get_logical_tensor();
-        logical_tensor_t dst_lt
-                = cur_op->get_output_value(0)->get_logical_tensor();
+        logical_tensor_t src_lt = cur_op->get_input_logical_tensor(0);
+        logical_tensor_t dst_lt = cur_op->get_output_logical_tensor(0);
         const logical_tensor_wrapper_t src(src_lt), dst(dst_lt);
         const auto axis = cur_op->get_attr<int64_t>(op_attr::axis);
         const auto known_strides
@@ -316,10 +313,9 @@ status_t insert_to_group_for_reorder(std::shared_ptr<subgraph_t> &sg) {
 
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() != op_kind::dnnl_reorder) continue;
-        auto in_md = make_dnnl_memory_desc(
-                cur_op->get_input_value(0)->get_logical_tensor());
-        auto out_md = make_dnnl_memory_desc(
-                cur_op->get_output_value(0)->get_logical_tensor());
+        auto in_md = make_dnnl_memory_desc(cur_op->get_input_logical_tensor(0));
+        auto out_md
+                = make_dnnl_memory_desc(cur_op->get_output_logical_tensor(0));
         if (in_md.get_ndims() == out_md.get_ndims()) {
             // no group
             return status::success;
@@ -423,7 +419,7 @@ status_t insert_permute_for_dynamic_mul_scale_sub_zp(
     if (permute_op_group.empty()) return status::success;
 
     for (auto &cur_op : permute_op_group) {
-        auto ndims = cur_op->get_input_value(0)->get_logical_tensor().ndims;
+        auto ndims = cur_op->get_input_logical_tensor(0).ndims;
         if (cur_op->get_attr<std::string>(op_attr::qtype) == "per_group") {
             op_ptr permute_op = std::make_shared<op_t>(op_kind::dnnl_permute);
             auto perm = get_last_two_dims_permutation(ndims);
@@ -457,7 +453,7 @@ status_t insert_permute_for_matmul(std::shared_ptr<subgraph_t> &sg) {
         if (!(trans_flag[0] || trans_flag[1])) continue;
 
         for (size_t i = 0; i < trans_flag.size(); ++i) {
-            auto ndims = cur_op->get_input_value(i)->get_logical_tensor().ndims;
+            auto ndims = cur_op->get_input_logical_tensor(i).ndims;
             // skip if transpose flag is false or the input's ndim is 1
             if (!trans_flag[i] || ndims <= 1) continue;
             op_ptr permute_op = std::make_shared<op_t>(op_kind::dnnl_permute);
@@ -488,7 +484,7 @@ status_t insert_permute_for_matmul(std::shared_ptr<subgraph_t> &sg) {
 }
 
 status_t insert_reshape_for_ndx2d_matmul(std::shared_ptr<subgraph_t> &sg) {
-
+    using ltw = logical_tensor_wrapper_t;
     subgraph_rewriter_t rewriter(sg);
 
     for (auto &cur_op : sg->get_ops()) {
@@ -500,18 +496,12 @@ status_t insert_reshape_for_ndx2d_matmul(std::shared_ptr<subgraph_t> &sg) {
             continue;
         }
 
-        int32_t src_ndims
-                = cur_op->get_input_value(0)->get_logical_tensor().ndims;
-        int32_t wei_ndims
-                = cur_op->get_input_value(1)->get_logical_tensor().ndims;
+        int32_t src_ndims = cur_op->get_input_logical_tensor(0).ndims;
+        int32_t wei_ndims = cur_op->get_input_logical_tensor(1).ndims;
         if (wei_ndims != 2 || src_ndims <= 2) continue;
 
-        auto src_dims = logical_tensor_wrapper_t(
-                cur_op->get_input_value(0)->get_logical_tensor())
-                                .vdims();
-        auto wei_dims = logical_tensor_wrapper_t(
-                cur_op->get_input_value(1)->get_logical_tensor())
-                                .vdims();
+        auto src_dims = ltw(cur_op->get_input_logical_tensor(0)).vdims();
+        auto wei_dims = ltw(cur_op->get_input_logical_tensor(1)).vdims();
         dims expected_dims {-1, src_dims.back()};
         auto reshape_op = std::make_shared<op_t>(op_kind::dnnl_reshape);
         reshape_op->set_attr<bool>(op_attr::special_zero, false);
@@ -536,9 +526,8 @@ status_t insert_reshape_for_ndx2d_matmul(std::shared_ptr<subgraph_t> &sg) {
                 if (!pops[i]->is_post_binary() && !pops[i]->is_post_sum())
                     continue;
                 const size_t offset = pops[i]->get_unfused_input_indices()[0];
-                auto post_src_dims = logical_tensor_wrapper_t(
-                        cur_op->get_input_value(offset)->get_logical_tensor())
-                                             .vdims();
+                auto post_src_dims
+                        = ltw(cur_op->get_input_logical_tensor(offset)).vdims();
                 dims expected_dims3 {-1, post_src_dims.back()};
                 auto reshape_op3
                         = std::make_shared<op_t>(op_kind::dnnl_reshape);
@@ -564,19 +553,18 @@ status_t insert_reshape_for_ndx2d_matmul(std::shared_ptr<subgraph_t> &sg) {
 }
 
 status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
+    using ltw = logical_tensor_wrapper_t;
+
     subgraph_rewriter_t rewriter(sg);
 
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() != op_kind::dnnl_sdpa) continue;
 
-        int32_t query_ndims
-                = cur_op->get_input_value(0)->get_logical_tensor().ndims;
+        int32_t query_ndims = cur_op->get_input_logical_tensor(0).ndims;
         if (query_ndims != 5) continue;
 
         // Insert reshape for Query
-        auto query_dims = logical_tensor_wrapper_t(
-                cur_op->get_input_value(0)->get_logical_tensor())
-                                  .vdims();
+        auto query_dims = ltw(cur_op->get_input_logical_tensor(0)).vdims();
         dims expected_query_dims {
                 query_dims[0], -1, query_dims[3], query_dims[4]};
         op_ptr reshape_query = std::make_shared<op_t>(op_kind::dnnl_reshape);
@@ -586,9 +574,7 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
         rewriter.insert_op_before(reshape_query, cur_op, 0);
 
         // Insert reshape for Key
-        auto key_dims = logical_tensor_wrapper_t(
-                cur_op->get_input_value(1)->get_logical_tensor())
-                                .vdims();
+        auto key_dims = ltw(cur_op->get_input_logical_tensor(1)).vdims();
         dims expected_key_dims {key_dims[0], -1, key_dims[3], key_dims[4]};
         op_ptr reshape_key = std::make_shared<op_t>(op_kind::dnnl_reshape);
         reshape_key->set_attr<bool>(op_attr::special_zero, false);
@@ -597,9 +583,7 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
         rewriter.insert_op_before(reshape_key, cur_op, 1);
 
         // Insert reshape for value
-        auto value_dims = logical_tensor_wrapper_t(
-                cur_op->get_input_value(2)->get_logical_tensor())
-                                  .vdims();
+        auto value_dims = ltw(cur_op->get_input_logical_tensor(2)).vdims();
         dims expected_value_dims {
                 value_dims[0], -1, value_dims[3], value_dims[4]};
         op_ptr reshape_value = std::make_shared<op_t>(op_kind::dnnl_reshape);
@@ -611,13 +595,10 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
         size_t index = 3;
         // Insert reshape for scale
         if (cur_op->get_attr<bool>(op_attr::with_scale)) {
-            int32_t scale_ndims = cur_op->get_input_value(index)
-                                          ->get_logical_tensor()
-                                          .ndims;
+            int32_t scale_ndims = cur_op->get_input_logical_tensor(index).ndims;
             if (scale_ndims == 5) {
-                auto scale_dims = logical_tensor_wrapper_t(
-                        cur_op->get_input_value(index)->get_logical_tensor())
-                                          .vdims();
+                auto scale_dims
+                        = ltw(cur_op->get_input_logical_tensor(index)).vdims();
                 dims expected_scale_dims {
                         scale_dims[0], -1, scale_dims[3], scale_dims[4]};
                 op_ptr reshape_scale
@@ -632,13 +613,10 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
         // Insert reshape for mask
         if (cur_op->get_attr<int64_t>(op_attr::mask_type)
                 == static_cast<int64_t>(attn_mask_type::buffer)) {
-            int32_t mask_ndims = cur_op->get_input_value(index)
-                                         ->get_logical_tensor()
-                                         .ndims;
+            int32_t mask_ndims = cur_op->get_input_logical_tensor(index).ndims;
             if (mask_ndims == 5) {
-                auto mask_dims = logical_tensor_wrapper_t(
-                        cur_op->get_input_value(index)->get_logical_tensor())
-                                         .vdims();
+                auto mask_dims
+                        = ltw(cur_op->get_input_logical_tensor(index)).vdims();
                 dims expected_mask_dims {
                         mask_dims[0], -1, mask_dims[3], mask_dims[4]};
                 op_ptr reshape_mask
@@ -651,9 +629,7 @@ status_t insert_reshape_for_sdpa(std::shared_ptr<subgraph_t> &sg) {
         }
 
         // Insert reshape for output
-        auto output_dims = logical_tensor_wrapper_t(
-                cur_op->get_output_value(0)->get_logical_tensor())
-                                   .vdims();
+        auto output_dims = ltw(cur_op->get_output_logical_tensor(0)).vdims();
         const dims &expected_output_dims = output_dims;
         op_ptr reshape_output = std::make_shared<op_t>(op_kind::dnnl_reshape);
         reshape_output->set_attr<bool>(op_attr::special_zero, false);
@@ -672,8 +648,8 @@ status_t insert_unsqueeze_and_squeeze_for_matmul(
     for (auto &op : sg->get_ops()) {
         if (op->get_kind() != op_kind::dnnl_matmul) continue;
 
-        int32_t src_ndims = op->get_input_value(0)->get_logical_tensor().ndims;
-        int32_t wei_ndims = op->get_input_value(1)->get_logical_tensor().ndims;
+        int32_t src_ndims = op->get_input_logical_tensor(0).ndims;
+        int32_t wei_ndims = op->get_input_logical_tensor(1).ndims;
         VCHECK_INSERT_OPS(src_ndims >= 1 && wei_ndims >= 1,
                 status::invalid_shape,
                 "src_ndims and wei_ndims should >= 1, src_ndims: %d, "
@@ -685,7 +661,7 @@ status_t insert_unsqueeze_and_squeeze_for_matmul(
 
         std::vector<int64_t> squeeze_axes;
         for (size_t i = 0; i < op->num_inputs(); i++) {
-            int32_t ndims = op->get_input_value(i)->get_logical_tensor().ndims;
+            int32_t ndims = op->get_input_logical_tensor(i).ndims;
             std::vector<int64_t> axes;
             if (i == 0 && ndims == 1) {
                 // 1D src: [K] -> [1, K]
@@ -751,10 +727,8 @@ impl::status_t insert_runtime_u8_to_s8_for_matmul(
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;
 
-        int32_t new_src0_dtype
-                = cur_op->get_input_value(0)->get_logical_tensor().data_type;
-        int32_t new_src1_dtype
-                = cur_op->get_input_value(1)->get_logical_tensor().data_type;
+        int32_t new_src0_dtype = cur_op->get_input_logical_tensor(0).data_type;
+        int32_t new_src1_dtype = cur_op->get_input_logical_tensor(1).data_type;
         if (!impl::utils::one_of(
                     new_src0_dtype, impl::data_type::u8, impl::data_type::s8)
                 || new_src1_dtype != impl::data_type::u8)
@@ -872,10 +846,8 @@ status_t insert_u8_to_s8_for_matmul(std::shared_ptr<subgraph_t> &sg) {
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;
 
-        int32_t new_src0_dtype
-                = cur_op->get_input_value(0)->get_logical_tensor().data_type;
-        int32_t new_src1_dtype
-                = cur_op->get_input_value(1)->get_logical_tensor().data_type;
+        int32_t new_src0_dtype = cur_op->get_input_logical_tensor(0).data_type;
+        int32_t new_src1_dtype = cur_op->get_input_logical_tensor(1).data_type;
         if (!graph::utils::one_of(
                     new_src0_dtype, graph::data_type::u8, graph::data_type::s8)
                 || new_src1_dtype != graph::data_type::u8)
@@ -934,8 +906,8 @@ status_t insert_unsqueeze_for_prelu(std::shared_ptr<subgraph_t> &sg) {
         if (cur_op->get_kind() != op_kind::dnnl_prelu) continue;
 
         // check doable
-        auto src_lt = cur_op->get_input_value(0)->get_logical_tensor();
-        auto wei_lt = cur_op->get_input_value(1)->get_logical_tensor();
+        auto src_lt = cur_op->get_input_logical_tensor(0);
+        auto wei_lt = cur_op->get_input_logical_tensor(1);
         const std::string data_format
                 = cur_op->get_attr<std::string>(op_attr::data_format);
         const bool per_channel_broadcast
@@ -984,8 +956,8 @@ status_t insert_unsqueeze_and_squeeze_for_prelu_bwd(
         if (cur_op->get_kind() != op_kind::dnnl_prelu_bwd) continue;
 
         // check doable
-        auto src_lt = cur_op->get_input_value(0)->get_logical_tensor();
-        auto wei_lt = cur_op->get_input_value(1)->get_logical_tensor();
+        auto src_lt = cur_op->get_input_logical_tensor(0);
+        auto wei_lt = cur_op->get_input_logical_tensor(1);
         const auto wei_vdims = ltw(wei_lt).vdims();
         const std::string data_format
                 = cur_op->get_attr<std::string>(op_attr::data_format);

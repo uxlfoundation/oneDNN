@@ -49,7 +49,8 @@ public:
                     << "Inplace operation is supported for the same type only.";
         }
 
-        std::vector<bool> seen(size_bytes(src_layout_));
+        auto &back = src_layout_.blocks().back();
+        std::vector<bool> seen(back.size * int64_t(back.stride));
 
         dsl::tile_t tile = find_1d_tile(src_layout_, dst_layout_);
         int tile_elems = (int)tile.elems();

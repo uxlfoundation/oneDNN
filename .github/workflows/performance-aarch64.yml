@@ -107,6 +107,7 @@ jobs:
   build-and-test-performance:
     needs: [build-oneDNN-new, build-oneDNN-base]
     strategy:
+      fail-fast: false
       matrix:
         config: [
           { name: c7g, label: ah-ubuntu_22_04-c7g_m-100, threading: OMP, toolset: gcc, build: Release, testset: NIGHTLY },

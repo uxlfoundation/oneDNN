@@ -151,7 +151,7 @@ def compare_two_benchdnn(file1, file2, out_file=None):
 
         if out_file is not None and (exec_regressed or exec_improved):
             prb_params = [x.replace("--", "") for x in prb.split(" ")]
-            prb_params = [prb_params[1]] + [
+            prb_params = [prb_params[2]] + [
                 x for x in prb_params if ("dt=" in x) or ("alg=" in x)
             ]  # filter out the problem and data types
             prb_str = (

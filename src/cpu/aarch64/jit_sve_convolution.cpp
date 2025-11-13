@@ -632,6 +632,8 @@ template struct jit_sve_convolution_fwd_t<data_type::f32, data_type::f32,
         data_type::f32, sve_512>;
 template struct jit_sve_convolution_fwd_t<data_type::f32, data_type::f32,
         data_type::f32, sve_256>;
+template struct jit_sve_convolution_fwd_t<data_type::f32, data_type::f32,
+        data_type::f32, sve_128>;
 
 template <data_type_t diff_dst_type, data_type_t wei_type,
         data_type_t diff_src_type, cpu_isa_t isa>

@@ -23,3 +23,9 @@
 --dir=FWD_D,FWD_B
 --attr-fpmath=,bf16
 --batch=shapes_resnet_50
+
+--reset
+--dt=bf16,f32
+--batch=shapes_regression_1x1
+--batch=shapes_regression_dw
+--batch=shapes_regression_gemm

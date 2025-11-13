@@ -65,19 +65,47 @@ concurrency:
 permissions: read-all
 
 jobs:
-  build-acl-cache:
-    uses: ./.github/workflows/aarch64-acl.yml
+  build-artifacts:
+    strategy:
+      matrix:
+        config: [
+          { name: onednn-unit, build: RelWithAssert, testset: CI },
+          { name: onednn-perf-base, build: Release, testset: SMOKE },
+          { name: onednn-perf-new, build: Release, testset: SMOKE }
+        ]
+    name: build ${{ matrix.config.name }}
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - name: Checkout oneDNN
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+            path: oneDNN
+    
+      - name: Read version file
+        if: ${{ matrix.config.name == 'onednn-perf-base' }}
+        id: get-versions
+        run: |
+          content=`cat ${{ github.workspace }}/oneDNN/.github/automation/aarch64/ci.json`
+          content="${content//[$'\t\r\n$ ']}"
+          echo "output=$content" >> $GITHUB_OUTPUT
 
-  build-and-test:
-    needs: build-acl-cache
+      - name: Build oneDNN
+        uses: ./oneDNN/.github/actions/build-onednn-aarch64
+        with:
+          artifact_name: ${{ matrix.config.name }}
+          threading: OMP
+          toolset: gcc
+          build: ${{ matrix.config.build }}
+          testset: ${{ matrix.config.testset }}
+          onednn_hash: ${{ matrix.config.name == 'onednn-perf-base' && fromJson(steps.get-versions.outputs.output).dependencies.onednn-base || '' }}
+          cache: ${{ matrix.config.name == 'onednn-perf-base' && 'true' || 'false'}}
+
+  smoke-test:
     strategy:
       matrix:
         config: [
           { name: MacOS, label: macos-14, threading: SEQ, toolset: clang, build: RelWithAssert, testset: SMOKE },
-          { name: cb100, label: ubuntu-24.04-arm, threading: OMP, toolset: gcc, build: RelWithAssert, testset: SMOKE },
-          { name: c6g, label: ah-ubuntu_22_04-c6g_4x-50, threading: OMP, toolset: gcc, build: Release, testset: CI }, # Performance testing requires Release
-          { name: c6g, label: ah-ubuntu_22_04-c6g_2x-50, threading: OMP, toolset: clang, build: RelWithAssert, testset: SMOKE },
-          { name: c7g, label: ah-ubuntu_22_04-c7g_4x-50, threading: OMP, toolset: gcc, build: Release, testset: CI } # Performance testing requires Release
+          { name: cb100, label: ubuntu-24.04-arm, threading: OMP, toolset: clang, build: RelWithAssert, testset: SMOKE },
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}
@@ -120,105 +148,145 @@ jobs:
         with:
           version: ${{ fromJson(steps.get-versions.outputs.output).dependencies.clang }}
 
+      - name: Build oneDNN
+        uses: ./oneDNN/.github/actions/build-onednn-aarch64
+        with:
+          threading: ${{ matrix.config.threading }}
+          toolset: ${{ matrix.config.toolset }}
+          build: ${{ matrix.config.build }}
+          testset: ${{ matrix.config.testset }}
+
+      - name: Run oneDNN tests
+        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh ${{ github.workspace }}/test_results.xml
+        working-directory: ${{ github.workspace }}/oneDNN_pkg/oneDNN/build
+        env:
+          CTEST_PARALLEL_LEVEL: 6
+          DYLD_LIBRARY_PATH: ${{ github.workspace }}/oneDNN_pkg/ComputeLibrary/build:${{ github.workspace }}/oneDNN_pkg/oneDNN/build/src
+          ONEDNN_THREADING: ${{ matrix.config.threading }}
+
+  unit-test:
+    needs: build-artifacts
+    strategy:
+      matrix:
+        config: [
+          { name: c6g, label: ah-ubuntu_22_04-c6g_4x-50 },
+          { name: c7g, label: ah-ubuntu_22_04-c7g_4x-50 },
+          { name: c8g, label: ah-ubuntu_22_04-c8g_8x },
+        ]
+
+    name: ${{ matrix.config.name }} unit test
+    runs-on: ${{ matrix.config.label }}
+    steps:
+      - name: Checkout oneDNN
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          path: oneDNN
+
+      - name: Read version file
+        id: get-versions
+        run: |
+          content=`cat ${{ github.workspace }}/oneDNN/.github/automation/aarch64/ci.json`
+          content="${content//[$'\t\r\n$ ']}"
+          echo "output=$content" >> $GITHUB_OUTPUT
+
+      # Note: This will create a github actions cache
+      - name: Get latest CMake and Ninja
+        uses: lukka/get-cmake@56d043d188c3612951d8755da8f4b709ec951ad6 # v3.31.6
+        with:
+          cmakeVersion: 3.31.0
+          ninjaVersion: 1.12.0
+
+      - name: Install dependencies
+        run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          sudo apt update -y
+          sudo apt install -y libomp-dev g++-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
+
+      - name: Download oneDNN
+        uses: actions/download-artifact@v5
+        with:
+          name: onednn-unit
+          path: oneDNN_pkg
+      
+      - name: Prepare oneDNN for execution
+        run: chmod -R +x oneDNN_pkg
+
+      - name: Run oneDNN tests
+        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh ${{ github.workspace }}/test_results.xml ${{ github.workspace }}/test_results.log
+        working-directory: ${{ github.workspace }}/oneDNN_pkg/oneDNN/build
+        env:
+          CTEST_PARALLEL_LEVEL: 6
+          LD_LIBRARY_PATH: ${{ github.workspace }}/oneDNN_pkg/ComputeLibrary/build
+
+  perf-test:
+    needs: build-artifacts
+    strategy:
+      matrix:
+        config: [
+          { name: c6g, label: ah-ubuntu_22_04-c6g_4x-50 },
+          { name: c7g, label: ah-ubuntu_22_04-c7g_4x-50 },
+          { name: c8g, label: ah-ubuntu_22_04-c8g_8x },
+        ]
+
+    name: ${{ matrix.config.name }} perf test
+    runs-on: ${{ matrix.config.label }}
+    steps:
+      - name: Checkout oneDNN
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+            path: oneDNN
+
+      - name: Read version file
+        id: get-versions
+        run: |
+          content=`cat ${{ github.workspace }}/oneDNN/.github/automation/aarch64/ci.json`
+          content="${content//[$'\t\r\n$ ']}"
+          echo "output=$content" >> $GITHUB_OUTPUT
+
       - name: setup python
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: '3.10'
 
       - name: Install dependencies
-        if: ${{ matrix.config.build == 'Release' }}
-        run: pip install scipy statistics gitpython
+        shell: bash
+        run: |
+            sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+            sudo apt update -y
+            sudo apt install -y patchelf libomp-dev g++-${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
+            pip install scipy statistics gitpython
 
-      - name: Clone ACL
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build_acl.sh
-        env:
-          ACL_ACTION: clone
-          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
-          ACL_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.acl }}
-
-      - name: Get ACL commit hash for cache key
-        id: get_acl_commit_hash
-        run: (cd ${{ github.workspace }}/ComputeLibrary && echo "ACLCommitHash=$(git rev-parse --short HEAD)") >> $GITHUB_OUTPUT
-
-      - name: Get system name
-        id: get_system_name
-        run: (echo "SystemName=$(uname)") >> $GITHUB_OUTPUT
-
-      - name: Restore cached ACL
-        id: cache-acl-restore
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - name: Download oneDNN base
+        uses: actions/download-artifact@v5
         with:
-          key: ${{ steps.get_system_name.outputs.SystemName }}-acl-${{ matrix.config.toolset }}-${{ matrix.config.build }}-${{ steps.get_acl_commit_hash.outputs.ACLCommitHash }}
-          path: ${{ github.workspace }}/ComputeLibrary/build
-          fail-on-cache-miss: true
+          name: onednn-perf-base
+          path: oneDNN_pkg
+      
+      - name: Prepare oneDNN base for execution
+        run: |
+          mv oneDNN_pkg oneDNN_base
+          chmod -R +x oneDNN_base
+          patchelf --add-rpath ${{ github.workspace }}/oneDNN_base/ComputeLibrary/build ${{ github.workspace }}/oneDNN_base/oneDNN/build/src/libdnnl.so.3
 
-      - name: Configure oneDNN
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
-        working-directory: ${{ github.workspace }}/oneDNN
-        env:
-          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
-          BUILD_TOOLSET: ${{ matrix.config.toolset }}
-          CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
-          CMAKE_GENERATOR: Ninja
-          GCC_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
-          ONEDNN_ACTION: configure
-          ONEDNN_TEST_SET: ${{ matrix.config.testset }}
-          ONEDNN_THREADING: ${{ matrix.config.threading }}
-
-      - name: Build oneDNN
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
-        working-directory: ${{ github.workspace }}/oneDNN
-        env:
-          ONEDNN_ACTION: build
-
-      - name: Run oneDNN tests
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/test.sh ${{ github.workspace }}/test_results.xml
-        working-directory: ${{ github.workspace }}/oneDNN/build
-        env:
-          CTEST_PARALLEL_LEVEL: 6
-          DYLD_LIBRARY_PATH: ${{ github.workspace }}/ComputeLibrary/build
-          ONEDNN_THREADING: ${{ matrix.config.threading }}
-
-      ## Performance test steps ##
-      - name: Checkout oneDNN base
-        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Download oneDNN new
+        uses: actions/download-artifact@v5
         with:
-          ref: ${{ github.base_ref }}
-          path: oneDNN_base
-
-      - name: Configure oneDNN base
-        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
-        working-directory: ${{ github.workspace }}/oneDNN_base
-        env:
-          ACL_ROOT_DIR: ${{ github.workspace }}/ComputeLibrary
-          BUILD_TOOLSET: ${{ matrix.config.toolset }}
-          CMAKE_BUILD_TYPE: ${{ matrix.config.build }}
-          CMAKE_GENERATOR: Ninja
-          GCC_VERSION: ${{ fromJson(steps.get-versions.outputs.output).dependencies.gcc }}
-          ONEDNN_ACTION: configure
-          ONEDNN_TEST_SET: ${{ matrix.config.testset }}
-          ONEDNN_THREADING: ${{ matrix.config.threading }}
-
-      - name: Build oneDNN base
-        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
-        run: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/build.sh
-        working-directory: ${{ github.workspace }}/oneDNN_base
-        env:
-          ONEDNN_ACTION: build
+          name: onednn-perf-new
+          path: oneDNN_pkg
+      
+      - name: Prepare oneDNN new for execution
+        run: |
+          mv oneDNN_pkg oneDNN_new
+          chmod -R +x oneDNN_new
+          patchelf --add-rpath ${{ github.workspace }}/oneDNN_new/ComputeLibrary/build ${{ github.workspace }}/oneDNN_new/oneDNN/build/src/libdnnl.so.3
 
       - name: Run performance tests
         shell: bash
-        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
         run: |
-          OMP_NUM_THREADS=4 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_pr_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN/build/tests/benchdnn/benchdnn base_4.txt new_4.txt
-          OMP_NUM_THREADS=16 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_pr_performance.sh ${{ github.workspace }}/oneDNN_base/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN/build/tests/benchdnn/benchdnn base_16.txt new_16.txt
-        env:
-          DYLD_LIBRARY_PATH: ${{ github.workspace }}/ComputeLibrary/build
+          OMP_NUM_THREADS=4 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_pr_performance.sh ${{ github.workspace }}/oneDNN_base/oneDNN/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN_new/oneDNN/build/tests/benchdnn/benchdnn base_4.txt new_4.txt
+          OMP_NUM_THREADS=16 bash ${{ github.workspace }}/oneDNN/.github/automation/performance/bench_pr_performance.sh ${{ github.workspace }}/oneDNN_base/oneDNN/build/tests/benchdnn/benchdnn ${{ github.workspace }}/oneDNN_new/oneDNN/build/tests/benchdnn/benchdnn base_16.txt new_16.txt
 
       - name: Compare performance test results
-        if: ${{ github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
         id: performance-test
         continue-on-error: true
         run: |
@@ -228,13 +296,13 @@ jobs:
           python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base_16.txt new_16.txt
 
       - name: Check performance test failure
-        if: ${{ steps.performance-test.outputs.pass != 'True' && github.event_name == 'pull_request' && matrix.config.build == 'Release' && matrix.config.name != 'cb100' && matrix.config.name != 'MacOS' }}
+        if: ${{ steps.performance-test.outputs.pass != 'True' }}
         run: echo "::warning file=.github/workflows/ci-aarch64.yml,line=1,col=1::${{ steps.performance-test.outputs.message }}"
 
   # This job adds a check named "CI AArch64" that represents overall
   # workflow status and can be used in branch rulesets
   status:
-    needs: build-and-test
+    needs: [smoke-test, unit-test, perf-test]
     runs-on: ubuntu-latest
     name: "CI AArch64"
     steps:

@@ -1335,7 +1335,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.dst_dt = dst_d.data_type();
     bgmmc.wei_dt = weights_d.data_type();
     bgmmc.orig_wei_dt = weights_d.data_type();
-    bgmmc.wei_zp_dt = attr.zero_points_.get(DNNL_ARG_WEIGHTS).get_data_type();
 
     bgmmc.with_reduce = mmd.reduce_desc.format_kind != format_kind::undef;
     bgmmc.reduce_dt
@@ -1465,6 +1464,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // only common scales are supported
     VCONDCHECK_BG(!(bgmmc.with_dst_scales && dst_scales.get_mask() > 0),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+    const auto &src_zp = attr.zero_points_.get(DNNL_ARG_SRC);
+    const auto has_src_zp = !src_zp.has_default_values();
+    if (has_src_zp) { bgmmc.src_zp_dt = src_zp.get_data_type(); }
 
     const auto &wei_zp = attr.zero_points_.get(DNNL_ARG_WEIGHTS);
     const auto has_wei_zp = !wei_zp.has_default_values();

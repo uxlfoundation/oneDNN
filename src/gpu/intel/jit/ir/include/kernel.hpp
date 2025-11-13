@@ -113,6 +113,10 @@ public:
         extension_handler_ = extension_handler;
     }
 
+    // Assumptions which can be used to improve code generation
+    void assume(const expr_t &e) { assumptions_.emplace_back(e); }
+    const std::vector<expr_t> &assumptions() const { return assumptions_; }
+
     int grf_size() const { return hw_.grf_size(); }
 
     std::string str() const {
@@ -129,6 +133,7 @@ private:
     int simd_ = 0;
     bool require_dpas_ = false;
     codegen_extension_handler_t extension_handler_ = default_extension_handler;
+    std::vector<expr_t> assumptions_;
 };
 
 } // namespace kernel

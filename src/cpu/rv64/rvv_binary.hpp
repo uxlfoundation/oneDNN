@@ -38,6 +38,10 @@ struct rvv_binary_t : public primitive_t {
         status_t init(engine_t *engine) {
             UNUSED(engine);
             const data_type_t d_type = dst_md()->data_type;
+            VDISPATCH_BINARY(
+                    utils::one_of(d_type, data_type::f32, data_type::s32,
+                            data_type::s8, data_type::u8),
+                    VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_BINARY(utils::everyone_is(d_type, src_md(0)->data_type,
                                      src_md(1)->data_type)

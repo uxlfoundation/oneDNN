@@ -538,8 +538,16 @@ struct gen_gemm_t : public gpu_gemm_t {
         using namespace data_type;
 
         auto kd = pd()->kernel_desc();
-
-        CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));
+        printf("**Creating GEMM with m: %lld and n:%lld**\n\n",
+                pd()->desc()->m(), pd()->desc()->n());
+        auto m = pd()->desc()->m();
+        auto n = pd()->desc()->n();
+        std::string m_ = std::to_string(m);
+        std::string n_ = std::to_string(n);
+        std::string ker_name = "gemm_kernel_m_" + m_ + "_n_" + n_;
+        const char *kernel_name = ker_name.c_str();
+        printf("------ %s ------\n", kernel_name);
+        CHECK(create_kernel(engine, nocopy_kernel_, kernel_name, *kd));
 
         scalar_type_ = kd->scalar_type();
         const auto *info = nocopy_info();

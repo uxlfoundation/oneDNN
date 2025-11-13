@@ -38,6 +38,8 @@
 // For checking if fp16 isa is supported on the platform
 #include "arm_compute/core/CPP/CPPTypes.h"
 #endif
+#elif DNNL_RV64
+#include "cpu/rv64/cpu_isa_traits.hpp"
 #endif
 
 // For DNNL_X64 build we compute the timestamp using rdtsc. Use std::chrono for
@@ -128,6 +130,8 @@ bool has_data_type_support(data_type_t data_type) {
                     || x64::mayiuse(x64::avx2_vnni_2);
 #elif defined(DNNL_AARCH64_USE_ACL)
             return arm_compute::CPUInfo::get().has_fp16();
+#elif DNNL_RV64
+            return rv64::mayiuse(rv64::zvfh);
 #else
             return false;
 #endif

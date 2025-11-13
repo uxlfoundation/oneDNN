@@ -29,8 +29,6 @@
 #include "gpu/intel/jit/codegen/register_scope.hpp"
 #include "gpu/intel/jit/codegen/reorder.hpp"
 #include "gpu/intel/jit/codegen/send.hpp"
-#include "gpu/intel/jit/eltwise_injector.hpp"
-#include "gpu/intel/jit/ir/eltwise.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "ngen.hpp"
 #ifdef WITH_SYCL_RUNTIME
@@ -227,10 +225,6 @@ public:
             auto arg_ops = evaluate(obj.args, scope);
             gpu_assert(obj.attr.is_empty()) << "Unexpected attribute.";
             reduce(scope, func.as<reduce_t>(), arg_ops);
-        } else if (func.is<eltwise_t>()) {
-            auto &eltwise_func = func.as<eltwise_t>();
-            auto arg_ops = evaluate(obj.args, scope);
-            eltwise(scope, eltwise_func, arg_ops);
         } else if (func.is_same(funcs::barrier_func())) {
             barrier(obj.attr);
         } else if (func.is_same(funcs::barrier_wait_func())) {
@@ -815,61 +809,6 @@ private:
         reduce_impl_t reduce_impl(hw(), reduce_func, simd_size_);
         reduce_impl.emit(
                 host_, scope, src_op.reg_buf_data(), dst_op.reg_buf_data());
-    }
-
-    void eltwise(ngen_register_scope_t &scope, const eltwise_t &func,
-            const std::vector<ngen_operand_t> &args) {
-        int elems = to_cpp<int>(hw(), eltwise_t::arg_elems(args));
-        auto &data_op = eltwise_t::arg_data(args);
-        const auto &data_rd = data_op.reg_buf_data();
-
-        eltwise_injector_f32_t<typename ngen_generator_t::RootCodeGenerator>
-                inj(host_, func.alg_kind, func.alpha, func.beta, func.scale);
-        auto scratch = scope.alloc_range(inj.preferred_scratch_regs());
-        inj.set_scratch(scratch);
-        inj.prepare();
-
-        int grf_size = ngen::GRF::bytes(hw());
-        int f_size = sizeof(float);
-        int step = 2 * grf_size / f_size;
-
-        auto do_eltwise = [&](const reg_buf_data_t &r, const int count) {
-            if (func.alg_kind == alg_kind::eltwise_stochastic_round) {
-                gpu_assert(args.size() == 3);
-                const auto &seed = args[2].reg_buf_data();
-                inj.compute(ngen::GRFRange(r.base(), count),
-                        seed.reg_data().getBase(), seed.reg_data().getOffset(),
-                        func.dst_dt);
-            } else if (func.alg_kind == alg_kind::eltwise_mx_scale) {
-                gpu_assert(args.size() == 3);
-                const auto &scales_dst = args[2].reg_buf_data();
-                inj.compute(ngen::GRFRange(r.base(), count),
-                        scales_dst.reg_data().getBase(),
-                        scales_dst.reg_data().getOffset(), func.dst_dt);
-            } else {
-                inj.compute(ngen::GRFRange(r.base(), count));
-            }
-        };
-        for (int i = 0; i < elems; i += step) {
-            ngen_register_scope_t i_scope(scope.register_allocator());
-            step = std::min(step, elems - i);
-            step = utils::rnd_down_pow2(step);
-            int cur_elems = step;
-            auto rd = data_rd.format(i, ngen::DataType::f);
-            // Use temporary storage when needed to ensure:
-            // - Eltwise is applied to full register
-            // - Data is aligned to GRF boundary
-            if ((cur_elems * f_size) % grf_size != 0 || rd.byte_offset() != 0) {
-                int full_elems
-                        = utils::rnd_up(cur_elems * f_size, grf_size) / f_size;
-                auto tmp = i_scope.alloc_reg_data(type_t::f32(full_elems));
-                emit_reorder_1d_tile(host_, i_scope, cur_elems, rd, 1, tmp, 1);
-                do_eltwise(tmp, full_elems * f_size / grf_size);
-                emit_reorder_1d_tile(host_, i_scope, cur_elems, tmp, 1, rd, 1);
-            } else {
-                do_eltwise(rd, cur_elems * f_size / grf_size);
-            }
-        }
     }
 
     ngen_generator_t *host_;

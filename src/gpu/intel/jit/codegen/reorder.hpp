@@ -93,10 +93,10 @@ protected:
 };
 
 template <typename GeneratorT>
-void emit_reorder_1d_tile(GeneratorT *host, ngen_register_scope_t &scope,
-        int width, const reg_buf_data_t &src, int src_stride,
-        const reg_buf_data_t &dst, int dst_stride) {
-    copy_plan_t plan(scope, host->hw_info().systolic_support());
+void emit_reorder_1d_tile(GeneratorT *host, const hw_t &hw,
+        ngen_register_scope_t &scope, int width, const reg_buf_data_t &src,
+        int src_stride, const reg_buf_data_t &dst, int dst_stride) {
+    copy_plan_t plan(scope, hw.systolic_support());
     copy_operand_t dst_op = dst;
     copy_operand_t src_op = src;
     dst_op.stride = (uint8_t)dst_stride;
@@ -112,6 +112,14 @@ void emit_reorder_1d_tile(GeneratorT *host, ngen_register_scope_t &scope,
         plan.mov(width, dst_op, src_op);
     plan.transform();
     plan.execute(*host);
+}
+
+template <typename GeneratorT>
+void emit_reorder_1d_tile(GeneratorT *host, ngen_register_scope_t &scope,
+        int width, const reg_buf_data_t &src, int src_stride,
+        const reg_buf_data_t &dst, int dst_stride) {
+    emit_reorder_1d_tile(host, host->hw_info(), scope, width, src, src_stride,
+            dst, dst_stride);
 }
 
 template <typename GeneratorT>

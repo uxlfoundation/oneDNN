@@ -203,6 +203,8 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     align_src_dst_offset(host, scope, mod, dst, src1);
 }
 
+dim_t size_in_elems(const dsl::layout_t &layout);
+
 struct reorder_operand_t {
     dsl::layout_t layout;
     copy_operand_t buffer;
@@ -307,8 +309,8 @@ private:
 
     // Extracts dimension sizes and their indices from a multidimensional
     // tensor.
-    static void tile_to_2d_dims(const dsl::tile_t &tile, dim_idx_t &a_idx,
-            dim_idx_t &b_idx, dim_t &a, dim_t &b);
+    static void tile_to_2d_dims(const dsl::tile_t &tile, dsl::idx_t &a_idx,
+            dsl::idx_t &b_idx, dim_t &a, dim_t &b);
 
     // Finds the optimal sequence of reorders between src and dst layouts.
     static std::vector<reorder_step_t> find_min_cost_path(ngen::HW hw,
@@ -408,11 +410,6 @@ private:
             const dsl::layout_t &layout, const type_t &type) const;
     dsl::layout_t make_compact_layout(const dsl::layout_t &layout,
             const type_t &type, bool is_source = false) const;
-
-    dim_t size_in_elems(const dsl::layout_t &layout) {
-        const auto &type = layout.type();
-        return size_bytes(layout) * type.packing() / type.size();
-    }
 
     type_t intermediate_data_type(const type_t &s, const type_t &d) const {
         // Force up-/down-convert of small types

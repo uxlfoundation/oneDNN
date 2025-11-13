@@ -24,6 +24,24 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+using namespace dsl;
+
+dim_t size_in_elems(const dsl::layout_t &layout) {
+    if (layout.is_empty()) return 0;
+    int64_t max_off = 0;
+    int64_t max_block_size = 0;
+    for (auto &b : layout.blocks()) {
+        max_off += (b.size - 1) * (int64_t)b.stride;
+        max_block_size = std::max(max_block_size, b.size * (int64_t)b.stride);
+    }
+    return std::max(max_off + 1, max_block_size);
+}
+
+dim_t size_in_bytes(const dsl::layout_t &layout) {
+    return size_in_elems(layout) * layout.type().size()
+            / layout.type().packing();
+}
+
 copy_operand_t::copy_operand_t(const reg_buf_data_t &rbd) : CopyOperand(rbd) {
     if (!rbd.is_empty()) {
         const auto &rd = rbd.reg_buf();
@@ -116,16 +134,23 @@ reorder_2d_impl_t::reorder_2d_impl_t(ngen::HW hw, tile_t tile,
     : hw_(hw), tile_(std::move(tile)) {
     gpu_assert(src_layout.type() == dst_layout.type());
 
-    dim_idx_t a_idx, b_idx;
+    idx_t a_idx, b_idx;
     dim_t tile_a, tile_b;
     tile_to_2d_dims(tile_, a_idx, b_idx, tile_a, tile_b);
 
+    auto map_2d = [&](const layout_t &layout) {
+        std::vector<layout::block_t> blocks;
+        for (auto &b : layout.blocks()) {
+            if (b.idx == a_idx) blocks.emplace_back(0, b.size, b.stride);
+            if (b.idx == b_idx) blocks.emplace_back(1, b.size, b.stride);
+        }
+        blocks = normalize_blocks(blocks, false);
+        return layout_t(layout.type(), blocks, layout.offset(), 2, false);
+    };
+
     // Convert src/dst to 2D layouts.
-    dim_assignment_t to_ab(src_layout.ndims(), 2);
-    to_ab.assign(a_idx, 0);
-    to_ab.assign(b_idx, 1);
-    auto src_ab = to_ab.map(src_layout);
-    auto dst_ab = to_ab.map(dst_layout);
+    auto src_ab = map_2d(src_layout);
+    auto dst_ab = map_2d(dst_layout);
 
     src_ = src_ab;
     dst_ = dst_ab;
@@ -141,7 +166,7 @@ void reorder_2d_impl_t::emit(
     // Allocate a temporary GRF buffer if needed.
     copy_operand_t tmp;
     const auto &type = dst_.type();
-    auto elems = into<int>(size_bytes(dst_) * type.packing() / type.size());
+    auto elems = into<int>(size_in_elems(dst_));
     if (path_.size() > 1) tmp = plan.newTemp(to_ngen(type), elems, 1);
 
     // Iterate through found reorders.
@@ -194,30 +219,30 @@ void reorder_2d_impl_t::emit(
     }
 }
 
-void reorder_2d_impl_t::tile_to_2d_dims(const tile_t &tile, dim_idx_t &a_idx,
-        dim_idx_t &b_idx, dim_t &a, dim_t &b) {
-    a_idx = dim_idx::invalid;
-    b_idx = dim_idx::invalid;
-    for (dim_idx_t i = 0; i < tile.size(); i++) {
+void reorder_2d_impl_t::tile_to_2d_dims(
+        const tile_t &tile, idx_t &a_idx, idx_t &b_idx, dim_t &a, dim_t &b) {
+    a_idx = {};
+    b_idx = {};
+    for (size_t i = 0; i < tile.size(); i++) {
         if (tile[i] == 1) continue;
-        if (a_idx == dim_idx::invalid) {
+        if (a_idx.is_undef()) {
             a_idx = i;
             continue;
         }
-        if (b_idx == dim_idx::invalid) {
+        if (b_idx.is_undef()) {
             b_idx = i;
             continue;
         }
         gpu_error_not_expected();
     }
 
-    for (dim_idx_t i = 0; i < tile.size(); i++) {
-        if (utils::one_of(i, a_idx, b_idx)) continue;
-        if (a_idx == dim_idx::invalid) {
+    for (size_t i = 0; i < tile.size(); i++) {
+        if (utils::one_of(idx_t(i), a_idx, b_idx)) continue;
+        if (a_idx.is_undef()) {
             a_idx = i;
             continue;
         }
-        if (b_idx == dim_idx::invalid) {
+        if (b_idx.is_undef()) {
             b_idx = i;
             continue;
         }
@@ -632,9 +657,19 @@ bool reorder_impl_t::layouts_compatible(
 layout_t reorder_impl_t::make_retyped_layout(
         const layout_t &layout, const type_t &type) const {
     if (layout.blocks().empty()) return layout;
-    const int stride = int(layout.blocks().front().stride);
-    return make_strided(
-            layout.with(type), stride * layout.type().size() / type.size());
+    auto blocks = layout.blocks();
+    if (layout.type().size() >= type.size()) {
+        gpu_assert(layout.type().size() % type.size() == 0);
+        for (auto &b : blocks)
+            b.stride *= layout.type().size() / type.size();
+    } else {
+        gpu_assert(type.size() % layout.type().size() == 0);
+        for (auto &b : blocks) {
+            gpu_assert(b.stride % (type.size() / layout.type().size()) == 0);
+            b.stride /= type.size() / layout.type().size();
+        }
+    }
+    return layout.with(type).with(blocks);
 }
 
 layout_t reorder_impl_t::make_compact_layout(
@@ -659,9 +694,8 @@ layout_t reorder_impl_t::make_compact_layout(
             b.stride = b.stride * stride / inner_stride;
         return {type, blocks, 0, layout.ndims(), /*do_normalize=*/false};
     }(dense_output_stride);
-    auto dense_size = dense.elems() * type.size() / type.packing()
-            * dense_output_stride;
-    if (size_bytes(dense) <= dense_size) return dense;
+    auto dense_size = dense.elems() * dense_output_stride;
+    if (size_in_elems(dense) <= dense_size) return dense;
     for (auto &block : dense.blocks()) {
         auto input_stride = block.stride;
         blocks.push_back(block);
@@ -734,7 +768,7 @@ bool reorder_impl_t::try_emit_2d(copy_plan_t &plan,
         // Try to allocate/release a temporary buffer to avoid
         // out_of_registers exception.
         auto tile_grfs = into<int>(
-                utils::div_up(size_bytes(dst_tile_layout), grf_size));
+                utils::div_up(size_in_bytes(dst_tile_layout), grf_size));
         ngen::GRFRange dummy;
         plan.alloc_grf(tile_grfs, dummy);
         if (dummy.isInvalid()) continue;

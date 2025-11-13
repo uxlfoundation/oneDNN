@@ -35,8 +35,7 @@ class constraint_set_t;
 
 class ir_context_t {
 public:
-    ir_context_t(const kernel::options_t &options, constraint_set_t &cset)
-        : options_(options), cset_(cset) {}
+    ir_context_t(const kernel::options_t &options, constraint_set_t &cset);
 
     const kernel::options_t &options() const { return options_; }
 

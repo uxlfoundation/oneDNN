@@ -34,12 +34,14 @@ namespace gpu {
 
 namespace {
 
+// gen_t is used most of the time, keep ahead of gemm_with_po
+// to reduce pd creation time
 // clang-format off
 constexpr impl_list_item_t impl_list[] = {
         GPU_INSTANCE_INTEL_DEVMODE(intel::gemm::conv_t)
         GPU_INSTANCE_INTEL(intel::gemm::xe_hp_systolic_t)
-        GPU_INSTANCE_INTEL(intel::gemm::with_post_ops_t)
         GPU_INSTANCE_INTEL(intel::gemm::gen_t)
+        GPU_INSTANCE_INTEL(intel::gemm::with_post_ops_t)
         GPU_INSTANCE_INTEL_REF(intel::gemm::ref_t)
         nullptr,
 };

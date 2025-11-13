@@ -27,20 +27,20 @@ namespace matmul {
 
 struct jit_brgemm_matmul_copy_b_t {
     struct ctx_t {
-        const void *src;
-        const void *tr_src;
-        const void *compensation_ptr;
-        const void *zp_a_compensation_ptr;
-        const void *zp_a_neg_value_ptr;
-        const void *zp_b_value_ptr;
-        const void *src_scales_ptr;
-        const void *wei_scales_ptr;
+        const void *src = nullptr;
+        const void *tr_src = nullptr;
+        const void *compensation_ptr = nullptr;
+        const void *zp_a_compensation_ptr = nullptr;
+        const void *zp_a_neg_value_ptr = nullptr;
+        const void *zp_b_value_ptr = nullptr;
+        const void *src_scales_ptr = nullptr;
+        const void *wei_scales_ptr = nullptr;
 
-        dim_t current_K_start;
-        dim_t current_K_iters;
-        dim_t current_K_pad {0};
-        dim_t current_N_blk;
-        dim_t dynamic_src_stride;
+        dim_t current_K_start = 0;
+        dim_t current_K_iters = 0;
+        dim_t current_K_pad = 0;
+        dim_t current_N_blk = 0;
+        dim_t dynamic_src_stride = 0;
     };
 
     virtual void operator()(ctx_t *ctx) = 0;
@@ -55,17 +55,17 @@ struct jit_brgemm_matmul_copy_b_t {
 
 struct jit_brgemm_matmul_copy_a_t {
     struct ctx_t {
-        const void *src;
-        const void *tr_src;
-        const void *zp_b_compensation_buffer_ptr;
-        const void *zp_a_compensation_result_ptr;
-        const void *zp_b_neg_val_ptr;
-        const void *zp_ab_comp_ptr;
+        const void *src = nullptr;
+        const void *tr_src = nullptr;
+        const void *zp_b_compensation_buffer_ptr = nullptr;
+        const void *zp_a_compensation_result_ptr = nullptr;
+        const void *zp_b_neg_val_ptr = nullptr;
+        const void *zp_ab_comp_ptr = nullptr;
 
-        dim_t current_K_start;
-        dim_t current_K_blk;
-        dim_t current_M_blk;
-        dim_t dynamic_src_ld;
+        dim_t current_K_start = 0;
+        dim_t current_K_blk = 0;
+        dim_t current_M_blk = 0;
+        dim_t dynamic_src_ld = 0;
     };
 
     virtual void operator()(ctx_t *ctx) = 0;

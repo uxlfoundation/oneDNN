@@ -115,9 +115,6 @@ struct brgemm_matmul_conf_t {
     bool packed_sparse_weights;
     bool with_wei_decompression;
     int postops_inst_count;
-    brgemm_broadcast_t src_zp_type;
-    brgemm_broadcast_t wei_zp_type;
-    brgemm_broadcast_t dst_zp_type;
 
     bool use_buffer_a;
     bool use_buffer_a_tail_only;
@@ -189,7 +186,6 @@ struct brgemm_matmul_conf_t {
     dim_t s8s8_comp_ithr_str;
     dim_t s8s8_comp_b_str;
     dim_t s8s8_comp_n_str;
-    bool has_zero_point_a, has_zero_point_b, has_zero_point_c;
     bool post_ops_applicable;
     bool transposed_A;
     bool transposed_B;
@@ -201,14 +197,6 @@ struct brgemm_matmul_conf_t {
     // This flag helps to properly initialize LDA when A_strides
     // were changed.
     bool adjust_a_strides = false;
-
-    dim_t zp_a_comp_shift_n;
-    dim_t zp_a_comp_elems_per_thr;
-
-    dim_t zp_b_comp_result_shift_m;
-    dim_t zp_b_comp_buffer_start;
-    dim_t zp_b_comp_buffer_shift_m;
-    dim_t zp_b_comp_elems_per_thr;
 
     int wsp_tile_per_thr_bytes;
     int brgemm_batch_element_per_thr_sz;
@@ -243,11 +231,28 @@ struct brgemm_matmul_conf_t {
     data_type_t wei_scales_dt = data_type::undef;
 
     // Zero points
+    bool has_zero_point_a;
+    bool has_zero_point_b;
+    bool has_zero_point_c;
+    brgemm_broadcast_t src_zp_type;
+    brgemm_broadcast_t wei_zp_type;
+    brgemm_broadcast_t dst_zp_type;
+
+    data_type_t src_zp_dt = data_type::undef;
+
     dim_t wei_zp_k_gsize = 0;
     bool is_wei_zp_per_k = false;
     bool is_wei_zp_per_n = false;
     bool is_wei_zp_common = false;
     data_type_t wei_zp_dt = data_type::undef;
+
+    dim_t zp_a_comp_shift_n;
+    dim_t zp_a_comp_elems_per_thr;
+
+    dim_t zp_b_comp_result_shift_m;
+    dim_t zp_b_comp_buffer_start;
+    dim_t zp_b_comp_buffer_shift_m;
+    dim_t zp_b_comp_elems_per_thr;
 
     bool is_gemv = false;
 

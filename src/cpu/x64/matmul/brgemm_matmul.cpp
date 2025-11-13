@@ -741,7 +741,6 @@ void brgemm_matmul_t<isa>::compute_kernel(
             = brgmm_ctx.get_zp_a_compensation_ptr(ithr, b_idx, n_blk_idx);
     const auto zp_comp_b
             = brgmm_ctx.get_zp_b_compensation_result_ptr(ithr, m_blk_idx);
-    const auto zp_c_val_ptr = brgmm_ctx.get_zp_c_val_ptr();
     const auto &post_ops_binary_rhs_arg_vec
             = brgmm_ctx.get_post_ops_binary_rhs_arg_vec();
     const bool post_ops_applicable = bgmmc.post_ops_applicable
@@ -786,8 +785,8 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     first_mb_matrix_addr_off,
                     static_cast<const void *>(zp_comp_a),
                     static_cast<const void *>(zp_comp_b),
-                    static_cast<const void *>(zp_c_val_ptr), false, 1, false,
-                    false, brgmm_ctx.get_src_scales_ptr(),
+                    brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
+                    brgmm_ctx.get_src_scales_ptr(),
                     brgmm_ctx.get_wei_scales_ptr(n),
                     brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
             brgemm_kernel_execute_postops(brg_kernel, gemm_batch, addr_batch,
@@ -842,8 +841,8 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     first_mb_matrix_addr_off,
                     static_cast<const void *>(zp_comp_a),
                     static_cast<const void *>(zp_comp_b),
-                    static_cast<const void *>(zp_c_val_ptr), false, 1, false,
-                    false, brgmm_ctx.get_src_scales_ptr(),
+                    brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
+                    brgmm_ctx.get_src_scales_ptr(),
                     brgmm_ctx.get_wei_scales_ptr(n),
                     brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
 
@@ -1127,7 +1126,6 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
                         const auto zp_comp_b
                                 = brgmm_ctx.get_zp_b_compensation_result_ptr(
                                         ithr, mb);
-                        const auto zp_c_val_ptr = brgmm_ctx.get_zp_c_val_ptr();
                         const auto &post_ops_binary_rhs_arg_vec
                                 = brgmm_ctx.get_post_ops_binary_rhs_arg_vec();
 
@@ -1150,9 +1148,8 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
                                 dst_anchor_point, first_mb_matrix_addr_off,
                                 static_cast<const void *>(zp_comp_a),
                                 static_cast<const void *>(zp_comp_b),
-                                static_cast<const void *>(zp_c_val_ptr),
-                                skip_accumulation, 1, false, false,
-                                brgmm_ctx.get_src_scales_ptr(),
+                                brgmm_ctx.get_zp_c_ptr(), skip_accumulation, 1,
+                                false, false, brgmm_ctx.get_src_scales_ptr(),
                                 brgmm_ctx.get_wei_scales_ptr(n),
                                 brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
 
@@ -1191,9 +1188,18 @@ void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
     ctx.zp_a_compensation_result_ptr
             = (void *)brgmm_ctx.get_zp_b_compensation_result_ptr(
                     ithr, m_blk_idx);
-    ctx.zp_ab_comp_ptr = (void *)brgmm_ctx.get_zp_ab_mixed_comp_ptr();
     ctx.dynamic_src_ld = brgmm_ctx.get_src_stride();
-    ctx.zp_b_neg_val_ptr = brgmm_ctx.get_wei_zp_neg_ptr();
+
+    // Note: instead of passing an address to a stack variable, a kernel may be
+    // changed to take just zp_b value and perform negation itself, but updating
+    // kernels is not straightforward for all platforms.
+    int32_t neg_zp_b
+            = !bgmmc.with_wei_decompression ? brgmm_ctx.get_neg_zp_b() : 0;
+    int32_t neg_zp_ab_comp = !bgmmc.with_wei_decompression
+            ? bgmmc.K * brgmm_ctx.get_neg_zp_a()
+            : 0;
+    ctx.zp_b_neg_val_ptr = &neg_zp_b;
+    ctx.zp_ab_comp_ptr = &neg_zp_ab_comp;
 
     for (int gb = 0; gb < gemm_batch_iters; gb++) {
         const int k = k_start + gb * bgmmc.K_blk;
@@ -1252,7 +1258,13 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
 
     ctx.zp_a_compensation_ptr = (void *)brgmm_ctx.get_zp_a_compensation_ptr(
             ithr, b_idx, n_blk_idx);
-    ctx.zp_a_neg_value_ptr = (void *)brgmm_ctx.get_zp_a_neg_val_ptr();
+
+    // Note: instead of passing an address to a stack variable, a kernel may be
+    // changed to take just zp_a value and perform negation itself, but updating
+    // kernels is not straightforward for all platforms.
+    int32_t neg_zp_a = brgmm_ctx.get_neg_zp_a();
+    ctx.zp_a_neg_value_ptr = &neg_zp_a;
+
     ctx.compensation_ptr
             = (void *)brgmm_ctx.get_s8s8_comp_ptr(ithr, b_idx, n_blk_idx);
 
@@ -1371,30 +1383,12 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         bias_ptr_ = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
 
         // setup scales / zp pointers
-        const void *src_zero_points = CTX_IN_MEM(
+        src_zp_ptr_ = CTX_IN_MEM(
                 const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC);
         wei_zp_ptr_ = CTX_IN_MEM(
                 const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS);
-        const void *dst_zero_points = CTX_IN_MEM(
+        dst_zp_ptr_ = CTX_IN_MEM(
                 const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
-
-        zero_point_a_negative_val_ = src_zero_points
-                ? -cpu::io::load_int_value(
-                        pd->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
-                        src_zero_points, 0)
-                : 0;
-        zero_point_c_val_ = dst_zero_points
-                ? cpu::io::load_int_value(
-                        pd->attr()->zero_points_.get_data_type(DNNL_ARG_DST),
-                        dst_zero_points, 0)
-                : 0;
-
-        wei_zp_neg_val_ = (-1)
-                * (wei_zp_ptr_ ? cpu::io::load_int_value(
-                           pd->attr()->zero_points_.get_data_type(
-                                   DNNL_ARG_WEIGHTS),
-                           wei_zp_ptr_, 0)
-                               : 0);
 
         const auto &scratchpad = ctx.get_scratchpad_grantor();
 
@@ -1461,9 +1455,6 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 ? scratchpad.template get<int32_t>(
                         key_brgemm_primitive_zp_comp_b)
                 : nullptr;
-
-        zero_point_mixed_ab_compensation_component_
-                = bgmmc.K * zero_point_a_negative_val_;
 
         post_ops_binary_rhs_arg_vec_ = binary_injector::prepare_binary_args(
                 pd->attr()->post_ops_, ctx);
@@ -2090,11 +2081,19 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 + ithr * sizeof(float);
     }
 
-    const int32_t *get_zp_a_neg_val_ptr() const {
-        return &zero_point_a_negative_val_;
+    int32_t get_neg_zp_a() const {
+        if (!bgmmc_.has_zero_point_a) return 0;
+        return -cpu::io::load_int_value(bgmmc_.src_zp_dt, src_zp_ptr_, 0);
     }
 
-    const void *get_wei_zp_neg_ptr() const { return &wei_zp_neg_val_; }
+    // Used to compute compensation. Can't initialize the value at construction
+    // time as memory buffers must be accessed inside a parallel task
+    // (asynchronous runtime requirement).
+    int32_t get_neg_zp_b() const {
+        if (!bgmmc_.has_zero_point_b) return 0;
+        assert(bgmmc_.is_wei_zp_common);
+        return -cpu::io::load_int_value(bgmmc_.wei_zp_dt, wei_zp_ptr_, 0);
+    }
 
     const void *get_wei_zp_ptr(int n, int k = 0) const {
         if (!bgmmc_.has_zero_point_b) return nullptr;
@@ -2117,11 +2116,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return (char *)wei_zp_ptr_ + offset;
     }
 
-    const int32_t *get_zp_ab_mixed_comp_ptr() const {
-        return &zero_point_mixed_ab_compensation_component_;
-    }
-
-    const int32_t *get_zp_c_val_ptr() const { return &zero_point_c_val_; }
+    const void *get_zp_c_ptr() const { return dst_zp_ptr_; }
 
     int32_t *get_zp_a_compensation_ptr(
             int ithr, int b_idx, int n_blk_idx) const {
@@ -2142,7 +2137,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                     + n_blk_idx * bgmmc_.wei_n_blk;
             PRAGMA_OMP_SIMD()
             for (int b = 0; b < bgmmc_.wei_n_blk; b++)
-                zp_comp[b] = -zero_point_a_negative_val_
+                zp_comp[b] = -get_neg_zp_a()
                         * reorder_zp_a_comp_ptr_[base_offset + b];
         }
         return zp_comp;
@@ -2468,11 +2463,9 @@ private:
     int32_t *zero_point_b_compensations_ptr_;
     int32_t *reorder_zp_a_comp_ptr_;
 
-    int32_t zero_point_a_negative_val_;
-    int32_t zero_point_mixed_ab_compensation_component_;
-    int32_t zero_point_c_val_;
-    int32_t wei_zp_neg_val_;
+    const void *src_zp_ptr_;
     const void *wei_zp_ptr_;
+    const void *dst_zp_ptr_;
     std::vector<const void *> post_ops_binary_rhs_arg_vec_;
 
     int base_brg_ker_idx_;

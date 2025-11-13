@@ -121,8 +121,7 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
     const auto set_reorder_mask = [&op, &prm_attr](int mask) {
         if (op->has_attr(op_attr::with_runtime_scales)
                 && op->get_attr<bool>(op_attr::with_runtime_scales)) {
-            auto scale_dt
-                    = op->get_input_value(1)->get_logical_tensor().data_type;
+            auto scale_dt = op->get_input_logical_tensor(1).data_type;
             // For runtime arg scales, need to get data type information from
             // the op
             prm_attr.set_scales(DNNL_ARG_SRC, mask, {},
@@ -160,7 +159,7 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
         // For per group quantization, extra handling is needed for setting
         // group shape and size.
         if (qtype == "per_group") {
-            const auto &scale_lt = op->get_input_value(1)->get_logical_tensor();
+            const auto &scale_lt = op->get_input_logical_tensor(1);
             const auto scales_data_type = scale_lt.data_type;
             const auto &group_shape
                     = op->get_attr<std::vector<int64_t>>(op_attr::group_shape);
@@ -174,8 +173,7 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
                     static_cast<dnnl::memory::data_type>(scales_data_type));
             if (op->has_attr(op_attr::with_runtime_src_zps)
                     && op->get_attr<bool>(op_attr::with_runtime_src_zps)) {
-                const auto &zps_lt
-                        = op->get_input_value(2)->get_logical_tensor();
+                const auto &zps_lt = op->get_input_logical_tensor(2);
                 const auto zps_data_type = zps_lt.data_type;
                 prm_attr.set_zero_points(DNNL_ARG_FROM, mask, groups,
                         static_cast<dnnl::memory::data_type>(zps_data_type));
@@ -190,10 +188,8 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
 
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto in_md = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto out_md = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto in_md = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto out_md = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
 
     auto pd = dnnl::reorder::primitive_desc(
             p_engine, in_md, p_engine, out_md, prm_attr);

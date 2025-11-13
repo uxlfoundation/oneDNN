@@ -29,10 +29,10 @@ genindex_executable_t::genindex_executable_t(std::shared_ptr<op_t> &op,
         const fpmath_t &fpmath, bool use_block_layout)
     : axis_(op->get_attr<int64_t>(op_attr::axis)) {
     using ltw = logical_tensor_wrapper_t;
-    const auto &input_lt = op->get_input_value(0)->get_logical_tensor();
+    const auto &input_lt = op->get_input_logical_tensor(0);
     nelems_ = ltw(input_lt).nelems();
     ndims_ = ltw(input_lt).ndims();
-    const auto &output_lt = op->get_output_value(0)->get_logical_tensor();
+    const auto &output_lt = op->get_output_logical_tensor(0);
     for (int i = 0; i < ndims_; i++) {
         output_dims_[i] = output_lt.dims[i];
         output_strides_[i] = output_lt.layout.strides[i];

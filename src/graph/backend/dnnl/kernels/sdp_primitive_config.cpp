@@ -81,8 +81,7 @@ status_t sdp_primitive_config_t::initial_check(
             is_compressed_ = true;
             const auto &group_shape = cur_op->get_attr<std::vector<int64_t>>(
                     op_attr::group_shape);
-            const auto &input_lt
-                    = cur_op->get_input_value(0)->get_logical_tensor();
+            const auto &input_lt = cur_op->get_input_logical_tensor(0);
             if (static_cast<int>(group_shape.size()) != ltw(input_lt).ndims())
                 return status::invalid_arguments;
             // TODO(zhitao): execute the reorder for scale and zps mannually if the
@@ -97,8 +96,7 @@ status_t sdp_primitive_config_t::initial_check(
         auto post_op = get_post_op(cur_op);
         if (post_op && mm1_post_op_kind.count(post_op->get_kind())) {
             mm1 = cur_op;
-            const auto &lt_score
-                    = mm1->get_output_value(0)->get_logical_tensor();
+            const auto &lt_score = mm1->get_output_logical_tensor(0);
             f32_inter = f32_inter
                     && (ltw(lt_score).data_type() == data_type::f32);
             // Not support select between mm1 and scale(optional)
@@ -112,8 +110,7 @@ status_t sdp_primitive_config_t::initial_check(
                 // Scale exists, update post_op and traverse to next op
                 scale = post_op;
                 post_op = get_post_op(post_op);
-                const auto &lt_ss
-                        = scale->get_output_value(0)->get_logical_tensor();
+                const auto &lt_ss = scale->get_output_logical_tensor(0);
                 f32_inter = f32_inter
                         && (ltw(lt_ss).data_type() == data_type::f32);
             }
@@ -122,8 +119,7 @@ status_t sdp_primitive_config_t::initial_check(
                 if (post_op->get_kind() == graph::op_kind::Add) {
                     // Mask exists, update post_op and traverse to next op
                     const auto mask = post_op;
-                    const auto &lt_ms
-                            = mask->get_output_value(0)->get_logical_tensor();
+                    const auto &lt_ms = mask->get_output_logical_tensor(0);
                     f32_inter = f32_inter
                             && (ltw(lt_ms).data_type() == data_type::f32);
                     post_op = get_post_op(post_op);
@@ -191,7 +187,7 @@ status_t sdp_primitive_config_t::initial_check(
 
     // sdp_primitive only supports single scale value.
     if (scale) {
-        const auto &s = scale->get_input_value(1)->get_logical_tensor();
+        const auto &s = scale->get_input_logical_tensor(0);
         VCHECK_SDP_PRIMITIVE(ltw(s).nelems() == 1, status::unimplemented,
                 "Scale should be single value");
     }

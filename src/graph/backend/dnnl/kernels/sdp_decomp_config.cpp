@@ -127,7 +127,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
 
     // Update SDPA input params. Sequence length for query and key/value are
     // NOT always same.
-    const auto &lt_wei = sdp_op[1]->get_input_value(1)->get_logical_tensor();
+    const auto &lt_wei = sdp_op[1]->get_input_logical_tensor(1);
     const ltw ltw_wei(lt_wei);
     seq_len_kv = ltw_wei.vdims()[last_dim];
 
@@ -141,8 +141,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     memory::data_type dt_inter = quantized
             ? dt
             : static_cast<memory::data_type>(
-                    ltw(sdp_op[1]->get_output_value(0)->get_logical_tensor())
-                            .data_type());
+                    ltw(sdp_op[1]->get_output_logical_tensor(0)).data_type());
 
     ////////////////////////////////////////////////////////////////////////
     ////////////// Start Creating primitives ///////////////////////////////
@@ -178,8 +177,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     // create reorder1 primitive attr
     dnnl::primitive_attr sub_reorder1_attr = make_primitive_attr(sdp_op[0]);
     dims sub_wei1_dims = {head_size_qk, seq_len_kv};
-    auto wei_md = make_dnnl_memory_desc(
-            sdp_op[1]->get_input_value(1)->get_logical_tensor());
+    auto wei_md = make_dnnl_memory_desc(sdp_op[1]->get_input_logical_tensor(1));
     wei1_strides = wei_md.get_strides();
     sub_wei1_user_md = memory::desc(sub_wei1_dims, dt_wei_user,
             {wei1_strides[second_last_dim], wei1_strides[last_dim]});
@@ -261,11 +259,9 @@ impl::status_t sdp_decomp_config_t::construct_params(
     //select
     if (has_select && !select_fusiable) {
         dnnl::primitive_attr sub_select_attr = make_primitive_attr(sdp_op[5]);
-        auto select_cond_lt
-                = sdp_op[5]->get_input_value(2)->get_logical_tensor();
+        auto select_cond_lt = sdp_op[5]->get_input_logical_tensor(2);
         auto select_cond_ltw = ltw(select_cond_lt);
-        auto select_src0_lt
-                = sdp_op[5]->get_input_value(0)->get_logical_tensor();
+        auto select_src0_lt = sdp_op[5]->get_input_logical_tensor(0);
         auto select_src0_ltw = ltw(select_src0_lt);
         sub_select_cond_md = memory::desc(
                 {select_cond_ltw.vdims()[second_last_dim],
@@ -352,7 +348,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     primitive_attr sub_reorder3_attr;
     sub_reorder3_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     dims sub_dst_dims = {seq_len_q, head_size_v};
-    auto out_lt = sdp_op[4]->get_output_value(0)->get_logical_tensor();
+    auto out_lt = sdp_op[4]->get_output_logical_tensor(0);
     dst_strides = ltw(out_lt).vstrides();
     sub_dst_md = memory::desc(sub_dst_dims, dt_src_user, format_tag::ab);
     sub_dst_user_md = memory::desc(sub_dst_dims, dt_src_user,

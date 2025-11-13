@@ -49,10 +49,8 @@ pool_executable_t::desc_t pool_executable_t::create_desc(
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     dst = to_format_any(dst);
 
     // infer dnnl explicit padding
@@ -135,14 +133,11 @@ pool_bwd_executable_t::desc_t pool_bwd_executable_t::create_desc(
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto diff_dst = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto diff_src = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto diff_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto diff_src = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
 
     auto src = op->get_attr<std::string>(op_attr::kind) == "maxpool"
-            ? make_dnnl_memory_desc(
-                    op->get_input_value(2)->get_logical_tensor())
+            ? make_dnnl_memory_desc(op->get_input_logical_tensor(2))
             : dnnl::memory::desc(diff_src.get_dims(), diff_src.get_data_type(),
                     get_ncx_format(diff_src.get_dims()));
 

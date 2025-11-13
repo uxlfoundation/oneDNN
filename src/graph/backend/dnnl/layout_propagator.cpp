@@ -419,9 +419,8 @@ status_t layout_propagator_for_binary(op_ptr &op, const dnnl::engine &p_engine,
 
     // if with zero dimension, the binary op will take no effect, we just
     // complete the layout propagation process by using dummy dst md.
-    if (ltw(op->get_input_value(0)->get_logical_tensor()).has_zero_dim()
-            || ltw(op->get_input_value(1)->get_logical_tensor())
-                       .has_zero_dim()) {
+    if (ltw(op->get_input_logical_tensor(0)).has_zero_dim()
+            || ltw(op->get_input_logical_tensor(1)).has_zero_dim()) {
         value_ptr dst = op->get_output_value(0);
         status = fill_layout_info(dst,
                 to_ncx_format(
@@ -508,9 +507,8 @@ status_t layout_propagator_for_matmul(op_ptr &op, const dnnl::engine &p_engine,
 
     // if with zero dimension, the matmul op will take no effect, we just
     // complete the layout propagation process by using dummy dst md.
-    if (ltw(op->get_input_value(0)->get_logical_tensor()).has_zero_dim()
-            || ltw(op->get_input_value(1)->get_logical_tensor())
-                       .has_zero_dim()) {
+    if (ltw(op->get_input_logical_tensor(0)).has_zero_dim()
+            || ltw(op->get_input_logical_tensor(1)).has_zero_dim()) {
         value_ptr dst = op->get_output_value(0);
         status = fill_layout_info(dst,
                 to_ncx_format(
@@ -1353,8 +1351,8 @@ status_t layout_propagator_for_bn_folding(op_ptr &op,
     status_t status = status::success;
     // skip the scratchpad
     for (size_t i = 0; i < op->num_outputs() - 1; i++) {
-        auto in_lt = op->get_input_value(i)->get_logical_tensor();
-        auto out_lt = op->get_output_value(i)->get_logical_tensor();
+        auto in_lt = op->get_input_logical_tensor(i);
+        auto out_lt = op->get_output_logical_tensor(i);
         if (!ltw(in_lt).is_any() && ltw(out_lt).is_any()) {
             dnnl::memory::desc in_md = make_dnnl_memory_desc(in_lt);
             auto dst = op->get_output_value(i);
@@ -1658,8 +1656,7 @@ status_t layout_propagator_for_gen_index(std::shared_ptr<op_t> &op,
     UNUSED(fpmath);
     UNUSED(use_block_layout);
     UNUSED(rewriter);
-    auto src_md = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto src_md = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     if (!is_plain(src_md)) {
         src_md = dnnl::memory::desc(src_md.get_dims(), src_md.get_data_type(),
                 dnnl::memory::format_tag::abcd);
@@ -1712,8 +1709,7 @@ status_t layout_propagator_for_mask(std::shared_ptr<op_t> &op,
     UNUSED(fpmath);
     UNUSED(use_block_layout);
     UNUSED(rewriter);
-    auto src_md = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto src_md = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     value_ptr dst_val = op->get_output_value(0);
     status_t status = fill_layout_info(dst_val, src_md);
     return status;
@@ -1739,7 +1735,7 @@ status_t layout_propagator_for_sdpa(std::shared_ptr<op_t> &op,
         if (!dst_val->get_consumers().empty()) {
             const auto &consumer_op = dst_val->get_consumers()[0].get_op();
             const logical_tensor_t &consumer_out
-                    = consumer_op.get_output_value(0)->get_logical_tensor();
+                    = consumer_op.get_output_logical_tensor(0);
             if (consumer_op.get_kind() == op_kind::dnnl_reshape
                     && ltw(consumer_out).ndims() == 5
                     && ltw(consumer_out).is_strided()) {

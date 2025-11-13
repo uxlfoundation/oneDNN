@@ -116,9 +116,8 @@ struct binary_executable_t : public op_executable_t {
         using ltw = logical_tensor_wrapper_t;
         // if with zero dimension, the binary op will take no effect, we
         // construct a dummy kernel
-        if (ltw(op->get_input_value(0)->get_logical_tensor()).has_zero_dim()
-                || ltw(op->get_input_value(1)->get_logical_tensor())
-                           .has_zero_dim()) {
+        if (ltw(op->get_input_logical_tensor(0)).has_zero_dim()
+                || ltw(op->get_input_logical_tensor(1)).has_zero_dim()) {
             is_dummy_ = true;
             return;
         }

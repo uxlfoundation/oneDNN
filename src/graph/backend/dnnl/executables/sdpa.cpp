@@ -28,26 +28,20 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     , mask_type_(static_cast<attn_mask_type_t>(
               op->get_attr<int64_t>(op_attr::mask_type))) {
 
-    auto md_q = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
-    auto md_k = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
-    auto md_v = make_dnnl_memory_desc(
-            op->get_input_value(2)->get_logical_tensor());
-    auto md_dst = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto md_q = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    auto md_k = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
+    auto md_v = make_dnnl_memory_desc(op->get_input_logical_tensor(2));
+    auto md_dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
 
     auto md_scale = dnnl::memory::desc();
     size_t idx = 3;
     if (with_scale_)
-        md_scale = make_dnnl_memory_desc(
-                op->get_input_value(idx++)->get_logical_tensor());
+        md_scale = make_dnnl_memory_desc(op->get_input_logical_tensor(idx++));
 
     dnnl::memory::desc md_mask;
     with_explicit_mask_ = mask_type_ == attn_mask_type::buffer;
     if (with_explicit_mask_)
-        md_mask = make_dnnl_memory_desc(
-                op->get_input_value(idx++)->get_logical_tensor());
+        md_mask = make_dnnl_memory_desc(op->get_input_logical_tensor(idx++));
 
     dnnl::primitive_attr attr, qk_attr, vs_attr;
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
@@ -73,7 +67,7 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     vs_attr.set_accumulation_mode(str2accumulation_mode(
             op->get_attr<std::string>(op_attr::vs_acc_mode)));
 
-    dim_t kv_head_number = op->get_input_value(1)->get_logical_tensor().dims[1];
+    dim_t kv_head_number = op->get_input_logical_tensor(1).dims[1];
 
     const std::string &softmax_mode = op->get_attr<std::string>(op_attr::mode);
     const alg_kind_t softmax_alg = softmax_mode == "inf_as_zero"

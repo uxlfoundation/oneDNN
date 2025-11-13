@@ -278,7 +278,7 @@ static status_t maxpool_bwd_handler(
     // didn't have src input), we must transfer the shape info from the src
     // input to dnnl_pool_bwd op's op_attr::input_shape attribute. So, we
     // need to check that the src input must have shape info.
-    auto src_lt = cur_op->get_input_value(0)->get_logical_tensor();
+    auto src_lt = cur_op->get_input_logical_tensor(0);
     logical_tensor_wrapper_t src_ltw(src_lt);
     if (src_ltw.is_shape_unknown()) {
         DEBUG_PRINT_ERROR(
@@ -906,7 +906,7 @@ static status_t gen_index_handler(
     new_op->merge_attributes(op->get_attributes());
     int64_t axis = new_op->get_attr<int64_t>(op_attr::axis);
     const int64_t ndims = static_cast<int64_t>(
-            ltw(op->get_input_value(0)->get_logical_tensor()).ndims());
+            ltw(op->get_input_logical_tensor(0)).ndims());
     VCHECK_INVALID_ARGUMENT(axis >= -1 * ndims && axis < ndims,
             "GenIndex axis should be in range [-ndims, ndims) but got %d",
             static_cast<int>(axis));

@@ -45,7 +45,7 @@ concat_executable_t::desc_t concat_executable_t::create_desc(
             return get_ncx_format(in_dims);
     };
 
-    const auto rank = op->get_output_value(0)->get_logical_tensor().ndims;
+    const auto rank = op->get_output_logical_tensor(0).ndims;
     const auto res = utils::try_reverse_axis(
             op->get_attr<int64_t>(op_attr::axis), rank);
     VCHECK_OP_EXECUTABLE(res.first, "invalid axis for concat");
@@ -67,8 +67,8 @@ concat_executable_t::desc_t concat_executable_t::create_desc(
         src_mds.emplace_back(tmp_desc.get_dims(), tmp_desc.get_data_type(),
                 get_forced_format_tag(tmp_desc.get_dims()));
     }
-    const auto tmp_desc = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    const auto tmp_desc
+            = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     auto dst = memory::desc {tmp_desc.get_dims(), tmp_desc.get_data_type(),
             get_forced_format_tag(tmp_desc.get_dims())};
 

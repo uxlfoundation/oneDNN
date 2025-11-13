@@ -31,6 +31,8 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
+using ltw = logical_tensor_wrapper_t;
+
 static status_t infer_dnnl_conv_common_bwd_weight_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs,
@@ -39,7 +41,7 @@ static status_t infer_dnnl_conv_common_bwd_weight_output_shape(op_t *n,
             && n->get_attr<bool>(op_attr::canonicalized);
     const auto groups = n->get_attr<int64_t>(op_attr::groups);
 
-    auto out = logical_tensor_wrapper_t(outputs[0]); // diff_wei
+    auto out = ltw(outputs[0]); // diff_wei
     if (canonicalized && groups > 1 && !out.is_shape_unknown()) {
         // convert the out shape to uncanonicalized form to reuse the frontend
         // shape infer function.
@@ -55,7 +57,7 @@ static status_t infer_dnnl_conv_common_bwd_weight_output_shape(op_t *n,
 
     // add groups into weights shape
     if (canonicalized && groups > 1) {
-        auto out_dims = logical_tensor_wrapper_t(outputs[0]).vdims();
+        auto out_dims = ltw(outputs[0]).vdims();
         out_dims[axis_with_groups] /= groups;
         out_dims.insert(out_dims.begin(), groups);
 
@@ -68,9 +70,7 @@ static status_t infer_dnnl_conv_common_bwd_weight_output_shape(op_t *n,
 status_t infer_dnnl_conv_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
-    using ltw = logical_tensor_wrapper_t;
-
-    auto out = logical_tensor_wrapper_t(outputs[0]);
+    auto out = ltw(outputs[0]);
     const bool org_out_shape_unknown = out.is_shape_unknown();
 
     auto backup_wei_shape = *inputs[1];
@@ -98,7 +98,7 @@ status_t infer_dnnl_conv_output_shape(op_t *n,
     // The following code will take effect only when fusing dw conv.
     // At this stage outputs[0] corresponds to conv_1x1 dst
     // we now just need to adjust oh and ow in case of dw_k3s2p1 post-op
-    dims output_dims(logical_tensor_wrapper_t(outputs[0]).vdims());
+    dims output_dims(ltw(outputs[0]).vdims());
     if (org_out_shape_unknown && n->has_attr(op_attr::dw_type)
             && n->get_attr<std::string>(op_attr::dw_type) == "k3s2p1") {
         const std::string src_fmt
@@ -123,8 +123,6 @@ status_t infer_dnnl_conv_output_shape(op_t *n,
 status_t infer_dnnl_convtranspose_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
-    using ltw = logical_tensor_wrapper_t;
-
     auto backup = *inputs[1];
     auto backup_groups = n->get_attr<int64_t>(op_attr::groups);
     bool is_canonicalized = n->has_attr(op_attr::canonicalized)
@@ -154,8 +152,6 @@ status_t infer_dnnl_convtranspose_output_shape(op_t *n,
 status_t infer_dnnl_convtranspose_bwd_data_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
-    using ltw = logical_tensor_wrapper_t;
-
     auto backup_wei_shape = *inputs[1];
     auto backup_groups = n->get_attr<int64_t>(op_attr::groups);
     if (n->has_attr(op_attr::canonicalized)
@@ -198,7 +194,6 @@ status_t infer_dnnl_pool_output_shape(op_t *n,
 status_t infer_permute_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
-    using ltw = logical_tensor_wrapper_t;
     auto out0 = ltw(outputs[0]);
 
     auto in_dims = ltw(inputs[0]).vdims();
@@ -222,8 +217,8 @@ status_t infer_permute_output_shape(op_t *n,
 status_t infer_to_group_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
-    auto out0 = logical_tensor_wrapper_t(outputs[0]);
-    auto in0 = logical_tensor_wrapper_t(inputs[0]);
+    auto out0 = ltw(outputs[0]);
+    auto in0 = ltw(inputs[0]);
     if (!out0.is_shape_unknown()) return status::success;
 
     auto groups = n->get_attr<int64_t>(op_attr::groups);
@@ -247,11 +242,11 @@ status_t infer_to_group_output_shape(op_t *n,
 status_t infer_from_group_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
-    auto out = logical_tensor_wrapper_t(outputs[0]);
+    auto out = ltw(outputs[0]);
     if (!out.is_shape_unknown()) return status::success;
 
     const auto groups = n->get_attr<int64_t>(op_attr::groups);
-    dims inferred_out_dims = logical_tensor_wrapper_t(inputs[0]).vdims();
+    dims inferred_out_dims = ltw(inputs[0]).vdims();
     inferred_out_dims.erase(inferred_out_dims.begin());
     if (n->has_attr(op_attr::is_convtranspose)
             && n->get_attr<bool>(op_attr::is_convtranspose)) {
@@ -268,7 +263,6 @@ status_t infer_from_group_output_shape(op_t *n,
 status_t infer_unsqueeze_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
-    using ltw = logical_tensor_wrapper_t;
     if (!ltw(outputs[0]).is_shape_unknown()) return status::success;
 
     auto axes = (n->has_attr(op_attr::axes))
@@ -309,7 +303,6 @@ status_t infer_unsqueeze_output_shape(op_t *n,
 status_t infer_squeeze_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
-    using ltw = logical_tensor_wrapper_t;
     if (!ltw(outputs[0]).is_shape_unknown()) return status::success;
 
     auto in_dims = ltw(inputs[0]).vdims();
@@ -343,10 +336,10 @@ status_t infer_squeeze_output_shape(op_t *n,
 status_t infer_bn_folding_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
-    auto out0 = logical_tensor_wrapper_t(outputs[0]);
-    auto out1 = logical_tensor_wrapper_t(outputs[1]);
-    auto in0 = logical_tensor_wrapper_t(inputs[0]);
-    auto in1 = logical_tensor_wrapper_t(inputs[1]);
+    auto out0 = ltw(outputs[0]);
+    auto out1 = ltw(outputs[1]);
+    auto in0 = ltw(inputs[0]);
+    auto in1 = ltw(inputs[1]);
 
     if (!out0.is_shape_unknown() && !out1.is_shape_unknown())
         return status::success;
@@ -375,8 +368,6 @@ status_t infer_bn_folding_output_shape(op_t *n,
 status_t infer_dnnl_conv_bwd_data_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
-    using ltw = logical_tensor_wrapper_t;
-
     auto backup = *inputs[1];
     if (n->get_attr<int64_t>(op_attr::groups) > 1) {
         auto ndims = ltw(inputs[1]).ndims() - 1;
@@ -486,9 +477,9 @@ status_t infer_dnnl_pool_bwd_output_shape(op_t *n,
 status_t infer_binary_select_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
-    auto in0 = logical_tensor_wrapper_t(inputs[0]);
-    auto in1 = logical_tensor_wrapper_t(inputs[1]);
-    auto in2 = logical_tensor_wrapper_t(inputs[2]);
+    auto in0 = ltw(inputs[0]);
+    auto in1 = ltw(inputs[1]);
+    auto in2 = ltw(inputs[2]);
 
     const bool shapes_should_match = n->has_attr(op_attr::auto_broadcast)
             ? "none" == n->get_attr<std::string>(op_attr::auto_broadcast)
@@ -515,7 +506,7 @@ status_t infer_binary_select_output_shape(op_t *n,
                 op_t::kind2str(n->get_kind()).c_str());
     }
 
-    auto out0 = logical_tensor_wrapper_t(outputs[0]);
+    auto out0 = ltw(outputs[0]);
     // check if given or partial set shape aligns with inferred shape
     if (!out0.is_shape_unknown() || out0.ndims() != -1) {
         VCHECK_INVALID_SHAPE(validate(inferred_out_shape, out0.vdims()),
@@ -548,13 +539,13 @@ status_t infer_dnnl_sdpa_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {
     // [batch_size, num_heads_q, seq_len_q, head_size_qk]
-    auto query = logical_tensor_wrapper_t(inputs[0]);
+    auto query = ltw(inputs[0]);
     // [batch_size, num_heads_q, head_size_qk, seq_len_kv,]
-    auto key = logical_tensor_wrapper_t(inputs[1]);
+    auto key = ltw(inputs[1]);
     // [batch_size, num_heads_v, seq_len_kv, head_size_v]
-    auto value = logical_tensor_wrapper_t(inputs[2]);
+    auto value = ltw(inputs[2]);
     // [batch_size, num_heads_q, seq_len_q, head_size_v]
-    auto out0 = logical_tensor_wrapper_t(outputs[0]);
+    auto out0 = ltw(outputs[0]);
 
     dims query_dims = query.vdims();
     dims key_dims = key.vdims();

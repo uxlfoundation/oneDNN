@@ -332,10 +332,8 @@ std::pair<bool, std::pair<size_t, int64_t>> shuffle_fusible(
     using result_t = std::pair<bool, std::pair<size_t, int64_t>>;
     const result_t dflt_res {false, {0, 0}};
 
-    const logical_tensor_t src_port
-            = reshape0->get_input_value(0)->get_logical_tensor();
-    const logical_tensor_t dst_port
-            = reshape1->get_output_value(0)->get_logical_tensor();
+    const logical_tensor_t src_port = reshape0->get_input_logical_tensor(0);
+    const logical_tensor_t dst_port = reshape1->get_output_logical_tensor(0);
     const auto src_lt_shape = ltw(src_port).vdims();
     const auto dst_lt_shape = ltw(dst_port).vdims();
     const auto attr_shape = reshape0->get_attr<dims>(op_attr::shape);
@@ -392,9 +390,8 @@ bool post_binary_fusible(
     if (consumers[0].get_op().num_inputs() != 2) return false;
 
     size_t fused_in_off = consumers[0].get_offset();
-    auto fused_in = bin_op->get_input_value(fused_in_off)->get_logical_tensor();
-    auto other_in
-            = bin_op->get_input_value(1 - fused_in_off)->get_logical_tensor();
+    auto fused_in = bin_op->get_input_logical_tensor(fused_in_off);
+    auto other_in = bin_op->get_input_logical_tensor(1 - fused_in_off);
 
     // Special check: dnnl_reorder only support fuse non-broadcast binary_add as
     // post-sum
@@ -455,8 +452,7 @@ bool post_depthwise_conv_fusible(
     const auto extract_dims_as_oix = [](const op_t *op) -> oix_dims_t {
         const size_t wei_offset = 1;
         const auto wei_dims
-                = ltw(op->get_input_value(wei_offset)->get_logical_tensor())
-                          .vdims();
+                = ltw(op->get_input_logical_tensor(wei_offset)).vdims();
         const auto wei_format = (op->has_attr(op_attr::weights_format))
                 ? op->get_attr<std::string>(op_attr::weights_format)
                 : "XIO";
@@ -612,8 +608,8 @@ bool is_typecast(const op_t *op) {
                     || !op->get_attr<bool>(op_attr::with_runtime_src_zps))
             && (!op->has_attr(op_attr::with_runtime_dst_zps)
                     || !op->get_attr<bool>(op_attr::with_runtime_dst_zps))
-            && op->get_input_value(0)->get_logical_tensor().data_type
-                    != op->get_output_value(0)->get_logical_tensor().data_type;
+            && op->get_input_logical_tensor(0).data_type
+                    != op->get_output_logical_tensor(0).data_type;
     return is_typecast;
 }
 
@@ -653,8 +649,8 @@ bool is_layout_reorder(const op_t *op) {
                     || !op->get_attr<bool>(op_attr::with_runtime_src_zps))
             && (!op->has_attr(op_attr::with_runtime_dst_zps)
                     || !op->get_attr<bool>(op_attr::with_runtime_dst_zps))
-            && op->get_input_value(0)->get_logical_tensor().data_type
-                    == op->get_output_value(0)->get_logical_tensor().data_type;
+            && op->get_input_logical_tensor(0).data_type
+                    == op->get_output_logical_tensor(0).data_type;
     return is_layout_reorder;
 }
 
@@ -686,18 +682,10 @@ bool inverse_mul_scales(std::shared_ptr<op_t> &scale_op) {
 
 bool need_broadcast_for_inputs(
         const std::shared_ptr<op_t> &op, size_t index1, size_t index2) {
-    auto in_vals = op->get_input_values();
+    const dims input1_dims = ltw(op->get_input_logical_tensor(index1)).vdims();
+    const dims input2_dims = ltw(op->get_input_logical_tensor(index2)).vdims();
 
-    const dims input1_dims
-            = logical_tensor_wrapper_t(in_vals[index1]->get_logical_tensor())
-                      .vdims();
-    const dims input2_dims
-            = logical_tensor_wrapper_t(in_vals[index2]->get_logical_tensor())
-                      .vdims();
-
-    if (input1_dims != input2_dims) { return true; }
-
-    return false;
+    return input1_dims != input2_dims;
 }
 } // namespace dnnl_impl
 } // namespace graph

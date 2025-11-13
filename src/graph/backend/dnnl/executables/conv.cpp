@@ -206,11 +206,10 @@ conv_fwd_executable_t::desc_t conv_fwd_executable_t::create_desc(
     prm_attr.set_fpmath_mode(
             static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
 
     // assume constant weight is for inference scenario
-    const auto &wei_lt = op->get_input_value(1)->get_logical_tensor();
+    const auto &wei_lt = op->get_input_logical_tensor(1);
     auto pkind = (logical_tensor_wrapper_t(wei_lt).property_type()
                          == property_type::constant)
             ? prop_kind::forward_inference
@@ -218,23 +217,21 @@ conv_fwd_executable_t::desc_t conv_fwd_executable_t::create_desc(
     auto weight = make_dnnl_memory_desc(wei_lt);
     weight = to_format_any(weight);
 
-    auto base_conv_dst_lt = op->get_output_value(0)->get_logical_tensor();
+    auto base_conv_dst_lt = op->get_output_logical_tensor(0);
     if (fusion_info.has_post_dw_conv()) {
         // when fused post depthwise conv, onednn required to use the base conv
         // dst md to create the conv primitive. in the subgraph, the base conv
         // dst is a intermediate output which has been fused away, so here we
         // get it from fusion info
         const auto &dw_conv = fusion_info.get_post_dw_conv();
-        base_conv_dst_lt
-                = dw_conv->get_op()->get_input_value(0)->get_logical_tensor();
+        base_conv_dst_lt = dw_conv->get_op()->get_input_logical_tensor(0);
     }
     auto dst = make_dnnl_memory_desc(base_conv_dst_lt);
     auto create_pd = [&](const dnnl::memory::desc &src_md,
                              const dnnl::memory::desc &dst_md) {
         if (op->has_attr(op_attr::with_bias)
                 && op->get_attr<bool>(op_attr::with_bias)) {
-            auto bias = make_dnnl_memory_desc(
-                    op->get_input_value(2)->get_logical_tensor());
+            auto bias = make_dnnl_memory_desc(op->get_input_logical_tensor(2));
             bias = to_format_any(bias);
             return dnnl::convolution_forward::primitive_desc(p_engine, pkind,
                     algorithm::convolution_direct, src_md, weight, bias, dst_md,
@@ -259,8 +256,7 @@ conv_fwd_executable_t::desc_t conv_fwd_executable_t::create_desc(
             const auto &next_op
                     = op->get_output_value(0)->get_consumers()[0].get_op();
             if (next_op.get_kind() == op_kind::dnnl_permute) {
-                auto permute_dst_lt
-                        = next_op.get_output_value(0)->get_logical_tensor();
+                auto permute_dst_lt = next_op.get_output_logical_tensor(0);
                 auto perm = get_permutation(permute_dst_lt.ndims, "NCX", "NXC");
                 if (next_op.get_attr<std::vector<int64_t>>(op_attr::permutation)
                         == perm) {
@@ -325,17 +321,14 @@ conv_bwd_data_executable_t::desc_t conv_bwd_data_executable_t::create_desc(
     prm_attr.set_fpmath_mode(
             static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
 
-    auto diff_dst = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto diff_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     if (!use_block_layout)
         diff_dst = to_nxc_format(diff_dst);
     else
         diff_dst = to_format_any(diff_dst);
-    auto weight = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
+    auto weight = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
     weight = to_format_any(weight);
-    auto diff_src = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto diff_src = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     if (!use_block_layout)
         diff_src = to_nxc_format(diff_src);
     else
@@ -400,20 +393,17 @@ conv_bwd_weights_executable_t::create_desc(std::shared_ptr<op_t> &op,
     prm_attr.set_fpmath_mode(
             static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
 
-    auto src = make_dnnl_memory_desc(
-            op->get_input_value(0)->get_logical_tensor());
+    auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     if (!use_block_layout)
         src = to_nxc_format(src);
     else
         src = to_format_any(src);
-    auto diff_dst = make_dnnl_memory_desc(
-            op->get_input_value(1)->get_logical_tensor());
+    auto diff_dst = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
     if (!use_block_layout)
         diff_dst = to_nxc_format(diff_dst);
     else
         diff_dst = to_format_any(diff_dst);
-    auto diff_weight = make_dnnl_memory_desc(
-            op->get_output_value(0)->get_logical_tensor());
+    auto diff_weight = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     diff_weight = to_format_any(diff_weight);
 
     auto fwd_hints = dnnl::convolution_forward::primitive_desc(p_engine,

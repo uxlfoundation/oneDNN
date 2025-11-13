@@ -370,10 +370,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, interpolate_bwd_pass)
 // f16-in-bf16-out and same dtype in/out.
 #define SET_BF16_F16_CHECK() \
     append_decision_function([](op_t *graph_op) -> bool { \
-        logical_tensor_t inport \
-                = graph_op->get_input_value(0)->get_logical_tensor(); \
-        logical_tensor_t outport \
-                = graph_op->get_output_value(0)->get_logical_tensor(); \
+        logical_tensor_t inport = graph_op->get_input_logical_tensor(0); \
+        logical_tensor_t outport = graph_op->get_output_logical_tensor(0); \
         if (inport.data_type == graph::data_type::bf16 \
                 && outport.data_type == graph::data_type::f16) \
             return false; \

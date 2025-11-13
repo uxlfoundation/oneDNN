@@ -194,7 +194,7 @@ public:
 
             for (size_t i = 0; i < aop->num_inputs(); ++i) {
                 const logical_tensor_t &iport
-                        = aop->get_input_value(i)->get_logical_tensor();
+                        = aop->get_input_logical_tensor(i);
                 if (std::any_of(dt_with_dir.begin(), dt_with_dir.end(),
                             [&iport](data_type_t dt) {
                                 return dt == iport.data_type;
@@ -211,7 +211,7 @@ public:
             if (!meet_reorder && !meet_unsupported_dt) {
                 for (size_t i = 0; i < aop->num_outputs(); ++i) {
                     const logical_tensor_t &oport
-                            = aop->get_output_value(i)->get_logical_tensor();
+                            = aop->get_output_logical_tensor(i);
                     if (std::any_of(dt_with_dir.begin(), dt_with_dir.end(),
                                 [&oport](data_type_t dt) {
                                     return dt == oport.data_type;

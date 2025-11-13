@@ -145,6 +145,11 @@ public:
         return inputs_.at(offset);
     }
 
+    // a shortcut to get the logical tensor of an input value.
+    logical_tensor_t get_input_logical_tensor(size_t offset) const {
+        return inputs_.at(offset)->get_logical_tensor();
+    }
+
     const std::vector<std::shared_ptr<value_t>> &get_input_values() const {
         return inputs_;
     }
@@ -205,6 +210,11 @@ public:
 
     const std::vector<std::shared_ptr<value_t>> &get_output_values() const {
         return outputs_;
+    }
+
+    // a shortcut to get the logical tensor of an output value.
+    logical_tensor_t get_output_logical_tensor(size_t offset) const {
+        return outputs_.at(offset)->get_logical_tensor();
     }
 
     std::shared_ptr<value_t> get_output_value(size_t offset) const {

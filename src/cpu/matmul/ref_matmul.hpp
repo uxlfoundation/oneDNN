@@ -113,18 +113,19 @@ struct ref_matmul_t : public primitive_t {
             VDISPATCH_MATMUL(
                     attr_.set_default_formats(dst_md(0)) == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
-            VDISPATCH_MATMUL(
-                    IMPLICATION(!attr_.dropout_.has_default_values(),
-                            utils::one_of(
-                                    attr_.dropout_.dropout_desc_.data_type, u8,
-                                    s8)),
-                    VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_MATMUL(
-                    IMPLICATION(!attr_.dropout_.has_default_values(),
-                            memory_desc_wrapper(dst_md(0)).similar_to(
-                                    attr_.dropout_.dropout_desc_, true, false)),
-                    VERBOSE_UNSUPPORTED_ATTR);
-
+            if (!attr_.dropout_.has_default_values()) {
+                VDISPATCH_MATMUL(
+                        utils::one_of(attr_.dropout_.dropout_desc_.data_type,
+                                u8, s8, data_type::undef),
+                        VERBOSE_UNSUPPORTED_ATTR);
+                VDISPATCH_MATMUL(
+                        IMPLICATION(!types::is_zero_md(
+                                            &attr_.dropout_.dropout_desc_),
+                                memory_desc_wrapper(dst_md(0)).similar_to(
+                                        attr_.dropout_.dropout_desc_, true,
+                                        false)),
+                        VERBOSE_UNSUPPORTED_ATTR);
+            }
             init_scratchpad();
 
             return status::success;

@@ -152,6 +152,12 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
     OCL_CHECK(err);
     device_address_bits_ = device_address_bits;
 
+    cl_ulong max_allocation_size;
+    err = clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE,
+            sizeof(max_allocation_size), &max_allocation_size, nullptr);
+    OCL_CHECK(err);
+    max_allocation_size_ = max_allocation_size;
+
 #ifdef cl_intel_unified_shared_memory
     cl_device_unified_shared_memory_capabilities_intel
             system_memory_capabilities_intel

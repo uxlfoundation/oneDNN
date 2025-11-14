@@ -39,6 +39,15 @@ status_t ref_inner_product_int8_fwd_t::execute_forward(
     auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
     CHECK(status);
 
+    const float *src_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const float *wei_scales = CTX_IN_MEM(
+            const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const float *dst_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+
+    const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
+
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -71,27 +80,15 @@ status_t ref_inner_product_int8_fwd_t::execute_forward(
         return d;
     };
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-
-    const auto &attr_scales = pd()->attr()->scales_;
-    const bool with_dst_scales = !attr_scales.has_default_values(DNNL_ARG_DST);
-
-    auto maybe_oscale = [&](float &d, dim_t oc) {
-        // scale_idx_mult = 1 for per_oc scales and 0, otherwise
-        const int scale_idx_mult
-                = attr_scales.get_mask(DNNL_ARG_WEIGHTS) == (1 << 0);
-        d *= src_scales[0] * wei_scales[oc * scale_idx_mult];
-    };
-
     auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
 
     parallel_nd(MB, OC, [&](dim_t mb, dim_t oc) {
         int acc = ker(mb, oc);
 
         float d = static_cast<float>(acc);
-        maybe_oscale(d, oc);
+
+        if (src_scales) d *= src_scales[0];
+        if (wei_scales) d *= wei_scales[(wei_scale_mask > 0) * oc];
 
         if (bias) {
             const auto bias_off = bias_d.off(oc);
@@ -110,7 +107,7 @@ status_t ref_inner_product_int8_fwd_t::execute_forward(
         args.dst_md = pd()->dst_md();
         ref_post_ops->execute(d, args);
 
-        if (with_dst_scales) d *= dst_scales[0];
+        if (dst_scales) d /= dst_scales[0];
         io::store_float_value(dst_d.data_type(), d, dst, dst_off);
     });
 

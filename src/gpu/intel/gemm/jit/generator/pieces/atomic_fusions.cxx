@@ -482,8 +482,11 @@ bool Generator<hw>::gemmFusedPostOpsFinalize(Label &labelLateExit, GEMMProblem &
         globalMemBarrier(temp, r0_info, strategy);
     });
 
-    if (strategy.altFusedBeta)
+    if (strategy.altFusedBeta) {
+        cmp(1 | eq | f0[1], state.wgK, 0);
         gemmFusedBetaNotifyCompletion(problem, strategy, state);
+        jmpi(1 | f0[1], labelLateExit);     /* Zero-length chunks do not participate in post-ops. */
+    }
 
     /* Leader adds our k slice to the total "k done" counter and broadcasts to WG.
         Consider splitting counter and doing this check earlier to absorb latency. */

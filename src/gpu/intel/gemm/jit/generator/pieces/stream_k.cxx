@@ -232,9 +232,9 @@ void Generator<hw>::gemmStreamKSetup(Label &lKVPhaseDone, Label &lKernelDone,
             // This WG is wholly inside the padded region.
             // We still need to do beta scaling if it's our responsibility, unless
             //   there's only one other WG on the tile.
-            cmp(1 | ge | f0[1], state.inputs.k0, temp);
+            cmp(1 | ge | f0[0], state.inputs.k0, temp);
             jmpi(1 | ~f1[0], lKernelDone);                  // Skip if zero-size and not doing beta scaling.
-            jmpi(1 | f0[1], lKernelDone);                   // Skip if another WG is taking care of this entire tile.
+            jmpi(1 | f0[0], lKernelDone);                   // Skip if another WG is taking care of this entire tile.
             mark(lContinue);
         } else
             jmpi(1 | f1[1], lKernelDone);                   // Skip if zero-size.

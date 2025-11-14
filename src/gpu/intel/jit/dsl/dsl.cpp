@@ -639,9 +639,16 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         gpu_assert(tile[simd_idx] % simd == 0);
         gpu_assert(tile[sdepth_idx] % (sdepth_pack * sdepth) == 0);
         gpu_assert(C.layout[0].size == simd);
-        std::vector<stmt_t> dpas_stmts;
 
-        for (auto &coord : C.layout.iter(inst_tile)) {
+        std::vector<layout::block_t> dpas_blocks;
+        dpas_blocks.emplace_back(sdepth_idx, tile[sdepth_idx]);
+        for (auto &b : C.layout.blocks()) {
+            dpas_blocks.emplace_back(b.idx, b.size);
+        }
+        auto dpas_layout = C.layout.with(dpas_blocks);
+
+        std::vector<stmt_t> dpas_stmts;
+        for (auto &coord : dpas_layout.iter(inst_tile)) {
             int simd = (int)inst_tile[simd_idx];
             auto sdepth = inst_tile[sdepth_idx] / sdepth_pack;
             auto rcount = std::min(inst_tile[rcount_idx],
@@ -686,8 +693,15 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
         int a_stride = is_a_bcast ? 0 : int(A.layout.stride(m_idx));
         int b_stride = is_b_bcast ? 0 : int(B.layout.stride(n_idx));
 
+        std::vector<layout::block_t> mad_blocks;
+        mad_blocks.emplace_back(k_idx, tile[k_idx]);
+        for (auto &b : C.layout.blocks()) {
+            mad_blocks.emplace_back(b.idx, b.size);
+        }
+        auto mad_layout = C.layout.with(mad_blocks);
+
         gpu_assert(tile[simd_idx] * C.layout.type().size() % grf_size() == 0);
-        for (auto &coord : C.layout.iter(inst_tile)) {
+        for (auto &coord : mad_layout.iter(inst_tile)) {
             int simd = (int)std::min(
                     inst_tile[simd_idx], tile[simd_idx] - coord[simd_idx]);
 

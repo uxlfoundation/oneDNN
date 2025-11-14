@@ -137,27 +137,34 @@ void copy_cache_topology_non_hybrid(cache_topology_t &cache_topology) {
 
 void populate_cache_topology_from_cpuid(cache_topology_t &cache_topology) {
     static constexpr uint32_t MAX_SUBLEAF_GUARD = 16;
+    static constexpr uint32_t CACHE_PARAMETERS_LEAF = 0x04;
     uint32_t regs[4] = {0};
 
     core_type ctype = get_core_type();
     for (uint32_t subleaf = 0; subleaf < MAX_SUBLEAF_GUARD; ++subleaf) {
-        Xbyak::util::Cpu::getCpuidEx(0x04, subleaf, regs);
+        Xbyak::util::Cpu::getCpuidEx(CACHE_PARAMETERS_LEAF, subleaf, regs);
+        // EAX[4:0] Cache Type Field
         uint32_t cache_type = regs[0] & 0x1F;
         if (cache_type == 0) break; // no more caches
 
         if (cache_type != 1 && cache_type != 3)
             continue; // skip non-data/unified caches
-
+        // EAX[7:5] Cache Level
         int level = (regs[0] >> 5) & 0x7;
 
         // calculate cache size
+        // EBX[31:22] + 1 Ways of associativity
         uint32_t ways = ((regs[1] >> 22) & 0x3FF) + 1;
+        // EBX[21:12] + 1 Physical Line partitions
         uint32_t partitions = ((regs[1] >> 12) & 0x3FF) + 1;
+        // EBX[11:0] + 1 System Coherency line size
         uint32_t line_size = (regs[1] & 0xFFF) + 1;
+        // EBX[31:00] + 1 Number of Sets
         uint32_t sets = regs[2] + 1;
         uint32_t cache_size = ways * partitions * line_size * sets;
 
         // number of sharing cores
+        // EAX[25:14] + 1 Max number of sharing cores (typically larger than actual count)
         uint32_t max_cores_sharing = ((regs[0] >> 14) & 0xFFF) + 1;
 
         int type_idx = (ctype == core_type::p_core) ? 0 : 1;
@@ -178,6 +185,7 @@ void populate_cache_topology_from_cpuid(cache_topology_t &cache_topology) {
     }
 
     // refine sharing counts using topology leaf if available
+    // Get Basic CPUID Information leaf
     Xbyak::util::Cpu::getCpuidEx(0x0, 0x0, regs);
     uint32_t max_basic_leaf = regs[0];
     uint32_t topo_leaf = 0;
@@ -187,10 +195,12 @@ void populate_cache_topology_from_cpuid(cache_topology_t &cache_topology) {
     // and 0x1F would it make since to just use 0x0B?
     // Assumption was that V2 of the topology leaf would be more accurate
     // but both leaves should be equivalent for our purposes.
-    if (max_basic_leaf >= 0x1F) {
-        topo_leaf = 0x1F;
-    } else if (max_basic_leaf >= 0x0B) {
-        topo_leaf = 0x0B;
+    static constexpr uint32_t EXT_TOPOLOGY_LEAF_V1 = 0x0B;
+    static constexpr uint32_t EXT_TOPOLOGY_LEAF_V2 = 0x1F;
+    if (max_basic_leaf >= EXT_TOPOLOGY_LEAF_V2) {
+        topo_leaf = EXT_TOPOLOGY_LEAF_V2;
+    } else if (max_basic_leaf >= EXT_TOPOLOGY_LEAF_V1) {
+        topo_leaf = EXT_TOPOLOGY_LEAF_V1;
     }
 
     // Use Extended Topology Enumeration leaf
@@ -237,7 +247,6 @@ void populate_cache_topology_from_cpuid(cache_topology_t &cache_topology) {
 //   3a. Use CPUID(0x04) to get the cache information for each core
 //   3b. Use CPUID(0x1A) to get the core type of the current core see get_core_type()
 //   3c. if available Use CPUID(0x0B) or CPUID(0x1F) to refine the number of sharing cores
-//
 // 4. If no caches were detected, populate with guessed defaults
 // 5. If the system is not hybrid, copy the P-core cache information to the E-core entries
 //
@@ -905,8 +914,6 @@ static inline unsigned get_per_core_cache_size_legacy(int level) {
 unsigned get_per_core_cache_size(int level, behavior_t btype) {
     // Lazy-initialization used to initialize the cache_topology
     // the first time get_per_core_cache_size is called.
-    // The init_cache_topology is populated the first time
-    // init_cache_topology is called.
     static cache_topology_t cache_topology;
     init_cache_topology(cache_topology);
 

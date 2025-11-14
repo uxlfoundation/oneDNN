@@ -98,12 +98,11 @@ types for source, destination, weights, and bias tensors:
 | Source           | Weights                                | Destination                      | Bias                        |
 |:-----------------|:---------------------------------------|:---------------------------------|:----------------------------|
 | f64              | f64                                    | f64                              | f64, f32, f16, bf16, s8, u8 |
-| f32              | f32                                    | f32                              | f32, bf16, f16, u8, s8      |
+| f32              | f32, u8, s8, u4, s4                    | f32                              | f32, bf16, f16, u8, s8      |
 | f16              | f16, u8, s8, u4, s4                    | f16, u8, s8                      | f32                         |
-| f16              | f16, u8, s8                            | f32                              | f32, f16                    |
+| f16              | f16, u8, s8, u4, s4                    | f32, f16                         | f32, f16                    |
 | bf16             | bf16, u8, s8, u4, s4                   | f32, bf16                        | f32, bf16                   |
-| f32, bf16, f16   | u8, s8                                 | f32, bf16, f16                   | f32, bf16, f16              |
-| f32, bf16, f16   | u8, s8                                 | f32, bf16, f16                   | f32, bf16, f16              |
+| f32, bf16, f16   | u8, s8, u4, s4                         | f32, bf16, f16                   | f32, bf16, f16              |
 | bf16, f16        | f8_e5m2, f8_e4m3, f4_e2m1, f4_e3m0     | f32, f16, bf16                   | f32, bf16, f16              |
 | f8_e5m2, f8_e4m3 | f8_e5m2, f8_e4m3                       | f32, f16, bf16, f8_e5m2, f8_e4m3 | f32, bf16, f16              |
 | f4_e2m1, f4_e3m0 | f4_e2m1, f4_e3m0                       | f32, f16, bf16, f4_e2m1, f4_e3m0 | f32, bf16, f16              |
@@ -146,8 +145,8 @@ The following attributes and post-ops are supported:
 
 | Type      | Operation                                                      | Description                                                                   | Restrictions                        |
 |:----------|:---------------------------------------------------------------|:------------------------------------------------------------------------------|:------------------------------------|
-| Attribute | [Scales](@ref dnnl::primitive_attr::set_scales_mask)           | Scales the result by given scaling factor(s)                                    |                                     |
-| Attribute | [Zero-points](@ref dnnl::primitive_attr::set_zero_points_mask) | Sets zero-point(s) for the corresponding tensors                              | `int8` computations only              |
+| Attribute | [Scales](@ref dnnl::primitive_attr::set_scales_mask)           | Scales the result by given scaling factor(s)                                  |                                     |
+| Attribute | [Zero-points](@ref dnnl::primitive_attr::set_zero_points_mask) | Sets zero-point(s) for the corresponding tensors                              |                                     |
 | Attribute | [Dropout](@ref dnnl::primitive_attr::set_dropout)              | Applies pseudo-random dropout to destination buffer, also fills mask buffer   |                                     |
 | Attribute | [Precomputed reductions](@ref dnnl::primitive_attr::set_precomputed_reductions) | Sets precomputed reductions for the corresponding tensors  |  Requires weight zero-points and full matrix mask |
 | Post-op   | [Eltwise](@ref dnnl::post_ops::append_eltwise)                 | Applies an @ref dnnl_api_eltwise operation to the result                      |                                     |
@@ -156,9 +155,13 @@ The following attributes and post-ops are supported:
 | Post-op   | [Prelu](@ref dnnl::post_ops::append_prelu)                     | Applies an @ref dnnl_api_prelu operation to the result                        |                                     |
 
 The following masks are supported by the primitive:
-- 0, which applies one scale / zero point value to an entire tensor, and
-- 2, which applies a scale value per column along the
-  `n`dimension for `DNNL_ARG_WEIGHTS`.
+- 0, which applies one scale / zero point value to an entire tensor
+- 1, which applies a scale / zero point values along `k`-dimension
+  for `DNNL_ARG_WEIGHTS`. Values could be grouped along this dimension
+  via specifying scales / zero points shapes for the attribute
+  (see the code example @ref weights_decompression_matmul_cpp).
+- 2, which applies a scale / zero point values per column along the
+  `n`-dimension for `DNNL_ARG_WEIGHTS`.
 
 When scales and/or zero-points masks are specified, the user must
 provide the corresponding scales and/or zero-points as additional

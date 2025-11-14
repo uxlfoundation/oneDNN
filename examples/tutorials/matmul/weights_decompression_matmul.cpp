@@ -78,7 +78,7 @@ void init_vector(std::vector<float> &v) {
 int number_of_runs = 1;
 
 // Create a MatMul primitive descriptor for the following op:
-// C_f32 = A_f32 * (B_s8 - zp_B) * sc_B[:]
+// C_f32 = A_f32 * (B_s8 - zp_B[:]) * sc_B[:]
 //
 // Here:
 // - Matrices A and C are of f32 data type.
@@ -96,15 +96,15 @@ matmul::primitive_desc matmul_pd_create(
     // Create attributes and indicate that the alpha and zero points are
     // runtime parameters
     primitive_attr attr;
-    // Set scales with multiple scales along K and N dimensions and with groups along K.
+    // Set scales with multiple values along K and N dimensions and with groups along K.
     attr.set_scales(DNNL_ARG_WEIGHTS,
             /* mask */ (1 << 0) + (1 << 1), {G, 1}, memory::data_type::f32);
-    // Set a single zero point with s8 data type.
-    attr.set_zero_points(
-            DNNL_ARG_WEIGHTS, /* mask */ 0, {}, memory::data_type::s8);
+    // Set zero points with multiple values along K and N dimensions and with groups along K.
+    attr.set_zero_points(DNNL_ARG_WEIGHTS, /* mask */ (1 << 0) + (1 << 1),
+            {G, 1}, memory::data_type::s8);
     // Set fpmath mode with `apply_to_int=true` to apply fpmath mode behavior to
     // integral primitives (in this example, matmul).
-    attr.set_fpmath_mode(fpmath_mode::bf16, true);
+    attr.set_fpmath_mode(fpmath_mode::strict, true);
 
     // Create a MatMul primitive descriptor
     return matmul::primitive_desc(eng, a_md, b_md, c_md, attr);
@@ -136,7 +136,7 @@ void infer(const matmul &matmul_p, int64_t M, int64_t N, int64_t K, int64_t G,
     // De-quantization parameters (eg. Scale and Shift)
     const int64_t n_groups = K / G;
     memory sc_B_mem({{N, n_groups}, memory::data_type::f32, {1, N}}, eng);
-    memory zp_B_mem({{1}, memory::data_type::s8, {1}}, eng);
+    memory zp_B_mem({{N, n_groups}, memory::data_type::s8, {1, N}}, eng);
 
     // the function below fills dnnl::memory with some values
     // these memories, typically, come from the previous layers / operations

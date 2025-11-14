@@ -404,7 +404,7 @@ status_t brgemm_matmul_copy_reorder_t::execute_body(
         parallel_nd(kernel_conf.batch,
                 utils::div_up(kernel_conf.K, kernel_conf.K_blk),
                 utils::div_up(kernel_conf.M, kernel_conf.M_blk),
-                [&](const dim_t batch, const dim_t k_blk, const dim_t m_blk) {
+                [=](const dim_t batch, const dim_t k_blk, const dim_t m_blk) {
                     auto ker_exec_ctx
                             = matmul::jit_brgemm_matmul_copy_a_t::ctx_t();
                     ker_exec_ctx.current_K_blk
@@ -439,7 +439,7 @@ status_t brgemm_matmul_copy_reorder_t::execute_body(
                 : (dt_sz) * (md).blk_off((d0), (d1)))
 
         parallel_nd(kernel_conf.batch, div_up(kernel_conf.N, kernel_conf.N_blk),
-                [&](dim_t batch, dim_t n_blk_idx) {
+                [=](dim_t batch, dim_t n_blk_idx) {
                     const auto n = n_blk_idx * kernel_conf.N_blk;
                     const bool is_N_tail
                             = (kernel_conf.N - n) < kernel_conf.N_blk;

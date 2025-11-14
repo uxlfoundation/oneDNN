@@ -179,7 +179,7 @@ status_t jit_uni_reduction_t::execute(const exec_ctx_t &ctx) const {
     const auto &post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(post_ops, ctx);
 
-    parallel_nd(idle_size, [&](dim_t i) {
+    parallel_nd(idle_size, [=](dim_t i) {
         const dim_t src_off = i * reduce_size * src_dt_size;
         const dim_t dst_off = i * dst_dt_size;
 

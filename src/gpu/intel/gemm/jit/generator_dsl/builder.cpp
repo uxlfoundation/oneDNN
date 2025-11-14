@@ -572,10 +572,10 @@ struct generator_dsl_t {
         tensor_config_t A_load_short(kloop_it.A_load(), A_load_transform, 1);
         tensor_config_t B_load_short(kloop_it.B_load(), B_load_transform, 1);
 
-        k_loop_config_t k_loop_short {
-                (int)lcm(A_load_short.tile[k_var], B_load_short.tile[k_var]), 0,
-                0, kloop_it, std::move(A_load_short), std::move(B_load_short),
-                A_prefetch_transform, B_prefetch_transform, std::move(C)};
+        auto k_blk_short
+                = (int)lcm(A_load_short.tile[k_var], B_load_short.tile[k_var]);
+        k_loop_config_t k_loop_short {k_blk_short, 0, 0, kloop_it, A_load_short,
+                B_load_short, A_prefetch_transform, B_prefetch_transform, C};
         gpu_assert(k_loop_short.k_warmup() == 0);
 
         if (problem.A.alignment) {

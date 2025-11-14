@@ -63,6 +63,7 @@ int eltwise_injector_f32_t<ngen_generator_t>::min_scratch_regs() {
             case eltwise_logistic:
             case eltwise_logistic_use_dst_for_bwd: return 0;
             case eltwise_stochastic_round: return 6;
+            case eltwise_mx_scale: return hw() >= gpu_xe_hpc ? 1 : 2;
             default: assert(!"unsupported eltwise algorithm");
         }
     } else {
@@ -304,6 +305,67 @@ template <typename ngen_generator_t>
 void eltwise_injector_f32_t<ngen_generator_t>::round_compute_fwd(
         int simd, const ngen::GRF &r) {
     h->rnde(simd, r, r);
+}
+
+template <typename ngen_generator_t>
+void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
+        const ngen::GRF &r, int off, const ngen::Subregister &seed, int nreg,
+        const ngen::DataType dst_dt, int phase) {
+    assert(simd == 32);
+    assert(utils::one_of(dst_dt, ngen::DataType::bf8, ngen::DataType::hf8,
+            static_cast<ngen::DataType>(0x5A)));
+
+    int scale_off = (phase / nreg * 4);
+    int grf_bytes = GRF::bytes(hw());
+    int scale_reg_incr = scale_off / grf_bytes;
+    auto scale_dst = scale_reg_incr ? ngen::GRF(seed.getBase() + scale_reg_incr)
+                                              .ub(scale_off % grf_bytes)
+                                    : seed.ub(scale_off);
+
+    ngen::GRF r_alt(off);
+    auto max = scratch_[0].f();
+
+    // Inverse max float within e8m0 range for f8_e2m5, f8_e4m3, f4_e2m1.
+    auto fmax = (dst_dt == ngen::DataType::bf8)
+            ? Immediate::f(0.000030517578125)
+            : (dst_dt == ngen::DataType::hf8) ? Immediate::f(0.00390625)
+                                              : Immediate::f(0.25);
+
+    // Handle Inf/NaNs during max selection.
+    h->add(16, r.ud(0)(1), r.ud(0)(1), Immediate::ud(0x80800000));
+    h->add(16, r_alt.ud(0)(1), r_alt.ud(0)(1), Immediate::ud(0x80800000));
+
+    // Get Max value from group.
+    h->sel(16 | ge, max.f(0)(1), abs(r.f(0)(1)), abs(r_alt.f(0)(1)));
+
+    // Revert Inf/NaN offset.
+    h->add(16, r.d(0)(1), r.d(0)(1), Immediate::d(0x7F800000));
+    h->add(16, r_alt.d(0)(1), r_alt.d(0)(1), Immediate::d(0x7F800000));
+
+    h->sel(8 | ge, max.ud(0)(1), max.ud(0)(2), max.ud(1)(2));
+    h->sel(4 | ge, max.ud(0)(1), max.ud(0)(2), max.ud(1)(2));
+    h->sel(2 | ge, max.ud(0)(1), max.ud(0)(2), max.ud(1)(2));
+    h->sel(1 | ge, max.ud(0)(1), max.ud(0)(1), max.ud(1)(1));
+
+    h->add(1, max.d(0)(1), max.d(0)(1), Immediate::d(0x7F800000));
+
+    // Clamp max to e8m0 range.
+    h->and_(1, max.ud(0), max.ud(0), Immediate::ud(0x7F800000));
+
+    // Compute scale within e8m0 range.
+    h->mul(1, max.f(0), max.f(0), fmax);
+    h->sel(1 | ge, max.f(0)(1), max.f(0), Immediate::f(5.877472e-39));
+
+    // Invert scale for application.
+    h->inv(1, max.f(1), max.f(0));
+
+    // Apply scale to dst.
+    h->mul(16, r, r, max.f(1)(0));
+    h->mul(16, r_alt.f(0)(1), r_alt.f(0)(1), max.f(1)(0));
+
+    // Store scale value.
+    h->shr(1, max.ud(0), max.ud(0), 23);
+    h->mov(1, scale_dst.ub(0), max.ub(0));
 }
 
 template <typename ngen_generator_t>
@@ -847,6 +909,9 @@ void eltwise_injector_f32_t<ngen_generator_t>::compute(const int *grfs,
 
                 int simd = nreg * GRF::bytes(hw()) / sizeof(float);
 
+                auto grf0_t = grfs[idx0 + (ii / 2)];
+                auto base_t = GRF(grf0_t).f();
+                auto grf1 = grfs[idx0 + off + (ii / 2)];
                 if (is_fwd_) {
                     switch ((int)alg_) {
                         case eltwise_elu:
@@ -925,6 +990,10 @@ void eltwise_injector_f32_t<ngen_generator_t>::compute(const int *grfs,
                         case eltwise_stochastic_round:
                             sround_compute_fwd(simd, base, phase,
                                     GRF(seed).ud(off), dt, ii);
+                            break;
+                        case eltwise_mx_scale:
+                            mx_scale_compute_fwd(simd, base_t, grf1,
+                                    GRF(seed).ud(0), nreg, dt, ii);
                             break;
                         default: assert(!"unsupported eltwise algorithm");
                     }

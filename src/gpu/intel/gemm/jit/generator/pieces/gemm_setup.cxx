@@ -548,7 +548,7 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
     // Strided batch support.
     if (problem.batch == BatchMode::Strided) {
         Subregister bOffsetA[4], bOffsetB[4], bOffsetC[4];
-        Subregister bOffsetAs[4], bOffsetBs[4];
+        Subregister bOffsetAs[4], bOffsetBs[4], bOffsetCs[4];
         Subregister bOffsetAo[4], bOffsetBo[4];
         Subregister bOffsetAg[4], bOffsetBg[4];
 
@@ -561,6 +561,9 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
             }
             if(problem.hasBScale()){
                 bOffsetBs[b] = state.inputs.strideScaleB[b];
+            }
+            if(problem.hasCMXScale()){
+                bOffsetCs[b] = state.inputs.strideScaleC[b];
             }
             if(problem.hasAOffset()){
                 bOffsetAo[b] = state.inputs.strideOffsetA[b];
@@ -589,6 +592,9 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
             if(problem.hasBScale()){
                     emul(1, bOffsetBs[b], state.inputs.strideScaleB[b], state.batchID[b], strategy, state);
             }
+            if(problem.hasCMXScale()){
+                    emul(1, bOffsetCs[b], state.inputs.strideScaleC[b], state.batchID[b], strategy, state);
+            }
             if(problem.hasAOffset()){
                     emul(1, bOffsetAo[b], state.inputs.strideOffsetA[b], state.batchID[b], strategy, state);
             }
@@ -610,6 +616,10 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
         if(problem.hasBScale() && state.offsetBs.isInvalid()){
             state.offsetBs = state.ra.alloc_sub(state.offsetB.getType());
             emov(1, state.offsetBs, 0, strategy, state);
+        }
+        if(problem.hasCMXScale() && state.offsetCs.isInvalid()){
+            state.offsetCs = state.ra.alloc_sub(ngen::DataType::q);
+            emov(1, state.offsetCs, 0, strategy, state);
         }
         if(problem.hasAOffset() && state.offsetAo.isInvalid()){
             state.offsetAo = state.ra.alloc_sub(state.offsetA.getType());
@@ -640,6 +650,9 @@ void Generator<hw>::gemmOffsetBatchABC(const GEMMProblem &problem, const GEMMStr
             }
             if(problem.hasBScale()){
                     eadd(1, state.offsetBs, state.offsetBs, bOffsetBs[b], strategy, state);
+            }
+            if(problem.hasCMXScale()){
+                    eadd(1, state.offsetCs, state.offsetCs, bOffsetCs[b], strategy, state);
             }
             if(problem.hasAOffset()){
                     eadd(1, state.offsetAo, state.offsetAo, bOffsetAo[b], strategy, state);
@@ -884,44 +897,29 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
     }
 
     if (problem.batch == BatchMode::Strided){
-        if(problem.hasAScale()){
-                for (int b = 0; b < problem.batchDims; b++) {
-            scale(problem.Ta_scale, state.inputs.strideScaleA[b]);
-            }
-        }
-        if(problem.hasBScale()){
-                for (int b = 0; b < problem.batchDims; b++) {
-            scale(problem.Tb_scale, state.inputs.strideScaleB[b]);
-            }
-        }
-        if(problem.hasAOffset()){
-                for (int b = 0; b < problem.batchDims; b++) {
-            scale(problem.Tao, state.inputs.strideOffsetA[b]);
-            }
-        }
-        if(problem.hasBOffset()){
-                for (int b = 0; b < problem.batchDims; b++) {
-            scale(problem.Tbo, state.inputs.strideOffsetB[b]);
-            }
-        }
-        if(problem.needsAGroupSums()){
-                for (int b = 0; b < problem.batchDims; b++) {
-            scale(problem.Tag, state.inputs.strideGroupSumsA[b]);
-            }
-        }
-        if(problem.needsBGroupSums()){
-                for (int b = 0; b < problem.batchDims; b++) {
-            scale(problem.Tbg, state.inputs.strideGroupSumsB[b]);
-            }
-        }
         for (int b = 0; b < problem.batchDims; b++) {
+
+            if(problem.hasAScale())
+                scale(problem.Ta_scale, state.inputs.strideScaleA[b]);
+            if(problem.hasBScale())
+                scale(problem.Tb_scale, state.inputs.strideScaleB[b]);
+            if(problem.hasCMXScale())
+                scale(problem.Tc_scale, state.inputs.strideScaleC[b]);
+            if(problem.hasAOffset())
+                scale(problem.Tao, state.inputs.strideOffsetA[b]);
+            if(problem.hasBOffset())
+                scale(problem.Tbo, state.inputs.strideOffsetB[b]);
+            if(problem.needsAGroupSums())
+                scale(problem.Tag, state.inputs.strideGroupSumsA[b]);
+            if(problem.needsBGroupSums())
+                scale(problem.Tbg, state.inputs.strideGroupSumsB[b]);
             scale(Ta_ext, inputs.strideA[b]);
             scale(Tb_ext, inputs.strideB[b]);
             scale(Tc_ext, inputs.strideC[b]);
         }
     }
 
-    auto ldaq = inputs.ldaq, ldbq = inputs.ldbq;
+    auto ldaq = inputs.ldaq, ldbq = inputs.ldbq, ldcq = inputs.ldcq;
     if (ldaq.isInvalid()) ldaq = inputs.m;
     if (ldbq.isInvalid()) ldbq = inputs.n;
 
@@ -941,6 +939,9 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
         scale(problem.Tb_scale, inputs.ldbScale, ldbq);
         scale(problem.Tb_scale, inputs.offsetBScale, inputs.offsetBq);
     }
+    if (problem.hasCMXScale()) {
+        scale(problem.Tc_scale, inputs.ldcScale, ldcq);
+    }
     if (problem.needsAGroupSums()) {
         scale(problem.Tag, inputs.ldag, ldaq);
         scale(problem.Tag, inputs.offsetAg, inputs.offsetAq);
@@ -954,11 +955,13 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
     state.ldbo = inputs.ldbo;
     state.ldaScale = inputs.ldaScale;
     state.ldbScale = inputs.ldbScale;
+    state.ldcScale = inputs.ldcScale;
     state.ldag = inputs.ldag;
     state.ldbg = inputs.ldbg;
 
     state.ra.safeRelease(inputs.ldaq);
     state.ra.safeRelease(inputs.ldbq);
+    //state.ra.safeRelease(inputs.ldcq);
     state.ra.safeRelease(inputs.offsetAq);
     state.ra.safeRelease(inputs.offsetBq);
 }
@@ -1739,6 +1742,18 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
 
     gemmCalcQuantizationIncrements(problem, strategy, state);
 
+    if (problem.hasCMXScale()){
+        MatrixAddressing Cs = problem.C;
+        Cs.crosspack = 1;
+        Cs.tileR = Cs.tileC = 0;
+        MatrixAddressingStrategy Cs_strategy = strategy.C;
+        Cs_strategy.accessType = AccessType::Block;
+        Cs_strategy.tileR = Cs_strategy.tileC = 0;
+        Cs_strategy.dpasw = false;
+        Cs_strategy.accessType = gemmstone::AccessType::Scattered;
+        state.C_scaleLayout = RegisterLayout::tryCreate(hw, Type::f8_e8m0,(unrollM / problem.cqGroupM), (unrollN / problem.cqGroupN),  Cs, Cs_strategy, true, true, true);
+    }
+
     // Grab flag registers now for named barriers. TODO: unlock these.
     if (strategy.needsNamedBarriersM(problem))
         state.barrierM = state.raVFlag.allocSubreg0();
@@ -1825,6 +1840,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     allocAddrRegs(state.B_offsetAddrs, state.B_offsetLayout, state);
     allocAddrRegs(state.A_scaleAddrs, state.A_scaleLayout, state);
     allocAddrRegs(state.B_scaleAddrs, state.B_scaleLayout, state);
+    allocAddrRegs(state.C_scaleAddrs, state.C_scaleLayout, state);
     allocAddrRegs(state.Ag_addrs, state.Ag_layout, state);
     allocAddrRegs(state.Bg_addrs, state.Bg_layout, state);
 
@@ -1862,6 +1878,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
 
     auto i0qLate = i0q, j0qLate = j0q;
     auto A_h0qLate = A_h0q, B_h0qLate = B_h0q;
+    auto cMX_j0q = j0q;
 
     if (slmA && (((ao2D || aoTo2D) && !lateOffsetA) || (as2D && !state.lateScale2DA))) {
         if (state.ma_slm < unrollM) {
@@ -1961,6 +1978,13 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     if (bg2D) {
         setupQAddr(Tbg, state.Bg_addrs, state.Bg_layout, state.inputs.bgPtr,
                    B_h0qLate, j0qLate, state.inputs.ldbg, state.inputs.offsetBg);
+    }
+
+    if (problem.hasCMXScale()) {
+        auto i0qs = state.ra.alloc_sub(cMX_j0q.getType(), getHint(HintType::LongTerm, strategy));
+        divDown(i0qs, i0q, problem.cqGroupM, strategy, state);
+        setupQAddr(Type::u8, state.C_scaleAddrs, state.C_scaleLayout, state.inputs.cScalePtr,
+               i0qs, cMX_j0q, state.inputs.ldcScale, state.offsetCs);
     }
 
     if (i0qLate != state.i0) state.ra.safeRelease(i0qLate);
@@ -2624,6 +2648,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         state.inputs.bScalePtr = interface.getArgumentIfExists("b_scale_ptr");
         state.inputs.surfaceBScale = interface.getArgumentSurfaceIfExists("b_scale_ptr");
     }
+    if (problem.hasCMXScale()) {
+        state.inputs.cScalePtr = interface.getArgumentIfExists("c_scale_ptr");
+        state.inputs.surfaceCScale = interface.getArgumentSurfaceIfExists("c_scale_ptr");
+    }
     if (problem.needsAGroupSums()) {
         state.inputs.agPtr = interface.getArgumentIfExists("ag_ptr");
         state.inputs.surfaceAg = interface.getArgumentSurfaceIfExists("ag_ptr");
@@ -2660,6 +2688,9 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             if(problem.hasBScale()){
                     state.inputs.strideScaleB.push_back(interface.getArgument("scale_stride_B" + istr));
             }
+            if(problem.hasCMXScale()){
+                    state.inputs.strideScaleC.push_back(interface.getArgument("scale_stride_C" + istr));
+            }
             if(problem.hasAOffset()){
                     state.inputs.strideOffsetA.push_back(interface.getArgument("offset_stride_A" + istr));
             }
@@ -2692,10 +2723,12 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     state.inputs.ldco = interface.getArgumentIfExists("ldco");
     state.inputs.ldaScale = interface.getArgumentIfExists("lda_scale");
     state.inputs.ldbScale = interface.getArgumentIfExists("ldb_scale");
+    state.inputs.ldcScale = interface.getArgumentIfExists("ldc_scale");
     state.inputs.ldag = interface.getArgumentIfExists("ldag");
     state.inputs.ldbg = interface.getArgumentIfExists("ldbg");
     state.inputs.ldaq = interface.getArgumentIfExists("ldaq");
     state.inputs.ldbq = interface.getArgumentIfExists("ldbq");
+    state.inputs.ldcq = interface.getArgumentIfExists("ldcq");
     state.inputs.m = interface.getArgumentIfExists("m");
     state.inputs.n = interface.getArgumentIfExists("n");
     state.inputs.k = interface.getArgumentIfExists("k");
@@ -2862,6 +2895,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         claimIfValid(state.inputs.offsetBScale);
     }
 
+    if (problem.hasCMXScale()) {
+        state.ra.claim(state.inputs.cScalePtr);
+    }
+
     if (problem.needsAGroupSums()) {
         state.ra.claim(state.inputs.agPtr);
         claimIfValid(state.inputs.offsetAg);
@@ -2874,6 +2911,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
 
     claimIfValid(state.inputs.ldaq);
     claimIfValid(state.inputs.ldbq);
+    claimIfValid(state.inputs.ldcq);
     claimIfValid(state.inputs.offsetAq);
     claimIfValid(state.inputs.offsetBq);
 
@@ -2901,6 +2939,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         state.ra.claim(state.inputs.ldco);
     claimIfValid(state.inputs.ldaScale);
     claimIfValid(state.inputs.ldbScale);
+    claimIfValid(state.inputs.ldcScale);
     claimIfValid(state.inputs.ldag);
     claimIfValid(state.inputs.ldbg);
     state.ra.claim(state.inputs.m);

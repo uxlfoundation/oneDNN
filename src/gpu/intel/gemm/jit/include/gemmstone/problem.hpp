@@ -155,28 +155,30 @@ struct GEMMProblem : public CommonProblem {
     Type Ta, Tb, Tc, Ts;                            // Types for A/B/C/scalars in registers.
     Type Ta_ext, Tb_ext, Tc_ext;                    // Types for A/B/C data in memory.
     Type Tao, Tbo, Tco;                             // Types for A/B/C offsets.
-    Type Ta_scale, Tb_scale;                        // Types for A/B scales.
+    Type Ta_scale, Tb_scale, Tc_scale;              // Types for A/B/C scales.
     Type Tag, Tbg;                                  // Types for A/B group sums.
 
     Scalar alpha, beta;                             // Scaling factors for A*B and C, respectively.
     MatrixAddressing A, B, C;                       // Addressing information for A/B/C matrices.
     MatrixAddressing AO, BO, CO;                    // Addressing information for A/B/C offsets (if 2D).
-    MatrixAddressing A_scale, B_scale;              // Addressing information for A/B scales (if 2D).
+    MatrixAddressing A_scale, B_scale, C_scale;     // Addressing information for A/B scales (if 2D).
     MatrixAddressing Ag, Bg;                        // Addressing information for A/B group sums.
 
     bool checkBeta0 = true;                         // If true, check for beta = 0 and handle specially.
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
     int aoPtrDims = -1, boPtrDims = -1;             // A/B offset dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
-    int asPtrDims = -1, bsPtrDims = -1;           // A/B scale dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
+    int asPtrDims = -1, bsPtrDims = -1, csPtrDims = -1;           // A/B scale dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
     int aqGroupM = 0, aqGroupK = 0;                 // Group sizes for A quantization parameters (offsets and scales)
     int bqGroupN = 0, bqGroupK = 0;                 // Group sizes for B quantization parameters (offsets and scales)
+    int cqGroupM = 0, cqGroupN = 0;                 // Group sizes for C quantization parameters (offsets and scales)
     COffset cOffset = COffset::None;                // C offset mode.
     BatchMode batch = BatchMode::None;              // Batch mode.
     int batchDims = 0;                              // # of batch dimensions (strided batch only).
     bool sumA = false, sumB = false;                // If true, calculate A row sums/B column sums and store in CO.
     bool forceGroupSumsA = false;
     bool forceGroupSumsB = false;
+    bool cMXScale = false;
     MatrixAddressing sroundSeed;
     PostOpsProblem postOps;                         // Fused post operations to apply
 
@@ -203,6 +205,8 @@ struct GEMMProblem : public CommonProblem {
         if (hasSum1PostOpAtEnd())
             postOps.ops.pop_back();
     }
+    bool binaryPostProcess() const { return postOps.cStochasticRound || hasCScale(); }
+
 
     bool beta0() const   { return (beta  ==  0); }
     bool beta1() const   { return (beta  ==  1); }
@@ -227,6 +231,8 @@ struct GEMMProblem : public CommonProblem {
 
     bool hasAScale() const { return (asPtrDims > -1); }
     bool hasBScale() const { return (bsPtrDims > -1); }
+    bool hasCScale() const { return (csPtrDims > 0); }
+    bool hasCMXScale() const { return cMXScale; }
     bool hasAOffset() const { return (aoPtrDims > -1); }
     bool hasBOffset() const { return (boPtrDims > -1); }
 
@@ -278,18 +284,19 @@ struct GEMMProblem : public CommonProblem {
         s.append(Ta, Tb, Tc, Ts);
         s.append(Ta_ext, Tb_ext, Tc_ext);
         s.append(Tao, Tbo, Tco);
-        s.append(Ta_scale, Tb_scale);
+        s.append(Ta_scale, Tb_scale, Tc_scale);
         s.append(alpha);
         s.append(beta);
         s.append(A, B, C);
         s.append(AO, BO, CO);
-        s.append(A_scale, B_scale);
+        s.append(A_scale, B_scale, C_scale);
         s.append(checkBeta0);
         s.append(aOffset, bOffset);
         s.append(aoPtrDims, boPtrDims);
-        s.append(asPtrDims, bsPtrDims);
+        s.append(asPtrDims, bsPtrDims, csPtrDims);
         s.append(aqGroupM, aqGroupK);
         s.append(bqGroupN, bqGroupK);
+        s.append(cqGroupM, cqGroupN);
         s.append(cOffset);
         s.append(batch);
         s.append(batchDims);

@@ -31,6 +31,11 @@ void init_extra_tensors(const zero_points_config_t &zp_cfg,
         tensor_cfg.add_tensor("sround_seed", DNNL_ARG_ATTR_ROUNDING_SEED,
                 /*is_input=*/true, /*is_output=*/false, sround_seed_layout);
     }
+    if (attr.scales_.get(DNNL_ARG_DST).is_mx()) {
+        layout_t dst_scales_layout(type_t::u32(), std::vector<dim_t> {1});
+        tensor_cfg.add_tensor("dst_scales", DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
+                /*is_input=*/false, /*is_output=*/true, dst_scales_layout);
+    }
     auto add_zp_buffer = [&](const std::string &name, type_t type, int arg_id,
                                  dim_t size) {
         layout_t zp_layout(type, std::vector<dim_t> {size});

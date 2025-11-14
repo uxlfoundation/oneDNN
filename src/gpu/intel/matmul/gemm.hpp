@@ -265,7 +265,8 @@ struct gemm_t : public primitive_t {
                                 / qdims[reshaped_md.ndims - 1];
                     }
                     quant_entry_t out_entry;
-                    UNUSED_STATUS(out_entry.set(new_mask, dt, ndims, dims));
+                    UNUSED_STATUS(out_entry.set(new_mask, dt, ndims, dims,
+                            false, in_entry.get_quantization_mode()));
                     return out_entry;
                 };
 

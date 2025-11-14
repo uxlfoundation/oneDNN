@@ -53,6 +53,9 @@ struct with_post_ops_t : public primitive_t {
         compute::dispatch_t dispatch_;
         attr_info_t attr_info_;
         bool subbyte_pack_ = false;
+        bool mx_scales_ = false;
+        data_type_t dst_type_ = data_type::undef;
+        data_type_t acc_type_ = data_type::undef;
     };
 
     status_t init(impl::engine_t *engine) override {
@@ -68,11 +71,37 @@ struct with_post_ops_t : public primitive_t {
         compute::kernel_ctx_t kernel_ctx(&attr);
         ret_status = pd()->init_kernel_ctx(kernel_ctx);
         CHECK(ret_status);
+        kernels_.resize(3);
+        int kidx = 0;
         ret_status = create_kernel(
-                engine, &post_process_kernel_, "gemm_post_ops", kernel_ctx);
-        if (pd()->subbyte_pack_)
+                engine, &kernels_[kidx++], "gemm_post_ops", kernel_ctx);
+        const bool mx_scales = pd()->mx_scales_;
+        if (mx_scales) {
+            compute::kernel_ctx_t alt_ctx(pd()->attr());
+            const auto src_info = memory_desc_info_t::create(pd_->dst_md(0));
+            dnnl_memory_desc dst_md(*(pd()->dst_md(0)));
+            dst_md.data_type = pd()->dst_type_;
+            memory_desc_wrapper dst_d(dst_md);
+            def_memory_desc_info(alt_ctx, src_info, "SRC", false);
+            def_memory_desc_info(
+                    alt_ctx, memory_desc_info_t::create(dst_d), "DST", false);
+            const int ndims = dst_d.ndims();
+            bool runtime_dims
+                    = pd()->has_runtime_dims_or_strides() || ndims > 5;
+            if (!runtime_dims) {
+                offsets_t off;
+                set_offsets(dst_d, off.dst_off);
+                def_offsets(off.dst_off, alt_ctx, "DST", ndims);
+                alt_ctx.define_int("NDIMS", ndims);
+            }
             CHECK(create_kernel(
-                    engine, &subbyte_pack_kernel_, "subbyte_pack", kernel_ctx));
+                    engine, &kernels_[kidx++], "mx_scale_dst", alt_ctx));
+            if (pd()->subbyte_pack_)
+                CHECK(create_kernel(
+                        engine, &kernels_[kidx++], "subbyte_pack", alt_ctx));
+        } else if (pd()->subbyte_pack_)
+            CHECK(create_kernel(
+                    engine, &kernels_[kidx++], "subbyte_pack", kernel_ctx));
         return ret_status;
     }
 
@@ -81,8 +110,7 @@ struct with_post_ops_t : public primitive_t {
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::shared_ptr<impl::primitive_t> prim_;
-    compute::kernel_t post_process_kernel_;
-    compute::kernel_t subbyte_pack_kernel_;
+    std::vector<compute::kernel_t> kernels_;
 };
 
 } // namespace gemm

@@ -48,6 +48,7 @@ struct MatchParamsBase
     char precisionCExt = 0;
     bool ignoreSizes = false;
     bool ignoreCase = false;
+    bool reqNUnroll32 = false;
     int stepping = 0;
     int alignment[3] = {0, 0, 0};
     kcatalog::string tags, lateTags;

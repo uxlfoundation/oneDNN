@@ -40,15 +40,16 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         const memory_storage_t &a, const memory_storage_t &b,
         const memory_storage_t &c, const memory_storage_t *ao,
         const memory_storage_t *bo, const memory_storage_t *a_scales,
-        const memory_storage_t *b_scales, const memory_storage_t *ag,
-        const memory_storage_t *bg, const memory_storage_t &co,
-        const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
-        int po_count, const memory_storage_t **po_srcs, int64_t offset_a,
-        int64_t offset_b, int64_t offset_c, int64_t offset_aq,
-        int64_t offset_bq, int64_t offset_co, int64_t *offset_po_src,
-        int32_t lda, int32_t ldb, int32_t ldc, int32_t m, int32_t n, int32_t k,
-        int32_t k0, float alpha, float beta, int32_t cmask, bool last_k_block,
-        bool swapab, bool disable_hilbert) const {
+        const memory_storage_t *b_scales, const memory_storage_t *c_scales,
+        const memory_storage_t *ag, const memory_storage_t *bg,
+        const memory_storage_t &co, const memory_storage_t *c_temp,
+        const memory_storage_t *sround_seed, int po_count,
+        const memory_storage_t **po_srcs, int64_t offset_a, int64_t offset_b,
+        int64_t offset_c, int64_t offset_aq, int64_t offset_bq,
+        int64_t offset_co, int64_t *offset_po_src, int32_t lda, int32_t ldb,
+        int32_t ldc, int32_t m, int32_t n, int32_t k, int32_t k0, float alpha,
+        float beta, int32_t cmask, bool last_k_block, bool swapab,
+        bool disable_hilbert) const {
     if (pd()->desc()->batch() == 0) return status::success;
 
     uint32_t flags = 0;
@@ -87,6 +88,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     if (problem->bScale2D()) arg_list.set(argn++, *b_scales);
     if (problem->needsAGroupSums()) arg_list.set(argn++, *ag);
     if (problem->needsBGroupSums()) arg_list.set(argn++, *bg);
+    if (pd()->with_mx_scale()) arg_list.set(argn++, *c_scales);
 
     if (problem->aOffset2D() || problem->aScale2D()
             || problem->needsAGroupSums()) {
@@ -107,6 +109,10 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                         ? pd()->eff_n()
                         : utils::div_up(pd()->desc()->k(), problem->bqGroupK));
         arg_list.set(argn++, ldbq);
+    }
+    if (pd()->with_mx_scale()) {
+        auto ldcq = pd()->desc()->m() / problem->cqGroupM;
+        arg_list.set(argn++, ldcq);
     }
     if (pd()->with_c_zero_points() || pd()->with_bias()
             || pd()->with_sum_ab()) {
@@ -178,6 +184,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             }
             if (problem->hasBScale()) {
                 arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_B));
+            }
+            if (problem->hasCMXScale()) {
+                arg_list.set(argn++, stride_c / problem->cqGroupM);
             }
             if (problem->hasAOffset()) {
                 arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_A));
@@ -344,6 +353,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     auto *co = &c_zp;
     const memory_storage_t *ao = nullptr, *bo = nullptr;
     const memory_storage_t *a_scales = nullptr, *b_scales = nullptr;
+    const memory_storage_t *c_scales = nullptr;
     const memory_storage_t *ag = nullptr, *bg = nullptr;
 
     std::unique_ptr<memory_storage_t> c_temp;
@@ -461,6 +471,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     if (pd()->a_scales_2d()) { a_scales = &GEMM_CTX_ARG_STORAGE(a_scales); }
     if (pd()->b_scales_2d()) { b_scales = &GEMM_CTX_ARG_STORAGE(b_scales); }
+    if (pd()->with_mx_scale()) { c_scales = &GEMM_CTX_ARG_STORAGE(c_scales); }
 
     if (problem.needsAGroupSums()) ag = &GEMM_CTX_ARG_STORAGE(a_group_sums);
     if (problem.needsBGroupSums()) bg = &GEMM_CTX_ARG_STORAGE(b_group_sums);
@@ -506,10 +517,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         if (k_parallel_global && !nocopy_info()->fusedBeta() && beta != 1.0f
                 && (k > k0 * pd()->kernel_desc()->aux_params()->wgK)) {
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
-                    bo, a_scales, b_scales, ag, bg, *co, nullptr, sround_seed,
-                    po_count, po_srcs, off_a0, off_b0, off_c0, off_aq0, off_bq0,
-                    off_co0, po_offsets0, lda, ldb, ldc, m, n, 0, 1, 1.0f, beta,
-                    0, false, swapab, true);
+                    bo, a_scales, b_scales, c_scales, ag, bg, *co, nullptr,
+                    sround_seed, po_count, po_srcs, off_a0, off_b0, off_c0,
+                    off_aq0, off_bq0, off_co0, po_offsets0, lda, ldb, ldc, m, n,
+                    0, 1, 1.0f, beta, 0, false, swapab, true);
             if (status) return status;
             beta = 1.0f;
         }
@@ -569,12 +580,12 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
                 float eff_beta = (Bk == 0) ? beta : 1.0f;
                 status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c,
-                        ao, bo, a_scales, b_scales, ag, bg, *co, c_temp.get(),
-                        sround_seed, po_count, po_srcs, off_a_src, off_b_src,
-                        off_c, off_aq, off_bq, off_co, po_offsets, lda, ldb,
-                        ldc, into<int32_t>(size_m), into<int32_t>(size_n),
-                        into<int32_t>(size_k), k0, alpha, eff_beta, cmask,
-                        last_k_block, swapab, disable_hilbert);
+                        ao, bo, a_scales, b_scales, c_scales, ag, bg, *co,
+                        c_temp.get(), sround_seed, po_count, po_srcs, off_a_src,
+                        off_b_src, off_c, off_aq, off_bq, off_co, po_offsets,
+                        lda, ldb, ldc, into<int32_t>(size_m),
+                        into<int32_t>(size_n), into<int32_t>(size_k), k0, alpha,
+                        eff_beta, cmask, last_k_block, swapab, disable_hilbert);
 
                 if (status) return status;
             }

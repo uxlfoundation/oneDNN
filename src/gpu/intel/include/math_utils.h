@@ -67,14 +67,15 @@ int __attribute__((overloadable)) rnd_down(long a, unsigned int b) {
 
 #if DT_BF8 || SRC_DT_BF8 || WEI_DT_BF8 || DST_DT_BF8 || BIA_DT_BF8 || A_DT_BF8 \
         || B_DT_BF8 || C_DT_BF8 || DATA_DT_BF8 || POST_OP_USING_BF8 \
-        || SRC_SCALES_DT_BF8 || WEI_SCALES_DT_BF8 || DST_SCALES_DT_BF8
+        || SRC_SCALES_DT_BF8 || WEI_SCALES_DT_BF8 || DST_SCALES_DT_BF8 \
+        || BIAS_DT_BF8
 #define MATH_UTILS_DECLARE_BF8 1
 #endif
 
 #if DT_HF8 || SRC_DT_HF8 || WEI_DT_HF8 || DST_DT_HF8 || BIA_DT_HF8 || A_DT_HF8 \
         || A_DT_HF8 || B_DT_HF8 || C_DT_HF8 || DATA_DT_HF8 \
         || POST_OP_USING_HF8 || SRC_SCALES_DT_HF8 || WEI_SCALES_DT_HF8 \
-        || DST_SCALES_DT_HF8
+        || DST_SCALES_DT_HF8 || BIAS_DT_HF8
 #define MATH_UTILS_DECLARE_HF8 1
 #endif
 
@@ -127,6 +128,11 @@ float __attribute__((overloadable)) cvt_e8m0_to_f32(uchar f) {
 }
 #endif
 
+uchar __attribute__((overloadable)) cvt_f32_to_e8m0(float f) {
+    uint bits = as_uint(f);
+    return ((uchar4)((bits >> 23) & 0xff)).s0;
+}
+
 #if MATH_UTILS_DECLARE_HF8
 // Emulation functions for f8_e4m3 <-> f16 conversion.
 uchar __attribute__((overloadable)) cvt_hf_to_f8_e4m3(half f) {
@@ -140,7 +146,7 @@ uchar __attribute__((overloadable)) cvt_hf_to_f8_e4m3(half f) {
     fraw = fraw & 0x7fff;
 
     // we filter out overlow, nan
-    if (fraw >= 0x5f40) {
+    if (fraw > 0x5f40) {
         raw_bits = s8 | 0x7f;
         return raw_bits;
     }
@@ -157,7 +163,7 @@ uchar __attribute__((overloadable)) cvt_hf_to_f8_e4m3(half f) {
     // e8 = e16 - e16_bias + e8_bias = e16 - 15 + 7
     // e8 will be denorm if e8 <= 0 or e16 + 7 < 16
     const int exp_threshold = 0x4000; // raw bits of exponent = 16
-    ushort is_denorm = shifter < exp_threshold;
+    bool is_denorm = shifter < exp_threshold;
     if (is_denorm) shifter = exp_threshold;
 
     ushort rounded

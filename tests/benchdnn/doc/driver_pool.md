@@ -9,7 +9,7 @@ where *pool-knobs* are:
 
  - `--dir={FWD_D [default], FWD_I, BWD_D}` -- dnnl_prop_kind_t.
             Refer to [direction](knobs_dir.md) for details.
- - `--dt={f32:f32:f32 [default], ...}` -- source, weights and destination data
+ - `--dt={f32:f32 [default], ...}` -- source and destination data
             types. Interface supports broadcasting, when a single input is
             provided, e.g., `--dt=f32`, and the value will be applied for all
             tensors. Refer to [data types](knobs_dt.md) for details.

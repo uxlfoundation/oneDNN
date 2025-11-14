@@ -300,7 +300,7 @@ template <HW hw>
 void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp op,
                                             const RegisterLayout &layout, const RegisterLayout &qlayout,
                                             const GRFMultirange &regs, const GRFMultirange &qregs,
-                                            int hq, const GEMMProblem &problem, CommonState &state)
+                                            int h, int kab_load, int kq_load, const GEMMProblem &problem, CommonState &state)
 {
     int xqGroupK  = doA ? problem.aqGroupK : problem.bqGroupK;
     int xqGroupMN = doA ? problem.aqGroupM : problem.bqGroupN;
@@ -340,17 +340,22 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
         if (bfSpecialPath)
             strideq = 1;
 
+        // Unpack iteration # and block offsets into MNK indices
+        auto h_block = align_down(h, kab_load) + (doA ? block.offsetC : block.offsetR);
+        auto mn_block = doA ? block.offsetR : block.offsetC;
+
         for(int y0 = 0; y0 < ny; y0 += qbroadcastY ? crosspack : 1) {
         for(int x0 = 0; x0 < nx; ) {
             auto ii0 = colMajor ? x0 : y0;
             auto jj0 = colMajor ? y0 : x0;
-            auto io0 = ii0 + block.offsetR;
-            auto jo0 = jj0 + block.offsetC % (qlayout.cols()*xqGroupK);
-            auto &ho0 = doA ? jo0 : io0;
-            auto &lo0 = doA ? io0 : jo0;
-            ho0 += hq;
-            ho0 /= xqGroupK;
-            lo0 /= xqGroupMN;
+
+            auto h_final = h_block + (doA ? jj0 : ii0);
+            auto mn_final = mn_block + (doA ? ii0 : jj0);
+            auto mnq = mn_final / xqGroupMN;
+            auto hq = (h_final % kq_load) / xqGroupK;
+
+            auto io0 = doA ? mnq : hq;
+            auto jo0 = doA ? hq : mnq;
 
             // Common scales always load the first element
             if (common) io0 = jo0 = 0;
@@ -419,7 +424,7 @@ template <HW hw>
 void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
                                    const RegisterLayout &layoutOffset, const RegisterLayout &layoutScale,
                                    const GRFMultirange &src, const GRFMultirange &dst, const GRFMultirange &offset, const GRFMultirange &scale,
-                                   int offR, int offC, int hq,
+                                   int offR, int offC, int h, int kab_load, int kq_load,
                                    const GEMMProblem *problem, const CommonStrategy &strategy, CommonState &state, bool s4Shift)
 {
     auto Tsrc = layoutSrc.type(), Tdst = layoutDst.type();
@@ -457,7 +462,7 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     //     so two multiplications are needed.
     if (!layoutOffset.empty()) {
         if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::ScaleSub, *effLayoutDst, layoutOffset, *effDst, offset, hq, *problem, state);
+        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::ScaleSub, *effLayoutDst, layoutOffset, *effDst, offset, h, kab_load, kq_load, *problem, state);
     } else {
         map(hw, Type::f16, *effDst, *effLayoutDst, strategy, [&](int esize, RegData r) {
             s4 ? mad(esize, r, Immediate::hf(0x9800), r, Immediate::hf(0x6C00)) /* 0x9800 = -8*2^(-12), 0x6C00 = 2^12 */
@@ -474,7 +479,7 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     //      this could be merged into the previous multiplication.
     if (!f32 && !layoutScale.empty()) {
         if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::Mul, *effLayoutDst, layoutScale, *effDst, scale, hq, *problem, state);
+        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::Mul, *effLayoutDst, layoutScale, *effDst, scale, h, kab_load, kq_load, *problem, state);
     }
 
     // 6) Convert to dst type if needed.
@@ -486,14 +491,14 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     // 7) Apply scales for f32 after f16->f32 upconversion.
     if (f32 && !layoutScale.empty()) {
         if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f32, Type::f32, BinaryOp::Mul, layoutDst, layoutScale, dst, scale, hq, *problem, state);
+        gemmDequantizeOperation(doA, Type::f32, Type::f32, BinaryOp::Mul, layoutDst, layoutScale, dst, scale, h, kab_load, kq_load, *problem, state);
     }
 }
 
 // Dequantize A/B, given 2D grouped quantization data.
 template <HW hw>
 void Generator<hw>::gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst0,
-                                     const GRFMultirange &src, const GRFMultirange &dst0, int hab, int hq,
+                                     const GRFMultirange &src, const GRFMultirange &dst0, int h, int kab_load, int kab_repack, int kq_load,
                                      const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state,
                                      bool s4Shift)
 {
@@ -528,8 +533,8 @@ void Generator<hw>::gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, 
     if (xo2D && !xs2D && (Txo_int.bits() > Tdst.bits()))
         Tx_int = Tdst;
 
-    int offR = doA ? 0 : hab;
-    int offC = doA ? hab : 0;
+    int offR = doA ? 0 : h % kab_repack;
+    int offC = doA ? h % kab_repack : 0;
     int offR0 = offR, offC0 = offC;
 
     int ms = layoutSrc.rows(), ns = layoutSrc.cols();
@@ -544,7 +549,7 @@ void Generator<hw>::gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, 
 
     if (canDequantizeInt4(layoutSrc, layoutDst, oLayout, sLayout)) {
         dequantizeInt4(doA, layoutSrc, layoutDst, oLayout, sLayout,
-                       src, dst, oRegs, sRegs, offR, offC, hq, &problem,
+                       src, dst, oRegs, sRegs, offR, offC, h, kab_load, kq_load, &problem,
                        strategy, state, s4Shift);
     } else {
         if (copy)
@@ -553,12 +558,12 @@ void Generator<hw>::gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, 
             convert(src, Tsrc, Tx_int, strategy, state);
 
         if (xo2D) {
-            gemmDequantizeOperation(doA, Tx_int, Txo_int, BinaryOp::Sub, layoutDst, oLayout, dst, oRegs, hq, problem, state);
+            gemmDequantizeOperation(doA, Tx_int, Txo_int, BinaryOp::Sub, layoutDst, oLayout, dst, oRegs, h, kab_load, kq_load, problem, state);
             convert(dst, Tx_int, Tdst, strategy, state);
         }
 
         if (xs2D)
-            gemmDequantizeOperation(doA, Tdst, Txs_int, BinaryOp::Mul, layoutDst, sLayout, dst, sRegs, hq, problem, state);
+            gemmDequantizeOperation(doA, Tdst, Txs_int, BinaryOp::Mul, layoutDst, sLayout, dst, sRegs, h, kab_load, kq_load, problem, state);
     }
 
     if (ms < md || ns < nd) {

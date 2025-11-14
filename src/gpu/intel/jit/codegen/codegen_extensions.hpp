@@ -13,24 +13,35 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+#ifndef GPU_INTEL_JIT_CODEGEN_CODEGEN_EXTENSIONS_HPP
+#define GPU_INTEL_JIT_CODEGEN_CODEGEN_EXTENSIONS_HPP
 
-#ifndef GPU_INTEL_REORDER_JIT_NORMALIZATION_HPP
-#define GPU_INTEL_REORDER_JIT_NORMALIZATION_HPP
-
-#include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/codegen/operand.hpp"
+#include "gpu/intel/jit/codegen/register_scope.hpp"
+#include "gpu/intel/jit/ir/include/kernel.hpp"
+#include "oneapi/dnnl/dnnl_config.h"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
-namespace reorder {
 namespace jit {
 
-using namespace intel::jit;
-void normalize(layout_t &a, layout_t &b);
+struct codegen_extension_interface_t {
+public:
+    struct host_t {
+        void *ptr;
+        const std::type_info &info;
+    };
+    virtual host_t root_code_generator() const = 0;
+    virtual const kernel::options_t &options() const = 0;
+    virtual reg_allocator_t &allocator() = 0;
+    virtual std::vector<ngen_operand_t> evaluate(
+            const std::vector<expr_t> &exprs, ngen_register_scope_t &scope)
+            = 0;
+};
 
 } // namespace jit
-} // namespace reorder
 } // namespace intel
 } // namespace gpu
 } // namespace impl

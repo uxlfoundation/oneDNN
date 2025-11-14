@@ -15,7 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/reorder/jit/config.hpp"
-#include "gpu/intel/reorder/jit/normalization.hpp"
+#include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/reorder/jit/tiler.hpp"
 
 namespace dnnl {
@@ -28,7 +28,7 @@ namespace jit {
 config_t::config_t(const kernel::options_t &ec, layout_t src, layout_t dst) {
     set_options(ec);
 
-    jit::normalize(src, dst);
+    reorder_t::normalize(src, dst);
     src_layout().set_user(src);
     dst_layout().set_user(dst);
 

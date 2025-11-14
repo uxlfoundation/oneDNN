@@ -1153,30 +1153,6 @@ public:
     }
 };
 
-class grf_permutation_t;
-
-// Allocation attribute specifying permutation for a GRF buffer.
-class grf_permute_attr_t : public alloc_attr_impl_t,
-                           public object::info_t<grf_permute_attr_t> {
-public:
-    static alloc_attr_t make(
-            const std::shared_ptr<grf_permutation_t> &grf_perm) {
-        return alloc_attr_t(new grf_permute_attr_t(grf_perm));
-    }
-
-    bool is_equal(const object::impl_t &obj) const override {
-        return this == &obj;
-    }
-
-    size_t get_hash() const override { return 0; }
-
-    std::shared_ptr<grf_permutation_t> grf_perm;
-
-private:
-    grf_permute_attr_t(const std::shared_ptr<grf_permutation_t> &grf_perm)
-        : alloc_attr_impl_t(get_info()), grf_perm(grf_perm) {}
-};
-
 // Allocation attribute to store extra information to avoid bank conflicts.
 class bank_conflict_attr_t : public alloc_attr_impl_t,
                              public object::info_t<bank_conflict_attr_t> {
@@ -1846,9 +1822,13 @@ public:
         return *this;
     }
 
+    const func_impl_t &func_impl() const {
+        return *static_cast<func_impl_t *>(impl());
+    }
+
     stmt_t call(const std::vector<expr_t> &args = {},
             const func_call_attr_t &attr = {}) const {
-        return ((const func_impl_t *)impl())->call(args, attr);
+        return func_impl().call(args, attr);
     }
 
     stmt_t operator()(const std::vector<expr_t> &args = {}) const {
@@ -1889,7 +1869,7 @@ private:
     func_call_t(const func_t &func, const std::vector<expr_t> &args,
             const func_call_attr_t &attr)
         : func(func), args(args), attr(attr) {
-        gpu_assert(func);
+        gpu_assert(bool(func));
     }
 };
 

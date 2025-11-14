@@ -29,11 +29,8 @@
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
 #include "gpu/intel/jit/codegen/reorder.hpp"
-#include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/ir/builder.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/ir/kernel_desc.hpp"
-#include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/walk_order.hpp"
 #include "gpu/intel/logging.hpp"
 #include "ngen.hpp"
@@ -46,36 +43,13 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-template <typename KernelT>
-struct ir_generator_t : public generator_base_t {
-    ir_generator_t(const kernel_desc_base_t &kernel_desc)
-        : kernel_name_(kernel_desc.kernel_name()), kernel_desc_(kernel_desc) {}
-
-    const char *kernel_name() const override { return kernel_name_.c_str(); }
-
-    status_t get_kernel(
-            compute::kernel_t &kernel, const intel::engine_t *engine) override {
-        try {
-            KernelT _kernel(kernel_desc_, engine);
-            return _kernel.get_kernel(kernel, engine);
-        } catch (ngen::out_of_registers_exception &) {
-            return status::runtime_error;
-        }
-    }
-
-private:
-    std::string kernel_name_;
-    const kernel_desc_base_t &kernel_desc_;
-};
-
 class expr_binding_t {
 public:
     expr_binding_t(ngen::HW hw) : hw_(hw) {}
 
     ~expr_binding_t() {
-        if (!cpp_compat::uncaught_exceptions()) {
-            gpu_assert(expr2dst_.empty()) << "Detected missing unbind_dst().";
-        }
+        gpu_assert(expr2dst_.empty()) << "Detected missing unbind_dst().";
+        gpu_assert(expr2dst_.empty()) << "Detected missing unbind_dst().";
     }
 
     bool is_dst_bound(const expr_t &expr) const {
@@ -88,13 +62,13 @@ public:
     }
 
     void bind_dst(const expr_t &expr, const ngen_operand_t &operand) {
-        gpu_assert(expr);
+        gpu_assert(bool(expr));
         auto ret = expr2dst_.insert({expr, operand});
         gpu_assert(ret.second) << "Already bound: " << expr;
     }
 
     void unbind_dst(const expr_t &expr) {
-        gpu_assert(expr);
+        gpu_assert(bool(expr));
         auto it = expr2dst_.find(expr);
         gpu_assert(it != expr2dst_.end());
         expr2dst_.erase(it);
@@ -142,7 +116,7 @@ public:
     }
 
     void unbind(const expr_t &expr) {
-        gpu_assert(expr);
+        gpu_assert(bool(expr));
 
         auto it = expr2operand_.find(expr);
         gpu_assert(it != expr2operand_.end());
@@ -181,6 +155,7 @@ public:
         , kernel_iface_(kernel_iface)
         , options_(options)
         , ra_(getHardware())
+        , expr_binding_(getHardware())
         , emu_strategy_(getHardware(), options_.hw().stepping()) {
         ra_.setRegisterCount(options_.regs());
     }
@@ -189,6 +164,9 @@ public:
 
     reg_allocator_t &ra() { return ra_; };
     const reg_allocator_t &ra() const { return ra_; };
+
+    expr_binding_t &expr_binding() { return expr_binding_; };
+    const expr_binding_t &expr_binding() const { return expr_binding_; };
 
     ngen::Subregister grid_ids[3] = {r0.ud(1), r0.ud(6), r0.ud(7)};
 
@@ -209,8 +187,8 @@ public:
         or_(1, BaseGeneratorT::cr0, BaseGeneratorT::cr0, uint16_t(0x14C0));
     }
 
-    void bind_external_vars(const stmt_t &kernel_body,
-            expr_binding_t &expr_binding, const walk_order_t *walk_order) {
+    void bind_external_vars(
+            const stmt_t &kernel_body, const walk_order_t *walk_order) {
         alloc_manager_t alloc_mgr(kernel_body);
 
         // Bind local IDs.
@@ -219,14 +197,14 @@ public:
             if (!local_id.is_empty()) {
                 auto local_id_reg = BaseGeneratorT::getLocalID(i).uw(0);
                 ra_.claim(local_id_reg);
-                expr_binding.bind(local_id, local_id_reg);
+                expr_binding().bind(local_id, local_id_reg);
             }
             auto local_size
                     = alloc_mgr.find_var(ir_builder_t::local_size(i), true);
             if (!local_size.is_empty()) {
                 auto local_size_reg = BaseGeneratorT::getLocalSize(i).uw(0);
                 ra_.claim(local_size_reg);
-                expr_binding.bind(local_size, local_size_reg);
+                expr_binding().bind(local_size, local_size_reg);
             }
         }
 
@@ -245,12 +223,12 @@ public:
             }
             auto arg_reg = BaseGeneratorT::getArgument(name);
             ra_.claim(arg_reg);
-            expr_binding.bind(arg_var, arg_reg);
+            expr_binding().bind(arg_var, arg_reg);
         }
 
         // Bind SLM buffer (SLM loads/stores use 0-based offsets).
         auto slm_buf = alloc_mgr.find_buffer("slm", /*allow_empty=*/true);
-        if (slm_buf) expr_binding.bind(slm_buf, to_ngen(expr_t(0)));
+        if (slm_buf) expr_binding().bind(slm_buf, to_ngen(expr_t(0)));
 
         // Workaround a hardware bug on MTL and ARL. In some scenarios, a read
         // suppression bug results in incorrect results when using r0. This
@@ -273,7 +251,7 @@ public:
             auto tg_idx = alloc_mgr.find_var(ir_builder_t::tg_idx(i), true);
             if (tg_idx) {
                 ngen::Subregister tg_reg = r0_info.ud(r0_sub_idxs[i]);
-                expr_binding.bind(tg_idx, tg_reg);
+                expr_binding().bind(tg_idx, tg_reg);
                 ra_.claim(tg_reg);
                 grid_ids[i] = tg_reg;
             } else if (walk_order) {
@@ -303,8 +281,8 @@ public:
 
     void bind_kernel_grid_walk_order_blocked(const ngen::Subregister &id,
             const std::vector<std::pair<int, int>> &blocks,
-            const std::vector<int> &dims, const std::vector<expr_t> &grid_vars,
-            expr_binding_t &expr_binding) {
+            const std::vector<int> &dims,
+            const std::vector<expr_t> &grid_vars) {
         int ndims = (int)dims.size();
         int nblocks = (int)blocks.size();
         std::vector<ngen::Subregister> rem_dims(ndims);
@@ -370,18 +348,17 @@ public:
             ra_.safeRelease(rem_dims[i]);
 
         for (int i = 0; i < ndims; i++) {
-            expr_binding.bind(grid_vars[i], dim_idxs[i]);
+            expr_binding().bind(grid_vars[i], dim_idxs[i]);
         }
     }
 
     void bind_kernel_grid_walk_order_non_blocked(const ngen::Subregister &id,
             const std::vector<std::pair<int, int>> &blocks,
-            const std::vector<expr_t> &grid_vars,
-            expr_binding_t &expr_binding) {
+            const std::vector<expr_t> &grid_vars) {
         int nblocks = (int)blocks.size();
         gpu_assert((int)grid_vars.size() == nblocks);
         if (nblocks == 1) {
-            expr_binding.bind(grid_vars[0], id);
+            expr_binding().bind(grid_vars[0], id);
             return;
         }
         auto _id = ra_.alloc_sub<int32_t>();
@@ -390,42 +367,41 @@ public:
             int dim_idx = blocks[i].first;
             auto idx = ra_.alloc_sub<int32_t>();
             eidiv(1, _id, idx, _id, (uint32_t)blocks[i].second);
-            expr_binding.bind(grid_vars[dim_idx], idx);
+            expr_binding().bind(grid_vars[dim_idx], idx);
         }
         ra_.safeRelease(_id);
     }
 
-    void bind_kernel_grid_walk_order(
-            const walk_order_t &walk_order, expr_binding_t &expr_binding) {
+    void bind_kernel_grid_walk_order(const walk_order_t &walk_order) {
         const int grid_ndims = 3;
         for (int i = 0; i < grid_ndims; i++) {
             std::vector<std::pair<int, int>> blocks;
-            std::unordered_map<pvar_t, int> dim_map;
-            auto to_dim_idx = [&](const pvar_t &dim) {
-                if (dim_map.count(dim) != 0) return dim_map.at(dim);
+            dsl::idx_map_t<int> dim_map;
+            auto to_dim_idx = [&](const dsl::idx_t &dim) {
+                if (dim_map.has(dim)) return dim_map.at(dim);
                 int idx = (int)dim_map.size();
-                dim_map.emplace(dim, idx);
+                dim_map.set(dim, idx);
                 return idx;
             };
             for (auto &b : walk_order.blocks()) {
                 if (b.grid_id != i) continue;
                 blocks.emplace_back(to_dim_idx(b.dim), b.size);
             }
-            if (dim_map.empty()) continue;
+            if (dim_map.is_empty()) continue;
             std::vector<int> dims;
             std::vector<expr_t> grid_vars;
             dims.resize(dim_map.size());
             grid_vars.resize(dim_map.size());
-            for (auto &kv : dim_map) {
-                dims[kv.second] = walk_order.dim_size(kv.first);
-                grid_vars[kv.second] = walk_order.grid_var(kv.first);
+            for (auto it = dim_map.begin(); it != dim_map.end(); it++) {
+                dims[it.value()] = walk_order.dim_size(*it);
+                grid_vars[it.value()] = walk_order.grid_var(*it);
             }
             if (walk_order.is_blocked(i) || gpu_utils::dev_getenv("B", false)) {
                 bind_kernel_grid_walk_order_blocked(
-                        grid_ids[i], blocks, dims, grid_vars, expr_binding);
+                        grid_ids[i], blocks, dims, grid_vars);
             } else {
                 bind_kernel_grid_walk_order_non_blocked(
-                        grid_ids[i], blocks, grid_vars, expr_binding);
+                        grid_ids[i], blocks, grid_vars);
             }
         }
     }
@@ -1157,89 +1133,11 @@ protected:
     kernel::iface_t kernel_iface_;
     kernel::options_t options_;
     reg_allocator_t ra_;
+    expr_binding_t expr_binding_;
     ngen::GRF signal_header_;
 
     ngen::EmulationStrategy emu_strategy_;
     ngen::EmulationState emu_state_;
-};
-
-#define IR_TO_NGEN_GENERATOR_EMULATION_FORWARD(BaseGeneratorT) \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::emov; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::eadd; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::emul; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::eshl; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::eshr;
-
-#define IR_TO_NGEN_GENERATOR_FORWARD(BaseGeneratorT) \
-    NGEN_FORWARD_ELF(BaseGeneratorT::hardware) \
-    IR_TO_NGEN_GENERATOR_EMULATION_FORWARD(BaseGeneratorT) \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::options; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::kernel_iface; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::generate_prologue; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::generate_epilogue; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::ra;
-
-class ir_kernel_t : public generator_base_t {
-public:
-    ir_kernel_t(const kernel_desc_base_t &desc, const impl::engine_t *engine,
-            const debug_config_t &debug_config)
-        : kernel_iface_(desc.kernel_name())
-        , options_(desc.options(engine))
-        , local_range_(desc.local_range())
-        , require_dpas_(desc.with_dpas())
-        , debug_config_(debug_config) {
-        desc.init_kernel_iface(kernel_iface_);
-    }
-
-    ir_kernel_t(const kernel::iface_t &kernel_iface,
-            const kernel::options_t &options,
-            const compute::range_t &local_range, bool require_dpas,
-            const debug_config_t &debug_config)
-        : kernel_iface_(kernel_iface)
-        , options_(options)
-        , local_range_(local_range)
-        , require_dpas_(require_dpas)
-        , debug_config_(debug_config) {}
-
-    const kernel::options_t &options() const { return options_; }
-    const kernel::iface_t &kernel_iface() const { return kernel_iface_; }
-    void force_emulate64() { force_emulate64_ = true; }
-
-    int peak_regs() const { return peak_regs_; }
-
-    void generate_from_ir(const stmt_t &kernel_body,
-            const walk_order_t *kernel_grid_walk_order = nullptr);
-
-    const char *kernel_name() const override {
-        return kernel_iface().kernel_name().c_str();
-    }
-
-    status_t get_kernel(
-            compute::kernel_t &kernel, const intel::engine_t *engine) override {
-        return generator_->get_kernel(kernel, engine);
-    }
-
-private:
-    int thread_group_size() const {
-        gpu_assert(local_range_);
-        int local_size = 1;
-        for (int i = 0; i < (int)local_range_.ndims(); i++) {
-            local_size *= (int)local_range_[i];
-        }
-        return ir_utils::safe_divide(local_size, options_.simd());
-    }
-
-    kernel::iface_t kernel_iface_;
-    kernel::options_t options_;
-    compute::range_t local_range_;
-    bool require_dpas_;
-
-    debug_config_t debug_config_;
-
-    bool force_emulate64_ = false;
-    int peak_regs_ = 0;
-
-    std::unique_ptr<generator_base_t> generator_;
 };
 
 #ifdef NGEN_ASM
@@ -1281,6 +1179,8 @@ public:
 protected:
     ngen::NEOInterfaceHandler interface_;
 };
+using ir_asm_generator_t
+        = ir_to_ngen_generator_t<ngen_asm_code_generator_with_interface_t>;
 #endif
 
 } // namespace jit

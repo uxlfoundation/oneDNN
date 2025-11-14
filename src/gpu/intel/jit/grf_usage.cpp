@@ -18,6 +18,7 @@
 
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
+#include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/ir/send.hpp"
 

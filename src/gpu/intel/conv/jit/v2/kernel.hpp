@@ -19,7 +19,7 @@
 
 #include "gpu/intel/conv/jit/v2/builder.hpp"
 #include "gpu/intel/conv/jit/v2/kernel_desc.hpp"
-#include "gpu/intel/jit/codegen/kernel.hpp"
+#include "gpu/intel/jit/codegen/kernel_ext.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/v2/builder.hpp"
 

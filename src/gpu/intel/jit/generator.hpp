@@ -104,6 +104,9 @@ public:
             const ngen::Product &product, const ngen::DebugConfig &debug_config)
         : ngen_code_generator_t<hw>(product, debug_config) {}
 
+    generator_t(ngen_code_generator_t<hw> &&base)
+        : ngen_code_generator_t<hw>(std::move(base)) {}
+
     const char *kernel_name() const override {
         return ngen_code_generator_t<hw>::getExternalName().c_str();
     }

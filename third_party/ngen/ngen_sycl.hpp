@@ -46,6 +46,7 @@ public:
     explicit SYCLCodeGenerator(Product product_, DebugConfig debugConfig = {})  : ELFCodeGenerator<hw>(product_, debugConfig) {}
     explicit SYCLCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : ELFCodeGenerator<hw>(stepping_, debugConfig) {}
     explicit SYCLCodeGenerator(DebugConfig debugConfig) : ELFCodeGenerator<hw>(0, debugConfig) {}
+    SYCLCodeGenerator(SYCLCodeGenerator &&) = default;
 
     inline sycl::kernel getKernel(const sycl::context &context, const sycl::device &device);
     bool binaryIsZebin() { return true; }

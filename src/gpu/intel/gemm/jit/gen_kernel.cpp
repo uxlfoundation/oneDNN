@@ -28,6 +28,7 @@
 #include "gpu/intel/gemm/jit/generator_dsl/builder.hpp"
 #include "gpu/intel/gemm/jit/generator_dsl/kernel_desc.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
+#include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
 #include "kernel_evaluator.hpp"
@@ -1134,14 +1135,12 @@ dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
             = gemmstone::generator_dsl_desc_t(problem, strategy, iface, hw);
     ir::constraint_set_t cset;
     if (gpu_utils::dev_getenv("generator_dsl_specialize", false)) {
-        if (n != -1)
-            cset.add_constraint(gemm_desc.kernel_iface().find_arg("m") == m);
-        if (m != -1)
-            cset.add_constraint(gemm_desc.kernel_iface().find_arg("n") == n);
-        if (k != -1)
-            cset.add_constraint(gemm_desc.kernel_iface().find_arg("k") == k);
+        auto &opt = gemm_desc.options;
+        if (n != -1) opt.assume(gemm_desc.kernel_iface().find_arg("m") == m);
+        if (m != -1) opt.assume(gemm_desc.kernel_iface().find_arg("n") == n);
+        if (k != -1) opt.assume(gemm_desc.kernel_iface().find_arg("k") == k);
     }
-    return make_kernel(gemm_desc, std::move(cset));
+    return make_kernel(gemm_desc);
 };
 
 std::string dump_kernel(ngen::HW hw, const gemmstone::GEMMProblem &problem,

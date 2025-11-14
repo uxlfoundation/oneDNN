@@ -27,11 +27,12 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
+template <data_type_t data_type>
 struct riscv_nhwc_pooling_fwd_t : public primitive_t {
     struct pd_t : public cpu_pooling_fwd_pd_t {
         using cpu_pooling_fwd_pd_t::cpu_pooling_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T_("RISCV64GCV", riscv_nhwc_pooling_fwd_t)
+        DECLARE_COMMON_PD_T_("RISCV64GCV", riscv_nhwc_pooling_fwd_t<data_type>)
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
@@ -50,13 +51,25 @@ struct riscv_nhwc_pooling_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(memory_desc_wrapper(dst_md()).is_dense(false),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            VDISPATCH_POOLING(utils::everyone_is(data_type::f32,
-                                      src_md()->data_type, dst_md()->data_type),
+
+            VDISPATCH_POOLING(utils::everyone_is(data_type, src_md()->data_type,
+                                      dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_POOLING(platform::has_data_type_support(data_type::f32),
+
+            const data_type_t expected_acc_type = (data_type == data_type::f16)
+                    ? data_type::f32
+                    : data_type;
+            VDISPATCH_POOLING(desc()->accum_data_type == expected_acc_type,
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_POOLING(desc()->accum_data_type == data_type::f32,
+
+            if (data_type == data_type::f16) {
+                VDISPATCH_POOLING(DNNL_RISCV_USE_ZVFH_INTRINSICS,
+                        VERBOSE_UNSUPPORTED_ISA);
+            }
+
+            VDISPATCH_POOLING(platform::has_data_type_support(data_type),
                     VERBOSE_UNSUPPORTED_DT);
+
             VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_POOLING(!is_dilated(), VERBOSE_UNSUPPORTED_FEATURE,
                     "does not support dilations");

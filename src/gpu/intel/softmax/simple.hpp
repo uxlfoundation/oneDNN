@@ -70,7 +70,7 @@ struct simple_fwd_t : public primitive_t {
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp64)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_SOFTMAX(intel_engine->mayiuse_sub_group(subgroup_size),
+            VDISPATCH_SOFTMAX(get_subgroup_size(intel_engine, subgroup_size),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
             VDISPATCH_SOFTMAX(memory_desc_ndims_ok(src_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst",
@@ -89,7 +89,7 @@ struct simple_fwd_t : public primitive_t {
             dim_t nelems = axis_size(true);
 
             if (nelems < subgroup_size) {
-                group_size = subgroup_size = 1;
+                group_size = std::max(16, subgroup_size);
             } else if (nelems <= 100) {
                 group_size = subgroup_size * 1;
             } else if (nelems <= 1000) {
@@ -232,7 +232,7 @@ struct simple_bwd_t : public primitive_t {
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-            VDISPATCH_SOFTMAX(intel_engine->mayiuse_sub_group(16),
+            VDISPATCH_SOFTMAX(get_subgroup_size(intel_engine, subgroup_size),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
             VDISPATCH_SOFTMAX(memory_desc_ndims_ok(
                                       dst_md(), diff_src_md(), diff_dst_md()),
@@ -256,7 +256,7 @@ struct simple_bwd_t : public primitive_t {
 
             dim_t nelems = axis_size(true);
             if (nelems <= 100) {
-                group_size = 16;
+                group_size = std::max(16, subgroup_size);
             } else if (nelems <= 1000) {
                 group_size = 32;
             } else if (nelems <= 2000) {
@@ -277,6 +277,7 @@ struct simple_bwd_t : public primitive_t {
         compute::range_t lws = compute::range_t::one();
         compute::range_t block = compute::range_t::one();
         size_t group_size = 0;
+        int subgroup_size = 16;
     };
 
     status_t init(impl::engine_t *engine) override {
@@ -287,7 +288,7 @@ struct simple_bwd_t : public primitive_t {
         kernel_ctx.define_int("SOFTMAX_AXIS_IDX", pd()->axis());
         kernel_ctx.define_int("SOFTMAX_AXIS", pd()->axis_size(true));
         kernel_ctx.define_int("GROUP_SIZE", pd()->group_size);
-        kernel_ctx.define_int("SUB_GROUP_SIZE", 16);
+        kernel_ctx.define_int("SUB_GROUP_SIZE", pd()->subgroup_size);
         kernel_ctx.define_int("IS_BWD", 1);
         kernel_ctx.add_option("-cl-std=CL2.0");
         kernel_ctx.define_int("LOGSOFTMAX", pd()->is_logsoftmax());

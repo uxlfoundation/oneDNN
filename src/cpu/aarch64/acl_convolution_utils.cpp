@@ -278,8 +278,8 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
             return status::unimplemented;
     }
 
-    acl_utils::reorder_to_weight_format(acp.wei_tensor_info, weights_md,
-            expected_weight_format, I_dim, O_dim, {W_dim, H_dim}, {});
+    CHECK(acl_utils::reorder_to_weight_format(acp.wei_tensor_info, weights_md,
+            expected_weight_format, I_dim, O_dim, {W_dim, H_dim}, {}));
 
     return status::success;
 }

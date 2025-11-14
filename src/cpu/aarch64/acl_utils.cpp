@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "cpu/aarch64/acl_utils.hpp"
+#include <limits>
 
 namespace dnnl {
 namespace impl {
@@ -25,6 +26,17 @@ namespace acl_utils {
 
 using namespace dnnl::impl::alg_kind;
 using namespace data_type;
+
+status_t safe_set_strides(arm_compute::Strides &strides, size_t dim, size_t val,
+        bool inc_dim = true) {
+    // ACL stride value is uint32, check for overflow
+    if (val > std::numeric_limits<uint32_t>::max()) {
+        return status::unimplemented;
+    }
+
+    strides.set(dim, val, inc_dim);
+    return status::success;
+}
 
 arm_compute::DataType get_acl_data_t(
         const dnnl_data_type_t dt, const bool is_quantized) {
@@ -154,8 +166,8 @@ status_t tensor_info(
     for (int i = md.ndims() - 1; i >= 0; --i) {
         // ACL strides are in bytes, oneDNN strides are in numbers of elements,
         // multiply by data type size to convert
-        strides_in_bytes.set(
-                acl_stride_i, blocking_desc.strides[i] * md.data_type_size());
+        CHECK(safe_set_strides(strides_in_bytes, acl_stride_i,
+                blocking_desc.strides[i] * md.data_type_size()));
         ++acl_stride_i;
     }
 
@@ -190,10 +202,12 @@ status_t insert_singleton_dimension(arm_compute::TensorInfo &ti, size_t dim_i) {
     arm_compute::Strides strides;
     for (size_t old_i = 0, new_i = 0; old_i < ti.num_dimensions(); ++old_i) {
         if (old_i == dim_i) {
-            strides.set(new_i, ti.strides_in_bytes()[old_i], false);
+            CHECK(safe_set_strides(
+                    strides, new_i, ti.strides_in_bytes()[old_i], false));
             ++new_i;
         }
-        strides.set(new_i, ti.strides_in_bytes()[old_i], false);
+        CHECK(safe_set_strides(
+                strides, new_i, ti.strides_in_bytes()[old_i], false));
         ++new_i;
     }
 
@@ -274,9 +288,9 @@ int reorder_dimensions_by_stride(std::vector<memory_desc_t *> permuted_mds,
     return reordered_dims;
 }
 
-void reorder_to_weight_format(arm_compute::TensorInfo &info, memory_desc_t &md,
-        arm_compute::WeightFormat wf, dim_t I_dim, dim_t O_dim,
-        const std::vector<dim_t> &spatial_dims,
+status_t reorder_to_weight_format(arm_compute::TensorInfo &info,
+        memory_desc_t &md, arm_compute::WeightFormat wf, dim_t I_dim,
+        dim_t O_dim, const std::vector<dim_t> &spatial_dims,
         const std::vector<dim_t> &batch_dims) {
 
     md.format_kind = format_kind::blocked;
@@ -336,12 +350,14 @@ void reorder_to_weight_format(arm_compute::TensorInfo &info, memory_desc_t &md,
     //   the interleaving). Note that we use the innermost_batch_stride
     //   because all the batched dimensions are collapsed (as required by ACL).
     arm_compute::Strides new_strides_in_bytes = info.strides_in_bytes();
-    new_strides_in_bytes.set(1, ldb * info.element_size());
-    new_strides_in_bytes.set(2, innermost_batch_stride * info.element_size());
+    CHECK(safe_set_strides(new_strides_in_bytes, 1, ldb * info.element_size()));
+    CHECK(safe_set_strides(new_strides_in_bytes, 2,
+            innermost_batch_stride * info.element_size()));
 
     info.init(info.tensor_shape(), info.num_channels(), info.data_type(),
             new_strides_in_bytes, info.offset_first_element_in_bytes(),
             memory_desc_wrapper(md).size());
+    return status::success;
 }
 
 } // namespace acl_utils

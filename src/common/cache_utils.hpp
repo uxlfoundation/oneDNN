@@ -35,6 +35,7 @@
 #include <windows.h>
 #endif
 
+#include "common/primitive_hashing.hpp"
 #include "rw_mutex.hpp"
 
 namespace dnnl {
@@ -121,6 +122,57 @@ protected:
     }
 };
 
+template <typename T>
+void notify_get(const T &) {}
+template <typename T>
+void notify_add(const T &) {}
+template <typename T>
+void notify_evict(const T &) {}
+
+template <typename T>
+inline std::string to_str(int n, const T *ptr) {
+    std::ostringstream oss;
+    oss << "[";
+    for (int i = 0; i < n; i++)
+        oss << (i > 0 ? ", " : "") << ptr[i];
+    oss << "]";
+    return oss.str();
+}
+
+inline std::string to_str(const memory_desc_t &md) {
+    std::ostringstream oss;
+    oss << "{";
+    oss << "ndims=" << md.ndims;
+    oss << " data_type=" << (int)md.data_type;
+    oss << " dims=" << to_str(md.ndims, md.dims);
+    oss << "}";
+    return oss.str();
+}
+
+inline std::string to_str(const primitive_hashing::key_t &key) {
+    std::ostringstream oss;
+    oss << "kind=" << (int)key.primitive_kind_;
+    if (key.primitive_kind_ == primitive_kind::convolution) {
+        auto &desc = *op_desc_t::to_desc<convolution_desc_t>(key.op_desc_);
+        oss << " src=" << to_str(desc.src_desc);
+        oss << " wei=" << to_str(desc.weights_desc);
+        oss << " dst=" << to_str(desc.dst_desc);
+    }
+    return oss.str();
+}
+
+inline void notify_get(const primitive_hashing::key_t &key) {
+    printf("[CACHE] GET %s\n", to_str(key).c_str());
+}
+
+inline void notify_add(const primitive_hashing::key_t &key) {
+    printf("[CACHE] ADD %s\n", to_str(key).c_str());
+}
+
+inline void notify_evict(const primitive_hashing::key_t &key) {
+    printf("[CACHE] EVICT %s\n", to_str(key).c_str());
+}
+
 // The cache uses LRU replacement policy
 template <typename K, typename O, typename C,
         key_merge_t<K, O> key_merge = nullptr>
@@ -201,7 +253,10 @@ protected:
             // Check if the requested entry is present in the cache (likely
             // cache_hit)
             auto e = get_future(key);
-            if (e.valid()) { return e; }
+            if (e.valid()) {
+                notify_get(key);
+                return e;
+            }
         }
 
         utils::lock_write_t lock_w(this->rw_mutex());
@@ -219,6 +274,8 @@ protected:
         if (!e.valid()) {
             // If the entry is missing in the cache then add it (cache_miss)
             add(key, value);
+        } else {
+            notify_get(key);
         }
         return e;
     }
@@ -303,6 +360,7 @@ private:
                                 < right.second.timestamp_.load(
                                         std::memory_order_relaxed);
                     });
+            notify_evict(it->first);
             auto res = cache_mapper().erase(it->first);
             MAYBE_UNUSED(res);
             assert(res);
@@ -321,6 +379,7 @@ private:
         auto res = cache_mapper().emplace(std::piecewise_construct,
                 std::forward_as_tuple(key),
                 std::forward_as_tuple(value, timestamp));
+        notify_add(key);
         MAYBE_UNUSED(res);
         assert(res.second);
     }

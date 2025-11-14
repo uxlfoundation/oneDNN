@@ -97,7 +97,7 @@ jobs:
           toolset: gcc
           build: ${{ matrix.config.build }}
           testset: ${{ matrix.config.testset }}
-          onednn_hash: ${{ matrix.config.name == 'onednn-perf-base' && fromJson(steps.get-versions.outputs.output).dependencies.onednn-base || '' }}
+          onednn_hash: ${{ matrix.config.name == 'onednn-perf-base' && github.base_ref || '' }}
           cache: ${{ matrix.config.name == 'onednn-perf-base' && 'true' || 'false'}}
 
   smoke-test:

@@ -2749,8 +2749,6 @@ status_t jit_uni_reorder_t::execute(const exec_ctx_t &ctx) const {
     const bool req_compensation = req_s8s8_comp || req_asymmetric_comp;
     assert(ndims_level <= ndims_driver_max);
 
-    auto src_zp = src_zero_points ? src_zero_points[0] : 0;
-    auto dst_zp = dst_zero_points ? dst_zero_points[0] : 0;
     int32_t *compensation_reduce_scratch = scratchpad.template get<int32_t>(
             memory_tracking::names::key_reorder_space);
 
@@ -2786,6 +2784,9 @@ status_t jit_uni_reorder_t::execute(const exec_ctx_t &ctx) const {
                 dst_scales_inv_ptr[i] = 1.f / dst_scales_ptr[i];
             }
         }
+
+        auto src_zp = src_zero_points ? src_zero_points[0] : 0;
+        auto dst_zp = dst_zero_points ? dst_zero_points[0] : 0;
 
         switch (ndims_level) {
             case 0:

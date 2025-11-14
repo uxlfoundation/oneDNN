@@ -146,7 +146,7 @@ uchar __attribute__((overloadable)) cvt_hf_to_f8_e4m3(half f) {
     fraw = fraw & 0x7fff;
 
     // we filter out overlow, nan
-    if (fraw >= 0x5f40) {
+    if (fraw > 0x5f40) {
         raw_bits = s8 | 0x7f;
         return raw_bits;
     }
@@ -163,7 +163,7 @@ uchar __attribute__((overloadable)) cvt_hf_to_f8_e4m3(half f) {
     // e8 = e16 - e16_bias + e8_bias = e16 - 15 + 7
     // e8 will be denorm if e8 <= 0 or e16 + 7 < 16
     const int exp_threshold = 0x4000; // raw bits of exponent = 16
-    ushort is_denorm = shifter < exp_threshold;
+    bool is_denorm = shifter < exp_threshold;
     if (is_denorm) shifter = exp_threshold;
 
     ushort rounded

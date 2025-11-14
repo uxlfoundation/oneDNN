@@ -1608,7 +1608,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     mov(reg_loop_cnt, tail_size);
                     // Put info that node is being processed with tail.
                     mov(X_TMP_0, with_tail_info_);
-                    str(X_TMP_0, pre_ptr(X_SP, -reg_bytes));
+                    str(X_TMP_0, pre_ptr(X_SP, -static_cast<int>(reg_bytes)));
                 } else {
                     ldr(X_TMP_0, ptr(data_chunk_addr(parent_node_id)));
                     check_if_this_is_last_chunk(X_TMP_0, parent_node_id);
@@ -1616,14 +1616,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     mov(reg_loop_cnt, tail_size);
                     // Put info that node is being processed with tail.
                     mov(X_TMP_0, with_tail_info_);
-                    str(X_TMP_0, pre_ptr(X_SP, -reg_bytes));
+                    str(X_TMP_0, pre_ptr(X_SP, -static_cast<int>(reg_bytes)));
                     b(if_end);
 
                     L(if_no_tail);
                     mov(reg_loop_cnt, node_size);
                     // Put info that node is being processed without tail.
                     mov(X_TMP_0, without_tail_info_);
-                    str(X_TMP_0, pre_ptr(X_SP, -reg_bytes));
+                    str(X_TMP_0, pre_ptr(X_SP, -static_cast<int>(reg_bytes)));
                     L(if_end);
                 }
             }

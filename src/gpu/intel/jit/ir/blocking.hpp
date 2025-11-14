@@ -527,6 +527,7 @@ public:
     const std::vector<blocking_params_t> &params_vec() const {
         return params_vec_;
     }
+    std::vector<blocking_params_t> &params_vec() { return params_vec_; }
 
     bool is_empty() const { return params_vec_.empty(); }
 

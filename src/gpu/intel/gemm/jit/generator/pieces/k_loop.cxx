@@ -949,7 +949,7 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         auto Ar_sublayout = state.Ar_layout;
         bool s4Shift = true;
 
-        int hq = kaq_load ? (har % kaq_load) : 0;
+        int hq = kaq_load ? (h % kaq_load) : 0;
         if (repackA) {
             auto layoutCopy = layout;
             layoutCopy.unlinkFromMemory();

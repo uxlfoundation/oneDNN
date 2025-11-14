@@ -100,8 +100,10 @@ private:
     const Xbyak::Reg64 reg_nur_w = rbx;
     const Xbyak::Reg64 reg_bias = rdx;
     const Xbyak::Reg64 reg_icb = reg_bias;
-    const Xbyak::Reg64 reg_ptr_scales = rax;
-    const Xbyak::Reg64 reg_ptr_dst_scales = rax;
+    const Xbyak::Reg64 reg_src_scales = rax;
+    const Xbyak::Reg64 reg_wei_scales = rax;
+    const Xbyak::Reg64 reg_scale_adjust = rax;
+    const Xbyak::Reg64 reg_dst_scales = rax;
     const Xbyak::Reg64 reg_ptr_saturation_ubound = rax;
     const Xbyak::Reg64 reg_oc_blocks = rsi;
 
@@ -136,7 +138,7 @@ private:
     const Vmm vmm_shift = Vmm(30);
     const Vmm vmm_comp = Vmm(30);
     const Vmm vmm_bias = Vmm(31);
-    const Vmm vmm_dst_scale = Vmm(31);
+    const Vmm vmm_scale_adjust = Vmm(31);
     const Vmm vmm_prev_dst = Vmm(31);
 
     Vmm vmm_out(int i_ur, int i_oc) {
@@ -337,8 +339,6 @@ private:
     std::unique_ptr<jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t> kernel_;
     std::unique_ptr<zp::jit_uni_deconv_zp_pad_str_kernel_base_t>
             zp_src_pad_comp_kernel_;
-    const float *adjust_oscales(const memory_tracking::grantor_t &scratchpad,
-            const float *src_scales, const float *wei_scales) const;
 };
 
 } // namespace x64

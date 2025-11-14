@@ -1218,6 +1218,31 @@ void sort_by_model_scores(params_generator_t &params_gen, const config_t &cfg,
     }
     params_gen.sort(0, params_gen.configs(),
             [&](const blocking_params_t &p) { return -eff_scores.at(p.id()); });
+
+    // Heuristics when model tie is detected
+    auto &params_vec = params_gen.params_vec();
+    auto &p_best = params_vec[0];
+    for (auto &p_next : params_gen.params_vec()) {
+        if (&p_best == &p_next) continue;
+        if (eff_scores.at(p_best.id()) != eff_scores.at(p_next.id())) break;
+
+        if (cfg.prb().is_bwd_w && cfg.allow_global_reduction()) {
+            // As the model estimate is the same, prefer fewer atomic reductions
+            // to reduce contention on L3 cache lines
+            auto size = [&](const tile_t &loop, const tile_t &iter) {
+                return iter.get(pvars::mb) * iter.get(pvars::ow)
+                        * iter.get(pvars::oh) * iter.get(pvars::od)
+                        * loop.get(pvars::mb) * loop.get(pvars::ow)
+                        * loop.get(pvars::oh) * loop.get(pvars::od);
+            };
+            auto &b0 = p_best.blocking(), &b1 = p_next.blocking();
+            if (size(b0.loop(), b0.iter()) < size(b1.loop(), b1.iter())) {
+                std::swap(p_best, p_next);
+                continue;
+            }
+        }
+    }
+
 #ifdef DNNL_DEV_MODE
     using namespace ir_utils;
     std::vector<std::string> headers

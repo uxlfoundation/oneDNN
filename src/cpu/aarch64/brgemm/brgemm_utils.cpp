@@ -331,10 +331,18 @@ status_t init_brgemm_conf(brgemm_t *brg, cpu_isa_t isa,
     brg->req_s8s8_compensation = (brg->is_int8 && (brg->dt_a == data_type::s8)
             && !isa_has_s8s8(brg->isa_impl));
 
-    brg->LDA = (brg->is_row_major()) ? static_cast<int>(LDA)
-                                     : static_cast<int>(LDB);
-    brg->LDB = (brg->is_row_major()) ? static_cast<int>(LDB)
-                                     : static_cast<int>(LDA);
+    brg->is_gemv = (M == 1 && brg->is_col_major()) || LDB == 1;
+
+    if (brg->is_gemv) {
+        brg->LDA = static_cast<int>(LDA);
+        brg->LDB = static_cast<int>(LDB);
+    } else {
+        brg->LDA = (brg->is_row_major()) ? static_cast<int>(LDA)
+                                         : static_cast<int>(LDB);
+        brg->LDB = (brg->is_row_major()) ? static_cast<int>(LDB)
+                                         : static_cast<int>(LDA);
+    }
+
     brg->LDC = static_cast<int>(LDC);
     brg->LDD = static_cast<int>(LDC);
 

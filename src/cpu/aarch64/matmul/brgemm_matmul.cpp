@@ -93,6 +93,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     const auto wei_dt = weights_md_.data_type;
     const auto dst_dt = dst_md_.data_type;
 
+    // skip unsupported shapes until issue caused by PR #4126 is sorted
+    if (src_md_.ndims > 2) { return status::unimplemented; }
+
     const bool is_f32 = everyone_is(f32, src_dt, wei_dt, dst_dt);
     const bool is_int8 = one_of(src_dt, u8, s8) && wei_dt == s8
             && one_of(dst_dt, u8, s8, s32, f32, bf16);
@@ -198,9 +201,14 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                 ? (dim_t)bgmmc_.wei_k_blk
                 : bgmmc_.LDA;
         const auto kernel_isa = i_M == max_m_ker_idx - 1 ? backup_isa : isa;
+        // In the case of BA 1xK gemmv, we set the layout to column major, so there is no
+        // need to transpose the weights.
+        const auto layout = (one_of(bgmmc_.wei_tag, ba) && bgmmc_.M == 1)
+                ? brgemm_col_major
+                : brgemm_row_major;
         CHECK(brgemm_desc_init(&brg, kernel_isa, bgmmc_.brg_type, bgmmc_.src_dt,
-                bgmmc_.wei_dt, false, false, brgemm_row_major, alpha, vbeta,
-                LDA, bgmmc_.LDB, bgmmc_.LDC, vM, vN, vK));
+                bgmmc_.wei_dt, false, false, layout, alpha, vbeta, LDA,
+                bgmmc_.LDB, bgmmc_.LDC, vM, vN, vK));
 
         auto LDD = bgmmc_.LDD;
         CHECK(brgemm_desc_set_postops(
@@ -254,8 +262,9 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
         CHECK(safe_ptr_assign(brg_kernels_[idx], ker));
     }
 
-    if (bgmmc.use_buffer_b)
+    if (bgmmc.use_buffer_b) {
         CHECK(create_brgemm_matmul_copy_b(copy_B_kernel_, &bgmmc));
+    }
 
     if (bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only)
         CHECK(create_brgemm_matmul_copy_a(copy_A_kernel_, &bgmmc));

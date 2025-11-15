@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,8 +21,6 @@
 #include "oneapi/dnnl/dnnl_debug.h"
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 #include "gtest/gtest.h"
-
-#include <CL/cl.h>
 
 // Define a separate macro, that does not clash with OCL_CHECK from the library.
 #ifdef DNNL_ENABLE_MEM_DEBUG

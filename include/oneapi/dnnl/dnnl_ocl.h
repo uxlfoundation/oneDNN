@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020 Intel Corporation
+* Copyright 2020-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -20,12 +20,6 @@
 #include "oneapi/dnnl/dnnl.h"
 
 #include "oneapi/dnnl/dnnl_ocl_types.h"
-
-/// @cond DO_NOT_DOCUMENT_THIS
-// Set target version for OpenCL explicitly to suppress a compiler warning.
-#ifndef CL_TARGET_OPENCL_VERSION
-#define CL_TARGET_OPENCL_VERSION 120
-#endif
 
 #include <CL/cl.h>
 /// @endcond

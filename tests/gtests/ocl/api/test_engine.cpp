@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019 Intel Corporation
+* Copyright 2019-2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 
 #include <string>
-#include <CL/cl.h>
 
 extern "C" bool dnnl_impl_gpu_mayiuse_ngen_kernels(dnnl_engine_t engine);
 

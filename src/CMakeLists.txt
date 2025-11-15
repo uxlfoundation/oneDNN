@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2016 Intel Corporation
+# Copyright 2016-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -282,12 +282,6 @@ if(DNNL_CPU_THREADING_RUNTIME STREQUAL "TBB")
         install(FILES "../cmake/lnx/TBBConfig.cmake" RENAME "FindTBB.cmake"
             DESTINATION ${LIB_CONFIG_INSTALL_DIR})
     endif()
-endif()
-
-if(DNNL_GPU_RUNTIME STREQUAL "OCL" OR (DNNL_GPU_SYCL AND DNNL_GPU_VENDOR STREQUAL "INTEL"))
-    install(FILES
-        "../cmake/FindOpenCL.cmake"
-        DESTINATION ${LIB_CONFIG_INSTALL_DIR})
 endif()
 
 if(DNNL_BLAS_VENDOR STREQUAL "ACCELERATE")

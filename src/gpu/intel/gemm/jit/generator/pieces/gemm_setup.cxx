@@ -2128,6 +2128,17 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         releaseLDMultiples(state.ldcMultiples[q], state);
     releaseIndexVec(state);
 
+    // Workaround for Xe3 HW bug: dpas with uninitialized src1/src2 can cause
+    //  data corruption in other threads.
+    if (hw == HW::Xe3 && strategy.systolic) {
+        if (state.A_layout.hasFlags() && state.Ar_regs.empty())
+            for (auto &A_regs: state.A_regs)
+                zeroMatrix(A_regs, strategy);
+        if (state.B_layout.hasFlags() && state.Br_regs.empty())
+            for (auto &B_regs: state.B_regs)
+                zeroMatrix(B_regs, strategy);
+    }
+
     // Release 64-bit emulation registers as they aren't needed in the inner loop.
     // Could also move r0 to acc here.
     if (state.emulate.temp[0].isValid()) {

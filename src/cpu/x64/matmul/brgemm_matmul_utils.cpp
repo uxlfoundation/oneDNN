@@ -1855,7 +1855,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
 
     if (!bgmmc.is_gemv && bm_conf_utils.is_f32()
-            && is_superset(bgmmc.isa, avx512_core)) {
+            && (bgmmc.isa == avx2 || is_superset(bgmmc.isa, avx512_core))) {
         // Dispatch the shapes with small K to gemm for better performance
         // The heuristic values are empirical
         const bool small_K = bgmmc.N <= 14528

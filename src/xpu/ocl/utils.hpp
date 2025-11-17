@@ -28,6 +28,11 @@
 
 #include "xpu/utils.hpp"
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#define CL_MEM_FLAGS_INTEL 0x10001
+#define CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL (1 << 23)
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace xpu {

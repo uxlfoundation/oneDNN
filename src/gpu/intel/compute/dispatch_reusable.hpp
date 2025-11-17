@@ -245,8 +245,7 @@ struct dispatch_compile_params_t {
     subgroup_data_t subgroup;
     int32_t num_terms = 0;
     bool use_int32_offset = false;
-    bool require_large_buffers = true;
-    uint8_t padding[2] = {0};
+    uint8_t padding[3] = {0};
     gws_indexing_term_t::compile_params_t terms[MAX_INDEXING_TERMS]
             = {{gws_op_t::SOLO, 0}};
 
@@ -532,7 +531,6 @@ public:
 
         // Save buffer information
         dim_t max_buffer_size = 0;
-        uint64_t max_buffer_size_bytes = 0;
         compile_params.num_buffers = buffers.size();
         for (size_t buf_idx = 0; buf_idx < buffers.size(); buf_idx++) {
             const named_buffer_t &buffer = buffers[buf_idx];
@@ -553,15 +551,10 @@ public:
             compile_params.buffer_types[buf_idx] = buffer.data_type;
 
             // Check buffer sizes to see if we can use int32_t offsets
-            // or do we need to use stateless addressing model
             max_buffer_size = std::max(max_buffer_size, buffer.nelems(true));
-            max_buffer_size_bytes = std::max(
-                    max_buffer_size_bytes, buffer.size(0, true, true));
         }
 
         compile_params.use_int32_offset = max_buffer_size <= INT32_MAX;
-        compile_params.require_large_buffers
-                = max_buffer_size_bytes > UINT32_MAX;
         compile_params.subgroup = subgroup;
 
         // Set runtime params

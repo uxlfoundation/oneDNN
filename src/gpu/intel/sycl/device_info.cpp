@@ -138,10 +138,13 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
         eu_count_ = device.get_info<::sycl::info::device::max_compute_units>();
     }
     max_wg_size_ = device.get_info<::sycl::info::device::max_work_group_size>();
+    memory_size_ = device.get_info<::sycl::info::device::global_mem_size>();
     l3_cache_size_
             = device.get_info<::sycl::info::device::global_mem_cache_size>();
     mayiuse_system_memory_allocators_
             = device.has(::sycl::aspect::usm_system_allocations);
+    device_address_bits_
+            = device.get_info<::sycl::info::device::address_bits>();
     max_allocation_size_
             = device.get_info<::sycl::info::device::max_mem_alloc_size>();
     return status::success;

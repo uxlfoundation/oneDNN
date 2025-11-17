@@ -245,7 +245,7 @@ status_t engine_t::build_program_from_source(
 
     // Compile kernel in a stateless addressing model allowing usage of
     // allocations of any size. Not needed if allowed allocation is already > 4GB.
-    if (kernel_ctx.has_large_buffers()
+    if (dev_info->device_address_bits() >= 64
             && dev_info->max_allocation_size() <= UINT32_MAX)
         options += " -cl-intel-greater-than-4GB-buffer-required";
 

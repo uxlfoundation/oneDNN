@@ -115,7 +115,9 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             && mayiuse(isa)
             && IMPLICATION(is_int8,
                     one_of(bia_type, data_type::undef, f32, s32, s8, u8))
-            && IMPLICATION(!is_int8,
+            && IMPLICATION(
+                    is_bf16, one_of(bia_type, data_type::undef, bf16, f32))
+            && IMPLICATION(!is_int8 && !is_bf16,
                     one_of(bia_type, data_type::undef, src_type, dst_type))
             && attr()->has_default_values(skip_mask) && !has_zero_dim_memory()
             && impl::is_dense_format_kind({src_md(), weights_md(), dst_md()});

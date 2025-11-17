@@ -19,6 +19,7 @@
 
 #include "c_types_map.hpp"
 #include "dnnl.h"
+#include "ittnotify/ittnotify.h"
 
 namespace dnnl {
 namespace impl {
@@ -38,8 +39,9 @@ struct itt_task_level_t {
 // Returns `true` if requested @p level is less or equal to default or specified
 // one by env variable.
 bool get_itt(__itt_task_level level);
-void primitive_task_start(primitive_kind_t kind);
+void primitive_task_start(primitive_kind_t kind, const char *task_name);
 primitive_kind_t primitive_task_get_current_kind();
+const char *primitive_task_get_current_name();
 void primitive_task_end();
 } // namespace itt
 } // namespace impl

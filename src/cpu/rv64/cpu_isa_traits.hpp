@@ -44,14 +44,19 @@ enum cpu_isa_t : unsigned {
 };
 
 struct Riscv64Cpu {
-    bool has_v = false;
-    bool has_zvfh = false;
+public:
     static Riscv64Cpu &getInstance() {
         static Riscv64Cpu instance;
         return instance;
     }
 
+    bool get_has_v() const { return has_v; }
+    bool get_has_zvfh() const { return has_zvfh; }
+
 private:
+    bool has_v = false;
+    bool has_zvfh = false;
+
     // Parse /proc/cpuinfo to find Zvfh
     bool detect_zvfh_procfs() {
         std::ifstream cpuinfo("/proc/cpuinfo");
@@ -91,8 +96,8 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
     const Riscv64Cpu &cpu = Riscv64Cpu::getInstance();
 
     switch (cpu_isa) {
-        case v: return cpu.has_v;
-        case zvfh: return cpu.has_v && cpu.has_zvfh;
+        case v: return cpu.get_has_v();
+        case zvfh: return cpu.get_has_v() && cpu.get_has_zvfh();
         case isa_undef: return true;
         case isa_all: return false;
     }

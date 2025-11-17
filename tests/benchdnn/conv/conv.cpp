@@ -654,7 +654,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     args_t args(mem_map), ref_args(ref_mem_map);
 
-    SAFE(execute_and_wait(prim, args, res), WARN);
+    SAFE(run_execution(prim, args, res), WARN);
 
     check_correctness(prb, get_kinds_to_check(prb), args, ref_args, setup_cmp,
             res, prb->dir, prim_ref);

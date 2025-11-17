@@ -607,7 +607,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     args_t args(mem_map), ref_args(ref_mem_map);
 
-    SAFE(execute_and_wait(prim, args, res), WARN);
+    SAFE(run_execution(prim, args, res), WARN);
 
     if (has_bench_mode_bit(mode_bit_t::corr)) {
         // Remove extra desc so that reorders with compensation could have

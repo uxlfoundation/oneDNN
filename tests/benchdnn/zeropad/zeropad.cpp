@@ -145,7 +145,7 @@ int doit(const prb_t *prb, res_t *res) {
     args.set(0, test_mem);
     perf_function_t perf_func_ = &perf_func;
 
-    execute_and_wait(perf_func_, test_engine, args, res);
+    SAFE(run_execution(perf_func_, test_engine, args, res), WARN);
 
     if (has_bench_mode_bit(mode_bit_t::corr)) {
         SAFE(compare(test_mem, res), WARN);
@@ -159,10 +159,7 @@ int doit(const prb_t *prb, res_t *res) {
         res->obytes = dnnl_memory_desc_get_size(data_md)
                 - dnnl_memory_desc_get_size(plain_data_md);
     }
-
-    measure_perf(default_thr_ctx, res, perf_func_, args);
-
-    return OK;
+    return measure_perf(default_thr_ctx, res, perf_func_, args);
 }
 
 } // namespace zeropad

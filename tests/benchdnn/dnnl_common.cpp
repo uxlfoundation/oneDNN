@@ -440,6 +440,21 @@ int execute_and_wait(dnnl_primitive_t prim, const args_t &args, res_t *res) {
     return execute_and_wait(exec_func, engine, args, res);
 }
 
+int run_execution(dnnl_primitive_t prim, const args_t &args, res_t *res) {
+    if (!has_bench_mode_bit(mode_bit_t::exec)
+            || has_bench_mode_bit(mode_bit_t::perf))
+        return OK;
+    return execute_and_wait(prim, args, res);
+}
+
+int run_execution(perf_function_t &exec_func, const dnnl_engine_t &engine,
+        const args_t &args, res_t *res) {
+    if (!has_bench_mode_bit(mode_bit_t::exec)
+            || has_bench_mode_bit(mode_bit_t::perf))
+        return OK;
+    return execute_and_wait(exec_func, engine, args, res);
+}
+
 void reset_gpu_profiling(dnnl_stream_t stream) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
         || DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
@@ -656,7 +671,7 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
                 ctx, measure_perf_aggregate, t, v_stream, perf_func, dnnl_args);
     }
 
-    if (ret != OK) res->state = FAILED;
+    res->state = (ret == OK ? EXECUTED : FAILED);
     execute_map_args(args);
     for (int j = 1; j < num_streams; j++) {
         execute_map_args(v_args[j]);

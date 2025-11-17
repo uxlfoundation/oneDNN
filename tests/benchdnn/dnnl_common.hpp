@@ -665,6 +665,10 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
 int execute_and_wait(
         dnnl_primitive_t prim, const args_t &args, res_t *res = nullptr);
 
+int run_execution(perf_function_t &exec_func, const dnnl_engine_t &engine,
+        const args_t &args, res_t *res = nullptr);
+int run_execution(dnnl_primitive_t prim, const args_t &args, res_t *res);
+
 void reset_gpu_profiling(dnnl_stream_t stream);
 
 void finalize();

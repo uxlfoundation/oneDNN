@@ -44,3 +44,13 @@
 14x96:96x32
 1x30:30x20
 10x30:30x20
+
+# mxfp bdpas 
+--reset
+--skip-impl=ref
+--attr-post-ops=
+--dt=f4_e2m1:f4_e2m1:f32,f8_e5m2:f8_e5m2:f32
+--attr-scales=src:per_ocic:e8m0:1x32+wei:per_ocic:e8m0:32x1
+1x300:300x64
+10x64:64x64
+2x64:64x64

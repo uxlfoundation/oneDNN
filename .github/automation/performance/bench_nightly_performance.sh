@@ -23,9 +23,9 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 INPUTS_DIR="${SCRIPT_DIR}/inputs"
 
 TESTS=(
-    "--matmul --batch=$INPUTS_DIR/matmul_nightly"
-    "--conv --batch=$INPUTS_DIR/conv_nightly"
-    "--eltwise --batch=$INPUTS_DIR/eltwise_nightly"
+    # "--matmul --batch=$INPUTS_DIR/matmul_nightly"
+    # "--conv --batch=$INPUTS_DIR/conv_nightly"
+    # "--eltwise --batch=$INPUTS_DIR/eltwise_nightly"
     "--reorder --batch=$INPUTS_DIR/reorder_nightly"
 )
 

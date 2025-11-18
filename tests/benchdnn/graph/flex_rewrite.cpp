@@ -223,7 +223,8 @@ int flex_rewrite_t::rewrite(deserialized_graph_t &dgraph) {
     SAFE(inports_shape_rewrite(dgraph, change_stride), WARN);
 
     if (!(op_attrs_.size() == 1 && op_attrs_.count(0)
-                && op_attrs_.at(0) == "default")) {
+                && op_attrs_.at(0) == "default")
+            || mb_ != 0) {
         // rewrite the op attributes.
         SAFE(op_attrs_rewrite(dgraph), WARN);
     }
@@ -1268,9 +1269,17 @@ int flex_rewrite_t::inports_shape_rewrite(
 int flex_rewrite_t::op_attrs_rewrite(deserialized_graph_t &dgraph) {
     std::vector<size_t> op_ids_;
     op_ids_.reserve(dgraph.ops_.size());
-    for (const auto &aop : dgraph.ops_) {
+    for (auto &aop : dgraph.ops_) {
         op_ids_.emplace_back(aop.id_);
+        if (aop.kind_ == "StaticReshape" && mb_ != 0) {
+            auto &shape = aop.attrs_["shape"].s64_vector_;
+            shape.front() = mb_;
+        }
     }
+
+    if (op_attrs_.size() == 1 && op_attrs_.count(0)
+            && op_attrs_.at(0) == "default")
+        return OK;
 
     for (const auto &temp_attrs : op_attrs_) {
         auto iter = std::find(op_ids_.begin(), op_ids_.end(), temp_attrs.first);

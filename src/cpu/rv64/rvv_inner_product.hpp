@@ -72,6 +72,8 @@ struct rvv_inner_product_fwd_t : public primitive_t {
             VDISPATCH_INNER_PRODUCT(check_layouts(src_d, wei_d, dst_d),
                     VERBOSE_UNSUPPORTED_TAG);
 
+            nthr_ = dnnl_get_max_threads();
+
             // Book scratchpad for contiguous packing of src/weights per-thread
             {
                 auto scratchpad = scratchpad_registry().registrar();
@@ -79,12 +81,11 @@ struct rvv_inner_product_fwd_t : public primitive_t {
                         = (dim_t)IC() * (dim_t)KD() * (dim_t)KH() * (dim_t)KW();
                 const size_t src_elt = types::data_type_size(src_type);
                 const size_t wei_elt = types::data_type_size(wei_type);
-                const int nthr = dnnl_get_max_threads();
                 scratchpad.book(memory_tracking::names::key_iprod_src_reorder,
-                        (size_t)K * (size_t)nthr, src_elt);
+                        (size_t)K * (size_t)nthr_, src_elt);
                 scratchpad.book(
                         memory_tracking::names::key_iprod_weights_reorder,
-                        (size_t)K * (size_t)nthr, wei_elt);
+                        (size_t)K * (size_t)nthr_, wei_elt);
             }
 
             return status::success;
@@ -115,8 +116,7 @@ struct rvv_inner_product_fwd_t : public primitive_t {
                     && dst_d.blocking_desc().inner_nblks == 0
                     && src_d.is_dense(/*with_padding=*/false)
                     && wei_d.is_dense(/*with_padding=*/false)
-                    && dst_d.is_dense(/*with_padding=*/false)
-                    && src_d.is_plain() && wei_d.is_plain() && dst_d.is_plain();
+                    && dst_d.is_dense(/*with_padding=*/false);
             if (!plain_dense) return false;
 
             // Support only 2D source/weights
@@ -134,6 +134,8 @@ struct rvv_inner_product_fwd_t : public primitive_t {
                 return false;
             return true;
         }
+
+        int nthr_; // To not exceed the limit in execute used for set up.
     };
 
     rvv_inner_product_fwd_t(const pd_t *apd) : primitive_t(apd) {}

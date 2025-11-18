@@ -217,80 +217,96 @@ status_t rvv_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const size_t dst_elt = types::data_type_size(dst_dt);
     const size_t bia_elt = types::data_type_size(bias_dt);
 
-    parallel_nd(MB, OC, [&](dim_t mb, dim_t oc) {
-        const int ithr = OMP_GET_THREAD_NUM();
-        const dim_t src_off = get_ip_data_off(src_d, nd, mb, /*c*/ 0, 0, 0, 0);
-        const dim_t wei_off
-                = get_ip_weights_off(weights_d, nd, oc, /*ic*/ 0, 0, 0, 0);
-        const dim_t dst_off = dst_d.off(mb, oc);
+    const auto scratchpad = ctx.get_scratchpad_grantor();
+    const int nthr = pd()->nthr_;
+    const size_t src_pack_per_thread = (size_t)K * src_elt;
+    const size_t wei_pack_per_thread = (size_t)K * wei_elt;
 
-        const char *src_base
-                = static_cast<const char *>(src) + src_off * src_elt;
-        const char *wei_base
-                = static_cast<const char *>(weights) + wei_off * wei_elt;
-        void *dst_ptr = static_cast<char *>(dst) + dst_off * dst_elt;
-
-        const void *bia_ptr = nullptr;
-        if (bias) {
-            const dim_t bia_off = bias_d.off(oc);
-            bia_ptr = static_cast<const char *>(bias) + bia_off * bia_elt;
-        }
-
-        float acc = 0.0f;
-        const dim_t so0 = get_ip_data_off(src_d, nd, mb, 0, 0, 0, 0);
-        const dim_t so1 = get_ip_data_off(src_d, nd, mb, 1, 0, 0, 0);
-        const dim_t wo0 = get_ip_weights_off(weights_d, nd, oc, 0, 0, 0, 0);
-        const dim_t wo1 = get_ip_weights_off(weights_d, nd, oc, 1, 0, 0, 0);
-        const ptrdiff_t src_bstride = (so1 == so0)
-                ? (ptrdiff_t)src_elt
-                : (so1 - so0) * (ptrdiff_t)src_elt;
-        const ptrdiff_t wei_bstride = (wo1 == wo0)
-                ? (ptrdiff_t)wei_elt
-                : (wo1 - wo0) * (ptrdiff_t)wei_elt;
-
-        const auto scratchpad = ctx.get_scratchpad_grantor();
-        void *src_pack_base = scratchpad.get<void>(
+    parallel(nthr, [&](int ithr, int nthr) {
+        void *src_pack_storage = scratchpad.get<void>(
                 memory_tracking::names::key_iprod_src_reorder);
-        void *wei_pack_base = scratchpad.get<void>(
+        void *wei_pack_storage = scratchpad.get<void>(
                 memory_tracking::names::key_iprod_weights_reorder);
-        char *src_pack = static_cast<char *>(src_pack_base)
-                + (size_t)ithr * (size_t)K * src_elt;
-        char *wei_pack = static_cast<char *>(wei_pack_base)
-                + (size_t)ithr * (size_t)K * wei_elt;
+        char *src_pack_thread = src_pack_storage
+                ? static_cast<char *>(src_pack_storage)
+                        + (size_t)ithr * src_pack_per_thread
+                : nullptr;
+        char *wei_pack_thread = wei_pack_storage
+                ? static_cast<char *>(wei_pack_storage)
+                        + (size_t)ithr * wei_pack_per_thread
+                : nullptr;
 
-        const bool src_is_contig = (src_bstride == (ptrdiff_t)src_elt);
-        const bool wei_is_contig = (wei_bstride == (ptrdiff_t)wei_elt);
+        for_nd(ithr, nthr, MB, OC, [&](dim_t mb, dim_t oc) {
+            const dim_t src_off
+                    = get_ip_data_off(src_d, nd, mb, /*c*/ 0, 0, 0, 0);
+            const dim_t wei_off
+                    = get_ip_weights_off(weights_d, nd, oc, /*ic*/ 0, 0, 0, 0);
+            const dim_t dst_off = dst_d.off(mb, oc);
 
-        const void *src_ptr_for_compute = src_base;
-        const void *wei_ptr_for_compute = wei_base;
+            const char *src_base
+                    = static_cast<const char *>(src) + src_off * src_elt;
+            const char *wei_base
+                    = static_cast<const char *>(weights) + wei_off * wei_elt;
+            void *dst_ptr = static_cast<char *>(dst) + dst_off * dst_elt;
 
-        if (!src_is_contig) {
-            char *dstp = static_cast<char *>(src_pack);
-            const char *p = src_base;
-            for (dim_t i = 0; i < K; ++i) {
-                utils::array_copy(reinterpret_cast<unsigned char *>(dstp),
-                        reinterpret_cast<const unsigned char *>(p), src_elt);
-                dstp += src_elt;
-                p += src_bstride;
+            const void *bia_ptr = nullptr;
+            if (bias) {
+                const dim_t bia_off = bias_d.off(oc);
+                bia_ptr = static_cast<const char *>(bias) + bia_off * bia_elt;
             }
-            src_ptr_for_compute = src_pack;
-        }
-        if (!wei_is_contig) {
-            char *dstp = static_cast<char *>(wei_pack);
-            const char *p = wei_base;
-            for (dim_t i = 0; i < K; ++i) {
-                utils::array_copy(reinterpret_cast<unsigned char *>(dstp),
-                        reinterpret_cast<const unsigned char *>(p), wei_elt);
-                dstp += wei_elt;
-                p += wei_bstride;
+
+            float acc = 0.0f;
+            const dim_t so0 = get_ip_data_off(src_d, nd, mb, 0, 0, 0, 0);
+            const dim_t so1 = get_ip_data_off(src_d, nd, mb, 1, 0, 0, 0);
+            const dim_t wo0 = get_ip_weights_off(weights_d, nd, oc, 0, 0, 0, 0);
+            const dim_t wo1 = get_ip_weights_off(weights_d, nd, oc, 1, 0, 0, 0);
+            const ptrdiff_t src_bstride = (so1 == so0)
+                    ? (ptrdiff_t)src_elt
+                    : (so1 - so0) * (ptrdiff_t)src_elt;
+            const ptrdiff_t wei_bstride = (wo1 == wo0)
+                    ? (ptrdiff_t)wei_elt
+                    : (wo1 - wo0) * (ptrdiff_t)wei_elt;
+
+            const bool src_is_contig = (src_bstride == (ptrdiff_t)src_elt);
+            const bool wei_is_contig = (wei_bstride == (ptrdiff_t)wei_elt);
+
+            const void *src_ptr_for_compute = src_base;
+            const void *wei_ptr_for_compute = wei_base;
+
+            if (!src_is_contig) {
+                assert(src_pack_thread != nullptr);
+                char *src_pack = src_pack_thread;
+                char *dstp = src_pack;
+                const char *p = src_base;
+                for (dim_t i = 0; i < K; ++i) {
+                    utils::array_copy(reinterpret_cast<unsigned char *>(dstp),
+                            reinterpret_cast<const unsigned char *>(p),
+                            src_elt);
+                    dstp += src_elt;
+                    p += src_bstride;
+                }
+                src_ptr_for_compute = src_pack;
             }
-            wei_ptr_for_compute = wei_pack;
-        }
+            if (!wei_is_contig) {
+                assert(wei_pack_thread != nullptr);
+                char *wei_pack = wei_pack_thread;
+                char *dstp = wei_pack;
+                const char *p = wei_base;
+                for (dim_t i = 0; i < K; ++i) {
+                    utils::array_copy(reinterpret_cast<unsigned char *>(dstp),
+                            reinterpret_cast<const unsigned char *>(p),
+                            wei_elt);
+                    dstp += wei_elt;
+                    p += wei_bstride;
+                }
+                wei_ptr_for_compute = wei_pack;
+            }
 
-        acc = compute_ip_rvv_fwd(
-                src_ptr_for_compute, wei_ptr_for_compute, K, src_dt, wei_dt);
+            acc = compute_ip_rvv_fwd(src_ptr_for_compute, wei_ptr_for_compute,
+                    K, src_dt, wei_dt);
 
-        finalize_ip_acc(acc, bia_ptr, dst_ptr, bias_dt, dst_dt);
+            finalize_ip_acc(acc, bia_ptr, dst_ptr, bias_dt, dst_dt);
+        });
     });
 
     return status::success;

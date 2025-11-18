@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018-2023 Intel Corporation
 * Copyright 2020-2023 FUJITSU LIMITED
-* Copyright 2022 Arm Ltd. and affiliates
+* Copyright 2022, 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -289,7 +289,11 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
                 = dst_mask == 0 ? scale_type_t::COMMON : scale_type_t::MANY;
     }
 
-    if (src_mask != dst_mask) return status::unimplemented;
+    VDISPATCH_REORDER_IC(
+            IMPLICATION(p.src_scale_type != scale_type_t::NONE
+                            && p.dst_scale_type != scale_type_t::NONE,
+                    src_mask == dst_mask),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     p.scale_adjust = (om_d.extra().flags & memory_extra_flags::scale_adjust)
             ? om_d.extra().scale_adjust

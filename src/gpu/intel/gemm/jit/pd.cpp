@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -57,6 +57,8 @@ status_t pd_t::init_post_ops() {
     using namespace alg_kind;
     using namespace data_type;
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** >");
+
     const auto d = desc();
 
     // Examine post-ops and remember binary srcs.
@@ -105,6 +107,8 @@ status_t pd_t::init_post_ops() {
 
     if (!ok) return status::unimplemented;
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** try convert scales to postops");
+
     // If scales are present, convert them and any bias to binary post-ops.
     //   Exception: 2D scales.
     // Also convert bias to binary post-op if dst zp are present.
@@ -126,6 +130,8 @@ status_t pd_t::init_post_ops() {
     auto maybe_convert_scales_to_postop
             = [this](const memory_desc_t &scale_md, int arg, data_type_t dt,
                       bool mx, bool &converted) -> status_t {
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** maybe_convert_scales_to_postop >>>>>");
+
         auto ndims = desc()->c_desc.ndims;
         // Scales on A/B can be converted to postops if
         // the scales md has K=1
@@ -145,10 +151,12 @@ status_t pd_t::init_post_ops() {
             }
             converted = true;
         }
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: maybe_convert_scales_to_postop : converted = %d",converted);
         return status::success;
     };
 
     if (!a_scales.has_default_values() && !a_scales.is_host_scalar()) {
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** ! a_scales has_default");
         // Host scalar scale will be converted to Alpha
         bool converted;
         CHECK(maybe_convert_scales_to_postop(a_scale_md_, DNNL_ARG_A,
@@ -175,6 +183,7 @@ status_t pd_t::init_post_ops() {
                 << "Unable to convert dst scales to a post op";
     }
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() < ****");
     return status::success;
 }
 
@@ -208,6 +217,9 @@ bool pd_t::quant_enabled() {
 }
 
 status_t pd_t::init_attrs() {
+
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs @@@@@ >");
+
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();

@@ -20,7 +20,16 @@
 #include <tuple>
 #include <vector>
 
-#include "common/utils.hpp"
+#include "common/verbose.hpp"
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include "windows.h"
+#elif defined(__linux__)
+#include <dlfcn.h>
+#endif
 
 // This file contains utility functionality for heterogeneous runtimes such
 // as OpenCL and SYCL.
@@ -99,6 +108,64 @@ struct runtime_version_t {
         return utils::format("%d.%d.%d", major, minor, build);
     }
 };
+
+#if defined(_WIN32)
+inline void *find_symbol(const char *library_name, const char *symbol) {
+    HMODULE handle = LoadLibraryExA(
+            library_name, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (!handle) {
+        LPSTR error_text = nullptr;
+        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM
+                        | FORMAT_MESSAGE_ALLOCATE_BUFFER
+                        | FORMAT_MESSAGE_IGNORE_INSERTS,
+                nullptr, GetLastError(),
+                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), error_text, 0,
+                nullptr);
+        VERROR(common, runtime, "error while opening %s library: %s",
+                library_name, error_text);
+        return nullptr;
+    }
+    void *symbol_address
+            = reinterpret_cast<void *>(GetProcAddress(handle, symbol));
+    if (!symbol_address) {
+        LPSTR error_text = nullptr;
+        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM
+                        | FORMAT_MESSAGE_ALLOCATE_BUFFER
+                        | FORMAT_MESSAGE_IGNORE_INSERTS,
+                nullptr, GetLastError(),
+                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), error_text, 0,
+                nullptr);
+        VERROR(common, runtime,
+                "error while searching for a %s symbol address in %s library: "
+                "%s",
+                symbol, library_name, error_text);
+        return nullptr;
+    }
+    return symbol_address;
+}
+#elif defined(__linux__)
+inline void *find_symbol(const char *library_name, const char *symbol) {
+    // To clean the error string
+    dlerror();
+    void *handle = dlopen(library_name, RTLD_NOW | RTLD_LOCAL);
+    if (!handle) {
+        VERROR(common, runtime, "error while opening %s library: %s",
+                library_name, dlerror());
+        return nullptr;
+    }
+    // To clean the error string
+    dlerror();
+    void *symbol_address = dlsym(handle, symbol);
+    if (!symbol_address) {
+        VERROR(common, runtime,
+                "error while searching for a %s symbol address in %s library: "
+                "%s",
+                symbol, library_name, dlerror());
+        return nullptr;
+    }
+    return symbol_address;
+}
+#endif
 
 } // namespace xpu
 } // namespace impl

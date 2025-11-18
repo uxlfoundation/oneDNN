@@ -284,12 +284,6 @@ if(DNNL_CPU_THREADING_RUNTIME STREQUAL "TBB")
     endif()
 endif()
 
-if(DNNL_GPU_RUNTIME STREQUAL "OCL" OR (DNNL_GPU_SYCL AND DNNL_GPU_VENDOR STREQUAL "INTEL"))
-    install(FILES
-        "../cmake/FindOpenCL.cmake"
-        DESTINATION ${LIB_CONFIG_INSTALL_DIR})
-endif()
-
 if(DNNL_BLAS_VENDOR STREQUAL "ACCELERATE")
     install(FILES
     "../cmake/FindBLAS.cmake"

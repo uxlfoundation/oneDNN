@@ -444,6 +444,7 @@ license terms.
 
 Apache License Version 2.0:
 * [Xbyak_aarch64](https://github.com/fujitsu/xbyak_aarch64)
+* [OpenCL<sup>TM</sup> API Headers](https://github.com/KhronosGroup/OpenCL-Headers)
 
 Boost Software License, Version 1.0:
 * [Boost C++ Libraries](https://www.boost.org/)

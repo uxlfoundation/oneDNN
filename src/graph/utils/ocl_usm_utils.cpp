@@ -34,7 +34,8 @@ struct ext_func_t {
         for (size_t i = 0; i < intel_platforms().size(); ++i) {
             auto p = intel_platforms()[i];
             auto f = reinterpret_cast<F>(
-                    clGetExtensionFunctionAddressForPlatform(p, name));
+                    xpu::ocl::clGetExtensionFunctionAddressForPlatform(
+                            p, name));
             auto it = ext_func_ptrs_.insert({p, f});
             assert(it.second);
             MAYBE_UNUSED(it);
@@ -59,18 +60,19 @@ private:
 
     static std::vector<cl_platform_id> get_intel_platforms() {
         cl_uint num_platforms = 0;
-        cl_int err = clGetPlatformIDs(0, nullptr, &num_platforms);
+        cl_int err = xpu::ocl::clGetPlatformIDs(0, nullptr, &num_platforms);
         if (err != CL_SUCCESS) return {};
 
         std::vector<cl_platform_id> platforms(num_platforms);
-        err = clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
+        err = xpu::ocl::clGetPlatformIDs(
+                num_platforms, platforms.data(), nullptr);
         if (err != CL_SUCCESS) return {};
 
         std::vector<cl_platform_id> intel_platforms;
         char vendor_name[128] = {};
         for (cl_platform_id p : platforms) {
-            err = clGetPlatformInfo(p, CL_PLATFORM_VENDOR, sizeof(vendor_name),
-                    vendor_name, nullptr);
+            err = xpu::ocl::clGetPlatformInfo(p, CL_PLATFORM_VENDOR,
+                    sizeof(vendor_name), vendor_name, nullptr);
             if (err != CL_SUCCESS) continue;
             if (std::string(vendor_name).find("Intel") != std::string::npos)
                 intel_platforms.push_back(p);
@@ -97,7 +99,7 @@ void *malloc_shared(
             "clSharedMemAllocINTEL");
 
     cl_platform_id platform;
-    UNUSED_OCL_RESULT(clGetDeviceInfo(
+    UNUSED_OCL_RESULT(xpu::ocl::clGetDeviceInfo(
             dev, CL_DEVICE_PLATFORM, sizeof(platform), &platform, nullptr));
 
     cl_int err;
@@ -117,7 +119,7 @@ void *malloc_device(
             "clDeviceMemAllocINTEL");
 
     cl_platform_id platform;
-    UNUSED_OCL_RESULT(clGetDeviceInfo(
+    UNUSED_OCL_RESULT(xpu::ocl::clGetDeviceInfo(
             dev, CL_DEVICE_PLATFORM, sizeof(platform), &platform, nullptr));
 
     cl_int err;
@@ -133,7 +135,7 @@ void free(void *ptr, cl_device_id dev, cl_context ctx) {
     using F = cl_int (*)(cl_context, void *);
     static ext_func_t<F> ext_func("clMemBlockingFreeINTEL");
     cl_platform_id platform;
-    UNUSED_OCL_RESULT(clGetDeviceInfo(
+    UNUSED_OCL_RESULT(xpu::ocl::clGetDeviceInfo(
             dev, CL_DEVICE_PLATFORM, sizeof(platform), &platform, nullptr));
     cl_int err = ext_func(platform, ctx, ptr);
     UNUSED_OCL_RESULT(err);

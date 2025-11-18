@@ -22,25 +22,16 @@ if(OpenCL_cmake_included)
 endif()
 set(OpenCL_cmake_included true)
 
-if(DNNL_GPU_RUNTIME STREQUAL "OCL")
-    message(STATUS "GPU support is enabled (OpenCL)")
+if(DNNL_GPU_SYCL AND DNNL_GPU_VENDOR STREQUAL "INTEL")
+    add_definitions(-DCL_TARGET_OPENCL_VERSION=300)
 else()
-    return()
+    add_definitions(-DCL_TARGET_OPENCL_VERSION=120)
 endif()
 
-# Set the macro to look specifically for the minimal supported version. Some
-# implementations ignore this macro but the version will be checked after
-# find_package() anyway.
-set(CMAKE_REQUIRED_DEFINITIONS "-DCL_TARGET_OPENCL_VERSION=120")
-find_package(OpenCL REQUIRED)
-
-if(OpenCL_VERSION_STRING VERSION_LESS "1.2")
-    message(FATAL_ERROR
-        "OpenCL version ${OpenCL_VERSION_STRING} is not supported, must be 1.2 or greater.")
+if(OpenCL_INCLUDE_DIR)
+    message(STATUS "Using user provided OpenCL headers from '${OpenCL_INCLUDE_DIR}'")
+    file(TO_CMAKE_PATH ${OpenCL_INCLUDE_DIR} CUSTOM_OCL_HEADERS_PATH)
+    include_directories_with_host_compiler(CUSTOM_OCL_HEADERS_PATH)
+else()
+    include_directories_with_host_compiler(${PROJECT_SOURCE_DIR}/third_party/opencl)
 endif()
-
-add_definitions(-DCL_TARGET_OPENCL_VERSION=120)
-
-set(DNNL_GPU_RUNTIME_CURRENT ${DNNL_GPU_RUNTIME})
-include_directories(${OpenCL_INCLUDE_DIRS})
-list(APPEND EXTRA_SHARED_LIBS OpenCL::OpenCL)

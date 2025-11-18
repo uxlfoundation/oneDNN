@@ -83,6 +83,7 @@ F findOCLSymbol(const char *symbol) {
 #endif
 
 NGEN_OCL_INDIRECT_API(cl_int, clGetDeviceInfo)
+NGEN_OCL_INDIRECT_API(cl_context, clCreateContext)
 NGEN_OCL_INDIRECT_API(cl_int, clReleaseContext)
 NGEN_OCL_INDIRECT_API(cl_program, clCreateProgramWithSource)
 NGEN_OCL_INDIRECT_API(cl_program, clCreateProgramWithBinary)
@@ -339,9 +340,9 @@ Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id d
     if (product.family == ProductFamily::Unknown) {
         const char *dummyCL = "kernel void _ngen_hw_detect(){}";
         const char *dummyOptions = "";
-        cl_context query_context = context ? context : clCreateContext(nullptr, 1, &device, nullptr, nullptr, nullptr);
+        cl_context query_context = context ? context : dynamic::clCreateContext(nullptr, 1, &device, nullptr, nullptr, nullptr);
         auto binary = detail::getOpenCLCProgramBinary(query_context, device, dummyCL, dummyOptions);
-        if(!context) clReleaseContext(query_context);
+        if(!context) dynamic::clReleaseContext(query_context);
         product = ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
     }
 

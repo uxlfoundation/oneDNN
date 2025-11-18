@@ -232,7 +232,7 @@ struct dummy_impl_t : public op_executable_t {
         // Otherwise, gather all dependencies.
         auto q = dnnl::ocl_interop::get_command_queue(stream);
         cl_event e;
-        auto err = clEnqueueMarkerWithWaitList(
+        auto err = xpu::ocl::clEnqueueMarkerWithWaitList(
                 q, static_cast<cl_uint>(deps.size()), deps.data(), &e);
         assert(err == CL_SUCCESS);
         MAYBE_UNUSED(err);

@@ -29,7 +29,6 @@
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/microkernels/fuser.hpp"
 #include "gpu/intel/ocl/device_info.hpp"
-#include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
 #include "gpu/intel/ocl/stream.hpp"
 #include "gpu/intel/ocl/utils.hpp"
@@ -133,10 +132,12 @@ status_t create_ocl_kernel_from_cache_blob(const engine_t *ocl_engine,
 
         CHECK(cache_blob.get_binary(&binary, &binary_size));
 
-        auto program = xpu::ocl::make_wrapper(clCreateProgramWithBinary(
-                ctx, 1, &dev, &binary_size, &binary, nullptr, &err));
+        auto program
+                = xpu::ocl::make_wrapper(xpu::ocl::clCreateProgramWithBinary(
+                        ctx, 1, &dev, &binary_size, &binary, nullptr, &err));
         OCL_CHECK(err);
-        err = clBuildProgram(program, 1, &dev, nullptr, nullptr, nullptr);
+        err = xpu::ocl::clBuildProgram(
+                program, 1, &dev, nullptr, nullptr, nullptr);
         OCL_CHECK(err);
 
         if (kernel_name.empty()) {
@@ -146,12 +147,12 @@ status_t create_ocl_kernel_from_cache_blob(const engine_t *ocl_engine,
             if (kernel_names.size() != 1 || kernels->size() != 1)
                 return status::invalid_arguments;
             size_t kernel_name_size = 0;
-            err = clGetProgramInfo(program, CL_PROGRAM_KERNEL_NAMES, 0, nullptr,
-                    &kernel_name_size);
+            err = xpu::ocl::clGetProgramInfo(program, CL_PROGRAM_KERNEL_NAMES,
+                    0, nullptr, &kernel_name_size);
             OCL_CHECK(err);
 
             kernel_name.resize(kernel_name_size);
-            err = clGetProgramInfo(program, CL_PROGRAM_KERNEL_NAMES,
+            err = xpu::ocl::clGetProgramInfo(program, CL_PROGRAM_KERNEL_NAMES,
                     kernel_name_size, &kernel_name[0], nullptr);
             OCL_CHECK(err);
             assert(!kernel_name.empty());
@@ -160,7 +161,7 @@ status_t create_ocl_kernel_from_cache_blob(const engine_t *ocl_engine,
             kernel_name.pop_back();
         }
         auto ocl_kernel = xpu::ocl::make_wrapper(
-                clCreateKernel(program, kernel_name.c_str(), &err));
+                xpu::ocl::clCreateKernel(program, kernel_name.c_str(), &err));
         OCL_CHECK(err);
         CHECK(kernel_t::make((*kernels)[i], std::move(ocl_kernel), {}));
     }
@@ -240,14 +241,14 @@ cl_int maybe_print_debug_info(
     if (!is_err && !is_warn) return err_;
 
     size_t log_length = 0;
-    auto err = clGetProgramBuildInfo(
+    auto err = xpu::ocl::clGetProgramBuildInfo(
             program, dev, CL_PROGRAM_BUILD_LOG, 0, nullptr, &log_length);
     gpu_assert(err == CL_SUCCESS);
 
     if (log_length <= 1) return err_;
     std::vector<char> log_buf(log_length);
-    err = clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG, log_length,
-            log_buf.data(), nullptr);
+    err = xpu::ocl::clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG,
+            log_length, log_buf.data(), nullptr);
     gpu_assert(err == CL_SUCCESS);
     if (err_ == CL_SUCCESS && !is_dev_mode()) {
         filter_build_log(log_buf);
@@ -271,12 +272,12 @@ inline status_t fuse_microkernels(cl_context context, cl_device_id device,
     if (micro::hasMicrokernels(code)) {
         cl_int status = CL_SUCCESS;
         size_t binary_size = 0;
-        OCL_CHECK(clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES,
+        OCL_CHECK(xpu::ocl::clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES,
                 sizeof(binary_size), &binary_size, nullptr));
 
         std::vector<uint8_t> binary(binary_size);
         auto binary_data = binary.data();
-        OCL_CHECK(clGetProgramInfo(program, CL_PROGRAM_BINARIES,
+        OCL_CHECK(xpu::ocl::clGetProgramInfo(program, CL_PROGRAM_BINARIES,
                 sizeof(binary_data), &binary_data, nullptr));
 
         try {
@@ -286,10 +287,12 @@ inline status_t fuse_microkernels(cl_context context, cl_device_id device,
         auto nbinary_size = binary.size();
         auto nbinary_data = const_cast<const uint8_t *>(binary.data());
 
-        program = xpu::ocl::make_wrapper(clCreateProgramWithBinary(context, 1,
-                &device, &nbinary_size, &nbinary_data, nullptr, &status));
+        program = xpu::ocl::make_wrapper(
+                xpu::ocl::clCreateProgramWithBinary(context, 1, &device,
+                        &nbinary_size, &nbinary_data, nullptr, &status));
         OCL_CHECK(status);
-        OCL_CHECK(clBuildProgram(program, 1, &device, "", nullptr, nullptr));
+        OCL_CHECK(xpu::ocl::clBuildProgram(
+                program, 1, &device, "", nullptr, nullptr));
     } else {
         VWARN(common, runtime, "gpu microkernels not found");
     }
@@ -339,12 +342,13 @@ status_t engine_t::build_program_from_source(
             pp_code_str, options, dev_info->get_cl_ext_options());
 
     auto ctx = context();
-    program = xpu::ocl::make_wrapper(
-            clCreateProgramWithSource(ctx, 1, &pp_code_str_ptr, nullptr, &err));
+    program = xpu::ocl::make_wrapper(xpu::ocl::clCreateProgramWithSource(
+            ctx, 1, &pp_code_str_ptr, nullptr, &err));
     OCL_CHECK(err);
 
     auto dev = device();
-    err = clBuildProgram(program, 1, &dev, options.c_str(), nullptr, nullptr);
+    err = xpu::ocl::clBuildProgram(
+            program, 1, &dev, options.c_str(), nullptr, nullptr);
     OCL_CHECK(maybe_print_debug_info(err, program, dev));
 
     if (kernel_ctx.has_custom_headers())
@@ -362,7 +366,7 @@ status_t engine_t::create_kernel_from_binary(compute::kernel_t &kernel,
 
     cl_int err;
     auto ocl_kernel = xpu::ocl::make_wrapper(
-            clCreateKernel(program, kernel_name, &err));
+            xpu::ocl::clCreateKernel(program, kernel_name, &err));
     OCL_CHECK(err);
     CHECK(kernel_t::make(kernel, std::move(ocl_kernel), src));
 
@@ -450,7 +454,7 @@ status_t engine_t::create_kernels_from_program(
         if (!kernel_names[i]) continue;
         cl_int err;
         xpu::ocl::wrapper_t<cl_kernel> ocl_kernel
-                = clCreateKernel(program, kernel_names[i], &err);
+                = xpu::ocl::clCreateKernel(program, kernel_names[i], &err);
         OCL_CHECK(err);
         CHECK(kernel_t::make((*kernels)[i], std::move(ocl_kernel), src));
     }
@@ -470,12 +474,12 @@ status_t engine_t::init_device_info(const std::vector<uint8_t> &cache_blob) {
 
 status_t engine_t::serialize_device(serialization_stream_t &sstream) const {
     size_t platform_name_len;
-    cl_int err = clGetPlatformInfo(impl()->platform(), CL_PLATFORM_NAME, 0,
-            nullptr, &platform_name_len);
+    cl_int err = xpu::ocl::clGetPlatformInfo(impl()->platform(),
+            CL_PLATFORM_NAME, 0, nullptr, &platform_name_len);
     OCL_CHECK(err);
 
     std::vector<char> platform_name(platform_name_len);
-    err = clGetPlatformInfo(impl()->platform(), CL_PLATFORM_NAME,
+    err = xpu::ocl::clGetPlatformInfo(impl()->platform(), CL_PLATFORM_NAME,
             platform_name.size(), platform_name.data(), nullptr);
     OCL_CHECK(err);
 

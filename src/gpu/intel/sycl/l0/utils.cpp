@@ -21,14 +21,6 @@
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "ngen_level_zero.hpp"
 
-#if defined(__linux__)
-#include <dlfcn.h>
-#elif defined(_WIN32)
-#include "windows.h"
-#else
-#error "Level Zero is supported on Linux and Windows only"
-#endif
-
 #include "level_zero/ze_api.h"
 #include "level_zero/ze_intel_gpu.h"
 
@@ -53,8 +45,7 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace sycl {
-
-namespace {
+namespace l0 {
 
 std::string to_string(ze_result_t r) {
 #define ZE_STATUS_CASE(status) \
@@ -105,130 +96,49 @@ std::string to_string(ze_result_t r) {
 #undef ZE_STATUS_CASE
 }
 
-#define ZE_CHECK_COMMON(f, retval) \
+#define ZE_CHECK(f) \
     do { \
         ze_result_t res_ = (f); \
         if (res_ != ZE_RESULT_SUCCESS) { \
             std::string err_str_ = to_string(res_); \
             VERROR(common, level_zero, "errcode %s", err_str_.c_str()); \
-            return retval; \
+            return status::runtime_error; \
         } \
     } while (false)
 
-#define ZE_CHECK(f) ZE_CHECK_COMMON(f, status::runtime_error)
-#define ZE_CHECK_VP(f) ZE_CHECK_COMMON(f, nullptr)
-
-void *find_ze_symbol(const char *symbol) {
-#if defined(__linux__)
-    void *handle = dlopen("libze_loader.so.1", RTLD_NOW | RTLD_LOCAL);
-#elif defined(_WIN32)
-    // Use LOAD_LIBRARY_SEARCH_SYSTEM32 flag to avoid DLL hijacking issue.
-    HMODULE handle = LoadLibraryExA(
-            "ze_loader.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+#if defined(_WIN32)
+#define L0_LIB_NAME "ze_loader.dll"
+#elif defined(__linux__)
+#define L0_LIB_NAME "libze_loader.so.1"
 #endif
-    if (!handle) {
-        VERROR(common, level_zero, "cannot find loader library");
-        assert(!"not expected");
-        return nullptr;
-    }
-
-    using zeInit_decl_t = ze_result_t (*)(ze_init_flags_t flags);
-    const ze_init_flags_t default_ze_flags = 0;
-#if defined(__linux__)
-    static const ze_result_t ze_result = reinterpret_cast<zeInit_decl_t>(
-            dlsym(handle, "zeInit"))(default_ze_flags);
-    void *f = reinterpret_cast<void *>(dlsym(handle, symbol));
-#elif defined(_WIN32)
-    static const ze_result_t ze_result = reinterpret_cast<zeInit_decl_t>(
-            GetProcAddress(handle, "zeInit"))(default_ze_flags);
-    void *f = reinterpret_cast<void *>(GetProcAddress(handle, symbol));
-#endif
-    ZE_CHECK_VP(ze_result);
-
-    if (!f) {
-        VERROR(common, level_zero, "cannot find symbol: %s", symbol);
-        assert(!"not expected");
-    }
-    return f;
-}
 
 template <typename F>
 F find_ze_symbol(const char *symbol) {
-    return (F)find_ze_symbol(symbol);
+    return (F)xpu::find_symbol(L0_LIB_NAME, symbol);
 }
+#undef L0_LIB_NAME
 
-status_t func_zeModuleCreate(ze_context_handle_t hContext,
-        ze_device_handle_t hDevice, const ze_module_desc_t *desc,
-        ze_module_handle_t *phModule,
-        ze_module_build_log_handle_t *phBuildLog) {
-    static auto f = find_ze_symbol<decltype(&zeModuleCreate)>("zeModuleCreate");
-
-    if (!f) return status::runtime_error;
-    ZE_CHECK(f(hContext, hDevice, desc, phModule, phBuildLog));
-    return status::success;
-}
-
-status_t func_zeDeviceGetProperties(
-        ze_device_handle_t hDevice, ze_device_properties_t *pDeviceProperties) {
-    static auto f = find_ze_symbol<decltype(&zeDeviceGetProperties)>(
-            "zeDeviceGetProperties");
-
-    if (!f) return status::runtime_error;
-    ZE_CHECK(f(hDevice, pDeviceProperties));
-    return status::success;
-}
-
-status_t func_zeDeviceGetModuleProperties(ze_device_handle_t hDevice,
-        ze_device_module_properties_t *pDeviceProperties) {
-    static auto f = find_ze_symbol<decltype(&zeDeviceGetModuleProperties)>(
-            "zeDeviceGetModuleProperties");
-
-    if (!f) {
-        VERROR(common, level_zero,
-                "failed to find systolic query extension (maybe update the "
-                "driver?)");
-        return status::runtime_error;
+#define INDIRECT_L0_CALL(f) \
+    template <typename... Args> \
+    status_t f(Args &&...args) { \
+        const ze_init_flags_t default_ze_flags = 0; \
+        static auto init_ = find_ze_symbol<decltype(&::zeInit)>("zeInit"); \
+        if (!init_) return status::runtime_error; \
+        ZE_CHECK(init_(default_ze_flags)); \
+        static auto f_ = find_ze_symbol<decltype(&::f)>(#f); \
+        if (!f_) return status::runtime_error; \
+        ZE_CHECK(f_(std::forward<Args>(args)...)); \
+        return status::success; \
     }
-    ZE_CHECK(f(hDevice, pDeviceProperties));
-    return status::success;
-}
+INDIRECT_L0_CALL(zeModuleCreate)
+INDIRECT_L0_CALL(zeDeviceGetProperties)
+INDIRECT_L0_CALL(zeDeviceGetModuleProperties)
+INDIRECT_L0_CALL(zeKernelCreate)
+INDIRECT_L0_CALL(zeKernelGetBinaryExp)
+INDIRECT_L0_CALL(zeModuleGetNativeBinary)
+#undef INDIRECT_L0_CALL
 
-} // namespace
-
-// This function is called from compatibility layer that ensures compatibility
-// with SYCL 2017 API. Once the compatibility layer is removed this function
-// can be moved to the anonymous namespace above and a function with SYCL
-// data types in its interface can be created to call it.
-status_t func_zeKernelCreate(ze_module_handle_t hModule,
-        const ze_kernel_desc_t *desc, ze_kernel_handle_t *phKernel) {
-    static auto f = find_ze_symbol<decltype(&zeKernelCreate)>("zeKernelCreate");
-
-    if (!f) return status::runtime_error;
-    ZE_CHECK(f(hModule, desc, phKernel));
-    return status::success;
-}
-
-#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
-status_t func_zeGetKernelBinary(
-        ze_kernel_handle_t hKernel, size_t *pSize, uint8_t *pKernelBinary) {
-    static auto f = find_ze_symbol<decltype(&zeKernelGetBinaryExp)>(
-            "zeKernelGetBinaryExp");
-
-    if (!f) return status::runtime_error;
-    ZE_CHECK(f(hKernel, pSize, pKernelBinary));
-    return status::success;
-}
-#else
-status_t func_zeModuleGetNativeBinary(ze_module_handle_t hModule, size_t *pSize,
-        uint8_t *pModuleNativeBinary) {
-    static auto f = find_ze_symbol<decltype(&zeModuleGetNativeBinary)>(
-            "zeModuleGetNativeBinary");
-
-    if (!f) return status::runtime_error;
-    ZE_CHECK(f(hModule, pSize, pModuleNativeBinary));
-    return status::success;
-}
-#endif // DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+} // namespace l0
 
 // FIXME: Currently SYCL doesn't provide any API to get device UUID so
 // we query it directly from Level0 with the zeDeviceGetProperties function.
@@ -242,7 +152,7 @@ xpu::device_uuid_t get_device_uuid(const ::sycl::device &dev) {
     ze_device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
 
     auto ze_device = xpu::sycl::compat::get_native<ze_device_handle_t>(dev);
-    auto status = func_zeDeviceGetProperties(ze_device, &ze_device_properties);
+    auto status = l0::zeDeviceGetProperties(ze_device, &ze_device_properties);
     MAYBE_UNUSED(status);
     assert(status == status::success);
 
@@ -276,7 +186,7 @@ status_t sycl_create_kernels_with_level_zero(
     auto ze_ctx = xpu::sycl::compat::get_native<ze_context_handle_t>(
             sycl_engine->context());
 
-    CHECK(func_zeModuleCreate(ze_ctx, ze_device, &desc, &ze_module, nullptr));
+    CHECK(l0::zeModuleCreate(ze_ctx, ze_device, &desc, &ze_module, nullptr));
     ::sycl::kernel_bundle<::sycl::bundle_state::executable> kernel_bundle
             = ::sycl::make_kernel_bundle<::sycl::backend::ext_oneapi_level_zero,
                     ::sycl::bundle_state::executable>(
@@ -288,12 +198,36 @@ status_t sycl_create_kernels_with_level_zero(
         ze_kernel_handle_t ze_kernel;
         ze_kernel_desc_t ze_kernel_desc {
                 ZE_STRUCTURE_TYPE_KERNEL_DESC, nullptr, 0, kernel_names[i]};
-        CHECK(func_zeKernelCreate(ze_module, &ze_kernel_desc, &ze_kernel));
+        CHECK(l0::zeKernelCreate(ze_module, &ze_kernel_desc, &ze_kernel));
         auto k = ::sycl::make_kernel<::sycl::backend::ext_oneapi_level_zero>(
                 {kernel_bundle, ze_kernel}, sycl_engine->context());
         sycl_kernels[i] = utils::make_unique<::sycl::kernel>(k);
     }
 
+    return status::success;
+}
+
+status_t get_l0_kernel_binary(
+        const ::sycl::kernel &kernel, xpu::binary_t &binary) {
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+    auto l0_kernel = ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
+            kernel);
+    size_t binary_size = 0;
+    CHECK(l0::zeKernelGetBinaryExp(l0_kernel, &binary_size, nullptr));
+    binary.resize(binary_size);
+    CHECK(l0::zeKernelGetBinaryExp(l0_kernel, &binary_size, binary.data()));
+#else
+    auto bundle = kernel.get_kernel_bundle();
+    auto module_vec
+            = ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(
+                    bundle);
+    auto module = module_vec[0];
+    size_t module_binary_size;
+    CHECK(l0::zeModuleGetNativeBinary(module, &module_binary_size, nullptr));
+    binary.resize(module_binary_size);
+    CHECK(l0::zeModuleGetNativeBinary(
+            module, &module_binary_size, binary.data()));
+#endif
     return status::success;
 }
 
@@ -312,7 +246,7 @@ status_t get_device_ip(ze_device_handle_t device, uint32_t &ip_version) {
     deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
     deviceProps.pNext = &devicePropsIP;
 
-    CHECK(func_zeDeviceGetProperties(device, &deviceProps));
+    CHECK(l0::zeDeviceGetProperties(device, &deviceProps));
     ip_version = devicePropsIP.ipVersion;
     return status::success;
 }
@@ -328,7 +262,7 @@ status_t get_l0_device_enabled_systolic_intel(
     deviceModProps.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
     deviceModProps.pNext = &deviceModPropsExt;
 
-    CHECK(func_zeDeviceGetModuleProperties(device, &deviceModProps));
+    CHECK(l0::zeDeviceGetModuleProperties(device, &deviceModProps));
     mayiuse_systolic
             = deviceModPropsExt.flags & ZE_INTEL_DEVICE_MODULE_EXP_FLAG_DPAS;
     return status::success;
@@ -345,7 +279,7 @@ status_t get_l0_device_enabled_native_float_atomics(
     deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_MODULE_PROPERTIES;
     deviceProps.pNext = &fltAtom;
 
-    CHECK(func_zeDeviceGetModuleProperties(device, &deviceProps));
+    CHECK(l0::zeDeviceGetModuleProperties(device, &deviceProps));
 
     ze_device_fp_atomic_ext_flags_t atomic_load_store
             = ZE_DEVICE_FP_ATOMIC_EXT_FLAG_GLOBAL_LOAD_STORE
@@ -387,7 +321,7 @@ status_t get_l0_device_eu_count(ze_device_handle_t device, int &eu_count) {
     deviceProps.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES;
     deviceProps.pNext = &eucnt;
 
-    CHECK(func_zeDeviceGetProperties(device, &deviceProps));
+    CHECK(l0::zeDeviceGetProperties(device, &deviceProps));
     eu_count = eucnt.numTotalEUs;
     return status::success;
 }

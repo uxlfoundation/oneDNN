@@ -101,8 +101,8 @@ cl_event host_scalar_executable_t::execute_ocl(const stream &stream,
         UNUSED_STATUS(xpu::ocl::usm::memcpy(stream.get(),
                 dst_mem.get_data_handle(), static_cast<const void *>(&val),
                 size, num, empty ? nullptr : deps.data(), &e));
-        clWaitForEvents(1, &e);
-        clReleaseEvent(e);
+        xpu::ocl::clWaitForEvents(1, &e);
+        xpu::ocl::clReleaseEvent(e);
     });
     return nullptr;
 }

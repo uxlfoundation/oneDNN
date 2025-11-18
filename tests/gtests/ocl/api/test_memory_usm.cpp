@@ -26,14 +26,15 @@
 #include <vector>
 #include <CL/cl_ext.h>
 
-using namespace dnnl::impl::xpu::ocl;
+using namespace dnnl::impl::xpu;
 
 namespace dnnl {
 
 namespace {
 void fill_data(void *usm_ptr, memory::dim n, const engine &eng) {
-    auto alloc_kind = usm::get_pointer_type(eng.get(), usm_ptr);
-    if (alloc_kind == usm::kind_t::host || alloc_kind == usm::kind_t::shared) {
+    auto alloc_kind = ocl::usm::get_pointer_type(eng.get(), usm_ptr);
+    if (alloc_kind == ocl::usm::kind_t::host
+            || alloc_kind == ocl::usm::kind_t::shared) {
         for (int i = 0; i < n; i++)
             ((float *)usm_ptr)[i] = float(i);
     } else {
@@ -42,15 +43,15 @@ void fill_data(void *usm_ptr, memory::dim n, const engine &eng) {
             host_ptr[i] = float(i);
 
         auto s = stream(eng);
-        usm::memcpy(s.get(), usm_ptr, host_ptr.data(), n * sizeof(float));
+        ocl::usm::memcpy(s.get(), usm_ptr, host_ptr.data(), n * sizeof(float));
         s.wait();
     }
 }
 
 using usm_unique_ptr_t = std::unique_ptr<void, std::function<void(void *)>>;
 usm_unique_ptr_t allocate_usm(size_t size, const engine &eng) {
-    return usm_unique_ptr_t(usm::malloc_shared(eng.get(), size),
-            [&](void *ptr) { usm::free(eng.get(), ptr); });
+    return usm_unique_ptr_t(ocl::usm::malloc_shared(eng.get(), size),
+            [&](void *ptr) { ocl::usm::free(eng.get(), ptr); });
 }
 
 } // namespace
@@ -236,13 +237,11 @@ TEST(ocl_memory_usm_test, ErrorMakeMemoryUsingSystemMemory) {
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, DeviceMapUnmap) {
-    test_usm_map_unmap(dnnl::impl::xpu::ocl::usm::malloc_device,
-            dnnl::impl::xpu::ocl::usm::free);
+    test_usm_map_unmap(ocl::usm::malloc_device, ocl::usm::free);
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, SharedMapUnmap) {
-    test_usm_map_unmap(dnnl::impl::xpu::ocl::usm::malloc_shared,
-            dnnl::impl::xpu::ocl::usm::free);
+    test_usm_map_unmap(ocl::usm::malloc_shared, ocl::usm::free);
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, TestSparseMemoryCreation) {
@@ -310,10 +309,11 @@ HANDLE_EXCEPTIONS_FOR_TEST(ocl_memory_usm_test_t, TestSparseMemoryMapUnmap) {
     ASSERT_NE(ocl_col_indices, nullptr);
 
     auto s = stream(eng);
-    usm::memcpy(s.get(), ocl_values.get(), coo_values.data(), md.get_size(0));
-    usm::memcpy(
+    ocl::usm::memcpy(
+            s.get(), ocl_values.get(), coo_values.data(), md.get_size(0));
+    ocl::usm::memcpy(
             s.get(), ocl_row_indices.get(), row_indices.data(), md.get_size(1));
-    usm::memcpy(
+    ocl::usm::memcpy(
             s.get(), ocl_col_indices.get(), col_indices.data(), md.get_size(2));
     s.wait();
 

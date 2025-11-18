@@ -33,33 +33,33 @@ status_t device_info_t::init_arch(impl::engine_t *engine) {
     // skip other vendors
     const cl_uint intel_vendor_id = 0x8086;
     cl_uint vendor_id;
-    err = clGetDeviceInfo(
+    err = xpu::ocl::clGetDeviceInfo(
             device, CL_DEVICE_VENDOR_ID, sizeof(cl_uint), &vendor_id, nullptr);
     OCL_CHECK(err);
     if (vendor_id != intel_vendor_id) return status::success;
 
-    cl_context context
-            = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
+    cl_context context = xpu::ocl::clCreateContext(
+            nullptr, 1, &device, nullptr, nullptr, &err);
     OCL_CHECK(err);
 
     CHECK(init_gpu_hw_info(engine, device, context, ip_version_, gpu_arch_,
             gpu_product_, native_extensions_, mayiuse_systolic_,
             mayiuse_ngen_kernels_));
 
-    err = clReleaseContext(context);
+    err = xpu::ocl::clReleaseContext(context);
     OCL_CHECK(err);
 
     // XXX: temporary WA for different Xe_HP devices
     if (gpu_arch_ == compute::gpu_arch_t::xe_hp) {
         // query extensions
         size_t param_size = 0;
-        err = clGetDeviceInfo(
+        err = xpu::ocl::clGetDeviceInfo(
                 device, CL_DEVICE_EXTENSIONS, 0, nullptr, &param_size);
         OCL_CHECK(err);
 
         std::string extension_string(param_size, '\0');
-        err = clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS, param_size,
-                &extension_string[0], &param_size);
+        err = xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS,
+                param_size, &extension_string[0], &param_size);
         OCL_CHECK(err);
         if (extension_string.find(ext2cl_str(compute::device_ext_t::khr_fp64))
                 == std::string::npos)
@@ -73,11 +73,12 @@ status_t device_info_t::init_device_name(impl::engine_t *engine) {
     auto device = utils::downcast<const engine_t *>(engine)->device();
 
     size_t param_size = 0;
-    err = clGetDeviceInfo(device, CL_DEVICE_NAME, 0, nullptr, &param_size);
+    err = xpu::ocl::clGetDeviceInfo(
+            device, CL_DEVICE_NAME, 0, nullptr, &param_size);
     OCL_CHECK(err);
 
     name_ = std::string(param_size, '\0');
-    err = clGetDeviceInfo(
+    err = xpu::ocl::clGetDeviceInfo(
             device, CL_DEVICE_NAME, param_size, &name_[0], &param_size);
     OCL_CHECK(err);
 
@@ -96,12 +97,12 @@ status_t device_info_t::init_extensions(impl::engine_t *engine) {
 
     // query device for extensions
     size_t param_size = 0;
-    err = clGetDeviceInfo(
+    err = xpu::ocl::clGetDeviceInfo(
             device, CL_DEVICE_EXTENSIONS, 0, nullptr, &param_size);
     OCL_CHECK(err);
 
     std::string extension_string(param_size, '\0');
-    err = clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS, param_size,
+    err = xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS, param_size,
             &extension_string[0], &param_size);
     OCL_CHECK(err);
 
@@ -129,37 +130,37 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
     CHECK(get_ocl_device_eu_count(device, gpu_arch_, &eu_count_));
 
     size_t max_wg_size = 0;
-    err = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
+    err = xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
             sizeof(max_wg_size), &max_wg_size, nullptr);
     OCL_CHECK(err);
     max_wg_size_ = max_wg_size;
 
     cl_ulong mem_size;
-    err = clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(mem_size),
-            &mem_size, nullptr);
+    err = xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE,
+            sizeof(mem_size), &mem_size, nullptr);
     OCL_CHECK(err);
     memory_size_ = mem_size;
 
     cl_ulong mem_cache_size;
-    err = clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_CACHE_SIZE,
+    err = xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_CACHE_SIZE,
             sizeof(mem_cache_size), &mem_cache_size, nullptr);
     OCL_CHECK(err);
     l3_cache_size_ = mem_cache_size;
 
     size_t max_kernel_param_size;
-    err = clGetDeviceInfo(device, CL_DEVICE_MAX_PARAMETER_SIZE,
+    err = xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_MAX_PARAMETER_SIZE,
             sizeof(max_kernel_param_size), &max_kernel_param_size, nullptr);
     OCL_CHECK(err);
     max_kernel_param_size_ = max_kernel_param_size;
 
     cl_uint device_address_bits;
-    err = clGetDeviceInfo(device, CL_DEVICE_ADDRESS_BITS,
+    err = xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_ADDRESS_BITS,
             sizeof(device_address_bits), &device_address_bits, nullptr);
     OCL_CHECK(err);
     device_address_bits_ = device_address_bits;
 
     cl_ulong max_allocation_size;
-    err = clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE,
+    err = xpu::ocl::clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE,
             sizeof(max_allocation_size), &max_allocation_size, nullptr);
     OCL_CHECK(err);
     max_allocation_size_ = max_allocation_size;
@@ -168,7 +169,7 @@ status_t device_info_t::init_attributes(impl::engine_t *engine) {
     cl_device_unified_shared_memory_capabilities_intel
             system_memory_capabilities_intel
             = 0;
-    err = clGetDeviceInfo(device,
+    err = xpu::ocl::clGetDeviceInfo(device,
             CL_DEVICE_SHARED_SYSTEM_MEM_CAPABILITIES_INTEL,
             sizeof(cl_device_unified_shared_memory_capabilities_intel),
             &system_memory_capabilities_intel, nullptr);

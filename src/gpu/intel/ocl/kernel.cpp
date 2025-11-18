@@ -47,7 +47,8 @@ public:
     operator cl_kernel() const { return kernel_; }
 
     status_t set_arg(int arg_index, size_t arg_size, const void *arg_value) {
-        cl_int err = clSetKernelArg(kernel_, arg_index, arg_size, arg_value);
+        cl_int err = xpu::ocl::clSetKernelArg(
+                kernel_, arg_index, arg_size, arg_value);
         return xpu::ocl::convert_to_dnnl(err);
     }
 
@@ -67,7 +68,7 @@ public:
 
     ~kernel_cache_t() {
         for (auto &kv : kernels_) {
-            OCL_CHECK_V(clReleaseKernel(kv.second));
+            OCL_CHECK_V(xpu::ocl::clReleaseKernel(kv.second));
         }
     }
 
@@ -216,16 +217,16 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
 
         cl_uint num_events = (cl_uint)events.size();
         const cl_event *events_data = num_events ? events.data() : nullptr;
-        cl_int err = clEnqueueNDRangeKernel(queue, *kernel, ndims, nullptr,
-                range.global_range().data(),
+        cl_int err = xpu::ocl::clEnqueueNDRangeKernel(queue, *kernel, ndims,
+                nullptr, range.global_range().data(),
                 range.local_range() ? range.local_range().data() : nullptr,
                 num_events, events_data, &event.unwrap());
         OCL_CHECK(err);
         xpu::ocl::event_t::from(out_dep).events = {event};
     } else {
         bool save_event = save_events_ || stream.is_profiling_enabled();
-        cl_int err = clEnqueueNDRangeKernel(queue, *kernel, ndims, nullptr,
-                range.global_range().data(),
+        cl_int err = xpu::ocl::clEnqueueNDRangeKernel(queue, *kernel, ndims,
+                nullptr, range.global_range().data(),
                 range.local_range() ? range.local_range().data() : nullptr, 0,
                 nullptr, save_event ? &event.unwrap() : nullptr);
         OCL_CHECK(err);

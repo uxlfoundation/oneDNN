@@ -63,7 +63,8 @@ status_t make_kernels(
             if (kernel_names[i] == nullptr) continue;
             cl_int err;
             xpu::ocl::wrapper_t<cl_kernel> ocl_kernel
-                    = clCreateKernel(ocl_program, kernel_names[i], &err);
+                    = xpu::ocl::clCreateKernel(
+                            ocl_program, kernel_names[i], &err);
             OCL_CHECK(err);
             sycl_kernels[i] = utils::make_unique<::sycl::kernel>(
                     ::sycl::make_kernel<::sycl::backend::opencl>(

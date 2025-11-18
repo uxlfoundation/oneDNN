@@ -113,20 +113,6 @@ elseif(DNNL_SYCL_GENERIC)
         suppress_warnings_for_nvidia_target()
     endif()
 else()
-    find_library(OPENCL_LIBRARY OpenCL PATHS ENV LIBRARY_PATH ENV LIB NO_DEFAULT_PATH)
-    if(OPENCL_LIBRARY)
-        message(STATUS "OpenCL runtime is found in the environment: ${OPENCL_LIBRARY}")
-        list(APPEND EXTRA_SHARED_LIBS ${OPENCL_LIBRARY})
-    else()
-        message(STATUS "OpenCL runtime is not found in the environment. Trying to find it using find_package(...)")
-        # As a plan B we try to locate OpenCL runtime using our OpenCL CMake module.
-        find_package(OpenCL REQUIRED)
-        # Unset INTERFACE_INCLUDE_DIRECTORIES property because DPCPP
-        # compiler contains OpenCL headers
-        set_target_properties(OpenCL::OpenCL PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
-        list(APPEND EXTRA_SHARED_LIBS OpenCL::OpenCL)
-    endif()
-
     # In order to support large shapes.
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-sycl-id-queries-fit-in-int")
     message(STATUS "DPC++ support is enabled (OpenCL and Level Zero)")
@@ -139,7 +125,6 @@ if(NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-#pragma-messages")
 endif()
 
-add_definitions_with_host_compiler("-DCL_TARGET_OPENCL_VERSION=300")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsycl")
 
 if(DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER)

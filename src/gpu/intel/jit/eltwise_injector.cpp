@@ -366,10 +366,11 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
     auto max = scratch_[0].f();
 
     // Inverse max float within e8m0 range for f8_e2m5, f8_e4m3, f4_e2m1.
-    auto fmax = (dst_dt == ngen::DataType::bf8)
-            ? Immediate::f(0.000030517578125)
-            : (dst_dt == ngen::DataType::hf8) ? Immediate::f(0.00390625)
-                                              : Immediate::f(0.25);
+    float zero_e8m0 = 5.877472e-39f, inv_fmax_bf8 = 0.000030517578125f,
+          inv_fmax_hf8 = 0.00390625f, inv_fmax_f4_e2m1 = 0.25f;
+    auto fmax = (dst_dt == ngen::DataType::bf8) ? Immediate::f(inv_fmax_bf8)
+            : (dst_dt == ngen::DataType::hf8)   ? Immediate::f(inv_fmax_hf8)
+                                              : Immediate::f(inv_fmax_f4_e2m1);
 
     // Handle Inf/NaNs during max selection.
     h->add(16, r.ud(0)(1), r.ud(0)(1), Immediate::ud(0x80800000));

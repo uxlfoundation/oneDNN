@@ -107,7 +107,7 @@ status_t pd_t::init_post_ops() {
 
     if (!ok) return status::unimplemented;
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** try convert scales to postops");
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** try convert scales to postops");
 
     // If scales are present, convert them and any bias to binary post-ops.
     //   Exception: 2D scales.
@@ -130,7 +130,7 @@ status_t pd_t::init_post_ops() {
     auto maybe_convert_scales_to_postop
             = [this](const memory_desc_t &scale_md, int arg, data_type_t dt,
                       bool mx, bool &converted) -> status_t {
-        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** maybe_convert_scales_to_postop >>>>>");
+        //VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** maybe_convert_scales_to_postop >>>>>");
 
         auto ndims = desc()->c_desc.ndims;
         // Scales on A/B can be converted to postops if
@@ -151,12 +151,12 @@ status_t pd_t::init_post_ops() {
             }
             converted = true;
         }
-        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: maybe_convert_scales_to_postop : converted = %d",converted);
+        //VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: maybe_convert_scales_to_postop : converted = %d",converted);
         return status::success;
     };
 
     if (!a_scales.has_default_values() && !a_scales.is_host_scalar()) {
-        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** ! a_scales has_default");
+        //VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** ! a_scales has_default");
         // Host scalar scale will be converted to Alpha
         bool converted;
         CHECK(maybe_convert_scales_to_postop(a_scale_md_, DNNL_ARG_A,
@@ -218,7 +218,7 @@ bool pd_t::quant_enabled() {
 
 status_t pd_t::init_attrs() {
 
-    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs @@@@@ >");
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs @@@@@ >");
 
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
@@ -261,6 +261,9 @@ status_t pd_t::init_attrs() {
     bsc_dims_ = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
     csc_dims_ = quant_entry_ndims(c_scales, c_scale_md_, -1);
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: @@@@@ : ao_dims_ = %d", ao_dims_);
+
+
     a_scales_type_ = a_scales.get_data_type();
     if (!a_zps.has_default_groups()) {
         a_zp_group_k_ = a_zps.get_group(0);
@@ -294,18 +297,23 @@ status_t pd_t::init_attrs() {
         c_scales_group_n_ = c_scales.get_group(0);
         with_mx_scale_ = c_scales.is_mx();
     }
+
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs < @@@@@");
     return status::success;
 }
 
 bool pd_t::zp_ok() {
     using namespace data_type;
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: zp_ok ______ >");
     auto &attr_zps = attr()->zero_points_;
     auto &a_zps = attr_zps.get(DNNL_ARG_A);
     auto &b_zps = attr_zps.get(DNNL_ARG_B);
 
     // INT4 ZPs on SRC do not expand the range in a meaningful way, skipping
-    if (utils::one_of((swap_ab() ? a_zps : b_zps).get_data_type(), s4, u4))
+    if (utils::one_of((swap_ab() ? a_zps : b_zps).get_data_type(), s4, u4)){
+        VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
         return false;
+    }
 
     int ndims = desc()->a_desc.ndims;
     const bool a_int4 = utils::one_of(desc()->a_type(), s4, u4);
@@ -313,55 +321,89 @@ bool pd_t::zp_ok() {
     const bool weights_upconversion = wei_decomp_
             || ((swap_ab() ? b_int4 : a_int4) && dy_quant_enabled_);
 
-    if (attr_zps.has_host_scalars()) return false;
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : a_int4 = %d b_int4 = %d weights_upconversion = %d",a_int4,b_int4,weights_upconversion);
+
+    if (attr_zps.has_host_scalars()) {
+        VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
+        return false;
+    }
 
     if (!a_zps.has_default_values()) {
+        VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !a_zps.has_default_values()");
         // Groups determine supported masks.
         if (!a_zps.has_default_groups()) {
+            VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !a_zps.has_default_groups()");
             if (!valid_2d_mask(
-                        cmask_a_, ndims, !swap_ab() && weights_upconversion))
+                        cmask_a_, ndims, !swap_ab() && weights_upconversion)){
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
                 return false;
+            }
             const auto a_q2d_group_n = a_zps.get_group(1);
             // Non-trivial N group unsupported.
-            if (a_q2d_group_n != 1) return false;
+            if (a_q2d_group_n != 1) {
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
+                return false;
+            }
             // Zero points with non-trivial groups only supported with
             // precomputed reductions or when target tensor is being dequantized.
             if (attr()->precomputed_reductions_.has_default_values(DNNL_ARG_B)
-                    && dy_quant_enabled_ && b_int4 && !a_int4 && a_zp_2d())
+                    && dy_quant_enabled_ && b_int4 && !a_int4 && a_zp_2d()){
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
                 return false;
+            }
         } else {
-            if (!utils::one_of(cmask_a_, 0, mask_per_oc, mask_per_ic))
+            VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !a_zps.has_default_groups() else");
+            if (!utils::one_of(cmask_a_, 0, mask_per_oc, mask_per_ic)){
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
                 return false;
+            }
             // Weights zp can only be performantly enabled during upconversion
             // for cases that perform decompression.
-            if (!wei_decomp_ && !a_int4 && a_scales_2d()) return false;
+            if (!wei_decomp_ && !a_int4 && a_scales_2d()) {
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
+                return false;
+            }
         }
     }
 
     if (!b_zps.has_default_values()) {
+        VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !b_zps.has_default_values()");
         // Groups determine supported masks.
         if (!b_zps.has_default_groups()) {
+            VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !b_zps.has_default_groups()");
             if (!valid_2d_mask(
-                        cmask_b_, ndims, swap_ab() && weights_upconversion))
+                        cmask_b_, ndims, swap_ab() && weights_upconversion)){
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
                 return false;
+            }
             const auto b_q2d_group_n = b_zps.get_group(0);
             // Non-trivial M group unsupported.
             if (!utils::one_of(b_q2d_group_n, 1, desc()->n())) return false;
             // Zero points with non-trivial groups only supported
             // when target tensor is being dequantized.
-            if (dy_quant_enabled_ && a_int4 && !b_int4 && b_zp_2d())
+            if (dy_quant_enabled_ && a_int4 && !b_int4 && b_zp_2d()){
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
                 return false;
+            }
         } else {
+            VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !b_zps.has_default_groups() else");
             if (!utils::one_of(
-                        cmask_b_, 0, mask_scalar, mask_per_oc | mask_per_ic))
+                        cmask_b_, 0, mask_scalar, mask_per_oc | mask_per_ic)){
+                VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
                 return false;
+            }
         }
     }
 
     if (!attr_zps.has_default_values(DNNL_ARG_C)) {
-        if (!utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)) return false;
+        VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !attr_zps.has_default_values(DNNL_ARG_C)");
+        if (!utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)) {
+            VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
+            return false;
+        }
     }
 
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: zp_ok < ______");
     return true;
 }
 

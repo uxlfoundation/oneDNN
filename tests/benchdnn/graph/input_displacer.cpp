@@ -609,6 +609,7 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
     bool mds_are_int8 = is_integral_dt(mem_replace.dt())
             && is_integral_dt(mem.dt()) && mem_replace.sizeof_dt() == 1
             && mem.sizeof_dt() == 1;
+    bool mds_are_fp8 = is_fp8_dt(mem_replace.dt()) && is_fp8_dt(mem.dt());
     bool is_grouped_conv = false;
     if (main_op.kind_ == "Convolution" || main_op.kind_ == "ConvTranspose") {
         int64_t groups;
@@ -620,7 +621,7 @@ int partition_data_displacer_t::displace_input_data(size_t lt_id,
             && mem_replace.ndims() != mem.ndims();
 
     bool mds_ok = IMPLICATION(!mds_are_equal,
-            mds_are_int8 || is_grouped_conv || is_reshaped_dims);
+            mds_are_int8 || is_grouped_conv || is_reshaped_dims || mds_are_fp8);
     SAFE(mds_ok ? OK : FAIL, WARN);
 
     dnnl_memory_desc_t md = mem.md_;

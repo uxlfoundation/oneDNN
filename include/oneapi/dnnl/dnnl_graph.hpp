@@ -1001,7 +1001,7 @@ public:
         /// "strict", "relaxed", "any", "f32", "s32", or "f16".
         accumulation_mode = dnnl_graph_op_attr_accumulation_mode,
 
-        /// Specifies the end of all above exteral attributes for check.
+        /// Specifies the end of all above external attributes for check.
         end = dnnl_graph_op_attr_end,
     };
 

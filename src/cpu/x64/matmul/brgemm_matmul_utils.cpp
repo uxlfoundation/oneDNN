@@ -708,19 +708,9 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
 }
 
 brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
-    if (attr.zero_points_.has_default_values(arg)) {
-        return brgemm_broadcast_t::none;
-    }
-
-    const int mask = attr.zero_points_.get_mask(arg);
-    if (mask == 0) {
-        return brgemm_broadcast_t::per_tensor;
-    } else if (mask == 2
-            && utils::one_of(arg, DNNL_ARG_WEIGHTS, DNNL_ARG_DST)) {
-        return brgemm_broadcast_t::per_n;
-    } else {
-        return brgemm_broadcast_t::none;
-    }
+    return attr.zero_points_.has_default_values(arg)
+            ? brgemm_broadcast_t::none
+            : brgemm_broadcast_t::per_tensor;
 }
 
 struct matmul_avx512_blocking_params_t {
@@ -1782,16 +1772,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
             VERBOSE_BLOCKING_FAIL, "");
 
-    // For per_n wei zero points, force N_blk=1 to ensure each N gets its own compensation value
-    if (bgmmc.wei_zp_type == brgemm_broadcast_t::per_n && !bgmmc.is_runtime_N) {
-        bgmmc.N_blk = 1;
-    }
-
-    const bool skip_wei_tag_update
-            = bgmmc.wei_zp_type == brgemm_broadcast_t::per_n;
-
-    if (bgmmc.wei_n_blk > bgmmc.N_blk && bgmmc.N != bgmmc.N_blk
-            && !skip_wei_tag_update) {
+    if (bgmmc.wei_n_blk > bgmmc.N_blk && bgmmc.N != bgmmc.N_blk) {
         assert(!bgmmc.is_runtime_N
                 && "N_blk should not be adjusted for runtime N");
         if (bgmmc.use_buffer_b) {
@@ -1939,10 +1920,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // This is the only implementation that support the packed_sparse_weights
     // case therefore there is no fallback for it.
     is_small_shapes = is_small_shapes && !bgmmc.packed_sparse_weights;
-
-    // For per_n zp compensation calculation requires N_blk=1 which only BRGEMM supports
-    const bool requires_brgemm = bgmmc.wei_zp_type == brgemm_broadcast_t::per_n;
-    is_small_shapes = is_small_shapes && !requires_brgemm;
     VCONDCHECK_BG(!is_small_shapes, VERBOSE_SMALL_SHAPES);
 
     if (bgmmc.use_buffer_b) {
@@ -2231,10 +2208,6 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     bgmmc.has_zero_point_a = bgmmc.src_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_b = bgmmc.wei_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_c = bgmmc.dst_zp_type != brgemm_broadcast_t::none;
-    bgmmc.has_zero_point_b_per_oc
-            = bgmmc.wei_zp_type == brgemm_broadcast_t::per_n;
-    bgmmc.has_zero_point_c_per_oc
-            = bgmmc.dst_zp_type == brgemm_broadcast_t::per_n;
     bgmmc.post_ops_applicable = one_of(true, bgmmc.with_sum, bgmmc.with_bias,
             (bgmmc.with_src_scales || bgmmc.with_wei_scales)
                     && !bgmmc.apply_scales_in_buffer_b,

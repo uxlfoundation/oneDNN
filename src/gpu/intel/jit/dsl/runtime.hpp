@@ -27,17 +27,15 @@ namespace jit {
 namespace dsl {
 
 #ifdef WITH_SYCL_RUNTIME
-inline ::sycl::kernel make_kernel(
-        const kernel_t &kernel, ::sycl::context ctx, ::sycl::device dev) {
-    return make_kernel(kernel.iface, kernel.body, kernel.options,
-            kernel.debug_cfg, std::move(ctx), std::move(dev));
+inline sycl::kernel make_kernel(
+        const kernel_t &kernel, sycl::context ctx, sycl::device dev) {
+    return jit::make_kernel(kernel, ctx, dev);
 }
 #endif
 #ifdef WITH_OPENCL_RUNTIME
 inline cl_kernel make_kernel(
         const kernel_t &kernel, cl_context ctx, cl_device_id dev) {
-    return make_kernel(kernel.iface, kernel.body, kernel.options,
-            kernel.debug_cfg, ctx, dev);
+    return jit::make_kernel(kernel, ctx, dev);
 }
 #endif
 

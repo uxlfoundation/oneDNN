@@ -1696,9 +1696,12 @@ REG_XE3_ISA(template void convert_ir_to_ngen<sycl_gen_t<ngen::HW::Xe3>>(
         const stmt_t &body, sycl_gen_t<ngen::HW::Xe3> &host,
         const walk_order_t *kernel_grid_walk_order));
 
-::sycl::kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
-        const kernel::options_t &options, const ngen::DebugConfig &debug_cfg,
-        ::sycl::context ctx, ::sycl::device dev) {
+::sycl::kernel make_kernel(
+        const kernel_t &ir_kernel, ::sycl::context ctx, ::sycl::device dev) {
+    auto &iface = ir_kernel.iface;
+    auto &options = ir_kernel.options;
+    auto &body = ir_kernel.body;
+    auto &debug_cfg = ir_kernel.debug_cfg;
 
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
             iface, options, body);
@@ -1738,9 +1741,13 @@ REG_XE3_ISA(template void convert_ir_to_ngen<ocl_gen_t<ngen::HW::Xe3>>(
         const stmt_t &body, ocl_gen_t<ngen::HW::Xe3> &host,
         const walk_order_t *kernel_grid_walk_order));
 
-cl_kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
-        const kernel::options_t &options, const ngen::DebugConfig &debug_cfg,
-        cl_context ctx, cl_device_id dev) {
+cl_kernel make_kernel(
+        const kernel_t &ir_kernel, cl_context ctx, cl_device_id dev) {
+    auto &iface = ir_kernel.iface;
+    auto &options = ir_kernel.options;
+    auto &body = ir_kernel.body;
+    auto &debug_cfg = ir_kernel.debug_cfg;
+
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
             iface, options, body);
 

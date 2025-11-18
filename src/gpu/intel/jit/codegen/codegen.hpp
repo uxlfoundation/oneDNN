@@ -33,14 +33,11 @@ namespace intel {
 namespace jit {
 
 #ifdef WITH_SYCL_RUNTIME
-::sycl::kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
-        const kernel::options_t &options, const ngen::DebugConfig &debug_cfg,
-        ::sycl::context ctx, ::sycl::device dev);
+sycl::kernel make_kernel(
+        const kernel_t &kernel, sycl::context ctx, sycl::device dev);
 #endif
 #ifdef WITH_OPENCL_RUNTIME
-cl_kernel make_kernel(const kernel::iface_t &iface, const stmt_t &body,
-        const kernel::options_t &options, const ngen::DebugConfig &debug_cfg,
-        cl_context ctx, cl_device_id dev);
+cl_kernel make_kernel(const kernel_t &kernel, cl_context ctx, cl_device_id dev);
 #endif
 
 } // namespace jit

@@ -1566,6 +1566,16 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
     // Similarly vflags may not be consistent.
     state.wipeActiveVFlags();
+
+    // Sync any tokens nGEN thinks might still be outstanding, except for DPAS.
+    // nGEN cannot always discover that these tokens are no longer alive.
+    bool isC[GRF::maxRegs()] = {};
+    for (const auto &C_regs: state.C_regs)
+        for (int r = 0; r < C_regs.getLen(); r++)
+            isC[C_regs[r].getBase()] = true;
+    for (int i = 0; i < GRF::maxRegs(); i++)
+        if (!isC[i])
+            wrdep(GRF(i));
 }
 
 // Increment A pointer after load, inside GEMM k loop.

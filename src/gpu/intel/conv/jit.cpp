@@ -114,7 +114,7 @@ public:
             CONV_CHECK(init_kernel_infos(pd));
 
             return status::success;
-        } catch (std::runtime_error &err) {
+        } catch (std::exception &err) {
             return report_runtime_error(pd, engine, err.what());
         }
     }
@@ -244,7 +244,7 @@ public:
                     return report_runtime_error(pd, engine, err.what());
                 tiler->notify_out_of_registers(cfg);
                 continue;
-            } catch (std::runtime_error &err) {
+            } catch (std::exception &err) {
                 if (handle_exception(try_iter, max_tries))
                     return report_runtime_error(pd, engine, err.what());
                 continue;

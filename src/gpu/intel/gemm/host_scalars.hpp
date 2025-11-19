@@ -41,7 +41,22 @@ status_t get_scalar_value_as_float(float &scalar_value,
 
 status_t maybe_get_scale_as_float(
         const memory_storage_t &scale_storage, float &scalar_value);
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+template <typename ScalarType>
+status_t get_scalar_value_as_int(int &scalar_value,
+        const host_scalar_memory_storage_t *scale_storage) {
+    ScalarType value = 0;
+    status_t status = scale_storage->get_scalar_value(&value, sizeof(value));
+    assert(status == status::success);
+    if (status != status::success) return status;
 
+    scalar_value = static_cast<int>(value);
+    return status::success;
+}
+
+status_t maybe_get_zp_as_int(
+        const memory_storage_t &scale_storage, int &scalar_value);
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 } // namespace gemm
 } // namespace intel
 } // namespace gpu

@@ -708,9 +708,18 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
 }
 
 brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
-    return attr.zero_points_.has_default_values(arg)
-            ? brgemm_broadcast_t::none
-            : brgemm_broadcast_t::per_tensor;
+    if (attr.zero_points_.has_default_values(arg)) {
+        return brgemm_broadcast_t::none;
+    }
+
+    const int mask = attr.zero_points_.get_mask(arg);
+    if (mask == 0) {
+        return brgemm_broadcast_t::per_tensor;
+    } else if (mask == 2 && arg == DNNL_ARG_DST) {
+        return brgemm_broadcast_t::per_n;
+    } else {
+        return brgemm_broadcast_t::none;
+    }
 }
 
 struct matmul_avx512_blocking_params_t {

@@ -1420,11 +1420,7 @@ static bool parse_mode(
                 case 'i':
                 case 'I': mode = bench_mode_t::init; break;
                 case 'r':
-                case 'R':
-                    mode = bench_mode_t::exec;
-                    if (!parser_utils::has_clang_sanitizers())
-                        bench_mode_modifier |= mode_modifier_t::no_ref_memory;
-                    break;
+                case 'R': mode = bench_mode_t::exec; break;
                 case 'c':
                 case 'C': mode = bench_mode_t::corr; break;
                 case 'p':

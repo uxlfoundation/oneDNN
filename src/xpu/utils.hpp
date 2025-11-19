@@ -22,6 +22,15 @@
 
 #include "common/utils.hpp"
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include "windows.h"
+#elif defined(__linux__)
+#include <dlfcn.h>
+#endif
+
 // This file contains utility functionality for heterogeneous runtimes such
 // as OpenCL and SYCL.
 
@@ -99,6 +108,19 @@ struct runtime_version_t {
         return utils::format("%d.%d.%d", major, minor, build);
     }
 };
+
+inline void *find_symbol(const char *library_name, const char *symbol) {
+#if defined(_WIN32)
+    HMODULE handle = LoadLibraryExA(
+            library_name, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (!handle) return nullptr;
+    return reinterpret_cast<void *>(GetProcAddress(handle, symbol));
+#elif defined(__linux__)
+    void *handle = dlopen(library_name, RTLD_NOW | RTLD_LOCAL);
+    if (!handle) return nullptr;
+    return dlsym(handle, symbol);
+#endif
+}
 
 } // namespace xpu
 } // namespace impl

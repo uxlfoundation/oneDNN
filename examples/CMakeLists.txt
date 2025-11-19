@@ -22,6 +22,16 @@ endif()
 append(CMAKE_C_FLAGS "${CMAKE_EXAMPLE_CCXX_FLAGS}")
 append(CMAKE_CXX_FLAGS "${CMAKE_EXAMPLE_CCXX_FLAGS}")
 
+# link examples directly to OCL
+if(DNNL_GPU_RUNTIME STREQUAL "OCL")
+    find_package(OpenCL REQUIRED)
+    if(OpenCL_LIBRARY)
+        list(APPEND EXTRA_SHARED_LIBS ${OpenCL_LIBRARY})
+    else()
+        message(FATAL_ERROR "OpenCL runtime is not found in the environment.")
+    endif()
+endif()
+
 if(DNNL_WITH_SYCL)
     if(DNNL_SYCL_GENERIC)
         CHECK_CXX_COMPILER_FLAG("-fsycl -fsycl-targets=nvptx64-nvidia-cuda" NVIDIA_TARGET_SUPPORTED)

@@ -303,6 +303,9 @@ CMake was initially developed by Kitware with the following sponsorship:
 6. Xbyak_aarch64 (third_party/xbyak_aarch64/)
 Copyright 2019-2020 FUJITSU LIMITED
 
+7. Khronos OpenCL Headers (third_party/opencl/)
+Copyright (C) Khronos Group
+
 Apache License, Version 2.0
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -496,7 +499,7 @@ limitations under the License.
    END OF TERMS AND CONDITIONS
 
 --------------------------------------------------------------------------------
-7. Boost C++ Libraries (src/common/primitive_hashing.hpp)
+8. Boost C++ Libraries (src/common/primitive_hashing.hpp)
 Copyright 2005-2014 Daniel James.
 
 Boost Software License - Version 1.0 - August 17th, 2003
@@ -524,7 +527,7 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 --------------------------------------------------------------------------------
-8. Intel(R) Graphics Compute Runtime for oneAPI Level Zero and OpenCL(TM)
+9. Intel(R) Graphics Compute Runtime for oneAPI Level Zero and OpenCL(TM)
 Driver (src/gpu/jit/ngen/npack/{elf_structs,hash}.hpp)
 Copyright (c) 2018 Intel Corporation
 
@@ -562,7 +565,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-9. Sphinx (doc/sphinx/conf.py)
+10. Sphinx (doc/sphinx/conf.py)
 Copyright (c) 2007-2021 by the Sphinx team (see AUTHORS file).
 All rights reserved.
 
@@ -591,7 +594,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------------
-10. Intel(R) Metrics Discovery Application Programming Interface (third_party/mdapi/)
+11. Intel(R) Metrics Discovery Application Programming Interface (third_party/mdapi/)
 MIT License
 
 Copyright (c) 2019, Intel Corporation

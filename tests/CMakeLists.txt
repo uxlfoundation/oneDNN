@@ -29,6 +29,16 @@ set(CMAKE_TEST_CCXX_NOWARN_FLAGS)
 # propagate no warning flags
 append(CMAKE_TEST_CCXX_NOWARN_FLAGS "${CMAKE_CCXX_NOWARN_FLAGS}")
 
+# link tests directly to OCL
+if(DNNL_GPU_RUNTIME STREQUAL "OCL")
+    find_package(OpenCL REQUIRED)
+    if(OpenCL_LIBRARY)
+        list(APPEND EXTRA_SHARED_LIBS ${OpenCL_LIBRARY})
+    else()
+        message(FATAL_ERROR "OpenCL runtime is not found in the environment.")
+    endif()
+endif()
+
 # propagate sanitizer flags
 append(CMAKE_C_FLAGS "${CMAKE_CCXX_SANITIZER_FLAGS}")
 append(CMAKE_CXX_FLAGS "${CMAKE_CCXX_SANITIZER_FLAGS}")

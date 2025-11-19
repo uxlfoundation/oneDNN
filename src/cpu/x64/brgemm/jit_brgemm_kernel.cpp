@@ -1327,6 +1327,9 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
 
     if (brg.with_wei_scales) {
         reg_aux_wei_scales.restore();
+        std::cout << "Applying weight scales" << std::endl
+                  << " ld_block2: " << ld_block2 << std::endl
+                  << " bd_block: " << bd_block << std::endl;
         for (dim_t ld = 0; ld < ld_block2; ld++) {
             const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(ld)];
             const bool is_tail = is_ld_tail && ld + 1 == ld_block2;

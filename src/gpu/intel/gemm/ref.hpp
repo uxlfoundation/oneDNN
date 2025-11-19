@@ -97,6 +97,9 @@ struct ref_t : public primitive_t {
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 
         status_t init(impl::engine_t *engine) {
+
+            VDEBUGINFO(4, primitive, ref, "MY init ^^^^>");
+
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
 
@@ -200,6 +203,7 @@ struct ref_t : public primitive_t {
             conf.with_host_dst_zp = attr_info.with_host_dst_zp;
             conf.eltwise_alg = attr_info.eltwise_alg;
 
+            VDEBUGINFO(4, primitive, ref, "MY init <^^^^");
             return status::success;
         }
 

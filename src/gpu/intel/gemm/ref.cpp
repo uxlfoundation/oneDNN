@@ -24,6 +24,9 @@ namespace intel {
 namespace gemm {
 
 status_t ref_t::execute(const exec_ctx_t &ctx) const {
+
+    VDEBUGINFO(4, primitive, ref, "MY exec :::::: >");
+
     const auto &a = GEMM_CTX_ARG_STORAGE(b);
     const auto &b = GEMM_CTX_ARG_STORAGE(a);
     const auto &bias = GEMM_CTX_ARG_STORAGE(bias);
@@ -106,8 +109,10 @@ status_t ref_t::execute(const exec_ctx_t &ctx) const {
     const compute::range_t gws = {(size_t)N, (size_t)M, (size_t)MB};
     const auto nd_range = compute::nd_range_t(gws);
 
+    VDEBUGINFO(4, primitive, ref, "MY exec :::::: parallel_for");
     status_t status = parallel_for(ctx, nd_range, kernel_, arg_list);
 
+    VDEBUGINFO(4, primitive, ref, "MY exec < :::::: status = %d", (int)status);
     return status;
 }
 

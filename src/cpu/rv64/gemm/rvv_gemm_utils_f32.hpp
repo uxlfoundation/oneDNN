@@ -20,31 +20,52 @@
 #include "common/c_types_map.hpp"
 
 #include <cstddef>
+#include <unistd.h>
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace rv64 {
 namespace gemm_utils {
+
 template <typename T, bool isTransA, bool isTransB>
 struct gemm_traits_t {};
 
 template <bool isTransA, bool isTransB>
 struct gemm_traits_t<float, isTransA, isTransB> {
     static constexpr dim_t m = 8;
-    static constexpr dim_t n = 4;
     static constexpr dim_t BM = 4032;
     static constexpr dim_t BN = isTransA ? 96 : 48;
     static constexpr dim_t BK = isTransB ? 96 : 256;
 };
 
 template <typename T>
-struct unroll_factor {};
+struct gemm_utils_traits;
 
 template <>
-struct unroll_factor<float> {
-    static constexpr dim_t m = gemm_traits_t<float, false, false>::m;
-    static constexpr dim_t n = gemm_traits_t<float, false, false>::n;
+struct gemm_utils_traits<float> {
+    static constexpr dim_t get_m_unroll_factor() {
+        return gemm_traits_t<float, false, false>::m;
+    }
+
+    static dim_t get_n_unroll_factor() {
+        long l1d_size = get_l1d_cache_size();
+        if (l1d_size >= 128 * 1024)
+            return 16;
+        else if (l1d_size >= 64 * 1024)
+            return 8;
+        else if (l1d_size >= 32 * 1024)
+            return 4;
+        else
+            return 2;
+    }
+
+private:
+    static long get_l1d_cache_size() {
+        static long l1d_size = sysconf(_SC_LEVEL1_DCACHE_SIZE);
+        if (l1d_size == -1) { l1d_size = 32 * 1024; }
+        return l1d_size;
+    }
 };
 
 // Sum the m*n values from p_src into p_dst, assuming the two-dimensional

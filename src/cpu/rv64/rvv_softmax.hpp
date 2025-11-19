@@ -82,8 +82,8 @@ struct rvv_softmax_fwd_t : public primitive_t {
 
         void init_scratchpad() {
             auto scratchpad = scratchpad_registry().registrar();
+            nthr_ = rsp_.inner_size > 1 ? dnnl_get_max_threads() : 1;
             if (rsp_.inner_size > 1) {
-                nthr_ = dnnl_get_max_threads();
                 scratchpad.template book<char>(
                         memory_tracking::names::key_softmax_interim_store,
                         static_cast<size_t>(axis_size(true)) * sizeof(float)

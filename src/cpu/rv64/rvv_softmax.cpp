@@ -81,6 +81,7 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             float *dst_f32 = static_cast<float *>(dst);
 
             const dim_t outer_stride = pd()->axis_size(true) * rsp.inner_size;
+            const int nthr = pd()->nthr_;
 
             if (rsp.inner_size == 1) {
                 parallel_nd(rsp.outer_size, [&](dim_t outer) {
@@ -92,7 +93,7 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                 auto scratch = ctx.get_scratchpad_grantor().template get<char>(
                         memory_tracking::names::key_softmax_interim_store);
 
-                parallel(0, [&](int ithr, int nthr) {
+                parallel(nthr, [&](int ithr, int nthr) {
                     float *tmp = reinterpret_cast<float *>(scratch)
                             + static_cast<size_t>(ithr)
                                     * static_cast<size_t>(rsp.axis_size);

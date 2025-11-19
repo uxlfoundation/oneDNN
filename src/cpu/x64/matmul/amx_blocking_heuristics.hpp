@@ -103,9 +103,8 @@ protected:
     float calculate_blocking_scores() const override;
 
 private:
-    static const dim_t min_m_dim = 64;
     static const dim_t min_k_dim = 256;
-    static const dim_t min_n_dim = 64;
+    static const dim_t min_mn_dim = 64;
     static const dim_t k_threshold_write_bound_layer = 256;
     static const dim_t min_n_dim_write_bound_layer = 256;
     dim_t n_decomposition = 32;
@@ -114,7 +113,7 @@ private:
     dim_t m_per_thread, k_per_thread, n_per_thread, b_per_thread;
     bool need_prefetch;
     bool is_horizontal;
-    dim_t min_m_elem, min_k_elem, min_n_elem;
+    dim_t min_k_elem, min_mn_elem;
     dim_t k_threshold_write_bound_layer_elem, min_n_dim_write_bound_layer_elem;
 
     size_t m_tmul, n_tmul, k_tmul;

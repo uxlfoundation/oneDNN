@@ -225,7 +225,8 @@ status_t check_isa_with_datatype(
             = IMPLICATION(bm_conf_utils.is_f32(),
                       one_of(isa, avx512_core, avx2) || bm_conf_utils.is_bf32()
                               || bm_conf_utils.is_tf32())
-            && IMPLICATION(bm_conf_utils.is_int8(),
+            && IMPLICATION(bm_conf_utils.is_int8()
+                            || bm_conf_utils.is_int8_with_quant_wei(),
                     is_superset(isa, avx512_core)
                             || is_superset(isa, avx2_vnni))
             && IMPLICATION(bm_conf_utils.is_bf16(),
@@ -272,7 +273,8 @@ status_t check_datatype_cfg(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
                       bm_conf_utils.is_tf32(),
                       bm_conf_utils.is_bf16_with_int_wei(),
                       bm_conf_utils.is_f16_with_int_wei(),
-                      bm_conf_utils.is_f32_with_int_wei())
+                      bm_conf_utils.is_f32_with_int_wei(),
+                      bm_conf_utils.is_int8_with_quant_wei())
             && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei()
                             || bm_conf_utils.is_f16_with_int_wei(),
                     bm_conf_utils.with_weights_decompression());
@@ -329,6 +331,8 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, f16, f32))
     , f32_with_int_wei_dt(weights_decompression_support
               && everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt))
+    , int8_with_quant_wei_dt(
+              one_of(bgmmc.src_dt, u8, s8) && one_of(bgmmc.wei_dt, s4, u4))
     , A_any_layout(A_any_layout)
     , B_any_layout(B_any_layout)
     , C_any_layout(C_any_layout)
@@ -666,7 +670,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
 
     if (bgmmc.ndims > 3) return format_tag::undef;
 
-    if (is_int8() || is_f8()) {
+    if (is_int8() || is_f8() || is_int8_with_quant_wei()) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c4b : BA16a64b4a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c4b : BA16a48b4a;
@@ -1391,6 +1395,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.with_wei_decompression = bm_conf_utils.with_weights_decompression();
     bgmmc.is_int4_weights = one_of(bgmmc.wei_dt, data_type::s4, data_type::u4);
     bgmmc.is_f4_via_convert = bm_conf_utils.is_f4_via_convert();
+    bgmmc.is_int8_with_quant_wei = bm_conf_utils.is_int8_with_quant_wei();
 
     if (bgmmc.is_f4_via_convert) {
         bgmmc.wei_dt = f32;
@@ -1431,6 +1436,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.wei_dt = f16;
         bgmmc.tr_a_dt_sz = types::data_type_size(f16);
         bgmmc.tr_b_dt_sz = types::data_type_size(f16);
+    } else if (bgmmc.is_int8_with_quant_wei) {
+        bgmmc.wei_dt = s8;
+        bgmmc.tr_a_dt_sz = types::data_type_size(bgmmc.src_dt);
+        bgmmc.tr_b_dt_sz = types::data_type_size(s8);
     }
 
     bgmmc.acc_dt = bm_conf_utils.is_int8() ? s32 : f32;

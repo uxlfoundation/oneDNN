@@ -2551,13 +2551,12 @@ protected:
 };
 
 template <typename Vmm>
-struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
-                                         public jit_generator_t {
+struct jit_brgemm_matmul_copy_b_int8_t
+    : public jit_brgemm_matmul_copy_b_common_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_int8_t)
 
     jit_brgemm_matmul_copy_b_int8_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_t(conf)
-        , jit_generator_t(jit_name())
+        : jit_brgemm_matmul_copy_b_common_t(conf)
         , src_stride_(conf->copy_B_wei_stride)
         , tr_src_stride_(conf->LDB * k_blk_step_ * sizeof(int8_t))
         , is_amx_(mayiuse(avx512_core_amx))
@@ -2567,9 +2566,13 @@ struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
                   do_compute_compensation_ && !isa_has_int8_vnni(conf->isa))
         , is_dynamic_stride_(is_runtime_value(src_stride_))
         , is_dynamic_N_(conf->is_runtime_N)
-        , comp_acc_idx_(is_ymm_                      ? 13
-                          : avx512_core_dot_product_ ? 23
-                                                     : 25) {}
+        , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
+        , src_elems_per_byte_(is_src_int4_ ? 2 : 1) {
+        // Logic to arrange registers in kernel
+        comp_acc_idx_ = is_ymm_ ? 12 : 25;
+        comp_acc_idx_ -= avx512_core_dot_product_ ? 2 : 0;
+        comp_acc_idx_ -= is_src_int4_ ? 2 : 0;
+    }
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
     status_t create_kernel() override {
@@ -2593,15 +2596,15 @@ protected:
     const bool avx512_core_dot_product_;
     const bool is_dynamic_stride_;
     const bool is_dynamic_N_;
+    const bool is_src_int4_;
+    const dim_t src_elems_per_byte_;
 
     constexpr static int reg_src_offs_ = 0;
     constexpr static int reg_tr_src_offs_ = 8;
     constexpr static int reg_current_K_pad_offs_ = 16;
     constexpr static int stack_space_needed_ = 24;
 
-    const int comp_acc_idx_;
-
-    const Xbyak::Opmask kTail = k7;
+    int comp_acc_idx_;
 
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;
@@ -2626,6 +2629,7 @@ protected:
     Vmm vmm_dot_product_temp = Vmm(25);
 
     // ZMM stuff
+    Vmm int4_permute_table = Vmm(24);
     Vmm vreg_idx_lo_256 = Vmm(26);
     Vmm vreg_idx_hi_256 = Vmm(27);
     Vmm vreg_idx_lo_128 = Vmm(28);
@@ -2634,6 +2638,9 @@ protected:
     // Shared
     Vmm vmm_comp_mul = Vmm(is_ymm_ ? 14 : 30);
     Vmm vmm_zero = Vmm(is_ymm_ ? 15 : 31);
+    // Only used for decompressing int4 values
+    Vmm vmm_tmp = Vmm(is_ymm_ ? 13 : 25);
+    Vmm vmm_tmp1 = Vmm(12); // Only for Ymm
 
     Vmm get_comp_acc(int i) { return Vmm(comp_acc_idx_ - i); }
     Vmm get_vmm_zp_comp_res(int i) { return get_comp_acc(i); }
@@ -2670,6 +2677,170 @@ protected:
             vpaddd(v1, v1, vmm_dot_product_temp);
         }
     }
+
+    /**
+    * @brief Applies sign extension for 4-bit signed integers stored in 8-bit lanes using AVX-512.
+    * Due to lack of byte-wise right arithmetic shift(vpsrad) this method is used.
+    * This method checks the sign bit (bit 3) of each byte and fills the upper nibble with 0xF0
+    * if the sign bit is set, preserving the signed semantics after conversion from int4 to int8.
+    *
+    * Steps:
+    * 1. Broadcast LUT (0xF0) across Zmm register.
+    * 2. Isolate sign bit using left shift vpslld.
+    * 3. XOR and shuffle with LUT to generate the correct fill pattern.
+    * 4. OR the result back into the original vector.
+    *
+    * @param vmm_src Zmm register containing int8 values derived from int4.
+    */
+    inline void signed_mask_int4(const Zmm &vmm_src) {
+        if (conf_->orig_wei_dt != data_type::s4) return;
+
+        const auto &vmm_sign_extend = vmm_tmp;
+        const auto &vmm_lut = vmm_zero;
+
+        mov(reg_tmp, 0xF0);
+        uni_vpbroadcastb(vmm_lut, reg_tmp.cvt8());
+
+        uni_vmovups(vmm_sign_extend, vmm_src);
+        vpslld(vmm_sign_extend, vmm_sign_extend, 4);
+
+        uni_vpxor(vmm_sign_extend, vmm_sign_extend, vmm_lut);
+        vpshufb(vmm_sign_extend, vmm_lut, vmm_sign_extend);
+        vpord(vmm_src, vmm_src, vmm_sign_extend);
+    }
+
+    /**
+    * @brief Applies sign extension for 4-bit signed integers stored in 8-bit lanes using AVX2.
+    * Due to lack of byte-wise right arithmetic shift(vpsrad) this method is used.
+    * This method uses a lookup table (LUT) and vpshufb to map sign bit presence to the correct
+    * upper nibble fill (0xF0 for negative, 0x00 for positive).
+    *
+    * Steps:
+    * 1. Load LUT into Ymm register.
+    * 2. Isolate sign bit using left shift vpslld.
+    * 3. Shuffle using LUT to replicate sign into upper nibble.
+    * 4. OR the result back into the original vector.
+    *
+    * @param vmm_src Ymm register containing int8 values derived from int4.
+    */
+    inline void signed_mask_int4(const Ymm &vmm_src) {
+        if (conf_->orig_wei_dt != data_type::s4) return;
+
+        const auto &vmm_sign_extend = Ymm(vmm_tmp.getIdx());
+        const auto &vmm_lut = Ymm(vmm_tmp1.getIdx());
+        // No matter which index at lut, for signed (7bit==1)
+        // vpshufb will select the same mask
+        alignas(64) static const constexpr uint8_t lut[32] = {0xF0, 0xF0, 0xF0,
+                0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
+                0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
+                0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0};
+
+        mov(reg_tmp, (size_t)lut);
+        vmovdqu(vmm_lut, ptr[reg_tmp]);
+
+        uni_vmovups(vmm_sign_extend, vmm_src);
+        vpslld(vmm_sign_extend, vmm_sign_extend, 4);
+
+        uni_vpxor(vmm_sign_extend, vmm_sign_extend, vmm_lut);
+        vpshufb(vmm_sign_extend, vmm_lut, vmm_sign_extend);
+        vpor(vmm_src, vmm_src, vmm_sign_extend);
+    }
+
+    /**
+    * @brief Converts packed u4/s4 integers to u8/s8 using AVX-512.
+    *
+    * This method splits the original packed int4 values into low and high nibbles,
+    * expands them into separate bytes, and then applies(if needed) sign extension.
+    *
+    * Steps:
+    * 1. Duplicate source into low and high vectors.
+    * 2. Mask and shift high nibble, mask low nibble.
+    * 3. Merge low and high into full bytes using vpermb.
+    * 4. Apply sign extension via signed_mask_int4().
+    *
+    * @param vmm_src Zmm register containing packed int4 values.
+    */
+    inline void cvt_int4_to_int8(const Zmm &vmm_src) {
+        if (!is_src_int4_) return;
+
+        using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
+
+        const auto &vmm_low = vmm_src; // Aliases for readability
+        const auto &vmm_high = vmm_zero;
+        const auto &vmm_mask = vmm_tmp;
+
+        uni_vmovups(vmm_high, vmm_low);
+
+        mov(reg_tmp, 0xF0);
+        uni_vpbroadcastb(vmm_mask, reg_tmp.cvt8());
+        uni_vpand(vmm_high, vmm_high, vmm_mask);
+        vpsrld(vmm_high, vmm_high, 4);
+
+        mov(reg_tmp, 0x0F);
+        uni_vpbroadcastb(vmm_mask, reg_tmp.cvt8());
+        uni_vpand(vmm_low, vmm_low, vmm_mask);
+        copy_half_reg(vmm_low, Vmm_lower_t(vmm_high.getIdx()));
+
+        vpermb(vmm_src, int4_permute_table, vmm_src);
+        signed_mask_int4(vmm_src);
+        // Clean vmm_zero
+        uni_vpxor(vmm_zero, vmm_zero, vmm_zero);
+    }
+
+    /**
+    * @brief Converts packed u4/s4 to u8/s8 integers using AVX2.
+    *
+    * This method extracts low and high nibbles from each byte, unpacks them into separate
+    * bytes, and then applies(if needed) sign extension.
+    *
+    * Steps:
+    * 1. Copy source into low and high vectors.
+    * 2. Mask and shift high nibble, mask low nibble.
+    * 3. Interleave low and high bytes using vpunpcklbw/vpunpckhbw.
+    * 4. Apply sign extension via signed_mask_int4().
+    *
+    * @param vmm_src Ymm register containing packed int4 values.
+    */
+    inline void cvt_int4_to_int8(const Ymm &vmm_src) {
+        if (!is_src_int4_) return;
+
+        const auto vmm_out = Ymm(vmm_src.getIdx());
+        const auto vmm_low = Ymm(vmm_tmp1.getIdx());
+        const auto vmm_high = Ymm(vmm_zero.getIdx());
+        const auto vmm_mask = Ymm(vmm_tmp.getIdx());
+
+        uni_vmovups(vmm_low, vmm_out);
+        uni_vmovups(vmm_high, vmm_out);
+
+        alignas(64) static const constexpr uint8_t even_vector[32]
+                = {0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
+                        0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
+                        0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
+                        0xF0, 0xF0, 0xF0, 0xF0};
+        mov(reg_tmp, (size_t)even_vector);
+        vmovdqu(vmm_mask, ptr[reg_tmp]);
+        vpand(vmm_high, vmm_high, vmm_mask);
+        vpsrld(vmm_high, vmm_high, 4);
+
+        alignas(64) static const constexpr uint8_t odd_vector[32] = {0x0F, 0x0F,
+                0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F,
+                0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F,
+                0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F};
+        mov(reg_tmp, (size_t)odd_vector);
+        vmovdqu(vmm_mask, ptr[reg_tmp]);
+        vpand(vmm_low, vmm_low, vmm_mask);
+
+        vpunpcklbw(vmm_mask, vmm_low, vmm_high);
+        vinserti128(vmm_out, vmm_out, Xmm(vmm_mask.getIdx()), 0);
+        vpunpckhbw(vmm_mask, vmm_low, vmm_high);
+        vinserti128(vmm_out, vmm_out, Xmm(vmm_mask.getIdx()), 1);
+        signed_mask_int4(vmm_out);
+        // Clean tmp regs
+        uni_vpxor(vmm_low, vmm_low, vmm_low);
+        uni_vpxor(vmm_high, vmm_high, vmm_high);
+        uni_vpxor(vmm_mask, vmm_mask, vmm_mask);
+    }
+
     void generate() override;
 };
 
@@ -2678,8 +2849,16 @@ inline void jit_brgemm_matmul_copy_b_int8_t<Zmm>::load(
         int blk, int i, bool is_tail) {
     auto vmm_src = get_vmm(blk, i % k_blk_step_);
     auto src_load = is_tail ? vmm_src | kTail | T_z : vmm_src;
-    const auto offset = is_dynamic_stride_ ? 0 : i * src_stride_;
-    vmovdqu8(src_load, EVEX_compress_addr(reg_src, offset));
+    const auto offset
+            = is_dynamic_stride_ ? 0 : i * src_stride_ / src_elems_per_byte_;
+    const auto addr = maybe_EVEX_compress_addr(reg_src, offset);
+    if (is_src_int4_) {
+        const auto ymm_src_load = maybe_mask(Ymm(src_load.getIdx()), is_tail);
+        vmovdqu8(ymm_src_load, addr);
+        cvt_int4_to_int8(vmm_src);
+    } else {
+        vmovdqu8(src_load, addr);
+    }
     if (is_dynamic_stride_) add(reg_src, reg_src_stride);
 }
 
@@ -2738,6 +2917,16 @@ private:
         vmovdqa64(vreg_idx_hi_256, (const void *)idx_hi_16);
         vmovdqa64(vreg_idx_lo_128, (const void *)idx_lo_8);
         vmovdqa64(vreg_idx_hi_128, (const void *)idx_hi_8);
+
+        if (is_src_int4_) {
+            alignas(64) static constexpr const uint8_t int4_permute[64]
+                    = {0, 32, 1, 33, 2, 34, 3, 35, 4, 36, 5, 37, 6, 38, 7, 39,
+                            8, 40, 9, 41, 10, 42, 11, 43, 12, 44, 13, 45, 14,
+                            46, 15, 47, 16, 48, 17, 49, 18, 50, 19, 51, 20, 52,
+                            21, 53, 22, 54, 23, 55, 24, 56, 25, 57, 26, 58, 27,
+                            59, 28, 60, 29, 61, 30, 62, 31, 63};
+            vmovdqa64(int4_permute_table, (const void *)int4_permute);
+        }
     }
 
     void copy_block(
@@ -2767,8 +2956,9 @@ private:
             mov(ptr[rsp + reg_src_offs_], reg_src);
             add(reg_src, reg_copy_block_n_shift);
             copy_4x64(nrows, n_blk_step_, zeropad);
-            add(reg_copy_block_n_shift, n_blk_step_ * typesize);
-            add(reg_src, n_blk_step_ * typesize);
+            add(reg_copy_block_n_shift,
+                    n_blk_step_ * typesize / src_elems_per_byte_);
+            add(reg_src, n_blk_step_ * typesize / src_elems_per_byte_);
 
             if (do_N_loop_)
                 // (n_blk_step_ /conf_->LDB) --> # of LDBs handled by copy_4x64
@@ -2816,7 +3006,8 @@ private:
         };
 
         const bool is_tail = ncolumns < n_blk_step_;
-        const auto tail_mask = size_t(((size_t)1 << ncolumns) - 1);
+        const auto tail_size = div_up(ncolumns, src_elems_per_byte_);
+        const auto tail_mask = size_t(((size_t)1 << tail_size) - 1);
 
         if (is_tail) kmovq(kTail, tail_mask);
 
@@ -2948,7 +3139,8 @@ private:
     void copy_4x64(int nrows, int ncolumns, bool zeropad) override {
         const bool is_tail = ncolumns < n_blk_step_;
         if (is_tail) {
-            const auto tail_mask = size_t(((size_t)1 << ncolumns) - 1);
+            const auto tail_size = div_up(ncolumns, src_elems_per_byte_);
+            const auto tail_mask = size_t(((size_t)1 << tail_size) - 1);
             kmovq(kTail, tail_mask);
         }
 
@@ -3060,8 +3252,11 @@ private:
         Xbyak::Ymm vmm_src = Xbyak::Ymm(ymm_idx);
         if (is_tail) {
             load_bytes(vmm_src, reg_src, offset, tail_sz);
+        } else if (is_src_int4_) {
+            load_bytes(vmm_src, reg_src, offset, simd_w_ / src_elems_per_byte_);
         } else
             uni_vmovups(vmm_src, ptr[reg_src + offset]);
+        cvt_int4_to_int8(vmm_src);
     }
 
     void copy_4x64(int nrows, int ncolumns, bool zeropad) override {
@@ -3083,11 +3278,13 @@ private:
                     if (do_load) {
                         const bool do_tail = is_tail
                                 && IMPLICATION(pass == 0, ncolumns < simd_w_);
-                        const auto offset
-                                = (is_dynamic_stride_ ? 0 : i * src_stride_)
+                        auto offset = (is_dynamic_stride_ ? 0 : i * src_stride_)
                                 + pass * simd_w_;
-                        load_ymm(i % 4, offset, do_tail,
-                                ncolumns - pass * simd_w_);
+                        offset /= src_elems_per_byte_;
+                        const auto tail_size
+                                = div_up((ncolumns - pass * simd_w_),
+                                        src_elems_per_byte_);
+                        load_ymm(i % 4, offset, do_tail, tail_size);
                         if (is_dynamic_stride_) add(reg_src, reg_src_stride);
                     } else {
                         const auto src_ymm_1 = get_ymm(i % 4);
@@ -3192,7 +3389,8 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
         L(K_loop_unrolled);
         copy_block(k_unroll * k_blk_step_, ncolumns, is_N_tail, zeropad);
         if (!zeropad && !is_dynamic_stride_)
-            add(reg_src, k_unroll * k_blk_step_ * src_stride_);
+            add(reg_src,
+                    k_unroll * k_blk_step_ * src_stride_ / src_elems_per_byte_);
         add(reg_tr_src, k_unroll * tr_src_stride_);
 
         sub(reg_K, k_unroll * k_blk_step_);
@@ -3205,7 +3403,7 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
 
         copy_block(k_blk_step_, ncolumns, is_N_tail, zeropad);
         if (!zeropad && !is_dynamic_stride_)
-            add(reg_src, k_blk_step_ * src_stride_);
+            add(reg_src, k_blk_step_ * src_stride_ / src_elems_per_byte_);
         add(reg_tr_src, tr_src_stride_);
 
         sub(reg_K, k_blk_step_);

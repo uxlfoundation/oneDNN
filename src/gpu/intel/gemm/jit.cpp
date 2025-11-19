@@ -101,7 +101,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 : problem->aScale2D()            ? problem->A_scale.layout
                                                  : problem->AO.layout;
         auto ldaq = into<int32_t>(isColMajor(layout)
-                        ? pd()->eff_m()
+                        ? utils::div_up(pd()->eff_m(), problem->aqGroupM)
                         : utils::div_up(pd()->desc()->k(), problem->aqGroupK));
         arg_list.set(argn++, ldaq);
     }
@@ -111,7 +111,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 : problem->bScale2D()            ? problem->B_scale.layout
                                                  : problem->BO.layout;
         auto ldbq = into<int32_t>(!isColMajor(layout)
-                        ? pd()->eff_n()
+                        ? utils::div_up(pd()->eff_n(), problem->bqGroupN)
                         : utils::div_up(pd()->desc()->k(), problem->bqGroupK));
         arg_list.set(argn++, ldbq);
     }

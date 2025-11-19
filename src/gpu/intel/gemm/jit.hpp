@@ -222,16 +222,14 @@ struct gen_t : public primitive_t {
                         VERBOSE_SHAPE_RESTRICTION);
             }
 
-            VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            if (!attr()->scales_.has_default_values()) {
+                VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            }
 
-            if (!attr()->zero_points_.has_default_values()) {
+            if (!attr()->zero_points_.has_default_values())
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-                if (swap_ab_) std::swap(ao_dims_, bo_dims_);
-            }
-            if (!attr()->precomputed_reductions_.has_default_values()) {
+            if (!attr()->precomputed_reductions_.has_default_values())
                 VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
-                if (swap_ab_) std::swap(ag_dims_, bg_dims_);
-            }
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
 
@@ -353,14 +351,24 @@ struct gen_t : public primitive_t {
             auto has_gs = [&](int idx) {
                 return !attr()->precomputed_reductions_.has_default_values(idx);
             };
-            jit::quant_params a_quant
-                    = {a_scales_type_, ao_type, ag_type, asc_dims_, ao_dims_,
-                            ag_dims_, a_q2d_group_k(), a_q2d_group_m(), 0,
-                            has_gs(DNNL_ARG_A), false, a_zp_hostscalar()};
-            jit::quant_params b_quant
-                    = {b_scales_type_, bo_type, bg_type, bsc_dims_, bo_dims_,
-                            bg_dims_, b_q2d_group_k(), 0, b_q2d_group_n(),
-                            has_gs(DNNL_ARG_B), false, b_zp_hostscalar()};
+
+            // TODO: Refactor to contain all swap handling within pd.
+            jit::quant_params a_quant, b_quant;
+            if (swap_ab()) {
+                a_quant = {b_scales_type_, bo_type, ag_type, bsc_dims_,
+                        bo_dims_, bg_dims_, b_q2d_group_k(), b_q2d_group_n(), 0,
+                        has_gs(DNNL_ARG_B), false, b_zp_hostscalar()};
+                b_quant = {a_scales_type_, ao_type, bg_type, asc_dims_,
+                        ao_dims_, ag_dims_, a_q2d_group_k(), 0, a_q2d_group_m(),
+                        has_gs(DNNL_ARG_A), false, a_zp_hostscalar()};
+            } else {
+                a_quant = {a_scales_type_, ao_type, ag_type, asc_dims_,
+                        ao_dims_, ag_dims_, a_q2d_group_k(), a_q2d_group_m(), 0,
+                        has_gs(DNNL_ARG_A), false, a_zp_hostscalar()};
+                b_quant = {b_scales_type_, bo_type, bg_type, bsc_dims_,
+                        bo_dims_, bg_dims_, b_q2d_group_k(), 0, b_q2d_group_n(),
+                        has_gs(DNNL_ARG_B), false, b_zp_hostscalar()};
+            }
             jit::quant_params c_quant = {c_scales_type_, co_type, bg_type,
                     csc_dims_, -1, -1, 0, c_q2d_group_m(), c_q2d_group_n(),
                     has_gs(DNNL_ARG_C), with_mx_scale(), false};

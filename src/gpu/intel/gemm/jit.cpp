@@ -97,8 +97,13 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                                                  : problem->AO.layout;
         auto ldaq = into<int32_t>(isColMajor(layout)
                         ? pd()->eff_m()
+                        //? utils::div_up(pd()->eff_m(), problem->aqGroupM)
                         : utils::div_up(pd()->desc()->k(), problem->aqGroupK));
+        auto ldaqalt = into<int32_t>(isColMajor(layout)
+                        ? utils::div_up(pd()->desc()->k(), problem->aqGroupK)
+                        : utils::div_up(pd()->eff_m(), problem->aqGroupM));
         arg_list.set(argn++, ldaq);
+        //arg_list.set(argn++, ldaqalt);
     }
     if (problem->bOffset2D() || problem->bScale2D()
             || problem->needsBGroupSums()) {
@@ -107,8 +112,13 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                                                  : problem->BO.layout;
         auto ldbq = into<int32_t>(!isColMajor(layout)
                         ? pd()->eff_n()
+                        //? utils::div_up(pd()->eff_n(), problem->bqGroupN)
                         : utils::div_up(pd()->desc()->k(), problem->bqGroupK));
+        auto ldbqalt = into<int32_t>(!isColMajor(layout)
+                        ? utils::div_up(pd()->desc()->k(), problem->bqGroupK)
+                        : utils::div_up(pd()->eff_n(), problem->bqGroupN));
         arg_list.set(argn++, ldbq);
+        //arg_list.set(argn++, ldbqalt);
     }
     if (pd()->with_mx_scale()) {
         auto ldcq = pd()->desc()->m() / problem->cqGroupM;

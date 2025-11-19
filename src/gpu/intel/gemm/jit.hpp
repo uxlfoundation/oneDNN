@@ -117,6 +117,8 @@ struct gen_t : public primitive_t {
             swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
                     || d->transc() == dnnl_trans;
 
+            //swap_ab_ &= !(asc_dims_ > 1 || bsc_dims_ > 1);
+
             // We cannot swap A/B if we don't have kernels to support the
             // swapped data type/alignment requirements
             swap_ab_ &= !(utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
@@ -353,15 +355,25 @@ struct gen_t : public primitive_t {
             auto has_gs = [&](int idx) {
                 return !attr()->precomputed_reductions_.has_default_values(idx);
             };
-            jit::quant_params a_quant = {a_scales_type_, ao_type, ag_type,
-                    asc_dims_, ao_dims_, ag_dims_, a_q2d_group_k(),
-                    a_q2d_group_m(), 0, has_gs(DNNL_ARG_A), false};
-            jit::quant_params b_quant = {b_scales_type_, bo_type, bg_type,
-                    bsc_dims_, bo_dims_, bg_dims_, b_q2d_group_k(), 0,
-                    b_q2d_group_n(), has_gs(DNNL_ARG_B), false};
-            jit::quant_params c_quant = {c_scales_type_, co_type, bg_type,
-                    csc_dims_, -1, -1, 0, c_q2d_group_m(), c_q2d_group_n(),
-                    has_gs(DNNL_ARG_C), with_mx_scale()};
+            jit::quant_params a_quant, b_quant, c_quant;
+            if (swap_ab()) {
+                a_quant = {b_scales_type_, bo_type, bg_type, bsc_dims_,
+                        bo_dims_, bg_dims_, b_q2d_group_k(), b_q2d_group_n(), 0,
+                        has_gs(DNNL_ARG_B), false};
+                b_quant = {a_scales_type_, ao_type, ag_type, asc_dims_,
+                        ao_dims_, ag_dims_, a_q2d_group_k(), 0, a_q2d_group_m(),
+                        has_gs(DNNL_ARG_A), false};
+            } else {
+                a_quant = {a_scales_type_, ao_type, ag_type, asc_dims_,
+                        ao_dims_, ag_dims_, a_q2d_group_k(), a_q2d_group_m(), 0,
+                        has_gs(DNNL_ARG_A), false};
+                b_quant = {b_scales_type_, bo_type, bg_type, bsc_dims_,
+                        bo_dims_, bg_dims_, b_q2d_group_k(), 0, b_q2d_group_n(),
+                        has_gs(DNNL_ARG_B), false};
+            }
+            c_quant = {c_scales_type_, co_type, bg_type, csc_dims_, -1, -1, 0,
+                    c_q2d_group_m(), c_q2d_group_n(), has_gs(DNNL_ARG_C),
+                    with_mx_scale()};
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;

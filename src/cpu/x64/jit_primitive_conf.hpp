@@ -872,12 +872,13 @@ struct jit_shuffle_conf_t {
 
     dim_t mb = 0, c = 0, d = 0, h = 0, w = 0, sp = 0;
 
-    unsigned stride_mb = 0;
-    unsigned blk_size = 0;
-    unsigned group_size = 0;
-    unsigned axis = 0;
-    unsigned axis_size = 0;
-    unsigned simd_tail = 0;
+    dim_t stride_mb = 0;
+    dim_t blk_size = 0;
+    dim_t group_size = 0;
+    dim_t axis = 0;
+    dim_t axis_size = 0;
+    dim_t simd_tail = 0;
+
     unsigned simd_w = 0;
 
     jit_memory_tag_kind_t tag_kind = jit_memory_tag_kind_t::undef;

@@ -1463,12 +1463,18 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
             auto base = GRF(regNum).retype(decodeRegTypecode12(dt));
             auto sr = o.direct.subRegNum;
             if (xeHPC) sr <<= 1;
-            auto sub = base[sr / getBytes(base.getType())];
+            auto sub = base[sr / base.getBytes()];
             auto hs = (1 << o.direct.hs);
             if (opNum >= 0) hs >>= 1;
 #if XE3P
             if (xe3p && opNum == 1) {
-                hs = (ternaryXe3p.src1Scalar ? 0 : 1);
+                hs = 0;
+                if (!ternaryXe3p.src1Scalar) {
+                    auto dbytes = getBytes(decodeRegTypecode12((ternary.execType << 3) | ternary.dstType));
+                    TernaryOperand12 odst;
+                    odst.bits = ternary.dst;
+                    hs = std::max(1, (dbytes << odst.direct.hs) / base.getBytes());
+                }
                 vs = 0;
             }
 #endif
@@ -1559,13 +1565,20 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
             if (xe3p) regNum |= (regNum8 << 8);
 #endif
             auto base = GRF(regNum).retype(decodeRegTypecode12(dt));
-            auto sub = base[sr / getBytes(base.getType())];
+            auto sub = base[sr / base.getBytes()];
             auto hs = (1 << o.direct.hs) >> 1;
             auto vs = xeHPC ? o.directXeHPC.vs : o.direct.vs;
 #if XE3P
-            if (xe3p && opNum == 1)
-                rd = sub(binaryXe3p.src1Scalar ? 0 : 1);
-            else
+            if (xe3p && opNum == 1) {
+                hs = 0;
+                if (!binaryXe3p.src1Scalar) {
+                    auto dbytes = getBytes(decodeRegTypecode12(binary.dstType));
+                    BinaryOperand12 odst;
+                    odst.bits = binary.dst;
+                    hs = std::max(1, (dbytes << (odst.direct.hs - 1)) / base.getBytes());
+                }
+                rd = sub(hs);
+            } else
 #endif
             if (opNum < 0)
                 rd = sub(hs, 1, 0);

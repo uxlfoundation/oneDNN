@@ -58,7 +58,11 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
     const bool has_wei_scale = !prb->attr.scales.get(DNNL_ARG_WEIGHTS).is_def();
     const bool has_dst_scale = !prb->attr.scales.get(DNNL_ARG_DST).is_def();
+    const bool has_dst_dynamic
+            = prb->attr.scales.get(DNNL_ARG_DST).is_dynamic();
     const bool has_dst_mx = prb->attr.scales.get(DNNL_ARG_DST).is_mx();
+    const bool has_dst_dynamic_fp
+            = prb->attr.scales.get(DNNL_ARG_DST).is_dynamic_fp();
 
     const int src_scale_mask = prb->attr.scales.get_mask(
             DNNL_ARG_SRC, dnnl_matmul, src_m.ndims());
@@ -216,7 +220,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
         // Now we can do downconversion and write back to dst
         // Compute scales if dyn_quant
         float dst_scale = 1.f;
-        if (has_dst_mx) {
+        if (has_dst_dynamic) {
             dst_scale = FLT_MIN;
             for_(int64_t m = mc * dst_M_group;
                     m < MIN2((mc + 1) * dst_M_group, M); ++m)
@@ -225,18 +229,27 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
                 const auto dst_off = dst_off_f(prb, mb, m, n);
                 dst_scale = MAX2(fabsf(dst_m.get_f32_elem(dst_off)), dst_scale);
             }
-            dst_scale = round_to_nearest_representable(dst_scale_dt,
-                    round_to_nearest_representable(dst_scale_dt, dst_scale)
-                            / round_to_nearest_representable(
-                                    dst_scale_dt, max_dt(prb->dst_dt())));
+            if (has_dst_mx) {
+                dst_scale = round_to_nearest_representable(
+                                    dst_scale_dt, dst_scale)
+                        / round_to_nearest_representable(
+                                dst_scale_dt, max_dt(prb->dst_dt()));
+                dst_scale = round_to_nearest_representable(
+                        dst_scale_dt, dst_scale);
+            } else if (has_dst_dynamic_fp) {
+                dst_scale = dst_scale == 0.f
+                        ? 1.f
+                        : round_to_nearest_representable(dst_scale_dt,
+                                  dst_scale / max_dt(prb->dst_dt()));
+            }
             const auto dst_off
                     = dst_off_f(prb, mb, mc * dst_M_group, nc * dst_N_group);
             const auto dscale_idx = dst_m.get_idx(
                     dst_off, dst_scale_mask, dst_m.ndims(), dst_scale_groups);
             dst_scales.set_f32_elem(dscale_idx, dst_scale);
-            // we pre invert the scale to apply it as multiply
-            // later note that we cannot do it upfront, as it
-            // needs to be written to memory before.
+            // Pre-invert the scale to apply it as a multiplier for the group.
+            // Note, that it can't be done upfront, as it must be written to
+            // the memory before. Can't be zero.
             dst_scale = 1.f / dst_scale;
         }
 
@@ -253,7 +266,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
                 const auto dst_zp_idx = dst_m.get_idx(dst_off, dst_zp_mask);
                 dst_zp = dst_zps.get_elem(dst_zp_idx);
             }
-            if (has_dst_scale && !has_dst_mx) {
+            if (has_dst_scale && !has_dst_dynamic) {
                 dst_scale = 1.f
                         / dst_scales.get_f32_elem(dst_scale_mask > 0 ? n : 0);
             }

@@ -218,6 +218,7 @@ namespace quantization_mode {
 const quantization_mode_t undef = dnnl_quantization_mode_undef;
 const quantization_mode_t static_sazp = dnnl_quantization_mode_static_sazp;
 const quantization_mode_t dynamic_mx = dnnl_quantization_mode_dynamic_mx;
+const quantization_mode_t dynamic_fp = dnnl_quantization_mode_dynamic_fp;
 } // namespace quantization_mode
 
 using sparse_encoding_t = dnnl_sparse_encoding_t;

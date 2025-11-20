@@ -595,7 +595,8 @@ status_t dnnl_primitive_attr_set_scales_v3(primitive_attr_t *attr, int arg,
     VCHECK_ATTR(attr, VERBOSE_NULL_ARG);
     VCHECK_ATTR(arg >= 0, VERBOSE_BAD_PARAM, "arg");
     VCHECK_ATTR(utils::one_of(qmode, quantization_mode::static_sazp,
-                        quantization_mode::dynamic_mx),
+                        quantization_mode::dynamic_mx,
+                        quantization_mode::dynamic_fp),
             VERBOSE_BAD_PARAM, "qmode");
     VCHECK_ATTR(
             utils::one_of(data_type, f32, bf16, f16, e8m0, f8_e5m2, f8_e4m3),

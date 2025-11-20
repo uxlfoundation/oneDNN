@@ -41,7 +41,7 @@ void ref_matmul_t::pd_t::init_scratchpad() {
     nthr_ = dnnl_get_max_threads();
     ntasks_ = nthr_;
     auto dst_scales = attr()->scales_.get(DNNL_ARG_DST);
-    if (dst_scales.is_mx()) {
+    if (dst_scales.is_dynamic()) {
         auto scratchpad = scratchpad_registry().registrar();
         const memory_desc_wrapper dst_d(dst_md());
         dim_t group_size = dst_scales.get_group_size();
@@ -295,7 +295,7 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                     args.dst_md = pd()->dst_md();
                     ref_post_ops->execute(d, args);
                 }
-                if (attr_scales.get(DNNL_ARG_DST).is_mx()) {
+                if (attr_scales.get(DNNL_ARG_DST).is_dynamic()) {
                     max_dst_group = std::max(max_dst_group, ::fabsf(d));
                     auto temp_dst_off = (ithr * dst_scale_group_m + m_gidx)
                                     * dst_scale_group_n
@@ -317,16 +317,30 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                 }
             }
 
-            if (attr_scales.get(DNNL_ARG_DST).is_mx()) {
-                // MXSPEC does round_down_pow2(dst_d.data_type() /
-                // round_down_pow2(max_dst_group) so the rounding
-                // to a power of two happens before the division,
-                // and not after.
-                float dst_group_scale = types::round_to_dt(dst_scale_dt,
-                        types::round_to_dt(dst_scale_dt, max_dst_group)
-                                / types::round_to_dt(dst_scale_dt,
-                                        types::max_value<float>(
-                                                dst_d.data_type())));
+            if (attr_scales.get(DNNL_ARG_DST).is_dynamic()) {
+                float dst_group_scale = 1.0f;
+                if (attr_scales.get(DNNL_ARG_DST).is_mx()) {
+                    // MXSPEC does round_down_pow2(dst_d.data_type() /
+                    // round_down_pow2(max_dst_group) so the rounding
+                    // to a power of two happens before the division,
+                    // and not after.
+                    dst_group_scale
+                            = types::round_to_dt(dst_scale_dt, max_dst_group)
+                            / types::round_to_dt(dst_scale_dt,
+                                    types::max_value<float>(dst_d.data_type()));
+                    dst_group_scale
+                            = types::round_to_dt(dst_scale_dt, dst_group_scale);
+                }
+                if (attr_scales.get(DNNL_ARG_DST).is_dynamic_fp()) {
+                    // In case of a dst group produced a zero `max_dst_group`,
+                    // clamp the scale value to the minimal normal e4m3 value.
+                    dst_group_scale = max_dst_group == 0.f
+                            ? 1.f
+                            : types::round_to_dt(dst_scale_dt,
+                                      max_dst_group
+                                              / types::max_value<float>(
+                                                      dst_d.data_type()));
+                }
 
                 dims_t dst_dims_idx;
                 const size_t offset = mb * M * N + m_ * N + n_;
@@ -339,9 +353,9 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
                 io::store_float_value(dst_scale_dt, dst_group_scale,
                         dst_dynamic_scales, dst_scale_off);
-                // we pre-invert the scale to apply it as multiply for the group
+                // Pre-invert the scale to apply it as a multiplier for the
+                // group. Can't be zero.
                 dst_group_scale = 1.f / dst_group_scale;
-
                 for_(dim_t m_gidx = 0; m_gidx < dst_scale_group_m; m_gidx++)
                 for (dim_t n_gidx = 0; n_gidx < dst_scale_group_n; n_gidx++) {
                     dim_t m = m_ + m_gidx;

@@ -104,7 +104,14 @@ struct quant_entry_t : public c_compatible {
     }
     bool is_host_scalar() const { return is_host_scalar_; }
     quantization_mode_t get_quantization_mode() const { return qmode_; }
+    bool is_dynamic() const {
+        return utils::one_of(qmode_, quantization_mode::dynamic_fp,
+                quantization_mode::dynamic_mx);
+    }
     bool is_mx() const { return qmode_ == quantization_mode::dynamic_mx; }
+    bool is_dynamic_fp() const {
+        return qmode_ == quantization_mode::dynamic_fp;
+    }
 
     status_t get_md(memory_desc_t &out_md, const memory_desc_t &base_md) const {
         if (has_default_values()) {

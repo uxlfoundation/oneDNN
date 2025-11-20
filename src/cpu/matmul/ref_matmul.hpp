@@ -106,7 +106,8 @@ struct ref_matmul_t : public primitive_t {
             VDISPATCH_MATMUL(attr_scales_ok({DNNL_ARG_SRC, DNNL_ARG_WEIGHTS,
                                                     DNNL_ARG_DST},
                                      {quantization_mode::static_sazp,
-                                             quantization_mode::dynamic_mx}),
+                                             quantization_mode::dynamic_mx,
+                                             quantization_mode::dynamic_fp}),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_MATMUL(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);

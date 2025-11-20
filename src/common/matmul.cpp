@@ -135,10 +135,10 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             }
 
             // Due to hardware specifics, groups, when more than 1, should be
-            // multiple of 32.
+            // multiple of 16.
             VCHECK_MATMUL_UNIMPL(
                     IMPLICATION(src_scale_group_k > 1 && src_scale_group_k < K,
-                            src_scale_group_k % 32 == 0),
+                            src_scale_group_k % 16 == 0),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
@@ -193,7 +193,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                                              && groups_are_divisible),
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-        // For dynamic scaling, we support only OCP MX flavor
+        // For dynamic_mx scaling, we support only OCP MX flavor
         if (sc.get(DNNL_ARG_DST).is_mx()) {
             // only group size of 32
             VCHECK_MATMUL_UNIMPL(sc.get_mask(DNNL_ARG_DST) == full_tensor_mask,
@@ -205,6 +205,21 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             // only e8m0 scales
             VCHECK_MATMUL_UNIMPL(
                     sc.get_data_type(DNNL_ARG_DST) == data_type::e8m0,
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+        }
+
+        // For dynamic_fp scaling, only NVFP4 flavor is supported.
+        if (sc.get(DNNL_ARG_DST).is_dynamic_fp()) {
+            // only group size of 16
+            VCHECK_MATMUL_UNIMPL(sc.get_mask(DNNL_ARG_DST) == full_tensor_mask,
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VCHECK_MATMUL_UNIMPL(sc.get_group(DNNL_ARG_DST, -1) == 16
+                            && sc.get_group(DNNL_ARG_DST, -2) == 1,
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+            // only e4m3 scales
+            VCHECK_MATMUL_UNIMPL(
+                    sc.get_data_type(DNNL_ARG_DST) == data_type::f8_e4m3,
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
     }

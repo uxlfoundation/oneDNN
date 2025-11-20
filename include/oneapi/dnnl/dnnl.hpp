@@ -331,6 +331,10 @@ enum class quantization_mode {
     /// parameter is computed by oneDNN following the OCP MX spec
     /// formula and written as an output.
     dynamic_mx = dnnl_quantization_mode_dynamic_mx,
+    /// dynamic quantization mode where quantization parameter is computed by
+    /// oneDNN as \f$scale\_dt(amax(X) / max(dst\_dt))\f$ in `f32` then
+    /// converted to a scale type and written as an output.
+    dynamic_fp = dnnl_quantization_mode_dynamic_fp,
 };
 
 /// Converts a quantization kind enum value from C++ API to C API type.

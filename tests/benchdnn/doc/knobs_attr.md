@@ -124,6 +124,8 @@ scale value. Supported values are:
                      `nelems`. As of now supported only by binary post-ops.
   - `mx`             scales are output, computed by the primitive itself, following
                      the OCP MX specification.
+  - `dynamic_fp`     scales are output, computed by the primitive itself as
+                     `to_scale_dt(amax(x) / max(dst_dt))`
 
 `SCALE` is required for the `common` policy only, and specifies a floating-point
 value which is passed for execution at runtime. Specifying a value for any other
@@ -356,6 +358,13 @@ Run a matmul problem with weight-only quantization where weights `bf16` scales a
 Run a matmul problem with MXFP4 semantics:
 ``` sh
   ./benchdnn --matmul --dt=f4_e2m1 \
-             --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
+             --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32 \
+             32x32:32x64
+```
+
+Run a matmul problem with NVFP4 semantics:
+``` sh
+  ./benchdnn --matmul --dt=f4_e2m1 \
+             --attr-scales=src:per_tensor:f8_e4m3:1x16+wei:per_tensor:f8_e4m3:16x1+dst:dynamic_fp:f8_e4m3:1x16 \
              32x32:32x64
 ```

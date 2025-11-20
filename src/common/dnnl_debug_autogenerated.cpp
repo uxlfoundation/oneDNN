@@ -1915,6 +1915,7 @@ const char *dnnl_quantization_mode2str(dnnl_quantization_mode_t v) {
     if (v == dnnl_quantization_mode_undef) return "undef";
     if (v == dnnl_quantization_mode_static_sazp) return "static_sazp";
     if (v == dnnl_quantization_mode_dynamic_mx) return "dynamic_mx";
+    if (v == dnnl_quantization_mode_dynamic_fp) return "dynamic_fp";
     assert(!"unknown quantization_mode");
     return "unknown quantization_mode";
 }

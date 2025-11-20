@@ -141,6 +141,7 @@ policy_t attr_t::str2policy(const std::string &str) {
     CASE(COMMON);
     CASE(HOST_SCALAR);
     CASE(MX);
+    CASE(DYNAMIC_FP);
     CASE(PER_OC);
     CASE(PER_OCIC);
     CASE(PER_DIM_0);
@@ -158,6 +159,7 @@ const char *attr_t::policy2str(policy_t policy) {
     if (policy == COMMON) return "common";
     if (policy == HOST_SCALAR) return "host_scalar";
     if (policy == MX) return "mx";
+    if (policy == DYNAMIC_FP) return "dynamic_fp";
     if (policy == PER_OC) return "per_oc";
     if (policy == PER_OCIC) return "per_ocic";
     if (policy == PER_DIM_0) return "per_dim_0";
@@ -193,6 +195,7 @@ int attr_t::get_default_mask(policy_t policy, int ndims) {
         case PER_DIM_2: return (1 << 2);
         case PER_DIM_3: return (1 << 3);
         case MX:
+        case DYNAMIC_FP:
         case PER_TENSOR:
             assert(ndims > 0 && ndims <= DNNL_MAX_NDIMS);
             return (1 << ndims) - 1;
@@ -204,10 +207,11 @@ int attr_t::get_default_mask(policy_t policy, int ndims) {
 }
 
 dnnl_quantization_mode_t attr_t::policy2quantization_mode(policy_t policy) {
-    if (policy == policy_t::MX)
-        return dnnl_quantization_mode_dynamic_mx;
-    else
-        return dnnl_quantization_mode_static_sazp;
+    if (policy == policy_t::MX) return dnnl_quantization_mode_dynamic_mx;
+    if (policy == policy_t::DYNAMIC_FP)
+        return dnnl_quantization_mode_dynamic_fp;
+
+    return dnnl_quantization_mode_static_sazp;
 }
 
 int attr_t::policy2mask(int arg, policy_t policy, int ndims,
@@ -243,6 +247,7 @@ int attr_t::policy2mask(int arg, policy_t policy, int ndims,
             case PER_OC: return (1 << (ndims - 1));
             case PER_OCIC: return (1 << (ndims - 1)) + (1 << (ndims - 2));
             case MX:
+            case DYNAMIC_FP:
             case PER_TENSOR: return attr_t::get_default_mask(policy, ndims);
             default: SAFE_V(FAIL); return -1;
         }
@@ -340,6 +345,7 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
             case PER_OC:
             case PER_OCIC:
             case MX:
+            case DYNAMIC_FP:
                 if (this->groups.size() != 2) {
                     BENCHDNN_PRINT(0, "%s\n",
                             "Error: number of groups should be equal to number "

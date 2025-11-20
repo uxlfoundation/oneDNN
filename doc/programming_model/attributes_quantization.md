@@ -30,7 +30,7 @@ To support quantization, primitives should be created and executed as
 follows:
 - During primitive descriptor creation source, weights or destination
   memory descriptors use low precision datatype (e.g., `s8` or
-  `fp8_e4m3`).
+  `f8_e4m3`).
 - During primitive descriptor creation group size, data types, and
   broadcasting masks of the scaling factors and zero-point are
   provided using primitive attributes.
@@ -73,9 +73,9 @@ time.
 
 ### Dynamic Quantization
 
-The only formula for dynamic quantization currently supported by
-oneDNN is with scales computed following the
-[OCP MX Formats Specification][mx-spec], namely:
+
+oneDNN supports two dynamic quantization modes, for scales only (no
+zero-point) following the formula:
 
 \f[
 x_{f32}[:] = scale_{x} \cdot x_{quant}[:]
@@ -83,13 +83,22 @@ x_{f32}[:] = scale_{x} \cdot x_{quant}[:]
 
 where \f$x_{f32}\f$ and \f$x_{quant}\f$ are the non-quantized and
 quantized representation of \f$x\f$ respectively, and \f$scale_{x}\f$ is a
-scaling factor:
-- in `e8m0` format,
-- computed for each group of size `32`,
-- and computed as the largest power-of-two less than or equal to the
-  maximum absolute value of the group divided by the largest
-  power-of-two representable in the \f$x_{quant}\f$ data type,
-  e.g., \f$E8M0(amax(x_{quant}[:])) / E8M0(MAX\_QUANT\_DT) \f$.
+scaling factor.
+
+When using `quantization_mode::dynamic_mx`, \f$scale_{x}\f$ is computed
+following the [OCP MX Formats Specification][mx-spec], namely \f$scale_{x}\f$:
+- has `e8m0` datatype,
+- is computed for each group of size `32`,
+- is computed as the largest power-of-two less than or equal to the maximum
+  absolute value of the group divided by the largest power-of-two representable
+  in the \f$x_{quant}\f$ datatype, e.g.,
+  \f$E8M0(amax(x_{quant}[:])) / E8M0(MAX\_QUANT\_DT)\f$.
+
+When using `quantization_mode::dynamic_fp`, \f$scale_{x}\f$ is computed in
+`f32` first and then converted to a scale datatype, namely \f$scale_{x}\f$:
+- has `f8_e4m3` datatype,
+- is computed for each group of size `16`,
+- is computed as \f$SCALE\_DT(amax(x_{quant}[:]) / MAX\_QUANT\_DT)\f$.
 
 ## General Numerical Behavior Notes
 
@@ -174,7 +183,7 @@ Key parameters of the scaling API methods are summarized below:
 | `groups` | `{}`, `{G}`, `{G1,G2,...}` | Block quantization: none, single-size, multi-dimensional blocks |
 | `data_type` | `f32`, `bf16`, `f16`, `f8_e5m2`, `f8_e4m3`, `e8m0` | Scaling factor data type |
 | `is_on_host` | `true`/`false` | Host vs device memory location of scaling factor |
-| `qmode` | `static_sazp`, `dynamic_mx` | Quantization mode: static with scales and zero-points, dynamic (MXFP8 compatible) |
+| `qmode` | `static_sazp`, `dynamic_mx`, `dynamic_fp` | Quantization mode: static with scales and zero-points, dynamic (MXFP8 compatible), dynamic (NVFP4 compatible) |
 
 (*) Support for quantization options varies based on individual primitive and
 target hardware. Refer to primitives documentation for the details.

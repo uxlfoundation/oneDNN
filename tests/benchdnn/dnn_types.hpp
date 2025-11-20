@@ -73,6 +73,7 @@ struct attr_t {
         PER_TENSOR, // ... point in the tensor.
         HOST_SCALAR, // same as COMMON, but uses host-side scalar memory
         MX, // uses {1, ..., 32} groups and dynamic_mx formula
+        DYNAMIC_FP, // uses {1, ..., 16} groups and dynamic_fp formula
         POLICY_TOTAL // guard
     };
 
@@ -226,7 +227,11 @@ struct attr_t {
             }
 
             bool is_host_scalar() const { return policy == HOST_SCALAR; }
+            bool is_dynamic() const {
+                return policy == MX || policy == DYNAMIC_FP;
+            }
             bool is_mx() const { return policy == MX; }
+            bool is_dynamic_fp() const { return policy == DYNAMIC_FP; }
 
             policy_t policy = COMMON;
             float scale = 1.f;

@@ -259,6 +259,10 @@ class invalid_64_bit_register_exception : public std::runtime_error {
 public:
     invalid_64_bit_register_exception() : std::runtime_error("64-bit data types must start on an even register") {}
 };
+class invalid_matrix_access_exception : public std::runtime_error {
+public:
+    invalid_matrix_access_exception() : std::runtime_error("Invalid combination of options for load/store/reduce matrix") {}
+};
 #endif
 #endif
 
@@ -279,9 +283,7 @@ enum class Core {
     Xe2,
     Xe3,
 #if XE3P
-    XE3P_35_10,
-    XE3P_35_11,
-    XE3P_UNKNOWN,
+    Xe3p,
 #endif
 #if XE4
     Xe4,
@@ -314,9 +316,7 @@ enum class ProductFamily : int {
     GenericXe3,
 #if XE3P
     GenericXe3p,
-    XE3P_35_10,
-    XE3P_35_11,
-    XE3P_UNKNOWN,
+    NVLP,
 #endif
 #if XE4
     GenericXe4,
@@ -348,7 +348,7 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::ARL:
         case ProductFamily::LNL:
 #if XE3P
-        case ProductFamily::XE3P_35_10:
+        case ProductFamily::NVLP:
 #endif
             return PlatformType::Integrated;
         // Could be integrated or discrete
@@ -358,7 +358,6 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::GenericXe3:
 #if XE3P
         case ProductFamily::GenericXe3p:
-        case ProductFamily::XE3P_UNKNOWN:
 #endif
 #if XE4
         case ProductFamily::GenericXe4:
@@ -371,9 +370,6 @@ static inline constexpr14 PlatformType getPlatformType(ProductFamily family) {
         case ProductFamily::PVC:
         case ProductFamily::PVCVG:
         case ProductFamily::BMG:
-#if XE3P
-        case ProductFamily::XE3P_35_11:
-#endif
             return PlatformType::Discrete;
         case ProductFamily::Unknown:
             return PlatformType::Unknown;
@@ -394,9 +390,7 @@ static inline constexpr14 ProductFamily genericProductFamily(HW hw)
         case HW::Xe2:   return ProductFamily::GenericXe2;
         case HW::Xe3:   return ProductFamily::GenericXe3;
 #if XE3P
-        case HW::XE3P_35_10:
-        case HW::XE3P_35_11:
-        case HW::XE3P_UNKNOWN: return ProductFamily::GenericXe3p;
+        case HW::Xe3p:  return ProductFamily::GenericXe3p;
 #endif
 #if XE4
         case HW::Xe4:   return ProductFamily::GenericXe4;
@@ -411,10 +405,7 @@ static inline constexpr14 Core getCore(ProductFamily family)
     if (family >= ProductFamily::GenericXe4)   return Core::Xe4;
 #endif
 #if XE3P
-    if (family >= ProductFamily::XE3P_UNKNOWN)  return Core::XE3P_UNKNOWN;
-    if (family >= ProductFamily::XE3P_35_11)  return Core::XE3P_35_11;
-    if (family >= ProductFamily::XE3P_35_10)  return Core::XE3P_35_10;
-    if (family >= ProductFamily::GenericXe3p) return Core::XE3P_35_10;
+    if (family >= ProductFamily::GenericXe3p)  return Core::Xe3p;
 #endif
     if (family >= ProductFamily::GenericXe3)   return Core::Xe3;
     if (family >= ProductFamily::GenericXe2)   return Core::Xe2;
@@ -643,7 +634,7 @@ enum class MathFunction : uint8_t {
 static inline int mathArgCount(HW hw, MathFunction func)
 {
 #if XE3P
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         static const char argCounts[16] = {0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 2, 2, 2, 2, 1};
         return argCounts[static_cast<uint8_t>(func) & 0xF];
     }
@@ -1028,7 +1019,7 @@ public:
 #if XE4
     inline constexpr14 RegData getIndirectRegXe4() const;
     inline constexpr14 RegData getIndirectBaseRegXe4() const;
-    constexpr bool isLUOrUC()          const { return off & 0x200; }
+    constexpr bool isLUOrC()           const { return off & 0x200; }
     constexpr14 int getScalarIndex()   const { return isARF() ? getOffset() : getBase(); }
 #else
     constexpr14 int getScalarIndex()   const { return getOffset(); }
@@ -1475,7 +1466,7 @@ public:
 
 #if XE4
     constexpr14 GRF lu() const { auto clone = *this; clone.off |= 0x200; return clone; }
-    constexpr14 GRF uc() const { return lu(); }
+    constexpr14 GRF  c() const { return lu(); }
 #endif
 
     GRF &operator=(const Invalid &i) { this->invalidate(); return *this; }
@@ -2339,12 +2330,13 @@ protected:
 public:
     RegisterRange() : RegisterRange(0, invalidLen, false) {}
     RegisterRange(int base_, int len_, bool srf_) : base(base_), len(len_), srf(srf_) {}
-    RegisterRange(RegData base_, int len_ = 1) {
+    RegisterRange(RegData base_, int len_) {
         canonicalizeSRF(base_);
         base = base_.getBase();
         len = base_.isValid() ? len_ : invalidLen;
         srf = base_.isSRF();
     }
+    RegisterRange(RegData base_): RegisterRange(base_, (base_.isValid() && base_.isSRF() && base_.getDwords() == 2) ? 2 : 1) {}
     RegisterRange(GRFRange range) : base(range.getBase()), len(range.getLen()), srf(false) {}
 
     int getBase()    const { return base; }
@@ -3308,7 +3300,7 @@ static inline bool trackedByToken(HW hw, Opcode op, unsigned dstTypecode)
             return true;
 #if XE3P
         case Opcode::bdpas:
-            return (hw >= HW::XE3P_35_10);
+            return (hw >= HW::Xe3p);
 #endif
         default:
             if (isSend(op)) return true;
@@ -4939,22 +4931,29 @@ enum class LSCOpcode : uint8_t {
     atomic_bfmax = 0x24,
     atomic_bfcmpxchg = 0x25,
 #endif
-};
-
-enum class DataSizeLSC : uint16_t {
-    D8 = 0x0100,
-    D16 = 0x0201,
-    D32 = 0x0402,
-    D64 = 0x0803,
-    D8U32 = 0x0404,
-    D16U32 = 0x0405,
 #if XE4
-    D4 = 0x0004,    /* async DMA only */
-    D6 = 0x0005,    /* async DMA only */
+    load_matrix = 0x2B,
+    store_matrix = 0x2C,
+    reduce_matrix = 0x2D,
+    load_matrix_unordered = 0x37,
+    store_matrix_unordered = 0x38,
 #endif
 };
 
-static inline constexpr unsigned getRegisterWidth(DataSizeLSC dsize) {
+enum class DataSizeLSC : uint16_t {
+    D8 = 0x0800,
+    D16 = 0x1001,
+    D32 = 0x2002,
+    D64 = 0x4003,
+    D8U32 = 0x2004,
+    D16U32 = 0x2005,
+#if XE4
+    D4 = 0x0404,    /* async DMA and matrix access only */
+    D6 = 0x0605,    /* async DMA and matrix access only */
+#endif
+};
+
+static inline constexpr unsigned getBitWidth(DataSizeLSC dsize) {
     return static_cast<uint16_t>(dsize) >> 8;
 }
 
@@ -5015,12 +5014,12 @@ enum FlushTypeLSC : uint8_t {
 struct DataSpecLSC {
     MessageDescriptor desc;
     uint16_t vcount = 0;
-    uint8_t dbytes = 0;
+    uint8_t dbits = 0;
 
     enum { AddrSize16 = 1, AddrSize32 = 2, AddrSize64 = 3 };
     enum { AddrFlat = 0, AddrSS = 1, AddrBSS = 2, AddrBTI = 3 };
 
-    explicit constexpr DataSpecLSC(MessageDescriptor desc_, uint8_t vcount_ = 0, uint8_t dbytes_ = 0) : desc(desc_), vcount(vcount_), dbytes(dbytes_) {}
+    explicit constexpr DataSpecLSC(MessageDescriptor desc_, uint8_t vcount_ = 0, uint8_t dbits_ = 0) : desc(desc_), vcount(vcount_), dbits(dbits_) {}
     /* implicit */ DataSpecLSC(ChannelMask m) {
         desc.standardLSC.opcode = static_cast<uint8_t>(LSCOpcode::load_cmask);
         desc.cmask.cmask = static_cast<uint8_t>(m) ^ 0xF;
@@ -5029,7 +5028,7 @@ struct DataSpecLSC {
     /* implicit */ DataSpecLSC(CacheSettingsLSC s) {
         desc.standardLSC.cache = static_cast<unsigned>(s);
     }
-    /* implicit */ constexpr DataSpecLSC(DataSizeLSC d) : desc((static_cast<uint32_t>(d) & 0x7) << 9), dbytes(getRegisterWidth(d)) {}
+    /* implicit */ constexpr DataSpecLSC(DataSizeLSC d) : desc((static_cast<uint32_t>(d) & 0x7) << 9), dbits(getBitWidth(d)) {}
 
     DataSpecLSC operator()(int vcount) const {
         auto vsEncoded = (vcount <= 4) ? (vcount - 1) : (utils::log2(vcount) + 1);
@@ -5040,6 +5039,7 @@ struct DataSpecLSC {
         *this = *this | other;
         return *this;
     }
+    uint8_t dbytes() const { return dbits >> 3; }
 
     static constexpr DataSpecLSC createV(unsigned vcount, unsigned venc) { return DataSpecLSC{MessageDescriptor(venc << 12), uint8_t(vcount), 0}; }
     static constexpr DataSpecLSC createTranspose()                       { return DataSpecLSC{MessageDescriptor(1 << 15)}; }
@@ -5095,11 +5095,11 @@ struct DataSpecLSC {
         auto vc = std::max<unsigned>(vcount, 1);
         if (this->desc.standardLSC.transpose && !desc.standardLSC.opcode) {
             desc.parts.messageLen = 1;
-            desc.parts.responseLen = GRF::bytesToGRFs(hw, dbytes * vc);
+            desc.parts.responseLen = GRF::bytesToGRFs(hw, dbytes() * vc);
         } else {
             auto effSIMDGRFs = 1 + ((mod.getExecSize()) >> (GRF::log2Bytes(hw) - 1));
             desc.parts.messageLen = effSIMDGRFs * (a64 ? 2 : 1);
-            desc.parts.responseLen = effSIMDGRFs * vc * (1 + (dbytes >> 3));
+            desc.parts.responseLen = effSIMDGRFs * vc * (1 + (dbytes() >> 3));
         }
 
         if (access == Access::Write)
@@ -5121,7 +5121,7 @@ static inline DataSpecLSC scattered(const DataSpecLSC &dtype, int vsize = 1) { r
 static inline DataSpecLSC block(const DataSpecLSC &dtype, int vsize = 1) { return dtype(vsize) | DataSpecLSC::createTranspose(); }
 
 inline constexpr DataSpecLSC operator|(const DataSpecLSC &s1, const DataSpecLSC &s2) {
-    return DataSpecLSC{s1.desc | s2.desc, uint8_t(s1.vcount | s2.vcount), uint8_t(s1.dbytes | s2.dbytes)};
+    return DataSpecLSC{s1.desc | s2.desc, uint8_t(s1.vcount | s2.vcount), uint8_t(s1.dbits | s2.dbits)};
 }
 
 class block_2d : public DataSpecLSC {
@@ -5151,7 +5151,7 @@ public:
         auto w = width, h = height;
         if (this->desc.standardLSC.transpose) std::swap(w, h);
         desc.parts.messageLen = 1;
-        desc.parts.responseLen = std::min(count * GRF::bytesToGRFs(hw, utils::roundup_pow2(w) * h * this->dbytes), 31);
+        desc.parts.responseLen = std::min(count * GRF::bytesToGRFs(hw, utils::roundup_pow2(w) * h * this->dbytes()), 31);
 
         exdesc = SharedFunction::ugm;
 
@@ -5273,6 +5273,25 @@ enum AMMAOpcode {
     sparse_mma = 1,
     fp_error_query = 2,
     fp_error_clear = 3,
+};
+
+enum MatrixReduction {
+    inc_wrap = 0,
+    dec_wrap = 1,
+    add = 2,
+    min = 3,
+    max = 4,
+    umin = 5,
+    umax = 6,
+    and_ = 7,
+    or_ = 8,
+    xor_ = 9,
+    fadd = 10,
+    fmin = 11,
+    fmax = 12,
+    bfadd = 13,
+    bfmin = 14,
+    bfmax = 15,
 };
 #endif
 
@@ -5400,6 +5419,19 @@ union SendgMessageDescriptor {
         uint64_t areuse : 1;
         uint64_t : 20;
     } amma;
+    struct {
+        uint64_t : 7;
+        uint64_t vlen : 3;
+        uint64_t vorient : 2;
+        uint64_t dataSize : 4;
+        uint64_t reductionOp : 5;
+        uint64_t x : 10;
+        uint64_t y : 10;
+        uint64_t alen : 2;
+        uint64_t astride : 2;
+        uint64_t aorient : 1;
+        uint64_t : 1;
+    } matrix;
 #endif
 
     constexpr SendgMessageDescriptor() : all(0) {}
@@ -5422,6 +5454,13 @@ union SendgMessageDescriptor {
         const int dsDecode[8] = {1, 2, 4, 8, 4, 4, 0, 0};
         return dsDecode[mem.dataSize];
     }
+
+#if XE4
+    int matrixElementBitsReg() const {
+        const int dsDecode[9] = {0, 0, 0, 4, 8, 8, 16, 32, 64};
+        return dsDecode[matrix.dataSize];
+    }
+#endif
 
     // Return # destination registers if known, and -1 if not.
     inline int dstLen(HW hw, int execSize, SharedFunction sfid) const
@@ -5457,6 +5496,15 @@ union SendgMessageDescriptor {
                     }
                     case LSCOpcode::load_2dblock:
                         return -1;      /* cannot determine from descriptor */
+#if XE4
+                    case LSCOpcode::load_matrix:
+                    case LSCOpcode::load_matrix_unordered: {
+                        int vc = vectorLength();
+                        int ac = 1 << matrix.alen;
+                        int vbytes = (matrixElementBitsReg() * vc) >> 5;
+                        return GRF::bytesToGRFs(hw, vbytes * ac);
+                    }
+#endif
                     case LSCOpcode::fence:
                         return 1;
                     case LSCOpcode::atomic_inc:
@@ -5630,6 +5678,16 @@ union SendgMessageDescriptor {
                         return effSIMDGRFs * vc;
                         break;
                     }
+#if XE4
+                    case LSCOpcode::store_matrix:
+                    case LSCOpcode::reduce_matrix:
+                    case LSCOpcode::store_matrix_unordered: {
+                        int vc = vectorLength();
+                        int ac = 1 << matrix.alen;
+                        int vbytes = (matrixElementBitsReg() * vc) >> 5;
+                        return GRF::bytesToGRFs(hw, vbytes * ac);
+                    }
+#endif
                     case LSCOpcode::store_2dblock:
                         return -1;      /* cannot determine from descriptor */
                     case LSCOpcode::atomic_add:
@@ -5773,11 +5831,11 @@ void DataSpecLSC::getDescriptor(HW hw, int execSize, SharedFunction &sfid, Addre
     bool block = this->desc.standardLSC.transpose && this->desc.standardLSC.opcode == static_cast<uint8_t>(LSCOpcode::load);
     if (block) {
         addrLen = 1;
-        dataLen = GRF::bytesToGRFs(hw, dbytes * vc);
+        dataLen = GRF::bytesToGRFs(hw, dbytes() * vc);
     } else {
         auto effSIMDGRFs = 1 + (execSize >> (GRF::log2Bytes(hw) - 1));
         addrLen = effSIMDGRFs * (base.isA64() ? 2 : 1);
-        dataLen = effSIMDGRFs * vc * (1 + (dbytes >> 3));
+        dataLen = effSIMDGRFs * vc * (1 + (dbytes() >> 3));
     }
 
     if (sfid == SharedFunction::automatic)
@@ -5810,7 +5868,7 @@ void block_2d::getDescriptor(HW hw, int execSize, SharedFunction &sfid, AddressB
     if (desc.mem.transpose) std::swap(w, h);
 
     addrLen = 1;
-    dataLen = std::min(count * GRF::bytesToGRFs(hw, utils::roundup_pow2(w) * h * this->dbytes), 31);
+    dataLen = std::min(count * GRF::bytesToGRFs(hw, utils::roundup_pow2(w) * h * this->dbytes()), 31);
 
     if (sfid == SharedFunction::automatic)
         sfid = SharedFunction::ugm;
@@ -5971,6 +6029,55 @@ struct AMMAParams
     DataType atype = DataType::invalid;
     DataType btype = DataType::invalid;
     DataType ctype = DataType::invalid;
+};
+
+/* Matrix Access interface */
+struct MatrixAccessOptions
+{
+    SendgMessageDescriptor desc{};
+    bool unordered = false;
+
+    MatrixAccessOptions() = default;
+    explicit constexpr MatrixAccessOptions(uint64_t raw, bool unordered = false) : desc(raw), unordered(unordered) {}
+
+    MatrixAccessOptions(DataSpecLSC ds) {
+        desc.matrix.dataSize = (ds.dbits == 4 ? 3 : (ds.dbits == 6 ? 4 : utils::log2(ds.dbits) + 2));
+        desc.matrix.vlen = ds.desc.standardLSC.vectSize;
+    }
+
+    MatrixAccessOptions(DataType dt) {
+        int bits = 1 << getLog2Bits(dt);
+        desc.matrix.dataSize = (bits == 4 ? 3 : (bits == 6 ? 4 : utils::log2(bits) + 2));
+    }
+
+    static constexpr14 MatrixAccessOptions createV(int vlen) {
+        uint64_t encoded = (vlen <= 4) ? (vlen - 1) : (utils::log2(vlen) + 1);
+        return MatrixAccessOptions{encoded << 7};
+    }
+    static constexpr   MatrixAccessOptions createVectorRow()             { return MatrixAccessOptions{0ull << 10}; }
+    static constexpr   MatrixAccessOptions createVectorCol()             { return MatrixAccessOptions{1ull << 10}; }
+    static constexpr   MatrixAccessOptions createCoopVectorRow()         { return MatrixAccessOptions{3ull << 10}; }
+    static constexpr   MatrixAccessOptions createCoopVectorCol()         { return MatrixAccessOptions{2ull << 10}; }
+    static constexpr   MatrixAccessOptions createArrayRow()              { return MatrixAccessOptions{0ull << 45}; }
+    static constexpr   MatrixAccessOptions createArrayCol()              { return MatrixAccessOptions{1ull << 45}; }
+    static constexpr14 MatrixAccessOptions createArraySize(int size)     { return MatrixAccessOptions{(uint64_t)utils::log2(size) << 41}; }
+    static constexpr14 MatrixAccessOptions createArrayStride(int stride) { return MatrixAccessOptions{(uint64_t)utils::log2(stride) << 43}; }
+    static constexpr14 MatrixAccessOptions createCoord(int x, int y)     { return MatrixAccessOptions{((uint64_t)x << 30) | ((uint64_t)y << 40)}; }
+    static constexpr   MatrixAccessOptions createUnordered()             { return MatrixAccessOptions{0ul, true}; }
+
+    friend inline constexpr MatrixAccessOptions operator|(const MatrixAccessOptions &s1, const MatrixAccessOptions &s2) {
+        return MatrixAccessOptions{s1.desc.all | s2.desc.all, s1.unordered || s2.unordered};
+    }
+    constexpr14 MatrixAccessOptions &operator|=(const MatrixAccessOptions &other) {
+        *this = *this | other;
+        return *this;
+    }
+    constexpr14 void setOpcode(LSCOpcode op) {
+        desc.common.opcode  = static_cast<uint8_t>(op);
+    }
+    constexpr14 void setReductionOp(MatrixReduction op) {
+        desc.matrix.reductionOp = static_cast<uint8_t>(op);
+    }
 };
 #endif
 

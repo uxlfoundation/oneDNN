@@ -1339,7 +1339,15 @@ PREFIX constexpr NGEN_NAMESPACE::AMMAOptions CG::BTranspose; \
 PREFIX constexpr NGEN_NAMESPACE::AMMAOptions CG::ATrack; \
 PREFIX constexpr NGEN_NAMESPACE::AMMAOptions CG::BTrack; \
 PREFIX constexpr NGEN_NAMESPACE::AMMAOptions CG::DTrack; \
-PREFIX constexpr NGEN_NAMESPACE::AMMAOptions CG::AReuse;
+PREFIX constexpr NGEN_NAMESPACE::AMMAOptions CG::AReuse; \
+\
+PREFIX constexpr NGEN_NAMESPACE::MatrixAccessOptions CG::VectorRow; \
+PREFIX constexpr NGEN_NAMESPACE::MatrixAccessOptions CG::VectorCol; \
+PREFIX constexpr NGEN_NAMESPACE::MatrixAccessOptions CG::CoopVectorRow; \
+PREFIX constexpr NGEN_NAMESPACE::MatrixAccessOptions CG::CoopVectorCol; \
+PREFIX constexpr NGEN_NAMESPACE::MatrixAccessOptions CG::ArrayRow; \
+PREFIX constexpr NGEN_NAMESPACE::MatrixAccessOptions CG::ArrayCol; \
+PREFIX constexpr NGEN_NAMESPACE::MatrixAccessOptions CG::Unordered;
 #endif
 
 #define NGEN_REGISTER_DECL(CG,PREFIX) \
@@ -1369,9 +1377,7 @@ template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XeHPC>;
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe2>;
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe3>;
 #if XE3P
-template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XE3P_35_10>;
-template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XE3P_35_11>;
-template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::XE3P_UNKNOWN>;
+template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe3p>;
 #endif
 #if XE4
 template class NGEN_NAMESPACE::BinaryCodeGenerator<NGEN_NAMESPACE::HW::Xe4>;

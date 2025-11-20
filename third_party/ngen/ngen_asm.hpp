@@ -104,9 +104,9 @@ inline void RegData::outputText(std::ostream &str, PrintDetail detail, LabelMana
 #if XE4
     if (detail == PrintDetail::xe4_type)
         str << '.' << DataTypeXe4{getType()};
-    if (detail == PrintDetail::xe4_dst && isLUOrUC())
-        str << ".uc";
-    else if (detail <= PrintDetail::xe4 && isLUOrUC())
+    if (detail == PrintDetail::xe4_dst && isLUOrC())
+        str << ".c";
+    else if (detail <= PrintDetail::xe4 && isLUOrC())
         str << ".lu";
 #endif
 
@@ -338,6 +338,7 @@ struct AsmInstruction {
     inline unsigned src1Typecode() const { return getTypecode(src[1]); }
     inline autoswsb::DestinationMask destinations(int &jip, int &uip) const;
     inline bool getOperandRegion(autoswsb::DependencyRegion &region, int opNum) const;
+    inline bool getCModDepRegion(autoswsb::DependencyRegion &region) const;
 
     void shiftJIP(int32_t shift) const {}
     void shiftUIP(int32_t shift) const {}
@@ -560,6 +561,15 @@ bool AsmInstruction::getOperandRegion(autoswsb::DependencyRegion &region, int op
     return true;
 }
 
+bool AsmInstruction::getCModDepRegion(autoswsb::DependencyRegion &region) const
+{
+    if (mod.getCMod() == ConditionModifier::none)
+        return false;
+
+    region = autoswsb::DependencyRegion(region.hw, 1, mod.getFlagReg());
+    return true;
+}
+
 #if defined(NGEN_GLOBAL_REGS) && !defined(NGEN_GLOBAL_REGS_DEFINED)
 #include "ngen_registers.hpp"
 #endif
@@ -578,7 +588,7 @@ public:
         _workaround_();
         streamStack.push_back(new InstructionStream());
 #if XE3P
-        useEfficient64Bit = (hardware >= HW::XE3P_35_10);
+        useEfficient64Bit = (hardware >= HW::Xe3p);
 #endif
     }
 
@@ -1662,35 +1672,35 @@ public:
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         opX(Opcode::mach, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
     template <typename DT = void>
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         opX(Opcode::mach, getDataType<DT>(), (hardware >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1);
     }
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         if (hardware < HW::Gen10) unsupported();
         opX((hardware >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1);
@@ -1698,7 +1708,7 @@ public:
     template <typename DT = void>
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE3P
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         if (hardware < HW::Gen10) unsupported();
         opX((hardware >= HW::XeHPC) ? Opcode::macl : Opcode::mach, getDataType<DT>(), mod, dst, src0, src1);
@@ -4009,6 +4019,16 @@ void AsmCodeGenerator::outExtSendXe4(std::ostream &out, const AsmInstruction &i)
         case SharedFunction::slm: {
             auto op = static_cast<LSCOpcode>(desc.common.opcode);
             bool write = true;
+            bool matrix_access = false;
+            switch (op) {
+                case LSCOpcode::load_matrix:
+                case LSCOpcode::store_matrix:
+                case LSCOpcode::reduce_matrix:
+                case LSCOpcode::load_matrix_unordered:
+                case LSCOpcode::store_matrix_unordered:
+                    matrix_access = true;
+                default: break;
+            }
             switch (op) {
                 case LSCOpcode::load: out << ".ld"; write = false; break;
                 case LSCOpcode::store: out << ".st"; break;
@@ -4054,6 +4074,11 @@ void AsmCodeGenerator::outExtSendXe4(std::ostream &out, const AsmInstruction &i)
                     }
                     return;
                 }
+                case LSCOpcode::load_matrix: out << ".ld_matrix"; break;
+                case LSCOpcode::store_matrix: out << ".st_matrix"; break;
+                case LSCOpcode::reduce_matrix: out << ".red_matrix"; break;
+                case LSCOpcode::load_matrix_unordered: out << ".ld_matrix_unordered"; break;
+                case LSCOpcode::store_matrix_unordered: out << ".st_matrix_unordered"; break;
                 // TODO: ldp, stp, ac{add,st,sub}, a{dec,inc}w, ldcmst, ecc
                 default: asm_unsupported();
             }
@@ -4066,14 +4091,32 @@ void AsmCodeGenerator::outExtSendXe4(std::ostream &out, const AsmInstruction &i)
                 if (desc.cmask.cmask & 0x8) out << 'w';
             }
 
-            const char *dataSizes[8] = {"8", "16", "32", "64", "8u32", "16u32", "", ""};
-            auto ds = dataSizes[desc.mem.dataSize];
-            if (!*ds) asm_unsupported();
+            if (matrix_access) {
+                out << ".";
+                out << "a" << (1 << desc.matrix.alen);
+                out << "x" << (1 << desc.matrix.astride);
+                out << "." << (desc.matrix.aorient ? "acol" : "arow");
+            }
+
+            const char *ds = nullptr;
+            if (matrix_access) {
+                const char *matrixDataSizes[16] = {"", "", "", "4", "6", "8", "16", "32", "64"};
+                ds = matrixDataSizes[desc.matrix.dataSize];
+            } else {
+                const char *dataSizes[8] = {"8", "16", "32", "64", "8u32", "16u32"};
+                ds = dataSizes[desc.mem.dataSize];
+            }
+            if (!ds || !*ds) asm_unsupported();
             out << ".d" << ds;
 
-            if (op == LSCOpcode::load || op == LSCOpcode::store) {
+            if (op == LSCOpcode::load || op == LSCOpcode::store || matrix_access) {
                 int vlen = desc.vectorLength();
                 if (vlen > 1) out << 'v' << vlen;
+            }
+
+            if (matrix_access) {
+                const char *vorients[4] = {"vrow", "vcol", "coopcol", "cooprow"};
+                out << "." << vorients[desc.matrix.vorient];
             }
 
             if (sfid != SharedFunction::slm) {
@@ -4081,7 +4124,7 @@ void AsmCodeGenerator::outExtSendXe4(std::ostream &out, const AsmInstruction &i)
                 out << '.' << addrSizes[desc.mem.addrSize];
             }
 
-            if (desc.mem.cacheMode) {
+            if (!matrix_access && desc.mem.cacheMode) {
                 const char *cacheModes[2][16] = {{
                     "", "", "l1uc_l2uc_l3uc", "l1uc_l2uc_l3c",
                     "l1uc_l2c_l3uc", "l1uc_l2c_l3c", "l1c_l2uc_l3uc", "l1c_l2uc_l3c",
@@ -4226,7 +4269,15 @@ bool AsmCodeGenerator::outSpecialOps(std::ostream &out, const AsmInstruction &i)
     auto desc = static_cast<SendgMessageDescriptor>(uint64_t(i.src[4].imm));
     auto op = static_cast<LSCOpcode>(desc.common.opcode);
 
-    if (op == LSCOpcode::fence) { defaultSend(); return true; }
+    switch (op) {
+        case LSCOpcode::fence:
+        case LSCOpcode::load_matrix:
+        case LSCOpcode::store_matrix:
+        case LSCOpcode::reduce_matrix:
+        case LSCOpcode::load_matrix_unordered:
+        case LSCOpcode::store_matrix_unordered: defaultSend(); return true;
+        default: break;
+    }
 
     auto &offset = i.src[0];
     RegisterRange roffset;

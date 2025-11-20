@@ -19,10 +19,8 @@
 
 #include "ngen_config_internal.hpp"
 
-#ifndef __OPENCL_CL_H
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
-#endif
 
 #include <atomic>
 #include <sstream>
@@ -83,6 +81,7 @@ F findOCLSymbol(const char *symbol) {
 #endif
 
 NGEN_OCL_INDIRECT_API(cl_int, clGetDeviceInfo)
+NGEN_OCL_INDIRECT_API(cl_context, clCreateContext)
 NGEN_OCL_INDIRECT_API(cl_int, clReleaseContext)
 NGEN_OCL_INDIRECT_API(cl_program, clCreateProgramWithSource)
 NGEN_OCL_INDIRECT_API(cl_program, clCreateProgramWithBinary)
@@ -268,6 +267,7 @@ cl_kernel OpenCLCodeGenerator<hw>::getKernel(cl_context context, cl_device_id de
 
     for (bool defaultFormat : {true, false}) {
         bool legacy = defaultFormat ^ zebinFirst;
+        isZebin = !legacy;
 
         if (legacy) {
             try {
@@ -342,9 +342,9 @@ Product OpenCLCodeGenerator<hw>::detectHWInfo(cl_context context, cl_device_id d
     if (product.family == ProductFamily::Unknown) {
         const char *dummyCL = "kernel void _ngen_hw_detect(){}";
         const char *dummyOptions = "";
-        cl_context query_context = context ? context : clCreateContext(nullptr, 1, &device, nullptr, nullptr, nullptr);
+        cl_context query_context = context ? context : dynamic::clCreateContext(nullptr, 1, &device, nullptr, nullptr, nullptr);
         auto binary = detail::getOpenCLCProgramBinary(query_context, device, dummyCL, dummyOptions);
-        if(!context) clReleaseContext(query_context);
+        if(!context) dynamic::clReleaseContext(query_context);
         product = ELFCodeGenerator<hw>::getBinaryHWInfo(binary);
     }
 
@@ -362,7 +362,7 @@ bool OpenCLCodeGenerator<hw>::detectEfficient64Bit(cl_context context, cl_device
     const char *dummyCL = "kernel void _ngen_eff64b_detect(){}";
 
     if (inHW == HW::Unknown) inHW = hw;
-    if (inHW < HW::XE3P_35_10) return false;
+    if (inHW < HW::Xe3p) return false;
 #if XE4
     if (inHW >= HW::Xe4) return true;
 #endif

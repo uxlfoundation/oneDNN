@@ -65,9 +65,7 @@ template <> struct Instruction12Dispatch<HW::XeHPC> { using type = InstructionXe
 template <> struct Instruction12Dispatch<HW::Xe2>   { using type = InstructionXeHPC; };
 template <> struct Instruction12Dispatch<HW::Xe3>   { using type = InstructionXeHPC; };
 #if XE3P
-template <> struct Instruction12Dispatch<HW::XE3P_35_10>  { using type = InstructionXe3p;  };
-template <> struct Instruction12Dispatch<HW::XE3P_35_11>  { using type = InstructionXe3p;  };
-template <> struct Instruction12Dispatch<HW::XE3P_UNKNOWN>  { using type = InstructionXe3p;  };
+template <> struct Instruction12Dispatch<HW::Xe3p>  { using type = InstructionXe3p;  };
 #endif
 #if XE4
 template <> struct Instruction12Dispatch<HW::Xe4>   { using type = InstructionXe4;   };
@@ -235,7 +233,7 @@ protected:
 private:
     InstructionModifier defaultModifier;
 #if XE3P
-    bool useEfficient64Bit = (hw >= HW::XE3P_35_10);
+    bool useEfficient64Bit = (hw >= HW::Xe3p);
 #endif
 
     LabelManager labelManager;
@@ -1335,7 +1333,7 @@ public:
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE3P
 #ifdef NGEN_SAFE
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
 #endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1, loc);
@@ -1344,7 +1342,7 @@ public:
     void mac(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE3P
 #ifdef NGEN_SAFE
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
 #endif
         opX(Opcode::mac, getDataType<DT>(), mod, dst, src0, src1, loc);
@@ -1353,7 +1351,7 @@ public:
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #if XE3P
 #ifdef NGEN_SAFE
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
 #endif
         opX(Opcode::mach, getDataType<DT>(), (hw >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1, loc);
@@ -1362,7 +1360,7 @@ public:
     void mach(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #if XE3P
 #ifdef NGEN_SAFE
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
 #endif
         opX(Opcode::mach, getDataType<DT>(), (hw >= HW::XeHPC) ? mod : (mod | AccWrEn), dst, src0, src1, loc);
@@ -1371,7 +1369,7 @@ public:
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
 #if XE3P
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         if (hw < HW::Gen10) unsupported();
 #endif
@@ -1381,7 +1379,7 @@ public:
     void macl(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
 #ifdef NGEN_SAFE
 #if XE3P
-        if (hardware >= HW::XE3P_35_10) unsupported();
+        if (hardware >= HW::Xe3p) unsupported();
 #endif
         if (hw < HW::Gen10) unsupported();
 #endif
@@ -3532,7 +3530,9 @@ using scope::Type1; using scope::Type2; using scope::Type3; \
 using scope::AScale; using scope::BScale; \
 using scope::ATranspose; using scope::BTranspose; \
 using scope::ATrack; using scope::BTrack; using scope::DTrack; \
-using scope::AReuse;
+using scope::AReuse; \
+using scope::VectorRow; using scope::VectorCol; using scope::CoopVectorRow; using scope::CoopVectorCol; \
+using scope::ArrayRow; using scope::ArrayCol; using scope::Unordered;
 #endif
 #define NGEN_FORWARD_SCOPE_REGISTERS(scope)    \
     NGEN_FORWARD_SCOPE_REGISTERS_BASE(scope)   \
@@ -3769,7 +3769,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
     i.binary.cmod = static_cast<int>(mod.getCMod());
 
 #if XE3P
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         if (op == Opcode::math)
             i.binaryXe3pImm.src0Reg8 = 0;
         i.binaryXe3p.dstReg8 = getHighBit(dst);
@@ -3858,7 +3858,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
     }
 
 #if XE3P
-    if (hw >= HW::XE3P_35_10)
+    if (hw >= HW::Xe3p)
         i.unaryXe3pImm.dstReg8 = getHighBit(dst);
 #endif
 
@@ -4035,7 +4035,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
     i.imm32.value = uint32_t(static_cast<uint64_t>(src1));
 
 #if XE3P
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         i.binaryXe3pImm.dstReg8 = getHighBit(dst);
         i.binaryXe3pImm.src0Reg8 = getHighBit(src0);
     }
@@ -4276,7 +4276,7 @@ void BinaryCodeGenerator<hw>::opBdpas(Opcode op, DataType defaultType, const Ins
 #if XE4
     if (hw >= HW::Xe4) unsupported();
 #endif
-    if (hw < HW::XE3P_35_10) unsupported();
+    if (hw < HW::Xe3p) unsupported();
 
     Instruction12 i{};
 
@@ -4663,7 +4663,7 @@ BinaryCodeGenerator<hw>::opBranch(Opcode op, const InstructionModifier &mod, con
     i.branches.uip = uip;
 
 #if XE3P
-    if (hw >= HW::XE3P_35_10)
+    if (hw >= HW::Xe3p)
         i.branchXe3p.dstReg8 = getHighBit(dst);
 #endif
 
@@ -4716,7 +4716,7 @@ BinaryCodeGenerator<hw>::opBranch(Opcode op, const InstructionModifier &mod, con
     i.branches.jip = jip;
 
 #if XE3P
-    if (hw >= HW::XE3P_35_10)
+    if (hw >= HW::Xe3p)
         i.branchXe3p.dstReg8 = getHighBit(dst);
 #endif
 
@@ -4771,7 +4771,7 @@ BinaryCodeGenerator<hw>::opBranch(Opcode op, const InstructionModifier &mod, con
 
 
 #if XE3P
-    if (hw >= HW::XE3P_35_10) {
+    if (hw >= HW::Xe3p) {
         i.branchXe3p.dstReg8 = getHighBit(dst);
         i.branchXe3p.src0Reg8 = getHighBit(src0);
     }
@@ -5410,8 +5410,8 @@ void BinaryCodeGenerator<hw>::op128P(OpcodeClassXe4 opclass, InstructionModifier
     disallowMod(mod.isSaturate());
     disallowMod(mod.getCMod());
 
-    i._128P.cip0_11 = cip;
-    i._128P.cip12_63 = cip >> 12;
+    i._128P.cip0_15 = cip;
+    i._128P.cip16_55 = cip >> 16;
     i._128.cdst = encodeRegXe4(dst);
 
     db(i, mod, loc);
@@ -5450,8 +5450,8 @@ void BinaryCodeGenerator<hw>::op128R(OpcodeClassXe4 opclass, DataType defaultTyp
 
     uint64_t imm = 0;
     i._128.csrc0 = encodeRegOrImmXe4<uint64_t, false>(src0, imm);
-    i._128R.imm0_11 = imm;
-    i._128R.imm12_51 = imm >> 12;
+    i._128R.imm0_15 = imm;
+    i._128R.imm16_55 = imm >> 16;
     i._128.cdst = encodeRegXe4(dst);
 
     db(i, mod, loc);

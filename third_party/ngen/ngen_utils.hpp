@@ -19,6 +19,7 @@
 
 #include "ngen_config_internal.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 

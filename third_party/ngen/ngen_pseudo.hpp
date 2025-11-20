@@ -939,6 +939,72 @@ void ammaerrorquery(InstructionModifier mod, Register dst, SourceLocation loc = 
 void ammaerrorquery(Register dst, SourceLocation loc = {}) {
     ammaerrorquery(InstructionModifier(), dst, loc);
 }
+
+// Matrix Access.
+void checkMatrixAccess(SendgMessageDescriptor desc) {
+#ifdef NGEN_SAFE
+    switch (static_cast<LSCOpcode>(desc.common.opcode)) {
+        case LSCOpcode::load_matrix_unordered:
+        case LSCOpcode::store_matrix_unordered:
+            if (desc.matrix.vorient != 3) {
+                throw invalid_matrix_access_exception();
+            }
+            break;
+        default: break;
+    }
+    if (desc.matrixElementBitsReg() * desc.matrix.vlen * desc.matrix.alen > 1024) {
+        throw invalid_matrix_access_exception();
+    }
+    if (static_cast<LSCOpcode>(desc.common.opcode) == LSCOpcode::reduce_matrix) {
+        bool d16 = (desc.matrix.dataSize == 6);
+        bool d32 = (desc.matrix.dataSize == 7);
+        switch (desc.matrix.reductionOp) {
+            case MatrixReduction::bfadd:
+            case MatrixReduction::bfmin:
+            case MatrixReduction::bfmax:
+                if (!d16) throw invalid_matrix_access_exception();
+                break;
+            case MatrixReduction::inc_wrap:
+            case MatrixReduction::dec_wrap:
+                if (!d32) throw invalid_matrix_access_exception();
+                break;
+            default:
+                if (!d16 && !d32) throw invalid_matrix_access_exception();
+        }
+    }
+#endif
+}
+
+void loadmatrix(InstructionModifier mod, MatrixAccessOptions opts, Register dst, Register coord, Register desc, SourceLocation loc = {}) {
+    opts.setOpcode(opts.unordered ? LSCOpcode::load_matrix_unordered : LSCOpcode::load_matrix);
+    checkMatrixAccess(opts.desc);
+    sendgx(mod, SharedFunction::slm, dst, coord, desc, opts.desc.all, loc);
+}
+
+void loadmatrix(MatrixAccessOptions opts, Register dst, Register coord, Register desc, SourceLocation loc = {}) {
+    loadmatrix(InstructionModifier(), opts, dst, coord, desc, loc);
+}
+
+void storematrix(InstructionModifier mod, MatrixAccessOptions opts, Register coord, Register desc, Register data, SourceLocation loc = {}) {
+    opts.setOpcode(opts.unordered ? LSCOpcode::store_matrix_unordered : LSCOpcode::store_matrix);
+    checkMatrixAccess(opts.desc);
+    sendgx(mod, SharedFunction::slm, NullRegister(), coord, RegisterRange(data, 1), desc, opts.desc.all, loc);
+}
+
+void storematrix(MatrixAccessOptions opts, Register coord, Register desc, Register data, SourceLocation loc = {}) {
+    storematrix(InstructionModifier(), opts, coord, desc, data, loc);
+}
+
+void reducematrix(InstructionModifier mod, MatrixReduction rop, MatrixAccessOptions opts, Register coord, Register desc, Register data, SourceLocation loc = {}) {
+    opts.setOpcode(LSCOpcode::reduce_matrix);
+    opts.setReductionOp(rop);
+    checkMatrixAccess(opts.desc);
+    sendgx(mod, SharedFunction::slm, NullRegister(), coord, RegisterRange(data, 1), desc, opts.desc.all, loc);
+}
+
+void reducematrix(MatrixReduction rop, MatrixAccessOptions opts, Register coord, Register desc, Register data, SourceLocation loc = {}) {
+    reducematrix(InstructionModifier(), rop, opts, coord, desc, data, loc);
+}
 #endif
 
 // XeHP+ prologues.

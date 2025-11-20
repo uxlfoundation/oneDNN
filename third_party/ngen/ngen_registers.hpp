@@ -404,4 +404,12 @@ static constexpr_reg AMMAOptions ATrack = AMMAOptions::createATrack();
 static constexpr_reg AMMAOptions BTrack = AMMAOptions::createBTrack();
 static constexpr_reg AMMAOptions DTrack = AMMAOptions::createDTrack();
 static constexpr_reg AMMAOptions AReuse = AMMAOptions::createAReuse();
+
+static constexpr_reg MatrixAccessOptions VectorRow = MatrixAccessOptions::createVectorRow();
+static constexpr_reg MatrixAccessOptions VectorCol = MatrixAccessOptions::createVectorCol();
+static constexpr_reg MatrixAccessOptions CoopVectorRow = MatrixAccessOptions::createCoopVectorRow();
+static constexpr_reg MatrixAccessOptions CoopVectorCol = MatrixAccessOptions::createCoopVectorCol();
+static constexpr_reg MatrixAccessOptions ArrayRow = MatrixAccessOptions::createArrayRow();
+static constexpr_reg MatrixAccessOptions ArrayCol = MatrixAccessOptions::createArrayCol();
+static constexpr_reg MatrixAccessOptions Unordered = MatrixAccessOptions::createUnordered();
 #endif

@@ -17,6 +17,7 @@
 #ifndef NGEN_DEBUGINFO_HPP
 #define NGEN_DEBUGINFO_HPP
 
+#include <cstring>
 #include <sstream>
 #include <unordered_map>
 #include <vector>

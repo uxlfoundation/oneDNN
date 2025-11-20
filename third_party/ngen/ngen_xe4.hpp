@@ -222,11 +222,11 @@ struct InstructionXe4 {
             uint64_t : 63;
         } _128O;
         struct {
-            uint64_t : 52;
-            uint64_t cip0_11 : 12;
+            uint64_t : 48;
+            uint64_t cip0_15 : 16;
 
-            uint64_t cip12_63 : 52;
-            uint64_t : 12;
+            uint64_t cip16_55 : 40;
+            uint64_t : 24;
         } _128P;
         struct {
             uint64_t : 45;
@@ -237,10 +237,10 @@ struct InstructionXe4 {
             uint64_t : 64;
         } _128Q;
         struct {
-            uint64_t : 52;
-            uint64_t imm0_11 : 12;
+            uint64_t : 48;
+            uint64_t imm0_15 : 16;
 
-            uint64_t imm12_51 : 40;
+            uint64_t imm16_55 : 40;
             uint64_t : 24;
         } _128R;
         struct {
@@ -331,8 +331,8 @@ struct InstructionXe4 {
             uint64_t : 23;
             uint64_t ipred : 1;
             uint64_t pf : 4;
-            uint64_t : 8;
-            uint64_t imm : 4;
+            uint64_t : 4;
+            uint64_t imm : 8;
             uint64_t : 24;
 
             uint64_t : 64;
@@ -388,6 +388,7 @@ struct InstructionXe4 {
 
     inline autoswsb::DestinationMask destinations(int &jip, int &uip) const;
     inline bool getOperandRegion(autoswsb::DependencyRegion &region, int opNum) const;
+    inline bool getCModDepRegion(autoswsb::DependencyRegion &region) const { return false; }
     inline bool getImm32(uint32_t &imm) const;
     static bool getSendDesc(MessageDescriptor &desc)           { return false; }
     static bool getARFType(ARFType &arfType, int opNum, HW hw) { return false; }
@@ -439,7 +440,7 @@ static inline unsigned encodeRegXe4(RegData rd)
         case RegFileSRF: r = 0x7FF - rd.getBase();                           break;
         default: break;
     }
-    return (r << 1) | unsigned(rd.isLUOrUC());
+    return (r << 1) | unsigned(rd.isLUOrC());
 }
 
 static inline unsigned encodeRegXe4(IndirectARF iarf)

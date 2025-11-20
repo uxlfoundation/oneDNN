@@ -36,9 +36,7 @@ template <> struct EncodingTag12Dispatch<HW::Xe3>   { using tag = EncodingTagXeH
 #if XE3P
 struct EncodingTagXe3p : public EncodingTagXeHPC {};
 
-template <> struct EncodingTag12Dispatch<HW::XE3P_35_10>  { using tag = EncodingTagXe3p; };
-template <> struct EncodingTag12Dispatch<HW::XE3P_35_11>  { using tag = EncodingTagXe3p; };
-template <> struct EncodingTag12Dispatch<HW::XE3P_UNKNOWN>  { using tag = EncodingTagXe3p; };
+template <> struct EncodingTag12Dispatch<HW::Xe3p>  { using tag = EncodingTagXe3p; };
 #endif
 
 class SWSBInfo12
@@ -597,6 +595,8 @@ struct Instruction12 {
     inline autoswsb::DestinationMask destinations(int &jip, int &uip) const;
     template <typename Tag = EncodingTag12>
     inline bool getOperandRegion(autoswsb::DependencyRegion &region, int opNum) const;
+    template <typename Tag = EncodingTag12>
+    inline bool getCModDepRegion(autoswsb::DependencyRegion &region) const;
     inline bool getImm32(uint32_t &imm) const;
     inline bool getSendDesc(MessageDescriptor &desc) const;
     inline bool getARFType(ARFType &arfType, int opNum, HW hw) const;
@@ -624,6 +624,11 @@ struct InstructionXeHPC : public Instruction12 {
     template <typename Tag = EncodingTagXeHPC>
     bool getOperandRegion(autoswsb::DependencyRegion &region, int opNum) const {
         return Instruction12::getOperandRegion<EncodingTagXeHPC>(region, opNum);
+    }
+
+    template <typename Tag = EncodingTagXeHPC>
+    bool getCModDepRegion(autoswsb::DependencyRegion &region) const {
+        return Instruction12::getCModDepRegion<EncodingTagXeHPC>(region);
     }
 
 #if XE3P
@@ -1580,6 +1585,52 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
 #if XE3P
     if (op == Opcode::mullh) region.duplicateLH();
 #endif
+    return true;
+}
+
+template <typename Tag>
+bool Instruction12::getCModDepRegion(autoswsb::DependencyRegion &region) const
+{
+    /* Skip instructions with no cmod fields */
+    auto op = opcode();
+    switch (op) {
+        case Opcode::directive:
+        case Opcode::sync:
+        case Opcode::illegal:
+        case Opcode::bfn:
+        case Opcode::send:
+        case Opcode::sendc:
+        case Opcode::dpas:
+        case Opcode::dpasw:
+        case Opcode::math:
+#if XE3P
+        case Opcode::bdpas:
+        case Opcode::sendg:
+        case Opcode::sendgc:
+        case Opcode::sendgx:
+        case Opcode::sendgxc:
+#endif
+            return false;
+        default:
+            if (isBranch(op))
+                return false;
+            break;
+    }
+
+    auto cmod = static_cast<ConditionModifier>(binary.cmod);
+    if (cmod == ConditionModifier::none)
+        return false;
+
+    /* Decode cmod flag */
+    constexpr bool xeHPC = !std::is_same<Tag, EncodingTag12>::value;
+    unsigned flagn = xeHPC ? commonXeHPC.flagReg : common.flagReg;
+    unsigned lg2ES = xeHPC ? commonXeHPC.execSize : common.execSize;
+
+    auto flag = FlagRegister::createFromIndex(flagn);
+    if (lg2ES >= 5)
+        flag.setType(DataType::ud);
+    region = autoswsb::DependencyRegion(region.hw, 1, flag);
+
     return true;
 }
 

@@ -85,15 +85,9 @@ class InterfaceHandler
     template <HW hw> friend class LevelZeroCodeGenerator;
 
 public:
-    InterfaceHandler(HW hw_) : hw(hw_)
-#if XE4
-                             // This is a workaround for a segfault in the driver
-                             // with OpenCL when scratchspace is not used.
-                             , scratchSize(hw_ >= HW::Xe4 ? 1 : 0)
-#endif
-                             , simd(GRF::bytes(hw_) >> 2)
+    InterfaceHandler(HW hw_) : hw(hw_), simd(GRF::bytes(hw_) >> 2)
 #if XE3P
-                             , useEfficient64Bit(hw_ >= HW::XE3P_35_10)
+                             , useEfficient64Bit(hw_ >= HW::Xe3p)
 #endif
                              , requestedInlineBytes(defaultInlineBytes(hw))
     {}
@@ -368,7 +362,7 @@ Subregister InterfaceHandler::getGroupID(int dim) const
 {
 #if XE4
     if (hw >= HW::Xe4)
-        return SRF(5 + dim)[0];
+        return SRF(5 + dim)[0].ud();
 #endif
 
     switch (dim) {
@@ -720,7 +714,7 @@ void InterfaceHandler::setPrologueLabels(InterfaceLabels &labels, LabelManager &
 
     int immOffset = 0xC;
 #if XE3P
-    if (hw >= HW::XE3P_35_10) immOffset = 0x8;
+    if (hw == HW::Xe3p) immOffset = 0x8;
 #endif
 
     setOffset(labels.localIDsLoaded, offsetSkipPerThread);
@@ -823,11 +817,6 @@ std::string InterfaceHandler::generateZeInfo() const
               "        size: 8\n";
     }
 #endif
-    if (scratchSize > 0) {
-        md << "      - arg_type: scratch_pointer\n"
-              "        offset: 8\n"
-              "        size: 8\n";
-    }
     for (auto &assignment : assignments) {
         uint32_t size = 0;
         bool skipArg = false;

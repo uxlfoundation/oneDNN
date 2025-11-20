@@ -21,6 +21,9 @@
 #include "gpu/intel/include/types.h"
 
 float __builtin_IB_atomic_max_local_f32(__local float *, float);
+float __builtin_IB_atomic_add_local_f32(__local float *, float);
+float __builtin_IB_atomic_add_global_f32(__global float *, float);
+float __builtin_IB_atomic_add_global_f16(__global half *, half);
 
 __attribute__((overloadable)) float local_atomic_max(local float *p, float v) {
     return __builtin_IB_atomic_max_local_f32(p, v);
@@ -42,6 +45,60 @@ __attribute__((overloadable)) uint local_atomic_max(local uint *p, uint v) {
 
 __attribute__((overloadable)) int local_atomic_max(local int *p, int v) {
     return atomic_max(p, v);
+}
+
+__attribute__((overloadable)) float local_atomic_add(local float *p, float v) {
+    return __builtin_IB_atomic_add_local_f32(p, v);
+}
+
+__attribute__((overloadable)) half local_atomic_add(
+        local half *p, half v) { /* not implemented */
+    return v;
+}
+
+__attribute__((overloadable)) ushort local_atomic_add(
+        local ushort *p, ushort v) { /* not implemented */
+    return v;
+}
+
+__attribute__((overloadable)) uint local_atomic_add(local uint *p, uint v) {
+    return atomic_add(p, v);
+}
+
+__attribute__((overloadable)) int local_atomic_add(local int *p, int v) {
+    return atomic_add(p, v);
+}
+
+__attribute__((overloadable)) float global_atomic_add(
+        global float *p, float v) {
+    return __builtin_IB_atomic_add_global_f32(p, v);
+    //atomic_fetch_add((volatile __global float *)p, v);
+    //float d;
+    //return d;
+}
+
+__attribute__((overloadable)) half global_atomic_add(global half *p, half v) {
+    /*
+    half oldVal, newVal;
+    do {
+        oldVal = *p;
+        newVal = oldVal + v;
+    } while (atomic_exchange((volatile __global half *)p, newVal) != oldVal);
+    */
+    return __builtin_IB_atomic_add_global_f16(p, v);
+}
+
+__attribute__((overloadable)) ushort global_atomic_add(
+        global ushort *p, ushort v) { /* not implemented */
+    return v;
+}
+
+__attribute__((overloadable)) uint global_atomic_add(global uint *p, uint v) {
+    return atomic_add(p, v);
+}
+
+__attribute__((overloadable)) int global_atomic_add(global int *p, int v) {
+    return atomic_add(p, v);
 }
 
 #define DEF_BLOCK_LOAD_STORE(type, itype, suffix, n) \
@@ -398,6 +455,16 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
             int offset_c) { \
         tile_load_t(t, ptr, m, n, n, offset_r, offset_c); \
     } \
+    __attribute__((overloadable)) void tile_store_t_full(tile_type t, \
+            local element_type *ptr, int ld, int offset_r, int offset_c) { \
+        ptr += ld * offset_r + offset_c; \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr++) { \
+            _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
+                int i = ld * (i0 + get_sub_group_local_id()); \
+                ptr[i] = tile_access(t, i0, j, sg, br, bc, nbr); \
+            } \
+        } \
+    } \
     __attribute__((overloadable)) void tile_store_full(tile_type t, \
             local element_type *ptr, int ld, int offset_r, int offset_c) { \
         ptr += ld * offset_c + offset_r; \
@@ -467,6 +534,26 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
                     = tile_access(t, j0, i, sg, br, bc, nbr); \
         } \
     } \
+    __attribute__((overloadable)) void tile_store_sys_src2(tile_type t, \
+            local element_type *ptr, int tile_n, int ld, int offset_r, \
+            int offset_c) { \
+        const int cp = 32 / sizeof(element_type); \
+        offset_r += get_sub_group_local_id(); \
+        int offset_c0 = offset_c & (cp - 1); \
+        int offset_c1 = offset_c & ~(cp - 1); \
+        ptr += offset_c0 + tile_n * offset_c1; \
+        _Pragma("unroll") for (int j0 = 0; j0 < br * nbr; \
+                               j0 += sg, offset_r += sg) { \
+            int offset_r0 = offset_r & (tile_n - 1); \
+            int offset_r1 = offset_r & ~(tile_n - 1); \
+            local element_type *ptr_j = ptr + offset_r0 + ld * offset_r1; \
+            _Pragma("unroll") for (int i = 0; i < bc * nbc; i++) { \
+                *ptr_j = tile_access(t, j0, i, sg, br, bc, nbr); \
+                ptr_j += cp; \
+                if ((~i & (cp - 1)) == 0) ptr_j += cp * (tile_n - 1); \
+            } \
+        } \
+    } \
     __attribute__((overloadable)) void tile_store_t_sys_src2(tile_type t, \
             local element_type *ptr, int tile_n, int ld, int offset_r, \
             int offset_c) { \
@@ -495,6 +582,47 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
                 int i = i0 + get_sub_group_local_id(); \
                 (void)local_atomic_max( \
                         ptr + i, tile_access(t, i0, j, sg, br, bc, nbr)); \
+            } \
+        } \
+    } \
+    __attribute__((overloadable)) void tile_atomic_add_full(tile_type t, \
+            local element_type *ptr, int ld, int offset_r, int offset_c) { \
+        ptr += ld * offset_c + offset_r; \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
+            _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
+                int i = i0 + get_sub_group_local_id(); \
+                (void)local_atomic_add( \
+                        ptr + i, tile_access(t, i0, j, sg, br, bc, nbr)); \
+            } \
+        } \
+    } \
+    __attribute__((overloadable)) void tile_atomic_add_full(tile_type t, \
+            global element_type *ptr, int ld, int offset_r, int offset_c) { \
+        ptr += ld * offset_c + offset_r; \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
+            _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
+                int i = i0 + get_sub_group_local_id(); \
+                (void)global_atomic_add( \
+                        ptr + i, tile_access(t, i0, j, sg, br, bc, nbr)); \
+            } \
+        } \
+    } \
+    __attribute__((overloadable)) void tile_atomic_add(tile_type t, \
+            global element_type *ptr, int m, int n, int ld, int offset_r, \
+            int offset_c) { \
+        if (m >= offset_r + br * nbr && n >= offset_c + bc * nbc) { \
+            tile_atomic_add_full(t, ptr, ld, offset_r, offset_c); \
+            return; \
+        } \
+        ptr += ld * offset_c + offset_r; \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += ld) { \
+            if (offset_c + j < n) { \
+                _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
+                    int i = i0 + get_sub_group_local_id(); \
+                    if (offset_r + i < m) \
+                        (void)global_atomic_add(ptr + i, \
+                                tile_access(t, i0, j, sg, br, bc, nbr)); \
+                } \
             } \
         } \
     }

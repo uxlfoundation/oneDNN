@@ -30,7 +30,8 @@ std::random_device &get_random_device() {
 }
 
 std::mt19937 &get_generator() {
-    static std::mt19937 generator(get_random_device()());
+    //static std::mt19937 generator(get_random_device()());
+    static std::mt19937 generator(3);
     return generator;
 }
 
@@ -57,16 +58,16 @@ void fill_random(std::vector<float> &out, const memory::desc &desc) {
 // this is changed from the fill_random() function in matmul_perf.cpp.
 void fill_eye(std::vector<float> &out, const memory::desc &desc) {
     auto elems = product(desc.get_dims());
-    size_t width = desc.get_dims()[desc.get_ndims()-1];
+    size_t width = desc.get_dims()[desc.get_ndims() - 1];
     for (memory::dim i = 0; i < elems; i++) {
-        if(i%width == i/width) {
+        //if(i%width == i/width) {
+        if (i % width == i / width % 16) { //TMP for testing
             out[i] = 1.f;
         } else {
             out[i] = 0.f;
         }
     }
 }
-
 
 void fill_random_scales(std::vector<float> &out, const memory::desc &desc) {
     static std::vector<float> random_data_f;

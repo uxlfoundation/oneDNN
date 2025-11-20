@@ -36,6 +36,7 @@ namespace impl {
 #define DNNL_ARG_DIFF_QUERIES DNNL_ARG_DIFF_SRC_0
 #define DNNL_ARG_DIFF_KEYS DNNL_ARG_DIFF_SRC_1
 #define DNNL_ARG_DIFF_VALUES DNNL_ARG_DIFF_SRC_2
+#define DNNL_ARG_S2_TEST DNNL_ARG_DIFF_SRC_3
 //TODO: ARG_DIFF_ATTN_MASK?
 
 // NOLINTBEGIN(modernize-use-using)
@@ -83,6 +84,8 @@ struct sdpa_desc_t : public op_desc_t {
     quant_entry_t kq_zero_points;
     quant_entry_t vs_scales;
     quant_entry_t vs_zero_points;
+
+    memory_desc_t s2_test_desc;
 
     memory_desc_t dst_desc;
     memory_desc_t diff_dst_desc;

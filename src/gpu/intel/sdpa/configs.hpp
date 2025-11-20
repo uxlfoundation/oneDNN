@@ -114,12 +114,13 @@ struct ukernel_serialized_opts_t
 
     ukernel_serialized_opts_t() = default;
     ukernel_serialized_opts_t(micro::GEMMProtocol::Options opts)
-        : localB(opts.localB)
+        : localA(opts.localA)
+        , localB(opts.localB)
         , slmPtr(opts.slmPtr)
         , scaleA(opts.scaleA)
         , offsetA(opts.offsetA) {}
-    bool localB, slmPtr, scaleA, offsetA;
-    uint8_t padding[4] = {0};
+    bool localA, localB, slmPtr, scaleA, offsetA;
+    uint8_t padding[3] = {0};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_opts_t);
 static_assert(sizeof(ukernel_serialized_opts_t) == 8,
@@ -153,6 +154,8 @@ struct ukernel_serialized_sizes_t
     int64_t m = 0, n = 0, k = 0;
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_sizes_t);
+static_assert(sizeof(ukernel_serialized_sizes_t) == 32,
+        "Expected sizeof(ukernel_serialized_sizes_t) == 32");
 
 struct ukernel_serialized_problem_t
     : trivially_serializable_t<ukernel_serialized_problem_t> {
@@ -217,10 +220,11 @@ struct ukernel_serialized_problem_t
     int aoPtrDims;
     int aqGroupM;
     int aqGroupK;
+    uint8_t padding1[4] = {0};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_problem_t);
-static_assert(sizeof(ukernel_serialized_problem_t) == 92,
-        "Expected sizeof(ukernel_serialized_problem_t) == 92");
+static_assert(sizeof(ukernel_serialized_problem_t) == 96,
+        "Expected sizeof(ukernel_serialized_problem_t) == 96");
 
 struct micro_ukernel_params_t
     : trivially_serializable_t<micro_ukernel_params_t> {
@@ -232,17 +236,28 @@ struct micro_ukernel_params_t
     ukernel_serialized_hwinfo_t hwinfo;
     ukernel_serialized_problem_t problem_kq;
     ukernel_serialized_problem_t problem_vs;
+    ukernel_serialized_problem_t problem_vtdA;
+    ukernel_serialized_problem_t problem_ktq;
     ukernel_serialized_opts_t opts_kq;
     ukernel_serialized_opts_t opts_vs;
+    ukernel_serialized_opts_t opts_vtdA;
+    ukernel_serialized_opts_t opts_ktq;
     ukernel_serialized_sizes_t sizes_kq, sizes_vs;
+    ukernel_serialized_sizes_t sizes_vtdA;
+    ukernel_serialized_sizes_t sizes_ktq;
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_ukernel_params_t);
 
 void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
         gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
+        gemmstone::GEMMProblem &problem_vtdA,
+        gemmstone::GEMMProblem &problem_ktq,
         micro::GEMMProtocol::Options &opts_kq,
-        micro::GEMMProtocol::Options &opts_vs, gemmstone::SizeParams &sizes_kq,
-        gemmstone::SizeParams &sizes_vs,
+        micro::GEMMProtocol::Options &opts_vs,
+        micro::GEMMProtocol::Options &opts_vtdA,
+        micro::GEMMProtocol::Options &opts_ktq, gemmstone::SizeParams &sizes_kq,
+        gemmstone::SizeParams &sizes_vs, gemmstone::SizeParams &sizes_vtdA,
+        gemmstone::SizeParams &sizes_ktq,
         const micro_ukernel_params_t &ukernel_config);
 
 } // namespace sdpa

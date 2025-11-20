@@ -170,10 +170,9 @@ protected:
         //ws_md_.format_tag = format_tag::a;
 
         dims_t d;
-        d[0] = 2 * desc()->queries(); // col sums + maxs
+        d[0] = 3 * desc()->queries(); // col sums + maxs + Di // TODO: add batch
 
-        memory_desc_init_by_tag(ws_md_, 1,
-                d, data_type::f32, format_tag::a);
+        memory_desc_init_by_tag(ws_md_, 1, d, data_type::f32, format_tag::a);
     }
 
 private:
@@ -257,7 +256,9 @@ struct sdpa_fwd_pd_t : public sdpa_pd_t {
     int n_inputs() const override {
         return 3 + int(with_attn_mask()) + int(with_attn_scale());
     }
-    int n_outputs() const override { return 1 + (!types::is_zero_md(workspace_md())); }
+    int n_outputs() const override {
+        return 1 + (!types::is_zero_md(workspace_md()));
+    }
 
 protected:
     sdpa_fwd_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
@@ -284,7 +285,6 @@ protected:
 
         return ok;
     }
-
 };
 
 struct sdpa_bwd_pd_t : public sdpa_pd_t {
@@ -296,18 +296,15 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
         // memories unconditionally but the primitive desc is not set up for
         // quantization.
         if (utils::one_of(arg, DNNL_ARG_QUERIES, DNNL_ARG_KEYS, DNNL_ARG_VALUES,
-                    DNNL_ARG_DST,
-                    DNNL_ARG_DIFF_DST,
-                    DNNL_ARG_ATTN_MASK, DNNL_ARG_SCALE,
-                    DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
+                    DNNL_ARG_DST, DNNL_ARG_DIFF_DST, DNNL_ARG_ATTN_MASK,
+                    DNNL_ARG_SCALE, DNNL_ARG_ATTR_SCALES | DNNL_ARG_KEYS,
                     DNNL_ARG_ATTR_SCALES | DNNL_ARG_VALUES,
                     DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_KEYS,
                     DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
             return arg_usage_t::input;
 
-        if (utils::one_of(arg, DNNL_ARG_DIFF_QUERIES,
-                               DNNL_ARG_DIFF_KEYS,
-                               DNNL_ARG_DIFF_VALUES))
+        if (utils::one_of(arg, DNNL_ARG_DIFF_QUERIES, DNNL_ARG_DIFF_KEYS,
+                    DNNL_ARG_DIFF_VALUES, DNNL_ARG_S2_TEST))
             return arg_usage_t::output;
 
         if (arg == DNNL_ARG_WORKSPACE)
@@ -329,6 +326,7 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
             case DNNL_ARG_DIFF_QUERIES: return dst_md(0, user_input);
             case DNNL_ARG_DIFF_KEYS: return dst_md(1, user_input);
             case DNNL_ARG_DIFF_VALUES: return dst_md(2, user_input);
+            case DNNL_ARG_S2_TEST: return dst_md(3, user_input);
             default: return primitive_desc_t::arg_md(arg);
         }
     }
@@ -351,6 +349,7 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
             case 0: return &desc_.diff_q_desc;
             case 1: return &desc_.diff_k_desc;
             case 2: return &desc_.diff_v_desc;
+            case 3: return &desc_.s2_test_desc;
             default: return &glob_zero_md;
         }
     }
@@ -361,19 +360,22 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
 
     int n_inputs() const override {
         // Q, K, V, O, dO
-        return 5 + int(with_attn_mask()) + int(with_attn_scale()) + int(!types::is_zero_md(workspace_md()));
+        return 5 + int(with_attn_mask()) + int(with_attn_scale())
+                + int(!types::is_zero_md(workspace_md()));
     }
-    int n_outputs() const override { return 3; } // dQ, dK, dV
+    //int n_outputs() const override { return 3; } // dQ, dK, dV
+    int n_outputs() const override { return 4; } // dQ, dK, dV //TMP s2
 
     const memory_desc_t *diff_qry_md() const { return &desc_.diff_q_desc; }
     const memory_desc_t *diff_key_md() const { return &desc_.diff_k_desc; }
     const memory_desc_t *diff_val_md() const { return &desc_.diff_v_desc; }
 
-
 protected:
     sdpa_bwd_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
             const hint_class *hint_fwd_pd)
-        : sdpa_pd_t(adesc, attr, hint_fwd_pd) {printf("wat?\n");}
+        : sdpa_pd_t(adesc, attr, hint_fwd_pd) {
+        printf("wat?\n");
+    }
 
     bool set_default_format(memory_desc_t *md) {
         memory_desc_wrapper mdw(md);
@@ -386,8 +388,8 @@ protected:
         bool ok = true;
 
         for (auto md : {&desc_.q_desc, &desc_.k_desc, &desc_.v_desc,
-                     &desc_.dst_desc, &desc_.diff_dst_desc,
-                     &desc_.diff_q_desc, &desc_.diff_k_desc, &desc_.diff_v_desc}) {
+                     &desc_.dst_desc, &desc_.diff_dst_desc, &desc_.diff_q_desc,
+                     &desc_.diff_k_desc, &desc_.diff_v_desc}) {
             ok = ok && set_default_format(md);
         }
 
@@ -396,7 +398,6 @@ protected:
 
         return ok;
     }
-
 };
 
 // NOLINTEND(google-default-arguments)

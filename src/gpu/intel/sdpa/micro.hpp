@@ -39,8 +39,10 @@ namespace sdpa {
 struct micro_params_t : trivially_serializable_t<micro_params_t> {
 
     const std::vector<const char *> &get_kernel_names() const {
-        static const std::vector<const char *> kernel_names_fwd = { "micro_sdpa" };
-        static const std::vector<const char *> kernel_names_bwd = { "micro_sdpa_bwd" };
+        static const std::vector<const char *> kernel_names_fwd
+                = {"micro_sdpa"};
+        static const std::vector<const char *> kernel_names_bwd
+                = {"micro_sdpa_bwd"};
         return is_fwd ? kernel_names_fwd : kernel_names_bwd;
     }
 
@@ -331,9 +333,9 @@ struct micro_bwd_t : public primitive_t {
             VCHECK_SDPA_COND(!is_fwd(), VERBOSE_BAD_PROPKIND);
 
             //TODO: real checks
-            printf("%d %d %d %d??ndims\n", 
-                    qry_md()->ndims, key_md()->ndims,
-                            val_md()->ndims, dst_md()->ndims);
+            // TODO: check dt == f32 | f16 for all inputs
+            printf("%d %d %d %d??ndims\n", qry_md()->ndims, key_md()->ndims,
+                    val_md()->ndims, dst_md()->ndims);
             VCHECK_SDPA_COND(
                     utils::everyone_is(4, qry_md()->ndims, key_md()->ndims,
                             val_md()->ndims, dst_md()->ndims),
@@ -450,10 +452,8 @@ struct micro_bwd_t : public primitive_t {
             }
 
             init_default_ws();
-            printf("iscomparableeee?%d\n", 
-                    compare_ws(hint_fwd_pd_));
-            VCHECK_SDPA_COND(
-                    compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
+            printf("iscomparableeee?%d\n", compare_ws(hint_fwd_pd_));
+            VCHECK_SDPA_COND(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
 
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));
@@ -515,7 +515,7 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t execute_backward(const exec_ctx_t &ctx) const;
 
-    compute::kernel_t kernel_;
+    compute::kernel_t kernel_, preprocess_;
 };
 
 } // namespace sdpa

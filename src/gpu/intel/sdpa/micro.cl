@@ -145,7 +145,8 @@ DECLARE_2D_TILE_BLOCK_OPS(s_tile_type_reblock, FMA_TYPE, SUBGROUP_SIZE,
 
 DECLARE_2D_TILE(
         s_sum_tile_type, float, SUBGROUP_SIZE, ugemm_kq_sg_tile_n, 1, 1, 1)
-DECLARE_2D_TILE_PRINT(s_sum_tile_type, float, SUBGROUP_SIZE, ugemm_kq_sg_tile_n, 1, 1, 1)
+DECLARE_2D_TILE_PRINT(
+        s_sum_tile_type, float, SUBGROUP_SIZE, ugemm_kq_sg_tile_n, 1, 1, 1)
 
 DECLARE_2D_TILE(
         a_scale_tile_type, float, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1, 1, 1)
@@ -614,8 +615,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
     uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m;
     uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n;
-        //printf("tile_n %d sg_j0 %d sg_i, %d\n", ugemm_kq_wg_tile_n, sg_j0_kq, sg_i_kq);
-        //printf("k0? >k0_end%d:%d \n", k0end, ugemm_kq_wg_tile_m);
+    //printf("tile_n %d sg_j0 %d sg_i, %d\n", ugemm_kq_wg_tile_n, sg_j0_kq, sg_i_kq);
+    //printf("k0? >k0_end%d:%d \n", k0end, ugemm_kq_wg_tile_m);
 
     /* Main loop over k blocks */
     for (int k0 = 0; k0 < k0end; k0 += ugemm_kq_wg_tile_m) {
@@ -769,11 +770,10 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 /* cache */ LSC_LDCC_L1C_L3C);
 #endif
 #endif
-#ifndef ALT_MAX
+
         /* Read back WG-wide maxima */
         intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
         tile_load_full(&S_max_tile, S_max_slm, ugemm_kq_wg_tile_n, sg_j0_kq, 0);
-#endif
 
 #if SOFTMAX_INF_AS_ZERO
 #define set_zeros(v) vselect(-FLT_MAX, v, visfinite(v))
@@ -786,36 +786,19 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define scaled_exp(x) native_vexp2(x *scale)
         tile_elementwise(S_tile, scaled_exp);
 
-#ifdef ALT_MAX
-        /* Read back WG-wide maxima and adjust S to match */
-        intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
-        s_sum_tile_type S_max_tile1;
-        tile_copy(S_max_tile, S_max_tile1);
-        tile_load_full(&S_max_tile, S_max_slm, ugemm_kq_wg_tile_n, sg_j0_kq, 0);
-
-#define binary_exp_neg(x, y) native_vexp2(scale *((x) - (y)))
-        tile_binary(S_max_tile1, S_max_tile, binary_exp_neg);
-        tile_vbroadcast_mul(&S_tile, S_max_tile1);
-#endif
-
         /* Accumulate sums. S tile is transposed for easy summation. */
         s_sum_tile_type S_sum_tile1;
         tile_fill(S_sum_tile1, 0.0f);
         tile_vreduce_add(S_tile, &S_sum_tile1);
 
-#if USE_SYSTOLIC_UKERNEL
-        /* Convert to half or bf16, VNNI format */
-        s_tile_type_packed S_tile_packed;
-        tile_copy_to_vec2(S_tile, S_tile_packed, VEC_TYPE2);
-
-        /* Store to SLM, in packed format */
-        tile_store_t_sys_src2(S_tile_packed, (local uint *)S_slm,
-                ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m / 2, sg_i0_kq / 2,
-                sg_j0_kq);
-#else
         /* Reblock and store to SLM */
         s_tile_type_reblock S_tile_reblock;
         tile_copy_reblock(S_tile, &S_tile_reblock);
+
+#if USE_SYSTOLIC_UKERNEL
+        tile_store_t_sys_src2(S_tile_reblock, (local FMA_TYPE *)S_slm,
+                ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m, sg_i0_kq, sg_j0_kq);
+#else
         tile_store_block_packed(S_tile_reblock, S_slm, ugemm_vs_sg_tile_n,
                 ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
 #endif
@@ -856,10 +839,12 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     sg_i_kq);
 #if IS_TRAINING
             // save columns sums and maxes to workspace for training pass
-            global float* ws_maxes = ws;
-            global float* ws_sums  = ws + q;
-            tile_store_full(S_max_tile_old, ws_maxes, ugemm_kq_wg_tile_n, sg_j0_kq + wg_j0, 0);
-            tile_store_full(S_sum_tile, ws_sums, ugemm_kq_wg_tile_n, sg_j0_kq + wg_j0, 0);
+            global float *ws_maxes = ws;
+            global float *ws_sums = ws + q;
+            tile_store_full(S_max_tile_old, ws_maxes, ugemm_kq_wg_tile_n,
+                    sg_j0_kq + wg_j0, 0);
+            tile_store_full(S_sum_tile, ws_sums, ugemm_kq_wg_tile_n,
+                    sg_j0_kq + wg_j0, 0);
 #endif
         }
 
@@ -1041,4 +1026,3 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     tile_store(A_tile_dst, A, d, q_group_size, lda, sg_i0_vs, sg_j0_vs);
 #endif
 }
-

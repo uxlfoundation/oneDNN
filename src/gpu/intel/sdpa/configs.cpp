@@ -635,9 +635,14 @@ dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
 
 void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
         gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
+        gemmstone::GEMMProblem &problem_vtdA,
+        gemmstone::GEMMProblem &problem_ktq,
         micro::GEMMProtocol::Options &opts_kq,
-        micro::GEMMProtocol::Options &opts_vs, gemmstone::SizeParams &sizes_kq,
-        gemmstone::SizeParams &sizes_vs,
+        micro::GEMMProtocol::Options &opts_vs,
+        micro::GEMMProtocol::Options &opts_vtdA,
+        micro::GEMMProtocol::Options &opts_ktq, gemmstone::SizeParams &sizes_kq,
+        gemmstone::SizeParams &sizes_vs, gemmstone::SizeParams &sizes_vtdA,
+        gemmstone::SizeParams &sizes_ktq,
         const micro_ukernel_params_t &ukernel_config) {
 
     // hardware info
@@ -649,6 +654,7 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
     auto deserialize_options
             = [](micro::GEMMProtocol::Options &gemmstone_opts,
                       const ukernel_serialized_opts_t &serialized_opts) {
+                  gemmstone_opts.localA = serialized_opts.localA;
                   gemmstone_opts.localB = serialized_opts.localB;
                   gemmstone_opts.slmPtr = serialized_opts.slmPtr;
                   gemmstone_opts.scaleA = serialized_opts.scaleA;
@@ -656,6 +662,8 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
               };
     deserialize_options(opts_kq, ukernel_config.opts_kq);
     deserialize_options(opts_vs, ukernel_config.opts_vs);
+    deserialize_options(opts_vtdA, ukernel_config.opts_vtdA);
+    deserialize_options(opts_ktq, ukernel_config.opts_ktq);
 
     // problems kq, vs
     auto deserialize_problem = [](gemmstone::GEMMProblem &problem,
@@ -707,6 +715,8 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
     };
     deserialize_problem(problem_kq, ukernel_config.problem_kq);
     deserialize_problem(problem_vs, ukernel_config.problem_vs);
+    deserialize_problem(problem_vtdA, ukernel_config.problem_vtdA);
+    deserialize_problem(problem_ktq, ukernel_config.problem_ktq);
 
     // sizes kq, vs
     auto deserialize_sizes
@@ -719,6 +729,8 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
               };
     deserialize_sizes(sizes_kq, ukernel_config.sizes_kq);
     deserialize_sizes(sizes_vs, ukernel_config.sizes_vs);
+    deserialize_sizes(sizes_vtdA, ukernel_config.sizes_vtdA);
+    deserialize_sizes(sizes_ktq, ukernel_config.sizes_ktq);
 }
 
 } // namespace sdpa

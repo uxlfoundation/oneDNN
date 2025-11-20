@@ -2477,11 +2477,6 @@ void CopyPlan::legalizeSIMD(bool initial)
         bool is_xe3p = one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN);
         if (is_xe3p && simd0 == 2) simd0 = 1;
 #endif
-        auto opSimdMax = [&] (const CopyOperand &op) {
-            if (op.kind != CopyOperand::GRF || op.stride == 0) return simdMax;
-            int remaining = (bytesToElements(grf, op.type) - (op.offset + 1)) / op.stride + 1;
-            return rounddown_pow2(remaining);
-        };
 
         if (!initial && forceSIMD1(i))
             simd0 = 1;

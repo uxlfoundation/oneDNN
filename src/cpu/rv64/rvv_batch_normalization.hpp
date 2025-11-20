@@ -1,5 +1,5 @@
 /******************************************************************************
-* Copyright 2025
+* Copyright 2025 ZTE Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -103,8 +103,7 @@ struct rvv_batch_normalization_fwd_t : public primitive_t {
             bool plain_dense = src_d.blocking_desc().inner_nblks == 0
                     && dst_d.blocking_desc().inner_nblks == 0
                     && src_d.is_dense(/*with_padding=*/false)
-                    && dst_d.is_dense(/*with_padding=*/false)
-                    && src_d.is_plain() && dst_d.is_plain();
+                    && dst_d.is_dense(/*with_padding=*/false);
             bool same_layouts = src_d.similar_to(dst_d, /*with_strides=*/true,
                     /*with_pads=*/false);
             return ndims_ok && plain_dense && same_layouts;

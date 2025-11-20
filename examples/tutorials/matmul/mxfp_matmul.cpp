@@ -129,25 +129,26 @@ matmul::primitive_desc matmul_pd_create(
     }
 }
 
-void prepare_input(memory &in_mem) {
-    auto dims = in_mem.get_desc().get_dims();
+// Takes A_mem and B_mem as inputs (despite the fact it fills them with random
+// values), and returns their quantized version and scales.
+//
+// Matrix is assumed row major.
+void quantize_input(memory &in_e4m3, memory &in_scales_e8m0, memory &in_f32) {
+    // This is the conversion routine defined by OCP MX spec v1
+    const auto dims = in_f32.get_desc().get_dims();
+    const auto nelems = product(dims);
+
     int64_t rows = dims[dims.size() - 2];
     int64_t cols = dims[dims.size() - 1];
 
     std::vector<float> buff(rows * cols);
     init_vector(buff);
-    write_to_dnnl_memory(buff.data(), in_mem);
-}
+    float *ptr = buff.data();
 
-// Takes A_mem and B_mem as inputs, and returns quantized version and scales
-// Matrix is assumed row major
-void quantize_input(memory &in_e4m3, memory &in_scales_e8m0, memory &in_f32) {
-    // This is the conversion routine defined by OCP MX spec v1
-    const auto dims = in_f32.get_desc().get_dims();
-    const auto nelems = product(dims);
-    float *ptr = static_cast<float *>(in_f32.get_data_handle());
-    uint8_t *ptr_scales
-            = static_cast<uint8_t *>(in_scales_e8m0.get_data_handle());
+    const auto scales_dims = in_scales_e8m0.get_desc().get_dims();
+    const auto scales_nelems = product(scales_dims);
+    std::vector<uint8_t> scales_buff(scales_nelems);
+    uint8_t *scales_ptr = scales_buff.data();
 
     assert((dims[dims.size() - 1] % mx_block_size) == 0);
 
@@ -161,7 +162,7 @@ void quantize_input(memory &in_e4m3, memory &in_scales_e8m0, memory &in_f32) {
                     block_amax, std::abs(ptr[i * mx_block_size + j]));
         const float max_e4m3 = 448.f;
         uint8_t e8m0_scale = f32_to_e8m0(block_amax) - f32_to_e8m0(max_e4m3);
-        ptr_scales[i] = e8m0_scale;
+        scales_ptr[i] = e8m0_scale;
 
         // We then apply that scale inside the block. We do that
         // inplace as the f32 buffer is not reused.
@@ -170,7 +171,9 @@ void quantize_input(memory &in_e4m3, memory &in_scales_e8m0, memory &in_f32) {
             ptr[i * mx_block_size + j] *= f32_scale;
     }
 
-    // we now downconvert to e4m3 with reorder
+    write_to_dnnl_memory(scales_ptr, in_scales_e8m0);
+    // We downconvert to e4m3 with writing to an input memory and then reorder.
+    write_to_dnnl_memory(ptr, in_f32);
     reorder(in_f32, in_e4m3);
 }
 
@@ -196,7 +199,6 @@ void mxfp_matmul(engine::kind engine_kind) {
         memory A_f32({a_desc.get_dims(), memory::data_type::f32,
                              a_desc.get_strides()},
                 eng);
-        prepare_input(A_f32);
         quantize_input(A_e4m3_elems_mem, A_e8m0_scales_mem, A_f32);
     }
 
@@ -208,7 +210,6 @@ void mxfp_matmul(engine::kind engine_kind) {
         memory B_f32({b_desc.get_dims(), memory::data_type::f32,
                              b_desc.get_strides()},
                 eng);
-        prepare_input(B_f32);
         quantize_input(B_e4m3_elems_mem, B_e8m0_scales_mem, B_f32);
     }
 

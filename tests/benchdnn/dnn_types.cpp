@@ -973,6 +973,8 @@ std::ostream &operator<<(std::ostream &s, const attr_t::dropout_t &drop) {
     s << drop.p;
     if ((drop.seed != 0) || (drop.tag != tag::any)) s << ":" << drop.seed;
     if (drop.tag != tag::any) s << ":" << drop.tag;
+    if (drop.offset != 0) s << ":" << drop.offset;
+    if (drop.use_host_scalars) s << ":" << drop.use_host_scalars;
     return s;
 }
 
@@ -1251,9 +1253,16 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
 
     // dropout
     if (!attr.dropout.is_def()) {
-        auto drop_tensor_desc
-                = dnn_mem_t::init_md(ndims, dims, dnnl_u8, attr.dropout.tag);
-        mds.emplace(DNNL_ARG_ATTR_DROPOUT_MASK, std::move(drop_tensor_desc));
+        if (attr.dropout.tag == tag::undef) {
+            auto dropout_mask_desc = dnn_mem_t::init_md();
+            mds.emplace(
+                    DNNL_ARG_ATTR_DROPOUT_MASK, std::move(dropout_mask_desc));
+        } else {
+            auto dropout_mask_desc = dnn_mem_t::init_md(
+                    ndims, dims, dnnl_u8, attr.dropout.tag);
+            mds.emplace(
+                    DNNL_ARG_ATTR_DROPOUT_MASK, std::move(dropout_mask_desc));
+        }
     }
 
     return OK;
@@ -1423,7 +1432,9 @@ dnnl_primitive_attr_t create_dnnl_attr(
 
     if (!attr.dropout.is_def()) {
         const auto &drop_mask_md = attr_args.get_md(DNNL_ARG_ATTR_DROPOUT_MASK);
-        DNN_SAFE_V(dnnl_primitive_attr_set_dropout(dnnl_attr, drop_mask_md));
+        DNN_SAFE_V(dnnl_primitive_attr_set_dropout_v2(dnnl_attr, drop_mask_md,
+                dnnl_s64, attr.dropout.offset != 0,
+                attr.dropout.use_host_scalars));
     }
     return dnnl_attr;
 }
@@ -1856,20 +1867,25 @@ float compute_binary(pk_t kind, float src0, float src1, bool src2) {
 
 // This function is a full copy of ref_dropout(...) from the library.
 void maybe_dropout(const attr_t &attr, float &val, int64_t offset,
-        const dnn_mem_t &dropout_m) {
+        const dnn_mem_t &dropout_mask) {
 
-    auto philox_bernoulli = [](float p, int seed, int64_t d) {
-        uint32_t r = dnnl::impl::math::philox4x32(d, seed);
+    auto philox_bernoulli = [](float p, int64_t seed, int64_t d,
+                                    int64_t offset) {
+        // TODO: keeping int32_t path until all impl migrate to 64 bit generation
+        uint32_t r = (offset == 0)
+                ? dnnl::impl::math::philox4x32(uint32_t(d), uint32_t(seed))
+                : dnnl::impl::math::philox4x32(d, seed, offset);
         p = std::max(std::min(p, 1.f), 0.f);
         return (r > double(std::numeric_limits<uint32_t>::max()) * p);
     };
 
     if (!attr.dropout.is_def()) {
         float p = attr.dropout.p;
-        int seed = attr.dropout.seed;
+        int64_t seed = attr.dropout.seed;
+        int64_t dropout_offset = attr.dropout.offset;
         float inv_q = (p != 1.f) ? 1.f / (1.f - p) : 0.f;
-        uint8_t m = philox_bernoulli(p, seed, offset);
-        dropout_m.set_elem(offset, m);
+        uint8_t m = philox_bernoulli(p, seed, offset, dropout_offset);
+        if (attr.dropout.tag != tag::undef) dropout_mask.set_elem(offset, m);
         val = (m) ? val * inv_q : 0;
     }
 }

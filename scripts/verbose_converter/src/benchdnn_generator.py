@@ -250,6 +250,12 @@ class Converter(metaclass=ConverterMeta):
         result = "0.5:12345"
         if dropout.tag:
             result += f":{dropout.tag}"
+        # Seed dt is always s64 in benchdnn and is not passed to driver
+        if dropout.use_offset == "1":
+            result += ":987654321"
+        else:
+            result += ":0"
+        result += f":{dropout.use_host_scalars}"
         return f"--attr-dropout={result}"
 
     deterministic = attribute_flag("deterministic")

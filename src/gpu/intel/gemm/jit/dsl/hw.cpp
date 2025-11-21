@@ -14,15 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/ir/include/hw.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
+#include "gemmstone/dsl/hw.hpp"
+#include "dsl/utils/utils.hpp"
 #include "ngen.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
 namespace dsl {
 
 hw_t::hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
@@ -55,7 +51,7 @@ int hw_t::grf_size() const {
 int hw_t::max_tg_size(int regs, int simd) const {
     int wg_size = max_wg_size(regs);
     int eu_based_tg_size
-            = eus_per_core() * utils::rnd_down_pow2(threads_per_eu(regs));
+            = eus_per_core() * rounddown_pow2(threads_per_eu(regs));
     int wg_based_tg_size = wg_size / simd;
     return std::min(eu_based_tg_size, wg_based_tg_size);
 }
@@ -67,7 +63,7 @@ int hw_t::eus_per_core() const {
         case ngen::HW::XeHPC:
         case ngen::HW::Xe2:
         case ngen::HW::Xe3: return 8;
-        default: gpu_error_not_expected(); return 8;
+        default: stub(); return 8;
     }
 }
 int hw_t::threads_per_eu(int regs) const {
@@ -79,7 +75,7 @@ int hw_t::threads_per_eu(int regs) const {
         case ngen::HW::XeHPC:
         case ngen::HW::Xe2:
         case ngen::HW::Xe3: return is_large_grf ? 4 : 8;
-        default: gpu_error_not_expected(); return 8;
+        default: stub(); return 8;
     }
 }
 
@@ -91,7 +87,7 @@ int hw_t::cache_line_size() const {
         case ngen::HW::XeHPC:
         case ngen::HW::Xe2:
         case ngen::HW::Xe3: return 64;
-        default: gpu_error_not_expected();
+        default: stub();
     }
     return 0;
 }
@@ -104,10 +100,6 @@ std::string hw_t::str() const {
     return oss.str();
 }
 
-std::string hw_t::brief_str() const {
-    return ir_utils::to_lower(to_string(hw_));
-}
-
 hw_t::product_t::product_t(const ngen::Product &product) {
     static_assert(sizeof(product) == sizeof(*this),
             "ngen::Product and hw_t::product must be binary compatible");
@@ -115,8 +107,4 @@ hw_t::product_t::product_t(const ngen::Product &product) {
 }
 
 } // namespace dsl
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+GEMMSTONE_NAMESPACE_END

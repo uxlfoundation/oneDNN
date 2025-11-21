@@ -14,22 +14,21 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_IR_IR_HPP
-#define GPU_INTEL_JIT_IR_IR_HPP
+#ifndef GEMMSTONE_DSL_IR_IR_HPP
+#define GEMMSTONE_DSL_IR_IR_HPP
 
 #include <algorithm>
 #include <cstdint>
 #include <map>
 #include <vector>
 
-#include "gpu/intel/jit/ir/core.hpp"
-#include "gpu/intel/jit/ir/include/hw.hpp"
+#include "gemmstone/../../dsl/ir/core.hpp"
+#include "gemmstone/dsl/hw.hpp"
+#include "gemmstone/dsl/kernel.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
 
 class constraint_set_t;
 
@@ -122,7 +121,7 @@ public:
         }
         // Ensure large GRF buffers are aligned to a register boundary.
         if (!entry_ptr->is_slm() && entry_ptr->size > ir_ctx_->grf_size()) {
-            gpu_assert(entry_ptr->size % ir_ctx_->grf_size() == 0);
+            dsl_assert(entry_ptr->size % ir_ctx_->grf_size() == 0);
         }
         return entry_ptr->buf;
     }
@@ -134,7 +133,7 @@ public:
     entry_t find(const std::string &name, bool allow_empty = false) const {
         auto it = entries_.find(name);
         if (it != entries_.end()) return it->second;
-        if (!allow_empty) gpu_error_not_expected() << "Not found: " << name;
+        if (!allow_empty) dsl_error() << "Not found: " << name;
         return entry_t();
     }
 
@@ -144,7 +143,7 @@ public:
 
     const entry_t &find_ref(const std::string &name) const {
         auto it = entries_.find(name);
-        gpu_assert(it != entries_.end());
+        dsl_assert(it != entries_.end());
         return it->second;
     }
 
@@ -154,7 +153,7 @@ public:
 
     entry_t &find_ref(const std::string &name) {
         auto it = entries_.find(name);
-        gpu_assert(it != entries_.end());
+        dsl_assert(it != entries_.end());
         return it->second;
     }
 
@@ -199,20 +198,20 @@ class alloc_updater_t : public ir_mutator_t {
 public:
     void resize(const expr_t &buf, int new_size) {
         auto ret = resizes_.insert({buf, new_size});
-        gpu_assert(ret.second) << buf;
-        MAYBE_UNUSED(ret);
+        dsl_assert(ret.second) << buf;
+        maybe_unused(ret);
     }
 
     void add_attr(const expr_t &buf, const alloc_attr_t &attr) {
         auto ret = attrs_.insert({buf, attr});
-        gpu_assert(ret.second) << buf;
-        MAYBE_UNUSED(ret);
+        dsl_assert(ret.second) << buf;
+        maybe_unused(ret);
     }
 
     void remove(const expr_t &buf) {
         auto ret = removes_.insert(buf);
-        gpu_assert(ret.second) << buf;
-        MAYBE_UNUSED(ret);
+        dsl_assert(ret.second) << buf;
+        maybe_unused(ret);
     }
 
     stmt_t update(const stmt_t &stmt) { return mutate(stmt); }
@@ -228,7 +227,7 @@ public:
             } else if (!new_stmt.is_same(old_stmt)) {
                 auto &new_a = new_stmt.as<alloc_t>();
                 auto &entry = buf_mgr.find_ref(e.buf);
-                gpu_assert(entry.attrs.empty());
+                dsl_assert(entry.attrs.empty());
                 entry.size = new_a.size;
                 entry.attrs = new_a.attrs;
                 continue;
@@ -406,8 +405,8 @@ public:
             auto &a = _a.as<alloc_t>();
             auto ret = buf2alloc_.insert({a.buf, _a});
             buffers_.push_back(a.buf);
-            gpu_assert(ret.second) << "Buffer already exists: " << a.buf;
-            MAYBE_UNUSED(ret);
+            dsl_assert(ret.second) << "Buffer already exists: " << a.buf;
+            maybe_unused(ret);
         }
         // Sort buffers by name.
         std::sort(buffers_.begin(), buffers_.end(), name_sort);
@@ -433,13 +432,13 @@ public:
 
     uint32_t alloc_size(const expr_t &buf) const {
         auto *a = find_alloc(buf);
-        gpu_assert(a) << buf;
+        dsl_assert(a) << buf;
         return a->size;
     }
 
     alloc_kind_t alloc_kind(const expr_t &buf) const {
         auto *a = find_alloc(buf);
-        gpu_assert(a) << buf;
+        dsl_assert(a) << buf;
         return a->kind;
     }
 
@@ -461,7 +460,7 @@ private:
             bool allow_empty) const {
         for (auto &v : vars)
             if (v.as<var_t>().name == name) return v;
-        if (!allow_empty) gpu_error_not_expected() << name;
+        if (!allow_empty) dsl_error() << name;
         return expr_t();
     }
 
@@ -746,7 +745,7 @@ public:
     }
 
     bool implies(const modulus_info_t &other) const {
-        gpu_assert(var().is_same(other.var()));
+        dsl_assert(var().is_same(other.var()));
 
         int64_t this_mod = to_cpp<int64_t>(mod());
         int64_t other_mod = to_cpp<int64_t>(other.mod());
@@ -805,7 +804,7 @@ public:
         : relations_(relations) {}
 
     int64_t get_var_bound(const expr_t &e, bool is_low) const override {
-        gpu_assert(is_var(e));
+        dsl_assert(is_var(e));
         int64_t def_bound = unlimited_bound(is_low);
         auto it = relations_.find(e);
         if (it == relations_.end()) return def_bound;
@@ -854,7 +853,7 @@ public:
             oss << "\t" << r.first << ":";
             bool first = true;
             for (auto &s : r.second) {
-                oss << (first ? " " : ", ") << s;
+                oss << (first ? " " : ", ") << s.str();
                 first = false;
             }
             oss << "\n";
@@ -866,7 +865,7 @@ public:
             oss << "\t" << m.first << ":";
             bool first = true;
             for (auto &s : m.second) {
-                oss << (first ? " " : ", ") << s;
+                oss << (first ? " " : ", ") << s.str();
                 first = false;
             }
             oss << "\n";
@@ -917,12 +916,12 @@ private:
             case op_kind_t::_le: break;
             case op_kind_t::_gt:
                 op_kind = op_kind_t::_ge;
-                gpu_assert(b < std::numeric_limits<int64_t>::max());
+                dsl_assert(b < std::numeric_limits<int64_t>::max());
                 b += 1;
                 break;
             case op_kind_t::_lt:
                 op_kind = op_kind_t::_le;
-                gpu_assert(b > std::numeric_limits<int64_t>::min());
+                dsl_assert(b > std::numeric_limits<int64_t>::min());
                 b -= 1;
                 break;
             default: return false;
@@ -994,16 +993,14 @@ inline func_t zero_out_func() {
     return f;
 }
 
-inline stmt_t zero_out(const expr_t &buf, dim_t size) {
+inline stmt_t zero_out(const expr_t &buf, int64_t size) {
     return zero_out_func().call({buf, expr_t(size)});
 }
 
 } // namespace funcs
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 
 #endif

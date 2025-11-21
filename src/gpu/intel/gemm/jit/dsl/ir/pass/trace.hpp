@@ -14,47 +14,25 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_UTILS_TRACE_HPP
-#define GPU_INTEL_JIT_UTILS_TRACE_HPP
+#ifndef GEMMSTONE_DSL_IR_PASS_TRACE_HPP
+#define GEMMSTONE_DSL_IR_PASS_TRACE_HPP
 
-#include "gpu/intel/jit/utils/utils.hpp"
-#include "gpu/intel/logging.hpp"
+#include "gemmstone/config.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
 
 class stmt_t;
 class ir_context_t;
 
 // Trace for debugging purposes.
-#ifdef DNNL_DEV_MODE
-ir_utils::debug_profiler_t &get_trace_profiler();
-inline void trace_start() {
-    if (get_verbose(verbose_t::debuginfo)
-            >= static_cast<int>(log_level_t::perf))
-        get_trace_profiler().start();
-}
-inline void trace_reset() {
-    if (get_verbose(verbose_t::debuginfo)
-            >= static_cast<int>(log_level_t::perf))
-        get_trace_profiler().reset();
-}
-inline void trace_stamp(const char *pass_name) {
-    if (get_verbose(verbose_t::debuginfo)
-            >= static_cast<int>(log_level_t::perf))
-        get_trace_profiler().stamp(pass_name);
-}
-inline void trace_stop(const char *pass_name) {
-    if (get_verbose(verbose_t::debuginfo)
-            >= static_cast<int>(log_level_t::perf))
-        get_trace_profiler().stop(pass_name);
-}
-inline void trace_perf() {
-    gpu_perf() << get_trace_profiler();
-}
+#ifdef GEMMSTONE_ASSERTIONS
+void trace_start();
+void trace_reset();
+void trace_stamp(const char *pass_name);
+void trace_stop(const char *pass_name);
+void trace_perf();
 #else
 inline void trace_start() {};
 inline void trace_reset() {};
@@ -63,7 +41,7 @@ inline void trace_stop(const char *) {};
 inline void trace_perf() {};
 #endif
 
-#if defined(DNNL_DEV_MODE)
+#ifdef GEMMSTONE_ASSERTIONS
 void trace_pass(
         const char *pass_name, const stmt_t &stmt, const ir_context_t &ir_ctx);
 #else
@@ -71,10 +49,8 @@ inline void trace_pass(const char *pass_name, const stmt_t &stmt,
         const ir_context_t &ir_ctx) {};
 #endif
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 
 #endif

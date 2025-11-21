@@ -16,10 +16,11 @@
 
 #include "gpu/intel/jit/ir/epilogue.hpp"
 
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/ir/reduce.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/ir/send_builder.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
+#include "gpu/intel/logging.hpp"
 
 namespace dnnl {
 namespace impl {

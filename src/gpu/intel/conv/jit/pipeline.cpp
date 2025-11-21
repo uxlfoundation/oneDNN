@@ -1088,9 +1088,9 @@ private:
 
 stmt_t inject_prefetch_pipeline(
         const stmt_t &s, ir_context_t &ir_ctx, const config_t &cfg) {
-    trace_start();
+    ir::trace_start();
     auto ret = prefetch_pipeliner_t(s, cfg, ir_ctx).inject();
-    trace_pass("inject_prefetch_pipeline", ret, ir_ctx);
+    ir::trace_pass("inject_prefetch_pipeline", ret, ir_ctx);
     return ret;
 }
 
@@ -1516,10 +1516,10 @@ public:
 
 stmt_t inject_simple_slm_buffering(const stmt_t &s, ir_context_t &ir_ctx,
         const config_t &cfg, int ab_slm_size) {
-    trace_start();
+    ir::trace_start();
     auto ret = simple_slm_buffering_injector_t(s, ir_ctx, cfg, ab_slm_size)
                        .inject();
-    trace_pass("inject_simple_slm_buffering", ret, ir_ctx);
+    ir::trace_pass("inject_simple_slm_buffering", ret, ir_ctx);
     return ret;
 }
 
@@ -1981,9 +1981,9 @@ private:
 
 stmt_t inject_unrolling(const stmt_t &s, ir_context_t &ir_ctx,
         const config_t &cfg, int ab_slm_size) {
-    trace_start();
+    ir::trace_start();
     auto ret = unrolling_injector_t(s, cfg, ir_ctx, ab_slm_size).inject();
-    trace_pass("inject_unrolling", ret, ir_ctx);
+    ir::trace_pass("inject_unrolling", ret, ir_ctx);
     return ret;
 }
 

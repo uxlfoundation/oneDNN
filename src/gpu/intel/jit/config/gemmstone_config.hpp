@@ -22,7 +22,6 @@
 #include "common/primitive_attr.hpp"
 #include "common/serialization.hpp"
 #include "common/verbose.hpp"
-#include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/post_op_injector.hpp"
 #include "gpu/intel/microkernels/entrance_agent.hpp"
@@ -40,10 +39,11 @@
 #define OPENCL_OUTPUT
 #endif
 
-namespace gemmstone {
+#ifdef DNNL_DEV_MODE
+#define GEMMSTONE_ASSERTIONS 1
+#endif
 
-namespace ir = dnnl::impl::gpu::intel::jit;
-namespace dsl = dnnl::impl::gpu::intel::jit::dsl;
+namespace gemmstone {
 
 #define GENERATOR_SUPER(hw) ngen::ELFCodeGenerator<hw>
 #define GENERATOR_BASE(hw) dnnl::impl::gpu::intel::jit::generator_t<hw>

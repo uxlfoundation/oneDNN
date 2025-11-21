@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_JIT_CODEGEN_ALLOCATION_SIZE_HPP
 #define GPU_INTEL_JIT_CODEGEN_ALLOCATION_SIZE_HPP
 
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 
 namespace dnnl {
 namespace impl {

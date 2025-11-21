@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include "gemmstone/../../dsl/ir/ir.hpp"
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/conv/jit/config.hpp"
 #include "gpu/intel/conv/jit/normalization.hpp"
 #include "gpu/intel/conv/jit/pipeline.hpp"
@@ -27,7 +29,6 @@
 #include "gpu/intel/jit/ir/epilogue.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/reduce.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
@@ -35,7 +36,6 @@
 #include "gpu/intel/jit/ir/slm_reduce_builder.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -141,10 +141,10 @@ private:
 };
 
 void verify_buffer_access(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     buffer_access_verifier_t verifier;
     verifier.visit(s);
-    trace_pass("verify_buffer_access", s, ir_ctx);
+    ir::trace_pass("verify_buffer_access", s, ir_ctx);
 }
 
 expr_t add_grid_guard(
@@ -648,7 +648,7 @@ stmt_t inject_compute_loop_label(const stmt_t &s) {
 void builder_t::build() {
     const auto &prb = cfg_.prb();
 
-    trace_reset();
+    ir::trace_reset();
 
     std::vector<stmt_t> init_stmts;
     const auto &plan = cfg_.plan();
@@ -683,7 +683,7 @@ void builder_t::build() {
             = kernel_info_.find_arg("bia", /*allow_empty=*/true);
     expr_t b_reduction_condition;
 
-    trace_stamp("GEMM Schedule");
+    ir::trace_stamp("GEMM Schedule");
 
     ir_context_t ir_ctx(cfg_.options(), init_cset);
     compute_builder_t cb(cfg_, ir_ctx, kernel_info_, zp_dst_);
@@ -693,7 +693,7 @@ void builder_t::build() {
     cb.set_x_reduce_buf(x_reduced_mem_buf);
     cb.build();
 
-    trace_stamp("Compute Builder");
+    ir::trace_stamp("Compute Builder");
 
     std::vector<stmt_t> allocs;
     for (int i = 0; i < kernel_info_.nargs(); i++) {
@@ -722,7 +722,7 @@ void builder_t::build() {
     stmt_ = gemm_schedule.create_bind_stmt(stmt_);
     stmt_ = inject_let_stmts(stmt_, init_stmts);
     stmt_ = inject_alloc_stmts(stmt_, allocs);
-    trace_stop("Create Inital IR");
+    ir::trace_stop("Create Inital IR");
 
     stmt_ = inject_external_var_let(stmt_, ir_ctx);
     stmt_ = merge_slm_buffers(stmt_, ir_ctx);
@@ -775,7 +775,7 @@ void builder_t::build() {
 #endif
 
     gpu_debug() << "Convolution kernel body:\n" << stmt_;
-    trace_perf();
+    ir::trace_perf();
 }
 
 } // namespace jit

@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_JIT_CODEGEN_NGEN_HELPERS_HPP
 #define GPU_INTEL_JIT_CODEGEN_NGEN_HELPERS_HPP
 
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "ngen.hpp"
 #include "ngen_register_allocator.hpp"
 

@@ -29,10 +29,10 @@
 #include <unordered_map>
 
 #include "common/memory_desc_wrapper.hpp"
+#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
 #include "gpu/intel/block_structure.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
-#include "gpu/intel/jit/pass/simplify.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
@@ -415,12 +415,12 @@ public:
 
     void simplify(const constraint_set_t &cset) {
         for (auto &mask : id2masks_) {
-            auto new_mask = jit::simplify(mask, cset);
+            auto new_mask = ir::simplify(mask, cset);
             // Some complex expressions need more than one simplify() call.
             int max_tries = 5;
             for (int i = 0; i < max_tries; i++) {
                 mask = new_mask;
-                new_mask = jit::simplify(new_mask, cset);
+                new_mask = ir::simplify(new_mask, cset);
                 if (new_mask.is_equal(mask)) break;
             }
         }
@@ -487,8 +487,8 @@ public:
             if (!channel_mask.is_equal(cur_mask)) return expr_t();
         }
         auto e = shuffle_t::make(vec);
-        e = jit::simplify(e);
-        e = jit::simplify_propagate_shuffle(e);
+        e = ir::simplify(e);
+        e = ir::simplify_propagate_shuffle(e);
         return e;
     }
 
@@ -957,7 +957,7 @@ public:
                 dim_t vdim = vdims()[vidx];
                 if (vdim == 1) continue;
                 const auto &A = tdim.expr();
-                auto B = jit::substitute(A, vvar, vvar + 1);
+                auto B = ir::substitute(A, vvar, vvar + 1);
                 auto C = simplify(B - A);
                 if (!is_const(C)) {
                     ok = false;
@@ -977,10 +977,10 @@ public:
             auto inv_vstart = tdim.expr();
             for (dim_idx_t j = 0; j < tdim.nvargs(); j++) {
                 dim_idx_t vidx = tdim.vidx(j);
-                buf_vstart = jit::substitute(
+                buf_vstart = ir::substitute(
                         buf_vstart, vvars()[vidx], vstart()[vidx]);
                 inv_vstart
-                        = jit::substitute(inv_vstart, vvars()[vidx], expr_t(0));
+                        = ir::substitute(inv_vstart, vvars()[vidx], expr_t(0));
             }
             buf_vstart = simplify(buf_vstart);
             inv_vstart = simplify(inv_vstart);
@@ -1028,7 +1028,7 @@ public:
         for (dim_idx_t i = 0; i < ntdims(); i++) {
             tcoord[i] = tdims_[i].expr();
             for (dim_idx_t j = 0; j < nvdims(); j++) {
-                tcoord[i] = jit::substitute(tcoord[i], vvars_[j], vcoord[j]);
+                tcoord[i] = ir::substitute(tcoord[i], vvars_[j], vcoord[j]);
             }
         }
         for (dim_idx_t i = 0; i < ntdims(); i++) {

@@ -21,7 +21,7 @@
 
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 
 namespace dnnl {

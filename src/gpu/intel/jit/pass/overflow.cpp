@@ -16,8 +16,9 @@
 
 #include "gpu/intel/jit/pass/overflow.hpp"
 
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/pass/expr_scalarizer.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
+#include "gpu/intel/logging.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -266,9 +267,9 @@ private:
 };
 
 stmt_t fix_int32_overflow(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = overflow_fixer_t(ir_ctx).mutate(s);
-    trace_pass("fix_int32_overflow", ret, ir_ctx);
+    ir::trace_pass("fix_int32_overflow", ret, ir_ctx);
     return ret;
 }
 

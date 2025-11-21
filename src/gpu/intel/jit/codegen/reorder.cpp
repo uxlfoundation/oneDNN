@@ -18,6 +18,12 @@
 
 #include "gpu/intel/logging.hpp"
 
+namespace gemmstone {
+namespace dsl {
+extern bool is_subset(const dsl::type_t &a, const dsl::type_t &b);
+}
+} // namespace gemmstone
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -522,7 +528,7 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reorder_operand_t &src,
     auto emit = [&](reorder_operand_t &dst, const reorder_operand_t &src) {
         if (src == dst) return;
         if (!try_emit_2d(plan, dst, src)) emit_1d(plan, dst, src);
-        if (dsl::is_subset(src.type(), dst.type()))
+        if (gemmstone::dsl::is_subset(src.type(), dst.type()))
             dst.buffer.range = src.buffer.type;
     };
 

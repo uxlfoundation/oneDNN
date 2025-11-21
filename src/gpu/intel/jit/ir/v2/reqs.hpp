@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_JIT_IR_V2_REQS_HPP
 #define GPU_INTEL_JIT_IR_V2_REQS_HPP
 
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
 
 #include <iostream>

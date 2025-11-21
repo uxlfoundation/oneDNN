@@ -22,8 +22,8 @@
 
 #include "gpu/intel/jit/ir/eltwise.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 
 namespace dnnl {

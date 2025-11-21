@@ -986,7 +986,7 @@ int fma_plan_t::bmnk_stop_idx(bmnk_kind_t bmnk, int subtile_idx) const {
 
 stmt_t fma_plan_t::create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
         const std::string &a, const std::string &b, const std::string &c,
-        int subtile_idx, type_t a_override, type_t b_override) const {
+        int subtile_idx, dsl::type_t a_override, dsl::type_t b_override) const {
     int c_buf_size = into<int>(size_bytes(c_layout, ir_ctx.grf_size()));
     auto a_buf = buf_mgr.get(a);
     auto b_buf = buf_mgr.get(b);

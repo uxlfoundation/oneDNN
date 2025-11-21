@@ -16,7 +16,7 @@
 
 #include "gpu/intel/jit/pass/shuffle_splitter.hpp"
 
-#include "gpu/intel/jit/utils/trace.hpp"
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -256,9 +256,9 @@ private:
 };
 
 stmt_t split_shuffle(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = shuffle_splitter_t().mutate(s);
-    trace_pass("split_shuffle", ret, ir_ctx);
+    ir::trace_pass("split_shuffle", ret, ir_ctx);
     return ret;
 }
 

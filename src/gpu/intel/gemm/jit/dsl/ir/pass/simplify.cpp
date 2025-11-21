@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/pass/simplify.hpp"
+#include "dsl/ir/pass/simplify.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -22,19 +22,15 @@
 #include <string>
 #include <vector>
 
-#include "common/cpp_compat.hpp"
-#include "common/math_utils.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
+#include "dsl/ir/ir.hpp"
+#include "dsl/ir/pass/trace.hpp"
+#include "dsl/utils/utils.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
 
-using namespace ir_utils;
+using namespace utils;
 
 expr_t simplify_expr(const expr_t &_e, const constraint_set_t &cset);
 
@@ -46,7 +42,7 @@ public:
 
     bool operator==(const pexpr_t &other) const { return id == other.id; }
 
-    size_t get_hash() const override { return ir_utils::get_hash(id); }
+    size_t get_hash() const override { return hash(id); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -68,9 +64,7 @@ public:
     }
 
     object_t _mutate(ir_mutator_t &mutator) const override;
-    void _visit(ir_visitor_t &visitor) const override {
-        gpu_error_not_expected();
-    }
+    void _visit(ir_visitor_t &visitor) const override { stub(); }
 
     int id;
 
@@ -108,7 +102,7 @@ public:
         return (id == other.id) && (value == other.value);
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(id, value); }
+    size_t get_hash() const override { return hash(id, value); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -132,10 +126,10 @@ public:
     }
 
     void set(const expr_t &ptrn, const expr_t &e) {
-        gpu_assert(ptrn.is<pexpr_t>());
+        dsl_assert(ptrn.is<pexpr_t>());
         auto ret = expr_matched_.insert({ptrn, e});
-        gpu_assert(ret.second);
-        MAYBE_UNUSED(ret);
+        dsl_assert(ret.second);
+        maybe_unused(ret);
     }
 
     const expr_t &operator[](const expr_t &ptrn) const {
@@ -161,7 +155,7 @@ public:
 };
 
 inline object_t pexpr_t::_mutate(ir_mutator_t &mutator) const {
-    return utils::downcast<pexpr_mutator_t *>(&mutator)->_mutate(*this);
+    return downcast<pexpr_mutator_t *>(&mutator)->_mutate(*this);
 }
 
 class pexpr_substitute_t : public pexpr_mutator_t {
@@ -317,7 +311,7 @@ expr_t simplify_rewrite_add(const expr_t &_e) {
     auto _0 = pint_imm_t::_0();
 
     auto &obj = _e.as<binary_op_t>();
-    gpu_assert(obj.op_kind == op_kind_t::_add);
+    dsl_assert(obj.op_kind == op_kind_t::_add);
 
     auto e = _e;
 
@@ -333,7 +327,7 @@ expr_t simplify_rewrite_sub(const expr_t &_e) {
     auto _0 = pint_imm_t::_0();
 
     auto &obj = _e.as<binary_op_t>();
-    gpu_assert(obj.op_kind == op_kind_t::_sub);
+    dsl_assert(obj.op_kind == op_kind_t::_sub);
 
     auto e = _e;
 
@@ -350,7 +344,7 @@ expr_t simplify_rewrite_mul(const expr_t &_e) {
     auto _1 = pint_imm_t::_1();
 
     auto &obj = _e.as<binary_op_t>();
-    gpu_assert(obj.op_kind == op_kind_t::_mul);
+    dsl_assert(obj.op_kind == op_kind_t::_mul);
 
     auto e = _e;
 
@@ -369,7 +363,7 @@ expr_t simplify_rewrite_div(const expr_t &_e) {
     auto _1 = pint_imm_t::_1();
 
     auto &obj = _e.as<binary_op_t>();
-    gpu_assert(obj.op_kind == op_kind_t::_div);
+    dsl_assert(obj.op_kind == op_kind_t::_div);
 
     auto e = _e;
 
@@ -386,7 +380,7 @@ expr_t simplify_rewrite_mod(const expr_t &_e) {
     auto _1 = pint_imm_t::_1();
 
     auto &obj = _e.as<binary_op_t>();
-    gpu_assert(obj.op_kind == op_kind_t::_mod);
+    dsl_assert(obj.op_kind == op_kind_t::_mod);
 
     auto e = _e;
 
@@ -400,7 +394,7 @@ expr_t simplify_rewrite_and(const expr_t &_e) {
     auto x = pexpr_t::x();
 
     auto &obj = _e.as<binary_op_t>();
-    gpu_assert(obj.op_kind == op_kind_t::_and);
+    dsl_assert(obj.op_kind == op_kind_t::_and);
 
     auto e = _e;
 
@@ -427,7 +421,7 @@ expr_t simplify_rewrite_or(const expr_t &_e) {
     auto x = pexpr_t::x();
 
     auto &obj = _e.as<binary_op_t>();
-    gpu_assert(obj.op_kind == op_kind_t::_or);
+    dsl_assert(obj.op_kind == op_kind_t::_or);
 
     auto e = _e;
 
@@ -597,8 +591,7 @@ public:
         i_c1 = std::abs(i_c1);
 
         bool has_mod = (i_c1 % i_c0 != 0);
-        if (has_mod
-                && utils::one_of(op.op_kind, op_kind_t::_eq, op_kind_t::_ne))
+        if (has_mod && one_of(op.op_kind, op_kind_t::_eq, op_kind_t::_ne))
             return e;
 
         auto new_op_kind = (is_c0_neg ? negate_cmp_op(op.op_kind) : op.op_kind);
@@ -615,7 +608,7 @@ public:
                     new_op_kind = op_kind_t::_le;
                     div = (sign ? div + 1 : div);
                     break;
-                default: gpu_error_not_expected();
+                default: stub();
             }
         }
 
@@ -636,7 +629,7 @@ public:
         if (!is_const(a_op.b)) return e;
 
         auto &c0 = a_op.b;
-        gpu_assert(to_cpp<int64_t>(c0) > 0) << e;
+        dsl_assert(to_cpp<int64_t>(c0) > 0) << e;
 
         // Comparison against a constant is a continuous function, just check
         // boundary points.
@@ -725,13 +718,10 @@ public:
     }
 
     bool operator==(const nary_op_t &other) const {
-        return (op_kind == other.op_kind)
-                && ir_utils::is_equal(args, other.args);
+        return (op_kind == other.op_kind) && utils::is_equal(args, other.args);
     }
 
-    size_t get_hash() const override {
-        return ir_utils::get_hash(op_kind, args);
-    }
+    size_t get_hash() const override { return hash(op_kind, args); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -798,8 +788,8 @@ expr_t cvt_mul_to_nary_op(const expr_t &a, const expr_t &b) {
     auto *a_nary = a.as_ptr<nary_op_t>();
     auto *b_nary = b.as_ptr<nary_op_t>();
 
-    if (a_nary) gpu_assert(a_nary->op_kind == op_kind_t::_mul);
-    if (b_nary) gpu_assert(b_nary->op_kind == op_kind_t::_mul);
+    if (a_nary) dsl_assert(a_nary->op_kind == op_kind_t::_mul);
+    if (b_nary) dsl_assert(b_nary->op_kind == op_kind_t::_mul);
 
     auto a_args = cvt_expr_to_nary_op_args(a);
     auto b_args = cvt_expr_to_nary_op_args(b);
@@ -818,7 +808,7 @@ public:
 };
 
 inline void nary_op_t::_visit(ir_visitor_t &visitor) const {
-    utils::downcast<nary_op_visitor_t *>(&visitor)->_visit(*this);
+    downcast<nary_op_visitor_t *>(&visitor)->_visit(*this);
 }
 
 class nary_op_mutator_t : public ir_mutator_t {
@@ -827,13 +817,13 @@ public:
 
     virtual object_t _mutate(const nary_op_t &obj) {
         auto args = mutate(obj.args);
-        if (ir_utils::is_equal(args, obj.args)) return obj;
+        if (utils::is_equal(args, obj.args)) return obj;
         return make_nary_op(obj.op_kind, args);
     }
 };
 
 inline object_t nary_op_t::_mutate(ir_mutator_t &mutator) const {
-    return utils::downcast<nary_op_mutator_t *>(&mutator)->_mutate(*this);
+    return downcast<nary_op_mutator_t *>(&mutator)->_mutate(*this);
 }
 
 class nary_op_transformer_t : public nary_op_mutator_t {
@@ -895,9 +885,7 @@ public:
             auto arg = args[i];
             if (arg.is<cast_t>()) arg = args[i].as<cast_t>().expr;
             auto *nary = arg.as_ptr<nary_op_t>();
-            if (nary && nary->op_kind != op_kind_t::_add) {
-                gpu_error_not_expected();
-            }
+            if (nary && nary->op_kind != op_kind_t::_add) { stub(); }
             auto i_args = cvt_expr_to_nary_op_args(arg);
             if (arg.type() != args[i].type()) {
                 for (size_t j = 0; j < i_args.size(); j++) {
@@ -998,7 +986,7 @@ public:
     object_t _mutate(const nary_op_t &obj) override {
         auto new_obj = nary_op_mutator_t::_mutate(obj);
         auto &nary = new_obj.as<nary_op_t>();
-        gpu_assert(!nary.args.empty()) << new_obj;
+        dsl_assert(!nary.args.empty()) << new_obj;
 
         if (nary.args.size() == 1) return nary.args[0];
 
@@ -1013,7 +1001,7 @@ public:
                 ret *= nary.args[i];
             return std::move(ret);
         }
-        gpu_error_not_expected();
+        stub();
         return expr_t();
     }
 };
@@ -1052,7 +1040,7 @@ public:
         return f_common.factors.size() == factors.size();
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(factors); }
+    size_t get_hash() const override { return hash(factors); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -1122,7 +1110,7 @@ public:
         int64_t b_const = to_cpp<int64_t>(other.factors.back());
         if (a_const != 0 && b_const != 0) {
             int64_t ab_gcd = ((a_const < 0) && (b_const < 0)) ? -1 : 1;
-            ab_gcd *= math::gcd(std::abs(a_const), std::abs(b_const));
+            ab_gcd *= gcd(std::abs(a_const), std::abs(b_const));
             diff_factors.push_back(to_expr(a_const / ab_gcd, type));
         } else if (a_const != 0 || b_const != 0) {
             diff_factors.push_back(to_expr(a_const, type));
@@ -1138,7 +1126,7 @@ public:
         auto f_common = intersect(other);
         auto diff_other = f_other.diff(f_common);
         // Other must be reducible.
-        gpu_assert(diff_other.as<factored_expr_t>().is_one()) << diff_other;
+        dsl_assert(diff_other.as<factored_expr_t>().is_one()) << diff_other;
         return diff(f_common);
     }
 
@@ -1177,7 +1165,7 @@ private:
         bool sign = false;
         expr_t e_const = to_expr(1);
         for (auto &e : f) {
-            if (!jit::is_const(e)) {
+            if (!ir::is_const(e)) {
                 factors.push_back(e);
                 continue;
             }
@@ -1240,7 +1228,7 @@ private:
             factors = f_common.merge(rest).as<factored_expr_t>().factors;
             return;
         }
-        gpu_error_not_expected();
+        stub();
     }
 
     expr_t intersect_impl(const expr_t &other, bool ignore_constants) const {
@@ -1266,7 +1254,7 @@ private:
         int64_t b_const = to_cpp<int64_t>(f_other.factors.back());
         if (a_const != 0 && b_const != 0) {
             int64_t ab_gcd = ((a_const < 0) && (b_const < 0)) ? -1 : 1;
-            ab_gcd *= math::gcd(std::abs(a_const), std::abs(b_const));
+            ab_gcd *= gcd(std::abs(a_const), std::abs(b_const));
             if (ab_gcd != 1) common_factors.push_back(to_expr(ab_gcd, type));
         } else if (a_const == 0 && b_const == 0) {
             common_factors.push_back(to_expr(0, type));
@@ -1315,7 +1303,7 @@ public:
         auto obj = nary_op_mutator_t::_mutate(_obj);
         auto *binary_op = obj.as_ptr<binary_op_t>();
         if (!binary_op) return obj;
-        if (!utils::one_of(binary_op->op_kind, op_kind_t::_div, op_kind_t::_mod)
+        if (!one_of(binary_op->op_kind, op_kind_t::_div, op_kind_t::_mod)
                 || !_obj.type.is_scalar())
             return obj;
         if (!binary_op->type.is_int()) return obj;
@@ -1412,7 +1400,7 @@ public:
             return mutate(lhs_div) + mutate(rhs_div);
         }
 
-        gpu_error_not_expected() << expr;
+        dsl_error() << expr;
 
         return expr_t();
     }
@@ -1450,7 +1438,7 @@ public:
         int64_t max_gcd = 0;
         auto *a_nary = a.as_ptr<nary_op_t>();
         for (auto &e : a_nary->args) {
-            max_gcd = std::max(max_gcd, math::gcd(b_gcd, const_factor(e)));
+            max_gcd = std::max(max_gcd, gcd(b_gcd, const_factor(e)));
         }
 
         if (max_gcd == 0) return expr_t();
@@ -1467,7 +1455,7 @@ public:
 
         // max_gcd is the GCD for some summand so at least one summand must be
         // reducible.
-        gpu_assert(!lhs_args.empty());
+        dsl_assert(!lhs_args.empty());
 
         if (rhs_args.empty()) return expr_t();
 
@@ -1490,7 +1478,7 @@ public:
             return lhs_div;
         }
 
-        gpu_error_not_expected() << expr;
+        dsl_error() << expr;
 
         return expr_t();
     }
@@ -1515,7 +1503,7 @@ public:
     int_div_mod_range_simplifier_t(const constraint_set_t &cset) : cset(cset) {}
 
     object_t _mutate(const binary_op_t &obj) override {
-        if (!utils::one_of(obj.op_kind, op_kind_t::_div, op_kind_t::_mod))
+        if (!one_of(obj.op_kind, op_kind_t::_div, op_kind_t::_mod))
             return nary_op_mutator_t::_mutate(obj);
 
         auto a = mutate(obj.a);
@@ -1549,7 +1537,7 @@ public:
         auto args = mutate(obj.args);
         for (auto &a : args) {
             auto *nary = a.as_ptr<nary_op_t>();
-            if (nary) gpu_assert(nary->op_kind == op_kind_t::_mul) << a;
+            if (nary) dsl_assert(nary->op_kind == op_kind_t::_mul) << a;
         }
 
         // Fold same factors (find exact match, ignore constants).
@@ -1800,13 +1788,13 @@ private:
             case op_kind_t::_ne: return op_kind_t::_eq;
             case op_kind_t::_and: return op_kind_t::_or;
             case op_kind_t::_or: return op_kind_t::_and;
-            default: gpu_error_not_expected();
+            default: stub();
         }
         return op_kind_t::undef;
     }
 
     static expr_t flip_condition(const expr_t &cond) {
-        gpu_assert(cond.type().is_bool());
+        dsl_assert(cond.type().is_bool());
 
         auto *binary_op = cond.as_ptr<binary_op_t>();
         if (binary_op) {
@@ -1815,7 +1803,7 @@ private:
             auto op_kind = binary_op->op_kind;
             if (is_cmp_op(op_kind))
                 return binary_op_t::make(flip_op(op_kind), a, b);
-            if (utils::one_of(op_kind, op_kind_t::_and, op_kind_t::_or)) {
+            if (one_of(op_kind, op_kind_t::_and, op_kind_t::_or)) {
                 auto a_neg = flip_condition(a);
                 auto b_neg = flip_condition(b);
                 return binary_op_t::make(flip_op(op_kind), a_neg, b_neg);
@@ -1828,7 +1816,7 @@ private:
                     flip_condition(shuffle->vec[0]), shuffle->elems());
         }
 
-        gpu_error_not_expected();
+        stub();
         return expr_t();
     }
 
@@ -1859,7 +1847,7 @@ stmt_t simplify_stmt(const stmt_t &s, const constraint_set_t &cset) {
 }
 
 int64_t get_max_const_factor(const expr_t &_e, const constraint_set_t &cset) {
-    gpu_assert(_e.type().is_int());
+    dsl_assert(_e.type().is_int());
     auto e = _e;
     // Some complex expressions need more than one simplify() call.
     int max_tries = 3;
@@ -1931,7 +1919,7 @@ struct op_traits_t<op_kind_t::_div> {
     template <typename T,
             typename = typename std::enable_if<is_int_t<T>::value>::type>
     static auto compute(T a, T b) -> decltype(a / b) {
-        gpu_assert(b > 0);
+        dsl_assert(b > 0);
         T r = a % b;
         T d = a / b;
         if (r < 0) d--;
@@ -1954,7 +1942,7 @@ struct op_traits_t<op_kind_t::_mod> {
     template <typename T,
             typename = typename std::enable_if<is_int_t<T>::value>::type>
     static auto compute(T a, T b) -> decltype(a % b) {
-        gpu_assert(b > 0);
+        dsl_assert(b > 0);
         T r = a % b;
         if (r < 0) r += b;
         return r;
@@ -2021,7 +2009,7 @@ public:
             CASE(op_kind_t::_min)
             CASE(op_kind_t::_max)
 
-            default: gpu_error_not_expected();
+            default: stub();
 
 #undef CASE
         }
@@ -2053,7 +2041,7 @@ bool is_const_or_shuffle_const(const expr_t &e) {
 }
 
 expr_t const_fold_unary(op_kind_t op_kind, const expr_t &a) {
-    gpu_assert(op_kind == op_kind_t::_minus);
+    dsl_assert(op_kind == op_kind_t::_minus);
     if (!a.type().is_scalar()) {
         int elems = a.type().elems();
         std::vector<expr_t> ret;
@@ -2076,7 +2064,7 @@ expr_t const_fold_unary(op_kind_t op_kind, const expr_t &a) {
 
 #undef CASE
 
-    gpu_error_not_expected() << "Cannot handle type: " << a;
+    dsl_error() << "Cannot handle type: " << a;
     return expr_t();
 }
 
@@ -2096,10 +2084,10 @@ expr_t const_fold_binary(const type_t &compute_type, op_kind_t op_kind,
     if (compute_type.is_unsigned()) {
         auto a_s64 = to_cpp<int64_t>(a);
         auto b_s64 = to_cpp<int64_t>(b);
-        gpu_assert(a_s64 >= 0 && b_s64 >= 0)
+        dsl_assert(a_s64 >= 0 && b_s64 >= 0)
                 << "Overflow detected: fix data types.";
-        MAYBE_UNUSED(a_s64);
-        MAYBE_UNUSED(b_s64);
+        maybe_unused(a_s64);
+        maybe_unused(b_s64);
     }
 
 #define CASE(ir_type, cpp_type) \
@@ -2120,14 +2108,14 @@ expr_t const_fold_binary(const type_t &compute_type, op_kind_t op_kind,
 
 #undef CASE
 
-    gpu_error_not_expected() << "Unknown type.";
+    dsl_error() << "Unknown type.";
     return expr_t();
 }
 
 object_t simplify(const object_t &obj, const constraint_set_t &cset) {
     if (obj.is_expr()) return simplify_expr(obj, cset);
     if (obj.is_stmt()) return simplify_stmt(obj, cset);
-    gpu_assert(obj.is_empty());
+    dsl_assert(obj.is_empty());
     return object_t();
 }
 
@@ -2221,8 +2209,7 @@ expr_t simplify_cmp_reduce_lhs_rhs(const expr_t &e) {
     i_c1 = std::abs(i_c1);
 
     bool has_mod = (i_c1 % i_c0 != 0);
-    if (has_mod && utils::one_of(op.op_kind, op_kind_t::_eq, op_kind_t::_ne))
-        return e;
+    if (has_mod && one_of(op.op_kind, op_kind_t::_eq, op_kind_t::_ne)) return e;
 
     auto new_op_kind = (is_c0_neg ? negate_cmp_op(op.op_kind) : op.op_kind);
     int64_t div = i_c1 / i_c0;
@@ -2238,7 +2225,7 @@ expr_t simplify_cmp_reduce_lhs_rhs(const expr_t &e) {
                 new_op_kind = op_kind_t::_le;
                 div = (sign ? div + 1 : div);
                 break;
-            default: gpu_error_not_expected();
+            default: stub();
         }
     }
 
@@ -2432,8 +2419,8 @@ expr_t nary_op_canonicalize(const expr_t &_e) {
     e = nary_op_transformer_t().mutate(e);
     e = mul_nary_op_expander_t().mutate(e);
 
-    gpu_assert(is_nary_op_canonical(e)) << e;
-    MAYBE_UNUSED(is_nary_op_canonical(e));
+    dsl_assert(is_nary_op_canonical(e)) << e;
+    maybe_unused(is_nary_op_canonical(e));
 
     return e;
 }
@@ -2442,7 +2429,7 @@ expr_t make_nary_op(op_kind_t op_kind, const std::vector<expr_t> &args) {
     if (args.empty()) {
         if (op_kind == op_kind_t::_add) return 0;
         if (op_kind == op_kind_t::_mul) return 1;
-        gpu_error_not_expected() << to_string(op_kind);
+        dsl_error() << to_string(op_kind);
     }
     if (args.size() == 1) return args[0];
 
@@ -2468,8 +2455,6 @@ stmt_t simplify(const stmt_t &s, ir_context_t &ir_ctx) {
     return ret;
 }
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END

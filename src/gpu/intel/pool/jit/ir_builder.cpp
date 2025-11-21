@@ -22,15 +22,15 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
+#include "gemmstone/../../dsl/ir/ir.hpp"
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/codegen/ngen_helpers.hpp"
 #include "gpu/intel/jit/ir/epilogue.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/send_builder.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {
 namespace impl {

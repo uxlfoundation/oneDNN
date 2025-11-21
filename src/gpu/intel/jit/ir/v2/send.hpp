@@ -17,13 +17,13 @@
 #ifndef GPU_INTEL_JIT_IR_V2_SEND_HPP
 #define GPU_INTEL_JIT_IR_V2_SEND_HPP
 
+#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/linear_expr.hpp"
 #include "gpu/intel/jit/ir/v2/plan_utils.hpp"
 #include "gpu/intel/jit/ir/v2/reqs.hpp"
 #include "gpu/intel/jit/ir/v2/tensor.hpp"
-#include "gpu/intel/jit/pass/simplify.hpp"
 
 #include <string>
 

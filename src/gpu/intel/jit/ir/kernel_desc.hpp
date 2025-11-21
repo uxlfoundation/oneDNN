@@ -18,8 +18,8 @@
 #define GPU_INTEL_JIT_IR_KERNEL_DESC_HPP
 
 #include "common/serialization.hpp"
+#include "gemmstone/dsl/kernel.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/jit/ir/include/kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -33,6 +33,14 @@ class kernel_t;
 }
 
 namespace jit {
+
+namespace dsl {
+using kernel_t = gemmstone::dsl::kernel_t;
+namespace kernel {
+using iface_t = gemmstone::dsl::kernel::iface_t;
+using options_t = gemmstone::dsl::kernel::options_t;
+} // namespace kernel
+} // namespace dsl
 
 class kernel_info_t;
 class kernel_params_base_t;

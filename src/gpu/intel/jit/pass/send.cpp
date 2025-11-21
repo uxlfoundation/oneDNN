@@ -16,9 +16,9 @@
 
 #include "gpu/intel/jit/pass/send.hpp"
 
+#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/ir/send.hpp"
-#include "gpu/intel/jit/pass/simplify.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -46,10 +46,10 @@ public:
 };
 
 stmt_t lift_buffer_offsets_in_send(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     buffer_offset_lifter_t lifter;
     auto ret = lifter.mutate(s);
-    trace_pass("lift_buffer_offsets_in_send", ret, ir_ctx);
+    ir::trace_pass("lift_buffer_offsets_in_send", ret, ir_ctx);
     return ret;
 }
 
@@ -134,9 +134,9 @@ private:
 };
 
 stmt_t inject_send(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = send_injector_t(ir_ctx).mutate(s);
-    trace_pass("inject_send", ret, ir_ctx);
+    ir::trace_pass("inject_send", ret, ir_ctx);
     return ret;
 }
 
@@ -188,9 +188,9 @@ private:
 };
 
 stmt_t lift_send_2d_header_store(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = send_2d_header_store_lifter_t(s).mutate(s);
-    trace_pass("lift_send_2d_header_store", ret, ir_ctx);
+    ir::trace_pass("lift_send_2d_header_store", ret, ir_ctx);
     return ret;
 }
 

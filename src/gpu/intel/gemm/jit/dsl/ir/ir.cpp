@@ -14,25 +14,21 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "dsl/ir/ir.hpp"
 
 #include <functional>
 #include <numeric>
 #include <sstream>
 
-#include "common/math_utils.hpp"
-#include "common/optional.hpp"
-#include "gpu/intel/jit/codegen/allocation_size.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
-#include "gpu/intel/jit/pass/simplify.hpp"
+#include "dsl/ir/codegen/allocation_size.hpp"
+#include "dsl/ir/core.hpp"
+#include "dsl/ir/pass/simplify.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
 
-using namespace ir_utils;
+using namespace utils;
 
 namespace {
 
@@ -43,12 +39,12 @@ public:
 
     void _visit(const assign_t &obj) override {
         print_indent();
-        out_ << obj.str() << "\n";
+        out_ << obj << "\n";
     }
 
     void _visit(const alloc_t &obj) override {
         auto grf_size = 1; // Assume all objects are grf aligned
-        auto guard = mem_usage_guard(register_alloc_size(obj, grf_size));
+        auto guard = mem_usage_guard(register_size(obj, grf_size));
         print_indent();
         out_ << obj.line_str() << "(mem_usage: " << mem_usage_bytes_ << ")\n";
         visit(obj.body);
@@ -136,7 +132,7 @@ public:
     }
 
     void _visit(const let_t &obj) override {
-        int size = register_alloc_size(obj);
+        int size = register_size(obj);
         auto guard = mem_usage_guard(size);
         print_indent();
         out_ << obj.line_str() << "\n";
@@ -203,7 +199,7 @@ public:
 
     void _visit(const stmt_group_t &obj) override {
         print_indent();
-        out_ << obj.label << " {\n";
+        out_ << obj.label.str() << " {\n";
         add_indent();
         visit(obj.body);
         remove_indent();
@@ -233,7 +229,7 @@ public:
 
     void _visit(const var_t &obj) override { out_ << obj.name; }
 
-    void _visit(const ref_t &obj) override { out_ << obj.str(); }
+    void _visit(const ref_t &obj) override { out_ << obj; }
 
     void _visit(const while_t &obj) override {
         print_indent();
@@ -394,7 +390,7 @@ object_t substitute(const object_t &root, const object_t &from,
     if (to.is_same(from)) return root;
     substitute_mutator_t sm(from, to);
     auto ret = sm.mutate(root);
-    gpu_assert(sm.substitutions() <= max_substitutions)
+    dsl_assert(sm.substitutions() <= max_substitutions)
             << "Unexpected number of substitutions.";
     return ret;
 }
@@ -404,7 +400,7 @@ object_t substitute_with_different_type(const object_t &root,
     if (to.is_same(from)) return root;
     substitute_and_type_mutator_t sm(from, to);
     auto ret = sm.mutate(root);
-    gpu_assert(sm.substitutions() <= max_substitutions)
+    dsl_assert(sm.substitutions() <= max_substitutions)
             << "Unexpected number of substitutions.";
     return ret;
 }
@@ -426,7 +422,7 @@ std::vector<expr_t> split_by_and(const expr_t &e) {
 }
 
 expr_t abs(const expr_t &e) {
-    gpu_assert(is_const(e)) << e;
+    dsl_assert(is_const(e)) << e;
     if (to_cpp<bool>(e >= 0)) return e;
     return -e;
 }
@@ -475,7 +471,7 @@ int count_object(const object_t &root, const object_t &obj) {
 
 #undef HANDLE_IR_OBJECT
 
-        gpu_error_not_expected() << obj;
+        dsl_error() << obj;
     } while (false);
 
     int ret = 0;
@@ -485,7 +481,7 @@ int count_object(const object_t &root, const object_t &obj) {
 }
 
 bool contains_object(const object_t &root, const object_t &obj) {
-    gpu_assert(is_var(obj)) << obj;
+    dsl_assert(is_var(obj)) << obj;
     return count_object(root, obj) > 0;
 }
 
@@ -572,12 +568,12 @@ public:
         : grf_size_(grf_size), skip_let_(skip_let), regs_(external_regs) {}
 
     void _visit(const alloc_t &obj) override {
-        auto guard = grf_usage_guard(register_alloc_size(obj, grf_size_));
+        auto guard = grf_usage_guard(register_size(obj, grf_size_));
         ir_visitor_t::_visit(obj);
     }
 
     void _visit(const let_t &obj) override {
-        int size = skip_let_ ? 0 : register_alloc_size(obj);
+        int size = skip_let_ ? 0 : register_size(obj);
         auto guard = grf_usage_guard(size);
         ir_visitor_t::_visit(obj);
     }
@@ -601,11 +597,11 @@ int get_peak_regs(
         const stmt_t &stmt, int grf_size, int external_regs, bool skip_let) {
     grf_usage_visitor_t visitor(grf_size, external_regs, skip_let);
     visitor.visit(stmt);
-    return utils::div_up(visitor.peak_regs(), grf_size);
+    return div_up(visitor.peak_regs(), grf_size);
 }
 
 bool relation_t::implies(const relation_t &other) const {
-    gpu_assert(var().is_same(other.var()));
+    dsl_assert(var().is_same(other.var()));
 
     if (op_kind() != other.op_kind()) return false;
 
@@ -621,19 +617,19 @@ bool relation_t::implies(const relation_t &other) const {
         // (x <= A) && (A <= B) => (x <= B)
         case op_kind_t::_lt:
         case op_kind_t::_le: return A <= B;
-        default: gpu_error_not_expected() << "Not implemented: " << expr_;
+        default: dsl_error() << "Not implemented: " << expr_;
     }
     return false;
 }
 
 relation_t relation_t::transform(
         const linear_transform_t &t, const expr_t &new_var) const {
-    gpu_assert(t.a == 1) << "Not implemented.";
+    dsl_assert(t.a == 1) << "Not implemented.";
     return relation_t(binary_op_t::make(op_kind(), new_var, rhs() + t.b));
 }
 
 expr_t relation_t::normalize(const expr_t &e) {
-    gpu_assert(is_relation_constraint(e)) << e;
+    dsl_assert(is_relation_constraint(e)) << e;
     auto &op = e.as<binary_op_t>();
 
     auto op_kind = op.op_kind;
@@ -677,7 +673,7 @@ int64_t bound_finder_base_t::find_bound_impl(
 
     auto *unary = e.as_ptr<unary_op_t>();
     if (unary) {
-        gpu_assert(unary->op_kind == op_kind_t::_minus) << e;
+        dsl_assert(unary->op_kind == op_kind_t::_minus) << e;
         auto a = find_bound_impl(unary->a, !is_low);
         if (!is_good_bound(a)) return def_bound;
         return -a;
@@ -721,7 +717,7 @@ int64_t bound_finder_base_t::find_bound_impl(
                 if (!is_const(binary->b)) return def_bound;
 
                 auto b = to_cpp<int64_t>(binary->b);
-                gpu_assert(b != 0);
+                dsl_assert(b != 0);
 
                 auto a = find_bound_impl(binary->a, b > 0 ? is_low : !is_low);
                 if (!is_good_bound(a)) return def_bound;
@@ -731,7 +727,7 @@ int64_t bound_finder_base_t::find_bound_impl(
                 int64_t div_bound;
                 if (is_low != is_neg) {
                     // Truncate away from zero.
-                    div_bound = utils::div_up(std::abs(a), std::abs(b));
+                    div_bound = div_up(std::abs(a), std::abs(b));
                 } else {
                     // Truncate towards zero.
                     div_bound = std::abs(a) / std::abs(b);
@@ -806,7 +802,7 @@ bool is_linear_var_transform(const expr_t &e, linear_transform_t &t) {
     auto &var = vars[0];
 
     // TODO: Extend to match multiplication: (a * var).
-    if (!utils::one_of(binary_op->op_kind, op_kind_t::_add, op_kind_t::_sub))
+    if (!one_of(binary_op->op_kind, op_kind_t::_add, op_kind_t::_sub))
         return false;
 
     auto &a = binary_op->a;
@@ -901,14 +897,14 @@ void constraint_set_t::add_constraint(const expr_t &e) {
 }
 
 bool constraint_set_t::is_single_value(const expr_t &e, expr_t &value) const {
-    gpu_assert(is_var(e)) << e;
+    dsl_assert(is_var(e)) << e;
     auto it = relations_.find(e);
     if (it == relations_.end()) return false;
 
     expr_t lo;
     expr_t hi;
     for (auto &rel : it->second) {
-        gpu_assert(is_const(rel.rhs())) << rel;
+        dsl_assert(is_const(rel.rhs())) << rel.str();
         bool do_break = false;
         switch (rel.op_kind()) {
             case op_kind_t::_eq:
@@ -933,7 +929,7 @@ bool constraint_set_t::is_single_value(const expr_t &e, expr_t &value) const {
                 }
                 break;
             }
-            default: gpu_error_not_expected() << rel;
+            default: dsl_error() << rel.str();
         }
         if (do_break) break;
     }
@@ -946,7 +942,7 @@ bool constraint_set_t::can_prove_impl(
         const expr_t &_e, bool do_simplify) const {
     auto e = _e;
     if (is_const(e)) {
-        gpu_assert(e.type() == type_t::_bool()) << e;
+        dsl_assert(e.type() == type_t::_bool()) << e;
         return to_cpp<bool>(e);
     }
 
@@ -956,7 +952,7 @@ bool constraint_set_t::can_prove_impl(
         e = simplify_cmp_reduce_lhs_rhs(e);
         e = simplify(e);
         if (is_const(e)) {
-            gpu_assert(e.type() == type_t::_bool()) << e;
+            dsl_assert(e.type() == type_t::_bool()) << e;
             return to_cpp<bool>(e);
         }
     }
@@ -976,13 +972,11 @@ int constraint_set_t::max_proven_gcd(const expr_t &var) const {
     if (it == modulus_infos_.end()) return 1;
     int ret = 1;
     for (auto &c : it->second) {
-        ret = math::lcm(ret, to_cpp<int>(c.mod()));
+        ret = lcm(ret, to_cpp<int>(c.mod()));
     }
     return ret;
 }
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END

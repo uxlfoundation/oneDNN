@@ -16,10 +16,10 @@
 
 #include "gpu/intel/jit/pass/hoist.hpp"
 
+#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/codegen/allocation_size.hpp"
 #include "gpu/intel/jit/ir/send.hpp"
-#include "gpu/intel/jit/pass/simplify.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -308,9 +308,9 @@ stmt_t hoist_exprs_impl(
 }
 
 stmt_t hoist_exprs(const stmt_t &s, ir_context_t &ir_ctx, int reserved_regs) {
-    trace_start();
+    ir::trace_start();
     auto ret = hoist_exprs_impl(s, ir_ctx, reserved_regs);
-    trace_pass("hoist_exprs", ret, ir_ctx);
+    ir::trace_pass("hoist_exprs", ret, ir_ctx);
     return ret;
 }
 
@@ -486,7 +486,7 @@ private:
 
 stmt_t hoist_send_masks(const stmt_t &s, ir_context_t &ir_ctx,
         const stmt_label_t &label, bool split_by_and, int reserved_regs) {
-    trace_start();
+    ir::trace_start();
     int grf_size = ir_ctx.hw().grf_size();
     int available_regs = ir_ctx.options().regs() - reserved_regs;
     int memory_usage_limit = available_regs * grf_size;
@@ -504,7 +504,7 @@ stmt_t hoist_send_masks(const stmt_t &s, ir_context_t &ir_ctx,
                       .mutate(s);
     }
 
-    trace_pass("hoist_send_masks", ret, ir_ctx);
+    ir::trace_pass("hoist_send_masks", ret, ir_ctx);
     return ret;
 }
 

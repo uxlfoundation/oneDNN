@@ -26,6 +26,10 @@
 
 #endif
 
+#ifndef GEMMSTONE_ASSERTIONS
+#define GEMMSTONE_ASSERTIONS 0
+#endif
+
 #ifndef GEMMSTONE_NAMESPACE_START
 #define GEMMSTONE_NAMESPACE_START namespace gemmstone {
 #endif

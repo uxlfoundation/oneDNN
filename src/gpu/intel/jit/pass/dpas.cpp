@@ -16,8 +16,8 @@
 
 #include "gpu/intel/jit/pass/dpas.hpp"
 
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {
 namespace impl {

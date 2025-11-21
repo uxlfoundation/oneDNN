@@ -21,7 +21,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 
 namespace dnnl {
 namespace impl {

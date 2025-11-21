@@ -16,8 +16,8 @@
 
 #include "gpu/intel/jit/pass/alloc.hpp"
 
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/ir/send.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -81,9 +81,9 @@ private:
 };
 
 stmt_t lift_alloc(const stmt_t &s, ir_context_t &ir_ctx, bool reuse_headers) {
-    trace_start();
+    ir::trace_start();
     auto ret = alloc_lifter_t(s, reuse_headers).mutate(s);
-    trace_pass("lift_alloc", ret, ir_ctx);
+    ir::trace_pass("lift_alloc", ret, ir_ctx);
     return ret;
 }
 
@@ -209,9 +209,9 @@ private:
 };
 
 stmt_t optimize_alloc_let(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = alloc_let_optimizer_t().mutate(s);
-    trace_pass("optimize_alloc_let", ret, ir_ctx);
+    ir::trace_pass("optimize_alloc_let", ret, ir_ctx);
     return ret;
 }
 

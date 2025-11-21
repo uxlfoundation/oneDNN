@@ -61,7 +61,7 @@ inline ngen::ConditionModifier cmp_op_to_ngen(op_kind_t op_kind) {
 
 // Lowers IR to nGEN.
 template <typename ngen_generator_t>
-class ir_to_ngen_t final : public codegen_extension_iface_t,
+class ir_to_ngen_t final : public ir::codegen_extension_iface_t,
                            public ir_visitor_t {
 public:
     ir_to_ngen_t(ngen_generator_t *host) : host_(host) {}
@@ -1700,12 +1700,12 @@ REG_XE3_ISA(template void convert_ir_to_ngen<sycl_gen_t<ngen::HW::Xe3>>(
         const stmt_t &body, sycl_gen_t<ngen::HW::Xe3> &host,
         const walk_order_t *kernel_grid_walk_order));
 
-::sycl::kernel make_kernel(const dsl::kernel_t &ir_kernel, ::sycl::context ctx,
+::sycl::kernel make_kernel(const dsl::kernel_t &dsl_kernel, ::sycl::context ctx,
         ::sycl::device dev) {
-    auto &iface = ir_kernel.iface;
-    auto &options = ir_kernel.options;
-    auto &body = ir_kernel.body;
-    auto &debug_cfg = ir_kernel.debug_cfg;
+    auto &iface = dsl_kernel.iface;
+    auto &options = dsl_kernel.options;
+    auto &body = dsl_kernel.body;
+    auto &debug_cfg = dsl_kernel.debug_cfg;
 
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
             iface, options, body);
@@ -1746,11 +1746,11 @@ REG_XE3_ISA(template void convert_ir_to_ngen<ocl_gen_t<ngen::HW::Xe3>>(
         const walk_order_t *kernel_grid_walk_order));
 
 cl_kernel make_kernel(
-        const dsl::kernel_t &ir_kernel, cl_context ctx, cl_device_id dev) {
-    auto &iface = ir_kernel.iface;
-    auto &options = ir_kernel.options;
-    auto &body = ir_kernel.body;
-    auto &debug_cfg = ir_kernel.debug_cfg;
+        const dsl::kernel_t &dsl_kernel, cl_context ctx, cl_device_id dev) {
+    auto &iface = dsl_kernel.iface;
+    auto &options = dsl_kernel.options;
+    auto &body = dsl_kernel.body;
+    auto &debug_cfg = dsl_kernel.debug_cfg;
 
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
             iface, options, body);

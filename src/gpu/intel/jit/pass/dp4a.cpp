@@ -16,8 +16,8 @@
 
 #include "gpu/intel/jit/pass/dp4a.hpp"
 
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -85,9 +85,9 @@ private:
 };
 
 stmt_t inject_dp4a(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = dp4a_injector_t().mutate(s);
-    trace_pass("inject_dp4a", ret, ir_ctx);
+    ir::trace_pass("inject_dp4a", ret, ir_ctx);
     return ret;
 }
 

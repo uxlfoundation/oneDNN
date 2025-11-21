@@ -16,7 +16,7 @@
 
 #include "gpu/intel/jit/pass/unroll.hpp"
 
-#include "gpu/intel/jit/utils/trace.hpp"
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -80,9 +80,9 @@ private:
 };
 
 stmt_t update_loops_for_unrolling(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = unrolling_updater_t().mutate(s);
-    trace_pass("update_loops_for_unrolling", ret, ir_ctx);
+    ir::trace_pass("update_loops_for_unrolling", ret, ir_ctx);
     return ret;
 }
 
@@ -141,9 +141,9 @@ private:
 };
 
 stmt_t unroll_loops(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = loop_unroller_t(ir_ctx).mutate(s);
-    trace_pass("unroll_loops", ret, ir_ctx);
+    ir::trace_pass("unroll_loops", ret, ir_ctx);
     return ret;
 }
 

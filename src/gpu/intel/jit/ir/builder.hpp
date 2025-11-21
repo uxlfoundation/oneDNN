@@ -19,7 +19,7 @@
 
 #include <array>
 
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 
 namespace dnnl {

@@ -16,8 +16,8 @@
 
 #include "gpu/intel/conv/jit/v2/tensor_utils.hpp"
 
+#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
 #include "gpu/intel/conv/jit/problem.hpp"
-#include "gpu/intel/jit/pass/simplify.hpp"
 
 namespace dnnl {
 namespace impl {

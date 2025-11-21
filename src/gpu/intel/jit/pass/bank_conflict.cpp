@@ -16,9 +16,9 @@
 
 #include "gpu/intel/jit/pass/bank_conflict.hpp"
 
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/send.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -144,9 +144,9 @@ private:
 };
 
 stmt_t inject_bank_conflict_attribute(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = bank_conflict_attribute_injector_t().mutate(s);
-    trace_pass("inject_bank_conflict_attribute", ret, ir_ctx);
+    ir::trace_pass("inject_bank_conflict_attribute", ret, ir_ctx);
     return ret;
 }
 

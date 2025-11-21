@@ -19,7 +19,7 @@
 
 #include <array>
 
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {

@@ -24,9 +24,9 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive_exec_types.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
-#include "gpu/intel/jit/ir/include/kernel.hpp"
+#include "gemmstone/dsl/kernel.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "ngen_interface.hpp"

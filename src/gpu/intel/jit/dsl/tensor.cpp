@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 #include "gpu/intel/jit/dsl/tensor.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
-#include "gpu/intel/jit/pass/simplify.hpp"
+#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 
 namespace dnnl {
 namespace impl {

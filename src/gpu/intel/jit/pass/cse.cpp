@@ -14,8 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/pass/cse.hpp"
-
 #include <algorithm>
 #include <iostream>
 #include <utility>
@@ -23,10 +21,12 @@
 #include <type_traits>
 #include <unordered_map>
 
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/codegen/allocation_size.hpp"
 #include "gpu/intel/jit/ir/send.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
+#include "gpu/intel/jit/pass/cse.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/logging.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -729,7 +729,7 @@ stmt_t eliminate_common_subexprs_impl(const stmt_t &_stmt, cse_context_t &ctx,
 
 stmt_t eliminate_common_subexprs(
         const stmt_t &_stmt, ir_context_t &ir_ctx, int memory_usage_limit) {
-    trace_start();
+    ir::trace_start();
     stmt_t stmt;
     cse_context_t cse_ctx(ir_ctx);
 
@@ -742,7 +742,7 @@ stmt_t eliminate_common_subexprs(
         stmt = eliminate_common_subexprs_impl(
                 _stmt, cse_ctx, grf_size, memory_usage_limit, 1);
     }
-    trace_pass("eliminate_common_subexprs", stmt, ir_ctx);
+    ir::trace_pass("eliminate_common_subexprs", stmt, ir_ctx);
     return stmt;
 }
 

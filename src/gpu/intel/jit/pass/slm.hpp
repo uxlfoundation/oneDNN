@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_JIT_PASS_SLM_HPP
 #define GPU_INTEL_JIT_PASS_SLM_HPP
 
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 
 namespace dnnl {

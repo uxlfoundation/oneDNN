@@ -16,17 +16,17 @@
 
 #include "gpu/intel/conv/jit/v2/builder.hpp"
 
+#include "gemmstone/../../dsl/ir/ir.hpp"
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/conv/jit/v2/bridge.hpp"
 #include "gpu/intel/conv/jit/v2/plan.hpp"
 #include "gpu/intel/jit/ir/builder.hpp"
 #include "gpu/intel/jit/ir/eltwise.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/v2/builder.hpp"
 #include "gpu/intel/jit/ir/v2/send.hpp"
 #include "gpu/intel/jit/pass/dpas.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
 #include "gpu/intel/logging.hpp"
 
 namespace dnnl {
@@ -137,9 +137,9 @@ private:
 
 stmt_t fixup_idiv(
         const stmt_t &s, var_manager_t &var_mgr, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = idiv_fixup_mutator_t(var_mgr).mutate(s);
-    trace_pass("fixup_idiv", ret, ir_ctx);
+    ir::trace_pass("fixup_idiv", ret, ir_ctx);
     return ret;
 }
 

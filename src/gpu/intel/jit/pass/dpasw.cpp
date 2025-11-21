@@ -16,11 +16,12 @@
 
 #include "gpu/intel/jit/pass/dpasw.hpp"
 
+#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/grf_permutation.hpp"
 #include "gpu/intel/jit/ir/send.hpp"
-#include "gpu/intel/jit/pass/simplify.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
+#include "gpu/intel/logging.hpp"
 
 namespace dnnl {
 namespace impl {

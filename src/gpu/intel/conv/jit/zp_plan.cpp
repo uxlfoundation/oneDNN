@@ -834,7 +834,7 @@ struct texpr_t {
         return ret;
     }
 
-    bool is_const() const { return nvargs() == 0 && jit::is_const(base); }
+    bool is_const() const { return nvargs() == 0 && jit::ir::is_const(base); }
 
     bool is_var() const { return nvargs() == 1 && base.is(0); }
 
@@ -934,7 +934,7 @@ struct texpr_t {
     XE_DEFINE_DUMP()
 
     static texpr_t create_from_const(const expr_t &e) {
-        gpu_assert(jit::is_const(e));
+        gpu_assert(jit::ir::is_const(e));
         texpr_t ret;
         ret.base = e;
         return ret;

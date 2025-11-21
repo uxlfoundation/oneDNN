@@ -22,7 +22,7 @@
 #include "gpu/intel/jit/ir/send_builder.hpp"
 
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/send_plan.hpp"
 #include "gpu/intel/logging.hpp"
 

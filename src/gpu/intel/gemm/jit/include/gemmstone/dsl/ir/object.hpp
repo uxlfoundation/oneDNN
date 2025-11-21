@@ -14,28 +14,24 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_IR_INCLUDE_OBJECT_HPP
-#define GPU_INTEL_JIT_IR_INCLUDE_OBJECT_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_DSL_IR_OBJECT_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_DSL_IR_OBJECT_HPP
 
+#include <cstdint>
 #include <string>
 
-#include "gpu/intel/jit/utils/utils.hpp"
+#include "internal/utils.hpp"
+#include "gemmstone/dsl/type.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
 
 class object_t;
 class expr_impl_t;
 class stmt_impl_t;
 class ir_mutator_t;
 class ir_visitor_t;
-namespace dsl {
-class type_t;
-}
-using type_t = dsl::type_t;
 
 namespace object {
 // Base class for all IR objects. Implemented as an intrusive pointer, with
@@ -64,7 +60,7 @@ public:
     //       necessary, and please don't add a non-const variant of the method!
     template <typename T>
     const T &as() const {
-        gpu_assert(is<T>());
+        assume(is<T>());
         return *as_ptr<T>(); // fails on incorrect casts even in Release
     }
 
@@ -92,7 +88,7 @@ public:
     virtual void _visit(ir_visitor_t &visitor) const;
 
 protected:
-    friend class dnnl::impl::gpu::intel::jit::object_t;
+    friend class gemmstone::dsl::ir::object_t;
     template <typename T>
     friend struct info_t;
 
@@ -219,7 +215,7 @@ public:
 
     template <typename T>
     const T &as() const {
-        gpu_assert(impl_);
+        assume(impl_);
         return impl_->as<T>();
     }
 
@@ -270,6 +266,13 @@ private:
 
     impl_t *impl_;
 };
+
+inline std::ostream & operator<<(std::ostream & out, const object::impl_t & obj) {
+    return out << obj.str();
+}
+inline std::ostream & operator<<(std::ostream & out, const object_t & obj) {
+    return out << obj.str();
+}
 
 // Wrapper for IR expression objects.
 class expr_t : public object_t {
@@ -380,9 +383,7 @@ public:
     stmt_t append(const stmt_t &s) const;
 };
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 #endif

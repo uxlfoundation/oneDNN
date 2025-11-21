@@ -20,9 +20,9 @@
 #include <vector>
 #include <unordered_set>
 
+#include "gemmstone/dsl/ir.hpp"
 #include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/ir/grf_permutation.hpp"
-#include "gpu/intel/jit/ir/include/ir.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 #include "ngen.hpp"
 

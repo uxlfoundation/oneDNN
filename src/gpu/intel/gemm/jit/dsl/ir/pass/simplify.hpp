@@ -14,16 +14,14 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_PASS_SIMPLIFY_HPP
-#define GPU_INTEL_JIT_PASS_SIMPLIFY_HPP
+#ifndef GEMMSTONE_DSL_IR_PASS_SIMPLIFY_HPP
+#define GEMMSTONE_DSL_IR_PASS_SIMPLIFY_HPP
 
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gemmstone/../../dsl/ir/ir.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
 
 // Determine the maximum constant factor of an expression, returns 0 in the
 // special case that the expression evaluates to 0.
@@ -59,10 +57,8 @@ expr_t simplify_propagate_shuffle(const expr_t &e);
 
 stmt_t simplify(const stmt_t &s, ir_context_t &ir_ctx);
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 
 #endif

@@ -14,17 +14,15 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/ir/core.hpp"
+#include "dsl/ir/core.hpp"
 
 #include <algorithm>
 
-#include "gpu/intel/jit/pass/simplify.hpp"
+#include "dsl/ir/pass/simplify.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
 
 expr_t const_fold_non_recursive(const expr_t &expr);
 object_t const_fold(const object_t &obj);
@@ -61,7 +59,7 @@ std::string to_string(op_kind_t kind) {
         case op_kind_t::_idiv: return "idiv";
         case op_kind_t::_imod: return "imod";
 
-        default: gpu_error_not_expected() << "Unknown op_kind_t value.";
+        default: dsl_error() << "Unknown op_kind_t value.";
     }
     return "";
 }
@@ -102,7 +100,7 @@ op_kind_t negate_cmp_op(op_kind_t op_kind) {
         case op_kind_t::_lt: return op_kind_t::_gt;
         case op_kind_t::_eq: return op_kind_t::_eq;
         case op_kind_t::_ne: return op_kind_t::_ne;
-        default: gpu_error_not_expected();
+        default: stub();
     }
     return op_kind_t::undef;
 }
@@ -116,14 +114,13 @@ type_t unary_op_type(op_kind_t op_kind, const expr_t &a) {
                 return type_t::s32(t.elems(), a.type().attr());
             return t;
         }
-        default:
-            gpu_error_not_expected() << "Unknown op_kind_t value: " << op_kind;
+        default: dsl_error() << "Unknown op_kind_t value: " << op_kind;
     }
     return type_t::undef();
 }
 
 type::attr_t common_attr(const type_t &a, const type_t &b) {
-    gpu_assert(!a.is_ptr() && !b.is_ptr());
+    dsl_assert(!a.is_ptr() && !b.is_ptr());
     return (a.attr() | b.attr()) & ~type::attr_t::mut;
 }
 
@@ -134,7 +131,7 @@ type_t common_type(const type_t &base, const type_t &a, const type_t &b) {
 }
 
 type_t common_int_type_impl(const type_t &_a, const type_t &_b) {
-    gpu_assert(_a.is_int() && _b.is_int()) << "Unexpected types.";
+    dsl_assert(_a.is_int() && _b.is_int()) << "Unexpected types.";
 
     // Promote to s32 first.
     type_t a = _a.size() < int(sizeof(int32_t)) ? type_t::s32() : _a;
@@ -185,18 +182,17 @@ type_t binary_op_type(op_kind_t op_kind, const type_t &a, const type_t &b,
 
     type::attr_t attr = common_attr(a, b);
     if (is_cmp_op(op_kind)) return type_t::_bool(elems, attr);
-    if (utils::one_of(op_kind, op_kind_t::_shl, op_kind_t::_shr)) {
+    if (one_of(op_kind, op_kind_t::_shl, op_kind_t::_shr)) {
         return a[elems].with_attr(attr);
     }
 
-    if (utils::one_of(
-                op_kind, op_kind_t::_and, op_kind_t::_or, op_kind_t::_xor)) {
+    if (one_of(op_kind, op_kind_t::_and, op_kind_t::_or, op_kind_t::_xor)) {
         if (a == b) return a;
         if (is_const(a_expr)) return b;
         if (is_const(b_expr)) return a;
         return (a.size() >= b.size()) ? a : b;
     }
-    if (utils::one_of(op_kind, op_kind_t::_div, op_kind_t::_mod) && a.is_int()
+    if (one_of(op_kind, op_kind_t::_div, op_kind_t::_mod) && a.is_int()
             && b.is_int()) {
         return (a.is_signed() ? type_t::s32() : type_t::u32())[elems].with_attr(
                 attr);
@@ -220,13 +216,13 @@ type_t ternary_op_type(
         case op_kind_t::_idiv:
         case op_kind_t::_imod:
             return a.type().is_signed() ? type_t::s32() : type_t::u32();
-        default: gpu_error_not_expected();
+        default: stub();
     }
     return type_t::undef();
 }
 
 type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args) {
-    gpu_assert(!args.empty());
+    dsl_assert(!args.empty());
     if (args.size() == 1) return args[0].type();
 
     auto type = args[0].type();
@@ -238,8 +234,8 @@ type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args) {
 
 void ptr_t::normalize(expr_t &base, expr_t &off, op_kind_t op_kind) {
     // Normalize (base + off1) + off2 -> base + (off1 + off2)
-    gpu_assert(off.type().is_int()) << "off is not an integer: " << off;
-    gpu_assert(utils::one_of(op_kind, op_kind_t::_add, op_kind_t::_sub))
+    dsl_assert(off.type().is_int()) << "off is not an integer: " << off;
+    dsl_assert(one_of(op_kind, op_kind_t::_add, op_kind_t::_sub))
             << "Can't apply this operation to pointer: " << to_string(op_kind);
 
     if (!base.is<ptr_t>()) {
@@ -265,14 +261,14 @@ void normalize_ptr(const type_t &type, expr_t &base_expr, expr_t &off) {
         base_expr = base_expr.as<ptr_t>().base;
         return;
     }
-    gpu_assert(is_const(off)) << "var/ref requires constant offset.";
+    dsl_assert(is_const(off)) << "var/ref requires constant offset.";
     if (auto *ref = base_expr.as_ptr<ref_t>()) {
         off = const_fold_non_recursive(ref->off + off);
         base_expr = ref->var;
         return;
     }
     if (base_expr.is<var_t>()) return;
-    gpu_error_not_expected() << "Unexpected expression: " << base_expr.str();
+    dsl_error() << "Unexpected expression: " << base_expr;
 }
 
 expr_t linear_t::to_expr() const {
@@ -396,7 +392,7 @@ void ir_visitor_t::_visit(const for_t &obj) {
 object_t ir_mutator_t::_mutate(const func_call_t &obj) {
     auto args = mutate(obj.args);
 
-    if (ir_utils::is_same(args, obj.args)) return obj;
+    if (utils::is_same(args, obj.args)) return obj;
 
     return func_call_t::make(obj.func, args, obj.attr);
 }
@@ -460,12 +456,12 @@ void ir_visitor_t::_visit(const let_t &obj) {
 }
 
 object_t ir_mutator_t::_mutate(const linear_t &obj) {
-    gpu_error_not_expected();
+    stub();
     return obj;
 }
 
 void ir_visitor_t::_visit(const linear_t &obj) {
-    gpu_error_not_expected();
+    stub();
 }
 
 object_t ir_mutator_t::_mutate(const load_t &obj) {
@@ -499,7 +495,7 @@ void ir_visitor_t::_visit(const ptr_t &obj) {
 object_t ir_mutator_t::_mutate(const shuffle_t &obj) {
     auto vec = mutate(obj.vec);
 
-    if (ir_utils::is_same(vec, obj.vec)) return obj;
+    if (utils::is_same(vec, obj.vec)) return obj;
 
     return shuffle_t::make(vec, obj.idx);
 }
@@ -522,7 +518,7 @@ void ir_visitor_t::_visit(const stmt_group_t &obj) {
 
 object_t ir_mutator_t::_mutate(const stmt_seq_t &obj) {
     auto vec = mutate(obj.vec);
-    if (ir_utils::is_same(vec, obj.vec)) return obj;
+    if (utils::is_same(vec, obj.vec)) return obj;
     return stmt_seq_t::make(vec);
 }
 
@@ -590,8 +586,6 @@ void ir_visitor_t::_visit(const while_t &obj) {
     visit(obj.body);
 }
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END

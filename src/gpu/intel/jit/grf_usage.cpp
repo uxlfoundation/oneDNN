@@ -18,7 +18,7 @@
 
 #include "gpu/intel/jit/codegen/allocation_size.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/ir/send.hpp"
 
@@ -118,15 +118,16 @@ public:
         if (is_invalid_) return;
         int size = (obj.kind == alloc_kind_t::grf ? obj.size : 0);
         size = utils::rnd_up(size, grf_size_);
-        mem_usage_guard_t alloc_guard(&alloc_usage_, &peak_alloc_usage_, size);
-        mem_usage_guard_t guard(&grf_usage_, &peak_grf_usage_, size);
+        ir::mem_usage_guard_t alloc_guard(
+                &alloc_usage_, &peak_alloc_usage_, size);
+        ir::mem_usage_guard_t guard(&grf_usage_, &peak_grf_usage_, size);
         if (size > 0) {
             buf_usage_.add(obj.buf, obj.size, grf_usage_label_t::unknown);
             mark_known_bufs(obj.buf);
         }
-        mem_usage_guard_t header_guard;
+        ir::mem_usage_guard_t header_guard;
         if (is_header(obj.buf))
-            header_guard = mem_usage_guard_t(&headers_, &peak_headers_, 1);
+            header_guard = ir::mem_usage_guard_t(&headers_, &peak_headers_, 1);
         ir_visitor_t::_visit(obj);
     }
 
@@ -162,7 +163,7 @@ public:
         if (is_invalid_) return;
         int size = (obj.value.is_empty() ? 0 : obj.var.type().size());
         size = utils::rnd_up(size, ngen_alloc_granularity);
-        mem_usage_guard_t guard(&grf_usage_, &peak_grf_usage_, size);
+        ir::mem_usage_guard_t guard(&grf_usage_, &peak_grf_usage_, size);
         ir_visitor_t::_visit(obj);
     }
 

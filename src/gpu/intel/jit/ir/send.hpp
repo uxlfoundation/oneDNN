@@ -17,13 +17,20 @@
 #ifndef GPU_INTEL_JIT_IR_SEND_HPP
 #define GPU_INTEL_JIT_IR_SEND_HPP
 
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gemmstone/dsl/hw.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+
+using send_cache_hint_t = gemmstone::dsl::ir::send_cache_hint_t;
+// Replace with using dsl = gemmstone::dsl once migration is complete
+namespace dsl {
+using hw_t = gemmstone::dsl::hw_t;
+} // namespace dsl
 
 enum class send_kind_t {
     undef,

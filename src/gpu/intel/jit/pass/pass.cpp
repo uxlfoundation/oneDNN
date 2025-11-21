@@ -16,8 +16,8 @@
 
 #include "gpu/intel/jit/pass/pass.hpp"
 
-#include "gpu/intel/jit/pass/simplify.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
+#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -35,7 +35,7 @@ public:
 };
 
 stmt_t inject_external_var_let(const stmt_t &_stmt, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto stmt = _stmt;
     external_var_visitor_t v;
     v.visit(stmt);
@@ -49,7 +49,7 @@ stmt_t inject_external_var_let(const stmt_t &_stmt, ir_context_t &ir_ctx) {
     for (auto &var : external_vars)
         stmt = let_t::make(var, {}, stmt);
 
-    trace_pass("inject_external_var_let", stmt, ir_ctx);
+    ir::trace_pass("inject_external_var_let", stmt, ir_ctx);
     return stmt;
 }
 
@@ -104,9 +104,9 @@ private:
 };
 
 stmt_t split_wide_stores(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = store_splitter_t(ir_ctx.hw()).mutate(s);
-    trace_pass("split_wide_stores", ret, ir_ctx);
+    ir::trace_pass("split_wide_stores", ret, ir_ctx);
     return ret;
 }
 
@@ -154,9 +154,9 @@ private:
 };
 
 stmt_t fixup_if_conditions(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = if_condition_fixer_t(ir_ctx.options().simd()).mutate(s);
-    trace_pass("fixup_if_conditions", ret, ir_ctx);
+    ir::trace_pass("fixup_if_conditions", ret, ir_ctx);
     return ret;
 }
 
@@ -183,9 +183,9 @@ private:
 };
 
 stmt_t optimize_int64_exprs(const stmt_t &s, ir_context_t &ir_ctx) {
-    trace_start();
+    ir::trace_start();
     auto ret = int64_expr_optimizer_t().mutate(s);
-    trace_pass("optimize_int64_exprs", ret, ir_ctx);
+    ir::trace_pass("optimize_int64_exprs", ret, ir_ctx);
     return ret;
 }
 

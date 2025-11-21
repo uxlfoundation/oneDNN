@@ -38,6 +38,12 @@
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 
+namespace gemmstone {
+namespace dsl {
+struct kernel_t;
+}
+} // namespace gemmstone
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -46,7 +52,7 @@ namespace intel {
 namespace jit {
 struct generator_base_t;
 namespace dsl {
-struct kernel_t;
+using kernel_t = gemmstone::dsl::kernel_t;
 }
 } // namespace jit
 

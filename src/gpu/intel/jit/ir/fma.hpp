@@ -21,7 +21,7 @@
 #include <string>
 
 #include "gpu/intel/jit/dsl/tensor.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "ngen.hpp"
 
 namespace dnnl {
@@ -29,6 +29,13 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+
+namespace dsl {
+using hw_t = gemmstone::dsl::hw_t;
+namespace hw {
+using attr_t = gemmstone::dsl::hw::attr_t;
+}
+} // namespace dsl
 
 // Possible backend instruction sets
 enum class fma_kind_t {

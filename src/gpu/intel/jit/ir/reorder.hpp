@@ -18,7 +18,7 @@
 #define GPU_INTEL_JIT_IR_REORDER_HPP
 
 #include "gpu/intel/jit/dsl/tensor.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 
 namespace dnnl {
 namespace impl {

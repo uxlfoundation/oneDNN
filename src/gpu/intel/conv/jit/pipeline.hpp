@@ -17,8 +17,8 @@
 #ifndef GPU_INTEL_CONV_JIT_PIPELINE_HPP
 #define GPU_INTEL_CONV_JIT_PIPELINE_HPP
 
+#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/conv/jit/config.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_JIT_PASS_DPAS_HPP
 #define GPU_INTEL_JIT_PASS_DPAS_HPP
 
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 
 namespace dnnl {
 namespace impl {

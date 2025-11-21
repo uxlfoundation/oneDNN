@@ -14,46 +14,49 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "dsl/ir/pass/trace.hpp"
+#include "dsl/utils/logging.hpp"
 #include "gemmstone/config.hpp"
 #include "gemmstone/strategy.hpp"
-#include "gpu/intel/gemm/jit/generator_dsl/kernel_desc.hpp"
+#include "generator_dsl/kernel_desc.hpp"
 #include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
 
 GEMMSTONE_NAMESPACE_START
 
-using namespace ir::dsl;
+namespace dnnl_dsl = dnnl::impl::gpu::intel::jit::dsl;
+namespace dnnl_ir = dnnl::impl::gpu::intel::jit;
+using namespace dnnl_dsl;
 
 inline dsl::type_t into_ir(Type t, int elems = 1) {
-    using namespace ir;
+    using namespace dsl;
     switch (t) {
-        case Type::invalid: return dsl::type_t::undef();
+        case Type::invalid: return type_t::undef();
 
-        case Type::f4_e3m0: return dsl::type_t::f4_e3m0(elems);
-        case Type::f4_e2m1: return dsl::type_t::f4_e2m1(elems);
-        case Type::bf8: return dsl::type_t::bf8(elems);
-        case Type::hf8: return dsl::type_t::hf8(elems);
-        case Type::bf16: return dsl::type_t::bf16(elems);
-        case Type::f16: return dsl::type_t::f16(elems);
-        case Type::tf32: return dsl::type_t::tf32(elems);
-        case Type::f32: return dsl::type_t::f32(elems);
-        case Type::f64: return dsl::type_t::f64(elems);
+        case Type::f4_e3m0: return type_t::f4_e3m0(elems);
+        case Type::f4_e2m1: return type_t::f4_e2m1(elems);
+        case Type::bf8: return type_t::bf8(elems);
+        case Type::hf8: return type_t::hf8(elems);
+        case Type::bf16: return type_t::bf16(elems);
+        case Type::f16: return type_t::f16(elems);
+        case Type::tf32: return type_t::tf32(elems);
+        case Type::f32: return type_t::f32(elems);
+        case Type::f64: return type_t::f64(elems);
 
-        case Type::u4: return dsl::type_t::u4(elems);
-        case Type::s4: return dsl::type_t::s4(elems);
-        case Type::u8: return dsl::type_t::u8(elems);
-        case Type::s8: return dsl::type_t::s8(elems);
-        case Type::u16: return dsl::type_t::u16(elems);
-        case Type::s16: return dsl::type_t::s16(elems);
-        case Type::u32: return dsl::type_t::u32(elems);
-        case Type::s32: return dsl::type_t::s32(elems);
-        case Type::u64: return dsl::type_t::u64(elems);
-        case Type::s64: return dsl::type_t::s64(elems);
+        case Type::u4: return type_t::u4(elems);
+        case Type::s4: return type_t::s4(elems);
+        case Type::u8: return type_t::u8(elems);
+        case Type::s8: return type_t::s8(elems);
+        case Type::u16: return type_t::u16(elems);
+        case Type::s16: return type_t::s16(elems);
+        case Type::u32: return type_t::u32(elems);
+        case Type::s32: return type_t::s32(elems);
+        case Type::u64: return type_t::u64(elems);
+        case Type::s64: return type_t::s64(elems);
 
-        default: stub(); return dsl::type_t::undef();
+        default: stub(); return type_t::undef();
     }
 }
 
@@ -253,8 +256,9 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
             }
 
             auto src_g = [&]() -> global_tensor_t {
-                expr_t src_g_offset = simplify(arg("offset_binary" + i_s)
-                        + e.src1_desc.get_offset(idxs, strides));
+                expr_t src_g_offset
+                        = dsl::ir::simplify(arg("offset_binary" + i_s)
+                                + e.src1_desc.get_offset(idxs, strides));
 
                 idx_map_t<expr_t> g_strides;
                 idx_map_t<expr_t> g_sizes;
@@ -286,7 +290,7 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
 
             switch (e.alg) {
                 case dnnl::impl::alg_kind::binary_add:
-                    binary(ir::op_kind_t::_add, C, C, src);
+                    binary(dsl::ir::op_kind_t::_add, C, C, src);
                     break;
                 default: gpu_assert(false) << "Unimplemented";
             }
@@ -321,12 +325,12 @@ struct basic_iterator_t : kloop_iterator_t {
         , C_store_ {C}
 
     {
-        assume(m_idx_ % C.tile[m_var] == 0);
-        assume(n_idx_ % C.tile[n_var] == 0);
+        dnnl_dsl::assume(m_idx_ % C.tile[m_var] == 0);
+        dnnl_dsl::assume(n_idx_ % C.tile[n_var] == 0);
 
-        assume(m_idx_ >= 0);
-        assume(n_idx_ >= 0);
-        assume(k_idx_ >= 0);
+        dnnl_dsl::assume(m_idx_ >= 0);
+        dnnl_dsl::assume(n_idx_ >= 0);
+        dnnl_dsl::assume(k_idx_ >= 0);
     }
 
     const global_tensor_t &A_prefetch() const override { return A_prefetch_; }
@@ -395,7 +399,8 @@ struct generator_dsl_t {
     generator_dsl_t(const generator_dsl_desc_t &desc)
         : problem(desc.problem), strategy(desc.strategy) {}
 
-    dsl::kernel_t build(dsl::kernel::iface_t iface, ir::ir_context_t &ctx) {
+    dsl::kernel_t build(
+            dsl::kernel::iface_t iface, dsl::ir::ir_context_t &ctx) {
         if (strategy.kParallel || strategy.kParallelLocal) {
             gpu_warning() << "kParallel support is unimplemented";
             return {};
@@ -580,13 +585,16 @@ struct generator_dsl_t {
         gpu_assert(k_loop_short.k_warmup() == 0);
 
         if (problem.A.alignment) {
-            assume(arg("lda") % (problem.A.alignment / problem.Ta_ext) == 0);
+            dnnl_dsl::assume(
+                    arg("lda") % (problem.A.alignment / problem.Ta_ext) == 0);
         }
         if (problem.B.alignment) {
-            assume(arg("ldb") % (problem.B.alignment / problem.Tb_ext) == 0);
+            dnnl_dsl::assume(
+                    arg("ldb") % (problem.B.alignment / problem.Tb_ext) == 0);
         }
         if (problem.C.alignment) {
-            assume(arg("ldc") % (problem.C.alignment / problem.Tc_ext) == 0);
+            dnnl_dsl::assume(
+                    arg("ldc") % (problem.C.alignment / problem.Tc_ext) == 0);
         }
 
         _if(kloop_it.is_inbounds(0), [&]() {
@@ -749,19 +757,19 @@ struct generator_dsl_t {
 };
 
 dsl::kernel_t make_kernel(const generator_dsl_desc_t &desc) {
-    ir::constraint_set_t cset;
-    ir::ir_context_t ctx(desc.options, cset);
+    dsl::ir::constraint_set_t cset;
+    dsl::ir::ir_context_t ctx(desc.options, cset);
 
-    ir::trace_start();
+    dsl::ir::trace_start();
     auto k = generator_dsl_t(desc).build(desc.kernel_iface(), ctx);
-    ir::trace_pass("build generator_dsl_t", k.body, ctx);
+    dsl::ir::trace_pass("build generator_dsl_t", k.body, ctx);
 
-    k.body = ir::simplify(k.body, ctx);
-    k.body = ir::inject_send(k.body, ctx);
+    k.body = dsl::ir::simplify(k.body, ctx);
+    k.body = dnnl_ir::inject_send(k.body, ctx);
 
     // TODO: This should be unnecessary as it could happen at codegen
-    k.body = ir::fixup_if_conditions(k.body, ctx);
-    k.body = ir::eliminate_common_subexprs(
+    k.body = dnnl_ir::fixup_if_conditions(k.body, ctx);
+    k.body = dnnl_ir::eliminate_common_subexprs(
             k.body, ctx, desc.strategy.GRFs * ctx.hw().grf_size());
     return k;
 }

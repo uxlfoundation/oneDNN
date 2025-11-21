@@ -17,7 +17,8 @@
 #ifndef GPU_INTEL_JIT_PASS_PASS_HPP
 #define GPU_INTEL_JIT_PASS_PASS_HPP
 
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/pass/alloc.hpp"
 #include "gpu/intel/jit/pass/bank_conflict.hpp"
 #include "gpu/intel/jit/pass/barrier.hpp"
@@ -31,7 +32,6 @@
 #include "gpu/intel/jit/pass/peephole.hpp"
 #include "gpu/intel/jit/pass/send.hpp"
 #include "gpu/intel/jit/pass/shuffle_splitter.hpp"
-#include "gpu/intel/jit/pass/simplify.hpp"
 #include "gpu/intel/jit/pass/slm.hpp"
 #include "gpu/intel/jit/pass/strength_reduce.hpp"
 #include "gpu/intel/jit/pass/unroll.hpp"

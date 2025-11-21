@@ -175,7 +175,7 @@ std::string problem_t::str() const {
 
 std::string problem_t::csv_str() const {
     std::vector<std::string> parts;
-    parts.push_back(hw_.brief_str());
+    parts.push_back(ir_utils::to_lower(to_string(hw_.ngen_hw())));
     parts.push_back(jit::to_string(prop_));
     parts.push_back(src_tag_.str());
     parts.push_back(wei_tag_.str());

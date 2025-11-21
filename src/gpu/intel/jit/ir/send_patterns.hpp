@@ -21,6 +21,13 @@
 
 #include "gpu/intel/jit/ir/send.hpp"
 #include "gpu/intel/logging.hpp"
+namespace gemmstone {
+namespace dsl {
+namespace ir {
+class stmt_t;
+}
+} // namespace dsl
+} // namespace gemmstone
 
 namespace dnnl {
 namespace impl {
@@ -506,7 +513,7 @@ struct uniform_send_idiom_t final {
     }
 };
 
-class stmt_t;
+using stmt_t = gemmstone::dsl::ir::stmt_t;
 template <typename dim_id_t>
 struct send_pattern_t;
 

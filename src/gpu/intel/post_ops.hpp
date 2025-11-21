@@ -20,6 +20,14 @@
 #include "common/primitive_attr.hpp"
 #include "gpu/intel/utils.hpp"
 
+namespace gemmstone {
+namespace dsl {
+namespace ir {
+class expr_t;
+}
+} // namespace dsl
+} // namespace gemmstone
+
 namespace dnnl {
 namespace impl {
 
@@ -30,10 +38,6 @@ const alg_kind_t binary_prelu = eltwise_relu;
 
 namespace gpu {
 namespace intel {
-
-namespace jit {
-class expr_t;
-} // namespace jit
 
 namespace post_op {
 
@@ -243,8 +247,9 @@ struct relative_md_t {
     std::string ocl_defines(const std::string &prefix,
             const std::array<std::string, MAX_NDIMS> &strides, int ndims) const;
 
-    jit::expr_t get_offset(const std::vector<jit::expr_t> &dim_idxs,
-            const std::vector<jit::expr_t> &strides) const;
+    gemmstone::dsl::ir::expr_t get_offset(
+            const std::vector<gemmstone::dsl::ir::expr_t> &dim_idxs,
+            const std::vector<gemmstone::dsl::ir::expr_t> &strides) const;
 
     bool is_broadcast(int idx, int ndims) const {
         idx_t norm = from_md_idx(idx, ndims, {});

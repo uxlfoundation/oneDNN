@@ -18,6 +18,7 @@
 #define GEMMSTONE_GENERATOR_DSL_BUILDER_HPP
 
 #include "gemmstone/config.hpp"
+#include "gemmstone/dsl/kernel.hpp"
 
 GEMMSTONE_NAMESPACE_START
 

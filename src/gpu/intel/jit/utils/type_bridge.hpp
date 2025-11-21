@@ -18,8 +18,8 @@
 #define GPU_INTEL_JIT_UTILS_TYPE_BRIDGE_HPP
 
 #include "common/c_types_map.hpp"
+#include "gemmstone/dsl/type.hpp"
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/jit/ir/include/type.hpp"
 #include "ngen.hpp"
 
 namespace dnnl {
@@ -106,8 +106,8 @@ inline compute::gpu_arch_t convert_ngen_arch_to_dnnl(ngen::HW gpu_arch) {
     return compute::gpu_arch_t::unknown;
 }
 
-// dsl::type_t and dnnl_data_type_t convertors.
-inline data_type_t to_dnnl(const dsl::type_t &type) {
+// gemmstone::dsl::type_t and dnnl_data_type_t convertors.
+inline data_type_t to_dnnl(const gemmstone::dsl::type_t &type) {
     gpu_assert(type.elems() == 1) << type;
     gpu_assert(!type.is_ptr() == 1) << type;
     if (type.is_f4_e3m0()) return data_type::f4_e3m0;
@@ -126,11 +126,11 @@ inline data_type_t to_dnnl(const dsl::type_t &type) {
     return data_type::undef;
 }
 
-inline dsl::type_t to_ir(const data_type_t &dt) {
-    if (dt == data_type::undef) return dsl::type_t();
+inline gemmstone::dsl::type_t to_ir(const data_type_t &dt) {
+    if (dt == data_type::undef) return gemmstone::dsl::type_t();
     switch ((int)dt) {
 #define CASE(x) \
-    case data_type::x: return dsl::type_t::x();
+    case data_type::x: return gemmstone::dsl::type_t::x();
         CASE(f4_e3m0);
         CASE(f4_e2m1);
         CASE(f8_e5m2);
@@ -148,7 +148,7 @@ inline dsl::type_t to_ir(const data_type_t &dt) {
 #undef CASE
         default: gpu_error_not_expected();
     }
-    return dsl::type_t();
+    return {};
 }
 
 } // namespace jit

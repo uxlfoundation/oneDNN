@@ -17,9 +17,9 @@
 #ifndef GPU_INTEL_JIT_IR_HW_HPP
 #define GPU_INTEL_JIT_IR_HW_HPP
 
+#include "gemmstone/dsl/hw.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/engine.hpp"
-#include "gpu/intel/jit/ir/include/hw.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 
 namespace dnnl {
@@ -28,8 +28,16 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+namespace dsl {
+using hw_t = gemmstone::dsl::hw_t;
+namespace hw {
+using attr_t = gemmstone::dsl::hw::attr_t;
+}
+} // namespace dsl
+
 inline dsl::hw_t make_ir_hw(const impl::engine_t *engine) {
     using namespace compute;
+    using namespace gemmstone;
     auto intel_engine = utils::downcast<const engine_t *>(engine);
 
     auto *device_info = intel_engine->device_info();
@@ -41,9 +49,9 @@ inline dsl::hw_t make_ir_hw(const impl::engine_t *engine) {
     dsl::hw::attr_t attr = dsl::hw::attr_t::none;
     if (intel_engine->mayiuse_large_grf_mode())
         attr |= dsl::hw::attr_t::large_grf;
-    if (device_info->mayiuse_systolic()) attr |= dsl::hw::attr_t::systolic;
+    if (device_info->mayiuse_systolic()) attr |= dsl::hw_t::attr_t::systolic;
     if (device_info->mayiuse_float_atomic_add(data_type::f64))
-        attr |= dsl::hw::attr_t::atomic_fp64;
+        attr |= dsl::hw_t::attr_t::atomic_fp64;
 
     return dsl::hw_t(product, eu_count, max_wg_size, l3_cache_size, attr);
 }

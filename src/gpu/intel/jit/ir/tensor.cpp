@@ -392,7 +392,7 @@ view_t view_t::create_sub_view(const tile_t &tile, const coord_t &coord) const {
 view_t view_t::substitute(const expr_t &from, const expr_t &to) const {
     view_t ret = *this;
     for (dim_idx_t i = 0; i < nvdims(); i++) {
-        ret.vstart_[i] = jit::substitute(ret.vstart_[i], from, to);
+        ret.vstart_[i] = ir::substitute(ret.vstart_[i], from, to);
         ret.vstart_[i] = simplify(ret.vstart_[i]);
     }
     return ret;

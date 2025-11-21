@@ -14,30 +14,31 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_IR_INCLUDE_IR_HPP
-#define GPU_INTEL_JIT_IR_INCLUDE_IR_HPP
+#ifndef GEMMSTONE_DSL_IR_CODEGEN_ALLOCATION_SIZE_HPP
+#define GEMMSTONE_DSL_IR_CODEGEN_ALLOCATION_SIZE_HPP
 
-#include "gpu/intel/jit/ir/include/hw.hpp"
-#include "gpu/intel/jit/ir/include/kernel.hpp"
-#include "gpu/intel/jit/ir/include/object.hpp"
-#include "gpu/intel/jit/ir/include/type.hpp"
+#include "dsl/ir/core.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
 
-enum class send_cache_hint_t {
-    undef,
-    hw_default,
-    load_once,
-};
-
+static const int ngen_alloc_granularity = 4;
+inline int register_size(const alloc_t &obj, int grf_size) {
+    return (obj.kind == alloc_kind_t::grf)
+            ? into<int>(round_up(obj.size, grf_size))
+            : 0;
 }
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+
+inline int register_size(const let_t &obj) {
+    // Empty objects are allocated in reserved space
+    // nGEN only claims subregisters at dword granularity
+    if (obj.value.is_empty()) return 0;
+    return round_up(obj.var.type().size(), ngen_alloc_granularity);
+}
+
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 
 #endif

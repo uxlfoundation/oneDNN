@@ -30,7 +30,7 @@
 #include "gpu/intel/jit/codegen/register_scope.hpp"
 #include "gpu/intel/jit/codegen/reorder.hpp"
 #include "gpu/intel/jit/ir/builder.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/walk_order.hpp"
 #include "gpu/intel/logging.hpp"
 #include "ngen.hpp"

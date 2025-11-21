@@ -17,7 +17,7 @@
 #include "gpu/intel/jit/ir/linear_expr.hpp"
 
 #include "common/math_utils.hpp"
-#include "gpu/intel/jit/pass/simplify.hpp"
+#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
 
 namespace dnnl {
 namespace impl {

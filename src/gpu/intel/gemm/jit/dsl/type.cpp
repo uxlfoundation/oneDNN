@@ -14,16 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/ir/include/type.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
+#include "gemmstone/dsl/type.hpp"
+#include "dsl/utils/utils.hpp"
 #include "ngen.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
 namespace dsl {
 
 struct type_internal_accessor_t {
@@ -34,40 +29,42 @@ struct type_internal_accessor_t {
 namespace type {
 using kind_t = type_internal_accessor_t::kind_t;
 
-static auto kind_names = nstl::to_array({
-        make_enum_name(kind_t::undef, "undef"),
-        make_enum_name(kind_t::u4, "u4"),
-        make_enum_name(kind_t::s4, "s4"),
-        make_enum_name(kind_t::u8, "u8"),
-        make_enum_name(kind_t::s8, "s8"),
-        make_enum_name(kind_t::u16, "u16"),
-        make_enum_name(kind_t::s16, "s16"),
-        make_enum_name(kind_t::u32, "u32"),
-        make_enum_name(kind_t::s32, "s32"),
-        make_enum_name(kind_t::u64, "u64"),
-        make_enum_name(kind_t::s64, "s64"),
-        make_enum_name(kind_t::f4_e3m0, "f4_e3m0"),
-        make_enum_name(kind_t::f4_e2m1, "f4_e2m1"),
-        make_enum_name(kind_t::bf8, "bf8"),
-        make_enum_name(kind_t::hf8, "hf8"),
-        make_enum_name(kind_t::bf16, "bf16"),
-        make_enum_name(kind_t::f16, "f16"),
-        make_enum_name(kind_t::tf32, "tf32"),
-        make_enum_name(kind_t::f32, "f32"),
-        make_enum_name(kind_t::f64, "f64"),
-        make_enum_name(kind_t::byte, "byte"),
-        make_enum_name(kind_t::dword, "dword"),
-        make_enum_name(kind_t::qword, "qword"),
-        make_enum_name(kind_t::oword, "oword"),
-        make_enum_name(kind_t::hword, "hword"),
-        make_enum_name(kind_t::_bool, "bool"),
-});
+const std::unordered_map<kind_t, std::string> &kind_names() {
+    static const std::unordered_map<kind_t, std::string> names {
+            {kind_t::undef, "undef"},
+            {kind_t::u4, "u4"},
+            {kind_t::s4, "s4"},
+            {kind_t::u8, "u8"},
+            {kind_t::s8, "s8"},
+            {kind_t::u16, "u16"},
+            {kind_t::s16, "s16"},
+            {kind_t::u32, "u32"},
+            {kind_t::s32, "s32"},
+            {kind_t::u64, "u64"},
+            {kind_t::s64, "s64"},
+            {kind_t::f4_e3m0, "f4_e3m0"},
+            {kind_t::f4_e2m1, "f4_e2m1"},
+            {kind_t::bf8, "bf8"},
+            {kind_t::hf8, "hf8"},
+            {kind_t::bf16, "bf16"},
+            {kind_t::f16, "f16"},
+            {kind_t::tf32, "tf32"},
+            {kind_t::f32, "f32"},
+            {kind_t::f64, "f64"},
+            {kind_t::byte, "byte"},
+            {kind_t::dword, "dword"},
+            {kind_t::qword, "qword"},
+            {kind_t::oword, "oword"},
+            {kind_t::hword, "hword"},
+            {kind_t::_bool, "bool"},
+    };
+    return names;
+}
 
 const std::string &to_string(kind_t kind) {
-    for (auto &entry : kind_names) {
-        if (entry.first == kind) return entry.second;
-    }
     static const std::string invalid = "(invalid type::kind_t)";
+    auto entry = kind_names().find(kind);
+    if (entry != kind_names().end()) return entry->second;
     return invalid;
 }
 
@@ -101,14 +98,14 @@ type_t::type_t(ngen::DataType type, uint32_t elems, attr_t attr)
     : type_t(type::get_kind(type), elems, attr) {}
 
 size_t type_t::get_hash() const {
-    return ir_utils::get_hash(kind(), elems(), is_ptr());
+    return hash(kind(), elems(), is_ptr());
 }
 
 int type_t::size() const {
     if (is_ptr()) return sizeof(uint64_t);
 
-    if (is_bool()) return utils::div_up(elems(), 8);
-    if (is_x4() || is_fp4()) return utils::div_up(elems(), 2);
+    if (is_bool()) return div_up(elems(), 8);
+    if (is_x4() || is_fp4()) return div_up(elems(), 2);
 
     if (elems() != 1) return elems() * base().size();
 
@@ -133,7 +130,7 @@ int type_t::size() const {
         case kind_t::qword: return 8;
         case kind_t::oword: return 16;
         case kind_t::hword: return 32;
-        default: gpu_error_not_expected();
+        default: stub();
     }
     return 0;
 }
@@ -151,7 +148,7 @@ int type_t::mantissa_bits() const {
         case kind_t::bf8: return 2;
         case kind_t::f4_e2m1: return 1;
         case kind_t::f4_e3m0: return 0;
-        default: gpu_error_not_expected();
+        default: stub();
     }
     return 0;
 }
@@ -170,7 +167,7 @@ std::string type_t::str() const {
 void type_t::parse(std::istream &in) {
     bool found = false;
     kind_t kind = {};
-    for (auto &entry : type::kind_names) {
+    for (auto &entry : type::kind_names()) {
         if (stream_try_match(in, entry.second)) {
             kind = entry.first;
             found = true;
@@ -225,8 +222,4 @@ bool is_subset(const type_t &a, const type_t &b) {
 }
 
 } // namespace dsl
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+GEMMSTONE_NAMESPACE_END

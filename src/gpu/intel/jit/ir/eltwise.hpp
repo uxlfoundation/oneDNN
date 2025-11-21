@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {

@@ -18,7 +18,7 @@
 #define GPU_INTEL_JIT_IR_EPILOGUE_HPP
 
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/slm_reduce_builder.hpp"
 

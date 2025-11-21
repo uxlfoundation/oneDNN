@@ -77,17 +77,12 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     const dim_t src_batch_stride = M * K;
     const dim_t dst_batch_stride = M * N;
 
-    // weights may be broadcast over batch
-    dim_t wei_batch_stride = 0;
-    if (!pd()->weights_are_broadcast_) {
-        dim_t outer = 1;
-        for (int i = 0; i < wei_ndims - 2; ++i)
-            outer *= wei_dims[i];
-        const dim_t K_dim = wei_dims[wei_ndims - 2];
-        const dim_t N_dim = wei_dims[wei_ndims - 1];
-        wei_batch_stride = K_dim * N_dim;
-        MAYBE_UNUSED(outer);
-    }
+    const int src_batch_ndims = ndims > 2 ? ndims - 2 : 0;
+    const int wei_batch_ndims = wei_ndims > 2 ? wei_ndims - 2 : 0;
+    const int batch_dim_shift = src_batch_ndims - wei_batch_ndims;
+    const dim_t K_dim = wei_dims[wei_ndims - 2];
+    const dim_t N_dim = wei_dims[wei_ndims - 1];
+    const dim_t wei_matrix_stride = K_dim * N_dim;
 
     // GEMM compute
     if (pd()->weights_are_broadcast_) {
@@ -106,7 +101,27 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
         parallel_nd(batch, [&](dim_t b) {
             const float *src_base = src + b * src_batch_stride;
             float *dst_base = dst + b * dst_batch_stride;
-            const float *wei_base = weights + b * wei_batch_stride;
+
+            dim_t batch_indices[DNNL_MAX_NDIMS] = {};
+            if (src_batch_ndims > 0) {
+                utils::l_dims_by_l_offset(
+                        batch_indices, b, src_dims, src_batch_ndims);
+            }
+
+            dim_t weight_batch_index = 0;
+            if (wei_batch_ndims > 0) {
+                for (int d = 0; d < wei_batch_ndims; ++d) {
+                    const int src_dim_idx = d + batch_dim_shift;
+                    dim_t idx = (src_dim_idx >= 0) ? batch_indices[src_dim_idx]
+                                                   : dim_t(0);
+                    const dim_t wei_dim = wei_dims[d];
+                    idx = (wei_dim == 1) ? dim_t(0) : idx;
+                    weight_batch_index = weight_batch_index * wei_dim + idx;
+                }
+            }
+
+            const float *wei_base
+                    = weights + weight_batch_index * wei_matrix_stride;
 
             status_t st = rvv_gemm_f32(&transa, &transb, &M_gemm, &N_gemm,
                     &K_gemm, &alpha, wei_base, &lda, src_base, &ldb, &beta,

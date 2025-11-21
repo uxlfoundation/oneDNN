@@ -164,18 +164,21 @@ public:
 
         auto &func = obj.func;
         if (func.is<dpas_t>()) {
+            maybe_apply_read_suppression_wa(*host_, do_read_suppression_wa_);
             auto arg_ops = eval(obj.args, scope);
             dpas(func.as<dpas_t>(), arg_ops, obj.attr);
         } else if (func.is<mad_t>()) {
+            maybe_apply_read_suppression_wa(*host_, do_read_suppression_wa_);
             auto arg_ops = eval(obj.args, scope);
             mad(scope, func.as<mad_t>(), arg_ops, obj.attr);
         } else if (func.is<send_t>()) {
             auto &send_func = func.as<send_t>();
             auto args = obj.args;
             auto &mask = send_t::arg_mask(args);
+            bool is_load = send_func.is_load() || send_func.is_load_2d();
             // If all channels are disabled for writing, quick return.
             if (all_of(mask, expr_t(false))) {
-                if (send_func.is_load() || send_func.is_load_2d()) {
+                if (is_load) {
                     auto reg_buf_op = eval(send_t::arg_reg_buf(args), scope);
                     auto pattern_op
                             = eval(send_t::arg_fill_pattern(args), scope);
@@ -187,6 +190,11 @@ public:
             if (all_of(mask, expr_t(true))) mask = expr_t();
             auto arg_ops = eval(args, scope);
             send(scope, func.as<send_t>(), arg_ops, obj.attr);
+            // On fused-EU architectures (XeLP/XeHP/XeHPG) masked loads require
+            // a workaround to mitigate a read suppression hardware bug in both
+            // int and float pipes; refer to HSD-ES 16012061344 for more info.
+            do_read_suppression_wa_
+                    |= is_load && need_read_suppression_wa(hw(), mask);
         } else if (func.is<reorder_t>()) {
             auto arg_ops = eval(obj.args, scope);
             gpu_assert(obj.attr.is_empty()) << "Unexpected attribute.";
@@ -340,6 +348,26 @@ public:
     }
 
 private:
+    static bool need_read_suppression_wa(ngen::HW hw, const expr_t &mask) {
+        if (!utils::one_of(hw, ngen::HW::XeLP, ngen::HW::XeHP, ngen::HW::XeHPG)
+                || mask.is_empty())
+            return false;
+        // Preliminary checks showed that the workaround might be in order;
+        // TODO: Let's determine if this is indeed the case.
+        return true;
+    }
+
+    static void maybe_apply_read_suppression_wa(
+            ngen_generator_t &host, bool &do_it) {
+        if (do_it) {
+            auto ri = ngen::GRF(1).uw(0)(1); // r1 least likely to stall
+            auto rf = ngen::GRF(1).f(4)(1);
+            host.csel(4, ri, ri, ri, ri); // Clear read suppression in I
+            host.csel(4, rf, rf, rf, rf); // Clear read suppression in F
+            do_it = false;
+        }
+    }
+
     bool is_header(const expr_t &buf) const {
         return buf.as<var_t>().name.find("h_") == 0;
     }
@@ -864,6 +892,7 @@ private:
 #endif
 
     object_map_t<alloc_attr_t, bank_conflict_allocation_t> bc_allocations_;
+    bool do_read_suppression_wa_ = false;
 
     const size_t max_tracked_header_regs = 8;
     std::vector<int> last_used_header_regs_;

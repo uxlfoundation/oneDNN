@@ -394,10 +394,14 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
             *tagPtr++ = ReqBatchMultiDim;
     }
 
-    if (problem.aOffset != ABOffset::None || problem.bOffset != ABOffset::None)
+    if (problem.aOffset != ABOffset::None || problem.bOffset != ABOffset::None){
+        VDEBUGINFO(4, primitive, kernel_selector, "MY: *tagPtr++ = ReqABOffset");
         *tagPtr++ = ReqABOffset;
-    if (problem.aoPtrDims > 0 || problem.boPtrDims > 0)
+    }
+    if (problem.aoPtrDims > 0 || problem.boPtrDims > 0){
+        VDEBUGINFO(4, primitive, kernel_selector, "MY: *tagPtr++ = ReqOffsetMultiDim");
         *tagPtr++ = ReqOffsetMultiDim;
+    }
 
     problem.autoTypeConversions(hw, systolicAvailable);
     if (problem.needsASums() && !problem.sumA) *tagPtr++ = ReqSumA;

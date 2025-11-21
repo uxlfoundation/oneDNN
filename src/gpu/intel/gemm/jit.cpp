@@ -456,7 +456,8 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         cmask = pd()->sum_ab_cmask();
     }
 
-#if 1 // just to debug
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#if 0 // just to debug
 
     ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
     VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : ctx.args().a_zero_point = %s", ctx.args().a_zero_point ? "something" : "empty");
@@ -475,7 +476,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     }
 
 #endif
-
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);

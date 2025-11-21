@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -435,6 +435,8 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     using namespace ngen;
     using namespace kcatalog;
 
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::select_kernel ---->");
+
     arch_ = arch;
     hw_ = convert_dnnl_arch_to_ngen(arch);
     stepping_ = stepping;
@@ -462,6 +464,9 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     problem_.Tao = convert_dnnl_to_kernel_type(a_quant.zp_type);
     problem_.Tbo = convert_dnnl_to_kernel_type(b_quant.zp_type);
     problem_.Tco = convert_dnnl_to_kernel_type(co_type);
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : Tao Tbo Tco = %d %d %d", (int)problem_.Tao,(int)problem_.Tbo,(int)problem_.Tco);
+
     problem_.A.layout = trans_a ? MatrixLayout::T : MatrixLayout::N;
     problem_.B.layout = trans_b ? MatrixLayout::T : MatrixLayout::N;
     problem_.C.layout = MatrixLayout::N;
@@ -486,10 +491,15 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.batch = BatchMode::Strided;
         problem_.batchDims = batch_dims;
     }
+
+// !!!!!!!!!!!!!!!!!!!!!!!! possibly HERE
+
     if (a_quant.zp_ndims >= 0) problem_.aOffset = ABOffset::Calc;
     if (b_quant.zp_ndims >= 0) problem_.bOffset = ABOffset::Calc;
     problem_.aoPtrDims = a_quant.zp_ndims;
     problem_.boPtrDims = b_quant.zp_ndims;
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : set aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims,problem_.boPtrDims);
+
     problem_.AO.layout = MatrixLayout::N;
     problem_.BO.layout
             = (problem_.bOffset2D()) ? MatrixLayout::N : MatrixLayout::T;
@@ -501,6 +511,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.AO.setAlignment(int(types::data_type_size(a_quant.zp_type)));
     if (b_quant.zp_type != data_type::undef)
         problem_.BO.setAlignment(int(types::data_type_size(b_quant.zp_type)));
+
     if (!swap_ab) {
         problem_.asPtrDims = a_quant.scale_ndims;
         problem_.bsPtrDims = b_quant.scale_ndims;
@@ -750,11 +761,15 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     tags_ = match_params[0].tags;
     Ts_ = problem_.Ts;
     beta_ = problem_.beta;
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::select_kernel <---- return selct(catalog()...)");
+
     return select(catalog(), static_cast<int>(match_params.size()),
             match_params.data(), eval_params_, aux_params_, &observer);
 }
 
 status_t gen_nocopy_desc_t::finalize() {
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::finalize() ---->");
     // Update A/B/C types from entry.
     Type Ta_new, Ta_ext_new, Tb_new, Tb_ext_new, Tc_new;
     parsePrecisions(entry_->selector.precisions[0], Ta_ext_new, Ta_new);
@@ -792,6 +807,7 @@ status_t gen_nocopy_desc_t::finalize() {
     if (block_k > 0 && k_ > block_k && eval_params_.beta != 1.0f)
         problem_.beta = Scalar();
     evaluate(*entry_, eval_params_, aux_params_);
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::finalize() <---- return gen_desc_t::finalize(tags_.c_str())");
     return gen_desc_t::finalize(tags_.c_str());
 }
 
@@ -803,6 +819,9 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         data_type_t bo_type, data_type_t co_type, data_type_t acc_type, dim_t m,
         dim_t n, dim_t k, dim_t batch, int unroll_m, int unroll_n, bool alt,
         gpu_post_ops_t &&post_ops) {
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_xe_systolic_kernel_desc_t::select_kernel ---->");
+
     using namespace ngen;
     using namespace kcatalog;
 
@@ -852,6 +871,9 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         problem_.batch = BatchMode::Strided;
         problem_.batchDims = batch_dims;
     }
+
+// !!!!!!!!!!!!! ????????????????????????
+
     if (a_offset) {
         problem_.aOffset = ABOffset::Load;
         problem_.aoPtrDims = 0;
@@ -920,6 +942,9 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
 
     if (entries.size() < 1) return status::unimplemented;
     entry_ = entries[0];
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_xe_systolic_kernel_desc_t::select_kernel <---- return finalize(match_params.tags)");
+
     return finalize(match_params.tags);
 }
 
@@ -964,6 +989,9 @@ void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
 }
 
 void gen_kernel_t::init_interface() {
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: init_interface >>>>>>>>>>");
+
     using namespace ngen;
 
     auto &problem = *desc()->problem();
@@ -989,6 +1017,9 @@ void gen_kernel_t::init_interface() {
     interface_.newArgument("offset_A", DataType::q);
     interface_.newArgument("offset_B", DataType::q);
     interface_.newArgument("offset_C", DataType::q);
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument offset_A");
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument offset_B");
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument offset_C");
     interface_.newArgument("lda", DataType::d);
     interface_.newArgument("ldb", DataType::d);
     interface_.newArgument("ldc", DataType::d);
@@ -997,12 +1028,17 @@ void gen_kernel_t::init_interface() {
     interface_.newArgument("k", DataType::d);
     interface_.newArgument("alpha_real", s_type_ngen);
     interface_.newArgument("beta_real", s_type_ngen);
-    if (problem.aoPtrDims >= 0)
+
+    if (problem.aoPtrDims >= 0){
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument ao_ptr");
         interface_.newArgument(
                 "ao_ptr", ExternalArgumentType::GlobalPtr, ao_access);
-    if (problem.boPtrDims >= 0)
+    }
+    if (problem.boPtrDims >= 0){
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument bo_ptr");
         interface_.newArgument(
                 "bo_ptr", ExternalArgumentType::GlobalPtr, bo_access);
+    }
     if (problem.aScale2D())
         interface_.newArgument(
                 "a_scale_ptr", ExternalArgumentType::GlobalPtr, as_access);
@@ -1141,6 +1177,9 @@ void gen_kernel_t::init_interface() {
 
     if (desc()->hw_ >= HW::XeHPG) interface_.allowArgumentRearrangement(false);
     interface_.externalName(kernel_name());
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: init_interface <<<<<<<<<");
+
 }
 
 dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,

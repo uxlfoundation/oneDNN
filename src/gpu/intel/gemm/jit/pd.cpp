@@ -34,6 +34,8 @@ namespace {
 // Obtain dimension count for gemmstone (common scales give count 0).
 int quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &qmd, int k_idx) {
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: quant_entry_ndims --->");
+
     if (entry.has_default_values()) return -1;
     if (qmd.ndims < 2) return 0;
 
@@ -48,6 +50,7 @@ int quant_entry_ndims(
     // we have to send these as 2D
     if (k_idx >= 0 && count == 1 && qmd.dims[k_idx] > 1) return 2;
 
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: quant_entry_ndims <--- count = %d",count);
     return count;
 }
 } // anonymous namespace
@@ -223,6 +226,9 @@ status_t pd_t::init_attrs() {
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
+
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: @@@@@ : wei_decomp_ dy_quant_enabled_ quant_enabled_ = %d %d %d",wei_decomp_,dy_quant_enabled_,quant_enabled_);
+
     const auto &d = desc();
 
     const auto &attr_zps = attr()->zero_points_;
@@ -262,7 +268,7 @@ status_t pd_t::init_attrs() {
     csc_dims_ = quant_entry_ndims(c_scales, c_scale_md_, -1);
 
     VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: @@@@@ : ao_dims_ = %d", ao_dims_);
-
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: @@@@@ : bo_dims_ = %d", bo_dims_);
 
     a_scales_type_ = a_scales.get_data_type();
     if (!a_zps.has_default_groups()) {
@@ -323,11 +329,13 @@ bool pd_t::zp_ok() {
 
     VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : a_int4 = %d b_int4 = %d weights_upconversion = %d",a_int4,b_int4,weights_upconversion);
 
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!
     bool allow = gpu_utils::dev_getenv("ALLOW_HOST_SCALAR", true);
     if (attr_zps.has_host_scalars() && !allow) {
         VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
         return false;
     }
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (!a_zps.has_default_values()) {
         VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !a_zps.has_default_values()");

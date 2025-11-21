@@ -39,6 +39,9 @@ inline void linear_order_args(compute::kernel_arg_list_t &arg_list, int &argn,
         const gemmstone::CommonDriverInfo &info,
         const gemmstone::EvaluateAuxOutput *aux,
         const compute::device_info_t *dev_info) {
+
+    VDEBUGINFO(4, primitive, work_order, "MY: linear_order_args -->");
+
     using namespace gemmstone;
 
     if (info.kParallel() && info.fusedBeta()) {
@@ -221,6 +224,9 @@ inline void linear_order_args(compute::kernel_arg_list_t &arg_list, int &argn,
 
     gws[0] = lws[0] * (group_count + info.extraWGs());
     gws[1] = lws[1];
+
+    VDEBUGINFO(4, primitive, work_order, "MY: linear_order_args <--");
+
 }
 
 } // namespace jit

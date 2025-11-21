@@ -33,16 +33,31 @@ using std::vector;
 template <HW hw>
 bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
+
+    VDEBUGINFO(4, primitive, quantization, "MY: gemmMake2DQuantizationLayouts +++++++++> isA = %d",isA);
+
     auto lateOffset = isA ? problem.needsBGroupSums() : problem.needsAGroupSums();
     int xoPtrDims = (isA ? problem.aoPtrDims : problem.boPtrDims);
+
+    VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ xoPtrDims = %d",xoPtrDims);
+
     bool xo2D = isA ? problem.aOffset2D()       : problem.bOffset2D();
+
+    VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ xo2D = %d", xo2D);
+
     bool xs2D = isA ? problem.aScale2D()        : problem.bScale2D();
     bool xg2D = isA ? problem.needsAGroupSums() : problem.needsBGroupSums();
     bool xoTo2D = !xo2D && (isA ? problem.aOffset == ABOffset::Calc && (problem.earlyDequantizeA() || lateOffset)
                                 : problem.bOffset == ABOffset::Calc && (problem.earlyDequantizeB() || lateOffset));
+
+    VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ xoTo2D = %d", xoTo2D);
+
     bool cColMajor = isRegisterColMajor(problem.Tc_ext, problem.C, strategy.C);
 
-    if (!xo2D && !xoTo2D && !xs2D && !xg2D) return true;
+    if (!xo2D && !xoTo2D && !xs2D && !xg2D) {
+        VDEBUGINFO(4, primitive, quantization, "MY: gemmMake2DQuantizationLayouts <+++++++++ erly true: isA = %d",isA);
+        return true;
+    }
 
     auto &X_strategy       = isA ? strategy.A             : strategy.B;
     auto &X_offsetStrategy = isA ? strategy.AO            : strategy.BO;
@@ -71,6 +86,9 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     auto &lateScale  = isA ? state.lateScale2DA : state.lateScale2DB;
 
     Txo_int = Txo.isInteger() ? Tx.asSignedInt() : Tx;
+
+    VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ Txo.isInteger() = %d", Txo.isInteger());
+
     Txs_int = Tx;
     if (Tx == Type::bf16)
         Txs_int = Type::f32;
@@ -195,12 +213,16 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     if (xg2D) makeQRepack(Txg, Txg_int, Xgr_layout,      Xg_layout,      rNoSLM, cNoSLM, 1,   true);
 
     if (xoTo2D) {
-        if (xoPtrDims <= 0)
+        if (xoPtrDims <= 0){
+            VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ Xr_offsetLayout = RegisterLayout(hw, Txo_int, .....)");
             Xr_offsetLayout = RegisterLayout(hw, Txo_int, 1, 1, isA);
-        else if (xoPtrDims == 1)
+        } else if (xoPtrDims == 1){
+            VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ Xr_offsetLayout = RegisterLayout(hw, Txo_int, .....)");
             Xr_offsetLayout = RegisterLayout(hw, Txo_int, ro, co, isA, cpo, tileR, tileC, false);
-        else stub();
+        } else stub();
     }
+
+    VDEBUGINFO(4, primitive, quantization, "MY: gemmMake2DQuantizationLayouts <+++++++++ true: isA = %d",isA);
 
     return true;
 }

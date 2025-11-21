@@ -74,6 +74,7 @@ struct gen_t : public primitive_t {
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
+            VDEBUGINFO(4, primitive, gemm, "MY ==== call init_attrs()");
             VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
 
             // If we have both grouped scales and grouped zero-points, they must
@@ -100,6 +101,7 @@ struct gen_t : public primitive_t {
                         IMPLICATION(b_gs_2d(), bsc_group_k == bgs_group_k),
                         VERBOSE_UNSUPPORTED_ZP_CFG);
             }
+            VDEBUGINFO(4, primitive, gemm, "MY ==== checked groups");
 
             const auto d = desc();
 
@@ -223,15 +225,15 @@ struct gen_t : public primitive_t {
                                        c_stride == 1 || c_stride % 2 == 0),
                         VERBOSE_SHAPE_RESTRICTION);
             }
-            VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ?");
+            //VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ?");
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ok");
+            //VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ok");
 
             if (!attr()->zero_points_.has_default_values()) {
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
                 if (swap_ab_) {
                     std::swap(ao_dims_, bo_dims_);
-                    VDEBUGINFO(4, primitive, gemm, "MY init ===== swap(ao_dims_, bo_dims_)");
+                    //VDEBUGINFO(4, primitive, gemm, "MY init ===== swap(ao_dims_, bo_dims_)");
                 }
             }
             VDEBUGINFO(4, primitive, gemm, "MY init ===== zp ok");
@@ -240,10 +242,10 @@ struct gen_t : public primitive_t {
                 VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
                 if (swap_ab_) std::swap(ag_dims_, bg_dims_);
             }
-            VDEBUGINFO(4, primitive, gemm, "MY init ===== precomputed OK");
+            //VDEBUGINFO(4, primitive, gemm, "MY init ===== precomputed OK");
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
-            VDEBUGINFO(4, primitive, gemm, "MY init =====");
+            //VDEBUGINFO(4, primitive, gemm, "MY init =====");
 
             bool with_binary = (post_ops_.find(binary) != -1)
                     || (post_ops_.find(prelu) != -1);
@@ -289,7 +291,9 @@ struct gen_t : public primitive_t {
             auto bo_type = with_b_zero_points()
                     ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                     : data_type::s32;
+
             VDEBUGINFO(4, primitive, gemm, "MY init ===== : ao_type bo_type = %d %d",(int)ao_type,(int)bo_type);
+
             auto ag_type = with_a_group_sums()
                     ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
                     : data_type::s32;
@@ -356,7 +360,6 @@ struct gen_t : public primitive_t {
                             <= std::numeric_limits<uint32_t>::max(),
                     VERBOSE_SHAPE_RESTRICTION);
 
-            VDEBUGINFO(4, primitive, gemm,"MY init ===== : Call kernel selector to choose a kernel");
             // Call kernel selector to choose a kernel.
             gpu_post_ops_t gpu_post_ops;
             CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops_, dst_md(),
@@ -374,6 +377,7 @@ struct gen_t : public primitive_t {
             jit::quant_params c_quant = {c_scales_type_, co_type, bg_type,
                     csc_dims_, -1, -1, 0, c_q2d_group_m(), c_q2d_group_n(),
                     has_gs(DNNL_ARG_C), with_mx_scale()};
+            VDEBUGINFO(4, primitive, gemm,"MY init ===== : inited jit::quant_params <a b c>_quant where ao_dims_ bo_dims_ = %d %d",ao_dims_,bo_dims_);
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
@@ -386,6 +390,8 @@ struct gen_t : public primitive_t {
                     co_type, acc_type, eff_align_a(), eff_align_b(), align_c(),
                     eff_m(), eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
                     d->batch(), std::move(gpu_post_ops));
+
+            VDEBUGINFO(4, primitive, gemm,"MY init ===== : trying to select kernel");
             for (auto &entry : entries) {
                 kernel_desc_.set_entry(entry);
                 auto status = kernel_desc_.finalize();
@@ -471,7 +477,7 @@ struct gen_t : public primitive_t {
 
             init_scratchpad();
 
-            VDEBUGINFO(4, primitive, gemm, "MY init <=====");
+            VDEBUGINFO(4, primitive, gemm, "MY init <===== success");
 
             return status::success;
         }
@@ -669,13 +675,14 @@ struct gen_t : public primitive_t {
     status_t init_nocopy(impl::engine_t *engine) {
         using namespace data_type;
 
-        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy *****>");
+        //VDEBUGINFO(4, primitive, gemm, "MY init_nocopy *****>");
 
         auto kd = pd()->kernel_desc();
 
         CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));
 
         scalar_type_ = kd->scalar_type();
+        //VDEBUGINFO(4, primitive, gemm, "MY init_nocopy ***** : scalar_type_ = %d", (int)scalar_type_);
         const auto *info = nocopy_info();
 
         if (need_zero_pool()) {
@@ -695,7 +702,7 @@ struct gen_t : public primitive_t {
             nocopy_kernel_.save_output_events();
         }
 
-        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy <*****");
+        //VDEBUGINFO(4, primitive, gemm, "MY init_nocopy <*****");
         return status::success;
     }
 

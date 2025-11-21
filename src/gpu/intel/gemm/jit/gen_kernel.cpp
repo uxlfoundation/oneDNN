@@ -20,14 +20,13 @@
 #include "common/impl_registration.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "gemmstone/../../generator_dsl/builder.hpp"
+#include "gemmstone/../../generator_dsl/kernel_desc.hpp"
 #include "gemmstone/generator.hpp"
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
 #include "gpu/intel/gemm/jit/generator/pieces/compute_utils.hpp"
-#include "gpu/intel/gemm/jit/generator_dsl/builder.hpp"
-#include "gpu/intel/gemm/jit/generator_dsl/kernel_desc.hpp"
-#include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
@@ -1149,7 +1148,6 @@ dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
         const ir::hw_t &hw, int m, int n, int k) {
     auto gemm_desc
             = gemmstone::generator_dsl_desc_t(problem, strategy, iface, hw);
-    ir::constraint_set_t cset;
     if (gpu_utils::dev_getenv("generator_dsl_specialize", false)) {
         auto &opt = gemm_desc.options;
         if (n != -1) opt.assume(gemm_desc.kernel_iface().find_arg("m") == m);

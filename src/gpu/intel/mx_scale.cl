@@ -54,7 +54,7 @@ __kernel void mx_scale_dst(__global float *restrict src,
     }
 
 #define E8M0(x) cvt_e8m0_to_f32(cvt_f32_to_e8m0(x))
-    float scale_val = max(E8M0(0.f), E8M0(max_group) / E8M0(DST_DATA_FMAX));
+    float scale_val = E8M0(E8M0(max_group) / E8M0(DST_DATA_FMAX));
 #undef E8M0
 
     for (int i = 0; i < groupSize; ++i) {

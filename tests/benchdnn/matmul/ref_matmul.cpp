@@ -232,8 +232,7 @@ void compute_ref_matmul(const prb_t *prb, const args_t &args) {
                         dst_scale = MAX2(
                                 fabsf(dst_m.get_f32_elem(dst_off)), dst_scale);
                     }
-                    dst_scale = std::max(
-                            round_to_nearest_representable(dst_scale_dt, 0.f),
+                    dst_scale = round_to_nearest_representable(dst_scale_dt,
                             round_to_nearest_representable(
                                     dst_scale_dt, dst_scale)
                                     / round_to_nearest_representable(

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -78,8 +78,13 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
 
     int cpoDiv = 1;
     if (Txo_int.isInt8()) Txo_int = Type::s16, cpoDiv = 2;
-
+#if XE3P
+    // Use lateScale for cases of applying scale to inputs that will be natively dpas'd
+    // but do not support add/mul.
+    if (xs2D && (Txs.paddedSize() > Tx.paddedSize()) && (Tx.isInteger() || problem.forceLateQuant(hw))) {
+#else
     if (xs2D && (Txs.paddedSize() > Tx.paddedSize()) && Tx.isInteger()) {
+#endif
         lateScale = true;
         Txs_int = problem.Tc;
     }

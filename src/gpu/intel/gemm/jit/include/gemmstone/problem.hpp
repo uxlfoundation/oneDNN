@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -243,6 +243,11 @@ struct GEMMProblem : public CommonProblem {
 
     bool needsASums() const { return sumA || (bOffset == ABOffset::Calc && !earlyDequantizeB() && !quantized2DB()); }
     bool needsBSums() const { return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA() && !quantized2DA()); }
+
+    bool forceLateQuant(ngen::HW hw) const {
+        return (aScale2D() && Ta_scale != Type::f8_e8m0 && ((Ta.isF8() && hw >= ngen::Core::XE3P_35_10) || (Ta.isF4() && hw >= ngen::Core::XE3P_35_11)))
+            || (bScale2D() && Tb_scale != Type::f8_e8m0 && ((Tb.isF8() && hw >= ngen::Core::XE3P_35_10) || (Tb.isF4() && hw >= ngen::Core::XE3P_35_11)));
+    }
 
 #if XE3P
     bool useBDPAS(ngen::HW hw) const {

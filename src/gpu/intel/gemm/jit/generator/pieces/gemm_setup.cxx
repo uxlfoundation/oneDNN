@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1657,7 +1657,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         state.Br_layout = RegisterLayout(hw, Tb, strategy.kb_load, unrollN, state.B_layout.colMajor(), crosspackB, tileK_B, tileN_B, true, splitB);
 
     // Prepare to repack C if needed, and choose repack tile size.
-    if (Tc != Tc_compute) {
+    if (Tc != Tc_compute || problem.forceLateQuant(hw)) {
         auto &period = state.cRepackPeriod;
         int panel = strategy.cRepackPanel;
         if (panel == 0)

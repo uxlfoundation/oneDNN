@@ -66,7 +66,14 @@ using namespace dnnl;
 
 namespace {
 
-void init_vector(std::vector<float> &v) {
+void init_int_vector(std::vector<int8_t> &v) {
+    std::mt19937 gen;
+    std::uniform_int_distribution<> u(-5, 5);
+    for (auto &e : v)
+        e = static_cast<int8_t>(u(gen));
+}
+
+void init_float_vector(std::vector<float> &v) {
     std::mt19937 gen;
     std::uniform_real_distribution<float> u(0, 1);
     for (auto &e : v)
@@ -117,15 +124,16 @@ void prepare_input(memory &A_f32_mem, memory &sc_B_mem, memory &zp_B_mem) {
     int64_t NUM_G = sc_B_mem.get_desc().get_dims()[1];
 
     std::vector<float> A_f32(M * K);
-    init_vector(A_f32);
+    init_float_vector(A_f32);
 
     std::vector<float> sc_B(NUM_G * N);
-    init_vector(sc_B);
+    init_float_vector(sc_B);
 
-    int8_t zp_B = 2;
+    std::vector<int8_t> zp_B(NUM_G * N);
+    init_int_vector(zp_B);
 
     write_to_dnnl_memory(A_f32.data(), A_f32_mem);
-    write_to_dnnl_memory(&zp_B, zp_B_mem);
+    write_to_dnnl_memory(zp_B.data(), zp_B_mem);
     write_to_dnnl_memory(sc_B.data(), sc_B_mem);
 }
 
@@ -170,7 +178,7 @@ void weights_decompression_matmul(engine::kind engine_kind) {
 
     // Original weights stored as float in a known format
     std::vector<float> B_f32(K * N);
-    init_vector(B_f32);
+    init_float_vector(B_f32);
 
     // Pre-packed weights stored as int8_t
     memory B_s8_mem(matmul_pd.weights_desc(), eng);

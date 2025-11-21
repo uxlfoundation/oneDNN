@@ -146,9 +146,11 @@ status_t reusable_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
 
     // source buffer gets new dimension: multiple workers per reduction block
     compute::named_buffer_t src_buf("SRC");
+    src_buf.data_type = conf.src_data_type;
 
     // keep original input buffer geometry for addressing
     compute::named_buffer_t ori_buf("ORIGINAL");
+    ori_buf.data_type = conf.src_data_type;
     for (size_t i = 0; i < dims_ids.size(); i++) {
         ori_buf.append_block(dims_ids[i], sizes[i]);
     }
@@ -174,6 +176,7 @@ status_t reusable_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
     }
 
     compute::named_buffer_t dst_buf("DST", src_buf);
+    dst_buf.data_type = conf.dst_data_type;
 
     // dispatch: all dims except reduction dimension plus workers dimension
     std::vector<dim_idx_t> dispatch_dims = std::move(dims_ids);

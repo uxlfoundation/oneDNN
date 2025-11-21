@@ -81,7 +81,7 @@ groupnorm_executable_t::desc_t groupnorm_executable_t::create_desc(
 }
 
 arg_indices_t groupnorm_executable_t::get_arg_indices(const op_t *op) {
-    return get_arg_indices_for_lnorm_and_gnorm(op);
+    return get_arg_indices_for_norm(op);
 }
 
 } // namespace dnnl_impl

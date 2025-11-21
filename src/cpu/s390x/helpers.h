@@ -49,34 +49,34 @@ public:
 
     ALWAYS_INLINE vec_type_t(Type v) : _val {v} {}
 
-    static vec_type_t<T> ALWAYS_INLINE loadu(const void *ptr) {
+    ALWAYS_INLINE static vec_type_t<T> loadu(const void *ptr) {
         return {vec_xl(0, reinterpret_cast<const ElementType *>(ptr))};
     }
 
-    static ALWAYS_INLINE vec_type_t<T> loadLen(
+    ALWAYS_INLINE static vec_type_t<T> loadLen(
             const void *ptr, uint32_t BYTE_INDEX) {
         return {vec_load_len(
                 reinterpret_cast<const ElementType *>(ptr), BYTE_INDEX)};
     }
 
-    static vec_type_t<T> ALWAYS_INLINE load_hinted(const void *ptr) {
+    ALWAYS_INLINE static vec_type_t<T> load_hinted(const void *ptr) {
         Type const *addr = (Type const *)ptr;
         Type y;
         y = *addr;
         return y;
     }
 
-    void ALWAYS_INLINE store(void *ptr) const {
+    ALWAYS_INLINE void store(void *ptr) const {
         vec_xst(_val, 0, reinterpret_cast<ElementType *>(ptr));
     }
 
-    void ALWAYS_INLINE storeLen(void *ptr, uint32_t BYTE_INDEX) const {
+    ALWAYS_INLINE void storeLen(void *ptr, uint32_t BYTE_INDEX) const {
         vec_store_len(_val, reinterpret_cast<ElementType *>(ptr), BYTE_INDEX);
     }
 
     ALWAYS_INLINE const Type &vec() const { return _val; }
 
-    vec_type_t<T> &ALWAYS_INLINE operator+=(const vec_type_t<T> &other) {
+    ALWAYS_INLINE vec_type_t<T> &operator+=(const vec_type_t<T> &other) {
         _val = _val + other._val;
         return *this;
     }

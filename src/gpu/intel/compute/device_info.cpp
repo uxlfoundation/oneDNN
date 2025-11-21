@@ -64,6 +64,11 @@ uint64_t get_future_extensions(
     return extensions;
 }
 
+ngen::HW device_info_t::ngen_hw() const {
+    ngen::Product p = jit::get_ngen_product(*this);
+    return ngen::getCore(p.family);
+}
+
 int device_info_t::stepping_id() const {
     ngen::Product p = jit::get_ngen_product(*this);
     return p.stepping;

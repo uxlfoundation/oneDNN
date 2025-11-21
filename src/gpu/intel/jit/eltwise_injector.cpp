@@ -18,6 +18,7 @@
 #include "common/impl_registration.hpp"
 #include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/codegen/ngen_helpers.hpp"
+#include "gpu/intel/jit/utils/type_bridge.hpp"
 
 #include <limits>
 

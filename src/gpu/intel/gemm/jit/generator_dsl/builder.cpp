@@ -20,6 +20,7 @@
 #include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
+#include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
 
 GEMMSTONE_NAMESPACE_START

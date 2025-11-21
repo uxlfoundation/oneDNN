@@ -30,6 +30,11 @@
 
 #include "oneapi/dnnl/dnnl_config.h"
 
+namespace ngen {
+enum class Core;
+using HW = Core;
+} // namespace ngen
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -190,6 +195,7 @@ public:
     bool has_native(native_ext_t ext) const { return native_extensions_ & (uint64_t)ext; }
     gpu_arch_t gpu_arch() const { return gpu_arch_; }
     const gpu_product_t &gpu_product() const {return gpu_product_;}
+    ngen::HW ngen_hw() const;
     int stepping_id() const;
     uint64_t native_extensions() const { return native_extensions_; }
     bool is_integrated() const;

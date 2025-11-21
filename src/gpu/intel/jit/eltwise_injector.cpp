@@ -394,7 +394,8 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
 
     // Compute scale within e8m0 range.
     h->mul(1, max.f(0), max.f(0), fmax);
-    h->sel(1 | ge, max.f(0)(1), max.f(0), Immediate::f(5.877472e-39));
+    h->and_(1, max.ud(0), max.ud(0), Immediate::ud(0x7F800000));
+    h->sel(1 | ge, max.f(0)(1), max.f(0), Immediate::f(zero_e8m0));
 
     // Invert scale for application.
     h->inv(1, max.f(1), max.f(0));

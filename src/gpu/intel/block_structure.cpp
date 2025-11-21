@@ -90,6 +90,23 @@ block_layout_t::block_layout_t(
     if (do_normalize) *this = normalized();
 }
 
+block_layout_t get_inner_layout(const memory_desc_wrapper &md) {
+    block_layout_t inner_layout(md, /* inner_only */ true);
+
+    block_layout_t ret;
+    // Explicitly initialize to size-1 blocks
+    for (int d = 0; d < MAX_NDIMS; d++) {
+        ret.append(block_t(d, 1, 0));
+    }
+
+    // Overwrite inner blocks with their actual values
+    for (const auto &block : inner_layout) {
+        ret[block.dim_idx] = block;
+    }
+
+    return ret;
+}
+
 } // namespace intel
 } // namespace gpu
 } // namespace impl

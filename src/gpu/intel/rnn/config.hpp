@@ -19,6 +19,7 @@
 
 #include "common/serialization.hpp"
 #include "gpu/gpu_rnn_pd.hpp"
+#include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/engine.hpp"
 #include "gpu/intel/primitive_conf.hpp"

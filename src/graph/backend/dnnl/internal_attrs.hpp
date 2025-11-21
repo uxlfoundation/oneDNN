@@ -48,6 +48,7 @@ const op_attr_t keep_dst_layout = 0x1000f;
 const op_attr_t with_scale = 0x10010;
 const op_attr_t is_invert_scale = 0x10011;
 const op_attr_t mask_type = 0x10012;
+const op_attr_t is_rms = 0x10013;
 
 // int64_t
 const op_attr_t alg_kind = 0x10100;
@@ -108,6 +109,7 @@ static inline std::string internal_attr2str(op_attr_t attr) {
         CASE(fusion_info);
         CASE(qk_acc_mode);
         CASE(vs_acc_mode);
+        CASE(is_rms);
         default: return "undefined_attr";
     }
 #undef CASE

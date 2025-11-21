@@ -602,6 +602,21 @@ status_t infer_dnnl_host_scalar_output_shape(op_t *n,
     return status::success;
 }
 
+status_t infer_dnnl_layernorm_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs) {
+    const auto is_rms = n->has_attr(op_attr::is_rms)
+            && n->get_attr<bool>(op_attr::is_rms);
+    if (is_rms) {
+        auto status = infer_identity_output_shape(n, inputs, outputs);
+        if (status != status::success) return status;
+    } else {
+        auto status = infer_norm_output_shape(n, inputs, outputs);
+        if (status != status::success) return status;
+    }
+    return status::success;
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

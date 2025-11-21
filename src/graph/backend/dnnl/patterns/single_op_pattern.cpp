@@ -432,6 +432,23 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, greater_equal_pass)
         .set_attr<FCreateKernel>("FCreateKernel",
                 []() -> kernel_ptr { return std::make_shared<binary_t>(); });
 
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, rmsn_pass)
+        .set_priority(DEFAULT_P)
+        .set_kind(partition_kind_t::misc_post_ops)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    graph::utils::pm::pb_op_t *p_rmsnorm
+                            = pgraph->append_op(graph::op_kind::RMSNorm);
+                    p_rmsnorm->append_decision_function(
+                            check_begin_norm_axis_attr);
+                    // primitive only support 2-5D data tensor for rmsnorm
+                    p_rmsnorm->append_decision_function(
+                            check_input_ndim_from_offset<0, 2, 5>);
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<layer_norm_fwd_t>();
+        });
+
 #undef DNNL_BACKEND_SINGLE_OP_TRANSFORM
 #undef DEFAULT_P
 

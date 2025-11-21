@@ -93,7 +93,9 @@ void get_arg_indices_for_post_ops(
 arg_indices_t get_arg_indices_for_siso_op(const op_t *op);
 arg_indices_t get_arg_indices_for_miso_op(const op_t *op);
 arg_indices_t get_arg_indices_for_conv_and_matmul(const op_t *op);
-arg_indices_t get_arg_indices_for_lnorm_and_gnorm(const op_t *op);
+// Normalization ops, including layer_norm, and group_norm
+// rms_norm is lowered to layer_norm, so it is also handled here.
+arg_indices_t get_arg_indices_for_norm(const op_t *op);
 
 // A dummy arg indices getter which is only used for those internal ops that are
 // only for fusion purpose, like dnnl_add_zps and dnnl_sub_zps. The dummy getter

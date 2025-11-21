@@ -193,6 +193,7 @@ const op_kind_t ReduceProd = dnnl_graph_op_reduce_prod;
 const op_kind_t ReduceSum = dnnl_graph_op_reduce_sum;
 const op_kind_t ReLU = dnnl_graph_op_relu;
 const op_kind_t ReLUBackward = dnnl_graph_op_relu_backward;
+const op_kind_t RMSNorm = dnnl_graph_op_rms_norm;
 const op_kind_t Reorder = dnnl_graph_op_reorder;
 const op_kind_t Round = dnnl_graph_op_round;
 const op_kind_t Select = dnnl_graph_op_select;

@@ -146,10 +146,10 @@ bool check_softmax_bwd_output_dtype(const op_t *n) {
     return true;
 }
 
-// check function for data_type of LayerNorm and GroupNorm.
+// check function for data_type of LayerNorm, GroupNorm and RMSNorm.
 // only when data is bf16, gamma/beta/mean/var can be bf16.
 // If data is bf16, gamma/beta/mean/var can be f32 or bf16.
-bool check_ln_gn_data_type(const op_t *n) {
+bool check_norm_data_type(const op_t *n) {
     const auto &input_values = n->get_input_values();
     const auto &output_values = n->get_output_values();
 
@@ -159,8 +159,9 @@ bool check_ln_gn_data_type(const op_t *n) {
     if (input_values.size() == 1 && output_values.size() == 1) {
         return true;
     } else {
-        if (input_values.size() > 2) {
-            aux_lt = input_values[2]->get_logical_tensor();
+        // RMSNorm uses only one aux tensor
+        if (input_values.size() > 1) {
+            aux_lt = input_values[1]->get_logical_tensor();
         } else {
             aux_lt = output_values[1]->get_logical_tensor();
         }
@@ -423,7 +424,6 @@ bool check_dyn_quant_dequant_scales_zps(const op_t *n) {
     }
     return true;
 }
-
 } // namespace graph
 } // namespace impl
 } // namespace dnnl

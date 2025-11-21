@@ -158,38 +158,51 @@ bool lessAligned(int alignA1, int alignB1, int alignA2, int alignB2)
     return (alignA1 <= alignA2) && (alignB1 <= alignB2) && (alignA1 + alignB1 < alignB1 + alignB2);
 }
 
+struct EntryData {
+    EntryData(const kcatalog::Entry *entry_, double score_) : entry(entry_), score(score_) {}
+    const kcatalog::Entry *entry;
+    double score;
+};
+
 // Inner kernel selection logic.
 // Choose the best entry, if any, matching one of the given patterns.
 const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux,  SelectionObserver * observer)
 {
-    std::vector<const kcatalog::Entry *> entries;
     // TODO: omit evaluation if only one match, if aux output not needed.
+    std::vector<EntryData> keys;
     for (int ipattern = 0; ipattern < npatterns; ipattern++) {
         for (auto it = match(catalog, patterns[ipattern]); it; it++) {
-             // Late tag checking. If late tags do not match, we skip entry.
-             if (tagMatch(it->restrictions.tags, patterns[ipattern].lateTags))
-                 entries.push_back(&*it);
+            // Late tag checking. If late tags do not match, we skip entry.
+            if (tagMatch(it->restrictions.tags, patterns[ipattern].lateTags)) {
+                auto score = evaluate(*it, eparams, aux);
+                keys.emplace_back(&*it, score);
+                if (observer) {
+                    (*observer)(&*it, score, aux);
+                }
+            }
         }
     }
-    auto less = [&](const kcatalog::Entry * lhs, const kcatalog::Entry * rhs){
-                      EvaluateAuxOutput thisAux;
-                      bool lhsFallback = (lhs->restrictions.tags[0] == kcatalog::ReqAlignFallback);
-                      int  lhsAlignA = std::max(lhs->restrictions.alignment[0], 4);
-                      int  lhsAlignB = std::max(lhs->restrictions.alignment[1], 4);
-                      bool rhsFallback = (rhs->restrictions.tags[0] == kcatalog::ReqAlignFallback);
-                      int  rhsAlignA = std::max(rhs->restrictions.alignment[0], 4);
-                      int  rhsAlignB = std::max(rhs->restrictions.alignment[1], 4);
+
+    auto less = [&](const EntryData &lhs, const EntryData &rhs){
+                      bool lhsFallback = (lhs.entry->restrictions.tags[0] == kcatalog::ReqAlignFallback);
+                      int  lhsAlignA = std::max(lhs.entry->restrictions.alignment[0], 4);
+                      int  lhsAlignB = std::max(lhs.entry->restrictions.alignment[1], 4);
+                      bool rhsFallback = (rhs.entry->restrictions.tags[0] == kcatalog::ReqAlignFallback);
+                      int  rhsAlignA = std::max(rhs.entry->restrictions.alignment[0], 4);
+                      int  rhsAlignB = std::max(rhs.entry->restrictions.alignment[1], 4);
                       if (rhsFallback && lessAligned(rhsAlignA, rhsAlignB, lhsAlignA, lhsAlignB)) return true;
                       if (lhsFallback && lessAligned(lhsAlignA, lhsAlignB, rhsAlignA, rhsAlignB)) return false;
-                      double lhs_score = evaluate(*lhs, eparams, thisAux);
-                      double rhs_score = evaluate(*rhs, eparams, thisAux);
-                      if (lhs_score < rhs_score) return true;
-                      if (lhs_score > rhs_score) return false;
-                      return (lhs < rhs);
+                      if (lhs.score < rhs.score) return true;
+                      if (lhs.score > rhs.score) return false;
+                      return (lhs.entry < rhs.entry);
     };
-    std::sort(entries.begin(), entries.end(), less);
-    if (entries.size() > 0)
-	    evaluate(*entries[0], eparams, aux);
+    std::sort(keys.begin(), keys.end(), less);
+
+    // Unpack into vector of entries (dropping score)
+    std::vector<const kcatalog::Entry *> entries;
+    entries.reserve(keys.size());
+    for (auto &key : keys)
+        entries.push_back(key.entry);
 
     return entries;
 }
@@ -280,6 +293,9 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
             default:        hw = 0; break;
         }
     } while (hw);
+
+    if (entries.size() > 0)
+	    evaluate(*entries[0], eparams, aux);
 
     return result;
 }

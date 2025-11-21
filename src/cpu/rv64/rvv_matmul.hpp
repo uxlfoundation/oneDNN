@@ -17,6 +17,7 @@
 #define CPU_RV64_RVV_MATMUL_HPP
 
 #include "common/primitive.hpp"
+#include "common/utils.hpp"
 #include "cpu/matmul/cpu_matmul_pd.hpp"
 #include "cpu/rv64/rvv_postops.hpp"
 
@@ -87,6 +88,8 @@ struct rvv_matmul_t : public primitive_t {
 
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
+            init_gemm_conf(src_mdw, weights_mdw);
+
             return status::success;
         }
 
@@ -151,9 +154,37 @@ struct rvv_matmul_t : public primitive_t {
             }
             return true;
         }
+
+        void init_gemm_conf(const memory_desc_wrapper &src_mdw,
+                const memory_desc_wrapper &weights_mdw) {
+            const int ndims = src_mdw.ndims();
+            const int wei_ndims = weights_mdw.ndims();
+
+            const dim_t *src_dims = src_mdw.dims();
+            const dim_t *wei_dims = weights_mdw.dims();
+
+            batch_ = 1;
+            for (int i = 0; i < ndims - 2; ++i)
+                batch_ *= src_dims[i];
+
+            M_ = src_dims[ndims - 2];
+            K_ = src_dims[ndims - 1];
+            N_ = wei_dims[wei_ndims - 1];
+
+            dim_t weights_batch_size = 1;
+            for (int i = 0; i < wei_ndims - 2; ++i)
+                weights_batch_size *= wei_dims[i];
+            weights_are_broadcast_ = (weights_batch_size == 1 && batch_ > 1);
+        }
+
+        dim_t M_ = 0;
+        dim_t N_ = 0;
+        dim_t K_ = 0;
+        dim_t batch_ = 0;
+        bool weights_are_broadcast_ = false;
     };
 
-    rvv_matmul_t(const pd_t *apd);
+    rvv_matmul_t(const pd_t *apd) : primitive_t(apd) {}
     status_t execute(const exec_ctx_t &ctx) const;
 
 private:

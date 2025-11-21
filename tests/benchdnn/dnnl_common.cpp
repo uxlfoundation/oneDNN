@@ -378,9 +378,9 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
         void *queue_ptr;
         DNN_SAFE(dnnl_sycl_interop_stream_get_queue(stream, &queue_ptr), CRIT);
         sycl::queue queue = *static_cast<sycl::queue *>(queue_ptr);
-        const bool can_run_sycl_graph = queue.get_device().get_backend()
-                == sycl::backend::ext_oneapi_level_zero;
-        if (!can_run_sycl_graph) break;
+        if (!queue.get_device().has(sycl::aspect::ext_oneapi_limited_graph)) {
+            break;
+        }
 
         BENCHDNN_PRINT(
                 2, "%s\n", "[INFO] Using experimental SYCL graph execution.");

@@ -79,6 +79,8 @@ protected:
                     auto cudnn_handle
                             = cuda_stream->get_cudnn_handle(native_stream);
 
+                    cuda_stream->begin_recording_if_graph(ih, native_stream);
+
                     void *reorder_scratch
                             = arg_bias_scratch.get_native_pointer(ih);
                     void *bias = arg_bias.get_native_pointer(ih);
@@ -93,6 +95,8 @@ protected:
                     matmul_impl_->execute(cublas_handle, cudnn_handle, params,
                             weights, src, dst, bias, reorder_scratch, src_scale,
                             wei_scale, dst_scale);
+
+                    cuda_stream->end_recording_if_graph(ih, native_stream);
 
                     if (params->has_runtime_params_) {
                         sync_device();

@@ -48,9 +48,12 @@ status_t cudnn_matmul_t::execute(const exec_ctx_t &ctx) const {
             matmul_impl_, pd()->params_, src_d, weights_d, dst_d, bias_d);
 
     if (pd()->params_->has_runtime_params_) {
-        auto &evts = cuda_stream->sycl_ctx().get_sycl_deps().events;
-        for (auto e : evts) {
-            e.wait();
+        if (cuda_stream->queue().ext_oneapi_get_state()
+                == sycl::ext::oneapi::experimental::queue_state::executing) {
+            auto &evts = cuda_stream->sycl_ctx().get_sycl_deps().events;
+            for (auto e : evts) {
+                e.wait();
+            }
         }
     }
     return status;

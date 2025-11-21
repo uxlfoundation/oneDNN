@@ -534,6 +534,7 @@ public:
         dim_t max_buffer_size = 0;
         uint64_t max_buffer_size_bytes = 0;
         compile_params.num_buffers = buffers.size();
+        const size_t num_work_items = nd_range.global_range().nelems();
         for (size_t buf_idx = 0; buf_idx < buffers.size(); buf_idx++) {
             const named_buffer_t &buffer = buffers[buf_idx];
             // Copy buffer name into params
@@ -553,10 +554,10 @@ public:
             compile_params.buffer_types[buf_idx] = buffer.data_type;
 
             // Check buffer sizes to see if we can use int32_t offsets
-            // or do we need to use stateless addressing model
+            // and do we need to use stateless addressing model
             max_buffer_size = std::max(max_buffer_size, buffer.nelems(true));
-            max_buffer_size_bytes = std::max(
-                    max_buffer_size_bytes, buffer.size(0, true, true));
+            max_buffer_size_bytes = std::max(max_buffer_size_bytes,
+                    buffer.size(0, true, true) * num_work_items);
         }
 
         compile_params.use_int32_offset = max_buffer_size <= INT32_MAX;

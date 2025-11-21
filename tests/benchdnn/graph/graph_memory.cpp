@@ -34,8 +34,7 @@ size_t get_benchdnn_cpu_limit() {
 size_t get_benchdnn_device_limit() {
     if (is_cpu()) return 0;
     static size_t gpu_device_capacity = 0;
-    static size_t gpu_max_alloc_capacity = 0;
-    SAFE(get_gpu_ram_sizes(gpu_device_capacity, gpu_max_alloc_capacity), WARN);
+    SAFE(get_gpu_ram_size(gpu_device_capacity), WARN);
 
     const double benchdnn_device_limit = capacity_factor * gpu_device_capacity;
     assert(benchdnn_device_limit > 0);

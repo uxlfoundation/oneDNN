@@ -24,11 +24,34 @@
 #include "xpu/ocl/stream_impl.hpp"
 #include "xpu/ocl/usm_utils.hpp"
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#include "gpu/intel/ocl/engine.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace xpu {
 namespace ocl {
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+status_t buffer_memory_storage_t::init_allocate(size_t size) {
+    auto ocl_engine
+            = utils::downcast<const gpu::intel::ocl::engine_t *>(engine());
+
+    cl_mem_flags flags = CL_MEM_READ_WRITE;
+    if (size > ocl_engine->device_info()->max_allocation_size()) {
+        if (size > ocl_engine->device_info()->memory_size())
+            return status::invalid_arguments;
+        flags |= CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL;
+    }
+
+    cl_int err;
+    mem_object_ = clCreateBuffer_wrapper(
+            ocl_engine->context(), flags, size, nullptr, &err);
+    OCL_CHECK(err);
+    return status::success;
+}
+#else
 status_t buffer_memory_storage_t::init_allocate(size_t size) {
     auto context
             = utils::downcast<const xpu::ocl::engine_impl_t *>(engine()->impl())
@@ -39,6 +62,7 @@ status_t buffer_memory_storage_t::init_allocate(size_t size) {
     OCL_CHECK(err);
     return status::success;
 }
+#endif
 
 namespace {
 status_t get_map_queue(cl_command_queue &queue, impl::engine_t *engine,

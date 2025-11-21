@@ -24,13 +24,15 @@
 
 #include "gpu/gpu_utils.hpp"
 
-#include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/dispatch.hpp"
+#include "gpu/intel/compute/kernel_arg_list.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
+
+struct block_layout_t;
 
 bool memory_desc_ndims_ok(const memory_desc_t *md);
 
@@ -183,8 +185,6 @@ struct outer_strides_getter_t {
 };
 
 outer_strides_getter_t get_outer_strides(const memory_desc_wrapper &md);
-
-block_layout_t get_inner_layout(const memory_desc_wrapper &md);
 
 void def_offsets(const dim_t offs[4][MAX_NDIMS],
         compute::kernel_ctx_t &kernel_ctx, const char *str,

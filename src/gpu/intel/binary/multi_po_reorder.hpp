@@ -19,7 +19,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/reorder.hpp"
-#include "gpu/intel/binary/config.hpp"
+#include "gpu/gpu_binary_pd.hpp"
 #include "gpu/intel/primitive.hpp"
 
 namespace dnnl {
@@ -27,6 +27,8 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace binary {
+
+using pd_t = gpu_binary_pd_t;
 
 struct multi_po_reorder_t : public primitive_t {
     using primitive_t::primitive_t;

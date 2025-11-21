@@ -188,6 +188,8 @@ private:
 std::vector<block_t> normalize_blocks(
         const std::vector<block_t> &blocks, bool remove_size_1_blocks = true);
 
+block_layout_t get_inner_layout(const memory_desc_wrapper &md);
+
 } // namespace intel
 } // namespace gpu
 } // namespace impl

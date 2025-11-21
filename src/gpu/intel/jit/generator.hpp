@@ -27,7 +27,6 @@
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/engine.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
-#include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "xpu/utils.hpp"
@@ -132,8 +131,7 @@ public:
 
 inline ngen::HW to_ngen_hw(const impl::engine_t *engine) {
     auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
-    auto *device_info = intel_engine->device_info();
-    return convert_dnnl_arch_to_ngen(device_info->gpu_arch());
+    return intel_engine->device_info()->ngen_hw();
 }
 
 inline ngen::HW to_ngen_hw(const impl::engine_t &engine) {

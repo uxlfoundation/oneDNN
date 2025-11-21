@@ -354,13 +354,13 @@ INSTANTIATE_TEST_SUITE_P(test_interface_op_def_constraint,
         ::testing::Values(
                 // test function of CheckLayerNormDataType
                 dnnl_graph_ln_params_t {LayerNorm, f32, f32, true, false, true,
-                        graph::check_ln_gn_data_type, true},
+                        graph::check_norm_data_type, true},
                 dnnl_graph_ln_params_t {LayerNorm, bf16, f32, true, false, true,
-                        graph::check_ln_gn_data_type, true},
+                        graph::check_norm_data_type, true},
                 dnnl_graph_ln_params_t {LayerNorm, f32, bf16, true, false, true,
-                        graph::check_ln_gn_data_type, false},
+                        graph::check_norm_data_type, false},
                 dnnl_graph_ln_params_t {LayerNorm, bf16, bf16, true, false,
-                        true, graph::check_ln_gn_data_type, true},
+                        true, graph::check_norm_data_type, true},
                 // test function of CheckLayerNormFwdOutputsNum
                 dnnl_graph_ln_params_t {LayerNorm, f32, f32, true, false, true,
                         graph::check_ln_gn_fwd_outputs_num, true},

@@ -108,6 +108,7 @@ public:
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(ReLU, 1)>());
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(ReLUBackward, 1)>());
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(Reorder, 1)>());
+        fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(RMSNorm, 1)>());
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(Round, 1)>());
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(Select, 1)>());
         fn(get_op_schema<DNNL_GRAPH_OP_SCHEMA_CLASS_NAME(Sigmoid, 1)>());

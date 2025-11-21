@@ -98,7 +98,7 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
         if (Ts != layoutSrc.type() || Td != layoutDst.type()) stub("No type punning allowed on this path");
         if (canDequantizeInt4(layoutSrc, layoutDst, emptyLayout, emptyLayout)) {
             dequantizeInt4(true, layoutSrc, layoutDst, emptyLayout, emptyLayout,
-                           src, dst, emptyRegs, emptyRegs, dOffR, dOffC, 0, nullptr, strategy, state, s4Shift);
+                           src, dst, emptyRegs, emptyRegs, dOffR, dOffC, 0, 1, 1, nullptr, strategy, state, s4Shift);
             return;
         }
     }

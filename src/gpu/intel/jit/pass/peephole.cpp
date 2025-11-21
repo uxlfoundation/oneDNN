@@ -61,14 +61,14 @@ public:
     }
 
 private:
-    static type_t real_type(const expr_t &e) {
+    static dsl::type_t real_type(const expr_t &e) {
         auto *imm = e.as_ptr<int_imm_t>();
         if (!imm) return e.type();
         if (int_imm_t::try_shrink_type<int16_t>(imm->value))
-            return type_t::s16();
+            return dsl::type_t::s16();
         if (int_imm_t::try_shrink_type<int32_t>(imm->value))
-            return type_t::s32();
-        return type_t::s64();
+            return dsl::type_t::s32();
+        return dsl::type_t::s64();
     }
 
     static bool try_int_mad(const ternary_op_t *ternary) {
@@ -77,9 +77,9 @@ private:
         auto c_type = real_type(ternary->c);
         bool ok = true;
         // Allowed form: mad(dword, dword, word).
-        ok &= utils::one_of(a_type, type_t::s32(), type_t::u32());
-        ok &= utils::one_of(b_type, type_t::s32(), type_t::u32());
-        ok &= utils::one_of(c_type, type_t::s16(), type_t::u16());
+        ok &= utils::one_of(a_type, dsl::type_t::s32(), dsl::type_t::u32());
+        ok &= utils::one_of(b_type, dsl::type_t::s32(), dsl::type_t::u32());
+        ok &= utils::one_of(c_type, dsl::type_t::s16(), dsl::type_t::u16());
         return ok;
     }
 

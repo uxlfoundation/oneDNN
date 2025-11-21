@@ -25,10 +25,12 @@
 
 GEMMSTONE_NAMESPACE_START
 
-using namespace ir::dsl;
+namespace dnnl_dsl = dnnl::impl::gpu::intel::jit::dsl;
+namespace dnnl_ir = dnnl::impl::gpu::intel::jit;
+using namespace dnnl_dsl;
 
-inline type_t into_ir(Type t, int elems = 1) {
-    using namespace ir;
+inline dsl::type_t into_ir(Type t, int elems = 1) {
+    using namespace dsl;
     switch (t) {
         case Type::invalid: return type_t::undef();
 
@@ -74,7 +76,7 @@ struct transform_t {
         , cache_hint(to_ir(cache_hint))
         , dims(std::move(dims)) {}
 
-    layout_t get_layout(const tile_t &sizes, type_t type) const {
+    layout_t get_layout(const tile_t &sizes, dsl::type_t type) const {
 
         auto col_var = dims[0];
         auto col = sizes[dims[0]];
@@ -286,7 +288,7 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
 
             switch (e.alg) {
                 case dnnl::impl::alg_kind::binary_add:
-                    binary(ir::op_kind_t::_add, C, C, src);
+                    binary(dnnl_ir::op_kind_t::_add, C, C, src);
                     break;
                 default: gpu_assert(false) << "Unimplemented";
             }
@@ -321,12 +323,12 @@ struct basic_iterator_t : kloop_iterator_t {
         , C_store_ {C}
 
     {
-        assume(m_idx_ % C.tile[m_var] == 0);
-        assume(n_idx_ % C.tile[n_var] == 0);
+        dnnl_dsl::assume(m_idx_ % C.tile[m_var] == 0);
+        dnnl_dsl::assume(n_idx_ % C.tile[n_var] == 0);
 
-        assume(m_idx_ >= 0);
-        assume(n_idx_ >= 0);
-        assume(k_idx_ >= 0);
+        dnnl_dsl::assume(m_idx_ >= 0);
+        dnnl_dsl::assume(n_idx_ >= 0);
+        dnnl_dsl::assume(k_idx_ >= 0);
     }
 
     const global_tensor_t &A_prefetch() const override { return A_prefetch_; }
@@ -395,7 +397,7 @@ struct generator_dsl_t {
     generator_dsl_t(const generator_dsl_desc_t &desc)
         : problem(desc.problem), strategy(desc.strategy) {}
 
-    kernel_t build(kernel::iface_t iface, ir::ir_context_t &ctx) {
+    kernel_t build(kernel::iface_t iface, dnnl_ir::ir_context_t &ctx) {
         if (strategy.kParallel || strategy.kParallelLocal) {
             gpu_warning() << "kParallel support is unimplemented";
             return {};
@@ -580,13 +582,16 @@ struct generator_dsl_t {
         gpu_assert(k_loop_short.k_warmup() == 0);
 
         if (problem.A.alignment) {
-            assume(arg("lda") % (problem.A.alignment / problem.Ta_ext) == 0);
+            dnnl_dsl::assume(
+                    arg("lda") % (problem.A.alignment / problem.Ta_ext) == 0);
         }
         if (problem.B.alignment) {
-            assume(arg("ldb") % (problem.B.alignment / problem.Tb_ext) == 0);
+            dnnl_dsl::assume(
+                    arg("ldb") % (problem.B.alignment / problem.Tb_ext) == 0);
         }
         if (problem.C.alignment) {
-            assume(arg("ldc") % (problem.C.alignment / problem.Tc_ext) == 0);
+            dnnl_dsl::assume(
+                    arg("ldc") % (problem.C.alignment / problem.Tc_ext) == 0);
         }
 
         _if(kloop_it.is_inbounds(0), [&]() {
@@ -749,19 +754,19 @@ struct generator_dsl_t {
 };
 
 kernel_t make_kernel(const generator_dsl_desc_t &desc) {
-    ir::constraint_set_t cset;
-    ir::ir_context_t ctx(desc.options, cset);
+    dnnl_ir::constraint_set_t cset;
+    dnnl_ir::ir_context_t ctx(desc.options, cset);
 
-    ir::trace_start();
+    dnnl_ir::trace_start();
     auto k = generator_dsl_t(desc).build(desc.kernel_iface(), ctx);
-    ir::trace_pass("build generator_dsl_t", k.body, ctx);
+    dnnl_ir::trace_pass("build generator_dsl_t", k.body, ctx);
 
-    k.body = ir::simplify(k.body, ctx);
-    k.body = ir::inject_send(k.body, ctx);
+    k.body = dnnl_ir::simplify(k.body, ctx);
+    k.body = dnnl_ir::inject_send(k.body, ctx);
 
     // TODO: This should be unnecessary as it could happen at codegen
-    k.body = ir::fixup_if_conditions(k.body, ctx);
-    k.body = ir::eliminate_common_subexprs(
+    k.body = dnnl_ir::fixup_if_conditions(k.body, ctx);
+    k.body = dnnl_ir::eliminate_common_subexprs(
             k.body, ctx, desc.strategy.GRFs * ctx.hw().grf_size());
     return k;
 }

@@ -39,7 +39,7 @@ public:
     expr_t expr() const { return make_add(args_, type_); }
 
     static expr_t make_add(
-            const std::vector<expr_t> &args, const type_t &type) {
+            const std::vector<expr_t> &args, const dsl::type_t &type) {
         auto maybe_bcast = [&](const expr_t &e) {
             if (e.type().elems() == type.elems()) return e;
             gpu_assert(e.type().is_scalar());
@@ -68,7 +68,7 @@ private:
         return args;
     }
 
-    type_t type_;
+    dsl::type_t type_;
     std::vector<expr_t> args_;
 };
 
@@ -183,7 +183,7 @@ private:
 
     expr_t hoist_expr_with_add(const expr_t &expr, const expr_t &expr_var = {},
             bool *fully_hoisted = nullptr) {
-        const type_t &type = expr.type();
+        const dsl::type_t &type = expr.type();
         sum_expr_t cur_expr(expr);
 
         for (size_t i = 0; i < loops_.size(); i++) {

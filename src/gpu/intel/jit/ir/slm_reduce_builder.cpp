@@ -42,9 +42,10 @@ slm_reduce_builder_t::slm_reduce_builder_t(ir_context_t &ir_ctx,
     gpu_assert((dim_ != dim_idx::invalid) && (dim_ <= 2));
     gpu_assert(tg_grid_.dim(dim_) > 1);
 
-    tmp_reg_buf_ = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr));
+    tmp_reg_buf_
+            = ir_ctx.create_tmp_var(dsl::type_t::byte(dsl::type::attr_t::ptr));
     slm_buf_ = ir_ctx.create_tmp_var(
-            type_t::byte(type::attr_t::ptr), "reduce_slm");
+            dsl::type_t::byte(dsl::type::attr_t::ptr), "reduce_slm");
     tg_ndims_ = (dim_ != dim_idx_t(2)) ? dim_ + 1 : tg_grid_.ndims();
 
     build();

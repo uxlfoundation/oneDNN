@@ -185,9 +185,9 @@ private:
     void emit_lsc(GeneratorT *host, const ngen::InstructionModifier &mod,
             const ngen::RegData &data, const ngen::RegData &header) {
 
-        auto get_lsc_type = [&](const type_t &type, bool is_block) {
+        auto get_lsc_type = [&](const dsl::type_t &type, bool is_block) {
             if (!send_.is_block()) return type;
-            for (auto &t : {type_t::qword(), type_t::dword()}) {
+            for (auto &t : {dsl::type_t::qword(), dsl::type_t::dword()}) {
                 if (type.size() % t.size() == 0) {
                     int elems = type.size() / t.size();
                     gpu_assert(math::is_pow2(elems));
@@ -259,7 +259,8 @@ private:
         }
     }
 
-    static std::pair<ngen::DataSizeLSC, int> to_data_lsc(const type_t &type) {
+    static std::pair<ngen::DataSizeLSC, int> to_data_lsc(
+            const dsl::type_t &type) {
         switch (type.base().size()) {
             case 1: {
                 if (type.elems() == 1)

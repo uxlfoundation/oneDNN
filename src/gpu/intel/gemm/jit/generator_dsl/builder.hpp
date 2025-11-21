@@ -23,7 +23,8 @@ GEMMSTONE_NAMESPACE_START
 
 struct generator_dsl_desc_t;
 
-dsl::kernel_t make_kernel(const generator_dsl_desc_t &desc);
+dnnl::impl::gpu::intel::jit::kernel_t make_kernel(
+        const generator_dsl_desc_t &desc);
 
 GEMMSTONE_NAMESPACE_END
 

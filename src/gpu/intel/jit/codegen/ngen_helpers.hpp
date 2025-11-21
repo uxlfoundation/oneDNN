@@ -56,17 +56,17 @@ T to_cpp(const ngen::Immediate &imm) {
     return 0;
 }
 
-// type_t to ngen::DataType convertor.
-inline ngen::DataType to_ngen(const type_t &type) {
+// dsl::type_t to ngen::DataType convertor.
+inline ngen::DataType to_ngen(const dsl::type_t &type) {
     gpu_assert(type.is_scalar()) << "Expected scalar type.";
 
 #define CASE(_kind, ngen_enum) \
-    if (type.base() == type_t::_kind()) return ngen::DataType::ngen_enum
+    if (type.base() == dsl::type_t::_kind()) return ngen::DataType::ngen_enum
 
     // Until f4_e3m0 lands in ngen
-    if (type.base() == type_t::f4_e3m0()) return ngen_f4_e3m0();
+    if (type.base() == dsl::type_t::f4_e3m0()) return ngen_f4_e3m0();
     // Until f4_e2m1 lands in ngen
-    if (type.base() == type_t::f4_e2m1()) return ngen_f4_e2m1();
+    if (type.base() == dsl::type_t::f4_e2m1()) return ngen_f4_e2m1();
 
     CASE(bf16, bf);
     CASE(f16, hf);
@@ -86,20 +86,21 @@ inline ngen::DataType to_ngen(const type_t &type) {
     CASE(u8, ub);
     CASE(u4, u4);
 
-    if (type == type_t::byte(1, type::attr_t::ptr)) return ngen::DataType::uq;
+    if (type == dsl::type_t::byte(1, dsl::type::attr_t::ptr))
+        return ngen::DataType::uq;
 
 #undef CASE
     gpu_error_not_expected();
     return ngen::DataType::invalid;
 }
 
-// ngen::DataType to type_t convertor.
-inline type_t to_ir(ngen::DataType type) {
+// ngen::DataType to dsl::type_t convertor.
+inline dsl::type_t to_ir(ngen::DataType type) {
 #define CASE(_kind, ngen_enum) \
-    if (type == ngen::DataType::ngen_enum) return type_t::_kind();
+    if (type == ngen::DataType::ngen_enum) return dsl::type_t::_kind();
 
-    if (type == ngen_f4_e3m0()) return type_t::f4_e3m0();
-    if (type == ngen_f4_e2m1()) return type_t::f4_e2m1();
+    if (type == ngen_f4_e3m0()) return dsl::type_t::f4_e3m0();
+    if (type == ngen_f4_e2m1()) return dsl::type_t::f4_e2m1();
 
     CASE(bf16, bf);
     CASE(f16, hf);
@@ -120,16 +121,16 @@ inline type_t to_ir(ngen::DataType type) {
 
 #undef CASE
     gpu_error_not_expected();
-    return type_t::undef();
+    return dsl::type_t::undef();
 }
 
 inline ngen::Immediate to_ngen(
-        const expr_t &expr, const type_t &type = type_t::undef()) {
+        const expr_t &expr, const dsl::type_t &type = dsl::type_t::undef()) {
     gpu_assert(expr.type().is_scalar()) << "Vector types are not supported.";
     if (expr.is<int_imm_t>()) {
         auto &imm = expr.as<int_imm_t>();
         // No conversion.
-        if (utils::one_of(type, type_t::undef(), expr.type()))
+        if (utils::one_of(type, dsl::type_t::undef(), expr.type()))
             return ngen::Immediate(imm.value);
             // Do conversion.
 #define CASE(cpp_type) \
@@ -145,7 +146,8 @@ inline ngen::Immediate to_ngen(
 #undef CASE
         gpu_error_not_expected() << "Can't convert expression: " << expr;
     } else if (expr.is<float_imm_t>()) {
-        gpu_assert(utils::one_of(type, type_t::undef(), type_t::f32()))
+        gpu_assert(
+                utils::one_of(type, dsl::type_t::undef(), dsl::type_t::f32()))
                 << "Conversion is not supported.";
         auto &imm = expr.as<float_imm_t>();
         if (imm.type.is_f32()) { return ngen::Immediate((float)imm.value); }

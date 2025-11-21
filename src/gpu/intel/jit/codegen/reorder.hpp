@@ -209,7 +209,7 @@ struct reorder_operand_t {
     dsl::layout_t layout;
     copy_operand_t buffer;
 
-    type_t type() const {
+    dsl::type_t type() const {
         return buffer.range == ngen::DataType::invalid ? layout.type()
                                                        : to_ir(buffer.range);
     }
@@ -280,10 +280,11 @@ private:
             return false;
         }
 
-        bool can_reorder(const dsl::tile_t &tile, const type_t &type) const;
+        bool can_reorder(
+                const dsl::tile_t &tile, const dsl::type_t &type) const;
         int cost(const vertex_t &v, const std::vector<edge_t> &edges,
-                edge_t &min_edge, type_t &min_type) const;
-        int cost(const edge_t &e, const vertex_t &v, type_t &type) const;
+                edge_t &min_edge, dsl::type_t &min_type) const;
+        int cost(const edge_t &e, const vertex_t &v, dsl::type_t &type) const;
 
         ngen::HW hw;
         int idx; // Identifier of the vertex.
@@ -299,12 +300,13 @@ private:
     struct reorder_step_t {
         reorder_step_t() = default;
         reorder_step_t(const dsl::layout_t &layout, const dsl::tile_t &tile,
-                const type_t &type)
+                const dsl::type_t &type)
             : layout(layout), tile(tile), type(type) {}
 
         dsl::layout_t layout; // Destination layout.
         dsl::tile_t tile; // Tile corresponding to one instruction.
-        type_t type; // Registers should be reinterpreted to `type` for reorder.
+        dsl::type_t
+                type; // Registers should be reinterpreted to `type` for reorder.
     };
 
     // Extracts dimension sizes and their indices from a multidimensional
@@ -319,7 +321,7 @@ private:
 
     // Returns all possible layouts for (a x b) tensor.
     static std::vector<dsl::layout_t> generate_all_layouts(
-            const type_t &type, dim_t a, dim_t b) {
+            const dsl::type_t &type, dim_t a, dim_t b) {
         std::vector<dsl::layout_t> ret;
         std::vector<dsl::layout::block_t> blocks;
         generate_all_layouts_impl(ret, blocks, type, a, b, 1);
@@ -327,7 +329,7 @@ private:
     }
 
     static void generate_all_layouts_impl(std::vector<dsl::layout_t> &layouts,
-            std::vector<dsl::layout::block_t> &blocks, const type_t &type,
+            std::vector<dsl::layout::block_t> &blocks, const dsl::type_t &type,
             dim_t a, dim_t b, dim_t stride);
 
     ngen::HW hw_;
@@ -398,7 +400,7 @@ private:
 
     reorder_operand_t init_operand(
             dsl::layout_t layout, const op_init_t &init) {
-        if (layout.type().is_tf32()) layout = layout.with(type_t::f32());
+        if (layout.type().is_tf32()) layout = layout.with(dsl::type_t::f32());
         auto elems = size_in_elems(layout);
         auto dt = to_ngen(layout.type());
         auto buffer = init(into<int>(elems), dt);
@@ -407,25 +409,26 @@ private:
     }
 
     dsl::layout_t make_retyped_layout(
-            const dsl::layout_t &layout, const type_t &type) const;
+            const dsl::layout_t &layout, const dsl::type_t &type) const;
     dsl::layout_t make_compact_layout(const dsl::layout_t &layout,
-            const type_t &type, bool is_source = false) const;
+            const dsl::type_t &type, bool is_source = false) const;
 
-    type_t intermediate_data_type(const type_t &s, const type_t &d) const {
+    dsl::type_t intermediate_data_type(
+            const dsl::type_t &s, const dsl::type_t &d) const {
         // Force up-/down-convert of small types
-        if (s.is_fp4() || d.is_fp4()) return type_t::f16();
+        if (s.is_fp4() || d.is_fp4()) return dsl::type_t::f16();
         // int4 -> fp16 has special conversion paths
         if (s.is_x4() && (d.is_f16() || d.is_bf16())) return d;
         if (d.is_x4() && (s.is_f16() || s.is_bf16())) return s;
-        if (s.is_u4() || d.is_u4()) return type_t::u16();
-        if (s.is_s4() || d.is_s4()) return type_t::s16();
+        if (s.is_u4() || d.is_u4()) return dsl::type_t::u16();
+        if (s.is_s4() || d.is_s4()) return dsl::type_t::s16();
 
         if (s == d) return d; // Swizzle only
-        if (s.is_fp8() || d.is_fp8()) return type_t::f16();
+        if (s.is_fp8() || d.is_fp8()) return dsl::type_t::f16();
         return s.bitsize() > d.bitsize() ? d : s;
     }
 
-    bool needs_saturate(const type_t &ddt, const type_t &sdt) const {
+    bool needs_saturate(const dsl::type_t &ddt, const dsl::type_t &sdt) const {
         if (!ddt.is_int() || !sdt.is_int()) return false;
         if (ddt.bitsize() >= sdt.bitsize()
                 && ddt.is_signed() == sdt.is_signed())

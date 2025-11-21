@@ -19,7 +19,7 @@
 
 #include <string>
 
-#include "gpu/intel/jit/ir/include/type.hpp"
+#include "gemmstone/dsl/type.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
@@ -28,12 +28,19 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+// Replace with using dsl = gemmstone::dsl once migration is complete
+namespace dsl {
+namespace type {
+using attr_t = gemmstone::dsl::type::attr_t;
+}
+using type_t = gemmstone::dsl::type_t;
+} // namespace dsl
+
 class object_t;
 class expr_impl_t;
 class stmt_impl_t;
 class ir_mutator_t;
 class ir_visitor_t;
-class type_t;
 
 namespace object {
 // Base class for all IR objects. Implemented as an intrusive pointer, with
@@ -273,15 +280,15 @@ namespace expr {
 // Base class for IR expression objects.
 class impl_t : public object::impl_t {
 public:
-    impl_t(object::impl_t::info_t type_info, const type_t &type)
+    impl_t(object::impl_t::info_t type_info, const dsl::type_t &type)
         : object::impl_t(type_info), type(type) {}
 
-    type_t type;
+    dsl::type_t type;
 };
 
 template <typename T>
 struct iface_t : public impl_t, public object::info_t<T> {
-    iface_t(const type_t &type) : impl_t(T::get_info(), type) {}
+    iface_t(const dsl::type_t &type) : impl_t(T::get_info(), type) {}
 
     bool is_equal(const object::impl_t &obj) const override {
         if (!obj.is<T>()) return false;
@@ -321,7 +328,7 @@ public:
     expr_t(uint32_t v);
     expr_t(uint64_t v);
 
-    const type_t &type() const;
+    const dsl::type_t &type() const;
 
 #define DECLARE_BINARY_ASSIGN_OPERATOR(op) \
     expr_t &operator op##=(const expr_t &rhs);
@@ -405,7 +412,7 @@ public:
 
 class var_t : public expr::iface_t<var_t> {
 public:
-    static expr_t make(const type_t &type, const std::string &name,
+    static expr_t make(const dsl::type_t &type, const std::string &name,
             bool is_mutable = false) {
         return expr_t(new var_t(type, name, is_mutable));
     }
@@ -421,7 +428,7 @@ public:
     bool is_mutable = false;
 
 private:
-    var_t(const type_t &type, const std::string &name, bool is_mutable)
+    var_t(const dsl::type_t &type, const std::string &name, bool is_mutable)
         : expr::iface_t<var_t>(type), name(name), is_mutable(is_mutable) {}
 };
 

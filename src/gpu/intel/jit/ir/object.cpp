@@ -77,7 +77,7 @@ expr_t expr_t::ptr(const expr_t &off) const {
 expr_t::expr_t(bool value) : object_t(new bool_imm_t(value)) {}
 expr_t::expr_t(float value) : object_t(new float_imm_t(value)) {}
 expr_t::expr_t(double value)
-    : object_t(new float_imm_t(value, type_t::f64())) {}
+    : object_t(new float_imm_t(value, dsl::type_t::f64())) {}
 expr_t::expr_t(int16_t value) : object_t(new int_imm_t(value)) {}
 expr_t::expr_t(int32_t value) : object_t(new int_imm_t(value)) {}
 expr_t::expr_t(int64_t value) : object_t(new int_imm_t(value)) {}
@@ -112,7 +112,7 @@ expr_t normalized_neg(const expr_t &a) {
     if (!is_const(a)) return unary_op_t::make(op_kind_t::_minus, a);
 
 #define CASE(ir_type, cpp_type) \
-    if (a.type() == type_t::ir_type()) return to_expr(-to_cpp<cpp_type>(a))
+    if (a.type() == dsl::type_t::ir_type()) return to_expr(-to_cpp<cpp_type>(a))
 
     CASE(f32, float);
     CASE(s16, int16_t);
@@ -171,7 +171,7 @@ expr_t const_binary(const expr_t &a, const expr_t &b) {
     }
 
 #define CASE(ir_type, cpp_type) \
-    if (compute_type == type_t::ir_type()) { \
+    if (compute_type == dsl::type_t::ir_type()) { \
         auto _a = to_cpp<cpp_type>(a); \
         auto _b = to_cpp<cpp_type>(b); \
         return evaluator_t<op>::eval(_a, _b); \
@@ -186,7 +186,7 @@ expr_t const_binary(const expr_t &a, const expr_t &b) {
 
 #undef CASE
 
-    if (compute_type == type_t::_bool()) {
+    if (compute_type == dsl::type_t::_bool()) {
         auto _a = to_cpp<bool>(a);
         auto _b = to_cpp<bool>(b);
         if (op == op_kind_t::_and) return to_expr(_a & _b);
@@ -195,7 +195,7 @@ expr_t const_binary(const expr_t &a, const expr_t &b) {
         gpu_error_not_expected();
     }
 
-    if (compute_type == type_t::f32()) {
+    if (compute_type == dsl::type_t::f32()) {
         auto _a = to_cpp<float>(a);
         auto _b = to_cpp<float>(b);
         if (op == op_kind_t::_add) return to_expr(_a + _b);

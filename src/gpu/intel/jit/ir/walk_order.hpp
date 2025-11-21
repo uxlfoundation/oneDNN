@@ -43,7 +43,7 @@ public:
     struct dim_info_t {
         dim_info_t() = default;
         dim_info_t(const dsl::idx_t &dim, int size) : dim(dim), size(size) {
-            grid_var = var_t::make(type_t::s32(), dim.str() + "_grid_var");
+            grid_var = var_t::make(dsl::type_t::s32(), dim.str() + "_grid_var");
         }
 
         dsl::idx_t dim;

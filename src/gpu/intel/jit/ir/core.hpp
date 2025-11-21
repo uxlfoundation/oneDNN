@@ -106,9 +106,9 @@ namespace intel {
 namespace jit {
 
 template <typename T>
-type_t from_cpp() {
+dsl::type_t from_cpp() {
 #define CASE(cpp_type, type) \
-    if (std::is_same<T, cpp_type>::value) return type_t::type()
+    if (std::is_same<T, cpp_type>::value) return dsl::type_t::type()
 
     CASE(bool, _bool);
     CASE(float, f32);
@@ -124,15 +124,13 @@ type_t from_cpp() {
 
     gpu_error_not_expected();
 
-    return type_t::undef();
+    return dsl::type_t::undef();
 }
 
 template <typename T>
-bool is_cpp(const type_t &t) {
+bool is_cpp(const dsl::type_t &t) {
     return t == from_cpp<T>();
 }
-
-bool is_subset(const type_t &a, const type_t &b);
 
 // clang-tidy doesn't like the semicolon next to the class name.
 #define CLASS_DECLARATION(name) class name
@@ -255,15 +253,15 @@ public:
 // Base class for IR expression objects.
 class expr_impl_t : public object::impl_t {
 public:
-    expr_impl_t(object::impl_t::info_t type_info, const type_t &type)
+    expr_impl_t(object::impl_t::info_t type_info, const dsl::type_t &type)
         : object::impl_t(type_info), type(type) {}
 
-    type_t type;
+    dsl::type_t type;
 };
 
 template <typename T>
 struct expr_iface_t : public expr_impl_t, public object::info_t<T> {
-    expr_iface_t(const type_t &type) : expr_impl_t(T::get_info(), type) {}
+    expr_iface_t(const dsl::type_t &type) : expr_impl_t(T::get_info(), type) {}
 
     bool is_equal(const object::impl_t &obj) const override {
         if (!obj.is<T>()) return false;
@@ -278,7 +276,7 @@ struct expr_iface_t : public expr_impl_t, public object::info_t<T> {
     }
 };
 
-inline const type_t &expr_t::type() const {
+inline const dsl::type_t &expr_t::type() const {
     gpu_assert(!is_empty());
     return ((const expr_impl_t *)impl())->type;
 }
@@ -353,20 +351,20 @@ bool is_commutative_op(op_kind_t op_kind);
 
 op_kind_t negate_cmp_op(op_kind_t op_kind);
 
-type_t unary_op_type(op_kind_t op_kind, const expr_t &a);
+dsl::type_t unary_op_type(op_kind_t op_kind, const expr_t &a);
 
-type_t common_int_type(const type_t &_a, const type_t &_b);
+dsl::type_t common_int_type(const dsl::type_t &_a, const dsl::type_t &_b);
 
-type_t common_type(const type_t &a, const type_t &b);
+dsl::type_t common_type(const dsl::type_t &a, const dsl::type_t &b);
 
-type_t common_type(const expr_t &a, const expr_t &b);
+dsl::type_t common_type(const expr_t &a, const expr_t &b);
 
-type_t binary_op_type(op_kind_t op_kind, const expr_t &a, const expr_t &b);
+dsl::type_t binary_op_type(op_kind_t op_kind, const expr_t &a, const expr_t &b);
 
-type_t ternary_op_type(
+dsl::type_t ternary_op_type(
         op_kind_t op_kind, const expr_t &a, const expr_t &b, const expr_t &c);
 
-type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args);
+dsl::type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args);
 
 // Binary operation: (a op b).
 class binary_op_t : public expr_iface_t<binary_op_t> {
@@ -410,8 +408,8 @@ public:
 
     static expr_t make(bool value) { return expr_t(new bool_imm_t(value)); }
 
-    static type_t get_packed_type(int elems) {
-        return type_t::u(std::max(elems, 16));
+    static dsl::type_t get_packed_type(int elems) {
+        return dsl::type_t::u(std::max(elems, 16));
     }
 
     bool operator==(const bool_imm_t &other) const {
@@ -423,7 +421,7 @@ public:
     bool value;
 
 private:
-    bool_imm_t(bool value) : expr_iface_t(type_t::_bool()), value(value) {}
+    bool_imm_t(bool value) : expr_iface_t(dsl::type_t::_bool()), value(value) {}
 };
 
 // Cast between data types. In general conversion follows the C++ casting
@@ -435,8 +433,8 @@ private:
 //   on the boolean elements. The upper (16 - N) bits are uninitialized.
 class cast_t : public expr_iface_t<cast_t> {
 public:
-    static expr_t make(
-            const type_t &type, const expr_t &expr, bool saturate = false) {
+    static expr_t make(const dsl::type_t &type, const expr_t &expr,
+            bool saturate = false) {
         if (expr.type() == type) return expr;
         if (!saturate) {
             auto *expr_cast = expr.as_ptr<cast_t>();
@@ -466,7 +464,7 @@ public:
     bool saturate;
 
 private:
-    cast_t(const type_t &type, const expr_t &expr, bool saturate)
+    cast_t(const dsl::type_t &type, const expr_t &expr, bool saturate)
         : expr_iface_t(type), expr(expr), saturate(saturate) {
         if (!is_bool_vec_u16()) {
             gpu_assert(type.elems() == expr.type().elems())
@@ -474,11 +472,11 @@ private:
         }
     }
 
-    static bool is_bool_vec(const type_t &type) {
+    static bool is_bool_vec(const dsl::type_t &type) {
         return type.is_bool() && type.elems() > 1;
     }
 
-    static bool is_u16_or_u32_scalar(const type_t &type) {
+    static bool is_u16_or_u32_scalar(const dsl::type_t &type) {
         return (type.is_u16() || type.is_u32()) && type.is_scalar();
     }
 };
@@ -486,7 +484,7 @@ private:
 // Constant variable, used as a coefficient in a linear expression.
 class const_var_t : public expr_iface_t<const_var_t> {
 public:
-    static expr_t make(const type_t &type, const std::string &name) {
+    static expr_t make(const dsl::type_t &type, const std::string &name) {
         return expr_t(new const_var_t(type, name));
     }
 
@@ -497,7 +495,7 @@ public:
     std::string name;
 
 private:
-    const_var_t(const type_t &type, const std::string &name)
+    const_var_t(const dsl::type_t &type, const std::string &name)
         : expr_iface_t(type), name(name) {}
 };
 
@@ -506,7 +504,8 @@ class float_imm_t : public expr_iface_t<float_imm_t> {
 public:
     friend class expr_t;
 
-    static expr_t make(double value, const type_t &type = type_t::undef()) {
+    static expr_t make(
+            double value, const dsl::type_t &type = dsl::type_t::undef()) {
         return expr_t(new float_imm_t(value, type));
     }
 
@@ -519,8 +518,9 @@ public:
     double value;
 
 private:
-    float_imm_t(double value, const type_t &type = type_t::undef())
-        : expr_iface_t(type.is_undef() ? type_t::f32() : type), value(value) {}
+    float_imm_t(double value, const dsl::type_t &type = dsl::type_t::undef())
+        : expr_iface_t(type.is_undef() ? dsl::type_t::f32() : type)
+        , value(value) {}
 };
 
 // Integer immediate value.
@@ -529,7 +529,8 @@ public:
     friend class expr_t;
 
     template <typename T>
-    static expr_t make(T value, const type_t &type = type_t::undef()) {
+    static expr_t make(
+            T value, const dsl::type_t &type = dsl::type_t::undef()) {
         return expr_t(new int_imm_t(value, type));
     }
 
@@ -541,7 +542,7 @@ public:
 
     static expr_t shrink_type(const expr_t &e) {
         auto &imm = e.as<int_imm_t>();
-        type_t new_type = shrink_type(imm.value);
+        dsl::type_t new_type = shrink_type(imm.value);
         if (new_type == imm.type) return e;
         return make(imm.value, new_type);
     }
@@ -559,13 +560,13 @@ public:
     int64_t value;
 
 private:
-    int_imm_t(int64_t value, const type_t &type = type_t::undef())
+    int_imm_t(int64_t value, const dsl::type_t &type = dsl::type_t::undef())
         : expr_iface_t(type.is_undef() ? shrink_type(value) : type)
         , value(value) {}
 
-    static type_t shrink_type(int64_t v) {
-        if (try_shrink_type<int32_t>(v)) return type_t::s32();
-        return type_t::s64();
+    static dsl::type_t shrink_type(int64_t v) {
+        if (try_shrink_type<int32_t>(v)) return dsl::type_t::s32();
+        return dsl::type_t::s64();
     }
 };
 
@@ -640,7 +641,7 @@ public:
 private:
     linear_t(const expr_t &c, const std::vector<expr_t> &u_vec,
             const std::vector<expr_t> &v_vec)
-        : expr_iface_t(type_t::s32()), c(c), u_vec(u_vec), v_vec(v_vec) {}
+        : expr_iface_t(dsl::type_t::s32()), c(c), u_vec(u_vec), v_vec(v_vec) {}
 };
 
 // Pointer expression: (base_ptr + off).
@@ -694,8 +695,8 @@ class load_t : public expr_iface_t<load_t> {
 public:
     // offset and stride are expressed in bytes.
     // default stride means unit stride (in terms of type.base() elements).
-    static expr_t make(const type_t &type, const expr_t &buf, const expr_t &off,
-            int stride = default_stride) {
+    static expr_t make(const dsl::type_t &type, const expr_t &buf,
+            const expr_t &off, int stride = default_stride) {
         return expr_t(new load_t(type, buf, off, stride));
     }
 
@@ -717,7 +718,7 @@ public:
     int stride;
 
 private:
-    load_t(const type_t &_type, const expr_t &_buf, const expr_t &_off,
+    load_t(const dsl::type_t &_type, const expr_t &_buf, const expr_t &_off,
             int _stride)
         : expr_iface_t(_type), buf(_buf), off(_off), stride(_stride) {
         ptr_t::normalize(buf, off);
@@ -829,7 +830,7 @@ private:
         }
     }
 
-    static type_t shuffle_type(
+    static dsl::type_t shuffle_type(
             const std::vector<expr_t> &vec, const std::vector<int> &idx) {
         auto elem_type = vec[0].type();
         if (vec.size() == 1 && elem_type.is_simd()) {
@@ -973,9 +974,10 @@ private:
 
 // Convertor from C++ type to IR expression.
 template <typename T>
-expr_t to_expr(T value, const type_t &type) {
+expr_t to_expr(T value, const dsl::type_t &type) {
 #define CASE(ir_type, cpp_type) \
-    if (type == type_t::ir_type()) return expr_t(static_cast<cpp_type>(value))
+    if (type == dsl::type_t::ir_type()) \
+    return expr_t(static_cast<cpp_type>(value))
 
     CASE(_bool, bool);
     CASE(bf16, bfloat16_t);
@@ -1345,7 +1347,7 @@ private:
         gpu_assert(is_var(buf) || is_ref(buf)) << buf;
         if (stride == value.type().base().size()) stride = default_stride;
         if (mask)
-            gpu_assert(mask.type() == type_t::_bool(value.type().elems()));
+            gpu_assert(mask.type() == dsl::type_t::_bool(value.type().elems()));
     }
 };
 

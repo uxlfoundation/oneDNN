@@ -47,19 +47,19 @@ public:
         if (is_loop && !is_dim_1) {
             if (is_global_loop) {
                 e.loop_size = const_var_t::make(
-                        type_t::s32(), e.dim.str() + "_loop_size");
+                        dsl::type_t::s32(), e.dim.str() + "_loop_size");
                 e.is_global_loop = true;
             } else {
                 e.loop_size = div_up(reqs.to_expr(e.dim), tg_tile * iter_tile);
             }
-            e.loop_idx = e.loop_size.is(1)
-                    ? expr_t(0)
-                    : var_t::make(type_t::s32(), e.dim.str() + "_loop_idx");
+            e.loop_idx = e.loop_size.is(1) ? expr_t(0)
+                                           : var_t::make(dsl::type_t::s32(),
+                                                   e.dim.str() + "_loop_idx");
         }
         e.tg_idx = expr_t(0);
         e.thr_idx = (tg_tile == 1 ? expr_t(0) : thr_idx);
         if (!is_dim_1 && (!is_loop || is_global_loop)) {
-            e.tg_idx = var_t::make(type_t::s32(), dim.str() + "_tg_idx");
+            e.tg_idx = var_t::make(dsl::type_t::s32(), dim.str() + "_tg_idx");
         }
         auto iter_idx = e.tg_idx;
         iter_idx = iter_idx * e.tg_size + e.thr_idx;

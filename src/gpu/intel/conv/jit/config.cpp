@@ -97,7 +97,7 @@ std::string prepend_groups_to_tag(const std::string &tag) {
     return "a" + ret;
 }
 
-int get_default_mad_block(const type_t &type) {
+int get_default_mad_block(const dsl::type_t &type) {
     switch (type.size()) {
         // fp4 gets upconverted to f16 for mad.
         case 1: return (type.is_fp4() ? 16 : 32);
@@ -109,7 +109,7 @@ int get_default_mad_block(const type_t &type) {
     return 1;
 }
 
-bool is_small(const type_t &type, dim_t elems) {
+bool is_small(const dsl::type_t &type, dim_t elems) {
     int block = get_default_mad_block(type);
     return elems <= block / 2;
 }
@@ -317,7 +317,7 @@ int pick_block(dim_t dim, int b0, int b1 = 0, int b2 = 0) {
     return pick_block_impl(false, dim, b0, b1, b2);
 }
 
-int get_default_block(fma_kind_t fma, const type_t &type, dim_t elems) {
+int get_default_block(fma_kind_t fma, const dsl::type_t &type, dim_t elems) {
     if (is_dp_fma(fma)) {
         if (is_small(type, elems)) {
             int packed_dword_elems = 32 / type.bitsize();
@@ -330,7 +330,7 @@ int get_default_block(fma_kind_t fma, const type_t &type, dim_t elems) {
     return get_default_mad_block(type);
 }
 
-fma_kind_t get_default_fma(const hw_t &hw, const type_t &type) {
+fma_kind_t get_default_fma(const hw_t &hw, const dsl::type_t &type) {
     switch (type.size()) {
         case 1:
             if (hw >= ngen::HW::XeHP) return fma_kind_t::dpas;
@@ -357,7 +357,7 @@ struct nc_block_t {
     // Ideally, this should only depend on data type, direction, mb, c, and g to
     // enable the same src/dst formats and avoid reorders between convolutions
     static nc_block_t get_default_blocking(const hw_t &hw, fma_kind_t fma,
-            type_t type, bool is_dw, dim_t n, dim_t c, dim_t g,
+            dsl::type_t type, bool is_dw, dim_t n, dim_t c, dim_t g,
             bool is_output = false) {
         // Select dst layout to align with fma kind of following conv
         // for non-depthwise cases.
@@ -417,7 +417,7 @@ struct goi_block_t {
                 {1, o_block_outer_, i_block_outer_}, wei_letters, wei_idxs);
     }
 
-    static goi_block_t get_default_blocking(type_t type, int vec_size,
+    static goi_block_t get_default_blocking(dsl::type_t type, int vec_size,
             fma_kind_t fma_kind, bool is_fwd, bool is_bwd_d, dim_t g, dim_t o,
             dim_t i, bool ab_transpose) {
         dim_t x = o;
@@ -443,7 +443,7 @@ struct goi_block_t {
                 i_block, o_block_outer, i_block_outer);
     }
 
-    static void get_default_blocking(type_t type, int vec_size,
+    static void get_default_blocking(dsl::type_t type, int vec_size,
             fma_kind_t fma_kind, bool is_fwd, bool is_bwd_d, dim_t g, dim_t x,
             dim_t y, int &g_block, int &x_block, int &y_block,
             int &y_block_outer, bool ab_transpose = false) {
@@ -791,10 +791,10 @@ status_t init_tensor_layouts(
     if (prb.is_bwd_w) {
         if (utils::one_of(prb.wei_data_type, data_type::bf16, data_type::f16,
                     data_type::f8_e5m2, data_type::f8_e4m3))
-            wei_layout = wei_layout.with(type_t::f32());
+            wei_layout = wei_layout.with(dsl::type_t::f32());
         if (utils::one_of(prb.bia_data_type, data_type::bf16, data_type::f16,
                     data_type::f8_e5m2, data_type::f8_e4m3))
-            bia_layout = bia_layout.with(type_t::f32());
+            bia_layout = bia_layout.with(dsl::type_t::f32());
     }
 
     src.set_compute_unnormalized(src_layout, src_tag);
@@ -1853,8 +1853,10 @@ void validate_config_and_plan(config_t &cfg) {
         b_load_pattern = validate_blocking(
                 cfg, stride_layout_t::input_tensor_t::dst, b_2d);
     }
-    auto dummy_mem(var_t::make(type_t::byte(type::attr_t::ptr), "mem"));
-    auto dummy_reg(var_t::make(type_t::byte(type::attr_t::ptr), "reg"));
+    auto dummy_mem(
+            var_t::make(dsl::type_t::byte(dsl::type::attr_t::ptr), "mem"));
+    auto dummy_reg(
+            var_t::make(dsl::type_t::byte(dsl::type::attr_t::ptr), "reg"));
     if (!a_load_pattern.matches(
                 plan.x2r.a_load.create_stmt(dummy_mem, dummy_reg))) {
         gpu_warning() << "Generated load for tensor A does not match "

@@ -29,12 +29,13 @@ kernel::iface_t::iface_t(const ngen::InterfaceHandler &iface)
     for (unsigned int i = 0; i < iface.numAssignments(); i++) {
         auto &a = iface.getAssignment(i);
         if (a.exttype == ngen::ExternalArgumentType::Scalar) {
-            register_arg(a.name, type_t(a.type));
+            register_arg(a.name, dsl::type_t(a.type));
         } else if (a.exttype == ngen::ExternalArgumentType::GlobalPtr) {
-            register_arg(a.name, type_t::byte(type::attr_t::ptr));
+            register_arg(a.name, dsl::type_t::byte(dsl::type::attr_t::ptr));
         } else if (a.exttype == ngen::ExternalArgumentType::LocalPtr) {
             register_arg(a.name,
-                    type_t::byte(type::attr_t::ptr | type::attr_t::slm));
+                    dsl::type_t::byte(
+                            dsl::type::attr_t::ptr | dsl::type::attr_t::slm));
         } else {
             gpu_assert(false) << "Unimplemented";
         }
@@ -62,7 +63,7 @@ size_t kernel::iface_t::index(const std::string &name) const {
 }
 
 void kernel::iface_t::register_arg(
-        const std::string &name, const type_t &type) {
+        const std::string &name, const dsl::type_t &type) {
     register_arg(var_t::make(type, name));
 }
 

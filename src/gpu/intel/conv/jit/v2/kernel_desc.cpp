@@ -760,7 +760,8 @@ compute::range_t kernel_desc_t::local_range() const {
 void kernel_desc_t::init_kernel_iface(kernel::iface_t &kernel_iface) const {
     auto tensor_config = get_tensor_config(*this);
     for (auto &t : tensor_config.tensors()) {
-        kernel_iface.register_arg(t.name, type_t::byte(type::attr_t::ptr));
+        kernel_iface.register_arg(
+                t.name, dsl::type_t::byte(dsl::type::attr_t::ptr));
     }
     auto _reqs = reqs();
     auto tg_grid = create_thread_group_grid(*this);
@@ -769,18 +770,18 @@ void kernel_desc_t::init_kernel_iface(kernel::iface_t &kernel_iface) const {
         for (size_t j = 0; j < dims.size(); j++) {
             if (j == dims.size() - 1) continue;
             kernel_iface.register_arg(
-                    dims[j].str() + "_grid_size", type_t::u32());
+                    dims[j].str() + "_grid_size", dsl::type_t::u32());
             kernel_iface.register_arg(
-                    dims[j].str() + "_grid_size_magic", type_t::u64());
+                    dims[j].str() + "_grid_size_magic", dsl::type_t::u64());
         }
     }
     for (auto &d : dims()) {
         dim_t dummy;
         if (_reqs.get_value(d, dummy)) continue;
-        auto var = var_t::make(type_t::s32(), d.str());
+        auto var = var_t::make(dsl::type_t::s32(), d.str());
         kernel_iface.register_arg(var);
         if (d == pvars::sw)
-            kernel_iface.register_arg("sw_magic", type_t::u64());
+            kernel_iface.register_arg("sw_magic", dsl::type_t::u64());
         if (!is_index(d)) continue;
         for (auto &t_kind :
                 {tensor_kind_t::src, tensor_kind_t::wei, tensor_kind_t::dst}) {
@@ -790,25 +791,27 @@ void kernel_desc_t::init_kernel_iface(kernel::iface_t &kernel_iface) const {
             if (prb_stride(d, t_kind).is_undef()
                     || tag.desc().prb_dim(inner_dim.index()) == d)
                 continue;
-            auto stride_var
-                    = var_t::make(type_t::s32(), prb_stride(d, t_kind).str());
+            auto stride_var = var_t::make(
+                    dsl::type_t::s32(), prb_stride(d, t_kind).str());
             kernel_iface.register_arg(stride_var);
         }
     }
     if (use_stream_k) {
-        kernel_iface.register_arg("sk_iters_per_tile_main", type_t::s32());
+        kernel_iface.register_arg("sk_iters_per_tile_main", dsl::type_t::s32());
         kernel_iface.register_arg(
-                "sk_iters_per_tile_main_magic", type_t::u64());
-        kernel_iface.register_arg("sk_total_iters_main", type_t::s32());
-        kernel_iface.register_arg("sk_iters_per_tg_main", type_t::s32());
-        kernel_iface.register_arg("sk_iters_per_tg_main_magic", type_t::u64());
-        kernel_iface.register_arg("sk_iters_per_tile_tail", type_t::s32());
+                "sk_iters_per_tile_main_magic", dsl::type_t::u64());
+        kernel_iface.register_arg("sk_total_iters_main", dsl::type_t::s32());
+        kernel_iface.register_arg("sk_iters_per_tg_main", dsl::type_t::s32());
         kernel_iface.register_arg(
-                "sk_iters_per_tile_tail_magic", type_t::u64());
-        kernel_iface.register_arg("sk_total_iters_tail", type_t::s32());
-        kernel_iface.register_arg("sk_iters_per_tg_tail", type_t::s32());
-        kernel_iface.register_arg("sk_iters_per_tg_tail_magic", type_t::u64());
-        kernel_iface.register_arg("sk_k_batches", type_t::s32());
+                "sk_iters_per_tg_main_magic", dsl::type_t::u64());
+        kernel_iface.register_arg("sk_iters_per_tile_tail", dsl::type_t::s32());
+        kernel_iface.register_arg(
+                "sk_iters_per_tile_tail_magic", dsl::type_t::u64());
+        kernel_iface.register_arg("sk_total_iters_tail", dsl::type_t::s32());
+        kernel_iface.register_arg("sk_iters_per_tg_tail", dsl::type_t::s32());
+        kernel_iface.register_arg(
+                "sk_iters_per_tg_tail_magic", dsl::type_t::u64());
+        kernel_iface.register_arg("sk_k_batches", dsl::type_t::s32());
         for (auto &e : loop_desc) {
             dim_t dummy;
             if (_reqs.get_value(e.dim, dummy)) continue;
@@ -817,7 +820,8 @@ void kernel_desc_t::init_kernel_iface(kernel::iface_t &kernel_iface) const {
             dim_t size = iter_size * tg_size;
             std::string bound_name = e.dim.str();
             if (size != 1) bound_name += "_divup_" + std::to_string(size);
-            kernel_iface.register_arg(bound_name + "_magic", type_t::u64());
+            kernel_iface.register_arg(
+                    bound_name + "_magic", dsl::type_t::u64());
         }
     }
 }
@@ -859,11 +863,11 @@ bool try_register_immediate_arg(kernel_info_t &kernel_info, const expr_t &var,
     }
     if (try_parse_immediate_arg(name, base_name, denom)) {
         gpu_assert(!base_name.empty());
-        if (type == type_t::s32()) {
+        if (type == dsl::type_t::s32()) {
             int32_t value = into<int32_t>(
                     utils::div_up(var_map.at(base_name), denom));
             kernel_info.set_immediate_arg(name, value);
-        } else if (type == type_t::u32()) {
+        } else if (type == dsl::type_t::u32()) {
             uint32_t value = into<uint32_t>(
                     utils::div_up(var_map.at(base_name), denom));
             kernel_info.set_immediate_arg(name, value);
@@ -888,9 +892,10 @@ dim_t stream_k_k_batches(const kernel_desc_t &desc, const problem_t &prb) {
     return utils::div_up(2 * ab_size, l3_size);
 }
 
-type_t accumulator_type(const type_t &a_type, const type_t &b_type) {
+dsl::type_t accumulator_type(
+        const dsl::type_t &a_type, const dsl::type_t &b_type) {
     gpu_assert(a_type.size() == b_type.size());
-    return a_type.is_fp() ? type_t::f32() : type_t::s32();
+    return a_type.is_fp() ? dsl::type_t::f32() : dsl::type_t::s32();
 }
 
 kernel_desc_t to_stream_k(const kernel_desc_t &desc, bool check_ext) {

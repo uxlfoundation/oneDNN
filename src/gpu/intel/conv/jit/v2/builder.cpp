@@ -96,7 +96,7 @@ private:
 
         stmt_t inc_stmt(int inc = 1) const { return store(var() + inc); }
 
-        expr_t var() const { return load_t::make(type_t::s32(), buf, 0); }
+        expr_t var() const { return load_t::make(dsl::type_t::s32(), buf, 0); }
     };
 
     loop_nest_t loop_nest_;
@@ -104,9 +104,9 @@ private:
     loop_index_t linear_idx_;
 };
 
-type_t to_send_type(const send_1d_desc_t &desc) {
-    if (desc.type_size <= 8) return type_t::u(desc.type_size * 8);
-    return type_t::oword(desc.type_size / 16);
+dsl::type_t to_send_type(const send_1d_desc_t &desc) {
+    if (desc.type_size <= 8) return dsl::type_t::u(desc.type_size * 8);
+    return dsl::type_t::oword(desc.type_size / 16);
 }
 
 int get_reg_off(const send_1d_plan_t &plan, const icoord_t &coord) {
@@ -128,7 +128,7 @@ public:
         auto i_op = (obj.op_kind == op_kind_t::_div ? op_kind_t::_idiv
                                                     : op_kind_t::_imod);
         return ternary_op_t::make(
-                i_op, obj.a, cast(obj.b, type_t::u32()), magic);
+                i_op, obj.a, cast(obj.b, dsl::type_t::u32()), magic);
     }
 
 private:
@@ -230,11 +230,11 @@ struct stream_k_params_t {
     stream_k_params_t(bool enable, const loop_desc_t &loop_desc)
         : enable(enable) {
         if (!enable) return;
-        local_beg = var_t::make(type_t::s32(), "local_beg");
-        local_end = var_t::make(type_t::s32(), "local_end");
+        local_beg = var_t::make(dsl::type_t::s32(), "local_beg");
+        local_end = var_t::make(dsl::type_t::s32(), "local_end");
         for (auto &e : loop_desc) {
             loop_inits.push_back(
-                    var_t::make(type_t::s32(), e.dim.str() + "_init"));
+                    var_t::make(dsl::type_t::s32(), e.dim.str() + "_init"));
         }
     }
 
@@ -469,7 +469,7 @@ public:
             const coord_t &coord, const tile_t &tile, alg_kind_t binary_alg,
             const gpu_post_ops_t::entry_t *post_op_entry,
             const v2::layout_t &lhs_reg_layout, const expr_t &lhs_reg_buf,
-            const expr_t &rhs_mem_buf, const type_t &_rhs_type,
+            const expr_t &rhs_mem_buf, const dsl::type_t &_rhs_type,
             uint16_t rhs_mask, float rhs_scale, int rhs_zero_point)
         : ir_builder_t(parent, loop_nest_t()), desc_(desc) {
         // Binary post-op.
@@ -493,7 +493,7 @@ public:
 
 private:
     v2::view_t rhs_mem_view(const coord_t &_coord, const tile_t &_tile,
-            const type_t &type, uint16_t mask) {
+            const dsl::type_t &type, uint16_t mask) {
         dim_mapper_manager_t mger(desc_.prop, desc_.spec.reqs());
         auto &c_mapper = mger.mapper(tensor_kind_t::c);
         auto kind = pick_c(desc_.prop, tensor_kind_t::src, tensor_kind_t::wei,
@@ -523,11 +523,11 @@ private:
     void build_binary_post_op(alg_kind_t alg, const v2::layout_t &lhs,
             const v2::layout_t &_rhs, const expr_t &lhs_buf,
             const expr_t &_rhs_buf, float scale = 1, int zero_point = 0) {
-        gpu_assert(lhs.type() == type_t::f32());
+        gpu_assert(lhs.type() == dsl::type_t::f32());
         auto rhs = _rhs;
         auto rhs_buf = _rhs_buf;
-        if (rhs.type() != type_t::f32()) {
-            auto rhs_f32 = _rhs.retype(type_t::f32(), /*dense=*/true);
+        if (rhs.type() != dsl::type_t::f32()) {
+            auto rhs_f32 = _rhs.retype(dsl::type_t::f32(), /*dense=*/true);
             rhs_buf = reorder(_rhs, rhs_f32, _rhs_buf);
             rhs = std::move(rhs_f32);
         }
@@ -561,10 +561,10 @@ private:
             auto lhs_off = lhs.offset_in_bytes(coord);
             auto rhs_off = rhs.offset_in_bytes(coord);
             auto e_l = load_t::make(
-                    type_t::f32().with_elems(elems), lhs_buf, lhs_off);
+                    dsl::type_t::f32().with_elems(elems), lhs_buf, lhs_off);
             auto e_r = load_t::make(
-                    type_t::f32().with_elems(is_bcast ? 1 : elems), rhs_buf,
-                    rhs_off);
+                    dsl::type_t::f32().with_elems(is_bcast ? 1 : elems),
+                    rhs_buf, rhs_off);
             if (is_bcast) e_r = shuffle_t::make_broadcast(e_r, elems);
             auto e_op = binary_op_t::make(alg_kind_to_op_kind(alg), e_l, e_r);
             if (e_op.type().is_bool()) {
@@ -612,8 +612,9 @@ private:
             alg_kind_t binary_alg, const gpu_post_ops_t::entry_t *post_op_entry,
             const v2::layout_t &lhs_reg_layout, const expr_t &lhs_reg_buf,
             const expr_t &rhs_mem_buf = expr_t(),
-            const type_t &rhs_type = type_t::undef(), uint16_t rhs_mask = 0,
-            float rhs_scale = 1.0f, int rhs_zero_point = 0) {
+            const dsl::type_t &rhs_type = dsl::type_t::undef(),
+            uint16_t rhs_mask = 0, float rhs_scale = 1.0f,
+            int rhs_zero_point = 0) {
         post_op_builder_t builder(*this, desc_, coord, tile, binary_alg,
                 post_op_entry, lhs_reg_layout, lhs_reg_buf, rhs_mem_buf,
                 rhs_type, rhs_mask, rhs_scale, rhs_zero_point);
@@ -628,10 +629,10 @@ private:
             out_layout = layout;
             return _buf;
         }
-        auto f32_layout = out_layout.retype(type_t::f32(), /*dense=*/true);
+        auto f32_layout = out_layout.retype(dsl::type_t::f32(), /*dense=*/true);
         auto tile = f32_layout.int_dim_sizes();
         int elems = f32_layout.elems();
-        gpu_assert(elems * type_t::f32().size() == f32_layout.size());
+        gpu_assert(elems * dsl::type_t::f32().size() == f32_layout.size());
         auto buf = reorder(layout, f32_layout, _buf);
         arg_helper_t arg_helper(desc_);
         auto &c_tag = pick_c(
@@ -786,29 +787,29 @@ public:
             sk_params.tg_idx = plan_.tg_grid.index_var(0);
             sk_params.k_batch_idx = plan_.tg_grid.index_var(1);
 
-            auto total_iters_main
-                    = const_var_t::make(type_t::s32(), "sk_total_iters_main");
-            auto total_iters_tail
-                    = const_var_t::make(type_t::s32(), "sk_total_iters_tail");
-            auto iters_per_tg_main
-                    = const_var_t::make(type_t::s32(), "sk_iters_per_tg_main");
-            auto iters_per_tg_tail
-                    = const_var_t::make(type_t::s32(), "sk_iters_per_tg_tail");
+            auto total_iters_main = const_var_t::make(
+                    dsl::type_t::s32(), "sk_total_iters_main");
+            auto total_iters_tail = const_var_t::make(
+                    dsl::type_t::s32(), "sk_total_iters_tail");
+            auto iters_per_tg_main = const_var_t::make(
+                    dsl::type_t::s32(), "sk_iters_per_tg_main");
+            auto iters_per_tg_tail = const_var_t::make(
+                    dsl::type_t::s32(), "sk_iters_per_tg_tail");
             auto iters_per_tg_main_magic = const_var_t::make(
-                    type_t::u64(), "sk_iters_per_tg_main_magic");
+                    dsl::type_t::u64(), "sk_iters_per_tg_main_magic");
             auto iters_per_tg_tail_magic = const_var_t::make(
-                    type_t::u64(), "sk_iters_per_tg_tail_magic");
+                    dsl::type_t::u64(), "sk_iters_per_tg_tail_magic");
             auto iters_per_tile_main = const_var_t::make(
-                    type_t::s32(), "sk_iters_per_tile_main");
+                    dsl::type_t::s32(), "sk_iters_per_tile_main");
             auto iters_per_tile_tail = const_var_t::make(
-                    type_t::s32(), "sk_iters_per_tile_tail");
+                    dsl::type_t::s32(), "sk_iters_per_tile_tail");
             auto iters_per_tile_main_magic = const_var_t::make(
-                    type_t::u64(), "sk_iters_per_tile_main_magic");
+                    dsl::type_t::u64(), "sk_iters_per_tile_main_magic");
             auto iters_per_tile_tail_magic = const_var_t::make(
-                    type_t::u64(), "sk_iters_per_tile_tail_magic");
+                    dsl::type_t::u64(), "sk_iters_per_tile_tail_magic");
 
             sk_params.k_batches
-                    = const_var_t::make(type_t::s32(), "sk_k_batches");
+                    = const_var_t::make(dsl::type_t::s32(), "sk_k_batches");
             auto cond = (sk_params.k_batch_idx == sk_params.k_batches - 1);
             sk_params.total_iters = let("sk_total_iters",
                     iif_t::make(cond, total_iters_tail, total_iters_main));
@@ -823,7 +824,7 @@ public:
             auto iters_per_tile_magic = let("sk_iters_per_tile_magic",
                     iif_t::make(cond, iters_per_tile_tail_magic,
                             iters_per_tile_main_magic));
-            auto iter = alloc_var(type_t::s32(), "sk_iter");
+            auto iter = alloc_var(dsl::type_t::s32(), "sk_iter");
             iter = sk_params.tg_idx * sk_params.iters_per_tg;
             auto iter_end = let("sk_iter_end",
                     min(sk_params.total_iters, iter + sk_params.iters_per_tg));
@@ -831,7 +832,8 @@ public:
             _while(iter < iter_end, [&]() {
                 sk_params.tile_idx = let("sk_tile_idx",
                         ternary_idiv(iter,
-                                cast(sk_params.iters_per_tile, type_t::u32()),
+                                cast(sk_params.iters_per_tile,
+                                        dsl::type_t::u32()),
                                 iters_per_tile_magic));
                 auto global_beg = let("sk_global_beg",
                         sk_params.tile_idx * sk_params.iters_per_tile);
@@ -845,11 +847,13 @@ public:
                                 + sk_params.k_batch_idx * iters_per_tile_main);
                 sk_params.tg_beg = let("sk_tg_beg",
                         ternary_idiv(global_beg,
-                                cast(sk_params.iters_per_tg, type_t::u32()),
+                                cast(sk_params.iters_per_tg,
+                                        dsl::type_t::u32()),
                                 iters_per_tg_magic));
                 sk_params.tg_end = let("sk_tg_beg",
                         ternary_idiv(global_beg - 1,
-                                cast(sk_params.iters_per_tg, type_t::u32()),
+                                cast(sk_params.iters_per_tg,
+                                        dsl::type_t::u32()),
                                 iters_per_tg_magic)
                                 + 1);
                 emit_thread_group_index_let(sk_params.tile_idx);
@@ -929,7 +933,7 @@ private:
             // Use iterator-based loop with Stream-K.
             iterator_t mul_it(buf_mgr(), loop_nest);
             emit(mul_it.init_stmt());
-            auto it_var = var_t::make(type_t::s32(), "sk_local_iter");
+            auto it_var = var_t::make(dsl::type_t::s32(), "sk_local_iter");
             _for(it_var, 0, loop_nest.linear_bound(), [&]() {
                 if (prefetch_dist > 0) {
                     emit(prefetch_it.check_bounds_stmt(prefetch_stmt));
@@ -983,7 +987,7 @@ private:
     void emit_thread_index_let() {
         for (int i = 0; i < 3; i++) {
             auto value = var_t::make(
-                    type_t::u16(), jit::ir_builder_t::local_id(i));
+                    dsl::type_t::u16(), jit::ir_builder_t::local_id(i));
             if (i == 0) value /= plan_.desc.simd;
             auto thr_idx = plan_.thr_grid.index_var(i);
             let(thr_idx, cast(value, thr_idx.type()));

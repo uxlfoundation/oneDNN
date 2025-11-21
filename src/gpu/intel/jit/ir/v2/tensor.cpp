@@ -789,7 +789,7 @@ layout_t layout_t::make_dense() const {
     return layout_t(desc_, type_, base_, new_blocks);
 }
 
-layout_t layout_t::retype(const type_t &new_type, bool dense) const {
+layout_t layout_t::retype(const dsl::type_t &new_type, bool dense) const {
     if (new_type == type_) return *this;
     auto ret = layout_t(desc_, new_type, base_, blocks_);
     if (dense) return ret.make_dense();
@@ -1292,8 +1292,8 @@ expr_t grid_splitter_t::index_t::pop(int &n) {
 expr_t grid_splitter_t::register_index(const expr_t &expr, int size) {
     if (expr.is<var_t>()) return expr;
     int idx = (int)virt_grid_idxs_.size();
-    auto var
-            = var_t::make(type_t::s32(), "virt_grid_idx" + std::to_string(idx));
+    auto var = var_t::make(
+            dsl::type_t::s32(), "virt_grid_idx" + std::to_string(idx));
     virt_grid_idxs_.emplace(var, expr);
     var_range_info_.set_bound(var, size);
     return var;

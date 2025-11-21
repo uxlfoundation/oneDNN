@@ -48,7 +48,7 @@ public:
     void add_constraint(const expr_t &e);
 
     expr_t create_tmp_var(
-            const type_t &type, const std::string &prefix = "tmp") {
+            const dsl::type_t &type, const std::string &prefix = "tmp") {
         return var_t::make(type, create_tmp_name(prefix));
     }
 
@@ -520,7 +520,7 @@ expr_t abs(const expr_t &e);
 expr_t max(const expr_t &a, const expr_t &b);
 expr_t min(const expr_t &a, const expr_t &b);
 
-expr_t cast(const expr_t &e, const type_t &type, bool saturate = false);
+expr_t cast(const expr_t &e, const dsl::type_t &type, bool saturate = false);
 
 bool is_const_broadcast(const expr_t &e);
 

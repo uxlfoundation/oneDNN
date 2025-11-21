@@ -124,21 +124,21 @@ struct block_2d_info_t {
 class send_t : public func_impl_t, public object::info_t<send_t> {
 public:
     static func_t make(const hw_t &hw, send_op_t op, send_address_t address,
-            const type_t &type, int slots, bool zero_out,
+            const dsl::type_t &type, int slots, bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {
         return make(hw, op, address, type, slots, default_slot_mask,
                 hw >= ngen::HW::XeHPC, zero_out, cache_hint);
     }
 
     static func_t make(const hw_t &hw, send_op_t op, send_address_t address,
-            const type_t &type, int slots, bool is_lsc, bool zero_out,
+            const dsl::type_t &type, int slots, bool is_lsc, bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {
         return make(hw, op, address, type, slots, default_slot_mask, is_lsc,
                 zero_out, cache_hint);
     }
 
     static func_t make(const hw_t &hw, send_op_t op, send_address_t address,
-            const type_t &type, int slots, uint32_t slot_mask, bool is_lsc,
+            const dsl::type_t &type, int slots, uint32_t slot_mask, bool is_lsc,
             bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {
         return func_t(new send_t(hw, op, address, type, slots, slot_mask,
@@ -146,13 +146,14 @@ public:
     }
 
     static func_t make(const hw_t &hw, send_op_t op, send_address_t address,
-            const type_t &type, int slots, uint32_t slot_mask, bool zero_out,
+            const dsl::type_t &type, int slots, uint32_t slot_mask,
+            bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {
         return make(hw, op, address, type, slots, slot_mask,
                 hw >= ngen::HW::XeHPC, zero_out, cache_hint);
     }
 
-    static func_t make_2d(const hw_t &hw, send_op_t op, const type_t &type,
+    static func_t make_2d(const hw_t &hw, send_op_t op, const dsl::type_t &type,
             expr_t surface_width, expr_t surface_height, expr_t surface_pitch,
             int width, int height, int count, bool vnni, bool transpose,
             bool zero_out,
@@ -169,7 +170,7 @@ public:
         return func_t(new send_t(hw, op, type, zero_out, info, cache_hint));
     }
 
-    static func_t make_2d(const hw_t &hw, send_op_t op, const type_t &type,
+    static func_t make_2d(const hw_t &hw, send_op_t op, const dsl::type_t &type,
             int width, int height, int count, bool vnni, bool transpose,
             bool zero_out,
             send_cache_hint_t cache_hint = send_cache_hint_t::undef) {
@@ -246,7 +247,8 @@ public:
     bool is_slm() const { return address == send_address_t::slm; }
 
     bool is_block() const {
-        return utils::one_of(type.base(), type_t::oword(), type_t::hword());
+        return utils::one_of(
+                type.base(), dsl::type_t::oword(), dsl::type_t::hword());
     }
 
     bool is_scattered() const { return !is_block() && !is_2d(); }
@@ -317,9 +319,10 @@ public:
 
     int address_size() const { return is_a64() ? 8 : 4; }
 
-    type_t address_type(bool is_signed = false, int elems = 1) const {
+    dsl::type_t address_type(bool is_signed = false, int elems = 1) const {
         int bits = address_size() * 8;
-        return is_signed ? type_t::s(bits, elems) : type_t::u(bits, elems);
+        return is_signed ? dsl::type_t::s(bits, elems)
+                         : dsl::type_t::u(bits, elems);
     }
 
     // Size of header in bytes.
@@ -341,13 +344,13 @@ public:
     }
 
     static std::vector<func_t> get_all(const hw_t &hw, send_op_t op,
-            send_address_t address, const type_t &mem_type, bool zero_out,
+            send_address_t address, const dsl::type_t &mem_type, bool zero_out,
             send_cache_hint_t cache_hint);
 
     hw_t hw;
     send_op_t op;
     send_address_t address;
-    type_t type;
+    dsl::type_t type;
     int slots;
     uint32_t slot_mask;
     bool is_lsc;
@@ -366,7 +369,7 @@ private:
     bool is_xe_hpc_plus() const { return hw >= ngen::HW::XeHPC; }
 
     send_t(const hw_t &hw, send_op_t op, send_address_t address,
-            const type_t &type, int slots, uint32_t slot_mask, bool is_lsc,
+            const dsl::type_t &type, int slots, uint32_t slot_mask, bool is_lsc,
             bool zero_out, send_cache_hint_t cache_hint)
         : func_impl_t(get_info())
         , hw(hw)
@@ -379,7 +382,7 @@ private:
         , fill_buf(zero_out)
         , cache_hint(cache_hint) {}
 
-    send_t(const hw_t &hw, send_op_t op, const type_t &type, bool zero_out,
+    send_t(const hw_t &hw, send_op_t op, const dsl::type_t &type, bool zero_out,
             const block_2d_info_t &block_2d_info, send_cache_hint_t cache_hint)
         : func_impl_t(get_info())
         , hw(hw)

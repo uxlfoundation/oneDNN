@@ -19,9 +19,9 @@
 
 #include <vector>
 
+#include "gemmstone/dsl/type.hpp"
 #include "gpu/intel/jit/ir/include/hw.hpp"
 #include "gpu/intel/jit/ir/include/object.hpp"
-#include "gpu/intel/jit/ir/include/type.hpp"
 
 #include "ngen_debuginfo.hpp"
 
@@ -57,7 +57,7 @@ public:
     expr_t find_arg(const std::string &name, bool allow_empty = false) const;
     size_t index(const std::string &name) const;
     void register_arg(const expr_t &var) { args_.emplace_back(var); }
-    void register_arg(const std::string &name, const type_t &type);
+    void register_arg(const std::string &name, const dsl::type_t &type);
 
 private:
     struct arg_t {

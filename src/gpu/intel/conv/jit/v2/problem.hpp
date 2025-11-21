@@ -39,7 +39,7 @@ public:
     const layout_tag_t &src_tag() const { return src_tag_; }
     const layout_tag_t &wei_tag() const { return wei_tag_; }
     const layout_tag_t &dst_tag() const { return dst_tag_; }
-    const type_t &bias_type() const { return bias_type_; }
+    const dsl::type_t &bias_type() const { return bias_type_; }
     const layout_tag_t &layout_tag(tensor_kind_t kind) const {
         switch (kind) {
             case tensor_kind_t::a:
@@ -64,7 +64,7 @@ public:
         dim_t oc = shape_.at(pvars::oc);
         return (g > 1) && (ic == 1) && (oc == 1);
     }
-    const type_t &out_type() const;
+    const dsl::type_t &out_type() const;
     void set_hw(const hw_t &hw) { hw_ = hw; }
     void set_prop(prop_kind_t prop) {
         prop_ = prop;
@@ -73,7 +73,7 @@ public:
     void set_src_tag(const layout_tag_t &tag) { src_tag_ = tag; }
     void set_wei_tag(const layout_tag_t &tag) { wei_tag_ = tag; }
     void set_dst_tag(const layout_tag_t &tag) { dst_tag_ = tag; }
-    void set_bias_type(const type_t &bias_type) { bias_type_ = bias_type; }
+    void set_bias_type(const dsl::type_t &bias_type) { bias_type_ = bias_type; }
     void set_shape(const tile_t &shape) { shape_ = shape; }
     void set_with_groups(bool value) { with_groups_ = value; }
     void set_with_scales(bool value) { with_scales_ = value; }
@@ -104,7 +104,7 @@ private:
     layout_tag_t src_tag_;
     layout_tag_t wei_tag_;
     layout_tag_t dst_tag_;
-    type_t bias_type_;
+    dsl::type_t bias_type_;
     tile_t shape_;
     std::array<int, 3> dhw_map_ = {0};
     bool with_groups_ = false;

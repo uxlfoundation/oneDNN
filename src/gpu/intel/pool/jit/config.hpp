@@ -66,7 +66,7 @@ class config_t : public prim_config_t {
 public:
     static bool check_compatibility(const conf_t &prb,
             const kernel::options_t &exec, const layout_t &src,
-            const post_ops_t &po, type_t dst_dt) {
+            const post_ops_t &po, dsl::type_t dst_dt) {
         const int max_tg = exec.hw().max_tg_size(exec.regs(), exec.simd());
         if (max_tg % 8 != 0) return false;
 
@@ -201,17 +201,18 @@ public:
         return (blk.size() > 1) && (blk[1].idx.index() == 0);
     }
 
-    type_t acc_type(int len) const {
+    dsl::type_t acc_type(int len) const {
         const auto read_type = src_layout().user().type();
         switch (0x10 * read_type.is_int() + is_max()) {
             default:
-            case 0x00: return type_t::f32(len); break;
+            case 0x00: return dsl::type_t::f32(len); break;
             case 0x01: return read_type.with_elems(len); break;
-            case 0x10: return type_t::s32(len); break;
+            case 0x10: return dsl::type_t::s32(len); break;
             case 0x11:
-                return ((read_type.is_signed()) ? type_t::s : type_t::u)(
+                return ((read_type.is_signed()) ? dsl::type_t::s
+                                                : dsl::type_t::u)(
                         8 * std::max(2, read_type.size()), len,
-                        type::attr_t::undef);
+                        dsl::type::attr_t::undef);
         }
     }
 

@@ -770,7 +770,7 @@ expr_t min(const expr_t &a, const expr_t &b) {
     return binary_op_t::make(op_kind_t::_min, a, b);
 }
 
-expr_t cast(const expr_t &e, const type_t &type, bool saturate) {
+expr_t cast(const expr_t &e, const dsl::type_t &type, bool saturate) {
     return const_fold(cast_t::make(type, e, saturate));
 }
 
@@ -787,7 +787,7 @@ bool is_const_broadcast(const expr_t &e, const expr_t &value) {
 }
 
 expr_t make_buffer(const std::string &name) {
-    return var_t::make(type_t::byte(type::attr_t::ptr), name);
+    return var_t::make(dsl::type_t::byte(dsl::type::attr_t::ptr), name);
 }
 
 // Returns number of occurrences of `obj` in `root` (based on identity equality).
@@ -1277,7 +1277,7 @@ bool constraint_set_t::can_prove_impl(
         const expr_t &_e, bool do_simplify) const {
     auto e = _e;
     if (is_const(e)) {
-        gpu_assert(e.type() == type_t::_bool()) << e;
+        gpu_assert(e.type() == dsl::type_t::_bool()) << e;
         return to_cpp<bool>(e);
     }
 
@@ -1287,7 +1287,7 @@ bool constraint_set_t::can_prove_impl(
         e = simplify_cmp_reduce_lhs_rhs(e);
         e = simplify(e);
         if (is_const(e)) {
-            gpu_assert(e.type() == type_t::_bool()) << e;
+            gpu_assert(e.type() == dsl::type_t::_bool()) << e;
             return to_cpp<bool>(e);
         }
     }

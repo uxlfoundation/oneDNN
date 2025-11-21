@@ -30,8 +30,8 @@ enum class message_kind_t {
     scattered,
 };
 
-dim_t max_strided_bytes(
-        const hw_t &hw, const type_t &src_type, const type_t &dst_type) {
+dim_t max_strided_bytes(const hw_t &hw, const dsl::type_t &src_type,
+        const dsl::type_t &dst_type) {
     // These conversions use an additional temporary buffer
     const bool use_smaller_buffer
             = utils::one_of(true, src_type.is_fp8(), dst_type.is_fp8())

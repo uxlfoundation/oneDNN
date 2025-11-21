@@ -72,7 +72,7 @@ void eltwise(ngen_generator_t &host, ngen_register_scope_t &scope,
         if ((cur_elems * f_size) % grf_size != 0 || rd.byte_offset() != 0) {
             int full_elems
                     = utils::rnd_up(cur_elems * f_size, grf_size) / f_size;
-            auto tmp = i_scope.alloc_reg_data(type_t::f32(full_elems));
+            auto tmp = i_scope.alloc_reg_data(dsl::type_t::f32(full_elems));
             emit_reorder_1d_tile(&host, hw, i_scope, cur_elems, rd, 1, tmp, 1);
             do_eltwise(tmp, full_elems * f_size / grf_size);
             emit_reorder_1d_tile(&host, hw, i_scope, cur_elems, tmp, 1, rd, 1);

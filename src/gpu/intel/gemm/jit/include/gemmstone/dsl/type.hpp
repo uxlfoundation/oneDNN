@@ -14,23 +14,21 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_IR_INCLUDE_TYPE_HPP
-#define GPU_INTEL_JIT_IR_INCLUDE_TYPE_HPP
+#ifndef GEMMSTONE_GUARD_INCLUDE_DSL_TYPE_HPP
+#define GEMMSTONE_GUARD_INCLUDE_DSL_TYPE_HPP
 
 #include <cstdint>
 #include <string>
 
-#include "gpu/intel/jit/utils/utils.hpp"
+#include "gemmstone/config.hpp"
+#include "internal/utils.hpp"
 
 namespace ngen {
 enum class DataType : uint8_t;
 }
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
 
 namespace type {
 enum class attr_t : uint32_t { undef = 0, ptr = 1, mut = 2, simd = 4, slm = 8 };
@@ -108,7 +106,7 @@ public:
             case 16: return u16(elems, attr);
             case 32: return u32(elems, attr);
             case 64: return u64(elems, attr);
-            default: gpu_error_not_expected();
+            default: stub();
         }
         return type_t::undef();
     }
@@ -121,7 +119,7 @@ public:
             case 16: return s16(elems, attr);
             case 32: return s32(elems, attr);
             case 64: return s64(elems, attr);
-            default: gpu_error_not_expected();
+            default: stub();
         }
         return type_t::undef();
     }
@@ -194,7 +192,7 @@ public:
                 T ret = T(1) << (bits - 1);
                 return ret + (ret - 1);
             }
-            default: gpu_error_not_expected();
+            default: stub();
         }
         return 0;
     }
@@ -215,7 +213,7 @@ public:
                 if (is_unsigned()) return 0;
                 return -max<T>() - 1;
             }
-            default: gpu_error_not_expected();
+            default: stub();
         }
         return 0;
     }
@@ -428,15 +426,29 @@ private:
 
     void check() const {
         if (is_ptr())
-            gpu_assert(elems_ == 1)
-                    << "Pointer type must have default elems value.";
+            assume(elems_ == 1, "Pointer type must have default elems value.");
         ;
     }
 };
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+inline std::ostream & operator<<(std::ostream & out, const type_t & t) {
+    out << t.str();
+    return out;
+}
+
+static type_t _bool = type_t::_bool();
+static type_t s8 = type_t::s8();
+static type_t u8 = type_t::u8();
+static type_t s16 = type_t::s16();
+static type_t u16 = type_t::u16();
+static type_t s32 = type_t::s32();
+static type_t u32 = type_t::u32();
+static type_t s64 = type_t::s64();
+static type_t u64 = type_t::u64();
+static type_t f32 = type_t::f32();
+static type_t f16 = type_t::f16();
+static type_t bf16 = type_t::bf16();
+
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 #endif

@@ -27,6 +27,7 @@
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
 #include "gpu/intel/gemm/jit/generator/pieces/compute_utils.hpp"
+#include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
@@ -1145,7 +1146,7 @@ void gen_kernel_t::init_interface() {
 
 dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
         const GEMMStrategy &strategy, const ngen::InterfaceHandler &iface,
-        const ir::hw_t &hw, int m, int n, int k) {
+        const hw_t &hw, int m, int n, int k) {
     auto gemm_desc
             = gemmstone::generator_dsl_desc_t(problem, strategy, iface, hw);
     if (gpu_utils::dev_getenv("generator_dsl_specialize", false)) {

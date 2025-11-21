@@ -22,6 +22,7 @@
 #include "common/c_types_map.hpp"
 #include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/post_ops.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
 namespace impl {

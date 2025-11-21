@@ -18,8 +18,7 @@
 
 #include "common/math_utils.hpp"
 #include "common/primitive_attr.hpp"
-#include "gpu/intel/block_structure.hpp"
-#include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -188,6 +187,16 @@ struct relative_md_t {
     };
 
     relative_md_t() = default;
+    relative_md_t(int md_broadcast_mask, int md_inner_dim, int ndims,
+            data_type_t dt, const ndim_normalizer_t &ndim_normalizer)
+        : dt(dt)
+        , broadcast_mask(uint16_t(0xFFFFu << ndims))
+        , inner_dim(from_md_idx(md_inner_dim, ndims, ndim_normalizer)) {
+        for (int i = 0; i < ndims; i++) {
+            auto rmd_idx = from_md_idx(i, ndims, ndim_normalizer).as_int();
+            broadcast_mask |= ((md_broadcast_mask >> i) & 1) << rmd_idx;
+        }
+    }
     static status_t make(relative_md_t &rmd, const memory_desc_t &md,
             const ndim_normalizer_t &ndim_normalizer) {
         if (md.format_kind != format_kind::blocked)
@@ -197,13 +206,15 @@ struct relative_md_t {
 
         auto ndims = ndim_normalizer.ndims(md);
 
-        auto layout = block_layout_t(md, true);
-        gpu_assert(layout.size() <= blocking_t::max_dims);
+        memory_desc_wrapper mdw(md);
+        gpu_assert(mdw.is_blocking_desc());
+        auto &blocking = mdw.blocking_desc();
+        gpu_assert(blocking.inner_nblks <= blocking_t::max_dims);
 
-        for (size_t i = 0; i < layout.size(); i++) {
-            rmd.inner_layout.idxs[i]
-                    = from_md_idx(layout[i].dim_idx, ndims, ndim_normalizer);
-            rmd.inner_layout.blocks[i] = into<uint8_t>(layout[i].block);
+        for (dim_t i = 0; i < blocking.inner_nblks; i++) {
+            rmd.inner_layout.idxs[i] = from_md_idx(
+                    into<int>(blocking.inner_idxs[i]), ndims, ndim_normalizer);
+            rmd.inner_layout.blocks[i] = into<uint8_t>(blocking.inner_blks[i]);
         }
 
         // Default all dimensions to broadcast
@@ -399,10 +410,16 @@ struct binary_t {
             const specializations_t::binary_t &s,
             const ndim_normalizer_t &ndim_normalizer) {
         if (s.src1_desc_layout.is_inlined()) {
-            memory_desc_t prelu_md;
-            CHECK(get_prelu_md(
-                    op.mask, dst_md.dims(), prelu_md, dst_md.ndims()));
-            CHECK(relative_md_t::make(b.src1_desc, prelu_md, ndim_normalizer));
+            auto bcast_mask = ~op.mask;
+            int inner_dim = 0;
+            for (int i = 0; i < dst_md.ndims(); i++) {
+                // Normalize size 1 dimensions to broadcasts.
+                if (dst_md.dims()[i] == 1) bcast_mask |= 1 << i;
+                // Prelu layout is axb, so b dimension is innermost
+                if ((~bcast_mask & (1 << i)) && inner_dim != 1) inner_dim = i;
+            }
+            b.src1_desc = relative_md_t(bcast_mask, inner_dim, dst_md.ndims(),
+                    data_type::f32, ndim_normalizer);
         } else {
             b.src1_desc.dt = data_type::f32;
         }

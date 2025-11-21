@@ -424,6 +424,38 @@ bool check_dyn_quant_dequant_scales_zps(const op_t *n) {
     return true;
 }
 
+// check function for data_type of RMSNorm.
+bool check_rmsn_data_type(const op_t *n) {
+    const auto &input_values = n->get_input_values();
+    const auto &output_values = n->get_output_values();
+
+    if (input_values.size() == 1 && output_values.size() == 1) {
+        // src and dst have the same data_type defined in op schema
+        return true;
+    } else {
+        // gamma can be either same data_type as src or f32.
+        if (input_values.size() == 2) {
+            const auto &src_lt = input_values[0]->get_logical_tensor();
+            const auto &gamma_lt = input_values[1]->get_logical_tensor();
+            VCHECK_SHAPE_INFER(utils::one_of(gamma_lt.data_type, data_type::f32,
+                                       src_lt.data_type),
+                    "%s, gamma should be either same data_type as src or f32.",
+                    op_t::kind2str(n->get_kind()).c_str());
+        }
+
+        // rrms can be either same data_type as dst or f32.
+        if (output_values.size() == 2) {
+            const auto &dst_lt = output_values[0]->get_logical_tensor();
+            const auto &rrms_lt = output_values[1]->get_logical_tensor();
+            VCHECK_SHAPE_INFER(utils::one_of(rrms_lt.data_type, data_type::f32,
+                                       dst_lt.data_type),
+                    "%s, rrms should be either same data_type as dst or f32.",
+                    op_t::kind2str(n->get_kind()).c_str());
+        }
+    }
+
+    return true;
+}
 } // namespace graph
 } // namespace impl
 } // namespace dnnl

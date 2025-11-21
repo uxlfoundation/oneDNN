@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -609,6 +609,21 @@ status_t infer_dnnl_host_scalar_output_shape(op_t *n,
     // with shape = {1}, strides = {1}
     outputs[0]->layout_type = layout_type::strided;
     set_shape_and_strides(*outputs[0], {1});
+    return status::success;
+}
+
+status_t infer_dnnl_layernorm_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs) {
+    const auto is_rms = n->has_attr(op_attr::is_rms)
+            && n->get_attr<bool>(op_attr::is_rms);
+    if (is_rms) {
+        auto status = infer_identity_output_shape(n, inputs, outputs);
+        if (status != status::success) return status;
+    } else {
+        auto status = infer_norm_output_shape(n, inputs, outputs);
+        if (status != status::success) return status;
+    }
     return status::success;
 }
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1054,12 +1054,13 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_layernorm, 1,
                         int64_t(-1))
                 .set_attr(op_attr::use_affine, false, attribute_kind::b, true)
                 .set_attr(op_attr::epsilon, false, attribute_kind::f, 1e-5f)
+                .set_attr(op_attr::is_rms, false, attribute_kind::b, false)
                 .set_attr(op_attr::fusion_info, false,
                         attribute_kind::fusion_info)
                 // New added attributes
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 // Analysis rules
-                .set_shape_inference_function(infer_norm_output_shape)
+                .set_shape_inference_function(infer_dnnl_layernorm_output_shape)
                 .SET_LAYOUT_PROPAGATOR(layout_propagator_for_layernorm)
                 .SET_EXECUTABLE_CREATOR(
                         executable_creator<layernorm_executable_t>)

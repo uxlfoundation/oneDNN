@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2022-2025 Intel Corporation
+ * Copyright 2022 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -917,6 +917,23 @@ static status_t gen_index_handler(
     return status::success;
 }
 
+static status_t rmsnorm_handler(
+        const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
+    auto new_op = std::make_shared<op_t>(op_kind::dnnl_layernorm);
+    new_op->set_attr<bool>(op_attr::is_rms, true);
+    if (op->get_input_values().size() == 2) {
+        new_op->set_attr<bool>(op_attr::use_affine, true);
+    } else {
+        new_op->set_attr<bool>(op_attr::use_affine, false);
+    }
+    // RMSNorm OP in oneDNN Graph API only have 1 output
+    new_op->set_attr<bool>(op_attr::keep_stats, false);
+    new_op->merge_attributes(op->get_attributes());
+    rewriter.replace_op(op, new_op);
+    insert_empty_scratchpad(new_op);
+    return status::success;
+}
+
 #define ITEM(kind, func) \
     { \
         graph::op_kind::kind, handler_func { (func) } \
@@ -1000,6 +1017,7 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         ITEM(ReduceMin, reduction_handler),
         ITEM(ReduceProd, reduction_handler),
         ITEM(ReduceSum, reduction_handler),
+        ITEM(RMSNorm, rmsnorm_handler),
         // softplus
         ITEM(SoftPlus, softplus_handler),
         ITEM(SoftPlusBackward, softplus_handler),
@@ -1010,6 +1028,7 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         // layernorm
         ITEM(LayerNorm, common_handler<op_kind::kDnnl_layernorm>),
         ITEM(LayerNormBackward, common_handler<op_kind::kDnnl_layernorm_bwd>),
+        ITEM(RMSNorm, common_handler<op_kind::kDnnl_layernorm>),
         // groupnorm
         ITEM(GroupNorm, common_handler<op_kind::kDnnl_groupnorm>),
         // quantization

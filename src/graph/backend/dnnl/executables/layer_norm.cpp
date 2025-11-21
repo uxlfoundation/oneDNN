@@ -49,12 +49,17 @@ layernorm_executable_t::desc_t layernorm_executable_t::create_desc(
     bool use_affine = true;
     if (op->has_attr(op_attr::use_affine))
         use_affine = op->get_attr<bool>(op_attr::use_affine);
+    bool is_rms = false;
+    if (op->has_attr(op_attr::is_rms))
+        is_rms = op->get_attr<bool>(op_attr::is_rms);
 
     auto flags = dnnl::normalization_flags::none;
-    if (use_affine)
-        flags |= (dnnl::normalization_flags::use_scale
-                | dnnl::normalization_flags::use_shift);
-
+    if (is_rms) flags |= dnnl::normalization_flags::rms_norm;
+    if (use_affine) {
+        flags |= dnnl::normalization_flags::use_scale;
+        // no shift for rms norm
+        if (!is_rms) flags |= dnnl::normalization_flags::use_shift;
+    }
     prop_kind pkind = keep_stats ? prop_kind::forward_training
                                  : prop_kind::forward_inference;
 

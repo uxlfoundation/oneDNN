@@ -25,109 +25,192 @@ namespace rv64 {
 namespace matmul {
 
 template <size_t I = 0, typename... Tp>
-inline void unroll_fma_rowmajor(std::tuple<Tp...> &t, const float *s_ptr,
+inline typename std::enable_if<(I >= sizeof...(Tp)), void>::type
+unroll_fma_rowmajor(std::tuple<Tp...> &t, const float *s_ptr,
         const vfloat32m1_t &w_vec, dim_t K, dim_t k, size_t vl) {
-    if constexpr (I < sizeof...(Tp)) {
-        std::get<I>(t) = __riscv_vfmacc_vf_f32m1(
-                std::get<I>(t), s_ptr[I * K + k], w_vec, vl);
-        unroll_fma_rowmajor<I + 1, Tp...>(t, s_ptr, w_vec, K, k, vl);
-    }
+    (void)t;
+    (void)s_ptr;
+    (void)w_vec;
+    (void)K;
+    (void)k;
+    (void)vl;
 }
 
 template <size_t I = 0, typename... Tp>
-inline void unroll_store(
+inline typename std::enable_if<(I < sizeof...(Tp)), void>::type
+unroll_fma_rowmajor(std::tuple<Tp...> &t, const float *s_ptr,
+        const vfloat32m1_t &w_vec, dim_t K, dim_t k, size_t vl) {
+    std::get<I>(t) = __riscv_vfmacc_vf_f32m1(
+            std::get<I>(t), s_ptr[I * K + k], w_vec, vl);
+    unroll_fma_rowmajor<I + 1, Tp...>(t, s_ptr, w_vec, K, k, vl);
+}
+
+template <size_t I = 0, typename... Tp>
+inline typename std::enable_if<(I >= sizeof...(Tp)), void>::type unroll_store(
         std::tuple<Tp...> &t, float *const *dst_ptrs, dim_t n, size_t vl) {
-    if constexpr (I < sizeof...(Tp)) {
-        __riscv_vse32_v_f32m1(dst_ptrs[I] + n, std::get<I>(t), vl);
-        unroll_store<I + 1, Tp...>(t, dst_ptrs, n, vl);
-    }
+    (void)t;
+    (void)dst_ptrs;
+    (void)n;
+    (void)vl;
 }
 
 template <size_t I = 0, typename... Tp>
-inline void unroll_add_scalar_bias(
-        std::tuple<Tp...> &t, float bias_scalar, size_t vl) {
-    if constexpr (I < sizeof...(Tp)) {
-        std::get<I>(t)
-                = __riscv_vfadd_vf_f32m1(std::get<I>(t), bias_scalar, vl);
-        unroll_add_scalar_bias<I + 1, Tp...>(t, bias_scalar, vl);
-    }
+inline typename std::enable_if<(I < sizeof...(Tp)), void>::type unroll_store(
+        std::tuple<Tp...> &t, float *const *dst_ptrs, dim_t n, size_t vl) {
+    __riscv_vse32_v_f32m1(dst_ptrs[I] + n, std::get<I>(t), vl);
+    unroll_store<I + 1, Tp...>(t, dst_ptrs, n, vl);
 }
 
 template <size_t I = 0, typename... Tp>
-inline void unroll_add_scalar_bias_array(
+inline typename std::enable_if<(I >= sizeof...(Tp)), void>::type
+unroll_add_scalar_bias(std::tuple<Tp...> &t, float bias_scalar, size_t vl) {
+    (void)t;
+    (void)bias_scalar;
+    (void)vl;
+}
+
+template <size_t I = 0, typename... Tp>
+inline typename std::enable_if<(I < sizeof...(Tp)), void>::type
+unroll_add_scalar_bias(std::tuple<Tp...> &t, float bias_scalar, size_t vl) {
+    std::get<I>(t) = __riscv_vfadd_vf_f32m1(std::get<I>(t), bias_scalar, vl);
+    unroll_add_scalar_bias<I + 1, Tp...>(t, bias_scalar, vl);
+}
+
+template <size_t I = 0, typename... Tp>
+inline typename std::enable_if<(I >= sizeof...(Tp)), void>::type
+unroll_add_scalar_bias_array(
         std::tuple<Tp...> &t, const float *bias_per_acc, size_t vl) {
-    if constexpr (I < sizeof...(Tp)) {
-        std::get<I>(t)
-                = __riscv_vfadd_vf_f32m1(std::get<I>(t), bias_per_acc[I], vl);
-        unroll_add_scalar_bias_array<I + 1, Tp...>(t, bias_per_acc, vl);
-    }
+    (void)t;
+    (void)bias_per_acc;
+    (void)vl;
 }
 
 template <size_t I = 0, typename... Tp>
-inline void unroll_add_vector_bias_ptrs(
+inline typename std::enable_if<(I < sizeof...(Tp)), void>::type
+unroll_add_scalar_bias_array(
+        std::tuple<Tp...> &t, const float *bias_per_acc, size_t vl) {
+    std::get<I>(t)
+            = __riscv_vfadd_vf_f32m1(std::get<I>(t), bias_per_acc[I], vl);
+    unroll_add_scalar_bias_array<I + 1, Tp...>(t, bias_per_acc, vl);
+}
+
+template <size_t I = 0, typename... Tp>
+inline typename std::enable_if<(I >= sizeof...(Tp)), void>::type
+unroll_add_vector_bias_ptrs(
         std::tuple<Tp...> &t, const float *const *bias_ptrs, size_t vl) {
-    if constexpr (I < sizeof...(Tp)) {
-        vfloat32m1_t bias_vec = __riscv_vle32_v_f32m1(bias_ptrs[I], vl);
-        std::get<I>(t) = __riscv_vfadd_vv_f32m1(std::get<I>(t), bias_vec, vl);
-        unroll_add_vector_bias_ptrs<I + 1, Tp...>(t, bias_ptrs, vl);
-    }
+    (void)t;
+    (void)bias_ptrs;
+    (void)vl;
 }
 
 template <size_t I = 0, typename... Tp>
-inline void unroll_apply_postops(
+inline typename std::enable_if<(I < sizeof...(Tp)), void>::type
+unroll_add_vector_bias_ptrs(
+        std::tuple<Tp...> &t, const float *const *bias_ptrs, size_t vl) {
+    vfloat32m1_t bias_vec = __riscv_vle32_v_f32m1(bias_ptrs[I], vl);
+    std::get<I>(t) = __riscv_vfadd_vv_f32m1(std::get<I>(t), bias_vec, vl);
+    unroll_add_vector_bias_ptrs<I + 1, Tp...>(t, bias_ptrs, vl);
+}
+
+template <size_t I = 0, typename... Tp>
+inline typename std::enable_if<(I >= sizeof...(Tp)), void>::type
+unroll_apply_postops(
         std::tuple<Tp...> &t, const rvv_postops_t &postops_handler, size_t vl) {
-    if constexpr (I < sizeof...(Tp)) {
-        std::get<I>(t) = postops_handler.apply(std::get<I>(t), vl);
-        unroll_apply_postops<I + 1, Tp...>(t, postops_handler, vl);
-    }
+    (void)t;
+    (void)postops_handler;
+    (void)vl;
 }
 
 template <size_t I = 0, typename... Tp>
-inline void unroll_fma_contiguous(std::tuple<Tp...> &t,
-        const float *const *src_rows, const float *weights_col, dim_t k,
-        size_t vl) {
-    if constexpr (I < sizeof...(Tp)) {
-        vfloat32m1_t src_vec = __riscv_vle32_v_f32m1(src_rows[I] + k, vl);
-        vfloat32m1_t w_vec = __riscv_vle32_v_f32m1(weights_col + k, vl);
-        std::get<I>(t)
-                = __riscv_vfmacc_vv_f32m1(std::get<I>(t), src_vec, w_vec, vl);
-        unroll_fma_contiguous<I + 1, Tp...>(t, src_rows, weights_col, k, vl);
-    }
+inline typename std::enable_if<(I < sizeof...(Tp)), void>::type
+unroll_apply_postops(
+        std::tuple<Tp...> &t, const rvv_postops_t &postops_handler, size_t vl) {
+    std::get<I>(t) = postops_handler.apply(std::get<I>(t), vl);
+    unroll_apply_postops<I + 1, Tp...>(t, postops_handler, vl);
 }
 
 template <size_t I = 0, typename... Tp>
-inline void unroll_init(std::tuple<Tp...> &t, size_t vl) {
-    if constexpr (I < sizeof...(Tp)) {
-        std::get<I>(t) = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-        unroll_init<I + 1, Tp...>(t, vl);
-    }
+inline typename std::enable_if<(I >= sizeof...(Tp)), void>::type
+unroll_fma_contiguous(std::tuple<Tp...> &t, const float *const *src_rows,
+        const float *weights_col, dim_t k, size_t vl) {
+    (void)t;
+    (void)src_rows;
+    (void)weights_col;
+    (void)k;
+    (void)vl;
 }
 
 template <size_t I = 0, typename... Tp>
-inline void unroll_reduce(const std::tuple<Tp...> &t, float *results, size_t vl,
+inline typename std::enable_if<(I < sizeof...(Tp)), void>::type
+unroll_fma_contiguous(std::tuple<Tp...> &t, const float *const *src_rows,
+        const float *weights_col, dim_t k, size_t vl) {
+    vfloat32m1_t src_vec = __riscv_vle32_v_f32m1(src_rows[I] + k, vl);
+    vfloat32m1_t w_vec = __riscv_vle32_v_f32m1(weights_col + k, vl);
+    std::get<I>(t)
+            = __riscv_vfmacc_vv_f32m1(std::get<I>(t), src_vec, w_vec, vl);
+    unroll_fma_contiguous<I + 1, Tp...>(t, src_rows, weights_col, k, vl);
+}
+
+template <size_t I = 0, typename... Tp>
+inline typename std::enable_if<(I >= sizeof...(Tp)), void>::type unroll_init(
+        std::tuple<Tp...> &t, size_t vl) {
+    (void)t;
+    (void)vl;
+}
+
+template <size_t I = 0, typename... Tp>
+inline typename std::enable_if<(I < sizeof...(Tp)), void>::type unroll_init(
+        std::tuple<Tp...> &t, size_t vl) {
+    std::get<I>(t) = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+    unroll_init<I + 1, Tp...>(t, vl);
+}
+
+template <size_t I = 0, typename... Tp>
+inline typename std::enable_if<(I >= sizeof...(Tp)), void>::type unroll_reduce(
+        const std::tuple<Tp...> &t, float *results, size_t vl,
         vfloat32m1_t zero_scalar) {
-    if constexpr (I < sizeof...(Tp)) {
-        vfloat32m1_t sum = __riscv_vfredusum_vs_f32m1_f32m1(
-                std::get<I>(t), zero_scalar, vl);
-        results[I] = __riscv_vfmv_f_s_f32m1_f32(sum);
-        unroll_reduce<I + 1, Tp...>(t, results, vl, zero_scalar);
-    }
+    (void)t;
+    (void)results;
+    (void)vl;
+    (void)zero_scalar;
+}
+
+template <size_t I = 0, typename... Tp>
+inline typename std::enable_if<(I < sizeof...(Tp)), void>::type unroll_reduce(
+        const std::tuple<Tp...> &t, float *results, size_t vl,
+        vfloat32m1_t zero_scalar) {
+    vfloat32m1_t sum
+            = __riscv_vfredusum_vs_f32m1_f32m1(std::get<I>(t), zero_scalar, vl);
+    results[I] = __riscv_vfmv_f_s_f32m1_f32(sum);
+    unroll_reduce<I + 1, Tp...>(t, results, vl, zero_scalar);
 }
 
 template <size_t I = 0>
-inline void unroll_add_bias_scalar(float *results, float bias_val) {
-    if constexpr (I < 12) {
-        results[I] += bias_val;
-        unroll_add_bias_scalar<I + 1>(results, bias_val);
-    }
+inline typename std::enable_if<(I >= 12), void>::type unroll_add_bias_scalar(
+        float *results, float bias_val) {
+    (void)results;
+    (void)bias_val;
 }
 
 template <size_t I = 0>
-inline void unroll_add_bias_array(float *results, const float *bias_vals) {
-    if constexpr (I < 12) {
-        results[I] += bias_vals[I];
-        unroll_add_bias_array<I + 1>(results, bias_vals);
-    }
+inline typename std::enable_if<(I < 12), void>::type unroll_add_bias_scalar(
+        float *results, float bias_val) {
+    results[I] += bias_val;
+    unroll_add_bias_scalar<I + 1>(results, bias_val);
+}
+
+template <size_t I = 0>
+inline typename std::enable_if<(I >= 12), void>::type unroll_add_bias_array(
+        float *results, const float *bias_vals) {
+    (void)results;
+    (void)bias_vals;
+}
+
+template <size_t I = 0>
+inline typename std::enable_if<(I < 12), void>::type unroll_add_bias_array(
+        float *results, const float *bias_vals) {
+    results[I] += bias_vals[I];
+    unroll_add_bias_array<I + 1>(results, bias_vals);
 }
 
 void rvv_matmul_colmajor(const float *src, const float *weights, float *dst,
@@ -158,7 +241,7 @@ void rvv_matmul_colmajor(const float *src, const float *weights, float *dst,
     // - Uses 12 of 32 available RVV vector registers for accumulators
     // - Provides good instruction-level parallelism to hide FMA latency
     // - Leaves sufficient registers (~16-20) for temporaries and compiler optimization
-    constexpr dim_t MR = 12;
+    static const dim_t MR = 12;
 
     int bias_ndims = 0;
     std::vector<size_t> bias_strides;
@@ -404,7 +487,7 @@ void rvv_matmul_rowmajor(const float *src, const float *weights, float *dst,
     // - Uses 12 of 32 available RVV vector registers for accumulators
     // - Provides good instruction-level parallelism to hide FMA latency
     // - Leaves sufficient registers (~16-20) for temporaries and compiler optimization
-    constexpr dim_t MR = 12;
+    static const dim_t MR = 12;
 
     int bias_ndims = 0;
     std::vector<size_t> bias_strides;

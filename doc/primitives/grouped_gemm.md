@@ -12,19 +12,22 @@ output[i] = (src[i] * weights[i]) + bias[i]
 ```
 Plus scaling factors, zero-point adjustments, etc. (as in regular matrix multiplication).
 
-Expert `i` has dimensions: `src[Mi × K]`, `weights[K × N]`, `dst[Mi × N]`.
+Expert `i` has dimensions: `src[Mi x K]`, `weights[K x N]`, `dst[Mi x N]`.
 
 **Terms to be used and other considerations of MoE:**
 - **Number of experts**: Total number of experts in the MoE layer.
 - **TOP-K routing**: A routing strategy where each token is assigned to the top K experts according to some scoring mechanism.
 - **Number of active experts OR group size**: Number of experts that received tokens after routing.
-- **M dimension is Dynamic dimension**: M dimension (i.e., token count per expert) varies dynamically based on routing decisions. And depending on the framework design, this information may only be available on the Device side after routing.
+- **M dimension is Dynamic dimension**: M dimension (i.e., token count per expert) varies dynamically based on routing decisions.
+And depending on the framework design, this information may only be available on the device side after routing.
 - **Uniform K and N**: All experts share the same K and N dimensions, so weight shapes are the same.
 - **Uniform scaling configurations**: All experts use the same scaling pattern (e.g., per-tensor, per-row), but different values.
 
-## PyTorch Grouped Scaled MM (`torch._scaled_mm_grouped`)
+## Frameworks Implementations
 
-### API
+### PyTorch Grouped Scaled MM (`torch._scaled_mm_grouped`)
+
+#### API
 
 PyTorch provides [`torch/nn/functional.py`](https://github.com/pytorch/pytorch/blob/main/torch/nn/functional.py) API for grouped scaled matrix multiplication.
 The `torch._scaled_grouped_mm` API is used internally:
@@ -53,7 +56,7 @@ torch._scaled_mm_grouped(
 | `scale_a`, `scale_b` | `list[Tensor]` | Scaling factors for dequantization | FP32 tensors or `float8_e8m0fnu` (for MXFP8) |
 | `scale_recipe_a`, `scale_recipe_b` | `list[ScalingType]` | Scaling method enum | `PER_TENSOR` (single scale), `PER_ROW` (M-dim), `PER_COLUMN` (N/K-dim), `AXISWISE` (per-channel) |
 | `swizzle_a`, `swizzle_b` | `list[SwizzleType]` | Memory access pattern control (optional) | Nvidia GPU-specific |
-| `bias` | `Tensor` or `None` | Optional bias added to output | Not yet supported |
+| `bias` | `Tensor` or `None` | Optional bias added to output | Not supported |
 | `offs` | `list[int]` or `None` | Offsets for group boundaries | `int32` tensor: `[M0, M0+M1, M0+M1+M2, ...]`. First group starts at 0, `offs[i]` = end of group `i` |
 | `output_dtype` | `torch.dtype` | Output tensor data type | `torch.bfloat16` (default), `torch.float16`, `torch.float32` |
 | `contraction_dim` | `list[int]` or `None` | Dimensions representing K in matmul operation | |
@@ -64,18 +67,18 @@ torch._scaled_mm_grouped(
 [See also TorchAO Drop-In Replacement](https://github.com/pytorch/ao/tree/main/torchao/prototype/moe_training)
 that supports various quantization schemes.
 
-### Memory Layouts
+#### Memory Layouts
 
 - All groups are concatenated into contiguous buffers per expert:
 ```python
-mat_a:  [Group 0: M0×K][Group 1: M1×K][Group 2: M2×K] # [(M0 + M1 + M2) × K]
+mat_a:  [Group 0: M0xK][Group 1: M1xK][Group 2: M2xK] # [(M0 + M1 + M2) x K]
 offs:    ^              ^              ^
          0              M0             M0 + M1        # [0, M0, M0 + M1]
 ```
 - `offs` data is provided on the Device side.
 - All expert weights present in memory regardless of token routing.
 
-## OpenVINO MoE
+### OpenVINO MoE
 
 OpenVINO implements a complete MoE operation in [PR #32469](https://github.com/openvinotoolkit/openvino/pull/32469):
 
@@ -89,7 +92,7 @@ OpenVINO implements a complete MoE operation in [PR #32469](https://github.com/o
 **Data Types and Quantization Support:**
 TBD
 
-### Memory Layouts
+#### Memory Layouts
 
 OpenVINO uses **per-expert indexing** with contiguous buffers organized by expert:
 
@@ -129,13 +132,13 @@ for (int i = 0; batch < total_token_assignments; batch++) {
 - Offsets and sizes have dynamic size based on active experts.
 - All expert weights present in memory regardless of token routing, we need to index into them based on `expert_id`.
 - Current version provides offsets and sizes information on the Host.
-However, we should expect this data to be coming from the Device, as previous gather/shuffle operation is most likely performed on the Device.
+However, we should expect this data to be coming from the Device, as previous gather/shuffle operation is most likely should be performed on the Device.
 
-## vLLM MoE
+### vLLM MoE
 
 Source code: [vllm-xpu/csrc/quantization/w8a8/cutlass/moe/](https://github.com/intel-innersource/applications.ai.gpu.vllm-xpu/tree/main/csrc/quantization/w8a8/cutlass/moe)
 
-### API
+#### API
 
 Grouped Gemm API: [`vllm/_custom_ops.py::cutlass_blockwise_scaled_grouped_mm`](https://github.com/intel-innersource/applications.ai.gpu.vllm-xpu/blob/main/vllm/_custom_ops.py#L717-L728)
 
@@ -156,14 +159,14 @@ cutlass_blockwise_scaled_grouped_mm(
 | `a` | `[total_tokens, K]` | FP8/INT8 | Input activations with expert-grouped tokens: `[E0_tokens \| E1_tokens \| ...]` (device, contiguous) |
 | `b` | `[num_experts, N, K]` | FP8/INT8 | Weight tensor, all experts present (even if unused) (device, 3D) |
 | `output` | `[total_tokens, N]` | BF16/FP16 | Preallocated output buffer matching input token order (device, contiguous) |
-| `scales_a` | `[total_tokens, K//128]` | FP32 | Block-wise (128×128) activation scales (device) |
+| `scales_a` | `[total_tokens, K//128]` | FP32 | Block-wise (128x128) activation scales (device) |
 | `scales_b` | `[num_experts, N//128, K//128]` | FP32 | Block-wise weight scales per expert (device) |
 | `problem_sizes` | `[num_experts, 3]` | INT32 | Per-expert `[M, N, K]` where `M` varies, `N` and `K` are uniform (device) |
 | `expert_offsets` | `[num_experts + 1]` | INT32 | Cumulative token counts: `[0, M0, M0+M1, ..., sum(Mi)]` (device) |
 
 (*) Based on initial investigation; support may have changed.
 
-### Memory Layout
+#### Memory Layout
 
 - Similar to PyTorch, all groups are concatenated into contiguous buffers per expert.
 - `problem_sizes` and `expert_offsets` are Device-side tensors:
@@ -180,22 +183,22 @@ expert_offsets = [0, 2, 2, 2, 5]  # Cumulative: experts with M=0 contribute 0 of
 
 ## oneDNN Grouped GEMM Support
 
-### Proposal #1
+### Proposal #1: Pointer-Based API and a New Primitive
 
-- **Pointer-based API**: Uses arrays of pointers to oneDNN memory objects for per-expert data,
+- **Pointer-based API**: Use arrays of pointers to oneDNN memory objects for per-expert data,
     so that each expert has separate memory descriptors.
-- **Per-expert attributes**: Scaling factors configured via `DNNL_ARG_MULTIPLE_*` arguments.
+    This approach follows the pattern used in concat and sum, where oneDNN
+    accepts multiple input memory objects via the `DNNL_ARG_MULTIPLE_SRC` argument
+    (e.g., `DNNL_ARG_MULTIPLE_SRC + i` for input `i`).
+- **Per-expert attributes**: Scaling factors are then configured via `DNNL_ARG_MULTIPLE_*` arguments as well.
+- **New primitive**: matmul's API accepts single memory descriptors for src/weights/dst.
+    The new `grouped_gemm` primitive would accept vectors of memory descriptors and handle per-expert execution
+    (in C API we would also need to provide group count).
+    There are additional challenges with handling device-side runtime dimensions in this approach, so a
+    new primitive may be more suitable.
 
-"+":
-- If each expert's data was initially allocated using some `M_max`, then there is never a need to recalculate pointers.
-- Natural support of scaling factor, zero-points and transpose operation per expert.
-
-"-":
-- If expert's data is stored/repacked into contiguous buffers, then pointers need to be recalculated at each execution.
-
-### Memory Layouts Compatibility
-
-Contiguous memory layouts could be mapped to pointer-based API:
+Note:
+Frameworks with contiguous memory layouts could be mapped to pointer-based API:
 
 ```cpp
 // Build pointer array (zero-copy)
@@ -204,7 +207,13 @@ for (int i = 0; i < total_number_of_experts; i++) {
 }
 ```
 
-### Memory Descriptors
+Moreover, if each expert's data was initially allocated using some `M_max`,
+then there is never a need to recalculate pointers.
+
+If expert's data is continuously stored/repacked into contiguous buffers,
+then pointers need to be recalculated at each execution as well.
+
+#### Memory Descriptors
 
 ```cpp
 // Expert i has dimensions: src[Mi x K], weights[K x N], dst[Mi x N]
@@ -229,10 +238,7 @@ std::vector<memory::desc> bias_mds(num_experts, bias_md);
 std::vector<memory::desc> dst_mds(num_experts, dst_md);
 ```
 
-> **Note:** Each expert memory descriptor is identical based on MoE case, so here we create a vector with repeated entries.
-    An alternative approach could use a special memory object representing all experts.
-
-### Scales Configuration
+#### Scales Configuration
 
 Scales are configured via `primitive_attr` before primitive descriptor creation:
 
@@ -251,7 +257,7 @@ attr.set_scales_mask(DNNL_ARG_MULTIPLE_SRC + expert_id, 1);
 attr.set_scales_mask(DNNL_ARG_MULTIPLE_WEIGHTS + expert_id, 2);
 ```
 
-### Primitive Creation
+#### Primitive Creation
 
 ```cpp
 // Create primitive descriptor
@@ -272,7 +278,9 @@ auto gemm_prim = grouped_gemm(gemm_pd);
 > **Note:** The C++ API infers `num_experts` from the vector sizes.
     The C API will require an explicit `int group_count` parameter.
 
-### Execution
+#### Execution
+
+Simple case with `Mi` known on host, see below for device-side runtime dimensions support.
 
 ```cpp
 // Host has M_per_expert values
@@ -316,7 +324,10 @@ gemm_prim.execute(stream, args);
 stream.wait();
 ```
 
-#### Scales Memory
+#### Scales Support
+
+Scales support are very straightforward with pointer-based API,
+just need to provide per-expert scale memory objects via `DNNL_ARG_MULTIPLE_*` arguments:
 
 ```cpp
 // Per-expert scale memory
@@ -345,5 +356,305 @@ if (scales_configured) {
             scale_dst_mem[i]});
     }
 }
+```
+
+#### Device-Side Runtime Dimensions Support
+
+In MoE workloads with GPU-based routing, `M_per_expert` values are computed on
+device and may not be transferred to the host.
+
+As an option, runtime dimensions could be passed as an input argument during execution.
+
+##### Primitive Creation
+
+```cpp
+// Use DNNL_RUNTIME_DIM_VAL in memory descriptors
+memory::dims src_shape = {DNNL_RUNTIME_DIM_VAL, K};
+memory::dims dst_shape = {DNNL_RUNTIME_DIM_VAL, N};
+
+memory::desc src_md(src_shape, dt::f32, tag::ab);
+memory::desc dst_md(dst_shape, dt::f32, tag::ab);
+
+std::vector<memory::desc> src_mds(num_experts, src_md);
+std::vector<memory::desc> dst_mds(num_experts, dst_md);
+
+// Create descriptor for runtime dimensions input
+memory::desc runtime_dims_md({num_experts}, dt::s32, tag::x);
+
+// Create primitive descriptor
+// If runtime dims are not provided, we should assume memory sizes would be resolved at execution time
+auto gemm_pd = grouped_gemm::primitive_desc(
+    eng, src_mds, weight_mds, bias_mds, dst_mds,
+    runtime_dims_md,  // Runtime dimensions descriptor
+    attr);
+```
+
+##### Execution
+
+```cpp
+// Device buffer: [M0, M1, M2, ..., M_{num_experts-1}]
+int32_t* device_m_per_expert;
+
+// Create memory object for runtime dimensions
+memory runtime_dims_mem(runtime_dims_md, eng, device_m_per_expert);
+
+std::unordered_map<int, memory> args;
+
+// Pass runtime dimensions as input argument
+args.insert({DNNL_ARG_ATTR_RUNTIME_DIMS, runtime_dims_mem});
+
+// Per-expert data arguments
+for (int i = 0; i < num_experts; ++i) {
+    args.insert({DNNL_ARG_MULTIPLE_SRC + i, src_mem[i]});
+    args.insert({DNNL_ARG_MULTIPLE_WEIGHTS + i, weight_mem[i]});
+    args.insert({DNNL_ARG_MULTIPLE_DST + i, dst_mem[i]});
+}
+
+gemm_prim.execute(stream, args);
+```
+
+> **Note:** Currently, oneDNN resolves memory object sizes
+> at memory creation time. With device-side runtime
+> dimensions, memory sizes cannot be known on the host, therefore the primitive
+> will have to supply this information and resolve sizes during execution using the provided dimension buffer,
+> which is a big change from current usage model.
+
+### Proposal #2: New Grouped Memory Descriptor with Existing Matmul Primitive
+
+This proposal introduces a new grouped memory descriptor that can be used with
+the existing matmul primitive without additional API changes.
+
+Idea: View Input Grouped GEMM Memory as "Sparse" Block-Diagonal Structure
+
+Grouped GEMM inputs can be viewed as a Block-Diagonal structure:
+
+```
+(num_experts x num_experts blocks of sizes Mi x K):
+
+│Expert0|   0   |  0    |  0    │
+│[M0xK] |       |       |       │
+|-------------------------------|
+│  0    |Expert1|  0    |  0    │
+│       |[0xK]  |       |       │ E.g., no tokens were assigned to Expert1
+|-------------------------------|
+│  0    |   0   |Expert2|  0    │
+│       |       |[M2xK] |       │
+|-------------------------------|
+│  0    |   0   |  0    |Expert3│
+│       |       |       |[M3xK] │
+
+Layout in memory (contiguous):
+[Expert0: M0xK | Expert2: M2xK | Expert3: M3xK]
+
+Blocks offsets (array of size num_experts + 1):
+block_offsets = [0, M0, M0(*), M0 + M2, M0 + M2 + M3]
+
+(*) Expert1 starts from M0, Expert2 starts at M0 too since
+    Expert1 has zero rows.
+```
+
+Properties of MoE that we know:
+- Number of total experts: `num_experts`
+- Block heights `Mi` vary dynamically (could be `0`)
+- Block widths `K` uniform across all groups
+- Total number of elements is `num_input_tokens x TOP_K x K`
+
+Therefore this memory representation could be defined as:
+- Number of blocks/groups: `num_experts`
+    - known at creation time
+- Total element count: `num_input_tokens x TOP_K x K`
+    - known at creation time
+- Block dimensions: `[Mi x K]`
+    - `Mi` values known only at execution time (device-side), `K` known at creation time
+- Block layout: Row-major
+    - known at creation time
+- Values buffer: Contiguous data for all groups, total size is `sum(Mi x K)` (same as `num_input_tokens x TOP_K x K`)
+    - known at execution time (after routing and reshuffle happen)
+- Offsets buffer: Cumulative row offsets `[0, M0, M0 + M1, ...]`, size is `num_experts + 1`
+    - known at execution time (after routing happen)
+- Data types for values and offsets
+    - known at creation time
+
+**Key Point:** This memory representation is very similar to the CSR format already supported in oneDNN.
+Just as CSR describes sparse matrices using:
+- Number of rows (provided for memory descriptor)
+- Number of non-zero elements (provided for memory descriptor)
+- Data types (provided for memory descriptor)
+- Values buffer (resolved at memory creation)
+- Row pointers and column indices (resolved at memory creation)
+
+The grouped memory descriptor describes block-diagonal structure using:
+- Number of groups/blocks (known at creation)
+- Total element count (known at creation)
+- Data types (known at creation)
+- Values buffer (provided at execution)
+- Offsets buffer marking block boundaries (provided at execution)
+
+The offsets allow skipping empty blocks (experts with zero tokens), making
+this a Sparse Block-Diagonal Matrix by Dense Matrix of Weight multiplication.
+
+The structure of this "sparse" matrix is known at primitive creation time,
+while the actual runtime dimensions and memory layout are resolved at execution time
+using device-side offsets and values buffers.
+
+#### Memory Descriptor API
+
+The grouped memory descriptor is created similarly to CSR descriptors:
+
+```cpp
+static memory::desc grouped(
+    dim_t group_count,               // Number of groups (or blocks)
+    const memory::dims &group_dims,  // Per-group dims (RUNTIME_DIM_VAL for `Mi`)
+    data_type dtype,                 // Elements data type
+    dim_t total_elements,            // Total elements count
+    format_tag tag = tag::ab,        // Layout within each group (default row-major)
+    data_type offset_dtype = s32);   // Offset buffer dtype (default int32)
+```
+
+The descriptor specifies a memory object with 2 buffers:
+- Buffer 0: Values, contiguous data of size `total_elements` organized as groups
+- Buffer 1: Offsets, cumulative row offsets of size `group_count + 1`
+
+Example:
+
+```cpp
+// Src memory
+auto src_md = memory::desc::grouped(
+    num_experts,                    // Group count
+    {DNNL_RUNTIME_DIM_VAL, K},      // Per-group [Mi x K]
+    dt::f32,                        // Data type
+    total_tokens * K,               // Total elements
+    tag::ab,                        // Row-major layout
+    dt::s32);                       // int32 offsets
+```
+
+#### Memory Object Creation
+
+Memory objects are created with 2 buffer pointers:
+
+```cpp
+// Buffers are coming from Framework side (could be device memory)
+float* values;       // total_tokens * K contiguous data
+int32_t* offsets;    // num_experts + 1 offsets
+
+// Create memory object with 2 buffers
+memory src_mem(src_md, eng, {values, offsets});
+```
+
+#### Primitive Descriptor Creation
+
+Use the existing matmul primitive descriptor with grouped memory descriptor for src and dst:
+
+```cpp
+// Known at creation time
+int total_tokens = num_input_tokens * TOP_K;
+int total_elements_src = total_tokens * K;
+int total_elements_dst = total_tokens * N;
+
+// Create grouped memory descriptors for src and dst
+auto src_md = memory::desc::grouped(
+    num_experts,                    // Group count
+    {DNNL_RUNTIME_DIM_VAL, K},      // Per-group [Mi x K]
+    dt::f32,                        // Data type
+    total_elements_src,             // Total elements
+    tag::ab,                        // Row-major layout
+    dt::s32);                       // Offset data type
+
+auto dst_md = memory::desc::grouped(
+    num_experts,                    // Group count
+    {DNNL_RUNTIME_DIM_VAL, N},      // Per-group [Mi x N]
+    dt::f32,                        // Data type
+    total_elements_dst,             // Total elements
+    tag::ab,                        // Row-major layout
+    dt::s32);                       // Offset data type
+
+// Weights: 3D dense tensor [num_experts, K, N]
+auto weights_md = memory::desc({num_experts, K, N}, dt::f32, tag::abc);
+
+// Bias: 2D dense tensor [num_experts, N]
+auto bias_md = memory::desc({num_experts, N}, dt::f32, tag::ab);
+
+// Create matmul primitive descriptor (no changes)
+auto matmul_pd = matmul::primitive_desc(
+    eng,
+    src_md,                 // Grouped src descriptor
+    weights_md,             // Dense 3D weights
+    bias_md,                // Dense 2D bias (optional)
+    dst_md,                 // Grouped dst descriptor
+    attr);
+
+// Create matmul primitive (no changes)
+auto matmul_prim = matmul(matmul_pd);
+```
+
+#### Primitive Execution
+
+```cpp
+// Grouped GEMM data coming from Framework side
+float* input_data;
+float* output_data;
+float* weights_data;
+float* bias_data;
+
+// Offsets data coming from routing kernel
+int32_t* device_offsets;
+
+// Create memory objects (resolve values and offsets buffers)
+memory src_mem(src_md, eng, {input_data, device_offsets});
+memory dst_mem(dst_md, eng, {output_data, device_offsets});
+// Create "regular" dense memory objects for weights and bias
+memory weights_mem(weights_md, eng, weights_data);
+memory bias_mem(bias_md, eng, bias_data);
+
+// Configure matmul arguments
+std::unordered_map<int, memory> args;
+args.insert({DNNL_ARG_SRC, src_mem});
+args.insert({DNNL_ARG_WEIGHTS, weights_mem});
+args.insert({DNNL_ARG_BIAS, bias_mem});
+args.insert({DNNL_ARG_DST, dst_mem});
+
+matmul_prim.execute(stream, args);
+stream.wait();
+```
+
+#### Scales Support
+
+Note, that scaling pattern is expected to be the same across all experts
+(i.e., all experts use either per-tensor, per-row, per-column, or block-wise scaling,
+no mixing is allowed).
+
+How scale memory descriptors could be configured depending on scaling granularity:
+
+- Per-tensor for src: regular 1D descriptor `[num_experts]`
+```cpp
+auto scales_md = memory::desc({num_experts}, dt::f32, tag::x);
+// Memory: [E0: s0 | E1: s1 | E2: s2 | ...] - one scale per expert concatenated
+```
+
+- Per-row for src: grouped descriptor `[num_experts x Mi]`
+```cpp
+auto scales_md = memory::desc::grouped(
+    num_experts, {DNNL_RUNTIME_DIM_VAL}, dt::f32, total_tokens,
+    tag::x, dt::s32);
+// Memory: 2 buffers (values + offsets)
+// Values: [E0_row_scales | E1_row_scales | E2_row_scales | ...] - contiguous
+// Offsets: [0, M0, M0 + M1, ...] - same as src offsets (!)
+```
+
+- Per-column for weights: regular 2D descriptor `[num_experts x N]`
+```cpp
+auto scales_md = memory::desc({num_experts, N}, dt::f32, tag::ab);
+// Memory: [E0: N scales | E1: N scales | ...]
+```
+
+- Block-wise: grouped descriptor
+```cpp
+// For src [total_tokens x K] with block_size=32 along K
+auto scales_md = memory::desc::grouped(
+    num_experts, {DNNL_RUNTIME_DIM_VAL, K / 32}, dt::f32,
+    total_tokens * (K / 32), tag::ab, dt::s32);
+// Memory: 2 buffers (values + offsets)
+// Values: [E0: M0 x (K/32) | E1: M1 x (K/32) | ...] - contiguous blocks
+// Offsets: [0, M0, M0 + M1, ...] - same as src offsets (!)
 ```
 

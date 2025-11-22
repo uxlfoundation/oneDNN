@@ -276,6 +276,8 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
 #else
 #if defined(DNNL_ENABLE_ITT_TASKS)
     auto task_primitive_kind = itt::primitive_task_get_current_kind();
+    auto task_primitive_info = itt::primitive_task_get_current_info();
+    auto task_primitive_log_kind = itt::primitive_task_get_current_log_kind();
     bool itt_enable = itt::get_itt(itt::__itt_task_level_high);
 #endif
 #if DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL
@@ -293,11 +295,14 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
         int ithr_ = omp_get_thread_num();
         assert(nthr_ == nthr);
 #if defined(DNNL_ENABLE_ITT_TASKS)
-        if (ithr_ && itt_enable) itt::primitive_task_start(task_primitive_kind);
+        if (ithr_ && itt_enable)
+            itt::primitive_task_start(task_primitive_kind, task_primitive_info,
+                    task_primitive_log_kind);
 #endif
         f(ithr_, nthr_);
 #if defined(DNNL_ENABLE_ITT_TASKS)
-        if (ithr_ && itt_enable) itt::primitive_task_end();
+        if (ithr_ && itt_enable)
+            itt::primitive_task_end(task_primitive_log_kind);
 #endif
     }
 #elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB
@@ -308,11 +313,13 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
                 bool mark_task = itt::primitive_task_get_current_kind()
                         == primitive_kind::undefined;
                 if (mark_task && itt_enable)
-                    itt::primitive_task_start(task_primitive_kind);
+                    itt::primitive_task_start(task_primitive_kind,
+                            task_primitive_info, task_primitive_log_kind);
 #endif
                 f(ithr, nthr);
 #if defined(DNNL_ENABLE_ITT_TASKS)
-                if (mark_task && itt_enable) itt::primitive_task_end();
+                if (mark_task && itt_enable)
+                    itt::primitive_task_end(task_primitive_log_kind);
 #endif
             },
             tbb::static_partitioner());
@@ -331,13 +338,16 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
             if (!is_master) {
                 threadpool_utils::activate_threadpool(tp);
 #if defined(DNNL_ENABLE_ITT_TASKS)
-                if (itt_enable) itt::primitive_task_start(task_primitive_kind);
+                if (itt_enable)
+                    itt::primitive_task_start(task_primitive_kind,
+                            task_primitive_info, task_primitive_log_kind);
 #endif
             }
             f(ithr, nthr);
             if (!is_master) {
 #if defined(DNNL_ENABLE_ITT_TASKS)
-                if (itt_enable) itt::primitive_task_end();
+                if (itt_enable)
+                    itt::primitive_task_end(task_primitive_log_kind);
 #endif
                 threadpool_utils::deactivate_threadpool();
             }

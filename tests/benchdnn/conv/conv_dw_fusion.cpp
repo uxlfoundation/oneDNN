@@ -368,7 +368,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     args_t args(mem_map), args0(mem_map0), args1(mem_map1);
 
     if (prb->dir & FLAG_FWD) {
-        SAFE(execute_and_wait(prim, args, res), WARN);
+        SAFE(run_execution(prim, args, res), WARN);
 
         if (has_bench_mode_bit(mode_bit_t::corr)) {
             SAFE(execute_and_wait(prim0, args0), WARN);

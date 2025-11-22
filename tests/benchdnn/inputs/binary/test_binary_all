@@ -6,4 +6,5 @@
 --batch=harness_binary_f16
 --batch=harness_binary_i8
 --batch=harness_binary_different_dt
+--batch=harness_binary_bcast4d
 --batch=harness_binary_regression

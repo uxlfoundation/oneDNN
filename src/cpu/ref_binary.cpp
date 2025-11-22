@@ -85,7 +85,7 @@ status_t ref_binary_t::execute_ref(const exec_ctx_t &ctx) const {
             if (!res.quot)
                 std::memset(dst, 0, res.rem);
             else
-                parallel_nd(res.quot, [&](dim_t i) {
+                parallel_nd(res.quot, [=](dim_t i) {
                     const auto tail = (i + 1 == res.quot) ? res.rem : 0;
                     const auto ptr = reinterpret_cast<unsigned char *>(dst)
                             + i * PAGE_4K;
@@ -94,7 +94,7 @@ status_t ref_binary_t::execute_ref(const exec_ctx_t &ctx) const {
         }
     }
 
-    parallel_nd(nelems, [&](dim_t i) {
+    parallel_nd(nelems, [=](dim_t i) {
         // decomposition for physical offsets
         dims_t dims_src0, dims_src1, dims_src2;
         utils::l_dims_by_l_offset(dims_src0, i, dst_d.dims(), ndims);

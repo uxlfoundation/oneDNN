@@ -146,6 +146,26 @@ dnnl::accumulation_mode str2accumulation_mode(
 size_t generate_constant_md_hash(
         size_t part_id, const std::vector<dnnl::memory::desc> &const_mds);
 
+// This function artificially extends the `temporary_scratchpad_t` object's
+// lifetime to keep alive the handle this scratchpad object manages.
+// An alternative approach is to manage its handles through a system of caches
+// the same way it's done for memory objects before they are passed into a
+// primitive execute call.
+class temporary_scratchpad_t;
+void prolong_temporary_scratchpad_lifetime(const stream_t *g_stream,
+        const std::shared_ptr<temporary_scratchpad_t> &scratchpad);
+
+// This function is mostly a copy-paste of public `dnnl_primitive_execute` but
+// doesn't have calls for hooks since this API is intended to be used in nested
+// parallelism scenario in sdp-decomposed kernels, and double
+// activating/deactivating happens which is restricted.
+//
+// Besides, non-shared part of the code includes objects conversion from C++ to
+// C since the original call requires C them.
+status_t dnnl_primitive_execute_without_tp_hook(const primitive &prim,
+        const stream &astream,
+        const std::unordered_map<int, memory> &exec_args);
+
 #define BACKEND_DNNL_CHECK(statement) \
     do { \
         status_t ret = (statement); \

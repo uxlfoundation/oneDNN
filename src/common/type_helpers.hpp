@@ -457,7 +457,9 @@ inline data_type_t default_accum_data_type(
     // we allow to use f32 accumulation type only when the
     // accumulation chain is small. Otherwise, strict should be set to
     // true
-    if (one_of(src_dt, s8, u8, u4, s4) && (dst_dt != f32 || strict)) return s32;
+    if (one_of(src_dt, s8, u8, u4, s4)
+            && ((dst_dt != f32 && dst_dt != f16) || strict))
+        return s32;
 
     if (one_of(f4_e3m0, src_dt, dst_dt)) return f32;
     if (one_of(f4_e2m1, src_dt, dst_dt)) return f32;

@@ -241,7 +241,9 @@ void partition_info_t::init(const engine_t *engine,
     });
 }
 
+#ifndef DNNL_DISABLE_GRAPH_DUMP
 static setting_t<uint8_t> graph_dump_modes {0};
+#endif
 
 uint8_t parse_graph_dump_mode(const std::string &modes) {
     uint8_t m = 0;

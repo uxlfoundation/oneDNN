@@ -31,9 +31,6 @@ namespace jit {
 // Register Allocator Wrapper to allow for custom checks.
 class reg_allocator_t {
 public:
-    // Based on nGEN limitation where subregisters are allocated in dword chunks.
-    static const int granularity = 4;
-
     reg_allocator_t(ngen::HW hw) : ra(hw) {}
     ~reg_allocator_t()
 #ifdef DNNL_DEV_MODE

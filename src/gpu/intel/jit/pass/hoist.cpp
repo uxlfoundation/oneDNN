@@ -16,7 +16,7 @@
 
 #include "gpu/intel/jit/pass/hoist.hpp"
 
-#include "gpu/intel/jit/codegen/register_allocator.hpp"
+#include "gpu/intel/jit/codegen/allocation_size.hpp"
 #include "gpu/intel/jit/ir/send.hpp"
 #include "gpu/intel/jit/pass/simplify.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
@@ -153,8 +153,8 @@ private:
     void add_hoist_let(
             loop_info_t &loop, const expr_t &var, const expr_t &value) {
         loop.lets.emplace_back(let_t::make(var, value));
-        current_hoist_size_ += utils::rnd_up(
-                var.type().size(), reg_allocator_t::granularity);
+        current_hoist_size_
+                += utils::rnd_up(var.type().size(), ngen_alloc_granularity);
     }
 
     expr_t hoist_expr(const expr_t &expr, const expr_t &expr_var = {},
@@ -460,7 +460,7 @@ private:
                         bool_imm_t::get_packed_type(e.type().elems()));
                 ops.emplace(_e, var);
                 current_hoist_size_ += utils::rnd_up(
-                        var.type().size(), reg_allocator_t::granularity);
+                        var.type().size(), ngen_alloc_granularity);
                 return var;
             } else {
                 return _e;

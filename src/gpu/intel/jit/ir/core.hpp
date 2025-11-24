@@ -27,7 +27,6 @@
 #include "common/c_types_map.hpp"
 #include "common/float16.hpp"
 #include "common/math_utils.hpp"
-#include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/ir/include/ir.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
@@ -1249,12 +1248,6 @@ public:
         return attrs[0].as<T>();
     }
 
-    int register_alloc_size(int grf_size) const {
-        return (kind == alloc_kind_t::grf)
-                ? into<int>(utils::rnd_up(size, grf_size))
-                : 0;
-    }
-
     std::string line_str() const {
         ostringstream_t out;
         out << "alloc " << buf.as<var_t>().name << "[" << size << "]";
@@ -1507,13 +1500,6 @@ public:
     size_t get_hash() const override {
         return ir_utils::get_hash(var, value, body);
     }
-
-    int register_alloc_size() const {
-        // Empty objects are allocated in reserved space
-        // nGEN only claims subregisters at dword granularity
-        if (value.is_empty()) return 0;
-        return utils::rnd_up(var.type().size(), reg_allocator_t::granularity);
-    };
 
     std::string line_str() const {
         ostringstream_t out;

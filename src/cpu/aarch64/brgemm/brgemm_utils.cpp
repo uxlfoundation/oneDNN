@@ -204,7 +204,7 @@ status_t brgemm_blocking(brgemm_t *brg) {
     // reduce 'ld_block2' to allow a larger 'bd_block'
     const int max_vpad = nstl::max(
             brg->brgattr.max_top_vpad, brg->brgattr.max_bottom_vpad);
-    if (is_superset(brg->isa_impl, sve_256) && max_bcast_block < max_vpad) {
+    if (max_bcast_block < max_vpad) {
         adj_ld_block2 = calculate_ldb_params(brg, 2);
         max_bcast_block = calculate_max_bcast_block(brg, adj_ld_block2);
     }

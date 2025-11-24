@@ -222,6 +222,19 @@ private:
     PReg ld_full_mask = PReg(2);
     PReg ld_tail_mask = PReg(3);
 
+    void add_vl_or_imm(XReg dst, XReg src, int offset) {
+        // If offset is a multiple of the vector length and
+        // offset / vector_length is compatible with addvl
+        // use the addvl instruction. Refer to https://developer.arm.com/documentation/ddi0596/2021-03/SVE-Instructions/ADDVL--Add-multiple-of-vector-register-size-to-scalar-register-
+        // for details.
+        if ((offset % cpu_sveLen == 0)
+                && (offset / static_cast<int>(cpu_sveLen) >= -32)
+                && (offset / cpu_sveLen <= 31))
+            addvl(dst, src, offset / cpu_sveLen);
+        else
+            add_imm(dst, src, offset, X_TMP_0);
+    }
+
     ZReg accm(int ld_block, int bd, int ld) const {
         return ZReg(max_effective_vregs - 1 - (bd * ld_block + ld));
     }
@@ -264,10 +277,6 @@ private:
             bool mask_flag, bool store, PReg ktail_mask, const int offset,
             const int base_offset); //for only memory operand
 
-    void advance_ldb_post_op_regs();
-    void restore_ldb_post_op_regs(int ld_block2);
-    void advance_bdb_post_op_regs(int adj_bd_block);
-    void restore_bdb_post_op_regs(int bd_block2);
     void ldb_regs_shift(int ld_block2, bool is_tail = false);
     void advance_bd_block2_post_op_regs(int bd_block2);
 
@@ -490,8 +499,7 @@ void jit_brgemm_kernel_t::cvt2ps(data_type_t type_in, const ZReg zmm_in,
             break;
         }
         case data_type::bf16: {
-            add_imm(X_TMP_1, addr, offset - base_offset, X_TMP_0);
-            ld1h(z_tmp_1().s, mask, ptr(X_TMP_1));
+            LD_MUL_VL(ld1h, z_tmp_1().s, mask, addr, offset - base_offset, 2);
             lsl(z_tmp_1().s, z_tmp_1().s, 16);
             if (store) //Merging
                 mov(zmm_in.s, ktail_mask / T_m, z_tmp_1().s);
@@ -513,81 +521,6 @@ void jit_brgemm_kernel_t::cvt2ps(data_type_t type_in, const ZReg zmm_in,
     if (types::is_integral_dt(type_in)) {
         scvtf(zmm_in.s, P_ALL_ONE / T_m, zmm_in.s);
     }
-}
-
-void jit_brgemm_kernel_t::advance_ldb_post_op_regs() {
-    if (brg.with_bias) {
-        LDR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_);
-        add_imm(reg_aux_bias, reg_aux_bias, bias_offset(1), X_TMP_0);
-        STR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_);
-    }
-    if (brg.with_scales) {
-        LDR_IMM(reg_aux_scales, X_SP, reg_aux_scales_offs_);
-        add_imm(reg_aux_scales, reg_aux_scales, scales_offset(1), X_TMP_0);
-        STR_IMM(reg_aux_scales, X_SP, reg_aux_scales_offs_);
-    }
-    if (brg.zp_type_a != brgemm_broadcast_t::none) {
-        LDR_IMM(reg_aux_zp_comp_a, X_SP, reg_aux_zp_comp_a_offs_);
-        add_imm(reg_aux_zp_comp_a, reg_aux_zp_comp_a, zp_comp_a_offset(1),
-                X_TMP_0);
-        STR_IMM(reg_aux_zp_comp_a, X_SP, reg_aux_zp_comp_a_offs_);
-    }
-    if (brg.zp_type_c == brgemm_broadcast_t::per_n) {
-        LDR_IMM(reg_aux_zp_c_values, X_SP, reg_aux_zp_c_values_offs_);
-        add_imm(reg_aux_zp_c_values, reg_aux_zp_c_values, zp_c_values_offset(1),
-                X_TMP_0);
-        STR_IMM(reg_aux_zp_c_values, X_SP, reg_aux_zp_c_values_offs_);
-    }
-}
-
-void jit_brgemm_kernel_t::restore_ldb_post_op_regs(int ld_block2) {
-    if (brg.with_bias) {
-        LDR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_);
-        sub_imm(reg_aux_bias, reg_aux_bias, bias_offset(ld_block2 - 1),
-                X_TMP_0);
-        STR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_);
-    }
-    if (brg.with_scales) {
-        LDR_IMM(reg_aux_scales, X_SP, reg_aux_scales_offs_);
-        sub_imm(reg_aux_scales, reg_aux_scales, scales_offset(ld_block2 - 1),
-                X_TMP_0);
-        STR_IMM(reg_aux_scales, X_SP, reg_aux_scales_offs_);
-    }
-    if (brg.zp_type_a != brgemm_broadcast_t::none) {
-        LDR_IMM(reg_aux_zp_comp_a, X_SP, reg_aux_zp_comp_a_offs_);
-        sub_imm(reg_aux_zp_comp_a, reg_aux_zp_comp_a,
-                zp_comp_a_offset(ld_block2 - 1), X_TMP_0);
-        STR_IMM(reg_aux_zp_comp_a, X_SP, reg_aux_zp_comp_a_offs_);
-    }
-    if (brg.zp_type_c == brgemm_broadcast_t::per_n) {
-        LDR_IMM(reg_aux_zp_c_values, X_SP, reg_aux_zp_c_values_offs_);
-        sub_imm(reg_aux_zp_c_values, reg_aux_zp_c_values,
-                zp_c_values_offset(ld_block2 - 1), X_TMP_0);
-        STR_IMM(reg_aux_zp_c_values, X_SP, reg_aux_zp_c_values_offs_);
-    }
-}
-
-void jit_brgemm_kernel_t::advance_bdb_post_op_regs(int adj_bd_block) {
-    if (brg.zp_type_b != brgemm_broadcast_t::none) {
-        LDR_IMM(reg_aux_zp_comp_b, X_SP, reg_aux_zp_comp_b_offs_);
-        add_imm(reg_aux_zp_comp_b, reg_aux_zp_comp_b, bdb_zp_comp_b_offset(1),
-                X_TMP_0);
-        STR_IMM(reg_aux_zp_comp_b, X_SP, reg_aux_zp_comp_b_offs_);
-    }
-}
-
-void jit_brgemm_kernel_t::restore_bdb_post_op_regs(int bd_block2) {
-    bool post_processed = false;
-    if (bd_block2 > 1) {
-        if (brg.zp_type_b != brgemm_broadcast_t::none) {
-            post_processed = true;
-            LDR_IMM(reg_aux_zp_comp_b, X_SP, reg_aux_zp_comp_b_offs_);
-            sub_imm(reg_aux_zp_comp_b, reg_aux_zp_comp_b,
-                    bdb_zp_comp_b_offset(bd_block2 - 1), X_TMP_0);
-            STR_IMM(reg_aux_zp_comp_b, X_SP, reg_aux_zp_comp_b_offs_);
-        }
-    }
-    if (post_processed) LDR_IMM(reg_buf, X_SP, reg_buf_offs_);
 }
 
 void jit_brgemm_kernel_t::ldb_regs_shift(int ld_block2, bool is_tail) {
@@ -766,6 +699,8 @@ void jit_brgemm_kernel_t::zero_accumulators(int bd_block2, bool is_bdb_tail,
         int ld_block2, bool is_ld_tail, bool skip_accumulation) {
     int bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
     const bool need_to_apply_beta = brg.beta != 0.f;
+    int base_offset = 0;
+    auto x_addr = reg_aux_C;
     for_(int bd = 0; bd < bd_block; bd++)
     for (int ld = 0; ld < ld_block2; ld++) {
         auto zmm = accm(ld_block2, bd, ld);
@@ -777,11 +712,8 @@ void jit_brgemm_kernel_t::zero_accumulators(int bd_block2, bool is_bdb_tail,
 
             const int offset = C_offset(bd, ld);
 
-            int base_offset = 0;
-            auto x_addr = reg_aux_C;
-
-            if ((unsigned)(offset - base_offset) > cpu_sveLen * 7) {
-                add_imm(reg_tmp_, reg_aux_C, offset, X_TMP_0);
+            if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
+                add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset);
                 base_offset = offset;
                 x_addr = reg_tmp_;
             }
@@ -948,30 +880,38 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
         dq2ps_cvt_done = true;
     }
 
-    if (brg.with_bias) { LDR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_); }
+    if (dq2ps_required && !dq2ps_cvt_done) {
+        for_(int ld = 0; ld < ld_block2; ld++)
+        {
+            for (int bd = 0; bd < bd_block; bd++) {
+                auto zmm = accm(ld_block2, bd, ld);
+                scvtf(zmm.s, P_ALL_ONE / T_m, zmm.s);
+            }
+        }
+    }
 
-    auto x_addr = reg_aux_bias;
-    int base_offset = 0;
-    for_(int ld = 0; ld < ld_block2; ld++)
-    {
-        auto zmm_bias = z_tmp_1();
-        if (brg.with_bias) {
+    if (brg.with_bias) {
+        LDR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_);
+
+        auto x_addr = reg_aux_bias;
+        int base_offset = 0;
+        for_(int ld = 0; ld < ld_block2; ld++)
+        {
+            auto zmm_bias = z_tmp_1();
             const int offset = bias_offset(ld);
-            if ((unsigned)(offset - base_offset) > cpu_sveLen * 7) {
-                add_imm(reg_tmp_, reg_aux_bias, offset, X_TMP_0);
+            if (!use_mul_vl(offset - base_offset,
+                        types::data_type_size(brg.dt_bias), cpu_sveLen)) {
+                add_imm(reg_tmp_, x_addr, offset - base_offset, X_TMP_0);
                 base_offset = offset;
                 x_addr = reg_tmp_;
             }
             cvt2ps(brg.dt_bias, zmm_bias, x_addr, is_ld_tail, false, k_mask,
                     offset, base_offset);
-        }
 
-        for (int bd = 0; bd < bd_block; bd++) {
-            auto zmm = accm(ld_block2, bd, ld);
-            if (dq2ps_required && !dq2ps_cvt_done) {
-                scvtf(zmm.s, P_ALL_ONE / T_m, zmm.s);
+            for (int bd = 0; bd < bd_block; bd++) {
+                auto zmm = accm(ld_block2, bd, ld);
+                fadd(zmm.s, zmm.s, zmm_bias.s);
             }
-            if (brg.with_bias) { fadd(zmm.s, zmm.s, zmm_bias.s); }
         }
     }
 
@@ -1034,15 +974,16 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
         }
     }
 
-    x_addr = reg_aux_D;
-    base_offset = 0;
+    auto x_addr = reg_aux_D;
+    auto base_offset = 0;
 
     for (int bd = 0; bd < bd_block; bd++) {
         for (int ld = 0; ld < ld_block2; ld++) {
             auto zmm = accm(ld_block2, bd, ld);
             const int offset = D_offset(bd, ld);
-            if ((unsigned)(offset - base_offset) > cpu_sveLen * 7) {
-                add_imm(reg_tmp_, reg_aux_D, offset, X_TMP_0);
+            if (!use_mul_vl(offset - base_offset,
+                        types::data_type_size(brg.dt_d), cpu_sveLen)) {
+                add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset);
                 base_offset = offset;
                 x_addr = reg_tmp_;
             }
@@ -1054,9 +995,8 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
                     break;
                 case data_type::bf16: {
                     bfcvt(zmm.h, k_mask / T_m, zmm.s);
-                    st1h(zmm.s, k_mask,
-                            ptr(addr_off(x_addr, offset - base_offset,
-                                    X_DEFAULT_ADDR, X_TMP_0)));
+                    ST_MUL_VL(st1h, zmm.s, k_mask, x_addr, offset - base_offset,
+                            2);
                     break;
                 }
                 case data_type::s8:
@@ -1187,8 +1127,8 @@ void jit_brgemm_kernel_t::store_accumulators_without_post_ops(
             const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
             const int offset = C_offset(bd, ld);
 
-            if ((unsigned)(offset - base_offset) > cpu_sveLen * 7) {
-                add_imm(reg_tmp_, reg_aux_C, offset, X_TMP_0);
+            if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
+                add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset);
                 base_offset = offset;
                 x_addr = reg_tmp_;
             }
@@ -1430,8 +1370,10 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
     } else
         rd_loop = brg.rd_block;
 
-    auto broadcast = [=](const ZReg &z1, size_t offset, bool is_tail,
-                             data_type_t dt) {
+    unsigned long base_offset = 0;
+    mov(X_TMP_2, reg_aux_A);
+    auto broadcast = [=, &base_offset](const ZReg &z1, size_t offset,
+                             bool is_tail, data_type_t dt) {
         if (is_tail) {
             eor(z1.d, z1.d, z1.d);
             auto xmm_tmp = z_tmp_1();
@@ -1447,21 +1389,16 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             }
             dup(z1.s, xmm_tmp.s[0]);
         } else {
-            if (dt == data_type::f32) {
-                if (offset < (1 << 6)) {
-                    ld1rw(z1.s, P_ALL_ONE / T_z,
-                            ptr(reg_aux_A, (int32_t)offset));
-                } else {
-                    add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
-                    ld1rw(z1.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
-                }
-            } else if (one_of(dt, data_type::s8, data_type::u8,
-                               data_type::bf16)) {
-                add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
-                ld1rw(z1.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
-            } else if (dt == data_type::f16) {
-                assert(!"unsupported\n");
+            auto offset_ = offset - base_offset;
+            // The ld1rw immediate must be <=252 and a multiple of 4
+            // refer to https://developer.arm.com/documentation/ddi0602/2025-09/SVE-Instructions/LD1RW--Load-and-broadcast-unsigned-word-to-vector-
+            if (offset_ > 252 || offset_ % 4 != 0) {
+                add_imm(X_TMP_2, X_TMP_2, offset_, X_TMP_0);
+                base_offset += offset_;
+                offset_ = 0;
             }
+            ld1rw(z1.s, P_ALL_ONE / T_z,
+                    ptr(X_TMP_2, static_cast<int32_t>(offset_)));
         }
 
         if (brg.req_s8s8_compensation) assert(!"unsupported\n");
@@ -1502,7 +1439,9 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                 for (int bd = bd_b; bd < bd_e; bd++) {
                     auto vmm = accm(ld_block2, bd, ld);
                     if (is_emdbd) {
-                        if (A_offset(bd, rd) < (1 << 6)) {
+                        // The ld1rw immediate must be <=252 and a multiple of 4
+                        if (A_offset(bd, rd) <= 252
+                                && A_offset(bd, rd) % 4 == 0) {
                             ld1rw(load().s, mask / T_z,
                                     ptr(reg_aux_A, A_offset(bd, rd)));
                         } else {
@@ -1528,8 +1467,8 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                     assert(!"unsupported\n");
                 } else {
                     const int offset = B_offset(ld, rd);
-                    if ((unsigned)(offset - base_offset) > cpu_sveLen * 7) {
-                        add_imm(reg_tmp_, reg_aux_B, offset, X_TMP_0);
+                    if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
+                        add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset);
                         base_offset = offset;
                         x_addr = reg_tmp_;
                     }
@@ -1554,7 +1493,9 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                 for (int ld = 0; ld < ld_block2; ld++) {
                     auto zmm = accm(ld_block2, bd, ld);
                     if (is_emdbd) {
-                        if (A_offset(bd, rd) < (1 << 6)) {
+                        // The ld1rw immediate must be <= 252 and a multiple of 4
+                        if (A_offset(bd, rd) <= 252
+                                && A_offset(bd, rd) % 4 == 0) {
                             ld1rw(z_tmp_1().s, P_ALL_ONE / T_z,
                                     ptr(reg_aux_A, A_offset(bd, rd)));
                         } else {
@@ -1602,13 +1543,12 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                 gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
                         is_ld_tail, vpad, rows_for_rd_tail);
 
-                add_imm(reg_aux_A, reg_aux_A, rdb_A_offset(), X_TMP_0);
-                add_imm(reg_aux_B, reg_aux_B, rdb_B_offset(), X_TMP_0);
+                add_vl_or_imm(reg_aux_A, reg_aux_A, rdb_A_offset());
+                add_vl_or_imm(reg_aux_B, reg_aux_B, rdb_B_offset());
 
-                sub(reg_rdb_loop, reg_rdb_loop, 1);
-                cmp_imm(reg_rdb_loop, 0, X_TMP_0);
+                subs(reg_rdb_loop, reg_rdb_loop, 1);
             }
-            b(GT, rdb_loop_label);
+            bne(rdb_loop_label);
         }
         if (brg.rdb_tail != 0) {
             const bool is_rd_tail = true;
@@ -1881,10 +1821,14 @@ void jit_brgemm_kernel_t::bdb_loop() {
                                 bd_blocks_for_rd_tail <= 1 ? 0
                                                            : rows_for_rd_tail,
                                 skip_accumulation);
-                        sub(reg_bdb_loop, reg_bdb_loop, 1);
-                        cmp_imm(reg_bdb_loop, rows_for_rd_tail ? 1 : 0,
-                                X_TMP_0);
-                        b(GT, bdb_loop_label);
+                        if (rows_for_rd_tail) {
+                            sub(reg_bdb_loop, reg_bdb_loop, 1);
+                            cmp_imm(reg_bdb_loop, 1, X_TMP_0);
+                            b(GT, bdb_loop_label);
+                        } else {
+                            subs(reg_bdb_loop, reg_bdb_loop, 1);
+                            b(GT, bdb_loop_label);
+                        }
                     }
                 }
 

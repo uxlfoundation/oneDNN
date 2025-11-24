@@ -15,7 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/post_ops.hpp"
-#include "gpu/intel/jit/ir/include/object.hpp"
+#include "gemmstone/dsl/ir/object.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -70,9 +70,10 @@ std::string relative_md_t::ocl_defines(const std::string &prefix,
     return offset_macro;
 }
 
-jit::expr_t relative_md_t::get_offset(const std::vector<jit::expr_t> &dim_idxs,
-        const std::vector<jit::expr_t> &strides) const {
-    using namespace jit;
+gemmstone::dsl::ir::expr_t relative_md_t::get_offset(
+        const std::vector<gemmstone::dsl::ir::expr_t> &dim_idxs,
+        const std::vector<gemmstone::dsl::ir::expr_t> &strides) const {
+    using namespace gemmstone::dsl::ir;
     std::array<int, MAX_NDIMS> current_alignment = {1, 1, 1, 1, 1, 1};
     expr_t offset = 0;
     int inner_stride = 1;

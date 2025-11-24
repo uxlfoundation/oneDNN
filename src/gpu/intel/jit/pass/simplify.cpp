@@ -40,7 +40,7 @@ expr_t simplify_expr(const expr_t &_e, const constraint_set_t &cset);
 
 // Generic pattern expression, used as a wild card during pattern matching. Can
 // match any expression.
-class pexpr_t : public expr_iface_t<pexpr_t> {
+class pexpr_t : public ir::expr_iface_t<pexpr_t> {
 public:
     static expr_t make(int id) { return expr_t(new pexpr_t(id)); }
 
@@ -75,12 +75,12 @@ public:
     int id;
 
 private:
-    pexpr_t(int id) : expr_iface_t(dsl::type_t::undef()), id(id) {}
+    pexpr_t(int id) : ir::expr_iface_t<pexpr_t>(dsl::type_t::undef()), id(id) {}
 };
 
 // Pattern expression for int_imm_t, used as a wild card during pattern
 // matching. Can match any int_imm_t with the given value.
-class pint_imm_t : public expr_iface_t<pint_imm_t> {
+class pint_imm_t : public ir::expr_iface_t<pint_imm_t> {
 public:
     // Matches an integer constant with the given value.
     static expr_t make(int64_t value) {
@@ -121,7 +121,9 @@ public:
 
 private:
     pint_imm_t(int id, int64_t value)
-        : expr_iface_t(dsl::type_t::undef()), id(id), value(value) {}
+        : ir::expr_iface_t<pint_imm_t>(dsl::type_t::undef())
+        , id(id)
+        , value(value) {}
 };
 
 // Stores already matched pairs of <pattern expression, matched expression>.
@@ -718,7 +720,7 @@ public:
 
 // N-ary expression: (a[0] op a[1] op ... op a[n - 1]),
 // where <op> is either addition or multiplication.
-class nary_op_t : public expr_iface_t<nary_op_t> {
+class nary_op_t : public ir::expr_iface_t<nary_op_t> {
 public:
     static expr_t make(op_kind_t op_kind, const std::vector<expr_t> &args) {
         return expr_t(new nary_op_t(op_kind, args));
@@ -752,7 +754,7 @@ public:
 
 private:
     nary_op_t(op_kind_t op_kind, const std::vector<expr_t> &args)
-        : expr_iface_t(nary_op_type(op_kind, args))
+        : ir::expr_iface_t<nary_op_t>(nary_op_type(op_kind, args))
         , op_kind(op_kind)
         , args(args) {}
 };
@@ -1021,7 +1023,7 @@ public:
 // Stores factorization of an expression in the canonical (normalized) form:
 //     expr = (f(0), f(1), f(2), ... f(n))
 // f(0), ... f(n-1) are non-constant expressions, f(n) is a constant.
-class factored_expr_t : public expr_iface_t<factored_expr_t> {
+class factored_expr_t : public ir::expr_iface_t<factored_expr_t> {
 public:
     static expr_t make(const expr_t &e) {
         return expr_t(new factored_expr_t(e));
@@ -1164,13 +1166,13 @@ public:
 
 private:
     factored_expr_t(const expr_t &e)
-        : expr_iface_t(
+        : ir::expr_iface_t<factored_expr_t>(
                 e.type().with_attr(e.type().attr() & ~dsl::type::attr_t::mut)) {
         init_factors(e);
     }
 
     factored_expr_t(const dsl::type_t &type, const std::vector<expr_t> &factors)
-        : expr_iface_t(type) {
+        : ir::expr_iface_t<factored_expr_t>(type) {
         init_normalize(factors);
     }
 

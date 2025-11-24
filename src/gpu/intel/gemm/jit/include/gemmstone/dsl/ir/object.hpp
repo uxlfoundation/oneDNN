@@ -14,27 +14,18 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_IR_INCLUDE_OBJECT_HPP
-#define GPU_INTEL_JIT_IR_INCLUDE_OBJECT_HPP
+#ifndef GEMMSTONE_GUARD_INCLUDE_IR_OBJECT_HPP
+#define GEMMSTONE_GUARD_INCLUDE_IR_OBJECT_HPP
 
+#include <cstdint>
 #include <string>
 
 #include "gemmstone/dsl/type.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
+#include "internal/utils.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
-
-// Replace with using dsl = gemmstone::dsl once migration is complete
+GEMMSTONE_NAMESPACE_START
 namespace dsl {
-namespace type {
-using attr_t = gemmstone::dsl::type::attr_t;
-}
-using type_t = gemmstone::dsl::type_t;
-} // namespace dsl
+namespace ir {
 
 class object_t;
 class expr_impl_t;
@@ -69,7 +60,7 @@ public:
     //       necessary, and please don't add a non-const variant of the method!
     template <typename T>
     const T &as() const {
-        gpu_assert(is<T>());
+        assume(is<T>());
         return *as_ptr<T>(); // fails on incorrect casts even in Release
     }
 
@@ -97,7 +88,7 @@ public:
     virtual void _visit(ir_visitor_t &visitor) const;
 
 protected:
-    friend class dnnl::impl::gpu::intel::jit::object_t;
+    friend class gemmstone::dsl::ir::object_t;
     template <typename T>
     friend struct info_t;
 
@@ -224,7 +215,7 @@ public:
 
     template <typename T>
     const T &as() const {
-        gpu_assert(impl_);
+        assume(impl_);
         return impl_->as<T>();
     }
 
@@ -275,6 +266,11 @@ private:
 
     impl_t *impl_;
 };
+
+inline std::ostream & operator<<(std::ostream & out, const object_t & obj) {
+    out << obj.str();
+    return out;
+}
 
 namespace expr {
 // Base class for IR expression objects.
@@ -328,7 +324,7 @@ public:
     expr_t(uint32_t v);
     expr_t(uint64_t v);
 
-    const dsl::type_t &type() const;
+    const type_t &type() const;
 
 #define DECLARE_BINARY_ASSIGN_OPERATOR(op) \
     expr_t &operator op##=(const expr_t &rhs);
@@ -422,7 +418,7 @@ public:
         return this == &other;
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(name); }
+    size_t get_hash() const override { return std::hash<std::string>{}(name); }
 
     std::string name;
     bool is_mutable = false;
@@ -432,9 +428,7 @@ private:
         : expr::iface_t<var_t>(type), name(name), is_mutable(is_mutable) {}
 };
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 #endif

@@ -255,8 +255,9 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
             }
 
             auto src_g = [&]() -> global_tensor_t {
-                expr_t src_g_offset = simplify(arg("offset_binary" + i_s)
-                        + e.src1_desc.get_offset(idxs, strides));
+                expr_t src_g_offset
+                        = dnnl_ir::simplify(arg("offset_binary" + i_s)
+                                + e.src1_desc.get_offset(idxs, strides));
 
                 idx_map_t<expr_t> g_strides;
                 idx_map_t<expr_t> g_sizes;

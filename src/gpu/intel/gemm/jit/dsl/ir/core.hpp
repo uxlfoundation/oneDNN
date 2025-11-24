@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_IR_CORE_HPP
-#define GPU_INTEL_JIT_IR_CORE_HPP
+#ifndef GEMMSTONE_GUARD_DSL_IR_CORE_CORE_HPP
+#define GEMMSTONE_GUARD_DSL_IR_CORE_CORE_HPP
 
 #include <algorithm>
 #include <cstdio>
@@ -23,12 +23,8 @@
 #include <numeric>
 #include <string>
 
-#include "common/bfloat16.hpp"
-#include "common/c_types_map.hpp"
-#include "common/float16.hpp"
-#include "common/math_utils.hpp"
-#include "gpu/intel/jit/ir/include/ir.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
+#include "gemmstone/../../dsl/utils/utils.hpp"
+#include "gemmstone/dsl/ir.hpp"
 
 // All IR expression objects.
 #define HANDLE_EXPR_IR_OBJECTS() \
@@ -68,11 +64,11 @@
 // Defines getter for a function argument.
 #define IR_DEFINE_ARG_GET(name, index) \
     static const expr_t &arg_##name(const func_call_t &c) { \
-        gpu_assert(c.func.is<self_type>()) << c; \
+        dsl_assert(c.func.is<self_type>()) << c; \
         return c.args[index]; \
     } \
     static const expr_t &arg_##name(const stmt_t &s) { \
-        gpu_assert(s.is<func_call_t>()) << s; \
+        dsl_assert(s.is<func_call_t>()) << s; \
         auto &c = s.as<func_call_t>(); \
         return arg_##name(c); \
     } \
@@ -99,16 +95,17 @@
 #define IR_DEFINE_DUMP()
 #endif
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+
+bool is_subset(const type_t &a, const type_t &b);
+
+namespace ir {
 
 template <typename T>
-dsl::type_t from_cpp() {
+type_t from_cpp() {
 #define CASE(cpp_type, type) \
-    if (std::is_same<T, cpp_type>::value) return dsl::type_t::type()
+    if (std::is_same<T, cpp_type>::value) return type_t::type()
 
     CASE(bool, _bool);
     CASE(float, f32);
@@ -122,13 +119,13 @@ dsl::type_t from_cpp() {
 
 #undef CASE
 
-    gpu_error_not_expected();
+    stub();
 
-    return dsl::type_t::undef();
+    return type_t::undef();
 }
 
 template <typename T>
-bool is_cpp(const dsl::type_t &t) {
+bool is_cpp(const type_t &t) {
     return t == from_cpp<T>();
 }
 
@@ -207,7 +204,7 @@ public:
 
     // To catch missing _mutate() handlers in ir_mutator_t.
     object_t _mutate(const impl_t &obj) {
-        gpu_error_not_expected() << "Can't handle type: " << object_t(&obj);
+        dsl_error() << "Can't handle type: " << object_t(&obj);
         return {};
     }
 
@@ -242,7 +239,7 @@ public:
 
     // To catch missing _visit() handlers in ir_visitor_t.
     void _visit(const impl_t &obj) {
-        gpu_error_not_expected() << "Can't handle type: " << object_t(obj);
+        dsl_error() << "Can't handle type: " << object_t(obj);
     }
 
 #define HANDLE_IR_OBJECT(type) virtual void _visit(const type &obj);
@@ -253,15 +250,15 @@ public:
 // Base class for IR expression objects.
 class expr_impl_t : public object::impl_t {
 public:
-    expr_impl_t(object::impl_t::info_t type_info, const dsl::type_t &type)
+    expr_impl_t(object::impl_t::info_t type_info, const type_t &type)
         : object::impl_t(type_info), type(type) {}
 
-    dsl::type_t type;
+    type_t type;
 };
 
 template <typename T>
 struct expr_iface_t : public expr_impl_t, public object::info_t<T> {
-    expr_iface_t(const dsl::type_t &type) : expr_impl_t(T::get_info(), type) {}
+    expr_iface_t(const type_t &type) : expr_impl_t(T::get_info(), type) {}
 
     bool is_equal(const object::impl_t &obj) const override {
         if (!obj.is<T>()) return false;
@@ -276,8 +273,8 @@ struct expr_iface_t : public expr_impl_t, public object::info_t<T> {
     }
 };
 
-inline const dsl::type_t &expr_t::type() const {
-    gpu_assert(!is_empty());
+inline const type_t &expr_t::type() const {
+    dsl_assert(!is_empty());
     return ((const expr_impl_t *)impl())->type;
 }
 
@@ -351,20 +348,20 @@ bool is_commutative_op(op_kind_t op_kind);
 
 op_kind_t negate_cmp_op(op_kind_t op_kind);
 
-dsl::type_t unary_op_type(op_kind_t op_kind, const expr_t &a);
+type_t unary_op_type(op_kind_t op_kind, const expr_t &a);
 
-dsl::type_t common_int_type(const dsl::type_t &_a, const dsl::type_t &_b);
+type_t common_int_type(const type_t &_a, const type_t &_b);
 
-dsl::type_t common_type(const dsl::type_t &a, const dsl::type_t &b);
+type_t common_type(const type_t &a, const type_t &b);
 
-dsl::type_t common_type(const expr_t &a, const expr_t &b);
+type_t common_type(const expr_t &a, const expr_t &b);
 
-dsl::type_t binary_op_type(op_kind_t op_kind, const expr_t &a, const expr_t &b);
+type_t binary_op_type(op_kind_t op_kind, const expr_t &a, const expr_t &b);
 
-dsl::type_t ternary_op_type(
+type_t ternary_op_type(
         op_kind_t op_kind, const expr_t &a, const expr_t &b, const expr_t &c);
 
-dsl::type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args);
+type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args);
 
 // Binary operation: (a op b).
 class binary_op_t : public expr_iface_t<binary_op_t> {
@@ -382,11 +379,11 @@ public:
 
     size_t get_hash() const override {
         if (is_commutative_op(op_kind)) {
-            size_t a_hash = ir_utils::get_hash(a);
-            size_t b_hash = ir_utils::get_hash(b);
-            return ir_utils::get_hash(op_kind, a_hash ^ b_hash);
+            size_t a_hash = hash(a);
+            size_t b_hash = hash(b);
+            return hash(op_kind, a_hash ^ b_hash);
         }
-        return ir_utils::get_hash(op_kind, a, b);
+        return hash(op_kind, a, b);
     }
 
     op_kind_t op_kind;
@@ -408,20 +405,20 @@ public:
 
     static expr_t make(bool value) { return expr_t(new bool_imm_t(value)); }
 
-    static dsl::type_t get_packed_type(int elems) {
-        return dsl::type_t::u(std::max(elems, 16));
+    static type_t get_packed_type(int elems) {
+        return type_t::u(std::max(elems, 16));
     }
 
     bool operator==(const bool_imm_t &other) const {
         return value == other.value;
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(value); }
+    size_t get_hash() const override { return hash(value); }
 
     bool value;
 
 private:
-    bool_imm_t(bool value) : expr_iface_t(dsl::type_t::_bool()), value(value) {}
+    bool_imm_t(bool value) : expr_iface_t(type_t::_bool()), value(value) {}
 };
 
 // Cast between data types. In general conversion follows the C++ casting
@@ -433,8 +430,8 @@ private:
 //   on the boolean elements. The upper (16 - N) bits are uninitialized.
 class cast_t : public expr_iface_t<cast_t> {
 public:
-    static expr_t make(const dsl::type_t &type, const expr_t &expr,
-            bool saturate = false) {
+    static expr_t make(
+            const type_t &type, const expr_t &expr, bool saturate = false) {
         if (expr.type() == type) return expr;
         if (!saturate) {
             auto *expr_cast = expr.as_ptr<cast_t>();
@@ -450,9 +447,7 @@ public:
                 && (saturate == other.saturate);
     }
 
-    size_t get_hash() const override {
-        return ir_utils::get_hash(type, expr, saturate);
-    }
+    size_t get_hash() const override { return hash(type, expr, saturate); }
 
     bool is_bool_vec_u16() const {
         if (is_bool_vec(expr.type()) && is_u16_or_u32_scalar(type)) return true;
@@ -464,19 +459,19 @@ public:
     bool saturate;
 
 private:
-    cast_t(const dsl::type_t &type, const expr_t &expr, bool saturate)
+    cast_t(const type_t &type, const expr_t &expr, bool saturate)
         : expr_iface_t(type), expr(expr), saturate(saturate) {
         if (!is_bool_vec_u16()) {
-            gpu_assert(type.elems() == expr.type().elems())
+            dsl_assert(type.elems() == expr.type().elems())
                     << "Number of elements must match.";
         }
     }
 
-    static bool is_bool_vec(const dsl::type_t &type) {
+    static bool is_bool_vec(const type_t &type) {
         return type.is_bool() && type.elems() > 1;
     }
 
-    static bool is_u16_or_u32_scalar(const dsl::type_t &type) {
+    static bool is_u16_or_u32_scalar(const type_t &type) {
         return (type.is_u16() || type.is_u32()) && type.is_scalar();
     }
 };
@@ -484,18 +479,18 @@ private:
 // Constant variable, used as a coefficient in a linear expression.
 class const_var_t : public expr_iface_t<const_var_t> {
 public:
-    static expr_t make(const dsl::type_t &type, const std::string &name) {
+    static expr_t make(const type_t &type, const std::string &name) {
         return expr_t(new const_var_t(type, name));
     }
 
     bool operator==(const const_var_t &other) const { return this == &other; }
 
-    size_t get_hash() const override { return ir_utils::get_hash(name); }
+    size_t get_hash() const override { return hash(name); }
 
     std::string name;
 
 private:
-    const_var_t(const dsl::type_t &type, const std::string &name)
+    const_var_t(const type_t &type, const std::string &name)
         : expr_iface_t(type), name(name) {}
 };
 
@@ -504,8 +499,7 @@ class float_imm_t : public expr_iface_t<float_imm_t> {
 public:
     friend class expr_t;
 
-    static expr_t make(
-            double value, const dsl::type_t &type = dsl::type_t::undef()) {
+    static expr_t make(double value, const type_t &type = type_t::undef()) {
         return expr_t(new float_imm_t(value, type));
     }
 
@@ -513,14 +507,13 @@ public:
         return type == other.type && (value == other.value);
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(value); }
+    size_t get_hash() const override { return hash(value); }
 
     double value;
 
 private:
-    float_imm_t(double value, const dsl::type_t &type = dsl::type_t::undef())
-        : expr_iface_t(type.is_undef() ? dsl::type_t::f32() : type)
-        , value(value) {}
+    float_imm_t(double value, const type_t &type = type_t::undef())
+        : expr_iface_t(type.is_undef() ? type_t::f32() : type), value(value) {}
 };
 
 // Integer immediate value.
@@ -529,8 +522,7 @@ public:
     friend class expr_t;
 
     template <typename T>
-    static expr_t make(
-            T value, const dsl::type_t &type = dsl::type_t::undef()) {
+    static expr_t make(T value, const type_t &type = type_t::undef()) {
         return expr_t(new int_imm_t(value, type));
     }
 
@@ -538,11 +530,11 @@ public:
         return type == other.type && (value == other.value);
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(value); }
+    size_t get_hash() const override { return hash(value); }
 
     static expr_t shrink_type(const expr_t &e) {
         auto &imm = e.as<int_imm_t>();
-        dsl::type_t new_type = shrink_type(imm.value);
+        type_t new_type = shrink_type(imm.value);
         if (new_type == imm.type) return e;
         return make(imm.value, new_type);
     }
@@ -560,13 +552,13 @@ public:
     int64_t value;
 
 private:
-    int_imm_t(int64_t value, const dsl::type_t &type = dsl::type_t::undef())
+    int_imm_t(int64_t value, const type_t &type = type_t::undef())
         : expr_iface_t(type.is_undef() ? shrink_type(value) : type)
         , value(value) {}
 
-    static dsl::type_t shrink_type(int64_t v) {
-        if (try_shrink_type<int32_t>(v)) return dsl::type_t::s32();
-        return dsl::type_t::s64();
+    static type_t shrink_type(int64_t v) {
+        if (try_shrink_type<int32_t>(v)) return type_t::s32();
+        return type_t::s64();
     }
 };
 
@@ -585,7 +577,7 @@ public:
     }
 
     size_t get_hash() const override {
-        return ir_utils::get_hash(cond, true_expr, false_expr);
+        return hash(cond, true_expr, false_expr);
     }
 
     expr_t cond;
@@ -626,13 +618,11 @@ public:
     expr_t to_expr() const;
 
     bool operator==(const linear_t &other) const {
-        return c.is_equal(other.c) && ir_utils::is_equal(u_vec, other.u_vec)
-                && ir_utils::is_equal(v_vec, other.v_vec);
+        return c.is_equal(other.c) && utils::is_equal(u_vec, other.u_vec)
+                && utils::is_equal(v_vec, other.v_vec);
     }
 
-    size_t get_hash() const override {
-        return ir_utils::get_hash(c, u_vec, v_vec);
-    }
+    size_t get_hash() const override { return hash(c, u_vec, v_vec); }
 
     expr_t c;
     std::vector<expr_t> u_vec;
@@ -641,7 +631,7 @@ public:
 private:
     linear_t(const expr_t &c, const std::vector<expr_t> &u_vec,
             const std::vector<expr_t> &v_vec)
-        : expr_iface_t(dsl::type_t::s32()), c(c), u_vec(u_vec), v_vec(v_vec) {}
+        : expr_iface_t(type_t::s32()), c(c), u_vec(u_vec), v_vec(v_vec) {}
 };
 
 // Pointer expression: (base_ptr + off).
@@ -656,7 +646,7 @@ public:
         return base.is_equal(other.base) && off.is_equal(other.off);
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(base, off); }
+    size_t get_hash() const override { return hash(base, off); }
 
     // Normalizes (base op off) pointer so that the new base is a variable and
     // off is an offset expression.
@@ -695,8 +685,8 @@ class load_t : public expr_iface_t<load_t> {
 public:
     // offset and stride are expressed in bytes.
     // default stride means unit stride (in terms of type.base() elements).
-    static expr_t make(const dsl::type_t &type, const expr_t &buf,
-            const expr_t &off, int stride = default_stride) {
+    static expr_t make(const type_t &type, const expr_t &buf, const expr_t &off,
+            int stride = default_stride) {
         return expr_t(new load_t(type, buf, off, stride));
     }
 
@@ -705,9 +695,7 @@ public:
                 && off.is_equal(other.off) && (stride == other.stride);
     }
 
-    size_t get_hash() const override {
-        return ir_utils::get_hash(type, buf, off, stride);
-    }
+    size_t get_hash() const override { return hash(type, buf, off, stride); }
 
     bool has_default_stride() const { return stride == default_stride; }
 
@@ -718,11 +706,11 @@ public:
     int stride;
 
 private:
-    load_t(const dsl::type_t &_type, const expr_t &_buf, const expr_t &_off,
+    load_t(const type_t &_type, const expr_t &_buf, const expr_t &_off,
             int _stride)
         : expr_iface_t(_type), buf(_buf), off(_off), stride(_stride) {
         ptr_t::normalize(buf, off);
-        gpu_assert(is_var(buf) || is_ref(buf)) << buf;
+        dsl_assert(is_var(buf) || is_ref(buf)) << buf;
         if (stride == type.base().size()) stride = default_stride;
     }
 };
@@ -764,9 +752,9 @@ public:
         return make(vec, idx);
     }
 
-    static expr_t make_broadcast(const expr_t &expr, dim_t elems) {
+    static expr_t make_broadcast(const expr_t &expr, int64_t elems) {
         if (elems == 1) return expr;
-        gpu_assert(expr.type().is_scalar()) << expr;
+        dsl_assert(expr.type().is_scalar()) << expr;
         return make({expr}, std::vector<int>(elems, 0));
     }
 
@@ -774,9 +762,9 @@ public:
     // (S[beg], S[beg + 1], ..., S[end - 1]) vector.
     static expr_t make(const expr_t &_shuffle, int beg, int end) {
         auto &shuffle = _shuffle.as<shuffle_t>();
-        gpu_assert(beg >= 0 && beg <= shuffle.elems());
-        gpu_assert(end >= 0 && end <= shuffle.elems());
-        gpu_assert(beg < end);
+        dsl_assert(beg >= 0 && beg <= shuffle.elems());
+        dsl_assert(end >= 0 && end <= shuffle.elems());
+        dsl_assert(beg < end);
         std::vector<expr_t> vec;
         std::vector<int> idx(end - beg, -1);
         for (int i = beg; i < end; i++) {
@@ -792,11 +780,11 @@ public:
     }
 
     bool operator==(const shuffle_t &other) const {
-        return ir_utils::is_equal(vec, other.vec)
-                && ir_utils::is_equal(idx, other.idx);
+        return utils::is_equal(vec, other.vec)
+                && utils::is_equal(idx, other.idx);
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(vec, idx); }
+    size_t get_hash() const override { return hash(vec, idx); }
 
     int elems() const { return int(idx.size()); }
 
@@ -819,22 +807,22 @@ private:
 
     static void check_indices(
             const std::vector<expr_t> &vec, const std::vector<int> &idx) {
-        gpu_assert(!vec.empty() && !idx.empty());
+        dsl_assert(!vec.empty() && !idx.empty());
         bool is_simd = (vec.size() == 1 && vec[0].type().is_simd());
         for (auto &v : vec) {
-            gpu_assert(v.type().is_simd() == is_simd);
+            dsl_assert(v.type().is_simd() == is_simd);
         }
         int elems = (is_simd ? vec[0].type().elems() : (int)vec.size());
         for (int i : idx) {
-            gpu_assert(i >= 0 && i < elems);
+            dsl_assert(i >= 0 && i < elems);
         }
     }
 
-    static dsl::type_t shuffle_type(
+    static type_t shuffle_type(
             const std::vector<expr_t> &vec, const std::vector<int> &idx) {
         auto elem_type = vec[0].type();
         if (vec.size() == 1 && elem_type.is_simd()) {
-            gpu_assert(idx.size() == 1);
+            dsl_assert(idx.size() == 1);
             return elem_type.base();
         }
 
@@ -842,9 +830,9 @@ private:
             elem_type = common_type(elem_type, v.type());
 
         for (size_t i = 0; i < idx.size(); i++) {
-            gpu_assert(idx[i] >= 0 && idx[i] < int(vec.size()))
+            dsl_assert(idx[i] >= 0 && idx[i] < int(vec.size()))
                     << "Incorrect index.";
-            MAYBE_UNUSED(i);
+            maybe_unused(i);
         }
 
         int elems = int(idx.size());
@@ -865,9 +853,7 @@ public:
                 && b.is_equal(other.b) && c.is_equal(other.c);
     }
 
-    size_t get_hash() const override {
-        return ir_utils::get_hash(op_kind, a, b, c);
-    }
+    size_t get_hash() const override { return hash(op_kind, a, b, c); }
 
     op_kind_t op_kind;
     expr_t a;
@@ -908,7 +894,7 @@ public:
         return (op_kind == other.op_kind) && a.is_equal(other.a);
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(op_kind, a); }
+    size_t get_hash() const override { return hash(op_kind, a); }
 
     op_kind_t op_kind;
     expr_t a;
@@ -941,9 +927,7 @@ public:
         return oss.str();
     }
 
-    size_t get_hash() const override {
-        return ir_utils::get_hash(var, off, elems);
-    }
+    size_t get_hash() const override { return hash(var, off, elems); }
 
     expr_t var;
     int off;
@@ -955,9 +939,9 @@ private:
         , var(var)
         , off(off)
         , elems(elems) {
-        gpu_assert(off >= 0) << "Invalid offset: " << off;
-        gpu_assert(elems > 0) << "Invalid elems: " << elems;
-        gpu_assert(off + elems <= var.type().elems())
+        dsl_assert(off >= 0) << "Invalid offset: " << off;
+        dsl_assert(elems > 0) << "Invalid elems: " << elems;
+        dsl_assert(off + elems <= var.type().elems())
                 << "Incompatible (off, elems): (" << off << ", " << elems
                 << "), the base type: " << var.type().str();
         normalize();
@@ -966,7 +950,7 @@ private:
     void normalize() {
         if (var.is<var_t>()) return;
         auto *ref = var.as_ptr<ref_t>();
-        gpu_assert(ref) << "Expected var or ref, got: " << var.str();
+        dsl_assert(ref) << "Expected var or ref, got: " << var.str();
         var = ref->var;
         off += ref->off;
     }
@@ -974,14 +958,11 @@ private:
 
 // Convertor from C++ type to IR expression.
 template <typename T>
-expr_t to_expr(T value, const dsl::type_t &type) {
+expr_t to_expr(T value, const type_t &type) {
 #define CASE(ir_type, cpp_type) \
-    if (type == dsl::type_t::ir_type()) \
-    return expr_t(static_cast<cpp_type>(value))
+    if (type == type_t::ir_type()) return expr_t(static_cast<cpp_type>(value))
 
     CASE(_bool, bool);
-    CASE(bf16, bfloat16_t);
-    CASE(f16, float16_t);
     CASE(f32, float);
     CASE(f64, double);
     CASE(s16, int16_t);
@@ -993,7 +974,7 @@ expr_t to_expr(T value, const dsl::type_t &type) {
 
 #undef CASE
 
-    gpu_error_not_expected() << type;
+    dsl_error() << type;
 
     return expr_t();
 }
@@ -1045,13 +1026,13 @@ inline bool is_ref(const expr_t &e) {
 // Convertor from IR expression to C++ constant.
 template <typename T>
 T to_cpp(const expr_t &e) {
-    gpu_assert(is_const(e)) << "Expression must be constant.";
+    dsl_assert(is_const(e)) << "Expression must be constant.";
 
     if (e.is<int_imm_t>()) return (T)e.as<int_imm_t>().value;
     if (e.is<float_imm_t>()) return (T)e.as<float_imm_t>().value;
     if (e.is<bool_imm_t>()) return (T)e.as<bool_imm_t>().value;
 
-    gpu_error_not_expected();
+    stub();
     return 0;
 }
 
@@ -1128,7 +1109,7 @@ public:
         return this == &obj;
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(buf_sizes); }
+    size_t get_hash() const override { return hash(buf_sizes); }
 
     // List of buffers accessed from instructions.
     std::vector<expr_t> bufs;
@@ -1184,13 +1165,12 @@ public:
 
     bool operator==(const alloc_t &other) const {
         return buf.is_equal(other.buf) && (size == other.size)
-                && (kind == other.kind)
-                && ir_utils::is_equal(attrs, other.attrs)
+                && (kind == other.kind) && utils::is_equal(attrs, other.attrs)
                 && body.is_equal(other.body);
     }
 
     size_t get_hash() const override {
-        return ir_utils::get_hash(buf, size, kind, attrs, body);
+        return hash(buf, size, kind, attrs, body);
     }
 
     template <typename T>
@@ -1204,7 +1184,7 @@ public:
     const T &get_attr() const {
         for (auto &a : attrs)
             if (a.is<T>()) return a.as<T>();
-        gpu_error_not_expected() << "Can't find attribute.";
+        dsl_error() << "Can't find attribute.";
         return attrs[0].as<T>();
     }
 
@@ -1224,7 +1204,7 @@ private:
     alloc_t(const expr_t &buf, uint32_t size, alloc_kind_t kind,
             const std::vector<alloc_attr_t> &attrs, const stmt_t &body)
         : buf(buf), size(size), kind(kind), attrs(attrs), body(body) {
-        gpu_assert(buf.type().is_ptr()
+        dsl_assert(buf.type().is_ptr()
                 || into<uint32_t>(buf.type().size()) == size)
                 << buf;
     }
@@ -1234,7 +1214,7 @@ private:
         , size(buf.type().size())
         , kind(alloc_kind_t::grf)
         , body(body) {
-        gpu_assert(!buf.type().is_ptr()) << buf;
+        dsl_assert(!buf.type().is_ptr()) << buf;
     }
 };
 
@@ -1251,7 +1231,7 @@ public:
         return var.is_equal(other.var) && value.is_equal(other.value);
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(var, value); }
+    size_t get_hash() const override { return hash(var, value); }
 
     std::string str() const override {
         std::ostringstream oss;
@@ -1309,7 +1289,7 @@ public:
     }
 
     size_t get_hash() const override {
-        return ir_utils::get_hash(buf, off, value, stride, mask, fill_mask0);
+        return hash(buf, off, value, stride, mask, fill_mask0);
     }
 
     bool has_default_stride() const { return stride == default_stride; }
@@ -1344,10 +1324,10 @@ private:
         , mask(_mask)
         , fill_mask0(_fill_mask0) {
         ptr_t::normalize(buf, off);
-        gpu_assert(is_var(buf) || is_ref(buf)) << buf;
+        dsl_assert(is_var(buf) || is_ref(buf)) << buf;
         if (stride == value.type().base().size()) stride = default_stride;
         if (mask)
-            gpu_assert(mask.type() == dsl::type_t::_bool(value.type().elems()));
+            dsl_assert(mask.type() == type_t::_bool(value.type().elems()));
     }
 };
 
@@ -1372,7 +1352,7 @@ public:
     }
 
     size_t get_hash() const override {
-        return ir_utils::get_hash(var, init, bound, body, step, unroll);
+        return hash(var, init, bound, body, step, unroll);
     }
 
     std::string line_str() const {
@@ -1420,9 +1400,7 @@ public:
                 && else_body.is_equal(other.else_body);
     }
 
-    size_t get_hash() const override {
-        return ir_utils::get_hash(cond, body, else_body);
-    }
+    size_t get_hash() const override { return hash(cond, body, else_body); }
 
     std::string line_str() const {
         ostringstream_t oss;
@@ -1457,9 +1435,7 @@ public:
                 && body.is_equal(other.body);
     }
 
-    size_t get_hash() const override {
-        return ir_utils::get_hash(var, value, body);
-    }
+    size_t get_hash() const override { return hash(var, value, body); }
 
     std::string line_str() const {
         ostringstream_t out;
@@ -1475,7 +1451,7 @@ private:
     let_t(const expr_t &var, const expr_t &value, const stmt_t &body)
         : var(var), value(value), body(body) {
         if (value && !is_const(value))
-            gpu_assert(var.type() == value.type())
+            dsl_assert(var.type() == value.type())
                     << "Variable " << var << " and  value " << value
                     << "have different types. " << var.type()
                     << " != " << value.type() << "\n";
@@ -1529,7 +1505,7 @@ public:
         return !operator==(other);
     }
 
-    size_t get_hash() const { return ir_utils::get_hash(kind_, index_); }
+    size_t get_hash() const { return hash(kind_, index_); }
 
     std::string str() const {
         switch (kind_) {
@@ -1546,7 +1522,7 @@ public:
             CASE(prefetch);
             CASE(mul);
 #undef CASE
-            default: gpu_error_not_expected();
+            default: stub();
         }
         return {};
     }
@@ -1585,7 +1561,7 @@ public:
         return (label == other.label) && body.is_equal(other.body);
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(label, body); }
+    size_t get_hash() const override { return hash(label, body); }
 
     stmt_label_t label;
     stmt_t body;
@@ -1611,10 +1587,10 @@ public:
     }
 
     bool operator==(const stmt_seq_t &other) const {
-        return ir_utils::is_equal(vec, other.vec);
+        return utils::is_equal(vec, other.vec);
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(vec); }
+    size_t get_hash() const override { return hash(vec); }
 
     std::vector<stmt_t> vec;
 
@@ -1637,7 +1613,7 @@ public:
         return cond.is_equal(other.cond) && body.is_equal(other.body);
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(cond, body); }
+    size_t get_hash() const override { return hash(cond, body); }
 
     std::string line_str() const {
         ostringstream_t out;
@@ -1696,9 +1672,7 @@ public:
         return mod.getAll() == other.mod.getAll();
     }
 
-    size_t get_hash() const override {
-        return ir_utils::get_hash(mod.getAll());
-    }
+    size_t get_hash() const override { return hash(mod.getAll()); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -1733,12 +1707,12 @@ public:
     func_impl_t(object::impl_t::info_t type_info) : object::impl_t(type_info) {}
 
     size_t get_hash() const override {
-        gpu_error_not_expected() << "get_hash() is not implemented.";
+        dsl_error() << "get_hash() is not implemented.";
         return 0;
     }
 
     bool is_equal(const object::impl_t &obj) const override {
-        gpu_error_not_expected() << "is_equal() is not implemented.";
+        dsl_error() << "is_equal() is not implemented.";
         return false;
     }
 
@@ -1793,16 +1767,18 @@ public:
     }
 
     bool operator==(const func_call_t &other) const {
-        return func.is_equal(other.func) && ir_utils::is_equal(args, other.args)
+        return func.is_equal(other.func) && utils::is_equal(args, other.args)
                 && attr.is_equal(other.attr);
     }
 
-    size_t get_hash() const override { return ir_utils::get_hash(args, attr); }
+    size_t get_hash() const override { return hash(args, attr); }
 
     std::string line_str() const {
         ostringstream_t out;
-        out << func.str() << "(" << ir_utils::make_seq_print_helper(args)
-            << ")";
+        out << func.str() << "(";
+        for (auto &a : args)
+            out << a;
+        out << ")";
         if (attr) out << " " << attr;
         return out.str();
     }
@@ -1815,7 +1791,7 @@ private:
     func_call_t(const func_t &func, const std::vector<expr_t> &args,
             const func_call_attr_t &attr)
         : func(func), args(args), attr(attr) {
-        gpu_assert(func);
+        dsl_assert(func);
     }
 };
 
@@ -1826,7 +1802,7 @@ inline stmt_t func_impl_t::call(
 
 inline stmt_t func_call_attr_t::apply_to(const stmt_t &s) const {
     auto &c = s.as<func_call_t>();
-    gpu_assert(c.attr.is_empty())
+    dsl_assert(c.attr.is_empty())
             << "Merging of attributes is not supported: " << s;
     return func_call_t::make(c.func, c.args, *this);
 }
@@ -1870,10 +1846,8 @@ static_assert(sizeof(expr_t) <= sizeof(void *),
 static_assert(sizeof(stmt_t) <= sizeof(void *),
         "intrusive pointer type stmt_t size is greater than void * size.");
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 
 #endif

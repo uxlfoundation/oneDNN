@@ -23,7 +23,7 @@
 #include "common/math_utils.hpp"
 #include "common/optional.hpp"
 #include "gpu/intel/jit/codegen/allocation_size.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/core_legacy.hpp"
 #include "gpu/intel/jit/pass/simplify.hpp"
 
 namespace dnnl {
@@ -556,13 +556,6 @@ private:
 };
 
 } // namespace
-
-std::string object::impl_t::str() const {
-    ostringstream_t oss;
-    ir_printer_t printer(oss);
-    printer.visit(this);
-    return oss.str();
-}
 
 object_t substitute(const object_t &root, const object_t &from,
         const object_t &to, int max_substitutions) {
@@ -1317,3 +1310,19 @@ int constraint_set_t::max_proven_gcd(const expr_t &var) const {
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
+
+namespace gemmstone {
+namespace dsl {
+namespace ir {
+
+std::string object::impl_t::str() const {
+    using namespace dnnl::impl::gpu::intel::jit;
+    ostringstream_t oss;
+    ir_printer_t printer(oss);
+    printer.visit(this);
+    return oss.str();
+}
+
+} // namespace ir
+} // namespace dsl
+} // namespace gemmstone

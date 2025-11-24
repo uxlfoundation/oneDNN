@@ -17,8 +17,17 @@
 #ifndef GPU_INTEL_JIT_DSL_DECL_HPP
 #define GPU_INTEL_JIT_DSL_DECL_HPP
 
-#include "gpu/intel/jit/ir/include/ir.hpp"
+#include "gemmstone/dsl/ir.hpp"
+#include "gpu/intel/jit/ir/include/kernel.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
+
+namespace gemmstone {
+namespace dsl {
+namespace ir {
+enum class op_kind_t;
+}
+} // namespace dsl
+} // namespace gemmstone
 
 namespace dnnl {
 namespace impl {
@@ -27,7 +36,7 @@ namespace intel {
 namespace jit {
 
 // TODO: re-evaluate naming within op_kind_t to remove '_' prefix
-enum class op_kind_t;
+using op_kind_t = gemmstone::dsl::ir::op_kind_t;
 
 // TODO: ir_context_t should be removed from the DSL API. All necessary
 // information should be passed in either via kernel::interface and
@@ -56,9 +65,10 @@ static type_t f32 = type_t::f32();
 static type_t f16 = type_t::f16();
 static type_t bf16 = type_t::bf16();
 
-using expr_t = jit::expr_t;
+using expr_t = gemmstone::dsl::ir::expr_t;
+using stmt_t = gemmstone::dsl::ir::stmt_t;
 using kernel_t = jit::kernel_t;
-using send_cache_hint_t = jit::send_cache_hint_t;
+using send_cache_hint_t = gemmstone::dsl::ir::send_cache_hint_t;
 
 namespace kernel {
 using iface_t = jit::kernel::iface_t;

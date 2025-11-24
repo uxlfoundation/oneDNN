@@ -16,15 +16,13 @@
 
 #include <typeindex>
 
-#include "gpu/intel/jit/ir/core.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
-#include "gpu/intel/utils.hpp"
+#include "dsl/ir/core.hpp"
+#include "dsl/utils/utils.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
+
 object_t object::impl_t::_mutate(ir_mutator_t &mutator) const {
     return *this;
 }
@@ -49,19 +47,19 @@ static void stmt_seq_flatten(std::vector<stmt_t> &out, const stmt_t &s) {
 
 expr_t expr_t::operator[](const expr_t &off) const {
     if (is<shuffle_t>()) {
-        gpu_assert(is_const(off)) << "Offset is not constant.";
+        dsl_assert(is_const(off)) << "Offset is not constant.";
         auto &shuffle = as<shuffle_t>();
         int i_off = to_cpp<int>(off);
-        gpu_assert(i_off < (int)shuffle.idx.size());
+        dsl_assert(i_off < (int)shuffle.idx.size());
         int idx = shuffle.idx[i_off];
         return shuffle.vec[idx];
     }
     if (type().is_ptr()) return *this + off;
     if (is<var_t>() || is<ref_t>()) {
-        gpu_assert(is_const(off)) << "var/ref requires constant offset.";
+        dsl_assert(is_const(off)) << "var/ref requires constant offset.";
         return ref_t::make(*this, to_cpp<int>(off), 1);
     }
-    gpu_error_not_expected() << "Unexpected expression: " << str();
+    dsl_error() << "Unexpected expression: " << str();
     return expr_t();
 }
 
@@ -70,14 +68,14 @@ expr_t expr_t::ptr(const expr_t &off) const {
     if (auto *ref = as_ptr<ref_t>()) {
         return ptr_t::make(ref->var, ref->off + off);
     }
-    gpu_error_not_expected() << "Unexpected expression: " << str();
+    dsl_error() << "Unexpected expression: " << str();
     return expr_t();
 }
 
 expr_t::expr_t(bool value) : object_t(new bool_imm_t(value)) {}
 expr_t::expr_t(float value) : object_t(new float_imm_t(value)) {}
 expr_t::expr_t(double value)
-    : object_t(new float_imm_t(value, dsl::type_t::f64())) {}
+    : object_t(new float_imm_t(value, type_t::f64())) {}
 expr_t::expr_t(int16_t value) : object_t(new int_imm_t(value)) {}
 expr_t::expr_t(int32_t value) : object_t(new int_imm_t(value)) {}
 expr_t::expr_t(int64_t value) : object_t(new int_imm_t(value)) {}
@@ -391,8 +389,6 @@ stmt_t stmt_t::append(const stmt_t &s) const {
     return stmt_seq_t::make(vec);
 }
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END

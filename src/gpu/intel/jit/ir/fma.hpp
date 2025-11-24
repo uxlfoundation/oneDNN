@@ -21,7 +21,7 @@
 #include <string>
 
 #include "gpu/intel/jit/dsl/tensor.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/core_legacy.hpp"
 #include "ngen.hpp"
 
 namespace dnnl {

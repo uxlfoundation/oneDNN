@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/core_legacy.hpp"
 
 namespace dnnl {
 namespace impl {

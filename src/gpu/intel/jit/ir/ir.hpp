@@ -23,7 +23,8 @@
 #include <vector>
 
 #include "gemmstone/dsl/hw.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/core_legacy.hpp"
+#include "gpu/intel/jit/ir/include/kernel.hpp"
 
 namespace dnnl {
 namespace impl {

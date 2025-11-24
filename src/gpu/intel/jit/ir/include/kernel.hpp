@@ -20,8 +20,8 @@
 #include <vector>
 
 #include "gemmstone/dsl/hw.hpp"
+#include "gemmstone/dsl/ir/object.hpp"
 #include "gemmstone/dsl/type.hpp"
-#include "gpu/intel/jit/ir/include/object.hpp"
 
 #include "ngen_debuginfo.hpp"
 
@@ -39,6 +39,15 @@ namespace jit {
 
 // Replace with using dsl = gemmstone::dsl once migration is complete
 namespace dsl {
+namespace ir {
+using object_t = gemmstone::dsl::ir::object_t;
+using expr_t = gemmstone::dsl::ir::expr_t;
+using stmt_t = gemmstone::dsl::ir::stmt_t;
+} // namespace ir
+namespace type {
+using attr_t = gemmstone::dsl::type::attr_t;
+}
+using type_t = gemmstone::dsl::type_t;
 namespace hw {
 using attr_t = gemmstone::dsl::hw::attr_t;
 }
@@ -47,7 +56,7 @@ using hw_t = gemmstone::dsl::hw_t;
 
 struct codegen_extension_iface_t;
 using codegen_extension_handler_t
-        = void (*)(const object_t &, codegen_extension_iface_t &);
+        = void (*)(const dsl::ir::object_t &, codegen_extension_iface_t &);
 
 namespace kernel {
 
@@ -59,22 +68,23 @@ public:
 
     size_t nargs() const { return args_.size(); }
     const std::string &kernel_name() const { return kernel_name_; }
-    const expr_t &operator[](size_t idx) const;
+    const dsl::ir::expr_t &operator[](size_t idx) const;
     bool has(const std::string &name) const { return find_arg_impl(name); }
 
-    expr_t find_arg(const std::string &name, bool allow_empty = false) const;
+    dsl::ir::expr_t find_arg(
+            const std::string &name, bool allow_empty = false) const;
     size_t index(const std::string &name) const;
-    void register_arg(const expr_t &var) { args_.emplace_back(var); }
+    void register_arg(const dsl::ir::expr_t &var) { args_.emplace_back(var); }
     void register_arg(const std::string &name, const dsl::type_t &type);
 
 private:
     struct arg_t {
         arg_t() = default;
-        arg_t(const expr_t &var) : var(var) {}
+        arg_t(const dsl::ir::expr_t &var) : var(var) {}
         const std::string &name() const;
         bool is_ptr() const { return var.type().is_ptr(); }
 
-        expr_t var;
+        dsl::ir::expr_t var;
     };
 
     const arg_t *find_arg_impl(const std::string &name) const {
@@ -123,8 +133,10 @@ public:
     }
 
     // Assumptions which can be used to improve code generation
-    void assume(const expr_t &e) { assumptions_.emplace_back(e); }
-    const std::vector<expr_t> &assumptions() const { return assumptions_; }
+    void assume(const dsl::ir::expr_t &e) { assumptions_.emplace_back(e); }
+    const std::vector<dsl::ir::expr_t> &assumptions() const {
+        return assumptions_;
+    }
 
     int grf_size() const { return hw_.grf_size(); }
 
@@ -142,19 +154,19 @@ private:
     int simd_ = 0;
     bool require_dpas_ = false;
     codegen_extension_handler_t extension_handler_ = default_extension_handler;
-    std::vector<expr_t> assumptions_;
+    std::vector<dsl::ir::expr_t> assumptions_;
 };
 
 } // namespace kernel
 
 struct kernel_t {
     kernel_t() : iface("invalid_dsl_kernel") {}
-    kernel_t(kernel::iface_t iface, stmt_t body,
+    kernel_t(kernel::iface_t iface, dsl::ir::stmt_t body,
             const kernel::options_t &options)
         : iface(std::move(iface)), body(std::move(body)), options(options) {}
 
     kernel::iface_t iface;
-    stmt_t body;
+    dsl::ir::stmt_t body;
     kernel::options_t options;
     ngen::DebugConfig debug_cfg;
 };

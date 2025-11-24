@@ -14,19 +14,14 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_IR_INCLUDE_IR_HPP
-#define GPU_INTEL_JIT_IR_INCLUDE_IR_HPP
+#ifndef GEMMSTONE_GUARD_INCLUDE_IR_IR_HPP
+#define GEMMSTONE_GUARD_INCLUDE_IR_IR_HPP
 
-#include "gemmstone/dsl/hw.hpp"
-#include "gemmstone/dsl/type.hpp"
-#include "gpu/intel/jit/ir/include/kernel.hpp"
-#include "gpu/intel/jit/ir/include/object.hpp"
+#include "gemmstone/dsl/ir/object.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
 
 enum class send_cache_hint_t {
     undef,
@@ -35,9 +30,7 @@ enum class send_cache_hint_t {
 };
 
 }
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 
 #endif

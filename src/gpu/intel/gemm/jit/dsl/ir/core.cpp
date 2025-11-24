@@ -14,15 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/ir/core.hpp"
+#include "dsl/ir/core.hpp"
 
 #include <algorithm>
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
 
 std::string to_string(op_kind_t kind) {
     switch (kind) {
@@ -56,7 +54,7 @@ std::string to_string(op_kind_t kind) {
         case op_kind_t::_idiv: return "idiv";
         case op_kind_t::_imod: return "imod";
 
-        default: gpu_error_not_expected() << "Unknown op_kind_t value.";
+        default: dsl_error() << "Unknown op_kind_t value.";
     }
     return "";
 }
@@ -97,72 +95,66 @@ op_kind_t negate_cmp_op(op_kind_t op_kind) {
         case op_kind_t::_lt: return op_kind_t::_gt;
         case op_kind_t::_eq: return op_kind_t::_eq;
         case op_kind_t::_ne: return op_kind_t::_ne;
-        default: gpu_error_not_expected();
+        default: stub();
     }
     return op_kind_t::undef;
 }
 
-dsl::type_t unary_op_type(op_kind_t op_kind, const expr_t &a) {
+type_t unary_op_type(op_kind_t op_kind, const expr_t &a) {
     switch (op_kind) {
         case op_kind_t::_minus: {
             auto &t = a.type();
             if (!t.is_int()) return t;
             if (t.size() < int(sizeof(int32_t)))
-                return dsl::type_t::s32(t.elems(), a.type().attr());
+                return type_t::s32(t.elems(), a.type().attr());
             return t;
         }
-        default:
-            gpu_error_not_expected() << "Unknown op_kind_t value: " << op_kind;
+        default: dsl_error() << "Unknown op_kind_t value: " << op_kind;
     }
-    return dsl::type_t::undef();
+    return type_t::undef();
 }
 
-dsl::type::attr_t common_attr(const dsl::type_t &a, const dsl::type_t &b) {
-    gpu_assert(!a.is_ptr() && !b.is_ptr());
-    return (a.attr() | b.attr()) & ~dsl::type::attr_t::mut;
+type::attr_t common_attr(const type_t &a, const type_t &b) {
+    dsl_assert(!a.is_ptr() && !b.is_ptr());
+    return (a.attr() | b.attr()) & ~type::attr_t::mut;
 }
 
-dsl::type_t common_type(
-        const dsl::type_t &base, const dsl::type_t &a, const dsl::type_t &b) {
+type_t common_type(const type_t &base, const type_t &a, const type_t &b) {
     auto attr = common_attr(a, b);
     int elems = std::max(a.elems(), b.elems());
     return base[elems].with_attr(attr);
 }
 
-dsl::type_t common_int_type_impl(const dsl::type_t &_a, const dsl::type_t &_b) {
-    gpu_assert(_a.is_int() && _b.is_int()) << "Unexpected types.";
+type_t common_int_type_impl(const type_t &_a, const type_t &_b) {
+    dsl_assert(_a.is_int() && _b.is_int()) << "Unexpected types.";
 
     // Promote to s32 first.
-    dsl::type_t a = _a.size() < int(sizeof(int32_t)) ? dsl::type_t::s32() : _a;
-    dsl::type_t b = _b.size() < int(sizeof(int32_t)) ? dsl::type_t::s32() : _b;
+    type_t a = _a.size() < int(sizeof(int32_t)) ? type_t::s32() : _a;
+    type_t b = _b.size() < int(sizeof(int32_t)) ? type_t::s32() : _b;
     a = a.base();
     b = b.base();
 
     // Integer promotion, follow C++ rules.
     int common_bits = 8 * std::max(a.size(), b.size());
     if (a.is_signed() == b.is_signed()) {
-        if (a.is_signed()) return dsl::type_t::s(common_bits);
-        return dsl::type_t::u(common_bits);
+        if (a.is_signed()) return type_t::s(common_bits);
+        return type_t::u(common_bits);
     }
 
-    if (a.size() >= b.size() && a.is_unsigned())
-        return dsl::type_t::u(common_bits);
-    if (b.size() >= a.size() && b.is_unsigned())
-        return dsl::type_t::u(common_bits);
-    if (a.size() > b.size() && a.is_signed())
-        return dsl::type_t::s(common_bits);
-    if (b.size() > a.size() && b.is_signed())
-        return dsl::type_t::s(common_bits);
+    if (a.size() >= b.size() && a.is_unsigned()) return type_t::u(common_bits);
+    if (b.size() >= a.size() && b.is_unsigned()) return type_t::u(common_bits);
+    if (a.size() > b.size() && a.is_signed()) return type_t::s(common_bits);
+    if (b.size() > a.size() && b.is_signed()) return type_t::s(common_bits);
 
-    return dsl::type_t::u(common_bits);
+    return type_t::u(common_bits);
 }
 
-dsl::type_t common_int_type(const dsl::type_t &a, const dsl::type_t &b) {
+type_t common_int_type(const type_t &a, const type_t &b) {
     return common_type(common_int_type_impl(a, b), a, b);
 }
 
-dsl::type_t common_type_impl(const dsl::type_t &a, const dsl::type_t &b) {
-    if (a.is_undef() || b.is_undef()) return dsl::type_t::undef();
+type_t common_type_impl(const type_t &a, const type_t &b) {
+    if (a.is_undef() || b.is_undef()) return type_t::undef();
     if (a.is_fp() && !b.is_fp()) return a;
     if (!a.is_fp() && b.is_fp()) return b;
     if (a.is_fp() && b.is_fp()) return (a.size() > b.size() ? a : b);
@@ -170,47 +162,44 @@ dsl::type_t common_type_impl(const dsl::type_t &a, const dsl::type_t &b) {
     return common_int_type(a, b);
 }
 
-dsl::type_t common_type(const dsl::type_t &a, const dsl::type_t &b) {
+type_t common_type(const type_t &a, const type_t &b) {
     return common_type(common_type_impl(a, b), a, b);
 }
 
-dsl::type_t common_type(const expr_t &a, const expr_t &b) {
+type_t common_type(const expr_t &a, const expr_t &b) {
     return common_type(a.type(), b.type());
 }
 
-dsl::type_t binary_op_type(op_kind_t op_kind, const dsl::type_t &a,
-        const dsl::type_t &b, const expr_t &a_expr = expr_t(),
-        const expr_t &b_expr = expr_t()) {
-    if (a.is_undef() || b.is_undef()) return dsl::type_t::undef();
+type_t binary_op_type(op_kind_t op_kind, const type_t &a, const type_t &b,
+        const expr_t &a_expr = expr_t(), const expr_t &b_expr = expr_t()) {
+    if (a.is_undef() || b.is_undef()) return type_t::undef();
     int elems = std::max(a.elems(), b.elems());
 
-    dsl::type::attr_t attr = common_attr(a, b);
-    if (is_cmp_op(op_kind)) return dsl::type_t::_bool(elems, attr);
-    if (utils::one_of(op_kind, op_kind_t::_shl, op_kind_t::_shr)) {
+    type::attr_t attr = common_attr(a, b);
+    if (is_cmp_op(op_kind)) return type_t::_bool(elems, attr);
+    if (one_of(op_kind, op_kind_t::_shl, op_kind_t::_shr)) {
         return a[elems].with_attr(attr);
     }
 
-    if (utils::one_of(
-                op_kind, op_kind_t::_and, op_kind_t::_or, op_kind_t::_xor)) {
+    if (one_of(op_kind, op_kind_t::_and, op_kind_t::_or, op_kind_t::_xor)) {
         if (a == b) return a;
         if (is_const(a_expr)) return b;
         if (is_const(b_expr)) return a;
         return (a.size() >= b.size()) ? a : b;
     }
-    if (utils::one_of(op_kind, op_kind_t::_div, op_kind_t::_mod) && a.is_int()
+    if (one_of(op_kind, op_kind_t::_div, op_kind_t::_mod) && a.is_int()
             && b.is_int()) {
-        return (a.is_signed() ? dsl::type_t::s32() : dsl::type_t::u32())[elems]
-                .with_attr(attr);
+        return (a.is_signed() ? type_t::s32() : type_t::u32())[elems].with_attr(
+                attr);
     }
     return common_type(a, b);
 }
 
-dsl::type_t binary_op_type(
-        op_kind_t op_kind, const expr_t &a, const expr_t &b) {
+type_t binary_op_type(op_kind_t op_kind, const expr_t &a, const expr_t &b) {
     return binary_op_type(op_kind, a.type(), b.type(), a, b);
 }
 
-dsl::type_t ternary_op_type(
+type_t ternary_op_type(
         op_kind_t op_kind, const expr_t &a, const expr_t &b, const expr_t &c) {
     switch (op_kind) {
         case op_kind_t::_add3:
@@ -221,15 +210,14 @@ dsl::type_t ternary_op_type(
                     binary_op_type(op_kind_t::_mul, b, c));
         case op_kind_t::_idiv:
         case op_kind_t::_imod:
-            return a.type().is_signed() ? dsl::type_t::s32()
-                                        : dsl::type_t::u32();
-        default: gpu_error_not_expected();
+            return a.type().is_signed() ? type_t::s32() : type_t::u32();
+        default: stub();
     }
-    return dsl::type_t::undef();
+    return type_t::undef();
 }
 
-dsl::type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args) {
-    gpu_assert(!args.empty());
+type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args) {
+    dsl_assert(!args.empty());
     if (args.size() == 1) return args[0].type();
 
     auto type = args[0].type();
@@ -241,7 +229,7 @@ dsl::type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args) {
 
 void ptr_t::normalize(expr_t &base, expr_t &off) {
     // Normalize (base + off1) + off2 -> base + (off1 + off2)
-    gpu_assert(off.type().is_int()) << "off is not an integer: " << off;
+    dsl_assert(off.type().is_int()) << "off is not an integer: " << off;
     off = base.as<ptr_t>().off + off;
     base = base.as<ptr_t>().base;
 }
@@ -366,7 +354,7 @@ void ir_visitor_t::_visit(const for_t &obj) {
 object_t ir_mutator_t::_mutate(const func_call_t &obj) {
     auto args = mutate(obj.args);
 
-    if (ir_utils::is_same(args, obj.args)) return obj;
+    if (utils::is_same(args, obj.args)) return obj;
 
     return func_call_t::make(obj.func, args, obj.attr);
 }
@@ -430,12 +418,12 @@ void ir_visitor_t::_visit(const let_t &obj) {
 }
 
 object_t ir_mutator_t::_mutate(const linear_t &obj) {
-    gpu_error_not_expected();
+    stub();
     return obj;
 }
 
 void ir_visitor_t::_visit(const linear_t &obj) {
-    gpu_error_not_expected();
+    stub();
 }
 
 object_t ir_mutator_t::_mutate(const load_t &obj) {
@@ -469,7 +457,7 @@ void ir_visitor_t::_visit(const ptr_t &obj) {
 object_t ir_mutator_t::_mutate(const shuffle_t &obj) {
     auto vec = mutate(obj.vec);
 
-    if (ir_utils::is_same(vec, obj.vec)) return obj;
+    if (utils::is_same(vec, obj.vec)) return obj;
 
     return shuffle_t::make(vec, obj.idx);
 }
@@ -492,7 +480,7 @@ void ir_visitor_t::_visit(const stmt_group_t &obj) {
 
 object_t ir_mutator_t::_mutate(const stmt_seq_t &obj) {
     auto vec = mutate(obj.vec);
-    if (ir_utils::is_same(vec, obj.vec)) return obj;
+    if (utils::is_same(vec, obj.vec)) return obj;
     return stmt_seq_t::make(vec);
 }
 
@@ -572,8 +560,6 @@ void expr::iface_t<T>::_visit(ir_visitor_t &visitor) const {
 template object_t expr::iface_t<var_t>::_mutate(ir_mutator_t &mutator) const;
 template void expr::iface_t<var_t>::_visit(ir_visitor_t &mutator) const;
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END

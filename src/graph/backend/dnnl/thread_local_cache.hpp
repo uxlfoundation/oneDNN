@@ -171,7 +171,7 @@ public:
 private:
     class global_cache_type_t {
     public:
-        global_cache_type_t() : mutex_(), data_(), counter_(1) {}
+        global_cache_type_t() : counter_(1) {}
         ~global_cache_type_t() = default;
         std::mutex &mutex() { return mutex_; }
         std::unordered_map<size_t, std::vector<std::shared_ptr<T>>> &data() {

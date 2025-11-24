@@ -854,3 +854,4 @@
 --reset --in-shapes=1:1x1x1x1 --case=op/f32/greaterequal.json
 --reset --in-shapes=1:1 --case=op/f32/greaterequal.json
 --reset --op-attrs=0:mode:gelu_erf,0:mode:gelu_tanh --case=op/f32/gelu.json
+--reset --case=op/f32/rmsnorm.json

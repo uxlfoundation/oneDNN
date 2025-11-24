@@ -332,6 +332,7 @@ dnnl::graph::op::kind opstr2kind(const std::string &kind) {
             {"ReLU", dnnl::graph::op::kind::ReLU},
             {"ReLUBackward", dnnl::graph::op::kind::ReLUBackward},
             {"Reorder", dnnl::graph::op::kind::Reorder},
+            {"RMSNorm", dnnl::graph::op::kind::RMSNorm},
             {"Round", dnnl::graph::op::kind::Round},
             {"Select", dnnl::graph::op::kind::Select},
             {"Sigmoid", dnnl::graph::op::kind::Sigmoid},
@@ -778,6 +779,17 @@ int get_prim_arg_name_from_graph_op_output_offset(
             }
 
         } break;
+        case dnnl::graph::op::kind::RMSNorm: {
+            // RMSNorm OP in oneDNN Graph API only have 1 output
+            if (output_offset == 0)
+                return DNNL_ARG_DST;
+            else {
+                BENCHDNN_PRINT(0, "Error: no matching ARG for offset %d",
+                        static_cast<int>(output_offset));
+                assert(false);
+                return -1;
+            }
+        } break;
         case dnnl::graph::op::kind::SoftMax: {
             if (output_offset == 0)
                 return DNNL_ARG_DST;
@@ -1143,6 +1155,18 @@ int get_prim_arg_name_from_graph_op_input_offset(
                 return DNNL_ARG_SCALE;
             else if (input_offset == 2)
                 return DNNL_ARG_SHIFT;
+            else {
+                BENCHDNN_PRINT(0, "Error: no matching ARG for offset %zu",
+                        input_offset);
+                assert(false);
+                return -1;
+            }
+        } break;
+        case dnnl::graph::op::kind::RMSNorm: {
+            if (input_offset == 0)
+                return DNNL_ARG_SRC;
+            else if (input_offset == 1)
+                return DNNL_ARG_SCALE; // gamma
             else {
                 BENCHDNN_PRINT(0, "Error: no matching ARG for offset %zu",
                         input_offset);

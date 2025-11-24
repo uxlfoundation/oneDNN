@@ -488,7 +488,7 @@ public:
         enter_scope();
     }
     ir_builder_t(const ir_builder_t &parent) = delete;
-    const hw_t &hw() const { return buf_mgr_->ir_ctx().hw(); }
+    const dsl::hw_t &hw() const { return buf_mgr_->ir_ctx().hw(); }
     ir_context_t &ir_ctx() { return buf_mgr_->ir_ctx(); }
     buffer_manager_t &buf_mgr() { return *buf_mgr_; }
     const offset_scope_t &off_scope() const { return *off_scope_; }

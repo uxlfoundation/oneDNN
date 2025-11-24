@@ -37,7 +37,7 @@ struct reduce_plan_t : public base_plan_t {
     using base_plan_t::base_plan_t;
 
     reduce_plan_t() = default;
-    reduce_plan_t(const hw_t &hw, const layout_t &src, const layout_t &dst)
+    reduce_plan_t(const dsl::hw_t &hw, const layout_t &src, const layout_t &dst)
         : base_plan_t(hw), src(src), dst(dst) {}
 
     int grf_usage_bytes() const {
@@ -64,7 +64,8 @@ struct reorder_plan_t : public base_plan_t {
     using base_plan_t::base_plan_t;
 
     reorder_plan_t() = default;
-    reorder_plan_t(const hw_t &hw, const layout_t &src, const layout_t &dst)
+    reorder_plan_t(
+            const dsl::hw_t &hw, const layout_t &src, const layout_t &dst)
         : base_plan_t(hw), src(src), dst(dst) {}
 
     int grf_usage_bytes() const {

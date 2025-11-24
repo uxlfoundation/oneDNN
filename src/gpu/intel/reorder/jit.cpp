@@ -133,7 +133,7 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
 
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-    hw_t hw(make_ir_hw(engine));
+    dsl::hw_t hw(make_ir_hw(engine));
     kernel::options_t options(hw);
     options.set_regs(prefer_large_grf(hw, gpu_attr) ? 256 : 128);
     options.set_simd(16);

@@ -8,7 +8,15 @@
 
 GEMMSTONE_NAMESPACE_START
 
+// TODO: Remove after upstream work finished
+using ngen::utils::rounddown_pow2;
+using ngen::utils::roundup_pow2;
+
 namespace dsl {
+
+const std::string &to_string(ngen::ProductFamily family);
+const std::string &to_string(ngen::HW hw);
+std::string to_string(const ngen::Product &product);
 
 inline bool stream_try_match(std::istream &in, const std::string &s) {
     in >> std::ws;

@@ -14,12 +14,14 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_IR_INCLUDE_HW_HPP
-#define GPU_INTEL_JIT_IR_INCLUDE_HW_HPP
+#ifndef GEMMSTONE_GUARD_INCLUDE_IR_HW_HPP
+#define GEMMSTONE_GUARD_INCLUDE_IR_HW_HPP
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
+
+#include "gemmstone/config.hpp"
 
 // NOLINTBEGIN(readability-identifier-naming)
 namespace ngen {
@@ -30,11 +32,8 @@ struct Product;
 } // namespace ngen
 // NOLINTEND(readability-identifier-naming)
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
 
 namespace hw {
 enum class attr_t { none = 0, large_grf = 1, systolic = 2, atomic_fp64 = 4 };
@@ -94,7 +93,6 @@ public:
     int cache_line_size() const;
 
     std::string str() const;
-    std::string brief_str() const;
     void dump() const { printf("%s\n", str().c_str()); }
 
     bool operator<(ngen::HW rhs) const { return hw_ < rhs; }
@@ -134,9 +132,6 @@ private:
     attr_t attr_ = attr_t::none;
 };
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 #endif

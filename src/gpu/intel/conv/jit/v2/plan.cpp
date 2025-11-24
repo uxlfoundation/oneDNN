@@ -361,7 +361,7 @@ private:
 class plan_builder_t {
 public:
     plan_builder_t() = default;
-    plan_builder_t(const kernel_desc_t &desc, const hw_t &hw)
+    plan_builder_t(const kernel_desc_t &desc, const dsl::hw_t &hw)
         : desc_(desc), hw_(hw) {
         reqs_ = desc_.reqs();
     }
@@ -875,7 +875,7 @@ private:
     }
 
     kernel_desc_t desc_;
-    hw_t hw_;
+    dsl::hw_t hw_;
 
     dim_mapper_manager_t dim_mapper_manager_;
     multiply_info_t mul_info_;
@@ -890,7 +890,7 @@ private:
     prb_reqs_t reqs_;
 };
 
-plan_t create_plan_impl(const kernel_desc_t &desc, const hw_t &hw,
+plan_t create_plan_impl(const kernel_desc_t &desc, const dsl::hw_t &hw,
         const problem_t *prb = nullptr) {
     if (!desc.is_supported(hw, prb)) return plan_t();
     plan_builder_t builder(desc, hw);
@@ -910,7 +910,7 @@ plan_t create_plan_impl(const kernel_desc_t &desc, const hw_t &hw,
     return plan;
 }
 
-plan_t create_plan(const kernel_desc_t &desc, const hw_t &hw) {
+plan_t create_plan(const kernel_desc_t &desc, const dsl::hw_t &hw) {
     return create_plan_impl(desc, hw);
 }
 

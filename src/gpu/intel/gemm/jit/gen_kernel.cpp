@@ -1146,7 +1146,7 @@ void gen_kernel_t::init_interface() {
 
 dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
         const GEMMStrategy &strategy, const ngen::InterfaceHandler &iface,
-        const hw_t &hw, int m, int n, int k) {
+        const dsl::hw_t &hw, int m, int n, int k) {
     auto gemm_desc
             = gemmstone::generator_dsl_desc_t(problem, strategy, iface, hw);
     if (gpu_utils::dev_getenv("generator_dsl_specialize", false)) {

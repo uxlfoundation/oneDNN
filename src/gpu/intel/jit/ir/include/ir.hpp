@@ -17,8 +17,8 @@
 #ifndef GPU_INTEL_JIT_IR_INCLUDE_IR_HPP
 #define GPU_INTEL_JIT_IR_INCLUDE_IR_HPP
 
+#include "gemmstone/dsl/hw.hpp"
 #include "gemmstone/dsl/type.hpp"
-#include "gpu/intel/jit/ir/include/hw.hpp"
 #include "gpu/intel/jit/ir/include/kernel.hpp"
 #include "gpu/intel/jit/ir/include/object.hpp"
 

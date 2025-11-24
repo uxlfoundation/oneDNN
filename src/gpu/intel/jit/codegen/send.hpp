@@ -30,7 +30,7 @@ namespace intel {
 namespace jit {
 
 inline ngen::CacheSettingsLSC get_cache_settings(
-        const send_t &send, const hw_t &hw) {
+        const send_t &send, const dsl::hw_t &hw) {
     auto ret = ngen::CacheSettingsLSC::Default;
     bool is_load = send.is_load() || send.is_load_2d();
     bool is_store = send.is_store() || send.is_store_2d();

@@ -19,8 +19,8 @@
 
 #include <vector>
 
+#include "gemmstone/dsl/hw.hpp"
 #include "gemmstone/dsl/type.hpp"
-#include "gpu/intel/jit/ir/include/hw.hpp"
 #include "gpu/intel/jit/ir/include/object.hpp"
 
 #include "ngen_debuginfo.hpp"
@@ -36,6 +36,14 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+
+// Replace with using dsl = gemmstone::dsl once migration is complete
+namespace dsl {
+namespace hw {
+using attr_t = gemmstone::dsl::hw::attr_t;
+}
+using hw_t = gemmstone::dsl::hw_t;
+} // namespace dsl
 
 struct codegen_extension_iface_t;
 using codegen_extension_handler_t
@@ -86,11 +94,11 @@ extern codegen_extension_handler_t default_extension_handler;
 class options_t {
 public:
     options_t() = default;
-    options_t(const hw_t &hw) : hw_(hw) {}
-    options_t(const hw_t &hw, int regs, int simd)
+    options_t(const dsl::hw_t &hw) : hw_(hw) {}
+    options_t(const dsl::hw_t &hw, int regs, int simd)
         : hw_(hw), regs_(regs), simd_(simd) {}
 
-    const hw_t &hw() const { return hw_; }
+    const dsl::hw_t &hw() const { return hw_; }
 
     // Maximum number of GRF registers used by the kernel. This can be used to
     // avoid a stall on Xe and Xe2 architectures when switching between kernels
@@ -129,7 +137,7 @@ public:
     }
 
 private:
-    hw_t hw_;
+    dsl::hw_t hw_;
     int regs_ = 0;
     int simd_ = 0;
     bool require_dpas_ = false;

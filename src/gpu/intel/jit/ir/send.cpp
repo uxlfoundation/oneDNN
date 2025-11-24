@@ -112,7 +112,7 @@ bool send_t::is_supported() const {
     return true;
 }
 
-std::vector<func_t> send_t::get_all(const hw_t &hw, send_op_t op,
+std::vector<func_t> send_t::get_all(const dsl::hw_t &hw, send_op_t op,
         send_address_t address, const dsl::type_t &mem_type, bool zero_out,
         send_cache_hint_t cache_hint) {
     std::vector<func_t> filtered;

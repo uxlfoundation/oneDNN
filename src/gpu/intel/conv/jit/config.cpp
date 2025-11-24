@@ -195,7 +195,7 @@ status_t problem_t::init(
     isp = id * ih * iw;
     osp = od * oh * ow;
 
-    hw_t hw(make_ir_hw(engine));
+    dsl::hw_t hw(make_ir_hw(engine));
     init_transpose(hw);
     CHECK(init_abc_data_types(hw));
     CHECK(init_acc_data_type());
@@ -330,7 +330,7 @@ int get_default_block(fma_kind_t fma, const dsl::type_t &type, dim_t elems) {
     return get_default_mad_block(type);
 }
 
-fma_kind_t get_default_fma(const hw_t &hw, const dsl::type_t &type) {
+fma_kind_t get_default_fma(const dsl::hw_t &hw, const dsl::type_t &type) {
     switch (type.size()) {
         case 1:
             if (hw >= ngen::HW::XeHP) return fma_kind_t::dpas;
@@ -356,7 +356,7 @@ struct nc_block_t {
 
     // Ideally, this should only depend on data type, direction, mb, c, and g to
     // enable the same src/dst formats and avoid reorders between convolutions
-    static nc_block_t get_default_blocking(const hw_t &hw, fma_kind_t fma,
+    static nc_block_t get_default_blocking(const dsl::hw_t &hw, fma_kind_t fma,
             dsl::type_t type, bool is_dw, dim_t n, dim_t c, dim_t g,
             bool is_output = false) {
         // Select dst layout to align with fma kind of following conv
@@ -875,13 +875,13 @@ status_t init_tensor_layouts(
     return status::success;
 }
 
-bool hw_ok(const hw_t &hw) {
+bool hw_ok(const dsl::hw_t &hw) {
     if (hw < ngen::HW::XeLP) return false;
     return true;
 }
 
 bool data_types_ok(
-        const problem_t &prb, const hw_t &hw, impl::engine_t *engine) {
+        const problem_t &prb, const dsl::hw_t &hw, impl::engine_t *engine) {
     auto src = prb.src_data_type;
     auto wei = prb.wei_data_type;
     auto dst = prb.dst_data_type;
@@ -960,7 +960,7 @@ bool zero_points_ok(const problem_t &prb) {
     return true;
 }
 
-bool post_ops_ok(const problem_t &prb, const hw_t &hw) {
+bool post_ops_ok(const problem_t &prb, const dsl::hw_t &hw) {
     auto *pd = prb.conv_pd;
     auto *attr = prb.attr;
 
@@ -1135,7 +1135,7 @@ void init_bwd_d_optimize(config_t &cfg) {
 
 status_t init_pd_time_cfg(const problem_t &prb, config_t &cfg,
         impl::engine_t *engine, convolution_pd_t *pd, primitive_attr_t *attr) {
-    hw_t hw(make_ir_hw(engine));
+    dsl::hw_t hw(make_ir_hw(engine));
 
     VDISPATCH_CHECK(pd, engine, hw_ok(hw), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_CHECK(

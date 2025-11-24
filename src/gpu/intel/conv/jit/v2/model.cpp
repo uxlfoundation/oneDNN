@@ -29,12 +29,12 @@ namespace jit {
 namespace v2 {
 
 struct hw_config_t {
-    hw_t hw;
+    dsl::hw_t hw;
     fma_kind_t fma = fma_kind_t::undef;
     int regs = 0;
 
     hw_config_t() = default;
-    hw_config_t(const hw_t &hw, fma_kind_t fma)
+    hw_config_t(const dsl::hw_t &hw, fma_kind_t fma)
         : hw(hw)
         , fma(fma)
         , regs(utils::one_of(fma, fma_kind_t::dpas, fma_kind_t::dpasw) ? 256

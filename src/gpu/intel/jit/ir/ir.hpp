@@ -22,14 +22,21 @@
 #include <map>
 #include <vector>
 
+#include "gemmstone/dsl/hw.hpp"
 #include "gpu/intel/jit/ir/core.hpp"
-#include "gpu/intel/jit/ir/include/hw.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+
+namespace dsl {
+using hw_t = gemmstone::dsl::hw_t;
+namespace hw {
+using attr_t = gemmstone::dsl::hw::attr_t;
+}
+} // namespace dsl
 
 class constraint_set_t;
 
@@ -39,7 +46,7 @@ public:
 
     const kernel::options_t &options() const { return options_; }
 
-    const hw_t &hw() const { return options().hw(); }
+    const dsl::hw_t &hw() const { return options().hw(); }
 
     int grf_size() const { return hw().grf_size(); }
 

@@ -23,7 +23,7 @@
 #include <type_traits>
 #include <unordered_map>
 
-#include "gpu/intel/jit/codegen/register_allocator.hpp"
+#include "gpu/intel/jit/codegen/allocation_size.hpp"
 #include "gpu/intel/jit/ir/send.hpp"
 #include "gpu/intel/jit/utils/trace.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
@@ -84,7 +84,7 @@ public:
 
     int size() const {
         return utils::rnd_up(
-                cse_expr_->cse_var.type().size(), reg_allocator_t::granularity);
+                cse_expr_->cse_var.type().size(), ngen_alloc_granularity);
     }
 
     int cost() const { return cost_; }
@@ -154,7 +154,7 @@ public:
     }
 
     void _visit(const alloc_t &obj) override {
-        auto size = obj.register_alloc_size(grf_size_);
+        auto size = register_alloc_size(obj, grf_size_);
         grf_usage_ += size;
         handle_grf_overflow();
 
@@ -168,7 +168,7 @@ public:
         auto *e = it != var2entry_.end() ? var2entry_.find(obj.var)->second
                                          : nullptr;
 
-        int size = obj.register_alloc_size();
+        int size = register_alloc_size(obj);
         if (e) {
             var_stack_.emplace_back(e);
             if (e->allocated()) { grf_usage_ += size; }

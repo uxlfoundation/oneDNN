@@ -311,7 +311,7 @@ template <HW hw>
 void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp op,
                                             const RegisterLayout &layout, const RegisterLayout &qlayout,
                                             const GRFMultirange &regs, const GRFMultirange &qregs,
-                                            int hq, const GEMMProblem &problem, CommonState &state)
+                                            int hq, const GEMMProblem &problem, const CommonStrategy &strategy, CommonState &state)
 {
     int xqGroupK  = doA ? problem.aqGroupK : problem.bqGroupK;
     int xqGroupMN = doA ? problem.aqGroupM : problem.bqGroupN;
@@ -399,7 +399,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
                         add(simd, data(strided), data(strided), -qdata(strideq));
                     break;
                 case BinaryOp::Mul:
-                    mul(simd, data(strided), data(strided), qdata(strideq));
+                    emul(simd, data(strided), data(strided), qdata(strideq), strategy, state);
                     break;
                 case BinaryOp::ScaleSub:
                     if (T != Type::f16) stub();
@@ -468,7 +468,7 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     //     so two multiplications are needed.
     if (!layoutOffset.empty()) {
         if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::ScaleSub, *effLayoutDst, layoutOffset, *effDst, offset, hq, *problem, state);
+        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::ScaleSub, *effLayoutDst, layoutOffset, *effDst, offset, hq, *problem, strategy, state);
     } else {
         map(hw, Type::f16, *effDst, *effLayoutDst, strategy, [&](int esize, RegData r) {
             s4 ? mad(esize, r, Immediate::hf(0x9800), r, Immediate::hf(0x6C00)) /* 0x9800 = -8*2^(-12), 0x6C00 = 2^12 */
@@ -485,7 +485,7 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     //      this could be merged into the previous multiplication.
     if (!f32 && !layoutScale.empty()) {
         if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::Mul, *effLayoutDst, layoutScale, *effDst, scale, hq, *problem, state);
+        gemmDequantizeOperation(doA, Type::f16, Type::f16, BinaryOp::Mul, *effLayoutDst, layoutScale, *effDst, scale, hq, *problem, strategy, state);
     }
 
     // 6) Convert to dst type if needed.
@@ -497,7 +497,7 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     // 7) Apply scales for f32 after f16->f32 upconversion.
     if (f32 && !layoutScale.empty()) {
         if (!problem) stub();
-        gemmDequantizeOperation(doA, Type::f32, Type::f32, BinaryOp::Mul, layoutDst, layoutScale, dst, scale, hq, *problem, state);
+        gemmDequantizeOperation(doA, Type::f32, Type::f32, BinaryOp::Mul, layoutDst, layoutScale, dst, scale, hq, *problem, strategy, state);
     }
 }
 
@@ -568,7 +568,7 @@ void Generator<hw>::gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, 
             if (!state.useBDPAS)
 #endif
             {
-            gemmDequantizeOperation(doA, Tx_int, Txo_int, BinaryOp::Sub, layoutDst, oLayout, dst, oRegs, hq, problem, state);
+            gemmDequantizeOperation(doA, Tx_int, Txo_int, BinaryOp::Sub, layoutDst, oLayout, dst, oRegs, hq, problem, strategy, state);
             convert(dst, Tx_int, Tdst, strategy, state);
             }
         }
@@ -578,7 +578,7 @@ void Generator<hw>::gemmDequantizeAB(bool doA, const RegisterLayout &layoutSrc, 
             if (!state.useBDPAS)
 #endif
             {
-            gemmDequantizeOperation(doA, Tdst, Txs_int, BinaryOp::Mul, layoutDst, sLayout, dst, sRegs, hq, problem, state);
+            gemmDequantizeOperation(doA, Tdst, Txs_int, BinaryOp::Mul, layoutDst, sLayout, dst, sRegs, hq, problem, strategy, state);
             }
     }
 

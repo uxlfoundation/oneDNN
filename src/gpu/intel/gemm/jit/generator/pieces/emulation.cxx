@@ -115,6 +115,23 @@ void Generator<hw>::emov(const ngen::InstructionModifier &mod, ngen::RegData dst
 
 template <HW hw>
 template <typename DT>
+void Generator<hw>::emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1, const CommonStrategy &strategy,  CommonState &state,  ngen::SourceLocation loc)
+{
+#if XE3P
+	     bool is_xe3p = one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN);
+	     if (is_xe3p && (dst.getType() == DataType::bf16 && src1.getType() == DataType::f32)){
+                auto tempRange = state.ra.alloc_range(div_up(mod.getExecSize(), elementsPerGRF(hw, DataType::bf)));;
+                auto temp = tempRange[0].bf(dst.getOffset())(1);
+                mov(mod, temp, src1);
+                mul(mod, dst, src0, temp);
+                state.ra.safeRelease(tempRange);
+	     }else
+#endif
+                ngen::EmulationImplementation::emul<DT>(*this, mod, dst, src0, src1, strategy.emulate, state.emulate, loc);
+}
+
+template <HW hw>
+template <typename DT>
 void Generator<hw>::eadd(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1,
                          const CommonStrategy &strategy, CommonState &state, ngen::SourceLocation loc)
 {

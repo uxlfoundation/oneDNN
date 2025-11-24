@@ -281,12 +281,15 @@ void CopyPlan::transform()
     optimizeWriteCombine();
     optimizeWriteSpread();
 
+    legalizeImmediateTypes();
+
     sort(SortType::PhaseOnly);
 
-    legalizeImmediateTypes();
 #if XE3P
     legalizeShfl();
 #endif
+
+
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
     if (getVerbose(GEMMVerbose::DebugInfo) >= 170)
         dump();
@@ -1008,11 +1011,18 @@ bool CopyPlan::planShflUpconvertXe3p(CopyInstruction &i)
     if (isInt(dt) && (copySrc || copyDst))
         return false;       /* use normal sequence */
 
+    if (i.simd < 16) return false;
     auto lut = getResource(CopyResource::makeShflLUT(st, dt));
     if (!lut)
         return false;       /* no LUT available */
     lut.type = DataType::ud;
     lut.stride = 0;         /* will be fixed up later */
+
+    int orig_simd  = i.simd;
+    if (copySrc){
+         i.simd /= 2;
+         i.simd = std::max(16, i.simd);
+    }
 
     auto ie = splitMultiple<3>(i);
 
@@ -1040,6 +1050,7 @@ bool CopyPlan::planShflUpconvertXe3p(CopyInstruction &i)
     if (copyDst) {
         ie[2]->op = Opcode::mov;
         ie[2]->src0 = y;
+        ie[2]->simd = orig_simd;
     } else
         ie[2]->invalidate();
 
@@ -1227,7 +1238,7 @@ bool CopyPlan::bfArithmeticOK(const CopyInstruction &i) const
 
 CopyOperand CopyPlan::bfImmediate(uint16_t bits, bool ternary)
 {
-	   if (ternary) {
+     if (ternary) {
         auto kind = CopyResource::makeConstant32(uint32_t(bits) << 16);
         auto val = getResource(kind);
         val.stride = 0;
@@ -1281,6 +1292,29 @@ void CopyPlan::planInt8ToBF(CopyInstruction &i)
     ie[2]->src0 = ie[2]->dst;
     ie[2]->src1 = Immediate::hf(0x4000);
 }
+
+#if XE3P
+void CopyPlan::legalizeBfImmediate(CopyInstruction &i1){
+    if (i1.src1.kind != CopyOperand::Immediate) return;
+    auto op = i1.op;
+    auto temp = newTemp(DataType::uw, i1.simd, 1);
+    auto src0 = i1.src0;
+    auto dst = i1.dst;
+
+    i1.op = Opcode::mov;
+    i1.dst = temp;
+    i1.src0 =   Immediate::uw(i1.src1.value >> 16);
+    i1.src0.type = DataType::uw;
+
+    auto &i2 = split(i1);
+
+    i2.op = op;
+    i2.dst = dst;
+    i2.src0 = src0;
+    i2.src1 = temp;
+    i2.src1.type = DataType::bf16;
+}
+#endif
 
 // s4/u4 -> hf/bf sequence.
 void CopyPlan::planInt4ToF16(CopyInstruction &i)
@@ -2757,9 +2791,11 @@ void CopyPlan::legalizeRegions()
                         repositionDst(i, stride, offset);
                     }
                     continue;
-                } else if (src0BS < dstBS)
+                } else if (src0BS < dstBS){
                     restrideSrc0(i, dstBS >> getLog2Bytes(s0t));
-                else if (src0BS > dstBS)
+                    rerun = true;
+                }
+                 else if (src0BS > dstBS)
                     restrideDst(i, src0BS >> getLog2Bytes(dt));
             }
 
@@ -2901,6 +2937,9 @@ void CopyPlan::legalizeNegation()
 // Pass to legalize immediate types.
 void CopyPlan::legalizeImmediateTypes()
 {
+#if XE3P
+    bool is_xe3p = one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN);
+#endif
     for (auto &i: insns) {
         for (auto *op: {&i.src0, &i.src1, &i.src2}) {
             if (op->kind != CopyOperand::Immediate)
@@ -2909,8 +2948,15 @@ void CopyPlan::legalizeImmediateTypes()
                 op->type = DataType::uw;
             else if (one_of(op->type, DataType::b, DataType::s4))
                 op->type = DataType::w;
+#if XE3P
+	    else if (is_xe3p && i.op != Opcode::mov && op->type == DataType::f && i.dst.type == DataType::bf)
+	      legalizeBfImmediate(i);
+#endif
         }
     }
+    mergeChanges();
+    legalizeRegions();
+
 }
 
 // Pass to sort instructions by phase and dst.

@@ -260,9 +260,9 @@ protected:
     void planBFNEmulation();
     void emulateBooleanFunction();
 #if XE3P
-    void planSmallUWToBFXe3p(CopyInstruction &i);
     bool planShflUpconvertXe3p(CopyInstruction &i);
     void legalizeShfl();
+    void legalizeBfImmediate(CopyInstruction &i1);
 #endif
     void legalizeSIMD(bool initial = false);
     void legalizeRegions();
@@ -278,7 +278,6 @@ protected:
     void optimizeIntegerDownconvert();
     void optimizeSaturate();
     void optimizeMoveToIntPipe();
-
     CopyOperand bfImmediate(uint16_t bits, bool ternary);
     CopyOperand zipImmediates(const CopyOperand &o1, const CopyOperand &o2);
 

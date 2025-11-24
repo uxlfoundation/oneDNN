@@ -89,10 +89,6 @@ struct impl_list_item_t {
         : public type_deduction_helper_t<pd_t> {};
 
     template <typename pd_t>
-    struct grouped_gemm_type_deduction_helper_t
-        : public type_deduction_helper_t<pd_t> {};
-
-    template <typename pd_t>
     constexpr impl_list_item_t(type_deduction_helper_t<pd_t>)
         : create_pd_func_(&primitive_desc_t::create<
                           typename type_deduction_helper_t<pd_t>::type>) {}
@@ -112,15 +108,10 @@ struct impl_list_item_t {
         : create_reorder_pd_func_(
                 reorder_type_deduction_helper_t<pd_t>::type::create) {}
 
-    template <typename pd_t>
-    constexpr impl_list_item_t(grouped_gemm_type_deduction_helper_t<pd_t>)
-        : create_grouped_gemm_pd_func_(
-                grouped_gemm_type_deduction_helper_t<pd_t>::type::create) {}
-
     explicit operator bool() const {
         return !utils::everyone_is(nullptr, create_pd_func_,
                 create_concat_pd_func_, create_sum_pd_func_,
-                create_reorder_pd_func_, create_grouped_gemm_pd_func_);
+                create_reorder_pd_func_);
     }
 
     // Currently, this only supports iterator friendly primitives. Can be
@@ -178,17 +169,6 @@ private:
                 src_md, dst_engine, dst_md);
     }
 
-    status_t operator()(grouped_gemm_pd_t **grouped_gemm_pd, engine_t *engine,
-            const primitive_attr_t *attr, int group_size,
-            const memory_desc_t *const *src_mds,
-            const memory_desc_t *const *wei_mds,
-            const memory_desc_t *const *bias_mds,
-            const memory_desc_t *const *dst_mds) const {
-        if (!create_grouped_gemm_pd_func_) return status::runtime_error;
-        return create_grouped_gemm_pd_func_(grouped_gemm_pd, engine, attr,
-                group_size, src_mds, wei_mds, bias_mds, dst_mds);
-    }
-
     using create_pd_func_t = status_t (*)(primitive_desc_t **,
             const op_desc_t *, const primitive_attr_t *, engine_t *,
             const primitive_desc_t *);
@@ -205,16 +185,10 @@ private:
             const primitive_attr_t *, engine_t *, const memory_desc_t *,
             engine_t *, const memory_desc_t *);
 
-    using create_grouped_gemm_pd_func_t = status_t (*)(grouped_gemm_pd_t **,
-            engine_t *, const primitive_attr_t *, int,
-            const memory_desc_t *const *, const memory_desc_t *const *,
-            const memory_desc_t *const *, const memory_desc_t *const *);
-
     create_pd_func_t create_pd_func_ = nullptr;
     create_concat_pd_func_t create_concat_pd_func_ = nullptr;
     create_sum_pd_func_t create_sum_pd_func_ = nullptr;
     create_reorder_pd_func_t create_reorder_pd_func_ = nullptr;
-    create_grouped_gemm_pd_func_t create_grouped_gemm_pd_func_ = nullptr;
 
     // List of functions/classes that have permissions to create primitive
     // descriptors.
@@ -230,11 +204,6 @@ private:
             std::shared_ptr<primitive_desc_t> &, engine_t *,
             const memory_desc_t *, engine_t *, const memory_desc_t *,
             engine_t *, const primitive_attr_t *);
-    friend status_t grouped_gemm_primitive_desc_create(
-            std::shared_ptr<primitive_desc_t> &, engine_t *, int,
-            const memory_desc_t *const *, const memory_desc_t *const *,
-            const memory_desc_t *const *, const memory_desc_t *const *,
-            const primitive_attr_t *);
 };
 
 } // namespace impl

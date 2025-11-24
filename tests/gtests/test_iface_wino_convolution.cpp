@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
-* Copyright 2023-2024 Arm Ltd. and affiliates
+* Copyright 2023-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ protected:
         const bool is_gpu = get_test_engine_kind() == engine::kind::gpu;
         input_f32.wino_supported = is_gpu;
         input_f16.wino_supported = is_gpu;
-#elif DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
+#elif DNNL_AARCH64 && defined(DNNL_AARCH64_USE_ACL)
 #if DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL
         const bool is_cpu = get_test_engine_kind() == engine::kind::cpu;
         input_f32.wino_supported = is_cpu;

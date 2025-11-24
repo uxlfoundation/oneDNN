@@ -2004,9 +2004,6 @@ const primitive_kind_t softmax = dnnl_softmax;
 const primitive_kind_t layer_normalization = dnnl_layer_normalization;
 const primitive_kind_t group_normalization = dnnl_group_normalization;
 
-// maybe experimental
-const primitive_kind_t grouped_gemm = dnnl_grouped_gemm;
-
 // Internal only primitive kinds.
 const primitive_kind_t internal_only_start = (primitive_kind_t)(1 << 12);
 const primitive_kind_t zero_pad = internal_only_start;
@@ -2169,7 +2166,6 @@ struct softmax_bwd_pd_t;
 struct softmax_fwd_pd_t;
 struct softmax_pd_t;
 struct sum_pd_t;
-struct grouped_gemm_pd_t;
 
 } // namespace impl
 } // namespace dnnl

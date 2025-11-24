@@ -333,9 +333,6 @@ private:
         }
         // concat
         if (arg & DNNL_ARG_MULTIPLE_SRC) return true;
-        // grouped_gemm - multiple sources, weights, and destinations
-        if (arg & DNNL_ARG_MULTIPLE_WEIGHTS) return true;
-        if (arg & DNNL_ARG_MULTIPLE_DST) return true;
         // depth-wise convolution post op
         for (const auto &sa : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
             if (arg == (DNNL_ARG_ATTR_POST_OP_DW | sa)) return true;

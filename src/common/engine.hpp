@@ -125,11 +125,6 @@ struct dnnl_engine : public dnnl::impl::c_compatible {
     virtual const dnnl::impl::impl_list_item_t *
     get_sum_implementation_list() const = 0;
 
-    /** return the list of grouped gemm implementations.
-     * engine guarantees to return a NULL-terminated list */
-    virtual const dnnl::impl::impl_list_item_t *
-    get_grouped_gemm_implementation_list() const = 0;
-
     /** return the list of implementations for a given descriptor.
      * engine guarantees to return a NULL-terminated list */
 

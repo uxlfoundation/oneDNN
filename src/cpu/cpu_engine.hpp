@@ -82,7 +82,6 @@ public:
     static const impl_list_item_t *get_reorder_implementation_list(
             const memory_desc_t *src_md, const memory_desc_t *dst_md);
     static const impl_list_item_t *get_sum_implementation_list();
-    static const impl_list_item_t *get_grouped_gemm_implementation_list();
 
     static const impl_list_item_t *get_implementation_list(
             const op_desc_t *desc) {
@@ -142,10 +141,6 @@ public:
     }
     const impl_list_item_t *get_sum_implementation_list() const override {
         return cpu_engine_impl_list_t::get_sum_implementation_list();
-    }
-    const impl_list_item_t *
-    get_grouped_gemm_implementation_list() const override {
-        return cpu_engine_impl_list_t::get_grouped_gemm_implementation_list();
     }
     const impl_list_item_t *get_implementation_list(
             const op_desc_t *desc) const override {

@@ -3780,38 +3780,6 @@ dnnl_status_t DNNL_API dnnl_reduction_primitive_desc_create(
 
 /// @} dnnl_api_reduction
 
-/// @addtogroup dnnl_api_grouped_gemm Grouped GEMM
-/// @{
-
-/// Creates a primitive descriptor for a grouped GEMM primitive.
-///
-/// @param primitive_desc Output primitive descriptor.
-/// @param engine Engine to use.
-/// @param group_count Number of GEMM groups.
-/// @param src_descs Array of source memory descriptors (matrix A) of size
-///     @p group_count.
-/// @param weights_descs Array of weights memory descriptors (matrix B) of size
-///     @p group_count.
-/// @param bias_descs Array of bias memory descriptors of size @p group_count.
-///     Passing NULL, a zero memory descriptor, or a memory descriptor with
-///     format_kind set to #dnnl_format_kind_undef disables the bias term for
-///     the respective group.
-/// @param dst_descs Array of destination memory descriptors (matrix C) of size
-///     @p group_count.
-/// @param attr Primitive attributes (can be NULL).
-/// @returns #dnnl_success on success and a status describing the error
-///     otherwise.
-dnnl_status_t DNNL_API dnnl_grouped_gemm_primitive_desc_create(
-        dnnl_primitive_desc_t *grouped_gemm_primitive_desc,
-        dnnl_engine_t engine, int group_count,
-        const_dnnl_memory_desc_t const *src_descs,
-        const_dnnl_memory_desc_t const *weights_descs,
-        const_dnnl_memory_desc_t const *bias_descs,
-        const_dnnl_memory_desc_t const *dst_descs,
-        const_dnnl_primitive_attr_t attr);
-
-/// @} dnnl_api_grouped_gemm
-
 /// @} dnnl_api_primitives
 
 /// @addtogroup dnnl_api_primitive_cache

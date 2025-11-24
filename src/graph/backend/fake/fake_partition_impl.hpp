@@ -63,10 +63,10 @@ public:
 
     void add_tensors(const op_t *op) {
         for (size_t i = 0; i < op->num_inputs(); ++i) {
-            inputs_.push_back(op->get_input_value(i)->get_logical_tensor());
+            inputs_.push_back(op->get_input_logical_tensor(i));
         }
         for (size_t i = 0; i < op->num_outputs(); ++i) {
-            outputs_.push_back(op->get_output_value(i)->get_logical_tensor());
+            outputs_.push_back(op->get_output_logical_tensor(i));
         }
     }
 

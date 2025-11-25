@@ -22,16 +22,12 @@
 #include <string>
 #include <vector>
 
-#include "gpu/intel/jit/ir/core.hpp"
-
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace conv {
 namespace jit {
-
-using namespace intel::jit;
 
 class config_t;
 class key_impl_t;
@@ -58,7 +54,7 @@ public:
     // Computes the distance between this key and other key (must be
     // non-filter), a filter with a smaller distance is a better match for the
     // key.
-    dim_t distance(const key_t &other) const;
+    int64_t distance(const key_t &other) const;
     bool operator==(const key_t &other) const;
     bool matches(const key_t &other) const;
     size_t get_hash() const;
@@ -67,7 +63,7 @@ public:
     std::string str(bool csv = false) const;
     static std::vector<std::string> csv_keys();
 
-    IR_DEFINE_DUMP()
+    void dump() const { printf("%s\n", str().c_str()); }
 
 private:
     std::shared_ptr<key_impl_t> impl_;

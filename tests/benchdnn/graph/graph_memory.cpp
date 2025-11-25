@@ -99,7 +99,8 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
             // Get memory tag of primitive memory
             int ndims = mem.ndims();
             dims_t strides(mem.strides(), mem.strides() + ndims);
-            std::string mtag = strides2memory_tag(ndims, strides);
+            dims_t shape(mem.dims(), mem.dims() + ndims);
+            std::string mtag = strides2memory_tag(shape, strides, false);
 
             mem_ = dnn_mem_t(
                     mem.md_, graph_dt, mtag, g_eng.get(), /* prefill = */ true);

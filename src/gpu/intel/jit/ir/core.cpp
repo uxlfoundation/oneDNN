@@ -18,16 +18,11 @@
 
 #include <algorithm>
 
-#include "gpu/intel/jit/pass/simplify.hpp"
-
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
-
-expr_t const_fold_non_recursive(const expr_t &expr);
-object_t const_fold(const object_t &obj);
 
 std::string to_string(op_kind_t kind) {
     switch (kind) {
@@ -236,51 +231,18 @@ type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args) {
     return type;
 }
 
-void ptr_t::normalize(expr_t &base, expr_t &off, op_kind_t op_kind) {
+void ptr_t::normalize(expr_t &base, expr_t &off) {
     // Normalize (base + off1) + off2 -> base + (off1 + off2)
     gpu_assert(off.type().is_int()) << "off is not an integer: " << off;
-    gpu_assert(utils::one_of(op_kind, op_kind_t::_add, op_kind_t::_sub))
-            << "Can't apply this operation to pointer: " << to_string(op_kind);
-
-    if (!base.is<ptr_t>()) {
-        if (op_kind == op_kind_t::_sub) off = const_fold(-off);
-        return;
-    }
-
-    off = const_fold_non_recursive(
-            binary_op_t::make(op_kind, base.as<ptr_t>().off, off));
+    off = base.as<ptr_t>().off + off;
     base = base.as<ptr_t>().base;
-}
-
-expr_t shift_ptr(op_kind_t op_kind, const expr_t &a, const expr_t &b) {
-    expr_t base = a;
-    expr_t off = b;
-    ptr_t::normalize(base, off, op_kind);
-    return ptr_t::make(base, off);
-}
-
-void normalize_ptr(const type_t &type, expr_t &base_expr, expr_t &off) {
-    if (base_expr.is<ptr_t>()) {
-        off = const_fold_non_recursive(base_expr.as<ptr_t>().off + off);
-        base_expr = base_expr.as<ptr_t>().base;
-        return;
-    }
-    gpu_assert(is_const(off)) << "var/ref requires constant offset.";
-    if (auto *ref = base_expr.as_ptr<ref_t>()) {
-        off = const_fold_non_recursive(ref->off + off);
-        base_expr = ref->var;
-        return;
-    }
-    if (base_expr.is<var_t>()) return;
-    gpu_error_not_expected() << "Unexpected expression: " << base_expr.str();
 }
 
 expr_t linear_t::to_expr() const {
     auto ret = c;
-    for (int i = 0; i < nargs(); i++) {
-        ret += u_vec[i] * v_vec[i];
-    }
-    return simplify_rewrite(ret);
+    for (int i = 0; i < nargs(); i++)
+        ret = ret + (u_vec[i] * v_vec[i]);
+    return ret;
 }
 
 static void stmt_seq_flatten(std::vector<stmt_t> &out, const stmt_t &s) {

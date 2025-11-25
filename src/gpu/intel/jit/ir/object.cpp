@@ -24,8 +24,6 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
-expr_t const_fold_non_recursive(const expr_t &expr);
-
 object_t object::impl_t::_mutate(ir_mutator_t &mutator) const {
     return *this;
 }
@@ -57,7 +55,7 @@ expr_t expr_t::operator[](const expr_t &off) const {
         int idx = shuffle.idx[i_off];
         return shuffle.vec[idx];
     }
-    if (type().is_ptr()) return shift_ptr(op_kind_t::_add, *this, off);
+    if (type().is_ptr()) return *this + off;
     if (is<var_t>() || is<ref_t>()) {
         gpu_assert(is_const(off)) << "var/ref requires constant offset.";
         return ref_t::make(*this, to_cpp<int>(off), 1);
@@ -98,34 +96,220 @@ bool to_bool(const expr_t &e) {
     return to_cpp<bool>(e);
 }
 
+expr_t normalized_neg(const expr_t &a) {
+    if (!a.type().is_scalar()) {
+        int elems = a.type().elems();
+        std::vector<expr_t> ret;
+        ret.reserve(elems);
+        for (int i = 0; i < elems; i++) {
+            ret.push_back(normalized_neg(a[i]));
+        }
+        return shuffle_t::make(ret);
+    }
+
+    if (!is_const(a)) return unary_op_t::make(op_kind_t::_minus, a);
+
+#define CASE(ir_type, cpp_type) \
+    if (a.type() == type_t::ir_type()) return to_expr(-to_cpp<cpp_type>(a))
+
+    CASE(f32, float);
+    CASE(s16, int16_t);
+    CASE(s32, int32_t);
+    CASE(s64, int64_t);
+
+#undef CASE
+
+    gpu_error_not_expected() << "Cannot handle type: " << a;
+    return expr_t();
+}
+
+expr_t normalized_mul(const expr_t &a, const expr_t &b) {
+    gpu_assert(!a.type().is_ptr() && !b.type().is_ptr());
+    if (is_zero(a) || is_zero(b)) return 0;
+    if (is_one(a)) return b;
+    if (is_one(b)) return a;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        int_imm_t::make(a.as<int_imm_t>().value * b.as<int_imm_t>().value,
+                common_type(a, b));
+    }
+    return binary_op_t::make(op_kind_t::_mul, a, b);
+}
+
+expr_t normalized_div(const expr_t &a, const expr_t &b) {
+    gpu_assert(!a.type().is_ptr() && !b.type().is_ptr());
+    gpu_assert(!is_zero(b));
+    if (is_zero(a)) return 0;
+    if (is_one(b)) return a;
+    if (a.is_equal(b)) return 1;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        int_imm_t::make(a.as<int_imm_t>().value / b.as<int_imm_t>().value,
+                common_type(a, b));
+    }
+    return binary_op_t::make(op_kind_t::_div, a, b);
+}
+
+expr_t normalized_mod(const expr_t &a, const expr_t &b) {
+    gpu_assert(!a.type().is_ptr() && !b.type().is_ptr());
+    gpu_assert(!is_zero(b));
+    if (is_zero(a) || is_one(b) || a.is_equal(b)) return 0;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        int_imm_t::make(a.as<int_imm_t>().value % b.as<int_imm_t>().value,
+                common_type(a, b));
+    }
+    return binary_op_t::make(op_kind_t::_mod, a, b);
+}
+
+expr_t normalized_add(const expr_t &a, const expr_t &b) {
+    if (a.is<ptr_t>()) {
+        gpu_assert(b.type().is_int());
+        auto &ptr = a.as<ptr_t>();
+        return ptr_t::make(ptr.base, normalized_add(ptr.off, b));
+    }
+    if (a.is<ref_t>()) {
+        gpu_assert(b.type().is_int());
+        auto &ref = a.as<ref_t>();
+        return ref_t::make(ref.var, ref.off + to_cpp<int>(b), ref.elems);
+    }
+    if (is_zero(a)) return b;
+    if (is_zero(b)) return a;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        int_imm_t::make(a.as<int_imm_t>().value + b.as<int_imm_t>().value,
+                common_type(a, b));
+    }
+    if (a.is_equal(b)) return normalized_mul(2, a);
+    return binary_op_t::make(op_kind_t::_add, a, b);
+}
+
+expr_t normalized_sub(const expr_t &a, const expr_t &b) {
+    if (a.is<ptr_t>()) {
+        gpu_assert(!b.type().is_int());
+        auto &ptr = a.as<ptr_t>();
+        return ptr_t::make(ptr.base, normalized_sub(ptr.off, b));
+    }
+    if (a.is<ref_t>()) {
+        gpu_assert(!b.type().is_int());
+        auto &ref = a.as<ref_t>();
+        return ref_t::make(ref.var, ref.off - to_cpp<int>(b), ref.elems);
+    }
+    if (is_zero(b)) return a;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        int_imm_t::make(a.as<int_imm_t>().value + b.as<int_imm_t>().value,
+                common_type(a, b));
+    }
+    if (a.is_equal(b)) return 0;
+    if (is_zero(a)) return unary_op_t::make(op_kind_t::_sub, b);
+    return binary_op_t::make(op_kind_t::_sub, a, b);
+}
+
+expr_t normalized_shl(const expr_t &a, const expr_t &b) {
+    if (is_zero(b)) return a;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        int_imm_t::make(a.as<int_imm_t>().value << b.as<int_imm_t>().value,
+                common_type(a, b));
+    }
+    return binary_op_t::make(op_kind_t::_shl, a, b);
+}
+
+expr_t normalized_shr(const expr_t &a, const expr_t &b) {
+    if (is_zero(b)) return a;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        int_imm_t::make(a.as<int_imm_t>().value >> b.as<int_imm_t>().value,
+                common_type(a, b));
+    }
+    return binary_op_t::make(op_kind_t::_shr, a, b);
+}
+
+expr_t normalized_eq(const expr_t &a, const expr_t &b) {
+    if (a.is_equal(b)) return true;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        bool_imm_t::make(a.as<int_imm_t>().value == b.as<int_imm_t>().value);
+    }
+    return binary_op_t::make(op_kind_t::_eq, a, b);
+}
+
+expr_t normalized_ne(const expr_t &a, const expr_t &b) {
+    if (a.is_equal(b)) return false;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        bool_imm_t::make(a.as<int_imm_t>().value != b.as<int_imm_t>().value);
+    }
+    return binary_op_t::make(op_kind_t::_ne, a, b);
+}
+
+expr_t normalized_gt(const expr_t &a, const expr_t &b) {
+    if (a.is_equal(b)) return false;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        bool_imm_t::make(a.as<int_imm_t>().value > b.as<int_imm_t>().value);
+    }
+    return binary_op_t::make(op_kind_t::_gt, a, b);
+}
+
+expr_t normalized_ge(const expr_t &a, const expr_t &b) {
+    if (a.is_equal(b)) return true;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        bool_imm_t::make(a.as<int_imm_t>().value >= b.as<int_imm_t>().value);
+    }
+    return binary_op_t::make(op_kind_t::_ge, a, b);
+}
+
+expr_t normalized_lt(const expr_t &a, const expr_t &b) {
+    if (a.is_equal(b)) return false;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        bool_imm_t::make(a.as<int_imm_t>().value < b.as<int_imm_t>().value);
+    }
+    return binary_op_t::make(op_kind_t::_lt, a, b);
+}
+
+expr_t normalized_le(const expr_t &a, const expr_t &b) {
+    if (a.is_equal(b)) return true;
+    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
+        bool_imm_t::make(a.as<int_imm_t>().value <= b.as<int_imm_t>().value);
+    }
+    return binary_op_t::make(op_kind_t::_le, a, b);
+}
+
+expr_t normalized_and(const expr_t &a, const expr_t &b) {
+    if (is_const(a)) return to_cpp<bool>(a) ? b : false;
+    if (is_const(b)) return to_cpp<bool>(b) ? a : false;
+    return binary_op_t::make(op_kind_t::_and, a, b);
+}
+
+expr_t normalized_or(const expr_t &a, const expr_t &b) {
+    if (is_const(a)) return to_cpp<bool>(a) ? true : b;
+    if (is_const(b)) return to_cpp<bool>(b) ? true : a;
+    return binary_op_t::make(op_kind_t::_or, a, b);
+}
+
+expr_t normalized_xor(const expr_t &a, const expr_t &b) {
+    return binary_op_t::make(op_kind_t::_xor, a, b);
+}
+
 expr_t operator-(const expr_t &a) {
-    return const_fold_non_recursive(unary_op_t::make(op_kind_t::_minus, a));
+    return normalized_neg(a);
 }
 
 #define DEFINE_BINARY_OPERATOR(op, op_kind) \
     expr_t operator op(const expr_t &a, const expr_t &b) { \
-        if (a.type().is_ptr()) return shift_ptr(op_kind, a, b); \
-        return const_fold_non_recursive(binary_op_t::make(op_kind, a, b)); \
+        return normalized_##op_kind(a, b); \
     }
 
-DEFINE_BINARY_OPERATOR(+, op_kind_t::_add)
-DEFINE_BINARY_OPERATOR(-, op_kind_t::_sub)
-DEFINE_BINARY_OPERATOR(*, op_kind_t::_mul)
-DEFINE_BINARY_OPERATOR(/, op_kind_t::_div)
-DEFINE_BINARY_OPERATOR(%, op_kind_t::_mod)
-DEFINE_BINARY_OPERATOR(<<, op_kind_t::_shl)
-DEFINE_BINARY_OPERATOR(>>, op_kind_t::_shr)
+DEFINE_BINARY_OPERATOR(+, add)
+DEFINE_BINARY_OPERATOR(-, sub)
+DEFINE_BINARY_OPERATOR(*, mul)
+DEFINE_BINARY_OPERATOR(/, div)
+DEFINE_BINARY_OPERATOR(%, mod)
+DEFINE_BINARY_OPERATOR(<<, shl)
+DEFINE_BINARY_OPERATOR(>>, shr)
 
-DEFINE_BINARY_OPERATOR(==, op_kind_t::_eq)
-DEFINE_BINARY_OPERATOR(!=, op_kind_t::_ne)
-DEFINE_BINARY_OPERATOR(>, op_kind_t::_gt)
-DEFINE_BINARY_OPERATOR(>=, op_kind_t::_ge)
-DEFINE_BINARY_OPERATOR(<, op_kind_t::_lt)
-DEFINE_BINARY_OPERATOR(<=, op_kind_t::_le)
+DEFINE_BINARY_OPERATOR(==, eq)
+DEFINE_BINARY_OPERATOR(!=, ne)
+DEFINE_BINARY_OPERATOR(>, gt)
+DEFINE_BINARY_OPERATOR(>=, ge)
+DEFINE_BINARY_OPERATOR(<, lt)
+DEFINE_BINARY_OPERATOR(<=, le)
 
-DEFINE_BINARY_OPERATOR(&, op_kind_t::_and)
-DEFINE_BINARY_OPERATOR(|, op_kind_t::_or)
-DEFINE_BINARY_OPERATOR(^, op_kind_t::_xor)
+DEFINE_BINARY_OPERATOR(&, and)
+DEFINE_BINARY_OPERATOR(|, or)
+DEFINE_BINARY_OPERATOR(^, xor)
 
 #undef DEFINE_BINARY_OPERATOR
 

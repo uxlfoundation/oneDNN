@@ -652,10 +652,44 @@ private:
         : expr_iface_t(type_t::s32()), c(c), u_vec(u_vec), v_vec(v_vec) {}
 };
 
-// Updates `base_expr` and `off` so that after return:
-// - base_expr contains a variable of a pointer type
-// - off contains an offset
-void normalize_ptr(const type_t &type, expr_t &base, expr_t &off);
+// Pointer expression: (base_ptr + off).
+class ptr_t : public expr_iface_t<ptr_t> {
+public:
+    // off - offset in elements of the base type.
+    static expr_t make(const expr_t &base, const expr_t &off) {
+        return expr_t(new ptr_t(base, off));
+    }
+
+    bool operator==(const ptr_t &other) const {
+        return base.is_equal(other.base) && off.is_equal(other.off);
+    }
+
+    size_t get_hash() const override { return ir_utils::get_hash(base, off); }
+
+    // Normalizes (base op off) pointer so that the new base is a variable and
+    // off is an offset expression.
+    // Example:
+    //     Before call: base = (base0 + off0), off = off1
+    //     After call:  base = base0, off = off0 + off1
+    static void normalize(expr_t &base, expr_t &off);
+
+    expr_t base;
+    expr_t off;
+
+private:
+    ptr_t(const expr_t &base, const expr_t &off)
+        : expr_iface_t(base.type().with_ptr()), base(base), off(off) {
+        normalize(this->base, this->off);
+    }
+};
+
+inline const expr_t &get_base(const expr_t &e) {
+    if (e.is_empty()) return e;
+    if (e.is<var_t>()) return e;
+    if (e.is<ptr_t>()) return e.as<ptr_t>().base;
+    gpu_error_not_expected() << e;
+    return e;
+}
 
 // Load from a GRF buffer.
 // C++ equivalent (when type is scalar):
@@ -695,51 +729,11 @@ private:
     load_t(const type_t &_type, const expr_t &_buf, const expr_t &_off,
             int _stride)
         : expr_iface_t(_type), buf(_buf), off(_off), stride(_stride) {
-        normalize_ptr(type, buf, off);
+        ptr_t::normalize(buf, off);
         gpu_assert(is_var(buf) || is_ref(buf)) << buf;
         if (stride == type.base().size()) stride = default_stride;
     }
 };
-
-// Pointer expression: (base_ptr + off).
-class ptr_t : public expr_iface_t<ptr_t> {
-public:
-    // off - offset in elements of the base type.
-    static expr_t make(const expr_t &base, const expr_t &off) {
-        return expr_t(new ptr_t(base, off));
-    }
-
-    bool operator==(const ptr_t &other) const {
-        return base.is_equal(other.base) && off.is_equal(other.off);
-    }
-
-    size_t get_hash() const override { return ir_utils::get_hash(base, off); }
-
-    // Normalizes (base op off) pointer so that the new base is a variable and
-    // off is an offset expression.
-    // Example:
-    //     Before call: base = (base0 + off0), off = off1
-    //     After call:  base = base0, off = off0 + off1
-    static void normalize(
-            expr_t &base, expr_t &off, op_kind_t op_kind = op_kind_t::_add);
-
-    expr_t base;
-    expr_t off;
-
-private:
-    ptr_t(const expr_t &base, const expr_t &off)
-        : expr_iface_t(base.type().with_ptr()), base(base), off(off) {
-        normalize(this->base, this->off);
-    }
-};
-
-inline const expr_t &get_base(const expr_t &e) {
-    if (e.is_empty()) return e;
-    if (e.is<var_t>()) return e;
-    if (e.is<ptr_t>()) return e.as<ptr_t>().base;
-    gpu_error_not_expected() << e;
-    return e;
-}
 
 class shuffle_t : public expr_iface_t<shuffle_t> {
 public:
@@ -1072,11 +1066,6 @@ inline int to_int(const expr_t &e) {
     return to_cpp<int>(e);
 }
 
-// Returns a shifted pointer with base `a` (pointer) and offset `b` (in elements).
-// shift_ptr(op, a, b) returns &(a op b) in C++ terms (op is either addition or
-// subtraction).
-expr_t shift_ptr(op_kind_t op_kind, const expr_t &a, const expr_t &b);
-
 // Base class for IR statement objects.
 class stmt_impl_t : public object::impl_t {
 public:
@@ -1361,7 +1350,7 @@ private:
         , stride(_stride)
         , mask(_mask)
         , fill_mask0(_fill_mask0) {
-        normalize_ptr(value.type(), buf, off);
+        ptr_t::normalize(buf, off);
         gpu_assert(is_var(buf) || is_ref(buf)) << buf;
         if (stride == value.type().base().size()) stride = default_stride;
         if (mask)

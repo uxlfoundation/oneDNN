@@ -12,7 +12,7 @@ maximum value along the axis improves numerical stability.
 
 If the optional `stats` output is requested, it is defined as:
 
-\f[ \stats = max + \log{\sum_{j=1}^{C} exp(src_j - max)} \f]
+\f[ stats = max + \log{\sum_{j=1}^{C} exp(src_j - max)} \f]
 
 ## Operation attributes
 

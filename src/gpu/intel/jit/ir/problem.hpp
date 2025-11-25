@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "gpu/intel/jit/dsl/tensor.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/utils.hpp"
 
 namespace dnnl {
@@ -93,7 +92,7 @@ struct tile_coord_t {
     dim_t elems() const { return tile.elems(); }
     bool has_zero_coord() const {
         for (auto &d : coord) {
-            if (!is_zero(coord.at(d))) return false;
+            if (!is_const(coord.at(d), 0)) return false;
         }
         return true;
     }

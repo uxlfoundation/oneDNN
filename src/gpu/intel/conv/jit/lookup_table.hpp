@@ -30,6 +30,8 @@ namespace intel {
 namespace conv {
 namespace jit {
 
+using blocking_params_t = intel::jit::blocking_params_t;
+
 class lookup_table_t {
 public:
     struct entry_t {

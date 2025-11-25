@@ -115,7 +115,7 @@ void lookup_table_t::parse(std::istream &in) {
     while (std::getline(in, line)) {
         if (line.empty() || line[0] == '#') continue;
         entry_t e;
-        jit::parse(line, e);
+        intel::jit::parse(line, e);
         data_[e.key.desc()].push_back(e);
     }
 }

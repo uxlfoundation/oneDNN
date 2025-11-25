@@ -19,11 +19,8 @@
 
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/engine.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/include/hw.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
-#include "gpu/intel/jit/utils/utils.hpp"
-#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {

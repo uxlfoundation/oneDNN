@@ -15,7 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/post_ops.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/include/object.hpp"
 
 namespace dnnl {
 namespace impl {

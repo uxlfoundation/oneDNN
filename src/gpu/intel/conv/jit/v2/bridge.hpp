@@ -21,7 +21,6 @@
 #include "gpu/intel/conv/jit/v2/plan.hpp"
 #include "gpu/intel/conv/jit/v2/problem.hpp"
 #include "gpu/intel/conv/jit/v2/tensor_utils.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
 #include "gpu/intel/jit/ir/v2/tensor.hpp"

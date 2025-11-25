@@ -65,6 +65,7 @@ FILE(GLOB DNNL_OP_EXECUTION_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/test_quantize.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_reduce.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_reorder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_rms_norm.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_sdp_decomp.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_softmax.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test_typecast.cpp

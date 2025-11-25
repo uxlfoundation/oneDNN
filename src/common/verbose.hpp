@@ -424,6 +424,8 @@ std::string rt_mds2str(primitive_kind_t prim_kind, const memory_desc_t *src_md,
 // Returns a verbose string for primitive attributes. Used in ukernel API.
 std::string attr2str(const primitive_attr_t *attr);
 
+std::string md2fmt_tag_str(const memory_desc_t *md);
+
 } // namespace impl
 } // namespace dnnl
 

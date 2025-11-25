@@ -136,8 +136,6 @@ std::shared_ptr<value_t> insert_empty_scratchpad(std::shared_ptr<op_t> &op);
 
 std::shared_ptr<value_t> insert_empty_workspace(std::shared_ptr<op_t> &op);
 
-std::string get_format_tag_str(const dnnl::memory::desc &md);
-
 dnnl::memory::format_tag get_format_tag(const dnnl::memory::desc &md);
 
 dnnl::accumulation_mode str2accumulation_mode(

@@ -146,7 +146,7 @@ dnnl::graph::op::attr attrstr2kind(const std::string &attr_name);
 const std::string &attrstr2type(const std::string &attr_name);
 
 std::string get_default_tag(size_t length);
-std::string strides2memory_tag(const size_t ndims,
+std::string strides2memory_tag(const dnnl::graph::logical_tensor::dims &dims,
         const dnnl::graph::logical_tensor::dims &strides,
         bool use_x_tag = true);
 dnnl::graph::logical_tensor::dims memory_tag2strides(

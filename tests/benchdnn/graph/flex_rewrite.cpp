@@ -1236,8 +1236,8 @@ int flex_rewrite_t::inports_shape_rewrite(
                 }
 
                 change_stride = true;
-                std::string tmp_mtag = strides2memory_tag(
-                        lt.shape_.size(), new_stride_dims, false);
+                std::string tmp_mtag
+                        = strides2memory_tag(lt.shape_, new_stride_dims, false);
                 if (!is_contiguous_memory(
                             new_stride_dims, lt.shape_, tmp_mtag)) {
                     dgraph.lt_2_mtag_[lt.id_] = "not_available";

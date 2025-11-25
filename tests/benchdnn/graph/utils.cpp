@@ -510,33 +510,57 @@ std::string get_default_tag(size_t length) {
     return mtag;
 }
 
-std::string strides2memory_tag(const size_t ndims,
+// refer to the implementation of md2fmt_tag_str() in verbose.cpp.
+std::string strides2memory_tag(const dnnl::graph::logical_tensor::dims &dims,
         const dnnl::graph::logical_tensor::dims &strides, bool use_x_tag) {
+    const size_t ndims = dims.size();
     if (ndims == 0) return "";
-    std::string template_tag = "abcdefghijk";
-    std::vector<std::pair<int64_t, char>> vp;
-    bool valid_strides = ndims == strides.size();
+
+    const std::string template_tag = "abcdefghijk";
     std::string memory_tag;
 
-    // Inserting element in pair vector to keep track of indexes
+    // validate strides
+    bool valid_strides = ndims == strides.size();
     for (size_t i = 0; i < strides.size(); ++i) {
-        if (strides[i] > 0) {
-            vp.emplace_back(strides[i], template_tag.at(i));
-        } else {
-            valid_strides = false;
-        }
+        if (strides[i] <= 0) valid_strides = false;
     }
 
     if (valid_strides) {
-        // Sort the strides to descending order
-        std::sort(vp.begin(), vp.end(),
-                [](const std::pair<int64_t, char> &x,
-                        const std::pair<int64_t, char> &y) {
-                    return x.first > y.first;
-                });
-        for (size_t i = 0; i < strides.size(); ++i) {
-            memory_tag += vp[i].second;
+        struct sort_key_t {
+            uint64_t stride_order;
+            int64_t outer_block;
+            uint64_t idx;
+            char dim_char;
+        };
+
+        std::vector<sort_key_t> sort_keys(ndims);
+        for (size_t i = 0; i < ndims; ++i) {
+            sort_key_t key;
+            key.stride_order = strides[i];
+            key.outer_block = dims[i];
+            key.idx = i;
+            key.dim_char = template_tag.at(i);
+            sort_keys[i] = key;
         }
+
+        // Sort the strides to descending order
+        std::sort(sort_keys.begin(), sort_keys.end(),
+                [](const sort_key_t &left, const sort_key_t &right) {
+                    if (left.stride_order < right.stride_order) return false;
+                    if (left.stride_order == right.stride_order) {
+                        if (left.outer_block < right.outer_block) return false;
+                        if (left.outer_block == right.outer_block)
+                            return left.idx < right.idx;
+                    }
+                    return true;
+                });
+
+        char dim_chars[DNNL_MAX_NDIMS + 1];
+        for (size_t i = 0; i < ndims; ++i)
+            dim_chars[i] = sort_keys[i].dim_char;
+        dim_chars[ndims] = '\0';
+
+        memory_tag = std::string(dim_chars);
     } else {
         memory_tag = template_tag.substr(0, ndims);
     }

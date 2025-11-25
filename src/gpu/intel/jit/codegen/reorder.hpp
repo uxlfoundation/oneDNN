@@ -138,7 +138,7 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     //   - <1; 1, 0>, which is a more compatible representation of <N; N, 1>
     int grf_src = grf_size / std::max(src.hs(), 1);
     int grf_dst = grf_size / std::max(dst.hs(), 1);
-
+    auto new_src_type = src.type();
 #if XE3P
     bool needs_stride_alignment = false;
     if (scope.hw() >= ngen::HW::XE3P_35_10 && align_stride) {
@@ -146,6 +146,12 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
         auto dst_stride_bytes = dst.hs() * dst_type_size;
         needs_stride_alignment = (src_stride_bytes != dst_stride_bytes);
         src_stride = dst_stride_bytes / src_type_size;
+        if (is_bf_to_f && src.hs() > 0) {
+            needs_stride_alignment = true;
+            src_stride = dst.hs();
+            new_src_type = dst.type();
+            src_type_size = ngen::getBytes(new_src_type);
+        }
     }
 #else
     const bool needs_stride_alignment = false;
@@ -165,7 +171,7 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     int src_size = std::max(src_type_size * esize * src_stride, src_type_size);
     auto new_src = scope.alloc_reg_buf_data(
             utils::div_up(src_size + new_src_off * src_type_size, grf_size));
-    new_src = new_src.format(new_src_off, esize, src_stride, src.type());
+    new_src = new_src.format(new_src_off, esize, src_stride, new_src_type);
     emit_reorder_1d_tile(
             host, scope, esize, src, src.hs(), new_src, src_stride);
     src = std::move(new_src);

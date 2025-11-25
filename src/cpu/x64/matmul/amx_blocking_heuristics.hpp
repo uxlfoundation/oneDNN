@@ -99,9 +99,9 @@ public:
         : matmul_amx_blocking_params_t(bgmmc) {
         assert(bgmmc.tr_a_dt_sz == bgmmc.tr_b_dt_sz);
         gemm_dt_sz = bgmmc.tr_a_dt_sz;
-        min_m_elem = matmul_amx_blocking_params_macro_t::min_m_dim;
         min_k_elem = matmul_amx_blocking_params_macro_t::min_k_dim / gemm_dt_sz;
-        min_n_elem = matmul_amx_blocking_params_macro_t::min_n_dim;
+        min_mn_elem = matmul_amx_blocking_params_macro_t::min_mn_dim
+                / bgmmc.c_dt_sz;
         k_threshold_write_bound_layer_elem
                 = matmul_amx_blocking_params_macro_t::
                           k_threshold_write_bound_layer
@@ -122,9 +122,8 @@ protected:
     float calculate_blocking_scores() const override;
 
 private:
-    static const dim_t min_m_dim = 64;
     static const dim_t min_k_dim = 256;
-    static const dim_t min_n_dim = 64;
+    static const dim_t min_mn_dim = 64;
     static const dim_t k_threshold_write_bound_layer = 256;
     static const dim_t min_n_dim_write_bound_layer = 256;
     dim_t n_decomposition = 32;
@@ -132,7 +131,7 @@ private:
     size_t gemm_dt_sz {};
     dim_t m_per_thread {}, k_per_thread {}, n_per_thread {}, b_per_thread {};
     bool is_horizontal {};
-    dim_t min_m_elem {}, min_k_elem {}, min_n_elem {};
+    dim_t min_k_elem {}, min_mn_elem {};
     dim_t k_threshold_write_bound_layer_elem {},
             min_n_dim_write_bound_layer_elem {};
 

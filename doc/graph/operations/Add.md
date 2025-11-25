@@ -52,3 +52,11 @@ Add operation supports the following data type combinations.
 | f32       | bf16, f16 | f32  |
 | bf16, f16 | f32       | f32  |
 | s32       | s32       | s32  |
+
+## Implementation Notes
+
+Add supports in-place operations, meaning that `src_0` can be used as both
+input and output. In case of in-place operation, the original `src_0` data
+will be overwritten. This support is limited to cases when data types of
+`src_0` and `dst` are identical. Use in-place operations whenever possible for
+performance.

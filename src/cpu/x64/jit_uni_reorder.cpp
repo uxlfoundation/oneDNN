@@ -2638,7 +2638,7 @@ void jit_uni_reorder_t::reduce_compensation(char *out,
     const size_t zp_offset
             = offset + (pd()->prb_.req_s8s8_comp ? GN * comp_dt_size : 0);
 
-    parallel_nd(GN, [&](int idx) {
+    parallel_nd(GN, [=](int idx) {
         int32_t acc = 0;
         for (int ithr = 0; ithr < nthr; ithr++) {
             acc -= compensation_reduce_scratch[ithr * wspace_per_thr_size
@@ -2760,7 +2760,7 @@ status_t jit_uni_reorder_t::execute(const exec_ctx_t &ctx) const {
     const auto wspace_per_thr_bytes = wspace_per_thr_size * sizeof(int32_t);
 
     const int nthr_par = ndims_level == 0 ? 1 : pd()->nthr_;
-    parallel(nthr_par, [&](const int ithr, const int nthr) {
+    parallel(nthr_par, [=](const int ithr, const int nthr) {
         int32_t *compensation_scratch = nullptr;
         if (req_compensation) {
             if (ndims_level == 0)
@@ -2898,7 +2898,7 @@ status_t jit_blk_reorder_t::execute(const exec_ctx_t &ctx) const {
     auto itype_sz_ = data_type_size(pd()->prb_.itype);
     auto otype_sz_ = data_type_size(pd()->prb_.otype);
 
-    parallel_nd(BH, FL, [&](dim_t bh, dim_t fl) {
+    parallel_nd(BH, FL, [=](dim_t bh, dim_t fl) {
         auto fl_b = fl * block_sz;
         auto bh_b = bh_stride * bh;
         auto *i = in + (bh_b + fl_b * i1) * itype_sz_;

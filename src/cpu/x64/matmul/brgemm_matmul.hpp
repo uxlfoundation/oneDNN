@@ -110,12 +110,12 @@ private:
             const char *B_data_batch_ptr, int ithr, int b_idx, int n_blk_idx,
             int k_blk_idx) const;
     void maybe_reduce_partial_results_and_apply_postops(
-            const brg_matmul_exec_ctx_t &brgmm_ctx) const;
+            const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const;
     void maybe_reduce_A(const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr,
             int gemm_batch, int m_blk_idx, int n_blk_idx, int k_chunk_idx,
             bool do_init, bool has_K_tail, bool do_K_tail) const;
     void maybe_reduce_and_convert_partial_results_A(
-            const brg_matmul_exec_ctx_t &brgmm_ctx) const;
+            const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const;
     void accumulate(
             char *result_ptr, const char *reduce_ptr, size_t size) const;
 

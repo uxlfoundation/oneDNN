@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <future> // for std::promise and std::future
 #include <map>
 #include <numeric>
 #include <string>
@@ -263,6 +264,18 @@ struct graph_fpmath_mode_t {
     // Since fpmath_mode doesn't provide an "undef" value that would indicate
     // it was not set externally to the json case, need to maintain this flag.
     bool override_json_value_ = false;
+};
+
+struct stream_staller_t {
+    // Enqueue tasks to stall a primitive execution tasks for asynchronous
+    // threadpool runtime. For rest runtimes does nothing.
+    stream_staller_t(graph::cpp_stream_t &stream);
+
+    // A signal the submission has completed and ready for execution.
+    void release();
+
+private:
+    std::promise<void> prom_;
 };
 
 } // namespace graph

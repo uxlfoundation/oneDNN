@@ -18,6 +18,7 @@
 #define DNNL_COMMON_HPP
 
 #include <functional>
+#include <future> // for std::promise and std::future
 #include <stddef.h>
 #include <stdint.h>
 #include <vector>
@@ -141,6 +142,7 @@ inline const engine_t &get_cpu_engine() {
 
 bool is_cpu(const dnnl_engine_t &engine = get_test_engine());
 bool is_gpu(const dnnl_engine_t &engine = get_test_engine());
+bool is_async(const dnnl_engine_t &engine = get_test_engine());
 bool is_sycl_engine(const dnnl_engine_t &engine = get_test_engine());
 bool is_opencl_engine(const dnnl_engine_t &engine = get_test_engine());
 bool is_nvidia_gpu(const dnnl_engine_t &engine = get_test_engine());
@@ -181,6 +183,18 @@ struct args_t {
 
 private:
     std::vector<std::pair<int, const dnn_mem_t *>> args_;
+};
+
+struct stream_staller_t {
+    // Enqueue tasks to stall a primitive execution tasks for asynchronous
+    // threadpool runtime. For rest runtimes does nothing.
+    stream_staller_t(stream_t &stream);
+
+    // A signal the submission has completed and ready for execution.
+    void release();
+
+private:
+    std::promise<void> prom_;
 };
 
 template <typename prb_t>

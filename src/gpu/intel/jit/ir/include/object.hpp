@@ -19,6 +19,7 @@
 
 #include <string>
 
+#include "gpu/intel/jit/ir/include/type.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
@@ -268,6 +269,31 @@ private:
     impl_t *impl_;
 };
 
+namespace expr {
+// Base class for IR expression objects.
+class impl_t : public object::impl_t {
+public:
+    impl_t(object::impl_t::info_t type_info, const type_t &type)
+        : object::impl_t(type_info), type(type) {}
+
+    type_t type;
+};
+
+template <typename T>
+struct iface_t : public impl_t, public object::info_t<T> {
+    iface_t(const type_t &type) : impl_t(T::get_info(), type) {}
+
+    bool is_equal(const object::impl_t &obj) const override {
+        if (!obj.is<T>()) return false;
+        return (*static_cast<const T *>(this) == obj.as<T>());
+    }
+
+    object_t _mutate(ir_mutator_t &mutator) const override;
+    void _visit(ir_visitor_t &visitor) const override;
+};
+
+} // namespace expr
+
 // Wrapper for IR expression objects.
 class expr_t : public object_t {
 public:
@@ -369,6 +395,28 @@ public:
     }
 
     stmt_t append(const stmt_t &s) const;
+};
+
+class var_t : public expr::iface_t<var_t> {
+public:
+    static expr_t make(const type_t &type, const std::string &name,
+            bool is_mutable = false) {
+        return expr_t(new var_t(type, name, is_mutable));
+    }
+
+    bool operator==(const var_t &other) const {
+        // Do not allow variable cloning.
+        return this == &other;
+    }
+
+    size_t get_hash() const override { return ir_utils::get_hash(name); }
+
+    std::string name;
+    bool is_mutable = false;
+
+private:
+    var_t(const type_t &type, const std::string &name, bool is_mutable)
+        : expr::iface_t<var_t>(type), name(name), is_mutable(is_mutable) {}
 };
 
 } // namespace jit

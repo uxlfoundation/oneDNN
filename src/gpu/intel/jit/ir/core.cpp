@@ -590,6 +590,18 @@ void ir_visitor_t::_visit(const while_t &obj) {
     visit(obj.body);
 }
 
+template <typename T>
+object_t expr::iface_t<T>::_mutate(ir_mutator_t &mutator) const {
+    return mutator._mutate(*static_cast<const T *>(this));
+}
+template <typename T>
+void expr::iface_t<T>::_visit(ir_visitor_t &visitor) const {
+    return visitor._visit(*static_cast<const T *>(this));
+}
+
+template object_t expr::iface_t<var_t>::_mutate(ir_mutator_t &mutator) const;
+template void expr::iface_t<var_t>::_visit(ir_visitor_t &mutator) const;
+
 } // namespace jit
 } // namespace intel
 } // namespace gpu

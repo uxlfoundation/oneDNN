@@ -18,7 +18,7 @@
 #define GPU_INTEL_JIT_IR_WALK_ORDER_HPP
 
 #include "gpu/intel/jit/dsl/tensor.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/ir/include/object.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {

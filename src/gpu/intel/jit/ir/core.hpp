@@ -932,28 +932,6 @@ private:
         : expr_iface_t(unary_op_type(op_kind, a)), op_kind(op_kind), a(a) {}
 };
 
-class var_t : public expr_iface_t<var_t> {
-public:
-    static expr_t make(const type_t &type, const std::string &name,
-            bool is_mutable = false) {
-        return expr_t(new var_t(type, name, is_mutable));
-    }
-
-    bool operator==(const var_t &other) const {
-        // Do not allow variable cloning.
-        return this == &other;
-    }
-
-    size_t get_hash() const override { return ir_utils::get_hash(name); }
-
-    std::string name;
-    bool is_mutable = false;
-
-private:
-    var_t(const type_t &type, const std::string &name, bool is_mutable)
-        : expr_iface_t(type), name(name), is_mutable(is_mutable) {}
-};
-
 // Index into a buffer
 // off is offset in number of elements
 // elems is number of consecutive elements to access starting from off

@@ -331,7 +331,6 @@ bool pd_t::zp_ok() {
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!
     // ?????? check all tensors ???????? what about C ???????
-
     bool allow = gpu_utils::dev_getenv("ALLOW_HOSTSCALARS", true);
     if (attr_zps.has_host_scalars() && !allow) {
         VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");

@@ -84,9 +84,9 @@ struct pd_t : public gemm::pd_t {
     bool quant_enabled_ = false;
 
     // @@@@@@@
-    bool a_zp_host_scalar_ = false;
-    bool b_zp_host_scalar_ = false;
-    bool c_zp_host_scalar_ = false;
+    //bool a_zp_host_scalar_ = false;
+    //bool b_zp_host_scalar_ = false;
+    //bool c_zp_host_scalar_ = false;
     // @@@@@@@
     int a_scales_group_k_ = 0, a_scales_group_m_ = 0;
     int b_scales_group_k_ = 0, b_scales_group_n_ = 0;

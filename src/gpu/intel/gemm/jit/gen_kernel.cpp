@@ -498,6 +498,15 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
 
 // !!!!!!!!!!!!!!!!!!!!!!!! possibly HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    //@@@@@@@@@@@@@
+    problem_.ao_hostscalar = a_quant.zp_host_scalar;
+    problem_.bo_hostscalar = b_quant.zp_host_scalar;
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : setup problem_.ao_hostscalar problem_.bo_hostscalar = %d %d", problem_.ao_hostscalar, problem_.bo_hostscalar);
+    //@@@@@@@@@@@@@
+
+    bool mynew = gpu_utils::dev_getenv("MYNEW", false);
+
+
     if (a_quant.zp_ndims >= 0) problem_.aOffset = ABOffset::Calc;
     if (b_quant.zp_ndims >= 0) problem_.bOffset = ABOffset::Calc;
     problem_.aoPtrDims = a_quant.zp_ndims;

@@ -100,6 +100,8 @@ static gemmstone::Scalar stringToScalar(std::string val) {
 #endif
 
 status_t gen_desc_t::finalize(const char *tags) {
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_desc_t::finalize(const char *tags) ++++++>");
+
     // Update problem alignments to match catalog entry.
     if (!isPacked(problem_.A.layout)
             && problem_.Ta_ext.paddedSize() >= problem_.Ta.paddedSize()) {
@@ -335,6 +337,7 @@ status_t gen_desc_t::finalize(const char *tags) {
     if (strategy_.kInterleave) aux_params_.wgK = strategy_.wg[LoopK];
     update_driver_info();
 
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_desc_t::finalize(const char *tags) <++++++ success");
     return status::success;
 }
 
@@ -456,6 +459,9 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     align_c = nstl::max(align_c, int(c_type_size));
 
     // Set up problem structure.
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : !!!!!! main setup problem_ structure !!!!!");
+
     problem_.Ta = problem_.Ta_ext = convert_dnnl_to_kernel_type(a_type);
     problem_.Tb = problem_.Tb_ext = convert_dnnl_to_kernel_type(b_type);
     problem_.Tc = convert_dnnl_to_kernel_type(acc_type);
@@ -464,8 +470,6 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     problem_.Tao = convert_dnnl_to_kernel_type(a_quant.zp_type);
     problem_.Tbo = convert_dnnl_to_kernel_type(b_quant.zp_type);
     problem_.Tco = convert_dnnl_to_kernel_type(co_type);
-
-    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : Tao Tbo Tco = %d %d %d", (int)problem_.Tao,(int)problem_.Tbo,(int)problem_.Tco);
 
     problem_.A.layout = trans_a ? MatrixLayout::T : MatrixLayout::N;
     problem_.B.layout = trans_b ? MatrixLayout::T : MatrixLayout::N;
@@ -492,13 +496,13 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.batchDims = batch_dims;
     }
 
-// !!!!!!!!!!!!!!!!!!!!!!!! possibly HERE
+// !!!!!!!!!!!!!!!!!!!!!!!! possibly HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (a_quant.zp_ndims >= 0) problem_.aOffset = ABOffset::Calc;
     if (b_quant.zp_ndims >= 0) problem_.bOffset = ABOffset::Calc;
     problem_.aoPtrDims = a_quant.zp_ndims;
     problem_.boPtrDims = b_quant.zp_ndims;
-    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : set aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims,problem_.boPtrDims);
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : setup aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims,problem_.boPtrDims);
 
     problem_.AO.layout = MatrixLayout::N;
     problem_.BO.layout
@@ -612,7 +616,11 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         if (problem_.bqGroupK == 0) problem_.bqGroupK = problem_.aqGroupK;
     }
 
+
     // Select a kernel from the catalog.
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : Select a kernel from the catalog");
+
     std::vector<MatchParams> match_params;
     MatchParams base(hw_, has_systolic, is_integrated, problem_);
 
@@ -762,14 +770,14 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     Ts_ = problem_.Ts;
     beta_ = problem_.beta;
 
-    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::select_kernel <---- return selct(catalog()...)");
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::select_kernel <---- return select(catalog()...)");
 
     return select(catalog(), static_cast<int>(match_params.size()),
             match_params.data(), eval_params_, aux_params_, &observer);
 }
 
 status_t gen_nocopy_desc_t::finalize() {
-    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::finalize() ---->");
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::finalize() ----> final update problem_");
     // Update A/B/C types from entry.
     Type Ta_new, Ta_ext_new, Tb_new, Tb_ext_new, Tc_new;
     parsePrecisions(entry_->selector.precisions[0], Ta_ext_new, Ta_new);
@@ -811,6 +819,7 @@ status_t gen_nocopy_desc_t::finalize() {
     return gen_desc_t::finalize(tags_.c_str());
 }
 
+// ??????????????????? also TODO ???????????????????????????????????????????
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         int stepping, int eu_count, bool is_integrated, int batch_dims,
         bool packed_c, bool trans_co, bool a_offset, bool b_offset,

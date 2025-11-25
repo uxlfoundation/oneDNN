@@ -74,7 +74,7 @@ struct gen_t : public primitive_t {
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
-            VDEBUGINFO(4, primitive, gemm, "MY ==== call init_attrs()");
+            VDEBUGINFO(4, primitive, gemm, "MY init ==== call init_attrs()");
             VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
 
             // If we have both grouped scales and grouped zero-points, they must
@@ -101,7 +101,7 @@ struct gen_t : public primitive_t {
                         IMPLICATION(b_gs_2d(), bsc_group_k == bgs_group_k),
                         VERBOSE_UNSUPPORTED_ZP_CFG);
             }
-            VDEBUGINFO(4, primitive, gemm, "MY ==== checked groups");
+            VDEBUGINFO(4, primitive, gemm, "MY init ==== checked groups");
 
             const auto d = desc();
 
@@ -291,7 +291,6 @@ struct gen_t : public primitive_t {
             auto bo_type = with_b_zero_points()
                     ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                     : data_type::s32;
-
             VDEBUGINFO(4, primitive, gemm, "MY init ===== : ao_type bo_type = %d %d",(int)ao_type,(int)bo_type);
 
             auto ag_type = with_a_group_sums()
@@ -377,10 +376,13 @@ struct gen_t : public primitive_t {
             jit::quant_params c_quant = {c_scales_type_, co_type, bg_type,
                     csc_dims_, -1, -1, 0, c_q2d_group_m(), c_q2d_group_n(),
                     has_gs(DNNL_ARG_C), with_mx_scale()};
-            VDEBUGINFO(4, primitive, gemm,"MY init ===== : inited jit::quant_params <a b c>_quant where ao_dims_ bo_dims_ = %d %d",ao_dims_,bo_dims_);
+            VDEBUGINFO(4, primitive, gemm,"MY init ===== : init jit::quant_params <a,b,c>_quant, where ao_dims_ bo_dims_ = %d %d",ao_dims_,bo_dims_);
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
+
+            VDEBUGINFO(4, primitive, gemm,"MY init ===== : trying to select kernel");
+
             auto entries = kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,
                     batch_dims(), eff_transa(), eff_transb(), eff_trans_bias(),
@@ -391,8 +393,8 @@ struct gen_t : public primitive_t {
                     eff_m(), eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
                     d->batch(), std::move(gpu_post_ops));
 
-            VDEBUGINFO(4, primitive, gemm,"MY init ===== : trying to select kernel");
             for (auto &entry : entries) {
+                VDEBUGINFO(4, primitive, gemm,"MY init ===== : >>>> iter loop by entries (from select_kernel(...))");
                 kernel_desc_.set_entry(entry);
                 auto status = kernel_desc_.finalize();
                 // select_kernel can return a strategy that failed in the finalize call
@@ -471,10 +473,12 @@ struct gen_t : public primitive_t {
                     }
                 }
             }
+            VDEBUGINFO(4, primitive, gemm,"MY init ===== : <<<< loop by entries : kernel_success = %d", kernel_success);
 
             VDISPATCH_GEMM(
                     kernel_success, "matching kernel not found in catalog");
 
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== init_scratchpad()");
             init_scratchpad();
 
             VDEBUGINFO(4, primitive, gemm, "MY init <===== success");

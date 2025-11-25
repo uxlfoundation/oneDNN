@@ -398,10 +398,14 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         VDEBUGINFO(4, primitive, kernel_selector, "MY: *tagPtr++ = ReqABOffset");
         *tagPtr++ = ReqABOffset;
     }
+
+
+    // ???????????????? How it is if xxxPtrDims == -1 ???????????????
     if (problem.aoPtrDims > 0 || problem.boPtrDims > 0){
         VDEBUGINFO(4, primitive, kernel_selector, "MY: *tagPtr++ = ReqOffsetMultiDim");
         *tagPtr++ = ReqOffsetMultiDim;
     }
+    // ???????????????? How it is if xxxPtrDims == -1 ???????????????
 
     problem.autoTypeConversions(hw, systolicAvailable);
     if (problem.needsASums() && !problem.sumA) *tagPtr++ = ReqSumA;

@@ -394,15 +394,16 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
             *tagPtr++ = ReqBatchMultiDim;
     }
 
+    // ???????????????? How it is if xxxPtrDims == -1 ???????????????
+
     if (problem.aOffset != ABOffset::None || problem.bOffset != ABOffset::None){
-        VDEBUGINFO(4, primitive, kernel_selector, "MY: *tagPtr++ = ReqABOffset");
+        //VDEBUGINFO(4, primitive, kernel_selector, "MY: *tagPtr++ = ReqABOffset");
         *tagPtr++ = ReqABOffset;
     }
 
-
     // ???????????????? How it is if xxxPtrDims == -1 ???????????????
     if (problem.aoPtrDims > 0 || problem.boPtrDims > 0){
-        VDEBUGINFO(4, primitive, kernel_selector, "MY: *tagPtr++ = ReqOffsetMultiDim");
+        //VDEBUGINFO(4, primitive, kernel_selector, "MY: *tagPtr++ = ReqOffsetMultiDim");
         *tagPtr++ = ReqOffsetMultiDim;
     }
     // ???????????????? How it is if xxxPtrDims == -1 ???????????????

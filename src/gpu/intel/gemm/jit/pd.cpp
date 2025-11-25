@@ -221,13 +221,13 @@ bool pd_t::quant_enabled() {
 
 status_t pd_t::init_attrs() {
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs @@@@@ >");
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs ***** >");
 
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: @@@@@ : wei_decomp_ dy_quant_enabled_ quant_enabled_ = %d %d %d",wei_decomp_,dy_quant_enabled_,quant_enabled_);
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : wei_decomp_ dy_quant_enabled_ quant_enabled_ = %d %d %d",wei_decomp_,dy_quant_enabled_,quant_enabled_);
 
     const auto &d = desc();
 
@@ -267,8 +267,8 @@ status_t pd_t::init_attrs() {
     bsc_dims_ = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
     csc_dims_ = quant_entry_ndims(c_scales, c_scale_md_, -1);
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: @@@@@ : init pdt:: ao_dims_ = %d", ao_dims_);
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: @@@@@ : init pdt:: bo_dims_ = %d", bo_dims_);
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : init pdt:: ao_dims_ = %d", ao_dims_);
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : init pdt:: bo_dims_ = %d", bo_dims_);
 
     a_scales_type_ = a_scales.get_data_type();
     if (!a_zps.has_default_groups()) {
@@ -304,7 +304,7 @@ status_t pd_t::init_attrs() {
         with_mx_scale_ = c_scales.is_mx();
     }
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs < @@@@@");
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs < *****");
     return status::success;
 }
 
@@ -338,9 +338,9 @@ bool pd_t::zp_ok() {
         return false;
     }
     // !!!!!!!!!!!!!!!!!!!!!!! just to debug - no needed
-    const bool a_host = a_zps.is_host_scalar();
-    const bool b_host = b_zps.is_host_scalar();
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : a_host b_host = %d %d",a_host,b_host);
+    //const bool a_host = a_zps.is_host_scalar();
+    //const bool b_host = b_zps.is_host_scalar();
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : a_host b_host = %d %d",a_host,b_host);
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (!a_zps.has_default_values()) {

@@ -113,7 +113,7 @@ protected:
     status_t finalize(const char *tags);
     void update_driver_info();
 };
-// ?????????????? host scalar here ???? guess not needed
+
 struct quant_params {
     data_type_t scales_type;
     data_type_t zp_type;
@@ -126,6 +126,7 @@ struct quant_params {
     int group_n;
     bool force_gs;
     bool mx;
+    bool zp_host_scalar; // @@@@@@@@@@@@
 };
 
 struct gen_nocopy_desc_t : public gen_desc_t {

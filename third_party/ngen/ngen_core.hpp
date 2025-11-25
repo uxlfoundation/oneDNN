@@ -3266,13 +3266,15 @@ enum class Opcode {
 static inline bool isXe4(Opcode op) { return (static_cast<int>(op) & 0x8000); }
 #endif
 
-enum class Operand {dst = 0, src0 = 1, src1 = 2, src2 = 3};
+enum class Operand {dst = 0, src0 = 1, src1 = 2, src2 = 3, src3 = 4, src4 = 5};
 
 enum class Directive {
     ignoredep_dst = 0,
     ignoredep_src0 = 1,
     ignoredep_src1 = 2,
     ignoredep_src2 = 3,
+    ignoredep_src3 = 4,
+    ignoredep_src4 = 5,
     subdep_dst = 8,
     wrdep = 0x10,
     fencedep = 0x11,

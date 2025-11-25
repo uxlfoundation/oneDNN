@@ -343,7 +343,7 @@ struct BasicBlock {
     DependencyTable<false> incoming;                        // Table of dependencies produced by prior BBs (temporary).
     std::vector<SyncInsertion> syncs;                       // List of sync instructions to generate.
     std::vector<DummyMovInsertion> movs;                    // List of mov instructions to generate.
-    std::vector<std::array<DependencyRegion, 4>> opRegions; // Cache of instruction operand regions.
+    std::vector<std::array<DependencyRegion, 6>> opRegions; // Cache of instruction operand regions.
     bool enablePVCWARWA = false;                            // Enable workaround for PVC WAR bug.
 
     const DependencyRegion &getOperandRegion(int inum, int opNum) const {
@@ -1589,7 +1589,7 @@ inline BasicBlockList getBasicBlocks(HW hw, const Program &program)
 
         // Decode and cache operand regions, handling any nodep pseudo-instructions.
         bb.opRegions.resize(bb.iend - bb.istart);
-        std::array<bool, 4> ignoreDeps = {false};
+        std::array<bool, 6> ignoreDeps = {false};
 
         DependencyRegion subDstRegion(hw);
         subDstRegion.clear();
@@ -1604,6 +1604,8 @@ inline BasicBlockList getBasicBlocks(HW hw, const Program &program)
                     case Directive::ignoredep_src0: ignoreDeps[1] = true; break;
                     case Directive::ignoredep_src1: ignoreDeps[2] = true; break;
                     case Directive::ignoredep_src2: ignoreDeps[3] = true; break;
+                    case Directive::ignoredep_src3: ignoreDeps[4] = true; break;
+                    case Directive::ignoredep_src4: ignoreDeps[5] = true; break;
                     case Directive::subdep_dst:
 #ifdef NGEN_SAFE
                         if (!subDstRegion.empty())
@@ -1623,7 +1625,7 @@ inline BasicBlockList getBasicBlocks(HW hw, const Program &program)
                 continue;
             }
 
-            for (int srcN = -1; srcN < 3; srcN++) {
+            for (int srcN = -1; srcN < 5; srcN++) {
                 regions[srcN + 1].hw = hw;
                 if (ignoreDeps[srcN + 1] || !insn.getOperandRegion(regions[srcN + 1], srcN))
                     regions[srcN + 1].clear();
@@ -1841,7 +1843,7 @@ inline uint8_t chooseSBID(HW hw, int tokens, Program &program, const BasicBlock 
 
     // Priority 2: assign SBID based on base register of dst, src1, src0 (in that order),
     //  if it's unclaimed or expired.
-    for (int opNum : {-1, 1, 0}) {
+    for (int opNum : {-1, 1, 0, 2, 3}) {
         auto &region = bb.getOperandRegion(inum, opNum);
         if (region.size > 0) {
             auto sbid = preferredSBID(tokens, region.base);
@@ -1932,12 +1934,12 @@ PVCWARWA analyzePVCWARWA(HW hw, Program &program, BasicBlock &bb, int phase,
     if (sameBB && consumeOp.pipe.type() != GeneralizedPipe::vSystolic) {
         // Check if we have a src at least as large as our dst.
         int srcN;
-        for (srcN = 0; srcN <= 2; srcN++) {
+        for (srcN = 0; srcN <= 4; srcN++) {
             if (regions[srcN + 1].unspecified) continue;
             if (bboxContains(regions[srcN + 1], regions[0]))
                 break;
         }
-        if (srcN >= 2) srcN = -1;
+        if (srcN >= 4) srcN = -1;
 
         // Check for potential read suppression.
         if (srcN >= 0 && consumeOp.pipe.inOrder()) {
@@ -2260,7 +2262,7 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
             bool assignSBID = (phase == 1) && tokenInsn && tokenInfo.tokenTBD && !insn.atomic();
 
             // Collect operands.
-            for (int srcN = 2; srcN >= -1; srcN--) {
+            for (int srcN = 4; srcN >= -1; srcN--) {
                 // Skip non-GRF operands.
                 // Special case: check for cr/sr/ce source operands and force A@1 if any.
                 if (regions[srcN + 1].empty()) {
@@ -2658,7 +2660,7 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
                 produceOp.tokenTime = estimateLatency(hw, insn);
             }
 
-            for (int srcN = -1; srcN < 3; srcN++) {
+            for (int srcN = -1; srcN < 5; srcN++) {
                 if (!regions[srcN + 1].empty()) {
                     produceOp.rw = (srcN < 0);
                     if (tokenInfo.hasToken()) {

@@ -1275,7 +1275,10 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     auto sr = o.direct.subRegNum;
 #if XE3P
                     regNum8 = ternaryXe3p.src2Reg8;
-                    if (op == Opcode::bdpas) sr = 0;
+                    if (op == Opcode::bdpas) {
+                        sr = 0;
+                        rcount = 8;
+                    }
 #endif
                     if (xeHPC)
                         len = ((sr << 1) + sdepth * rcount * 4 + 63) >> 6;
@@ -1283,6 +1286,28 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                         len = (sr + sdepth * rcount * 4 + 31) >> 5;
                     break;
                 }
+#if XE3P
+                case 3: {
+                    if(op != Opcode::bdpas) return false;
+                    auto sr = bdpas.src3SubReg4_5 << 4;
+                    o.direct.regNum = bdpas.src3Reg0;
+                    o.direct.regNum |= bdpas.src3Reg1_2 << 1;
+                    o.direct.regNum |= bdpas.src3Reg3_6 << 3;
+                    o.direct.regNum |= bdpas.src3Reg7_8 << 7;
+                    rcount = 8;
+                    len = (sr + sdepth * rcount * 4 + 31) >> 5;
+                    break;
+                }
+                case 4: {
+                    if(op != Opcode::bdpas) return false;
+                    auto sr = bdpas.src4SubReg3_5 << 3;
+                    o.direct.regNum = bdpas.src4Reg0_3;
+                    o.direct.regNum |= bdpas.src4Reg4_8 << 4;
+                    rcount = 8;
+                    len = (sr + sdepth * rcount * 4 + 31) >> 5;
+                    break;
+                }
+#endif
                 default: return false;
             }
 

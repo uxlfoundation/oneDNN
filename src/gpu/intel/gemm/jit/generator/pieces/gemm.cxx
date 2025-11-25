@@ -230,6 +230,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     // Load scalar ao/bo from memory as needed.
     bool aoScalarLoad = aOffset && problem.aoPtrDims == 0 && !problem.earlyDequantizeA() && !problem.needsBGroupSums();
     bool boScalarLoad = bOffset && problem.boPtrDims == 0 && !problem.earlyDequantizeB() && !problem.needsAGroupSums();
+    VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### aOffset bOffset = %d %d",aOffset,bOffset);
     VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### aoScalarLoad boScalarLoad = %d %d",aoScalarLoad,boScalarLoad);
     auto Tc = problem.Tc;
 

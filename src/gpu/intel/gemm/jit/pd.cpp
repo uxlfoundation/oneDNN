@@ -330,7 +330,7 @@ bool pd_t::zp_ok() {
     VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : a_int4 = %d b_int4 = %d weights_upconversion = %d",a_int4,b_int4,weights_upconversion);
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!
-    bool allow = gpu_utils::dev_getenv("ALLOW_HOST_SCALAR", true);
+    bool allow = gpu_utils::dev_getenv("ALLOW_HOSTSCALARS", true);
     if (attr_zps.has_host_scalars() && !allow) {
         VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
         return false;

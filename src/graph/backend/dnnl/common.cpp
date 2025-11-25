@@ -603,56 +603,8 @@ std::shared_ptr<value_t> insert_empty_workspace(std::shared_ptr<op_t> &op) {
     return workspace_val;
 }
 
-// This function refers to the md2fmt_tag_str in src/common/verbose.cpp, which
-// is used to recover a format tag string from a memory descriptor
-std::string get_format_tag_str(const dnnl::memory::desc &md) {
-    assertm(md.get_format_kind() == format_kind::blocked,
-            "can get format tag only for blocked format kind");
-
-    int ndims = md.get_ndims();
-    const auto &inner_blks = md.get_inner_blks();
-    const auto &inner_idxs = md.get_inner_idxs();
-    const int inner_nblks = md.get_inner_nblks();
-
-    dnnl_dims_t blocks = {0};
-    std::fill(blocks, blocks + ndims, 1);
-    for (int iblk = 0; iblk < inner_nblks; ++iblk)
-        blocks[inner_idxs[iblk]] *= inner_blks[iblk];
-
-    char dim_chars[DNNL_MAX_NDIMS + 1] = {'\0'};
-
-    dims_t ou_blocks = {0};
-    const auto &padded_dims = md.get_padded_dims();
-    std::copy(padded_dims.begin(), padded_dims.end(), ou_blocks);
-
-    bool plain = true;
-    for (int d = 0; d < ndims; ++d) {
-        dim_chars[d] = static_cast<char>((blocks[d] == 1 ? 'a' : 'A') + d);
-        if (blocks[d] != 1) plain = false;
-        ou_blocks[d] /= blocks[d];
-    }
-
-    dnnl_dims_t strides = {0};
-    const auto &strs = md.get_strides();
-    std::copy(strs.begin(), strs.end(), strides);
-
-    impl::utils::simultaneous_sort(strides, ou_blocks, dim_chars, ndims,
-            [](dim_t a, dim_t b) { return b - a; });
-
-    std::string blk_tag = std::string(dim_chars);
-
-    if (!plain) {
-        for (int iblk = 0; iblk < inner_nblks; ++iblk) {
-            blk_tag += std::to_string(inner_blks[iblk])
-                    + static_cast<char>('a' + inner_idxs[iblk]);
-        }
-    }
-
-    return blk_tag;
-}
-
 dnnl::memory::format_tag get_format_tag(const dnnl::memory::desc &md) {
-    std::string blk_tag = get_format_tag_str(md);
+    std::string blk_tag = md2fmt_tag_str(md.get());
 
     dnnl::memory::format_tag format_tag = dnnl::memory::format_tag::undef;
     for (size_t tag = 0; tag < dnnl_format_tag_last; ++tag) {

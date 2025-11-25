@@ -1298,7 +1298,7 @@ status_t layout_propagator_for_reorder(op_ptr &op, const dnnl::engine &p_engine,
         // since v3.0.
         auto out_md = make_dnnl_memory_desc(in_lt);
         if (in_lt.data_type != out_lt.data_type) {
-            auto format_tag = get_format_tag_str(out_md);
+            auto format_tag = md2fmt_tag_str(out_md.get());
             const auto &dims = out_md.get_dims();
             dnnl_memory_desc_t tmp_md;
             dnnl_memory_desc_create_with_string_tag(&tmp_md,

@@ -187,7 +187,7 @@ status_t sdp_primitive_config_t::initial_check(
 
     // sdp_primitive only supports single scale value.
     if (scale) {
-        const auto &s = scale->get_input_logical_tensor(0);
+        const auto &s = scale->get_input_logical_tensor(1);
         VCHECK_SDP_PRIMITIVE(ltw(s).nelems() == 1, status::unimplemented,
                 "Scale should be single value");
     }

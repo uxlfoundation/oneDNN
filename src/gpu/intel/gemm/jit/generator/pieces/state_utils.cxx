@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -38,9 +38,9 @@ void Generator<hw>::saveMNLocalIDs(const GEMMStrategy &strategy, GEMMState &stat
 template <HW hw>
 void Generator<hw>::saveKLocalIDSize(const GEMMStrategy &strategy, GEMMState &state)
 {
-    state.lidszKStorage = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
+    state.lidszKStorage = state.ra.alloc_sub<uint64_t>(getHint(HintType::LongTerm, strategy));
     state.lidK = state.lidszKStorage.uw(0);
-    state.lszK = state.lidszKStorage.uw(1);
+    state.lszK = state.lidszKStorage.ud(1);
     mov(1, state.lidK, state.inputs.localIDK);
     mov(1, state.lszK, state.inputs.localSizeK);
 }

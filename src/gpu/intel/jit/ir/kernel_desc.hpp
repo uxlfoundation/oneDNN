@@ -19,7 +19,7 @@
 
 #include "common/serialization.hpp"
 #include "gpu/intel/compute/utils.hpp"
-#include "gpu/intel/jit/ir/hw.hpp"
+#include "gpu/intel/jit/ir/include/kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -36,9 +36,6 @@ namespace jit {
 
 class kernel_info_t;
 class kernel_params_base_t;
-namespace kernel {
-class iface_t;
-}
 
 class kernel_desc_base_t {
 public:

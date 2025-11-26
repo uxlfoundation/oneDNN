@@ -48,10 +48,8 @@ uint8_t float2e2m1(float f) {
             min_diff = diff;
             raw_bits = idx;
         }
-        // Special case for midpoint:
-       //  - towards 0 for 0.125
-       //  - up for other ties
-       if ((diff == min_diff) && idx != 1) raw_bits = idx;
+        // Special case for midpoint, we round to even (so even index)
+        if ((diff == min_diff) && !(idx & 1)) raw_bits = idx;
     }
     assert(raw_bits < 8);
     // reapply sign

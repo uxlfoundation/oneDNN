@@ -22,12 +22,13 @@
 ## Type combinations
 --dir=FWD_I
 --dt=s8:s8:f32,s8:s8:bf16,s8:s8:f16,s8:s8:s32,s8:s8:s8,s8:s8:u8, \
-      u8:s8:f32,u8:s8:bf16,u8:s8:f16,u8:s8:s32,u8:s8:s8,u8:s8:u8
+      u8:s8:f32,u8:s8:bf16,u8:s8:f16,u8:s8:s32,u8:s8:s8,u8:s8:u8, \
+      u8:u8:f32,u8:u8:bf16,u8:u8:f16,u8:u8:s32,u8:u8:s8,u8:u8:u8
 --batch=shapes_ci_gpu
 
 ## Attributes
 --dir=FWD_I
---dt=u8:s8:s32
+--dt=u8:s8:s32,u8:u8:s32
 --attr-scales=,src:common:0.5+wei:common:2+dst:common:4, \
                src:host_scalar:0.5+wei:host_scalar:2+dst:host_scalar:4
 --attr-post-ops=,sum:0.5:3+add:f32:per_dim_1+mul:f16:per_tensor

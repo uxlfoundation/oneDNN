@@ -2601,6 +2601,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     }
 
     interface.finalize();
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : after interface.finalize()");
 
     for (int dim = 0; dim < 3; dim++) {
         localID[dim] = interface.getLocalID(dim);
@@ -2608,6 +2609,9 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     }
 
     // Get input arguments.
+
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : get input args: state.xxxxxx = interface.yyyyyyy");
+
     state.inputs.base = interface.getArgumentIfExists("base");
     auto baseSurface = interface.getArgumentSurfaceIfExists("base");
     if (state.inputs.base.isInvalid() && baseSurface == InterfaceHandler::noSurface) {
@@ -2641,22 +2645,25 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     bool aOffset = (problem.aOffset != ABOffset::None);
     bool bOffset = (problem.bOffset != ABOffset::None);
 
-    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : aOffset bOffset = %d %d", aOffset,bOffset);
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : local bool aOffset bOffset = %d %d (== (problem.aOffset != ABOffset::None))", aOffset,bOffset);
 
 #define VDEBUGINFO_OBJECT(obj) \
-    VDEBUGINFO(4, primitive, object, "MY: %s : isValid(%d) isNull(%d) isScalar(%d)", #obj, (obj).isValid(), (obj).isNull(), (obj).isScalar())
+    VDEBUGINFO(4, primitive, object, "MY: +++++ : %s : is Valid Null Scalar = %d %d %d", #obj, (obj).isValid(), (obj).isNull(), (obj).isScalar())
 
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ @@@@@@ : state.inputs.<a|b|o|Ptr> before");
     VDEBUGINFO_OBJECT(state.inputs.ao);
     VDEBUGINFO_OBJECT(state.inputs.bo);
+    VDEBUGINFO_OBJECT(state.inputs.abo);
+    VDEBUGINFO_OBJECT(state.inputs.aoPtr);
+    VDEBUGINFO_OBJECT(state.inputs.boPtr);
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ @@@@@@");
 
 
     if (aOffset || bOffset) {
-        VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : (aOffset || bOffset) => init state.inputs.abo = interface.getArgumentIfExists(abo)");
-        VDEBUGINFO_OBJECT(state.inputs.abo);
+        VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : yes, there is zp !!!");
         state.inputs.abo = interface.getArgumentIfExists("abo");
-        VDEBUGINFO_OBJECT(state.inputs.abo);
         if (state.inputs.abo.isValid()) {
-            VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : state.inputs.abo.isValid()");
+            VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : if state.inputs.abo.isValid()");
             // A/B offset are two words packed into a single dword argument.
             state.inputs.ao = state.inputs.abo.w(0);
             state.inputs.bo = state.inputs.abo.w(1);
@@ -2671,11 +2678,13 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         state.inputs.surfaceBO = interface.getArgumentSurfaceIfExists("bo_ptr");
     }
 
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ @@@@@@ : state.inputs.<a|b|o|Ptr> after");
     VDEBUGINFO_OBJECT(state.inputs.ao);
     VDEBUGINFO_OBJECT(state.inputs.bo);
     VDEBUGINFO_OBJECT(state.inputs.abo);
     VDEBUGINFO_OBJECT(state.inputs.aoPtr);
     VDEBUGINFO_OBJECT(state.inputs.boPtr);
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ @@@@@@");
 
     if (problem.aScale2D()) {
         state.inputs.aScalePtr = interface.getArgumentIfExists("a_scale_ptr");
@@ -2911,12 +2920,14 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             state.ra.claim(state.inputs.C[q]);
 
     if (aOffset) {
+        VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ claimIfValid ao aoPtr offsertAO");
         claimIfValid(state.inputs.ao);
         claimIfValid(state.inputs.aoPtr);
         claimIfValid(state.inputs.offsetAO);
     }
 
     if (bOffset) {
+        VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ claimIfValid bo boPtr offsertBO");
         claimIfValid(state.inputs.bo);
         claimIfValid(state.inputs.boPtr);
         claimIfValid(state.inputs.offsetBO);

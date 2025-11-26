@@ -927,6 +927,7 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
         VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmScaleInputs : ao scale(...)");
         scale(problem.Tao, inputs.ldao, ldaq);
     }
+    // @@@@@@@@@@@@@ ????????????????????
     if (problem.aoPtrDims >= 0){
         VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmScaleInputs : ao scale(...)");
         scale(problem.Tao, inputs.offsetAO, inputs.offsetAq);
@@ -935,6 +936,7 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
         VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmScaleInputs : bo scale(...)");
         scale(problem.Tbo, inputs.ldbo, ldbq);
     }
+    // @@@@@@@@@@@@@ ????????????????????
     if (problem.boPtrDims >= 0){
         VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmScaleInputs : bo scale(...)");
         scale(problem.Tbo, inputs.offsetBO, inputs.offsetBq);
@@ -3122,6 +3124,8 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
         state.isNested |= strategy.persistentLoop();
     }
 
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmInitState *** : after initState(), gemmInitInterface()");
+
     state.effA = strategy.A.base.isStateless() ? state.inputs.A
                                                : state.inputs.offsetA.d();
     state.effB = strategy.B.base.isStateless() ? state.inputs.B
@@ -3141,6 +3145,8 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
 
     state.offsetA = state.inputs.offsetA;
     state.offsetB = state.inputs.offsetB;
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmInitState *** : state.offsetA = state.inputs.offsetA");
+
     for (int q = 0; q < state.C_count; q++)
         state.offsetC[q] = state.inputs.offsetC[q];
     state.offsetCO = state.inputs.offsetCO;

@@ -57,7 +57,9 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
 
     // Set up.
     problem.autoTypeConversions(hw, strategy.systolic);
+    VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### : call gemmInitState(problem, strategy, state)");
     gemmInitState(problem, strategy, state);
+    VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### : after gemmInitState(problem, strategy, state)");
 
     // Transfer surface indices to strategy AddressBases.
     strategy.A.assignSurface(state.inputs.surfaceA);
@@ -69,7 +71,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (state.useTempC)
         state.tempCStrategy.assignSurface(state.inputs.surfaceTempC);
     if (problem.usesCO()){
-        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ######");
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### : strategy.CO.assignSurface(state.inputs.surfaceCO)");
         strategy.CO.assignSurface(state.inputs.surfaceCO);
     }
 
@@ -84,8 +86,10 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     strategy.Bg.assignSurface(state.inputs.surfaceBg);
 
     // Prologue.
-    if (!inFusedGEMM)
+    if (!inFusedGEMM) {
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### : call prologue(strategy, state)");
         prologue(strategy, state);
+    }
 
     // Grab fused ID if needed, and multiply by unroll.
     getFusedID(strategy.unroll[strategy.fusedLoop], problem, strategy, state);

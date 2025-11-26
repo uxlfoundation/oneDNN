@@ -1075,7 +1075,7 @@ public:
     void _visit(const ptr_t &obj) override {
         auto base_op = eval(obj.base);
 
-        if (is_zero(obj.off)) {
+        if (obj.off.is(0)) {
             bind(obj, base_op);
             return;
         }

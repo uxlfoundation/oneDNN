@@ -18,6 +18,7 @@
 
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -84,12 +85,13 @@ expr_t::expr_t(uint16_t value) : object_t(new int_imm_t(value)) {}
 expr_t::expr_t(uint32_t value) : object_t(new int_imm_t(value)) {}
 expr_t::expr_t(uint64_t value) : object_t(new int_imm_t(value)) {}
 
+bool expr_t::is(int value) const {
+    if (!is_const(*this)) return false;
+    return is_equal(to_expr(value, type()));
+}
+
 bool is_const(const expr_t &e) {
     return e.is<bool_imm_t>() || e.is<int_imm_t>() || e.is<float_imm_t>();
-}
-bool is_const(const expr_t &e, int value) {
-    if (!is_const(e)) return false;
-    return e.is_equal(to_expr(value, e.type()));
 }
 
 bool to_bool(const expr_t &e) {
@@ -123,39 +125,114 @@ expr_t normalized_neg(const expr_t &a) {
     return expr_t();
 }
 
+template <op_kind_t>
+struct evaluator_t {};
+
+#define DECL_EVALUATOR(name, op) \
+    template <> \
+    struct evaluator_t<name> { \
+        template <typename T> \
+        static decltype(std::declval<T>() op std::declval<T>()) eval( \
+                T a, T b) { \
+            return a op b; \
+        } \
+    }
+
+DECL_EVALUATOR(op_kind_t::_add, +);
+DECL_EVALUATOR(op_kind_t::_sub, -);
+DECL_EVALUATOR(op_kind_t::_mul, *);
+DECL_EVALUATOR(op_kind_t::_div, /);
+DECL_EVALUATOR(op_kind_t::_mod, %);
+DECL_EVALUATOR(op_kind_t::_eq, ==);
+DECL_EVALUATOR(op_kind_t::_ne, !=);
+DECL_EVALUATOR(op_kind_t::_gt, >);
+DECL_EVALUATOR(op_kind_t::_ge, >=);
+DECL_EVALUATOR(op_kind_t::_lt, <);
+DECL_EVALUATOR(op_kind_t::_le, <=);
+DECL_EVALUATOR(op_kind_t::_shl, <<);
+DECL_EVALUATOR(op_kind_t::_shr, >>);
+DECL_EVALUATOR(op_kind_t::_and, &);
+DECL_EVALUATOR(op_kind_t::_or, |);
+DECL_EVALUATOR(op_kind_t::_xor, |);
+
+#undef DECL_EVALUATOR
+
+template <op_kind_t op>
+expr_t const_binary(const expr_t &a, const expr_t &b) {
+    auto compute_type = common_type(a, b);
+    if (!compute_type.is_scalar()) {
+        int elems = compute_type.elems();
+        std::vector<expr_t> ret;
+        ret.reserve(elems);
+        for (int i = 0; i < elems; i++) {
+            ret.push_back(const_binary<op>(a[i], b[i]));
+        }
+        return shuffle_t::make(ret);
+    }
+
+#define CASE(ir_type, cpp_type) \
+    if (compute_type == type_t::ir_type()) { \
+        auto _a = to_cpp<cpp_type>(a); \
+        auto _b = to_cpp<cpp_type>(b); \
+        return evaluator_t<op>::eval(_a, _b); \
+    }
+
+    CASE(s16, int16_t)
+    CASE(s32, int32_t)
+    CASE(s64, int64_t)
+    CASE(u16, uint16_t)
+    CASE(u32, uint32_t)
+    CASE(u64, uint64_t)
+
+#undef CASE
+
+    if (compute_type == type_t::_bool()) {
+        auto _a = to_cpp<bool>(a);
+        auto _b = to_cpp<bool>(b);
+        if (op == op_kind_t::_and) return to_expr(_a & _b);
+        if (op == op_kind_t::_or) return to_expr(_a | _b);
+        if (op == op_kind_t::_xor) return to_expr(_a ^ _b);
+        gpu_error_not_expected();
+    }
+
+    if (compute_type == type_t::f32()) {
+        auto _a = to_cpp<float>(a);
+        auto _b = to_cpp<float>(b);
+        if (op == op_kind_t::_add) return to_expr(_a + _b);
+        if (op == op_kind_t::_sub) return to_expr(_a - _b);
+        if (op == op_kind_t::_mul) return to_expr(_a * _b);
+        if (op == op_kind_t::_div) return to_expr(_a / _b);
+        gpu_error_not_expected();
+    }
+
+    gpu_error_not_expected() << "Unknown type.";
+    return expr_t();
+}
+
 expr_t normalized_mul(const expr_t &a, const expr_t &b) {
     gpu_assert(!a.type().is_ptr() && !b.type().is_ptr());
-    if (is_zero(a) || is_zero(b)) return 0;
-    if (is_one(a)) return b;
-    if (is_one(b)) return a;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        int_imm_t::make(a.as<int_imm_t>().value * b.as<int_imm_t>().value,
-                common_type(a, b));
-    }
+    if (a.is(0) || b.is(0)) return 0;
+    if (a.is(1)) return b;
+    if (b.is(1)) return a;
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_mul>(a, b);
     return binary_op_t::make(op_kind_t::_mul, a, b);
 }
 
 expr_t normalized_div(const expr_t &a, const expr_t &b) {
     gpu_assert(!a.type().is_ptr() && !b.type().is_ptr());
-    gpu_assert(!is_zero(b));
-    if (is_zero(a)) return 0;
-    if (is_one(b)) return a;
+    gpu_assert(!b.is(0));
+    if (a.is(0)) return 0;
+    if (b.is(1)) return a;
     if (a.is_equal(b)) return 1;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        int_imm_t::make(a.as<int_imm_t>().value / b.as<int_imm_t>().value,
-                common_type(a, b));
-    }
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_div>(a, b);
     return binary_op_t::make(op_kind_t::_div, a, b);
 }
 
 expr_t normalized_mod(const expr_t &a, const expr_t &b) {
     gpu_assert(!a.type().is_ptr() && !b.type().is_ptr());
-    gpu_assert(!is_zero(b));
-    if (is_zero(a) || is_one(b) || a.is_equal(b)) return 0;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        int_imm_t::make(a.as<int_imm_t>().value % b.as<int_imm_t>().value,
-                common_type(a, b));
-    }
+    gpu_assert(!b.is(0));
+    if (a.is(0) || b.is(1) || a.is_equal(b)) return 0;
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_mod>(a, b);
     return binary_op_t::make(op_kind_t::_mod, a, b);
 }
 
@@ -170,12 +247,9 @@ expr_t normalized_add(const expr_t &a, const expr_t &b) {
         auto &ref = a.as<ref_t>();
         return ref_t::make(ref.var, ref.off + to_cpp<int>(b), ref.elems);
     }
-    if (is_zero(a)) return b;
-    if (is_zero(b)) return a;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        int_imm_t::make(a.as<int_imm_t>().value + b.as<int_imm_t>().value,
-                common_type(a, b));
-    }
+    if (a.is(0)) return b;
+    if (b.is(0)) return a;
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_add>(a, b);
     if (a.is_equal(b)) return normalized_mul(2, a);
     return binary_op_t::make(op_kind_t::_add, a, b);
 }
@@ -191,79 +265,58 @@ expr_t normalized_sub(const expr_t &a, const expr_t &b) {
         auto &ref = a.as<ref_t>();
         return ref_t::make(ref.var, ref.off - to_cpp<int>(b), ref.elems);
     }
-    if (is_zero(b)) return a;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        int_imm_t::make(a.as<int_imm_t>().value + b.as<int_imm_t>().value,
-                common_type(a, b));
-    }
+    if (b.is(0)) return a;
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_sub>(a, b);
     if (a.is_equal(b)) return 0;
-    if (is_zero(a)) return unary_op_t::make(op_kind_t::_sub, b);
+    if (a.is(0)) return unary_op_t::make(op_kind_t::_sub, b);
     return binary_op_t::make(op_kind_t::_sub, a, b);
 }
 
 expr_t normalized_shl(const expr_t &a, const expr_t &b) {
-    if (is_zero(b)) return a;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        int_imm_t::make(a.as<int_imm_t>().value << b.as<int_imm_t>().value,
-                common_type(a, b));
-    }
+    if (b.is(0)) return a;
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_shl>(a, b);
     return binary_op_t::make(op_kind_t::_shl, a, b);
 }
 
 expr_t normalized_shr(const expr_t &a, const expr_t &b) {
-    if (is_zero(b)) return a;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        int_imm_t::make(a.as<int_imm_t>().value >> b.as<int_imm_t>().value,
-                common_type(a, b));
-    }
+    if (b.is(0)) return a;
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_shr>(a, b);
     return binary_op_t::make(op_kind_t::_shr, a, b);
 }
 
 expr_t normalized_eq(const expr_t &a, const expr_t &b) {
     if (a.is_equal(b)) return true;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        bool_imm_t::make(a.as<int_imm_t>().value == b.as<int_imm_t>().value);
-    }
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_eq>(a, b);
     return binary_op_t::make(op_kind_t::_eq, a, b);
 }
 
 expr_t normalized_ne(const expr_t &a, const expr_t &b) {
     if (a.is_equal(b)) return false;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        bool_imm_t::make(a.as<int_imm_t>().value != b.as<int_imm_t>().value);
-    }
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_ne>(a, b);
     return binary_op_t::make(op_kind_t::_ne, a, b);
 }
 
 expr_t normalized_gt(const expr_t &a, const expr_t &b) {
     if (a.is_equal(b)) return false;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        bool_imm_t::make(a.as<int_imm_t>().value > b.as<int_imm_t>().value);
-    }
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_gt>(a, b);
     return binary_op_t::make(op_kind_t::_gt, a, b);
 }
 
 expr_t normalized_ge(const expr_t &a, const expr_t &b) {
     if (a.is_equal(b)) return true;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        bool_imm_t::make(a.as<int_imm_t>().value >= b.as<int_imm_t>().value);
-    }
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_ge>(a, b);
     return binary_op_t::make(op_kind_t::_ge, a, b);
 }
 
 expr_t normalized_lt(const expr_t &a, const expr_t &b) {
     if (a.is_equal(b)) return false;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        bool_imm_t::make(a.as<int_imm_t>().value < b.as<int_imm_t>().value);
-    }
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_lt>(a, b);
     return binary_op_t::make(op_kind_t::_lt, a, b);
 }
 
 expr_t normalized_le(const expr_t &a, const expr_t &b) {
     if (a.is_equal(b)) return true;
-    if (a.is<int_imm_t>() && b.is<int_imm_t>()) {
-        bool_imm_t::make(a.as<int_imm_t>().value <= b.as<int_imm_t>().value);
-    }
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_le>(a, b);
     return binary_op_t::make(op_kind_t::_le, a, b);
 }
 
@@ -280,6 +333,7 @@ expr_t normalized_or(const expr_t &a, const expr_t &b) {
 }
 
 expr_t normalized_xor(const expr_t &a, const expr_t &b) {
+    if (is_const(a) && is_const(b)) return const_binary<op_kind_t::_xor>(a, b);
     return binary_op_t::make(op_kind_t::_xor, a, b);
 }
 

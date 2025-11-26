@@ -158,7 +158,7 @@ struct ctx_t {
             return max_off < size;
         }());
 
-        gpu_assert(is_zero(layout.offset()));
+        gpu_assert(layout.offset().is(0));
         auto t = layout.type().with_attr(attr);
         if (any(attr & type::attr_t::slm)) {
             gpu_assert(value.is_empty());

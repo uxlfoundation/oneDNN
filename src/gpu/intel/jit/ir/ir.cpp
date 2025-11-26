@@ -144,20 +144,20 @@ public:
     }
 
     void _visit(const linear_t &obj) override {
-        if (obj.nargs() == 0 && is_zero(obj.c)) {
+        if (obj.nargs() == 0 && obj.c.is(0)) {
             out_ << "0";
             return;
         }
         out_ << "(";
         for (int i = 0; i < obj.nargs(); i++) {
             if (i > 0) out_ << " + ";
-            if (is_one(obj.u_vec[i])) {
+            if (obj.u_vec[i].is(1)) {
                 out_ << obj.v_vec[i];
             } else {
                 out_ << obj.u_vec[i] << " * " << obj.v_vec[i];
             }
         }
-        if (!is_zero(obj.c)) {
+        if (!obj.c.is(0)) {
             if (obj.nargs() != 0) out_ << " + ";
             out_ << obj.c;
         }
@@ -988,7 +988,7 @@ expr_t relation_t::normalize(const expr_t &e) {
 bool modulus_info_t::is_modulus_constraint(const expr_t &e) {
     auto *binary_op = e.as_ptr<binary_op_t>();
     if (!binary_op) return false;
-    if (!is_zero(binary_op->b)) return false;
+    if (!binary_op->b.is(0)) return false;
     if (binary_op->op_kind != op_kind_t::_eq) return false;
 
     auto *mod_op = binary_op->a.as_ptr<binary_op_t>();

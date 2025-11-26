@@ -392,7 +392,7 @@ public:
     int nblocks(const pvar_t &dim) const;
     int int_base_in_bytes() const { return to_int(base_) * type_.size(); }
     int int_dim_size(const pvar_t &dim) const;
-    bool has_zero_base() const { return is_zero(base_); }
+    bool has_zero_base() const { return base_.is(0); }
     bool has_const_sizes() const;
     bool has_const_strides() const;
     tile_t int_dim_sizes() const;
@@ -556,7 +556,7 @@ public:
     dim_mask_desc_t() = default;
     dim_mask_desc_t(const pvar_t &dim, const expr_t &expr, const expr_t &bound,
             int block, bool has_underflow);
-    bool is_identity() const { return is_zero(c) && is_one(a) && y.is_empty(); }
+    bool is_identity() const { return c.is(0) && a.is(1) && y.is_empty(); }
 
     expr_t to_expr(const coord_t &coord, bool with_const = true) const;
 

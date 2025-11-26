@@ -207,7 +207,7 @@ struct offset_t {
     stmt_t inc_stmt(int loop_idx) const {
         if (loop_incs.empty()) return stmt_t();
         auto inc = loop_incs[loop_idx];
-        if (is_zero(inc)) return stmt_t();
+        if (inc.is(0)) return stmt_t();
         inc = shuffle_t::make_broadcast(inc, type.elems());
         auto value = load_t::make(type, buf, 0) + inc;
         return store(value);
@@ -238,11 +238,11 @@ struct offset_t {
             const expr_t &shift, const expr_t &shift_vec,
             const std::vector<expr_t> &loop_incs) {
         if (!type.is_scalar()) return false;
-        if (!is_zero(shift)) return false;
+        if (!shift.is(0)) return false;
         if (!is_var(base) && !is_const(base)) return false;
         if (!all_of(shift_vec, 0)) return false;
         for (auto &e : loop_incs)
-            if (!is_zero(e)) return false;
+            if (!e.is(0)) return false;
         return true;
     }
 };
@@ -701,7 +701,7 @@ public:
             if (op->op_kind == op_kind_t::_div_up) {
                 gpu_assert(is_const(op->b))
                         << "Expected constant denominator: " << value;
-                if (is_one(op->b)) return get_idiv_magic(op->a);
+                if (op->b.is(1)) return get_idiv_magic(op->a);
                 gpu_assert(op->a.is<var_t>() || op->a.is<const_var_t>())
                         << "Expected var/const var: " << op->a;
                 name = op->a.str();

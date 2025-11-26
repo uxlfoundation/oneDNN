@@ -248,7 +248,7 @@ loop_nest_t make_loop_nest(const loop_desc_t &loop_desc,
     for (auto &e : loop_desc) {
         const auto &var = coord_info.loop_index(e.dim);
         const auto &size = coord_info.loop_size(e.dim);
-        if (is_one(size)) continue;
+        if (size.is(1)) continue;
         expr_t init = 0;
         if (sk_params) {
             init = sk_params.loop_inits[e.idx];

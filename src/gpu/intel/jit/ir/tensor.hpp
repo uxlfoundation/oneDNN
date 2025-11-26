@@ -686,7 +686,7 @@ public:
     void set_vdim(const expr_t &varg, dim_t vdim,
             const expr_t &vstart = expr_t(0), bool overwrite = false) {
         dim_idx_t vidx = vvar_index(varg);
-        if (!overwrite) gpu_assert(is_zero(vstart_[vidx]));
+        if (!overwrite) gpu_assert(vstart_[vidx].is(0));
         vstart_[vidx] = vstart;
         vdims_[vidx] = vdim;
     }
@@ -741,7 +741,7 @@ public:
 
     bool has_zero_vstart() const {
         for (dim_idx_t i = 0; i < nvdims(); i++)
-            if (!is_zero(vstart_[i])) return false;
+            if (!vstart_[i].is(0)) return false;
         return true;
     }
 
@@ -1019,7 +1019,7 @@ public:
 
         if (!ignore_vstart) {
             for (dim_idx_t i = 0; i < nvdims(); i++) {
-                if (!is_zero(vstart_[i])) vcoord[i] += vstart_[i];
+                if (!vstart_[i].is(0)) vcoord[i] += vstart_[i];
             }
         }
 

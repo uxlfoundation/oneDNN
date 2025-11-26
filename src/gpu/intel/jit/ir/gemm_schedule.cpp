@@ -73,7 +73,7 @@ layout_t bmnk_block_mapper_t::map_from_bmnk(abc_kind_t abc_kind,
         const std::vector<bmnk_kind_t> &bmnk_kinds,
         const layout_t &bmnk_layout) const {
     gpu_assert(bmnk_layout.ndims() <= 3);
-    gpu_assert(is_zero(bmnk_layout.offset()));
+    gpu_assert(bmnk_layout.offset().is(0));
     std::vector<layout_block_t> blocks;
     std::vector<std::vector<layout_block_t>> tmp_blocks(
             static_cast<int>(bmnk_kind_t::k) + 1);

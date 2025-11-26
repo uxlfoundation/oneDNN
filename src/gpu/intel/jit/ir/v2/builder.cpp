@@ -131,8 +131,7 @@ offset_t offset_scope_t::get_offset(int version, const expr_t &base0,
     }
 
     // Try to use inline initialization.
-    if (params.allow_inline_init && !is_zero(ret.shift)
-            && ret.type.is_scalar()) {
+    if (params.allow_inline_init && !ret.shift.is(0) && ret.type.is_scalar()) {
         for (auto &o : offsets_) {
             if (o.is_equal(ret, /*compare_shift=*/false)) {
                 gpu_assert(o.type.is_scalar());

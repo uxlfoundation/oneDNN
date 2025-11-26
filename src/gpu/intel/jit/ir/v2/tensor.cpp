@@ -575,7 +575,7 @@ bool layout_t::is_blocked_by(const layout_t &other) const {
 
 void layout_t::add_block(
         const pvar_t &dim, const expr_t &size, const expr_t &_stride) {
-    if (is_one(size)) return;
+    if (size.is(1)) return;
     expr_t stride = _stride;
     if (stride.is_empty()) {
         stride = 1;
@@ -756,7 +756,7 @@ layout_t layout_t::sub(const dim_mapper_t &dim_mapper, const coord_t &coord,
             }
             bool is_final = true;
             if (b.has_const_size() && !is_outer) {
-                gpu_assert(is_zero(off));
+                gpu_assert(off.is(0));
                 gpu_assert(!idx_final.has(dim));
                 expr_t div;
                 expr_t mod;
@@ -871,7 +871,7 @@ std::string layout_t::str() const {
     ostringstream_t oss;
     oss << blocks_str();
     oss << ":" + type().str();
-    if (!is_zero(base_)) {
+    if (!base_.is(0)) {
         oss << std::endl;
         oss << ir_utils::add_tag("base", base_.str());
     }
@@ -1195,7 +1195,7 @@ plane_t::plane_t(const layout_t &layout, const mask_desc_t &mask_desc)
         if (b.has_const_size() && b.int_size() == 1) continue;
         if (!w_block) {
             // Width dimension must be unit-strided.
-            if (!is_one(b.stride)) return;
+            if (!b.stride.is(1)) return;
             w_block = &b;
             continue;
         }
@@ -1231,7 +1231,7 @@ plane_t::plane_t(const layout_t &layout, const mask_desc_t &mask_desc)
         }
     }
     if (!x_mask_desc || !y_mask_desc) return;
-    if (!is_one(x_mask_desc->dim_stride(w_dim))) return;
+    if (!x_mask_desc->dim_stride(w_dim).is(1)) return;
 
     y_stride = y_mask_desc->dim_stride(h_dim);
     if (!y_stride.is<int_imm_t>() && !y_stride.is<const_var_t>()) return;

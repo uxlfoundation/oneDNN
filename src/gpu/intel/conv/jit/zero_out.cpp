@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/conv/jit/zero_out.hpp"
+#include "gpu/intel/jit/ir/hw.hpp"
 
 namespace dnnl {
 namespace impl {

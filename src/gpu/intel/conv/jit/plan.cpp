@@ -986,7 +986,7 @@ int fma_plan_t::bmnk_stop_idx(bmnk_kind_t bmnk, int subtile_idx) const {
 
 stmt_t fma_plan_t::create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
         const std::string &a, const std::string &b, const std::string &c,
-        int subtile_idx) const {
+        int subtile_idx, type_t a_override, type_t b_override) const {
     int c_buf_size = into<int>(size_bytes(c_layout, ir_ctx.grf_size()));
     auto a_buf = buf_mgr.get(a);
     auto b_buf = buf_mgr.get(b);
@@ -1004,7 +1004,7 @@ stmt_t fma_plan_t::create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
     icoord_t b_idx(3);
     icoord_t c_idx(3);
 
-    auto fma_funcs = create_fma_funcs(ir_ctx.hw());
+    auto fma_funcs = create_fma_funcs(ir_ctx.hw(), a_override, b_override);
 
     stmt_t stmt;
     for (int b = b0; b < b1; b += b_blk) {
@@ -1049,11 +1049,14 @@ stmt_t fma_plan_t::create_fma_block(const std::vector<func_t> &fmas,
     return ret;
 }
 
-std::vector<func_t> fma_plan_t::create_fma_funcs(const hw_t &hw) const {
-    auto &a = a_layout;
-    auto &b = b_layout;
+std::vector<func_t> fma_plan_t::create_fma_funcs(
+        const hw_t &hw, type_t a_override, type_t b_override) const {
+    auto a = (a_override.is_undef()) ? a_layout : a_layout.with(a_override);
+    auto b = (b_override.is_undef()) ? b_layout : b_layout.with(b_override);
     auto &c = c_layout;
     std::vector<func_t> ret;
+    gpu_assert(a.type().bitsize() == a_layout.type().bitsize());
+    gpu_assert(b.type().bitsize() == b_layout.type().bitsize());
     switch (fma_kind) {
         case fma_kind_t::mad: {
             int simd = max_bmn_blk();

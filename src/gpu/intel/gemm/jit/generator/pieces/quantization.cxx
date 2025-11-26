@@ -81,7 +81,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
 #if XE3P
     // Use lateScale for cases of applying scale to inputs that will be natively dpas'd
     // but do not support add/mul.
-    if (xs2D && (Txs.paddedSize() > Tx.paddedSize()) && (Tx.isInteger() || problem.forceLateQuant(hw))) {
+    if (xs2D && ((Txs.paddedSize() > Tx.paddedSize() && Tx.isInteger()) || problem.forceLateQuant(hw) || state.useBDPAS)) {
 #else
     if (xs2D && (Txs.paddedSize() > Tx.paddedSize()) && Tx.isInteger()) {
 #endif

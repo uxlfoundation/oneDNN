@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -321,11 +321,17 @@ status_t gen_desc_t::finalize(const char *tags) {
             && problem_.aqGroupK
                             % minOuterProductCount(hw_, problem_, strategy_)
                     != 0)
+#if XE3P
+        if (!problem_.useBDPAS(hw_))
+#endif
         return status::unimplemented;
     if (problem_.bScale2D()
             && problem_.bqGroupK
                             % minOuterProductCount(hw_, problem_, strategy_)
                     != 0)
+#if XE3P
+        if (!problem_.useBDPAS(hw_))
+#endif
         return status::unimplemented;
 
     // If the M/N group size is equal to M or N, align up to a multiple of unroll size

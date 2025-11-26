@@ -224,6 +224,14 @@ struct sparse_desc_t {
     // - Use the block number to find an offset in the packed data
     // - Use the bitmask to unpack the packed data
     blocking_desc_t packed_desc;
+
+    // Grouped encoding descriptor (for dnnl_grouped encoding)
+    struct grouped_desc_t {
+        // Number of groups
+        dnnl_dim_t ngroups;
+        // Strides for inner blocks
+        dnnl_dims_t strides;
+    } grouped_desc;
 };
 
 // Description of extra information stored in memory

@@ -975,6 +975,8 @@ struct memory : public handle<dnnl_memory_t> {
         packed = dnnl_packed,
         /// Coordinate Sparse (COO) encoding.
         coo = dnnl_coo,
+        /// Grouped Encoding.
+        grouped = dnnl_grouped,
     };
 
     /// Memory format tag specification.
@@ -2993,6 +2995,67 @@ struct memory : public handle<dnnl_memory_t> {
                 error::wrap_c_api(status,
                         "could not create a memory descriptor for packed "
                         "sparse encoding");
+            return desc {md};
+        }
+
+        /// Creates a memory descriptor for grouped encoding, that
+        /// stores multiple independent sub-tensors concatenated in memory.
+        ///
+        /// Common use case is Mixture-of-Experts (MoE) workloads where each expert
+        /// processes different numbers of tokens.
+        /// In this case, each sub-tensor can have a different size along the
+        /// first dimension, but all share the same size along the second dimension.
+        /// The total size along the first dimension is fixed, but distribution
+        /// among sub-tensors can change at runtime.
+        ///
+        /// Memory layout:
+        /// - Buffer 0 (values): Sub-tensors stored as [A0 | A1 | ... | AN]
+        /// - Buffer 1 (offsets): Start position of each group
+        ///
+        /// Example: 3 groups with shapes {1, 256}, {3, 256}, {5, 256}
+        /// - Values buffer: 9 * 256 elements total
+        /// - Offsets: [0, 1, 4, 9] marking where each group starts
+        ///
+        /// @param adims Array of dimensions representing the overall tensor
+        ///     shape.
+        /// @param adata_type Elements data type.
+        /// @param group_count Number of sub-tensors inside the concatenated
+        ///     tensor.
+        /// @param grouped_dims Flattened vector of group dimensions:
+        ///     - Generic per-group case: {M0, K0, M1, K1, ...}
+        ///       (size = group_count * 2)
+        ///     - Special case: {M, K}, where M can be RUNTIME_DIM_VAL
+        ///       (size = 2)
+        /// @param offsets_dt Data type of the offsets array.
+        /// @param astrides Strides for inner layout.
+        /// @param allow_empty A flag signifying whether construction is
+        ///     allowed to fail without throwing an exception. In this case a
+        ///     zero memory descriptor will be returned. This flag is optional
+        ///     and defaults to false.
+        /// @returns Memory descriptor for grouped encoding.
+        ///
+        /// @note Only 2D tensors are supported (adims.size() == 2).
+        /// @note Only row-major layout is supported.
+        /// @note The second dimension (K) must be uniform across all groups
+        ///       and cannot be RUNTIME_DIM_VAL.
+        static desc grouped(const dims &adims, data_type adata_type,
+                dim group_count, const dims &grouped_dims,
+                data_type offsets_dt = data_type::s32,
+                const dims &astrides = {}, bool allow_empty = false) {
+
+            validate_dims(adims);
+            if (!astrides.empty()) validate_dims(astrides, (int)adims.size());
+            dnnl_memory_desc_t md = nullptr;
+            dnnl_status_t status
+                    = dnnl_memory_desc_create_with_grouped_encoding(&md,
+                            (int)adims.size(), adims.data(),
+                            convert_to_c(adata_type), group_count,
+                            (int)grouped_dims.size(), grouped_dims.data(),
+                            convert_to_c(offsets_dt),
+                            astrides.empty() ? nullptr : &astrides[0]);
+            if (!allow_empty)
+                error::wrap_c_api(
+                        status, "could not create a grouped memory descriptor");
             return desc {md};
         }
 

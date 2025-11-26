@@ -1510,31 +1510,21 @@ void CopyPlan::plan4BitShifts(CopyInstruction &i)
 
     bool high = (i.dst.type == ngen_b16_h4x());
 
-    std::array<CopyInstruction*, 2> ie = {&i, nullptr};
-
-    // Split into high and low nybble conversions if both are present.
-    if (i.src0.stride == 1) {
-        auto &i0 = i;
-        i0.dst.stride *= 2;
-        i0.src0.stride *= 2;
-        i0.simd /= 2;
-        auto &i1 = split(i, false);
-        i1.dst.offset += i1.dst.stride / 2;
-        i1.src0.offset += i1.src0.stride / 2;
-        ie[1] = &i1;
-    }
-
-    // Convert to shifts.
-    for (auto ip: ie) if (ip) {
-        bool even = (ip->src0.offset % 2 == 0);
-
-        ip->op = high ? Opcode::shl : Opcode::shr;
-        ip->src0.type = DataType::ub;
-        ip->src0.stride /= 2;
-        ip->src0.offset /= 2;
-        ip->src1 = high ? (even ? 12 : 8)
-                        : (even ?  0 : 4);
-        ip->dst.type = DataType::uw;
+    bool even = (i.src0.offset % 2 == 0);
+    i.op = high ? Opcode::shl : Opcode::shr;
+    i.dst.type = DataType::uw;
+    i.src0.type = DataType::ub;
+    i.src0.offset /= 2;
+    if (i.src0.stride == 1 && i.simd > 1) {
+        i.src0.stride = 0;
+        i.src0.width = 2;
+        i.src0.vs = 1;
+        i.src1 = high ? Immediate::uv(0x8C8C8C8C)
+                      : Immediate::uv(0x40404040);
+    } else {
+        i.src0.stride /= 2;
+        i.src1 = high ? (even ? 12 : 8)
+                      : (even ?  0 : 4);
     }
 }
 

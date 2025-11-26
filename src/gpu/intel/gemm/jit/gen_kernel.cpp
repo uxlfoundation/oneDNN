@@ -1043,9 +1043,6 @@ void gen_kernel_t::init_interface() {
     interface_.newArgument("offset_A", DataType::q);
     interface_.newArgument("offset_B", DataType::q);
     interface_.newArgument("offset_C", DataType::q);
-    VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument offset_A");
-    VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument offset_B");
-    VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument offset_C");
     interface_.newArgument("lda", DataType::d);
     interface_.newArgument("ldb", DataType::d);
     interface_.newArgument("ldc", DataType::d);
@@ -1056,12 +1053,12 @@ void gen_kernel_t::init_interface() {
     interface_.newArgument("beta_real", s_type_ngen);
 
     if (problem.aoPtrDims >= 0){
-        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument ao_ptr");
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument ao_ptr");
         interface_.newArgument(
                 "ao_ptr", ExternalArgumentType::GlobalPtr, ao_access);
     }
     if (problem.boPtrDims >= 0){
-        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument bo_ptr");
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument bo_ptr");
         interface_.newArgument(
                 "bo_ptr", ExternalArgumentType::GlobalPtr, bo_access);
     }
@@ -1070,12 +1067,12 @@ void gen_kernel_t::init_interface() {
     bool mynew = gpu_utils::dev_getenv("MYNEW", false);
     if (mynew) {
         if (problem.aoPtrDims == -1 && problem.ao_hostscalar) {
-            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument ao_ptr as scalar");
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument ao_ptr as scalar");
             interface_.newArgument(
                     "ao_ptr", DataType::d);
         }
         if (problem.boPtrDims == -1 && problem.bo_hostscalar) {
-            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument bo_ptr as scalar");
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument bo_ptr as scalar");
             interface_.newArgument(
                     "bo_ptr", DataType::d);
         }

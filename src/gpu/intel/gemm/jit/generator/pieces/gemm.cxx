@@ -44,7 +44,6 @@ void Generator<hw>::gemm(GEMMProblem problem, GEMMStrategy strategy, const Inter
 template <HW hw>
 void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
-
     VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ################# >>>>>>");
 
     const bool inFusedGEMM = false;

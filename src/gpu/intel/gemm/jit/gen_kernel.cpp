@@ -1065,6 +1065,8 @@ void gen_kernel_t::init_interface() {
 
     // @@@@@@@@@@@@@@@@@@@
     bool mynew = gpu_utils::dev_getenv("MYNEW", false);
+
+#if 0 // guess it's wrong way
     if (mynew) {
         if (problem.aoPtrDims == -1 && problem.ao_hostscalar) {
             VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument ao_ptr as scalar");
@@ -1077,6 +1079,16 @@ void gen_kernel_t::init_interface() {
                     "bo_ptr", DataType::d);
         }
     }
+#endif
+    if (mynew) {
+        bool abo_precond = (problem.aoPtrDims == -1 && problem.aoPtrDims == -1) &&
+            (problem.ao_hostscalar || problem.bo_hostscalar);
+        if (abo_precond) {
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> @@@@ interface_.newArgument abo");
+            interface_.newArgument("abo", DataType::ud);
+        }
+    }
+
     // @@@@@@@@@@@@@@@@@@@
 
     if (problem.aScale2D())

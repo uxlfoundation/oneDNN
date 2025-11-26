@@ -1108,6 +1108,52 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
         dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
         dnnl_data_type_t data_type, dnnl_dim_t nnz);
 
+/// Creates a memory descriptor for grouped encoding, that
+/// stores multiple independent sub-tensors concatenated in memory.
+///
+/// Common use case is Mixture-of-Experts (MoE) workloads where each expert
+/// processes different numbers of tokens.
+/// In this case, each sub-tensor can have a different size along the
+/// first dimension, but all share the same size along the second dimension.
+/// The total size along the first dimension is fixed, but distribution
+/// among sub-tensors can change at runtime.
+///
+/// Memory layout:
+/// - Buffer 0 (values): Sub-tensors stored as [A0 | A1 | ... | AN]
+/// - Buffer 1 (offsets): Start position of each group
+///
+/// Example: 3 groups with shapes {1, 256}, {3, 256}, {5, 256}
+/// - Values buffer: 9 * 256 elements total
+/// - Offsets: [0, 1, 4, 9] marking where each group starts
+///
+/// @param memory_desc Output memory descriptor.
+/// @param ndims Number of dimensions for the concatenated tensor.
+/// @param dims Array of dimensions representing the overall tensor shape.
+/// @param data_type Elements data type.
+/// @param group_count Number of sub-tensors inside the concatenated tensor.
+/// @param group_dims_size Size of flattened group_dims array.
+///     - Generic case is group_count * 2: per-group dimensions
+///       (e.g., [M0, K0, M1, K1, ...])
+///     - Special case is 2: shared dimensions for all groups (e.g., [M, K])
+/// @param group_dims Flattened array of group dimensions:
+///     - Generic per-group case: [M0, K0, M1, K1, ...]
+///     - Special case: [M, K], where, in addition, M can be
+///       DNNL_RUNTIME_DIM_VAL
+/// @param offsets_dt Data type of the offsets array.
+/// @param strides Strides for inner layout.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+///
+/// @note Only 2D tensors are supported (ndims == 2).
+/// @note Only row-major layout is supported.
+/// @note The second dimension (K) must be uniform across all groups
+///       and cannot be DNNL_RUNTIME_DIM_VAL.
+dnnl_status_t DNNL_API dnnl_memory_desc_create_with_grouped_encoding(
+        dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
+        dnnl_data_type_t data_type, dnnl_dim_t group_count, int group_dims_size,
+        const dnnl_dims_t group_dims, dnnl_data_type_t offsets_dt,
+        const dnnl_dims_t strides);
+
 /// Creates a memory descriptor for a scalar value that resides on the host.
 ///
 /// @param memory_desc Output memory descriptor.

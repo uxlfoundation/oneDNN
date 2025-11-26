@@ -31,6 +31,11 @@ using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
 
+#ifndef VDEBUGINFO_OBJECT
+#define VDEBUGINFO_OBJECT(obj) \
+    VDEBUGINFO(4, primitive, object, "MY: +++++ : %s : is Valid Null Scalar = %d %d %d", #obj, (obj).isValid(), (obj).isNull(), (obj).isScalar())
+#endif
+
 
 // Create a GEMM kernel.
 template <HW hw>
@@ -239,7 +244,11 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
 
     if (Tc.isInteger() && (aoScalarLoad || boScalarLoad)) {
         VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### state.inputs.abo = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy))");
+
+        VDEBUGINFO_OBJECT(state.inputs.abo);
         state.inputs.abo = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
+        VDEBUGINFO_OBJECT(state.inputs.abo);
+
         if (aoScalarLoad) {
             VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### state.inputs.ao = state.inputs.abo.w(0)");
             state.inputs.ao = state.inputs.abo.w(0);

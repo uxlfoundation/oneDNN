@@ -398,7 +398,8 @@ struct generator_dsl_t {
     generator_dsl_t(const generator_dsl_desc_t &desc)
         : problem(desc.problem), strategy(desc.strategy) {}
 
-    kernel_t build(kernel::iface_t iface, dnnl_ir::ir_context_t &ctx) {
+    dsl::kernel_t build(
+            dsl::kernel::iface_t iface, dnnl_ir::ir_context_t &ctx) {
         if (strategy.kParallel || strategy.kParallelLocal) {
             gpu_warning() << "kParallel support is unimplemented";
             return {};
@@ -754,7 +755,7 @@ struct generator_dsl_t {
     const GEMMStrategy &strategy;
 };
 
-kernel_t make_kernel(const generator_dsl_desc_t &desc) {
+dsl::kernel_t make_kernel(const generator_dsl_desc_t &desc) {
     dnnl_ir::constraint_set_t cset;
     dnnl_ir::ir_context_t ctx(desc.options, cset);
 

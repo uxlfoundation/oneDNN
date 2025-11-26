@@ -108,7 +108,7 @@ class dst_layout_param_t : public layout_param_t {
     bool is_default() const override { return false; }
 };
 
-class options_param_t : public value_param_t<kernel::options_t> {
+class options_param_t : public value_param_t<dsl::kernel::options_t> {
 public:
     using value_param_t::is_overridden;
     using value_param_t::value_param_t;
@@ -319,7 +319,7 @@ public:
     }
 
     static int get_max_threadgroups_per_wave(
-            const kernel::options_t &options, dim_t tg_elems) {
+            const dsl::kernel::options_t &options, dim_t tg_elems) {
         auto arch = convert_ngen_arch_to_dnnl(options.hw());
         int threads_per_eu = compute::device_info_t::threads_per_eu(
                 arch, options.regs() > 128);
@@ -333,8 +333,8 @@ public:
 
     // Return thread utilization as a percentage. If this value is low,
     // parallelism is a fundamental limitation to the current work scheduling.
-    static float get_thread_utilization(
-            const kernel::options_t &options, dim_t kg_elems, dim_t tg_elems) {
+    static float get_thread_utilization(const dsl::kernel::options_t &options,
+            dim_t kg_elems, dim_t tg_elems) {
         auto arch = convert_ngen_arch_to_dnnl(options.hw());
         int eus_per_subslice = compute::device_info_t::max_eus_per_wg(arch);
         int subslice_count = options.hw().eu_count() / eus_per_subslice;
@@ -348,8 +348,8 @@ public:
 
     // Return wave utilization as a percentage. If this value is low, memory
     // latency may be an issue due to limited use of SMT to hide the latency.
-    static float get_wave_utilization(
-            const kernel::options_t &options, dim_t kg_elems, dim_t tg_elems) {
+    static float get_wave_utilization(const dsl::kernel::options_t &options,
+            dim_t kg_elems, dim_t tg_elems) {
         int tgs_per_wave = get_max_threadgroups_per_wave(options, tg_elems);
         return (100.f * float(kg_elems))
                 / float(utils::rnd_up(kg_elems, tgs_per_wave));

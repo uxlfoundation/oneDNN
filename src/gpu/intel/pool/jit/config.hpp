@@ -65,7 +65,7 @@ public:
 class config_t : public prim_config_t {
 public:
     static bool check_compatibility(const conf_t &prb,
-            const kernel::options_t &exec, const layout_t &src,
+            const dsl::kernel::options_t &exec, const layout_t &src,
             const post_ops_t &po, dsl::type_t dst_dt) {
         const int max_tg = exec.hw().max_tg_size(exec.regs(), exec.simd());
         if (max_tg % 8 != 0) return false;
@@ -121,7 +121,7 @@ public:
     }
 
     config_t() = default;
-    config_t(const kernel::options_t &ec, const conf_t &prb,
+    config_t(const dsl::kernel::options_t &ec, const conf_t &prb,
             const layout_t &src, const layout_t &dst) {
         set_problem(prb);
         src_layout().set_user(spatials_to_3d(src, false, {0, 1, 2}));

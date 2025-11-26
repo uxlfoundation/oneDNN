@@ -2589,7 +2589,7 @@ private:
         return plan_ptr;
     }
 
-    send_params_t get_send_params(const kernel::options_t &options,
+    send_params_t get_send_params(const dsl::kernel::options_t &options,
             send_op_t op, send_address_t address, abc_kind_t abc,
             const view_t &view) const {
         auto params = jit::get_send_params(options, op, address, view);
@@ -2599,7 +2599,7 @@ private:
         return params;
     }
 
-    send_params_t get_send_params(const kernel::options_t &options,
+    send_params_t get_send_params(const dsl::kernel::options_t &options,
             send_op_t op, send_address_t address, fma_kind_t fma,
             abc_kind_t abc, const view_t &view,
             const gemm_schedule_t &gemm_schedule,

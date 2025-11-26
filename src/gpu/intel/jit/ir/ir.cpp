@@ -1158,7 +1158,7 @@ bool is_linear_var_transform(const expr_t &e, linear_transform_t &t) {
 }
 
 ir_context_t::ir_context_t(
-        const kernel::options_t &options, constraint_set_t &cset)
+        const dsl::kernel::options_t &options, constraint_set_t &cset)
     : options_(options), cset_(cset) {
     for (auto &a : options_.assumptions()) {
         add_constraint(a);

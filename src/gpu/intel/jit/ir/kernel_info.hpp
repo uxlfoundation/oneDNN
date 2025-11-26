@@ -24,8 +24,8 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive_exec_types.hpp"
+#include "gemmstone/dsl/kernel.hpp"
 #include "gpu/intel/jit/ir/core_legacy.hpp"
-#include "gpu/intel/jit/ir/include/kernel.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/primitive.hpp"
@@ -192,8 +192,8 @@ public:
 
     bool is_output(int idx) const { return !is_input(idx); }
 
-    kernel::iface_t iface(const std::string &name) const {
-        kernel::iface_t iface(name);
+    dsl::kernel::iface_t iface(const std::string &name) const {
+        dsl::kernel::iface_t iface(name);
         for (int i = 0; i < nargs(); i++) {
             iface.register_arg(args_[i].var);
         }

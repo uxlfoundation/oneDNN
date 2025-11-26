@@ -1148,7 +1148,7 @@ status_t init_pd_time_cfg(const problem_t &prb, config_t &cfg,
     zero_points_config_t zp_cfg(pd);
     cfg.set_zp_cfg(zp_cfg);
     cfg.set_prb(prb);
-    cfg.set_options(kernel::options_t(hw));
+    cfg.set_options(dsl::kernel::options_t(hw));
     cfg.maybe_override_from_env();
 
     CHECK(init_fma_kind(cfg, pd, engine));
@@ -1165,7 +1165,7 @@ status_t init_pd_time_cfg(const problem_t &prb, config_t &cfg,
 }
 
 bool pipeline_unroll_hint(const problem_t &prb, fma_kind_t fma_kind,
-        const kernel::options_t &options,
+        const dsl::kernel::options_t &options,
         bwd_d_optimize_kind_t bwd_d_optimize_kind,
         bool allow_global_reduction) {
     bool do_unroll = true;

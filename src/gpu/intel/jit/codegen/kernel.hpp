@@ -149,8 +149,8 @@ class ir_to_ngen_generator_t : public BaseGeneratorT {
 public:
     NGEN_FORWARD_SCOPE(BaseGeneratorT)
 
-    ir_to_ngen_generator_t(const kernel::iface_t &kernel_iface,
-            const kernel::options_t &options,
+    ir_to_ngen_generator_t(const dsl::kernel::iface_t &kernel_iface,
+            const dsl::kernel::options_t &options,
             const ngen::DebugConfig &debug_config)
         : BaseGeneratorT(options.hw().product(), debug_config)
         , kernel_iface_(kernel_iface)
@@ -171,8 +171,8 @@ public:
 
     ngen::Subregister grid_ids[3] = {r0.ud(1), r0.ud(6), r0.ud(7)};
 
-    const kernel::iface_t &kernel_iface() const { return kernel_iface_; }
-    const kernel::options_t &options() const { return options_; }
+    const dsl::kernel::iface_t &kernel_iface() const { return kernel_iface_; }
+    const dsl::kernel::options_t &options() const { return options_; }
     const dsl::hw_t &hw_info() const { return options_.hw(); }
 
     void generate_prologue() {
@@ -1131,8 +1131,8 @@ protected:
                 : retn;
     }
 
-    kernel::iface_t kernel_iface_;
-    kernel::options_t options_;
+    dsl::kernel::iface_t kernel_iface_;
+    dsl::kernel::options_t options_;
     reg_allocator_t ra_;
     expr_binding_t expr_binding_;
     ngen::GRF signal_header_;

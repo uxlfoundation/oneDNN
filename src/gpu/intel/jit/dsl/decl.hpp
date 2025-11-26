@@ -18,7 +18,7 @@
 #define GPU_INTEL_JIT_DSL_DECL_HPP
 
 #include "gemmstone/dsl/ir.hpp"
-#include "gpu/intel/jit/ir/include/kernel.hpp"
+#include "gemmstone/dsl/kernel.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace gemmstone {
@@ -67,11 +67,11 @@ static type_t bf16 = type_t::bf16();
 
 using expr_t = gemmstone::dsl::ir::expr_t;
 using stmt_t = gemmstone::dsl::ir::stmt_t;
-using kernel_t = jit::kernel_t;
+using kernel_t = gemmstone::dsl::kernel_t;
 using send_cache_hint_t = gemmstone::dsl::ir::send_cache_hint_t;
 
 namespace kernel {
-using iface_t = jit::kernel::iface_t;
+using iface_t = gemmstone::dsl::kernel::iface_t;
 }
 
 } // namespace dsl

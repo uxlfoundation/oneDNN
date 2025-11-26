@@ -919,7 +919,8 @@ send_2d_hint_t get_send_2d_hint(send_op_t send_op, const dsl::type_t &type,
     return hint;
 }
 
-bool send_2d_params_ok(const kernel::options_t &options, send_op_t send_op) {
+bool send_2d_params_ok(
+        const dsl::kernel::options_t &options, send_op_t send_op) {
     if (options.hw() < ngen::HW::XeHPC) return false;
     if (!utils::one_of(send_op, send_op_t::load, send_op_t::prefetch,
                 send_op_t::store))
@@ -939,7 +940,7 @@ bool send_2d_vlayout_ok(const layout_t &vlayout) {
     return true;
 }
 
-send_2d_hint_t get_send_2d_hint(const kernel::options_t &options,
+send_2d_hint_t get_send_2d_hint(const dsl::kernel::options_t &options,
         send_op_t send_op, const view_t &view, bool allow_2d,
         bool use_send_plan) {
     send_2d_hint_t hint;
@@ -955,7 +956,7 @@ send_2d_hint_t get_send_2d_hint(const kernel::options_t &options,
             send_op, view.type(), false, false, b0.size, b1.size);
 }
 
-send_2d_hint_t get_send_2d_hint(const kernel::options_t &options,
+send_2d_hint_t get_send_2d_hint(const dsl::kernel::options_t &options,
         send_op_t send_op, fma_kind_t fma_kind, abc_kind_t abc_kind,
         const view_t &view, const gemm_schedule_t &gemm_schedule, bool allow_2d,
         bool use_send_plan) {
@@ -1020,7 +1021,7 @@ send_2d_hint_t get_send_2d_hint(const kernel::options_t &options,
     return hint;
 }
 
-send_params_t get_send_params(const kernel::options_t &options,
+send_params_t get_send_params(const dsl::kernel::options_t &options,
         send_op_t send_op, send_address_t send_address, const view_t &view,
         send_cache_hint_t cache_hint, fma_kind_t fma_kind, abc_kind_t abc_kind,
         bool allow_2d) {
@@ -1038,7 +1039,7 @@ send_params_t get_send_params(const kernel::options_t &options,
     return params;
 }
 
-send_params_t get_send_params(const kernel::options_t &options,
+send_params_t get_send_params(const dsl::kernel::options_t &options,
         send_op_t send_op, send_address_t send_address, fma_kind_t fma_kind,
         abc_kind_t abc_kind, const view_t &view,
         const gemm_schedule_t &gemm_schedule, bool allow_2d) {

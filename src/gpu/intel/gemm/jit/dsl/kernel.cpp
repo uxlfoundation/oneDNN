@@ -14,45 +14,40 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/ir/include/kernel.hpp"
-#include "gpu/intel/jit/ir/ir.hpp"
+#include "gemmstone/dsl/kernel.hpp"
+#include "dsl/ir/core.hpp"
 #include "ngen_interface.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
 
 kernel::iface_t::iface_t(const ngen::InterfaceHandler &iface)
     : kernel_name_(iface.getExternalName()) {
     for (unsigned int i = 0; i < iface.numAssignments(); i++) {
         auto &a = iface.getAssignment(i);
         if (a.exttype == ngen::ExternalArgumentType::Scalar) {
-            register_arg(a.name, dsl::type_t(a.type));
+            register_arg(a.name, type_t(a.type));
         } else if (a.exttype == ngen::ExternalArgumentType::GlobalPtr) {
-            register_arg(a.name, dsl::type_t::byte(dsl::type::attr_t::ptr));
+            register_arg(a.name, type_t::byte(type::attr_t::ptr));
         } else if (a.exttype == ngen::ExternalArgumentType::LocalPtr) {
             register_arg(a.name,
-                    dsl::type_t::byte(
-                            dsl::type::attr_t::ptr | dsl::type::attr_t::slm));
+                    type_t::byte(type::attr_t::ptr | type::attr_t::slm));
         } else {
-            gpu_assert(false) << "Unimplemented";
+            stub();
         }
     }
 }
 
-const expr_t &kernel::iface_t::operator[](size_t idx) const {
-    gpu_assert(idx < nargs());
+const ir::expr_t &kernel::iface_t::operator[](size_t idx) const {
+    dsl_assert(idx < nargs());
     return args_[idx].var;
 }
-expr_t kernel::iface_t::find_arg(
+ir::expr_t kernel::iface_t::find_arg(
         const std::string &name, bool allow_empty) const {
     auto *arg = find_arg_impl(name);
     if (arg) return arg->var;
-    if (!allow_empty)
-        gpu_error_not_expected() << "Argument not found: " << name;
-    return expr_t();
+    if (!allow_empty) dsl_error() << "Argument not found: " << name;
+    return ir::expr_t();
 }
 
 size_t kernel::iface_t::index(const std::string &name) const {
@@ -63,16 +58,13 @@ size_t kernel::iface_t::index(const std::string &name) const {
 }
 
 void kernel::iface_t::register_arg(
-        const std::string &name, const dsl::type_t &type) {
-    register_arg(var_t::make(type, name));
+        const std::string &name, const type_t &type) {
+    register_arg(ir::var_t::make(type, name));
 }
 
 const std::string &kernel::iface_t::arg_t::name() const {
-    return var.as<var_t>().name;
+    return var.as<ir::var_t>().name;
 }
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END

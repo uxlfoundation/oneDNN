@@ -23,8 +23,8 @@
 #include <vector>
 
 #include "gemmstone/dsl/hw.hpp"
+#include "gemmstone/dsl/kernel.hpp"
 #include "gpu/intel/jit/ir/core_legacy.hpp"
-#include "gpu/intel/jit/ir/include/kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -37,15 +37,20 @@ using hw_t = gemmstone::dsl::hw_t;
 namespace hw {
 using attr_t = gemmstone::dsl::hw::attr_t;
 }
+using kernel_t = gemmstone::dsl::kernel_t;
+namespace kernel {
+using iface_t = gemmstone::dsl::kernel::iface_t;
+using options_t = gemmstone::dsl::kernel::options_t;
+} // namespace kernel
 } // namespace dsl
 
 class constraint_set_t;
 
 class ir_context_t {
 public:
-    ir_context_t(const kernel::options_t &options, constraint_set_t &cset);
+    ir_context_t(const dsl::kernel::options_t &options, constraint_set_t &cset);
 
-    const kernel::options_t &options() const { return options_; }
+    const dsl::kernel::options_t &options() const { return options_; }
 
     const dsl::hw_t &hw() const { return options().hw(); }
 
@@ -74,7 +79,7 @@ public:
     }
 
 private:
-    kernel::options_t options_;
+    dsl::kernel::options_t options_;
     constraint_set_t &cset_;
     std::unordered_set<std::string> all_names_;
     std::unordered_map<std::string, int> prefix_ids_;

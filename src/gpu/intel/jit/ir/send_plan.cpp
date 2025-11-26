@@ -2326,7 +2326,7 @@ private:
 
 class ir_send_plan_t final : public send_plan_impl_t {
 public:
-    ir_send_plan_t(const kernel::options_t &options, const view_t &view,
+    ir_send_plan_t(const dsl::kernel::options_t &options, const view_t &view,
             send_params_t &send_params)
         : send_params_(send_params)
         , ir_ctx_(options, cset_)
@@ -2730,7 +2730,7 @@ bool can_use_send_plan(const view_t &view) {
     return true;
 }
 
-send_plan_t create_ir_send_plan(const kernel::options_t &options,
+send_plan_t create_ir_send_plan(const dsl::kernel::options_t &options,
         const view_t &view, const send_params_t &_send_params) {
     auto send_params = _send_params;
     auto send_plan
@@ -2738,7 +2738,7 @@ send_plan_t create_ir_send_plan(const kernel::options_t &options,
     return send_plan_t(std::move(send_plan));
 }
 
-send_plan_t create_send_plan(const kernel::options_t &options,
+send_plan_t create_send_plan(const dsl::kernel::options_t &options,
         const view_t &view, const send_params_t &send_params, bool fill_buf) {
     if (!send_params.use_send_plan)
         return create_ir_send_plan(options, view, send_params);

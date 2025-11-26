@@ -76,7 +76,7 @@ primitive_init_plan_t::buffer_entry_t primitive_init_plan_t::find_buf(
 kernel_info_t primitive_init_plan_t::create_kernel_info(
         const kernel_desc_base_t &desc,
         const std::unordered_map<std::string, std::string> &buf_map) const {
-    kernel::iface_t iface(desc.kernel_name());
+    dsl::kernel::iface_t iface(desc.kernel_name());
     desc.init_kernel_iface(iface);
     kernel_info_t info;
     for (size_t i = 0; i < iface.nargs(); i++) {
@@ -135,7 +135,7 @@ status_t primitive_init_plan_t::add_reorder_kernel(
                     /*is_input=*/e == &src, size_bytes(e->layout));
         }
     }
-    kernel::options_t options(make_ir_hw(engine), regs_, simd_);
+    dsl::kernel::options_t options(make_ir_hw(engine), regs_, simd_);
     options.set_require_dpas(dpas_);
     reorder::jit::config_t cfg(options, src.layout, dst.layout);
     kernel_info.set_nd_range(cfg.nd_range());

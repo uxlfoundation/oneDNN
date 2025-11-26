@@ -14,14 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_IR_INCLUDE_KERNEL_HPP
-#define GPU_INTEL_JIT_IR_INCLUDE_KERNEL_HPP
+#ifndef GEMMSTONE_GUARD_INCLUDE_IR_KERNEL_HPP
+#define GEMMSTONE_GUARD_INCLUDE_IR_KERNEL_HPP
 
 #include <vector>
 
-#include "gemmstone/dsl/hw.hpp"
 #include "gemmstone/dsl/ir/object.hpp"
-#include "gemmstone/dsl/type.hpp"
+#include "gemmstone/dsl/hw.hpp"
 
 #include "ngen_debuginfo.hpp"
 
@@ -31,32 +30,15 @@ class InterfaceHandler;
 }
 // NOLINTEND(readability-identifier-naming)
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
-
-// Replace with using dsl = gemmstone::dsl once migration is complete
+GEMMSTONE_NAMESPACE_START
 namespace dsl {
-namespace ir {
-using object_t = gemmstone::dsl::ir::object_t;
-using expr_t = gemmstone::dsl::ir::expr_t;
-using stmt_t = gemmstone::dsl::ir::stmt_t;
-} // namespace ir
-namespace type {
-using attr_t = gemmstone::dsl::type::attr_t;
-}
-using type_t = gemmstone::dsl::type_t;
-namespace hw {
-using attr_t = gemmstone::dsl::hw::attr_t;
-}
-using hw_t = gemmstone::dsl::hw_t;
-} // namespace dsl
 
+namespace ir {
 struct codegen_extension_iface_t;
+} // namespace ir
+
 using codegen_extension_handler_t
-        = void (*)(const dsl::ir::object_t &, codegen_extension_iface_t &);
+        = void (*)(const ir::object_t &, ir::codegen_extension_iface_t &);
 
 namespace kernel {
 
@@ -68,23 +50,22 @@ public:
 
     size_t nargs() const { return args_.size(); }
     const std::string &kernel_name() const { return kernel_name_; }
-    const dsl::ir::expr_t &operator[](size_t idx) const;
+    const ir::expr_t &operator[](size_t idx) const;
     bool has(const std::string &name) const { return find_arg_impl(name); }
 
-    dsl::ir::expr_t find_arg(
-            const std::string &name, bool allow_empty = false) const;
+    ir::expr_t find_arg(const std::string &name, bool allow_empty = false) const;
     size_t index(const std::string &name) const;
-    void register_arg(const dsl::ir::expr_t &var) { args_.emplace_back(var); }
-    void register_arg(const std::string &name, const dsl::type_t &type);
+    void register_arg(const ir::expr_t &var) { args_.emplace_back(var); }
+    void register_arg(const std::string &name, const type_t &type);
 
 private:
     struct arg_t {
         arg_t() = default;
-        arg_t(const dsl::ir::expr_t &var) : var(var) {}
+        arg_t(const ir::expr_t &var) : var(var) {}
         const std::string &name() const;
         bool is_ptr() const { return var.type().is_ptr(); }
 
-        dsl::ir::expr_t var;
+        ir::expr_t var;
     };
 
     const arg_t *find_arg_impl(const std::string &name) const {
@@ -104,11 +85,12 @@ extern codegen_extension_handler_t default_extension_handler;
 class options_t {
 public:
     options_t() = default;
-    options_t(const dsl::hw_t &hw) : hw_(hw) {}
-    options_t(const dsl::hw_t &hw, int regs, int simd)
+    options_t(const hw_t &hw) : hw_(hw) {}
+    options_t(const hw_t &hw, int regs, int simd)
         : hw_(hw), regs_(regs), simd_(simd) {}
 
-    const dsl::hw_t &hw() const { return hw_; }
+    const hw_t &hw() const { return hw_; }
+    void set_hw(const hw_t &hw) { hw_ = hw; }
 
     // Maximum number of GRF registers used by the kernel. This can be used to
     // avoid a stall on Xe and Xe2 architectures when switching between kernels
@@ -133,10 +115,8 @@ public:
     }
 
     // Assumptions which can be used to improve code generation
-    void assume(const dsl::ir::expr_t &e) { assumptions_.emplace_back(e); }
-    const std::vector<dsl::ir::expr_t> &assumptions() const {
-        return assumptions_;
-    }
+    void assume(const ir::expr_t &e) { assumptions_.emplace_back(e); }
+    const std::vector<ir::expr_t> &assumptions() const { return assumptions_; }
 
     int grf_size() const { return hw_.grf_size(); }
 
@@ -149,31 +129,28 @@ public:
     }
 
 private:
-    dsl::hw_t hw_;
+    hw_t hw_;
     int regs_ = 0;
     int simd_ = 0;
     bool require_dpas_ = false;
     codegen_extension_handler_t extension_handler_ = default_extension_handler;
-    std::vector<dsl::ir::expr_t> assumptions_;
+    std::vector<ir::expr_t> assumptions_;
 };
 
 } // namespace kernel
 
 struct kernel_t {
     kernel_t() : iface("invalid_dsl_kernel") {}
-    kernel_t(kernel::iface_t iface, dsl::ir::stmt_t body,
+    kernel_t(kernel::iface_t iface, ir::stmt_t body,
             const kernel::options_t &options)
         : iface(std::move(iface)), body(std::move(body)), options(options) {}
 
     kernel::iface_t iface;
-    dsl::ir::stmt_t body;
+    ir::stmt_t body;
     kernel::options_t options;
     ngen::DebugConfig debug_cfg;
 };
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 #endif

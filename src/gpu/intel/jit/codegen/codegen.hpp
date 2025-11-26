@@ -16,7 +16,7 @@
 #ifndef GPU_INTEL_JIT_CODEGEN_CODEGEN_HPP
 #define GPU_INTEL_JIT_CODEGEN_CODEGEN_HPP
 
-#include "gpu/intel/jit/ir/include/kernel.hpp"
+#include "gemmstone/dsl/kernel.hpp"
 #include "oneapi/dnnl/dnnl_config.h"
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
@@ -32,12 +32,17 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+namespace dsl {
+using kernel_t = gemmstone::dsl::kernel_t;
+}
+
 #ifdef WITH_SYCL_RUNTIME
 sycl::kernel make_kernel(
-        const kernel_t &kernel, sycl::context ctx, sycl::device dev);
+        const dsl::kernel_t &kernel, sycl::context ctx, sycl::device dev);
 #endif
 #ifdef WITH_OPENCL_RUNTIME
-cl_kernel make_kernel(const kernel_t &kernel, cl_context ctx, cl_device_id dev);
+cl_kernel make_kernel(
+        const dsl::kernel_t &kernel, cl_context ctx, cl_device_id dev);
 #endif
 
 } // namespace jit

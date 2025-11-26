@@ -646,7 +646,7 @@ int get_post_op_mem_usage(const post_op_tensor_info_t &info, int c_elems,
     return load_size + cvt_size;
 }
 
-int find_tile_size(const kernel::options_t &options,
+int find_tile_size(const dsl::kernel::options_t &options,
         const post_op_context_t &post_op_ctx, const view_t &c_mem_view,
         const layout_t &c_reg_layout, int preload_max_size, int post_op_blk) {
     bool with_post_ops = !post_op_ctx.post_ops().empty();
@@ -705,7 +705,8 @@ int find_tile_size(const kernel::options_t &options,
 // - S_y    is the stage before storing C to global memory
 class epilogue_builder_t {
 public:
-    epilogue_builder_t(ir_context_t &ir_ctx, const kernel::options_t &options,
+    epilogue_builder_t(ir_context_t &ir_ctx,
+            const dsl::kernel::options_t &options,
             const gemm_schedule_t &gemm_schedule, bool force_c_reorder,
             const post_op_context_t &post_op_ctx,
             const tile_coord_t &thr_tile_coord, const view_t &c_mem_view,
@@ -1172,7 +1173,7 @@ private:
     int c_reg_buf_size_ = 0;
 };
 
-stmt_t create_epilogue_stmt(const kernel::options_t &options,
+stmt_t create_epilogue_stmt(const dsl::kernel::options_t &options,
         ir_context_t &ir_ctx, const gemm_schedule_t &gemm_schedule,
         bool force_c_reorder, const post_op_context_t &post_op_ctx,
         const tile_coord_t &thr_tile_coord, const layout_t &c_reg_layout,

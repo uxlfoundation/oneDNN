@@ -1,0 +1,60 @@
+header:
+  license:
+    spdx-id: Apache-2.0
+    pattern: >-
+      (?:Copyright \d{4} Intel Corporation
+      |Copyright \d{4}(?:[,\s-]+\d{4})*\s(IBM Corporation
+      |Codeplay Software Limited
+      |FUJITSU LIMITED
+      |Arm (?:Ltd\.|Limited) and affiliates\.?
+      |KNS Group LLC \(YADRO\)
+      |Alanna Tempest
+      |YANDEX LLC
+      |ZTE Corporation)\.?\s*)+
+      ?(?:SPDX-License-Identifier: Apache-2\.0\s+)?Licensed under the Apache License, Version 2\.0 \(the .License.\);
+      you may not use this file except in compliance with the License\.
+      You may obtain a copy of the License at
+      http:\/\/www\.apache\.org\/licenses\/LICENSE-2\.0
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied\.
+      See the License for the specific language governing permissions and
+      limitations under the License\.
+
+  paths:
+    - "**"
+
+  paths-ignore:
+# all documentation-like files
+    - '**doc/**'
+    -  '**/*.md'
+
+# files in the root (which are typically are doc-like files)
+    - '*'
+
+# Github automation
+    - '**/.git*'
+    - '.github/automation/performance/inputs/**'
+    - '.github/automation/**/*.json'
+    - '.github/.licenserc.yml'
+    - '.github/codeql-config.yml'
+    - 'scripts/synthdnn/environment.yml'
+
+# Clang tools configs
+    - '**/.clang-*'
+  
+# benchdnn inputs
+    - 'tests/benchdnn/inputs/**'
+
+# Third party components
+    - 'third_party/**'
+    - 'cmake/ACL.cmake'
+    - 'cmake/FindACL.cmake'
+    - 'cmake/FindBLAS.cmake'
+    - 'cmake/FindOpenCL.cmake'
+
+# visual-studio files
+    - '**/*.vcxproj*'
+
+  license-location-threshold: 25
+  

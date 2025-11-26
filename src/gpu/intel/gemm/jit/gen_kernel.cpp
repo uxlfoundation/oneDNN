@@ -501,17 +501,24 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     //@@@@@@@@@@@@@
     problem_.ao_hostscalar = a_quant.zp_host_scalar;
     problem_.bo_hostscalar = b_quant.zp_host_scalar;
-    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : setup problem_.ao_hostscalar problem_.bo_hostscalar = %d %d", problem_.ao_hostscalar, problem_.bo_hostscalar);
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : @@@@ setup problem_.ao_hostscalar problem_.bo_hostscalar = %d %d", problem_.ao_hostscalar, problem_.bo_hostscalar);
     //@@@@@@@@@@@@@
-
-    bool mynew = gpu_utils::dev_getenv("MYNEW", false);
-
 
     if (a_quant.zp_ndims >= 0) problem_.aOffset = ABOffset::Calc;
     if (b_quant.zp_ndims >= 0) problem_.bOffset = ABOffset::Calc;
-    problem_.aoPtrDims = a_quant.zp_ndims;
-    problem_.boPtrDims = b_quant.zp_ndims;
-    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : setup aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims,problem_.boPtrDims);
+
+
+    // @@@@@@@@@@@ or maybe later - after select kernel from catalog ???????????????????
+    bool mynew = gpu_utils::dev_getenv("MYNEW", false);
+    if (mynew) {
+        problem_.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
+        problem_.boPtrDims = b_quant.zp_host_scalar ? -1 : b_quant.zp_ndims;
+    } else {
+        problem_.aoPtrDims = a_quant.zp_ndims;
+        problem_.boPtrDims = b_quant.zp_ndims;
+    }
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : @@@@ setup problem_.aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims,problem_.boPtrDims);
+    // @@@@@@@@@@@
 
     problem_.AO.layout = MatrixLayout::N;
     problem_.BO.layout
@@ -625,6 +632,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         if (problem_.bqGroupK == 0) problem_.bqGroupK = problem_.aqGroupK;
     }
 
+    VDEBUGINFO(4, primitive, gen_kernel, "MY: ---- : @@@@ problem_ = %s", problem_.toString().c_str());
 
     // Select a kernel from the catalog.
 
@@ -1057,6 +1065,23 @@ void gen_kernel_t::init_interface() {
         interface_.newArgument(
                 "bo_ptr", ExternalArgumentType::GlobalPtr, bo_access);
     }
+
+    // @@@@@@@@@@@@@@@@@@@
+    bool mynew = gpu_utils::dev_getenv("MYNEW", false);
+    if (mynew) {
+        if (problem.aoPtrDims == -1 && problem.ao_hostscalar) {
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument ao_ptr as scalar");
+            interface_.newArgument(
+                    "ao_ptr", DataType::d);
+        }
+        if (problem.boPtrDims == -1 && problem.bo_hostscalar) {
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument bo_ptr as scalar");
+            interface_.newArgument(
+                    "bo_ptr", DataType::d);
+        }
+    }
+    // @@@@@@@@@@@@@@@@@@@
+
     if (problem.aScale2D())
         interface_.newArgument(
                 "a_scale_ptr", ExternalArgumentType::GlobalPtr, as_access);

@@ -400,6 +400,8 @@ struct gen_t : public primitive_t {
                 auto status = kernel_desc_.finalize();
                 // select_kernel can return a strategy that failed in the finalize call
                 bool valid = status == status::success;
+                VDEBUGINFO(4, primitive, gemm,"MY init ===== : kernel valid = %d", valid);
+
                 if (!valid && print_verbose)
                     dnnl::impl::verbose_printf(
                             "info,gpu,gemm,skipping:%s,Strategy finalization "
@@ -418,6 +420,7 @@ struct gen_t : public primitive_t {
                                 kernel_desc_.entry().str().c_str());
                     valid &= po_valid;
                 }
+                VDEBUGINFO(4, primitive, gemm,"MY init ===== ");
                 // Limited post-op support for low-precision accumulation.
                 if (kernel_desc_.problem()->Tc.size() < 4) {
                     valid &= !need_x32_acc;
@@ -426,6 +429,7 @@ struct gen_t : public primitive_t {
                                 "info,gpu,gemm,skipping:%s,Invalid post op.\n",
                                 kernel_desc_.entry().str().c_str());
                 }
+                VDEBUGINFO(4, primitive, gemm,"MY init ===== ");
                 // Ensure kernel can be run deterministically if required.
                 if (attr()->deterministic_) {
                     bool deterministic
@@ -438,6 +442,7 @@ struct gen_t : public primitive_t {
                                 kernel_desc_.entry().str().c_str());
                 }
 
+                VDEBUGINFO(4, primitive, gemm,"MY init ===== ");
                 if (valid) {
                     auto try_create = [&]() {
                         std::vector<compute::kernel_t> kernel_(1);
@@ -467,7 +472,9 @@ struct gen_t : public primitive_t {
                         }
                         return status;
                     };
+                    VDEBUGINFO(4, primitive, gemm,"MY init ===== calling try_create()");
                     status = try_create();
+                    VDEBUGINFO(4, primitive, gemm,"MY init ===== try_create() status = %d",status);
                     if (status == status::success) {
                         kernel_success = true;
                         break;

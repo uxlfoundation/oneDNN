@@ -508,6 +508,19 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
             int offset_c) { \
         tile_store(t, ptr, m, n, m, offset_r, offset_c); \
     } \
+    __attribute__((overloadable)) void tile_store_packed_src1(tile_type t, \
+            local element_type *ptr, int panel, int ld, int offset_r, \
+            int offset_c) { \
+        ptr += offset_c * panel; \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += panel) \
+            _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; \
+                                   i0 += sg) { \
+                int i = i0 + get_sub_group_local_id(); \
+                int offset_r0 = (offset_r + i) % panel; \
+                int offset_r1 = (offset_r + i) - offset_r0; \
+                ptr[offset_r0 + offset_r1*ld] = tile_access(t, i0, j, sg, br, bc, nbr); \
+        } \
+    } \
     __attribute__((overloadable)) void tile_store_t_packed_src1(tile_type t, \
             local element_type *ptr, int panel, int ld, int offset_r, \
             int offset_c) { \
@@ -669,12 +682,30 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
 
 #define DECLARE_2D_TILE_HREDUCE(tile_type, sg, br, bc, nbr, nbc, rtile_type, \
         rsg, rbr, rbc, rnbr, rnbc) \
+    __attribute__((overloadable)) void tile_hreduce_add( \
+            tile_type t, rtile_type *tr) { \
+        _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
+            _Pragma("unroll") for (int j = 0; j < bc * nbc; j++) { \
+                tile_access(*tr, i0, j, rsg, rbr, rbc, rnbr) \
+                        += tile_access(t, i0, j, sg, br, bc, nbr); \
+            } \
+        } \
+    } \
     __attribute__((overloadable)) void tile_hbroadcast_add( \
             tile_type *t, rtile_type tr) { \
         _Pragma("unroll") for (int j = 0; j < bc * nbc; j++) { \
             _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
                 tile_access(*t, i0, j, sg, br, bc, nbr) \
                         += xlane_tile_access(tr, j, 0, rsg, rbr, rbc, rnbr); \
+            } \
+        } \
+    } \
+    __attribute__((overloadable)) void tile_hbroadcast_sub( \
+            tile_type *t, rtile_type tr) { \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++) { \
+            _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
+                tile_access(*t, i0, j, sg, br, bc, nbr) \
+                        -= xlane_tile_access(tr, j, 0, rsg, rbr, rbc, rnbr); \
             } \
         } \
     } \

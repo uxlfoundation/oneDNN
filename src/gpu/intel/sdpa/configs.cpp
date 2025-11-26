@@ -637,12 +637,17 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
         gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
         gemmstone::GEMMProblem &problem_vtdA,
         gemmstone::GEMMProblem &problem_ktq,
+        gemmstone::GEMMProblem &problem_qdSt,
         micro::GEMMProtocol::Options &opts_kq,
         micro::GEMMProtocol::Options &opts_vs,
         micro::GEMMProtocol::Options &opts_vtdA,
-        micro::GEMMProtocol::Options &opts_ktq, gemmstone::SizeParams &sizes_kq,
-        gemmstone::SizeParams &sizes_vs, gemmstone::SizeParams &sizes_vtdA,
+        micro::GEMMProtocol::Options &opts_ktq,
+        micro::GEMMProtocol::Options &opts_qdSt,
+        gemmstone::SizeParams &sizes_kq,
+        gemmstone::SizeParams &sizes_vs,
+        gemmstone::SizeParams &sizes_vtdA,
         gemmstone::SizeParams &sizes_ktq,
+        gemmstone::SizeParams &sizes_qdSt,
         const micro_ukernel_params_t &ukernel_config) {
 
     // hardware info
@@ -664,6 +669,7 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
     deserialize_options(opts_vs, ukernel_config.opts_vs);
     deserialize_options(opts_vtdA, ukernel_config.opts_vtdA);
     deserialize_options(opts_ktq, ukernel_config.opts_ktq);
+    deserialize_options(opts_qdSt, ukernel_config.opts_qdSt);
 
     // problems kq, vs
     auto deserialize_problem = [](gemmstone::GEMMProblem &problem,
@@ -717,6 +723,7 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
     deserialize_problem(problem_vs, ukernel_config.problem_vs);
     deserialize_problem(problem_vtdA, ukernel_config.problem_vtdA);
     deserialize_problem(problem_ktq, ukernel_config.problem_ktq);
+    deserialize_problem(problem_qdSt, ukernel_config.problem_qdSt);
 
     // sizes kq, vs
     auto deserialize_sizes
@@ -731,6 +738,7 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
     deserialize_sizes(sizes_vs, ukernel_config.sizes_vs);
     deserialize_sizes(sizes_vtdA, ukernel_config.sizes_vtdA);
     deserialize_sizes(sizes_ktq, ukernel_config.sizes_ktq);
+    deserialize_sizes(sizes_qdSt, ukernel_config.sizes_qdSt);
 }
 
 } // namespace sdpa

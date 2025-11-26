@@ -1316,6 +1316,27 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     strm.wait();
 }
 
+std::vector<std::chrono::nanoseconds> timeit(
+        const std::function<void()> &func, dnnl::stream &str, int iterations) {
+    using namespace std::chrono;
+    func();
+    func();
+    std::vector<std::chrono::nanoseconds> times;
+    for (int j = 0; j < 5; j++) {
+        auto e = steady_clock::now();
+        str.wait();
+        auto s = steady_clock::now();
+        for (int i = 0; i < iterations; i++) {
+            func();
+        }
+        str.wait();
+        e = steady_clock::now();
+        times.push_back(std::chrono::duration_cast<nanoseconds>(e - s));
+    }
+    return times;
+}
+
+
 void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         dnnl::engine &eng, dnnl::stream &strm, dnnl::memory &query,
         dnnl::memory &key, dnnl::memory::data_type scale_dt,
@@ -1658,6 +1679,23 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     bwd_loop();
     strm.wait();
 
+
+    /*
+    auto loop_bwd_prim
+            = [&] { bwd_loop(); };
+
+    int iterations = 20;
+    auto quantized_bwd_time = timeit(loop_bwd_prim, strm, iterations);
+
+    using namespace std::chrono;
+    auto min_time = [](const std::vector<nanoseconds> &a) {
+        return *std::min_element(a.begin(), a.end());
+    };
+
+    auto qtime_bwd = min_time(quantized_bwd_time) / iterations;
+    printf("qtime_training_backwards_prim %f\n", (float)qtime_bwd.count());
+    */
+
     // print q,k gradients
     print_mem(dQ_mem, "BWD dQ");
     print_mem(dK_mem, "BWD dK");
@@ -1753,26 +1791,6 @@ int to_attn_mask_type(mask_type t) {
         default:;
     }
     return static_cast<int>(attn_mask);
-}
-
-std::vector<std::chrono::nanoseconds> timeit(
-        const std::function<void()> &func, dnnl::stream &str, int iterations) {
-    using namespace std::chrono;
-    func();
-    func();
-    std::vector<std::chrono::nanoseconds> times;
-    for (int j = 0; j < 5; j++) {
-        auto e = steady_clock::now();
-        str.wait();
-        auto s = steady_clock::now();
-        for (int i = 0; i < iterations; i++) {
-            func();
-        }
-        str.wait();
-        e = steady_clock::now();
-        times.push_back(std::chrono::duration_cast<nanoseconds>(e - s));
-    }
-    return times;
 }
 
 template <typename O, typename I>
@@ -2099,6 +2117,23 @@ public:
         sdpa_bwd.execute(strm, sdpa_bwd_args); //TODO!!
         strm.wait();
 
+
+        /*
+        auto loop_bwd_quantized
+                = [&] { sdpa_bwd.execute(strm, sdpa_bwd_args); };
+
+        int iterations = 20;
+        auto quantized_bwd_time = timeit(loop_bwd_quantized, strm, iterations);
+
+        using namespace std::chrono;
+        auto min_time = [](const std::vector<nanoseconds> &a) {
+            return *std::min_element(a.begin(), a.end());
+        };
+
+        auto qtime_bwd = min_time(quantized_bwd_time) / iterations;
+        printf("qtime_training_backward %f\n", (float)qtime_bwd.count());
+        */
+
         print_mem(t.m_S2_intermediate, "temporary computed_S2");
         print_mem(t.m_diff_value_quantized, "dV bwd out");
 
@@ -2133,13 +2168,13 @@ public:
 
             //tmp skip dQ, dK
             //check_memory<float16_t>(strm, t.m_diff_query, t.m_diff_query_quantized, max_diff_threshold, fthreshold);
-            //print_mem(t.m_diff_query, "gold m_diff_query");
-            //print_mem(t.m_diff_query_quantized, "test m_diff_query");
+            print_mem(t.m_diff_query, "gold m_diff_query");
+            print_mem(t.m_diff_query_quantized, "test m_diff_query");
             //printf("----------\n\n");
 
             //check_memory<float16_t>(strm,   t.m_diff_key,   t.m_diff_key_quantized, max_diff_threshold, fthreshold);
-            //print_mem(t.m_diff_key, "gold m_diff_key");
-            //print_mem(t.m_diff_key_quantized, "test m_diff_key");
+            print_mem(t.m_diff_key, "gold m_diff_key");
+            print_mem(t.m_diff_key_quantized, "test m_diff_key");
             //printf("----------\n\n");
 
             print_mem(t.m_diff_value, "gold m_diff_value");
@@ -2570,6 +2605,7 @@ INSTANTIATE_TEST_SUITE_P(llama_bwd_f32,
     testing::Values(
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    16,      16,     16, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                     sdpa_dims_t{   1,    1,        1,      32,       32,    16,      16,     16, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                    //sdpa_dims_t{   1,    1,        1,      4096,       4096,    128,      128,     128, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
     ), &print_to_string);
 
 // clang-format on

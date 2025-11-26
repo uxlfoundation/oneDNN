@@ -238,13 +238,16 @@ struct micro_ukernel_params_t
     ukernel_serialized_problem_t problem_vs;
     ukernel_serialized_problem_t problem_vtdA;
     ukernel_serialized_problem_t problem_ktq;
+    ukernel_serialized_problem_t problem_qdSt;
     ukernel_serialized_opts_t opts_kq;
     ukernel_serialized_opts_t opts_vs;
     ukernel_serialized_opts_t opts_vtdA;
     ukernel_serialized_opts_t opts_ktq;
+    ukernel_serialized_opts_t opts_qdSt;
     ukernel_serialized_sizes_t sizes_kq, sizes_vs;
     ukernel_serialized_sizes_t sizes_vtdA;
     ukernel_serialized_sizes_t sizes_ktq;
+    ukernel_serialized_sizes_t sizes_qdSt;
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_ukernel_params_t);
 
@@ -252,12 +255,17 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
         gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
         gemmstone::GEMMProblem &problem_vtdA,
         gemmstone::GEMMProblem &problem_ktq,
+        gemmstone::GEMMProblem &problem_qdSt,
         micro::GEMMProtocol::Options &opts_kq,
         micro::GEMMProtocol::Options &opts_vs,
         micro::GEMMProtocol::Options &opts_vtdA,
-        micro::GEMMProtocol::Options &opts_ktq, gemmstone::SizeParams &sizes_kq,
-        gemmstone::SizeParams &sizes_vs, gemmstone::SizeParams &sizes_vtdA,
+        micro::GEMMProtocol::Options &opts_ktq,
+        micro::GEMMProtocol::Options &opts_qdSt,
+        gemmstone::SizeParams &sizes_kq,
+        gemmstone::SizeParams &sizes_vs,
+        gemmstone::SizeParams &sizes_vtdA,
         gemmstone::SizeParams &sizes_ktq,
+        gemmstone::SizeParams &sizes_qdSt,
         const micro_ukernel_params_t &ukernel_config);
 
 } // namespace sdpa

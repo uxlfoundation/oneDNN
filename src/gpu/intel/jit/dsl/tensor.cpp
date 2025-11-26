@@ -155,7 +155,7 @@ T layout_t::offset(const coord_t &args, bool ignore_offset) const {
     for (auto &b : blocks()) {
         if (!_args.has(b.idx)) continue;
         auto &idx = _args[b.idx];
-        if (is_const(idx, 0)) continue;
+        if (idx.is(0)) continue;
 
         // Do not use modulus for outermost blocks.
         auto i = is_outermost(b) ? idx : (idx % b.size);

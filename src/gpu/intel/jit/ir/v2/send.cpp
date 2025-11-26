@@ -57,7 +57,7 @@ bool process_coef_y_stride(
 
 bool adjust_for_non_unit_y_stride(
         plane_t &plane, const coord_t &coord, const prover_t &prover) {
-    if (is_one(plane.y_stride)) return true;
+    if (plane.y_stride.is(1)) return true;
     auto y_stride_dim = to_pvar(plane.y_stride);
     if (y_stride_dim.is_undef()) return false;
     auto _y = to_linear(plane.y);

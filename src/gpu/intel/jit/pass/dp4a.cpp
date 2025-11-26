@@ -46,7 +46,7 @@ public:
         auto dst_type = to_dp4a_type(dpas->dst_type);
         auto src1_type = to_dp4a_type(dpas->src1_type);
         auto src2_type = to_dp4a_type(dpas->src2_type);
-        bool is_src0_zero = is_zero(src0);
+        bool is_src0_zero = src0.is(0);
 
         stmt_t stmt;
         auto _dp4a = dpas_t::make(

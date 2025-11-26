@@ -87,7 +87,7 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
         // Use virtual tensors for scalar scales airthmetic:
         // - For src/wei scales: pre-multiply them to avoid extra multiplications
         // - For dst scales: compute inverse right after load
-        if ((!is_one(src_scales) || !is_one(wei_scales))
+        if ((!src_scales.is(1) || !wei_scales.is(1))
                 && utils::everyone_is(0, src_scales_mask, wei_scales_mask)) {
             src_wei_scales = add_tensor(/*is_input=*/false,
                     /*is_output=*/false, po_vm_.create_view(type_t::f32(), 0),
@@ -96,7 +96,7 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
             src_scales = expr_t(1.0f);
             wei_scales = expr_t(1.0f);
         }
-        if (!is_one(dst_scales) && dst_scales_mask == 0) {
+        if (!dst_scales.is(1) && dst_scales_mask == 0) {
             inv_dst_scales = add_tensor(/*is_input=*/false,
                     /*is_output=*/false,
                     po_vm_.create_view(type_t::f32(), dst_scales_mask),
@@ -139,10 +139,10 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
     }
 
     // Handle input and weights scales.
-    if (!is_one(src_wei_scales)) {
+    if (!src_wei_scales.is(1)) {
         auto c_scaled = c * src_wei_scales;
         post_ops_.emplace_back(c, c_scaled);
-    } else if (!is_one(src_scales) || !is_one(wei_scales)) {
+    } else if (!src_scales.is(1) || !wei_scales.is(1)) {
         auto c_scaled = c * src_scales * wei_scales;
         post_ops_.emplace_back(c, c_scaled);
     }
@@ -202,10 +202,10 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
                 /*alpha=*/1.f,
                 /*beta=*/0.f, in, convert_dnnl_type_to_ngen(dst_md.data_type));
         post_ops_.emplace_back(c, c, func);
-    } else if (!is_one(inv_dst_scales)) {
+    } else if (!inv_dst_scales.is(1)) {
         auto c_scaled = c * inv_dst_scales;
         post_ops_.emplace_back(c, c_scaled);
-    } else if (!is_one(dst_scales)) {
+    } else if (!dst_scales.is(1)) {
         auto c_scaled = c / dst_scales;
         post_ops_.emplace_back(c, c_scaled);
     }

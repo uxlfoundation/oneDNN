@@ -924,7 +924,7 @@ int get_max_block_size(const hw_t &hw, const send_params_t &params) {
 class split_bounds_t {
 public:
     split_bounds_t(const layout_t &layout, int factor) {
-        gpu_assert(is_zero(layout.offset())) << layout;
+        gpu_assert(layout.offset().is(0)) << layout;
         auto tile_coord = split_exact(layout, factor);
         if (tile_coord.is_invalid()) return;
 
@@ -1412,8 +1412,8 @@ private:
         mod_info_ = mod_info_t(view_, tdims_);
         std::vector<modulus_t> vmods(view_.nvdims());
         for (dim_idx_t i = 0; i < view_.nvdims(); i++)
-            vmods[i] = modulus_t(
-                    is_zero(view_.vstart()[i]) ? 0 : view_.vdims()[i]);
+            vmods[i]
+                    = modulus_t(view_.vstart()[i].is(0) ? 0 : view_.vdims()[i]);
         mod_info_.set_vmods(vmods);
     }
 

@@ -173,7 +173,7 @@ private:
             return store_t::make(store->buf, store->off, load + inc);
         }
 
-        bool is_empty() const { return is_zero(inc); }
+        bool is_empty() const { return inc.is(0); }
 
         void update(const loop_info_t &loop, const expr_t &loop_inc) {
             inc = simplify(iif_t::make(

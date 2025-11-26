@@ -36,6 +36,8 @@ namespace jit {
 
 using namespace ir_utils;
 
+expr_t simplify_expr(const expr_t &_e, const constraint_set_t &cset);
+
 // Generic pattern expression, used as a wild card during pattern matching. Can
 // match any expression.
 class pexpr_t : public expr_iface_t<pexpr_t> {
@@ -782,13 +784,13 @@ void fold_const_nary_op_args(op_kind_t op_kind, const std::vector<expr_t> &args,
     expr_t c;
     split_const_nary_op_arg(op_kind, args, c, new_args);
     if (c.is_empty()) return;
-    if (op_kind == op_kind_t::_mul && is_zero(c)) {
+    if (op_kind == op_kind_t::_mul && c.is(0)) {
         new_args.clear();
         new_args.push_back(std::move(c));
         return;
     }
-    if (op_kind == op_kind_t::_mul && is_one(c)) return;
-    if (op_kind == op_kind_t::_add && is_zero(c)) return;
+    if (op_kind == op_kind_t::_mul && c.is(1)) return;
+    if (op_kind == op_kind_t::_add && c.is(0)) return;
     new_args.push_back(std::move(c));
 }
 
@@ -1066,7 +1068,7 @@ public:
     }
 
     expr_t expr() const {
-        if (factors.size() > 1 && jit::is_one(factors.back())) {
+        if (factors.size() > 1 && factors.back().is(1)) {
             std::vector<expr_t> f(factors.begin(), factors.end() - 1);
             return make_nary_op(op_kind_t::_mul, f);
         }
@@ -1075,9 +1077,7 @@ public:
 
     expr_t const_factor() const { return factors.back(); }
 
-    bool is_one() const {
-        return (factors.size() == 1) && jit::is_one(factors[0]);
-    }
+    bool is_one() const { return (factors.size() == 1) && factors[0].is(1); }
 
     bool is_const() const { return factors.size() == 1; }
 
@@ -1182,7 +1182,7 @@ private:
                 continue;
             }
             if (to_cpp<int64_t>(e) < 0) sign = !sign;
-            if (jit::is_one(e) || jit::is_minus_one(e)) continue;
+            if (e.is(1) || e.is(-1)) continue;
 
             e_const = e_const * abs(e);
         }
@@ -1289,7 +1289,7 @@ public:
 
         factored_expr_t::reduce(a, b);
 
-        if (is_one(b)) return std::move(a);
+        if (b.is(1)) return std::move(a);
 
         return binary_op_t::make(op_kind_t::_div, a, b);
     }
@@ -1334,7 +1334,7 @@ public:
         // Try to reduce a and b.
         auto common_factor = factored_expr_t::reduce(a, b);
 
-        if (is_one(b)) {
+        if (b.is(1)) {
             if (binary_op->op_kind == op_kind_t::_mod)
                 return to_expr(0, binary_op->type);
             if (binary_op->op_kind == op_kind_t::_div) return std::move(a);
@@ -1582,10 +1582,10 @@ public:
         //     (a * b * c + a * b * d + e) ->
         //     ((a * b * (c + d)) + e)
         for (size_t i = 0; i < args.size(); i++) {
-            if (is_zero(args[i])) continue;
+            if (args[i].is(0)) continue;
             auto e_fi = factored_expr_t::make(args[i]);
             for (size_t j = i + 1; j < args.size(); j++) {
-                if (is_zero(args[j])) continue;
+                if (args[j].is(0)) continue;
                 auto e_fj = factored_expr_t::make(args[j]);
 
                 auto &fi = e_fi.as<factored_expr_t>();
@@ -1747,9 +1747,9 @@ public:
 
     object_t _mutate(const for_t &obj) override {
         object_t new_obj;
-        auto new_init = simplify(obj.init, cset_);
-        auto new_bound = simplify(obj.bound, cset_);
-        if (is_one(new_bound) && is_zero(new_init)) {
+        auto new_init = simplify_expr(obj.init, cset_);
+        auto new_bound = simplify_expr(obj.bound, cset_);
+        if (new_bound.is(1) && new_init.is(0)) {
             auto body = substitute(obj.body, obj.var, expr_t(0));
             body = mutate(body);
             new_obj = std::move(body);

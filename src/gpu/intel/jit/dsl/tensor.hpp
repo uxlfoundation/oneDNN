@@ -718,7 +718,7 @@ struct layout_t {
     expr_t operator()(const coord_t &coord) const { return offset(coord); }
 
     std::string str() const {
-        if (is_const(offset(), 0)) return desc_str();
+        if (offset().is(0)) return desc_str();
         return desc_str() + " offset: " + offset_.str();
     }
 

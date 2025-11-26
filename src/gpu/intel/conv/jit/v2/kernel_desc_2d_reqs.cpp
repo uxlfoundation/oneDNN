@@ -196,11 +196,11 @@ void generate_2d_reqs(const kernel_desc_t &desc, tensor_kind_t tensor_kind,
     auto W = var(params.w_dim);
     auto H = var(params.h_dim);
     auto P = strides.at(params.h_dim);
-    if (!is_one(params.y_stride)) P.pvars.push_back(to_pvar(params.y_stride));
+    if (!params.y_stride.is(1)) P.pvars.push_back(to_pvar(params.y_stride));
     reqs.add_no_simplify(W >= safe_div(block_2d_min_dim(), type_size));
     reqs.add_no_simplify(W <= safe_div(block_2d_max_dim(), type_size));
     reqs.add_no_simplify(W % block_2d_w_alignment(type_size) == 0);
-    if (is_one(params.y_stride)) {
+    if (params.y_stride.is(1)) {
         reqs.add_no_simplify(H <= block_2d_max_dim());
     } else {
         reqs.add_no_simplify(H % params.y_stride == 0);

@@ -18,6 +18,7 @@
 
 #include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -86,12 +87,13 @@ expr_t::expr_t(uint16_t value) : object_t(new int_imm_t(value)) {}
 expr_t::expr_t(uint32_t value) : object_t(new int_imm_t(value)) {}
 expr_t::expr_t(uint64_t value) : object_t(new int_imm_t(value)) {}
 
+bool expr_t::is(int value) const {
+    if (!is_const(*this)) return false;
+    return is_equal(to_expr(value, type()));
+}
+
 bool is_const(const expr_t &e) {
     return e.is<bool_imm_t>() || e.is<int_imm_t>() || e.is<float_imm_t>();
-}
-bool is_const(const expr_t &e, int value) {
-    if (!is_const(e)) return false;
-    return e.is_equal(to_expr(value, e.type()));
 }
 
 bool to_bool(const expr_t &e) {

@@ -92,7 +92,7 @@ struct tile_coord_t {
     dim_t elems() const { return tile.elems(); }
     bool has_zero_coord() const {
         for (auto &d : coord) {
-            if (!is_const(coord.at(d), 0)) return false;
+            if (coord.at(d).is(0)) return false;
         }
         return true;
     }

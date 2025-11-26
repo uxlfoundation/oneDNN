@@ -818,7 +818,7 @@ struct texpr_t {
         for (int i = 0; i < nvargs(); i++) {
             auto &s = vstart[vidxs[i]];
             auto s_inc = vstart_inc.get(vidxs[i]);
-            if (!is_zero(s)) ret += s * vstrides[i];
+            if (!s.is(0)) ret += s * vstrides[i];
             if (s_inc != 0) ret += s_inc * vstrides[i];
         }
         if (has_non_linear) {
@@ -832,7 +832,7 @@ struct texpr_t {
 
     bool is_const() const { return nvargs() == 0 && jit::is_const(base); }
 
-    bool is_var() const { return nvargs() == 1 && is_zero(base); }
+    bool is_var() const { return nvargs() == 1 && base.is(0); }
 
     int64_t to_const() const {
         gpu_assert(is_const());
@@ -912,7 +912,7 @@ struct texpr_t {
     std::string str() const {
         ostringstream_t oss;
         std::vector<std::string> parts;
-        if (!is_zero(base)) parts.push_back(base.str());
+        if (!base.is(0)) parts.push_back(base.str());
         for (int i = 0; i < nvargs(); i++) {
             auto s = "_" + std::to_string(vidxs[i]);
             // NOLINTNEXTLINE(performance-inefficient-string-concatenation)

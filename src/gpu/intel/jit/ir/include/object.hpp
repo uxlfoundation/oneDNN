@@ -320,10 +320,16 @@ public:
     // Returns a pointer type expression pointing to this variable. The base
     // expression must be of var_t or ref_t type.
     expr_t ptr(const expr_t &off = expr_t(0)) const;
+
+    template <typename T>
+    bool is() const {
+        return object_t::is<T>();
+    }
+
+    bool is(int value) const;
 };
 
 bool is_const(const expr_t &e);
-bool is_const(const expr_t &e, int value);
 bool to_bool(const expr_t &e);
 expr_t operator-(const expr_t &a);
 

@@ -52,7 +52,7 @@ public:
             } else {
                 e.loop_size = div_up(reqs.to_expr(e.dim), tg_tile * iter_tile);
             }
-            e.loop_idx = is_one(e.loop_size)
+            e.loop_idx = e.loop_size.is(1)
                     ? expr_t(0)
                     : var_t::make(type_t::s32(), e.dim.str() + "_loop_idx");
         }
@@ -126,7 +126,7 @@ private:
         expr_t loop_size;
         bool is_global_loop = false;
 
-        bool is_loop() const { return !is_one(loop_size); }
+        bool is_loop() const { return !loop_size.is(1); }
 
         std::string str() const {
             ostringstream_t oss;

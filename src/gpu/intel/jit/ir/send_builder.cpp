@@ -348,7 +348,7 @@ static bool stride_dimension_ok(const view_t &view, size_t stride_tidx,
         }
     }
     e = simplify(e);
-    return is_zero(e);
+    return e.is(0);
 }
 
 static expr_t try_scalarize(const expr_t &e) {

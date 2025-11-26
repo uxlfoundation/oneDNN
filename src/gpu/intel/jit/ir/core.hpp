@@ -273,15 +273,6 @@ inline const type_t &expr_t::type() const {
 inline bool is_var(const expr_t &e);
 inline bool is_ref(const expr_t &e);
 inline bool all_of(const expr_t &e, const expr_t &value);
-inline bool is_zero(const expr_t &e) {
-    return is_const(e, 0);
-}
-inline bool is_one(const expr_t &e) {
-    return is_const(e, 1);
-}
-inline bool is_minus_one(const expr_t &e) {
-    return is_const(e, -1);
-}
 
 // Unary and binary operators.
 enum class op_kind_t {

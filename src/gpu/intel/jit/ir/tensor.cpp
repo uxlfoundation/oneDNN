@@ -197,7 +197,7 @@ layout_t reinterpret(
     if (new_size == old_size) return layout;
 
     expr_t new_offset = 0;
-    if (!is_zero(layout.offset())) {
+    if (!layout.offset().is(0)) {
         gpu_assert(is_const(layout.offset())) << "Expected constant offset.";
         int64_t off = to_cpp<int64_t>(layout.offset()) * old_size;
         gpu_assert(off % new_size == 0);
@@ -380,7 +380,7 @@ view_t view_t::create_sub_view(const tile_t &tile, const coord_t &coord) const {
     auto ret = *this;
     for (dim_idx_t i = 0; i < nvdims(); i++) {
         ret.vdims_[i] = tile.get(i);
-        if (!coord.has(i) || is_zero(coord[i])) continue;
+        if (!coord.has(i) || coord[i].is(0)) continue;
         auto &i_start = coord[i];
         auto &s = ret.vstart_[i];
         s += i_start;

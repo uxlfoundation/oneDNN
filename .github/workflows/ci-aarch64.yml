@@ -220,6 +220,10 @@ jobs:
 
   perf-test:
     needs: build-artifacts
+    permissions:
+      contents: write
+      pull-requests: write
+      repository-projects: write
     strategy:
       matrix:
         config: [
@@ -295,9 +299,18 @@ jobs:
           echo "16 threads:"
           python ${{ github.workspace }}/oneDNN/.github/automation/performance/benchdnn_comparison.py base_16.txt new_16.txt
 
-      - name: Check performance test failure
+      - name: Create Comment
         if: ${{ steps.performance-test.outputs.pass != 'True' }}
-        run: echo "::warning file=.github/workflows/ci-aarch64.yml,line=1,col=1::${{ steps.performance-test.outputs.message }}"
+        run: |
+          curl -s -H "Authorization: token ${GITHUB_TOKEN}" -X POST $COMMENT_URL -d "{\"body\":\"$COMMENT\"}"
+        env:
+          COMMENT: ${{ steps.performance-test.outputs.message }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_URL: "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+
+      # - name: Check performance test failure
+      #   if: ${{ steps.performance-test.outputs.pass != 'True' }}
+      #   run: echo "::warning file=.github/workflows/ci-aarch64.yml,line=1,col=1::${{ steps.performance-test.outputs.message }}"
 
   # TODO: Find an elegant way to integrate this build with the rest of the workflow.
   windows:

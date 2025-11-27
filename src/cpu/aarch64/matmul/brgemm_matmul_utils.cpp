@@ -223,6 +223,14 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
     } else {
         switch (bgmmc.wei_dt) {
             case f32:
+                // If the B memory descriptor matches both the transposed
+                // and plain version, we chose to treat it as "plain" since
+                // that saves us the extra time and scratchpad memory we
+                // would need for an unnecessary transpose.
+                if (memory_desc_wrapper(B_md).is_canonical()) {
+                    bgmmc.wei_tag = plain_tensor_layout_tag;
+                    return status::success;
+                }
                 if (blocked_B_layouts_allowed) {
                     bgmmc.wei_tag = memory_desc_matches_one_of_tag(B_md,
                             plain_tensor_layout_tag, blocked_64n_B_layout_tag,

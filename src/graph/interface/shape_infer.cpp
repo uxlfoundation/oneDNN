@@ -1438,6 +1438,15 @@ status_t infer_unsupported_output_shape(op_t *n,
     return status::success;
 }
 
+status_t infer_dummy_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs) {
+    UNUSED(n);
+    UNUSED(inputs);
+    UNUSED(outputs);
+    return status::success;
+}
+
 status_t infer_reduce_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs) {

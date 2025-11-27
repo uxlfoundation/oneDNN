@@ -410,7 +410,8 @@ DNNL_GRAPH_OP_SCHEMA(End, 1,
                 .set_type_constraints("T",
                         {data_type::f32, data_type::f16, data_type::bf16,
                                 data_type::s8, data_type::u8, data_type::s32,
-                                data_type::undef}))
+                                data_type::undef})
+                .set_shape_inference_function(infer_dummy_output_shape))
 
 DNNL_GRAPH_OP_SCHEMA(Exp, 1,
         op_schema_t()

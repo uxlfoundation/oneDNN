@@ -62,6 +62,7 @@ file(GLOB PRIM_TEST_CASES_SRC
                               test_iface_weights_format.cpp
                               test_iface_wino_convolution.cpp
                               test_iface_sparse.cpp
+                              test_iface_grouped.cpp
                               test_memory.cpp
                               test_sum.cpp
                               test_reorder.cpp

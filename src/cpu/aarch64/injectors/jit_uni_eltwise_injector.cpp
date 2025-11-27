@@ -1591,7 +1591,7 @@ size_t jit_uni_eltwise_injector_t<isa>::aux_vecs_count() {
             case eltwise_logistic_use_dst_for_bwd:
             case eltwise_logistic: return 5; /* = exp + 1 */
             case eltwise_exp_use_dst_for_bwd:
-            case eltwise_exp: return (isa == asimd) ? 6 : 4;
+            case eltwise_exp: return (isa == asimd) ? 5 : 4;
             case eltwise_gelu_tanh: return 9; /* = tanh */
             case eltwise_swish: return 6; /* = logistic */
             case eltwise_log: return 6;
@@ -1857,23 +1857,24 @@ void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
             {exp_pol, {0x3e2aad40, true}}, // p3 = 0.166676521f
             {exp_pol, {0x3d2b9d0d, true}}, // p4 = 0.0418978221f
             {exp_pol, {0x3c07cfce, true}}, // p5 = 0.00828929059f
-            {exp_pol_asimd, {0x3ab53000, true}}, // c0 =  0x1.6a6000p-10
-            {exp_pol_asimd, {0x3c0938c7, true}}, // c1 =  0x1.12718ep-7
-            {exp_pol_asimd, {0x3d2aad78, true}}, // c2 =  0x1.555af0p-5
-            {exp_pol_asimd, {0x3e2aaa18, true}}, // c3 =  0x1.555430p-3
-            {exp_pol_asimd, {0x3efffffa, true}}, // c4 =  0x1.fffff4p-2
+            {exp_pol_asimd, {0x3c072010, true}}, // c0 =  0x1.0e4020p-7
+            {exp_pol_asimd, {0x3d2b9f17, true}}, // c1 =  0x1.573e2ep-5
+            {exp_pol_asimd, {0x3e2aaf33, true}}, // c2 =  0x1.555e66p-3
+            {exp_pol_asimd, {0x3efffedb, true}}, // c3 =  0x1.fffdb6p-2
+            {exp_pol_asimd, {0x3f7ffff6, true}}, // c4 =  0x1.ffffecp-1
     };
     // exp(x) constants2
     static const table_t exp_consts2 {
             {exp_coeff1, {0x3f31721c, true}},
             {exp_coeff2, {0x3e772df2, true}},
             {exp_not_mask17, {~((1u << 17) - 1), true}},
-            {exp_exponent_bias, {0x3f800000, true}}, // 1.0f
+            {exp_exponent_bias,
+                    {0x3f800000, true}}, // 2^7 - 1 shifted to exponent position
             {exp_neg_ln2_hi, {0xbf317200, true}}, // -0x1.62e400p-1f (hi)
             {exp_neg_ln2_lo, {0xb5bfbe8e, true}}, // -0x1.7f7d1cp-20f (lo)
             {exp_special_bound, {0x42fc0000, true}}, // 126.0f
             {exp_scale_thresh, {0x43400000, true}}, // 192.0f
-            {exp_special_offset, {0x83000000, true}},
+            {exp_special_offset, {0x82000000, true}},
             {exp_special_bias, {0x7f000000, true}},
     };
 
@@ -2492,16 +2493,16 @@ template <>
 void jit_uni_eltwise_injector_t<asimd>::exp_compute_vector_fwd(
         const TRegS &vmm_src) {
     /*
-    * Based on the expf_1u implementation from Arm Optimized Routines (AOR)
+    * Based on the expf/expf_1u implementations from Arm Optimized Routines (AOR)
     *
-    * exp(x) ≈ 2^n · p(r)
+    * exp(x) ≈ 2^n * (1 + poly(r)), with 1 + poly(r) ∈ [1/sqrt(2),sqrt(2)]
     *   n = round(x * 1/ln2)
     *   r = x − n*ln2 (hi/lo split for precision)
-    *   p(r): short Horner polynomial, r ∈ [−ln2/2, ln2/2]
+    *   poly(r): short polynomial, r ∈ [−ln2/2, ln2/2]
     *
     * Special case:
     *   For large |n| > 126, split 2^n = s1*s2 to avoid overflow/underflow.
-    *   For very large |n| > 196, use 2^n = s1*s1.
+    *   For very large |n| > 196, use exp(x) = s1*s1.
     */
 
     const auto &t0 = VReg4S(vmm_src.getIdx());
@@ -2509,112 +2510,119 @@ void jit_uni_eltwise_injector_t<asimd>::exp_compute_vector_fwd(
     const auto &t2 = VReg4S(vmm_aux1.getIdx());
     const auto &t3 = VReg4S(vmm_aux2.getIdx());
     const auto &t4 = VReg4S(vmm_aux3.getIdx());
-    const auto &t5 = VReg4S(vmm_aux4.getIdx());
     const auto &t_tmp = VReg4S(vmm_tmp.getIdx());
 
     // z = x * inv_ln2
-    const auto &vInvLn2 = table_val(exp_log2ef, t_tmp);
-    const auto &vIn = t0;
-    const auto &vZ = t3;
-    h->fmul(vZ, vIn, vInvLn2);
+    const auto &v_inv_ln2 = table_val(exp_log2ef, t_tmp);
+    const auto &v_src = t0;
+    const auto &v_z = t_tmp;
+    h->fmul(v_z, v_src, v_inv_ln2);
 
     // n = (float)round(z)
-    const auto &vN = t1;
-    h->frinta(vN, vZ);
+    const auto &v_n = t1;
+    h->frinta(v_n, v_z);
 
     // e = (int)round(z) << n_mantissa_bits
-    const auto &vE = t2;
-    h->fcvtas(vZ, vZ);
-    h->shl(vE, vZ, n_mantissa_bits);
-
-    // scale = reinterpret_f32(e + 0x3f800000) = 2^n
-    const auto &vExpScale = t5;
-    const auto &vExpBiasBits
-            = table_val(exp_exponent_bias, t_tmp); // 0x3f800000
-    h->add(vExpScale, vE, vExpBiasBits);
+    const auto &v_e = t2;
+    h->fcvtas(v_z, v_z);
+    h->shl(v_e, v_z, n_mantissa_bits);
 
     // r = x + n*neg_ln2_hi + n*neg_ln2_lo
-    const auto &vR = vIn;
-    const auto &vNegLn2Hi = table_val(exp_neg_ln2_hi, t3);
-    const auto &vNegLn2Lo = table_val(exp_neg_ln2_lo, t4);
-    h->fmla(vR, vN, vNegLn2Hi);
-    h->fmla(vR, vN, vNegLn2Lo);
+    const auto &v_r = v_src;
+    const auto &v_neg_ln2_hi = table_val(exp_neg_ln2_hi, t3);
+    const auto &v_neg_ln2_lo = table_val(exp_neg_ln2_lo, t4);
+    h->fmla(v_r, v_n, v_neg_ln2_hi);
+    h->fmla(v_r, v_n, v_neg_ln2_lo);
 
     // Polynomial approximation of exp(r), r ∈ [−ln2/2, ln2/2]
-    const auto &vPolyAccum1 = t3;
-    const auto &vPolyAccum2 = t4;
-    // p =      c0*r + c1
-    table_val(exp_pol_asimd, vPolyAccum1, 0);
-    table_val(exp_pol_asimd, vPolyAccum2, 1);
-    h->fmla(vPolyAccum2, vPolyAccum1, vR);
-    // p =     (c0*r + c1)*r + c2
-    table_val(exp_pol_asimd, vPolyAccum1, 2);
-    h->fmla(vPolyAccum1, vPolyAccum2, vR);
-    // p =    ((c0*r + c1)*r + c2)*r + c3
-    table_val(exp_pol_asimd, vPolyAccum2, 3);
-    h->fmla(vPolyAccum2, vPolyAccum1, vR);
-    // p =   (((c0*r + c1)*r + c2)*r + c3)*r + c4
-    table_val(exp_pol_asimd, vPolyAccum1, 4);
-    h->fmla(vPolyAccum1, vPolyAccum2, vR);
-    // p =  ((((c0*r + c1)*r + c2)*r + c3)*r + c4)*r + 1
-    table_val(one, vPolyAccum2);
-    h->fmla(vPolyAccum2, vPolyAccum1, vR);
-    // p = (((((c0*r + c1)*r + c2)*r + c3)*r + c4)*r + 1)*r + 1
-    table_val(one, vPolyAccum1);
-    h->fmla(vPolyAccum1, vPolyAccum2, vR);
-    const auto &vP = vPolyAccum1;
+    // p = c1 + c0 * r
+    const auto &v_c0 = v_z;
+    const auto &v_c1 = v_neg_ln2_hi;
+    table_val(exp_pol_asimd, v_c0, 0);
+    table_val(exp_pol_asimd, v_c1, 1);
+    h->fmla(v_c1, v_c0, v_r);
+
+    // q = c3 + c2 * r
+    const auto &v_c2 = v_c0;
+    const auto &v_c3 = v_neg_ln2_lo;
+    table_val(exp_pol_asimd, v_c2, 2);
+    table_val(exp_pol_asimd, v_c3, 3);
+    h->fmla(v_c3, v_c2, v_r);
+
+    // r2 = r * r
+    const auto &v_r2 = v_c2;
+    h->fmul(v_r2, v_r, v_r);
+
+    // q = q + p * r2
+    const auto &v_p = v_c1;
+    const auto &v_q = v_c3;
+    h->fmla(v_q, v_p, v_r2);
+
+    // poly = c4 * r + q * r2
+    const auto &v_c4 = v_p;
+    table_val(exp_pol_asimd, v_c4, 4);
+    h->fmul(v_p, v_c4, v_r);
+    h->fmla(v_p, v_q, v_r2);
 
     // Check if any lane needs special-case handling
-    // maskSpecial = (|n| > 126)
+    // mask_special = (|n| > 126)
     Xbyak_aarch64::Label L_done, L_special;
-    const auto &vMaskSpecial = t4;
-    const auto &vSpecialBound = table_val(exp_special_bound, t_tmp); // 126.0f
-    h->facgt(vMaskSpecial, vN, vSpecialBound);
-    h->addp(DReg(t_tmp.getIdx()), VReg2D(vMaskSpecial.getIdx()));
+    const auto &v_mask_special = v_c3;
+    const auto &v_special_bound = table_val(exp_special_bound, t_tmp); // 126.0f
+    h->facgt(v_mask_special, v_n, v_special_bound);
+    h->addp(DReg(t_tmp.getIdx()), VReg2D(v_mask_special.getIdx()));
     h->fmov(h->X_TMP_0, DReg(t_tmp.getIdx()));
     h->cbnz(h->X_TMP_0, L_special);
 
     // ===== Fast path =====
-    // exp(x) = scale * p = 2^n * exp(r)
-    const auto &vOut = t0;
-    h->fmul(vOut, vExpScale, vP);
+    // scale = reinterpret_f32(e + 0x3f800000) = 2^n
+    const auto &v_exp_scale = v_src;
+    const auto &v_exp_bias_bits
+            = table_val(exp_exponent_bias, t_tmp); // 0x3f800000
+    h->add(v_exp_scale, v_e, v_exp_bias_bits);
+
+    // exp(x) = scale + poly * scale = 2^n * (1 + poly(r))
+    const auto &v_dst = v_src;
+    h->fmla(v_dst, v_p, v_exp_scale);
     h->b(L_done);
 
     // ===== Special-case handling =====
-    // b = (n <= 0 ? special_offset : 0)
+    // b = (n <= 0) ? special_offset : 0
     h->L(L_special);
-    const auto &vB = t5;
-    const auto &vSpecOff = table_val(exp_special_offset, t_tmp); // 0x83000000
-    h->fcmle(vB, vN, 0.0);
-    h->and_(VReg16B(vB.getIdx()), VReg16B(vB.getIdx()),
-            VReg16B(vSpecOff.getIdx()));
+    const auto &v_b = v_q;
+    const auto &v_special_offset
+            = table_val(exp_special_offset, t_tmp); // 0x82000000
+    h->fcmle(v_b, v_n, 0.0);
+    h->and_(VReg16B(v_b.getIdx()), VReg16B(v_b.getIdx()),
+            VReg16B(v_special_offset.getIdx()));
 
-    // maskThresh = (|n| > 192)
-    const auto &vThresh = table_val(exp_scale_thresh, t_tmp); // 192.0f
-    const auto &vMaskThresh = vN;
-    h->facgt(vMaskThresh, vN, vThresh);
+    // mask_thresh = (|n| > 192)
+    const auto &v_thresh = table_val(exp_scale_thresh, t_tmp); // 192.0f
+    const auto &v_mask_thresh = v_n;
+    h->facgt(v_mask_thresh, v_n, v_thresh);
 
     // s2_bits = e - b
-    const auto &vS2 = vE;
-    h->sub(vS2, vE, vB);
+    const auto &v_s2 = v_e;
+    h->sub(v_s2, v_e, v_b);
 
     // s1_bits = b + special_bias
-    const auto &vS1 = vB;
-    const auto &vSpecBias = table_val(exp_special_bias, t_tmp); // 0x7f000000
-    h->add(vS1, vB, vSpecBias);
+    const auto &v_s1 = v_b;
+    const auto &v_special_bias
+            = table_val(exp_special_bias, t_tmp); // 0x7f000000
+    h->add(v_s1, v_b, v_special_bias);
 
-    // r0 = (p * s1) * s2
-    const auto &vR0 = vP;
-    h->fmul(vR0, vP, vS1);
-    h->fmul(vR0, vR0, vS2);
+    // r0 = (s2 + poly*s2) * s1
+    const auto &v_r0 = v_p;
+    h->fmla(v_s2, v_p, v_s2);
+    h->fmul(v_r0, v_s2, v_s1);
 
     // r1 = s1 * s1
-    const auto &vR1 = vOut;
-    h->fmul(vR1, vS1, vS1);
+    const auto &v_r1 = v_dst;
+    h->fmul(v_r1, v_s1, v_s1);
 
-    // outSpecial = (|n| > 192) ? r1 : r0
-    h->bif(VReg16B(vOut.getIdx()), VReg16B(vR0.getIdx()),
-            VReg16B(vMaskThresh.getIdx()));
+    // out_special = (|n| > 192) ? r1 : r0
+    h->bif(VReg16B(v_r1.getIdx()), VReg16B(v_r0.getIdx()),
+            VReg16B(v_mask_thresh.getIdx()));
 
     h->L(L_done);
 }

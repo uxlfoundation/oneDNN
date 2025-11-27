@@ -281,16 +281,16 @@ private:
         exp_ln_flt_max_f, // logf(FLT_MAX) - max normal value
         exp_ln_flt_min_f, // logf(FLT_MIN) - min normal value
         exp_pol, // see correspondent table for float values
-        exp_pol_asimd, // see correspondent table for float values
+        exp_pol_asimd, // see corresponding table for float values
         exp_coeff1, // 0.6931473921 (0x3f31721c)
         exp_coeff2, // 0.2413862043 (0x3e772df2)
-        exp_exponent_bias, // 1.0f (0x3f800000)
-        exp_neg_ln2_hi, // -0x1.62e400p-1f (0xbf317200)
-        exp_neg_ln2_lo, // -0x1.7f7d1cp-20f (0xb5bfbe8e)
-        exp_special_bound, // 126.0f
-        exp_scale_thresh, // 192.0f
-        exp_special_offset, // 0x83000000
-        exp_special_bias, // 0x7f000000
+        exp_exponent_bias,
+        exp_neg_ln2_hi, // high part of -ln(2) used for exp calculation
+        exp_neg_ln2_lo, // low part of -ln(2) used for exp calculation
+        exp_special_bound, // bound for exp special case handling
+        exp_scale_thresh, // threshold for additional overflow/underflow handling
+        exp_special_offset,
+        exp_special_bias,
         exp_not_mask17, // ~((1u << 17) - 1)
         fwd_mish_max_x_for_equation_f,
         // e^x(e^3x+4e^2x+e^x*(6+4*x)+4*(1+x)) = FLT_MAX; x =~ 22.18070976278534

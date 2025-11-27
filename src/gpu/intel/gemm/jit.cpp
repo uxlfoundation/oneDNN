@@ -39,7 +39,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         intel::stream_t *compute_stream, zero_pool_t *zero_pool,
         const memory_storage_t &a, const memory_storage_t &b,
         const memory_storage_t &c, const memory_storage_t *ao,
-        const memory_storage_t *bo, const memory_storage_t *a_scales,
+        const memory_storage_t *bo,
+        int32_t abo_hostsize, // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        const memory_storage_t *a_scales,
         const memory_storage_t *b_scales, const memory_storage_t *c_scales,
         const memory_storage_t *ag, const memory_storage_t *bg,
         const memory_storage_t &co, const memory_storage_t *c_temp,
@@ -456,6 +458,9 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     const memory_storage_t *a_scales = nullptr, *b_scales = nullptr;
     const memory_storage_t *c_scales = nullptr;
     const memory_storage_t *ag = nullptr, *bg = nullptr;
+    // @@@@@@@@@@@@@@@@@@@
+    int32_t abo_hostside = 0;
+    // @@@@@@@@@@@@@@@@@@@
 
     std::unique_ptr<memory_storage_t> c_temp;
     if (nocopy_info()->needsTempC()) {
@@ -566,7 +571,14 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
-        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a || b w/ zp ; ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);");
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a || b w/ zp ; setup ao & bo");
+
+        //@@@@@@@@@@@@@@@@@@@@@@@
+
+
+
+
+
     }
 
     //VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
@@ -647,7 +659,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 && (k > k0 * pd()->kernel_desc()->aux_params()->wgK)) {
             VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy, ao arg");
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
-                    bo, a_scales, b_scales, c_scales, ag, bg, *co, nullptr,
+                    bo, abo_hostside, a_scales, b_scales, c_scales, ag, bg, *co, nullptr, // @@@@@@@@@@@@@@@
                     sround_seed, po_count, po_srcs, off_a0, off_b0, off_c0,
                     off_aq0, off_bq0, off_co0, po_offsets0, lda, ldb, ldc, m, n,
                     0, 1, 1.0f, beta, 0, false, swapab, true);
@@ -713,7 +725,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 float eff_beta = (Bk == 0) ? beta : 1.0f;
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy, bk bm loop, ao arg");
                 status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c,
-                        ao, bo, a_scales, b_scales, c_scales, ag, bg, *co,
+                        ao, bo, abo_hostside, a_scales, b_scales, c_scales, ag, bg, *co, // @@@@@@@@@
                         c_temp.get(), sround_seed, po_count, po_srcs, off_a_src,
                         off_b_src, off_c, off_aq, off_bq, off_co, po_offsets,
                         lda, ldb, ldc, into<int32_t>(size_m),

@@ -19,12 +19,10 @@
 #ifndef CPU_AARCH64_REORDER_JIT_UNI_REORDER_UTILS_HPP
 #define CPU_AARCH64_REORDER_JIT_UNI_REORDER_UTILS_HPP
 
-#include <assert.h>
+#include <cassert>
+#include <string>
 
 #include "common/c_types_map.hpp"
-#include "common/type_helpers.hpp"
-
-#include "cpu/reorder/cpu_reorder_pd.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -37,6 +37,7 @@
 #include "cpu/x64/matmul/brgemm_matmul_reorders.hpp"
 #elif DNNL_AARCH64
 #include "cpu/aarch64/matmul/brgemm_matmul_reorders.hpp"
+#include "cpu/aarch64/reorder/jit_blk_reorder.hpp"
 #include "cpu/aarch64/reorder/jit_uni_reorder.hpp"
 #if defined(DNNL_AARCH64_USE_ACL)
 #include "cpu/aarch64/reorder/acl_reorder.hpp"

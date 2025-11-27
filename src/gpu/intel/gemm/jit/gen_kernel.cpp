@@ -1051,6 +1051,7 @@ void gen_kernel_t::init_interface() {
     interface_.newArgument("k", DataType::d);
     interface_.newArgument("alpha_real", s_type_ngen);
     interface_.newArgument("beta_real", s_type_ngen);
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument beta");
 
     if (problem.aoPtrDims >= 0){
         VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument ao_ptr");
@@ -1091,52 +1092,84 @@ void gen_kernel_t::init_interface() {
 
     // @@@@@@@@@@@@@@@@@@@
 
-    if (problem.aScale2D())
+    if (problem.aScale2D()){
         interface_.newArgument(
                 "a_scale_ptr", ExternalArgumentType::GlobalPtr, as_access);
-    if (problem.bScale2D())
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
+    if (problem.bScale2D()){
         interface_.newArgument(
                 "b_scale_ptr", ExternalArgumentType::GlobalPtr, bs_access);
-    if (problem.hasCMXScale())
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
+    if (problem.hasCMXScale()){
         interface_.newArgument(
                 "c_scale_ptr", ExternalArgumentType::GlobalPtr, c_access);
-    if (problem.needsAGroupSums())
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
+    if (problem.needsAGroupSums()){
         interface_.newArgument(
                 "ag_ptr", ExternalArgumentType::GlobalPtr, ag_access);
-    if (problem.needsBGroupSums())
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
+    if (problem.needsBGroupSums()){
         interface_.newArgument(
                 "bg_ptr", ExternalArgumentType::GlobalPtr, bg_access);
-    if (problem.aOffset2D() || problem.aScale2D() || problem.needsAGroupSums())
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
+    if (problem.aOffset2D() || problem.aScale2D() || problem.needsAGroupSums()){
         interface_.newArgument("ldaq", DataType::d);
-    if (problem.bOffset2D() || problem.bScale2D() || problem.needsBGroupSums())
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
+    if (problem.bOffset2D() || problem.bScale2D() || problem.needsBGroupSums()){
         interface_.newArgument("ldbq", DataType::d);
-    if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
+    if (problem.hasCMXScale()) {
+        interface_.newArgument("ldcq", DataType::d);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         interface_.newArgument(
                 "CO", ExternalArgumentType::GlobalPtr, co_access);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
         interface_.newArgument("offset_CO", DataType::q);
-        if (problem.cOffset == COffset::Pre)
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+        if (problem.cOffset == COffset::Pre){
             interface_.newArgument("ldco", DataType::d);
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+        }
     }
     if (problem.postOps.cStochasticRound) {
         interface_.newArgument("sround_seed", ExternalArgumentType::GlobalPtr);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
     }
 
-    if (strategy.needsTempC(problem))
+    if (strategy.needsTempC(problem)){
         interface_.newArgument(
                 "temp_C", ExternalArgumentType::GlobalPtr, c_access);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
     interface_.newArgument("flags", DataType::ud);
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument flags");
+
     if ((strategy.kParallel || strategy.kParallelLocal)
-            && !strategy.kParallelVariable)
+            && !strategy.kParallelVariable){
         interface_.newArgument("k0", DataType::d);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
     for (size_t i = 0; i < problem.postOps.len(); i++) {
         if (!problem.postOps[i].is_binary()) continue;
         auto bname = "binary" + std::to_string(i);
         interface_.newArgument(bname, ExternalArgumentType::GlobalPtr,
                 strategy.binary[i].getGlobalAccessType());
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
         interface_.newArgument("offset_" + bname, DataType::q);
-        if (problem.postOps.binaryRow[i] && problem.postOps.binaryCol[i])
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+        if (problem.postOps.binaryRow[i] && problem.postOps.binaryCol[i]){
             interface_.newArgument("ld" + bname, DataType::d);
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+        }
     }
     if (problem.batch == BatchMode::Strided) {
         for (int i = 0; i < problem.batchDims; i++) {
@@ -1146,30 +1179,37 @@ void gen_kernel_t::init_interface() {
             if (problem.hasAScale()) {
                 interface_.newArgument(
                         "scale_stride_A" + std::to_string(i), DataType::d);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             }
             if (problem.hasBScale()) {
                 interface_.newArgument(
                         "scale_stride_B" + std::to_string(i), DataType::d);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             }
             if (problem.hasCMXScale()) {
                 interface_.newArgument(
                         "scale_stride_C" + std::to_string(i), DataType::d);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             }
             if (problem.hasAOffset()) {
                 interface_.newArgument(
                         "offset_stride_A" + std::to_string(i), DataType::d);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             }
             if (problem.hasBOffset()) {
                 interface_.newArgument(
                         "offset_stride_B" + std::to_string(i), DataType::d);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             }
             if (problem.needsAGroupSums()) {
                 interface_.newArgument(
                         "group_sums_stride_A" + std::to_string(i), DataType::d);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             }
             if (problem.needsBGroupSums()) {
                 interface_.newArgument(
                         "group_sums_stride_B" + std::to_string(i), DataType::d);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             }
         }
         for (size_t i = 0; i < problem.postOps.len(); i++) {
@@ -1179,53 +1219,80 @@ void gen_kernel_t::init_interface() {
                     interface_.newArgument("stride" + std::to_string(b)
                                     + "binary" + std::to_string(i),
                             DataType::d);
+                    VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
                 }
             }
         }
         for (int i = 0; i < problem.batchDims - 1; i++) {
             interface_.newArgument(
                     "batch_size" + std::to_string(i), DataType::ud);
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             if (enable_generator_dsl()) {
                 interface_.newArgument(
                         "batch_magic" + std::to_string(i), DataType::uq);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             } else {
                 interface_.newArgument(
                         "recip_batch_size" + std::to_string(i), DataType::ud);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             }
         }
     }
-    if (strategy.fuseBeta || strategy.fusePostOps)
+    if (strategy.fuseBeta || strategy.fusePostOps){
         interface_.newArgument("status", ExternalArgumentType::GlobalPtr,
                 GlobalAccessType::Stateless);
-    if (strategy.fuseBeta && strategy.kParallel)
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
+    if (strategy.fuseBeta && strategy.kParallel){
         interface_.newArgument("group_count_k", DataType::ud);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
     if (strategy.linearOrder()) {
         interface_.newArgument("group_count_m", DataType::ud);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
         interface_.newArgument("group_count_n", DataType::ud);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
     }
-    if (strategy.cWalkOrder == WalkOrder::SimpleLinear)
+    if (strategy.cWalkOrder == WalkOrder::SimpleLinear){
         interface_.newArgument("group_count_recip", DataType::ud);
-    else if (strategy.cWalkOrder == WalkOrder::Hilbertlike) {
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    } else if (strategy.cWalkOrder == WalkOrder::Hilbertlike) {
         interface_.newArgument("hilbert_vd", DataType::ud);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
         interface_.newArgument("hilbert_uvd_recip", DataType::ud);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
         interface_.newArgument("hilbert_bail", DataType::ud);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
     } else if (strategy.cWalkOrder == WalkOrder::Boustrophedon) {
         interface_.newArgument("bslice", DataType::d);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
         interface_.newArgument("bthresh", DataType::d);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
     }
     if (strategy.kParallelVariable) {
         interface_.newArgument("k0", DataType::ud);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
         interface_.newArgument("kv_config", DataType::ud);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
         interface_.newArgument("k_recip", DataType::ud);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
     }
-    if (strategy.persistent)
+    if (strategy.persistent){
         interface_.newArgument("group_stride", DataType::ud);
-    if (strategy.variableSLM())
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
+    if (strategy.variableSLM()){
         interface_.newArgument("local_mem", ExternalArgumentType::LocalPtr);
-    if (problem.aoPtrDims >= 1 || problem.aScale2D())
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
+    if (problem.aoPtrDims >= 1 || problem.aScale2D()){
         interface_.newArgument("offset_Aq", DataType::q);
-    if (problem.boPtrDims >= 1 || problem.bScale2D())
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
+    if (problem.boPtrDims >= 1 || problem.bScale2D()){
         interface_.newArgument("offset_Bq", DataType::q);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
+    }
 
     if (desc()->hw_ >= HW::XeHPG) interface_.allowArgumentRearrangement(false);
     interface_.externalName(kernel_name());

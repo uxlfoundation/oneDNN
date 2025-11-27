@@ -49,7 +49,10 @@ inline void linear_order_args(compute::kernel_arg_list_t &arg_list, int &argn,
         arg_list.set(argn++, groups_k);
     }
 
-    if (!info.isLinearOrder()) return;
+    if (!info.isLinearOrder()) {
+        VDEBUGINFO(4, primitive, work_order, "MY: linear_order_args -- : early return");
+        return;
+    }
 
     int m_index = info.isNMK() ? 1 : 0;
     int n_index = info.isNMK() ? 0 : 1;
@@ -159,6 +162,7 @@ inline void linear_order_args(compute::kernel_arg_list_t &arg_list, int &argn,
         arg_list.set(argn++, slice);
         arg_list.set(argn++, thresh);
     }
+    VDEBUGINFO(4, primitive, work_order, "MY: linear_order_args -- ");
 
     if (info.kParallelVariable()) {
         uint32_t k_parallel_start = utils::rnd_dn(group_count, concurrent_tg);
@@ -216,6 +220,7 @@ inline void linear_order_args(compute::kernel_arg_list_t &arg_list, int &argn,
         arg_list.set(argn++, kv_config);
         arg_list.set(argn++, k_recip);
     }
+    VDEBUGINFO(4, primitive, work_order, "MY: linear_order_args -- ");
 
     if (info.isPersistent()) {
         group_count = nstl::min(group_count, concurrent_tg);

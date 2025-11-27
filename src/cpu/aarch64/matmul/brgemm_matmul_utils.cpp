@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2023-2024 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1000,10 +1000,9 @@ status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
     // Zero initialize the `conf` to avoid access to 'garbage' in members.
     conf = brgemm_matmul_conf_t();
 
-    const bool is_bf16 = one_of(in_type, bf16) || one_of(out_type, bf16);
     const bool is_s8u8 = one_of(in_type, s8, u8) || one_of(out_type, s8, u8);
 
-    VCONDCHECK_BG(!(is_bf16 || is_s8u8), VERBOSE_UNSUPPORTED_DT);
+    VCONDCHECK_BG(!is_s8u8, VERBOSE_UNSUPPORTED_DT);
 
     const bool is_copyB = N > 0;
     conf.isa = get_max_cpu_isa(); // Just use the best ISA possible.

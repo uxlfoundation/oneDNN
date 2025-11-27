@@ -63,6 +63,12 @@ void dnnl_partition_impl_t::init_inputs_outputs() {
     }
 
     for (auto &cur_op : ops_) {
+        // Handle End op: directly mark its input as output
+        if (cur_op->get_kind() == graph::op_kind::End) {
+            outputs_.push_back(cur_op->get_input_logical_tensor(0));
+            continue;
+        }
+
         for (size_t j = 0; j < cur_op->num_inputs(); ++j) {
             auto in_value = cur_op->get_input_value(j);
             if (!in_value->has_producer()

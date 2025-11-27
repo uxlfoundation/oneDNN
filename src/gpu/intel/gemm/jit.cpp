@@ -575,6 +575,24 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
         //@@@@@@@@@@@@@@@@@@@@@@@
 
+        if (pd()->attr()->zero_points_.has_host_scalars()) {
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : there are host_scalars() !!!!");
+            if (ao->is_host_scalar()) {
+                int a_zp_val = 0;
+                VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : ao is host_scalar");
+                CHECK(maybe_get_zp_as_int(*ao, a_zp_val));
+                VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a_zp_val = %d", a_zp_val);
+            }
+            if (bo->is_host_scalar()) {
+                int b_zp_val = 0;
+                VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : bo is host_scalar");
+                CHECK(maybe_get_zp_as_int(*bo, b_zp_val));
+                VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : b_zp_val = %d", b_zp_val);
+            }
+
+            // @@@@@@@@@@@@@@@@@@@ pack them into abo_hostside
+
+        }
 
 
 

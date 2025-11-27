@@ -22,6 +22,8 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
+// @@@@@@@@ ????? rename like or just template by type
+
 status_t maybe_get_scale_as_float(
         const memory_storage_t &scale_storage, float &scalar_value) {
 #define SCALAR_DT_DISPATCH(sdt, vdt) \
@@ -50,6 +52,7 @@ status_t maybe_get_scale_as_float(
 
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//@@@@@@@@@@@@@@@@@@@@@@@@
 
 status_t maybe_get_zp_as_int(
         const memory_storage_t &scale_storage, int &scalar_value) {

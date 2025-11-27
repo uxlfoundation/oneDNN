@@ -50,6 +50,24 @@ namespace aarch64 {
 
 namespace tr {
 
+namespace {
+inline bool is_direct_copy(const prb_t &prb) {
+    return prb.ndims == 1 && prb.nodes[0].is == 1 && prb.nodes[0].os == 1;
+}
+} // namespace
+
+bool prb_has_small_strides(const prb_t &prb) {
+    constexpr ptrdiff_t max_stride = (1LL << 31) - 1;
+    for (int d = 0; d < prb.ndims; ++d) {
+        const ptrdiff_t cms = max_stride / prb.nodes[d].n;
+        const bool small_strides = true
+                && prb.nodes[d].is < cms / (int)data_type_size(prb.itype)
+                && prb.nodes[d].os < cms / (int)data_type_size(prb.otype);
+        if (!small_strides) return false;
+    }
+    return true;
+}
+
 /** ad-hoc structure to describe blocked memory layout */
 struct layout_desc_t {
     layout_desc_t()
@@ -314,7 +332,7 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
                     om_d.extra().asymm_compensation_mask))
         return status::unimplemented;
 
-    ptrdiff_t ss[max_ndims] = {0}; // scales strides
+    ptrdiff_t ss[DNNL_MAX_NDIMS] = {0}; // scales strides
     if (p.src_scale_type == scale_type_t::MANY
             || p.dst_scale_type == scale_type_t::MANY) {
         const int mask = nstl::max(src_mask, dst_mask);
@@ -340,13 +358,13 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
         p.compensation_mask = p.req_s8s8_comp
                 ? om_d.extra().compensation_mask
                 : (p.req_asymmetric_comp ? om_d.extra().asymm_compensation_mask
-                                         : tr::prb_t::invalid_comp_mask);
+                                         : prb_t::invalid_comp_mask);
 
-        if (p.compensation_mask == tr::prb_t::asymmetric_comp_mask)
+        if (p.compensation_mask == prb_t::asymmetric_comp_mask)
             return unimplemented;
 
-        assert(p.compensation_mask == tr::prb_t::standard_comp_mask
-                || p.compensation_mask == tr::prb_t::comp_mask_with_groups);
+        assert(p.compensation_mask == prb_t::standard_comp_mask
+                || p.compensation_mask == prb_t::comp_mask_with_groups);
     }
 
     int ndims = 0;
@@ -357,8 +375,8 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
     while (i_pos < ild.ndims && o_pos < old.ndims) {
         assert(ild.id[i_pos] == old.id[o_pos]);
 
-        assert(ndims < max_ndims);
-        if (ndims == max_ndims) return runtime_error;
+        assert(ndims < DNNL_MAX_NDIMS);
+        if (ndims == DNNL_MAX_NDIMS) return runtime_error;
 
         if (ild.dims[i_pos] == old.dims[o_pos]) {
             p.nodes[ndims].n = ild.dims[i_pos];
@@ -540,7 +558,7 @@ void prb_simplify(prb_t &p) {
 
 void prb_node_split(prb_t &p, int dim, size_t new_node_size) {
     assert(dim < p.ndims);
-    assert(p.ndims < max_ndims);
+    assert(p.ndims < DNNL_MAX_NDIMS);
     assert(p.nodes[dim].n % new_node_size == 0);
 
     p.ndims += 1;
@@ -579,7 +597,7 @@ void prb_node_split(prb_t &p, int dim, size_t new_node_size) {
 void prb_node_swap(prb_t &p, int d0, int d1) {
     assert(d0 < p.ndims);
     assert(d1 < p.ndims);
-    assert(p.ndims < max_ndims);
+    assert(p.ndims < DNNL_MAX_NDIMS);
 
     if (d0 == d1) return;
 
@@ -589,7 +607,7 @@ void prb_node_swap(prb_t &p, int d0, int d1) {
 void prb_node_move(prb_t &p, int d0, int d1) {
     assert(d0 < p.ndims);
     assert(d1 < p.ndims);
-    assert(p.ndims < max_ndims);
+    assert(p.ndims < DNNL_MAX_NDIMS);
 
     if (d0 == d1) return;
 
@@ -619,6 +637,219 @@ std::string prb_dump(const prb_t &p) {
     }
     ss << " off:" << p.ioff << ':' << p.ooff;
     return ss.str();
+}
+
+void prb_block_for_cache(prb_t &prb) {
+    // Performance improvements when doing simple inner blocking of 8 or 4
+    // This covers ab->Ba8b, ab->Ba4b, ba->Ab8a, ba->Ab4a and cdba->Acdb8a
+    // Split middle node, then swap to improve cache locality
+    // Before split+swap we traverse src column-wise 8 row elements at a time from top to bottom
+    // After split+swap in src we traverse split_countx8 row-wise for inner_blk=8, and split_countx4 for inner_blk=4
+    if (prb.ndims == 3) {
+        const int inner_blk = prb.nodes[0].n;
+        if ((inner_blk == 8 || inner_blk == 4) && prb.nodes[0].is == 1
+                && prb.nodes[0].os == 1 && prb.nodes[1].os == inner_blk
+                && prb.nodes[2].is == inner_blk) {
+
+            // Try finding value to split on
+            // prb.nodes[1].n > 32 to ensure we only split if enough rows for split to have cache benefit
+            size_t split_value = 0;
+            for (size_t d = 8; d >= 2; --d) {
+                if (prb.nodes[1].n % d == 0 && prb.nodes[1].n != d
+                        && prb.nodes[1].n > 32) {
+                    split_value = d;
+                    break;
+                }
+            }
+
+            // Split on found split_value, if any
+            if (split_value) {
+                prb_node_split(prb, 1, split_value);
+                prb_node_swap(prb, 3, 2);
+                prb_node_dependency(prb);
+            }
+        }
+    }
+
+    /* If strides for 0th and 1st nodes are cache friendly
+     * then one can altogether do away with blocking ! */
+    static constexpr int num_elems_thr = 16;
+    const bool stride_cache_friendly
+            = ((prb.nodes[0].is % 64 == 0 && prb.nodes[0].n > num_elems_thr)
+                      || (prb.ndims > 1 && prb.nodes[1].is % num_elems_thr == 0
+                              && prb.nodes[1].n > num_elems_thr))
+            && !prb.is_tail_present;
+
+    // performance improvement for shapes with large inner-most dimension
+    const size_t L1_cache_sz
+            = size_t(3) * platform::get_per_core_cache_size(1) / 4;
+    const size_t itype_sz_ = data_type_size(prb.itype);
+    const size_t inner_block_sz = prb.nodes[0].n * itype_sz_;
+    const bool requires_inner_blocking = inner_block_sz > L1_cache_sz
+            // 'is_tail_present' is not supported for cache_blocking when
+            // asymmetric_comp is executed.
+            && IMPLICATION(prb.req_asymmetric_comp, !prb.is_tail_present);
+
+    const bool cache_blocking_needed
+            = stride_cache_friendly || requires_inner_blocking;
+    if (!cache_blocking_needed || is_direct_copy(prb)) return;
+
+    int unit_input_stride_idx = -1;
+    for (auto idx = 0; idx < prb.ndims; ++idx) {
+        if (prb.nodes[idx].is == 1) unit_input_stride_idx = idx;
+    }
+
+    /* Re-prioritize the sequential read over sequential write:
+     *                             /-> [n0:is0:1][16n1:1:osk]...
+     * [n0:is0:1]...[nk:1:osk] -->     or
+     *                             \-> [16n1:1:osk][n0:is0:1]... */
+    if (unit_input_stride_idx != -1) {
+        const auto output_stride = prb.nodes[unit_input_stride_idx].os;
+        const auto num_elems = prb.nodes[unit_input_stride_idx].n;
+
+        const bool split_needed = (num_elems > num_elems_thr)
+                && (num_elems % num_elems_thr == 0);
+        const int move_location = (output_stride % 4 != 0) ? 0 : 1;
+        if (split_needed)
+            prb_node_split(prb, unit_input_stride_idx, num_elems_thr);
+
+        /* Because of cache-unfriendly nature of unit-output stride node, let
+         * us move unit-input stride node on or near front! */
+        if (unit_input_stride_idx != move_location)
+            prb_node_move(prb, unit_input_stride_idx, move_location);
+    }
+
+    /* Potentially, split the node with os=1 in two and pull in the node with
+     * is=1 between them for better cache reuse:
+     * [n0:is0:1][n1:1:os1] --> [16n0:is0:1][n1:1:os1][n0/16:is0*16:16] */
+    if (prb.ndims >= 2 && prb.nodes[0].os == 1 && prb.nodes[1].is == 1) {
+        const auto num_elems = prb.nodes[0].n;
+
+        const bool split_needed = (num_elems > num_elems_thr)
+                && (num_elems % num_elems_thr == 0);
+        if (split_needed) {
+            prb_node_split(prb, 0, num_elems_thr);
+            prb_node_move(prb, 1, 2);
+
+            // Update node information
+            prb_node_dependency(prb);
+
+            // heuristics - looping over the unrolled dims should maximize reuse
+            // of the already cached data; observation is choosing the smallest
+            // dim from the remaining (from 2 up to ndims) gives good results
+            constexpr int new_position = 2;
+            const auto dim_beg_it = std::begin(prb.nodes);
+            const auto dim_two_it = dim_beg_it + new_position;
+            const auto dim_last_it = dim_beg_it + prb.ndims;
+            const auto min_n_node_it = std::min_element(dim_two_it, dim_last_it,
+                    [](const tr::node_t &lhs, const tr::node_t &rhs) {
+                        return lhs.n < rhs.n;
+                    });
+            const auto min_idx = std::distance(dim_beg_it, min_n_node_it);
+            // check if min_idx node is parent of node with tail processing which
+            // is currently unsupported (i.e. tail processing can only be handled
+            // at the inner-most dimension)
+            bool inner_block_has_tail = false;
+            for (int idx = min_idx - 1; idx >= new_position; idx--) {
+                if (prb.nodes[idx].parent_node_id == min_idx) {
+                    inner_block_has_tail = true;
+                    break;
+                }
+            }
+
+            if (min_idx > new_position && (!inner_block_has_tail))
+                prb_node_move(prb, min_idx, new_position);
+        }
+    }
+}
+
+void prb_thread_kernel_balance(prb_t &prb, int &ndims_ker_max, int nthr) {
+    size_t size_total = 1;
+    for (int d = 0; d < prb.ndims; ++d)
+        size_total *= prb.nodes[d].n;
+
+    /* The general expression for size_drv_thr can be written as
+     * size_drv_min = C0 + FC * (nthr > 1 ? 1 : 0) + VC * (nthr - 1)
+     * where FC and VC are fixed and variable costs respectively.
+     * Though for now, the below heuristic seems to be good enough */
+    // Note: direct copy needs only as many kernels as nthr.
+    const size_t size_drv_thr = is_direct_copy(prb) ? nthr
+            : (nthr > 1)                            ? 16 * nthr
+                                                    : 1;
+
+    /* size_drv_min is the minimal size for the parallel
+     * driver required for good parallelization */
+    const size_t size_drv_min
+            = nstl::min<size_t>(size_drv_thr, utils::div_up(size_total, 1024));
+
+    /* kdims -- # of dimensions processed by a kernel
+     * size_ker_cur -- product of the dimension processed by a kernel
+     * size_drv_cur -- product of the dimension processed by a driver */
+
+    int kdims = prb.ndims;
+    size_t size_drv_cur = 1;
+    for (; kdims > 1 && size_drv_cur < size_drv_min; --kdims)
+        size_drv_cur *= prb.nodes[kdims - 1].n;
+
+    size_t size_ker_cur = 1;
+    for (int d = 0; d < kdims; ++d)
+        size_ker_cur *= prb.nodes[d].n;
+
+    /* Initially kdims is chosen so that size_drv_cur >= size_drv_min.
+     *
+     * It might happen that for chosen kdims the size_ker_cur is too small
+     * (less than tr::ker_prb_size_min). In that case try to split the
+     * innermost driver dimension into two, to increase size_ker_cur. */
+    const bool want_borrow_ker_from_drv = kdims < prb.ndims
+            && size_ker_cur < kernel_t::ker_prb_size_min
+            && size_drv_cur > size_drv_min;
+    if (want_borrow_ker_from_drv) {
+        /* size_want_borrow is the minimal size, so that:
+         *  o) size_ker_cur * size_want_borrow >= tr::ker_prb_size_min
+         *  o) current innermost driver dimension is divisible by
+         *     size_want_borrow (so that we can evenly split that
+         *     dimension into two)
+         *
+         *  In the worst case the minimal size_want_borrow is equal
+         *  to the innermost driver dimension itself. In that case
+         *  we will sacrifice it in favor of kernel (is it fine?). */
+        size_t size_want_borrow
+                = utils::div_up(kernel_t::ker_prb_size_min, size_ker_cur);
+        for (; prb.nodes[kdims].n % size_want_borrow; ++size_want_borrow)
+            ;
+
+        if (size_want_borrow != prb.nodes[kdims].n)
+            prb_node_split(prb, kdims, size_want_borrow);
+        kdims += 1;
+    }
+
+    /* On the other hand it might happen that for chosen kdims
+     * the size_drv_cur is too small (less than size_drv_min). In that case
+     * try to split the outermost kernel dimension into two, to increase
+     * size_drv_cur. */
+    const bool want_borrow_drv_from_ker
+            = size_ker_cur > kernel_t::ker_prb_size_min
+            && size_drv_cur < size_drv_min;
+    if (want_borrow_drv_from_ker) {
+        size_t size_want_borrow = utils::div_up(size_drv_min, size_drv_cur);
+        for (; prb.nodes[kdims - 1].n % size_want_borrow; ++size_want_borrow)
+            ;
+
+        if (size_want_borrow != prb.nodes[kdims - 1].n)
+            prb_node_split(
+                    prb, kdims - 1, prb.nodes[kdims - 1].n / size_want_borrow);
+    }
+
+    ndims_ker_max = kdims;
+
+    if (want_borrow_ker_from_drv || want_borrow_drv_from_ker) {
+        DEBUG({
+            verbose_printf(
+                    verbose_t::debuginfo, "split: %s\n", prb_dump(prb).c_str());
+            verbose_printf(verbose_t::debuginfo, "ndims_ker_max = %d\n",
+                    ndims_ker_max);
+        });
+    }
 }
 
 } // namespace tr

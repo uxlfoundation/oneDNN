@@ -525,8 +525,9 @@ struct host_scalar_executable_t : public op_executable_t {
                     dst_mem.get_data_handle(), static_cast<const void *>(&val),
                     size, num, empty ? nullptr : deps.data(), &e));
             clWaitForEvents(1, &e);
+            clReleaseEvent(e);
         });
-        return e;
+        return nullptr;
     }
 #endif
 

@@ -154,7 +154,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_NONTRIVIAL_STRIDE);
     VDISPATCH_MATMUL(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_MATMUL(!(is_bf16 && !mayiuse_bf16()), VERBOSE_UNSUPPORTED_ISA);
+    VDISPATCH_MATMUL(
+            IMPLICATION(is_bf16, mayiuse_bf16()), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
     VDISPATCH_MATMUL(
             no_dynamic_strides_for_B_and_C, VERBOSE_RUNTIMEDIM_UNSUPPORTED);

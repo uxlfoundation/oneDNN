@@ -230,6 +230,13 @@ public:
     std::vector<value_t *> get_output_values() const {
         std::vector<value_t *> out_vals;
         for (const op_ptr &n : ops_) {
+            // Handle End op: directly mark its input as output
+            if (n->get_kind() == graph::op_kind::End) {
+                auto end_input = n->get_input_value(0);
+                out_vals.emplace_back(end_input.get());
+                continue;
+            }
+
             for (const value_ptr &out_val : n->get_output_values()) {
                 std::vector<value_t::consumer_t> consumers
                         = out_val->get_consumers();

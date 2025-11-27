@@ -13,8 +13,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#ifndef CPU_AARCH64_ACL_REORDER_HPP
-#define CPU_AARCH64_ACL_REORDER_HPP
+#ifndef CPU_AARCH64_REORDER_ACL_REORDER_HPP
+#define CPU_AARCH64_REORDER_ACL_REORDER_HPP
 
 #include "arm_compute/core/Types.h"
 #include "common/utils.hpp"
@@ -96,4 +96,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_AARCH64_ACL_REORDER_HPP
+#endif // CPU_AARCH64_REORDER_ACL_REORDER_HPP

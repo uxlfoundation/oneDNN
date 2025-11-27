@@ -23,15 +23,12 @@
 #include <memory>
 
 #include "common/c_types_map.hpp"
-#include "common/dnnl_thread.hpp"
 #include "common/primitive.hpp"
-#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/cpu_pooling_pd.hpp"
 
 #include "cpu/aarch64/jit_uni_pool_kernel.hpp"
-#include "cpu/aarch64/jit_uni_reorder.hpp"
 
 namespace dnnl {
 namespace impl {

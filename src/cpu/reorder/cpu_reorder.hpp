@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
-* Copyright 2023 Arm Ltd. and affiliates
+* Copyright 2023, 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -36,10 +36,10 @@
 #include "cpu/x64/jit_uni_reorder_direct_copy.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_reorders.hpp"
 #elif DNNL_AARCH64
-#include "cpu/aarch64/jit_uni_reorder.hpp"
 #include "cpu/aarch64/matmul/brgemm_matmul_reorders.hpp"
+#include "cpu/aarch64/reorder/jit_uni_reorder.hpp"
 #if defined(DNNL_AARCH64_USE_ACL)
-#include "cpu/aarch64/acl_reorder.hpp"
+#include "cpu/aarch64/reorder/acl_reorder.hpp"
 #endif
 #elif DNNL_PPC64
 #include "cpu/ppc64/ppc64_gemm_reorder.hpp"

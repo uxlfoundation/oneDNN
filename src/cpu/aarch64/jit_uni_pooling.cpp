@@ -17,9 +17,6 @@
 *******************************************************************************/
 
 #include <functional>
-#include <new>
-
-#include "oneapi/dnnl/dnnl_types.h"
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
@@ -27,6 +24,7 @@
 #include "common/type_helpers.hpp"
 
 #include "cpu/aarch64/jit_uni_pooling.hpp"
+#include "cpu/aarch64/reorder/jit_uni_reorder.hpp"
 
 namespace dnnl {
 namespace impl {

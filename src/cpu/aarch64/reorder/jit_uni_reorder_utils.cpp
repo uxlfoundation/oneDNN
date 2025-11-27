@@ -27,7 +27,7 @@
 #include "common/utils.hpp"
 #include "oneapi/dnnl/dnnl_debug.h"
 
-#include "cpu/aarch64/jit_uni_reorder.hpp"
+#include "cpu/aarch64/reorder/jit_uni_reorder.hpp"
 
 // #define DNNL_DEV_MODE
 #if defined(DNNL_DEV_MODE)

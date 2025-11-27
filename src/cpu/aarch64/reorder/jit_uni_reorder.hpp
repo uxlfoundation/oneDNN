@@ -16,8 +16,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_JIT_UNI_REORDER_HPP
-#define CPU_AARCH64_JIT_UNI_REORDER_HPP
+#ifndef CPU_AARCH64_REORDER_JIT_UNI_REORDER_HPP
+#define CPU_AARCH64_REORDER_JIT_UNI_REORDER_HPP
 
 #include <assert.h>
 

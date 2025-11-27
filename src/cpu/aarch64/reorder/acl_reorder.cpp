@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023 Arm Ltd. and affiliates
+* Copyright 2023, 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "cpu/aarch64/acl_reorder.hpp"
+#include "cpu/aarch64/reorder/acl_reorder.hpp"
 
 namespace {
 /*

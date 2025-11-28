@@ -2381,13 +2381,19 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             hs = div_up(rnd_up(hs * jcp.iwp, jcp.brgM), jcp.iwp)
                     + jcp.kh * (jcp.dilate_h + 1);
 
-        jcp.inp_buffer_size = (jcp.is_relo_whi() ? jcp.kh : 1) * ds * hs
-                * jcp.iwp * jcp.ngroups * jcp.nb_ic * jcp.LDA;
+        dim_t iw_block = brg_blocking_t::get_inp_size(
+                jcp.iwp, jcp.ow_block, jcp.kw, jcp.stride_w, jcp.dilate_w);
+        dim_t ws = jcp.is_relo_whi()
+                ? jcp.ow_block
+                : (jcp.copy_block_only ? iw_block : jcp.iwp);
+        dim_t grp_ic_mult = jcp.is_relo_whi() ? 1 : (jcp.ngroups * jcp.nb_ic);
+        jcp.inp_buffer_size = (jcp.is_relo_whi() ? jcp.kh : 1) * ds * hs * ws
+                * grp_ic_mult * jcp.LDA;
 
         if (jcp.is_relo_whi())
             jcp.inp_buffer_size +=
                     // pbuffer pointer shifts each oh step for reduced-lowering
-                    (jcp.oh - 1) * jcp.oh_block * jcp.stride_h * jcp.LDA
+                    (jcp.oh_block - 1) * jcp.stride_h * jcp.LDA
                     // extra cacheline due to pbuffer writing full Zmm
                     + jcp.LDA;
 

@@ -25,6 +25,7 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "dnnl_types.h"
+#include "xbyak_riscv/xbyak_riscv_util.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -80,8 +81,12 @@ private:
     }
 
     Riscv64Cpu() {
-        unsigned long hwcap = getauxval(AT_HWCAP);
-        has_v = (hwcap & (1UL << ('V' - 'A')));
+        // Use xbyak_riscv for V extension detection
+        const auto &xbyak_cpu = Xbyak_riscv::CPU::getInstance();
+        has_v = xbyak_cpu.hasExtension(Xbyak_riscv::RISCVExtension::V);
+
+        // Zvfh detection: xbyak_riscv doesn't support half-precision yet,
+        // so continue using procfs method
         if (has_v) {
             // TODO: Prioritize riscv_hwprobe when available (Linux 6.4+)
             has_zvfh = detect_zvfh_procfs();

@@ -39,3 +39,8 @@ add_library(${OBJ_LIB} OBJECT ${SOURCES})
 # Add compiled object files to oneDNN dependencies
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
              $<TARGET_OBJECTS:${OBJ_LIB}>)
+
+# Add xbyak_riscv include path for JIT code generation
+target_include_directories(${OBJ_LIB} PRIVATE
+    ${PROJECT_SOURCE_DIR}/third_party
+)

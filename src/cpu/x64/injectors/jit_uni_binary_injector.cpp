@@ -204,6 +204,58 @@ bool all_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
             });
 }
 
+bool any_binary_postop_rhs_per_w_broadcast(const post_ops_t &post_ops,
+        const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set) {
+    return std::any_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
+            [&](const post_ops_t::entry_t &entry) -> bool {
+                if (entry.is_like_binary()) {
+                    const auto bcast_type = get_rhs_arg_broadcasting_strategy(
+                            get_src1_desc(entry, dst_d), dst_d,
+                            supported_strategy_set);
+                    return bcast_type == broadcasting_strategy_t::per_w
+                            || bcast_type == broadcasting_strategy_t::per_mb_w;
+                }
+                return false;
+            });
+}
+
+void extend_binary_args_per_w(const post_ops_t &post_ops,
+        const std::vector<const void *> &orig_post_ops_binary_rhs_arg_vec,
+        std::vector<const void *> &post_ops_binary_rhs_arg_vec,
+        uint8_t *expanded_rhs, const std::vector<dim_t> &expanded_elems_len) {
+    size_t offset = 0;
+    const int po_len = post_ops.len();
+    auto binary_post_op_idx = 0;
+
+    for (int i = 0; i < po_len; ++i) {
+        if (!post_ops.entry_[i].is_binary()) { continue; }
+        if (expanded_elems_len[i] > 0) {
+            const auto &rhs_md = post_ops.entry_[i].binary.src1_desc;
+            const memory_desc_wrapper rhs_md_wrap(&rhs_md);
+            const dim_t rhs_len = rhs_md_wrap.nelems();
+            const data_type_t dt = rhs_md.data_type;
+            const auto dt_size = types::data_type_size(dt);
+
+            const uint8_t *src = reinterpret_cast<const uint8_t *>(
+                    orig_post_ops_binary_rhs_arg_vec[binary_post_op_idx]);
+            auto *dst = expanded_rhs + offset;
+
+            for (dim_t j = 0; j < expanded_elems_len[i]; ++j) {
+                const size_t src_idx = j % rhs_len;
+                memcpy(dst + j * dt_size, src + src_idx * dt_size, dt_size);
+            }
+
+            post_ops_binary_rhs_arg_vec[binary_post_op_idx] = dst;
+            offset += expanded_elems_len[binary_post_op_idx] * dt_size;
+        } else {
+            post_ops_binary_rhs_arg_vec[binary_post_op_idx]
+                    = orig_post_ops_binary_rhs_arg_vec[binary_post_op_idx];
+        }
+        binary_post_op_idx++;
+    }
+}
+
 static_params_t::static_params_t(const Xbyak::Reg64 &param1,
         const bcast_set_t &supported_strategy_set,
         const rhs_arg_static_params_t &rhs_arg_static_params,
@@ -579,13 +631,13 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
                 = (rhs_broadcasting_strategy == broadcasting_strategy_t::scalar)
                 && needs_ternary_input;
 
-        if (is_start_idx
-                || rhs_arg_params_differ(vmm_idx, vmm_idx - 1, rhs_arg_params,
-                        rhs_broadcasting_strategy)
-                || load_addr) {
+        const bool params_differ = rhs_arg_params_differ(vmm_idx, vmm_idx - 1,
+                rhs_arg_params, rhs_broadcasting_strategy);
+        const bool need_new_addr = is_start_idx || params_differ || load_addr;
+        if (need_new_addr) {
             rhs1_arg_addr = prepare_rhs_arg_addr(vmm_idx, rhs_arg_idx, post_op,
-                    rhs_arg_params, rhs_broadcasting_strategy,
-                    is_start_idx || load_addr, false);
+                    rhs_arg_params, rhs_broadcasting_strategy, need_new_addr,
+                    false);
         }
 
         if (vmm_preservation_needed) {

@@ -1194,6 +1194,7 @@ namespace lnorm {
 
 bool get_lnorm_dir(const deserialized_op_t &base_op_ref, dir_t &dir) {
     const auto &op_kind = base_op_ref.kind_;
+
     if (op_kind == "LayerNorm") {
         bool keep_stats = false;
 
@@ -1208,6 +1209,16 @@ bool get_lnorm_dir(const deserialized_op_t &base_op_ref, dir_t &dir) {
             dir = dir_t::FWD_D;
             if (!keep_stats) return false;
         } else {
+            return false;
+        }
+    } else if (op_kind == "RMSNorm") {
+        // RMSNorm output: dst, rrms(opt)
+        // primitive doesn't support rrms output, so only 1 output allowed
+        const size_t out_size = base_op_ref.out_lts_.size();
+        if (out_size == 1) {
+            dir = dir_t::FWD_I;
+        } else {
+            // rrms output not supported
             return false;
         }
     } else if (op_kind == "LayerNormBackward") {
@@ -1225,7 +1236,7 @@ bool get_lnorm_dt(const deserialized_op_t &base_op_ref, dnnl_data_type_t &dt) {
 }
 
 bool get_lnorm_flags(
-        const deserialized_op_t &base_op_ref, ::bnorm::flags_t &flags) {
+        const deserialized_op_t &base_op_ref, ::lnorm::flags_t &flags) {
     bool use_affine = false;
     base_op_ref.get_attr_bool(use_affine, "use_affine");
     const auto &op_kind = base_op_ref.kind_;
@@ -1244,6 +1255,19 @@ bool get_lnorm_flags(
             } else {
                 return false;
             }
+        }
+    } else if (op_kind == "RMSNorm") {
+        flags = ::lnorm::USE_RMS_NORM;
+        // RMSNorm input: src, gamma(opt)
+        // no beta/shift parameter for RMSNorm
+        if (in_size == 2) {
+            // has gamma (scale only)
+            flags |= ::lnorm::USE_SCALE;
+        } else if (in_size == 1) {
+            // no gamma
+            flags |= ::lnorm::NONE;
+        } else {
+            return false;
         }
     } else if (op_kind == "LayerNormBackward") {
         // input: src, diff_dst, mean, var, gamma(opt), beta(opt)
@@ -1278,6 +1302,8 @@ bool get_lnorm_flags(
             lnorm::get_lnorm_dt(base_op_ref, op_setting.dt[0].front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_driver_tag(base_op_ref, op_setting.tag[0].front()), res);
+    DNN_GRAPH_CHECK_SETTINGS(
+            get_driver_tag(base_op_ref, op_setting.tag[0].back(), true), res);
     DNN_GRAPH_CHECK_SETTINGS(
             lnorm::get_lnorm_flags(base_op_ref, op_setting.flags.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(

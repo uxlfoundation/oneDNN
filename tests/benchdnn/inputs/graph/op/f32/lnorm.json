@@ -5,20 +5,12 @@
   "graph": [
     {
       "id": 0,
-      "name": "LNORM_0",
-      "kind": "LayerNorm",
+      "name": "RMSNORM_0",
+      "kind": "RMSNorm",
       "attrs": {
-        "keep_stats": {
-          "type": "bool",
-          "value": 0
-        },
         "epsilon": {
           "type": "f32",
           "value": 0.0625
-        },
-        "use_affine": {
-          "type": "bool",
-          "value": 0
         },
         "begin_norm_axis": {
           "type": "s64",

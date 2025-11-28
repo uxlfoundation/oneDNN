@@ -161,17 +161,27 @@ bool lessAligned(int alignA1, int alignB1, int alignA2, int alignB2)
 // Choose the best entry, if any, matching one of the given patterns.
 const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux,  SelectionObserver * observer)
 {
-    std::vector<const kcatalog::Entry *> entries;
     // TODO: omit evaluation if only one match, if aux output not needed.
+    using sort_key = std::pair<const kcatalog::Entry *, double>;
+    std::vector<sort_key> keys;
     for (int ipattern = 0; ipattern < npatterns; ipattern++) {
         for (auto it = match(catalog, patterns[ipattern]); it; it++) {
-             // Late tag checking. If late tags do not match, we skip entry.
-             if (tagMatch(it->restrictions.tags, patterns[ipattern].lateTags))
-                 entries.push_back(&*it);
+            // Late tag checking. If late tags do not match, we skip entry.
+            if (tagMatch(it->restrictions.tags, patterns[ipattern].lateTags)) {
+                auto score = evaluate(*it, eparams, aux);
+                keys.emplace_back(&*it, score);
+                if (observer) {
+                    (*observer)(&*it, score, aux);
+                }
+            }
         }
     }
-    auto less = [&](const kcatalog::Entry * lhs, const kcatalog::Entry * rhs){
-                      EvaluateAuxOutput thisAux;
+
+    auto less = [&](const sort_key &lhs_key, const sort_key &rhs_key){
+                      auto lhs = lhs_key.first;
+                      auto rhs = rhs_key.first;
+                      auto lhs_score = lhs_key.second;
+                      auto rhs_score = rhs_key.second;
                       bool lhsFallback = (lhs->restrictions.tags[0] == kcatalog::ReqAlignFallback);
                       int  lhsAlignA = std::max(lhs->restrictions.alignment[0], 4);
                       int  lhsAlignB = std::max(lhs->restrictions.alignment[1], 4);
@@ -180,15 +190,17 @@ const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &c
                       int  rhsAlignB = std::max(rhs->restrictions.alignment[1], 4);
                       if (rhsFallback && lessAligned(rhsAlignA, rhsAlignB, lhsAlignA, lhsAlignB)) return true;
                       if (lhsFallback && lessAligned(lhsAlignA, lhsAlignB, rhsAlignA, rhsAlignB)) return false;
-                      double lhs_score = evaluate(*lhs, eparams, thisAux);
-                      double rhs_score = evaluate(*rhs, eparams, thisAux);
                       if (lhs_score < rhs_score) return true;
                       if (lhs_score > rhs_score) return false;
                       return (lhs < rhs);
     };
-    std::sort(entries.begin(), entries.end(), less);
-    if (entries.size() > 0)
-	    evaluate(*entries[0], eparams, aux);
+    std::sort(keys.begin(), keys.end(), less);
+
+    // Unpack into vector of entries (dropping score)
+    std::vector<const kcatalog::Entry *> entries;
+    entries.reserve(keys.size());
+    for (auto &key : keys)
+        entries.push_back(key.first);
 
     return entries;
 }
@@ -279,6 +291,9 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
             default:        hw = 0; break;
         }
     } while (hw);
+
+    if (entries.size() > 0)
+	    evaluate(*entries[0], eparams, aux);
 
     return result;
 }

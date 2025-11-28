@@ -1351,27 +1351,27 @@ int doit(const prb_t *prb, res_t *res) {
 
     SAFE(init_hw_config(kernel_args), WARN);
 
+    if (has_bench_mode_bit(mode_bit_t::exec)
+            && !has_bench_mode_bit(mode_bit_t::perf)) {
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
-    if (prb->batch_kind == "addr") {
-        brgemm_kernel_execute_postops(brgemm_kernel, prb->batch_size,
-                v_batch_element.data(), acc_ptr, dst_ptr, post_ops_data,
-                scratchpad_ptr);
-    } else if (prb->batch_kind == "offs") {
-        brgemm_kernel_execute_postops(brgemm_kernel, prb->batch_size, src_ptr,
-                wei_ptr, v_batch_element.data(), acc_ptr, dst_ptr,
-                post_ops_data, scratchpad_ptr);
-    }
-#else // !defined(DNNL_EXPERIMENTAL_UKERNEL)
-    // `prb->use_dst_as_acc()=true` will make `dst_ptr=acc_ptr` and rest should
-    // be handled by API.
-    DNN_SAFE(dnnl_brgemm_execute_postops(brgemm, src_ptr, wei_packed_ptr,
-                     offsets.data(), acc_ptr, dst_ptr, scratchpad_ptr,
-                     attr_params),
-            WARN);
+        if (prb->batch_kind == "addr") {
+            brgemm_kernel_execute_postops(brgemm_kernel, prb->batch_size,
+                    v_batch_element.data(), acc_ptr, dst_ptr, post_ops_data,
+                    scratchpad_ptr);
+        } else if (prb->batch_kind == "offs") {
+            brgemm_kernel_execute_postops(brgemm_kernel, prb->batch_size,
+                    src_ptr, wei_ptr, v_batch_element.data(), acc_ptr, dst_ptr,
+                    post_ops_data, scratchpad_ptr);
+        }
+#else /* !defined(DNNL_EXPERIMENTAL_UKERNEL) */
+        // `prb->use_dst_as_acc()=true` will make `dst_ptr=acc_ptr` and rest should
+        // be handled by API.
+        DNN_SAFE(dnnl_brgemm_execute_postops(brgemm, src_ptr, wei_packed_ptr,
+                         offsets.data(), acc_ptr, dst_ptr, scratchpad_ptr,
+                         attr_params),
+                WARN);
 #endif
-    res->state = EXECUTED;
-
-    if (has_bench_mode_bit(mode_bit_t::corr)) {
+        res->state = EXECUTED;
         check_correctness(prb, {DST}, args, ref_args, setup_cmp, res, prb->dir);
     }
 

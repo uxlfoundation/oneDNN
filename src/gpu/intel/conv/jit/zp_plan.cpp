@@ -1427,7 +1427,7 @@ struct zp_plan_impl_t : public base_plan_t {
     bool has_scalar_int8_src() const {
         return has_zp_src() && (comp_init.zp_layout().elems() == 1)
                 && comp_init.zp_layout().type().is_s8()
-                && comp_init.src_layout().type().is_s8();
+                && comp_init.src_layout().type().is_x8();
     }
     bool has_zp_src() const { return load; }
     bool has_zp_wei() const { return wei_load; }

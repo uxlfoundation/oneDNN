@@ -439,7 +439,9 @@ private:
             buf_mgr_.get(zp_buf, size);
             return plan_.fma.create_stmt(ir_ctx_, buf_mgr_,
                     (kind == abc_kind_t::a) ? zp_buf : "a",
-                    (kind == abc_kind_t::b) ? zp_buf : "b", "c", subtile_idx);
+                    (kind == abc_kind_t::b) ? zp_buf : "b", "c", subtile_idx,
+                    (kind == abc_kind_t::a) ? type_t::s8() : type_t::undef(),
+                    (kind == abc_kind_t::b) ? type_t::s8() : type_t::undef());
         };
         auto &zp = plan_.zp;
         if (zp.has_zp_wei()) {

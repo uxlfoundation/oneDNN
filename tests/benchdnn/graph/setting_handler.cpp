@@ -93,6 +93,8 @@ bool get_graph_attr(const deserialized_op_t &base_op_ref,
 
 bool get_driver_tag_by_idx(const deserialized_op_t &base_op_ref,
         std::string &tag, int idx = 0, bool from_output = false) {
+    logical_tensor::dims dims = from_output ? base_op_ref.out_lts_[idx].shape_
+                                            : base_op_ref.in_lts_[idx].shape_;
     logical_tensor::dims strides = from_output
             ? base_op_ref.out_lts_[idx].stride_
             : base_op_ref.in_lts_[idx].stride_;
@@ -100,7 +102,7 @@ bool get_driver_tag_by_idx(const deserialized_op_t &base_op_ref,
         // convert the strides to data_format = NCX
         change_format_to_ncx(strides);
     }
-    tag = strides2memory_tag(strides.size(), strides, true);
+    tag = strides2memory_tag(dims, strides, true);
     return true;
 }
 
@@ -189,7 +191,7 @@ namespace custom {
         const auto &lt = base_op_ref.in_lts_[i];
         auto dim = lt.shape_;
         const auto dt = dnnl_f32;
-        auto tag = strides2memory_tag(lt.stride_.size(), lt.stride_, false);
+        auto tag = strides2memory_tag(lt.shape_, lt.stride_, false);
 
         // 0-dim means scalar input in graph, extend to 1-dim to match behavior.
         if (dim.empty()) {
@@ -204,7 +206,7 @@ namespace custom {
         const auto &lt = base_op_ref.out_lts_[i];
         auto dim = lt.shape_;
         const auto dt = dnnl_f32;
-        auto tag = strides2memory_tag(lt.stride_.size(), lt.stride_, false);
+        auto tag = strides2memory_tag(lt.shape_, lt.stride_, false);
 
         // 0-dim means scalar input in graph, extend to 1-dim to match behavior.
         if (dim.empty()) {
@@ -642,24 +644,27 @@ bool get_conv_wtag(const deserialized_op_t &base_op_ref, std::string &tag) {
     }
 
     if (weights_format == "XIO") {
-        // convert the strides to data_format = OIX
+        // convert from XIO to OIX
         strides.insert(strides.begin(), strides[strides.size() - 1]);
         strides.insert(strides.begin() + 1, strides[strides.size() - 2]);
         strides.erase(strides.end() - 2, strides.end());
+
+        shape.insert(shape.begin(), shape[shape.size() - 1]);
+        shape.insert(shape.begin() + 1, shape[shape.size() - 2]);
+        shape.erase(shape.end() - 2, shape.end());
     }
 
     int64_t groups = 1;
     bool has_group = base_op_ref.get_attr_s64(groups, "groups");
     if (has_group && groups > 1) {
-        // convert the strides from w/o group to strides w/ group
-        dnnl::memory::dim shape_oc = weights_format == "XIO"
-                ? shape[strides.size() - 1]
-                : shape[0];
-        dnnl::memory::dim stride_oc = strides[0];
-        strides.insert(strides.begin(), stride_oc * shape_oc / groups);
+        // convert from w/o group to w/ group
+        dnnl::memory::dim shape_oc = shape[0]; // OIX
+        dnnl::memory::dim stride_oc = strides[0]; // OIX
+        shape.insert(shape.begin(), groups); // OIX -> GOIX
+        shape[1] = shape_oc / groups; // GOIX
+        strides.insert(strides.begin(), stride_oc * shape_oc / groups); // GOIX
     }
-    size_t ndims = strides.size();
-    tag = strides2memory_tag(ndims, strides, true);
+    tag = strides2memory_tag(shape, strides, true);
 
     return true;
 }
@@ -851,26 +856,31 @@ bool get_deconv_wtag(const deserialized_op_t &base_op_ref, std::string &tag) {
     }
 
     if (weights_format == "XOI") {
-        // convert the strides to weights_format = OIX
+        // convert from XOI to OIX
         strides.insert(strides.begin(), strides[strides.size() - 2]);
         strides.insert(strides.begin() + 1, strides[strides.size() - 1]);
         strides.erase(strides.end() - 2, strides.end());
+
+        shape.insert(shape.begin(), shape[shape.size() - 2]);
+        shape.insert(shape.begin() + 1, shape[shape.size() - 1]);
+        shape.erase(shape.end() - 2, shape.end());
     } else if (weights_format == "IOX") {
-        // convert the strides to filter_format = OIX
+        // convert from IOX to OIX
         std::swap(strides[0], strides[1]);
+        std::swap(shape[0], shape[1]);
     }
 
     int64_t groups = 1;
     bool has_group = base_op_ref.get_attr_s64(groups, "groups");
     if (has_group && groups > 1) {
-        // convert the strides from w/o group to strides w/ group
-        dnnl::memory::dim shape_ic
-                = weights_format == "XOI" ? shape[shape.size() - 1] : shape[0];
-        dnnl::memory::dim stride_ic = strides[1];
-        strides.insert(strides.begin(), stride_ic * shape_ic / groups);
+        // convert from w/o group to w/ group
+        dnnl::memory::dim shape_ic = shape[1]; // OIX
+        dnnl::memory::dim stride_ic = strides[1]; // OIX
+        shape.insert(shape.begin(), groups); // GOIX
+        shape[2] = shape_ic / groups; // GOIX
+        strides.insert(strides.begin(), stride_ic * shape_ic / groups); // GOIX
     }
-    const size_t ndims = strides.size();
-    tag = strides2memory_tag(ndims, strides, true);
+    tag = strides2memory_tag(shape, strides, true);
 
     return true;
 }
@@ -1489,9 +1499,10 @@ bool get_matmul_tags_or_strides(const deserialized_op_t &base_op_ref,
         if (transpose_b)
             std::swap(wei_strides[ndims - 1], wei_strides[ndims - 2]);
     }
-    stag = strides2memory_tag(ndims, src_strides, true);
-    wtag = strides2memory_tag(ndims, wei_strides, true);
-    dtag = strides2memory_tag(ndims, dst_strides, true);
+    stag = strides2memory_tag(base_op_ref.in_lts_[0].shape_, src_strides, true);
+    wtag = strides2memory_tag(base_op_ref.in_lts_[1].shape_, wei_strides, true);
+    dtag = strides2memory_tag(
+            base_op_ref.out_lts_[0].shape_, dst_strides, true);
 
     if (!is_contiguous_memory(src_strides, base_op_ref.in_lts_[0].shape_, stag)
             || !is_contiguous_memory(

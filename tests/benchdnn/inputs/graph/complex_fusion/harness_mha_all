@@ -32,6 +32,7 @@
 --reset --dt=0:f16+1:f16+3:f16+7:f16+2:f16+8:f16 --case=complex_fusion/mha/MHA-stable_diffusion-inf-fp32-bs1.json
 --reset --dt=0:f16+1:f16+7:f16+9:f16+10:f16 --case=complex_fusion/mha/sdpa-plain-wo-mask-f32.json
 --reset --dt=0:f16+1:f16+7:f16+8:f16+9:f16 --case=complex_fusion/mha/sdpa-plain-wo-scale-f32.json
+--reset --case=complex_fusion/mha/sdpa-training-fwd-no-mask-f16-f32.json
 
 # bf16 inputs + f32 intermediates + bf16 outputs
 --reset --op-kind=1:Multiply,1:Divide --dt=1:bf16+2:bf16+3:bf16+4:bf16+5:bf16+6:bf16+104:bf16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json

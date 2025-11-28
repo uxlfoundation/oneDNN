@@ -65,7 +65,14 @@ private:
         return is_superset(isa, avx512_core) ? 31 : 15;
     }
 
-    int reg_idx(int idx) const noexcept { return vmm_idx_upper_bound() - idx; }
+    int reg_idx(int idx) const noexcept {
+        const int reg = vmm_idx_upper_bound() - idx;
+        const int service_reg_border = is_superset(isa, avx512_core) ? 10 : 5;
+        assert(reg > service_reg_border
+                && "Insufficient VMM space for service registers");
+        (void)service_reg_border;
+        return reg;
+    }
 
     Xmm xreg(int idx) const noexcept { return Xmm(reg_idx(idx)); }
     Ymm yreg(int idx) const noexcept { return Ymm(reg_idx(idx)); }
@@ -90,6 +97,9 @@ private:
     Xmm xmm_tmp = Xmm(3);
 
     Vmm vmm_k_offset = Vmm(1);
+
+    Vmm vmm_zero = Vmm(4);
+    Vmm vmm_saturation_ubound = Vmm(5);
 
     Zmm bf16_emu_reserv_1 = Zmm(5);
     Zmm bf16_emu_reserv_2 = Zmm(6);

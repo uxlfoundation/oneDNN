@@ -135,16 +135,9 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
 
     typename io_mdt_helper::saturation_map_t saturation_confs;
     if (jpp.dst_dt == data_type::u8) {
-        uni_vxorps(vmm_zero, vmm_zero, vmm_zero);
-        mov(tmp_gpr, float2int(255.0f));
-        uni_vmovq(xmm_tmp, tmp_gpr);
-        uni_vbroadcastss(vmm_saturation_ubound, xmm_tmp);
-
         io::io_saturation_conf_t io_saturation_conf(
                 vmm_zero.getIdx(), vmm_saturation_ubound.getIdx(), tmp_gpr);
-        saturation_confs.insert({data_type::u8, io_saturation_conf});
-
-        reserved_vmms += 2;
+        saturation_confs.insert({jpp.dst_dt, io_saturation_conf});
     }
 
     io_ = io_mdt_helper(this, jpp.isa, dtypes, io_conf, io_tail_conf,
@@ -566,8 +559,7 @@ inline void jit_uni_pool_kernel_t<isa>::store(const data_type_t dt,
         const bool is_c_tail_proccessing) {
     if (is_c_tail_proccessing && jpp.is_c_padded && jpp.with_postops)
         pad_with_zeros(idx);
-    if (utils::one_of(dt, data_type::u8, data_type::s8, data_type::s32))
-        io_.init_saturate_f32({dt});
+    io_.init_saturate_f32({dt});
     io_[dt]->store(Vmm(idx), vmmword[reg_ptr + offset],
             is_c_tail_proccessing && !jpp.is_c_padded);
 }

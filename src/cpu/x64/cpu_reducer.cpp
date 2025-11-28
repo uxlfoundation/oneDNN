@@ -83,7 +83,8 @@ void reduce_balancer_t::balance() {
 
     assert(njobs_per_group_ub <= max_njobs_per_group || nthr_per_group == 1);
     assert(ngroups * nthr_per_group <= nthr_);
-    assert((size_t)njobs_per_group_ub * job_size_ * nthr_ <= max_buffer_size_
+    assert((size_t)njobs_per_group_ub * job_size_ * ngroups * nthr_per_group
+                    <= max_buffer_size_
             || nthr_per_group == 1); /* no reduction buffer overflow */
     assert(IMPLICATION(!allow_nthr_in_group_, nthr_per_group == 1));
 

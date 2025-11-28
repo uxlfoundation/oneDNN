@@ -586,8 +586,7 @@ struct brgemm_desc_t {
 
     bool is_amx10() const {
         return brgattr.use_amx10
-                && is_superset(isa_impl, cpu_isa_t::avx10_512_amx10)
-                && can_dispatch_uker();
+                && is_superset(isa_impl, cpu_isa_t::avx10_512_amx10);
     }
 
     bool is_xf16() const noexcept { return is_bf16 || is_f16; }

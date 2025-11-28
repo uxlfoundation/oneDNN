@@ -262,11 +262,23 @@ private:
     bool with_binary_non_scalar_bcast_ = false;
     const int max_effective_vregs;
 
+    // Number of ZMM registers per bd block for AMX10 microkernel.
+    static constexpr int amx10_zmms_per_bd_block = 4;
+
     Xbyak::Opmask ld_full_mask = Xbyak::Opmask(2);
     Xbyak::Opmask ld_tail_mask = Xbyak::Opmask(3);
     Xbyak::Opmask fp8_col_mask = Xbyak::Opmask(4);
     Xbyak::Opmask kmask_fp8_aux = Xbyak::Opmask(5);
     Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(6);
+
+    // AMX10 masks intentionally reuse Opmask(2-6) since they're only used
+    // during AMX10 A-matrix loading operations and don't conflict with
+    // fp8_col_mask/rd_tail_mask usage in non-AMX10 or different execution phases
+    Xbyak::Opmask amx10_load_A_mask = Xbyak::Opmask(2);
+    Xbyak::Opmask amx10_load_A_mask_f = Xbyak::Opmask(3);
+    Xbyak::Opmask amx10_load_A_mask_f0 = Xbyak::Opmask(4);
+    Xbyak::Opmask amx10_load_A_mask_f00 = Xbyak::Opmask(5);
+    Xbyak::Opmask amx10_load_A_mask_f000 = Xbyak::Opmask(6);
 
     static int get_max_effective_vregs(const brgemm_desc_t &brg) {
         auto used_vregs = 0;
@@ -316,6 +328,44 @@ private:
     Vmm vmm_beta() { return vmm_tmp(1); }
     Vmm vmm_lbound() { return vmm_tmp(1); }
     Vmm vmm_ubound() { return vmm_tmp(0); }
+
+    // amx10_rd_steps is the number of rd steps in the amx10 microkernel loop.
+    // It is the number of ZMM registers used for each block of A and B matrices.
+    int amx10_rd_steps(int rd_block) noexcept {
+        return div_up(rd_block, brg.rd_step);
+    }
+
+    Xbyak::Zmm amx10_zmm_gather_idx() {
+        // zmm used to keep strides for load from A
+        return Xbyak::Zmm(0);
+    }
+
+    Xbyak::Zmm amx10_zmm_tmp(int i) {
+        assert(1 <= i && i <= 4);
+        return Xbyak::Zmm(i);
+    }
+
+    // Returns the Zmm register for matrix A for AMX10 microkernel.
+    // bdb: block index in bd dimension
+    // rds: register index within the block
+    Xbyak::Zmm amx10_zmm_A(int bdb, int rds) {
+        const int base_idx
+                = amx10_rd_steps(brg.rd_block) * (brg.n_bcast_1_load ? bdb : 0);
+        const int idx = 5 + base_idx + rds;
+        assert(idx < 32 && "ZMM register index overflow in amx10_zmm_A");
+        return Xbyak::Zmm(idx);
+    }
+
+    // Returns the Zmm register for matrix B for AMX10 microkernel.
+    // ldb: block index in ld dimension
+    // rds: register index within the block
+    Xbyak::Zmm amx10_zmm_B(int ldb, int rds) {
+        const int base_idx = amx10_rd_steps(brg.rd_block)
+                * (brg.n_bcast_1_load ? (brg.bd_block2 + ldb) : (1 + ldb));
+        const int idx = 5 + base_idx + rds;
+        assert(idx < 32 && "ZMM register index overflow in amx10_zmm_B");
+        return Xbyak::Zmm(idx);
+    }
 
     Vmm vmm_one_bytes() const noexcept { return Vmm(3); }
     Vmm vmm_zp_a_shift() const noexcept { return Vmm(2); }
@@ -431,6 +481,18 @@ private:
     void gemv_microkernel(bool is_bdb_tail, dim_t ld_block, bool is_rd_tail);
     void gemm_microkernel_amx(dim_t bd_block2, bool is_bdb_tail,
             dim_t ld_block2, bool is_rd_tail, bool is_ld_tail, bool last_bdb);
+    void gemm_microkernel_amx10(dim_t bd_block2, bool is_bdb_tail,
+            dim_t ld_block2, bool is_rd_tail, bool is_ld_tail, bool last_bdb);
+
+    void amx10_load_A_4x16bytes(
+            const Zmm &zmm, size_t mask, const Reg64 &reg_A, dim_t offset);
+    void amx10_topbf16pse(const Tmm &accm, const Zmm &zmm_a, const Zmm &zmm_b);
+    void amx10_tilemovrow(const Zmm &zmm, const Tmm &tmm, int row);
+    void amx10_load_A(dim_t bdb, dim_t offset, bool is_bdb_tail, dim_t bd_block,
+            bool is_rd_tail = false);
+    void amx10_load_B(dim_t ldb, dim_t offset, int rdstep, bool is_ld_tail,
+            dim_t rd_block, dim_t bd_block2);
+    void outer_product(const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm);
 
     void bs_loop(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             bool is_ld_tail, bool first_bdb, bool last_bdb,
@@ -529,8 +591,10 @@ dim_t jit_brgemm_kernel_t<Wmm>::rdb_B_offset() const noexcept {
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::ldb_B_offset(
         dim_t ld_block2, bool is_tail) const noexcept {
-    return (is_tail) ? brg.typesize_B * brg.ldb_tail * brg.ld_step
-                     : brg.typesize_B * ld_block2 * brg.ld_block * brg.ld_step;
+    // For TMM/AMX with blocked format, use rd_step instead of ld_step
+    const auto step = brg.is_tmm ? brg.rd_step : brg.ld_step;
+    return (is_tail) ? brg.typesize_B * brg.ldb_tail * step
+                     : brg.typesize_B * ld_block2 * brg.ld_block * step;
 }
 
 template <typename Wmm>
@@ -1774,6 +1838,13 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                                 auto vreg_acc = accm(1, bd, 0);
                                 uni_vpxor(vreg_acc, vreg_acc, vreg_acc);
                             }
+                        } else if (brg.is_amx10()) {
+                            // For AMX10, extract rows directly from tile using tilemovrow
+                            for (dim_t bd = 0; bd < adj_bd_block; bd++) {
+                                const auto vreg_idx = accm(1, bd, 0).getIdx();
+                                const auto vreg_zmm = Zmm(vreg_idx);
+                                amx10_tilemovrow(vreg_zmm, Tmm(c_tensor), bd);
+                            }
                         } else {
                             tilestored(ptr[reg_buf + reg_stride_ld_block],
                                     Tmm(c_tensor));
@@ -1815,7 +1886,29 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                     } else {
                         auto tmm = Tmm(c_tensor);
                         if (skip_accumulation) tilezero(tmm);
-                        tilestored(ptr[reg_aux_C + reg_stride_ld_block], tmm);
+                        if (brg.is_amx10()) {
+                            // For AMX10, extract and store rows using tilemovrow
+                            for (dim_t bd = 0; bd < adj_bd_block; bd++) {
+                                const size_t c_offset
+                                        = (bd * brg.LDC) * brg.typesize_C;
+                                const auto vreg_zmm
+                                        = Zmm(31); // Use temp register
+                                amx10_tilemovrow(vreg_zmm, tmm, bd);
+                                if (is_ld_tail) {
+                                    // Use vmovdqu16 for bf16 data with mask
+                                    vmovdqu16(ptr[reg_aux_C + c_offset]
+                                                    | ld_tail_mask,
+                                            vreg_zmm);
+                                } else {
+                                    // Use vmovdqu16 for bf16 data without mask
+                                    vmovdqu16(ptr[reg_aux_C + c_offset],
+                                            vreg_zmm);
+                                }
+                            }
+                        } else {
+                            tilestored(
+                                    ptr[reg_aux_C + reg_stride_ld_block], tmm);
+                        }
                         if (ldb < ld_block2 - 1)
                             add(reg_aux_C, ldb_C_offset(1));
                     }
@@ -2225,6 +2318,269 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
 }
 
 template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::amx10_load_A_4x16bytes(
+        const Zmm &zmm, size_t mask, const Reg64 &reg_A, dim_t offset) {
+    constexpr size_t full_mask = 0xFFFF;
+    constexpr size_t all_full_mask = 0xFFFFFFFFFFFFFFFF;
+
+    // Note: vploadstridei8x16 may touch all 4 128-bit blocks even with partial mask
+    // so we use broadcast method instead for now
+
+    const auto zmm_tmp1 = amx10_zmm_tmp(1);
+    const auto xmm_tmp = Xmm(zmm_tmp1.getIdx());
+    if (mask != all_full_mask) vpxord(zmm, zmm, zmm);
+
+    for (int i = 0; i < 4; ++i) {
+        const auto cur_offset = offset
+                + i * brg.LDA * amx10_zmms_per_bd_block * brg.typesize_A;
+        const size_t cur_mask = (mask >> (16 * i)) & full_mask;
+        if (cur_mask == 0) continue;
+
+        if (cur_mask != full_mask) {
+            // Partial mask: load by bytes and insert into zmm
+            mov(reg_tmp_gpr, cur_mask);
+            kmovq(amx10_load_A_mask, reg_tmp_gpr);
+            vmovdqu8(
+                    xmm_tmp | amx10_load_A_mask | T_z, ptr[reg_A + cur_offset]);
+            vinserti64x2(zmm, zmm, xmm_tmp, i);
+        } else {
+            Xbyak::Opmask &bcst_mask = amx10_load_A_mask;
+            switch (i) {
+                case 0: bcst_mask = amx10_load_A_mask_f; break;
+                case 1: bcst_mask = amx10_load_A_mask_f0; break;
+                case 2: bcst_mask = amx10_load_A_mask_f00; break;
+                case 3: bcst_mask = amx10_load_A_mask_f000; break;
+                default: assert(!"unexpected i value");
+            }
+            vbroadcasti32x4(zmm | bcst_mask, ptr[reg_A + cur_offset]);
+        }
+    }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::amx10_topbf16pse(
+        const Tmm &accm, const Zmm &zmm_a, const Zmm &zmm_b) {
+    topbf16pse(accm, zmm_a, zmm_b);
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::amx10_tilemovrow(
+        const Zmm &zmm, const Tmm &tmm, int row) {
+    tilemovrow(zmm, tmm, row);
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::amx10_load_A(dim_t bdb, dim_t offset,
+        bool is_bdb_tail, dim_t bd_block, bool is_rd_tail) {
+    const auto rd_block = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+    const int mask_stride = 16; // 16 bytes per row
+
+    for (int rb = 0; rb < amx10_zmms_per_bd_block; ++rb) {
+        auto zmm = amx10_zmm_A(bdb, rb);
+        if (rb >= bd_block) {
+            vpxord(zmm, zmm, zmm);
+            continue;
+        }
+        size_t mask = 0;
+        int mask_row_offs = 0;
+        for (int row = rb; row < bd_block; row += amx10_zmms_per_bd_block) {
+            for (int col = 0; col < rd_block; ++col) {
+                if (brg.typesize_A == 2) {
+                    // bf16, f16
+                    mask |= (size_t)0b11 << (mask_row_offs + col * 2);
+                } else if (brg.typesize_A == 1) {
+                    // f8_e5m2, f8_e4m3, s8, u8
+                    mask |= (size_t)0b1 << (mask_row_offs + col);
+                } else {
+                    assert(!"Unsupported data type for amx10_load_A");
+                }
+            }
+            mask_row_offs += mask_stride;
+        }
+        amx10_load_A_4x16bytes(
+                zmm, mask, reg_aux_A, offset + rb * brg.LDA * brg.typesize_A);
+    }
+    // transpose four 4x4 blocks
+    const auto base_zmm_idx = amx10_zmm_A(bdb, 0).getIdx();
+    const auto a_zmm1 = Zmm(base_zmm_idx + 0);
+    const auto a_zmm2 = Zmm(base_zmm_idx + 1);
+    const auto a_zmm3 = Zmm(base_zmm_idx + 2);
+    const auto a_zmm4 = Zmm(base_zmm_idx + 3);
+    const auto tmp_zmm1 = amx10_zmm_tmp(1);
+    const auto tmp_zmm2 = amx10_zmm_tmp(2);
+    const auto tmp_zmm3 = amx10_zmm_tmp(3);
+    const auto tmp_zmm4 = amx10_zmm_tmp(4);
+    vpunpckldq(tmp_zmm1, a_zmm1, a_zmm2);
+    vpunpckhdq(tmp_zmm2, a_zmm1, a_zmm2);
+    vpunpckldq(tmp_zmm3, a_zmm3, a_zmm4);
+    vpunpckhdq(tmp_zmm4, a_zmm3, a_zmm4);
+    vpunpcklqdq(a_zmm1, tmp_zmm1, tmp_zmm3);
+    vpunpckhqdq(a_zmm2, tmp_zmm1, tmp_zmm3);
+    vpunpcklqdq(a_zmm3, tmp_zmm2, tmp_zmm4);
+    vpunpckhqdq(a_zmm4, tmp_zmm2, tmp_zmm4);
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::amx10_load_B(dim_t ldb, dim_t offset, int rdstep,
+        bool is_ld_tail, dim_t rd_block, dim_t bd_block2) {
+    const auto start_rdstep = (rdstep == -1) ? 0 : rdstep;
+    const auto finish_rdstep
+            = (rdstep == -1) ? amx10_rd_steps(rd_block) : rdstep + 1;
+
+    // Use ukernel formula: rd_step * LDB * typesize
+    const auto rds_stride = brg.rd_step * brg.LDB * brg.typesize_B;
+
+    // Calculate full offset: base offset + rds offset
+    // Pass directly to ptr[] without modifying any registers
+    for (int rds = start_rdstep; rds < finish_rdstep; rds++) {
+        // Use rds directly as the register index, not rds - start_rdstep
+        // Calculate register index based on current bd_block2, not brg.bd_block2
+        const int base_idx = amx10_rd_steps(brg.rd_block)
+                * (brg.n_bcast_1_load ? (bd_block2 + ldb) : (1 + ldb));
+        const int zmm_idx = 5 + base_idx + rds;
+        assert(zmm_idx < 32 && "ZMM register overflow in amx10_load_B");
+        auto zmm = Zmm(zmm_idx);
+        const auto total_offset = offset + rds * rds_stride;
+        // Use tail mask when is_ld_tail is true
+        auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
+        // Use vmovupd like the ukernel - each mask bit controls 8 bytes (1 qword = 4 bf16 elements)
+        vmovupd(zmm | k_mask | T_z, ptr[reg_aux_B + total_offset]);
+    }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::outer_product(
+        const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm) {
+    using namespace data_type;
+    if (brg.dt_a == bf16 && brg.dt_b == bf16) {
+        amx10_topbf16pse(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
+        topbf8pse(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == f8_e4m3 && brg.dt_b == f8_e4m3) {
+        tophf8pse(accm, zmm_a, zmm_b);
+    } else {
+        assert(!"Unsupported data type for outer product");
+    }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx10(dim_t bd_block2,
+        bool is_bdb_tail, dim_t ld_block2, bool is_rd_tail, bool is_ld_tail,
+        bool last_bdb) {
+    dim_t rbd_block = (is_rd_tail) ? 1 : brg.rdb;
+    for (dim_t rdb = 0; rdb < rbd_block; rdb++) {
+        if (brg.n_bcast_1_load) {
+            // Load A once for all bdb
+            for (dim_t bdb = 0; bdb < bd_block2; bdb++) {
+                dim_t bd_block = (is_bdb_tail && bdb == bd_block2 - 1)
+                        ? brg.bdb_tail
+                        : brg.bd_block;
+                // For tail: rdb=0 but we need offset after all full blocks
+                const auto rd_offset = is_rd_tail ? brg.rdb * rdb_A_offset()
+                                                  : rdb * rdb_A_offset();
+                amx10_load_A(bdb, rd_offset + A_offset(bdb, 0, true),
+                        is_bdb_tail && bdb == bd_block2 - 1, bd_block,
+                        is_rd_tail);
+            }
+
+            // Load B one rds at a time, compute with all bdb
+            for (dim_t ldb = 0; ldb < ld_block2; ldb++) {
+                // Use exact ukernel formula for B offset calculation
+                const auto rd_pos = is_rd_tail ? brg.rdb : rdb;
+                const auto ldb_offs = ldb * brg.ld_block;
+                const auto b_offset_base
+                        = rd_pos * brg.rd_block * brg.LDB * brg.typesize_B
+                        + brg.typesize_B
+                                * ((ldb_offs / brg.LDB) * brg.brgattr.LDB2
+                                        + (ldb_offs % brg.LDB) * brg.rd_step);
+
+                const auto rd_block_cur
+                        = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+                for (int rds = 0; rds < amx10_rd_steps(rd_block_cur); rds++) {
+                    // Load one rds line from B into amx10_zmm_B(ldb, rds)
+                    // amx10_load_B will add rds * rds_stride internally
+                    amx10_load_B(ldb, b_offset_base, rds, is_ld_tail,
+                            rd_block_cur, bd_block2);
+
+                    // Compute with all bdb
+                    for (dim_t bdb = 0; bdb < bd_block2; bdb++) {
+                        const dim_t idx = (is_ld_tail) ? brg.ld_block2 : ldb;
+                        const auto &accm = Tmm(brg.get_C_tensor(
+                                bdb, idx, is_bdb_tail, is_ld_tail));
+                        // Calculate B register index with current bd_block2
+                        const int b_base_idx = amx10_rd_steps(brg.rd_block)
+                                * (brg.n_bcast_1_load ? (bd_block2 + ldb)
+                                                      : (1 + ldb));
+                        const int b_zmm_idx = 5 + b_base_idx + rds;
+                        const int a_base_idx = amx10_rd_steps(brg.rd_block)
+                                * (brg.n_bcast_1_load ? bdb : 0);
+                        const int a_zmm_idx = 5 + a_base_idx + rds;
+                        assert(a_zmm_idx >= 5 && a_zmm_idx < 32);
+                        assert(b_zmm_idx >= 5 && b_zmm_idx < 32);
+                        outer_product(Zmm(a_zmm_idx), Zmm(b_zmm_idx), accm);
+                    }
+                }
+            }
+        } else {
+            // For non-n_bcast path: load B first, then compute with A
+            // Load ALL B matrices
+            for (dim_t ldb = 0; ldb < ld_block2; ldb++) {
+                // Use exact ukernel formula for B offset calculation
+                const auto rd_pos = is_rd_tail ? brg.rdb : rdb;
+                const auto ldb_offs = ldb * brg.ld_block;
+                const auto b_offset
+                        = rd_pos * brg.rd_block * brg.LDB * brg.typesize_B
+                        + brg.typesize_B
+                                * ((ldb_offs / brg.LDB) * brg.brgattr.LDB2
+                                        + (ldb_offs % brg.LDB) * brg.rd_step);
+                const auto rd_block_cur
+                        = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+                amx10_load_B(
+                        ldb, b_offset, -1, is_ld_tail, rd_block_cur, bd_block2);
+            }
+
+            // Compute with loaded B
+            for (dim_t bdb = 0; bdb < bd_block2; bdb++) {
+                dim_t bd_block = (is_bdb_tail && bdb == bd_block2 - 1)
+                        ? brg.bdb_tail
+                        : brg.bd_block;
+                // For tail: rdb=0 but we need offset after all full blocks
+                const auto rd_offset = is_rd_tail ? brg.rdb * rdb_A_offset()
+                                                  : rdb * rdb_A_offset();
+                amx10_load_A(bdb, rd_offset + A_offset(bdb, 0, true),
+                        is_bdb_tail && bdb == bd_block2 - 1, bd_block,
+                        is_rd_tail);
+                for (dim_t ldb = 0; ldb < ld_block2; ldb++) {
+                    const dim_t idx = (is_ld_tail) ? brg.ld_block2 : ldb;
+                    const auto &accm = Tmm(brg.get_C_tensor(
+                            bdb, idx, is_bdb_tail, is_ld_tail));
+                    const auto rd_block_cur
+                            = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+                    for (int rds = 0; rds < amx10_rd_steps(rd_block_cur);
+                            rds++) {
+                        outer_product(amx10_zmm_A(bdb, rds),
+                                amx10_zmm_B(ldb, rds), accm);
+                    }
+                }
+            }
+        }
+    }
+    if (!is_rd_tail) {
+        add(reg_aux_A, brg.rdb * rdb_A_offset());
+        // For AMX10 with BA16a64b2a: The rdb loop runs brg.rdb times,
+        // each iteration processes rd_block elements.
+        // So advance by brg.rdb * rd_block * LDB * typesize
+        if (brg.is_amx10()) {
+            const auto rdb_B_stride
+                    = brg.rdb * brg.rd_block * brg.LDB * brg.typesize_B;
+            add(reg_aux_B, rdb_B_stride);
+        } else {
+            add(reg_aux_B, brg.rdb * rdb_B_offset());
+        }
+    }
+}
+
+template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
     if (brg.is_f16 && brg.isa_impl == avx10_2_512)
         vdpphps(v1, v2, v3);
@@ -2623,8 +2979,12 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
 
         if (brg.is_tmm) {
             const bool is_rd_tail = false;
-            gemm_microkernel_amx(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
-                    is_ld_tail, last_bdb);
+            if (brg.is_amx10())
+                gemm_microkernel_amx10(bd_block2, is_bdb_tail, ld_block2,
+                        is_rd_tail, is_ld_tail, last_bdb);
+            else
+                gemm_microkernel_amx(bd_block2, is_bdb_tail, ld_block2,
+                        is_rd_tail, is_ld_tail, last_bdb);
         } else {
             if (brg.rdb > 0) {
                 Label rdb_loop_label;
@@ -2650,8 +3010,12 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
         if (brg.rdb_tail != 0) {
             const bool is_rd_tail = true;
             if (brg.is_tmm) {
-                gemm_microkernel_amx(bd_block2, is_bdb_tail, ld_block2,
-                        is_rd_tail, is_ld_tail, last_bdb);
+                if (brg.is_amx10())
+                    gemm_microkernel_amx10(bd_block2, is_bdb_tail, ld_block2,
+                            is_rd_tail, is_ld_tail, last_bdb);
+                else
+                    gemm_microkernel_amx(bd_block2, is_bdb_tail, ld_block2,
+                            is_rd_tail, is_ld_tail, last_bdb);
             } else {
                 if (brg.is_gemv)
                     gemv_microkernel(is_bdb_tail, ld_block2, is_rd_tail);
@@ -3067,6 +3431,18 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
         kmovq(ld_full_mask, reg_mask);
         mov(reg_mask, tail_mask);
         kmovq(ld_tail_mask, reg_mask);
+
+        if (brg.is_amx10()) {
+            // Initialize AMX10 masks for A matrix loading
+            mov(reg_mask, 0xf);
+            kmovq(amx10_load_A_mask_f, reg_mask);
+            mov(reg_mask, 0xf0);
+            kmovq(amx10_load_A_mask_f0, reg_mask);
+            mov(reg_mask, 0xf00);
+            kmovq(amx10_load_A_mask_f00, reg_mask);
+            mov(reg_mask, 0xf000);
+            kmovq(amx10_load_A_mask_f000, reg_mask);
+        }
     }
 
     if (brg.is_int8 && !brg.has_int8_vnni) {

@@ -269,7 +269,7 @@ public:
     layout_tag_t src_tag;
     layout_tag_t wei_tag;
     layout_tag_t dst_tag;
-    type_t bias_type;
+    dsl::type_t bias_type;
     specialization_t spec;
     hw_desc_t hw_desc;
     fma_kind_t fma = fma_kind_t::undef;
@@ -289,7 +289,8 @@ public:
     gpu_post_ops_t post_ops;
 
     bool is_empty() const { return prop == prop_kind::undef; }
-    bool is_supported(const hw_t &hw, const problem_t *prb = nullptr) const;
+    bool is_supported(
+            const dsl::hw_t &hw, const problem_t *prb = nullptr) const;
     prb_reqs_t reqs() const;
     void set(const std::string &s);
     void set_missing();
@@ -325,9 +326,15 @@ public:
         }
         return src_tag;
     }
-    const type_t &a_type() const { return layout_tag(tensor_kind_t::a).type(); }
-    const type_t &b_type() const { return layout_tag(tensor_kind_t::b).type(); }
-    const type_t &c_type() const { return layout_tag(tensor_kind_t::c).type(); }
+    const dsl::type_t &a_type() const {
+        return layout_tag(tensor_kind_t::a).type();
+    }
+    const dsl::type_t &b_type() const {
+        return layout_tag(tensor_kind_t::b).type();
+    }
+    const dsl::type_t &c_type() const {
+        return layout_tag(tensor_kind_t::c).type();
+    }
     bool with_bias_fwd() const {
         return prop == prop_kind::forward && !bias_type.is_undef();
     }
@@ -338,8 +345,9 @@ public:
     v2::send_kind_t access_kind(v2::send_op_t op, tensor_kind_t tensor) const;
     std::string kernel_name() const override { return "gen_conv_v2"; }
 
-    kernel::options_t options(const impl::engine_t *engine) const override {
-        auto ret = kernel::options_t(make_ir_hw(engine), regs, simd);
+    dsl::kernel::options_t options(
+            const impl::engine_t *engine) const override {
+        auto ret = dsl::kernel::options_t(make_ir_hw(engine), regs, simd);
         ret.set_require_dpas(
                 utils::one_of(fma, fma_kind_t::dpas, fma_kind_t::dpasw));
         return ret;
@@ -349,7 +357,7 @@ public:
 
     void specialize(const problem_t &prb) { spec.specialize(prb); }
 
-    void init_kernel_iface(kernel::iface_t &kernel_iface) const override;
+    void init_kernel_iface(dsl::kernel::iface_t &kernel_iface) const override;
     void init_kernel_info(kernel_info_t &kernel_info,
             const kernel_params_base_t &params,
             const impl::engine_t *engine) const override;
@@ -390,7 +398,7 @@ public:
     grid_t() = default;
     grid_t(std::string (*genname)(int)) {
         for (int i = 0; i < N; i++)
-            entries_[i].idx_var = var_t::make(type_t::s32(), genname(i));
+            entries_[i].idx_var = var_t::make(dsl::type_t::s32(), genname(i));
     }
     grid_t(const std::array<expr_t, N> &idx_vars) {
         for (int i = 0; i < N; i++) {
@@ -470,7 +478,8 @@ grid_t create_thread_group_grid(const kernel_desc_t &desc);
 grid_t create_thread_grid(const kernel_desc_t &desc);
 dim_t stream_k_thread_groups(
         dim_t total_iters, dim_t max_thread_groups_per_wave);
-type_t accumulator_type(const type_t &a_type, const type_t &b_type);
+dsl::type_t accumulator_type(
+        const dsl::type_t &a_type, const dsl::type_t &b_type);
 kernel_desc_t to_stream_k(const kernel_desc_t &desc, bool check_ext = true);
 prb_reqs_t generate_2d_reqs(const kernel_desc_t &desc);
 bool can_use_2d(const kernel_desc_t &desc, tensor_kind_t tensor);

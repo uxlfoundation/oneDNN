@@ -62,7 +62,22 @@ public:
     // booleans, see below.
     operator bool() const { return true; }
 
+    template <typename T, typename = void>
+    struct has_str_t {
+        static const bool value = false;
+    };
     template <typename T>
+    struct has_str_t<T, decltype(std::declval<T>().str(), void())> {
+        static const bool value = true;
+    };
+
+    template <typename T, std::enable_if_t<has_str_t<T>::value, bool> = true>
+    error_stream_t &operator<<(const T &t) {
+        data_->out << t.str();
+        return *this;
+    }
+
+    template <typename T, std::enable_if_t<!(has_str_t<T>::value), bool> = true>
     error_stream_t &operator<<(const T &t) {
         data_->out << t;
         return *this;

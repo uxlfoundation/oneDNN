@@ -30,13 +30,14 @@ namespace v2 {
 
 const expr_t &index_var(const pvar_t &p) {
     static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(p)) vars[p] = var_t::make(type_t::s32(), p.str() + "_idx");
+    if (!vars.has(p))
+        vars[p] = var_t::make(dsl::type_t::s32(), p.str() + "_idx");
     return vars[p];
 }
 
 const expr_t &var(const pvar_t &p) {
     static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(p)) vars[p] = const_var_t::make(type_t::s32(), p.str());
+    if (!vars.has(p)) vars[p] = const_var_t::make(dsl::type_t::s32(), p.str());
     return vars[p];
 }
 
@@ -61,7 +62,7 @@ pvar_t to_index_pvar(const expr_t &index_var) {
 bool is_a_mod_b_eq_0(const expr_t &e, expr_t &a, expr_t &b) {
     auto *eq_op = e.as_ptr<binary_op_t>();
     if (!eq_op || eq_op->op_kind != op_kind_t::_eq) return false;
-    if (!is_zero(eq_op->b)) return false;
+    if (!eq_op->b.is(0)) return false;
     auto *mod_op = eq_op->a.as_ptr<binary_op_t>();
     if (!mod_op || mod_op->op_kind != op_kind_t::_mod) return false;
     a = mod_op->a;

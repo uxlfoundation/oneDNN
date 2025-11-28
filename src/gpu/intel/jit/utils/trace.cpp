@@ -33,8 +33,8 @@ ir_utils::debug_profiler_t &get_trace_profiler() {
 #endif
 
 #if defined(DNNL_DEV_MODE)
-void trace_pass(
-        const char *pass_name, const stmt_t &stmt, const ir_context_t &ir_ctx) {
+void trace_pass(const char *pass_name, const gemmstone::dsl::ir::stmt_t &stmt,
+        const ir_context_t &ir_ctx) {
     trace_stop(pass_name);
     gpu_trace() << "=== After " << pass_name << "\n" << stmt;
     auto grf_usage = get_grf_usage(stmt, ir_ctx.hw().grf_size());

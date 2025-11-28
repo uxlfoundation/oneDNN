@@ -16,16 +16,15 @@
 #ifndef GPU_INTEL_JIT_CODEGEN_EXTENSIONS_HPP
 #define GPU_INTEL_JIT_CODEGEN_EXTENSIONS_HPP
 
+#include "gemmstone/dsl/kernel.hpp"
 #include "gpu/intel/jit/codegen/operand.hpp"
 #include "gpu/intel/jit/codegen/register_scope.hpp"
-#include "gpu/intel/jit/ir/include/kernel.hpp"
 #include "oneapi/dnnl/dnnl_config.h"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+namespace gemmstone {
+namespace dsl {
+namespace ir {
+using namespace dnnl::impl::gpu::intel::jit;
 
 struct codegen_extension_iface_t {
 public:
@@ -42,10 +41,8 @@ public:
             = 0;
 };
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+} // namespace ir
+} // namespace dsl
+} // namespace gemmstone
 
 #endif

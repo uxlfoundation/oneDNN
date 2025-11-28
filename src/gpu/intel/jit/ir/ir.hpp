@@ -22,8 +22,9 @@
 #include <map>
 #include <vector>
 
-#include "gpu/intel/jit/ir/core.hpp"
-#include "gpu/intel/jit/ir/include/hw.hpp"
+#include "gemmstone/dsl/hw.hpp"
+#include "gemmstone/dsl/kernel.hpp"
+#include "gpu/intel/jit/ir/core_legacy.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -31,15 +32,27 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+namespace dsl {
+using hw_t = gemmstone::dsl::hw_t;
+namespace hw {
+using attr_t = gemmstone::dsl::hw::attr_t;
+}
+using kernel_t = gemmstone::dsl::kernel_t;
+namespace kernel {
+using iface_t = gemmstone::dsl::kernel::iface_t;
+using options_t = gemmstone::dsl::kernel::options_t;
+} // namespace kernel
+} // namespace dsl
+
 class constraint_set_t;
 
 class ir_context_t {
 public:
-    ir_context_t(const kernel::options_t &options, constraint_set_t &cset);
+    ir_context_t(const dsl::kernel::options_t &options, constraint_set_t &cset);
 
-    const kernel::options_t &options() const { return options_; }
+    const dsl::kernel::options_t &options() const { return options_; }
 
-    const hw_t &hw() const { return options().hw(); }
+    const dsl::hw_t &hw() const { return options().hw(); }
 
     int grf_size() const { return hw().grf_size(); }
 
@@ -48,7 +61,7 @@ public:
     void add_constraint(const expr_t &e);
 
     expr_t create_tmp_var(
-            const type_t &type, const std::string &prefix = "tmp") {
+            const dsl::type_t &type, const std::string &prefix = "tmp") {
         return var_t::make(type, create_tmp_name(prefix));
     }
 
@@ -66,7 +79,7 @@ public:
     }
 
 private:
-    kernel::options_t options_;
+    dsl::kernel::options_t options_;
     constraint_set_t &cset_;
     std::unordered_set<std::string> all_names_;
     std::unordered_map<std::string, int> prefix_ids_;
@@ -520,7 +533,7 @@ expr_t abs(const expr_t &e);
 expr_t max(const expr_t &a, const expr_t &b);
 expr_t min(const expr_t &a, const expr_t &b);
 
-expr_t cast(const expr_t &e, const type_t &type, bool saturate = false);
+expr_t cast(const expr_t &e, const dsl::type_t &type, bool saturate = false);
 
 bool is_const_broadcast(const expr_t &e);
 

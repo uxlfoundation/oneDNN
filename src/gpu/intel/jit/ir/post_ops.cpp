@@ -31,7 +31,7 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
     : po_vm_(po_vm) {
 
     auto c = add_tensor(/*is_input=*/false, /*is_output=*/false, cp_view(),
-            expr_t(), var_t::make(type_t::f32(), "c"));
+            expr_t(), var_t::make(dsl::type_t::f32(), "c"));
 
     // Prepare src/weights/dst scale expressions.
     expr_t src_scales(1.0f);
@@ -44,7 +44,7 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
         int src_scales_mask = 0;
         int wei_scales_mask = 0;
         int dst_scales_mask = 0;
-        type_t src_scales_type, wei_scales_type, dst_scales_type;
+        dsl::type_t src_scales_type, wei_scales_type, dst_scales_type;
         for (int i = 0; i < (int)scale_args.size(); i++) {
             auto buf = kernel_info.find_arg(
                     scale_args[i].first, /*allow_empty=*/true);
@@ -87,20 +87,21 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
         // Use virtual tensors for scalar scales airthmetic:
         // - For src/wei scales: pre-multiply them to avoid extra multiplications
         // - For dst scales: compute inverse right after load
-        if ((!is_one(src_scales) || !is_one(wei_scales))
+        if ((!src_scales.is(1) || !wei_scales.is(1))
                 && utils::everyone_is(0, src_scales_mask, wei_scales_mask)) {
             src_wei_scales = add_tensor(/*is_input=*/false,
-                    /*is_output=*/false, po_vm_.create_view(type_t::f32(), 0),
-                    expr_t(), var_t::make(type_t::f32(), "src_wei_scales"),
+                    /*is_output=*/false,
+                    po_vm_.create_view(dsl::type_t::f32(), 0), expr_t(),
+                    var_t::make(dsl::type_t::f32(), "src_wei_scales"),
                     src_scales * wei_scales);
             src_scales = expr_t(1.0f);
             wei_scales = expr_t(1.0f);
         }
-        if (!is_one(dst_scales) && dst_scales_mask == 0) {
+        if (!dst_scales.is(1) && dst_scales_mask == 0) {
             inv_dst_scales = add_tensor(/*is_input=*/false,
                     /*is_output=*/false,
-                    po_vm_.create_view(type_t::f32(), dst_scales_mask),
-                    expr_t(), var_t::make(type_t::f32(), "inv_dst_scales"),
+                    po_vm_.create_view(dsl::type_t::f32(), dst_scales_mask),
+                    expr_t(), var_t::make(dsl::type_t::f32(), "inv_dst_scales"),
                     expr_t(1.0f) / dst_scales);
             dst_scales = expr_t(1.0f);
         }
@@ -139,10 +140,10 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
     }
 
     // Handle input and weights scales.
-    if (!is_one(src_wei_scales)) {
+    if (!src_wei_scales.is(1)) {
         auto c_scaled = c * src_wei_scales;
         post_ops_.emplace_back(c, c_scaled);
-    } else if (!is_one(src_scales) || !is_one(wei_scales)) {
+    } else if (!src_scales.is(1) || !wei_scales.is(1)) {
         auto c_scaled = c * src_scales * wei_scales;
         post_ops_.emplace_back(c, c_scaled);
     }
@@ -174,7 +175,8 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
             auto c_old = add_input_tensor(view, buf);
             post_ops_.emplace_back(c, c + scale * (c_old - zp));
         } else if (po.is_prelu()) {
-            auto rhs_view = po_vm_.create_view(type_t::f32(), po.prelu.mask);
+            auto rhs_view
+                    = po_vm_.create_view(dsl::type_t::f32(), po.prelu.mask);
             auto buf_name = "prelu_rhs_" + std::to_string(i);
             auto rhs_buf = kernel_info.find_arg(buf_name);
             auto rhs = add_input_tensor(rhs_view, rhs_buf);
@@ -195,17 +197,17 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
     // Handle dst scale.
     if (attr.scales_.get(DNNL_ARG_DST).is_mx()) {
         auto scales_buf = kernel_info.find_arg("dst_scales");
-        auto view = po_vm_.create_view(type_t::u64(), 0);
+        auto view = po_vm_.create_view(dsl::type_t::u64(), 0);
         auto in = add_output_tensor(view, scales_buf, /*do_convert=*/false);
         auto func = eltwise_t::make(alg_kind::eltwise_mx_scale,
                 /*scale=*/1.f,
                 /*alpha=*/1.f,
                 /*beta=*/0.f, in, convert_dnnl_type_to_ngen(dst_md.data_type));
         post_ops_.emplace_back(c, c, func);
-    } else if (!is_one(inv_dst_scales)) {
+    } else if (!inv_dst_scales.is(1)) {
         auto c_scaled = c * inv_dst_scales;
         post_ops_.emplace_back(c, c_scaled);
-    } else if (!is_one(dst_scales)) {
+    } else if (!dst_scales.is(1)) {
         auto c_scaled = c / dst_scales;
         post_ops_.emplace_back(c, c_scaled);
     }
@@ -214,7 +216,7 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
     if (zp_cfg.do_dst_compensation) {
         if (zp_cfg.is_runtime_dst_zero_points) {
             uint32_t mask = (!zp_cfg.is_common_dst_zero_point) ? 1 << 1 : 0;
-            auto view = po_vm_.create_view(type_t::s32(), mask);
+            auto view = po_vm_.create_view(dsl::type_t::s32(), mask);
             auto buf = kernel_info.find_arg("dst_zero_points");
             auto in = add_input_tensor(view, buf);
             post_ops_.emplace_back(c, c + in);
@@ -229,7 +231,7 @@ post_op_context_t::post_op_context_t(const primitive_attr_t &attr,
 
     if (!attr.rounding_mode_.has_default_values()) {
         auto seed_buf = kernel_info.find_arg("sround_seed");
-        auto view = po_vm_.create_view(type_t::u64(), 0);
+        auto view = po_vm_.create_view(dsl::type_t::u64(), 0);
         auto in = add_input_tensor(view, seed_buf, /*do_convert=*/false);
         auto func = eltwise_t::make(alg_kind::eltwise_stochastic_round,
                 /*scale=*/1.f,

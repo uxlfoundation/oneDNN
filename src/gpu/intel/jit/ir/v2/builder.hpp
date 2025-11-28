@@ -99,7 +99,7 @@ private:
 
 struct offset_params_t {
     // Type of the offset.
-    type_t type;
+    dsl::type_t type;
     // Execution size:
     // - esize = 1: used as a scalar
     // - esize > 1: used as a vector
@@ -122,8 +122,8 @@ struct offset_params_t {
     // Prefix for the buffer name.
     std::string buf_prefix;
 
-    offset_params_t(
-            const type_t &type, int esize = 1, const char *buf_prefix = nullptr)
+    offset_params_t(const dsl::type_t &type, int esize = 1,
+            const char *buf_prefix = nullptr)
         : type(type), esize(esize) {
         if (buf_prefix) this->buf_prefix = buf_prefix;
     }
@@ -155,7 +155,7 @@ struct offset_t {
     // offset.
     expr_t buf;
     // Offset type (scalar or vector).
-    type_t type;
+    dsl::type_t type;
     // Scalar base.
     expr_t base;
     // Scalar shift.
@@ -207,7 +207,7 @@ struct offset_t {
     stmt_t inc_stmt(int loop_idx) const {
         if (loop_incs.empty()) return stmt_t();
         auto inc = loop_incs[loop_idx];
-        if (is_zero(inc)) return stmt_t();
+        if (inc.is(0)) return stmt_t();
         inc = shuffle_t::make_broadcast(inc, type.elems());
         auto value = load_t::make(type, buf, 0) + inc;
         return store(value);
@@ -234,15 +234,15 @@ struct offset_t {
 
     IR_DEFINE_DUMP()
 
-    static bool can_reuse_base(const type_t &type, const expr_t &base,
+    static bool can_reuse_base(const dsl::type_t &type, const expr_t &base,
             const expr_t &shift, const expr_t &shift_vec,
             const std::vector<expr_t> &loop_incs) {
         if (!type.is_scalar()) return false;
-        if (!is_zero(shift)) return false;
+        if (!shift.is(0)) return false;
         if (!is_var(base) && !is_const(base)) return false;
         if (!all_of(shift_vec, 0)) return false;
         for (auto &e : loop_incs)
-            if (!is_zero(e)) return false;
+            if (!e.is(0)) return false;
         return true;
     }
 };
@@ -301,8 +301,8 @@ public:
     send_header_t add_header(int version, const send_1d_desc_t &desc,
             const expr_t &mem_buf, const addr_t &addr, const expr_t &addr_inc,
             const loop_nest_t &loop_nest) {
-        auto base0 = cast(mem_buf, type_t::u64());
-        auto params = offset_params_t(type_t::u64(), desc.slots, "h");
+        auto base0 = cast(mem_buf, dsl::type_t::u64());
+        auto params = offset_params_t(dsl::type_t::u64(), desc.slots, "h");
         params.buf_align = buf_mgr_.ir_ctx().grf_size();
         params.allow_inline_init = true;
         auto off = get_offset(version, base0, addr.base, addr.slot_incs,
@@ -376,7 +376,7 @@ private:
         if (is_const(e) || e.is<const_var_t>() || e.is<var_t>()) return e;
         auto it = expr_to_let_var_.find(e);
         if (it != expr_to_let_var_.end()) return it->second;
-        auto tmp_var = buf_mgr_.ir_ctx().create_tmp_var(type_t::s32());
+        auto tmp_var = buf_mgr_.ir_ctx().create_tmp_var(dsl::type_t::s32());
         let_stmts_.push_back(let_t::make(tmp_var, e));
         expr_to_let_var_.emplace(e, tmp_var);
         return tmp_var;
@@ -455,7 +455,7 @@ class ir_builder_t;
 
 class var_ref_t {
 public:
-    var_ref_t(ir_builder_t *parent, const type_t &type, const expr_t &buf)
+    var_ref_t(ir_builder_t *parent, const dsl::type_t &type, const expr_t &buf)
         : parent_(parent), type_(type), buf_(buf) {
         gpu_assert(buf_.type().is_ptr());
     }
@@ -469,7 +469,7 @@ public:
 
 private:
     ir_builder_t *parent_;
-    type_t type_;
+    dsl::type_t type_;
     expr_t buf_;
 };
 
@@ -488,7 +488,7 @@ public:
         enter_scope();
     }
     ir_builder_t(const ir_builder_t &parent) = delete;
-    const hw_t &hw() const { return buf_mgr_->ir_ctx().hw(); }
+    const dsl::hw_t &hw() const { return buf_mgr_->ir_ctx().hw(); }
     ir_context_t &ir_ctx() { return buf_mgr_->ir_ctx(); }
     buffer_manager_t &buf_mgr() { return *buf_mgr_; }
     const offset_scope_t &off_scope() const { return *off_scope_; }
@@ -499,7 +499,7 @@ public:
                         : _name);
         return buf_mgr_->get(name, size);
     }
-    var_ref_t alloc_var(const type_t &type, const std::string &_name) {
+    var_ref_t alloc_var(const dsl::type_t &type, const std::string &_name) {
         const auto &name = (buf_mgr_->has(_name)
                         ? buf_mgr_->ir_ctx().create_tmp_name(_name)
                         : _name);
@@ -675,7 +675,7 @@ inline var_ref_t &var_ref_t::operator=(const expr_t &value) {
 
 class var_manager_t {
 public:
-    var_manager_t(const kernel::iface_t &kernel_iface)
+    var_manager_t(const dsl::kernel::iface_t &kernel_iface)
         : kernel_iface_(kernel_iface) {}
 
     std::vector<expr_t> ptr_args() const {
@@ -692,7 +692,7 @@ public:
     }
 
     expr_t get_grid_size(const std::string &name) const {
-        return get_arg(type_t::u32(), name + "_grid_size");
+        return get_arg(dsl::type_t::u32(), name + "_grid_size");
     }
 
     expr_t get_idiv_magic(const expr_t &value) const {
@@ -701,7 +701,7 @@ public:
             if (op->op_kind == op_kind_t::_div_up) {
                 gpu_assert(is_const(op->b))
                         << "Expected constant denominator: " << value;
-                if (is_one(op->b)) return get_idiv_magic(op->a);
+                if (op->b.is(1)) return get_idiv_magic(op->a);
                 gpu_assert(op->a.is<var_t>() || op->a.is<const_var_t>())
                         << "Expected var/const var: " << op->a;
                 name = op->a.str();
@@ -712,10 +712,10 @@ public:
                     << "Expected var/const var: " << value;
             name = value.str();
         }
-        return get_arg(type_t::u64(), name + "_magic");
+        return get_arg(dsl::type_t::u64(), name + "_magic");
     }
 
-    expr_t get_arg(const type_t &type, const std::string &name) const {
+    expr_t get_arg(const dsl::type_t &type, const std::string &name) const {
         gpu_assert(kernel_iface_.has(name)) << "Cannot find argument " << name;
         auto var = kernel_iface_.find_arg(name);
         gpu_assert(var.type() == type) << "Type mismatch, found: " << var.type()
@@ -724,7 +724,7 @@ public:
     }
 
 private:
-    const kernel::iface_t &kernel_iface_;
+    const dsl::kernel::iface_t &kernel_iface_;
 };
 
 } // namespace v2

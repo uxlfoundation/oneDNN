@@ -33,14 +33,14 @@ namespace jit {
 using namespace intel::jit;
 
 struct base_plan_t {
-    base_plan_t(const hw_t hw = hw_t()) : hw(hw) {}
+    base_plan_t(const dsl::hw_t hw = dsl::hw_t()) : hw(hw) {}
 
     int grf_size() const {
         gpu_assert(hw.ngen_hw() != ngen::HW::Unknown);
         return hw.grf_size();
     }
 
-    hw_t hw;
+    dsl::hw_t hw;
 };
 
 inline std::string add_indent(const std::string &tag, const std::string &s) {

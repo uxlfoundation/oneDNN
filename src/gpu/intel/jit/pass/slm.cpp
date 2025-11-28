@@ -81,7 +81,7 @@ stmt_t merge_slm_buffers(const stmt_t &_stmt, ir_context_t &ir_ctx) {
 class slm_reorder_injector_t : public ir_mutator_t {
 public:
     slm_reorder_injector_t(
-            const stmt_t &root, const hw_t &hw, const grid_info_t &tg_grid)
+            const stmt_t &root, const dsl::hw_t &hw, const grid_info_t &tg_grid)
         : hw_(hw), tg_grid_(tg_grid) {
         alloc_manager_t alloc_mgr(root);
         auto slm_buffers = alloc_mgr.find_buffers(alloc_kind_t::slm);
@@ -159,8 +159,8 @@ private:
         int vect_size = into<int>(src_tile_blocks[1].size);
         int tile_size = simd * vect_size * src.type().size();
         int slm_thr_size = (int)size_bytes(src);
-        int dword_size = type_t::dword().size();
-        int hword_size = type_t::hword().size();
+        int dword_size = dsl::type_t::dword().size();
+        int hword_size = dsl::type_t::hword().size();
         int hwords = tile_size / hword_size;
 
         gpu_assert(tile_size % hword_size == 0);
@@ -169,9 +169,9 @@ private:
                 slm_size_, slm_thr_size * into<int>(tg_grid_.elems()));
 
         auto store_send = send_t::make(hw_, send_op_t::store,
-                send_address_t::slm, type_t::dword(vect_size), simd, true);
+                send_address_t::slm, dsl::type_t::dword(vect_size), simd, true);
         auto load_send = send_t::make(hw_, send_op_t::load, send_address_t::slm,
-                type_t::hword(hwords), 1, true);
+                dsl::type_t::hword(hwords), 1, true);
 
         std::vector<expr_t> vec(simd);
         for (int i = 0; i < simd; i++)
@@ -218,7 +218,7 @@ private:
         return true;
     }
 
-    hw_t hw_;
+    dsl::hw_t hw_;
     grid_info_t tg_grid_;
 
     expr_t slm_base_;

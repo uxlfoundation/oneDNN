@@ -210,7 +210,7 @@ public:
 
         int ret = 0;
         ret += elems * mem_view().type().size();
-        if (needs_f32_convert()) ret += elems * type_t::f32().size();
+        if (needs_f32_convert()) ret += elems * dsl::type_t::f32().size();
         return ret;
     }
 
@@ -240,7 +240,8 @@ public:
 
         reg_buf_ = make_tmp_reg_buffer();
 
-        reg_layout_ = mem_view().create_dense_vlayout().with(type_t::f32());
+        reg_layout_
+                = mem_view().create_dense_vlayout().with(dsl::type_t::f32());
 
         // If this is output and there are masked dimensions then this buffer
         // is computed via reduction. Extend layout to cover full masked_tile
@@ -284,7 +285,7 @@ public:
         if (!needs_load() || !needs_f32_convert()) return stmt_t();
 
         auto f32_buf = make_tmp_reg_buffer();
-        auto f32_layout = reg_layout_.with(type_t::f32()).make_dense();
+        auto f32_layout = reg_layout_.with(dsl::type_t::f32()).make_dense();
 
         register_buffer(f32_buf, into<int>(size_bytes(f32_layout)));
 
@@ -295,7 +296,7 @@ public:
         // Assign new f32 layout and buffer.
         reg_layout_ = std::move(f32_layout);
         reg_buf_ = std::move(f32_buf);
-        info_.retype(type_t::f32());
+        info_.retype(dsl::type_t::f32());
 
         return ret;
     }
@@ -421,7 +422,7 @@ private:
         gpu_assert(var) << "Can't extract variable from buffer: " << mem_buf();
         auto &name = var->name;
         return ir_ctx_->create_tmp_var(
-                type_t::byte(type::attr_t::ptr), "tmp_" + name);
+                dsl::type_t::byte(dsl::type::attr_t::ptr), "tmp_" + name);
     }
 
     void register_buffer(const expr_t &buf, uint32_t size) {
@@ -503,7 +504,7 @@ private:
 // Builds statements to apply a post-op for a given tile.
 class post_op_builder_t {
 public:
-    post_op_builder_t(const hw_t &hw, const post_op_t &post_op)
+    post_op_builder_t(const dsl::hw_t &hw, const post_op_t &post_op)
         : hw_(hw), post_op_(post_op) {}
 
     const post_op_t &post_op() const { return post_op_; }
@@ -571,7 +572,7 @@ public:
 private:
     // Returns a 1D tile corresponding to an instruction to partially apply the
     // post-op.
-    tile_t find_1d_tile(const type_t &lhs_type,
+    tile_t find_1d_tile(const dsl::type_t &lhs_type,
             const object_map_t<expr_t, post_op_tensor_t *> &args,
             pvar_t &inner_idx) const {
         auto &lhs_tensor = *args.at(post_op_.lhs());
@@ -627,7 +628,7 @@ private:
         return bcast_mutator.mutate(expr);
     }
 
-    hw_t hw_;
+    dsl::hw_t hw_;
     post_op_t post_op_;
 };
 
@@ -645,7 +646,7 @@ int get_post_op_mem_usage(const post_op_tensor_info_t &info, int c_elems,
     return load_size + cvt_size;
 }
 
-int find_tile_size(const kernel::options_t &options,
+int find_tile_size(const dsl::kernel::options_t &options,
         const post_op_context_t &post_op_ctx, const view_t &c_mem_view,
         const layout_t &c_reg_layout, int preload_max_size, int post_op_blk) {
     bool with_post_ops = !post_op_ctx.post_ops().empty();
@@ -704,7 +705,8 @@ int find_tile_size(const kernel::options_t &options,
 // - S_y    is the stage before storing C to global memory
 class epilogue_builder_t {
 public:
-    epilogue_builder_t(ir_context_t &ir_ctx, const kernel::options_t &options,
+    epilogue_builder_t(ir_context_t &ir_ctx,
+            const dsl::kernel::options_t &options,
             const gemm_schedule_t &gemm_schedule, bool force_c_reorder,
             const post_op_context_t &post_op_ctx,
             const tile_coord_t &thr_tile_coord, const view_t &c_mem_view,
@@ -769,7 +771,8 @@ public:
 
 private:
     expr_t make_c_tmp_buffer() const {
-        return ir_ctx_.create_tmp_var(type_t::byte(type::attr_t::ptr), "c_tmp");
+        return ir_ctx_.create_tmp_var(
+                dsl::type_t::byte(dsl::type::attr_t::ptr), "c_tmp");
     }
 
     // Represents a GRF buffer and layout to store C tensor.
@@ -844,7 +847,7 @@ private:
     void build(const layout_t &c_reg_layout, const expr_t &c_reg_buf) {
         c_reg_buf_size_ = into<int>(size_bytes(c_reg_layout));
         auto tmp_type = (post_op_builders_.empty() ? c_mem_view_.type()
-                                                   : type_t::f32());
+                                                   : dsl::type_t::f32());
         int tmp_buf_elems = tile_size_ / tmp_type.size();
         tile_t base_tile;
         while (tmp_buf_elems) {
@@ -954,8 +957,9 @@ private:
         auto c_mem_tile_view = c_mem_view_.create_sub_view(tile_coord);
         auto tmp_reg_buf = make_c_tmp_buffer();
 
-        type_t post_op_type
-                = c_tile_layout.type().is_f64() ? type_t::f64() : type_t::f32();
+        dsl::type_t post_op_type = c_tile_layout.type().is_f64()
+                ? dsl::type_t::f64()
+                : dsl::type_t::f32();
         bool create_zero_pad_builder = restore_zero_padding_;
         for (auto &t : post_op_tensors_) {
             if (t.needs_masked_update()) {
@@ -1169,7 +1173,7 @@ private:
     int c_reg_buf_size_ = 0;
 };
 
-stmt_t create_epilogue_stmt(const kernel::options_t &options,
+stmt_t create_epilogue_stmt(const dsl::kernel::options_t &options,
         ir_context_t &ir_ctx, const gemm_schedule_t &gemm_schedule,
         bool force_c_reorder, const post_op_context_t &post_op_ctx,
         const tile_coord_t &thr_tile_coord, const layout_t &c_reg_layout,

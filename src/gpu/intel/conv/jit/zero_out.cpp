@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/conv/jit/zero_out.hpp"
+#include "gpu/intel/jit/ir/hw.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -29,9 +30,9 @@ std::string zero_out_kernel_desc_t::kernel_name() const {
     return "zero_out";
 }
 
-kernel::options_t zero_out_kernel_desc_t::options(
+dsl::kernel::options_t zero_out_kernel_desc_t::options(
         const impl::engine_t *engine) const {
-    auto ret = kernel::options_t(make_ir_hw(engine), regs_, simd_);
+    auto ret = dsl::kernel::options_t(make_ir_hw(engine), regs_, simd_);
     ret.set_require_dpas(dpas_);
     return ret;
 }
@@ -40,9 +41,9 @@ compute::range_t zero_out_kernel_desc_t::local_range() const {
 }
 
 void zero_out_kernel_desc_t::init_kernel_iface(
-        kernel::iface_t &kernel_iface) const {
-    kernel_iface.register_arg("size", type_t::u32());
-    kernel_iface.register_arg("ptr", type_t::byte(type::attr_t::ptr));
+        dsl::kernel::iface_t &kernel_iface) const {
+    kernel_iface.register_arg("size", dsl::type_t::u32());
+    kernel_iface.register_arg("ptr", dsl::type_t::byte(dsl::type::attr_t::ptr));
 }
 
 void zero_out_kernel_desc_t::init_kernel_info(kernel_info_t &kernel_info,

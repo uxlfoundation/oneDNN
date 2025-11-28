@@ -705,7 +705,7 @@ struct send_2d_params_t {
         return true;
     }
 
-    bool is_supported(const hw_t &hw) const {
+    bool is_supported(const dsl::hw_t &hw) const {
         if (!block_2d_width_ok(W, type.size()))
             return fail_2d("Width is not supported.");
         if (!block_2d_height_ok(H)) return fail_2d("Height is not supported.");
@@ -783,7 +783,7 @@ struct send_2d_params_t {
     }
 
     layout_t reg_layout(
-            int grf_size, size_t ndims, const type_t &mem_type) const {
+            int grf_size, size_t ndims, const dsl::type_t &mem_type) const {
         layout_t l(type, std::vector<dim_t>(ndims, 1));
         dim_t cur_stride = 1;
         enum class pad_kind_t {
@@ -854,7 +854,7 @@ struct send_2d_params_t {
 
     bool is_valid = false;
     send_op_t send_op = send_op_t::undef;
-    type_t type;
+    dsl::type_t type;
     bool use_xy = true;
     bool transpose = false;
     bool vnni = false;
@@ -908,13 +908,13 @@ int rounded_slots(int slots, int max_slots) {
     return ret;
 }
 
-int get_max_slots(const hw_t &hw, const send_params_t &send_params) {
+int get_max_slots(const dsl::hw_t &hw, const send_params_t &send_params) {
     if (hw >= ngen::HW::XeHPC) return 32;
     if (send_params.send_op == send_op_t::atomic_fadd) return 8;
     return 16;
 }
 
-int get_max_block_size(const hw_t &hw, const send_params_t &params) {
+int get_max_block_size(const dsl::hw_t &hw, const send_params_t &params) {
     if (hw >= ngen::HW::XeHPC) return 512;
     return params.send_address == send_address_t::slm && hw <= ngen::HW::XeLP
             ? 128
@@ -924,7 +924,7 @@ int get_max_block_size(const hw_t &hw, const send_params_t &params) {
 class split_bounds_t {
 public:
     split_bounds_t(const layout_t &layout, int factor) {
-        gpu_assert(is_zero(layout.offset())) << layout;
+        gpu_assert(layout.offset().is(0)) << layout;
         auto tile_coord = split_exact(layout, factor);
         if (tile_coord.is_invalid()) return;
 
@@ -1060,7 +1060,7 @@ struct send_group_t {
                 cur_size = std::min(cur_size, type_size - i);
                 cur_size = utils::rnd_down_pow2(cur_size);
                 gpu_assert(cur_size >= 16);
-                auto type = type_t::oword(cur_size / 16);
+                auto type = dsl::type_t::oword(cur_size / 16);
                 type = fixup_type(type, send_params);
                 auto f = send_t::make(hw, send_params.send_op,
                         send_params.send_address, type, 1,
@@ -1070,7 +1070,7 @@ struct send_group_t {
             }
         } else if (is_scattered()) {
             int cur_slots = max_slots;
-            auto type = type_t::u(type_size * 8);
+            auto type = dsl::type_t::u(type_size * 8);
             for (int i = 0; i < slots; i += cur_slots) {
                 cur_slots = std::min(cur_slots, slots - i);
                 uint32_t slot_mask = send_t::default_slot_mask;
@@ -1130,16 +1130,17 @@ struct send_group_t {
 
     IR_DEFINE_DUMP()
 
-    type_t fixup_type(
-            const type_t &type, const send_params_t &send_params) const {
+    dsl::type_t fixup_type(
+            const dsl::type_t &type, const send_params_t &send_params) const {
         if (hw >= ngen::HW::XeHPC) return type;
 
         bool is_slm = (send_params.send_address == send_address_t::slm);
         bool is_atomic = (send_params.send_op == send_op_t::atomic_fadd);
-        if (!is_slm && type == type_t::oword(16)) return type_t::hword(8);
-        if (is_atomic && type.size() == 4) return type_t::dword();
-        if (type.size() <= 4) return type_t::byte(type.size());
-        if (type.size() == 8) return type_t::qword();
+        if (!is_slm && type == dsl::type_t::oword(16))
+            return dsl::type_t::hword(8);
+        if (is_atomic && type.size() == 4) return dsl::type_t::dword();
+        if (type.size() <= 4) return dsl::type_t::byte(type.size());
+        if (type.size() == 8) return dsl::type_t::qword();
 
         return type;
     }
@@ -1175,7 +1176,7 @@ struct send_group_t {
         return ret;
     }
 
-    hw_t hw;
+    dsl::hw_t hw;
     int max_slots = 1;
     int type_size = 0;
     int slots = 0;
@@ -1280,7 +1281,7 @@ struct layout_2d_wrapper_t {
 
 class view_info_t {
 public:
-    view_info_t(const hw_t &hw, const view_t &view,
+    view_info_t(const dsl::hw_t &hw, const view_t &view,
             const send_params_t &send_params)
         : hw_(hw), view_(view), send_params_(send_params) {
         vlayout_ = view.create_pseudo_vlayout(/*init_offset=*/true);
@@ -1292,7 +1293,7 @@ public:
         init_base();
     }
 
-    const hw_t &hw() const { return hw_; }
+    const dsl::hw_t &hw() const { return hw_; }
     const view_t &view() const { return view_; }
     const send_params_t &send_params() const { return send_params_; }
     const layout_t &vlayout() const { return vlayout_; }
@@ -1412,8 +1413,8 @@ private:
         mod_info_ = mod_info_t(view_, tdims_);
         std::vector<modulus_t> vmods(view_.nvdims());
         for (dim_idx_t i = 0; i < view_.nvdims(); i++)
-            vmods[i] = modulus_t(
-                    is_zero(view_.vstart()[i]) ? 0 : view_.vdims()[i]);
+            vmods[i]
+                    = modulus_t(view_.vstart()[i].is(0) ? 0 : view_.vdims()[i]);
         mod_info_.set_vmods(vmods);
     }
 
@@ -1453,7 +1454,7 @@ private:
             return;
         }
         vlayout_ = split_layout_inner(vlayout_, inner_idx_);
-        const type_t &type = vlayout_.type();
+        const dsl::type_t &type = vlayout_.type();
         int inner_elems = 1;
         int total_elems = into<int>(vlayout_.elems());
         auto &blocks = vlayout_.blocks();
@@ -1521,7 +1522,7 @@ private:
         }
         gpu_assert(send_kind_ == send_kind_t::scattered);
 
-        const type_t &type = layout.type();
+        const dsl::type_t &type = layout.type();
         int inner_elems = 1;
         int total_elems = into<int>(vlayout_.elems());
 
@@ -1642,7 +1643,7 @@ private:
         return e;
     }
 
-    hw_t hw_;
+    dsl::hw_t hw_;
     view_t view_;
     send_params_t send_params_;
     std::vector<tdim_info_t> tdims_;
@@ -2325,12 +2326,14 @@ private:
 
 class ir_send_plan_t final : public send_plan_impl_t {
 public:
-    ir_send_plan_t(const kernel::options_t &options, const view_t &view,
+    ir_send_plan_t(const dsl::kernel::options_t &options, const view_t &view,
             send_params_t &send_params)
         : send_params_(send_params)
         , ir_ctx_(options, cset_)
-        , dummy_mem_buf_(var_t::make(type_t::byte(type::attr_t::ptr), "mem"))
-        , dummy_reg_buf_(var_t::make(type_t::byte(type::attr_t::ptr), "reg"))
+        , dummy_mem_buf_(
+                  var_t::make(dsl::type_t::byte(dsl::type::attr_t::ptr), "mem"))
+        , dummy_reg_buf_(
+                  var_t::make(dsl::type_t::byte(dsl::type::attr_t::ptr), "reg"))
         , access_(make_access_builder(
                   ir_ctx_, view, dummy_mem_buf_, dummy_reg_buf_, send_params))
         , reg_layout_(access_.reg_layout()) {
@@ -2727,7 +2730,7 @@ bool can_use_send_plan(const view_t &view) {
     return true;
 }
 
-send_plan_t create_ir_send_plan(const kernel::options_t &options,
+send_plan_t create_ir_send_plan(const dsl::kernel::options_t &options,
         const view_t &view, const send_params_t &_send_params) {
     auto send_params = _send_params;
     auto send_plan
@@ -2735,7 +2738,7 @@ send_plan_t create_ir_send_plan(const kernel::options_t &options,
     return send_plan_t(std::move(send_plan));
 }
 
-send_plan_t create_send_plan(const kernel::options_t &options,
+send_plan_t create_send_plan(const dsl::kernel::options_t &options,
         const view_t &view, const send_params_t &send_params, bool fill_buf) {
     if (!send_params.use_send_plan)
         return create_ir_send_plan(options, view, send_params);
@@ -2767,7 +2770,7 @@ send_plan_t create_send_plan(const kernel::options_t &options,
         auto &last = reg_layout.blocks().back();
         stride = (dim_t)last.stride * last.size;
     }
-    const type_t &type = reg_layout.type();
+    const dsl::type_t &type = reg_layout.type();
     stride = utils::rnd_up(
             stride, base_group.pad_bytes * type.packing() / type.size());
     for (size_t i = outer_idx; i < blocks.size(); i++) {

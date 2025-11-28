@@ -24,6 +24,7 @@
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/jit/reduction_injector.hpp"
+#include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "ngen_core.hpp"
 #include "ngen_emulation.hpp"
 

@@ -190,14 +190,14 @@ memory_desc_t to_md(const layout_t &l, const memory_desc_t &md_hint) {
     return md;
 }
 
-layout_t reinterpret(
-        const layout_t &layout, const type_t &new_type, bool do_normalize) {
+layout_t reinterpret(const layout_t &layout, const dsl::type_t &new_type,
+        bool do_normalize) {
     int old_size = layout.type().size();
     int new_size = new_type.size();
     if (new_size == old_size) return layout;
 
     expr_t new_offset = 0;
-    if (!is_zero(layout.offset())) {
+    if (!layout.offset().is(0)) {
         gpu_assert(is_const(layout.offset())) << "Expected constant offset.";
         int64_t off = to_cpp<int64_t>(layout.offset()) * old_size;
         gpu_assert(off % new_size == 0);
@@ -293,8 +293,8 @@ bool try_reinterpret_to_wider_type(layout_t &src, layout_t &dst,
         ok &= (strides_ok(src) && strides_ok(dst));
         if (ok) {
             if (do_update) {
-                src = reinterpret(src, type_t::s(new_size * 8));
-                dst = reinterpret(dst, type_t::s(new_size * 8));
+                src = reinterpret(src, dsl::type_t::s(new_size * 8));
+                dst = reinterpret(dst, dsl::type_t::s(new_size * 8));
             }
             if (new_size_out) *new_size_out = new_size;
             return true;
@@ -380,7 +380,7 @@ view_t view_t::create_sub_view(const tile_t &tile, const coord_t &coord) const {
     auto ret = *this;
     for (dim_idx_t i = 0; i < nvdims(); i++) {
         ret.vdims_[i] = tile.get(i);
-        if (!coord.has(i) || is_zero(coord[i])) continue;
+        if (!coord.has(i) || coord[i].is(0)) continue;
         auto &i_start = coord[i];
         auto &s = ret.vstart_[i];
         s += i_start;
@@ -404,7 +404,8 @@ std::vector<expr_t> view_t::create_vvars(dim_idx_t nvdims) {
         std::vector<expr_t> ret;
         ret.reserve(max_nvdims);
         for (int i = 0; i < max_nvdims; i++)
-            ret.push_back(var_t::make(type_t::s32(), "_" + std::to_string(i)));
+            ret.push_back(
+                    var_t::make(dsl::type_t::s32(), "_" + std::to_string(i)));
         return ret;
     }());
 

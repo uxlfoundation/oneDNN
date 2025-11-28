@@ -17,28 +17,28 @@
 #ifndef GEMMSTONE_GUARD_KERNEL_DESC_HPP
 #define GEMMSTONE_GUARD_KERNEL_DESC_HPP
 
+#include "gemmstone/dsl/kernel.hpp"
 #include "gemmstone/problem.hpp"
 #include "gemmstone/strategy.hpp"
-#include "gpu/intel/jit/ir/include/kernel.hpp"
 
 namespace gemmstone {
 
 struct generator_dsl_desc_t {
     generator_dsl_desc_t(const GEMMProblem &problem,
             const GEMMStrategy &strategy,
-            const ngen::InterfaceHandler &ngen_iface, const ir::hw_t &hw)
+            const ngen::InterfaceHandler &ngen_iface, const dsl::hw_t &hw)
         : problem(problem)
         , strategy(strategy)
         , iface(ngen_iface)
         , options(hw, strategy.GRFs, strategy.subgroupSize) {}
 
     const std::string &kernel_name() const { return iface.kernel_name(); }
-    const ir::kernel::iface_t &kernel_iface() const { return iface; }
+    const dsl::kernel::iface_t &kernel_iface() const { return iface; }
 
     const GEMMProblem &problem;
     const GEMMStrategy &strategy;
-    ir::kernel::iface_t iface;
-    ir::kernel::options_t options;
+    dsl::kernel::iface_t iface;
+    dsl::kernel::options_t options;
 };
 
 // Not all strategies parameters are supported via DSL. This attempts to fixup

@@ -78,7 +78,7 @@ public:
             gpu::intel::jit::generator_base_t *jitter) const override;
 
     status_t create_kernel(compute::kernel_t &kernel,
-            const jit::kernel_t &kernel_ir) const override;
+            const jit::dsl::kernel_t &kernel_ir) const override;
 
 #ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
     status_t create_kernels_from_cache_blob(const cache_blob_t &cache_blob,

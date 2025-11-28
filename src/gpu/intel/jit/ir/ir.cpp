@@ -22,7 +22,8 @@
 
 #include "common/math_utils.hpp"
 #include "common/optional.hpp"
-#include "gpu/intel/jit/ir/core.hpp"
+#include "gpu/intel/jit/codegen/allocation_size.hpp"
+#include "gpu/intel/jit/ir/core_legacy.hpp"
 #include "gpu/intel/jit/pass/simplify.hpp"
 
 namespace dnnl {
@@ -47,7 +48,7 @@ public:
 
     void _visit(const alloc_t &obj) override {
         auto grf_size = 1; // Assume all objects are grf aligned
-        auto guard = mem_usage_guard(obj.register_alloc_size(grf_size));
+        auto guard = mem_usage_guard(register_alloc_size(obj, grf_size));
         print_indent();
         out_ << obj.line_str() << "(mem_usage: " << mem_usage_bytes_ << ")\n";
         visit(obj.body);
@@ -135,7 +136,7 @@ public:
     }
 
     void _visit(const let_t &obj) override {
-        int size = obj.register_alloc_size();
+        int size = register_alloc_size(obj);
         auto guard = mem_usage_guard(size);
         print_indent();
         out_ << obj.line_str() << "\n";
@@ -143,20 +144,20 @@ public:
     }
 
     void _visit(const linear_t &obj) override {
-        if (obj.nargs() == 0 && is_zero(obj.c)) {
+        if (obj.nargs() == 0 && obj.c.is(0)) {
             out_ << "0";
             return;
         }
         out_ << "(";
         for (int i = 0; i < obj.nargs(); i++) {
             if (i > 0) out_ << " + ";
-            if (is_one(obj.u_vec[i])) {
+            if (obj.u_vec[i].is(1)) {
                 out_ << obj.v_vec[i];
             } else {
                 out_ << obj.u_vec[i] << " * " << obj.v_vec[i];
             }
         }
-        if (!is_zero(obj.c)) {
+        if (!obj.c.is(0)) {
             if (obj.nargs() != 0) out_ << " + ";
             out_ << obj.c;
         }
@@ -556,13 +557,6 @@ private:
 
 } // namespace
 
-std::string object::impl_t::str() const {
-    ostringstream_t oss;
-    ir_printer_t printer(oss);
-    printer.visit(this);
-    return oss.str();
-}
-
 object_t substitute(const object_t &root, const object_t &from,
         const object_t &to, int max_substitutions) {
     if (to.is_same(from)) return root;
@@ -769,7 +763,7 @@ expr_t min(const expr_t &a, const expr_t &b) {
     return binary_op_t::make(op_kind_t::_min, a, b);
 }
 
-expr_t cast(const expr_t &e, const type_t &type, bool saturate) {
+expr_t cast(const expr_t &e, const dsl::type_t &type, bool saturate) {
     return const_fold(cast_t::make(type, e, saturate));
 }
 
@@ -786,7 +780,7 @@ bool is_const_broadcast(const expr_t &e, const expr_t &value) {
 }
 
 expr_t make_buffer(const std::string &name) {
-    return var_t::make(type_t::byte(type::attr_t::ptr), name);
+    return var_t::make(dsl::type_t::byte(dsl::type::attr_t::ptr), name);
 }
 
 // Returns number of occurrences of `obj` in `root` (based on identity equality).
@@ -902,12 +896,12 @@ public:
         : grf_size_(grf_size), skip_let_(skip_let), regs_(external_regs) {}
 
     void _visit(const alloc_t &obj) override {
-        auto guard = grf_usage_guard(obj.register_alloc_size(grf_size_));
+        auto guard = grf_usage_guard(register_alloc_size(obj, grf_size_));
         ir_visitor_t::_visit(obj);
     }
 
     void _visit(const let_t &obj) override {
-        int size = skip_let_ ? 0 : obj.register_alloc_size();
+        int size = skip_let_ ? 0 : register_alloc_size(obj);
         auto guard = grf_usage_guard(size);
         ir_visitor_t::_visit(obj);
     }
@@ -987,7 +981,7 @@ expr_t relation_t::normalize(const expr_t &e) {
 bool modulus_info_t::is_modulus_constraint(const expr_t &e) {
     auto *binary_op = e.as_ptr<binary_op_t>();
     if (!binary_op) return false;
-    if (!is_zero(binary_op->b)) return false;
+    if (!binary_op->b.is(0)) return false;
     if (binary_op->op_kind != op_kind_t::_eq) return false;
 
     auto *mod_op = binary_op->a.as_ptr<binary_op_t>();
@@ -1164,7 +1158,7 @@ bool is_linear_var_transform(const expr_t &e, linear_transform_t &t) {
 }
 
 ir_context_t::ir_context_t(
-        const kernel::options_t &options, constraint_set_t &cset)
+        const dsl::kernel::options_t &options, constraint_set_t &cset)
     : options_(options), cset_(cset) {
     for (auto &a : options_.assumptions()) {
         add_constraint(a);
@@ -1276,7 +1270,7 @@ bool constraint_set_t::can_prove_impl(
         const expr_t &_e, bool do_simplify) const {
     auto e = _e;
     if (is_const(e)) {
-        gpu_assert(e.type() == type_t::_bool()) << e;
+        gpu_assert(e.type() == dsl::type_t::_bool()) << e;
         return to_cpp<bool>(e);
     }
 
@@ -1286,7 +1280,7 @@ bool constraint_set_t::can_prove_impl(
         e = simplify_cmp_reduce_lhs_rhs(e);
         e = simplify(e);
         if (is_const(e)) {
-            gpu_assert(e.type() == type_t::_bool()) << e;
+            gpu_assert(e.type() == dsl::type_t::_bool()) << e;
             return to_cpp<bool>(e);
         }
     }
@@ -1316,3 +1310,19 @@ int constraint_set_t::max_proven_gcd(const expr_t &var) const {
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
+
+namespace gemmstone {
+namespace dsl {
+namespace ir {
+
+std::string object::impl_t::str() const {
+    using namespace dnnl::impl::gpu::intel::jit;
+    ostringstream_t oss;
+    ir_printer_t printer(oss);
+    printer.visit(this);
+    return oss.str();
+}
+
+} // namespace ir
+} // namespace dsl
+} // namespace gemmstone

@@ -37,7 +37,7 @@ std::unordered_map<std::string, dim_t> problem_t::var_map() const {
     return ret;
 }
 
-const type_t &problem_t::out_type() const {
+const dsl::type_t &problem_t::out_type() const {
     switch (prop_) {
         case prop_kind::forward: return dst_tag_.type();
         case prop_kind::backward_data: return src_tag_.type();
@@ -175,7 +175,7 @@ std::string problem_t::str() const {
 
 std::string problem_t::csv_str() const {
     std::vector<std::string> parts;
-    parts.push_back(hw_.brief_str());
+    parts.push_back(ir_utils::to_lower(to_string(hw_.ngen_hw())));
     parts.push_back(jit::to_string(prop_));
     parts.push_back(src_tag_.str());
     parts.push_back(wei_tag_.str());

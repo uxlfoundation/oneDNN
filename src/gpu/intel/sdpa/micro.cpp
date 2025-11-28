@@ -27,6 +27,7 @@
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
 #include "gpu/intel/microkernels/shim.hpp"
+#include "gpu/intel/primitive_conf.hpp"
 
 #include <cstdio>
 #include <iostream>

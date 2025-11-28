@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_JIT_UTILS_TRACE_HPP
 #define GPU_INTEL_JIT_UTILS_TRACE_HPP
 
+#include "gemmstone/dsl/ir/object.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 #include "gpu/intel/logging.hpp"
 
@@ -26,7 +27,6 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-class stmt_t;
 class ir_context_t;
 
 // Trace for debugging purposes.
@@ -64,11 +64,11 @@ inline void trace_perf() {};
 #endif
 
 #if defined(DNNL_DEV_MODE)
-void trace_pass(
-        const char *pass_name, const stmt_t &stmt, const ir_context_t &ir_ctx);
+void trace_pass(const char *pass_name, const gemmstone::dsl::ir::stmt_t &stmt,
+        const ir_context_t &ir_ctx);
 #else
-inline void trace_pass(const char *pass_name, const stmt_t &stmt,
-        const ir_context_t &ir_ctx) {};
+inline void trace_pass(const char *pass_name,
+        const gemmstone::dsl::ir::stmt_t &stmt, const ir_context_t &ir_ctx) {};
 #endif
 
 } // namespace jit

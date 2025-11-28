@@ -27,7 +27,7 @@ namespace jit {
 
 template <typename ngen_generator_t>
 void eltwise(ngen_generator_t &host, ngen_register_scope_t &scope,
-        const hw_t &hw, const eltwise_t &func,
+        const dsl::hw_t &hw, const eltwise_t &func,
         const std::vector<ngen_operand_t> &args) {
     int elems = to_cpp<int>(hw, eltwise_t::arg_elems(args));
     auto &data_op = eltwise_t::arg_data(args);
@@ -72,7 +72,7 @@ void eltwise(ngen_generator_t &host, ngen_register_scope_t &scope,
         if ((cur_elems * f_size) % grf_size != 0 || rd.byte_offset() != 0) {
             int full_elems
                     = utils::rnd_up(cur_elems * f_size, grf_size) / f_size;
-            auto tmp = i_scope.alloc_reg_data(type_t::f32(full_elems));
+            auto tmp = i_scope.alloc_reg_data(dsl::type_t::f32(full_elems));
             emit_reorder_1d_tile(&host, hw, i_scope, cur_elems, rd, 1, tmp, 1);
             do_eltwise(tmp, full_elems * f_size / grf_size);
             emit_reorder_1d_tile(&host, hw, i_scope, cur_elems, tmp, 1, rd, 1);
@@ -84,7 +84,7 @@ void eltwise(ngen_generator_t &host, ngen_register_scope_t &scope,
 
 template <typename ngen_generator_t>
 void handler(ngen_generator_t &host, const object_t &obj,
-        codegen_extension_iface_t &ext_iface) {
+        ir::codegen_extension_iface_t &ext_iface) {
     auto &options = ext_iface.options();
     if (obj.is<func_call_t>()) {
         auto &call = obj.as<func_call_t>();
@@ -100,7 +100,7 @@ void handler(ngen_generator_t &host, const object_t &obj,
 }
 
 void extension_handler(
-        const object_t &obj, codegen_extension_iface_t &ext_iface) {
+        const object_t &obj, ir::codegen_extension_iface_t &ext_iface) {
     auto host = ext_iface.root_code_generator();
 
 #ifdef NGEN_ASM
@@ -119,12 +119,17 @@ void extension_handler(
     gpu_error_not_expected() << "Unknown nGEN code generator";
 }
 
-namespace kernel {
-codegen_extension_handler_t default_extension_handler = &extension_handler;
-}
-
 } // namespace jit
 } // namespace intel
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
+
+namespace gemmstone {
+namespace dsl {
+namespace kernel {
+codegen_extension_handler_t default_extension_handler
+        = &dnnl::impl::gpu::intel::jit::extension_handler;
+}
+} // namespace dsl
+} // namespace gemmstone

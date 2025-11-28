@@ -124,7 +124,8 @@ public:
             bool allow_fail = false) const {
         gpu_assert(size % mask_size == 0) << "Incompatible mask size.";
         auto sub_mask_tensor = create_sub_mask_tensor(off, size);
-        sub_mask_tensor = sub_mask_tensor.reinterpret(type_t::u8(mask_size));
+        sub_mask_tensor
+                = sub_mask_tensor.reinterpret(dsl::type_t::u8(mask_size));
         if (sub_mask_tensor.is_empty()) {
             if (allow_fail) return expr_t();
             gpu_error_not_expected();
@@ -146,7 +147,7 @@ public:
     }
 
 private:
-    const type_t &type() const { return view_.type(); }
+    const dsl::type_t &type() const { return view_.type(); }
 
     void init_dense_blocks(const constraint_set_t &cset) {
         auto l = view_.create_pseudo_vlayout();
@@ -256,7 +257,7 @@ public:
     }
 
 private:
-    const type_t &type() const { return layout_.type(); }
+    const dsl::type_t &type() const { return layout_.type(); }
 
     int max_offset_bytes() const { return (int)size_bytes(layout_, grf_size_); }
 
@@ -348,7 +349,7 @@ static bool stride_dimension_ok(const view_t &view, size_t stride_tidx,
         }
     }
     e = simplify(e);
-    return is_zero(e);
+    return e.is(0);
 }
 
 static expr_t try_scalarize(const expr_t &e) {
@@ -397,7 +398,7 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     if (!hint.type.is_undef()) vlayout = reinterpret(vlayout, hint.type);
 
     bool is_store = (send_op_ == send_op_t::store);
-    auto send_type = type_t::u(vlayout.type().size() * 8);
+    auto send_type = dsl::type_t::u(vlayout.type().size() * 8);
     auto blocks = vlayout.blocks();
     if (blocks.size() < 2) return false;
 
@@ -619,9 +620,9 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     return true;
 }
 
-bool access_builder_t::fixup_send_2d_params(const type_t &send_type, bool vnni,
-        bool transpose, bool use_xy, int &W, int &H, int &P, int &w, int &h,
-        int &c, int &vnni_permute_factor) {
+bool access_builder_t::fixup_send_2d_params(const dsl::type_t &send_type,
+        bool vnni, bool transpose, bool use_xy, int &W, int &H, int &P, int &w,
+        int &h, int &c, int &vnni_permute_factor) {
     int surface_width_size = W * send_type.size();
     auto whp_ok = [&]() {
         return block_2d_width_ok(W, send_type.size()) && block_2d_height_ok(H)
@@ -840,7 +841,7 @@ stmt_t access_builder_t::create_send_stmt(
 
 static const int any_block = 0;
 
-send_2d_hint_t get_send_2d_hint(send_op_t send_op, const type_t &type,
+send_2d_hint_t get_send_2d_hint(send_op_t send_op, const dsl::type_t &type,
         bool vnni, bool transpose, int w_tile, int h_tile,
         int w_blk = any_block, int h_blk = any_block) {
     gpu_assert(!(vnni && transpose)) << "VNNI with transpose is not supported.";
@@ -918,7 +919,8 @@ send_2d_hint_t get_send_2d_hint(send_op_t send_op, const type_t &type,
     return hint;
 }
 
-bool send_2d_params_ok(const kernel::options_t &options, send_op_t send_op) {
+bool send_2d_params_ok(
+        const dsl::kernel::options_t &options, send_op_t send_op) {
     if (options.hw() < ngen::HW::XeHPC) return false;
     if (!utils::one_of(send_op, send_op_t::load, send_op_t::prefetch,
                 send_op_t::store))
@@ -938,7 +940,7 @@ bool send_2d_vlayout_ok(const layout_t &vlayout) {
     return true;
 }
 
-send_2d_hint_t get_send_2d_hint(const kernel::options_t &options,
+send_2d_hint_t get_send_2d_hint(const dsl::kernel::options_t &options,
         send_op_t send_op, const view_t &view, bool allow_2d,
         bool use_send_plan) {
     send_2d_hint_t hint;
@@ -954,7 +956,7 @@ send_2d_hint_t get_send_2d_hint(const kernel::options_t &options,
             send_op, view.type(), false, false, b0.size, b1.size);
 }
 
-send_2d_hint_t get_send_2d_hint(const kernel::options_t &options,
+send_2d_hint_t get_send_2d_hint(const dsl::kernel::options_t &options,
         send_op_t send_op, fma_kind_t fma_kind, abc_kind_t abc_kind,
         const view_t &view, const gemm_schedule_t &gemm_schedule, bool allow_2d,
         bool use_send_plan) {
@@ -1019,7 +1021,7 @@ send_2d_hint_t get_send_2d_hint(const kernel::options_t &options,
     return hint;
 }
 
-send_params_t get_send_params(const kernel::options_t &options,
+send_params_t get_send_params(const dsl::kernel::options_t &options,
         send_op_t send_op, send_address_t send_address, const view_t &view,
         send_cache_hint_t cache_hint, fma_kind_t fma_kind, abc_kind_t abc_kind,
         bool allow_2d) {
@@ -1037,7 +1039,7 @@ send_params_t get_send_params(const kernel::options_t &options,
     return params;
 }
 
-send_params_t get_send_params(const kernel::options_t &options,
+send_params_t get_send_params(const dsl::kernel::options_t &options,
         send_op_t send_op, send_address_t send_address, fma_kind_t fma_kind,
         abc_kind_t abc_kind, const view_t &view,
         const gemm_schedule_t &gemm_schedule, bool allow_2d) {

@@ -27,7 +27,7 @@ namespace reorder {
 namespace jit {
 
 using namespace intel::jit;
-std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b);
+std::vector<tile_t> tiles(const dsl::hw_t &hw, layout_t a, layout_t b);
 
 } // namespace jit
 } // namespace reorder

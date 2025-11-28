@@ -46,7 +46,7 @@ public:
         auto dst_type = to_dp4a_type(dpas->dst_type);
         auto src1_type = to_dp4a_type(dpas->src1_type);
         auto src2_type = to_dp4a_type(dpas->src2_type);
-        bool is_src0_zero = is_zero(src0);
+        bool is_src0_zero = src0.is(0);
 
         stmt_t stmt;
         auto _dp4a = dpas_t::make(
@@ -75,12 +75,12 @@ public:
     }
 
 private:
-    static type_t to_dp4a_type(const type_t &type) {
+    static dsl::type_t to_dp4a_type(const dsl::type_t &type) {
         if (type.is_x32()) return type;
-        if (type.is_s8()) return type_t::s32();
-        if (type.is_u8()) return type_t::u32();
+        if (type.is_s8()) return dsl::type_t::s32();
+        if (type.is_u8()) return dsl::type_t::u32();
         gpu_error_not_expected();
-        return type_t();
+        return dsl::type_t();
     };
 };
 

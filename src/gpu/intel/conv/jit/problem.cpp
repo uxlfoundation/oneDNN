@@ -271,7 +271,7 @@ const memory_desc_t &problem_t::c_md() const {
             conv_pd->invariant_dst_md());
 }
 
-status_t problem_t::init_abc_data_types(const hw_t &hw) {
+status_t problem_t::init_abc_data_types(const dsl::hw_t &hw) {
     a_data_type = pick_a(src_data_type, wei_data_type, dst_data_type);
     b_data_type = pick_b(src_data_type, wei_data_type, dst_data_type);
     // Always use f32 for accumulation/storing in the main kernel.
@@ -288,21 +288,21 @@ status_t problem_t::init_abc_data_types(const hw_t &hw) {
                 = gpu_utils::dev_getenv("use_matching_fpmath", false);
         if (use_matching_fpmath
                 && attr->mayiconvert(data_type::f32, data_type::bf16)
-                && get_supported_fma_kind(
-                           hw, type_t::bf16(), type_t::bf16(), type_t::f32())
+                && get_supported_fma_kind(hw, dsl::type_t::bf16(),
+                           dsl::type_t::bf16(), dsl::type_t::f32())
                         != fma_kind_t::undef) {
             a_data_type = data_type::bf16;
             b_data_type = data_type::bf16;
         } else if (use_matching_fpmath
                 && attr->mayiconvert(data_type::f32, data_type::f16)
-                && get_supported_fma_kind(
-                           hw, type_t::f16(), type_t::f16(), type_t::f32())
+                && get_supported_fma_kind(hw, dsl::type_t::f16(),
+                           dsl::type_t::f16(), dsl::type_t::f32())
                         != fma_kind_t::undef) {
             a_data_type = data_type::f16;
             b_data_type = data_type::f16;
         } else if (attr->mayiconvert(data_type::f32, data_type::tf32)
-                && get_supported_fma_kind(
-                           hw, type_t::tf32(), type_t::tf32(), type_t::f32())
+                && get_supported_fma_kind(hw, dsl::type_t::tf32(),
+                           dsl::type_t::tf32(), dsl::type_t::f32())
                         != fma_kind_t::undef) {
             a_data_type = data_type::tf32;
             b_data_type = data_type::tf32;
@@ -345,7 +345,7 @@ bool problem_t::with_sum_post_op() const {
     return post_ops.find(primitive_kind::sum) != -1;
 }
 
-void problem_t::init_transpose(const hw_t &hw) {
+void problem_t::init_transpose(const dsl::hw_t &hw) {
     bool is_dw = (g > 1) && (oc == 1) && (ic == 1);
     bool wei_any
             = (conv_pd->invariant_wei_md()->format_kind == format_kind::any);

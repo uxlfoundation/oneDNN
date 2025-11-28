@@ -16,7 +16,7 @@
 
 #include "gpu/intel/jit/grf_usage.hpp"
 
-#include "gpu/intel/jit/codegen/register_allocator.hpp"
+#include "gpu/intel/jit/codegen/allocation_size.hpp"
 #include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/reorder.hpp"
@@ -161,7 +161,7 @@ public:
     void _visit(const let_t &obj) override {
         if (is_invalid_) return;
         int size = (obj.value.is_empty() ? 0 : obj.var.type().size());
-        size = utils::rnd_up(size, reg_allocator_t::granularity);
+        size = utils::rnd_up(size, ngen_alloc_granularity);
         mem_usage_guard_t guard(&grf_usage_, &peak_grf_usage_, size);
         ir_visitor_t::_visit(obj);
     }

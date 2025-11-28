@@ -47,19 +47,19 @@ public:
         if (is_loop && !is_dim_1) {
             if (is_global_loop) {
                 e.loop_size = const_var_t::make(
-                        type_t::s32(), e.dim.str() + "_loop_size");
+                        dsl::type_t::s32(), e.dim.str() + "_loop_size");
                 e.is_global_loop = true;
             } else {
                 e.loop_size = div_up(reqs.to_expr(e.dim), tg_tile * iter_tile);
             }
-            e.loop_idx = is_one(e.loop_size)
-                    ? expr_t(0)
-                    : var_t::make(type_t::s32(), e.dim.str() + "_loop_idx");
+            e.loop_idx = e.loop_size.is(1) ? expr_t(0)
+                                           : var_t::make(dsl::type_t::s32(),
+                                                   e.dim.str() + "_loop_idx");
         }
         e.tg_idx = expr_t(0);
         e.thr_idx = (tg_tile == 1 ? expr_t(0) : thr_idx);
         if (!is_dim_1 && (!is_loop || is_global_loop)) {
-            e.tg_idx = var_t::make(type_t::s32(), dim.str() + "_tg_idx");
+            e.tg_idx = var_t::make(dsl::type_t::s32(), dim.str() + "_tg_idx");
         }
         auto iter_idx = e.tg_idx;
         iter_idx = iter_idx * e.tg_size + e.thr_idx;
@@ -126,7 +126,7 @@ private:
         expr_t loop_size;
         bool is_global_loop = false;
 
-        bool is_loop() const { return !is_one(loop_size); }
+        bool is_loop() const { return !loop_size.is(1); }
 
         std::string str() const {
             ostringstream_t oss;
@@ -282,7 +282,7 @@ struct x2r_fma_plan_t : public base_plan_t {
     v2::layout_t bias_layout;
     std::vector<stage_t> stages;
 
-    x2r_fma_plan_t(const hw_t &hw) : base_plan_t(hw) {}
+    x2r_fma_plan_t(const dsl::hw_t &hw) : base_plan_t(hw) {}
     void add_stage(const x2r_plan_t &x2r) { stages.emplace_back(x2r); }
     void add_stage(const fma_plan_t &fma) { stages.emplace_back(fma); }
     int nstages() const { return (int)stages.size(); }
@@ -423,7 +423,7 @@ struct plan_t : public base_plan_t {
     x2r_fma_plan_t x2r_fma;
     epilogue_plan_t epilogue;
 
-    plan_t(const hw_t &hw = hw_t())
+    plan_t(const dsl::hw_t &hw = dsl::hw_t())
         : base_plan_t(hw), prefetch(hw), x2r_fma(hw), epilogue(hw) {}
 
     int grf_usage_bytes() const {
@@ -451,7 +451,7 @@ struct plan_t : public base_plan_t {
     IR_DEFINE_DUMP()
 };
 
-plan_t create_plan(const kernel_desc_t &desc, const hw_t &hw);
+plan_t create_plan(const kernel_desc_t &desc, const dsl::hw_t &hw);
 plan_t create_plan(const kernel_desc_t &desc, const problem_t &prb);
 prb_reqs_t generate_reqs(const kernel_desc_t &desc);
 

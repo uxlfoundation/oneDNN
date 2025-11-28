@@ -26,9 +26,9 @@ namespace intel {
 namespace jit {
 
 // Transforms dpas to dpasw.
-void inject_dpasw(const hw_t &hw, stmt_t &load_mul_stmt, const expr_t &c_buf,
-        stmt_t &c_store_stmt, alloc_updater_t &alloc_updater,
-        const expr_t &tg_idx0);
+void inject_dpasw(const dsl::hw_t &hw, stmt_t &load_mul_stmt,
+        const expr_t &c_buf, stmt_t &c_store_stmt,
+        alloc_updater_t &alloc_updater, const expr_t &tg_idx0);
 
 } // namespace jit
 } // namespace intel

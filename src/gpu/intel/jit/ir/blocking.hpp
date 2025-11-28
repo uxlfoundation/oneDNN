@@ -17,7 +17,6 @@
 #ifndef GPU_INTEL_JIT_IR_BLOCKING_HPP
 #define GPU_INTEL_JIT_IR_BLOCKING_HPP
 
-#include "gpu/intel/jit/ir/core.hpp"
 #include "gpu/intel/jit/ir/problem.hpp"
 #include "gpu/intel/logging.hpp"
 
@@ -144,7 +143,7 @@ public:
         return tile_compare(iter_, other.iter_);
     }
 
-    IR_DEFINE_DUMP()
+    void dump() const { printf("%s\n", str().c_str()); }
 
 private:
     int simd_ = 0;
@@ -261,7 +260,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    void dump() const { printf("%s\n", str().c_str()); }
 
     dim_t loop = 0;
     int thread_group = 0;
@@ -361,7 +360,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    void dump() const { printf("%s\n", str().c_str()); }
 
 private:
     void set(const std::string &s_tile, const std::string &_s_dim) {
@@ -514,7 +513,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    void dump() const { printf("%s\n", str().c_str()); }
 
     static std::vector<std::string> csv_keys() {
         return {"simd", "loop", "tg", "iter", "bufs_hint"};

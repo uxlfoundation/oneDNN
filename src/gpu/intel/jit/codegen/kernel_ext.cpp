@@ -23,8 +23,8 @@ namespace intel {
 namespace jit {
 
 extern ngen::NEOInterfaceHandler generate_ngen_interface(
-        const kernel::iface_t &kernel_iface, const kernel::options_t &options,
-        const stmt_t &kernel_body);
+        const dsl::kernel::iface_t &kernel_iface,
+        const dsl::kernel::options_t &options, const stmt_t &kernel_body);
 
 template <typename GeneratorT>
 void convert_ir_to_ngen(const stmt_t &body, GeneratorT &host,

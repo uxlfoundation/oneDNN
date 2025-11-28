@@ -14,25 +14,24 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_JIT_IR_INCLUDE_OBJECT_HPP
-#define GPU_INTEL_JIT_IR_INCLUDE_OBJECT_HPP
+#ifndef GEMMSTONE_GUARD_INCLUDE_IR_OBJECT_HPP
+#define GEMMSTONE_GUARD_INCLUDE_IR_OBJECT_HPP
 
+#include <cstdint>
 #include <string>
 
-#include "gpu/intel/jit/utils/utils.hpp"
+#include "gemmstone/dsl/type.hpp"
+#include "internal/utils.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+namespace ir {
 
 class object_t;
 class expr_impl_t;
 class stmt_impl_t;
 class ir_mutator_t;
 class ir_visitor_t;
-class type_t;
 
 namespace object {
 // Base class for all IR objects. Implemented as an intrusive pointer, with
@@ -61,7 +60,7 @@ public:
     //       necessary, and please don't add a non-const variant of the method!
     template <typename T>
     const T &as() const {
-        gpu_assert(is<T>());
+        assume(is<T>());
         return *as_ptr<T>(); // fails on incorrect casts even in Release
     }
 
@@ -89,7 +88,7 @@ public:
     virtual void _visit(ir_visitor_t &visitor) const;
 
 protected:
-    friend class dnnl::impl::gpu::intel::jit::object_t;
+    friend class gemmstone::dsl::ir::object_t;
     template <typename T>
     friend struct info_t;
 
@@ -216,7 +215,7 @@ public:
 
     template <typename T>
     const T &as() const {
-        gpu_assert(impl_);
+        assume(impl_);
         return impl_->as<T>();
     }
 
@@ -267,6 +266,36 @@ private:
 
     impl_t *impl_;
 };
+
+inline std::ostream & operator<<(std::ostream & out, const object_t & obj) {
+    out << obj.str();
+    return out;
+}
+
+namespace expr {
+// Base class for IR expression objects.
+class impl_t : public object::impl_t {
+public:
+    impl_t(object::impl_t::info_t type_info, const dsl::type_t &type)
+        : object::impl_t(type_info), type(type) {}
+
+    dsl::type_t type;
+};
+
+template <typename T>
+struct iface_t : public impl_t, public object::info_t<T> {
+    iface_t(const dsl::type_t &type) : impl_t(T::get_info(), type) {}
+
+    bool is_equal(const object::impl_t &obj) const override {
+        if (!obj.is<T>()) return false;
+        return (*static_cast<const T *>(this) == obj.as<T>());
+    }
+
+    object_t _mutate(ir_mutator_t &mutator) const override;
+    void _visit(ir_visitor_t &visitor) const override;
+};
+
+} // namespace expr
 
 // Wrapper for IR expression objects.
 class expr_t : public object_t {
@@ -320,10 +349,16 @@ public:
     // Returns a pointer type expression pointing to this variable. The base
     // expression must be of var_t or ref_t type.
     expr_t ptr(const expr_t &off = expr_t(0)) const;
+
+    template <typename T>
+    bool is() const {
+        return object_t::is<T>();
+    }
+
+    bool is(int value) const;
 };
 
 bool is_const(const expr_t &e);
-bool is_const(const expr_t &e, int value);
 bool to_bool(const expr_t &e);
 expr_t operator-(const expr_t &a);
 
@@ -371,9 +406,29 @@ public:
     stmt_t append(const stmt_t &s) const;
 };
 
-} // namespace jit
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+class var_t : public expr::iface_t<var_t> {
+public:
+    static expr_t make(const dsl::type_t &type, const std::string &name,
+            bool is_mutable = false) {
+        return expr_t(new var_t(type, name, is_mutable));
+    }
+
+    bool operator==(const var_t &other) const {
+        // Do not allow variable cloning.
+        return this == &other;
+    }
+
+    size_t get_hash() const override { return std::hash<std::string>{}(name); }
+
+    std::string name;
+    bool is_mutable = false;
+
+private:
+    var_t(const dsl::type_t &type, const std::string &name, bool is_mutable)
+        : expr::iface_t<var_t>(type), name(name), is_mutable(is_mutable) {}
+};
+
+} // namespace ir
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
 #endif

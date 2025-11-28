@@ -36,9 +36,11 @@ namespace jit {
 
 using namespace ir_utils;
 
+expr_t simplify_expr(const expr_t &_e, const constraint_set_t &cset);
+
 // Generic pattern expression, used as a wild card during pattern matching. Can
 // match any expression.
-class pexpr_t : public expr_iface_t<pexpr_t> {
+class pexpr_t : public ir::expr_iface_t<pexpr_t> {
 public:
     static expr_t make(int id) { return expr_t(new pexpr_t(id)); }
 
@@ -73,12 +75,12 @@ public:
     int id;
 
 private:
-    pexpr_t(int id) : expr_iface_t(type_t::undef()), id(id) {}
+    pexpr_t(int id) : ir::expr_iface_t<pexpr_t>(dsl::type_t::undef()), id(id) {}
 };
 
 // Pattern expression for int_imm_t, used as a wild card during pattern
 // matching. Can match any int_imm_t with the given value.
-class pint_imm_t : public expr_iface_t<pint_imm_t> {
+class pint_imm_t : public ir::expr_iface_t<pint_imm_t> {
 public:
     // Matches an integer constant with the given value.
     static expr_t make(int64_t value) {
@@ -119,7 +121,9 @@ public:
 
 private:
     pint_imm_t(int id, int64_t value)
-        : expr_iface_t(type_t::undef()), id(id), value(value) {}
+        : ir::expr_iface_t<pint_imm_t>(dsl::type_t::undef())
+        , id(id)
+        , value(value) {}
 };
 
 // Stores already matched pairs of <pattern expression, matched expression>.
@@ -716,7 +720,7 @@ public:
 
 // N-ary expression: (a[0] op a[1] op ... op a[n - 1]),
 // where <op> is either addition or multiplication.
-class nary_op_t : public expr_iface_t<nary_op_t> {
+class nary_op_t : public ir::expr_iface_t<nary_op_t> {
 public:
     static expr_t make(op_kind_t op_kind, const std::vector<expr_t> &args) {
         return expr_t(new nary_op_t(op_kind, args));
@@ -750,7 +754,7 @@ public:
 
 private:
     nary_op_t(op_kind_t op_kind, const std::vector<expr_t> &args)
-        : expr_iface_t(nary_op_type(op_kind, args))
+        : ir::expr_iface_t<nary_op_t>(nary_op_type(op_kind, args))
         , op_kind(op_kind)
         , args(args) {}
 };
@@ -782,13 +786,13 @@ void fold_const_nary_op_args(op_kind_t op_kind, const std::vector<expr_t> &args,
     expr_t c;
     split_const_nary_op_arg(op_kind, args, c, new_args);
     if (c.is_empty()) return;
-    if (op_kind == op_kind_t::_mul && is_zero(c)) {
+    if (op_kind == op_kind_t::_mul && c.is(0)) {
         new_args.clear();
         new_args.push_back(std::move(c));
         return;
     }
-    if (op_kind == op_kind_t::_mul && is_one(c)) return;
-    if (op_kind == op_kind_t::_add && is_zero(c)) return;
+    if (op_kind == op_kind_t::_mul && c.is(1)) return;
+    if (op_kind == op_kind_t::_add && c.is(0)) return;
     new_args.push_back(std::move(c));
 }
 
@@ -1019,13 +1023,14 @@ public:
 // Stores factorization of an expression in the canonical (normalized) form:
 //     expr = (f(0), f(1), f(2), ... f(n))
 // f(0), ... f(n-1) are non-constant expressions, f(n) is a constant.
-class factored_expr_t : public expr_iface_t<factored_expr_t> {
+class factored_expr_t : public ir::expr_iface_t<factored_expr_t> {
 public:
     static expr_t make(const expr_t &e) {
         return expr_t(new factored_expr_t(e));
     }
 
-    static expr_t make(const type_t &type, const std::vector<expr_t> &factors) {
+    static expr_t make(
+            const dsl::type_t &type, const std::vector<expr_t> &factors) {
         return expr_t(new factored_expr_t(type, factors));
     }
 
@@ -1066,7 +1071,7 @@ public:
     }
 
     expr_t expr() const {
-        if (factors.size() > 1 && jit::is_one(factors.back())) {
+        if (factors.size() > 1 && factors.back().is(1)) {
             std::vector<expr_t> f(factors.begin(), factors.end() - 1);
             return make_nary_op(op_kind_t::_mul, f);
         }
@@ -1075,9 +1080,7 @@ public:
 
     expr_t const_factor() const { return factors.back(); }
 
-    bool is_one() const {
-        return (factors.size() == 1) && jit::is_one(factors[0]);
-    }
+    bool is_one() const { return (factors.size() == 1) && factors[0].is(1); }
 
     bool is_const() const { return factors.size() == 1; }
 
@@ -1163,13 +1166,13 @@ public:
 
 private:
     factored_expr_t(const expr_t &e)
-        : expr_iface_t(
-                e.type().with_attr(e.type().attr() & ~type::attr_t::mut)) {
+        : ir::expr_iface_t<factored_expr_t>(
+                e.type().with_attr(e.type().attr() & ~dsl::type::attr_t::mut)) {
         init_factors(e);
     }
 
-    factored_expr_t(const type_t &type, const std::vector<expr_t> &factors)
-        : expr_iface_t(type) {
+    factored_expr_t(const dsl::type_t &type, const std::vector<expr_t> &factors)
+        : ir::expr_iface_t<factored_expr_t>(type) {
         init_normalize(factors);
     }
 
@@ -1182,7 +1185,7 @@ private:
                 continue;
             }
             if (to_cpp<int64_t>(e) < 0) sign = !sign;
-            if (jit::is_one(e) || jit::is_minus_one(e)) continue;
+            if (e.is(1) || e.is(-1)) continue;
 
             e_const = e_const * abs(e);
         }
@@ -1289,7 +1292,7 @@ public:
 
         factored_expr_t::reduce(a, b);
 
-        if (is_one(b)) return std::move(a);
+        if (b.is(1)) return std::move(a);
 
         return binary_op_t::make(op_kind_t::_div, a, b);
     }
@@ -1334,7 +1337,7 @@ public:
         // Try to reduce a and b.
         auto common_factor = factored_expr_t::reduce(a, b);
 
-        if (is_one(b)) {
+        if (b.is(1)) {
             if (binary_op->op_kind == op_kind_t::_mod)
                 return to_expr(0, binary_op->type);
             if (binary_op->op_kind == op_kind_t::_div) return std::move(a);
@@ -1582,10 +1585,10 @@ public:
         //     (a * b * c + a * b * d + e) ->
         //     ((a * b * (c + d)) + e)
         for (size_t i = 0; i < args.size(); i++) {
-            if (is_zero(args[i])) continue;
+            if (args[i].is(0)) continue;
             auto e_fi = factored_expr_t::make(args[i]);
             for (size_t j = i + 1; j < args.size(); j++) {
-                if (is_zero(args[j])) continue;
+                if (args[j].is(0)) continue;
                 auto e_fj = factored_expr_t::make(args[j]);
 
                 auto &fi = e_fi.as<factored_expr_t>();
@@ -1747,9 +1750,9 @@ public:
 
     object_t _mutate(const for_t &obj) override {
         object_t new_obj;
-        auto new_init = simplify(obj.init, cset_);
-        auto new_bound = simplify(obj.bound, cset_);
-        if (is_one(new_bound) && is_zero(new_init)) {
+        auto new_init = simplify_expr(obj.init, cset_);
+        auto new_bound = simplify_expr(obj.bound, cset_);
+        if (new_bound.is(1) && new_init.is(0)) {
             auto body = substitute(obj.body, obj.var, expr_t(0));
             body = mutate(body);
             new_obj = std::move(body);
@@ -2065,7 +2068,7 @@ expr_t const_fold_unary(op_kind_t op_kind, const expr_t &a) {
     }
 
 #define CASE(ir_type, cpp_type) \
-    if (a.type() == type_t::ir_type()) return to_expr(-to_cpp<cpp_type>(a))
+    if (a.type() == dsl::type_t::ir_type()) return to_expr(-to_cpp<cpp_type>(a))
 
     CASE(f32, float);
     CASE(s16, int16_t);
@@ -2080,7 +2083,7 @@ expr_t const_fold_unary(op_kind_t op_kind, const expr_t &a) {
     return expr_t();
 }
 
-expr_t const_fold_binary(const type_t &compute_type, op_kind_t op_kind,
+expr_t const_fold_binary(const dsl::type_t &compute_type, op_kind_t op_kind,
         const expr_t &a, const expr_t &b) {
     if (!compute_type.is_scalar()) {
         int elems = compute_type.elems();
@@ -2103,7 +2106,7 @@ expr_t const_fold_binary(const type_t &compute_type, op_kind_t op_kind,
     }
 
 #define CASE(ir_type, cpp_type) \
-    if (compute_type == type_t::ir_type()) { \
+    if (compute_type == dsl::type_t::ir_type()) { \
         auto _a = to_cpp<cpp_type>(a); \
         auto _b = to_cpp<cpp_type>(b); \
         return const_fold_helper_t<cpp_type>::call(op_kind, _a, _b); \
@@ -2246,7 +2249,8 @@ expr_t simplify_cmp_reduce_lhs_rhs(const expr_t &e) {
 }
 
 bool const_to_const_binary(const expr_t &e, op_kind_t op_kind,
-        const type_t &a_type, const type_t &b_type, expr_t &a, expr_t &b) {
+        const dsl::type_t &a_type, const dsl::type_t &b_type, expr_t &a,
+        expr_t &b) {
     bool is_true = to_cpp<bool>(e);
     // Assume:
     // - a0 < b1
@@ -2302,8 +2306,8 @@ expr_t simplify_propagate_shuffle(const expr_t &e) {
 
     // Handle binary operation.
     {
-        type_t a_type;
-        type_t b_type;
+        dsl::type_t a_type;
+        dsl::type_t b_type;
         expr_t a_common_const;
         expr_t b_common_const;
         op_kind_t op_kind = op_kind_t::undef;
@@ -2392,8 +2396,8 @@ expr_t const_fold_non_recursive(const expr_t &e) {
             return e;
         bool is_int = (a.type().is_int() && b.type().is_int());
         // Always perform integer const folding in s64 to avoid overflow.
-        auto compute_type
-                = is_int ? type_t::s64(e.type().elems()) : common_type(a, b);
+        auto compute_type = is_int ? dsl::type_t::s64(e.type().elems())
+                                   : common_type(a, b);
         return const_fold_binary(compute_type, op_kind, a, b);
     }
 

@@ -289,16 +289,16 @@ class layout_tag_t {
 public:
     layout_tag_t() = default;
 
-    layout_tag_t(const layout_desc_t &desc, const type_t &type,
+    layout_tag_t(const layout_desc_t &desc, const dsl::type_t &type,
             const layout_raw_tag_t &raw_tag, bool is_strided = false)
         : desc_(desc)
         , type_(type)
         , raw_tag_(raw_tag)
         , is_strided_(is_strided) {}
-    layout_tag_t(const type_t &type, const std::string &str_tag,
+    layout_tag_t(const dsl::type_t &type, const std::string &str_tag,
             bool is_strided = false)
         : layout_tag_t({}, type, layout_raw_tag_t(str_tag), is_strided) {}
-    layout_tag_t(const layout_desc_t &desc, const type_t &type,
+    layout_tag_t(const layout_desc_t &desc, const dsl::type_t &type,
             const std::string &str_tag, bool is_strided = false)
         : layout_tag_t(desc, type, layout_raw_tag_t(str_tag), is_strided) {}
 
@@ -308,11 +308,11 @@ public:
     bool is_strided() const { return is_strided_; }
     void set_strided(bool strided) { is_strided_ = strided; }
     const layout_desc_t &desc() const { return desc_; }
-    const type_t &type() const { return type_; }
+    const dsl::type_t &type() const { return type_; }
     const layout_raw_tag_t &raw_tag() const { return raw_tag_; }
     bool matches(const layout_tag_t &other, const tile_t &sizes,
             bool check_type = true) const;
-    layout_tag_t with_type(const type_t &new_type) const {
+    layout_tag_t with_type(const dsl::type_t &new_type) const {
         return layout_tag_t(desc_, new_type, raw_tag_);
     }
     std::string str() const;
@@ -349,7 +349,7 @@ public:
 
 private:
     layout_desc_t desc_;
-    type_t type_;
+    dsl::type_t type_;
     layout_raw_tag_t raw_tag_;
     bool is_strided_ = false;
 };
@@ -357,16 +357,16 @@ private:
 class layout_t {
 public:
     layout_t() = default;
-    layout_t(const layout_desc_t &desc, const type_t &type)
+    layout_t(const layout_desc_t &desc, const dsl::type_t &type)
         : desc_(desc), type_(type), base_(0) {}
-    layout_t(const layout_desc_t &desc, const type_t &type, const expr_t &base,
-            const std::vector<block_t> &blocks)
+    layout_t(const layout_desc_t &desc, const dsl::type_t &type,
+            const expr_t &base, const std::vector<block_t> &blocks)
         : desc_(desc), type_(type), base_(base), blocks_(blocks) {}
 
     bool is_empty() const { return type_.is_undef(); }
     bool is_scalar() const { return elems() == 1; }
     const layout_desc_t &desc() const { return desc_; }
-    const type_t &type() const { return type_; }
+    const dsl::type_t &type() const { return type_; }
     const expr_t &base() const { return base_; }
     void set_base(const expr_t &base) { base_ = base; }
     const std::vector<block_t> &blocks() const { return blocks_; }
@@ -392,7 +392,7 @@ public:
     int nblocks(const pvar_t &dim) const;
     int int_base_in_bytes() const { return to_int(base_) * type_.size(); }
     int int_dim_size(const pvar_t &dim) const;
-    bool has_zero_base() const { return is_zero(base_); }
+    bool has_zero_base() const { return base_.is(0); }
     bool has_const_sizes() const;
     bool has_const_strides() const;
     tile_t int_dim_sizes() const;
@@ -430,18 +430,18 @@ public:
     }
 
     layout_t make_dense() const;
-    layout_t retype(const type_t &new_type, bool dense = false) const;
+    layout_t retype(const dsl::type_t &new_type, bool dense = false) const;
     coord_t to_coord(const std::vector<int> &block_idx) const;
     int to_linear_index(const tile_t &tile, const coord_t &coord) const;
     std::string blocks_str() const;
     std::string str() const;
-    std::string str_with_size(const hw_t &hw) const;
+    std::string str_with_size(const dsl::hw_t &hw) const;
 
     IR_DEFINE_DUMP()
 
 private:
     layout_desc_t desc_;
-    type_t type_;
+    dsl::type_t type_;
     // Base offset in in elements of the layout type.
     expr_t base_;
     std::vector<block_t> blocks_;
@@ -556,7 +556,7 @@ public:
     dim_mask_desc_t() = default;
     dim_mask_desc_t(const pvar_t &dim, const expr_t &expr, const expr_t &bound,
             int block, bool has_underflow);
-    bool is_identity() const { return is_zero(c) && is_one(a) && y.is_empty(); }
+    bool is_identity() const { return c.is(0) && a.is(1) && y.is_empty(); }
 
     expr_t to_expr(const coord_t &coord, bool with_const = true) const;
 
@@ -598,7 +598,7 @@ private:
 };
 
 struct plane_t {
-    type_t type;
+    dsl::type_t type;
     // Width and height algorithmic dimensions.
     pvar_t w_dim, h_dim;
     // Width and height block size.
@@ -680,7 +680,7 @@ public:
     const layout_t &layout() const { return layout_; }
     const mask_desc_t &mask_desc() const { return mask_desc_; }
     const plane_t &plane() const { return plane_; }
-    const type_t &type() const { return layout_.type(); }
+    const dsl::type_t &type() const { return layout_.type(); }
     // Transforms the view to a scattered version where elements are strided
     // by stride_bytes value. This is used to generate scattered messages
     // prefetch.

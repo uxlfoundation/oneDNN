@@ -41,8 +41,8 @@ The main IR objects are:
 IR expressions support operator overloading for convenience of use:
 
 ```c++
-expr_t a = var_t::make(type_t::s32(), "a");
-expr_t b = var_t::make(type_t::s32(), "b");
+expr_t a = var_t::make(dsl::type_t::s32(), "a");
+expr_t b = var_t::make(dsl::type_t::s32(), "b");
 expr_t c = 2 * (a + b) - a;
 expr_t c_simplified = simplify(c);
 // (gdb) call c.dump()

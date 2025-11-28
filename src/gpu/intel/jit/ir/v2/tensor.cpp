@@ -575,7 +575,7 @@ bool layout_t::is_blocked_by(const layout_t &other) const {
 
 void layout_t::add_block(
         const pvar_t &dim, const expr_t &size, const expr_t &_stride) {
-    if (is_one(size)) return;
+    if (size.is(1)) return;
     expr_t stride = _stride;
     if (stride.is_empty()) {
         stride = 1;
@@ -756,7 +756,7 @@ layout_t layout_t::sub(const dim_mapper_t &dim_mapper, const coord_t &coord,
             }
             bool is_final = true;
             if (b.has_const_size() && !is_outer) {
-                gpu_assert(is_zero(off));
+                gpu_assert(off.is(0));
                 gpu_assert(!idx_final.has(dim));
                 expr_t div;
                 expr_t mod;
@@ -789,7 +789,7 @@ layout_t layout_t::make_dense() const {
     return layout_t(desc_, type_, base_, new_blocks);
 }
 
-layout_t layout_t::retype(const type_t &new_type, bool dense) const {
+layout_t layout_t::retype(const dsl::type_t &new_type, bool dense) const {
     if (new_type == type_) return *this;
     auto ret = layout_t(desc_, new_type, base_, blocks_);
     if (dense) return ret.make_dense();
@@ -871,14 +871,14 @@ std::string layout_t::str() const {
     ostringstream_t oss;
     oss << blocks_str();
     oss << ":" + type().str();
-    if (!is_zero(base_)) {
+    if (!base_.is(0)) {
         oss << std::endl;
         oss << ir_utils::add_tag("base", base_.str());
     }
     return oss.str();
 }
 
-std::string layout_t::str_with_size(const hw_t &hw) const {
+std::string layout_t::str_with_size(const dsl::hw_t &hw) const {
     ostringstream_t oss;
     oss << str();
     int regs = (hw.ngen_hw() == ngen::HW::Unknown
@@ -1195,7 +1195,7 @@ plane_t::plane_t(const layout_t &layout, const mask_desc_t &mask_desc)
         if (b.has_const_size() && b.int_size() == 1) continue;
         if (!w_block) {
             // Width dimension must be unit-strided.
-            if (!is_one(b.stride)) return;
+            if (!b.stride.is(1)) return;
             w_block = &b;
             continue;
         }
@@ -1231,7 +1231,7 @@ plane_t::plane_t(const layout_t &layout, const mask_desc_t &mask_desc)
         }
     }
     if (!x_mask_desc || !y_mask_desc) return;
-    if (!is_one(x_mask_desc->dim_stride(w_dim))) return;
+    if (!x_mask_desc->dim_stride(w_dim).is(1)) return;
 
     y_stride = y_mask_desc->dim_stride(h_dim);
     if (!y_stride.is<int_imm_t>() && !y_stride.is<const_var_t>()) return;
@@ -1292,8 +1292,8 @@ expr_t grid_splitter_t::index_t::pop(int &n) {
 expr_t grid_splitter_t::register_index(const expr_t &expr, int size) {
     if (expr.is<var_t>()) return expr;
     int idx = (int)virt_grid_idxs_.size();
-    auto var
-            = var_t::make(type_t::s32(), "virt_grid_idx" + std::to_string(idx));
+    auto var = var_t::make(
+            dsl::type_t::s32(), "virt_grid_idx" + std::to_string(idx));
     virt_grid_idxs_.emplace(var, expr);
     var_range_info_.set_bound(var, size);
     return var;

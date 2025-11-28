@@ -74,8 +74,8 @@ public:
 
         gpu_assert(is_var(mem_buf)) << mem_buf;
 
-        auto header_buf
-                = ir_ctx_.create_tmp_var(type_t::byte(type::attr_t::ptr), "h");
+        auto header_buf = ir_ctx_.create_tmp_var(
+                dsl::type_t::byte(dsl::type::attr_t::ptr), "h");
         auto off_store = simplify_store(
                 send->create_offset_store(header_buf, mem_buf, mem_off));
 
@@ -85,7 +85,7 @@ public:
                 off_store = off_store.append(store);
             };
             auto emit_store_s32 = [&](const expr_t &value, int off) {
-                emit_store(cast(value, type_t::s32()), off);
+                emit_store(cast(value, dsl::type_t::s32()), off);
             };
             auto &info = send->block_2d_info;
             int type_size = send->type.size();

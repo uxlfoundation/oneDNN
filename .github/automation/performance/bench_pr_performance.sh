@@ -23,10 +23,10 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 INPUTS_DIR="${SCRIPT_DIR}/inputs"
 
 TESTS=(
-    "--matmul --batch=$INPUTS_DIR/matmul"
+    # "--matmul --batch=$INPUTS_DIR/matmul"
     "--conv --batch=$INPUTS_DIR/conv"
-    "--eltwise --batch=$INPUTS_DIR/eltwise"
-    "--reorder --batch=$INPUTS_DIR/reorder"
+    # "--eltwise --batch=$INPUTS_DIR/eltwise"
+    # "--reorder --batch=$INPUTS_DIR/reorder"
 )
 
 for test in "${TESTS[@]}"

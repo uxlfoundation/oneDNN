@@ -667,8 +667,10 @@ status_t insert_unsqueeze_and_squeeze_for_matmul(
                 // 1D src: [K] -> [1, K]
                 axes.emplace_back(-2);
                 squeeze_axes.emplace_back(-2);
-            } else if (i == 1 && ndims == 1) {
-                // 1D weight: [K] -> [K, 1]
+            } else if (i >= 1 && wei_ndims == 1) {
+                // 1D weight: [K] -> [K, 1], dst of primitive will be [N, 1]
+                // so bias, post binary: [N] -> [N, 1] to align with primive
+                // behavior
                 axes.emplace_back(-1);
                 squeeze_axes.emplace_back(-1);
             }

@@ -477,7 +477,9 @@ struct attr_t {
 
     struct dropout_t {
         float p = 0.f;
-        uint32_t seed = 0;
+        int64_t seed = 0;
+        int64_t offset = 0;
+        bool use_host_scalars = false;
         std::string tag = tag::any;
         bool is_def() const { return p == 0.f; }
     };
@@ -746,7 +748,7 @@ float compute_eltwise_bwd(attr_t::post_ops_t::kind_t kind, float d_dst,
 float compute_binary(
         attr_t::post_ops_t::kind_t kind, float src0, float src1, bool src2);
 void maybe_dropout(const attr_t &attr, float &val, int64_t offset,
-        const dnn_mem_t &dropout);
+        const dnn_mem_t &mask_m);
 void maybe_round(const attr_t &attr, int arg, float &val, int64_t offset,
         dnnl_data_type_t dst_dt);
 void maybe_post_ops(const attr_t &attr, float &val, float sum_val,

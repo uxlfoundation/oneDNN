@@ -1896,6 +1896,7 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
     const bool is_zero_point_arg = (exec_arg & DNNL_ARG_ATTR_ZERO_POINTS);
     const bool is_dropout_p = (exec_arg == DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
     const bool is_dropout_seed = (exec_arg == DNNL_ARG_ATTR_DROPOUT_SEED);
+    const bool is_dropout_offset = (exec_arg == DNNL_ARG_ATTR_DROPOUT_OFFSET);
     const bool is_rounding_seed = (exec_arg == DNNL_ARG_ATTR_ROUNDING_SEED);
 
     if (is_post_ops_arg) {
@@ -1956,7 +1957,10 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         ref_mem.set_f32_elem(0, attr.dropout.p);
         TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
     } else if (is_dropout_seed) {
-        ref_mem.set_elem(0, attr.dropout.seed);
+        ref_mem.set_s64_elem(0, attr.dropout.seed);
+        TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
+    } else if (is_dropout_offset) {
+        ref_mem.set_s64_elem(0, attr.dropout.offset);
         TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
     } else if (is_rounding_seed) {
         ref_mem.set_elem(0, attr.rounding_mode.seed);

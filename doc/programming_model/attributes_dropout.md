@@ -16,18 +16,16 @@ on a deterministic PRNG (current implementation uses a variation of Philox
 algorithm) and transforms the values as follows:
 
 \f[
-    \mathrm{mask}[:] = (\mathrm{PRNG}(S, ...) > P) \\
+    \mathrm{mask}[:] = (\mathrm{PRNG}(S, \mathrm{off}, :) > P) \\
     \mathrm{dst}[:] = \mathrm{mask}[:] \cdot {{\mathrm{dst}[:]} \over {1 - P}}
 \f]
 
 where:
 
-* \f$\mathrm{mask}\f$ is the output buffer (always of the same dimensions and
-usually of the same layout as \f$\mathrm{dst}\f$, but potentially differing from
-it in type that can only be `u8`) whose values may be either 0 if the
-corresponding value in \f$\mathrm{dst}\f$ got zeroed (a.k.a. dropped out) or 1
+* \f$\mathrm{mask}\f$ values may be either 0 if the corresponding
+value in \f$\mathrm{dst}\f$ got zeroed (a.k.a. dropped out) or 1
 otherwise
-* \f$S\f$ is the integer seed for the PRNG algorithm
+* \f$S, off\f$ are the seed and the offset for the PRNG algorithm
 * \f$P\f$ is the probability for any given value to get dropped out,
 \f$0 \leq P \leq 1\f$
 
@@ -36,12 +34,38 @@ otherwise
 - C: @ref dnnl_primitive_attr_get_dropout, @ref dnnl_primitive_attr_set_dropout
 - C++: @ref dnnl::primitive_attr::get_dropout, @ref dnnl::primitive_attr::set_dropout
 
-If the dropout operation gets specified in the primitive's attributes, the user
-must provide three additional buffers to it on execution:
+The dropout primitive attribute has the following parameters:
 
-* `DNNL_ARG_ATTR_DROPOUT_MASK`: through this ID the user has to pass the
-\f$\mathrm{mask}\f$ output buffer
-* `DNNL_ARG_ATTR_DROPOUT_PROBABILITY`: this is a single-value `f32` input buffer
-that holds \f$P\f$
-* `DNNL_ARG_ATTR_DROPOUT_SEED`: this is a single-value `s32` input buffer that
-holds \f$S\f$
+* `mask_desc`: when set to zero (default) memory descriptor, the mask
+ values are not written to memory. Otherwise, it should have the same
+ dimensions and the same layout as \f$\mathrm{dst}\f$, as well as `u8`
+ data type.
+* `seed_dt`: data type of the seed argument \f$S\f$, `s64` is recommended, `s32`
+is supported for backward compatibility reasons. 
+* `use_offset`: boolean to express if offset argument will be provided
+  by user at execution time. When false, offset of 0 is assumed.
+* `use_host_scalars`: boolean specifying if probability, seed, and offset memory
+  arguments will be passed as host_scalar memory objects if `true`, or
+  as device memory objects otherwise.
+
+When the dropout primitive attribute is set, the user must provide
+three additional memory arguments to the primitive execution:
+
+* `DNNL_ARG_ATTR_DROPOUT_PROBABILITY`: this is a single-value `f32`
+input memory argument that holds \f$P\f$.
+* `DNNL_ARG_ATTR_DROPOUT_SEED`: this is a single-value input memory
+argument that holds \f$S\f$. Its datatype is specified by the
+`seed_dt` primitive attribute parameter and can either be `s32` or
+`s64`.
+
+Additionally, the following arguments conditionally need to be passed
+at execution time as well:
+
+* `DNNL_ARG_ATTR_DROPOUT_MASK`: if the `mask_md` primitive attribute
+parameter is not a zero memory descriptor, the user has to pass the
+\f$\mathrm{mask}\f$ through this output memory argument.
+* `DNNL_ARG_ATTR_DROPOUT_OFFSET`: if the `use_offset` primitive
+attribute parameter is set, the user has to pass the
+\f$\mathrm{off}\f$ input through this memory argument. This is a
+single-value `s64` memory argument.
+

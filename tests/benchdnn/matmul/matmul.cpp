@@ -987,8 +987,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 // TODO: introduce an order of processing arguments to avoid
                 // post filling manipulations.
                 break;
+            case DNNL_ARG_ATTR_DROPOUT_PROBABILITY:
+            case DNNL_ARG_ATTR_DROPOUT_OFFSET:
             case DNNL_ARG_ATTR_DROPOUT_SEED: {
-                ref_mem = dnn_mem_t(mem.md_, dnnl_s32, tag::abx, ref_engine,
+                if (prb->attr.dropout.use_host_scalars) break;
+                auto dt = exec_arg == DNNL_ARG_ATTR_DROPOUT_PROBABILITY
+                        ? dnnl_f32
+                        : dnnl_s64;
+                ref_mem = dnn_mem_t(mem.md_, dt, tag::abx, ref_engine,
                         /* prefill = */ false);
                 // No break to fall back into `default` call with initialization.
             }

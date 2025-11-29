@@ -663,8 +663,10 @@ status_t insert_unsqueeze_and_squeeze_for_matmul(
         for (size_t i = 0; i < op->num_inputs(); i++) {
             int32_t ndims = op->get_input_logical_tensor(i).ndims;
             std::vector<int64_t> axes;
-            if (i == 0 && ndims == 1) {
-                // 1D src: [K] -> [1, K]
+            if ((i >= 0 && i != 1) && src_ndims == 1) {
+                // 1D src: [K] -> [1, K], dst of primitive will be [1, N]
+                // so bias, post binary: [N] -> [1, N] to align with primive
+                // behavior
                 axes.emplace_back(-2);
                 squeeze_axes.emplace_back(-2);
             } else if (i >= 1 && wei_ndims == 1) {

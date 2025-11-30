@@ -2628,17 +2628,18 @@ void jit_uni_reorder_t::reduce_compensation(char *out,
     static constexpr auto comp_dt_size = sizeof(int32_t);
     static constexpr int32_t comp_s8s8_shift = 128;
 
-    // Note: We do not need to explicitly zero-out compensation buffer, as the
-    // per_thread buffers are already zeroed out in the padded area.
-    const auto G = pd()->with_groups_ ? od.padded_dims()[0] : 1;
-    const auto N = od.padded_dims()[pd()->with_groups_ ? 1 : 0];
-    const auto GN = G * N;
+    auto masked_dim_prod = 1;
+    auto mask = pd()->prb_.compensation_mask;
+    for (int dim = 0; dim < pd()->prb_.ndims; dim++) {
+        if ((mask >> dim) & 1) { masked_dim_prod *= od.padded_dims()[dim]; }
+    }
+
     const bool req_s8s8_comp = pd()->prb_.req_s8s8_comp;
     const bool req_asymmetric_comp = pd()->prb_.req_asymmetric_comp;
-    const size_t zp_offset
-            = offset + (pd()->prb_.req_s8s8_comp ? GN * comp_dt_size : 0);
+    const size_t zp_offset = offset
+            + (pd()->prb_.req_s8s8_comp ? masked_dim_prod * comp_dt_size : 0);
 
-    parallel_nd(GN, [&](int idx) {
+    parallel_nd(masked_dim_prod, [&](int idx) {
         int32_t acc = 0;
         for (int ithr = 0; ithr < nthr; ithr++) {
             acc -= compensation_reduce_scratch[ithr * wspace_per_thr_size

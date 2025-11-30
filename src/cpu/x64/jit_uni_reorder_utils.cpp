@@ -133,20 +133,6 @@ status_t cvt_mem_desc_to_layout_desc(const memory_desc_t &md_,
     return success;
 }
 
-static bool is_with_groups(const memory_desc_t &dst_md) {
-    using namespace memory_extra_flags;
-    auto dst_d = memory_desc_wrapper(dst_md);
-    const int grp_bit = 1 << 1;
-    auto check_flag_and_mask = [&](int flag, int mask) {
-        return (dst_d.extra().flags & flag) && (mask & grp_bit);
-    };
-
-    return check_flag_and_mask(
-                   compensation_conv_s8s8, dst_d.extra().compensation_mask)
-            || check_flag_and_mask(compensation_conv_asymmetric_src,
-                    dst_d.extra().asymm_compensation_mask);
-}
-
 static inline int get_next_parent_node(node_t *nodes, int ndims, int cur_node) {
     const int cur_id = nodes[cur_node].dim_id;
     for (int d = cur_node + 1; d < ndims; ++d) {
@@ -309,10 +295,9 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
     p.req_asymmetric_comp = om_d.extra().flags
             & memory_extra_flags::compensation_conv_asymmetric_src;
 
-    const bool with_groups = is_with_groups(omd);
-
     auto mask_ok = [&](bool check, int mask) {
-        return IMPLICATION(check, mask == (with_groups ? 0x3 : 0x1));
+        static const std::set<int> supported_masks = {0x1, 0x2, 0x3};
+        return IMPLICATION(check, supported_masks.count(mask) > 0);
     };
 
     VDISPATCH_REORDER_IC(
@@ -349,12 +334,6 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
                 ? om_d.extra().compensation_mask
                 : (p.req_asymmetric_comp ? om_d.extra().asymm_compensation_mask
                                          : tr::prb_t::invalid_comp_mask);
-
-        if (p.compensation_mask == tr::prb_t::asymmetric_comp_mask)
-            return unimplemented;
-
-        assert(p.compensation_mask == tr::prb_t::standard_comp_mask
-                || p.compensation_mask == tr::prb_t::comp_mask_with_groups);
     }
 
     int ndims = 0;

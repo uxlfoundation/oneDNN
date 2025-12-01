@@ -113,20 +113,11 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
 
     if (mynew) {
     // @@@@@@@ !!!!! must be aligned w/ init_interface() (gen_kernel.cpp, "abo" argument, see below)
-#if 0
-        bool abo_precond = (problem.aoPtrDims == -1 && problem.aoPtrDims == -1) &&
-            (problem.ao_hostscalar || problem.bo_hostscalar);
-        if (abo_precond) {
-            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> @@@@ interface_.newArgument abo");
-            interface_.newArgument("abo", DataType::ud);
-        }
-#endif
-        int32_t abo = -2;
         bool abo_precond = problem->ao_hostscalar || problem->bo_hostscalar; // @@@@@ ??????? better ?????
         //VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; abo_precond = %d", abo_precond);
         if (abo_precond) {
-            arg_list.set(argn++, abo);
-            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add abo");
+            arg_list.set(argn++, abo_hostsize);
+            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add abo_hostsize");
         }
     }
 
@@ -546,28 +537,6 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         cmask = pd()->sum_ab_cmask();
     }
 
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-#if 0 // just to debug
-
-    ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
-    VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : ctx.args().a_zero_point = %s", ctx.args().a_zero_point ? "something" : "empty");
-
-
-//    const auto &A0 = GEMM_CTX_ARG_STORAGE(a_zero_point);
-    if (ctx.args().a_zero_point->is_host_scalar()) { // it works ; is thru pd better
-//    if (pd()->attr()->zero_points_.get ????) {
-        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : ctx.args().a_zero_point - host scalar");
-        const auto &a0_storage = GEMM_CTX_ARG_STORAGE(a_zero_point);
-        int zp_val = 0;
-        CHECK(maybe_get_zp_as_int(a0_storage, zp_val));
-        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : zp_val = %d",zp_val);
-    } else {
-        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : ctx.args().a_zero_point - buffer");
-    }
-
-#endif
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
@@ -576,27 +545,23 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         //@@@@@@@@@@@@@@@@@@@@@@@
 
         if (pd()->attr()->zero_points_.has_host_scalars()) {
+            int a_zp_val = 0;
+            int b_zp_val = 0;
             VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : there are host_scalars() !!!!");
             if (ao->is_host_scalar()) {
-                int a_zp_val = 0;
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : ao is host_scalar");
                 CHECK(maybe_get_zp_as_int(*ao, a_zp_val));
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a_zp_val = %d", a_zp_val);
             }
             if (bo->is_host_scalar()) {
-                int b_zp_val = 0;
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : bo is host_scalar");
                 CHECK(maybe_get_zp_as_int(*bo, b_zp_val));
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : b_zp_val = %d", b_zp_val);
             }
 
-            // @@@@@@@@@@@@@@@@@@@ pack them into abo_hostside
-
+            abo_hostside = -1 * a_zp_val;
         }
-
-
-
-
+        //@@@@@@@@@@@@@@@@@@@@@@@
     }
 
     //VDEBUGINFO(4, primitive, gemm, "MY execute ++++");

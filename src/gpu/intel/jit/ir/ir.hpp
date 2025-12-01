@@ -660,32 +660,6 @@ private:
     object_set_t<expr_t> def_vars_;
 };
 
-class ir_path_t {
-public:
-    void push(const object::impl_t *obj) { path_.push_back(obj); }
-
-    void pop() { path_.pop_back(); }
-
-    const object::impl_t *back() const {
-        gpu_assert(!is_empty());
-        return path_.back();
-    }
-
-    bool is_empty() const { return path_.empty(); }
-
-    void merge(const ir_path_t &other) {
-        size_t idx;
-        size_t min_size = std::min(path_.size(), other.path_.size());
-        for (idx = 0; idx < min_size; idx++) {
-            if (path_[idx] != other.path_[idx]) break;
-        }
-        path_.resize(idx);
-    }
-
-private:
-    std::vector<const object::impl_t *> path_;
-};
-
 // Only for statements that create scope.
 stmt_t get_stmt_body(const stmt_t &stmt);
 

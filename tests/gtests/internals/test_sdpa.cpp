@@ -1336,7 +1336,6 @@ std::vector<std::chrono::nanoseconds> timeit(
     return times;
 }
 
-
 void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         dnnl::engine &eng, dnnl::stream &strm, dnnl::memory &query,
         dnnl::memory &key, dnnl::memory::data_type scale_dt,
@@ -1678,7 +1677,6 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     };
     bwd_loop();
     strm.wait();
-
 
     /*
     auto loop_bwd_prim
@@ -2116,7 +2114,6 @@ public:
 
         sdpa_bwd.execute(strm, sdpa_bwd_args); //TODO!!
         strm.wait();
-
 
         /*
         auto loop_bwd_quantized

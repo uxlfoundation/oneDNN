@@ -528,7 +528,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         iscale = native_recip(scale);
 #endif
 #endif
-        scale *= 1.442695f; // log2(e)
+        //scale *= 1.442695f; // log2(e)
     }
 
 #if PREFETCH_K0
@@ -783,7 +783,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_vbroadcast_sub(&S_tile, S_max_tile);
 
 /* Scale + exponentiate */
-#define scaled_exp(x) native_vexp2(x *scale)
+#define scaled_exp(x) native_vexp2(x *scale * 1.442695f)
         tile_elementwise(S_tile, scaled_exp);
 
         /* Accumulate sums. S tile is transposed for easy summation. */
@@ -807,7 +807,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
         /* Rescale existing accumulator and sums to match new maxima */
         if (!first) {
-#define binary_exp_sub(x, y) native_vexp2(scale *((x) - (y)))
+#define binary_exp_sub(x, y) native_vexp2(scale * 1.442695f * ((x) - (y)))
 #define binary_mul(x, y) ((x) * (y))
             tile_binary(S_max_tile_old, S_max_tile, binary_exp_sub);
             tile_binary(S_sum_tile, S_max_tile_old, binary_mul);
@@ -838,13 +838,21 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             tile_store_full(S_sum_tile, S_sum_slm, ugemm_kq_wg_tile_n, sg_j0_kq,
                     sg_i_kq);
 #if IS_TRAINING
-            // save columns sums and maxes to workspace for training pass
+
+#define log2(x) (native_vlog2(x) * 0.6931471805f)
+            tile_elementwise(S_sum_tile, log2);
+#define scale_op(x) ((x)*scale)
+            tile_elementwise(S_max_tile_old, scale_op);
+            tile_binary(S_max_tile_old, S_sum_tile, binary_add);
+
+            // save columns logsumexp to workspace for training pass
             global float *ws_maxes = ws;
-            global float *ws_sums = ws + q;
             tile_store_full(S_max_tile_old, ws_maxes, ugemm_kq_wg_tile_n,
                     sg_j0_kq + wg_j0, 0);
-            tile_store_full(S_sum_tile, ws_sums, ugemm_kq_wg_tile_n,
-                    sg_j0_kq + wg_j0, 0);
+
+            //global float *ws_sums = ws + q;
+            //tile_store_full(S_sum_tile, ws_sums, ugemm_kq_wg_tile_n,
+            //sg_j0_kq + wg_j0, 0);
 #endif
         }
 

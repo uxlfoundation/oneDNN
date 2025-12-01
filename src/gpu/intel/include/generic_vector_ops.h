@@ -73,6 +73,23 @@ float16 __attribute__((overloadable)) native_vexp2(float16 x) {
     return native_exp2(x);
 }
 
+float1 __attribute__((overloadable)) native_vlog2(float1 x) {
+    x[0] = native_log2(x[0]);
+    return x;
+}
+float2 __attribute__((overloadable)) native_vlog2(float2 x) {
+    return native_log2(x);
+}
+float4 __attribute__((overloadable)) native_vlog2(float4 x) {
+    return native_log2(x);
+}
+float8 __attribute__((overloadable)) native_vlog2(float8 x) {
+    return native_log2(x);
+}
+float16 __attribute__((overloadable)) native_vlog2(float16 x) {
+    return native_log2(x);
+}
+
 float1 __attribute__((overloadable)) vselect(float1 x, float1 y, int1 c) {
     x[0] = select(x[0], y[0], c[0]);
     return x;

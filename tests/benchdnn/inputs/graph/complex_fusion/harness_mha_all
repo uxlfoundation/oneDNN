@@ -92,6 +92,9 @@
 --reset --in-shapes=0:1x8x2x1x256+1:1x8x1x256x257+8:1x8x2x1x257+12:1x8x1x257x256 --case=complex_fusion/mha/gemma2-bf16-f32.json
 --reset --op-attrs=0:transpose_b:1 --case=complex_fusion/mha/gemma2-bf16-f32.json
 
+# sdpa with non-contiguous strides in mask add
+--reset --in-shapes=5:1x1x384x384*147840x147840x385x1 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
+
 # Re-written graphs
 --reset --in-shapes=4:4x16x32x256+5:4x16x256x33+0:4x16x33x256+1:4x1x1x33+3:4x1x32x33 --case=complex_fusion/mha/MHA-GPT-inf-fp32-bs1.json
 --reset --mb=20 --case=complex_fusion/mha/MHA-bert_large-inf-fp32-bs1.json

@@ -542,7 +542,8 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a || b w/ zp ; setup ao & bo");
 
-        //@@@@@@@@@@@@@@@@@@@@@@@
+        //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        //@@@@@@@ chaeck all dt @@@@@@@
 
         if (pd()->attr()->zero_points_.has_host_scalars()) {
             int a_zp_val = 0;
@@ -559,7 +560,11 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : b_zp_val = %d", b_zp_val);
             }
 
-            abo_hostside = -1 * a_zp_val;
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a b _zp_val = %d %d",
+                       static_cast<int16_t>(a_zp_val),static_cast<int16_t>(b_zp_val));
+
+            abo_hostside = (static_cast<int32_t>(-1 * b_zp_val) << 16) | (static_cast<uint16_t>(-1 * a_zp_val) & 0xFFFF);
+
         }
         //@@@@@@@@@@@@@@@@@@@@@@@
     }

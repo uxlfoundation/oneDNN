@@ -294,7 +294,7 @@ bool get_binary_sdt_and_ddt(const deserialized_op_t &base_op_ref,
     return true;
 }
 
-bool get_binary_stag_and_dtag(const deserialized_op_t &base_op_ref,
+bool get_binary_tags_and_strides(const deserialized_op_t &base_op_ref,
         ::binary::settings_t &op_setting) {
     // src1, src2 and dst could have different tags.
     std::string stag0, stag1, dtag;
@@ -314,6 +314,12 @@ bool get_binary_stag_and_dtag(const deserialized_op_t &base_op_ref,
         op_setting.stag = {{std::move(stag0), std::move(stag1)}};
     }
     op_setting.dtag.front() = std::move(dtag);
+
+    logical_tensor::dims src_strides = base_op_ref.in_lts_[0].stride_;
+    logical_tensor::dims wei_strides = base_op_ref.in_lts_[1].stride_;
+    const logical_tensor::dims &dst_strides = base_op_ref.out_lts_[0].stride_;
+    op_setting.strides.front()
+            = vdims_t {src_strides, wei_strides, dst_strides};
     return true;
 }
 
@@ -348,7 +354,7 @@ bool get_binary_alg(
             binary::get_binary_sdt_and_ddt(base_op_ref, op_setting), res);
 
     DNN_GRAPH_CHECK_SETTINGS(
-            binary::get_binary_stag_and_dtag(base_op_ref, op_setting), res);
+            binary::get_binary_tags_and_strides(base_op_ref, op_setting), res);
 
     DNN_GRAPH_CHECK_SETTINGS(
             binary::get_binary_alg(base_op_ref, op_setting.alg.front()), res);

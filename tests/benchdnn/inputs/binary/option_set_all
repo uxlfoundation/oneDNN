@@ -105,3 +105,4 @@
 --stag=abc:bac       4x6x7:4x6x7 4x6x7:4x6x1
 --stag=adbc:abcd,abcd:abdc     1x10x10x8:1x10x10x8
 
+--strides=:1049600x1049600x1025x1: 4x16x1024x1024:1x1x1024x1024

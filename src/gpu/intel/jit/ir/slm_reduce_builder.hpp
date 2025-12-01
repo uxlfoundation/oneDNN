@@ -20,6 +20,7 @@
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/ir/ir.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
+#include "gpu/intel/jit/pass/alloc.hpp"
 #include "ngen.hpp"
 
 #include <vector>

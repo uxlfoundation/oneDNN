@@ -17,7 +17,7 @@
 #include "gpu/intel/conv/jit/pipeline.hpp"
 
 #include "gpu/intel/jit/ir/send.hpp"
-#include "gpu/intel/jit/utils/trace.hpp"
+#include "gpu/intel/jit/pass/alloc.hpp"
 
 namespace dnnl {
 namespace impl {

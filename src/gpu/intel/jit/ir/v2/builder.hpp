@@ -24,6 +24,7 @@
 #include "gpu/intel/jit/ir/v2/plan.hpp"
 #include "gpu/intel/jit/ir/v2/send.hpp"
 #include "gpu/intel/jit/ir/v2/tensor.hpp"
+#include "gpu/intel/jit/pass/alloc.hpp"
 
 namespace dnnl {
 namespace impl {

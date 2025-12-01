@@ -25,6 +25,7 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
+// @@@@@@@@@@@@ unify ??????????????????
 // Get value of host side scalar from storage and convert to float
 
 template <typename ScalarType>
@@ -41,7 +42,7 @@ status_t get_scalar_value_as_float(float &scalar_value,
 
 status_t maybe_get_scale_as_float(
         const memory_storage_t &scale_storage, float &scalar_value);
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 template <typename ScalarType>
 status_t get_scalar_value_as_int(int &scalar_value,
         const host_scalar_memory_storage_t *scale_storage) {
@@ -56,7 +57,7 @@ status_t get_scalar_value_as_int(int &scalar_value,
 
 status_t maybe_get_zp_as_int(
         const memory_storage_t &scale_storage, int &scalar_value);
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 } // namespace gemm
 } // namespace intel
 } // namespace gpu

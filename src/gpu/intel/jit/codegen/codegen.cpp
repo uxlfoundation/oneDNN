@@ -116,7 +116,7 @@ public:
                 rbd = create_bank_conflict_allocation(obj);
                 use_bc_alloc = true;
             } else if (obj.size * 8 <= max_ngen_type_bits) {
-                rbd = scope.alloc_reg_data(type_t::u(obj.size * 8));
+                rbd = scope.alloc_reg_data(dsl::type_t::u(obj.size * 8));
             } else {
                 const int regs
                         = utils::div_up(obj.size, ngen::GRF::bytes(hw()));
@@ -604,7 +604,7 @@ private:
             gpu_assert(dst.byte_offset() == src0.getByteOffset())
                     << "dst/src0 must be aligned to the same GRF offset.";
             align_src_dst_offset(host_, scope, mod, dst, src1, src2);
-            if (mad_func.dst_type == type_t::f64()
+            if (mad_func.dst_type == dsl::type_t::f64()
                     && src1.reg_data().getHS() == 0
                     && src1.reg_data().getVS() == 0) {
                 // Workaround for sporadic f64 mad errors with broadcast src1 on XeHPC.
@@ -618,7 +618,8 @@ private:
     void fill_buf(const ngen_operand_t &buf_op, int size,
             const ngen_operand_t &pattern = {}) const {
         auto &rd = buf_op.reg_buf_data();
-        type_t type = (pattern.is_invalid() ? type_t::f32() : type_t::u32());
+        dsl::type_t type = (pattern.is_invalid() ? dsl::type_t::f32()
+                                                 : dsl::type_t::u32());
         int grf_size = ngen::GRF::bytes(hw());
         int step = 2 * grf_size / type.size();
         int elems = size / type.size();
@@ -828,7 +829,7 @@ public:
 
     constexpr ngen::HW hw() const { return host_->getHardware(); }
 
-    bool is_int_up_convert(const expr_t &e, type_t &type) const {
+    bool is_int_up_convert(const expr_t &e, dsl::type_t &type) const {
         auto it = int_up_converts_.find(e);
         if (it == int_up_converts_.end()) return false;
         type = it->second;
@@ -999,10 +1000,10 @@ public:
         auto dst_op = alloc_dst_op(obj);
 
         // Handle ptr -> u64 and u64 -> ptr casts.
-        if (utils::one_of(
-                    obj.type, type_t::u64(), type_t::byte(type::attr_t::ptr))
-                && utils::one_of(obj.expr.type(), type_t::u64(),
-                        type_t::byte(type::attr_t::ptr))) {
+        if (utils::one_of(obj.type, dsl::type_t::u64(),
+                    dsl::type_t::byte(dsl::type::attr_t::ptr))
+                && utils::one_of(obj.expr.type(), dsl::type_t::u64(),
+                        dsl::type_t::byte(dsl::type::attr_t::ptr))) {
             eval(obj.expr, dst_op);
             bind(obj, dst_op);
             return;
@@ -1142,7 +1143,7 @@ public:
         }
 
         auto dst_op = alloc_dst_op(obj);
-        auto op = ngen_operand_t(scope_.alloc_reg_data(type_t::u16(1)), 1);
+        auto op = ngen_operand_t(scope_.alloc_reg_data(dsl::type_t::u16(1)), 1);
         for (auto &chunk : chunks) {
             int off = std::get<0>(chunk);
             int length = std::get<1>(chunk);
@@ -1240,14 +1241,16 @@ private:
     }
 
     // Pre-allocates a strided register region for expression `e` if needed.
-    ngen_operand_t maybe_alloc_strided_op(const type_t &res_type,
+    ngen_operand_t maybe_alloc_strided_op(const dsl::type_t &res_type,
             const expr_t &e, ngen_register_scope_t &scope) {
         // Need q-strided region for `e` if res_type is q/uq and `e` is of a
         // sub-q data type and not a scalar.
         if (e.type().is_scalar()) return ngen_operand_t();
-        if (!utils::one_of(res_type.base(), type_t::s64(), type_t::u64()))
+        if (!utils::one_of(
+                    res_type.base(), dsl::type_t::s64(), dsl::type_t::u64()))
             return ngen_operand_t();
-        if (utils::one_of(e.type().base(), type_t::s64(), type_t::u64()))
+        if (utils::one_of(
+                    e.type().base(), dsl::type_t::s64(), dsl::type_t::u64()))
             return ngen_operand_t();
 
         auto *shuffle = e.as_ptr<shuffle_t>();
@@ -1348,7 +1351,8 @@ private:
         ngen_operand_t a_, b_;
     };
 
-    void split_by_and(const expr_t &e, std::vector<conjunct_t> &cv, type_t ty) {
+    void split_by_and(
+            const expr_t &e, std::vector<conjunct_t> &cv, dsl::type_t ty) {
         if (auto bin = e.as_ptr<binary_op_t>()) {
             if (bin->op_kind == op_kind_t::_and) {
                 split_by_and(bin->a, cv, ty);
@@ -1584,7 +1588,7 @@ private:
     ngen_register_scope_t &scope_;
     bool allow_vert_stride_region_ = true;
 
-    object_eq_map_t<expr_t, type_t> int_up_converts_;
+    object_eq_map_t<expr_t, dsl::type_t> int_up_converts_;
 };
 
 class setup_visitor_t : public ir_visitor_t {

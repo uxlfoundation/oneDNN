@@ -99,7 +99,7 @@ public:
         return alloc_reg_buf(regs, base_bundle);
     }
 
-    reg_buf_data_t alloc_reg_data(const type_t &type, int stride = 1,
+    reg_buf_data_t alloc_reg_data(const dsl::type_t &type, int stride = 1,
             ngen::Bundle bundle = ngen::Bundle()) {
         if (type.is_scalar()) {
             auto sub = alloc_sub(to_ngen(type), bundle);

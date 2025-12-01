@@ -49,9 +49,9 @@ public:
     int common_src_zero_point = 0;
     int common_wei_zero_point = 0;
     int common_dst_zero_point = 0;
-    type_t src_zp_type = type_t::s32();
-    type_t wei_zp_type = type_t::s32();
-    type_t dst_zp_type = type_t::s32();
+    dsl::type_t src_zp_type = dsl::type_t::s32();
+    dsl::type_t wei_zp_type = dsl::type_t::s32();
+    dsl::type_t dst_zp_type = dsl::type_t::s32();
 
     zero_points_config_t(const primitive_desc_t *pd = nullptr)
         : do_src_compensation(pd
@@ -167,7 +167,7 @@ public:
         , compute_expr_(compute_expr)
         , do_convert_(do_convert) {
         if (op_var_.is_empty())
-            op_var_ = var_t::make(type_t::f32(), make_op_var_name(buf));
+            op_var_ = var_t::make(dsl::type_t::f32(), make_op_var_name(buf));
     }
 
     bool is_input() const { return is_input_; }
@@ -197,7 +197,7 @@ public:
         return ret;
     }
 
-    void retype(const type_t &new_type) { view_ = view_.retype(new_type); }
+    void retype(const dsl::type_t &new_type) { view_ = view_.retype(new_type); }
 
     void require_masked_update() { needs_masked_update_ = true; }
 
@@ -236,7 +236,8 @@ public:
 
     const view_t &cp_view() const { return cp_view_; };
 
-    virtual view_t create_view(const type_t &type, uint32_t rhs_mask) const {
+    virtual view_t create_view(
+            const dsl::type_t &type, uint32_t rhs_mask) const {
         std::vector<dim_t> rhs_dims = cp_view_.vdims().values();
         uint32_t bound_check_mask = 0;
         for (int i = 0; i < int(rhs_dims.size()); i++) {
@@ -256,7 +257,7 @@ public:
     }
 
     virtual view_t create_src_zp_view(uint32_t mask) const {
-        return create_view(type_t::s32(), mask);
+        return create_view(dsl::type_t::s32(), mask);
     }
 
     virtual view_t try_create_bias_view(uint32_t mask) const { return {}; }

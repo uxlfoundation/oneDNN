@@ -99,7 +99,7 @@ private:
 
 struct offset_params_t {
     // Type of the offset.
-    type_t type;
+    dsl::type_t type;
     // Execution size:
     // - esize = 1: used as a scalar
     // - esize > 1: used as a vector
@@ -122,8 +122,8 @@ struct offset_params_t {
     // Prefix for the buffer name.
     std::string buf_prefix;
 
-    offset_params_t(
-            const type_t &type, int esize = 1, const char *buf_prefix = nullptr)
+    offset_params_t(const dsl::type_t &type, int esize = 1,
+            const char *buf_prefix = nullptr)
         : type(type), esize(esize) {
         if (buf_prefix) this->buf_prefix = buf_prefix;
     }
@@ -155,7 +155,7 @@ struct offset_t {
     // offset.
     expr_t buf;
     // Offset type (scalar or vector).
-    type_t type;
+    dsl::type_t type;
     // Scalar base.
     expr_t base;
     // Scalar shift.
@@ -234,7 +234,7 @@ struct offset_t {
 
     XE_DEFINE_DUMP()
 
-    static bool can_reuse_base(const type_t &type, const expr_t &base,
+    static bool can_reuse_base(const dsl::type_t &type, const expr_t &base,
             const expr_t &shift, const expr_t &shift_vec,
             const std::vector<expr_t> &loop_incs) {
         if (!type.is_scalar()) return false;
@@ -301,8 +301,8 @@ public:
     send_header_t add_header(int version, const send_1d_desc_t &desc,
             const expr_t &mem_buf, const addr_t &addr, const expr_t &addr_inc,
             const loop_nest_t &loop_nest) {
-        auto base0 = cast(mem_buf, type_t::u64());
-        auto params = offset_params_t(type_t::u64(), desc.slots, "h");
+        auto base0 = cast(mem_buf, dsl::type_t::u64());
+        auto params = offset_params_t(dsl::type_t::u64(), desc.slots, "h");
         params.buf_align = buf_mgr_.ir_ctx().grf_size();
         params.allow_inline_init = true;
         auto off = get_offset(version, base0, addr.base, addr.slot_incs,
@@ -376,7 +376,7 @@ private:
         if (is_const(e) || e.is<const_var_t>() || e.is<var_t>()) return e;
         auto it = expr_to_let_var_.find(e);
         if (it != expr_to_let_var_.end()) return it->second;
-        auto tmp_var = buf_mgr_.ir_ctx().create_tmp_var(type_t::s32());
+        auto tmp_var = buf_mgr_.ir_ctx().create_tmp_var(dsl::type_t::s32());
         let_stmts_.push_back(let_t::make(tmp_var, e));
         expr_to_let_var_.emplace(e, tmp_var);
         return tmp_var;
@@ -455,7 +455,7 @@ class ir_builder_t;
 
 class var_ref_t {
 public:
-    var_ref_t(ir_builder_t *parent, const type_t &type, const expr_t &buf)
+    var_ref_t(ir_builder_t *parent, const dsl::type_t &type, const expr_t &buf)
         : parent_(parent), type_(type), buf_(buf) {
         gpu_assert(buf_.type().is_ptr());
     }
@@ -469,7 +469,7 @@ public:
 
 private:
     ir_builder_t *parent_;
-    type_t type_;
+    dsl::type_t type_;
     expr_t buf_;
 };
 
@@ -499,7 +499,7 @@ public:
                         : _name);
         return buf_mgr_->get(name, size);
     }
-    var_ref_t alloc_var(const type_t &type, const std::string &_name) {
+    var_ref_t alloc_var(const dsl::type_t &type, const std::string &_name) {
         const auto &name = (buf_mgr_->has(_name)
                         ? buf_mgr_->ir_ctx().create_tmp_name(_name)
                         : _name);
@@ -692,7 +692,7 @@ public:
     }
 
     expr_t get_grid_size(const std::string &name) const {
-        return get_arg(type_t::u32(), name + "_grid_size");
+        return get_arg(dsl::type_t::u32(), name + "_grid_size");
     }
 
     expr_t get_idiv_magic(const expr_t &value) const {
@@ -712,10 +712,10 @@ public:
                     << "Expected var/const var: " << value;
             name = value.str();
         }
-        return get_arg(type_t::u64(), name + "_magic");
+        return get_arg(dsl::type_t::u64(), name + "_magic");
     }
 
-    expr_t get_arg(const type_t &type, const std::string &name) const {
+    expr_t get_arg(const dsl::type_t &type, const std::string &name) const {
         gpu_assert(kernel_iface_.has(name)) << "Cannot find argument " << name;
         auto var = kernel_iface_.find_arg(name);
         gpu_assert(var.type() == type) << "Type mismatch, found: " << var.type()

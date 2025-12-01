@@ -42,7 +42,7 @@ public:
         , prb_(prb)
         , zp_dst_(zp_dst) {}
 
-    view_t create_view(const type_t &type, uint32_t mask) const override {
+    view_t create_view(const dsl::type_t &type, uint32_t mask) const override {
         return intel::jit::post_op_view_mapper_t::create_view(
                 type, normalize_mask(mask));
     }

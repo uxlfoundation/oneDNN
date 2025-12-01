@@ -53,7 +53,6 @@ static type_t f16 = type_t::f16();
 static type_t bf16 = type_t::bf16();
 
 using expr_t = jit::expr_t;
-using type_t = jit::type_t;
 using kernel_t = jit::kernel_t;
 using send_cache_hint_t = jit::send_cache_hint_t;
 

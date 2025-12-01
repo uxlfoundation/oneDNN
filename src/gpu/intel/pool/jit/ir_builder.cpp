@@ -46,7 +46,7 @@ public:
     post_op_view_mapper_t(const view_t &cp_view, const int ndims)
         : base_t(cp_view), ndims_(ndims) {}
 
-    view_t create_view(const type_t &type, uint32_t mask) const override {
+    view_t create_view(const dsl::type_t &type, uint32_t mask) const override {
         return base_t::create_view(type, normalize_mask(mask));
     }
 
@@ -88,7 +88,7 @@ private:
     }
 
     static tile_t dims_to_3d(const std::vector<dim_t> &dims) {
-        layout_t dummy_layout(type_t::u8(), dims);
+        layout_t dummy_layout(dsl::type_t::u8(), dims);
         return spatials_to_3d(dummy_layout, false, {0, 1, 2}).tile();
     }
 
@@ -146,16 +146,16 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     gpu_assert(src_layout.ndims() == dst_layout.ndims());
 
     // Create loop variables.
-    auto mb = var_t::make(type_t::s32(), "mb");
-    auto oc = var_t::make(type_t::s32(), "oc");
+    auto mb = var_t::make(dsl::type_t::s32(), "mb");
+    auto oc = var_t::make(dsl::type_t::s32(), "oc");
 
-    auto od = var_t::make(type_t::s32(), "od");
-    auto oh = var_t::make(type_t::s32(), "oh");
-    auto ow = var_t::make(type_t::s32(), "ow");
+    auto od = var_t::make(dsl::type_t::s32(), "od");
+    auto oh = var_t::make(dsl::type_t::s32(), "oh");
+    auto ow = var_t::make(dsl::type_t::s32(), "ow");
 
-    auto kd = var_t::make(type_t::s32(), "kd");
-    auto kh = var_t::make(type_t::s32(), "kh");
-    auto kw = var_t::make(type_t::s32(), "kw");
+    auto kd = var_t::make(dsl::type_t::s32(), "kd");
+    auto kh = var_t::make(dsl::type_t::s32(), "kh");
+    auto kw = var_t::make(dsl::type_t::s32(), "kw");
 
     // Initialize masks.
     const bool check_iw = utils::need_src_or_dst_check(!prb.is_backward, prb.ow,
@@ -374,13 +374,13 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     ir_context_t ir_ctx(exec, init_cset);
 
     auto acc_type = cfg.acc_type(simd);
-    auto acc_buf
-            = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr), "acc");
+    auto acc_buf = ir_ctx.create_tmp_var(
+            dsl::type_t::byte(dsl::type::attr_t::ptr), "acc");
     const auto acc_sc_size = acc_type.base().size();
     const auto acc_size = acc_sc_size * lg[4] * lg[3] * lg[2] * lg[1] * lg[0];
 
-    auto read_buf
-            = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr), "read");
+    auto read_buf = ir_ctx.create_tmp_var(
+            dsl::type_t::byte(dsl::type::attr_t::ptr), "read");
     auto read_params = get_send_params(
             exec, send_op_t::load, send_address_t::a64, src_thr_view);
     read_params.try_legacy = false;
@@ -406,11 +406,11 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
 
     const bool is_identity(prb.kd * prb.kh * prb.kw <= 1);
 
-    const type_t read_type(read_layout.type()[simd]);
+    const dsl::type_t read_type(read_layout.type()[simd]);
 
     stmt_t stmt;
 
-    auto gen_fill_values = [](int simd, bool isneg, type_t type) {
+    auto gen_fill_values = [](int simd, bool isneg, dsl::type_t type) {
         gpu_assert(type.base().size() <= 4);
         const int mult = 4 / type.base().size();
         expr_t v = 0;
@@ -424,7 +424,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
                                    : 0x80000000;
             }
         }
-        v = cast_t::make(type_t::s32(), v);
+        v = cast_t::make(dsl::type_t::s32(), v);
         auto v_long = shuffle_t::make_broadcast(v, simd);
         auto v_short = shuffle_t::make_broadcast(v, simd / mult);
         return std::make_pair(v_short, v_long);
@@ -498,15 +498,15 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
                 auto dhw = dim(od, prb.stride_d, prb.f_pad, prb.kd, prb.id)
                         * dim(oh, prb.stride_h, prb.t_pad, prb.kh, prb.ih)
                         * dim(ow, prb.stride_w, prb.l_pad, prb.kw, prb.iw);
-                filter = cast_t::make(type_t::f32(), dhw);
+                filter = cast_t::make(dsl::type_t::f32(), dhw);
             }
             filter = shuffle_t::make_broadcast(filter, simd);
             for (int i = 0; i < acc_size; i += simd * acc_sc_size) {
-                auto acc = cast_t::make(
-                        type_t::f32(simd), load_t::make(acc_type, acc_buf, i));
+                auto acc = cast_t::make(dsl::type_t::f32(simd),
+                        load_t::make(acc_type, acc_buf, i));
                 stmt = stmt.append(store_t::make(acc_buf, i, acc / filter));
             }
-            acc_type = type_t::f32(simd);
+            acc_type = dsl::type_t::f32(simd);
         }
         stmt = inject_alloc_stmts(stmt, read_alloc);
     }

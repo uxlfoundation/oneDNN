@@ -264,8 +264,8 @@ struct send_2d_hint_t {
 
     explicit operator bool() const { return is_valid; }
 
-    bool init(send_op_t send_op, const type_t &type, bool vnni, bool transpose,
-            int w_tile, int h_tile, int w_blk, int h_blk) {
+    bool init(send_op_t send_op, const dsl::type_t &type, bool vnni,
+            bool transpose, int w_tile, int h_tile, int w_blk, int h_blk) {
         bool is_load_or_prefetch
                 = utils::one_of(send_op, send_op_t::load, send_op_t::prefetch);
         bool is_store = (send_op == send_op_t::store);
@@ -485,7 +485,7 @@ struct send_2d_desc_t {
     hw_t hw;
     send_address_t address = send_address_t::undef;
     send_op_t op = send_op_t::undef;
-    type_t type;
+    dsl::type_t type;
     bool transpose = false;
     bool vnni = false;
     expr_t W; // Surface width in elements.

@@ -37,7 +37,7 @@ std::unordered_map<std::string, dim_t> problem_t::var_map() const {
     return ret;
 }
 
-const type_t &problem_t::out_type() const {
+const dsl::type_t &problem_t::out_type() const {
     switch (prop_) {
         case prop_kind::forward: return dst_tag_.type();
         case prop_kind::backward_data: return src_tag_.type();

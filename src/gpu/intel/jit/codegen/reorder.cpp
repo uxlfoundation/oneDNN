@@ -328,7 +328,7 @@ auto reorder_2d_impl_t::find_min_cost_path(ngen::HW hw, const layout_t &src,
     if (src_idx == dst_idx) {
         auto &v = vertices[src_idx];
         edge_t min_edge;
-        type_t min_type;
+        dsl::type_t min_type;
         v.cost(v, edges, min_edge, min_type);
         return {{v.layout, min_edge.tile(), min_type}};
     }
@@ -355,7 +355,7 @@ auto reorder_2d_impl_t::find_min_cost_path(ngen::HW hw, const layout_t &src,
         auto &v_min = vertices[min_idx];
         for (auto *v : v_min.adj_vertices) {
             edge_t min_edge;
-            type_t min_type;
+            dsl::type_t min_type;
             int new_cost
                     = cost[min_idx] + v_min.cost(*v, edges, min_edge, min_type);
             if (new_cost < cost[v->idx]) {
@@ -385,7 +385,7 @@ auto reorder_2d_impl_t::find_min_cost_path(ngen::HW hw, const layout_t &src,
 
 void reorder_2d_impl_t::generate_all_layouts_impl(
         std::vector<layout_t> &layouts, std::vector<layout::block_t> &blocks,
-        const type_t &type, dim_t a, dim_t b, dim_t stride) {
+        const dsl::type_t &type, dim_t a, dim_t b, dim_t stride) {
     if (a == 1 && b == 1) {
         layouts.emplace_back(type, blocks);
         return;
@@ -433,7 +433,7 @@ void reorder_2d_impl_t::vertex_t::set_edges(const std::vector<edge_t> &edges) {
         int from = math::ilog2q(type_size);
         int to = math::ilog2q(max_type_size);
         for (int j = from; j <= to; j++) {
-            type_t type = type_t::u(8 << j);
+            dsl::type_t type = dsl::type_t::u(8 << j);
             if (can_reorder(tile, type)) adj_edge_type_masks[i] |= (1 << j);
         }
     }
@@ -444,7 +444,7 @@ void reorder_2d_impl_t::vertex_t::set_edges(const std::vector<edge_t> &edges) {
 // - Horizontal stride must be <= 4 for GRF region
 // - GRF region can't span more than 2 registers
 bool reorder_2d_impl_t::vertex_t::can_reorder(
-        const tile_t &tile, const type_t &type) const {
+        const tile_t &tile, const dsl::type_t &type) const {
     auto ab_layout = reinterpret(layout.sub(tile), type);
     int nblocks = int(ab_layout.blocks().size());
     if (nblocks == 0) return true;
@@ -463,10 +463,10 @@ bool reorder_2d_impl_t::vertex_t::can_reorder(
 // Finds the minimal cost of reordering from this vertex to vertex v.
 int reorder_2d_impl_t::vertex_t::cost(const vertex_t &v,
         const std::vector<edge_t> &edges, edge_t &min_edge,
-        type_t &min_type) const {
+        dsl::type_t &min_type) const {
     int min_cost = std::numeric_limits<int>::max();
     for (int i = 0; i < int(edges.size()); i++) {
-        type_t i_min_type;
+        dsl::type_t i_min_type;
         int new_cost = cost(edges[i], v, i_min_type);
         if (new_cost < min_cost) {
             min_cost = new_cost;
@@ -481,7 +481,7 @@ int reorder_2d_impl_t::vertex_t::cost(const vertex_t &v,
 // through edge `e`. If the reorder is possible, `type` contains the
 // reorder type with the minimal cost.
 int reorder_2d_impl_t::vertex_t::cost(
-        const edge_t &e, const vertex_t &v, type_t &type) const {
+        const edge_t &e, const vertex_t &v, dsl::type_t &type) const {
     uint32_t mask = (adj_edge_type_masks[e.idx] & v.adj_edge_type_masks[e.idx]);
     if (mask == 0) return std::numeric_limits<int>::max();
     int cur_size = layout.type().size();
@@ -497,7 +497,7 @@ int reorder_2d_impl_t::vertex_t::cost(
             if (layout[0].idx != v.layout[0].idx) continue;
         }
         min_cost = cur_cost;
-        type = type_t::u(8 << i);
+        type = dsl::type_t::u(8 << i);
         break;
     }
     return min_cost;
@@ -522,7 +522,7 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reorder_operand_t &src,
     auto emit = [&](reorder_operand_t &dst, const reorder_operand_t &src) {
         if (src == dst) return;
         if (!try_emit_2d(plan, dst, src)) emit_1d(plan, dst, src);
-        if (is_subset(src.type(), dst.type()))
+        if (dsl::is_subset(src.type(), dst.type()))
             dst.buffer.range = src.buffer.type;
     };
 
@@ -530,7 +530,7 @@ void reorder_impl_t::emit(copy_plan_t &plan, const reorder_operand_t &src,
 
     const auto &src_dt = src.layout.type();
     const auto &dst_dt = dst.layout.type();
-    type_t tmp_dt = intermediate_data_type(src_dt, dst_dt);
+    dsl::type_t tmp_dt = intermediate_data_type(src_dt, dst_dt);
     // If not forcing up- and down-conversion of 2d data, and one of the layouts
     // isn't dense, prefer the type of the dense layout to hopefully dispatch to
     // 2d reorder.
@@ -655,7 +655,7 @@ bool reorder_impl_t::layouts_compatible(
 }
 
 layout_t reorder_impl_t::make_retyped_layout(
-        const layout_t &layout, const type_t &type) const {
+        const layout_t &layout, const dsl::type_t &type) const {
     if (layout.blocks().empty()) return layout;
     auto blocks = layout.blocks();
     if (layout.type().size() >= type.size()) {
@@ -673,7 +673,7 @@ layout_t reorder_impl_t::make_retyped_layout(
 }
 
 layout_t reorder_impl_t::make_compact_layout(
-        const layout_t &layout, const type_t &type, bool is_source) const {
+        const layout_t &layout, const dsl::type_t &type, bool is_source) const {
     const auto grf_size = ngen::GRF::bytes(hw_);
     const auto grf_elems = grf_size * type.packing() / type.size();
     const auto align_offset = is_source && layout.type().is_hf8();

@@ -113,13 +113,14 @@ bool send_t::is_supported() const {
 }
 
 std::vector<func_t> send_t::get_all(const hw_t &hw, send_op_t op,
-        send_address_t address, const type_t &mem_type, bool zero_out,
+        send_address_t address, const dsl::type_t &mem_type, bool zero_out,
         send_cache_hint_t cache_hint) {
     std::vector<func_t> filtered;
     for (int slots : {1, 2, 4, 8, 16}) {
         for (int elems : {1, 2, 4, 8, 16}) {
-            for (auto &type : {type_t::byte(), type_t::dword(), type_t::qword(),
-                         type_t::oword(), type_t::hword()}) {
+            for (auto &type : {dsl::type_t::byte(), dsl::type_t::dword(),
+                         dsl::type_t::qword(), dsl::type_t::oword(),
+                         dsl::type_t::hword()}) {
                 // Require data type size exact match for atomic messages.
                 if (op == send_op_t::atomic_fadd
                         && type.size() != mem_type.size())

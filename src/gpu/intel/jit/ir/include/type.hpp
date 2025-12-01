@@ -31,6 +31,7 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+namespace dsl {
 
 namespace type {
 enum class attr_t : uint32_t { undef = 0, ptr = 1, mut = 2, simd = 4, slm = 8 };
@@ -61,7 +62,7 @@ inline attr_t &operator&=(attr_t &a, attr_t b) {
 class type_t {
 public:
     friend struct type_internal_accessor_t;
-    using attr_t = type::attr_t;
+    using attr_t = dsl::type::attr_t;
 
     static type_t undef() { return type_t(kind_t::undef); }
 
@@ -220,7 +221,7 @@ public:
         return 0;
     }
 
-    type_t() : type_t(type_t::undef()) {}
+    type_t() : type_t(dsl::type_t::undef()) {}
 
     type_t(ngen::DataType type, uint32_t elems = 1,
             attr_t attr = attr_t::undef);
@@ -433,6 +434,13 @@ private:
         ;
     }
 };
+
+} // namespace dsl
+
+namespace type {
+using attr_t = dsl::type::attr_t;
+}
+using type_t = dsl::type_t;
 
 } // namespace jit
 } // namespace intel

@@ -207,8 +207,8 @@ struct fma_plan_t : public base_plan_t {
             const expr_t &a, const expr_t &b, const expr_t &c);
     stmt_t create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
             const std::string &a, const std::string &b, const std::string &c,
-            int subtile_idx, type_t a_override = type_t::undef(),
-            type_t b_override = type_t::undef()) const;
+            int subtile_idx, dsl::type_t a_override = dsl::type_t::undef(),
+            dsl::type_t b_override = dsl::type_t::undef()) const;
 
     int estimate_regs() const;
     std::string str() const;

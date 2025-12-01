@@ -159,8 +159,8 @@ private:
         int vect_size = into<int>(src_tile_blocks[1].size);
         int tile_size = simd * vect_size * src.type().size();
         int slm_thr_size = (int)size_bytes(src);
-        int dword_size = type_t::dword().size();
-        int hword_size = type_t::hword().size();
+        int dword_size = dsl::type_t::dword().size();
+        int hword_size = dsl::type_t::hword().size();
         int hwords = tile_size / hword_size;
 
         gpu_assert(tile_size % hword_size == 0);
@@ -169,9 +169,9 @@ private:
                 slm_size_, slm_thr_size * into<int>(tg_grid_.elems()));
 
         auto store_send = send_t::make(hw_, send_op_t::store,
-                send_address_t::slm, type_t::dword(vect_size), simd, true);
+                send_address_t::slm, dsl::type_t::dword(vect_size), simd, true);
         auto load_send = send_t::make(hw_, send_op_t::load, send_address_t::slm,
-                type_t::hword(hwords), 1, true);
+                dsl::type_t::hword(hwords), 1, true);
 
         std::vector<expr_t> vec(simd);
         for (int i = 0; i < simd; i++)

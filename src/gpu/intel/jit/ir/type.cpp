@@ -24,6 +24,7 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+namespace dsl {
 
 struct type_internal_accessor_t {
     using kind_t = type_t::kind_t;
@@ -223,6 +224,7 @@ bool is_subset(const type_t &a, const type_t &b) {
     return a_bits < b_bits;
 }
 
+} // namespace dsl
 } // namespace jit
 } // namespace intel
 } // namespace gpu

@@ -189,7 +189,7 @@ private:
         return normalized_blocks;
     }
 
-    type_t type_;
+    dsl::type_t type_;
     size_t ndims_;
     expr_t offset_;
     blocks_t blocks_;

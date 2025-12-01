@@ -469,12 +469,12 @@ public:
         // outer loop iteration.
         if (count_object(s.as<for_t>().body, var) != 0) {
             has_var_refs_ = true;
-            mul_var_buf_
-                    = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr),
-                            var.as<var_t>().name + "_mul_buf");
-            preload_var_buf_
-                    = ir_ctx.create_tmp_var(type_t::byte(type::attr_t::ptr),
-                            var.as<var_t>().name + "_preload_buf");
+            mul_var_buf_ = ir_ctx.create_tmp_var(
+                    dsl::type_t::byte(dsl::type::attr_t::ptr),
+                    var.as<var_t>().name + "_mul_buf");
+            preload_var_buf_ = ir_ctx.create_tmp_var(
+                    dsl::type_t::byte(dsl::type::attr_t::ptr),
+                    var.as<var_t>().name + "_preload_buf");
 
             auto mul_alloc = alloc_t::make(
                     mul_var_buf_, var.type().size(), alloc_kind_t::grf);
@@ -1335,12 +1335,12 @@ public:
         // slm_idx[1] -> slm_buf_compute
         // slm_idx[2] -> slm_counter
         auto slm_idx_buf = ir_ctx_.create_tmp_var(
-                type_t::byte(type::attr_t::ptr), "slm_idx");
-        int slm_idx_size = type_t::s32().size();
+                dsl::type_t::byte(dsl::type::attr_t::ptr), "slm_idx");
+        int slm_idx_size = dsl::type_t::s32().size();
 
         auto slm_idx_load = [&](int off, int elems) {
             return load_t::make(
-                    type_t::s32(elems), slm_idx_buf, slm_idx_size * off);
+                    dsl::type_t::s32(elems), slm_idx_buf, slm_idx_size * off);
         };
 
         // Initialize slm_idx.
@@ -1352,7 +1352,7 @@ public:
         off += slm_idx_size;
 
         auto store2 = store_t::make(
-                slm_idx_buf, off, int_imm_t::make(0, type_t::s32()));
+                slm_idx_buf, off, int_imm_t::make(0, dsl::type_t::s32()));
 
         auto slm_idx_init = store0.append(store1).append(store2);
 
@@ -1365,7 +1365,8 @@ public:
         auto mask = (slm_idx_load2
                 == shuffle_t::make_broadcast(cfg_.slm().bufs(), 2));
         auto slm_idx_store_fix = store_t::make(slm_idx_buf, 0,
-                shuffle_t::make_broadcast(int_imm_t::make(0, type_t::s32()), 2),
+                shuffle_t::make_broadcast(
+                        int_imm_t::make(0, dsl::type_t::s32()), 2),
                 store_t::default_stride, mask);
 
         auto slm_idx_update = slm_idx_store.append(slm_idx_store_fix);
@@ -1615,7 +1616,7 @@ public:
                 body = body.append(loop_body);
             } else {
                 gpu_assert(extent > 0);
-                auto for_var = ir_ctx_.create_tmp_var(type_t::s32(), "i");
+                auto for_var = ir_ctx_.create_tmp_var(dsl::type_t::s32(), "i");
                 body = body.append(for_t::make(for_var, 0, extent, loop_body));
             }
             it.advance(it.body_iters - it.unroll());

@@ -30,13 +30,14 @@ namespace v2 {
 
 const expr_t &index_var(const pvar_t &p) {
     static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(p)) vars[p] = var_t::make(type_t::s32(), p.str() + "_idx");
+    if (!vars.has(p))
+        vars[p] = var_t::make(dsl::type_t::s32(), p.str() + "_idx");
     return vars[p];
 }
 
 const expr_t &var(const pvar_t &p) {
     static thread_local pvar_map_t<expr_t> vars;
-    if (!vars.has(p)) vars[p] = const_var_t::make(type_t::s32(), p.str());
+    if (!vars.has(p)) vars[p] = const_var_t::make(dsl::type_t::s32(), p.str());
     return vars[p];
 }
 

@@ -62,8 +62,8 @@ class multiply_info_t {
 public:
     multiply_info_t() = default;
     multiply_info_t(fma_kind_t fma, int simd, const tile_t &iter_tile,
-            const pvar_map_t<char> &bmnk_map, const type_t &a_type,
-            const layout_desc_t &a_desc, const type_t &b_type,
+            const pvar_map_t<char> &bmnk_map, const dsl::type_t &a_type,
+            const layout_desc_t &a_desc, const dsl::type_t &b_type,
             const layout_desc_t &b_desc, const layout_desc_t &c_desc)
         : fma_(fma)
         , simd_(simd)
@@ -94,9 +94,9 @@ public:
 
     fma_kind_t fma() const { return fma_; }
     int simd() const { return simd_; }
-    const type_t &a_type() const { return a_type_; }
-    const type_t &b_type() const { return b_type_; }
-    const type_t &acc_type() const { return acc_type_; }
+    const dsl::type_t &a_type() const { return a_type_; }
+    const dsl::type_t &b_type() const { return b_type_; }
+    const dsl::type_t &acc_type() const { return acc_type_; }
 
     bool has(tensor_kind_t abc, const pvar_t &dim) const {
         switch (abc) {
@@ -223,14 +223,15 @@ private:
         }
     };
 
-    bool fma_type_supported(const type_t &type) const {
+    bool fma_type_supported(const dsl::type_t &type) const {
         switch (fma_) {
             case fma_kind_t::mad:
-                return utils::one_of(type, type_t::f32(), type_t::s16());
+                return utils::one_of(
+                        type, dsl::type_t::f32(), dsl::type_t::s16());
                 break;
             case fma_kind_t::dpas:
-                return utils::one_of(type, type_t::u8(), type_t::s8(),
-                        type_t::f16(), type_t::bf16());
+                return utils::one_of(type, dsl::type_t::u8(), dsl::type_t::s8(),
+                        dsl::type_t::f16(), dsl::type_t::bf16());
                 break;
             default: gpu_error_not_expected();
         }
@@ -240,18 +241,19 @@ private:
     v2::layout_t get_fma_type_layout(const v2::layout_t &layout) const {
         if (fma_ == fma_kind_t::mad) {
             auto blocks = layout.blocks();
-            if (utils::one_of(layout.type(), type_t::s8(), type_t::u8())) {
+            if (utils::one_of(
+                        layout.type(), dsl::type_t::s8(), dsl::type_t::u8())) {
 
                 for (auto &b : blocks) {
                     b.stride *= 2;
                 }
-                return v2::layout_t(
-                        layout.desc(), type_t::s16(), layout.base(), blocks);
+                return v2::layout_t(layout.desc(), dsl::type_t::s16(),
+                        layout.base(), blocks);
             }
-            if (utils::one_of(layout.type(), type_t::f16(), type_t::bf16(),
-                        type_t::f32()))
-                return v2::layout_t(
-                        layout.desc(), type_t::f32(), layout.base(), blocks);
+            if (utils::one_of(layout.type(), dsl::type_t::f16(),
+                        dsl::type_t::bf16(), dsl::type_t::f32()))
+                return v2::layout_t(layout.desc(), dsl::type_t::f32(),
+                        layout.base(), blocks);
         }
         return layout;
     }
@@ -348,9 +350,9 @@ private:
     int simd_ = 0;
     tile_t iter_tile_;
     pvar_map_t<char> bmnk_map_;
-    type_t a_type_;
-    type_t b_type_;
-    type_t acc_type_;
+    dsl::type_t a_type_;
+    dsl::type_t b_type_;
+    dsl::type_t acc_type_;
     v2::layout_t a_inner_;
     v2::layout_t b_inner_;
     v2::layout_t c_inner_;

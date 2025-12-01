@@ -110,7 +110,7 @@ layout_t normalize_layout(const layout_t &_layout, bool with_groups,
 tile_t normalize_tile(std::vector<dim_t> &dims, bool with_groups, dim_t groups,
         bool is_dw, const std::array<int, 3> &dhw_map, bool add_groups,
         bool is_wei) {
-    layout_t dummy_layout(type_t::u8(), dims);
+    layout_t dummy_layout(dsl::type_t::u8(), dims);
     return normalize_layout(dummy_layout, with_groups, groups, is_dw, dhw_map,
             add_groups, is_wei)
             .tile();

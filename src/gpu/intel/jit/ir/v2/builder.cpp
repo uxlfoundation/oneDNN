@@ -28,12 +28,12 @@ send_header_t offset_scope_t::add_header(int version,
         const send_2d_desc_t &desc, const expr_t &mem_buf, const expr_t &base,
         const expr_t &x_base, const expr_t &y_base, const expr_t &x_inc,
         const expr_t &y_inc, const loop_nest_t &loop_nest) {
-    auto base0 = cast(mem_buf, type_t::u64());
-    auto params = offset_params_t(type_t::u64(), /*esize=*/1, "h");
+    auto base0 = cast(mem_buf, dsl::type_t::u64());
+    auto params = offset_params_t(dsl::type_t::u64(), /*esize=*/1, "h");
     params.buf_align = desc.hw.grf_size();
     auto off = get_offset(version, base0, base, expr_t(0), params, loop_nest);
-    auto x_params = offset_params_t(type_t::s32());
-    auto y_params = offset_params_t(type_t::s32());
+    auto x_params = offset_params_t(dsl::type_t::s32());
+    auto y_params = offset_params_t(dsl::type_t::s32());
     x_params.buf = off.buf + send_t::header_2d_off_x();
     y_params.buf = off.buf + send_t::header_2d_off_y();
     auto x = get_offset(version, expr_t(0), x_base, x_inc, x_params, loop_nest);
@@ -67,7 +67,7 @@ send_mask_t offset_scope_t::add_mask(int version, const mask_t &mask,
         auto &dm = mask.dim_masks[i];
         if (dm.is_empty()) continue;
         auto shift = mask_incs.empty() ? expr_t(0) : mask_incs[i];
-        auto params = offset_params_t(type_t::s32(), dm.slots(), "m");
+        auto params = offset_params_t(dsl::type_t::s32(), dm.slots(), "m");
         params.allow_bcast = true;
         params.allow_reuse = true;
         auto off = get_offset(version, expr_t(0), dm.base, dm.slot_incs, shift,
@@ -145,9 +145,9 @@ offset_t offset_scope_t::get_offset(int version, const expr_t &base0,
     return add_offset(ret);
 }
 
-type_t to_send_type(const send_1d_desc_t &desc) {
-    if (desc.type_size <= 8) return type_t::u(desc.type_size * 8);
-    return type_t::oword(desc.type_size / 16);
+dsl::type_t to_send_type(const send_1d_desc_t &desc) {
+    if (desc.type_size <= 8) return dsl::type_t::u(desc.type_size * 8);
+    return dsl::type_t::oword(desc.type_size / 16);
 }
 
 stmt_t create_stmt(const send_1d_plan_t &plan, const expr_t &mem_buf,

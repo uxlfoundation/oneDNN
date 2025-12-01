@@ -365,9 +365,9 @@ private:
                     if (zp.get(key).is_host_scalar()) switch (key) {
                             case DNNL_ARG_SRC:
                                 return (zp.has_default_values(DNNL_ARG_WEIGHTS))
-                                        ? type_t::f32()
-                                        : type_t::s32();
-                            case DNNL_ARG_DST: return type_t::f32();
+                                        ? dsl::type_t::f32()
+                                        : dsl::type_t::s32();
+                            case DNNL_ARG_DST: return dsl::type_t::f32();
                             default: return to_ir(zp.get(key).get_data_type());
                         }
                 } else if (key & DNNL_ARG_ATTR_SCALES) {
@@ -376,7 +376,7 @@ private:
                     if (sc.get(key).is_host_scalar())
                         return to_ir(sc.get(key).get_data_type());
                 }
-                return type_t::byte(type::attr_t::ptr);
+                return dsl::type_t::byte(dsl::type::attr_t::ptr);
             };
             const bool wei_reorder_precalc = (t.name == "wei")
                     && cfg.zp_cfg().needs_src_reorder_precalc;
@@ -412,7 +412,7 @@ private:
             auto create_zero_out_info = [&]() -> kernel_info_t & {
                 auto &zero_out_info
                         = create_kernel_info(pd, kernel_id_t::zero_out);
-                auto size_var = var_t::make(type_t::u32(), "size");
+                auto size_var = var_t::make(dsl::type_t::u32(), "size");
                 zero_out_info.register_immediate_arg(
                         size_var, into<uint32_t>(compute_size));
                 zero_out_info.set_nd_range(zero_out_kernel_desc_t::nd_range(

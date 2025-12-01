@@ -56,7 +56,7 @@ const expr_t &local_size(int idx);
 class lval_t {
 public:
     lval_t() = default;
-    lval_t(const type_t &type, const std::string &name);
+    lval_t(const dsl::type_t &type, const std::string &name);
     lval_t(const expr_t &v) : var(v) {}
     lval_t &operator=(const expr_t &obj);
 
@@ -96,14 +96,15 @@ public:
 expr_t subgroup_id(int idx = 0);
 expr_t subgroup_local_id();
 expr_t arg(const std::string &name, bool allow_empty = false);
-lval_t def(const std::string &name, const type_t &type,
+lval_t def(const std::string &name, const dsl::type_t &type,
         const expr_t &value = {}, bool force_alloc = false);
 lval_t def(const std::string &name, const expr_t &value);
 tensor_t def(const std::string &name, const layout_t &layout,
-        type::attr_t attr = {});
+        dsl::type::attr_t attr = {});
 tensor_t def(const std::string &name, const layout_t &layout,
-        const expr_t &value, type::attr_t attr = {});
-expr_t let(const std::string &name, const type_t &type, const expr_t &value);
+        const expr_t &value, dsl::type::attr_t attr = {});
+expr_t let(
+        const std::string &name, const dsl::type_t &type, const expr_t &value);
 expr_t let(const std::string &name, const expr_t &value);
 
 expr_t iif(

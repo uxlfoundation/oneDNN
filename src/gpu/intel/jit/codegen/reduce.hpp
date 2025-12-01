@@ -105,7 +105,7 @@ public:
                 if ((s_is_hf && d_is_f) || s_is_fp8 || (s_is_bf && !native_bf)
                         || ((d.offset() != 0 || !s_half_grf_aligned)
                                 && (s_is_bf))) {
-                    tmp_type = type_t::f32();
+                    tmp_type = dsl::type_t::f32();
                 }
                 auto tmp = tile_scope.alloc_reg_data(
                         tmp_type.with_elems(tile_elems));

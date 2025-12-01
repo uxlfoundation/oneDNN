@@ -168,7 +168,7 @@ private:
         std::vector<expr_t> ret;
         ret.reserve(n);
         for (int i = 0; i < n; i++)
-            ret.push_back(var_t::make(type_t::s32(), genname(i)));
+            ret.push_back(var_t::make(dsl::type_t::s32(), genname(i)));
         return ret;
     }
 
@@ -280,7 +280,7 @@ inline layout_t make_strided(
     return layout.with(new_blocks);
 }
 
-layout_t reinterpret(const layout_t &layout, const type_t &new_type,
+layout_t reinterpret(const layout_t &layout, const dsl::type_t &new_type,
         bool do_normalize = true);
 
 // Reinterprets layouts to wider data type (up to 4 bytes).
@@ -391,7 +391,7 @@ public:
         gpu_assert(int(masks.size()) == elems()) << "Incompatible size.";
     }
 
-    const type_t &type() const { return layout_.type(); }
+    const dsl::type_t &type() const { return layout_.type(); }
 
     const layout_t &layout() const { return layout_; }
 
@@ -447,7 +447,7 @@ public:
         return sub_mask;
     }
 
-    mask_tensor_t reinterpret(const type_t &new_type) const {
+    mask_tensor_t reinterpret(const dsl::type_t &new_type) const {
         gpu_assert(!is_empty()) << "Can't reinterpret.";
         dim_t bytes = elems() * type().size();
         if (bytes % new_type.size() != 0 && bytes > new_type.size())
@@ -570,7 +570,8 @@ public:
     }
 
     static const expr_t &placeholder_var() {
-        static thread_local expr_t ph_var = var_t::make(type_t::s32(), "_ph");
+        static thread_local expr_t ph_var
+                = var_t::make(dsl::type_t::s32(), "_ph");
         return ph_var;
     }
 
@@ -750,7 +751,7 @@ public:
         return bool(tdims_[tidx].mask());
     }
 
-    const type_t &type() const { return tlayout_.type(); }
+    const dsl::type_t &type() const { return tlayout_.type(); }
 
     expr_t offset(const coord_t &vargs = {}, bool ignore_offset = false) const {
         auto targs = cvt_vargs_to_targs(vargs);
@@ -783,7 +784,7 @@ public:
         return create_sub_view(tile_coord.tile, tile_coord.coord);
     }
 
-    view_t retype(const type_t &new_type) const {
+    view_t retype(const dsl::type_t &new_type) const {
         auto ret = *this;
         ret.tlayout_ = tlayout_.with(new_type);
         return ret;

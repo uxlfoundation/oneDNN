@@ -27,33 +27,33 @@ GEMMSTONE_NAMESPACE_START
 
 using namespace ir::dsl;
 
-inline type_t into_ir(Type t, int elems = 1) {
+inline dsl::type_t into_ir(Type t, int elems = 1) {
     using namespace ir;
     switch (t) {
-        case Type::invalid: return type_t::undef();
+        case Type::invalid: return dsl::type_t::undef();
 
-        case Type::f4_e3m0: return type_t::f4_e3m0(elems);
-        case Type::f4_e2m1: return type_t::f4_e2m1(elems);
-        case Type::bf8: return type_t::bf8(elems);
-        case Type::hf8: return type_t::hf8(elems);
-        case Type::bf16: return type_t::bf16(elems);
-        case Type::f16: return type_t::f16(elems);
-        case Type::tf32: return type_t::tf32(elems);
-        case Type::f32: return type_t::f32(elems);
-        case Type::f64: return type_t::f64(elems);
+        case Type::f4_e3m0: return dsl::type_t::f4_e3m0(elems);
+        case Type::f4_e2m1: return dsl::type_t::f4_e2m1(elems);
+        case Type::bf8: return dsl::type_t::bf8(elems);
+        case Type::hf8: return dsl::type_t::hf8(elems);
+        case Type::bf16: return dsl::type_t::bf16(elems);
+        case Type::f16: return dsl::type_t::f16(elems);
+        case Type::tf32: return dsl::type_t::tf32(elems);
+        case Type::f32: return dsl::type_t::f32(elems);
+        case Type::f64: return dsl::type_t::f64(elems);
 
-        case Type::u4: return type_t::u4(elems);
-        case Type::s4: return type_t::s4(elems);
-        case Type::u8: return type_t::u8(elems);
-        case Type::s8: return type_t::s8(elems);
-        case Type::u16: return type_t::u16(elems);
-        case Type::s16: return type_t::s16(elems);
-        case Type::u32: return type_t::u32(elems);
-        case Type::s32: return type_t::s32(elems);
-        case Type::u64: return type_t::u64(elems);
-        case Type::s64: return type_t::s64(elems);
+        case Type::u4: return dsl::type_t::u4(elems);
+        case Type::s4: return dsl::type_t::s4(elems);
+        case Type::u8: return dsl::type_t::u8(elems);
+        case Type::s8: return dsl::type_t::s8(elems);
+        case Type::u16: return dsl::type_t::u16(elems);
+        case Type::s16: return dsl::type_t::s16(elems);
+        case Type::u32: return dsl::type_t::u32(elems);
+        case Type::s32: return dsl::type_t::s32(elems);
+        case Type::u64: return dsl::type_t::u64(elems);
+        case Type::s64: return dsl::type_t::s64(elems);
 
-        default: stub(); return type_t::undef();
+        default: stub(); return dsl::type_t::undef();
     }
 }
 
@@ -74,7 +74,7 @@ struct transform_t {
         , cache_hint(to_ir(cache_hint))
         , dims(std::move(dims)) {}
 
-    layout_t get_layout(const tile_t &sizes, type_t type) const {
+    layout_t get_layout(const tile_t &sizes, dsl::type_t type) const {
 
         auto col_var = dims[0];
         auto col = sizes[dims[0]];

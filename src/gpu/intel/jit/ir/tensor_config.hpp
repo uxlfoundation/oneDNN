@@ -119,7 +119,7 @@ std::vector<layout_block_t> parse_format(
 std::vector<std::pair<char, dim_t>> parse_letter_blocks(
         const std::string &format);
 
-inline layout_t make_layout(const type_t &type, const expr_t &offset,
+inline layout_t make_layout(const dsl::type_t &type, const expr_t &offset,
         const std::string &format, const tile_t &dims = {}) {
     auto blocks = parse_format(format, into<dim_idx_t>(dims.size()));
     tile_t def;
@@ -133,7 +133,7 @@ inline layout_t make_layout(const type_t &type, const expr_t &offset,
 }
 
 inline layout_t make_layout(
-        const type_t &type, const tile_t &dims, const std::string &tag) {
+        const dsl::type_t &type, const tile_t &dims, const std::string &tag) {
     return make_layout(type, 0, tag, dims);
 }
 

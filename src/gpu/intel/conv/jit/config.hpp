@@ -691,7 +691,7 @@ int slm_bufs_hint(const problem_t &prb, dim_t m_tg, dim_t n_tg,
         bool do_unroll);
 tensor_config_t get_tensor_config(
         const config_t &cfg, const memory_desc_t *zp_src);
-bool is_small(const type_t &type, dim_t elems);
+bool is_small(const dsl::type_t &type, dim_t elems);
 int estimate_register_count(const config_t &cfg);
 int default_regs(const config_t &cfg);
 void init_kernel_grid(config_t &cfg);

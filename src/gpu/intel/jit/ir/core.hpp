@@ -91,6 +91,10 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+namespace dsl {
+bool is_subset(const type_t &a, const type_t &b);
+}
+
 template <typename T>
 type_t from_cpp() {
 #define CASE(cpp_type, type) \
@@ -117,8 +121,6 @@ template <typename T>
 bool is_cpp(const type_t &t) {
     return t == from_cpp<T>();
 }
-
-bool is_subset(const type_t &a, const type_t &b);
 
 // clang-tidy doesn't like the semicolon next to the class name.
 #define CLASS_DECLARATION(name) class name

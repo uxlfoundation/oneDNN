@@ -613,12 +613,12 @@ private:
 struct layout_t {
     using block_t = layout::block_t;
 
-    layout_t() : type_(type_t::undef()), ndims_(0), offset_(0) {
+    layout_t() : type_(dsl::type_t::undef()), ndims_(0), offset_(0) {
         sanity_check();
     }
-    layout_t(const type_t &type, const std::vector<int64_t> &dims,
+    layout_t(const dsl::type_t &type, const std::vector<int64_t> &dims,
             const expr_t &offset = 0, bool do_normalize = true);
-    layout_t(const type_t &type, const std::vector<block_t> &blocks = {},
+    layout_t(const dsl::type_t &type, const std::vector<block_t> &blocks = {},
             const expr_t &offset = 0, size_t ndims = max_ndims,
             bool do_normalize = true);
 
@@ -627,7 +627,7 @@ struct layout_t {
         return {type_, blocks, offset_, ndims_, do_normalize};
     }
 
-    layout_t with(const type_t &new_type) const {
+    layout_t with(const dsl::type_t &new_type) const {
         return {new_type, blocks_, offset_, ndims_, false};
     }
 
@@ -662,7 +662,7 @@ struct layout_t {
     template <typename T = expr_t>
     T offset(const coord_t &args = {}, bool ignore_offset = false) const;
 
-    const type_t &type() const { return type_; }
+    const dsl::type_t &type() const { return type_; }
 
     tile_t tile() const {
         tile_t tile;
@@ -791,7 +791,7 @@ private:
     std::string desc_str(bool dnnl_style = false) const;
     void sanity_check() const;
 
-    type_t type_; // Data type of the layout.
+    dsl::type_t type_; // Data type of the layout.
     size_t ndims_ = max_ndims; //(Deprecated) Number of dimensions.
     expr_t offset_; // Offset to the start of the layout.
     std::vector<block_t> blocks_; // Blocks ordered from innermost to outermost.
@@ -810,7 +810,7 @@ struct tensor_t {
         : buf(buf), layout(layout) {
         gpu_assert(buf.type().is_ptr()) << "Buffer must be of a pointer type.";
     }
-    const type_t &type() const { return layout.type(); }
+    const dsl::type_t &type() const { return layout.type(); }
     tensor_t sub(const tile_t &tile, const icoord_t &coord) const {
         // coord is not measured relative to tile size
         for (auto &var : coord)
@@ -841,7 +841,7 @@ struct global_tensor_t {
         : buf(buf), type(buf.type().base()), sizes(sizes), strides(strides) {
         gpu_assert(buf.type().is_ptr()) << "Buffer must be of a pointer type.";
     }
-    global_tensor_t(const expr_t &buf, const type_t &type,
+    global_tensor_t(const expr_t &buf, const dsl::type_t &type,
             const expr_t &base_offset, const coord_t &coord,
             const idx_map_t<expr_t> &sizes, const idx_map_t<expr_t> &strides,
             const tile_t &tile)
@@ -879,7 +879,7 @@ struct global_tensor_t {
     void dump() const { printf("%s\n", str().c_str()); }
 
     expr_t buf;
-    type_t type;
+    dsl::type_t type;
     expr_t base_offset;
     coord_t coord;
     idx_map_t<expr_t> sizes;

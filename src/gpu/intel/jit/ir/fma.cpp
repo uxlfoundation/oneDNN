@@ -22,8 +22,8 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-fma_kind_t get_supported_fma_kind(
-        const hw_t &hw, const type_t &a, const type_t &b, const type_t &c) {
+fma_kind_t get_supported_fma_kind(const hw_t &hw, const dsl::type_t &a,
+        const dsl::type_t &b, const dsl::type_t &c) {
     if (hw >= ngen::HW::XeHP && hw.systolic_support()
             && dpas_t::matches_types(hw, a, b, c)) {
         if (hw >= ngen::HW::XeHPC)
@@ -39,8 +39,8 @@ fma_kind_t get_supported_fma_kind(
     return fma_kind_t::undef;
 }
 
-int get_simd_size(const hw_t &hw, const fma_kind_t kind, const type_t &a,
-        const type_t &b, const type_t &c) {
+int get_simd_size(const hw_t &hw, const fma_kind_t kind, const dsl::type_t &a,
+        const dsl::type_t &b, const dsl::type_t &c) {
     int ret = 0;
     switch (kind) {
         case fma_kind_t::dp4a:
@@ -53,7 +53,7 @@ int get_simd_size(const hw_t &hw, const fma_kind_t kind, const type_t &a,
     return ret;
 }
 
-bool dpas_t::is_src_type(type_t type) {
+bool dpas_t::is_src_type(dsl::type_t type) {
     return type.is_x8() || type.is_bf16() || type.is_f16() || type.is_tf32();
 }
 
@@ -86,8 +86,8 @@ dsl::layout_t dpas_t::c_layout(std::array<dsl::idx_t, 2> dims) const {
     return dsl::layout_t(dst_type, blocks);
 }
 
-bool dpas_t::matches_types(
-        const hw_t &hw, const type_t &a, const type_t &b, const type_t &c) {
+bool dpas_t::matches_types(const hw_t &hw, const dsl::type_t &a,
+        const dsl::type_t &b, const dsl::type_t &c) {
     if (a.is_x8() && b.is_x8() && c.is_s32()) return true;
     if (a.is_fp8() && b.is_fp8() && (c.is_f32() || c.is_bf16())) return true;
     if (a.is_fp4() && b.is_fp4() && (c.is_f32() || c.is_bf16())) return true;
@@ -99,8 +99,8 @@ bool dpas_t::matches_types(
     return false;
 }
 
-bool mad_t::matches_types(
-        const hw_t &hw, const type_t &a, const type_t &b, const type_t &c) {
+bool mad_t::matches_types(const hw_t &hw, const dsl::type_t &a,
+        const dsl::type_t &b, const dsl::type_t &c) {
     if (a != b && !(a.is_x8() && b.is_x8())) return false;
 
     if (a.is_fp8() && b.is_fp8()) return true;

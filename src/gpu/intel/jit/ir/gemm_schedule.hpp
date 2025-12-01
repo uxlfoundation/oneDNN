@@ -565,12 +565,12 @@ public:
         if (outer_name.empty()) {
             outer_var = create_var({var}, "outer");
         } else {
-            outer_var = var_t::make(type_t::s32(), outer_name);
+            outer_var = var_t::make(dsl::type_t::s32(), outer_name);
         }
         if (inner_name.empty()) {
             inner_var = create_var({var}, "inner");
         } else {
-            inner_var = var_t::make(type_t::s32(), inner_name);
+            inner_var = var_t::make(dsl::type_t::s32(), inner_name);
         }
 
         gpu_assert(outer_var.as<var_t>().name != inner_var.as<var_t>().name)
@@ -1010,7 +1010,7 @@ private:
             var_name += name + "_";
         }
         var_name += suffix;
-        return var_t::make(type_t::s32(), var_name);
+        return var_t::make(dsl::type_t::s32(), var_name);
     }
 
     void init_problem_tiles() {

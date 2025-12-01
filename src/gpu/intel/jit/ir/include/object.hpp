@@ -32,7 +32,10 @@ class expr_impl_t;
 class stmt_impl_t;
 class ir_mutator_t;
 class ir_visitor_t;
+namespace dsl {
 class type_t;
+}
+using type_t = dsl::type_t;
 
 namespace object {
 // Base class for all IR objects. Implemented as an intrusive pointer, with

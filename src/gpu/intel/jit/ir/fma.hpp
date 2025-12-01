@@ -57,18 +57,18 @@ inline bool is_dp_fma(fma_kind_t kind) {
     }
 }
 
-fma_kind_t get_supported_fma_kind(
-        const hw_t &hw, const type_t &a, const type_t &b, const type_t &c);
+fma_kind_t get_supported_fma_kind(const hw_t &hw, const dsl::type_t &a,
+        const dsl::type_t &b, const dsl::type_t &c);
 
-int get_simd_size(const hw_t &hw, fma_kind_t kind, const type_t &a,
-        const type_t &b, const type_t &c);
+int get_simd_size(const hw_t &hw, fma_kind_t kind, const dsl::type_t &a,
+        const dsl::type_t &b, const dsl::type_t &c);
 
 // Function representing DPAS instruction.
 class dpas_t : public func_impl_t, public object::info_t<dpas_t> {
 public:
     static func_t make(bool is_dpasw, int exec_size, uint8_t sdepth,
-            uint8_t rcount, const type_t &dst_type, const type_t &src1_type,
-            const type_t &src2_type) {
+            uint8_t rcount, const dsl::type_t &dst_type,
+            const dsl::type_t &src1_type, const dsl::type_t &src2_type) {
         return func_t(new dpas_t(is_dpasw, exec_size, sdepth, rcount, dst_type,
                 src1_type, src2_type));
     }
@@ -78,8 +78,8 @@ public:
                 dpas.dst_type, dpas.src1_type, dpas.src2_type));
     }
 
-    static func_t make_dp4a(int exec_size, const type_t &dst_type,
-            const type_t &src1_type, const type_t &src2_type) {
+    static func_t make_dp4a(int exec_size, const dsl::type_t &dst_type,
+            const dsl::type_t &src1_type, const dsl::type_t &src2_type) {
         return make(/*is_dpasw=*/false, exec_size, /*sdepth=*/1, /*rcount=*/1,
                 dst_type, src1_type, src2_type);
     }
@@ -137,9 +137,9 @@ public:
     dsl::layout_t b_layout(std::array<dsl::idx_t, 2> dims = {0, 1}) const;
     dsl::layout_t c_layout(std::array<dsl::idx_t, 2> dims = {0, 1}) const;
 
-    static bool matches_types(
-            const hw_t &hw, const type_t &a, const type_t &b, const type_t &c);
-    static bool is_src_type(type_t type);
+    static bool matches_types(const hw_t &hw, const dsl::type_t &a,
+            const dsl::type_t &b, const dsl::type_t &c);
+    static bool is_src_type(dsl::type_t type);
 
     bool is_dpasw;
 
@@ -147,14 +147,14 @@ public:
     uint8_t sdepth;
     uint8_t rcount;
 
-    type_t dst_type; // src0 type is same as dst_type.
-    type_t src1_type;
-    type_t src2_type;
+    dsl::type_t dst_type; // src0 type is same as dst_type.
+    dsl::type_t src1_type;
+    dsl::type_t src2_type;
 
 private:
     dpas_t(bool is_dpasw, int exec_size, uint8_t sdepth, uint8_t rcount,
-            const type_t &dst_type, const type_t &src1_type,
-            const type_t &src2_type)
+            const dsl::type_t &dst_type, const dsl::type_t &src1_type,
+            const dsl::type_t &src2_type)
         : func_impl_t(get_info())
         , is_dpasw(is_dpasw)
         , exec_size(exec_size)
@@ -168,9 +168,9 @@ private:
 // Function representing MAD instruction.
 class mad_t : public func_impl_t, public object::info_t<mad_t> {
 public:
-    static func_t make(const hw_t &hw, const type_t &dst_type, int exec_size,
-            const type_t &src1_type, int src1_stride, const type_t src2_type,
-            int src2_stride) {
+    static func_t make(const hw_t &hw, const dsl::type_t &dst_type,
+            int exec_size, const dsl::type_t &src1_type, int src1_stride,
+            const dsl::type_t src2_type, int src2_stride) {
         return func_t(new mad_t(hw, dst_type, exec_size, src1_type, src1_stride,
                 src2_type, src2_stride));
     }
@@ -202,37 +202,38 @@ public:
                 src2_type.size(), src2_stride * src2_type.size() * exec_size);
     }
 
-    static bool matches_types(
-            const hw_t &hw, const type_t &a, const type_t &b, const type_t &c);
+    static bool matches_types(const hw_t &hw, const dsl::type_t &a,
+            const dsl::type_t &b, const dsl::type_t &c);
 
     static const int max_exec_size = 32;
     static int get_max_exec_size_bytes(const hw_t &hw) {
         return hw >= ngen::HW::XeHPC ? 128 : 64;
     }
-    static int get_simd_size(
-            const hw_t &hw, const type_t &a, const type_t &b, const type_t &c) {
+    static int get_simd_size(const hw_t &hw, const dsl::type_t &a,
+            const dsl::type_t &b, const dsl::type_t &c) {
         int max_size = max_exec_size;
         int max_exec_size_bytes = get_max_exec_size_bytes(hw);
-        int max_type_size = (utils::one_of(type_t::bf8(), a, b, c)
-                                    || utils::one_of(type_t::hf8(), a, b, c))
+        int max_type_size
+                = (utils::one_of(dsl::type_t::bf8(), a, b, c)
+                          || utils::one_of(dsl::type_t::hf8(), a, b, c))
                 ? 2
                 : std::max(a.size(), std::max(b.size(), c.size()));
         return std::min(max_size, max_exec_size_bytes / max_type_size);
     }
     int get_exec_size() const { return exec_size; }
 
-    type_t dst_type;
-    type_t src1_type;
-    type_t src2_type;
+    dsl::type_t dst_type;
+    dsl::type_t src1_type;
+    dsl::type_t src2_type;
 
     int exec_size;
     int src1_stride;
     int src2_stride;
 
 private:
-    mad_t(const hw_t &hw, const type_t &dst_type, int exec_size,
-            const type_t &src1_type, int src1_stride, const type_t &src2_type,
-            int src2_stride)
+    mad_t(const hw_t &hw, const dsl::type_t &dst_type, int exec_size,
+            const dsl::type_t &src1_type, int src1_stride,
+            const dsl::type_t &src2_type, int src2_stride)
         : func_impl_t(get_info())
         , dst_type(dst_type)
         , src1_type(src1_type)

@@ -34,7 +34,7 @@ class memory_walker_t;
 class layout_walker_t;
 
 struct send_2d_hint_t {
-    type_t type;
+    dsl::type_t type;
     bool enable = false;
     bool vnni = false;
     bool transpose = false;
@@ -45,7 +45,8 @@ struct send_2d_hint_t {
 
 struct send_params_t {
     send_params_t() = default;
-    send_params_t(const hw_t &hw, const type_t &mem_type, send_op_t send_op)
+    send_params_t(
+            const hw_t &hw, const dsl::type_t &mem_type, send_op_t send_op)
         : hw(hw), mem_type(mem_type), send_op(send_op), use_send_plan(true) {}
 
     send_op_t convert(const send_op_t &op) const {
@@ -64,7 +65,7 @@ struct send_params_t {
     }
 
     hw_t hw;
-    type_t mem_type;
+    dsl::type_t mem_type;
     send_op_t send_op;
     send_address_t send_address;
     send_cache_hint_t cache_hint;
@@ -109,7 +110,7 @@ private:
     void build();
     bool try_build(const layout_t &try_layout, memory_walker_t &mem_walker);
     bool try_build_2d(send_params_t &send_params);
-    bool fixup_send_2d_params(const type_t &send_type, bool vnni,
+    bool fixup_send_2d_params(const dsl::type_t &send_type, bool vnni,
             bool transpose, bool use_xy, int &W, int &H, int &P, int &w, int &h,
             int &c, int &vnni_permute_factor);
 
@@ -130,7 +131,7 @@ private:
     send_address_t send_address_;
     send_cache_hint_t send_cache_hint_;
 
-    type_t mem_type_;
+    dsl::type_t mem_type_;
 
     std::unique_ptr<layout_walker_t> reg_layout_walker_;
 

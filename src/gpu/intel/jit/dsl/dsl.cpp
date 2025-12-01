@@ -118,9 +118,9 @@ struct ctx_t {
     }
 
     // TODO: Remove IR restriction which requires force_alloc
-    lval_t def(const std::string &name, type_t _type, const expr_t &value = {},
-            bool force_alloc = false) {
-        auto type = _type.with_attr(_type.attr() | type::attr_t::mut);
+    lval_t def(const std::string &name, dsl::type_t _type,
+            const expr_t &value = {}, bool force_alloc = false) {
+        auto type = _type.with_attr(_type.attr() | dsl::type::attr_t::mut);
         auto alloc_var = var(type, name);
         if (new_ir_api_) {
             if (!value.is_empty()) append(assign_t::make(alloc_var, value));
@@ -144,7 +144,7 @@ struct ctx_t {
     }
 
     tensor_t def(const std::string &name, const layout_t &layout,
-            type::attr_t attr, const expr_t &value = {}) {
+            dsl::type::attr_t attr, const expr_t &value = {}) {
         auto &back = layout.blocks().back();
         auto size = into<int>(back.size * int64_t(back.stride));
 
@@ -160,7 +160,7 @@ struct ctx_t {
 
         gpu_assert(layout.offset().is(0));
         auto t = layout.type().with_attr(attr);
-        if (any(attr & type::attr_t::slm)) {
+        if (any(attr & dsl::type::attr_t::slm)) {
             gpu_assert(value.is_empty());
             auto buf = def(name, t[size]);
             auto size_bytes = size * layout.type().size();
@@ -178,8 +178,8 @@ struct ctx_t {
         return {buf.ptr(), layout};
     }
 
-    expr_t let(
-            const std::string &name, const type_t &type, const expr_t &value) {
+    expr_t let(const std::string &name, const dsl::type_t &type,
+            const expr_t &value) {
         auto alloc_var = var(type, name);
         append(let_t::make(alloc_var, value, {}));
         return alloc_var;
@@ -217,11 +217,11 @@ struct ctx_t {
     const ir_context_t *ir_ctx() const { return ctx_; }
 
 private:
-    type_t local_id_type() const { return u16; }
-    type_t group_id_type() const { return u32; }
-    type_t local_size_type() const { return u16; }
+    dsl::type_t local_id_type() const { return u16; }
+    dsl::type_t group_id_type() const { return u32; }
+    dsl::type_t local_size_type() const { return u16; }
 
-    expr_t var(type_t type, const std::string &name) {
+    expr_t var(dsl::type_t type, const std::string &name) {
         return var_t::make(type, ctx_->create_tmp_name(name));
     }
 
@@ -359,8 +359,8 @@ expr_t arg(const std::string &name, bool allow_empty) {
     return default_ctx().arg(name, allow_empty);
 }
 
-lval_t def(const std::string &name, const type_t &type, const expr_t &value,
-        bool force_alloc) {
+lval_t def(const std::string &name, const dsl::type_t &type,
+        const expr_t &value, bool force_alloc) {
     return default_ctx().def(name, type, value, force_alloc);
 }
 
@@ -369,12 +369,12 @@ lval_t def(const std::string &name, const expr_t &value) {
 }
 
 tensor_t def(const std::string &name, const layout_t &layout,
-        const expr_t &value, type::attr_t attr) {
+        const expr_t &value, dsl::type::attr_t attr) {
     return default_ctx().def(name, layout, attr, value);
 }
 
-tensor_t def(
-        const std::string &name, const layout_t &layout, type::attr_t attr) {
+tensor_t def(const std::string &name, const layout_t &layout,
+        dsl::type::attr_t attr) {
     return def(name, layout, {}, attr);
 }
 
@@ -387,7 +387,7 @@ expr_t extract(const expr_t &expr, int lane) {
     return shuffle_t::make(expr, {lane});
 }
 
-lval_t::lval_t(const type_t &type, const std::string &name)
+lval_t::lval_t(const dsl::type_t &type, const std::string &name)
     : var(var_t::make(type, name)) {}
 
 lval_t &lval_t::operator=(const expr_t &obj) {
@@ -399,7 +399,8 @@ lval_t lval_t::sub(int off, int elems) const {
     return lval_t(ref_t::make(var, off, elems));
 }
 
-expr_t let(const std::string &name, const type_t &type, const expr_t &value) {
+expr_t let(
+        const std::string &name, const dsl::type_t &type, const expr_t &value) {
     return default_ctx().let(name, type, value);
 }
 
@@ -462,10 +463,12 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
         auto coord_local = coord;
         while (width_bytes > 0) {
             auto send_type = [&]() {
-                if (width_bytes <= 16) { return type_t::byte(width_bytes); }
+                if (width_bytes <= 16) {
+                    return dsl::type_t::byte(width_bytes);
+                }
                 auto load_width = dnnl::impl::utils::rnd_down_pow2(
                         std::min(width_bytes, 512));
-                return type_t::oword(load_width / 16);
+                return dsl::type_t::oword(load_width / 16);
             }();
             auto send_kind = [&]() {
                 switch (op_kind) {
@@ -487,7 +490,7 @@ void block_send(const tensor_t &t, const global_tensor_t &g,
 }
 
 struct conf_2d_t {
-    type_t type;
+    dsl::type_t type;
     idx_t w_idx;
     int pack_size;
     bool is_vnni;

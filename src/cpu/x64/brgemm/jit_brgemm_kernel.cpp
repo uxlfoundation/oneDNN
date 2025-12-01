@@ -266,14 +266,13 @@ private:
     static constexpr int amx10_zmms_per_bd_block = 4;
 
     Xbyak::Opmask ld_full_mask = Xbyak::Opmask(2);
-    Xbyak::Opmask ld_tail_mask = Xbyak::Opmask(3);
+    Xbyak::Opmask ld_tail_mask = Xbyak::Opmask(7); // k7 for AMX10 compatibility
     Xbyak::Opmask fp8_col_mask = Xbyak::Opmask(4);
     Xbyak::Opmask kmask_fp8_aux = Xbyak::Opmask(5);
     Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(6);
 
-    // AMX10 masks intentionally reuse Opmask(2-6) since they're only used
-    // during AMX10 A-matrix loading operations and don't conflict with
-    // fp8_col_mask/rd_tail_mask usage in non-AMX10 or different execution phases
+    // AMX10 masks use Opmask(2-6) for A-matrix loading operations
+    // ld_tail_mask uses k7 to avoid conflict with amx10_load_A_mask_f (k3)
     Xbyak::Opmask amx10_load_A_mask = Xbyak::Opmask(2);
     Xbyak::Opmask amx10_load_A_mask_f = Xbyak::Opmask(3);
     Xbyak::Opmask amx10_load_A_mask_f0 = Xbyak::Opmask(4);
@@ -490,7 +489,7 @@ private:
     void amx10_tilemovrow(const Zmm &zmm, const Tmm &tmm, int row);
     void amx10_load_A(dim_t bdb, dim_t offset, bool is_bdb_tail, dim_t bd_block,
             bool is_rd_tail = false);
-    void amx10_load_B(dim_t ldb, dim_t offset, int rdstep, bool is_ld_tail,
+    void amx10_load_B(dim_t ldb, int64_t offset, int rdstep, bool is_ld_tail,
             dim_t rd_block, dim_t bd_block2);
     void outer_product(const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm);
 
@@ -2421,8 +2420,8 @@ void jit_brgemm_kernel_t<Wmm>::amx10_load_A(dim_t bdb, dim_t offset,
 }
 
 template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::amx10_load_B(dim_t ldb, dim_t offset, int rdstep,
-        bool is_ld_tail, dim_t rd_block, dim_t bd_block2) {
+void jit_brgemm_kernel_t<Wmm>::amx10_load_B(dim_t ldb, int64_t offset,
+        int rdstep, bool is_ld_tail, dim_t rd_block, dim_t bd_block2) {
     const auto start_rdstep = (rdstep == -1) ? 0 : rdstep;
     const auto finish_rdstep
             = (rdstep == -1) ? amx10_rd_steps(rd_block) : rdstep + 1;
@@ -2430,20 +2429,14 @@ void jit_brgemm_kernel_t<Wmm>::amx10_load_B(dim_t ldb, dim_t offset, int rdstep,
     // Use ukernel formula: rd_step * LDB * typesize
     const auto rds_stride = brg.rd_step * brg.LDB * brg.typesize_B;
 
-    // Calculate full offset: base offset + rds offset
-    // Pass directly to ptr[] without modifying any registers
     for (int rds = start_rdstep; rds < finish_rdstep; rds++) {
-        // Use rds directly as the register index, not rds - start_rdstep
-        // Calculate register index based on current bd_block2, not brg.bd_block2
         const int base_idx = amx10_rd_steps(brg.rd_block)
                 * (brg.n_bcast_1_load ? (bd_block2 + ldb) : (1 + ldb));
         const int zmm_idx = 5 + base_idx + rds;
         assert(zmm_idx < 32 && "ZMM register overflow in amx10_load_B");
         auto zmm = Zmm(zmm_idx);
         const auto total_offset = offset + rds * rds_stride;
-        // Use tail mask when is_ld_tail is true
-        auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
-        // Use vmovupd like the ukernel - each mask bit controls 8 bytes (1 qword = 4 bf16 elements)
+        auto k_mask = is_ld_tail ? ld_tail_mask : ld_full_mask;
         vmovupd(zmm | k_mask | T_z, ptr[reg_aux_B + total_offset]);
     }
 }
@@ -2485,10 +2478,10 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx10(dim_t bd_block2,
 
             // Load B one rds at a time, compute with all bdb
             for (dim_t ldb = 0; ldb < ld_block2; ldb++) {
-                // Use exact ukernel formula for B offset calculation
+                // Calculate offset RELATIVE to reg_aux_B
                 const auto rd_pos = is_rd_tail ? brg.rdb : rdb;
                 const auto ldb_offs = ldb * brg.ld_block;
-                const auto b_offset_base
+                auto b_offset_base
                         = rd_pos * brg.rd_block * brg.LDB * brg.typesize_B
                         + brg.typesize_B
                                 * ((ldb_offs / brg.LDB) * brg.brgattr.LDB2

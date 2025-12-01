@@ -124,6 +124,18 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.do_apply_comp = 0;
     brgemm_p.skip_accm = 0;
     brgemm_p.BS = bs;
+
+    // DEBUG: Print B matrix pointer and first few values
+    static int call_count = 0;
+    if (call_count++ < 3 && addr_B) {
+        printf("DEBUG brgemm_kernel_execute: addr_B=%p, bs=%d\n", addr_B, bs);
+        const uint16_t *b_bf16 = reinterpret_cast<const uint16_t *>(addr_B);
+        printf("  First 32 bf16 values (as hex): ");
+        for (int i = 0; i < 32 && i < 128; i++) {
+            printf("%04x ", b_bf16[i]);
+        }
+        printf("\n");
+    }
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -183,6 +195,24 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
         const brgemm_post_ops_data_t &post_ops_data, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {
     brgemm_kernel_params_t brgemm_p;
+
+    // DEBUG: Print B matrix pointer and first few values
+    static int postops_call_count = 0;
+    if (postops_call_count++ < 3 && addr_B) {
+        printf("DEBUG brgemm_kernel_execute_postops: addr_B=%p, bs=%d\n",
+                addr_B, bs);
+        const uint16_t *b_bf16 = reinterpret_cast<const uint16_t *>(addr_B);
+        printf("  First 32 bf16 values (as hex): ");
+        for (int i = 0; i < 32; i++) {
+            printf("%04x ", b_bf16[i]);
+        }
+        printf("\n");
+        printf("  Values at offset 64 (rds_stride): ");
+        for (int i = 32; i < 64; i++) {
+            printf("%04x ", b_bf16[i]);
+        }
+        printf("\n");
+    }
 
     brgemm_p.batch = batch;
     brgemm_p.ptr_A = addr_A;

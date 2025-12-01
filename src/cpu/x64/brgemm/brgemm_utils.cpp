@@ -682,11 +682,16 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     // Remove these guards in the future (add tail processing by reduction
     // dimension)
     // TODO: these checks do not work for fp8-f16 and f16-fp8 cfgs
-    if (!IMPLICATION(brg->rdb > 0 && brg->rdb_tail,
+    // TODO: AMX10 K-tail support in regular kernel (use_uker:0) needs debugging
+    // AMX10 doesn't support K-tails with rdb_tail < rd_step (e.g., K=17 with rd_block=8, rdb_tail=1)
+    if (!IMPLICATION(brg->rdb > 0 && brg->rdb_tail && !brg->is_amx10(),
                 brg->is_tf32 || brg->is_input_convert()
                         || brg->amx_wary_k_tail() || brg->fused_copy_a)) {
         return status::unimplemented;
     }
+
+    // AMX10 with K-tails is not yet supported
+    if (brg->is_amx10() && brg->rdb_tail > 0) { return status::unimplemented; }
 
     if (!IMPLICATION((brg->rdb_tail
                              % ((brg->is_bf16_tmm || brg->is_f16_tmm) ? 2 : 4))
@@ -812,6 +817,10 @@ status_t brgemm_blocking_amx10(brgemm_desc_t *brg) {
     brg->rd_block = brg->rd_step * 4;
     brg->rdb = brg->reduce_dim / brg->rd_block;
     brg->rdb_tail = brg->reduce_dim % brg->rd_block;
+
+    // TODO: AMX10 K-tail support needs more work to handle all cases correctly
+    // For now, reject all K-tails for AMX10
+    if (brg->rdb_tail > 0) { return status::unimplemented; }
 
     // To use less registers in the amx10 microkernel:
     // load several blocks of A and keep them in registers if bd_block2 < ld_block2

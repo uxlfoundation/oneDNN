@@ -192,8 +192,8 @@ public:
 
     bool is_output(int idx) const { return !is_input(idx); }
 
-    kernel::iface_t iface(const std::string &name) const {
-        kernel::iface_t iface(name);
+    dsl::kernel::iface_t iface(const std::string &name) const {
+        dsl::kernel::iface_t iface(name);
         for (int i = 0; i < nargs(); i++) {
             iface.register_arg(args_[i].var);
         }

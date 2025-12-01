@@ -28,13 +28,13 @@ namespace dsl {
 
 #ifdef WITH_SYCL_RUNTIME
 inline sycl::kernel make_kernel(
-        const kernel_t &kernel, sycl::context ctx, sycl::device dev) {
+        const dsl::kernel_t &kernel, sycl::context ctx, sycl::device dev) {
     return jit::make_kernel(kernel, ctx, dev);
 }
 #endif
 #ifdef WITH_OPENCL_RUNTIME
 inline cl_kernel make_kernel(
-        const kernel_t &kernel, cl_context ctx, cl_device_id dev) {
+        const dsl::kernel_t &kernel, cl_context ctx, cl_device_id dev) {
     return jit::make_kernel(kernel, ctx, dev);
 }
 #endif

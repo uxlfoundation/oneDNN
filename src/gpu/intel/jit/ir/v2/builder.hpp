@@ -675,7 +675,7 @@ inline var_ref_t &var_ref_t::operator=(const expr_t &value) {
 
 class var_manager_t {
 public:
-    var_manager_t(const kernel::iface_t &kernel_iface)
+    var_manager_t(const dsl::kernel::iface_t &kernel_iface)
         : kernel_iface_(kernel_iface) {}
 
     std::vector<expr_t> ptr_args() const {
@@ -724,7 +724,7 @@ public:
     }
 
 private:
-    const kernel::iface_t &kernel_iface_;
+    const dsl::kernel::iface_t &kernel_iface_;
 };
 
 } // namespace v2

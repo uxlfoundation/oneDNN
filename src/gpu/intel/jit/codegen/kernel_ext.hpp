@@ -77,8 +77,8 @@ public:
         desc.init_kernel_iface(kernel_iface_);
     }
 
-    ir_kernel_t(const kernel::iface_t &kernel_iface,
-            const kernel::options_t &options,
+    ir_kernel_t(const dsl::kernel::iface_t &kernel_iface,
+            const dsl::kernel::options_t &options,
             const compute::range_t &local_range,
             const debug_config_t &debug_config)
         : kernel_iface_(kernel_iface)
@@ -86,8 +86,8 @@ public:
         , local_range_(local_range)
         , debug_config_(debug_config) {}
 
-    const kernel::options_t &options() const { return options_; }
-    const kernel::iface_t &kernel_iface() const { return kernel_iface_; }
+    const dsl::kernel::options_t &options() const { return options_; }
+    const dsl::kernel::iface_t &kernel_iface() const { return kernel_iface_; }
     void force_emulate64() { force_emulate64_ = true; }
 
     int peak_regs() const { return peak_regs_; }
@@ -114,8 +114,8 @@ private:
         return ir_utils::safe_divide(local_size, options_.simd());
     }
 
-    kernel::iface_t kernel_iface_;
-    kernel::options_t options_;
+    dsl::kernel::iface_t kernel_iface_;
+    dsl::kernel::options_t options_;
     compute::range_t local_range_;
 
     debug_config_t debug_config_;

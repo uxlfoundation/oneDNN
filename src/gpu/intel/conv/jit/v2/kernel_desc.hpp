@@ -345,8 +345,9 @@ public:
     v2::send_kind_t access_kind(v2::send_op_t op, tensor_kind_t tensor) const;
     std::string kernel_name() const override { return "gen_conv_v2"; }
 
-    kernel::options_t options(const impl::engine_t *engine) const override {
-        auto ret = kernel::options_t(make_ir_hw(engine), regs, simd);
+    dsl::kernel::options_t options(
+            const impl::engine_t *engine) const override {
+        auto ret = dsl::kernel::options_t(make_ir_hw(engine), regs, simd);
         ret.set_require_dpas(
                 utils::one_of(fma, fma_kind_t::dpas, fma_kind_t::dpasw));
         return ret;
@@ -356,7 +357,7 @@ public:
 
     void specialize(const problem_t &prb) { spec.specialize(prb); }
 
-    void init_kernel_iface(kernel::iface_t &kernel_iface) const override;
+    void init_kernel_iface(dsl::kernel::iface_t &kernel_iface) const override;
     void init_kernel_info(kernel_info_t &kernel_info,
             const kernel_params_base_t &params,
             const impl::engine_t *engine) const override;

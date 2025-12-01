@@ -38,6 +38,9 @@ namespace intel {
 namespace jit {
 
 struct codegen_extension_iface_t;
+
+namespace dsl {
+
 using codegen_extension_handler_t
         = void (*)(const object_t &, codegen_extension_iface_t &);
 
@@ -150,6 +153,14 @@ struct kernel_t {
     kernel::options_t options;
     ngen::DebugConfig debug_cfg;
 };
+
+} // namespace dsl
+
+namespace kernel {
+using iface_t = dsl::kernel::iface_t;
+using options_t = dsl::kernel::options_t;
+} // namespace kernel
+using kernel_t = dsl::kernel_t;
 
 } // namespace jit
 } // namespace intel

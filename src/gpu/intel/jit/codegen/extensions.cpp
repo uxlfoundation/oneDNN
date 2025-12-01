@@ -119,9 +119,11 @@ void extension_handler(
     gpu_error_not_expected() << "Unknown nGEN code generator";
 }
 
+namespace dsl {
 namespace kernel {
 codegen_extension_handler_t default_extension_handler = &extension_handler;
 }
+} // namespace dsl
 
 } // namespace jit
 } // namespace intel

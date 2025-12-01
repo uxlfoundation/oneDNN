@@ -40,7 +40,7 @@ public:
         status_t init(impl::engine_t *);
 
         std::shared_ptr<conf_t> conf;
-        std::shared_ptr<jit::kernel::options_t> options;
+        std::shared_ptr<jit::dsl::kernel::options_t> options;
         std::shared_ptr<jit::layout_t> src;
         std::shared_ptr<jit::layout_t> dst;
     };

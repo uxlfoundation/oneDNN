@@ -34,10 +34,11 @@ namespace jit {
 
 #ifdef WITH_SYCL_RUNTIME
 sycl::kernel make_kernel(
-        const kernel_t &kernel, sycl::context ctx, sycl::device dev);
+        const dsl::kernel_t &kernel, sycl::context ctx, sycl::device dev);
 #endif
 #ifdef WITH_OPENCL_RUNTIME
-cl_kernel make_kernel(const kernel_t &kernel, cl_context ctx, cl_device_id dev);
+cl_kernel make_kernel(
+        const dsl::kernel_t &kernel, cl_context ctx, cl_device_id dev);
 #endif
 
 } // namespace jit

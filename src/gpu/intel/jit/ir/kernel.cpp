@@ -23,6 +23,7 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+namespace dsl {
 
 kernel::iface_t::iface_t(const ngen::InterfaceHandler &iface)
     : kernel_name_(iface.getExternalName()) {
@@ -70,6 +71,7 @@ const std::string &kernel::iface_t::arg_t::name() const {
     return var.as<var_t>().name;
 }
 
+} // namespace dsl
 } // namespace jit
 } // namespace intel
 } // namespace gpu

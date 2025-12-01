@@ -68,7 +68,7 @@ private:
 
 bool can_use_send_plan(const view_t &view);
 
-send_plan_t create_send_plan(const kernel::options_t &options,
+send_plan_t create_send_plan(const dsl::kernel::options_t &options,
         const view_t &view, const send_params_t &send_params,
         bool zero_out = true);
 

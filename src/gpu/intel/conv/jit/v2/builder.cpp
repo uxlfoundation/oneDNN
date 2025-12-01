@@ -1035,8 +1035,8 @@ private:
     buffer_info_t buf_info_;
 };
 
-stmt_t build_ir(const kernel::options_t &options, const kernel_desc_t &desc,
-        var_manager_t &var_mgr) {
+stmt_t build_ir(const dsl::kernel::options_t &options,
+        const kernel_desc_t &desc, var_manager_t &var_mgr) {
     auto plan = create_plan(desc, options.hw());
     if (!plan) gpu_except_not_implemented("Cannot create plan.");
 

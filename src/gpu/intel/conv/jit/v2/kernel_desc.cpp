@@ -758,7 +758,8 @@ compute::range_t kernel_desc_t::local_range() const {
     return lws;
 }
 
-void kernel_desc_t::init_kernel_iface(kernel::iface_t &kernel_iface) const {
+void kernel_desc_t::init_kernel_iface(
+        dsl::kernel::iface_t &kernel_iface) const {
     auto tensor_config = get_tensor_config(*this);
     for (auto &t : tensor_config.tensors()) {
         kernel_iface.register_arg(

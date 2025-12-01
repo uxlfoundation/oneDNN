@@ -33,8 +33,8 @@ namespace dsl {
 struct ctx_t {
     bool new_ir_api() const { return new_ir_api_; }
 
-    void declare_kernel(const kernel::iface_t &interface, ir_context_t &ctx,
-            bool new_ir_api = false) {
+    void declare_kernel(const dsl::kernel::iface_t &interface,
+            ir_context_t &ctx, bool new_ir_api = false) {
         slm_byte_offset_ = 0;
         new_ir_api_ = new_ir_api;
         gpu_assert(stmts_stack_.empty())
@@ -84,7 +84,7 @@ struct ctx_t {
         }
     }
 
-    kernel_t end_kernel() {
+    dsl::kernel_t end_kernel() {
         gpu_assert(stmts_stack_.size() == 1)
                 << "Invalid end of kernel, imbalanced scopes detected";
         auto body = pop_scope();
@@ -93,7 +93,7 @@ struct ctx_t {
             auto slm_alloc = builtin_t::make("alloc")(slm_buf);
             body = slm_alloc.append(body);
         }
-        kernel_t ret {std::move(interface_), body, ctx_->options()};
+        dsl::kernel_t ret {std::move(interface_), body, ctx_->options()};
         ctx_ = nullptr;
         interface_ = {"undefined_dsl_kernel"};
         return ret;
@@ -268,7 +268,7 @@ private:
 
     std::vector<stmt_t> &stmts() { return stmts_stack_.top(); }
     std::stack<std::vector<stmt_t>> stmts_stack_;
-    kernel::iface_t interface_ = {"undefined_dsl_kernel"};
+    dsl::kernel::iface_t interface_ = {"undefined_dsl_kernel"};
     ir_context_t *ctx_ = nullptr;
     std::array<expr_t, 3> group_ids_;
     std::array<expr_t, 3> local_ids_;
@@ -294,12 +294,12 @@ int min_pitch_2d() {
     return block_2d_pitch_alignment(default_ctx().ir_ctx()->hw());
 }
 
-void declare_kernel(
-        const kernel::iface_t &interface, ir_context_t &ctx, bool new_ir_api) {
+void declare_kernel(const dsl::kernel::iface_t &interface, ir_context_t &ctx,
+        bool new_ir_api) {
     default_ctx().declare_kernel(interface, ctx, new_ir_api);
 }
 
-kernel_t end_kernel() {
+dsl::kernel_t end_kernel() {
     return default_ctx().end_kernel();
 }
 

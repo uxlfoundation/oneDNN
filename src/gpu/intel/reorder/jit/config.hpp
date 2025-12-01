@@ -52,7 +52,7 @@ public:
     const std::vector<tile_t> &tiles() const { return tiles_; }
     const std::array<tile_t, 3> &grid() const { return grid_; }
 
-    config_t(const kernel::options_t &ec, layout_t src, layout_t dst);
+    config_t(const dsl::kernel::options_t &ec, layout_t src, layout_t dst);
 
 private:
     std::vector<tile_t> tiles_;

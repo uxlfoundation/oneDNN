@@ -45,7 +45,9 @@ namespace intel {
 
 namespace jit {
 struct generator_base_t;
+namespace dsl {
 struct kernel_t;
+}
 } // namespace jit
 
 class engine_t : public gpu::engine_t {
@@ -63,7 +65,7 @@ public:
             compute::kernel_t *kernel, jit::generator_base_t *jitter) const = 0;
 
     virtual status_t create_kernel(compute::kernel_t &kernel,
-            const jit::kernel_t &kernel_ir) const = 0;
+            const jit::dsl::kernel_t &kernel_ir) const = 0;
 
     virtual status_t create_kernels(std::vector<compute::kernel_t> *kernels,
             const std::vector<const char *> &kernel_names,

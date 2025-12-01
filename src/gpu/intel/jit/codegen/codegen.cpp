@@ -84,7 +84,7 @@ public:
                 typeid(typename ngen_generator_t::RootCodeGenerator),
                 host_->getHardware()};
     }
-    const kernel::options_t &options() const override {
+    const dsl::kernel::options_t &options() const override {
         return host_->options();
     }
     reg_allocator_t &allocator() override { return host_->ra(); }
@@ -1644,8 +1644,8 @@ template void convert_ir_to_ngen<ir_asm_generator_t>(const stmt_t &body,
 // This interface is relied on by the oneDNN ir_kernel_t extensions. Do not
 // modify without propagating this change.
 ngen::NEOInterfaceHandler generate_ngen_interface(
-        const kernel::iface_t &kernel_iface, const kernel::options_t &options,
-        const stmt_t &kernel_body) {
+        const dsl::kernel::iface_t &kernel_iface,
+        const dsl::kernel::options_t &options, const stmt_t &kernel_body) {
 
     ngen::NEOInterfaceHandler interface(options.hw());
     interface.externalName(kernel_iface.kernel_name());
@@ -1700,8 +1700,8 @@ REG_XE3_ISA(template void convert_ir_to_ngen<sycl_gen_t<ngen::HW::Xe3>>(
         const stmt_t &body, sycl_gen_t<ngen::HW::Xe3> &host,
         const walk_order_t *kernel_grid_walk_order));
 
-::sycl::kernel make_kernel(
-        const kernel_t &ir_kernel, ::sycl::context ctx, ::sycl::device dev) {
+::sycl::kernel make_kernel(const dsl::kernel_t &ir_kernel, ::sycl::context ctx,
+        ::sycl::device dev) {
     auto &iface = ir_kernel.iface;
     auto &options = ir_kernel.options;
     auto &body = ir_kernel.body;
@@ -1746,7 +1746,7 @@ REG_XE3_ISA(template void convert_ir_to_ngen<ocl_gen_t<ngen::HW::Xe3>>(
         const walk_order_t *kernel_grid_walk_order));
 
 cl_kernel make_kernel(
-        const kernel_t &ir_kernel, cl_context ctx, cl_device_id dev) {
+        const dsl::kernel_t &ir_kernel, cl_context ctx, cl_device_id dev) {
     auto &iface = ir_kernel.iface;
     auto &options = ir_kernel.options;
     auto &body = ir_kernel.body;

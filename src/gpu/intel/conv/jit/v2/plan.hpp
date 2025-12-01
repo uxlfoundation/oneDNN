@@ -282,7 +282,7 @@ struct x2r_fma_plan_t : public base_plan_t {
     v2::layout_t bias_layout;
     std::vector<stage_t> stages;
 
-    x2r_fma_plan_t(const hw_t &hw) : base_plan_t(hw) {}
+    x2r_fma_plan_t(const dsl::hw_t &hw) : base_plan_t(hw) {}
     void add_stage(const x2r_plan_t &x2r) { stages.emplace_back(x2r); }
     void add_stage(const fma_plan_t &fma) { stages.emplace_back(fma); }
     int nstages() const { return (int)stages.size(); }
@@ -423,7 +423,7 @@ struct plan_t : public base_plan_t {
     x2r_fma_plan_t x2r_fma;
     epilogue_plan_t epilogue;
 
-    plan_t(const hw_t &hw = hw_t())
+    plan_t(const dsl::hw_t &hw = dsl::hw_t())
         : base_plan_t(hw), prefetch(hw), x2r_fma(hw), epilogue(hw) {}
 
     int grf_usage_bytes() const {
@@ -451,7 +451,7 @@ struct plan_t : public base_plan_t {
     XE_DEFINE_DUMP()
 };
 
-plan_t create_plan(const kernel_desc_t &desc, const hw_t &hw);
+plan_t create_plan(const kernel_desc_t &desc, const dsl::hw_t &hw);
 plan_t create_plan(const kernel_desc_t &desc, const problem_t &prb);
 prb_reqs_t generate_reqs(const kernel_desc_t &desc);
 

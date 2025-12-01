@@ -46,7 +46,7 @@ struct send_2d_hint_t {
 struct send_params_t {
     send_params_t() = default;
     send_params_t(
-            const hw_t &hw, const dsl::type_t &mem_type, send_op_t send_op)
+            const dsl::hw_t &hw, const dsl::type_t &mem_type, send_op_t send_op)
         : hw(hw), mem_type(mem_type), send_op(send_op), use_send_plan(true) {}
 
     send_op_t convert(const send_op_t &op) const {
@@ -64,7 +64,7 @@ struct send_params_t {
                 send_op, send_op_t::prefetch, send_op_t::prefetch_2d);
     }
 
-    hw_t hw;
+    dsl::hw_t hw;
     dsl::type_t mem_type;
     send_op_t send_op;
     send_address_t send_address;

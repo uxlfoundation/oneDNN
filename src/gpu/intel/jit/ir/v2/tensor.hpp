@@ -435,7 +435,7 @@ public:
     int to_linear_index(const tile_t &tile, const coord_t &coord) const;
     std::string blocks_str() const;
     std::string str() const;
-    std::string str_with_size(const hw_t &hw) const;
+    std::string str_with_size(const dsl::hw_t &hw) const;
 
     XE_DEFINE_DUMP()
 

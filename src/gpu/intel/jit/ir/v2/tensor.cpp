@@ -878,7 +878,7 @@ std::string layout_t::str() const {
     return oss.str();
 }
 
-std::string layout_t::str_with_size(const hw_t &hw) const {
+std::string layout_t::str_with_size(const dsl::hw_t &hw) const {
     ostringstream_t oss;
     oss << str();
     int regs = (hw.ngen_hw() == ngen::HW::Unknown

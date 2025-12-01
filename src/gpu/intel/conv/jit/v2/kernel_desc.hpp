@@ -289,7 +289,8 @@ public:
     gpu_post_ops_t post_ops;
 
     bool is_empty() const { return prop == prop_kind::undef; }
-    bool is_supported(const hw_t &hw, const problem_t *prb = nullptr) const;
+    bool is_supported(
+            const dsl::hw_t &hw, const problem_t *prb = nullptr) const;
     prb_reqs_t reqs() const;
     void set(const std::string &s);
     void set_missing();

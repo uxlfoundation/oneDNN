@@ -97,7 +97,7 @@ struct slm_plan_t : public base_plan_t {
     grid_info_t a_grid;
     grid_info_t b_grid;
 
-    slm_plan_t(const hw_t &hw)
+    slm_plan_t(const dsl::hw_t &hw)
         : base_plan_t(hw), x_reduce(hw), a_reorder(hw), b_reorder(hw) {}
 
     explicit operator bool() const { return has_a() || has_b(); }
@@ -142,7 +142,7 @@ struct x2r_plan_t : public base_plan_t {
     abc_kind_t split_abc = abc_kind_t::undef;
     int split_factor = 1;
 
-    x2r_plan_t(const hw_t &hw)
+    x2r_plan_t(const dsl::hw_t &hw)
         : base_plan_t(hw), x_reduce(hw), a_reorder(hw), b_reorder(hw) {}
 
     bool can_split(abc_kind_t abc, int factor) const;
@@ -201,8 +201,8 @@ struct fma_plan_t : public base_plan_t {
     int bmnk_start_idx(bmnk_kind_t bmnk, int subtile_idx) const;
     int bmnk_stop_idx(bmnk_kind_t bmnk, int subtile_idx) const;
 
-    std::vector<func_t> create_fma_funcs(
-            const hw_t &hw, type_t a_override, type_t b_override) const;
+    std::vector<func_t> create_fma_funcs(const dsl::hw_t &hw,
+            dsl::type_t a_override, dsl::type_t b_override) const;
     static stmt_t create_fma_block(const std::vector<func_t> &fmas,
             const expr_t &a, const expr_t &b, const expr_t &c);
     stmt_t create_stmt(ir_context_t &ir_ctx, buffer_manager_t &buf_mgr,
@@ -234,7 +234,7 @@ struct plan_t : public base_plan_t {
     int max_gmem_bufs = 0;
     int reserved_regs = -1;
 
-    plan_t(const hw_t &hw)
+    plan_t(const dsl::hw_t &hw)
         : base_plan_t(hw), slm(hw), prefetch(hw), x2r(hw), fma(hw), zp(hw) {}
 
     const tile_coord_t &x_reduce_tile_coord() const {

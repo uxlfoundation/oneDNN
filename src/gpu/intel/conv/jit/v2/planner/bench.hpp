@@ -39,19 +39,19 @@ public:
     bench_manager_t();
     const engine &get_engine() const { return engine_; }
     const stream &get_stream() const { return stream_; }
-    const hw_t &hw() const { return hw_; }
+    const dsl::hw_t &hw() const { return hw_; }
     ~bench_manager_t();
 
 private:
     engine engine_;
     stream stream_;
-    hw_t hw_;
+    dsl::hw_t hw_;
 };
 
 struct bench_input_params_t {
     static const int default_nprbs = 250;
 
-    hw_t hw;
+    dsl::hw_t hw;
     prop_kind_t prop;
     layout_tag_t src_tag;
     layout_tag_t wei_tag;
@@ -63,7 +63,7 @@ struct bench_input_params_t {
     int nprbs = 0;
 
     bench_input_params_t() = default;
-    bench_input_params_t(const kernel_desc_t &kernel_desc, const hw_t &hw,
+    bench_input_params_t(const kernel_desc_t &kernel_desc, const dsl::hw_t &hw,
             int nprbs = default_nprbs)
         : hw(hw)
         , prop(kernel_desc.prop)

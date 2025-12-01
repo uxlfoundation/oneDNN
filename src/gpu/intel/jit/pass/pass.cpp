@@ -55,7 +55,7 @@ stmt_t inject_external_var_let(const stmt_t &_stmt, ir_context_t &ir_ctx) {
 
 class store_splitter_t : public ir_mutator_t {
 public:
-    store_splitter_t(const hw_t &hw) : hw_(hw) {}
+    store_splitter_t(const dsl::hw_t &hw) : hw_(hw) {}
 
     object_t _mutate(const store_t &obj) override {
         int elems = obj.value.type().elems();
@@ -100,7 +100,7 @@ private:
         return expr_t();
     }
 
-    hw_t hw_;
+    dsl::hw_t hw_;
 };
 
 stmt_t split_wide_stores(const stmt_t &s, ir_context_t &ir_ctx) {

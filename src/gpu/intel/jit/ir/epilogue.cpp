@@ -504,7 +504,7 @@ private:
 // Builds statements to apply a post-op for a given tile.
 class post_op_builder_t {
 public:
-    post_op_builder_t(const hw_t &hw, const post_op_t &post_op)
+    post_op_builder_t(const dsl::hw_t &hw, const post_op_t &post_op)
         : hw_(hw), post_op_(post_op) {}
 
     const post_op_t &post_op() const { return post_op_; }
@@ -628,7 +628,7 @@ private:
         return bcast_mutator.mutate(expr);
     }
 
-    hw_t hw_;
+    dsl::hw_t hw_;
     post_op_t post_op_;
 };
 

@@ -173,7 +173,7 @@ public:
 
     const kernel::iface_t &kernel_iface() const { return kernel_iface_; }
     const kernel::options_t &options() const { return options_; }
-    const hw_t &hw_info() const { return options_.hw(); }
+    const dsl::hw_t &hw_info() const { return options_.hw(); }
 
     void generate_prologue() {
         BaseGeneratorT::setDefaultNoMask();

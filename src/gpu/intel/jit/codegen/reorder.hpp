@@ -93,7 +93,7 @@ protected:
 };
 
 template <typename GeneratorT>
-void emit_reorder_1d_tile(GeneratorT *host, const hw_t &hw,
+void emit_reorder_1d_tile(GeneratorT *host, const dsl::hw_t &hw,
         ngen_register_scope_t &scope, int width, const reg_buf_data_t &src,
         int src_stride, const reg_buf_data_t &dst, int dst_stride) {
     copy_plan_t plan(scope, hw.systolic_support());

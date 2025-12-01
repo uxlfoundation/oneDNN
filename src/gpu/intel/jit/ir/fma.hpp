@@ -57,10 +57,10 @@ inline bool is_dp_fma(fma_kind_t kind) {
     }
 }
 
-fma_kind_t get_supported_fma_kind(const hw_t &hw, const dsl::type_t &a,
+fma_kind_t get_supported_fma_kind(const dsl::hw_t &hw, const dsl::type_t &a,
         const dsl::type_t &b, const dsl::type_t &c);
 
-int get_simd_size(const hw_t &hw, fma_kind_t kind, const dsl::type_t &a,
+int get_simd_size(const dsl::hw_t &hw, fma_kind_t kind, const dsl::type_t &a,
         const dsl::type_t &b, const dsl::type_t &c);
 
 // Function representing DPAS instruction.
@@ -137,7 +137,7 @@ public:
     dsl::layout_t b_layout(std::array<dsl::idx_t, 2> dims = {0, 1}) const;
     dsl::layout_t c_layout(std::array<dsl::idx_t, 2> dims = {0, 1}) const;
 
-    static bool matches_types(const hw_t &hw, const dsl::type_t &a,
+    static bool matches_types(const dsl::hw_t &hw, const dsl::type_t &a,
             const dsl::type_t &b, const dsl::type_t &c);
     static bool is_src_type(dsl::type_t type);
 
@@ -168,7 +168,7 @@ private:
 // Function representing MAD instruction.
 class mad_t : public func_impl_t, public object::info_t<mad_t> {
 public:
-    static func_t make(const hw_t &hw, const dsl::type_t &dst_type,
+    static func_t make(const dsl::hw_t &hw, const dsl::type_t &dst_type,
             int exec_size, const dsl::type_t &src1_type, int src1_stride,
             const dsl::type_t src2_type, int src2_stride) {
         return func_t(new mad_t(hw, dst_type, exec_size, src1_type, src1_stride,
@@ -202,14 +202,14 @@ public:
                 src2_type.size(), src2_stride * src2_type.size() * exec_size);
     }
 
-    static bool matches_types(const hw_t &hw, const dsl::type_t &a,
+    static bool matches_types(const dsl::hw_t &hw, const dsl::type_t &a,
             const dsl::type_t &b, const dsl::type_t &c);
 
     static const int max_exec_size = 32;
-    static int get_max_exec_size_bytes(const hw_t &hw) {
+    static int get_max_exec_size_bytes(const dsl::hw_t &hw) {
         return hw >= ngen::HW::XeHPC ? 128 : 64;
     }
-    static int get_simd_size(const hw_t &hw, const dsl::type_t &a,
+    static int get_simd_size(const dsl::hw_t &hw, const dsl::type_t &a,
             const dsl::type_t &b, const dsl::type_t &c) {
         int max_size = max_exec_size;
         int max_exec_size_bytes = get_max_exec_size_bytes(hw);
@@ -231,7 +231,7 @@ public:
     int src2_stride;
 
 private:
-    mad_t(const hw_t &hw, const dsl::type_t &dst_type, int exec_size,
+    mad_t(const dsl::hw_t &hw, const dsl::type_t &dst_type, int exec_size,
             const dsl::type_t &src1_type, int src1_stride,
             const dsl::type_t &src2_type, int src2_stride)
         : func_impl_t(get_info())

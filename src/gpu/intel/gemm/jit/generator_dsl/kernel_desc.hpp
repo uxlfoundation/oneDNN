@@ -26,7 +26,7 @@ namespace gemmstone {
 struct generator_dsl_desc_t {
     generator_dsl_desc_t(const GEMMProblem &problem,
             const GEMMStrategy &strategy,
-            const ngen::InterfaceHandler &ngen_iface, const ir::hw_t &hw)
+            const ngen::InterfaceHandler &ngen_iface, const dsl::hw_t &hw)
         : problem(problem)
         , strategy(strategy)
         , iface(ngen_iface)

@@ -34,7 +34,7 @@ class problem_t {
 public:
     problem_t() = default;
     problem_t(const std::string &line);
-    const hw_t &hw() const { return hw_; }
+    const dsl::hw_t &hw() const { return hw_; }
     prop_kind_t prop() const { return prop_; }
     const layout_tag_t &src_tag() const { return src_tag_; }
     const layout_tag_t &wei_tag() const { return wei_tag_; }
@@ -65,7 +65,7 @@ public:
         return (g > 1) && (ic == 1) && (oc == 1);
     }
     const dsl::type_t &out_type() const;
-    void set_hw(const hw_t &hw) { hw_ = hw; }
+    void set_hw(const dsl::hw_t &hw) { hw_ = hw; }
     void set_prop(prop_kind_t prop) {
         prop_ = prop;
         if (prop_ == prop_kind::forward_inference) prop_ = prop_kind::forward;
@@ -99,7 +99,7 @@ public:
     static double ops(prop_kind_t prop, const tile_t &shape);
 
 private:
-    hw_t hw_;
+    dsl::hw_t hw_;
     prop_kind_t prop_ = prop_kind::undef;
     layout_tag_t src_tag_;
     layout_tag_t wei_tag_;

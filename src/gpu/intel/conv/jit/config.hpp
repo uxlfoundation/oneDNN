@@ -543,7 +543,7 @@ public:
 
     int reserved_regs() const;
 
-    const hw_t &hw() const { return options().hw(); }
+    const dsl::hw_t &hw() const { return options().hw(); }
 
     bool is_ge_xe_hpc() const { return hw() >= ngen::HW::XeHPC; }
 

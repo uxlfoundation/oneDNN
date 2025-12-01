@@ -115,7 +115,7 @@ class split_dispatcher_t {
 public:
     split_dispatcher_t() = default;
     split_dispatcher_t(const layout_t &comp_layout, const layout_t &c_layout,
-            const hw_t &hw, bool is_fwd, const bmnk_mapper_t &mapper)
+            const dsl::hw_t &hw, bool is_fwd, const bmnk_mapper_t &mapper)
         : comp_g_idx_(0)
         , comp_c_idx_((is_fwd) ? 1 : 2)
         , c_g_idx_(1)
@@ -281,7 +281,7 @@ public:
 
     operator bool() const { return simd_ != -1; }
 
-    zp_wei_init_plan_t(const hw_t &hw, bool is_fwd, int simd,
+    zp_wei_init_plan_t(const dsl::hw_t &hw, bool is_fwd, int simd,
             dsl::type_t data_type, const layout_t &zp_layout,
             const layout_t &b_layout)
         : base_plan_t(hw)
@@ -377,8 +377,9 @@ class zp_comp_init_plan_t : public base_plan_t {
 public:
     using base_plan_t::base_plan_t;
 
-    zp_comp_init_plan_t(const hw_t &hw, bool is_fwd, const layout_t &zp_layout,
-            const layout_t &src_layout, const layout_t &wei_layout)
+    zp_comp_init_plan_t(const dsl::hw_t &hw, bool is_fwd,
+            const layout_t &zp_layout, const layout_t &src_layout,
+            const layout_t &wei_layout)
         : base_plan_t(hw)
         , zp_layout_(zp_layout)
         , src_layout_(src_layout)
@@ -1229,7 +1230,7 @@ class zp_comp_apply_plan_t : public base_plan_t {
 public:
     using base_plan_t::base_plan_t;
 
-    zp_comp_apply_plan_t(const hw_t &hw, const layout_t &comp_layout,
+    zp_comp_apply_plan_t(const dsl::hw_t &hw, const layout_t &comp_layout,
             const layout_t &mask_layout, const layout_t &c_layout,
             const std::string &simd_str)
         : base_plan_t(hw)
@@ -1421,7 +1422,7 @@ struct zp_plan_impl_t : public base_plan_t {
     send_plan_t wei_load;
     zp_wei_init_plan_t wei_init;
 
-    zp_plan_impl_t(const hw_t &hw)
+    zp_plan_impl_t(const dsl::hw_t &hw)
         : base_plan_t(hw)
         , comp_init(hw)
         , mask_init(hw)
@@ -1483,7 +1484,7 @@ struct zp_plan_impl_t : public base_plan_t {
     XE_DEFINE_DUMP()
 };
 
-zp_plan_t::zp_plan_t(const hw_t &hw)
+zp_plan_t::zp_plan_t(const dsl::hw_t &hw)
     : impl(utils::make_unique<zp_plan_impl_t>(hw)) {};
 
 zp_plan_t::~zp_plan_t() = default;

@@ -685,7 +685,7 @@ void init_bwd_w(const config_t &cfg_, gemm_schedule_t &gemm_schedule,
 }
 
 reorder_plan_t create_reorder_plan(
-        const hw_t &hw, const layout_t &src, const layout_t &dst) {
+        const dsl::hw_t &hw, const layout_t &src, const layout_t &dst) {
     if (src.is_equal_normalized(dst)) return reorder_plan_t();
     if ((src.type() == dst.type()
                 || (src.type().is_f32() && dst.type().is_tf32()))
@@ -735,7 +735,7 @@ dim_t reorder_plan_t::estimate_regs() const {
     return utils::div_up(ret, grf_size());
 }
 
-reduce_plan_t create_reduce_plan(const hw_t &hw, const layout_t &src,
+reduce_plan_t create_reduce_plan(const dsl::hw_t &hw, const layout_t &src,
         const layout_t &dst, uint32_t mask) {
     reduce_plan_t ret(hw);
     ret.src = src;
@@ -1049,8 +1049,8 @@ stmt_t fma_plan_t::create_fma_block(const std::vector<func_t> &fmas,
     return ret;
 }
 
-std::vector<func_t> fma_plan_t::create_fma_funcs(
-        const hw_t &hw, type_t a_override, type_t b_override) const {
+std::vector<func_t> fma_plan_t::create_fma_funcs(const dsl::hw_t &hw,
+        dsl::type_t a_override, dsl::type_t b_override) const {
     auto a = (a_override.is_undef()) ? a_layout : a_layout.with(a_override);
     auto b = (b_override.is_undef()) ? b_layout : b_layout.with(b_override);
     auto &c = c_layout;
@@ -1485,7 +1485,7 @@ struct fma_context_t {
         }
     }
 
-    hw_t hw;
+    dsl::hw_t hw;
     int simd;
     int vec_size;
     fma_kind_t fma;
@@ -1517,7 +1517,7 @@ int slm_memory_bank_granularity(ngen::HW hw) {
 }
 
 dim_t find_min_stride_without_conflicts(
-        const hw_t &hw, dim_t inner_bytes, dim_t dense_stride_bytes) {
+        const dsl::hw_t &hw, dim_t inner_bytes, dim_t dense_stride_bytes) {
     int write_step = 64;
     int stride_step = 16;
     dim_t stride_beg = dense_stride_bytes;
@@ -1592,7 +1592,7 @@ layout_t split_into_multi_blocks(
 }
 
 layout_t pad_slm_layout(
-        const hw_t &hw, const layout_t &layout, const grid_info_t &grid) {
+        const dsl::hw_t &hw, const layout_t &layout, const grid_info_t &grid) {
     // EUs are fused only in XeHP and XeHPG; otherwise no need to pad SLM.
     if (hw >= ngen::HW::XeHPC || hw <= ngen::HW::XeLP) return layout;
     auto tg_dim0 = grid.dim(0);

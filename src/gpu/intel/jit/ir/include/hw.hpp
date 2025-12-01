@@ -35,6 +35,7 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+namespace dsl {
 
 namespace hw {
 enum class attr_t { none = 0, large_grf = 1, systolic = 2, atomic_fp64 = 4 };
@@ -134,6 +135,12 @@ private:
     attr_t attr_ = attr_t::none;
 };
 
+} // namespace dsl
+
+namespace hw {
+using attr_t = dsl::hw::attr_t;
+}
+using hw_t = dsl::hw_t;
 } // namespace jit
 } // namespace intel
 } // namespace gpu

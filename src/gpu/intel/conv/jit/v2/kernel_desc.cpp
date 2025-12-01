@@ -236,7 +236,7 @@ int estimate_grf_usage_bytes(const kernel_desc_t &desc) {
     return into<int>(abc_size);
 }
 
-bool is_tg_size_ok(const kernel_desc_t &desc, const hw_t &hw) {
+bool is_tg_size_ok(const kernel_desc_t &desc, const dsl::hw_t &hw) {
     int max_tg_size = hw.max_tg_size(desc.regs, desc.simd);
     return desc.thread_group_tile.elems() <= max_tg_size;
 }
@@ -255,7 +255,8 @@ prb_reqs_t kernel_desc_t::reqs() const {
     return reqs;
 }
 
-bool kernel_desc_t::is_supported(const hw_t &hw, const problem_t *prb) const {
+bool kernel_desc_t::is_supported(
+        const dsl::hw_t &hw, const problem_t *prb) const {
     gpu_check(prop != prop_kind::undef)
             << "Invalid prop: " << ir_utils::to_string(prop);
     gpu_check(!prb || (hw_desc.hw == prb->hw().ngen_hw()))
@@ -366,7 +367,7 @@ bool is_compatible(tensor_kind_t abc, const kernel_desc_t &kernel_desc,
     return true;
 }
 
-bool is_compatible(const hw_desc_t &hw_desc, const hw_t &hw, bool exact) {
+bool is_compatible(const hw_desc_t &hw_desc, const dsl::hw_t &hw, bool exact) {
     if (!exact && hw != hw_desc.hw) {
         switch (hw_desc.hw) {
             case ngen::HW::XeHPC:

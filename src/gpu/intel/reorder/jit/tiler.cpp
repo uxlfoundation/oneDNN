@@ -30,7 +30,7 @@ enum class message_kind_t {
     scattered,
 };
 
-dim_t max_strided_bytes(const hw_t &hw, const dsl::type_t &src_type,
+dim_t max_strided_bytes(const dsl::hw_t &hw, const dsl::type_t &src_type,
         const dsl::type_t &dst_type) {
     // These conversions use an additional temporary buffer
     const bool use_smaller_buffer
@@ -45,12 +45,12 @@ dim_t max_strided_bytes(const hw_t &hw, const dsl::type_t &src_type,
     return buf_regs * hw.grf_size();
 }
 
-dim_t max_packed_bytes(const hw_t &hw) {
+dim_t max_packed_bytes(const dsl::hw_t &hw) {
     return 32 * hw.grf_size();
 }
 
 dim_t count_block_messages(
-        const hw_t &hw, dim_t inner_bytes, dim_t iterations) {
+        const dsl::hw_t &hw, dim_t inner_bytes, dim_t iterations) {
     const auto max_block_owords = hw.grf_size() / 2;
     const auto oword_size = 16;
     const auto owords_per_grf = hw.grf_size() / oword_size;
@@ -71,8 +71,8 @@ dim_t count_block_messages(
     return messages * iterations;
 }
 
-dim_t count_scattered_messages(
-        const hw_t &hw, dim_t inner_bytes, dim_t iterations, int item_size) {
+dim_t count_scattered_messages(const dsl::hw_t &hw, dim_t inner_bytes,
+        dim_t iterations, int item_size) {
     constexpr int scattered_message_penalty = 4;
     const int message_items = hw.grf_size() / 2;
 
@@ -95,7 +95,7 @@ struct message_info_t {
     dim_t iterations = 0;
     int item_size = 16;
 
-    dim_t latency(const hw_t &hw) const {
+    dim_t latency(const dsl::hw_t &hw) const {
         if (inner_bytes == 0 || iterations == 0) return 0;
         return kind == message_kind_t::block
                 ? count_block_messages(hw, inner_bytes, iterations)
@@ -105,7 +105,7 @@ struct message_info_t {
 };
 
 message_info_t estimate_message_info(
-        const hw_t &hw, const layout_t &layout, const tile_t &tile) {
+        const dsl::hw_t &hw, const layout_t &layout, const tile_t &tile) {
     const auto grf_size = hw.grf_size();
     bool can_use_block_messages = true;
     tile_t outer = tile;
@@ -147,7 +147,7 @@ message_info_t estimate_message_info(
     return {message_kind, inner_bytes, iterations, item_size};
 }
 
-std::vector<tile_t> tiles(const hw_t &hw, layout_t a, layout_t b) {
+std::vector<tile_t> tiles(const dsl::hw_t &hw, layout_t a, layout_t b) {
     using tile_pair_t = std::array<tile_t, 2>;
 
     std::vector<dim_t> dims(a.ndims());

@@ -829,7 +829,7 @@ public:
 // buffers.
 class sbid_manager_t {
 public:
-    sbid_manager_t(const hw_t &hw = hw_t(), const int regs = 128)
+    sbid_manager_t(const dsl::hw_t &hw = dsl::hw_t(), const int regs = 128)
         : sbid_count_(ngen::tokenCount(hw, regs))
         , tuple_func_(builtin_t::make("tuple")) {
         gpu_assert(sbid_count_ <= max_sbid_count);
@@ -885,7 +885,7 @@ private:
 // Helper to assign SBIDs to IR function calls.
 class sbid_assigner_t {
 public:
-    sbid_assigner_t(const hw_t &hw) : local_sbid_mgr_(hw) {}
+    sbid_assigner_t(const dsl::hw_t &hw) : local_sbid_mgr_(hw) {}
 
     sbid_assigner_t(sbid_manager_t &external_sbid_mgr)
         : external_sbid_mgr_(&external_sbid_mgr) {}

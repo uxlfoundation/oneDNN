@@ -86,11 +86,11 @@ extern codegen_extension_handler_t default_extension_handler;
 class options_t {
 public:
     options_t() = default;
-    options_t(const hw_t &hw) : hw_(hw) {}
-    options_t(const hw_t &hw, int regs, int simd)
+    options_t(const dsl::hw_t &hw) : hw_(hw) {}
+    options_t(const dsl::hw_t &hw, int regs, int simd)
         : hw_(hw), regs_(regs), simd_(simd) {}
 
-    const hw_t &hw() const { return hw_; }
+    const dsl::hw_t &hw() const { return hw_; }
 
     // Maximum number of GRF registers used by the kernel. This can be used to
     // avoid a stall on Xe and Xe2 architectures when switching between kernels
@@ -129,7 +129,7 @@ public:
     }
 
 private:
-    hw_t hw_;
+    dsl::hw_t hw_;
     int regs_ = 0;
     int simd_ = 0;
     bool require_dpas_ = false;

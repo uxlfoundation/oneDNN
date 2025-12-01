@@ -27,7 +27,7 @@ namespace jit {
 
 template <typename ngen_generator_t>
 void eltwise(ngen_generator_t &host, ngen_register_scope_t &scope,
-        const hw_t &hw, const eltwise_t &func,
+        const dsl::hw_t &hw, const eltwise_t &func,
         const std::vector<ngen_operand_t> &args) {
     int elems = to_cpp<int>(hw, eltwise_t::arg_elems(args));
     auto &data_op = eltwise_t::arg_data(args);

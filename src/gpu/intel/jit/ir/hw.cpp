@@ -23,6 +23,7 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
+namespace dsl {
 
 hw_t::hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
         size_t l3_cache_size, attr_t attr)
@@ -113,6 +114,7 @@ hw_t::product_t::product_t(const ngen::Product &product) {
     std::memcpy(this, &product, sizeof(product));
 }
 
+} // namespace dsl
 } // namespace jit
 } // namespace intel
 } // namespace gpu

@@ -28,7 +28,7 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-inline hw_t make_ir_hw(const impl::engine_t *engine) {
+inline dsl::hw_t make_ir_hw(const impl::engine_t *engine) {
     using namespace compute;
     auto intel_engine = utils::downcast<const engine_t *>(engine);
 
@@ -38,17 +38,18 @@ inline hw_t make_ir_hw(const impl::engine_t *engine) {
     int max_wg_size = static_cast<int>(
             device_info->max_wg_size(/*large_grf_mode=*/false));
     size_t l3_cache_size = device_info->l3_cache_size();
-    hw::attr_t attr = hw::attr_t::none;
-    if (intel_engine->mayiuse_large_grf_mode()) attr |= hw::attr_t::large_grf;
-    if (device_info->mayiuse_systolic()) attr |= hw_t::attr_t::systolic;
+    dsl::hw::attr_t attr = dsl::hw::attr_t::none;
+    if (intel_engine->mayiuse_large_grf_mode())
+        attr |= dsl::hw::attr_t::large_grf;
+    if (device_info->mayiuse_systolic()) attr |= dsl::hw::attr_t::systolic;
     if (device_info->mayiuse_float_atomic_add(data_type::f64))
-        attr |= hw_t::attr_t::atomic_fp64;
+        attr |= dsl::hw::attr_t::atomic_fp64;
 
-    return hw_t(product, eu_count, max_wg_size, l3_cache_size, attr);
+    return dsl::hw_t(product, eu_count, max_wg_size, l3_cache_size, attr);
 }
 
 inline bool prefer_large_grf(
-        const hw_t &hw, const gpu_primitive_attr_t *gpu_attr) {
+        const dsl::hw_t &hw, const gpu_primitive_attr_t *gpu_attr) {
     if (!gpu_attr || !hw.large_grf_support()) return false;
     return gpu_attr->threads_per_eu() * 2 == hw.threads_per_eu();
 }

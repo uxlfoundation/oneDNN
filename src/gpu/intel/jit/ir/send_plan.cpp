@@ -705,7 +705,7 @@ struct send_2d_params_t {
         return true;
     }
 
-    bool is_supported(const hw_t &hw) const {
+    bool is_supported(const dsl::hw_t &hw) const {
         if (!block_2d_width_ok(W, type.size()))
             return fail_2d("Width is not supported.");
         if (!block_2d_height_ok(H)) return fail_2d("Height is not supported.");
@@ -908,13 +908,13 @@ int rounded_slots(int slots, int max_slots) {
     return ret;
 }
 
-int get_max_slots(const hw_t &hw, const send_params_t &send_params) {
+int get_max_slots(const dsl::hw_t &hw, const send_params_t &send_params) {
     if (hw >= ngen::HW::XeHPC) return 32;
     if (send_params.send_op == send_op_t::atomic_fadd) return 8;
     return 16;
 }
 
-int get_max_block_size(const hw_t &hw, const send_params_t &params) {
+int get_max_block_size(const dsl::hw_t &hw, const send_params_t &params) {
     if (hw >= ngen::HW::XeHPC) return 512;
     return params.send_address == send_address_t::slm && hw <= ngen::HW::XeLP
             ? 128
@@ -1176,7 +1176,7 @@ struct send_group_t {
         return ret;
     }
 
-    hw_t hw;
+    dsl::hw_t hw;
     int max_slots = 1;
     int type_size = 0;
     int slots = 0;
@@ -1281,7 +1281,7 @@ struct layout_2d_wrapper_t {
 
 class view_info_t {
 public:
-    view_info_t(const hw_t &hw, const view_t &view,
+    view_info_t(const dsl::hw_t &hw, const view_t &view,
             const send_params_t &send_params)
         : hw_(hw), view_(view), send_params_(send_params) {
         vlayout_ = view.create_pseudo_vlayout(/*init_offset=*/true);
@@ -1293,7 +1293,7 @@ public:
         init_base();
     }
 
-    const hw_t &hw() const { return hw_; }
+    const dsl::hw_t &hw() const { return hw_; }
     const view_t &view() const { return view_; }
     const send_params_t &send_params() const { return send_params_; }
     const layout_t &vlayout() const { return vlayout_; }
@@ -1643,7 +1643,7 @@ private:
         return e;
     }
 
-    hw_t hw_;
+    dsl::hw_t hw_;
     view_t view_;
     send_params_t send_params_;
     std::vector<tdim_info_t> tdims_;

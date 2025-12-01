@@ -42,12 +42,14 @@ status_t device_info_t::init_arch(impl::engine_t *engine) {
             = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
     OCL_CHECK(err);
 
-    CHECK(init_gpu_hw_info(engine, device, context, ip_version_, gpu_arch_,
-            gpu_product_, native_extensions_,
 #if XE3P
-            mayiuse_systolic_, mayiuse_ngen_kernels_, is_efficient_64bit_));
+    CHECK(init_gpu_hw_info(engine, device, context, ip_version_, gpu_arch_,
+            gpu_product_, native_extensions_, mayiuse_systolic_,
+            mayiuse_ngen_kernels_, is_efficient_64bit_));
 #else
-            mayiuse_systolic_, mayiuse_ngen_kernels_));
+    CHECK(init_gpu_hw_info(engine, device, context, ip_version_, gpu_arch_,
+            gpu_product_, native_extensions_, mayiuse_systolic_,
+            mayiuse_ngen_kernels_));
 #endif
 
     err = clReleaseContext(context);

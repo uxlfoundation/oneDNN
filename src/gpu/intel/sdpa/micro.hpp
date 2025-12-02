@@ -96,9 +96,64 @@ struct micro_params_t : trivially_serializable_t<micro_params_t> {
     bool is_fwd, is_training;
     uint8_t padding3[5] = {0};
 
-    micro_ukernel_params_t ukernel_config;
+    micro_fwd_ukernel_params_t ukernel_config;
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_params_t);
+
+struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
+
+    const std::vector<const char *> &get_kernel_names() const {
+        static const std::vector<const char *> kernel_names_bwd
+                = {"micro_sdpa_bwd"};
+        return kernel_names_bwd;
+    }
+
+    status_t create_generator(const intel::engine_t &engine,
+            compute::kernel_bundle_t &bundle) const {
+        compute::kernel_ctx_t kernel_ctx;
+        CHECK(get_kernel_ctx(kernel_ctx));
+        auto status = engine.create_kernel_bundle(
+                bundle, get_kernel_names(), kernel_ctx);
+        return status;
+    }
+
+    status_t get_kernel_ctx(compute::kernel_ctx_t &) const;
+
+    int ndims;
+    int kv_group_size;
+    data_type_t data_t;
+    data_type_t dst_data_t, key_data_t, qry_data_t, val_data_t, msk_data_t;
+
+    int q_align, k_align, v_align, a_align;
+    bool transpose_k;
+    uint8_t padding0[3] = {0};
+
+    int key_group_size, val_group_size;
+    data_type_t scale_data_t;
+
+    int attn_mask_undef, attn_mask_buffer, attn_mask_top_left,
+            attn_mask_bottom_right;
+    bool invert_scale, with_attn_scale, with_attn_mask, broadcast_mask_q,
+            with_causal_mask;
+    uint8_t padding1[3] = {0};
+    int subgroup_size, d_max;
+
+    bool d_full, arch_gte_hpc;
+    bool block_q, block_a, block_msk, block_2d_a; //TODO: use for bwd pass
+    bool prefetch_mask, prefetch_k0, prefetch_k, prefetch_v,
+            prefetch_remainder; // TODO: prefetch for bwd
+    bool remainder_q;
+    uint8_t padding2[4] = {0};
+    int prefetch_d_max;
+
+    bool softmax_inf_as_zero; //TODO: needed?
+    bool q_arrive_await_barrier; //TODO: needed?
+    bool use_systolic_ukernel;
+    uint8_t padding3[7] = {0};
+
+    micro_bwd_ukernel_params_t ukernel_config;
+};
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_bwd_params_t);
 
 struct micro_t : public primitive_t {
     using primitive_t::primitive_t;
@@ -493,7 +548,7 @@ struct micro_bwd_t : public primitive_t {
         }
 
         compute::gpu_arch_t arch() const { return arch_; }
-        micro_params_t conf;
+        micro_bwd_params_t conf;
 
     private:
         int sg_size_ = 0;

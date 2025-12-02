@@ -226,8 +226,8 @@ DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_problem_t);
 static_assert(sizeof(ukernel_serialized_problem_t) == 96,
         "Expected sizeof(ukernel_serialized_problem_t) == 96");
 
-struct micro_ukernel_params_t
-    : trivially_serializable_t<micro_ukernel_params_t> {
+struct micro_fwd_ukernel_params_t
+    : trivially_serializable_t<micro_fwd_ukernel_params_t> {
     int unroll_m_kq, unroll_n_kq;
     int unroll_m_vs, unroll_n_vs;
     int wg_m_kq, wg_n_kq;
@@ -249,7 +249,39 @@ struct micro_ukernel_params_t
     ukernel_serialized_sizes_t sizes_ktq;
     ukernel_serialized_sizes_t sizes_qdSt;
 };
-DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_ukernel_params_t);
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_fwd_ukernel_params_t);
+
+struct micro_bwd_ukernel_params_t
+    : trivially_serializable_t<micro_bwd_ukernel_params_t> {
+    int unroll_m_kq, unroll_n_kq;
+    int unroll_m_vs, unroll_n_vs;
+    int wg_m_kq, wg_n_kq;
+    int wg_m_vs, wg_n_vs;
+
+    ukernel_serialized_hwinfo_t hwinfo;
+    ukernel_serialized_problem_t problem_kq;
+    ukernel_serialized_problem_t problem_vs;
+    ukernel_serialized_problem_t problem_vtdA;
+    ukernel_serialized_problem_t problem_ktq;
+    ukernel_serialized_problem_t problem_qdSt;
+    ukernel_serialized_opts_t opts_kq;
+    ukernel_serialized_opts_t opts_vs;
+    ukernel_serialized_opts_t opts_vtdA;
+    ukernel_serialized_opts_t opts_ktq;
+    ukernel_serialized_opts_t opts_qdSt;
+    ukernel_serialized_sizes_t sizes_kq, sizes_vs;
+    ukernel_serialized_sizes_t sizes_vtdA;
+    ukernel_serialized_sizes_t sizes_ktq;
+    ukernel_serialized_sizes_t sizes_qdSt;
+};
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_bwd_ukernel_params_t);
+
+void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
+        gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
+        micro::GEMMProtocol::Options &opts_kq,
+        micro::GEMMProtocol::Options &opts_vs, gemmstone::SizeParams &sizes_kq,
+        gemmstone::SizeParams &sizes_vs,
+        const micro_fwd_ukernel_params_t &ukernel_config);
 
 void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
         gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
@@ -261,12 +293,10 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
         micro::GEMMProtocol::Options &opts_vtdA,
         micro::GEMMProtocol::Options &opts_ktq,
         micro::GEMMProtocol::Options &opts_qdSt,
-        gemmstone::SizeParams &sizes_kq,
-        gemmstone::SizeParams &sizes_vs,
-        gemmstone::SizeParams &sizes_vtdA,
-        gemmstone::SizeParams &sizes_ktq,
+        gemmstone::SizeParams &sizes_kq, gemmstone::SizeParams &sizes_vs,
+        gemmstone::SizeParams &sizes_vtdA, gemmstone::SizeParams &sizes_ktq,
         gemmstone::SizeParams &sizes_qdSt,
-        const micro_ukernel_params_t &ukernel_config);
+        const micro_bwd_ukernel_params_t &ukernel_config);
 
 } // namespace sdpa
 } // namespace intel

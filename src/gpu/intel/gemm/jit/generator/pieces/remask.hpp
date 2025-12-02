@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 
-#ifndef GEMMSTONE_GUARD_REMASK_HPP
-#define GEMMSTONE_GUARD_REMASK_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_REMASK_HPP
+#define GEMMSTONE_GENERATOR_PIECES_REMASK_HPP
 
 #include "gemmstone/type.hpp"
 #include "gemmstone/strategy.hpp"

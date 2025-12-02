@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 
-#ifndef GEMMSTONE_GUARD_ATOMIC_FUSIONS_HPP
-#define GEMMSTONE_GUARD_ATOMIC_FUSIONS_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_ATOMIC_FUSIONS_HPP
+#define GEMMSTONE_GENERATOR_PIECES_ATOMIC_FUSIONS_HPP
 
 #include "gemmstone/problem.hpp"
 #include "gemmstone/strategy.hpp"

@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_BUILDER_HPP
-#define GEMMSTONE_GUARD_BUILDER_HPP
+#ifndef GEMMSTONE_GENERATOR_DSL_BUILDER_HPP
+#define GEMMSTONE_GENERATOR_DSL_BUILDER_HPP
 
 #include "gemmstone/config.hpp"
 

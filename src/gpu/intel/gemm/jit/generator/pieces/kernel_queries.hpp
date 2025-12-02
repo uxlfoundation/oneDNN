@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 
-#ifndef GEMMSTONE_GUARD_KERNEL_QUERIES_HPP
-#define GEMMSTONE_GUARD_KERNEL_QUERIES_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_KERNEL_QUERIES_HPP
+#define GEMMSTONE_GENERATOR_PIECES_KERNEL_QUERIES_HPP
 
 #include "internal/ngen_includes.hpp"
 #include "gemmstone/problem.hpp"

@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 
-#ifndef GEMMSTONE_GUARD_MAP_HPP
-#define GEMMSTONE_GUARD_MAP_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_MAP_HPP
+#define GEMMSTONE_GENERATOR_PIECES_MAP_HPP
 
 #include "internal/ngen_includes.hpp"
 

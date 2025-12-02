@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 
-#ifndef GEMMSTONE_GUARD_QUANTIZATION_HPP
-#define GEMMSTONE_GUARD_QUANTIZATION_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_QUANTIZATION_HPP
+#define GEMMSTONE_GENERATOR_PIECES_QUANTIZATION_HPP
 
 #include "gemmstone/type.hpp"
 #include "register_layout.hpp"

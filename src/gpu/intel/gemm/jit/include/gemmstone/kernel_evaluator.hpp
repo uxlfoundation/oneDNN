@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_KERNEL_EVALUATOR_HPP
-#define GEMMSTONE_GUARD_KERNEL_EVALUATOR_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_KERNEL_EVALUATOR_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_KERNEL_EVALUATOR_HPP
 
 #include "gemmstone/config.hpp"
 #include "gemmstone/kernel_catalog.hpp"

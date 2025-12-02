@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_MICROKERNEL_PROVIDER_HPP
-#define GEMMSTONE_GUARD_MICROKERNEL_PROVIDER_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_PROVIDER_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_PROVIDER_HPP
 
 #include "gemmstone/config.hpp"
 #include "gemmstone/kernel_selector.hpp"

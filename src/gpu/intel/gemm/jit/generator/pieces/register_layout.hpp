@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_REGISTER_LAYOUT_HPP
-#define GEMMSTONE_GUARD_REGISTER_LAYOUT_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_REGISTER_LAYOUT_HPP
+#define GEMMSTONE_GENERATOR_PIECES_REGISTER_LAYOUT_HPP
 
 #include <array>
 #include <cstdint>

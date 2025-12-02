@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_PROBLEM_HPP
-#define GEMMSTONE_GUARD_PROBLEM_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_PROBLEM_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_PROBLEM_HPP
 
 #include "gemmstone/config.hpp"
 

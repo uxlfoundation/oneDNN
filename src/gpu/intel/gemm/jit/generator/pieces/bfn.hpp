@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_BFN_HPP
-#define GEMMSTONE_GUARD_BFN_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_BFN_HPP
+#define GEMMSTONE_GENERATOR_PIECES_BFN_HPP
 
 #include <cstdint>
 

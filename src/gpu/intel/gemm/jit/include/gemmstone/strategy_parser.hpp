@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_STRATEGY_PARSER_HPP
-#define GEMMSTONE_GUARD_STRATEGY_PARSER_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_STRATEGY_PARSER_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_STRATEGY_PARSER_HPP
 
 #include "gemmstone/config.hpp"
 #include "gemmstone/problem.hpp"

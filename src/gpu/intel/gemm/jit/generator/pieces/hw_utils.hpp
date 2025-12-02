@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 
-#ifndef GEMMSTONE_GUARD_HW_UTILS_HPP
-#define GEMMSTONE_GUARD_HW_UTILS_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_HW_UTILS_HPP
+#define GEMMSTONE_GENERATOR_PIECES_HW_UTILS_HPP
 
 #include "internal/ngen_includes.hpp"
 #include "gemmstone/strategy.hpp"

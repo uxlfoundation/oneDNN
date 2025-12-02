@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 
-#ifndef GEMMSTONE_GUARD_INVERT_HPP
-#define GEMMSTONE_GUARD_INVERT_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_INVERT_HPP
+#define GEMMSTONE_GENERATOR_PIECES_INVERT_HPP
 
 #include "gemmstone/type.hpp"
 

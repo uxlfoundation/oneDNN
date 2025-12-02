@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 
-#ifndef GEMMSTONE_GUARD_COMPUTE_UTILS_HPP
-#define GEMMSTONE_GUARD_COMPUTE_UTILS_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_COMPUTE_UTILS_HPP
+#define GEMMSTONE_GENERATOR_PIECES_COMPUTE_UTILS_HPP
 
 #include <tuple>
 

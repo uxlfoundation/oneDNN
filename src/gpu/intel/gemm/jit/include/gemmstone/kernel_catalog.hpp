@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_KERNEL_CATALOG_HPP
-#define GEMMSTONE_GUARD_KERNEL_CATALOG_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_KERNEL_CATALOG_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_KERNEL_CATALOG_HPP
 
 #include <string>
 #include <tuple>

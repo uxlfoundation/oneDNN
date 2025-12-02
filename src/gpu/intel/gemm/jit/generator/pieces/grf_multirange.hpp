@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_GRF_MULTIRANGE_HPP
-#define GEMMSTONE_GUARD_GRF_MULTIRANGE_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_GRF_MULTIRANGE_HPP
+#define GEMMSTONE_GENERATOR_PIECES_GRF_MULTIRANGE_HPP
 
 #include "internal/ngen_includes.hpp"
 #include "gemmstone/type.hpp"

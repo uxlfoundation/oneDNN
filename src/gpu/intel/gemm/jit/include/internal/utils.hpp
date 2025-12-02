@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_UTILS_HPP
-#define GEMMSTONE_GUARD_UTILS_HPP
+#ifndef GEMMSTONE_INCLUDE_INTERNAL_UTILS_HPP
+#define GEMMSTONE_INCLUDE_INTERNAL_UTILS_HPP
 
 #include <stdexcept>
 #include <string>
@@ -178,4 +178,4 @@ static inline void noop() {}
 
 GEMMSTONE_NAMESPACE_END
 
-#endif /* GEMMSTONE_GUARD_UTILS_HPP */
+#endif // GEMMSTONE_INCLUDE_INTERNAL_UTILS_HPP

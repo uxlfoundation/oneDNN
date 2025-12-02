@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_DRIVER_INFO_HPP
-#define GEMMSTONE_GUARD_DRIVER_INFO_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_DRIVER_INFO_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_DRIVER_INFO_HPP
 
 #include <cstdint>
 #include <string>

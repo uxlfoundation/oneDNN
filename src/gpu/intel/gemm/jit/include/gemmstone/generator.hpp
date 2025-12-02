@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_GENERATOR_HPP
-#define GEMMSTONE_GUARD_GENERATOR_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_GENERATOR_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_GENERATOR_HPP
 
 #define BINARY_OUTPUT
 

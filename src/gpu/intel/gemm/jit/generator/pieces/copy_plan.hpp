@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_COPY_PLAN_HPP
-#define GEMMSTONE_GUARD_COPY_PLAN_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_COPY_PLAN_HPP
+#define GEMMSTONE_GENERATOR_PIECES_COPY_PLAN_HPP
 
 #include <array>
 #include <cstdint>

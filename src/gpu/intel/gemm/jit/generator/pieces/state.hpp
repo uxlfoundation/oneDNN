@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_STATE_HPP
-#define GEMMSTONE_GUARD_STATE_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_STATE_HPP
+#define GEMMSTONE_GENERATOR_PIECES_STATE_HPP
 
 #include "internal/ngen_includes.hpp"
 

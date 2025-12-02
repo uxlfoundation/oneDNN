@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 
-#ifndef GEMMSTONE_GUARD_STATE_UTILS_HPP
-#define GEMMSTONE_GUARD_STATE_UTILS_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_STATE_UTILS_HPP
+#define GEMMSTONE_GENERATOR_PIECES_STATE_UTILS_HPP
 
 #include "gemmstone/type.hpp"
 #include "state.hpp"

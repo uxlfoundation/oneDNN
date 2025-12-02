@@ -15,8 +15,8 @@
 *******************************************************************************/
 
 
-#ifndef GEMMSTONE_GUARD_COOPERATIVE_SPLIT_HPP
-#define GEMMSTONE_GUARD_COOPERATIVE_SPLIT_HPP
+#ifndef GEMMSTONE_GENERATOR_PIECES_COOPERATIVE_SPLIT_HPP
+#define GEMMSTONE_GENERATOR_PIECES_COOPERATIVE_SPLIT_HPP
 
 #include "gemmstone/problem.hpp"
 #include "gemmstone/strategy.hpp"

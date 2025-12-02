@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_GUARD_KERNEL_DESC_HPP
-#define GEMMSTONE_GUARD_KERNEL_DESC_HPP
+#ifndef GEMMSTONE_GENERATOR_DSL_KERNEL_DESC_HPP
+#define GEMMSTONE_GENERATOR_DSL_KERNEL_DESC_HPP
 
 #include "gemmstone/problem.hpp"
 #include "gemmstone/strategy.hpp"

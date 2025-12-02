@@ -1054,8 +1054,12 @@ void gen_kernel_t::init_interface() {
     }
 
     // @@@@@ ?????
-    bool abo_precond = (problem.aoPtrDims == -1 && problem.aoPtrDims == -1) &&
-        (problem.ao_hostscalar || problem.bo_hostscalar);
+    //bool abo_precond = (problem.aoPtrDims == -1 && problem.aoPtrDims == -1) &&
+    //    (problem.ao_hostscalar || problem.bo_hostscalar);
+
+    bool abo_precond = (problem.aoPtrDims == -1 && problem.ao_hostscalar)
+            || (problem.boPtrDims == -1 && problem.bo_hostscalar);
+
     if (abo_precond) {
         VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> @@@@ interface_.newArgument abo");
         interface_.newArgument("abo", DataType::ud);

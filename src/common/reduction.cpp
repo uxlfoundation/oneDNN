@@ -52,7 +52,7 @@ status_t reduction_desc_init(reduction_desc_t *reduction_desc,
                                    reduction_norm_lp_sum,
                                    reduction_norm_lp_power_p_max,
                                    reduction_norm_lp_power_p_sum),
-                       p >= 1.0f),
+                       p >= 1.0f && !std::isinf(p)),
             VERBOSE_BAD_PARAM, "p");
     VCHECK_RED(IMPLICATION(one_of(alg_kind, reduction_norm_lp_max,
                                    reduction_norm_lp_sum,

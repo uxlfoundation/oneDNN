@@ -3765,7 +3765,8 @@ dnnl_status_t DNNL_API dnnl_resampling_backward_primitive_desc_create(
 ///     #dnnl_reduction_mul, #dnnl_reduction_mean, #dnnl_reduction_norm_lp_max,
 ///     #dnnl_reduction_norm_lp_sum, #dnnl_reduction_norm_lp_power_p_max,
 ///     #dnnl_reduction_norm_lp_power_p_sum.
-/// @param p Algorithm specific parameter.
+/// @param p Algorithm specific parameter. For Lp-norm algorithms, must be a
+///     finite value >= 1.0.
 /// @param eps Algorithm specific parameter.
 /// @param src_desc Source memory descriptor.
 /// @param dst_desc Destination memory descriptor.

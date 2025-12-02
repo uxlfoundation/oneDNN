@@ -13848,7 +13848,8 @@ struct reduction : public primitive {
         ///     #dnnl_reduction_norm_lp_max, #dnnl_reduction_norm_lp_sum,
         ///     #dnnl_reduction_norm_lp_power_p_max,
         ///     #dnnl_reduction_norm_lp_power_p_sum.
-        /// @param p algorithm specific parameter.
+        /// @param p algorithm specific parameter. For Lp-norm algorithms,
+        ///     must be a finite value >= 1.0.
         /// @param eps algorithm specific parameter.
         /// @param src_desc Source memory descriptor.
         /// @param dst_desc Destination memory descriptor.

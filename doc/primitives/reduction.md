@@ -49,6 +49,8 @@ where \f$eps\_op\f$ can be max and sum.
  * Reduction dimensions are of size 1 in a destination tensor.
  * The reduction primitive does not have a notion of forward or backward
    propagations.
+ * For Lp-norm algorithms, the parameter \f$p\f$ must be a finite value
+   greater than or equal to 1.0.
 
 ## Execution Arguments
 

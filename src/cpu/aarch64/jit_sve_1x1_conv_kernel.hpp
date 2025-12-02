@@ -88,6 +88,8 @@ private:
     /* Temporay registers */
     reg64_t reg_tmp_imm = x27; // tmp for add_imm
     reg64_t reg_tmp_ofs = x19; // tmp reg to calc bwd wei offset in out_load
+    reg64_t reg_tmp_addr
+            = X_TMP_4; // tmp reg to store addresses for loads and stores
 
     reg64_t reg_load_dim_tail_mask = aux_reg_load_data;
 
@@ -108,21 +110,6 @@ private:
     constexpr static int reg_binary_post_op_acc_off = 1 * reg64_size_;
     constexpr static int reg_abi_param1_backup = 2 * reg64_size_;
     constexpr static int stack_space_needed = 3 * reg64_size_;
-
-    template <typename T>
-    Xbyak_aarch64::XReg EVEX_compress_addr(const Xbyak_aarch64::XReg &addr,
-            const Xbyak_aarch64::XReg &x_tmp, Xbyak_aarch64::XReg base,
-            T raw_offt, bool bcast = false) {
-
-        assert(raw_offt <= INT_MAX);
-        auto offt = static_cast<int>(raw_offt);
-
-        add_imm(addr, base, offt, x_tmp);
-        if (bcast) {
-            // addr is the same as addr when bcast is false.
-        }
-        return addr;
-    }
 
     void prefetch(const std::string &prfop, int level, reg64_t in,
             long long int ofs) {

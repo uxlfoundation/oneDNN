@@ -261,6 +261,20 @@ public:
         return (off_mod == 0 && -8 <= off_mul_vl && off_mul_vl <= 7);
     }
 
+    inline void add_vl_or_imm(Xbyak_aarch64::XReg dst, Xbyak_aarch64::XReg src,
+            int offset, Xbyak_aarch64::XReg tmp) {
+        // If offset is a multiple of the vector length and
+        // offset / vector_length is compatible with addvl
+        // use the addvl instruction. Refer to https://developer.arm.com/documentation/ddi0596/2021-03/SVE-Instructions/ADDVL--Add-multiple-of-vector-register-size-to-scalar-register-
+        // for details.
+        if ((offset % cpu_sveLen == 0)
+                && (offset / static_cast<int>(cpu_sveLen) >= -32)
+                && (offset / cpu_sveLen <= 31))
+            addvl(dst, src, offset / cpu_sveLen);
+        else
+            add_imm(dst, src, offset, tmp);
+    }
+
     template <typename PRegBHSD, typename T>
     void set_preg(const PRegBHSD &p, T tail_size,
             const Xbyak_aarch64::XReg x_tmp0 = Xbyak_aarch64::XReg(DUMMY_IDX),

@@ -98,17 +98,17 @@ void jit_sve_1x1_conv_kernel_t<isa_>::bcast_loop(int load_loop_blk) {
             if (i + 1 == num_substeps) L(large_tail);
             reduce_loop(load_loop_blk, jcp.ur, i, false);
             if (i < num_substeps - 1) {
-                add_imm(aux1_reg_bcast_data, aux1_reg_bcast_data,
+                add_vl_or_imm(aux1_reg_bcast_data, aux1_reg_bcast_data,
                         jcp.bcast_loop_bcast_substep, reg_tmp_imm);
-                add_imm(aux_reg_output_data, aux_reg_output_data,
+                add_vl_or_imm(aux_reg_output_data, aux_reg_output_data,
                         jcp.bcast_loop_output_substep, reg_tmp_imm);
             } else {
-                add_imm(aux1_reg_bcast_data, aux1_reg_bcast_data,
+                add_vl_or_imm(aux1_reg_bcast_data, aux1_reg_bcast_data,
                         jcp.bcast_loop_bcast_step
                                 - (num_substeps - 1)
                                         * jcp.bcast_loop_bcast_substep,
                         reg_tmp_imm);
-                add_imm(aux_reg_output_data, aux_reg_output_data,
+                add_vl_or_imm(aux_reg_output_data, aux_reg_output_data,
                         jcp.bcast_loop_output_step
                                 - (num_substeps - 1)
                                         * jcp.bcast_loop_output_substep,
@@ -135,29 +135,6 @@ void jit_sve_1x1_conv_kernel_t<isa_>::bcast_loop(int load_loop_blk) {
             L(bcast_loop_tail_out);
         }
     }
-}
-
-template <cpu_isa_t isa_>
-Xbyak_aarch64::XReg jit_sve_1x1_conv_kernel_t<isa_>::output_ptr(
-        const bool is_out_layout_nxc, const int i_load, const int i_ur,
-        Xbyak_aarch64::XReg addr) {
-    if (one_of(jcp.prop_kind, forward_training, forward_inference,
-                backward_data)) {
-        int i_load_shift = is_out_layout_nxc
-                ? jcp.load_block
-                : (jcp.with_dw_conv ? jcp.ow : jcp.bcast_dim) * jcp.load_block;
-        int i_ur_shift = is_out_layout_nxc ? jcp.load_dim : jcp.load_block;
-        int offset = (i_load * i_load_shift + i_ur * i_ur_shift)
-                * jcp.typesize_out;
-        EVEX_compress_addr(addr, X_TMP_0, aux_reg_output_data, offset);
-    } else {
-        int offset = jcp.typesize_out * jcp.load_block * i_ur;
-        mov(X_TMP_0, i_load);
-        mul(X_TMP_0, reg_output_stride, X_TMP_0);
-        add_imm(X_TMP_1, X_TMP_0, offset, X_TMP_2);
-        add(addr, aux_reg_output_data, X_TMP_1);
-    }
-    return addr;
 }
 
 static int vreg_accum_idx(
@@ -227,14 +204,11 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
         return ZReg(vreg_accum_idx(load_loop_blk, i_load, i_ur));
     };
 
-    auto bias_ptr = [=](int i_load) {
-        return EVEX_compress_addr(X_DEFAULT_ADDR, X_TMP_0, reg_bias_data,
-                jcp.typesize_out * jcp.oc_block * i_load);
+    auto bias_offset = [=](int i_load) {
+        return jcp.typesize_out * jcp.oc_block * i_load;
     };
 
-    auto bcast_ptr = [=](int i_reduce, int i_ur, bool bcast,
-                             const Xbyak_aarch64::XReg addr,
-                             const Xbyak_aarch64::XReg tmp) {
+    auto bcast_offset = [=](int i_reduce, int i_ur) {
         assert(i_ur < jcp.ur);
         assert(i_reduce <= jcp.reduce_loop_unroll);
         int offt;
@@ -250,13 +224,10 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
             int rmul = bcast_layout_nxc ? jcp.ic : jcp.ic_block;
             offt = i_reduce * rmul + i_ur;
         }
-        return EVEX_compress_addr(
-                addr, tmp, aux_reg_bcast_data, jcp.typesize_in * offt, bcast);
+        return jcp.typesize_in * offt;
     };
 
-    auto load_ptr
-            = [=](int i_reduce, int i_load, const Xbyak_aarch64::XReg addr,
-                      const Xbyak_aarch64::XReg tmp) {
+    auto load_offset = [=](int i_reduce, int i_load) {
         int offt;
         int u0 = i_reduce % jcp.reduce_loop_unroll;
         int u1 = i_reduce / jcp.reduce_loop_unroll;
@@ -266,8 +237,25 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
                                              jcp.reduce_dim, jcp.reduce_block));
         int rmul = load_layout_nxc ? jcp.load_dim : jcp.load_block;
         offt = i_load * lmul + u0 * rmul;
-        return EVEX_compress_addr(addr, tmp, aux_reg_load_data,
-                u1 * jcp.reduce_loop_load_step + jcp.typesize_in * offt);
+        return u1 * jcp.reduce_loop_load_step + jcp.typesize_in * offt;
+    };
+
+    auto output_offset = [=](const bool is_out_layout_nxc, const int i_load,
+                                 const int i_ur) {
+        int32_t offset;
+        if (one_of(jcp.prop_kind, forward_training, forward_inference,
+                    backward_data)) {
+            int i_load_shift = is_out_layout_nxc
+                    ? jcp.load_block
+                    : (jcp.with_dw_conv ? jcp.ow : jcp.bcast_dim)
+                            * jcp.load_block;
+            int i_ur_shift = is_out_layout_nxc ? jcp.load_dim : jcp.load_block;
+            offset = (i_load * i_load_shift + i_ur * i_ur_shift)
+                    * jcp.typesize_out;
+        } else {
+            offset = jcp.typesize_out * jcp.load_block * i_ur;
+        }
+        return offset;
     };
 
     auto init = [=]() {
@@ -279,16 +267,19 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
             tst(reg_reduce_pos_flag, FLAG_REDUCE_FIRST);
             b(EQ, init_zero);
 
-            for (int i_load = 0; i_load < load_loop_blk; i_load++)
-                for (int i_ur = 0; i_ur < ur; ++i_ur) {
+            for (int i_load = 0; i_load < load_loop_blk; i_load++) {
+                auto vreg_acc = vreg_accum(i_load, 0);
+                if (i_load + 1 == load_loop_blk && load_dim_tail)
+                    LD_MUL_VL(ld1w, vreg_acc.s, k_load_dim_mask, reg_bias_data,
+                            bias_offset(i_load), 4);
+                else
+                    LD_MUL_VL(ld1w, vreg_acc.s, P_ALL_ONE, reg_bias_data,
+                            bias_offset(i_load), 4);
+                for (int i_ur = 1; i_ur < ur; ++i_ur) {
                     auto vreg_acc = vreg_accum(i_load, i_ur);
-                    if (i_load + 1 == load_loop_blk && load_dim_tail)
-                        ld1w(vreg_acc.s, k_load_dim_mask / T_z,
-                                ptr(bias_ptr(i_load)));
-                    else
-                        ld1w(vreg_acc.s, P_ALL_ONE / T_z,
-                                ptr(bias_ptr(i_load)));
+                    mov(vreg_acc.d, vreg_accum(i_load, 0).d);
                 }
+            }
             b(init_done);
         }
 
@@ -310,17 +301,25 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
             b(NE, store_noadd);
         }
 
+        auto output_addr = reg_tmp_addr;
+        mov(output_addr, aux_reg_output_data);
         for (int i_ur = 0; i_ur < ur; ++i_ur)
             for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
+                if (!one_of(jcp.prop_kind, forward_training, forward_inference,
+                            backward_data)) {
+                    mov(X_TMP_0, i_load);
+                    madd(output_addr, X_TMP_0, reg_output_stride,
+                            aux_reg_output_data);
+                }
+
+                auto offset = output_offset(out_layout_nxc, i_load, i_ur);
                 auto r = vreg_accum(i_load, i_ur).s;
                 if (i_load + 1 == load_loop_blk && load_dim_tail)
-                    ld1w(zreg_tmp.s, k_load_dim_mask / T_z,
-                            ptr(output_ptr(out_layout_nxc, i_load, i_ur,
-                                    X_DEFAULT_ADDR)));
+                    LD_MUL_VL(ld1w, zreg_tmp.s, k_load_dim_mask, output_addr,
+                            offset, 4);
                 else
-                    ld1w(zreg_tmp.s, P_ALL_ONE / T_z,
-                            ptr(output_ptr(out_layout_nxc, i_load, i_ur,
-                                    X_DEFAULT_ADDR)));
+                    LD_MUL_VL(ld1w, zreg_tmp.s, P_ALL_ONE, output_addr, offset,
+                            4);
                 fadd(r, r, zreg_tmp.s);
             }
 
@@ -337,8 +336,16 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
 
         auto store_output = [=](bool output_is_aligned) {
             const auto mask_flag = load_dim_tail;
+            auto output_addr = reg_tmp_addr;
+            mov(output_addr, aux_reg_output_data);
             for (int i_ur = 0; i_ur < ur; ++i_ur) {
                 for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
+                    if (!one_of(jcp.prop_kind, forward_training,
+                                forward_inference, backward_data)) {
+                        mov(X_TMP_0, i_load);
+                        madd(output_addr, X_TMP_0, reg_output_stride,
+                                aux_reg_output_data);
+                    }
                     auto vreg_acc = vreg_accum(i_load, i_ur);
                     // for nxc_layout-bwd_w, weights are still padded and the
                     // output_ptr here can be uninitialized scratchpad.
@@ -346,13 +353,12 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
                     // here we zero-pad output by omitting the mask.
                     if (jcp.prop_kind != backward_weights
                             && (i_load + 1 == load_loop_blk && mask_flag)) {
-                        st1w(vreg_acc.s, k_load_dim_mask / T_z,
-                                ptr(output_ptr(out_layout_nxc, i_load, i_ur,
-                                        X_DEFAULT_ADDR)));
+                        ST_MUL_VL(st1w, vreg_acc.s, k_load_dim_mask,
+                                output_addr,
+                                output_offset(out_layout_nxc, i_load, i_ur), 4);
                     } else {
-                        st1w(vreg_acc.s, P_ALL_ONE / T_z,
-                                ptr(output_ptr(out_layout_nxc, i_load, i_ur,
-                                        X_DEFAULT_ADDR)));
+                        ST_MUL_VL(st1w, vreg_acc.s, P_ALL_ONE, output_addr,
+                                output_offset(out_layout_nxc, i_load, i_ur), 4);
                     }
                 }
             }
@@ -373,41 +379,51 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
                 ? reduce_dim_tail
                 : jcp.reduce_loop_unroll;
 
+        auto bcast_addr = reg_tmp_addr;
+        mov(bcast_addr, aux_reg_bcast_data);
+        int base_offset = 0;
         for (int i_reduce = 0; i_reduce < i_reduce_end; i_reduce++) {
             for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
                 auto vreg = vreg_load(i_load);
                 if (i_load + 1 == load_loop_blk && load_dim_tail)
-                    ld1w(vreg.s, k_load_dim_mask / T_z,
-                            ptr(load_ptr(i_reduce, i_load, X_DEFAULT_ADDR,
-                                    X_TMP_0)));
+                    LD_MUL_VL(ld1w, vreg.s, k_load_dim_mask, aux_reg_load_data,
+                            load_offset(i_reduce, i_load), 4);
                 else
-                    ld1w(vreg.s, P_ALL_ONE / T_z,
-                            ptr(load_ptr(i_reduce, i_load, X_DEFAULT_ADDR,
-                                    X_TMP_0)));
+                    LD_MUL_VL(ld1w, vreg.s, P_ALL_ONE, aux_reg_load_data,
+                            load_offset(i_reduce, i_load), 4);
             }
 
             for (int i_ur = 0; i_ur < ur; ++i_ur) {
+                int offset = bcast_offset(i_reduce, i_ur);
+                int offset_ = offset - base_offset;
+
                 if (jcp.expl_bcast && load_loop_blk > 1) {
-                    ldr(W_TMP_0,
-                            ptr(bcast_ptr(i_reduce, i_ur, false, X_DEFAULT_ADDR,
-                                    X_TMP_1)));
+                    // ldr immediate has to be >=-256 and < 255.
+                    // Refer to https://developer.arm.com/documentation/ddi0487/latest.
+                    if (offset_ < -256 || offset_ > 255) {
+                        add_vl_or_imm(bcast_addr, bcast_addr, offset_, X_TMP_0);
+                        base_offset = offset;
+                        offset_ = 0;
+                    }
+                    ldr(W_TMP_0, ptr(bcast_addr, offset_));
                     dup(vreg_bcast.s, W_TMP_0);
+                } else {
+                    // ld1rw has to be a multiple of 4 in the range [0, 252].
+                    // Refer to https://developer.arm.com/documentation/ddi0596/2020-12/SVE-Instructions/LD1RW--Load-and-broadcast-unsigned-word-to-vector-.
+                    if (offset_ < 0 || offset_ > 252 || offset_ % 4 != 0) {
+                        add_vl_or_imm(bcast_addr, bcast_addr, offset_, X_TMP_0);
+                        base_offset = offset;
+                        offset_ = 0;
+                    }
+                    ld1rw(zreg_tmp.s, P_ALL_ONE, ptr(bcast_addr, offset_));
                 }
+
                 for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
                     auto vreg_acc = vreg_accum(i_load, i_ur);
                     if (i_load + 1 == load_loop_blk && load_dim_tail) {
-                        ld1rw(zreg_tmp.s, P_ALL_ONE,
-                                ptr(bcast_ptr(i_reduce, i_ur, true,
-                                        X_DEFAULT_ADDR, X_TMP_0)));
                         fmla(vreg_acc.s, k_load_dim_mask / T_m,
                                 vreg_load(i_load).s, zreg_tmp.s);
-                    } else if (jcp.expl_bcast && load_loop_blk > 1) {
-                        fmla(vreg_acc.s, P_ALL_ONE / T_m, vreg_load(i_load).s,
-                                vreg_bcast.s);
                     } else {
-                        ld1rw(zreg_tmp.s, P_ALL_ONE,
-                                ptr(bcast_ptr(i_reduce, i_ur, true,
-                                        X_DEFAULT_ADDR, X_TMP_0)));
                         fmla(vreg_acc.s, P_ALL_ONE / T_m, vreg_load(i_load).s,
                                 zreg_tmp.s);
                     }
@@ -432,10 +448,10 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
     L(reduce_loop);
     {
         fma_block(false);
-        add_imm(aux_reg_bcast_data, aux_reg_bcast_data,
+        add_vl_or_imm(aux_reg_bcast_data, aux_reg_bcast_data,
                 jcp.reduce_loop_bcast_step, reg_tmp_imm);
-        add_imm(aux_reg_load_data, aux_reg_load_data, jcp.reduce_loop_load_step,
-                reg_tmp_imm);
+        add_vl_or_imm(aux_reg_load_data, aux_reg_load_data,
+                jcp.reduce_loop_load_step, reg_tmp_imm);
         subs_imm(reduce_loop_iter, reduce_loop_iter, jcp.reduce_loop_unroll,
                 reg_tmp_imm);
         b(GT, reduce_loop);
@@ -511,15 +527,15 @@ void jit_sve_1x1_conv_kernel_t<isa_>::generate() {
             L(no_update_mask);
         }
         bcast_loop(load_loop_blk);
-        add_imm(reg_load_data, reg_load_data,
+        add_vl_or_imm(reg_load_data, reg_load_data,
                 load_loop_blk * jcp.load_loop_load_step, reg_tmp_imm);
         switch (jcp.prop_kind) {
             case forward_training:
             case forward_inference:
-                add_imm(reg_bias_data, reg_bias_data,
+                add_vl_or_imm(reg_bias_data, reg_bias_data,
                         load_loop_blk * jcp.load_block * jcp.typesize_out,
                         reg_tmp_imm);
-                add_imm(reg_output_data, reg_output_data,
+                add_vl_or_imm(reg_output_data, reg_output_data,
                         load_loop_blk * jcp.load_block * jcp.typesize_out
                                 * (is_out_layout_nxc(jcp)
                                                 ? 1
@@ -530,13 +546,13 @@ void jit_sve_1x1_conv_kernel_t<isa_>::generate() {
                 if (jcp.with_binary) {
                     const auto oc_off_oprnd = aux_reg_load_data;
                     ldr(oc_off_oprnd, ptr(X_SP, reg_binary_post_op_acc_off));
-                    add_imm(oc_off_oprnd, oc_off_oprnd,
+                    add_vl_or_imm(oc_off_oprnd, oc_off_oprnd,
                             jcp.load_block * load_loop_blk, X_TMP_0);
                     str(oc_off_oprnd, ptr(X_SP, reg_binary_post_op_acc_off));
                 }
                 break;
             case backward_data:
-                add_imm(reg_output_data, reg_output_data,
+                add_vl_or_imm(reg_output_data, reg_output_data,
                         load_loop_blk * jcp.load_block * jcp.typesize_out
                                 * (is_out_layout_nxc(jcp) ? 1 : jcp.bcast_dim),
                         reg_tmp_imm);
@@ -922,7 +938,7 @@ status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
             max_regs = 9; // max # of ur_w
             min_regs = 6; // min # of ur_w
             size_threshold = 14;
-            jcp.expl_bcast = true;
+            jcp.expl_bcast = false; // ld1rw is faster for most cases
 
             /*
             *  H*D of dst  > SMALL_SPATIAL

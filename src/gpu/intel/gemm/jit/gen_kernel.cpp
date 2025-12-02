@@ -509,14 +509,8 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
 
 
     // @@@@@@@@@@@ or maybe later - after select kernel from catalog ???????????????????
-    bool mynew = gpu_utils::dev_getenv("MYNEW", false);
-    if (mynew) {
-        problem_.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
-        problem_.boPtrDims = b_quant.zp_host_scalar ? -1 : b_quant.zp_ndims;
-    } else {
-        problem_.aoPtrDims = a_quant.zp_ndims;
-        problem_.boPtrDims = b_quant.zp_ndims;
-    }
+    problem_.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
+    problem_.boPtrDims = b_quant.zp_host_scalar ? -1 : b_quant.zp_ndims;
     VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : @@@@ setup problem_.aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims,problem_.boPtrDims);
     // @@@@@@@@@@@
 
@@ -1064,18 +1058,14 @@ void gen_kernel_t::init_interface() {
                 "bo_ptr", ExternalArgumentType::GlobalPtr, bo_access);
     }
 
-    // @@@@@@@@@@@@@@@@@@@
-    bool mynew = gpu_utils::dev_getenv("MYNEW", false);
-    if (mynew) {
-        bool abo_precond = (problem.aoPtrDims == -1 && problem.aoPtrDims == -1) &&
-            (problem.ao_hostscalar || problem.bo_hostscalar);
-        if (abo_precond) {
-            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> @@@@ interface_.newArgument abo");
-            interface_.newArgument("abo", DataType::ud);
-        }
+    // @@@@@@@@@@@@@@@@@@@ ????????
+    bool abo_precond = (problem.aoPtrDims == -1 && problem.aoPtrDims == -1) &&
+        (problem.ao_hostscalar || problem.bo_hostscalar);
+    if (abo_precond) {
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> @@@@ interface_.newArgument abo");
+        interface_.newArgument("abo", DataType::ud);
     }
-
-    // @@@@@@@@@@@@@@@@@@@
+    // @@@@@@@@@@@@@@@@@@@ ????????
 
     if (problem.aScale2D()){
         interface_.newArgument(

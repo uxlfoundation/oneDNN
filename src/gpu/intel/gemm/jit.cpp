@@ -89,37 +89,22 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
     VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add beta");
 
-    bool mynew = gpu_utils::dev_getenv("MYNEW", false);
-
-    if (mynew) {
-        if (pd()->with_a_zero_points() && !problem->ao_hostscalar) {
-            arg_list.set(argn++, *ao);
-            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *ao");
-        }
-        if (pd()->with_b_zero_points() && !problem->bo_hostscalar) {
-            arg_list.set(argn++, *bo);
-            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *bo");
-        }
-    } else {
-        if (pd()->with_a_zero_points()) {
-            arg_list.set(argn++, *ao);
-            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *ao");
-        }
-        if (pd()->with_b_zero_points()) {
-            arg_list.set(argn++, *bo);
-            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *bo");
-        }
+    // @@@@@@@@@@@@@ ??????
+    if (pd()->with_a_zero_points() && !problem->ao_hostscalar) {
+        arg_list.set(argn++, *ao);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *ao");
+    }
+    if (pd()->with_b_zero_points() && !problem->bo_hostscalar) {
+        arg_list.set(argn++, *bo);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *bo");
     }
 
-    if (mynew) {
-    // @@@@@@@ !!!!! must be aligned w/ init_interface() (gen_kernel.cpp, "abo" argument, see below)
-        bool abo_precond = problem->ao_hostscalar || problem->bo_hostscalar; // @@@@@ ??????? better ?????
-        //VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; abo_precond = %d", abo_precond);
-        if (abo_precond) {
-            arg_list.set(argn++, abo_hostsize);
-            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add abo_hostsize");
-        }
+    bool abo_precond = problem->ao_hostscalar || problem->bo_hostscalar; // @@@@@ ??????? better ?????
+    if (abo_precond) {
+        arg_list.set(argn++, abo_hostsize);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add abo_hostsize");
     }
+    // @@@@@@@@@@@@@ ??????
 
     if (problem->aScale2D()) {
         arg_list.set(argn++, *a_scales);

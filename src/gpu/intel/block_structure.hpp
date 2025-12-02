@@ -24,8 +24,8 @@
 #include "common/memory_desc_wrapper.hpp"
 #include "common/serialization.hpp"
 #include "common/utils.hpp"
+#include "gemmstone/dsl/tensor.hpp"
 #include "gpu/intel/compute/kernel_arg_list.hpp"
-#include "gpu/intel/jit/dsl/tensor.hpp"
 #include "gpu/intel/utils.hpp"
 
 namespace dnnl {

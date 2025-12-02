@@ -19,9 +19,12 @@
 
 #include "gemmstone/config.hpp"
 
+#include <limits>
 #include <stdexcept>
 #include <string>
+#include <vector>
 #include <sstream>
+#include <map>
 
 #ifdef GEMMSTONE_ENABLE_SOURCE_LOCATION
 #include <source_location>
@@ -162,7 +165,7 @@ public:
     throw stub_exception(msg, where.file_name(), where.line());
 }
 
-inline void assume(bool i, const char *msg = nullptr, std::source_location where = std::source_location::current()) {
+inline void gemm_assert(bool i, const char *msg = nullptr, std::source_location where = std::source_location::current()) {
 #if !defined(NDEBUG) || GEMMSTONE_ASSERTIONS
     if(!i) msg ? stub(msg, where) : stub(where);
 #elif defined __clang__
@@ -174,8 +177,8 @@ inline void assume(bool i, const char *msg = nullptr, std::source_location where
 #endif
 }
 
-inline void assume(bool i, const std::string &msg, std::source_location where = std::source_location::current()) {
-    return assume(i, msg.c_str(), where);
+inline void gemm_assert(bool i, const std::string &msg, std::source_location where = std::source_location::current()) {
+    return gemm_assert(i, msg.c_str(), where);
 }
 
 #else
@@ -187,7 +190,7 @@ inline void assume(bool i, const std::string &msg, std::source_location where = 
     throw stub_exception(msg);
 }
 
-inline void assume(bool i, const char *msg = nullptr) {
+inline void gemm_assert(bool i, const char *msg = nullptr) {
 #if !defined(NDEBUG) || GEMMSTONE_ASSERTIONS
     if(!i) msg ? stub(msg) : stub();
 #elif defined __clang__
@@ -199,9 +202,9 @@ inline void assume(bool i, const char *msg = nullptr) {
 #endif
 }
 
-inline void assume(bool i, const std::string &msg) {
+inline void gemm_assert(bool i, const std::string &msg) {
     const char *msg_c = msg.c_str();
-    return assume(i, msg_c);
+    return gemm_assert(i, msg_c);
 }
 
 #endif
@@ -209,8 +212,8 @@ template <typename out_type, typename in_type>
 inline out_type into(in_type in) {
     auto max = static_cast<typename std::make_unsigned<out_type>::type>(std::numeric_limits<out_type>::max());
     auto min = static_cast<typename std::make_signed<out_type>::type>(std::numeric_limits<out_type>::min());
-    assume (in < 0 || static_cast<typename std::make_unsigned<in_type>::type>(in) <= max);
-    assume (in > 0 || static_cast<typename std::make_signed<in_type>::type>(in) >= min);
+    gemm_assert (in < 0 || static_cast<typename std::make_unsigned<in_type>::type>(in) <= max);
+    gemm_assert (in > 0 || static_cast<typename std::make_signed<in_type>::type>(in) >= min);
     return static_cast<out_type>(in);
 }
 
@@ -337,9 +340,12 @@ struct stringify_t {
     friend std::ostream &operator<<(std::ostream &out, const T& t) {
         return out << t.str();
     }
-
+#if __cplusplus >= 202002L
+    bool operator==(const stringify_t &) const = default;
+#else
 protected:
     bool operator==(const stringify_t &) const { return true; }
+#endif
 
 };
 

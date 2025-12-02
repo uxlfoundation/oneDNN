@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_JIT_CODEGEN_KERNEL_EXT_HPP
 #define GPU_INTEL_JIT_CODEGEN_KERNEL_EXT_HPP
 
-#include "gpu/intel/jit/codegen/kernel.hpp"
+#include "gemmstone/../../dsl/ir/codegen/kernel.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
@@ -51,20 +51,20 @@ private:
 };
 
 #define IR_TO_NGEN_GENERATOR_EMULATION_FORWARD(BaseGeneratorT) \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::emov; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::eadd; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::emul; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::eshl; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::eshr;
+    using ir::ir_to_ngen_generator_t<BaseGeneratorT>::emov; \
+    using ir::ir_to_ngen_generator_t<BaseGeneratorT>::eadd; \
+    using ir::ir_to_ngen_generator_t<BaseGeneratorT>::emul; \
+    using ir::ir_to_ngen_generator_t<BaseGeneratorT>::eshl; \
+    using ir::ir_to_ngen_generator_t<BaseGeneratorT>::eshr;
 
 #define IR_TO_NGEN_GENERATOR_FORWARD(BaseGeneratorT) \
     NGEN_FORWARD_ELF(BaseGeneratorT::hardware) \
     IR_TO_NGEN_GENERATOR_EMULATION_FORWARD(BaseGeneratorT) \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::options; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::kernel_iface; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::generate_prologue; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::generate_epilogue; \
-    using ir_to_ngen_generator_t<BaseGeneratorT>::ra;
+    using ir::ir_to_ngen_generator_t<BaseGeneratorT>::options; \
+    using ir::ir_to_ngen_generator_t<BaseGeneratorT>::kernel_iface; \
+    using ir::ir_to_ngen_generator_t<BaseGeneratorT>::generate_prologue; \
+    using ir::ir_to_ngen_generator_t<BaseGeneratorT>::generate_epilogue; \
+    using ir::ir_to_ngen_generator_t<BaseGeneratorT>::ra;
 
 class ir_kernel_t : public generator_base_t {
 public:

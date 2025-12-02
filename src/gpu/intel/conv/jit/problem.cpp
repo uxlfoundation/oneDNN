@@ -16,8 +16,8 @@
 
 #include "gpu/intel/conv/jit/problem.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
-#include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
 
 namespace dnnl {

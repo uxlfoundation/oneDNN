@@ -516,13 +516,13 @@ private:
         bool try_2d = can_use_2d(desc_, abc);
         if (try_2d) {
             auto params = get_send_params(
-                    abc, send_op_t::prefetch, view, send_kind_t::_2d);
+                    abc, v2::send_op_t::prefetch, view, v2::send_kind_t::_2d);
             prefetch = create_send_plan(params, view, /*allow_fail=*/true);
         }
         if (!try_2d || !prefetch || !reqs_.implies(prefetch.reqs())) {
             // If 2D failed, try compressed prefetch.
-            auto params = get_send_params(abc, send_op_t::prefetch, view,
-                    send_kind_t::compressed_prefetch);
+            auto params = get_send_params(abc, v2::send_op_t::prefetch, view,
+                    v2::send_kind_t::compressed_prefetch);
             prefetch = try_create_send_plan(__func__, params, view);
             if (!prefetch) return false;
             if (!reqs_.implies(prefetch.reqs())) return false;
@@ -547,7 +547,7 @@ private:
 
     bool init_x2r_plan(
             tensor_kind_t abc, const v2::view_t &view, x2r_plan_t &plan) const {
-        auto params = get_send_params(abc, send_op_t::load, view);
+        auto params = get_send_params(abc, v2::send_op_t::load, view);
         auto load = try_create_send_plan(__func__, params, view);
         if (!load) return false;
         reorder_plan_t reorder;
@@ -671,7 +671,7 @@ private:
             const v2::view_t &bias_mem_view, epilogue_store_plan_t &plan,
             prb_reqs_t &reqs) const {
         auto params = get_send_params(tensor_kind_t::undef,
-                is_atomic ? send_op_t::atomic_add : send_op_t::store,
+                is_atomic ? v2::send_op_t::atomic_add : v2::send_op_t::store,
                 bias_mem_view);
         auto store = try_create_send_plan(__func__, params, bias_mem_view);
         if (!store) return false;
@@ -744,8 +744,9 @@ private:
         // Store partial reductions.
         auto store_view
                 = v2::view_t(mapper, slm_layout, store_coord, store_tile);
-        auto store_params = get_send_params(tensor_kind_t::c, send_op_t::store,
-                store_view, send_kind_t::block, send_address_t::slm);
+        auto store_params = get_send_params(tensor_kind_t::c,
+                v2::send_op_t::store, store_view, v2::send_kind_t::block,
+                v2::send_address_t::slm);
         store_params.skip_mask.push_back(k_dim);
         auto store = try_create_send_plan(__func__, store_params, store_view);
         if (!store) return false;
@@ -766,8 +767,9 @@ private:
         // Load partial sums and do the final reduction.
         auto load_view = v2::view_t(mapper, slm_layout, load_coord, tile_with_k,
                 grid_splitter.var_range_info());
-        auto load_params = get_send_params(tensor_kind_t::c, send_op_t::load,
-                load_view, send_kind_t::block, send_address_t::slm);
+        auto load_params = get_send_params(tensor_kind_t::c,
+                v2::send_op_t::load, load_view, v2::send_kind_t::block,
+                v2::send_address_t::slm);
         load_params.skip_mask.push_back(k_dim);
         auto load = try_create_send_plan(__func__, load_params, load_view);
         if (!load) return false;
@@ -792,7 +794,7 @@ private:
             const v2::layout_t &c_reg_layout, const v2::view_t &c_mem_view,
             epilogue_store_plan_t &plan, prb_reqs_t &reqs) const {
         auto params = get_send_params(tensor_kind_t::c,
-                is_atomic ? send_op_t::atomic_add : send_op_t::store,
+                is_atomic ? v2::send_op_t::atomic_add : v2::send_op_t::store,
                 c_mem_view);
         // TODO: Implement fallback from 2D to block/scattered messages to
         // allow partial use of 2D messages when possible.
@@ -847,22 +849,23 @@ private:
         return true;
     }
 
-    send_params_t get_send_params(tensor_kind_t abc, send_op_t op,
-            const v2::view_t &view, send_kind_t send_kind = send_kind_t::undef,
-            send_address_t send_address = send_address_t::a64) const {
-        if (op == send_op_t::atomic_add) {
+    send_params_t get_send_params(tensor_kind_t abc, v2::send_op_t op,
+            const v2::view_t &view,
+            v2::send_kind_t send_kind = v2::send_kind_t::undef,
+            v2::send_address_t send_address = v2::send_address_t::a64) const {
+        if (op == v2::send_op_t::atomic_add) {
             auto &type = view.type();
             gpu_assert(type.is_f32() || type.is_s32());
-            if (type.is_f32()) op = send_op_t::atomic_fadd;
+            if (type.is_f32()) op = v2::send_op_t::atomic_fadd;
         }
         send_params_t params;
         params.hw = hw_;
-        params.kind = (send_kind != send_kind_t::undef
+        params.kind = (send_kind != v2::send_kind_t::undef
                         ? send_kind
                         : desc_.access_kind(op, abc));
         params.address = send_address;
         params.op = op;
-        if (params.kind == send_kind_t::_2d)
+        if (params.kind == v2::send_kind_t::_2d)
             params.hint_2d = send_2d_hint_t(view, op, mul_info_.hint(abc));
         params.skip_mask = skip_mask(view);
         params.init_max_entry_reg_size();

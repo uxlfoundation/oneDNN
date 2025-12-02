@@ -17,8 +17,8 @@
 #include "gpu/intel/conv/jit/zp_plan.hpp"
 
 #include "common/utils.hpp"
-#include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/send_builder.hpp"
 #include "gpu/intel/jit/ir/send_plan.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"

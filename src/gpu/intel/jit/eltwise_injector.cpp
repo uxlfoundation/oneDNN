@@ -16,8 +16,6 @@
 
 #include "gpu/intel/jit/eltwise_injector.hpp"
 #include "common/impl_registration.hpp"
-#include "gpu/intel/jit/codegen/kernel.hpp"
-#include "gpu/intel/jit/codegen/ngen_helpers.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 
 #include <limits>
@@ -397,7 +395,7 @@ void eltwise_injector_f32_t<ngen_generator_t>::sround_compute_fwd(int simd,
             convert_ngen_type_to_dnnl(dst_dt));
     assert(dst_dt_digits <= 24);
 
-    data_type_t dnnl_t = to_dnnl(to_ir(dst_dt));
+    data_type_t dnnl_t = convert_ngen_type_to_dnnl(dst_dt);
     const float f_min = types::min_value<float>(dnnl_t);
     const float max = types::max_value<float>(dnnl_t);
     const float lowest = types::lowest_value<float>(dnnl_t);

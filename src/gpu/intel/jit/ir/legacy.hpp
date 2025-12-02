@@ -18,7 +18,12 @@
 #define GPU_INTEL_JIT_IR_LEGACY_HPP
 
 #include "gemmstone/../../dsl/ir/core.hpp"
+#include "gemmstone/../../dsl/ir/fma.hpp"
 #include "gemmstone/../../dsl/ir/ir.hpp"
+#include "gemmstone/../../dsl/ir/reduce.hpp"
+#include "gemmstone/../../dsl/ir/reorder.hpp"
+#include "gemmstone/../../dsl/ir/send.hpp"
+#include "gemmstone/../../dsl/ir/walk_order.hpp"
 
 // TODO: The interfaces in this file are for legacy compatibility with oneDNN.
 // In general, these interfaces should be deleted and replaced with public
@@ -30,25 +35,7 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-// TODO: Replace with using dsl = gemmstone::dsl once dsl migration is complete
-namespace dsl {
-namespace hw {
-using attr_t = gemmstone::dsl::hw::attr_t;
-}
-using hw_t = gemmstone::dsl::hw_t;
-
-namespace kernel {
-using attr_t = gemmstone::dsl::kernel::iface_t;
-using options_t = gemmstone::dsl::kernel::options_t;
-} // namespace kernel
-using kernel_t = gemmstone::dsl::kernel_t;
-
-namespace type {
-using attr_t = gemmstone::dsl::type::attr_t;
-}
-using type_t = gemmstone::dsl::type_t;
-} // namespace dsl
-
+namespace dsl = gemmstone::dsl;
 namespace ir = gemmstone::dsl::ir;
 
 // Legacy interfaces from gemmstone/dsl/ir/core.hpp
@@ -136,6 +123,45 @@ using ir::expr_cast;
 using ir::find_objects;
 using ir::find_unique_objects;
 using ir::make_buffer;
+
+// Legacy interfaces from gemmstone/dsl/ir/send.hpp
+using send_address_t = ir::send_address_t;
+using send_cache_hint_t = ir::send_cache_hint_t;
+using send_kind_t = ir::send_kind_t;
+using send_op_t = ir::send_op_t;
+using send_t = ir::send_t;
+
+// Legacy interfaces from gemmstone/dsl/ir/fma.hpp
+using dpas_t = ir::dpas_t;
+using fma_kind_t = ir::fma_kind_t;
+using mad_t = ir::mad_t;
+using ir::get_supported_fma_kind;
+using ir::is_dp_fma;
+
+template <>
+inline ir::fma_kind_t to_enum(const std::string &s) {
+    return dsl::from_string<ir::fma_kind_t>(s);
+}
+
+// Legacy interfaces from gemmstone/dsl/reorder.hpp
+using reorder_t = ir::reorder_t;
+
+// Legacy interfaces from gemmstone/dsl/reduce.hpp
+using reduce_t = ir::reduce_t;
+
+// Legacy interfaces from gemmstone/dsl/ir/walk_order.hpp
+using walk_order_t = ir::walk_order_t;
+inline walk_order_t make_walk_order(const std::string &s) {
+    walk_order_t walk_order;
+    auto parts = gpu_utils::split(s, ",");
+    gpu_assert(parts.size() <= 3);
+    for (int i = 0; i < (int)parts.size(); i++) {
+        for (auto &kv : ir_utils::to_string_int_pairs(parts[i])) {
+            walk_order.add(dsl::idx_t(kv.first), kv.second, i);
+        }
+    }
+    return walk_order;
+}
 
 } // namespace jit
 } // namespace intel

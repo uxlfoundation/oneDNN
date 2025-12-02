@@ -21,6 +21,11 @@
 #include "gemmstone_config.hpp"
 #else
 
+enum class GEMMVerbose { DebugInfo };
+inline int getVerbose(GEMMVerbose v) { return 0; }
+
+#define GEMMSTONE_ASSERTIONS 1
+
 #include "entrance_agent.hpp"
 #include "package.hpp"
 
@@ -33,6 +38,12 @@
 #endif
 #endif
 
+#endif
+
+#ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
+#   ifndef CL_TARGET_OPENCL_VERSION
+#       define CL_TARGET_OPENCL_VERSION 210
+#   endif
 #endif
 
 #ifndef GEMMSTONE_ASSERTIONS

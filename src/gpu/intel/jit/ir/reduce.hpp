@@ -17,8 +17,6 @@
 #ifndef GPU_INTEL_JIT_IR_REDUCE_HPP
 #define GPU_INTEL_JIT_IR_REDUCE_HPP
 
-#include "gpu/intel/jit/ir/legacy.hpp"
-#include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 
 namespace dnnl {
@@ -26,33 +24,6 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace jit {
-
-// Implements reduction of GRF buffer for given layout.
-class reduce_t : public func_impl_t, public object::info_t<reduce_t> {
-public:
-    static func_t make(
-            const dsl::layout_t &src_layout, const dsl::layout_t &dst_layout) {
-        return func_t(new reduce_t(src_layout, dst_layout));
-    }
-
-    std::string str() const override {
-        ostringstream_t oss;
-        oss << "reduce[" << src_layout << ", " << dst_layout << "]";
-        return oss.str();
-    }
-
-    IR_DEFINE_ARG_GET(dst_buf, 0)
-    IR_DEFINE_ARG_GET(src_buf, 1)
-
-    dsl::layout_t src_layout;
-    dsl::layout_t dst_layout;
-
-private:
-    reduce_t(const dsl::layout_t &src_layout, const dsl::layout_t &dst_layout)
-        : func_impl_t(get_info())
-        , src_layout(src_layout)
-        , dst_layout(dst_layout) {}
-};
 
 stmt_t create_reduce_stmt(const dsl::layout_t &src, const dsl::layout_t &dst,
         const expr_t &src_buf, const expr_t &dst_buf,

@@ -68,8 +68,8 @@ class hw_t : public stringify_t<hw_t> {
 public:
     using attr_t = hw::attr_t;
     hw_t() = default;
-    explicit hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
-            size_t l3_cache_size, attr_t attr);
+    explicit hw_t(const ngen::Product &product, int eu_count,
+            size_t max_wg_size, size_t l3_cache_size, attr_t attr);
 
     ngen::Product product() const;
     ngen::ProductFamily family() const;
@@ -86,7 +86,7 @@ public:
     int systolic_support() const { return any(attr_ & attr_t::systolic); }
     size_t l3_cache_size() const { return l3_cache_size_; }
 
-    int max_tg_size(int regs, int simd) const;
+    size_t max_tg_size(int regs, int simd) const;
 
     // Number of EUs per Xe core (maps to dual subslice on XeHPG).
     int eus_per_core() const;
@@ -120,14 +120,14 @@ protected:
     product_t product_;
 
 private:
-    int max_wg_size(int regs = 128) const {
+    size_t max_wg_size(int regs = 128) const {
         bool is_large_grf = (regs > 128);
         return is_large_grf ? max_wg_size_ / 2 : max_wg_size_;
     }
 
     ngen::HW hw_ = {};
     int eu_count_ = 0;
-    int max_wg_size_ = 0;
+    size_t max_wg_size_ = 0;
     size_t l3_cache_size_ = 0;
     attr_t attr_ = attr_t::none;
 };

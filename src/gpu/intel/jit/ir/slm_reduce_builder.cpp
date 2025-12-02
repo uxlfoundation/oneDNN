@@ -18,7 +18,6 @@
 
 #include <algorithm>
 
-#include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/ir/reduce.hpp"
 #include "gpu/intel/jit/ir/send_builder.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"

@@ -19,6 +19,25 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM" OR CMAKE_CXX_COMPILER_ID MATCHES "
     append(CMAKE_CXX_FLAGS " -Wno-implicit-int-conversion")
 endif()
 
+# Use oneDNN names for ALL to ensure string replacement functions correctly
+set(GPUS ${DNNL_ENABLE_PRIMITIVE_GPU_ISA})
+string(REPLACE "ALL" "XELP;XEHP;XEHPG;XEHPC;XE2;XE3" GPUS "${GPUS}")
+string(REPLACE "XELP" "12LP" GPUS "${GPUS}")
+string(REPLACE "XEHPG" "12p7" GPUS "${GPUS}")
+string(REPLACE "XEHPC" "12p8" GPUS "${GPUS}")
+string(REPLACE "XEHP" "12HP" GPUS "${GPUS}")
+string(REPLACE "XE2" "Xe2" GPUS "${GPUS}")
+string(REPLACE "XE3" "Xe3" GPUS "${GPUS}")
+
+set(ALL_GPUS "12LP;12HP;12p7;12p8;Xe2;Xe3")
+foreach(GPU ${GPUS})
+    if(NOT ${GPU} IN_LIST ALL_GPUS)
+        message(FATAL_ERROR "Unknown GPU architecture: ${GPU}")
+    endif()
+    string(TOUPPER "${GPU}" GPU)
+    add_compile_definitions("GEMMSTONE_BUILD_${GPU}")
+endforeach()
+
 set(DIRS "dsl;generator;generator/pieces;generator_dsl;selector")
 
 file(GLOB SOURCES

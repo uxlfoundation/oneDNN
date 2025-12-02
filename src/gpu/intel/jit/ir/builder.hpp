@@ -32,15 +32,6 @@ class ir_builder_t {
 public:
     const stmt_t &stmt() const { return stmt_; }
 
-#define GENNAME(prefix) \
-    static std::string prefix(int idx) { return #prefix + std::to_string(idx); }
-    GENNAME(tg_idx)
-    GENNAME(thr_idx)
-    GENNAME(local_id)
-    GENNAME(local_size)
-    GENNAME(group_id)
-#undef GENNAME
-
 protected:
     void init_kernel_grid(const grid_info_t &kernel_grid,
             const grid_info_t &tg_grid, int simd_size, constraint_set_t &cset,

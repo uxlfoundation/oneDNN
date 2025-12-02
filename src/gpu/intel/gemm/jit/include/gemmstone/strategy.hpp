@@ -162,7 +162,7 @@ struct CommonStrategy {
     bool simulation = false;                    // For use in simulator?
     bool systolicAvailable = false;             // True if systolic array present.
     bool avoidIncConflicts = true;              // If true, duplicate address increments across banks to avoid bundle conflicts.
-                                    ZPAD(A, 1)
+    bool isDSLGenerator = false;
     ngen::HW raHW = ngen::HW::Unknown;          // Pretend to be a different GPU for register allocation purposes.
     ngen::ThreadArbitrationMode arbitrationMode
         = ngen::ThreadArbitrationMode::Default; // Thread arbitration policy to use.

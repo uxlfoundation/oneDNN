@@ -28,12 +28,7 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
-namespace dsl {
-using hw_t = gemmstone::dsl::hw_t;
-namespace hw {
-using attr_t = gemmstone::dsl::hw::attr_t;
-}
-} // namespace dsl
+namespace dsl = gemmstone::dsl;
 
 inline dsl::hw_t make_ir_hw(const impl::engine_t *engine) {
     using namespace compute;

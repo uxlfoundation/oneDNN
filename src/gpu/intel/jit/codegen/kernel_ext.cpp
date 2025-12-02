@@ -15,13 +15,11 @@
 *******************************************************************************/
 
 #include "gpu/intel/jit/codegen/kernel_ext.hpp"
+#include "gpu/intel/logging.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace jit {
-
+namespace gemmstone {
+namespace dsl {
+namespace ir {
 extern ngen::NEOInterfaceHandler generate_ngen_interface(
         const dsl::kernel::iface_t &kernel_iface,
         const dsl::kernel::options_t &options, const stmt_t &kernel_body);
@@ -31,7 +29,8 @@ void convert_ir_to_ngen(const stmt_t &body, GeneratorT &host,
         const walk_order_t *kernel_grid_walk_order = nullptr);
 
 template <ngen::HW hw>
-using gen_t = ir_to_ngen_generator_t<ngen_code_generator_t<hw>>;
+using gen_t = ir_to_ngen_generator_t<
+        dnnl::impl::gpu::intel::jit::ngen_code_generator_t<hw>>;
 
 REG_XELP_ISA(extern template void convert_ir_to_ngen<gen_t<ngen::HW::XeLP>>(
         const stmt_t &body, gen_t<ngen::HW::XeLP> &host,
@@ -52,16 +51,29 @@ REG_XE3_ISA(extern template void convert_ir_to_ngen<gen_t<ngen::HW::Xe3>>(
         const stmt_t &body, gen_t<ngen::HW::Xe3> &host,
         const walk_order_t *kernel_grid_walk_order));
 
+} // namespace ir
+} // namespace dsl
+} // namespace gemmstone
+
+namespace dnnl {
+namespace impl {
+namespace gpu {
+namespace intel {
+namespace jit {
+
+template <ngen::HW hw>
+using gen_t = ir::ir_to_ngen_generator_t<ngen_code_generator_t<hw>>;
+
 template <typename GeneratorT>
 std::string get_ngen_str(const stmt_t &body, GeneratorT *host,
         const walk_order_t *kernel_grid_walk_order) {
 #ifdef NGEN_ASM
-    ir_to_ngen_generator_t<ngen_asm_code_generator_with_interface_t> host_asm(
-            host->kernel_iface(), host->options(), {});
+    ir::ir_to_ngen_generator_t<ir::ngen_asm_code_generator_with_interface_t>
+            host_asm(host->kernel_iface(), host->options(), {});
     host_asm.set_interface(host->getInterface());
 
     try {
-        convert_ir_to_ngen(body, host_asm, kernel_grid_walk_order);
+        ir::convert_ir_to_ngen(body, host_asm, kernel_grid_walk_order);
         return host_asm.str();
     } catch (std::runtime_error &e) {
         return "IR to nGEN Exception: " + std::string(e.what());
@@ -75,7 +87,7 @@ template <typename GeneratorT>
 void generate_from_ir(const stmt_t &kernel_body, GeneratorT &host,
         const walk_order_t *kernel_grid_walk_order, int &peak_regs) {
     gpu_trace() << get_ngen_str(kernel_body, &host, kernel_grid_walk_order);
-    convert_ir_to_ngen(kernel_body, host, kernel_grid_walk_order);
+    ir::convert_ir_to_ngen(kernel_body, host, kernel_grid_walk_order);
 #ifdef DNNL_DEV_MODE
     peak_regs = host.ra().get_peak_regs();
 #endif
@@ -102,8 +114,8 @@ void ir_kernel_t::generate_from_ir(
 
 #define GPU_HW_CASE(hw) \
     auto gen = gen_t<(hw)>(kernel_iface_, options_, debug_config_); \
-    gen.setInterface( \
-            generate_ngen_interface(kernel_iface_, options_, kernel_body)); \
+    gen.setInterface(ir::generate_ngen_interface( \
+            kernel_iface_, options_, kernel_body)); \
     if (force_emulate64_) gen.force_emulate64(); \
     jit::generate_from_ir( \
             kernel_body, gen, kernel_grid_walk_order, peak_regs_); \

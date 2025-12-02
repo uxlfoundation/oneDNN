@@ -15,8 +15,6 @@
 *******************************************************************************/
 
 #include "gpu/intel/jit/pass/pass.hpp"
-
-#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
 #include "gemmstone/../../dsl/ir/pass/trace.hpp"
 
 namespace dnnl {

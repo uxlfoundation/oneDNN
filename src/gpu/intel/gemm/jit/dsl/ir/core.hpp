@@ -918,6 +918,12 @@ private:
         : expr_iface_t(type), name(name), is_mutable(is_mutable) {}
 };
 
+const std::string &tg_idx_name(int idx);
+const std::string &thr_idx_name(int idx);
+const std::string &local_id_name(int idx);
+const std::string &local_size_name(int idx);
+const std::string &group_id_name(int idx);
+
 // Index into a buffer
 // off is offset in number of elements
 // elems is number of consecutive elements to access starting from off

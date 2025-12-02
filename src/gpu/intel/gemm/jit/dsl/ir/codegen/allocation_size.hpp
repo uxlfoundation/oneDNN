@@ -17,7 +17,7 @@
 #ifndef GEMMSTONE_DSL_IR_CODEGEN_ALLOCATION_SIZE_HPP
 #define GEMMSTONE_DSL_IR_CODEGEN_ALLOCATION_SIZE_HPP
 
-#include "dsl/ir/core.hpp"
+#include "gemmstone/../../dsl/ir/core.hpp"
 
 GEMMSTONE_NAMESPACE_START
 namespace dsl {

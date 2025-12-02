@@ -27,7 +27,6 @@
 
 #include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
-#include "gpu/intel/jit/ir/walk_order.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {

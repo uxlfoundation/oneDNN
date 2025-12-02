@@ -17,7 +17,7 @@
 #ifndef GPU_INTEL_JIT_IR_V2_BRIDGE_HPP
 #define GPU_INTEL_JIT_IR_V2_BRIDGE_HPP
 
-#include "gpu/intel/jit/ir/send.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"
 #include "gpu/intel/jit/ir/v2/send.hpp"
 #include "gpu/intel/jit/ir/v2/tensor.hpp"

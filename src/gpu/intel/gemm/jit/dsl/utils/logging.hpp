@@ -1,18 +1,18 @@
 /*******************************************************************************
- * Copyright 2025 Intel Corporation
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *******************************************************************************/
+* Copyright 2025 Intel Corporation
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
 
 #ifndef GEMMSTONE_DSL_UTILS_LOGGING_HPP
 #define GEMMSTONE_DSL_UTILS_LOGGING_HPP
@@ -126,45 +126,45 @@ private:
     std::vector<std::string> lines_;
 };
 
-#define gpu_perf() \
+#define dsl_perf() \
     gemmstone::logger_t<gemmstone::log_level_t::perf>::is_enabled() \
             && gemmstone::logger_t<gemmstone::log_level_t::perf>( \
                     __FILE__, __LINE__)
 
 // Trace can result in overhead making measurement meaningless
-#define gpu_perf_no_trace() \
+#define dsl_perf_no_trace() \
     gemmstone::logger_t<gemmstone::log_level_t::perf>::is_enabled() \
             && !gemmstone::logger_t< \
                     gemmstone::log_level_t::trace>::is_enabled() \
             && gemmstone::logger_t<gemmstone::log_level_t::perf>( \
                     __FILE__, __LINE__)
 
-#define gpu_info() \
+#define dsl_info() \
     gemmstone::logger_t<gemmstone::log_level_t::info>::is_enabled() \
             && gemmstone::logger_t<gemmstone::log_level_t::info>( \
                     __FILE__, __LINE__)
 
-#define gpu_debug() \
+#define dsl_debug() \
     gemmstone::logger_t<gemmstone::log_level_t::debug>::is_enabled() \
             && gemmstone::logger_t<gemmstone::log_level_t::debug>( \
                     __FILE__, __LINE__)
 
-#define gpu_warning() \
+#define dsl_warning() \
     gemmstone::logger_t<gemmstone::log_level_t::warning>::is_enabled() \
             && gemmstone::logger_t<gemmstone::log_level_t::warning>( \
                     __FILE__, __LINE__)
 
-#define gpu_suggestion() \
+#define dsl_suggestion() \
     gemmstone::logger_t<gemmstone::log_level_t::suggestion>::is_enabled() \
             && gemmstone::logger_t<gemmstone::log_level_t::suggestion>( \
                     __FILE__, __LINE__)
 
-#define gpu_trace() \
+#define dsl_trace() \
     gemmstone::logger_t<gemmstone::log_level_t::trace>::is_enabled() \
             && gemmstone::logger_t<gemmstone::log_level_t::trace>( \
                     __FILE__, __LINE__)
 
-#define gpu_check(cond) \
+#define dsl_check(cond) \
     if (!(cond)) \
     return gemmstone::logger_t<gemmstone::log_level_t::trace>::is_enabled() \
             && gemmstone::logger_t<gemmstone::log_level_t::trace, false>( \

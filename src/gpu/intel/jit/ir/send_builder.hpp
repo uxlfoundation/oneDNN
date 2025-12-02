@@ -17,9 +17,6 @@
 #ifndef GPU_INTEL_JIT_IR_SEND_BUILDER_HPP
 #define GPU_INTEL_JIT_IR_SEND_BUILDER_HPP
 
-#include "gpu/intel/jit/ir/send.hpp"
-
-#include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
 #include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/tensor.hpp"

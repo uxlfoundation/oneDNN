@@ -20,10 +20,10 @@
 #include "gpu/intel/compute/kernel.hpp"
 #include "gpu/intel/conv/jit/v2/primitive_plan.hpp"
 #include "gpu/intel/conv/jit/v2/problem.hpp"
-#include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/ir/kernel_desc.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/v2/reqs.hpp"
 #include "gpu/intel/jit/ir/v2/send.hpp"
 #include "gpu/intel/jit/ir/v2/tensor.hpp"
@@ -396,7 +396,7 @@ public:
     static const int N = 3;
 
     grid_t() = default;
-    grid_t(std::string (*genname)(int)) {
+    grid_t(const std::string &(*genname)(int)) {
         for (int i = 0; i < N; i++)
             entries_[i].idx_var = var_t::make(dsl::type_t::s32(), genname(i));
     }

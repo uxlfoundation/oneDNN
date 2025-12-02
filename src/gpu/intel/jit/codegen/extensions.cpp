@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/intel/jit/codegen/extensions.hpp"
-#include "gpu/intel/jit/codegen/reorder.hpp"
+#include "gemmstone/../../dsl/ir/codegen/extensions.hpp"
+#include "gemmstone/../../dsl/ir/codegen/reorder.hpp"
 #include "gpu/intel/jit/eltwise_injector.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
 
@@ -26,9 +26,9 @@ namespace intel {
 namespace jit {
 
 template <typename ngen_generator_t>
-void eltwise(ngen_generator_t &host, ngen_register_scope_t &scope,
+void eltwise(ngen_generator_t &host, ir::ngen_register_scope_t &scope,
         const dsl::hw_t &hw, const eltwise_t &func,
-        const std::vector<ngen_operand_t> &args) {
+        const std::vector<ir::ngen_operand_t> &args) {
     int elems = to_cpp<int>(hw, eltwise_t::arg_elems(args));
     auto &data_op = eltwise_t::arg_data(args);
     const auto &data_rd = data_op.reg_buf_data();
@@ -43,7 +43,7 @@ void eltwise(ngen_generator_t &host, ngen_register_scope_t &scope,
     int f_size = sizeof(float);
     int step = 2 * grf_size / f_size;
 
-    auto do_eltwise = [&](const reg_buf_data_t &r, const int count) {
+    auto do_eltwise = [&](const ir::reg_buf_data_t &r, const int count) {
         if (func.alg_kind == alg_kind::eltwise_stochastic_round) {
             gpu_assert(args.size() == 3);
             const auto &seed = args[2].reg_buf_data();
@@ -61,7 +61,7 @@ void eltwise(ngen_generator_t &host, ngen_register_scope_t &scope,
         }
     };
     for (int i = 0; i < elems; i += step) {
-        ngen_register_scope_t i_scope(scope.register_allocator());
+        ir::ngen_register_scope_t i_scope(scope.register_allocator());
         step = std::min(step, elems - i);
         step = utils::rnd_down_pow2(step);
         int cur_elems = step;
@@ -89,7 +89,7 @@ void handler(ngen_generator_t &host, const object_t &obj,
     if (obj.is<func_call_t>()) {
         auto &call = obj.as<func_call_t>();
         if (call.func.is<eltwise_t>()) {
-            ngen_register_scope_t scope(ext_iface.allocator());
+            ir::ngen_register_scope_t scope(ext_iface.allocator());
             auto args = ext_iface.evaluate(call.args, scope);
             eltwise(host, scope, options.hw(), call.func.as<eltwise_t>(), args);
             return;

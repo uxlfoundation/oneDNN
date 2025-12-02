@@ -13,6 +13,7 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
 #ifndef GEMMSTONE_DSL_UTILS_PROFILER_HPP
 #define GEMMSTONE_DSL_UTILS_PROFILER_HPP
 

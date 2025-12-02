@@ -25,10 +25,9 @@
 #include "gpu/intel/conv/jit/key.hpp"
 #include "gpu/intel/conv/jit/problem.hpp"
 #include "gpu/intel/jit/ir/config.hpp"
-#include "gpu/intel/jit/ir/fma.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
-#include "gpu/intel/jit/ir/walk_order.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 
 namespace dnnl {
@@ -441,7 +440,7 @@ public:
 
     void set_from_str(const std::string &s) override {
         if (s.empty()) return;
-        value_ = walk_order_t(s);
+        value_ = make_walk_order(s);
     }
 
     std::string str() const override {

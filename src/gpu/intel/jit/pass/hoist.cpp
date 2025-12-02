@@ -16,10 +16,10 @@
 
 #include "gpu/intel/jit/pass/hoist.hpp"
 
+#include "gemmstone/../../dsl/ir/codegen/allocation_size.hpp"
 #include "gemmstone/../../dsl/ir/pass/simplify.hpp"
 #include "gemmstone/../../dsl/ir/pass/trace.hpp"
-#include "gpu/intel/jit/codegen/allocation_size.hpp"
-#include "gpu/intel/jit/ir/send.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -153,8 +153,7 @@ private:
     void add_hoist_let(
             loop_info_t &loop, const expr_t &var, const expr_t &value) {
         loop.lets.emplace_back(let_t::make(var, value));
-        current_hoist_size_
-                += utils::rnd_up(var.type().size(), ngen_alloc_granularity);
+        current_hoist_size_ += ir::register_size(loop.lets.back().as<let_t>());
     }
 
     expr_t hoist_expr(const expr_t &expr, const expr_t &expr_var = {},
@@ -460,7 +459,7 @@ private:
                         bool_imm_t::get_packed_type(e.type().elems()));
                 ops.emplace(_e, var);
                 current_hoist_size_ += utils::rnd_up(
-                        var.type().size(), ngen_alloc_granularity);
+                        var.type().size(), ir::ngen_alloc_granularity);
                 return var;
             } else {
                 return _e;

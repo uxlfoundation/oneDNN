@@ -21,10 +21,10 @@
 #include "ngen.hpp"
 
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "ngen_core.hpp"
 #include "ngen_emulation.hpp"
+#include "ngen_register_allocator.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -47,13 +47,13 @@ public:
         , emu_strategy(hw, device_info.stepping_id()) {}
 
 protected:
-    reg_allocator_t ra_;
+    ngen::RegisterAllocator ra_;
 
 private:
     ngen::EmulationStrategy emu_strategy;
 
 protected:
-    reg_allocator_t &ra() { return ra_; }
+    ngen::RegisterAllocator &ra() { return ra_; }
 
     void emov(const ngen::InstructionModifier &mod, const ngen::RegData &dst,
             const ngen::RegData &src0);
@@ -116,7 +116,7 @@ private:
 
 // clang-format off
 #define FORWARD_EMULATION(hw) \
-reg_allocator_t &ra() { return emulated_generator_t<hw>::ra(); } \
+ngen::RegisterAllocator &ra() { return emulated_generator_t<hw>::ra(); }             \
 void emov(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0) { emulated_generator_t<hw>::emov(mod, dst, src0); } \
 void emov(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::Immediate &src0) { emulated_generator_t<hw>::emov(mod, dst, src0); } \
 void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1) { emulated_generator_t<hw>::emul(mod, dst, src0, src1); } \

@@ -17,6 +17,7 @@
 #include "gpu/intel/conv/jit/v2/builder.hpp"
 
 #include "gemmstone/../../dsl/ir/ir.hpp"
+#include "gemmstone/../../dsl/ir/pass/dpas.hpp"
 #include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/conv/jit/v2/bridge.hpp"
 #include "gpu/intel/conv/jit/v2/plan.hpp"
@@ -25,7 +26,6 @@
 #include "gpu/intel/jit/ir/post_ops.hpp"
 #include "gpu/intel/jit/ir/v2/builder.hpp"
 #include "gpu/intel/jit/ir/v2/send.hpp"
-#include "gpu/intel/jit/pass/dpas.hpp"
 #include "gpu/intel/jit/pass/pass.hpp"
 #include "gpu/intel/logging.hpp"
 
@@ -986,7 +986,7 @@ private:
     void emit_thread_index_let() {
         for (int i = 0; i < 3; i++) {
             auto value = var_t::make(
-                    dsl::type_t::u16(), jit::ir_builder_t::local_id(i));
+                    dsl::type_t::u16(), jit::ir::local_id_name(i));
             if (i == 0) value /= plan_.desc.simd;
             auto thr_idx = plan_.thr_grid.index_var(i);
             let(thr_idx, cast(value, thr_idx.type()));

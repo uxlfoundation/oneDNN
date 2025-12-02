@@ -22,6 +22,7 @@
 #include "common/utils.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/jit/ir/config.hpp"
+#include "gpu/intel/jit/utils/utils.hpp"
 #include "gpu/intel/pool/config.hpp"
 
 namespace dnnl {
@@ -42,7 +43,7 @@ public:
     bool is_overridable() const override { return false; }
 };
 
-class loop_grid_param_t : public grid_param_t {
+class loop_grid_param_t : public value_param_t<std::vector<dim_t>> {
 public:
     std::string name() const override { return "loop_grid"; }
     std::string desc() const override { return "Loop grid."; }
@@ -51,7 +52,7 @@ public:
 
 // padded_dims_param_t vomits pointer errors (!!) for no apparent reason,
 // so dims_padded_param_t it shall be.
-class dims_padded_param_t : public grid_param_t {
+class dims_padded_param_t : public value_param_t<std::vector<dim_t>> {
 public:
     std::string name() const override { return "pad"; }
     std::string desc() const override {
@@ -67,7 +68,7 @@ public:
     static bool check_compatibility(const conf_t &prb,
             const dsl::kernel::options_t &exec, const layout_t &src,
             const post_ops_t &po, dsl::type_t dst_dt) {
-        const int max_tg = exec.hw().max_tg_size(exec.regs(), exec.simd());
+        const auto max_tg = exec.hw().max_tg_size(exec.regs(), exec.simd());
         if (max_tg % 8 != 0) return false;
 
         // only allow SIMD-aligned channel-first layouts
@@ -386,7 +387,7 @@ public:
         } else {
             // REGULAR FILTERS
 
-            const int max_tg = utils::max_div(
+            const dim_t max_tg = utils::max_div(
                     exec.hw().max_tg_size(exec.regs(), exec.simd()), 16);
 
             if (ow >= utils::rnd_up(ow, max_tg) * 7.f / 8.f)
@@ -394,13 +395,13 @@ public:
 
             const auto ohw = ow * oh;
             if ((max_tg <= ohw * od) || (ohw == 3 * 3) || (ohw == 3 * 5)) {
-                auto loss = [&](int tgw) {
+                auto loss = [&](dim_t tgw) {
                     return utils::rnd_up(ow, tgw)
                             * utils::rnd_up(oh, max_tg / tgw);
                 };
-                int ok_tgw = sqrt(max_tg);
+                dim_t ok_tgw = sqrt(max_tg);
                 gpu_assert(ok_tgw == utils::rnd_up_pow2(ok_tgw));
-                for (int tgw = sqrt(max_tg); tgw > 0; tgw >>= 1) {
+                for (dim_t tgw = sqrt(max_tg); tgw > 0; tgw >>= 1) {
                     if (loss(tgw) < loss(ok_tgw)) ok_tgw = tgw;
                     if (loss(max_tg / tgw) <= loss(ok_tgw))
                         ok_tgw = max_tg / tgw;
@@ -500,10 +501,10 @@ public:
         kg[0] *= utils::div_up(oc, lg[1]);
         kg[1] *= utils::div_up(mb, lg[0]);
 
-        set_dims_padded(grid_info_t(padded, ir_builder_t::local_id));
-        set_loop_grid(grid_info_t(lg, ir_builder_t::local_id));
-        set_kernel_grid(grid_info_t(kg, ir_builder_t::tg_idx));
-        set_thread_group_grid(grid_info_t(tg, ir_builder_t::thr_idx));
+        set_dims_padded(padded);
+        set_loop_grid(lg);
+        set_kernel_grid(grid_info_t(kg, ir::tg_idx_name));
+        set_thread_group_grid(grid_info_t(tg, ir::thr_idx_name));
     }
 
     compute::nd_range_t nd_range() const {
@@ -518,6 +519,8 @@ public:
     }
 
     std::string str() const override {
+        using jit::ir_utils::operator<<;
+
         ostringstream_t oss;
         // clang-format off
         oss << "  Exec config:          " << options() << std::endl;

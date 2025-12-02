@@ -71,11 +71,11 @@ public:
 // Reuse IR-to-nGEN generator as it contains useful prologue/epilogue helpers
 // and emulation instructions.
 template <ngen::HW hw>
-class zero_out_kernel_t : public ir_to_ngen_generator_t<generator_t<hw>> {
+class zero_out_kernel_t : public ir::ir_to_ngen_generator_t<generator_t<hw>> {
 public:
     IR_TO_NGEN_GENERATOR_FORWARD(generator_t<hw>)
 
-    using base_type = ir_to_ngen_generator_t<generator_t<hw>>;
+    using base_type = ir::ir_to_ngen_generator_t<generator_t<hw>>;
 
     zero_out_kernel_t(const dsl::kernel::options_t &options,
             const kernel_info_t &kernel_info, const impl::engine_t *engine)
@@ -95,7 +95,7 @@ public:
 
         externalName(_desc.kernel_name());
         newArgument(kernel_iface()[0].template as<var_t>().name,
-                to_ngen(kernel_iface()[0].type()));
+                ir::to_ngen(kernel_iface()[0].type()));
         newArgument(kernel_iface()[1].template as<var_t>().name,
                 ngen::ExternalArgumentType::GlobalPtr,
                 ngen::GlobalAccessType::Stateless);
@@ -141,7 +141,7 @@ public:
         auto ptr_vec = ra().alloc_range(bytes_per_thr * uq_size / grf_size);
 
         for (int i = 0; i < bytes_per_store * ud_size; i += 64) {
-            auto z = get_subregister(hw, ngen::DataType::ud, zero, i);
+            auto z = ir::get_subregister(hw, ngen::DataType::ud, zero, i);
             mov(16, z, 0);
         }
 
@@ -152,28 +152,29 @@ public:
             mov(8, idx_vec.uw(i)(2), idx_vec(2));
         }
 
-        reg_buf_t dst, src0, src1;
+        ir::reg_buf_t dst, src0, src1;
         for (int i = 0; i < bytes_per_thr; i += 8) {
-            auto off_sub_vec
-                    = get_subregister(hw, ngen::DataType::ud, off_vec, i)(1);
-            this->eadd3(8, ngen_operand_t(reg_buf_data_t(dst, off_sub_vec)),
-                    ngen_operand_t(reg_buf_data_t(
+            auto off_sub_vec = ir::get_subregister(
+                    hw, ngen::DataType::ud, off_vec, i)(1);
+            this->eadd3(8,
+                    ir::ngen_operand_t(ir::reg_buf_data_t(dst, off_sub_vec)),
+                    ir::ngen_operand_t(ir::reg_buf_data_t(
                             src1, idx_vec.uw((i % grf_size) * 2)(2))),
-                    ngen_operand_t(reg_buf_data_t(src0, off0)),
-                    ngen_operand_t(i));
-            auto ptr_sub_vec
-                    = get_subregister(hw, ngen::DataType::uq, ptr_vec, i)(1);
-            auto off_sub_vec_q_strided = get_subregister(
+                    ir::ngen_operand_t(ir::reg_buf_data_t(src0, off0)),
+                    ir::ngen_operand_t(i));
+            auto ptr_sub_vec = ir::get_subregister(
+                    hw, ngen::DataType::uq, ptr_vec, i)(1);
+            auto off_sub_vec_q_strided = ir::get_subregister(
                     hw, ngen::DataType::ud, off_vec_q_strided, i * 2)(2);
             emov(8, off_sub_vec_q_strided, off_sub_vec);
             eadd(8, ptr_sub_vec, ptr, off_sub_vec_q_strided);
         }
 
         for (int i = 0; i < bytes_per_thr; i += bytes_per_store) {
-            auto off_sub_vec
-                    = get_subregister(hw, ngen::DataType::ud, off_vec, i)(1);
+            auto off_sub_vec = ir::get_subregister(
+                    hw, ngen::DataType::ud, off_vec, i)(1);
             cmp(16 | lt | f0[0], off_sub_vec, size);
-            auto h = get_subregister(hw, ngen::DataType::uq, ptr_vec, i);
+            auto h = ir::get_subregister(hw, ngen::DataType::uq, ptr_vec, i);
             if (use_lsc) {
                 std::unique_ptr<ngen::DataSpecLSC> lsc_spec;
                 lsc_spec = utils::make_unique<ngen::DataSpecLSC>(

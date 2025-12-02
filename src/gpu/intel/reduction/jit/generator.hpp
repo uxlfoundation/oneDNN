@@ -111,12 +111,6 @@ public:
         ra().release(src_ptr);
         ra().release(dst_ptr);
         ra().release(tg_size0);
-#ifdef DNNL_DEV_MODE
-        gpu_assert(ra().get_alloced_regs() == 0)
-                << ra().get_alloced_regs()
-                << " registers are allocated that need to be released.";
-#endif
-
         epilogue();
     }
 

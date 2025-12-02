@@ -24,7 +24,7 @@
 #include "common/utils.hpp"
 #include "gemmstone/../../dsl/ir/pass/simplify.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
-#include "gpu/intel/jit/ir/reorder.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/send_builder.hpp"
 #include "gpu/intel/logging.hpp"
 

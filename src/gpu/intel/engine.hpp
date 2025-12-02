@@ -51,9 +51,7 @@ namespace intel {
 
 namespace jit {
 struct generator_base_t;
-namespace dsl {
-using kernel_t = gemmstone::dsl::kernel_t;
-}
+namespace dsl = gemmstone::dsl;
 } // namespace jit
 
 class engine_t : public gpu::engine_t {

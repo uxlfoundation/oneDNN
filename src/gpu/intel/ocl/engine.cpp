@@ -25,7 +25,7 @@
 
 #include "xpu/ocl/memory_storage.hpp"
 
-#include "gpu/intel/jit/dsl/runtime.hpp"
+#include "gemmstone/dsl/runtime.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/microkernels/fuser.hpp"
 #include "gpu/intel/ocl/device_info.hpp"
@@ -382,10 +382,10 @@ status_t engine_t::create_kernel(
     return jitter->get_kernel(*kernel, this);
 }
 
-status_t engine_t::create_kernel(
-        compute::kernel_t &kernel, const jit::dsl::kernel_t &kernel_dsl) const {
+status_t engine_t::create_kernel(compute::kernel_t &kernel,
+        const gemmstone::dsl::kernel_t &kernel_dsl) const {
     return kernel_t::make(kernel,
-            jit::dsl::make_kernel(
+            gemmstone::dsl::make_kernel(
                     kernel_dsl, impl()->context(), impl()->device()),
             {});
 }

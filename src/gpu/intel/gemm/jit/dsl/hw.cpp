@@ -21,7 +21,7 @@
 GEMMSTONE_NAMESPACE_START
 namespace dsl {
 
-hw_t::hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
+hw_t::hw_t(const ngen::Product &product, int eu_count, size_t max_wg_size,
         size_t l3_cache_size, attr_t attr)
     : product_(product)
     , hw_(ngen::getCore(product.family))
@@ -48,11 +48,11 @@ int hw_t::grf_size() const {
     return ngen::GRF::bytes(hw_);
 }
 
-int hw_t::max_tg_size(int regs, int simd) const {
-    int wg_size = max_wg_size(regs);
-    int eu_based_tg_size
+size_t hw_t::max_tg_size(int regs, int simd) const {
+    size_t wg_size = max_wg_size(regs);
+    size_t eu_based_tg_size
             = eus_per_core() * rounddown_pow2(threads_per_eu(regs));
-    int wg_based_tg_size = wg_size / simd;
+    size_t wg_based_tg_size = wg_size / simd;
     return std::min(eu_based_tg_size, wg_based_tg_size);
 }
 int hw_t::eus_per_core() const {

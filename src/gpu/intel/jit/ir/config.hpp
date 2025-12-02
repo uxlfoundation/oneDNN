@@ -424,7 +424,7 @@ public:
                 dims[i] *= ir_utils::safe_divide(padded_dim(d), tg_block);
             }
         }
-        set_kernel_grid(grid_info_t(dims, ir_builder_t::tg_idx));
+        set_kernel_grid(grid_info_t(dims, ir::tg_idx_name));
     }
 
     void init_thread_group_grid(const std::array<tile_t, 3> &grid) {
@@ -433,7 +433,7 @@ public:
             for (auto &d : grid[i])
                 dims[i] *= thread_group_dim(d);
         }
-        set_thread_group_grid(grid_info_t(dims, ir_builder_t::thr_idx));
+        set_thread_group_grid(grid_info_t(dims, ir::thr_idx_name));
     }
 
 protected:

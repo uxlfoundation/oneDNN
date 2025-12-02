@@ -39,6 +39,17 @@ if(DNNL_CPU_THREADING_RUNTIME STREQUAL "TBB")
         # Reverting the CMAKE_MODULE_PATH to its original state
         set(CMAKE_MODULE_PATH ${DNNL_ORIGINAL_CMAKE_MODULE_PATH})
     endif()
+    if(WIN32)
+        # On Windows we must link to debug version of TBB library to ensure ABI compatibility
+        # with MSVC debug runtime.
+        set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_RELWITHMDD" "DEBUG")
+    else()
+        # On Linux TBB::tbb target may link to libtbb_debug.so which is not compatible with libtbb.so. Linking
+        # application to both may result in undefined behavior.
+        # See https://uxlfoundation.github.io/oneTBB/main/intro/limitations.html#debug-tbb-in-the-sycl-program
+        set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_RELWITHMDD" "RELEASE")
+        set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_DEBUG" "RELEASE")
+    endif()
 endif()
 
 # Use a custom find module for transitive dependencies

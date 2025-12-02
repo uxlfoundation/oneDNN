@@ -252,11 +252,6 @@ struct pd_t : public gemm::pd_t {
         return k_grouped || n_grouped;
     }
     // @@@@@@@@@@@@@@@@@@@@@@@
-    #if 0
-    bool a_zp_host_scalar() const { return a_zp_host_scalar_; }
-    bool b_zp_host_scalar() const { return b_zp_host_scalar_; }
-    bool c_zp_host_scalar() const { return c_zp_host_scalar_; }
-    #endif
     bool a_zp_host_scalar() const {
         auto &attr_zps = attr()->zero_points_;
         auto &zp = attr_zps.get(DNNL_ARG_A);

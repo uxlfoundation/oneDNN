@@ -40,7 +40,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         const memory_storage_t &a, const memory_storage_t &b,
         const memory_storage_t &c, const memory_storage_t *ao,
         const memory_storage_t *bo,
-        int32_t abo_hostsize, // @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        int32_t abo_hostsize, // @@@@@
         const memory_storage_t *a_scales,
         const memory_storage_t *b_scales, const memory_storage_t *c_scales,
         const memory_storage_t *ag, const memory_storage_t *bg,
@@ -89,7 +89,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
     VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add beta");
 
-    // @@@@@@@@@@@@@ ??????
+    // @@@@@ ??????
     if (pd()->with_a_zero_points() && !problem->ao_hostscalar) {
         arg_list.set(argn++, *ao);
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *ao");
@@ -104,7 +104,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, abo_hostsize);
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add abo_hostsize");
     }
-    // @@@@@@@@@@@@@ ??????
+    // @@@@@ ??????
 
     if (problem->aScale2D()) {
         arg_list.set(argn++, *a_scales);
@@ -434,9 +434,9 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     const memory_storage_t *a_scales = nullptr, *b_scales = nullptr;
     const memory_storage_t *c_scales = nullptr;
     const memory_storage_t *ag = nullptr, *bg = nullptr;
-    // @@@@@@@@@@@@@@@@@@@
+    // @@@@@
     int32_t abo_hostside = 0;
-    // @@@@@@@@@@@@@@@@@@@
+    // @@@@@
 
     std::unique_ptr<memory_storage_t> c_temp;
     if (nocopy_info()->needsTempC()) {
@@ -507,8 +507,8 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     int cmask = 0;
     if (pd()->with_c_zero_points()) {
-        // also TODO
-        //VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : c w/ zp ; HERE?????");
+        // also TODO @@@@@ C matrix ?????
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : c w/ zp ; HERE?????");
         off_co0 = types::bytes_to_elements(c_type, co->offset())
                 + pd()->dyn_offset_co;
         cmask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
@@ -527,8 +527,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a || b w/ zp ; setup ao & bo");
 
-        //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-        //@@@@@@@ chaeck all dt @@@@@@@
+        //@@@@@ chaeck all dt
 
         if (pd()->attr()->zero_points_.has_host_scalars()) {
             int a_zp_val = 0;
@@ -551,7 +550,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             abo_hostside = (static_cast<int32_t>(-1 * b_zp_val) << 16) | (static_cast<uint16_t>(-1 * a_zp_val) & 0xFFFF);
 
         }
-        //@@@@@@@@@@@@@@@@@@@@@@@
+        //@@@@@ chaeck all dt
     }
 
     //VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
@@ -632,7 +631,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 && (k > k0 * pd()->kernel_desc()->aux_params()->wgK)) {
             VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy, ao arg");
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
-                    bo, abo_hostside, a_scales, b_scales, c_scales, ag, bg, *co, nullptr, // @@@@@@@@@@@@@@@
+                    bo, abo_hostside, a_scales, b_scales, c_scales, ag, bg, *co, nullptr, // @@@@@
                     sround_seed, po_count, po_srcs, off_a0, off_b0, off_c0,
                     off_aq0, off_bq0, off_co0, po_offsets0, lda, ldb, ldc, m, n,
                     0, 1, 1.0f, beta, 0, false, swapab, true);
@@ -698,7 +697,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 float eff_beta = (Bk == 0) ? beta : 1.0f;
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy, bk bm loop, ao arg");
                 status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c,
-                        ao, bo, abo_hostside, a_scales, b_scales, c_scales, ag, bg, *co, // @@@@@@@@@
+                        ao, bo, abo_hostside, a_scales, b_scales, c_scales, ag, bg, *co, // @@@@@
                         c_temp.get(), sround_seed, po_count, po_srcs, off_a_src,
                         off_b_src, off_c, off_aq, off_bq, off_co, po_offsets,
                         lda, ldb, ldc, into<int32_t>(size_m),

@@ -60,9 +60,6 @@ struct quant_entry_t : public c_compatible {
             const dims_t group_dims, bool is_host_scalar = false,
             quantization_mode_t qmode = quantization_mode::static_sazp) {
 
-        // ????????????????? remove
-        printf("MY: set ++++> is_host_scalar = %d\n", is_host_scalar);
-
         mask_ = mask;
         data_type_ = data_type;
         group_ndims_ = group_ndims;

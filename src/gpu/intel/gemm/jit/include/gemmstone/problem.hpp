@@ -242,10 +242,10 @@ struct GEMMProblem : public CommonProblem {
     bool hasBScale() const { return (bsPtrDims > -1); }
     bool hasCScale() const { return (csPtrDims > 0); }
     bool hasCMXScale() const { return cMXScale; }
-    // ????????????????????????????
+    // @@@@@ used ?????
     bool hasAOffset() const { return (aoPtrDims > -1); }
     bool hasBOffset() const { return (boPtrDims > -1); }
-    // ????????????????????????????
+    // @@@@@ used ?????
 
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }
@@ -290,7 +290,7 @@ struct GEMMProblem : public CommonProblem {
     }
 
     /* Serialization for kernel cache. */
-    // ???????????????? if new memeber - TODO add ti here
+    // @@@@@ ????? if new memeber - TODO add ti here
     void serialize(SerializationStream &s) const
     {
         s.append(Ta, Tb, Tc, Ts);

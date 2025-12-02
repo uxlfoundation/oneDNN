@@ -72,7 +72,7 @@ std::string GEMMProblem::toString() const
         case BatchMode::Variable:   ss << "batchnv "; break;
     }
 
-    // ?????????????? do we need refrect here ptrDims == -1 case ???????????????
+    // @@@@@ ????? do we need refrect here ptrDims == -1 case
     auto appendQString = [&](char matrix, Type T, int ptrDims, int xqGroupR, int xqGroupC) {
         ss << matrix;
         if (ptrDims < 0 || ptrDims > 2) return;

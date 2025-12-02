@@ -24,11 +24,10 @@ namespace gemm {
 
 #if 0
 
-// @@@@@@@@ ????? rename like or just template by type
+// !!!!!!!!!!!! remove !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 #endif
 
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 } // namespace gemm
 } // namespace intel

@@ -157,10 +157,6 @@ public:
         // Some kernels may not support argument validation.
         if (arg_types().empty()) return status::success;
 
-        // @@@@@@@@@@@@@@@ delete
-        VERROR(primitive, gpu,"arg_list.nargs() = %d : arg_types().size() = %ld",arg_list.nargs(),arg_types().size());
-
-
         gpu_assert(static_cast<size_t>(arg_list.nargs()) == arg_types().size())
                 << "The number of arguments is not consistent with the types "
                    "container";

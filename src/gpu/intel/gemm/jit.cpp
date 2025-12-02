@@ -551,12 +551,20 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : there are host_scalars() !!!!");
             if (ao->is_host_scalar()) {
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : ao is host_scalar");
+#if 0
                 CHECK(maybe_get_zp_as_int(*ao, a_zp_val));
+#else
+                CHECK(maybe_get_scalar_value(*ao, a_zp_val));
+#endif
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a_zp_val = %d", a_zp_val);
             }
             if (bo->is_host_scalar()) {
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : bo is host_scalar");
+#if 0
                 CHECK(maybe_get_zp_as_int(*bo, b_zp_val));
+#else
+                CHECK(maybe_get_scalar_value(*bo, b_zp_val));
+#endif
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : b_zp_val = %d", b_zp_val);
             }
 
@@ -581,16 +589,19 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         alpha = 1.0f;
         float scale_val = 0;
         if (a_scales.is_host_scalar()) {
-            CHECK(maybe_get_scale_as_float(a_scales_storage, scale_val));
+//            CHECK(maybe_get_scale_as_float(a_scales_storage, scale_val));
+            CHECK(maybe_get_scalar_value(a_scales_storage, scale_val));
             alpha *= scale_val;
         }
         if (b_scales.is_host_scalar()) {
-            CHECK(maybe_get_scale_as_float(b_scales_storage, scale_val));
+//            CHECK(maybe_get_scale_as_float(b_scales_storage, scale_val));
+            CHECK(maybe_get_scalar_value(b_scales_storage, scale_val));
             alpha *= scale_val;
         }
         // Limited support of host scalar dst scales
         if (c_scales.is_host_scalar() && pd()->attr()->post_ops_.len() == 0) {
-            CHECK(maybe_get_scale_as_float(c_scales_storage, scale_val));
+//            CHECK(maybe_get_scale_as_float(c_scales_storage, scale_val));
+            CHECK(maybe_get_scalar_value(c_scales_storage, scale_val));
             gpu_assert(scale_val != 0);
             alpha /= scale_val;
         }

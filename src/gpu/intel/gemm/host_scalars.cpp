@@ -22,7 +22,7 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-#if 1
+#if 0
 
 // @@@@@@@@ ????? rename like or just template by type
 
@@ -76,9 +76,6 @@ status_t maybe_get_zp_as_int(
     return status::success;
 #undef SCALAR_DT_DISPATCH
 }
-
-#else
-
 #endif
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

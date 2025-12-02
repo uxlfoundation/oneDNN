@@ -15,8 +15,13 @@
 *******************************************************************************/
 
 #include <algorithm>
+#include <set>
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/platform.hpp"
+
+// if this is defined, the num_sharing_cores field in cache_info_t
+// will count only physical cores, not logical cores (SMT)
+#define COUNT_ONLY_PHYSICAL_CORES 1
 
 namespace dnnl {
 namespace impl {
@@ -205,6 +210,23 @@ void populate_cache_topology_from_cpuid(cache_topology_t &cache_topology) {
 
     // Use Extended Topology Enumeration leaf
     // to refine number of sharing cores if available
+#if COUNT_ONLY_PHYSICAL_CORES
+    // First pass: determine threads per core from SMT level
+    uint32_t threads_per_core = 1;
+    if (topo_leaf != 0) {
+        for (uint32_t subleaf = 0; subleaf < MAX_SUBLEAF_GUARD; ++subleaf) {
+            Xbyak::util::Cpu::getCpuidEx(topo_leaf, subleaf, regs);
+            uint32_t level_type = (regs[2] >> 8) & 0xFF;
+            if (level_type == 0) break;
+            if (level_type == 1) { // SMT level
+                threads_per_core = regs[1] & 0xFFFF; // EBX[15:0]
+                if (threads_per_core == 0) threads_per_core = 1;
+                break;
+            }
+        }
+    }
+#endif
+
     if (topo_leaf != 0) {
         for (uint32_t subleaf = 0; subleaf < MAX_SUBLEAF_GUARD; ++subleaf) {
             Xbyak::util::Cpu::getCpuidEx(topo_leaf, subleaf, regs);
@@ -227,6 +249,12 @@ void populate_cache_topology_from_cpuid(cache_topology_t &cache_topology) {
                             = cache_topology.caches[idx].num_sharing_cores;
                     uint32_t newval
                             = (std::min)(existing, logical_processors_at_level);
+#if COUNT_ONLY_PHYSICAL_CORES
+                    // Divide by threads per core to get physical core count
+                    if (threads_per_core > 1) {
+                        newval = (newval + threads_per_core - 1) / threads_per_core;
+                    }
+#endif
                     if (newval != existing)
                         cache_topology.caches[idx].num_sharing_cores = newval;
                 }
@@ -437,6 +465,8 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
                 ctype = get_core_type_from_processor_info(info);
 
             // Store each group mask for this core type
+            // Note: Each RelationProcessorCore entry represents one physical core,
+            // and its mask may contain multiple bits if hyperthreading is enabled
             for (WORD i = 0; i < info->Processor.GroupCount; i++) {
                 core_info.push_back({ctype, info->Processor.GroupMask[i]});
             }
@@ -482,8 +512,23 @@ void init_cache_topology_windows(cache_topology_t &cache_topology) {
                 }
 
                 // Count sharing cores for this cache descriptor.
+#if COUNT_ONLY_PHYSICAL_CORES
+                // Count physical cores: each entry in core_info represents
+                // one physical core. Check how many physical cores intersect
+                // with this cache's mask.
+                unsigned sharing_cores = 0;
+                for (size_t i = 0; i < core_info.size(); ++i) {
+                    if (cache.GroupMask.Group == core_info[i].second.Group
+                            && (cache.GroupMask.Mask & core_info[i].second.Mask)
+                                    != 0) {
+                        sharing_cores++;
+                    }
+                }
+#else
+                // Count logical processors (includes hyperthreads)
                 unsigned sharing_cores
                         = count_bits_in_mask(cache.GroupMask.Mask);
+#endif
 
                 // Helper to set or merge an entry in cache_topology.
                 auto set_cache_topology_entry = [&](core_type ctype) {
@@ -590,6 +635,12 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
     // First pass: identify all CPUs and their core types using CPUID
     std::map<int, core_type> cpu_core_types;
 
+#if COUNT_ONLY_PHYSICAL_CORES
+    // Build mapping from logical CPU to physical core ID using thread_siblings_list
+    // The physical core ID is represented by the lowest CPU number in the sibling list
+    std::map<int, int> logical_to_physical_core;
+#endif
+
     // All char arrays are sized much larger than needed to avoid overflow.
     // TODO: investigate reducing size of path char buffers. for example
     //       `cpu_path` is 256 bytes but only needs to be about 30 bytes.
@@ -629,6 +680,45 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
         }
 
         cpu_core_types[cpu] = ctype;
+
+#if COUNT_ONLY_PHYSICAL_CORES
+        // Read thread_siblings_list to identify which logical CPUs share a physical core
+        char siblings_path[512];
+        snprintf(siblings_path, sizeof(siblings_path),
+                "/sys/devices/system/cpu/cpu%d/topology/thread_siblings_list",
+                cpu);
+        FILE *siblings_file = fopen(siblings_path, "r");
+        if (siblings_file) {
+            char siblings_str[256];
+            if (fgets(siblings_str, sizeof(siblings_str), siblings_file)) {
+                // Parse sibling list to find the minimum CPU ID (physical core ID)
+                int min_cpu = cpu;
+                char siblings_copy[256];
+                strcpy(siblings_copy, siblings_str);
+                char *token = strtok(siblings_copy, ",\n");
+                while (token) {
+                    while (*token == ' ') token++;
+                    if (strchr(token, '-')) {
+                        int start, end;
+                        if (sscanf(token, "%d-%d", &start, &end) == 2) {
+                            if (start < min_cpu) min_cpu = start;
+                        }
+                    } else {
+                        int cpu_id;
+                        if (sscanf(token, "%d", &cpu_id) == 1) {
+                            if (cpu_id < min_cpu) min_cpu = cpu_id;
+                        }
+                    }
+                    token = strtok(nullptr, ",\n");
+                }
+                logical_to_physical_core[cpu] = min_cpu;
+            }
+            fclose(siblings_file);
+        } else {
+            // If we can't read siblings, assume each logical CPU is its own physical core
+            logical_to_physical_core[cpu] = cpu;
+        }
+#endif
     }
 
     if (cpu_core_types.empty()) {
@@ -740,7 +830,45 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
             if (shared_file) {
                 char shared_str[256];
                 if (fgets(shared_str, sizeof(shared_str), shared_file)) {
-                    // Count cores in shared_cpu_list (format like "0-3" or "0,2,4,6")
+                    // Parse shared_cpu_list (format like "0-3", "0,2,4")
+#if COUNT_ONLY_PHYSICAL_CORES
+                    // Count unique physical cores sharing this cache
+                    std::set<int> physical_cores_sharing;
+                    char shared_str_copy[256];
+                    strcpy(shared_str_copy, shared_str);
+                    char *token = strtok(shared_str_copy, ",\n");
+                    while (token) {
+                        while (*token == ' ') token++;
+                        // Range format like "0-3"
+                        if (strchr(token, '-')) {
+                            int start, end;
+                            if (sscanf(token, "%d-%d", &start, &end) == 2) {
+                                for (int logical_cpu = start; logical_cpu <= end;
+                                        ++logical_cpu) {
+                                    auto it = logical_to_physical_core.find(
+                                            logical_cpu);
+                                    if (it != logical_to_physical_core.end()) {
+                                        physical_cores_sharing.insert(it->second);
+                                    }
+                                }
+                            }
+                        } else {
+                            // Single CPU
+                            int logical_cpu;
+                            if (sscanf(token, "%d", &logical_cpu) == 1) {
+                                auto it = logical_to_physical_core.find(
+                                        logical_cpu);
+                                if (it != logical_to_physical_core.end()) {
+                                    physical_cores_sharing.insert(it->second);
+                                }
+                            }
+                        }
+                        token = strtok(nullptr, ",\n");
+                    }
+                    num_sharing_cores = physical_cores_sharing.size();
+                    if (num_sharing_cores == 0) num_sharing_cores = 1;
+#else
+                    // Count logical processors (includes hyperthreads)
                     num_sharing_cores = 0;
                     char shared_str_copy[256];
                     strcpy(shared_str_copy, shared_str);
@@ -761,6 +889,7 @@ void init_cache_topology_linux(cache_topology_t &cache_topology) {
                         }
                         token = strtok(nullptr, ",\n");
                     }
+#endif
                 }
                 fclose(shared_file);
             }
@@ -847,7 +976,21 @@ void init_cache_topology(cache_topology_t &cache_topology) {
 #endif
 // Enable debug printout
 //TODO: George remove before final PR
+#define DEBUG_PRINT_LEGACY_CACHE_SIZE 0
 #define DEBUG_PRINT_CACHE_TOPOLOGY 0
+#if DEBUG_PRINT_LEGACY_CACHE_SIZE
+        {
+            printf("Legacy per-core cache sizes:\n");
+            // Print what the legacy per-core cache sizes would be for comparison.
+            for (int lvl = 1; lvl < static_cast<int>(cache_topology_t::max_cache_levels); ++lvl) {
+                printf("level=%u size=%u shared=%u\n",
+                        (unsigned)lvl,
+                        cpu().getDataCacheSize(lvl - 1),
+                        cpu().getCoresSharingDataCache(lvl - 1)
+                );
+            }
+        }
+#endif // DEBUB_PRINT_LEGACY_CACHE_SIZE
 #if DEBUG_PRINT_CACHE_TOPOLOGY
         {
             // Debug printout of the discovered global cache topology
@@ -877,7 +1020,7 @@ void init_cache_topology(cache_topology_t &cache_topology) {
                 }
             }
         }
-#endif
+#endif  // DEBUG_PRINT_CACHE_TOPOLOGY
     });
 }
 

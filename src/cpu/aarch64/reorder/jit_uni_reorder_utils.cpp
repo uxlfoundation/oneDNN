@@ -17,17 +17,19 @@
 *******************************************************************************/
 
 #include <cassert>
-#include <set>
 
 #include "common/c_types_map.hpp"
-#include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/nstl.hpp"
+#include "common/primitive_attr.hpp"
+#include "common/reorder_pd.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/platform.hpp"
 #include "oneapi/dnnl/dnnl_debug.h"
 
-#include "cpu/aarch64/reorder/jit_uni_reorder.hpp"
+#include "cpu/aarch64/reorder/jit_uni_reorder_kernel.hpp"
+#include "cpu/aarch64/reorder/jit_uni_reorder_utils.hpp"
 
 // #define DNNL_DEV_MODE
 #if defined(DNNL_DEV_MODE)
@@ -679,6 +681,20 @@ void prb_block_for_cache(prb_t &prb) {
                       || (prb.ndims > 1 && prb.nodes[1].is % num_elems_thr == 0
                               && prb.nodes[1].n > num_elems_thr))
             && !prb.is_tail_present;
+
+    // TODO: Find a way to associate the caching logic to its kernel.
+    // The issue is that this swap logic is separated from the tr4x8 kernel that
+    // it is relevant to. This is a performance improvement for the
+    // f32:bf16 ab->BA8b4a reorder.
+    if (mayiuse(sve_256) && prb.ndims == 4 && prb.n(0) == 4 && prb.is(0) != 1
+            && prb.is(1) == 1 && prb.os(1) == 4 && prb.n(1) == 8
+            && prb.is(3) == 8 && prb.itype == data_type::f32
+            && prb.otype == data_type::bf16) {
+        // Changes the order of traversal of the tile from column-wise to
+        // row-wise. This makes the reads more cache-friendly at the cost of
+        // the writes being separated by some stride.
+        tr::prb_node_move(prb, 2, 3);
+    }
 
     // performance improvement for shapes with large inner-most dimension
     const size_t L1_cache_sz

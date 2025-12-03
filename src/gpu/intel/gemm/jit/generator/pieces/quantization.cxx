@@ -114,6 +114,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         r = slmA ? state.ma_slm : rNoSLM;
         c = slmA ? state.ka_slm : cNoSLM;
         k = slmA ? strategy.unrollKSLM : cNoSLM;
+        if (xqGroupMN <= r)
         r = std::max(1, r / xqGroupMN);
         c = state.kaq = std::max(1, c % xqGroupK == 0 ? c / xqGroupK : 1);
         state.kaqStride = std::max(1, k % xqGroupK == 0 ? k /  xqGroupK : 1);
@@ -130,6 +131,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         c = slmB ? state.nb_slm : cNoSLM;
         r = slmB ? state.kb_slm : rNoSLM;
         k = slmB ? strategy.unrollKSLM : rNoSLM;
+        if (xqGroupMN <= c)
         c = std::max(1, c / xqGroupMN);
         r = state.kbq = std::max(1, r % xqGroupK == 0 ? r / xqGroupK : 1);
         state.kbqStride = std::max(1, k % xqGroupK == 0 ?  k / xqGroupK : 1);

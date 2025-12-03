@@ -927,7 +927,7 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
         VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmScaleInputs : ao scale(...)");
         scale(problem.Tao, inputs.ldao, ldaq);
     }
-    // @@@@@ ?????? seems OK
+    // @@@@@ seems OK
     if (problem.aoPtrDims >= 0){
         VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmScaleInputs : ao scale(...)");
         scale(problem.Tao, inputs.offsetAO, inputs.offsetAq);
@@ -936,7 +936,7 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
         VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmScaleInputs : bo scale(...)");
         scale(problem.Tbo, inputs.ldbo, ldbq);
     }
-    // @@@@@ ????? seems OK
+    // @@@@@ seems OK
     if (problem.boPtrDims >= 0){
         VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmScaleInputs : bo scale(...)");
         scale(problem.Tbo, inputs.offsetBO, inputs.offsetBq);

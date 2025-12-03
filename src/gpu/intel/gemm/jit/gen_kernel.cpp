@@ -505,11 +505,11 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     if (a_quant.zp_ndims >= 0) problem_.aOffset = ABOffset::Calc;
     if (b_quant.zp_ndims >= 0) problem_.bOffset = ABOffset::Calc;
 
-    // @@@@@ or maybe later - after select kernel from catalog ?????
+    // @@@@@
     problem_.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
     problem_.boPtrDims = b_quant.zp_host_scalar ? -1 : b_quant.zp_ndims;
     VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : @@@@ setup problem_.aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims,problem_.boPtrDims);
-    // @@@@@ or maybe later - after select kernel from catalog ?????
+    // @@@@@
 
     problem_.AO.layout = MatrixLayout::N;
     problem_.BO.layout
@@ -827,7 +827,7 @@ status_t gen_nocopy_desc_t::finalize() {
     return gen_desc_t::finalize(tags_.c_str());
 }
 
-// @@@@@ also TODO ????? gen_xe_systolic_kernel_desc_t
+// @@@@@ ????? gen_xe_systolic_kernel_desc_t
 status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
         int stepping, int eu_count, bool is_integrated, int batch_dims,
         bool packed_c, bool trans_co, bool a_offset, bool b_offset,

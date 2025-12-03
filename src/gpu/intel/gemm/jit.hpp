@@ -375,7 +375,7 @@ struct gen_t : public primitive_t {
                     b_q2d_group_n(), has_gs(DNNL_ARG_B), false, b_zp_host_scalar()}; // @@@@@
             jit::quant_params c_quant = {c_scales_type_, co_type, bg_type,
                     csc_dims_, -1, -1, 0, c_q2d_group_m(), c_q2d_group_n(),
-                    has_gs(DNNL_ARG_C), with_mx_scale(), false}; // @@@@@@ ?????
+                    has_gs(DNNL_ARG_C), with_mx_scale(), false}; // @@@@@@
             VDEBUGINFO(4, primitive, gemm,"MY init ===== : init jit::quant_params <a,b,c>_quant, where ao_dims_ bo_dims_ = %d %d",ao_dims_,bo_dims_);
             VDEBUGINFO(4, primitive, gemm,"MY init ===== : (cont) @@@@@, where a_zp_host_scalar() b_zp_host_scalar() = %d %d",a_zp_host_scalar(),b_zp_host_scalar());
 

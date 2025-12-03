@@ -161,7 +161,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     static std::vector<expr_t> make_idxs(std::string (*genname)(int), int n) {
@@ -508,7 +508,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     layout_t layout_;
@@ -581,7 +581,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     static const dim_idx_t max_nvargs = 2;
@@ -735,7 +735,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     bool is_empty() const { return vdims_.is_empty(); }
 

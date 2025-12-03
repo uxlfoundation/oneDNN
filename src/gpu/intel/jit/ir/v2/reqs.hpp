@@ -100,7 +100,7 @@ public:
     void parse(std::istream &in);
     std::string str() const;
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     // Single requirement, represented as an expression.
@@ -114,7 +114,7 @@ private:
         const req_impl_t &impl() const { return *impl_; }
         req_impl_t &impl() { return *impl_; }
         std::string str() const;
-        IR_DEFINE_DUMP()
+        XE_DEFINE_DUMP()
 
     private:
         std::unique_ptr<req_impl_t> impl_;

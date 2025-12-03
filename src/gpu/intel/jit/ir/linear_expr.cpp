@@ -290,7 +290,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     static expr_t div(const expr_t &e, int64_t factor) {
         linear_coef_t coef(e);

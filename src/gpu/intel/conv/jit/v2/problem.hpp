@@ -93,7 +93,7 @@ public:
     std::string str() const;
     std::string csv_str() const;
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     static tile_t default_shape();
     static double ops(prop_kind_t prop, const tile_t &shape);

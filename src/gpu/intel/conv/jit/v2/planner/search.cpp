@@ -113,7 +113,7 @@ struct tile_info_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 class tile_scheme_t {
@@ -183,7 +183,7 @@ struct dim_tile_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 std::ostream &operator<<(std::ostream &out, const dim_tile_t &tile) {
@@ -212,7 +212,7 @@ struct tiling_desc_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 class dim_tile_set_t {

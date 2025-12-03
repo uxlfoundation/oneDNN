@@ -42,7 +42,7 @@ public:
         void parse(std::istream &in);
         std::string str() const;
         std::string registry_str() const;
-        IR_DEFINE_DUMP()
+        XE_DEFINE_DUMP()
     };
 
     plan_registry_t() = default;

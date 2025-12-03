@@ -111,7 +111,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     struct entry_t {
@@ -136,7 +136,7 @@ private:
             return ir_utils::add_tag(dim.str(), oss.str());
         }
 
-        IR_DEFINE_DUMP()
+        XE_DEFINE_DUMP()
     };
 
     pvar_map_t<entry_t> entries_;
@@ -184,7 +184,7 @@ struct prefetch_plan_t : public base_plan_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct x2r_plan_t : public base_plan_t {
@@ -222,7 +222,7 @@ struct x2r_plan_t : public base_plan_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct fma_plan_t : public base_plan_t {
@@ -252,7 +252,7 @@ struct fma_plan_t : public base_plan_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct x2r_fma_plan_t : public base_plan_t {
@@ -409,7 +409,7 @@ struct epilogue_plan_t : public base_plan_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct plan_t : public base_plan_t {
@@ -448,7 +448,7 @@ struct plan_t : public base_plan_t {
         return ir_utils::add_tag("Plan", oss.str());
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 plan_t create_plan(const kernel_desc_t &desc, const hw_t &hw);

@@ -90,7 +90,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     std::vector<loop_t> loops_;
@@ -232,7 +232,7 @@ struct offset_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     static bool can_reuse_base(const type_t &type, const expr_t &base,
             const expr_t &shift, const expr_t &shift_vec,
@@ -465,7 +465,7 @@ public:
     var_ref_t &operator=(const var_ref_t &other) = default;
     std::string str() const { return buf_.str(); }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     ir_builder_t *parent_;

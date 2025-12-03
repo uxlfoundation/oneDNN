@@ -144,7 +144,7 @@ public:
         return tile_compare(iter_, other.iter_);
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     int simd_ = 0;
@@ -261,7 +261,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     dim_t loop = 0;
     int thread_group = 0;
@@ -361,7 +361,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     void set(const std::string &s_tile, const std::string &_s_dim) {
@@ -514,7 +514,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     static std::vector<std::string> csv_keys() {
         return {"simd", "loop", "tg", "iter", "bufs_hint"};

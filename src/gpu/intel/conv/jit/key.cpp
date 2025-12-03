@@ -181,7 +181,7 @@ struct subkey_t {
 
     std::string str() const { return to_string(kind); }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 using key_fma_t = subkey_t<fma_kind_t>;
@@ -232,7 +232,7 @@ struct key_hw_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct key_type_info_t {
@@ -306,7 +306,7 @@ struct key_type_info_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 bool is_mb_blocked(const layout_t &layout) {
@@ -365,7 +365,7 @@ struct key_mb_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct key_desc_t {
@@ -388,7 +388,7 @@ struct key_desc_t {
 
     std::string str() const { return desc; }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 } // namespace
@@ -492,7 +492,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     key_hw_t hw_;

@@ -54,7 +54,7 @@ struct reduce_plan_t : public base_plan_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct reorder_plan_t : public base_plan_t {
@@ -81,7 +81,7 @@ struct reorder_plan_t : public base_plan_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 } // namespace v2

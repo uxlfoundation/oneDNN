@@ -156,7 +156,7 @@ public:
 
     std::string str() const;
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     int grf_size_;

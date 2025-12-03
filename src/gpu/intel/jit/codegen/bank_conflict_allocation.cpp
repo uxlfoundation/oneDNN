@@ -251,7 +251,7 @@ struct reg_mask_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     static const int chunk_bits = 64;
     static const int max_regs = 256;
@@ -340,7 +340,7 @@ struct reg_block_mask_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     int regs;
     std::vector<reg_mask_t> masks;
@@ -382,7 +382,7 @@ struct reg_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     reg_block_mask_t *block = nullptr;
     int off = -1;

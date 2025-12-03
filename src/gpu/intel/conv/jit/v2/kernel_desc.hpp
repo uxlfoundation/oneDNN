@@ -92,7 +92,7 @@ struct specialization_t {
     prb_reqs_t reqs() const;
 
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 #if __cplusplus >= 202002L
     bool operator==(const specialization_t &other) const = default;
@@ -123,7 +123,7 @@ struct loop_desc_entry_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 #if __cplusplus >= 202002L
     bool operator==(const loop_desc_entry_t &other) const = default;
@@ -172,7 +172,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 #if __cplusplus >= 202002L
     bool operator==(const loop_desc_t &other) const = default;
@@ -217,7 +217,7 @@ struct prefetch_desc_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 #if __cplusplus >= 202002L
     bool operator==(const prefetch_desc_t &other) const = default;
@@ -252,7 +252,7 @@ struct extensions_t {
     void add(extension_kind_t kind);
     bool has(extension_kind_t kind) const;
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
     void stringify(std::ostream &out) const { out << str(); }
     void parse(std::istream &in);
 
@@ -304,7 +304,7 @@ public:
     std::string brief_str() const;
     std::string str() const;
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     static const parse_iface_t<kernel_desc_t> &parse_iface();
     static void init_parse_iface(parse_iface_t<kernel_desc_t> *iface);

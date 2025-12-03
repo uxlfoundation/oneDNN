@@ -221,7 +221,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     static std::vector<pvar_t> split(const expr_t &e) {
@@ -299,7 +299,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     bool is_undef_ = true;
@@ -405,7 +405,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     static const int max_entries = 2;
@@ -597,7 +597,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     bool try_init_mod_eq_0(const expr_t &e) {

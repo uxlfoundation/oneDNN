@@ -60,7 +60,7 @@ public:
 
     std::string str(const std::string &tag = "send_plan") const;
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     std::unique_ptr<send_plan_impl_t> impl_;

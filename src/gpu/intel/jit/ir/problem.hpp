@@ -119,7 +119,7 @@ struct tile_coord_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     static tile_coord_t invalid() { return tile_coord_t(false); }
 };

@@ -111,7 +111,7 @@ struct block_t {
     bool operator!=(const block_t &other) const { return !operator==(other); }
     std::string brief_str() const;
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     pvar_t dim;
     expr_t size;
@@ -149,7 +149,7 @@ public:
     }
 
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     pvar_map_t<char> letter_map_;
@@ -167,7 +167,7 @@ public:
     bool has_underflow(const pvar_t &dim) const;
     const layout_desc_t &layout_desc() const { return layout_desc_; }
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     struct map_data_t {
@@ -212,7 +212,7 @@ struct layout_raw_tag_entry_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     bool operator==(const layout_raw_tag_entry_t &other) const {
         return (letter == other.letter) && (block == other.block)
@@ -249,7 +249,7 @@ public:
     dim_idx_t ndims() const;
     dim_idx_t non_x_ndims() const;
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     bool matches(const layout_raw_tag_t &other, const layout_desc_t &desc,
             const tile_t &sizes) const;
@@ -316,7 +316,7 @@ public:
         return layout_tag_t(desc_, new_type, raw_tag_);
     }
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     bool operator==(const layout_tag_t &other) const {
         return (desc_ == other.desc_) && (type_ == other.type_)
@@ -437,7 +437,7 @@ public:
     std::string str() const;
     std::string str_with_size(const hw_t &hw) const;
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     layout_desc_t desc_;
@@ -501,7 +501,7 @@ public:
     layout_t sub_layout(int stride = 1) const;
     std::string str() const;
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     void set_to_end();
@@ -539,7 +539,7 @@ public:
     int offset(const pvar_t &dim) const;
     icoord_t coord() const;
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     void set_to_end() { offset_ = total_elems_; }
@@ -564,7 +564,7 @@ public:
     bool has(const pvar_t &dim) const;
     expr_t dim_stride(const pvar_t &dim) const;
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     pvar_t dim;
     expr_t bound;
@@ -591,7 +591,7 @@ public:
     bool is_uniform(const block_iterator_t &it,
             const prover_t &prover = prover_t::instance()) const;
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     std::vector<dim_mask_desc_t> dim_masks_;
@@ -648,7 +648,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     struct index_t {
@@ -686,7 +686,7 @@ public:
     // prefetch.
     view_t scatterize(int stride_bytes, const prover_t &prover) const;
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     static view_t split(const dim_mapper_t &dim_mapper,
             const layout_t &base_layout, const coord_t &coord,

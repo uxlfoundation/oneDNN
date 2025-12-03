@@ -356,7 +356,7 @@ public:
         return add_indent("wei_init", oss.str());
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     expr_t simd_bcast(const expr_t &e) const {
@@ -537,7 +537,7 @@ public:
         return add_indent("comp_init", oss.str());
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     expr_t simd_bcast(const expr_t &e) const {
@@ -927,7 +927,7 @@ struct texpr_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     static texpr_t create_from_const(const expr_t &e) {
         gpu_assert(jit::is_const(e));
@@ -992,7 +992,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     struct vinfo_t {
@@ -1122,7 +1122,7 @@ public:
         return add_indent("mask_init", oss.str());
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     void init_mask_descs(const config_t &cfg, const view_t &a_view) {
@@ -1346,7 +1346,7 @@ public:
         return add_indent("comp_apply", oss.str());
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     stmt_t create_tile_stmt(const expr_t &comp, const expr_t &mask,
@@ -1476,7 +1476,7 @@ struct zp_plan_impl_t : public base_plan_t {
         return add_indent("zp", oss.str());
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 zp_plan_t::zp_plan_t(const hw_t &hw)

@@ -175,7 +175,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     std::vector<int64_t> vec_;
@@ -236,7 +236,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     std::vector<vec_off_t> vec_;
@@ -360,7 +360,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     static int to_lg2(int64_t v) {
@@ -464,7 +464,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     static modulus_t to_base(const tdim_t &tdim,
@@ -595,7 +595,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     // Mask in the general form:
@@ -850,7 +850,7 @@ struct send_2d_params_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     bool is_valid = false;
     send_op_t send_op = send_op_t::undef;
@@ -883,7 +883,7 @@ struct send_block_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     int64_t addr_inc = 0;
     int64_t x_inc = 0;
@@ -1128,7 +1128,7 @@ struct send_group_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     type_t fixup_type(
             const type_t &type, const send_params_t &send_params) const {
@@ -2140,7 +2140,7 @@ public:
         return expr_t();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     const layout_t &message_layout() const override { return message_layout_; }

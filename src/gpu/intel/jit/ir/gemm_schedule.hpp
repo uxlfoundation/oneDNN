@@ -365,7 +365,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     expr_t var_; // Loop index variable.

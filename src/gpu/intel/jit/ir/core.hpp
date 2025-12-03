@@ -85,20 +85,6 @@
         return args[index]; \
     }
 
-#if defined(__GNUC__)
-// clang-format off
-// Defines dump() method for debugging purposes, to pretty print the object.
-#define IR_DEFINE_DUMP() \
-    __attribute__((noinline)) \
-    __attribute__((used)) \
-    void dump() const { \
-        printf("%s\n", str().c_str()); \
-    }
-// clang-format on
-#else
-#define IR_DEFINE_DUMP()
-#endif
-
 namespace dnnl {
 namespace impl {
 namespace gpu {

@@ -71,7 +71,7 @@ struct zp_plan_t : public base_plan_t {
     int estimate_regs() const;
     std::string str() const;
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     std::unique_ptr<zp_plan_impl_t> impl;
 };

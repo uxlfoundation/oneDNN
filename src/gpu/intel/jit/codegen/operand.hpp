@@ -162,7 +162,7 @@ public:
 
     std::string str() const;
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     template <ngen_operand_kind_t kind>

@@ -24,6 +24,20 @@
 #define VCHECK_KERNEL(stat, msg, ...) \
     VCHECK(common, create, check, runtime, stat, msg, ##__VA_ARGS__);
 
+#if defined(__GNUC__)
+// clang-format off
+// Defines dump() method for debugging purposes, to pretty print the object.
+#define XE_DEFINE_DUMP() \
+    __attribute__((noinline)) \
+    __attribute__((used)) \
+    void dump() const { \
+        printf("%s\n", str().c_str()); \
+    }
+// clang-format on
+#else
+#define XE_DEFINE_DUMP()
+#endif
+
 // Uncomment this when aborting on ir_assert is desired:
 // #define GPU_ABORT_ON_ERROR
 

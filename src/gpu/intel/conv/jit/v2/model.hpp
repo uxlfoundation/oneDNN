@@ -62,7 +62,7 @@ public:
     static size_t coef_count(model_kind_t kind);
 
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     model_kind_t kind_;
@@ -79,7 +79,7 @@ public:
     void stringify(std::ostream &out) const;
     void parse(std::istream &in);
     std::string str() const;
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     float time(model_kind_t kind, const problem_t &prb,

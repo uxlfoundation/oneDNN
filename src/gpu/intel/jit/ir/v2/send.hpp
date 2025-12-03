@@ -117,7 +117,7 @@ struct addr_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct dim_mask_t {
@@ -142,7 +142,7 @@ struct dim_mask_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     pvar_t dim;
     expr_t base;
@@ -196,7 +196,7 @@ struct mask_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     std::vector<dim_mask_t> dim_masks;
 };
@@ -325,7 +325,7 @@ struct send_2d_hint_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct send_params_t {
@@ -363,7 +363,7 @@ struct send_params_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct send_1d_desc_t {
@@ -403,7 +403,7 @@ struct send_1d_desc_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct send_1d_entry_t {
@@ -478,7 +478,7 @@ struct send_1d_plan_t : public base_plan_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct send_2d_desc_t {
@@ -605,7 +605,7 @@ struct send_2d_desc_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
     static expr_t get_2d_base(const v2::view_t &view) {
         auto dim_mapper = view.dim_mapper();
@@ -629,7 +629,7 @@ struct send_2d_entry_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct send_2d_plan_t : public base_plan_t {
@@ -681,7 +681,7 @@ struct send_2d_plan_t : public base_plan_t {
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 struct send_plan_t : public base_plan_t {
@@ -727,7 +727,7 @@ struct send_plan_t : public base_plan_t {
         return _2d.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 };
 
 class send_plan_builder_t {

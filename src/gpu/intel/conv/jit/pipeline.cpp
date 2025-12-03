@@ -116,7 +116,7 @@ public:
         return oss.str();
     }
 
-    IR_DEFINE_DUMP()
+    XE_DEFINE_DUMP()
 
 private:
     std::vector<loop_info_t> loops_;

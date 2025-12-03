@@ -314,6 +314,7 @@ bool pd_t::zp_ok() {
     auto &attr_zps = attr()->zero_points_;
     auto &a_zps = attr_zps.get(DNNL_ARG_A);
     auto &b_zps = attr_zps.get(DNNL_ARG_B);
+    auto &c_zps = attr_zps.get(DNNL_ARG_C);
 
     // INT4 ZPs on SRC do not expand the range in a meaningful way, skipping
     if (utils::one_of((swap_ab() ? a_zps : b_zps).get_data_type(), s4, u4)){
@@ -329,9 +330,12 @@ bool pd_t::zp_ok() {
 
     VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : a_int4 = %d b_int4 = %d weights_upconversion = %d",a_int4,b_int4,weights_upconversion);
 
-    // @@@@@ ????? what about C ?????
-    bool allow = gpu_utils::dev_getenv("ALLOW_HOSTSCALARS", true);
-    if (attr_zps.has_host_scalars() && !allow) {
+    // Host scalar support
+    // @@@@@ implementation check
+    const bool a_zp_is_scalar = ao_dims_ == 0;
+    const bool b_zp_is_scalar = bo_dims_ == 0;
+    if (c_zps.is_host_scalar() || (a_zps.is_host_scalar() && !b_zp_is_scalar)
+            || (b_zps.is_host_scalar() && !a_zp_is_scalar)) {
         VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
         return false;
     }

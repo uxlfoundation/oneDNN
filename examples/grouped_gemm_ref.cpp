@@ -308,7 +308,7 @@ void onednn_style_grouped_gemm(const float **input_ptrs, float **output_ptrs,
         const float **weight_ptrs, const float **bias_ptrs,
         const int *M_per_expert, int num_experts /* active experts */,
         int K_dim, int N_dim, bool use_scales = false) {
-
+#if 0
     if (use_scales) {
         std::cout << "Grouped GEMM with Bias and Scales\n";
     } else {
@@ -489,6 +489,7 @@ void onednn_style_grouped_gemm(const float **input_ptrs, float **output_ptrs,
     for (int i = 0; i < num_experts; i++) {
         read_from_dnnl_memory(output_ptrs[i], c_mem[i]);
     }
+#endif
 }
 
 /// Process all experts through a 2-layer MLP (expert network)

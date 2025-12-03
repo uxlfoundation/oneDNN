@@ -434,6 +434,13 @@ inline bool sparse_desc_is_equal(
     bool ok = lhs.encoding == rhs.encoding && lhs.nnz == rhs.nnz;
     if (!ok) return false;
 
+    if (lhs.encoding == sparse_encoding::grouped) {
+        ok = ok && lhs.grouped_desc.ngroups == rhs.grouped_desc.ngroups
+                && lhs.grouped_desc.strides[0] == rhs.grouped_desc.strides[0]
+                && lhs.grouped_desc.strides[1] == rhs.grouped_desc.strides[1];
+        if (!ok) return false;
+    }
+
     for (int i = 0; i < sparse_desc_t::max_metadata_types; i++)
         ok = ok && lhs.metadata_types[i] == rhs.metadata_types[i];
 

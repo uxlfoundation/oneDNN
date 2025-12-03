@@ -177,12 +177,12 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
     set(DNNL_RISCV_USE_RVV_INTRINSICS ${CAN_COMPILE_RVV_INTRINSICS})
     if (${DNNL_RISCV_USE_RVV_INTRINSICS})
         add_definitions(-DDNNL_RISCV_USE_RVV_INTRINSICS)
+        add_definitions(-DXBYAK_RISCV_V=1)
     endif()
 
     set(DNNL_RISCV_USE_ZVFH_INTRINSICS ${CAN_COMPILE_ZVFH_INTRINSICS})
     if (${DNNL_RISCV_USE_ZVFH_INTRINSICS})
         add_definitions(-DDNNL_RISCV_USE_ZVFH_INTRINSICS)
-        add_definitions(-DXBYAK_RISCV_V=1)
     endif()
 
     message(STATUS "Can compile RVV Intrinsics: ${CAN_COMPILE_RVV_INTRINSICS}")

@@ -64,11 +64,11 @@ void jit_rvv_gemm_kernel_t::generate() {
     const FReg freg_b3 = fa5;
 
     const VReg v_c0(0);
-    const VReg v_c1(1);
-    const VReg v_c2(2);
-    const VReg v_c3(3);
-    const VReg v_a0(4);
-    const VReg v_tmp(5);
+    const VReg v_c1(2);
+    const VReg v_c2(4);
+    const VReg v_c3(6);
+    const VReg v_a0(8);
+    const VReg v_tmp(10);
     // Layout of call_params_t:
     //   0  : const float *A;
     //   8  : const float *B;
@@ -99,10 +99,10 @@ void jit_rvv_gemm_kernel_t::generate() {
     lw(reg_beta_bits, reg_param, 60);
     fmv_w_x(freg_beta, reg_beta_bits);
 
-    // Set VL once for 8 rows; with LMUL = m1 this requires that the hardware
-    // supports at least VL = 8 for SEW = e32, LMUL = m1 on this target.
+    // Set VL once for 8 rows; with LMUL = m2 this requires that the hardware
+    // supports at least VL = 8 for SEW = e32, LMUL = m2 on this target.
     li(reg_tmp0, 8);
-    vsetvli(x0, reg_tmp0, SEW::e32, LMUL::m1);
+    vsetvli(x0, reg_tmp0, SEW::e32, LMUL::m2);
 
     // Initialize B row pointers for k = 0.
     // B0_ptr = B base; B1_ptr = B + ldb_bytes

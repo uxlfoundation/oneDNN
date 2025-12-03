@@ -141,12 +141,13 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
     auto new_src_type = src.type();
 #if XE3P
     bool needs_stride_alignment = false;
-    if (scope.hw() >= ngen::HW::XE3P_35_10 && align_stride) {
+    bool align_bf = is_bf_to_f && src.hs();
+    if (scope.hw() >= ngen::HW::XE3P_35_10 && (align_stride || align_bf)) {
         auto src_stride_bytes = src.hs() * src_type_size;
         auto dst_stride_bytes = dst.hs() * dst_type_size;
         needs_stride_alignment = (src_stride_bytes != dst_stride_bytes);
         src_stride = dst_stride_bytes / src_type_size;
-        if (is_bf_to_f && src.hs() > 0) {
+        if (align_bf) {
             needs_stride_alignment = true;
             src_stride = dst.hs();
             new_src_type = dst.type();

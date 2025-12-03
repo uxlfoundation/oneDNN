@@ -89,7 +89,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
     VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add beta");
 
-    // @@@@@ ??????
+    // @@@@@
     if (pd()->with_a_zero_points() && !problem->ao_hostscalar) {
         arg_list.set(argn++, *ao);
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *ao");
@@ -98,13 +98,11 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, *bo);
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *bo");
     }
-
-    bool abo_precond = problem->ao_hostscalar || problem->bo_hostscalar; // @@@@@ ??????? better ?????
-    if (abo_precond) {
+    if (problem->ao_hostscalar || problem->bo_hostscalar) {
         arg_list.set(argn++, abo_hostscalar);
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add abo_hostscalar");
     }
-    // @@@@@ ??????
+    // @@@@@
 
     if (problem->aScale2D()) {
         arg_list.set(argn++, *a_scales);
@@ -507,7 +505,6 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     int cmask = 0;
     if (pd()->with_c_zero_points()) {
-        // also TODO @@@@@ C matrix ?????
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : c w/ zp ; HERE?????");
         off_co0 = types::bytes_to_elements(c_type, co->offset())
                 + pd()->dyn_offset_co;
@@ -527,8 +524,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a || b w/ zp ; setup ao & bo");
 
-        //@@@@@ chaeck all dt
-
+        //@@@@@ for only A & B ?????
         if (pd()->attr()->zero_points_.has_host_scalars()) {
             int a_zp_val = 0;
             int b_zp_val = 0;
@@ -550,7 +546,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             abo_hostscalar = (static_cast<int32_t>(-1 * b_zp_val) << 16) | (static_cast<uint16_t>(-1 * a_zp_val) & 0xFFFF);
 
         }
-        //@@@@@ chaeck all dt
+        //@@@@@ for only A & B ?????
     }
 
     //VDEBUGINFO(4, primitive, gemm, "MY execute ++++");

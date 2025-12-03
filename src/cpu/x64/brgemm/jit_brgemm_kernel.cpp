@@ -1894,14 +1894,25 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                                         = Zmm(31); // Use temp register
                                 amx10_tilemovrow(vreg_zmm, tmm, bd);
                                 if (is_ld_tail) {
-                                    // Use vmovdqu16 for bf16 data with mask
-                                    vmovdqu16(ptr[reg_aux_C + c_offset]
-                                                    | ld_tail_mask,
-                                            vreg_zmm);
+                                    // Use appropriate instruction based on output data type
+                                    if (brg.dt_d == data_type::f32) {
+                                        vmovups(ptr[reg_aux_C + c_offset]
+                                                        | ld_tail_mask,
+                                                vreg_zmm);
+                                    } else {
+                                        vmovdqu16(ptr[reg_aux_C + c_offset]
+                                                        | ld_tail_mask,
+                                                vreg_zmm);
+                                    }
                                 } else {
-                                    // Use vmovdqu16 for bf16 data without mask
-                                    vmovdqu16(ptr[reg_aux_C + c_offset],
-                                            vreg_zmm);
+                                    // Use appropriate instruction based on output data type
+                                    if (brg.dt_d == data_type::f32) {
+                                        vmovups(ptr[reg_aux_C + c_offset],
+                                                vreg_zmm);
+                                    } else {
+                                        vmovdqu16(ptr[reg_aux_C + c_offset],
+                                                vreg_zmm);
+                                    }
                                 }
                             }
                         } else {
@@ -2376,12 +2387,9 @@ void jit_brgemm_kernel_t<Wmm>::amx10_load_A(dim_t bdb, dim_t offset,
 
     for (int rb = 0; rb < amx10_zmms_per_bd_block; ++rb) {
         auto zmm = amx10_zmm_A(bdb, rb);
-        if (rb >= bd_block) {
-            vpxord(zmm, zmm, zmm);
-            continue;
-        }
         size_t mask = 0;
         int mask_row_offs = 0;
+
         for (int row = rb; row < bd_block; row += amx10_zmms_per_bd_block) {
             for (int col = 0; col < rd_block; ++col) {
                 if (brg.typesize_A == 2) {
@@ -2396,6 +2404,7 @@ void jit_brgemm_kernel_t<Wmm>::amx10_load_A(dim_t bdb, dim_t offset,
             }
             mask_row_offs += mask_stride;
         }
+
         amx10_load_A_4x16bytes(
                 zmm, mask, reg_aux_A, offset + rb * brg.LDA * brg.typesize_A);
     }

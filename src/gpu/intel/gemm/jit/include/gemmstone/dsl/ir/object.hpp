@@ -36,7 +36,7 @@ class ir_visitor_t;
 namespace object {
 // Base class for all IR objects. Implemented as an intrusive pointer, with
 // the reference counter stored inside the object.
-class impl_t {
+class impl_t: public stringify_t<impl_t> {
 public:
     impl_t(const impl_t &) = delete;
     impl_t &operator=(const impl_t &) = delete;
@@ -182,7 +182,7 @@ private:
 } // namespace object
 
 // Base wrapper for IR objects.
-class object_t {
+class object_t: public stringify_t<object_t> {
 public:
     using impl_t = object::impl_t;
     object_t(impl_t *impl = nullptr) : impl_(impl) { retain(impl_); }
@@ -266,13 +266,6 @@ private:
 
     impl_t *impl_;
 };
-
-inline std::ostream & operator<<(std::ostream & out, const object::impl_t & obj) {
-    return out << obj.str();
-}
-inline std::ostream & operator<<(std::ostream & out, const object_t & obj) {
-    return out << obj.str();
-}
 
 // Wrapper for IR expression objects.
 class expr_t : public object_t {

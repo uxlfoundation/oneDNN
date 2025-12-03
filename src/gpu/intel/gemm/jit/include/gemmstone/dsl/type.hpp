@@ -56,7 +56,7 @@ inline attr_t &operator&=(attr_t &a, attr_t b) {
 }
 } // namespace type
 
-class type_t {
+class type_t: public stringify_t<type_t> {
 public:
     friend struct type_internal_accessor_t;
     using attr_t = type::attr_t;
@@ -430,11 +430,6 @@ private:
         ;
     }
 };
-
-inline std::ostream & operator<<(std::ostream & out, const type_t & t) {
-    out << t.str();
-    return out;
-}
 
 static type_t _bool = type_t::_bool();
 static type_t s8 = type_t::s8();

@@ -91,7 +91,7 @@ static double get_msec() {
 // All pointers need to be valid when stop() is called, at which point stamp
 // names are copied into long term storage.
 
-struct profiler_t {
+struct profiler_t : public stringify_t<profiler_t> {
     profiler_t(const std::string &profile_name) : _profile_name(profile_name) {
         // Reserve data on construction to reduce chance of recording
         // reallocation
@@ -204,11 +204,6 @@ private:
         _run_data.clear();
     }
 };
-
-inline std::ostream &operator<<(std::ostream &out, const profiler_t &profile) {
-    out << profile.str();
-    return out;
-}
 
 } // namespace dsl
 GEMMSTONE_NAMESPACE_END

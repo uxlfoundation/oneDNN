@@ -82,7 +82,7 @@ private:
 extern codegen_extension_handler_t default_extension_handler;
 
 // Compilation options used for IR generation and lowering
-class options_t {
+class options_t: public stringify_t<options_t> {
 public:
     options_t() = default;
     options_t(const hw_t &hw) : hw_(hw) {}

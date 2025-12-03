@@ -325,6 +325,24 @@ private:
     using std::ostringstream::imbue;
 };
 
+template <typename T>
+struct stringify_t {
+#ifdef __GNUC__
+    __attribute__((noinline)) __attribute__((used))
+#endif
+    void dump() const {
+        printf("%s\n", static_cast<const T *>(this)->str().c_str());
+    }
+
+    friend std::ostream &operator<<(std::ostream &out, const T& t) {
+        return out << t.str();
+    }
+
+protected:
+    bool operator==(const stringify_t &) const { return true; }
+
+};
+
 GEMMSTONE_NAMESPACE_END
 
 #endif // GEMMSTONE_INCLUDE_INTERNAL_UTILS_HPP

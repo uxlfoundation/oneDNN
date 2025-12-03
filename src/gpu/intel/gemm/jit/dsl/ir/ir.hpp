@@ -75,7 +75,7 @@ expr_t make_buffer(const std::string &name);
 
 class buffer_manager_t {
 public:
-    struct entry_t {
+    struct entry_t : public stringify_t<entry_t> {
         entry_t() = default;
         entry_t(const expr_t &buf, int size) : buf(buf), size(size) {}
 
@@ -685,7 +685,7 @@ struct linear_transform_t {
 // - lhs is a variable
 // - rhs is an integer constant
 // - op is a comparison operation
-class relation_t {
+class relation_t : public stringify_t<relation_t> {
 public:
     relation_t(const expr_t &expr) : expr_(normalize(expr)) {}
 
@@ -728,7 +728,7 @@ private:
 // Equality for modulus: (var % mod) == 0, where:
 // - var is a variable
 // - mod is an integer constant
-class modulus_info_t {
+class modulus_info_t : public stringify_t<modulus_info_t> {
 public:
     modulus_info_t(const expr_t &expr) : expr_(expr) {}
 
@@ -827,7 +827,7 @@ private:
 };
 
 // TODO: Add integers check (only integers can be constrained).
-class constraint_set_t {
+class constraint_set_t : public stringify_t<constraint_set_t> {
 public:
     const object_map_t<expr_t, std::vector<relation_t>> &relations() const {
         return relations_;

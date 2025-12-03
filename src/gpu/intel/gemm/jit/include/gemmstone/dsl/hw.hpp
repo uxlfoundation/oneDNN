@@ -22,6 +22,7 @@
 #include <string>
 
 #include "gemmstone/config.hpp"
+#include "internal/utils.hpp"
 
 // NOLINTBEGIN(readability-identifier-naming)
 namespace ngen {
@@ -63,7 +64,7 @@ inline attr_t &operator&=(attr_t &a, attr_t b) {
 
 // Provides access to HW configuration which includes non-configurable
 // properties.
-class hw_t {
+class hw_t : public stringify_t<hw_t> {
 public:
     using attr_t = hw::attr_t;
     hw_t() = default;
@@ -93,7 +94,6 @@ public:
     int cache_line_size() const;
 
     std::string str() const;
-    void dump() const { printf("%s\n", str().c_str()); }
 
     bool operator<(ngen::HW rhs) const { return hw_ < rhs; }
     bool operator>(ngen::HW rhs) const { return hw_ > rhs; }

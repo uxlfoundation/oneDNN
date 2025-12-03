@@ -57,6 +57,13 @@ struct stream_profiler_t {
     virtual status_t get_info(profiling_data_kind_t data_kind, int *num_entries,
             uint64_t *data) const = 0;
 
+    virtual const xpu::event_t *peek_last_event() const {
+        if (events_.empty()) return nullptr;
+        const auto &tracked = events_.back();
+        if (!tracked.event) return nullptr;
+        return tracked.event.get();
+    }
+
     uint64_t stamp() const { return stamp_; }
 
     void register_event(std::unique_ptr<xpu::event_t> &&event) {

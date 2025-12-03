@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
+* Copyright 2022 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -65,6 +66,13 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
 
     std::pair<primitive_iface_t *, cache_state_t> p_iface;
 
+#if defined(DNNL_ENABLE_ITT_TASKS)
+    const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
+    if (enable_itt)
+        itt::primitive_task_start(primitive_desc_iface->impl()->kind(),
+                primitive_desc_iface->info(), VERBOSE_create);
+#endif
+
     if (get_verbose(verbose_t::create_profile,
                 prim_kind2_comp_kind(primitive_desc_iface->impl()->kind()))) {
         double start_ms = get_msec();
@@ -84,6 +92,11 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
         CHECK(primitive_desc_iface->create_primitive_iface(
                 p_iface, cache_blob));
     }
+
+#if defined(DNNL_ENABLE_ITT_TASKS)
+    if (enable_itt) itt::primitive_task_end(VERBOSE_create);
+#endif
+
     return safe_ptr_assign((*primitive_iface), p_iface.first);
 }
 
@@ -91,15 +104,19 @@ status_t primitive_execute(
         const primitive_iface_t *primitive_iface, exec_ctx_t &ctx) {
     auto stream = ctx.stream();
     status_t status = success;
+    auto pd = primitive_iface->pd();
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
     if (enable_itt)
-        itt::primitive_task_start(primitive_iface->pd()->impl()->kind());
+        itt::primitive_task_start(pd->impl()->kind(), pd->info(), VERBOSE_exec);
 #endif
 
     if (get_verbose(verbose_t::exec_profile,
-                prim_kind2_comp_kind(primitive_iface->pd()->impl()->kind()))) {
+                prim_kind2_comp_kind(pd->impl()->kind()))) {
+
+        std::string pd_info;
+
         bool block_on_wait = true;
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
         dnnl::threadpool_interop::threadpool_iface *tp;
@@ -109,43 +126,55 @@ status_t primitive_execute(
                         & dnnl::threadpool_interop::threadpool_iface::
                                 ASYNCHRONOUS);
 #endif
-        if (block_on_wait) stream->wait();
-        double start_ms = get_msec();
-        status = stream->enqueue_primitive(primitive_iface, ctx);
-        if (block_on_wait) stream->wait();
 
-        double duration_ms = get_msec() - start_ms;
-        if (primitive_iface->pd()->impl()->has_runtime_dims_or_strides()) {
+        if (pd->impl()->has_runtime_dims_or_strides()) {
             // Take out mds from `ctx` here to avoid primitive_desc dependency
             // on `exec_ctx_t` type.
             // TODO: invariant arg names for training?
-            const auto pd_src_md
-                    = primitive_iface->pd()->impl()->invariant_src_md();
+            const auto pd_src_md = pd->impl()->invariant_src_md();
             const auto src_md = ctx.memory_mdw(DNNL_ARG_SRC, pd_src_md).md_;
-            const auto pd_wei_md
-                    = primitive_iface->pd()->impl()->invariant_wei_md();
+            const auto pd_wei_md = pd->impl()->invariant_wei_md();
             const auto wei_md = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd_wei_md).md_;
-            const auto pd_bia_md
-                    = primitive_iface->pd()->impl()->invariant_bia_md();
+            const auto pd_bia_md = pd->impl()->invariant_bia_md();
             const auto bia_md = ctx.memory_mdw(DNNL_ARG_BIAS, pd_bia_md).md_;
-            const auto pd_dst_md
-                    = primitive_iface->pd()->impl()->invariant_dst_md();
+            const auto pd_dst_md = pd->impl()->invariant_dst_md();
             const auto dst_md = ctx.memory_mdw(DNNL_ARG_DST, pd_dst_md).md_;
 
-            std::string info = primitive_iface->pd()->info_with_runtime_dims(
+            pd_info = pd->info_with_runtime_dims(
                     src_md, wei_md, bia_md, dst_md);
-            VPROF(start_ms, primitive, exec, VERBOSE_profile, info.c_str(),
+        } else {
+            pd_info = primitive_iface->pd()->info();
+        }
+
+        bool use_stream_profiler = false;
+        int profiler_num_events = 0;
+
+        if (stream->is_verbose_profiler_enabled()) {
+            CHECK(stream->set_verbose_profiler(profiler_num_events));
+            use_stream_profiler = true;
+        }
+
+        if (!use_stream_profiler) {
+            if (block_on_wait) stream->wait();
+            double start_ms = get_msec();
+            status = stream->enqueue_primitive(primitive_iface, ctx);
+            if (block_on_wait) stream->wait();
+
+            double duration_ms = get_msec() - start_ms;
+            VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(),
                     duration_ms);
         } else {
-            VPROF(start_ms, primitive, exec, VERBOSE_profile,
-                    primitive_iface->pd()->info(), duration_ms);
+            double start_ms = get_msec();
+            status = stream->enqueue_primitive(primitive_iface, ctx);
+            CHECK(stream->run_verbose_profiler(
+                    pd_info, start_ms, profiler_num_events));
         }
     } else {
         status = stream->enqueue_primitive(primitive_iface, ctx);
     }
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
-    if (enable_itt) itt::primitive_task_end();
+    if (enable_itt) itt::primitive_task_end(VERBOSE_exec);
 #endif
 
     if (msan_enabled) unpoison_outputs(ctx.args());

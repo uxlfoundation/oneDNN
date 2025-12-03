@@ -83,6 +83,16 @@ public:
         if (queue.has_property<::sycl::property::queue::enable_profiling>())
             *flags |= stream_flags::profiling;
 #endif
+
+        // Profiling capabilities are enabled on the stream to allow
+        // printing the info in verbose profiling mode
+        const bool disable_verbose_profiler = !queue.is_in_order()
+                || (getenv_int_user("DISABLE_ASYNC_VERBOSE", 0) != 0)
+                || queue.is_in_order();
+
+        if (get_verbose(verbose_t::exec_profile) && disable_verbose_profiler)
+            *flags |= stream_flags::profiling;
+
         return status::success;
     }
 

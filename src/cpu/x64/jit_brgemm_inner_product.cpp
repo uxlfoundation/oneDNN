@@ -391,7 +391,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
             const float *dst_scales_ptr
                     = static_cast<const float *>(dst_scales);
             dst_scales_inv_ptr
-                    = scratchpad.template get<float>(key_conv_dst_scales)
+                    = scratchpad.template get<float>(key_iprod_dst_scales)
                     + ithr;
             dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
         }

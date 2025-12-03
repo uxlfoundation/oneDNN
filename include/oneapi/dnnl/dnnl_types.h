@@ -77,6 +77,11 @@ typedef enum {
     dnnl_packed,
     /// Coordinate Sparse Encoding (COO).
     dnnl_coo,
+    /// Grouped Encoding, that allows to group multiple blocks of data.
+    /// Tensor represented with this encoding could be viewed as diagonal
+    /// matrix with dense blocks of varying sizes, where some of the blocks
+    /// could be empty.
+    dnnl_grouped,
 } dnnl_sparse_encoding_t;
 
 #ifdef DNNL_EXPERIMENTAL_PROFILING

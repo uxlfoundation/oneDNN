@@ -388,6 +388,20 @@ struct memory_desc_wrapper : public c_compatible {
                         return utils::div_up(nelems(true), CHAR_BIT);
                     default: assert(!"unknown index"); return 0;
                 }
+            } else if (sparse_desc().encoding == sparse_encoding::grouped) {
+                // Grouped encoding has values buffer and offsets buffer
+                switch (index) {
+                    case 0:
+                        // Return size for values.
+                        return nnz() * data_type_size();
+                    case 1: {
+                        // Return size for offsets (group_count + 1 offsets).
+                        const auto offsets_dt = metadata_type(0);
+                        return (sparse_desc().grouped_desc.ngroups + 1)
+                                * types::data_type_size(offsets_dt);
+                    }
+                    default: assert(!"unknown index"); return 0;
+                }
             } else {
                 assert(!"unknown sparse encoding");
                 return 0;

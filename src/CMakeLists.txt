@@ -270,20 +270,6 @@ if(UNIX AND DNNL_INSTALL_MODE STREQUAL "BUNDLE")
     install(CODE "file(WRITE \"${CMAKE_INSTALL_PREFIX}/${LIB_CONFIG_INSTALL_DIR}/${LIB_PACKAGE_NAME}-targets.cmake\" \"\${TARGETS_CONTENT}\")")
 endif()
 
-# Install custom find modules for transitive dependencies
-if(DNNL_CPU_THREADING_RUNTIME STREQUAL "TBB")
-    if(WIN32)
-        install(FILES "../cmake/win/TBBConfig.cmake" RENAME "FindTBB.cmake"
-            DESTINATION ${LIB_CONFIG_INSTALL_DIR})
-    elseif(APPLE)
-        install(FILES "../cmake/mac/TBBConfig.cmake" RENAME "FindTBB.cmake"
-            DESTINATION ${LIB_CONFIG_INSTALL_DIR})
-    elseif(UNIX)
-        install(FILES "../cmake/lnx/TBBConfig.cmake" RENAME "FindTBB.cmake"
-            DESTINATION ${LIB_CONFIG_INSTALL_DIR})
-    endif()
-endif()
-
 if(DNNL_GPU_RUNTIME STREQUAL "OCL" OR (DNNL_GPU_SYCL AND DNNL_GPU_VENDOR STREQUAL "INTEL"))
     install(FILES
         "../cmake/FindOpenCL.cmake"

@@ -23,59 +23,41 @@ endif()
 set(TBB_cmake_included true)
 include("cmake/Threading.cmake")
 
-macro(handle_tbb_target)
-    if(TBB_FOUND)
-        if(WIN32)
-            # On Windows we must link to debug version of TBB library to ensure ABI compatibility
-            # with MSVC debug runtime.
-            set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_RELWITHMDD" "DEBUG")
-        else()
-            # On Linux TBB::tbb target may link to libtbb_debug.so which is not compatible with libtbb.so. Linking
-            # application to both may result in undefined behavior.
-            # See https://uxlfoundation.github.io/oneTBB/main/intro/limitations.html#debug-tbb-in-the-sycl-program
-            set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_RELWITHMDD" "RELEASE")
-            set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_DEBUG" "RELEASE")
-        endif()
-        include_directories_with_host_compiler(${_tbb_include_dirs})
-        list(APPEND EXTRA_SHARED_LIBS TBB::tbb)
-
-        # Print TBB location
-        get_filename_component(_tbb_root "${_tbb_include_dirs}" PATH)
-        get_filename_component(_tbb_root "${_tbb_root}" ABSOLUTE)
-        message(STATUS "TBB: ${_tbb_root}")
-
-        unset(_tbb_include_dirs)
-        unset(_tbb_root)
-    elseif(DNNL_CPU_RUNTIME STREQUAL "NONE")
-        message(FATAL_ERROR "For GPU only SYCL configuration TBB is required for testing.")
+macro(add_tbb_threading)
+find_package(TBB REQUIRED COMPONENTS tbb)
+if(TBB_FOUND)
+    if(WIN32)
+        # On Windows we must link to debug version of TBB library to ensure ABI compatibility
+        # with MSVC debug runtime.
+        set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_RELWITHMDD" "DEBUG")
     else()
-        message(FATAL_ERROR "DNNL_CPU_THREADING_RUNTIME is ${DNNL_CPU_THREADING_RUNTIME} but TBB is not found.")
+        # On Linux TBB::tbb target may link to libtbb_debug.so which is not compatible with libtbb.so. Linking
+        # application to both may result in undefined behavior.
+        # See https://uxlfoundation.github.io/oneTBB/main/intro/limitations.html#debug-tbb-in-the-sycl-program
+        set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_RELWITHMDD" "RELEASE")
+        set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_DEBUG" "RELEASE")
     endif()
-
-    get_target_property(_tbb_lib_path TBB::tbb IMPORTED_LOCATION_RELEASE)
-    get_filename_component(_tbb_lib_dir "${_tbb_lib_path}" PATH)
-
-    # XXX: workaround - Intel oneAPI DPC++ Compiler "unbundles" tbb.lib
-    # and loses its absolute path
-    if(DNNL_WITH_SYCL)
-        link_directories(${_tbb_lib_dir})
+    get_target_property(TBB_INCLUDE_DIRS TBB::tbb INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(TBB_IMPORTED_LOCATION TBB::tbb IMPORTED_LOCATION_RELEASE)
+    if(NOT TBB_IMPORTED_LOCATION)
+        get_target_property(TBB_IMPORTED_LOCATION TBB::tbb IMPORTED_LOCATION_DEBUG)
     endif()
+    message(STATUS "Found TBB: ${TBB_IMPORTED_LOCATION}")
 
-    # XXX: this is to make "ctest" working out-of-the-box with TBB
-    string(REPLACE "/lib/" "/redist/" _tbb_redist_dir "${_tbb_lib_dir}")
-    append_to_windows_path_list(CTESTCONFIG_PATH "${_tbb_redist_dir}")
-
-    # Adds definitions for heterogeneous ISA testing
-    add_definitions(-DTBB_PREVIEW_TASK_ARENA_CONSTRAINTS_EXTENSION=1)
+    include_directories_with_host_compiler(${TBB_INCLUDE_DIRS})
+    list(APPEND EXTRA_SHARED_LIBS TBB::tbb)
+elseif(DNNL_CPU_RUNTIME STREQUAL "NONE")
+    message(FATAL_ERROR "For GPU only SYCL configuration TBB is required for testing.")
+else()
+    message(FATAL_ERROR "DNNL_CPU_THREADING_RUNTIME is ${DNNL_CPU_THREADING_RUNTIME} but TBB is not found.")
+endif()
 endmacro()
 
 if(NOT DNNL_CPU_THREADING_RUNTIME STREQUAL "TBB")
     return()
 endif()
 
-find_package_tbb(REQUIRED)
-handle_tbb_target()
+add_tbb_threading()
 
-unset(_tbb_lib_path)
-unset(_tbb_lib_dir)
-unset(_tbb_redist_dir)
+# Adds definitions for heterogeneous ISA testing
+add_definitions(-DTBB_PREVIEW_TASK_ARENA_CONSTRAINTS_EXTENSION=1)

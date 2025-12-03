@@ -97,10 +97,7 @@ set(TEST_THREAD ${CMAKE_CURRENT_SOURCE_DIR}/test_thread.cpp)
 # For non-dppcp compilers OpenMP threading will be used which is handled in
 # OpenMP.cmake.
 if(DNNL_WITH_SYCL AND DNNL_CPU_RUNTIME STREQUAL "NONE")
-    list(INSERT CMAKE_MODULE_PATH 0 ${PROJECT_SOURCE_DIR}/cmake)
-    find_package_tbb(REQUIRED)
-    list(REMOVE_AT CMAKE_MODULE_PATH 0)
-    handle_tbb_target()
+    add_tbb_threading()
 endif()
 
 add_subdirectory(gtests)

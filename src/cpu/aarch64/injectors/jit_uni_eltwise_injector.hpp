@@ -261,6 +261,7 @@ private:
     void hardswish_compute_vector_bwd(const TRegS &vmm_src);
     void hardsigmoid_compute_vector_bwd(const TRegS &vmm_src);
     void load_1word_replicate(const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr);
+    void load_vector(const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr);
 
     enum key_t {
         scale = 0, // scale argument
@@ -280,8 +281,16 @@ private:
         exp_ln_flt_max_f, // logf(FLT_MAX) - max normal value
         exp_ln_flt_min_f, // logf(FLT_MIN) - min normal value
         exp_pol, // see correspondent table for float values
+        exp_pol_asimd, // see corresponding table for float values
         exp_coeff1, // 0.6931473921 (0x3f31721c)
         exp_coeff2, // 0.2413862043 (0x3e772df2)
+        exp_exponent_bias,
+        exp_neg_ln2_hi, // high part of -ln(2) used for exp calculation
+        exp_neg_ln2_lo, // low part of -ln(2) used for exp calculation
+        exp_special_bound, // bound for exp special case handling
+        exp_scale_thresh, // threshold for additional overflow/underflow handling
+        exp_special_offset,
+        exp_special_bias,
         exp_not_mask17, // ~((1u << 17) - 1)
         fwd_mish_max_x_for_equation_f,
         // e^x(e^3x+4e^2x+e^x*(6+4*x)+4*(1+x)) = FLT_MAX; x =~ 22.18070976278534
@@ -338,14 +347,25 @@ private:
     }
 
     TRegS table_val(key_t key, TRegS zreg, size_t key_off_val_shift = 0) {
+        // assumption: all table entries sharing the same key also
+        // share their broadcast property
+        const auto it = entry_map_.find(key);
+        assert(it != entry_map_.end());
+        const auto &te = (*it).second;
+        const auto scale = te.bcast ? vlen : sizeof(table_entry_val_t);
+        const auto off = te.off + key_off_val_shift * scale;
+
         Xbyak_aarch64::XReg x_addr(h->X_DEFAULT_ADDR);
-        auto off = table_off(key, key_off_val_shift);
         if (off) {
             h->add_imm(x_addr, x_table, off, h->X_TMP_0);
         } else {
             x_addr = x_table;
         }
-        load_1word_replicate(zreg, x_addr);
+        if (te.bcast) {
+            load_vector(zreg, x_addr);
+        } else {
+            load_1word_replicate(zreg, x_addr);
+        }
         return zreg;
     }
 

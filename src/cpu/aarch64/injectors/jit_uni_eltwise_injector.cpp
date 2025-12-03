@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2022, 2025 Arm Ltd. and affiliates
+* Copyright 2019-2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -56,9 +56,10 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg) {
         if (isa == asimd) {
             using namespace alg_kind;
             return utils::one_of(alg, eltwise_relu, eltwise_square, eltwise_abs,
-                    eltwise_sqrt, eltwise_linear, eltwise_hardsigmoid,
-                    eltwise_hardswish, eltwise_clip, eltwise_clip_v2,
-                    eltwise_round, eltwise_clip_v2_use_dst_for_bwd);
+                    eltwise_sqrt, eltwise_linear, eltwise_exp,
+                    eltwise_hardsigmoid, eltwise_hardswish, eltwise_clip,
+                    eltwise_clip_v2, eltwise_round,
+                    eltwise_clip_v2_use_dst_for_bwd);
         } else {
             return is_alg_supported(alg);
         }
@@ -1590,7 +1591,7 @@ size_t jit_uni_eltwise_injector_t<isa>::aux_vecs_count() {
             case eltwise_logistic_use_dst_for_bwd:
             case eltwise_logistic: return 5; /* = exp + 1 */
             case eltwise_exp_use_dst_for_bwd:
-            case eltwise_exp: return 4;
+            case eltwise_exp: return (isa == asimd) ? 5 : 4;
             case eltwise_gelu_tanh: return 9; /* = tanh */
             case eltwise_swish: return 6; /* = logistic */
             case eltwise_log: return 6;
@@ -1855,13 +1856,26 @@ void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
             {exp_pol, {0x3efffee3, true}}, // p2 = 0.499991506f
             {exp_pol, {0x3e2aad40, true}}, // p3 = 0.166676521f
             {exp_pol, {0x3d2b9d0d, true}}, // p4 = 0.0418978221f
-            {exp_pol, {0x3c07cfce, true}} // p5 = 0.00828929059f
+            {exp_pol, {0x3c07cfce, true}}, // p5 = 0.00828929059f
+            {exp_pol_asimd, {0x3c072010, true}}, // c0 =  0x1.0e4020p-7
+            {exp_pol_asimd, {0x3d2b9f17, true}}, // c1 =  0x1.573e2ep-5
+            {exp_pol_asimd, {0x3e2aaf33, true}}, // c2 =  0x1.555e66p-3
+            {exp_pol_asimd, {0x3efffedb, true}}, // c3 =  0x1.fffdb6p-2
+            {exp_pol_asimd, {0x3f7ffff6, true}}, // c4 =  0x1.ffffecp-1
     };
     // exp(x) constants2
     static const table_t exp_consts2 {
             {exp_coeff1, {0x3f31721c, true}},
             {exp_coeff2, {0x3e772df2, true}},
             {exp_not_mask17, {~((1u << 17) - 1), true}},
+            {exp_exponent_bias,
+                    {0x3f800000, true}}, // 2^7 - 1 shifted to exponent position
+            {exp_neg_ln2_hi, {0xbf317200, true}}, // -0x1.62e400p-1f (hi)
+            {exp_neg_ln2_lo, {0xb5bfbe8e, true}}, // -0x1.7f7d1cp-20f (lo)
+            {exp_special_bound, {0x42fc0000, true}}, // 126.0f
+            {exp_scale_thresh, {0x43400000, true}}, // 192.0f
+            {exp_special_offset, {0x82000000, true}},
+            {exp_special_bias, {0x7f000000, true}},
     };
 
     // mish(x) constants
@@ -2476,6 +2490,145 @@ size_t jit_uni_eltwise_injector_t<sve_128>::get_vec_len() {
 }
 
 template <>
+void jit_uni_eltwise_injector_t<asimd>::exp_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    /*
+    * Based on the expf implementation from Arm Optimized Routines (AOR)
+    * Accuracy: maxerr ≈ 1.95 ULP.
+    *
+    * exp(x) ≈ 2^n * (1 + poly(r)), with 1 + poly(r) ∈ [1/sqrt(2),sqrt(2)]
+    *   n = round(x * 1/ln2)
+    *   r = x − n*ln2 (hi/lo split for precision)
+    *   poly(r): short polynomial, r ∈ [−ln2/2, ln2/2]
+    *
+    * Special case:
+    *   For large |n| > 126, split 2^n = s1*s2 to avoid overflow/underflow.
+    *   For very large |n| > 196, use exp(x) = s1*s1.
+    */
+
+    const auto &t0 = VReg4S(vmm_src.getIdx());
+    const auto &t1 = VReg4S(vmm_aux0.getIdx());
+    const auto &t2 = VReg4S(vmm_aux1.getIdx());
+    const auto &t3 = VReg4S(vmm_aux2.getIdx());
+    const auto &t4 = VReg4S(vmm_aux3.getIdx());
+    const auto &t_tmp = VReg4S(vmm_tmp.getIdx());
+
+    // z = x * inv_ln2
+    const auto &v_inv_ln2 = table_val(exp_log2ef, t_tmp);
+    const auto &v_src = t0;
+    const auto &v_z = t_tmp;
+    h->fmul(v_z, v_src, v_inv_ln2);
+
+    // n = (float)round(z)
+    const auto &v_n = t1;
+    h->frinta(v_n, v_z);
+
+    // e = (int)round(z) << n_mantissa_bits
+    const auto &v_e = t2;
+    h->fcvtas(v_z, v_z);
+    h->shl(v_e, v_z, n_mantissa_bits);
+
+    // r = x + n*neg_ln2_hi + n*neg_ln2_lo
+    const auto &v_r = v_src;
+    const auto &v_neg_ln2_hi = table_val(exp_neg_ln2_hi, t3);
+    const auto &v_neg_ln2_lo = table_val(exp_neg_ln2_lo, t4);
+    h->fmla(v_r, v_n, v_neg_ln2_hi);
+    h->fmla(v_r, v_n, v_neg_ln2_lo);
+
+    // Polynomial approximation of exp(r), r ∈ [−ln2/2, ln2/2]
+    // p = c1 + c0 * r
+    const auto &v_c0 = v_z;
+    const auto &v_c1 = v_neg_ln2_hi;
+    table_val(exp_pol_asimd, v_c0, 0);
+    table_val(exp_pol_asimd, v_c1, 1);
+    h->fmla(v_c1, v_c0, v_r);
+
+    // q = c3 + c2 * r
+    const auto &v_c2 = v_c0;
+    const auto &v_c3 = v_neg_ln2_lo;
+    table_val(exp_pol_asimd, v_c2, 2);
+    table_val(exp_pol_asimd, v_c3, 3);
+    h->fmla(v_c3, v_c2, v_r);
+
+    // r2 = r * r
+    const auto &v_r2 = v_c2;
+    h->fmul(v_r2, v_r, v_r);
+
+    // q = q + p * r2
+    const auto &v_p = v_c1;
+    const auto &v_q = v_c3;
+    h->fmla(v_q, v_p, v_r2);
+
+    // poly = c4 * r + q * r2
+    const auto &v_c4 = v_p;
+    table_val(exp_pol_asimd, v_c4, 4);
+    h->fmul(v_p, v_c4, v_r);
+    h->fmla(v_p, v_q, v_r2);
+
+    // Check if any lane needs special-case handling
+    // mask_special = (|n| > 126)
+    Xbyak_aarch64::Label L_done, L_special;
+    const auto &v_mask_special = v_c3;
+    const auto &v_special_bound = table_val(exp_special_bound, t_tmp); // 126.0f
+    h->facgt(v_mask_special, v_n, v_special_bound);
+    h->addp(DReg(t_tmp.getIdx()), VReg2D(v_mask_special.getIdx()));
+    h->fmov(h->X_TMP_0, DReg(t_tmp.getIdx()));
+    h->cbnz(h->X_TMP_0, L_special);
+
+    // ===== Fast path =====
+    // scale = reinterpret_f32(e + 0x3f800000) = 2^n
+    const auto &v_exp_scale = v_src;
+    const auto &v_exp_bias_bits
+            = table_val(exp_exponent_bias, t_tmp); // 0x3f800000
+    h->add(v_exp_scale, v_e, v_exp_bias_bits);
+
+    // exp(x) = scale + poly * scale = 2^n * (1 + poly(r))
+    const auto &v_dst = v_src;
+    h->fmla(v_dst, v_p, v_exp_scale);
+    h->b(L_done);
+
+    // ===== Special-case handling =====
+    // b = (n <= 0) ? special_offset : 0
+    h->L(L_special);
+    const auto &v_b = v_q;
+    const auto &v_special_offset
+            = table_val(exp_special_offset, t_tmp); // 0x82000000
+    h->fcmle(v_b, v_n, 0.0);
+    h->and_(VReg16B(v_b.getIdx()), VReg16B(v_b.getIdx()),
+            VReg16B(v_special_offset.getIdx()));
+
+    // mask_thresh = (|n| > 192)
+    const auto &v_thresh = table_val(exp_scale_thresh, t_tmp); // 192.0f
+    const auto &v_mask_thresh = v_n;
+    h->facgt(v_mask_thresh, v_n, v_thresh);
+
+    // s2_bits = e - b
+    const auto &v_s2 = v_e;
+    h->sub(v_s2, v_e, v_b);
+
+    // s1_bits = b + special_bias
+    const auto &v_s1 = v_b;
+    const auto &v_special_bias
+            = table_val(exp_special_bias, t_tmp); // 0x7f000000
+    h->add(v_s1, v_b, v_special_bias);
+
+    // r0 = (s2 + poly*s2) * s1
+    const auto &v_r0 = v_p;
+    h->fmla(v_s2, v_p, v_s2);
+    h->fmul(v_r0, v_s2, v_s1);
+
+    // r1 = s1 * s1
+    const auto &v_r1 = v_dst;
+    h->fmul(v_r1, v_s1, v_s1);
+
+    // out_special = (|n| > 192) ? r1 : r0
+    h->bif(VReg16B(v_r1.getIdx()), VReg16B(v_r0.getIdx()),
+            VReg16B(v_mask_thresh.getIdx()));
+
+    h->L(L_done);
+}
+
+template <>
 void jit_uni_eltwise_injector_t<asimd>::relu_zero_ns_compute_vector_fwd(
         const TReg &vmm_src) {
     if (d_type_ == data_type::f16) {
@@ -2568,13 +2721,23 @@ void jit_uni_eltwise_injector_t<asimd>::load_1word_replicate(
 template <>
 void jit_uni_eltwise_injector_t<sve_128>::load_1word_replicate(
         const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr) {
+    h->ld1rw(TRegS(vmm_src.getIdx()), p_all, ptr(x_addr));
+}
+
+template <>
+void jit_uni_eltwise_injector_t<asimd>::load_vector(
+        const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr) {
+    h->ldr(QReg(vmm_src.getIdx()), ptr(x_addr));
+}
+template <>
+void jit_uni_eltwise_injector_t<sve_128>::load_vector(
+        const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr) {
     h->ldr(TReg(vmm_src.getIdx()), ptr(x_addr));
 }
 
 #define DEFINE_ASIMD_EMPTY_FUNC(func_name) \
     template <> \
     void jit_uni_eltwise_injector_t<asimd>::func_name(const TRegS &) {}
-DEFINE_ASIMD_EMPTY_FUNC(exp_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(mish_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(elu_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(tanh_compute_vector_fwd);

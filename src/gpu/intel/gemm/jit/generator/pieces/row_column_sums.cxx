@@ -38,7 +38,7 @@ void Generator<hw>::makeSumLayout(bool column, const RegisterLayout &srcLayout,
 {
     auto Tsrc = srcLayout.type();
     bool canDP4A = !systolicSum
-            && one_of(Tsrc, Type::s8, Type::u8) && one_of(Tdst, Type::s32, Type::u32);
+            && one_of(Tsrc, {Type::s8, Type::u8}) && one_of(Tdst, {Type::s32, Type::u32});
     bool cm = srcLayout.colMajor();
     bool hReduce = (column == cm);
     bool needAll1s = false;
@@ -81,8 +81,8 @@ void Generator<hw>::accumulateSum(bool column,
                                   int q0, int q1)
 {
     auto Tsrc = srcLayout.type(), Tdst = dstLayout.type();
-    bool canDP4A = one_of(Tsrc, Type::s8, Type::u8)
-                && one_of(Tdst, Type::s32, Type::u32);
+    bool canDP4A = one_of(Tsrc, {Type::s8, Type::u8})
+                && one_of(Tdst, {Type::s32, Type::u32});
 
     bool cm = srcLayout.colMajor();
     if (cm != dstLayout.colMajor()) stub();

@@ -2104,7 +2104,7 @@ void Generator<hw>::convert(const GRFMultirange &range, Type Told, Type Tnew, co
     if (Told == Type::hf8 || Tnew == Type::hf8) stub();
 
     // Special path: x32->FP.
-    if (one_of(Told, Type::s32, Type::u32) && Tnew.isFP()) {
+    if (one_of(Told, {Type::s32, Type::u32}) && Tnew.isFP()) {
         map(hw, Told, range, range, strategy, [&](int esize, GRF r, GRF _) {
             mov(esize, r.f(), r);
         });

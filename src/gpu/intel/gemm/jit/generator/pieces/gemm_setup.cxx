@@ -1263,7 +1263,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
                                                                        : AccessType::Scattered;
             state.Ao_strategy.smode = ScatterSIMD::Default;
 
-            if (state.Ai.layout == MatrixLayout::N && one_of(state.Ai_strategy.accessType, AccessType::Block2D, AccessType::Block2DVNNI) && isLargeCrosspack(Ta, A_slmCP)) {
+            if (state.Ai.layout == MatrixLayout::N && one_of(state.Ai_strategy.accessType, {AccessType::Block2D, AccessType::Block2DVNNI}) && isLargeCrosspack(Ta, A_slmCP)) {
                 state.Ao_strategy.accessType = AccessType::ChannelScattered;
                 state.Ao_strategy.smode = ScatterSIMD::Narrow;
             }
@@ -1408,7 +1408,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
                                                                        : AccessType::Scattered;
             state.Bo_strategy.smode = ScatterSIMD::Default;
 
-            if (state.Bi.layout == MatrixLayout::T && one_of(state.Bi_strategy.accessType, AccessType::Block2D, AccessType::Block2DVNNI) && isLargeCrosspack(Tb, B_slmCP)) {
+            if (state.Bi.layout == MatrixLayout::T && one_of(state.Bi_strategy.accessType, {AccessType::Block2D, AccessType::Block2DVNNI}) && isLargeCrosspack(Tb, B_slmCP)) {
                 state.Bo_strategy.accessType = AccessType::ChannelScattered;
                 state.Bo_strategy.smode = ScatterSIMD::Narrow;
             }
@@ -1645,7 +1645,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         // Repacked data can use significantly more registers than the loaded
         // data. Lazy repacking can reduce register utilization and improve load
         // pipelining at (in some cases) the expense of more work.
-        bool lazyRepack = state.Ta_load.is4() && one_of(Ta, Type::f16, Type::bf16, Type::f32);    // Other cases are unimplemented
+        bool lazyRepack = state.Ta_load.is4() && one_of(Ta, {Type::f16, Type::bf16, Type::f32});    // Other cases are unimplemented
         if (lazyRepack)
             state.ka_repack = std::min(state.ka_repack, strategy.kb_load);
         int repackN = state.ka_repack;
@@ -2106,8 +2106,8 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             if (Bp_params.offC != B_params.offC) state.ra.safeRelease(Bp_params.offC);
         }
 
-        if (!one_of(state.effAp, state.effA, state.effAi)) state.ra.safeRelease(state.effAp);
-        if (!one_of(state.effBp, state.effB, state.effBi)) state.ra.safeRelease(state.effBp);
+        if (!one_of(state.effAp, {state.effA, state.effAi})) state.ra.safeRelease(state.effAp);
+        if (!one_of(state.effBp, {state.effB, state.effBi})) state.ra.safeRelease(state.effBp);
     }
 
     releaseLDMultiples(state.ldaMultiples, state);
@@ -2766,7 +2766,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         if (strategy.scramble[LoopN])
             state.inputs.gcNRecip = interface.getArgumentIfExists("group_count_n_recip");
     }
-    if (one_of(strategy.cWalkOrder, WalkOrder::SimpleLinear, WalkOrder::NestedLinear))
+    if (one_of(strategy.cWalkOrder, {WalkOrder::SimpleLinear, WalkOrder::NestedLinear}))
         state.inputs.gcMNRecip = interface.getArgument("group_count_recip");
     else if (strategy.cWalkOrder == WalkOrder::Hilbertlike) {
         state.inputs.hilbertVD = interface.getArgumentIfExists("hilbert_vd");
@@ -3042,7 +3042,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             state.ra.claim(state.inputs.gcNRecip);
     }
 
-    if (one_of(strategy.cWalkOrder, WalkOrder::SimpleLinear, WalkOrder::NestedLinear))
+    if (one_of(strategy.cWalkOrder, {WalkOrder::SimpleLinear, WalkOrder::NestedLinear}))
         state.ra.claim(state.inputs.gcMNRecip);
     else if (strategy.cWalkOrder == WalkOrder::Hilbertlike) {
         {

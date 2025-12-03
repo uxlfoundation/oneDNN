@@ -84,7 +84,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         Txs_int = problem.Tc;
     }
 
-    bool int4SpecialPath = Tx_ext.isInt4() && one_of(Tx, Type::f16, Type::f32);
+    bool int4SpecialPath = Tx_ext.isInt4() && one_of(Tx, {Type::f16, Type::f32});
     if (int4SpecialPath) {
         Txo_int = Type::f16;
         Txs_int = Tx;

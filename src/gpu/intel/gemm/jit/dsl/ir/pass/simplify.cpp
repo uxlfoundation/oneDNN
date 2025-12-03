@@ -591,7 +591,7 @@ public:
         i_c1 = std::abs(i_c1);
 
         bool has_mod = (i_c1 % i_c0 != 0);
-        if (has_mod && one_of(op.op_kind, op_kind_t::_eq, op_kind_t::_ne))
+        if (has_mod && one_of(op.op_kind, {op_kind_t::_eq, op_kind_t::_ne}))
             return e;
 
         auto new_op_kind = (is_c0_neg ? negate_cmp_op(op.op_kind) : op.op_kind);
@@ -1303,7 +1303,7 @@ public:
         auto obj = nary_op_mutator_t::_mutate(_obj);
         auto *binary_op = obj.as_ptr<binary_op_t>();
         if (!binary_op) return obj;
-        if (!one_of(binary_op->op_kind, op_kind_t::_div, op_kind_t::_mod)
+        if (!one_of(binary_op->op_kind, {op_kind_t::_div, op_kind_t::_mod})
                 || !_obj.type.is_scalar())
             return obj;
         if (!binary_op->type.is_int()) return obj;
@@ -1503,7 +1503,7 @@ public:
     int_div_mod_range_simplifier_t(const constraint_set_t &cset) : cset(cset) {}
 
     object_t _mutate(const binary_op_t &obj) override {
-        if (!one_of(obj.op_kind, op_kind_t::_div, op_kind_t::_mod))
+        if (!one_of(obj.op_kind, {op_kind_t::_div, op_kind_t::_mod}))
             return nary_op_mutator_t::_mutate(obj);
 
         auto a = mutate(obj.a);
@@ -1803,7 +1803,7 @@ private:
             auto op_kind = binary_op->op_kind;
             if (is_cmp_op(op_kind))
                 return binary_op_t::make(flip_op(op_kind), a, b);
-            if (one_of(op_kind, op_kind_t::_and, op_kind_t::_or)) {
+            if (one_of(op_kind, {op_kind_t::_and, op_kind_t::_or})) {
                 auto a_neg = flip_condition(a);
                 auto b_neg = flip_condition(b);
                 return binary_op_t::make(flip_op(op_kind), a_neg, b_neg);
@@ -2209,7 +2209,8 @@ expr_t simplify_cmp_reduce_lhs_rhs(const expr_t &e) {
     i_c1 = std::abs(i_c1);
 
     bool has_mod = (i_c1 % i_c0 != 0);
-    if (has_mod && one_of(op.op_kind, op_kind_t::_eq, op_kind_t::_ne)) return e;
+    if (has_mod && one_of(op.op_kind, {op_kind_t::_eq, op_kind_t::_ne}))
+        return e;
 
     auto new_op_kind = (is_c0_neg ? negate_cmp_op(op.op_kind) : op.op_kind);
     int64_t div = i_c1 / i_c0;

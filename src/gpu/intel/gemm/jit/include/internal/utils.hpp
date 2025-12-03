@@ -29,16 +29,12 @@
 
 GEMMSTONE_NAMESPACE_START
 
-template <typename T, typename T1>
-static inline constexpr bool one_of(T value, T1 option1)
+template <typename T, typename U>
+static inline bool one_of(T value, std::initializer_list<U> list)
 {
-    return (value == option1);
-}
-
-template <typename T, typename T1, typename... TO>
-static inline constexpr bool one_of(T value, T1 option1, TO... others)
-{
-    return (value == option1) || one_of(value, others...);
+    for(auto &v: list)
+        if(value == v) return true;
+    return false;
 }
 
 static inline int ilog2(size_t x)

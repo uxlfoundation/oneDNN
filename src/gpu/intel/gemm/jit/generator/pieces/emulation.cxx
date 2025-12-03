@@ -87,7 +87,7 @@ void Generator<hw>::emov(const ngen::InstructionModifier &mod, ngen::RegData dst
         src0.setType(DataType::f);
     }
 
-    if (hw >= HW::XeHP && one_of(src0.getType(), DataType::hf, DataType::f, DataType::bf)
+    if (hw >= HW::XeHP && one_of(src0.getType(), {DataType::hf, DataType::f, DataType::bf})
             && src0.getType() == dst.getType()
             && ((src0.getHS() != dst.getHS()) || (src0.getOffset() != dst.getOffset()) || (src0.getHS() != 1 && getBytes(src0.getType()) == 2))) {
         moveToIntPipe(mod.getExecSize(), dst);
@@ -156,8 +156,8 @@ void Generator<hw>::emad(const InstructionModifier &mod, const RegData &dst, con
                          const CommonStrategy &strategy, CommonState &state, bool sub, ngen::SourceLocation loc)
 {
     auto dstType = dst.getType();
-    if ((!sub && !(dst.getByteOffset() & 7) && !one_of(dstType, DataType::q, DataType::uq) && !one_of(src2.getType(), DataType::d, DataType::ud))
-            || one_of(dstType, DataType::hf, DataType::f, DataType::df)) {
+    if ((!sub && !(dst.getByteOffset() & 7) && !one_of(dstType, {DataType::q, DataType::uq}) && !one_of(src2.getType(), {DataType::d, DataType::ud}))
+        || one_of(dstType, {DataType::hf, DataType::f, DataType::df})) {
         mad(mod, dst, src0, src1, src2, loc);
     } else {
         auto ttype = withSignedness(dst.getType(), isSigned(src1.getType()) || isSigned(src2.getType()));
@@ -197,7 +197,7 @@ void Generator<hw>::emad(const InstructionModifier &mod, const RegData &dst, con
         emov(mod, dst, src0, strategy, state, loc);
     else if (src2 == 1)
         eadd(mod, dst, src1, src0, strategy, state, loc);
-    else if (!(dst.getByteOffset() & 7) && (src2 >= -0x8000 && src2 < 0x10000) && !one_of(dstType, DataType::q, DataType::uq)) {
+    else if (!(dst.getByteOffset() & 7) && (src2 >= -0x8000 && src2 < 0x10000) && !one_of(dstType, {DataType::q, DataType::uq})) {
         mad(mod, dst, src0, src1, src2, loc);
     } else {
         auto ttype = (isSigned(src1.getType()) || src2 < 0) ? DataType::d : DataType::ud;

@@ -948,7 +948,7 @@ Subregister RegisterBlock::find(Type T, int ii, int jj, const GRFMultirange &reg
 {
     auto Te = T;
 
-    if (ii < 0 || ii >= nr || jj < 0 || jj >= nc || component != component_ || !one_of(cxComponent, -1, cxComponent_))
+    if (ii < 0 || ii >= nr || jj < 0 || jj >= nc || component != component_ || !one_of(cxComponent, {-1, cxComponent_}))
         stub("Requested out-of-bounds element.");
 
     int xx = colMajor ? ii : jj;
@@ -1498,7 +1498,7 @@ void RegisterLayout::coalesceAddrs()
             block.offsetAddr *= T;
             if (block.offsetAddr >= max || block.offsetAddr < -max)
                 block.offsetAddr = 0;
-            if (one_of(accessType, AccessType::Scattered, AccessType::ChannelScattered))
+            if (one_of(accessType, {AccessType::Scattered, AccessType::ChannelScattered}))
                 if (block.simdSize > anchor->simdSize)
                     block.offsetAddr = 0;
             if (block.offsetAddr & 0x3)
@@ -1681,7 +1681,7 @@ Subregister RegisterLayout::find(int i, int j, const GRFMultirange &regs, int *o
         int jj = j - block.offsetC;
         if (ii >= 0 && ii < block.nr && jj >= 0 && jj < block.nc
                     && ecomponent == block.component
-                    && one_of(block.cxComponent, cxComponent, RegisterBlock::Interleaved)) {
+                    && one_of(block.cxComponent, {int8_t(cxComponent), RegisterBlock::Interleaved})) {
             if (outBlock) *outBlock = &block;
             return block.find(T, ii, jj, regs, outNElems, cxComponent, component);
         }
@@ -2047,7 +2047,7 @@ RegisterLayout RegisterLayout::tryUpgradeToBlock2D(const MatrixAddressing &atype
     bool transpose = isTransposing(astrategy.accessType);
     bool regCM = colMajor();
 
-    if (transpose && !one_of(sizeof(T), 4u, 8u))
+    if (transpose && !one_of(sizeof(T), {4u, 8u}))
         return RegisterLayout();
     if (astrategy2D.accessType != (transpose ? AccessType::Block2DTranspose : AccessType::Block2D))
         return RegisterLayout();

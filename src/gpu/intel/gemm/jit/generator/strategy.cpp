@@ -31,7 +31,7 @@ using namespace ngen;
 /* CommonStrategy member functions */
 CommonStrategy::CommonStrategy(HW hw, int stepping) : raHW(hw), emulate(hw, stepping)
 {
-    fused = one_of(hw, HW::Gen12LP, HW::XeHP, HW::XeHPG);
+    fused = one_of(hw, {HW::Gen12LP, HW::XeHP, HW::XeHPG});
     systolicAvailable = (hw >= HW::XeHP);
 }
 

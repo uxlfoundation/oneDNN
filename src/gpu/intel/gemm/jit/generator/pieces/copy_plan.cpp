@@ -41,7 +41,7 @@ static constexpr ngen::DataType ngen_b16()     { return static_cast<ngen::DataTy
 /********************/
 
 static bool isBitwise(Opcode op) {
-    return one_of(op, Opcode::mov, Opcode::and_, Opcode::or_, Opcode::xor_);
+    return one_of(op, {Opcode::mov, Opcode::and_, Opcode::or_, Opcode::xor_});
 }
 static bool isBroadcast(const CopyOperand &op) {
     return (op.kind != op.GRF) || (op.stride == 0);
@@ -786,7 +786,7 @@ void CopyPlan::planTypeConversions()
         if (st == dt)
             i.moveToIntegerPipe();
 
-        if (is4(st) && one_of(dt, ngen_b16_h4x(), ngen_b16_l4x()))
+        if (is4(st) && one_of(dt, {ngen_b16_h4x(), ngen_b16_l4x()}))
             plan4BitShifts(i);
         else if (isInt4(st) && isInt4(dt) && st != dt) {
             copyThrough(i, DataType::w);
@@ -797,15 +797,15 @@ void CopyPlan::planTypeConversions()
         } else if (isInt(st) && isInt4(dt)) {
             planInt4Downconversion(i);
             rerun = true;
-        } else if (isInt4(st) && one_of(dt, DataType::hf, DataType::bf)) {
+        } else if (isInt4(st) && one_of(dt, {DataType::hf, DataType::bf})) {
             if (bfArithmeticOK(i))
                 copyThrough(i, ngen_b16_l4x());
             else
                 copyThrough(i, (st == DataType::s4) ? DataType::b : DataType::ub);
             rerunZip = true;
-        } else if (st == ngen_b16_l4x() && one_of(dt, DataType::hf, DataType::bf))
+        } else if (st == ngen_b16_l4x() && one_of(dt, {DataType::hf, DataType::bf}))
             planInt4ToF16(i);
-        else if (st == DataType::hf && one_of(dt, Type::ngen_e2m1(), Type::ngen_e3m0())) {
+        else if (st == DataType::hf && one_of(dt, {Type::ngen_e2m1(), Type::ngen_e3m0()})) {
             planEmulatedHFToF4(i);
             rerun = true;
         } else if (isFP4(dt)) {
@@ -914,7 +914,7 @@ void CopyPlan::planTypeConversions()
         } else if (st != dt && (isFP8(st) || isFP8(dt))) {
             copyThrough(i, DataType::hf, 1);
             rerun = true;
-        } else if (one_of(st, Type::ngen_e2m1(), Type::ngen_e3m0()) && one_of(dt, DataType::hf, DataType::bf)) {
+        } else if (one_of(st, {Type::ngen_e2m1(), Type::ngen_e3m0()}) && one_of(dt, {DataType::hf, DataType::bf})) {
             if (dt == DataType::bf && !bfArithmeticOK(i))
                 copyThrough(i, DataType::hf);
             else
@@ -939,7 +939,7 @@ void CopyPlan::planTypeConversions()
             copyThrough(i, DataType::f);
             rerun = true;
         } else for (auto t: {st, dt}) {
-            if (one_of(t, Type::ngen_e8m0(), Type::ngen_nf4(), ngen_b16_l4x(), ngen_b16_h4x(), ngen_b16()))
+                if (one_of(t, {Type::ngen_e8m0(), Type::ngen_nf4(), ngen_b16_l4x(), ngen_b16_h4x(), ngen_b16()}))
                 stub("Unsupported data type conversion");
         }
     }
@@ -2240,9 +2240,9 @@ void CopyPlan::legalizeSIMD(bool initial)
             simdMax = std::min({simdMax, opSimdMax(i.dst), opSimdMax(i.src0), opSimdMax(i.src1), opSimdMax(i.src2, true)});
 
             // Special handling for mixed mode (f16/bf16 with f32) instructions.
-            bool hasF  = one_of(DataType::f,  i.dst.type, i.src0.type, i.src1.type, i.src2.type);
-            bool hasHF = one_of(DataType::hf, i.dst.type, i.src0.type, i.src1.type, i.src2.type);
-            bool hasBF = one_of(DataType::bf, i.dst.type, i.src0.type, i.src1.type, i.src2.type);
+            bool hasF  = one_of(DataType::f,  {i.dst.type, i.src0.type, i.src1.type, i.src2.type});
+            bool hasHF = one_of(DataType::hf, {i.dst.type, i.src0.type, i.src1.type, i.src2.type});
+            bool hasBF = one_of(DataType::bf, {i.dst.type, i.src0.type, i.src1.type, i.src2.type});
             bool dstHF = (i.dst.type == DataType::hf);
             bool bfException = (i.op == Opcode::mov && i.dst.type == DataType::bf && i.dst.stride == 2);
             bool mathHF = (i.op == Opcode::math && i.dst.type == DataType::hf);
@@ -2383,7 +2383,7 @@ void CopyPlan::legalizeRegions()
             continue;
         }
 
-        if (one_of(DataType::bf, dt, s0t, s1t) && one_of(DataType::f, dt, s0t, s1t, s2t)) {
+        if (one_of(DataType::bf, {dt, s0t, s1t}) && one_of(DataType::f, {dt, s0t, s1t, s2t})) {
             // bf/f mixed mode: dst may be packed unit stride; src must be packed unit stride.
             if (!systolicAvailable) stub("Unsupported bf16 arithmetic instruction");
             bool dstOK = (legalPackedBF(hw, i.dst) || (i.dst.stride == 2 && i.dst.offset < 2));
@@ -2672,9 +2672,9 @@ void CopyPlan::legalizeImmediateTypes()
         for (auto *op: {&i.src0, &i.src1, &i.src2}) {
             if (op->kind != CopyOperand::Immediate)
                 continue;
-            if (one_of(op->type, DataType::ub, DataType::u4))
+            if (one_of(op->type, {DataType::ub, DataType::u4}))
                 op->type = DataType::uw;
-            else if (one_of(op->type, DataType::b, DataType::s4))
+            else if (one_of(op->type, {DataType::b, DataType::s4}))
                 op->type = DataType::w;
         }
     }

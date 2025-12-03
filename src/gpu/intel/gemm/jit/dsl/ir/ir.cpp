@@ -802,7 +802,7 @@ bool is_linear_var_transform(const expr_t &e, linear_transform_t &t) {
     auto &var = vars[0];
 
     // TODO: Extend to match multiplication: (a * var).
-    if (!one_of(binary_op->op_kind, op_kind_t::_add, op_kind_t::_sub))
+    if (!one_of(binary_op->op_kind, {op_kind_t::_add, op_kind_t::_sub}))
         return false;
 
     auto &a = binary_op->a;

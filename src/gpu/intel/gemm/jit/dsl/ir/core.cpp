@@ -182,17 +182,17 @@ type_t binary_op_type(op_kind_t op_kind, const type_t &a, const type_t &b,
 
     type::attr_t attr = common_attr(a, b);
     if (is_cmp_op(op_kind)) return type_t::_bool(elems, attr);
-    if (one_of(op_kind, op_kind_t::_shl, op_kind_t::_shr)) {
+    if (one_of(op_kind, {op_kind_t::_shl, op_kind_t::_shr})) {
         return a[elems].with_attr(attr);
     }
 
-    if (one_of(op_kind, op_kind_t::_and, op_kind_t::_or, op_kind_t::_xor)) {
+    if (one_of(op_kind, {op_kind_t::_and, op_kind_t::_or, op_kind_t::_xor})) {
         if (a == b) return a;
         if (is_const(a_expr)) return b;
         if (is_const(b_expr)) return a;
         return (a.size() >= b.size()) ? a : b;
     }
-    if (one_of(op_kind, op_kind_t::_div, op_kind_t::_mod) && a.is_int()
+    if (one_of(op_kind, {op_kind_t::_div, op_kind_t::_mod}) && a.is_int()
             && b.is_int()) {
         return (a.is_signed() ? type_t::s32() : type_t::u32())[elems].with_attr(
                 attr);
@@ -235,7 +235,7 @@ type_t nary_op_type(op_kind_t op_kind, const std::vector<expr_t> &args) {
 void ptr_t::normalize(expr_t &base, expr_t &off, op_kind_t op_kind) {
     // Normalize (base + off1) + off2 -> base + (off1 + off2)
     dsl_assert(off.type().is_int()) << "off is not an integer: " << off;
-    dsl_assert(one_of(op_kind, op_kind_t::_add, op_kind_t::_sub))
+    dsl_assert(one_of(op_kind, {op_kind_t::_add, op_kind_t::_sub}))
             << "Can't apply this operation to pointer: " << to_string(op_kind);
 
     if (!base.is<ptr_t>()) {

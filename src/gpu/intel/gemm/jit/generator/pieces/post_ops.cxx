@@ -140,7 +140,7 @@ void Generator<hw>::gemmScalarBinaryOpC(BinaryOp op, Type Tco, const GRFMultiran
         RegisterLayout scalarLayout(hw, Tacc, 1, 1, true);
         copyRegisters(Tco, Tacc, scalarLayout, scalarLayout, offsets, offsets, strategy, state);
     }
-    if (op == BinaryOp::Div && one_of(state.Tacc, Type::f32, Type::f16)) {
+    if (op == BinaryOp::Div && one_of(state.Tacc, {Type::f32, Type::f16})) {
         inv(1, offsetTc, offsetTc);
         op = BinaryOp::Mul;
     }
@@ -188,7 +188,7 @@ void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMulti
         offsetsPtr = &repackOffsets;
 
         // Late inversion, for binary divide.
-        if (op == BinaryOp::Div && one_of(Tacc, Type::f32, Type::f16)) {
+        if (op == BinaryOp::Div && one_of(Tacc, {Type::f32, Type::f16})) {
             map(hw, Tacc, repackOffsets, repackOffsets, strategy, [&](int simd, GRF r, GRF) {
                 inv(simd, r, r);
             });

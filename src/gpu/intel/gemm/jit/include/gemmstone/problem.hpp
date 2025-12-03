@@ -166,13 +166,10 @@ struct GEMMProblem : public CommonProblem {
 
     bool checkBeta0 = true;                         // If true, check for beta = 0 and handle specially.
 
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+// @@@@@ used ????? kernel cache; or maybe bool has_ao_hostscalar()
     bool ao_hostscalar = false;
     bool bo_hostscalar = false;
-
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+// @@@@@ used ????? kernel cache; or maybe bool has_ao_hostscalar()
 
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
@@ -242,10 +239,8 @@ struct GEMMProblem : public CommonProblem {
     bool hasBScale() const { return (bsPtrDims > -1); }
     bool hasCScale() const { return (csPtrDims > 0); }
     bool hasCMXScale() const { return cMXScale; }
-    // @@@@@ used ?????
     bool hasAOffset() const { return (aoPtrDims > -1); }
     bool hasBOffset() const { return (boPtrDims > -1); }
-    // @@@@@ used ?????
 
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }
@@ -290,7 +285,7 @@ struct GEMMProblem : public CommonProblem {
     }
 
     /* Serialization for kernel cache. */
-    // @@@@@ ????? if new memeber - TODO add ti here
+    // @@@@@ ????? if new memeber - add it here ????? kernel cache
     void serialize(SerializationStream &s) const
     {
         s.append(Ta, Tb, Tc, Ts);

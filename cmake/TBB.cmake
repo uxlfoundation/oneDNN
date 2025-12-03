@@ -23,10 +23,7 @@ endif()
 set(TBB_cmake_included true)
 include("cmake/Threading.cmake")
 
-if(NOT DNNL_CPU_THREADING_RUNTIME STREQUAL "TBB")
-    return()
-endif()
-
+macro(add_tbb_threading)
 find_package(TBB REQUIRED COMPONENTS tbb)
 if(TBB_FOUND)
     if(WIN32)
@@ -54,6 +51,13 @@ elseif(DNNL_CPU_RUNTIME STREQUAL "NONE")
 else()
     message(FATAL_ERROR "DNNL_CPU_THREADING_RUNTIME is ${DNNL_CPU_THREADING_RUNTIME} but TBB is not found.")
 endif()
+endmacro()
+
+if(NOT DNNL_CPU_THREADING_RUNTIME STREQUAL "TBB")
+    return()
+endif()
+
+add_tbb_threading()
 
 # Adds definitions for heterogeneous ISA testing
 add_definitions(-DTBB_PREVIEW_TASK_ARENA_CONSTRAINTS_EXTENSION=1)

@@ -33,9 +33,9 @@ struct gemm_traits_t {};
 
 template <bool isTransA, bool isTransB>
 struct gemm_traits_t<float, isTransA, isTransB> {
-    static constexpr dim_t m = 8;
+    static constexpr dim_t m = 16;
     static constexpr dim_t BM = 4032;
-    static constexpr dim_t BN = isTransA ? 96 : 48;
+    static constexpr dim_t BN = isTransA ? 96 : 256;
     static constexpr dim_t BK = isTransB ? 96 : 256;
 };
 

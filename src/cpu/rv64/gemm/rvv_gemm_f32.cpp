@@ -63,19 +63,35 @@ void copy_A(
         if (isTransA) {
             ptrdiff_t stride = lda * sizeof(float);
             while (i < m) {
-                size_t vl = __riscv_vsetvl_e32m1(m - i);
+                size_t vl = __riscv_vsetvl_e32m4(m - i);
                 const float *a_ptr = A + i * lda + k;
-                vfloat32m1_t v_a = __riscv_vlse32_v_f32m1(a_ptr, stride, vl);
-                __riscv_vse32_v_f32m1(ws + i, v_a, vl);
+                vfloat32m4_t v_a = __riscv_vlse32_v_f32m4(a_ptr, stride, vl);
+                __riscv_vse32_v_f32m4(ws + i, v_a, vl);
                 i += vl;
             }
         } else {
             const float *a_ptr = A + k * lda;
-            while (i < m) {
-                size_t vl = __riscv_vsetvl_e32m1(m - i);
-                vfloat32m1_t v_a = __riscv_vle32_v_f32m1(a_ptr + i, vl);
-                __riscv_vse32_v_f32m1(ws + i, v_a, vl);
-                i += vl;
+            // Two-way software pipelining: overlap load and store
+            if (i < m) {
+                size_t vl0 = __riscv_vsetvl_e32m4(m - i);
+                vfloat32m4_t v_a0 = __riscv_vle32_v_f32m4(a_ptr + i, vl0);
+                dim_t i0 = i;
+                i += vl0;
+
+                while (i < m) {
+                    // Load next batch while storing current batch
+                    size_t vl1 = __riscv_vsetvl_e32m4(m - i);
+                    vfloat32m4_t v_a1 = __riscv_vle32_v_f32m4(a_ptr + i, vl1);
+                    __riscv_vse32_v_f32m4(ws + i0, v_a0, vl0);
+
+                    // Swap: current becomes next
+                    i0 = i;
+                    vl0 = vl1;
+                    v_a0 = v_a1;
+                    i += vl1;
+                }
+                // Store the last batch
+                __riscv_vse32_v_f32m4(ws + i0, v_a0, vl0);
             }
         }
         ws += m;
@@ -412,27 +428,80 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
         }
     }
 
-    // tail processing
-    for (dim_t i = 0; i < M; i++) {
-        for (dim_t j = Nu; j < N; j++) {
-            float c = beta == 0.f ? 0.f : beta * C[i + j * ldc];
+    // tail processing: columns Nu to N (vectorized over i for contiguous C access)
+    // Process all M rows for the remaining (N-Nu) columns
+    for (dim_t j = Nu; j < N; j++) {
+        float *c_ptr = &C[j * ldc];
+        const float *b_col = isTransB ? &B[j] : &B[j * ldb];
+
+        dim_t i = 0;
+        while (i < M) {
+            size_t vl = __riscv_vsetvl_e32m4(M - i);
+            vfloat32m4_t v_acc = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+
             for (dim_t p = 0; p < K; p++) {
-                float b = isTransB ? B[j + p * ldb] : B[p + j * ldb];
-                float a = isTransA ? A[p + i * lda] : A[i + p * lda];
-                c += alpha * a * b;
+                float b_val = isTransB ? b_col[p * ldb] : b_col[p];
+                vfloat32m4_t v_a;
+                if (isTransA) {
+                    // A(p, i:i+vl) - strided access
+                    ptrdiff_t stride_a = lda * sizeof(float);
+                    v_a = __riscv_vlse32_v_f32m4(&A[p + i * lda], stride_a, vl);
+                } else {
+                    // A(i:i+vl, p) - contiguous access
+                    v_a = __riscv_vle32_v_f32m4(&A[i + p * lda], vl);
+                }
+                v_acc = __riscv_vfmacc_vf_f32m4(v_acc, b_val, v_a, vl);
             }
-            C[i + j * ldc] = c;
+
+            // Apply alpha and beta, store result (contiguous)
+            v_acc = __riscv_vfmul_vf_f32m4(v_acc, alpha, vl);
+            if (beta != 0.0f) {
+                vfloat32m4_t v_c_old = __riscv_vle32_v_f32m4(c_ptr + i, vl);
+                v_acc = __riscv_vfmacc_vf_f32m4(v_acc, beta, v_c_old, vl);
+            }
+            __riscv_vse32_v_f32m4(c_ptr + i, v_acc, vl);
+            i += vl;
         }
     }
-    for (dim_t i = Mu; i < M; i++) {
+
+    // tail processing: rows Mu to M (vectorized over i for contiguous C access)
+    // Process remaining (M-Mu) rows for the first Nu columns
+    if (Mu < M) {
+        const dim_t m_tail = M - Mu;
+
         for (dim_t j = 0; j < Nu; j++) {
-            float c = beta == 0.f ? 0.f : beta * C[i + j * ldc];
-            for (dim_t p = 0; p < K; p++) {
-                float b = isTransB ? B[j + p * ldb] : B[p + j * ldb];
-                float a = isTransA ? A[p + i * lda] : A[i + p * lda];
-                c += alpha * a * b;
+            float *c_ptr = &C[Mu + j * ldc];
+            const float *b_col = isTransB ? &B[j] : &B[j * ldb];
+
+            dim_t i = 0;
+            while (i < m_tail) {
+                size_t vl = __riscv_vsetvl_e32m4(m_tail - i);
+                vfloat32m4_t v_acc = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+
+                for (dim_t p = 0; p < K; p++) {
+                    float b_val = isTransB ? b_col[p * ldb] : b_col[p];
+                    vfloat32m4_t v_a;
+                    if (isTransA) {
+                        // A(p, Mu+i:Mu+i+vl) - strided access
+                        ptrdiff_t stride_a = lda * sizeof(float);
+                        v_a = __riscv_vlse32_v_f32m4(
+                                &A[p + (Mu + i) * lda], stride_a, vl);
+                    } else {
+                        // A(Mu+i:Mu+i+vl, p) - contiguous access
+                        v_a = __riscv_vle32_v_f32m4(&A[Mu + i + p * lda], vl);
+                    }
+                    v_acc = __riscv_vfmacc_vf_f32m4(v_acc, b_val, v_a, vl);
+                }
+
+                // Apply alpha and beta, store result (contiguous)
+                v_acc = __riscv_vfmul_vf_f32m4(v_acc, alpha, vl);
+                if (beta != 0.0f) {
+                    vfloat32m4_t v_c_old = __riscv_vle32_v_f32m4(c_ptr + i, vl);
+                    v_acc = __riscv_vfmacc_vf_f32m4(v_acc, beta, v_c_old, vl);
+                }
+                __riscv_vse32_v_f32m4(c_ptr + i, v_acc, vl);
+                i += vl;
             }
-            C[i + j * ldc] = c;
         }
     }
 }

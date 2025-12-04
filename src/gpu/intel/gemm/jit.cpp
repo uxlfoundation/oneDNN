@@ -90,15 +90,15 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add beta");
 
     // @@@@@
-    if (pd()->with_a_zero_points() && !problem->ao_hostscalar) {
+    if (pd()->with_a_zero_points() && !problem->aZPHostScalar()) {
         arg_list.set(argn++, *ao);
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *ao");
     }
-    if (pd()->with_b_zero_points() && !problem->bo_hostscalar) {
+    if (pd()->with_b_zero_points() && !problem->bZPHostScalar()) {
         arg_list.set(argn++, *bo);
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *bo");
     }
-    if (problem->ao_hostscalar || problem->bo_hostscalar) {
+    if (problem->abZPHostScalar()) {
         arg_list.set(argn++, abo_hostscalar);
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add abo_hostscalar");
     }

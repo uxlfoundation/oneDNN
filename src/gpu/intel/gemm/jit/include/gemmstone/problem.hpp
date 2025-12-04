@@ -169,6 +169,7 @@ struct GEMMProblem : public CommonProblem {
 // @@@@@ used ????? kernel cache; or maybe bool has_ao_hostscalar()
     bool ao_hostscalar = false;
     bool bo_hostscalar = false;
+    bool abo_hostscalar = false;
 // @@@@@ used ????? kernel cache; or maybe bool has_ao_hostscalar()
 
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
@@ -241,6 +242,11 @@ struct GEMMProblem : public CommonProblem {
     bool hasCMXScale() const { return cMXScale; }
     bool hasAOffset() const { return (aoPtrDims > -1); }
     bool hasBOffset() const { return (boPtrDims > -1); }
+    //@@@@@@
+    bool aZPHostScalar() const {return ao_hostscalar; }
+    bool bZPHostScalar() const {return bo_hostscalar; }
+    bool abZPHostScalar() const {return (ao_hostscalar || bo_hostscalar); }
+    //@@@@@@
 
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }

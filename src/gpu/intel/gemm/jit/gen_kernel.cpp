@@ -499,6 +499,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     //@@@@@
     problem_.ao_hostscalar = a_quant.zp_host_scalar;
     problem_.bo_hostscalar = b_quant.zp_host_scalar;
+    problem_.abo_hostscalar = problem_.ao_hostscalar || problem_.bo_hostscalar;
     VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : @@@@ setup problem_.ao_hostscalar problem_.bo_hostscalar = %d %d", problem_.ao_hostscalar, problem_.bo_hostscalar);
     //@@@@@
 
@@ -1054,9 +1055,7 @@ void gen_kernel_t::init_interface() {
     }
 
     // @@@@@
-    bool abo_precond = (problem.aoPtrDims == -1 && problem.ao_hostscalar)
-            || (problem.boPtrDims == -1 && problem.bo_hostscalar);
-    if (abo_precond) {
+    if (problem.abZPHostScalar()) {
         VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> @@@@ interface_.newArgument abo");
         interface_.newArgument("abo", DataType::ud);
     }

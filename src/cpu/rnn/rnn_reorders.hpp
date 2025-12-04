@@ -910,42 +910,42 @@ private:
 
         const auto off_plain
                 = [=](dim_t l, dim_t d, dim_t i, dim_t g, dim_t o) {
-                      return ((((dim_t)l * D + d) * I + i) * G + g) * O + o;
-                  };
+            return ((((dim_t)l * D + d) * I + i) * G + g) * O + o;
+        };
 
-        const auto off_blk = [=](dim_t l, dim_t d, dim_t g, dim_t ob,
-                                     dim_t ib) {
+        const auto off_blk
+                = [=](dim_t l, dim_t d, dim_t g, dim_t ob, dim_t ib) {
             return (((((dim_t)l * D + d) * G + g) * OB + ob) * IB + ib)
                     * i_block * o_block;
         };
-        const auto off_inner_blk = [=](int xdim, int y, int x,
-                                           int folding_factor) {
+        const auto off_inner_blk
+                = [=](int xdim, int y, int x, int folding_factor) {
             const int row = (xdim) * (y / folding_factor) * folding_factor;
             const int col = x * folding_factor + (y % folding_factor);
             return row + col;
         };
         const auto kernel_plain_to_blocked
                 = [=](const out_data_t *inp, out_data_t *out, int ib, int ob) {
-                      PRAGMA_OMP_SIMD()
-                      for (int i = 0; i < i_block * o_block; i++)
-                          out[i] = 0;
+            PRAGMA_OMP_SIMD()
+            for (int i = 0; i < i_block * o_block; i++)
+                out[i] = 0;
 
-                      for_(int i = 0; i < i_block; i++)
-                      for (int o = 0; o < o_block; o++) {
-                          if ((i + ib * i_block < I) && (o + ob * o_block < O))
-                              out[off_inner_blk(o_block, i, o, i_block)]
-                                      = inp[i * G * O + o];
-                      }
-                  };
+            for_(int i = 0; i < i_block; i++)
+            for (int o = 0; o < o_block; o++) {
+                if ((i + ib * i_block < I) && (o + ob * o_block < O))
+                    out[off_inner_blk(o_block, i, o, i_block)]
+                            = inp[i * G * O + o];
+            }
+        };
 
         parallel_nd(L, D, G, OB, IB,
                 [=](dim_t l, dim_t d, dim_t g, dim_t ob, dim_t ib) {
-                    auto inp = &scratch_quantized[off_plain(
-                            l, d, ib * i_block, g, ob * o_block)];
-                    auto out = &dst[off_blk(l, d, g, ob, ib)];
+            auto inp = &scratch_quantized[off_plain(
+                    l, d, ib * i_block, g, ob * o_block)];
+            auto out = &dst[off_blk(l, d, g, ob, ib)];
 
-                    kernel_plain_to_blocked(inp, out, ib, ob);
-                });
+            kernel_plain_to_blocked(inp, out, ib, ob);
+        });
 
         return status::success;
     }

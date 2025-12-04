@@ -59,8 +59,8 @@ struct softmax_fwd_kernel_vec_t {
             }
         }
 
-        auto operation = [= WA_THIS_COPY_CAPTURE](
-                                 dim_t &ou, dim_t &in) mutable {
+        auto operation
+                = [= WA_THIS_COPY_CAPTURE](dim_t &ou, dim_t &in) mutable {
             float space_denom = 0;
             float space_max = -FLT_MAX;
             dim_t ou_in_offset = ou * conf_.channels * conf_.inner_size + in;
@@ -157,8 +157,8 @@ struct softmax_bwd_kernel_vec_t {
         memory_tensor_t diff_src_mem(diff_src_, conf_.diff_src_md);
         memory_tensor_t diff_dst_mem(diff_dst_, conf_.diff_dst_md);
 
-        auto operation = [= WA_THIS_COPY_CAPTURE](
-                                 dim_t &ou, dim_t &in) mutable {
+        auto operation
+                = [= WA_THIS_COPY_CAPTURE](dim_t &ou, dim_t &in) mutable {
             dim_t ou_in_offset = ou * conf_.channels * conf_.inner_size + in;
             float sbr = 0;
             for (dim_t c = 0; c < conf_.channels; ++c) {

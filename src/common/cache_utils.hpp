@@ -289,20 +289,19 @@ private:
             auto it = std::min_element(cache_mapper().begin(),
                     cache_mapper().end(),
                     [&](const v_t &left, const v_t &right) {
-                        // By default, load() and operator T use sequentially
-                        // consistent memory ordering, which enforces writing
-                        // the timestamps into registers in the same exact order
-                        // they are read from the CPU cache line. Since eviction
-                        // is performed under a write lock, this order is not
-                        // important, therefore we can safely use the weakest
-                        // memory ordering (relaxed). This brings about a few
-                        // microseconds performance improvement for default
-                        // cache capacity.
-                        return left.second.timestamp_.load(
-                                       std::memory_order_relaxed)
-                                < right.second.timestamp_.load(
-                                        std::memory_order_relaxed);
-                    });
+                // By default, load() and operator T use sequentially
+                // consistent memory ordering, which enforces writing
+                // the timestamps into registers in the same exact order
+                // they are read from the CPU cache line. Since eviction
+                // is performed under a write lock, this order is not
+                // important, therefore we can safely use the weakest
+                // memory ordering (relaxed). This brings about a few
+                // microseconds performance improvement for default
+                // cache capacity.
+                return left.second.timestamp_.load(std::memory_order_relaxed)
+                        < right.second.timestamp_.load(
+                                std::memory_order_relaxed);
+            });
             auto res = cache_mapper().erase(it->first);
             MAYBE_UNUSED(res);
             assert(res);

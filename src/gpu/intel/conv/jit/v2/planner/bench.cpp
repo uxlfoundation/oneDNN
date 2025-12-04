@@ -490,12 +490,12 @@ tile_t random_shape(const bench_input_params_t &params, const tile_t &tile) {
     };
     auto make_random_dim_set
             = [&](const pvar_t &dim, dim_t s, dim_t m, dim_t l) {
-                  auto d = make_random_dim(dim);
-                  auto d_s = d.with_range(1, s);
-                  auto d_m = d.with_range(s + 1, m);
-                  auto d_l = d.with_range(m + 1, l);
-                  return d_s | d_m | d_l;
-              };
+        auto d = make_random_dim(dim);
+        auto d_s = d.with_range(1, s);
+        auto d_m = d.with_range(s + 1, m);
+        auto d_l = d.with_range(m + 1, l);
+        return d_s | d_m | d_l;
+    };
     tile_t s = problem_t::default_shape();
     auto g = make_random_dim(pvars::g, 2, 512);
     auto mb = make_random_dim_set(pvars::mb, 1, 16, 128);

@@ -115,106 +115,99 @@ static inline dnnl::impl::graph::status_t run_graph(
     // compile and execute each op in topo order
     return graph::topo_order_visit(
             copied.get_output_ops(), [&](graph::op_t *op) {
-                // construct a single op partition
-                graph::graph_t g(eng.kind());
-                graph::op_t single_op(op->get_kind());
-                single_op.merge_attributes(op->get_attributes());
-                single_op.remove_attr(graph::op_attr::matched);
-                single_op.remove_attr(graph::op_attr::op_depth);
-                single_op.set_partition(nullptr);
-                for (size_t i = 0; i < op->num_inputs(); i++) {
-                    single_op.add_input(
-                            op->get_input_value(i)->get_logical_tensor());
-                }
-                for (size_t i = 0; i < op->num_outputs(); i++) {
-                    single_op.add_output(
-                            op->get_output_value(i)->get_logical_tensor());
-                }
-                g.add_op(&single_op);
-                g.finalize();
-                run_all_single_passes(g);
+        // construct a single op partition
+        graph::graph_t g(eng.kind());
+        graph::op_t single_op(op->get_kind());
+        single_op.merge_attributes(op->get_attributes());
+        single_op.remove_attr(graph::op_attr::matched);
+        single_op.remove_attr(graph::op_attr::op_depth);
+        single_op.set_partition(nullptr);
+        for (size_t i = 0; i < op->num_inputs(); i++) {
+            single_op.add_input(op->get_input_value(i)->get_logical_tensor());
+        }
+        for (size_t i = 0; i < op->num_outputs(); i++) {
+            single_op.add_output(op->get_output_value(i)->get_logical_tensor());
+        }
+        g.add_op(&single_op);
+        g.finalize();
+        run_all_single_passes(g);
 
-                auto part = g.get_partitions()[0];
-                // compile
-                graph::partition_t p;
-                p.init(part);
+        auto part = g.get_partitions()[0];
+        // compile
+        graph::partition_t p;
+        p.init(part);
 
-                // prepare logical tensors
-                std::vector<graph::logical_tensor_t> in_lts, out_lts;
-                std::vector<const graph::logical_tensor_t *> in_lt_ptrs,
-                        out_lt_ptrs;
-                in_lts.reserve(op->num_inputs());
-                in_lt_ptrs.reserve(op->num_inputs());
-                out_lts.reserve(op->num_outputs());
-                out_lt_ptrs.reserve(op->num_outputs());
+        // prepare logical tensors
+        std::vector<graph::logical_tensor_t> in_lts, out_lts;
+        std::vector<const graph::logical_tensor_t *> in_lt_ptrs, out_lt_ptrs;
+        in_lts.reserve(op->num_inputs());
+        in_lt_ptrs.reserve(op->num_inputs());
+        out_lts.reserve(op->num_outputs());
+        out_lt_ptrs.reserve(op->num_outputs());
 
-                for (auto &in : op->get_input_values()) {
-                    in_lts.emplace_back(in->get_logical_tensor());
-                    in_lt_ptrs.emplace_back(&in_lts.back());
-                }
+        for (auto &in : op->get_input_values()) {
+            in_lts.emplace_back(in->get_logical_tensor());
+            in_lt_ptrs.emplace_back(&in_lts.back());
+        }
 
-                for (auto &out : op->get_output_values()) {
-                    out_lts.emplace_back(out->get_logical_tensor());
-                    out_lt_ptrs.emplace_back(&out_lts.back());
-                }
+        for (auto &out : op->get_output_values()) {
+            out_lts.emplace_back(out->get_logical_tensor());
+            out_lt_ptrs.emplace_back(&out_lts.back());
+        }
 
-                // compile
-                graph::compiled_partition_t cp(p);
-                ret = p.compile(&cp, in_lt_ptrs, out_lt_ptrs, &eng);
-                if (ret != graph::status::success) return ret;
+        // compile
+        graph::compiled_partition_t cp(p);
+        ret = p.compile(&cp, in_lt_ptrs, out_lt_ptrs, &eng);
+        if (ret != graph::status::success) return ret;
 
-                // update the layout info in output values
-                for (auto &out_val : op->get_output_values()) {
-                    graph::logical_tensor_t compiled_lt;
-                    cp.query_logical_tensor(
-                            out_val->get_logical_tensor().id, &compiled_lt);
-                    out_val->set_logical_tensor(compiled_lt);
-                }
+        // update the layout info in output values
+        for (auto &out_val : op->get_output_values()) {
+            graph::logical_tensor_t compiled_lt;
+            cp.query_logical_tensor(
+                    out_val->get_logical_tensor().id, &compiled_lt);
+            out_val->set_logical_tensor(compiled_lt);
+        }
 
-                // prepare tensors
-                std::vector<graph::tensor_t> in_ts, out_ts;
-                for (auto &in_val : op->get_input_values()) {
-                    auto in_lt = in_val->get_logical_tensor();
-                    auto pos = std::find_if(g_in_ts.begin(), g_in_ts.end(),
-                            [&](const test_tensor_t &t) {
-                                return in_lt.id
-                                        == t.get().get_logical_tensor().id;
-                            });
-                    if (pos != g_in_ts.end()) {
-                        in_ts.emplace_back(pos->get());
-                        continue;
-                    }
-                    if (temp_data.find(in_lt.id) == temp_data.end()) {
-                        temp_data.insert(
-                                {in_lt.id, test_tensor_t(in_lt, &eng)});
-                    }
-                    in_ts.emplace_back(temp_data.at(in_lt.id).get());
-                }
-                for (auto &out_val : op->get_output_values()) {
-                    auto out_lt = out_val->get_logical_tensor();
-                    auto pos = std::find_if(g_out_ts.begin(), g_out_ts.end(),
-                            [&](const test_tensor_t &t) {
-                                return out_lt.id
-                                        == t.get().get_logical_tensor().id;
-                            });
-                    if (pos != g_out_ts.end()) {
-                        out_ts.emplace_back(pos->get());
-                        continue;
-                    }
-                    if (temp_data.find(out_lt.id) == temp_data.end()) {
-                        temp_data.insert(
-                                {out_lt.id, test_tensor_t(out_lt, &eng)});
-                    }
-                    out_ts.emplace_back(temp_data.at(out_lt.id).get());
-                }
-
-                // execute
-                ret = cp.execute(&strm, in_ts, out_ts);
-                if (ret != graph::status::success) return ret;
-
-                strm.wait();
-                return graph::status::success;
+        // prepare tensors
+        std::vector<graph::tensor_t> in_ts, out_ts;
+        for (auto &in_val : op->get_input_values()) {
+            auto in_lt = in_val->get_logical_tensor();
+            auto pos = std::find_if(g_in_ts.begin(), g_in_ts.end(),
+                    [&](const test_tensor_t &t) {
+                return in_lt.id == t.get().get_logical_tensor().id;
             });
+            if (pos != g_in_ts.end()) {
+                in_ts.emplace_back(pos->get());
+                continue;
+            }
+            if (temp_data.find(in_lt.id) == temp_data.end()) {
+                temp_data.insert({in_lt.id, test_tensor_t(in_lt, &eng)});
+            }
+            in_ts.emplace_back(temp_data.at(in_lt.id).get());
+        }
+        for (auto &out_val : op->get_output_values()) {
+            auto out_lt = out_val->get_logical_tensor();
+            auto pos = std::find_if(g_out_ts.begin(), g_out_ts.end(),
+                    [&](const test_tensor_t &t) {
+                return out_lt.id == t.get().get_logical_tensor().id;
+            });
+            if (pos != g_out_ts.end()) {
+                out_ts.emplace_back(pos->get());
+                continue;
+            }
+            if (temp_data.find(out_lt.id) == temp_data.end()) {
+                temp_data.insert({out_lt.id, test_tensor_t(out_lt, &eng)});
+            }
+            out_ts.emplace_back(temp_data.at(out_lt.id).get());
+        }
+
+        // execute
+        ret = cp.execute(&strm, in_ts, out_ts);
+        if (ret != graph::status::success) return ret;
+
+        strm.wait();
+        return graph::status::success;
+    });
 }
 
 template <typename T>

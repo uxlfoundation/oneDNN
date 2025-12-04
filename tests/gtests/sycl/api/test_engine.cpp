@@ -121,28 +121,26 @@ TEST_P(sycl_engine_test_t, BasicInterop) {
     auto &dev = *dev_ptr;
     auto &ctx = *ctx_ptr;
 
-    catch_expected_failures(
-            [&]() {
+    catch_expected_failures([&]() {
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL
-                if (!impl::utils::one_of(param.adev_kind, dev_kind::gpu,
-                            dev_kind::gpu_only)) {
-                    engine eng(engine::kind::cpu, 0);
-                    EXPECT_ANY_THROW(sycl_interop::make_engine(dev, ctx));
-                    EXPECT_ANY_THROW(sycl_interop::get_device(eng));
-                    EXPECT_ANY_THROW(sycl_interop::get_context(eng));
+        if (!impl::utils::one_of(
+                    param.adev_kind, dev_kind::gpu, dev_kind::gpu_only)) {
+            engine eng(engine::kind::cpu, 0);
+            EXPECT_ANY_THROW(sycl_interop::make_engine(dev, ctx));
+            EXPECT_ANY_THROW(sycl_interop::get_device(eng));
+            EXPECT_ANY_THROW(sycl_interop::get_context(eng));
 
-                    return;
-                }
+            return;
+        }
 #endif
-                auto eng = sycl_interop::make_engine(dev, ctx);
-                if (param.expected_status != dnnl_success) {
-                    FAIL() << "Success not expected";
-                }
+        auto eng = sycl_interop::make_engine(dev, ctx);
+        if (param.expected_status != dnnl_success) {
+            FAIL() << "Success not expected";
+        }
 
-                EXPECT_EQ(sycl_interop::get_device(eng), dev);
-                EXPECT_EQ(sycl_interop::get_context(eng), ctx);
-            },
-            param.expected_status != dnnl_success, param.expected_status);
+        EXPECT_EQ(sycl_interop::get_device(eng), dev);
+        EXPECT_EQ(sycl_interop::get_context(eng), ctx);
+    }, param.expected_status != dnnl_success, param.expected_status);
 }
 
 TEST_P(sycl_engine_test_t, SubDevice) {
@@ -183,19 +181,17 @@ TEST_P(sycl_engine_test_t, SubDevice) {
         s.wait();
     };
 
-    catch_expected_failures(
-            [&]() {
-                for (const auto &sub_dev_i : sub_devs) {
-                    engine eng;
-                    // Test case when each sub-device has its own context.
-                    ASSERT_NO_THROW(eng
-                            = sycl_interop::make_engine(sub_dev_i, sub_ctx));
-                    test_subdevice(eng);
+    catch_expected_failures([&]() {
+        for (const auto &sub_dev_i : sub_devs) {
+            engine eng;
+            // Test case when each sub-device has its own context.
+            ASSERT_NO_THROW(
+                    eng = sycl_interop::make_engine(sub_dev_i, sub_ctx));
+            test_subdevice(eng);
 
-                    // Test case when a sub-device is used with the default
-                    // context.
-                    ASSERT_NO_THROW(
-                            eng = sycl_interop::make_engine(sub_dev_i,
+            // Test case when a sub-device is used with the default
+            // context.
+            ASSERT_NO_THROW(eng = sycl_interop::make_engine(sub_dev_i,
                                     sub_dev_i
                                             .get_platform()
 #if defined(SYCL_KHR_DEFAULT_CONTEXT)
@@ -203,10 +199,9 @@ TEST_P(sycl_engine_test_t, SubDevice) {
 #else
                                             .ext_oneapi_get_default_context()));
 #endif
-                    test_subdevice(eng);
-                }
-            },
-            param.expected_status != dnnl_success, param.expected_status);
+            test_subdevice(eng);
+        }
+    }, param.expected_status != dnnl_success, param.expected_status);
 }
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_SYCL

@@ -184,80 +184,75 @@ TEST_P(ocl_engine_test_t, BasicInteropCpp) {
                             || p.actx_kind == ctx_kind::cpu),
             "OpenCL CPU-only device not found.");
 
-    catch_expected_failures(
-            [&]() {
-                {
-                    auto eng = ocl_interop::make_engine(ocl_dev, ocl_ctx);
-                    if (p.expected_status != dnnl_success) {
-                        FAIL() << "Success not expected";
-                    }
+    catch_expected_failures([&]() {
+        {
+            auto eng = ocl_interop::make_engine(ocl_dev, ocl_ctx);
+            if (p.expected_status != dnnl_success) {
+                FAIL() << "Success not expected";
+            }
 
-                    cl_device_id dev = ocl_interop::get_device(eng);
-                    cl_context ctx = ocl_interop::get_context(eng);
-                    ASSERT_EQ(dev, ocl_dev);
-                    ASSERT_EQ(ctx, ocl_ctx);
+            cl_device_id dev = ocl_interop::get_device(eng);
+            cl_context ctx = ocl_interop::get_context(eng);
+            ASSERT_EQ(dev, ocl_dev);
+            ASSERT_EQ(ctx, ocl_ctx);
 
-                    cl_uint ref_count;
-                    TEST_OCL_CHECK(clGetContextInfo(ocl_ctx,
-                            CL_CONTEXT_REFERENCE_COUNT, sizeof(ref_count),
-                            &ref_count, nullptr));
-                    int i_ref_count = int(ref_count);
-                    ASSERT_EQ(i_ref_count, 2);
-                }
+            cl_uint ref_count;
+            TEST_OCL_CHECK(clGetContextInfo(ocl_ctx, CL_CONTEXT_REFERENCE_COUNT,
+                    sizeof(ref_count), &ref_count, nullptr));
+            int i_ref_count = int(ref_count);
+            ASSERT_EQ(i_ref_count, 2);
+        }
 
-                cl_uint ref_count;
-                TEST_OCL_CHECK(
-                        clGetContextInfo(ocl_ctx, CL_CONTEXT_REFERENCE_COUNT,
-                                sizeof(ref_count), &ref_count, nullptr));
-                int i_ref_count = int(ref_count);
-                ASSERT_EQ(i_ref_count, 1);
+        cl_uint ref_count;
+        TEST_OCL_CHECK(clGetContextInfo(ocl_ctx, CL_CONTEXT_REFERENCE_COUNT,
+                sizeof(ref_count), &ref_count, nullptr));
+        int i_ref_count = int(ref_count);
+        ASSERT_EQ(i_ref_count, 1);
 
-                // Check if device can be partitioned
-                cl_uint max_sub_dev;
-                TEST_OCL_CHECK(clGetDeviceInfo(ocl_dev,
-                        CL_DEVICE_PARTITION_MAX_SUB_DEVICES,
+        // Check if device can be partitioned
+        cl_uint max_sub_dev;
+        TEST_OCL_CHECK(
+                clGetDeviceInfo(ocl_dev, CL_DEVICE_PARTITION_MAX_SUB_DEVICES,
                         sizeof(max_sub_dev), &max_sub_dev, nullptr));
 
-                if (max_sub_dev > 0) {
+        if (max_sub_dev > 0) {
 
-                    cl_device_partition_property properties[3] = {
-                            CL_DEVICE_PARTITION_BY_AFFINITY_DOMAIN,
+            cl_device_partition_property properties[3]
+                    = {CL_DEVICE_PARTITION_BY_AFFINITY_DOMAIN,
                             CL_DEVICE_AFFINITY_DOMAIN_NEXT_PARTITIONABLE, 0};
 
-                    std::vector<cl_device_id> sub_dev(max_sub_dev);
+            std::vector<cl_device_id> sub_dev(max_sub_dev);
 
-                    TEST_OCL_CHECK(clCreateSubDevices(ocl_dev, properties,
-                            max_sub_dev, sub_dev.data(), nullptr));
+            TEST_OCL_CHECK(clCreateSubDevices(
+                    ocl_dev, properties, max_sub_dev, sub_dev.data(), nullptr));
 
-                    // Use only first sub-device to create a context (and
-                    // engine).
-                    cl_int err;
-                    cl_context sub_ctx = clCreateContext(
-                            nullptr, 1, sub_dev.data(), nullptr, nullptr, &err);
-                    TEST_OCL_CHECK(err);
-                    {
-                        engine eng
-                                = ocl_interop::make_engine(sub_dev[0], sub_ctx);
-                        cl_uint ref_count;
-                        TEST_OCL_CHECK(clGetDeviceInfo(sub_dev[0],
-                                CL_DEVICE_REFERENCE_COUNT, sizeof(ref_count),
-                                &ref_count, nullptr));
-                        int i_ref_count = int(ref_count);
-                        ASSERT_EQ(i_ref_count, 2);
-                    }
+            // Use only first sub-device to create a context (and
+            // engine).
+            cl_int err;
+            cl_context sub_ctx = clCreateContext(
+                    nullptr, 1, sub_dev.data(), nullptr, nullptr, &err);
+            TEST_OCL_CHECK(err);
+            {
+                engine eng = ocl_interop::make_engine(sub_dev[0], sub_ctx);
+                cl_uint ref_count;
+                TEST_OCL_CHECK(
+                        clGetDeviceInfo(sub_dev[0], CL_DEVICE_REFERENCE_COUNT,
+                                sizeof(ref_count), &ref_count, nullptr));
+                int i_ref_count = int(ref_count);
+                ASSERT_EQ(i_ref_count, 2);
+            }
 
-                    cl_uint ref_count;
-                    TEST_OCL_CHECK(clGetDeviceInfo(sub_dev[0],
-                            CL_DEVICE_REFERENCE_COUNT, sizeof(ref_count),
-                            &ref_count, nullptr));
-                    int i_ref_count = int(ref_count);
-                    ASSERT_EQ(i_ref_count, 1);
+            cl_uint ref_count;
+            TEST_OCL_CHECK(
+                    clGetDeviceInfo(sub_dev[0], CL_DEVICE_REFERENCE_COUNT,
+                            sizeof(ref_count), &ref_count, nullptr));
+            int i_ref_count = int(ref_count);
+            ASSERT_EQ(i_ref_count, 1);
 
-                    for (auto dev : sub_dev)
-                        clReleaseDevice(dev);
-                }
-            },
-            p.expected_status != dnnl_success, p.expected_status);
+            for (auto dev : sub_dev)
+                clReleaseDevice(dev);
+        }
+    }, p.expected_status != dnnl_success, p.expected_status);
 }
 
 TEST_P(ocl_engine_test_t, BinaryKernels) {

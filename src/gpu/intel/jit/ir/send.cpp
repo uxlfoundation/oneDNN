@@ -137,18 +137,17 @@ std::vector<func_t> send_t::get_all(const dsl::hw_t &hw, send_op_t op,
     // Sort by total size in descending order.
     std::sort(filtered.begin(), filtered.end(),
             [](const func_t &_a, const func_t &_b) {
-                auto &a = _a.as<send_t>();
-                auto &b = _b.as<send_t>();
-                size_t a_sz = a.access_size();
-                size_t b_sz = b.access_size();
-                // Put block messages first.
-                if (a.is_block() != b.is_block()) return a.is_block();
-                // Prefer messages with a smaller type as they have less strict
-                // alignment requirements.
-                if (a_sz == b_sz)
-                    return a.type.base().size() < b.type.base().size();
-                return a_sz > b_sz;
-            });
+        auto &a = _a.as<send_t>();
+        auto &b = _b.as<send_t>();
+        size_t a_sz = a.access_size();
+        size_t b_sz = b.access_size();
+        // Put block messages first.
+        if (a.is_block() != b.is_block()) return a.is_block();
+        // Prefer messages with a smaller type as they have less strict
+        // alignment requirements.
+        if (a_sz == b_sz) return a.type.base().size() < b.type.base().size();
+        return a_sz > b_sz;
+    });
 
     // Remove block messages with the same size (e.g. owordx4 and hwordx2).
     std::vector<func_t> ret;

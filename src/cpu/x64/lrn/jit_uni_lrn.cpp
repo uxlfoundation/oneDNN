@@ -146,16 +146,15 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::execute_forward(
     } else if (dat_tag == nchw && ls == 5 && ak == lrn_across_channels) {
         parallel_nd(N, (HW + VECTOR_LENGTH - 1) / VECTOR_LENGTH,
                 [&](dim_t n, dim_t hw8) {
-                    const auto offset = n * HW * C + hw8 * VECTOR_LENGTH;
-                    auto ws0_ptr = ws ? &ws[offset] : nullptr;
-                    jit_args_fwd_t args {
-                            &src[offset], &dst[offset], ws0_ptr, nullptr};
+            const auto offset = n * HW * C + hw8 * VECTOR_LENGTH;
+            auto ws0_ptr = ws ? &ws[offset] : nullptr;
+            jit_args_fwd_t args {&src[offset], &dst[offset], ws0_ptr, nullptr};
 
-                    if ((hw8 + 1) * VECTOR_LENGTH > HW)
-                        (*ker_last)(&args);
-                    else
-                        (*ker)(&args);
-                });
+            if ((hw8 + 1) * VECTOR_LENGTH > HW)
+                (*ker_last)(&args);
+            else
+                (*ker)(&args);
+        });
     } else { // nhwc
         parallel_nd(N, HW, [&](dim_t n, dim_t hw) {
             const auto offset = n * HW * C + hw * C;

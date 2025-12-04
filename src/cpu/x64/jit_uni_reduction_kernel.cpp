@@ -119,27 +119,27 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::init_compute_scalar_op() {
         case reduction_max:
             compute_scalar_op_
                     = [&](const Xbyak::Xmm &acc, const Xbyak::Xmm &to_acc) {
-                          maxss(acc, to_acc);
-                      };
+                maxss(acc, to_acc);
+            };
             break;
         case reduction_min:
             compute_scalar_op_
                     = [&](const Xbyak::Xmm &acc, const Xbyak::Xmm &to_acc) {
-                          minss(acc, to_acc);
-                      };
+                minss(acc, to_acc);
+            };
             break;
         case reduction_mean:
         case reduction_sum:
             compute_scalar_op_
                     = [&](const Xbyak::Xmm &acc, const Xbyak::Xmm &to_acc) {
-                          addss(acc, to_acc);
-                      };
+                addss(acc, to_acc);
+            };
             break;
         case reduction_mul:
             compute_scalar_op_
                     = [&](const Xbyak::Xmm &acc, const Xbyak::Xmm &to_acc) {
-                          mulss(acc, to_acc);
-                      };
+                mulss(acc, to_acc);
+            };
             break;
         default: assert(!"unsupported alg.");
     }

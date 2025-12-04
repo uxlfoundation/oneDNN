@@ -97,8 +97,8 @@ status_t ref_pooling_fwd_t<data_type, acc_type>::execute_forward(
         }
     };
 
-    auto ker_max = [=](float &d, dim_t mb, dim_t oc, dim_t od, dim_t oh,
-                           dim_t ow) {
+    auto ker_max
+            = [=](float &d, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
         set_ws(mb, oc, od, oh, ow, 0);
         for (dim_t kd = 0; kd < KD; ++kd) {
             const dim_t id = od * SD - padF + kd * (DD + 1);
@@ -121,8 +121,8 @@ status_t ref_pooling_fwd_t<data_type, acc_type>::execute_forward(
         }
     };
 
-    auto ker_avg = [=](float &d, dim_t mb, dim_t oc, dim_t od, dim_t oh,
-                           dim_t ow) {
+    auto ker_avg
+            = [=](float &d, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
         for (dim_t kd = 0; kd < KD; ++kd) {
             const dim_t id = od * SD - padF + kd * (DD + 1);
             if (id < 0 || id >= ID) continue;
@@ -179,20 +179,19 @@ status_t ref_pooling_fwd_t<data_type, acc_type>::execute_forward(
 
     parallel_nd(MB, OC, OD, OH, OW,
             [&](dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
-                auto data_p_off = get_offset(dst_d, mb, oc, od, oh, ow);
-                auto data_l_off
-                        = (((mb * OC + oc) * OD + od) * OH + oh) * OW + ow;
-                float res = base_res;
-                kernel(res, mb, oc, od, oh, ow);
+        auto data_p_off = get_offset(dst_d, mb, oc, od, oh, ow);
+        auto data_l_off = (((mb * OC + oc) * OD + od) * OH + oh) * OW + ow;
+        float res = base_res;
+        kernel(res, mb, oc, od, oh, ow);
 
-                ref_post_ops_t::args_t args;
-                args.ctx = &ctx;
-                args.l_offset = data_l_off;
-                args.dst_md = pd()->dst_md();
-                ref_post_ops->execute(res, args);
+        ref_post_ops_t::args_t args;
+        args.ctx = &ctx;
+        args.l_offset = data_l_off;
+        args.dst_md = pd()->dst_md();
+        ref_post_ops->execute(res, args);
 
-                dst[data_p_off] = cpu::q10n::saturate_and_round<data_t>(res);
-            });
+        dst[data_p_off] = cpu::q10n::saturate_and_round<data_t>(res);
+    });
 
     return status::success;
 }

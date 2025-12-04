@@ -219,18 +219,18 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::apply_postops(
                     = jcp.oc_without_padding % jcp.ch_block && !dst_layout_nxc;
             iterate(ur_ch_blocks, ur_w, mask_tail,
                     [&](int ch, int ow, int mask_flag) {
-                        const size_t aux_output_l_off = jcp.typesize_out
-                                * (ch * ocb_stride + ow * ow_stride);
-                        const auto vmm_idx = get_acc_reg_idx(ch * ur_w + ow);
-                        vmm_idxs.emplace(vmm_idx);
+                const size_t aux_output_l_off
+                        = jcp.typesize_out * (ch * ocb_stride + ow * ow_stride);
+                const auto vmm_idx = get_acc_reg_idx(ch * ur_w + ow);
+                vmm_idxs.emplace(vmm_idx);
 
-                        rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
-                                vmm_idx, reg_output);
-                        rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
-                                vmm_idx, aux_output_l_off);
-                        if (mask_flag)
-                            rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
-                    });
+                rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
+                        vmm_idx, reg_output);
+                rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
+                        vmm_idx, aux_output_l_off);
+                if (mask_flag)
+                    rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
+            });
             rhs_arg_params = rhs_arg_params_tail;
             rhs_arg_params.vmm_tail_idx_.clear();
 
@@ -763,13 +763,13 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::ch_loop_body(
 
     auto call_compute_body
             = [&](int ur_ch_blocks, int unroll_w, bool is_last_ch = false) {
-                  mov(aux_reg_ddst, reg_ddst);
-                  mov(aux_reg_kernel, reg_kernel);
+        mov(aux_reg_ddst, reg_ddst);
+        mov(aux_reg_kernel, reg_kernel);
 
-                  load_ddst(ur_ch_blocks, unroll_w);
-                  apply_filter(ur_ch_blocks, unroll_w, is_last_ch);
-                  store_dsrc(ur_ch_blocks, unroll_w, is_last_ch);
-              };
+        load_ddst(ur_ch_blocks, unroll_w);
+        apply_filter(ur_ch_blocks, unroll_w, is_last_ch);
+        store_dsrc(ur_ch_blocks, unroll_w, is_last_ch);
+    };
 
     const bool write_ch_loop = ur_ch_blocks > jcp.nb_ch_blocking;
     if (write_ch_loop) {

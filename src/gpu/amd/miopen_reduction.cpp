@@ -42,16 +42,16 @@ status_t miopen_reduction_t::execute(const exec_ctx_t &ctx) const {
 
         compat::host_task(cgh,
                 [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
-                    auto &sycl_engine = *utils::downcast<amd::engine_t *>(
-                            hip_stream->engine());
-                    auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
-                    auto handle = hip_stream->get_miopen_handle();
+            auto &sycl_engine
+                    = *utils::downcast<amd::engine_t *>(hip_stream->engine());
+            auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
+            auto handle = hip_stream->get_miopen_handle();
 
-                    void *a = arg_src.get_native_pointer(ih);
-                    void *c = arg_dst.get_native_pointer(ih);
-                    void *scratch = arg_scratch.get_native_pointer(ih);
-                    pd()->reduction_impl_->execute(handle, a, c, scratch);
-                });
+            void *a = arg_src.get_native_pointer(ih);
+            void *c = arg_dst.get_native_pointer(ih);
+            void *scratch = arg_scratch.get_native_pointer(ih);
+            pd()->reduction_impl_->execute(handle, a, c, scratch);
+        });
     });
 }
 

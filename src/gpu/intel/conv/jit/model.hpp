@@ -800,8 +800,8 @@ private:
         node.right = right;
         std::nth_element(idxs.begin() + beg, idxs.begin() + beg + nleft,
                 idxs.begin() + end, [&](int a, int b) {
-                    return X[a][feature_idx] < X[b][feature_idx];
-                });
+            return X[a][feature_idx] < X[b][feature_idx];
+        });
         if (subsamples_ > 0) {
             intel::jit::ir_utils::fast_random_t r;
             r.shuffle(idxs.begin() + beg, idxs.begin() + beg + nleft);
@@ -1059,8 +1059,8 @@ public:
         }
         std::sort(ret.begin(), ret.end(),
                 [&](const entry_t &a, const entry_t &b) {
-                    return a.second > b.second;
-                });
+            return a.second > b.second;
+        });
         return ret;
     }
 

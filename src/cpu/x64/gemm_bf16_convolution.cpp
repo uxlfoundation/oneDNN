@@ -489,20 +489,16 @@ status_t gemm_bf16_convolution_fwd_t<dst_data_type>::execute_forward_thr_nspc(
             if (do_postprocess) {
                 parallel_nd_ext(jcp.nthr == 1 ? 0 : 1, N,
                         [&](size_t ithr, size_t nthr, size_t os) {
-                            const float *__restrict acc_arr = acc + os * jcp.oc;
-                            const float *__restrict bia_arr
-                                    = (bia_base == nullptr)
-                                    ? nullptr
-                                    : bia_base + g * jcp.oc;
-                            dst_data_t *__restrict dst_arr
-                                    = dst + os * dst_os_stride;
+                    const float *__restrict acc_arr = acc + os * jcp.oc;
+                    const float *__restrict bia_arr = (bia_base == nullptr)
+                            ? nullptr
+                            : bia_base + g * jcp.oc;
+                    dst_data_t *__restrict dst_arr = dst + os * dst_os_stride;
 
-                            (*pp_ker_)(dst_arr,
-                                    acc_needed ? acc_arr : (float *)dst_arr,
-                                    bia_arr, sum_scale, jcp.oc,
-                                    post_ops_binary_rhs_arg_vec, dst_base,
-                                    g *jcp.oc);
-                        });
+                    (*pp_ker_)(dst_arr, acc_needed ? acc_arr : (float *)dst_arr,
+                            bia_arr, sum_scale, jcp.oc,
+                            post_ops_binary_rhs_arg_vec, dst_base, g *jcp.oc);
+                });
             }
         }
         nd_iterator_step(n, jcp.mb, g, jcp.ngroups, ohb, nb_oh, owb, nb_ow);
@@ -752,26 +748,24 @@ status_t gemm_bf16_convolution_bwd_data_t<
             parallel_nd_ext(jcp.nthr == 1 ? 0 : 1,
                     static_cast<size_t>(jcp.is) * jcp.id,
                     [&](size_t ithr, size_t nthr, size_t is) {
-                        diff_src_data_t *__restrict diff_src_loc
-                                = diff_src + is * diff_src_os_stride;
-                        const acc_data_t *__restrict acc_loc
-                                = acc + is * jcp.ic;
-                        cvt_float_to_bfloat16((bfloat16_t *)diff_src_loc,
-                                (const float *)acc_loc, jcp.ic);
-                    });
+                diff_src_data_t *__restrict diff_src_loc
+                        = diff_src + is * diff_src_os_stride;
+                const acc_data_t *__restrict acc_loc = acc + is * jcp.ic;
+                cvt_float_to_bfloat16((bfloat16_t *)diff_src_loc,
+                        (const float *)acc_loc, jcp.ic);
+            });
         } else {
             assert(diff_src_data_type == data_type::f32);
             parallel_nd_ext(jcp.nthr == 1 ? 0 : 1,
                     static_cast<size_t>(jcp.is) * jcp.id,
                     [&](size_t ithr, size_t nthr, size_t is) {
-                        diff_src_data_t *__restrict diff_src_loc
-                                = diff_src + is * diff_src_os_stride;
-                        const acc_data_t *__restrict acc_loc
-                                = acc + is * jcp.ic;
-                        PRAGMA_OMP_SIMD()
-                        for (int ic = 0; ic < jcp.ic; ++ic)
-                            diff_src_loc[ic] = acc_loc[ic];
-                    });
+                diff_src_data_t *__restrict diff_src_loc
+                        = diff_src + is * diff_src_os_stride;
+                const acc_data_t *__restrict acc_loc = acc + is * jcp.ic;
+                PRAGMA_OMP_SIMD()
+                for (int ic = 0; ic < jcp.ic; ++ic)
+                    diff_src_loc[ic] = acc_loc[ic];
+            });
         }
         nd_iterator_step(n, jcp.mb, g, jcp.ngroups);
     }

@@ -362,9 +362,9 @@ std::vector<std::pair<KeyT, expr_t>> sort_var_map_by_value(
     return sort_var_map(map,
             [](const std::pair<KeyT, expr_t> &a,
                     const std::pair<KeyT, expr_t> &b) {
-                return a.second.template as<var_t>().name
-                        < b.second.template as<var_t>().name;
-            });
+        return a.second.template as<var_t>().name
+                < b.second.template as<var_t>().name;
+    });
 }
 
 template <typename ValueT, typename HashT, typename EqualT>
@@ -373,9 +373,9 @@ std::vector<std::pair<expr_t, ValueT>> sort_var_map_by_key(
     return sort_var_map(map,
             [](const std::pair<expr_t, ValueT> &a,
                     const std::pair<expr_t, ValueT> &b) {
-                return a.first.template as<var_t>().name
-                        < b.first.template as<var_t>().name;
-            });
+        return a.first.template as<var_t>().name
+                < b.first.template as<var_t>().name;
+    });
 }
 
 template <typename T>

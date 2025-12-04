@@ -162,8 +162,8 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
     const dim_t weights_kw_stride
             = (ndims >= 3) ? weights_str[ndims - 1 + gr_shift] : 0;
 
-    auto ker_plain = [=](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh,
-                             dim_t ow) {
+    auto ker_plain
+            = [=](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
         assert(3 <= ndims && ndims <= 5);
         int d = 0;
 
@@ -238,48 +238,47 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
 
     parallel_nd(G, MB, OC, OD, OH, OW,
             [=](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
-                int acc = 0;
-                if (src_d.is_plain() && weights_d.is_plain()
-                        && src_ic_stride == 1 && weights_kw_stride == 1)
-                    acc += ker_plain(g, mb, oc, od, oh, ow);
-                else
-                    acc += ker(g, mb, oc, od, oh, ow);
+        int acc = 0;
+        if (src_d.is_plain() && weights_d.is_plain() && src_ic_stride == 1
+                && weights_kw_stride == 1)
+            acc += ker_plain(g, mb, oc, od, oh, ow);
+        else
+            acc += ker(g, mb, oc, od, oh, ow);
 
-                float d = static_cast<float>(acc);
+        float d = static_cast<float>(acc);
 
-                if (src_scales) d *= src_scales[0];
-                if (wei_scales)
-                    d *= wei_scales[(wei_scale_mask > 0) * (g * OC + oc)];
+        if (src_scales) d *= src_scales[0];
+        if (wei_scales) d *= wei_scales[(wei_scale_mask > 0) * (g * OC + oc)];
 
-                if (bias) {
-                    const auto bias_off = bias_d.off(g * OC + oc);
-                    const float b = io::load_float_value(
-                            bias_d.data_type(), bias, bias_off);
-                    d += b;
-                }
+        if (bias) {
+            const auto bias_off = bias_d.off(g * OC + oc);
+            const float b
+                    = io::load_float_value(bias_d.data_type(), bias, bias_off);
+            d += b;
+        }
 
-                dim_t dst_off = ref_conv_utils::get_data_off(
-                        dst_d, ndims, mb, g * OC + oc, od, oh, ow);
+        dim_t dst_off = ref_conv_utils::get_data_off(
+                dst_d, ndims, mb, g * OC + oc, od, oh, ow);
 
-                dim_t dst_l_off = (mb * OC * G + g * OC + oc) * OD * OH * OW
-                        + od * OH * OW + oh * OW + ow;
+        dim_t dst_l_off = (mb * OC * G + g * OC + oc) * OD * OH * OW
+                + od * OH * OW + oh * OW + ow;
 
-                ref_post_ops_t::args_t args;
-                args.dst_val = io::load_float_value(sum_dt, dst, dst_off);
-                args.ctx = &ctx;
-                args.l_offset = dst_l_off;
-                args.dst_md = pd()->dst_md();
-                ref_post_ops->execute(d, args);
+        ref_post_ops_t::args_t args;
+        args.dst_val = io::load_float_value(sum_dt, dst, dst_off);
+        args.ctx = &ctx;
+        args.l_offset = dst_l_off;
+        args.dst_md = pd()->dst_md();
+        ref_post_ops->execute(d, args);
 
-                if (dst_scales) d /= dst_scales[0];
+        if (dst_scales) d /= dst_scales[0];
 
-                if (dst_zero_points) {
-                    const int dst_zp = io::load_int_value(data_type::s32,
-                            dst_zero_points, dst_zp_idx_mult * (g * OC + oc));
-                    d += dst_zp;
-                }
-                io::store_float_value(dst_d.data_type(), d, dst, dst_off);
-            });
+        if (dst_zero_points) {
+            const int dst_zp = io::load_int_value(data_type::s32,
+                    dst_zero_points, dst_zp_idx_mult * (g * OC + oc));
+            d += dst_zp;
+        }
+        io::store_float_value(dst_d.data_type(), d, dst, dst_off);
+    });
 
     return status::success;
 }
@@ -382,8 +381,8 @@ status_t ref_convolution_int8_bwd_data_t::execute_backward_data(
     const dim_t weights_kd_stride
             = (ndims >= 5) ? weights_str[ndims - 3 + gr_shift] : 0;
 
-    auto ker_plain = [=](dim_t g, dim_t mb, dim_t ic, dim_t id, dim_t ih,
-                             dim_t iw) {
+    auto ker_plain
+            = [=](dim_t g, dim_t mb, dim_t ic, dim_t id, dim_t ih, dim_t iw) {
         assert(3 <= ndims && ndims <= 5);
         int ds = 0;
         const dim_t diff_dst_loc_off = ref_conv_utils::get_data_off(
@@ -458,23 +457,23 @@ status_t ref_convolution_int8_bwd_data_t::execute_backward_data(
 
     parallel_nd(G, MB, IC, ID, IH, IW,
             [=](dim_t g, dim_t mb, dim_t ic, dim_t id, dim_t ih, dim_t iw) {
-                int acc = 0;
-                if (diff_dst_d.is_plain() && weights_d.is_plain()
-                        && diff_dst_oc_stride == 1 && weights_kw_stride == 1)
-                    acc += ker_plain(g, mb, ic, id, ih, iw);
-                else
-                    acc += ker(g, mb, ic, id, ih, iw);
+        int acc = 0;
+        if (diff_dst_d.is_plain() && weights_d.is_plain()
+                && diff_dst_oc_stride == 1 && weights_kw_stride == 1)
+            acc += ker_plain(g, mb, ic, id, ih, iw);
+        else
+            acc += ker(g, mb, ic, id, ih, iw);
 
-                float ds = static_cast<float>(acc);
-                dequantize(ds, g, IC, ic, wei_scales, with_groups,
-                        wei_scale_mask, diff_dst_scales);
-                quantize(ds, g, IC, ic, diff_src_scales);
+        float ds = static_cast<float>(acc);
+        dequantize(ds, g, IC, ic, wei_scales, with_groups, wei_scale_mask,
+                diff_dst_scales);
+        quantize(ds, g, IC, ic, diff_src_scales);
 
-                const auto diff_src_off = ref_conv_utils::get_data_off(
-                        diff_src_d, ndims, mb, g * IC + ic, id, ih, iw);
-                io::store_float_value(
-                        diff_src_d.data_type(), ds, diff_src, diff_src_off);
-            });
+        const auto diff_src_off = ref_conv_utils::get_data_off(
+                diff_src_d, ndims, mb, g * IC + ic, id, ih, iw);
+        io::store_float_value(
+                diff_src_d.data_type(), ds, diff_src, diff_src_off);
+    });
 
     return status::success;
 }

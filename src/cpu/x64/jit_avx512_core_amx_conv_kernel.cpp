@@ -1380,8 +1380,8 @@ void jit_avx512_core_amx_fwd_kernel_t::apply_sum(const Zmm &zmm_out,
     if (p_sum_scale) {
         const float p_sum_scale_val = *p_sum_scale;
         const int32_t p_sum_zp_val = *p_sum_zp;
-        const auto sum_injector = [&, p_sum_scale_val, p_sum_zp_val,
-                                          mask_flag]() {
+        const auto sum_injector
+                = [&, p_sum_scale_val, p_sum_zp_val, mask_flag]() {
             cvt2ps(jcp.sum_dt, zmm_prev_dst, addr, mask_flag);
             if (p_sum_zp_val != 0) {
                 vcvtdq2ps(zmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
@@ -1594,8 +1594,8 @@ void jit_avx512_core_amx_fwd_kernel_t::store_output(int width, int tail,
         bool do_store, const bool handle_h_blk, const int t_pad_output,
         const int b_pad_output, const int l_pad_output, const int r_pad_output,
         const bool is_last_oh_block, const bool zp_3d_pad) {
-    auto store_output_block = [&](int width, int tail, bool do_store,
-                                      bool is_last_h = false) {
+    auto store_output_block
+            = [&](int width, int tail, bool do_store, bool is_last_h = false) {
         // Calculate the number of oh blocks; it may differ on last call
         const int last_h_blks
                 = div_up(jcp.oh, jcp.oh_per_tile) % jcp.nb_oh_blocking;
@@ -1841,14 +1841,14 @@ void jit_avx512_core_amx_fwd_kernel_t::compute_icb_loop(int width,
     auto safe_tileloadd
             = [this](const Tmm &t1, const Xbyak::Reg64 &reg_ptr, size_t offset,
                       const Xbyak::Reg64 &reg_stride) {
-                  if (offset <= INT32_MAX) {
-                      tileloadd(t1, ptr[reg_ptr + offset + reg_stride]);
-                  } else {
-                      safe_add(reg_ptr, offset, reg_tmp);
-                      tileloadd(t1, ptr[reg_ptr + reg_stride]);
-                      safe_sub(reg_ptr, offset, reg_tmp);
-                  }
-              };
+        if (offset <= INT32_MAX) {
+            tileloadd(t1, ptr[reg_ptr + offset + reg_stride]);
+        } else {
+            safe_add(reg_ptr, offset, reg_tmp);
+            tileloadd(t1, ptr[reg_ptr + reg_stride]);
+            safe_sub(reg_ptr, offset, reg_tmp);
+        }
+    };
 
     // normal and k-remainders path
     const bool check_kd_padding
@@ -1987,9 +1987,9 @@ void jit_avx512_core_amx_fwd_kernel_t::dispatch_zp_3d_compute(int width,
 }
 
 void jit_avx512_core_amx_fwd_kernel_t::compute_ow_loop() {
-    auto compute_ow_loop_body = [this](bool last_owb, int num_tile_blocks,
-                                        const int l_pad_output,
-                                        const int r_pad_output) {
+    auto compute_ow_loop_body
+            = [this](bool last_owb, int num_tile_blocks, const int l_pad_output,
+                      const int r_pad_output) {
         int cur_l_pad_output = l_pad_output;
         int cur_r_pad_output = r_pad_output;
         int gen_tile_tail = last_owb && jcp.tile_tail > 0 ? jcp.tile_tail
@@ -2700,12 +2700,10 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     // Relevant to 'zero_point padding buffer' (pbuff) jit kernel
     if (jcp.req_zero_point_buffer) {
-        auto calculate_output_padding_dims = [](int o_dim, int s_pad, int e_pad,
-                                                     int &s_pad_output,
-                                                     int &e_pad_output,
-                                                     bool &o_mid, int &o_pad,
-                                                     int stride,
-                                                     bool req_mid_area) {
+        auto calculate_output_padding_dims
+                = [](int o_dim, int s_pad, int e_pad, int &s_pad_output,
+                          int &e_pad_output, bool &o_mid, int &o_pad,
+                          int stride, bool req_mid_area) {
             s_pad_output = nstl::min(o_dim, div_up(s_pad, stride));
             e_pad_output = nstl::min(o_dim, div_up(e_pad, stride));
             o_mid = (o_dim - s_pad_output - e_pad_output > 0) && req_mid_area;
@@ -3411,8 +3409,8 @@ void jit_avx512_core_amx_bwd_data_kernel_t::store_output_vector(
 
 void jit_avx512_core_amx_bwd_data_kernel_t::store_output(
         int width, bool do_store) {
-    auto store_output_block = [this](int width, bool do_store,
-                                      bool is_last_ih_blks) {
+    auto store_output_block
+            = [this](int width, bool do_store, bool is_last_ih_blks) {
         // Calculate the number of ih blocks; it may differ on last call
         const int n_ih_blks = is_last_ih_blks ? jcp.ih % jcp.nb_ih_blocking
                                               : jcp.nb_ih_blocking;
@@ -5581,8 +5579,8 @@ void jit_avx512_core_amx_bwd_weights_kernel_t::balance(const jit_conv_conf_t &j,
     nthr_g_ = j.ngroups;
     const int nthr = max_threads / nthr_g_;
 
-    auto calc_mem_cost = [&j, nthr_g_](
-                                 int nthr_mb, int nthr_oc_b, int nthr_ic_b) {
+    auto calc_mem_cost
+            = [&j, nthr_g_](int nthr_mb, int nthr_oc_b, int nthr_ic_b) {
         /* calculate per thread memory cost (read/write). high level optimizer
          * tries to minimize memory consumption. few notes:
          *  (n1) if weights tensor size is less than source and destination

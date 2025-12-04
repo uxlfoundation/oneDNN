@@ -658,9 +658,9 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
                     && problem_.Tb_ext.isInt8() && problem_.Tc.isFP()
                     && !problem_.forceGroupSumsA && !problem_.forceGroupSumsB),
             [](Type dt) -> const char * {
-                if (dt.isInt8()) return "[OH]";
-                return nullptr;
-            });
+        if (dt.isInt8()) return "[OH]";
+        return nullptr;
+    });
 
     match_params.push_back(base);
 

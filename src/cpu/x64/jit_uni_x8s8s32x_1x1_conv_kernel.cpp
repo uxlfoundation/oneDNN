@@ -155,9 +155,9 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::apply_sum(const int ur,
                 && "p_sum_scale or p_sum_zp = nullptr");
         const float sum_scale = *p_sum_scale;
         const int32_t sum_zp = *p_sum_zp;
-        const auto sum_injector_lam = [this, mask_flag_in, load_loop_blk,
-                                              sum_scale, sum_zp](const int i_ur,
-                                              const int i_load) {
+        const auto sum_injector_lam
+                = [this, mask_flag_in, load_loop_blk, sum_scale, sum_zp](
+                          const int i_ur, const int i_load) {
             const bool mask_flag = mask_flag_in && i_load == load_loop_blk - 1;
             const auto ymm_prev_dst = vmm_zero;
 

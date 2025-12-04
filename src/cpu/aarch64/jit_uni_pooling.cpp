@@ -394,9 +394,9 @@ public:
                             transpose_block_fmt_to_ncsp_t<char, char>
                                     &trans_indices,
                             std::size_t ithr, int n, int b_c) {
-                        trans_dst(ithr, n, b_c);
-                        if (indices) trans_indices(ithr, n, b_c);
-                    },
+                trans_dst(ithr, n, b_c);
+                if (indices) trans_indices(ithr, n, b_c);
+            },
                     transpose_block_fmt_to_ncsp_t<wsp_data_t, data_t>(
                             trans_ctx->dst_trans_.get(),
                             trans_ctx->dst_tail_trans_.get(),
@@ -443,9 +443,9 @@ public:
                             transpose_ncsp_to_block_fmt_t<char, char>
                                     &trans_indices,
                             std::size_t ithr, int n, int b_c) {
-                        trans_dst(ithr, n, b_c);
-                        if (indices) trans_indices(ithr, n, b_c);
-                    },
+                trans_dst(ithr, n, b_c);
+                if (indices) trans_indices(ithr, n, b_c);
+            },
                     transpose_ncsp_to_block_fmt_t<data_t, wsp_data_t>(
                             trans_ctx->dst_trans_.get(),
                             trans_ctx->dst_tail_trans_.get(), dst, this->dst_d_,
@@ -642,15 +642,13 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward(const data_t *src,
             // ncsp format
             parallel_nd_ext(nthr, jpp.mb, jpp.nb_c,
                     [&](dim_t ithr, dim_t nthr, dim_t n, dim_t b_c) {
-                        if (trans_src)
-                            transpose_facade.execute_transpose_input(
-                                    ithr, n, b_c);
-                        for (dim_t oh = 0; oh < jpp.oh; ++oh)
-                            ker(ithr, n, b_c, oh, 1);
-                        if (trans_dst)
-                            transpose_facade.execute_transpose_output(
-                                    ithr, n, b_c);
-                    });
+                if (trans_src)
+                    transpose_facade.execute_transpose_input(ithr, n, b_c);
+                for (dim_t oh = 0; oh < jpp.oh; ++oh)
+                    ker(ithr, n, b_c, oh, 1);
+                if (trans_dst)
+                    transpose_facade.execute_transpose_output(ithr, n, b_c);
+            });
         } else {
             // nChw16c, nChw8c format
             parallel(nthr, [&](dim_t ithr, dim_t nthr) {
@@ -789,42 +787,38 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward_3d(const data_t *src,
         if (trans_src || trans_dst) {
             parallel_nd_ext(nthr, jpp.mb, jpp.nb_c,
                     [&](dim_t ithr, dim_t nthr, dim_t n, dim_t b_c) {
-                        if (trans_src)
-                            transpose_facade.execute_transpose_input(
-                                    ithr, n, b_c);
+                if (trans_src)
+                    transpose_facade.execute_transpose_input(ithr, n, b_c);
 
-                        for (int od = 0; od < jpp.od; ++od) {
-                            const int ik = od * jpp.stride_d;
-                            const int d_t_overflow
-                                    = nstl::max(0, jpp.f_pad - ik);
-                            const int d_b_overflow
-                                    = nstl::max(jpp.id, ik + jpp.kd - jpp.f_pad)
-                                    - jpp.id;
-                            const int id = nstl::max(ik - jpp.f_pad, 0);
-                            for (int oh = 0; oh < jpp.oh; ++oh) {
-                                ker(n, b_c, od, oh, id, d_t_overflow,
-                                        d_b_overflow, 1, ithr);
-                            }
-                        }
+                for (int od = 0; od < jpp.od; ++od) {
+                    const int ik = od * jpp.stride_d;
+                    const int d_t_overflow = nstl::max(0, jpp.f_pad - ik);
+                    const int d_b_overflow
+                            = nstl::max(jpp.id, ik + jpp.kd - jpp.f_pad)
+                            - jpp.id;
+                    const int id = nstl::max(ik - jpp.f_pad, 0);
+                    for (int oh = 0; oh < jpp.oh; ++oh) {
+                        ker(n, b_c, od, oh, id, d_t_overflow, d_b_overflow, 1,
+                                ithr);
+                    }
+                }
 
-                        if (trans_dst)
-                            transpose_facade.execute_transpose_output(
-                                    ithr, n, b_c);
-                    });
+                if (trans_dst)
+                    transpose_facade.execute_transpose_output(ithr, n, b_c);
+            });
         } else {
             parallel_nd(jpp.mb, jpp.nb_c, jpp.od,
                     [&](dim_t n, dim_t b_c, dim_t od) {
-                        const int ik = od * jpp.stride_d;
-                        const int d_t_overflow = nstl::max(0, jpp.f_pad - ik);
-                        const int d_b_overflow
-                                = nstl::max(jpp.id, ik + jpp.kd - jpp.f_pad)
-                                - jpp.id;
-                        const int id = nstl::max(ik - jpp.f_pad, 0);
-                        for (int oh = 0; oh < jpp.oh; ++oh) {
-                            ker(n, b_c, od, oh, id, d_t_overflow, d_b_overflow,
-                                    1, first_ithr);
-                        }
-                    });
+                const int ik = od * jpp.stride_d;
+                const int d_t_overflow = nstl::max(0, jpp.f_pad - ik);
+                const int d_b_overflow
+                        = nstl::max(jpp.id, ik + jpp.kd - jpp.f_pad) - jpp.id;
+                const int id = nstl::max(ik - jpp.f_pad, 0);
+                for (int oh = 0; oh < jpp.oh; ++oh) {
+                    ker(n, b_c, od, oh, id, d_t_overflow, d_b_overflow, 1,
+                            first_ithr);
+                }
+            });
         }
     }
 }
@@ -1139,31 +1133,28 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
             const dim_t nb2_c = utils::div_up(jpp.nb_c, jpp.ur_bc);
             parallel_nd(
                     jpp.mb, jpp.od, nb2_c, [&](dim_t n, dim_t od, dim_t b2_c) {
-                        const dim_t b_c = b2_c * jpp.ur_bc;
-                        const dim_t ur_bc
-                                = nstl::min(dim_t(jpp.ur_bc), jpp.nb_c - b_c);
-                        process_simple(n, b_c, od, ur_bc, first_ithr);
-                    });
+                const dim_t b_c = b2_c * jpp.ur_bc;
+                const dim_t ur_bc = nstl::min(dim_t(jpp.ur_bc), jpp.nb_c - b_c);
+                process_simple(n, b_c, od, ur_bc, first_ithr);
+            });
         } else {
             assert(jpp.ur_bc == 1);
             if (trans_src || trans_dst) {
                 parallel_nd_ext(nthr, jpp.mb, jpp.nb_c,
                         [&](dim_t ithr, dim_t nthr, dim_t n, dim_t b_c) {
-                            if (trans_src)
-                                transpose_facade.execute_transpose_input(
-                                        ithr, n, b_c);
-                            for (int od = 0; od < jpp.od; ++od) {
-                                process_simple(n, b_c, od, 1, ithr);
-                            }
-                            if (trans_dst)
-                                transpose_facade.execute_transpose_output(
-                                        ithr, n, b_c);
-                        });
+                    if (trans_src)
+                        transpose_facade.execute_transpose_input(ithr, n, b_c);
+                    for (int od = 0; od < jpp.od; ++od) {
+                        process_simple(n, b_c, od, 1, ithr);
+                    }
+                    if (trans_dst)
+                        transpose_facade.execute_transpose_output(ithr, n, b_c);
+                });
             } else {
                 parallel_nd(jpp.mb, jpp.nb_c, jpp.od,
                         [&](dim_t n, dim_t b_c, dim_t od) {
-                            process_simple(n, b_c, od, 1, first_ithr);
-                        });
+                    process_simple(n, b_c, od, 1, first_ithr);
+                });
             }
         }
     } else {
@@ -1182,12 +1173,12 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
                         = (size_t)jpp.id * jpp.ih * jpp.iw * jpp.c_block;
                 parallel_nd_ext(nthr, jpp.mb, jpp.nb_c,
                         [&](dim_t ithr, dim_t nthr, dim_t n, dim_t b_c) {
-                            const size_t offset
-                                    = ((size_t)n * jpp.nb_c + b_c) * chunk_size;
-                            PRAGMA_OMP_SIMD()
-                            for (size_t idx = 0; idx < chunk_size; ++idx)
-                                diff_src[offset + idx] = zero_val;
-                        });
+                    const size_t offset
+                            = ((size_t)n * jpp.nb_c + b_c) * chunk_size;
+                    PRAGMA_OMP_SIMD()
+                    for (size_t idx = 0; idx < chunk_size; ++idx)
+                        diff_src[offset + idx] = zero_val;
+                });
             }
         }
 
@@ -1195,47 +1186,43 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
         if (trans_src || trans_dst) {
             parallel_nd_ext(nthr, jpp.mb, nb2_c,
                     [&](dim_t ithr, dim_t nthr, dim_t n, dim_t b2_c) {
-                        const dim_t b_c = b2_c * jpp.ur_bc;
+                const dim_t b_c = b2_c * jpp.ur_bc;
 
-                        if (trans_dst) {
-                            transpose_facade.execute_transpose_input(
-                                    ithr, n, b_c);
+                if (trans_dst) {
+                    transpose_facade.execute_transpose_input(ithr, n, b_c);
 
-                            size_t block_size = jpp.c_block * jpp.id * jpp.ih
-                                    * jpp.iw * jpp.dt_size;
+                    size_t block_size = jpp.c_block * jpp.id * jpp.ih * jpp.iw
+                            * jpp.dt_size;
 
-                            const void *src = transpose_facade.get_src_addr_3d(
-                                    ithr, 0, 0, jpp);
-                            std::memset((void *)src, zero_val, block_size);
+                    const void *src
+                            = transpose_facade.get_src_addr_3d(ithr, 0, 0, jpp);
+                    std::memset((void *)src, zero_val, block_size);
+                }
+
+                for (dim_t kd = 0; kd < jpp.kd; ++kd) {
+                    const dim_t ur_bc
+                            = nstl::min(dim_t(jpp.ur_bc), jpp.nb_c - b_c);
+                    for (int od = 0; od < jpp.od; ++od) {
+                        const dim_t ik = od * jpp.stride_d;
+                        const dim_t d_t_overflow
+                                = nstl::max(dim_t(0), jpp.f_pad - ik);
+                        const dim_t d_b_overflow
+                                = nstl::max(dim_t(jpp.id),
+                                          ik + jpp.kd - jpp.f_pad)
+                                - jpp.id;
+                        if (kd >= jpp.kd - d_t_overflow - d_b_overflow)
+                            continue;
+                        const dim_t id = nstl::max(ik - jpp.f_pad, dim_t(0));
+                        for (dim_t oh = 0; oh < jpp.oh; ++oh) {
+                            ker(n, b_c, od, oh, id, d_t_overflow, d_b_overflow,
+                                    false, kd, ur_bc, ithr);
                         }
+                    }
+                }
 
-                        for (dim_t kd = 0; kd < jpp.kd; ++kd) {
-                            const dim_t ur_bc = nstl::min(
-                                    dim_t(jpp.ur_bc), jpp.nb_c - b_c);
-                            for (int od = 0; od < jpp.od; ++od) {
-                                const dim_t ik = od * jpp.stride_d;
-                                const dim_t d_t_overflow
-                                        = nstl::max(dim_t(0), jpp.f_pad - ik);
-                                const dim_t d_b_overflow
-                                        = nstl::max(dim_t(jpp.id),
-                                                  ik + jpp.kd - jpp.f_pad)
-                                        - jpp.id;
-                                if (kd >= jpp.kd - d_t_overflow - d_b_overflow)
-                                    continue;
-                                const dim_t id
-                                        = nstl::max(ik - jpp.f_pad, dim_t(0));
-                                for (dim_t oh = 0; oh < jpp.oh; ++oh) {
-                                    ker(n, b_c, od, oh, id, d_t_overflow,
-                                            d_b_overflow, false, kd, ur_bc,
-                                            ithr);
-                                }
-                            }
-                        }
-
-                        if (trans_src)
-                            transpose_facade.execute_transpose_output(
-                                    ithr, n, b_c);
-                    });
+                if (trans_src)
+                    transpose_facade.execute_transpose_output(ithr, n, b_c);
+            });
         } else {
             for (dim_t kd = 0; kd < jpp.kd; ++kd) {
                 parallel_nd(jpp.mb, nb2_c, [&](dim_t n, dim_t b2_c) {

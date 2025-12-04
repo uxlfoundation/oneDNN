@@ -665,8 +665,8 @@ private:
     void nearest_alg(int64_t channel_offset, bool is_tail = false) {
         xor_(reg_offset, reg_offset); // reg_offset = 0
 
-        auto get_idx = ([&](const Reg64 &idx, const Xmm &coeff,
-                                dim_t dim_max_size) {
+        auto get_idx
+                = ([&](const Reg64 &idx, const Xmm &coeff, dim_t dim_max_size) {
             round_to_near_away_from_zero(idx, coeff, xmm_zero_point_five,
                     xmm_tmp); // round_to_nearest(coeff)
             min(idx, dim_max_size - 1);
@@ -881,19 +881,19 @@ status_t jit_avx512_core_resampling_bwd_t::execute(
 
     parallel_nd(nsp_outer, ID, IH, IW,
             [&](dim_t nsp, dim_t id, dim_t ih, dim_t iw) {
-                const dim_t diff_dst_off
-                        = nsp * OD * OH * OW * inner_stride * diff_dst_dt_size;
-                const dim_t diff_src_off
-                        = (nsp * ID * IH * IW + id * IH * IW + ih * IW + iw)
-                        * inner_stride * diff_src_dt_size;
-                jit_resampling_args_t args;
-                args.src = diff_dst + diff_dst_off;
-                args.dst = diff_src + diff_src_off;
-                args.d = id;
-                args.h = ih;
-                args.w = iw;
-                (*kernel_)(&args);
-            });
+        const dim_t diff_dst_off
+                = nsp * OD * OH * OW * inner_stride * diff_dst_dt_size;
+        const dim_t diff_src_off
+                = (nsp * ID * IH * IW + id * IH * IW + ih * IW + iw)
+                * inner_stride * diff_src_dt_size;
+        jit_resampling_args_t args;
+        args.src = diff_dst + diff_dst_off;
+        args.dst = diff_src + diff_src_off;
+        args.d = id;
+        args.h = ih;
+        args.w = iw;
+        (*kernel_)(&args);
+    });
 
     return status_t();
 }

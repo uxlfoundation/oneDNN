@@ -345,15 +345,15 @@ public:
             // Initialize mean.
             std::generate(
                     running_mean_data.begin(), running_mean_data.end(), []() {
-                        static int i = 0;
-                        return std::sin(static_cast<float>(i++) * 2.f);
-                    });
+                static int i = 0;
+                return std::sin(static_cast<float>(i++) * 2.f);
+            });
             // Initialize variance.
             std::generate(running_variance_data.begin(),
                     running_variance_data.end(), []() {
-                        static int i = 0;
-                        return static_cast<float>(i++);
-                    });
+                static int i = 0;
+                return static_cast<float>(i++);
+            });
         }
 
         test_tensor_t src_ts(src, engine, src_data);

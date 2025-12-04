@@ -439,17 +439,17 @@ pvar_t to_gemm(const pvar_t &d, prop_kind_t prop, bool is_transpose) {
     };
     auto pick
             = [&](const pvar_t &fwd, const pvar_t &bwd_d, const pvar_t &bwd_w) {
-                  if (is_transpose) {
-                      if (is_fwd) return transpose_gemm(fwd);
-                      if (is_bwd_d) return transpose_gemm(bwd_d);
-                      if (is_bwd_w) return transpose_gemm(bwd_w);
-                  }
-                  if (is_fwd) return fwd;
-                  if (is_bwd_d) return bwd_d;
-                  if (is_bwd_w) return bwd_w;
-                  gpu_error_not_expected();
-                  return pvar_t();
-              };
+        if (is_transpose) {
+            if (is_fwd) return transpose_gemm(fwd);
+            if (is_bwd_d) return transpose_gemm(bwd_d);
+            if (is_bwd_w) return transpose_gemm(bwd_w);
+        }
+        if (is_fwd) return fwd;
+        if (is_bwd_d) return bwd_d;
+        if (is_bwd_w) return bwd_w;
+        gpu_error_not_expected();
+        return pvar_t();
+    };
     if (d == pvars::g) return pvars::b;
     if (d == pvars::mb) return pick(pvars::m, pvars::m, pvars::k);
     if (d == pvars::oc) return pick(pvars::n, pvars::k, pvars::n);

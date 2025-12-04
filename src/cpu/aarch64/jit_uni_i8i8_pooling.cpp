@@ -868,39 +868,36 @@ status_t jit_uni_i8i8_pooling_fwd_t<isa>::execute_forward(
 
     parallel_nd(
             jpp.mb, jpp.od, jpp.oh, jpp.ow, [&](int n, int od, int oh, int ow) {
-                const int id = nstl::max(od * jpp.stride_d - jpp.f_pad, 0);
-                const int ih = nstl::max(oh * jpp.stride_h - jpp.t_pad, 0);
-                const int iw = nstl::max(ow * jpp.stride_w - jpp.l_pad, 0);
+        const int id = nstl::max(od * jpp.stride_d - jpp.f_pad, 0);
+        const int ih = nstl::max(oh * jpp.stride_h - jpp.t_pad, 0);
+        const int iw = nstl::max(ow * jpp.stride_w - jpp.l_pad, 0);
 
-                const int kd_start
-                        = nstl::max(0, jpp.f_pad - od * jpp.stride_d);
-                const int kd_end = nstl::min(
-                        jpp.kd, jpp.id + jpp.f_pad - od * jpp.stride_d);
-                const int kh_start
-                        = nstl::max(0, jpp.t_pad - oh * jpp.stride_h);
-                const int kh_end = nstl::min(
-                        jpp.kh, jpp.ih + jpp.t_pad - oh * jpp.stride_h);
-                const int kw_start
-                        = nstl::max(0, jpp.l_pad - ow * jpp.stride_w);
-                const int kw_end = nstl::min(
-                        jpp.kw, jpp.iw + jpp.l_pad - ow * jpp.stride_w);
+        const int kd_start = nstl::max(0, jpp.f_pad - od * jpp.stride_d);
+        const int kd_end
+                = nstl::min(jpp.kd, jpp.id + jpp.f_pad - od * jpp.stride_d);
+        const int kh_start = nstl::max(0, jpp.t_pad - oh * jpp.stride_h);
+        const int kh_end
+                = nstl::min(jpp.kh, jpp.ih + jpp.t_pad - oh * jpp.stride_h);
+        const int kw_start = nstl::max(0, jpp.l_pad - ow * jpp.stride_w);
+        const int kw_end
+                = nstl::min(jpp.kw, jpp.iw + jpp.l_pad - ow * jpp.stride_w);
 
-                auto p = call_params_t();
-                p.src_i8 = &src_i8[get_offset(src_d, n, 0, id, ih, iw)
-                        * src_d.data_type_size()];
-                p.dst_i8 = &dst_i8[get_offset(dst_d, n, 0, od, oh, ow)
-                        * dst_d.data_type_size()];
-                p.kd_range = (size_t)(kd_end - kd_start);
-                p.kh_range = (size_t)(kh_end - kh_start);
-                p.kw_range = (size_t)(kw_end - kw_start);
-                p.idivider = 1.0f
-                        / ((jpp.alg == pooling_avg_exclude_padding)
-                                        ? p.kd_range * p.kh_range * p.kw_range
-                                        : jpp.kd * jpp.kh * jpp.kw);
-                p.src_safe_access = src_safe_access;
-                p.dst_safe_access = dst_safe_access;
-                (*ker_)(&p);
-            });
+        auto p = call_params_t();
+        p.src_i8 = &src_i8[get_offset(src_d, n, 0, id, ih, iw)
+                * src_d.data_type_size()];
+        p.dst_i8 = &dst_i8[get_offset(dst_d, n, 0, od, oh, ow)
+                * dst_d.data_type_size()];
+        p.kd_range = (size_t)(kd_end - kd_start);
+        p.kh_range = (size_t)(kh_end - kh_start);
+        p.kw_range = (size_t)(kw_end - kw_start);
+        p.idivider = 1.0f
+                / ((jpp.alg == pooling_avg_exclude_padding)
+                                ? p.kd_range * p.kh_range * p.kw_range
+                                : jpp.kd * jpp.kh * jpp.kw);
+        p.src_safe_access = src_safe_access;
+        p.dst_safe_access = dst_safe_access;
+        (*ker_)(&p);
+    });
     return status::success;
 }
 

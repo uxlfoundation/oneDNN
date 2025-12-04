@@ -162,17 +162,14 @@ void jit_sse41_conv_fwd_kernel_f32_t::apply_postops(
         binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
         iterate(oc_blocks, ur_w,
                 [&](const bool mask_flag, const int i, const int j) {
-                    const size_t o_off = get_output_offset(i, j);
-                    const auto vmm_idx = get_xmm_idx(ur_w, i, j);
-                    vmm_idxs.emplace(vmm_idx);
+            const size_t o_off = get_output_offset(i, j);
+            const auto vmm_idx = get_xmm_idx(ur_w, i, j);
+            vmm_idxs.emplace(vmm_idx);
 
-                    rhs_arg_params.vmm_idx_to_out_reg.emplace(
-                            vmm_idx, reg_output);
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
-                            vmm_idx, o_off);
-                    if (mask_flag)
-                        rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
-                });
+            rhs_arg_params.vmm_idx_to_out_reg.emplace(vmm_idx, reg_output);
+            rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(vmm_idx, o_off);
+            if (mask_flag) rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
+        });
 
         postops_injector_->compute_vector_range(vmm_idxs, rhs_arg_params);
     } else {

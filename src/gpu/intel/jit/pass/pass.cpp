@@ -44,8 +44,8 @@ stmt_t inject_external_var_let(const stmt_t &_stmt, ir_context_t &ir_ctx) {
             v.external_vars.begin(), v.external_vars.end());
     std::sort(external_vars.begin(), external_vars.end(),
             [&](const expr_t &a, const expr_t &b) {
-                return a.as<var_t>().name < b.as<var_t>().name;
-            });
+        return a.as<var_t>().name < b.as<var_t>().name;
+    });
     for (auto &var : external_vars)
         stmt = let_t::make(var, {}, stmt);
 

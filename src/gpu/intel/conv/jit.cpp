@@ -281,10 +281,11 @@ public:
                     CONV_CHECK(primitive->parallel_for(
                             ctx, nd_ranges_[i], kernels_[i], arg_list));
                 } else if (info.id() == kernel_id_t::zp_precalc) {
-                    auto scratchpad_arg = [&](std::unique_ptr<memory_t,
-                                                      memory_deleter_t> &retn,
-                                                  const std::string &name,
-                                                  const memory_desc_t *md) {
+                    auto scratchpad_arg
+                            = [&](std::unique_ptr<memory_t, memory_deleter_t>
+                                              &retn,
+                                      const std::string &name,
+                                      const memory_desc_t *md) {
                         auto s = ctx.get_scratchpad_grantor()
                                          .get_memory_storage(info.key(name));
                         return safe_ptr_assign(
@@ -395,8 +396,8 @@ private:
                 continue;
             }
 
-            auto add_compute_arg = [&](kernel_info_t &ki, const expr_t &buf,
-                                           bool is_input) {
+            auto add_compute_arg
+                    = [&](kernel_info_t &ki, const expr_t &buf, bool is_input) {
                 if (t.needs_reorder || src_conv_precalc)
                     ki.register_scratchpad_arg(
                             buf, compute_arg_key, is_input, compute_size);

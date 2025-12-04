@@ -1246,51 +1246,51 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
 
     auto diff_weights_offset
             = [&](int g, int i_kd, int i_kh, int i_kw, int i_ic, int i_oc) {
-                  const int oc_block_size = 1;
-                  const int ic_block_size = jcp.oc_block * oc_block_size;
-                  const int kw_block_size = jcp.ic_block * ic_block_size;
-                  const int kh_block_size = jcp.kw * kw_block_size;
-                  const int kd_block_size = jcp.kh * kh_block_size;
-                  const int icb_block_size = jcp.kd * kd_block_size;
-                  const int ocb_block_size = jcp.nb_ic * icb_block_size;
-                  const int g_block_size = jcp.nb_oc * ocb_block_size;
+        const int oc_block_size = 1;
+        const int ic_block_size = jcp.oc_block * oc_block_size;
+        const int kw_block_size = jcp.ic_block * ic_block_size;
+        const int kh_block_size = jcp.kw * kw_block_size;
+        const int kd_block_size = jcp.kh * kh_block_size;
+        const int icb_block_size = jcp.kd * kd_block_size;
+        const int ocb_block_size = jcp.nb_ic * icb_block_size;
+        const int g_block_size = jcp.nb_oc * ocb_block_size;
 
-                  int icb = i_ic / jcp.ic_block;
-                  int ocb = i_oc / jcp.oc_block;
-                  i_ic = i_ic % jcp.ic_block;
-                  i_oc = i_oc % jcp.oc_block;
+        int icb = i_ic / jcp.ic_block;
+        int ocb = i_oc / jcp.oc_block;
+        i_ic = i_ic % jcp.ic_block;
+        i_oc = i_oc % jcp.oc_block;
 
-                  return g * g_block_size + ocb * ocb_block_size
-                          + icb * icb_block_size + i_kd * kd_block_size
-                          + i_kh * kh_block_size + i_kw * kw_block_size
-                          + i_ic * ic_block_size + i_oc * oc_block_size;
-              };
+        return g * g_block_size + ocb * ocb_block_size + icb * icb_block_size
+                + i_kd * kd_block_size + i_kh * kh_block_size
+                + i_kw * kw_block_size + i_ic * ic_block_size
+                + i_oc * oc_block_size;
+    };
     auto src_offset
             = [&](int g, int i_mb, int i_id, int i_ih, int i_ic, int i_iw) {
-                  const int ic_block_size = 1;
-                  const int g_block_size = jcp.ic * ic_block_size;
-                  const int iw_block_size = jcp.ngroups * g_block_size;
-                  const int ih_block_size = jcp.iw * iw_block_size;
-                  const int id_block_size = jcp.ih * ih_block_size;
-                  const int mb_block_size = jcp.id * id_block_size;
+        const int ic_block_size = 1;
+        const int g_block_size = jcp.ic * ic_block_size;
+        const int iw_block_size = jcp.ngroups * g_block_size;
+        const int ih_block_size = jcp.iw * iw_block_size;
+        const int id_block_size = jcp.ih * ih_block_size;
+        const int mb_block_size = jcp.id * id_block_size;
 
-                  return g * g_block_size + i_mb * mb_block_size
-                          + i_id * id_block_size + i_ih * ih_block_size
-                          + i_iw * iw_block_size + i_ic * ic_block_size;
-              };
+        return g * g_block_size + i_mb * mb_block_size + i_id * id_block_size
+                + i_ih * ih_block_size + i_iw * iw_block_size
+                + i_ic * ic_block_size;
+    };
     auto diff_dst_offset
             = [&](int g, int i_mb, int i_od, int i_oh, int i_ow, int i_oc) {
-                  const int oc_block_size = 1;
-                  const int g_block_size = jcp.oc * oc_block_size;
-                  const int ow_block_size = jcp.ngroups * g_block_size;
-                  const int oh_block_size = jcp.ow * ow_block_size;
-                  const int od_block_size = jcp.oh * oh_block_size;
-                  const int mb_block_size = jcp.od * od_block_size;
+        const int oc_block_size = 1;
+        const int g_block_size = jcp.oc * oc_block_size;
+        const int ow_block_size = jcp.ngroups * g_block_size;
+        const int oh_block_size = jcp.ow * ow_block_size;
+        const int od_block_size = jcp.oh * oh_block_size;
+        const int mb_block_size = jcp.od * od_block_size;
 
-                  return g * g_block_size + i_mb * mb_block_size
-                          + i_od * od_block_size + i_oh * oh_block_size
-                          + i_ow * ow_block_size + i_oc * oc_block_size;
-              };
+        return g * g_block_size + i_mb * mb_block_size + i_od * od_block_size
+                + i_oh * oh_block_size + i_ow * ow_block_size
+                + i_oc * oc_block_size;
+    };
     auto zero_diff_weights = [&]() {
         PRAGMA_OMP_SIMD()
         for (dim_t i = 0; i < wei_size; i++)

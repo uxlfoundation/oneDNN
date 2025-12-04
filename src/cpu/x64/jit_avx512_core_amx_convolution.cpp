@@ -162,35 +162,32 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
         const int oh_work = jcp.oh_pad;
         parallel_nd(
                 ngroups, oc_chunks, oh_work, [=](dim_t g, dim_t occ, dim_t oh) {
-                    auto p = jit_conv_args_t();
+            auto p = jit_conv_args_t();
 
-                    const int oh_ = oh >= zp_buff_b_pad_start
-                            ? b_pad_start + oh - zp_buff_b_pad_start
-                            : oh;
-                    const int ih = oh_ * jcp.stride_h - jcp.t_pad;
-                    const int t_overflow
-                            = nstl::min(jcp.kh, div_up(max(0, -ih), dilate_h));
-                    const int b_overflow = nstl::min(jcp.kh,
-                            div_up(nstl::max(0, ih + gen_kh - jcp.ih),
-                                    dilate_h));
-                    p.t_overflow = t_overflow;
-                    p.b_overflow = b_overflow;
-                    p.kh_padding
-                            = nstl::max(0, jcp.kh - t_overflow - b_overflow);
+            const int oh_ = oh >= zp_buff_b_pad_start
+                    ? b_pad_start + oh - zp_buff_b_pad_start
+                    : oh;
+            const int ih = oh_ * jcp.stride_h - jcp.t_pad;
+            const int t_overflow
+                    = nstl::min(jcp.kh, div_up(max(0, -ih), dilate_h));
+            const int b_overflow = nstl::min(jcp.kh,
+                    div_up(nstl::max(0, ih + gen_kh - jcp.ih), dilate_h));
+            p.t_overflow = t_overflow;
+            p.b_overflow = b_overflow;
+            p.kh_padding = nstl::max(0, jcp.kh - t_overflow - b_overflow);
 
-                    const int ocb = g * jcp.oc
-                            + occ * jcp.nb_oc_blocking * jcp.oc_block;
-                    const size_t ch_offset = dst_d.blk_off(0, ocb);
-                    const size_t sp_offset = oh * jcp.ow_pad * sp_stride;
-                    p.zero_point_pbuff
-                            = &zero_point_pbuff[ch_offset + sp_offset];
-                    p.oc_blocks = occ * jcp.nb_oc_blocking;
-                    p.filt = weights
-                            + wei_dt_size * (g * oc_chunks + occ) * wei_oc_step;
-                    p.src_zero_point = src_zero_points;
+            const int ocb
+                    = g * jcp.oc + occ * jcp.nb_oc_blocking * jcp.oc_block;
+            const size_t ch_offset = dst_d.blk_off(0, ocb);
+            const size_t sp_offset = oh * jcp.ow_pad * sp_stride;
+            p.zero_point_pbuff = &zero_point_pbuff[ch_offset + sp_offset];
+            p.oc_blocks = occ * jcp.nb_oc_blocking;
+            p.filt = weights
+                    + wei_dt_size * (g * oc_chunks + occ) * wei_oc_step;
+            p.src_zero_point = src_zero_points;
 
-                    kernel_->zp_pbuff_kernel()(&p);
-                });
+            kernel_->zp_pbuff_kernel()(&p);
+        });
     }
 
     // TODO: implement 2D parallelization driver (g * spatial x oc) to increase
@@ -531,50 +528,43 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
         const int oh_work = jcp.oh_pad;
         parallel_nd(ngroups, oc_chunks, od_work, oh_work,
                 [=](dim_t g, dim_t occ, dim_t od, dim_t oh) {
-                    auto p = jit_conv_args_t();
+            auto p = jit_conv_args_t();
 
-                    const int od_ = od >= zp_buff_back_pad_start
-                            ? back_pad_start + od - zp_buff_back_pad_start
-                            : od;
-                    const int id = od_ * jcp.stride_d - jcp.f_pad;
-                    const int f_overflow
-                            = nstl::min(jcp.kd, div_up(max(0, -id), dilate_d));
-                    const int back_overflow = nstl::min(jcp.kd,
-                            div_up(nstl::max(0, id + gen_kd - jcp.id),
-                                    dilate_d));
-                    p.f_overflow = f_overflow;
-                    p.back_overflow = back_overflow;
-                    p.kd_padding
-                            = nstl::max(0, jcp.kd - f_overflow - back_overflow);
-                    const int oh_ = oh >= zp_buff_b_pad_start
-                            ? b_pad_start + oh - zp_buff_b_pad_start
-                            : oh;
-                    const int ih = oh_ * jcp.stride_h - jcp.t_pad;
-                    const int t_overflow
-                            = nstl::min(jcp.kh, div_up(max(0, -ih), dilate_h));
-                    const int b_overflow = nstl::min(jcp.kh,
-                            div_up(nstl::max(0, ih + gen_kh - jcp.ih),
-                                    dilate_h));
-                    p.t_overflow = t_overflow;
-                    p.b_overflow = b_overflow;
-                    p.kh_padding
-                            = nstl::max(0, jcp.kh - t_overflow - b_overflow);
+            const int od_ = od >= zp_buff_back_pad_start
+                    ? back_pad_start + od - zp_buff_back_pad_start
+                    : od;
+            const int id = od_ * jcp.stride_d - jcp.f_pad;
+            const int f_overflow
+                    = nstl::min(jcp.kd, div_up(max(0, -id), dilate_d));
+            const int back_overflow = nstl::min(jcp.kd,
+                    div_up(nstl::max(0, id + gen_kd - jcp.id), dilate_d));
+            p.f_overflow = f_overflow;
+            p.back_overflow = back_overflow;
+            p.kd_padding = nstl::max(0, jcp.kd - f_overflow - back_overflow);
+            const int oh_ = oh >= zp_buff_b_pad_start
+                    ? b_pad_start + oh - zp_buff_b_pad_start
+                    : oh;
+            const int ih = oh_ * jcp.stride_h - jcp.t_pad;
+            const int t_overflow
+                    = nstl::min(jcp.kh, div_up(max(0, -ih), dilate_h));
+            const int b_overflow = nstl::min(jcp.kh,
+                    div_up(nstl::max(0, ih + gen_kh - jcp.ih), dilate_h));
+            p.t_overflow = t_overflow;
+            p.b_overflow = b_overflow;
+            p.kh_padding = nstl::max(0, jcp.kh - t_overflow - b_overflow);
 
-                    const int ocb = g * jcp.oc
-                            + occ * jcp.nb_oc_blocking * jcp.oc_block;
-                    const size_t ch_offset = dst_d.blk_off(0, ocb);
-                    auto sp_offset
-                            = (od * jcp.oh_pad + oh) * jcp.ow_pad * sp_stride;
-                    p.zero_point_pbuff
-                            = &zero_point_pbuff[ch_offset + sp_offset];
-                    p.oc_blocks = occ * jcp.nb_oc_blocking;
-                    p.filt = weights
-                            + wei_dt_size * (g * oc_chunks + occ)
-                                    * wei_oc_shift;
-                    p.src_zero_point = src_zero_points;
+            const int ocb
+                    = g * jcp.oc + occ * jcp.nb_oc_blocking * jcp.oc_block;
+            const size_t ch_offset = dst_d.blk_off(0, ocb);
+            auto sp_offset = (od * jcp.oh_pad + oh) * jcp.ow_pad * sp_stride;
+            p.zero_point_pbuff = &zero_point_pbuff[ch_offset + sp_offset];
+            p.oc_blocks = occ * jcp.nb_oc_blocking;
+            p.filt = weights
+                    + wei_dt_size * (g * oc_chunks + occ) * wei_oc_shift;
+            p.src_zero_point = src_zero_points;
 
-                    kernel_->zp_pbuff_kernel()(&p);
-                });
+            kernel_->zp_pbuff_kernel()(&p);
+        });
     }
 
     // TODO: implement 2D parallelization driver (g * spatial x oc) to increase
@@ -1761,17 +1751,17 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::compute_diff_weights(
 
     auto tr_diff_dst_off_3d
             = [&](int g, int oc, int nb_oc_block, int od, int oj) {
-                  const size_t tr_row_size = jcp.tr_ow * jcp.oc_block;
-                  const size_t tr_3d_size = tr_row_size * jcp.oh;
-                  int adj = (jcp.global_transpose) ? 1 : jcp.nb_oc_blocking;
-                  return tr_diff_dst_buf_number(ti, g, oc)
-                          * jcp.tr_diff_dst_buf_size * adj
-                          + od * tr_3d_size + oj * tr_row_size
-                          + nb_oc_block * jcp.tr_src_buf_size;
-              };
+        const size_t tr_row_size = jcp.tr_ow * jcp.oc_block;
+        const size_t tr_3d_size = tr_row_size * jcp.oh;
+        int adj = (jcp.global_transpose) ? 1 : jcp.nb_oc_blocking;
+        return tr_diff_dst_buf_number(ti, g, oc) * jcp.tr_diff_dst_buf_size
+                * adj
+                + od * tr_3d_size + oj * tr_row_size
+                + nb_oc_block * jcp.tr_src_buf_size;
+    };
 
-    auto uker_trans = [&](int img, int g = 0, int ic_b = 0,
-                              int nb_ic_block = 0) {
+    auto uker_trans
+            = [&](int img, int g = 0, int ic_b = 0, int nb_ic_block = 0) {
         int j {0}, d {0};
         int my_work = jcp.ih * jcp.id;
         int ic;
@@ -1818,8 +1808,8 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::compute_diff_weights(
         }
     };
 
-    auto diff_dst_trans = [&](int img, int g = 0, int oc_b = 0,
-                                  int nb_oc_block = 0) {
+    auto diff_dst_trans
+            = [&](int img, int g = 0, int oc_b = 0, int nb_oc_block = 0) {
         int j {0}, d {0};
         int my_work = jcp.oh * jcp.od;
         int oc;

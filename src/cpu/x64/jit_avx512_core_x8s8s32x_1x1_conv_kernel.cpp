@@ -206,20 +206,19 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::apply_sum(
         const auto sum_injector_lam
                 = [this, sum_scale, sum_zp, load_loop_blk](const bool mask_flag,
                           const int i_load, const int i_ur) {
-                      const auto r = vreg_accum(load_loop_blk, i_load, i_ur);
-                      cvt2ps(jcp.sum_dt, vmm_prev_dst, output_ptr(i_load, i_ur),
-                              mask_flag);
-                      if (sum_zp != 0) vsubps(vmm_prev_dst, vmm_tmp);
-                      if (sum_scale == 1.f)
-                          vaddps(r, vmm_prev_dst);
-                      else
-                          vfmadd231ps(
-                                  r, vmm_prev_dst, zword_b[reg_ptr_sum_scale]);
-                  };
+            const auto r = vreg_accum(load_loop_blk, i_load, i_ur);
+            cvt2ps(jcp.sum_dt, vmm_prev_dst, output_ptr(i_load, i_ur),
+                    mask_flag);
+            if (sum_zp != 0) vsubps(vmm_prev_dst, vmm_tmp);
+            if (sum_scale == 1.f)
+                vaddps(r, vmm_prev_dst);
+            else
+                vfmadd231ps(r, vmm_prev_dst, zword_b[reg_ptr_sum_scale]);
+        };
         // Capture by value has to be applied since this lambda is called from
         // a different context when stack values are unavailable.
-        const auto sum_injector = [load_loop_blk, ur, mask_flag_in,
-                                          sum_injector_lam]() {
+        const auto sum_injector
+                = [load_loop_blk, ur, mask_flag_in, sum_injector_lam]() {
             iterate(load_loop_blk, ur, mask_flag_in, sum_injector_lam);
         };
         if (sum_zp != 0) vcvtdq2ps(vmm_tmp, ptr_b[rsp + reg_ptr_sum_zp_off]);
@@ -246,21 +245,21 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::apply_postops(
             iterate(load_loop_blk, ur, mask_tail, oc_blk_is_smaller_than_vmm,
                     [&](const bool mask_flag, const int i_load,
                             const int i_ur) {
-                        const int ur_stride
-                                = jcp.oc_without_padding * jcp.ngroups * i_ur;
-                        const size_t aux_output_l_off = jcp.typesize_out
-                                * (ur_stride + i_load * jcp.load_block);
-                        const auto vmm_idx
-                                = vreg_accum_idx(load_loop_blk, i_load, i_ur);
-                        vmm_idxs.emplace(vmm_idx);
+                const int ur_stride
+                        = jcp.oc_without_padding * jcp.ngroups * i_ur;
+                const size_t aux_output_l_off = jcp.typesize_out
+                        * (ur_stride + i_load * jcp.load_block);
+                const auto vmm_idx
+                        = vreg_accum_idx(load_loop_blk, i_load, i_ur);
+                vmm_idxs.emplace(vmm_idx);
 
-                        rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
-                                vmm_idx, aux_reg_output_data);
-                        rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
-                                vmm_idx, aux_output_l_off);
-                        if (mask_flag)
-                            rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
-                    });
+                rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
+                        vmm_idx, aux_reg_output_data);
+                rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
+                        vmm_idx, aux_output_l_off);
+                if (mask_flag)
+                    rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
+            });
             rhs_arg_params = rhs_arg_params_tail;
             rhs_arg_params.vmm_tail_idx_.clear();
 
@@ -286,9 +285,8 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::apply_postops(
         } else {
             iterate(load_loop_blk, ur,
                     [&](const bool, const int i_load, const int i_ur) {
-                        vmm_idxs.emplace(
-                                vreg_accum_idx(load_loop_blk, i_load, i_ur));
-                    });
+                vmm_idxs.emplace(vreg_accum_idx(load_loop_blk, i_load, i_ur));
+            });
             postops_injector_->compute_vector_range(vmm_idxs);
         }
     }

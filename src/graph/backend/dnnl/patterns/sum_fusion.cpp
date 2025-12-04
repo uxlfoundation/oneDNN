@@ -41,12 +41,11 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, sum_fusion)
                             = pgraph->append_op(graph::op_kind::Add);
                     add_base->append_decision_function(
                             [](op_t *graph_op) -> bool {
-                                return !graph_op->has_attr(
-                                               op_attr::auto_broadcast)
-                                        || graph_op->get_attr<std::string>(
-                                                   op_attr::auto_broadcast)
-                                        == "none";
-                            });
+                        return !graph_op->has_attr(op_attr::auto_broadcast)
+                                || graph_op->get_attr<std::string>(
+                                           op_attr::auto_broadcast)
+                                == "none";
+                    });
 
                     auto addgraph = std::make_shared<pb_graph>();
                     pm::pb_op_t *add = addgraph->append_op(graph::op_kind::Add);

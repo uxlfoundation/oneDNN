@@ -570,8 +570,8 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
             default: assert(!"unimplemented");
         }
     };
-    auto gather_coefficient = [&](Vmm vmm_coeff, int coeff_idx,
-                                      Vmm vmm_pol_idx) {
+    auto gather_coefficient
+            = [&](Vmm vmm_coeff, int coeff_idx, Vmm vmm_pol_idx) {
         switch (isa) {
             case sse41:
                 for (int idx = 0; idx < 4; ++idx) {
@@ -1051,8 +1051,8 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::log_compute_vector_fwd(
     }
     const auto table_start_idx = (*it).second.off;
 
-    auto gather_table_values = [&](const Vmm &vmm_dst, const Vmm &vmm_idxs,
-                                       size_t offt = 0) {
+    auto gather_table_values
+            = [&](const Vmm &vmm_dst, const Vmm &vmm_idxs, size_t offt = 0) {
         Xbyak::Address table_idx = h->ptr[p_table_ + table_start_idx + offt
                 + vmm_idxs * sizeof(float)];
         if (is_avx512_) {
@@ -1305,8 +1305,8 @@ void jit_uni_eltwise_injector_t<isa,
         return table_val(
                 gelu_erf_minimax_pol, coeff_off * gelu_erf_n_polynomials + off);
     };
-    auto gather_coefficient = [&](Vmm vmm_coeff, int coeff_idx,
-                                      Vmm vmm_pol_idx) {
+    auto gather_coefficient
+            = [&](Vmm vmm_coeff, int coeff_idx, Vmm vmm_pol_idx) {
         Zmm zmm_coeff(vmm_coeff.getIdx());
         Zmm zmm_pol_idx(vmm_pol_idx.getIdx());
         h->uni_vmovups(zmm_coeff, coeffs_address(coeff_idx, 0));

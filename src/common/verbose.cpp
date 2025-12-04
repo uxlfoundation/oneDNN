@@ -446,20 +446,20 @@ std::string md2fmt_tag_str(const memory_desc_t *md) {
     //   output tag: acdb
     std::sort(sort_keys.begin(), sort_keys.end(),
             [](const sort_key_t &left, const sort_key_t &right) {
-                if (left.stride_order < right.stride_order) return false;
-                if (left.stride_order == right.stride_order) {
-                    // WLOG, we can assume a dimension of size 1 has the same
-                    // stride as the next outermost dimension. Sort the one with
-                    // the non-unit outer block as the outer dimension. Multiple
-                    // dimensions of size 1 with the same stride is ambiguous.
-                    if (left.outer_block < right.outer_block) return false;
-                    if (left.outer_block == right.outer_block)
-                        // Sort 1x1x... outer blocks to (arbitrarily) list them
-                        // in alphabetical order.
-                        return left.idx < right.idx;
-                }
-                return true;
-            });
+        if (left.stride_order < right.stride_order) return false;
+        if (left.stride_order == right.stride_order) {
+            // WLOG, we can assume a dimension of size 1 has the same
+            // stride as the next outermost dimension. Sort the one with
+            // the non-unit outer block as the outer dimension. Multiple
+            // dimensions of size 1 with the same stride is ambiguous.
+            if (left.outer_block < right.outer_block) return false;
+            if (left.outer_block == right.outer_block)
+                // Sort 1x1x... outer blocks to (arbitrarily) list them
+                // in alphabetical order.
+                return left.idx < right.idx;
+        }
+        return true;
+    });
 
     char dim_chars[DNNL_MAX_NDIMS + 1];
     for (int i = 0; i < mdw.ndims(); ++i)

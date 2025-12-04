@@ -35,11 +35,11 @@ static status_t init_conf_common(
     };
     auto is_c_blocked_by
             = [](const memory_desc_wrapper &mdw, const int blockSize) {
-                  auto &blk = mdw.blocking_desc();
-                  if (blk.inner_nblks == 0) return false;
-                  return (blk.inner_idxs[blk.inner_nblks - 1] == 1)
-                          && (blk.inner_blks[blk.inner_nblks - 1] == blockSize);
-              };
+        auto &blk = mdw.blocking_desc();
+        if (blk.inner_nblks == 0) return false;
+        return (blk.inner_idxs[blk.inner_nblks - 1] == 1)
+                && (blk.inner_blks[blk.inner_nblks - 1] == blockSize);
+    };
 
     VDISPATCH_POOLING_IC(is_c_blocked_by(src_mdw, 16)
                     || is_c_blocked_by(src_mdw, 32) || is_c_dense(src_mdw),

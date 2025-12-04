@@ -104,8 +104,8 @@ public:
                         auto pos = std::find_if(thread_instances.begin(),
                                 thread_instances.end(),
                                 [&](std::shared_ptr<T> &ins) -> bool {
-                                    return ins.get() == value.get();
-                                });
+                            return ins.get() == value.get();
+                        });
                         assertm(pos != thread_instances.end(),
                                 "expected value to exist in cache");
                         thread_instances.erase(pos);
@@ -227,8 +227,8 @@ private:
                         auto pos = std::find_if(thread_instances.begin(),
                                 thread_instances.end(),
                                 [&](std::shared_ptr<T> &ins) -> bool {
-                                    return ins.get() == value.get();
-                                });
+                            return ins.get() == value.get();
+                        });
                         assertm(pos != thread_instances.end(),
                                 "expected value to exist in cache");
                         // Destroy it

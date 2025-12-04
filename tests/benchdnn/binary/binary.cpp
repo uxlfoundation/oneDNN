@@ -195,20 +195,18 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     // by value to avoid using dangling references.
     const auto binary_add_check
             = [prb](const compare::compare_t::driver_check_func_args_t &args) {
-                  // fp16 result can slightly mismatch for division due to
-                  // difference in backends implementations.
-                  return prb->alg == alg_t::DIV
-                          ? args.diff < epsilon_dt(args.dt)
-                          : false;
-              };
+        // fp16 result can slightly mismatch for division due to
+        // difference in backends implementations.
+        return prb->alg == alg_t::DIV ? args.diff < epsilon_dt(args.dt) : false;
+    };
     cmp.set_driver_check_function(binary_add_check);
 
     static const std::vector<alg_t> cmp_alg = {
             alg_t::GE, alg_t::GT, alg_t::LE, alg_t::LT, alg_t::EQ, alg_t::NE};
     const bool is_cmp = std::any_of(
             cmp_alg.cbegin(), cmp_alg.cend(), [&](const alg_t alg) {
-                return (prb->alg == alg) || prb->attr.post_ops.find(alg) >= 0;
-            });
+        return (prb->alg == alg) || prb->attr.post_ops.find(alg) >= 0;
+    });
 
     if (is_cmp) cmp.set_zero_trust_percent(99.f);
 }

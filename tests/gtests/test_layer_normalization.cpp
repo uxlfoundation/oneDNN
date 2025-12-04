@@ -477,9 +477,9 @@ static auto expected_failure_cases = []() {
     // clang-format on
 };
 
-static auto zero_dim_cases = [](memory::data_type src_dt,
-                                     memory::data_type dst_dt,
-                                     memory::data_type diff_src_dt) {
+static auto zero_dim_cases
+        = [](memory::data_type src_dt, memory::data_type dst_dt,
+                  memory::data_type diff_src_dt) {
     // clang-format off
     return ::testing::Values(
         LNORM_TEST_CASE(TAGS_NC, src_dt, dst_dt, diff_src_dt, {0, 100}),
@@ -490,9 +490,9 @@ static auto zero_dim_cases = [](memory::data_type src_dt,
     // clang-format on
 };
 
-static auto simple_cases = [](memory::data_type src_dt,
-                                   memory::data_type dst_dt,
-                                   memory::data_type diff_src_dt) {
+static auto simple_cases
+        = [](memory::data_type src_dt, memory::data_type dst_dt,
+                  memory::data_type diff_src_dt) {
     // clang-format off
     return ::testing::Values(
         LNORM_TEST_CASE(TAGS_NC, src_dt, dst_dt, diff_src_dt, {1, 100}),

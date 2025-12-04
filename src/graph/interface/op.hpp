@@ -306,10 +306,10 @@ public:
             std::set<op_attr_t> excepted = {}) const {
         return std::all_of(attributes_.begin(), attributes_.end(),
                 [&](const std::pair<op_attr_t, attribute_value_t> &attr) {
-                    return excepted.count(attr.first)
-                            ? true
-                            : is_same_attr_value(op_b, attr.first);
-                });
+            return excepted.count(attr.first)
+                    ? true
+                    : is_same_attr_value(op_b, attr.first);
+        });
     }
 
     static std::string attr2str(op_attr_t attr) {
@@ -511,8 +511,8 @@ public:
         std::for_each(attrs.begin(), attrs.end(),
                 [&copied_attrs](
                         const std::pair<op_attr_t, attribute_value_t> &v) {
-                    copied_attrs.emplace(attr2str(v.first), v.second);
-                });
+            copied_attrs.emplace(attr2str(v.first), v.second);
+        });
 
         copied_attrs.erase("op_depth");
         copied_attrs.erase("matched");

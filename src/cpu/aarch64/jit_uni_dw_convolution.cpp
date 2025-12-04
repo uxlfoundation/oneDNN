@@ -317,33 +317,32 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                       const int group, const int oh_start, const int work_size,
                       const unsigned char exec_flag, const size_t kh_padding,
                       const size_t filter_off) {
-                  const int tpad_underflow_off = jcp.t_pad - filter_off;
+        const int tpad_underflow_off = jcp.t_pad - filter_off;
 
-                  conv_params->exec_flags = exec_flag;
-                  conv_params->kh_count = jcp.kh - kh_padding;
+        conv_params->exec_flags = exec_flag;
+        conv_params->kh_count = jcp.kh - kh_padding;
 
-                  const int oh_s = oh_start;
-                  const int oh_e = oh_start + work_size;
-                  const int ih_s = oh_s * jcp.stride_h;
+        const int oh_s = oh_start;
+        const int oh_e = oh_start + work_size;
+        const int ih_s = oh_s * jcp.stride_h;
 
-                  conv_params->filter_pad_off
-                          = filter_off * jcp.kw * ch_block * jcp.typesize_out;
-                  conv_params->oh_index = oh_s;
-                  conv_params->oh_count = oh_e;
+        conv_params->filter_pad_off
+                = filter_off * jcp.kw * ch_block * jcp.typesize_out;
+        conv_params->oh_index = oh_s;
+        conv_params->oh_count = oh_e;
 
-                  size_t diff_dst_off
-                          = ((batch * (jcp.ngroups / ch_block) + group) * jcp.oh
-                                    + oh_start)
-                          * jcp.ow;
+        size_t diff_dst_off
+                = ((batch * (jcp.ngroups / ch_block) + group) * jcp.oh
+                          + oh_start)
+                * jcp.ow;
 
-                  size_t src_off
-                          = ((batch * (jcp.ngroups / ch_block) + group) * jcp.ih
-                                    + ih_s - tpad_underflow_off)
-                          * jcp.iw;
+        size_t src_off = ((batch * (jcp.ngroups / ch_block) + group) * jcp.ih
+                                 + ih_s - tpad_underflow_off)
+                * jcp.iw;
 
-                  conv_params->output = &diff_dst[diff_dst_off * ch_block];
-                  conv_params->input = &src[src_off * ch_block];
-              };
+        conv_params->output = &diff_dst[diff_dst_off * ch_block];
+        conv_params->input = &src[src_off * ch_block];
+    };
 
     parallel(jcp.nthr, [&](const int ithr, const int nthr) {
         assert(nthr == jcp.nthr);

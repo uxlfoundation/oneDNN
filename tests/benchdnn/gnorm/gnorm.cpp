@@ -568,28 +568,27 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     const auto gnorm_add_check =
             [&, kind, prb](
                     const compare::compare_t::driver_check_func_args_t &args) {
-                if (!((prb->dir & FLAG_FWD) && kind == DST && prb->use_sh()))
-                    return false;
+        if (!((prb->dir & FLAG_FWD) && kind == DST && prb->use_sh()))
+            return false;
 
-                const auto &sh = ref_args.find(DNNL_ARG_SHIFT);
-                const auto &dst = ref_args.find(DNNL_ARG_DST);
-                const int64_t c
-                        = dst.get_idx(args.idx, 1 << 1 /* last_dim_mask */);
-                const float beta = sh.get_f32_elem(c);
-                // Using an empirically derived threshold, check if
-                // cancellation error in `|Y| = |a*X - (-b)|` is huge.
-                const float abs_exp = fabsf(args.exp);
-                const float norm_denom = abs_exp > FLT_MIN ? abs_exp : 1.f;
-                const float abs_exp_delta = fabsf(args.exp - beta);
-                bool maybe_cancel_error = abs_exp_delta / norm_denom > 1.f;
-                if (!maybe_cancel_error) return false;
+        const auto &sh = ref_args.find(DNNL_ARG_SHIFT);
+        const auto &dst = ref_args.find(DNNL_ARG_DST);
+        const int64_t c = dst.get_idx(args.idx, 1 << 1 /* last_dim_mask */);
+        const float beta = sh.get_f32_elem(c);
+        // Using an empirically derived threshold, check if
+        // cancellation error in `|Y| = |a*X - (-b)|` is huge.
+        const float abs_exp = fabsf(args.exp);
+        const float norm_denom = abs_exp > FLT_MIN ? abs_exp : 1.f;
+        const float abs_exp_delta = fabsf(args.exp - beta);
+        bool maybe_cancel_error = abs_exp_delta / norm_denom > 1.f;
+        if (!maybe_cancel_error) return false;
 
-                // Check for error in `a * X`
-                float diff_aX = fabsf((args.exp - beta) - (args.got - beta));
-                float rel_diff_aX = diff_aX
-                        / (abs_exp_delta > FLT_MIN ? abs_exp_delta : 1.f);
-                return rel_diff_aX <= args.trh;
-            };
+        // Check for error in `a * X`
+        float diff_aX = fabsf((args.exp - beta) - (args.got - beta));
+        float rel_diff_aX
+                = diff_aX / (abs_exp_delta > FLT_MIN ? abs_exp_delta : 1.f);
+        return rel_diff_aX <= args.trh;
+    };
     cmp.set_driver_check_function(gnorm_add_check);
 }
 

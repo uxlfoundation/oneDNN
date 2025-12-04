@@ -243,17 +243,17 @@ protected:
                 && IMPLICATION(!is_zero_md(&dst_iter_c_md_),
                         is_blocked(dst_iter_c_md_, 4, true));
 
-        const auto check_weights_consistency =
-                [&](const memory_desc_t &weights_md) {
-                    if (weights_md.format_kind == format_kind::rnn_packed)
-                        return ok
-                                && weights_md.format_desc.rnn_packed_desc.format
-                                == rnn_packed_memory_format_t::ldgoi_p;
-                    else if (is_brgemm)
-                        return ok && rnn_utils::is_ldgoi_blocked(&weights_md);
-                    else
-                        return ok && rnn_utils::is_ldgoi(&weights_md);
-                };
+        const auto check_weights_consistency
+                = [&](const memory_desc_t &weights_md) {
+            if (weights_md.format_kind == format_kind::rnn_packed)
+                return ok
+                        && weights_md.format_desc.rnn_packed_desc.format
+                        == rnn_packed_memory_format_t::ldgoi_p;
+            else if (is_brgemm)
+                return ok && rnn_utils::is_ldgoi_blocked(&weights_md);
+            else
+                return ok && rnn_utils::is_ldgoi(&weights_md);
+        };
 
         ok = check_weights_consistency(weights_layer_md_);
         ok = check_weights_consistency(weights_iter_md_);

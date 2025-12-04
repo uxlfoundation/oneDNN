@@ -156,8 +156,8 @@ protected:
         }
         const size_t loop_ur = loop_ur_val;
 
-        auto compute_loop = [&](size_t current_vlen_elem,
-                                    size_t current_loop_unroll) {
+        auto compute_loop
+                = [&](size_t current_vlen_elem, size_t current_loop_unroll) {
             const auto current_vlen = current_vlen_elem * scratch_dt_size;
             Label loop_start_label;
             L(loop_start_label);

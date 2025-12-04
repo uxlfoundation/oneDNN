@@ -144,8 +144,8 @@ op_schema_t &op_schema_t::set_attr(op_attr_t name, bool required,
     std::vector<utils::attribute_value_t> candidates_tmp(candidates.size());
     std::transform(candidates.begin(), candidates.end(), candidates_tmp.begin(),
             [](const char *c) {
-                return utils::attribute_value_t {std::string(c)};
-            });
+        return utils::attribute_value_t {std::string(c)};
+    });
     attributes_[name]
             = attribute_t(name, required, attr_kind, std::move(candidates_tmp));
     return *this;
@@ -159,8 +159,8 @@ op_schema_t &op_schema_t::set_attr(op_attr_t name, bool required,
     std::vector<utils::attribute_value_t> candidates_tmp(candidates.size());
     std::transform(candidates.begin(), candidates.end(), candidates_tmp.begin(),
             [](const char *c) {
-                return utils::attribute_value_t {std::string(c)};
-            });
+        return utils::attribute_value_t {std::string(c)};
+    });
     attributes_[name] = attribute_t(name, required, attr_kind,
             utils::attribute_value_t {std::string(value)},
             std::move(candidates_tmp));

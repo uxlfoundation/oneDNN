@@ -79,14 +79,14 @@ status_t DNNL_API dnnl_graph_partition_create_with_op(
     const auto &input_vals = op->get_input_values();
     auto opaque_in_iter = std::find_if(input_vals.begin(), input_vals.end(),
             [](const std::shared_ptr<value_t> &it) {
-                return ltw(it->get_logical_tensor()).is_opaque();
-            });
+        return ltw(it->get_logical_tensor()).is_opaque();
+    });
     // find opaque layout tensors in outputs
     const auto &output_vals = op->get_output_values();
     auto opaque_out_iter = std::find_if(output_vals.begin(), output_vals.end(),
             [](const std::shared_ptr<value_t> &it) {
-                return ltw(it->get_logical_tensor()).is_opaque();
-            });
+        return ltw(it->get_logical_tensor()).is_opaque();
+    });
 
     // Case 1: all input/outputs are not opaque logical tensors. We need go
     // through all registered backends to get partitions
@@ -498,8 +498,8 @@ status_t dnnl_graph_partition::infer_shape(
     auto pos = std::find_if(outputs.begin(), outputs.end(),
             [&](const std::vector<logical_tensor_t *>::value_type &out)
                     -> bool {
-                return logical_tensor_wrapper_t(out).is_shape_unknown();
-            });
+        return logical_tensor_wrapper_t(out).is_shape_unknown();
+    });
     if (pos == outputs.end()) { return status::success; }
 
     return pimpl_->infer_shape(inputs, outputs);

@@ -433,8 +433,8 @@ private:
     }
 
     void build_zp_apply(int subtile_idx, stmt_t &mul_stmt) {
-        auto make_zp_fma = [&](const std::string &zp_buf, abc_kind_t kind,
-                                   int size) {
+        auto make_zp_fma
+                = [&](const std::string &zp_buf, abc_kind_t kind, int size) {
             gpu_assert((kind == abc_kind_t::a) || (kind == abc_kind_t::b));
             buf_mgr_.get(zp_buf, size);
             return plan_.fma.create_stmt(ir_ctx_, buf_mgr_,

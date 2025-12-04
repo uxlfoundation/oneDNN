@@ -319,31 +319,31 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
 
     benchdnn_parallel_nd(G, MB, ICG, sp.h_tiles, sp.w_tiles,
             [&](int64_t g, int64_t img, int64_t c, int64_t hfm, int64_t wfm) {
-                float I[6][6] = {};
-                float _v[6][6] = {};
-                /* src_transform v <- B_t * d * B */
-                for (int64_t j = 0; j < sp.alpha; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
-                    if ((t_pad <= ydim) && (ydim < hp_max)) {
-                        for (int64_t k = 0; k < sp.alpha; k++) {
-                            int64_t xdim = wfm * sp.out_dim + k;
-                            if ((l_pad <= xdim) && (xdim < wp_max)) {
-                                size_t src_off = src_off_f(prb, img, g, c, 0,
-                                        ydim - t_pad, xdim - l_pad);
-                                I[j][k] = ((float *)src_m)[src_off];
-                            }
-                        }
+        float I[6][6] = {};
+        float _v[6][6] = {};
+        /* src_transform v <- B_t * d * B */
+        for (int64_t j = 0; j < sp.alpha; j++) {
+            int64_t ydim = hfm * sp.out_dim + j;
+            if ((t_pad <= ydim) && (ydim < hp_max)) {
+                for (int64_t k = 0; k < sp.alpha; k++) {
+                    int64_t xdim = wfm * sp.out_dim + k;
+                    if ((l_pad <= xdim) && (xdim < wp_max)) {
+                        size_t src_off = src_off_f(
+                                prb, img, g, c, 0, ydim - t_pad, xdim - l_pad);
+                        I[j][k] = ((float *)src_m)[src_off];
                     }
                 }
-                trans_I_4x4_3x3(_v, I);
+            }
+        }
+        trans_I_4x4_3x3(_v, I);
 
-                /* scatter v:V */
-                for (int64_t j = 0; j < sp.alpha; j++) {
-                    for (int64_t k = 0; k < sp.alpha; k++) {
-                        V(j, k, g, c, img, hfm, wfm) = _v[j][k];
-                    }
-                }
-            });
+        /* scatter v:V */
+        for (int64_t j = 0; j < sp.alpha; j++) {
+            for (int64_t k = 0; k < sp.alpha; k++) {
+                V(j, k, g, c, img, hfm, wfm) = _v[j][k];
+            }
+        }
+    });
 
     benchdnn_parallel_nd(G, OCG, ICG, [&](int64_t g, int64_t oc, int64_t ic) {
         float F[3][3] = {};
@@ -365,50 +365,49 @@ void compute_wino_ref_fwd(const prb_t *prb, const args_t &args) {
 
     benchdnn_parallel_nd(
             sp.alpha, sp.alpha, G, [&](int64_t j, int64_t k, int64_t g) {
-                /* M = U * V */
-                gemm("C", "N", "N", OCG, p_dim, ICG, 1.0,
-                        (float *)&(U(j, k, g, 0, 0)), ICG,
-                        (float *)&(V(j, k, g, 0, 0, 0, 0)), p_dim, 1.0,
-                        (float *)&(M(j, k, g, 0, 0, 0, 0)), p_dim);
-            });
+        /* M = U * V */
+        gemm("C", "N", "N", OCG, p_dim, ICG, 1.0, (float *)&(U(j, k, g, 0, 0)),
+                ICG, (float *)&(V(j, k, g, 0, 0, 0, 0)), p_dim, 1.0,
+                (float *)&(M(j, k, g, 0, 0, 0, 0)), p_dim);
+    });
 
     auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
     benchdnn_parallel_nd(G, MB, OCG, sp.h_tiles, sp.w_tiles,
             [&](int64_t g, int64_t img, int64_t oc, int64_t hfm, int64_t wfm) {
-                float O[4][4] = {};
-                float _m[6][6] = {};
-                /* Y = A_t *m * A */
-                for_(int64_t j = 0; j < sp.alpha; j++)
-                for (int64_t k = 0; k < sp.alpha; k++) {
-                    _m[j][k] = M(j, k, g, oc, img, hfm, wfm);
-                }
-                trans_O_4x4_3x3(_m, O);
+        float O[4][4] = {};
+        float _m[6][6] = {};
+        /* Y = A_t *m * A */
+        for_(int64_t j = 0; j < sp.alpha; j++)
+        for (int64_t k = 0; k < sp.alpha; k++) {
+            _m[j][k] = M(j, k, g, oc, img, hfm, wfm);
+        }
+        trans_O_4x4_3x3(_m, O);
 
-                for (int64_t j = 0; j < sp.out_dim; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
-                    if (ydim >= prb->oh) continue;
+        for (int64_t j = 0; j < sp.out_dim; j++) {
+            int64_t ydim = hfm * sp.out_dim + j;
+            if (ydim >= prb->oh) continue;
 
-                    for (int64_t k = 0; k < sp.out_dim; k++) {
-                        float conv_res = O[j][k];
-                        int64_t xdim = wfm * sp.out_dim + k;
-                        if (xdim >= prb->ow) continue;
+            for (int64_t k = 0; k < sp.out_dim; k++) {
+                float conv_res = O[j][k];
+                int64_t xdim = wfm * sp.out_dim + k;
+                if (xdim >= prb->ow) continue;
 
-                        const size_t dst_off
-                                = dst_off_f(prb, img, g, oc, 0, ydim, xdim);
-                        float &dst = ((float *)dst_m)[dst_off];
+                const size_t dst_off
+                        = dst_off_f(prb, img, g, oc, 0, ydim, xdim);
+                float &dst = ((float *)dst_m)[dst_off];
 
-                        const size_t bia_off = bia_off_f(prb, g, oc);
-                        conv_res += with_bias ? ((float *)bia_m)[bia_off] : 0.f;
+                const size_t bia_off = bia_off_f(prb, g, oc);
+                conv_res += with_bias ? ((float *)bia_m)[bia_off] : 0.f;
 
-                        const auto v_po_vals = prepare_po_vals(
-                                dst_m, args, v_po_masks, dst_off);
+                const auto v_po_vals
+                        = prepare_po_vals(dst_m, args, v_po_masks, dst_off);
 
-                        maybe_post_ops(prb->attr, conv_res, dst, v_po_vals);
+                maybe_post_ops(prb->attr, conv_res, dst, v_po_vals);
 
-                        dst = conv_res;
-                    }
-                }
-            });
+                dst = conv_res;
+            }
+        }
+    });
     free_scratchpad(&sp);
 }
 
@@ -441,30 +440,30 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
 
     benchdnn_parallel_nd(prb->mb, prb->oc, sp.h_tiles, sp.w_tiles,
             [&](int64_t img, int64_t c, int64_t hfm, int64_t wfm) {
-                float I[6][6] = {};
-                float _v[6][6] = {};
-                /* diff_src transform v <- B_t * d * B */
-                for (int64_t j = 0; j < sp.alpha; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
-                    if ((t_pad <= ydim) && (ydim < hp_max)) {
-                        for (int64_t k = 0; k < sp.alpha; k++) {
-                            int64_t xdim = wfm * sp.out_dim + k;
-                            if ((l_pad <= xdim) && (xdim < wp_max)) {
-                                size_t dst_off = dst_off_f(prb, img, 0, c, 0,
-                                        ydim - t_pad, xdim - l_pad);
-                                I[j][k] = ((float *)diff_dst_m)[dst_off];
-                            }
-                        }
-                    }
-                    trans_I_4x4_3x3(_v, I);
-
-                    /* scatter v:V */
-                    for_(int64_t j = 0; j < sp.alpha; j++)
-                    for (int64_t k = 0; k < sp.alpha; k++) {
-                        V(j, k, c, img, hfm, wfm) = _v[j][k];
+        float I[6][6] = {};
+        float _v[6][6] = {};
+        /* diff_src transform v <- B_t * d * B */
+        for (int64_t j = 0; j < sp.alpha; j++) {
+            int64_t ydim = hfm * sp.out_dim + j;
+            if ((t_pad <= ydim) && (ydim < hp_max)) {
+                for (int64_t k = 0; k < sp.alpha; k++) {
+                    int64_t xdim = wfm * sp.out_dim + k;
+                    if ((l_pad <= xdim) && (xdim < wp_max)) {
+                        size_t dst_off = dst_off_f(
+                                prb, img, 0, c, 0, ydim - t_pad, xdim - l_pad);
+                        I[j][k] = ((float *)diff_dst_m)[dst_off];
                     }
                 }
-            });
+            }
+            trans_I_4x4_3x3(_v, I);
+
+            /* scatter v:V */
+            for_(int64_t j = 0; j < sp.alpha; j++)
+            for (int64_t k = 0; k < sp.alpha; k++) {
+                V(j, k, c, img, hfm, wfm) = _v[j][k];
+            }
+        }
+    });
 
     benchdnn_parallel_nd(prb->ic, prb->oc, [&](int64_t ic, int64_t oc) {
         float F[3][3] = {};
@@ -495,31 +494,31 @@ void compute_wino_ref_bwd_d(const prb_t *prb, const args_t &args) {
 
     benchdnn_parallel_nd(prb->ic, prb->mb, sp.h_tiles, sp.w_tiles,
             [&](int64_t c, int64_t img, int64_t hfm, int64_t wfm) {
-                float O[4][4] = {};
-                float _m[6][6] = {};
-                /* diff_dst: Y = A_t *m * A */
-                for_(int64_t j = 0; j < sp.alpha; j++)
-                for (int64_t k = 0; k < sp.alpha; k++) {
-                    _m[j][k] = M(j, k, c, img, hfm, wfm);
-                }
-                trans_O_4x4_3x3(_m, O);
+        float O[4][4] = {};
+        float _m[6][6] = {};
+        /* diff_dst: Y = A_t *m * A */
+        for_(int64_t j = 0; j < sp.alpha; j++)
+        for (int64_t k = 0; k < sp.alpha; k++) {
+            _m[j][k] = M(j, k, c, img, hfm, wfm);
+        }
+        trans_O_4x4_3x3(_m, O);
 
-                float bia = with_bias ? ((float *)bia_m)[c] : 0.f;
+        float bia = with_bias ? ((float *)bia_m)[c] : 0.f;
 
-                for (int64_t j = 0; j < sp.out_dim; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
-                    if (ydim < prb->ih) {
-                        for (int64_t k = 0; k < sp.out_dim; k++) {
-                            int64_t xdim = wfm * sp.out_dim + k;
-                            if (xdim < prb->iw) {
-                                size_t src_off = src_off_f(
-                                        prb, img, 0, c, 0, ydim, xdim);
-                                ((float *)diff_src_m)[src_off] = O[j][k] + bia;
-                            }
-                        }
+        for (int64_t j = 0; j < sp.out_dim; j++) {
+            int64_t ydim = hfm * sp.out_dim + j;
+            if (ydim < prb->ih) {
+                for (int64_t k = 0; k < sp.out_dim; k++) {
+                    int64_t xdim = wfm * sp.out_dim + k;
+                    if (xdim < prb->iw) {
+                        size_t src_off
+                                = src_off_f(prb, img, 0, c, 0, ydim, xdim);
+                        ((float *)diff_src_m)[src_off] = O[j][k] + bia;
                     }
                 }
-            });
+            }
+        }
+    });
 
     free_scratchpad(&sp);
 }
@@ -549,56 +548,56 @@ void compute_wino_ref_bwd_w(const prb_t *prb, const args_t &args) {
 
     benchdnn_parallel_nd(prb->mb, sp.h_tiles, sp.w_tiles, prb->ic,
             [&](int64_t img, int64_t hfm, int64_t wfm, int64_t ic) {
-                float I[6][6] = {};
-                float _v[6][6] = {};
-                /* src transform v <- B_t * d * B */
-                for (int64_t j = 0; j < sp.alpha; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
-                    if ((t_pad <= ydim) && (ydim < hp_max)) {
-                        for (int64_t k = 0; k < sp.alpha; k++) {
-                            int64_t xdim = wfm * sp.out_dim + k;
-                            if ((l_pad <= xdim) && (xdim < wp_max)) {
-                                size_t src_off = src_off_f(prb, img, 0, ic, 0,
-                                        ydim - t_pad, xdim - l_pad);
-                                I[j][k] = ((float *)src_m)[src_off];
-                            }
-                        }
+        float I[6][6] = {};
+        float _v[6][6] = {};
+        /* src transform v <- B_t * d * B */
+        for (int64_t j = 0; j < sp.alpha; j++) {
+            int64_t ydim = hfm * sp.out_dim + j;
+            if ((t_pad <= ydim) && (ydim < hp_max)) {
+                for (int64_t k = 0; k < sp.alpha; k++) {
+                    int64_t xdim = wfm * sp.out_dim + k;
+                    if ((l_pad <= xdim) && (xdim < wp_max)) {
+                        size_t src_off = src_off_f(
+                                prb, img, 0, ic, 0, ydim - t_pad, xdim - l_pad);
+                        I[j][k] = ((float *)src_m)[src_off];
                     }
                 }
-                trans_I_4x4_3x3(_v, I);
+            }
+        }
+        trans_I_4x4_3x3(_v, I);
 
-                /* scatter v:V */
-                for_(int64_t j = 0; j < sp.alpha; j++)
-                for (int64_t k = 0; k < sp.alpha; k++) {
-                    V(j, k, img, hfm, wfm, ic) = _v[j][k];
-                }
-            });
+        /* scatter v:V */
+        for_(int64_t j = 0; j < sp.alpha; j++)
+        for (int64_t k = 0; k < sp.alpha; k++) {
+            V(j, k, img, hfm, wfm, ic) = _v[j][k];
+        }
+    });
 
     benchdnn_parallel_nd(prb->oc, prb->mb, sp.h_tiles, sp.w_tiles,
             [&](int64_t oc, int64_t img, int64_t hfm, int64_t wfm) {
-                float O[6][6] = {};
-                float _m[6][6] = {};
-                /* diff_dst transform */
-                for (int64_t j = 0; j < sp.alpha; j++) {
-                    int64_t ydim = hfm * sp.out_dim + j;
-                    if (ydim < prb->oh) {
-                        for (int64_t k = 0; k < sp.alpha; k++) {
-                            int64_t xdim = wfm * sp.out_dim + k;
-                            if (xdim < prb->ow) {
-                                size_t dst_off = dst_off_f(
-                                        prb, img, 0, oc, 0, ydim, xdim);
-                                O[j][k] = ((float *)diff_dst_m)[dst_off];
-                            }
-                        }
+        float O[6][6] = {};
+        float _m[6][6] = {};
+        /* diff_dst transform */
+        for (int64_t j = 0; j < sp.alpha; j++) {
+            int64_t ydim = hfm * sp.out_dim + j;
+            if (ydim < prb->oh) {
+                for (int64_t k = 0; k < sp.alpha; k++) {
+                    int64_t xdim = wfm * sp.out_dim + k;
+                    if (xdim < prb->ow) {
+                        size_t dst_off
+                                = dst_off_f(prb, img, 0, oc, 0, ydim, xdim);
+                        O[j][k] = ((float *)diff_dst_m)[dst_off];
                     }
                 }
-                trans_W_3x3_4x4_wu(_m, O);
-                /* scatter v:V */
-                for_(int64_t j = 0; j < sp.alpha; j++)
-                for (int64_t k = 0; k < sp.alpha; k++) {
-                    M(j, k, oc, img, hfm, wfm) = _m[j][k];
-                }
-            });
+            }
+        }
+        trans_W_3x3_4x4_wu(_m, O);
+        /* scatter v:V */
+        for_(int64_t j = 0; j < sp.alpha; j++)
+        for (int64_t k = 0; k < sp.alpha; k++) {
+            M(j, k, oc, img, hfm, wfm) = _m[j][k];
+        }
+    });
 
     benchdnn_parallel_nd(sp.alpha, sp.alpha, [&](int64_t j, int64_t k) {
         /* GeMM U = M * V */

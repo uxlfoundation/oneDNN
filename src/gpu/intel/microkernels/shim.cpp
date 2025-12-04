@@ -543,8 +543,8 @@ std::string generateShim(const Package &package, HostLanguage language,
 
     std::sort(vargClobbers.begin(), vargClobbers.end(),
             [](const clobber_t &vc1, const clobber_t &vc2) {
-                return (vc1.location.boffset < vc2.location.boffset);
-            });
+        return (vc1.location.boffset < vc2.location.boffset);
+    });
 
     /* Expand clobber ranges to legal vISA variables */
     std::vector<clobber_t> clobbers;

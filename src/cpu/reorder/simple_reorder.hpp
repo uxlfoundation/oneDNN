@@ -1475,16 +1475,16 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         parallel_nd_ext(0, G, NB_OC, NB_IC, H, W,
                 [=](int ithr, int, dim_t g, dim_t O, dim_t I, dim_t h,
                         dim_t w) {
-                    float *_wspace = wspace + wsp_size * ithr;
-                    auto i = &input[input_d.blk_off<!w_groups>(
-                            g, i_mult * O, i_mult * I, h, w)];
-                    auto o = &output[output_d.blk_off<!w_groups>(
-                            g, o_mult * O, o_mult * I, h, w)];
-                    const dim_t oc_block = nstl::min(blksize, OC - O * blksize);
-                    const dim_t ic_block = nstl::min(blksize, IC - I * blksize);
-                    ker(i, _wspace, oc_block, blksize, ic_block, blksize);
-                    cvt_float_to_bfloat16(o, _wspace, wsp_size);
-                });
+            float *_wspace = wspace + wsp_size * ithr;
+            auto i = &input[input_d.blk_off<!w_groups>(
+                    g, i_mult * O, i_mult * I, h, w)];
+            auto o = &output[output_d.blk_off<!w_groups>(
+                    g, o_mult * O, o_mult * I, h, w)];
+            const dim_t oc_block = nstl::min(blksize, OC - O * blksize);
+            const dim_t ic_block = nstl::min(blksize, IC - I * blksize);
+            ker(i, _wspace, oc_block, blksize, ic_block, blksize);
+            cvt_float_to_bfloat16(o, _wspace, wsp_size);
+        });
 
         return status::success;
     }
@@ -1563,14 +1563,13 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
         parallel_nd_ext(0, dims[0], pdims[1] / blksize, H,
                 [=](int ithr, int, dim_t n, dim_t nb_c, dim_t h) {
-                    float *_wspace = wspace + wsp_size * ithr;
-                    auto i = &input[input_d.blk_off(n, i_c_mult * nb_c, h)];
-                    auto o = &output[output_d.blk_off(n, o_c_mult * nb_c, h)];
-                    const dim_t c_block
-                            = nstl::min(blksize, C - nb_c * blksize);
-                    ker(i, _wspace, c_block, blksize);
-                    cvt_float_to_bfloat16(o, _wspace, wsp_size);
-                });
+            float *_wspace = wspace + wsp_size * ithr;
+            auto i = &input[input_d.blk_off(n, i_c_mult * nb_c, h)];
+            auto o = &output[output_d.blk_off(n, o_c_mult * nb_c, h)];
+            const dim_t c_block = nstl::min(blksize, C - nb_c * blksize);
+            ker(i, _wspace, c_block, blksize);
+            cvt_float_to_bfloat16(o, _wspace, wsp_size);
+        });
 
         return status::success;
     }
@@ -1694,14 +1693,12 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
         parallel_nd(dims[0], pdims[1] / blksize_16, D, H, W,
                 [=](dim_t n, dim_t nb_c, dim_t d, dim_t h, dim_t w) {
-                    auto i = &input[data_blk_off(
-                            input_d, n, ic_mult * nb_c, d, h, w)];
-                    auto o = &output[data_blk_off(
-                            output_d, n, oc_mult * nb_c, d, h, w)];
-                    const int block
-                            = nstl::min(blksize_16, C - nb_c * blksize_16);
-                    ker(i, o, block);
-                });
+            auto i = &input[data_blk_off(input_d, n, ic_mult * nb_c, d, h, w)];
+            auto o = &output[data_blk_off(
+                    output_d, n, oc_mult * nb_c, d, h, w)];
+            const int block = nstl::min(blksize_16, C - nb_c * blksize_16);
+            ker(i, o, block);
+        });
 
 #undef data_blk_off
 
@@ -1846,26 +1843,20 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             const dim_t BH0 = pdims[0] / blksize;
             parallel_nd(BH0, H1, M0, M1, M2,
                     [=](dim_t bh0, dim_t h1, dim_t m0, dim_t m1, dim_t m2) {
-                        auto i = &input[off(
-                                input_d, bh0 * i_mult, h1, m0, m1, m2)];
-                        auto o = &output[off(
-                                output_d, bh0 * o_mult, h1, m0, m1, m2)];
-                        const int block
-                                = nstl::min<int>(blksize, H0 - bh0 * blksize);
-                        ker(i, o, block);
-                    });
+                auto i = &input[off(input_d, bh0 * i_mult, h1, m0, m1, m2)];
+                auto o = &output[off(output_d, bh0 * o_mult, h1, m0, m1, m2)];
+                const int block = nstl::min<int>(blksize, H0 - bh0 * blksize);
+                ker(i, o, block);
+            });
         } else if (blk_idx == 1) {
             const dim_t BH1 = pdims[1] / blksize;
             parallel_nd(H0, BH1, M0, M1, M2,
                     [=](dim_t h0, dim_t bh1, dim_t m0, dim_t m1, dim_t m2) {
-                        auto i = &input[off(
-                                input_d, h0, bh1 * i_mult, m0, m1, m2)];
-                        auto o = &output[off(
-                                output_d, h0, bh1 * o_mult, m0, m1, m2)];
-                        const int block
-                                = nstl::min<int>(blksize, H1 - bh1 * blksize);
-                        ker(i, o, block);
-                    });
+                auto i = &input[off(input_d, h0, bh1 * i_mult, m0, m1, m2)];
+                auto o = &output[off(output_d, h0, bh1 * o_mult, m0, m1, m2)];
+                const int block = nstl::min<int>(blksize, H1 - bh1 * blksize);
+                ker(i, o, block);
+            });
         } else {
             assert(!"unimplemented");
         }
@@ -2051,16 +2042,16 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         parallel_nd(G, NB_H0, NB_H1, M0, M1, M2,
                 [=](dim_t g, dim_t nb_h0, dim_t nb_h1, dim_t m0, dim_t m1,
                         dim_t m2) {
-                    auto i = &input[off(input_d, g, i_mult_0 * nb_h0,
-                            i_mult_1 * nb_h1, m0, m1, m2)];
-                    auto o = &output[off(output_d, g, o_mult_0 * nb_h0,
-                            o_mult_1 * nb_h1, m0, m1, m2)];
-                    const int block_h0
-                            = nstl::min<int>(blksize_0, H0 - nb_h0 * blksize_0);
-                    const int block_h1
-                            = nstl::min<int>(blksize_1, H1 - nb_h1 * blksize_1);
-                    ker(i, o, block_h0, block_h1);
-                });
+            auto i = &input[off(input_d, g, i_mult_0 * nb_h0, i_mult_1 * nb_h1,
+                    m0, m1, m2)];
+            auto o = &output[off(output_d, g, o_mult_0 * nb_h0,
+                    o_mult_1 * nb_h1, m0, m1, m2)];
+            const int block_h0
+                    = nstl::min<int>(blksize_0, H0 - nb_h0 * blksize_0);
+            const int block_h1
+                    = nstl::min<int>(blksize_1, H1 - nb_h1 * blksize_1);
+            ker(i, o, block_h0, block_h1);
+        });
 
 #undef off
 

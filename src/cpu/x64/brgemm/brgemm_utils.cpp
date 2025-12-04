@@ -484,12 +484,12 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
             = [&](int new_bd_block, int new_ld_block, int new_bd_block2,
                       int new_ld_block2, bool load_nt_A, bool load_nt_B,
                       brgemm_kernel_innermost_loop_t innermost_loop) {
-                  recalc_blocking(new_bd_block, new_ld_block, new_bd_block2,
-                          new_ld_block2);
-                  brg->load_nt_A = load_nt_A;
-                  brg->load_nt_B = load_nt_B;
-                  brg->innermost_loop = innermost_loop;
-              };
+        recalc_blocking(
+                new_bd_block, new_ld_block, new_bd_block2, new_ld_block2);
+        brg->load_nt_A = load_nt_A;
+        brg->load_nt_B = load_nt_B;
+        brg->innermost_loop = innermost_loop;
+    };
 
     bool is_decomposition_defined = false;
     for (int i = decomposition_2x2; i != undefined; i++) {

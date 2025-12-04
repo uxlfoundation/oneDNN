@@ -127,9 +127,9 @@ TEST_P(sycl_stream_test_t, InteropIncompatibleQueue) {
                                                   : engine::kind::gpu;
     queue interop_queue(get_context(other_kind), get_device(other_kind));
 
-    catch_expected_failures(
-            [&] { sycl_interop::make_stream(get_engine(kind), interop_queue); },
-            true, dnnl_invalid_arguments);
+    catch_expected_failures([&] {
+        sycl_interop::make_stream(get_engine(kind), interop_queue);
+    }, true, dnnl_invalid_arguments);
 }
 
 #ifndef DNNL_EXPERIMENTAL_PROFILING

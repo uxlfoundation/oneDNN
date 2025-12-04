@@ -835,8 +835,8 @@ inline void jit_uni_pool_kernel_t<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
             = (jpp.tag_kind == jit_memory_tag_kind_t::nspc) ? jpp.c : c_block;
     Label kd_label, kh_label;
 
-    const auto is_tail_processing = [&](int bc,
-                                            bool process_with_postops = false) {
+    const auto is_tail_processing
+            = [&](int bc, bool process_with_postops = false) {
         if (isa == sse41 && (!jpp.is_c_padded || process_with_postops)) {
             return with_c_tail_proccessing && bc == (ur_bc - 1)
                     && ((jpp.c_tail > (jpp.c_block / 2) && sse_high_half)
@@ -1367,9 +1367,9 @@ void jit_uni_pool_kernel_t<isa>::generate() {
     mov(reg_ker_area_h, ptr[reg_param + GET_OFF(ker_area_h)]);
     mov(reg_nbc, ptr[reg_param + GET_OFF(ur_bc)]);
 
-    auto process_oi = [&](int ur_w, int ur_bc, int lpad, int rpad,
-                              bool with_c_tail_proccessing,
-                              bool inc_reg = true) {
+    auto process_oi
+            = [&](int ur_w, int ur_bc, int lpad, int rpad,
+                      bool with_c_tail_proccessing, bool inc_reg = true) {
         step(ur_w, ur_bc, lpad, rpad, with_c_tail_proccessing);
 
         if (isa == sse41) {

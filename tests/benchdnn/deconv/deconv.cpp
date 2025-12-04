@@ -36,13 +36,11 @@ int transpose_data_wei(
             prb->kh, prb->kw,
             [&](int64_t g, int64_t oc, int64_t ic, int64_t kd, int64_t kh,
                     int64_t kw) {
-                int64_t ch_idx
-                        = (g * prb->ic / prb->g + ic) * prb->oc / prb->g + oc;
-                int64_t idx = ((ch_idx * prb->kd + kd) * prb->kh + kh) * prb->kw
-                        + kw;
-                ((float *)wei_tr)[idx]
-                        = ((float *)wei)[wei_off_f(prb, g, oc, ic, kd, kh, kw)];
-            });
+        int64_t ch_idx = (g * prb->ic / prb->g + ic) * prb->oc / prb->g + oc;
+        int64_t idx = ((ch_idx * prb->kd + kd) * prb->kh + kh) * prb->kw + kw;
+        ((float *)wei_tr)[idx]
+                = ((float *)wei)[wei_off_f(prb, g, oc, ic, kd, kh, kw)];
+    });
 
     return OK;
 }
@@ -68,8 +66,8 @@ double get_non_zero_trust_percent(const prb_t *prb, data_kind_t kind) {
                     [k](const pk alg) { return alg == k; });
             count += std::any_of(non_neg_alpha_0_po.cbegin(),
                     non_neg_alpha_0_po.cend(), [k, alpha](const pk alg) {
-                        return alg == k && alpha == 0;
-                    });
+                return alg == k && alpha == 0;
+            });
         }
         // Check for u8 dst
         count += prb->get_dt(DST) == dnnl_u8;

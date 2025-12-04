@@ -186,9 +186,9 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     set_workspace_sizes<class_name>(rnn_, *this->desc());
 
     // INIT MATMULS
-    auto init_matmul_pd = [&](std::shared_ptr<primitive_desc_t> &mpd, dim_t M,
-                                  dim_t N, dim_t K, dim_t LDA, dim_t LDB,
-                                  dim_t LDC, bool sum_po) {
+    auto init_matmul_pd
+            = [&](std::shared_ptr<primitive_desc_t> &mpd, dim_t M, dim_t N,
+                      dim_t K, dim_t LDA, dim_t LDB, dim_t LDC, bool sum_po) {
         memory_desc_t src_desc;
         const dims_t src_dims = {M, K};
         const dims_t src_strides = {LDA, 1};
@@ -1014,33 +1014,30 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
 #define SAFE_PTR(FN, ...) CONCAT2(FN, _) ? &(FN(__VA_ARGS__)) : nullptr
     const auto compute_merged_layer_part_if_applicable
             = [&](prop_kind_t target_prop, int dir, int lay) {
-                  if (IMPLICATION(rnn.merge_gemm_layer, aprop != target_prop))
-                      return dnnl_success;
+        if (IMPLICATION(rnn.merge_gemm_layer, aprop != target_prop))
+            return dnnl_success;
 
-                  cell_position_t cell_position = middle_cell;
-                  if (lay == 0) cell_position |= first_layer;
-                  cell_position |= merged_layer;
+        cell_position_t cell_position = middle_cell;
+        if (lay == 0) cell_position |= first_layer;
+        cell_position |= merged_layer;
 
-                  const src_layer_t *src_layer
-                          = lay == 0 && rnn.skip_src_layer_copy()
-                          ? src_layer_
-                          : SAFE_PTR(ws_states_layer, lay, dir, 1, 0);
+        const src_layer_t *src_layer = lay == 0 && rnn.skip_src_layer_copy()
+                ? src_layer_
+                : SAFE_PTR(ws_states_layer, lay, dir, 1, 0);
 #if DNNL_X64
-                  CHECK((this->*merged_layer_func)(ctx, rnn, cell_position,
-                          SAFE_PTR(weights_layer, lay, dir, 0), src_layer,
-                          scratch_gates_,
-                          SAFE_PTR(ws_diff_states_layer, lay, dir, 0, 0),
-                          SAFE_PTR(diff_weights_layer, lay, dir, 0),
-                          amx_scratchpad, addr_batch_global));
+        CHECK((this->*merged_layer_func)(ctx, rnn, cell_position,
+                SAFE_PTR(weights_layer, lay, dir, 0), src_layer, scratch_gates_,
+                SAFE_PTR(ws_diff_states_layer, lay, dir, 0, 0),
+                SAFE_PTR(diff_weights_layer, lay, dir, 0), amx_scratchpad,
+                addr_batch_global));
 #else
-                  CHECK((this->*merged_layer_func)(rnn, cell_position,
-                          SAFE_PTR(weights_layer, lay, dir, 0), src_layer,
-                          scratch_gates_,
-                          SAFE_PTR(ws_diff_states_layer, lay, dir, 0, 0),
-                          SAFE_PTR(diff_weights_layer, lay, dir, 0)));
+        CHECK((this->*merged_layer_func)(rnn, cell_position,
+                SAFE_PTR(weights_layer, lay, dir, 0), src_layer, scratch_gates_,
+                SAFE_PTR(ws_diff_states_layer, lay, dir, 0, 0),
+                SAFE_PTR(diff_weights_layer, lay, dir, 0)));
 #endif
-                  return dnnl_success;
-              };
+        return dnnl_success;
+    };
 
     // We run the grid of computation
     for_(int dir = 0; dir < rnn.n_dir; dir++)
@@ -1432,22 +1429,21 @@ void copy_init_iter_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
     if (src_iter_) {
         parallel_nd(rnn.n_layer, rnn.n_dir, rnn.mb,
                 [&](dim_t lay, dim_t dir, dim_t b) {
-                    const auto *ss
-                            = &src_iter_[src_iter_d.blk_off(lay, dir, b, 0)];
-                    auto *dd = &ws_states_iter(lay + 1, dir, 0, b, 0);
-                    PRAGMA_OMP_SIMD()
-                    for (int s = 0; s < rnn.sic; s++)
-                        dd[s] = maybe_q(ss[s]);
-                });
+            const auto *ss = &src_iter_[src_iter_d.blk_off(lay, dir, b, 0)];
+            auto *dd = &ws_states_iter(lay + 1, dir, 0, b, 0);
+            PRAGMA_OMP_SIMD()
+            for (int s = 0; s < rnn.sic; s++)
+                dd[s] = maybe_q(ss[s]);
+        });
     } else {
         parallel_nd(rnn.n_layer, rnn.n_dir, rnn.mb,
                 [&](dim_t lay, dim_t dir, dim_t b) {
-                    for (int j = 0; j < rnn.sic; j++)
-                        ws_states_iter(lay + 1, dir, 0, b, j) = zero;
-                    if (pd->cell_kind() == alg_kind::vanilla_lstm)
-                        for (int j = 0; j < rnn.dhc; j++)
-                            zero_ws_iter_c(lay + 1, dir, b, j);
-                });
+            for (int j = 0; j < rnn.sic; j++)
+                ws_states_iter(lay + 1, dir, 0, b, j) = zero;
+            if (pd->cell_kind() == alg_kind::vanilla_lstm)
+                for (int j = 0; j < rnn.dhc; j++)
+                    zero_ws_iter_c(lay + 1, dir, b, j);
+        });
     }
 }
 
@@ -1467,29 +1463,24 @@ void copy_init_iter_bwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
     if (diff_dst_iter_) {
         parallel_nd(rnn.n_layer, rnn.n_dir, rnn.mb,
                 [&](dim_t lay, dim_t dir, dim_t b) {
-                    array_copy(
-                            &(ws_diff_states_iter(lay, dir, rnn.n_iter, b, 0)),
-                            diff_dst_iter_
-                                    + diff_dst_iter_d.blk_off(lay, dir, b),
-                            rnn.dic);
-                    if (pd->cell_kind() == alg_kind::vanilla_lstm)
-                        array_copy(&(ws_diff_states_iter_c(
-                                           lay, dir, rnn.n_iter, b, 0)),
-                                diff_dst_iter_c_
-                                        + diff_dst_iter_c_d.blk_off(
-                                                lay, dir, b),
-                                rnn.dhc);
-                });
+            array_copy(&(ws_diff_states_iter(lay, dir, rnn.n_iter, b, 0)),
+                    diff_dst_iter_ + diff_dst_iter_d.blk_off(lay, dir, b),
+                    rnn.dic);
+            if (pd->cell_kind() == alg_kind::vanilla_lstm)
+                array_copy(&(ws_diff_states_iter_c(lay, dir, rnn.n_iter, b, 0)),
+                        diff_dst_iter_c_
+                                + diff_dst_iter_c_d.blk_off(lay, dir, b),
+                        rnn.dhc);
+        });
     } else {
         parallel_nd(rnn.n_layer, rnn.n_dir, rnn.mb,
                 [&](dim_t lay, dim_t dir, dim_t i) {
-                    for (int j = 0; j < rnn.dic; j++)
-                        ws_diff_states_iter(lay, dir, rnn.n_iter, i, j) = 0.0f;
-                    if (pd->cell_kind() == alg_kind::vanilla_lstm)
-                        for (int j = 0; j < rnn.dhc; j++)
-                            ws_diff_states_iter_c(lay, dir, rnn.n_iter, i, j)
-                                    = 0.0f;
-                });
+            for (int j = 0; j < rnn.dic; j++)
+                ws_diff_states_iter(lay, dir, rnn.n_iter, i, j) = 0.0f;
+            if (pd->cell_kind() == alg_kind::vanilla_lstm)
+                for (int j = 0; j < rnn.dhc; j++)
+                    ws_diff_states_iter_c(lay, dir, rnn.n_iter, i, j) = 0.0f;
+        });
     }
 }
 
@@ -1599,28 +1590,26 @@ void copy_res_layer_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
     // in dst_iter, not in workspace
     parallel_nd(rnn.n_iter - (rnn.skip_dst_iter_copy() ? 1 : 0), rnn.mb,
             [&](dim_t it, dim_t b) {
-                int dir = 0;
-                if (rnn.exec_dir != r2l) {
-                    const auto *ss
-                            = &ws_states_layer(rnn.n_layer, dir, it + 1, b, 0);
-                    auto *dd = &dst_layer_[dst_layer_d.blk_off(
-                            it, b, dir * rnn.dlc)];
-                    copy_vec(dd, ss);
-                    dir = 1;
-                }
-                if (rnn.exec_dir != l2r) {
-                    const auto *ss = &ws_states_layer(
-                            rnn.n_layer, dir, rnn.n_iter - it, b, 0);
-                    if (rnn.exec_dir == bi_sum) {
-                        auto *dd = &dst_layer_[dst_layer_d.blk_off(it, b, 0)];
-                        acc_vec(dd, ss);
-                    } else {
-                        auto *dd = &dst_layer_[dst_layer_d.blk_off(
-                                it, b, dir * rnn.dlc)];
-                        copy_vec(dd, ss);
-                    }
-                }
-            });
+        int dir = 0;
+        if (rnn.exec_dir != r2l) {
+            const auto *ss = &ws_states_layer(rnn.n_layer, dir, it + 1, b, 0);
+            auto *dd = &dst_layer_[dst_layer_d.blk_off(it, b, dir * rnn.dlc)];
+            copy_vec(dd, ss);
+            dir = 1;
+        }
+        if (rnn.exec_dir != l2r) {
+            const auto *ss
+                    = &ws_states_layer(rnn.n_layer, dir, rnn.n_iter - it, b, 0);
+            if (rnn.exec_dir == bi_sum) {
+                auto *dd = &dst_layer_[dst_layer_d.blk_off(it, b, 0)];
+                acc_vec(dd, ss);
+            } else {
+                auto *dd = &dst_layer_[dst_layer_d.blk_off(
+                        it, b, dir * rnn.dlc)];
+                copy_vec(dd, ss);
+            }
+        }
+    });
     if (rnn.skip_dst_iter_copy()) {
         parallel_nd(rnn.mb, [&](dim_t b) {
             const int it = rnn.n_iter - 1;
@@ -1742,11 +1731,10 @@ void copy_res_iter_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
 
     parallel_nd(n_layer_in_ws, rnn.n_dir, rnn.mb,
             [&](dim_t lay, dim_t dir, dim_t b) {
-                const auto *ss
-                        = &ws_states_iter(lay + 1, dir, rnn.n_iter, b, 0);
-                auto *dd = dst_iter_ + dst_iter_d.blk_off(lay, dir, b, 0);
-                copy_vec(dd, ss);
-            });
+        const auto *ss = &ws_states_iter(lay + 1, dir, rnn.n_iter, b, 0);
+        auto *dd = dst_iter_ + dst_iter_d.blk_off(lay, dir, b, 0);
+        copy_vec(dd, ss);
+    });
 
     if (rnn.skip_dst_layer_copy()) {
         parallel_nd(rnn.n_dir, rnn.mb, [&](dim_t dir, dim_t b) {
@@ -1774,17 +1762,16 @@ void copy_res_iter_bwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
     if (diff_src_iter_) {
         parallel_nd(rnn.n_layer, rnn.n_dir, rnn.mb,
                 [&](dim_t lay, dim_t dir, dim_t b) {
-                    for (int s = 0; s < rnn.sic; s++) {
-                        diff_src_iter_[diff_src_iter_d.blk_off(lay, dir, b, s)]
-                                = ws_diff_states_iter(lay, dir, 0, b, s);
-                    }
-                    if (pd->cell_kind() == alg_kind::vanilla_lstm)
-                        for (int s = 0; s < rnn.dhc; s++) {
-                            diff_src_iter_c_[diff_src_iter_c_d.blk_off(
-                                    lay, dir, b, s)]
-                                    = ws_diff_states_iter_c(lay, dir, 0, b, s);
-                        }
-                });
+            for (int s = 0; s < rnn.sic; s++) {
+                diff_src_iter_[diff_src_iter_d.blk_off(lay, dir, b, s)]
+                        = ws_diff_states_iter(lay, dir, 0, b, s);
+            }
+            if (pd->cell_kind() == alg_kind::vanilla_lstm)
+                for (int s = 0; s < rnn.dhc; s++) {
+                    diff_src_iter_c_[diff_src_iter_c_d.blk_off(lay, dir, b, s)]
+                            = ws_diff_states_iter_c(lay, dir, 0, b, s);
+                }
+        });
     }
 }
 

@@ -1271,10 +1271,10 @@ status_t jit_int8_matmul_t::execute(const exec_ctx_t &ctx) const {
         });
     };
 
-    auto kernel_execute = [&](int idx, int na, int nb, int m_blk_adr,
-                                  int n_blk_adr, int dst_adr, int bias_addr,
-                                  int scl_addr, int zp_ptr_a_adr,
-                                  int zp_ptr_b_adr, int zp_b_buf) {
+    auto kernel_execute
+            = [&](int idx, int na, int nb, int m_blk_adr, int n_blk_adr,
+                      int dst_adr, int bias_addr, int scl_addr,
+                      int zp_ptr_a_adr, int zp_ptr_b_adr, int zp_b_buf) {
         call_params_t p;
         p.na = &na;
         p.nb = &nb;

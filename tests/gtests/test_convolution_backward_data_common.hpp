@@ -46,42 +46,39 @@ void compute_ref_conv_bwd_data(const test_convolution_sizes_t &c,
     dnnl::impl::parallel_nd(c.mb, c.ng, c.ic / c.ng, c.ih, c.iw,
             [&](memory::dim mb, memory::dim g, memory::dim ic, memory::dim ih,
                     memory::dim iw) {
-                memory::dim sidx = mb * padded_ic * c.ih * c.iw
-                        + g * padded_ic / c.ng * c.ih * c.iw + ic * c.ih * c.iw
-                        + ih * c.iw + iw;
-                data_t_acc a = data_t_acc(0);
-                for (memory::dim oc = 0; oc < c.oc / c.ng; oc++) {
-                    for (memory::dim kh = 0; kh < c.kh; kh++) {
-                        for (memory::dim kw = 0; kw < c.kw; kw++) {
-                            if (iw + c.padw < kw * (1 + c.dilw)
-                                    || ih + c.padh < kh * (1 + c.dilh))
-                                continue;
-                            memory::dim ow = iw - kw * (1 + c.dilw) + c.padw;
-                            memory::dim oh = ih - kh * (1 + c.dilh) + c.padh;
-                            if (ow % c.strw != 0 || oh % c.strh != 0) continue;
-                            ow /= c.strw;
-                            oh /= c.strh;
-                            if (oh < c.oh && ow < c.ow) {
-                                memory::dim didx = mb * padded_oc * c.oh * c.ow
-                                        + g * padded_oc / c.ng * c.oh * c.ow
-                                        + oc * c.oh * c.ow + oh * c.ow + ow;
-                                memory::dim widx = g * padded_oc / c.ng
-                                                * padded_ic / c.ng * c.kh * c.kw
-                                        + oc * padded_ic / c.ng * c.kh * c.kw
-                                        + ic * c.kh * c.kw + kh * c.kw + kw;
+        memory::dim sidx = mb * padded_ic * c.ih * c.iw
+                + g * padded_ic / c.ng * c.ih * c.iw + ic * c.ih * c.iw
+                + ih * c.iw + iw;
+        data_t_acc a = data_t_acc(0);
+        for (memory::dim oc = 0; oc < c.oc / c.ng; oc++) {
+            for (memory::dim kh = 0; kh < c.kh; kh++) {
+                for (memory::dim kw = 0; kw < c.kw; kw++) {
+                    if (iw + c.padw < kw * (1 + c.dilw)
+                            || ih + c.padh < kh * (1 + c.dilh))
+                        continue;
+                    memory::dim ow = iw - kw * (1 + c.dilw) + c.padw;
+                    memory::dim oh = ih - kh * (1 + c.dilh) + c.padh;
+                    if (ow % c.strw != 0 || oh % c.strh != 0) continue;
+                    ow /= c.strw;
+                    oh /= c.strh;
+                    if (oh < c.oh && ow < c.ow) {
+                        memory::dim didx = mb * padded_oc * c.oh * c.ow
+                                + g * padded_oc / c.ng * c.oh * c.ow
+                                + oc * c.oh * c.ow + oh * c.ow + ow;
+                        memory::dim widx = g * padded_oc / c.ng * padded_ic
+                                        / c.ng * c.kh * c.kw
+                                + oc * padded_ic / c.ng * c.kh * c.kw
+                                + ic * c.kh * c.kw + kh * c.kw + kw;
 
-                                a += (data_t_acc)(diff_dst_data
-                                                          [diff_dst_mdw.off_l(
-                                                                  didx, true)]
-                                        * weights_data[weights_mdw.off_l(
-                                                widx, true)]);
-                            }
-                        }
+                        a += (data_t_acc)(diff_dst_data[diff_dst_mdw.off_l(
+                                                  didx, true)]
+                                * weights_data[weights_mdw.off_l(widx, true)]);
                     }
                 }
-                diff_src_data[diff_src_mdw.off_l(sidx, true)]
-                        = (data_t_diff_src)a;
-            });
+            }
+        }
+        diff_src_data[diff_src_mdw.off_l(sidx, true)] = (data_t_diff_src)a;
+    });
 }
 
 template <typename data_t_diff_dst, typename data_t_wei, typename data_t_acc,

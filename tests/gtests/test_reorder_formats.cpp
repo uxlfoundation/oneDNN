@@ -132,9 +132,9 @@ protected:
                         for (const auto &i_extra : extra) {
                             out_md.get()->extra = i_extra;
 
-                            catch_expected_failures(
-                                    [&]() { TestFormat(in_md, out_md); }, false,
-                                    dnnl_success);
+                            catch_expected_failures([&]() {
+                                TestFormat(in_md, out_md);
+                            }, false, dnnl_success);
                         }
                     }
                 }

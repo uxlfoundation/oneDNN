@@ -158,8 +158,8 @@ struct miopen_convolution_fwd_t : public gpu::primitive_t {
                 memory_desc_t *bias_md, int ndims) {
             using namespace format_tag;
 
-            auto init_md = [&](memory_desc_t &out_md,
-                                   const memory_desc_t &in_md) {
+            auto init_md
+                    = [&](memory_desc_t &out_md, const memory_desc_t &in_md) {
                 format_tag_t md_tag;
                 if (memory_desc_matches_one_of_tag(in_md, ab, abc, abcd, abcde))
                     md_tag = utils::pick(ndims - 2, ab, abc, abcd, abcde);
@@ -213,10 +213,10 @@ struct miopen_convolution_fwd_t : public gpu::primitive_t {
         bool check_s8_configuration() const {
             const auto check_nhwc
                     = [](const memory_desc_t &md, bool is_weights = false) {
-                          miopenTensorLayout_t fmt;
-                          get_format(&md, fmt, is_weights);
-                          return fmt == miopenTensorNHWC;
-                      };
+                miopenTensorLayout_t fmt;
+                get_format(&md, fmt, is_weights);
+                return fmt == miopenTensorNHWC;
+            };
 
             return check_nhwc(src_md_) && check_nhwc(dst_md_)
                     && check_nhwc(weights_md_, true)

@@ -43,17 +43,17 @@ static int compare(const dnn_mem_t &test_mem, res_t *res) {
 
     const auto increment
             = [&](dnnl_dims_t &pos, dnnl_dim_t &idx, bool &done, int stop_dim) {
-                  for (int i = test_mem.ndims() - 1; i >= stop_dim; i--) {
-                      pos[i]++;
-                      if (pos[i] < test_mem.dims()[i]) {
-                          break;
-                      } else {
-                          pos[i] = 0;
-                          if (i == stop_dim) done = true;
-                      }
-                  }
-                  idx = md_off_v(test_mem, pos);
-              };
+        for (int i = test_mem.ndims() - 1; i >= stop_dim; i--) {
+            pos[i]++;
+            if (pos[i] < test_mem.dims()[i]) {
+                break;
+            } else {
+                pos[i] = 0;
+                if (i == stop_dim) done = true;
+            }
+        }
+        idx = md_off_v(test_mem, pos);
+    };
 
     benchdnn_parallel_nd(test_mem.dims()[0], [&](dnnl_dim_t dim0) {
         dnnl_dims_t pos = {0};

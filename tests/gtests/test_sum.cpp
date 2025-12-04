@@ -98,40 +98,38 @@ private:
                 dst_dims[3],
                 [&](memory::dim n, memory::dim c, memory::dim h,
                         memory::dim w) {
-                    if (is_current_test_failed()) return;
+            if (is_current_test_failed()) return;
 
-                    acc_t src_sum = 0.0;
-                    for (size_t num = 0; num < srcs.size(); num++) {
-                        auto &src_data = mapped_srcs[num];
-                        const auto &src_d = srcs[num].get_desc();
-                        const auto src_dims = src_d.get_dims();
-                        const dnnl::impl::memory_desc_wrapper src_mdw(
-                                src_d.get());
+            acc_t src_sum = 0.0;
+            for (size_t num = 0; num < srcs.size(); num++) {
+                auto &src_data = mapped_srcs[num];
+                const auto &src_d = srcs[num].get_desc();
+                const auto src_dims = src_d.get_dims();
+                const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
 
-                        auto src_idx = w + src_dims[3] * h
-                                + src_dims[2] * src_dims[3] * c
-                                + src_dims[1] * src_dims[2] * src_dims[3] * n;
-                        if (num == 0) {
-                            src_sum = acc_t(scale[num])
-                                    * src_data[src_mdw.off_l(src_idx, false)];
-                        } else {
-                            src_sum += acc_t(scale[num])
-                                    * src_data[src_mdw.off_l(src_idx, false)];
-                        }
+                auto src_idx = w + src_dims[3] * h
+                        + src_dims[2] * src_dims[3] * c
+                        + src_dims[1] * src_dims[2] * src_dims[3] * n;
+                if (num == 0) {
+                    src_sum = acc_t(scale[num])
+                            * src_data[src_mdw.off_l(src_idx, false)];
+                } else {
+                    src_sum += acc_t(scale[num])
+                            * src_data[src_mdw.off_l(src_idx, false)];
+                }
 
-                        src_sum = (std::max)(
-                                (std::min)(src_sum,
-                                        (std::numeric_limits<acc_t>::max)()),
-                                std::numeric_limits<acc_t>::lowest());
-                    }
+                src_sum = (std::max)(
+                        (std::min)(
+                                src_sum, (std::numeric_limits<acc_t>::max)()),
+                        std::numeric_limits<acc_t>::lowest());
+            }
 
-                    auto dst_idx = w + dst_dims[3] * h
-                            + dst_dims[2] * dst_dims[3] * c
-                            + dst_dims[1] * dst_dims[2] * dst_dims[3] * n;
+            auto dst_idx = w + dst_dims[3] * h + dst_dims[2] * dst_dims[3] * c
+                    + dst_dims[1] * dst_dims[2] * dst_dims[3] * n;
 
-                    acc_t dst_val = dst_data[dst_mdw.off_l(dst_idx, false)];
-                    ASSERT_EQ(src_sum, dst_val);
-                });
+            acc_t dst_val = dst_data[dst_mdw.off_l(dst_idx, false)];
+            ASSERT_EQ(src_sum, dst_val);
+        });
     }
 
 protected:

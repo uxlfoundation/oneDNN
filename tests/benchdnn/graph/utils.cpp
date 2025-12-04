@@ -548,14 +548,14 @@ std::string strides2memory_tag(const dnnl::graph::logical_tensor::dims &dims,
         // Sort the strides to descending order
         std::sort(sort_keys.begin(), sort_keys.end(),
                 [](const sort_key_t &left, const sort_key_t &right) {
-                    if (left.stride_order < right.stride_order) return false;
-                    if (left.stride_order == right.stride_order) {
-                        if (left.outer_block < right.outer_block) return false;
-                        if (left.outer_block == right.outer_block)
-                            return left.idx < right.idx;
-                    }
-                    return true;
-                });
+            if (left.stride_order < right.stride_order) return false;
+            if (left.stride_order == right.stride_order) {
+                if (left.outer_block < right.outer_block) return false;
+                if (left.outer_block == right.outer_block)
+                    return left.idx < right.idx;
+            }
+            return true;
+        });
 
         char dim_chars[DNNL_MAX_NDIMS + 1];
         for (size_t i = 0; i < ndims; ++i)

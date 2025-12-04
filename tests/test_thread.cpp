@@ -165,18 +165,17 @@ public:
         std::function<void(int, int)> handle_range
                 = [= WA_THIS_COPY_CAPTURE, &handle_range, &counter](
                           int first, int last) {
-                      while (last - first > 1) {
-                          const auto mid = first + (last - first) / 2;
-                          // Find something near the midpoint which is a
-                          // multiple of block size.
-                          tp_->ScheduleWithHint(
-                                  [=]() { handle_range(mid, last); }, mid,
-                                  mid + 1);
-                          last = mid;
-                      }
-                      run_jobs(balance, first, n, njobs, fn);
-                      counter.DecrementCount();
-                  };
+            while (last - first > 1) {
+                const auto mid = first + (last - first) / 2;
+                // Find something near the midpoint which is a
+                // multiple of block size.
+                tp_->ScheduleWithHint(
+                        [=]() { handle_range(mid, last); }, mid, mid + 1);
+                last = mid;
+            }
+            run_jobs(balance, first, n, njobs, fn);
+            counter.DecrementCount();
+        };
 
         // Eigen avoids a thread hop by running the root of the tree on the main
         // thread. We have disabled this because it actually slows things down
@@ -216,13 +215,13 @@ namespace dnnl {
 namespace testing {
 
 static tsl::AsyncValueRef<tsl::Chain> OkDoneEventSingleton() {
-    static std::unique_ptr<tsl::AsyncValueOwningRef<tsl::Chain>> singleton =
-            [] {
-                static auto storage = std::make_unique<
-                        tsl::internal::AsyncValueStorage<tsl::Chain>>();
-                return std::make_unique<tsl::AsyncValueOwningRef<tsl::Chain>>(
-                        tsl::MakeAvailableAsyncValueRef<tsl::Chain>(*storage));
-            }();
+    static std::unique_ptr<tsl::AsyncValueOwningRef<tsl::Chain>> singleton
+            = [] {
+        static auto storage = std::make_unique<
+                tsl::internal::AsyncValueStorage<tsl::Chain>>();
+        return std::make_unique<tsl::AsyncValueOwningRef<tsl::Chain>>(
+                tsl::MakeAvailableAsyncValueRef<tsl::Chain>(*storage));
+    }();
     return singleton->AsRef();
 }
 

@@ -1415,8 +1415,8 @@ private:
         }
 
         int grf_size = ngen::GRF::bytes(hw());
-        auto diff_bytes = [&](const ngen_operand_t &a,
-                                  const ngen_operand_t &b) {
+        auto diff_bytes
+                = [&](const ngen_operand_t &a, const ngen_operand_t &b) {
             auto a_rd = a.reg_data();
             auto b_rd = b.reg_data();
             int a_off = a_rd.getBase() * grf_size + a_rd.getByteOffset();

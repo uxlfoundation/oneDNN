@@ -1695,9 +1695,9 @@ void brgemm_convolution_fwd_t<isa>::ker_base(brgemm_thread_ctx_t &btc) const {
                     * (btc.g * _pd->wei_g_stride
                             + btc.ocb * _pd->wei_ocb_stride);
 
-    const auto call_brgemm = [&](int brg_idx, int ic_block_s, int n_ic_blocks,
-                                     int comp_ker_offs, bool do_postops,
-                                     bool do_only_comp) {
+    const auto call_brgemm
+            = [&](int brg_idx, int ic_block_s, int n_ic_blocks,
+                      int comp_ker_offs, bool do_postops, bool do_only_comp) {
         if (k_l <= 0) return;
         const auto brg_ker = brgemm_kernels_[brg_idx];
 

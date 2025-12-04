@@ -88,10 +88,11 @@ public:
         sdp_args_set_t(sdp_decomp_kernel_t<quantized, dt> *sdp_kernel) {
             int nthr = sdp_kernel->sdp_cfg_.nthr;
             //construct new args
-            auto args_ctor = [this, nthr](const std::unordered_map<int, memory>
-                                                  &ori_args,
-                                     std::vector<std::unordered_map<int,
-                                             memory>> &args) {
+            auto args_ctor
+                    = [this, nthr](
+                              const std::unordered_map<int, memory> &ori_args,
+                              std::vector<std::unordered_map<int, memory>>
+                                      &args) {
                 args.resize(nthr);
                 for (const auto &iter : ori_args) {
                     memory ori_mem = iter.second;

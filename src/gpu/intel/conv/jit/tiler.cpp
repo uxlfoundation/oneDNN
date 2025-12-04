@@ -400,8 +400,8 @@ private:
             }
             std::sort(loop_dims.begin(), loop_dims.end(),
                     [&](const loop_dim_t &a, const loop_dim_t &b) {
-                        return a.size > b.size;
-                    });
+                return a.size > b.size;
+            });
 
             // Do not filter out loops with disabled global reduction as all
             // loops must be present.

@@ -254,18 +254,16 @@ public:
     bool has_post_dw_conv() const {
         auto pos = std::find_if(post_ops_.begin(), post_ops_.end(),
                 [](const std::shared_ptr<meta_op_t> &mop) {
-                    return mop->get_op()->get_kind()
-                            == op_kind::dnnl_convolution;
-                });
+            return mop->get_op()->get_kind() == op_kind::dnnl_convolution;
+        });
         return pos != post_ops_.end();
     }
 
     const std::shared_ptr<meta_op_t> &get_post_dw_conv() const {
         auto pos = std::find_if(post_ops_.begin(), post_ops_.end(),
                 [](const std::shared_ptr<meta_op_t> &mop) {
-                    return mop->get_op()->get_kind()
-                            == op_kind::dnnl_convolution;
-                });
+            return mop->get_op()->get_kind() == op_kind::dnnl_convolution;
+        });
 
         VCHECK_FUSION_INFO(
                 pos != post_ops_.end(), *pos, "cannot find post dw_conv");
@@ -275,8 +273,8 @@ public:
     bool has_post_binary() const {
         auto pos = std::find_if(post_ops_.begin(), post_ops_.end(),
                 [](const std::shared_ptr<meta_op_t> &mop) {
-                    return mop->is_post_binary();
-                });
+            return mop->is_post_binary();
+        });
         return pos != post_ops_.end();
     }
 

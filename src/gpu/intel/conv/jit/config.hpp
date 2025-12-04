@@ -639,8 +639,8 @@ private:
     name##_param_t name##_; \
     param_init_t name##_init_ \
             = register_param([](const container_config_t *c) { \
-                  return &((const config_t *)c)->name##_; \
-              });
+        return &((const config_t *)c)->name##_; \
+    });
 
     INIT_PARAM(allow_global_reduction)
     INIT_PARAM(bwd_d_optimize_kind)

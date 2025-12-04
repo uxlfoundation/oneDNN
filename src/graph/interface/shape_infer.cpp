@@ -165,8 +165,8 @@ inline dims get_dense_strides(const dims &shape) {
 inline bool every_shape_is_known(const std::vector<logical_tensor_t *> &lts) {
     bool ret = std::all_of(
             lts.cbegin(), lts.cend(), [](const logical_tensor_t *const lt) {
-                return !logical_tensor_wrapper_t(lt).is_shape_unknown();
-            });
+        return !logical_tensor_wrapper_t(lt).is_shape_unknown();
+    });
     return ret;
 }
 
@@ -1452,15 +1452,15 @@ status_t infer_reduce_output_shape(op_t *n,
         auto ndim = static_cast<int64_t>(shape.size());
 
         if (std::any_of(axes.begin(), axes.end(), [&ndim](int64_t axis) {
-                return axis < -ndim || axis >= ndim;
-            }))
+            return axis < -ndim || axis >= ndim;
+        }))
             return status::unimplemented;
 
         // convert negative axis to positive one
         std::transform(axes.begin(), axes.end(), axes.begin(),
                 [&ndim](int64_t axis) -> int64_t {
-                    return axis < 0 ? ndim + axis : axis;
-                });
+            return axis < 0 ? ndim + axis : axis;
+        });
 
         if (std::unordered_set<int64_t>(axes.begin(), axes.end()).size()
                 < axes.size())

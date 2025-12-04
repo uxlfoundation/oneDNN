@@ -328,14 +328,19 @@ bool pd_t::zp_ok() {
     const bool weights_upconversion = wei_decomp_
             || ((swap_ab() ? b_int4 : a_int4) && dy_quant_enabled_);
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : a_int4 = %d b_int4 = %d weights_upconversion = %d",a_int4,b_int4,weights_upconversion);
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : a_int4 = %d b_int4 = %d weights_upconversion = %d",a_int4,b_int4,weights_upconversion);
 
     // Host scalar support
     // @@@@@ implementation check
-    const bool a_zp_is_scalar = ao_dims_ == 0;
-    const bool b_zp_is_scalar = bo_dims_ == 0;
-    if (c_zps.is_host_scalar() || (a_zps.is_host_scalar() && !b_zp_is_scalar)
-            || (b_zps.is_host_scalar() && !a_zp_is_scalar)) {
+    const bool a_zp_non_scalar = !a_zps.has_default_values() && ao_dims_ > 0;
+    const bool b_zp_non_scalar = !b_zps.has_default_values() && bo_dims_ > 0;
+
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ a b has_default_values() = %d %d",a_zps.has_default_values(), b_zps.has_default_values());
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ a b is_host_scalar() = %d %d",a_zps.is_host_scalar(), b_zps.is_host_scalar());
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ a b_zp_non_scalar = %d %d",a_zp_non_scalar, b_zp_non_scalar);
+
+    if (c_zps.is_host_scalar() || (a_zps.is_host_scalar() && b_zp_non_scalar)
+            || (b_zps.is_host_scalar() && a_zp_non_scalar)) {
         VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
         return false;
     }

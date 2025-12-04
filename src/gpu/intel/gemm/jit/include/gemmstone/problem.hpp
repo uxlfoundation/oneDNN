@@ -169,7 +169,6 @@ struct GEMMProblem : public CommonProblem {
 // @@@@@ used ; or maybe bool has_ao_hostscalar()
     bool ao_hostscalar = false;
     bool bo_hostscalar = false;
-    bool abo_hostscalar = false;
 // @@@@@ used ; or maybe bool has_ao_hostscalar()
 
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.

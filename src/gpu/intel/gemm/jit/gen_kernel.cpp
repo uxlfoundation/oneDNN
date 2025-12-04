@@ -499,7 +499,6 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     //@@@@@
     problem_.ao_hostscalar = a_quant.zp_host_scalar;
     problem_.bo_hostscalar = b_quant.zp_host_scalar;
-    problem_.abo_hostscalar = problem_.ao_hostscalar || problem_.bo_hostscalar;
     VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : @@@@ setup problem_.ao_hostscalar problem_.bo_hostscalar = %d %d", problem_.ao_hostscalar, problem_.bo_hostscalar);
     //@@@@@
 

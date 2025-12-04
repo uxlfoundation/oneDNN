@@ -615,6 +615,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     base.sizes.k = k;
     base.sizes.batch = batch;
     base.stepping = stepping;
+    base.ignoreCase = true;
 
     bool can_2d_a = (lda * problem_.Ta_ext <= 16777216);
     bool can_2d_b = (ldb * problem_.Tb_ext <= 16777216);

@@ -19,7 +19,7 @@
 --sdt=f32
 --ddt=f32
 --allow-enum-tags-only=0
---stag=ba
+--stag=ab,ba
 --dtag=Ab4a,Ab8a
 384x384
 
@@ -27,7 +27,7 @@
 --sdt=f32
 --ddt=bf16
 --allow-enum-tags-only=0
---stag=ba
+--stag=ab,ba
 --dtag=BA8b4a,BA4b4a
 384x384
 
@@ -36,4 +36,5 @@
 --ddt=f32
 --allow-enum-tags-only=0
 --stag=BA8b4a,BA4b4a
+--dtag=ab,ba
 384x384

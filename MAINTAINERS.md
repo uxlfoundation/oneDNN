@@ -250,6 +250,7 @@ Team: @uxlfoundation/onednn-devops
 | Hamza Butt         | @theComputeKid        | Arm Ltd           | Code Owner |
 | Ryo Suzuki         | @Ryo-not-rio          | Arm Ltd           | Code Owner |
 | Siddhartha Menon   | @Sqvid                | Arm Ltd           | Code Owner |
+| Marek Michalowski  | @michalowski-arm      | Arm Ltd           | Code Owner |
 
 ### Release management
 

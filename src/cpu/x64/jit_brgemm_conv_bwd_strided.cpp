@@ -1451,7 +1451,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
                 do_init, do_postwork, false, btc.src_scales, btc.wei_scales,
                 btc.dst_scales);
     }
-};
+}
 
 template <cpu_isa_t isa>
 void brgemm_convolution_bwd_strided_t<isa>::ker_trans(

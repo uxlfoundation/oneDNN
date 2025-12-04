@@ -685,18 +685,18 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
     auto deserialize_options
             = [](micro::GEMMProtocol::Options &gemmstone_opts,
                       const ukernel_serialized_opts_t &serialized_opts) {
-                  gemmstone_opts.localB = serialized_opts.localB;
-                  gemmstone_opts.slmPtr = serialized_opts.slmPtr;
-                  gemmstone_opts.scaleA = serialized_opts.scaleA;
-                  gemmstone_opts.offsetA = serialized_opts.offsetA;
-              };
+        gemmstone_opts.localB = serialized_opts.localB;
+        gemmstone_opts.slmPtr = serialized_opts.slmPtr;
+        gemmstone_opts.scaleA = serialized_opts.scaleA;
+        gemmstone_opts.offsetA = serialized_opts.offsetA;
+    };
     deserialize_options(opts_kq, ukernel_config.opts_kq);
     deserialize_options(opts_vs, ukernel_config.opts_vs);
 
     // problems kq, vs
-    auto deserialize_problem = [](gemmstone::GEMMProblem &problem,
-                                       const ukernel_serialized_problem_t
-                                               &serialized_problem) {
+    auto deserialize_problem
+            = [](gemmstone::GEMMProblem &problem,
+                      const ukernel_serialized_problem_t &serialized_problem) {
         problem.Ta_ext = {
                 static_cast<gemmstone::Type::_Type>(serialized_problem.Ta_ext)};
         problem.Tb_ext = {
@@ -748,11 +748,11 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
     auto deserialize_sizes
             = [](gemmstone::SizeParams &sizes,
                       const ukernel_serialized_sizes_t &serialized_sizes) {
-                  sizes.m = serialized_sizes.m;
-                  sizes.n = serialized_sizes.n;
-                  sizes.k = serialized_sizes.k;
-                  sizes.batch = serialized_sizes.batch;
-              };
+        sizes.m = serialized_sizes.m;
+        sizes.n = serialized_sizes.n;
+        sizes.k = serialized_sizes.k;
+        sizes.batch = serialized_sizes.batch;
+    };
     deserialize_sizes(sizes_kq, ukernel_config.sizes_kq);
     deserialize_sizes(sizes_vs, ukernel_config.sizes_vs);
 }

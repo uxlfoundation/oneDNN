@@ -285,7 +285,7 @@ public:
             return to_; \
         } \
         return ir_mutator_t::_mutate(obj); \
-    };
+    }
 
     HANDLE_CORE_IR_OBJECTS()
 
@@ -347,7 +347,7 @@ public:
             return it->second; \
         } \
         return _mutate_after(obj); \
-    };
+    }
 
     HANDLE_CORE_IR_OBJECTS()
 

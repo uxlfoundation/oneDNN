@@ -1810,8 +1810,8 @@ void jit_brgemm_amx_uker_base_t::set_A_B_matrices() {
 }
 
 void jit_brgemm_amx_uker_base_t::maybe_sprinkle_prefetches() {
-    auto jit_prefetches = [&](prf_sprinkled_t &prf_sprinkled,
-                                  Xbyak::Reg64 base) {
+    auto jit_prefetches
+            = [&](prf_sprinkled_t &prf_sprinkled, Xbyak::Reg64 base) {
         // Calculate the number of cache lines to jit
         float total_cache_lines_to_prefetch
                 = (float)prf_sprinkled.prefetch_offsets.size();
@@ -2590,7 +2590,7 @@ void jit_brgemm_amx_uker_base_t::bdb_loop_body(brgemm_iteration_t &bi) {
     else
         assert(!"Unknown loop order!");
     if (ununroll_bd_loop) { jmp(reg_iter_label); }
-};
+}
 
 void jit_brgemm_amx_uker_base_t::bdb_loop(brgemm_iteration_t &bi) {
     const auto &tloop = imap_[bi.apply_postops];

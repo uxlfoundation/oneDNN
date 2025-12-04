@@ -68,7 +68,7 @@ struct ref_jit_params_t : public trivially_serializable_t<ref_jit_params_t> {
         kernel_ctx.define_int("WITH_HOST_DST_ZP", with_host_dst_zp);
 
         return kernel_ctx;
-    };
+    }
 
     data_type_t a_dt = {};
     data_type_t b_dt = {};

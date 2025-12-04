@@ -55,7 +55,7 @@ public:
     virtual ~constant_buffer_t() {
         free_func_(data_, eng_, alc_);
         eng_->release();
-    };
+    }
 
     // Disable assignment and copy
     constant_buffer_t(const constant_buffer_t &) = delete;

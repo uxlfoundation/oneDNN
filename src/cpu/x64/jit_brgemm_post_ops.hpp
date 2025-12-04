@@ -294,7 +294,7 @@ private:
             int tail_size, bool store, Xbyak::Opmask ktail_mask,
             bool skip_cvt2ps = false);
 
-    Vmm vector(int m, int n, int n_block) { return Vmm(m * n_block + n); };
+    Vmm vector(int m, int n, int n_block) { return Vmm(m * n_block + n); }
 
     void inject_attr_postops(int m_block, int n_block, int tail = 0);
     void apply_comp(int m_block, int n_block, int tail = 0);

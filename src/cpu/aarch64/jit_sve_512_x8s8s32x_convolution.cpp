@@ -334,56 +334,50 @@ status_t jit_sve_512_x8s8s32x_convolution_fwd_t<src_type,
 
     parallel_nd(jcp.mb, jcp.oh, jcp.nb_ow, nb_groups,
             [&](int n, int oh_s, int owb, int gg) {
-                auto p = jit_conv_args_t();
+        auto p = jit_conv_args_t();
 
-                size_t src_h_stride = src_d.blk_off(0, 0, 1);
-                size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
+        size_t src_h_stride = src_d.blk_off(0, 0, 1);
+        size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
 
-                int gb = gg * jcp.nb_ch_blocking;
-                int g = gb * group_block;
+        int gb = gg * jcp.nb_ch_blocking;
+        int g = gb * group_block;
 
-                int ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
-                int ow_s = owb * jcp.ow_block;
-                int iw_s = ow_s * jcp.stride_w;
+        int ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
+        int ow_s = owb * jcp.ow_block;
+        int iw_s = ow_s * jcp.stride_w;
 
-                auto bias_w = bias ? bias + (bias_d.blk_off(g) * bia_dt_size)
-                                   : nullptr;
-                int32_t *compensation_w
-                        = !jcp.signed_input ? compensation + g : nullptr;
+        auto bias_w = bias ? bias + (bias_d.blk_off(g) * bia_dt_size) : nullptr;
+        int32_t *compensation_w
+                = !jcp.signed_input ? compensation + g : nullptr;
 
-                auto dst_w = dst + dst_d.blk_off(n, g, oh_s, ow_s);
-                auto src_w = src + src_d.blk_off(n, g, ih_s, iw_s);
-                auto wht_w = weights + wht_blk_off(weights_d, gb, 0);
+        auto dst_w = dst + dst_d.blk_off(n, g, oh_s, ow_s);
+        auto src_w = src + src_d.blk_off(n, g, ih_s, iw_s);
+        auto wht_w = weights + wht_blk_off(weights_d, gb, 0);
 
-                auto scales = &oscales[jcp.is_oc_scale * g];
+        auto scales = &oscales[jcp.is_oc_scale * g];
 
-                int dilate_h = jcp.dilate_h + 1;
-                int i_t_overflow
-                        = nstl::min(jcp.kh, div_up(max(0, -ih_s), dilate_h));
-                int i_b_overflow = nstl::min(jcp.kh,
-                        div_up(max(0,
-                                       ih_s - jcp.ih + (jcp.kh - 1) * dilate_h
-                                               + 1),
-                                dilate_h));
-                int kh_padding
-                        = nstl::max(0, jcp.kh - i_t_overflow - i_b_overflow);
+        int dilate_h = jcp.dilate_h + 1;
+        int i_t_overflow = nstl::min(jcp.kh, div_up(max(0, -ih_s), dilate_h));
+        int i_b_overflow = nstl::min(jcp.kh,
+                div_up(max(0, ih_s - jcp.ih + (jcp.kh - 1) * dilate_h + 1),
+                        dilate_h));
+        int kh_padding = nstl::max(0, jcp.kh - i_t_overflow - i_b_overflow);
 
-                size_t wei_stride
-                        = !jcp.signed_input ? 0 : i_t_overflow * wht_h_stride;
-                p.src = src_w + i_t_overflow * dilate_h * src_h_stride;
-                p.dst = dst_w;
-                p.filt = wht_w + wei_stride;
-                p.bias = bias_w;
-                p.compensation = compensation_w;
-                p.oc_blocks = gb;
-                p.kh_padding = kh_padding;
-                p.scales = scales;
-                p.t_overflow = i_t_overflow;
-                p.b_overflow = i_b_overflow;
-                p.owb = owb;
+        size_t wei_stride = !jcp.signed_input ? 0 : i_t_overflow * wht_h_stride;
+        p.src = src_w + i_t_overflow * dilate_h * src_h_stride;
+        p.dst = dst_w;
+        p.filt = wht_w + wei_stride;
+        p.bias = bias_w;
+        p.compensation = compensation_w;
+        p.oc_blocks = gb;
+        p.kh_padding = kh_padding;
+        p.scales = scales;
+        p.t_overflow = i_t_overflow;
+        p.b_overflow = i_b_overflow;
+        p.owb = owb;
 
-                (*kernel_)(&p);
-            });
+        (*kernel_)(&p);
+    });
     return status::success;
 }
 

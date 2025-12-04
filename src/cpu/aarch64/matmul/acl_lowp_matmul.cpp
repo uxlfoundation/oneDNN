@@ -435,7 +435,7 @@ status_t acl_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
     dst_tensor.allocator()->free();
 
     return status::success;
-};
+}
 
 } // namespace matmul
 } // namespace aarch64

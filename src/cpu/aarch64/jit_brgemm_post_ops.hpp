@@ -491,7 +491,7 @@ private:
         }
     }
 
-    ZReg vector(int m, int n, int n_block) { return ZReg(m * n_block + n); };
+    ZReg vector(int m, int n, int n_block) { return ZReg(m * n_block + n); }
 
     void inject_attr_postops(int m_block, int n_block, int tail = 0) {
         const auto &p = attr.post_ops_;

@@ -1007,8 +1007,8 @@ int scales_post_processing(dnn_mem_map_t &mem_map) {
     const bool has_dst_scale
             = mem_map.count(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
-    const auto replace_mem_to_v16 = [&](dnnl_data_type_t dt, int exec_arg,
-                                            float val) {
+    const auto replace_mem_to_v16
+            = [&](dnnl_data_type_t dt, int exec_arg, float val) {
         dims_t dims = {16};
         auto new_md = dnn_mem_t::init_md(1, dims.data(), dt, tag::abx);
         dnn_mem_t new_m(new_md, get_test_engine(), /* prefill = */ true);

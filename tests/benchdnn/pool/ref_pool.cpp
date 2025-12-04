@@ -80,8 +80,8 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
 
     benchdnn_parallel_nd(prb->mb, prb->ic, prb->od, prb->oh, prb->ow,
             [&](int64_t mb, int64_t ic, int64_t od, int64_t oh, int64_t ow) {
-                ker(mb, ic, od, oh, ow);
-            });
+        ker(mb, ic, od, oh, ow);
+    });
 }
 
 void compute_ref_bwd(const prb_t *prb, const args_t &args) {

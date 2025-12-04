@@ -188,17 +188,15 @@ void jit_sve_1x1_conv_kernel_t<isa_>::apply_postops(
         const auto mask_tail = jcp.oc_without_padding % jcp.load_block;
         iterate(load_loop_blk, ur, mask_tail,
                 [&](const bool mask_flag, const int i_load, const int i_ur) {
-                    const auto vmm_idx
-                            = vreg_accum_idx(load_loop_blk, i_load, i_ur);
-                    vmm_idxs.emplace(vmm_idx);
+            const auto vmm_idx = vreg_accum_idx(load_loop_blk, i_load, i_ur);
+            vmm_idxs.emplace(vmm_idx);
 
-                    rhs_arg_params.vmm_idx_to_out_reg.emplace(
-                            vmm_idx, aux_reg_output_data);
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(vmm_idx,
-                            get_output_offset(is_out_layout_nxc, i_load, i_ur));
-                    if (mask_flag)
-                        rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
-                });
+            rhs_arg_params.vmm_idx_to_out_reg.emplace(
+                    vmm_idx, aux_reg_output_data);
+            rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(vmm_idx,
+                    get_output_offset(is_out_layout_nxc, i_load, i_ur));
+            if (mask_flag) rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
+        });
 
         ldr(abi_param1, ptr(X_SP, reg_abi_param1_backup));
 
@@ -206,9 +204,8 @@ void jit_sve_1x1_conv_kernel_t<isa_>::apply_postops(
     } else {
         iterate(load_loop_blk, ur,
                 [&](const bool, const int i_load, const int i_ur) {
-                    vmm_idxs.emplace(
-                            vreg_accum_idx(load_loop_blk, i_load, i_ur));
-                });
+            vmm_idxs.emplace(vreg_accum_idx(load_loop_blk, i_load, i_ur));
+        });
         postops_injector_->compute_vector_range(vmm_idxs);
     }
 }
@@ -257,9 +254,9 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
                 addr, tmp, aux_reg_bcast_data, jcp.typesize_in * offt, bcast);
     };
 
-    auto load_ptr = [=](int i_reduce, int i_load,
-                            const Xbyak_aarch64::XReg addr,
-                            const Xbyak_aarch64::XReg tmp) {
+    auto load_ptr
+            = [=](int i_reduce, int i_load, const Xbyak_aarch64::XReg addr,
+                      const Xbyak_aarch64::XReg tmp) {
         int offt;
         int u0 = i_reduce % jcp.reduce_loop_unroll;
         int u1 = i_reduce / jcp.reduce_loop_unroll;

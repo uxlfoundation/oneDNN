@@ -727,8 +727,8 @@ TEST(test_binary_op_execute_subgraph_fp32, Binary3Postops) {
         std::vector<const graph::logical_tensor_t *> lt_ins(input_lts.size());
         std::transform(input_lts.begin(), input_lts.end(), lt_ins.begin(),
                 [&](size_t idx) -> graph::logical_tensor_t * {
-                    return &lt_vec[idx];
-                });
+            return &lt_vec[idx];
+        });
         std::vector<const graph::logical_tensor_t *> lt_outs {&lt_vec[lt_idx]};
 
         p.compile(&cp, lt_ins, lt_outs, engine);

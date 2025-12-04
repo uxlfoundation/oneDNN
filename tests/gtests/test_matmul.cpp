@@ -160,9 +160,9 @@ protected:
         const int ndims = (int)p.base.dst.dims.size();
 
         // zero points
-        auto handle_zero_points = [&](int arg, unsigned flags,
-                                          const matmul_base_t::md_t &md,
-                                          memory &zero_points_m) {
+        auto handle_zero_points
+                = [&](int arg, unsigned flags, const matmul_base_t::md_t &md,
+                          memory &zero_points_m) {
             if (flags == P::NONE) return;
 
             ASSERT_TRUE(flags & P::ZERO_POINTS);

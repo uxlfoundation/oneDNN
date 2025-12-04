@@ -68,7 +68,7 @@ ref_partition_t::ref_partition_t(const deserialized_graph_t &dg,
     for (const auto &out : outs) {
         partition_out_ids_.emplace_back(out.get_id());
     }
-};
+}
 
 int ref_partition_t::init_ref(
         const std::vector<size_t> &graph_in_ports, res_t *res) {
@@ -535,10 +535,10 @@ bool ref_partition_t::need_unfusable_output_crop(const deserialized_op_t &op,
 bool ref_partition_t::is_output_op(const deserialized_op_t &op) const {
     return std::any_of(op.out_lts_.begin(), op.out_lts_.end(),
             [this](const deserialized_lt_t &lt) {
-                return std::find(partition_out_ids_.begin(),
-                               partition_out_ids_.end(), lt.id_)
-                        != partition_out_ids_.end();
-            });
+        return std::find(partition_out_ids_.begin(), partition_out_ids_.end(),
+                       lt.id_)
+                != partition_out_ids_.end();
+    });
 }
 
 // check the partition memory footprint of the graph path
@@ -654,18 +654,18 @@ std::vector<size_t> ref_partition_t::get_in_out_lt_ids(
     std::vector<size_t> in_out_lt_ids;
     std::for_each(op.in_lts_.begin(), op.in_lts_.end(),
             [&in_out_lt_ids, this](const deserialized_lt_t &lt) {
-                if (std::find(partition_in_ids_.begin(),
-                            partition_in_ids_.end(), lt.id_)
-                        != partition_in_ids_.end())
-                    in_out_lt_ids.emplace_back(lt.id_);
-            });
+        if (std::find(
+                    partition_in_ids_.begin(), partition_in_ids_.end(), lt.id_)
+                != partition_in_ids_.end())
+            in_out_lt_ids.emplace_back(lt.id_);
+    });
     std::for_each(op.out_lts_.begin(), op.out_lts_.end(),
             [&in_out_lt_ids, this](const deserialized_lt_t &lt) {
-                if (std::find(partition_out_ids_.begin(),
-                            partition_out_ids_.end(), lt.id_)
-                        != partition_out_ids_.end())
-                    in_out_lt_ids.emplace_back(lt.id_);
-            });
+        if (std::find(partition_out_ids_.begin(), partition_out_ids_.end(),
+                    lt.id_)
+                != partition_out_ids_.end())
+            in_out_lt_ids.emplace_back(lt.id_);
+    });
     return in_out_lt_ids;
 }
 

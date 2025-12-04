@@ -77,11 +77,11 @@ public:
 
     size_t get_num_decision_functions();
     decision_function get_decision_function(size_t index);
-    pb_node_kind get_node_kind() { return node_kind_; };
-    virtual std::string get_name() { return debug_string_; };
+    pb_node_kind get_node_kind() { return node_kind_; }
+    virtual std::string get_name() { return debug_string_; }
     virtual void set_name(std::string &&name) {
         debug_string_ = std::move(name);
-    };
+    }
     const std::unordered_set<pb_op_t *> &get_contained_ops() { return p_ops_; }
 
 protected:
@@ -126,13 +126,11 @@ public:
 
     bool is_allowing_external_outputs() const {
         return accept_external_outputs_;
-    };
+    }
 
-    void allow_internal_inputs() { accept_internal_inputs_ = true; };
+    void allow_internal_inputs() { accept_internal_inputs_ = true; }
 
-    bool is_allowing_internal_inputs() const {
-        return accept_internal_inputs_;
-    };
+    bool is_allowing_internal_inputs() const { return accept_internal_inputs_; }
 
 protected:
     friend class pb_graph_t;

@@ -292,9 +292,9 @@ void brdgmm_dw_convolution_fwd_t::pd_t::init_batch_elements() {
 
     auto &jcp = jcp_;
 
-    auto gen_batch_elements = [&jcp](int fpad, int backpad, int tpad, int bpad,
-                                      int lpad, int rpad, int &bs,
-                                      brgemm_batch_element_t *batches) {
+    auto gen_batch_elements
+            = [&jcp](int fpad, int backpad, int tpad, int bpad, int lpad,
+                      int rpad, int &bs, brgemm_batch_element_t *batches) {
         const bool requires_batch_pad
                 = jcp.s8s8_compensation_required || jcp.src_zero_point;
         const size_t src_w_stride = jcp.ngroups * jcp.src_dsz;

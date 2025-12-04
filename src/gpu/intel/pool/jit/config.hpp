@@ -303,12 +303,12 @@ public:
 
             auto calc_non_sp
                     = [](dim_t scale, dim_t simds, int opt, dim_t per_line) {
-                          dim_t pow2 = 1;
-                          for (dim_t i = simds; i % 2 == 0; i /= 2)
-                              pow2 *= 2;
-                          pow2 = (opt > pow2) ? simds : pow2;
-                          return scale * utils::max_div(pow2, per_line / scale);
-                      };
+                dim_t pow2 = 1;
+                for (dim_t i = simds; i % 2 == 0; i /= 2)
+                    pow2 *= 2;
+                pow2 = (opt > pow2) ? simds : pow2;
+                return scale * utils::max_div(pow2, per_line / scale);
+            };
             if (is_blocked_by_mb()) {
                 lg[1] = oc_blk / simd;
                 lg[0] = mb_blk;
@@ -346,8 +346,8 @@ public:
             const int safe_thr_count = eu_count * 4;
 
             if (total_simds < safe_thr_count * lg[1] * lg[0]) {
-                auto find_div = [](dim_t num, dim_t total_simds,
-                                        int thr_count) {
+                auto find_div
+                        = [](dim_t num, dim_t total_simds, int thr_count) {
                     if (total_simds <= thr_count) return dim_t(1);
                     const dim_t orig = num;
                     num = 0;
@@ -597,8 +597,8 @@ public:
     name##_param_t name##_; \
     param_init_t name##_init_ \
             = register_param([](const container_config_t *c) { \
-                  return &((const config_t *)c)->name##_; \
-              });
+        return &((const config_t *)c)->name##_; \
+    });
     INIT_PARAM(problem);
     INIT_PARAM(loop_grid);
     INIT_PARAM(dims_padded);

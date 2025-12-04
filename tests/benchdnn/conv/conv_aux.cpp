@@ -185,12 +185,12 @@ int str2desc(desc_t *desc, const char *str) {
 
     auto compute_out
             = [](int64_t i, int64_t k, int64_t s, int64_t p, int64_t d) {
-                  return (i - ((k - 1) * (d + 1) + 1) + 2 * p) / s + 1;
-              };
+        return (i - ((k - 1) * (d + 1) + 1) + 2 * p) / s + 1;
+    };
     auto compute_pad
             = [](int64_t o, int64_t i, int64_t k, int64_t s, int64_t d) {
-                  return ((o - 1) * s - i + ((k - 1) * (d + 1) + 1)) / 2;
-              };
+        return ((o - 1) * s - i + ((k - 1) * (d + 1) + 1)) / 2;
+    };
 
     const bool no_d = (d.id | d.kd | d.od | d.dd) == 0 && d.sd == 1 && d.pd < 1;
     const bool no_h = (d.ih | d.kh | d.oh | d.dh) == 0 && d.sh == 1 && d.ph < 1;
@@ -262,10 +262,10 @@ std::ostream &operator<<(std::ostream &s, const desc_t &d) {
     auto print_spatial
             = [&](const char *d_str, int64_t d_val, const char *h_str,
                       int64_t h_val, const char *w_str, int64_t w_val) {
-                  if (print_d) s << d_str << d_val;
-                  if (print_h) s << h_str << h_val;
-                  if (print_w) s << w_str << w_val;
-              };
+        if (print_d) s << d_str << d_val;
+        if (print_h) s << h_str << h_val;
+        if (print_w) s << w_str << w_val;
+    };
 
     if (canonical || d.has_groups) s << "g" << d.g;
     if (canonical || d.mb != 2) s << "mb" << d.mb;

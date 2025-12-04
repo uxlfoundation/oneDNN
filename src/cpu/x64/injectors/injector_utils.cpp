@@ -33,8 +33,8 @@ static std::size_t calc_vmm_to_preserve_size_bytes(
 
     return std::accumulate(vmm_to_preserve.begin(), vmm_to_preserve.end(),
             std::size_t(0u), [](std::size_t accum, const Xbyak::Xmm &vmm) {
-                return accum + get_vmm_size_bytes(vmm);
-            });
+        return accum + get_vmm_size_bytes(vmm);
+    });
 }
 
 register_preserve_guard_t::register_preserve_guard_t(jit_generator_t *host,
@@ -105,7 +105,7 @@ size_t register_preserve_guard_t::stack_space_occupied() const {
             = vmm_to_preserve_size_bytes_ + reg64_stack_.size() * reg64_size;
 
     return stack_space_occupied;
-};
+}
 
 conditional_register_preserve_guard_t::conditional_register_preserve_guard_t(
         bool condition_to_be_met, jit_generator_t *host,

@@ -40,7 +40,7 @@ bool is_ldigo(const memory_desc_wrapper &md) {
     return md.ndims() == 5 && blk.inner_nblks == 0 && str[4] == 1
             && str[3] == dims[4] && str[1] == str[2] * dims[2]
             && str[0] == str[1] * dims[1];
-};
+}
 
 bool is_ldgoi(const memory_desc_wrapper &md) {
     if (md.format_kind() != format_kind::blocked) return false;
@@ -51,7 +51,7 @@ bool is_ldgoi(const memory_desc_wrapper &md) {
     return md.ndims() == 5 && blk.inner_nblks == 0 && str[2] == 1
             && str[3] == dims[4] * str[4] && str[1] == str[3] * dims[3]
             && str[0] == str[1] * dims[1];
-};
+}
 
 void init_conf(conf_t &conf, const desc_t &rd,
         const memory_desc_wrapper &src_layer_d,

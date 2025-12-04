@@ -54,8 +54,8 @@ struct key_t final {
 
     bool operator==(const key_t &other) const {
         return impl_->compare(other.impl_.get());
-    };
-    size_t hash() const { return impl_->hash(); };
+    }
+    size_t hash() const { return impl_->hash(); }
 
     key_impl_t *impl() const { return impl_.get(); }
 

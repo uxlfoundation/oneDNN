@@ -191,8 +191,8 @@ std::shared_ptr<execution_args_set_t> execution_args_set_t::clone() const {
     auto find_val = [&](const memory &mem) -> value_t * {
         auto pos = std::find_if(value_mem_map_.begin(), value_mem_map_.end(),
                 [&](const std::pair<value_t *, memory> &val_mem) {
-                    return val_mem.second.get() == mem.get();
-                });
+            return val_mem.second.get() == mem.get();
+        });
         assertm(pos != value_mem_map_.end(), "can't find such mem");
         if (pos != value_mem_map_.end())
             return pos->first;

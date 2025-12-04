@@ -2242,8 +2242,8 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
     const auto oc_chunks = div_up(jcp.nb_oc, jcp.nb_oc_blocking);
     const auto ic_chunks = div_up(jcp.nb_ic, jcp.nb_ic_blocking);
 
-    auto calc_mem_cost = [=](int nthr_mb, int nthr_g, int nthr_oc_b,
-                                 int nthr_ic_b) {
+    auto calc_mem_cost
+            = [=](int nthr_mb, int nthr_g, int nthr_oc_b, int nthr_ic_b) {
         /* calculate per thread memory cost (read/write). high level
             * optimizer tries to minimize memory consumption. few notes:
             *  (n1) if weights tensor size is less than source and destination

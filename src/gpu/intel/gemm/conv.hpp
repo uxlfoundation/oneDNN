@@ -222,7 +222,7 @@ struct conv_t : public primitive_t {
         CHECK(conv_->execute(exec_ctx));
 
         return status::success;
-    };
+    }
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

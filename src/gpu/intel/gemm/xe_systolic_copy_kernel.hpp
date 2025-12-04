@@ -41,14 +41,14 @@ struct xe_systolic_copy_kernel_t {
         sum_ = sum;
         clear_sum_ = clear_sum;
         return status::success;
-    };
+    }
 
     status_t create_generator(const intel::engine_t &engine,
             compute::kernel_bundle_t &bundle) const {
         compute::kernel_ctx_t ctx;
         CHECK(init_kernel_ctx(ctx));
         return engine.create_kernel_bundle(bundle, {name()}, ctx);
-    };
+    }
 
     status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
         return init_kernel_ctx(kernel_ctx, arch_, dt_, unroll_n_, copyb_,

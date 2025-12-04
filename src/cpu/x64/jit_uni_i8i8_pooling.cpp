@@ -198,7 +198,7 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
 
     Mmx mmx_mask(int ll) {
         return Mmx(mmx_msk_base_reg + ll);
-    }; // ll: 0..4 [Mmx(2)...Mmx(5)]
+    } // ll: 0..4 [Mmx(2)...Mmx(5)]
 
     static bool init_post_ops_conf(jit_pool_conf_t &jpp,
             const primitive_attr_t &attr, const memory_desc_wrapper &dst_d);
@@ -283,7 +283,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_vreg_mask_q(int ll) {
 
     // Move mask from ll-th pos to 0-th pos
     if (ll > 0) vpermq(vreg_mask_q, vreg_mask_q, ll);
-};
+}
 
 template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::load_src_max_op(
@@ -357,7 +357,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_src_max_op(
 
     } else
         vmovups(vreg_src(jj), ptr[aux_reg_src_w + offset]);
-};
+}
 
 template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::load_src_max_op(
@@ -371,7 +371,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::load_src_max_op(
             vmovdqu8(vreg_src(jj) | mask(0), ptr[aux_reg_src_w + offset]);
     } else
         vmovups(vreg_src(jj), ptr[aux_reg_src_w + offset]);
-};
+}
 
 template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::load_src_avg_op(
@@ -496,7 +496,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_src_avg_op(
         case u8: load_i8(false, vreg_src_s32(jj, ll)); break;
         default: assert(!"unsupported src data type");
     }
-};
+}
 
 template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::load_src_avg_op(
@@ -512,7 +512,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::load_src_avg_op(
         case u8: vpmovzxbd(vr_src, ptr[aux_reg_src_w + offset]); break;
         default: assert(!"unsupported src data type");
     }
-};
+}
 
 template <cpu_isa_t isa>
 void jit_uni_i8i8_pooling_fwd_ker_t<isa>::load_src(int jj, int ll, int c_tail) {
@@ -1458,42 +1458,38 @@ status_t jit_uni_i8i8_pooling_fwd_t<isa>::execute_forward(
 
     parallel_nd(jpp.mb, jpp.od, jpp.oh, jpp.ow,
             [&](dim_t n, dim_t od, dim_t oh, dim_t ow) {
-                dim_t id = nstl::max(od * jpp.stride_d - jpp.f_pad, dim_t(0));
-                dim_t ih = nstl::max(oh * jpp.stride_h - jpp.t_pad, dim_t(0));
-                dim_t iw = nstl::max(ow * jpp.stride_w - jpp.l_pad, dim_t(0));
+        dim_t id = nstl::max(od * jpp.stride_d - jpp.f_pad, dim_t(0));
+        dim_t ih = nstl::max(oh * jpp.stride_h - jpp.t_pad, dim_t(0));
+        dim_t iw = nstl::max(ow * jpp.stride_w - jpp.l_pad, dim_t(0));
 
-                dim_t kd_start
-                        = nstl::max(dim_t(0), jpp.f_pad - od * jpp.stride_d);
-                dim_t kd_end = nstl::min(
-                        dim_t(jpp.kd), jpp.id + jpp.f_pad - od * jpp.stride_d);
-                dim_t kh_start
-                        = nstl::max(dim_t(0), jpp.t_pad - oh * jpp.stride_h);
-                dim_t kh_end = nstl::min(
-                        dim_t(jpp.kh), jpp.ih + jpp.t_pad - oh * jpp.stride_h);
-                dim_t kw_start
-                        = nstl::max(dim_t(0), jpp.l_pad - ow * jpp.stride_w);
-                dim_t kw_end = nstl::min(
-                        dim_t(jpp.kw), jpp.iw + jpp.l_pad - ow * jpp.stride_w);
+        dim_t kd_start = nstl::max(dim_t(0), jpp.f_pad - od * jpp.stride_d);
+        dim_t kd_end = nstl::min(
+                dim_t(jpp.kd), jpp.id + jpp.f_pad - od * jpp.stride_d);
+        dim_t kh_start = nstl::max(dim_t(0), jpp.t_pad - oh * jpp.stride_h);
+        dim_t kh_end = nstl::min(
+                dim_t(jpp.kh), jpp.ih + jpp.t_pad - oh * jpp.stride_h);
+        dim_t kw_start = nstl::max(dim_t(0), jpp.l_pad - ow * jpp.stride_w);
+        dim_t kw_end = nstl::min(
+                dim_t(jpp.kw), jpp.iw + jpp.l_pad - ow * jpp.stride_w);
 
-                auto p = jit_uni_i8i8_pool_call_params_t();
-                p.src_i8 = &src_i8[get_offset(src_d, n, 0, id, ih, iw)
-                        * src_d.data_type_size()];
-                p.dst_i8 = &dst_i8[get_offset(dst_d, n, 0, od, oh, ow)
-                        * dst_d.data_type_size()];
-                p.dst_orig = dst_i8;
-                p.kd_range = kd_end - kd_start;
-                p.kh_range = kh_end - kh_start;
-                p.kw_range = kw_end - kw_start;
-                p.idivider = 1.0f
-                        / ((jpp.alg == pooling_avg_exclude_padding)
-                                        ? p.kd_range * p.kh_range * p.kw_range
-                                        : jpp.kd * jpp.kh * jpp.kw);
-                p.src_safe_access = src_safe_access;
-                p.dst_safe_access = dst_safe_access;
-                p.post_ops_binary_rhs_arg_vec
-                        = post_ops_binary_rhs_arg_vec.data();
-                (*ker_)(&p);
-            });
+        auto p = jit_uni_i8i8_pool_call_params_t();
+        p.src_i8 = &src_i8[get_offset(src_d, n, 0, id, ih, iw)
+                * src_d.data_type_size()];
+        p.dst_i8 = &dst_i8[get_offset(dst_d, n, 0, od, oh, ow)
+                * dst_d.data_type_size()];
+        p.dst_orig = dst_i8;
+        p.kd_range = kd_end - kd_start;
+        p.kh_range = kh_end - kh_start;
+        p.kw_range = kw_end - kw_start;
+        p.idivider = 1.0f
+                / ((jpp.alg == pooling_avg_exclude_padding)
+                                ? p.kd_range * p.kh_range * p.kw_range
+                                : jpp.kd * jpp.kh * jpp.kw);
+        p.src_safe_access = src_safe_access;
+        p.dst_safe_access = dst_safe_access;
+        p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
+        (*ker_)(&p);
+    });
     return status::success;
 }
 

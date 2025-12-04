@@ -92,21 +92,19 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
     benchdnn_parallel_nd(MB, IC, OD, OH, OW,
             [&](int64_t mb, int64_t ic, int64_t od, int64_t oh, int64_t ow) {
-                float result = 0.f;
-                if (prb->alg == nearest) {
-                    ker_nearest(result, mb, ic, od, oh, ow);
-                } else {
-                    ker_linear(result, mb, ic, od, oh, ow);
-                }
-                const auto dst_off = dst_off_f(prb, mb, ic, od, oh, ow);
+        float result = 0.f;
+        if (prb->alg == nearest) {
+            ker_nearest(result, mb, ic, od, oh, ow);
+        } else {
+            ker_linear(result, mb, ic, od, oh, ow);
+        }
+        const auto dst_off = dst_off_f(prb, mb, ic, od, oh, ow);
 
-                const auto v_po_vals
-                        = prepare_po_vals(dst, args, v_po_masks, dst_off);
+        const auto v_po_vals = prepare_po_vals(dst, args, v_po_masks, dst_off);
 
-                maybe_post_ops(prb->attr, result, dst.get_f32_elem(dst_off),
-                        v_po_vals);
-                dst_ptr[dst_off] = result;
-            });
+        maybe_post_ops(prb->attr, result, dst.get_f32_elem(dst_off), v_po_vals);
+        dst_ptr[dst_off] = result;
+    });
 }
 
 void compute_ref_bwd(const prb_t *prb, const args_t &args) {
@@ -126,16 +124,16 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
 
     auto ker_nearest
             = [&](int64_t mb, int64_t ic, int64_t od, int64_t oh, int64_t ow) {
-                  const auto d_dst_off = dst_off_f(prb, mb, ic, od, oh, ow);
-                  float d_dst_val = d_dst.get_f32_elem(d_dst_off);
-                  const int64_t id = near(od, OD, ID);
-                  const int64_t ih = near(oh, OH, IH);
-                  const int64_t iw = near(ow, OW, IW);
-                  d_src_ptr[src_off_f(prb, mb, ic, id, ih, iw)] += d_dst_val;
-              };
+        const auto d_dst_off = dst_off_f(prb, mb, ic, od, oh, ow);
+        float d_dst_val = d_dst.get_f32_elem(d_dst_off);
+        const int64_t id = near(od, OD, ID);
+        const int64_t ih = near(oh, OH, IH);
+        const int64_t iw = near(ow, OW, IW);
+        d_src_ptr[src_off_f(prb, mb, ic, id, ih, iw)] += d_dst_val;
+    };
 
-    auto ker_linear = [&](int64_t mb, int64_t ic, int64_t od, int64_t oh,
-                              int64_t ow) {
+    auto ker_linear
+            = [&](int64_t mb, int64_t ic, int64_t od, int64_t oh, int64_t ow) {
         const auto d_dst_off = dst_off_f(prb, mb, ic, od, oh, ow);
         float d_dst_val = d_dst.get_f32_elem(d_dst_off);
         const int64_t id[2] = {left(od, OD, ID), right(od, OD, ID)};
@@ -155,8 +153,8 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     // zeroing d_src for correct result
     benchdnn_parallel_nd(MB, IC, ID, IH, IW,
             [&](int64_t mb, int64_t ic, int64_t id, int64_t ih, int64_t iw) {
-                d_src_ptr[src_off_f(prb, mb, ic, id, ih, iw)] = 0;
-            });
+        d_src_ptr[src_off_f(prb, mb, ic, id, ih, iw)] = 0;
+    });
 
     benchdnn_parallel_nd(MB, IC, [&](int64_t mb, int64_t ic) {
         for_(int64_t od = 0; od < OD; ++od)

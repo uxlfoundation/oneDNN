@@ -122,7 +122,7 @@ int jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::output_ptr(
             : jcp.oc_without_padding * i_ur;
 
     return jcp.typesize_out * (ur_stride + i_load * jcp.load_block);
-};
+}
 
 template <cpu_isa_t isa, typename Vmm>
 int jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::vreg_accum_idx(
@@ -130,13 +130,13 @@ int jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::vreg_accum_idx(
     const int vmm_idx = i_ur * load_loop_blk + i_load;
     assert(vmm_idx < ker_max_reg_idx);
     return (15 - vmm_idx);
-};
+}
 
 template <cpu_isa_t isa, typename Vmm>
 Vmm jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::vreg_accum(
         const int load_loop_blk, const int i_load, const int i_ur) {
     return Vmm(vreg_accum_idx(load_loop_blk, i_load, i_ur));
-};
+}
 
 template <typename F>
 void iterate(const int ur, const int load_loop_blk, const F &f) {
@@ -155,9 +155,9 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::apply_sum(const int ur,
                 && "p_sum_scale or p_sum_zp = nullptr");
         const float sum_scale = *p_sum_scale;
         const int32_t sum_zp = *p_sum_zp;
-        const auto sum_injector_lam = [this, mask_flag_in, load_loop_blk,
-                                              sum_scale, sum_zp](const int i_ur,
-                                              const int i_load) {
+        const auto sum_injector_lam
+                = [this, mask_flag_in, load_loop_blk, sum_scale, sum_zp](
+                          const int i_ur, const int i_load) {
             const bool mask_flag = mask_flag_in && i_load == load_loop_blk - 1;
             const auto ymm_prev_dst = vmm_zero;
 

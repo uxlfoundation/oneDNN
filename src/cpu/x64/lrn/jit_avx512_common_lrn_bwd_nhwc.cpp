@@ -301,16 +301,16 @@ void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::load_compute_data(
     static constexpr int acc_size = utils::one_of(d_type, bf16, f16) ? 2 : 4;
     const auto load_shifted_padded_with_zeros
             = [this](int dstIdx, int srcIdx, int maskTmpIdx, int offset) {
-                  this->uni_vpxor(this->zreg(0, dstIdx), this->zreg(0, dstIdx),
-                          this->zreg(0, dstIdx));
-                  this->load_data(this->zreg(0, maskTmpIdx),
-                          this->EVEX_compress_addr(this->mask_, offset), true);
-                  this->vpermt2ps(this->zreg(0, dstIdx),
-                          this->zreg(0, maskTmpIdx), this->zreg(0, srcIdx));
-              };
+        this->uni_vpxor(this->zreg(0, dstIdx), this->zreg(0, dstIdx),
+                this->zreg(0, dstIdx));
+        this->load_data(this->zreg(0, maskTmpIdx),
+                this->EVEX_compress_addr(this->mask_, offset), true);
+        this->vpermt2ps(this->zreg(0, dstIdx), this->zreg(0, maskTmpIdx),
+                this->zreg(0, srcIdx));
+    };
 
-    const auto load_ws_diffdst = [&, this](int dstIdx, int offset,
-                                         tail_mode tail_proc) {
+    const auto load_ws_diffdst
+            = [&, this](int dstIdx, int offset, tail_mode tail_proc) {
         if (tail_proc == tail_mode::NoTail) {
             IRB_LOOP(this->load_data(this->zreg(irb, dstIdx),
                     this->EVEX_compress_addr(

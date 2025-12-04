@@ -93,17 +93,17 @@ struct lrn_fwd_kernel_vec_t {
 
         auto operation
                 = [&](dim_t &mb, dim_t &c, dim_t &d, dim_t &h, dim_t &w) {
-                      if (format_tag::nhwc == tag_) {
-                          const dim_t off = mb * conf_.stride_mb
-                                  + h * conf_.w * conf_.c + w * conf_.c + c;
-                          auto val = ker(mb, c, 0, h, w);
-                          dst_mem.store(val, off);
-                      } else {
-                          const dim_t off = data_off(mb, c, d, h, w);
-                          auto val = ker(mb, c, d, h, w);
-                          dst_mem.store(val, off);
-                      }
-                  };
+            if (format_tag::nhwc == tag_) {
+                const dim_t off = mb * conf_.stride_mb + h * conf_.w * conf_.c
+                        + w * conf_.c + c;
+                auto val = ker(mb, c, 0, h, w);
+                dst_mem.store(val, off);
+            } else {
+                const dim_t off = data_off(mb, c, d, h, w);
+                auto val = ker(mb, c, d, h, w);
+                dst_mem.store(val, off);
+            }
+        };
 
         for (int idx = item.get_global_id(0); idx < conf_.wk_size;
                 idx += item.get_global_range(0)) {
@@ -174,8 +174,8 @@ struct lrn_bwd_kernel_vec_t {
             }
         };
 
-        auto get_omega = [&](dim_t &mb, dim_t &oc, dim_t &od, dim_t &oh,
-                                 dim_t &ow) {
+        auto get_omega
+                = [&](dim_t &mb, dim_t &oc, dim_t &od, dim_t &oh, dim_t &ow) {
             auto sum = 0;
             const dim_t half_size = (conf_.size - 1) / 2;
             if (conf_.alg_kind == alg_kind::lrn_across_channels) {
@@ -255,17 +255,17 @@ struct lrn_bwd_kernel_vec_t {
 
         auto operation
                 = [&](dim_t &mb, dim_t &c, dim_t &d, dim_t &h, dim_t &w) {
-                      if (format_tag::nhwc == tag_) {
-                          const dim_t off = mb * conf_.stride_mb
-                                  + h * conf_.w * conf_.c + w * conf_.c + c;
-                          auto val = ker(mb, c, 0, h, w);
-                          diff_src_mem.store(val, off);
-                      } else {
-                          const dim_t off = data_off(mb, c, d, h, w);
-                          auto val = ker(mb, c, d, h, w);
-                          diff_src_mem.store(val, off);
-                      }
-                  };
+            if (format_tag::nhwc == tag_) {
+                const dim_t off = mb * conf_.stride_mb + h * conf_.w * conf_.c
+                        + w * conf_.c + c;
+                auto val = ker(mb, c, 0, h, w);
+                diff_src_mem.store(val, off);
+            } else {
+                const dim_t off = data_off(mb, c, d, h, w);
+                auto val = ker(mb, c, d, h, w);
+                diff_src_mem.store(val, off);
+            }
+        };
 
         for (int idx = item.get_global_id(0); idx < conf_.wk_size;
                 idx += item.get_global_range(0)) {

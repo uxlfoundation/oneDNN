@@ -56,8 +56,8 @@ double get_non_zero_trust_percent(const prb_t *prb, data_kind_t kind) {
                     [k](const pk alg) { return alg == k; });
             count += std::any_of(non_neg_alpha_0_po.cbegin(),
                     non_neg_alpha_0_po.cend(), [k, alpha](const pk alg) {
-                        return alg == k && alpha == 0;
-                    });
+                return alg == k && alpha == 0;
+            });
         }
         // Check for u8 dst
         count += prb->get_dt(DST) == dnnl_u8;
@@ -484,7 +484,7 @@ std::vector<int> supported_exec_args(dir_t dir) {
     return (dir & FLAG_FWD)    ? exec_fwd_args
             : (dir & FLAG_WEI) ? exec_bwd_w_args
                                : exec_bwd_d_args;
-};
+}
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const prb_t *prb, res_t *res,

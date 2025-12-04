@@ -289,26 +289,25 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_postops(
             iterate(repeats, ur_ch_blocks, ur_w, mask_tail_blocked_layout,
                     [&](const int r, const int ch, const int ow,
                             const bool mask_flag_blocked_layout) {
-                        const int vlen
-                                = cpu_isa_traits_t<isa>::vlen / sizeof(float);
-                        const bool is_tail_load = check_if_tail_load(
-                                is_ch_tail, c_tail, ch, ur_ch_blocks, vlen, r);
-                        if ((ch + 1 == ur_ch_blocks) && is_ch_tail
-                                && c_tail <= r * vlen)
-                            return;
-                        const size_t o_off = jcp.typesize_out
-                                * (ch * ocb_stride + ow * ow_stride + r * vlen);
-                        const auto vmm_idx = get_acc_reg_idx(
-                                r * ur_ch_blocks * ur_w + ch * ur_w + ow);
-                        vmm_idxs.emplace(vmm_idx);
+                const int vlen = cpu_isa_traits_t<isa>::vlen / sizeof(float);
+                const bool is_tail_load = check_if_tail_load(
+                        is_ch_tail, c_tail, ch, ur_ch_blocks, vlen, r);
+                if ((ch + 1 == ur_ch_blocks) && is_ch_tail
+                        && c_tail <= r * vlen)
+                    return;
+                const size_t o_off = jcp.typesize_out
+                        * (ch * ocb_stride + ow * ow_stride + r * vlen);
+                const auto vmm_idx = get_acc_reg_idx(
+                        r * ur_ch_blocks * ur_w + ch * ur_w + ow);
+                vmm_idxs.emplace(vmm_idx);
 
-                        rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
-                                vmm_idx, reg_output);
-                        rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
-                                vmm_idx, o_off);
-                        if (mask_flag_blocked_layout || is_tail_load)
-                            rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
-                    });
+                rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
+                        vmm_idx, reg_output);
+                rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
+                        vmm_idx, o_off);
+                if (mask_flag_blocked_layout || is_tail_load)
+                    rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
+            });
             rhs_arg_params = rhs_arg_params_tail;
             rhs_arg_params.vmm_tail_idx_.clear();
 
@@ -336,9 +335,9 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_postops(
         } else {
             iterate(repeats, ur_ch_blocks, ur_w,
                     [&](const int r, const int ch, const int ow, const bool) {
-                        vmm_idxs.emplace(get_acc_reg_idx(
-                                r * ur_ch_blocks * ur_w + ch * ur_w + ow));
-                    });
+                vmm_idxs.emplace(get_acc_reg_idx(
+                        r * ur_ch_blocks * ur_w + ch * ur_w + ow));
+            });
             postops_injector_->compute_vector_range(vmm_idxs);
         }
     }
@@ -842,13 +841,13 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::ch_loop_body(
 
     auto call_compute_body
             = [&](int ur_ch_blocks, int unroll_w, bool is_last_ch = false) {
-                  mov(aux_reg_ddst, reg_ddst);
-                  mov(aux_reg_kernel, reg_kernel);
+        mov(aux_reg_ddst, reg_ddst);
+        mov(aux_reg_kernel, reg_kernel);
 
-                  load_ddst(ur_ch_blocks, unroll_w);
-                  apply_filter(ur_ch_blocks, unroll_w, is_last_ch);
-                  store_dsrc(ur_ch_blocks, unroll_w, is_last_ch);
-              };
+        load_ddst(ur_ch_blocks, unroll_w);
+        apply_filter(ur_ch_blocks, unroll_w, is_last_ch);
+        store_dsrc(ur_ch_blocks, unroll_w, is_last_ch);
+    };
 
     const bool write_ch_loop = ur_ch_blocks > jcp.nb_ch_blocking;
     if (write_ch_loop) {

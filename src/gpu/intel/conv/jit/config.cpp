@@ -1543,12 +1543,11 @@ public:
         // (WHD, width is first).
         std::sort(entries_.begin(), entries_.end(),
                 [&](const entry_t &a, const entry_t &b) {
-                    int a_sp_idx = spatial_index(a.dim);
-                    int b_sp_idx = spatial_index(b.dim);
-                    if (a_sp_idx >= 0 && b_sp_idx >= 0)
-                        return a_sp_idx > b_sp_idx;
-                    return (a_sp_idx >= 0) && (b_sp_idx < 0);
-                });
+            int a_sp_idx = spatial_index(a.dim);
+            int b_sp_idx = spatial_index(b.dim);
+            if (a_sp_idx >= 0 && b_sp_idx >= 0) return a_sp_idx > b_sp_idx;
+            return (a_sp_idx >= 0) && (b_sp_idx < 0);
+        });
     }
 
     bool has_next() const {
@@ -1813,11 +1812,11 @@ void fixup_config(config_t &cfg) {
 void validate_config_and_plan(config_t &cfg) {
     auto check_if_in_grid_dims
             = [](const std::array<tile_t, 3> &grid, const pvar_t &dim) {
-                  for (auto &tile : grid)
-                      for (auto &d : tile)
-                          if (d == dim) return;
-                  gpu_error_not_expected() << dim.str();
-              };
+        for (auto &tile : grid)
+            for (auto &d : tile)
+                if (d == dim) return;
+        gpu_error_not_expected() << dim.str();
+    };
     const auto &tg_dims = get_thread_group_grid_dims(cfg);
     const auto &grid_dims = get_kernel_grid_dims(cfg);
     for (auto &d : cfg.dims()) {

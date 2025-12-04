@@ -129,7 +129,7 @@ private:
                 == pd.dst_iter_desc());
         ASSERT_TRUE(pd.query_md(query::exec_arg_md, DNNL_ARG_DST_ITER_C)
                 == queryDstIterC(pd));
-    };
+    }
 
     void test_primitive_param_queries(const typename T::primitive_desc &pd) {
         auto p = ::testing::TestWithParam<test_rnn_params_t>::GetParam();

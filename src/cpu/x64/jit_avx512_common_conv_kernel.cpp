@@ -152,25 +152,22 @@ void jit_avx512_common_conv_fwd_kernel_vmm_t<Vmm>::apply_postops(int ur_w) {
         const bool oc_blk_is_smaller_than_vmm = jcp.oc_block < isa_simd_width_;
         iterate(jcp.nb_oc_blocking, ur_w, mask_tail, oc_blk_is_smaller_than_vmm,
                 [&](const bool mask_flag, const int i_load, const int i_ur) {
-                    const size_t aux_output_l_off
-                            = get_output_offset(i_ur, i_load);
-                    const auto vmm_idx = vmm_out_idx(i_ur, i_load);
-                    vmm_idxs.emplace(vmm_idx);
+            const size_t aux_output_l_off = get_output_offset(i_ur, i_load);
+            const auto vmm_idx = vmm_out_idx(i_ur, i_load);
+            vmm_idxs.emplace(vmm_idx);
 
-                    rhs_arg_params.vmm_idx_to_out_reg.emplace(vmm_idx, reg_out);
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
-                            vmm_idx, aux_output_l_off);
-                    if (mask_flag) {
-                        rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
-                    }
-                });
+            rhs_arg_params.vmm_idx_to_out_reg.emplace(vmm_idx, reg_out);
+            rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
+                    vmm_idx, aux_output_l_off);
+            if (mask_flag) { rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx); }
+        });
 
         postops_injector_->compute_vector_range(vmm_idxs, rhs_arg_params);
     } else {
         iterate(jcp.nb_oc_blocking, ur_w,
                 [&](const bool, const int i_load, const int i_ur) {
-                    vmm_idxs.emplace(vmm_out_idx(i_ur, i_load));
-                });
+            vmm_idxs.emplace(vmm_out_idx(i_ur, i_load));
+        });
         postops_injector_->compute_vector_range(vmm_idxs);
     }
 }
@@ -2161,8 +2158,8 @@ status_t jit_avx512_common_conv_bwd_data_kernel_f32_t::init_conf(
         return thr_eff;
     };
 
-    auto get_iw_block = [&](int nb_ic_blocking, int ur_w, float &eff,
-                                int nthr) {
+    auto get_iw_block
+            = [&](int nb_ic_blocking, int ur_w, float &eff, int nthr) {
         int res_iw_block = jcp.iw;
         if (!is_iw_threading_applicable()) return res_iw_block;
 
@@ -2452,8 +2449,8 @@ void jit_avx512_common_conv_bwd_weights_kernel_f32_t::
     };
     auto get_diff_dst_reg_idx
             = [ddst_pipeline_start_idx, ddst_pipeline_len](int i_ur) {
-                  return ddst_pipeline_start_idx + i_ur % ddst_pipeline_len;
-              };
+        return ddst_pipeline_start_idx + i_ur % ddst_pipeline_len;
+    };
 
     for (int i_kw = 0; i_kw < kw; i_kw++)
         for (int i_ic = 0; i_ic < ic_block_step; i_ic++) {

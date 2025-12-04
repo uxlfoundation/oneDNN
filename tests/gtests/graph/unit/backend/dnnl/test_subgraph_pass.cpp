@@ -185,8 +185,8 @@ TEST(test_subgraph_pass, LowerDownToInt8Conv) {
     ASSERT_EQ(subgraph->get_ops().size(), 11U);
     auto conv_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-                return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
-            });
+        return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
+    });
     ASSERT_NE(conv_op, subgraph->get_ops().end());
     auto &producer0 = (*conv_op)->get_input_value(0)->get_producer();
     ASSERT_EQ(producer0.get_kind(), dnnl_impl::op_kind::dnnl_mul_scales);
@@ -209,8 +209,8 @@ TEST(test_subgraph_pass, LowerDownToInt8Conv) {
 
     auto qconv_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-                return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
-            });
+        return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
+    });
     ASSERT_NE(qconv_op, subgraph->get_ops().end());
     ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info));
     const auto &fusion_info = (*qconv_op)->get_attr<dnnl_impl::fusion_info_t>(
@@ -301,8 +301,8 @@ TEST(test_subgraph_pass, LowerDownToInt8Matmul) {
     ASSERT_EQ(subgraph->get_ops().size(), 8U);
     auto matmul_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-                return op->get_kind() == dnnl_impl::op_kind::dnnl_matmul;
-            });
+        return op->get_kind() == dnnl_impl::op_kind::dnnl_matmul;
+    });
     ASSERT_NE(matmul_op, subgraph->get_ops().end());
     auto &producer0 = (*matmul_op)->get_input_value(0)->get_producer();
     ASSERT_EQ(producer0.get_kind(), dnnl_impl::op_kind::dnnl_mul_scales);
@@ -318,16 +318,16 @@ TEST(test_subgraph_pass, LowerDownToInt8Matmul) {
     dnnl_impl::fuse_src_scales(subgraph);
     auto qmatmul_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-                return op->get_kind() == dnnl_impl::op_kind::dnnl_matmul;
-            });
+        return op->get_kind() == dnnl_impl::op_kind::dnnl_matmul;
+    });
 
     // 3. fuse post ops to int8 matmul
     ASSERT_EQ(dnnl_impl::fuse_post_ops(subgraph), status::success);
 
     qmatmul_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-                return op->get_kind() == dnnl_impl::op_kind::dnnl_matmul;
-            });
+        return op->get_kind() == dnnl_impl::op_kind::dnnl_matmul;
+    });
     ASSERT_NE(qmatmul_op, subgraph->get_ops().end());
     ASSERT_TRUE((*qmatmul_op)->has_attr(dnnl_impl::op_attr::fusion_info));
     const auto &fusion_info = (*qmatmul_op)
@@ -744,9 +744,9 @@ TEST(test_subgraph_pass, Int8ConvSumRelu) {
     std::vector<graph::op_t *> topo_ordered_ops;
     dnnl::impl::graph::topo_order_visit(
             subgraph->get_output_ops(), [&](graph::op_t *op) {
-                topo_ordered_ops.emplace_back(op);
-                return status::success;
-            });
+        topo_ordered_ops.emplace_back(op);
+        return status::success;
+    });
 
     auto topo_ordered_args = memory_planner.get_exec_args_set().get_exec_args();
 
@@ -2329,8 +2329,8 @@ TEST(test_subgraph_pass, FuseNCXConvolutionBinaryAddNC11PostSrc) {
             graph::dnnl_impl::fuse_post_ops(subgraph), graph::status::success);
     auto qconv_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-                return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
-            });
+        return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
+    });
     ASSERT_NE(qconv_op, subgraph->get_ops().end());
     ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info));
     const auto &fusion_info = (*qconv_op)->get_attr<dnnl_impl::fusion_info_t>(
@@ -2494,8 +2494,8 @@ TEST(test_subgraph_pass, FuseNXCConvolutionBinaryAddNC11PostSrc) {
             graph::dnnl_impl::fuse_post_ops(subgraph), graph::status::success);
     auto qconv_op = std::find_if(subgraph->get_ops().begin(),
             subgraph->get_ops().end(), [](const std::shared_ptr<op_t> &op) {
-                return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
-            });
+        return op->get_kind() == dnnl_impl::op_kind::dnnl_convolution;
+    });
     ASSERT_NE(qconv_op, subgraph->get_ops().end());
     ASSERT_TRUE((*qconv_op)->has_attr(dnnl_impl::op_attr::fusion_info));
     const auto &fusion_info = (*qconv_op)->get_attr<dnnl_impl::fusion_info_t>(

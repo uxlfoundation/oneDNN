@@ -160,15 +160,13 @@ status_t simple_resampling_kernel_t<src_type, dst_type>::execute(
 
         parallel_nd(nsp_outer_, ID, IH, IW,
                 [&](dim_t nsp, dim_t id, dim_t ih, dim_t iw) {
-                    const dim_t diff_dst_off
-                            = nsp * OD * OH * OW * inner_stride_;
-                    const dim_t diff_src_off
-                            = (nsp * ID * IH * IW + id * IH * IW + ih * IW + iw)
-                            * inner_stride_;
-                    interpolate_fn_(diff_dst + diff_dst_off,
-                            diff_src + diff_src_off, empty_args, id, ih, iw,
-                            false);
-                });
+            const dim_t diff_dst_off = nsp * OD * OH * OW * inner_stride_;
+            const dim_t diff_src_off
+                    = (nsp * ID * IH * IW + id * IH * IW + ih * IW + iw)
+                    * inner_stride_;
+            interpolate_fn_(diff_dst + diff_dst_off, diff_src + diff_src_off,
+                    empty_args, id, ih, iw, false);
+        });
     }
 
     return status::success;

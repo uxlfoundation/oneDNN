@@ -276,9 +276,9 @@ attr_t::post_ops_t parse_attr_post_ops_func(const std::string &s) {
                 // Check if `mask_input_str` consists of only digits.
                 const bool only_digits = std::all_of(mask_input_str.cbegin(),
                         mask_input_str.cend(), [](int c) {
-                            assert(c < UINT8_MAX);
-                            return std::isdigit(c);
-                        });
+                    assert(c < UINT8_MAX);
+                    return std::isdigit(c);
+                });
 
                 using mask_input_t
                         = attr_t::post_ops_t::entry_t::binary_t::mask_input_t;

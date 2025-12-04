@@ -82,44 +82,44 @@ struct stride_layout_t : public intel::jit::stride_layout_t<pvar_t> {
                               stride_layout_t::max_ndims>::iterator s,
                           const pvar_t &dim, dim_t desc_dim, dim_t size,
                           dim_t access_stride = 1, bool can_overflow = false) {
-                      // Size 1 dimensions are effectively non-existent
-                      if (size == 1) return s;
+            // Size 1 dimensions are effectively non-existent
+            if (size == 1) return s;
 
-                      bool is_complex = access_stride == 0;
+            bool is_complex = access_stride == 0;
 
-                      // Complex expressions can produce any number as f_dim(dim)
-                      if (is_complex) access_stride = 1;
+            // Complex expressions can produce any number as f_dim(dim)
+            if (is_complex) access_stride = 1;
 
-                      auto outer = size;
-                      auto stride = 1;
-                      for (int j = 0; j < blk.inner_nblks; j++) {
-                          const dim_t blk_size = blk.inner_blks[j];
-                          if (blk.inner_idxs[j] == desc_dim) {
-                              outer = utils::div_up(outer, blk_size);
-                              auto next = stride;
-                              if (access_stride > 1) {
-                                  if (blk_size % access_stride == 0) {
-                                      next *= access_stride;
-                                      access_stride = 1;
-                                  } else {
-                                      access_stride = 1;
-                                      is_complex = true;
-                                  }
-                              }
-                              gpu_assert(s != strides.end());
-                              *s++ = stride_dim_t(dim, blk_size, next,
-                                      can_overflow, is_complex);
-                              ndims++;
-                          }
-                          stride *= blk_size;
-                      }
-                      gpu_assert(s != strides.end());
-                      *s++ = stride_dim_t(dim, outer,
-                              access_stride * blk.strides[desc_dim],
-                              can_overflow, is_complex);
-                      ndims++;
-                      return s;
-                  };
+            auto outer = size;
+            auto stride = 1;
+            for (int j = 0; j < blk.inner_nblks; j++) {
+                const dim_t blk_size = blk.inner_blks[j];
+                if (blk.inner_idxs[j] == desc_dim) {
+                    outer = utils::div_up(outer, blk_size);
+                    auto next = stride;
+                    if (access_stride > 1) {
+                        if (blk_size % access_stride == 0) {
+                            next *= access_stride;
+                            access_stride = 1;
+                        } else {
+                            access_stride = 1;
+                            is_complex = true;
+                        }
+                    }
+                    gpu_assert(s != strides.end());
+                    *s++ = stride_dim_t(
+                            dim, blk_size, next, can_overflow, is_complex);
+                    ndims++;
+                }
+                stride *= blk_size;
+            }
+            gpu_assert(s != strides.end());
+            *s++ = stride_dim_t(dim, outer,
+                    access_stride * blk.strides[desc_dim], can_overflow,
+                    is_complex);
+            ndims++;
+            return s;
+        };
 
         switch (type) {
             case input_tensor_t::src:

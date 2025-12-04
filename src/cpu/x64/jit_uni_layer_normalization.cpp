@@ -404,8 +404,8 @@ protected:
         if (has_ne_convert_src_xf16_)
             compute_ne_convert_xf16(
                     vmm_mean, [&](Vmm vmm_dst, Vmm vmm_src, bool need_tail) {
-                        uni_vaddps(vmm_dst, vmm_dst, vmm_src);
-                    });
+                uni_vaddps(vmm_dst, vmm_dst, vmm_src);
+            });
         else
             compute(vmm_mean, [&](Vmm vmm_dst, Vmm vmm_src, bool need_tail) {
                 uni_vaddps(vmm_dst, vmm_dst, vmm_src);
@@ -416,11 +416,11 @@ protected:
     void compute_var() {
         auto compute_var_lambda
                 = [&](Vmm vmm_dst, Vmm vmm_src, bool need_tail) {
-                      if (!skip_mean_) {
-                          uni_vsubps_maybe_tail(vmm_src, vmm_mean, need_tail);
-                      }
-                      uni_vfmadd231ps(vmm_dst, vmm_src, vmm_src);
-                  };
+            if (!skip_mean_) {
+                uni_vsubps_maybe_tail(vmm_src, vmm_mean, need_tail);
+            }
+            uni_vfmadd231ps(vmm_dst, vmm_src, vmm_src);
+        };
 
         if (has_ne_convert_src_xf16_)
             compute_ne_convert_xf16(vmm_inv_sqrtvar, compute_var_lambda);
@@ -853,7 +853,7 @@ protected:
 
         io_[f32]->store(vmm_dscale, d_scale_ptr(offt_elems), tail);
         io_[f32]->store(vmm_dshift, d_shift_ptr(offt_elems), tail);
-    };
+    }
 
     void generate() override {
         const size_t c_src_size
@@ -1066,7 +1066,7 @@ protected:
         uni_vaddps(vmm_dd_scale, vmm_dd_scale, vmm_ddst);
         if (!skip_mean_) { uni_vsubps(vmm_src, vmm_src, vmm_mean); }
         uni_vfmadd231ps(vmm_dd_scale_x, vmm_ddst, vmm_src);
-    };
+    }
 
     void compute_diff_src(size_t offt_elems, bool tail = false) {
         Vmm vmm_ddst = vmm_dsrc;
@@ -1085,7 +1085,7 @@ protected:
         }
         uni_vmulps(vmm_dsrc, vmm_dsrc, vmm_inv_sqrtvar);
         io_[d_src_d_.data_type()]->store(vmm_dsrc, d_src_ptr(offt_elems), tail);
-    };
+    }
 
     void generate() override {
         const size_t c_src_size

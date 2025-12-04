@@ -667,7 +667,7 @@ struct attr_args_t {
 
     void prepare_quant(const attr_t &attr, int arg, int mask = -1) {
         entries.insert(std::make_pair(arg, mask));
-    };
+    }
 
     int prepare_post_ops_mds(const attr_t &attr, int ndims,
             const dnnl_dims_t prb_dims,

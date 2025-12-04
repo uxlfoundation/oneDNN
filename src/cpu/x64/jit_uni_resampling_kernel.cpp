@@ -889,8 +889,8 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::generate() {
                 || conf_.tag_kind == tag_kind::blocked) {
             interpolate_c_oriented_format(
                     [&](const bool is_tail_in_blocked_format) {
-                        nearest_c_oriented_format(is_tail_in_blocked_format);
-                    });
+                nearest_c_oriented_format(is_tail_in_blocked_format);
+            });
         }
     } else if (conf_.alg == alg_kind::resampling_linear) {
         mov(reg_weights, ptr[reg_param + GET_OFF(weights)]);
@@ -902,8 +902,8 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::generate() {
             get_params_for_linear_in_c_oriented_format();
             interpolate_c_oriented_format(
                     [&](const bool is_tail_in_blocked_format) {
-                        linear_c_oriented_format(is_tail_in_blocked_format);
-                    });
+                linear_c_oriented_format(is_tail_in_blocked_format);
+            });
         }
     }
 

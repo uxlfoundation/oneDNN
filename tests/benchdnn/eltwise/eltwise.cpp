@@ -378,19 +378,18 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     // by value to avoid using dangling references.
     const auto eltwise_add_check =
             [&, prb](const compare::compare_t::driver_check_func_args_t &args) {
-                // Some algorithms require absolute value comparison for inputs
-                // where catastrophic cancellation may happen.
-                const auto &src = ref_args.find(DNNL_ARG_SRC);
-                const auto &dst = ref_args.find(DNNL_ARG_DST);
-                const auto &source
-                        = ((prb->dir & FLAG_BWD) && prb->use_dst()) ? dst : src;
-                const float s = source.get_f32_elem(args.idx);
-                if (check_abs_err(prb, s, args.trh))
-                    return args.diff <= args.trh;
-                if (prb->attr.post_ops.binary_index() != -1)
-                    return args.diff <= args.trh;
-                return miopen_check_correctness(prb, args);
-            };
+        // Some algorithms require absolute value comparison for inputs
+        // where catastrophic cancellation may happen.
+        const auto &src = ref_args.find(DNNL_ARG_SRC);
+        const auto &dst = ref_args.find(DNNL_ARG_DST);
+        const auto &source
+                = ((prb->dir & FLAG_BWD) && prb->use_dst()) ? dst : src;
+        const float s = source.get_f32_elem(args.idx);
+        if (check_abs_err(prb, s, args.trh)) return args.diff <= args.trh;
+        if (prb->attr.post_ops.binary_index() != -1)
+            return args.diff <= args.trh;
+        return miopen_check_correctness(prb, args);
+    };
     cmp.set_driver_check_function(eltwise_add_check);
 }
 
@@ -427,7 +426,7 @@ std::vector<int> supported_exec_args(dir_t dir) {
             : (driver_name == "graph") ? exec_bwd_args_graph
             : (dir & FLAG_WEI)         ? exec_bwd_use_dst_args
                                        : exec_bwd_args;
-};
+}
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const prb_t *prb, res_t *res,

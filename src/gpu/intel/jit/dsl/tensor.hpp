@@ -88,7 +88,7 @@ private:
         bool is_empty() const { return data_[0] == 0; }
         size_t get_hash() const {
             return std::hash<uint64_t> {}(numeric_value());
-        };
+        }
         std::string str() const { return data_; }
 
     private:
@@ -764,7 +764,7 @@ struct layout_t {
     using tile_iterator_t = layout::tile_iterator_t;
     tile_iterator_t iter(const tile_t &tile) const {
         return tile_iterator_t(*this, tile);
-    };
+    }
 
     template <typename F>
     void for_each_tile(const tile_t &tile, const F &f) const {

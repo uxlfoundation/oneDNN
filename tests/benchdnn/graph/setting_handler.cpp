@@ -41,7 +41,7 @@ void assign_stride_padding_val(bool has_h, bool has_d, int64_t &w, int64_t &h,
         h = default_val;
         w = val_[0];
     }
-};
+}
 
 void assign_dilation_val(bool has_h, bool has_d, int64_t &w, int64_t &h,
         int64_t &d, const std::vector<int64_t> &val_, int64_t default_val) {
@@ -58,7 +58,7 @@ void assign_dilation_val(bool has_h, bool has_d, int64_t &w, int64_t &h,
         h = default_val;
         w = val_[0] - 1;
     }
-};
+}
 
 void assign_shape_val(int64_t &c, int64_t &w, int64_t &h, int64_t &d,
         const std::vector<int64_t> &ncx_shape) {
@@ -71,7 +71,7 @@ void assign_shape_val(int64_t &c, int64_t &w, int64_t &h, int64_t &d,
     w = has_w ? ncx_shape[ndims - 1] : 1;
     h = has_h ? ncx_shape[ndims - 2] : 1;
     d = has_d ? ncx_shape[2] : 1;
-};
+}
 
 bool get_graph_attr(const deserialized_op_t &base_op_ref,
         attr_t::fpmath_mode_t &arg_fpmath_mode) {
@@ -2119,7 +2119,7 @@ bool get_softmax_dir(const deserialized_op_t &base_op_ref, dir_t &dir) {
         return false;
     }
     return true;
-};
+}
 
 bool get_softmax_sdt_and_ddt(const deserialized_op_t &base_op_ref,
         ::softmax::settings_t &op_setting) {
@@ -2165,7 +2165,7 @@ bool get_softmax_alg(
         return false;
     }
     return true;
-};
+}
 
 ::softmax::settings_t get_setting(
         const deserialized_op_t &base_op_ref, res_t *res) {

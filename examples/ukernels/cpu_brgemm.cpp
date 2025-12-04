@@ -121,9 +121,9 @@ void brgemm_example() {
     // Initialize binary_add.
     std::generate(
             binary_add_user_data.begin(), binary_add_user_data.end(), []() {
-                static int i = 3;
-                return i++ % 6;
-            });
+        static int i = 3;
+        return i++ % 6;
+    });
     // Initialize B scales.
     std::generate(B_scales_user_data.begin(), B_scales_user_data.end(), []() {
         static int i = 4;

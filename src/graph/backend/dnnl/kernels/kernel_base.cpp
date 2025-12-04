@@ -58,7 +58,7 @@ size_t kernel_base_t::encode_constant_cache_key(
 
 const std::vector<inplace_pair_t> &kernel_base_t::get_inplace_pairs() const {
     return inplace_pairs_;
-};
+}
 
 } // namespace dnnl_impl
 } // namespace graph

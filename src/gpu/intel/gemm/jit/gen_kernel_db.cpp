@@ -31,7 +31,7 @@ namespace jit {
 
 gemmstone::kcatalog::Catalog catalog() {
     return gemmstone::gemm_catalog;
-};
+}
 
 } // namespace jit
 } // namespace gemm

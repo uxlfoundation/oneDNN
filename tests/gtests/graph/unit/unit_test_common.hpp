@@ -184,7 +184,7 @@ public:
 
     /// @brief Returns memory size (in bytes) of this tensor
     /// @return The size
-    size_t get_size() const { return num_bytes_; };
+    size_t get_size() const { return num_bytes_; }
 
     /// @brief Returns the current graph tensor
     /// @return The graph tensor

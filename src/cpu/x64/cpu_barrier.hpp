@@ -35,14 +35,13 @@ namespace simple_barrier {
 #define CTX_ALIGNMENT 4096
 #endif
 
-STRUCT_ALIGN(
-        CTX_ALIGNMENT, struct ctx_t {
-            enum { CACHE_LINE_SIZE = 64 };
-            volatile size_t ctr;
-            char pad1[CACHE_LINE_SIZE - 1 * sizeof(size_t)];
-            volatile size_t sense;
-            char pad2[CACHE_LINE_SIZE - 1 * sizeof(size_t)];
-        });
+STRUCT_ALIGN(CTX_ALIGNMENT, struct ctx_t {
+    enum { CACHE_LINE_SIZE = 64 };
+    volatile size_t ctr;
+    char pad1[CACHE_LINE_SIZE - 1 * sizeof(size_t)];
+    volatile size_t sense;
+    char pad2[CACHE_LINE_SIZE - 1 * sizeof(size_t)];
+});
 
 /* TODO: remove ctx_64_t once batch normalization switches to barrier-less
  * implementation.
@@ -51,14 +50,13 @@ STRUCT_ALIGN(
  * stable with page alignment compared to cache line size alignment.
  * Batch normalization (that creates C / simd_w barriers) degrades with page
  * alignment due to significant overhead of ctx_init in case of mb=1. */
-STRUCT_ALIGN(
-        64, struct ctx_64_t {
-            enum { CACHE_LINE_SIZE = 64 };
-            volatile size_t ctr;
-            char pad1[CACHE_LINE_SIZE - 1 * sizeof(size_t)];
-            volatile size_t sense;
-            char pad2[CACHE_LINE_SIZE - 1 * sizeof(size_t)];
-        });
+STRUCT_ALIGN(64, struct ctx_64_t {
+    enum { CACHE_LINE_SIZE = 64 };
+    volatile size_t ctr;
+    char pad1[CACHE_LINE_SIZE - 1 * sizeof(size_t)];
+    volatile size_t sense;
+    char pad2[CACHE_LINE_SIZE - 1 * sizeof(size_t)];
+});
 
 template <typename ctx_t>
 inline void ctx_init(ctx_t *ctx) {

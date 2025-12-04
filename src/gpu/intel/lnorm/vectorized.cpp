@@ -32,7 +32,7 @@ bool mayiuse_sg(const int sg_size, impl::engine_t *engine) {
     auto *intel_engine = utils::downcast<engine_t *>(engine);
     return intel_engine->mayiuse_sub_group(sg_size)
             && intel_engine->mayiuse_block_reads_writes_with_sub_group(sg_size);
-};
+}
 
 bool is_fused_kernel_applicable(conf_t &conf, const pd_t *pd,
         impl::engine_t *engine, bool large_grf_mode) {

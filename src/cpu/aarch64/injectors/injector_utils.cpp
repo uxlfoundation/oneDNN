@@ -112,8 +112,8 @@ size_t register_preserve_guard_t<isa>::calc_vmm_to_preserve_size_bytes(
     return std::accumulate(vmm_to_preserve.begin(), vmm_to_preserve.end(),
             std::size_t(0u),
             [](std::size_t accum, const Xbyak_aarch64::VReg &vmm) {
-                return accum + cpu_isa_traits<isa>::vlen;
-            });
+        return accum + cpu_isa_traits<isa>::vlen;
+    });
 }
 
 template <cpu_isa_t isa>
@@ -123,7 +123,7 @@ size_t register_preserve_guard_t<isa>::stack_space_occupied() const {
             = vmm_to_preserve_size_bytes_ + reg64_stack_.size() * reg64_size;
 
     return stack_space_occupied;
-};
+}
 
 template <cpu_isa_t isa>
 conditional_register_preserve_guard_t<

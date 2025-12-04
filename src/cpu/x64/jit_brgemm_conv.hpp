@@ -110,7 +110,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
 
         inline int maybe_invert(int k, int K) const {
             return desc()->use_inversion ? K - 1 - k : k;
-        };
+        }
 
         // This method calculates the value of k_l
         void init_batch(int icc, const char *src_base, const char *wei_base,
@@ -181,7 +181,7 @@ private:
 
     inline int maybe_invert_range(int k, int k_inv, int K) const {
         return pd()->desc()->use_inversion ? K - k_inv : k;
-    };
+    }
 
     dim_t get_src_base_offset(
             const brgemm_thread_ctx_t &btc, const dim_t ic) const;

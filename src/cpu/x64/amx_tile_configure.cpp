@@ -93,7 +93,7 @@ status_t amx_tile_configure(const char palette[AMX_PALETTE_SIZE]) {
     static const jit_amx_tilecfg_t tilecfg(/* is_lazy = */ false);
     tilecfg.tile_configure(palette);
     return status::success;
-};
+}
 
 status_t amx_tile_lazy_configure(const char palette[AMX_PALETTE_SIZE]) {
     static const jit_amx_tilecfg_t tilecfg(/* is_lazy = */ true);
@@ -102,13 +102,13 @@ status_t amx_tile_lazy_configure(const char palette[AMX_PALETTE_SIZE]) {
     char palette_storage[AMX_PALETTE_SIZE];
     tilecfg.tile_lazy_configure(palette, palette_storage);
     return status::success;
-};
+}
 
 status_t amx_tile_release() {
     static const jit_amx_tilerelease_t tilerls;
     tilerls.tile_release();
     return status::success;
-};
+}
 
 } // namespace x64
 } // namespace cpu

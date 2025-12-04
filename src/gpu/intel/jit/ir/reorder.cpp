@@ -120,8 +120,8 @@ struct layout_normalization_t {
 
         std::sort(merges.begin(), merges.end(),
                 [](const merge_info_t &l, const merge_info_t &r) {
-                    return l.iter_idx < r.iter_idx;
-                });
+            return l.iter_idx < r.iter_idx;
+        });
         auto merge_it = merges.begin();
         auto merge_end = merges.end();
         std::vector<layout::block_t> blocks;

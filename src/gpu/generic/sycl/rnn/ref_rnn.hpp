@@ -81,12 +81,12 @@ struct ref_rnn_common_base_t : public primitive_t {
     status_t init(impl::engine_t *engine) override {
         CHECK(init_(engine));
         return status::success;
-    };
+    }
 
     status_t execute(const exec_ctx_t &ctx) const override {
         CHECK(execute_(ctx));
         return status::success;
-    };
+    }
 
 protected:
     bool create_nested_matmul(impl::engine_t *engine,

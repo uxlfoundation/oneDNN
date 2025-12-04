@@ -30,7 +30,7 @@ TEST(isa_set_once_test, TestISASetOnce) {
     ASSERT_TRUE(mayiuse(cpu_isa::sse41));
     st = set_max_cpu_isa(cpu_isa::sse41);
     ASSERT_TRUE(st == status::invalid_arguments || st == status::unimplemented);
-};
+}
 
 TEST(isa_set_once_test, TestISAHintsSetOnce) {
     auto st = set_cpu_isa_hints(cpu_isa_hints::prefer_ymm);
@@ -43,5 +43,5 @@ TEST(isa_set_once_test, TestISAHintsSetOnce) {
 
     st = set_cpu_isa_hints(cpu_isa_hints::no_hints);
     ASSERT_TRUE(unimplemented || st == status::runtime_error);
-};
+}
 } // namespace dnnl

@@ -84,18 +84,17 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
 #else
         parallel_nd(MB, utils::div_up(C, blksize), SP,
                 [&](dim_t mb, dim_t c, dim_t sp) {
-                    const dim_t off = mb * stride_mb + sp * blksize;
-                    const dim_t cb = c * blksize;
-                    const dim_t output_off = off + cb * SP;
-                    PRAGMA_OMP_SIMD()
-                    for (dim_t cc = 0; cc < nstl::min(blksize, C - cb); ++cc) {
-                        const dim_t input_c = rev_transposed_[cb + cc];
-                        const dim_t input_off = off
-                                + input_c / blksize * SP * blksize
-                                + input_c % blksize;
-                        output[output_off + cc] = input[input_off];
-                    }
-                });
+            const dim_t off = mb * stride_mb + sp * blksize;
+            const dim_t cb = c * blksize;
+            const dim_t output_off = off + cb * SP;
+            PRAGMA_OMP_SIMD()
+            for (dim_t cc = 0; cc < nstl::min(blksize, C - cb); ++cc) {
+                const dim_t input_c = rev_transposed_[cb + cc];
+                const dim_t input_off = off + input_c / blksize * SP * blksize
+                        + input_c % blksize;
+                output[output_off + cc] = input[input_off];
+            }
+        });
 #endif
     } else if (axis == 1 && one_of(tag, nhwc, ndhwc)) {
         parallel_nd(MB, SP, [&](dim_t mb, dim_t sp) {
@@ -123,11 +122,10 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
 
         parallel_nd(outer_size, axis_size, inner_size,
                 [&](dim_t ou, dim_t a, dim_t in) {
-                    const dim_t off = ou * dim + in;
-                    auto &o = output[src_d.off_l(off + a * inner_size)];
-                    o = input[src_d.off_l(
-                            off + rev_transposed_[a] * inner_size)];
-                });
+            const dim_t off = ou * dim + in;
+            auto &o = output[src_d.off_l(off + a * inner_size)];
+            o = input[src_d.off_l(off + rev_transposed_[a] * inner_size)];
+        });
     }
     return status::success;
 }

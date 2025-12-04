@@ -181,17 +181,17 @@ void jit_avx512_core_bf16_fwd_kernel_vmm_t<Vmm>::apply_postops(int ur_w) {
             iterate(jcp.nb_oc_blocking, ur_w, mask_tail,
                     oc_blk_is_smaller_than_vmm,
                     [&](const bool mask_flag, const int k, const int j) {
-                        const size_t aux_output_l_off = get_dst_offset(j, k);
-                        const auto vmm_idx = vmm_dst_idx(j, k);
-                        vmm_idxs.emplace(vmm_idx);
+                const size_t aux_output_l_off = get_dst_offset(j, k);
+                const auto vmm_idx = vmm_dst_idx(j, k);
+                vmm_idxs.emplace(vmm_idx);
 
-                        rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
-                                vmm_idx, reg_dst);
-                        rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
-                                vmm_idx, aux_output_l_off);
-                        if (mask_flag)
-                            rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
-                    });
+                rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
+                        vmm_idx, reg_dst);
+                rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
+                        vmm_idx, aux_output_l_off);
+                if (mask_flag)
+                    rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
+            });
             rhs_arg_params = rhs_arg_params_tail;
             rhs_arg_params.vmm_tail_idx_.clear();
 
@@ -213,8 +213,8 @@ void jit_avx512_core_bf16_fwd_kernel_vmm_t<Vmm>::apply_postops(int ur_w) {
         } else {
             iterate(jcp.nb_oc_blocking, ur_w,
                     [&](const bool, const int k, const int j) {
-                        vmm_idxs.emplace(vmm_dst_idx(j, k));
-                    });
+                vmm_idxs.emplace(vmm_dst_idx(j, k));
+            });
             postops_injector_->compute_vector_range(vmm_idxs);
         }
     }
@@ -1918,10 +1918,10 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::
     auto src_addr
             = [this, src_offset](int i_iw, int i_ic, ptrdiff_t extra_offset = 0,
                       bool vnni_bcast = false) {
-                  auto local_offset = get_src_offset(i_ic, i_iw);
-                  return EVEX_compress_addr(reg_src,
-                          local_offset + src_offset + extra_offset, vnni_bcast);
-              };
+        auto local_offset = get_src_offset(i_ic, i_iw);
+        return EVEX_compress_addr(
+                reg_src, local_offset + src_offset + extra_offset, vnni_bcast);
+    };
     auto ddst_addr = [this, ddst_offset](int i_ur) {
         auto ow_scale = 2;
         return EVEX_compress_addr(
@@ -2053,9 +2053,9 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::
         auto local_offset = get_kernel_offset(i_ic, i_kw);
         return EVEX_compress_addr(reg_kernel, local_offset + kernel_offset);
     };
-    auto src_addr = [this, reorder_bytes](int i_iw, int i_ic,
-                            ptrdiff_t extra_offset = 0,
-                            bool vnni_bcast = false) {
+    auto src_addr
+            = [this, reorder_bytes](int i_iw, int i_ic,
+                      ptrdiff_t extra_offset = 0, bool vnni_bcast = false) {
         int local_offset = i_ic * reorder_bytes + 2 * jcp.typesize_in * i_iw;
         return EVEX_compress_addr(rsp, local_offset, vnni_bcast);
     };
@@ -2064,9 +2064,9 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::
         return EVEX_compress_addr(
                 reg_ddst, get_ddst_offset(ow_scale * i_ur) + ddst_offset);
     };
-    auto load_src_to_stack = [&](int i_iw, int i_ic, Opmask mask,
-                                     bool mask_empty, Opmask stride_mask,
-                                     bool stride_mask_empty) {
+    auto load_src_to_stack
+            = [&](int i_iw, int i_ic, Opmask mask, bool mask_empty,
+                      Opmask stride_mask, bool stride_mask_empty) {
         auto local_offset = get_src_offset(i_ic, i_iw);
         int stack_offset
                 = i_ic * reorder_bytes + 2 * jcp.typesize_in * (i_iw + pad_l);
@@ -2362,8 +2362,8 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::
     auto get_src_reg_idx = [&](int i_iw, int i_ic) {
         return kw * ic_block_step + (i_iw % src_pl_len) * ic_block_step + i_ic;
     };
-    auto get_diff_dst_reg_idx = [diff_dst_pl_start_reg_idx, diff_dst_pl_len](
-                                        int i_ur) {
+    auto get_diff_dst_reg_idx
+            = [diff_dst_pl_start_reg_idx, diff_dst_pl_len](int i_ur) {
         return diff_dst_pl_start_reg_idx + (i_ur / 2) % diff_dst_pl_len;
     };
 

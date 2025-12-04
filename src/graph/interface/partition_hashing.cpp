@@ -82,9 +82,8 @@ bool key_t::operator==(const key_t &rhs) const {
         const logical_tensor_wrapper_t lhs_lt {ins_[i]};
         if (std::find_if(rhs.ins_.begin(), rhs.ins_.end(),
                     [&lhs_lt](const logical_tensor_t &rhs_lt) {
-                        return logical_tensor_wrapper_t(rhs_lt) == lhs_lt;
-                    })
-                == rhs.ins_.end())
+            return logical_tensor_wrapper_t(rhs_lt) == lhs_lt;
+        }) == rhs.ins_.end())
             return false;
     }
 
@@ -92,9 +91,8 @@ bool key_t::operator==(const key_t &rhs) const {
         const logical_tensor_wrapper_t lhs_lt {outs_[i]};
         if (std::find_if(rhs.outs_.begin(), rhs.outs_.end(),
                     [&lhs_lt](const logical_tensor_t &rhs_lt) {
-                        return logical_tensor_wrapper_t(rhs_lt) == lhs_lt;
-                    })
-                == rhs.outs_.end())
+            return logical_tensor_wrapper_t(rhs_lt) == lhs_lt;
+        }) == rhs.outs_.end())
             return false;
     }
 

@@ -479,7 +479,7 @@ size_t get_ss_util_idx(float v) {
     for (size_t i = 0; i < ss_util_set.size(); i++)
         if (v <= ss_util_set[i]) return i;
     return ss_util_set.size() - 1;
-};
+}
 size_t get_appr_table_idx(float ss_util, data_type_t dt, mem_operation_t op,
         bool is_reusable, data_location_t location) {
     size_t idx = get_ss_util_idx(ss_util);

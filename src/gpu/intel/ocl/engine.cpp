@@ -198,7 +198,7 @@ cl_int maybe_print_debug_info(
     }
     MAYBE_UNUSED(err);
     return err_;
-};
+}
 
 inline status_t fuse_microkernels(cl_context context, cl_device_id device,
         xpu::ocl::wrapper_t<cl_program> &program, const char *code) {
@@ -328,15 +328,15 @@ status_t engine_t::create_program(xpu::ocl::wrapper_t<cl_program> &program,
     gpu_assert(source)
             << "No kernel source file was found for the kernels: " <<
             [&]() {
-                ostringstream_t oss;
-                bool is_first = true;
-                for (auto &n : kernel_names) {
-                    if (!is_first) oss << ", ";
-                    oss << n;
-                    is_first = false;
-                }
-                return oss.str();
-            }()
+        ostringstream_t oss;
+        bool is_first = true;
+        for (auto &n : kernel_names) {
+            if (!is_first) oss << ", ";
+            oss << n;
+            is_first = false;
+        }
+        return oss.str();
+    }()
             << ". In order to map kernel names to the implementation "
                "file, at least one kernel needs to be implemented in a .cl "
                "file";

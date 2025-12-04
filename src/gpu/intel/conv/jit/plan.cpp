@@ -815,13 +815,13 @@ bool x2r_plan_t::can_split(abc_kind_t abc, int factor) const {
 
     auto has_outer_block
             = [](const layout_t &layout, dim_t block, const pvar_t &idx = {}) {
-                  if (block == 1) return true;
-                  if (layout.blocks().empty()) return false;
-                  auto &b = layout.blocks().back();
-                  if (!idx.is_undef() && b.idx != idx) return false;
-                  if (b.size % block != 0) return false;
-                  return true;
-              };
+        if (block == 1) return true;
+        if (layout.blocks().empty()) return false;
+        auto &b = layout.blocks().back();
+        if (!idx.is_undef() && b.idx != idx) return false;
+        if (b.size % block != 0) return false;
+        return true;
+    };
 
     bool is_a = (abc == abc_kind_t::a);
     auto &load = (is_a ? a_load : b_load);
@@ -1457,13 +1457,13 @@ struct fma_context_t {
             int b_vec_idx) const {
         auto is_blocked_by
                 = [](const layout_t &layout, const pvar_t &dim, int block) {
-                      if (block == 1) return true;
-                      if (layout.nblocks() == 0) return false;
-                      auto &b0 = layout[0];
-                      if (b0.idx != dim) return false;
-                      if (b0.size % block != 0) return false;
-                      return true;
-                  };
+            if (block == 1) return true;
+            if (layout.nblocks() == 0) return false;
+            auto &b0 = layout[0];
+            if (b0.idx != dim) return false;
+            if (b0.size % block != 0) return false;
+            return true;
+        };
         if (a_vec_idx != -1 && !is_blocked_by(a, a_vec_idx, vec_size))
             return false;
         if (b_vec_idx != -1 && !is_blocked_by(b, b_vec_idx, vec_size))

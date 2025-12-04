@@ -85,7 +85,7 @@ struct context_t final : public xpu::context_t {
     void set_deps(std::vector<::sycl::event> &&event) {
         events_ = event_t(std::move(event));
     }
-    void set_deps(event_t &&events) { events_ = std::move(events); };
+    void set_deps(event_t &&events) { events_ = std::move(events); }
 
     void append_deps(const xpu::event_t &event) override {
         events_.append(event);

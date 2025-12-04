@@ -740,12 +740,11 @@ private:
         const auto &c_reg_buf = buf_info_.reg_buf("c");
         for_each(c_layout.int_dim_sizes(), store_plan.tile,
                 [&](const icoord_t &coord) {
-                    epilogue_tile_builder_t builder(*this, buf_info_, desc_,
-                            c_layout, c_mem_buf, c_reg_buf, plan_.c_coord,
-                            coord, store_plan);
-                    emit(builder.get_init_stmt());
-                    emit(builder.get_stmt());
-                });
+            epilogue_tile_builder_t builder(*this, buf_info_, desc_, c_layout,
+                    c_mem_buf, c_reg_buf, plan_.c_coord, coord, store_plan);
+            emit(builder.get_init_stmt());
+            emit(builder.get_stmt());
+        });
     }
 
     void build_bias_reduce_store() {

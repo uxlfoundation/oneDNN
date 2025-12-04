@@ -334,7 +334,7 @@ public:
 
     const std::vector<inplace_pair_t> &get_subgraph_inplace_pairs() const {
         return inplace_pairs_;
-    };
+    }
 
     std::string get_memory_info(const value_t *val) const {
         std::string str;

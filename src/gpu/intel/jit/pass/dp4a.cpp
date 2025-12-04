@@ -81,7 +81,7 @@ private:
         if (type.is_u8()) return dsl::type_t::u32();
         gpu_error_not_expected();
         return dsl::type_t();
-    };
+    }
 };
 
 stmt_t inject_dp4a(const stmt_t &s, ir_context_t &ir_ctx) {

@@ -199,7 +199,7 @@ transform_t get_transform(const MatrixAddressingStrategy &matrix_strategy,
         }
         default: stub(); return {};
     }
-};
+}
 idx_map_t<expr_t> get_strides(
         MatrixLayout layout, std::array<idx_t, 2> pvars, expr_t ld) {
     switch (layout) {
@@ -600,10 +600,9 @@ struct generator_dsl_t {
         }
 
         _if(kloop_it.is_inbounds(0), [&]() {
-            _if(
-                    k >= k_loop_main.k_warmup(),
-                    [&]() { build_k_loop(k_loop_main); },
-                    [&]() { build_k_loop(k_loop_short); });
+            _if(k >= k_loop_main.k_warmup(), [&]() {
+                build_k_loop(k_loop_main);
+            }, [&]() { build_k_loop(k_loop_short); });
             store_C();
         });
 

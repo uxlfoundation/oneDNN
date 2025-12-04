@@ -64,21 +64,20 @@ status_t ref_eltwise_fwd_t::execute_forward_generic(
 
     parallel_nd(
             MB, C, D, H, W, [=](dim_t n, dim_t c, dim_t d, dim_t h, dim_t w) {
-                auto data_p_off = DATA_OFF(src_d, n, c, d, h, w);
-                const float s = io::load_float_value(
-                        src_d.data_type(), src, data_p_off);
-                float res
-                        = compute_eltwise_scalar_fwd(alg_kind, s, alpha, beta);
-                dim_t data_l_off = (((n * C + c) * D + d) * H + h) * W + w;
+        auto data_p_off = DATA_OFF(src_d, n, c, d, h, w);
+        const float s
+                = io::load_float_value(src_d.data_type(), src, data_p_off);
+        float res = compute_eltwise_scalar_fwd(alg_kind, s, alpha, beta);
+        dim_t data_l_off = (((n * C + c) * D + d) * H + h) * W + w;
 
-                ref_post_ops_t::args_t args;
-                args.ctx = &ctx;
-                args.l_offset = data_l_off;
-                args.dst_md = pd()->dst_md();
-                ref_post_ops->execute(res, args);
+        ref_post_ops_t::args_t args;
+        args.ctx = &ctx;
+        args.l_offset = data_l_off;
+        args.dst_md = pd()->dst_md();
+        ref_post_ops->execute(res, args);
 
-                io::store_float_value(dst_d.data_type(), res, dst, data_p_off);
-            });
+        io::store_float_value(dst_d.data_type(), res, dst, data_p_off);
+    });
     return status::success;
 }
 
@@ -145,17 +144,15 @@ status_t ref_eltwise_bwd_t::execute_backward_generic(
 
     parallel_nd(
             MB, C, D, H, W, [=](dim_t n, dim_t c, dim_t d, dim_t h, dim_t w) {
-                auto data_off = DATA_OFF(data_d, n, c, d, h, w);
-                auto diff_data_off = DATA_OFF(diff_data_d, n, c, d, h, w);
-                const float s = io::load_float_value(
-                        data_d.data_type(), src, data_off);
-                const float dd = io::load_float_value(
-                        diff_data_d.data_type(), diff_dst, diff_data_off);
-                float res = compute_eltwise_scalar_bwd(
-                        alg_kind, dd, s, alpha, beta);
-                io::store_float_value(
-                        diff_data_d.data_type(), res, diff_src, diff_data_off);
-            });
+        auto data_off = DATA_OFF(data_d, n, c, d, h, w);
+        auto diff_data_off = DATA_OFF(diff_data_d, n, c, d, h, w);
+        const float s = io::load_float_value(data_d.data_type(), src, data_off);
+        const float dd = io::load_float_value(
+                diff_data_d.data_type(), diff_dst, diff_data_off);
+        float res = compute_eltwise_scalar_bwd(alg_kind, dd, s, alpha, beta);
+        io::store_float_value(
+                diff_data_d.data_type(), res, diff_src, diff_data_off);
+    });
     return status::success;
 }
 

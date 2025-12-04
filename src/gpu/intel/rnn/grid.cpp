@@ -1082,11 +1082,11 @@ gemm_sig((simple_common_t<aprop>::gemm_primitive)) {
 
     const auto init_gemm_nested_scratchpad
             = [&](const std::shared_ptr<impl::primitive_t> &gemm, int key) {
-                  auto *nested_grantor
-                          = create_nested_grantor(ctx.get_scratchpad_grantor(),
-                                  key, gemm->pd()->scratchpad_registry());
-                  gemm_ctx.set_scratchpad_grantor(nested_grantor);
-              };
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(), key,
+                        gemm->pd()->scratchpad_registry());
+        gemm_ctx.set_scratchpad_grantor(nested_grantor);
+    };
 
     switch (gemm_kind) {
         case gemm_iter_fwd:
@@ -1668,7 +1668,7 @@ status_t simple_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
             diff_src_iter_c_native_, workspace, shift, scale, dequantize_i));
 
     return status::success;
-};
+}
 // Fix for MSVS warning C4661.
 template <>
 cell_execution_sig(simple_fwd_t::cell_execution);

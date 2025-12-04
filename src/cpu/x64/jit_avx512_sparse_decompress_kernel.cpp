@@ -93,7 +93,7 @@ Xbyak::Reg64 jit_avx512_sparse_decompress_kernel_t::get_reg_mask_tmp(int idx) {
         case 3: return rax;
         default: assert(!"incorrect index"); return Xbyak::Reg64(0);
     }
-};
+}
 
 Xbyak::Zmm jit_avx512_sparse_decompress_kernel_t::get_zmm(int idx) {
     switch (idx) {

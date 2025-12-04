@@ -575,11 +575,11 @@ public:
         gpu_assert(end >= beg && end <= configs());
         std::sort(params_vec_.begin() + beg, params_vec_.begin() + end,
                 [&](const blocking_params_t &a, const blocking_params_t &b) {
-                    auto a_eval = key_func(a);
-                    auto b_eval = key_func(b);
-                    if (a_eval == b_eval) return a.id() < b.id();
-                    return a_eval < b_eval;
-                });
+            auto a_eval = key_func(a);
+            auto b_eval = key_func(b);
+            if (a_eval == b_eval) return a.id() < b.id();
+            return a_eval < b_eval;
+        });
     }
 
     template <typename PredicateFuncT>
@@ -759,8 +759,8 @@ public:
         auto sorted_points = points_;
         std::sort(sorted_points.begin(), sorted_points.end(),
                 [&](const bench_point_t &a, const bench_point_t &b) {
-                    return a.nsec < b.nsec;
-                });
+            return a.nsec < b.nsec;
+        });
         std::vector<int> ret;
         for (int i = 0; i < std::min((int)sorted_points.size(), n); i++) {
             auto &p = sorted_points[i];

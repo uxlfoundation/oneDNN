@@ -290,14 +290,14 @@ private:
         }
         std::sort(bufs.begin(), bufs.end(),
                 [&](const expr_t &a, const expr_t &b) {
-                    auto &ea = entries.at(a);
-                    auto &eb = entries.at(b);
-                    int a_span = (ea.second - ea.first);
-                    int b_span = (eb.second - eb.first);
-                    if (a_span == b_span)
-                        return a.as<var_t>().name < b.as<var_t>().name;
-                    return a_span < b_span;
-                });
+            auto &ea = entries.at(a);
+            auto &eb = entries.at(b);
+            int a_span = (ea.second - ea.first);
+            int b_span = (eb.second - eb.first);
+            if (a_span == b_span)
+                return a.as<var_t>().name < b.as<var_t>().name;
+            return a_span < b_span;
+        });
         // Use union-find to incrementally merge statements based on the common
         // buffers.
         std::vector<int> parent(nstmts);

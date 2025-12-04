@@ -80,14 +80,6 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
             path: oneDNN
-    
-      - name: Read version file
-        if: ${{ matrix.config.name == 'onednn-perf-base' }}
-        id: get-versions
-        run: |
-          content=`cat ${{ github.workspace }}/oneDNN/.github/automation/aarch64/ci.json`
-          content="${content//[$'\t\r\n$ ']}"
-          echo "output=$content" >> $GITHUB_OUTPUT
 
       - name: Build oneDNN
         uses: ./oneDNN/.github/actions/build-onednn-aarch64

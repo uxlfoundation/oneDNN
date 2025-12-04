@@ -1076,25 +1076,25 @@ void set_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     // Set leading dimensions for input weights arrays depending on input format
     const auto set_dims
             = [&](const memory_desc_wrapper &md, int &ld, int &nld) {
-                  ld = 0;
-                  nld = 0;
-                  if (md.is_blocking_desc()) {
-                      if (is_ldigo(md)) {
-                          ld = (int)md.blocking_desc().strides[2];
-                          nld = md.dims()[2];
-                      } else if (is_ldgoi(md)) {
-                          ld = (int)md.blocking_desc().strides[4];
-                          nld = md.dims()[3] * md.dims()[4];
-                      } else if (is_ldoi(md)) {
-                          ld = (int)md.blocking_desc().strides[3];
-                          nld = md.dims()[3];
-                      } else if (is_ldio(md)) {
-                          ld = (int)md.blocking_desc().strides[2];
-                          nld = md.dims()[2];
-                      } else
-                          assert(!"unsupported weights format");
-                  }
-              };
+        ld = 0;
+        nld = 0;
+        if (md.is_blocking_desc()) {
+            if (is_ldigo(md)) {
+                ld = (int)md.blocking_desc().strides[2];
+                nld = md.dims()[2];
+            } else if (is_ldgoi(md)) {
+                ld = (int)md.blocking_desc().strides[4];
+                nld = md.dims()[3] * md.dims()[4];
+            } else if (is_ldoi(md)) {
+                ld = (int)md.blocking_desc().strides[3];
+                nld = md.dims()[3];
+            } else if (is_ldio(md)) {
+                ld = (int)md.blocking_desc().strides[2];
+                nld = md.dims()[2];
+            } else
+                assert(!"unsupported weights format");
+        }
+    };
     set_dims(weights_layer_d, rnn.weights_layer_ld, rnn.weights_layer_nld);
     set_dims(weights_iter_d, rnn.weights_iter_ld, rnn.weights_iter_nld);
     set_dims(weights_projection_d, rnn.weights_projection_ld,

@@ -144,9 +144,9 @@ void jit_sve_1x1_convolution_fwd_t<src_type, wei_type, dst_type,
     std::vector<dst_data_t *> addrs;
     // End
 
-    auto init_bcast = [&](int iwork, int bcast_end, int &n, int &g,
-                              int &bcast_step, int &od, int &oh, int &ow,
-                              int &id, int &ih, int &iw) {
+    auto init_bcast
+            = [&](int iwork, int bcast_end, int &n, int &g, int &bcast_step,
+                      int &od, int &oh, int &ow, int &id, int &ih, int &iw) {
         int osb {0};
         nd_iterator_init(iwork, n, jcp.mb, g, jcp.ngroups, osb, nb_bcast);
         bcast_step = step(
@@ -225,8 +225,8 @@ void jit_sve_1x1_convolution_fwd_t<src_type, wei_type, dst_type,
 
         (*kernel_)(&p);
     };
-    auto conv_1x1 = [&](int bcast_start, int bcast_end, int ocb_start,
-                            int ocb_end) {
+    auto conv_1x1
+            = [&](int bcast_start, int bcast_end, int ocb_start, int ocb_end) {
         if (bcast_start >= bcast_end || ocb_start >= ocb_end) return;
 
         if (jcp.loop_order == loop_rlb) {

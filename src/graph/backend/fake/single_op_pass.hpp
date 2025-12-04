@@ -37,8 +37,8 @@ FAKE_BACKEND_REGISTER_PASSES_DEF_BEGIN(single_op_pass)
             .set_priority(p) \
             .set_attr<FCreatePattern>("FCreatePattern", \
                     [](const std::shared_ptr<pb_graph_t> &pgraph) -> void { \
-                        pgraph->append_op(op_kind::Wildcard); \
-                    });
+        pgraph->append_op(op_kind::Wildcard); \
+    });
 
 // register a wildcard matched pass
 FAKE_BACKEND_SINGLE_OP_TRANSFORM(wildcard_match_pass, fake, 1.f)

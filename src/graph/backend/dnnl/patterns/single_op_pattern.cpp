@@ -40,11 +40,10 @@ DNNL_BACKEND_REGISTER_PATTERN_DEF_BEGIN(single_op_pass)
             .set_kind(partition_kind_t::misc_post_ops) \
             .set_attr<FCreatePattern>("FCreatePattern", \
                     [](const std::shared_ptr<pb_graph_t> &pgraph) -> void { \
-                        pgraph->append_op(graph::op_kind::op); \
-                    }) \
-            .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr { \
-                return std::make_shared<kernel>(); \
-            });
+        pgraph->append_op(graph::op_kind::op); \
+    }).set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr { \
+        return std::make_shared<kernel>(); \
+    });
 
 // register passes with dnnl backend support
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, eltwise_fwd_pass)
@@ -56,8 +55,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, eltwise_fwd_pass)
                             = pgraph->append_alternation(get_unary_ops());
                     // the round algorithm in eltwise primitive does not
                     // support other data types.
-                    p_eltwise->append_decision_function([](op_t *graph_op)
-                                                                -> bool {
+                    p_eltwise->append_decision_function(
+                            [](op_t *graph_op) -> bool {
                         if (graph_op->get_kind() == graph::op_kind::Round)
                             return check_input_dtype<graph::data_type::f32>(
                                     graph_op);
@@ -409,8 +408,8 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, reduce_pass)
                                             graph::op_kind::ReduceMin,
                                             graph::op_kind::ReduceProd,
                                             graph::op_kind::ReduceSum});
-                    reduction->append_decision_function([](op_t *graph_op)
-                                                                -> bool {
+                    reduction->append_decision_function(
+                            [](op_t *graph_op) -> bool {
                         if (graph_op->has_attr(op_attr::axes)
                                 && graph_op->get_attr<std::vector<int64_t>>(
                                                    op_attr::axes)

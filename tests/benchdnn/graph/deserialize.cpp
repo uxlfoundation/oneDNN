@@ -707,8 +707,8 @@ bool deserialized_graph_t::detect_sdpa_fwd_impl() const {
     const auto is_root_op = [&](const deserialized_op_t &op) {
         return std::none_of(op.in_lts_.begin(), op.in_lts_.end(),
                 [&](const deserialized_lt_t &lt) {
-                    return !get_op_by_out_lt(lt.id_).empty();
-                });
+            return !get_op_by_out_lt(lt.id_).empty();
+        });
     };
 
     std::vector<std::reference_wrapper<const deserialized_op_t>> starter_ops;
@@ -762,8 +762,8 @@ bool deserialized_graph_t::detect_sdpa_bwd_impl() const {
     const auto is_root_op = [&](const deserialized_op_t &op) {
         return std::none_of(op.in_lts_.begin(), op.in_lts_.end(),
                 [&](const deserialized_lt_t &lt) {
-                    return !get_op_by_out_lt(lt.id_).empty();
-                });
+            return !get_op_by_out_lt(lt.id_).empty();
+        });
     };
 
     std::vector<std::reference_wrapper<const deserialized_op_t>> starter_ops;

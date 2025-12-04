@@ -307,17 +307,17 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     const auto softmax_add_check
             = [&](const compare::compare_t::driver_check_func_args_t &args) {
 #if defined(DNNL_AARCH64_USE_ACL)
-                  auto diff_trh = epsilon_dt(args.dt);
+        auto diff_trh = epsilon_dt(args.dt);
 #else
-                  auto diff_trh = epsilon_dt(dnnl_f32);
+        auto diff_trh = epsilon_dt(dnnl_f32);
 #endif
-                  // SSE4.1 and OpenCL rdiff tolerance is too high for
-                  // certain scenarios.
-                  // Additionally, OpenCL expf implementation may return 1e-38f
-                  // values for big negative numbers. This is the guard from
-                  // such values.
-                  return args.diff < diff_trh;
-              };
+        // SSE4.1 and OpenCL rdiff tolerance is too high for
+        // certain scenarios.
+        // Additionally, OpenCL expf implementation may return 1e-38f
+        // values for big negative numbers. This is the guard from
+        // such values.
+        return args.diff < diff_trh;
+    };
     cmp.set_driver_check_function(softmax_add_check);
 }
 

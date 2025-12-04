@@ -37,66 +37,58 @@ void MaxPooling(const float *src, float *dst, const dim_t batch,
 
     parallel_nd(batch, outD, outH, outW,
             [&](dim_t mb, dim_t od, dim_t oh, dim_t ow) {
-                const size_t dst_spatial_base
-                        = ((((size_t)mb * outD + od) * outH + oh) * outW + ow)
-                        * channels;
+        const size_t dst_spatial_base
+                = ((((size_t)mb * outD + od) * outH + oh) * outW + ow)
+                * channels;
 
-                // Compute valid kernel ranges per spatial dim
-                const int od_offset = (int)(od * strideD - padFront);
-                const int oh_offset = (int)(oh * strideH - padTop);
-                const int ow_offset = (int)(ow * strideW - padLeft);
-                const int id_start = std::max(od_offset, 0);
-                const int ih_start = std::max(oh_offset, 0);
-                const int iw_start = std::max(ow_offset, 0);
-                const int id_end = std::min(od_offset + (int)kerD, (int)inD);
-                const int ih_end = std::min(oh_offset + (int)kerH, (int)inH);
-                const int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
+        // Compute valid kernel ranges per spatial dim
+        const int od_offset = (int)(od * strideD - padFront);
+        const int oh_offset = (int)(oh * strideH - padTop);
+        const int ow_offset = (int)(ow * strideW - padLeft);
+        const int id_start = std::max(od_offset, 0);
+        const int ih_start = std::max(oh_offset, 0);
+        const int iw_start = std::max(ow_offset, 0);
+        const int id_end = std::min(od_offset + (int)kerD, (int)inD);
+        const int ih_end = std::min(oh_offset + (int)kerH, (int)inH);
+        const int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
 
-                // If no overlap in width, early out (no overlap implies whole kernel outside)
-                if (id_start >= id_end || ih_start >= ih_end
-                        || iw_start >= iw_end) {
-                    size_t oc = 0;
-                    while (oc < (size_t)channels) {
-                        size_t vl = __riscv_vsetvl_e32m1((size_t)channels - oc);
-                        vfloat32m1_t vfill
-                                = __riscv_vfmv_v_f_f32m1(-__FLT_MAX__, vl);
-                        vfill = postops_handler.apply(vfill, vl);
-                        __riscv_vse32_v_f32m1(
-                                &dst[dst_spatial_base + oc], vfill, vl);
-                        oc += vl;
+        // If no overlap in width, early out (no overlap implies whole kernel outside)
+        if (id_start >= id_end || ih_start >= ih_end || iw_start >= iw_end) {
+            size_t oc = 0;
+            while (oc < (size_t)channels) {
+                size_t vl = __riscv_vsetvl_e32m1((size_t)channels - oc);
+                vfloat32m1_t vfill = __riscv_vfmv_v_f_f32m1(-__FLT_MAX__, vl);
+                vfill = postops_handler.apply(vfill, vl);
+                __riscv_vse32_v_f32m1(&dst[dst_spatial_base + oc], vfill, vl);
+                oc += vl;
+            }
+            return;
+        }
+
+        size_t oc = 0;
+        while (oc < (size_t)channels) {
+            size_t vl = __riscv_vsetvl_e32m1((size_t)channels - oc);
+            vfloat32m1_t vmax = __riscv_vfmv_v_f_f32m1(-__FLT_MAX__, vl);
+
+            for (int id = id_start; id < id_end; ++id) {
+                for (int ih = ih_start; ih < ih_end; ++ih) {
+                    for (int iw = iw_start; iw < iw_end; ++iw) {
+                        const size_t src_spatial_base
+                                = ((((size_t)mb * inD + id) * inH + ih) * inW
+                                          + iw)
+                                * channels;
+                        const float *src_ptr = &src[src_spatial_base + oc];
+                        vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(src_ptr, vl);
+                        vmax = __riscv_vfmax_vv_f32m1(vmax, vsrc, vl);
                     }
-                    return;
                 }
+            }
 
-                size_t oc = 0;
-                while (oc < (size_t)channels) {
-                    size_t vl = __riscv_vsetvl_e32m1((size_t)channels - oc);
-                    vfloat32m1_t vmax
-                            = __riscv_vfmv_v_f_f32m1(-__FLT_MAX__, vl);
-
-                    for (int id = id_start; id < id_end; ++id) {
-                        for (int ih = ih_start; ih < ih_end; ++ih) {
-                            for (int iw = iw_start; iw < iw_end; ++iw) {
-                                const size_t src_spatial_base
-                                        = ((((size_t)mb * inD + id) * inH + ih)
-                                                          * inW
-                                                  + iw)
-                                        * channels;
-                                const float *src_ptr
-                                        = &src[src_spatial_base + oc];
-                                vfloat32m1_t vsrc
-                                        = __riscv_vle32_v_f32m1(src_ptr, vl);
-                                vmax = __riscv_vfmax_vv_f32m1(vmax, vsrc, vl);
-                            }
-                        }
-                    }
-
-                    vmax = postops_handler.apply(vmax, vl);
-                    __riscv_vse32_v_f32m1(
-                            &dst[dst_spatial_base + oc], vmax, vl);
-                    oc += vl;
-                }
-            });
+            vmax = postops_handler.apply(vmax, vl);
+            __riscv_vse32_v_f32m1(&dst[dst_spatial_base + oc], vmax, vl);
+            oc += vl;
+        }
+    });
 }
 
 void AvgPoolingIncludePadding(const float *src, float *dst, const dim_t batch,
@@ -111,57 +103,52 @@ void AvgPoolingIncludePadding(const float *src, float *dst, const dim_t batch,
 
     parallel_nd(batch, outD, outH, outW,
             [&](dim_t mb, dim_t od, dim_t oh, dim_t ow) {
-                const size_t dst_spatial_base
-                        = ((((size_t)mb * outD + od) * outH + oh) * outW + ow)
-                        * channels;
+        const size_t dst_spatial_base
+                = ((((size_t)mb * outD + od) * outH + oh) * outW + ow)
+                * channels;
 
-                const int od_offset = (int)(od * strideD - padFront);
-                const int oh_offset = (int)(oh * strideH - padTop);
-                const int ow_offset = (int)(ow * strideW - padLeft);
-                const int id_start = std::max(od_offset, 0);
-                const int ih_start = std::max(oh_offset, 0);
-                const int iw_start = std::max(ow_offset, 0);
-                const int id_end = std::min(od_offset + (int)kerD, (int)inD);
-                const int ih_end = std::min(oh_offset + (int)kerH, (int)inH);
-                const int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
+        const int od_offset = (int)(od * strideD - padFront);
+        const int oh_offset = (int)(oh * strideH - padTop);
+        const int ow_offset = (int)(ow * strideW - padLeft);
+        const int id_start = std::max(od_offset, 0);
+        const int ih_start = std::max(oh_offset, 0);
+        const int iw_start = std::max(ow_offset, 0);
+        const int id_end = std::min(od_offset + (int)kerD, (int)inD);
+        const int ih_end = std::min(oh_offset + (int)kerH, (int)inH);
+        const int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
 
-                size_t oc = 0;
-                while (oc < (size_t)channels) {
-                    size_t vl = __riscv_vsetvl_e32m1((size_t)channels - oc);
-                    vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+        size_t oc = 0;
+        while (oc < (size_t)channels) {
+            size_t vl = __riscv_vsetvl_e32m1((size_t)channels - oc);
+            vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, vl);
 
-                    if (id_start < id_end && ih_start < ih_end
-                            && iw_start < iw_end) {
-                        for (int id = id_start; id < id_end; ++id) {
-                            for (int ih = ih_start; ih < ih_end; ++ih) {
-                                for (int iw = iw_start; iw < iw_end; ++iw) {
-                                    const size_t src_spatial_base
-                                            = ((((size_t)mb * inD + id) * inH
-                                                       + ih) * inW
-                                                      + iw)
-                                            * channels;
-                                    const float *src_ptr
-                                            = &src[src_spatial_base + oc];
-                                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
-                                            src_ptr, vl);
-                                    vsum = __riscv_vfadd_vv_f32m1(
-                                            vsum, vsrc, vl);
-                                }
-                            }
+            if (id_start < id_end && ih_start < ih_end && iw_start < iw_end) {
+                for (int id = id_start; id < id_end; ++id) {
+                    for (int ih = ih_start; ih < ih_end; ++ih) {
+                        for (int iw = iw_start; iw < iw_end; ++iw) {
+                            const size_t src_spatial_base
+                                    = ((((size_t)mb * inD + id) * inH + ih)
+                                                      * inW
+                                              + iw)
+                                    * channels;
+                            const float *src_ptr = &src[src_spatial_base + oc];
+                            vfloat32m1_t vsrc
+                                    = __riscv_vle32_v_f32m1(src_ptr, vl);
+                            vsum = __riscv_vfadd_vv_f32m1(vsum, vsrc, vl);
                         }
                     }
-
-                    // divide by kernel volume
-                    vfloat32m1_t vscale
-                            = __riscv_vfmv_v_f_f32m1(1.0f / kernel_volume, vl);
-                    vfloat32m1_t vout
-                            = __riscv_vfmul_vv_f32m1(vsum, vscale, vl);
-                    vout = postops_handler.apply(vout, vl);
-                    __riscv_vse32_v_f32m1(
-                            &dst[dst_spatial_base + oc], vout, vl);
-                    oc += vl;
                 }
-            });
+            }
+
+            // divide by kernel volume
+            vfloat32m1_t vscale
+                    = __riscv_vfmv_v_f_f32m1(1.0f / kernel_volume, vl);
+            vfloat32m1_t vout = __riscv_vfmul_vv_f32m1(vsum, vscale, vl);
+            vout = postops_handler.apply(vout, vl);
+            __riscv_vse32_v_f32m1(&dst[dst_spatial_base + oc], vout, vl);
+            oc += vl;
+        }
+    });
 }
 
 void AvgPoolingExcludePadding(const float *src, float *dst, const dim_t batch,
@@ -174,64 +161,56 @@ void AvgPoolingExcludePadding(const float *src, float *dst, const dim_t batch,
 
     parallel_nd(batch, outD, outH, outW,
             [&](dim_t mb, dim_t od, dim_t oh, dim_t ow) {
-                const size_t dst_spatial_base
-                        = ((((size_t)mb * outD + od) * outH + oh) * outW + ow)
-                        * channels;
+        const size_t dst_spatial_base
+                = ((((size_t)mb * outD + od) * outH + oh) * outW + ow)
+                * channels;
 
-                const int od_offset = (int)(od * strideD - padFront);
-                const int oh_offset = (int)(oh * strideH - padTop);
-                const int ow_offset = (int)(ow * strideW - padLeft);
+        const int od_offset = (int)(od * strideD - padFront);
+        const int oh_offset = (int)(oh * strideH - padTop);
+        const int ow_offset = (int)(ow * strideW - padLeft);
 
-                size_t oc = 0;
-                while (oc < (size_t)channels) {
-                    size_t vl = __riscv_vsetvl_e32m1((size_t)channels - oc);
-                    vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-                    float count_scalar = 0.0f;
+        size_t oc = 0;
+        while (oc < (size_t)channels) {
+            size_t vl = __riscv_vsetvl_e32m1((size_t)channels - oc);
+            vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+            float count_scalar = 0.0f;
 
-                    for (int id = od_offset; id < od_offset + (int)kerD; ++id) {
-                        if (id < 0 || id >= (int)inD) continue;
-                        for (int ih = oh_offset; ih < oh_offset + (int)kerH;
-                                ++ih) {
-                            if (ih < 0 || ih >= (int)inH) continue;
+            for (int id = od_offset; id < od_offset + (int)kerD; ++id) {
+                if (id < 0 || id >= (int)inD) continue;
+                for (int ih = oh_offset; ih < oh_offset + (int)kerH; ++ih) {
+                    if (ih < 0 || ih >= (int)inH) continue;
 
-                            int iw_start = std::max(ow_offset, 0);
-                            int iw_end
-                                    = std::min(ow_offset + (int)kerW, (int)inW);
-                            if (iw_start >= iw_end) continue;
+                    int iw_start = std::max(ow_offset, 0);
+                    int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
+                    if (iw_start >= iw_end) continue;
 
-                            for (int iw = iw_start; iw < iw_end; ++iw) {
-                                const size_t src_spatial_base
-                                        = ((((size_t)mb * inD + id) * inH + ih)
-                                                          * inW
-                                                  + iw)
-                                        * channels;
-                                const float *src_ptr
-                                        = &src[src_spatial_base + oc];
-                                vfloat32m1_t vsrc
-                                        = __riscv_vle32_v_f32m1(src_ptr, vl);
-                                vsum = __riscv_vfadd_vv_f32m1(vsum, vsrc, vl);
-                                count_scalar += 1.0f;
-                            }
-                        }
+                    for (int iw = iw_start; iw < iw_end; ++iw) {
+                        const size_t src_spatial_base
+                                = ((((size_t)mb * inD + id) * inH + ih) * inW
+                                          + iw)
+                                * channels;
+                        const float *src_ptr = &src[src_spatial_base + oc];
+                        vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(src_ptr, vl);
+                        vsum = __riscv_vfadd_vv_f32m1(vsum, vsrc, vl);
+                        count_scalar += 1.0f;
                     }
-
-                    if (count_scalar == 0.0f) {
-                        vfloat32m1_t vzero = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-                        vzero = postops_handler.apply(vzero, vl);
-                        __riscv_vse32_v_f32m1(
-                                &dst[dst_spatial_base + oc], vzero, vl);
-                    } else {
-                        vfloat32m1_t vscale = __riscv_vfmv_v_f_f32m1(
-                                1.0f / count_scalar, vl);
-                        vfloat32m1_t vout
-                                = __riscv_vfmul_vv_f32m1(vsum, vscale, vl);
-                        vout = postops_handler.apply(vout, vl);
-                        __riscv_vse32_v_f32m1(
-                                &dst[dst_spatial_base + oc], vout, vl);
-                    }
-                    oc += vl;
                 }
-            });
+            }
+
+            if (count_scalar == 0.0f) {
+                vfloat32m1_t vzero = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+                vzero = postops_handler.apply(vzero, vl);
+                __riscv_vse32_v_f32m1(&dst[dst_spatial_base + oc], vzero, vl);
+            } else {
+                vfloat32m1_t vscale
+                        = __riscv_vfmv_v_f_f32m1(1.0f / count_scalar, vl);
+                vfloat32m1_t vout = __riscv_vfmul_vv_f32m1(vsum, vscale, vl);
+                vout = postops_handler.apply(vout, vl);
+                __riscv_vse32_v_f32m1(&dst[dst_spatial_base + oc], vout, vl);
+            }
+            oc += vl;
+        }
+    });
 }
 } // namespace
 

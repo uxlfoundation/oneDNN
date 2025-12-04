@@ -47,15 +47,15 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_common(const exec_ctx_t &ctx,
 
     parallel_nd(MB, G, OC, OD, OH, OW,
             [&](dim_t mb, dim_t g, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
-                const dim_t c = g * OC + oc;
-                const dim_t off = ref_conv_utils::get_data_off(
-                        dst_d, ndims, mb, c, od, oh, ow);
-                float b = io::load_float_value(bias_d.data_type(), bias, c);
-                float d = conv_output[off];
-                // Use f32 if attributes happen after bias to get precise answer
-                auto dt = non_default_attr ? data_type::f32 : dst_d.data_type();
-                io::store_float_value(dt, d + b, dst, off);
-            });
+        const dim_t c = g * OC + oc;
+        const dim_t off
+                = ref_conv_utils::get_data_off(dst_d, ndims, mb, c, od, oh, ow);
+        float b = io::load_float_value(bias_d.data_type(), bias, c);
+        float d = conv_output[off];
+        // Use f32 if attributes happen after bias to get precise answer
+        auto dt = non_default_attr ? data_type::f32 : dst_d.data_type();
+        io::store_float_value(dt, d + b, dst, off);
+    });
 }
 
 void ref_deconvolution_fwd_t::compute_fwd_bias_ncdhw(const exec_ctx_t &ctx,
@@ -118,23 +118,22 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_nCdhwXc(const exec_ctx_t &ctx,
 
     parallel_nd(MB, utils::div_up(OC, blk_size), SP,
             [&](dim_t mb, dim_t oc_blk, dim_t sp) {
-                const dim_t oc = oc_blk * blk_size;
-                const dim_t off = mb * stride_mb + oc * SP + sp * blk_size;
-                const dim_t blk = nstl::min(blk_size, OC - oc);
+        const dim_t oc = oc_blk * blk_size;
+        const dim_t off = mb * stride_mb + oc * SP + sp * blk_size;
+        const dim_t blk = nstl::min(blk_size, OC - oc);
 
-                PRAGMA_OMP_SIMD()
-                for (dim_t i = 0; i < blk_size; ++i) {
-                    float b = i < blk ? io::load_float_value(bias_d.data_type(),
-                                                bias, oc + i)
-                                      : 0;
-                    float d = conv_output[off + i];
-                    // Use f32 if attributes happen after bias to get precise
-                    // answer.
-                    auto dt = non_default_attr ? data_type::f32
-                                               : dst_d.data_type();
-                    io::store_float_value(dt, d + b, dst, off + i);
-                }
-            });
+        PRAGMA_OMP_SIMD()
+        for (dim_t i = 0; i < blk_size; ++i) {
+            float b = i < blk
+                    ? io::load_float_value(bias_d.data_type(), bias, oc + i)
+                    : 0;
+            float d = conv_output[off + i];
+            // Use f32 if attributes happen after bias to get precise
+            // answer.
+            auto dt = non_default_attr ? data_type::f32 : dst_d.data_type();
+            io::store_float_value(dt, d + b, dst, off + i);
+        }
+    });
 }
 
 void ref_deconvolution_fwd_t::compute_fwd_bias(const exec_ctx_t &ctx, void *dst,
@@ -195,17 +194,17 @@ status_t ref_deconvolution_fwd_t::compute_oscale(
 
     parallel_nd(MB, OCP, OD, OH, OW,
             [&](dim_t mb, int ocp, dim_t od, dim_t oh, dim_t ow) {
-                auto dst_off = ref_conv_utils::get_data_off(
-                        dst_d, ndims, mb, ocp, od, oh, ow);
-                float tmp_result = 0;
+        auto dst_off = ref_conv_utils::get_data_off(
+                dst_d, ndims, mb, ocp, od, oh, ow);
+        float tmp_result = 0;
 
-                if (ocp < OC) {
-                    tmp_result = dst[dst_off];
-                    maybe_oscale(tmp_result, ocp, src_scales, wei_scales,
-                            wei_scale_mask);
-                    dst[dst_off] = tmp_result;
-                }
-            });
+        if (ocp < OC) {
+            tmp_result = dst[dst_off];
+            maybe_oscale(
+                    tmp_result, ocp, src_scales, wei_scales, wei_scale_mask);
+            dst[dst_off] = tmp_result;
+        }
+    });
 
     return status_t::dnnl_success;
 }
@@ -240,36 +239,34 @@ status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
 
     parallel_nd(MB, OCP, OD, OH, OW,
             [&](dim_t mb, int ocp, dim_t od, dim_t oh, dim_t ow) {
-                auto dst_off = ref_conv_utils::get_data_off(
-                        dst_d, ndims, mb, ocp, od, oh, ow);
-                float tmp_result = 0;
+        auto dst_off = ref_conv_utils::get_data_off(
+                dst_d, ndims, mb, ocp, od, oh, ow);
+        float tmp_result = 0;
 
-                if (ocp < OC) {
-                    dim_t dst_l_off = (mb * OC + ocp) * OD * OH * OW
-                            + od * OH * OW + oh * OW + ow;
-                    msan_unpoison(
-                            (void *)(&conv_output[dst_off]), sizeof(float));
-                    tmp_result = conv_output[dst_off];
+        if (ocp < OC) {
+            dim_t dst_l_off = (mb * OC + ocp) * OD * OH * OW + od * OH * OW
+                    + oh * OW + ow;
+            msan_unpoison((void *)(&conv_output[dst_off]), sizeof(float));
+            tmp_result = conv_output[dst_off];
 
-                    ref_post_ops_t::args_t args;
-                    if (pd()->attr()->post_ops_.find(primitive_kind::sum) != -1)
-                        args.dst_val = io::load_float_value(
-                                sum_dt, original_dst, dst_off);
-                    args.ctx = &ctx;
-                    args.l_offset = dst_l_off;
-                    args.dst_md = pd()->dst_md();
-                    ref_post_ops->execute(tmp_result, args);
-                    if (has_dst_scales) {
-                        // scale_idx_mult = 1 for per_oc scales and 0, otherwise
-                        tmp_result *= dst_scales[ocp * (dst_scale_mask > 0)];
-                    }
-                    if (has_dst_zp) {
-                        tmp_result += dst_zero_points[ocp * (dst_zp_mask > 0)];
-                    }
-                }
-                io::store_float_value(
-                        dst_d.data_type(), tmp_result, dst, dst_off);
-            });
+            ref_post_ops_t::args_t args;
+            if (pd()->attr()->post_ops_.find(primitive_kind::sum) != -1)
+                args.dst_val
+                        = io::load_float_value(sum_dt, original_dst, dst_off);
+            args.ctx = &ctx;
+            args.l_offset = dst_l_off;
+            args.dst_md = pd()->dst_md();
+            ref_post_ops->execute(tmp_result, args);
+            if (has_dst_scales) {
+                // scale_idx_mult = 1 for per_oc scales and 0, otherwise
+                tmp_result *= dst_scales[ocp * (dst_scale_mask > 0)];
+            }
+            if (has_dst_zp) {
+                tmp_result += dst_zero_points[ocp * (dst_zp_mask > 0)];
+            }
+        }
+        io::store_float_value(dst_d.data_type(), tmp_result, dst, dst_off);
+    });
 
     return status_t::dnnl_success;
 }
@@ -312,9 +309,9 @@ static void compute_src_zp_compensation(const exec_ctx_t &ctx,
     const auto ndims = wei_d.ndims() - (with_groups ? 1 : 0);
     const auto get_wei_off
             = [=](dim_t g, dim_t oc, dim_t ic, dim_t kd, dim_t kh, dim_t kw) {
-                  return get_weights_off(
-                          wei_d, with_groups, ndims, g, oc, ic, kd, kh, kw);
-              };
+        return get_weights_off(
+                wei_d, with_groups, ndims, g, oc, ic, kd, kh, kw);
+    };
 
     parallel_nd(G, OC, [&](const dim_t g, const dim_t oc) {
         const auto out_offset = g * OC + oc;
@@ -366,9 +363,9 @@ prepare_zp_pad_comp_ker(const dim_t ndims, const int32_t *src_zero_points,
     const memory_desc_wrapper wei_d(deconv_pd->weights_md());
     const auto get_wei_off
             = [=](dim_t g, dim_t oc, dim_t ic, dim_t kd, dim_t kh, dim_t kw) {
-                  return get_weights_off(
-                          wei_d, with_groups, ndims, g, oc, ic, kd, kh, kw);
-              };
+        return get_weights_off(
+                wei_d, with_groups, ndims, g, oc, ic, kd, kh, kw);
+    };
 
     return [=](const dim_t g, const dim_t oc, const dim_t od, const dim_t oh,
                    const dim_t ow) {
@@ -450,19 +447,19 @@ static status_t apply_src_zero_point(const exec_ctx_t &ctx,
     parallel_nd(MB, G, OC, OD, OH, OW,
             [&](const dim_t mb, const dim_t g, const dim_t oc, const dim_t od,
                     const dim_t oh, const dim_t ow) {
-                const auto oc_off = g * OC + oc;
-                const auto dst_off = ref_conv_utils::get_data_off(
-                        dst_d, ndims, mb, oc_off, od, oh, ow);
-                int32_t conv_result
-                        = conv_output[dst_off] - zp_src_compensation[oc_off];
+        const auto oc_off = g * OC + oc;
+        const auto dst_off = ref_conv_utils::get_data_off(
+                dst_d, ndims, mb, oc_off, od, oh, ow);
+        int32_t conv_result
+                = conv_output[dst_off] - zp_src_compensation[oc_off];
 
-                if (const auto zp_pad_compensation
-                        = zp_pad_comp_ker(g, oc, od, oh, ow)) {
-                    conv_result += zp_pad_compensation;
-                }
+        if (const auto zp_pad_compensation
+                = zp_pad_comp_ker(g, oc, od, oh, ow)) {
+            conv_result += zp_pad_compensation;
+        }
 
-                conv_output[dst_off] = static_cast<float>(conv_result);
-            });
+        conv_output[dst_off] = static_cast<float>(conv_result);
+    });
 
     return status::success;
 }

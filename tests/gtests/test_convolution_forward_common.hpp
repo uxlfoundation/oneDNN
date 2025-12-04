@@ -52,62 +52,58 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
     dnnl::impl::parallel_nd(c.mb, c.ng, c.oc / c.ng, c.oh, c.ow,
             [&](memory::dim n, memory::dim g, memory::dim oc, memory::dim oh,
                     memory::dim ow) {
-                data_t_acc a = 0;
-                for (memory::dim ic = 0; ic < c.ic / c.ng; ic++) {
-                    for (memory::dim kh = 0; kh < c.kh; kh++) {
-                        for (memory::dim kw = 0; kw < c.kw; kw++) {
-                            memory::dim iw
-                                    = ow * c.strw - c.padw + kw * (1 + c.dilw);
-                            memory::dim ih
-                                    = oh * c.strh - c.padh + kh * (1 + c.dilh);
-                            if (iw < 0 || iw >= c.iw) continue;
-                            if (ih < 0 || ih >= c.ih) continue;
-                            memory::dim iidx = n * padded_ic * c.ih * c.iw
-                                    + g * padded_ic / c.ng * c.ih * c.iw
-                                    + ic * c.ih * c.iw + ih * c.iw + iw;
-                            memory::dim widx = g * padded_oc / c.ng * padded_ic
-                                            / c.ng * c.kh * c.kw
-                                    + oc * padded_ic / c.ng * c.kh * c.kw
-                                    + ic * c.kh * c.kw + kh * c.kw + kw;
-                            a += ((data_t_acc)src_data[src_mdw.off_l(
-                                         iidx, true)])
-                                    * weights_data[weights_mdw.off_l(
-                                            widx, true)];
-                        }
-                    }
+        data_t_acc a = 0;
+        for (memory::dim ic = 0; ic < c.ic / c.ng; ic++) {
+            for (memory::dim kh = 0; kh < c.kh; kh++) {
+                for (memory::dim kw = 0; kw < c.kw; kw++) {
+                    memory::dim iw = ow * c.strw - c.padw + kw * (1 + c.dilw);
+                    memory::dim ih = oh * c.strh - c.padh + kh * (1 + c.dilh);
+                    if (iw < 0 || iw >= c.iw) continue;
+                    if (ih < 0 || ih >= c.ih) continue;
+                    memory::dim iidx = n * padded_ic * c.ih * c.iw
+                            + g * padded_ic / c.ng * c.ih * c.iw
+                            + ic * c.ih * c.iw + ih * c.iw + iw;
+                    memory::dim widx = g * padded_oc / c.ng * padded_ic / c.ng
+                                    * c.kh * c.kw
+                            + oc * padded_ic / c.ng * c.kh * c.kw
+                            + ic * c.kh * c.kw + kh * c.kw + kw;
+                    a += ((data_t_acc)src_data[src_mdw.off_l(iidx, true)])
+                            * weights_data[weights_mdw.off_l(widx, true)];
                 }
+            }
+        }
 
-                float a_fp = (float)a;
+        float a_fp = (float)a;
 
-                if (attr.src_scale.is_def()) {
-                    const auto &s = attr.src_scale;
-                    using P = test_convolution_attr_t::scale_t;
-                    if (s.policy == P::policy_t::COMMON) { a_fp *= s.scale; }
-                }
+        if (attr.src_scale.is_def()) {
+            const auto &s = attr.src_scale;
+            using P = test_convolution_attr_t::scale_t;
+            if (s.policy == P::policy_t::COMMON) { a_fp *= s.scale; }
+        }
 
-                if (attr.wei_scale.is_def()) {
-                    const auto &s = attr.wei_scale;
-                    using P = test_convolution_attr_t::scale_t;
-                    if (s.policy == P::policy_t::COMMON) { a_fp *= s.scale; }
-                }
+        if (attr.wei_scale.is_def()) {
+            const auto &s = attr.wei_scale;
+            using P = test_convolution_attr_t::scale_t;
+            if (s.policy == P::policy_t::COMMON) { a_fp *= s.scale; }
+        }
 
-                a_fp += (float)(bias_data ? bias_data[bias_mdw.off_l(
-                                                    g * c.oc / c.ng + oc, true)]
-                                          : 0);
+        a_fp += (float)(bias_data
+                        ? bias_data[bias_mdw.off_l(g * c.oc / c.ng + oc, true)]
+                        : 0);
 
-                if (attr.dst_scale.is_def()) {
-                    const auto &s = attr.dst_scale;
-                    using P = test_convolution_attr_t::scale_t;
-                    if (s.policy == P::policy_t::COMMON) { a_fp /= s.scale; }
-                }
+        if (attr.dst_scale.is_def()) {
+            const auto &s = attr.dst_scale;
+            using P = test_convolution_attr_t::scale_t;
+            if (s.policy == P::policy_t::COMMON) { a_fp /= s.scale; }
+        }
 
-                a_fp = out_round<data_t_dst>(a_fp);
+        a_fp = out_round<data_t_dst>(a_fp);
 
-                memory::dim oidx = n * padded_oc * c.oh * c.ow
-                        + g * padded_oc / c.ng * c.oh * c.ow + oc * c.oh * c.ow
-                        + oh * c.ow + ow;
-                dst_data[dst_mdw.off_l(oidx, true)] = (data_t_dst)a_fp;
-            });
+        memory::dim oidx = n * padded_oc * c.oh * c.ow
+                + g * padded_oc / c.ng * c.oh * c.ow + oc * c.oh * c.ow
+                + oh * c.ow + ow;
+        dst_data[dst_mdw.off_l(oidx, true)] = (data_t_dst)a_fp;
+    });
 }
 
 template <typename data_t_src, typename data_t_wei, typename data_t_acc,

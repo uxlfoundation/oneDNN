@@ -296,15 +296,15 @@ int fill_memory(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
     if (prb.is_int8()) {
         auto quantize_chunk
                 = [&](const float *scales, int nscales, int idx_chunk) {
-                      int64_t idx_start = idx_chunk * chunk_size;
-                      int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
-                      for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-                          float current_scale = scales[idx % nscales];
-                          float val = ((float *)mem_fp)[idx];
-                          val = round(current_scale * val);
-                          mem_fp.set_f32_elem(idx, MAX2(MIN2(val, max), min));
-                      }
-                  };
+            int64_t idx_start = idx_chunk * chunk_size;
+            int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
+            for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                float current_scale = scales[idx % nscales];
+                float val = ((float *)mem_fp)[idx];
+                val = round(current_scale * val);
+                mem_fp.set_f32_elem(idx, MAX2(MIN2(val, max), min));
+            }
+        };
         switch (kind) {
             case WEIGHTS_LAYER:
             case WEIGHTS_ITER:
@@ -468,14 +468,13 @@ int fill_weights(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
     // element in it across whole buffer.
     benchdnn_parallel_nd(
             L, D, G, O, [&](int64_t l, int64_t d, int64_t g, int64_t o) {
-                int64_t i_off = ((19 * o + 7 * g + 11 * d + 13 * l) % I);
-                int64_t off = (((l * D + d) * I + i_off) * G + g) * O + o;
-                float val = gate_factor;
-                mem_pure_fp.set_f32_elem(off, val);
-                if (prb.is_int8()) val *= scales[off % n_scales];
-                mem_fp.set_f32_elem(
-                        off, round_to_nearest_representable(dt, val));
-            });
+        int64_t i_off = ((19 * o + 7 * g + 11 * d + 13 * l) % I);
+        int64_t off = (((l * D + d) * I + i_off) * G + g) * O + o;
+        float val = gate_factor;
+        mem_pure_fp.set_f32_elem(off, val);
+        if (prb.is_int8()) val *= scales[off % n_scales];
+        mem_fp.set_f32_elem(off, round_to_nearest_representable(dt, val));
+    });
 
     // Pass rnn attributes to f32 -> s8 reorders only
     const_dnnl_primitive_attr_t reorder_attr = nullptr;
@@ -1025,16 +1024,16 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
 
     const auto rnn_add_check =
             [&, prb](const compare::compare_t::driver_check_func_args_t &args) {
-                // Limitation from current filling.
-                // TODO: find a better filling to get rid of this...
-                if ((prb->alg == VANILLA_GRU || prb->alg == LBR_AUGRU
-                            || prb->alg == VANILLA_RNN || prb->alg == LBR_GRU
-                            || prb->alg == VANILLA_LSTM)
-                        && prb->prop == dnnl_backward) {
-                    return args.diff < args.trh;
-                }
-                return false;
-            };
+        // Limitation from current filling.
+        // TODO: find a better filling to get rid of this...
+        if ((prb->alg == VANILLA_GRU || prb->alg == LBR_AUGRU
+                    || prb->alg == VANILLA_RNN || prb->alg == LBR_GRU
+                    || prb->alg == VANILLA_LSTM)
+                && prb->prop == dnnl_backward) {
+            return args.diff < args.trh;
+        }
+        return false;
+    };
     cmp.set_driver_check_function(rnn_add_check);
 }
 

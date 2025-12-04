@@ -309,9 +309,9 @@ void rnn_linear_fwd(const prb_t &prb, const args_t &args,
         cell_scratchpad_[i] = NAN;
     }
 
-    auto process_direction = [&](rnn_iter_direction_t iter_dir,
-                                     rnn_layer_direction_t lay_dir,
-                                     int64_t dir_val, rnn_action_t action) {
+    auto process_direction
+            = [&](rnn_iter_direction_t iter_dir, rnn_layer_direction_t lay_dir,
+                      int64_t dir_val, rnn_action_t action) {
         // we first need to copy the initial src_layer and src_iter{,_c} into
         // ws to simplify the logic of the code
         BENCHDNN_PRINT(80,

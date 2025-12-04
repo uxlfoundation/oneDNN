@@ -33,8 +33,8 @@ static std::size_t calc_vmm_to_preserve_size_bytes(
 
     return std::accumulate(vmm_to_preserve.begin(), vmm_to_preserve.end(),
             std::size_t(0u), [](std::size_t accum, const Xbyak::Xmm &vmm) {
-                return accum + get_vmm_size_bytes(vmm);
-            });
+        return accum + get_vmm_size_bytes(vmm);
+    });
 }
 
 register_preserve_guard_t::register_preserve_guard_t(jit_generator_t *host,

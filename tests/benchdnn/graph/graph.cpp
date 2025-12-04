@@ -313,8 +313,8 @@ int make_output_tensors(std::vector<dnnl::graph::tensor> &output_ts,
             // the result correctness.
             auto pos = std::find_if(inplace_ports.begin(), inplace_ports.end(),
                     [lt_id](const std::pair<size_t, size_t> &p) {
-                        return lt_id == p.second;
-                    });
+                return lt_id == p.second;
+            });
             if (pos != inplace_ports.end()) {
                 const auto &inplace_lt_id = pos->first;
                 const auto inplace_iter = partition_mem_map.find(inplace_lt_id);
@@ -435,8 +435,8 @@ int skip_unimplemented_ops(const dnnl::graph::partition &partition,
         const bool has_unimplemented_op = std::any_of(unimplemented_ops.begin(),
                 unimplemented_ops.end(),
                 [&dg_op_kind](const std::string &kind) {
-                    return dg_op_kind == kind;
-                });
+            return dg_op_kind == kind;
+        });
         if (has_unimplemented_op) {
             BENCHDNN_PRINT(
                     2, "[INFO]: Unimplemented op: %s.\n", dg_op_kind.c_str());
@@ -449,8 +449,8 @@ int skip_unimplemented_ops(const dnnl::graph::partition &partition,
             const bool has_unimplemented_op_gpu = std::any_of(
                     unimplemented_ops_gpu.begin(), unimplemented_ops_gpu.end(),
                     [&dg_op_kind](const std::string &kind) {
-                        return dg_op_kind == kind;
-                    });
+                return dg_op_kind == kind;
+            });
             if (has_unimplemented_op_gpu) {
                 BENCHDNN_PRINT(2, "[INFO]: Unimplemented op on GPU: %s.\n",
                         dg_op_kind.c_str());

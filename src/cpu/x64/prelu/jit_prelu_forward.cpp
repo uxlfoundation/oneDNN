@@ -70,11 +70,11 @@ bool jit_prelu_fwd_t::pd_t::bcast_supported(const memory_desc_wrapper &src_d,
 
         const auto check_block_consistency
                 = [&](const memory_desc_wrapper &mdw) {
-                      const auto &bd = mdw.blocking_desc();
+            const auto &bd = mdw.blocking_desc();
 
-                      return bd.inner_nblks == 1 && bd.inner_blks[0] == simd_w
-                              && bd.inner_idxs[0] == 1;
-                  };
+            return bd.inner_nblks == 1 && bd.inner_blks[0] == simd_w
+                    && bd.inner_idxs[0] == 1;
+        };
 
         return check_block_consistency(src_d)
                 && check_block_consistency(weights_d);

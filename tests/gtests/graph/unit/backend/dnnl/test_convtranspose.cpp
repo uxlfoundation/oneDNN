@@ -2912,8 +2912,8 @@ TEST(test_convtranspose_execute_subgraph_fp32, Convtranspose3Postops) {
         std::vector<const graph::logical_tensor_t *> lt_ins(input_lts.size());
         std::transform(input_lts.begin(), input_lts.end(), lt_ins.begin(),
                 [&](size_t idx) -> graph::logical_tensor_t * {
-                    return &lt_vec[idx];
-                });
+            return &lt_vec[idx];
+        });
         std::vector<const graph::logical_tensor_t *> lt_outs {
                 &lt_vec[output_lts[0]]};
 

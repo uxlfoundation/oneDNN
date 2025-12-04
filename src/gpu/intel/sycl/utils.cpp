@@ -115,13 +115,13 @@ status_t sycl_dev2ocl_dev(cl_device_id *ocl_dev, const ::sycl::device &dev) {
         const auto register_ocl_dev
                 = [&uuid2ocl_dev_tmp](
                           const xpu::ocl::wrapper_t<cl_device_id> &d) {
-                      xpu::device_uuid_t ocl_dev_uuid;
-                      auto status = xpu::ocl::get_device_uuid(ocl_dev_uuid, d);
-                      assert(status == status::success);
-                      status = uuid2ocl_dev_tmp.add(std::move(ocl_dev_uuid), d);
-                      assert(status == status::success);
-                      MAYBE_UNUSED(status);
-                  };
+            xpu::device_uuid_t ocl_dev_uuid;
+            auto status = xpu::ocl::get_device_uuid(ocl_dev_uuid, d);
+            assert(status == status::success);
+            status = uuid2ocl_dev_tmp.add(std::move(ocl_dev_uuid), d);
+            assert(status == status::success);
+            MAYBE_UNUSED(status);
+        };
 
         for (cl_device_id d : ocl_devices) {
             register_ocl_dev(xpu::ocl::make_wrapper(d));

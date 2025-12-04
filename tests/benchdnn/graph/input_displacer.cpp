@@ -392,29 +392,28 @@ partition_data_displacer_t::partition_data_displacer_t(
                             == op_ids_set_.end())
                 break;
 
-            const auto set_seq_len_displace_args =
-                    [&](const deserialized_op_t *op, int which_seq_len) {
-                        const size_t ndims = op->out_lts_[0].shape_.size();
-                        const size_t seq_len_idx = (which_seq_len == seq_len_q)
-                                ? ndims - 2
-                                : ndims - 1;
+            const auto set_seq_len_displace_args
+                    = [&](const deserialized_op_t *op, int which_seq_len) {
+                const size_t ndims = op->out_lts_[0].shape_.size();
+                const size_t seq_len_idx
+                        = (which_seq_len == seq_len_q) ? ndims - 2 : ndims - 1;
 
-                        for (size_t i = 0; i < op->in_lts_.size(); i++) {
-                            auto *parent_op = &dg_->get_op_by_out_lt(
-                                    op->in_lts_[i].id_);
-                            // For add->sub->ge, we consider the inputs of add
-                            // and sub as scalars if they have no parent
-                            // tensors.
-                            if (parent_op->empty()) {
-                                float user_set_value = static_cast<float>(
-                                        op->in_lts_[1 - i].shape_[seq_len_idx]);
-                                displace_args_.emplace(op->in_lts_[i].id_,
-                                        displace_args_t {*op, i, op->in_lts_[i],
-                                                filling_type_t::fixed_setting,
-                                                {{user_set_value}, cfg_name}});
-                            }
-                        }
-                    };
+                for (size_t i = 0; i < op->in_lts_.size(); i++) {
+                    auto *parent_op
+                            = &dg_->get_op_by_out_lt(op->in_lts_[i].id_);
+                    // For add->sub->ge, we consider the inputs of add
+                    // and sub as scalars if they have no parent
+                    // tensors.
+                    if (parent_op->empty()) {
+                        float user_set_value = static_cast<float>(
+                                op->in_lts_[1 - i].shape_[seq_len_idx]);
+                        displace_args_.emplace(op->in_lts_[i].id_,
+                                displace_args_t {*op, i, op->in_lts_[i],
+                                        filling_type_t::fixed_setting,
+                                        {{user_set_value}, cfg_name}});
+                    }
+                }
+            };
 
             // The bottom-right implicit causal mask handles future tokens
             // differently compared to the top-left casual mask. To support

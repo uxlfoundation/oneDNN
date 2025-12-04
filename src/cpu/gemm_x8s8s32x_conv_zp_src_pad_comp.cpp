@@ -121,13 +121,11 @@ void compute_zp_src_comp_pad(const conv_gemm_conf_t &jcp,
     const dim_t output_channels = jcp.oc * jcp.ngroups;
     const dim_t oc_blks = utils::div_up(output_channels, blk_size);
 
-    const auto compute_zp_src_pad_buf = [&](const dim_t zp_pad_com_d,
-                                                const dim_t zp_pad_com_h,
-                                                const dim_t zp_pad_com_w,
-                                                const dim_t filter_corner_src_d,
-                                                const dim_t filter_corner_src_h,
-                                                const dim_t filter_corner_src_w,
-                                                const dim_t oc_blk) {
+    const auto compute_zp_src_pad_buf
+            = [&](const dim_t zp_pad_com_d, const dim_t zp_pad_com_h,
+                      const dim_t zp_pad_com_w, const dim_t filter_corner_src_d,
+                      const dim_t filter_corner_src_h,
+                      const dim_t filter_corner_src_w, const dim_t oc_blk) {
         const auto start_blk = oc_blk * blk_size;
         const auto end_blk = nstl::min(start_blk + blk_size, output_channels);
         const auto size = end_blk - start_blk;
@@ -183,11 +181,10 @@ void compute_zp_src_comp_pad(const conv_gemm_conf_t &jcp,
         }
     };
 
-    const auto compute_zp_buf_w = [&](dim_t it_zp_buf_d, dim_t it_zp_buf_h,
-                                          dim_t it_zp_buf_w,
-                                          dim_t filter_corner_src_d,
-                                          dim_t filter_corner_src_h,
-                                          const dim_t oc_blk) {
+    const auto compute_zp_buf_w
+            = [&](dim_t it_zp_buf_d, dim_t it_zp_buf_h, dim_t it_zp_buf_w,
+                      dim_t filter_corner_src_d, dim_t filter_corner_src_h,
+                      const dim_t oc_blk) {
         const auto filter_corner_src_w = calc_filter_corner_dim(it_zp_buf_w,
                 jcp.ow, jcp.l_pad, jcp.stride_w, jcp.zp.src_pad_comp.left_pad,
                 jcp.zp.src_pad_comp.mid_w, jcp.zp.src_pad_comp.right_pad);
@@ -196,10 +193,9 @@ void compute_zp_src_comp_pad(const conv_gemm_conf_t &jcp,
                 oc_blk);
     };
 
-    const auto compute_zp_buf_h = [&](dim_t it_zp_buf_d, dim_t it_zp_buf_h,
-                                          dim_t it_zp_buf_w,
-                                          dim_t filter_corner_src_d,
-                                          const dim_t oc_blk) {
+    const auto compute_zp_buf_h
+            = [&](dim_t it_zp_buf_d, dim_t it_zp_buf_h, dim_t it_zp_buf_w,
+                      dim_t filter_corner_src_d, const dim_t oc_blk) {
         const auto filter_corner_src_h = calc_filter_corner_dim(it_zp_buf_h,
                 jcp.oh, jcp.t_pad, jcp.stride_h, jcp.zp.src_pad_comp.top_pad,
                 jcp.zp.src_pad_comp.mid_h, jcp.zp.src_pad_comp.bottom_pad);
@@ -212,15 +208,13 @@ void compute_zp_src_comp_pad(const conv_gemm_conf_t &jcp,
             jcp.zp.src_pad_comp.w, oc_blks,
             [&](const dim_t it_zp_buf_d, const dim_t it_zp_buf_h,
                     const dim_t it_zp_buf_w, const dim_t oc_blk) {
-                const auto filter_corner_src_d
-                        = calc_filter_corner_dim(it_zp_buf_d, jcp.od, jcp.f_pad,
-                                jcp.stride_d, jcp.zp.src_pad_comp.front_pad,
-                                jcp.zp.src_pad_comp.mid_d,
-                                jcp.zp.src_pad_comp.back_pad);
+        const auto filter_corner_src_d = calc_filter_corner_dim(it_zp_buf_d,
+                jcp.od, jcp.f_pad, jcp.stride_d, jcp.zp.src_pad_comp.front_pad,
+                jcp.zp.src_pad_comp.mid_d, jcp.zp.src_pad_comp.back_pad);
 
-                compute_zp_buf_h(it_zp_buf_d, it_zp_buf_h, it_zp_buf_w,
-                        filter_corner_src_d, oc_blk);
-            });
+        compute_zp_buf_h(it_zp_buf_d, it_zp_buf_h, it_zp_buf_w,
+                filter_corner_src_d, oc_blk);
+    });
 }
 
 static dim_t zp_src_comp_pad_offset(const conv_gemm_conf_t &jcp,

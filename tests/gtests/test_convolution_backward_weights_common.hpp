@@ -40,21 +40,20 @@ void compute_ref_conv_bwd_bias(const test_convolution_sizes_t &c,
 
     dnnl::impl::parallel_nd(
             c.ng, c.oc / c.ng, [&](memory::dim g, memory::dim oc) {
-                memory::dim bidx = g * padded_oc / c.ng + oc;
-                diff_bias_data[diff_bias_mdw.off_l(bidx, true)] = 0.0;
-                for (memory::dim mb = 0; mb < c.mb; ++mb) {
-                    for (memory::dim oh = 0; oh < c.oh; ++oh) {
-                        for (memory::dim ow = 0; ow < c.ow; ++ow) {
-                            memory::dim oidx = mb * padded_oc * c.oh * c.ow
-                                    + g * padded_oc / c.ng * c.oh * c.ow
-                                    + oc * c.oh * c.ow + oh * c.ow + ow;
-                            diff_bias_data[diff_bias_mdw.off_l(bidx, true)]
-                                    += diff_dst_data[diff_dst_mdw.off_l(
-                                            oidx, true)];
-                        }
-                    }
+        memory::dim bidx = g * padded_oc / c.ng + oc;
+        diff_bias_data[diff_bias_mdw.off_l(bidx, true)] = 0.0;
+        for (memory::dim mb = 0; mb < c.mb; ++mb) {
+            for (memory::dim oh = 0; oh < c.oh; ++oh) {
+                for (memory::dim ow = 0; ow < c.ow; ++ow) {
+                    memory::dim oidx = mb * padded_oc * c.oh * c.ow
+                            + g * padded_oc / c.ng * c.oh * c.ow
+                            + oc * c.oh * c.ow + oh * c.ow + ow;
+                    diff_bias_data[diff_bias_mdw.off_l(bidx, true)]
+                            += diff_dst_data[diff_dst_mdw.off_l(oidx, true)];
                 }
-            });
+            }
+        }
+    });
 }
 
 template <typename data_t_src, typename data_t_diff_dst,
@@ -78,42 +77,35 @@ void compute_ref_conv_bwd_weights(const test_convolution_sizes_t &c,
     dnnl::impl::parallel_nd(c.ng, c.oc / c.ng, c.ic / c.ng, c.kh, c.kw,
             [&](memory::dim g, memory::dim oc, memory::dim ic, memory::dim kh,
                     memory::dim kw) {
-                memory::dim widx
-                        = g * padded_oc / c.ng * padded_ic / c.ng * c.kh * c.kw
-                        + oc * padded_ic / c.ng * c.kh * c.kw + ic * c.kh * c.kw
-                        + kh * c.kw + kw;
-                diff_weights_data[diff_weights_mdw.off_l(widx, true)] = 0.0;
-                for (memory::dim mb = 0; mb < c.mb; ++mb) {
-                    for (memory::dim oh = 0; oh < c.oh; ++oh) {
-                        for (memory::dim ow = 0; ow < c.ow; ++ow) {
-                            if (ow * c.strw + kw * (1 + c.dilw) < c.padw
-                                    || oh * c.strh + kh * (1 + c.dilh) < c.padh
-                                    || ow * c.strw + kw * (1 + c.dilw)
-                                            >= c.iw + c.padw
-                                    || oh * c.strh + kh * (1 + c.dilh)
-                                            >= c.ih + c.padh)
-                                continue;
+        memory::dim widx = g * padded_oc / c.ng * padded_ic / c.ng * c.kh * c.kw
+                + oc * padded_ic / c.ng * c.kh * c.kw + ic * c.kh * c.kw
+                + kh * c.kw + kw;
+        diff_weights_data[diff_weights_mdw.off_l(widx, true)] = 0.0;
+        for (memory::dim mb = 0; mb < c.mb; ++mb) {
+            for (memory::dim oh = 0; oh < c.oh; ++oh) {
+                for (memory::dim ow = 0; ow < c.ow; ++ow) {
+                    if (ow * c.strw + kw * (1 + c.dilw) < c.padw
+                            || oh * c.strh + kh * (1 + c.dilh) < c.padh
+                            || ow * c.strw + kw * (1 + c.dilw) >= c.iw + c.padw
+                            || oh * c.strh + kh * (1 + c.dilh) >= c.ih + c.padh)
+                        continue;
 
-                            memory::dim ih
-                                    = oh * c.strh - c.padh + kh * (1 + c.dilh);
-                            memory::dim iw
-                                    = ow * c.strw - c.padw + kw * (1 + c.dilw);
-                            memory::dim sidx = mb * padded_ic * c.ih * c.iw
-                                    + g * padded_ic / c.ng * c.ih * c.iw
-                                    + ic * c.ih * c.iw + ih * c.iw + iw;
-                            memory::dim didx = mb * padded_oc * c.oh * c.ow
-                                    + g * padded_oc / c.ng * c.oh * c.ow
-                                    + oc * c.oh * c.ow + oh * c.ow + ow;
+                    memory::dim ih = oh * c.strh - c.padh + kh * (1 + c.dilh);
+                    memory::dim iw = ow * c.strw - c.padw + kw * (1 + c.dilw);
+                    memory::dim sidx = mb * padded_ic * c.ih * c.iw
+                            + g * padded_ic / c.ng * c.ih * c.iw
+                            + ic * c.ih * c.iw + ih * c.iw + iw;
+                    memory::dim didx = mb * padded_oc * c.oh * c.ow
+                            + g * padded_oc / c.ng * c.oh * c.ow
+                            + oc * c.oh * c.ow + oh * c.ow + ow;
 
-                            diff_weights_data[diff_weights_mdw.off_l(
-                                    widx, true)]
-                                    += src_data[src_mdw.off_l(sidx, true)]
-                                    * diff_dst_data[diff_dst_mdw.off_l(
-                                            didx, true)];
-                        }
-                    }
+                    diff_weights_data[diff_weights_mdw.off_l(widx, true)]
+                            += src_data[src_mdw.off_l(sidx, true)]
+                            * diff_dst_data[diff_dst_mdw.off_l(didx, true)];
                 }
-            });
+            }
+        }
+    });
 }
 
 template <typename data_t_src, typename data_t_diff_dst,

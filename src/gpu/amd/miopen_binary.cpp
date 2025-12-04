@@ -44,19 +44,19 @@ status_t miopen_binary_t::execute(const exec_ctx_t &ctx) const {
 
         compat::host_task(cgh,
                 [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
-                    auto &sycl_engine = *utils::downcast<amd::engine_t *>(
-                            hip_stream->engine());
-                    auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
-                    auto handle = hip_stream->get_miopen_handle();
+            auto &sycl_engine
+                    = *utils::downcast<amd::engine_t *>(hip_stream->engine());
+            auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
+            auto handle = hip_stream->get_miopen_handle();
 
-                    void *a = arg_src_0.get_native_pointer(ih);
-                    void *b = arg_src_1.get_native_pointer(ih);
-                    void *c = arg_dst.get_native_pointer(ih);
-                    void *s0 = arg_scale0.get_native_pointer(ih);
-                    void *s1 = arg_scale1.get_native_pointer(ih);
+            void *a = arg_src_0.get_native_pointer(ih);
+            void *b = arg_src_1.get_native_pointer(ih);
+            void *c = arg_dst.get_native_pointer(ih);
+            void *s0 = arg_scale0.get_native_pointer(ih);
+            void *s1 = arg_scale1.get_native_pointer(ih);
 
-                    pd()->binary_impl_->execute(handle, a, b, c, s0, s1);
-                });
+            pd()->binary_impl_->execute(handle, a, b, c, s0, s1);
+        });
     });
 }
 

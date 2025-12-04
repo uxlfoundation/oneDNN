@@ -82,9 +82,9 @@ block_layout_t::block_layout_t(
         // Sort outer blocks by their stride.
         std::sort(begin() + blocking.inner_nblks, end(),
                 [](const block_t &a, const block_t &b) {
-                    return a.stride < b.stride
-                            || (a.stride == b.stride && a.block < b.block);
-                });
+            return a.stride < b.stride
+                    || (a.stride == b.stride && a.block < b.block);
+        });
     }
 
     if (do_normalize) *this = normalized();

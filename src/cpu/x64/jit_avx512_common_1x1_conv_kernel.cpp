@@ -179,18 +179,15 @@ void jit_avx512_common_1x1_conv_kernel_t::apply_postops(
         }
         iterate(load_loop_blk, ur, mask_tail,
                 [&](const bool mask_flag, const int i_load, const int i_ur) {
-                    const auto vmm_idx
-                            = vreg_accum_idx(load_loop_blk, i_load, i_ur);
-                    vmm_idxs.emplace(vmm_idx);
-                    const dim_t oft = get_output_offset(
-                            is_out_layout_nxc, i_load, i_ur, true);
-                    rhs_arg_params.vmm_idx_to_out_reg.emplace(
-                            vmm_idx, aux_reg_output_data);
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
-                            vmm_idx, oft);
-                    if (mask_flag)
-                        rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
-                });
+            const auto vmm_idx = vreg_accum_idx(load_loop_blk, i_load, i_ur);
+            vmm_idxs.emplace(vmm_idx);
+            const dim_t oft
+                    = get_output_offset(is_out_layout_nxc, i_load, i_ur, true);
+            rhs_arg_params.vmm_idx_to_out_reg.emplace(
+                    vmm_idx, aux_reg_output_data);
+            rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(vmm_idx, oft);
+            if (mask_flag) rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
+        });
 
         mov(abi_param1, ptr[rsp + reg_abi_param1_backup]);
 
@@ -202,9 +199,8 @@ void jit_avx512_common_1x1_conv_kernel_t::apply_postops(
     } else {
         iterate(load_loop_blk, ur,
                 [&](const bool, const int i_load, const int i_ur) {
-                    vmm_idxs.emplace(
-                            vreg_accum_idx(load_loop_blk, i_load, i_ur));
-                });
+            vmm_idxs.emplace(vreg_accum_idx(load_loop_blk, i_load, i_ur));
+        });
         postops_injector_->compute_vector_range(vmm_idxs);
     }
 }

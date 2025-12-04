@@ -217,8 +217,8 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     // and `kind` by value to avoid using dangling references.
     const auto pooling_add_check =
             [&, prb](const compare::compare_t::driver_check_func_args_t &args) {
-                return cuda_check_correctness(prb, args);
-            };
+        return cuda_check_correctness(prb, args);
+    };
     cmp.set_driver_check_function(pooling_add_check);
 }
 

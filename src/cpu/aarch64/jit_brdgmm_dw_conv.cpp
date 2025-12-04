@@ -251,9 +251,9 @@ void brdgmm_dw_convolution_fwd_t<isa>::pd_t::init_batch_elements() {
 
     auto &jcp = jcp_;
 
-    auto gen_batch_elements = [&jcp](int fpad, int backpad, int tpad, int bpad,
-                                      int lpad, int rpad, int &bs,
-                                      brgemm_batch_element_t *batches) {
+    auto gen_batch_elements
+            = [&jcp](int fpad, int backpad, int tpad, int bpad, int lpad,
+                      int rpad, int &bs, brgemm_batch_element_t *batches) {
         const size_t src_w_stride = jcp.ngroups * jcp.src_dsz;
         const size_t src_h_stride = jcp.ngroups * jcp.iw * jcp.src_dsz;
         const size_t src_d_stride = jcp.ngroups * jcp.ih * jcp.iw * jcp.src_dsz;

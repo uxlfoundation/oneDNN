@@ -181,8 +181,8 @@ bool dev_ctx_consistency_check(
     // Try to find the given device in the given context.
     auto it = std::find_if(ctx_devs.begin(), ctx_devs.end(),
             [&](const ::sycl::device &ctx_dev) {
-                return are_equal(ctx_dev, dev);
-            });
+        return are_equal(ctx_dev, dev);
+    });
     // If found.
     if (it != ctx_devs.end()) return true;
 
@@ -195,8 +195,8 @@ bool dev_ctx_consistency_check(
         auto parent_dev = get_parent_device(dev);
         it = std::find_if(ctx_devs.begin(), ctx_devs.end(),
                 [&](const ::sycl::device &ctx_dev) {
-                    return are_equal(ctx_dev, parent_dev);
-                });
+            return are_equal(ctx_dev, parent_dev);
+        });
         // If found.
         if (it != ctx_devs.end()) return true;
     }
@@ -278,28 +278,25 @@ std::vector<::sycl::device> get_devices(
 
     devices.erase(std::remove_if(devices.begin(), devices.end(),
                           [=](const ::sycl::device &dev) {
-                              auto _dev_type = dev.get_info<
-                                      ::sycl::info::device::device_type>();
-                              if (_dev_type != dev_type) return true;
+        auto _dev_type = dev.get_info<::sycl::info::device::device_type>();
+        if (_dev_type != dev_type) return true;
 #if defined(DNNL_SYCL_GENERIC)
-                              // The devices do not have to be filtered out by
-                              // vendor and backend in the case of generic
-                              // vendor.
-                              return false;
+        // The devices do not have to be filtered out by
+        // vendor and backend in the case of generic
+        // vendor.
+        return false;
 #endif
-                              auto _vendor_id = dev.get_info<
-                                      ::sycl::info::device::vendor_id>();
-                              if (_vendor_id != vendor_id) return true;
+        auto _vendor_id = dev.get_info<::sycl::info::device::vendor_id>();
+        if (_vendor_id != vendor_id) return true;
 
-                              if (dev_type == ::sycl::info::device_type::gpu) {
-                                  auto _backend = get_backend(dev);
-                                  if (_backend == backend_t::unknown
-                                          || _backend != gpu_backend)
-                                      return true;
-                              }
+        if (dev_type == ::sycl::info::device_type::gpu) {
+            auto _backend = get_backend(dev);
+            if (_backend == backend_t::unknown || _backend != gpu_backend)
+                return true;
+        }
 
-                              return false;
-                          }),
+        return false;
+    }),
             devices.end());
     return devices;
 }

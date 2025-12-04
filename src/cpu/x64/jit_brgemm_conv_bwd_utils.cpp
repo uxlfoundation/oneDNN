@@ -1850,19 +1850,19 @@ dim_t precalculate_comp_pad_kernels(const jit_brgemm_conv_conf_t &jcp,
 
     const auto update_kernels
             = [&](int kd_b, int kd_e, int kh_b, int kh_e, int kw_b, int kw_e) {
-                  unique_kernels.insert({kd_b, kd_e, kh_b, kh_e, kw_b, kw_e});
-                  if (k == static_cast<dim_t>(unique_kernels.size())) return;
-                  if (fill_k_ranges) {
-                      (*kd_bs)[k] = kd_b;
-                      (*kd_es)[k] = kd_e;
-                      (*kh_bs)[k] = kh_b;
-                      (*kh_es)[k] = kh_e;
-                      (*kw_bs)[k] = kw_b;
-                      (*kw_es)[k] = kw_e;
-                  }
-                  k++;
-                  assert(IMPLICATION(fill_k_ranges, k <= jcp.ker_ranges_size));
-              };
+        unique_kernels.insert({kd_b, kd_e, kh_b, kh_e, kw_b, kw_e});
+        if (k == static_cast<dim_t>(unique_kernels.size())) return;
+        if (fill_k_ranges) {
+            (*kd_bs)[k] = kd_b;
+            (*kd_es)[k] = kd_e;
+            (*kh_bs)[k] = kh_b;
+            (*kh_es)[k] = kh_e;
+            (*kw_bs)[k] = kw_b;
+            (*kw_es)[k] = kw_e;
+        }
+        k++;
+        assert(IMPLICATION(fill_k_ranges, k <= jcp.ker_ranges_size));
+    };
 
     for_(int idb = 0; idb < jcp.nb_id; idb++)
     for_(int ihb = 0; ihb < jcp.nb_ih; ihb++)

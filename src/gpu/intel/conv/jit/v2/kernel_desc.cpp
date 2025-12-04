@@ -576,8 +576,8 @@ void kernel_desc_t::init_parse_iface(parse_iface_t<kernel_desc_t> *iface) {
             "Loop description, variables ordered from innermost to outermost "
             "(e.g. kw,kh,kd,ic).",
             /*required=*/false, [](const kernel_desc_t &parent) {
-                return default_loop_desc(parent.prop).str();
-            });
+        return default_loop_desc(parent.prop).str();
+    });
     iface->add<PACK(use_stream_k)>("stream-k", "Whether to use Stream-K.");
     iface->add<PACK(use_2d_access)>(
             "2d", "Whether to use block 2D messages for access.");
@@ -603,8 +603,8 @@ void kernel_desc_t::init_parse_iface(parse_iface_t<kernel_desc_t> *iface) {
     };
     scales_entry.stringify
             = [](std::ostream &out, const kernel_desc_t &parent) {
-                  out << serialize_to_hex(parent.scales);
-              };
+        out << serialize_to_hex(parent.scales);
+    };
     scales_entry.parse = [](std::istream &in, kernel_desc_t &parent) {
         auto s_data = stream_parse<std::string>(in);
         deserialize_from_hex(parent.scales, s_data);

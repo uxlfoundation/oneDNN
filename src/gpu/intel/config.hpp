@@ -229,8 +229,8 @@ protected:
         if (do_sort) {
             std::sort(ret.begin(), ret.end(),
                     [this](const param_t *a, const param_t *b) {
-                        return sort_key(a) < sort_key(b);
-                    });
+                return sort_key(a) < sort_key(b);
+            });
         }
         return ret;
     }

@@ -478,34 +478,33 @@ struct uniform_send_idiom_t final {
         std::vector<hint_t> filtered_ret(ret.size());
         auto it = std::copy_if(
                 ret.begin(), ret.end(), filtered_ret.begin(), [&](hint_t &h) {
-                    if (h.is_uniform_2d()) {
-                        bool w_dim_set = false, h_dim_set = false;
-                        for (auto &i : layout.strides) {
-                            // Currently send_plan permits 2d sends only when a
-                            // single dim is assigned each to h and w.
-                            if ((h.is_w_dim(i.dim) && w_dim_set)
-                                    || (h.is_h_dim(i.dim) && h_dim_set)
-                                    || (h.is_h_dim(i.dim) && h.is_w_dim(i.dim)))
-                                return false;
-                            // W must be assigned innermost dim.
-                            if (h.is_w_dim(i.dim) && i.stride != 1)
-                                return false;
+            if (h.is_uniform_2d()) {
+                bool w_dim_set = false, h_dim_set = false;
+                for (auto &i : layout.strides) {
+                    // Currently send_plan permits 2d sends only when a
+                    // single dim is assigned each to h and w.
+                    if ((h.is_w_dim(i.dim) && w_dim_set)
+                            || (h.is_h_dim(i.dim) && h_dim_set)
+                            || (h.is_h_dim(i.dim) && h.is_w_dim(i.dim)))
+                        return false;
+                    // W must be assigned innermost dim.
+                    if (h.is_w_dim(i.dim) && i.stride != 1) return false;
 
-                            w_dim_set |= h.is_w_dim(i.dim);
-                            h_dim_set |= h.is_h_dim(i.dim);
-                        }
-                    }
-                    return true;
-                });
+                    w_dim_set |= h.is_w_dim(i.dim);
+                    h_dim_set |= h.is_h_dim(i.dim);
+                }
+            }
+            return true;
+        });
         filtered_ret.resize(std::distance(filtered_ret.begin(), it));
         std::sort(filtered_ret.begin(), filtered_ret.end(),
                 [&](const hint_t &a, const hint_t &b) {
-                    return a.size() > b.size();
-                });
+            return a.size() > b.size();
+        });
         std::sort(
                 ret.begin(), ret.end(), [&](const hint_t &a, const hint_t &b) {
-                    return a.size() > b.size();
-                });
+            return a.size() > b.size();
+        });
         if (!ret.empty() && !filtered_ret.empty()
                 && ret[0].size() > filtered_ret[0].size())
             gpu_warning() << "Optimal send hint disabled: " << ret[0];

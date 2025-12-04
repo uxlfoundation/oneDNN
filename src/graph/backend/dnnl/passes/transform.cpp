@@ -2653,10 +2653,10 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
             auto op2 = fuse_group.second;
 
             // get the src_zps, dst_zps and scales.
-            auto get_scales_zps = [](const op_t *op, std::vector<float> &scales,
-                                          std::vector<int64_t> &src_zps,
-                                          std::vector<int64_t> &dst_zps,
-                                          size_t &num) {
+            auto get_scales_zps
+                    = [](const op_t *op, std::vector<float> &scales,
+                              std::vector<int64_t> &src_zps,
+                              std::vector<int64_t> &dst_zps, size_t &num) {
                 scales = op->has_attr(op_attr::scales)
                         ? op->get_attr<std::vector<float>>(op_attr::scales)
                         : std::vector<float> {1.0};

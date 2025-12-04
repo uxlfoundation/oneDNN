@@ -233,9 +233,9 @@ public:
             }
             std::sort(it, sorted_var_entries.end(),
                     [&](const cse_var_entry_t *a, const cse_var_entry_t *b) {
-                        // Sort by cost per byte
-                        return a->cost() * b->size() < b->cost() * a->size();
-                    });
+                // Sort by cost per byte
+                return a->cost() * b->size() < b->cost() * a->size();
+            });
             auto &e = **it;
 
             gpu_trace() << "cse_pass: skipping " << e.cse_expr()->expr
@@ -342,10 +342,10 @@ public:
         auto sorted_exprs = sort_var_map(cse_exprs_,
                 [](const std::pair<expr_t, cse_expr_t> &a,
                         const std::pair<expr_t, cse_expr_t> &b) {
-                    auto &a_var = a.second.cse_var.as<var_t>();
-                    auto &b_var = b.second.cse_var.as<var_t>();
-                    return a_var.name < b_var.name;
-                });
+            auto &a_var = a.second.cse_var.as<var_t>();
+            auto &b_var = b.second.cse_var.as<var_t>();
+            return a_var.name < b_var.name;
+        });
         for (auto &kv : sorted_exprs)
             f(kv.first);
     }

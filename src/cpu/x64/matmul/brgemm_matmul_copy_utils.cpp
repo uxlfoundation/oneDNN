@@ -662,19 +662,19 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Xbyak::Zmm>::transpose_bf16(
     auto kmovx
             = [this, dynamic_column_size](Opmask k, unsigned w,
                       bool load_mask_stage = false, bool use_word_sz = false) {
-                  if (dynamic_column_size && load_mask_stage) {
-                      // reg_opmask_shift_compute is rcx, and we need cl for the shift
-                      mov(reg_opmask_shift_compute, reg_loop_m);
-                      mov(regq_tmp, 1);
-                      shl(regq_tmp, cl);
-                      sub(regq_tmp, 1);
-                  } else
-                      mov(regw_tmp, w);
-                  if (use_word_sz)
-                      jit_generator_t::kmovw(k, regw_tmp);
-                  else
-                      jit_generator_t::kmovd(k, regw_tmp);
-              };
+        if (dynamic_column_size && load_mask_stage) {
+            // reg_opmask_shift_compute is rcx, and we need cl for the shift
+            mov(reg_opmask_shift_compute, reg_loop_m);
+            mov(regq_tmp, 1);
+            shl(regq_tmp, cl);
+            sub(regq_tmp, 1);
+        } else
+            mov(regw_tmp, w);
+        if (use_word_sz)
+            jit_generator_t::kmovw(k, regw_tmp);
+        else
+            jit_generator_t::kmovd(k, regw_tmp);
+    };
 
     auto store = [this, dst](Zmm r, int i) {
         auto addr = EVEX_compress_addr(dst, i * dst_stride);
@@ -1174,8 +1174,8 @@ void jit_brgemm_matmul_copy_a_transposed_impl_t<Vmm>::generate() {
     const int m_block_tail = conf_->M_blk % columns_step;
     const int last_m_block_tail = conf_->M_tail % columns_step;
 
-    auto compute_m_loop = [&](reg64_t &reg_base, reg64_t &reg_tr_base,
-                                  int nrows) {
+    auto compute_m_loop
+            = [&](reg64_t &reg_base, reg64_t &reg_tr_base, int nrows) {
         mov(reg_loop_m, ptr[rsp + current_M_blk_offt_]);
         mov(reg_m_src, reg_base);
         mov(reg_m_dst, reg_tr_base);
@@ -5573,8 +5573,8 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
     load_common_scale_value(vmm_wei_scales0, reg_wei_scales);
     load_common_scale_value(vmm_wei_scales1, reg_wei_scales);
 
-    auto compute_K_loop_body = [&](const reg64_t &reg_K, int ncolumns,
-                                       bool zeropad) {
+    auto compute_K_loop_body
+            = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {
         // Compute special K-loop for per-k attributes
         // Only when k_group_size < k_blk_step
         // Otherwise default K-loop is used

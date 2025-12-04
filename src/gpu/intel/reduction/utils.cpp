@@ -228,8 +228,8 @@ status_t generate_phases(const memory_desc_t *src, const memory_desc_t *dst,
     // Sort dst zpadding by increasing inner stride
     std::sort(last_subprb.dst_zpads.begin(), last_subprb.dst_zpads.end(),
             [](zero_padding_t &first, zero_padding_t &last) -> bool {
-                return first.inner_stride < last.inner_stride;
-            });
+        return first.inner_stride < last.inner_stride;
+    });
 
     return status::success;
 }

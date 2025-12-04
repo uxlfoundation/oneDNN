@@ -626,40 +626,37 @@ void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
         // of outer_dims nelems to parallel over it when needed.
         parallel_nd(
                 batch, thr_per_nelems_group, [&](dim_t b, dim_t nelems_group) {
-                    dim_t start = 0, end = 0;
-                    balance211(nelems0_simd + has_tail, thr_per_nelems_group,
-                            nelems_group, start, end);
-                    if (start >= end) return;
+            dim_t start = 0, end = 0;
+            balance211(nelems0_simd + has_tail, thr_per_nelems_group,
+                    nelems_group, start, end);
+            if (start >= end) return;
 
-                    const bool ithr_does_tail = has_tail
-                            && utils::one_of(nelems0_simd + has_tail, end, 0);
-                    const dim_t n_simd_to_do
-                            = (end - start - ithr_does_tail) * simd_w;
-                    const dim_t tail_to_do = ithr_does_tail * nelems0_tail;
-                    const size_t batch_off = batch_stride * b;
+            const bool ithr_does_tail = has_tail
+                    && utils::one_of(nelems0_simd + has_tail, end, 0);
+            const dim_t n_simd_to_do = (end - start - ithr_does_tail) * simd_w;
+            const dim_t tail_to_do = ithr_does_tail * nelems0_tail;
+            const size_t batch_off = batch_stride * b;
 
-                    if (nelems0_simd != 0) {
-                        start *= outer_dims;
-                        end *= outer_dims;
-                    }
+            if (nelems0_simd != 0) {
+                start *= outer_dims;
+                end *= outer_dims;
+            }
 
-                    start *= simd_w;
-                    jit_uni_binary_args_t p;
-                    p.spat_offt_count = (n_simd_to_do + tail_to_do) * outer_dims
-                            * dst_type_size;
-                    p.src0 = src0 + (start + batch_off) * src0_type_size;
-                    p.src1 = src1
-                            + (start / outer_dims + batch_off) * src1_type_size;
-                    p.dst = dst + (start + batch_off) * dst_type_size;
-                    p.indices = &indices[0];
-                    p.src1_stride_range = src1_stride_range;
-                    p.scales_src0 = scale0;
-                    p.scales_src1 = scale1;
-                    p.post_ops_binary_rhs_arg_vec
-                            = post_ops_binary_rhs_arg_vec.data();
-                    p.dst_orig = dst;
-                    (*kernel)(&p);
-                });
+            start *= simd_w;
+            jit_uni_binary_args_t p;
+            p.spat_offt_count
+                    = (n_simd_to_do + tail_to_do) * outer_dims * dst_type_size;
+            p.src0 = src0 + (start + batch_off) * src0_type_size;
+            p.src1 = src1 + (start / outer_dims + batch_off) * src1_type_size;
+            p.dst = dst + (start + batch_off) * dst_type_size;
+            p.indices = &indices[0];
+            p.src1_stride_range = src1_stride_range;
+            p.scales_src0 = scale0;
+            p.scales_src1 = scale1;
+            p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
+            p.dst_orig = dst;
+            (*kernel)(&p);
+        });
     } else {
         const dim_t nelems0 = src0_d.nelems(true);
         const dim_t nelems0_simd = nelems0 / simd_w;
@@ -790,11 +787,11 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
         const std::function<void(jit_uni_binary_args_t *, dim_t)>
                 kernel_blocked_tail
                 = [&](jit_uni_binary_args_t *p, dim_t C_blk) {
-                      if (C_blk == (C_blocks - 1))
-                          (*kernel_tail)(p);
-                      else
-                          (*kernel)(p);
-                  };
+            if (C_blk == (C_blocks - 1))
+                (*kernel_tail)(p);
+            else
+                (*kernel)(p);
+        };
         const auto &kernel_blocked = blocked_oc_tail ? kernel_blocked_tail
                                                      : kernel_blocked_no_tail;
         const auto src1_off = [&](dim_t mb, dim_t C_blk, dim_t off) -> dim_t {
@@ -919,34 +916,33 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
         const std::function<void(jit_uni_binary_args_t *, dim_t)>
                 kernel_blocked_tail
                 = [&](jit_uni_binary_args_t *p, dim_t C_blk) {
-                      if (C_blk == (C_blocks - 1))
-                          (*kernel_tail)(p);
-                      else
-                          (*kernel)(p);
-                  };
+            if (C_blk == (C_blocks - 1))
+                (*kernel_tail)(p);
+            else
+                (*kernel)(p);
+        };
         const auto &kernel_blocked = blocked_oc_tail ? kernel_blocked_tail
                                                      : kernel_blocked_no_tail;
 
         parallel_nd(MB, C_blocks, N, SP_no_bcast,
                 [&](dim_t mb, dim_t C_blk, dim_t n, dim_t sp) {
-                    jit_uni_binary_args_t p;
-                    p.spat_offt_count = simd_w * dst_type_size;
-                    const auto off = mb * nelems_slice_src0
-                            + simd_w * (C_blk * SP + n * SP_no_bcast + sp);
-                    p.dst = dst + off * dst_type_size;
-                    p.src0 = src0 + off * src0_type_size;
-                    // check if mb is broadcast
-                    const dim_t src1_off = bcast_dims[0] == 1
-                            ? sp * simd_w
-                            : (mb * SP_no_bcast + sp) * simd_w;
-                    p.src1 = src1 + src1_off * src1_type_size;
-                    p.scales_src0 = scale0;
-                    p.scales_src1 = scale1;
-                    p.post_ops_binary_rhs_arg_vec
-                            = post_ops_binary_rhs_arg_vec.data();
-                    p.dst_orig = dst;
-                    kernel_blocked(&p, C_blk);
-                });
+            jit_uni_binary_args_t p;
+            p.spat_offt_count = simd_w * dst_type_size;
+            const auto off = mb * nelems_slice_src0
+                    + simd_w * (C_blk * SP + n * SP_no_bcast + sp);
+            p.dst = dst + off * dst_type_size;
+            p.src0 = src0 + off * src0_type_size;
+            // check if mb is broadcast
+            const dim_t src1_off = bcast_dims[0] == 1
+                    ? sp * simd_w
+                    : (mb * SP_no_bcast + sp) * simd_w;
+            p.src1 = src1 + src1_off * src1_type_size;
+            p.scales_src0 = scale0;
+            p.scales_src1 = scale1;
+            p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
+            p.dst_orig = dst;
+            kernel_blocked(&p, C_blk);
+        });
     } else if (op_type == op_t::n_spatial_c) {
         // Compute strategy:
         // Each line of channels is individual, parallel over MB and spatial

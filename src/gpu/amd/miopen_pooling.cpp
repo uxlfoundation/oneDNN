@@ -80,15 +80,15 @@ status_t miopen_pooling_fwd_t::execute(const exec_ctx_t &ctx) const {
 
         compat::host_task(cgh,
                 [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
-                    auto &sycl_engine = *utils::downcast<amd::engine_t *>(
-                            hip_stream->engine());
-                    auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
-                    auto handle = hip_stream->get_miopen_handle();
-                    void *x = arg_src.get_native_pointer(ih);
-                    void *y = arg_dst.get_native_pointer(ih);
-                    void *ws = arg_wkspace.get_native_pointer(ih);
-                    pd()->pooling_impl_->execute(handle, x, y, ws);
-                });
+            auto &sycl_engine
+                    = *utils::downcast<amd::engine_t *>(hip_stream->engine());
+            auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
+            auto handle = hip_stream->get_miopen_handle();
+            void *x = arg_src.get_native_pointer(ih);
+            void *y = arg_dst.get_native_pointer(ih);
+            void *ws = arg_wkspace.get_native_pointer(ih);
+            pd()->pooling_impl_->execute(handle, x, y, ws);
+        });
     });
 }
 
@@ -110,16 +110,16 @@ status_t miopen_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
 
         compat::host_task(cgh,
                 [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
-                    auto &sycl_engine = *utils::downcast<amd::engine_t *>(
-                            hip_stream->engine());
-                    auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
-                    auto handle = hip_stream->get_miopen_handle();
-                    void *dx = arg_diff_src.get_native_pointer(ih);
-                    void *dy = arg_diff_dst.get_native_pointer(ih);
-                    void *ws = arg_wkspace.get_native_pointer(ih);
+            auto &sycl_engine
+                    = *utils::downcast<amd::engine_t *>(hip_stream->engine());
+            auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
+            auto handle = hip_stream->get_miopen_handle();
+            void *dx = arg_diff_src.get_native_pointer(ih);
+            void *dy = arg_diff_dst.get_native_pointer(ih);
+            void *ws = arg_wkspace.get_native_pointer(ih);
 
-                    pd()->pooling_impl_->execute(handle, dx, dy, ws);
-                });
+            pd()->pooling_impl_->execute(handle, dx, dy, ws);
+        });
     });
 }
 

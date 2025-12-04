@@ -58,10 +58,9 @@ status_t engine_t::set_rocblas_handle() {
     rocblas_handle_.set(
             std::unique_ptr<rocblas_handle, void (*)(rocblas_handle *)>(
                     new rocblas_handle(handle), [](rocblas_handle *h) {
-                        if (h != nullptr)
-                            ROCBLAS_EXECUTE_FUNC_V(rocblas_destroy_handle, *h);
-                        delete h;
-                    }));
+        if (h != nullptr) ROCBLAS_EXECUTE_FUNC_V(rocblas_destroy_handle, *h);
+        delete h;
+    }));
     handle = nullptr;
     return status::success;
 }
@@ -75,10 +74,9 @@ status_t engine_t::set_miopen_handle() {
     miopen_handle_.set(
             std::unique_ptr<miopenHandle_t, void (*)(miopenHandle_t *)>(
                     new miopenHandle_t(handle), [](miopenHandle_t *h) {
-                        if (h != nullptr)
-                            MIOPEN_EXECUTE_FUNC_V(miopenDestroy, *h);
-                        delete h;
-                    }));
+        if (h != nullptr) MIOPEN_EXECUTE_FUNC_V(miopenDestroy, *h);
+        delete h;
+    }));
     handle = nullptr;
     return status::success;
 }

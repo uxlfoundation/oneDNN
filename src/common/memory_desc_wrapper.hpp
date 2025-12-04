@@ -240,12 +240,12 @@ struct memory_desc_wrapper : public c_compatible {
 
         auto calculate_size
                 = [ndims, &pdims](int cmask, size_t buff_data_size) {
-                      assert(utils::one_of(cmask, 1, 2, 3, 5, 13, 27));
-                      dim_t prod = 1;
-                      for (int d = 0; d < ndims; ++d)
-                          if (cmask & (1 << d)) { prod *= pdims[d]; }
-                      return (size_t)prod * buff_data_size;
-                  };
+            assert(utils::one_of(cmask, 1, 2, 3, 5, 13, 27));
+            dim_t prod = 1;
+            for (int d = 0; d < ndims; ++d)
+                if (cmask & (1 << d)) { prod *= pdims[d]; }
+            return (size_t)prod * buff_data_size;
+        };
 
         if (flag == compensation_conv_s8s8) {
             return calculate_size(extra().compensation_mask,

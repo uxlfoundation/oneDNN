@@ -238,12 +238,12 @@ status_t reusable_ref_t::execute(const exec_ctx_t &ctx) const {
         const auto &append_off
                 = [use_int32_offset](
                           compute::kernel_arg_list_t &arg_list, dim_t off) {
-                      if (use_int32_offset) {
-                          arg_list.append(into<int32_t>(off));
-                      } else {
-                          arg_list.append(off);
-                      }
-                  };
+            if (use_int32_offset) {
+                arg_list.append(into<int32_t>(off));
+            } else {
+                arg_list.append(off);
+            }
+        };
 
         // Set up the reduction arg list
         compute::kernel_arg_list_t arg_list;

@@ -126,46 +126,44 @@ bool binary_args_broadcast_supported(const post_ops_t &post_ops,
 
     return std::none_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
             [&](const post_ops_t::entry_t &entry) -> bool {
-                if (entry.is_like_binary()) {
-                    const auto bcast_type = get_rhs_arg_broadcasting_strategy(
-                            get_src1_desc(entry, dst_d), dst_d,
-                            supported_strategy_set);
-                    return bcast_type == broadcasting_strategy_t::unsupported;
-                }
-                return false;
-            });
+        if (entry.is_like_binary()) {
+            const auto bcast_type = get_rhs_arg_broadcasting_strategy(
+                    get_src1_desc(entry, dst_d), dst_d, supported_strategy_set);
+            return bcast_type == broadcasting_strategy_t::unsupported;
+        }
+        return false;
+    });
 }
 
 bool any_binary_postop_rhs_non_scalar_broadcast(
         const post_ops_t &post_ops, const memory_desc_wrapper &dst_d) {
     return std::any_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
             [&](const post_ops_t::entry_t &entry) -> bool {
-                if (entry.is_like_binary()) {
-                    const auto bcast_type = get_rhs_arg_broadcasting_strategy(
-                            get_src1_desc(entry, dst_d), dst_d,
-                            get_all_strategies_supported_by_injector());
-                    return !utils::one_of(bcast_type,
-                                   broadcasting_strategy_t::scalar,
-                                   broadcasting_strategy_t::unsupported)
-                            || entry.is_binary_with_ternary_op();
-                }
-                return false;
-            });
+        if (entry.is_like_binary()) {
+            const auto bcast_type = get_rhs_arg_broadcasting_strategy(
+                    get_src1_desc(entry, dst_d), dst_d,
+                    get_all_strategies_supported_by_injector());
+            return !utils::one_of(bcast_type, broadcasting_strategy_t::scalar,
+                           broadcasting_strategy_t::unsupported)
+                    || entry.is_binary_with_ternary_op();
+        }
+        return false;
+    });
 }
 
 bool any_binary_postop_rhs_with_ternary_scalar_bcast(
         const post_ops_t &post_ops, const memory_desc_wrapper &dst_d) {
     return std::any_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
             [&](const post_ops_t::entry_t &entry) -> bool {
-                if (entry.is_like_binary()) {
-                    const auto bcast_type = get_rhs_arg_broadcasting_strategy(
-                            get_src1_desc(entry, dst_d), dst_d,
-                            get_all_strategies_supported_by_injector());
-                    return bcast_type == broadcasting_strategy_t::scalar
-                            && entry.is_binary_with_ternary_op();
-                }
-                return false;
-            });
+        if (entry.is_like_binary()) {
+            const auto bcast_type = get_rhs_arg_broadcasting_strategy(
+                    get_src1_desc(entry, dst_d), dst_d,
+                    get_all_strategies_supported_by_injector());
+            return bcast_type == broadcasting_strategy_t::scalar
+                    && entry.is_binary_with_ternary_op();
+        }
+        return false;
+    });
 }
 
 bool any_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
@@ -173,16 +171,14 @@ bool any_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
         const bcast_set_t &supported_strategy_set) {
     return std::any_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
             [&](const post_ops_t::entry_t &entry) -> bool {
-                if (entry.is_like_binary()) {
-                    const auto bcast_type = get_rhs_arg_broadcasting_strategy(
-                            get_src1_desc(entry, dst_d), dst_d,
-                            supported_strategy_set);
-                    return bcast_type == broadcasting_strategy_t::per_oc
-                            || bcast_type
-                            == broadcasting_strategy_t::per_oc_spatial;
-                }
-                return false;
-            });
+        if (entry.is_like_binary()) {
+            const auto bcast_type = get_rhs_arg_broadcasting_strategy(
+                    get_src1_desc(entry, dst_d), dst_d, supported_strategy_set);
+            return bcast_type == broadcasting_strategy_t::per_oc
+                    || bcast_type == broadcasting_strategy_t::per_oc_spatial;
+        }
+        return false;
+    });
 }
 
 bool all_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
@@ -191,17 +187,16 @@ bool all_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
         const std::function<bool(const memory_desc_wrapper &)> &predicate) {
     return std::all_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
             [&](const post_ops_t::entry_t &entry) -> bool {
-                if (entry.is_like_binary()) {
-                    const auto src1_desc = get_src1_desc(entry, dst_d);
-                    const auto bcast_type = get_rhs_arg_broadcasting_strategy(
-                            src1_desc, dst_d, supported_strategy_set);
-                    if (bcast_type == broadcasting_strategy_t::per_oc
-                            || bcast_type
-                                    == broadcasting_strategy_t::per_oc_spatial)
-                        return predicate(memory_desc_wrapper(src1_desc));
-                }
-                return true;
-            });
+        if (entry.is_like_binary()) {
+            const auto src1_desc = get_src1_desc(entry, dst_d);
+            const auto bcast_type = get_rhs_arg_broadcasting_strategy(
+                    src1_desc, dst_d, supported_strategy_set);
+            if (bcast_type == broadcasting_strategy_t::per_oc
+                    || bcast_type == broadcasting_strategy_t::per_oc_spatial)
+                return predicate(memory_desc_wrapper(src1_desc));
+        }
+        return true;
+    });
 }
 
 bool any_binary_postop_rhs_per_w_broadcast(const post_ops_t &post_ops,
@@ -209,15 +204,14 @@ bool any_binary_postop_rhs_per_w_broadcast(const post_ops_t &post_ops,
         const bcast_set_t &supported_strategy_set) {
     return std::any_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
             [&](const post_ops_t::entry_t &entry) -> bool {
-                if (entry.is_like_binary()) {
-                    const auto bcast_type = get_rhs_arg_broadcasting_strategy(
-                            get_src1_desc(entry, dst_d), dst_d,
-                            supported_strategy_set);
-                    return bcast_type == broadcasting_strategy_t::per_w
-                            || bcast_type == broadcasting_strategy_t::per_mb_w;
-                }
-                return false;
-            });
+        if (entry.is_like_binary()) {
+            const auto bcast_type = get_rhs_arg_broadcasting_strategy(
+                    get_src1_desc(entry, dst_d), dst_d, supported_strategy_set);
+            return bcast_type == broadcasting_strategy_t::per_w
+                    || bcast_type == broadcasting_strategy_t::per_mb_w;
+        }
+        return false;
+    });
 }
 
 void extend_binary_args_per_w(const post_ops_t &post_ops,
@@ -3159,11 +3153,11 @@ static void execute_broadcast_f32_tail_avx(jit_generator_t *host,
     const auto init_op = [&] { host->vmovss(tmp_xmm, rhs_addr); };
     const auto upper_half_op
             = [&](int upper_half_data_size, bool should_load_lower_half) {
-                  // one element is already loaded
-                  if (upper_half_data_size > 1)
-                      host->vshufps(tmp_xmm, tmp_xmm, tmp_xmm,
-                              imms.at(upper_half_data_size - 2));
-              };
+        // one element is already loaded
+        if (upper_half_data_size > 1)
+            host->vshufps(tmp_xmm, tmp_xmm, tmp_xmm,
+                    imms.at(upper_half_data_size - 2));
+    };
     const auto lower_half_op = [&](int upper_half_data_size) {
         host->vshufps(tmp_xmm, tmp_xmm, tmp_xmm, 0);
     };
@@ -3321,10 +3315,10 @@ void jit_uni_binary_injector_t<avx,
 
         const auto upper_half_op
                 = [&](int upper_half_data_size, bool should_load_lower_half) {
-                      if (upper_half_data_size > 1)
-                          host_->vshufps(tmp_xmm, tmp_xmm, tmp_xmm,
-                                  imms.at(upper_half_data_size - 2));
-                  };
+            if (upper_half_data_size > 1)
+                host_->vshufps(tmp_xmm, tmp_xmm, tmp_xmm,
+                        imms.at(upper_half_data_size - 2));
+        };
 
         const auto lower_half_op = [&](int upper_half_data_size) {
             host_->vshufps(tmp_xmm, tmp_xmm, tmp_xmm, 0);
@@ -3647,8 +3641,8 @@ void jit_uni_binary_injector_t<avx, Xbyak::Ymm>::load_rhs_tail_statically(
     const auto tmp_xmm = Xbyak::Xmm(vmm_idx);
 
     if (data_type == data_type::f32 || data_type == data_type::s32) {
-        const auto upper_half_op = [&](int upper_half_data_size,
-                                           bool should_load_lower_half) {
+        const auto upper_half_op
+                = [&](int upper_half_data_size, bool should_load_lower_half) {
             const int offset = should_load_lower_half
                     ? xmm_size_elem * sizeof(float)
                     : 0;
@@ -3671,8 +3665,8 @@ void jit_uni_binary_injector_t<avx, Xbyak::Ymm>::load_rhs_tail_statically(
                 host_->vpmovzxbd(tmp_xmm, operand);
         };
 
-        const auto upper_half_op = [&](int upper_half_data_size,
-                                           bool should_load_lower_half) {
+        const auto upper_half_op
+                = [&](int upper_half_data_size, bool should_load_lower_half) {
             const int offset = should_load_lower_half ? xmm_size_elem : 0;
             for (int i = 0; i < upper_half_data_size; i++)
                 host_->vpinsrb(tmp_xmm, tmp_xmm,
@@ -3851,8 +3845,8 @@ void jit_uni_binary_injector_t<avx, Xbyak::Ymm>::execute_binary(
     const auto execute_cmp_binary_lam
             = [this](const Xbyak::Ymm &dst, const Xbyak::Ymm &lhs, const T &rhs,
                       const unsigned int cmp_predicate) {
-                  this->execute_cmp_binary<T>(dst, lhs, rhs, cmp_predicate);
-              };
+        this->execute_cmp_binary<T>(dst, lhs, rhs, cmp_predicate);
+    };
     helper_binary_t<avx, Xbyak::Ymm>::execute_binary<T>(
             host_, execute_cmp_binary_lam, binary_alg, dst, lhs, rhs);
 }
@@ -3866,8 +3860,8 @@ void jit_uni_binary_injector_t<avx, Xbyak::Xmm>::execute_binary(
     const auto execute_cmp_binary_lam
             = [this](const Xbyak::Xmm &dst, const Xbyak::Xmm &lhs, const T &rhs,
                       const unsigned int cmp_predicate) {
-                  this->execute_cmp_binary<T>(dst, lhs, rhs, cmp_predicate);
-              };
+        this->execute_cmp_binary<T>(dst, lhs, rhs, cmp_predicate);
+    };
     helper_binary_t<avx, Xbyak::Xmm>::execute_binary<T>(
             host_, execute_cmp_binary_lam, binary_alg, dst, lhs, rhs);
 }

@@ -56,8 +56,8 @@ double get_non_zero_trust_percent(const prb_t *prb, data_kind_t kind) {
                     [k](const pk alg) { return alg == k; });
             count += std::any_of(non_neg_alpha_0_po.cbegin(),
                     non_neg_alpha_0_po.cend(), [k, alpha](const pk alg) {
-                        return alg == k && alpha == 0;
-                    });
+                return alg == k && alpha == 0;
+            });
         }
         // Check for u8 dst
         count += prb->get_dt(DST) == dnnl_u8;

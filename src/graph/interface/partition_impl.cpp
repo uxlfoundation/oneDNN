@@ -33,8 +33,8 @@ status_t compiled_partition_impl_t::query_logical_tensor(
 
     auto pos_out = std::find_if(outputs_.begin(), outputs_.end(),
             [&](const logical_tensor_t &out_) -> bool {
-                return out_.id == tid;
-            });
+        return out_.id == tid;
+    });
     if (pos_out != outputs_.end()) {
         *lt = *pos_out;
         return status::success;

@@ -892,10 +892,10 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_2d(
     nd_iterator_init(start, img_s, jcp.mb, oh_s, jcp.oh);
     img = img_s;
 
-    auto do_brgemm_call = [&](int g, int bs, int ic_b, int oc_b, int ohb_s,
-                                  int bs_ih_s, const char *p_src,
-                                  const char *p_dst, int kh, int kw,
-                                  bool do_init) {
+    auto do_brgemm_call
+            = [&](int g, int bs, int ic_b, int oc_b, int ohb_s, int bs_ih_s,
+                      const char *p_src, const char *p_dst, int kh, int kw,
+                      bool do_init) {
         const int ihb_s = ti->get_ih_start(ohb_s);
 
         const int bs_oh_s = utils::saturate(0, jcp.oh,
@@ -1065,10 +1065,10 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_3d(
     nd_iterator_init(start, img_s, jcp.mb, od_s, jcp.od);
     img = img_s;
 
-    auto do_brgemm_call = [&](int g, int bs_d, int bs_h, int ic_b, int oc_b,
-                                  int od_s, int oh_s, int bs_id_s, int bs_ih_s,
-                                  const char *p_src, const char *p_dst, int kd,
-                                  int kh, int kw, bool do_init) {
+    auto do_brgemm_call
+            = [&](int g, int bs_d, int bs_h, int ic_b, int oc_b, int od_s,
+                      int oh_s, int bs_id_s, int bs_ih_s, const char *p_src,
+                      const char *p_dst, int kd, int kh, int kw, bool do_init) {
         const int id_s = ti->get_id_start(od_s);
         const int ih_s = ti->get_ih_start(oh_s);
 
@@ -1478,11 +1478,11 @@ void brgemm_convolution_bwd_weights_t::prepare_scratchpad_data(
         // oh_block, padding and kh
         parallel_nd(jcp.tr_src_buf_count, jcp.ih_block * jcp.id,
                 [=](size_t isb, size_t is) {
-                    const auto tr_src_idx = isb * jcp.tr_src_buf_size
-                            + (is + 1) * jcp.tr_iw * jcp.ic_block;
-                    char *ts = &tr_src[tr_src_idx * jcp.src_dsz];
-                    std::memset(ts, 0, bytes_to_zero);
-                });
+            const auto tr_src_idx = isb * jcp.tr_src_buf_size
+                    + (is + 1) * jcp.tr_iw * jcp.ic_block;
+            char *ts = &tr_src[tr_src_idx * jcp.src_dsz];
+            std::memset(ts, 0, bytes_to_zero);
+        });
         // Zero out last guard elements
         char *ts = &tr_src[jcp.tr_src_buf_count * jcp.tr_src_buf_size
                 * jcp.src_dsz];

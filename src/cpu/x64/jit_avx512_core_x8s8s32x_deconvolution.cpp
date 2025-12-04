@@ -490,9 +490,9 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<
         }
     };
 
-    const auto load_zp_src_pad_comp = [&](const Vmm &zp_pad_comp_vmm,
-                                              const Xbyak::Address &comp_addr,
-                                              const int ocb) {
+    const auto load_zp_src_pad_comp
+            = [&](const Vmm &zp_pad_comp_vmm, const Xbyak::Address &comp_addr,
+                      const int ocb) {
         const bool is_last_ocb = last_oc_block && ocb == jcp.nb_oc_blocking - 1;
         const bool is_tail = is_last_ocb && get_tail_size() > 0;
         if (is_tail)

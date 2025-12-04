@@ -154,53 +154,53 @@ void ref_resampling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     parallel_nd(MB, C, OD, OH, OW,
             [&](dim_t mb, dim_t ch, dim_t od, dim_t oh, dim_t ow) {
-                const dim_t data_p_off = get_offset(dst_d, mb, ch, od, oh, ow);
-                const dim_t data_l_off
-                        = (((mb * C + ch) * OD + od) * OH + oh) * OW + ow;
-                float res = 0.f;
+        const dim_t data_p_off = get_offset(dst_d, mb, ch, od, oh, ow);
+        const dim_t data_l_off
+                = (((mb * C + ch) * OD + od) * OH + oh) * OW + ow;
+        float res = 0.f;
 
-                if (alg == alg_kind::resampling_nearest) {
-                    const dim_t id = nearest_idx(od, OD, ID);
-                    const dim_t ih = nearest_idx(oh, OH, IH);
-                    const dim_t iw = nearest_idx(ow, OW, IW);
-                    res = load_fn(src, get_offset(src_d, mb, ch, id, ih, iw));
-                } else if (alg == alg_kind::resampling_linear) {
-                    // Trilinear interpolation (linear interpolation on a 3D spatial
-                    // tensor) can be expressed as linear interpolation along
-                    // dimension x followed by interpolation along dimension y and z
-                    //      C011--C11--C111
-                    //     -          - |
-                    //   -          -   |
-                    //C001--C01--C111   |
-                    // -     .C   -    C110
-                    // -          -    -
-                    // -          -  -
-                    //C000--C00--C100
-                    auto id = linear_coeffs_t(od, OD, ID);
-                    auto iw = linear_coeffs_t(ow, OW, IW);
-                    auto ih = linear_coeffs_t(oh, OH, IH);
-                    float src_l[8] = {0};
-                    for_(int i = 0; i < 2; i++)
-                    for_(int j = 0; j < 2; j++)
-                    for (int k = 0; k < 2; k++) {
-                        src_l[4 * i + 2 * j + k] = load_fn(src,
-                                get_offset(src_d, mb, ch, id.idx[i], ih.idx[j],
-                                        iw.idx[k]));
-                    }
-                    res = trilin_interp(src_l[0], src_l[1], src_l[2], src_l[3],
-                            src_l[4], src_l[5], src_l[6], src_l[7], id.wei[0],
-                            ih.wei[0], iw.wei[0]);
-                }
+        if (alg == alg_kind::resampling_nearest) {
+            const dim_t id = nearest_idx(od, OD, ID);
+            const dim_t ih = nearest_idx(oh, OH, IH);
+            const dim_t iw = nearest_idx(ow, OW, IW);
+            res = load_fn(src, get_offset(src_d, mb, ch, id, ih, iw));
+        } else if (alg == alg_kind::resampling_linear) {
+            // Trilinear interpolation (linear interpolation on a 3D spatial
+            // tensor) can be expressed as linear interpolation along
+            // dimension x followed by interpolation along dimension y and z
+            //      C011--C11--C111
+            //     -          - |
+            //   -          -   |
+            //C001--C01--C111   |
+            // -     .C   -    C110
+            // -          -    -
+            // -          -  -
+            //C000--C00--C100
+            auto id = linear_coeffs_t(od, OD, ID);
+            auto iw = linear_coeffs_t(ow, OW, IW);
+            auto ih = linear_coeffs_t(oh, OH, IH);
+            float src_l[8] = {0};
+            for_(int i = 0; i < 2; i++)
+            for_(int j = 0; j < 2; j++)
+            for (int k = 0; k < 2; k++) {
+                src_l[4 * i + 2 * j + k] = load_fn(src,
+                        get_offset(src_d, mb, ch, id.idx[i], ih.idx[j],
+                                iw.idx[k]));
+            }
+            res = trilin_interp(src_l[0], src_l[1], src_l[2], src_l[3],
+                    src_l[4], src_l[5], src_l[6], src_l[7], id.wei[0],
+                    ih.wei[0], iw.wei[0]);
+        }
 
-                ref_post_ops_t::args_t args;
-                args.ctx = &ctx;
-                args.dst_md = pd()->dst_md();
-                args.l_offset = data_l_off;
-                args.dst_val = io::load_float_value(dst_dt, dst, data_p_off);
-                ref_post_ops_->execute(res, args);
+        ref_post_ops_t::args_t args;
+        args.ctx = &ctx;
+        args.dst_md = pd()->dst_md();
+        args.l_offset = data_l_off;
+        args.dst_val = io::load_float_value(dst_dt, dst, data_p_off);
+        ref_post_ops_->execute(res, args);
 
-                store_fn(res, dst, data_p_off);
-            });
+        store_fn(res, dst, data_p_off);
+    });
 }
 
 ref_resampling_bwd_t::ref_resampling_bwd_t(const pd_t *apd)
@@ -241,54 +241,52 @@ void ref_resampling_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     if (alg == alg_kind::resampling_nearest) {
         parallel_nd(MB, C, ID, IH, IW,
                 [&](dim_t mb, dim_t ch, dim_t id, dim_t ih, dim_t iw) {
-                    float id_f = static_cast<float>(id) * OD_to_ID - 0.5f;
-                    float ih_f = static_cast<float>(ih) * OH_to_IH - 0.5f;
-                    float iw_f = static_cast<float>(iw) * OW_to_IW - 0.5f;
-                    const dim_t od_start = ceil_idx(id_f);
-                    const dim_t oh_start = ceil_idx(ih_f);
-                    const dim_t ow_start = ceil_idx(iw_f);
+            float id_f = static_cast<float>(id) * OD_to_ID - 0.5f;
+            float ih_f = static_cast<float>(ih) * OH_to_IH - 0.5f;
+            float iw_f = static_cast<float>(iw) * OW_to_IW - 0.5f;
+            const dim_t od_start = ceil_idx(id_f);
+            const dim_t oh_start = ceil_idx(ih_f);
+            const dim_t ow_start = ceil_idx(iw_f);
 
-                    id_f = (static_cast<float>(id) + 1.f) * OD_to_ID - 0.5f;
-                    ih_f = (static_cast<float>(ih) + 1.f) * OH_to_IH - 0.5f;
-                    iw_f = (static_cast<float>(iw) + 1.f) * OW_to_IW - 0.5f;
-                    const dim_t od_end = ceil_idx(id_f);
-                    const dim_t oh_end = ceil_idx(ih_f);
-                    const dim_t ow_end = ceil_idx(iw_f);
+            id_f = (static_cast<float>(id) + 1.f) * OD_to_ID - 0.5f;
+            ih_f = (static_cast<float>(ih) + 1.f) * OH_to_IH - 0.5f;
+            iw_f = (static_cast<float>(iw) + 1.f) * OW_to_IW - 0.5f;
+            const dim_t od_end = ceil_idx(id_f);
+            const dim_t oh_end = ceil_idx(ih_f);
+            const dim_t ow_end = ceil_idx(iw_f);
 
-                    float ds = 0;
-                    for_(dim_t od = od_start; od < od_end; od++)
-                    for_(dim_t oh = oh_start; oh < oh_end; oh++)
-                    for (dim_t ow = ow_start; ow < ow_end; ow++)
-                        ds += load_fn(diff_dst,
-                                get_offset(diff_dst_d, mb, ch, od, oh, ow));
-                    store_fn(ds, diff_src,
-                            get_offset(diff_src_d, mb, ch, id, ih, iw));
-                });
+            float ds = 0;
+            for_(dim_t od = od_start; od < od_end; od++)
+            for_(dim_t oh = oh_start; oh < oh_end; oh++)
+            for (dim_t ow = ow_start; ow < ow_end; ow++)
+                ds += load_fn(
+                        diff_dst, get_offset(diff_dst_d, mb, ch, od, oh, ow));
+            store_fn(ds, diff_src, get_offset(diff_src_d, mb, ch, id, ih, iw));
+        });
     } else {
         parallel_nd(MB, C, ID, IH, IW,
                 [&](dim_t mb, dim_t ch, dim_t id, dim_t ih, dim_t iw) {
-                    bwd_linear_coeffs_t d(id, OD, ID);
-                    bwd_linear_coeffs_t h(ih, OH, IH);
-                    bwd_linear_coeffs_t w(iw, OW, IW);
+            bwd_linear_coeffs_t d(id, OD, ID);
+            bwd_linear_coeffs_t h(ih, OH, IH);
+            bwd_linear_coeffs_t w(iw, OW, IW);
 
-                    float ds = 0;
-                    for_(int i = 0; i < 2; i++)
-                    for_(int j = 0; j < 2; j++)
-                    for_(int k = 0; k < 2; k++)
-                    for_(dim_t od = d.start[i]; od < d.end[i]; od++)
-                    for_(dim_t oh = h.start[j]; oh < h.end[j]; oh++)
-                    for (dim_t ow = w.start[k]; ow < w.end[k]; ow++) {
-                        const float weight_d = linear_weight(i, od, OD, ID);
-                        const float weight_h = linear_weight(j, oh, OH, IH);
-                        const float weight_w = linear_weight(k, ow, OW, IW);
+            float ds = 0;
+            for_(int i = 0; i < 2; i++)
+            for_(int j = 0; j < 2; j++)
+            for_(int k = 0; k < 2; k++)
+            for_(dim_t od = d.start[i]; od < d.end[i]; od++)
+            for_(dim_t oh = h.start[j]; oh < h.end[j]; oh++)
+            for (dim_t ow = w.start[k]; ow < w.end[k]; ow++) {
+                const float weight_d = linear_weight(i, od, OD, ID);
+                const float weight_h = linear_weight(j, oh, OH, IH);
+                const float weight_w = linear_weight(k, ow, OW, IW);
 
-                        float dd = load_fn(diff_dst,
-                                get_offset(diff_dst_d, mb, ch, od, oh, ow));
-                        ds += dd * weight_d * weight_h * weight_w;
-                    }
-                    store_fn(ds, diff_src,
-                            get_offset(diff_src_d, mb, ch, id, ih, iw));
-                });
+                float dd = load_fn(
+                        diff_dst, get_offset(diff_dst_d, mb, ch, od, oh, ow));
+                ds += dd * weight_d * weight_h * weight_w;
+            }
+            store_fn(ds, diff_src, get_offset(diff_src_d, mb, ch, id, ih, iw));
+        });
     }
 }
 

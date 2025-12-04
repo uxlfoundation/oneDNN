@@ -264,21 +264,21 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
             // is to disable the inplace option for src = main_op(src) + src
             const auto get_external_id
                     = [](const std::shared_ptr<value_t> &val) {
-                          auto tmp_val = val;
-                          while (tmp_val->has_producer()) {
-                              size_t lt_id = tmp_val->get_logical_tensor().id;
-                              // check if lt_id is already a external id
-                              if (lt_id != std::numeric_limits<size_t>::max())
-                                  return lt_id;
+                auto tmp_val = val;
+                while (tmp_val->has_producer()) {
+                    size_t lt_id = tmp_val->get_logical_tensor().id;
+                    // check if lt_id is already a external id
+                    if (lt_id != std::numeric_limits<size_t>::max())
+                        return lt_id;
 
-                              const op_t &prod_op = tmp_val->get_producer();
-                              // ops like Dnnl_constant_scales doesn't have external input
-                              // return a internal id
-                              if (prod_op.num_inputs() == 0) return lt_id;
-                              tmp_val = prod_op.get_input_value(0);
-                          }
-                          return tmp_val->get_logical_tensor().id;
-                      };
+                    const op_t &prod_op = tmp_val->get_producer();
+                    // ops like Dnnl_constant_scales doesn't have external input
+                    // return a internal id
+                    if (prod_op.num_inputs() == 0) return lt_id;
+                    tmp_val = prod_op.get_input_value(0);
+                }
+                return tmp_val->get_logical_tensor().id;
+            };
             size_t alias_ins = 0;
             size_t psrc_lt_id = get_external_id(psrc_val);
             for (size_t op_in_idx = 0; op_in_idx < op->num_inputs();

@@ -113,8 +113,8 @@ status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
     };
 
     // pass by value due to icc170 and icc180 problem on KNL
-    auto ker = [=](data_t *d, dim_t mb, dim_t oc, dim_t od, dim_t oh,
-                       dim_t ow) {
+    auto ker
+            = [=](data_t *d, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
         acc_data_t sum = 0;
         if (across_channels) {
             const dim_t c_st = nstl::max(oc - half_size + 0, (dim_t)0);
@@ -147,13 +147,13 @@ status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
     if (tag == nChw16c || tag == nChw8c) {
         parallel_nd(MB, utils::div_up(C, blksize), H, W,
                 [&](dim_t mb, dim_t c_blk, dim_t h, dim_t w) {
-                    dim_t c = c_blk * blksize;
-                    const dim_t off = mb * stride_mb + c * H * W
-                            + (h * W + w) * blksize;
-                    PRAGMA_OMP_SIMD()
-                    for (dim_t cc = 0; cc < nstl::min(blksize, C - c); ++cc)
-                        ker(&dst[off + cc], mb, c + cc, 0, h, w);
-                });
+            dim_t c = c_blk * blksize;
+            const dim_t off
+                    = mb * stride_mb + c * H * W + (h * W + w) * blksize;
+            PRAGMA_OMP_SIMD()
+            for (dim_t cc = 0; cc < nstl::min(blksize, C - c); ++cc)
+                ker(&dst[off + cc], mb, c + cc, 0, h, w);
+        });
     } else if (tag == nhwc) {
         parallel_nd(MB, H, W, C, [&](dim_t mb, dim_t h, dim_t w, dim_t c) {
             const dim_t off = mb * stride_mb + h * W * C + w * C + c;
@@ -162,9 +162,9 @@ status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
     } else {
         parallel_nd(MB, C, D, H, W,
                 [&](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) {
-                    const dim_t off = data_off(mb, c, d, h, w);
-                    ker(&dst[off], mb, c, d, h, w);
-                });
+            const dim_t off = data_off(mb, c, d, h, w);
+            ker(&dst[off], mb, c, d, h, w);
+        });
     }
     return status::success;
 }
@@ -268,8 +268,8 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
     };
 
     // pass by value due to icc170 and icc180 problem on KNL
-    auto ker = [=](data_t *d, dim_t mb, dim_t oc, dim_t od, dim_t oh,
-                       dim_t ow) {
+    auto ker
+            = [=](data_t *d, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
         acc_data_t A = 0, B = 0;
         if (across_channels) {
             const dim_t c_st = nstl::max(oc - half_size + 0, (dim_t)0);
@@ -314,13 +314,13 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
     if (tag == nChw16c || tag == nChw8c) {
         parallel_nd(MB, utils::div_up(C, blksize), H, W,
                 [&](dim_t mb, dim_t c_blk, dim_t h, dim_t w) {
-                    dim_t c = c_blk * blksize;
-                    const dim_t off = mb * stride_mb + c * H * W
-                            + (h * W + w) * blksize;
-                    PRAGMA_OMP_SIMD()
-                    for (dim_t cc = 0; cc < nstl::min(blksize, C - c); ++cc)
-                        ker(&diff_src[off + cc], mb, c + cc, 0, h, w);
-                });
+            dim_t c = c_blk * blksize;
+            const dim_t off
+                    = mb * stride_mb + c * H * W + (h * W + w) * blksize;
+            PRAGMA_OMP_SIMD()
+            for (dim_t cc = 0; cc < nstl::min(blksize, C - c); ++cc)
+                ker(&diff_src[off + cc], mb, c + cc, 0, h, w);
+        });
     } else if (tag == nhwc) {
         parallel_nd(MB, H, W, C, [&](dim_t mb, dim_t h, dim_t w, dim_t c) {
             const dim_t off = mb * stride_mb + h * W * C + w * C + c;
@@ -329,9 +329,9 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
     } else {
         parallel_nd(MB, C, D, H, W,
                 [&](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) {
-                    const dim_t off = data_off(mb, c, d, h, w);
-                    ker(&diff_src[off], mb, c, d, h, w);
-                });
+            const dim_t off = data_off(mb, c, d, h, w);
+            ker(&diff_src[off], mb, c, d, h, w);
+        });
     }
     return status::success;
 }

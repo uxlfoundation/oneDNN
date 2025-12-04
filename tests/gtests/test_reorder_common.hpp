@@ -91,12 +91,10 @@ protected:
                 !(supported_format(p.fmt_i) && supported_format(p.fmt_o)),
                 "Unsupported generic format tag");
 
-        catch_expected_failures(
-                [&]() {
-                    engine eng = get_test_engine();
-                    RunTest(eng, eng);
-                },
-                p.expect_to_fail, p.expected_status);
+        catch_expected_failures([&]() {
+            engine eng = get_test_engine();
+            RunTest(eng, eng);
+        }, p.expect_to_fail, p.expected_status);
     }
 #endif
     bool supported_format(memory::format_tag fmt) {

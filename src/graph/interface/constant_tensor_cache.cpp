@@ -270,18 +270,16 @@ void constant_tensor_cache_t::evict(size_t n) {
         // We evict the least recently used items
         auto it = std::min_element(constant_map().begin(), constant_map().end(),
                 [&](const v_t &left, const v_t &right) {
-                    // By default, load() and operator T use sequentially
-                    // consistent memory ordering, which enforces writing the
-                    // timestamps into registers in the same exact order they
-                    // are read from the CPU cache line. Since eviction is
-                    // performed under a write lock, this order is not
-                    // important, therefore we can safely use the weakest memory
-                    // ordering (relaxed).
-                    return left.second.timestamp_.load(
-                                   std::memory_order_relaxed)
-                            < right.second.timestamp_.load(
-                                    std::memory_order_relaxed);
-                });
+            // By default, load() and operator T use sequentially
+            // consistent memory ordering, which enforces writing the
+            // timestamps into registers in the same exact order they
+            // are read from the CPU cache line. Since eviction is
+            // performed under a write lock, this order is not
+            // important, therefore we can safely use the weakest memory
+            // ordering (relaxed).
+            return left.second.timestamp_.load(std::memory_order_relaxed)
+                    < right.second.timestamp_.load(std::memory_order_relaxed);
+        });
         evicted_size += it->second.value_.get()->size();
         auto res = constant_map().erase(it->first);
         UNUSED(res);
@@ -406,8 +404,8 @@ private:
                 // NOLINTNEXTLINE(modernize-make-shared)
                 cache.reset(new constant_tensor_cache_t(capacity_in_bytes),
                         [](constant_tensor_cache_t *ptr) {
-                            return ptr->release();
-                        });
+                    return ptr->release();
+                });
             }
             caches.insert({kind, std::move(cache_list)});
         }

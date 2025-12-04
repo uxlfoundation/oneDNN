@@ -116,11 +116,10 @@ struct ref_concat_t : public primitive_t {
         engine_t *engine = ctx.stream()->engine();
         const auto n = pd()->n_inputs();
 
-        auto execute_reorder = [&](const std::shared_ptr<primitive_t> &reorder,
-                                       const memory_arg_t &src,
-                                       const memory_arg_t &dst,
-                                       const memory_arg_t *src_scales,
-                                       int r_num) {
+        auto execute_reorder
+                = [&](const std::shared_ptr<primitive_t> &reorder,
+                          const memory_arg_t &src, const memory_arg_t &dst,
+                          const memory_arg_t *src_scales, int r_num) {
             exec_args_t r_args;
             r_args[DNNL_ARG_SRC] = src;
             r_args[DNNL_ARG_DST] = dst;

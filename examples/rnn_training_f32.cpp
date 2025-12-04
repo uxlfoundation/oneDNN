@@ -172,8 +172,8 @@ void simple_net(engine::kind engine_kind) {
 
     // Create auxiliary f32 memory descriptor
     // based on user- supplied dimensions and layout.
-    auto formatted_md = [=](const memory::dims &dimensions,
-                                memory::format_tag layout) {
+    auto formatted_md
+            = [=](const memory::dims &dimensions, memory::format_tag layout) {
         return memory::desc {{dimensions}, memory::data_type::f32, layout};
     };
     // Create auxiliary generic f32 memory descriptor

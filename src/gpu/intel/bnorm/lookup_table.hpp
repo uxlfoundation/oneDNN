@@ -124,8 +124,8 @@ private:
     name##_param_t name##_; \
     param_init_t name##_init_ \
             = register_param([](const container_config_t *c) { \
-                  return &((const params_t *)c)->name##_; \
-              });
+        return &((const params_t *)c)->name##_; \
+    });
 
     INIT_PARAM(use_fused_atomics_reduction);
     INIT_PARAM(ic_block);

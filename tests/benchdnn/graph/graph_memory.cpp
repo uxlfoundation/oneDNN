@@ -121,8 +121,8 @@ int dnn_graph_mem_t::fill_mem_with_data(
     }
 
     int ndims = mem.ndims();
-    const auto prim_to_graph_memcpy = [](dnn_mem_t &graph_mem,
-                                              const dnn_mem_t &prim_mem) {
+    const auto prim_to_graph_memcpy
+            = [](dnn_mem_t &graph_mem, const dnn_mem_t &prim_mem) {
         const void *prim_data_handle = static_cast<const void *>(prim_mem);
         void *graph_data_handle = graph_mem.get_mapped_pointer<void>();
         std::memcpy(graph_data_handle, prim_data_handle, graph_mem.size());

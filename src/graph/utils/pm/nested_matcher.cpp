@@ -685,9 +685,9 @@ std::vector<value_t::consumer_t> sort_op_consumers(
     std::vector<value_t::consumer_t> sorted_consumers = cons;
     std::sort(sorted_consumers.begin(), sorted_consumers.end(),
             [&](value_t::consumer_t con_1, value_t::consumer_t con_2) {
-                return con_1.get_op().get_attr<int64_t>(op_attr::op_depth)
-                        > con_2.get_op().get_attr<int64_t>(op_attr::op_depth);
-            });
+        return con_1.get_op().get_attr<int64_t>(op_attr::op_depth)
+                > con_2.get_op().get_attr<int64_t>(op_attr::op_depth);
+    });
 
     return sorted_consumers;
 }

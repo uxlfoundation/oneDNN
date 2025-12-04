@@ -279,9 +279,9 @@ void rnn_linear_bwd(const prb_t &prb, const args_t &args,
         cell_scratchpad_[i] = NAN;
     }
 
-    auto process_direction = [&](rnn_iter_direction_t iter_dir,
-                                     rnn_layer_direction_t lay_dir,
-                                     int64_t dir_val, rnn_action_t action) {
+    auto process_direction
+            = [&](rnn_iter_direction_t iter_dir, rnn_layer_direction_t lay_dir,
+                      int64_t dir_val, rnn_action_t action) {
         // we first need to copy the initial diff_dst_layer and
         // diff_dst_iter{,_c} into ws to simplify the logic of the code
         copy_init_bwd(prb, ws_diff_src_layer, ws_diff_src_iter,

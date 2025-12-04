@@ -1290,8 +1290,8 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
 
     // For the grouped Zero points/scales need to vary k-block size
     // For this case need to call copy kernel with unaligned (k, k_iters)
-    auto call_copy_kernel = [&](int k, int k_iters, int gb,
-                                    bool aligned_blocks = false) {
+    auto call_copy_kernel
+            = [&](int k, int k_iters, int gb, bool aligned_blocks = false) {
         ctx.src = (void *)brgmm_ctx.get_data_B_kn_ptr(B_data_batch_ptr, k, n);
         // Use k for buffer locating only when the block is unaligned
         if (aligned_blocks)

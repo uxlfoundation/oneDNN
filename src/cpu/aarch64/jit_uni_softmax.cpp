@@ -709,15 +709,15 @@ status_t jit_uni_softmax_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
     parallel_nd_ext(nthr, outer_size, inner_size,
             [&](int ithr, int, dim_t ou, dim_t in) {
-                dim_t offset = (ou * outer_stride + in * inner_stride);
-                const char *src_ptr = src + offset * src_data_type_size;
-                char *dst_ptr = dst + offset * dst_data_type_size;
-                char *interim_ptr = scratchpad_ptr ? scratchpad_ptr
-                                + ithr * axis_size_padded * sizeof(float)
-                                                   : nullptr;
-                softmax_driver_->exec(src_ptr, dst_ptr, interim_ptr, src_scales,
-                        dst_scales, process_n_elems);
-            });
+        dim_t offset = (ou * outer_stride + in * inner_stride);
+        const char *src_ptr = src + offset * src_data_type_size;
+        char *dst_ptr = dst + offset * dst_data_type_size;
+        char *interim_ptr = scratchpad_ptr
+                ? scratchpad_ptr + ithr * axis_size_padded * sizeof(float)
+                : nullptr;
+        softmax_driver_->exec(src_ptr, dst_ptr, interim_ptr, src_scales,
+                dst_scales, process_n_elems);
+    });
 
     return status::success;
 }

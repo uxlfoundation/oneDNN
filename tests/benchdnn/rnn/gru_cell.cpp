@@ -49,13 +49,13 @@ void gru_fwd_postgemm_part1_template(T func1, const prb_t &prb, float *gates_,
 void gru_fwd_postgemm_part1(const prb_t &prb, float *gates_,
         const float *src_iter_, const float *bias_, float *dst_layer_) {
     if (prb.skip_nonlinear)
-        gru_fwd_postgemm_part1_template(
-                [](float scale, float a) { return scale * a; }, prb, gates_,
-                src_iter_, bias_, dst_layer_);
+        gru_fwd_postgemm_part1_template([](float scale, float a) {
+            return scale * a;
+        }, prb, gates_, src_iter_, bias_, dst_layer_);
     else
-        gru_fwd_postgemm_part1_template(
-                [](float scale, float a) { return logistic(a); }, prb, gates_,
-                src_iter_, bias_, dst_layer_);
+        gru_fwd_postgemm_part1_template([](float scale, float a) {
+            return logistic(a);
+        }, prb, gates_, src_iter_, bias_, dst_layer_);
 }
 
 template <typename T>
@@ -89,13 +89,13 @@ void gru_fwd_postgemm_part2(const prb_t &prb, float *gates_,
         const float *src_iter_, const float *bias_,
         const float *src_layer_attention_, float *dst_layer_) {
     if (prb.skip_nonlinear)
-        gru_fwd_postgemm_part2_template(
-                [](float scale, float a) { return scale * a; }, prb, gates_,
-                src_iter_, bias_, src_layer_attention_, dst_layer_);
+        gru_fwd_postgemm_part2_template([](float scale, float a) {
+            return scale * a;
+        }, prb, gates_, src_iter_, bias_, src_layer_attention_, dst_layer_);
     else
-        gru_fwd_postgemm_part2_template(
-                [](float scale, float a) { return tanhf(a); }, prb, gates_,
-                src_iter_, bias_, src_layer_attention_, dst_layer_);
+        gru_fwd_postgemm_part2_template([](float scale, float a) {
+            return tanhf(a);
+        }, prb, gates_, src_iter_, bias_, src_layer_attention_, dst_layer_);
 }
 
 void gru_fwd(const prb_t &prb, float *dst_layer_, float *gates_,

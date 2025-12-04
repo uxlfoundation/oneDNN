@@ -37,68 +37,60 @@ void MaxPooling(const float *src, float *dst, const dim_t batch,
 
     parallel_nd(batch, channels, outD, outH, outW,
             [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
-                const size_t dst_offset
-                        = (size_t)outW * outH * outD * channels * mb
-                        + (size_t)outW * outH * outD * c
-                        + (size_t)outW * outH * od + (size_t)outW * oh
-                        + (size_t)ow;
-                const auto src_offset = ((size_t)inW * inH * inD)
-                        * ((size_t)channels * mb + c);
-                const auto local_src = &src[src_offset];
-                const auto IWH = (size_t)inW * inH;
+        const size_t dst_offset = (size_t)outW * outH * outD * channels * mb
+                + (size_t)outW * outH * outD * c + (size_t)outW * outH * od
+                + (size_t)outW * oh + (size_t)ow;
+        const auto src_offset
+                = ((size_t)inW * inH * inD) * ((size_t)channels * mb + c);
+        const auto local_src = &src[src_offset];
+        const auto IWH = (size_t)inW * inH;
 
-                int od_offset = od * strideD - padFront;
-                int oh_offset = oh * strideH - padTop;
-                int ow_offset = ow * strideW - padLeft;
-                int iw_start = std::max(ow_offset, 0);
-                int iw_end = std::min(ow_offset + kerW, inW);
+        int od_offset = od * strideD - padFront;
+        int oh_offset = oh * strideH - padTop;
+        int ow_offset = ow * strideW - padLeft;
+        int iw_start = std::max(ow_offset, 0);
+        int iw_end = std::min(ow_offset + kerW, inW);
 
-                if (iw_start >= iw_end) {
-                    dst[dst_offset] = -__FLT_MAX__;
-                    return;
+        if (iw_start >= iw_end) {
+            dst[dst_offset] = -__FLT_MAX__;
+            return;
+        }
+
+        size_t size = iw_end - iw_start;
+        size_t cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vmax = __riscv_vfmv_v_f_f32m1(-__FLT_MAX__, cycleLength);
+
+        for (int id = std::max(od_offset, 0);
+                id < std::min(od_offset + kerD, inD); id++)
+            for (int ih = std::max(oh_offset, 0);
+                    ih < std::min(oh_offset + kerH, inH); ih++) {
+                const auto local_src_offset
+                        = IWH * id + (size_t)inW * ih + std::max(ow_offset, 0);
+
+                size_t iw = 0;
+                for (; iw < size - cycleLength; iw += cycleLength) {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], cycleLength);
+                    vmax = __riscv_vfmax_vv_f32m1(vsrc, vmax, cycleLength);
                 }
 
-                size_t size = iw_end - iw_start;
-                size_t cycleLength = __riscv_vsetvl_e32m1(size);
-                vfloat32m1_t vmax
-                        = __riscv_vfmv_v_f_f32m1(-__FLT_MAX__, cycleLength);
+                size_t tailLength = __riscv_vsetvl_e32m1(size - iw);
+                {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], tailLength);
+                    vmax = __riscv_vfmax_vv_f32m1(vsrc, vmax, tailLength);
+                }
+            }
 
-                for (int id = std::max(od_offset, 0);
-                        id < std::min(od_offset + kerD, inD); id++)
-                    for (int ih = std::max(oh_offset, 0);
-                            ih < std::min(oh_offset + kerH, inH); ih++) {
-                        const auto local_src_offset = IWH * id
-                                + (size_t)inW * ih + std::max(ow_offset, 0);
+        vfloat32m1_t min_scalar = __riscv_vfmv_v_f_f32m1(-__FLT_MAX__, 1);
 
-                        size_t iw = 0;
-                        for (; iw < size - cycleLength; iw += cycleLength) {
-                            vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
-                                    &local_src[local_src_offset + iw],
-                                    cycleLength);
-                            vmax = __riscv_vfmax_vv_f32m1(
-                                    vsrc, vmax, cycleLength);
-                        }
+        cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vred_res;
+        vred_res = __riscv_vfredmax_vs_f32m1_f32m1(
+                vmax, min_scalar, cycleLength);
 
-                        size_t tailLength = __riscv_vsetvl_e32m1(size - iw);
-                        {
-                            vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
-                                    &local_src[local_src_offset + iw],
-                                    tailLength);
-                            vmax = __riscv_vfmax_vv_f32m1(
-                                    vsrc, vmax, tailLength);
-                        }
-                    }
-
-                vfloat32m1_t min_scalar
-                        = __riscv_vfmv_v_f_f32m1(-__FLT_MAX__, 1);
-
-                cycleLength = __riscv_vsetvl_e32m1(size);
-                vfloat32m1_t vred_res;
-                vred_res = __riscv_vfredmax_vs_f32m1_f32m1(
-                        vmax, min_scalar, cycleLength);
-
-                __riscv_vse32_v_f32m1(&dst[dst_offset], vred_res, 1);
-            });
+        __riscv_vse32_v_f32m1(&dst[dst_offset], vred_res, 1);
+    });
 }
 
 void AvgPoolingIncludePadding(const float *src, float *dst, const dim_t batch,
@@ -112,69 +104,63 @@ void AvgPoolingIncludePadding(const float *src, float *dst, const dim_t batch,
 
     parallel_nd(batch, channels, outD, outH, outW,
             [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
-                const size_t dst_offset
-                        = (size_t)outW * outH * outD * channels * mb
-                        + (size_t)outW * outH * outD * c
-                        + (size_t)outW * outH * od + (size_t)outW * oh
-                        + (size_t)ow;
-                const auto src_offset = ((size_t)inW * inH * inD)
-                        * ((size_t)channels * mb + c);
-                const auto local_src = &src[src_offset];
-                const auto IWH = (size_t)inW * inH;
+        const size_t dst_offset = (size_t)outW * outH * outD * channels * mb
+                + (size_t)outW * outH * outD * c + (size_t)outW * outH * od
+                + (size_t)outW * oh + (size_t)ow;
+        const auto src_offset
+                = ((size_t)inW * inH * inD) * ((size_t)channels * mb + c);
+        const auto local_src = &src[src_offset];
+        const auto IWH = (size_t)inW * inH;
 
-                int od_offset = od * strideD - padFront;
-                int oh_offset = oh * strideH - padTop;
-                int ow_offset = ow * strideW - padLeft;
-                int iw_start = std::max(ow_offset, 0);
-                int iw_end = std::min(ow_offset + kerW, inW);
+        int od_offset = od * strideD - padFront;
+        int oh_offset = oh * strideH - padTop;
+        int ow_offset = ow * strideW - padLeft;
+        int iw_start = std::max(ow_offset, 0);
+        int iw_end = std::min(ow_offset + kerW, inW);
 
-                if (iw_start >= iw_end) {
-                    dst[dst_offset] = 0.0f;
-                    return;
+        if (iw_start >= iw_end) {
+            dst[dst_offset] = 0.0f;
+            return;
+        }
+
+        size_t size = iw_end - iw_start;
+        size_t cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, cycleLength);
+
+        for (int id = std::max(od_offset, 0);
+                id < std::min(od_offset + kerD, inD); id++)
+            for (int ih = std::max(oh_offset, 0);
+                    ih < std::min(oh_offset + kerH, inH); ih++) {
+                const size_t local_src_offset
+                        = IWH * id + (size_t)inW * ih + iw_start;
+
+                size_t iw = 0;
+                for (; iw + cycleLength <= size; iw += cycleLength) {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], cycleLength);
+                    vsum = __riscv_vfadd_vv_f32m1(vsum, vsrc, cycleLength);
                 }
 
-                size_t size = iw_end - iw_start;
-                size_t cycleLength = __riscv_vsetvl_e32m1(size);
-                vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, cycleLength);
+                size_t tailLength = __riscv_vsetvl_e32m1(size - iw);
+                {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], tailLength);
+                    vsum = __riscv_vfadd_vv_f32m1(vsum, vsrc, tailLength);
+                }
+            }
 
-                for (int id = std::max(od_offset, 0);
-                        id < std::min(od_offset + kerD, inD); id++)
-                    for (int ih = std::max(oh_offset, 0);
-                            ih < std::min(oh_offset + kerH, inH); ih++) {
-                        const size_t local_src_offset
-                                = IWH * id + (size_t)inW * ih + iw_start;
+        float zero = 0.0f;
+        vfloat32m1_t zero_scalar = __riscv_vfmv_v_f_f32m1(zero, 1);
 
-                        size_t iw = 0;
-                        for (; iw + cycleLength <= size; iw += cycleLength) {
-                            vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
-                                    &local_src[local_src_offset + iw],
-                                    cycleLength);
-                            vsum = __riscv_vfadd_vv_f32m1(
-                                    vsum, vsrc, cycleLength);
-                        }
+        cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vred_res;
+        vred_res = __riscv_vfredusum_vs_f32m1_f32m1(
+                vsum, zero_scalar, cycleLength);
 
-                        size_t tailLength = __riscv_vsetvl_e32m1(size - iw);
-                        {
-                            vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
-                                    &local_src[local_src_offset + iw],
-                                    tailLength);
-                            vsum = __riscv_vfadd_vv_f32m1(
-                                    vsum, vsrc, tailLength);
-                        }
-                    }
-
-                float zero = 0.0f;
-                vfloat32m1_t zero_scalar = __riscv_vfmv_v_f_f32m1(zero, 1);
-
-                cycleLength = __riscv_vsetvl_e32m1(size);
-                vfloat32m1_t vred_res;
-                vred_res = __riscv_vfredusum_vs_f32m1_f32m1(
-                        vsum, zero_scalar, cycleLength);
-
-                float red_res;
-                __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
-                dst[dst_offset] = red_res / kernel_volume;
-            });
+        float red_res;
+        __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
+        dst[dst_offset] = red_res / kernel_volume;
+    });
 }
 
 void AvgPoolingExcludePadding(const float *src, float *dst, const dim_t batch,
@@ -186,81 +172,75 @@ void AvgPoolingExcludePadding(const float *src, float *dst, const dim_t batch,
 
     parallel_nd(batch, channels, outD, outH, outW,
             [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
-                const size_t dst_offset
-                        = (size_t)outW * outH * outD * channels * mb
-                        + (size_t)outW * outH * outD * c
-                        + (size_t)outW * outH * od + (size_t)outW * oh
-                        + (size_t)ow;
-                const auto src_offset = ((size_t)inW * inH * inD)
-                        * ((size_t)channels * mb + c);
-                const auto local_src = &src[src_offset];
-                const auto IWH = (size_t)inW * inH;
+        const size_t dst_offset = (size_t)outW * outH * outD * channels * mb
+                + (size_t)outW * outH * outD * c + (size_t)outW * outH * od
+                + (size_t)outW * oh + (size_t)ow;
+        const auto src_offset
+                = ((size_t)inW * inH * inD) * ((size_t)channels * mb + c);
+        const auto local_src = &src[src_offset];
+        const auto IWH = (size_t)inW * inH;
 
-                int od_offset = od * strideD - padFront;
-                int oh_offset = oh * strideH - padTop;
-                int ow_offset = ow * strideW - padLeft;
-                int iw_start = std::max(ow_offset, 0);
-                int iw_end = std::min(ow_offset + kerW, inW);
+        int od_offset = od * strideD - padFront;
+        int oh_offset = oh * strideH - padTop;
+        int ow_offset = ow * strideW - padLeft;
+        int iw_start = std::max(ow_offset, 0);
+        int iw_end = std::min(ow_offset + kerW, inW);
 
-                if (iw_start >= iw_end) {
-                    dst[dst_offset] = 0.0f;
-                    return;
+        if (iw_start >= iw_end) {
+            dst[dst_offset] = 0.0f;
+            return;
+        }
+
+        size_t size = iw_end - iw_start;
+        size_t cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, cycleLength);
+
+        size_t count = 0;
+
+        for (int id = od_offset; id < od_offset + kerD; id++) {
+            if (id < 0 || id >= inD) continue;
+            for (int ih = oh_offset; ih < oh_offset + kerH; ih++) {
+                if (ih < 0 || ih >= inH) continue;
+
+                if (iw_start >= iw_end) continue;
+
+                const size_t local_src_offset
+                        = IWH * id + (size_t)inW * ih + iw_start;
+                size_t iw = 0;
+
+                for (; iw + cycleLength <= size; iw += cycleLength) {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], cycleLength);
+                    vsum = __riscv_vfadd_vv_f32m1(vsum, vsrc, cycleLength);
                 }
 
-                size_t size = iw_end - iw_start;
-                size_t cycleLength = __riscv_vsetvl_e32m1(size);
-                vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, cycleLength);
-
-                size_t count = 0;
-
-                for (int id = od_offset; id < od_offset + kerD; id++) {
-                    if (id < 0 || id >= inD) continue;
-                    for (int ih = oh_offset; ih < oh_offset + kerH; ih++) {
-                        if (ih < 0 || ih >= inH) continue;
-
-                        if (iw_start >= iw_end) continue;
-
-                        const size_t local_src_offset
-                                = IWH * id + (size_t)inW * ih + iw_start;
-                        size_t iw = 0;
-
-                        for (; iw + cycleLength <= size; iw += cycleLength) {
-                            vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
-                                    &local_src[local_src_offset + iw],
-                                    cycleLength);
-                            vsum = __riscv_vfadd_vv_f32m1(
-                                    vsum, vsrc, cycleLength);
-                        }
-
-                        size_t tailLength = __riscv_vsetvl_e32m1(size - iw);
-                        {
-                            vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
-                                    &local_src[local_src_offset + iw],
-                                    tailLength);
-                            vsum = __riscv_vfadd_vv_f32m1(
-                                    vsum, vsrc, tailLength);
-                        }
-
-                        count += size;
-                    }
+                size_t tailLength = __riscv_vsetvl_e32m1(size - iw);
+                {
+                    vfloat32m1_t vsrc = __riscv_vle32_v_f32m1(
+                            &local_src[local_src_offset + iw], tailLength);
+                    vsum = __riscv_vfadd_vv_f32m1(vsum, vsrc, tailLength);
                 }
 
-                if (count == 0) {
-                    dst[dst_offset] = 0.0f;
-                    return;
-                }
+                count += size;
+            }
+        }
 
-                vfloat32m1_t zero_scalar = __riscv_vfmv_v_f_f32m1(0.0f, 1);
+        if (count == 0) {
+            dst[dst_offset] = 0.0f;
+            return;
+        }
 
-                cycleLength = __riscv_vsetvl_e32m1(size);
-                vfloat32m1_t vred_res;
-                vred_res = __riscv_vfredusum_vs_f32m1_f32m1(
-                        vsum, zero_scalar, cycleLength);
+        vfloat32m1_t zero_scalar = __riscv_vfmv_v_f_f32m1(0.0f, 1);
 
-                float red_res;
-                __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
-                dst[dst_offset] = red_res / (float)count;
-            });
+        cycleLength = __riscv_vsetvl_e32m1(size);
+        vfloat32m1_t vred_res;
+        vred_res = __riscv_vfredusum_vs_f32m1_f32m1(
+                vsum, zero_scalar, cycleLength);
+
+        float red_res;
+        __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
+        dst[dst_offset] = red_res / (float)count;
+    });
 }
 } // namespace
 

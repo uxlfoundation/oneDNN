@@ -83,6 +83,7 @@ IndentPPDirectives: None
 IndentWidth:     4
 IndentWrappedFunctionNames: false
 KeepEmptyLinesAtTheStartOfBlocks: true
+LambdaBodyIndentation : OuterScope
 MacroBlockBegin: ''
 MacroBlockEnd:   ''
 MaxEmptyLinesToKeep: 1

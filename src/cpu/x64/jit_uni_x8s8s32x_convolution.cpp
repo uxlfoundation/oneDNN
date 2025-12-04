@@ -424,82 +424,75 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_2d_dw(
 
     parallel_nd(jcp.mb, jcp.oh, jcp.nb_ow, nb_groups,
             [=](dim_t n, dim_t oh_s, dim_t owb, dim_t gg) {
-                auto p = jit_conv_args_t();
+        auto p = jit_conv_args_t();
 
-                size_t src_h_stride = src_d.blk_off(0, 0, 1);
-                size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
+        size_t src_h_stride = src_d.blk_off(0, 0, 1);
+        size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
 
-                int gb = gg * jcp.nb_ch_blocking;
-                int g = gb * group_block;
+        int gb = gg * jcp.nb_ch_blocking;
+        int g = gb * group_block;
 
-                int ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
-                int ow_s = owb * jcp.ow_block;
-                int iw_s = ow_s * jcp.stride_w;
+        int ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
+        int ow_s = owb * jcp.ow_block;
+        int iw_s = ow_s * jcp.stride_w;
 
-                auto bias_w = bias ? bias + (bias_d.blk_off(g) * bia_dt_size)
-                                   : nullptr;
-                const int32_t *compensation_w
-                        = jcp.signed_input ? compensation + g : nullptr;
+        auto bias_w = bias ? bias + (bias_d.blk_off(g) * bia_dt_size) : nullptr;
+        const int32_t *compensation_w
+                = jcp.signed_input ? compensation + g : nullptr;
 
-                auto dst_w
-                        = dst + dst_dt_size * dst_d.blk_off(n, g, oh_s, ow_s);
-                auto src_w = src + src_d.blk_off(n, g, ih_s, iw_s);
-                auto wht_w = weights + wht_blk_off(weights_d, gb, 0);
+        auto dst_w = dst + dst_dt_size * dst_d.blk_off(n, g, oh_s, ow_s);
+        auto src_w = src + src_d.blk_off(n, g, ih_s, iw_s);
+        auto wht_w = weights + wht_blk_off(weights_d, gb, 0);
 
-                float *dst_scales_inv_ptr = nullptr;
-                if (jcp.with_dst_scales) {
-                    const float *dst_scales_ptr
-                            = static_cast<const float *>(dst_scales);
-                    dst_scales_inv_ptr
-                            = ctx.get_scratchpad_grantor().template get<float>(
-                                      key_conv_dst_scales)
-                            + g;
-                    dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
-                }
+        float *dst_scales_inv_ptr = nullptr;
+        if (jcp.with_dst_scales) {
+            const float *dst_scales_ptr
+                    = static_cast<const float *>(dst_scales);
+            dst_scales_inv_ptr
+                    = ctx.get_scratchpad_grantor().template get<float>(
+                              key_conv_dst_scales)
+                    + g;
+            dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+        }
 
-                const float *wei_scales_ptr = jcp.with_wei_scales
-                        ? static_cast<const float *>(wei_scales)
-                                + jcp.is_oc_scale * g
-                        : nullptr;
+        const float *wei_scales_ptr = jcp.with_wei_scales
+                ? static_cast<const float *>(wei_scales) + jcp.is_oc_scale * g
+                : nullptr;
 
-                int dilate_h = jcp.dilate_h + 1;
-                int i_t_overflow = nstl::min(
-                        jcp.kh, div_up(nstl::max(0, -ih_s), dilate_h));
-                int i_b_overflow = nstl::min(jcp.kh,
-                        div_up(nstl::max(0,
-                                       ih_s - jcp.ih + (jcp.kh - 1) * dilate_h
-                                               + 1),
-                                dilate_h));
-                int kh_padding
-                        = nstl::max(0, jcp.kh - i_t_overflow - i_b_overflow);
+        int dilate_h = jcp.dilate_h + 1;
+        int i_t_overflow
+                = nstl::min(jcp.kh, div_up(nstl::max(0, -ih_s), dilate_h));
+        int i_b_overflow = nstl::min(jcp.kh,
+                div_up(nstl::max(
+                               0, ih_s - jcp.ih + (jcp.kh - 1) * dilate_h + 1),
+                        dilate_h));
+        int kh_padding = nstl::max(0, jcp.kh - i_t_overflow - i_b_overflow);
 
-                size_t wei_stride = (jcp.signed_input || jcp.src_zero_point)
-                        ? 0
-                        : i_t_overflow * wht_h_stride;
-                p.src = src_w + i_t_overflow * dilate_h * src_h_stride;
-                p.dst = dst_w;
-                p.filt = wht_w + wei_stride;
-                p.bias = bias_w;
-                p.compensation = compensation_w;
-                p.zp_compensation
-                        = jcp.src_zero_point ? zp_compensation + g : nullptr;
-                p.src_zero_point = src_zero_points;
-                p.dst_zero_point = dst_zero_points;
-                p.oc_blocks = gb;
-                p.kh_padding = kh_padding;
-                p.src_scales = src_scales;
-                p.wei_scales = wei_scales_ptr;
-                p.dst_scales = dst_scales_inv_ptr;
-                p.t_overflow = i_t_overflow;
-                p.b_overflow = i_b_overflow;
-                p.owb = owb;
+        size_t wei_stride = (jcp.signed_input || jcp.src_zero_point)
+                ? 0
+                : i_t_overflow * wht_h_stride;
+        p.src = src_w + i_t_overflow * dilate_h * src_h_stride;
+        p.dst = dst_w;
+        p.filt = wht_w + wei_stride;
+        p.bias = bias_w;
+        p.compensation = compensation_w;
+        p.zp_compensation = jcp.src_zero_point ? zp_compensation + g : nullptr;
+        p.src_zero_point = src_zero_points;
+        p.dst_zero_point = dst_zero_points;
+        p.oc_blocks = gb;
+        p.kh_padding = kh_padding;
+        p.src_scales = src_scales;
+        p.wei_scales = wei_scales_ptr;
+        p.dst_scales = dst_scales_inv_ptr;
+        p.t_overflow = i_t_overflow;
+        p.b_overflow = i_b_overflow;
+        p.owb = owb;
 
-                p.post_ops_binary_rhs_arg_vec
-                        = post_ops_binary_rhs_arg_vec.data();
-                p.dst_orig = dst;
+        p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
+        p.dst_orig = dst;
 
-                (*kernel_)(&p);
-            });
+        (*kernel_)(&p);
+    });
     return status::success;
 }
 

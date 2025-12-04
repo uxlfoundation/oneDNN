@@ -95,20 +95,20 @@ status_t dnnl_graph_graph::get_ordered_partitions(
     // Get the last op in topo order as proxy op for each partition.
     std::for_each(topo_unfused_ops.rbegin(), topo_unfused_ops.rend(),
             [&](op_t *op_ptr) {
-                partition_impl_t *part = op_ptr->get_partition();
-                if (!part) return;
-                if (!visited_parts.count(part)) {
-                    topo_fused_ops.emplace_back(op_ptr);
-                    visited_parts.emplace(part);
-                }
-            });
+        partition_impl_t *part = op_ptr->get_partition();
+        if (!part) return;
+        if (!visited_parts.count(part)) {
+            topo_fused_ops.emplace_back(op_ptr);
+            visited_parts.emplace(part);
+        }
+    });
 
     std::for_each(
             topo_fused_ops.rbegin(), topo_fused_ops.rend(), [&](op_t *op_ptr) {
-                partition_impl_t *part = op_ptr->get_partition();
-                partitions[count]->init(part->shared_from_this());
-                count++;
-            });
+        partition_impl_t *part = op_ptr->get_partition();
+        partitions[count]->init(part->shared_from_this());
+        count++;
+    });
     return ret;
 }
 

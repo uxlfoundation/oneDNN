@@ -195,8 +195,8 @@ status_t split_into_phases(const subproblem_t &subprb,
     //Heuristic:
     // subsplitting has a high cost due to launching multiple sequential threads,
     // so only split when parallelism is low and reductions per thread is large
-    const bool low_parallelism = [&intel_engine, &large_grf_mode,
-                                         &try_phase]() {
+    const bool low_parallelism
+            = [&intel_engine, &large_grf_mode, &try_phase]() {
         compute::gpu_arch_t arch = intel_engine->device_info()->gpu_arch();
         int threads_per_EU = large_grf_mode
                 ? 4

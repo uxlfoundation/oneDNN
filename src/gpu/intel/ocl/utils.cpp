@@ -248,8 +248,8 @@ void debugdump_processed_source(const std::string &source,
             }
             return ret;
         };
-        auto execute_command = [](const std::string &cmd,
-                                       const std::string &stdin) {
+        auto execute_command
+                = [](const std::string &cmd, const std::string &stdin) {
             std::string result;
             std::array<char, 256> buffer;
             FILE *pipe = popen(cmd.c_str(), "w");

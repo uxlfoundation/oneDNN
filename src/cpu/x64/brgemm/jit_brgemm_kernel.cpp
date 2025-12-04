@@ -1757,9 +1757,9 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
         else
             mov(reg_stride_ld_block, brg.LDC * brg.typesize_C);
 
-        auto store_accumulators_amx = [&](const bool apply_post_ops,
-                                              const bool apply_zp_a_compensation
-                                              = false) {
+        auto store_accumulators_amx
+                = [&](const bool apply_post_ops,
+                          const bool apply_zp_a_compensation = false) {
             if (brg.brgattr.max_bs > 1) reg_aux_D.restore();
 
             reg64_savable_guard_t reg_aux_D_bdb_loop_backup_guard(
@@ -2430,9 +2430,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         reg_bdb_loop.restore();
     }
 
-    auto broadcast_A = [this, rd_tail_size, is_rd_tail, rd_loop,
-                               rows_for_rd_tail,
-                               bd_e](Vmm vmm_bcast, dim_t bd, dim_t rd) {
+    auto broadcast_A
+            = [this, rd_tail_size, is_rd_tail, rd_loop, rows_for_rd_tail, bd_e](
+                      Vmm vmm_bcast, dim_t bd, dim_t rd) {
         const auto offset = A_offset(bd, rd);
         const auto dt = brg.dt_a;
         const bool maybe_load_bytes
@@ -2859,10 +2859,10 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         }
     };
 
-    auto bdb_loop_body = [this, do_ldb_loop](dim_t bd_block2, bool is_bdb_tail,
-                                 bool first_bdb, bool last_bdb,
-                                 dim_t rows_for_rd_tail,
-                                 bool skip_accumulation) {
+    auto bdb_loop_body
+            = [this, do_ldb_loop](dim_t bd_block2, bool is_bdb_tail,
+                      bool first_bdb, bool last_bdb, dim_t rows_for_rd_tail,
+                      bool skip_accumulation) {
         do_ldb_loop(bd_block2, is_bdb_tail, first_bdb, last_bdb,
                 rows_for_rd_tail, skip_accumulation);
 

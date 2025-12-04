@@ -234,9 +234,9 @@ struct gemm_t : public primitive_t {
                 // this option in gemmstone.
 
                 // Same as squash_dims, but early-outs available if quantization not present
-                auto squash_quant = [&](dims_t &out_dims,
-                                            const quant_entry_t &quant,
-                                            const memory_desc_t &qmd) {
+                auto squash_quant
+                        = [&](dims_t &out_dims, const quant_entry_t &quant,
+                                  const memory_desc_t &qmd) {
                     if (quant.has_default_values()) return;
                     squash_dims(out_dims, qmd.dims, ndims, reshape_size);
                     return;

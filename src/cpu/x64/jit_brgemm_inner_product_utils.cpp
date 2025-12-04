@@ -953,9 +953,9 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
 
     const int max_threads = j.nthr;
     const int nthr = max_threads;
-    auto calc_mem_cost = [&](int nb_os_blocking, int nb_oc_blocking,
-                                 int nb_ic_blocking, int nthr_mb, int nthr_oc,
-                                 int nthr_ic) {
+    auto calc_mem_cost
+            = [&](int nb_os_blocking, int nb_oc_blocking, int nb_ic_blocking,
+                      int nthr_mb, int nthr_oc, int nthr_ic) {
         float src_size = static_cast<float>(j.ic) * j.mb;
         float dst_size = static_cast<float>(j.oc) * j.mb;
         float wei_size = static_cast<float>(j.ic) * j.oc;
@@ -1071,13 +1071,13 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
     */
     auto get_blk_values
             = [](int max_blk_value, int init_blk, int dim_blk_limit) {
-                  int val_1st = rnd_up_pow2(init_blk);
-                  int val_end = nstl::min(max_blk_value, dim_blk_limit);
-                  std::vector<int> values;
-                  for (int val = val_1st; val <= val_end; val <<= 1)
-                      values.push_back(val);
-                  return values;
-              };
+        int val_1st = rnd_up_pow2(init_blk);
+        int val_end = nstl::min(max_blk_value, dim_blk_limit);
+        std::vector<int> values;
+        for (int val = val_1st; val <= val_end; val <<= 1)
+            values.push_back(val);
+        return values;
+    };
 
     const int max_nb_oc_blocking_pow
             = j.local_buffers_for_input_tensors ? 4 : j.nb_oc_blocking;

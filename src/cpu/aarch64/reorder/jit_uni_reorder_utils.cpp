@@ -759,8 +759,8 @@ void prb_block_for_cache(prb_t &prb) {
             const auto dim_last_it = dim_beg_it + prb.ndims;
             const auto min_n_node_it = std::min_element(dim_two_it, dim_last_it,
                     [](const tr::node_t &lhs, const tr::node_t &rhs) {
-                        return lhs.n < rhs.n;
-                    });
+                return lhs.n < rhs.n;
+            });
             const auto min_idx = std::distance(dim_beg_it, min_n_node_it);
             // check if min_idx node is parent of node with tail processing which
             // is currently unsupported (i.e. tail processing can only be handled

@@ -40,19 +40,18 @@ status_t miopen_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
 
         compat::host_task(cgh,
                 [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
-                    std::vector<void *> args;
-                    auto &sycl_engine = *utils::downcast<amd::engine_t *>(
-                            hip_stream->engine());
-                    auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
+            std::vector<void *> args;
+            auto &sycl_engine
+                    = *utils::downcast<amd::engine_t *>(hip_stream->engine());
+            auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
 
-                    auto handle = hip_stream->get_miopen_handle();
+            auto handle = hip_stream->get_miopen_handle();
 
-                    args.push_back(arg_src.get_native_pointer(ih));
-                    args.push_back(arg_dst.get_native_pointer(ih));
+            args.push_back(arg_src.get_native_pointer(ih));
+            args.push_back(arg_dst.get_native_pointer(ih));
 
-                    pd()->softmax_impl_->execute(
-                            handle, args.data(), args.size());
-                });
+            pd()->softmax_impl_->execute(handle, args.data(), args.size());
+        });
     });
 }
 
@@ -69,20 +68,19 @@ status_t miopen_softmax_bwd_t::execute(const exec_ctx_t &ctx) const {
 
         compat::host_task(cgh,
                 [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
-                    std::vector<void *> args;
-                    auto &sycl_engine = *utils::downcast<amd::engine_t *>(
-                            hip_stream->engine());
-                    auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
+            std::vector<void *> args;
+            auto &sycl_engine
+                    = *utils::downcast<amd::engine_t *>(hip_stream->engine());
+            auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
 
-                    auto handle = hip_stream->get_miopen_handle();
+            auto handle = hip_stream->get_miopen_handle();
 
-                    args.push_back(arg_dst.get_native_pointer(ih));
-                    args.push_back(arg_diff_dst.get_native_pointer(ih));
-                    args.push_back(arg_diff_src.get_native_pointer(ih));
+            args.push_back(arg_dst.get_native_pointer(ih));
+            args.push_back(arg_diff_dst.get_native_pointer(ih));
+            args.push_back(arg_diff_src.get_native_pointer(ih));
 
-                    pd()->softmax_impl_->execute(
-                            handle, args.data(), args.size());
-                });
+            pd()->softmax_impl_->execute(handle, args.data(), args.size());
+        });
     });
 }
 

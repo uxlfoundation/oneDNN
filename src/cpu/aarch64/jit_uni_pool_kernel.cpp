@@ -925,9 +925,9 @@ void jit_uni_pool_kernel_t<isa>::generate() {
     ldr(reg_ker_area_h, ptr(reg_param, GET_OFF(ker_area_h)));
     ldr(reg_nbc, ptr(reg_param, GET_OFF(ur_bc)));
 
-    auto process_oi = [&](int ur_w, int ur_bc, int lpad, int rpad,
-                              bool with_c_tail_proccessing,
-                              bool inc_reg = true) {
+    auto process_oi
+            = [&](int ur_w, int ur_bc, int lpad, int rpad,
+                      bool with_c_tail_proccessing, bool inc_reg = true) {
         step(ur_w, ur_bc, lpad, rpad, with_c_tail_proccessing);
 
         if (!inc_reg) return;

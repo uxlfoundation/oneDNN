@@ -445,8 +445,8 @@ protected:
     name##_param_t name##_; \
     param_init_t name##_init_ \
             = register_param([](const container_config_t *c) { \
-                  return &static_cast<const prim_config_t *>(c)->name##_; \
-              });
+        return &static_cast<const prim_config_t *>(c)->name##_; \
+    });
     INIT_PARAM(options)
     INIT_PARAM(kernel_grid)
     INIT_PARAM(thread_group_grid)

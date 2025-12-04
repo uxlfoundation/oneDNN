@@ -269,9 +269,9 @@ int flex_rewrite_t::linked_shape_and_attr_rewrite(
 
             bool input_shape_rewrite = std::any_of(aop.in_lts_.begin(),
                     aop.in_lts_.end(), [&](const deserialized_lt_t &in_lt) {
-                        return in_shapes_.count(in_lt.id_)
-                                && in_shapes_[in_lt.id_] != "default";
-                    });
+                return in_shapes_.count(in_lt.id_)
+                        && in_shapes_[in_lt.id_] != "default";
+            });
             bool group_shape_rewrite = op_attrs_.count(aop.id_)
                     && parse_attrs(op_attrs_.at(aop.id_)).count("group_shape");
 
@@ -1416,8 +1416,8 @@ int flex_rewrite_t::dt_rewrite(deserialized_graph_t &dgraph) {
             dt_rewrite_select(aop, str_dt);
         } else if (std::any_of(norm_ops.begin(), norm_ops.end(),
                            [&aop](const std::string &k) {
-                               return aop.kind_ == k;
-                           })) {
+            return aop.kind_ == k;
+        })) {
             dt_rewrite_norm(aop, str_dt);
         } else if (aop.kind_ == "GenIndex") {
             // GenIndex: only rewrite src dtype
@@ -1426,8 +1426,8 @@ int flex_rewrite_t::dt_rewrite(deserialized_graph_t &dgraph) {
             // GreaterEqual: only rewrite src dtype when it's floating-point
             if (std::any_of(fp_dts.begin(), fp_dts.end(),
                         [&aop](const dnnl_data_type_t &fp_dt) {
-                            return aop.in_lts_[0].data_type_ == dt2str(fp_dt);
-                        })) {
+                return aop.in_lts_[0].data_type_ == dt2str(fp_dt);
+            })) {
                 aop.in_lts_[0].data_type_ = str_dt;
                 aop.in_lts_[1].data_type_ = str_dt;
             }
@@ -1435,8 +1435,8 @@ int flex_rewrite_t::dt_rewrite(deserialized_graph_t &dgraph) {
             // Add/Sub: only rewrite dtype when it's floating-point
             if (std::any_of(fp_dts.begin(), fp_dts.end(),
                         [&aop](const dnnl_data_type_t &fp_dt) {
-                            return aop.in_lts_[0].data_type_ == dt2str(fp_dt);
-                        })) {
+                return aop.in_lts_[0].data_type_ == dt2str(fp_dt);
+            })) {
                 aop.in_lts_[0].data_type_ = str_dt;
                 aop.in_lts_[1].data_type_ = str_dt;
                 aop.out_lts_[0].data_type_ = str_dt;

@@ -55,10 +55,10 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
 
     benchdnn_parallel_nd(outer_size, axis_size, inner_size,
             [&](int64_t ou, int64_t a, int64_t in) {
-                auto src_off = ou * dim + a * inner_size + in;
-                auto dst_off = ou * dim + transpose(a) * inner_size + in;
-                dst_ptr[dst_off] = src.get_f32_elem(src_off);
-            });
+        auto src_off = ou * dim + a * inner_size + in;
+        auto dst_off = ou * dim + transpose(a) * inner_size + in;
+        dst_ptr[dst_off] = src.get_f32_elem(src_off);
+    });
 }
 
 } // namespace shuffle

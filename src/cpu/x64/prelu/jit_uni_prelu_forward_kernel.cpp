@@ -51,9 +51,9 @@ Xbyak::Address jit_prelu_forward_kernel_t::data_ptr(int arg_num, size_t offt) {
 
     const auto get_addr
             = [&](const Xbyak::Reg64 &reg_base, const data_type_t dt) {
-                  const auto dt_size = types::data_type_size(dt);
-                  return ptr[reg_base + reg_offset_ * dt_size + offt * dt_size];
-              };
+        const auto dt_size = types::data_type_size(dt);
+        return ptr[reg_base + reg_offset_ * dt_size + offt * dt_size];
+    };
 
     switch (arg_num) {
         case DNNL_ARG_SRC: return get_addr(reg_src_, src_dt_);

@@ -212,36 +212,32 @@ void jit_uni_reorder_t::omp_driver_2d(int ithr, int nthr, int off,
     const tr::node_t *ns = prb.nodes + off;
     for_nd(ithr, nthr, (ptrdiff_t)ns[1].n, (ptrdiff_t)ns[0].n,
             [&](ptrdiff_t d1, ptrdiff_t d0) {
-                tr::call_param_t base_params;
-                base_params.in = in
-                        + (d0 * ns[0].is + d1 * ns[1].is)
-                                * data_type_size(prb.itype);
-                base_params.out = out
-                        + (d0 * ns[0].os + d1 * ns[1].os)
-                                * data_type_size(prb.otype);
-                base_params.src_scales
-                        = src_scales + d0 * ns[0].ss + d1 * ns[1].ss;
-                base_params.dst_scales
-                        = dst_scales + d0 * ns[0].ss + d1 * ns[1].ss;
-                base_params.src_zp = src_zp;
-                base_params.dst_zp = dst_zp;
-                base_params.compensation_scratch
-                        = compensation_scratch + d0 * ns[0].cs + d1 * ns[1].cs;
+        tr::call_param_t base_params;
+        base_params.in = in
+                + (d0 * ns[0].is + d1 * ns[1].is) * data_type_size(prb.itype);
+        base_params.out = out
+                + (d0 * ns[0].os + d1 * ns[1].os) * data_type_size(prb.otype);
+        base_params.src_scales = src_scales + d0 * ns[0].ss + d1 * ns[1].ss;
+        base_params.dst_scales = dst_scales + d0 * ns[0].ss + d1 * ns[1].ss;
+        base_params.src_zp = src_zp;
+        base_params.dst_zp = dst_zp;
+        base_params.compensation_scratch
+                = compensation_scratch + d0 * ns[0].cs + d1 * ns[1].cs;
 
-                if (prb.is_tail_present) {
-                    tr::tail_call_param_t tail_params;
-                    tail_params.base_params = base_params;
+        if (prb.is_tail_present) {
+            tr::tail_call_param_t tail_params;
+            tail_params.base_params = base_params;
 
-                    static constexpr int omp_ndims = 2;
-                    const ptrdiff_t omp_data_chunks[omp_ndims] = {d0, d1};
-                    fill_curr_data_chunks(
-                            prb, off, omp_data_chunks, omp_ndims, tail_params);
+            static constexpr int omp_ndims = 2;
+            const ptrdiff_t omp_data_chunks[omp_ndims] = {d0, d1};
+            fill_curr_data_chunks(
+                    prb, off, omp_data_chunks, omp_ndims, tail_params);
 
-                    (*kernel_)(&tail_params);
-                } else {
-                    (*kernel_)(&base_params);
-                }
-            });
+            (*kernel_)(&tail_params);
+        } else {
+            (*kernel_)(&base_params);
+        }
+    });
 }
 
 void jit_uni_reorder_t::omp_driver_3d(int ithr, int nthr, int off,
@@ -252,36 +248,36 @@ void jit_uni_reorder_t::omp_driver_3d(int ithr, int nthr, int off,
     const tr::node_t *ns = prb.nodes + off;
     for_nd(ithr, nthr, (ptrdiff_t)ns[2].n, (ptrdiff_t)ns[1].n,
             (ptrdiff_t)ns[0].n, [&](ptrdiff_t d2, ptrdiff_t d1, ptrdiff_t d0) {
-                tr::call_param_t base_params;
-                base_params.in = in
-                        + (d0 * ns[0].is + d1 * ns[1].is + d2 * ns[2].is)
-                                * data_type_size(prb.itype);
-                base_params.out = out
-                        + (d0 * ns[0].os + d1 * ns[1].os + d2 * ns[2].os)
-                                * data_type_size(prb.otype);
-                base_params.src_scales = src_scales + d0 * ns[0].ss
-                        + d1 * ns[1].ss + d2 * ns[2].ss;
-                base_params.dst_scales = dst_scales + d0 * ns[0].ss
-                        + d1 * ns[1].ss + d2 * ns[2].ss;
-                base_params.src_zp = src_zp;
-                base_params.dst_zp = dst_zp;
-                base_params.compensation_scratch = compensation_scratch
-                        + d0 * ns[0].cs + d1 * ns[1].cs + d2 * ns[2].cs;
+        tr::call_param_t base_params;
+        base_params.in = in
+                + (d0 * ns[0].is + d1 * ns[1].is + d2 * ns[2].is)
+                        * data_type_size(prb.itype);
+        base_params.out = out
+                + (d0 * ns[0].os + d1 * ns[1].os + d2 * ns[2].os)
+                        * data_type_size(prb.otype);
+        base_params.src_scales
+                = src_scales + d0 * ns[0].ss + d1 * ns[1].ss + d2 * ns[2].ss;
+        base_params.dst_scales
+                = dst_scales + d0 * ns[0].ss + d1 * ns[1].ss + d2 * ns[2].ss;
+        base_params.src_zp = src_zp;
+        base_params.dst_zp = dst_zp;
+        base_params.compensation_scratch = compensation_scratch + d0 * ns[0].cs
+                + d1 * ns[1].cs + d2 * ns[2].cs;
 
-                if (prb.is_tail_present) {
-                    tr::tail_call_param_t tail_params;
-                    tail_params.base_params = base_params;
+        if (prb.is_tail_present) {
+            tr::tail_call_param_t tail_params;
+            tail_params.base_params = base_params;
 
-                    static constexpr int omp_ndims = 3;
-                    const ptrdiff_t omp_data_chunks[omp_ndims] = {d0, d1, d2};
-                    fill_curr_data_chunks(
-                            prb, off, omp_data_chunks, omp_ndims, tail_params);
+            static constexpr int omp_ndims = 3;
+            const ptrdiff_t omp_data_chunks[omp_ndims] = {d0, d1, d2};
+            fill_curr_data_chunks(
+                    prb, off, omp_data_chunks, omp_ndims, tail_params);
 
-                    (*kernel_)(&tail_params);
-                } else {
-                    (*kernel_)(&base_params);
-                }
-            });
+            (*kernel_)(&tail_params);
+        } else {
+            (*kernel_)(&base_params);
+        }
+    });
 }
 
 void jit_uni_reorder_t::omp_driver_4d(int ithr, int nthr, int off,
@@ -293,40 +289,38 @@ void jit_uni_reorder_t::omp_driver_4d(int ithr, int nthr, int off,
     for_nd(ithr, nthr, (ptrdiff_t)ns[3].n, (ptrdiff_t)ns[2].n,
             (ptrdiff_t)ns[1].n, (ptrdiff_t)ns[0].n,
             [&](ptrdiff_t d3, ptrdiff_t d2, ptrdiff_t d1, ptrdiff_t d0) {
-                tr::call_param_t base_params;
-                base_params.in = in
-                        + (d0 * ns[0].is + d1 * ns[1].is + d2 * ns[2].is
-                                  + d3 * ns[3].is)
-                                * data_type_size(prb.itype);
-                base_params.out = out
-                        + (d0 * ns[0].os + d1 * ns[1].os + d2 * ns[2].os
-                                  + d3 * ns[3].os)
-                                * data_type_size(prb.otype);
-                base_params.src_scales = src_scales + d0 * ns[0].ss
-                        + d1 * ns[1].ss + d2 * ns[2].ss + d3 * ns[3].ss;
-                base_params.dst_scales = dst_scales + d0 * ns[0].ss
-                        + d1 * ns[1].ss + d2 * ns[2].ss + d3 * ns[3].ss;
-                base_params.src_zp = src_zp;
-                base_params.dst_zp = dst_zp;
-                base_params.compensation_scratch = compensation_scratch
-                        + d0 * ns[0].cs + d1 * ns[1].cs + d2 * ns[2].cs
-                        + d3 * ns[3].cs;
+        tr::call_param_t base_params;
+        base_params.in = in
+                + (d0 * ns[0].is + d1 * ns[1].is + d2 * ns[2].is
+                          + d3 * ns[3].is)
+                        * data_type_size(prb.itype);
+        base_params.out = out
+                + (d0 * ns[0].os + d1 * ns[1].os + d2 * ns[2].os
+                          + d3 * ns[3].os)
+                        * data_type_size(prb.otype);
+        base_params.src_scales = src_scales + d0 * ns[0].ss + d1 * ns[1].ss
+                + d2 * ns[2].ss + d3 * ns[3].ss;
+        base_params.dst_scales = dst_scales + d0 * ns[0].ss + d1 * ns[1].ss
+                + d2 * ns[2].ss + d3 * ns[3].ss;
+        base_params.src_zp = src_zp;
+        base_params.dst_zp = dst_zp;
+        base_params.compensation_scratch = compensation_scratch + d0 * ns[0].cs
+                + d1 * ns[1].cs + d2 * ns[2].cs + d3 * ns[3].cs;
 
-                if (prb.is_tail_present) {
-                    tr::tail_call_param_t tail_params;
-                    tail_params.base_params = base_params;
+        if (prb.is_tail_present) {
+            tr::tail_call_param_t tail_params;
+            tail_params.base_params = base_params;
 
-                    static constexpr int omp_ndims = 4;
-                    const ptrdiff_t omp_data_chunks[omp_ndims]
-                            = {d0, d1, d2, d3};
-                    fill_curr_data_chunks(
-                            prb, off, omp_data_chunks, omp_ndims, tail_params);
+            static constexpr int omp_ndims = 4;
+            const ptrdiff_t omp_data_chunks[omp_ndims] = {d0, d1, d2, d3};
+            fill_curr_data_chunks(
+                    prb, off, omp_data_chunks, omp_ndims, tail_params);
 
-                    (*kernel_)(&tail_params);
-                } else {
-                    (*kernel_)(&base_params);
-                }
-            });
+            (*kernel_)(&tail_params);
+        } else {
+            (*kernel_)(&base_params);
+        }
+    });
 }
 
 void jit_uni_reorder_t::omp_driver(const char *in, char *out,

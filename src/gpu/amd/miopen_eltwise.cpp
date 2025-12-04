@@ -40,18 +40,17 @@ status_t miopen_eltwise_fwd_t::execute(const exec_ctx_t &ctx) const {
 
         compat::host_task(cgh,
                 [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
-                    std::vector<void *> args;
-                    auto &sycl_engine = *utils::downcast<amd::engine_t *>(
-                            hip_stream->engine());
-                    auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
-                    auto handle = hip_stream->get_miopen_handle();
+            std::vector<void *> args;
+            auto &sycl_engine
+                    = *utils::downcast<amd::engine_t *>(hip_stream->engine());
+            auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
+            auto handle = hip_stream->get_miopen_handle();
 
-                    args.push_back(arg_src.get_native_pointer(ih));
-                    args.push_back(arg_dst.get_native_pointer(ih));
+            args.push_back(arg_src.get_native_pointer(ih));
+            args.push_back(arg_dst.get_native_pointer(ih));
 
-                    pd()->eltwise_fwd_impl_->execute(
-                            handle, args.data(), args.size());
-                });
+            pd()->eltwise_fwd_impl_->execute(handle, args.data(), args.size());
+        });
     });
 }
 
@@ -67,19 +66,18 @@ status_t miopen_eltwise_bwd_t::execute(const exec_ctx_t &ctx) const {
         auto arg_diff_src = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DIFF_SRC);
         compat::host_task(cgh,
                 [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
-                    std::vector<void *> args;
-                    auto &sycl_engine = *utils::downcast<amd::engine_t *>(
-                            hip_stream->engine());
-                    auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
-                    auto handle = hip_stream->get_miopen_handle();
+            std::vector<void *> args;
+            auto &sycl_engine
+                    = *utils::downcast<amd::engine_t *>(hip_stream->engine());
+            auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
+            auto handle = hip_stream->get_miopen_handle();
 
-                    args.push_back(arg_src.get_native_pointer(ih));
-                    args.push_back(arg_diff_dst.get_native_pointer(ih));
-                    args.push_back(arg_diff_src.get_native_pointer(ih));
+            args.push_back(arg_src.get_native_pointer(ih));
+            args.push_back(arg_diff_dst.get_native_pointer(ih));
+            args.push_back(arg_diff_src.get_native_pointer(ih));
 
-                    pd()->eltwise_bwd_impl_->execute(
-                            handle, args.data(), args.size());
-                });
+            pd()->eltwise_bwd_impl_->execute(handle, args.data(), args.size());
+        });
     });
 }
 

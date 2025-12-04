@@ -551,9 +551,9 @@ struct xbyak_gemm_t : public jit_generator_t {
         };
 
         // Innerkernel; called by kernel
-        auto innerkernel = [&](int unroll_m, int unroll_n, bool isDirect,
-                                   bool isCopy, bool doCPrefetch,
-                                   bool isUnmasked = true) {
+        auto innerkernel
+                = [&](int unroll_m, int unroll_n, bool isDirect, bool isCopy,
+                          bool doCPrefetch, bool isUnmasked = true) {
             for (int i = 0; i < 8; i++) {
                 if (!isDirect) {
                     prefetcht0(ptr[AO1

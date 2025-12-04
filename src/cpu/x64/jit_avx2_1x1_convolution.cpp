@@ -141,9 +141,9 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
         return remaining < tail_step ? remaining : default_step;
     };
 
-    auto init_bcast = [&](int iwork, int bcast_end, int &n, int &g,
-                              int &bcast_step, int &od, int &oh, int &ow,
-                              int &id, int &ih, int &iw) {
+    auto init_bcast
+            = [&](int iwork, int bcast_end, int &n, int &g, int &bcast_step,
+                      int &od, int &oh, int &ow, int &id, int &ih, int &iw) {
         int osb {0};
         nd_iterator_init(iwork, n, jcp.mb, g, jcp.ngroups, osb, nb_bcast);
 
@@ -220,8 +220,8 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
         (*kernel_)(&p);
     };
 
-    auto conv_1x1 = [&](int bcast_start, int bcast_end, int ocb_start,
-                            int ocb_end) {
+    auto conv_1x1
+            = [&](int bcast_start, int bcast_end, int ocb_start, int ocb_end) {
         if (bcast_start >= bcast_end || ocb_start >= ocb_end) return;
         int iwork = bcast_start;
         while (iwork < bcast_end) {
@@ -578,10 +578,10 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
         return remaining < tail_step ? remaining : default_step;
     };
 
-    auto oc_ic_sp_loop = [=](int sp_start, int sp_end, bool first_image,
-                                 data_t *store_to, size_t store_to_ld,
-                                 const data_t *diff_dst, const data_t *src,
-                                 int ithr) {
+    auto oc_ic_sp_loop
+            = [=](int sp_start, int sp_end, bool first_image, data_t *store_to,
+                      size_t store_to_ld, const data_t *diff_dst,
+                      const data_t *src, int ithr) {
         auto p = jit_1x1_conv_args_t();
         auto rp = rtus_driver_t<avx2>::call_params_t();
 

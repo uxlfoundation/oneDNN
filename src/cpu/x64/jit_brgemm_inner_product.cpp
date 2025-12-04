@@ -357,15 +357,15 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
     const auto init_thr_groups
             = [&](const int ithr, const int nthr, int &nthr_ic, int &nthr_oc_mb,
                       int &ithr_ic, int &ithr_oc_mb) {
-                  nthr_ic = jbgp.nthr_ic_b <= nthr ? jbgp.nthr_ic_b : 1;
-                  nthr_oc_mb = nthr / nthr_ic;
-                  ithr_ic = ithr / nthr_oc_mb;
-                  ithr_oc_mb = ithr % nthr_oc_mb;
-                  if (ithr_oc_mb >= work_amount || ithr_ic >= ic_chunks
-                          || ithr >= rnd_dn(nthr, nthr_ic))
-                      return false;
-                  return true;
-              };
+        nthr_ic = jbgp.nthr_ic_b <= nthr ? jbgp.nthr_ic_b : 1;
+        nthr_oc_mb = nthr / nthr_ic;
+        ithr_ic = ithr / nthr_oc_mb;
+        ithr_oc_mb = ithr % nthr_oc_mb;
+        if (ithr_oc_mb >= work_amount || ithr_ic >= ic_chunks
+                || ithr >= rnd_dn(nthr, nthr_ic))
+            return false;
+        return true;
+    };
 
     // If work_amount == 1 we limit num_threads to 1 as parallel(1, ...) does
     // not create parallel section at all. We do not limit num_threads
@@ -717,8 +717,8 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
     const int num_threads
             = work_amount == 1 && jbgp.nthr_oc_b <= 1 ? 1 : jbgp.nthr;
 
-    const auto get_weights_ptr = [&](int icb, int ocb, int kd = 0, int kh = 0,
-                                         int kw = 0) {
+    const auto get_weights_ptr
+            = [&](int icb, int ocb, int kd = 0, int kh = 0, int kw = 0) {
         int fwd_ic_block
                 = (is_amx && !jbgp.is_bf32) ? 2 * jbgp.simd_w : jbgp.simd_w;
         int fwd_oc_block = jbgp.get_weights_oc_block();
@@ -744,19 +744,19 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
     const auto transform_b_chunk
             = [&](char *tr_wei, const char *wei, int trans_batch, int current_N,
                       int current_K) {
-                  auto ctx = jit_brgemm_trans_wei_t::ctx_t();
-                  ctx.src = (void *)wei;
-                  ctx.tr_src = (void *)tr_wei;
-                  ctx.current_gemm_batch = trans_batch;
-                  ctx.current_N = current_N;
-                  ctx.current_K = current_K;
-                  (*trans_B_kernel_)(&ctx);
-              };
+        auto ctx = jit_brgemm_trans_wei_t::ctx_t();
+        ctx.src = (void *)wei;
+        ctx.tr_src = (void *)tr_wei;
+        ctx.current_gemm_batch = trans_batch;
+        ctx.current_N = current_N;
+        ctx.current_K = current_K;
+        (*trans_B_kernel_)(&ctx);
+    };
 
-    const auto ker = [&](int ithr_ic_mb, int nthr_ic_mb, int ithr_oc,
-                             int nthr_oc, int n, int icb, int occ, int kd,
-                             int kh, int kw, bool do_init, bool do_b_transpose,
-                             int &prev_ker_idx) {
+    const auto ker
+            = [&](int ithr_ic_mb, int nthr_ic_mb, int ithr_oc, int nthr_oc,
+                      int n, int icb, int occ, int kd, int kh, int kw,
+                      bool do_init, bool do_b_transpose, int &prev_ker_idx) {
         const int ithr = nthr_ic_mb * ithr_oc + ithr_ic_mb;
         brgemm_batch_element_t *addr_batch
                 = addr_batch_global + ithr * jbgp.adjusted_batch_size;
@@ -1416,11 +1416,11 @@ void brgemm_inner_product_bwd_weights_t<isa>::compute_diff_weights_and_bias(
     const auto a_buf_osb_shift = ti->get_buffer_a_osb_shift();
     const auto b_buf_osb_shift = ti->get_buffer_b_osb_shift();
 
-    const auto ker = [&](const int sp_icc, const int osc, const int icc,
-                             const int occ, const int icb_i, const int ocb_i,
-                             const int osc_prev, const int sp_icc_prev,
-                             const int occ_prev, int kd, int kh, int kw,
-                             int &prev_ker_idx) {
+    const auto ker
+            = [&](const int sp_icc, const int osc, const int icc, const int occ,
+                      const int icb_i, const int ocb_i, const int osc_prev,
+                      const int sp_icc_prev, const int occ_prev, int kd, int kh,
+                      int kw, int &prev_ker_idx) {
         brgemm_batch_element_t *addr_batch
                 = addr_batch_global + ti->ithr * jbgp.adjusted_batch_size;
         char *wsp_tile = is_amx_bf16

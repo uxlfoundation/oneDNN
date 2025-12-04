@@ -348,8 +348,8 @@ void jit_sve_conv_fwd_kernel_t<isa>::compute_loop_fma_core(
         return ZRegS(idx);
     };
 
-    auto bcast_load = [&](int jj, int nb_oc_block, int aux_input_offset,
-                              int prev_ofs) {
+    auto bcast_load
+            = [&](int jj, int nb_oc_block, int aux_input_offset, int prev_ofs) {
         if (ld1rw_imm_check(aux_input_offset)) {
             ld1rw(zreg_inp_s(jj, nb_oc_block), P_ALL_ONE,
                     ptr(aux_reg_inp, static_cast<int32_t>(aux_input_offset)));

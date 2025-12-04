@@ -1816,14 +1816,14 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_weights(const exec_ctx_t &ctx,
 
         parallel_nd(
                 jcp.ngroups, jcp.nb_oc, KH, [=](dim_t g, dim_t ocb, dim_t kh) {
-                    auto p = jit_brgemm_relo_copy_to_wbuffer_t::ctx_t();
-                    const auto inp_ocb = g * inp_nb_oc + ocb * oc_chunks;
-                    const auto out_ocb = g * jcp.nb_oc + ocb;
-                    p.src = input_weights + (inp_ocb * KH + kh) * inp_kh_offs;
-                    p.dst = wei_buffer + (out_ocb * KH + kh) * out_kh_offs;
-                    p.last_ocb = (ocb == jcp.nb_oc - 1);
-                    (*copy_to_relo_wbuffer_)(&p);
-                });
+            auto p = jit_brgemm_relo_copy_to_wbuffer_t::ctx_t();
+            const auto inp_ocb = g * inp_nb_oc + ocb * oc_chunks;
+            const auto out_ocb = g * jcp.nb_oc + ocb;
+            p.src = input_weights + (inp_ocb * KH + kh) * inp_kh_offs;
+            p.dst = wei_buffer + (out_ocb * KH + kh) * out_kh_offs;
+            p.last_ocb = (ocb == jcp.nb_oc - 1);
+            (*copy_to_relo_wbuffer_)(&p);
+        });
     }
     wei = wei_buffer;
 }

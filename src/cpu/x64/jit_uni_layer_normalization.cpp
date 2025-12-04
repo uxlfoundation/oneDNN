@@ -404,8 +404,8 @@ protected:
         if (has_ne_convert_src_xf16_)
             compute_ne_convert_xf16(
                     vmm_mean, [&](Vmm vmm_dst, Vmm vmm_src, bool need_tail) {
-                        uni_vaddps(vmm_dst, vmm_dst, vmm_src);
-                    });
+                uni_vaddps(vmm_dst, vmm_dst, vmm_src);
+            });
         else
             compute(vmm_mean, [&](Vmm vmm_dst, Vmm vmm_src, bool need_tail) {
                 uni_vaddps(vmm_dst, vmm_dst, vmm_src);
@@ -416,11 +416,11 @@ protected:
     void compute_var() {
         auto compute_var_lambda
                 = [&](Vmm vmm_dst, Vmm vmm_src, bool need_tail) {
-                      if (!skip_mean_) {
-                          uni_vsubps_maybe_tail(vmm_src, vmm_mean, need_tail);
-                      }
-                      uni_vfmadd231ps(vmm_dst, vmm_src, vmm_src);
-                  };
+            if (!skip_mean_) {
+                uni_vsubps_maybe_tail(vmm_src, vmm_mean, need_tail);
+            }
+            uni_vfmadd231ps(vmm_dst, vmm_src, vmm_src);
+        };
 
         if (has_ne_convert_src_xf16_)
             compute_ne_convert_xf16(vmm_inv_sqrtvar, compute_var_lambda);

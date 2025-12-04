@@ -183,63 +183,58 @@ status_t brgemm_matmul_copy_reorder_t::execute_body(
 
     parallel_nd(kernel_conf.batch, div_up(kernel_conf.N, kernel_conf.N_blk),
             [&](dim_t batch, dim_t n_blk_idx) {
-                const auto n = n_blk_idx * kernel_conf.N_blk;
-                const bool is_N_tail = (kernel_conf.N - n < kernel_conf.N_blk);
-                auto ker_exec_ctx = matmul::jit_brgemm_matmul_copy_b_t::ctx_t();
-                ker_exec_ctx.current_N_blk
-                        = is_N_tail ? kernel_conf.N_tail : kernel_conf.N_blk;
+        const auto n = n_blk_idx * kernel_conf.N_blk;
+        const bool is_N_tail = (kernel_conf.N - n < kernel_conf.N_blk);
+        auto ker_exec_ctx = matmul::jit_brgemm_matmul_copy_b_t::ctx_t();
+        ker_exec_ctx.current_N_blk
+                = is_N_tail ? kernel_conf.N_tail : kernel_conf.N_blk;
 
-                const auto comp_offset = batch * kernel_conf.s8s8_comp_b_str
-                        + n_blk_idx * kernel_conf.s8s8_comp_n_str;
+        const auto comp_offset = batch * kernel_conf.s8s8_comp_b_str
+                + n_blk_idx * kernel_conf.s8s8_comp_n_str;
 
-                ker_exec_ctx.zp_a_compensation_ptr
-                        = kernel_conf.has_zero_point_a
-                        ? (void *)&zp[comp_offset]
-                        : nullptr;
-                ker_exec_ctx.compensation_ptr
-                        = kernel_conf.s8s8_compensation_required
-                        ? (void *)&cp[comp_offset]
-                        : nullptr;
+        ker_exec_ctx.zp_a_compensation_ptr = kernel_conf.has_zero_point_a
+                ? (void *)&zp[comp_offset]
+                : nullptr;
+        ker_exec_ctx.compensation_ptr = kernel_conf.s8s8_compensation_required
+                ? (void *)&cp[comp_offset]
+                : nullptr;
 
-                // required to compute zp compensation
-                int tmp_neg_a_zp_val = -1;
-                ker_exec_ctx.zp_a_neg_value_ptr = &tmp_neg_a_zp_val;
+        // required to compute zp compensation
+        int tmp_neg_a_zp_val = -1;
+        ker_exec_ctx.zp_a_neg_value_ptr = &tmp_neg_a_zp_val;
 
-                int k_blk_idx = 0;
-                for (; k_blk_idx < kernel_conf.K / kernel_conf.K_blk;
-                        k_blk_idx++) {
-                    const auto k = k_blk_idx * kernel_conf.K_blk;
-                    ker_exec_ctx.src = (void *)&src[get_blk_off(
-                            src_d, sdt_sz, batch, k, n)];
-                    ker_exec_ctx.tr_src = (void *)&dst[get_blk_off(
-                            dst_d, ddt_sz, batch, k_blk_idx, n_blk_idx)];
-                    ker_exec_ctx.current_K_start = k;
-                    ker_exec_ctx.current_K_iters = kernel_conf.K_blk;
-                    (*kernel_)(&ker_exec_ctx);
-                }
-                if (kernel_conf.K_tail > 0) {
-                    const auto k = k_blk_idx * kernel_conf.K_blk;
-                    ker_exec_ctx.src = (void *)&src[get_blk_off(
-                            src_d, sdt_sz, batch, k, n)];
-                    const auto dst_offset = get_blk_off(
-                            dst_d, ddt_sz, batch, k_blk_idx, n_blk_idx);
-                    ker_exec_ctx.tr_src = (void *)&dst[dst_offset];
-                    ker_exec_ctx.current_K_start = k;
-                    ker_exec_ctx.current_K_iters = kernel_conf.K_tail;
-                    (*kernel_)(&ker_exec_ctx);
-                    const auto vnni_granularity
-                            = data_type_vnni_granularity(type_o);
-                    const auto dst_zero_out_offset
-                            = rnd_up(kernel_conf.K_tail, vnni_granularity)
-                            * kernel_conf.N_blk * ddt_sz;
-                    const auto elems_to_zero
-                            = rnd_dn(kernel_conf.K_blk - kernel_conf.K_tail,
-                                      vnni_granularity)
-                            * kernel_conf.N_blk * ddt_sz;
-                    array_set(&dst[dst_offset + dst_zero_out_offset], 0,
-                            elems_to_zero);
-                }
-            });
+        int k_blk_idx = 0;
+        for (; k_blk_idx < kernel_conf.K / kernel_conf.K_blk; k_blk_idx++) {
+            const auto k = k_blk_idx * kernel_conf.K_blk;
+            ker_exec_ctx.src
+                    = (void *)&src[get_blk_off(src_d, sdt_sz, batch, k, n)];
+            ker_exec_ctx.tr_src = (void *)&dst[get_blk_off(
+                    dst_d, ddt_sz, batch, k_blk_idx, n_blk_idx)];
+            ker_exec_ctx.current_K_start = k;
+            ker_exec_ctx.current_K_iters = kernel_conf.K_blk;
+            (*kernel_)(&ker_exec_ctx);
+        }
+        if (kernel_conf.K_tail > 0) {
+            const auto k = k_blk_idx * kernel_conf.K_blk;
+            ker_exec_ctx.src
+                    = (void *)&src[get_blk_off(src_d, sdt_sz, batch, k, n)];
+            const auto dst_offset
+                    = get_blk_off(dst_d, ddt_sz, batch, k_blk_idx, n_blk_idx);
+            ker_exec_ctx.tr_src = (void *)&dst[dst_offset];
+            ker_exec_ctx.current_K_start = k;
+            ker_exec_ctx.current_K_iters = kernel_conf.K_tail;
+            (*kernel_)(&ker_exec_ctx);
+            const auto vnni_granularity = data_type_vnni_granularity(type_o);
+            const auto dst_zero_out_offset
+                    = rnd_up(kernel_conf.K_tail, vnni_granularity)
+                    * kernel_conf.N_blk * ddt_sz;
+            const auto elems_to_zero
+                    = rnd_dn(kernel_conf.K_blk - kernel_conf.K_tail,
+                              vnni_granularity)
+                    * kernel_conf.N_blk * ddt_sz;
+            array_set(&dst[dst_offset + dst_zero_out_offset], 0, elems_to_zero);
+        }
+    });
 
 #undef get_blk_off
 

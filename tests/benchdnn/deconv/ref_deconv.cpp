@@ -108,28 +108,27 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
     benchdnn_parallel_nd(G, MB, OCG, OD, OH, OW,
             [&](int64_t g, int64_t mb, int64_t oc, int64_t od, int64_t oh,
                     int64_t ow) {
-                const size_t dst_off = dst_off_f(prb, mb, g, oc, od, oh, ow);
-                float &dst = ((float *)dst_m)[dst_off];
+        const size_t dst_off = dst_off_f(prb, mb, g, oc, od, oh, ow);
+        float &dst = ((float *)dst_m)[dst_off];
 
-                float conv_res = 0;
-                ker(conv_res, g, mb, oc, od, oh, ow);
+        float conv_res = 0;
+        ker(conv_res, g, mb, oc, od, oh, ow);
 
-                if (prb->bia_dt() != dnnl_data_type_undef) {
-                    const size_t bia_off = bia_off_f(prb, g, oc);
-                    conv_res += ((float *)bia_m)[bia_off];
-                }
+        if (prb->bia_dt() != dnnl_data_type_undef) {
+            const size_t bia_off = bia_off_f(prb, g, oc);
+            conv_res += ((float *)bia_m)[bia_off];
+        }
 
-                const auto v_po_vals
-                        = prepare_po_vals(dst_m, args, v_po_masks, dst_off);
+        const auto v_po_vals
+                = prepare_po_vals(dst_m, args, v_po_masks, dst_off);
 
-                maybe_post_ops(prb->attr, conv_res, dst, v_po_vals);
+        maybe_post_ops(prb->attr, conv_res, dst, v_po_vals);
 
-                int dst_zp = has_dst_zp
-                        ? dst_zps.get_f32_elem(
-                                  dst_zp_mask > 0 ? g * OCG + oc : 0)
-                        : 0;
-                dst = conv_res * dst_scale + dst_zp;
-            });
+        int dst_zp = has_dst_zp
+                ? dst_zps.get_f32_elem(dst_zp_mask > 0 ? g * OCG + oc : 0)
+                : 0;
+        dst = conv_res * dst_scale + dst_zp;
+    });
 }
 
 void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
@@ -184,18 +183,18 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
     auto precompute_ok
             = [](int64_t i, int64_t O, int64_t K, int64_t S, int64_t P,
                       int64_t D, int64_t &num, int64_t *_o, int64_t *_k) {
-                  assert(K <= precompute_size);
-                  num = 0;
-                  for (int64_t k = 0; k < K; ++k) {
-                      int64_t o = i - k * D + P;
-                      if (o < 0 || o % S) continue;
-                      o /= S;
-                      if (o >= O) continue;
-                      _k[num] = k;
-                      _o[num] = o;
-                      ++num;
-                  }
-              };
+        assert(K <= precompute_size);
+        num = 0;
+        for (int64_t k = 0; k < K; ++k) {
+            int64_t o = i - k * D + P;
+            if (o < 0 || o % S) continue;
+            o /= S;
+            if (o >= O) continue;
+            _k[num] = k;
+            _o[num] = o;
+            ++num;
+        }
+    };
 
     auto ker_fast = [&](float &ds, int64_t g, int64_t mb, int64_t ic,
                             int64_t id, int64_t ih, int64_t iw) {
@@ -282,30 +281,29 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
     benchdnn_parallel_nd(G, MB, ICG, ID, IH, IW,
             [&](int64_t g, int64_t mb, int64_t ic, int64_t id, int64_t ih,
                     int64_t iw) {
-                size_t src_off = src_off_f(prb, mb, g, ic, id, ih, iw);
-                float &ds = ((float *)diff_src_m)[src_off];
-                float conv_res = 0;
-                if (fast)
-                    ker_fast(conv_res, g, mb, ic, id, ih, iw);
-                else
-                    ker(conv_res, g, mb, ic, id, ih, iw);
+        size_t src_off = src_off_f(prb, mb, g, ic, id, ih, iw);
+        float &ds = ((float *)diff_src_m)[src_off];
+        float conv_res = 0;
+        if (fast)
+            ker_fast(conv_res, g, mb, ic, id, ih, iw);
+        else
+            ker(conv_res, g, mb, ic, id, ih, iw);
 
-                if (prb->bia_dt() != dnnl_data_type_undef) {
-                    const size_t bia_off = (size_t)g * ICG + ic;
-                    conv_res += ((float *)bia_m)[bia_off];
-                }
+        if (prb->bia_dt() != dnnl_data_type_undef) {
+            const size_t bia_off = (size_t)g * ICG + ic;
+            conv_res += ((float *)bia_m)[bia_off];
+        }
 
-                const auto v_po_vals = prepare_po_vals(
-                        diff_src_m, args, v_po_masks, src_off);
+        const auto v_po_vals
+                = prepare_po_vals(diff_src_m, args, v_po_masks, src_off);
 
-                maybe_post_ops(prb->attr, conv_res, ds, v_po_vals);
+        maybe_post_ops(prb->attr, conv_res, ds, v_po_vals);
 
-                int dst_zp = has_dst_zp
-                        ? dst_zps.get_f32_elem(
-                                  dst_zp_mask > 0 ? g * ICG + ic : 0)
-                        : 0;
-                ds = conv_res * dst_scale + dst_zp;
-            });
+        int dst_zp = has_dst_zp
+                ? dst_zps.get_f32_elem(dst_zp_mask > 0 ? g * ICG + ic : 0)
+                : 0;
+        ds = conv_res * dst_scale + dst_zp;
+    });
 }
 
 void compute_ref_bwd_weights(const prb_t *prb, const args_t &args) {
@@ -327,10 +325,10 @@ void compute_ref_bwd_weights(const prb_t *prb, const args_t &args) {
     auto compute_bounds
             = [](int64_t I, int64_t O, int64_t k, int64_t S, int64_t P,
                       int64_t D, int64_t &o_s, int64_t &o_e) {
-                  const float tmp = P - k * D;
-                  o_s = MAX2(0, div_up(tmp, S));
-                  o_e = MIN2(O, div_up(I + tmp, S));
-              };
+        const float tmp = P - k * D;
+        o_s = MAX2(0, div_up(tmp, S));
+        o_e = MIN2(O, div_up(I + tmp, S));
+    };
 
     auto ker = [&](float &dw, int64_t g, int64_t oc, int64_t ic, int64_t kd,
                        int64_t kh, int64_t kw) {
@@ -365,11 +363,11 @@ void compute_ref_bwd_weights(const prb_t *prb, const args_t &args) {
     benchdnn_parallel_nd(G, OCG, ICG, KD, KH, KW,
             [&](int64_t g, int64_t oc, int64_t ic, int64_t kd, int64_t kh,
                     int64_t kw) {
-                size_t wei_off = wei_off_f(prb, g, oc, ic, kd, kh, kw);
-                float &dw = ((float *)diff_wei_m)[wei_off];
-                dw = 0;
-                ker(dw, g, oc, ic, kd, kh, kw);
-            });
+        size_t wei_off = wei_off_f(prb, g, oc, ic, kd, kh, kw);
+        float &dw = ((float *)diff_wei_m)[wei_off];
+        dw = 0;
+        ker(dw, g, oc, ic, kd, kh, kw);
+    });
 }
 
 void compute_ref_bwd_bias(const prb_t *prb, const args_t &args) {

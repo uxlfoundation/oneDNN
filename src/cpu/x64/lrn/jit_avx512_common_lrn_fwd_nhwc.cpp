@@ -219,13 +219,13 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::load_compute_data(
     static constexpr int mask_shift = sizeof(int32_t);
     const auto load_shifted_padded_with_zeros
             = [&](int dstIdx, int srcIdx, int maskTmpIdx, int offset) {
-                  this->uni_vpxor(this->zreg(0, dstIdx), this->zreg(0, dstIdx),
-                          this->zreg(0, dstIdx));
-                  this->load_data(this->zreg(0, maskTmpIdx),
-                          this->EVEX_compress_addr(this->mask_, offset), true);
-                  this->vpermt2ps(this->zreg(0, dstIdx),
-                          this->zreg(0, maskTmpIdx), this->zreg(0, srcIdx));
-              };
+        this->uni_vpxor(this->zreg(0, dstIdx), this->zreg(0, dstIdx),
+                this->zreg(0, dstIdx));
+        this->load_data(this->zreg(0, maskTmpIdx),
+                this->EVEX_compress_addr(this->mask_, offset), true);
+        this->vpermt2ps(this->zreg(0, dstIdx), this->zreg(0, maskTmpIdx),
+                this->zreg(0, srcIdx));
+    };
 
     if (tail_proc == tail_mode::CurrentTail) {
         this->load_data(this->zreg(0, this->zc_),

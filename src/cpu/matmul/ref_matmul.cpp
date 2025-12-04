@@ -262,122 +262,111 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     dim_t N_chunks = utils::div_up(N, N_chunk_size);
     parallel_nd_ext(pd()->nthr_, batch, M_chunks, N_chunks,
             [=](int ithr, int nthr, dim_t mb, dim_t mc, dim_t nc) {
-                if (ithr >= pd()->ntasks_) return;
-                for_(dim_t m_ = mc * M_chunk_size;
-                        m_ < std::min<dim_t>((mc + 1) * M_chunk_size, M);
-                        m_ += dst_scale_group_m)
-                for (dim_t n_ = nc * N_chunk_size;
-                        n_ < std::min<dim_t>((nc + 1) * N_chunk_size, N);
-                        n_ += dst_scale_group_n) {
-                    float max_dst_group = 0.0f;
-                    for_(dim_t m_gidx = 0; m_gidx < dst_scale_group_m; m_gidx++)
-                    for (dim_t n_gidx = 0; n_gidx < dst_scale_group_n;
-                            n_gidx++) {
-                        dim_t m = m_ + m_gidx;
-                        dim_t n = n_ + n_gidx;
-                        dims_t dst_dims_idx;
-                        const size_t offset = mb * M * N + m * N + n;
-                        utils::l_dims_by_l_offset(
-                                dst_dims_idx, offset, dst_d.dims(), ndims);
+        if (ithr >= pd()->ntasks_) return;
+        for_(dim_t m_ = mc * M_chunk_size;
+                m_ < std::min<dim_t>((mc + 1) * M_chunk_size, M);
+                m_ += dst_scale_group_m)
+        for (dim_t n_ = nc * N_chunk_size;
+                n_ < std::min<dim_t>((nc + 1) * N_chunk_size, N);
+                n_ += dst_scale_group_n) {
+            float max_dst_group = 0.0f;
+            for_(dim_t m_gidx = 0; m_gidx < dst_scale_group_m; m_gidx++)
+            for (dim_t n_gidx = 0; n_gidx < dst_scale_group_n; n_gidx++) {
+                dim_t m = m_ + m_gidx;
+                dim_t n = n_ + n_gidx;
+                dims_t dst_dims_idx;
+                const size_t offset = mb * M * N + m * N + n;
+                utils::l_dims_by_l_offset(
+                        dst_dims_idx, offset, dst_d.dims(), ndims);
 
-                        float d = ker(dst_dims_idx, m, n);
-                        if (bias) d += ker_bias(dst_dims_idx);
+                float d = ker(dst_dims_idx, m, n);
+                if (bias) d += ker_bias(dst_dims_idx);
 
-                        const auto dst_off = dst_d.off_v(dst_dims_idx);
-                        if (non_default_attrs) {
-                            if (with_dropout)
-                                d = ref_dropout(
-                                        d, dropout_mask, dst_off, *p, *seed);
-                            ref_post_ops_t::args_t args;
-                            args.dst_val = io::load_float_value(
-                                    sum_dt, dst, dst_off);
-                            args.ctx = &ctx;
-                            args.l_offset = offset;
-                            args.dst_md = pd()->dst_md();
-                            ref_post_ops->execute(d, args);
-                        }
-                        if (attr_scales.get(DNNL_ARG_DST).is_mx()) {
-                            max_dst_group = std::max(max_dst_group, ::fabsf(d));
-                            auto temp_dst_off
-                                    = (ithr * dst_scale_group_m + m_gidx)
-                                            * dst_scale_group_n
-                                    + n_gidx;
-                            io::store_float_value(
-                                    data_type::f32, d, temp_dst, temp_dst_off);
-                        } else {
-                            if (with_dst_scales) {
-                                const float dst_scale = io::load_float_value(
-                                        dst_scale_dt, dst_scales, 0);
-                                d /= dst_scale;
-                            }
-                            if (dst_rnd_mode == rounding_mode::stochastic)
-                                d = math::stochastic_round_fwd(d, dst_off,
-                                        rnd_seed[0], dst_d.data_type());
-                            io::store_float_value(
-                                    dst_d.data_type(), d, dst, dst_off);
-                            utils::dim_iterator(
-                                    dst_d.dims(), dst_dims_idx, batch_ndims);
-                        }
-                    }
-
-                    if (attr_scales.get(DNNL_ARG_DST).is_mx()) {
-                        // MXSPEC does round_down_pow2(dst_d.data_type() /
-                        // round_down_pow2(max_dst_group) so the rounding
-                        // to a power of two happens before the division,
-                        // and not after.
-                        float dst_group_scale = types::round_to_dt(dst_scale_dt,
-                                types::round_to_dt(dst_scale_dt, max_dst_group)
-                                        / types::round_to_dt(dst_scale_dt,
-                                                types::max_value<float>(
-                                                        dst_d.data_type())));
-
-                        dims_t dst_dims_idx;
-                        const size_t offset = mb * M * N + m_ * N + n_;
-                        utils::l_dims_by_l_offset(
-                                dst_dims_idx, offset, dst_d.dims(), ndims);
-
-                        const dim_t dst_scale_off
-                                = matmul_helper_t::get_quant_off(dst_dims_idx,
-                                        ndims, dst_scale_mask,
-                                        dst_scale_group_m, dst_scale_group_n,
-                                        dst_scales_md);
-
-                        io::store_float_value(dst_scale_dt, dst_group_scale,
-                                dst_dynamic_scales, dst_scale_off);
-                        // we pre-invert the scale to apply it as multiply for the group
-                        dst_group_scale = 1.f / dst_group_scale;
-
-                        for_(dim_t m_gidx = 0; m_gidx < dst_scale_group_m;
-                                m_gidx++)
-                        for (dim_t n_gidx = 0; n_gidx < dst_scale_group_n;
-                                n_gidx++) {
-                            dim_t m = m_ + m_gidx;
-                            dim_t n = n_ + n_gidx;
-                            dims_t dst_dims_idx;
-                            const size_t offset = mb * M * N + m * N + n;
-                            utils::l_dims_by_l_offset(
-                                    dst_dims_idx, offset, dst_d.dims(), ndims);
-                            const auto dst_off = dst_d.off_v(dst_dims_idx);
-
-                            auto temp_dst_off
-                                    = (ithr * dst_scale_group_m + m_gidx)
-                                            * dst_scale_group_n
-                                    + n_gidx;
-                            float d = io::load_float_value(
-                                    data_type::f32, temp_dst, temp_dst_off);
-                            d *= dst_group_scale;
-
-                            if (dst_rnd_mode == rounding_mode::stochastic)
-                                d = math::stochastic_round_fwd(d, dst_off,
-                                        rnd_seed[0], dst_d.data_type());
-                            io::store_float_value(
-                                    dst_d.data_type(), d, dst, dst_off);
-                            utils::dim_iterator(
-                                    dst_d.dims(), dst_dims_idx, batch_ndims);
-                        }
-                    }
+                const auto dst_off = dst_d.off_v(dst_dims_idx);
+                if (non_default_attrs) {
+                    if (with_dropout)
+                        d = ref_dropout(d, dropout_mask, dst_off, *p, *seed);
+                    ref_post_ops_t::args_t args;
+                    args.dst_val = io::load_float_value(sum_dt, dst, dst_off);
+                    args.ctx = &ctx;
+                    args.l_offset = offset;
+                    args.dst_md = pd()->dst_md();
+                    ref_post_ops->execute(d, args);
                 }
-            });
+                if (attr_scales.get(DNNL_ARG_DST).is_mx()) {
+                    max_dst_group = std::max(max_dst_group, ::fabsf(d));
+                    auto temp_dst_off = (ithr * dst_scale_group_m + m_gidx)
+                                    * dst_scale_group_n
+                            + n_gidx;
+                    io::store_float_value(
+                            data_type::f32, d, temp_dst, temp_dst_off);
+                } else {
+                    if (with_dst_scales) {
+                        const float dst_scale = io::load_float_value(
+                                dst_scale_dt, dst_scales, 0);
+                        d /= dst_scale;
+                    }
+                    if (dst_rnd_mode == rounding_mode::stochastic)
+                        d = math::stochastic_round_fwd(
+                                d, dst_off, rnd_seed[0], dst_d.data_type());
+                    io::store_float_value(dst_d.data_type(), d, dst, dst_off);
+                    utils::dim_iterator(
+                            dst_d.dims(), dst_dims_idx, batch_ndims);
+                }
+            }
+
+            if (attr_scales.get(DNNL_ARG_DST).is_mx()) {
+                // MXSPEC does round_down_pow2(dst_d.data_type() /
+                // round_down_pow2(max_dst_group) so the rounding
+                // to a power of two happens before the division,
+                // and not after.
+                float dst_group_scale = types::round_to_dt(dst_scale_dt,
+                        types::round_to_dt(dst_scale_dt, max_dst_group)
+                                / types::round_to_dt(dst_scale_dt,
+                                        types::max_value<float>(
+                                                dst_d.data_type())));
+
+                dims_t dst_dims_idx;
+                const size_t offset = mb * M * N + m_ * N + n_;
+                utils::l_dims_by_l_offset(
+                        dst_dims_idx, offset, dst_d.dims(), ndims);
+
+                const dim_t dst_scale_off = matmul_helper_t::get_quant_off(
+                        dst_dims_idx, ndims, dst_scale_mask, dst_scale_group_m,
+                        dst_scale_group_n, dst_scales_md);
+
+                io::store_float_value(dst_scale_dt, dst_group_scale,
+                        dst_dynamic_scales, dst_scale_off);
+                // we pre-invert the scale to apply it as multiply for the group
+                dst_group_scale = 1.f / dst_group_scale;
+
+                for_(dim_t m_gidx = 0; m_gidx < dst_scale_group_m; m_gidx++)
+                for (dim_t n_gidx = 0; n_gidx < dst_scale_group_n; n_gidx++) {
+                    dim_t m = m_ + m_gidx;
+                    dim_t n = n_ + n_gidx;
+                    dims_t dst_dims_idx;
+                    const size_t offset = mb * M * N + m * N + n;
+                    utils::l_dims_by_l_offset(
+                            dst_dims_idx, offset, dst_d.dims(), ndims);
+                    const auto dst_off = dst_d.off_v(dst_dims_idx);
+
+                    auto temp_dst_off = (ithr * dst_scale_group_m + m_gidx)
+                                    * dst_scale_group_n
+                            + n_gidx;
+                    float d = io::load_float_value(
+                            data_type::f32, temp_dst, temp_dst_off);
+                    d *= dst_group_scale;
+
+                    if (dst_rnd_mode == rounding_mode::stochastic)
+                        d = math::stochastic_round_fwd(
+                                d, dst_off, rnd_seed[0], dst_d.data_type());
+                    io::store_float_value(dst_d.data_type(), d, dst, dst_off);
+                    utils::dim_iterator(
+                            dst_d.dims(), dst_dims_idx, batch_ndims);
+                }
+            }
+        }
+    });
 
     return status::success;
 }

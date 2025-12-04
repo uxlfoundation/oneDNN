@@ -170,9 +170,9 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::apply_sum(int ur_w,
     if (jcp.with_sum) {
         const float sum_scale = *p_sum_scale;
         const int32_t sum_zp = *p_sum_zp;
-        const auto sum_injector_lam = [this, oc_block, sum_scale, sum_zp](
-                                              const bool mask_flag, const int k,
-                                              const int j) {
+        const auto sum_injector_lam
+                = [this, oc_block, sum_scale, sum_zp](
+                          const bool mask_flag, const int k, const int j) {
             int aux_output_offset = jcp.typesize_out
                     * (k * oc_block + j * jcp.oc_without_padding * jcp.ngroups);
             auto addr = EVEX_compress_addr(reg_out, aux_output_offset);
@@ -186,8 +186,8 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::apply_sum(int ur_w,
         };
         // Capture by value has to be applied since this lambda is called from
         // a different context when stack values are unavailable.
-        const auto sum_injector = [nb_oc_block, ur_w, last_oc_block_flag,
-                                          sum_injector_lam]() {
+        const auto sum_injector
+                = [nb_oc_block, ur_w, last_oc_block_flag, sum_injector_lam]() {
             iterate(nb_oc_block, ur_w, last_oc_block_flag, sum_injector_lam);
         };
         if (sum_scale != 1.f)
@@ -216,27 +216,24 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::apply_postops(int ur_w,
             iterate(nb_oc_block, ur_w, last_oc_block_flag,
                     oc_blk_is_smaller_than_vmm,
                     [&](const bool mask_flag, const int k, const int j) {
-                        const size_t aux_output_l_off = jcp.typesize_out
-                                * (k * oc_block
-                                        + j * jcp.oc_without_padding
-                                                * jcp.ngroups);
-                        const auto vmm_idx = vmm_out_idx(j, k);
-                        vmm_idxs.emplace(vmm_idx);
+                const size_t aux_output_l_off = jcp.typesize_out
+                        * (k * oc_block
+                                + j * jcp.oc_without_padding * jcp.ngroups);
+                const auto vmm_idx = vmm_out_idx(j, k);
+                vmm_idxs.emplace(vmm_idx);
 
-                        rhs_arg_params.vmm_idx_to_out_reg.emplace(
-                                vmm_idx, reg_out);
-                        rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
-                                vmm_idx, aux_output_l_off);
-                        if (mask_flag)
-                            rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
-                    });
+                rhs_arg_params.vmm_idx_to_out_reg.emplace(vmm_idx, reg_out);
+                rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
+                        vmm_idx, aux_output_l_off);
+                if (mask_flag) rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
+            });
 
             postops_injector_->compute_vector_range(vmm_idxs, rhs_arg_params);
         } else {
             iterate(nb_oc_block, ur_w,
                     [&](const bool, const int k, const int j) {
-                        vmm_idxs.emplace(vmm_out_idx(j, k));
-                    });
+                vmm_idxs.emplace(vmm_out_idx(j, k));
+            });
             postops_injector_->compute_vector_range(vmm_idxs);
         }
     }
@@ -657,11 +654,11 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::compute_ker(int ur_w,
     };
     auto kernel_offset
             = [this, ch_block_all, oc_block](int ii, int ic, int ki) {
-                  return jcp.typesize_in
-                          * ((ii * jcp.nb_ic * jcp.kd * jcp.kh * jcp.kw + ki)
-                                          * ch_block_all
-                                  + ic_sub_step * ic * oc_block);
-              };
+        return jcp.typesize_in
+                * ((ii * jcp.nb_ic * jcp.kd * jcp.kh * jcp.kw + ki)
+                                * ch_block_all
+                        + ic_sub_step * ic * oc_block);
+    };
     auto compute = [this](Vmm vreg_acc, Vmm vreg_wei, Vmm vreg_src) {
         if (jcp.has_vnni) {
             vpdpbusd(vreg_acc, vreg_src, vreg_wei);

@@ -219,18 +219,17 @@ void jit_avx2_conv_fwd_kernel_f32_t::apply_postops(
                     rhs_arg_params_tail;
             iterate(oc_blocks, ur_w, oc_tail,
                     [&](const bool mask_flag, const int i, const int j) {
-                        const size_t aux_output_offset
-                                = get_output_offset(i, j);
-                        const auto vmm_idx = get_ymm_idx(ur_w, i, j);
-                        vmm_idxs.emplace(vmm_idx);
+                const size_t aux_output_offset = get_output_offset(i, j);
+                const auto vmm_idx = get_ymm_idx(ur_w, i, j);
+                vmm_idxs.emplace(vmm_idx);
 
-                        rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
-                                vmm_idx, reg_output);
-                        rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
-                                vmm_idx, aux_output_offset);
-                        if (mask_flag)
-                            rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
-                    });
+                rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
+                        vmm_idx, reg_output);
+                rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
+                        vmm_idx, aux_output_offset);
+                if (mask_flag)
+                    rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
+            });
             rhs_arg_params = rhs_arg_params_tail;
             rhs_arg_params.vmm_tail_idx_.clear();
 

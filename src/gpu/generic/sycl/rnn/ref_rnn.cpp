@@ -660,11 +660,11 @@ status_t ref_rnn_fwd_t::matmul_primitive(impl::engine_t *engine,
     exec_ctx_t matmul_ctx(ctx, std::move(matmul_args));
     const auto init_matmul_nested_scratchpad
             = [&](const std::shared_ptr<impl::primitive_t> &matmul, int key) {
-                  auto *nested_grantor
-                          = create_nested_grantor(ctx.get_scratchpad_grantor(),
-                                  key, matmul->pd()->scratchpad_registry());
-                  matmul_ctx.set_scratchpad_grantor(nested_grantor);
-              };
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(), key,
+                        matmul->pd()->scratchpad_registry());
+        matmul_ctx.set_scratchpad_grantor(nested_grantor);
+    };
 
     switch (matmul_kind) {
         case matmul_iter_fwd:
@@ -722,11 +722,11 @@ status_t ref_rnn_bwd_t::matmul_primitive(impl::engine_t *engine,
 
     const auto init_matmul_nested_scratchpad
             = [&](const std::shared_ptr<impl::primitive_t> &matmul, int key) {
-                  auto *nested_grantor
-                          = create_nested_grantor(ctx.get_scratchpad_grantor(),
-                                  key, matmul->pd()->scratchpad_registry());
-                  matmul_ctx.set_scratchpad_grantor(nested_grantor);
-              };
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(), key,
+                        matmul->pd()->scratchpad_registry());
+        matmul_ctx.set_scratchpad_grantor(nested_grantor);
+    };
 
     switch (matmul_kind) {
         case matmul_iter_bwd:

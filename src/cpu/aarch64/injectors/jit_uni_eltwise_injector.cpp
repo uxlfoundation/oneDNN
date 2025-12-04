@@ -510,8 +510,8 @@ void jit_uni_eltwise_injector_t<isa>::tanh_polynomial_approx_compute_vector_fwd(
     const auto &mask = PReg(6); // avoid pred regs used in *conv_kernel*
 
     // Helper function to gather polynomial coefficients
-    auto gather_coefficient = [&](TRegS vmm_coeff, int coeff_idx,
-                                      TRegS vmm_pol_idx) {
+    auto gather_coefficient
+            = [&](TRegS vmm_coeff, int coeff_idx, TRegS vmm_pol_idx) {
         h->add_imm(h->X_TMP_1, x_table,
                 table_off(tanh_pol_table, coeff_idx * tanh_n_polynomials),
                 h->X_TMP_0);
@@ -1063,15 +1063,15 @@ void jit_uni_eltwise_injector_t<
 
     auto gather_coefficient
             = [&](TRegS vmm_coeff, int coeff_idx, TRegS vmm_pol_idx) {
-                  // we actually have 25 polynomials but pad to avoid unaligned accesses/
-                  int gelu_erf_n_polynomials = 32;
-                  h->add_imm(h->X_TMP_1, x_table,
-                          table_off(gelu_erf_minimax_pol,
-                                  coeff_idx * gelu_erf_n_polynomials),
-                          h->X_TMP_0);
-                  h->ld1w(ZRegS(IDX(vmm_coeff)), p_all / T_z,
-                          ptr(h->X_TMP_1, ZRegS(IDX(vmm_pol_idx)), SXTW));
-              };
+        // we actually have 25 polynomials but pad to avoid unaligned accesses/
+        int gelu_erf_n_polynomials = 32;
+        h->add_imm(h->X_TMP_1, x_table,
+                table_off(gelu_erf_minimax_pol,
+                        coeff_idx * gelu_erf_n_polynomials),
+                h->X_TMP_0);
+        h->ld1w(ZRegS(IDX(vmm_coeff)), p_all / T_z,
+                ptr(h->X_TMP_1, ZRegS(IDX(vmm_pol_idx)), SXTW));
+    };
 
     // we use the erf function symmetry erf(-x) = -erf(x)
     // So we make x positive, we will reapply the sign after erf evaluation

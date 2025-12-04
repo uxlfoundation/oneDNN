@@ -472,9 +472,9 @@ dims get_dense_strides(const dims &shape) {
     for (auto it = shape.begin(); it < shape.end(); ++it) {
         const auto val = std::accumulate(
                 std::next(it), shape.end(), 1, [](dim_t x, dim_t y) {
-                    // replace 0 in shape to 1 when computing the strides
-                    return std::max<dim_t>(x, 1) * std::max<dim_t>(y, 1);
-                });
+            // replace 0 in shape to 1 when computing the strides
+            return std::max<dim_t>(x, 1) * std::max<dim_t>(y, 1);
+        });
         const auto dist = std::distance(shape.begin(), it);
         strides[static_cast<size_t>(dist)] = val;
     }

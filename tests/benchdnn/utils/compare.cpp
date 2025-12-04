@@ -95,8 +95,8 @@ bool has_binary_po_algs(const attr_t &attr,
 
         if (std::any_of(algs.cbegin(), algs.cend(),
                     [&](const attr_t::post_ops_t::kind_t alg) {
-                        return e.kind == alg;
-                    }))
+            return e.kind == alg;
+        }))
             return true;
     }
     return false;
@@ -137,8 +137,8 @@ bool negative_converts_to_zero(const attr_t &attr, dnnl_data_type_t target_dt) {
 
         if (std::any_of(non_neg_alpha_0_po.cbegin(), non_neg_alpha_0_po.cend(),
                     [k, alpha](const po_kind_t alg) {
-                        return alg == k && alpha == 0;
-                    }))
+            return alg == k && alpha == 0;
+        }))
             return true;
     }
     // Check for u8 dst
@@ -573,8 +573,8 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
         }
         std::sort(dumps.begin(), dumps.end(),
                 [](const dump_point_ctx_t &a, const dump_point_ctx_t &b) {
-                    return a.l_offset < b.l_offset;
-                });
+            return a.l_offset < b.l_offset;
+        });
         size_t max_dump_size
                 = (verbose >= 10 || dumps.size() < 10) ? dumps.size() : 10;
         for (size_t i = 0; i < max_dump_size; i++) {

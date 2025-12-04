@@ -144,8 +144,8 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::set_up_initial_args(
         const dim_t off_g_oc_offset_prologue, const dim_t off_g_oc_offset,
         const dim_t off_zp_src_pad_com_d_offset,
         const dim_t off_should_apply_zp_src_pad_comp_d) {
-    const auto push = [&](const dim_t src_off,
-                              const Xbyak::Address &stack_addr) {
+    const auto push
+            = [&](const dim_t src_off, const Xbyak::Address &stack_addr) {
         host_->mov(reg_zp_pad_comp_tmp_, host_->qword[abi_param1 + src_off]);
         host_->mov(stack_addr, reg_zp_pad_comp_tmp_);
     };

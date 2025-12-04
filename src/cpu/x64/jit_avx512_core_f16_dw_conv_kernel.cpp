@@ -256,25 +256,24 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::apply_postops(
             iterate(ur_ch_blocks, ur_w, mask_tail_blocked_layout,
                     [&](const int ch, const int ow,
                             const bool mask_flag_blocked_layout) {
-                        const int simd_w = cpu_isa_traits_t<avx512_core>::vlen
-                                / sizeof(float);
-                        const bool is_tail_load = check_if_tail(
-                                is_ch_tail, c_tail, ch, ur_ch_blocks, simd_w);
-                        if ((ch + 1 == ur_ch_blocks) && is_ch_tail
-                                && c_tail <= 0)
-                            return;
-                        const size_t o_off = jcp.typesize_out
-                                * (ch * ocb_stride + ow * ow_stride);
-                        const auto zmm_idx = get_acc_reg_idx(ch * ur_w + ow);
-                        zmm_idxs.emplace(zmm_idx);
+                const int simd_w
+                        = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
+                const bool is_tail_load = check_if_tail(
+                        is_ch_tail, c_tail, ch, ur_ch_blocks, simd_w);
+                if ((ch + 1 == ur_ch_blocks) && is_ch_tail && c_tail <= 0)
+                    return;
+                const size_t o_off
+                        = jcp.typesize_out * (ch * ocb_stride + ow * ow_stride);
+                const auto zmm_idx = get_acc_reg_idx(ch * ur_w + ow);
+                zmm_idxs.emplace(zmm_idx);
 
-                        rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
-                                zmm_idx, reg_output);
-                        rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
-                                zmm_idx, o_off);
-                        if (mask_flag_blocked_layout || is_tail_load)
-                            rhs_arg_params_tail.vmm_tail_idx_.emplace(zmm_idx);
-                    });
+                rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
+                        zmm_idx, reg_output);
+                rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
+                        zmm_idx, o_off);
+                if (mask_flag_blocked_layout || is_tail_load)
+                    rhs_arg_params_tail.vmm_tail_idx_.emplace(zmm_idx);
+            });
             rhs_arg_params = rhs_arg_params_tail;
             rhs_arg_params.vmm_tail_idx_.clear();
 
@@ -302,8 +301,8 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::apply_postops(
         } else {
             iterate(ur_ch_blocks, ur_w,
                     [&](const int ch, const int ow, const bool) {
-                        zmm_idxs.emplace(get_acc_reg_idx(ch * ur_w + ow));
-                    });
+                zmm_idxs.emplace(get_acc_reg_idx(ch * ur_w + ow));
+            });
             postops_injector_->compute_vector_range(zmm_idxs);
         }
     }

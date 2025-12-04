@@ -791,25 +791,21 @@ struct jit_bnorm_t : public jit_generator_t {
         L(ch_label);
         {
             uni_vmovups(Vmm(0), vmmword[reg_rbuf1 + reg_coff]);
-            spat_loop(
-                    spat_size, unroll_blocks, unroll_regs,
+            spat_loop(spat_size, unroll_blocks, unroll_regs,
                     [this](size_t base_reg) {
-                        Vmm v = Vmm(base_reg * 2);
-                        if (base_reg) uni_vpxor(v, v, v);
-                    },
-                    [this](size_t base_reg, size_t i) {
-                        Vmm v0 = Vmm(base_reg * 2 + 0);
-                        Vmm v1 = Vmm(base_reg * 2 + 1);
-                        size_t offt = i * vlen_spat_data_;
-                        uni_vmovups_spat_data(
-                                v1, vmmword[reg_src + reg_soff + offt]);
-                        uni_vaddps(v0, v0, v1);
-                    },
-                    [this](size_t base_reg) {
-                        Vmm b = Vmm(0);
-                        Vmm v = Vmm(base_reg * 2);
-                        if (base_reg) uni_vaddps(b, b, v);
-                    });
+                Vmm v = Vmm(base_reg * 2);
+                if (base_reg) uni_vpxor(v, v, v);
+            }, [this](size_t base_reg, size_t i) {
+                Vmm v0 = Vmm(base_reg * 2 + 0);
+                Vmm v1 = Vmm(base_reg * 2 + 1);
+                size_t offt = i * vlen_spat_data_;
+                uni_vmovups_spat_data(v1, vmmword[reg_src + reg_soff + offt]);
+                uni_vaddps(v0, v0, v1);
+            }, [this](size_t base_reg) {
+                Vmm b = Vmm(0);
+                Vmm v = Vmm(base_reg * 2);
+                if (base_reg) uni_vaddps(b, b, v);
+            });
             uni_vmovups(vmmword[reg_rbuf1 + reg_coff], Vmm(0));
 
             add(reg_coff, vlen);
@@ -821,8 +817,8 @@ struct jit_bnorm_t : public jit_generator_t {
     void mean_variance_nspc(
             const int num_ch_blks, int num_spat_pts, bool compute_mean) {
 
-        auto mean_compute_avx2_ne_xf16 = [this](int num_ch_blks,
-                                                 int num_spat_pts) {
+        auto mean_compute_avx2_ne_xf16
+                = [this](int num_ch_blks, int num_spat_pts) {
             for (int spat_pt = 0; spat_pt < num_spat_pts; ++spat_pt) {
                 for (int ch_idx = 0; ch_idx < num_ch_blks; ch_idx += 2) {
                     const int offt = ch_idx * vlen_spat_data_;
@@ -844,8 +840,8 @@ struct jit_bnorm_t : public jit_generator_t {
             }
         };
 
-        auto variance_compute_avx2_ne_xf16 = [this](int num_ch_blks,
-                                                     int num_spat_pts) {
+        auto variance_compute_avx2_ne_xf16
+                = [this](int num_ch_blks, int num_spat_pts) {
             for (int spat_pt = 0; spat_pt < num_spat_pts; ++spat_pt) {
                 for (int ch_idx = 0; ch_idx < num_ch_blks; ch_idx += 2) {
                     const int offt = ch_idx * vlen_spat_data_;
@@ -1132,32 +1128,29 @@ struct jit_bnorm_t : public jit_generator_t {
         {
             uni_vmovups_maybe_tail(vmean, mean_ptr());
             uni_vmovups(Vmm(0), vmmword[reg_rbuf1 + reg_coff]);
-            spat_loop(
-                    spat_size, unroll_blocks, unroll_regs,
+            spat_loop(spat_size, unroll_blocks, unroll_regs,
                     [this](size_t base_reg) {
-                        Vmm v = Vmm(base_reg * 3);
-                        if (base_reg > 0) uni_vpxor(v, v, v);
-                    },
-                    [this](size_t base_reg, size_t i) {
-                        Vmm v = Vmm(3 * base_reg);
-                        Vmm vtmp0 = Vmm(3 * base_reg + 1);
-                        Vmm vtmp1 = Vmm(3 * base_reg + 2);
-                        size_t offt = i * vlen_spat_data_;
-                        uni_vmovups_spat_data(
-                                vtmp0, vmmword[reg_src + reg_soff + offt]);
-                        if (isa == sse41) {
-                            movups(vtmp1, vmean);
-                            subps(vtmp1, vtmp0);
-                        } else {
-                            vsubps(vtmp1, vmean, vtmp0);
-                        }
-                        uni_vfmadd231ps(v, vtmp1, vtmp1);
-                    },
-                    [this](size_t base_reg) {
-                        Vmm b = Vmm(0);
-                        Vmm v = Vmm(base_reg * 3);
-                        if (base_reg) uni_vaddps(b, b, v);
-                    });
+                Vmm v = Vmm(base_reg * 3);
+                if (base_reg > 0) uni_vpxor(v, v, v);
+            }, [this](size_t base_reg, size_t i) {
+                Vmm v = Vmm(3 * base_reg);
+                Vmm vtmp0 = Vmm(3 * base_reg + 1);
+                Vmm vtmp1 = Vmm(3 * base_reg + 2);
+                size_t offt = i * vlen_spat_data_;
+                uni_vmovups_spat_data(
+                        vtmp0, vmmword[reg_src + reg_soff + offt]);
+                if (isa == sse41) {
+                    movups(vtmp1, vmean);
+                    subps(vtmp1, vtmp0);
+                } else {
+                    vsubps(vtmp1, vmean, vtmp0);
+                }
+                uni_vfmadd231ps(v, vtmp1, vtmp1);
+            }, [this](size_t base_reg) {
+                Vmm b = Vmm(0);
+                Vmm v = Vmm(base_reg * 3);
+                if (base_reg) uni_vaddps(b, b, v);
+            });
             uni_vmovups(vmmword[reg_rbuf1 + reg_coff], Vmm(0));
             add(reg_coff, vlen);
             cmp(reg_coff, reg_coff_max);
@@ -1516,53 +1509,48 @@ struct jit_bnorm_t : public jit_generator_t {
             uni_vmovups_maybe_tail(vmean, mean_ptr());
             uni_vmovups(Vmm(0), vmmword[reg_rbuf1 + reg_coff]);
             uni_vmovups(Vmm(1), vmmword[reg_rbuf2 + reg_coff]);
-            spat_loop(
-                    spat_size, 1, 1,
-                    [this](size_t base_reg) {
-                        if (base_reg > 0) {
-                            for (int i = 0; i < 2; i++) {
-                                Vmm v(base_reg * 5 + i);
-                                uni_vpxor(v, v, v);
-                            }
-                        }
-                    },
-                    [this](size_t base_reg, size_t i) {
-                        // TODO: use single set of tmp regs and let ROB handle the rest
-                        Vmm o0 = Vmm(base_reg * 5 + 0);
-                        Vmm o1 = Vmm(base_reg * 5 + 1);
-                        Vmm t1 = Vmm(base_reg * 5 + 2);
-                        Vmm t2 = Vmm(base_reg * 5 + 3);
-                        Vmm t3 = Vmm(base_reg * 5 + 4);
-                        size_t offt = i * vlen_spat_data_;
-                        uni_vmovups_spat_data(
-                                t1, vmmword[reg_src + reg_soff + offt]);
-                        uni_vmovups_spat_data(
-                                t2, vmmword[reg_diff_dst + reg_soff + offt]);
-                        if (with_relu) {
-                            if (isa == avx512_core)
-                                bwd_process_relu_avx512_common(t2, offt);
-                            else if (isa == avx2)
-                                bwd_process_relu_avx2(t2, offt);
-                            else
-                                assert(false);
-                        }
-                        uni_vsubps(t3, vmean, t1, t3);
-                        if (isa == sse41) {
-                            mulps(t3, t2);
-                            subps(o0, t3);
-                        } else {
-                            vfnmadd231ps(o0, t3, t2);
-                        }
-                        uni_vaddps(o1, o1, t2);
-                    },
-                    [this](size_t base_reg) {
-                        Vmm b0 = Vmm(0);
-                        Vmm b1 = Vmm(1);
-                        if (base_reg) {
-                            uni_vaddps(b0, b0, Vmm(base_reg * 5 + 0));
-                            uni_vaddps(b1, b1, Vmm(base_reg * 5 + 1));
-                        }
-                    });
+            spat_loop(spat_size, 1, 1, [this](size_t base_reg) {
+                if (base_reg > 0) {
+                    for (int i = 0; i < 2; i++) {
+                        Vmm v(base_reg * 5 + i);
+                        uni_vpxor(v, v, v);
+                    }
+                }
+            }, [this](size_t base_reg, size_t i) {
+                // TODO: use single set of tmp regs and let ROB handle the rest
+                Vmm o0 = Vmm(base_reg * 5 + 0);
+                Vmm o1 = Vmm(base_reg * 5 + 1);
+                Vmm t1 = Vmm(base_reg * 5 + 2);
+                Vmm t2 = Vmm(base_reg * 5 + 3);
+                Vmm t3 = Vmm(base_reg * 5 + 4);
+                size_t offt = i * vlen_spat_data_;
+                uni_vmovups_spat_data(t1, vmmword[reg_src + reg_soff + offt]);
+                uni_vmovups_spat_data(
+                        t2, vmmword[reg_diff_dst + reg_soff + offt]);
+                if (with_relu) {
+                    if (isa == avx512_core)
+                        bwd_process_relu_avx512_common(t2, offt);
+                    else if (isa == avx2)
+                        bwd_process_relu_avx2(t2, offt);
+                    else
+                        assert(false);
+                }
+                uni_vsubps(t3, vmean, t1, t3);
+                if (isa == sse41) {
+                    mulps(t3, t2);
+                    subps(o0, t3);
+                } else {
+                    vfnmadd231ps(o0, t3, t2);
+                }
+                uni_vaddps(o1, o1, t2);
+            }, [this](size_t base_reg) {
+                Vmm b0 = Vmm(0);
+                Vmm b1 = Vmm(1);
+                if (base_reg) {
+                    uni_vaddps(b0, b0, Vmm(base_reg * 5 + 0));
+                    uni_vaddps(b1, b1, Vmm(base_reg * 5 + 1));
+                }
+            });
             uni_vmovups(vmmword[reg_rbuf1 + reg_coff], Vmm(0));
             uni_vmovups(vmmword[reg_rbuf2 + reg_coff], Vmm(1));
             add(reg_coff, vlen);

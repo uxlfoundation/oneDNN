@@ -97,11 +97,11 @@ bool jit_prelu_bwd_t::pd_t::bcast_supported(const prelu::bcast &bcast,
     else if (bcast == prelu::bcast::per_oc_blocked) {
         const auto check_block_consistency
                 = [&](const memory_desc_wrapper &mdw) {
-                      const auto &bd = mdw.blocking_desc();
+            const auto &bd = mdw.blocking_desc();
 
-                      return bd.inner_nblks == 1 && bd.inner_blks[0] == simd_w
-                              && bd.inner_idxs[0] == 1;
-                  };
+            return bd.inner_nblks == 1 && bd.inner_blks[0] == simd_w
+                    && bd.inner_idxs[0] == 1;
+        };
 
         return check_block_consistency(src_diff_d)
                 && check_block_consistency(weights_diff_d);
@@ -221,20 +221,20 @@ status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
             work_amount = MB * C_blocks;
             parallel_nd_ext(nthr, MB, C_blocks,
                     [&](int ithr, int, dim_t mb, dim_t c_blk) {
-                        jit_prelu_backward_kernel_t::call_params_t params;
-                        params.compute_data_size = SP * simd_w;
-                        const dim_t offset
-                                = (mb * nelems_single_mb + c_blk * SP * simd_w);
-                        params.src = src + offset * src_dt_size;
-                        params.dst_diff = dst_diff + offset * diff_dst_dt_size;
-                        params.src_diff = src_diff + offset * diff_src_dt_size;
-                        params.weights = weights + c_blk * simd_w * wei_dt_size;
-                        params.weights_diff = reinterpret_cast<void *>(
-                                weights_diff_scratchpad
+                jit_prelu_backward_kernel_t::call_params_t params;
+                params.compute_data_size = SP * simd_w;
+                const dim_t offset
+                        = (mb * nelems_single_mb + c_blk * SP * simd_w);
+                params.src = src + offset * src_dt_size;
+                params.dst_diff = dst_diff + offset * diff_dst_dt_size;
+                params.src_diff = src_diff + offset * diff_src_dt_size;
+                params.weights = weights + c_blk * simd_w * wei_dt_size;
+                params.weights_diff
+                        = reinterpret_cast<void *>(weights_diff_scratchpad
                                 + ithr * C_cache_line_aligned + c_blk * simd_w);
 
-                        (*kernel)(&params);
-                    });
+                (*kernel)(&params);
+            });
         } else if (bcast == prelu::bcast::per_oc_n_c_spatial) {
             work_amount = MB * C;
 
@@ -256,18 +256,17 @@ status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
 
             parallel_nd_ext(
                     nthr, MB, SP, [&](int ithr, int, dim_t mb, dim_t sp) {
-                        jit_prelu_backward_kernel_t::call_params_t params;
-                        const auto offset = (mb * nelems_single_mb + sp * C);
-                        params.compute_data_size = C;
-                        params.src = src + offset * src_dt_size;
-                        params.dst_diff = dst_diff + offset * diff_dst_dt_size;
-                        params.src_diff = src_diff + offset * diff_src_dt_size;
-                        params.weights = weights;
-                        params.weights_diff = reinterpret_cast<void *>(
-                                weights_diff_scratchpad
-                                + ithr * C_cache_line_aligned);
-                        (*kernel)(&params);
-                    });
+                jit_prelu_backward_kernel_t::call_params_t params;
+                const auto offset = (mb * nelems_single_mb + sp * C);
+                params.compute_data_size = C;
+                params.src = src + offset * src_dt_size;
+                params.dst_diff = dst_diff + offset * diff_dst_dt_size;
+                params.src_diff = src_diff + offset * diff_src_dt_size;
+                params.weights = weights;
+                params.weights_diff = reinterpret_cast<void *>(
+                        weights_diff_scratchpad + ithr * C_cache_line_aligned);
+                (*kernel)(&params);
+            });
         }
 
         const size_t reduction_blocks = nstl::min(work_amount, (size_t)nthr);

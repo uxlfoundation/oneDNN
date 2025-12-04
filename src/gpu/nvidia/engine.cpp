@@ -58,10 +58,9 @@ status_t engine_t::set_cublas_handle() {
     cublas_handle_.set(
             std::unique_ptr<cublasHandle_t, void (*)(cublasHandle_t *)>(
                     new cublasHandle_t(handle), [](cublasHandle_t *h) {
-                        if (h != nullptr)
-                            CUBLAS_EXECUTE_FUNC_V(cublasDestroy, *h);
-                        delete h;
-                    }));
+        if (h != nullptr) CUBLAS_EXECUTE_FUNC_V(cublasDestroy, *h);
+        delete h;
+    }));
     handle = nullptr;
     return status::success;
 }
@@ -74,9 +73,9 @@ status_t engine_t::set_cudnn_handle() {
     CHECK(CUDNN_EXECUTE_FUNC_S(cudnnCreate, &handle));
     cudnn_handle_.set(std::unique_ptr<cudnnHandle_t, void (*)(cudnnHandle_t *)>(
             new cudnnHandle_t(handle), [](cudnnHandle_t *h) {
-                if (h != nullptr) CUDNN_EXECUTE_FUNC_V(cudnnDestroy, *h);
-                delete h;
-            }));
+        if (h != nullptr) CUDNN_EXECUTE_FUNC_V(cudnnDestroy, *h);
+        delete h;
+    }));
     handle = nullptr;
     return status::success;
 }

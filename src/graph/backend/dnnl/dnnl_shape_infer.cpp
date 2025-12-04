@@ -272,15 +272,15 @@ status_t infer_unsqueeze_output_shape(op_t *n,
 
     const auto out_ndim = static_cast<int64_t>(in_dims.size() + axes.size());
     if (std::any_of(axes.begin(), axes.end(), [&out_ndim](int64_t axis) {
-            return axis < -out_ndim || axis >= out_ndim;
-        }))
+        return axis < -out_ndim || axis >= out_ndim;
+    }))
         return status::unimplemented;
 
     // convert negative axis to positive one
     std::transform(axes.begin(), axes.end(), axes.begin(),
             [&out_ndim](int64_t axis) -> int64_t {
-                return axis < 0 ? out_ndim + axis : axis;
-            });
+        return axis < 0 ? out_ndim + axis : axis;
+    });
 
     if (std::unordered_set<int64_t>(axes.begin(), axes.end()).size()
             < axes.size())
@@ -312,8 +312,8 @@ status_t infer_squeeze_output_shape(op_t *n,
     // convert negative axis to positive one
     std::transform(axes.begin(), axes.end(), axes.begin(),
             [&in_ndim](int64_t axis) -> int64_t {
-                return axis < 0 ? axis + in_ndim : axis;
-            });
+        return axis < 0 ? axis + in_ndim : axis;
+    });
 
     dims inferred_output_shape = {};
     for (size_t i = 0; i < in_ndim; ++i) {

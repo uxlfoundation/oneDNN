@@ -161,21 +161,20 @@ void jit_avx2_1x1_conv_kernel_f32_t::apply_postops(
 
             iterate(load_loop_blk, ur, load_dim_tail,
                     [&](const bool mask_flag, const int i, const int j) {
-                        const size_t aux_output_offset
-                                = (i * get_output_i_offset(jcp, true)
-                                          + j * get_output_j_offset(jcp))
-                                * sizeof(float);
-                        const auto vmm_idx
-                                = vreg_accum_idx(load_loop_blk, i, j);
-                        vmm_idxs.emplace(vmm_idx);
+                const size_t aux_output_offset
+                        = (i * get_output_i_offset(jcp, true)
+                                  + j * get_output_j_offset(jcp))
+                        * sizeof(float);
+                const auto vmm_idx = vreg_accum_idx(load_loop_blk, i, j);
+                vmm_idxs.emplace(vmm_idx);
 
-                        rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
-                                vmm_idx, aux_reg_output_data);
-                        rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
-                                vmm_idx, aux_output_offset);
-                        if (mask_flag)
-                            rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
-                    });
+                rhs_arg_params_tail.vmm_idx_to_out_reg.emplace(
+                        vmm_idx, aux_reg_output_data);
+                rhs_arg_params_tail.vmm_idx_to_out_elem_off_val.emplace(
+                        vmm_idx, aux_output_offset);
+                if (mask_flag)
+                    rhs_arg_params_tail.vmm_tail_idx_.emplace(vmm_idx);
+            });
             rhs_arg_params = rhs_arg_params_tail;
             rhs_arg_params.vmm_tail_idx_.clear();
 
@@ -208,8 +207,8 @@ void jit_avx2_1x1_conv_kernel_f32_t::apply_postops(
         } else {
             iterate(load_loop_blk, ur, load_dim_tail,
                     [&](const bool, const int i, const int j) {
-                        vmm_idxs.emplace(vreg_accum_idx(load_loop_blk, i, j));
-                    });
+                vmm_idxs.emplace(vreg_accum_idx(load_loop_blk, i, j));
+            });
             postops_injector_->compute_vector_range(vmm_idxs);
         }
         L(store_nopost_ops);

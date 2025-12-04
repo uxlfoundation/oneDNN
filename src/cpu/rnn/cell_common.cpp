@@ -241,20 +241,20 @@ dnnl_status_t common_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
 rnn_cell_execution_sig(
         (ref_rnn_bwd_t<src_type, weights_type, acc_type>::cell_execution_ref)) {
-    const auto gemm_layer = [&](const weights_t *A, const scratch_t *B,
-                                    float *C) {
+    const auto gemm_layer
+            = [&](const weights_t *A, const scratch_t *B, float *C) {
         return (this->*gemm_layer_func)('N', 'N', rnn.slc, rnn.mb,
                 rnn.n_gates * rnn.dhc, 1.0, A, rnn.weights_layer_ld, B,
                 rnn.scratch_gates_ld, 0.0, C, rnn.ws_diff_states_layer_ld);
     };
-    const auto gemm_iter = [&](const weights_t *A, const scratch_t *B,
-                                   float *C) {
+    const auto gemm_iter
+            = [&](const weights_t *A, const scratch_t *B, float *C) {
         return (this->*gemm_iter_func)('N', 'N', rnn.sic, rnn.mb,
                 rnn.n_gates * rnn.dhc, 1.0, A, rnn.weights_iter_ld, B,
                 rnn.scratch_gates_ld, 0.0, C, rnn.ws_diff_states_iter_ld);
     };
-    const auto gemm_proj = [&](const weights_t *A, const weights_t *B,
-                                   float *C) {
+    const auto gemm_proj
+            = [&](const weights_t *A, const weights_t *B, float *C) {
         if (weights_type != data_type::f32) {
             assert(!"Projection is only supported for f32");
             return dnnl_runtime_error;
@@ -265,31 +265,31 @@ rnn_cell_execution_sig(
     };
     const auto gemm_weights_layer
             = [&](const scratch_t *A, const src_layer_t *B, float *C) {
-                  auto src_layer_ld = rnn.src_layer_ld(cell_position);
-                  const float beta = rnn.diff_weights_beta(cell_position);
-                  return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb,
-                          1.0, A, rnn.scratch_gates_ld, B, src_layer_ld, beta,
-                          C, rnn.diff_weights_layer_ld);
-              };
+        auto src_layer_ld = rnn.src_layer_ld(cell_position);
+        const float beta = rnn.diff_weights_beta(cell_position);
+        return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb, 1.0, A,
+                rnn.scratch_gates_ld, B, src_layer_ld, beta, C,
+                rnn.diff_weights_layer_ld);
+    };
     const auto gemm_weights_iter
             = [&](const scratch_t *A, const src_iter_t *B, float *C) {
-                  auto src_iter_ld = rnn.src_iter_ld(cell_position);
-                  const float beta = rnn.diff_weights_beta(cell_position);
-                  return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.sic, rnn.mb,
-                          1.0, A, rnn.scratch_gates_ld, B, src_iter_ld, beta, C,
-                          rnn.diff_weights_iter_ld);
-              };
+        auto src_iter_ld = rnn.src_iter_ld(cell_position);
+        const float beta = rnn.diff_weights_beta(cell_position);
+        return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.sic, rnn.mb, 1.0, A,
+                rnn.scratch_gates_ld, B, src_iter_ld, beta, C,
+                rnn.diff_weights_iter_ld);
+    };
     const auto gemm_weights_proj
             = [&](const scratch_t *A, const scratch_t *B, float *C) {
-                  if (weights_type != data_type::f32) {
-                      assert(!"Projection is only supported for f32");
-                      return dnnl_runtime_error;
-                  }
-                  const float beta = rnn.diff_weights_beta(cell_position);
-                  return gemm('N', 'T', rnn.dlc, rnn.dhc, rnn.mb, 1.0f, A,
-                          rnn.scratch_diff_ht_ld, B, rnn.ws_ht_ld, beta, C,
-                          rnn.diff_weights_projection_ld);
-              };
+        if (weights_type != data_type::f32) {
+            assert(!"Projection is only supported for f32");
+            return dnnl_runtime_error;
+        }
+        const float beta = rnn.diff_weights_beta(cell_position);
+        return gemm('N', 'T', rnn.dlc, rnn.dhc, rnn.mb, 1.0f, A,
+                rnn.scratch_diff_ht_ld, B, rnn.ws_ht_ld, beta, C,
+                rnn.diff_weights_projection_ld);
+    };
     return common_bwd_cell_exec_template(gemm_layer, gemm_iter, gemm_proj,
             gemm_weights_layer, gemm_weights_iter, gemm_weights_proj,
             this->rnn_postgemm_, rnn, cell_position, dst_layer_, dst_iter_c_,

@@ -384,24 +384,24 @@ void jit_uni_reorder_kernel_f32_t::tr8x8_sve256(int i_off, int o_off) {
 
     const auto cvt2ps
             = [=](const int startIdx, const int regNum, data_type_t idt) {
-                  switch (idt) {
-                      case f32:
-                          /* do nothing */
-                          break;
-                      case f16: cvt_v_f16_f32(startIdx, regNum); break;
-                      case s32: cvt_z_s32_f32(startIdx, regNum); break;
-                      case bf16: cvt_v_bf16_fp32(startIdx, regNum); break;
-                      case data_type::s8:
-                          cvt_z_s8_s32(startIdx, regNum);
-                          cvt_z_s32_f32(startIdx, regNum);
-                          break;
-                      case u8:
-                          cvt_z_u8_s32(startIdx, regNum);
-                          cvt_z_s32_f32(startIdx, regNum);
-                          break;
-                      default: assert(!"unreachable");
-                  }
-              };
+        switch (idt) {
+            case f32:
+                /* do nothing */
+                break;
+            case f16: cvt_v_f16_f32(startIdx, regNum); break;
+            case s32: cvt_z_s32_f32(startIdx, regNum); break;
+            case bf16: cvt_v_bf16_fp32(startIdx, regNum); break;
+            case data_type::s8:
+                cvt_z_s8_s32(startIdx, regNum);
+                cvt_z_s32_f32(startIdx, regNum);
+                break;
+            case u8:
+                cvt_z_u8_s32(startIdx, regNum);
+                cvt_z_s32_f32(startIdx, regNum);
+                break;
+            default: assert(!"unreachable");
+        }
+    };
 
     const auto cvt2odt = [=](const int startIdx, const int regNum,
                                  data_type_t odt, data_type_t idt) {
@@ -969,9 +969,9 @@ void jit_uni_reorder_kernel_f32_t::process_unroll_generic_step(int reg_unroll,
 
     /* scale and beta processing */
     if (can_store_xmm) {
-        const auto apply_scales = [&](const VReg4S &vreg_scales,
-                                          scale_arg_t scale_arg,
-                                          scale_type_t scale_type) {
+        const auto apply_scales
+                = [&](const VReg4S &vreg_scales, scale_arg_t scale_arg,
+                          scale_type_t scale_type) {
             if (scale_type == scale_type_t::COMMON) {
                 for (int ur = 0; ur < reg_unroll; ur += ur_step)
                     fmul(VReg4S(ur), VReg4S(ur), vreg_scales);
@@ -1087,9 +1087,9 @@ void jit_uni_reorder_kernel_f32_t::process_unroll_generic_step(int reg_unroll,
         /* dst <-- dst_scales * xmm[:] */
         apply_scales(xmm_dst_scales_, scale_arg_t::DST, prb_.dst_scale_type);
     } else {
-        const auto apply_scales = [&](const VReg4S &vreg_scales,
-                                          scale_arg_t scale_arg,
-                                          scale_type_t scale_type) {
+        const auto apply_scales
+                = [&](const VReg4S &vreg_scales, scale_arg_t scale_arg,
+                          scale_type_t scale_type) {
             if (scale_type == scale_type_t::COMMON) {
                 for (int ur = 0; ur < reg_unroll; ur += ur_step)
                     fmul(VReg4S(ur), VReg4S(ur), vreg_scales);

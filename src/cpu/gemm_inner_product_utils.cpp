@@ -84,29 +84,28 @@ void ref_pp_kernel_t::operator()(void *dst, const void *acc, const char *bias,
     ref_post_ops_t::args_t args;
     args.ctx = &ctx;
     args.dst_md = &dst_md;
-    auto calculate_dst_value_and_increment_oc =
-            [&](const void *acc, void *dst, size_t off, size_t &oc_value,
-                    const size_t dst_offset) {
-                float d = io::load_float_value(this->acc_data_type_, acc, off);
-                if (this->do_scale_)
-                    d *= scales[oc_value * this->scale_idx_mult_];
-                if (this->do_bias()) {
-                    const float b = io::load_float_value(
-                            this->bias_data_type_, bias, oc_value);
-                    d += b;
-                }
-                if (do_postops_) {
-                    if (this->do_sum_)
-                        args.dst_val = io::load_float_value(
-                                this->sum_data_type_, dst, off);
-                    args.l_offset = dst_offset;
-                    ref_post_ops_->execute(d, args);
-                }
-                if (this->do_dst_scale_) d *= dst_scale;
-                if (this->do_dst_zero_points_) d += dst_zero_points[0];
-                io::store_float_value(this->dst_data_type_, d, dst, off);
-                oc_value = (oc_value == OC - 1) ? 0 : oc_value + 1;
-            };
+    auto calculate_dst_value_and_increment_oc
+            = [&](const void *acc, void *dst, size_t off, size_t &oc_value,
+                      const size_t dst_offset) {
+        float d = io::load_float_value(this->acc_data_type_, acc, off);
+        if (this->do_scale_) d *= scales[oc_value * this->scale_idx_mult_];
+        if (this->do_bias()) {
+            const float b = io::load_float_value(
+                    this->bias_data_type_, bias, oc_value);
+            d += b;
+        }
+        if (do_postops_) {
+            if (this->do_sum_)
+                args.dst_val
+                        = io::load_float_value(this->sum_data_type_, dst, off);
+            args.l_offset = dst_offset;
+            ref_post_ops_->execute(d, args);
+        }
+        if (this->do_dst_scale_) d *= dst_scale;
+        if (this->do_dst_zero_points_) d += dst_zero_points[0];
+        io::store_float_value(this->dst_data_type_, d, dst, off);
+        oc_value = (oc_value == OC - 1) ? 0 : oc_value + 1;
+    };
 
     size_t oc = start % OC;
     dim_t src1_bin_po_offt = dst_logical_off;

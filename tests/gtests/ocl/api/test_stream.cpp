@@ -224,9 +224,9 @@ TEST_F(ocl_stream_test_cpp_t, InteropIncompatibleQueueCpp) {
 #endif
     TEST_OCL_CHECK(err);
 
-    catch_expected_failures(
-            [&] { ocl_interop::make_stream(eng, cpu_ocl_queue); }, true,
-            dnnl_invalid_arguments);
+    catch_expected_failures([&] {
+        ocl_interop::make_stream(eng, cpu_ocl_queue);
+    }, true, dnnl_invalid_arguments);
 
     TEST_OCL_CHECK(clReleaseCommandQueue(cpu_ocl_queue));
 }

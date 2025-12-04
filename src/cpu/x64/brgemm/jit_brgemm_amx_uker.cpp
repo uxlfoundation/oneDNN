@@ -1810,8 +1810,8 @@ void jit_brgemm_amx_uker_base_t::set_A_B_matrices() {
 }
 
 void jit_brgemm_amx_uker_base_t::maybe_sprinkle_prefetches() {
-    auto jit_prefetches = [&](prf_sprinkled_t &prf_sprinkled,
-                                  Xbyak::Reg64 base) {
+    auto jit_prefetches
+            = [&](prf_sprinkled_t &prf_sprinkled, Xbyak::Reg64 base) {
         // Calculate the number of cache lines to jit
         float total_cache_lines_to_prefetch
                 = (float)prf_sprinkled.prefetch_offsets.size();

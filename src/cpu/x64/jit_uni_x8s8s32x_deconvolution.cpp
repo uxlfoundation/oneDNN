@@ -591,9 +591,9 @@ void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
         }
     };
 
-    const auto load_zp_src_pad_comp = [&](const Vmm zp_pad_comp_vmm,
-                                              const Xbyak::Address &comp_addr,
-                                              const int ocb) {
+    const auto load_zp_src_pad_comp
+            = [&](const Vmm zp_pad_comp_vmm, const Xbyak::Address &comp_addr,
+                      const int ocb) {
         const bool is_tail = last_oc_block && ocb == jcp_.nb_oc_blocking - 1;
 
         if (is_tail)

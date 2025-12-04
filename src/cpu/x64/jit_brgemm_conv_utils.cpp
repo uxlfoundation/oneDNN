@@ -3004,24 +3004,23 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
 
         // Selecting the number of threads for every dimension closest to what
         // we defined before
-        auto calc_diff =
-                [&](const std::vector<std::pair<int, bwd_w_dims>> &cv) {
-                    auto tot_n = 1;
-                    double res = 1;
-                    for (int i = 0; i < nd; i++) {
-                        const auto nvf = dv[i].first;
-                        const auto n = cv[i].first;
-                        const auto v = maxv[cv[i].second];
-                        const auto disb
-                                = nvf * static_cast<double>(rnd_up(v, n)) / v;
-                        const auto nf = static_cast<double>(n);
-                        const auto var = ((nf > nvf) ? (nf / nvf) : (nvf / nf));
-                        tot_n *= n;
-                        res *= disb * var;
-                    }
-                    const auto thr_disb = static_cast<double>(jcp.nthr) / tot_n;
-                    return res * thr_disb;
-                };
+        auto calc_diff
+                = [&](const std::vector<std::pair<int, bwd_w_dims>> &cv) {
+            auto tot_n = 1;
+            double res = 1;
+            for (int i = 0; i < nd; i++) {
+                const auto nvf = dv[i].first;
+                const auto n = cv[i].first;
+                const auto v = maxv[cv[i].second];
+                const auto disb = nvf * static_cast<double>(rnd_up(v, n)) / v;
+                const auto nf = static_cast<double>(n);
+                const auto var = ((nf > nvf) ? (nf / nvf) : (nvf / nf));
+                tot_n *= n;
+                res *= disb * var;
+            }
+            const auto thr_disb = static_cast<double>(jcp.nthr) / tot_n;
+            return res * thr_disb;
+        };
 
         // nv: vector to keep result of selection
         std::vector<std::pair<int, bwd_w_dims>> nv;

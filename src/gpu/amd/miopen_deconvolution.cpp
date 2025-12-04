@@ -41,16 +41,16 @@ status_t miopen_deconvolution_bwd_weights_t::execute_bias(
 
         compat::host_task(cgh,
                 [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
-                    auto &sycl_engine = *utils::downcast<amd::engine_t *>(
-                            hip_stream->engine());
-                    auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
-                    auto handle = hip_stream->get_miopen_handle();
+            auto &sycl_engine
+                    = *utils::downcast<amd::engine_t *>(hip_stream->engine());
+            auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
+            auto handle = hip_stream->get_miopen_handle();
 
-                    void *bias = arg_diff_bias.get_native_pointer(ih);
-                    void *y = arg_diff_dst.get_native_pointer(ih);
+            void *bias = arg_diff_bias.get_native_pointer(ih);
+            void *y = arg_diff_dst.get_native_pointer(ih);
 
-                    impl_->execute_bias(handle, y, bias);
-                });
+            impl_->execute_bias(handle, y, bias);
+        });
     });
 }
 

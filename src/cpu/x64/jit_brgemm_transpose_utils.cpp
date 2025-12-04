@@ -753,8 +753,8 @@ void jit_brgemm_trans_m_k_bf16_t::generate() {
     vmovdqa32(vidx4, idx4);
     vmovdqa32(vidx5, (const int32_t *)idx5);
 
-    auto compute_m_loop = [&](reg64_t &reg_base, reg64_t &reg_tr_base,
-                                  bool is_os_tail) {
+    auto compute_m_loop
+            = [&](reg64_t &reg_base, reg64_t &reg_tr_base, bool is_os_tail) {
         mov(reg_loop_M, ptr[param1 + GET_OFF(current_M)]);
         mov(reg_m_src, reg_base);
         mov(reg_m_tr_src, reg_tr_base);
@@ -1536,8 +1536,8 @@ void jit_trans_to_vnni_t::generate() {
 
     vmovdqa64(vidx1, (const int64_t *)idx1);
 
-    auto compute_col_loop = [&](reg64_t &reg_base, reg64_t &reg_tr_base,
-                                    bool is_row_tail) {
+    auto compute_col_loop
+            = [&](reg64_t &reg_base, reg64_t &reg_tr_base, bool is_row_tail) {
         const bool pad_by_zeroes
                 = matrix_to_transform_ == matrix_to_transform_t::matrix_C;
         int nrows = is_row_tail ? last_row_block_tail : transpose_size;

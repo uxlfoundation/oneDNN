@@ -635,9 +635,9 @@ status_t rnn_brgemm_t<prop_kind::forward>::init_kernels(
                       std::unique_ptr<x64::brgemm_kernel_t> &ker, dim_t M,
                       dim_t N, dim_t K, dim_t LDA, dim_t LDB, dim_t LDC,
                       float beta, dim_t max_bs) {
-                  return init_brgemm_kernel(desc, isa, src_type, weights_type,
-                          ker, M, N, K, LDA, LDB, LDC, beta, max_bs);
-              };
+        return init_brgemm_kernel(desc, isa, src_type, weights_type, ker, M, N,
+                K, LDA, LDB, LDC, beta, max_bs);
+    };
 
     const int brgemm_n = nstl::min(rnn.N, rnn.n_block);
     const int brgemm_n_tail = nstl::min(rnn.N, rnn.n_tail);
@@ -1132,16 +1132,14 @@ static status_t init_kernels_diff_src(rnn_diff_src_brgemm_t &diff_src,
                       std::unique_ptr<x64::brgemm_kernel_t> &ker, dim_t M,
                       dim_t N, dim_t K, dim_t LDA, dim_t LDB, dim_t LDC,
                       float beta, dim_t max_bs) {
-                  const dim_t A_size
-                          = rnn.diff_src_brgemm.M * rnn.diff_src_brgemm.Kpadded;
-                  const dim_t B_size
-                          = rnn.diff_src_brgemm.Kpadded * rnn.diff_src_brgemm.N;
-                  const dim_t C_size
-                          = rnn.diff_src_brgemm.M * rnn.diff_src_brgemm.N;
-                  return init_brgemm_kernel(desc, isa, src_type, weights_type,
-                          ker, M, N, K, LDA, LDB, LDC, beta, max_bs, A_size,
-                          B_size, C_size);
-              };
+        const dim_t A_size
+                = rnn.diff_src_brgemm.M * rnn.diff_src_brgemm.Kpadded;
+        const dim_t B_size
+                = rnn.diff_src_brgemm.Kpadded * rnn.diff_src_brgemm.N;
+        const dim_t C_size = rnn.diff_src_brgemm.M * rnn.diff_src_brgemm.N;
+        return init_brgemm_kernel(desc, isa, src_type, weights_type, ker, M, N,
+                K, LDA, LDB, LDC, beta, max_bs, A_size, B_size, C_size);
+    };
 
     const auto &diff_src_conf = rnn.diff_src_brgemm;
     const int n_diff_src = nstl::min(diff_src_conf.N, diff_src_conf.n_block);
@@ -1257,16 +1255,14 @@ static status_t init_kernels_diff_wei(rnn_diff_wei_brgemm_t &diff_wei,
                       std::unique_ptr<x64::brgemm_kernel_t> &ker, dim_t M,
                       dim_t N, dim_t K, dim_t LDA, dim_t LDB, dim_t LDC,
                       float beta, dim_t max_bs) {
-                  const dim_t A_size
-                          = rnn.diff_wei_brgemm.M * rnn.diff_wei_brgemm.Kpadded;
-                  const dim_t B_size
-                          = rnn.diff_wei_brgemm.Kpadded * rnn.diff_wei_brgemm.N;
-                  const dim_t C_size
-                          = rnn.diff_wei_brgemm.M * rnn.diff_wei_brgemm.N;
-                  return init_brgemm_kernel(desc, isa, src_type, weights_type,
-                          ker, M, N, K, LDA, LDB, LDC, beta, max_bs, A_size,
-                          B_size, C_size);
-              };
+        const dim_t A_size
+                = rnn.diff_wei_brgemm.M * rnn.diff_wei_brgemm.Kpadded;
+        const dim_t B_size
+                = rnn.diff_wei_brgemm.Kpadded * rnn.diff_wei_brgemm.N;
+        const dim_t C_size = rnn.diff_wei_brgemm.M * rnn.diff_wei_brgemm.N;
+        return init_brgemm_kernel(desc, isa, src_type, weights_type, ker, M, N,
+                K, LDA, LDB, LDC, beta, max_bs, A_size, B_size, C_size);
+    };
 
     const auto &diff_wei_conf = rnn.diff_wei_brgemm;
     const bool is_m_block_equal = rnn.slc == rnn.sic;

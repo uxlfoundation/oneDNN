@@ -197,8 +197,8 @@ public:
                         = aop->get_input_logical_tensor(i);
                 if (std::any_of(dt_with_dir.begin(), dt_with_dir.end(),
                             [&iport](data_type_t dt) {
-                                return dt == iport.data_type;
-                            })) {
+                    return dt == iport.data_type;
+                })) {
                     if (is_reorder_type(op_kind)) {
                         meet_reorder = true;
                         break;
@@ -214,8 +214,8 @@ public:
                             = aop->get_output_logical_tensor(i);
                     if (std::any_of(dt_with_dir.begin(), dt_with_dir.end(),
                                 [&oport](data_type_t dt) {
-                                    return dt == oport.data_type;
-                                })) {
+                        return dt == oport.data_type;
+                    })) {
                         if (is_reorder_type(op_kind)) {
                             meet_reorder = true;
                             break;

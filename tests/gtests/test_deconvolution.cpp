@@ -45,13 +45,12 @@ void compute_bias_fwd(const test_convolution_sizes_t &c,
     dnnl::impl::parallel_nd(c.mb, c.ng, c.oc / c.ng, c.oh, c.ow,
             [&](memory::dim n, memory::dim g, memory::dim oc, memory::dim oh,
                     memory::dim ow) {
-                data_t b
-                        = bias_data[bias_mdw.off_l(g * c.oc / c.ng + oc, true)];
-                memory::dim oidx = n * c.oc * c.oh * c.ow
-                        + g * c.oc / c.ng * c.oh * c.ow + oc * c.oh * c.ow
-                        + oh * c.ow + ow;
-                dst_data[dst_mdw.off_l(oidx, true)] += b;
-            });
+        data_t b = bias_data[bias_mdw.off_l(g * c.oc / c.ng + oc, true)];
+        memory::dim oidx = n * c.oc * c.oh * c.ow
+                + g * c.oc / c.ng * c.oh * c.ow + oc * c.oh * c.ow + oh * c.ow
+                + ow;
+        dst_data[dst_mdw.off_l(oidx, true)] += b;
+    });
 }
 
 template <typename data_t>
@@ -67,18 +66,18 @@ void compute_bias_bwd(const test_convolution_sizes_t &c,
 
     dnnl::impl::parallel_nd(
             c.ng, c.oc / c.ng, [&](memory::dim g, memory::dim oc) {
-                memory::dim bidx = g * c.oc / c.ng + oc;
-                bias_data[bias_mdw.off_l(bidx, true)] = 0.0;
-                for_(memory::dim mb = 0; mb < c.mb; ++mb)
-                for_(memory::dim oh = 0; oh < c.oh; ++oh)
-                for (memory::dim ow = 0; ow < c.ow; ++ow) {
-                    memory::dim oidx = mb * c.oc * c.oh * c.ow
-                            + g * c.oc / c.ng * c.oh * c.ow + oc * c.oh * c.ow
-                            + oh * c.ow + ow;
-                    bias_data[bias_mdw.off_l(bidx, true)]
-                            += dst_data[dst_mdw.off_l(oidx, true)];
-                }
-            });
+        memory::dim bidx = g * c.oc / c.ng + oc;
+        bias_data[bias_mdw.off_l(bidx, true)] = 0.0;
+        for_(memory::dim mb = 0; mb < c.mb; ++mb)
+        for_(memory::dim oh = 0; oh < c.oh; ++oh)
+        for (memory::dim ow = 0; ow < c.ow; ++ow) {
+            memory::dim oidx = mb * c.oc * c.oh * c.ow
+                    + g * c.oc / c.ng * c.oh * c.ow + oc * c.oh * c.ow
+                    + oh * c.ow + ow;
+            bias_data[bias_mdw.off_l(bidx, true)]
+                    += dst_data[dst_mdw.off_l(oidx, true)];
+        }
+    });
 }
 
 template <typename data_t>
@@ -95,16 +94,15 @@ void transpose_wei(const test_convolution_sizes_t &c,
     dnnl::impl::parallel_nd(c.ng, c.oc / c.ng, c.ic / c.ng, c.kh, c.kw,
             [&](memory::dim g, memory::dim oc, memory::dim ic, memory::dim kh,
                     memory::dim kw) {
-                memory::dim widx = g * c.oc / c.ng * c.ic / c.ng * c.kh * c.kw
-                        + oc * c.ic / c.ng * c.kh * c.kw + ic * c.kh * c.kw
-                        + kh * c.kw + kw;
-                memory::dim widx_tr
-                        = g * c.oc / c.ng * c.ic / c.ng * c.kh * c.kw
-                        + ic * c.oc / c.ng * c.kh * c.kw + oc * c.kh * c.kw
-                        + kh * c.kw + kw;
-                weights_tr_data[weights_tr_mdw.off_l(widx_tr, true)]
-                        = weights_data[weights_mdw.off_l(widx, true)];
-            });
+        memory::dim widx = g * c.oc / c.ng * c.ic / c.ng * c.kh * c.kw
+                + oc * c.ic / c.ng * c.kh * c.kw + ic * c.kh * c.kw + kh * c.kw
+                + kw;
+        memory::dim widx_tr = g * c.oc / c.ng * c.ic / c.ng * c.kh * c.kw
+                + ic * c.oc / c.ng * c.kh * c.kw + oc * c.kh * c.kw + kh * c.kw
+                + kw;
+        weights_tr_data[weights_tr_mdw.off_l(widx_tr, true)]
+                = weights_data[weights_mdw.off_l(widx, true)];
+    });
 }
 
 template <typename data_t>

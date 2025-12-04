@@ -127,11 +127,9 @@ protected:
                     dst_md = md(SP2D, i_cfg[2], dst_tag);
                     ASSERT_TRUE(dst_md);
 
-                    catch_expected_failures(
-                            [&]() {
-                                TestFormat(src_md, wei_md, dst_md, i_cfg);
-                            },
-                            false, dnnl_success);
+                    catch_expected_failures([&]() {
+                        TestFormat(src_md, wei_md, dst_md, i_cfg);
+                    }, false, dnnl_success);
                 }
             }
         }

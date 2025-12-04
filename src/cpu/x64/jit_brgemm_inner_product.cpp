@@ -56,7 +56,7 @@ static size_t blk_off(const memory_desc_wrapper &mdw, dim_t n, dim_t c, dim_t d,
         case 2: return get_blk_off(mdw, mdw.data_type(), n, c);
         default: assert(!"unsupported ndims"); return size_t(0);
     }
-};
+}
 
 namespace {
 template <typename ker_type>
@@ -1372,7 +1372,7 @@ char *brgemm_inner_product_bwd_weights_t<isa>::get_wei_acc_ptr(
 
     assert(!"unsupported case");
     return nullptr;
-};
+}
 
 template <cpu_isa_t isa>
 void brgemm_inner_product_bwd_weights_t<isa>::compute_diff_weights_and_bias(

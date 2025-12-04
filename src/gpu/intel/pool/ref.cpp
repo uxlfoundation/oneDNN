@@ -55,7 +55,7 @@ static status_t init_conf_common(conf_t &conf, offsets_t &off, const pd_t *pd,
     conf.attr_info = attr_info_t::create(pd->attr());
 
     return status::success;
-};
+}
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const conf_t &conf, const offsets_t &off, const post_ops_t &post_ops,

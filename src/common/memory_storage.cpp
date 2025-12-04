@@ -43,7 +43,7 @@ memory_storage_t::memory_storage_t(
 
 memory_storage_t::~memory_storage_t() {
     if (engine_) engine_->release();
-};
+}
 
 } // namespace impl
 } // namespace dnnl

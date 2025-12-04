@@ -51,7 +51,7 @@ void entryObserver(
         dnnl::impl::verbose_printf("info,gpu,gemm,consider:%s,score:%f\n",
                 entry->str().c_str(), score);
     }
-};
+}
 } // anonymous namespace
 
 bool enable_generator_dsl() {
@@ -1157,7 +1157,7 @@ dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
         if (k != -1) opt.assume(gemm_desc.kernel_iface().find_arg("k") == k);
     }
     return make_kernel(gemm_desc);
-};
+}
 
 std::string dump_kernel(ngen::HW hw, const gemmstone::GEMMProblem &problem,
         const gemmstone::GEMMStrategy &strategy) {

@@ -47,7 +47,7 @@ inline acc_data_t fast_negative_powf(acc_data_t omega, acc_data_t beta) {
         Y = 1.0f / powf(omega, beta);
     }
     return Y;
-};
+}
 } // namespace
 
 // Forward LRN formula:

@@ -34,7 +34,7 @@ public:
         } else {
             return e + ee;
         }
-    };
+    }
 
     object_t _mutate(const binary_op_t &obj) override {
         if (obj.op_kind != op_kind_t::_add) return ir_mutator_t::_mutate(obj);

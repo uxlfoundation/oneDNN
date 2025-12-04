@@ -115,7 +115,7 @@ inline unsigned cvt2mask(dnnl_cpu_isa_hints_t hints) {
     }
     assert(!"Unexpected CPU ISA hint");
     return 0;
-};
+}
 
 inline bool is_hints_bit_set(cpu_isa_bit_t hint_bit, bool soft) {
     const dnnl_cpu_isa_hints_t hints = get_cpu_isa_hints(soft);

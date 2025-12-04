@@ -408,7 +408,7 @@ private:
                 = is_ddst_layout_nxc() ? jcp.ngroups * jcp.oc : jcp.oc_block;
 
         return typesize * (ow * ow_str + oc);
-    };
+    }
 
     inline bool is_dsrc_layout_nxc() {
         return utils::one_of(jcp.src_tag, format_tag::ndhwc, format_tag::nhwc,
@@ -587,7 +587,7 @@ private:
 
         ptrdiff_t local_input_offset = i_iw * w_shift + i_ic * ic_shift;
         return input_offset + typesize * local_input_offset;
-    };
+    }
 
     inline int get_iw_idx(int ow, int kw, int l_pad) {
         return ow * jcp.stride_w + kw * (jcp.dilate_w + 1) - l_pad;

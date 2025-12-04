@@ -1812,7 +1812,7 @@ size_t jit_uni_eltwise_injector_t<isa, Wmm>::aux_gprs_count(
         default: ret = 0;
     }
     return ret + need_vmm_stack_ptr(alg, is_fwd, alpha);
-};
+}
 
 template <cpu_isa_t isa, typename Wmm>
 bool jit_uni_eltwise_injector_t<isa, Wmm>::need_vmm_stack_ptr(

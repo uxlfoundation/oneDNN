@@ -39,9 +39,9 @@ struct matmul_helper_t {
     int ndims() const { return dst_md_.ndims(); }
     bool batched() const { return ndims() > 2; }
 
-    dim_t batch() const { return get_batch_size(dst_md_); };
-    dim_t src_batch() const { return get_batch_size(src_md_); };
-    dim_t wei_batch() const { return get_batch_size(weights_md_); };
+    dim_t batch() const { return get_batch_size(dst_md_); }
+    dim_t src_batch() const { return get_batch_size(src_md_); }
+    dim_t wei_batch() const { return get_batch_size(weights_md_); }
 
     dim_t M() const { return dst_md_.dims()[ndims() - 2]; }
     dim_t N() const { return dst_md_.dims()[ndims() - 1]; }

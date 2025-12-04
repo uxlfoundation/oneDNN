@@ -1561,7 +1561,7 @@ size_t jit_uni_eltwise_injector_t<isa>::aux_gprs_count() {
         default: return 0;
     }
     return 0;
-};
+}
 
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::round_compute_vector_fwd(

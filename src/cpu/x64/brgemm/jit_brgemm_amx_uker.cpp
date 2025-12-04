@@ -2590,7 +2590,7 @@ void jit_brgemm_amx_uker_base_t::bdb_loop_body(brgemm_iteration_t &bi) {
     else
         assert(!"Unknown loop order!");
     if (ununroll_bd_loop) { jmp(reg_iter_label); }
-};
+}
 
 void jit_brgemm_amx_uker_base_t::bdb_loop(brgemm_iteration_t &bi) {
     const auto &tloop = imap_[bi.apply_postops];

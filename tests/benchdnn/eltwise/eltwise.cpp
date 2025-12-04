@@ -426,7 +426,7 @@ std::vector<int> supported_exec_args(dir_t dir) {
             : (driver_name == "graph") ? exec_bwd_args_graph
             : (dir & FLAG_WEI)         ? exec_bwd_use_dst_args
                                        : exec_bwd_args;
-};
+}
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const prb_t *prb, res_t *res,

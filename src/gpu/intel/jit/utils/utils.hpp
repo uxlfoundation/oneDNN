@@ -486,12 +486,12 @@ struct debug_profiler_t {
 #ifdef DNNL_DEV_MODE
     debug_profiler_t(const std::string &profile_name)
         : profile(profile_name) {};
-    void start() { profile.start(); };
-    void stamp(const char *name) { profile.stamp(name); };
-    void stop(const char *name) { profile.stop(name); };
-    void stop() { profile.stop(); };
-    void reset() { profile.reset(); };
-    std::string str() const { return profile.str(); };
+    void start() { profile.start(); }
+    void stamp(const char *name) { profile.stamp(name); }
+    void stop(const char *name) { profile.stop(name); }
+    void stop() { profile.stop(); }
+    void reset() { profile.reset(); }
+    std::string str() const { return profile.str(); }
 
 private:
     profiler_t profile;
@@ -502,7 +502,7 @@ private:
     void stop(const char *name) {};
     void stop() {};
     void reset() {};
-    std::string str() const { return ""; };
+    std::string str() const { return ""; }
 #endif
 };
 

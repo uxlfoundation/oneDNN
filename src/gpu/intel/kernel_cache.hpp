@@ -133,7 +133,7 @@ struct gpu_kernel_value_t {
     gpu_kernel_value_t(const std::shared_ptr<kernel_cache::value_impl_t> &impl)
         : impl_(impl) {}
 
-    const kernel_cache::value_impl_t *impl() const { return impl_.get(); };
+    const kernel_cache::value_impl_t *impl() const { return impl_.get(); }
 
     std::shared_ptr<kernel_cache::value_impl_t> release() {
         std::shared_ptr<kernel_cache::value_impl_t> ret = nullptr;

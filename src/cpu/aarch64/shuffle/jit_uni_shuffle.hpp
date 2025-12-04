@@ -45,7 +45,7 @@ struct jit_uni_shuffle_t : public primitive_t {
 
         status_t init(engine_t *engine);
 
-        jit_shuffle_conf_t get_conf() const { return conf_; };
+        jit_shuffle_conf_t get_conf() const { return conf_; }
 
     private:
         jit_shuffle_conf_t conf_;

@@ -178,7 +178,7 @@ status_t create_matmul_pd(impl::engine_t *engine,
         }
     }
     return status::unimplemented;
-};
+}
 
 status_t ref_rnn_fwd_t::pd_t::init(impl::engine_t *engine) {
     using namespace prop_kind;
@@ -545,7 +545,7 @@ bool ref_rnn_common_base_t::create_nested_matmul(impl::engine_t *engine,
             == status::success;
     prim = pair.first;
     return gemm_ok;
-};
+}
 
 status_t ref_rnn_fwd_t::init_(impl::engine_t *engine) {
     using namespace rnn_utils;
@@ -1142,7 +1142,7 @@ status_t ref_rnn_fwd_t::execute_(const exec_ctx_t &ctx) const {
             *cpy_ctx.cpy_out_iter));
 
     return status::success;
-};
+}
 
 status_t ref_rnn_bwd_t::execute_(const exec_ctx_t &ctx) const {
 
@@ -1188,7 +1188,7 @@ status_t ref_rnn_bwd_t::execute_(const exec_ctx_t &ctx) const {
             scratch.diff_states(), *cpy_ctx.cpy_out_iter));
 
     return status::success;
-};
+}
 
 } // namespace sycl
 } // namespace generic

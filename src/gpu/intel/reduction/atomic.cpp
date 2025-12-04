@@ -47,7 +47,7 @@ public:
             }
         }
         return false;
-    };
+    }
 
     void include(dim_idx_t dim, size_t size) {
         inc_blocks.emplace_back(into<dim_t>(dim), into<dim_t>(size), 1);
@@ -70,7 +70,7 @@ private:
         }
 
         return lws;
-    };
+    }
 
     std::vector<block_t> inc_blocks;
 };

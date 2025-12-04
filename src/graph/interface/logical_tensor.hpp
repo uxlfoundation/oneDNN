@@ -65,7 +65,7 @@ struct logical_tensor_wrapper_t {
     property_type_t property_type() const { return lt->property; }
 
     const dims_t &dims() const { return lt->dims; }
-    const dims_t &strides() const { return lt->layout.strides; };
+    const dims_t &strides() const { return lt->layout.strides; }
 
     // convenient method to return a std::vector
     std::vector<dim_t> vdims() const {

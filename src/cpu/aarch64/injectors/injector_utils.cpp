@@ -123,7 +123,7 @@ size_t register_preserve_guard_t<isa>::stack_space_occupied() const {
             = vmm_to_preserve_size_bytes_ + reg64_stack_.size() * reg64_size;
 
     return stack_space_occupied;
-};
+}
 
 template <cpu_isa_t isa>
 conditional_register_preserve_guard_t<

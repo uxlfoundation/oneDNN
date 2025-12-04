@@ -174,7 +174,7 @@ static status_t init_conf_common(
     conf.dispatch.generate();
 
     return status::success;
-};
+}
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const conf_t &conf, const offsets_t &off, const post_ops_t &post_ops,

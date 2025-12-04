@@ -242,7 +242,7 @@ std::vector<int> supported_exec_args(dir_t dir) {
     return (dir & FLAG_FWD)            ? exec_fwd_args
             : (driver_name == "graph") ? exec_bwd_args_graph
                                        : exec_bwd_args;
-};
+}
 
 void binary_po_fill_cfg(std::unordered_map<int, fill_cfg_t> &fill_cfg_map,
         int exec_arg, const dnn_mem_t &mem, const attr_t &attr) {

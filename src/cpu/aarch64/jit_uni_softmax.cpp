@@ -358,7 +358,7 @@ struct jit_softmax_base_t : public jit_generator_t {
                 break;
             default: assert(!"unsupported"); break;
         }
-    };
+    }
 
     void load(const TReg &vmm, const XReg &addr, data_type_t dt,
             bool tail = false) {
@@ -386,7 +386,7 @@ struct jit_softmax_base_t : public jit_generator_t {
                 break;
             default: assert(!"unsupported"); break;
         }
-    };
+    }
 
     void prepare_tail_mask() {
         set_preg(tail_opmask.s, axis_simd_tail_, X_TMP_0, X_TMP_1);

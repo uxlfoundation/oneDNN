@@ -4328,12 +4328,12 @@ private:
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
         jit_generator_t::kmovw(k, regw_tmp);
-    };
+    }
 
     void kmovq(Opmask k, size_t q) {
         mov(regq_tmp, q);
         jit_generator_t::kmovq(k, regq_tmp);
-    };
+    }
 
     Vmm src_vmm(int i) {
         assert(i >= 0 && i < n_blk_step_);

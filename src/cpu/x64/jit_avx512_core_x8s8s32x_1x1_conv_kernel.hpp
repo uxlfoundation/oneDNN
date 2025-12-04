@@ -132,7 +132,7 @@ private:
     inline Vmm_down_t maybe_mask_vmm_down(Vmm_down_t vmm_down, bool mask_flag) {
         return mask_flag ? vmm_down | k_load_dim_mask : vmm_down;
     }
-    inline Vmm_down_t vmm_store() { return Vmm_down_t(ymm_store.getIdx()); };
+    inline Vmm_down_t vmm_store() { return Vmm_down_t(ymm_store.getIdx()); }
 
     void bcast_loop(int load_loop_blk);
     void reduce_loop(int load_loop_blk, int ur, bool wraparound);

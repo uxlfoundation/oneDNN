@@ -38,7 +38,7 @@ static dnnl_dim_t compute_n_summands(
     return alg_kind == alg_kind::lrn_across_channels
             ? size
             : std::pow(size, ndims - 2);
-};
+}
 
 template <cpu_isa_t isa, data_type_t d_type>
 jit_uni_lrn_fwd_t<isa, d_type>::jit_uni_lrn_fwd_t(const pd_t *apd)

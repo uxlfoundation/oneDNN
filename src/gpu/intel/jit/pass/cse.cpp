@@ -249,7 +249,7 @@ public:
         }
     }
 
-    const std::vector<cse_var_entry_t> &entries() const { return entries_; };
+    const std::vector<cse_var_entry_t> &entries() const { return entries_; }
 
 private:
     std::vector<cse_var_entry_t> entries_;

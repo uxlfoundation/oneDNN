@@ -48,7 +48,7 @@ public:
 
     virtual ~backend_t() = default;
 
-    const std::string &get_name() const { return name_; };
+    const std::string &get_name() const { return name_; }
     size_t get_id() const { return id_; }
     float get_priority() const { return priority_; }
 

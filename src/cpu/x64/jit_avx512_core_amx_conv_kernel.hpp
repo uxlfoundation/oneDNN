@@ -736,7 +736,7 @@ private:
                         + static_cast<dim_t>(kh) * jcp.kw * jcp.ic_block
                                 * jcp.oc_block
                         + static_cast<dim_t>(kw) * jcp.ic_block * jcp.oc_block);
-    };
+    }
 
     inline void setup_stack_space();
     int ic_block_step_stack_size = 0;

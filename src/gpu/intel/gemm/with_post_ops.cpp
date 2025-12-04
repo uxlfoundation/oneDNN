@@ -351,7 +351,7 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
     compute::nd_range_t repack_nd_range(repack_gws);
     return large_parallel_for(impl::exec_ctx_t(ctx.stream()), repack_nd_range,
             kernels_[kidx++], repack_arg_list, 4);
-};
+}
 
 } // namespace gemm
 } // namespace intel

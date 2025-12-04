@@ -96,7 +96,7 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
             init_scratchpad();
 
             return status::success;
-        };
+        }
 
         int nthr_; // To not exceed the limit in execute used for set up.
 
@@ -182,7 +182,7 @@ struct jit_uni_softmax_bwd_t : public primitive_t {
             if (!ok) return status::unimplemented;
 
             return status::success;
-        };
+        }
     };
 
     jit_uni_softmax_bwd_t(const pd_t *apd);

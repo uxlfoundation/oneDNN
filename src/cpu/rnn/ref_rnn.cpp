@@ -2260,7 +2260,7 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
     }
 
     return status::success;
-};
+}
 /* Fix for MSVS warning C4661 */
 template <>
 rnn_cell_execution_sig(ref_rnn_fwd_f32_t::cell_execution_ref);

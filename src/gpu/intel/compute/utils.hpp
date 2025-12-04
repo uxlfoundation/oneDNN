@@ -83,7 +83,7 @@ public:
     size_t nelems() const {
         if (ndims_ == 0) return 0;
         return utils::array_product(dims_.data(), ndims_);
-    };
+    }
     const size_t *data() const { return dims_.data(); }
 
     bool operator==(const range_t &rhs) const {

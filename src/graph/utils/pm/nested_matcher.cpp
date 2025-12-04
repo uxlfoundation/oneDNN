@@ -194,7 +194,7 @@ bool node_inputs_matcher_t::match_input_by_offset(
     }
 
     return true;
-};
+}
 
 bool node_inputs_matcher_t::match_commutative_inputs() {
     // commutative ops need to consider switching inputs

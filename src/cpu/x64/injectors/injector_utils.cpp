@@ -105,7 +105,7 @@ size_t register_preserve_guard_t::stack_space_occupied() const {
             = vmm_to_preserve_size_bytes_ + reg64_stack_.size() * reg64_size;
 
     return stack_space_occupied;
-};
+}
 
 conditional_register_preserve_guard_t::conditional_register_preserve_guard_t(
         bool condition_to_be_met, jit_generator_t *host,

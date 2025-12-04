@@ -166,7 +166,7 @@ struct lru_cache_t final : public cache_t<K, O, C, key_merge> {
     int get_capacity() const override {
         utils::lock_read_t lock_r(this->rw_mutex());
         return capacity_;
-    };
+    }
 
     status_t set_capacity(int capacity) override {
         utils::lock_write_t lock_w(this->rw_mutex());

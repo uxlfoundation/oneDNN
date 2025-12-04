@@ -90,13 +90,13 @@ private:
     inline dim_t filter_w_to_input(int ki, int oi = 0, int pad_l = 0) const {
         return static_cast<dim_t>(ki) * (jcp.dilate_w + 1) + oi * jcp.stride_w
                 - pad_l;
-    };
+    }
     inline dim_t filter_h_to_input(int ki) const {
         return static_cast<dim_t>(ki) * (jcp.dilate_h + 1) * jcp.iw;
-    };
+    }
     inline dim_t filter_d_to_input(int ki) const {
         return static_cast<dim_t>(ki) * (jcp.dilate_d + 1) * jcp.iw * jcp.ih;
-    };
+    }
 
     inline dim_t get_input_offset(int i_ic, int i_iw) const {
         dim_t offset;

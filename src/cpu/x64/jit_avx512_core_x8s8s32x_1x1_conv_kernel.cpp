@@ -182,19 +182,19 @@ Address jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::output_ptr(
 
     return EVEX_compress_addr(aux_reg_output_data,
             jcp.typesize_out * (ur_stride + i_load * jcp.load_block));
-};
+}
 
 template <typename Vmm>
 int jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::vreg_accum_idx(
         const int load_loop_blk, int i_load, int i_ur) const {
     return (i_ur * load_loop_blk + i_load);
-};
+}
 
 template <typename Vmm>
 Vmm jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::vreg_accum(
         const int load_loop_blk, int i_load, int i_ur) const {
     return Vmm(vreg_accum_idx(load_loop_blk, i_load, i_ur));
-};
+}
 
 template <typename Vmm>
 void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::apply_sum(

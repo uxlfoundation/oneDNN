@@ -102,7 +102,7 @@ struct kernel_base_t {
             = 0;
 #endif
 
-    virtual status_t prepare_inplace_pairs_impl() { return status::success; };
+    virtual status_t prepare_inplace_pairs_impl() { return status::success; }
 
     // A string identity used in verbose indicating which kernels is dispatched
     // for a compiled partition.

@@ -38,12 +38,12 @@ public:
         return ss.str();
     }
 
-    tile_t shape(bool pad) const override { return {}; };
+    tile_t shape(bool pad) const override { return {}; }
 
     const std::vector<pvar_t> &index_dims() const override {
         static const std::vector<pvar_t> null {};
         return null;
-    };
+    }
 
     int pad_block(const pvar_t &d) const override { return 0; }
 

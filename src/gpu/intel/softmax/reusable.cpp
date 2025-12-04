@@ -34,7 +34,7 @@ public:
             if (blocks.get_dim_idx() == block.dim_idx) { return true; }
         }
         return false;
-    };
+    }
 
     void include(dim_idx_t dim, size_t size) {
         inc_blocks.emplace_back(dim, into<dim_t>(size), 1);
@@ -57,7 +57,7 @@ private:
         }
 
         return lws;
-    };
+    }
 
     std::vector<block_t> inc_blocks;
 };

@@ -166,11 +166,11 @@ struct GEMMProblem : public CommonProblem {
 
     bool checkBeta0 = true;                         // If true, check for beta = 0 and handle specially.
 
-// @@@@@ used ????? kernel cache; or maybe bool has_ao_hostscalar()
+// @@@@@ used ; or maybe bool has_ao_hostscalar()
     bool ao_hostscalar = false;
     bool bo_hostscalar = false;
     bool abo_hostscalar = false;
-// @@@@@ used ????? kernel cache; or maybe bool has_ao_hostscalar()
+// @@@@@ used ; or maybe bool has_ao_hostscalar()
 
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
@@ -291,7 +291,7 @@ struct GEMMProblem : public CommonProblem {
     }
 
     /* Serialization for kernel cache. */
-    // @@@@@ ????? if new memeber - add it here ????? kernel cache
+    // @@@@@ combination of <a|b>Offset and <a|b>oPtrDims is enough
     void serialize(SerializationStream &s) const
     {
         s.append(Ta, Tb, Tc, Ts);
@@ -316,6 +316,9 @@ struct GEMMProblem : public CommonProblem {
         s.append(sumA, sumB);
         s.append(sroundSeed);
         s.append(postOps);
+
+        //VDEBUGINFO(4, primitive, serialization, "aOffset bOffset = %d %d : aoPtrDims boPtrDims = %d %d", aOffset, bOffset, aoPtrDims, boPtrDims);
+
     }
 };
 

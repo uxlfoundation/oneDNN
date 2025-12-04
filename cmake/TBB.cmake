@@ -33,8 +33,8 @@ macro(handle_tbb_target)
             # On Linux TBB::tbb target may link to libtbb_debug.so which is not compatible with libtbb.so. Linking
             # application to both may result in undefined behavior.
             # See https://uxlfoundation.github.io/oneTBB/main/intro/limitations.html#debug-tbb-in-the-sycl-program
-            set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_RELWITHMDD" "RELEASE")
-            set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_DEBUG" "RELEASE")
+            set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_RELWITHMDD" "RELEASE" "NONE")
+            set_property(TARGET TBB::tbb PROPERTY "MAP_IMPORTED_CONFIG_DEBUG" "RELEASE" "NONE")
         endif()
         include_directories_with_host_compiler(${_tbb_include_dirs})
         list(APPEND EXTRA_SHARED_LIBS TBB::tbb)

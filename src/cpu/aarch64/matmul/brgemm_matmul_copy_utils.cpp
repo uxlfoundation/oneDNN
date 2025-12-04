@@ -751,11 +751,11 @@ private:
 
     void kmovw(Xbyak_aarch64::PReg k, unsigned w) {
         assert(!"under construction");
-    };
+    }
 
     void kmovq(Xbyak_aarch64::PReg k, size_t q) {
         assert(!"under construction");
-    };
+    }
 
     ZReg src_vmm(int i) {
         assert(i >= 0 && i < n_blk_step_);

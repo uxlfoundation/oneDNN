@@ -198,7 +198,7 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
 
     Mmx mmx_mask(int ll) {
         return Mmx(mmx_msk_base_reg + ll);
-    }; // ll: 0..4 [Mmx(2)...Mmx(5)]
+    } // ll: 0..4 [Mmx(2)...Mmx(5)]
 
     static bool init_post_ops_conf(jit_pool_conf_t &jpp,
             const primitive_attr_t &attr, const memory_desc_wrapper &dst_d);
@@ -283,7 +283,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_vreg_mask_q(int ll) {
 
     // Move mask from ll-th pos to 0-th pos
     if (ll > 0) vpermq(vreg_mask_q, vreg_mask_q, ll);
-};
+}
 
 template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::load_src_max_op(
@@ -357,7 +357,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_src_max_op(
 
     } else
         vmovups(vreg_src(jj), ptr[aux_reg_src_w + offset]);
-};
+}
 
 template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::load_src_max_op(
@@ -371,7 +371,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::load_src_max_op(
             vmovdqu8(vreg_src(jj) | mask(0), ptr[aux_reg_src_w + offset]);
     } else
         vmovups(vreg_src(jj), ptr[aux_reg_src_w + offset]);
-};
+}
 
 template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::load_src_avg_op(
@@ -496,7 +496,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_src_avg_op(
         case u8: load_i8(false, vreg_src_s32(jj, ll)); break;
         default: assert(!"unsupported src data type");
     }
-};
+}
 
 template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::load_src_avg_op(
@@ -512,7 +512,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::load_src_avg_op(
         case u8: vpmovzxbd(vr_src, ptr[aux_reg_src_w + offset]); break;
         default: assert(!"unsupported src data type");
     }
-};
+}
 
 template <cpu_isa_t isa>
 void jit_uni_i8i8_pooling_fwd_ker_t<isa>::load_src(int jj, int ll, int c_tail) {

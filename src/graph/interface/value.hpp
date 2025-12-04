@@ -117,7 +117,7 @@ public:
 
         bool operator==(const consumer_t &c) const {
             return op_ == c.op_ && offset_ == c.offset_;
-        };
+        }
 
         op_t &get_op() const { return *op_; }
 

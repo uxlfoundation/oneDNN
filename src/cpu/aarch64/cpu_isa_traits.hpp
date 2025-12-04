@@ -216,7 +216,7 @@ inline int isa_max_vlen(cpu_isa_t isa) {
         return cpu_isa_traits<sve_128>::vlen;
     else
         return 0;
-};
+}
 
 // SVE length in bytes
 inline uint64_t get_sve_length() {
@@ -246,7 +246,7 @@ inline int isa_num_vregs(cpu_isa_t isa) {
         return cpu_isa_traits<sve_128>::n_vregs;
     else
         return 0;
-};
+}
 
 } // namespace
 

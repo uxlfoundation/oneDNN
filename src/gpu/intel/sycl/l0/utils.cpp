@@ -103,7 +103,7 @@ std::string to_string(ze_result_t r) {
         default: return std::to_string((int)r);
     }
 #undef ZE_STATUS_CASE
-};
+}
 
 #define ZE_CHECK_COMMON(f, retval) \
     do { \

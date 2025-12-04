@@ -602,7 +602,7 @@ status_t init_brgemm_kernel(x64::brgemm_desc_t *desc, x64::cpu_isa_t isa,
     CHECK(safe_ptr_assign<x64::brgemm_kernel_t>(ker, _t_ptr));
 
     return status::success;
-};
+}
 
 status_t rnn_brgemm_t<prop_kind::forward>::brgemm_rnn_init_tiles(
         brgemm_desc_t *desc_array, dim_t size, brgemm_pallete_t pallete) {

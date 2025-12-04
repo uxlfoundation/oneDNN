@@ -163,11 +163,11 @@ public:
 
     void force_emulate64() { emu_strategy_.emulate64 = true; }
 
-    reg_allocator_t &ra() { return ra_; };
-    const reg_allocator_t &ra() const { return ra_; };
+    reg_allocator_t &ra() { return ra_; }
+    const reg_allocator_t &ra() const { return ra_; }
 
-    expr_binding_t &expr_binding() { return expr_binding_; };
-    const expr_binding_t &expr_binding() const { return expr_binding_; };
+    expr_binding_t &expr_binding() { return expr_binding_; }
+    const expr_binding_t &expr_binding() const { return expr_binding_; }
 
     ngen::Subregister grid_ids[3] = {r0.ud(1), r0.ud(6), r0.ud(7)};
 

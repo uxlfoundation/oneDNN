@@ -49,7 +49,7 @@ static inline float linear_weight(int i, dim_t x, dim_t y_max, dim_t x_max) {
     float s_trunc = std::trunc(s);
     float w = nstl::abs(s - s_trunc);
     return i == 0 ? 1.f - w : w;
-};
+}
 
 struct linear_coeffs_t {
     linear_coeffs_t(dim_t y, dim_t y_max, dim_t x_max) {

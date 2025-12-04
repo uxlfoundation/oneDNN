@@ -619,7 +619,7 @@ inline int get_dims_mask(const dims_t dims1, const dims_t dims2, int ndims,
         mask += dims1[d] == dims2[d] ? mask_bit : 0;
     }
     return mask;
-};
+}
 
 // The function can be used to get dimensions for memory descriptors or
 // dimensions for logical offset. First ones are happy to have ones when mask

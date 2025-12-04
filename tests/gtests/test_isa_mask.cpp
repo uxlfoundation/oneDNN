@@ -72,7 +72,7 @@ protected:
 
 TEST_P(isa_enumeration_test_t, IsaEnumerationTests) {
     Test();
-};
+}
 
 INSTANTIATE_TEST_SUITE_P(TestIsaEnums, isa_enumeration_test_t,
         ::testing::ValuesIn(cpu_isa_list()));

@@ -375,7 +375,7 @@ private:
     rnn_cell_execution_sig(cell_execution_gru_lbr) override;
     rnn_merged_layer_execution_sig(merged_layer_brgemm) override {
         return dnnl_runtime_error;
-    };
+    }
 };
 
 using ref_rnn_common_fwd_f32_t = ref_rnn_common_t<prop_kind::forward,

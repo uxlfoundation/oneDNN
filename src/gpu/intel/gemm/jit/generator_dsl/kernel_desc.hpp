@@ -53,7 +53,7 @@ inline void fixup_dsl_strategy(GEMMStrategy &strategy) {
         strategy.kParallelLocal = false;
         strategy.kInterleave = false;
     }
-};
+}
 
 } // namespace gemmstone
 

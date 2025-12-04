@@ -113,8 +113,8 @@ class match_context_t {
 public:
     // create a inherited context
     match_context_t(match_context_t *p_parent_ctx, pb_node_t *p_graph);
-    match_context_t *get_parent_context() { return parent_ctx; };
-    pb_graph_t *get_graph() { return graph_; };
+    match_context_t *get_parent_context() { return parent_ctx; }
+    pb_graph_t *get_graph() { return graph_; }
 
     graph_in_port_map in_port_map;
     graph_out_port_map out_port_map;
@@ -230,7 +230,7 @@ public:
             std::unordered_map<op_t *, pb_op_t *> &matched_op_map);
     std::unordered_map<op_t *, pb_op_t *> get_updated_op_map() const {
         return updated_op_map_;
-    };
+    }
     //
     // If we have touched the upper boundary of the pattern
     // graph, it's time to terminate the recursion.
@@ -242,8 +242,8 @@ public:
     bool match_commutative_inputs();
     bool match_non_commutative_inputs();
     bool match_variadic_inputs();
-    pb_node_t *get_node() const { return node_; };
-    op_t *get_op() const { return op_; };
+    pb_node_t *get_node() const { return node_; }
+    op_t *get_op() const { return op_; }
 
 protected:
     op_t *op_;
@@ -263,9 +263,9 @@ public:
             std::unordered_map<op_t *, pb_op_t *> &matched_op_map);
     std::unordered_map<op_t *, pb_op_t *> get_updated_op_map() const {
         return updated_op_map_;
-    };
-    pb_node_t *get_node() const { return node_; };
-    op_t *get_op() const { return op_; };
+    }
+    pb_node_t *get_node() const { return node_; }
+    op_t *get_op() const { return op_; }
     bool get_optional_case_status() const { return is_optional_case_; }
     //
     // If we have touched the lower boundary of the pattern

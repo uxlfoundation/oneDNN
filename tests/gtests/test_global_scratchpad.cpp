@@ -101,6 +101,6 @@ HANDLE_EXCEPTIONS_FOR_TEST(global_scratchpad_t, TestGlobalScratchpad) {
     global_conv_ctx2.Setup(src2, wei2, dst2, str2, dil2, pad_l2, pad_r2);
 
     // if something goes wrong, test should return 139 on Linux.
-};
+}
 
 } // namespace dnnl

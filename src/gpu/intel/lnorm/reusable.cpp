@@ -359,7 +359,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     compute::nd_range_t stat_nd_range = rt_conf.stat_params.nd_range;
     return parallel_for(ctx, stat_nd_range, kernel_, stat_arg_list);
-};
+}
 
 } // namespace lnorm
 } // namespace intel

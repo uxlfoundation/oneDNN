@@ -213,7 +213,7 @@ void jit_avx2_1x1_conv_kernel_f32_t::apply_postops(
         }
         L(store_nopost_ops);
     }
-};
+}
 
 void jit_avx2_1x1_conv_kernel_f32_t::generate_reduce_loop(
         int load_loop_blk, int ur) {

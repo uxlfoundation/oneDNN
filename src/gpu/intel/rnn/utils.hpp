@@ -668,7 +668,7 @@ struct scratch_t : public data_helper_t {
         return conf_.n_iter_scratch_gates != 1
                 ? iter * conf_.mb * conf_.scratch_gates_ld
                 : 0;
-    };
+    }
 
     const mst *gates() const {
         // Reuse diff_gates_ when possible to reduce memory consumption
@@ -691,7 +691,7 @@ struct scratch_t : public data_helper_t {
         return conf_.n_iter_scratch_gates != 1
                 ? iter * conf_.mb * conf_.scratch_diff_gates_ld
                 : 0;
-    };
+    }
     const mst *diff_gates() const { return diff_gates_.get(); }
 
     sub_buffer_t diff_gates(dim_t iter) const {

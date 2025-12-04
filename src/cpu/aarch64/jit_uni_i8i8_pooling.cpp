@@ -203,7 +203,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sve_512>::load_src_max_op(
         add_imm(X_DEFAULT_ADDR, aux_reg_src_w, offset, X_TMP_0);
         ldr(vreg_src(jj), ptr(X_DEFAULT_ADDR));
     }
-};
+}
 
 template <>
 void jit_uni_i8i8_pooling_fwd_ker_t<sve_512>::load_src_avg_op(
@@ -255,7 +255,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sve_512>::load_src_avg_op(
             break;
         default: assert(!"unsupported src data type");
     }
-};
+}
 
 template <cpu_isa_t isa>
 void jit_uni_i8i8_pooling_fwd_ker_t<isa>::load_src(int jj, int ll, int c_tail) {

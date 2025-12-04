@@ -68,7 +68,7 @@ pm::pb_op_t *conv_bias(const std::shared_ptr<pb_graph_t> &pgraph,
     conv->append_decision_function(
             grouped ? check_grouped<true> : check_grouped<false>);
     return conv_bias_dst;
-};
+}
 
 pm::pb_op_t *conv_bias_relu(const std::shared_ptr<pb_graph_t> &pgraph,
         pm::pb_op_t *input, bool grouped = false, bool use_biasadd = false) {
@@ -92,7 +92,7 @@ pm::pb_op_t *conv_bias_relu(const std::shared_ptr<pb_graph_t> &pgraph,
     pm::pb_op_t *relu = pgraph->append_op(
             graph::op_kind::ReLU, in_edges_t {in_edge(0, conv_bias_dst, 0)});
     return relu;
-};
+}
 
 pm::pb_op_t *conv_bias_add_relu(const std::shared_ptr<pb_graph_t> &pgraph,
         pm::pb_op_t *input, pm::pb_op_t *post_src, bool grouped = false,
@@ -121,7 +121,7 @@ pm::pb_op_t *conv_bias_add_relu(const std::shared_ptr<pb_graph_t> &pgraph,
     pm::pb_op_t *relu = pgraph->append_op(
             graph::op_kind::ReLU, in_edges_t {in_edge(0, add, 0)});
     return relu;
-};
+}
 
 pm::pb_op_t *int8_conv_bias(const std::shared_ptr<pb_graph_t> &pgraph,
         pm::pb_op_t *input, bool grouped = false, bool use_biasadd = false) {
@@ -162,7 +162,7 @@ pm::pb_op_t *int8_conv_bias(const std::shared_ptr<pb_graph_t> &pgraph,
     quant_dst->append_decision_function(is_int8_quantization);
 
     return quant_dst;
-};
+}
 
 pm::pb_op_t *int8_conv_bias_relu(const std::shared_ptr<pb_graph_t> &pgraph,
         pm::pb_op_t *input, bool grouped = false, bool use_biasadd = false) {
@@ -206,7 +206,7 @@ pm::pb_op_t *int8_conv_bias_relu(const std::shared_ptr<pb_graph_t> &pgraph,
     quant_dst->append_decision_function(is_int8_quantization);
 
     return quant_dst;
-};
+}
 
 pm::pb_op_t *int8_conv_bias_add_relu(const std::shared_ptr<pb_graph_t> &pgraph,
         pm::pb_op_t *input, pm::pb_op_t *post_src, bool grouped = false,
@@ -263,7 +263,7 @@ pm::pb_op_t *int8_conv_bias_add_relu(const std::shared_ptr<pb_graph_t> &pgraph,
 
         return quant_dst;
     }
-};
+}
 
 // The F(x)+x basic residual block
 pm::pb_op_t *int8_identical_basic_resblock(
@@ -274,7 +274,7 @@ pm::pb_op_t *int8_identical_basic_resblock(
     pm::pb_op_t *quant_dst1 = int8_conv_bias_add_relu(
             pgraph, quant_dst0, input, grouped, use_biasadd);
     return quant_dst1;
-};
+}
 
 // The F(x)+G(x) basic residual block
 pm::pb_op_t *int8_convolutional_basic_resblock(
@@ -287,7 +287,7 @@ pm::pb_op_t *int8_convolutional_basic_resblock(
     pm::pb_op_t *quant_dst2 = int8_conv_bias_add_relu(
             pgraph, quant_dst0, quant_dst1, grouped, use_biasadd);
     return quant_dst2;
-};
+}
 
 // The F(x)+x bottleneck residual block
 pm::pb_op_t *int8_identical_bottleneck_resblock(
@@ -301,7 +301,7 @@ pm::pb_op_t *int8_identical_bottleneck_resblock(
     pm::pb_op_t *quant_dst2 = int8_conv_bias_add_relu(
             pgraph, quant_dst1, input, false, use_biasadd, f32_output);
     return quant_dst2;
-};
+}
 
 // The F(x)+G(x) bottleneck residual block
 pm::pb_op_t *int8_convolutional_bottleneck_resblock(
@@ -315,7 +315,7 @@ pm::pb_op_t *int8_convolutional_bottleneck_resblock(
     pm::pb_op_t *quant_dst3 = int8_conv_bias_add_relu(
             pgraph, quant_dst1, quant_dst2, false, use_biasadd);
     return quant_dst3;
-};
+}
 
 pm::pb_op_t *int8_convolutional_bottleneck_resblock_v2(
         const std::shared_ptr<pb_graph_t> &pgraph, pm::pb_op_t *input,
@@ -329,7 +329,7 @@ pm::pb_op_t *int8_convolutional_bottleneck_resblock_v2(
     pm::pb_op_t *quant_dst3 = int8_conv_bias_add_relu(
             pgraph, input, quant_dst2, grouped, use_biasadd);
     return quant_dst3;
-};
+}
 
 pm::pb_op_t *convolutional_bottleneck_resblock(
         const std::shared_ptr<pb_graph_t> &pgraph, pm::pb_op_t *input,
@@ -340,7 +340,7 @@ pm::pb_op_t *convolutional_bottleneck_resblock(
     pm::pb_op_t *dst3
             = conv_bias_add_relu(pgraph, dst1, dst2, grouped, use_biasadd);
     return dst3;
-};
+}
 
 pm::pb_op_t *identical_bottleneck_resblock(
         const std::shared_ptr<pb_graph_t> &pgraph, pm::pb_op_t *input,
@@ -350,7 +350,7 @@ pm::pb_op_t *identical_bottleneck_resblock(
     pm::pb_op_t *dst2
             = conv_bias_add_relu(pgraph, dst1, input, grouped, use_biasadd);
     return dst2;
-};
+}
 
 } // namespace
 

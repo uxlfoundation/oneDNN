@@ -90,7 +90,7 @@ struct gws_indexing_term_t {
 
         bool operator==(const compile_params_t &other) const {
             return op == other.op && gws_idx == other.gws_idx;
-        };
+        }
 
         std::string str() const {
             stringstream_t ss;
@@ -112,7 +112,7 @@ struct gws_indexing_term_t {
         bool operator==(const runtime_params_t &other) const {
             return size == other.size && stride == other.stride
                     && block == other.block;
-        };
+        }
         dim_t size;
         stride_t stride;
         dim_t block;
@@ -123,7 +123,7 @@ struct gws_indexing_term_t {
     bool operator==(const gws_indexing_term_t &other) const {
         return compile_params_ == other.compile_params_
                 && runtime_params_ == other.runtime_params_;
-    };
+    }
     gws_indexing_term_t(gws_op_t op, size_t gws_idx, dim_t size,
             stride_t stride, dim_t block)
         : compile_params_(op, gws_idx), runtime_params_(size, stride, block) {};
@@ -279,8 +279,8 @@ public:
             rt_params.strides[i] = 1;
             rt_params.blocks[i] = 1;
         }
-    };
-    dispatch_gws_rt_params_t get() const { return rt_params; };
+    }
+    dispatch_gws_rt_params_t get() const { return rt_params; }
 
     std::string str() const {
         stringstream_t ss;
@@ -366,10 +366,10 @@ struct named_buffer_t : public memory_desc_t {
         gpu_assert(this->name.size() <= MAX_BUFFER_NAME_LENGTH);
         gpu_assert(format_kind == format_kind::blocked);
         gpu_assert(static_cast<size_t>(md.ndims) <= dim_ids.size());
-    };
+    }
     named_buffer_t(const char *name) : name(name) {
         format_kind = format_kind::blocked;
-    };
+    }
 
     // Copy the named_buffer_t, while changing the name
     named_buffer_t(const char *name, const named_buffer_t &buf)
@@ -564,10 +564,10 @@ public:
 
     const dispatch_compile_params_t &get_compile_params() const {
         return compile_params;
-    };
+    }
     const dispatch_runtime_params_t &get_runtime_params() const {
         return runtime_params;
-    };
+    }
 
 private:
     dispatch_compile_params_t compile_params;

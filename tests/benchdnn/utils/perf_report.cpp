@@ -36,7 +36,7 @@ void base_perf_report_t::report(res_t *res, const char *prb_str) const {
 
     std::string str = ss.str();
     BENCHDNN_PRINT(0, "%s\n", str.c_str());
-};
+}
 
 void base_perf_report_t::dump_engine(std::ostream &s) const {
     s << engine_tgt_kind;

@@ -124,7 +124,7 @@ std::vector<int> supported_exec_args(dir_t dir) {
             DNNL_ARG_DIFF_DST,
     };
     return (dir & FLAG_FWD) ? exec_fwd_args : exec_bwd_args;
-};
+}
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const prb_t *prb, res_t *res,

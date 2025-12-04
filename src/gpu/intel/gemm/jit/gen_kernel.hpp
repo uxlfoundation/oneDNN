@@ -63,15 +63,15 @@ static inline gemmstone::Type convert_dnnl_to_kernel_type(data_type_t type) {
 struct gen_desc_t {
     friend struct gen_kernel_t;
 
-    const gemmstone::GEMMProblem *problem() const { return &problem_; };
-    const gemmstone::GEMMStrategy *strategy() const { return &strategy_; };
+    const gemmstone::GEMMProblem *problem() const { return &problem_; }
+    const gemmstone::GEMMStrategy *strategy() const { return &strategy_; }
 
     const gemmstone::CommonDriverInfo *driver_info() const {
         return &driver_info_;
-    };
+    }
     const gemmstone::EvaluateAuxOutput *aux_params() const {
         return &aux_params_;
-    };
+    }
 
     compute::scalar_type_t scalar_type() const;
 
@@ -88,7 +88,7 @@ struct gen_desc_t {
     const gemmstone::kcatalog::Entry &entry() const {
         assert(entry_ != nullptr);
         return *entry_;
-    };
+    }
 
     void set_entry(const gemmstone::kcatalog::Entry *entry) { entry_ = entry; }
 

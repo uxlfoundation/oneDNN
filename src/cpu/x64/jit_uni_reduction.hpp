@@ -40,7 +40,7 @@ struct jit_uni_reduction_t : public primitive_t {
 
         status_t init(engine_t *engine);
 
-        const jit_reduction_conf_t &get_conf() const { return conf_; };
+        const jit_reduction_conf_t &get_conf() const { return conf_; }
 
     private:
         bool fill_post_ops_conf();

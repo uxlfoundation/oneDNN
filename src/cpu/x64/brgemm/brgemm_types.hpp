@@ -370,8 +370,8 @@ struct brgemm_desc_t {
 
     void set_attr(const primitive_attr_t *ppdattr);
     void set_dst_md(const memory_desc_t *pdst_md);
-    const primitive_attr_t *attr() const { return attr_; };
-    const memory_desc_t *dst_md() const { return dst_md_; };
+    const primitive_attr_t *attr() const { return attr_; }
+    const memory_desc_t *dst_md() const { return dst_md_; }
 
     // return 'true' when FP8 MAC is not natively supported by the CPU ISA
     bool is_fp8_via_convert() const {
@@ -577,8 +577,8 @@ struct brgemm_desc_t {
 private:
     primitive_attr_t *attr_ {nullptr};
     memory_desc_t *dst_md_ {nullptr};
-    void set_attr_null() { attr_ = nullptr; };
-    void set_dst_md_null() { dst_md_ = nullptr; };
+    void set_attr_null() { attr_ = nullptr; }
+    void set_dst_md_null() { dst_md_ = nullptr; }
 
     void cleanup_attr();
     void cleanup_dst_md();

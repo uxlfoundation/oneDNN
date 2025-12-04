@@ -121,7 +121,7 @@ struct prb_t : public desc_t {
     void count_ops() {
         if (ops > 0) return;
         ops = 2. * mb * ic * oc * id * ih * iw;
-    };
+    }
     int64_t count_n_acc() const {
         return (dir & FLAG_WEI) ? mb : id * ih * iw * ic;
     }

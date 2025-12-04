@@ -287,7 +287,7 @@ dim_t get_weights_off(const memory_desc_wrapper &wei_d, bool with_groups,
     }
 
     return 0;
-};
+}
 
 template <data_type_t wei_type>
 static void compute_src_zp_compensation(const exec_ctx_t &ctx,

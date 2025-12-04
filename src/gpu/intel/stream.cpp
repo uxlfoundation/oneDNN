@@ -87,7 +87,7 @@ status_t stream_t::zero_pad(const memory_t *memory, const exec_ctx_t &ctx) {
     } else {
         return zero_pad_primitive->execute(zero_pad_ctx);
     }
-};
+}
 
 status_t stream_t::notify_profiling_complete() const {
     return profiler().notify_profiling_complete();

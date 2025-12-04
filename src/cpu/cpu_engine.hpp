@@ -163,7 +163,7 @@ public:
         dnnl::impl::cpu::aarch64::acl_thread_utils::set_acl_threading();
 #endif
         return status::success;
-    };
+    }
 };
 
 engine_t *get_service_engine();

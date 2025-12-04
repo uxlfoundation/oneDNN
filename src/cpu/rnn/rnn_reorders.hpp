@@ -55,7 +55,7 @@ static inline void init_dims(dim_t &L, dim_t &D, dim_t &I, dim_t &G, dim_t &O,
         O = dims[3];
     }
     assert(G != 0 && O != 0);
-};
+}
 
 template <data_type_t type_i>
 static inline void quantize_igo(int8_t *scratch_quantized,

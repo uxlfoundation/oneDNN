@@ -108,7 +108,7 @@ public:
         if (kernels.size() != 1) return status::runtime_error;
         kernel = std::move(kernels[0]);
         return status::success;
-    };
+    }
 
     status_t get_zero_pad_primitive(
             impl::primitive_t *&result, const resource_mapper_t *&resources) {
@@ -128,7 +128,7 @@ public:
         result = zero_pad_primitive_.get();
         resources = &zero_pad_resources_;
         return result != nullptr ? status::success : status::unimplemented;
-    };
+    }
 
     bool mayiuse_f16_accumulator_with_f16() const override {
         // XeHPC+ must use f32 accumulation with f16 operations as documented.

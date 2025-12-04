@@ -43,7 +43,7 @@ constexpr impl_list_item_t impl_list[] = REG_REDUCTION_P({
 const impl_list_item_t *get_reduction_impl_list(const reduction_desc_t *desc) {
     UNUSED(desc);
     return impl_list;
-};
+}
 
 } // namespace cpu
 } // namespace impl

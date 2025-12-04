@@ -146,7 +146,7 @@ struct relative_idx_t {
     constexpr relative_idx_t(int8_t v) : value_(v) {};
     constexpr bool operator==(const relative_idx_t &o) const {
         return value_ == o.value_;
-    };
+    }
     constexpr bool is_innermost() const { return value_ == 0; }
     constexpr bool is_unset() const { return value_ < 0; }
     std::string str() const {
@@ -686,7 +686,7 @@ struct gpu_post_ops_t {
 #else
     bool operator==(const gpu_post_ops_t &other) const {
         return serialization_stream_t(*this) == serialization_stream_t(other);
-    };
+    }
 #endif
 
     size_t len() const { return ops_.size(); }

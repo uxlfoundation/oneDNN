@@ -508,7 +508,7 @@ void jit_uni_pool_kernel_t<isa>::init_scratchpad(
 
 static int reg_ind(int shift, int bc, int j, int ur_bc, int ur_w) noexcept {
     return shift * ur_bc * ur_w + bc * ur_w + j;
-};
+}
 
 template <cpu_isa_t isa>
 inline void jit_uni_pool_kernel_t<isa>::put_one_in_vmm() {

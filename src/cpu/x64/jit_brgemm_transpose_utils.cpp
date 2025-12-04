@@ -87,7 +87,7 @@ private:
     void kmovw(Opmask k, unsigned w) {
         mov(regw_tmp, w);
         jit_generator_t::kmovw(k, regw_tmp);
-    };
+    }
     void transpose_16x16(int nrows, int ncolumns);
     void transpose_16x16_avx2(int nrows, int ncolumns);
     void transpose_ker(int nrows, int ncolumns);

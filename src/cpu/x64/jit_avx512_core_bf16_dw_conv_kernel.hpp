@@ -46,7 +46,7 @@ private:
     const Xbyak::AddressFrame &vmmword = zword;
 
     const int acc_idx_start = 2;
-    inline int get_max_regs() const { return isa_has_bf16(jcp.isa) ? 30 : 25; };
+    inline int get_max_regs() const { return isa_has_bf16(jcp.isa) ? 30 : 25; }
 
     // dw convolution
     reg64_t reg_input = r8;
@@ -147,7 +147,7 @@ private:
     using reg64_t = const Xbyak::Reg64;
 
     const int acc_idx_start = 2;
-    inline int get_max_regs() const { return isa_has_bf16(jcp.isa) ? 30 : 25; };
+    inline int get_max_regs() const { return isa_has_bf16(jcp.isa) ? 30 : 25; }
 
     Xbyak::Zmm zmm_ker_reg = Xbyak::Zmm(0);
     Xbyak::Zmm zmm_dst_reg = Xbyak::Zmm(1);
@@ -230,7 +230,7 @@ private:
     const int block_size_ = 15;
 
     const int idx_start = 2;
-    inline int get_max_regs() const { return isa_has_bf16(jcp.isa) ? 30 : 25; };
+    inline int get_max_regs() const { return isa_has_bf16(jcp.isa) ? 30 : 25; }
 
     /* Offset between input and accummulators is 3, therefore, assume 'kw'
      * is no larger than 3*/

@@ -92,7 +92,7 @@ dnn_mem_t setup_compensation_memory(const prb_t *prb, flag_bit_t flag) {
         m = dnn_mem_t(md, get_cpu_engine(), /* prefill = */ false);
     }
     return m;
-};
+}
 
 int compare_compensation(const prb_t *prb, dnn_mem_map_t &mem_map,
         dnn_mem_map_t &ref_mem_map, res_t *res) {
@@ -512,7 +512,7 @@ std::vector<int> supported_exec_args(dir_t dir) {
             DNNL_ARG_TO,
     };
     return exec_args;
-};
+}
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const prb_t *prb, res_t *res,

@@ -421,7 +421,7 @@ enum class send_kind_t { load, prefetch, store };
 void scatter_send(const tensor_t &t, const global_tensor_t &g,
         send_kind_t &op_kind, const icoord_t &base, const send_hint_t &hint) {
     gpu_warning() << "Scatter messages are not yet implemented";
-};
+}
 
 layout_t prefetch_layout(const global_tensor_t &g, const idx_t &w_idx) {
     std::vector<layout::block_t> blocks;

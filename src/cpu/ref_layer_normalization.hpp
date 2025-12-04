@@ -91,7 +91,7 @@ struct ref_layer_normalization_fwd_t : public primitive_t {
         CHECK(ref_post_ops->init(pd()->dst_md()));
 
         return status::success;
-    };
+    }
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);

@@ -222,19 +222,19 @@ struct send_hint_t {
         return -1;
     }
 
-    dim_t block_rem() const { return ref_block_size_ / size(); };
-    dim_t width_rem() const { return ref_2d_width() / size(); };
+    dim_t block_rem() const { return ref_block_size_ / size(); }
+    dim_t width_rem() const { return ref_2d_width() / size(); }
     dim_t height_rem() const {
         dim_t height = size() / ref_2d_width();
         return !!height ? block_height / height : height;
-    };
+    }
     dim_t surface_pitch() const {
         dim_t val = 0;
         for (auto &s : strides_) {
             if (is_h_dim(s.dim)) { val = s.stride; }
         }
         return val * type_size_;
-    };
+    }
 
     dim_t surface_width() const {
         dim_t val = 0;
@@ -242,7 +242,7 @@ struct send_hint_t {
             if (is_w_dim(s.dim)) val = hint_.at(s.dim) * s.stride;
         }
         return val * type_size_;
-    };
+    }
 
 private:
     send_type_id_t type_id_;
@@ -525,7 +525,7 @@ public:
         send_matcher_t matcher(pattern);
         matcher.visit(stmt);
         return matcher.is_match_;
-    };
+    }
 
     void _visit(const func_call_t &obj) override {
         if (!is_func_call<send_t>(obj)) return;

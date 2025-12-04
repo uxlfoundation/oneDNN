@@ -71,7 +71,7 @@ struct jit_uni_x8s8s32x_1x1_deconvolution_fwd_t : public primitive_t {
             }
 
             return status::unimplemented;
-        };
+        }
 
         status_t init(engine_t *engine) {
             using namespace data_type;

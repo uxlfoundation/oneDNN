@@ -82,9 +82,9 @@ struct gemm_desc_t : public op_desc_t {
                 ? transpose::trans
                 : transpose::notrans;
     }
-    transpose_t transa() const { return get_trans(b_desc); };
-    transpose_t transb() const { return get_trans(a_desc); };
-    transpose_t transc() const { return get_trans(c_desc); };
+    transpose_t transa() const { return get_trans(b_desc); }
+    transpose_t transb() const { return get_trans(a_desc); }
+    transpose_t transc() const { return get_trans(c_desc); }
     transpose_t trans_bias() const { return get_trans(bias_desc); }
 
     dnnl_dim_t batch() const {
@@ -112,11 +112,11 @@ struct gemm_desc_t : public op_desc_t {
     }
 
     /** Stride between 2 matrices A in a batch. */
-    dnnl_dim_t stride_a(int dim = 0) const { return get_stride(b_desc, dim); };
+    dnnl_dim_t stride_a(int dim = 0) const { return get_stride(b_desc, dim); }
     /** Stride between 2 matrices B in a batch. */
-    dnnl_dim_t stride_b(int dim = 0) const { return get_stride(a_desc, dim); };
+    dnnl_dim_t stride_b(int dim = 0) const { return get_stride(a_desc, dim); }
     /** Stride between 2 matrices C in a batch. */
-    dnnl_dim_t stride_c(int dim = 0) const { return get_stride(c_desc, dim); };
+    dnnl_dim_t stride_c(int dim = 0) const { return get_stride(c_desc, dim); }
 
     // This assumes that one of the dimensions has strides 1
     static dnnl_dim_t get_ld(const memory_desc_t &md) {

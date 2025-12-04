@@ -198,7 +198,7 @@ cl_int maybe_print_debug_info(
     }
     MAYBE_UNUSED(err);
     return err_;
-};
+}
 
 inline status_t fuse_microkernels(cl_context context, cl_device_id device,
         xpu::ocl::wrapper_t<cl_program> &program, const char *code) {

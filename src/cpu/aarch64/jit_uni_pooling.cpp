@@ -166,7 +166,7 @@ static void trans_exec(trans_wrapper_t *trans, trans_wrapper_t *trans_tail,
         trans->exec(inp, out);
     else
         trans_tail->exec(inp, out);
-};
+}
 
 template <typename src_data_t, typename dst_data_t>
 struct transpose_ncsp_to_block_fmt_t {

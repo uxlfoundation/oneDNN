@@ -219,21 +219,19 @@ private:
             return idx;
         }
 
-        Xbyak::Zmm vreg_dst(int iter) {
-            return Xbyak::Zmm(vreg_dst_idx(iter));
-        };
+        Xbyak::Zmm vreg_dst(int iter) { return Xbyak::Zmm(vreg_dst_idx(iter)); }
 
         Xbyak::Ymm vreg_dst_ymm(int iter) {
             return Xbyak::Ymm(vreg_dst_idx(iter));
-        };
+        }
 
         Xbyak::Zmm vreg_prev_dst(int iter) {
             return Xbyak::Zmm(vreg_prev_dst_idx(iter));
-        };
+        }
 
         Xbyak::Ymm vreg_prev_dst_ymm(int iter) {
             return Xbyak::Ymm(vreg_prev_dst_idx(iter));
-        };
+        }
     };
 
     acc_data_t beta_;

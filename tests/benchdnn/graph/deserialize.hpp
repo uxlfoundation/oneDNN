@@ -115,7 +115,7 @@ struct deserialized_graph_t {
     void load(const std::string &pass_config_json);
 
     dnnl::graph::graph to_graph(const graph_fpmath_mode_t &fpmath_mode) const;
-    const std::vector<size_t> &get_input_ports() const { return input_ports_; };
+    const std::vector<size_t> &get_input_ports() const { return input_ports_; }
 
     std::vector<deserialized_op_t> ops_;
     // record all tensors id and its dims

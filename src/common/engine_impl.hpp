@@ -56,7 +56,7 @@ public:
     }
 
 #ifdef ONEDNN_BUILD_GRAPH
-    void *get_allocator() const { return (void *)(&allocator_); };
+    void *get_allocator() const { return (void *)(&allocator_); }
     void set_allocator(graph::allocator_t *alloc) { allocator_ = *alloc; }
 #endif
 

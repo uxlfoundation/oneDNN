@@ -119,7 +119,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
 
         inline int maybe_invert(int k, int K) const {
             return desc()->use_inversion ? K - 1 - k : k;
-        };
+        }
 
         void init_batch(int icc, const char *src_base, const char *wei_base,
                 int n_ic_blocks, int ic_block_s, int iid_b, int iih_b,
@@ -206,7 +206,7 @@ private:
 
     inline int maybe_invert_range(int k, int k_inv, int K) const {
         return pd()->desc()->use_inversion ? K - k_inv : k;
-    };
+    }
 
     void get_kw_range(
             int ow, int &kw_s, int &kw_full_s, int &kw_full_e, int &kw_e) const;

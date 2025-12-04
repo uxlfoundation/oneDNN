@@ -71,7 +71,7 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
 
     ~jit_uni_rnn_postgemm_t() override { delete bf16_emu_; }
 
-    bool is_projection() const { return projection_; };
+    bool is_projection() const { return projection_; }
 
     virtual status_t init(data_type_t src_data_t) {
         // no need to check as bf16 is guarded for avx512 and above in rnn primtive
@@ -431,7 +431,7 @@ protected:
     void init_regs(size_t vlen, size_t tail_elements = 0) {
         assert(pd_->weights_md()->data_type != data_type::s8);
         return init_regs(nullptr, vlen, tail_elements);
-    };
+    }
 
     void init_table(size_t vlen) {
         if (pd_->weights_md()->data_type != data_type::s8) return;

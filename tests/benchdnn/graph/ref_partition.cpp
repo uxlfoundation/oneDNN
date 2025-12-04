@@ -68,7 +68,7 @@ ref_partition_t::ref_partition_t(const deserialized_graph_t &dg,
     for (const auto &out : outs) {
         partition_out_ids_.emplace_back(out.get_id());
     }
-};
+}
 
 int ref_partition_t::init_ref(
         const std::vector<size_t> &graph_in_ports, res_t *res) {

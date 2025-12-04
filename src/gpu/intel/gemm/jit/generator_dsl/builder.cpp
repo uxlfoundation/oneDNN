@@ -199,7 +199,7 @@ transform_t get_transform(const MatrixAddressingStrategy &matrix_strategy,
         }
         default: stub(); return {};
     }
-};
+}
 idx_map_t<expr_t> get_strides(
         MatrixLayout layout, std::array<idx_t, 2> pvars, expr_t ld) {
     switch (layout) {

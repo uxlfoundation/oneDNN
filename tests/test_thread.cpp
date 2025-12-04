@@ -184,7 +184,7 @@ public:
         tp_->ScheduleWithHint([=]() { handle_range(0, njobs); }, 0, 1);
 
         counter.Wait();
-    };
+    }
 
     void wait() override {
         // Nothing to do, runtime is synchronous

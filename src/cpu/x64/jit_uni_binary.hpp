@@ -40,7 +40,7 @@ struct jit_uni_binary_t : public primitive_t {
 
         status_t init(engine_t *engine);
 
-        jit_binary_conf_t get_conf() const { return conf_; };
+        jit_binary_conf_t get_conf() const { return conf_; }
 
     private:
         op_t get_op_type(const memory_desc_wrapper &src0_d);

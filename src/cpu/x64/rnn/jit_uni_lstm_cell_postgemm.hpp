@@ -82,7 +82,7 @@ protected:
             host_->uni_vmovups(tmp_vmm, vmm);
         }
         return tmp_vmm;
-    };
+    }
 
     Xbyak::Xmm xmm_backup(const Xbyak::Xmm &xmm) {
         auto tmp_xmm = xmm;
@@ -91,7 +91,7 @@ protected:
             host_->uni_vmovss(tmp_xmm, xmm);
         }
         return tmp_xmm;
-    };
+    }
 
     void vaddps_rhs_op_mem(
             const Vmm &dst, const Vmm &lhs, const Xbyak::Address &rhs_addr) {

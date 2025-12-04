@@ -169,7 +169,7 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
             init_scratchpad();
 
             return status::success;
-        };
+        }
 
         int nthr_; // To not exceed the limit in execute used for set up.
         size_t scratch_size_per_thr_ = 0;

@@ -326,7 +326,7 @@ struct mapped_ptr_t {
 
     ~mapped_ptr_t() {
         if (mem_ && ptr_) mem_->unmap_data(ptr_);
-    };
+    }
 
     operator T *() { return ptr_; }
     operator const T *() const { return ptr_; }
@@ -559,7 +559,7 @@ inline const char *query_impl_info(const_dnnl_primitive_desc_t pd) {
     const char *str;
     dnnl_primitive_desc_query(pd, dnnl_query_impl_info_str, 0, &str);
     return str;
-};
+}
 
 inline dnnl_status_t get_conv_impl_status(
         const_dnnl_primitive_desc_t pd, const char *match_str) {
@@ -568,7 +568,7 @@ inline dnnl_status_t get_conv_impl_status(
     if (strstr(conv_str, match_str) != nullptr)
         return dnnl_status_t::dnnl_success;
     return dnnl_status_t::dnnl_unimplemented;
-};
+}
 
 struct test_convolution_sizes_t {
     test_convolution_sizes_t(memory::dim mb, memory::dim ng, memory::dim ic,

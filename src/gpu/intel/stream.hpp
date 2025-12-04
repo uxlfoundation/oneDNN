@@ -35,9 +35,7 @@ public:
     virtual status_t exit_immediate_mode() { return status::success; }
 
 protected:
-    bool has_zero_pad_primitive() const {
-        return engine()->kind() == dnnl_gpu;
-    };
+    bool has_zero_pad_primitive() const { return engine()->kind() == dnnl_gpu; }
 
     status_t zero_pad(const memory_t *memory, const exec_ctx_t &ctx) override;
 };

@@ -1668,7 +1668,7 @@ status_t simple_common_t<aprop>::execute_(const exec_ctx_t &ctx) const {
             diff_src_iter_c_native_, workspace, shift, scale, dequantize_i));
 
     return status::success;
-};
+}
 // Fix for MSVS warning C4661.
 template <>
 cell_execution_sig(simple_fwd_t::cell_execution);

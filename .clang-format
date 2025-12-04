@@ -100,6 +100,7 @@ PenaltyReturnTypeOnItsOwnLine: 60
 PointerAlignment: Right
 ReferenceAlignment: Pointer
 ReflowComments:  false
+RemoveSemicolon: true
 SortIncludes:    true
 SortUsingDeclarations: true
 SpaceAfterCStyleCast: false

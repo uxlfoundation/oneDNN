@@ -55,7 +55,7 @@ struct event_t final : xpu::event_t {
     void append(const xpu::event_t &event) {
         auto &other = *utils::downcast<const event_t *>(&event);
         events.insert(events.end(), other.events.begin(), other.events.end());
-    };
+    }
 
     std::vector<xpu::ocl::wrapper_t<cl_event>> events;
 };
@@ -80,7 +80,7 @@ struct context_t final : public xpu::context_t {
     void set_deps(std::vector<xpu::ocl::wrapper_t<cl_event>> &&event) {
         events_ = event_t(std::move(event));
     }
-    void set_deps(event_t &&events) { events_ = std::move(events); };
+    void set_deps(event_t &&events) { events_ = std::move(events); }
 
     void append_deps(const xpu::event_t &event) override {
         events_.append(event);

@@ -246,7 +246,7 @@ public:
                     data_size);
         }
         return status::success;
-    };
+    }
 
     status_t create_and_set_convolution_desc(const convolution_pd_t *pd) {
 

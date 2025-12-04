@@ -151,7 +151,7 @@ struct primitive_desc_t : public c_compatible {
                            .has_runtime_dims_or_strides()
                 || memory_desc_wrapper(invariant_dst_md())
                            .has_runtime_dims_or_strides();
-    };
+    }
 
     enum class arg_usage_t { unused, input, output };
     virtual arg_usage_t arg_usage(int arg) const {

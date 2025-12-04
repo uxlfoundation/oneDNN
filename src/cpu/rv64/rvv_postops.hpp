@@ -57,6 +57,9 @@ struct rvv_postops_t {
         post_op_primitives_.clear();
         po_ = local_post_ops;
 
+        const int num_post_ops = local_post_ops.len() - post_op_start_index_;
+        if (num_post_ops > 0) post_op_primitives_.reserve(num_post_ops);
+
         for (int i = post_op_start_index_; i < local_post_ops.len(); i++) {
             auto &po = local_post_ops.entry_[i];
 

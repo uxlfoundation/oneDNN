@@ -302,6 +302,18 @@ DNNL_GRAPH_OP_SCHEMA(dnnl_transpose, 1,
                 .SET_EXECUTABLE_CREATOR(executable_creator<memory_reparser_t>)
                 .SET_ARG_INDICES_GETTER(memory_reparser_t))
 
+DNNL_GRAPH_OP_SCHEMA(dnnl_identity, 1,
+        op_schema_t()
+                .set_num_inputs(1)
+                .set_num_outputs(1)
+                .set_input(0, "data")
+                .set_output(0, "output")
+                .SET_ATTR_IS_CONSTANT // used for constant prop and cache
+                .set_shape_inference_function(infer_identity_output_shape)
+                .SET_LAYOUT_PROPAGATOR(layout_propagator_for_identity)
+                .SET_EXECUTABLE_CREATOR(executable_creator<memory_reparser_t>)
+                .SET_ARG_INDICES_GETTER(memory_reparser_t))
+
 DNNL_GRAPH_OP_SCHEMA(dnnl_convolution, 1,
         op_schema_t()
                 .set_inputs_option(op_schema_t::param_num_option::variadic)

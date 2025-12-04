@@ -81,6 +81,9 @@ int ref_partition_t::init_ref(
         // res should be independent from op to op
         res->state = UNTESTED;
 
+        // End op doesn't need to create ref primitive
+        if (par_op_ref.get().kind_ == "End") continue;
+
         auto ref_prim = ::std::make_shared<ref_primitive_t>(par_op_ref.get());
 
         ref_prims_.emplace(par_op_ref.get().id_, ref_prim);
@@ -201,6 +204,8 @@ int ref_partition_t::init_graph_mem(
 void ref_partition_t::exec_ops(res_t *res) {
     for (const auto &par_op_ref : partition_ops_ref_) {
         const auto &op = par_op_ref.get();
+        // skip End op's execution
+        if (op.kind_ == "End") continue;
         // displace data if needed, before executing the ref_prim
         for (size_t i = 0; i < op.in_lts_.size(); i++) {
             size_t lt_id = op.in_lts_[i].id_;
@@ -352,6 +357,8 @@ int ref_partition_t::check_partition_correctness(
     for (const auto &op : partition_ops_ref_) {
         size_t op_id = op.get().id_;
         const auto &op_kind = op.get().kind_;
+        // End op's correctness check is performed during its producer.
+        if (op_kind == "End") continue;
         const auto &ref_prim = ref_prims_.at(op_id);
 
         // if there is eltwise post-ops or binary div post-ops (GPU test), need

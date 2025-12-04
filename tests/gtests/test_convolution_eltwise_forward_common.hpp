@@ -257,9 +257,9 @@ protected:
                 p.formats.src_format);
         auto c_weights_desc = cd.ng > 1
                 ? create_md({cd.ng, cd.oc / cd.ng, cd.ic / cd.ng, cd.kh, cd.kw},
-                        data_type_wei, p.formats.weights_format)
+                          data_type_wei, p.formats.weights_format)
                 : create_md({cd.oc, cd.ic, cd.kh, cd.kw}, data_type_wei,
-                        p.formats.weights_format);
+                          p.formats.weights_format);
         auto c_dst_desc = create_md({cd.mb, cd.oc, cd.oh, cd.ow}, data_type_dst,
                 p.formats.dst_format);
 
@@ -317,13 +317,13 @@ protected:
 
         auto conv_primitive_desc = with_bias
                 ? convolution_forward::primitive_desc(eng,
-                        prop_kind::forward_inference, p.aalgorithm, c_src_desc,
-                        c_weights_desc, c_bias_desc, c_dst_desc, strides,
-                        dilations, padL, padR, attr)
+                          prop_kind::forward_inference, p.aalgorithm,
+                          c_src_desc, c_weights_desc, c_bias_desc, c_dst_desc,
+                          strides, dilations, padL, padR, attr)
                 : convolution_forward::primitive_desc(eng,
-                        prop_kind::forward_inference, p.aalgorithm, c_src_desc,
-                        c_weights_desc, c_dst_desc, strides, dilations, padL,
-                        padR, attr);
+                          prop_kind::forward_inference, p.aalgorithm,
+                          c_src_desc, c_weights_desc, c_dst_desc, strides,
+                          dilations, padL, padR, attr);
 
         ASSERT_EQ(conv_primitive_desc.get_algorithm(), p.aalgorithm);
         ASSERT_EQ(conv_primitive_desc.get_prop_kind(),

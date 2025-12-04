@@ -51,7 +51,7 @@ public:
     engine_t(
             const ::sycl::device &dev, const ::sycl::context &ctx, size_t index)
         : gpu::intel::engine_t(new xpu::sycl::engine_impl_t(
-                engine_kind::gpu, dev, ctx, index)) {}
+                  engine_kind::gpu, dev, ctx, index)) {}
 
     status_t init() override {
         CHECK(init_impl());

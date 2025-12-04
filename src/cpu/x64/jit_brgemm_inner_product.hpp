@@ -351,10 +351,11 @@ struct brgemm_inner_product_bwd_data_t : public primitive_t {
             auto adj_oc = jbgp_.use_buffer_a
                     ? utils::rnd_up(jbgp_.oc, jbgp_.oc_block)
                     : jbgp_.oc;
-            auto bs = (is_K_tail) ? 1
-                                  : ((is_bs_tail) ? (adj_oc / jbgp_.oc_block)
-                                                          % jbgp_.nb_oc_blocking
-                                                  : jbgp_.nb_oc_blocking);
+            auto bs = (is_K_tail)
+                    ? 1
+                    : ((is_bs_tail) ? (adj_oc / jbgp_.oc_block)
+                                              % jbgp_.nb_oc_blocking
+                                    : jbgp_.nb_oc_blocking);
 
             return bs;
         }
@@ -537,10 +538,11 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
         }
 
         int get_brg_batchsize(bool is_bs_tail, bool is_K_tail) const {
-            auto bs = (is_K_tail) ? 1
-                                  : ((is_bs_tail) ? (jbgp_.os / jbgp_.os_block)
-                                                          % jbgp_.nb_os_blocking
-                                                  : jbgp_.nb_os_blocking);
+            auto bs = (is_K_tail)
+                    ? 1
+                    : ((is_bs_tail) ? (jbgp_.os / jbgp_.os_block)
+                                              % jbgp_.nb_os_blocking
+                                    : jbgp_.nb_os_blocking);
             return bs;
         }
 

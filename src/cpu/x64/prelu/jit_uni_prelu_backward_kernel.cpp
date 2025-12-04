@@ -26,10 +26,10 @@ jit_prelu_backward_kernel_t::jit_prelu_backward_kernel_t(
         const cpu_prelu_bwd_pd_t *pd, const cpu_isa_t &isa, const int vlen,
         const size_t number_vmm_single_compute)
     : jit_prelu_base_kernel_t(isa, vlen,
-            prelu::get_bcast_type(memory_desc_wrapper(pd->diff_src_md(0)),
-                    memory_desc_wrapper(pd->diff_weights_md(0))),
-            memory_desc_wrapper(pd->diff_src_md(0)), number_vmm_single_compute,
-            jit_name())
+              prelu::get_bcast_type(memory_desc_wrapper(pd->diff_src_md(0)),
+                      memory_desc_wrapper(pd->diff_weights_md(0))),
+              memory_desc_wrapper(pd->diff_src_md(0)),
+              number_vmm_single_compute, jit_name())
     , pd_(pd)
     , src_dt_(pd->src_md(0)->data_type)
     , wei_dt_(pd->weights_md(0)->data_type)
@@ -84,7 +84,7 @@ template <typename Vmm>
 jit_uni_prelu_backward_kernel_t<Vmm>::jit_uni_prelu_backward_kernel_t(
         const cpu_prelu_bwd_pd_t *pd, const cpu_isa_t &isa)
     : jit_prelu_backward_kernel_t(pd, isa, vreg_traits_t<Vmm>::vlen,
-            std::is_same<Vmm, Xbyak::Zmm>::value ? 4u : 6u)
+              std::is_same<Vmm, Xbyak::Zmm>::value ? 4u : 6u)
     , saturation_needed_diff_src_(utils::one_of(
               diff_src_dt_, data_type::u8, data_type::s8, data_type::s32))
     , saturation_needed_diff_weights_(utils::one_of(
@@ -95,8 +95,8 @@ jit_uni_prelu_backward_kernel_t<Vmm>::jit_uni_prelu_backward_kernel_t(
               saturation_needed_diff_src_ ? reserve_vmm() : 0)
     , saturation_ubound_diff_weights_(saturation_needed_diff_weights_
                       ? (diff_wei_dt_ == diff_src_dt_
-                                      ? saturation_ubound_diff_src_.getIdx()
-                                      : reserve_vmm())
+                                        ? saturation_ubound_diff_src_.getIdx()
+                                        : reserve_vmm())
                       : 0)
     , vmm_ones_(reserve_vmm())
     , weights_const_vmm_(utils::one_of(bcast_, prelu::bcast::per_oc_n_c_spatial,

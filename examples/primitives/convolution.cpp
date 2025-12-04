@@ -127,7 +127,7 @@ void convolution_example(dnnl::engine::kind engine_kind) {
     auto user_bias_md = bias_dims.empty()
             ? memory::desc()
             : memory::desc(
-                    bias_dims, memory::data_type::f32, memory::format_tag::a);
+                      bias_dims, memory::data_type::f32, memory::format_tag::a);
     auto user_bias_mem = memory(user_bias_md, engine);
 
     // Write data to memory object's handle.

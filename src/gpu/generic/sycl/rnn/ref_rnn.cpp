@@ -818,10 +818,10 @@ status_t ref_rnn_common_base_t::launch_copy(bool fwd, const exec_ctx_t &ctx,
     parallel_for(ctx, cpy_kernel, [&](::sycl::handler &cgh) {
         auto src_mem_arg = input
                 ? utils::downcast<const xpu::sycl::memory_storage_base_t *>(
-                        &input)
+                          &input)
                           ->get_in_memory_arg(ctx.stream(), cgh)
                 : xpu::sycl::memory_storage_base_t::empty_in_memory_arg(
-                        ctx.stream(), cgh);
+                          ctx.stream(), cgh);
         auto dst_mem_arg
                 = utils::downcast<const xpu::sycl::memory_storage_base_t *>(
                         &output)

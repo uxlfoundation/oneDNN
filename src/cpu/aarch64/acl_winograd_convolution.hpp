@@ -29,7 +29,7 @@ namespace aarch64 {
 struct acl_wino_resource_t : public resource_t {
     acl_wino_resource_t()
         : acl_wino_obj_(utils::make_unique<
-                acl_obj_t<arm_compute::NEWinogradConvolutionLayer>>()) {}
+                  acl_obj_t<arm_compute::NEWinogradConvolutionLayer>>()) {}
 
     status_t configure(const acl_conv_conf_t &acp) {
         if (!acl_wino_obj_) return status::out_of_memory;

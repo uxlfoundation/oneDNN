@@ -97,7 +97,7 @@ enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
         try { \
             (f); \
         } catch (const dnnl::error &e) { \
-            if (((s)&CRIT) || ((s)&WARN)) { \
+            if (((s) & CRIT) || ((s) & WARN)) { \
                 bdnn_state_t bs = convert_state(e.status); \
                 (ss)->state = bs.state; \
                 if ((ss)->state == res_state_t::SKIPPED) { \
@@ -117,9 +117,9 @@ enum { CRIT = 0x001, WARN = 0x002, NEED_CLEANUP = 0x004 };
                             __FUNCTION__, __FILE__, __LINE__, e.what()); \
                 } \
                 fflush(0); \
-                if ((s)&CRIT) exit(2); \
+                if ((s) & CRIT) exit(2); \
             } \
-            if (!((s)&NEED_CLEANUP)) return FAIL; \
+            if (!((s) & NEED_CLEANUP)) return FAIL; \
         } \
     } while (0)
 

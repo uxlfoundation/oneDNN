@@ -77,7 +77,7 @@ void jit_avx512_core_bf16_1x1_convolution_fwd_t<dst_type>::execute_forward(
             = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
     const auto &post_ops_binary_rhs_arg_vec_dw = pd()->jcp_dw_ != nullptr
             ? binary_injector::prepare_binary_args(pd()->jcp_dw_->post_ops, ctx,
-                    pd()->jcp_.post_ops.entry_.size() + 1)
+                      pd()->jcp_.post_ops.entry_.size() + 1)
             : std::vector<const void *> {};
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
@@ -962,8 +962,8 @@ void jit_avx512_core_bf16_1x1_convolution_bwd_weights_t<diff_weights_type>::
 
                         p.bias_data = diff_bia
                                 ? &diff_bia[oc_off_idx
-                                        * (is_ddst_layout_nxc ? 1
-                                                              : jcp.oc_block)]
+                                          * (is_ddst_layout_nxc ? 1
+                                                                : jcp.oc_block)]
                                 : nullptr;
                         (*kernel_)(&p);
                     }

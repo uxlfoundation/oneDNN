@@ -306,7 +306,7 @@ void set_conf(conf_t &conf, const desc_t &rd,
             = get_good_ld(conf.arch_ld, conf.gates_ld, conf.scratch_gates_elsz);
     conf.scratch_diff_gates_ld = is_bwd
             ? get_good_ld(
-                    conf.arch_ld, conf.gates_ld, conf.scratch_diff_gates_elsz)
+                      conf.arch_ld, conf.gates_ld, conf.scratch_diff_gates_elsz)
             : 0;
 
     bool is_lstm = rd.cell_kind == dnnl_vanilla_lstm;
@@ -447,9 +447,10 @@ void set_conf(conf_t &conf, const desc_t &rd,
             * conf.scratch_diff_states_ld * aux_elsz;
 
     conf.ws_gates_cell_size = conf.mb * conf.gates_ws_ld * aux_elsz;
-    conf.ws_gates_size = conf.is_training ? (conf.n_layer * conf.n_dir
-                                 * conf.n_iter * conf.ws_gates_cell_size)
-                                          : 0;
+    conf.ws_gates_size = conf.is_training
+            ? (conf.n_layer * conf.n_dir * conf.n_iter
+                      * conf.ws_gates_cell_size)
+            : 0;
 
     // Reduce workspace memory by recomputing gates for bwd
     // TODO: Extend this optimization to other alg_kind.

@@ -123,18 +123,21 @@ inline arg_indices_t dummy_arg_indices_getter(const op_t *op) {
 struct op_executable_t {
     virtual ~op_executable_t() = default;
     virtual void execute(const stream &stream,
-            const std::unordered_map<int, memory> &args) const = 0;
+            const std::unordered_map<int, memory> &args) const
+            = 0;
     virtual status_t reset_engine(const dnnl::engine &engine) = 0;
 #ifdef DNNL_WITH_SYCL
     virtual ::sycl::event execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
-            const std::vector<::sycl::event> &deps) const = 0;
+            const std::vector<::sycl::event> &deps) const
+            = 0;
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     virtual cl_event execute_ocl(const stream &stream,
             const std::unordered_map<int, memory> &args,
-            const std::vector<cl_event> &deps) const = 0;
+            const std::vector<cl_event> &deps) const
+            = 0;
 #endif
 };
 
@@ -177,7 +180,9 @@ inline std::shared_ptr<op_executable_t> executable_creator(
     public: \
         desc_t(const type &pd, bool from_cache) \
             : type(pd), from_cache_(from_cache) {} \
-        bool is_from_cache() const { return from_cache_; } \
+        bool is_from_cache() const { \
+            return from_cache_; \
+        } \
     }; \
     static desc_t create_desc(std::shared_ptr<op_t> &op, \
             const dnnl::engine &p_engine, pd_cache_t &pd_cache, \

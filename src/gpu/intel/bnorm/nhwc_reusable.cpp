@@ -263,9 +263,10 @@ static dim_t get_calc_slm_size(const nhwc_reusable_compile_params_t &cmpl_conf,
         const nhwc_reusable_runtime_params_t &rt_conf) {
     return rt_conf.use_fused_atomics_reduction
             ? (rt_conf.use_buffers_calc ? sizeof(float) * rt_conf.ic_block
-                                    * rt_conf.calc_adj_lws[1]
+                                      * rt_conf.calc_adj_lws[1]
                                         : sizeof(float) * cmpl_conf.vect_size
-                                    * rt_conf.sg_size * rt_conf.calc_adj_lws[1])
+                                      * rt_conf.sg_size
+                                      * rt_conf.calc_adj_lws[1])
             : 0;
 }
 

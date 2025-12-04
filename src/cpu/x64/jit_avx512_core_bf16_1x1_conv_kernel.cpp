@@ -307,7 +307,7 @@ void jit_avx512_core_bf16_1x1_conv_kernel_t::reduce_loop(
         int lmul = jcp.load_block
                 * (load_layout_nxc ? 1
                                    : utils::rnd_up(
-                                           jcp.reduce_dim, jcp.reduce_block));
+                                             jcp.reduce_dim, jcp.reduce_block));
         int rmul = load_layout_nxc ? jcp.load_dim : jcp.load_block;
         int offt = i_load * lmul + u0 * rmul;
         return EVEX_compress_addr(aux_reg_load_data,
@@ -1244,7 +1244,7 @@ status_t jit_avx512_core_bf16_1x1_conv_kernel_t::init_conf(
 
     jcp.bia_dt = jcp.with_bias
             ? pick_by_prop_kind(jcp.prop_kind, cd.bias_desc.data_type,
-                    data_type::undef, cd.diff_bias_desc.data_type)
+                      data_type::undef, cd.diff_bias_desc.data_type)
             : data_type::undef;
     jcp.typesize_bia = jcp.with_bias ? types::data_type_size(jcp.bia_dt) : 0;
 
@@ -1827,7 +1827,7 @@ status_t jit_avx512_core_bf16_1x1_conv_kernel_t::init_scratchpad(
         const size_t max_load_per_thread = is_out_layout_nxc
                 ? utils::rnd_up(jcp.load_dim, jcp.load_block)
                 : rnd_up((utils::div_up(jcp.load_dim, grp_count)),
-                        jcp.load_block);
+                          jcp.load_block);
         const size_t store_buffer_size = (size_t)jcp.nthr
                 * utils::rnd_up(jcp.bcast_dim, jcp.bcast_block)
                 * max_load_per_thread;

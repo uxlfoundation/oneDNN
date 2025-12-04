@@ -1217,7 +1217,9 @@ void deserialize_from_hex(T &t, const std::string &s_hex) {
         using backing_t = typename std::underlying_type<E>::type; \
         return static_cast<E>(~static_cast<backing_t>(a)); \
     } \
-    constexpr bool any(E a) { return a != static_cast<E>(0); }
+    constexpr bool any(E a) { \
+        return a != static_cast<E>(0); \
+    }
 // NOLINTEND(bugprone-macro-parentheses)
 
 #define GPU_HW_CASE_(hw) \

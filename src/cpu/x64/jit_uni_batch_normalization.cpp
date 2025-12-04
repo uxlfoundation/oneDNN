@@ -930,7 +930,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 compute_mean
                         ? mean_compute_avx2_ne_xf16(num_ch_blks, num_spat_pts)
                         : variance_compute_avx2_ne_xf16(
-                                num_ch_blks, num_spat_pts);
+                                  num_ch_blks, num_spat_pts);
             else
                 compute_mean ? mean_compute(num_ch_blks, num_spat_pts)
                              : variance_compute(num_ch_blks, num_spat_pts);
@@ -2455,12 +2455,13 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::execute(
     auto scale = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SHIFT);
 
-    auto mean = pd()->stats_is_src() ? const_cast<acc_data_t *>(
-                        CTX_IN_MEM(const acc_data_t *, DNNL_ARG_MEAN))
-                                     : CTX_OUT_MEM(acc_data_t *, DNNL_ARG_MEAN);
+    auto mean = pd()->stats_is_src()
+            ? const_cast<acc_data_t *>(
+                      CTX_IN_MEM(const acc_data_t *, DNNL_ARG_MEAN))
+            : CTX_OUT_MEM(acc_data_t *, DNNL_ARG_MEAN);
     auto var = pd()->stats_is_src()
             ? const_cast<acc_data_t *>(
-                    CTX_IN_MEM(const acc_data_t *, DNNL_ARG_VARIANCE))
+                      CTX_IN_MEM(const acc_data_t *, DNNL_ARG_VARIANCE))
             : CTX_OUT_MEM(acc_data_t *, DNNL_ARG_VARIANCE);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
     auto ws = CTX_OUT_MEM(uint8_t *, DNNL_ARG_WORKSPACE);

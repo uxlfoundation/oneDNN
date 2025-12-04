@@ -40,7 +40,8 @@ status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
 engine_t::engine_t(
         const ::sycl::device &dev, const ::sycl::context &ctx, size_t index)
     : impl::gpu::engine_t(
-            new xpu::sycl::engine_impl_t(engine_kind::gpu, dev, ctx, index)) {}
+              new xpu::sycl::engine_impl_t(engine_kind::gpu, dev, ctx, index)) {
+}
 
 status_t engine_t::create_stream(
         impl::stream_t **stream, impl::stream_impl_t *stream_impl) {

@@ -768,9 +768,9 @@ TEST(test_convtranspose_operator_kernel, convtranspose_relu) {
         std::vector<float> bias_data = {2.0};
         std::vector<float> ref_dst_data = with_bias
                 ? std::vector<float> {1.0, 4.5, 1.0, 4.5, 7.0, 2.5, 9.5, 3.5,
-                        1.0, 9.5, 2.5, 4.5, 7.0, 3.5, 7.0, 3.5}
+                          1.0, 9.5, 2.5, 4.5, 7.0, 3.5, 7.0, 3.5}
                 : std::vector<float> {0.0, 2.5, 0.0, 2.5, 5.0, 0.5, 7.5, 1.5,
-                        0.0, 7.5, 0.5, 2.5, 5.0, 1.5, 5.0, 1.5};
+                          0.0, 7.5, 0.5, 2.5, 5.0, 1.5, 5.0, 1.5};
         std::vector<float> dst_data(ref_dst_data.size(), 0.0);
 
         graph::op_t convtranspose_op(
@@ -1253,11 +1253,11 @@ TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose1d2d3d) {
                           : std::vector<int64_t> {1, in_channel, 12, 12, 12};
         std::vector<int64_t> weight_shape = nd == 1
                 ? std::vector<int64_t> {in_channel, out_channel / g,
-                        kernel_size}
+                          kernel_size}
                 : nd == 2 ? std::vector<int64_t> {in_channel, out_channel / g,
-                          kernel_size, kernel_size}
+                                    kernel_size, kernel_size}
                           : std::vector<int64_t> {in_channel, out_channel / g,
-                                  kernel_size, kernel_size, kernel_size};
+                                    kernel_size, kernel_size, kernel_size};
         std::vector<int64_t> bias_shape {out_channel};
         std::vector<int64_t> dst_shape = nd == 1
                 ? std::vector<int64_t> {1, out_channel, 14}
@@ -1473,11 +1473,11 @@ TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose2dEltwise_CPU) {
                           : std::vector<int64_t> {1, in_channel, 12, 12, 12};
         std::vector<int64_t> weight_shape = nd == 1
                 ? std::vector<int64_t> {in_channel, out_channel / g,
-                        kernel_size}
+                          kernel_size}
                 : nd == 2 ? std::vector<int64_t> {in_channel, out_channel / g,
-                          kernel_size, kernel_size}
+                                    kernel_size, kernel_size}
                           : std::vector<int64_t> {in_channel, out_channel / g,
-                                  kernel_size, kernel_size, kernel_size};
+                                    kernel_size, kernel_size, kernel_size};
         std::vector<int64_t> bias_shape {out_channel};
         std::vector<int64_t> dst_shape = nd == 1
                 ? std::vector<int64_t> {1, out_channel, 14}
@@ -1714,11 +1714,11 @@ TEST(test_convtranspose_execute_subgraph_int8,
                           : std::vector<int64_t> {1, in_channel, 12, 12, 12};
         std::vector<int64_t> weight_shape = nd == 1
                 ? std::vector<int64_t> {in_channel, out_channel / g,
-                        kernel_size}
+                          kernel_size}
                 : nd == 2 ? std::vector<int64_t> {in_channel, out_channel / g,
-                          kernel_size, kernel_size}
+                                    kernel_size, kernel_size}
                           : std::vector<int64_t> {in_channel, out_channel / g,
-                                  kernel_size, kernel_size, kernel_size};
+                                    kernel_size, kernel_size, kernel_size};
         std::vector<int64_t> bias_shape {out_channel};
         std::vector<int64_t> dst_shape = nd == 1
                 ? std::vector<int64_t> {1, out_channel, 14}
@@ -2079,11 +2079,11 @@ TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose1d2d3dAdd) {
                           : std::vector<int64_t> {1, in_channel, 12, 12, 12};
         std::vector<int64_t> weight_shape = nd == 1
                 ? std::vector<int64_t> {in_channel, out_channel / g,
-                        kernel_size}
+                          kernel_size}
                 : nd == 2 ? std::vector<int64_t> {in_channel, out_channel / g,
-                          kernel_size, kernel_size}
+                                    kernel_size, kernel_size}
                           : std::vector<int64_t> {in_channel, out_channel / g,
-                                  kernel_size, kernel_size, kernel_size};
+                                    kernel_size, kernel_size, kernel_size};
         std::vector<int64_t> bias_shape {out_channel};
         std::vector<int64_t> dst_shape = nd == 1
                 ? std::vector<int64_t> {1, out_channel, 14}
@@ -2329,11 +2329,11 @@ TEST(test_convtranspose_execute_subgraph_int8, ConvTranspose1d2d3dBinary) {
                           : std::vector<int64_t> {1, in_channel, 12, 12, 12};
         std::vector<int64_t> weight_shape = nd == 1
                 ? std::vector<int64_t> {in_channel, out_channel / g,
-                        kernel_size}
+                          kernel_size}
                 : nd == 2 ? std::vector<int64_t> {in_channel, out_channel / g,
-                          kernel_size, kernel_size}
+                                    kernel_size, kernel_size}
                           : std::vector<int64_t> {in_channel, out_channel / g,
-                                  kernel_size, kernel_size, kernel_size};
+                                    kernel_size, kernel_size, kernel_size};
         std::vector<int64_t> bias_shape {out_channel};
         std::vector<int64_t> dst_shape = nd == 1
                 ? std::vector<int64_t> {1, out_channel, 14}
@@ -2531,11 +2531,11 @@ TEST(test_convtranspose_execute_subgraph_int8,
                           : std::vector<int64_t> {1, in_channel, 12, 12, 12};
         std::vector<int64_t> weight_shape = nd == 1
                 ? std::vector<int64_t> {in_channel, out_channel / g,
-                        kernel_size}
+                          kernel_size}
                 : nd == 2 ? std::vector<int64_t> {in_channel, out_channel / g,
-                          kernel_size, kernel_size}
+                                    kernel_size, kernel_size}
                           : std::vector<int64_t> {in_channel, out_channel / g,
-                                  kernel_size, kernel_size, kernel_size};
+                                    kernel_size, kernel_size, kernel_size};
         std::vector<int64_t> bias_shape {out_channel};
         std::vector<int64_t> dst_shape = nd == 1
                 ? std::vector<int64_t> {1, out_channel, 14}
@@ -2788,11 +2788,11 @@ TEST(test_convtranspose_execute_subgraph_fp32, Convtranspose3Postops) {
                           : std::vector<int64_t> {1, in_channel, 12, 12, 12};
         std::vector<int64_t> weight_shape = nd == 1
                 ? std::vector<int64_t> {in_channel, out_channel / g,
-                        kernel_size}
+                          kernel_size}
                 : nd == 2 ? std::vector<int64_t> {in_channel, out_channel / g,
-                          kernel_size, kernel_size}
+                                    kernel_size, kernel_size}
                           : std::vector<int64_t> {in_channel, out_channel / g,
-                                  kernel_size, kernel_size, kernel_size};
+                                    kernel_size, kernel_size, kernel_size};
         std::vector<int64_t> bias_shape {out_channel};
         std::vector<int64_t> dst_shape = nd == 1
                 ? std::vector<int64_t> {1, out_channel, 14}

@@ -76,7 +76,7 @@ status_t ref_batch_normalization_fwd_t<d_type>::execute_forward(
     CHECK(status);
     auto variance = pd()->stats_is_src()
             ? const_cast<acc_data_t *>(
-                    CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE))
+                      CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE))
             : CTX_OUT_CLEAN_MEM(float *, DNNL_ARG_VARIANCE, status);
     CHECK(status);
 

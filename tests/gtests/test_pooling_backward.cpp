@@ -254,7 +254,9 @@ using pooling_bwd_test_float = pooling_bwd_test_t<float>;
 using pool_bwd_test_params_float = pool_bwd_test_params_t;
 
 #define EXPAND_SIZES_3D(...) \
-    5, { __VA_ARGS__ }
+    5, { \
+        __VA_ARGS__ \
+    }
 #define EXPAND_SIZES_2D( \
         mb, ic, ih, iw, oh, ow, kh, kw, dh, dw, padt, padl, strh, strw) \
     4, { \

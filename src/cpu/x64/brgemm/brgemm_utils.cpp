@@ -271,7 +271,7 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
 
     const int postops_regs = brg->attr()
             ? injector::aux_vec_count(
-                    brg->attr()->post_ops_, brg->isa_impl, true)
+                      brg->attr()->post_ops_, brg->isa_impl, true)
             : 0;
 
     // Emulators: fp8 emulation are supported for amx only
@@ -915,7 +915,7 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     const int bf16_emu_vregs = brg->is_bf16_emu * 4;
     const int postops_regs = brg->attr()
             ? injector::aux_vec_count(
-                    brg->attr()->post_ops_, brg->isa_impl, true)
+                      brg->attr()->post_ops_, brg->isa_impl, true)
             : 0;
 
     const int max_acc_vmms = max_vregs

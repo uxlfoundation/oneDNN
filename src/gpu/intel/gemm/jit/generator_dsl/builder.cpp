@@ -551,16 +551,18 @@ struct generator_dsl_t {
         tensor_config_t B_load(
                 kloop_it.B_load(), B_load_transform, strategy.B_copies);
 
-        auto prefetchA = strategy.prefetchA ? dnnl::impl::utils::rnd_dn(
-                                 strategy.prefetchA, strategy.ka_prefetch)
-                                            : 0;
+        auto prefetchA = strategy.prefetchA
+                ? dnnl::impl::utils::rnd_dn(
+                          strategy.prefetchA, strategy.ka_prefetch)
+                : 0;
         if (prefetchA != strategy.prefetchA)
             gpu_warning() << "Unimplemented partial A tile prefetch, modifying "
                              "prefetch distance "
                           << strategy.prefetchA << " -> " << prefetchA;
-        auto prefetchB = strategy.prefetchB ? dnnl::impl::utils::rnd_dn(
-                                 strategy.prefetchB, strategy.kb_prefetch)
-                                            : 0;
+        auto prefetchB = strategy.prefetchB
+                ? dnnl::impl::utils::rnd_dn(
+                          strategy.prefetchB, strategy.kb_prefetch)
+                : 0;
         if (prefetchB != strategy.prefetchB)
             gpu_warning() << "Unimplemented partial B tile prefetch, modifying "
                              "prefetch distance "

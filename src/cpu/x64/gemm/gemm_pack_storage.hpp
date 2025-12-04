@@ -224,7 +224,7 @@ protected:
         size_t off_matrix, off_sums;
         size_t size;
         gemm_threading_t threading; /* if packed */
-    } * header;
+    } *header;
 
     struct slice_header_t {
         bool packed;
@@ -327,7 +327,7 @@ protected:
                 slice[id].finalize<data_type>(cur_off);
 #endif
         }
-    } * matrix_header, *sums_header;
+    } *matrix_header, *sums_header;
 
     size_t total_header_size = 0;
 

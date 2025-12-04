@@ -40,8 +40,12 @@
 #endif
 
 #define DECLARE_CPU_JIT_AUX_FUNCTIONS(gen_name) \
-    const char *name() const override { return STRINGIFY(gen_name); } \
-    const char *source_file() const override { return __FILE__; } \
+    const char *name() const override { \
+        return STRINGIFY(gen_name); \
+    } \
+    const char *source_file() const override { \
+        return __FILE__; \
+    } \
     static const char *jit_name() { \
         static constexpr char ret[] = "/oneDNN:" STRINGIFY(gen_name); \
         return ret; \
@@ -660,9 +664,7 @@ public:
             const Xbyak::Xmm &x1, const Xbyak::Operand &op, Xbyak::uint8 imm) {
         if (is_valid_isa(avx))
             vpshufd(x1, op, imm);
-        else {
-            pshufd(x1, op, imm);
-        }
+        else { pshufd(x1, op, imm); }
     }
 
     void uni_vrcpss(const Xbyak::Xmm &x, const Xbyak::Operand &op) {

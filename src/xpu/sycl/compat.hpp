@@ -44,8 +44,8 @@ inline auto host_task_impl(H &cgh, F &&f, int) -> decltype(cgh.host_task(f)) {
 }
 
 template <typename H, typename F>
-inline auto host_task_impl(H &cgh, F &&f, long)
-        -> decltype(cgh.codeplay_host_task(f)) {
+inline auto host_task_impl(
+        H &cgh, F &&f, long) -> decltype(cgh.codeplay_host_task(f)) {
     cgh.codeplay_host_task(f);
 }
 

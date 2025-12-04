@@ -51,7 +51,7 @@ inline void print_verbose_header(engine_kind_t kind) {
 
             const xpu::sycl::engine_impl_t *engine_impl = eng
                     ? utils::downcast<const xpu::sycl::engine_impl_t *>(
-                            eng->impl())
+                              eng->impl())
                     : nullptr;
 
             const auto &s_backend = engine_impl

@@ -139,7 +139,7 @@ pool_bwd_executable_t::desc_t pool_bwd_executable_t::create_desc(
     auto src = op->get_attr<std::string>(op_attr::kind) == "maxpool"
             ? make_dnnl_memory_desc(op->get_input_logical_tensor(2))
             : dnnl::memory::desc(diff_src.get_dims(), diff_src.get_data_type(),
-                    get_ncx_format(diff_src.get_dims()));
+                      get_ncx_format(diff_src.get_dims()));
 
     // infer dnnl explicit pad
     bool adj_pad = false;

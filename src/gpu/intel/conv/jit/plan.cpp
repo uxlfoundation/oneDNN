@@ -1149,13 +1149,13 @@ grf_usage_t plan_t::grf_usage() const {
     int a_g2r_buf_regs = use_a_slm
             ? 0
             : x2r.a_load.estimate_regs(/*with_buffer=*/true,
-                    /*with_headers=*/false,
-                    /*reuse_headers=*/false);
+                      /*with_headers=*/false,
+                      /*reuse_headers=*/false);
     int b_g2r_buf_regs = use_b_slm
             ? 0
             : x2r.b_load.estimate_regs(/*with_buffer=*/true,
-                    /*with_headers=*/false,
-                    /*reuse_headers=*/false);
+                      /*with_headers=*/false,
+                      /*reuse_headers=*/false);
     if (x2r.a_reorder && x2r.b_reorder) {
         gpu_assert(!use_a_slm && !use_b_slm);
         // Reuse load buffer when both reorders are enabled.

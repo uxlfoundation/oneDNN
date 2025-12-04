@@ -778,9 +778,9 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
     const int is_bwd_d = jcp.prop_kind == backward_data;
     format_tag_t wei_tag = with_groups
             ? utils::pick(2 * ndims - 6 + is_bwd_d, gOIw8i8o, gOIw8o8i,
-                    gOIhw8i8o, gOIdhw8o8i, gOIhw8i8o, gOIdhw8o8i)
+                      gOIhw8i8o, gOIdhw8o8i, gOIhw8i8o, gOIdhw8o8i)
             : utils::pick(2 * ndims - 6 + is_bwd_d, OIw8i8o, OIw8o8i, OIhw8i8o,
-                    OIhw8o8i, OIdhw8i8o, OIdhw8o8i);
+                      OIhw8o8i, OIdhw8i8o, OIdhw8o8i);
     jcp.wei_tag = weights_d.matches_one_of_tag(wei_tag);
 
     const int simd_w = 8;

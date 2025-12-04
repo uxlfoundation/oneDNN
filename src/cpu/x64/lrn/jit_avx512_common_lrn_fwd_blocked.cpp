@@ -28,7 +28,7 @@ jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>::
                 int use_h_parallel, float alpha, float beta, float k,
                 int local_size)
     : jit_avx512_common_lrn_kernel_fwd_t<d_type>(
-            prop_kind, alpha, beta, k, local_size, jit_name())
+              prop_kind, alpha, beta, k, local_size, jit_name())
     // some registers needed for conversion from bf16 to f32
     , xmm_size_(4 * sizeof(acc_data_t))
     , zmm_size_(64)

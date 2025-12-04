@@ -67,9 +67,10 @@ inline void rtus_prepare(conv_pd_t *self, const convolution_desc_t *&conv_d,
 
     const auto dat_tag = ndims == 3
             ? memory_desc_wrapper(src_d).matches_one_of_tag(format_tag::nCw4c,
-                    format_tag::nCw8c, format_tag::nCw16c, format_tag::nwc)
+                      format_tag::nCw8c, format_tag::nCw16c, format_tag::nwc)
             : memory_desc_wrapper(src_d).matches_one_of_tag(format_tag::nChw4c,
-                    format_tag::nChw8c, format_tag::nChw16c, format_tag::nhwc);
+                      format_tag::nChw8c, format_tag::nChw16c,
+                      format_tag::nhwc);
     if (dat_tag == format_tag::undef) return;
 
     const bool is_nspc

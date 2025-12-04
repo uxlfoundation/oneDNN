@@ -49,10 +49,11 @@ cpu_isa_t get_io_isa(cpu_isa_t isa, bool has_f16, bool has_bf16) {
     // re-using avx512_core instantiation for xf16
     // re-using avx2 instantiation for xf16
     if (has_f16 || has_bf16)
-        return is_superset(isa, avx512_core) ? (has_f16    ? avx512_core_fp16
-                               : mayiuse(avx512_core_bf16) ? avx512_core_bf16
-                                                           : avx512_core)
-                                             : avx2_vnni_2;
+        return is_superset(isa, avx512_core)
+                ? (has_f16                                    ? avx512_core_fp16
+                                  : mayiuse(avx512_core_bf16) ? avx512_core_bf16
+                                                              : avx512_core)
+                : avx2_vnni_2;
     else
         return isa;
 }
@@ -1302,7 +1303,7 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
                 : CTX_OUT_MEM(float *, DNNL_ARG_MEAN);
         variance = pd()->stats_are_src()
                 ? const_cast<float *>(
-                        CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE))
+                          CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE))
                 : CTX_OUT_MEM(float *, DNNL_ARG_VARIANCE);
     }
 

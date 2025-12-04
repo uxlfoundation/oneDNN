@@ -1141,9 +1141,9 @@ status_t init_conf(conv_gemm_conf_t &jcp,
 
     auto default_dat_tag = is_int8_conv
             ? utils::pick(ndims - 3, format_tag::nwc, format_tag::nhwc,
-                    format_tag::ndhwc)
+                      format_tag::ndhwc)
             : utils::pick(ndims - 3, format_tag::ncw, format_tag::nchw,
-                    format_tag::ncdhw);
+                      format_tag::ncdhw);
     const status_t check_tag_status = set_or_check_tags(default_dat_tag,
             default_dat_tag, src_md.data_type == data_type::s8);
     VDISPATCH_CONV_IC(check_tag_status == status::success,
@@ -1206,11 +1206,11 @@ status_t init_conf(conv_gemm_conf_t &jcp,
     // to the number of threads and multiplied by a heuristic coefficient (15)
     const size_t zp_src_pad_comp_size = zp_src_with_padding
             ? (jcp.oc * jcp.ngroups * jcp.zp.src_pad_comp.d
-                    * jcp.zp.src_pad_comp.h * jcp.zp.src_pad_comp.w)
+                      * jcp.zp.src_pad_comp.h * jcp.zp.src_pad_comp.w)
             : 0u;
     const size_t zp_src_comp_size = jcp.zp.src_is_common
             ? utils::rnd_up(jcp.oc * jcp.ngroups,
-                    platform::get_cache_line_size() / sizeof(int))
+                      platform::get_cache_line_size() / sizeof(int))
             : 0u;
 
     const size_t weights_size = weights_d.size()

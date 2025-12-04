@@ -121,7 +121,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
 #define PARAM(x) \
     prb_.is_tail_present \
             ? ptr[abi_param1 + offsetof(tail_call_param_t, base_params) \
-                    + offsetof(call_param_t, x)] \
+                      + offsetof(call_param_t, x)] \
             : ptr[abi_param1 + offsetof(call_param_t, x)]
 #define TAIL_PARAM(x) ptr[abi_param1 + offsetof(tail_call_param_t, x)]
 

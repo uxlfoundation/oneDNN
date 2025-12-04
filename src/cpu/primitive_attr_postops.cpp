@@ -181,7 +181,7 @@ ref_eltwise_scalar_fwd_t::ref_eltwise_scalar_fwd_t(
 ref_eltwise_scalar_fwd_t::ref_eltwise_scalar_fwd_t(
         const post_ops_t::entry_t::eltwise_t &eltwise)
     : ref_eltwise_scalar_fwd_t(
-            eltwise.alg, eltwise.alpha, eltwise.beta, eltwise.scale) {}
+              eltwise.alg, eltwise.alpha, eltwise.beta, eltwise.scale) {}
 
 float ref_eltwise_scalar_fwd_t::compute_scalar(float s) const {
     return compute_eltwise_scalar_fwd(alg_, s, alpha_, beta_) * scale_;

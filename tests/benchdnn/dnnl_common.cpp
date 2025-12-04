@@ -704,8 +704,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
             int batch_times_heuristic = (ms_min == 0.0)
                     ? INT_MAX
                     : MAX2(1,
-                            (int)((max_ms_per_prb - t.total_ms()) / ms_min
-                                    / 5));
+                              (int)((max_ms_per_prb - t.total_ms()) / ms_min
+                                      / 5));
             cur_batch_times = MIN2(max_batch_times, batch_times_heuristic);
             is_first_loop = false;
         }

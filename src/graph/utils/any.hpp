@@ -49,8 +49,8 @@ template <typename F>
 decltype(first_argument_helper(&F::operator())) first_argument_helper(F);
 
 template <typename T>
-using first_argument = typename std::decay<decltype(
-        first_argument_helper(std::declval<T>()))>::type;
+using first_argument = typename std::decay<decltype(first_argument_helper(
+        std::declval<T>()))>::type;
 
 // any structure
 // now we only use this any struct for the project.

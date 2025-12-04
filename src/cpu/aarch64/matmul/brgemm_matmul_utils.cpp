@@ -213,11 +213,11 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
     } else {
         bgmmc.wei_tag = blocked_B_layouts_allowed
                 ? memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
-                        transposed_tensor_layout_tag, blocked_64n_B_layout_tag,
-                        blocked_48n_B_layout_tag, blocked_32n_B_layout_tag,
-                        blocked_16n_B_layout_tag)
+                          transposed_tensor_layout_tag,
+                          blocked_64n_B_layout_tag, blocked_48n_B_layout_tag,
+                          blocked_32n_B_layout_tag, blocked_16n_B_layout_tag)
                 : memory_desc_matches_one_of_tag(B_md, plain_tensor_layout_tag,
-                        transposed_tensor_layout_tag, acbd, adbc);
+                          transposed_tensor_layout_tag, acbd, adbc);
 
         // If the B memory descriptor matches both the transposed and plain
         // version that means that for dims = [P, Q, K, N] in the weight matrix,
@@ -260,16 +260,16 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
         bgmmc.src_tag = (this->is_bf16() || this->is_f32() || this->is_bf32()
                                 || this->is_f16())
                 ? memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag,
-                        transposed_tensor_layout_tag, acbd, adbc)
+                          transposed_tensor_layout_tag, acbd, adbc)
                 // Enable support of int8 problems with formally transposed A
                 // layout which can be treated as plain.
                 // TODO: remove this extra code path after transposed A is
                 // supported for int8
                 : (this->is_int8() && can_treat_transposed_A_as_plain)
                 ? memory_desc_matches_one_of_tag(A_md, plain_tensor_layout_tag,
-                        transposed_tensor_layout_tag, acbd)
+                          transposed_tensor_layout_tag, acbd)
                 : memory_desc_matches_one_of_tag(
-                        A_md, plain_tensor_layout_tag, acbd);
+                          A_md, plain_tensor_layout_tag, acbd);
     }
 
     if (C_any_layout) {

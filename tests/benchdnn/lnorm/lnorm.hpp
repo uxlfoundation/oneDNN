@@ -76,9 +76,9 @@ struct prb_t : public prb_dims_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
         : prb_t(s.prb_dims, s.tag[0], s.stat_tag[0], s.ss_dt[0], s.dir[0],
-                s.dt[0], s.flags[0], s.check_alg, s.inplace[0],
-                s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
-                s.impl_filter) {
+                  s.dt[0], s.flags[0], s.check_alg, s.inplace[0],
+                  s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
+                  s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
@@ -179,10 +179,10 @@ struct cfg_t {
         , want_flex_bits_(MIN2(6, exact_bits_ / 2))
         , check_alg_(prb->check_alg == bnorm::ALG_AUTO
                           ? (free_bits_ >= min_flex_bits_
-                                          ? bnorm::ALG_1
-                                          : (want_flex_bits_ == exact_bits_ / 2
-                                                          ? bnorm::ALG_2
-                                                          : bnorm::ALG_0))
+                                            ? bnorm::ALG_1
+                                            : (want_flex_bits_ == exact_bits_ / 2
+                                                              ? bnorm::ALG_2
+                                                              : bnorm::ALG_0))
                           : prb->check_alg)
         , flex_bits_(check_alg_ == bnorm::ALG_1 ? MIN2(exact_bits_, free_bits_)
                                                 : want_flex_bits_)

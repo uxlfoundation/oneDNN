@@ -441,7 +441,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
     const bool is_ic_tail = jcp.is_reduced_rtus
             ? is_last_os
             : (icc == pd()->ic_chunks_ - 1
-                    && ((jcp.ic - ic) % jcp.ic_block != 0));
+                      && ((jcp.ic - ic) % jcp.ic_block != 0));
 
     // Using blk_off to offset batch is motivated input\output striding aligment
     // See `blk_off` definition.
@@ -498,9 +498,9 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
 
         for (int k = 0; k < n_ic_blocks; k++) {
             const size_t ic_off = jcp.is_reduced_rtus
-                    ? (brgemm_is_ic_tail
-                                    ? jcp.ic_without_padding - jcp.rtus_ic_size
-                                    : 0)
+                    ? (brgemm_is_ic_tail ? jcp.ic_without_padding
+                                              - jcp.rtus_ic_size
+                                         : 0)
                     : (ic_block_s + k) * jcp.ic_block;
             const size_t src_ic = ic_off;
             const auto wei_ic = ic + ic_off;
@@ -763,7 +763,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
     brgemm_batch_element_t *const brg_batch_global
             = (jcp.brg_type != brgemm_strd)
             ? scratchpad.template get<brgemm_batch_element_t>(
-                    key_brgemm_primitive_batch)
+                      key_brgemm_primitive_batch)
             : nullptr;
     char *const c_buffer_global = (jcp.use_buffer)
             ? scratchpad.template get<char>(key_brgemm_primitive_buffer)

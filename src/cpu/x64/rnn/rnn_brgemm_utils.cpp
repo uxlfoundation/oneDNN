@@ -250,7 +250,7 @@ dim_t brgemm_calc_m_block_lstm(dim_t nthr, dim_t M, dim_t N_blocks, bool is_f32,
     const bool adj_by_l2 = is_f32
             ? true
             : (static_cast<float>(As + Cs)
-                    < 0.6 * static_cast<float>(l2_cache_size));
+                      < 0.6 * static_cast<float>(l2_cache_size));
 
     if (work_by_N > 2.0 || (work_by_N > 1.0 && adj_by_l2))
         return M;

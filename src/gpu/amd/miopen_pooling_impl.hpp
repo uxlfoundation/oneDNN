@@ -43,7 +43,8 @@ struct miopen_pooling_impl_base_t {
     }
 
     virtual void execute(
-            miopenHandle_t handle, void *x, void *y, void *ws) const = 0;
+            miopenHandle_t handle, void *x, void *y, void *ws) const
+            = 0;
 
     size_t get_ws_size_miopen() const { return ws_size_miopen_; }
 

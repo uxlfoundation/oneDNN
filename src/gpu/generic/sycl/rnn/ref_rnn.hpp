@@ -110,7 +110,8 @@ protected:
             const exec_ctx_t &ctx, std::unique_ptr<memory_storage_t> &a,
             std::unique_ptr<memory_storage_t> &b,
             std::unique_ptr<memory_storage_t> &c,
-            matmul_kind_t matmul_kind) const = 0;
+            matmul_kind_t matmul_kind) const
+            = 0;
 
     status_t launch_copy(bool fwd, const exec_ctx_t &ctx,
             const kernel_t &cpy_kernel, const sycl_rnn_copy_conf_t &copy_conf,
@@ -127,19 +128,23 @@ protected:
     virtual status_t copy_init_layer(const exec_ctx_t &ctx, dim_t batch,
             dim_t dhc, dim_t sic, dim_t slc, dim_t n_iter, dim_t n_layer,
             dim_t n_dir, dim_t states_ws_ld, const memory_storage_t &input,
-            const memory_storage_t &output) const = 0;
+            const memory_storage_t &output) const
+            = 0;
     virtual status_t copy_init_iter(const exec_ctx_t &ctx, dim_t batch,
             dim_t dhc, dim_t sic, dim_t slc, dim_t n_iter, dim_t n_layer,
             dim_t n_dir, dim_t states_ws_ld, const memory_storage_t &input,
-            const memory_storage_t &output) const = 0;
+            const memory_storage_t &output) const
+            = 0;
     virtual status_t copy_res_layer(const exec_ctx_t &ctx, dim_t batch,
             dim_t dhc, dim_t sic, dim_t slc, dim_t n_iter, dim_t n_layer,
             dim_t n_dir, dim_t states_ws_ld, const memory_storage_t &input,
-            const memory_storage_t &output) const = 0;
+            const memory_storage_t &output) const
+            = 0;
     virtual status_t copy_res_iter(const exec_ctx_t &ctx, dim_t batch,
             dim_t dhc, dim_t sic, dim_t slc, dim_t n_iter, dim_t n_layer,
             dim_t n_dir, dim_t states_ws_ld, const memory_storage_t &input,
-            const memory_storage_t &output) const = 0;
+            const memory_storage_t &output) const
+            = 0;
 
     status_t execution_loop(const grid_ctx_t &grid_struct);
 

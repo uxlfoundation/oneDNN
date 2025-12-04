@@ -229,9 +229,10 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
 
     // If we have an unfused sum post op, put the result in a scratchpad tensor.
     // Result will be summed to the dst during acl_post_ops.execute
-    auto dst_base = use_dst_acc_for_sum ? scratchpad.get<void>(
-                            memory_tracking::names::key_matmul_dst_in_acc_dt)
-                                        : CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
+    auto dst_base = use_dst_acc_for_sum
+            ? scratchpad.get<void>(
+                      memory_tracking::names::key_matmul_dst_in_acc_dt)
+            : CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
     dst_tensor.allocator()->import_memory(dst_base);
 
     // Run transpose kernel

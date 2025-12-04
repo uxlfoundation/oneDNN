@@ -52,7 +52,7 @@ key_t::key_t(const partition_t *partition, const impl::engine_t *engine,
         const std::vector<const logical_tensor_t *> &ins,
         const std::vector<const logical_tensor_t *> &outs)
     : key_t(engine, partition->get_ops(), ins, outs,
-            partition->get_fpmath_mode()) {}
+              partition->get_fpmath_mode()) {}
 
 bool key_t::operator==(const key_t &rhs) const {
     if (this == &rhs) return true;

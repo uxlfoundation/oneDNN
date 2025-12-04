@@ -108,7 +108,7 @@ std::unique_ptr<memory_storage_t> buffer_memory_storage_t::get_sub_storage(
                 offset % sycl_engine_impl->get_buffer_alignment() == 0));
         xpu::sycl::buffer_u8_t *sub_buffer = buffer_
                 ? new xpu::sycl::buffer_u8_t(
-                        parent_buffer(), base_offset_ + offset, size)
+                          parent_buffer(), base_offset_ + offset, size)
                 : nullptr;
         storage->buffer_.reset(sub_buffer);
         storage->base_offset_ = base_offset_ + offset;

@@ -55,7 +55,7 @@ public:
 
     zero_points_config_t(const primitive_desc_t *pd = nullptr)
         : do_src_compensation(pd
-                && !pd->attr()->zero_points_.has_default_values(DNNL_ARG_SRC))
+                  && !pd->attr()->zero_points_.has_default_values(DNNL_ARG_SRC))
         , do_wei_compensation(pd
                   && !pd->attr()->zero_points_.has_default_values(
                           DNNL_ARG_WEIGHTS))

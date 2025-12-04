@@ -407,7 +407,7 @@ static inline data_t set_value(
         const memory::dim in_group = index % group_size;
         const bool fill = in_group == ((group % 1637) % group_size);
         return fill ? static_cast<data_t>(
-                       mean + deviation * sinf(float(index % 37)))
+                              mean + deviation * sinf(float(index % 37)))
                     : data_t {0};
     } else if (data_traits_t<data_t>::data_type == memory::data_type::s32
             || data_traits_t<data_t>::data_type == memory::data_type::s8) {
@@ -684,8 +684,8 @@ bool catch_expected_failures(const F &f, bool expect_to_fail,
             if (ignore_unimplemented && (e.status == dnnl_unimplemented)) {
                 // Print unimplemented but do not treat as error
                 std::cout << "(" << filename << ":" << line_num << ") "
-                          << "[  UNIMPL  ] "
-                          << "Implementation not found" << std::endl;
+                          << "[  UNIMPL  ] " << "Implementation not found"
+                          << std::endl;
                 reset_failed_malloc_counter();
                 return true;
             } else if (test_out_of_memory()

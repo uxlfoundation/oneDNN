@@ -39,8 +39,8 @@ struct ref_pp_kernel_t : public pp_kernel_t {
     ref_pp_kernel_t(size_t OC, size_t MB, dim_t dst_mb_stride,
             const primitive_attr_t *attr, data_type_t bias_dt,
             data_type_t acc_dt, const memory_desc_t *dst_md, bool skip_sum)
-        : pp_kernel_t(
-                OC, MB, dst_mb_stride, attr, bias_dt, acc_dt, dst_md, skip_sum)
+        : pp_kernel_t(OC, MB, dst_mb_stride, attr, bias_dt, acc_dt, dst_md,
+                  skip_sum)
         , dst_md_(dst_md)
         , skip_sum_(skip_sum)
         , do_postops_(this->do_sum_ || this->do_eltwise_ || this->do_binary_

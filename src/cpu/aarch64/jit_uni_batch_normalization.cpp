@@ -1179,9 +1179,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 }
                 if (isa == sve_256 || isa == sve_512)
                     fdiv(ZRegS(1), P_ALL_ONE / T_m, ZRegS(vchan_size.getIdx()));
-                else {
-                    fdiv(VReg4S(1), VReg4S(1), VReg4S(IDX(vchan_size)));
-                }
+                else { fdiv(VReg4S(1), VReg4S(1), VReg4S(IDX(vchan_size))); }
                 uni_store_maybe_tail(var_ptr(), TReg(1));
                 if (isa == sve_256 || isa == sve_512)
                     add_imm(reg_coff, reg_coff, vlen, X_TMP_0);
@@ -2366,12 +2364,13 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::execute(
     auto scale = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SHIFT);
 
-    auto mean = pd()->stats_is_src() ? const_cast<acc_data_t *>(
-                        CTX_IN_MEM(const acc_data_t *, DNNL_ARG_MEAN))
-                                     : CTX_OUT_MEM(acc_data_t *, DNNL_ARG_MEAN);
+    auto mean = pd()->stats_is_src()
+            ? const_cast<acc_data_t *>(
+                      CTX_IN_MEM(const acc_data_t *, DNNL_ARG_MEAN))
+            : CTX_OUT_MEM(acc_data_t *, DNNL_ARG_MEAN);
     auto var = pd()->stats_is_src()
             ? const_cast<acc_data_t *>(
-                    CTX_IN_MEM(const acc_data_t *, DNNL_ARG_VARIANCE))
+                      CTX_IN_MEM(const acc_data_t *, DNNL_ARG_VARIANCE))
             : CTX_OUT_MEM(acc_data_t *, DNNL_ARG_VARIANCE);
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
     auto ws = CTX_OUT_MEM(uint8_t *, DNNL_ARG_WORKSPACE);

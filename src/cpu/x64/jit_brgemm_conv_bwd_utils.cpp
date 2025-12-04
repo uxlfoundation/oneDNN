@@ -1183,7 +1183,7 @@ float brg_blocking_t::est_eff_1x1() {
     const auto amx_fac = maskrcnn_cond
             ? (div_up(M + M_tail, 16) / (M_n_sp_blks + M_tail_n_sp_blks))
             : (static_cast<float>(div_up(M + M_tail, 16))
-                    / (M_n_sp_blks + M_tail_n_sp_blks));
+                      / (M_n_sp_blks + M_tail_n_sp_blks));
 
     const auto brgemm_microkernel_eff = is_amx(isa)
             ? amx_fac * (static_cast<float>(icb_ave) * spb_ave)

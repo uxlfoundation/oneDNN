@@ -530,7 +530,7 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
     scratch_t *const A_iter_transposed_ithr = global_transpose
             ? A_iter_transposed_scratch_
             : (A_iter_transposed_scratch_
-                    + ithr * rnn_.diff_wei_brgemm.Kpadded * m_iter_block_);
+                      + ithr * rnn_.diff_wei_brgemm.Kpadded * m_iter_block_);
 
     scratch_t *const A_layer_transposed_ithr = global_transpose
             ? A_layer_transposed_scratch_
@@ -695,7 +695,7 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
     scratch_t *const A_iter_transposed_ithr = global_transpose
             ? A_iter_transposed_scratch_
             : (A_iter_transposed_scratch_
-                    + ithr * rnn_.diff_wei_brgemm.Kpadded * m_iter_block_);
+                      + ithr * rnn_.diff_wei_brgemm.Kpadded * m_iter_block_);
     scratch_t *const A_layer_transposed_ithr = global_transpose
             ? A_layer_transposed_scratch_
             : A_layer_transposed_scratch_

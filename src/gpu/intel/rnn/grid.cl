@@ -162,7 +162,7 @@ __kernel void simple_rnn_copy_init_iter(__global WS_STATE_DATA_T *dst_base,
         dst[off_scratch_diff_states(n_layer, n_dir, n_states, n_iter, batch,
                 scratch_diff_states_ld, lay, dir, 1, n_iter, b, s)]
                 = src_c_base ? src_c[diff_dst_i_c_off(
-                          diff_dst_iter_c_strides, lay, dir, b, s)]
+                                       diff_dst_iter_c_strides, lay, dir, b, s)]
                              : 0.0f;
     }
 #endif
@@ -196,9 +196,9 @@ simple_rnn_copy_res_layer(
                 ? TO_DST(((float)src[off_ws_state(n_layer, n_dir, n_iter, batch,
                                   states_ws_ld, n_layer - 1, dir, it, b, s)]
                                  - shift)
-                        / scale)
+                          / scale)
                 : src[off_ws_state(n_layer, n_dir, n_iter, batch, states_ws_ld,
-                        n_layer - 1, dir, it, b, s)];
+                          n_layer - 1, dir, it, b, s)];
         dir = 1;
     }
     if (rl) {
@@ -232,9 +232,9 @@ simple_rnn_copy_res_layer(
                                   states_ws_ld, n_layer - 1, dir,
                                   n_iter - it - 1, b, s)]
                                  - shift)
-                        / scale)
+                          / scale)
                 : src[off_ws_state(n_layer, n_dir, n_iter, batch, states_ws_ld,
-                        n_layer - 1, dir, n_iter - it - 1, b, s)];
+                          n_layer - 1, dir, n_iter - it - 1, b, s)];
 #endif
     }
 #else // BWD
@@ -287,13 +287,13 @@ __kernel void simple_rnn_copy_res_iter(
 
     if (dst_base && s < dhc) {
         dst[dst_i_off(strides, lay, dir, b, s)] = dequantize
-                ? TO_OUTPUT(
-                        ((float)src[off_ws_state(n_layer, n_dir, n_iter, batch,
-                                 states_ws_ld, lay, dir, n_iter - 1, b, s)]
-                                - shift)
-                        / scale)
+                ? TO_OUTPUT(((float)src[off_ws_state(n_layer, n_dir, n_iter,
+                                     batch, states_ws_ld, lay, dir, n_iter - 1,
+                                     b, s)]
+                                    - shift)
+                          / scale)
                 : TO_OUTPUT(src[off_ws_state(n_layer, n_dir, n_iter, batch,
-                        states_ws_ld, lay, dir, n_iter - 1, b, s)]);
+                          states_ws_ld, lay, dir, n_iter - 1, b, s)]);
     }
 #if WITH_DST_ITER_C
     __global AUX_DATA_T *src_c = src_c_base;

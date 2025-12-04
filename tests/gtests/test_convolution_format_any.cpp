@@ -74,7 +74,7 @@ protected:
                 = create_md({cd.mb, cd.ic, cd.ih, cd.iw}, data_type, tag::any);
         auto c_weights_desc = cd.ng > 1
                 ? create_md({cd.ng, cd.oc / cd.ng, cd.ic / cd.ng, cd.kh, cd.kw},
-                        data_type, tag::any)
+                          data_type, tag::any)
                 : create_md({cd.oc, cd.ic, cd.kh, cd.kw}, data_type, tag::any);
         auto c_dst_desc
                 = create_md({cd.mb, cd.oc, cd.oh, cd.ow}, data_type, tag::any);

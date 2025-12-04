@@ -457,7 +457,7 @@ xe_wino_conv_fwd(__global DATA_T *dst, const __global DATA_T *src,
                 bool y_in = 0 <= (src_ih + index) && (src_ih + index) < IH
                         && x_in;
                 src[index] = y_in ? *((const __global VTRANS_DATA_T *)(src_load
-                                     + src_off(0, 0, 0, index, 0)))
+                                            + src_off(0, 0, 0, index, 0)))
                                   : 0;
 
                 //Scale input to prevent intermediate computations overflow in
@@ -571,7 +571,9 @@ xe_wino_conv_fwd(__global DATA_T *dst, const __global DATA_T *src,
 
         unroll_for(int i = 0; i < COMP_OC_COUNT; i++) {
             wino_m_transform(C[i], M[i]);
-            unroll_for(int j = 0; j < WINO_M; j++) { C[i][j] = C[i][j] * scl; }
+            unroll_for(int j = 0; j < WINO_M; j++) {
+                C[i][j] = C[i][j] * scl;
+            }
         }
 
         // Write data
@@ -606,8 +608,9 @@ xe_wino_conv_fwd(__global DATA_T *dst, const __global DATA_T *src,
                                 = OW % OW_BLOCK == 0 || ow + ow_block < OW;
                         S[oc_block][oh_block][ow_block] = valid_oh && valid_ow
                                 ? dst[dst_idx
-                                        + dst_off(0, oc_block * COMP_OC_STRIDE,
-                                                0, oh_block, ow_block)]
+                                          + dst_off(0,
+                                                  oc_block * COMP_OC_STRIDE, 0,
+                                                  oh_block, ow_block)]
                                 : 0;
                     }
                 }

@@ -17,7 +17,7 @@
 # limitations under the License.
 #===============================================================================
 
-CLANG_FORMAT=clang-format-11
+CLANG_FORMAT=clang-format-18
 
 echo "Checking ${CLANG_FORMAT}"
 if ! ${CLANG_FORMAT} --version; then

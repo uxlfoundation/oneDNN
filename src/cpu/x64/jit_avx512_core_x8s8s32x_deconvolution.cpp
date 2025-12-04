@@ -596,9 +596,10 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::compute_ker(int ur_w,
         int n_ic_blocks = jcp.is_depthwise
                 ? 1
                 : (last_ic_block_flag & ~ker_block_t::no_last_block
-                                ? div_up(jcp.ic_without_padding % jcp.ic_block,
-                                        4)
-                                : jcp.ic_block / 4);
+                                  ? div_up(jcp.ic_without_padding
+                                                    % jcp.ic_block,
+                                            4)
+                                  : jcp.ic_block / 4);
 
         for (int icb1 = 0; icb1 < n_ic_blocks; icb1++) {
             if (h_padded == true) {
@@ -1463,7 +1464,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_1d(
             : nullptr;
     const int32_t *zp_compensation = jcp.src_zero_point
             ? get_src_zp_comp_from_wei(
-                    weights, weights_d, jcp.signed_input, jcp.ngroups, jcp.oc)
+                      weights, weights_d, jcp.signed_input, jcp.ngroups, jcp.oc)
             : nullptr;
 
     parallel(jcp.nthr, [&](const int ithr, const int nthr) {
@@ -1573,7 +1574,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
             : nullptr;
     const int32_t *zp_compensation = jcp.src_zero_point
             ? get_src_zp_comp_from_wei(
-                    weights, weights_d, jcp.signed_input, jcp.ngroups, jcp.oc)
+                      weights, weights_d, jcp.signed_input, jcp.ngroups, jcp.oc)
             : nullptr;
 
     parallel(jcp.nthr, [&](const int ithr, const int nthr) {
@@ -1656,11 +1657,11 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
                 p.t_overflow = jcp.dilate_h > 0
                         ? jcp.kh - kh_len - kh_lo
                         : max(0,
-                                jcp.kh
-                                        - (kh_lo
-                                                + max(0, kh_len - 1)
-                                                        * jcp.stride_h
-                                                + 1));
+                                  jcp.kh
+                                          - (kh_lo
+                                                  + max(0, kh_len - 1)
+                                                          * jcp.stride_h
+                                                  + 1));
                 p.b_overflow = kh_lo;
                 p.kh_padding = kh_len;
                 p.scales = scales;
@@ -1747,7 +1748,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
             : nullptr;
     const int32_t *zp_compensation = jcp.src_zero_point
             ? get_src_zp_comp_from_wei(
-                    weights, weights_d, jcp.signed_input, jcp.ngroups, jcp.oc)
+                      weights, weights_d, jcp.signed_input, jcp.ngroups, jcp.oc)
             : nullptr;
 
     parallel(jcp.nthr, [&](const int ithr, const int nthr) {
@@ -1872,20 +1873,20 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
                 p.t_overflow = jcp.dilate_h > 0
                         ? jcp.kh - kh_len - kh_lo
                         : max(0,
-                                jcp.kh
-                                        - (kh_lo
-                                                + max(0, kh_len - 1)
-                                                        * jcp.stride_h
-                                                + 1));
+                                  jcp.kh
+                                          - (kh_lo
+                                                  + max(0, kh_len - 1)
+                                                          * jcp.stride_h
+                                                  + 1));
                 p.b_overflow = kh_lo;
                 p.f_overflow = jcp.dilate_d > 0
                         ? jcp.kd - kd_len - kd_lo
                         : max(0,
-                                jcp.kd
-                                        - (kd_lo
-                                                + max(0, kd_len - 1)
-                                                        * jcp.stride_d
-                                                + 1));
+                                  jcp.kd
+                                          - (kd_lo
+                                                  + max(0, kd_len - 1)
+                                                          * jcp.stride_d
+                                                  + 1));
                 p.back_overflow = kd_lo;
                 p.kh_padding = kh_len;
                 p.kd_padding = kd_len;

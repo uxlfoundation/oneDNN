@@ -501,7 +501,7 @@ status_t gemm_bf16_convolution_fwd_t<dst_data_type>::execute_forward_thr_nspc(
                                     acc_needed ? acc_arr : (float *)dst_arr,
                                     bia_arr, sum_scale, jcp.oc,
                                     post_ops_binary_rhs_arg_vec, dst_base,
-                                    g * jcp.oc);
+                                    g *jcp.oc);
                         });
             }
         }
@@ -526,7 +526,7 @@ status_t gemm_bf16_convolution_fwd_t<dst_data_type>::execute_forward_ncsp(
             key_conv_gemm_col);
     acc_data_t *acc_base = is_bf16_dst
             ? ctx.get_scratchpad_grantor().template get<acc_data_t>(
-                    key_conv_int_dat_in_acc_dt)
+                      key_conv_int_dat_in_acc_dt)
             : nullptr;
 
     const conv_gemm_conf_t &jcp = this->pd()->jcp_;
@@ -609,7 +609,7 @@ status_t gemm_bf16_convolution_fwd_t<dst_data_type>::execute_forward_ncsp(
             float *bias_ptr = bias ? bias + groups * jcp.oc + oc : nullptr;
             (*pp_ker_)(dst_local, acc, bias_ptr, sum_scale, dst_str, acc_str, m,
                     oc_block, post_ops_binary_rhs_arg_vec.data(), dst,
-                    groups * jcp.oc + oc);
+                    groups *jcp.oc + oc);
         }
     };
 
@@ -789,7 +789,7 @@ status_t gemm_bf16_convolution_bwd_data_t<diff_src_data_type>::
             key_conv_gemm_col);
     acc_data_t *acc_base = diff_src_data_type == data_type::bf16
             ? ctx.get_scratchpad_grantor().template get<acc_data_t>(
-                    key_conv_int_dat_in_acc_dt)
+                      key_conv_int_dat_in_acc_dt)
             : nullptr;
 
     const conv_gemm_conf_t &jcp = this->pd()->jcp_;
@@ -964,7 +964,7 @@ status_t gemm_bf16_convolution_bwd_weights_t<diff_wei_data_type>::
 
     acc_data_t *acc_base = diff_wei_data_type == data_type::bf16
             ? ctx.get_scratchpad_grantor().template get<acc_data_t>(
-                    key_conv_int_dat_in_acc_dt)
+                      key_conv_int_dat_in_acc_dt)
             : (acc_data_t *)diff_weights;
 
     float *diff_bias = nullptr;
@@ -1171,7 +1171,7 @@ status_t gemm_bf16_convolution_bwd_weights_t<diff_wei_data_type>::
 
     acc_data_t *acc_base = diff_wei_data_type == data_type::bf16
             ? ctx.get_scratchpad_grantor().template get<acc_data_t>(
-                    key_conv_int_dat_in_acc_dt)
+                      key_conv_int_dat_in_acc_dt)
             : (acc_data_t *)diff_weights;
 
     float *diff_bias = nullptr;

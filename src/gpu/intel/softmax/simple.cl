@@ -150,7 +150,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
 
 #define GET_DATA_IDX(dim_idx) \
     (SOFTMAX_AXIS_IDX > (dim_idx))           ? dim[(dim_idx)] \
-            : (SOFTMAX_AXIS_IDX < (dim_idx)) ? dim[(dim_idx)-1] \
+            : (SOFTMAX_AXIS_IDX < (dim_idx)) ? dim[(dim_idx) - 1] \
                                              : i
         const unsigned po_d0 = SOFTMAX_AXIS_IDX > 0 ? dim[0] : i;
         const unsigned po_d1 = GET_DATA_IDX(1);

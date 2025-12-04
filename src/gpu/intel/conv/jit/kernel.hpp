@@ -36,7 +36,7 @@ public:
     conv_kernel_t(const config_t &cfg, const kernel_info_t &kernel_info,
             const compute::range_t &local_range, const layout_t &zp_dst)
         : ir_kernel_t(kernel_info.iface("gen_conv"), cfg.options(), local_range,
-                {GENERATOR_NAME, GENERATOR_LINE})
+                  {GENERATOR_NAME, GENERATOR_LINE})
         , prb_(cfg.prb())
         , cfg_(cfg) {
 

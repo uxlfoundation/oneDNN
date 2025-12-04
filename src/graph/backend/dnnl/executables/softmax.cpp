@@ -48,9 +48,10 @@ softmax_executable_t::desc_t softmax_executable_t::create_desc(
     dnnl::algorithm algo = dnnl::algorithm::undef;
     if (op->get_kind() == dnnl_impl::op_kind::dnnl_softmax) {
         const auto mode = op->get_attr<std::string>(op_attr::mode);
-        algo = mode == "inf_as_zero" ? static_cast<dnnl::algorithm>(
-                       dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
-                                     : dnnl::algorithm::softmax_accurate;
+        algo = mode == "inf_as_zero"
+                ? static_cast<dnnl::algorithm>(
+                          dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
+                : dnnl::algorithm::softmax_accurate;
     } else if (op->get_kind() == dnnl_impl::op_kind::dnnl_logsoftmax) {
         algo = dnnl::algorithm::softmax_log;
     } else {

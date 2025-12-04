@@ -228,7 +228,7 @@ struct jit_bnorm_process_relu_t {
             jit_generator_t *host, Reg64 reg_off_dat, Reg64 reg_tmp,
             Reg64 reg_ptr_ws, Vmm vzero, Vmm vstore_mask, Opmask kstore_mask)
         : jit_bnorm_process_relu_t(pd, host, reg_off_dat, reg_tmp, reg_ptr_ws,
-                vzero, vstore_mask, kstore_mask, Vmm(), Vmm(), Reg64()) {}
+                  vzero, vstore_mask, kstore_mask, Vmm(), Vmm(), Reg64()) {}
 
     jit_generator_t *const h_;
     const Reg64 reg_off_dat_;
@@ -703,7 +703,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
                 {
                     is_avx2_ne_xf16_
                             ? compute_stat_avx2_ne_xf16(
-                                    compute_mean, c_blks_to_unroll)
+                                      compute_mean, c_blks_to_unroll)
                             : compute_stat(compute_mean, c_blks_to_unroll);
 
                     add(reg_off_dat_, stride_S_ * data_type_size_);
@@ -2551,12 +2551,13 @@ status_t jit_uni_tbb_batch_normalization_fwd_t<isa>::execute(
     auto scale = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SCALE);
     auto shift = CTX_IN_MEM(const acc_data_t *, DNNL_ARG_SHIFT);
 
-    auto mean = pd()->stats_is_src() ? const_cast<acc_data_t *>(
-                        CTX_IN_MEM(const acc_data_t *, DNNL_ARG_MEAN))
-                                     : CTX_OUT_MEM(acc_data_t *, DNNL_ARG_MEAN);
+    auto mean = pd()->stats_is_src()
+            ? const_cast<acc_data_t *>(
+                      CTX_IN_MEM(const acc_data_t *, DNNL_ARG_MEAN))
+            : CTX_OUT_MEM(acc_data_t *, DNNL_ARG_MEAN);
     auto var = pd()->stats_is_src()
             ? const_cast<acc_data_t *>(
-                    CTX_IN_MEM(const acc_data_t *, DNNL_ARG_VARIANCE))
+                      CTX_IN_MEM(const acc_data_t *, DNNL_ARG_VARIANCE))
             : CTX_OUT_MEM(acc_data_t *, DNNL_ARG_VARIANCE);
 
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);

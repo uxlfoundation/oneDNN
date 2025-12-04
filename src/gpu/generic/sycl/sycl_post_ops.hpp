@@ -52,7 +52,7 @@ struct ref_eltwise_fwd_t {
 
     ref_eltwise_fwd_t(const post_ops_t::entry_t::eltwise_t &eltwise)
         : ref_eltwise_fwd_t(
-                eltwise.alg, eltwise.alpha, eltwise.beta, eltwise.scale) {}
+                  eltwise.alg, eltwise.alpha, eltwise.beta, eltwise.scale) {}
 
     float compute(float s) const {
         return compute(alg_, s, alpha_, beta_) * scale_;
@@ -361,10 +361,10 @@ struct post_op_input_args {
                             ? DNNL_ARG_WEIGHTS \
                             : DNNL_ARG_SRC_1))
         : args_ {CTX_IN_SYCL_KERNEL_MEMORY_PO(0),
-                CTX_IN_SYCL_KERNEL_MEMORY_PO(1),
-                CTX_IN_SYCL_KERNEL_MEMORY_PO(2),
-                CTX_IN_SYCL_KERNEL_MEMORY_PO(3),
-                CTX_IN_SYCL_KERNEL_MEMORY_PO(4)} {
+                  CTX_IN_SYCL_KERNEL_MEMORY_PO(1),
+                  CTX_IN_SYCL_KERNEL_MEMORY_PO(2),
+                  CTX_IN_SYCL_KERNEL_MEMORY_PO(3),
+                  CTX_IN_SYCL_KERNEL_MEMORY_PO(4)} {
     }
 #undef CTX_IN_SYCL_KERNEL_MEMORY_PO
 

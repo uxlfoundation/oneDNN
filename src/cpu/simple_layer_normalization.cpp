@@ -105,7 +105,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
                 : CTX_OUT_MEM(float *, DNNL_ARG_MEAN);
         variance = pd()->stats_are_src()
                 ? const_cast<float *>(
-                        CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE))
+                          CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE))
                 : CTX_OUT_MEM(float *, DNNL_ARG_VARIANCE);
     }
 

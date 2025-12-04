@@ -924,8 +924,9 @@ status_t jit_avx512_common_conv_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     if (jcp.is_1stconv) {
         wei_tag = with_groups
                 ? ((jcp.simd_w == 4)
-                                ? pick(ndims - 3, gOwi4o, gOhwi4o, gOdhwi4o)
-                                : pick(ndims - 3, gOwi16o, gOhwi16o, gOdhwi16o))
+                                  ? pick(ndims - 3, gOwi4o, gOhwi4o, gOdhwi4o)
+                                  : pick(ndims - 3, gOwi16o, gOhwi16o,
+                                            gOdhwi16o))
                 : pick(ndims - 3, Owi16o, Ohwi16o, Odhwi16o);
     }
 

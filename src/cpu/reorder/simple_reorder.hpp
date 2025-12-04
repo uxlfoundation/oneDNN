@@ -323,7 +323,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         ? input[input_d.blk_off<!w_groups>(g, oc, ic, h, w)]
                         : input[input_d.blk_off<!w_groups>(g, oc, ic, w)];
                 auto &o = w_depth ? output[output_d.blk_off<!w_groups>(
-                                  g, oc, ic, d, h, w)]
+                                            g, oc, ic, d, h, w)]
                         : w_height
                         ? output[output_d.blk_off<!w_groups>(g, oc, ic, h, w)]
                         : output[output_d.blk_off<!w_groups>(g, oc, ic, w)];
@@ -2046,7 +2046,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     : ndims >= 4 + with_g \
                     ? (md).blk_off<!with_g>(g, h0, h1, m1, m2) \
                     : /* ndims >= 3 + with_g ? */ (md).blk_off<!with_g>( \
-                            g, h0, h1, m2))
+                              g, h0, h1, m2))
 
         parallel_nd(G, NB_H0, NB_H1, M0, M1, M2,
                 [=](dim_t g, dim_t nb_h0, dim_t nb_h1, dim_t m0, dim_t m1,
@@ -2416,7 +2416,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 src_scale = src_scales_d.nelems() == 1
                         ? src_scales[0]
                         : io::load_float_value(src_scales_d.data_type(),
-                                src_scales, src_scales_off);
+                                  src_scales, src_scales_off);
             }
 
             int src_zp_val = 0; // Avoid clashing with the one defined for rest.
@@ -2647,7 +2647,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 src_scale = src_scales_d.nelems() == 1
                         ? src_scales[0]
                         : io::load_float_value(src_scales_d.data_type(),
-                                src_scales, src_scales_off);
+                                  src_scales, src_scales_off);
             }
 
             float dst_scale = 1.f;

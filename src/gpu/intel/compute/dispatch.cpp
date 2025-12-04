@@ -89,7 +89,7 @@ compute::range_t get_optimal_lws(compute::range_t &gws,
         auto lws_i = (static_cast<size_t>(mapped_vec_dim_idx) == i
                              && gpu_arch >= gpu_arch_t::xe_hp)
                 ? match(optimal_vect_values, gws[i], rest_lws,
-                        utils::rnd_up_pow2(lws_min[i]))
+                          utils::rnd_up_pow2(lws_min[i]))
                 : match(optimal_lws_values, gws[i], rest_lws, lws_min[i]);
 
         lws_nd[i] *= lws_i;
@@ -141,8 +141,7 @@ std::string dispatch_t::str() const {
     ostringstream_t oss;
     for (dim_idx_t i = 0; i < ndims_; ++i) {
         auto &d = dims_[i];
-        oss << "    "
-            << "dim #" << i << " name: " << std::setw(10) << d.name
+        oss << "    " << "dim #" << i << " name: " << std::setw(10) << d.name
             << " size: " << std::setw(6) << d.size << " block: " << std::setw(4)
             << d.block << " nesting_level: " << std::setw(4) << d.nesting_level
             << " vsize: " << std::setw(4) << d.vector_size

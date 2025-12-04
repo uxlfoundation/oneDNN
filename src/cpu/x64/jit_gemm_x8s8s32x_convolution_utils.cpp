@@ -168,10 +168,10 @@ jit_pp_ker_t::jit_pp_ker_t(
     , zp_pad_comp_helper_(jit_gemm_convolution_utils::padding_exists(jcp)
                               && jcp.zp.src_exists
                       ? utils::make_unique<
-                              jit_gemm_x8s8s32x_zp_pad_comp_helper_t>(this,
-                              jcp_, reg_zp_pad_comp_, reg_zp_pad_comp_temp_,
-                              reg_should_apply_src_pad_comp_,
-                              pd->src_md()->ndims)
+                                jit_gemm_x8s8s32x_zp_pad_comp_helper_t>(this,
+                                jcp_, reg_zp_pad_comp_, reg_zp_pad_comp_temp_,
+                                reg_should_apply_src_pad_comp_,
+                                pd->src_md()->ndims)
                       : nullptr)
 
 {

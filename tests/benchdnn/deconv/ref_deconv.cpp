@@ -87,9 +87,10 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
                     for (int64_t ic = 0; ic < ICG; ++ic) {
                         int64_t src_off = ((ic * ID + id) * IH + ih) * IW + iw;
                         int64_t wei_off = ((ic * KD + kd) * KH + kh) * KW + kw;
-                        int src_zp = has_src_zp ? src_zps.get_f32_elem(
-                                             src_zp_mask > 0 ? g * ICG + ic : 0)
-                                                : 0;
+                        int src_zp = has_src_zp
+                                ? src_zps.get_f32_elem(
+                                          src_zp_mask > 0 ? g * ICG + ic : 0)
+                                : 0;
                         float s = (src_loc[src_off] - src_zp) * src_scale;
                         float wei_scale = 1.f;
                         if (has_wei_scale)
@@ -123,9 +124,10 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
 
                 maybe_post_ops(prb->attr, conv_res, dst, v_po_vals);
 
-                int dst_zp = has_dst_zp ? dst_zps.get_f32_elem(
-                                     dst_zp_mask > 0 ? g * OCG + oc : 0)
-                                        : 0;
+                int dst_zp = has_dst_zp
+                        ? dst_zps.get_f32_elem(
+                                  dst_zp_mask > 0 ? g * OCG + oc : 0)
+                        : 0;
                 dst = conv_res * dst_scale + dst_zp;
             });
 }
@@ -256,9 +258,10 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
                                 = ((oc * OD + od) * OH + oh) * OW + ow;
                         const int64_t wei_off
                                 = ((oc * ICG * KD + kd) * KH + kh) * KW + kw;
-                        int src_zp = has_src_zp ? src_zps.get_f32_elem(
-                                             src_zp_mask > 0 ? g * OCG + oc : 0)
-                                                : 0;
+                        int src_zp = has_src_zp
+                                ? src_zps.get_f32_elem(
+                                          src_zp_mask > 0 ? g * OCG + oc : 0)
+                                : 0;
                         float diff_dst_val
                                 = (diff_dst_loc[diff_dst_off] - src_zp)
                                 * src_scale;
@@ -297,9 +300,10 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
 
                 maybe_post_ops(prb->attr, conv_res, ds, v_po_vals);
 
-                int dst_zp = has_dst_zp ? dst_zps.get_f32_elem(
-                                     dst_zp_mask > 0 ? g * ICG + ic : 0)
-                                        : 0;
+                int dst_zp = has_dst_zp
+                        ? dst_zps.get_f32_elem(
+                                  dst_zp_mask > 0 ? g * ICG + ic : 0)
+                        : 0;
                 ds = conv_res * dst_scale + dst_zp;
             });
 }

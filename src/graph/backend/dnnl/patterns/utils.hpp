@@ -362,7 +362,7 @@ inline graph::utils::pm::pb_node_t *optional_smooth_quant(
     auto opt = optional_qout
             ? p_curr_graph->append_optional(optional_graph)
             : p_curr_graph->append_optional(optional_graph,
-                    graph::utils::pm::in_edges_t {in_edge(0, input, 0)});
+                      graph::utils::pm::in_edges_t {in_edge(0, input, 0)});
     graph::utils::pm::pb_op_t *quant_out
             = p_curr_graph->append_op(graph::op_kind::Quantize,
                     graph::utils::pm::in_edges_t {in_edge(0, opt, 0)});

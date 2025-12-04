@@ -105,7 +105,7 @@ dim_t dst_off_w_zero_padding(dim_t outer, dim_t inner) {
 }
 
 #define _SRC_OFF(outer, reduction, inner) \
-    ((outer)*REDUCTION_SIZE * INNER_DIM_SIZE + (reduction)*INNER_DIM_SIZE \
+    ((outer) * REDUCTION_SIZE * INNER_DIM_SIZE + (reduction) * INNER_DIM_SIZE \
             + (inner))
 
 #define _DST_OFF(outer, inner) dst_off_w_zero_padding(outer, inner)

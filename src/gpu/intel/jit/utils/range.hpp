@@ -44,8 +44,8 @@ filter_range_t<Fn> filter(Fn fn) {
 }
 
 template <typename IterT, typename Fn>
-auto operator|(const IterT &iter, const filter_range_t<Fn> &fn)
-        -> decltype(filter(iter, fn.fn)) {
+auto operator|(const IterT &iter,
+        const filter_range_t<Fn> &fn) -> decltype(filter(iter, fn.fn)) {
     return filter(iter, fn.fn);
 }
 
@@ -67,8 +67,8 @@ transform_range_t<Fn> transform(Fn fn) {
 }
 
 template <typename IterT, typename Fn>
-auto operator|(const IterT &iter, const transform_range_t<Fn> &fn)
-        -> decltype(transform(iter, fn.fn)) {
+auto operator|(const IterT &iter,
+        const transform_range_t<Fn> &fn) -> decltype(transform(iter, fn.fn)) {
     return transform(iter, fn.fn);
 }
 

@@ -100,7 +100,7 @@ struct message_info_t {
         return kind == message_kind_t::block
                 ? count_block_messages(hw, inner_bytes, iterations)
                 : count_scattered_messages(
-                        hw, inner_bytes, iterations, item_size);
+                          hw, inner_bytes, iterations, item_size);
     }
 };
 

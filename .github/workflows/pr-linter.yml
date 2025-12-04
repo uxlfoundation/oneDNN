@@ -55,14 +55,14 @@ jobs:
 
   pr-clang-format:
     name: Clang-Format
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0
       - name: Install clang-format
-        run: sudo apt update && sudo apt install -y "clang-format-11"
+        run: sudo apt update && sudo apt install -y "clang-format-18"
       - name: Check code formatting
         run: .github/automation/clang-format.sh ${{ github.event.pull_request.base.sha }}
 

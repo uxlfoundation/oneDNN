@@ -41,7 +41,7 @@ class engine_t : public intel::engine_t {
 public:
     engine_t(cl_device_id adevice, cl_context acontext, size_t index)
         : intel::engine_t(
-                new xpu::ocl::engine_impl_t(adevice, acontext, index)) {}
+                  new xpu::ocl::engine_impl_t(adevice, acontext, index)) {}
 
     status_t init() override;
     status_t init(const std::vector<uint8_t> &cache_blob);

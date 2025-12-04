@@ -431,12 +431,12 @@ constexpr std::array<typename std::remove_cv<T>::type, N> to_array(T (&a)[N]) {
 
 template <class T, std::size_t N, std::size_t... I>
 constexpr std::array<typename std::remove_cv<T>::type, N> to_array_impl(
-        T(&&a)[N], index_sequence<I...>) {
+        T (&&a)[N], index_sequence<I...>) {
     return {{std::move(a[I])...}};
 }
 
 template <class T, std::size_t N>
-constexpr std::array<typename std::remove_cv<T>::type, N> to_array(T(&&a)[N]) {
+constexpr std::array<typename std::remove_cv<T>::type, N> to_array(T (&&a)[N]) {
     return to_array_impl(std::move(a), make_index_sequence<N> {});
 }
 

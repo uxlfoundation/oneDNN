@@ -113,23 +113,27 @@ struct dnnl_engine : public dnnl::impl::c_compatible {
      * a NULL-terminated list */
     virtual const dnnl::impl::impl_list_item_t *get_reorder_implementation_list(
             const dnnl::impl::memory_desc_t *src_md,
-            const dnnl::impl::memory_desc_t *dst_md) const = 0;
+            const dnnl::impl::memory_desc_t *dst_md) const
+            = 0;
 
     /** return the list of concat implementations. engine guarantees to return
      * a NULL-terminated list */
     virtual const dnnl::impl::impl_list_item_t *
-    get_concat_implementation_list() const = 0;
+    get_concat_implementation_list() const
+            = 0;
 
     /** return the list of sum implementations. engine guarantees to return
      * a NULL-terminated list */
     virtual const dnnl::impl::impl_list_item_t *
-    get_sum_implementation_list() const = 0;
+    get_sum_implementation_list() const
+            = 0;
 
     /** return the list of implementations for a given descriptor.
      * engine guarantees to return a NULL-terminated list */
 
     virtual const dnnl::impl::impl_list_item_t *get_implementation_list(
-            const dnnl::impl::op_desc_t *desc) const = 0;
+            const dnnl::impl::op_desc_t *desc) const
+            = 0;
 
     virtual dnnl::impl::status_t serialize_device(
             dnnl::impl::serialization_stream_t &sstream) const {

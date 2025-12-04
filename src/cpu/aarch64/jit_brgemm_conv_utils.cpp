@@ -1527,9 +1527,9 @@ void brg_blocking_t::calc_blocks_1x1() {
         const auto max_os_block_thr
                 = (src_dsz * ic >= 1024 && src_dsz * ic < 4096)
                 ? nstl::max(nstl::min(16, os),
-                        div_up(os, div_up(nthr, mb * div_up(oc, oc_block))))
+                          div_up(os, div_up(nthr, mb * div_up(oc, oc_block))))
                 : nstl::max(div_up(2048, oc_block),
-                        static_cast<int>(div_up(mb * ngroups * os, nthr)));
+                          static_cast<int>(div_up(mb * ngroups * os, nthr)));
         const auto max_os_block_L2 = max_sp_block_L2;
 
         auto max_os_block_aliasing = 1000000 / nthr;
@@ -1950,12 +1950,13 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         dim_t ds = jcp.copy_block_only
                 ? (brg_blocking_t::get_inp_size(jcp.idp, jcp.od_block, jcp.kd,
                            jcp.stride_d, jcp.dilate_d)
-                        + nstl::max(0, jcp.f_pad) + nstl::max(0, jcp.back_pad))
+                          + nstl::max(0, jcp.f_pad)
+                          + nstl::max(0, jcp.back_pad))
                 : jcp.idp;
         dim_t hs = jcp.copy_block_only
                 ? (brg_blocking_t::get_inp_size(jcp.ihp, jcp.oh_block, jcp.kh,
                            jcp.stride_h, jcp.dilate_h)
-                        + nstl::max(0, jcp.t_pad) + nstl::max(0, jcp.b_pad))
+                          + nstl::max(0, jcp.t_pad) + nstl::max(0, jcp.b_pad))
                 : jcp.ihp;
         if (jcp.is_os_blocking)
             hs = div_up(rnd_up(hs * jcp.iwp, jcp.brgM), jcp.iwp);
@@ -2164,7 +2165,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = jcp.is_rtus ? rnd_up(jcp.LDA * jcp.os, align_size) : 0;
     jcp.inp_buffer_mask_size = jcp.is_rtus
             ? rnd_up(div_up(jcp.nb_ic, jcp.nb_ic_blocking) * jcp.nb_os,
-                    align_size)
+                      align_size)
             : 0;
     jcp.buffer_size = jcp.LDC * jcp.M;
 

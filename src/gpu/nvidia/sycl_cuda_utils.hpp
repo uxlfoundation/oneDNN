@@ -284,7 +284,7 @@ protected:
 public:
     explicit cublas_error(const std::string &message, cublasStatus_t result)
         : std::runtime_error(
-                (message + std::string(cublas_error_map(result)))) {
+                  (message + std::string(cublas_error_map(result)))) {
         error_number_ = static_cast<int>(result);
     }
 
@@ -320,7 +320,7 @@ public:
 
     explicit cuda_error(const std::string &message, cudaError_t result)
         : std::runtime_error(
-                (message + std::to_string(static_cast<int>(result)))) {
+                  (message + std::to_string(static_cast<int>(result)))) {
         error_number_ = static_cast<int>(result);
     }
     virtual ~cuda_error() throw() {}
@@ -364,7 +364,7 @@ protected:
 public:
     explicit cudnn_error(const std::string &message, cudnnStatus_t result)
         : std::runtime_error(
-                (message + std::string(cudnn_get_error_string(result)))) {
+                  (message + std::string(cudnn_get_error_string(result)))) {
         error_number_ = static_cast<int>(result);
     }
 

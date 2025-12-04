@@ -250,7 +250,7 @@ typedef struct {
 
 /// Special pointer value that indicates that the library needs to allocate an
 /// underlying buffer for a memory object.
-#define DNNL_MEMORY_ALLOCATE ((void *)(size_t)-1)
+#define DNNL_MEMORY_ALLOCATE ((void *)(size_t) - 1)
 
 /// @} dnnl_api_memory
 

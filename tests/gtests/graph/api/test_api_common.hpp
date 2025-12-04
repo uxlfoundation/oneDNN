@@ -167,7 +167,7 @@ dnnl::engine &cpp_api_test_dnnl_engine_create(dnnl::engine::kind engine_kind);
 inline dnnl_dim_t product(const std::vector<int64_t> &dims) {
     return dims.empty() ? 0
                         : std::accumulate(dims.begin(), dims.end(),
-                                (dnnl_dim_t)1, std::multiplies<dnnl_dim_t>());
+                                  (dnnl_dim_t)1, std::multiplies<dnnl_dim_t>());
 }
 
 #endif

@@ -91,8 +91,8 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::compute_ker(int ur_w, int pad_l,
     /* Skip the last loads of input
             if (ic%16)/ic_sub_step < ic_block/ic_sub_step */
     const int icb = (last_ic_block_flag == ic_block_t::last_ic_block)
-            ? div_up(
-                    (jcp.ic_without_padding % jcp.ic_block_int), ic_inner_block)
+            ? div_up((jcp.ic_without_padding % jcp.ic_block_int),
+                      ic_inner_block)
             : ic_block / ic_inner_block;
 
     auto get_filter_offset = [this, oc_block](int ocb, int ic, int ki) {
@@ -2547,17 +2547,19 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
         using namespace format_tag;
         using namespace memory_extra_flags;
         format_tag_t wei_tag;
-        wei_tag = jcp.is_relo ? pick(with_groups + 2 * (ndims - 3), Owi16o,
-                          gOwi16o, Owhi16o, gOwhi16o, Odwhi16o, gOdwhi16o)
-                : is_bf16_convolution ? pick(with_groups + 2 * (ndims - 3),
-                          OIw16i16o2i, gOIw16i16o2i, OIhw16i16o2i,
-                          gOIhw16i16o2i, OIdhw16i16o2i, gOIdhw16i16o2i)
+        wei_tag = jcp.is_relo
+                ? pick(with_groups + 2 * (ndims - 3), Owi16o, gOwi16o, Owhi16o,
+                          gOwhi16o, Odwhi16o, gOdwhi16o)
+                : is_bf16_convolution
+                ? pick(with_groups + 2 * (ndims - 3), OIw16i16o2i, gOIw16i16o2i,
+                          OIhw16i16o2i, gOIhw16i16o2i, OIdhw16i16o2i,
+                          gOIdhw16i16o2i)
                 : is_small_ic
                 ? pick(with_groups + 2 * (ndims - 3), OwI16o4i, gOwI16o4i,
-                        OhwI16o4i, gOhwI16o4i, OdhwI16o4i, gOdhwI16o4i)
+                          OhwI16o4i, gOhwI16o4i, OdhwI16o4i, gOdhwI16o4i)
                 : pick(with_groups + 2 * (ndims - 3), OIw16i16o4i, gOIw16i16o4i,
-                        OIhw16i16o4i, gOIhw16i16o4i, OIdhw16i16o4i,
-                        gOIdhw16i16o4i);
+                          OIhw16i16o4i, gOIhw16i16o4i, OIdhw16i16o4i,
+                          gOIdhw16i16o4i);
 
         memory_desc_t want_wei_md = weights_md;
         CHECK_BOOL(memory_desc_init_by_tag(want_wei_md, wei_tag));
@@ -5442,9 +5444,9 @@ status_t jit_avx512_core_amx_bwd_weights_kernel_t::init_conf(
 
     jcp.harness = ndims == 5
             ? harness_3d_reduction
-            : (use_full_spat_loop          ? harness_compute_full_spatial
-                            : (ndims == 4) ? harness_2d_reduction
-                                           : harness_mb_reduction);
+            : (use_full_spat_loop            ? harness_compute_full_spatial
+                              : (ndims == 4) ? harness_2d_reduction
+                                             : harness_mb_reduction);
     switch (jcp.harness) {
         case harness_2d_reduction: jcp.nthr_mb_work = jcp.mb * jcp.oh; break;
         case harness_3d_reduction: jcp.nthr_mb_work = jcp.mb * jcp.od; break;

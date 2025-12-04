@@ -1240,11 +1240,11 @@ int doit(const prb_t *prb, res_t *res) {
     const int32_t *dst_zp_ptr
             = mem_map.count(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST)
             ? (const int32_t *)mem_map.at(
-                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST)
+                      DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST)
             : nullptr;
     int32_t zp_a_val = mem_map.count(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC)
             ? *(const int32_t *)mem_map.at(
-                    DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC)
+                      DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC)
             : 0;
     const char *bia_dt_ptr = mem_map.count(DNNL_ARG_BIAS)
             ? (const char *)mem_map.at(DNNL_ARG_BIAS)

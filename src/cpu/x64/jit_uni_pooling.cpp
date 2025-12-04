@@ -375,7 +375,7 @@ public:
             const data_t *src, data_t *dst, char *indices,
             const exec_ctx_t &ctx)
         : transpose_facade_base_t<wsp_data_t, d_type>(
-                jpp, src_d, dst_d, indices_d, indices, wsp_dt, ctx) {
+                  jpp, src_d, dst_d, indices_d, indices, wsp_dt, ctx) {
 
         if (this->should_transpose_src()) {
             this->execute_transpose_input_
@@ -422,7 +422,7 @@ public:
             data_t *src, const data_t *dst, const char *indices,
             const exec_ctx_t &ctx)
         : transpose_facade_base_t<wsp_data_t, d_type>(
-                jpp, src_d, dst_d, indices_d, indices, wsp_dt, ctx)
+                  jpp, src_d, dst_d, indices_d, indices, wsp_dt, ctx)
         , c_tail_(jpp.c_without_padding % jpp.c_block) {
 
         if (this->should_transpose_src())

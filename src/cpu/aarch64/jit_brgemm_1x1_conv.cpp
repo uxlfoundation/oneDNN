@@ -466,7 +466,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
     brgemm_batch_element_t *const brg_batch_global
             = (jcp.brg_type != brgemm_strd)
             ? scratchpad.template get<brgemm_batch_element_t>(
-                    key_brgemm_primitive_batch)
+                      key_brgemm_primitive_batch)
             : nullptr;
     char *const c_buffer_global = (jcp.use_buffer)
             ? scratchpad.template get<char>(key_brgemm_primitive_buffer)

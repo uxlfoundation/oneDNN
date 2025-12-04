@@ -928,9 +928,10 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
             = utils::array_product(src0_d.padded_dims() + 1, ndims - 1);
     const dim_t nelems_slice_src1 = bcast_type == bcast_t::none
             ? nelems_slice_src0
-            : ((bcast_dims[0] == 0) ? utils::array_product(
-                       src1_d.padded_dims() + 1, ndims - 1)
-                                    : 0);
+            : ((bcast_dims[0] == 0)
+                              ? utils::array_product(
+                                        src1_d.padded_dims() + 1, ndims - 1)
+                              : 0);
 
     if (op_type == op_t::c_blocked) {
         const dim_t C_blocks = std::ceil(
@@ -1058,7 +1059,7 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
     // array product of outer dimensions that are not broadcast
     const dim_t SP_no_bcast = ndims >= 3
             ? utils::array_product(
-                    dims + (ndims - not_bcasted_sp_dims), not_bcasted_sp_dims)
+                      dims + (ndims - not_bcasted_sp_dims), not_bcasted_sp_dims)
             : 1;
     const dim_t C = ndims >= 2 ? dims[1] : 1;
     const dim_t SP = ndims >= 3 ? utils::array_product(dims + 2, ndims - 2) : 1;

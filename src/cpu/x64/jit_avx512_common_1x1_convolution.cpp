@@ -54,8 +54,8 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
             = binary_injector::prepare_binary_args(pd()->jcp_.post_ops, ctx);
     const auto &post_ops_binary_rhs_arg_vec_dw = pd()->dw_conv_pd_
             ? binary_injector::prepare_binary_args(
-                    pd()->dw_conv_pd_->jcp_.post_ops, ctx,
-                    pd()->jcp_.post_ops.entry_.size() + 1)
+                      pd()->dw_conv_pd_->jcp_.post_ops, ctx,
+                      pd()->jcp_.post_ops.entry_.size() + 1)
             : std::vector<const void *> {};
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
@@ -457,7 +457,7 @@ void jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type, wei_type,
     const auto &jcp = kernel_->jcp;
     auto rtus_space = pd()->rtus_.reduce_src_
             ? ctx.get_scratchpad_grantor().template get<diff_src_data_t>(
-                    key_conv_rtus_space)
+                      key_conv_rtus_space)
             : nullptr;
 
     const int ndims = diff_src_d.ndims();

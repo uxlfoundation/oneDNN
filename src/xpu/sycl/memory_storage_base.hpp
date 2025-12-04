@@ -33,11 +33,14 @@ public:
     virtual memory_kind_t memory_kind() const = 0;
 
     virtual in_memory_arg_t get_in_memory_arg(
-            stream_t *stream, ::sycl::handler &cgh) const = 0;
+            stream_t *stream, ::sycl::handler &cgh) const
+            = 0;
     virtual out_memory_arg_t get_out_memory_arg(
-            stream_t *stream, ::sycl::handler &cgh) const = 0;
+            stream_t *stream, ::sycl::handler &cgh) const
+            = 0;
     virtual inout_memory_arg_t get_inout_memory_arg(
-            stream_t *stream, ::sycl::handler &cgh) const = 0;
+            stream_t *stream, ::sycl::handler &cgh) const
+            = 0;
 
     static in_memory_arg_t empty_in_memory_arg(
             stream_t *stream, ::sycl::handler &cgh);

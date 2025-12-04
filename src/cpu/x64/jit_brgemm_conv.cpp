@@ -47,9 +47,9 @@ int brgemm_convolution_fwd_t<isa>::pd_t::get_brg_idx(int m,
         int kd_e, int kh_b, int kh_e) const {
     const auto brg_idx = jcp_.use_uker
             ? brg_indices.find({m, is_N_tail, is_K_tail, do_initialization,
-                    kd_b, kd_e, kh_b, kh_e})
+                      kd_b, kd_e, kh_b, kh_e})
             : brg_indices.find({m, is_N_tail, is_K_tail, do_initialization, 0,
-                    jcp_.kd, 0, jcp_.kh});
+                      jcp_.kd, 0, jcp_.kh});
     if (brg_idx == brg_indices.end()) return -1;
     return brg_idx->second;
 }
@@ -1359,7 +1359,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
             = brgemm_convolution_utils::uses_batch_elements(
                       jcp.brg_type, jcp.exec_type)
             ? scratchpad.template get<brgemm_batch_element_t>(
-                    key_brgemm_primitive_batch)
+                      key_brgemm_primitive_batch)
             : nullptr;
     char *const __restrict c_buffer_global = (jcp.use_buffer)
             ? scratchpad.template get<char>(key_brgemm_primitive_buffer)
@@ -1373,12 +1373,12 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
             : nullptr;
     int32_t *src_zp_comp_base = jcp.src_zero_point
             ? (jcp.req_cal_comp_pad ? scratchpad.template get<int32_t>(
-                       key_brgemm_primitive_zp_comp_a)
+                                              key_brgemm_primitive_zp_comp_a)
                                     : zp_compensation)
             : nullptr;
     int32_t *s8s8_comp_base = jcp.s8s8_compensation_required
             ? (jcp.req_cal_comp_pad ? scratchpad.template get<int32_t>(
-                       key_brgemm_primitive_buffer_comp)
+                                              key_brgemm_primitive_buffer_comp)
                                     : s8s8_compensation)
             : nullptr;
 
@@ -1586,13 +1586,13 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
                     ? div_up(jcp.oc_block, inp_oc_block)
                     : jcp.nb_oc;
             const auto wei_offs = is_relo_with_relo_weights
-                    ? (jcp.is_relo_wi()
-                                    ? ((((g * nb_oc + wei_ocb) * KD) + kd_b)
-                                                      * KH
-                                              + kh_b)
-                                            * KW * jcp.ic * inp_oc_block
-                                    : (((g * nb_oc + wei_ocb) * KH * KW) + kh_b)
-                                            * jcp.ic * inp_oc_block)
+                    ? (jcp.is_relo_wi() ? ((((g * nb_oc + wei_ocb) * KD) + kd_b)
+                                                          * KH
+                                                  + kh_b)
+                                              * KW * jcp.ic * inp_oc_block
+                                        : (((g * nb_oc + wei_ocb) * KH * KW)
+                                                  + kh_b)
+                                              * jcp.ic * inp_oc_block)
                     : g * _pd->wei_g_stride + wei_ocb * _pd->wei_ocb_stride
                             + kd_b * _pd->wei_kd_stride
                             + kh_b * _pd->wei_kh_stride
@@ -1676,21 +1676,21 @@ void brgemm_convolution_fwd_t<isa>::perform_outwork(
             p.apply_comp = has_postcomp;
             p.a_zp_compensation = has_postcomp && jcp.src_zero_point
                     ? &btc.src_zp_comp_ptr[comp_ker_offs
-                            + (ow_pw_s - ow) * comp_ow_sz]
+                              + (ow_pw_s - ow) * comp_ow_sz]
                     : btc.src_zp_comp_ptr;
             p.s8s8_compensation = has_postcomp && jcp.s8s8_compensation_required
                     ? &btc.s8s8_comp_ptr[comp_ker_offs
-                            + (ow_pw_s - ow) * comp_ow_sz]
+                              + (ow_pw_s - ow) * comp_ow_sz]
                     : btc.s8s8_comp_ptr;
 
             p.ptr_out = dst_base
                     + dst_dsz
                             * (btc.od * dst_h_sz + btc.oh * dst_w_sz
                                     + ow_pw_s * jcp.oc_without_padding);
-            p.ptr_in = static_cast<void *>(
-                    jcp.use_buffer ? (
-                            btc.c_buffer + acc_dsz * (ow_pw_s - ow) * jcp.LDC)
-                                   : p.ptr_out);
+            p.ptr_in = static_cast<void *>(jcp.use_buffer
+                            ? (btc.c_buffer
+                                      + acc_dsz * (ow_pw_s - ow) * jcp.LDC)
+                            : p.ptr_out);
         } else {
             p.apply_comp = has_postcomp;
             char *const ptr_Cz = jcp.use_buffer
@@ -1840,7 +1840,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
     const auto icb = btc.icc * jcp.nb_ic_blocking;
 
 #define bmask(icb, odb, ohb, owb) \
-    btc.inp_buffer_mask[(((icb)*jcp.nb_od + (odb)) * jcp.nb_oh + (ohb)) \
+    btc.inp_buffer_mask[(((icb) * jcp.nb_od + (odb)) * jcp.nb_oh + (ohb)) \
                     * jcp.nb_ow \
             + (owb)]
 
@@ -2170,7 +2170,7 @@ void brgemm_convolution_fwd_t<isa>::ker_base(brgemm_thread_ctx_t &btc) const {
         if (ow_l > 0) {
             const size_t comp_ker_offs = do_postwork
                     ? get_comp_offset(btc.g, btc.ocb, 0, ow_b, kd_s, kd_f, kh_s,
-                            kh_f, 0, KW)
+                              kh_f, 0, KW)
                     : 0;
 
             if (nb_ic_b > 0) {
@@ -2314,7 +2314,7 @@ void brgemm_convolution_fwd_t<isa>::ker_trans(brgemm_thread_ctx_t &btc) const {
                 + src_dsz
                         * ((jcp.copy_block_only ? 0
                                                 : ((icb + ic_block_s)
-                                                        * _pd->pbuf_d_sz)))
+                                                          * _pd->pbuf_d_sz)))
                 + (jcp.is_relo_whi() ? src_dsz * btc.ohb
                                         * ((jcp.oh_block - 1) * _pd->pbuf_w_sz
                                                 + jcp.stride_h
@@ -2347,7 +2347,7 @@ void brgemm_convolution_fwd_t<isa>::ker_trans(brgemm_thread_ctx_t &btc) const {
 
         const auto comp_ker_offs = do_postwork
                 ? get_comp_offset(btc.g, btc.ocb, btc.oh, ow_b, kd_s, kd_f,
-                        comp_kh_s, comp_kh_f, 0, KW)
+                          comp_kh_s, comp_kh_f, 0, KW)
                 : 0;
 
         if (nb_ic_b > 0) {

@@ -895,7 +895,7 @@ float brg_blocking_t::est_eff() {
     const dim_t max_job = (loop_order == loop_ndhwgc)
             ? grid_coverage(thread_job, oc, ngroups, oc_block, sp, sp_block)
             : grid_coverage(thread_job, sp, static_cast<dim_t>(nb_od) * nb_oh,
-                    sp_block, oc, oc_block);
+                      sp_block, oc, oc_block);
     const dim_t sum_job = static_cast<dim_t>(mb) * od * oh * ow * ngroups * oc;
 
     const float job_eff = max_job == 0
@@ -1320,7 +1320,7 @@ float brg_blocking_t::est_eff_1x1() {
     const auto amx_fac = maskrcnn_cond
             ? (div_up(M + M_tail, 16) / (M_n_sp_blks + M_tail_n_sp_blks))
             : (static_cast<float>(div_up(M + M_tail, 16))
-                    / (M_n_sp_blks + M_tail_n_sp_blks));
+                      / (M_n_sp_blks + M_tail_n_sp_blks));
 
     const auto brgemm_microkernel_eff = is_amx(isa)
             ? amx_fac * (static_cast<float>(ocb_ave) * spb_ave)
@@ -1377,15 +1377,15 @@ float brg_blocking_t::est_eff_1x1() {
     if (is_os_blocking) {
         max_job = (loop_order == loop_ndhwgc)
                 ? grid_coverage(thread_job, oc, ngroups, oc_block, os,
-                        static_cast<dim_t>(nb_os_blocking) * sp_block)
+                          static_cast<dim_t>(nb_os_blocking) * sp_block)
                 : grid_coverage(thread_job, os, 1,
-                        static_cast<dim_t>(nb_os_blocking) * sp_block, oc,
-                        oc_block);
+                          static_cast<dim_t>(nb_os_blocking) * sp_block, oc,
+                          oc_block);
     } else {
         max_job = (loop_order == loop_ndhwgc)
                 ? grid_coverage(thread_job, oc, ngroups, oc_block, sp, sp_block)
                 : grid_coverage(thread_job, sp, static_cast<dim_t>(od) * oh,
-                        sp_block, oc, oc_block);
+                          sp_block, oc, oc_block);
     }
 
     const dim_t sum_job = static_cast<dim_t>(mb) * od * oh * ow * ngroups * oc;
@@ -1564,9 +1564,9 @@ void brg_blocking_t::calc_blocks_1x1() {
         const auto max_os_block_thr
                 = (src_dsz * ic >= 1024 && src_dsz * ic < 4096)
                 ? nstl::max(nstl::min(16, os),
-                        div_up(os, div_up(nthr, mb * div_up(oc, oc_block))))
+                          div_up(os, div_up(nthr, mb * div_up(oc, oc_block))))
                 : nstl::max(div_up(2048, oc_block),
-                        static_cast<int>(div_up(mb * ngroups * os, nthr)));
+                          static_cast<int>(div_up(mb * ngroups * os, nthr)));
         const auto max_os_block_L2 = max_sp_block_L2;
 
         auto max_os_block_aliasing = 1000000 / nthr;
@@ -2370,12 +2370,13 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         dim_t ds = jcp.copy_block_only
                 ? (brg_blocking_t::get_inp_size(jcp.idp, jcp.od_block, jcp.kd,
                            jcp.stride_d, jcp.dilate_d)
-                        + nstl::max(0, jcp.f_pad) + nstl::max(0, jcp.back_pad))
+                          + nstl::max(0, jcp.f_pad)
+                          + nstl::max(0, jcp.back_pad))
                 : jcp.idp;
         dim_t hs = jcp.copy_block_only
                 ? (brg_blocking_t::get_inp_size(jcp.ihp, jcp.oh_block, jcp.kh,
                            jcp.stride_h, jcp.dilate_h)
-                        + nstl::max(0, jcp.t_pad) + nstl::max(0, jcp.b_pad))
+                          + nstl::max(0, jcp.t_pad) + nstl::max(0, jcp.b_pad))
                 : jcp.ihp;
         if (jcp.is_os_blocking)
             hs = div_up(rnd_up(hs * jcp.iwp, jcp.brgM), jcp.iwp)

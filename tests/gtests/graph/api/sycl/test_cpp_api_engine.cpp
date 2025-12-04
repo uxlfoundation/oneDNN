@@ -37,9 +37,9 @@ TEST(SYCLApi, Engine) {
 
     queue q = (ekind == dnnl::engine::kind::gpu)
             ? queue(dnnl::impl::xpu::sycl::compat::gpu_selector_v,
-                    property::queue::in_order {})
+                      property::queue::in_order {})
             : queue(dnnl::impl::xpu::sycl::compat::cpu_selector_v,
-                    property::queue::in_order {});
+                      property::queue::in_order {});
 
     allocator alloc = dnnl::graph::sycl_interop::make_allocator(
             dnnl::graph::testing::sycl_malloc_wrapper,

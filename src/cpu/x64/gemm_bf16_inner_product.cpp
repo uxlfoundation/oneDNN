@@ -64,7 +64,7 @@ status_t gemm_bf16_inner_product_fwd_t<dst_data_type>::execute_forward(
     acc_data_t *acc = pd()->dst_is_acc_
             ? (acc_data_t *)dst
             : ctx.get_scratchpad_grantor().template get<acc_data_t>(
-                    key_iprod_int_dat_in_acc_dt);
+                      key_iprod_int_dat_in_acc_dt);
 
     float alpha = 1.0;
     status_t st = gemm_bf16bf16f32(wei_tr ? "T" : "N", src_tr ? "T" : "N", &M,
@@ -111,7 +111,7 @@ gemm_bf16_inner_product_bwd_data_t<diff_src_data_type>::execute_backward_data(
     acc_data_t *acc = pd()->diff_src_is_acc_
             ? (acc_data_t *)diff_src
             : ctx.get_scratchpad_grantor().template get<acc_data_t>(
-                    key_iprod_int_dat_in_acc_dt);
+                      key_iprod_int_dat_in_acc_dt);
 
     float alpha = 1.0, beta = 0.0;
     status_t st = status::success;
@@ -160,7 +160,7 @@ status_t gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
     acc_data_t *acc = pd()->diff_wei_is_acc_
             ? (acc_data_t *)diff_weights
             : ctx.get_scratchpad_grantor().template get<acc_data_t>(
-                    key_iprod_int_dat_in_acc_dt);
+                      key_iprod_int_dat_in_acc_dt);
 
     float alpha = 1.0, beta = 0.0;
     status_t st = status::success;
@@ -223,7 +223,7 @@ void gemm_bf16_inner_product_bwd_weights_t<diff_wei_data_type>::
     float *diff_bias_acc = diff_bias_is_acc
             ? (float *)diff_bias
             : (float *)ctx.get_scratchpad_grantor().template get<acc_data_t>(
-                    key_iprod_bias_bf16_convert_wsp);
+                      key_iprod_bias_bf16_convert_wsp);
 
     parallel(pd()->bias_reduction_nthr_, [&](int ithr, int nthr) {
         if (ithr < nthr_OCB * nthr_MB) {

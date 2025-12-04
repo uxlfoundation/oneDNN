@@ -439,7 +439,7 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
                 = (jcp.brg_type == brgemm_strd)
                 ? nullptr
                 : scratchpad.template get<brgemm_batch_element_t>(
-                        key_brgemm_primitive_batch);
+                          key_brgemm_primitive_batch);
         brg_batch = brg_batch_global
                 + static_cast<size_t>(ithr) * jcp.adjusted_batch_size;
 
@@ -797,10 +797,10 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
                 auto wei_offs_ext = pd()->ndims() == 3
                         ? wht_blk_off(diff_weights_d, g, oc_b, ic_b_start, 0)
                         : (pd()->ndims() == 4
-                                        ? wht_blk_off(diff_weights_d, g, oc_b,
-                                                ic_b_start, 0, 0)
-                                        : wht_blk_off(diff_weights_d, g, oc_b,
-                                                ic_b_start, 0, 0, 0));
+                                          ? wht_blk_off(diff_weights_d, g, oc_b,
+                                                    ic_b_start, 0, 0)
+                                          : wht_blk_off(diff_weights_d, g, oc_b,
+                                                    ic_b_start, 0, 0, 0));
                 void *ptr_C = (jcp.transform_to_vnni) ? diff_wei
                                 + self->wei_offset_int(
                                         g, oc_b, ic_b_start, 0, 0, 0)
@@ -822,10 +822,10 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
                 auto wei_offs_ext = pd()->ndims() == 3
                         ? wht_blk_off(diff_weights_d, g, oc_b, ic_b_start, 0)
                         : (pd()->ndims() == 4
-                                        ? wht_blk_off(diff_weights_d, g, oc_b,
-                                                ic_b_start, 0, 0)
-                                        : wht_blk_off(diff_weights_d, g, oc_b,
-                                                ic_b_start, 0, 0, 0));
+                                          ? wht_blk_off(diff_weights_d, g, oc_b,
+                                                    ic_b_start, 0, 0)
+                                          : wht_blk_off(diff_weights_d, g, oc_b,
+                                                    ic_b_start, 0, 0, 0));
                 void *ptr_C = (jcp.transform_to_vnni) ? diff_wei
                                 + self->wei_offset_int(
                                         g, oc_b, ic_b_start, 0, 0, 0)
@@ -914,10 +914,10 @@ void brgemm_convolution_bwd_weights_t::compute_diff_weights_2d(
         void *ptr_C = (jcp.transform_to_vnni)
                 ? diff_wei + wei_offset_int(g, oc_b, ic_b, 0, kh, kw)
                 : diff_wei
-                        + (pd()->ndims() == 3 ? wht_blk_off(
-                                   diff_weights_d, g, oc_b, ic_b, kw)
+                        + (pd()->ndims() == 3 ? wht_blk_off(diff_weights_d, g,
+                                                        oc_b, ic_b, kw)
                                               : wht_blk_off(diff_weights_d, g,
-                                                      oc_b, ic_b, kh, kw));
+                                                        oc_b, ic_b, kh, kw));
         bool M_tail = (icb_end < ic_b + jcp.nb_ic_blocking);
         bool N_tail = (ocb_end < oc_b + jcp.nb_oc_blocking);
 

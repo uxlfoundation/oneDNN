@@ -435,7 +435,9 @@ __kernel void xe_pooling_bwd(__global DATA_T *diff_src, __global int *ws,
     S0 /= KD * KH * KW;
     S1 /= KD * KH * KW;
 #if UNROLL_MB_COUNT > 1
-    unroll_for(int i = 0; i < UNROLL_MB_COUNT; i++) { S[i] /= KD * KH * KW; }
+    unroll_for(int i = 0; i < UNROLL_MB_COUNT; i++) {
+        S[i] /= KD * KH * KW;
+    }
 #endif
 #endif
 

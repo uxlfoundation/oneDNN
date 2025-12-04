@@ -124,8 +124,8 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_nCdhwXc(const exec_ctx_t &ctx,
 
                 PRAGMA_OMP_SIMD()
                 for (dim_t i = 0; i < blk_size; ++i) {
-                    float b = i < blk ? io::load_float_value(
-                                      bias_d.data_type(), bias, oc + i)
+                    float b = i < blk ? io::load_float_value(bias_d.data_type(),
+                                                bias, oc + i)
                                       : 0;
                     float d = conv_output[off + i];
                     // Use f32 if attributes happen after bias to get precise

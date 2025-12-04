@@ -1709,7 +1709,7 @@ status_t conv_bwd_data_canonicalization(std::shared_ptr<subgraph_t> &sg) {
                 : false;
         bool need_permute_1 = cur_op->has_attr(op_attr::weights_format)
                 ? (cur_op->get_attr<std::string>(op_attr::weights_format)
-                        == "XIO")
+                          == "XIO")
                 : false;
 
         if (need_permute_0) {
@@ -1790,7 +1790,7 @@ status_t conv_bwd_weights_canonicalization(std::shared_ptr<subgraph_t> &sg) {
                 : false;
         bool need_permute_1 = cur_op->has_attr(op_attr::weights_format)
                 ? (cur_op->get_attr<std::string>(op_attr::weights_format)
-                        != "OIX")
+                          != "OIX")
                 : false;
 
         if (need_permute_0) {

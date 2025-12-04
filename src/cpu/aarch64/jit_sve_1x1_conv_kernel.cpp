@@ -266,7 +266,7 @@ void jit_sve_1x1_conv_kernel_t<isa_>::reduce_loop(
         int lmul = jcp.load_block
                 * (load_layout_nxc ? 1
                                    : utils::rnd_up(
-                                           jcp.reduce_dim, jcp.reduce_block));
+                                             jcp.reduce_dim, jcp.reduce_block));
         int rmul = load_layout_nxc ? jcp.load_dim : jcp.load_block;
         offt = i_load * lmul + u0 * rmul;
         return EVEX_compress_addr(addr, tmp, aux_reg_load_data,
@@ -527,8 +527,8 @@ void jit_sve_1x1_conv_kernel_t<isa_>::generate() {
                                 * (is_out_layout_nxc(jcp)
                                                 ? 1
                                                 : (jcp.with_dw_conv
-                                                                ? jcp.ow
-                                                                : jcp.bcast_dim)),
+                                                                  ? jcp.ow
+                                                                  : jcp.bcast_dim)),
                         reg_tmp_imm);
                 if (jcp.with_binary) {
                     const auto oc_off_oprnd = aux_reg_load_data;
@@ -802,27 +802,27 @@ status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
             case sve_512: {
                 wei_tag = with_groups
                         ? pick(2 * ndims - 6 + is_bwd_d, gOIw16i16o, gIOw16o16i,
-                                gOIhw16i16o, gIOhw16o16i, gOIdhw16i16o,
-                                gIOdhw16o16i)
+                                  gOIhw16i16o, gIOhw16o16i, gOIdhw16i16o,
+                                  gIOdhw16o16i)
                         : pick(2 * ndims - 6 + is_bwd_d, OIw16i16o, IOw16o16i,
-                                OIhw16i16o, IOhw16o16i, OIdhw16i16o,
-                                IOdhw16o16i);
+                                  OIhw16i16o, IOhw16o16i, OIdhw16i16o,
+                                  IOdhw16o16i);
                 break;
             }
             case sve_256: {
                 wei_tag = with_groups
                         ? pick(2 * ndims - 6 + is_bwd_d, gOIw8i8o, gIOw8o8i,
-                                gOIhw8i8o, gIOhw8o8i, gOIdhw8i8o, gIOdhw8o8i)
+                                  gOIhw8i8o, gIOhw8o8i, gOIdhw8i8o, gIOdhw8o8i)
                         : pick(2 * ndims - 6 + is_bwd_d, OIw8i8o, IOw8o8i,
-                                OIhw8i8o, IOhw8o8i, OIdhw8i8o, IOdhw8o8i);
+                                  OIhw8i8o, IOhw8o8i, OIdhw8i8o, IOdhw8o8i);
                 break;
             }
             case sve_128: {
                 wei_tag = with_groups
                         ? pick(2 * ndims - 6 + is_bwd_d, gOIw4i4o, gIOw4o4i,
-                                gOIhw4i4o, gIOhw4o4i, gOIdhw4i4o, gIOdhw4o4i)
+                                  gOIhw4i4o, gIOhw4o4i, gOIdhw4i4o, gIOdhw4o4i)
                         : pick(2 * ndims - 6 + is_bwd_d, OIw4i4o, IOw4o4i,
-                                OIhw4i4o, IOhw4o4i, OIdhw4i4o, IOdhw4o4i);
+                                  OIhw4i4o, IOhw4o4i, OIdhw4i4o, IOdhw4o4i);
                 break;
             }
             default: return status::unimplemented;
@@ -1232,8 +1232,8 @@ status_t jit_sve_1x1_conv_kernel_t<isa_>::init_conf(jit_1x1_conv_conf_t &jcp,
                 = jcp.oc_block * jcp.ur * jcp.typesize_out;
         jcp.bcast_loop_bcast_step = jcp.ic_block
                 * (is_data_layout_nxc ? 1
-                                      : utils::rnd_up(
-                                              jcp.reduce_dim, jcp.reduce_block))
+                                      : utils::rnd_up(jcp.reduce_dim,
+                                                jcp.reduce_block))
                 * jcp.typesize_in;
         jcp.bcast_loop_bcast_substep = jcp.ur * jcp.typesize_in;
 

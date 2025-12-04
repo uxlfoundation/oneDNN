@@ -96,7 +96,7 @@ struct impl_list_item_t {
     template <typename pd_t>
     constexpr impl_list_item_t(concat_type_deduction_helper_t<pd_t>)
         : create_concat_pd_func_(
-                concat_type_deduction_helper_t<pd_t>::type::create) {}
+                  concat_type_deduction_helper_t<pd_t>::type::create) {}
 
     template <typename pd_t>
     constexpr impl_list_item_t(sum_type_deduction_helper_t<pd_t>)
@@ -106,7 +106,7 @@ struct impl_list_item_t {
     template <typename pd_t>
     constexpr impl_list_item_t(reorder_type_deduction_helper_t<pd_t>)
         : create_reorder_pd_func_(
-                reorder_type_deduction_helper_t<pd_t>::type::create) {}
+                  reorder_type_deduction_helper_t<pd_t>::type::create) {}
 
     explicit operator bool() const {
         return !utils::everyone_is(nullptr, create_pd_func_,

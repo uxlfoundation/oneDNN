@@ -58,7 +58,7 @@ status_t simple_t::pd_t::init_conf(impl::engine_t *engine) {
         if (is_ternary_op()) {
             conf.src2_bcast_dims[i] = i < ndims
                     ? (src2_d.dims()[i] == 1
-                            && src2_d.dims()[i] != dst_d.dims()[i])
+                              && src2_d.dims()[i] != dst_d.dims()[i])
                     : 0;
         }
     }

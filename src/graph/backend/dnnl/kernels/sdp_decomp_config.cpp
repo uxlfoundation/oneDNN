@@ -141,7 +141,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     memory::data_type dt_inter = quantized
             ? dt
             : static_cast<memory::data_type>(
-                    ltw(sdp_op[1]->get_output_logical_tensor(0)).data_type());
+                      ltw(sdp_op[1]->get_output_logical_tensor(0)).data_type());
 
     ////////////////////////////////////////////////////////////////////////
     ////////////// Start Creating primitives ///////////////////////////////
@@ -308,7 +308,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     const auto mode = sdp_op[2]->get_attr<std::string>(op_attr::mode);
     const dnnl::algorithm algo = mode == "inf_as_zero"
             ? static_cast<dnnl::algorithm>(
-                    dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
+                      dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
             : dnnl::algorithm::softmax_accurate;
     auto sub_softmax_pd = softmax_forward::primitive_desc(p_engine,
             prop_kind::forward_inference, algo, sub_mm1_dst_md,

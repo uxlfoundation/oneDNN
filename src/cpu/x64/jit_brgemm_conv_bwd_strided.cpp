@@ -727,7 +727,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
             = (jcp.brg_type == brgemm_strd && jcp.exec_type != exec_vpad)
             ? nullptr
             : scratchpad.template get<brgemm_batch_element_t>(
-                    key_brgemm_primitive_batch);
+                      key_brgemm_primitive_batch);
     char *const __restrict c_buffer_global = (jcp.use_buffer)
             ? scratchpad.template get<char>(key_brgemm_primitive_buffer)
             : nullptr;
@@ -745,12 +745,12 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
 
     int32_t *src_zp_comp_base = jcp.src_zero_point
             ? (jcp.req_cal_comp_pad ? scratchpad.template get<int32_t>(
-                       key_brgemm_primitive_zp_comp_a)
+                                              key_brgemm_primitive_zp_comp_a)
                                     : zp_compensation)
             : nullptr;
     int32_t *s8s8_comp_base = jcp.s8s8_compensation_required
             ? (jcp.req_cal_comp_pad ? scratchpad.template get<int32_t>(
-                       key_brgemm_primitive_buffer_comp)
+                                              key_brgemm_primitive_buffer_comp)
                                     : s8s8_compensation)
             : nullptr;
 
@@ -1047,10 +1047,11 @@ void brgemm_convolution_bwd_strided_t<isa>::perform_outwork(char *dst_base,
                     + dst_dsz
                             * (id * dst_h_sz + ih * dst_w_sz
                                     + iw_pw_s * jcp.ic_without_padding);
-            p.ptr_in = static_cast<void *>(
-                    jcp.use_buffer ? (c_buffer
-                            + acc_dsz * div_up(iw_pw_s - iw, SW) * jcp.LDC)
-                                   : p.ptr_out);
+            p.ptr_in = static_cast<void *>(jcp.use_buffer
+                            ? (c_buffer
+                                      + acc_dsz * div_up(iw_pw_s - iw, SW)
+                                              * jcp.LDC)
+                            : p.ptr_out);
         } else {
             p.apply_comp = has_postcomp;
             char *const ptr_Cz = jcp.use_buffer
@@ -1518,7 +1519,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
                     * (need_out_buffer
                                     ? btc.sw * jcp.ic_without_padding
                                     : (id * dst_h_sz + ih * dst_w_sz
-                                            + iw_b * jcp.ic_without_padding));
+                                              + iw_b * jcp.ic_without_padding));
 
     ptr_C = (jcp.use_buffer) ? btc.c_buffer : static_cast<char *>(ptr_D);
 
@@ -1612,7 +1613,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
 
         const auto comp_ker_offs = kd_l * kh_l > 0
                 ? get_comp_offset(
-                        btc.g, btc.icb, iw, kd_s, kd_f, kh_s, kh_f, 0, KW)
+                          btc.g, btc.icb, iw, kd_s, kd_f, kh_s, kh_f, 0, KW)
                 : get_comp_offset(btc.g, btc.icb, iw, 0, 0, 0, 0, 0, 0);
 
         if (nb_oc_b > 0) {

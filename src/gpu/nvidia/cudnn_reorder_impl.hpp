@@ -48,7 +48,8 @@ public:
     virtual status_t init(const reorder_pd_t *pd) = 0;
 
     virtual void execute(cudnnHandle_t handle, void *src, void *dst,
-            void *src_scale, void *dst_scale) const = 0;
+            void *src_scale, void *dst_scale) const
+            = 0;
 
     virtual ~cudnn_reorder_generic_t() {
         CUDNN_EXECUTE_FUNC_V(cudnnDestroyTensorDescriptor, src_desc_);

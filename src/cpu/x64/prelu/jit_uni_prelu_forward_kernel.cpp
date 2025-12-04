@@ -26,10 +26,10 @@ jit_prelu_forward_kernel_t::jit_prelu_forward_kernel_t(
         const cpu_prelu_fwd_pd_t *pd, const cpu_isa_t &isa, const int vlen,
         const size_t number_vmm_single_compute)
     : jit_prelu_base_kernel_t(isa, vlen,
-            prelu::get_bcast_type(memory_desc_wrapper(pd->src_md(0)),
-                    memory_desc_wrapper(pd->weights_md(0))),
-            memory_desc_wrapper(pd->src_md(0)), number_vmm_single_compute,
-            jit_name())
+              prelu::get_bcast_type(memory_desc_wrapper(pd->src_md(0)),
+                      memory_desc_wrapper(pd->weights_md(0))),
+              memory_desc_wrapper(pd->src_md(0)), number_vmm_single_compute,
+              jit_name())
     , src_dt_(pd->src_md(0)->data_type)
     , wei_dt_(pd->weights_md(0)->data_type)
     , dst_dt_(pd->dst_md(0)->data_type)
@@ -72,10 +72,10 @@ template <typename Vmm>
 jit_uni_prelu_forward_kernel_t<Vmm>::jit_uni_prelu_forward_kernel_t(
         const cpu_prelu_fwd_pd_t *pd, const cpu_isa_t &isa)
     : jit_prelu_forward_kernel_t(pd, isa, vreg_traits_t<Vmm>::vlen,
-            (utils::one_of(isa, sse41, avx)
-                    || pd->src_md(0)->data_type != data_type::f32)
-                    ? 4u
-                    : 3u)
+              (utils::one_of(isa, sse41, avx)
+                      || pd->src_md(0)->data_type != data_type::f32)
+                      ? 4u
+                      : 3u)
     , saturation_needed_(utils::one_of(
               dst_dt_, data_type::u8, data_type::s8, data_type::s32))
     , tail_vmm_mask_(

@@ -123,9 +123,10 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     // creating the primitive descriptor.
     auto src2_d = prb->is_ternary_op()
             ? dnn_mem_t::init_md(prb->ndims,
-                    prb->vdims.size() > 2 ? prb->vdims[2].data()
-                                          : prb->vdims[0].data(),
-                    dnnl_s8, prb->stag.size() > 2 ? prb->stag[2] : prb->stag[0])
+                      prb->vdims.size() > 2 ? prb->vdims[2].data()
+                                            : prb->vdims[0].data(),
+                      dnnl_s8,
+                      prb->stag.size() > 2 ? prb->stag[2] : prb->stag[0])
             : nullptr;
 
     TIME_C_PD(DNN_SAFE_STATUS(dnnl_binary_primitive_desc_create_v2(

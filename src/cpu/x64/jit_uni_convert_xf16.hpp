@@ -108,8 +108,8 @@ struct jit_avx512_core_cvt_ps_to_bf16_t
         : jit_uni_cvt_ps_to_xf16_t<avx512_core>(dt, nelems)
         , use_bf16_emu_(!mayiuse(avx512_core_bf16))
         , bf16_emu_(use_bf16_emu_ ? utils::make_unique<bf16_emulation_t>(this,
-                            vmm_one, vmm_even, vmm_selector, reg_scratch,
-                            vmm_fp32_tmp)
+                                            vmm_one, vmm_even, vmm_selector,
+                                            reg_scratch, vmm_fp32_tmp)
                                   : nullptr) {
         assert(dt == data_type::bf16);
     }

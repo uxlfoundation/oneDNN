@@ -416,7 +416,8 @@ struct primitive_desc_t : public c_compatible {
     virtual status_t create_primitive(
             std::pair<std::shared_ptr<primitive_t>, cache_state_t> &primitive,
             engine_t *engine, const cache_blob_t &cache_blob,
-            bool force_create_from_blob) const = 0;
+            bool force_create_from_blob) const
+            = 0;
 
     // This is a proxy interface that is used for creating nested primitives.
     // It ignores the cache_state_t value that indicates whether the requested primitive
@@ -550,7 +551,9 @@ protected:
                 primitive, this, engine, use_global_scratchpad, cache_blob, \
                 force_create_from_blob); \
     } \
-    const char *name() const override { return impl_name; } \
+    const char *name() const override { \
+        return impl_name; \
+    } \
     template <typename pd_t> \
     friend status_t primitive_desc_t::create(primitive_desc_t **pd, \
             const op_desc_t *adesc, const primitive_attr_t *attr, \

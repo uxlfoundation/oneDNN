@@ -917,7 +917,9 @@ static status_t gen_index_handler(
 
 #define ITEM(kind, func) \
     { \
-        graph::op_kind::kind, handler_func { (func) } \
+        graph::op_kind::kind, handler_func { \
+            (func) \
+        } \
     }
 
 static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {

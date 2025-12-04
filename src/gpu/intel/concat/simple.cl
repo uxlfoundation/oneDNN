@@ -636,7 +636,7 @@ internal_padding_block_concat2(__global DATA_T *dst,
 
             COMPUTE_T trailmask = (ntrail < NPERSG)
                     ? SHIFTR(SHIFTL(FULLMASK, ntrail * DATA_TYPE_SIZE * 8),
-                            ntrail * DATA_TYPE_SIZE * 8)
+                              ntrail * DATA_TYPE_SIZE * 8)
                     : zero;
 
             if (cutoff > 0 && (ic % B0) >= cutoff) {

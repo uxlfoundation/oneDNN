@@ -303,11 +303,11 @@ protected:
         transpose_wei<data_t>(dd, weights->get(), weights_tr);
         auto deconv_primitive_desc = with_bias
                 ? pd_t(eng, aprop_kind, algorithm::deconvolution_direct,
-                        *dec_src_desc, *dec_weights_desc, *dec_bias_desc,
-                        *dec_dst_desc, strides, padL, padR)
+                          *dec_src_desc, *dec_weights_desc, *dec_bias_desc,
+                          *dec_dst_desc, strides, padL, padR)
                 : pd_t(eng, aprop_kind, algorithm::deconvolution_direct,
-                        *dec_src_desc, *dec_weights_desc, *dec_dst_desc,
-                        strides, padL, padR);
+                          *dec_src_desc, *dec_weights_desc, *dec_dst_desc,
+                          strides, padL, padR);
 
         allows_attr_t aa {};
 

@@ -282,14 +282,14 @@ protected:
         test_pool_desc_t pd = p.test_pd;
         auto p_src_desc = (p.ndims == 5)
                 ? create_md({pd.mb, pd.c, pd.id, pd.ih, pd.iw}, data_type,
-                        p.src_format)
+                          p.src_format)
                 : create_md(
-                        {pd.mb, pd.c, pd.ih, pd.iw}, data_type, p.src_format);
+                          {pd.mb, pd.c, pd.ih, pd.iw}, data_type, p.src_format);
         auto p_dst_desc = (p.ndims == 5)
                 ? create_md({pd.mb, pd.c, pd.od, pd.oh, pd.ow}, data_type,
-                        p.dst_format)
+                          p.dst_format)
                 : create_md(
-                        {pd.mb, pd.c, pd.oh, pd.ow}, data_type, p.dst_format);
+                          {pd.mb, pd.c, pd.oh, pd.ow}, data_type, p.dst_format);
 
         if (p.ndims == 5) {
             strides = memory::dims({pd.strd, pd.strh, pd.strw});
@@ -374,7 +374,9 @@ using pool_test_params_float = pool_test_params_t;
 
 // sizes with explicit opposite side paddings
 #define EXPAND_SIZES_3D_XPADD(...) \
-    5, { __VA_ARGS__ }
+    5, { \
+        __VA_ARGS__ \
+    }
 
 #define EXPAND_SIZES_3D(mb, ic, id, ih, iw, od, oh, ow, kd, kh, kw, dd, dh, \
         dw, padf, padt, padl, strd, strh, strw) \

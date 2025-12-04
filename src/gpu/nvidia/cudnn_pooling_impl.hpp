@@ -44,7 +44,8 @@ struct cudnn_pooling_impl_base_t {
     }
 
     virtual void execute(cudnnHandle_t handle, void *x, void *y, void *ws_x,
-            void *ws_y) const = 0;
+            void *ws_y) const
+            = 0;
 
 protected:
     status_t init_common(const pooling_pd_t *pd) {

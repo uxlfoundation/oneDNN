@@ -71,7 +71,7 @@ status_t gemm_x8s8s32x_inner_product_fwd_t::execute_forward(
     int32_t *acc = pd()->dst_is_acc_
             ? (int32_t *)dst
             : ctx.get_scratchpad_grantor().template get<int32_t>(
-                    key_iprod_int_dat_in_acc_dt);
+                      key_iprod_int_dat_in_acc_dt);
 
     const float onef = 1.0, zerof = 0.0;
 

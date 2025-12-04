@@ -316,7 +316,8 @@ struct lws_strategy_t {
     virtual ~lws_strategy_t() = default;
 
     virtual range_t create_lws(
-            range_t &gws, const gws_bin_mapping_t &mapper) const = 0;
+            range_t &gws, const gws_bin_mapping_t &mapper) const
+            = 0;
 
     // Determine if a given block (mapped to each buffer) should be in the lws.
     // Gets called for each block dispatched to the GWS.

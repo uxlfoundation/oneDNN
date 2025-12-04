@@ -82,9 +82,9 @@ typename utils::enable_if<(N < G), void>::type pack_KK_TAILS(const int k,
 }
 
 template <typename T, typename DT, int G, int KK = 4, bool trans>
-void __attribute__((noinline))
-pack_K(const int k, const int n, const T *__restrict src, int srcLD,
-        DT *__restrict dst, DT add_val = 0) {
+void __attribute__((noinline)) pack_K(const int k, const int n,
+        const T *__restrict src, int srcLD, DT *__restrict dst,
+        DT add_val = 0) {
 
     // if k is not divisible by 4 , the rest will be 0-ed
     constexpr bool accessSide = trans ? (!ISLASTINDEX_FAST) : ISLASTINDEX_FAST;

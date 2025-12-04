@@ -469,10 +469,11 @@ private:
             int buf_size, stmt_t &g2r_load_stmt, stmt_t &s2r_load_stmt) {
         if (subtile_idx > 0 && x2r_load.split_factor() == 1) return;
         auto reg_buf = buf_mgr_.get(prefix, buf_size);
-        auto load_buf = x2r_reorder ? buf_mgr_.get("x2r_tmp",
-                                std::max(x2r_load.reg_buf_size(),
-                                        into<int>(x2r_reorder.src_buf_size())))
-                                    : reg_buf;
+        auto load_buf = x2r_reorder
+                ? buf_mgr_.get("x2r_tmp",
+                          std::max(x2r_load.reg_buf_size(),
+                                  into<int>(x2r_reorder.src_buf_size())))
+                : reg_buf;
         if (load_buf.is_same(reg_buf)) {
             reg_buf = buf_mgr_.get(prefix, x2r_load.reg_buf_size());
         }

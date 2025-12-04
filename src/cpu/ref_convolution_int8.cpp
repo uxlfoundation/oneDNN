@@ -137,7 +137,7 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
             const int s = io::load_int_value(src_d.data_type(), src, src_off);
             const int src_zp = src_zero_points
                     ? io::load_int_value(data_type::s32, src_zero_points,
-                            src_zp_idx_mult * (g * IC + ic))
+                              src_zp_idx_mult * (g * IC + ic))
                     : 0;
             const int w = io::load_int_value(
                     weights_d.data_type(), weights, wei_off);
@@ -194,10 +194,11 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
                             + kw;
                     const int s = io::load_int_value(
                             src_d.data_type(), src_loc, src_off + src_loc_off);
-                    const int src_zp = src_zero_points ? io::load_int_value(
-                                               data_type::s32, src_zero_points,
-                                               src_zp_idx_mult * (g * IC + ic))
-                                                       : 0;
+                    const int src_zp = src_zero_points
+                            ? io::load_int_value(data_type::s32,
+                                      src_zero_points,
+                                      src_zp_idx_mult * (g * IC + ic))
+                            : 0;
                     const int w = io::load_int_value(weights_d.data_type(),
                             weights_loc, weights_off + weights_loc_off);
                     d += (s - src_zp) * w;
@@ -223,7 +224,7 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
                         src_d.data_type(), src_loc, src_off + src_loc_off);
                 const int src_zp = src_zero_points
                         ? io::load_int_value(data_type::s32, src_zero_points,
-                                src_zp_idx_mult * (g * IC + ic))
+                                  src_zp_idx_mult * (g * IC + ic))
                         : 0;
                 const int w = io::load_int_value(weights_d.data_type(),
                         weights_loc, weights_off + weights_loc_off);

@@ -672,8 +672,8 @@ private:
         dim_t iw_str = jcp.is_1stconv || jcp.transpose_src
                 ? 1
                 : (is_src_layout_nxc()
-                                ? static_cast<dim_t>(jcp.ngroups) * jcp.ic
-                                : jcp.ic_block);
+                                  ? static_cast<dim_t>(jcp.ngroups) * jcp.ic
+                                  : jcp.ic_block);
         dim_t ihid_str = static_cast<dim_t>(jcp.tr_iw)
                 * (jcp.transpose_src ? jcp.ic_block : iw_str);
         // jcp.transpose_src w_idx might be greater than jcp.tr_iw as right zero

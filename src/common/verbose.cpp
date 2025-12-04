@@ -800,8 +800,7 @@ std::ostream &operator<<(std::ostream &ss, const primitive_attr_t *attr) {
                 } break;
                 case primitive_kind::prelu: {
                     const auto &ep = e.prelu;
-                    ss << delim << "prelu"
-                       << ":" << ep.mask;
+                    ss << delim << "prelu" << ":" << ep.mask;
                 } break;
                 default: assert(!"unsupported post op primitive kind!"); break;
             }
@@ -978,8 +977,8 @@ std::string init_info_convolution(const engine_t *e, const pd_t *pd) {
     ss << "alg:" << pd->desc()->alg_kind << ",";
 
     if (pd->with_groups()) ss << "g" << pd->G();
-    ss << "mb" << pd->MB() << "_"
-       << "ic" << pd->IC() << "oc" << pd->OC() << "_";
+    ss << "mb" << pd->MB() << "_" << "ic" << pd->IC() << "oc" << pd->OC()
+       << "_";
     if (pd->ndims() >= 5)
         ss << "id" << pd->ID() << "od" << (has_fused_dw ? pd->ID() : pd->OD())
            << "kd" << pd->KD() << "sd" << pd->KSD() << "dd" << pd->KDD() << "pd"

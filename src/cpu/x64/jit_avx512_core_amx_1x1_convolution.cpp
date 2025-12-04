@@ -42,9 +42,9 @@ using namespace nstl;
 #define md_blk_off(md, n, c, d, h, w) \
     (pd()->ndims() == 3 \
                     ? (md).blk_off((n), (c), (w)) \
-                    : (pd()->ndims() == 4 \
-                                    ? (md).blk_off((n), (c), (h), (w)) \
-                                    : (md).blk_off((n), (c), (d), (h), (w))))
+                    : (pd()->ndims() == 4 ? (md).blk_off((n), (c), (h), (w)) \
+                                          : (md).blk_off( \
+                                                    (n), (c), (d), (h), (w))))
 
 void jit_avx512_core_amx_1x1_convolution_fwd_t::prepare_padded_bias(
         const char *&bias, const memory_tracking::grantor_t &scratchpad) const {
@@ -112,7 +112,7 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
             key_conv_amx_wsp_buffer);
     int32_t *wsp_tile = (is_ic_tail)
             ? ctx.get_scratchpad_grantor().template get<int32_t>(
-                    key_conv_amx_tile_buffer)
+                      key_conv_amx_tile_buffer)
             : nullptr;
     auto global_tcfg = ctx.get_scratchpad_grantor().template get<char>(
             key_conv_amx_tilecfg);

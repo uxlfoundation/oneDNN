@@ -32,8 +32,8 @@ public:
     kernel_t(config_t &cfg, const std::string &kernel_name,
             const kernel_info_t &kernel_info, const primitive_desc_t &pd)
         : ir_kernel_t(kernel_info.iface(kernel_name), cfg.options(),
-                kernel_info.nd_range().local_range(),
-                {GENERATOR_NAME, GENERATOR_LINE}) {
+                  kernel_info.nd_range().local_range(),
+                  {GENERATOR_NAME, GENERATOR_LINE}) {
         builder_t builder(cfg, kernel_info, pd);
         const stmt_t &body = builder.stmt();
         generate_from_ir(body);

@@ -103,7 +103,7 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
         jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
-            eltwise_injector::static_params_t(), lambda_jit_injectors_t()) {}
+              eltwise_injector::static_params_t(), lambda_jit_injectors_t()) {}
 
 template <cpu_isa_t isa, typename Vmm>
 jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
@@ -111,7 +111,7 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
         const binary_injector::static_params_t &binary_static_params,
         const lambda_jit_injectors_t &lambda_jit_injectors)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
-            eltwise_injector::static_params_t(), lambda_jit_injectors) {}
+              eltwise_injector::static_params_t(), lambda_jit_injectors) {}
 
 template <cpu_isa_t isa, typename Vmm>
 jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
@@ -119,7 +119,7 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
-            eltwise_static_params, lambda_jit_injectors_t()) {}
+              eltwise_static_params, lambda_jit_injectors_t()) {}
 
 // Specialization instantiations are needed to avoid instantiating ISA with
 // Vmm that don't make any sense like sse41 + Zmm.

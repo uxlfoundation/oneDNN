@@ -390,9 +390,7 @@ std::ostream &operator<<(std::ostream &s, cold_cache_mode_t cold_cache_mode) {
         s << "all";
     else if (cold_cache_mode == cold_cache_mode_t::custom)
         s << "custom";
-    else {
-        assert(!"unsupported cold cache mode");
-    }
+    else { assert(!"unsupported cold cache mode"); }
     return s;
 }
 

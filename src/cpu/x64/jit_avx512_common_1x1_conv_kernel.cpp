@@ -257,7 +257,7 @@ void jit_avx512_common_1x1_conv_kernel_t::reduce_loop(
         int lmul = jcp.load_block
                 * (load_layout_nxc ? 1
                                    : utils::rnd_up(
-                                           jcp.reduce_dim, jcp.reduce_block));
+                                             jcp.reduce_dim, jcp.reduce_block));
         int rmul = load_layout_nxc ? jcp.load_dim : jcp.load_block;
         offt = i_load * lmul + u0 * rmul;
         return EVEX_compress_addr(aux_reg_load_data,
@@ -697,9 +697,9 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
     const int is_bwd_d = jcp.prop_kind == backward_data;
     format_tag_t wei_tag = with_groups
             ? pick(2 * ndims - 6 + is_bwd_d, gOIw16i16o, gIOw16o16i,
-                    gOIhw16i16o, gIOhw16o16i, gOIdhw16i16o, gIOdhw16o16i)
+                      gOIhw16i16o, gIOhw16o16i, gOIdhw16i16o, gIOdhw16o16i)
             : pick(2 * ndims - 6 + is_bwd_d, OIw16i16o, IOw16o16i, OIhw16i16o,
-                    IOhw16o16i, OIdhw16i16o, IOdhw16o16i);
+                      IOhw16o16i, OIdhw16i16o, IOdhw16o16i);
 
     jcp.wei_tag = weights_d.matches_one_of_tag(wei_tag);
     VDISPATCH_CONV_IC(jcp.wei_tag == wei_tag, VERBOSE_UNSUPPORTED_TAG_S, "wei");
@@ -1073,8 +1073,8 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
                 = jcp.oc_block * jcp.ur * jcp.typesize_out;
         jcp.bcast_loop_bcast_step = jcp.ic_block
                 * (is_data_layout_nxc ? 1
-                                      : utils::rnd_up(
-                                              jcp.reduce_dim, jcp.reduce_block))
+                                      : utils::rnd_up(jcp.reduce_dim,
+                                                jcp.reduce_block))
                 * jcp.typesize_in;
         jcp.bcast_loop_bcast_substep = jcp.ur * jcp.typesize_in;
 

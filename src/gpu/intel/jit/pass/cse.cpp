@@ -604,9 +604,11 @@ private:
             auto ret = seen_vars_.insert(var);
             if (ret.second)
                 lets_.push_back(let_t::make(var,
-                        obj.type.is_bool() ? cast(obj,
-                                bool_imm_t::get_packed_type(obj.type.elems()))
-                                           : obj));
+                        obj.type.is_bool()
+                                ? cast(obj,
+                                          bool_imm_t::get_packed_type(
+                                                  obj.type.elems()))
+                                : obj));
         }
     }
 

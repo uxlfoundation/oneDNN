@@ -151,7 +151,9 @@
         void TestBody() override {} \
 \
     public: \
-        DERIVED_TEST_CLASS(test_fixture, test_name)() { SetUp(); } \
+        DERIVED_TEST_CLASS(test_fixture, test_name)() { \
+            SetUp(); \
+        } \
         void Test_failures(); \
     }; \
     TEST_F(test_fixture, test_name) { \
@@ -171,7 +173,9 @@
         void TestBody() override {} \
 \
     public: \
-        DERIVED_TEST_CLASS(test_fixture, test_name)() { SetUp(); } \
+        DERIVED_TEST_CLASS(test_fixture, test_name)() { \
+            SetUp(); \
+        } \
         void Test_failures(); \
     }; \
     TEST_P(test_fixture, test_name) { \

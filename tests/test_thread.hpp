@@ -184,8 +184,8 @@ struct scoped_tp_deactivation_t {
 
 #define RUN_IN_THR_CTX(name) \
     template <typename F, typename... Args_t> \
-    auto name(const thr_ctx_t &ctx, F &&f, Args_t &...args) \
-            ->decltype(f(args...)) { \
+    auto name(const thr_ctx_t &ctx, F &&f, \
+            Args_t &...args) -> decltype(f(args...)) { \
 \
         THR_CTX_ASSERT(ctx.core_type == default_thr_ctx.core_type \
                         && ctx.max_concurrency \
@@ -206,8 +206,8 @@ RUN_IN_THR_CTX(execute_in_thr_ctx)
 #elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
 #define RUN_IN_THR_CTX(name) \
     template <typename F, typename... Args_t> \
-    auto name(const thr_ctx_t &ctx, F &&f, Args_t &...args) \
-            ->decltype(f(args...)) { \
+    auto name(const thr_ctx_t &ctx, F &&f, \
+            Args_t &...args) -> decltype(f(args...)) { \
 \
         THR_CTX_ASSERT(ctx.core_type == default_thr_ctx.core_type, \
                 "core type %d is not supported for OMP runtime\n", \
@@ -264,8 +264,8 @@ struct params_pack_helper_t<0, R> {
 #include "oneapi/tbb/info.h"
 #define RUN_IN_THR_CTX(name) \
     template <typename F, typename... Args_t> \
-    auto name(const thr_ctx_t &ctx, F &&f, Args_t &...args) \
-            ->decltype(f(args...)) { \
+    auto name(const thr_ctx_t &ctx, F &&f, \
+            Args_t &...args) -> decltype(f(args...)) { \
         static auto core_types = tbb::info:: \
                 core_types(); /* sorted by the relative strength       */ \
 \
@@ -298,8 +298,8 @@ RUN_IN_THR_CTX(execute_in_thr_ctx)
 
 #elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
 template <typename F, typename... Args_t>
-auto create_in_thr_ctx(const thr_ctx_t &ctx, F &&f, Args_t &...args)
-        -> decltype(f(args...)) {
+auto create_in_thr_ctx(
+        const thr_ctx_t &ctx, F &&f, Args_t &...args) -> decltype(f(args...)) {
     THR_CTX_ASSERT(ctx.core_type == default_thr_ctx.core_type,
             "core type %d is not supported for TP runtime\n", ctx.core_type);
 
@@ -310,8 +310,8 @@ auto create_in_thr_ctx(const thr_ctx_t &ctx, F &&f, Args_t &...args)
 
 // The function f shall take an interop obj as last argument
 template <typename F, typename... Args_t>
-auto execute_in_thr_ctx(const thr_ctx_t &ctx, F &&f, Args_t &...args)
-        -> decltype(f(args...)) {
+auto execute_in_thr_ctx(
+        const thr_ctx_t &ctx, F &&f, Args_t &...args) -> decltype(f(args...)) {
     THR_CTX_ASSERT(ctx.core_type == default_thr_ctx.core_type,
             "core type %d is not supported for TP runtime\n", ctx.core_type);
     return f(args...);

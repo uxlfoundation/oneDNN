@@ -1153,9 +1153,9 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     }
     auto bmm1_pd = is_kq_acc_f16
             ? matmul::primitive_desc(eng, grouped_query_md,
-                    key_dequantized.get_desc(), score_f16_md, bmm1_attr)
+                      key_dequantized.get_desc(), score_f16_md, bmm1_attr)
             : matmul::primitive_desc(eng, grouped_query_md,
-                    key_dequantized.get_desc(), score_md, bmm1_attr);
+                      key_dequantized.get_desc(), score_md, bmm1_attr);
     auto bmm1_prim = matmul(bmm1_pd);
 
     // reorder primitive to convert f16 to f32 after bmm1
@@ -1214,9 +1214,9 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     // matmul primitive for VS
     auto bmm2_pd = is_vs_acc_f16
             ? matmul::primitive_desc(eng, score_f16_md, grouped_value_md,
-                    grouped_output_f16_md, bmm2_attr)
+                      grouped_output_f16_md, bmm2_attr)
             : matmul::primitive_desc(eng, score_md, grouped_value_md,
-                    grouped_query_md, bmm2_attr);
+                      grouped_query_md, bmm2_attr);
     auto bmm2_prim = matmul(bmm2_pd);
 
     // reorder primitive to convert f16 to f32 after bmm2
@@ -1432,7 +1432,7 @@ public:
 
     byte_t(memory::data_type dt)
         : value(dnnl_data_type_size((dnnl_data_type_t)dt)
-                / ((dt == mdt::s4 || dt == mdt::u4) ? 2.f : 1.f)) {}
+                  / ((dt == mdt::s4 || dt == mdt::u4) ? 2.f : 1.f)) {}
 
     template <typename OR>
     byte_t(byte_t<OR> o) : value(magnitude_cast<Unit>(o).value) {}

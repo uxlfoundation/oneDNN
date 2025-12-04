@@ -24,6 +24,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <CL/cl_ext.h>
 
 using namespace dnnl::impl::xpu::ocl;
 
@@ -195,8 +196,6 @@ void test_usm_map_unmap(
 }
 
 /// This test checks if passing system allocated memory(e.g. using malloc)
-/// will throw if passed into the make_memory
-/// This test checks if passing system allocated memory(e.g. using malloc)
 /// will throw if passed into the make_memory, unless shared system USM is supported
 TEST(ocl_memory_usm_test, ErrorMakeMemoryUsingSystemMemory) {
     SKIP_IF(engine::get_count(engine::kind::gpu) == 0, "Engine not found.");
@@ -206,20 +205,26 @@ TEST(ocl_memory_usm_test, ErrorMakeMemoryUsingSystemMemory) {
     memory::desc mem_d({n}, memory::data_type::f32, memory::format_tag::x);
 
     std::vector<float> system_buf(n);
+    bool system_memory_supported = false;
 
+#ifdef cl_intel_unified_shared_memory
     cl_device_id device = ocl_interop::get_device(eng);
     cl_device_unified_shared_memory_capabilities_intel
             system_memory_capabilities_intel
             = 0;
-    EXPECT_EQ(
+
+    ASSERT_EQ(
             clGetDeviceInfo(device,
                     CL_DEVICE_SHARED_SYSTEM_MEM_CAPABILITIES_INTEL,
                     sizeof(cl_device_unified_shared_memory_capabilities_intel),
                     &system_memory_capabilities_intel, nullptr),
             CL_SUCCESS);
 
-    if (system_memory_capabilities_intel
-            & CL_UNIFIED_SHARED_MEMORY_ACCESS_INTEL) {
+    system_memory_supported = system_memory_capabilities_intel
+            & CL_UNIFIED_SHARED_MEMORY_ACCESS_INTEL;
+#endif
+
+    if (system_memory_supported) {
         EXPECT_NO_THROW(
                 memory mem = ocl_interop::make_memory(mem_d, eng,
                         ocl_interop::memory_kind::usm, system_buf.data()));

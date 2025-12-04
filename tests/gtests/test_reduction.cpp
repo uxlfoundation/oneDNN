@@ -17,6 +17,8 @@
 #include "dnnl_test_common.hpp"
 #include "gtest/gtest.h"
 
+#include <limits>
+
 #include "oneapi/dnnl/dnnl.hpp"
 
 namespace dnnl {
@@ -152,6 +154,26 @@ static auto expected_failures = []() {
             // not supported p
             reduction_test_params_t {tag::nchw, tag::nchw,
                     algorithm::reduction_norm_lp_max, 0.5f, 0.0f, {1, 8, 4, 4},
+                    {1, 8, 4, 4}, true, dnnl_invalid_arguments},
+            // not supported p = infinity for norm_lp_max
+            reduction_test_params_t {tag::nchw, tag::nchw,
+                    algorithm::reduction_norm_lp_max,
+                    std::numeric_limits<float>::infinity(), 0.0f, {1, 8, 4, 4},
+                    {1, 8, 4, 4}, true, dnnl_invalid_arguments},
+            // not supported p = infinity for norm_lp_sum
+            reduction_test_params_t {tag::nchw, tag::nchw,
+                    algorithm::reduction_norm_lp_sum,
+                    std::numeric_limits<float>::infinity(), 0.0f, {1, 8, 4, 4},
+                    {1, 8, 4, 4}, true, dnnl_invalid_arguments},
+            // not supported p = infinity for norm_lp_power_p_max
+            reduction_test_params_t {tag::nchw, tag::nchw,
+                    algorithm::reduction_norm_lp_power_p_max,
+                    std::numeric_limits<float>::infinity(), 0.0f, {1, 8, 4, 4},
+                    {1, 8, 4, 4}, true, dnnl_invalid_arguments},
+            // not supported p = infinity for norm_lp_power_p_sum
+            reduction_test_params_t {tag::nchw, tag::nchw,
+                    algorithm::reduction_norm_lp_power_p_sum,
+                    std::numeric_limits<float>::infinity(), 0.0f, {1, 8, 4, 4},
                     {1, 8, 4, 4}, true, dnnl_invalid_arguments},
             // invalid tag
             reduction_test_params_t {tag::any, tag::nchw,

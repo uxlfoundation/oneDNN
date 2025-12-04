@@ -524,29 +524,26 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a || b w/ zp ; setup ao & bo");
 
-        //@@@@@ for only A & B ?????
-        if (pd()->attr()->zero_points_.has_host_scalars()) {
-            int a_zp_val = 0;
-            int b_zp_val = 0;
-            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : there are host_scalars() !!!!");
-            if (ao->is_host_scalar()) {
-                VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : ao is host_scalar");
-                CHECK(maybe_get_host_scalar_value(*ao, a_zp_val));
-                VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a_zp_val = %d", a_zp_val);
-            }
-            if (bo->is_host_scalar()) {
-                VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : bo is host_scalar");
-                CHECK(maybe_get_host_scalar_value(*bo, b_zp_val));
-                VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : b_zp_val = %d", b_zp_val);
-            }
-
-            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a b _zp_val = %d %d",
-                       static_cast<int16_t>(a_zp_val),static_cast<int16_t>(b_zp_val));
-
-            abo_hostscalar = (static_cast<int32_t>(-1 * b_zp_val) << 16) | (static_cast<uint16_t>(-1 * a_zp_val) & 0xFFFF);
-
+        //@@@@@ for only A & B
+        int a_hostscalar_val = 0;
+        int b_hostscalar_val = 0;
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : there are host_scalars() !!!!");
+        if (ao->is_host_scalar()) {
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : ao is host_scalar");
+            CHECK(maybe_get_host_scalar_value(*ao, a_hostscalar_val));
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a_zp_val = %d", a_hostscalar_val);
         }
-        //@@@@@ for only A & B ?????
+        if (bo->is_host_scalar()) {
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : bo is host_scalar");
+            CHECK(maybe_get_host_scalar_value(*bo, b_hostscalar_val));
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : b_zp_val = %d", b_hostscalar_val);
+        }
+
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a b _zp_val = %d %d",
+                   static_cast<int16_t>(a_hostscalar_val),static_cast<int16_t>(b_hostscalar_val));
+
+        abo_hostscalar = (static_cast<int32_t>(-1 * b_hostscalar_val) << 16) | (static_cast<uint16_t>(-1 * a_hostscalar_val) & 0xFFFF);
+        //@@@@@ for only A & B
     }
 
     //VDEBUGINFO(4, primitive, gemm, "MY execute ++++");

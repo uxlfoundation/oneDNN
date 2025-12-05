@@ -388,13 +388,17 @@ struct jit_deconv_args_t {
     const void *dst = nullptr; /* hack, non-const for forward */
     const void *filt = nullptr; /* hack, non-const for backward_weights */
     const void *bias = nullptr; /* hack, non-const for backward_bias */
-    const void *scales = nullptr;
-    const void *dst_scale = nullptr;
+    const void *scales = nullptr; // TODO: delete me
+    const void *dst_scale = nullptr; // TODO: delete me
     const void *compensation = nullptr;
     const int32_t *zp_src_pad_str_compensation = nullptr;
     const int32_t *zp_compensation = nullptr;
     const int32_t *src_zero_point = nullptr;
     const int32_t *dst_zero_point = nullptr;
+
+    const void *src_scales = nullptr;
+    const void *wei_scales = nullptr;
+    const void *dst_scales = nullptr;
 
     /*
      * ptr to table of void * elements that are pointers to post_op binary

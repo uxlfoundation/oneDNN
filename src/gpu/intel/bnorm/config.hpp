@@ -71,6 +71,7 @@ struct conf_t {
     dim_t calc_stat_ic;
     int max_ic_block;
     impl_t impl = impl_t::unknown;
+    bool require_stateless_addressing;
 };
 
 } // namespace bnorm

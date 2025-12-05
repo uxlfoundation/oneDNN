@@ -71,8 +71,9 @@ struct reusable_params_t {
     int subgroup_size;
     bool is_logsoftmax;
     bool is_softmax_inf_as_zero;
+    bool require_stateless_addressing;
 
-    uint8_t padding[6] = {0};
+    uint8_t padding[5] = {0};
 
     compute::dispatch_compile_params_t gws_params;
 };
@@ -162,6 +163,8 @@ struct reusable_fwd_t : public primitive_t {
             // allow plain formats only
             bool plain_case = src_mdw.is_plain() && dst_mdw.is_plain();
             VDISPATCH_SOFTMAX(plain_case, VERBOSE_UNSUPPORTED_TAG);
+
+            conf.require_stateless_addressing = has_large_buffers();
 
             // compile-time configuration setup
             conf.is_logsoftmax = is_logsoftmax();

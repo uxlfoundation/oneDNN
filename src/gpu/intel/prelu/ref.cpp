@@ -37,6 +37,7 @@ static status_t init_conf_common(
     conf.src_md_info = memory_desc_info_t::create(src_mdw);
     conf.wei_md_info = memory_desc_info_t::create(wei_mdw);
     conf.dst_md_info = memory_desc_info_t::create(dst_mdw);
+    conf.require_stateless_addressing = pd->has_large_buffers();
     if (!conf.is_forward) {
         const memory_desc_wrapper diff_src_mdw(pd->diff_src_md(0));
         const memory_desc_wrapper diff_weights_mdw(pd->diff_weights_md(0));
@@ -82,6 +83,7 @@ static status_t init_kernel_ctx_common(
         compute::kernel_ctx_t &kernel_ctx, const conf_t &conf) {
 
     kernel_ctx.set_data_type(conf.dst_md_info.data_type);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("IS_FWD", conf.is_forward);
 

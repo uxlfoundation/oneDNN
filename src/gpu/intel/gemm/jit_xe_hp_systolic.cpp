@@ -522,15 +522,13 @@ status_t xe_hp_systolic_t::init(impl::engine_t *engine) {
             if (clear_sum && !pd()->with_ab_zero_points()) continue;
             if (!copy_b ? pd()->packed_a() : pd()->packed_b()) continue;
 
-            using copy_kernel_params_t = xe_systolic_copy_kernel_t;
-            compute::kernel_ctx_t kernel_ctx;
-
             auto trans
                     = !copy_b ? pd()->desc()->transa() : pd()->desc()->transb();
-            copy_kernel_params_t params;
+            xe_systolic_copy_kernel_t params;
             CHECK(params.init(arch_, !copy_b ? a_type : b_type,
                     pd()->unroll_n(), copy_b, trans,
-                    pd()->with_ab_zero_points(), clear_sum));
+                    pd()->with_ab_zero_points(), clear_sum,
+                    pd()->has_large_buffers()));
 
             // TODO: Refactor so this can be switched to 1 batch compilation.
             // Having up to 4 calls to the OpenCL compiler is sub-optimal.

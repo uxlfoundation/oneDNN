@@ -68,6 +68,7 @@ struct conf_t {
     int vector_size_scaleshift;
     bool use_src_buffer;
     bool skip_mean;
+    bool require_stateless_addressing;
 
     compute::dispatch_t dispatch_scaleshift;
     compute::dispatch_t dispatch_scaleshift_finalize;

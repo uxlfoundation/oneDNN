@@ -35,6 +35,8 @@ static status_t init_conf_common(
     if (!is_forward)
         conf.data_diff_md_info = memory_desc_info_t::create(diff_data_d);
 
+    conf.require_stateless_addressing = pd->has_large_buffers();
+
     const int ndims = src_d.ndims();
     conf.ndims = ndims;
 
@@ -66,6 +68,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const conf_t &conf, const post_ops_t &post_ops,
         const memory_desc_t *dst_md) {
     kernel_ctx.set_data_type(conf.data_type);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("ELTWISE_ALG", conf.alg);
     kernel_ctx.define_int("NDIMS", conf.ndims);

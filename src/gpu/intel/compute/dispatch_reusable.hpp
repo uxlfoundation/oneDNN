@@ -245,7 +245,8 @@ struct dispatch_compile_params_t {
     subgroup_data_t subgroup;
     int32_t num_terms = 0;
     bool use_int32_offset = false;
-    uint8_t padding[3] = {0};
+    bool require_stateless_addressing = true;
+    uint8_t padding[2] = {0};
     gws_indexing_term_t::compile_params_t terms[MAX_INDEXING_TERMS]
             = {{gws_op_t::SOLO, 0}};
 

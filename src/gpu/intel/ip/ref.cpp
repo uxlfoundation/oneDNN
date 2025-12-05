@@ -32,6 +32,8 @@ static status_t init_conf_common(
     const memory_desc_wrapper dst_d(pd->invariant_dst_md());
     data_type_t acc_data_type = pd->desc()->accum_data_type;
 
+    conf.require_stateless_addressing = pd->has_large_buffers();
+
     const int ndims = src_d.ndims();
 
     conf.ndims = ndims;
@@ -147,6 +149,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         kernel_ctx.set_data_type(data_type::f16);
     else
         kernel_ctx.set_data_type(data_type::f32);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     def_data_type(kernel_ctx, conf.src_dt, "SRC");
     def_data_type(kernel_ctx, conf.wei_dt, "WEI");

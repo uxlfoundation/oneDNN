@@ -65,6 +65,7 @@ status_t xe_jit_params_t::init(impl::engine_t *engine,
 
 compute::kernel_ctx_t xe_jit_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
+    kernel_ctx.require_stateless_addressing(require_stateless_addressing);
 
     kernel_ctx.set_data_type(data_type);
 
@@ -82,6 +83,7 @@ compute::kernel_ctx_t xe_jit_params_t::get_kernel_ctx() const {
 status_t xe_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper data_d(use_dst() ? dst_md() : src_md());
     status_t status = conf.init(engine, data_d, this->desc()->alg_kind);
+    conf.require_stateless_addressing = has_large_buffers();
     return status;
 }
 
@@ -128,7 +130,9 @@ status_t xe_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     // This kernel supports only matching data and diff formats
     if (data_d != diff_data_d) return status::unimplemented;
 
-    return conf.init(engine, data_d, this->desc()->alg_kind);
+    status_t status = conf.init(engine, data_d, this->desc()->alg_kind);
+    conf.require_stateless_addressing = has_large_buffers();
+    return status;
 }
 
 status_t xe_bwd_t::execute_backward_dense(const exec_ctx_t &ctx) const {

@@ -51,7 +51,8 @@ struct xe_jit_params_t : public trivially_serializable_t<xe_jit_params_t> {
     int work_group_size;
     int sub_group_size;
     bool with_overflow;
-    uint8_t pad0[3] = {};
+    bool require_stateless_addressing;
+    uint8_t pad0[2] = {};
 };
 
 struct xe_fwd_t : public primitive_t {

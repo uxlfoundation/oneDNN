@@ -36,6 +36,7 @@ struct conf_t {
     compute::dispatch_t dispatch;
     memory_desc_info_t src_md_info;
     memory_desc_info_t dst_md_info;
+    bool require_stateless_addressing;
 };
 
 } // namespace shuffle

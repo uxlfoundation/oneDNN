@@ -34,6 +34,7 @@ static status_t init_kernel_ctx_common(
             pd->is_fwd() ? pd->dst_md() : pd->diff_dst_md());
 
     kernel_ctx.set_data_type(input_data_mdw.data_type());
+    kernel_ctx.require_stateless_addressing(pd->has_large_buffers());
 
     kernel_ctx.define_int("NDIMS", input_data_mdw.ndims()); // for SRC_OFF macro
     kernel_ctx.define_int("G", pd->desc()->groups);

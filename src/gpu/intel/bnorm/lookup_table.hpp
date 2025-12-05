@@ -169,6 +169,7 @@ public:
     bool is_blocked_16n16c = false;
     bool is_blocked_32n16c = false;
     bool is_nhwc = false;
+    bool require_stateless_addressing = true;
 };
 
 void maybe_override_bn_conf_params_env(params_t &conf);

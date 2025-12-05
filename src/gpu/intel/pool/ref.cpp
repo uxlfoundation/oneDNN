@@ -31,6 +31,7 @@ static status_t init_conf_common(conf_t &conf, offsets_t &off, const pd_t *pd,
 
     set_default_conf(conf, *pd->desc(), *pd->invariant_src_md(),
             *pd->invariant_dst_md(), *pd->attr());
+    conf.require_stateless_addressing = pd->has_large_buffers();
 
     set_offsets(src_mdw, off.src_off);
     set_offsets(dst_mdw, off.dst_off);
@@ -62,6 +63,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const memory_desc_t *dst_md) {
     using namespace dnnl::impl::alg_kind;
     kernel_ctx.set_data_type(conf.src_dt);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("SUB_GROUP_SIZE", 1);
     kernel_ctx.define_int("NDIMS", conf.ndims);

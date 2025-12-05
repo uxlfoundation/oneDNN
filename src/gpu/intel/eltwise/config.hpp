@@ -37,6 +37,7 @@ struct conf_t {
     data_type_t data_type;
     alg_kind_t alg;
     bool is_forward;
+    bool require_stateless_addressing;
     int work_group_size;
     int sub_group_size;
     compute::dispatch_t dispatch;

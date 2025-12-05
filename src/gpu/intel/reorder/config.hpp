@@ -105,6 +105,7 @@ struct conf_t {
     int ndims;
     size_t nelems;
     bool subbyte_pack = false;
+    bool require_stateless_addressing;
 
     compute::dispatch_t dispatch;
 

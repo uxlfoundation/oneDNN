@@ -32,6 +32,8 @@ status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.src_md_info = memory_desc_info_t::create(input_mdw);
     conf.dst_md_info = memory_desc_info_t::create(output_mdw);
 
+    conf.require_stateless_addressing = has_large_buffers();
+
     conf.axis = axis();
 
     conf.transpose_col = is_fwd() ? group_size() : axis_size() / group_size();
@@ -56,6 +58,7 @@ status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t ref_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.set_data_type(conf.data_type);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
     kernel_ctx.define_int("AXIS", conf.axis);
     kernel_ctx.define_int("TRANSPOSE_ROW", conf.transpose_row);
     kernel_ctx.define_int("TRANSPOSE_COL", conf.transpose_col);

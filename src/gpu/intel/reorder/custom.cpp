@@ -514,6 +514,7 @@ status_t custom_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.src_md_info = memory_desc_info_t::create(src_mdw);
     conf.dst_md_info = memory_desc_info_t::create(dst_mdw);
+    conf.require_stateless_addressing = has_large_buffers();
 
     status_t status = status::success;
 
@@ -786,6 +787,7 @@ status_t custom_t::pd_t::init_kernel_ctx(
     conf.sum_quant.define_macros(kernel_ctx, "SUM");
 
     def_dispatch(kernel_ctx, conf.dispatch);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     // the 'unaligned_sizes' kernel uses the same implementation in .cl
     // the difference is in sizes of blocks[]

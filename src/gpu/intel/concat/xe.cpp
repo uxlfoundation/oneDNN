@@ -137,6 +137,7 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
     }
 
     conf.use_large_index = (max_elems > std::numeric_limits<int>::max());
+    conf.require_stateless_addressing = pd->has_large_buffers();
 
     conf.sub_group_size = calculate_sub_group_size(intel_engine);
     std::tie(conf.iter_dim_idx, conf.iter_dim_chunk)
@@ -179,6 +180,7 @@ static status_t init_kernel_ctx_common(
     def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST", with_punning);
 
     kernel_ctx.set_data_type(conf.src_type, with_punning);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("CONCAT_AXIS", conf.concat_axis);

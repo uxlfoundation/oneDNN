@@ -80,7 +80,8 @@ struct nhwc_reusable_compile_params_t {
     bool with_leaky_relu;
     bool calculate_stats;
     bool use_stats_one_pass;
-    uint8_t padding[3] = {0};
+    bool require_stateless_addressing;
+    uint8_t padding[2] = {0};
 };
 
 struct nhwc_reusable_runtime_params_t {

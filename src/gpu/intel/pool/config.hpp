@@ -49,6 +49,7 @@ struct conf_t {
     bool use_mb_c_block, use_only_c_block;
     int unroll_mb_count = 1;
     bool vectorize = true;
+    bool require_stateless_addressing;
     int chunks_per_c_block, chunks_per_mb_block;
     int vect_dt_n;
     int nvect;

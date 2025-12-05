@@ -223,6 +223,7 @@ struct xe_fwd_t : public primitive_t {
         def_memory_desc_info(kernel_ctx, dst_md_info, "DST");
         def_memory_desc_info(kernel_ctx, src_md_info, "SRC");
         kernel_ctx.set_data_type(dst_mdw.data_type());
+        kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
         set_offsets(kernel_ctx, pd()->dst_md(), "DATA");
 
         CHECK(create_kernel(engine, &kernel_, "xe_softmax_fwd", kernel_ctx));
@@ -352,6 +353,7 @@ struct xe_bwd_t : public primitive_t {
         def_memory_desc_info(kernel_ctx, diff_src_md_info, "SRC");
         def_memory_desc_info(kernel_ctx, diff_dst_md_info, "DST");
         kernel_ctx.set_data_type(pd()->diff_src_md()->data_type);
+        kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
         set_offsets(kernel_ctx, *pd()->diff_src_md(), "DATA");
 
         CHECK(create_kernel(engine, &kernel_, "xe_softmax_bwd", kernel_ctx));

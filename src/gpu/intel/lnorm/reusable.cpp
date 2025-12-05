@@ -170,6 +170,7 @@ status_t reusable_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 compute::kernel_ctx_t reusable_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
+    kernel_ctx.require_stateless_addressing(require_stateless_addressing);
 
     data_type_t acc_dt = types::default_accum_data_type(src_dt, data_type::f32);
     data_type_t acc_bwd_dt

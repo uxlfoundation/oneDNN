@@ -41,6 +41,7 @@ status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.dst_md_info = memory_desc_info_t::create(dst_mdw);
     conf.dst_type = dst_mdw.data_type();
     conf.src_type = src_mdw.data_type();
+    conf.require_stateless_addressing = pd->has_large_buffers();
     conf.ndims = ndims;
     conf.power = pd->desc()->p;
     conf.eps = pd->desc()->eps;
@@ -83,6 +84,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     using namespace alg_kind;
 
     kernel_ctx.set_data_type(conf.src_type);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     int max_ndims = 6;
     for (int i = 0; i < max_ndims; ++i) {

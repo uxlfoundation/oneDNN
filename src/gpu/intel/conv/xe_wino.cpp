@@ -125,6 +125,7 @@ status_t xe_wino_fwd_t::pd_t::init_conf(intel::engine_t *engine) {
 
     set_default_conf(conf, cd, *src_md(), *weights_md(), *dst_md(),
             *weights_md(1), *attr());
+    conf.require_stateless_addressing = has_large_buffers();
 
     conf.ic = utils::rnd_up(conf.ic_without_padding, 16);
     conf.oc = utils::rnd_up(conf.oc_without_padding, 16);
@@ -340,6 +341,7 @@ status_t xe_wino_fwd_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("VECT_DT_N", conf.vect_size);
 
     kernel_ctx.set_data_type(conf.src_data_type);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("VER_8OW16C", conf.ver == ver_8ow16c);
     kernel_ctx.define_int("VER_16MB16C", conf.ver == ver_16mb16c);

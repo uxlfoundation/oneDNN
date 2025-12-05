@@ -309,11 +309,18 @@ status_t engine_t::build_program_from_source(
     auto *dev_info = utils::downcast<const device_info_t *>(device_info());
     options += " " + dev_info->get_cl_ext_options();
 
+    // SYCL does not allow allocation of buffers over the allocation limit
+    // so adding this flag would only potentially decrease the performance
+    // without any functional benefit.
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     // Compile kernel in a stateless addressing model allowing usage of
-    // allocations of any size. Not needed if allowed allocation is already > 4GB.
-    if (dev_info->device_address_bits() >= 64
+    // allocations of any size. Device needs to support 64 bit addresses,
+    // but it is not needed if allowed allocation is already > 4GB.
+    if (kernel_ctx.require_stateless_addressing()
+            && dev_info->device_address_bits() >= 64
             && dev_info->max_allocation_size() <= UINT32_MAX)
         options += " -cl-intel-greater-than-4GB-buffer-required";
+#endif
 
     cl_int err;
     stringstream_t pp_code;

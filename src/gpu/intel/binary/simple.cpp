@@ -125,6 +125,7 @@ status_t simple_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t simple_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
+    kernel_ctx.require_stateless_addressing(has_large_buffers());
     kernel_ctx.define_int("BINARY_ALG", conf.alg);
     kernel_ctx.define_int("IS_TERNARY", (conf.alg == alg_kind::binary_select));
 

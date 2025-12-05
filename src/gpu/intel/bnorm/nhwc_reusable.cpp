@@ -46,6 +46,7 @@ static status_t init_reusable_confs_basic(
     cmpl_conf = utils::zero<decltype(cmpl_conf)>();
 
     cmpl_conf.data_type = data_mdw.data_type();
+    cmpl_conf.require_stateless_addressing = pd->has_large_buffers();
 
     cmpl_conf.use_scale = pd->use_scale();
     cmpl_conf.use_shift = pd->use_shift();
@@ -210,6 +211,8 @@ static status_t init_conf_common(nhwc_params_t &bn_conf,
 static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const nhwc_reusable_compile_params_t &cmpl_conf) {
     kernel_ctx.set_data_type(cmpl_conf.data_type);
+    kernel_ctx.require_stateless_addressing(
+            cmpl_conf.require_stateless_addressing);
 
     kernel_ctx.define_int("WITH_RELU", cmpl_conf.with_relu);
     if (cmpl_conf.with_leaky_relu) kernel_ctx.define_int("WITH_LEAKY_RELU", 1);

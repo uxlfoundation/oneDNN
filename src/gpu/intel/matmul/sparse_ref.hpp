@@ -85,6 +85,7 @@ struct ref_sparse_t : public primitive_t {
         int ndims = pd()->dst_md()->ndims;
 
         kernel_ctx.set_data_type(pd()->dst_dt_);
+        kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
         const memory_desc_wrapper src_d(pd()->src_md(0));
         const memory_desc_wrapper wei_d(pd()->weights_md(0));

@@ -86,6 +86,7 @@ struct ref_fwd_t : public primitive_t {
         const auto *desc = pd()->desc();
 
         kernel_ctx.set_data_type(desc->src_desc.data_type, false);
+        kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
         kernel_ctx.define_int("IS_FWD", 1);
 
@@ -208,6 +209,7 @@ struct ref_bwd_t : public primitive_t {
         const auto *desc = pd()->desc();
 
         kernel_ctx.set_data_type(desc->src_desc.data_type, false);
+        kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
         kernel_ctx.define_int("IS_BWD", 1);
 

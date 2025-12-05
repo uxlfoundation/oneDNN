@@ -217,6 +217,8 @@ status_t reusable_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
 
 compute::kernel_ctx_t reusable_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
+    // Stateless addressing model
+    kernel_ctx.require_stateless_addressing(require_stateless_addressing);
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO", is_softmax_inf_as_zero);
     kernel_ctx.define_int("LOGSOFTMAX", is_logsoftmax);
     kernel_ctx.define_int("MANY_REDUCTIONS_PER_WORKGROUP",

@@ -160,7 +160,6 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     CHECK(attr_.set_default_formats(dst_md(0)));
     VDISPATCH_GEMM(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
-    compute::kernel_ctx_t kernel_ctx;
     use_scratchpad_with_post_op_worker = use_reorder
             || attributes_with_po->post_ops_.find(primitive_kind_t::dnnl_sum)
                     != -1;
@@ -205,6 +204,7 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
 
     int ndims = src_info.ndims;
     kernel_ctx.set_data_type(mx_scales_ ? acc_type_ : c_type);
+    kernel_ctx.require_stateless_addressing(has_large_buffers());
 
     const auto &attr_scales = attr()->scales_;
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);

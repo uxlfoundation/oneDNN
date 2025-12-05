@@ -242,9 +242,8 @@ struct GEMMProblem : public CommonProblem {
     bool hasAOffset() const { return (aoPtrDims > -1); }
     bool hasBOffset() const { return (boPtrDims > -1); }
     //@@@@@@
-    bool aZPHostScalar() const {return ao_hostscalar; }
-    bool bZPHostScalar() const {return bo_hostscalar; }
-    bool abZPHostScalar() const {return (ao_hostscalar || bo_hostscalar); }
+    bool aOffsetHostScalar() const {return ao_hostscalar; }
+    bool bOffsetHostScalar() const {return bo_hostscalar; }
     //@@@@@@
 
     bool aScale2D() const { return (asPtrDims >= 2); }

@@ -1054,7 +1054,7 @@ void gen_kernel_t::init_interface() {
     }
 
     // @@@@@
-    if (problem.abZPHostScalar()) {
+    if (problem.aOffsetHostScalar() || problem.bOffsetHostScalar()) {
         VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> @@@@ interface_.newArgument abo");
         interface_.newArgument("abo", DataType::ud);
     }

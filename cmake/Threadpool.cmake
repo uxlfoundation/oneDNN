@@ -25,11 +25,7 @@ include("cmake/Threading.cmake")
 
 if("${DNNL_CPU_THREADING_RUNTIME}" STREQUAL "THREADPOOL")
     if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "TBB")
-        find_package_tbb(REQUIRED)
-        if(TBB_FOUND)
-            list(APPEND EXTRA_STATIC_LIBS TBB::tbb)
-            message(STATUS "Threadpool testing: TBB (${_tbb_root})")
-        endif()
+        add_tbb_threading()
     endif()
 
     if(_DNNL_TEST_THREADPOOL_IMPL MATCHES "^(EIGEN|EIGEN_ASYNC)$")

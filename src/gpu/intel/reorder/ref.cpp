@@ -35,6 +35,8 @@ status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.src_md_info = memory_desc_info_t::create(src_mdw);
     conf.dst_md_info = memory_desc_info_t::create(dst_mdw);
 
+    conf.require_stateless_addressing = has_large_buffers();
+
     status_t status = status::success;
 
     const auto &padded_dims = dst_mdw.padded_dims();
@@ -90,6 +92,7 @@ status_t ref_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
     conf.sum_quant.define_macros(kernel_ctx, "SUM");
 
     def_dispatch(kernel_ctx, conf.dispatch);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("REF_REORDER", 1);
     kernel_ctx.define_int("PAD_FILL_ZERO", conf.has_padding);

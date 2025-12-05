@@ -99,6 +99,7 @@ status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 status_t ref_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.set_data_type(src_md()->data_type);
+    kernel_ctx.require_stateless_addressing(has_large_buffers());
     kernel_ctx.define_int("IS_FWD", 1);
 
     status_t status = init_kernel_ctx_common(kernel_ctx, conf, desc());
@@ -174,6 +175,7 @@ status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
 status_t ref_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     kernel_ctx.set_data_type(diff_src_md()->data_type);
+    kernel_ctx.require_stateless_addressing(has_large_buffers());
     kernel_ctx.define_int("IS_BWD", 1);
 
     status_t status = init_kernel_ctx_common(kernel_ctx, conf, desc());

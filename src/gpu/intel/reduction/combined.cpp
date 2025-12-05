@@ -270,6 +270,7 @@ status_t combined_t::pd_t::init_conf(impl::engine_t *engine) {
 
         conf.is_reduction_dim[i] = false;
     }
+    conf.require_stateless_addressing = has_large_buffers();
 
     using namespace alg_kind;
     std::vector<subproblem_t> subprbs;
@@ -371,6 +372,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("SECONDARY_REDUCTION_ALG", to_int(secondary_alg));
 
     kernel_ctx.set_data_type(phase.src_type);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("SUBGROUP_SIZE", phase.subgroup_size);
     const auto &lws = phase.nd_range.local_range();

@@ -190,6 +190,7 @@ static status_t init_conf_common(
     dim_idx_t ndims = into<dim_idx_t>(src_mdw.ndims());
 
     conf.src_dt = src_mdw.data_type();
+    conf.require_stateless_addressing = pd->has_large_buffers();
     conf.ndims = ndims;
     conf.norm_axis = into<dim_idx_t>(pd->norm_axis());
     conf.across_axis = into<dim_idx_t>(pd->across_axis());
@@ -472,6 +473,7 @@ static status_t init_kernel_ctx_common(
         kernel_ctx_t &kernel_ctx, const conf_t &conf) {
     kernel_ctx.set_data_type(conf.src_dt);
     def_data_type(kernel_ctx, conf.weights_data_type, "WEI");
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     // Since FWD kernel aggressively uses GRF (allocates a private buffer for
     // SRC chunk), large GRF mode decreases number/probability of register

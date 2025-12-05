@@ -31,7 +31,8 @@ namespace gemm {
 
 struct xe_systolic_copy_kernel_t {
     status_t init(compute::gpu_arch_t arch, data_type_t dt, int unroll_n,
-            bool copyb, bool trans, bool sum = false, bool clear_sum = false) {
+            bool copyb, bool trans, bool sum = false, bool clear_sum = false,
+            bool require_stateless_addressing = true) {
         *this = {};
         arch_ = arch;
         dt_ = dt;
@@ -40,6 +41,7 @@ struct xe_systolic_copy_kernel_t {
         trans_ = trans;
         sum_ = sum;
         clear_sum_ = clear_sum;
+        require_stateless_addressing_ = require_stateless_addressing;
         return status::success;
     }
 
@@ -52,17 +54,19 @@ struct xe_systolic_copy_kernel_t {
 
     status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
         return init_kernel_ctx(kernel_ctx, arch_, dt_, unroll_n_, copyb_,
-                trans_, sum_, clear_sum_);
+                trans_, sum_, clear_sum_, require_stateless_addressing_);
     }
 
     static status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx,
             compute::gpu_arch_t arch, data_type_t dt, int unroll_n, bool copyb,
-            bool trans, bool sum = false, bool clear_sum = false) {
+            bool trans, bool sum = false, bool clear_sum = false,
+            bool require_stateless_addressing = true) {
 
         using arch_t = compute::gpu_arch_t;
 
         auto dt_size = types::data_type_size(dt);
 
+        kernel_ctx.require_stateless_addressing(require_stateless_addressing);
         if (dt_size == 1) kernel_ctx.add_option("-Dcl_intel_subgroups_char");
         kernel_ctx.define_int("ELEMENT_SIZE", int(dt_size));
         kernel_ctx.define_int("UNROLL_N", unroll_n);
@@ -124,6 +128,7 @@ struct xe_systolic_copy_kernel_t {
 #endif
 
     serialization_stream_t serialize() const {
+        DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(xe_systolic_copy_kernel_t);
         return serialization_stream_t(*this);
     }
 
@@ -135,7 +140,6 @@ struct xe_systolic_copy_kernel_t {
         return t;
     }
 
-private:
     compute::gpu_arch_t arch_;
     data_type_t dt_;
     int unroll_n_;
@@ -143,6 +147,8 @@ private:
     bool trans_;
     bool sum_;
     bool clear_sum_;
+    bool require_stateless_addressing_;
+    uint8_t pad[3] = {};
 };
 
 } // namespace gemm

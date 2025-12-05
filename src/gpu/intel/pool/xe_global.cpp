@@ -50,6 +50,7 @@ static status_t init_conf_common(
 
     set_default_conf(conf, *pd->desc(), *pd->invariant_src_md(),
             *pd->invariant_dst_md(), *pd->attr());
+    conf.require_stateless_addressing = pd->has_large_buffers();
 
     VDISPATCH_POOLING_IC(
             conf.iw == conf.kw && conf.ih == conf.kh && conf.ow * conf.oh == 1,
@@ -123,6 +124,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const memory_desc_t *dst_md) {
     using namespace dnnl::impl::alg_kind;
     kernel_ctx.set_data_type(conf.src_dt);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("MB", conf.mb);

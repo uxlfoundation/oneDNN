@@ -62,6 +62,7 @@ struct ref_t : public primitive_t {
         compute::kernel_ctx_t kernel_ctx;
 
         kernel_ctx.set_data_type(pd()->dst_md()->data_type);
+        kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
         int ndims = 4;
 

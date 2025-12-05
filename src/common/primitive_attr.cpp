@@ -610,6 +610,8 @@ status_t dnnl_primitive_attr_set_scales_v3(primitive_attr_t *attr, int arg,
         VCHECK_ATTR(mask >= 0, VERBOSE_BAD_PARAM, "mask");
         VCHECK_ATTR(group_ndims >= 0, VERBOSE_BAD_PARAM, "group_ndims");
     }
+    VCHECK_ATTR(IMPLICATION(group_ndims > 0, mask > 0), VERBOSE_BAD_PARAM,
+            "mask incompatible with group_dims");
     return attr->scales_.set(
             arg, mask, data_type, group_ndims, group_dims, is_on_host, qmode);
 }

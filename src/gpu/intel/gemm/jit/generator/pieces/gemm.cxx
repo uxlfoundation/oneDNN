@@ -31,6 +31,11 @@ using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
 
+#ifndef VDEBUGINFO_OBJECT
+#define VDEBUGINFO_OBJECT(obj) \
+    VDEBUGINFO(4, primitive, object, "MY: +++++ : %s : is Valid Null Scalar = %d %d %d", #obj, (obj).isValid(), (obj).isNull(), (obj).isScalar())
+#endif
+
 
 // Create a GEMM kernel.
 template <HW hw>
@@ -44,6 +49,8 @@ void Generator<hw>::gemm(GEMMProblem problem, GEMMStrategy strategy, const Inter
 template <HW hw>
 void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ################# >>>>>>");
+
     const bool inFusedGEMM = false;
     bool anyKParallelFixed = strategy.kParallelLocal || strategy.kParallel;
 
@@ -55,7 +62,9 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
 
     // Set up.
     problem.autoTypeConversions(hw, strategy.systolic);
+    VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### : call gemmInitState(problem, strategy, state)");
     gemmInitState(problem, strategy, state);
+    VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### : after gemmInitState(problem, strategy, state)");
 
     // Transfer surface indices to strategy AddressBases.
     strategy.A.assignSurface(state.inputs.surfaceA);
@@ -66,8 +75,10 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (!strategy.C.base.isStateless() && state.C_count > 1) stub();
     if (state.useTempC)
         state.tempCStrategy.assignSurface(state.inputs.surfaceTempC);
-    if (problem.usesCO())
+    if (problem.usesCO()){
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### : strategy.CO.assignSurface(state.inputs.surfaceCO)");
         strategy.CO.assignSurface(state.inputs.surfaceCO);
+    }
 
     for (size_t i = 0; i < strategy.binary.size(); i++)
         strategy.binary[i].assignSurface(state.inputs.binarySurfaces[i]);
@@ -80,8 +91,10 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     strategy.Bg.assignSurface(state.inputs.surfaceBg);
 
     // Prologue.
-    if (!inFusedGEMM)
+    if (!inFusedGEMM) {
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### : call prologue(strategy, state)");
         prologue(strategy, state);
+    }
 
     // Grab fused ID if needed, and multiply by unroll.
     getFusedID(strategy.unroll[strategy.fusedLoop], problem, strategy, state);
@@ -128,8 +141,14 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         mov(1, s, 0);
     };
 
-    if (!strategy.AO.base.isStateless() && problem.aOffset2D())       replace0(state.inputs.aoPtr);
-    if (!strategy.BO.base.isStateless() && problem.bOffset2D())       replace0(state.inputs.boPtr);
+    if (!strategy.AO.base.isStateless() && problem.aOffset2D()){
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### replace0(state.inputs.aoPtr)");
+        replace0(state.inputs.aoPtr);
+    }
+    if (!strategy.BO.base.isStateless() && problem.bOffset2D()){
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### replace0(state.inputs.boPtr)");
+        replace0(state.inputs.boPtr);
+    }
     if (!strategy.A_scale.base.isStateless() && problem.aScale2D())   replace0(state.inputs.aScalePtr);
     if (!strategy.B_scale.base.isStateless() && problem.bScale2D())   replace0(state.inputs.bScalePtr);
     if (!strategy.Ag.base.isStateless() && problem.needsAGroupSums()) replace0(state.inputs.agPtr);
@@ -202,10 +221,16 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     // A/B offset pointer handling.
     bool aOffset = (problem.aOffset != ABOffset::None);
     bool bOffset = (problem.bOffset != ABOffset::None);
-    if (aOffset && state.inputs.offsetAO.isValid())
+    VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### aOffset bOffset = %d %d",aOffset,bOffset);
+
+    if (aOffset && state.inputs.offsetAO.isValid()){
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### eadd(1, state.inputs.aoPtr....");
         eadd(1, state.inputs.aoPtr, state.inputs.aoPtr, state.inputs.offsetAO, strategy, state);
-    if (bOffset && state.inputs.offsetBO.isValid())
+    }
+    if (bOffset && state.inputs.offsetBO.isValid()){
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### eadd(1, state.inputs.boPtr....");
         eadd(1, state.inputs.boPtr, state.inputs.boPtr, state.inputs.offsetBO, strategy, state);
+    }
 
     state.ra.safeRelease(state.inputs.offsetAO);
     state.ra.safeRelease(state.inputs.offsetBO);
@@ -213,21 +238,37 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     // Load scalar ao/bo from memory as needed.
     bool aoScalarLoad = aOffset && problem.aoPtrDims == 0 && !problem.earlyDequantizeA() && !problem.needsBGroupSums();
     bool boScalarLoad = bOffset && problem.boPtrDims == 0 && !problem.earlyDequantizeB() && !problem.needsAGroupSums();
+    VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### aOffset bOffset = %d %d",aOffset,bOffset);
+    VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### aoScalarLoad boScalarLoad = %d %d",aoScalarLoad,boScalarLoad);
     auto Tc = problem.Tc;
 
     if (Tc.isInteger() && (aoScalarLoad || boScalarLoad)) {
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### state.inputs.abo = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy))");
+
+        VDEBUGINFO_OBJECT(state.inputs.abo);
         state.inputs.abo = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
-        if (aoScalarLoad) state.inputs.ao = state.inputs.abo.w(0);
-        if (boScalarLoad) state.inputs.bo = state.inputs.abo.w(1);
+        VDEBUGINFO_OBJECT(state.inputs.abo);
+
+        if (aoScalarLoad) {
+            VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### state.inputs.ao = state.inputs.abo.w(0)");
+            state.inputs.ao = state.inputs.abo.w(0);
+        }
+        if (boScalarLoad) {
+            VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### state.inputs.bo = state.inputs.abo.w(1)");
+            state.inputs.bo = state.inputs.abo.w(1);
+        }
     } else {
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### ELSE if Tc.isInteger() && (aoScalarLoad || boScalarLoad)");
         if (aoScalarLoad) state.inputs.ao = state.ra.alloc_sub(Tc.ngen(), getHint(HintType::LongTerm, strategy));
         if (boScalarLoad) state.inputs.bo = state.ra.alloc_sub(Tc.ngen(), getHint(HintType::LongTerm, strategy));
     }
 
     auto loadABO = [&](Type T, const ngen::Subregister &xo, ngen::Subregister &xoPtr) {
-        if (xoPtr.isInvalid())
+        if (xoPtr.isInvalid()){
+            VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### loadABO : xoPtr.isInvalid() - mov(1, xo, cast(Tc, 0))");
             mov(1, xo, cast(Tc, 0));
-        else {
+        } else {
+            VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### loadABO : ELSE xoPtr.isInvalid()");
             vector<Subregister> srcs;
             srcs.push_back(xoPtr);
             auto xoLoad = loadScalars(T, srcs, strategy, state);
@@ -239,8 +280,14 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         }
     };
 
-    if (aoScalarLoad) loadABO(problem.Tao, state.inputs.ao, state.inputs.aoPtr);
-    if (boScalarLoad) loadABO(problem.Tbo, state.inputs.bo, state.inputs.boPtr);
+    if (aoScalarLoad) {
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### a loadABO");
+        loadABO(problem.Tao, state.inputs.ao, state.inputs.aoPtr);
+    }
+    if (boScalarLoad) {
+        VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm ###### b loadABO");
+        loadABO(problem.Tbo, state.inputs.bo, state.inputs.boPtr);
+    }
 
     if (problem.hasCMXScale()) {
         auto unrollM = strategy.unroll[LoopM];
@@ -588,6 +635,7 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         epilogue(strategy, state);
         padding();
     }
+    VDEBUGINFO(4, primitive, gen_gemm, "MY: gemm <<<<<< ####################");
 }
 
 template <HW hw>

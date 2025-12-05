@@ -648,6 +648,9 @@ void Generator<hw>::initInterface(const CommonProblem &problem, const CommonStra
 template <HW hw>
 void Generator<hw>::initState(const CommonProblem &problem, const CommonStrategy &strategy, CommonState &state)
 {
+
+    VDEBUGINFO(4, primitive, common, "MY: InitState ------- >");
+
     interface.requireLocalID(3);
     interface.requireLocalSize();
     if (problem.nonuniformWGs)
@@ -673,6 +676,9 @@ void Generator<hw>::initState(const CommonProblem &problem, const CommonStrategy
 
     for (int i = 0; i < FlagRegister::subcount(hw); i++)
         state.activeVFlags[i].clear();
+
+    VDEBUGINFO(4, primitive, common, "MY: InitState < -------");
+
 }
 
 

@@ -22,6 +22,7 @@
 #include "common/c_types_map.hpp"
 #include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/post_ops.hpp"
+#include "gpu/intel/gemm/exec_types.hpp" // @@@@@@ needed ?????
 
 namespace dnnl {
 namespace impl {
@@ -242,6 +243,18 @@ struct pd_t : public gemm::pd_t {
         bool n_grouped = 1 < b_zp_group_n_ && b_zp_group_n_ < desc()->n();
         return k_grouped || n_grouped;
     }
+    // @@@@@ used
+    bool a_zp_host_scalar() const {
+        auto &attr_zps = attr()->zero_points_;
+        auto &zp = attr_zps.get(DNNL_ARG_A);
+        return zp.is_host_scalar();
+    }
+    bool b_zp_host_scalar() const {
+        auto &attr_zps = attr()->zero_points_;
+        auto &zp = attr_zps.get(DNNL_ARG_B);
+        return zp.is_host_scalar();
+    }
+    // @@@@@ used
     int a_q2d_group_k() const {
         if (a_zp_2d()) {
             return a_zp_group_k_;

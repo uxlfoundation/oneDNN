@@ -165,6 +165,12 @@ struct GEMMProblem : public CommonProblem {
     MatrixAddressing Ag, Bg;                        // Addressing information for A/B group sums.
 
     bool checkBeta0 = true;                         // If true, check for beta = 0 and handle specially.
+
+// @@@@@ used ; or maybe bool has_ao_hostscalar()
+    bool ao_hostscalar = false;
+    bool bo_hostscalar = false;
+// @@@@@ used ; or maybe bool has_ao_hostscalar()
+
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
     int aoPtrDims = -1, boPtrDims = -1;             // A/B offset dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
@@ -235,6 +241,10 @@ struct GEMMProblem : public CommonProblem {
     bool hasCMXScale() const { return cMXScale; }
     bool hasAOffset() const { return (aoPtrDims > -1); }
     bool hasBOffset() const { return (boPtrDims > -1); }
+    //@@@@@@
+    bool aOffsetHostScalar() const {return ao_hostscalar; }
+    bool bOffsetHostScalar() const {return bo_hostscalar; }
+    //@@@@@@
 
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }
@@ -279,6 +289,7 @@ struct GEMMProblem : public CommonProblem {
     }
 
     /* Serialization for kernel cache. */
+    // @@@@@ combination of <a|b>Offset and <a|b>oPtrDims is enough
     void serialize(SerializationStream &s) const
     {
         s.append(Ta, Tb, Tc, Ts);
@@ -303,6 +314,9 @@ struct GEMMProblem : public CommonProblem {
         s.append(sumA, sumB);
         s.append(sroundSeed);
         s.append(postOps);
+
+        //VDEBUGINFO(4, primitive, serialization, "aOffset bOffset = %d %d : aoPtrDims boPtrDims = %d %d", aOffset, bOffset, aoPtrDims, boPtrDims);
+
     }
 };
 

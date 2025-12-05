@@ -236,6 +236,7 @@ Team: @uxlfoundation/onednn-doc
 | Name               | Github ID             | Affiliation       | Role       |
 | ------------------ | --------------------- | ----------------- | ---------- |
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
+| Dmitry Zarukin     | @dzarukin             | Intel Corporation | Code Owner |
 | Maria Zhukova      | @mzhukova             | Intel Corporation | Code Owner |
 | Ranu Kundu         | @ranukund             | Intel Corporation | Code Owner |
 | Tao Lv             | @TaoLv                | Intel Corporation | Code Owner |

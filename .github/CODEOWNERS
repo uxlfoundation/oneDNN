@@ -43,8 +43,8 @@
 /src/graph/ @uxlfoundation/onednn-graph
 
 # Documentation
-*.md  @uxlfoundation/onednn-doc @uxlfoundation/onednn-arch
-/doc/ @uxlfoundation/onednn-doc @uxlfoundation/onednn-arch
+*.md  @uxlfoundation/onednn-doc
+/doc/ @uxlfoundation/onednn-doc
 
 # Third party components
 /third-party/ @uxlfoundation/onednn-arch

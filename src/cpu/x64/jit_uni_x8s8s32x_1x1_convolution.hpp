@@ -376,7 +376,7 @@ private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     void execute_forward_thr(const int ithr, const int nthr, const char *src,
             const char *weights, const char *bias, const char *weights_dw,
-            const char *bias_dw, char *dst, const void *src_oscales,
+            const char *bias_dw, char *dst, const void *src_scales,
             const void *wei_scales, const void *dst_scales,
             const void *dw_wei_scales, const void *dw_dst_scales,
             const int32_t *src_zero_point, const int32_t *dst_zero_point,

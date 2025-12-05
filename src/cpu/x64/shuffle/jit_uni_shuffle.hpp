@@ -43,7 +43,7 @@ struct jit_uni_shuffle_t : public primitive_t {
 
         status_t init(engine_t *engine);
 
-        jit_shuffle_conf_t get_conf() const { return conf_; }
+        const jit_shuffle_conf_t &get_conf() const { return conf_; }
 
     private:
         jit_shuffle_conf_t conf_;
@@ -59,9 +59,7 @@ struct jit_uni_shuffle_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    status_t precompute_offsets();
     std::unique_ptr<jit_uni_shuffle_kernel_t<isa>> kernel_;
-    unsigned *input_off_;
 };
 
 } // namespace x64

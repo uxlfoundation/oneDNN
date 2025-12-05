@@ -212,7 +212,9 @@ private:
 } // namespace dnnl
 
 // Exported for testing purposes only.
-extern "C" bool DNNL_API dnnl_impl_gpu_mayiuse_ngen_kernels(
+extern "C" bool DNNL_API dnnl_impl_gpu_intel_mayiuse_ngen_kernels(
+        dnnl::impl::engine_t *engine);
+extern "C" DNNL_API const char *dnnl_impl_gpu_intel_get_isa_name(
         dnnl::impl::engine_t *engine);
 
 #endif

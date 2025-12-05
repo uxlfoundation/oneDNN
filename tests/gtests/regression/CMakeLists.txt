@@ -14,9 +14,22 @@
 # limitations under the License.
 #===============================================================================
 
-set(TEST_EXE test_regression)
+set(TEST_SOURCES
+    test_regression_binary_stride.cpp
+)
 
-file(GLOB TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_*.cpp)
-list(APPEND TEST_SOURCES ${MAIN_SRC_GTEST})
+if(UNIX AND NOT DNNL_GPU_RUNTIME STREQUAL "NONE" AND DNNL_GPU_VENDOR STREQUAL "INTEL")
+    set(TEST_SOURCES "${TEST_SOURCES};test_regression_pvc_war_wa.cpp")
+endif()
 
-register_exe(${TEST_EXE} "${TEST_SOURCES}" "test" "dnnl_gtest")
+foreach(TEST_FILE ${TEST_SOURCES})
+    get_filename_component(exe ${TEST_FILE} NAME_WE)
+    register_exe("${exe}" "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_FILE};${MAIN_SRC_GTEST}" "test" "dnnl_gtest")
+endforeach()
+
+if(TARGET test_regression_pvc_war_wa)
+    # Regression test for PVC WAR bug workaround. The bug is triggered by setting
+    # round-robin thread arbitration policy so override it here.
+    set_tests_properties(test_regression_pvc_war_wa
+        PROPERTIES ENVIRONMENT "NEOReadDebugKeys=1;OverrideThreadArbitrationPolicy=1")
+endif()

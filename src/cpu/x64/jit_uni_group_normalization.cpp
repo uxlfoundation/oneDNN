@@ -935,7 +935,7 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
     //   Turned out to be faster as, otherwise, threads would fight for memory
     //   which overcomes synchronization price.
     if (C_PER_G >= 32) {
-        parallel(nthr, [&](const int ithr, const int nthr) {
+        parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             dim_t g_start = 0, g_end = 0;
             balance211(G * N, nthr, ithr, g_start, g_end);
             if (g_start == g_end) return;
@@ -977,22 +977,26 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
         dim_t nthr_per_g = std::min(static_cast<dim_t>(nthr), G);
         assert(nthr_per_g <= nthr);
 
-        auto reduce = [&](float *stat, const float *tmp_stat) {
-            for (dim_t g = 0; g < G * N; ++g)
-                stat[g] = 0.f;
+        auto reduce = [=](float *stat, const float *tmp_stat) {
+            parallel(1, [=](int, int) {
+                for (dim_t g = 0; g < G * N; ++g)
+                    stat[g] = 0.f;
 
-            for_(dim_t n = 0; n < N; n++)
-            for_(dim_t ithr = 0; ithr < nthr_per_g; ithr++)
-            for (dim_t g = 0; g < G; g++) {
-                stat[n * G + g] += tmp_stat[n * nthr_per_g * G + ithr * G + g];
-            }
+                for_(dim_t n = 0; n < N; n++)
+                for_(dim_t ithr = 0; ithr < nthr_per_g; ithr++)
+                for (dim_t g = 0; g < G; g++) {
+                    stat[n * G + g]
+                            += tmp_stat[n * nthr_per_g * G + ithr * G + g];
+                }
 
-            for (dim_t g = 0; g < G * N; ++g)
-                stat[g] /= C_PER_G * SP;
+                for (dim_t g = 0; g < G * N; ++g)
+                    stat[g] /= C_PER_G * SP;
+            });
         };
 
         if (calculate_stats) {
-            parallel(nthr, [&](const int ithr, const int nthr) {
+            parallel(nthr,
+                    [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
                 dim_t chunk_start = 0, chunk_end = 0;
                 balance211(
                         G * N * nthr_per_g, nthr, ithr, chunk_start, chunk_end);
@@ -1024,7 +1028,8 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
             });
             reduce(mean, stat_reduction);
 
-            parallel(nthr, [&](const int ithr, const int nthr) {
+            parallel(nthr,
+                    [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
                 dim_t chunk_start = 0, chunk_end = 0;
                 balance211(
                         G * N * nthr_per_g, nthr, ithr, chunk_start, chunk_end);
@@ -1059,7 +1064,7 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
             reduce(variance, stat_reduction);
         }
 
-        parallel(nthr, [&](const int ithr, const int nthr) {
+        parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             dim_t chunk_start = 0, chunk_end = 0;
             balance211(G * N * nthr_per_g, nthr, ithr, chunk_start, chunk_end);
             if (chunk_start == chunk_end) return;

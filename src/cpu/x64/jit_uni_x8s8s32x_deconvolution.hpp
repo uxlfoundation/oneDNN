@@ -80,8 +80,10 @@ private:
     const reg64_t reg_nur_w_ = rbx;
     const reg64_t reg_bias_ = rdx;
     const reg64_t reg_icb_ = reg_bias_;
-    const reg64_t reg_ptr_scales_ = rax;
-    const reg64_t reg_ptr_dst_scales_ = abi_not_param1;
+    const reg64_t reg_src_scales_ = rax;
+    const reg64_t reg_wei_scales_ = rax;
+    const reg64_t reg_scale_adjust_ = rax;
+    const reg64_t reg_dst_scales_ = abi_not_param1;
     const reg64_t reg_ptr_saturation_ubound_ = rax;
     const reg64_t reg_oc_blocks_ = rsi;
 
@@ -111,8 +113,9 @@ private:
     const Vmm vmm_zero_ = Vmm(0);
     const Vmm vmm_saturation_ = vmm_zero_;
     const Vmm vmm_wei_ = vmm_zero_;
-    const Vmm vmm_scale_ = vmm_zero_;
-    const Vmm vmm_dst_scale_ = vmm_zero_;
+    const Vmm vmm_scales_ = vmm_zero_;
+    const Vmm vmm_scales_tmp_ = Vmm(1); // Collides with `vmm_comp_`.
+    const Vmm vmm_dst_scales_ = vmm_zero_;
     /* signed input */
     const Vmm vmm_shift_ = Vmm(1);
     const Vmm vmm_comp_ = Vmm(1);
@@ -209,8 +212,6 @@ private:
     status_t execute_forward_2d(const exec_ctx_t &ctx) const;
     status_t execute_forward_3d(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    const float *adjust_oscales(const memory_tracking::grantor_t &scratchpad,
-            const float *src_scales, const float *wei_scales) const;
     std::unique_ptr<jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>> kernel_;
     std::unique_ptr<zp::jit_uni_deconv_zp_pad_str_kernel_base_t>
             zp_src_pad_comp_kernel_;

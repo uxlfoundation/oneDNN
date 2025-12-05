@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 
@@ -48,7 +49,7 @@ status_t ref_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const dim_t KH = pd()->KH();
     const dim_t KW = pd()->KW();
 
-    auto ker = [&](dim_t mb, dim_t oc) {
+    auto ker = [=](dim_t mb, dim_t oc) {
         float d = 0;
         for_(dim_t ic = 0; ic < IC; ++ic)
         for_(dim_t kd = 0; kd < KD; ++kd)
@@ -69,7 +70,7 @@ status_t ref_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
 
-    parallel_nd(MB, OC, [&](dim_t mb, dim_t oc) {
+    parallel_nd(MB, OC, [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t oc) {
         float acc = ker(mb, oc);
 
         float d = acc;
@@ -113,7 +114,7 @@ status_t ref_inner_product_bwd_data_t::execute_backward_data(
     const auto OC = pd()->OC();
     const auto IC = pd()->IC();
 
-    parallel_nd(MB, IC, [&](dim_t mb, dim_t ic) {
+    parallel_nd(MB, IC, [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t ic) {
         const dim_t KD = pd()->KD();
         const dim_t KH = pd()->KH();
         const dim_t KW = pd()->KW();
@@ -163,7 +164,7 @@ status_t ref_inner_product_bwd_weights_t::execute_backward_weights(
     const auto OC = pd()->OC();
     const auto IC = pd()->IC();
 
-    parallel_nd(OC, IC, [&](dim_t oc, dim_t ic) {
+    parallel_nd(OC, IC, [= COMPAT_THIS_CAPTURE](dim_t oc, dim_t ic) {
         const dim_t KD = pd()->KD();
         const dim_t KH = pd()->KH();
         const dim_t KW = pd()->KW();
@@ -190,7 +191,7 @@ status_t ref_inner_product_bwd_weights_t::execute_backward_weights(
     });
 
     if (diff_bias) {
-        parallel_nd(OC, [&](dim_t oc) {
+        parallel_nd(OC, [=](dim_t oc) {
             float db = 0;
             for (dim_t mb = 0; mb < MB; ++mb) {
                 const auto diff_dst_off = ref_ip_utils::get_data_off(

@@ -72,6 +72,9 @@ integer format is needed, BRGeMM ukernel should be configured without
 zero-point, and the user should prepare a compensation term that will be passed
 to the binary post-op.
 
+@note to optimize multithreaded performance, align memory for A/B offset
+and scratchpad buffers so that cache lines are not shared between threads.
+
 ## Implementation limitations
 
 BRGeMM ukernel has no known limitations.

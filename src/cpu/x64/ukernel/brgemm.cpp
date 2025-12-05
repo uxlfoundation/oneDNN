@@ -184,10 +184,46 @@ status_t brgemm_t::generate() {
     return status::success;
 }
 
+// Thread-local cache-line aligned buffer for batch elements
+class batch_element_buffer_t {
+public:
+    batch_element_buffer_t() = default;
+    ~batch_element_buffer_t() {
+        if (ptr_) dnnl::impl::free(ptr_);
+    }
+
+    // Non-copyable, non-movable
+    batch_element_buffer_t(const batch_element_buffer_t &) = delete;
+    batch_element_buffer_t &operator=(const batch_element_buffer_t &) = delete;
+
+    brgemm_batch_element_t *get(size_t required_size) {
+        const size_t alloc_size
+                = required_size * sizeof(brgemm_batch_element_t);
+
+        // Reallocate if needed
+        if (capacity_ < alloc_size) {
+            if (ptr_) dnnl::impl::free(ptr_);
+            ptr_ = dnnl::impl::malloc(alloc_size, cache_line_size_);
+            capacity_ = alloc_size;
+        }
+
+        return static_cast<brgemm_batch_element_t *>(ptr_);
+    }
+
+private:
+    static constexpr size_t cache_line_size_ = 64;
+    void *ptr_ = nullptr;
+    size_t capacity_ = 0;
+};
+
 status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
         const dim_t *A_B_offsets, void *C_ptr, void *scratchpad_ptr) const {
     const auto batch_size = brgemm_desc_.brgattr.max_bs;
-    std::vector<brgemm_batch_element_t> v_batch_element(batch_size);
+
+    // Thread-local aligned buffer that persists across calls
+    thread_local batch_element_buffer_t tls_buffer;
+    auto *v_batch_element = tls_buffer.get(batch_size);
+
     for (int i = 0; i < batch_size; i++) {
         v_batch_element[i].offset.A = A_B_offsets[2 * i];
         v_batch_element[i].offset.B = A_B_offsets[2 * i + 1];
@@ -196,7 +232,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
     if (get_verbose(verbose_t::exec_profile, component_t::ukernel)) {
         double start_ms = get_msec();
         brgemm_kernel_execute(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), C_ptr, scratchpad_ptr,
+                v_batch_element, C_ptr, scratchpad_ptr,
                 /* dynamic_values = */ nullptr);
         double duration_ms = get_msec() - start_ms;
 
@@ -206,7 +242,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
                 duration_ms);
     } else {
         brgemm_kernel_execute(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), C_ptr, scratchpad_ptr,
+                v_batch_element, C_ptr, scratchpad_ptr,
                 /* dynamic_values = */ nullptr);
     }
     return status::success;
@@ -229,7 +265,11 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
     }
 
     const auto batch_size = brgemm_desc_.brgattr.max_bs;
-    std::vector<brgemm_batch_element_t> v_batch_element(batch_size);
+
+    // Thread-local aligned buffer that persists across calls
+    thread_local batch_element_buffer_t tls_buffer;
+    auto *v_batch_element = tls_buffer.get(batch_size);
+
     for (int i = 0; i < batch_size; i++) {
         v_batch_element[i].offset.A = A_B_offsets[2 * i];
         v_batch_element[i].offset.B = A_B_offsets[2 * i + 1];
@@ -265,7 +305,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
     if (get_verbose(verbose_t::exec_profile, component_t::ukernel)) {
         double start_ms = get_msec();
         brgemm_kernel_execute_postops(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), const_cast<void *>(C_ptr), D_ptr,
+                v_batch_element, const_cast<void *>(C_ptr), D_ptr,
                 post_ops_data, scratchpad_ptr,
                 /* dynamic_values = */ nullptr);
         double duration_ms = get_msec() - start_ms;
@@ -276,7 +316,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
                 duration_ms);
     } else {
         brgemm_kernel_execute_postops(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), const_cast<void *>(C_ptr), D_ptr,
+                v_batch_element, const_cast<void *>(C_ptr), D_ptr,
                 post_ops_data, scratchpad_ptr,
                 /* dynamic_values = */ nullptr);
     }

@@ -77,7 +77,7 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
     const float eps = pd()->desc()->group_norm_epsilon;
 
     const dim_t C_PER_G = C / G;
-    auto get_c_start = [&C_PER_G](dim_t g) { return g * C_PER_G; };
+    auto get_c_start = [C_PER_G](dim_t g) { return g * C_PER_G; };
 
     const dim_t sp_block_nelems
             = static_cast<dim_t>(pd_t::cvt_per_thread_size_);
@@ -86,7 +86,7 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
 
     const int nthr = pd()->nthr_;
 
-    auto kernel = [&](int ithr, int, const dim_t n, const dim_t g) {
+    auto kernel = [=](int ithr, int, const dim_t n, const dim_t g) {
         float m = 0.0f;
         float v = 0.0f;
         if (calculate_stats) {

@@ -13,7 +13,9 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 
@@ -90,9 +92,9 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
     }
 
     const auto C_PER_G = C / G;
-    auto get_c_start = [&C_PER_G](int64_t g) { return g * C_PER_G; };
+    auto get_c_start = [C_PER_G](int64_t g) { return g * C_PER_G; };
 
-    parallel_nd(N, G, [&](dim_t n, dim_t g) {
+    parallel_nd(N, G, [= COMPAT_THIS_CAPTURE](dim_t n, dim_t g) {
         size_t stat_off = n * G + g;
         float v_mean = calculate_stats ? 0 : mean[stat_off];
         float v_variance = calculate_stats ? 0 : variance[stat_off];
@@ -209,10 +211,10 @@ status_t ref_group_normalization_bwd_t::execute(const exec_ctx_t &ctx) const {
 
     const auto C_PER_G = C / G;
     const auto CSP = C_PER_G * D * H * W; // Elements per group
-    auto get_c_start = [&C_PER_G](int64_t g) { return g * C_PER_G; };
+    auto get_c_start = [C_PER_G](int64_t g) { return g * C_PER_G; };
 
     // See benchdnn's ref path for explaining comments.
-    parallel_nd(C, [&](dim_t c) {
+    parallel_nd(C, [=](dim_t c) {
         dim_t g = c / C_PER_G;
 
         float diff_gamma = 0.0f;
@@ -241,7 +243,7 @@ status_t ref_group_normalization_bwd_t::execute(const exec_ctx_t &ctx) const {
         if (diff_shift) diff_shift[diff_ss_d.off(c)] = diff_beta;
     });
 
-    parallel_nd(N, G, [&](dim_t n, dim_t g) {
+    parallel_nd(N, G, [=](dim_t n, dim_t g) {
         size_t stat_off = n * G + g;
         float v_mean = mean[stat_off];
         float v_variance = variance[stat_off];

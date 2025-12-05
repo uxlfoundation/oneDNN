@@ -229,9 +229,11 @@ struct relative_md_t {
         gpu_assert(blocking.inner_nblks <= blocking_t::max_dims);
 
         for (dim_t i = 0; i < blocking.inner_nblks; i++) {
-            rmd.inner_layout.idxs[i] = from_md_idx(
+            auto rmd_i = blocking.inner_nblks - 1 - i;
+            rmd.inner_layout.idxs[rmd_i] = from_md_idx(
                     into<int>(blocking.inner_idxs[i]), ndims, ndim_normalizer);
-            rmd.inner_layout.blocks[i] = into<uint8_t>(blocking.inner_blks[i]);
+            rmd.inner_layout.blocks[rmd_i]
+                    = into<uint8_t>(blocking.inner_blks[i]);
         }
 
         // Default all dimensions to broadcast

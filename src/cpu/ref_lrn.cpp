@@ -96,7 +96,7 @@ status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
     const dim_t half_size = (size - 1) / 2;
     const dim_t summands = compute_n_summands(size);
 
-    auto data_off = [&](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) -> dim_t {
+    auto data_off = [=](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) -> dim_t {
         switch (tag) {
             case nChw16c:
             case nChw8c:
@@ -146,7 +146,7 @@ status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
     const dim_t MB = pd()->MB();
     if (tag == nChw16c || tag == nChw8c) {
         parallel_nd(MB, utils::div_up(C, blksize), H, W,
-                [&](dim_t mb, dim_t c_blk, dim_t h, dim_t w) {
+                [=](dim_t mb, dim_t c_blk, dim_t h, dim_t w) {
             dim_t c = c_blk * blksize;
             const dim_t off
                     = mb * stride_mb + c * H * W + (h * W + w) * blksize;
@@ -155,13 +155,13 @@ status_t ref_lrn_fwd_t<d_type>::execute_forward(const exec_ctx_t &ctx) const {
                 ker(&dst[off + cc], mb, c + cc, 0, h, w);
         });
     } else if (tag == nhwc) {
-        parallel_nd(MB, H, W, C, [&](dim_t mb, dim_t h, dim_t w, dim_t c) {
+        parallel_nd(MB, H, W, C, [=](dim_t mb, dim_t h, dim_t w, dim_t c) {
             const dim_t off = mb * stride_mb + h * W * C + w * C + c;
             ker(&dst[off], mb, c, 0, h, w);
         });
     } else {
         parallel_nd(MB, C, D, H, W,
-                [&](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) {
+                [=](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) {
             const dim_t off = data_off(mb, c, d, h, w);
             ker(&dst[off], mb, c, d, h, w);
         });
@@ -223,7 +223,7 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
     const dim_t half_size = (size - 1) / 2;
     const dim_t summands = compute_n_summands(size);
 
-    auto data_off = [&](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) -> dim_t {
+    auto data_off = [=](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) -> dim_t {
         switch (tag) {
             case nChw16c:
             case nChw8c:
@@ -313,7 +313,7 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
     const dim_t MB = pd()->MB();
     if (tag == nChw16c || tag == nChw8c) {
         parallel_nd(MB, utils::div_up(C, blksize), H, W,
-                [&](dim_t mb, dim_t c_blk, dim_t h, dim_t w) {
+                [=](dim_t mb, dim_t c_blk, dim_t h, dim_t w) {
             dim_t c = c_blk * blksize;
             const dim_t off
                     = mb * stride_mb + c * H * W + (h * W + w) * blksize;
@@ -322,13 +322,13 @@ status_t ref_lrn_bwd_t<d_type>::execute_backward(const exec_ctx_t &ctx) const {
                 ker(&diff_src[off + cc], mb, c + cc, 0, h, w);
         });
     } else if (tag == nhwc) {
-        parallel_nd(MB, H, W, C, [&](dim_t mb, dim_t h, dim_t w, dim_t c) {
+        parallel_nd(MB, H, W, C, [=](dim_t mb, dim_t h, dim_t w, dim_t c) {
             const dim_t off = mb * stride_mb + h * W * C + w * C + c;
             ker(&diff_src[off], mb, c, 0, h, w);
         });
     } else {
         parallel_nd(MB, C, D, H, W,
-                [&](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) {
+                [=](dim_t mb, dim_t c, dim_t d, dim_t h, dim_t w) {
             const dim_t off = data_off(mb, c, d, h, w);
             ker(&diff_src[off], mb, c, d, h, w);
         });

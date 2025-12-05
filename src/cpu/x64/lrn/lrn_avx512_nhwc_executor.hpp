@@ -55,7 +55,8 @@ public:
         CHECK(status);
 
         const auto ker = ker_.get();
-        parallel_nd(N_, H_ * W_, [&](dim_t n, dim_t pixel_id) {
+        parallel_nd(
+                N_, H_ * W_, [= COMPAT_THIS_CAPTURE](dim_t n, dim_t pixel_id) {
             typename lrn::jit_avx512_common_lrn_kernel_fwd_t<
                     d_type>::jit_args_fwd_t args;
             const auto offset = n * C_ * H_ * W_ + pixel_id * C_;
@@ -107,7 +108,8 @@ public:
         auto ws = CTX_IN_MEM(data_t *, DNNL_ARG_WORKSPACE);
 
         const auto ker = ker_.get();
-        parallel_nd(N_, H_ * W_, [&](dim_t n, dim_t pixel_id) {
+        parallel_nd(
+                N_, H_ * W_, [= COMPAT_THIS_CAPTURE](dim_t n, dim_t pixel_id) {
             typename lrn::jit_avx512_common_lrn_kernel_bwd_nhwc_t<
                     d_type>::jit_args_bwd_t args;
             const auto offset = n * C_ * H_ * W_ + pixel_id * C_;

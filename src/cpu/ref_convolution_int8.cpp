@@ -32,25 +32,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-namespace {
-void dequantize(float &d, dim_t g, dim_t C, dim_t c, const float *wei_scales,
-        bool with_groups, int wei_mask, const float *src_scales) {
-    // scale_idx_mult = 1 for per_channel scales and 0, otherwise
-    const int wei_scale_idx_mult = wei_mask > 0;
-    float scale = 1.0f;
-    if (src_scales) scale *= src_scales[0];
-    if (wei_scales) scale *= wei_scales[(g * C + c) * wei_scale_idx_mult];
-    d *= scale;
-}
-
-void quantize(float &d, dim_t g, dim_t C, dim_t c, const float *dst_scales) {
-    float scale = 1.0f;
-    if (dst_scales) scale *= dst_scales[0];
-    // dst_scale is inverted in DEFINE_ARG_SCALES_BUFFER
-    d *= scale;
-}
-} // namespace
-
 status_t ref_convolution_int8_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     status_t status = status::success;
@@ -293,9 +274,12 @@ status_t ref_convolution_int8_bwd_data_t::execute_backward_data(
     auto diff_src = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DIFF_SRC, status);
     CHECK(status);
 
-    DEFINE_ARG_SCALES_BUFFER(diff_src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
-    DEFINE_ARG_SCALES_BUFFER(diff_dst_scales, DNNL_ARG_DST);
+    const float *diff_src_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const float *wei_scales = CTX_IN_MEM(
+            const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    const float *diff_dst_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
 
@@ -467,9 +451,9 @@ status_t ref_convolution_int8_bwd_data_t::execute_backward_data(
             acc += ker(g, mb, ic, id, ih, iw);
 
         float ds = static_cast<float>(acc);
-        dequantize(ds, g, IC, ic, wei_scales, with_groups, wei_scale_mask,
-                diff_dst_scales);
-        quantize(ds, g, IC, ic, diff_src_scales);
+        if (diff_dst_scales) ds *= diff_dst_scales[0];
+        if (wei_scales) ds *= wei_scales[(wei_scale_mask > 0) * (g * IC + ic)];
+        if (diff_src_scales) ds /= diff_src_scales[0];
 
         const auto diff_src_off = ref_conv_utils::get_data_off(
                 diff_src_d, ndims, mb, g * IC + ic, id, ih, iw);

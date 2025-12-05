@@ -171,8 +171,10 @@ void ref_deconvolution_fwd_t::compute_fwd_bias(const exec_ctx_t &ctx, void *dst,
 status_t ref_deconvolution_fwd_t::compute_oscale(
         const exec_ctx_t &ctx, float *dst) const {
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(wei_scales, DNNL_ARG_WEIGHTS);
+    const float *src_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const float *wei_scales = CTX_IN_MEM(
+            const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     const int wei_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS);
 
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -185,13 +187,6 @@ status_t ref_deconvolution_fwd_t::compute_oscale(
     const auto OCP = dst_d.padded_dims()[1];
     const auto ndims = pd()->desc()->src_desc.ndims;
 
-    const auto maybe_oscale = [](float &d, dim_t oc, const float *src_scales,
-                                      const float *wei_scales, int wei_mask) {
-        // scale_idx_mult = 1 for per_oc scales and 0, otherwise
-        const int wei_scale_idx_mult = wei_mask > 0;
-        d *= src_scales[0] * wei_scales[oc * wei_scale_idx_mult];
-    };
-
     parallel_nd(MB, OCP, OD, OH, OW,
             [&](dim_t mb, int ocp, dim_t od, dim_t oh, dim_t ow) {
         auto dst_off = ref_conv_utils::get_data_off(
@@ -200,8 +195,11 @@ status_t ref_deconvolution_fwd_t::compute_oscale(
 
         if (ocp < OC) {
             tmp_result = dst[dst_off];
-            maybe_oscale(
-                    tmp_result, ocp, src_scales, wei_scales, wei_scale_mask);
+
+            if (src_scales) tmp_result *= src_scales[0];
+            if (wei_scales)
+                tmp_result *= wei_scales[(wei_scale_mask > 0) * ocp];
+
             dst[dst_off] = tmp_result;
         }
     });
@@ -213,7 +211,9 @@ status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
         const float *conv_output, void *original_dst) const {
     auto dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
 
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const float *dst_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+
     const bool has_dst_scales
             = !pd()->attr()->scales_.has_default_values(DNNL_ARG_DST);
     const int dst_scale_mask = pd()->attr()->scales_.get_mask(DNNL_ARG_DST);
@@ -259,7 +259,7 @@ status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
             ref_post_ops->execute(tmp_result, args);
             if (has_dst_scales) {
                 // scale_idx_mult = 1 for per_oc scales and 0, otherwise
-                tmp_result *= dst_scales[ocp * (dst_scale_mask > 0)];
+                tmp_result /= dst_scales[ocp * (dst_scale_mask > 0)];
             }
             if (has_dst_zp) {
                 tmp_result += dst_zero_points[ocp * (dst_zp_mask > 0)];

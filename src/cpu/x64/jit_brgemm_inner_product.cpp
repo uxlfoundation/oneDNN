@@ -137,10 +137,11 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
     const auto wei_ic_stride
             = types::data_type_size(jbgp.wei_dt) * weights_d.off_v(ic_dims);
 
-    const auto ker = [&](int ithr_oc_mb, int nthr_oc_mb, int ithr_ic, int osb,
-                             int osb_s, int ocb, int ocb_s, int icc, int icc_s,
-                             int kd, int kh, int kw, bool copy_buffer_a,
-                             int &prev_ker_idx, const void *dst_scales_ptr) {
+    const auto ker = [= COMPAT_THIS_CAPTURE](int ithr_oc_mb, int nthr_oc_mb,
+                             int ithr_ic, int osb, int osb_s, int ocb,
+                             int ocb_s, int icc, int icc_s, int kd, int kh,
+                             int kw, bool copy_buffer_a, int &prev_ker_idx,
+                             const void *dst_scales_ptr) {
         const int cur_ocb = ocb + ocb_s;
         const int cur_osb = osb + osb_s;
         const int cur_icc = icc + icc_s;
@@ -355,7 +356,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
     const int work_amount = oc_chunks * os_chunks;
 
     const auto init_thr_groups
-            = [&](const int ithr, const int nthr, int &nthr_ic, int &nthr_oc_mb,
+            = [=](const int ithr, const int nthr, int &nthr_ic, int &nthr_oc_mb,
                       int &ithr_ic, int &ithr_oc_mb) {
         nthr_ic = jbgp.nthr_ic_b <= nthr ? jbgp.nthr_ic_b : 1;
         nthr_oc_mb = nthr / nthr_ic;
@@ -373,7 +374,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
     // overhead on spawning different number of OMP threads from layer to layer.
     const int num_threads
             = work_amount == 1 && jbgp.nthr_ic_b <= 1 ? 1 : jbgp.nthr;
-    parallel(num_threads, [&](const int ithr, const int nthr) {
+    parallel(num_threads, [=](const int ithr, const int nthr) {
         int nthr_ic {1}, nthr_oc_mb {1}, ithr_ic {0}, ithr_oc_mb {0};
         bool ok = init_thr_groups(
                 ithr, nthr, nthr_ic, nthr_oc_mb, ithr_ic, ithr_oc_mb);
@@ -525,7 +526,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
     });
 
     if (jbgp.nthr_ic_b > 1) {
-        const auto get_dst_reduced_off = [&](int ithr_ic, int osb, int ocb) {
+        const auto get_dst_reduced_off = [=](int ithr_ic, int osb, int ocb) {
             assert(jbgp.nthr_ic_b > 1);
             int os = osb * jbgp.os_block;
             int oc = ocb * jbgp.oc_block;
@@ -538,7 +539,8 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
             return dst_off + (acc_dt_size * jbgp.mb * jbgp.LDC * ic_buf_idx);
         };
 
-        parallel(num_threads, [&](const int ithr, const int nthr) {
+        parallel(num_threads,
+                [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             int nthr_ic {1}, nthr_oc_mb {1}, ithr_ic {0}, ithr_oc_mb {0};
             bool ok = init_thr_groups(
                     ithr, nthr, nthr_ic, nthr_oc_mb, ithr_ic, ithr_oc_mb);
@@ -718,7 +720,7 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
             = work_amount == 1 && jbgp.nthr_oc_b <= 1 ? 1 : jbgp.nthr;
 
     const auto get_weights_ptr
-            = [&](int icb, int ocb, int kd = 0, int kh = 0, int kw = 0) {
+            = [=](int icb, int ocb, int kd = 0, int kh = 0, int kw = 0) {
         int fwd_ic_block
                 = (is_amx && !jbgp.is_bf32) ? 2 * jbgp.simd_w : jbgp.simd_w;
         int fwd_oc_block = jbgp.get_weights_oc_block();
@@ -742,8 +744,8 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
     };
 
     const auto transform_b_chunk
-            = [&](char *tr_wei, const char *wei, int trans_batch, int current_N,
-                      int current_K) {
+            = [= COMPAT_THIS_CAPTURE](char *tr_wei, const char *wei,
+                      int trans_batch, int current_N, int current_K) {
         auto ctx = jit_brgemm_trans_wei_t::ctx_t();
         ctx.src = (void *)wei;
         ctx.tr_src = (void *)tr_wei;
@@ -753,10 +755,10 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
         (*trans_B_kernel_)(&ctx);
     };
 
-    const auto ker
-            = [&](int ithr_ic_mb, int nthr_ic_mb, int ithr_oc, int nthr_oc,
-                      int n, int icb, int occ, int kd, int kh, int kw,
-                      bool do_init, bool do_b_transpose, int &prev_ker_idx) {
+    const auto ker = [= COMPAT_THIS_CAPTURE](int ithr_ic_mb, int nthr_ic_mb,
+                             int ithr_oc, int nthr_oc, int n, int icb, int occ,
+                             int kd, int kh, int kw, bool do_init,
+                             bool do_b_transpose, int &prev_ker_idx) {
         const int ithr = nthr_ic_mb * ithr_oc + ithr_ic_mb;
         brgemm_batch_element_t *addr_batch
                 = addr_batch_global + ithr * jbgp.adjusted_batch_size;
@@ -904,7 +906,7 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
         assert(!jbgp.has_spatial_dims()
                 && "No global B transpose support for spatial dims.");
 
-        parallel(num_threads, [&](const int ithr, const int nthr) {
+        parallel(num_threads, [=](const int ithr, const int nthr) {
             int start {0}, end {0};
             int max_ch_block = nstl::max(jbgp.ic_block, jbgp.oc_block);
             int ic_chunk_sz = max_ch_block / jbgp.ic_block;
@@ -944,7 +946,7 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
         });
     }
 
-    parallel(num_threads, [&](const int ithr, const int nthr) {
+    parallel(num_threads, [=](const int ithr, const int nthr) {
         const int nthr_oc = jbgp.nthr_oc_b <= nthr ? jbgp.nthr_oc_b : 1;
         const int nthr_ic_mb = nthr / nthr_oc;
         const int ithr_ic_mb = ithr % nthr_ic_mb;
@@ -995,7 +997,8 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
     });
 
     if (jbgp.nthr_oc_b > 1) {
-        parallel(num_threads, [&](const int ithr, const int nthr) {
+        parallel(num_threads,
+                [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             const int nthr_oc = jbgp.nthr_oc_b <= nthr ? jbgp.nthr_oc_b : 1;
             const int n_oc_bufs = nstl::min(oc_chunks, nthr_oc);
             if (n_oc_bufs <= 1) return;
@@ -1079,7 +1082,9 @@ struct brgemm_inner_product_bwd_weights_t<isa>::thread_info_t {
         , diff_weights(CTX_OUT_MEM(char *, DNNL_ARG_DIFF_WEIGHTS))
         , diff_bias(CTX_OUT_MEM(char *, DNNL_ARG_DIFF_BIAS))
         , scratchpad(ctx.get_scratchpad_grantor())
-        , ithr(ithr) {
+        , ithr(ithr)
+        , buffer_a_(scratchpad.template get<char>(
+                  key_brgemm_primitive_buffer_a)) {
 
         const auto &jbgp = self->pd()->jbgp_;
 
@@ -1095,8 +1100,6 @@ struct brgemm_inner_product_bwd_weights_t<isa>::thread_info_t {
                 ? scratchpad.template get<char>(key_iprod_bias_bf16_convert_wsp)
                 : nullptr;
 
-        buffer_a_
-                = scratchpad.template get<char>(key_brgemm_primitive_buffer_a);
         buffer_b_ = jbgp.use_buffer_b
                 ? scratchpad.template get<char>(key_brgemm_primitive_buffer_b)
                 : nullptr;
@@ -1793,7 +1796,8 @@ void brgemm_inner_product_bwd_weights_t<isa>::execute_backward_weights(
                 key_conv_wei_bia_reduction_bctx));
     }
 
-    parallel(jbgp.nthr, [&](const int ithr, const int nthr) {
+    parallel(
+            jbgp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         thread_info_t thread_info(this, ctx, ithr);
         compute_diff_weights_and_bias(&thread_info);
 
@@ -1803,7 +1807,8 @@ void brgemm_inner_product_bwd_weights_t<isa>::execute_backward_weights(
     });
 
     if (!dnnl_thr_syncable()) {
-        parallel(jbgp.nthr, [&](const int ithr, const int nthr) {
+        parallel(jbgp.nthr,
+                [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             thread_info_t thread_info(this, ctx, ithr);
             reduce_and_convert_diff_weights_and_bias(&thread_info);
         });

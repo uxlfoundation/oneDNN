@@ -152,8 +152,23 @@ status_t brgemm_t::get_B_pack_type(
     return status::success;
 }
 
+namespace {
+// Cache line size used for alignment
+constexpr size_t k_cache_line = 64;
+} // namespace
+
 size_t brgemm_t::get_scratchpad_size() const {
-    return brgemm_desc_.get_wsp_buffer_size();
+    const size_t wsp_size = brgemm_desc_.get_wsp_buffer_size();
+    // Align workspace end to cache line
+    const size_t wsp_size_aligned = utils::rnd_up(wsp_size, k_cache_line);
+
+    const size_t batch_element_size
+            = brgemm_desc_.brgattr.max_bs * sizeof(brgemm_batch_element_t);
+    // Align batch element size to cache line
+    const size_t batch_element_size_aligned
+            = utils::rnd_up(batch_element_size, k_cache_line);
+
+    return wsp_size_aligned + batch_element_size_aligned;
 }
 
 bool brgemm_t::is_execute_postops_valid() const {
@@ -186,8 +201,19 @@ status_t brgemm_t::generate() {
 
 status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
         const dim_t *A_B_offsets, void *C_ptr, void *scratchpad_ptr) const {
+
+    if (reinterpret_cast<uintptr_t>(scratchpad_ptr) % k_cache_line != 0
+            && get_verbose(verbose_t::exec_profile, component_t::ukernel))
+        VWARN(primitive, ukernel, "Scratchpad is not cache-line aligned");
+
     const auto batch_size = brgemm_desc_.brgattr.max_bs;
-    std::vector<brgemm_batch_element_t> v_batch_element(batch_size);
+
+    // Batch elements at the end of aligned workspace
+    const size_t wsp_size = brgemm_desc_.get_wsp_buffer_size();
+    const size_t wsp_size_aligned = utils::rnd_up(wsp_size, k_cache_line);
+    auto *v_batch_element = reinterpret_cast<brgemm_batch_element_t *>(
+            reinterpret_cast<char *>(scratchpad_ptr) + wsp_size_aligned);
+
     for (int i = 0; i < batch_size; i++) {
         v_batch_element[i].offset.A = A_B_offsets[2 * i];
         v_batch_element[i].offset.B = A_B_offsets[2 * i + 1];
@@ -196,7 +222,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
     if (get_verbose(verbose_t::exec_profile, component_t::ukernel)) {
         double start_ms = get_msec();
         brgemm_kernel_execute(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), C_ptr, scratchpad_ptr,
+                v_batch_element, C_ptr, scratchpad_ptr,
                 /* dynamic_values = */ nullptr);
         double duration_ms = get_msec() - start_ms;
 
@@ -206,7 +232,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
                 duration_ms);
     } else {
         brgemm_kernel_execute(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), C_ptr, scratchpad_ptr,
+                v_batch_element, C_ptr, scratchpad_ptr,
                 /* dynamic_values = */ nullptr);
     }
     return status::success;
@@ -228,8 +254,18 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
         }
     }
 
+    if (reinterpret_cast<uintptr_t>(scratchpad_ptr) % k_cache_line != 0
+            && get_verbose(verbose_t::exec_profile, component_t::ukernel))
+        VWARN(primitive, ukernel, "Scratchpad is not cache-line aligned");
+
     const auto batch_size = brgemm_desc_.brgattr.max_bs;
-    std::vector<brgemm_batch_element_t> v_batch_element(batch_size);
+
+    // Batch elements at the end of aligned workspace
+    const size_t wsp_size = brgemm_desc_.get_wsp_buffer_size();
+    const size_t wsp_size_aligned = utils::rnd_up(wsp_size, k_cache_line);
+    auto *v_batch_element = reinterpret_cast<brgemm_batch_element_t *>(
+            reinterpret_cast<char *>(scratchpad_ptr) + wsp_size_aligned);
+
     for (int i = 0; i < batch_size; i++) {
         v_batch_element[i].offset.A = A_B_offsets[2 * i];
         v_batch_element[i].offset.B = A_B_offsets[2 * i + 1];
@@ -265,7 +301,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
     if (get_verbose(verbose_t::exec_profile, component_t::ukernel)) {
         double start_ms = get_msec();
         brgemm_kernel_execute_postops(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), const_cast<void *>(C_ptr), D_ptr,
+                v_batch_element, const_cast<void *>(C_ptr), D_ptr,
                 post_ops_data, scratchpad_ptr,
                 /* dynamic_values = */ nullptr);
         double duration_ms = get_msec() - start_ms;
@@ -276,7 +312,7 @@ status_t brgemm_t::execute(const void *A_ptr, const void *B_ptr,
                 duration_ms);
     } else {
         brgemm_kernel_execute_postops(brgemm_kernel_, batch_size, A_ptr, B_ptr,
-                v_batch_element.data(), const_cast<void *>(C_ptr), D_ptr,
+                v_batch_element, const_cast<void *>(C_ptr), D_ptr,
                 post_ops_data, scratchpad_ptr,
                 /* dynamic_values = */ nullptr);
     }

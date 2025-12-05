@@ -50,7 +50,8 @@ public:
                         dsl::type_t::s32(), e.dim.str() + "_loop_size");
                 e.is_global_loop = true;
             } else {
-                e.loop_size = div_up(reqs.to_expr(e.dim), tg_tile * iter_tile);
+                e.loop_size = intel::jit::v2::div_up(
+                        reqs.to_expr(e.dim), tg_tile * iter_tile);
             }
             e.loop_idx = e.loop_size.is(1) ? expr_t(0)
                                            : var_t::make(dsl::type_t::s32(),

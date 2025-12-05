@@ -192,7 +192,7 @@ struct kernel_t : public jit_uni_instance_normalization_fwd_t::kernel_base_t,
 
     void operator()(const void *src, void *dst, const float *scale,
             const float *shift, const float *mean, const float *var,
-            const float *src_scales, const float *dst_scales,
+            const void *src_scales, const void *dst_scales,
             const void *post_ops_binary_rhs_arg_vec,
             const size_t block_size) const override {
         ker_args_t args;
@@ -226,8 +226,8 @@ protected:
         const float *shift;
         const float *mean;
         const float *var;
-        const float *src_scales;
-        const float *dst_scales;
+        const void *src_scales;
+        const void *dst_scales;
         const void *post_ops_binary_rhs_arg_vec;
         size_t block_size;
         float eps;
@@ -279,7 +279,7 @@ protected:
             if (use_shift_) uni_vaddps(vmm_dst, vmm_dst, vmm_shift);
         }
         if (with_src_scales_) {
-            uni_vmovups(vmm_qscale, ptr[reg_src_scales]);
+            uni_vbroadcastss(vmm_qscale, ptr[reg_src_scales]);
             uni_vmulps(vmm_dst, vmm_dst, vmm_qscale);
         }
         if (with_postops_) {
@@ -295,7 +295,7 @@ protected:
             postops_injector_->compute_vector(vmm_dst.getIdx(), rhs_arg_params);
         }
         if (with_dst_scales_) {
-            uni_vmovups(vmm_qscale, ptr[reg_dst_scales]);
+            uni_vbroadcastss(vmm_qscale, ptr[reg_dst_scales]);
             uni_vmulps(vmm_dst, vmm_dst, vmm_qscale);
         }
         io_[dst_d_.data_type()]->store(vmm_dst, dst_ptr(offt_elems), tail);
@@ -715,8 +715,8 @@ status_t jit_uni_instance_normalization_fwd_t::pd_t::init(engine_t *engine) {
 
     nthr_ = dnnl_get_max_threads();
     auto scratchpad = scratchpad_registry().registrar();
+    using namespace memory_tracking::names;
     if (!stats_is_src()) {
-        using namespace memory_tracking::names;
         const size_t stats_size = MB() * C();
         const size_t stats_reduction_buf_sz = stats_size * nthr_;
         scratchpad.template book<float>(
@@ -725,6 +725,10 @@ status_t jit_uni_instance_normalization_fwd_t::pd_t::init(engine_t *engine) {
             scratchpad.template book<float>(key_gnorm_tmp_mean, stats_size);
             scratchpad.template book<float>(key_gnorm_tmp_var, stats_size);
         }
+    }
+    if (!attr()->scales_.has_default_values(DNNL_ARG_DST)) {
+        scratchpad.book(key_gnorm_dst_scales,
+                static_cast<size_t>(nthr_) * sizeof(float), 64);
     }
 
     return status::success;
@@ -755,8 +759,10 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
             : pd()->is_training() ? CTX_OUT_MEM(float *, DNNL_ARG_VARIANCE)
                                   : tmp_var;
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
@@ -837,6 +843,19 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
     parallel(nthr, [&](const int ithr, const int nthr) {
         dim_t SP_start = 0, SP_end = 0;
         balance211(SP, nthr, ithr, SP_start, SP_end);
+        const dim_t block_size = SP_end - SP_start;
+        if (block_size <= 0) return;
+
+        float *dst_scales_inv_ptr = nullptr;
+        if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_DST)) {
+            const float *dst_scales_ptr
+                    = static_cast<const float *>(dst_scales);
+            dst_scales_inv_ptr
+                    = scratchpad.template get<float>(key_gnorm_dst_scales)
+                    + ithr;
+            dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+        }
+
         for (dim_t n = 0; n < N; ++n) {
             const size_t data_off = n * SP * C_padded + SP_start * C_padded;
             const char *const __restrict src_ptr
@@ -844,10 +863,9 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
                     + data_off * src_d.data_type_size();
             char *const __restrict dst_ptr = reinterpret_cast<char *>(dst)
                     + data_off * dst_d.data_type_size();
-            const dim_t block_size = SP_end - SP_start;
 
             (*kernel_)(src_ptr, dst_ptr, scale, shift, &mean[n * G],
-                    &variance[n * G], src_scales, dst_scales,
+                    &variance[n * G], src_scales, dst_scales_inv_ptr,
                     post_ops_binary_rhs_arg_vec.data(), block_size);
         }
     });

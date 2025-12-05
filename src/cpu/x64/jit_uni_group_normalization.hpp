@@ -60,7 +60,7 @@ struct jit_uni_group_normalization_fwd_t : public primitive_t {
     struct kernel_base_t {
         virtual void operator()(const void *src, void *dst, const float *scale,
                 const float *shift, const float *mean, const float *var,
-                const float *src_scales, const float *dst_scales,
+                const void *src_scales, const void *dst_scales,
                 const void *post_ops_binary_rhs_arg_vec,
                 const size_t block_size) const
                 = 0;

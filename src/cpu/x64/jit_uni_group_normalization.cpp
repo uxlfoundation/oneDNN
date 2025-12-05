@@ -202,7 +202,7 @@ struct kernel_t : public jit_uni_group_normalization_fwd_t::kernel_base_t,
 
     void operator()(const void *src, void *dst, const float *scale,
             const float *shift, const float *mean, const float *var,
-            const float *src_scales, const float *dst_scales,
+            const void *src_scales, const void *dst_scales,
             const void *post_ops_binary_rhs_arg_vec,
             const size_t block_size) const override {
         ker_args_t args;
@@ -236,8 +236,8 @@ protected:
         const float *shift;
         const float *mean;
         const float *var;
-        const float *src_scales;
-        const float *dst_scales;
+        const void *src_scales;
+        const void *dst_scales;
         const void *post_ops_binary_rhs_arg_vec;
         size_t block_size;
         float eps;
@@ -290,7 +290,7 @@ protected:
             if (use_shift_) uni_vaddps(vmm_dst, vmm_dst, vmm_shift);
         }
         if (with_src_scales_) {
-            uni_vmovups(vmm_qscale, ptr[reg_src_scales]);
+            uni_vbroadcastss(vmm_qscale, ptr[reg_src_scales]);
             uni_vmulps(vmm_dst, vmm_dst, vmm_qscale);
         }
         if (with_postops_) {
@@ -306,7 +306,7 @@ protected:
             postops_injector_->compute_vector(vmm_dst.getIdx(), rhs_arg_params);
         }
         if (with_dst_scales_) {
-            uni_vmovups(vmm_qscale, ptr[reg_dst_scales]);
+            uni_vbroadcastss(vmm_qscale, ptr[reg_dst_scales]);
             uni_vmulps(vmm_dst, vmm_dst, vmm_qscale);
         }
         io_[dst_d_.data_type()]->store(vmm_dst, dst_ptr(offt_elems), tail);
@@ -848,8 +848,8 @@ status_t jit_uni_group_normalization_fwd_t::pd_t::init(engine_t *engine) {
 
     nthr_ = dnnl_get_max_threads();
     auto scratchpad = scratchpad_registry().registrar();
+    using namespace memory_tracking::names;
     if (!stats_is_src()) {
-        using namespace memory_tracking::names;
         // C() is used here for convenience, to let C++ reduce over the group.
         // TODO: replace with G() instead and make reduction in registers.
         const size_t stats_size = MB() * C();
@@ -860,6 +860,10 @@ status_t jit_uni_group_normalization_fwd_t::pd_t::init(engine_t *engine) {
             scratchpad.template book<float>(key_gnorm_tmp_mean, stats_size);
             scratchpad.template book<float>(key_gnorm_tmp_var, stats_size);
         }
+    }
+    if (!attr()->scales_.has_default_values(DNNL_ARG_DST)) {
+        scratchpad.book(key_gnorm_dst_scales,
+                static_cast<size_t>(nthr_) * sizeof(float), 64);
     }
 
     return status::success;
@@ -890,8 +894,10 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
             : pd()->is_training() ? CTX_OUT_MEM(float *, DNNL_ARG_VARIANCE)
                                   : tmp_var;
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
+    const void *src_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const void *dst_scales
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const auto post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(
@@ -934,6 +940,16 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
             balance211(G * N, nthr, ithr, g_start, g_end);
             if (g_start == g_end) return;
 
+            float *dst_scales_inv_ptr = nullptr;
+            if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_DST)) {
+                const float *dst_scales_ptr
+                        = static_cast<const float *>(dst_scales);
+                dst_scales_inv_ptr
+                        = scratchpad.template get<float>(key_gnorm_dst_scales)
+                        + ithr;
+                dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+            }
+
             for (dim_t i = g_start; i < g_end; i++) {
                 dim_t stride_n = SP * C_padded;
                 const size_t data_off = (i / G) * stride_n + (i % G) * C_PER_G;
@@ -953,7 +969,7 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
                     (*kernel_var_)(src_ptr, mean_ptr, var_ptr, SP);
                 }
                 (*kernel_)(src_ptr, dst_ptr, scale_ptr, shift_ptr, mean_ptr,
-                        var_ptr, src_scales, dst_scales,
+                        var_ptr, src_scales, dst_scales_inv_ptr,
                         post_ops_binary_rhs_arg_vec.data(), SP);
             }
         });
@@ -1051,6 +1067,16 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
             dim_t g_per_n = G * nthr_per_g;
             dim_t SP_chunk = SP / nthr_per_g;
 
+            float *dst_scales_inv_ptr = nullptr;
+            if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_DST)) {
+                const float *dst_scales_ptr
+                        = static_cast<const float *>(dst_scales);
+                dst_scales_inv_ptr
+                        = scratchpad.template get<float>(key_gnorm_dst_scales)
+                        + ithr;
+                dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+            }
+
             for (dim_t i = chunk_start; i < chunk_end; i++) {
                 dim_t ithr_stride_n = (i / g_per_n) * C_padded * SP;
                 dim_t ithr_stride_g = (i % G) * C_PER_G;
@@ -1076,7 +1102,7 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
                         ? SP_tail_chunk
                         : SP_chunk;
                 (*kernel_)(src_ptr, dst_ptr, scale_ptr, shift_ptr, mean_ptr,
-                        var_ptr, src_scales, dst_scales,
+                        var_ptr, src_scales, dst_scales_inv_ptr,
                         post_ops_binary_rhs_arg_vec.data(),
                         kernel_sp_block_size);
             }

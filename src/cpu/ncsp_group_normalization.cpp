@@ -59,9 +59,15 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
         }
     }
 
-    DEFINE_ARG_SCALES_BUFFER(src_scales, DNNL_ARG_SRC);
-    DEFINE_ARG_SCALES_BUFFER(dst_scales, DNNL_ARG_DST);
-    const float combined_scale = src_scales[0] * dst_scales[0];
+    const float *src_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    const float *dst_scales
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+
+    const bool with_src_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC);
+    const bool with_dst_scales
+            = !pd()->attr()->scales_.has_default_values(DNNL_ARG_DST);
 
     const dim_t N = pd()->MB();
     const dim_t G = pd()->desc()->groups;
@@ -181,6 +187,8 @@ status_t ncsp_group_normalization_fwd_t::execute_forward(
         }
 
         const float sqrt_variance = sqrtf(v + eps);
+        const float combined_scale = (with_src_scales ? src_scales[0] : 1.f)
+                / (with_dst_scales ? dst_scales[0] : 1.f);
 
         for (dim_t c = get_c_start(g); c < get_c_start(g + 1); ++c) {
             const size_t s_off = (size_t)n * C * SP + c * SP;

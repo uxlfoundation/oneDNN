@@ -250,6 +250,7 @@ enum {
     key_gemm_transposed_1xwrhs,
     key_generic_acc,
     key_gnorm_cvt,
+    key_gnorm_dst_scales,
     key_gnorm_reduction,
     key_gnorm_tmp_mean,
     key_gnorm_tmp_var,

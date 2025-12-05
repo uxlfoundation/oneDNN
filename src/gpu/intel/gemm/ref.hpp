@@ -43,6 +43,7 @@ struct ref_jit_params_t : public trivially_serializable_t<ref_jit_params_t> {
     compute::kernel_ctx_t get_kernel_ctx() const {
         compute::kernel_ctx_t kernel_ctx;
         kernel_ctx.set_data_type(c_dt);
+        kernel_ctx.require_large_buffers(require_large_buffers);
         def_data_type(kernel_ctx, a_dt, "A");
         def_data_type(kernel_ctx, b_dt, "B");
         def_data_type(kernel_ctx, c_dt, "C");
@@ -83,9 +84,10 @@ struct ref_jit_params_t : public trivially_serializable_t<ref_jit_params_t> {
     bool with_host_src_zp = {};
     bool with_host_wei_zp = {};
     bool with_host_dst_zp = {};
+    bool require_large_buffers = {};
     // NOTE: Padding required for trivial serialization alignment.
     // When adding bool fields, might need to adjust padding.
-    // uint8_t pad[0] = {};
+    uint8_t pad[3] = {};
     int eltwise_alg = {};
 };
 
@@ -115,6 +117,15 @@ struct ref_t : public primitive_t {
             const auto a_strides = desc()->a_desc.format_desc.blocking.strides;
             const auto b_strides = desc()->b_desc.format_desc.blocking.strides;
             const auto c_strides = desc()->c_desc.format_desc.blocking.strides;
+
+            const bool require_large_buffers
+                    = std::max({memory_desc_wrapper(desc()->a_desc)
+                                        .size(0, true, true),
+                              memory_desc_wrapper(desc()->b_desc)
+                                      .size(0, true, true),
+                              memory_desc_wrapper(desc()->c_desc)
+                                      .size(0, true, true)})
+                    > UINT32_MAX;
 
             VDISPATCH_GEMM(!has_blocks(), VERBOSE_UNSUPPORTED_FEATURE,
                     "blocked format");
@@ -190,6 +201,7 @@ struct ref_t : public primitive_t {
             conf.c_dt = c_dt;
             conf.bia_dt = bia_dt;
             conf.acc_dt = acc_dt;
+            conf.require_large_buffers = require_large_buffers;
             conf.with_post_ops = attr()->post_ops_.len() > 0;
             conf.with_sum = attr_info.with_sum;
             conf.with_src_zpoints = attr_info.with_src_zpoints;

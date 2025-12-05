@@ -90,7 +90,8 @@ struct micro_params_t : trivially_serializable_t<micro_params_t> {
     bool q_arrive_await_barrier;
     bool use_systolic_ukernel;
     bool kq_f16_accumulate, vs_f16_accumulate;
-    uint8_t padding3[7] = {0};
+    bool require_large_buffers;
+    uint8_t padding3[6] = {0};
 
     micro_ukernel_params_t ukernel_config;
 };

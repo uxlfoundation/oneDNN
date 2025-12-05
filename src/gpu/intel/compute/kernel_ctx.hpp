@@ -85,6 +85,9 @@ public:
     // operations when native 64-bit operations are unsupported.
     void use_int32_offset(bool value) { use_int32_offset_ = value; }
 
+    void require_large_buffers(bool value) { require_large_buffers_ = value; }
+    bool has_large_buffers() const { return require_large_buffers_; }
+
     void define_int(const char *variable, int64_t value) {
         set_macro(variable, value, int_var_map_);
     }
@@ -157,8 +160,9 @@ public:
     bool has_custom_headers() const { return !custom_headers_.empty(); }
 
 private:
-    void register_buffer_size(dim_t nelems) {
-        if (nelems > INT_MAX) use_int32_offset(false);
+    void register_buffer_size(dim_t nelems, uint64_t size) {
+        if (nelems > INT32_MAX) use_int32_offset(false);
+        if (size > UINT32_MAX) require_large_buffers(true);
     }
 
     void set_default_options(const primitive_attr_t *attr) {
@@ -208,6 +212,7 @@ private:
     std::set<std::string> option_set_;
     std::unordered_map<std::string, std::string> custom_headers_;
     bool use_int32_offset_ = true;
+    bool require_large_buffers_ = false;
 };
 
 } // namespace compute

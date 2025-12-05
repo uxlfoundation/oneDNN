@@ -930,6 +930,8 @@ struct jit_binary_conf_t {
     bool broadcast_src1_value = false;
     bool use_stride_rhs_postops = false;
     bool postops_per_oc_broadcast_exists = false;
+    bool postops_per_w_broadcast_exists = false;
+    std::vector<dim_t> post_ops_expanded_rhs_elems_len;
     bool is_i8 = false;
     bool is_bf16 = false;
     bool is_f16 = false;

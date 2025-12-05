@@ -149,6 +149,11 @@ struct relative_idx_t {
     };
     constexpr bool is_innermost() const { return value_ == 0; }
     constexpr bool is_unset() const { return value_ < 0; }
+    std::string str() const {
+        if (is_unset()) return "(unset)";
+        char name[2] = {into<char>(value_ + 'a'), 0};
+        return name;
+    }
 
 protected:
     friend struct relative_md_t;
@@ -181,6 +186,14 @@ struct relative_md_t {
 
         bool empty() const { return idxs[0].is_unset(); }
 
+        std::string str() const {
+            ostringstream_t oss;
+            for (int i = max_dims - 1; i >= 0; i--) {
+                if (idxs[i].is_unset()) continue;
+                oss << int(blocks[i]) << idxs[i].str();
+            }
+            return oss.str();
+        }
 #if __cplusplus >= 202002L
         bool operator==(const blocking_t &) const = default;
 #endif
@@ -268,6 +281,27 @@ struct relative_md_t {
         return math::ilog2q(dim_mask) + 1;
     }
 
+    std::string str() const {
+        if (broadcast_mask == 0xFFFF) {
+            gpu_assert(inner_layout.empty());
+            return std::string("{scalar}.") + dnnl_dt2str(dt);
+        }
+
+        // Use reverse ordering to align with oneDNN format tag semantics
+        ostringstream_t oss;
+        const char *prefix = "{";
+        for (int i = 15; i >= 0; i--) {
+            if (broadcast_mask & (1 << i)) continue;
+            std::cout << prefix;
+            oss << idx_t(into<int8_t>(i)).str();
+            prefix = "";
+        }
+        oss << "}:";
+        if (!inner_dim.is_unset()) oss << inner_dim.str();
+        if (!inner_layout.empty()) oss << inner_layout.str();
+        oss << "." << dnnl_dt2str(dt);
+        return oss.str();
+    }
 #if __cplusplus >= 202002L
     bool operator==(const relative_md_t &) const = default;
 #endif

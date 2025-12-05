@@ -23,9 +23,14 @@ namespace gpu {
 namespace intel {
 namespace compute {
 
+void kernel_ctx_t::register_buffer_size(const memory_desc_wrapper &mdw) {
+    register_buffer_size(mdw.nelems(true), mdw.size(0, true, true));
+}
+
 void kernel_ctx_t::register_buffer_size(const memory_desc_info_t &mdi) {
     register_buffer_size(
-            mdi.size + mdi.offset0 * types::data_type_size(mdi.data_type));
+            (mdi.size / types::data_type_size(mdi.data_type)) + mdi.offset0,
+            mdi.size + (mdi.offset0 * types::data_type_size(mdi.data_type)));
 }
 
 } // namespace compute

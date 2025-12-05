@@ -77,7 +77,10 @@ struct reusable_vectorized_params_t
     /// Saves the mean and variance to memory
     bool save_stats = false;
 
-    uint8_t padding[3] = {false};
+    /// Check if kernel requires stateless addressing model
+    bool require_large_buffers = true;
+
+    uint8_t padding[2] = {false};
 };
 
 struct reusable_vectorized_runtime_params_t {

@@ -32,6 +32,7 @@ status_t xe_jit_params_t::init(impl::engine_t *engine,
 
     arch = intel_engine->device_info()->gpu_arch();
     data_type = data_d.data_type();
+    require_large_buffers = data_d.size(0, true, true) > UINT32_MAX;
     alg_kind = alg_kind_;
 
     bool is_pre_xe_hp = arch < compute::gpu_arch_t::xe_hp;
@@ -65,6 +66,7 @@ status_t xe_jit_params_t::init(impl::engine_t *engine,
 
 compute::kernel_ctx_t xe_jit_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
+    kernel_ctx.require_large_buffers(require_large_buffers);
 
     kernel_ctx.set_data_type(data_type);
     def_eltwise_alg_kinds(kernel_ctx);

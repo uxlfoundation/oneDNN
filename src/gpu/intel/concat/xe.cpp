@@ -122,12 +122,12 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.n = pd->n_inputs();
     conf.concat_axis = pd->concat_dim();
 
-    dim_t max_bytes = dst_mdw.size();
+    dim_t max_elems = dst_mdw.nelems();
     int concat_axis_end = 0;
     conf.scales_mask = 0;
     for (int i = 0; i < conf.n; ++i) {
         const memory_desc_wrapper src_mdw(pd->src_md(i));
-        max_bytes = std::max(max_bytes, into<dim_t>(src_mdw.size()));
+        max_elems = std::max(max_elems, into<dim_t>(src_mdw.nelems()));
         concat_axis_end += src_mdw.dims()[conf.concat_axis];
         conf.offset[i] = concat_axis_end;
         conf.src_md_infos[i] = memory_desc_info_t::create(pd->src_md(i));
@@ -136,7 +136,7 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.scales_mask |= ((!conf.scale_src[i].has_default_values()) << i);
     }
 
-    conf.use_large_index = (max_bytes > std::numeric_limits<int>::max());
+    conf.use_large_index = (max_elems > std::numeric_limits<int>::max());
 
     conf.sub_group_size = calculate_sub_group_size(intel_engine);
     std::tie(conf.iter_dim_idx, conf.iter_dim_chunk)

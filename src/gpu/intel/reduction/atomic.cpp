@@ -234,6 +234,7 @@ status_t atomic_conf_t::init_dispatcher(
             dims::subgroup,
     };
     compute::named_buffer_t src("SRC");
+    src.data_type = conf.src_type;
     std::array<dim_t, 6> sizes = {
             outer_block.block,
             conf.global_acc,
@@ -253,6 +254,7 @@ status_t atomic_conf_t::init_dispatcher(
             = dim_t(outer_block.stride / conf.vect_size);
 
     compute::named_buffer_t dst("DST", src);
+    dst.data_type = conf.dst_type;
     dst.remove_dim(dims::loop);
     dst.remove_dim(dims::local); // broadcasted
     dst.remove_dim(dims::global); // broadcasted
@@ -317,6 +319,9 @@ status_t atomic_t::pd_t::init_conf(impl::engine_t *engine) {
     const dim_t *src_dims = src_mdw.dims();
     const dim_t *src_padded_dims = src_mdw.padded_dims();
     const dim_t *dst_dims = dst_mdw.dims();
+    const bool require_large_buffers
+            = std::max(src_mdw.size(0, true, true), dst_mdw.size(0, true, true))
+            > UINT32_MAX;
 
     bool is_reduction_dim[DNNL_MAX_NDIMS];
     for (int i = 0; i < ndims; i++) {
@@ -388,6 +393,7 @@ status_t atomic_t::pd_t::init_conf(impl::engine_t *engine) {
                 phase.inner_block.block % phase.conf.subgroup_size == 0,
                 VERBOSE_BLOCKING_FAIL, "subgroup size mismatch");
         CHECK(phase.init_dispatcher(intel_engine, gpu_attr));
+        phase.conf.params.require_large_buffers = require_large_buffers;
     }
 
     for (atomic_conf_t &phase : phases) {
@@ -457,6 +463,7 @@ static void init_kernel_ctx_common(
     using namespace alg_kind;
 
     kernel_ctx.set_data_type(conf.src_type);
+    kernel_ctx.require_large_buffers(conf.params.require_large_buffers);
     def_data_type(kernel_ctx, conf.src_type, "SRC");
     def_data_type(kernel_ctx, conf.dst_type, "DST");
 

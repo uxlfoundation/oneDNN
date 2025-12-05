@@ -245,7 +245,8 @@ struct dispatch_compile_params_t {
     subgroup_data_t subgroup;
     int32_t num_terms = 0;
     bool use_int32_offset = false;
-    uint8_t padding[3] = {0};
+    bool require_large_buffers = true;
+    uint8_t padding[2] = {0};
     gws_indexing_term_t::compile_params_t terms[MAX_INDEXING_TERMS]
             = {{gws_op_t::SOLO, 0}};
 
@@ -377,6 +378,12 @@ struct named_buffer_t : public memory_desc_t {
     dim_t nelems(bool with_padding = false) const {
         return memory_desc_wrapper(static_cast<memory_desc_t>(*this))
                 .nelems(with_padding);
+    }
+
+    uint64_t size(int index = 0, bool include_additional_size = true,
+            bool include_offset0 = false) const {
+        return memory_desc_wrapper(static_cast<memory_desc_t>(*this))
+                .size(index, include_additional_size, include_offset0);
     }
 
     const std::string &get_name() const { return name; }

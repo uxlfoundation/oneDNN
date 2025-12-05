@@ -75,7 +75,7 @@ status_t simple_concat_t<data_type>::execute(const exec_ctx_t &ctx) const {
     // or concat_axis = 1, and dims[0] = 1;
     if (!has_outer_loop) {
         int nthr = dnnl_get_max_threads();
-        parallel(nthr, [&](int ithr, int nthr) {
+        parallel(nthr, [=](int ithr, int nthr) {
             for (int a = 0; a < num_arrs; ++a) {
                 dim_t start {0}, end {0};
                 balance211(nelems_to_copy[a], nthr, ithr, start, end);
@@ -106,7 +106,7 @@ status_t simple_concat_t<data_type>::execute(const exec_ctx_t &ctx) const {
 
     parallel_nd(phys_dims[0], phys_dims[1], phys_dims[2], phys_dims[3],
             phys_dims[4], num_arrs,
-            [&](dim_t n0, dim_t n1, dim_t n2, dim_t n3, dim_t n4, dim_t a) {
+            [=](dim_t n0, dim_t n1, dim_t n2, dim_t n3, dim_t n4, dim_t a) {
         // check if zero memory
         if (iptrs[a] == nullptr) return;
 

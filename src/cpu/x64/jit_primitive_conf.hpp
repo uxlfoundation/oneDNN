@@ -190,8 +190,6 @@ struct jit_conv_conf_t {
     bool req_zero_point_buffer; // used for calculating padding compensation
     bool zp_pbuff_outer_compute; // indicates if zp_bbuff is computed in
 
-    bool dst_scale = false; // TODO: delete me
-
     bool with_src_scales = false;
     bool with_wei_scales = false;
     bool with_dst_scales = false;
@@ -324,8 +322,6 @@ struct jit_conv_args_t {
     const int32_t *dst_zero_point = nullptr;
     const void *tile_cfg = nullptr;
     const void *tile_cfg_tail = nullptr;
-    const void *scales = nullptr; // TODO: delete me
-    const void *dst_scale = nullptr; // TODO: delete me
 
     const void *src_scales = nullptr;
     const void *wei_scales = nullptr;
@@ -388,13 +384,15 @@ struct jit_deconv_args_t {
     const void *dst = nullptr; /* hack, non-const for forward */
     const void *filt = nullptr; /* hack, non-const for backward_weights */
     const void *bias = nullptr; /* hack, non-const for backward_bias */
-    const void *scales = nullptr;
-    const void *dst_scale = nullptr;
     const void *compensation = nullptr;
     const int32_t *zp_src_pad_str_compensation = nullptr;
     const int32_t *zp_compensation = nullptr;
     const int32_t *src_zero_point = nullptr;
     const int32_t *dst_zero_point = nullptr;
+
+    const void *src_scales = nullptr;
+    const void *wei_scales = nullptr;
+    const void *dst_scales = nullptr;
 
     /*
      * ptr to table of void * elements that are pointers to post_op binary
@@ -486,8 +484,6 @@ struct jit_1x1_conv_conf_t {
     bool dst_zero_point;
     bool zp_src_is_common; // common, otherwise (TODO) per-channel
 
-    bool dst_scale; // TODO: delete me
-
     bool with_src_scales = false;
     bool with_wei_scales = false;
     bool with_dst_scales = false;
@@ -508,8 +504,6 @@ struct jit_1x1_conv_args_t {
     const int32_t *zp_compensation = nullptr;
     const int32_t *src_zero_point = nullptr;
     const int32_t *dst_zero_point = nullptr;
-    const void *scales = nullptr; // TODO: delete me
-    const void *dst_scale = nullptr; // TODO: delete me
 
     const void *src_scales = nullptr;
     const void *wei_scales = nullptr;
@@ -878,12 +872,13 @@ struct jit_shuffle_conf_t {
 
     dim_t mb = 0, c = 0, d = 0, h = 0, w = 0, sp = 0;
 
-    unsigned stride_mb = 0;
-    unsigned blk_size = 0;
-    unsigned group_size = 0;
-    unsigned axis = 0;
-    unsigned axis_size = 0;
-    unsigned simd_tail = 0;
+    dim_t stride_mb = 0;
+    dim_t blk_size = 0;
+    dim_t group_size = 0;
+    dim_t axis = 0;
+    dim_t axis_size = 0;
+    dim_t simd_tail = 0;
+
     unsigned simd_w = 0;
 
     jit_memory_tag_kind_t tag_kind = jit_memory_tag_kind_t::undef;

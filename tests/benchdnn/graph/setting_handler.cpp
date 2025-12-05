@@ -1382,7 +1382,8 @@ void extend_dims_for_matmul(::graph::deserialized_lt_t &lt, size_t ndims,
                 size_t insert_pos = lt.shape_.size() - 1;
                 lt.shape_.insert(lt.shape_.begin() + insert_pos, 1);
                 // For stride: use the stride of the dimension we're prepending before
-                int64_t insert_stride = lt.stride_[insert_pos];
+                int64_t insert_stride
+                        = lt.stride_[insert_pos] * lt.shape_.back();
                 lt.stride_.insert(
                         lt.stride_.begin() + insert_pos, insert_stride);
             }
@@ -1404,7 +1405,8 @@ void extend_dims_for_matmul(::graph::deserialized_lt_t &lt, size_t ndims,
             if (!lt.shape_.empty()) {
                 size_t insert_pos = lt.shape_.size() - 1;
                 lt.shape_.insert(lt.shape_.begin() + insert_pos, 1);
-                int64_t insert_stride = lt.stride_[insert_pos];
+                int64_t insert_stride
+                        = lt.stride_[insert_pos] * lt.shape_.back();
                 lt.stride_.insert(
                         lt.stride_.begin() + insert_pos, insert_stride);
             }

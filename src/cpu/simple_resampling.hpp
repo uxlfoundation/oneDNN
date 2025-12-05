@@ -35,14 +35,14 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-struct simple_resampling_base_t {
-    simple_resampling_base_t(const resampling_pd_t *pd) : pd_(pd) {}
-    virtual ~simple_resampling_base_t() = default;
+struct simple_resampling_kernel_t {
+    simple_resampling_kernel_t(const resampling_pd_t *pd);
+    ~simple_resampling_kernel_t() = default;
 
-    virtual status_t init() = 0;
-    virtual status_t execute(const exec_ctx_t &ctx) const = 0;
+    status_t init();
+    status_t execute(const exec_ctx_t &ctx) const;
 
-protected:
+private:
     const resampling_pd_t *pd_;
 
     dim_t nsp_outer_ = 0;
@@ -51,6 +51,29 @@ protected:
     dim_t stride_w_ = 0;
     dim_t inner_stride_ = 0;
     dim_t tail_size_ = 0;
+    data_type_t src_dt_ = data_type::undef;
+    data_type_t dst_dt_ = data_type::undef;
+
+    using interpolate_fn_t = std::function<void(const char *, char *,
+            const exec_ctx_t &, dim_t, dim_t, dim_t, dim_t, const bool)>;
+
+    void fill_coeffs();
+    void fill_weights();
+    interpolate_fn_t create_nearest() const;
+    interpolate_fn_t create_linear() const;
+    interpolate_fn_t create_bilinear() const;
+    interpolate_fn_t create_trilinear() const;
+
+    // For fwd processing:
+    const bool are_postops_set_;
+    std::unique_ptr<ref_post_ops_t> ref_post_ops_;
+    std::vector<resampling_utils::linear_coeffs_t> linear_coeffs_;
+
+    // For bwd processing:
+    std::vector<float> bwd_linear_weights_;
+    std::vector<resampling_utils::bwd_linear_coeffs_t> bwd_linear_coeffs_;
+
+    interpolate_fn_t interpolate_fn_;
 };
 
 struct simple_resampling_fwd_t : public primitive_t {
@@ -117,7 +140,7 @@ struct simple_resampling_fwd_t : public primitive_t {
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<simple_resampling_base_t> kernel_;
+    std::unique_ptr<simple_resampling_kernel_t> kernel_;
 };
 
 struct simple_resampling_bwd_t : public primitive_t {
@@ -170,7 +193,7 @@ struct simple_resampling_bwd_t : public primitive_t {
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
-    std::unique_ptr<simple_resampling_base_t> kernel_;
+    std::unique_ptr<simple_resampling_kernel_t> kernel_;
 };
 
 } // namespace cpu

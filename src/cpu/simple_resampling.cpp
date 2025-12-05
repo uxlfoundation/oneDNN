@@ -16,12 +16,12 @@
 
 #include <cassert>
 
-#include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
 
+#include "cpu/ref_io_helper.hpp"
 #include "cpu/simple_resampling.hpp"
 
 namespace dnnl {
@@ -30,51 +30,10 @@ namespace cpu {
 
 using namespace format_tag;
 using namespace resampling_utils;
-using namespace std::placeholders;
 
-using namespace resampling_utils;
-
-namespace {
-
-template <data_type_t src_type, data_type_t dst_type>
-struct simple_resampling_kernel_t : public simple_resampling_base_t {
-    simple_resampling_kernel_t(const resampling_pd_t *pd);
-
-    using src_data_t = typename prec_traits_t<src_type>::type;
-    using dst_data_t = typename prec_traits_t<dst_type>::type;
-
-    status_t init() override;
-    status_t execute(const exec_ctx_t &ctx) const override;
-
-private:
-    using interpolate_fn_t
-            = std::function<void(const src_data_t *, dst_data_t *,
-                    ref_post_ops_t::args_t &, dim_t, dim_t, dim_t, const bool)>;
-
-    void fill_coeffs();
-    void fill_weights();
-    interpolate_fn_t create_nearest() const;
-    interpolate_fn_t create_linear() const;
-    interpolate_fn_t create_bilinear() const;
-    interpolate_fn_t create_trilinear() const;
-
-    // For fwd processing:
-    const bool are_postops_set_;
-    std::unique_ptr<ref_post_ops_t> ref_post_ops_;
-    std::vector<linear_coeffs_t> linear_coeffs_;
-
-    // For bwd processing:
-    std::vector<float> bwd_linear_weights_;
-    std::vector<bwd_linear_coeffs_t> bwd_linear_coeffs_;
-
-    interpolate_fn_t interpolate_fn_;
-};
-
-template <data_type_t src_type, data_type_t dst_type>
-simple_resampling_kernel_t<src_type, dst_type>::simple_resampling_kernel_t(
+simple_resampling_kernel_t::simple_resampling_kernel_t(
         const resampling_pd_t *pd)
-    : simple_resampling_base_t(pd)
-    , are_postops_set_(!(pd_->attr()->post_ops_.entry_.empty())) {
+    : pd_(pd), are_postops_set_(!(pd_->attr()->post_ops_.entry_.empty())) {
     if (pd_->is_fwd()) {
         const memory_desc_wrapper src_d(pd_->src_md());
         inner_stride_ = src_d.blocking_desc().strides[pd_->ndims() - 1];
@@ -84,6 +43,8 @@ simple_resampling_kernel_t<src_type, dst_type>::simple_resampling_kernel_t(
         stride_h_ = pd_->IW() * inner_stride_;
         stride_w_ = inner_stride_;
         tail_size_ = pd_->C() % inner_stride_;
+        src_dt_ = pd_->src_md()->data_type;
+        dst_dt_ = pd_->dst_md()->data_type;
     } else {
         const memory_desc_wrapper diff_src_d(pd_->diff_src_md());
         inner_stride_ = diff_src_d.blocking_desc().strides[pd_->ndims() - 1];
@@ -93,11 +54,12 @@ simple_resampling_kernel_t<src_type, dst_type>::simple_resampling_kernel_t(
         stride_h_ = pd_->OW() * inner_stride_;
         stride_w_ = inner_stride_;
         tail_size_ = pd_->C() % inner_stride_;
+        src_dt_ = pd_->diff_src_md()->data_type;
+        dst_dt_ = pd_->diff_dst_md()->data_type;
     }
 }
 
-template <data_type_t src_type, data_type_t dst_type>
-status_t simple_resampling_kernel_t<src_type, dst_type>::init() {
+status_t simple_resampling_kernel_t::init() {
     if (pd_->desc()->alg_kind == alg_kind::resampling_nearest)
         interpolate_fn_ = create_nearest();
     else {
@@ -118,9 +80,7 @@ status_t simple_resampling_kernel_t<src_type, dst_type>::init() {
     return status::success;
 }
 
-template <data_type_t src_type, data_type_t dst_type>
-status_t simple_resampling_kernel_t<src_type, dst_type>::execute(
-        const exec_ctx_t &ctx) const {
+status_t simple_resampling_kernel_t::execute(const exec_ctx_t &ctx) const {
     const int OD = pd_->OD();
     const int OH = pd_->OH();
     const int OW = pd_->OW();
@@ -130,14 +90,10 @@ status_t simple_resampling_kernel_t<src_type, dst_type>::execute(
     const int NB_CH = utils::div_up(pd_->C(), inner_stride_);
 
     if (pd_->is_fwd()) {
-        const auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
-        auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
+        const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+        auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
 
         parallel_nd(nsp_outer_, OD, OH, [&](dim_t nsp0, dim_t od, dim_t oh) {
-            ref_post_ops_t::args_t postops_args;
-            postops_args.ctx = &ctx;
-            postops_args.dst_md = pd_->dst_md();
-
             const bool preserve_zero_padding
                     = (nsp0 + 1) % NB_CH == 0 && tail_size_ != 0;
 
@@ -146,17 +102,14 @@ status_t simple_resampling_kernel_t<src_type, dst_type>::execute(
                 const dim_t dst_off
                         = (nsp0 * OD * OH * OW + od * OH * OW + oh * OW + ow)
                         * inner_stride_;
-
-                postops_args.l_offset = dst_off;
-
-                interpolate_fn_(src + src_off, dst + dst_off, postops_args, od,
-                        oh, ow, preserve_zero_padding);
+                interpolate_fn_(src + src_off * types::data_type_size(src_dt_),
+                        dst + dst_off * types::data_type_size(dst_dt_), ctx,
+                        dst_off, od, oh, ow, preserve_zero_padding);
             }
         });
     } else {
-        const auto diff_dst = CTX_IN_MEM(const src_data_t *, DNNL_ARG_DIFF_DST);
-        auto diff_src = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DIFF_SRC);
-        ref_post_ops_t::args_t empty_args;
+        const auto diff_dst = CTX_IN_MEM(const char *, DNNL_ARG_DIFF_DST);
+        auto diff_src = CTX_OUT_MEM(char *, DNNL_ARG_DIFF_SRC);
 
         parallel_nd(nsp_outer_, ID, IH, IW,
                 [&](dim_t nsp, dim_t id, dim_t ih, dim_t iw) {
@@ -164,16 +117,17 @@ status_t simple_resampling_kernel_t<src_type, dst_type>::execute(
             const dim_t diff_src_off
                     = (nsp * ID * IH * IW + id * IH * IW + ih * IW + iw)
                     * inner_stride_;
-            interpolate_fn_(diff_dst + diff_dst_off, diff_src + diff_src_off,
-                    empty_args, id, ih, iw, false);
+            interpolate_fn_(
+                    diff_dst + diff_dst_off * types::data_type_size(dst_dt_),
+                    diff_src + diff_src_off * types::data_type_size(src_dt_),
+                    /* unused */ ctx, /* unused */ 0, id, ih, iw, false);
         });
     }
 
     return status::success;
 }
 
-template <data_type_t src_type, data_type_t dst_type>
-void simple_resampling_kernel_t<src_type, dst_type>::fill_coeffs() {
+void simple_resampling_kernel_t::fill_coeffs() {
     if (pd_->is_fwd()) {
         linear_coeffs_.reserve(pd_->OD() + pd_->OH() + pd_->OW());
         for (dim_t od = 0; od < pd_->OD(); od++)
@@ -193,8 +147,7 @@ void simple_resampling_kernel_t<src_type, dst_type>::fill_coeffs() {
     }
 }
 
-template <data_type_t src_type, data_type_t dst_type>
-void simple_resampling_kernel_t<src_type, dst_type>::fill_weights() {
+void simple_resampling_kernel_t::fill_weights() {
     assert(!pd_->is_fwd() && "The function is used in bwd path only.");
 
     using namespace resampling_utils;
@@ -219,40 +172,44 @@ void simple_resampling_kernel_t<src_type, dst_type>::fill_weights() {
     }
 }
 
-template <data_type_t src_type, data_type_t dst_type>
-typename simple_resampling_kernel_t<src_type, dst_type>::interpolate_fn_t
-simple_resampling_kernel_t<src_type, dst_type>::create_nearest() const {
+simple_resampling_kernel_t::interpolate_fn_t
+simple_resampling_kernel_t::create_nearest() const {
     if (pd_->is_fwd()) {
-        return [&](const src_data_t *src, dst_data_t *dst,
-                       ref_post_ops_t::args_t &po_args, dim_t od, dim_t oh,
-                       dim_t ow, const bool preserve_zero_padding) {
+        return [&](const char *src, char *dst, const exec_ctx_t &ctx,
+                       dim_t dst_off, dim_t od, dim_t oh, dim_t ow,
+                       const bool preserve_zero_padding) {
             const dim_t id = nearest_idx(od, pd_->OD(), pd_->ID());
             const dim_t ih = nearest_idx(oh, pd_->OH(), pd_->IH());
             const dim_t iw = nearest_idx(ow, pd_->OW(), pd_->IW());
             const dim_t offset
                     = id * stride_d_ + ih * stride_h_ + iw * stride_w_;
+            const char *src_ptr = src + offset * types::data_type_size(src_dt_);
 
             PRAGMA_OMP_SIMD()
             for (dim_t innermost_el = 0; innermost_el < inner_stride_;
                     innermost_el++) {
-                float res = static_cast<float>(src[offset + innermost_el]);
+                float res
+                        = io::load_float_value(src_dt_, src_ptr, innermost_el);
 
                 if (are_postops_set_
                         && IMPLICATION(preserve_zero_padding,
                                 innermost_el < tail_size_)) {
-                    po_args.dst_val = dst[innermost_el];
-                    ref_post_ops_->execute(res, po_args);
-                    po_args.l_offset++;
+                    ref_post_ops_t::args_t args;
+                    args.dst_val
+                            = io::load_float_value(dst_dt_, dst, innermost_el);
+                    args.ctx = &ctx;
+                    args.l_offset = dst_off + innermost_el;
+                    args.dst_md = pd_->dst_md();
+                    ref_post_ops_->execute(res, args);
                 }
 
-                dst[innermost_el]
-                        = cpu::q10n::saturate_and_round<dst_data_t>(res);
+                io::store_float_value(dst_dt_, res, dst, innermost_el);
             }
         };
     } else {
-        return [&](const src_data_t *diff_dst, dst_data_t *diff_src,
-                       ref_post_ops_t::args_t &po_args, dim_t id, dim_t ih,
-                       dim_t iw, const bool preserve_zero_padding) {
+        return [&](const char *diff_dst, char *diff_src, const exec_ctx_t &ctx,
+                       dim_t dst_off, dim_t id, dim_t ih, dim_t iw,
+                       const bool preserve_zero_padding) {
             auto ow_idx = [&](const float in_idx) -> dim_t {
                 return ceil_idx((in_idx * pd_->OW() / pd_->IW()) - 0.5f);
             };
@@ -278,23 +235,21 @@ simple_resampling_kernel_t<src_type, dst_type>::create_nearest() const {
                 for_(dim_t od = od_start; od < od_end; od += stride_d_)
                 for_(dim_t oh = oh_start; oh < oh_end; oh += stride_h_)
                 for (dim_t ow = ow_start; ow < ow_end; ow += stride_w_) {
-                    sum += static_cast<float>(
-                            diff_dst[od + oh + ow + innermost_el]);
+                    sum += io::load_float_value(
+                            dst_dt_, diff_dst, od + oh + ow + innermost_el);
                 }
-                diff_src[innermost_el]
-                        = cpu::q10n::saturate_and_round<dst_data_t>(sum);
+                io::store_float_value(src_dt_, sum, diff_src, innermost_el);
             }
         };
     }
 }
 
-template <data_type_t src_type, data_type_t dst_type>
-typename simple_resampling_kernel_t<src_type, dst_type>::interpolate_fn_t
-simple_resampling_kernel_t<src_type, dst_type>::create_linear() const {
+simple_resampling_kernel_t::interpolate_fn_t
+simple_resampling_kernel_t::create_linear() const {
     if (pd_->is_fwd()) {
-        return [&](const src_data_t *src, dst_data_t *dst,
-                       ref_post_ops_t::args_t &po_args, dim_t od, dim_t oh,
-                       dim_t ow, const bool preserve_zero_padding) {
+        return [&](const char *src, char *dst, const exec_ctx_t &ctx,
+                       dim_t dst_off, dim_t od, dim_t oh, dim_t ow,
+                       const bool preserve_zero_padding) {
             const linear_coeffs_t &iw
                     = linear_coeffs_[pd_->OD() + pd_->OH() + ow];
 
@@ -302,27 +257,31 @@ simple_resampling_kernel_t<src_type, dst_type>::create_linear() const {
             for (dim_t innermost_el = 0; innermost_el < inner_stride_;
                     innermost_el++) {
                 float res = 0;
-                for (int k = 0; k < 2; k++)
-                    res += static_cast<float>(
-                                   src[iw.idx[k] * stride_w_ + innermost_el])
-                            * iw.wei[k];
+                for (int k = 0; k < 2; k++) {
+                    const dim_t src_off = iw.idx[k] * stride_w_ + innermost_el;
+                    const float s = io::load_float_value(src_dt_, src, src_off);
+                    res += s * iw.wei[k];
+                }
 
                 if (are_postops_set_
                         && IMPLICATION(preserve_zero_padding,
                                 innermost_el < tail_size_)) {
-                    po_args.dst_val = dst[innermost_el];
-                    ref_post_ops_->execute(res, po_args);
-                    po_args.l_offset++;
+                    ref_post_ops_t::args_t args;
+                    args.dst_val
+                            = io::load_float_value(dst_dt_, dst, innermost_el);
+                    args.ctx = &ctx;
+                    args.l_offset = dst_off + innermost_el;
+                    args.dst_md = pd_->dst_md();
+                    ref_post_ops_->execute(res, args);
                 }
 
-                dst[innermost_el]
-                        = cpu::q10n::saturate_and_round<dst_data_t>(res);
+                io::store_float_value(dst_dt_, res, dst, innermost_el);
             }
         };
     } else {
-        return [&](const src_data_t *diff_dst, dst_data_t *diff_src,
-                       ref_post_ops_t::args_t &po_args, dim_t id, dim_t ih,
-                       dim_t iw, const bool preserve_zero_padding) {
+        return [&](const char *diff_dst, char *diff_src, const exec_ctx_t &ctx,
+                       dim_t dst_off, dim_t id, dim_t ih, dim_t iw,
+                       const bool preserve_zero_padding) {
             const bwd_linear_coeffs_t &w
                     = bwd_linear_coeffs_[pd_->ID() + pd_->IH() + iw];
             MAYBE_UNUSED(preserve_zero_padding);
@@ -333,26 +292,26 @@ simple_resampling_kernel_t<src_type, dst_type>::create_linear() const {
                 float sum = 0;
                 for_(int k = 0; k < 2; k++)
                 for (dim_t ow = w.start[k]; ow < w.end[k]; ow++) {
-                    sum += static_cast<float>(
-                                   diff_dst[ow * stride_w_ + innermost_el])
+                    const dim_t diff_dst_off = ow * stride_w_ + innermost_el;
+                    const float dd = io::load_float_value(
+                            dst_dt_, diff_dst, diff_dst_off);
+                    sum += dd
                             * bwd_linear_weights_[2
                                             * (pd_->OD() + pd_->OH() + ow)
                                     + k];
                 }
-                diff_src[innermost_el]
-                        = cpu::q10n::saturate_and_round<dst_data_t>(sum);
+                io::store_float_value(src_dt_, sum, diff_src, innermost_el);
             }
         };
     }
 }
 
-template <data_type_t src_type, data_type_t dst_type>
-typename simple_resampling_kernel_t<src_type, dst_type>::interpolate_fn_t
-simple_resampling_kernel_t<src_type, dst_type>::create_bilinear() const {
+simple_resampling_kernel_t::interpolate_fn_t
+simple_resampling_kernel_t::create_bilinear() const {
     if (pd_->is_fwd()) {
-        return [&](const src_data_t *src, dst_data_t *dst,
-                       ref_post_ops_t::args_t &po_args, dim_t od, dim_t oh,
-                       dim_t ow, const bool preserve_zero_padding) {
+        return [&](const char *src, char *dst, const exec_ctx_t &ctx,
+                       dim_t dst_off, dim_t od, dim_t oh, dim_t ow,
+                       const bool preserve_zero_padding) {
             const linear_coeffs_t &ih = linear_coeffs_[pd_->OD() + oh];
             const linear_coeffs_t &iw
                     = linear_coeffs_[pd_->OD() + pd_->OH() + ow];
@@ -362,27 +321,32 @@ simple_resampling_kernel_t<src_type, dst_type>::create_bilinear() const {
                     innermost_el++) {
                 float res = 0;
                 for_(int j = 0; j < 2; j++)
-                for (int k = 0; k < 2; k++)
-                    res += static_cast<float>(src[ih.idx[j] * stride_h_
-                                   + iw.idx[k] * stride_w_ + innermost_el])
-                            * ih.wei[j] * iw.wei[k];
+                for (int k = 0; k < 2; k++) {
+                    const dim_t src_off = ih.idx[j] * stride_h_
+                            + iw.idx[k] * stride_w_ + innermost_el;
+                    const float s = io::load_float_value(src_dt_, src, src_off);
+                    res += s * ih.wei[j] * iw.wei[k];
+                }
 
                 if (are_postops_set_
                         && IMPLICATION(preserve_zero_padding,
                                 innermost_el < tail_size_)) {
-                    po_args.dst_val = dst[innermost_el];
-                    ref_post_ops_->execute(res, po_args);
-                    po_args.l_offset++;
+                    ref_post_ops_t::args_t args;
+                    args.dst_val
+                            = io::load_float_value(dst_dt_, dst, innermost_el);
+                    args.ctx = &ctx;
+                    args.l_offset = dst_off + innermost_el;
+                    args.dst_md = pd_->dst_md();
+                    ref_post_ops_->execute(res, args);
                 }
 
-                dst[innermost_el]
-                        = cpu::q10n::saturate_and_round<dst_data_t>(res);
+                io::store_float_value(dst_dt_, res, dst, innermost_el);
             }
         };
     } else {
-        return [&](const src_data_t *diff_dst, dst_data_t *diff_src,
-                       ref_post_ops_t::args_t &po_args, dim_t id, dim_t ih,
-                       dim_t iw, const bool preserve_zero_padding) {
+        return [&](const char *diff_dst, char *diff_src, const exec_ctx_t &ctx,
+                       dim_t dst_off, dim_t id, dim_t ih, dim_t iw,
+                       const bool preserve_zero_padding) {
             const bwd_linear_coeffs_t &h = bwd_linear_coeffs_[pd_->ID() + ih];
             const bwd_linear_coeffs_t &w
                     = bwd_linear_coeffs_[pd_->ID() + pd_->IH() + iw];
@@ -396,27 +360,28 @@ simple_resampling_kernel_t<src_type, dst_type>::create_bilinear() const {
                 for_(int k = 0; k < 2; k++)
                 for_(dim_t oh = h.start[j]; oh < h.end[j]; oh++)
                 for (dim_t ow = w.start[k]; ow < w.end[k]; ow++) {
-                    sum += static_cast<float>(diff_dst[oh * stride_h_
-                                   + ow * stride_w_ + innermost_el])
-                            * bwd_linear_weights_[2 * (pd_->OD() + oh) + j]
+                    const dim_t diff_dst_off
+                            = oh * stride_h_ + ow * stride_w_ + innermost_el;
+                    const float dd = io::load_float_value(
+                            dst_dt_, diff_dst, diff_dst_off);
+
+                    sum += dd * bwd_linear_weights_[2 * (pd_->OD() + oh) + j]
                             * bwd_linear_weights_[2
                                             * (pd_->OD() + pd_->OH() + ow)
                                     + k];
                 }
-                diff_src[innermost_el]
-                        = cpu::q10n::saturate_and_round<dst_data_t>(sum);
+                io::store_float_value(src_dt_, sum, diff_src, innermost_el);
             }
         };
     }
 }
 
-template <data_type_t src_type, data_type_t dst_type>
-typename simple_resampling_kernel_t<src_type, dst_type>::interpolate_fn_t
-simple_resampling_kernel_t<src_type, dst_type>::create_trilinear() const {
+simple_resampling_kernel_t::interpolate_fn_t
+simple_resampling_kernel_t::create_trilinear() const {
     if (pd_->is_fwd()) {
-        return [&](const src_data_t *src, dst_data_t *dst,
-                       ref_post_ops_t::args_t &po_args, dim_t od, dim_t oh,
-                       dim_t ow, const bool preserve_zero_padding) {
+        return [&](const char *src, char *dst, const exec_ctx_t &ctx,
+                       dim_t dst_off, dim_t od, dim_t oh, dim_t ow,
+                       const bool preserve_zero_padding) {
             const linear_coeffs_t &id = linear_coeffs_[od];
             const linear_coeffs_t &ih = linear_coeffs_[pd_->OD() + oh];
             const linear_coeffs_t &iw
@@ -428,28 +393,33 @@ simple_resampling_kernel_t<src_type, dst_type>::create_trilinear() const {
                 float res = 0;
                 for_(int i = 0; i < 2; i++)
                 for_(int j = 0; j < 2; j++)
-                for (int k = 0; k < 2; k++)
-                    res += static_cast<float>(src[id.idx[i] * stride_d_
-                                   + ih.idx[j] * stride_h_
-                                   + iw.idx[k] * stride_w_ + innermost_el])
-                            * id.wei[i] * ih.wei[j] * iw.wei[k];
+                for (int k = 0; k < 2; k++) {
+                    const dim_t src_off = id.idx[i] * stride_d_
+                            + ih.idx[j] * stride_h_ + iw.idx[k] * stride_w_
+                            + innermost_el;
+                    const float s = io::load_float_value(src_dt_, src, src_off);
+                    res += s * id.wei[i] * ih.wei[j] * iw.wei[k];
+                }
 
                 if (are_postops_set_
                         && IMPLICATION(preserve_zero_padding,
                                 innermost_el < tail_size_)) {
-                    po_args.dst_val = dst[innermost_el];
-                    ref_post_ops_->execute(res, po_args);
-                    po_args.l_offset++;
+                    ref_post_ops_t::args_t args;
+                    args.dst_val
+                            = io::load_float_value(dst_dt_, dst, innermost_el);
+                    args.ctx = &ctx;
+                    args.l_offset = dst_off + innermost_el;
+                    args.dst_md = pd_->dst_md();
+                    ref_post_ops_->execute(res, args);
                 }
 
-                dst[innermost_el]
-                        = cpu::q10n::saturate_and_round<dst_data_t>(res);
+                io::store_float_value(dst_dt_, res, dst, innermost_el);
             }
         };
     } else {
-        return [&](const src_data_t *diff_dst, dst_data_t *diff_src,
-                       ref_post_ops_t::args_t &po_args, dim_t id, dim_t ih,
-                       dim_t iw, const bool preserve_zero_padding) {
+        return [&](const char *diff_dst, char *diff_src, const exec_ctx_t &ctx,
+                       dim_t dst_off, dim_t id, dim_t ih, dim_t iw,
+                       const bool preserve_zero_padding) {
             const bwd_linear_coeffs_t &d = bwd_linear_coeffs_[id];
             const bwd_linear_coeffs_t &h = bwd_linear_coeffs_[pd_->ID() + ih];
             const bwd_linear_coeffs_t &w
@@ -466,151 +436,28 @@ simple_resampling_kernel_t<src_type, dst_type>::create_trilinear() const {
                 for_(dim_t od = d.start[i]; od < d.end[i]; od++)
                 for_(dim_t oh = h.start[j]; oh < h.end[j]; oh++)
                 for (dim_t ow = w.start[k]; ow < w.end[k]; ow++) {
-                    sum += static_cast<float>(
-                                   diff_dst[od * stride_d_ + oh * stride_h_
-                                           + ow * stride_w_ + innermost_el])
-                            * bwd_linear_weights_[2 * od + i]
+                    const dim_t diff_dst_off = od * stride_d_ + oh * stride_h_
+                            + ow * stride_w_ + innermost_el;
+                    const float dd = io::load_float_value(
+                            dst_dt_, diff_dst, diff_dst_off);
+
+                    sum += dd * bwd_linear_weights_[2 * od + i]
                             * bwd_linear_weights_[2 * (pd_->OD() + oh) + j]
                             * bwd_linear_weights_[2
                                             * (pd_->OD() + pd_->OH() + ow)
                                     + k];
                 }
-                diff_src[innermost_el]
-                        = cpu::q10n::saturate_and_round<dst_data_t>(sum);
+                io::store_float_value(src_dt_, sum, diff_src, innermost_el);
             }
         };
     }
 }
 
-template struct simple_resampling_kernel_t<data_type::f32, data_type::f32>;
-template struct simple_resampling_kernel_t<data_type::f32, data_type::bf16>;
-template struct simple_resampling_kernel_t<data_type::f32, data_type::f16>;
-template struct simple_resampling_kernel_t<data_type::f32, data_type::s32>;
-template struct simple_resampling_kernel_t<data_type::f32, data_type::s8>;
-template struct simple_resampling_kernel_t<data_type::f32, data_type::u8>;
-
-template struct simple_resampling_kernel_t<data_type::bf16, data_type::f32>;
-template struct simple_resampling_kernel_t<data_type::bf16, data_type::bf16>;
-template struct simple_resampling_kernel_t<data_type::bf16, data_type::f16>;
-template struct simple_resampling_kernel_t<data_type::bf16, data_type::s32>;
-template struct simple_resampling_kernel_t<data_type::bf16, data_type::s8>;
-template struct simple_resampling_kernel_t<data_type::bf16, data_type::u8>;
-
-template struct simple_resampling_kernel_t<data_type::f16, data_type::f32>;
-template struct simple_resampling_kernel_t<data_type::f16, data_type::bf16>;
-template struct simple_resampling_kernel_t<data_type::f16, data_type::f16>;
-template struct simple_resampling_kernel_t<data_type::f16, data_type::s32>;
-template struct simple_resampling_kernel_t<data_type::f16, data_type::s8>;
-template struct simple_resampling_kernel_t<data_type::f16, data_type::u8>;
-
-template struct simple_resampling_kernel_t<data_type::s32, data_type::f32>;
-template struct simple_resampling_kernel_t<data_type::s32, data_type::bf16>;
-template struct simple_resampling_kernel_t<data_type::s32, data_type::f16>;
-template struct simple_resampling_kernel_t<data_type::s32, data_type::s32>;
-template struct simple_resampling_kernel_t<data_type::s32, data_type::s8>;
-template struct simple_resampling_kernel_t<data_type::s32, data_type::u8>;
-
-template struct simple_resampling_kernel_t<data_type::s8, data_type::f32>;
-template struct simple_resampling_kernel_t<data_type::s8, data_type::bf16>;
-template struct simple_resampling_kernel_t<data_type::s8, data_type::f16>;
-template struct simple_resampling_kernel_t<data_type::s8, data_type::s32>;
-template struct simple_resampling_kernel_t<data_type::s8, data_type::s8>;
-template struct simple_resampling_kernel_t<data_type::s8, data_type::u8>;
-
-template struct simple_resampling_kernel_t<data_type::u8, data_type::f32>;
-template struct simple_resampling_kernel_t<data_type::u8, data_type::bf16>;
-template struct simple_resampling_kernel_t<data_type::u8, data_type::f16>;
-template struct simple_resampling_kernel_t<data_type::u8, data_type::s32>;
-template struct simple_resampling_kernel_t<data_type::u8, data_type::s8>;
-template struct simple_resampling_kernel_t<data_type::u8, data_type::u8>;
-
-simple_resampling_base_t *create_simple_resampling(const resampling_pd_t *pd,
-        const data_type_t src_dt, const data_type_t dst_dt) {
-    using namespace data_type;
-
-    switch (src_dt) {
-        case f32:
-            switch (dst_dt) {
-                case f32: return new simple_resampling_kernel_t<f32, f32>(pd);
-                case s32: return new simple_resampling_kernel_t<f32, s32>(pd);
-                case bf16: return new simple_resampling_kernel_t<f32, bf16>(pd);
-                case f16: return new simple_resampling_kernel_t<f32, f16>(pd);
-                case s8: return new simple_resampling_kernel_t<f32, s8>(pd);
-                case u8: return new simple_resampling_kernel_t<f32, u8>(pd);
-                default: break;
-            }
-            break;
-        case s32:
-            switch (dst_dt) {
-                case f32: return new simple_resampling_kernel_t<s32, f32>(pd);
-                case s32: return new simple_resampling_kernel_t<s32, s32>(pd);
-                case bf16: return new simple_resampling_kernel_t<s32, bf16>(pd);
-                case f16: return new simple_resampling_kernel_t<s32, f16>(pd);
-                case s8: return new simple_resampling_kernel_t<s32, s8>(pd);
-                case u8: return new simple_resampling_kernel_t<s32, u8>(pd);
-                default: break;
-            }
-            break;
-        case bf16:
-            switch (dst_dt) {
-                case f32: return new simple_resampling_kernel_t<bf16, f32>(pd);
-                case s32: return new simple_resampling_kernel_t<bf16, s32>(pd);
-                case bf16:
-                    return new simple_resampling_kernel_t<bf16, bf16>(pd);
-                case f16: return new simple_resampling_kernel_t<bf16, f16>(pd);
-                case s8: return new simple_resampling_kernel_t<bf16, s8>(pd);
-                case u8: return new simple_resampling_kernel_t<bf16, u8>(pd);
-                default: break;
-            }
-            break;
-        case f16:
-            switch (dst_dt) {
-                case f32: return new simple_resampling_kernel_t<f16, f32>(pd);
-                case s32: return new simple_resampling_kernel_t<f16, s32>(pd);
-                case bf16: return new simple_resampling_kernel_t<f16, bf16>(pd);
-                case f16: return new simple_resampling_kernel_t<f16, f16>(pd);
-                case s8: return new simple_resampling_kernel_t<f16, s8>(pd);
-                case u8: return new simple_resampling_kernel_t<f16, u8>(pd);
-                default: break;
-            }
-            break;
-        case s8:
-            switch (dst_dt) {
-                case f32: return new simple_resampling_kernel_t<s8, f32>(pd);
-                case s32: return new simple_resampling_kernel_t<s8, s32>(pd);
-                case bf16: return new simple_resampling_kernel_t<s8, bf16>(pd);
-                case f16: return new simple_resampling_kernel_t<s8, f16>(pd);
-                case s8: return new simple_resampling_kernel_t<s8, s8>(pd);
-                case u8: return new simple_resampling_kernel_t<s8, u8>(pd);
-                default: break;
-            }
-            break;
-        case u8:
-            switch (dst_dt) {
-                case f32: return new simple_resampling_kernel_t<u8, f32>(pd);
-                case s32: return new simple_resampling_kernel_t<u8, s32>(pd);
-                case bf16: return new simple_resampling_kernel_t<u8, bf16>(pd);
-                case f16: return new simple_resampling_kernel_t<u8, f16>(pd);
-                case s8: return new simple_resampling_kernel_t<u8, s8>(pd);
-                case u8: return new simple_resampling_kernel_t<u8, u8>(pd);
-                default: break;
-            }
-        default: break;
-    }
-
-    assert(!"Unsupported data type combination.");
-    return nullptr;
-}
-
-} // namespace
-
 simple_resampling_fwd_t::simple_resampling_fwd_t(const pd_t *apd)
     : primitive_t(apd), kernel_(nullptr) {}
 
 status_t simple_resampling_fwd_t::init(engine_t *engine) {
-    CHECK(safe_ptr_assign(kernel_,
-            create_simple_resampling(pd(), pd()->src_md()->data_type,
-                    pd()->dst_md()->data_type)));
+    CHECK(safe_ptr_assign(kernel_, new simple_resampling_kernel_t(pd())));
     return kernel_->init();
 }
 
@@ -622,9 +469,7 @@ simple_resampling_bwd_t::simple_resampling_bwd_t(const pd_t *apd)
     : primitive_t(apd), kernel_(nullptr) {}
 
 status_t simple_resampling_bwd_t::init(engine_t *engine) {
-    CHECK(safe_ptr_assign(kernel_,
-            create_simple_resampling(pd(), pd()->diff_dst_md()->data_type,
-                    pd()->diff_src_md()->data_type)));
+    CHECK(safe_ptr_assign(kernel_, new simple_resampling_kernel_t(pd())));
     return kernel_->init();
 }
 

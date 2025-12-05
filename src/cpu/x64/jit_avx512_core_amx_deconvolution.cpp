@@ -37,7 +37,7 @@ using namespace dnnl::impl::utils;
     (pd()->with_groups() ? (d).blk_off((g), __VA_ARGS__) \
                          : (d).blk_off(__VA_ARGS__))
 
-// NOTE: This primitive shares a kernel with bwd/d convolution. Hence, all
+// NOTE: This primitive has identical kernel to bwd/d convolution. Hence, all
 //       parameters stored in `pd()->jcp_` are in terms of bwd/d convolution.
 //       This means that the following parameters have been exchanged:
 //         1. ic <-> oc
@@ -45,21 +45,6 @@ using namespace dnnl::impl::utils;
 //         3. iw <-> ow
 //       The same exchange applies to all derivative values in `pd()->jcp_`
 //       (eg, ic_block <-> oc_block, etc).
-
-void jit_avx512_core_amx_deconvolution_fwd_t::prepare_padded_bias(
-        const char *&bias, const memory_tracking::grantor_t &scratchpad) const {
-    auto &jcp = pd()->jcp_;
-    if (jcp.with_bias && jcp.ic != jcp.ic_without_padding) {
-        const size_t bia_dt_size = jcp.typesize_bia;
-        auto padded_bias = scratchpad.template get<char>(
-                memory_tracking::names::key_conv_padded_bias);
-        utils::array_copy(
-                padded_bias, bias, bia_dt_size * jcp.ic_without_padding);
-        utils::array_set(padded_bias + bia_dt_size * jcp.ic_without_padding,
-                0.f, bia_dt_size * (jcp.ic - jcp.ic_without_padding));
-        bias = padded_bias;
-    }
-}
 
 status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
@@ -72,8 +57,6 @@ status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
     const memory_desc_wrapper dst_d(pd()->dst_md());
-
-    prepare_padded_bias(bias, ctx.get_scratchpad_grantor());
 
     const void *src_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
@@ -109,7 +92,22 @@ status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
     const bool is_1d = jcp.ndims == 3;
     const bool is_3d = jcp.ndims == 5;
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    auto *padded_bias = ctx.get_scratchpad_grantor().template get<char>(
+            memory_tracking::names::key_conv_padded_bias);
+    const bool use_padded_bias
+            = jcp.with_bias && jcp.ic != jcp.ic_without_padding;
+    auto *bias_ptr = use_padded_bias ? padded_bias : bias;
+
+    parallel(1, [=](const int ithr, const int nthr) {
+        if (jcp.with_bias && jcp.ic != jcp.ic_without_padding) {
+            utils::array_copy(
+                    padded_bias, bias, bia_dt_size * jcp.ic_without_padding);
+            utils::array_set(padded_bias + bia_dt_size * jcp.ic_without_padding,
+                    0.f, bia_dt_size * (jcp.ic - jcp.ic_without_padding));
+        }
+    });
+
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
@@ -151,8 +149,9 @@ status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
             assert(IMPLICATION(
                     jcp.ngroups > 1, jcp.oc == jcp.oc_without_padding));
             const int ocb = g * (jcp.is_nspc ? jcp.oc : jcp.nb_oc);
-            auto bias_w = bias ? bias + (bias_d.blk_off(ic) * bia_dt_size)
-                               : nullptr;
+            auto bias_w = bias_ptr
+                    ? bias_ptr + (bias_d.blk_off(ic) * bia_dt_size)
+                    : nullptr;
 
             const int ih_b = ihc * jcp.ih_blk_size;
             const int ih_e = nstl::min(jcp.ih, ih_b + jcp.ih_blk_size);

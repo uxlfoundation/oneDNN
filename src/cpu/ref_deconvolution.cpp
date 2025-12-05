@@ -16,6 +16,7 @@
 
 #include <functional>
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/dnnl_traits.hpp"
 #include "common/math_utils.hpp"
@@ -46,7 +47,7 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_common(const exec_ctx_t &ctx,
     const auto ndims = pd()->desc()->src_desc.ndims;
 
     parallel_nd(MB, G, OC, OD, OH, OW,
-            [&](dim_t mb, dim_t g, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
+            [=](dim_t mb, dim_t g, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
         const dim_t c = g * OC + oc;
         const dim_t off
                 = ref_conv_utils::get_data_off(dst_d, ndims, mb, c, od, oh, ow);
@@ -68,7 +69,7 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_ncdhw(const exec_ctx_t &ctx,
     const auto OC = pd()->OC();
     const auto SP = pd()->OW() * pd()->OH() * pd()->OD();
 
-    parallel_nd(MB, OC, [&](dim_t mb, dim_t oc) {
+    parallel_nd(MB, OC, [=](dim_t mb, dim_t oc) {
         const dim_t off = (mb * OC + oc) * SP;
         float b = io::load_float_value(bias_d.data_type(), bias, oc);
         PRAGMA_OMP_SIMD()
@@ -91,7 +92,7 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_ndhwc(const exec_ctx_t &ctx,
     const auto OC = pd()->OC();
     const auto SP = pd()->OW() * pd()->OH() * pd()->OD();
 
-    parallel_nd(MB, SP, [&](dim_t mb, dim_t sp) {
+    parallel_nd(MB, SP, [=](dim_t mb, dim_t sp) {
         const dim_t off = (mb * SP + sp) * OC;
         PRAGMA_OMP_SIMD()
         for (dim_t oc = 0; oc < OC; ++oc) {
@@ -117,7 +118,7 @@ void ref_deconvolution_fwd_t::compute_fwd_bias_nCdhwXc(const exec_ctx_t &ctx,
     const auto stride_mb = dst_d.blocking_desc().strides[0];
 
     parallel_nd(MB, utils::div_up(OC, blk_size), SP,
-            [&](dim_t mb, dim_t oc_blk, dim_t sp) {
+            [=](dim_t mb, dim_t oc_blk, dim_t sp) {
         const dim_t oc = oc_blk * blk_size;
         const dim_t off = mb * stride_mb + oc * SP + sp * blk_size;
         const dim_t blk = nstl::min(blk_size, OC - oc);
@@ -188,7 +189,7 @@ status_t ref_deconvolution_fwd_t::compute_oscale(
     const auto ndims = pd()->desc()->src_desc.ndims;
 
     parallel_nd(MB, OCP, OD, OH, OW,
-            [&](dim_t mb, int ocp, dim_t od, dim_t oh, dim_t ow) {
+            [=](dim_t mb, int ocp, dim_t od, dim_t oh, dim_t ow) {
         auto dst_off = ref_conv_utils::get_data_off(
                 dst_d, ndims, mb, ocp, od, oh, ow);
         float tmp_result = 0;
@@ -238,7 +239,8 @@ status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
     const auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
 
     parallel_nd(MB, OCP, OD, OH, OW,
-            [&](dim_t mb, int ocp, dim_t od, dim_t oh, dim_t ow) {
+            [= COMPAT_THIS_CAPTURE](
+                    dim_t mb, int ocp, dim_t od, dim_t oh, dim_t ow) {
         auto dst_off = ref_conv_utils::get_data_off(
                 dst_d, ndims, mb, ocp, od, oh, ow);
         float tmp_result = 0;
@@ -313,7 +315,7 @@ static void compute_src_zp_compensation(const exec_ctx_t &ctx,
                 wei_d, with_groups, ndims, g, oc, ic, kd, kh, kw);
     };
 
-    parallel_nd(G, OC, [&](const dim_t g, const dim_t oc) {
+    parallel_nd(G, OC, [=](const dim_t g, const dim_t oc) {
         const auto out_offset = g * OC + oc;
         int32_t acc = 0;
 
@@ -445,7 +447,7 @@ static status_t apply_src_zero_point(const exec_ctx_t &ctx,
             ndims, src_zero_points, is_src_zp_common, wei, pd);
 
     parallel_nd(MB, G, OC, OD, OH, OW,
-            [&](const dim_t mb, const dim_t g, const dim_t oc, const dim_t od,
+            [=](const dim_t mb, const dim_t g, const dim_t oc, const dim_t od,
                     const dim_t oh, const dim_t ow) {
         const auto oc_off = g * OC + oc;
         const auto dst_off = ref_conv_utils::get_data_off(
@@ -496,7 +498,7 @@ status_t ref_deconvolution_fwd_t::execute(const exec_ctx_t &ctx) const {
         void *dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
         const auto dt_size = dst_d.data_type_size();
 
-        parallel(0, [&](const int ithr, const int nthr) {
+        parallel(0, [=](const int ithr, const int nthr) {
             dim_t start {0}, end {0};
             balance211(dst_d.nelems(true), nthr, ithr, start, end);
             auto o_dst_start = (char *)original_dst + start * dt_size;
@@ -578,7 +580,7 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias(
     const auto OD = pd()->OD();
     const auto ndims = pd()->desc()->src_desc.ndims;
 
-    parallel_nd(G, OC, [&](dim_t g, dim_t oc) {
+    parallel_nd(G, OC, [=](dim_t g, dim_t oc) {
         float db = 0;
         for_(dim_t mb = 0; mb < MB; ++mb)
         for_(dim_t od = 0; od < OD; ++od)
@@ -602,7 +604,7 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias_ncdhw(
     const auto MB = pd()->MB();
     const auto SP = pd()->OH() * pd()->OW() * pd()->OD();
 
-    parallel_nd(OC, [&](dim_t oc) {
+    parallel_nd(OC, [=](dim_t oc) {
         float db = 0;
         for (dim_t mb = 0; mb < MB; ++mb) {
             PRAGMA_OMP_SIMD(reduction(+ : db))
@@ -623,7 +625,7 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias_ndhwc(
     const auto SP = pd()->OW() * pd()->OH() * pd()->OD();
     const auto OC = pd()->OC();
 
-    parallel_nd(OC, [&](dim_t oc) {
+    parallel_nd(OC, [=](dim_t oc) {
         float db = 0;
         for (dim_t mb = 0; mb < MB; ++mb) {
             PRAGMA_OMP_SIMD(reduction(+ : db))
@@ -649,7 +651,7 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias_nCdhwXc(
 
     const ptrdiff_t stride_mb = diff_dst_d.blocking_desc().strides[0];
 
-    parallel_nd(utils::div_up(OC, blksize), [&](dim_t ocb) {
+    parallel_nd(utils::div_up(OC, blksize), [=](dim_t ocb) {
         float db[blksize] = {0};
 
         for (dim_t mb = 0; mb < MB; ++mb) {

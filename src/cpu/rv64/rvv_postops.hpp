@@ -23,6 +23,7 @@
 
 #include "common/primitive_desc_iterator.hpp"
 #include "cpu/rv64/rvv_binary.hpp"
+#include "cpu/rv64/rvv_eltwise.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -56,6 +57,9 @@ struct rvv_postops_t {
         post_op_primitives_.clear();
         po_ = local_post_ops;
 
+        const int num_post_ops = local_post_ops.len() - post_op_start_index_;
+        if (num_post_ops > 0) post_op_primitives_.reserve(num_post_ops);
+
         for (int i = post_op_start_index_; i < local_post_ops.len(); i++) {
             auto &po = local_post_ops.entry_[i];
 
@@ -78,6 +82,27 @@ struct rvv_postops_t {
                 std::shared_ptr<primitive_t> bin_prim;
                 CHECK(bin_pd->create_primitive(bin_prim, engine));
                 post_op_primitives_.push_back(bin_prim);
+
+            } else if (po.is_eltwise()) {
+                eltwise_desc_t po_desc;
+                po_desc.primitive_kind = primitive_kind::eltwise;
+                po_desc.prop_kind = prop_kind::forward_inference;
+                po_desc.alg_kind = po.eltwise.alg;
+                po_desc.alpha = po.eltwise.alpha;
+                po_desc.beta = po.eltwise.beta;
+                po_desc.src_desc = dst_md;
+                po_desc.dst_desc = dst_md;
+
+                auto empty_attr = dnnl_primitive_attr();
+                primitive_desc_iterator_t it(engine,
+                        reinterpret_cast<const op_desc_t *>(&po_desc),
+                        &empty_attr, nullptr);
+                if (++it == it.end()) return status::unimplemented;
+
+                std::shared_ptr<primitive_desc_t> elt_pd = *it;
+                std::shared_ptr<primitive_t> elt_prim;
+                CHECK(elt_pd->create_primitive(elt_prim, engine));
+                post_op_primitives_.push_back(elt_prim);
 
             } else {
                 return status::unimplemented;
@@ -102,6 +127,11 @@ struct rvv_postops_t {
         }
     }
 
+    /**
+     * @warning This function is part of the old post-ops integration style
+     * and is kept for compatibility with existing usages (e.g. rvv_matmul).
+     * New post-ops implementations should use the primitive-based `execute` method.
+     */
     inline vfloat32m1_t apply(vfloat32m1_t v, size_t vl) const {
         switch (alg_) {
             case alg_kind::eltwise_relu: {

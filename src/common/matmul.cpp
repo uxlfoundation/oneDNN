@@ -414,10 +414,14 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
 
     const bool with_bias = op_d.bias_desc.ndims != 0;
     const bool with_reduce = op_d.reduce_desc.ndims != 0;
+    const bool is_grouped_memory
+            = memory_desc_wrapper(&op_d.src_desc).is_grouped_desc(); // todo
     const int ndims = dst_desc->ndims;
     VCHECK_MATMUL(ndims >= 2 && ndims <= DNNL_MAX_NDIMS, VERBOSE_BAD_NDIMS,
             "dst", ndims);
-    VCHECK_MATMUL(everyone_is(ndims, src_desc->ndims, weights_desc->ndims),
+    VCHECK_MATMUL(
+            IMPLICATION(!is_grouped_memory,
+                    everyone_is(ndims, src_desc->ndims, weights_desc->ndims)),
             VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "weights",
             src_desc->ndims, weights_desc->ndims);
     VCHECK_MATMUL(IMPLICATION(with_bias, op_d.bias_desc.ndims == ndims),
@@ -426,29 +430,43 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
             VERBOSE_BAD_NDIMS, "reduce", op_d.reduce_desc.ndims);
 
     // check: m, n, k
-    const int m_idx = ndims - 2;
-    const int k_idx_src = m_idx + 1;
-    const int k_idx_wei = m_idx;
-    const int n_idx = ndims - 1;
+    // TODO: temporary hack to accommodate grouped memory layouts
+    int m_idx = 0, m_idx_bias = 0, k_idx_src = 0, k_idx_wei = 0, n_idx_wei = 0,
+        n_idx_dst = 0;
+    if (is_grouped_memory && ndims == 2) {
+        m_idx = 0;
+        m_idx_bias = 1;
+        k_idx_src = 1;
+        k_idx_wei = 1;
+        n_idx_wei = 2;
+        n_idx_dst = 1;
+    } else {
+        m_idx = ndims - 2;
+        m_idx_bias = m_idx;
+        k_idx_src = m_idx + 1;
+        k_idx_wei = m_idx;
+        n_idx_wei = ndims - 1;
+        n_idx_dst = ndims - 1;
+    }
     VCHECK_MATMUL(dst_desc->dims[m_idx] == src_desc->dims[m_idx],
             VERBOSE_INCONSISTENT_DIM, "dst", m_idx, "src", m_idx);
-    VCHECK_MATMUL(dst_desc->dims[n_idx] == weights_desc->dims[n_idx],
-            VERBOSE_INCONSISTENT_DIM, "dst", n_idx, "weights", n_idx);
+    VCHECK_MATMUL(dst_desc->dims[n_idx_dst] == weights_desc->dims[n_idx_wei],
+            VERBOSE_INCONSISTENT_DIM, "dst", n_idx_dst, "weights", n_idx_wei);
     VCHECK_MATMUL(src_desc->dims[k_idx_src] == weights_desc->dims[k_idx_wei],
             VERBOSE_INCONSISTENT_DIM, "src", k_idx_src, "weights", k_idx_wei);
     VCHECK_MATMUL(IMPLICATION(with_bias,
-                          one_of(op_d.bias_desc.dims[n_idx], 1,
-                                  dst_desc->dims[n_idx])),
-            VERBOSE_INCONSISTENT_DIM, "bias", n_idx, "dst", n_idx);
+                          one_of(op_d.bias_desc.dims[n_idx_dst], 1,
+                                  dst_desc->dims[n_idx_dst])),
+            VERBOSE_INCONSISTENT_DIM, "bias", n_idx_dst, "dst", n_idx_dst);
     VCHECK_MATMUL(IMPLICATION(with_bias,
-                          one_of(op_d.bias_desc.dims[m_idx], 1,
-                                  dst_desc->dims[m_idx])),
-            VERBOSE_INCONSISTENT_DIM, "bias", m_idx, "dst", m_idx);
+                          one_of(op_d.bias_desc.dims[m_idx_bias], 1,
+                                  dst_desc->dims[m_idx_bias])),
+            VERBOSE_INCONSISTENT_DIM, "bias", m_idx_bias, "dst", m_idx_bias);
 
     VCHECK_MATMUL(IMPLICATION(with_reduce,
-                          one_of(op_d.reduce_desc.dims[n_idx], 1,
-                                  dst_desc->dims[n_idx])),
-            VERBOSE_INCONSISTENT_DIM, "reduce", n_idx, "dst", n_idx);
+                          one_of(op_d.reduce_desc.dims[n_idx_wei], 1,
+                                  dst_desc->dims[n_idx_wei])),
+            VERBOSE_INCONSISTENT_DIM, "reduce", n_idx_wei, "dst", n_idx_wei);
     VCHECK_MATMUL(IMPLICATION(with_reduce,
                           one_of(op_d.reduce_desc.dims[m_idx], 1,
                                   dst_desc->dims[m_idx])),

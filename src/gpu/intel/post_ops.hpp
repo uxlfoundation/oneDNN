@@ -155,9 +155,10 @@ struct relative_idx_t {
         return name;
     }
 
+    constexpr int as_int() const { return value_; }
+
 protected:
     friend struct relative_md_t;
-    constexpr int as_int() const { return value_; }
 
 private:
     int8_t value_ = -1;

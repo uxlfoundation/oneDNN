@@ -222,19 +222,6 @@ private:
     PReg ld_full_mask = PReg(2);
     PReg ld_tail_mask = PReg(3);
 
-    void add_vl_or_imm(XReg dst, XReg src, int offset) {
-        // If offset is a multiple of the vector length and
-        // offset / vector_length is compatible with addvl
-        // use the addvl instruction. Refer to https://developer.arm.com/documentation/ddi0596/2021-03/SVE-Instructions/ADDVL--Add-multiple-of-vector-register-size-to-scalar-register-
-        // for details.
-        if ((offset % cpu_sveLen == 0)
-                && (offset / static_cast<int>(cpu_sveLen) >= -32)
-                && (offset / cpu_sveLen <= 31))
-            addvl(dst, src, offset / cpu_sveLen);
-        else
-            add_imm(dst, src, offset, X_TMP_0);
-    }
-
     ZReg accm(int ld_block, int bd, int ld) const {
         return ZReg(max_effective_vregs - 1 - (bd * ld_block + ld));
     }
@@ -713,7 +700,7 @@ void jit_brgemm_kernel_t::zero_accumulators(int bd_block2, bool is_bdb_tail,
             const int offset = C_offset(bd, ld);
 
             if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
-                add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset);
+                add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset, X_TMP_0);
                 base_offset = offset;
                 x_addr = reg_tmp_;
             }
@@ -983,7 +970,7 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
             const int offset = D_offset(bd, ld);
             if (!use_mul_vl(offset - base_offset,
                         types::data_type_size(brg.dt_d), cpu_sveLen)) {
-                add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset);
+                add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset, X_TMP_0);
                 base_offset = offset;
                 x_addr = reg_tmp_;
             }
@@ -1128,7 +1115,7 @@ void jit_brgemm_kernel_t::store_accumulators_without_post_ops(
             const int offset = C_offset(bd, ld);
 
             if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
-                add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset);
+                add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset, X_TMP_0);
                 base_offset = offset;
                 x_addr = reg_tmp_;
             }
@@ -1392,7 +1379,7 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             auto offset_ = offset - base_offset;
             // The ld1rw immediate must be <=252 and a multiple of 4
             // refer to https://developer.arm.com/documentation/ddi0602/2025-09/SVE-Instructions/LD1RW--Load-and-broadcast-unsigned-word-to-vector-
-            if (offset_ > 252 || offset_ % 4 != 0) {
+            if (offset_ < 0 || offset_ > 252 || offset_ % 4 != 0) {
                 add_imm(X_TMP_2, X_TMP_2, offset_, X_TMP_0);
                 base_offset += offset_;
                 offset_ = 0;
@@ -1440,7 +1427,7 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                     auto vmm = accm(ld_block2, bd, ld);
                     if (is_emdbd) {
                         // The ld1rw immediate must be <=252 and a multiple of 4
-                        if (A_offset(bd, rd) <= 252
+                        if (A_offset(bd, rd) >= 0 && A_offset(bd, rd) <= 252
                                 && A_offset(bd, rd) % 4 == 0) {
                             ld1rw(load().s, mask / T_z,
                                     ptr(reg_aux_A, A_offset(bd, rd)));
@@ -1468,7 +1455,8 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                 } else {
                     const int offset = B_offset(ld, rd);
                     if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
-                        add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset);
+                        add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset,
+                                X_TMP_0);
                         base_offset = offset;
                         x_addr = reg_tmp_;
                     }
@@ -1494,7 +1482,7 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                     auto zmm = accm(ld_block2, bd, ld);
                     if (is_emdbd) {
                         // The ld1rw immediate must be <= 252 and a multiple of 4
-                        if (A_offset(bd, rd) <= 252
+                        if (A_offset(bd, rd) >= 0 && A_offset(bd, rd) <= 252
                                 && A_offset(bd, rd) % 4 == 0) {
                             ld1rw(z_tmp_1().s, P_ALL_ONE / T_z,
                                     ptr(reg_aux_A, A_offset(bd, rd)));
@@ -1543,8 +1531,8 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                 gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
                         is_ld_tail, vpad, rows_for_rd_tail);
 
-                add_vl_or_imm(reg_aux_A, reg_aux_A, rdb_A_offset());
-                add_vl_or_imm(reg_aux_B, reg_aux_B, rdb_B_offset());
+                add_vl_or_imm(reg_aux_A, reg_aux_A, rdb_A_offset(), X_TMP_0);
+                add_vl_or_imm(reg_aux_B, reg_aux_B, rdb_B_offset(), X_TMP_0);
 
                 subs(reg_rdb_loop, reg_rdb_loop, 1);
             }

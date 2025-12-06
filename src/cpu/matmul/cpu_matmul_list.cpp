@@ -21,6 +21,7 @@
 #include "cpu/matmul/gemm_bf16_matmul.hpp"
 #include "cpu/matmul/gemm_f32_matmul.hpp"
 #include "cpu/matmul/gemm_x8s8s32x_matmul.hpp"
+#include "cpu/matmul/ref_grouped_gemm.hpp"
 #include "cpu/matmul/ref_matmul.hpp"
 #include "cpu/matmul/ref_matmul_int8.hpp"
 #include "cpu/matmul/ref_sparse_matmul.hpp"
@@ -88,6 +89,7 @@ constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         CPU_INSTANCE(ref_matmul_int8_t)
         CPU_INSTANCE_X64(jit_uni_sparse_matmul_t)
         CPU_INSTANCE(ref_sparse_matmul_t)
+        CPU_INSTANCE(ref_grouped_gemm_t)
         /* eol */
         nullptr,
 });

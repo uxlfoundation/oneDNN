@@ -201,7 +201,7 @@ TEST_P(sycl_memory_usm_test_t, HostScalarConstructor) {
 }
 
 /// This test checks if passing system allocated memory(e.g. using malloc)
-/// will throw if passed into the make_memory
+/// will throw if passed into the make_memory, unless shared system USM is supported
 TEST_P(sycl_memory_usm_test_t, ErrorMakeMemoryUsingSystemMemory) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
@@ -221,8 +221,9 @@ TEST_P(sycl_memory_usm_test_t, ErrorMakeMemoryUsingSystemMemory) {
             GTEST_FAIL() << "Failed to create a device from the engine.";
     }
     if (device.has(::sycl::aspect::usm_system_allocations)) {
-        memory mem = sycl_interop::make_memory(
-                mem_d, eng, sycl_interop::memory_kind::usm, system_buf.data());
+        EXPECT_NO_THROW(
+                memory mem = sycl_interop::make_memory(mem_d, eng,
+                        sycl_interop::memory_kind::usm, system_buf.data()));
     } else {
         EXPECT_THROW(memory mem = sycl_interop::make_memory(mem_d, eng,
                              sycl_interop::memory_kind::usm, system_buf.data()),
@@ -231,7 +232,7 @@ TEST_P(sycl_memory_usm_test_t, ErrorMakeMemoryUsingSystemMemory) {
 }
 
 /// This test checks if passing system allocated memory(e.g. using malloc)
-/// will throw if passed into the make_memory
+/// will throw if passed into the make_memory, unless shared system USM is supported
 TEST_P(sycl_memory_usm_test_t, ErrorMemoryConstructorUsingSystemMemory) {
     engine::kind eng_kind = GetParam();
     SKIP_IF(engine::get_count(eng_kind) == 0, "Engine not found.");
@@ -251,7 +252,7 @@ TEST_P(sycl_memory_usm_test_t, ErrorMemoryConstructorUsingSystemMemory) {
             GTEST_FAIL() << "Failed to create a device from the engine.";
     }
     if (device.has(::sycl::aspect::usm_system_allocations)) {
-        memory mem(mem_d, eng, system_buf.data());
+        EXPECT_NO_THROW(memory mem(mem_d, eng, system_buf.data()));
     } else {
         EXPECT_THROW(memory mem(mem_d, eng, system_buf.data()), dnnl::error);
     }

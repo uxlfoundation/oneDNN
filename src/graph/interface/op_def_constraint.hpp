@@ -57,6 +57,8 @@ bool check_quant_dequant_scales_zps(const op_t *n);
 bool check_dyn_quant_dequant_scales_zps(const op_t *n);
 
 bool check_maxpool_dilations(const op_t *n);
+
+bool check_rmsn_data_type(const op_t *n);
 } // namespace graph
 } // namespace impl
 } // namespace dnnl

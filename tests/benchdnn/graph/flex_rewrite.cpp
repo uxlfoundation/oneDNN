@@ -502,6 +502,7 @@ int flex_rewrite_t::infer_output_shape(
             case dnnl::graph::op::kind::ReLU:
             case dnnl::graph::op::kind::ReLUBackward:
             case dnnl::graph::op::kind::Reorder:
+            case dnnl::graph::op::kind::RMSNorm:
             case dnnl::graph::op::kind::Round:
             case dnnl::graph::op::kind::Sigmoid:
             case dnnl::graph::op::kind::SigmoidBackward:

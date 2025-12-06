@@ -444,6 +444,7 @@ public:
             CASE(ReLUBackward);
             CASE(Reorder);
             CASE(Round);
+            CASE(RMSNorm);
             CASE(Select);
             CASE(Sigmoid);
             CASE(SigmoidBackward);

@@ -1336,6 +1336,28 @@ DNNL_GRAPH_OP_SCHEMA(Reciprocal, 1,
                         "T", {data_type::f32, data_type::bf16, data_type::f16})
                 .set_shape_inference_function(infer_identity_output_shape))
 
+DNNL_GRAPH_OP_SCHEMA(RMSNorm, 1,
+        op_schema_t()
+                .set_inputs_option(op_schema_t::param_num_option::optional)
+                .set_num_inputs(std::set<size_t>({1, 2}))
+                .set_outputs_option(op_schema_t::param_num_option::optional)
+                .set_num_outputs(std::set<size_t>({1, 2}))
+                .set_input(0, "src", "T1")
+                .set_input(1, "gamma", "T2")
+                .set_output(0, "dst", "T1")
+                .set_output(1, "rrms", "T3")
+                .set_attr(op_attr::begin_norm_axis, false, attribute_kind::i,
+                        int64_t(-1))
+                .set_attr(op_attr::epsilon, false, attribute_kind::f, 1e-5f)
+                .set_type_constraints(
+                        "T1", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_type_constraints(
+                        "T2", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_type_constraints(
+                        "T3", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_shape_inference_function(infer_norm_output_shape)
+                .set_op_def_constraint_function(check_rmsn_data_type))
+
 } // namespace graph
 } // namespace impl
 } // namespace dnnl

@@ -144,9 +144,9 @@ struct cudnn_matmul_exec_t final : cudnn_matmul_base_exec_t {
 
             auto arg_bias_scratch = params->reorder_scratch_size_ != 0
                     ? CTX_SCRATCH_SYCL_MEMORY(
-                            memory_tracking::names::key_matmul_dst_in_acc_dt)
+                              memory_tracking::names::key_matmul_dst_in_acc_dt)
                     : xpu::sycl::interop_memory_arg_t<
-                            ::sycl::access::mode::read_write>();
+                              ::sycl::access::mode::read_write>();
 
             auto arg_src_scale
                     = CTX_IN_SYCL_MEMORY(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
@@ -357,30 +357,30 @@ struct cudnn_matmul_lt_exec_t final : public cudnn_matmul_lt_base_exec_t {
             auto arg_dst_scale
                     = CTX_IN_SYCL_MEMORY(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
             auto arg_algo_scratch = params->algo_scratch_size_ != 0
-                    ? CTX_SCRATCH_SYCL_MEMORY(
-                            memory_tracking::names::key_matmul_lt_algo_scratch)
+                    ? CTX_SCRATCH_SYCL_MEMORY(memory_tracking::names::
+                                      key_matmul_lt_algo_scratch)
                     : xpu::sycl::interop_memory_arg_t<
-                            ::sycl::access::mode::read_write>();
+                              ::sycl::access::mode::read_write>();
             auto arg_bias_scratch = params->reorder_scratch_size_ != 0
                     ? CTX_SCRATCH_SYCL_MEMORY(
-                            memory_tracking::names::key_matmul_dst_in_acc_dt)
+                              memory_tracking::names::key_matmul_dst_in_acc_dt)
                     : xpu::sycl::interop_memory_arg_t<
-                            ::sycl::access::mode::read_write>();
+                              ::sycl::access::mode::read_write>();
             auto arg_block_a_scratch = params->weight_size_ != 0
                     ? CTX_SCRATCH_SYCL_MEMORY(
-                            memory_tracking::names::key_gemm_blocked_a)
+                              memory_tracking::names::key_gemm_blocked_a)
                     : xpu::sycl::interop_memory_arg_t<
-                            ::sycl::access::mode::read_write>();
+                              ::sycl::access::mode::read_write>();
             auto arg_block_b_scratch = params->source_size_ != 0
                     ? CTX_SCRATCH_SYCL_MEMORY(
-                            memory_tracking::names::key_gemm_blocked_b)
+                              memory_tracking::names::key_gemm_blocked_b)
                     : xpu::sycl::interop_memory_arg_t<
-                            ::sycl::access::mode::read_write>();
+                              ::sycl::access::mode::read_write>();
             auto arg_block_c_scratch = params->dest_size_ != 0
                     ? CTX_SCRATCH_SYCL_MEMORY(
-                            memory_tracking::names::key_matmul_lt_block_c)
+                              memory_tracking::names::key_matmul_lt_block_c)
                     : xpu::sycl::interop_memory_arg_t<
-                            ::sycl::access::mode::read_write>();
+                              ::sycl::access::mode::read_write>();
 
             interop_task(matmul_impl_, params, engine, cgh, cuda_stream, arg_wt,
                     arg_src, arg_dst, arg_bias, arg_algo_scratch,

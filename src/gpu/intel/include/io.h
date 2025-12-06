@@ -97,28 +97,28 @@ DECLARE_AS_BLOCK(double)
 #undef DECLARE_AS_STRUCT_BLOCK
 
 #define DEF_load(dst_dt, src_dt) \
-    void __attribute__((overloadable)) \
-            load(__private dst_dt *dst, __global const src_dt *val) { \
+    void __attribute__((overloadable)) load( \
+            __private dst_dt *dst, __global const src_dt *val) { \
         *dst = CONCAT2(into_, dst_dt)(*val); \
     } \
-    dst_dt __attribute__((overloadable, warn_unused_result)) \
-            load(dst_dt dst, __global const src_dt *val) { \
+    dst_dt __attribute__((overloadable, warn_unused_result)) load( \
+            dst_dt dst, __global const src_dt *val) { \
         return CONCAT2(into_, dst_dt)(*val); \
     } \
     void __attribute__((overloadable)) load( \
             __private dst_dt *dst, __global const src_dt *val, off_t off) { \
         *dst = CONCAT2(into_, dst_dt)(val[off]); \
     } \
-    dst_dt __attribute__((overloadable, warn_unused_result)) \
-            load(dst_dt dst, __global const src_dt *val, off_t off) { \
+    dst_dt __attribute__((overloadable, warn_unused_result)) load( \
+            dst_dt dst, __global const src_dt *val, off_t off) { \
         return CONCAT2(into_, dst_dt)(val[off]); \
     } \
-    void __attribute__((overloadable)) \
-            load(__private dst_dt *dst, __private const src_dt *val) { \
+    void __attribute__((overloadable)) load( \
+            __private dst_dt *dst, __private const src_dt *val) { \
         *dst = CONCAT2(into_, dst_dt)(*val); \
     } \
-    dst_dt __attribute__((overloadable, warn_unused_result)) \
-            load(dst_dt dst, __private const src_dt *val) { \
+    dst_dt __attribute__((overloadable, warn_unused_result)) load( \
+            dst_dt dst, __private const src_dt *val) { \
         return CONCAT2(into_, dst_dt)(*val); \
     } \
     __attribute__((overloadable)) void block_load( \
@@ -180,8 +180,8 @@ DECLARE_AS_BLOCK(double)
     }
 
 #define DEF_load_half_byte(dst_dt, src_dt) \
-    dst_dt __attribute__((overloadable, warn_unused_result)) \
-            load(dst_dt dst, __global const src_dt *val, off_t off) { \
+    dst_dt __attribute__((overloadable, warn_unused_result)) load( \
+            dst_dt dst, __global const src_dt *val, off_t off) { \
         src_dt data = CONCAT2(as_, src_dt)( \
                 get_half_byte((__global const uchar *)val, off)); \
         return CONCAT2(into_, dst_dt)(data); \
@@ -192,20 +192,20 @@ DECLARE_AS_BLOCK(double)
     }
 
 #define DEF_write(dst_dt, src_dt) \
-    void __attribute__((overloadable)) \
-            write(__global dst_dt *dst, __private const src_dt *val) { \
+    void __attribute__((overloadable)) write( \
+            __global dst_dt *dst, __private const src_dt *val) { \
         *dst = CONCAT2(into_, dst_dt)(*val); \
     } \
-    void __attribute__((overloadable)) \
-            write(__global dst_dt *dst, __private src_dt val) { \
+    void __attribute__((overloadable)) write( \
+            __global dst_dt *dst, __private src_dt val) { \
         *dst = CONCAT2(into_, dst_dt)(val); \
     } \
-    void __attribute__((overloadable)) \
-            write(__private dst_dt *dst, __private const src_dt *val) { \
+    void __attribute__((overloadable)) write( \
+            __private dst_dt *dst, __private const src_dt *val) { \
         *dst = CONCAT2(into_, dst_dt)(*val); \
     } \
-    void __attribute__((overloadable)) \
-            write(__private dst_dt *dst, __private src_dt val) { \
+    void __attribute__((overloadable)) write( \
+            __private dst_dt *dst, __private src_dt val) { \
         *dst = CONCAT2(into_, dst_dt)(val); \
     } \
     __attribute__((overloadable)) void block_write( \

@@ -275,18 +275,18 @@ protected:
                 p.formats.src_format);
         auto c_diff_weights_desc = cd.ng > 1
                 ? create_md({cd.ng, cd.oc / cd.ng, cd.ic / cd.ng, cd.kh, cd.kw},
-                        data_type_diff_weights, p.formats.weights_format)
+                          data_type_diff_weights, p.formats.weights_format)
                 : create_md({cd.oc, cd.ic, cd.kh, cd.kw},
-                        data_type_diff_weights, p.formats.weights_format);
+                          data_type_diff_weights, p.formats.weights_format);
         auto c_diff_bias_desc = create_md(
                 {cd.oc}, data_type_diff_bias, p.formats.bias_format);
         auto c_diff_dst_desc = create_md({cd.mb, cd.oc, cd.oh, cd.ow},
                 data_type_diff_dst, p.formats.dst_format);
         auto c_weights_desc_f = cd.ng > 1
                 ? create_md({cd.ng, cd.oc / cd.ng, cd.ic / cd.ng, cd.kh, cd.kw},
-                        data_type_diff_dst, p.formats.weights_format)
+                          data_type_diff_dst, p.formats.weights_format)
                 : create_md({cd.oc, cd.ic, cd.kh, cd.kw}, data_type_diff_dst,
-                        p.formats.weights_format);
+                          p.formats.weights_format);
         auto c_dst_desc_f = create_md({cd.mb, cd.oc, cd.oh, cd.ow},
                 data_type_diff_weights, p.formats.dst_format);
         auto c_src = test_memory(c_src_desc, eng);

@@ -31,7 +31,8 @@ public:
     virtual status_t init(const reorder_pd_t *pd) = 0;
 
     virtual void execute(miopenHandle_t handle, void *src, void *dst,
-            void *src_scale, void *dst_scale) const = 0;
+            void *src_scale, void *dst_scale) const
+            = 0;
 
     virtual ~miopen_reorder_generic_t() {
         MIOPEN_EXECUTE_FUNC_V(miopenDestroyTensorDescriptor, src_desc_);

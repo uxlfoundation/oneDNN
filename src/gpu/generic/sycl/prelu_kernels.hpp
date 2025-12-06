@@ -157,11 +157,11 @@ struct prelu_bwd_kernel_vec_t {
         , diff_dst_(CTX_IN_SYCL_KERNEL_MEMORY(DNNL_ARG_DIFF_DST))
         , scratchpad_(reduce_diff_weights
                           ? utils::downcast<
-                                  const xpu::sycl::memory_storage_base_t *>(
-                                  scratch_mem->memory_storage())
+                                    const xpu::sycl::memory_storage_base_t *>(
+                                    scratch_mem->memory_storage())
                                     ->get_out_memory_arg(ctx.stream(), cgh)
                           : xpu::sycl::memory_storage_base_t::
-                                  empty_out_memory_arg(ctx.stream(), cgh)) {}
+                                    empty_out_memory_arg(ctx.stream(), cgh)) {}
 
     void operator()(::sycl::nd_item<1> item) const {
         memory_tensor_t data_mem(data_, conf_.data_md);

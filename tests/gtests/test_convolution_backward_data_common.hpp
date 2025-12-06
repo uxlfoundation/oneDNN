@@ -70,9 +70,9 @@ void compute_ref_conv_bwd_data(const test_convolution_sizes_t &c,
                                         + oc * padded_ic / c.ng * c.kh * c.kw
                                         + ic * c.kh * c.kw + kh * c.kw + kw;
 
-                                a += (data_t_acc)(
-                                        diff_dst_data[diff_dst_mdw.off_l(
-                                                didx, true)]
+                                a += (data_t_acc)(diff_dst_data
+                                                          [diff_dst_mdw.off_l(
+                                                                  didx, true)]
                                         * weights_data[weights_mdw.off_l(
                                                 widx, true)]);
                             }
@@ -231,9 +231,9 @@ protected:
                 data_type_diff_src, p.formats.src_format);
         auto c_weights_desc = cd.ng > 1
                 ? create_md({cd.ng, cd.oc / cd.ng, cd.ic / cd.ng, cd.kh, cd.kw},
-                        data_type_wei, p.formats.weights_format)
+                          data_type_wei, p.formats.weights_format)
                 : create_md({cd.oc, cd.ic, cd.kh, cd.kw}, data_type_wei,
-                        p.formats.weights_format);
+                          p.formats.weights_format);
         auto c_dst_desc = create_md({cd.mb, cd.oc, cd.oh, cd.ow},
                 data_type_diff_dst, p.formats.dst_format);
         auto c_src_desc_f = create_md({cd.mb, cd.ic, cd.ih, cd.iw},

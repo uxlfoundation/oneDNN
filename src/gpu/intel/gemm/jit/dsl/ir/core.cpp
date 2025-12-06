@@ -295,7 +295,9 @@ stmt_t stmt_seq_t::make(const std::vector<stmt_t> &_vec) {
 }
 
 #define DECL_TRAVERSE_LEAF(name) \
-    object_t ir_mutator_t::_mutate(const name &obj) { return obj; } \
+    object_t ir_mutator_t::_mutate(const name &obj) { \
+        return obj; \
+    } \
     void ir_visitor_t::_visit(const name &obj) {}
 
 DECL_TRAVERSE_LEAF(bool_imm_t)

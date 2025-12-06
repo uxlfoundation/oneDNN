@@ -92,7 +92,8 @@ struct cudnn_conv_inner_product_impl_base_t
     }
 
     virtual void execute(cudnnHandle_t handle, cublasHandle_t,
-            const std::vector<void *> &args) const = 0;
+            const std::vector<void *> &args) const
+            = 0;
 };
 
 struct cudnn_conv_inner_product_fwd_impl_t

@@ -129,7 +129,7 @@ DEFINE_BINARY_OPERATOR(^, op_kind_t::_xor)
 #undef DEFINE_BINARY_OPERATOR
 
 #define DEFINE_BINARY_ASSIGN_OPERATOR(op) \
-    expr_t &expr_t::operator op##=(const expr_t &rhs) { \
+    expr_t &expr_t::operator op##=(const expr_t & rhs) { \
         auto tmp = (*this)op rhs; \
         *this = std::move(tmp); \
         return *this; \

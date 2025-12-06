@@ -85,7 +85,7 @@ struct convolution_kernel_fwd_t {
 
         float sm_weights = (conf_.do_scale_weights && conf_.single_weight_scale
                         ? load_float_value(
-                                scales_weights_dt_, weights_scale_ptr(), 0)
+                                  scales_weights_dt_, weights_scale_ptr(), 0)
                         : 1.f);
 
         const float sm_dst = (conf_.do_scale_dst
@@ -339,7 +339,7 @@ struct convolution_kernel_bwd_data_t {
 
         float sm_weights = (conf_.do_scale_weights && conf_.single_weight_scale
                         ? load_float_value(
-                                scales_weights_dt_, weights_scale_ptr(), 0)
+                                  scales_weights_dt_, weights_scale_ptr(), 0)
                         : 1.f);
 
         const float sm_dst = (conf_.do_scale_dst

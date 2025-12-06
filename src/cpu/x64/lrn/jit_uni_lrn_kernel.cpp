@@ -53,11 +53,12 @@ jit_uni_lrn_kernel_t<Derived<isa, d_type>>::jit_uni_lrn_kernel_t(
     : jit_generator_t(name, isa)
     , emulate_bfloat_(d_type == data_type::bf16 && !mayiuse(avx512_core_bf16)
               && is_superset(isa, avx512_core))
-    , bf16_emu_(
-              emulate_bfloat_ ? utils::make_unique<bf16_emulation_t>(this,
-                      bf16_emu_reserv_1_, bf16_emu_reserv_2_,
-                      bf16_emu_reserv_3_, bf16_emu_scratch_, bf16_emu_reserv_4_)
-                              : nullptr)
+    , bf16_emu_(emulate_bfloat_
+                      ? utils::make_unique<bf16_emulation_t>(this,
+                                bf16_emu_reserv_1_, bf16_emu_reserv_2_,
+                                bf16_emu_reserv_3_, bf16_emu_scratch_,
+                                bf16_emu_reserv_4_)
+                      : nullptr)
     , io_(this, get_io_isa(isa, d_type), {d_type}, {},
               io::io_tail_conf_t {simd_w_, 0, this->k1, 0, this->reg_tmp_},
               io::io_emu_bf16_conf_t {bf16_emu_reserv_1_, bf16_emu_reserv_2_,

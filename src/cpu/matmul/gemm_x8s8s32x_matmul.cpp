@@ -275,12 +275,12 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const bool use_single_gemm_call = pd()->has_runtime_dims_or_strides()
             ? helper.use_single_gemm_call_optimization(po)
             : ((platform::is_ppc64() && ndims == 2)
-                    || params.use_single_gemm_call_optimization_);
+                      || params.use_single_gemm_call_optimization_);
     bool dst_is_acc = params.dst_is_acc_;
     int32_t *acc = dst_is_acc
             ? reinterpret_cast<int32_t *>(dst)
             : ctx.get_scratchpad_grantor().template get<int32_t>(
-                    memory_tracking::names::key_matmul_dst_in_acc_dt);
+                      memory_tracking::names::key_matmul_dst_in_acc_dt);
     // case: dynamic sizes
     bool need_free_acc = false;
     if (acc == nullptr) {
@@ -442,7 +442,7 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                     const size_t dst_logical_off = i_work;
                     const size_t dim1_off = helper.ndims() > 3
                             ? ((cur_b % batch_without_dim0)
-                                    / batch_without_dim01)
+                                      / batch_without_dim01)
                             : cur_m;
                     // offset for case with post-op broadcast_channel
                     const size_t matrix_per_first_batch_off = helper.ndims() > 3

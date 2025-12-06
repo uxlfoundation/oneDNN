@@ -49,15 +49,15 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
             = has_dst_scale ? 1.f / dst_scales.get_f32_elem(0) : 1.f;
     const int src_scale_mask = has_src_scale
             ? prb->attr.scales.get_mask(DNNL_ARG_SRC, dnnl_convolution,
-                    src_m.ndims(), prb->has_groups)
+                      src_m.ndims(), prb->has_groups)
             : 0;
     const int wei_scale_mask = has_wei_scale
             ? prb->attr.scales.get_mask(DNNL_ARG_WEIGHTS, dnnl_convolution,
-                    wei_m.ndims(), prb->has_groups)
+                      wei_m.ndims(), prb->has_groups)
             : 0;
     const int dst_scale_mask = has_dst_scale
             ? prb->attr.scales.get_mask(DNNL_ARG_DST, dnnl_convolution,
-                    dst_m.ndims(), prb->has_groups)
+                      dst_m.ndims(), prb->has_groups)
             : 0;
 
     assert(IMPLICATION(
@@ -71,18 +71,18 @@ void compute_ref_direct_fwd(const prb_t *prb, const args_t &args) {
     const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
     const int src_zp_mask = has_src_zp
             ? attr_t::get_default_mask(
-                    prb->attr.zero_points.get(DNNL_ARG_SRC).policy,
-                    src_m.ndims())
+                      prb->attr.zero_points.get(DNNL_ARG_SRC).policy,
+                      src_m.ndims())
             : 0;
     const int wei_zp_mask = has_wei_zp
             ? attr_t::get_default_mask(
-                    prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy,
-                    wei_m.ndims())
+                      prb->attr.zero_points.get(DNNL_ARG_WEIGHTS).policy,
+                      wei_m.ndims())
             : 0;
     const int dst_zp_mask = has_dst_zp
             ? attr_t::get_default_mask(
-                    prb->attr.zero_points.get(DNNL_ARG_DST).policy,
-                    dst_m.ndims())
+                      prb->attr.zero_points.get(DNNL_ARG_DST).policy,
+                      dst_m.ndims())
             : 0;
 
     /* help compiler optimize the code */
@@ -311,9 +311,10 @@ void compute_ref_direct_bwd_d(const prb_t *prb, const args_t &args) {
                                 = ((oc * OD + od) * OH + oh) * OW + ow;
                         const int64_t wei_off
                                 = ((oc * ICG * KD + kd) * KH + kh) * KW + kw;
-                        int src_zp = has_src_zp ? src_zps.get_elem(
-                                             src_zp_mask > 0 ? g * OCG + oc : 0)
-                                                : 0;
+                        int src_zp = has_src_zp
+                                ? src_zps.get_elem(
+                                          src_zp_mask > 0 ? g * OCG + oc : 0)
+                                : 0;
                         float diff_dst_val
                                 = (diff_dst_loc[diff_dst_off] - src_zp)
                                 * src_scale;

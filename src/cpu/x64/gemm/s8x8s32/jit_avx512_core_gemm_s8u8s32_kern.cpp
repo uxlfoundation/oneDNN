@@ -488,7 +488,7 @@ void jit_avx512_core_gemm_s8u8s32_kern_t::generate() {
 jit_avx512_core_gemm_s8u8s32_kern_t::jit_avx512_core_gemm_s8u8s32_kern_t(
         bool beta_zero, bool enable_offset_c, bool enable_offset_r)
     : jit_generator_t(jit_name(),
-            mayiuse(avx512_core_vnni) ? avx512_core_vnni : avx512_core)
+              mayiuse(avx512_core_vnni) ? avx512_core_vnni : avx512_core)
     , beta_zero_(beta_zero)
     , enable_offset_c_(enable_offset_c)
     , enable_offset_r_(enable_offset_r)

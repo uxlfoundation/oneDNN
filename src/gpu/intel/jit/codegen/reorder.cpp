@@ -261,8 +261,8 @@ void reorder_2d_impl_t::tile_to_2d_dims(
 }
 
 auto reorder_2d_impl_t::find_min_cost_path(ngen::HW hw, const layout_t &src,
-        const layout_t &dst, dim_t tile_a, dim_t tile_b)
-        -> std::vector<reorder_step_t> {
+        const layout_t &dst, dim_t tile_a,
+        dim_t tile_b) -> std::vector<reorder_step_t> {
     // Create all possible edges - 2D reorders.
     std::vector<edge_t> edges;
     for (int a = 1; a <= tile_a; a *= 2) {

@@ -46,7 +46,8 @@ public:
     virtual void set_split(int factor) = 0;
     virtual int split_factor() const = 0;
     virtual int estimate_regs(
-            bool with_buffer, bool with_headers, bool reuse_headers) const = 0;
+            bool with_buffer, bool with_headers, bool reuse_headers) const
+            = 0;
     virtual std::string str(const std::string &tag) const = 0;
 
     int estimate_regs(bool with_buffer, bool with_headers) const {
@@ -103,7 +104,8 @@ protected:
 private:
     virtual const layout_t &message_layout() const { return reg_layout(); }
     virtual stmt_t do_create_stmt(const expr_t &mem_buf, const expr_t &reg_buf,
-            int subtile_idx, const expr_t &pattern) const = 0;
+            int subtile_idx, const expr_t &pattern) const
+            = 0;
 };
 
 send_op_t to_2d(send_op_t op) {
@@ -578,18 +580,13 @@ public:
     std::string str(const std::string &indent = {}) const {
         ostringstream_t oss;
         oss << indent << "mask#" << tidx() << std::endl;
-        oss << indent << "  "
-            << "base = " << base_ << std::endl;
-        oss << indent << "  "
-            << "block = " << tdim_.block() << std::endl;
+        oss << indent << "  " << "base = " << base_ << std::endl;
+        oss << indent << "  " << "block = " << tdim_.block() << std::endl;
         switch (kind_) {
             case mask_kind_t::ab:
                 oss << indent << "  " << a_ << " <= x < " << b_;
                 break;
-            case mask_kind_t::b:
-                oss << indent << "  "
-                    << "x < " << b_;
-                break;
+            case mask_kind_t::b: oss << indent << "  " << "x < " << b_; break;
             default: gpu_error_not_expected();
         }
         return oss.str();
@@ -2155,7 +2152,7 @@ private:
             auto g = (split_factor_ == 1)
                     ? _g
                     : _g.split(split_bounds_t(message_layout_, split_factor_),
-                            subtile_idx, is_g1b1);
+                              subtile_idx, is_g1b1);
             gpu_assert(!g.is_empty());
             bool try_legacy = send_params().try_legacy
                     && (g.hw < ngen::HW::XeHPC) && g.is_block();

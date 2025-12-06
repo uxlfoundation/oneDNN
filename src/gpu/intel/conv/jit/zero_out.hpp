@@ -81,12 +81,12 @@ public:
             const kernel_info_t &kernel_info, const impl::engine_t *engine)
         : zero_out_kernel_t(zero_out_kernel_desc_t(options.regs(),
                                     options.simd(), options.require_dpas()),
-                engine) {}
+                  engine) {}
 
     zero_out_kernel_t(
             const kernel_desc_base_t &_desc, const impl::engine_t *engine)
         : base_type(get_kernel_iface(_desc), _desc.options(engine),
-                debug_config_t {GENERATOR_NAME, GENERATOR_LINE}) {
+                  debug_config_t {GENERATOR_NAME, GENERATOR_LINE}) {
         requireLocalID(3);
         requireLocalSize();
         requireGRF(options().regs());

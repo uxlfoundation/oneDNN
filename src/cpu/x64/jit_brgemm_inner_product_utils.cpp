@@ -1319,7 +1319,7 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
     jbgp.wei_dt = weights_d.data_type();
     jbgp.bia_dt = jbgp.with_bias
             ? pick_by_prop_kind(jbgp.prop_kind, ipd.bias_desc.data_type,
-                    data_type::undef, ipd.diff_bias_desc.data_type)
+                      data_type::undef, ipd.diff_bias_desc.data_type)
             : data_type::undef;
     jbgp.req_s8s8_compensation
             = one_of(isa, avx512_core, avx512_core_vnni, avx2_vnni)

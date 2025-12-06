@@ -39,7 +39,8 @@ namespace amd {
 struct bnorm_exec_base_t {
     virtual status_t execute(const exec_ctx_t &ctx, impl::engine_t *engine,
             const std::shared_ptr<miopen_batch_normalization_impl_base_t>
-                    bnorm_impl) const = 0;
+                    bnorm_impl) const
+            = 0;
     virtual ~bnorm_exec_base_t() = default;
 
 protected:
@@ -89,15 +90,15 @@ protected:
 
                     auto *scale = use_scale
                             ? static_cast<uint8_t *>(
-                                    arg_scale.get_native_pointer(ih))
+                                      arg_scale.get_native_pointer(ih))
                             : static_cast<uint8_t *>(
-                                    arg_scale_buf.get_native_pointer(ih));
+                                      arg_scale_buf.get_native_pointer(ih));
 
                     uint8_t *shift = use_shift
                             ? static_cast<uint8_t *>(
-                                    arg_shift.get_native_pointer(ih))
+                                      arg_shift.get_native_pointer(ih))
                             : static_cast<uint8_t *>(
-                                    arg_shift_buf.get_native_pointer(ih));
+                                      arg_shift_buf.get_native_pointer(ih));
                     uint8_t *y_prime = nullptr, *save_mean = nullptr,
                             *save_var = nullptr;
 
@@ -165,19 +166,21 @@ protected:
 
                     auto *scale = use_scale
                             ? static_cast<uint8_t *>(
-                                    arg_scale.get_native_pointer(ih))
+                                      arg_scale.get_native_pointer(ih))
                             : static_cast<uint8_t *>(
-                                    arg_scale_buf.get_native_pointer(ih));
+                                      arg_scale_buf.get_native_pointer(ih));
                     auto *diff_scale = use_scale
                             ? static_cast<uint8_t *>(
-                                    arg_diff_scale.get_native_pointer(ih))
+                                      arg_diff_scale.get_native_pointer(ih))
                             : static_cast<uint8_t *>(
-                                    arg_diff_scale_buf.get_native_pointer(ih));
+                                      arg_diff_scale_buf.get_native_pointer(
+                                              ih));
                     uint8_t *diff_shift = use_shift
                             ? static_cast<uint8_t *>(
-                                    arg_diff_shift.get_native_pointer(ih))
+                                      arg_diff_shift.get_native_pointer(ih))
                             : static_cast<uint8_t *>(
-                                    arg_diff_shift_buf.get_native_pointer(ih));
+                                      arg_diff_shift_buf.get_native_pointer(
+                                              ih));
 
                     auto *save_mean = static_cast<uint8_t *>(
                             arg_wkspace.get_native_pointer(ih));
@@ -269,7 +272,7 @@ struct bnorm_exec_fwd_t : public bnorm_exec_base_t {
             auto arg_wkspace = bnorm_impl->is_training()
                     ? CTX_OUT_SYCL_MEMORY(DNNL_ARG_WORKSPACE)
                     : xpu::sycl::interop_memory_arg_t<
-                            ::sycl::access::mode::write>();
+                              ::sycl::access::mode::write>();
 
             if (!use_global_stats) {
                 const bool init_global_stats = bnorm_impl->is_training();

@@ -25,9 +25,9 @@ namespace s390x {
 
 constexpr int VLEN_BYTES = 16;
 constexpr bool ISLASTINDEX_FAST = false;
-#define aPtr(i, j) A[(j)*ldA + (i)] // map aPtr( i,j ) to array A
-#define bPtr(i, j) B[(j)*ldB + (i)] // map bPtr( i,j ) to array B
-#define gPtr(i, j) C[(j)*ldC + (i)] // map gPtr( i,j ) to array C
+#define aPtr(i, j) A[(j) * ldA + (i)] // map aPtr( i,j ) to array A
+#define bPtr(i, j) B[(j) * ldB + (i)] // map bPtr( i,j ) to array B
+#define gPtr(i, j) C[(j) * ldC + (i)] // map gPtr( i,j ) to array C
 
 template <typename T>
 struct vec_inner_type_t {

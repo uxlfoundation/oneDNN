@@ -43,7 +43,7 @@ key_t::key_t(const engine_t *engine, const op_desc_t *op_desc,
 
 key_t::key_t(const primitive_desc_t *pd, const engine_t *engine)
     : key_t(engine, pd->op_desc(), pd->attr(), pd->pd_iterator_offset(),
-            pd->hint_mds(false /* is_hint */), pd->skip_idx()) {}
+              pd->hint_mds(false /* is_hint */), pd->skip_idx()) {}
 
 bool key_t::operator==(const key_t &rhs) const {
     DNNL_SHORT_CIRCUIT_SELF_COMPARISON(rhs);

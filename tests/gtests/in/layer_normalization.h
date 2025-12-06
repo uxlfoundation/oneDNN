@@ -52,10 +52,14 @@
     }
 
 #define PARAMS_EF(...) \
-    test_lnorm_params_t { EXPAND_FORMATS(abc, ab, abc), __VA_ARGS__ }
+    test_lnorm_params_t { \
+        EXPAND_FORMATS(abc, ab, abc), __VA_ARGS__ \
+    }
 
 #define PARAMS_ANY_EF(...) \
-    test_lnorm_params_t { EXPAND_FORMATS(any, ab, abc), __VA_ARGS__ }
+    test_lnorm_params_t { \
+        EXPAND_FORMATS(any, ab, abc), __VA_ARGS__ \
+    }
 
 #define CPU_INST_TEST_CASE(str, ...) \
     CPU_INSTANTIATE_TEST_SUITE_P( \

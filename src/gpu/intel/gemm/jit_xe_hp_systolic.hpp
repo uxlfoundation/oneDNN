@@ -52,8 +52,8 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
             using namespace data_type;
             return with_bias() ? desc()->bias_type()
                                : (utils::one_of(desc()->a_type(), s8, u8)
-                                               ? s32
-                                               : desc()->c_type());
+                                                 ? s32
+                                                 : desc()->c_type());
         }
 
         data_type_t impl_acc_type() const {

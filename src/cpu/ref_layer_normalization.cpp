@@ -229,7 +229,7 @@ status_t ref_layer_normalization_bwd_t::execute_backward(
             for (dim_t c = 0; c < C; ++c) {
                 const float gamma = scale
                         ? io::load_float_value(
-                                sc_d.data_type(), scale, sc_d.off(c))
+                                  sc_d.data_type(), scale, sc_d.off(c))
                         : 1.f;
                 const auto src_off = src_d.off_l(n * C + c);
                 const auto diff_dst_off = diff_dst_d.off_l(n * C + c);

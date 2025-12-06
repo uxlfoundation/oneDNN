@@ -49,16 +49,18 @@ class kernel_desc_base_t {
 public:
     virtual ~kernel_desc_base_t() = default;
     virtual std::string kernel_name() const = 0;
-    virtual dsl::kernel::options_t options(
-            const impl::engine_t *engine) const = 0;
+    virtual dsl::kernel::options_t options(const impl::engine_t *engine) const
+            = 0;
     virtual compute::range_t local_range() const = 0;
-    virtual void init_kernel_iface(
-            dsl::kernel::iface_t &kernel_iface) const = 0;
+    virtual void init_kernel_iface(dsl::kernel::iface_t &kernel_iface) const
+            = 0;
     virtual void init_kernel_info(kernel_info_t &kernel_info,
             const kernel_params_base_t &params,
-            const impl::engine_t *engine) const = 0;
+            const impl::engine_t *engine) const
+            = 0;
     virtual status_t create_kernel(compute::kernel_t &kernel,
-            primitive_t *primitive, impl::engine_t *engine) const = 0;
+            primitive_t *primitive, impl::engine_t *engine) const
+            = 0;
     virtual serialization_stream_t serialize() const = 0;
 };
 

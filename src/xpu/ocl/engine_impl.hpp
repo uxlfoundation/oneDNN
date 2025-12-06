@@ -144,9 +144,15 @@ private:
 };
 
 #define DECLARE_COMMON_OCL_ENGINE_FUNCTIONS() \
-    cl_device_id device() const { return impl()->device(); } \
-    cl_context context() const { return impl()->context(); } \
-    cl_platform_id platform() const { return impl()->platform(); }
+    cl_device_id device() const { \
+        return impl()->device(); \
+    } \
+    cl_context context() const { \
+        return impl()->context(); \
+    } \
+    cl_platform_id platform() const { \
+        return impl()->platform(); \
+    }
 
 } // namespace ocl
 } // namespace xpu

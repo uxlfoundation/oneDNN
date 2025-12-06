@@ -126,7 +126,8 @@ public:
     ///     with the in/outputs_. Backend should do the reorder inside this
     ///     function's implementation.
     virtual status_t infer_shape(std::vector<const logical_tensor_t *> &inputs,
-            std::vector<logical_tensor_t *> &outputs) const = 0;
+            std::vector<logical_tensor_t *> &outputs) const
+            = 0;
 
     /// Compile the partition with specific inputs and outputs logical tensors
     /// and engine. A partition can be compiled multiple times with different
@@ -173,7 +174,8 @@ public:
     virtual status_t compile(compiled_partition_t *compiled_partition,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs,
-            const engine_t *aengine) const = 0;
+            const engine_t *aengine) const
+            = 0;
 
     /// get partition_impl id
     size_t id() const { return id_; }

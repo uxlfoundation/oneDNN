@@ -96,9 +96,7 @@ struct xe_global_fwd_t : public primitive_t {
             reduction_pd_ = *(++it);
             if (reduction_pd_)
                 return status::success;
-            else {
-                return status::invalid_arguments;
-            }
+            else { return status::invalid_arguments; }
         }
 
         std::shared_ptr<primitive_desc_t> reduction_pd_;

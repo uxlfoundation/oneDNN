@@ -98,7 +98,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     memory::data_type dt_inter = quantized
             ? dt
             : static_cast<memory::data_type>(
-                    ltw(mqa_op[1]->get_output_logical_tensor(0)).data_type());
+                      ltw(mqa_op[1]->get_output_logical_tensor(0)).data_type());
 
     ////////////////////////////////////////////////////////////////////////
     ////////////// Start Creating primitives ///////////////////////////////
@@ -186,7 +186,7 @@ status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
     const auto mode = mqa_op[2]->get_attr<std::string>(op_attr::mode);
     const dnnl::algorithm algo = mode == "inf_as_zero"
             ? static_cast<dnnl::algorithm>(
-                    dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
+                      dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
             : dnnl::algorithm::softmax_accurate;
     auto sub_softmax_pd = softmax_forward::primitive_desc(p_engine,
             prop_kind::forward_inference, algo, sub_mm1_dst_md,

@@ -574,9 +574,7 @@ void jit_sve_conv_fwd_kernel_t<isa>::compute_loop(
         else if (jcp.kernel_kind == embd_bcast && jcp.nb_oc_blocking == 1)
             assert(!"STOP:jcp.kernel_kind == embd_bcast && jcp.nb_oc_blocking "
                     "== 1");
-        else {
-            compute_loop_fma_core(ur_w, pad_l, pad_r);
-        }
+        else { compute_loop_fma_core(ur_w, pad_l, pad_r); }
     else
         assert(!"unknown convolution version");
 
@@ -2551,9 +2549,9 @@ void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::compute_ic_block_step(int ur_w,
     int num_zregs4out = 4;
     num_zregs4out = (28 - num_zregs4ker) / num_zregs4ker
             ? nstl::max(num_zregs4out
-                            + ((32 - num_zregs4out - num_zregs4ker)
-                                    % (num_zregs4ker)),
-                    4)
+                              + ((32 - num_zregs4out - num_zregs4ker)
+                                      % (num_zregs4ker)),
+                      4)
             : nstl::max(32 - (num_zregs4ker + ic_block_step), 4);
     int idata_reg_offset = num_zregs4ker + num_zregs4out;
     int num_zregs4idata = 32 - idata_reg_offset;

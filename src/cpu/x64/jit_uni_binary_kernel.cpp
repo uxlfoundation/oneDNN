@@ -79,8 +79,8 @@ size_t binary_kernel_t::get_tail_size() const {
         else if (conf_.op_type == op_t::n_c_spatial && ndims >= 3)
             nelems = conf_.bcast_type == bcast_t::per_w
                     ? utils::array_product(
-                            dims + (ndims - conf_.not_bcasted_sp_dims),
-                            conf_.not_bcasted_sp_dims)
+                              dims + (ndims - conf_.not_bcasted_sp_dims),
+                              conf_.not_bcasted_sp_dims)
                     : utils::array_product(dims + 2, ndims - 2);
     }
     // it's float due to for bfloat16 we still load 16 elements, not 32.
@@ -91,7 +91,7 @@ template <cpu_isa_t isa, typename Vmm>
 jit_uni_binary_kernel_t<isa, Vmm>::jit_uni_binary_kernel_t(
         const binary_pd_t *pd, const jit_binary_conf_t conf, bool tail_kernel)
     : binary_kernel_t(
-            vreg_traits_t<Vmm>::vlen, pd, conf, jit_name(), tail_kernel)
+              vreg_traits_t<Vmm>::vlen, pd, conf, jit_name(), tail_kernel)
     , offt_src0_(vlen_ / ((conf_.is_bf16 || conf_.is_f16) ? 2 : 1))
     , offt_src1_(conf_.use_stride_src1 ? offt_src0_ : 0)
     , offt_src2_(offt_src0_) {

@@ -300,7 +300,7 @@ status_t gemm_x8s8s32x_convolution_fwd_t::execute_forward_thr(const int ithr,
             const single_gemm_conv_chunk_desc_t chunk_desc
                     = should_apply_zp_src_comp_pad_jit_pp
                     ? single_gemm_conv_chunk_desc_t {od, 1, oh, h_step, ow,
-                            w_step}
+                              w_step}
                     : single_gemm_conv_chunk_desc_t {};
 
             parallel(0, [&](int ithr, int nthr) {

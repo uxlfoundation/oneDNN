@@ -34,9 +34,9 @@ TEST(test_interface_allocator, DefaultSyclAllocator) {
     graph::allocator_t *alloc = new graph::allocator_t();
     sycl::queue q = kind == graph::engine_kind::gpu
             ? sycl::queue {dnnl::impl::xpu::sycl::compat::gpu_selector_v,
-                    sycl::property::queue::in_order {}}
+                      sycl::property::queue::in_order {}}
             : sycl::queue {dnnl::impl::xpu::sycl::compat::cpu_selector_v,
-                    sycl::property::queue::in_order {}};
+                      sycl::property::queue::in_order {}};
 
     graph::allocator_t::mem_attr_t attr {
             graph::allocator_t::mem_type_t::persistent, 64};

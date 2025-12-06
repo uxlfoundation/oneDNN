@@ -184,8 +184,8 @@ public:
         return status::success;
     }
 
-    virtual status_t check_alignment(
-            const kernel_arg_list_t &arg_list) const = 0;
+    virtual status_t check_alignment(const kernel_arg_list_t &arg_list) const
+            = 0;
 
     status_t check_alignment(const void *ptr, int arg_idx) const {
         const int min_alignment = 64;

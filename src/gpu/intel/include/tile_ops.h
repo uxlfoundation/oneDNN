@@ -62,9 +62,9 @@ __attribute__((overloadable)) int local_atomic_max(local int *p, int v) {
     }
 
 #define DEF_BLOCK_LOAD_STORE1(type, itype, suffix) \
-    __attribute__((overloadable)) \
-            type##1 block_load(const global type *p, int vlen) __attribute__( \
-                    (enable_if(vlen == 1, "wrong vector length"))) { \
+    __attribute__((overloadable)) type##1 block_load( \
+            const global type *p, int vlen) \
+            __attribute__((enable_if(vlen == 1, "wrong vector length"))) { \
         type##1 x; \
         x[0] = as_##type( \
                 intel_sub_group_block_read##suffix((global void *)p)); \
@@ -81,9 +81,9 @@ __attribute__((overloadable)) int local_atomic_max(local int *p, int v) {
     }
 
 #define DEF_BLOCK_LOAD_STORE16(type, itype, suffix) \
-    __attribute__((overloadable)) \
-            type##16 block_load(const global type *p, int vlen) __attribute__( \
-                    (enable_if(vlen == 16, "wrong vector length"))) { \
+    __attribute__((overloadable)) type##16 block_load( \
+            const global type *p, int vlen) \
+            __attribute__((enable_if(vlen == 16, "wrong vector length"))) { \
         type##16 x; \
         x.s01234567 = as_##type##8( \
                 intel_sub_group_block_read##suffix##8((global void *)p)); \
@@ -109,9 +109,9 @@ __attribute__((overloadable)) int local_atomic_max(local int *p, int v) {
     }
 
 #define DEF_BLOCK_LOAD_STORE32(type, itype, suffix) \
-    __attribute__((overloadable)) \
-            type##32 block_load(const global type *p, int vlen) __attribute__( \
-                    (enable_if(vlen == 32, "wrong vector length"))) { \
+    __attribute__((overloadable)) type##32 block_load( \
+            const global type *p, int vlen) \
+            __attribute__((enable_if(vlen == 32, "wrong vector length"))) { \
         type##32 x; \
         x = (type##32)(as_##type##8(intel_sub_group_block_read##suffix##8( \
                                (global void *)p)), \
@@ -197,11 +197,10 @@ DEF_BLOCK_LOAD_STORE32(float, uint, )
     void __builtin_IB_subgroup_block_write_flat_##suffix( \
             long, int, int, int, int2, itype##vl); \
     __attribute__((overloadable)) type##vl block2d_load(const global type *p, \
-            int w, int h, int ld, int x, int y, int br, int bc, \
-            int sg) __attribute__((enable_if(br == BR, "wrong #rows"))) \
+            int w, int h, int ld, int x, int y, int br, int bc, int sg) \
+            __attribute__((enable_if(br == BR, "wrong #rows"))) \
             __attribute__((enable_if(bc == BC, "wrong #columns"))) \
-                    __attribute__( \
-                            (enable_if(sg == SG, "wrong subgroup size"))) { \
+            __attribute__((enable_if(sg == SG, "wrong subgroup size"))) { \
         ulong pp = as_long(p); \
         ulong prem = pp & 0x3F; \
         pp &= ~0x3F; \
@@ -213,11 +212,10 @@ DEF_BLOCK_LOAD_STORE32(float, uint, )
     } \
     __attribute__((overloadable)) void block2d_store(type##vl v, \
             const global type *p, int w, int h, int ld, int x, int y, int br, \
-            int bc, \
-            int sg) __attribute__((enable_if(br == BR, "wrong #rows"))) \
+            int bc, int sg) \
+            __attribute__((enable_if(br == BR, "wrong #rows"))) \
             __attribute__((enable_if(bc == BC, "wrong #columns"))) \
-                    __attribute__( \
-                            (enable_if(sg == SG, "wrong subgroup size"))) { \
+            __attribute__((enable_if(sg == SG, "wrong subgroup size"))) { \
         ulong pp = as_long(p); \
         ulong prem = pp & 0x3F; \
         pp &= ~0x3F; \
@@ -643,8 +641,8 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
     }
 
 #define DECLARE_2D_TILE(tile_type, element_type, sg, br, bc, nbr, nbc) \
-    typedef element_type __attribute__((ext_vector_type(br * bc / sg))) \
-            _e_##tile_type; \
+    typedef element_type \
+            __attribute__((ext_vector_type(br * bc / sg))) _e_##tile_type; \
     typedef struct { \
         _e_##tile_type x[nbr * nbc]; \
     } tile_type; \

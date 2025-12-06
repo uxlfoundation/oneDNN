@@ -19,9 +19,10 @@ using dnnl::memory;
 using mdt = memory::data_type;
 
 memory::dim product(const std::vector<int64_t> &dims) {
-    return dims.empty() ? 0
-                        : std::accumulate(dims.begin(), dims.end(),
-                                (memory::dim)1, std::multiplies<memory::dim>());
+    return dims.empty()
+            ? 0
+            : std::accumulate(dims.begin(), dims.end(), (memory::dim)1,
+                      std::multiplies<memory::dim>());
 }
 
 std::random_device &get_random_device() {

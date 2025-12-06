@@ -97,7 +97,8 @@ struct serialization_stream_t {
     template <typename T,
             utils::enable_if_t<is_trivially_serialized<T>::value
                             && !has_serialize_t<T>::value,
-                    bool> = true>
+                    bool>
+            = true>
     void append(const T &t) {
         std::array<uint8_t, sizeof(T)> type_data;
         std::memcpy(type_data.data(), &t, sizeof(T));
@@ -220,7 +221,8 @@ struct deserializer_t {
             utils::enable_if_t<
                     serialization_stream_t::is_trivially_serialized<T>::value
                             && !has_deserialize_t<T>::value,
-                    bool> = true>
+                    bool>
+            = true>
     void pop(T &t) {
         t = sstream_.get<T>(idx_);
         idx_ += sizeof(T);
@@ -230,7 +232,8 @@ struct deserializer_t {
             utils::enable_if_t<
                     serialization_stream_t::is_trivially_serialized<T>::value
                             && !has_deserialize_t<T>::value,
-                    bool> = true>
+                    bool>
+            = true>
     T pop() {
         auto idx_start = idx_;
         idx_ += sizeof(T);
@@ -255,7 +258,8 @@ struct deserializer_t {
     template <typename T,
             utils::enable_if_t<
                     serialization_stream_t::is_trivially_serialized<T>::value,
-                    bool> = true>
+                    bool>
+            = true>
     void pop_array(size_t &size, T *ptr) {
         pop(size);
         sstream_.get(idx_, sizeof(T) * size, reinterpret_cast<uint8_t *>(ptr));

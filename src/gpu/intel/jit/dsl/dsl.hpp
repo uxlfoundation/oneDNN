@@ -66,7 +66,7 @@ public:
     operator expr_t() const { return var; }
 
 #define DEFINE_BINARY_ASSIGN_OPERATOR(op) \
-    lval_t &operator op##=(const expr_t &rhs) { \
+    lval_t &operator op##=(const expr_t & rhs) { \
         (*this) = (*this)op rhs; \
         return *this; \
     }

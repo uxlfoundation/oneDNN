@@ -92,7 +92,7 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
                 }
 
                 a_fp += (float)(bias_data ? bias_data[bias_mdw.off_l(
-                                        g * c.oc / c.ng + oc, true)]
+                                                    g * c.oc / c.ng + oc, true)]
                                           : 0);
 
                 if (attr.dst_scale.is_def()) {
@@ -239,9 +239,9 @@ protected:
                 p.formats.src_format);
         auto c_weights_desc = cd.ng > 1
                 ? create_md({cd.ng, cd.oc / cd.ng, cd.ic / cd.ng, cd.kh, cd.kw},
-                        data_type_wei, p.formats.weights_format)
+                          data_type_wei, p.formats.weights_format)
                 : create_md({cd.oc, cd.ic, cd.kh, cd.kw}, data_type_wei,
-                        p.formats.weights_format);
+                          p.formats.weights_format);
         auto c_dst_desc = create_md({cd.mb, cd.oc, cd.oh, cd.ow}, data_type_dst,
                 p.formats.dst_format);
         auto c_bias_desc = with_bias
@@ -302,12 +302,12 @@ protected:
 
         auto conv_primitive_desc = with_bias
                 ? convolution_forward::primitive_desc(eng, aprop_kind,
-                        p.aalgorithm, c_src_desc, c_weights_desc, c_bias_desc,
-                        c_dst_desc, strides, dilations, padL, padR,
-                        attr.dnnl_attr)
+                          p.aalgorithm, c_src_desc, c_weights_desc, c_bias_desc,
+                          c_dst_desc, strides, dilations, padL, padR,
+                          attr.dnnl_attr)
                 : convolution_forward::primitive_desc(eng, aprop_kind,
-                        p.aalgorithm, c_src_desc, c_weights_desc, c_dst_desc,
-                        strides, dilations, padL, padR, attr.dnnl_attr);
+                          p.aalgorithm, c_src_desc, c_weights_desc, c_dst_desc,
+                          strides, dilations, padL, padR, attr.dnnl_attr);
 
         conv_primitive_desc = convolution_forward::primitive_desc(
                 conv_primitive_desc.get()); // test construction from a C pd

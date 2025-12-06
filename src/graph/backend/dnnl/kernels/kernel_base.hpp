@@ -125,7 +125,9 @@ using kernel_ptr = std::shared_ptr<kernel_base_t>;
 using FCreateKernel = std::function<kernel_ptr(void)>;
 
 #define DEF_KERNEL_METHOD_STR(name) \
-    std::string str() const override { return #name; }
+    std::string str() const override { \
+        return #name; \
+    }
 
 } // namespace dnnl_impl
 } // namespace graph

@@ -154,7 +154,7 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type, isa> {
     reducer_2d_driver_f_s_32_t(int n_src, size_t src_ld, size_t src_step,
             size_t dst_step, bool nullify_dst)
         : reducer_2d_driver_t<data_type, isa>(
-                n_src, src_ld, src_step, dst_step, nullify_dst) {}
+                  n_src, src_ld, src_step, dst_step, nullify_dst) {}
 
     void uni_load(const Vmm &z1, const XReg &src, size_t off, int load_len) {
         auto src_ptr = (off == 0) ? src : reg_tmp_ptr;

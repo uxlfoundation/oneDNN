@@ -1205,7 +1205,7 @@ struct jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
                 && jcp.oc_without_padding % jcp.oc_block != 0;
         diff_bias = is_bias_padded
                 ? scratchpad.template get<diff_weights_data_t>(
-                        key_conv_padded_bias)
+                          key_conv_padded_bias)
                 : CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_BIAS);
 
         wei_bia_reduction_bctx = scratchpad.template get<simple_barrier::ctx_t>(

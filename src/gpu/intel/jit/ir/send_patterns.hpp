@@ -313,9 +313,10 @@ struct uniform_send_idiom_t final {
                 && hint.block_rem() > 1)
             valid_block = false;
 
-        auto width_stride = hint.width_rem() > 1 ? std::max(layout.type_size,
-                                    hint_t::block_width / hint.width_rem())
-                                                 : hint_t::block_width;
+        auto width_stride = hint.width_rem() > 1
+                ? std::max(layout.type_size,
+                          hint_t::block_width / hint.width_rem())
+                : hint_t::block_width;
 
         // Check hint is potentially valid
         if (valid_2d && width_stride < i_stride_bytes && hint.width_rem() > 8) {

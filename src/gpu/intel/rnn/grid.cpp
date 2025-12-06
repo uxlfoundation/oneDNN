@@ -206,9 +206,9 @@ static status_t init_ocl_conf(ocl_conf_t &ocl_conf, const pd_t *pd,
             into<int>(ocl_conf.deterministic
                             ? conf.mb
                             : std::min(into<dim_t>(8),
-                                    utils::rnd_up_pow2(
-                                            max_elemwise_threads_per_eu
-                                            / preferred_threads_per_eu))));
+                                      utils::rnd_up_pow2(
+                                              max_elemwise_threads_per_eu
+                                              / preferred_threads_per_eu))));
     ocl_conf.need_bias_atomic_reduce
             = !ocl_conf.is_fwd && ocl_conf.elemwise_bwd_batch_block < conf.mb;
 
@@ -965,14 +965,15 @@ status_t simple_common_t<aprop>::init(impl::engine_t *engine) {
     CHECK(create_kernels(engine, kernels_, kernel_names, pd()->ocl_conf));
 
     bool gemm_ok = utils::everyone_is(status::success,
-            pd()->gemm_layer_fwd_pd_ ? create_nested_primitive(
-                    gemm_layer_fwd_, pd()->gemm_layer_fwd_pd_, engine)
+            pd()->gemm_layer_fwd_pd_ ? create_nested_primitive(gemm_layer_fwd_,
+                                               pd()->gemm_layer_fwd_pd_, engine)
                                      : status::success,
-            pd()->gemm_layer_fwd_src_pd_ ? create_nested_primitive(
-                    gemm_layer_fwd_src_, pd()->gemm_layer_fwd_src_pd_, engine)
-                                         : status::success,
-            pd()->gemm_iter_fwd_pd_ ? create_nested_primitive(
-                    gemm_iter_fwd_, pd()->gemm_iter_fwd_pd_, engine)
+            pd()->gemm_layer_fwd_src_pd_
+                    ? create_nested_primitive(gemm_layer_fwd_src_,
+                              pd()->gemm_layer_fwd_src_pd_, engine)
+                    : status::success,
+            pd()->gemm_iter_fwd_pd_ ? create_nested_primitive(gemm_iter_fwd_,
+                                              pd()->gemm_iter_fwd_pd_, engine)
                                     : status::success);
     switch (aprop) {
         case prop_kind::forward:
@@ -980,7 +981,7 @@ status_t simple_common_t<aprop>::init(impl::engine_t *engine) {
                     && utils::everyone_is(status::success,
                             conf.is_vanilla_gru
                                     ? create_nested_primitive(gemm_iter_fwd_2_,
-                                            pd()->gemm_iter_fwd_2_pd_, engine)
+                                              pd()->gemm_iter_fwd_2_pd_, engine)
                                     : status::success);
             break;
         case prop_kind::backward:
@@ -990,9 +991,9 @@ status_t simple_common_t<aprop>::init(impl::engine_t *engine) {
                                     pd()->gemm_layer_bwd_pd_, engine),
                             (pd()->gemm_layer_bwd_src_pd_
                                             ? create_nested_primitive(
-                                                    gemm_layer_bwd_src_,
-                                                    pd()->gemm_layer_bwd_src_pd_,
-                                                    engine)
+                                                      gemm_layer_bwd_src_,
+                                                      pd()->gemm_layer_bwd_src_pd_,
+                                                      engine)
                                             : status::success),
                             create_nested_primitive(gemm_iter_bwd_,
                                     pd()->gemm_iter_bwd_pd_, engine),
@@ -1000,20 +1001,22 @@ status_t simple_common_t<aprop>::init(impl::engine_t *engine) {
                                     pd()->gemm_diff_wei_layer_pd_, engine),
                             (pd()->gemm_diff_wei_layer_src_pd_
                                             ? create_nested_primitive(
-                                                    gemm_diff_wei_layer_src_,
-                                                    pd()->gemm_diff_wei_layer_src_pd_,
-                                                    engine)
+                                                      gemm_diff_wei_layer_src_,
+                                                      pd()->gemm_diff_wei_layer_src_pd_,
+                                                      engine)
                                             : status::success),
                             create_nested_primitive(gemm_diff_wei_iter_,
                                     pd()->gemm_diff_wei_iter_pd_, engine),
                             conf.is_vanilla_gru
                                     ? create_nested_primitive(gemm_iter_bwd_2_,
-                                            pd()->gemm_iter_bwd_2_pd_, engine)
+                                              pd()->gemm_iter_bwd_2_pd_, engine)
                                     : status::success,
-                            conf.is_vanilla_gru ? create_nested_primitive(
-                                    gemm_diff_wei_iter_2_,
-                                    pd()->gemm_diff_wei_iter_2_pd_, engine)
-                                                : status::success);
+                            conf.is_vanilla_gru
+                                    ? create_nested_primitive(
+                                              gemm_diff_wei_iter_2_,
+                                              pd()->gemm_diff_wei_iter_2_pd_,
+                                              engine)
+                                    : status::success);
             break;
         default: assert(!"unknown prop_kind"); return status::invalid_arguments;
     }
@@ -1188,7 +1191,7 @@ grid_execution_sig((simple_common_t<aprop>::linear_execution)) {
                 auto grid_layer = (!conf.copy_src_layer && lay == 0)
                         ? user_data.src_layer(dir, 0, true)
                         : workspace.states_range(
-                                lay - 1, lay - 1, dir, dir, 0, n_iter);
+                                  lay - 1, lay - 1, dir, dir, 0, n_iter);
 
                 auto gemm_grid_layer_fwd = (!conf.copy_src_layer && lay == 0)
                         ? gemm_layer_fwd_src

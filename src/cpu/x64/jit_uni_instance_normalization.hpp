@@ -63,7 +63,8 @@ struct jit_uni_instance_normalization_fwd_t : public primitive_t {
                 const float *shift, const float *mean, const float *var,
                 const float *src_scales, const float *dst_scales,
                 const void *post_ops_binary_rhs_arg_vec,
-                const size_t block_size) const = 0;
+                const size_t block_size) const
+                = 0;
         static kernel_base_t *create(const group_normalization_pd_t *pd);
         virtual status_t create_kernel() = 0;
         virtual ~kernel_base_t() = default;
@@ -78,9 +79,11 @@ struct jit_uni_instance_normalization_fwd_t : public primitive_t {
 
     struct kernel_stat_base_t {
         virtual void operator()(
-                const void *src, float *mean, size_t block_size) const = 0;
+                const void *src, float *mean, size_t block_size) const
+                = 0;
         virtual void operator()(const void *src, const float *mean, float *var,
-                size_t block_size) const = 0;
+                size_t block_size) const
+                = 0;
         static kernel_stat_base_t *create(
                 const group_normalization_pd_t *pd, bool compute_var = false);
         virtual status_t create_kernel() = 0;

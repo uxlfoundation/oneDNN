@@ -536,14 +536,14 @@ double16 __attribute__((overloadable)) cvt_bf16_to_f64(ushort16 b) {
 #endif
 
 #define DECLARE_BLOCK_READ(suffix, func, data_type, addr_space, p_type) \
-    data_type __attribute__((overloadable)) \
-            block_read##suffix(const addr_space p_type *p) { \
+    data_type __attribute__((overloadable)) block_read##suffix( \
+            const addr_space p_type *p) { \
         return func(p); \
     }
 
 #define DECLARE_BLOCK_READ_EMU(suffix, data_type, addr_space, p_type) \
-    data_type __attribute__((overloadable)) \
-            block_read##suffix##_emu(const addr_space p_type *p) { \
+    data_type __attribute__((overloadable)) block_read##suffix##_emu( \
+            const addr_space p_type *p) { \
         data_type ret; \
         uint idx = get_sub_group_local_id(); \
         for (int i = 0; i < sizeof(data_type) / sizeof(p_type); i++) { \
@@ -554,14 +554,14 @@ double16 __attribute__((overloadable)) cvt_bf16_to_f64(ushort16 b) {
     }
 
 #define DECLARE_BLOCK_WRITE(suffix, func, data_type, addr_space, p_type) \
-    void __attribute__((overloadable)) \
-            block_write##suffix(addr_space p_type *p, data_type data) { \
+    void __attribute__((overloadable)) block_write##suffix( \
+            addr_space p_type *p, data_type data) { \
         func(p, data); \
     }
 
 #define DECLARE_BLOCK_WRITE_EMU(suffix, data_type, addr_space, p_type) \
-    void __attribute__((overloadable)) \
-            block_write##suffix##_emu(addr_space p_type *p, data_type data) { \
+    void __attribute__((overloadable)) block_write##suffix##_emu( \
+            addr_space p_type *p, data_type data) { \
         uint idx = get_sub_group_local_id(); \
         for (int i = 0; i < sizeof(data_type) / sizeof(p_type); i++) { \
             p[idx] = ((p_type *)&data)[i]; \
@@ -580,11 +580,11 @@ DECLARE_BLOCK_WRITE(4, intel_sub_group_block_write4, uint4, __global, uint)
 DECLARE_BLOCK_WRITE(8, intel_sub_group_block_write8, uint8, __global, uint)
 
 #ifdef cl_intel_subgroups_char
-void __attribute__((overloadable))
-intel_sub_group_block_write_uc16(__global uchar *p, uchar16 data);
+void __attribute__((overloadable)) intel_sub_group_block_write_uc16(
+        __global uchar *p, uchar16 data);
 
-uchar16 __attribute__((overloadable))
-intel_sub_group_block_read_uc16(const __global uchar *p);
+uchar16 __attribute__((overloadable)) intel_sub_group_block_read_uc16(
+        const __global uchar *p);
 #endif
 
 // Emulation for cl_intel_subgroup_local_block_io. These functions are not
@@ -803,8 +803,8 @@ float __attribute__((overloadable)) cvt_f4_e3m0_to_f32(uchar a) {
         || MATH_UTILS_DECLARE_F4_E2M1 || MATH_UTILS_DECLARE_F4_E3M0
 #define GET_HALF_BYTE(x, y) get_half_byte(x, y)
 
-uchar __attribute__((overloadable))
-get_half_byte(const __global uchar *x, off_t y) {
+uchar __attribute__((overloadable)) get_half_byte(
+        const __global uchar *x, off_t y) {
     uchar ret = 0;
     if (y % 2) {
         ret = (uchar)((uchar)(x[y / 2] & 0xf0) >> 4);
@@ -814,8 +814,8 @@ get_half_byte(const __global uchar *x, off_t y) {
     return ret;
 }
 
-char __attribute__((overloadable))
-get_half_byte(const __global char *x, off_t y) {
+char __attribute__((overloadable)) get_half_byte(
+        const __global char *x, off_t y) {
     if (y % 2) {
         return (x[y / 2] & 0xf0) >> 4;
     } else {
@@ -823,13 +823,13 @@ get_half_byte(const __global char *x, off_t y) {
     }
 }
 
-void __attribute__((overloadable))
-set_double_half_byte(__global uchar *x, off_t y, uchar z) {
+void __attribute__((overloadable)) set_double_half_byte(
+        __global uchar *x, off_t y, uchar z) {
     x[y / 2] = z;
 }
 
-void __attribute__((overloadable))
-set_double_half_byte(__global char *x, off_t y, uchar z) {
+void __attribute__((overloadable)) set_double_half_byte(
+        __global char *x, off_t y, uchar z) {
     x[y / 2] = z;
 }
 

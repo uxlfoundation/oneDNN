@@ -5124,9 +5124,7 @@ TEST(test_pass, InputJsonIsInvalidWithIncompleteHash) {
             + std::to_string(dnnl_version()->patch);
     invalid_stream << "{\n"
                    << "\"version\": \"" << version << "\",\n"
-                   << "\"hash\": \""
-                   << "aninvalidcommitid"
-                   << "\",\n"
+                   << "\"hash\": \"" << "aninvalidcommitid" << "\",\n"
                    << "\"passes\": [\n"
                    << "  {\n"
                    << "  \"pass_name\": \"conv_pass\",\n"

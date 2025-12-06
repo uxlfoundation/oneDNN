@@ -197,15 +197,15 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
                 case avx2:
                     wei_tag = with_groups()
                             ? utils::pick(ndims() - 3, gOIw2i8o4i, gOIhw2i8o4i,
-                                    gOIdhw2i8o4i)
+                                      gOIdhw2i8o4i)
                             : utils::pick(ndims() - 3, OIw2i8o4i, OIhw2i8o4i,
-                                    OIdhw2i8o4i);
+                                      OIdhw2i8o4i);
                     break;
                 case sse41:
                     wei_tag = with_groups() ? utils::pick(ndims() - 3, gOIw4o4i,
-                                      gOIhw4o4i, gOIdhw4o4i)
+                                                      gOIhw4o4i, gOIdhw4o4i)
                                             : utils::pick(ndims() - 3, OIw4o4i,
-                                                    OIhw4o4i, OIdhw4o4i);
+                                                      OIhw4o4i, OIdhw4o4i);
                     break;
                 default: assert(!"Current ISA is not supported!"); break;
             }

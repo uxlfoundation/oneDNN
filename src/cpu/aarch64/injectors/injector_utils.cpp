@@ -132,9 +132,9 @@ conditional_register_preserve_guard_t<
         std::initializer_list<Xbyak_aarch64::XReg> reg64_to_preserve,
         std::initializer_list<Xbyak_aarch64::VReg> vmm_to_preserve)
     : register_preserve_guard_t<isa> {condition_to_be_met
-                    ? register_preserve_guard_t<isa> {host, reg64_to_preserve,
-                            vmm_to_preserve}
-                    : register_preserve_guard_t<isa> {nullptr, {}, {}}} {};
+                      ? register_preserve_guard_t<isa> {host, reg64_to_preserve,
+                                vmm_to_preserve}
+                      : register_preserve_guard_t<isa> {nullptr, {}, {}}} {};
 
 template class register_preserve_guard_t<sve_512>;
 template class register_preserve_guard_t<sve_256>;

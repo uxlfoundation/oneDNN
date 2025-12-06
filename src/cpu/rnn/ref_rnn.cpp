@@ -605,22 +605,14 @@ void ref_rnn_common_t<aprop, src_type, weights_type,
     // them run simulataneously. So, we can re-use the same scratchpad across
     // all primitives. Iterate through them to find the largest scratchpad
     // required.
-    const auto nested_pds
-            = { matmul_layer_1_pd_,
-                  matmul_layer_2_pd_,
-                  matmul_layer_3_pd_,
-                  matmul_iter_1_pd_,
-                  matmul_iter_2_pd_,
-                  matmul_iter_3_pd_,
-                  matmul_part2_1_pd_,
-                  matmul_part2_2_pd_,
-                  matmul_part2_3_pd_,
-                  matmul_part2_4_pd_,
+    const auto nested_pds = {matmul_layer_1_pd_, matmul_layer_2_pd_,
+            matmul_layer_3_pd_, matmul_iter_1_pd_, matmul_iter_2_pd_,
+            matmul_iter_3_pd_, matmul_part2_1_pd_, matmul_part2_2_pd_,
+            matmul_part2_3_pd_, matmul_part2_4_pd_,
 #if DNNL_X64
-                  bf32_wei_layer_reorder_pd_,
-                  bf32_wei_iter_reorder_pd_
+            bf32_wei_layer_reorder_pd_, bf32_wei_iter_reorder_pd_
 #endif
-              };
+    };
 
     size_t max_nested_scratchpad_size = 0;
     for (const auto &n_pd : nested_pds) {
@@ -2066,7 +2058,7 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
     if (rnn.use_workspace)
         ws_ptr = rnn.is_fwd ? CTX_OUT_MEM(char *, DNNL_ARG_WORKSPACE)
                             : const_cast<char *>(CTX_IN_MEM(
-                                    const char *, DNNL_ARG_WORKSPACE));
+                                      const char *, DNNL_ARG_WORKSPACE));
 
     char *base_ptr = rnn.use_workspace ? ws_ptr : scratch_ptr;
     // ws_gates is only used to pass data from FWD to BWD.

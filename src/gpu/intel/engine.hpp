@@ -68,14 +68,17 @@ public:
     }
 
     virtual status_t create_kernel(
-            compute::kernel_t *kernel, jit::generator_base_t *jitter) const = 0;
+            compute::kernel_t *kernel, jit::generator_base_t *jitter) const
+            = 0;
 
     virtual status_t create_kernel(compute::kernel_t &kernel,
-            const jit::dsl::kernel_t &kernel_ir) const = 0;
+            const jit::dsl::kernel_t &kernel_ir) const
+            = 0;
 
     virtual status_t create_kernels(std::vector<compute::kernel_t> *kernels,
             const std::vector<const char *> &kernel_names,
-            const compute::kernel_ctx_t &kernel_ctx) const = 0;
+            const compute::kernel_ctx_t &kernel_ctx) const
+            = 0;
 
     status_t create_kernel_bundle(compute::kernel_bundle_t &bundle,
             const std::vector<const char *> &kernel_names,
@@ -88,12 +91,14 @@ public:
 
     virtual status_t create_kernel_from_binary(compute::kernel_t &kernel,
             const xpu::binary_t &binary, const char *kernel_name,
-            const compute::program_src_t &src) const = 0;
+            const compute::program_src_t &src) const
+            = 0;
 
     virtual status_t create_kernels_from_cache_blob(
             const cache_blob_t &cache_blob,
             std::vector<compute::kernel_t> &kernels,
-            const std::vector<const char *> &kernel_names) const = 0;
+            const std::vector<const char *> &kernel_names) const
+            = 0;
 
     status_t create_kernel_from_cache_blob(const cache_blob_t &cache_blob,
             compute::kernel_t &kernel, const char *kernel_name) const {

@@ -59,7 +59,8 @@ struct memory_storage_t : public c_compatible {
     virtual size_t base_offset() const { return 0; }
 
     virtual status_t map_data(
-            void **mapped_ptr, stream_t *stream, size_t size) const = 0;
+            void **mapped_ptr, stream_t *stream, size_t size) const
+            = 0;
 
     virtual status_t unmap_data(void *mapped_ptr, stream_t *stream) const = 0;
 
@@ -72,7 +73,8 @@ struct memory_storage_t : public c_compatible {
      * @note: sub-storage lifetime shall not exceed one of the base memory storage
      * @note: (offset + size) shall not be greater than base memory storage size */
     virtual std::unique_ptr<memory_storage_t> get_sub_storage(
-            size_t offset, size_t size) const = 0;
+            size_t offset, size_t size) const
+            = 0;
 
     /** returns shallow copy */
     virtual std::unique_ptr<memory_storage_t> clone() const = 0;

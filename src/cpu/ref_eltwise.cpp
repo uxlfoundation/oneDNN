@@ -34,10 +34,10 @@ namespace cpu {
             ? (f).off(n) \
             : ((ndims == 2) ? (f).off(n, c) \
                             : ((ndims == 3) ? (f).off(n, c, w) \
-                                            : ((ndims == 4) ? (f).off( \
-                                                       n, c, h, w) \
+                                            : ((ndims == 4) ? (f).off(n, c, h, \
+                                                                      w) \
                                                             : (f).off(n, c, d, \
-                                                                    h, w))))
+                                                                      h, w))))
 
 status_t ref_eltwise_fwd_t::execute_forward_generic(
         const exec_ctx_t &ctx) const {

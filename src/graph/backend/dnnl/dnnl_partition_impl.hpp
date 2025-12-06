@@ -45,7 +45,7 @@ public:
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs, kernel_ptr &kernel)
         : compiled_partition_impl_t(
-                engine, inputs, outputs, kernel->get_inplace_pairs())
+                  engine, inputs, outputs, kernel->get_inplace_pairs())
         , kernel_(kernel) {}
 
     // Current implementation uses const_cast to reset `engine_` to point to a

@@ -51,7 +51,7 @@ struct dnnl_memory : public dnnl::impl::c_compatible {
     dnnl_memory(dnnl::impl::engine_t *engine,
             const dnnl::impl::memory_desc_t *md, unsigned flags, void *handle)
         : dnnl_memory(engine, md, std::vector<unsigned> {flags},
-                std::vector<void *> {handle}) {}
+                  std::vector<void *> {handle}) {}
     dnnl_memory(dnnl::impl::engine_t *engine,
             const dnnl::impl::memory_desc_t *md,
             std::unique_ptr<dnnl::impl::memory_storage_t> &&memory_storage);

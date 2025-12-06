@@ -280,12 +280,12 @@ struct prb_t : public desc_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
         : prb_t(s.desc, dt_conf_t::create(s.cfg[0], s.attributes.front()),
-                s.tag[0], s.prop[0], s.alg[0], s.with_peephole[0],
-                s.with_projection[0], s.direction[0], s.scale_policy[0],
-                s.scale_proj_policy[0], s.flags[0], s.activation[0], s.alpha,
-                s.beta, s.skip_nonlinear[0], s.trivial_strides[0], s.n_layer[0],
-                s.n_iter[0], s.mb[0], s.attributes.front(), s.ctx_init[0],
-                s.ctx_exe[0], s.impl_filter) {
+                  s.tag[0], s.prop[0], s.alg[0], s.with_peephole[0],
+                  s.with_projection[0], s.direction[0], s.scale_policy[0],
+                  s.scale_proj_policy[0], s.flags[0], s.activation[0], s.alpha,
+                  s.beta, s.skip_nonlinear[0], s.trivial_strides[0],
+                  s.n_layer[0], s.n_iter[0], s.mb[0], s.attributes.front(),
+                  s.ctx_init[0], s.ctx_exe[0], s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
@@ -412,9 +412,9 @@ struct prb_t : public desc_t {
         return is_lstm()
                 ? 4
                 : (alg == VANILLA_GRU || alg == LBR_GRU || alg == VANILLA_AUGRU
-                                        || alg == LBR_AUGRU
-                                ? 3
-                                : 1);
+                                          || alg == LBR_AUGRU
+                                  ? 3
+                                  : 1);
     }
     int64_t n_bias() const {
         return alg == LBR_GRU || alg == LBR_AUGRU ? n_gates() + 1 : n_gates();

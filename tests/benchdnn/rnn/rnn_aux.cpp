@@ -117,9 +117,7 @@ flags_t str2flags(const char *str) {
     while (str && *str) {
         if (*str == 'O')
             flags |= DIFF_WEIGHTS_OVERWRITE;
-        else {
-            BENCHDNN_PRINT(0, "%s\n", "Error: unsupported flags value.");
-        }
+        else { BENCHDNN_PRINT(0, "%s\n", "Error: unsupported flags value."); }
         str++;
     }
     return flags;

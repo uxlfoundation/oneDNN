@@ -2827,11 +2827,11 @@ TEST(test_convolution_execute_subgraph_int8, Conv1dConv2dConv3d) {
                           : std::vector<int64_t> {1, in_channel, 12, 12, 12};
         std::vector<int64_t> weight_shape = nd == 1
                 ? std::vector<int64_t> {out_channel, in_channel / g,
-                        kernel_size}
+                          kernel_size}
                 : nd == 2 ? std::vector<int64_t> {out_channel, in_channel / g,
-                          kernel_size, kernel_size}
+                                    kernel_size, kernel_size}
                           : std::vector<int64_t> {out_channel, in_channel / g,
-                                  kernel_size, kernel_size, kernel_size};
+                                    kernel_size, kernel_size, kernel_size};
         std::vector<int64_t> bias_shape {out_channel};
         std::vector<int64_t> dst_shape = nd == 1
                 ? std::vector<int64_t> {1, out_channel, 10}
@@ -3862,11 +3862,11 @@ TEST(test_convolution_execute_subgraph_int8, Conv1d2d3dX8s8f32) {
                           : std::vector<int64_t> {1, in_channel, 12, 12, 12};
         std::vector<int64_t> weight_shape = nd == 1
                 ? std::vector<int64_t> {out_channel, in_channel / g,
-                        kernel_size}
+                          kernel_size}
                 : nd == 2 ? std::vector<int64_t> {out_channel, in_channel / g,
-                          kernel_size, kernel_size}
+                                    kernel_size, kernel_size}
                           : std::vector<int64_t> {out_channel, in_channel / g,
-                                  kernel_size, kernel_size, kernel_size};
+                                    kernel_size, kernel_size, kernel_size};
         std::vector<int64_t> bias_shape {out_channel};
         std::vector<int64_t> dst_shape = nd == 1
                 ? std::vector<int64_t> {1, out_channel, 10}

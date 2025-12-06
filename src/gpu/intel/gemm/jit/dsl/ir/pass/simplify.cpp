@@ -403,11 +403,11 @@ expr_t simplify_rewrite_and(const expr_t &_e) {
         auto _true = (e.type().is_scalar()
                         ? expr_t(true)
                         : shuffle_t::make_broadcast(
-                                expr_t(true), e.type().elems()));
+                                  expr_t(true), e.type().elems()));
         auto _false = (e.type().is_scalar()
                         ? expr_t(false)
                         : shuffle_t::make_broadcast(
-                                expr_t(false), e.type().elems()));
+                                  expr_t(false), e.type().elems()));
         REWRITE_BINARY_NO_STATIC(_true & x, x);
         REWRITE_BINARY_NO_STATIC(x & _true, x);
         REWRITE_BINARY_NO_STATIC(_false & x, _false);
@@ -430,11 +430,11 @@ expr_t simplify_rewrite_or(const expr_t &_e) {
         auto _true = (e.type().is_scalar()
                         ? expr_t(true)
                         : shuffle_t::make_broadcast(
-                                expr_t(true), e.type().elems()));
+                                  expr_t(true), e.type().elems()));
         auto _false = (e.type().is_scalar()
                         ? expr_t(false)
                         : shuffle_t::make_broadcast(
-                                expr_t(false), e.type().elems()));
+                                  expr_t(false), e.type().elems()));
         REWRITE_BINARY_NO_STATIC(_true | x, _true);
         REWRITE_BINARY_NO_STATIC(x | _true, _true);
         REWRITE_BINARY_NO_STATIC(_false | x, x);
@@ -1152,7 +1152,7 @@ public:
 private:
     factored_expr_t(const expr_t &e)
         : expr_iface_t(
-                e.type().with_attr(e.type().attr() & ~type::attr_t::mut)) {
+                  e.type().with_attr(e.type().attr() & ~type::attr_t::mut)) {
         init_factors(e);
     }
 
@@ -1971,8 +1971,8 @@ struct voider_t {
 
 template <op_kind_t op_kind, typename T>
 struct compute_helper_t<op_kind, T,
-        typename voider_t<decltype(
-                op_traits_t<op_kind>::compute(T(), T()))>::type> {
+        typename voider_t<decltype(op_traits_t<op_kind>::compute(
+                T(), T()))>::type> {
     static expr_t call(T a, T b) {
         return to_expr(op_traits_t<op_kind>::compute(a, b));
     }

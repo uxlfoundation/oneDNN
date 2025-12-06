@@ -4289,9 +4289,9 @@ status_t jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::init_conf(
     auto dst_tag = is_data_layout_nxc ? dat_tag_nxc : dat_tag_nCx16c;
     auto wei_tag = jcp.is_1stconv
             ? pick(2 * ndims - 6 + with_groups, Owi16o, gOwi16o, Ohwi16o,
-                    gOhwi16o, Odhwi16o, gOdhwi16o)
+                      gOhwi16o, Odhwi16o, gOdhwi16o)
             : pick(2 * ndims - 6 + with_groups, OIw16i16o, gOIw16i16o,
-                    OIhw16i16o, gOIhw16i16o, OIdhw16i16o, gOIdhw16i16o);
+                      OIhw16i16o, gOIhw16i16o, OIdhw16i16o, gOIdhw16i16o);
 
     if (src_md.format_kind == format_kind::any) {
         CHECK(memory_desc_init_by_tag(src_md, src_tag));
@@ -4526,9 +4526,9 @@ status_t jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::init_conf(
 
     jcp.harness = ndims == 5
             ? harness_3d_reduction
-            : (use_full_spat_loop          ? harness_compute_full_spatial
-                            : (ndims == 4) ? harness_2d_reduction
-                                           : harness_mb_reduction);
+            : (use_full_spat_loop            ? harness_compute_full_spatial
+                              : (ndims == 4) ? harness_2d_reduction
+                                             : harness_mb_reduction);
 
     switch (jcp.harness) {
         case harness_2d_reduction: jcp.nthr_mb_work = jcp.mb * jcp.oh; break;

@@ -84,8 +84,8 @@ void jit_uni_shuffle_kernel_t<avx512_core>::emu_gather_data(
 
     for (unsigned i = 0; i < number_of_xmms; i++) {
         const unsigned number_of_xmm_halfs = is_tail && i == number_of_xmms - 1
-                ? utils::div_up(
-                        conf_.simd_tail, xmm_size_elem_half + i * xmm_size_elem)
+                ? utils::div_up(conf_.simd_tail,
+                          xmm_size_elem_half + i * xmm_size_elem)
                 : 2;
 
         for (unsigned j = 0; j < number_of_xmm_halfs; j++) {

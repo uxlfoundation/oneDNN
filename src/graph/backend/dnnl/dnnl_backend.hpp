@@ -81,12 +81,12 @@ public:
         static const std::unordered_set<engine_kind_t, enum_hash_t>
                 supported_kind = {
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-                    engine_kind::cpu,
+                        engine_kind::cpu,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
         || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-                    engine_kind::gpu,
+                        engine_kind::gpu,
 #endif
                 };
         return supported_kind.count(kind);

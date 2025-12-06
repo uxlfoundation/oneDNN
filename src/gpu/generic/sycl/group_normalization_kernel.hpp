@@ -254,9 +254,10 @@ struct group_norm_bwd_t {
 
         dims_t logical_index;
         logical_index[1] = channel_num;
-        float gamma = conf_.scale_diff_required ? load_float_value(
-                              data_type::f32, scales.get_pointer(), channel_num)
-                                                : 1.0f;
+        float gamma = conf_.scale_diff_required
+                ? load_float_value(
+                          data_type::f32, scales.get_pointer(), channel_num)
+                : 1.0f;
         float diff_gamma = 0;
         float diff_beta = 0;
         for (dim_t batch = 0; batch < dims[0]; batch++) {

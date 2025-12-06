@@ -32,11 +32,11 @@ class lrn_avx512_nhwc_executor_fwd_t : public i_lrn_executor_t {
 public:
     lrn_avx512_nhwc_executor_fwd_t(const PD_T *pd)
         : ker_(utils::make_unique<
-                lrn::jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>>(pd->C(),
-                pd->desc()->prop_kind,
-                pd->desc()->lrn_alpha / pd->desc()->local_size,
-                pd->desc()->lrn_beta, pd->desc()->lrn_k,
-                pd->desc()->local_size))
+                  lrn::jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>>(pd->C(),
+                  pd->desc()->prop_kind,
+                  pd->desc()->lrn_alpha / pd->desc()->local_size,
+                  pd->desc()->lrn_beta, pd->desc()->lrn_k,
+                  pd->desc()->local_size))
         , N_(pd->MB())
         , C_(pd->C())
         , H_(pd->H())
@@ -87,9 +87,9 @@ class lrn_avx512_nhwc_executor_bwd_t : public i_lrn_executor_t {
 public:
     lrn_avx512_nhwc_executor_bwd_t(const PD_T *pd)
         : ker_ {utils::make_unique<
-                lrn::jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>>(pd->C(),
-                pd->desc()->lrn_alpha / pd->desc()->local_size,
-                pd->desc()->lrn_beta, pd->desc()->local_size)}
+                  lrn::jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>>(pd->C(),
+                  pd->desc()->lrn_alpha / pd->desc()->local_size,
+                  pd->desc()->lrn_beta, pd->desc()->local_size)}
         , N_(pd->MB())
         , C_(pd->C())
         , H_(pd->H())

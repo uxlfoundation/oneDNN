@@ -91,7 +91,7 @@
 
 #define INTERNAL_CAT(a, b) a##b
 #define CAT(a, b) INTERNAL_CAT(a, b)
-#define DIV_UP(a, b) (((a) + ((b)-1)) / (b))
+#define DIV_UP(a, b) (((a) + ((b) - 1)) / (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 

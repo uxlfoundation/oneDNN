@@ -333,15 +333,17 @@ status_t acl_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
         bia_tensor.allocator()->import_memory(const_cast<float *>(bias));
     }
 
-    auto dst = pd()->almc_.use_dst_acc ? scratchpad.get<void>(
-                       memory_tracking::names::key_matmul_dst_in_acc_dt)
-                                       : CTX_OUT_MEM(float *, DNNL_ARG_DST);
+    auto dst = pd()->almc_.use_dst_acc
+            ? scratchpad.get<void>(
+                      memory_tracking::names::key_matmul_dst_in_acc_dt)
+            : CTX_OUT_MEM(float *, DNNL_ARG_DST);
     dst_tensor.allocator()->init(alcm.dst_tensor_info);
     dst_tensor.allocator()->import_memory(dst);
 
-    auto dst_cast = pd()->almc_.use_cast_acc ? scratchpad.get<void>(
-                            memory_tracking::names::key_matmul_dst_cast_acc)
-                                             : nullptr;
+    auto dst_cast = pd()->almc_.use_cast_acc
+            ? scratchpad.get<void>(
+                      memory_tracking::names::key_matmul_dst_cast_acc)
+            : nullptr;
     if (dst_cast) {
         dst_cast_tensor.allocator()->init(alcm.dst_cast_tensor_info);
         dst_cast_tensor.allocator()->import_memory(dst_cast);

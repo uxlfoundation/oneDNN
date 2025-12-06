@@ -43,7 +43,7 @@ struct jit_uni_dw_conv_fwd_kernel_t {
 
     jit_uni_dw_conv_fwd_kernel_t(jit_conv_conf_t ajcp)
         : ker_(utils::make_unique<jit_uni_dw_conv_fwd_kernel_f32_t<isa>>(
-                ajcp)) {}
+                  ajcp)) {}
 
     status_t create_kernel() { return ker_->create_kernel(); }
     ~jit_uni_dw_conv_fwd_kernel_t() = default;
@@ -325,7 +325,7 @@ struct jit_uni_dw_conv_bwd_data_kernel_t {
 
     jit_uni_dw_conv_bwd_data_kernel_t(jit_conv_conf_t ajcp)
         : ker_(utils::make_unique<jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>>(
-                ajcp)) {}
+                  ajcp)) {}
 
     status_t create_kernel() { return ker_->create_kernel(); }
     ~jit_uni_dw_conv_bwd_data_kernel_t() = default;
@@ -457,7 +457,7 @@ struct jit_uni_dw_conv_bwd_weights_kernel_t {
 
     jit_uni_dw_conv_bwd_weights_kernel_t(jit_conv_conf_t ajcp)
         : ker_(utils::make_unique<
-                jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>>(ajcp)) {}
+                  jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>>(ajcp)) {}
 
     status_t create_kernel() { return ker_->create_kernel(); }
     ~jit_uni_dw_conv_bwd_weights_kernel_t() = default;

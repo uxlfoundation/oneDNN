@@ -42,7 +42,8 @@ struct miopen_lrn_impl_base_t {
 
     virtual status_t init(lrn_pd_t *pd) = 0;
     virtual void execute(
-            miopenHandle_t handle, const std::vector<void *> &args) const = 0;
+            miopenHandle_t handle, const std::vector<void *> &args) const
+            = 0;
 
     size_t get_workspace_size() const { return workspace_size; }
 

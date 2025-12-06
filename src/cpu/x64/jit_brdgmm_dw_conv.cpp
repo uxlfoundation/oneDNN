@@ -376,14 +376,14 @@ void brdgmm_dw_convolution_fwd_t::pd_t::init_batch_elements() {
         const int oh = ohb < h_blk_info.n_lpad_blks
                 ? ohb
                 : (h_blk_info.rpad_blk_start_idx
-                        + (ohb - h_blk_info.n_lpad_blks));
+                          + (ohb - h_blk_info.n_lpad_blks));
         const int bpad = oh * h_shift + jcp.kh - (jcp.ih + jcp.t_pad);
 
         const int fpad = jcp.f_pad - odb * d_shift;
         const int od = odb < d_blk_info.n_lpad_blks
                 ? odb
                 : (d_blk_info.rpad_blk_start_idx
-                        + (odb - d_blk_info.n_lpad_blks));
+                          + (odb - d_blk_info.n_lpad_blks));
         const int backpad = od * d_shift + jcp.kd - (jcp.id + jcp.f_pad);
 
         gen_batch_elements(fpad, backpad, tpad, bpad, lpad, rpad, bs_[bi],
@@ -476,9 +476,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
                         = (work_per_thr / jcp.nb_ch) % jcp.ow;
                 if (ow_tail_block && (jcp.ow % ow_tail_block == 0))
                     jcp.ow_block = ow_tail_block;
-                else {
-                    jcp.ow_block = jcp.ow;
-                }
+                else { jcp.ow_block = jcp.ow; }
             } else {
                 const int max_ow_block = is_superset(jcp.isa, avx512_core)
                         ? 6
@@ -602,11 +600,11 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
             : 0;
     int32_t *s8s8_comp_ptr = jcp.s8s8_compensation_required
             ? reinterpret_cast<int32_t *>(
-                    const_cast<char *>(weights) + extra_data_offset)
+                      const_cast<char *>(weights) + extra_data_offset)
             : nullptr;
     int32_t *zp_compensation = jcp.src_zero_point
-            ? reinterpret_cast<int32_t *>(
-                    const_cast<char *>(weights) + extra_data_offset + s8_offset)
+            ? reinterpret_cast<int32_t *>(const_cast<char *>(weights)
+                      + extra_data_offset + s8_offset)
             : nullptr;
 
     const int chb_step = jcp.nb_ch_blocking;

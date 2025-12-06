@@ -53,7 +53,8 @@ struct pp_kernel_t {
             const float *dst_zero_points,
             const void *post_ops_binary_rhs_arg_vec, const void *dst_orig,
             size_t first_mb_matrix_addr_off, const exec_ctx_t &ctx,
-            const memory_desc_t &dst_md) const = 0;
+            const memory_desc_t &dst_md) const
+            = 0;
 
     virtual status_t create_kernel() { return status::success; }
 

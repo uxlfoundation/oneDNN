@@ -257,11 +257,11 @@ protected:
                 {weights_iter_dims}, prec, p.fmts.weights_iter_fmt);
         auto weights_peephole_md_tgt = is_lstm_peephole
                 ? memory::desc({weights_peephole_dims}, prec,
-                        p.fmts.weights_peephole_fmt)
+                          p.fmts.weights_peephole_fmt)
                 : memory::desc();
         auto weights_projection_md_tgt = is_lstm_projection
                 ? memory::desc({weights_projection_dims}, prec,
-                        p.fmts.weights_projection_fmt)
+                          p.fmts.weights_projection_fmt)
                 : memory::desc();
         auto bias_md_tgt = memory::desc({bias_dims}, prec, p.fmts.bias_fmt);
         auto src_layer_md_tgt

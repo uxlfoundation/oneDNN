@@ -24,10 +24,11 @@ AlignEscapedNewlines: DontAlign
 AlignOperands:   false
 AlignTrailingComments: false
 AllowAllParametersOfDeclarationOnNextLine: true
-AllowShortBlocksOnASingleLine: true
+AllowBreakBeforeNoexceptSpecifier : Never
+AllowShortBlocksOnASingleLine: Always
 AllowShortCaseLabelsOnASingleLine: true
 AllowShortFunctionsOnASingleLine: Inline
-AllowShortIfStatementsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: WithoutElse
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakAfterDefinitionReturnType: None
 AlwaysBreakAfterReturnType: None
@@ -47,6 +48,8 @@ BraceWrapping:
   AfterExternBlock: false
   BeforeCatch:     false
   BeforeElse:      false
+  BeforeLambdaBody: false
+  BeforeWhile:     false
   IndentBraces:    false
   SplitEmptyFunction: true
   SplitEmptyRecord: true
@@ -93,6 +96,7 @@ PenaltyBreakTemplateDeclaration: 10
 PenaltyExcessCharacter: 1000000
 PenaltyReturnTypeOnItsOwnLine: 60
 PointerAlignment: Right
+ReferenceAlignment: Pointer
 ReflowComments:  false
 SortIncludes:    true
 SortUsingDeclarations: true

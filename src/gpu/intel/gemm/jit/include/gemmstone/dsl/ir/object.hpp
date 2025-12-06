@@ -297,7 +297,7 @@ public:
     const type_t &type() const;
 
 #define DECLARE_BINARY_ASSIGN_OPERATOR(op) \
-    expr_t &operator op##=(const expr_t &rhs);
+    expr_t &operator op##=(const expr_t & rhs);
 
     DECLARE_BINARY_ASSIGN_OPERATOR(+)
     DECLARE_BINARY_ASSIGN_OPERATOR(-)

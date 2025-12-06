@@ -54,7 +54,7 @@ public:
             }
             e.loop_idx = e.loop_size.is(1) ? expr_t(0)
                                            : var_t::make(dsl::type_t::s32(),
-                                                   e.dim.str() + "_loop_idx");
+                                                     e.dim.str() + "_loop_idx");
         }
         e.tg_idx = expr_t(0);
         e.thr_idx = (tg_tile == 1 ? expr_t(0) : thr_idx);

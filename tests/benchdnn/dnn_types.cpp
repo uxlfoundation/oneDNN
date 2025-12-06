@@ -703,8 +703,8 @@ std::vector<std::pair<int, int>> attr_t::post_ops_t::get_po_masks(
             auto mask_input = e.binary.mask_input;
             mask = mask_input == mask_input_t::mask
                     ? e.binary.mask
-                    : policy2mask(
-                            DNNL_ARG_SRC_1, e.binary.policy, ndims, prim_kind);
+                    : policy2mask(DNNL_ARG_SRC_1, e.binary.policy, ndims,
+                              prim_kind);
             arg = DNNL_ARG_SRC_1;
         } else if (e.is_prelu_kind()) {
             mask = attr_t::get_default_mask(e.prelu.policy, ndims);

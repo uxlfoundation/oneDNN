@@ -222,11 +222,11 @@ protected:
         // Create inner product backward
         auto ip_primitive_desc = with_bias
                 ? inner_product_backward_weights::primitive_desc(eng,
-                        ip_src_desc, ip_diff_weights_desc, ip_diff_bias_desc,
-                        ip_diff_dst_desc, ip_fwd_pdesc)
+                          ip_src_desc, ip_diff_weights_desc, ip_diff_bias_desc,
+                          ip_diff_dst_desc, ip_fwd_pdesc)
                 : inner_product_backward_weights::primitive_desc(eng,
-                        ip_src_desc, ip_diff_weights_desc, ip_diff_dst_desc,
-                        ip_fwd_pdesc);
+                          ip_src_desc, ip_diff_weights_desc, ip_diff_dst_desc,
+                          ip_fwd_pdesc);
 
         allows_attr_t aa {}; // doesn't support anything
         test_bwd_pd_constructors<pd_t, hint_pd_t>(ip_primitive_desc,
@@ -297,11 +297,17 @@ using inner_product_test_float = inner_product_test_bwd_weights_t<float>;
 using inprod_test_params_float = inprod_test_params_t;
 
 #define EXPAND_SIZES_3D(...) \
-    5, { __VA_ARGS__ }
+    5, { \
+        __VA_ARGS__ \
+    }
 #define EXPAND_SIZES_2D(mb, ic, oc, kh, kw) \
-    4, { mb, ic, oc, 1, kh, kw }
+    4, { \
+        mb, ic, oc, 1, kh, kw \
+    }
 #define EXPAND_SIZES_1D(mb, ic, oc, kw) \
-    3, { mb, ic, oc, 1, 1, kw }
+    3, { \
+        mb, ic, oc, 1, 1, kw \
+    }
 
 TEST_P(inner_product_test_float, TestsInnerProduct) {}
 

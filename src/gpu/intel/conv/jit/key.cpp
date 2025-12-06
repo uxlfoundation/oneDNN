@@ -483,8 +483,7 @@ public:
         oss << "," << prop_;
         oss << "," << type_info_;
         if (csv) {
-            oss << ","
-                << "mb" << mb_.value << desc_;
+            oss << "," << "mb" << mb_.value << desc_;
         } else {
             oss << "," << mb_;
             oss << "," << desc_;

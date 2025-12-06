@@ -254,9 +254,9 @@ void sycl_getting_started_tutorial(dnnl::engine::kind ekind) {
     //[Define sycl queue]
     sycl::queue q = (ekind == engine::kind::gpu)
             ? sycl::queue(
-                    sycl::gpu_selector_v, sycl::property::queue::in_order {})
+                      sycl::gpu_selector_v, sycl::property::queue::in_order {})
             : sycl::queue(
-                    sycl::cpu_selector_v, sycl::property::queue::in_order {});
+                      sycl::cpu_selector_v, sycl::property::queue::in_order {});
     //[Define sycl queue]
 
     /// Create a #dnnl::engine based on SYCL device and context. Also,

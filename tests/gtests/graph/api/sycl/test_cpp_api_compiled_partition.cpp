@@ -75,9 +75,9 @@ TEST(SYCLApi, CompiledPartitionExecute) {
 
     sycl::queue q = (ekind == dnnl::engine::kind::gpu)
             ? sycl::queue(dnnl::impl::xpu::sycl::compat::gpu_selector_v,
-                    sycl::property::queue::in_order {})
+                      sycl::property::queue::in_order {})
             : sycl::queue(dnnl::impl::xpu::sycl::compat::cpu_selector_v,
-                    sycl::property::queue::in_order {});
+                      sycl::property::queue::in_order {});
 
     dnnl::engine eng = sycl_interop::make_engine_with_allocator(
             q.get_device(), q.get_context(), alloc);
@@ -138,9 +138,9 @@ TEST(SYCLApi, CompiledPartitionInteropExecute) {
 
     sycl::queue q = (ekind == dnnl::engine::kind::gpu)
             ? sycl::queue(dnnl::impl::xpu::sycl::compat::gpu_selector_v,
-                    sycl::property::queue::in_order {})
+                      sycl::property::queue::in_order {})
             : sycl::queue(dnnl::impl::xpu::sycl::compat::cpu_selector_v,
-                    sycl::property::queue::in_order {});
+                      sycl::property::queue::in_order {});
 
     dnnl::engine eng = sycl_interop::make_engine_with_allocator(
             q.get_device(), q.get_context(), alloc);

@@ -512,9 +512,9 @@ struct rnn_conf_t {
         return (cell_position & first_iter) && skip_src_iter_copy()
                 ? src_iter_ld_
                 : ((cell_position & last_layer) && skip_dst_layer_copy()
-                                        && !(cell_position & first_iter)
-                                ? dst_layer_ld_
-                                : ws_states_iter_ld);
+                                          && !(cell_position & first_iter)
+                                  ? dst_layer_ld_
+                                  : ws_states_iter_ld);
     }
 
     inline dim_t layer_brgemm_desc(cell_position_t cell_position) const {
@@ -1400,7 +1400,7 @@ template <typename T>
 struct ws_diff_states_layer_aoc_t {
     ws_diff_states_layer_aoc_t(const rnn_conf_t &rnn, T *data)
         : diff_states_layer_(data, rnn.ws_diff_states_layer_nld,
-                rnn.ws_diff_states_layer_ld) {}
+                  rnn.ws_diff_states_layer_ld) {}
     T &operator()(int batch, int dhc) const {
         return diff_states_layer_(batch, dhc);
     }
@@ -1413,7 +1413,7 @@ template <typename T>
 struct ws_diff_states_iter_aoc_t {
     ws_diff_states_iter_aoc_t(const rnn_conf_t &rnn, T *data)
         : diff_states_iter_(data, rnn.ws_diff_states_iter_nld,
-                rnn.ws_diff_states_iter_ld) {}
+                  rnn.ws_diff_states_iter_ld) {}
     T &operator()(int batch, int dhc) const {
         return diff_states_iter_(batch, dhc);
     }
@@ -1426,7 +1426,7 @@ template <typename T>
 struct ws_diff_states_iter_c_aoc_t {
     ws_diff_states_iter_c_aoc_t(const rnn_conf_t &rnn, T *data)
         : diff_states_iter_c_(data, rnn.ws_diff_states_iter_c_nld,
-                rnn.ws_diff_states_iter_c_ld) {}
+                  rnn.ws_diff_states_iter_c_ld) {}
     T &operator()(int batch, int dhc) const {
         return diff_states_iter_c_(batch, dhc);
     }
@@ -1438,7 +1438,7 @@ private:
 struct ws_diff_w_iter_aoc_t {
     ws_diff_w_iter_aoc_t(const rnn_conf_t &rnn, float *data)
         : diff_weights_iter_(
-                data, rnn.diff_weights_iter_nld, rnn.diff_weights_iter_ld)
+                  data, rnn.diff_weights_iter_nld, rnn.diff_weights_iter_ld)
         , DHC_(rnn.dhc) {}
     float &operator()(int sic, int gate, int dhc) const {
         return diff_weights_iter_(sic, gate * DHC_ + dhc);

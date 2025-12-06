@@ -241,7 +241,7 @@ status_t gemm_f32_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     acc_data_t *acc = dst_is_acc
             ? (acc_data_t *)dst
             : ctx.get_scratchpad_grantor().template get<acc_data_t>(
-                    memory_tracking::names::key_matmul_dst_in_acc_dt);
+                      memory_tracking::names::key_matmul_dst_in_acc_dt);
     // case: dynamic sizes
     bool need_free_acc = false;
     if (acc == nullptr) {
@@ -342,7 +342,7 @@ status_t gemm_f32_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                     const size_t dst_logical_off = i_work;
                     const size_t dim1_off = helper.ndims() > 3
                             ? ((cur_b % batch_without_dim0)
-                                    / batch_without_dim01)
+                                      / batch_without_dim01)
                             : cur_m;
 
                     // offset for case with post-op broadcast_channel

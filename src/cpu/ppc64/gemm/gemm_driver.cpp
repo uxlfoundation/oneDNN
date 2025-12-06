@@ -1365,7 +1365,7 @@ static dnnl_status_t gemm_threading_driver(
 
                 auto m_padd = (thread_info.copy == copy_type::shared_a)
                         ? get_m_padd_parallel_a(
-                                ithr, m, arg, thread_info.nthrs())
+                                  ithr, m, arg, thread_info.nthrs())
                         : get_m_padd(ithr, m, arg);
                 auto n_padd = get_n_padd(ithr, n, k, arg);
                 auto k_padd = get_k_padd(ithr, k, arg);

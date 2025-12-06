@@ -172,7 +172,7 @@ public:
     reg64_savable_backup_t(
             const reg64_savable_t &other, const Xbyak::Reg64 &ext_reg)
         : reg64_savable_t(other.regscratchpad_,
-                other.regscratchpad_.ExtendedRegisters() ? ext_reg : other)
+                  other.regscratchpad_.ExtendedRegisters() ? ext_reg : other)
         , other_(other) {}
 
     void save() const override { other_.saveTo(*this); }

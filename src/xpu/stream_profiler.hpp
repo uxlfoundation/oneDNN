@@ -55,7 +55,8 @@ struct stream_profiler_t {
     };
 
     virtual status_t get_info(profiling_data_kind_t data_kind, int *num_entries,
-            uint64_t *data) const = 0;
+            uint64_t *data) const
+            = 0;
 
     uint64_t stamp() const { return stamp_; }
 

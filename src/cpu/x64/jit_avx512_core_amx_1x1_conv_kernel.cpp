@@ -1114,11 +1114,11 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
         format_tag_t wei_tag;
         wei_tag = (is_bf16_convolution)
                 ? pick(with_groups + 2 * (ndims - 3), OIw16i16o2i, gOIw16i16o2i,
-                        OIhw16i16o2i, gOIhw16i16o2i, OIdhw16i16o2i,
-                        gOIdhw16i16o2i)
+                          OIhw16i16o2i, gOIhw16i16o2i, OIdhw16i16o2i,
+                          gOIdhw16i16o2i)
                 : pick(with_groups + 2 * (ndims - 3), OIw16i16o4i, gOIw16i16o4i,
-                        OIhw16i16o4i, gOIhw16i16o4i, OIdhw16i16o4i,
-                        gOIdhw16i16o4i);
+                          OIhw16i16o4i, gOIhw16i16o4i, OIdhw16i16o4i,
+                          gOIdhw16i16o4i);
         memory_desc_t want_wei_md = weights_md;
         CHECK_BOOL(memory_desc_init_by_tag(want_wei_md, wei_tag));
 

@@ -49,8 +49,8 @@ struct trivial_key_validator_t {
     };
 
     template <typename U,
-            utils::enable_if_t<is_trivially_validatable_t<U>::value,
-                    bool> = true>
+            utils::enable_if_t<is_trivially_validatable_t<U>::value, bool>
+            = true>
     static bool is_valid(const U &t) {
         static_assert(std::is_same<T, U>::value,
                 "key validation is not intended for comparing different types");
@@ -58,8 +58,8 @@ struct trivial_key_validator_t {
     }
 
     template <typename U,
-            utils::enable_if_t<!is_trivially_validatable_t<U>::value,
-                    bool> = true>
+            utils::enable_if_t<!is_trivially_validatable_t<U>::value, bool>
+            = true>
     static bool is_valid(const U &t) {
         // Runtime validation only occurs in C++20 as default comparisons
         // significantly improves the reliability of this check.
@@ -95,8 +95,8 @@ struct trivial_key_t : public T {
     };
 
     using value_type =
-            typename std::remove_reference<typename create_signature_t<decltype(
-                    &T::create_generator)>::arg2_type>::type;
+            typename std::remove_reference<typename create_signature_t<
+                    decltype(&T::create_generator)>::arg2_type>::type;
 
     trivial_key_t() = delete;
     trivial_key_t(const T &t, const engine_id_t &id)
@@ -148,7 +148,8 @@ private:
 // GPU specific abstract interface for kernel_cache::key_impl_t
 struct gpu_kernel_key_impl_t : public kernel_cache::key_impl_t {
     virtual status_t create_generator(
-            impl::engine_t *engine, gpu_kernel_value_t &generator) const = 0;
+            impl::engine_t *engine, gpu_kernel_value_t &generator) const
+            = 0;
 };
 
 // Templated key container which implements the necessary virtual interfaces

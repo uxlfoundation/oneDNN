@@ -451,11 +451,11 @@ private:
 
         /* Quantize src & compute compensation */
         auto scratch_quantized
-                = (int8_t * __restrict) ctx.get_scratchpad_grantor()
+                = (int8_t *__restrict)ctx.get_scratchpad_grantor()
                           .template get<void>(memory_tracking::names::
                                           key_reorder_rnn_weights_quantization);
         auto scratch_compensation
-                = (int32_t * __restrict) ctx.get_scratchpad_grantor()
+                = (int32_t *__restrict)ctx.get_scratchpad_grantor()
                           .template get<void>(memory_tracking::names::
                                           key_reorder_rnn_weights_reduction);
         float *comp = reinterpret_cast<float *>(
@@ -486,7 +486,7 @@ private:
                 default: assert(!"Unsupported reorder");
             }
         } else
-            scratch_quantized = (int8_t * __restrict) src;
+            scratch_quantized = (int8_t *__restrict)src;
 
         /* Step 2: we pre-compute the compensation */
         switch (pd()->itag_) {
@@ -873,11 +873,11 @@ private:
 
         /* Quantize src & compute compensation */
         auto scratch_quantized
-                = (int8_t * __restrict) ctx.get_scratchpad_grantor()
+                = (int8_t *__restrict)ctx.get_scratchpad_grantor()
                           .template get<void>(memory_tracking::names::
                                           key_reorder_rnn_weights_quantization);
         auto scratch_compensation
-                = (int32_t * __restrict) ctx.get_scratchpad_grantor()
+                = (int32_t *__restrict)ctx.get_scratchpad_grantor()
                           .template get<void>(memory_tracking::names::
                                           key_reorder_rnn_weights_reduction);
         float *comp = reinterpret_cast<float *>(dst + compensation_offset);
@@ -902,7 +902,7 @@ private:
             quantize_igo<type_i>(
                     scratch_quantized, src_d, (float *)src, mask, scales);
         } else
-            scratch_quantized = (int8_t * __restrict) src;
+            scratch_quantized = (int8_t *__restrict)src;
 
         if (req_s8s8_comp && mask_ok(dst_d.extra().compensation_mask))
             compensate_igo(comp, src_d, scratch_quantized, scratch_compensation,

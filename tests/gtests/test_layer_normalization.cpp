@@ -460,7 +460,9 @@ private:
 #define TAGS_cLDSNC EXPAND_FORMATS(abcde, acdb, abcde)
 
 #define LNORM_TEST_CASE(...) \
-    test_lnorm_params_t { __VA_ARGS__, false, dnnl_success }
+    test_lnorm_params_t { \
+        __VA_ARGS__, false, dnnl_success \
+    }
 
 static auto expected_failure_cases = []() {
     // clang-format off

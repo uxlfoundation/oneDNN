@@ -114,7 +114,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
     const bool is_amx = jbgp.is_amx;
     auto wsp_tile_base = is_amx
             ? ctx.get_scratchpad_grantor().template get<char>(
-                    key_conv_amx_tile_buffer)
+                      key_conv_amx_tile_buffer)
             : nullptr;
 
     const int ic_chunks = div_up(jbgp.nb_ic, jbgp.nb_ic_blocking);
@@ -258,8 +258,8 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                 auto A_ptr = jbgp.use_buffer_a
                         ? (a_buffer + src_dt_size * b * jbgp.K)
                         : (src
-                                + blk_off(
-                                        src_d, n, ic + b * jbgp.K, kd, kh, kw));
+                                  + blk_off(src_d, n, ic + b * jbgp.K, kd, kh,
+                                          kw));
                 addr_batch[b].ptr.A = A_ptr;
                 const dim_t wei_offset = wei_cur_ocb
                         + wei_ic_stride * (icb + b * ic_blocks_per_batch);
@@ -273,9 +273,11 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                     && is_last_ic_chunk && !is_ic_tail && last_spatial_slice) {
                 void *scratch = is_amx
                         ? static_cast<void *>(wsp_tile)
-                        : (jbgp.req_s8s8_compensation ? static_cast<void *>(
-                                   const_cast<int *>(&compensation[oc]))
-                                                      : nullptr);
+                        : (jbgp.req_s8s8_compensation
+                                          ? static_cast<void *>(
+                                                    const_cast<int *>(
+                                                            &compensation[oc]))
+                                          : nullptr);
                 auto ptr_bias
                         = jbgp.with_bias ? bias + bia_dt_size * oc : nullptr;
                 const brgemm_post_ops_data_t post_ops_data {
@@ -322,9 +324,11 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                     && last_spatial_slice) {
                 void *scratch = is_amx
                         ? static_cast<void *>(wsp_tile)
-                        : (jbgp.req_s8s8_compensation ? static_cast<void *>(
-                                   const_cast<int *>(&compensation[oc]))
-                                                      : nullptr);
+                        : (jbgp.req_s8s8_compensation
+                                          ? static_cast<void *>(
+                                                    const_cast<int *>(
+                                                            &compensation[oc]))
+                                          : nullptr);
                 auto ptr_bias
                         = jbgp.with_bias ? bias + bia_dt_size * oc : nullptr;
                 const brgemm_post_ops_data_t post_ops_data {
@@ -610,10 +614,13 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
 
                             void *scratch = is_amx
                                     ? static_cast<void *>(wsp_tile)
-                                    : (jbgp.req_s8s8_compensation ? static_cast<
-                                                    void *>(const_cast<int *>(
-                                               &compensation[oc]))
-                                                                  : nullptr);
+                                    : (jbgp.req_s8s8_compensation
+                                                      ? static_cast<
+                                                                void *>(const_cast<
+                                                                int *>(
+                                                                &compensation
+                                                                        [oc]))
+                                                      : nullptr);
 
                             const brgemm_post_ops_data_t post_ops_data {
                                     static_cast<const void *>(ptr_bias),
@@ -698,7 +705,7 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
             : nullptr;
     auto wsp_tile_base = is_amx
             ? ctx.get_scratchpad_grantor().template get<char>(
-                    key_conv_amx_tile_buffer)
+                      key_conv_amx_tile_buffer)
             : nullptr;
 
     const dim_t acc_dt_sz = types::data_type_size(jbgp.acc_dt);
@@ -1153,7 +1160,7 @@ struct brgemm_inner_product_bwd_weights_t<isa>::thread_info_t {
 
         wsp_tile_base = is_amx
                 ? ctx.get_scratchpad_grantor().template get<char>(
-                        key_conv_amx_tile_buffer)
+                          key_conv_amx_tile_buffer)
                 : nullptr;
 
         nthr = jbgp.nthr;

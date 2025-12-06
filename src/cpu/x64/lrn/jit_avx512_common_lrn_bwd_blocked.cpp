@@ -29,7 +29,7 @@ jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>::
                 const struct nChw16c_across_t &J, float alpha, float beta,
                 int local_size, int use_h_parallel)
     : jit_avx512_common_lrn_kernel_bwd_t<d_type>(
-            alpha, beta, local_size, jit_name())
+              alpha, beta, local_size, jit_name())
     , xmm_size_ {4 * sizeof(acc_data_t)}
     , zmm_size_ {64}
     , buffer_block_ {xmm_size_ + zmm_size_ + xmm_size_}

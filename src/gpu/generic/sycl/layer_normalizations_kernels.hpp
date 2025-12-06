@@ -434,7 +434,7 @@ private:
 
                     float gamma = (conf_.use_scale)
                             ? load_float_value(data_scaleshift_md().data_type(),
-                                    scale_ptr(), data_scaleshift_md().off(c))
+                                      scale_ptr(), data_scaleshift_md().off(c))
                             : 1.f;
                     const size_t src_off = data_md().off_l(n * conf_.C + c),
                                  diff_dst_off
@@ -454,7 +454,7 @@ private:
             for (dim_t c = 0; c < C; ++c) {
                 float gamma = (conf_.use_scale)
                         ? load_float_value(data_scaleshift_md().data_type(),
-                                scale_ptr(), data_scaleshift_md().off(c))
+                                  scale_ptr(), data_scaleshift_md().off(c))
                         : 1.f;
                 const size_t src_off
                         = data_md().off_l(n * conf_.C + c),

@@ -60,10 +60,18 @@
 // Defines (for example) float_zero, float_one, float_min, and float_max
 // Can be used in a data-type agnostic way with the SPECIAL macro below
 #define DEF_special_vals(dt, zero_val, one_val, min_val, max_val) \
-    dt CONCAT2(dt, _zero)() { return zero_val; } \
-    dt CONCAT2(dt, _one)() { return one_val; } \
-    dt CONCAT2(dt, _min)() { return min_val; } \
-    dt CONCAT2(dt, _max)() { return max_val; }
+    dt CONCAT2(dt, _zero)() { \
+        return zero_val; \
+    } \
+    dt CONCAT2(dt, _one)() { \
+        return one_val; \
+    } \
+    dt CONCAT2(dt, _min)() { \
+        return min_val; \
+    } \
+    dt CONCAT2(dt, _max)() { \
+        return max_val; \
+    }
 
 DEF_special_vals(float, 0.0f, 1.0f, -FLT_MAX, FLT_MAX);
 DEF_special_vals(int, 0, 1, INT_MIN, INT_MAX);

@@ -173,9 +173,9 @@ protected:
 
         auto ip_primitive_desc = with_bias
                 ? pd_t(eng, p.aprop_kind, ip_src_desc, ip_weights_desc,
-                        ip_bias_desc, ip_dst_desc)
+                          ip_bias_desc, ip_dst_desc)
                 : pd_t(eng, p.aprop_kind, ip_src_desc, ip_weights_desc,
-                        ip_dst_desc);
+                          ip_dst_desc);
 
         allows_attr_t aa {};
         aa.po_eltwise = true;
@@ -242,11 +242,17 @@ using inner_product_test_float = inner_product_test_t<float>;
 using inprod_test_params_float = inprod_test_params_t;
 
 #define EXPAND_SIZES_3D(...) \
-    5, { __VA_ARGS__ }
+    5, { \
+        __VA_ARGS__ \
+    }
 #define EXPAND_SIZES_2D(mb, ic, oc, kh, kw) \
-    4, { mb, ic, oc, 1, kh, kw }
+    4, { \
+        mb, ic, oc, 1, kh, kw \
+    }
 #define EXPAND_SIZES_1D(mb, ic, oc, kw) \
-    3, { mb, ic, oc, 1, 1, kw }
+    3, { \
+        mb, ic, oc, 1, 1, kw \
+    }
 
 TEST_P(inner_product_test_float, TestsInnerProduct) {}
 

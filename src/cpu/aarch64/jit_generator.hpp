@@ -36,8 +36,12 @@
 #endif
 
 #define DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_name) \
-    const char *name() const override { return STRINGIFY(jit_name); } \
-    const char *source_file() const override { return __FILE__; }
+    const char *name() const override { \
+        return STRINGIFY(jit_name); \
+    } \
+    const char *source_file() const override { \
+        return __FILE__; \
+    }
 
 #define LD_MUL_VL(mn, op, mask, addr, off, size) \
     do { \
@@ -709,8 +713,9 @@ public:
     jit_generator_t(void *code_ptr = nullptr, size_t code_size = MAX_CODE_SIZE,
             bool use_autogrow = true, cpu_isa_t max_cpu_isa = isa_all)
         : Xbyak_aarch64::CodeGenerator(code_size,
-                (code_ptr == nullptr && use_autogrow) ? Xbyak_aarch64::AutoGrow
-                                                      : code_ptr)
+                  (code_ptr == nullptr && use_autogrow)
+                          ? Xbyak_aarch64::AutoGrow
+                          : code_ptr)
         , max_cpu_isa_(max_cpu_isa) {}
     ~jit_generator_t() override = default;
 

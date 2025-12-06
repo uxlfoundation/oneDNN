@@ -114,7 +114,7 @@ struct ref_sum_t : public primitive_t {
 
         auto sum_reduce = pd()->need_output_reorder()
                 ? ctx.get_scratchpad_grantor().get_memory_storage(
-                        key_sum_reduction)
+                          key_sum_reduction)
                 : nullptr;
         const auto &dst = ctx.args().at(DNNL_ARG_DST);
 

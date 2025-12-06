@@ -125,8 +125,8 @@ struct jit_uni_eltwise_injector_t {
             bool use_dst = false, bool preserve_vmm = true,
             bool preserve_p_table = true)
         : jit_uni_eltwise_injector_t(host, eltwise.alg, eltwise.alpha,
-                eltwise.beta, eltwise.scale, dt, save_state, p_table, k_mask,
-                is_fwd, use_dst, preserve_vmm, preserve_p_table) {}
+                  eltwise.beta, eltwise.scale, dt, save_state, p_table, k_mask,
+                  is_fwd, use_dst, preserve_vmm, preserve_p_table) {}
 
     void compute_vector_range(size_t start_compute_idx, size_t end_compute_idx,
             const injector_utils::vmm_index_set_t &vmm_aux_indices = {});

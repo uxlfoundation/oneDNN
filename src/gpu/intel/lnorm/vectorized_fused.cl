@@ -72,7 +72,7 @@
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define DIV_UP(a, b) ((a) + ((b)-1)) / (b)
+#define DIV_UP(a, b) ((a) + ((b) - 1)) / (b)
 
 #define MAX_CHUNKS MAX(NUM_ACROSS_BLOCKS, NUM_NORM_BLOCKS_FUSED)
 
@@ -129,12 +129,14 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
                 const int src_off = SRC_PLAIN_OFF(n_idx, c_idx);
                 const int dst_off = DST_PLAIN_OFF(n_idx, c_idx);
 
-                const VECT_FLOAT_T src_vect = CONVERT_VECT_FLOAT_T(
-                        AS_VECT_DATA_T(VECT_BLOCK_READ((const __global
-                                        BLOCK_DATA_T *)(&src[src_off]))));
-                const VECT_FLOAT_T diff_dst_vect = CONVERT_VECT_FLOAT_T(
-                        AS_VECT_DATA_T(VECT_BLOCK_READ((const __global
-                                        BLOCK_DATA_T *)(&diff_dst[dst_off]))));
+                const VECT_FLOAT_T src_vect
+                        = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
+                                VECT_BLOCK_READ((const __global BLOCK_DATA_T
+                                                *)(&src[src_off]))));
+                const VECT_FLOAT_T diff_dst_vect
+                        = CONVERT_VECT_FLOAT_T(AS_VECT_DATA_T(
+                                VECT_BLOCK_READ((const __global BLOCK_DATA_T
+                                                *)(&diff_dst[dst_off]))));
 
                 diff_gamma_vect += (src_vect - mean_vect) * diff_dst_vect
                         * inv_sqrt_variance;

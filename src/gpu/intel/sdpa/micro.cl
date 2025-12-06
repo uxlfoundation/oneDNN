@@ -30,7 +30,7 @@
 #define QUANTIZE_COMMON 3
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define DIV_UP(x, y) (((x) + (y)-1) / (y))
+#define DIV_UP(x, y) (((x) + (y) - 1) / (y))
 
 #define sg_per_wg (ugemm_kq_sg_per_wg_m * ugemm_kq_sg_per_wg_n)
 #define q_tile_sg_n DIV_UP(ugemm_kq_wg_tile_n, sg_per_wg)
@@ -689,13 +689,13 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 
 #if KEY_SCALES == QUANTIZE_COMMON
-#define k_scale_op(x) ((x)*k_scale)
+#define k_scale_op(x) ((x) * k_scale)
         tile_elementwise(S_tile, k_scale_op);
 #endif
 
         /* Apply attention mask */
 #if WITH_ATTN_MASK
-#define unscale(x) ((x)*iscale)
+#define unscale(x) ((x) * iscale)
         mask_tile_type_float mask_tile_float;
         tile_copy_reblock(mask_tile, &mask_tile_float);
 #if WITH_ATTN_SCALE
@@ -1008,7 +1008,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             tile_binary(A_scale_tile, A_scale_tile_load, binary_add);
         }
 #if VAL_SCALES == QUANTIZE_COMMON
-#define v_scale_op(x) ((x)*v_scale)
+#define v_scale_op(x) ((x) * v_scale)
         tile_elementwise(A_tile, v_scale_op);
 #endif
 

@@ -33,8 +33,8 @@ public:
             const kernel_info_t &kernel_info,
             const primitive_desc_t *pd = nullptr)
         : ir_kernel_t(kernel_info.iface(kernel_name), cfg.options(),
-                kernel_info.nd_range().local_range(),
-                {GENERATOR_NAME, GENERATOR_LINE}) {
+                  kernel_info.nd_range().local_range(),
+                  {GENERATOR_NAME, GENERATOR_LINE}) {
         const primitive_attr_t *attr = (pd) ? pd->attr() : nullptr;
         const memory_desc_t *dst_md = (pd) ? pd->dst_md() : nullptr;
         ir_builder_t builder(cfg, kernel_info, attr, dst_md);

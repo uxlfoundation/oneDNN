@@ -38,7 +38,7 @@ public:
     engine_t(
             const ::sycl::device &dev, const ::sycl::context &ctx, size_t index)
         : cpu::cpu_engine_t(new xpu::sycl::engine_impl_t(
-                engine_kind::cpu, dev, ctx, index)) {}
+                  engine_kind::cpu, dev, ctx, index)) {}
 
     status_t init() { return init_impl(); }
 

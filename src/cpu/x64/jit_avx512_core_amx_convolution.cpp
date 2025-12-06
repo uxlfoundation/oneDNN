@@ -42,9 +42,9 @@ using namespace nstl;
 #define mem_blk_off(mdw, n, c, d, h, w) \
     (pd()->ndims() == 3 \
                     ? (mdw).blk_off((n), (c), (w)) \
-                    : (pd()->ndims() == 4 \
-                                    ? (mdw).blk_off((n), (c), (h), (w)) \
-                                    : (mdw).blk_off((n), (c), (d), (h), (w))))
+                    : (pd()->ndims() == 4 ? (mdw).blk_off((n), (c), (h), (w)) \
+                                          : (mdw).blk_off( \
+                                                    (n), (c), (d), (h), (w))))
 
 template <typename T>
 static inline T accum_with_upper_bound(T ub, T lv, T uv) {
@@ -200,8 +200,8 @@ jit_avx512_core_amx_convolution_fwd_t::execute_forward_reduced_lowering(
         balance211(work_amount, nthr, ithr, start, end);
         int32_t *local_zp_pbuff = req_zero_point_buffer
                 ? (zp_pbuff_outer_compute
-                                ? zero_point_pbuff
-                                : &zero_point_pbuff[ithr * zp_pbuff_size])
+                                  ? zero_point_pbuff
+                                  : &zero_point_pbuff[ithr * zp_pbuff_size])
                 : nullptr;
         bool *zp_flags = zp_pbuff_parallel_block
                 ? &zp_flags_[ithr * oc_chunks * ngroups]
@@ -584,8 +584,8 @@ status_t jit_avx512_core_amx_convolution_fwd_t::execute_forward(
         balance211(work_amount, nthr, ithr, start, end);
         int32_t *local_zp_pbuff = req_zero_point_buffer
                 ? (zp_pbuff_outer_compute
-                                ? zero_point_pbuff
-                                : &zero_point_pbuff[ithr * zp_pbuff_size])
+                                  ? zero_point_pbuff
+                                  : &zero_point_pbuff[ithr * zp_pbuff_size])
                 : nullptr;
         bool *zp_flags = zp_pbuff_parallel_block
                 ? &zp_flags_[ithr * oc_chunks * ngroups]
@@ -1854,9 +1854,9 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::compute_diff_weights(
             if (need_local_gwork) oc = gg * jcp.oc + oc_b * jcp.oc_block;
             diff_dst_data_t *tr_diff_dst = (jcp.ndims == 5)
                     ? &ti->tr_diff_dst[tr_diff_dst_off_3d(
-                            gg, oc_b, nb_oc_block, d, j)]
+                              gg, oc_b, nb_oc_block, d, j)]
                     : &ti->tr_diff_dst[tr_diff_dst_off(
-                            gg, oc_b, nb_oc_block, j)];
+                              gg, oc_b, nb_oc_block, j)];
             auto ddst_offset = diff_dst_d.blk_off(img, oc);
             const diff_dst_data_t *diff_dst = &ti->diff_dst[ddst_offset];
 

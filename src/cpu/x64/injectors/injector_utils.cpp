@@ -112,9 +112,9 @@ conditional_register_preserve_guard_t::conditional_register_preserve_guard_t(
         std::initializer_list<Xbyak::Reg64> reg64_to_preserve,
         std::initializer_list<Xbyak::Xmm> vmm_to_preserve)
     : register_preserve_guard_t {condition_to_be_met
-                    ? register_preserve_guard_t {host, reg64_to_preserve,
-                            vmm_to_preserve}
-                    : register_preserve_guard_t {nullptr, {}, {}}} {};
+                      ? register_preserve_guard_t {host, reg64_to_preserve,
+                                vmm_to_preserve}
+                      : register_preserve_guard_t {nullptr, {}, {}}} {};
 
 /*
 * Registry scratchpad code
@@ -164,12 +164,12 @@ reg64_savable_t::reg64_savable_t(registry_scratchpad_t &regscratchpad,
         const Xbyak::Reg64 &reg, const Xbyak::Reg64 &alternative_reg,
         bool use_alternative)
     : reg64_savable_t(regscratchpad, use_alternative ? alternative_reg : reg,
-            !use_alternative) {}
+              !use_alternative) {}
 
 reg64_savable_t::reg64_savable_t(registry_scratchpad_t &regscratchpad,
         const Xbyak::Reg64 &reg, const Xbyak::Reg64 &ext_reg)
     : reg64_savable_t(
-            regscratchpad, reg, ext_reg, regscratchpad.ExtendedRegisters()) {
+              regscratchpad, reg, ext_reg, regscratchpad.ExtendedRegisters()) {
     // We expect ext_reg from extended registers set
     assert(16 <= ext_reg.getIdx() && ext_reg.getIdx() <= 31);
 }

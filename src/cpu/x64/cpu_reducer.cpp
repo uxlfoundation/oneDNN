@@ -161,7 +161,7 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
     reducer_2d_driver_f_s_32_t(int n_src, size_t src_ld, size_t src_step,
             size_t dst_step, bool nullify_dst)
         : reducer_2d_driver_t<data_type>(
-                n_src, src_ld, src_step, dst_step, nullify_dst, jit_name()) {}
+                  n_src, src_ld, src_step, dst_step, nullify_dst, jit_name()) {}
 
     void nullify_dst(int nloads, int load_len) {
         UNUSED(load_len);

@@ -3348,7 +3348,7 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
                     const int idx_offset = i + out_ur * n_iters;
                     const auto addr = !is_ymm_
                             ? EVEX_compress_addr(
-                                    reg_comp_ptr, idx_offset * simd_w_)
+                                      reg_comp_ptr, idx_offset * simd_w_)
                             : ptr[reg_comp_ptr + idx_offset * simd_w_];
                     uni_vmovups(addr, vmm_res);
                 }
@@ -4234,10 +4234,10 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , max_tmp_idx(16
                   - (avx512_core_dot_product_
                                   ? 8
-                                  : (do_compute_compensation_       ? 6
-                                                  : is_src_int4_    ? 2
-                                                  : req_zp_b_shift_ ? 1
-                                                                    : 0)))
+                                  : (do_compute_compensation_         ? 6
+                                                    : is_src_int4_    ? 2
+                                                    : req_zp_b_shift_ ? 1
+                                                                      : 0)))
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * vnni_granularity_ * tr_typesize_)
         , src_elems_per_byte_(is_src_int4_ ? 2 : 1)

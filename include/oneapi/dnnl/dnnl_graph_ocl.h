@@ -20,11 +20,6 @@
 #include "oneapi/dnnl/dnnl_graph.h"
 
 /// @cond DO_NOT_DOCUMENT_THIS
-// Set target version for OpenCL explicitly to suppress a compiler warning.
-#ifndef CL_TARGET_OPENCL_VERSION
-#define CL_TARGET_OPENCL_VERSION 120
-#endif
-
 #include <CL/cl.h>
 /// @endcond
 

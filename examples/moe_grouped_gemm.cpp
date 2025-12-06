@@ -434,13 +434,13 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
 
     // First layer: input -> hidden (GEMM + bias via ref_grouped_gemm, no scales)
     ref_grouped_gemm(grouped_input, hidden_all_ref.data(), weights.W1_data,
-            weights.b1_data, offsets.data(), num_active_experts, input_dim,
+            weights.b1_data, offsets.data(), NUM_EXPERTS, input_dim,
             hidden_dim);
 
     // First layer: input -> hidden (oneDNN with concatenated memory)
     onednn_style_grouped_gemm(grouped_input, weights.W1_data, weights.b1_data,
-            hidden_all_onednn.data(), offsets.data(), num_active_experts,
-            input_dim, hidden_dim, false);
+            hidden_all_onednn.data(), offsets.data(), NUM_EXPERTS, input_dim,
+            hidden_dim, false);
 
     // Compare outputs
     float max_diff = 0.0f;
@@ -526,7 +526,7 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
 
     // Second layer: hidden -> output (ref with scales)
     ref_grouped_gemm(hidden_all.data(), output_all_ref.data(), weights.W2_data,
-            weights.b2_data, offsets.data(), num_active_experts, hidden_dim,
+            weights.b2_data, offsets.data(), NUM_EXPERTS, hidden_dim,
             output_dim, scale_src_concat.data(), scale_wei_concat.data(),
             scale_dst_concat.data(), src_scale_sizes.data(),
             wei_scale_sizes.data());
@@ -534,7 +534,7 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     // Second layer with scales: hidden -> output (oneDNN with concat memory)
     onednn_style_grouped_gemm(hidden_all.data(), weights.W2_data,
             weights.b2_data, output_all_scaled.data(), offsets.data(),
-            num_active_experts, hidden_dim, output_dim, true);
+            NUM_EXPERTS, hidden_dim, output_dim, true);
 
     // Compare outputs
     max_diff = 0.0f;

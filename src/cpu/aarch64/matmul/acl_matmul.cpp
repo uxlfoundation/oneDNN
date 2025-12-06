@@ -83,6 +83,12 @@ status_t acl_matmul_t::pd_t::init(engine_t *engine) {
                       weights_md()->data_type)
             && utils::everyone_is(data_type::f32, dst_md()->data_type)
             && platform::has_data_type_support(data_type::bf16);
+    const bool is_gemv = utils::everyone_is(2, src_md()->ndims, dst_md()->ndims)
+            && (src_md()->dims[0] == 1 || weights_md()->dims[1] == 1);
+
+    // in case of gemv and we have SVE, we leave BRGeMM to handle it
+    VDISPATCH_MATMUL(!(is_gemv && arm_compute::CPUInfo::get().has_sve()),
+            "falling back to brgemm for GEMV, based on heuristics");
 
     // we need to save this state as it can change inside set_default_formats()
     weights_format_kind_ = weights_md_.format_kind;

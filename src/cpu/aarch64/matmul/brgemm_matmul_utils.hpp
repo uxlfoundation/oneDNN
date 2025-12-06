@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2023-2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -210,6 +211,12 @@ struct brgemm_matmul_conf_utils_t {
     }
 
     inline bool use_buffer_b(bool use_heuristic = true) const {
+        // In the case of 1xK gemmv, we should avoid copying the weights if
+        // they are in BA format, since the copy would be more expensive than
+        // the gemv itself.
+        if (bgmmc.M == 1 && bgmmc.N > 1 && bgmmc.wei_tag == format_tag::ba) {
+            return false;
+        }
         // Values based on measured performance difference
         // between plain and copy-to-blocked routine.
         size_t big_LDB = bgmmc.N > 256;

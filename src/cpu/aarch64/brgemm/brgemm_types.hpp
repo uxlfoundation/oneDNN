@@ -224,6 +224,7 @@ struct brgemm_t {
     bool with_eltwise = false;
     bool with_binary = false;
     bool with_scales = false;
+    bool is_gemv = false; // (M == 1 && is_col_major()) || (N == 1 && LDB == 1)
 
     brgemm_broadcast_t zp_type_a = brgemm_broadcast_t::none;
     brgemm_broadcast_t zp_type_b = brgemm_broadcast_t::none;
@@ -283,6 +284,11 @@ struct brgemm_t {
     bool is_row_major() const {
         assert(layout != brgemm_layout_undef);
         return layout == brgemm_row_major;
+    }
+
+    bool is_col_major() const {
+        assert(layout != brgemm_layout_undef);
+        return layout == brgemm_col_major;
     }
 
     int get_wsp_buffer_size() const noexcept {

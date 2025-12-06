@@ -221,6 +221,7 @@ private:
 
     PReg ld_full_mask = PReg(2);
     PReg ld_tail_mask = PReg(3);
+    PReg gemv_tail_mask = PReg(4);
 
     void add_vl_or_imm(XReg dst, XReg src, int offset) {
         // If offset is a multiple of the vector length and
@@ -295,6 +296,7 @@ private:
     void apply_alpha_beta(int bd_block, int ld_block, bool is_ld_tail);
     void apply_post_ops(int bd_block, int ld_block2, int ldb_and_bdb_offset,
             bool is_ld_tail);
+    void sum_into_one_lane(int bd_block, int ld_block2, bool is_ld_tail);
     void restore_A_B_matrices();
     void set_A_B_matrices();
 
@@ -355,17 +357,29 @@ int jit_brgemm_kernel_t::A_offset(int bd, int rd) const noexcept {
     return brg.typesize_A * (bd * brg.LDA + rd);
 }
 int jit_brgemm_kernel_t::B_offset(int ld, int rd) const noexcept {
-    const int data_vnni_granularity = brg.ld_step;
-    const int rdb0 = rd / data_vnni_granularity;
-    return brg.typesize_B
-            * (rdb0 * data_vnni_granularity * brg.LDB
-                    + data_vnni_granularity * ld * brg.ld_block);
+    if (brg.is_gemv) {
+        return (ld + rd * brg.ld_block2) * brg.typesize_B;
+    } else {
+        const int data_vnni_granularity = brg.ld_step;
+        const int rdb0 = rd / data_vnni_granularity;
+        return brg.typesize_B
+                * (rdb0 * data_vnni_granularity * brg.LDB
+                        + data_vnni_granularity * ld * brg.ld_block);
+    }
 }
 int jit_brgemm_kernel_t::C_offset(int bd, int ld) const noexcept {
-    return brg.typesize_C * (bd * brg.LDC + ld * brg.ld_block);
+    if (brg.is_gemv) {
+        return (ld + bd * brg.ld_block2) * brg.typesize_C;
+    } else {
+        return brg.typesize_C * (bd * brg.LDC + ld * brg.ld_block);
+    }
 }
 int jit_brgemm_kernel_t::D_offset(int bd, int ld) const noexcept {
-    return brg.typesize_D * (bd * brg.LDD + ld * brg.ld_block);
+    if (brg.is_gemv) {
+        return (ld + bd * brg.ld_block2) * brg.typesize_D;
+    } else {
+        return brg.typesize_D * (bd * brg.LDD + ld * brg.ld_block);
+    }
 }
 int jit_brgemm_kernel_t::po_offset(int bd, int ld) const noexcept {
     return bd * brg.LDD + ld * brg.ld_block;
@@ -706,7 +720,7 @@ void jit_brgemm_kernel_t::zero_accumulators(int bd_block2, bool is_bdb_tail,
         auto zmm = accm(ld_block2, bd, ld);
         // This part is moved here from apply_alpha_beta function so that fadd instruction can be avoided.
         // This is also required only when K is blocked.
-        if (need_to_apply_beta) {
+        if (need_to_apply_beta && !brg.is_gemv) {
             const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
             const auto k_mask = is_tail ? ld_tail_mask : ld_full_mask;
 
@@ -812,7 +826,8 @@ void jit_brgemm_kernel_t::apply_post_ops(
                 const auto vmm_prev_dst = z_tmp_1();
                 const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
                 const auto k_mask = is_tail ? ld_tail_mask : ld_full_mask;
-                add_imm(X_DEFAULT_ADDR, reg_aux_D, D_offset(bd, ld), X_TMP_0);
+                const int offset = D_offset(bd, ld);
+                add_imm(X_DEFAULT_ADDR, reg_aux_D, offset, X_TMP_0);
                 cvt2ps(brg.sum_dt, vmm_prev_dst, X_DEFAULT_ADDR, is_tail, false,
                         k_mask, 0, 0);
                 if (p_sum_zp_reg_set)
@@ -857,24 +872,55 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
     bool dq2ps_cvt_done = false;
 
     if (brg.with_scales) {
-        add_imm(X_DEFAULT_ADDR, X_SP, reg_aux_scales_offs_, X_TMP_0);
-        ldr(reg_aux_scales, ptr(X_DEFAULT_ADDR));
-        for (int ld = 0; ld < ld_block2; ld++) {
-            const auto addr = X_DEFAULT_ADDR;
-            add_imm(addr, reg_aux_scales, scales_offset(ld), X_TMP_0);
-            const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
-            auto vmm_scales = z_tmp_1();
-            if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
-                ld1w(vmm_scales.s, k_mask / T_z, ptr(addr));
-            } else {
-                assert(!"Unreachable\n");
-            }
-            for (int bd = 0; bd < bd_block; bd++) {
-                auto vmm = accm(ld_block2, bd, ld);
-                if (dq2ps_required && !dq2ps_cvt_done) {
-                    scvtf(vmm.s, P_ALL_ONE / T_m, vmm.s);
+        // gemv is true for 1xK and Kx1 cases, but here we are only interested
+        // in 1xK with per_oc scales, so the leading dimension B (LDB) must not be 1,
+        // otherwise it would be a Kx1 case.
+        if (brg.is_gemv && brg.is_oc_scale && brg.LDB != 1) {
+            int offset = 0;
+            add_imm(X_DEFAULT_ADDR, X_SP, reg_aux_scales_offs_, X_TMP_0);
+            ldr(reg_aux_scales, ptr(X_DEFAULT_ADDR));
+            for (int ld = 0; ld < ld_block2; ld++) {
+                for (int bd = 0; bd < bd_block; bd++) {
+                    const auto addr = X_DEFAULT_ADDR;
+                    offset = (ld + bd * ld_block2) * sizeof(float);
+                    add_imm(addr, reg_aux_scales, offset, X_TMP_0);
+                    const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
+                    auto vmm_scales = z_tmp_1();
+                    if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
+                        ld1w(vmm_scales.s, k_mask / T_z, ptr(addr));
+                    } else {
+                        assert(!"Unreachable\n");
+                    }
+                    auto vmm = accm(ld_block2, bd, ld);
+                    fmul(vmm.s, vmm.s, vmm_scales.s);
                 }
-                fmul(vmm.s, vmm.s, vmm_scales.s);
+            }
+
+            // update the scale pointer
+            LDR_IMM(reg_aux_scales, X_SP, reg_aux_scales_offs_);
+            add_imm(reg_aux_scales, reg_aux_scales, offset + sizeof(float),
+                    X_TMP_0);
+            STR_IMM(reg_aux_scales, X_SP, reg_scales_offs_);
+        } else {
+            add_imm(X_DEFAULT_ADDR, X_SP, reg_aux_scales_offs_, X_TMP_0);
+            ldr(reg_aux_scales, ptr(X_DEFAULT_ADDR));
+            for (int ld = 0; ld < ld_block2; ld++) {
+                const auto addr = X_DEFAULT_ADDR;
+                add_imm(addr, reg_aux_scales, scales_offset(ld), X_TMP_0);
+                const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
+                auto vmm_scales = z_tmp_1();
+                if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
+                    ld1w(vmm_scales.s, k_mask / T_z, ptr(addr));
+                } else {
+                    assert(!"Unreachable\n");
+                }
+                for (int bd = 0; bd < bd_block; bd++) {
+                    auto vmm = accm(ld_block2, bd, ld);
+                    if (dq2ps_required && !dq2ps_cvt_done) {
+                        scvtf(vmm.s, P_ALL_ONE / T_m, vmm.s);
+                    }
+                    fmul(vmm.s, vmm.s, vmm_scales.s);
+                }
             }
         }
         dq2ps_cvt_done = true;
@@ -894,23 +940,55 @@ void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
         LDR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_);
 
         auto x_addr = reg_aux_bias;
+        auto zmm_bias = z_tmp_1();
         int base_offset = 0;
-        for_(int ld = 0; ld < ld_block2; ld++)
-        {
-            auto zmm_bias = z_tmp_1();
-            const int offset = bias_offset(ld);
-            if (!use_mul_vl(offset - base_offset,
-                        types::data_type_size(brg.dt_bias), cpu_sveLen)) {
-                add_imm(reg_tmp_, x_addr, offset - base_offset, X_TMP_0);
-                base_offset = offset;
-                x_addr = reg_tmp_;
-            }
-            cvt2ps(brg.dt_bias, zmm_bias, x_addr, is_ld_tail, false, k_mask,
-                    offset, base_offset);
 
-            for (int bd = 0; bd < bd_block; bd++) {
-                auto zmm = accm(ld_block2, bd, ld);
-                fadd(zmm.s, zmm.s, zmm_bias.s);
+        // gemv is true for 1xK and Kx1 cases, but here we are only interested
+        // in 1xK with, so the leading dimension B (LDB) must not be 1,
+        // otherwise it would be a Kx1 case.
+        if (brg.is_gemv && brg.LDB != 1) {
+            int offset = 0;
+            for_(int ld = 0; ld < ld_block2; ld++)
+            {
+                for (int bd = 0; bd < bd_block; bd++) {
+                    offset = (ld + bd * ld_block2) * brg.typesize_bias;
+                    if (!use_mul_vl(offset - base_offset,
+                                types::data_type_size(brg.dt_bias),
+                                cpu_sveLen)) {
+                        add_imm(reg_tmp_, x_addr, offset - base_offset,
+                                X_TMP_0);
+                        base_offset = offset;
+                        x_addr = reg_tmp_;
+                    }
+                    cvt2ps(brg.dt_bias, zmm_bias, x_addr, is_ld_tail, false,
+                            k_mask, offset, base_offset);
+                    auto zmm = accm(ld_block2, bd, ld);
+                    fadd(zmm.s, zmm.s, zmm_bias.s);
+                }
+            }
+
+            // update the bias pointer
+            LDR_IMM(reg_aux_bias, X_SP, reg_aux_bias_offs_);
+            add_imm(reg_aux_bias, reg_aux_bias, offset + 4, X_TMP_0);
+            STR_IMM(reg_aux_bias, X_SP, reg_bias_offs_);
+
+        } else {
+            for_(int ld = 0; ld < ld_block2; ld++)
+            {
+                const int offset = bias_offset(ld);
+                if (!use_mul_vl(offset - base_offset,
+                            types::data_type_size(brg.dt_bias), cpu_sveLen)) {
+                    add_imm(reg_tmp_, x_addr, offset - base_offset, X_TMP_0);
+                    base_offset = offset;
+                    x_addr = reg_tmp_;
+                }
+                cvt2ps(brg.dt_bias, zmm_bias, x_addr, is_ld_tail, false, k_mask,
+                        offset, base_offset);
+
+                for (int bd = 0; bd < bd_block; bd++) {
+                    auto zmm = accm(ld_block2, bd, ld);
+                    fadd(zmm.s, zmm.s, zmm_bias.s);
+                }
             }
         }
     }
@@ -1121,18 +1199,28 @@ void jit_brgemm_kernel_t::store_accumulators_without_post_ops(
     auto x_addr = reg_aux_C;
     int base_offset = 0;
 
+    auto scalar_reg = SReg(0);
+
     for (int bd = 0; bd < bd_block; bd++) {
         for (int ld = 0; ld < ld_block2; ld++) {
             auto zmm = accm(ld_block2, bd, ld);
             const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
             const int offset = C_offset(bd, ld);
-
             if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
                 add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset);
                 base_offset = offset;
                 x_addr = reg_tmp_;
             }
-            ST_MUL_VL(st1w, zmm.s, mask, x_addr, offset - base_offset, 4);
+            if (brg.is_gemv && brg.beta == 0.f) {
+                faddv(scalar_reg, ld_full_mask, zmm.s);
+                STR_IMM(scalar_reg, x_addr, (offset - base_offset));
+            } else if (brg.is_gemv && brg.beta != 0.f) {
+                LDR_IMM(scalar_reg, x_addr, (offset - base_offset));
+                fadda(scalar_reg, ld_full_mask, zmm.s);
+                STR_IMM(scalar_reg, x_addr, (offset - base_offset));
+            } else {
+                ST_MUL_VL(st1w, zmm.s, mask, x_addr, offset - base_offset, 4);
+            }
         }
     }
 }
@@ -1167,6 +1255,7 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
         LDR_IMM(reg_do_post_ops, X_SP, reg_do_post_ops_offs_);
         cmp_imm(reg_do_post_ops, 0, X_TMP_0);
         b(EQ, label_store_without_post_ops);
+        if (brg.is_gemv) { sum_into_one_lane(bd_block, ld_block2, is_ld_tail); }
         store_accumulators_apply_post_ops(bd_block, ld_block2, 0, is_ld_tail);
         bl(label_done);
 
@@ -1174,6 +1263,35 @@ void jit_brgemm_kernel_t::store_accumulators(int bd_block2, bool is_bdb_tail,
     }
     store_accumulators_without_post_ops(bd_block, ld_block2, is_ld_tail);
     L_aligned(label_done);
+}
+
+void jit_brgemm_kernel_t::sum_into_one_lane(
+        int bd_block, int ld_block2, bool is_ld_tail) {
+    auto x_addr = reg_aux_C;
+    int base_offset = 0;
+
+    auto scalar_reg = SReg(0);
+
+    for (int bd = 0; bd < bd_block; bd++) {
+        for (int ld = 0; ld < ld_block2; ld++) {
+            auto zmm = accm(ld_block2, bd, ld);
+            const int offset = C_offset(bd, ld);
+            if ((unsigned)(offset - base_offset) > cpu_sveLen * 7) {
+                add_imm(reg_tmp_, reg_aux_C, offset, X_TMP_0);
+                base_offset = offset;
+                x_addr = reg_tmp_;
+            }
+
+            if (brg.beta == 0.f) {
+                faddv(scalar_reg, ld_full_mask, zmm.s);
+            } else {
+                LDR_IMM(scalar_reg, x_addr, (offset - base_offset));
+                fadda(scalar_reg, ld_full_mask, zmm.s);
+            }
+            eor(zmm.d, zmm.d, zmm.d);
+            mov(zmm.s, ld_tail_mask, scalar_reg);
+        }
+    }
 }
 
 void jit_brgemm_kernel_t::restore_A_B_matrices() {
@@ -1203,6 +1321,8 @@ void jit_brgemm_kernel_t::set_A_B_matrices() {
                 ldr(reg_aux_B,
                         ptr(reg_aux1_batch, GET_OFF_BATCH_ELEMENT(ptr.B)));
             } else {
+                // In case of a col_major layout, the pointers A and B are
+                // swapped due to the equation A@B = (B.T@A.T).T
                 ldr(reg_aux_A,
                         ptr(reg_aux1_batch, GET_OFF_BATCH_ELEMENT(ptr.B)));
                 ldr(reg_aux_B,
@@ -1359,21 +1479,25 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
     bool is_emdbd = brg.embd_bcst;
 
     int rd_loop = 0, rd_tail_size = 0;
-    if (is_rd_tail) {
-        rd_tail_size = brg.rdb_tail % brg.rd_step;
-        if (brg.is_bf16 || brg.is_int8) {
-            rd_loop = (rd_tail_size != 0)
-                    ? ((brg.rdb_tail / brg.rd_step) + 1) * brg.rd_step
-                    : brg.rdb_tail;
+    if (brg.is_gemv) {
+        rd_loop = 1;
+        rd_tail_size = brg.rdb_tail;
+    } else {
+        if (is_rd_tail) {
+            rd_tail_size = brg.rdb_tail % brg.rd_step;
+            if (brg.is_bf16 || brg.is_int8) {
+                rd_loop = (rd_tail_size != 0)
+                        ? ((brg.rdb_tail / brg.rd_step) + 1) * brg.rd_step
+                        : brg.rdb_tail;
+            } else
+                rd_loop = brg.rdb_tail;
         } else
-            rd_loop = brg.rdb_tail;
-    } else
-        rd_loop = brg.rd_block;
+            rd_loop = brg.rd_block;
+    }
 
-    unsigned long base_offset = 0;
     mov(X_TMP_2, reg_aux_A);
-    auto broadcast = [=, &base_offset](const ZReg &z1, size_t offset,
-                             bool is_tail, data_type_t dt) {
+    auto broadcast = [=](const ZReg &z1, size_t offset, bool is_tail,
+                             data_type_t dt) {
         if (is_tail) {
             eor(z1.d, z1.d, z1.d);
             auto xmm_tmp = z_tmp_1();
@@ -1389,16 +1513,31 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             }
             dup(z1.s, xmm_tmp.s[0]);
         } else {
-            auto offset_ = offset - base_offset;
-            // The ld1rw immediate must be <=252 and a multiple of 4
-            // refer to https://developer.arm.com/documentation/ddi0602/2025-09/SVE-Instructions/LD1RW--Load-and-broadcast-unsigned-word-to-vector-
-            if (offset_ > 252 || offset_ % 4 != 0) {
-                add_imm(X_TMP_2, X_TMP_2, offset_, X_TMP_0);
-                base_offset += offset_;
-                offset_ = 0;
+            if (dt == data_type::f32) {
+                if (brg.is_gemv) {
+                    const auto mask = is_rd_tail ? gemv_tail_mask : P_ALL_ONE;
+                    if (offset < (1 << 6) && !is_rd_tail) {
+                        ld1w(z1.s, mask / T_z, ptr(reg_aux_A, (int32_t)offset));
+                    } else {
+                        add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
+                        ld1w(z1.s, mask / T_z, ptr(X_DEFAULT_ADDR));
+                    }
+                } else {
+                    if (offset < (1 << 6)) {
+                        ld1rw(z1.s, P_ALL_ONE / T_z,
+                                ptr(reg_aux_A, (int32_t)offset));
+                    } else {
+                        add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
+                        ld1rw(z1.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
+                    }
+                }
+            } else if (one_of(dt, data_type::s8, data_type::u8,
+                               data_type::bf16)) {
+                add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
+                ld1rw(z1.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
+            } else if (dt == data_type::f16) {
+                assert(!"unsupported\n");
             }
-            ld1rw(z1.s, P_ALL_ONE / T_z,
-                    ptr(X_TMP_2, static_cast<int32_t>(offset_)));
         }
 
         if (brg.req_s8s8_compensation) assert(!"unsupported\n");
@@ -1462,7 +1601,8 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
 
         for (int rd = 0; rd < rd_loop; rd += brg.rd_step) {
             for (int ld = 0; ld < ld_block2; ld++) {
-                const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
+                auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
+                if (brg.is_gemv) mask = is_rd_tail ? gemv_tail_mask : P_ALL_ONE;
                 if (brg.dt_b == data_type::f16) {
                     assert(!"unsupported\n");
                 } else {
@@ -1490,21 +1630,20 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                             (have_to_load_bytes && bd_by_load_bytes), brg.dt_a);
                 }
                 //The current implementaion of prefetch is not giving any gain in performance but is rather introducing some latency. Therefore it is removed util a new useful implementation is deviced.
+                const auto mask = brg.is_gemv && is_rd_tail ? gemv_tail_mask
+                                                            : P_ALL_ONE;
                 for (int ld = 0; ld < ld_block2; ld++) {
                     auto zmm = accm(ld_block2, bd, ld);
                     if (is_emdbd) {
-                        // The ld1rw immediate must be <= 252 and a multiple of 4
-                        if (A_offset(bd, rd) <= 252
-                                && A_offset(bd, rd) % 4 == 0) {
-                            ld1rw(z_tmp_1().s, P_ALL_ONE / T_z,
+                        if (A_offset(bd, rd) < (1 << 6)) {
+                            ld1w(z_tmp_1().s, mask / T_z,
                                     ptr(reg_aux_A, A_offset(bd, rd)));
                         } else {
                             add_imm(X_DEFAULT_ADDR, reg_aux_A, A_offset(bd, rd),
                                     X_TMP_0);
-                            ld1rw(z_tmp_1().s, P_ALL_ONE / T_z,
-                                    ptr(X_DEFAULT_ADDR));
+                            ld1w(z_tmp_1().s, mask / T_z, ptr(X_DEFAULT_ADDR));
                         }
-                        fmla(zmm.s, P_ALL_ONE / T_m, load(ld).s, z_tmp_1().s);
+                        fmla(zmm.s, mask / T_m, load(ld).s, z_tmp_1().s);
                     } else {
                         dot_product(zmm, load(ld), bcst());
                     }
@@ -1534,23 +1673,35 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                 = need_comp_pads && vpad != 0 ? bd_b <= bd_e : bd_b < bd_e;
         if (!is_valid_bd) return;
 
-        if (brg.rdb > 0) {
+        int rdb_val = brg.rdb;
+        int rdb_tail = brg.rdb_tail;
+        MAYBE_UNUSED(rdb_tail);
+        if (brg.is_gemv) {
+            rdb_val = (brg.rd_block * brg.rdb + brg.rdb_tail)
+                    / (cpu_sveLen / sizeof(float));
+            rdb_tail = (brg.rd_block * brg.rdb + brg.rdb_tail)
+                    % (cpu_sveLen / sizeof(float));
+        }
+
+        if (rdb_val > 0) {
             Label rdb_loop_label;
-            mov(reg_rdb_loop, brg.rdb);
+            mov(reg_rdb_loop, rdb_val);
             L_aligned(rdb_loop_label, 64);
             {
                 const bool is_rd_tail = false;
                 gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
                         is_ld_tail, vpad, rows_for_rd_tail);
 
-                add_vl_or_imm(reg_aux_A, reg_aux_A, rdb_A_offset());
-                add_vl_or_imm(reg_aux_B, reg_aux_B, rdb_B_offset());
+                add_vl_or_imm(reg_aux_A, reg_aux_A,
+                        brg.is_gemv ? cpu_sveLen : rdb_A_offset());
+                add_vl_or_imm(reg_aux_B, reg_aux_B,
+                        brg.is_gemv ? cpu_sveLen : rdb_B_offset());
 
                 subs(reg_rdb_loop, reg_rdb_loop, 1);
             }
             bne(rdb_loop_label);
         }
-        if (brg.rdb_tail != 0) {
+        if (rdb_tail != 0) {
             const bool is_rd_tail = true;
 
             gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
@@ -1720,11 +1871,15 @@ void jit_brgemm_kernel_t::bdb_loop() {
         do_ldb_loop(bd_block2, is_bdb_tail, check_top_vpad, check_bottom_vpad,
                 rows_for_rd_tail, skip_accumulation);
 
-        add_imm(reg_C, reg_C, bdb_C_offset(bd_block2), X_TMP_0);
-        add_imm(reg_D, reg_D, bdb_D_offset(bd_block2), X_TMP_0);
+        add_imm(reg_C, reg_C,
+                brg.is_gemv ? brg.bd_block * brg.typesize_C
+                            : bdb_C_offset(bd_block2),
+                X_TMP_0);
+        add_imm(reg_D, reg_D,
+                brg.is_gemv ? brg.bd_block * brg.typesize_D
+                            : bdb_D_offset(bd_block2),
+                X_TMP_0);
         add_imm(reg_a_offset, reg_a_offset, bdb_A_offset(bd_block2), X_TMP_0);
-
-        advance_bd_block2_post_op_regs(bd_block2);
     };
 
     int rows_for_rd_tail, bd_blocks_for_rd_tail;
@@ -1909,6 +2064,10 @@ void jit_brgemm_kernel_t::generate() {
 
     set_preg(ld_tail_mask.s, brg.ldb_tail, X_TMP_0, X_TMP_1);
     if (brg.is_int8 && !brg.has_int8_vnni) { assert(!"unsupported\n"); }
+    if (brg.is_gemv) {
+        const int k_tail = brg.LDA % simd_w_;
+        set_preg(gemv_tail_mask.s, k_tail, X_TMP_0, X_TMP_1);
+    }
 
     read_params();
 

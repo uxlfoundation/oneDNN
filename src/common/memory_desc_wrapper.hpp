@@ -72,6 +72,10 @@ struct memory_desc_wrapper : public c_compatible {
         return format_kind() == format_kind::cublaslt_blocked;
     }
     bool is_sparse_desc() const { return format_kind() == format_kind::sparse; }
+    bool is_grouped_desc() const {
+        return is_sparse_desc()
+                && sparse_desc().encoding == sparse_encoding::grouped;
+    }
 
     bool is_host_scalar_desc() const {
         return format_kind() == format_kind::host_scalar;

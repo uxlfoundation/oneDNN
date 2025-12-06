@@ -1983,7 +1983,10 @@ void jit_brgemm_amx_uker_base_t::tdpbxxd(brgemm_iteration_t &bi, int bdb_idx,
     } else if (brg.dt_a == f16 && brg.dt_b == f16) {
         tdpfp16ps(x1, x2, x3);
     } else if (brg.is_fp8 && brg.is_fp8_via_convert()) {
-        tdpfp16ps(x1, x2, x3);
+        if (brg.isa_impl == avx10_1_512_amx)
+            tdpbf16ps(x1, x2, x3);
+        else
+            tdpfp16ps(x1, x2, x3);
     } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
         tdpbf8ps(x1, x2, x3);
     } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e4m3) {
@@ -2032,11 +2035,21 @@ void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert(brgemm_iteration_t &bi,
     lea(reg_data_aux, ptr[reg_data + offset]);
 
     for (int r = 0; r < num_rows; ++r) {
-        if (dt == data_type::f8_e5m2)
-            f8_e5m2_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
-        else if (dt == data_type::f8_e4m3)
-            f8_e4m3_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
-        else
+        if (dt == data_type::f8_e5m2) {
+            if (brg.isa_impl == avx10_1_512_amx) {
+                f8_e5m2_cvt_->vcvt_f8_to_bf16_via_f32(
+                        zmm_1_masked, ptr[reg_data_aux]);
+            } else {
+                f8_e5m2_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            }
+        } else if (dt == data_type::f8_e4m3) {
+            if (brg.isa_impl == avx10_1_512_amx) {
+                f8_e4m3_cvt_->vcvt_f8_to_bf16_via_f32(
+                        zmm_1_masked, ptr[reg_data_aux]);
+            } else {
+                f8_e4m3_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            }
+        } else
             assert(!"unsupported data type");
 
         vmovups(ptr[reg_buf + r * zmm_width_in_bytes], zmm_1);
@@ -2108,13 +2121,23 @@ void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert_to_vnni(
     const int r_end = utils::div_up(rd_block, vnni_granularity);
     assert(r_end <= num_rows && "bad tile parameters");
 
-    if (dt == data_type::f8_e5m2)
-        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
-                r_end, reg_data_aux, reg_data_stride, reg_buf);
-    else if (dt == data_type::f8_e4m3)
-        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
-                r_end, reg_data_aux, reg_data_stride, reg_buf);
-    else
+    if (dt == data_type::f8_e5m2) {
+        if (brg.isa_impl == avx10_1_512_amx) {
+            f8_e5m2_cvt_->vcvt_f8_to_bf16_via_f32_vnni_block(
+                    r_end, reg_data_aux, reg_data_stride, reg_buf);
+        } else {
+            f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
+                    r_end, reg_data_aux, reg_data_stride, reg_buf);
+        }
+    } else if (dt == data_type::f8_e4m3) {
+        if (brg.isa_impl == avx10_1_512_amx) {
+            f8_e4m3_cvt_->vcvt_f8_to_bf16_via_f32_vnni_block(
+                    r_end, reg_data_aux, reg_data_stride, reg_buf);
+        } else {
+            f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
+                    r_end, reg_data_aux, reg_data_stride, reg_buf);
+        }
+    } else
         assert(!"unsupported data type");
 
     // zero rest of the tile data

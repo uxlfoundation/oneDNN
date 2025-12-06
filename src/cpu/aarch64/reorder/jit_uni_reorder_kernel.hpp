@@ -143,6 +143,10 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
     void step(int off, int prev_i_off, int prev_o_off, int &i_off, int &o_off,
             int step_size = 1);
 
+    bool can_do_tr4x8();
+    bool process_unroll_tr4x8(const int ndims, const int len);
+    void tr4x8_sve256(int i_off, int o_off);
+
     void tr8x8_sve256(int i_off, int o_off);
 
     bool can_do_tr8x8();

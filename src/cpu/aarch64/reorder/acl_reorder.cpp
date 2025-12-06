@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "cpu/aarch64/reorder/acl_reorder.hpp"
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 
 namespace {
 /*
@@ -66,6 +67,7 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
         const memory_desc_t *src_md, engine_t *dst_engine,
         const memory_desc_t *dst_md) {
     using namespace acl_utils;
+    using namespace dnnl::impl;
 
     // ComputeLibrary reorders support f32->f32 and f32->bf16
     bool ok = src_md->data_type == data_type::f32
@@ -120,6 +122,16 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
     // as they are faster in JIT for most cases.
     VDISPATCH_REORDER_IC(
             transpose, "non-transposed reorders are not supported");
+
+    // Optimised f32:bf16 ab->BA8b4a SVE-256 JIT reorder available
+    VDISPATCH_REORDER_IC(
+            !(mayiuse(sve_256),
+                    transpose && src_md->ndims == 2
+                            && src_md->data_type == data_type::f32
+                            && dst_md->data_type == data_type::bf16
+                            && memory_desc_matches_one_of_tag(*dst_md,
+                                    format_tag::BA8b4a, format_tag::AB8a4b)),
+            "skipping in favour of optimised JIT implementation");
 
     auto &dst_wf = _pd->app_.dst_wf;
 

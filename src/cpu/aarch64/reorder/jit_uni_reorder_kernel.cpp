@@ -260,6 +260,125 @@ void jit_uni_reorder_kernel_f32_t::step(int off, int prev_i_off, int prev_o_off,
             step_size);
 }
 
+bool jit_uni_reorder_kernel_f32_t::can_do_tr4x8() {
+    using namespace data_type;
+
+    // The kernel is specialised for f32 -> bf16 reorders.
+    //
+    // This process relies on swapping the two innermost dimensions.
+    // Therefore, the input stride in the second node and output stride in
+    // first node have to be equal to 1.
+    return mayiuse(sve_256) && prb_.ndims >= 2
+            && (prb_.itype == f32 && prb_.otype == bf16) && prb_.n(0) == 4
+            && prb_.n(1) == 8 && utils::everyone_is(1, prb_.os(0), prb_.is(1))
+            && !prb_.is_tail_present
+            && prb_.src_scale_type == scale_type_t::NONE
+            && prb_.dst_scale_type == scale_type_t::NONE && prb_.beta == 0.f
+            && !compensation_needed_;
+}
+
+bool jit_uni_reorder_kernel_f32_t::process_unroll_tr4x8(
+        const int ndims, const int len) {
+    if (!can_do_tr4x8()) return false;
+
+    const int step_size = prb_.n(0) * prb_.n(1);
+    int i_off = 0, o_off = 0;
+    for (int off = 0; off < len; off += step_size) {
+        step(off, i_off, o_off, i_off, o_off, step_size);
+        tr4x8_sve256(i_off, o_off);
+    }
+
+    return true;
+}
+
+void jit_uni_reorder_kernel_f32_t::tr4x8_sve256(int i_off, int o_off) {
+    using namespace data_type;
+
+    auto z0 = ZRegS(0);
+    auto z1 = ZRegS(1);
+    auto z2 = ZRegS(2);
+    auto z3 = ZRegS(3);
+
+    assert(x_tmp_vec.size() >= 4);
+    auto x_tmp_0 = x_tmp_vec[0];
+    auto x_tmp_1 = x_tmp_vec[1];
+    auto x_tmp_2 = x_tmp_vec[2];
+    auto x_tmp_3 = x_tmp_vec[3];
+
+    // Load
+    auto in_ptr_diff = itype_sz_ * prb_.is(0);
+    add_imm(x_tmp_0, XReg(x_ptr_in_off), itype_sz_ * i_off, X_DEFAULT_ADDR);
+    add_imm(x_tmp_1, x_tmp_0, 1 * in_ptr_diff, X_DEFAULT_ADDR);
+    add_imm(x_tmp_2, x_tmp_0, 2 * in_ptr_diff, X_DEFAULT_ADDR);
+    add_imm(x_tmp_3, x_tmp_0, 3 * in_ptr_diff, X_DEFAULT_ADDR);
+
+    ld1w(z0, P_ALL_ONE, ptr(x_tmp_0));
+    ld1w(z1, P_ALL_ONE, ptr(x_tmp_1));
+    ld1w(z2, P_ALL_ONE, ptr(x_tmp_2));
+    ld1w(z3, P_ALL_ONE, ptr(x_tmp_3));
+
+    // Transpose
+    auto z4 = ZReg(4);
+    auto z5 = ZReg(5);
+    auto z6 = ZReg(6);
+    auto z7 = ZReg(7);
+
+    // Interleaving two vectors containing rows of a tile is the same as
+    // transposing pairs of elements.
+    //
+    // If you start with:
+    //  vec0:  0     1     2     3     4     5     6     7
+    //  vec1:  8     9    10    11    12    13    14    15
+    //  vec2: 16    17    18    19    20    21    22    23
+    //  vec3: 24    25    26    27    28    29    30    31
+    //
+    // Then after two zips you have:
+    //  vec4 = zip1(vec0, vec2):
+    //  vec4: 0    16    1    17    2     18     3    19
+    //  vec5 = zip1(vec1, vec3):
+    //  vec5: 8    24    9    25    10    26    11    27
+    //
+    // Notice that if you convert and interleave these then you are done. That's
+    // what the subsequent bfcvt-bfcvtnt block of instructions does.
+    zip1(z4.s, z0, z2);
+    zip1(z5.s, z1, z3);
+    zip2(z6.s, z0, z2);
+    zip2(z7.s, z1, z3);
+
+    // bfcvt converts one f32 vector to bf16 but leaves 0s in every alternate
+    // position within the destination vector (dst1). bfcvtnt then converts the
+    // second f32 vector to bf16 while filling in the zeroed spots left by bfcvt
+    // within dst1.
+    //
+    // With the two vectors from above:
+    //  vec4: 0    16    1    17    2     18     3    19
+    //  vec5: 8    24    9    25    10    26    11    27
+    //
+    //  vec4 = bfcvt(vec4)
+    //  vec4: 0     0    16    0     1     0    ...
+    //              ^----------^-----------^
+    //                         zeroed gaps left by bfcvt
+    //
+    //  Now convert vec5 and fill the gaps in vec4 with a single instruction
+    //  (storing the result in vec4):
+    //  vec4: 0     8    16    24     1     9    ...
+    //
+    //  Which contains the first 4 transposed columns of the original tile as
+    //  required.
+    bfcvt(z4.h, P_ALL_ONE / T_z, z4.s);
+    bfcvtnt(z4.h, P_ALL_ONE / T_m, z5.s);
+    bfcvt(z6.h, P_ALL_ONE / T_z, z6.s);
+    bfcvtnt(z6.h, P_ALL_ONE / T_m, z7.s);
+
+    // Store
+    auto out_ptr_diff = get_sve_length();
+    add_imm(x_tmp_0, XReg(x_ptr_out_off), otype_sz_ * o_off, X_DEFAULT_ADDR);
+    add_imm(x_tmp_1, x_tmp_0, out_ptr_diff, X_DEFAULT_ADDR);
+
+    st1h(z4.h, P_ALL_ONE, ptr(x_tmp_0));
+    st1h(z6.h, P_ALL_ONE, ptr(x_tmp_1));
+}
+
 void jit_uni_reorder_kernel_f32_t::tr8x8_sve256(int i_off, int o_off) {
     using namespace data_type;
 
@@ -1349,7 +1468,9 @@ void jit_uni_reorder_kernel_f32_t::compute_ker(
     bool optimized = false;
     optimized = optimized || process_direct_copy<sve_256>(ndims, len_unroll)
             || process_direct_copy<asimd>(ndims, len_unroll)
-            || process_unroll_tr8x8(ndims, len_unroll);
+            || process_unroll_tr8x8(ndims, len_unroll)
+            || process_unroll_tr4x8(ndims, len_unroll);
+
     if (!optimized) process_unroll_generic(ndims, len_unroll, tail_processing);
 }
 

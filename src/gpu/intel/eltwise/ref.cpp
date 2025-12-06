@@ -22,86 +22,61 @@ namespace gpu {
 namespace intel {
 namespace eltwise {
 
-static status_t init_conf_common(
-        conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
-    alg_kind_t alg = pd->desc()->alg_kind;
-    const bool is_forward = pd->is_fwd();
-    const auto &src_md = pd->use_dst() ? pd->dst_md() : pd->src_md();
-    const memory_desc_wrapper src_d(src_md);
-    const memory_desc_wrapper diff_data_d(
-            is_forward ? &glob_zero_md : pd->diff_src_md());
+status_t ref_jit_params_t::get_kernel_ctx(
+        compute::kernel_ctx_t &kernel_ctx) const {
 
-    conf.data_md_info = memory_desc_info_t::create(src_d);
-    if (!is_forward)
-        conf.data_diff_md_info = memory_desc_info_t::create(diff_data_d);
-
-    const int ndims = src_d.ndims();
-    conf.ndims = ndims;
-
-    conf.data_type = src_d.data_type();
-    conf.alg = alg;
-    conf.is_forward = is_forward;
-    conf.attr_info = attr_info_t::create(pd->attr());
-
-    const auto &dims = src_d.padded_dims();
-
-    conf.with_zero_padding = src_d.nelems(false) != src_d.nelems(true);
-
-    int max_ndims = 6;
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
-    conf.dispatch = intel_engine->create_dispatch(
-            is_forward ? src_d.md_ : diff_data_d.md_);
-    for (int i = 0; i < max_ndims; ++i) {
-        if (i < ndims)
-            conf.dispatch.define_dim(utils::format("D%d", i), i, dims[i]);
-        else
-            conf.dispatch.define_dim(utils::format("D%d", i), 1);
-    }
-    conf.dispatch.generate(/*generate_lws=*/false);
-
-    return status::success;
-}
-
-static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const conf_t &conf, const post_ops_t &post_ops,
-        const memory_desc_t *dst_md) {
-    kernel_ctx.set_data_type(conf.data_type);
-
-    kernel_ctx.define_int("ELTWISE_ALG", conf.alg);
-    kernel_ctx.define_int("NDIMS", conf.ndims);
-    kernel_ctx.define_int("GWS0", conf.dispatch.nd_range().global_range()[0]);
-    kernel_ctx.define_int("GWS1", conf.dispatch.nd_range().global_range()[1]);
-    kernel_ctx.define_int("GWS2", conf.dispatch.nd_range().global_range()[2]);
     kernel_ctx.define_int("USE_CUSTOM_GWS_GET_ID", 1);
 
-    bool with_binary_post_ops
-            = post_ops.find(primitive_kind_t::dnnl_binary) != -1;
-    kernel_ctx.define_int(
-            "USE_GWS_GET", conf.with_zero_padding || with_binary_post_ops);
+    core.params.def_kernel_macros(kernel_ctx);
+    kernel_ctx.define_int("ELTWISE_ALG", core.alg_kind);
 
-    def_data_type(kernel_ctx, conf.data_md_info.data_type, "SRC", false);
-    def_memory_desc_info(kernel_ctx, conf.data_md_info, "DST", false);
-
-    if (!conf.is_forward) {
-        def_memory_desc_info(kernel_ctx, conf.data_diff_md_info, "DIFF", false);
-    } else {
+    if (core.is_fwd) {
+        kernel_ctx.set_data_type(core.src_dt, false);
+        def_data_type(kernel_ctx, core.src_dt, "SRC", false);
+        def_data_type(kernel_ctx, core.dst_dt, "DST", false);
         kernel_ctx.define_int("IS_FWD", 1);
+        def_post_ops_cfg(kernel_ctx, post_ops, core.ndims);
+    } else {
+        kernel_ctx.set_data_type(core.diff_dst_dt);
+        def_data_type(kernel_ctx, core.src_dt, "SRC", false);
+        def_data_type(kernel_ctx, core.diff_src_dt, "DIFF_SRC", false);
+        def_data_type(kernel_ctx, core.diff_dst_dt, "DIFF_DST", false);
     }
-
-    CHECK(def_attr_info(kernel_ctx, conf.attr_info, post_ops, *dst_md));
-    def_dispatch(kernel_ctx, conf.dispatch);
 
     return status::success;
 }
 
 status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
-    return init_conf_common(conf, this, engine);
-}
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    compute::named_buffer_t src_buf("SRC", *src_md());
+    compute::named_buffer_t dst_buf("DST", src_buf);
+    const auto *gpu_attr
+            = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
 
-status_t ref_fwd_t::pd_t::init_kernel_ctx(
-        compute::kernel_ctx_t &kernel_ctx) const {
-    return init_kernel_ctx_common(
-            kernel_ctx, conf, attr()->post_ops_, invariant_dst_md());
+    compute::reusable_dispatch_config_t config(
+            intel_engine, src_buf.get_dim_ids());
+    CHECK(config.register_buffer(src_buf));
+    CHECK(config.register_buffer(dst_buf));
+
+    auto ndims = src_md()->ndims;
+    CHECK(config.define_dim_index("A", 0, ndims > 0 ? src_buf.dims[0] : 1));
+    CHECK(config.define_dim_index("B", 1, ndims > 1 ? src_buf.dims[1] : 1));
+    CHECK(config.define_dim_index("C", 2, ndims > 2 ? src_buf.dims[2] : 1));
+    CHECK(config.define_dim_index("D", 3, ndims > 3 ? src_buf.dims[3] : 1));
+    CHECK(config.define_dim_index("E", 4, ndims > 4 ? src_buf.dims[4] : 1));
+    CHECK(config.define_dim_index("F", 5, ndims > 5 ? src_buf.dims[5] : 1));
+
+    compute::reusable_dispatch_t dispatch;
+    CHECK(config.generate(
+            dispatch, compute::default_lws_strategy_t(intel_engine, gpu_attr)));
+
+    conf.core = {dispatch.get_compile_params(), desc()->alg_kind,
+            src_md()->ndims, src_md()->data_type, dst_md()->data_type,
+            data_type::undef, data_type::undef, true, {}};
+    CHECK(gpu_post_ops_t::make(conf.post_ops, attr()->post_ops_, dst_md()));
+
+    rt_conf = dispatch.get_runtime_params();
+    return status::success;
 }
 
 status_t ref_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
@@ -112,33 +87,50 @@ status_t ref_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     const float alpha = pd()->desc()->alpha;
     const float beta = pd()->desc()->beta;
 
-    const auto &conf = pd()->conf;
-
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, src);
     arg_list.set(1, dst);
     arg_list.set(2, alpha);
     arg_list.set(3, beta);
+    arg_list.set(4, pd()->rt_conf.get());
 
     append_post_ops_to_arg_list(
-            ctx, arg_list, 5, pd()->attr()->post_ops_, *pd()->dst_md());
+            ctx, arg_list, 6, pd()->attr()->post_ops_, *pd()->dst_md());
 
-    auto nd_range = conf.dispatch.nd_range();
-    return large_parallel_for(ctx, nd_range, kernel_, arg_list, 4);
+    return large_parallel_for(
+            ctx, pd()->rt_conf.nd_range, kernel_, arg_list, 5);
 }
 
 status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
-    return init_conf_common(conf, this, engine);
-}
+    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    compute::named_buffer_t src_buf("SRC", use_dst() ? *dst_md() : *src_md());
+    compute::named_buffer_t diff_src_buf("DIFF_SRC", src_buf);
+    compute::named_buffer_t diff_dst_buf("DIFF_DST", src_buf);
 
-status_t ref_bwd_t::pd_t::init_kernel_ctx(
-        compute::kernel_ctx_t &kernel_ctx) const {
-    return init_kernel_ctx_common(
-            kernel_ctx, conf, attr()->post_ops_, invariant_dst_md());
+    const auto *gpu_attr
+            = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
+
+    compute::reusable_dispatch_config_t config(
+            intel_engine, src_buf.get_dim_ids());
+    CHECK(config.register_buffer(src_buf));
+    CHECK(config.register_buffer(diff_src_buf));
+    CHECK(config.register_buffer(diff_dst_buf));
+
+    compute::reusable_dispatch_t dispatch;
+    CHECK(config.generate(
+            dispatch, compute::default_lws_strategy_t(intel_engine, gpu_attr)));
+
+    conf.core
+            = {dispatch.get_compile_params(), desc()->alg_kind, src_md()->ndims,
+                    use_dst() ? dst_md()->data_type : src_md()->data_type,
+                    data_type::undef, diff_src_md()->data_type,
+                    diff_dst_md()->data_type, false, {}};
+
+    rt_conf = dispatch.get_runtime_params();
+    return status::success;
 }
 
 status_t ref_bwd_t::execute_backward_dense(const exec_ctx_t &ctx) const {
-
     auto &src = pd()->use_dst() ? CTX_IN_STORAGE(DNNL_ARG_DST)
                                 : CTX_IN_STORAGE(DNNL_ARG_SRC);
     auto &diff_dst = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
@@ -147,17 +139,16 @@ status_t ref_bwd_t::execute_backward_dense(const exec_ctx_t &ctx) const {
     const float alpha = pd()->desc()->alpha;
     const float beta = pd()->desc()->beta;
 
-    const auto &conf = pd()->conf;
-
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, src);
     arg_list.set(1, diff_src);
     arg_list.set(2, diff_dst);
     arg_list.set(3, alpha);
     arg_list.set(4, beta);
+    arg_list.set(5, pd()->rt_conf.get());
 
-    auto nd_range = conf.dispatch.nd_range();
-    return large_parallel_for(ctx, nd_range, kernel_, arg_list, 5);
+    return large_parallel_for(
+            ctx, pd()->rt_conf.nd_range, kernel_, arg_list, 6);
 }
 
 } // namespace eltwise

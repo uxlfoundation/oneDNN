@@ -39,11 +39,11 @@ namespace intel {
 namespace compute {
 
 // How many buffers can be registered simultaneously
-#define MAX_REGISTERED_BUFFERS 4
+#define MAX_REGISTERED_BUFFERS 8
 // Maximum length of each indexed dim's name
 #define MAX_DIM_NAME_LENGTH 15
 // Maximum length of each buffer's name
-#define MAX_BUFFER_NAME_LENGTH 7
+#define MAX_BUFFER_NAME_LENGTH 16
 
 // Ensure that we don't have padding in our structures
 static_assert(MAX_REGISTERED_BUFFERS * (MAX_BUFFER_NAME_LENGTH + 1) % 4 == 0,
@@ -252,8 +252,11 @@ struct dispatch_compile_params_t {
     // Buffer definitions (each buffer has a name, and a collection of terms
     // used to compute the offset)
     uint64_t num_buffers = 0;
+    // This is too inefficient for use with post ops. Need to replace it with an
+    // enum.
     char buffer_names[MAX_REGISTERED_BUFFERS][MAX_BUFFER_NAME_LENGTH + 1]
             = {{'\0'}};
+    // This may need to be dynamically sized (or have some fallback)
     uint64_t buffer_term_index[MAX_REGISTERED_BUFFERS][MAX_INDEXING_TERMS]
             = {{0}};
     uint64_t buffer_num_terms[MAX_REGISTERED_BUFFERS] = {0};

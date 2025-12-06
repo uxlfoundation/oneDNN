@@ -104,8 +104,8 @@ private:
     std::vector<memory_desc_t> prelu_md_;
 };
 
-float ref_dropout(
-        float src, uint8_t *mask, dim_t offset, float p, int64_t seed);
+float ref_dropout(float src, uint8_t *mask, dim_t offset, float p, int64_t seed,
+        int64_t base_offset);
 
 } // namespace cpu
 } // namespace impl

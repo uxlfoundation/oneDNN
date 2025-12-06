@@ -4072,12 +4072,61 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
         mask_desc = memory::desc(cloned_md);
     }
 
+    /// Returns the parameters of a dropout attribute.
+    ///
+    /// @param attr Primitive attributes.
+    /// @param mask_desc Output memory descriptor for dropout masks. If
+    ///     default memory descriptor is returned, the mask values will not
+    ///     be written to memory during primitive execution.
+    /// @param seed_dt Output datatype for seed argument type.
+    /// @param use_offset Output boolean. If true, an offset argument is passed at
+    ///        execution and used in random number generation
+    /// @param use_host_scalars Output boolean. If true, probability, seed and
+    ///        offset are passed as host_scalar memory objects.
+    void get_dropout(memory::desc &mask_desc, memory::data_type &seed_dt,
+            bool &use_offset, bool &use_host_scalars) const {
+        const_dnnl_memory_desc_t cdesc;
+        dnnl_data_type_t c_seed_dt;
+        int c_use_offset;
+        int c_use_host_scalars;
+        error::wrap_c_api(
+                dnnl_primitive_attr_get_dropout_v2(get(), &cdesc, &c_seed_dt,
+                        &c_use_offset, &c_use_host_scalars),
+                "could not get parameters of a dropout attribute");
+        dnnl_memory_desc_t cloned_md = nullptr;
+        error::wrap_c_api(dnnl_memory_desc_clone(&cloned_md, cdesc),
+                "could not clone a memory descriptor");
+        mask_desc = memory::desc(cloned_md);
+        seed_dt = static_cast<memory::data_type>(c_seed_dt);
+        use_offset = c_use_offset;
+        use_host_scalars = c_use_host_scalars;
+    }
+
     /// Sets dropout probability.
     ///
     /// @param mask_desc Output memory descriptor of a dropout mask.
     void set_dropout(const memory::desc &mask_desc) {
         error::wrap_c_api(
                 dnnl_primitive_attr_set_dropout(get(), mask_desc.get()),
+                "could not set dropout primitive attribute");
+    }
+
+    /// Sets dropout probability.
+    ///
+    /// @param mask_desc Output memory descriptor for dropout masks. If
+    ///     default memory descriptor is passed, the mask values will not
+    ///     be written to memory during primitive execution.
+    /// @param seed_dt Datatype used for seed argument.
+    /// @param use_offset If true, an offset argument is passed at
+    ///        execution and used in random number generation
+    /// @param use_host_scalars If true, probability, seed and offset are
+    ////       passed as host_scalar memory objects.
+    void set_dropout(const memory::desc &mask_desc, memory::data_type seed_dt,
+            bool use_offset, bool use_host_scalars) {
+        error::wrap_c_api(
+                dnnl_primitive_attr_set_dropout_v2(get(), mask_desc.get(),
+                        memory::convert_to_c(seed_dt), use_offset,
+                        use_host_scalars),
                 "could not set dropout primitive attribute");
     }
 

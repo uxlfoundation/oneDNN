@@ -23,7 +23,7 @@
 #include <string>
 #include <CL/cl.h>
 
-extern "C" bool dnnl_impl_gpu_mayiuse_ngen_kernels(dnnl_engine_t engine);
+extern "C" bool dnnl_impl_gpu_intel_mayiuse_ngen_kernels(dnnl_engine_t engine);
 
 namespace dnnl {
 namespace {
@@ -287,7 +287,7 @@ TEST_P(ocl_engine_test_t, BinaryKernels) {
 //DNNL_ENABLE_MEM_DEBUG forces allocation fail, causing mayiuse to fail
 #ifndef DNNL_ENABLE_MEM_DEBUG
     if (s == dnnl_success) {
-        ASSERT_EQ(dnnl_impl_gpu_mayiuse_ngen_kernels(eng), true);
+        ASSERT_EQ(dnnl_impl_gpu_intel_mayiuse_ngen_kernels(eng), true);
     }
 #endif
 

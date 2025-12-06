@@ -49,7 +49,7 @@ struct alignas(int) gpu_product_t {
     unsigned char data[12];
 };
 
-static inline std::string to_string(gpu_arch_t arch) {
+static inline const char *to_string(gpu_arch_t arch) {
 #define CASE(_case) \
     if (arch == gpu_arch_t::_case) return STRINGIFY(_case)
     CASE(xe_lp);

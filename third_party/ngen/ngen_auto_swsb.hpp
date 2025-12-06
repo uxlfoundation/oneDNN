@@ -2234,7 +2234,7 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
                     // Alter SWSB with any workarounds for PVC WAR dependencies.
                     // Note these alterations do not affect the dependency tables.
                     auto inumSync = (inumChain >= 0) ? inumChain : inum;
-                    if ((tokenMaskDst & pww.dep.tokenMaskDst) == pww.dep.tokenMaskDst)
+                    if ((tokenMaskDst & pww.dep.tokenMaskSrc) == pww.dep.tokenMaskSrc)
                         pww.strategy = PVCWARWA::None;
                     auto depTokenMask = pww.dep.tokenMaskSrc | pww.dep.tokenMaskDst;
                     switch (pww.strategy) {

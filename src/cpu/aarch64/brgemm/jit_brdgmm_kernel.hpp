@@ -33,13 +33,13 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 struct jit_brdgmm_kernel_base_t : public jit_generator_t {
-    jit_brdgmm_kernel_base_t(const brgemm_t &abrd);
+    jit_brdgmm_kernel_base_t(const brgemm_desc_t &abrd);
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brdgmm_kernel_base_t)
 
-    brgemm_t brg;
+    brgemm_desc_t brg;
 
-    static bool is_fast_vnni_int8(const brgemm_t &brg) {
+    static bool is_fast_vnni_int8(const brgemm_desc_t &brg) {
         return brg.is_dgmm && brg.is_int8 && brg.ldb_tail /*n_vlen_tail*/ == 0;
     }
 

@@ -134,7 +134,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
         auto vK = (i_K) ? jcp_.K_tail : jcp_.K;
         const auto brg_idx = get_brg_idx(i_init, i_M, i_N, i_K);
         if (vM == 0 || vN == 0 || vK == 0) continue;
-        brgemm_t brg;
+        brgemm_desc_t brg;
         brgemm_strides_t brg_strides;
         brg_strides.stride_a = jcp_.brg_stride_a;
         brg_strides.stride_b = jcp_.brg_stride_b;

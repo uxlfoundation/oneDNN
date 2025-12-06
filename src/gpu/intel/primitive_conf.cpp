@@ -471,6 +471,13 @@ status_t get_prelu_md(int prelu_mask, const dim_t *dst_dims,
 
 status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
         const post_ops_t &post_ops, const memory_desc_t &dst_md) {
+    gpu_post_ops_t gpu_post_ops;
+    CHECK(gpu_post_ops_t::make(gpu_post_ops, post_ops, dst_md));
+    return def_post_ops_cfg(kernel_ctx, gpu_post_ops, dst_md.ndims);
+}
+
+status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
+        const gpu_post_ops_t &post_ops, int ndims) {
     std::string po_kernel_args = "-DPOST_OP_ARGS=\"";
 
     bool post_op_uses_bf16 = false;
@@ -505,52 +512,40 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
     };
 
     auto add_po_defines = [&](const std::string &bin_arg_name,
-                                  const post_ops_t::entry_t &e, int idx_) {
+                                  const gpu_post_ops_t::entry_t &e, int idx_) {
         std::string idx = std::to_string(idx_);
-        if (e.is_binary() || e.is_prelu()) {
+        if (e.is_binary()) {
             kernel_ctx.add_option("-DAPPLY_PO_" + idx + "=APPLY_PO_BINARY");
 
-            post_op::relative_md_t src_rmd;
-            if (e.is_binary()) {
-                kernel_ctx.define_int("PO_" + idx + "_ALG", e.binary.alg);
-                CHECK(post_op::relative_md_t::make(
-                        src_rmd, e.binary.src1_desc, {}));
-            } else {
-                kernel_ctx.define_int(
-                        "PO_" + idx + "_ALG", alg_kind_t::dnnl_eltwise_relu);
-                memory_desc_t weight_mem_desc;
-                CHECK(get_prelu_md(e.prelu.mask, dst_md.dims, weight_mem_desc,
-                        dst_md.ndims));
-                CHECK(post_op::relative_md_t::make(
-                        src_rmd, weight_mem_desc, {}));
-            }
+            auto &src_rmd = e.as_binary().src1_desc;
+            kernel_ctx.define_int("PO_" + idx + "_ALG", e.as_binary().alg);
 
             std::array<std::string, MAX_NDIMS> stride_vars;
-            for (int i = 0; i < dst_md.ndims; i++) {
+            for (int i = 0; i < ndims; i++) {
                 stride_vars[i] = "po" + idx + "_stride" + std::to_string(i);
             }
-            kernel_ctx.add_option(src_rmd.ocl_defines(
-                    "PO_" + idx, stride_vars, dst_md.ndims));
+            kernel_ctx.add_option(
+                    src_rmd.ocl_defines("PO_" + idx, stride_vars, ndims));
             set_post_op_uses(src_rmd.dt);
 
             po_kernel_args += std::string(", const __global ")
                     + get_type_name(src_rmd.dt, false) + " *po" + idx
                     + "_binary_arg";
-            for (int i = 0; i < dst_md.ndims; i++) {
-                if (!src_rmd.is_broadcast(i, dst_md.ndims)
-                        && !src_rmd.is_inner_dim(i, dst_md.ndims))
+            for (int i = 0; i < ndims; i++) {
+                if (!src_rmd.is_broadcast(i, ndims)
+                        && !src_rmd.is_inner_dim(i, ndims))
                     po_kernel_args += std::string(", dim_t " + stride_vars[i]);
             }
         } else if (e.is_eltwise()) {
-            define_float("po" + idx + "_alpha", e.eltwise.alpha);
-            define_float("po" + idx + "_beta", e.eltwise.beta);
-            define_float("po" + idx + "_scale", e.eltwise.scale, {0, 1});
+            define_float("po" + idx + "_alpha", e.as_eltwise().alpha);
+            define_float("po" + idx + "_beta", e.as_eltwise().beta);
+            define_float("po" + idx + "_scale", e.as_eltwise().scale, {0, 1});
 
             kernel_ctx.add_option("-DAPPLY_PO_" + idx + "=APPLY_PO_ELTWISE");
-            kernel_ctx.define_int("PO_" + idx + "_ALG", e.eltwise.alg);
-        } else if (e.is_sum(false, false)) {
-            define_int("po" + idx + "_zp", e.sum.zero_point, {0});
-            define_float("po" + idx + "_scale", e.sum.scale, {0, 1});
+            kernel_ctx.define_int("PO_" + idx + "_ALG", e.as_eltwise().alg);
+        } else if (e.is_sum()) {
+            define_int("po" + idx + "_zp", e.as_sum().zero_point, {0});
+            define_float("po" + idx + "_scale", e.as_sum().scale, {0, 1});
 
             kernel_ctx.add_option("-DAPPLY_PO_" + idx + "=APPLY_PO_SUM");
             kernel_ctx.define_int("PO_" + idx + "_ALG", alg_kind::undef);
@@ -564,9 +559,10 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
     for (int idx = 0; idx < post_ops.len(); ++idx) {
         const std::string bin_arg_name
                 = "PO_" + std::to_string(idx) + "_BIN_ARG";
-        CHECK(add_po_defines(bin_arg_name, post_ops.entry_[idx], idx));
+        CHECK(add_po_defines(bin_arg_name, post_ops[idx], idx));
     }
 
+    kernel_ctx.define_int("WITH_POST_OP", post_ops.len() > 0);
     kernel_ctx.define_int("POST_OP_CHAIN_LENGTH", post_ops.len());
     if (post_op_uses_bf16) kernel_ctx.define_int("POST_OP_USING_BF16", 1);
     if (post_op_uses_bf8) kernel_ctx.define_int("POST_OP_USING_BF8", 1);
@@ -663,8 +659,6 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
         const attr_info_t &attr_info, const post_ops_t &post_ops,
         const memory_desc_t &dst_md, bool with_punning) {
     gpu_assert(attr_info.initialized);
-
-    kernel_ctx.define_int("WITH_POST_OP", post_ops.len() > 0);
 
     if (!kernel_ctx.has_macro("ELTWISE_ALG"))
         kernel_ctx.define_int("ELTWISE_ALG", attr_info.eltwise_alg);

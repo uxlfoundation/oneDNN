@@ -154,7 +154,7 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
     // Get r0 information where needed.
     GRF r0_info;
-    if (needBarrier) {
+    if (needBarrier && state.r0_info.isValid()) {
         if (state.r0_info.isARF()) stub();
         r0_info = GRF{state.r0_info.getBase()};
     }
@@ -1909,11 +1909,12 @@ GRF Generator<hw>::kLoopGetBarrierHeader(const GEMMStrategy &strategy, GEMMState
 {
     kLoopAllocBarrierHeader(state);
     if (!state.barrierReady) {
-        if (state.r0_info.isARF()) stub();
         if (hw >= HW::XeHPG && strategy.activeThreads > 0)
-            barrierheader(state.barrierHeader, strategy.activeThreads, GRF{state.r0_info.getBase()});
-        else
+            barrierheader(state.barrierHeader, strategy.activeThreads);
+        else {
+            if (state.r0_info.isARF()) stub();
             barrierheader(state.barrierHeader, GRF{state.r0_info.getBase()});
+        }
         state.barrierReady = true;
     }
 

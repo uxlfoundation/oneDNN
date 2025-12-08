@@ -179,19 +179,19 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             arg_list.set(argn++, stride_a);
             arg_list.set(argn++, stride_b);
             arg_list.set(argn++, stride_c);
-            if (problem->hasAScale()) {
+            if (problem->hasAScalePtr()) {
                 arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_A));
             }
-            if (problem->hasBScale()) {
+            if (problem->hasBScalePtr()) {
                 arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_B));
             }
             if (problem->hasCMXScale()) {
                 arg_list.set(argn++, stride_c / problem->cqGroupM);
             }
-            if (problem->hasAOffset()) {
+            if (problem->hasAOffsetPtr()) {
                 arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_A));
             }
-            if (problem->hasBOffset()) {
+            if (problem->hasBOffsetPtr()) {
                 arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_B));
             }
             if (problem->needsAGroupSums()) {

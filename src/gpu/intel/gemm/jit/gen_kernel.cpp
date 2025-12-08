@@ -1057,11 +1057,11 @@ void gen_kernel_t::init_interface() {
             interface_.newArgument("stride_A" + std::to_string(i), DataType::d);
             interface_.newArgument("stride_B" + std::to_string(i), DataType::d);
             interface_.newArgument("stride_C" + std::to_string(i), DataType::d);
-            if (problem.hasAScale()) {
+            if (problem.hasAScalePtr()) {
                 interface_.newArgument(
                         "scale_stride_A" + std::to_string(i), DataType::d);
             }
-            if (problem.hasBScale()) {
+            if (problem.hasBScalePtr()) {
                 interface_.newArgument(
                         "scale_stride_B" + std::to_string(i), DataType::d);
             }
@@ -1069,11 +1069,11 @@ void gen_kernel_t::init_interface() {
                 interface_.newArgument(
                         "scale_stride_C" + std::to_string(i), DataType::d);
             }
-            if (problem.hasAOffset()) {
+            if (problem.hasAOffsetPtr()) {
                 interface_.newArgument(
                         "offset_stride_A" + std::to_string(i), DataType::d);
             }
-            if (problem.hasBOffset()) {
+            if (problem.hasBOffsetPtr()) {
                 interface_.newArgument(
                         "offset_stride_B" + std::to_string(i), DataType::d);
             }

@@ -110,8 +110,16 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     auto tags = const_cast<char *>(matchParams.tags);
     while (*tags)
         tags++;
-    *tags++ = kcatalog::ReqBlock2DA;
-    *tags++ = kcatalog::ReqBlock2DB;
+
+    /* Xe2 requires stronger alignment for block 2D. */
+    bool can2DA = true, can2DB = true;
+    if (hw == HW::Xe2 || hw == HW::Xe3) {
+        can2DA &= (problem.A.alignment % 16 == 0);
+        can2DB &= (problem.B.alignment % 16 == 0);
+    }
+
+    if (can2DA) *tags++ = kcatalog::ReqBlock2DA;
+    if (can2DB) *tags++ = kcatalog::ReqBlock2DB;
 
     /* Provide information for kernel selection */
     EvaluateParams evalParams;

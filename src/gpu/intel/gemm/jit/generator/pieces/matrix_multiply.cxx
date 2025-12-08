@@ -645,7 +645,7 @@ void Generator<hw>::outerProductRepackC(int x0, int xr0, int nx, int h, bool rem
             auto ir = globalCM ? xr : y;
             auto jr = globalCM ? y : xr;
 
-            int ne, ner, nes[2];
+            int ne = 0, ner = 0, nes[2];
             const RegisterBlock *C_block, *Cr_block;
             Subregister C, Cr;
 

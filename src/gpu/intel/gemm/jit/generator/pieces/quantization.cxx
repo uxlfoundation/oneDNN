@@ -70,6 +70,8 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     auto &Txg_int    = isA ? state.Tag_int      : state.Tbg_int;
     auto &lateScale  = isA ? state.lateScale2DA : state.lateScale2DB;
 
+    auto wgTileMN = strategy.wgTile(isA ? LoopM : LoopN);
+
     Txo_int = Txo.isInteger() ? Tx.asSignedInt() : Tx;
     Txs_int = Tx;
     if (Tx == Type::bf16)
@@ -159,7 +161,10 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     // Adjust masks for m/n grouping.
     auto adjustMask = [=](MaskInfo &mask) {
         if (!mask || xqGroupMN <= 1) return;
-        if (!is_zero_or_pow2(xqGroupMN)) return;
+        if (!is_zero_or_pow2(xqGroupMN)) {
+            if (xqGroupMN < wgTileMN) stub();
+            return;
+        }
         if (mask.fixed.isFixed) stub();
         mask.variable.rshift += ilog2(xqGroupMN);
     };

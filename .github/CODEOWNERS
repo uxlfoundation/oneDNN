@@ -22,6 +22,7 @@
 
 # CPU Engine
 /src/cpu/aarch64/ @uxlfoundation/onednn-cpu-aarch64
+/src/cpu/rv64/ @uxlfoundation/onednn-cpu-rv64
 /src/cpu/x64/ @uxlfoundation/onednn-cpu-x64
 /src/cpu/rnn/ @uxlfoundation/onednn-cpu-x64
 

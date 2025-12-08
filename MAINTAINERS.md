@@ -180,9 +180,14 @@ Vacant. Maintained by Core team.
 
 Vacant. Maintained by Core team.
 
-### RISC-V
+### RISC-V (RV64)
 
-Vacant. Maintained by Core team.
+Team: @uxlfoundation/onednn-cpu-rv64
+
+| Name               | Github ID             | Affiliation       | Role       |
+| ------------------ | --------------------- | ----------------- | ---------- |
+| Fei Zhang          | @zhangfeiv0           | ISCAS             | Code Owner |
+| Jian Zhang         | @zhangjian29          | ZTE Corporation   | Code Owner |
 
 ### Loongarch64
 

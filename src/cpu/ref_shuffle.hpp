@@ -72,6 +72,11 @@ struct ref_shuffle_t : public primitive_t {
             } else
                 dat_tag_ = any;
 
+            auto scratchpad = scratchpad_registry().registrar();
+            scratchpad.template book<char>(
+                    memory_tracking::names::key_shuffle_precompute_transpose,
+                    axis_size() * sizeof(dim_t));
+
             return status::success;
         }
 
@@ -79,24 +84,6 @@ struct ref_shuffle_t : public primitive_t {
     };
 
     ref_shuffle_t(const pd_t *apd) : primitive_t(apd) {}
-
-    status_t init(engine_t *engine) override {
-        const dim_t axis_size = pd()->axis_size();
-        const dim_t group_size = pd()->group_size();
-        const dim_t transpose_row
-                = pd()->is_fwd() ? group_size : axis_size / group_size;
-        const dim_t transpose_col
-                = pd()->is_fwd() ? axis_size / group_size : group_size;
-        rev_transposed_ = (dim_t *)malloc(
-                axis_size * sizeof(dim_t), platform::get_cache_line_size());
-        if (rev_transposed_ == nullptr) return dnnl_out_of_memory;
-        parallel_nd(transpose_col, transpose_row, [&](dim_t i, dim_t j) {
-            rev_transposed_[j * transpose_col + i] = i * transpose_row + j;
-        });
-        return dnnl_success;
-    }
-
-    ~ref_shuffle_t() override { free(rev_transposed_); }
 
     status_t execute(const exec_ctx_t &ctx) const override {
         const memory_desc_wrapper src_d(
@@ -115,8 +102,8 @@ struct ref_shuffle_t : public primitive_t {
 private:
     template <int data_type_size>
     status_t execute_(const exec_ctx_t &ctx) const;
+
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    dim_t *rev_transposed_ = nullptr;
 };
 
 } // namespace cpu

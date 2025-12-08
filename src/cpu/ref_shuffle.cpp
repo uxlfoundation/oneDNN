@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 
@@ -45,8 +46,23 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
     auto output = CTX_OUT_CLEAN_MEM(data_t *, o_arg, status);
     CHECK(status);
 
+    const auto &scratchpad = ctx.get_scratchpad_grantor();
+    auto scratchpad_ptr = scratchpad.template get<int>(
+            memory_tracking::names::key_shuffle_precompute_transpose);
+
     const auto axis = pd()->axis();
     const auto axis_size = pd()->axis_size();
+    const auto group_size = pd()->group_size();
+
+    const int transpose_row
+            = pd()->is_fwd() ? group_size : axis_size / group_size;
+    const int transpose_col
+            = pd()->is_fwd() ? axis_size / group_size : group_size;
+
+    // Precompute transposed axis helper array
+    parallel_nd(transpose_col, transpose_row, [=](dim_t i, dim_t j) {
+        scratchpad_ptr[j * transpose_col + i] = i * transpose_row + j;
+    });
 
     const dim_t MB = pd()->MB();
     const dim_t C = pd()->C();
@@ -75,7 +91,7 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
             const dim_t output_off = off + cb * SP;
             PRAGMA_OMP_SIMD()
             for (dim_t cc = 0; cc < nstl::min(blksize, C - cb); ++cc) {
-                const dim_t input_c = rev_transposed_[cb + cc];
+                const dim_t input_c = scratchpad_ptr[cb + cc];
                 const dim_t input_off = off + input_c / blksize * SP * blksize
                         + input_c % blksize;
                 output[output_off + cc] = input[input_off];
@@ -83,13 +99,13 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
         }
 #else
         parallel_nd(MB, utils::div_up(C, blksize), SP,
-                [&](dim_t mb, dim_t c, dim_t sp) {
+                [=](dim_t mb, dim_t c, dim_t sp) {
             const dim_t off = mb * stride_mb + sp * blksize;
             const dim_t cb = c * blksize;
             const dim_t output_off = off + cb * SP;
             PRAGMA_OMP_SIMD()
             for (dim_t cc = 0; cc < nstl::min(blksize, C - cb); ++cc) {
-                const dim_t input_c = rev_transposed_[cb + cc];
+                const dim_t input_c = scratchpad_ptr[cb + cc];
                 const dim_t input_off = off + input_c / blksize * SP * blksize
                         + input_c % blksize;
                 output[output_off + cc] = input[input_off];
@@ -97,16 +113,16 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
         });
 #endif
     } else if (axis == 1 && one_of(tag, nhwc, ndhwc)) {
-        parallel_nd(MB, SP, [&](dim_t mb, dim_t sp) {
+        parallel_nd(MB, SP, [=](dim_t mb, dim_t sp) {
             const dim_t off = mb * stride_mb + sp * C;
             PRAGMA_OMP_SIMD()
             for (dim_t c = 0; c < C; ++c)
-                output[off + c] = input[off + rev_transposed_[c]];
+                output[off + c] = input[off + scratchpad_ptr[c]];
         });
     } else if (axis == 1 && one_of(tag, nchw, ncdhw)) {
-        parallel_nd(MB, C, [&](dim_t mb, dim_t c) {
+        parallel_nd(MB, C, [=](dim_t mb, dim_t c) {
             const dim_t output_off = mb * stride_mb + c * SP;
-            const dim_t input_off = mb * stride_mb + rev_transposed_[c] * SP;
+            const dim_t input_off = mb * stride_mb + scratchpad_ptr[c] * SP;
             PRAGMA_OMP_SIMD()
             for (dim_t sp = 0; sp < SP; ++sp) {
                 output[output_off + sp] = input[input_off + sp];
@@ -121,10 +137,10 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
         const dim_t dim = axis_size * inner_size;
 
         parallel_nd(outer_size, axis_size, inner_size,
-                [&](dim_t ou, dim_t a, dim_t in) {
+                [=](dim_t ou, dim_t a, dim_t in) {
             const dim_t off = ou * dim + in;
             auto &o = output[src_d.off_l(off + a * inner_size)];
-            o = input[src_d.off_l(off + rev_transposed_[a] * inner_size)];
+            o = input[src_d.off_l(off + scratchpad_ptr[a] * inner_size)];
         });
     }
     return status::success;

@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
@@ -158,7 +159,8 @@ status_t nchw_pooling_fwd_t<data_type::f32>::execute_forward(
     if (alg == alg_kind::pooling_max) {
         if (has_post_ops) {
             parallel_nd(MB, C, OD, OH, OW,
-                    [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+                    [= COMPAT_THIS_CAPTURE](
+                            dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
                 const size_t dst_offset = (size_t)OW * OH * OD * C * mb
                         + (size_t)OW * OH * OD * c + (size_t)OW * OH * od
                         + (size_t)OW * oh + (size_t)ow;
@@ -177,7 +179,7 @@ status_t nchw_pooling_fwd_t<data_type::f32>::execute_forward(
             });
         } else {
             parallel_nd(MB, C, OD, OH, OW,
-                    [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+                    [=](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
                 const size_t dst_offset = (size_t)OW * OH * OD * C * mb
                         + (size_t)OW * OH * OD * c + (size_t)OW * OH * od
                         + (size_t)OW * oh + (size_t)ow;
@@ -193,7 +195,8 @@ status_t nchw_pooling_fwd_t<data_type::f32>::execute_forward(
     } else {
         if (has_post_ops) {
             parallel_nd(MB, C, OD, OH, OW,
-                    [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+                    [= COMPAT_THIS_CAPTURE](
+                            dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
                 const size_t dst_offset = (size_t)OW * OH * OD * C * mb
                         + (size_t)OW * OH * OD * c + (size_t)OW * OH * od
                         + (size_t)OW * oh + (size_t)ow;
@@ -210,7 +213,7 @@ status_t nchw_pooling_fwd_t<data_type::f32>::execute_forward(
             });
         } else {
             parallel_nd(MB, C, OD, OH, OW,
-                    [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+                    [=](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
                 const size_t dst_offset = (size_t)OW * OH * OD * C * mb
                         + (size_t)OW * OH * OD * c + (size_t)OW * OH * od
                         + (size_t)OW * oh + (size_t)ow;
@@ -350,12 +353,15 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
         d[0] = q10n::out_round<float>((float)d[0] / num_summands);
     };
 
-    parallel_nd(blocked_size, [&](size_t i) {
+    parallel_nd(blocked_size, [=](size_t i) {
         types::cvt_to_float(&cvt_wsp[i * simd_w], &src[i * simd_w], simd_w);
     });
-    if (tail_size)
-        types::cvt_to_float(&cvt_wsp[blocked_size * simd_w],
-                &src[blocked_size * simd_w], tail_size);
+    if (tail_size) {
+        parallel(1, [=](int, int) {
+            types::cvt_to_float(&cvt_wsp[blocked_size * simd_w],
+                    &src[blocked_size * simd_w], tail_size);
+        });
+    }
 
     // Keep branches for post-ops since reference post-ops execution brings
     // noticeable overhead.
@@ -364,7 +370,8 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
     if (alg == alg_kind::pooling_max) {
         if (has_post_ops) {
             parallel_nd(MB, C, OD, OH, OW,
-                    [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+                    [= COMPAT_THIS_CAPTURE](
+                            dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
                 size_t dst_offset = (size_t)OW * OH * OD * C * mb
                         + (size_t)OW * OH * OD * c + (size_t)OW * OH * od
                         + (size_t)OW * oh + (size_t)ow;
@@ -384,7 +391,7 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
             });
         } else {
             parallel_nd(MB, C, OD, OH, OW,
-                    [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+                    [=](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
                 size_t dst_offset = (size_t)OW * OH * OD * C * mb
                         + (size_t)OW * OH * OD * c + (size_t)OW * OH * od
                         + (size_t)OW * oh + (size_t)ow;
@@ -400,7 +407,8 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
     } else {
         if (has_post_ops) {
             parallel_nd(MB, C, OD, OH, OW,
-                    [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+                    [= COMPAT_THIS_CAPTURE](
+                            dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
                 size_t dst_offset = (size_t)OW * OH * OD * C * mb
                         + (size_t)OW * OH * OD * c + (size_t)OW * OH * od
                         + (size_t)OW * oh + (size_t)ow;
@@ -415,7 +423,7 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
             });
         } else {
             parallel_nd(MB, C, OD, OH, OW,
-                    [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+                    [=](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
                 size_t dst_offset = (size_t)OW * OH * OD * C * mb
                         + (size_t)OW * OH * OD * c + (size_t)OW * OH * od
                         + (size_t)OW * oh + (size_t)ow;
@@ -539,7 +547,7 @@ status_t nchw_pooling_bwd_t<data_type::f32>::execute_backward(
     dim_t od_end = min(OD, 1 + (padF + ID - 1) / SD);
 
     if (alg == alg_kind::pooling_max) {
-        parallel_nd(MB, C, [&](dim_t mb, dim_t c) {
+        parallel_nd(MB, C, [=](dim_t mb, dim_t c) {
             size_t diff_dst_offset_b
                     = (size_t)mb * C * OD * OH * OW + (size_t)c * OD * OH * OW;
             ker_zero(mb, c);
@@ -554,7 +562,7 @@ status_t nchw_pooling_bwd_t<data_type::f32>::execute_backward(
             }
         });
     } else {
-        parallel_nd(MB, C, [&](dim_t mb, dim_t c) {
+        parallel_nd(MB, C, [=](dim_t mb, dim_t c) {
             size_t diff_dst_offset_b
                     = (size_t)mb * C * OD * OH * OW + (size_t)c * OD * OH * OW;
             ker_zero(mb, c);
@@ -695,8 +703,9 @@ status_t nchw_pooling_bwd_t<d_type>::execute_backward(
 
     if (alg == alg_kind::pooling_max) {
         parallel_nd_ext(nthr, MB, utils::div_up(C, c_blk),
-                [&](int ithr, int, dim_t mb, dim_t cb) {
-            assert(ithr < pd()->nbuf_);
+                [= COMPAT_THIS_CAPTURE](int ithr, int, dim_t mb, dim_t cb) {
+            if (ithr >= pd()->nbuf_) return;
+
             bool is_last_c_block = c_blk_tail > 0 && (cb + 1) * c_blk > C;
             dim_t curr_c_block = is_last_c_block ? c_blk_tail : c_blk;
             size_t diff_dst_offset_b
@@ -727,8 +736,9 @@ status_t nchw_pooling_bwd_t<d_type>::execute_backward(
         });
     } else {
         parallel_nd_ext(nthr, MB, utils::div_up(C, c_blk),
-                [&](int ithr, int, dim_t mb, dim_t cb) {
-            assert(ithr < pd()->nbuf_);
+                [= COMPAT_THIS_CAPTURE](int ithr, int, dim_t mb, dim_t cb) {
+            if (ithr >= pd()->nbuf_) return;
+
             bool is_last_c_block = c_blk_tail > 0 && (cb + 1) * c_blk > C;
             dim_t curr_c_block = is_last_c_block ? c_blk_tail : c_blk;
             size_t diff_dst_offset_b = (size_t)mb * C * OD * OH * OW

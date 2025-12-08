@@ -92,29 +92,22 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
     status_t init(engine_t *engine) override;
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
-        auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
-        auto ws = CTX_OUT_MEM(char *, DNNL_ARG_WORKSPACE);
-
         if (pd()->ndims() == 5)
-            execute_forward_3d(src, dst, ws, ctx);
+            execute_forward_3d(ctx);
         else
-            execute_forward(src, dst, ws, ctx);
+            execute_forward(ctx);
 
         return status::success;
     }
 
 private:
-    void execute_forward(const data_t *src, data_t *dst, char *indices,
-            const exec_ctx_t &ctx) const;
-    void execute_forward_3d(const data_t *src, data_t *dst, char *indices,
-            const exec_ctx_t &ctx) const;
+    void execute_forward(const exec_ctx_t &ctx) const;
+    void execute_forward_3d(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t init_ncsp_trans_ctx();
 
     std::unique_ptr<jit_uni_pool_kernel_t<isa>> kernel_;
     std::unique_ptr<jit_uni_pooling_utils::trans_context_t> trans_ctx_;
-    static constexpr data_type_t wsp_dt_ = data_type::f32;
 };
 
 template <cpu_isa_t isa, impl::data_type_t d_type>
@@ -191,7 +184,6 @@ private:
 
     std::unique_ptr<jit_uni_pool_kernel_t<isa>> kernel_;
     std::unique_ptr<jit_uni_pooling_utils::trans_context_t> trans_ctx_;
-    static constexpr data_type_t wsp_dt_ = data_type::f32;
 };
 
 } // namespace x64

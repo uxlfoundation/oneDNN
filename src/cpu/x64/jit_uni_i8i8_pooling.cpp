@@ -1457,7 +1457,7 @@ status_t jit_uni_i8i8_pooling_fwd_t<isa>::execute_forward(
             - (cpu_isa_traits_t<isa>::vlen - 1));
 
     parallel_nd(jpp.mb, jpp.od, jpp.oh, jpp.ow,
-            [&](dim_t n, dim_t od, dim_t oh, dim_t ow) {
+            [= COMPAT_THIS_CAPTURE](dim_t n, dim_t od, dim_t oh, dim_t ow) {
         dim_t id = nstl::max(od * jpp.stride_d - jpp.f_pad, dim_t(0));
         dim_t ih = nstl::max(oh * jpp.stride_h - jpp.t_pad, dim_t(0));
         dim_t iw = nstl::max(ow * jpp.stride_w - jpp.l_pad, dim_t(0));

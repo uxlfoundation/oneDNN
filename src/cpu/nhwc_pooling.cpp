@@ -197,12 +197,13 @@ status_t nhwc_pooling_fwd_t<data_type::f32>::execute_forward(
     const dim_t OSP = SP * OD;
 
     const auto get_logical_offset
-            = [&](dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) -> dim_t {
+            = [=](dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) -> dim_t {
         return OSP * OC * mb + OSP * oc + SP * od + OW * oh + ow;
     };
     const bool are_postops_set = !(pd()->attr()->post_ops_.entry_.empty());
 
-    parallel_nd(MB, OD, OH, OW, [&](dim_t mb, dim_t od, dim_t oh, dim_t ow) {
+    parallel_nd(MB, OD, OH, OW,
+            [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t od, dim_t oh, dim_t ow) {
         const size_t dst_offset_init = strided_offset(mb, dst_n_stride, od,
                 dst_d_stride, oh, dst_h_stride, ow, dst_w_stride);
         if (alg == alg_kind::pooling_max) {
@@ -364,14 +365,15 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
     const dim_t OSP = SP * OD;
 
     const auto get_logical_offset
-            = [&](dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) -> dim_t {
+            = [=](dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) -> dim_t {
         return OSP * OC * mb + OSP * oc + SP * od + OW * oh + ow;
     };
     const bool are_postops_set = !(pd()->attr()->post_ops_.entry_.empty());
     const int nthr = pd()->nthr_;
 
     parallel_nd_ext(nthr, MB, OD, OH, OW,
-            [&](int ithr, int, dim_t mb, dim_t od, dim_t oh, dim_t ow) {
+            [= COMPAT_THIS_CAPTURE](
+                    int ithr, int, dim_t mb, dim_t od, dim_t oh, dim_t ow) {
         const size_t dst_offset_init = strided_offset(mb, dst_n_stride, od,
                 dst_d_stride, oh, dst_h_stride, ow, dst_w_stride);
         float *const dst_f32 = &cvt_dst_wsp[ithr * OC];
@@ -517,7 +519,7 @@ status_t nhwc_pooling_bwd_t<data_type::f32>::execute_backward(
         return (index > offset) ? index - offset : 0;
     };
 
-    parallel_nd(MB, ID, IH, IW, [&](dim_t mb, dim_t id, dim_t ih, dim_t iw) {
+    parallel_nd(MB, ID, IH, IW, [=](dim_t mb, dim_t id, dim_t ih, dim_t iw) {
         size_t src_offset_init
                 = strided_offset(mb, diff_src_n_stride, id, diff_src_d_stride,
                         ih, diff_src_h_stride, iw, diff_src_w_stride);
@@ -664,7 +666,7 @@ status_t nhwc_pooling_bwd_t<d_type>::execute_backward(
     const int nthr = pd()->nthr_;
 
     parallel_nd_ext(nthr, MB, ID, IH, IW,
-            [&](int ithr, int, dim_t mb, dim_t id, dim_t ih, dim_t iw) {
+            [=](int ithr, int, dim_t mb, dim_t id, dim_t ih, dim_t iw) {
         size_t src_offset_init
                 = strided_offset(mb, diff_src_n_stride, id, diff_src_d_stride,
                         ih, diff_src_h_stride, iw, diff_src_w_stride);

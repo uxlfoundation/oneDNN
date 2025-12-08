@@ -174,7 +174,7 @@ status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
         const auto &nelems_tail = res.rem;
         const auto nelems_parallel = nelems_simd + (nelems_tail ? 1 : 0);
 
-        parallel(nthr, [&](const int ithr, const int nthr) {
+        parallel(nthr, [=](const int ithr, const int nthr) {
             dim_t start = 0, end = 0;
             balance211(nelems_parallel, nthr, ithr, start, end);
             if (start >= end) return;
@@ -220,7 +220,7 @@ status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
             const dim_t C_blocks = std::ceil(static_cast<float>(C) / simd_w);
             work_amount = MB * C_blocks;
             parallel_nd_ext(nthr, MB, C_blocks,
-                    [&](int ithr, int, dim_t mb, dim_t c_blk) {
+                    [=](int ithr, int, dim_t mb, dim_t c_blk) {
                 jit_prelu_backward_kernel_t::call_params_t params;
                 params.compute_data_size = SP * simd_w;
                 const dim_t offset
@@ -238,7 +238,7 @@ status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
         } else if (bcast == prelu::bcast::per_oc_n_c_spatial) {
             work_amount = MB * C;
 
-            parallel_nd_ext(nthr, MB, C, [&](int ithr, int, dim_t mb, dim_t c) {
+            parallel_nd_ext(nthr, MB, C, [=](int ithr, int, dim_t mb, dim_t c) {
                 jit_prelu_backward_kernel_t::call_params_t params;
                 const auto offset = (mb * nelems_single_mb + c * SP);
                 params.compute_data_size = SP;
@@ -255,7 +255,7 @@ status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
             work_amount = MB * SP;
 
             parallel_nd_ext(
-                    nthr, MB, SP, [&](int ithr, int, dim_t mb, dim_t sp) {
+                    nthr, MB, SP, [=](int ithr, int, dim_t mb, dim_t sp) {
                 jit_prelu_backward_kernel_t::call_params_t params;
                 const auto offset = (mb * nelems_single_mb + sp * C);
                 params.compute_data_size = C;
@@ -285,7 +285,7 @@ void jit_prelu_bwd_t::scratchpad_to_diff_weights_reduction(float *scratchpad,
     const bool tail_exists = C % simd_w;
     const dim_t C_blocks = std::ceil(static_cast<float>(C) / simd_w);
 
-    parallel_nd(C_blocks, [&](dim_t c_blk) {
+    parallel_nd(C_blocks, [=](dim_t c_blk) {
         const auto blk_offset = c_blk * simd_w;
         jit_prelu_reduction_kernel_t::call_params_t params;
         params.reduction_blocks = reduction_blocks;
@@ -301,7 +301,7 @@ void jit_prelu_bwd_t::scratchpad_to_diff_weights_reduction(float *scratchpad,
 void jit_prelu_bwd_t::fill_scratchpad_zeros(float *const scratchpad,
         size_t thread_scratchpad_size, int nthr) const {
 
-    parallel(nthr, [&](std::size_t ithr, std::size_t) {
+    parallel(nthr, [=](std::size_t ithr, std::size_t) {
         float *scratchpad_ithr = scratchpad + ithr * thread_scratchpad_size;
         std::memset(scratchpad_ithr, 0, thread_scratchpad_size * sizeof(float));
     });

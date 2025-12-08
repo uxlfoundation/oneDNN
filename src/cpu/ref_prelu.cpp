@@ -20,6 +20,7 @@
 
 #include "common/broadcast_strategy.hpp"
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
@@ -81,7 +82,7 @@ status_t ref_prelu_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             data_d.dims(), weights_d.dims(), data_d.ndims());
     const dim_t work_amount = data_d.nelems();
 
-    parallel(0, [&](std::size_t ithr, std::size_t nthr) {
+    parallel(0, [=](std::size_t ithr, std::size_t nthr) {
         if ((dim_t)ithr >= work_amount) return;
 
         dim_t start {0}, end {0};
@@ -193,9 +194,11 @@ void ref_prelu_bwd_t::calculate_scalar(const byte *src, const byte *weights,
     const dim_t work_amount = data_d.nelems();
     const int thread_count = nstl::min(nthr, static_cast<int>(work_amount));
 
-    std::vector<float> buf_nthr_partial_results(nthr);
+    float *reduce_ptr = scratchpad_buf
+            + prelu::get_scalar_scratchpad_offset(
+                    pd()->nthr_, pd()->nthr_, work_amount);
 
-    parallel(nthr, [&](std::size_t ithr, std::size_t nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](std::size_t ithr, std::size_t nthr) {
         if ((dim_t)ithr >= work_amount) return;
 
         dim_t start {0}, end {0};
@@ -235,11 +238,12 @@ void ref_prelu_bwd_t::calculate_scalar(const byte *src, const byte *weights,
             utils::nd_iterator_step(off[0], dims_d[0], off[1], dims_d[1],
                     off[2], dims_d[2], off[3], dims_d[3], off[4], dims_d[4]);
         }
-        buf_nthr_partial_results[ithr] = reduce(group_buf, group_size);
+        reduce_ptr[ithr] = reduce(group_buf, group_size);
     });
-    io::store_float_value(weights_d.data_type(),
-            reduce(&buf_nthr_partial_results[0], thread_count), diff_weights,
-            0);
+    parallel(1, [=](int, int) {
+        io::store_float_value(weights_d.data_type(),
+                reduce(reduce_ptr, thread_count), diff_weights, 0);
+    });
 }
 
 void ref_prelu_bwd_t::calculate_no_broadcast(const byte *src,
@@ -254,7 +258,7 @@ void ref_prelu_bwd_t::calculate_no_broadcast(const byte *src,
     const int mask = utils::get_dims_mask(
             data_d.dims(), weights_d.dims(), data_d.ndims());
 
-    parallel(nthr, [&](std::size_t ithr, std::size_t nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](std::size_t ithr, std::size_t nthr) {
         if ((dim_t)ithr >= work_amount) return;
 
         dim_t start {0}, end {0};
@@ -298,7 +302,7 @@ void ref_prelu_bwd_t::calculate_shared_axes(const byte *src,
     const int nthr = pd()->nthr_;
     const dim_t work_amount = weights_d.nelems();
 
-    parallel(nthr, [&](std::size_t ithr, std::size_t nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](std::size_t ithr, std::size_t nthr) {
         if ((dim_t)ithr >= work_amount) return;
 
         dim_t start {0}, end {0};

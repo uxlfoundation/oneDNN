@@ -15,6 +15,10 @@
 *******************************************************************************/
 
 #include "gemmstone/kernel_evaluator.hpp"
+#include "gemmstone/driver_info.hpp"
+#include "gemmstone/type.hpp"
+#include "gemmstone/problem.hpp"
+#include "internal/utils.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -215,6 +219,14 @@ double evaluateS(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, Eval
     }
 }
 
+double extPrecisionBytes(const kcatalog::string &precision, bool isC)
+{
+    char ext = precision[0];
+    if (ext == '[')
+        ext = precision[isC ? 2 : 1];
+    auto T = charPrecision(ext);
+    return double(T.paddedSize()) / double(T.perByte());
+}
 
 double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, EvaluateAuxOutput &aux, bool noKR = false)
 {
@@ -297,7 +309,20 @@ double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, 
     double partialWaves = std::ceil(threadsPartial / capacity1);
     double npartial = std::ceil(threads / capacity1);
 
-    double ctime = C0 + npartial * C1 + Mc * m * n * batch;
+    // Penalize unaligned C writes according to the average number of cache lines
+    // written to (taking cti into account)
+    // TODO: Improve this heuristic for strided matrices, by using the
+    // real ldc instead of assuming a tight leading dimension
+    auto cLayout = charLayout(e.selector.layouts[2][0]);
+    auto cElemBytes = extPrecisionBytes(e.selector.precisions[2], true);
+    auto ldc = static_cast<int>(cElemBytes * (isColMajor(cLayout) ? m : n)) * e.driverInfo.cInterleaveChunk();
+    auto xChunk = 64 / gcd(ldc, 64);
+    auto xUnroll = e.driverInfo.unroll[isColMajor(cLayout) ? LoopM : LoopN];
+    auto minCacheLinesPerXDim = div_up(static_cast<int>(xUnroll * cElemBytes), 64);  // Assuming starting aligned to cache line
+    auto avgCacheLinesPerXDim = minCacheLinesPerXDim + float(xChunk-1) / xChunk;     // 1 row/col per chunk is aligned, other (xChunk-1) have an extra cache line load 
+    float cacheLineEffect = avgCacheLinesPerXDim / minCacheLinesPerXDim;
+
+    double ctime = C0 + npartial * C1 + Mc * m * n * batch * cacheLineEffect;
 
     double mtime = PARAM(Ma) * m + PARAM(Mb) * n;
     mtime *= k;

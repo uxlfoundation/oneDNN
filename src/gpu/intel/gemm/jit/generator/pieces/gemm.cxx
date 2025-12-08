@@ -23,7 +23,9 @@
 #include "layout_utils.hpp"
 #include "map.hpp"
 #include "ngen_object_helpers.hpp"
+#include "problem.hpp"
 #include "state_utils.hpp"
+#include "strategy.hpp"
 
 GEMMSTONE_NAMESPACE_START
 
@@ -283,6 +285,21 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (problem.cqGroupM == 0) problem.cqGroupM = 1;
     if (problem.cqGroupN == 0) problem.cqGroupN = 1;
 
+    ngen::Subregister ldbStrided, ldcStrided;
+    ngen::Subregister fullN;
+    if (strategy.cInterleaveChunk > 1) {
+        ldbStrided = state.ra.alloc_sub<uint32_t>();
+        ldcStrided = state.ra.alloc_sub<uint32_t>();
+        mulConstant(1, ldbStrided, state.inputs.ldb, strategy.cInterleaveChunk);
+        mulConstant(1, ldcStrided, state.inputs.ldc[0], strategy.cInterleaveChunk);
+
+        fullN = state.inputs.n;
+        if (strategy.persistentLoop()) {
+            fullN = state.ra.alloc_sub<uint32_t>();
+            mov(1, fullN, state.inputs.n);
+        }
+    }
+
     // Persistent thread preparation and re-entry.
     if (strategy.persistentLoop()) {
         if (!strategy.linearOrder()) stub();
@@ -343,13 +360,19 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     if (strategy.kParallel)
         idK = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp0, strategy));
 
+    if (strategy.cInterleaveChunk > 1) {
+        divDown(idN, state.inputs.groupIDN, strategy.cInterleaveChunk, strategy, state);
+    }
+
+    auto &srcIDN = (strategy.cInterleaveChunk > 1) ? idN : state.inputs.groupIDN;
     if (strategy.fixedWG(problem)) {
         mulConstant(1, idM, state.inputs.groupIDM, strategy.wg[LoopM]);
-        mulConstant(1, idN, state.inputs.groupIDN, strategy.wg[LoopN]);
+        mulConstant(1, idN, srcIDN, strategy.wg[LoopN]);
     } else {
         mul(1, idM, state.inputs.groupIDM, state.inputs.localSizeM.uw());
-        mul(1, idN, state.inputs.groupIDN, state.inputs.localSizeN.uw());
+        mul(1, idN, srcIDN, state.inputs.localSizeN.uw());
     }
+
     if (strategy.kParallel) {
         mul(1, idK, state.inputs.groupIDK, state.inputs.localSizeK.uw());
         if (strategy.kPadding) {
@@ -367,11 +390,22 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         }
     }
 
+    Subregister wgChunkRem;
+    if (strategy.cInterleaveChunk > 1) {
+        wgChunkRem = state.ra.alloc_sub<uint32_t>();
+        mod(wgChunkRem, state.inputs.groupIDN, strategy.cInterleaveChunk, strategy, state);
+    }
+
     if (wgCheck || gemmtBarriers) {
         state.wgI0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp0, strategy));
         state.wgJ0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp1, strategy));
+
         mulConstant(1, state.wgI0, idM, strategy.unroll[LoopM]);
-        mulConstant(1, state.wgJ0, idN, strategy.unroll[LoopN]);
+        mulConstant(1, state.wgJ0, idN, strategy.unroll[LoopN] * strategy.cInterleaveChunk);
+
+        if (strategy.cInterleaveChunk > 1) {
+            add(1, state.wgJ0, state.wgJ0, wgChunkRem);
+        }
     }
 
     add(1, idM, idM, state.lidM);
@@ -380,7 +414,12 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         add(1 | gt | state.flagAP, idK, idK, state.lidK);
 
     mulConstant(1, state.i0, idM, strategy.unroll[LoopM]);
-    mulConstant(1, state.j0, idN, strategy.unroll[LoopN]);
+    mulConstant(1, state.j0, idN, strategy.unroll[LoopN] * strategy.cInterleaveChunk);
+
+    if (strategy.cInterleaveChunk > 1) {
+        add(1, state.j0, state.j0, wgChunkRem);
+        state.ra.safeRelease(wgChunkRem);
+    }
 
     if (strategy.kParallelVariable)
         noop(); /* h0 already calculated */
@@ -463,6 +502,52 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     state.ra.safeRelease(state.inputs.localIDN);
     if (!strategy.needsMNLocalIDs())
         state.lidM = state.lidN = invalid;
+
+    if (strategy.cInterleaveChunk > 1) {
+        // Idea: The B and C matrices are reinterpreted as being made of X strided submatrices (X = strategy.cInterleaveChunk), with the columns interleaved.
+        //    Due to interleaving, the leading dimension of each of these matrices is X * ldc. When each submatrix
+        //    has an ld that's cache-line-aligned, we can shift these matrices along the rows to a cache line boundary
+        //    and write to C without cache line contention. Implementation is as follows:
+        // Important notes:
+        // 1. Work groups are divided among the submatrices, so #work groups in a row must be padded to a multiple of X.
+        // 2. Due to i0 shifting, in unaligned cases we need additional rows of work groups to handle extra remainders
+        // 3. Only works for TNN layout, due to assumptions about leading dimensions
+        if (problem.A.layout != MatrixLayout::T) stub();
+        if (problem.B.layout != MatrixLayout::N) stub();
+        if (problem.C.layout != MatrixLayout::N) stub();
+
+        auto shiftJ0 = state.wgJ0.isValid() ? state.wgJ0 : state.j0;
+        add(1, state.inputs.n, -shiftJ0, fullN);
+        divUp(state.inputs.n, state.inputs.n, strategy.cInterleaveChunk, strategy, state);
+
+        emad(1, state.offsetB, state.offsetB, shiftJ0, state.inputs.ldb, strategy, state);
+        emad(1, state.offsetC[0], state.offsetC[0], shiftJ0, state.inputs.ldc[0], strategy, state);
+        add(1, state.j0, state.j0, -shiftJ0);
+        if (state.wgJ0.isValid())
+            mov(1, state.wgJ0, 0);
+
+        if (!strategy.persistentLoop()) {
+            state.ra.safeRelease(state.inputs.ldb);
+            state.ra.safeRelease(state.inputs.ldc[0]);
+        }
+        state.inputs.ldb = ldbStrided;
+        state.inputs.ldc[0] = ldcStrided;
+
+        // Shift back i0 to align with a cache line
+        Subregister cBasePtr = state.ra.alloc_sub(state.inputs.C[0].getType());
+        add(1, cBasePtr, state.inputs.C[0], state.offsetC[0]);
+        auto shiftI0 = state.ra.alloc_sub<uint32_t>();
+        mod(shiftI0, cBasePtr.ud(0), 64, strategy, state);
+        divDown(shiftI0, shiftI0, problem.Tc_ext.size(), strategy, state);
+
+        state.unclampedI0 = state.ra.alloc_sub<int32_t>();
+        add(1, state.unclampedI0, state.i0, -shiftI0);
+        mov(1 | sat, state.i0, state.unclampedI0);
+        if (wgCheck || gemmtBarriers) {
+            add(1 | sat, state.wgI0, state.wgI0, -shiftI0);
+        }
+        state.ra.safeRelease(shiftI0);
+    }
 
     // Calculate workgroup remainders if needed.
     gemmCalcWGRemainders(problem, strategy, state);
@@ -582,6 +667,10 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
         state.ra.safeRelease(state.groupCountMN);
     }
 
+    if (strategy.cInterleaveChunk > 1) {
+        state.ra.safeRelease(ldcStrided);
+    }
+
     mark(lPadThread);
 
     if (!inFusedGEMM) {
@@ -614,7 +703,7 @@ void Generator<hw>::gemmSubkernel(GEMMProblem &problem, GEMMStrategy &strategy, 
     if (remM || !earlyExit) {
         state.remaindersFused[LoopM] = state.remainders[LoopM] = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
         InstructionModifier mod = 1 | sat;
-        if (!fusedremM && earlyExit)
+        if (!fusedremM && earlyExit && strategy.cInterleaveChunk == 1)
             mod = mod | le | f0[1];
         add(mod, state.remainders[LoopM], -state.i0, state.inputs.m);
     }
@@ -633,8 +722,21 @@ void Generator<hw>::gemmSubkernel(GEMMProblem &problem, GEMMStrategy &strategy, 
             state.allowEmptyC = true;
         }
     }
-    if (remM)
-        min_(1, state.remainders[LoopM], state.remainders[LoopM], uint16_t(strategy.unroll[LoopM]));
+    if (remM) {
+        if (strategy.cInterleaveChunk > 1) {
+            // if state.unclampedI0 < 0: Use unrollM + state.unclampedI0 for upper bound
+            FlagRegister flag = state.ra.alloc_flag();
+            Subregister upper = state.ra.alloc_sub<uint32_t>();
+            cmp(1 | lt | flag, state.unclampedI0, 0);
+            mov(1, upper, strategy.unroll[LoopM]);
+            add(1 | sat | flag, upper, state.unclampedI0, strategy.unroll[LoopM]);
+            min_(1, state.remainders[LoopM], state.remainders[LoopM], upper);
+            cmp(1 | le | f0[1], state.remainders[LoopM], 0);
+            state.ra.safeRelease(flag);
+            state.ra.safeRelease(state.unclampedI0);
+        } else
+            min_(1, state.remainders[LoopM], state.remainders[LoopM], uint16_t(strategy.unroll[LoopM]));
+    }
     if (remN)
         min_(1, state.remainders[LoopN], state.remainders[LoopN], uint16_t(strategy.unroll[LoopN]));
 

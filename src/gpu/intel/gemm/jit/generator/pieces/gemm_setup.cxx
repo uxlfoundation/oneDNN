@@ -973,6 +973,8 @@ void Generator<hw>::gemmCalcWGRemainders(const GEMMProblem &problem, const GEMMS
         state.remaindersWG[LoopN] = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp0, strategy));
         add(1 | sat, state.remaindersWG[LoopM], -state.wgI0, state.inputs.m);
         add(1 | sat, state.remaindersWG[LoopN], -state.wgJ0, state.inputs.n);
+        if (strategy.cInterleaveChunk > 1)
+            divUp(state.remaindersWG[LoopN], state.remaindersWG[LoopN], strategy.cInterleaveChunk, strategy, state);
     }
     if (strategy.coopA != CoopSplit::FullK) state.ra.safeRelease(state.wgI0);
     if (strategy.coopB != CoopSplit::FullK) state.ra.safeRelease(state.wgJ0);

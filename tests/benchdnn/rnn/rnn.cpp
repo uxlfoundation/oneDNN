@@ -797,6 +797,18 @@ void skip_unimplemented_prb(const prb_t *prb_, res_t *res) {
             return;
         }
 #endif
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+        // RNN is not supported with async threadpool runtime.
+        auto *tp = dnnl::testing::get_threadpool();
+        if (tp
+                && (tp->get_flags()
+                        & dnnl::threadpool_interop::threadpool_iface::
+                                ASYNCHRONOUS)) {
+            res->state = SKIPPED;
+            res->reason = skip_reason::case_not_supported;
+            return;
+        }
+#endif
         const auto wei_tag
                 = normalize_tag(prb.tag[1], prb.ndims(WEIGHTS_LAYER));
         // cpu backward only supports `any` layout for weights.
@@ -1329,7 +1341,16 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     args_t args(mem_map), ref_args(ref_mem_map);
 
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    auto st = run_execution(v_prim[0], args, res);
+    if (st == FAIL) {
+        skip_unimplemented_prb(&prb, res);
+        if (res->state == SKIPPED || res->state == DEFERRED) return OK;
+        return FAIL;
+    }
+#else
     SAFE(run_execution(v_prim[0], args, res), WARN);
+#endif
 
     check_correctness(&prb, get_kinds_to_check(&prb, FLAG_FWD), args, ref_args,
             setup_cmp, res, FLAG_FWD);

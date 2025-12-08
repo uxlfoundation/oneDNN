@@ -1972,6 +1972,32 @@ template <prop_kind_t aprop, data_type_t src_type, data_type_t weights_type,
         data_type_t acc_type>
 status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
         const exec_ctx_t &ctx) const {
+
+    // Note: this is unconventional early exit in execute() for the library.
+    // This RNN implementation is particularly hard for enabling asynchronous
+    // threadpool runtime due to:
+    // * Excessive unverified calls to Autogen GeMM which is disabled for
+    //   async runtime.
+    // * Using stack objects to submit parallel tasks from itself which doesn't
+    //   make tasks to capture the internals of this object leading to
+    //   stack-use-after-free errors.
+    //   (e.g. src/cpu/x64/rnn/brgemm_cell_common_fwd.cpp::
+    //         brgemm_dst_layer_iter_t::execute() (L110-120).
+    //
+    // The alternative approach is to introduce an API to register a threadpool
+    // object before any primitive creation but this is considered as a high
+    // obligation put on users to workaorund the implementation complexity.
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    dnnl::threadpool_interop::threadpool_iface *tp;
+    auto status = ctx.stream()->get_threadpool(&tp);
+    bool ok = status == status::success && tp
+            && !(tp->get_flags()
+                    & dnnl::threadpool_interop::threadpool_iface::ASYNCHRONOUS);
+    VCONDCHECK(primitive, create, dispatch, rnn, ok, status::unimplemented,
+            "%s," VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME,
+            pd()->info(ctx.stream()->engine()));
+#endif
+
     const rnn_conf_t &rnn = this->pd()->rnn_;
     auto src_layer = CTX_IN_MEM(const src_layer_t *, DNNL_ARG_SRC_LAYER);
     auto augru_attention

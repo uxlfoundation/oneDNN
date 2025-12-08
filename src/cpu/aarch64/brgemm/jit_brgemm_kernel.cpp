@@ -1495,9 +1495,10 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             rd_loop = brg.rd_block;
     }
 
+    unsigned long base_offset = 0;
     mov(X_TMP_2, reg_aux_A);
-    auto broadcast = [=](const ZReg &z1, size_t offset, bool is_tail,
-                             data_type_t dt) {
+    auto broadcast = [=, &base_offset](const ZReg &z1, size_t offset,
+                             bool is_tail, data_type_t dt) {
         if (is_tail) {
             eor(z1.d, z1.d, z1.d);
             auto xmm_tmp = z_tmp_1();
@@ -1513,28 +1514,21 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             }
             dup(z1.s, xmm_tmp.s[0]);
         } else {
-            if (dt == data_type::f32) {
-                if (brg.is_gemv) {
-                    const auto mask = is_rd_tail ? gemv_tail_mask : P_ALL_ONE;
-                    if (offset < (1 << 6) && !is_rd_tail) {
-                        ld1w(z1.s, mask / T_z, ptr(reg_aux_A, (int32_t)offset));
-                    } else {
-                        add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
-                        ld1w(z1.s, mask / T_z, ptr(X_DEFAULT_ADDR));
-                    }
-                } else {
-                    if (offset < (1 << 6)) {
-                        ld1rw(z1.s, P_ALL_ONE / T_z,
-                                ptr(reg_aux_A, (int32_t)offset));
-                    } else {
-                        add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
-                        ld1rw(z1.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
-                    }
-                }
-            } else if (one_of(dt, data_type::s8, data_type::u8,
+            if (dt == data_type::f32 && brg.is_gemv) {
+                const auto mask = is_rd_tail ? gemv_tail_mask : P_ALL_ONE;
+                LD_MUL_VL(ld1w, z1.s, mask, reg_aux_A, offset, 4);
+            } else if (one_of(dt, data_type::f32, data_type::s8, data_type::u8,
                                data_type::bf16)) {
-                add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
-                ld1rw(z1.s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
+                auto offset_ = offset - base_offset;
+                // The ld1rw immediate must be <=252 and a multiple of 4
+                // refer to https://developer.arm.com/documentation/ddi0602/2025-09/SVE-Instructions/LD1RW--Load-and-broadcast-unsigned-word-to-vector-
+                if ((offset_ > 252 || offset_ % 4 != 0) && !brg.is_gemv) {
+                    add_imm(X_TMP_2, X_TMP_2, offset_, X_TMP_0);
+                    base_offset += offset_;
+                    offset_ = 0;
+                }
+                ld1rw(z1.s, P_ALL_ONE / T_z,
+                        ptr(X_TMP_2, static_cast<int32_t>(offset_)));
             } else if (dt == data_type::f16) {
                 assert(!"unsupported\n");
             }
@@ -1630,18 +1624,21 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                             (have_to_load_bytes && bd_by_load_bytes), brg.dt_a);
                 }
                 //The current implementaion of prefetch is not giving any gain in performance but is rather introducing some latency. Therefore it is removed util a new useful implementation is deviced.
-                const auto mask = brg.is_gemv && is_rd_tail ? gemv_tail_mask
-                                                            : P_ALL_ONE;
                 for (int ld = 0; ld < ld_block2; ld++) {
                     auto zmm = accm(ld_block2, bd, ld);
                     if (is_emdbd) {
-                        if (A_offset(bd, rd) < (1 << 6)) {
-                            ld1w(z_tmp_1().s, mask / T_z,
+                        const auto mask = brg.is_gemv && is_rd_tail
+                                ? gemv_tail_mask
+                                : P_ALL_ONE;
+                        // The ld1rw immediate must be <= 252 and a multiple of 4
+                        if (A_offset(bd, rd) <= 252
+                                && A_offset(bd, rd) % 4 == 0) {
+                            ld1rw(z_tmp_1().s, mask / T_z,
                                     ptr(reg_aux_A, A_offset(bd, rd)));
                         } else {
                             add_imm(X_DEFAULT_ADDR, reg_aux_A, A_offset(bd, rd),
                                     X_TMP_0);
-                            ld1w(z_tmp_1().s, mask / T_z, ptr(X_DEFAULT_ADDR));
+                            ld1rw(z_tmp_1().s, mask / T_z, ptr(X_DEFAULT_ADDR));
                         }
                         fmla(zmm.s, mask / T_m, load(ld).s, z_tmp_1().s);
                     } else {

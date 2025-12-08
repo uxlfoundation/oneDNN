@@ -93,8 +93,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     const auto wei_dt = weights_md_.data_type;
     const auto dst_dt = dst_md_.data_type;
 
-    // skip unsupported shapes until issue caused by PR #4126 is sorted
-    if (src_md_.ndims > 2) { return status::unimplemented; }
+    // skip unsupported shapes until issue caused by PR #4100 is sorted
+    if (src_md_.ndims == 4) { return status::unimplemented; }
 
     const bool is_f32 = everyone_is(f32, src_dt, wei_dt, dst_dt);
     const bool is_int8 = one_of(src_dt, u8, s8) && wei_dt == s8

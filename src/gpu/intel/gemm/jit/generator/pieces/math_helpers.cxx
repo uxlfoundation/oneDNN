@@ -116,21 +116,29 @@ void Generator<hw>::mulConstant(const InstructionModifier &mod, const RegData &d
 // Modulo by constant value.
 template <HW hw>
 template <typename DT>
-void Generator<hw>::mod(const Subregister &dst, const Subregister &src, uint16_t modulus, const CommonStrategy &strategy, CommonState &state)
+void Generator<hw>::mod(const InstructionModifier &finalMod, const Subregister &dst, const Subregister &src, uint16_t modulus, const CommonStrategy &strategy, CommonState &state)
 {
+    if (finalMod.getExecSize() > 1) stub();
     if (is_zero_or_pow2(modulus))
-        and_<DT>(1, dst, src, modulus - 1);
+        and_<DT>(finalMod, dst, src, modulus - 1);
     else if (strategy.emulate.emulate64 && (hw <= HW::Gen12LP))
-        math<DT>(1, MathFunction::irem, dst, src, modulus);
+        math<DT>(finalMod, MathFunction::irem, dst, src, modulus);
     else {
         auto temp = dst;
         if (src == dst)
             temp = state.ra.alloc_sub<uint32_t>();
         alignDown<DT>(temp, src, modulus, strategy, state);
-        add<DT>(1, dst, src, -temp);
+        add<DT>(finalMod, dst, src, -temp);
         if (src == dst)
             state.ra.safeRelease(temp);
     }
+}
+
+template <HW hw>
+template <typename DT>
+void Generator<hw>::mod(const Subregister &dst, const Subregister &src, uint16_t modulus, const CommonStrategy &strategy, CommonState &state)
+{
+    mod(1, dst, src, modulus, strategy, state);
 }
 
 // Return both (a % b) and a - (a % b).
@@ -175,6 +183,26 @@ void Generator<hw>::divDown(const ngen::Subregister &dst, const ngen::Subregiste
         }
     }
 }
+
+// Divide an unsigned value by a constant, rounding up.
+// Default algorithm: dst = (src / divisor) + (src % divisor > 0) 
+// Relax algorithm (can overflow): dst = (src + divisor - 1) / divisor 
+template <HW hw>
+template <typename DT>
+void Generator<hw>::divUp(const Subregister &dst, const Subregister &src, uint32_t divisor, const CommonStrategy &strategy, CommonState &state, bool relax)
+{
+    if (relax) {
+        add<DT>(1, dst, src, divisor - 1);
+        divDown<DT>(dst, dst, divisor, strategy, state);
+    } else {
+        auto flag = state.ra.alloc_flag();
+        mod(1 | ne | flag, null.ud(0), src, divisor, strategy, state);
+        divDown<DT>(dst, src, divisor, strategy, state);
+        add(1 | flag, dst, dst, 1);
+        state.ra.safeRelease(flag);
+    }
+}
+
 
 // Align an unsigned value down to a multiple of align.
 template <HW hw>

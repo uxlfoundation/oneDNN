@@ -56,6 +56,18 @@ inline char layoutChar(MatrixLayout layout)
     }
 }
 
+inline MatrixLayout charLayout(char c) {
+    switch (c) {
+        case 'A': return MatrixLayout::Pc;
+        case 'B': return MatrixLayout::Pr;
+        case 'N': return MatrixLayout::N;
+        case 'T': return MatrixLayout::T;
+        case '?': return MatrixLayout::N; // Either N/T; used for fused GEMM.
+        default:
+            throw std::runtime_error("Unknown matrix layout requested.");
+    }
+}
+
 struct MatrixAddressing {
     MatrixLayout layout;            // Layout type (N/T/Pr/Pc)
     uint8_t pad[3] = {};

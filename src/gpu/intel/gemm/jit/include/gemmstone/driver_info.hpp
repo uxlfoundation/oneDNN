@@ -50,30 +50,32 @@ enum WGType : uint8_t {
 };
 
 // Flags.
-enum DriverInfoFlags : uint32_t {
-    FlagKRemainderHandling = 1,     // GEMM kernel performs k remainder handling
-    FlagKParallel = 2,              // GEMM kernel is parallelized in the k dimension.
-    FlagZParallel = 2,              // Copy kernel is parallelized in the z dimension.
-    FlagKParallelLocal = 4,         // GEMM kernel is parallelized in the k dimension inside a workgroup.
-    FlagKParallelVariable = 8,      // GEMM kernel uses variable k-parallelization (see GEMMStrategy::kParallelVariable).
-    FlagFusedBeta = 0x10,           // GEMM kernel does fused beta scaling + atomics.
-    FlagFusedPostOps = 0x20,        // GEMM kernel does fused atomics + post-ops.
-    FlagTempC = 0x40,               // GEMM kernel needs temporary C buffer.
-    FlagAltFusedBeta = 0x80,        // GEMM kernel uses alternate fused beta scaling + atomics logic.
-    FlagAutoAtomic = 0x100,         // GEMM kernel may use atomic C accesses automatically for beta = 1.
-    FlagShrinkWGK = 0x200,          // With local k-parallelization, automatically shrink wgK to fit dispatch to GPU.
-    FlagAlphaPtr = 0x400,           // Pass alpha by pointer.
-    FlagBetaPtr = 0x800,            // Pass beta by pointer.
-    FlagFixedWGK = 0x1000,          // With local k-parallelization, wgK is fixed
-    FlagZeroTempC = 0x2000,         // GEMM kernel expects temporary C buffer to be pre-zeroed and will leave zeros there.
-    FlagNondeterministic = 0x4000,  // Kernel produces nondeterministic results.
-    FlagMaskFillGoal = 0xF0000,     // Fraction of available thread slots to fill, in sixteenths
-    FlagShiftFillGoal = 16,         //   (starting bit)
-    FlagScrambleM = 0x100000,       // Scramble WGs in m dimension.
-    FlagScrambleN = 0x200000,       // Scramble WGs in n dimension.
-    FlagExtraWG = 0x400000,         // Add an additional workgroup.
-    FlagAGroupSums = 0x1000000,     // Kernel needs A group sums.
-    FlagBGroupSums = 0x2000000,     // Kernel needs B group sums.
+enum DriverInfoFlags : uint64_t {
+    FlagKRemainderHandling = 1,        // GEMM kernel performs k remainder handling
+    FlagKParallel = 2,                 // GEMM kernel is parallelized in the k dimension.
+    FlagZParallel = 2,                 // Copy kernel is parallelized in the z dimension.
+    FlagKParallelLocal = 4,            // GEMM kernel is parallelized in the k dimension inside a workgroup.
+    FlagKParallelVariable = 8,         // GEMM kernel uses variable k-parallelization (see GEMMStrategy::kParallelVariable).
+    FlagFusedBeta = 0x10,              // GEMM kernel does fused beta scaling + atomics.
+    FlagFusedPostOps = 0x20,           // GEMM kernel does fused atomics + post-ops.
+    FlagTempC = 0x40,                  // GEMM kernel needs temporary C buffer.
+    FlagAltFusedBeta = 0x80,           // GEMM kernel uses alternate fused beta scaling + atomics logic.
+    FlagAutoAtomic = 0x100,            // GEMM kernel may use atomic C accesses automatically for beta = 1.
+    FlagShrinkWGK = 0x200,             // With local k-parallelization, automatically shrink wgK to fit dispatch to GPU.
+    FlagAlphaPtr = 0x400,              // Pass alpha by pointer.
+    FlagBetaPtr = 0x800,               // Pass beta by pointer.
+    FlagFixedWGK = 0x1000,             // With local k-parallelization, wgK is fixed
+    FlagZeroTempC = 0x2000,            // GEMM kernel expects temporary C buffer to be pre-zeroed and will leave zeros there.
+    FlagNondeterministic = 0x4000,     // Kernel produces nondeterministic results.
+    FlagMaskFillGoal = 0xF0000,        // Fraction of available thread slots to fill, in sixteenths
+    FlagShiftFillGoal = 16,            //   (starting bit)
+    FlagScrambleM = 0x100000,          // Scramble WGs in m dimension.
+    FlagScrambleN = 0x200000,          // Scramble WGs in n dimension.
+    FlagExtraWG = 0x400000,            // Add an additional workgroup.
+    FlagAGroupSums = 0x1000000,        // Kernel needs A group sums.
+    FlagBGroupSums = 0x2000000,        // Kernel needs B group sums.
+    FlagMaskCInterleave = 0x3F0000000, // C interleave chunk size
+    FlagShiftCInterleave = 28,         //   (starting bit)
 };
 
 // Driver information, shared by all kernel types.
@@ -88,7 +90,7 @@ struct CommonDriverInfo {
     int wg[3];                      // HW threads per workgroup in m/n/k dimensions.
     int wgExpand;                   // If > 1, workgroup size needs to be scaled by this factor.
     WGType wgUpdate;                // Work group type showing how/if work group sizes can be updated.
-    uint32_t flags;                 // Bitfield with additional boolean kernel attributes (see DriverInfoFlags enum).
+    uint64_t flags;                 // Bitfield with additional boolean kernel attributes (see DriverInfoFlags enum).
     int slm;                        // Minimum SLM allocation.
     int perKSLM;                    // If > 0, dynamically allocate at least perKSLM * wg[LoopK] bytes of SLM.
     int alignment[3];               // Address alignment requirements for A,B,C (gemm) or S,D (copy).
@@ -133,6 +135,11 @@ struct CommonDriverInfo {
     float fillGoal() const {
         auto sixteenths = (flags & FlagMaskFillGoal) >> FlagShiftFillGoal;
         return (sixteenths > 0) ? (sixteenths / 16.0f) : 1.0f;
+    }
+
+    int cInterleaveChunk() const {
+        int chunk = (flags & FlagMaskCInterleave) >> FlagShiftCInterleave;
+        return chunk ? chunk : 1;
     }
 
 };

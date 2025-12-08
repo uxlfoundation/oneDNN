@@ -343,7 +343,8 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
         const size_t indices_stride = pd()->OW() * pd()->OH() * pd()->OD();
         const size_t weights_stride = pd()->OW() * pd()->OH() * pd()->OD();
 
-        parallel_nd(pd()->OD(), pd()->OH(), [&](dim_t od, dim_t oh) {
+        parallel_nd(pd()->OD(), pd()->OH(),
+                [= COMPAT_THIS_CAPTURE](dim_t od, dim_t oh) {
             const linear_coeffs_t coeffs_id(od, pd()->OD(), pd()->ID());
             const linear_coeffs_t coeffs_ih(oh, pd()->OH(), pd()->IH());
 
@@ -459,7 +460,8 @@ status_t jit_uni_resampling_fwd_t::interpolate_nearest(const uint8_t *src,
     const unsigned *indices_w = &indices_[OD + OH];
 
     if (pd()->get_conf().tag_kind == jit_memory_tag_kind_t::ncsp) {
-        parallel_nd(MB, C, OD, [&](dim_t mb, dim_t c, dim_t od) {
+        parallel_nd(MB, C, OD,
+                [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t c, dim_t od) {
             const dim_t src_off
                     = (mb * C + c) * ID * IH * IW * src_dt_size + indices_d[od];
             const dim_t dst_off = ((mb * C + c) * OD * OH * OW + od * OH * OW)
@@ -477,7 +479,8 @@ status_t jit_uni_resampling_fwd_t::interpolate_nearest(const uint8_t *src,
         });
     } else if (pd()->get_conf().tag_kind == jit_memory_tag_kind_t::nspc
             || pd()->get_conf().tag_kind == jit_memory_tag_kind_t::blocked) {
-        parallel_nd(nsp_outer, OD, OH, [&](dim_t nsp, dim_t od, dim_t oh) {
+        parallel_nd(nsp_outer, OD, OH,
+                [= COMPAT_THIS_CAPTURE](dim_t nsp, dim_t od, dim_t oh) {
             const dim_t src_off
                     = nsp * ID * IH * IW * inner_stride * src_dt_size
                     + indices_d[od] + indices_h[oh];
@@ -523,7 +526,7 @@ status_t jit_uni_resampling_fwd_t::interpolate_linear(const uint8_t *src,
     const dim_t IW = pd()->IW();
 
     if (pd()->get_conf().tag_kind == jit_memory_tag_kind_t::ncsp) {
-        parallel_nd(MB, C, [&](dim_t mb, dim_t c) {
+        parallel_nd(MB, C, [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t c) {
             const dim_t src_off = (mb * C + c) * ID * IH * IW * src_dt_size;
             const dim_t dst_off = (mb * C + c) * OD * OH * OW * dst_dt_size;
 
@@ -550,7 +553,8 @@ status_t jit_uni_resampling_fwd_t::interpolate_linear(const uint8_t *src,
         const float *weights_front = &weights_[2 * (OW + OH)];
         const float *weights_back = &weights_[2 * (OW + OH) + OD];
 
-        parallel_nd(nsp_outer, OD, OH, [&](dim_t nsp, dim_t od, dim_t oh) {
+        parallel_nd(nsp_outer, OD, OH,
+                [= COMPAT_THIS_CAPTURE](dim_t nsp, dim_t od, dim_t oh) {
             const dim_t src_off
                     = nsp * ID * IH * IW * inner_stride * src_dt_size;
             const dim_t dst_off = (((nsp * OD + od) * OH + oh) * OW)

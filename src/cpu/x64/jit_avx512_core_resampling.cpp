@@ -880,7 +880,7 @@ status_t jit_avx512_core_resampling_bwd_t::execute(
             = diff_src_d.nelems(true) / (ID * IH * IW * inner_stride);
 
     parallel_nd(nsp_outer, ID, IH, IW,
-            [&](dim_t nsp, dim_t id, dim_t ih, dim_t iw) {
+            [= COMPAT_THIS_CAPTURE](dim_t nsp, dim_t id, dim_t ih, dim_t iw) {
         const dim_t diff_dst_off
                 = nsp * OD * OH * OW * inner_stride * diff_dst_dt_size;
         const dim_t diff_src_off

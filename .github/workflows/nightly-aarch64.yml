@@ -168,7 +168,7 @@ jobs:
           in-file: ${{ github.workspace }}/test_results.xml
   
   save-success-hash:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: test
     steps:
       - name: Checkout oneDNN
@@ -190,7 +190,7 @@ jobs:
   #* workflow status and can be used in branch rulesets
   status:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: "Nightly AArch64"
     steps:
       - name: Print success

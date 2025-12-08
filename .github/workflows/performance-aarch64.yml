@@ -208,7 +208,7 @@ jobs:
   #* workflow status and can be used in branch rulesets
   status:
     needs: build-and-test-performance
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: "Nightly Performance AArch64"
     steps:
       - name: Print success

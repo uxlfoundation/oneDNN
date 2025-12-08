@@ -57,7 +57,7 @@ jobs:
       matrix:
         config: [
           { arch: AArch64, label: ubuntu-24.04-arm},
-          { arch: x64, label: ubuntu-latest},
+          { arch: x64, label: ubuntu-24.04},
         ]
 
     name: Clang-Tidy - ${{matrix.config.arch}}

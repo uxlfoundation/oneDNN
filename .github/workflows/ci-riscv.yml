@@ -188,7 +188,7 @@ jobs:
   # workflow status and can be used in branch rulesets
   status:
     needs: [build, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: "CI RISC-V"
     steps:
       - name: Print success

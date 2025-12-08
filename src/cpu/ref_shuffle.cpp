@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 
@@ -83,7 +84,7 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
         }
 #else
         parallel_nd(MB, utils::div_up(C, blksize), SP,
-                [&](dim_t mb, dim_t c, dim_t sp) {
+                [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t c, dim_t sp) {
             const dim_t off = mb * stride_mb + sp * blksize;
             const dim_t cb = c * blksize;
             const dim_t output_off = off + cb * SP;
@@ -97,14 +98,14 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
         });
 #endif
     } else if (axis == 1 && one_of(tag, nhwc, ndhwc)) {
-        parallel_nd(MB, SP, [&](dim_t mb, dim_t sp) {
+        parallel_nd(MB, SP, [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t sp) {
             const dim_t off = mb * stride_mb + sp * C;
             PRAGMA_OMP_SIMD()
             for (dim_t c = 0; c < C; ++c)
                 output[off + c] = input[off + rev_transposed_[c]];
         });
     } else if (axis == 1 && one_of(tag, nchw, ncdhw)) {
-        parallel_nd(MB, C, [&](dim_t mb, dim_t c) {
+        parallel_nd(MB, C, [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t c) {
             const dim_t output_off = mb * stride_mb + c * SP;
             const dim_t input_off = mb * stride_mb + rev_transposed_[c] * SP;
             PRAGMA_OMP_SIMD()
@@ -121,7 +122,7 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
         const dim_t dim = axis_size * inner_size;
 
         parallel_nd(outer_size, axis_size, inner_size,
-                [&](dim_t ou, dim_t a, dim_t in) {
+                [= COMPAT_THIS_CAPTURE](dim_t ou, dim_t a, dim_t in) {
             const dim_t off = ou * dim + in;
             auto &o = output[src_d.off_l(off + a * inner_size)];
             o = input[src_d.off_l(off + rev_transposed_[a] * inner_size)];

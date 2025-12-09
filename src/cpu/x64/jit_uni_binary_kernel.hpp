@@ -169,8 +169,8 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     void forward_over_outer_dims();
     void generate() override;
 
-    jit_uni_binary_kernel_t(const binary_pd_t *pd, const jit_binary_conf_t conf,
-            bool tail_kernel = false);
+    jit_uni_binary_kernel_t(const binary_pd_t *pd,
+            const jit_binary_conf_t &conf, bool tail_kernel = false);
     ~jit_uni_binary_kernel_t() override = default;
 
     std::map<data_type_t, io::io_saturation_conf_t>

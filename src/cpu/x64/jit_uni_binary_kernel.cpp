@@ -92,7 +92,7 @@ size_t binary_kernel_t::get_tail_size() const {
 
 template <cpu_isa_t isa, typename Vmm>
 jit_uni_binary_kernel_t<isa, Vmm>::jit_uni_binary_kernel_t(
-        const binary_pd_t *pd, const jit_binary_conf_t conf, bool tail_kernel)
+        const binary_pd_t *pd, const jit_binary_conf_t &conf, bool tail_kernel)
     : binary_kernel_t(
               vreg_traits_t<Vmm>::vlen, pd, conf, jit_name(), tail_kernel)
     , offt_src0_(vlen_ / ((conf_.is_bf16 || conf_.is_f16) ? 2 : 1))

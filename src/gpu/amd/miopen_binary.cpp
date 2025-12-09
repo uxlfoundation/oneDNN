@@ -42,8 +42,8 @@ status_t miopen_binary_t::execute(const exec_ctx_t &ctx) const {
         auto arg_scale1
                 = CTX_IN_SYCL_MEMORY(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_1);
 
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine
                     = *utils::downcast<amd::engine_t *>(hip_stream->engine());
             auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);

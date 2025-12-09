@@ -38,8 +38,8 @@ status_t miopen_eltwise_fwd_t::execute(const exec_ctx_t &ctx) const {
         auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
         auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
 
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             std::vector<void *> args;
             auto &sycl_engine
                     = *utils::downcast<amd::engine_t *>(hip_stream->engine());
@@ -64,8 +64,8 @@ status_t miopen_eltwise_bwd_t::execute(const exec_ctx_t &ctx) const {
         auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
         auto arg_diff_dst = CTX_IN_SYCL_MEMORY(DNNL_ARG_DIFF_DST);
         auto arg_diff_src = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DIFF_SRC);
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             std::vector<void *> args;
             auto &sycl_engine
                     = *utils::downcast<amd::engine_t *>(hip_stream->engine());

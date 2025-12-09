@@ -45,8 +45,8 @@ status_t miopen_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
                 = CTX_SCRATCH_SYCL_MEMORY(memory_tracking::names::key_none);
         auto arg_scaled_bias_scratch = CTX_SCRATCH_SYCL_MEMORY(
                 memory_tracking::names::key_conv_adjusted_scales);
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine
                     = *utils::downcast<amd::engine_t *>(hip_stream->engine());
             auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
@@ -83,8 +83,8 @@ status_t miopen_inner_product_bwd_data_t::execute(const exec_ctx_t &ctx) const {
         auto arg_spacial_scratch
                 = CTX_SCRATCH_SYCL_MEMORY(memory_tracking::names::key_none);
 
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine
                     = *utils::downcast<amd::engine_t *>(hip_stream->engine());
             auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
@@ -142,8 +142,8 @@ status_t miopen_inner_product_bwd_weights_t::execute(
         auto arg_spacial_scratch
                 = CTX_SCRATCH_SYCL_MEMORY(memory_tracking::names::key_none);
 
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine
                     = *utils::downcast<amd::engine_t *>(hip_stream->engine());
             auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);

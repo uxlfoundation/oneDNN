@@ -78,8 +78,8 @@ status_t miopen_pooling_fwd_t::execute(const exec_ctx_t &ctx) const {
         auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
         auto arg_wkspace = CTX_OUT_SYCL_MEMORY(DNNL_ARG_WORKSPACE);
 
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine
                     = *utils::downcast<amd::engine_t *>(hip_stream->engine());
             auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
@@ -108,8 +108,8 @@ status_t miopen_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
         auto arg_diff_dst = CTX_IN_SYCL_MEMORY(DNNL_ARG_DIFF_DST);
         auto arg_wkspace = CTX_IN_SYCL_MEMORY(DNNL_ARG_WORKSPACE);
 
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine
                     = *utils::downcast<amd::engine_t *>(hip_stream->engine());
             auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);

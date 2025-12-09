@@ -39,8 +39,8 @@ status_t miopen_deconvolution_bwd_weights_t::execute_bias(
         auto arg_diff_bias = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DIFF_BIAS);
         auto arg_diff_dst = CTX_IN_SYCL_MEMORY(DNNL_ARG_DIFF_DST);
 
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine
                     = *utils::downcast<amd::engine_t *>(hip_stream->engine());
             auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);

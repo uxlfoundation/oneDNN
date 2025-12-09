@@ -163,7 +163,7 @@ public:
 
         absl::BlockingCounter counter(njobs);
         std::function<void(int, int)> handle_range
-                = [= WA_THIS_COPY_CAPTURE, &handle_range, &counter](
+                = [= COMPAT_THIS_CAPTURE, &handle_range, &counter](
                           int first, int last) {
             while (last - first > 1) {
                 const auto mid = first + (last - first) / 2;

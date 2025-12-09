@@ -66,8 +66,8 @@ protected:
             xpu::sycl::interop_memory_arg_t<mean_var_m> arg_mean = {},
             xpu::sycl::interop_memory_arg_t<mean_var_m> arg_var = {}) const {
 
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine = *utils::downcast<amd::engine_t *>(engine);
             auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
             auto handle = hip_stream->get_miopen_handle();
@@ -138,8 +138,8 @@ protected:
             xpu::sycl::interop_memory_arg_t<::sycl::access::mode::read_write>
                     arg_temp_relu,
             bool use_scale, bool use_shift) const {
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine = *utils::downcast<amd::engine_t *>(engine);
             auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);
             auto handle = hip_stream->get_miopen_handle();

@@ -45,20 +45,21 @@
 
 // Workaround 03: MSVC c++17 vs c++20
 //
-// C++17/20 are contradictory wrt capturing this and using default '=' capture.
-// - C++17 and before have to return a warning for the [=, this] capture as
-//   this capture is redundant (so [=] should be used)
-// - C++20 does not capture this with default '=' capture and mandates
-// - using [=, this].
-// As a workaround, newer versions of GCC and clang emit the warning
-// in first case only under -pedantic and/or -Wc++20-extensions
+// C++17/20 are contradictory w.r.t. capturing `this` and using the default '='
+// capture.
+// - C++17 and before returns a warning for the `[=, this]` capture as explicit
+//   `this` capture is redundant (so [=] should be used).
+// - C++20 does not capture this with the default `[=]` capture and mandates
+//   using `[=, this]` explicitly.
+// As a workaround, newer versions of GCC and clang emit the warning in the
+// first case only under -pedantic and/or -Wc++20-extensions
 //
 // (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100493)
 #if (defined(_MSVC_LANG) && (_MSVC_LANG >= 202002L)) \
         || (defined(__cplusplus) && (__cplusplus >= 202002L))
-#define WA_THIS_COPY_CAPTURE , this
+#define COMPAT_THIS_CAPTURE , this
 #else
-#define WA_THIS_COPY_CAPTURE
+#define COMPAT_THIS_CAPTURE
 #endif
 
 #endif // COMMON_COMPILER_WORKAROUNDS_HPP

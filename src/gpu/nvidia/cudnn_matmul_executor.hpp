@@ -64,8 +64,8 @@ protected:
                     arg_dst_scale,
             uint8_t *bias_scratch_ptr) {
 
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(
                     cuda_stream->engine());
             auto sc = cuda_sycl_scoped_context_handler_t(sycl_engine);
@@ -133,7 +133,7 @@ struct cudnn_matmul_exec_t final : cudnn_matmul_base_exec_t {
                 = utils::downcast<nvidia::stream_t *>(ctx.stream());
 
         return cuda_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE](::sycl::handler &cgh) {
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
@@ -189,7 +189,7 @@ struct cudnn_matmul_runtime_args_exec_t final
         }
 
         return cuda_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE](::sycl::handler &cgh) {
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
@@ -248,8 +248,8 @@ protected:
             uint8_t *block_a_scratch_ptr, uint8_t *block_b_scratch_ptr,
             uint8_t *block_c_scratch_ptr) {
 
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine = *utils::downcast<nvidia::engine_t *>(
                     cuda_stream->engine());
             auto sc = cuda_sycl_scoped_context_handler_t(sycl_engine);
@@ -339,7 +339,7 @@ struct cudnn_matmul_lt_exec_t final : public cudnn_matmul_lt_base_exec_t {
                 = utils::downcast<nvidia::stream_t *>(ctx.stream());
 
         return cuda_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE, &params](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE, &params](::sycl::handler &cgh) {
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_bias = CTX_IN_SYCL_MEMORY(DNNL_ARG_BIAS);
@@ -420,7 +420,7 @@ struct cudnn_matmul_lt_runtime_args_exec_t final
                 = alloc_ptr(matmul_params->dest_size_, cuda_stream->queue());
 
         return cuda_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE](::sycl::handler &cgh) {
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);

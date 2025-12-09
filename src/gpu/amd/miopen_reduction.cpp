@@ -40,8 +40,8 @@ status_t miopen_reduction_t::execute(const exec_ctx_t &ctx) const {
         auto arg_scratch
                 = CTX_SCRATCH_SYCL_MEMORY(memory_tracking::names::key_none);
 
-        compat::host_task(cgh,
-                [= WA_THIS_COPY_CAPTURE](const compat::interop_handle &ih) {
+        compat::host_task(
+                cgh, [= COMPAT_THIS_CAPTURE](const compat::interop_handle &ih) {
             auto &sycl_engine
                     = *utils::downcast<amd::engine_t *>(hip_stream->engine());
             auto sc = hip_sycl_scoped_context_handler_t(sycl_engine);

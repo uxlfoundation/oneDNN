@@ -104,7 +104,7 @@ struct miopen_matmul_scratch_runtime_args_bias_exec_t
         init_scratch_buffer(scratchpad_size);
 
         return hip_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE](::sycl::handler &cgh) {
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
@@ -130,7 +130,7 @@ struct miopen_matmul_runtime_args_scratch_exec_t
         init_scratch_buffer(scratchpad_size);
 
         return hip_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE](::sycl::handler &cgh) {
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
@@ -155,7 +155,7 @@ struct miopen_matmul_runtime_args_bias_exec_t
                 = utils::downcast<amd::stream_t *>(ctx.stream());
 
         return hip_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE](::sycl::handler &cgh) {
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
@@ -179,7 +179,7 @@ struct miopen_matmul_runtime_args_exec_t : public miopen_matmul_exec_base_t {
                 = utils::downcast<amd::stream_t *>(ctx.stream());
 
         return hip_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE](::sycl::handler &cgh) {
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
@@ -205,7 +205,7 @@ struct miopen_matmul_bias_scratch_exec_t : public miopen_matmul_exec_base_t {
                 = utils::downcast<amd::stream_t *>(ctx.stream());
 
         return hip_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE](::sycl::handler &cgh) {
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
@@ -228,7 +228,7 @@ struct miopen_matmul_scratch_exec_t : public miopen_matmul_exec_base_t {
                 = utils::downcast<amd::stream_t *>(ctx.stream());
 
         return hip_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE](::sycl::handler &cgh) {
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
@@ -253,7 +253,7 @@ struct miopen_matmul_bias_exec_t : public miopen_matmul_exec_base_t {
                 = utils::downcast<amd::stream_t *>(ctx.stream());
 
         return hip_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE](::sycl::handler &cgh) {
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);
@@ -277,7 +277,7 @@ struct miopen_matmul_exec_t : public miopen_matmul_exec_base_t {
                 = utils::downcast<amd::stream_t *>(ctx.stream());
 
         return hip_stream->interop_task(
-                [= WA_THIS_COPY_CAPTURE](::sycl::handler &cgh) {
+                [= COMPAT_THIS_CAPTURE](::sycl::handler &cgh) {
             auto arg_src = CTX_IN_SYCL_MEMORY(DNNL_ARG_SRC);
             auto arg_wt = CTX_IN_SYCL_MEMORY(DNNL_ARG_WEIGHTS);
             auto arg_dst = CTX_OUT_SYCL_MEMORY(DNNL_ARG_DST);

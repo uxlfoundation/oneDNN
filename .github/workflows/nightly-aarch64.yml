@@ -160,7 +160,7 @@ jobs:
         run: git bisect reset
 
       - name: Update wiki
-        if: ${{ (success() || failure()) && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ryo-not-rio/wiki') }}
+        if: ${{ (success() || failure()) && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ryo-not-rio/wiki' || github.ref == 'refs/heads/michalowski-arm/ci-perf-error') }}
         uses: ./oneDNN/.github/actions/update-wiki
         with:
           command: add-unit

@@ -230,6 +230,7 @@ status_t gen_desc_t::finalize(const char *tags) {
         strategy_.namedBarriers[0] = 0;
         strategy_.namedBarriers[1] = 0;
     }
+
 #endif
 
     // Disable global k parallelization if it wouldn't be used.
@@ -320,29 +321,45 @@ status_t gen_desc_t::finalize(const char *tags) {
     if (problem_.aScale2D()
             && problem_.aqGroupK
                             % minOuterProductCount(hw_, problem_, strategy_)
-                    != 0)
+                    != 0) {
 #if XE3P
-        if (!problem_.useBDPAS(hw_))
+        if (!problem_.Ta.isF4() || !problem_.Tb.isF4())
 #endif
         return status::unimplemented;
+    }
     if (problem_.bScale2D()
             && problem_.bqGroupK
                             % minOuterProductCount(hw_, problem_, strategy_)
-                    != 0)
+                    != 0) {
 #if XE3P
-        if (!problem_.useBDPAS(hw_))
+        if (!problem_.Ta.isF4() || !problem_.Tb.isF4())
 #endif
         return status::unimplemented;
+    }
+
+#if XE3P
+    if (problem_.useBDPAS()){
+        strategy_.kChain = 1;
+    }
+#endif
 
     // If the M/N group size is equal to M or N, align up to a multiple of unroll size
     // XXX: Increase group size to a large value before aligning to increase reusability
     constexpr int perMNGroupSize = 1 << 24;
+#if XE3P
+    if (problem_.aqGroupM == m_ && (!problem_.bdpasEnabled || m_ > 1)) {
+#else
     if (problem_.aqGroupM == m_) {
+#endif
         problem_.aqGroupM = std::max(problem_.aqGroupM, perMNGroupSize);
         problem_.aqGroupM
                 = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
     }
+#if XE3P
+    if (problem_.bqGroupN == n_ && (!problem_.bdpasEnabled || n_ > 1)) {
+#else
     if (problem_.bqGroupN == n_) {
+#endif
         problem_.bqGroupN = std::max(problem_.bqGroupN, perMNGroupSize);
         problem_.bqGroupN
                 = utils::rnd_up(problem_.bqGroupN, strategy_.unroll[LoopN]);
@@ -614,6 +631,15 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         if (problem_.aqGroupK == 0) problem_.aqGroupK = problem_.bqGroupK;
         if (problem_.bqGroupK == 0) problem_.bqGroupK = problem_.aqGroupK;
     }
+
+#if XE3P
+    // Disable bdpas with unsupported k dim.
+    // TODO: Enable 2D block, masking scale loads.
+    if (problem_.nativeBDPAS(hw_)) {
+        if((!(problem_.Ta.isF4() || problem_.Tb.isF4()) || k_ % 64 == 0))
+            problem_.bdpasEnabled = true;
+    }
+#endif
 
     // Select a kernel from the catalog.
     std::vector<MatchParams> match_params;

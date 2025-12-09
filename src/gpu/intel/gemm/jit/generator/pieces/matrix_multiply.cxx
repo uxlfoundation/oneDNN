@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -378,7 +378,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
 {
     auto Ta = problem.Ta, Tb = problem.Tb, Tc = problem.Tc_compute();
     bool globalCM = state.C_layout.colMajor();
-    auto params = systolicParams(hw, problem, strategy);
+    auto params = systolicParams(hw, problem);
     auto ksys = params.ksys;
     auto osys = params.osys;
     auto sdepth = params.sdepth;
@@ -455,10 +455,9 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                 srcC0 = null.retype(C0.getType());
 
 #if XE3P
-            if (state.useBDPAS){
+            if (state.useBDPAS) {
                 bdpas(mod, sdepth, rc, C0, srcC0, V0, N0, AS0, BS0);
-	    }
-            else
+            } else
 #endif
             {
                 useDPASW ? dpasw(mod, sdepth, rc, C0, srcC0, V0, N0) :
@@ -494,11 +493,11 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                         c = Xr_scaleLayout.cols();
 
                         if (isA) {
-                            io0 = x;
+                            io0 = x % r;
                             jo0 = (k / problem.aqGroupK) % c;
                         } else {
                             io0 = (k / problem.bqGroupK) % r;
-                            jo0 = x;
+                            jo0 = x % c;
                         }
                         XS = Xr_scaleLayout.find(io0, jo0, Xr_scaleRegs, &neq, &qblock);
                     } else

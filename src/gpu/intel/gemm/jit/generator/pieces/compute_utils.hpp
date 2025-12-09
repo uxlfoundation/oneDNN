@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ struct SystolicParams {
     int osys;           // Output vector length
 };
 
-static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem, const GEMMStrategy &strategy)
+static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem)
 {
     problem.autoTypeConversions(hw, true);
 
@@ -52,7 +52,7 @@ static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem, co
     params.osys = ngen::GRF::bytes(hw) / std::max(problem.Tc_compute().real().size(), 4);
     params.rcountMax = 8;
 #if XE3P
-    params.rcountMin = problem.useBDPAS(hw) ? 8 : 0;
+    params.rcountMin = problem.useBDPAS() ? 8 : 0;
 #endif
 
     return params;
@@ -62,7 +62,7 @@ static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem, co
 static inline int minOuterProductCount(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     if (strategy.systolic) {
-        auto params = systolicParams(hw, problem, strategy);
+        auto params = systolicParams(hw, problem);
         return params.ksys;
     }
     int kfma = std::max(strategy.dotVL, 1);
@@ -123,7 +123,7 @@ static inline std::tuple<int,int> targetSLMCrosspack(ngen::HW hw, const GEMMProb
 static inline std::tuple<int,int,int,int> targetKernelTiling(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
     if (strategy.systolic) {
-        auto params = systolicParams(hw, problem, strategy);
+        auto params = systolicParams(hw, problem);
         bool cColMajor = isRegisterColMajor(problem.Tc, problem.C, strategy.C);
         auto tileO_V = params.osys;
         auto tileI_N = params.ksys;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -205,7 +205,7 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
 
     C_chunk = alignup_pow2(C_chunk, Bundle(0, 0).group_size(raHW) * 2);
     if (strategy.systolic) {
-        auto params = systolicParams(hw, problem, strategy);
+        auto params = systolicParams(hw, problem);
         C_chunk = std::max(C_chunk, (params.osys * params.rcountMax * Tc.real()) / GRF::bytes(hw));
         Vr_chunk = std::max(Vr_chunk, (params.osys * params.ksys * Tv.real()) / GRF::bytes(hw));
         Nr_chunk = std::max(Nr_chunk, (params.rcountMax * params.ksys * Tn.real()) / GRF::bytes(hw));

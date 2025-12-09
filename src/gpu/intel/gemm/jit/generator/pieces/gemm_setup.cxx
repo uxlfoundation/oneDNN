@@ -1657,7 +1657,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         state.Br_layout = RegisterLayout(hw, Tb, strategy.kb_load, unrollN, state.B_layout.colMajor(), crosspackB, tileK_B, tileN_B, true, splitB);
 
     // Prepare to repack C if needed, and choose repack tile size.
-    if (Tc != Tc_compute || problem.forceLateQuant(hw)) {
+    if (Tc != Tc_compute || problem.forceLateQuant(hw, minOuterProductCount(hw, problem, strategy))) {
         auto &period = state.cRepackPeriod;
         int panel = strategy.cRepackPanel;
         if (panel == 0)
@@ -3120,7 +3120,7 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
     }
 
 #if XE3P
-    state.useBDPAS = problem.useBDPAS(hw);
+    state.useBDPAS = problem.useBDPAS() && strategy.systolic;
 #endif
 }
 

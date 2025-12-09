@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -293,7 +293,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     // Systolic handling.
     if (systolic) {
-        auto params = systolicParams(hw, problem, *this);
+        auto params = systolicParams(hw, problem);
 
         ukAlign = lcm(ukAlign, params.ksys);
         auto tileX = params.osys;
@@ -333,7 +333,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     }
 
     if (dpasw) {
-        auto params = systolicParams(hw, problem, *this);
+        auto params = systolicParams(hw, problem);
         if (globalCM) {
             if (!fusedM()) stub();
             B.dpasw = true;

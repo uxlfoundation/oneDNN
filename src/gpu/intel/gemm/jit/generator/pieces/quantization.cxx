@@ -81,7 +81,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
 #if XE3P
     // Use lateScale for cases of applying scale to inputs that will be natively dpas'd
     // but do not support add/mul.
-    if (xs2D && ((Txs.paddedSize() > Tx.paddedSize() && Tx.isInteger()) || problem.forceLateQuant(hw) || state.useBDPAS)) {
+    if (xs2D && ((Txs.paddedSize() > Tx.paddedSize() && Tx.isInteger()) || problem.forceLateQuant(hw, minOuterProductCount(hw, problem, strategy)) || state.useBDPAS)) {
 #else
     if (xs2D && (Txs.paddedSize() > Tx.paddedSize()) && Tx.isInteger()) {
 #endif
@@ -99,9 +99,10 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     if (lateOffset && (Txo.isInt4() || Txo.isInt8()))
         Txo_int = Type::s32;
 
-    if (Txs == Type::f8_e8m0)
+#if XE3P
+    if (Txs == Type::f8_e8m0 && state.useBDPAS)
 	Txs_int = Type::f8_e8m0;
-
+#endif
     // Get tile sizes, depending on whether A/B are copied to SLM.
     // For late scaling (after compute), scales are always applied to the whole tile.
     int r, c, k, rNoSLM, cNoSLM;
@@ -114,7 +115,6 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         r = slmA ? state.ma_slm : rNoSLM;
         c = slmA ? state.ka_slm : cNoSLM;
         k = slmA ? strategy.unrollKSLM : cNoSLM;
-        if (xqGroupMN <= r)
         r = std::max(1, r / xqGroupMN);
         c = state.kaq = std::max(1, c % xqGroupK == 0 ? c / xqGroupK : 1);
         state.kaqStride = std::max(1, k % xqGroupK == 0 ? k /  xqGroupK : 1);
@@ -131,7 +131,6 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         c = slmB ? state.nb_slm : cNoSLM;
         r = slmB ? state.kb_slm : rNoSLM;
         k = slmB ? strategy.unrollKSLM : rNoSLM;
-        if (xqGroupMN <= c)
         c = std::max(1, c / xqGroupMN);
         r = state.kbq = std::max(1, r % xqGroupK == 0 ? r / xqGroupK : 1);
         state.kbqStride = std::max(1, k % xqGroupK == 0 ?  k / xqGroupK : 1);
@@ -201,10 +200,11 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
             if (state.useBDPAS) {
                 allowPartialRegs = true;
                 cp = 1;
-                if (isA)
+                if (isA) {
                     tileR = problem.aqGroupK;
-                else
+                } else {
                     tileC = problem.bqGroupK;
+                }
             }
 #endif
             repack = RegisterLayout(hw, Txq_int, m, n, wantCM, cp, tileR, tileC, allowPartialRegs);
@@ -238,6 +238,17 @@ void Generator<hw>::gemmRepack2DQuantizationData(Type Ts, Type Td, const Registe
     for (int doffR = 0; doffR < layoutDst.rows(); doffR += layoutSrc.rows())
         for (int doffC = 0; doffC < layoutDst.cols(); doffC += layoutSrc.cols())
             copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, doffR, doffC, false, strategy, state);
+
+    int r = layoutDst.rows();
+    int c = layoutDst.cols();
+    // FP4 bdpas with group > 32 requires duplicating scales into upper half of registers.
+    if(state.useBDPAS && r*c < minOuterProductCount(hw, problem, strategy)){
+        RegisterLayout offsetLayout(layoutDst);
+        for( auto &b : offsetLayout){
+            b.offsetBytes += (b.nr * b.nc);
+        }
+        copyRegisters(Td, Td, layoutDst, offsetLayout, dst, dst, 0, 0, false, strategy, state); 
+    }
 
     // Duplicate data in padded region. TODO: do this as part of the copy.
     int cp = layoutDst[0].crosspack;

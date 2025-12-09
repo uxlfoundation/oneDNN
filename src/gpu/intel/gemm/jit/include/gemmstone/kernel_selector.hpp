@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -48,6 +48,9 @@ struct MatchParamsBase
     char precisionCExt = 0;
     bool ignoreSizes = false;
     bool ignoreCase = false;
+#if XE3P
+    bool ReqBDPASDims = false;
+#endif
     int stepping = 0;
     int alignment[3] = {0, 0, 0};
     kcatalog::string tags, lateTags;

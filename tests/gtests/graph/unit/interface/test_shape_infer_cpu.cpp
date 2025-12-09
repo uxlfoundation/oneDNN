@@ -314,3 +314,113 @@ TEST(test_interface_shape_infer, InferConvtransposeNcxOixError) {
                 graph::status::invalid_shape);
     }
 }
+
+// Parameterized test for MatMul shape inference with optional post binary
+struct matmul_shape_infer_params_t {
+    dims src_shape;
+    dims wei_shape;
+    dims post_binary_shape; // empty if no post binary
+    dims expected_dst_shape;
+    graph::status_t expected_status;
+    std::string test_name;
+};
+
+class matmul_shape_infer_t
+    : public ::testing::TestWithParam<matmul_shape_infer_params_t> {
+public:
+    void TestMatMulShapeInfer() {
+        auto params = ::testing::TestWithParam<
+                matmul_shape_infer_params_t>::GetParam();
+
+        graph::op_t matmul {0, graph::op_kind::MatMul, std::string("matmul")};
+
+        graph::logical_tensor_t src = utils::logical_tensor_init(
+                0, params.src_shape, graph::data_type::f32);
+        graph::logical_tensor_t wei = utils::logical_tensor_init(
+                1, params.wei_shape, graph::data_type::f32);
+        graph::logical_tensor_t dst
+                = utils::logical_tensor_init(2, graph::data_type::f32);
+
+        std::vector<graph::logical_tensor_t *> inputs {&src, &wei};
+
+        // Add post binary input if specified
+        graph::logical_tensor_t post_binary;
+        if (!params.post_binary_shape.empty()) {
+            post_binary = utils::logical_tensor_init(
+                    3, params.post_binary_shape, graph::data_type::f32);
+            inputs.push_back(&post_binary);
+        }
+
+        std::vector<graph::logical_tensor_t *> outputs {&dst};
+
+        auto status
+                = graph::infer_matmul_output_shape(&matmul, inputs, outputs);
+        ASSERT_EQ(status, params.expected_status);
+
+        // If successful, verify the inferred shape
+        if (status == graph::status::success) {
+            ASSERT_EQ(dst.ndims,
+                    static_cast<int32_t>(params.expected_dst_shape.size()));
+            for (size_t i = 0; i < params.expected_dst_shape.size(); ++i) {
+                ASSERT_EQ(dst.dims[i], params.expected_dst_shape[i]);
+            }
+        }
+    }
+};
+
+TEST_P(matmul_shape_infer_t, TestMatMulShapeInfer) {
+    TestMatMulShapeInfer();
+}
+
+INSTANTIATE_TEST_SUITE_P(test_interface_shape_infer, matmul_shape_infer_t,
+        ::testing::Values(
+                // Basic 2D matmul: [M, K] x [K, N] = [M, N]
+                matmul_shape_infer_params_t {{8, 6}, {6, 4}, {}, {8, 4},
+                        graph::status::success, "2D_matmul"},
+
+                // 3D matmul with batch: [B, M, K] x [B, K, N] = [B, M, N]
+                matmul_shape_infer_params_t {{2, 8, 6}, {2, 6, 4}, {},
+                        {2, 8, 4}, graph::status::success, "3D_batch_matmul"},
+
+                // 1D x 2D: [K] x [K, N] = [N]
+                matmul_shape_infer_params_t {{6}, {6, 4}, {}, {4},
+                        graph::status::success, "1D_x_2D"},
+
+                // 1D x 3D: [K] x [B, K, N] = [B, N]
+                matmul_shape_infer_params_t {{6}, {2, 6, 4}, {}, {2, 4},
+                        graph::status::success, "1D_x_3D"},
+
+                // 2D x 1D: [M, K] x [K] = [M]
+                matmul_shape_infer_params_t {{8, 6}, {6}, {}, {8},
+                        graph::status::success, "2D_x_1D"},
+
+                // 3D x 1D: [B, M, K] x [K] = [B, M]
+                matmul_shape_infer_params_t {{2, 8, 6}, {6}, {}, {2, 8},
+                        graph::status::success, "3D_x_1D"},
+
+                // With post binary add (same shape as output)
+                matmul_shape_infer_params_t {{8, 6}, {6, 4}, {8, 4}, {8, 4},
+                        graph::status::success,
+                        "matmul_with_binary_same_shape"},
+
+                // With post binary add (broadcast)
+                matmul_shape_infer_params_t {{8, 6}, {6, 4}, {1, 4}, {8, 4},
+                        graph::status::success, "matmul_with_binary_broadcast"},
+
+                // With post binary add (broadcast batch)
+                matmul_shape_infer_params_t {{2, 8, 6}, {2, 6, 4}, {4},
+                        {2, 8, 4}, graph::status::success,
+                        "matmul_with_binary_broadcast_batch"},
+
+                // Invalid: incompatible K dimension
+                matmul_shape_infer_params_t {{8, 6}, {4, 4}, {}, {},
+                        graph::status::invalid_shape, "invalid_K_mismatch"},
+
+                // Invalid: 1D x 1D (not supported)
+                matmul_shape_infer_params_t {{6}, {4}, {}, {},
+                        graph::status::invalid_shape, "invalid_1D_x_1D"},
+
+                // Invalid: incompatible batch dimensions
+                matmul_shape_infer_params_t {{2, 8, 6}, {3, 6, 4}, {}, {},
+                        graph::status::invalid_shape,
+                        "invalid_batch_mismatch"}));

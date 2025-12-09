@@ -8,8 +8,12 @@ The following data types are supported:
 | :---      | :---
 | f32       | standard float
 | s32       | standard int or int32_t
+| s4        | half-byte int
+| u4        | half-byte unsigned int
 | s8        | standard char or int8_t
 | u8        | standard unsigned char or uint8_t
+| f4_e2m1   | half-byte float (1 sign bit, 2 exp bits, 1 mantissa bits)
+| f4_e3m0   | half-byte float (1 sign bit, 3 exp bits, 0 mantissa bits)
 | f8_e4m3   | 1-byte float (1 sign bit, 4 exp bits, 3 mantissa bits)
 | f8_e5m2   | 1-byte float (1 sign bit, 5 exp bits, 2 mantissa bits)
 | f16       | 2-byte float (1 sign bit, 5 exp bits, 10 mantissa bits)

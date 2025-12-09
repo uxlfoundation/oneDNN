@@ -167,7 +167,8 @@ struct jit_uni_softmax_bwd_t : public primitive_t {
                                            diff_dst_md()->data_type,
                                            diff_src_md()->data_type),
                             mayiuse_bf16())
-                    && (mayiuse(sve_512) || mayiuse(sve_256))
+                    && (mayiuse(sve_512) || mayiuse(sve_256)
+                            || mayiuse(sve_128))
                     && attr()->has_default_values()
                     && set_default_formats() == status::success;
 

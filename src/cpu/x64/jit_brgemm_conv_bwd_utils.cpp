@@ -1509,7 +1509,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = everyone_is(f32, jcp.src_dt, jcp.dst_dt) && jcp.wei_dt == f16;
     jcp.is_tf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
             && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
-            && is_superset(isa, avx10_2_512_amx_2);
+            && is_superset(isa, avx10_2_amx_2);
 
     VDISPATCH_CONV_IC(!jcp.is_bf32, VERBOSE_UNSUPPORTED_DT);
 

@@ -14029,10 +14029,10 @@ enum class cpu_isa {
     avx10_1_512_amx_fp16 = dnnl_cpu_isa_avx10_1_512_amx_fp16,
     /// @copydoc dnnl_cpu_isa_avx512_core_amx_fp16
     avx512_core_amx_fp16 = dnnl_cpu_isa_avx512_core_amx_fp16,
-    /// @copydoc dnnl_cpu_isa_avx10_2_512
-    avx10_2_512 = dnnl_cpu_isa_avx10_2_512,
-    /// @copydoc dnnl_cpu_isa_avx10_2_512_amx_2
-    avx10_2_512_amx_2 = dnnl_cpu_isa_avx10_2_512_amx_2,
+    /// @copydoc dnnl_cpu_isa_avx10_2
+    avx10_2 = dnnl_cpu_isa_avx10_2,
+    /// @copydoc dnnl_cpu_isa_avx10_2_amx_2
+    avx10_2_amx_2 = dnnl_cpu_isa_avx10_2_amx_2,
 };
 
 /// @copydoc dnnl_set_max_cpu_isa()

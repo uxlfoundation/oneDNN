@@ -51,7 +51,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
     static const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> the_map = REG_ELTWISE_P({
         {{forward}, {
             CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx512_core_amx>)
-            CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx10_2_512>)
+            CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx10_2>)
             CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx512_core_fp16>)
             CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx512_core_bf16>)
             CPU_INSTANCE_X64(jit_uni_eltwise_fwd_t<avx512_core>)
@@ -74,7 +74,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
         }},
         {{backward}, REG_BWD_PK({
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx512_core_amx>)
-            CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx10_2_512>)
+            CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx10_2>)
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx512_core_fp16>)
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx512_core_bf16>)
             CPU_INSTANCE_X64(jit_uni_eltwise_bwd_t<avx512_core>)

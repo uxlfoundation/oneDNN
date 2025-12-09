@@ -2382,8 +2382,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             hs = div_up(rnd_up(hs * jcp.iwp, jcp.brgM), jcp.iwp)
                     + jcp.kh * (jcp.dilate_h + 1);
 
-        jcp.inp_buffer_size = (jcp.is_relo_whi() ? jcp.kh : 1) * ds * hs
-                * jcp.iwp * jcp.ngroups * jcp.nb_ic * jcp.LDA;
+        jcp.inp_buffer_size
+                = ds * hs * jcp.iwp * jcp.ngroups * jcp.nb_ic * jcp.LDA;
 
         if (jcp.is_relo_whi())
             jcp.inp_buffer_size +=

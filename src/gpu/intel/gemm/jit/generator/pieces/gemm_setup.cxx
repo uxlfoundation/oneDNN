@@ -1745,8 +1745,16 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     bool bo2D = problem.bOffset2D();
     bool ag2D = problem.needsAGroupSums();
     bool bg2D = problem.needsBGroupSums();
+    // @@@@@ ????? not needed - see earlyDequantizeA
+#if 1
     bool aoTo2D = problem.aOffset == ABOffset::Calc && !ao2D && (problem.earlyDequantizeA() || bg2D);
     bool boTo2D = problem.bOffset == ABOffset::Calc && !bo2D && (problem.earlyDequantizeB() || ag2D);
+#else
+    bool aoTo2D = (problem.aOffset == ABOffset::Calc && !ao2D && (problem.earlyDequantizeA() || bg2D))
+        && !problem.ao_hostscalar;
+    bool boTo2D = (problem.bOffset == ABOffset::Calc && !bo2D && (problem.earlyDequantizeB() || ag2D))
+        && !problem.bo_hostscalar;
+#endif
 
     for (bool isA : {true, false})
         gemmMake2DQuantizationLayouts(isA, problem, strategy, state);

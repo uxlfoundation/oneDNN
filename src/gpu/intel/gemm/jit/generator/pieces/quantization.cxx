@@ -37,6 +37,8 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     VDEBUGINFO(4, primitive, quantization, "MY: gemmMake2DQuantizationLayouts +++++++++> isA = %d",isA);
 
     auto lateOffset = isA ? problem.needsBGroupSums() : problem.needsAGroupSums();
+    VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ lateOffset = %d",lateOffset);
+
     int xoPtrDims = (isA ? problem.aoPtrDims : problem.boPtrDims);
 
     VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ xoPtrDims = %d",xoPtrDims);
@@ -46,18 +48,32 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ xo2D = %d", xo2D);
 
     bool xs2D = isA ? problem.aScale2D()        : problem.bScale2D();
+
+    VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ xs2D = %d", xs2D);
+
     bool xg2D = isA ? problem.needsAGroupSums() : problem.needsBGroupSums();
+
+    VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ xg2D = %d", xg2D);
+    VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ problem.aOffset bOffset = %d %d", (int)problem.aOffset, (int)problem.bOffset);
+    VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ problem.earlyDequantizeA() earlyDequantizeB() = %d %d", problem.earlyDequantizeA(), problem.earlyDequantizeB());
+
     bool xoTo2D = !xo2D && (isA ? problem.aOffset == ABOffset::Calc && (problem.earlyDequantizeA() || lateOffset)
                                 : problem.bOffset == ABOffset::Calc && (problem.earlyDequantizeB() || lateOffset));
 
     VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ xoTo2D = %d", xoTo2D);
 
+    bool xoHostSacalar = isA ? problem.ao_hostscalar : problem.bo_hostscalar ;
+
     bool cColMajor = isRegisterColMajor(problem.Tc_ext, problem.C, strategy.C);
 
-    if (!xo2D && !xoTo2D && !xs2D && !xg2D) {
-        VDEBUGINFO(4, primitive, quantization, "MY: gemmMake2DQuantizationLayouts <+++++++++ erly true: isA = %d",isA);
+// @@@@@ ?????
+//    if (!xo2D && !xoTo2D && !xs2D && !xg2D) {
+    if ((!xo2D && !xoTo2D && !xs2D && !xg2D) || xoHostSacalar) {
+        VDEBUGINFO(4, primitive, quantization, "MY: gemmMake2DQuantizationLayouts <+++++++++ erly return w/ true");
         return true;
     }
+    VDEBUGINFO(4, primitive, quantization, "MY: gemmMake2DQuantizationLayouts +++++++++ continune ...");
+
 
     auto &X_strategy       = isA ? strategy.A             : strategy.B;
     auto &X_offsetStrategy = isA ? strategy.AO            : strategy.BO;

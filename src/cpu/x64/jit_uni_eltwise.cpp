@@ -16,6 +16,7 @@
 
 #include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/nstl.hpp"
 #include "common/utils.hpp"
@@ -347,7 +348,7 @@ status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     src += data_d.data_type_size() * data_d.offset0();
     dst += data_d.data_type_size() * data_d.offset0();
 
-    parallel(0, [=](const int ithr, const int nthr) {
+    parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
 
         balance211(utils::div_up(nelems, simd_w), nthr, ithr, start, end);
@@ -447,7 +448,7 @@ status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     diff_dst += diff_data_d.data_type_size() * diff_data_d.offset0();
     diff_src += diff_data_d.data_type_size() * diff_data_d.offset0();
 
-    parallel(0, [=](const int ithr, const int nthr) {
+    parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
 
         balance211(utils::div_up(nelems, simd_w), nthr, ithr, start, end);

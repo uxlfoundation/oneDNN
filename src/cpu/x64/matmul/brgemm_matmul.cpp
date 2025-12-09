@@ -557,7 +557,8 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
 
     const int num_threads
             = brgmm_ctx_ptr->get_num_threads_for_parallelization();
-    parallel(num_threads, [=](const int ithr, const int nthr) {
+    parallel(num_threads,
+            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         const auto &brgmm_ctx = *brgmm_ctx_ptr;
 
         const auto &bgmmc = pd()->get_brgemm_matmul_conf();
@@ -987,7 +988,8 @@ void brgemm_matmul_t<isa>::maybe_reduce_and_convert_partial_results_A(
 
     const int num_threads
             = brgmm_ctx_ptr->get_num_threads_for_parallelization();
-    parallel(num_threads, [=](const int ithr, const int nthr) {
+    parallel(num_threads,
+            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         const auto &brgmm_ctx = *brgmm_ctx_ptr;
 
         const auto &bgmmc = pd()->get_brgemm_matmul_conf();
@@ -1049,7 +1051,8 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
 
     const int num_threads
             = brgmm_ctx_ptr->get_num_threads_for_parallelization();
-    parallel(num_threads, [=](const int ithr, const int nthr) {
+    parallel(num_threads,
+            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         const auto &brgmm_ctx = *brgmm_ctx_ptr;
 
         const auto &bgmmc = pd()->get_brgemm_matmul_conf();

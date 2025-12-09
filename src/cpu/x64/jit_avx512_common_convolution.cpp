@@ -209,7 +209,7 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
     int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.nb_ow;
     int nthr = jcp.aligned_threads;
 
-    parallel(nthr, [=](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -335,7 +335,7 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
     int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.oh * jcp.nb_ow;
     int nthr = jcp.aligned_threads;
 
-    parallel(nthr, [=](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -495,7 +495,7 @@ void jit_avx512_common_convolution_fwd_t<src_type, wei_type,
             = jcp.mb * nb_groups * oc_chunks * jcp.od * jcp.oh * jcp.nb_ow;
     int nthr = jcp.nthr;
 
-    parallel(nthr, [=](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -656,7 +656,7 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
     int work_amount = nb_groups * jcp.mb * ic_chunks * jcp.nb_iw;
     int nthr = jcp.nthr;
 
-    parallel(nthr, [=](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -768,7 +768,7 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
     int work_amount = nb_groups * jcp.mb * ic_chunks * jcp.ih * jcp.nb_iw;
     int nthr = jcp.nthr;
 
-    parallel(nthr, [=](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -932,7 +932,7 @@ void jit_avx512_common_convolution_bwd_data_t<diff_dst_type, wei_type,
     int work_amount = nb_groups * jcp.mb * ic_chunks * jcp.id * jcp.ih;
     int nthr = jcp.nthr;
 
-    parallel(nthr, [=](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -1843,7 +1843,7 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
         }
     });
 #else
-    parallel(nthr_, [=](const int ithr, const int nthr) {
+    parallel(nthr_, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         thread_info_t thread_info(this, ctx, ithr);
         switch (pd()->jcp_.harness) {
             case harness_nxc:
@@ -1864,7 +1864,7 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
         }
     });
 
-    parallel(nthr_, [=](const int ithr, const int nthr) {
+    parallel(nthr_, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         thread_info_t thread_info(this, ctx, ithr);
         if (nthr_mb_ > 1) {
             switch (pd()->jcp_.harness) {
@@ -1901,7 +1901,7 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     });
 #endif
 
-    parallel(1, [=](const int ithr, const int nthr) {
+    parallel(1, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         /* TODO: put that into compute_diff_bias() */
         auto &jcp = pd()->jcp_;
         if (pd()->with_bias() && jcp.oc_without_padding % jcp.oc_block != 0) {

@@ -69,7 +69,8 @@ status_t jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t::execute_forward(
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
-    parallel(pd()->jcp_.nthr, [=](const int ithr, const int nthr) {
+    parallel(pd()->jcp_.nthr,
+            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
                 dst, src_scales, wei_scales, dst_scales, dw_wei_scales,
                 dw_dst_scales, src_zero_points, dst_zero_points,

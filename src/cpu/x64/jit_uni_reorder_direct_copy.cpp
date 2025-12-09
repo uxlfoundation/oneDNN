@@ -378,7 +378,7 @@ status_t jit_uni_reorder_direct_copy_t::execute(const exec_ctx_t &ctx) const {
             = static_cast<dim_t>(kernel_->get_max_unroll()) * simd_w;
     int nthr = nelems < thr_granularity ? 1 : 0;
 
-    parallel(nthr, [=](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
 
         balance211(utils::div_up(nelems, simd_w), nthr, ithr, start, end);

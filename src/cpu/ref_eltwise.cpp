@@ -17,6 +17,7 @@
 #include <assert.h>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
@@ -62,8 +63,9 @@ status_t ref_eltwise_fwd_t::execute_forward_generic(
     const float beta = pd()->desc()->beta;
     const int ndims = pd()->ndims();
 
-    parallel_nd(
-            MB, C, D, H, W, [=](dim_t n, dim_t c, dim_t d, dim_t h, dim_t w) {
+    parallel_nd(MB, C, D, H, W,
+            [= COMPAT_THIS_CAPTURE](
+                    dim_t n, dim_t c, dim_t d, dim_t h, dim_t w) {
         auto data_p_off = DATA_OFF(src_d, n, c, d, h, w);
         const float s
                 = io::load_float_value(src_d.data_type(), src, data_p_off);

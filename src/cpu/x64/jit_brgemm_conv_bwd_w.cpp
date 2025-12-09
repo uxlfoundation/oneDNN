@@ -1497,7 +1497,7 @@ void brgemm_convolution_bwd_weights_t::prepare_scratchpad_data(
         });
     }
 
-    parallel(1, [=](const int ithr, const int nthr) {
+    parallel(1, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         if (jcp.global_transpose && jcp.nthr_oc_b > 1) {
             const int tr_src_bctx_size = jcp.nthr / jcp.nthr_oc_b;
             auto tr_src_bctx = scratchpad.template get<simple_barrier::ctx_t>(
@@ -1533,7 +1533,7 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
 
     const auto &jcp = pd()->jcp_;
 
-    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         assert(jcp.nthr == nthr);
         assert(utils::one_of(pd()->ndims(), 3, 4, 5));
 
@@ -1556,7 +1556,8 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
     });
 
     if (!jcp.global_transpose) {
-        parallel(jcp.nthr, [=](const int ithr, const int nthr) {
+        parallel(jcp.nthr,
+                [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             assert(jcp.nthr == nthr);
             thread_info_t thread_info(this, ctx, ithr);
             reduce_and_convert_diff_weights_and_bias(&thread_info);
@@ -1564,14 +1565,15 @@ void brgemm_convolution_bwd_weights_t::execute_backward_weights(
     }
 
     if (jcp.transform_to_vnni && !jcp.global_transpose) {
-        parallel(jcp.nthr, [=](const int ithr, const int nthr) {
+        parallel(jcp.nthr,
+                [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             assert(jcp.nthr == nthr);
             thread_info_t thread_info(this, ctx, ithr);
             store_in_vnni_format(&thread_info);
         });
     }
 
-    parallel(1, [=](const int ithr, const int nthr) {
+    parallel(1, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         if (pd()->with_bias() && (jcp.oc % jcp.oc_block != 0)
                 && jcp.bia_dt == data_type::f32) {
             auto diff_bias

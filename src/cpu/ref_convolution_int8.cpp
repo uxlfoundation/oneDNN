@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/dnnl_traits.hpp"
 #include "common/math_utils.hpp"
@@ -237,7 +238,8 @@ status_t ref_convolution_int8_fwd_t::execute_forward(
     const auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
 
     parallel_nd(G, MB, OC, OD, OH, OW,
-            [=](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
+            [= COMPAT_THIS_CAPTURE](
+                    dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
         int acc = 0;
         if (src_d.is_plain() && weights_d.is_plain() && src_ic_stride == 1
                 && weights_kw_stride == 1)

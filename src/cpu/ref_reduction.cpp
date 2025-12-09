@@ -17,6 +17,7 @@
 #include <math.h>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/nstl.hpp"
 
@@ -169,7 +170,7 @@ status_t ref_reduction_t::execute_ref(const exec_ctx_t &ctx) const {
         }
     }
 
-    parallel_nd(idle_size, [=](dim_t l_offset) {
+    parallel_nd(idle_size, [= COMPAT_THIS_CAPTURE](dim_t l_offset) {
         dims_t idle_pos;
         utils::l_dims_by_l_offset(idle_pos, l_offset, dst_mdw.dims(), ndims);
 

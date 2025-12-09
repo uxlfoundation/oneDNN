@@ -91,7 +91,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_1d(
     int group_block = jcp.ch_block;
     int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.nb_ow;
 
-    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
@@ -238,7 +238,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d(
     int nb_groups = jcp.nb_ch;
     int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.oh * jcp.nb_ow;
 
-    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
@@ -420,7 +420,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d_dw(
     int group_block = jcp.ch_block;
 
     parallel_nd(jcp.mb, jcp.oh, jcp.nb_ow, nb_groups,
-            [=](dim_t n, dim_t oh_s, dim_t owb, dim_t gg) {
+            [= COMPAT_THIS_CAPTURE](dim_t n, dim_t oh_s, dim_t owb, dim_t gg) {
         auto p = jit_conv_args_t();
 
         size_t src_h_stride = src_d.blk_off(0, 0, 1);
@@ -540,7 +540,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_3d(
     int work_amount
             = jcp.mb * nb_groups * oc_chunks * jcp.od * jcp.oh * jcp.nb_ow;
 
-    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 

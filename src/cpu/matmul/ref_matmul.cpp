@@ -14,12 +14,13 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <algorithm>
 #include <assert.h>
 #include <float.h>
 #include <math.h>
 
-#include <algorithm>
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
@@ -261,7 +262,8 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     dim_t M_chunks = utils::div_up(M, M_chunk_size);
     dim_t N_chunks = utils::div_up(N, N_chunk_size);
     parallel_nd_ext(pd()->nthr_, batch, M_chunks, N_chunks,
-            [=](int ithr, int nthr, dim_t mb, dim_t mc, dim_t nc) {
+            [= COMPAT_THIS_CAPTURE](
+                    int ithr, int nthr, dim_t mb, dim_t mc, dim_t nc) {
         if (ithr >= pd()->ntasks_) return;
         for_(dim_t m_ = mc * M_chunk_size;
                 m_ < std::min<dim_t>((mc + 1) * M_chunk_size, M);

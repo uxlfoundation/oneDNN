@@ -69,7 +69,7 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
         bias = padded_bias;
     }
 
-    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
                 dst, scratchpad, post_ops_binary_rhs_arg_vec.data(),
                 post_ops_binary_rhs_arg_vec_dw.data());
@@ -480,7 +480,7 @@ void jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type, wei_type,
         return remaining < tail_step ? remaining : default_step;
     };
 
-    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         auto p = jit_1x1_conv_args_t();
         auto rp = rtus_driver_t<avx512_core>::call_params_t();
 
@@ -682,8 +682,9 @@ void jit_avx512_common_1x1_convolution_bwd_weights_t::execute_backward_weights(
     const bool is_ddst_layout_nxc = utils::one_of(
             jcp.dst_tag, format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);
 
-    auto maybe_zero_icpad = [=](const int g_start, const int g_end,
-                                    const int ocb_start, const int ocb_end) {
+    auto maybe_zero_icpad
+            = [= COMPAT_THIS_CAPTURE](const int g_start, const int g_end,
+                      const int ocb_start, const int ocb_end) {
         // write zeros to IC padded region.
         const int ic_tail = jcp.ic_without_padding % jcp.ic_block;
         if (is_ddst_layout_nxc && ic_tail != 0) {
@@ -704,7 +705,7 @@ void jit_avx512_common_1x1_convolution_bwd_weights_t::execute_backward_weights(
         }
     };
 
-    auto ker = [=](const int ithr, const int nthr) {
+    auto ker = [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         assert(nthr == jcp.nthr);
 
         const int ithr_ic_b = ithr % jcp.nthr_ic_b;
@@ -951,14 +952,15 @@ void jit_avx512_common_1x1_convolution_bwd_weights_t::execute_backward_weights(
     };
 
     if (dnnl_thr_syncable()) {
-        parallel(jcp.nthr, [=](const int ithr, const int nthr) {
+        parallel(jcp.nthr,
+                [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             ker(ithr, jcp.nthr);
             if (pd()->with_bias()) ker_bias(ithr, jcp.nthr);
         });
     } else {
         parallel(jcp.nthr, [=](int ithr, int nthr) { ker(ithr, nthr); });
         if (jcp.nthr_mb > 1)
-            parallel(jcp.nthr, [=](int ithr, int nthr) {
+            parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
                 assert(nthr == jcp.nthr);
 
                 const int ithr_ic_b = ithr % jcp.nthr_ic_b;

@@ -763,7 +763,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
     const dim_t work_amount = static_cast<dim_t>(jcp.mb) * jcp.ngroups
             * jcp.nb_ic * jcp.nb_id * jcp.nb_ih * jcp.nb_iw;
 
-    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         brgemm_batch_element_t *const __restrict brg_batch = brg_batch_global
@@ -938,7 +938,7 @@ void brgemm_convolution_bwd_strided_t<isa>::cal_compensation(
                     <= platform::get_per_core_cache_size(1));
     const int nthr = is_small_shape ? 1 : jcp.nthr;
 
-    parallel(nthr, [=](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         dim_t start {0}, end {0};

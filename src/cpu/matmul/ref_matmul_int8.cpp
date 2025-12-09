@@ -19,6 +19,7 @@
 #include <math.h>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/math_utils.hpp"
 #include "common/type_helpers.hpp"
@@ -257,7 +258,8 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     auto sum_dt = pd()->attr()->post_ops_.get_sum_dt(dst_d.data_type());
 
     // computations
-    parallel_nd(batch, M, N, [=](dim_t mb, dim_t m, dim_t n) {
+    parallel_nd(
+            batch, M, N, [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t m, dim_t n) {
         dims_t dst_dims_idx;
         // account for M, N dims for index calculations
         const size_t l_offset = mb * M * N + m * N + n;

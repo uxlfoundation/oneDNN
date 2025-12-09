@@ -130,7 +130,7 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
     const size_t work_amount
             = (size_t)jcp.mb * jcp.ngroups * os_chunks * oc_chunks;
 
-    parallel(jcp.nthr, [=](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         size_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 

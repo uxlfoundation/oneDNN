@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/reorder.hpp"
 #include "common/type_helpers.hpp"
@@ -133,7 +134,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
     const auto eps = pd()->desc()->layer_norm_epsilon;
     const auto save_stats = pd()->is_training();
 
-    parallel(0, [=](const int ithr, const int nthr) {
+    parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         dim_t N_start = 0, N_end = 0;
         balance211(N, nthr, ithr, N_start, N_end);
         const char *const __restrict src_ptr

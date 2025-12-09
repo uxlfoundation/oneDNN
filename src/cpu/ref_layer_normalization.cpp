@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 
@@ -76,7 +77,7 @@ status_t ref_layer_normalization_fwd_t::execute_forward(
         return status::success;
     }
 
-    parallel_nd(N, [=](dim_t n) {
+    parallel_nd(N, [= COMPAT_THIS_CAPTURE](dim_t n) {
         const size_t s_off = stat_d.off_l(n);
         auto v_mean = (calculate_stats || skip_mean) ? 0 : mean[s_off];
         auto v_variance = calculate_stats ? 0 : variance[s_off];

@@ -19,6 +19,7 @@
 #include <math.h>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/math_utils.hpp"
 #include "common/nstl.hpp"
@@ -94,7 +95,7 @@ status_t ref_binary_t::execute_ref(const exec_ctx_t &ctx) const {
         }
     }
 
-    parallel_nd(nelems, [=](dim_t i) {
+    parallel_nd(nelems, [= COMPAT_THIS_CAPTURE](dim_t i) {
         // decomposition for physical offsets
         dims_t dims_src0, dims_src1, dims_src2;
         utils::l_dims_by_l_offset(dims_src0, i, dst_d.dims(), ndims);

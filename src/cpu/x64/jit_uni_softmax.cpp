@@ -1759,7 +1759,7 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
             inner_stride, axis_stride);
 
     parallel_nd_ext(nthr, outer_size, inner_size,
-            [=](int ithr, int, dim_t ou, dim_t in) {
+            [= COMPAT_THIS_CAPTURE](int ithr, int, dim_t ou, dim_t in) {
         dim_t offset = (ou * outer_stride + in * inner_stride);
         const char *src_ptr = src + offset * src_data_type_size;
         char *dst_ptr = dst + offset * dst_data_type_size;
@@ -1833,7 +1833,8 @@ status_t jit_uni_softmax_bwd_t::execute(const exec_ctx_t &ctx) const {
     const auto outer_stride = pd()->axis_size(true) * inner_size;
     const auto outer_size = dst_d.nelems(true) / outer_stride;
 
-    parallel_nd(outer_size, inner_size, [=](dim_t ou, dim_t in) {
+    parallel_nd(outer_size, inner_size,
+            [= COMPAT_THIS_CAPTURE](dim_t ou, dim_t in) {
         dim_t offset = (ou * outer_stride + in * inner_stride);
         char *diff_src_ptr = diff_src + offset * diff_src_data_type_size;
         const char *dst_ptr = dst + offset * dst_data_type_size;

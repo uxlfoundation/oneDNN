@@ -62,7 +62,8 @@ void fill_eye(std::vector<float> &out, const memory::desc &desc) {
     for (memory::dim i = 0; i < elems; i++) {
         //if(i%width == i/width) {
         //if (i % width == i / width % 16) { //TMP for testing
-        if ((i % width == i / width % 16) || (i % width == 3 && i / width == 1)) { //TMP for testing
+        //if ((i % width == i / width % 16) || (i % width == 3 && i / width == 1)) { //TMP for testing
+        if ((i % width == i / width % 32) || (i % width == 3 && i / width == 1) || (i % width == 0)) { //TMP for testing
         //if ((i % width == i / width % 16) || (i % width == 3 && i / width == 1) || i == 1) { //TMP for testing
             out[i] = 1.f;
         } else {

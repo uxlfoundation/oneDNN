@@ -558,14 +558,16 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             = (vs_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
 
     problem_vs.Ta_ext = convert_dnnl_to_kernel_type(val_md()->data_type);
-    problem_vs.A.layout = convert_dnnl_to_kernel_layout(val_md());
+    //problem_vs.A.layout = convert_dnnl_to_kernel_layout(val_md()); //gmem
+    problem_vs.A.layout = MatrixLayout::T;
 
     problem_vs.B.layout = MatrixLayout::Pr;
     problem_vs.C.layout = MatrixLayout::N;
     const memory_desc_wrapper val_mdw(val_md());
     auto ldv = static_cast<int>(
             gemm_desc_t::get_ld(*val_md()) * val_mdw.data_type_size());
-    problem_vs.A.setAlignment(alignmentForLD(ldv));
+    //problem_vs.A.setAlignment(alignmentForLD(ldv)); //gmem
+    problem_vs.A.setAlignment(64); // S is packed in SLM
     problem_vs.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) { problem_vs.B.crosspack = 16; }
 
@@ -596,7 +598,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem_vtdA.A.layout = transpose_layout(
             convert_dnnl_to_kernel_layout(val_md())); //TODO hardcode?
 
-    problem_vtdA.B.layout = MatrixLayout::Pr;
+    problem_vtdA.B.layout = MatrixLayout::Pr; //is this right? w/shared slm between vs?
     problem_vtdA.C.layout = MatrixLayout::T; //which?
     problem_vtdA.A.setAlignment(alignmentForLD(ldv));
     problem_vtdA.B.setAlignment(64); // S is packed in SLM
@@ -1142,8 +1144,7 @@ status_t micro_params_t::get_kernel_ctx(
 
     //VDEBUGINFO(4, primitive, sdpa, "kq_gemm: %s, vs_gemm: %s,",
     //problem_kq.toString().c_str(), problem_vs.toString().c_str());
-    VDEBUGINFO(4, primitive, sdpa,
-            "kq_gemm: %s, vs_gemm: %s \n",
+    VDEBUGINFO(4, primitive, sdpa, "kq_gemm: %s, vs_gemm: %s \n",
             problem_kq.toString().c_str(), problem_vs.toString().c_str());
 
     /* Generate microkernel shims */

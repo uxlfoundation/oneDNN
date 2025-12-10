@@ -69,16 +69,13 @@ void fuseMicrokernel(std::vector<uint8_t> &binary,
             case SectionHeader::Type::ZeInfo: foundZeInfo = true; break;
             case SectionHeader::Type::Program: {
                 std::string sname;
-                if (snames) {
-                    sname = std::string(snames + sheaders[s].name);
-                }
-                if (sname == ".text.Intel_Symbol_Table_Void_Program")
-                    continue;
+                if (snames) { sname = std::string(snames + sheaders[s].name); }
+                if (sname == ".text.Intel_Symbol_Table_Void_Program") continue;
                 if (sname.substr(0, 6) != ".text.") continue;
-                if (text) {
-                    hasMultipleKernels = true;
-                }
-                if (hasMultipleKernels && sname.substr(6).find("micro") == std::string::npos) continue;
+                if (text) { hasMultipleKernels = true; }
+                if (hasMultipleKernels
+                        && sname.substr(6).find("micro") == std::string::npos)
+                    continue;
 
                 text = sheaders + s;
                 textSectionID = s;
@@ -90,7 +87,9 @@ void fuseMicrokernel(std::vector<uint8_t> &binary,
 
     if (!foundZeInfo || !text || text->offset + text->size > bytes)
         throw std::runtime_error(
-                "IGC did not generate a valid zebin program binary, if binary has multiple kernels, the first encountered kernel with \"micro\" in its name will be the microkernel target");
+                "IGC did not generate a valid zebin program binary, if binary "
+                "has multiple kernels, the first encountered kernel with "
+                "\"micro\" in its name will be the microkernel target");
 
     std::string rname = ".rel";
     rname += (snames + text->name);

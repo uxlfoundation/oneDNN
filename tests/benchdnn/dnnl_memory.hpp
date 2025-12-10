@@ -214,6 +214,12 @@ struct dnn_mem_t {
     // Initializes memory descriptor for host scalar memory.
     static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_host_scalar_md(
             dnnl_data_type_t data_type);
+    // Initializes memory descriptor for grouped encoding.
+    static benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> init_grouped_md(
+            int ndims, const dnnl_dims_t dims, dnnl_data_type_t data_type,
+            dnnl_dim_t group_count, int group_dims_size,
+            const dnnl_dims_t group_dims,
+            dnnl_data_type_t offsets_dt = dnnl_s32, const dims_t &strides = {});
 
     /* fields */
     dnnl_memory_desc_t md_ {};

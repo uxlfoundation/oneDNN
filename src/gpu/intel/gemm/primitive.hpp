@@ -49,6 +49,7 @@ struct primitive_t : public intel::primitive_t {
         args.a_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_A);
         args.b_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_B);
         args.c_scales = &CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_C);
+        VDEBUGINFO(4, primitive, execute override,"MY !!!!! execute !!!!!! : calling execute({ctx, args}");
         return execute({ctx, args});
     }
 };

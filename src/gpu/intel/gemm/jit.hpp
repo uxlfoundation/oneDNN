@@ -52,6 +52,8 @@ struct gen_t : public primitive_t {
             using smask_t = primitive_attr_t::skip_mask_t;
             using arch_t = compute::gpu_arch_t;
 
+            VDEBUGINFO(4, primitive, gemm, "MY init =====>");
+
             assert(engine->kind() == engine_kind::gpu);
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
@@ -72,6 +74,7 @@ struct gen_t : public primitive_t {
             dev_info_ = intel_engine->device_info();
             arch_ = dev_info_->gpu_arch();
             int stepping = dev_info_->stepping_id();
+            VDEBUGINFO(4, primitive, gemm, "MY init ==== call init_attrs()");
             VDISPATCH_GEMM_SC(init_attrs(), VERBOSE_UNSUPPORTED_TAG);
 
             // If we have both grouped scales and grouped zero-points, they must
@@ -98,6 +101,7 @@ struct gen_t : public primitive_t {
                         IMPLICATION(b_gs_2d(), bsc_group_k == bgs_group_k),
                         VERBOSE_UNSUPPORTED_ZP_CFG);
             }
+            VDEBUGINFO(4, primitive, gemm, "MY init ==== checked groups");
 
             const auto d = desc();
 
@@ -221,19 +225,24 @@ struct gen_t : public primitive_t {
                                        c_stride == 1 || c_stride % 2 == 0),
                         VERBOSE_SHAPE_RESTRICTION);
             }
-
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ?");
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ok");
 
             if (!attr()->zero_points_.has_default_values()) {
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
                 if (swap_ab_) std::swap(ao_dims_, bo_dims_);
             }
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== zp ok");
+
             if (!attr()->precomputed_reductions_.has_default_values()) {
                 VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
                 if (swap_ab_) std::swap(ag_dims_, bg_dims_);
             }
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== precomputed OK");
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
+            VDEBUGINFO(4, primitive, gemm, "MY init =====");
 
             bool with_binary = (post_ops_.find(binary) != -1)
                     || (post_ops_.find(prelu) != -1);
@@ -279,6 +288,8 @@ struct gen_t : public primitive_t {
             auto bo_type = with_b_zero_points()
                     ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                     : data_type::s32;
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== : ao_type bo_type = %d %d",(int)ao_type,(int)bo_type);
+
             auto ag_type = with_a_group_sums()
                     ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
                     : data_type::s32;
@@ -365,6 +376,9 @@ struct gen_t : public primitive_t {
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
+
+            VDEBUGINFO(4, primitive, gemm,"MY init ===== : trying to select kernel");
+
             auto entries = kernel_desc_.select_kernel(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,
                     batch_dims(), eff_transa(), eff_transb(), eff_trans_bias(),
@@ -374,11 +388,15 @@ struct gen_t : public primitive_t {
                     co_type, acc_type, eff_align_a(), eff_align_b(), align_c(),
                     eff_m(), eff_n(), d->k(), eff_lda(), eff_ldb(), d->ldc(),
                     d->batch(), std::move(gpu_post_ops));
+
             for (auto &entry : entries) {
+                VDEBUGINFO(4, primitive, gemm,"MY init ===== : >>>> iter loop by entries (from select_kernel(...))");
                 kernel_desc_.set_entry(entry);
                 auto status = kernel_desc_.finalize();
                 // select_kernel can return a strategy that failed in the finalize call
                 bool valid = status == status::success;
+                VDEBUGINFO(4, primitive, gemm,"MY init ===== : kernel valid = %d", valid);
+
                 if (!valid && print_verbose)
                     dnnl::impl::verbose_printf(
                             "info,gpu,gemm,skipping:%s,Strategy finalization "
@@ -397,6 +415,7 @@ struct gen_t : public primitive_t {
                                 kernel_desc_.entry().str().c_str());
                     valid &= po_valid;
                 }
+                VDEBUGINFO(4, primitive, gemm,"MY init ===== ");
                 // Limited post-op support for low-precision accumulation.
                 if (kernel_desc_.problem()->Tc.size() < 4) {
                     valid &= !need_x32_acc;
@@ -405,6 +424,7 @@ struct gen_t : public primitive_t {
                                 "info,gpu,gemm,skipping:%s,Invalid post op.\n",
                                 kernel_desc_.entry().str().c_str());
                 }
+                VDEBUGINFO(4, primitive, gemm,"MY init ===== ");
                 // Ensure kernel can be run deterministically if required.
                 if (attr()->deterministic_) {
                     bool deterministic
@@ -417,6 +437,7 @@ struct gen_t : public primitive_t {
                                 kernel_desc_.entry().str().c_str());
                 }
 
+                VDEBUGINFO(4, primitive, gemm,"MY init ===== ");
                 if (valid) {
                     auto try_create = [&]() {
                         std::vector<compute::kernel_t> kernel_(1);
@@ -446,18 +467,24 @@ struct gen_t : public primitive_t {
                         }
                         return status;
                     };
+                    VDEBUGINFO(4, primitive, gemm,"MY init ===== calling try_create()");
                     status = try_create();
+                    VDEBUGINFO(4, primitive, gemm,"MY init ===== try_create() status = %d",status);
                     if (status == status::success) {
                         kernel_success = true;
                         break;
                     }
                 }
             }
+            VDEBUGINFO(4, primitive, gemm,"MY init ===== : <<<< loop by entries : kernel_success = %d", kernel_success);
 
             VDISPATCH_GEMM(
                     kernel_success, "matching kernel not found in catalog");
 
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== init_scratchpad()");
             init_scratchpad();
+
+            VDEBUGINFO(4, primitive, gemm, "MY init <===== success");
 
             return status::success;
         }
@@ -654,11 +681,15 @@ struct gen_t : public primitive_t {
 
     status_t init_nocopy(impl::engine_t *engine) {
         using namespace data_type;
+
+        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy *****>");
+
         auto kd = pd()->kernel_desc();
 
         CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));
 
         scalar_type_ = kd->scalar_type();
+        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy ***** : scalar_type_ = %d", (int)scalar_type_);
         const auto *info = nocopy_info();
 
         if (need_zero_pool()) {
@@ -678,6 +709,7 @@ struct gen_t : public primitive_t {
             nocopy_kernel_.save_output_events();
         }
 
+        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy <*****");
         return status::success;
     }
 

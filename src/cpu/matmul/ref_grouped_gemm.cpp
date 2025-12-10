@@ -51,8 +51,7 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
     float *dst_data = CTX_OUT_MEM(float *, DNNL_ARG_DST, 0);
 
     // Buffer 1: offsets array (cumulative boundaries [0, M0, M0+M1, ...])
-    const int32_t *src_offsets = CTX_IN_MEM(const int32_t *, DNNL_ARG_SRC, 1);
-    const int32_t *dst_offsets = CTX_OUT_MEM(const int32_t *, DNNL_ARG_DST, 1);
+    const int32_t *offsets = CTX_IN_MEM(const int32_t *, DNNL_ARG_SRC, 1);
 
     const bool with_bias = pd()->with_bias();
     const float *bias_data
@@ -61,17 +60,16 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
     // Process each group
     for (int group_id = 0; group_id < num_groups; ++group_id) {
         // Calculate M for this group from offsets and skip empty groups
-        const int M = src_offsets[group_id + 1] - src_offsets[group_id];
+        const int M = offsets[group_id + 1] - offsets[group_id];
         if (M == 0) continue;
 
-        const float *src_group = src_data + src_offsets[group_id] * K;
-        float *dst_group = dst_data + dst_offsets[group_id] * N;
+        const float *src_group = src_data + offsets[group_id] * K;
+        float *dst_group = dst_data + offsets[group_id] * N;
         const float *wei_group = wei_data + group_id * K * N;
         const float *bias_group
                 = with_bias ? (bias_data + group_id * N) : nullptr;
 
-        // Call GEMM for this group: dst_group = src_group * wei_data
-        // TODO: bias is added manually since extended_sgemm seem to expect different layout(?)
+        // Note: BLAS uses column-major
         const dim_t lda = K;
         const dim_t ldb = N;
         const dim_t ldc = N;

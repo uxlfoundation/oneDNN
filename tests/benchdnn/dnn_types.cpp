@@ -1034,21 +1034,50 @@ std::ostream &operator<<(std::ostream &s, dnnl_sparse_encoding_t se) {
 std::ostream &operator<<(
         std::ostream &s, const sparse_options_t &sparse_options) {
     if (!sparse_options.is_def()) {
-        s << "--encoding=";
         const std::vector<int> args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
 
-        for (int i = 0; i < (int)args.size(); i++) {
-            const int arg = args[i];
-            if (!sparse_options.is_encoding_def(arg)) {
-                s << sparse_options.get_encoding(arg);
-                if (!sparse_options.is_sparsity_def(arg))
-                    s << "+" << sparse_options.get_sparsity(arg);
+        bool has_grouped = false;
+        for (const int arg : args) {
+            if (sparse_options.get_encoding(arg) == dnnl_grouped) {
+                has_grouped = true;
+                break;
             }
-            if (i != (int)args.size() - 1)
-                s << ":";
-            else
-                s << " ";
+        }
+
+        if (has_grouped) {
+            // Output new format: --grouped=M:8:32,64,32,...
+            // Find the first arg with grouped encoding to get the data
+            int grouped_arg = DNNL_ARG_SRC;
+            for (const int arg : args) {
+                if (sparse_options.get_encoding(arg) == dnnl_grouped) {
+                    grouped_arg = arg;
+                    break;
+                }
+            }
+            s << "--grouped=" << sparse_options.get_dim_name(grouped_arg) << ":"
+              << sparse_options.get_group_count(grouped_arg) << ":";
+            const auto &dims = sparse_options.get_group_dims(grouped_arg);
+            for (size_t i = 0; i < dims.size(); i++) {
+                s << dims[i];
+                if (i != dims.size() - 1) s << ",";
+            }
+            s << " ";
+        } else {
+            // Output old format for non-grouped encodings
+            s << "--encoding=";
+            for (int i = 0; i < (int)args.size(); i++) {
+                const int arg = args[i];
+                if (!sparse_options.is_encoding_def(arg)) {
+                    s << sparse_options.get_encoding(arg);
+                    if (!sparse_options.is_sparsity_def(arg))
+                        s << "+" << sparse_options.get_sparsity(arg);
+                }
+                if (i != (int)args.size() - 1)
+                    s << ":";
+                else
+                    s << " ";
+            }
         }
     }
     return s;

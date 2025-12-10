@@ -165,6 +165,7 @@ int bench(int argc, char **argv) {
                 || parse_tag(s.wtag, def.wtag, argv[0], "wtag")
                 || parse_tag(s.dtag, def.dtag, argv[0], "dtag")
                 || parse_encoding(s.sparse_options, argv[0], "encoding")
+                || parse_grouped(s.sparse_options, argv[0], "grouped")
                 || parse_strides(s.strides, def.strides, argv[0], "strides")
                 || parse_dt(s.bia_dt, def.bia_dt, argv[0], "bia-dt")
                 // TODO: remove this later

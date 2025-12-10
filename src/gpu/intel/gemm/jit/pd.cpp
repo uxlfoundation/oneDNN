@@ -186,7 +186,7 @@ status_t pd_t::init_post_ops() {
                 << "Unable to convert dst scales to a post op";
     }
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() < ****" success);
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() < **** success");
     return status::success;
 }
 
@@ -304,7 +304,7 @@ status_t pd_t::init_attrs() {
         with_mx_scale_ = c_scales.is_mx();
     }
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs < *****" success);
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs < ***** success");
     return status::success;
 }
 

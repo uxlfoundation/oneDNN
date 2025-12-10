@@ -244,8 +244,18 @@ struct GEMMProblem : public CommonProblem {
     bool quantized2DA() const { return forceGroupSumsB || aOffset2D() || aScale2D(); }
     bool quantized2DB() const { return forceGroupSumsA || bOffset2D() || bScale2D(); }
 
-    bool earlyDequantizeA() const { return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)) || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || Ta.isFP())); }
-    bool earlyDequantizeB() const { return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)) || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || Tb.isFP())); }
+    bool earlyDequantizeA() const {
+        //return (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)) || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || Ta.isFP()));
+        bool res = (aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)) || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || Ta.isFP()));
+        VDEBUGINFO(4, primitive, quantization, "earlyDequantizeA() returned %d", res);
+        return res;
+    }
+    bool earlyDequantizeB() const {
+        //return (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)) || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || Tb.isFP()));
+        bool res = (bOffset == ABOffset::Calc && earlyDequantizableOffset(Tb_ext, Tbo, Tb)) || (bScale2D() && (Tb_scale.isSubsetOf(Tb) || Tb.isFP()));
+        VDEBUGINFO(4, primitive, quantization, "earlyDequantizeB() returned %d", res);
+        return res;
+    }
 
     bool needsASums() const { return sumA || (bOffset == ABOffset::Calc && !earlyDequantizeB() && !quantized2DB()); }
     bool needsBSums() const { return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA() && !quantized2DA()); }

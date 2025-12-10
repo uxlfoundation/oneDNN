@@ -50,6 +50,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         int32_t ldc, int32_t m, int32_t n, int32_t k, int32_t k0, float alpha,
         float beta, int32_t cmask, bool last_k_block, bool swapab,
         bool disable_hilbert) const {
+
+    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy ------>");
+
     if (pd()->desc()->batch() == 0) return status::success;
 
     uint32_t flags = 0;
@@ -79,16 +82,39 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     arg_list.set(argn++, n);
     arg_list.set(argn++, k);
 
+    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy ------> set_scalar_arg_cvt(arg_list, argn++, alpha, scalar_type_); alpha = %g", alpha);
     set_scalar_arg_cvt(arg_list, argn++, alpha, scalar_type_);
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
+    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add beta");
 
-    if (pd()->with_a_zero_points()) arg_list.set(argn++, *ao);
-    if (pd()->with_b_zero_points()) arg_list.set(argn++, *bo);
-    if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
-    if (problem->bScale2D()) arg_list.set(argn++, *b_scales);
-    if (problem->needsAGroupSums()) arg_list.set(argn++, *ag);
-    if (problem->needsBGroupSums()) arg_list.set(argn++, *bg);
-    if (pd()->with_mx_scale()) arg_list.set(argn++, *c_scales);
+    if (pd()->with_a_zero_points()) {
+        arg_list.set(argn++, *ao);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *ao");
+    }
+    if (pd()->with_b_zero_points()) {
+        arg_list.set(argn++, *bo);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *bo");
+    }
+    if (problem->aScale2D()) {
+        arg_list.set(argn++, *a_scales);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *a_scales");
+    }
+    if (problem->bScale2D()) {
+        arg_list.set(argn++, *b_scales);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *b_scales");
+    }
+    if (problem->needsAGroupSums()) {
+        arg_list.set(argn++, *ag);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
+    }
+    if (problem->needsBGroupSums()) {
+        arg_list.set(argn++, *bg);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
+    }
+    if (pd()->with_mx_scale()) {
+        arg_list.set(argn++, *c_scales);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
+    }
 
     if (problem->aOffset2D() || problem->aScale2D()
             || problem->needsAGroupSums()) {
@@ -99,6 +125,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                         ? pd()->eff_m()
                         : utils::div_up(pd()->desc()->k(), problem->aqGroupK));
         arg_list.set(argn++, ldaq);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
     }
     if (problem->bOffset2D() || problem->bScale2D()
             || problem->needsBGroupSums()) {
@@ -109,10 +136,12 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                         ? pd()->eff_n()
                         : utils::div_up(pd()->desc()->k(), problem->bqGroupK));
         arg_list.set(argn++, ldbq);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
     }
     if (pd()->with_mx_scale()) {
         auto ldcq = pd()->desc()->m() / problem->cqGroupM;
         arg_list.set(argn++, ldcq);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
     }
     if (pd()->with_c_zero_points() || pd()->with_bias()
             || pd()->with_sum_ab()) {
@@ -121,22 +150,36 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         if (pd()->with_bias()) {
             auto ldco = into<int32_t>(pd()->desc()->ld_bias());
             arg_list.set(argn++, ldco);
+            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
         }
     }
-    if (nocopy_info()->needsTempC()) arg_list.set(argn++, *c_temp);
+    if (nocopy_info()->needsTempC()){
+        arg_list.set(argn++, *c_temp);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
+    }
     if (problem->postOps.cStochasticRound) {
         arg_list.set(argn++, *sround_seed);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
     }
     arg_list.set(argn++, flags);
-    if (k_parallel_fixed) arg_list.set(argn++, k0);
+    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add flags");
+
+    if (k_parallel_fixed) {
+        arg_list.set(argn++, k0);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
+    }
 
     for (int i = 0; i < po_count; i++) {
         if (!po_srcs[i]) continue;
         arg_list.set(argn++, *po_srcs[i]);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
         arg_list.set(argn++, offset_po_src[i]);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
 
-        if (problem->postOps.binaryRow[i] && problem->postOps.binaryCol[i])
+        if (problem->postOps.binaryRow[i] && problem->postOps.binaryCol[i]){
             arg_list.set(argn++, int32_t(pd()->ld_binary(i)));
+            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
+        }
     }
 
     std::unique_ptr<memory_storage_t> zeros;
@@ -145,6 +188,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         CHECK(zero_pool->claim(
                 compute_stream, zero_pool_bytes_, zeros, &zp_token));
         arg_list.set(argn++, *zeros);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *zeros to arg_list");
     }
 
     if (pd()->batch_dims() >= 1) {
@@ -177,34 +221,45 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 }
             }
             arg_list.set(argn++, stride_a);
+            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
             arg_list.set(argn++, stride_b);
+            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
             arg_list.set(argn++, stride_c);
+            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
             if (problem->hasAScale()) {
                 arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_A));
+                VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
             }
             if (problem->hasBScale()) {
                 arg_list.set(argn++, pd()->eff_scale_stride(i, DNNL_ARG_B));
+                VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
             }
             if (problem->hasCMXScale()) {
                 arg_list.set(argn++, stride_c / problem->cqGroupM);
+                VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
             }
             if (problem->hasAOffset()) {
                 arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_A));
+                VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add pd()->eff_zp_stride(i, DNNL_ARG_A)");
             }
             if (problem->hasBOffset()) {
                 arg_list.set(argn++, pd()->eff_zp_stride(i, DNNL_ARG_B));
+                VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
             }
             if (problem->needsAGroupSums()) {
                 arg_list.set(argn++, pd()->eff_gs_stride(i, DNNL_ARG_A));
+                VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
             }
             if (problem->needsBGroupSums()) {
                 arg_list.set(argn++, pd()->eff_gs_stride(i, DNNL_ARG_B));
+                VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
             }
         }
         for (int i = 0; i < po_count; i++) {
             if (problem->postOps.binaryBatch[i]) {
                 for (int b = pd()->batch_dims() - 1; b >= 0; b--) {
                     arg_list.set(argn++, int32_t(pd()->stride_binary(i, b)));
+                    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
                 }
             }
         }
@@ -215,9 +270,11 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
                 uint64_t magic = dnnl::impl::gpu::intel::jit::ir_utils::
                         idiv_magicgu_packed(batchSize);
                 arg_list.set(argn++, magic);
+                VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
             } else {
                 uint32_t recipBatchSize = jit::uint32_reciprocal(batchSize);
                 arg_list.set(argn++, recipBatchSize);
+                VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
             }
         }
     }
@@ -275,12 +332,18 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         size_t slm = nocopy_info()->slm;
         if (lws[2] > 1) slm = nstl::max(slm, nocopy_info()->perKSLM * lws[2]);
         arg_list.set(argn++, slm, nullptr);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add smth");
     }
 
-    if (pd()->ao_dims_ > 0 || problem->aScale2D())
+    if (pd()->ao_dims_ > 0 || problem->aScale2D()) {
         arg_list.set(argn++, offset_aq);
-    if (pd()->bo_dims_ > 0 || problem->bScale2D())
+//        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; pd()->ao_dims_ (= %d ) > 0 || problem->aScale2D() (= %d)", pd()->ao_dims_, problem->aScale2D());
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arglist: add offset_aq");
+    }
+    if (pd()->bo_dims_ > 0 || problem->bScale2D()){
         arg_list.set(argn++, offset_bq);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arglist: add offset_bq");
+    }
 
     lws[0] *= nocopy_info()->subgroupSize;
     gws[0] *= nocopy_info()->subgroupSize;
@@ -291,10 +354,14 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     if (nocopy_info()->fusedBeta() || nocopy_info()->fusedPostOps())
         zero_pool->async_release(zp_token, compute_stream->ctx().get_deps());
 
+    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy <------ ; status = %d", (int)status);
     return status;
 }
 
 status_t gen_t::execute(const exec_ctx_t &ctx) const {
+
+    VDEBUGINFO(4, primitive, gemm, "MY execute ++++++++>");
+
     auto *compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
 
     auto zero_pool = zero_pool_;
@@ -425,6 +492,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     int cmask = 0;
     if (pd()->with_c_zero_points()) {
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : c w/ zp");
         off_co0 = types::bytes_to_elements(c_type, co->offset())
                 + pd()->dyn_offset_co;
         cmask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
@@ -441,8 +509,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a || b w/ zp ; setup ao & bo");
     }
 
+    VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
     // Convert host scalar scales to Alpha
     if (pd()->attr()->scales_.has_host_scalars()) {
         const auto &a_scales = pd()->attr()->scales_.get(DNNL_ARG_A);
@@ -468,6 +538,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             alpha /= scale_val;
         }
     }
+    VDEBUGINFO(4, primitive, gemm,"MY execute ++++: updated alpha: = %g", alpha);
 
     if (pd()->a_scales_2d()) { a_scales = &GEMM_CTX_ARG_STORAGE(a_scales); }
     if (pd()->b_scales_2d()) { b_scales = &GEMM_CTX_ARG_STORAGE(b_scales); }
@@ -483,6 +554,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
         uint8_t swap_table[4] = {0, 2, 1, 3};
         cmask = (cmask & ~3) | swap_table[cmask & 3];
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : ao bo swap;");
     }
 
     status_t status;
@@ -516,6 +588,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
         if (k_parallel_global && !nocopy_info()->fusedBeta() && beta != 1.0f
                 && (k > k0 * pd()->kernel_desc()->aux_params()->wgK)) {
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy, ao arg");
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
                     bo, a_scales, b_scales, c_scales, ag, bg, *co, nullptr,
                     sround_seed, po_count, po_srcs, off_a0, off_b0, off_c0,
@@ -526,7 +599,9 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         }
     }
 
+    VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
     for (int64_t Bk = 0; Bk < nstl::max<dim_t>(k, 1); Bk += block_k) {
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
         int64_t size_k = k - Bk;
         bool last_k_block = (size_k <= block_k);
         if (!last_k_block) size_k = block_k;
@@ -579,6 +654,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 }
 
                 float eff_beta = (Bk == 0) ? beta : 1.0f;
+                VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy, bk bm loop, ao arg");
                 status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c,
                         ao, bo, a_scales, b_scales, c_scales, ag, bg, *co,
                         c_temp.get(), sround_seed, po_count, po_srcs, off_a_src,
@@ -596,6 +672,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (release_zp) release_zero_pool(zero_pool);
 #endif
 
+    VDEBUGINFO(4, primitive, gemm, "MY execute <++++++++ success");
     return status::success;
 }
 

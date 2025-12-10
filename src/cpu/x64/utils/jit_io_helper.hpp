@@ -116,7 +116,6 @@ public:
 
 class io_saturation_conf_t {
 public:
-    io_saturation_conf_t() = default;
     io_saturation_conf_t(const int vreg_zero_saturation_idx,
             const int vreg_saturation_ubound_idx, const Xbyak::Reg64 &reg_tmp);
     io_saturation_conf_t(const io_saturation_conf_t &other) = default;

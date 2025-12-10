@@ -170,6 +170,7 @@ struct rvv_matmul_t : public primitive_t {
             M_ = src_dims[ndims - 2];
             K_ = src_dims[ndims - 1];
             N_ = wei_dims[wei_ndims - 1];
+            weights_col_major_ = is_col_major(weights_mdw);
 
             dim_t weights_batch_size = 1;
             for (int i = 0; i < wei_ndims - 2; ++i)
@@ -182,6 +183,7 @@ struct rvv_matmul_t : public primitive_t {
         dim_t K_ = 0;
         dim_t batch_ = 0;
         bool weights_are_broadcast_ = false;
+        bool weights_col_major_ = false;
     };
 
     rvv_matmul_t(const pd_t *apd) : primitive_t(apd) {}

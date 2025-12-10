@@ -50,6 +50,7 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     const dim_t M = pd()->M_;
     const dim_t K = pd()->K_;
     const dim_t N = pd()->N_;
+    const bool weights_col_major = pd()->weights_col_major_;
 
     // row-major [M, K] / [M, N] are reinterpreted as column-major matrices and
     // mapped to GEMM as:
@@ -62,12 +63,14 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     //     column-major [K, M] with leading dim K, so transb = 'N', ldb = K.
     //   - C is viewed as column-major [N, M] with leading dim N, which matches
     //     row-major [M, N] in memory.
-    char transa = 'N';
+    char transa = weights_col_major ? 'T' : 'N';
     char transb = 'N';
     dim_t M_gemm = N;
     dim_t N_gemm = M;
     dim_t K_gemm = K;
-    dim_t lda = N; // weights: row-major [K, N] -> col-major [N, K]
+    // weights: col-major [K, N] uses leading K; row-major [K, N] is equivalent
+    // to col-major [N, K] so leading dim is N.
+    dim_t lda = weights_col_major ? K : N;
     dim_t ldb = K; // src: row-major [M, K] -> col-major [K, M]
     dim_t ldc = N; // dst: row-major [M, N] -> col-major [N, M]
     float alpha = 1.0f;

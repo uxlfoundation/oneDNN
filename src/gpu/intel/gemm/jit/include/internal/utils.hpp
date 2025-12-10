@@ -17,15 +17,15 @@
 #ifndef GEMMSTONE_INCLUDE_INTERNAL_UTILS_HPP
 #define GEMMSTONE_INCLUDE_INTERNAL_UTILS_HPP
 
+#include "gemmstone/config.hpp"
+
 #include <stdexcept>
 #include <string>
 #include <sstream>
 
-#if defined(__cpp_lib_source_location) && __cpp_lib_source_location >= 201907L
+#ifdef GEMMSTONE_ENABLE_SOURCE_LOCATION
 #include <source_location>
 #endif
-
-#include "gemmstone/config.hpp"
 
 GEMMSTONE_NAMESPACE_START
 
@@ -151,7 +151,7 @@ public:
     hw_unsupported_exception() : std::runtime_error("Unsupported in hardware") {}
 };
 
-#if defined(__cpp_lib_source_location) && __cpp_lib_source_location >= 201907L
+#ifdef GEMMSTONE_ENABLE_SOURCE_LOCATION
 [[noreturn]] static inline void stub(
                                      std::source_location where = std::source_location::current()) {
     throw stub_exception(where.file_name(), where.line());

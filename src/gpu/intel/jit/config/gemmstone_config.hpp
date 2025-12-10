@@ -39,8 +39,18 @@
 #define OPENCL_OUTPUT
 #endif
 
-#ifdef DNNL_DEV_MODE
+#if !defined(NDEBUG) || defined(DNNL_DEV_MODE)
 #define GEMMSTONE_ASSERTIONS 1
+
+#if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+#if __has_include(<version>)
+#include <version>
+#if defined(__cpp_lib_source_location) && __cpp_lib_source_location >= 201907L
+#define GEMMSTONE_ENABLE_SOURCE_LOCATION true
+#endif
+#endif
+#endif
+
 #endif
 
 namespace gemmstone {

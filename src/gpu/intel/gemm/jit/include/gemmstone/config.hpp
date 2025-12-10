@@ -24,6 +24,15 @@
 #include "entrance_agent.hpp"
 #include "package.hpp"
 
+#if (__cplusplus >= 202002L || _MSVC_LANG >= 202002L)
+#if __has_include(<version>)
+#include <version>
+#if __cpp_lib_source_location >= 201907L
+#define GEMMSTONE_ENABLE_SOURCE_LOCATION true
+#endif
+#endif
+#endif
+
 #endif
 
 #ifndef GEMMSTONE_ASSERTIONS

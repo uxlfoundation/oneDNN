@@ -84,7 +84,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     arg_list.set(argn++, n);
     arg_list.set(argn++, k);
 
-    //VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy ------> set_scalar_arg_cvt(arg_list, argn++, alpha, scalar_type_); alpha = %g", alpha);
+    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy ------> set_scalar_arg_cvt(arg_list, argn++, alpha, scalar_type_); alpha = %g", alpha);
     set_scalar_arg_cvt(arg_list, argn++, alpha, scalar_type_);
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
     VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add beta");
@@ -505,7 +505,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     int cmask = 0;
     if (pd()->with_c_zero_points()) {
-        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : c w/ zp ; HERE?????");
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : c w/ zp");
         off_co0 = types::bytes_to_elements(c_type, co->offset())
                 + pd()->dyn_offset_co;
         cmask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
@@ -546,7 +546,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         //@@@@@ for only A & B
     }
 
-    //VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
+    VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
     // Convert host scalar scales to Alpha
     if (pd()->attr()->scales_.has_host_scalars()) {
         const auto &a_scales = pd()->attr()->scales_.get(DNNL_ARG_A);
@@ -572,7 +572,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             alpha /= scale_val;
         }
     }
-    //VDEBUGINFO(4, primitive, gemm,"MY execute ++++: updated alpha: = %g", alpha);
+    VDEBUGINFO(4, primitive, gemm,"MY execute ++++: updated alpha: = %g", alpha);
 
     if (pd()->a_scales_2d()) { a_scales = &GEMM_CTX_ARG_STORAGE(a_scales); }
     if (pd()->b_scales_2d()) { b_scales = &GEMM_CTX_ARG_STORAGE(b_scales); }
@@ -706,7 +706,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (release_zp) release_zero_pool(zero_pool);
 #endif
 
-    VDEBUGINFO(4, primitive, gemm, "MY execute <++++++++");
+    VDEBUGINFO(4, primitive, gemm, "MY execute <++++++++ success");
     return status::success;
 }
 

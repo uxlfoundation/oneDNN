@@ -225,9 +225,9 @@ struct gen_t : public primitive_t {
                                        c_stride == 1 || c_stride % 2 == 0),
                         VERBOSE_SHAPE_RESTRICTION);
             }
-            //VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ?");
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ?");
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            //VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ok");
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ok");
 
             if (!attr()->zero_points_.has_default_values()) {
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -242,10 +242,10 @@ struct gen_t : public primitive_t {
                 VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
                 if (swap_ab_) std::swap(ag_dims_, bg_dims_);
             }
-            //VDEBUGINFO(4, primitive, gemm, "MY init ===== precomputed OK");
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== precomputed OK");
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
-            //VDEBUGINFO(4, primitive, gemm, "MY init =====");
+            VDEBUGINFO(4, primitive, gemm, "MY init =====");
 
             bool with_binary = (post_ops_.find(binary) != -1)
                     || (post_ops_.find(prelu) != -1);
@@ -687,14 +687,14 @@ struct gen_t : public primitive_t {
     status_t init_nocopy(impl::engine_t *engine) {
         using namespace data_type;
 
-        //VDEBUGINFO(4, primitive, gemm, "MY init_nocopy *****>");
+        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy *****>");
 
         auto kd = pd()->kernel_desc();
 
         CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));
 
         scalar_type_ = kd->scalar_type();
-        //VDEBUGINFO(4, primitive, gemm, "MY init_nocopy ***** : scalar_type_ = %d", (int)scalar_type_);
+        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy ***** : scalar_type_ = %d", (int)scalar_type_);
         const auto *info = nocopy_info();
 
         if (need_zero_pool()) {
@@ -714,7 +714,7 @@ struct gen_t : public primitive_t {
             nocopy_kernel_.save_output_events();
         }
 
-        //VDEBUGINFO(4, primitive, gemm, "MY init_nocopy <*****");
+        VDEBUGINFO(4, primitive, gemm, "MY init_nocopy <*****");
         return status::success;
     }
 

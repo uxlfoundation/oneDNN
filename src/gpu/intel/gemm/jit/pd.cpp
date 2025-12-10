@@ -34,7 +34,7 @@ namespace {
 // Obtain dimension count for gemmstone (common scales give count 0).
 int quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &qmd, int k_idx) {
-    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: quant_entry_ndims --->");
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: quant_entry_ndims --->");
 
     if (entry.has_default_values()) return -1;
     if (qmd.ndims < 2) return 0;
@@ -50,7 +50,7 @@ int quant_entry_ndims(
     // we have to send these as 2D
     if (k_idx >= 0 && count == 1 && qmd.dims[k_idx] > 1) return 2;
 
-    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: quant_entry_ndims <--- count = %d",count);
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: quant_entry_ndims <--- count = %d",count);
     return count;
 }
 } // anonymous namespace
@@ -110,7 +110,7 @@ status_t pd_t::init_post_ops() {
 
     if (!ok) return status::unimplemented;
 
-    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** try convert scales to postops");
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** try convert scales to postops");
 
     // If scales are present, convert them and any bias to binary post-ops.
     //   Exception: 2D scales.
@@ -133,7 +133,7 @@ status_t pd_t::init_post_ops() {
     auto maybe_convert_scales_to_postop
             = [this](const memory_desc_t &scale_md, int arg, data_type_t dt,
                       bool mx, bool &converted) -> status_t {
-        //VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** maybe_convert_scales_to_postop >>>>>");
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** maybe_convert_scales_to_postop >>>>>");
 
         auto ndims = desc()->c_desc.ndims;
         // Scales on A/B can be converted to postops if
@@ -154,12 +154,12 @@ status_t pd_t::init_post_ops() {
             }
             converted = true;
         }
-        //VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: maybe_convert_scales_to_postop : converted = %d",converted);
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: maybe_convert_scales_to_postop : converted = %d",converted);
         return status::success;
     };
 
     if (!a_scales.has_default_values() && !a_scales.is_host_scalar()) {
-        //VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** ! a_scales has_default");
+        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** ! a_scales has_default");
         // Host scalar scale will be converted to Alpha
         bool converted;
         CHECK(maybe_convert_scales_to_postop(a_scale_md_, DNNL_ARG_A,
@@ -186,7 +186,7 @@ status_t pd_t::init_post_ops() {
                 << "Unable to convert dst scales to a post op";
     }
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() < ****");
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() < **** success");
     return status::success;
 }
 
@@ -304,7 +304,7 @@ status_t pd_t::init_attrs() {
         with_mx_scale_ = c_scales.is_mx();
     }
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs < *****");
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_attrs < ***** success");
     return status::success;
 }
 
@@ -328,7 +328,7 @@ bool pd_t::zp_ok() {
     const bool weights_upconversion = wei_decomp_
             || ((swap_ab() ? b_int4 : a_int4) && dy_quant_enabled_);
 
-    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : a_int4 = %d b_int4 = %d weights_upconversion = %d",a_int4,b_int4,weights_upconversion);
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : a_int4 = %d b_int4 = %d weights_upconversion = %d",a_int4,b_int4,weights_upconversion);
 
     // Host scalar support
     // @@@@@ implementation check

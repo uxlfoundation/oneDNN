@@ -234,6 +234,9 @@ bool parse_tag(std::vector<std::string> &tag,
 bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
         const char *str, const std::string &option_name = "encoding");
 
+bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
+        const char *str, const std::string &option_name = "grouped");
+
 bool parse_multi_tag(std::vector<std::vector<std::string>> &tag,
         const std::vector<std::vector<std::string>> &def_tag, const char *str,
         const std::string &option_name = "stag");

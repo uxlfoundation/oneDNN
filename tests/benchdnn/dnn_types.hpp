@@ -586,6 +586,24 @@ struct sparse_options_t {
             = dnnl_sparse_encoding_undef;
     static constexpr float def_sparsity = 0.9f;
 
+    /**
+     * Data structure to hold grouped encoding parameters
+     * dim_name: name of the dimension along which grouping is done (M, K, N)
+     * group_count: total number of grouped blocks
+     * group_dims: sizes for each in the group
+     *
+     * @note is_def returns true if no grouped encoding data is set
+     */
+    struct grouped_data_t {
+        std::string dim_name;
+        dnnl_dim_t group_count = 0;
+        std::vector<dnnl_dim_t> group_dims;
+
+        bool is_def() const {
+            return dim_name.empty() && group_count == 0 && group_dims.empty();
+        }
+    };
+
     sparse_options_t() = default;
     sparse_options_t(int arg, dnnl_sparse_encoding_t encoding, float sparsity) {
         add(arg, encoding, sparsity);
@@ -593,6 +611,34 @@ struct sparse_options_t {
 
     void add(int arg, dnnl_sparse_encoding_t encoding, float sparsity) {
         options_.insert({arg, {encoding, sparsity}});
+    }
+
+    // Grouped encoding support
+    void set_grouped(int arg, const std::string &dim_name, dnnl_dim_t count,
+            const std::vector<dnnl_dim_t> &dims) {
+        add(arg, dnnl_grouped,
+                0.0f); // TODO: clarify on sparsity for grouped encoding
+        grouped_data_t gd;
+        gd.dim_name = dim_name;
+        gd.group_count = count;
+        gd.group_dims = dims;
+        grouped_data_[arg] = gd;
+    }
+
+    const std::string &get_dim_name(int arg = DNNL_ARG_SRC) const {
+        static const std::string empty;
+        const auto it = grouped_data_.find(arg);
+        return it == grouped_data_.end() ? empty : it->second.dim_name;
+    }
+    dnnl_dim_t get_group_count(int arg = DNNL_ARG_SRC) const {
+        const auto it = grouped_data_.find(arg);
+        return it == grouped_data_.end() ? 0 : it->second.group_count;
+    }
+    const std::vector<dnnl_dim_t> &get_group_dims(
+            int arg = DNNL_ARG_SRC) const {
+        static const std::vector<dnnl_dim_t> empty;
+        const auto it = grouped_data_.find(arg);
+        return it == grouped_data_.end() ? empty : it->second.group_dims;
     }
 
     dnnl_sparse_encoding_t get_encoding(int arg) const {
@@ -646,6 +692,7 @@ struct sparse_options_t {
 
 private:
     std::unordered_map<int, std::pair<dnnl_sparse_encoding_t, float>> options_;
+    std::unordered_map<int, grouped_data_t> grouped_data_;
 };
 
 std::ostream &operator<<(

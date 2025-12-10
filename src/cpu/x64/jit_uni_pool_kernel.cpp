@@ -106,6 +106,7 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
                 = utils::make_unique<injector::jit_uni_postops_injector_t<isa>>(
                         this, jpp.post_ops, bsp);
     }
+    io::io_conf_t io_conf;
 
     io::io_tail_conf_t io_tail_conf(jpp.c_block, tail_size,
             k_c_tail_mask.getIdx(), vmm_c_tail_mask.getIdx(), tmp_gpr);
@@ -131,15 +132,16 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
     // 4 bytes. jit_io_helper_t is not used for processing indices of type u8.
     if (jpp.ind_dt == data_type::s32) dtypes.insert(data_type::f32);
     if (jpp.needs_f32_accum_for_bf16) dtypes.insert(data_type::f32);
-    
+
     typename io_mdt_helper::saturation_map_t saturation_confs;
-    if (dtypes.count(data_type::u8)) {
-        saturation_confs[data_type::u8] = io::io_saturation_conf_t(0, 1, tmp_gpr);
+    if (jpp.dst_dt == data_type::u8) {
+        io::io_saturation_conf_t io_saturation_conf(
+                vmm_zero.getIdx(), vmm_saturation_ubound.getIdx(), tmp_gpr);
+        saturation_confs.insert({jpp.dst_dt, io_saturation_conf});
     }
 
-    io_ = io_mdt_helper(
-        this, jpp.isa, dtypes, {}, io_tail_conf, io_bf16_conf,
-        saturation_confs, utils::nullopt, io_fp8_conf);
+    io_ = io_mdt_helper(this, jpp.isa, dtypes, io_conf, io_tail_conf,
+            io_bf16_conf, saturation_confs, utils::nullopt, io_fp8_conf);
 }
 
 static status_t set_binary_postops_formats(
@@ -466,6 +468,29 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
         jpp.ur_bc_tail = 0;
     }
 
+    const int service_reg_border = is_superset(jpp.isa, avx512_core) ? 9 : 5;
+    const int max_data_vregs = (is_superset(jpp.isa, avx512_core) ? 31 : 15)
+            - service_reg_border;
+    const bool is_max_alg = jpp.alg == pooling_max;
+    int reg_blocks = 2;
+    if (is_max_alg) {
+        if (utils::one_of(jpp.isa, avx, avx2, avx2_vnni_2)) {
+            reg_blocks = 4;
+        } else {
+            reg_blocks = (jpp.is_training || jpp.is_backward) ? 3 : 2;
+        }
+    }
+
+    const int max_ur_bc = nstl::max(1, max_data_vregs / reg_blocks);
+    if (jpp.ur_bc > max_ur_bc) {
+        jpp.ur_bc = max_ur_bc;
+        jpp.ur_bc_tail = jpp.nb_c % jpp.ur_bc;
+    }
+
+    const int max_ur_w_by_regs
+            = nstl::max(1, max_data_vregs / (reg_blocks * jpp.ur_bc));
+    jpp.ur = nstl::max(1, nstl::min(jpp.ur, max_ur_w_by_regs * jpp.ur_bc));
+
     jpp.f32_accum_block_size = jpp.ur_bc * jpp.c_block;
     if (jpp.needs_f32_accum_for_bf16) {
         assert(memory_desc_wrapper(jpp.tmp_md).is_zero()
@@ -557,6 +582,7 @@ inline void jit_uni_pool_kernel_t<isa>::store(const data_type_t dt,
         const bool is_c_tail_proccessing) {
     if (is_c_tail_proccessing && jpp.is_c_padded && jpp.with_postops)
         pad_with_zeros(idx);
+    io_.init_saturate_f32({dt});
     io_[dt]->store(Vmm(idx), vmmword[reg_ptr + offset],
             is_c_tail_proccessing && !jpp.is_c_padded);
 }
@@ -755,11 +781,10 @@ template <cpu_isa_t isa>
 void jit_uni_pool_kernel_t<isa>::apply_postops(int ur_bc, int ur_w, int c_block,
         const std::function<bool(int, bool)> &is_tail_predicate) {
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
-    const int end_idx = vmm_idx_upper_bound() + 1;
-    const int start_idx = end_idx - (ur_bc * ur_w);
+    injector_utils::vmm_index_set_t vmm_idxs;
     const bool sse41_postops_disabled
             = isa == sse41 && disable_postops_when_sse_high_half_processed_;
-    if (end_idx - start_idx == 0) return;
+    if (ur_bc <= 0 || ur_w <= 0) return;
     if (jpp.with_binary && !sse41_postops_disabled) {
 
         const int c_off = (jpp.tag_kind == jit_memory_tag_kind_t::nspc)
@@ -774,8 +799,8 @@ void jit_uni_pool_kernel_t<isa>::apply_postops(int ur_bc, int ur_w, int c_block,
 
         for (int jj = 0; jj < ur_w; jj++) {
             for (int bci = 0; bci < ur_bc; bci++) {
-                const auto vmm_idx
-                        = vreg(reg_ind(0, bci, jj, ur_bc, ur_w)).getIdx();
+                const auto vmm_idx = static_cast<size_t>(
+                        vreg(reg_ind(0, bci, jj, ur_bc, ur_w)).getIdx());
 
                 const size_t output_offset
                         = jpp.dt_size * (jj * c_off + bci * c_block);
@@ -791,10 +816,22 @@ void jit_uni_pool_kernel_t<isa>::apply_postops(int ur_bc, int ur_w, int c_block,
                                 bci, true /*process_with_postops*/)) {
                     rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
                 }
+
+                vmm_idxs.emplace(vmm_idx);
             }
         }
     }
-    postops_injector_->compute_vector_range(start_idx, end_idx, rhs_arg_params);
+
+    if (vmm_idxs.empty()) {
+        for (int jj = 0; jj < ur_w; jj++) {
+            for (int bci = 0; bci < ur_bc; bci++) {
+                vmm_idxs.emplace(static_cast<size_t>(
+                        vreg(reg_ind(0, bci, jj, ur_bc, ur_w)).getIdx()));
+            }
+        }
+    }
+
+    postops_injector_->compute_vector_range(vmm_idxs, rhs_arg_params);
 }
 
 template <cpu_isa_t isa>

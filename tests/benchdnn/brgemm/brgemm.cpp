@@ -407,11 +407,20 @@ int init_kernel(kernel_args_t &kernel_args) {
 
     dnnl_status_t st = dnnl_success;
     auto &brgemm = kernel_args.brgemm_;
-    DNN_SAFE(
-            dnnl_brgemm_create(&brgemm, prb->m, prb->n, prb->k, prb->batch_size,
-                    prb->get_lda(), prb->get_ldb(), prb->get_ldc(),
-                    prb->src_dt(), prb->wei_dt(), prb->acc_dt()),
-            WARN);
+    // brgemm ukernel returns unimplemented for int8 and bf16
+    // on aarch64 at the moment, for now we'll treat those cases
+    // as SKIPPED rather than UNTESTED FAILED
+    st = dnnl_brgemm_create(&brgemm, prb->m, prb->n, prb->k, prb->batch_size,
+            prb->get_lda(), prb->get_ldb(), prb->get_ldc(), prb->src_dt(),
+            prb->wei_dt(), prb->acc_dt());
+#if defined(brg_aarch64)
+    if (st == dnnl_unimplemented) {
+        SAFE(check_dnnl_status(st, prb, res), WARN);
+        if (res->state == SKIPPED) return OK;
+    }
+#endif
+    DNN_SAFE(st, WARN);
+
     // Only `beta` equal to `0.f` and `1.f` works.
     DNN_SAFE(dnnl_brgemm_set_add_C(brgemm, static_cast<int>(prb->beta)), WARN);
     DNN_SAFE(dnnl_brgemm_set_post_ops(

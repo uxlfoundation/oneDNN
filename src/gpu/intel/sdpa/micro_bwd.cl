@@ -114,8 +114,36 @@ DECLARE_2D_TILE_BLOCK_OPS(
 DECLARE_2D_TILE_LOAD_PACKED_VEC(q_tile_type, QRY_DATA_T, VEC_TYPE2,
         SUBGROUP_SIZE, D_MAX / 2, 1, 1, q_tile_sg_n)
 #endif
+#endif
+
+
+
+#if USE_SYSTOLIC_UKERNEL
+DECLARE_2D_TILE(k_tile_type, uint, SUBGROUP_SIZE, q_tile_sg_m, 1, 1, D_MAX / 2)
+#else
+DECLARE_2D_TILE(k_tile_type, FMA_TYPE, SUBGROUP_SIZE, q_tile_sg_m, 1, 1, D_MAX)
+#endif
+
+#if BLOCK_Q
+
+#if USE_SYSTOLIC_UKERNEL
+DECLARE_2D_TILE_BLOCK_OPS(
+        k_tile_type, uint, SUBGROUP_SIZE, q_tile_sg_m, 1, 1, D_MAX / 2)
+#else
+DECLARE_2D_TILE_BLOCK_OPS(
+        k_tile_type, FMA_TYPE, SUBGROUP_SIZE, q_tile_sg_m, 1, 1, D_MAX)
+#endif
+
+#elif Q_ALIGN < 4
+
+#if USE_SYSTOLIC_UKERNEL
+DECLARE_2D_TILE_LOAD_PACKED_VEC(k_tile_type, QRY_DATA_T, VEC_TYPE2,
+        SUBGROUP_SIZE, D_MAX / 2)
+#endif
 
 #endif
+
+
 
 #if BLOCK_A
 DECLARE_2D_TILE(a_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE, ugemm_vs_sg_tile_m,
@@ -303,32 +331,6 @@ DECLARE_2D_TILE_RSELECT(a_scale_tile_type, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1,
          f = A_tile1.x[i][0];
 */
 
-inline void tile_load_src0(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
-        int m, int n, int ldq, int offset_r, int offset_c, int load_rem) {
-
-#if USE_SYSTOLIC_UKERNEL
-
-#if BLOCK_Q
-    tile_load_block_rem_q(Q_tile, (global uint *)Q, n, ldq >> 1, offset_r,
-            offset_c, load_rem);
-#elif Q_ALIGN >= 4
-    tile_load(Q_tile, (global uint *)Q, (m + 1) >> 1, n, ldq >> 1, offset_r,
-            offset_c);
-#else
-    tile_load_packed_vec2(Q_tile, Q, m, n, ldq, offset_r, offset_c);
-#endif
-
-#else // FMA
-
-#if BLOCK_Q
-    tile_load_block_rem_q(Q_tile, Q, n, ldq, offset_r, offset_c, load_rem);
-#else
-    tile_load(Q_tile, Q, m, n, ldq, offset_r, offset_c);
-#endif
-
-#endif
-}
-
 inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
         int m, int n, int ldq, int offset_r, int offset_c, int load_rem) {
 
@@ -355,6 +357,32 @@ inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
 #endif
 }
 
+inline void tile_load_k(k_tile_type *K_tile, const global KEY_DATA_T *K,
+        int m, int n, int ldq, int offset_r, int offset_c, int load_rem) {
+
+#if USE_SYSTOLIC_UKERNEL
+
+#if BLOCK_Q
+    tile_load_block_rem_q(K_tile, (global uint *)K, n, ldq >> 1, offset_r,
+            offset_c, load_rem);
+#elif Q_ALIGN >= 4
+    tile_load(K_tile, (global uint *)K, (m + 1) >> 1, n, ldq >> 1, offset_r,
+            offset_c);
+#else
+    tile_load_packed_vec2(K_tile, K, m, n, ldq, offset_r, offset_c);
+#endif
+
+#else // FMA
+
+#if BLOCK_Q
+    tile_load_block_rem_q(K_tile, K, n, ldq, offset_r, offset_c, load_rem);
+#else
+    tile_load(K_tile, K, m, n, ldq, offset_r, offset_c);
+#endif
+
+#endif
+}
+
 inline void tile_store_t_slm_src1(q_tile_type *Q_tile, local QRY_DATA_T *Q_slm,
         int panel, int ld, int offset_r, int offset_c) {
 #if USE_SYSTOLIC_UKERNEL
@@ -365,7 +393,17 @@ inline void tile_store_t_slm_src1(q_tile_type *Q_tile, local QRY_DATA_T *Q_slm,
 #endif
 }
 
-#define DO_MM 1
+inline void tile_store_t_slm_k(k_tile_type *K_tile, local QRY_DATA_T *K_slm,
+        int panel, int ld, int offset_r, int offset_c) {
+#if USE_SYSTOLIC_UKERNEL
+    tile_store_t_sys_src1(
+            *K_tile, (local uint *)&K_slm[0], ld / 2, offset_r, offset_c);
+#else // FMA
+    tile_store_packed_src1(*K_tile, K_slm, panel, ld, offset_r, offset_c);
+#endif
+}
+
+#define DO_MM 0
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
@@ -389,11 +427,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         ,
         const int remainder_k, const int remainder_q) {
 
-    //TODO: store logsumexp instead of sums and maxs separately
+    // TODO: store logsumexp instead of sums and maxs separately
     const global float *ws_maxes = ws; //TODO: batch TODO: logsumexp
-    const global float *ws_sums = ws + q; //TODO: batch
     //if(get_global_id(0) == 0 && get_global_id(1) == 0)
-    //printf("logsumexp%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f\n", ws[0], ws[1], ws[2], ws[3], ws[4], ws[5], ws[6], ws[7],  ws[8], ws[9], ws[10], ws[11], ws[12], ws[13], ws[14], ws[15]);
+    //printf("logsumexp%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f\n", ws[0], ws[1], ws[2], ws[3], ws[4], ws[5], ws[6], ws[7], ws[8], ws[9], ws[10], ws[11], ws[12], ws[13], ws[14], ws[15]);
     //return;
 
     //TODO: batch Di
@@ -454,6 +491,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
     /* SLM allocations -- place in one array to work around compiler bug */
 #define Q_slm_size (D_MAX * ugemm_kq_wg_tile_n * sizeof(QRY_DATA_T))
+#define K_slm_size (ugemm_kq_wg_tile_m * D_MAX * sizeof(QRY_DATA_T)) //TODO: currently same as Q_slm_size, todo match
 #define dQ_slm_size (D_MAX * ugemm_kq_wg_tile_n * sizeof(float))
 #define dK_slm_size (ugemm_kq_wg_tile_m * D_MAX * sizeof(float))
 #define dV_slm_size \
@@ -464,7 +502,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define ugemm_slm_size MAX(ugemm_kq_slm_size, ugemm_vs_slm_size)
 
     local char slm[Q_slm_size + dQ_slm_size + dK_slm_size + dV_slm_size
-            + S_slm_size + ugemm_slm_size + Q_slm_size];
+            + S_slm_size + ugemm_slm_size + Q_slm_size + K_slm_size];
 
     local QRY_DATA_T *Q_slm = (local QRY_DATA_T *)&slm[0];
     local float *dQ_slm = (local float *)&slm[Q_slm_size];
@@ -477,6 +515,11 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             + dK_slm_size + dV_slm_size + S_slm_size];
     local float *dS_slm = (local float *)&slm[Q_slm_size + dQ_slm_size
             + dK_slm_size + dV_slm_size + S_slm_size + ugemm_slm_size];
+
+    local QRY_DATA_T *K_slm = (local QRY_DATA_T *)&slm[Q_slm_size + dQ_slm_size
+            + dK_slm_size + dV_slm_size + S_slm_size + ugemm_slm_size + Q_slm_size];
+
+
 
     const bool need_sum_barrier = (ugemm_vs_barrier_count == 0);
 
@@ -509,59 +552,94 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     //printf("ldq%d ldk%d ldkt%d\n", ldq, ldk, ldkt);
 
     //printf("k0end %d : %d", k0end, ugemm_kq_wg_tile_m);
-    if (k0end > 0) {
-        //if (q0end > 0) {
-        /* Load Q tile, destined for SLM */
-        q_tile_type Q_tile;
-        uint q0_copy = q_tile_sg_n * sg_ij;
+    if (q0end > 0) {
+        /* Load K tile, destined for SLM */
+//       q_tile_type Q_tile;
+//       uint q0_copy = q_tile_sg_n * sg_ij;
+//
+//       tile_load_src1(&Q_tile, Q, d, q_group_size, ldq, 0, wg_j0 + q0_copy,
+//               remainder_q);
+//
+//       ///* Store Q tile to SLM */
+//       tile_store_t_slm_src1(
+//               &Q_tile, Q_slm, ugemm_kq_sg_tile_n, D_MAX, q0_copy, 0);
 
-        //printf("ldq%d off_c%d remq%d\n", ldq, wg_j0 + q0_copy, remainder_q);
-        tile_load_src1(&Q_tile, Q, d, q_group_size, ldq, 0, wg_j0 + q0_copy,
-                remainder_q);
+       k_tile_type K_tile;
+       uint k0_copy = q_tile_sg_n * sg_ij; //TODO: correct?
 
-        /*
+       tile_load_k(&K_tile, K, k, d, ldk, wg_i0, k0_copy,
+               remainder_k);
+
+       //printf("k0_copy %d \n", k0_copy);
+       ///* Store K tile to SLM */
+       tile_store_t_slm_k(
+               &K_tile, K_slm, ugemm_kq_sg_tile_n, ugemm_kq_sg_tile_n, k0_copy, 0);
+
+        barrier(CLK_LOCAL_MEM_FENCE);
         if(get_group_id(0) == 0) {
-        for(int i=0; i<16; ++i) {
-            if(get_sub_group_local_id() == i) {
-                printf("[ %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, ]\n ",
-                    as_half2(Q_tile.x[0] ).s0, as_half2(Q_tile.x[0] ).s1,
-                    as_half2(Q_tile.x[1] ).s0, as_half2(Q_tile.x[1] ).s1,
-                    as_half2(Q_tile.x[2] ).s0, as_half2(Q_tile.x[2] ).s1,
-                    as_half2(Q_tile.x[3] ).s0, as_half2(Q_tile.x[3] ).s1,
-                    as_half2(Q_tile.x[4] ).s0, as_half2(Q_tile.x[4] ).s1,
-                    as_half2(Q_tile.x[5] ).s0, as_half2(Q_tile.x[5] ).s1,
-                    as_half2(Q_tile.x[6] ).s0, as_half2(Q_tile.x[6] ).s1,
-                    as_half2(Q_tile.x[7] ).s0, as_half2(Q_tile.x[7] ).s1,
-                    as_half2(Q_tile.x[8] ).s0, as_half2(Q_tile.x[8] ).s1,
-                    as_half2(Q_tile.x[9] ).s0, as_half2(Q_tile.x[9] ).s1,
-                    as_half2(Q_tile.x[10]).s0, as_half2(Q_tile.x[10]).s1,
-                    as_half2(Q_tile.x[11]).s0, as_half2(Q_tile.x[11]).s1,
-                    as_half2(Q_tile.x[12]).s0, as_half2(Q_tile.x[12]).s1,
-                    as_half2(Q_tile.x[13]).s0, as_half2(Q_tile.x[13]).s1,
-                    as_half2(Q_tile.x[14]).s0, as_half2(Q_tile.x[14]).s1,
-                    as_half2(Q_tile.x[15]).s0, as_half2(Q_tile.x[15]).s1);
-            }
+        /*
+            printf("K_tile%d %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f \n", get_sub_group_local_id(),
+                   K_tile.x[0].s0,
+                   K_tile.x[1].s0,
+                   K_tile.x[2].s0,
+                   K_tile.x[3].s0,
+                   K_tile.x[4].s0,
+                   K_tile.x[5].s0,
+                   K_tile.x[6].s0,
+                   K_tile.x[7].s0,
+                   K_tile.x[8].s0,
+                   K_tile.x[9].s0,
+                   K_tile.x[10].s0,
+                   K_tile.x[11].s0,
+                   K_tile.x[12].s0,
+                   K_tile.x[13].s0,
+                   K_tile.x[14].s0,
+                   K_tile.x[15].s0,
+                   K_tile.x[16].s0,
+                   K_tile.x[17].s0,
+                   K_tile.x[18].s0,
+                   K_tile.x[19].s0,
+                   K_tile.x[20].s0,
+                   K_tile.x[21].s0,
+                   K_tile.x[22].s0,
+                   K_tile.x[23].s0,
+                   K_tile.x[24].s0,
+                   K_tile.x[25].s0,
+                   K_tile.x[26].s0,
+                   K_tile.x[27].s0,
+                   K_tile.x[28].s0,
+                   K_tile.x[29].s0,
+                   K_tile.x[30].s0,
+                   K_tile.x[31].s0);
+            // ktile looks correct
+            printf("K_tile%d %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f \n", get_sub_group_local_id(),
+                   K_tile.x[0].s0,
+                   K_tile.x[1].s0,
+                   K_tile.x[2].s0,
+                   K_tile.x[3].s0,
+                   K_tile.x[4].s0,
+                   K_tile.x[5].s0,
+                   K_tile.x[6].s0,
+                   K_tile.x[7].s0,
+                   K_tile.x[8].s0,
+                   K_tile.x[9].s0,
+                   K_tile.x[10].s0,
+                   K_tile.x[11].s0,
+                   K_tile.x[12].s0,
+                   K_tile.x[13].s0,
+                   K_tile.x[14].s0,
+                   K_tile.x[15].s0
+                   );
+            */
         }
-        }
-        return
-        */
 
         barrier(CLK_LOCAL_MEM_FENCE);
-
-        ///* Store Q tile to SLM */
-        tile_store_t_slm_src1(
-                &Q_tile, Q_slm, ugemm_kq_sg_tile_n, D_MAX, q0_copy, 0);
-
-        //#if Q_ARRIVE_AWAIT_BARRIER
-        barrier(CLK_LOCAL_MEM_FENCE);
-        //intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
-        //#endif
 
         /*
         if(get_group_id(0) == 0 && get_sub_group_local_id() == 0) {
-            for(int i=0; i<ugemm_kq_wg_tile_n; ++i) {
-                for(int j=0; j<D_MAX; ++j) {
-                        printf("%6.1f ", Q_slm[i * D_MAX + j]);
+            for(int i=0; i<D_MAX; ++i) {
+                for(int j=0; j<ugemm_kq_wg_tile_n; ++j) {
+                        printf("%6.1f ", K_slm[i * ugemm_kq_wg_tile_n + j]);
                 }
                 printf("qslm\n");
             }
@@ -610,31 +688,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m; // *16
     uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n; // *16
 
-    //s_sum_tile_type S_sum_tile, S_max_tile;
-    s_sum_tile_type S_logsumexp_tile;
-    //TODO: tile load (non-full) w/bounds check
-    tile_load_full(&S_logsumexp_tile, ws_maxes, ugemm_kq_wg_tile_n,
-            sg_j0_kq + wg_j0, 0);
-    //tile_load_full(
-    //&S_max_tile, ws_maxes, ugemm_kq_wg_tile_n, sg_j0_kq + wg_j0, 0);
-    //tile_load_full(
-    //&S_sum_tile, ws_sums, ugemm_kq_wg_tile_n, sg_j0_kq + wg_j0, 0);
-
-    //#if SOFTMAX_INF_AS_ZERO //TODO: needed? would be set in forward pass so just read should suffice? can differ in training and forward?? ask Yixin
-    //#define set_zeros(v) vselect(-FLT_MAX, v, visfinite(v))
-    //tile_elementwise(S_max_tile, set_zeros);
-
-    /* Rescale by 1 / (column sums) */
-    //#define set_zeros2(v) (vselect(native_vrecip(v), 1.f, v == 0))
-    //tile_elementwise(S_sum_tile, set_zeros2);
-    //#else
-    //tile_elementwise(S_sum_tile, native_vrecip);
-    //#endif
-
-    // print_tile(S_max_tile, "%7.3f", 0, 0 ,0, ugemm_kq_sg_per_wg_m, ugemm_kq_sg_per_wg_n);
-    // print_tile(S_sum_tile, "%7.3f", 0, 0 ,0, ugemm_kq_sg_per_wg_m, ugemm_kq_sg_per_wg_n);
-
-    a_tile_type dV_tile;
+    a_tile_type dV_tile, dK_tile;
 
     if (k0end > 0) {
         //if (q0end > 0) {
@@ -649,302 +703,367 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     }
 
     /* Main loop over k blocks */
-    //for (int k0 = 0; k0 < k0end; k0 += ugemm_kq_wg_tile_m) {
-    //for (int q0 = 0; q0 < q0end; q0 += ugemm_kq_wg_tile_n) {
+    for (int q0 = 0; q0 < q0end; q0 += ugemm_kq_wg_tile_n) {
+        int k0 = wg_i0;
 
-    int k0 = wg_i0;
+        bool first = (q0 == 0);
+        int qnext = q0 + ugemm_kq_wg_tile_n;
+        bool last = (qnext >= q0end);
 
-    //bool first = (q0 == 0);
-    //int knext = q0 + ugemm_kq_wg_tile_n;
-    //bool last = (qnext >= q0end);
+        //        // TODO: load attn mask
+        //
+        //        // TODO: need k mask for in/oob ?
+        // ldk = 32, D_MAX=32>hs16, k0end:total#k, ugemm_kq_wg_tile_n < queries, d=16
+        // ldq16 ldk32
 
-    bool first = (k0 == 0);
-    int knext = k0 + ugemm_kq_wg_tile_m;
-    bool last = (knext >= k0end);
-    //
-    //        // TODO: load attn mask
-    //
-    //        // TODO: need k mask for in/oob ?
-    // ldk = 32, D_MAX=32>hs16, k0end:total#k, ugemm_kq_wg_tile_n < queries, d=16
-    // ldq16 ldk32
-
-    /* Calculate S = (K^T) * Q */
+        /* Calculate S = (K^T) * Q */
 #if DO_MM
-    s_tile_type S_tile
-            = ugemm_kq(K, ldk, Q_slm, D_MAX, k0end, ugemm_kq_wg_tile_n, d, k0,
-                    0, 0, sg_i_kq, sg_j_kq, (local char *)ugemm_slm);
+        s_tile_type S_tile
+                = ugemm_kq(K_slm, ugemm_kq_wg_tile_n, Q, ldq,
+                           ugemm_kq_wg_tile_m, q0end, d,
+                           0, q0, 0,
+                           sg_i_kq, sg_j_kq, (local char *)ugemm_slm);
 #else
-    s_tile_type S_tile;
+        s_tile_type S_tile;
 #endif
 
-    /* TODO: Apply attention mask */
+        uint sg_i0_s2 = sg_i_kq * ugemm_kq_sg_tile_m + k0;
+        uint sg_j0_s2 = sg_j_kq * ugemm_kq_sg_tile_n + q0;
+        //tile_store(S_tile, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
 
-    /* TODO: Apply k mask */
-    //if (remainder_k) { tile_hbroadcast_min(&S_tile, k_mask); }
-    /* TODO: causal masking fns???  */
+        /* TODO: Apply attention mask */
 
-    /* Before softmax, we will need to scale columns by maximum values to avoid overflow. */
-    //tile_vbroadcast_sub(&S_tile, S_max_tile);
-#define mulscale(x) (x * scale)
-    tile_elementwise(S_tile, mulscale);
-    tile_vbroadcast_sub(&S_tile, S_logsumexp_tile);
+        /* TODO: Apply k mask */
+        //if (remainder_k) { tile_hbroadcast_min(&S_tile, k_mask); }
+        /* TODO: causal masking fns???  */
 
-/* Scale + exponentiate */
-#define scaled_exp(x) native_vexp2(x * 1.442695f)
-    tile_elementwise(S_tile, scaled_exp);
+        /* Before softmax, we will need to scale columns by maximum values to avoid overflow. */
+        //tile_vbroadcast_sub(&S_tile, S_max_tile);
 
-    //print_tile(S_sum_tile, "%7.3f", 0, 0 ,0, ugemm_kq_sg_per_wg_m, ugemm_kq_sg_per_wg_n);
-    //tile_vbroadcast_mul(&S_tile, S_sum_tile);
+        s_sum_tile_type S_logsumexp_tile;
+        //TODO: tile load (non-full) w/bounds check
+        tile_load_full(&S_logsumexp_tile, ws_maxes, ugemm_kq_wg_tile_n,
+                sg_j0_kq + q0, 0);
+    #define mulscale(x) (x * scale)
+        tile_elementwise(S_tile, mulscale);
+        tile_vbroadcast_sub(&S_tile, S_logsumexp_tile);
 
-    uint sg_i0_s2 = sg_i_kq * ugemm_kq_sg_tile_m + k0;
-    uint sg_j0_s2 = sg_j_kq * ugemm_kq_sg_tile_n + wg_j0;
-    s_tile_type_reblock S_tile_reblock;
-    tile_copy_reblock(S_tile, &S_tile_reblock);
-    //tile_store(S_tile, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
-    //return;
+    /* Scale + exponentiate */
+    #define scaled_exp(x) native_vexp2(x * 1.442695f)
+        tile_elementwise(S_tile, scaled_exp);
 
-    //uint sg_i0_ds = sg_i_kq * ugemm_kq_sg_tile_m;
-    //uint sg_j0_ds = sg_j_kq * ugemm_kq_sg_tile_n;
-    //tile_store_full(S_tile, dS_slm, ugemm_kq_wg_tile_m, sg_i0_ds, sg_j0_ds);
+        //print_tile(S_sum_tile, "%7.3f", 0, 0 ,0, ugemm_kq_sg_per_wg_m, ugemm_kq_sg_per_wg_n);
+        //tile_vbroadcast_mul(&S_tile, S_sum_tile);
+
+        s_tile_type_reblock S_tile_reblock;
+        tile_copy_reblock(S_tile, &S_tile_reblock);
+        //tile_store(S_tile, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
+        // return;
+
+        uint sg_i0_ds = sg_i_kq * ugemm_kq_sg_tile_m;
+        uint sg_j0_ds = sg_j_kq * ugemm_kq_sg_tile_n;
+        tile_store_full(S_tile, dS_slm, ugemm_kq_wg_tile_m, sg_i0_ds, sg_j0_ds);
 
 #if USE_SYSTOLIC_UKERNEL
-    tile_store_sys_src2(S_tile_reblock, (local FMA_TYPE *)S_slm,
-            ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_n, sg_i0_kq, sg_j0_kq);
+        tile_store_sys_src2(S_tile_reblock, (local FMA_TYPE *)S_slm,
+                ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_n, sg_i0_kq, sg_j0_kq);
 #else
-    tile_store_t_packed_src1(S_tile_reblock, S_slm, ugemm_vs_sg_tile_n,
-            ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
+        tile_store_t_packed_src1(S_tile_reblock, S_slm, ugemm_vs_sg_tile_n,
+                ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
 #endif
 
-    //   a_tile_type ttile;
-    //   tile_fill(ttile, get_sub_group_local_id());
-    //   //tile_store_full(ttile, S_slm, D_MAX, sg_i_vs * ugemm_vs_sg_tile_m, sg_j_vs * ugemm_vs_sg_tile_n);
-    //   tile_store_t_full(ttile, S_slm, D_MAX, sg_i_vs * ugemm_vs_sg_tile_m, sg_j_vs * ugemm_vs_sg_tile_n);
-    //   barrier(CLK_LOCAL_MEM_FENCE);
-    //     if(get_group_id(0) == 0 && get_sub_group_local_id() == 0) {
-    //         for(int i=0; i<ugemm_kq_wg_tile_n; ++i) {
-    //             for(int j=0; j<D_MAX; ++j) {
-    //                     printf("%6.1f ", S_slm[i * D_MAX + j]);
-    //             }
-    //             printf("sslm\n");
-    //         }
-    //
-    //   }
-    //   return;
+        //   a_tile_type ttile;
+        //   tile_fill(ttile, get_sub_group_local_id());
+        //   //tile_store_full(ttile, S_slm, D_MAX, sg_i_vs * ugemm_vs_sg_tile_m, sg_j_vs * ugemm_vs_sg_tile_n);
+        //   tile_store_t_full(ttile, S_slm, D_MAX, sg_i_vs * ugemm_vs_sg_tile_m, sg_j_vs * ugemm_vs_sg_tile_n);
+        //   barrier(CLK_LOCAL_MEM_FENCE);
+        //     if(get_group_id(0) == 0 && get_sub_group_local_id() == 0) {
+        //         for(int i=0; i<ugemm_kq_wg_tile_n; ++i) {
+        //             for(int j=0; j<D_MAX; ++j) {
+        //                     printf("%6.1f ", S_slm[i * D_MAX + j]);
+        //             }
+        //             printf("sslm\n");
+        //         }
+        //
+        //   }
+        //   return;
 
-    barrier(CLK_LOCAL_MEM_FENCE);
+        if (q0end > 0) {
+            // TODO: if() needed?
+            q_tile_type
+                    dA_tile; //TODO: convert dA_tile -> dA_tile1 : s_tile_type instead of double read
+            uint q0_copy = q_tile_sg_n * sg_ij;
 
-    int k_chunk = min(k0end - k0, ugemm_kq_wg_tile_m);
+            tile_load_src1(&dA_tile, dA, d, q_group_size, lda, 0, q0 + q0_copy,
+                    remainder_q);
+            tile_store_t_slm_src1(
+                    &dA_tile, Q_slm, ugemm_kq_sg_tile_n, D_MAX, q0_copy, 0);
+        }
+
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        int k_chunk = min(k0end - k0, ugemm_kq_wg_tile_m);
+        //TODO: dA load to SLM then re-use for dV, dP
 #if DO_MM
-    a_tile_type dV_tile1 = ugemm_vs(dA + ldv * wg_j0, lda, S_slm,
-            ugemm_kq_wg_tile_m, d, ugemm_kq_wg_tile_n, k_chunk, 0, 0, 0,
-            sg_i_vs, sg_j_vs, (local char *)ugemm_slm);
+        a_tile_type dV_tile1 = ugemm_vs(Q_slm, D_MAX, S_slm,
+                ugemm_kq_wg_tile_m, d, ugemm_kq_wg_tile_n, k_chunk, 0, 0, 0,
+                sg_i_vs, sg_j_vs, (local char *)ugemm_slm);
+
+        //gmem version
+        //a_tile_type dV_tile1 = ugemm_vs(dA + ldv * q0, lda, S_slm,
+                //ugemm_kq_wg_tile_m, d, ugemm_kq_wg_tile_n, k_chunk, 0, 0, 0,
+                //sg_i_vs, sg_j_vs, (local char *)ugemm_slm);
 #else
-    a_tile_type dV_tile1;
+        a_tile_type dV_tile1;
 #endif
 
-    tile_binary(dV_tile, dV_tile1, binary_add);
-    // tile_store(dV_tile, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
-    //
+        tile_binary(dV_tile, dV_tile1, binary_add);
+        //tile_store(dV_tile, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
+        //return;
+
+        // Calculate D_i tile, TODO: this should be a separate kernel and replace calculation w/DRAM read
+        s_sum_tile_type D_i;
+        tile_fill(D_i, 0.0f);
+        if (q0end > 0) {
+
+            const global float *ws_Di = ws + q; //TODO: batch
+            tile_load_full(&D_i, ws_Di, q0end, q0 + sg_j0_kq, 0);
+
+            barrier(CLK_LOCAL_MEM_FENCE);
+
+            //             if(get_group_id(0) == 0 && get_sub_group_local_id() == 0) {
+            //                for(int i=0; i<ugemm_kq_wg_tile_n; ++i) {
+            //                    for(int j=0; j<D_MAX; ++j) {
+            //                            printf("%6.1f ", Q_slm[i * D_MAX + j]);
+            //                    }
+            //                    printf("daslm\n");
+            //                }
+
+            //             }
+            //             return;
+        }
+
+
+#if DO_MM
+        p_tile_type dP_tile = ugemm_vtdA(V + k0 * ldv, ldv, Q_slm, D_MAX,
+                ugemm_kq_wg_tile_n, k0end, d, 0, 0, 0, sg_i_kq, sg_j_kq,
+                (local char *)ugemm_slm);
+#else
+        p_tile_type dP_tile;
+#endif
+        //if(get_sub_group_id() == 0 && get_group_id(0) == 0)
+        //printf("q%d D_i %f ",q0, D_i.x[0].s0);
+        // printf("Stile %f ", S_tile.x[0].s0);
+        //tile_store(dP_tile, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2); // layout.C = T this one latest
+
+        //tile_store(dP_tile, S2_test, 32, 32, 32, sg_i0_s2, sg_j0_s2);   // layout.C = N
+        //return; //seems right (transposed?)
+
+        //tile_hbroadcast_sub(&dP_tile, D_i);
+        tile_vbroadcast_sub(&dP_tile, D_i);
+
+        //tile_store(dP_tile, S2_test, 32, 32, 32, sg_i0_s2, sg_j0_s2);
+        //tile_store(dP_tile, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
+        //return;
+
+        //tile_fill(S_tile, 1.f);
+
+        // reload since too many registers used
+        tile_load_full(&S_tile, dS_slm, ugemm_kq_wg_tile_m, sg_i_kq * ugemm_kq_sg_tile_m, sg_j_kq * ugemm_kq_sg_tile_n);
+        barrier(CLK_LOCAL_MEM_FENCE);
+#define binary_mul(x, y) ((x) * (y))
+        tile_binary(dP_tile, S_tile, binary_mul); // is this right?
+
+    #define scale_dS(x) (x * scale)
+        //tile_elementwise(dP_tile, scale_dS); // TODO: scaled by log2? scale needed at all?? rolled into dP?
+
+        p_tile_type_reblock P_tile_reblock;
+        tile_copy_reblock(dP_tile, &P_tile_reblock);
+        //tile_store(P_tile_reblock, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2); //latest
+
+        //tile_store(S_tile, S2_test, 32, 32, 32, sg_i0_s2, sg_j0_s2);
+        //return;
+
+        // SLM for dK = dS^t * Q
+        tile_store_t_packed_src1(P_tile_reblock, S_slm, ugemm_vs_sg_tile_n,
+                ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
+
+        // SLM for dQ = dS * K, panel = sg_tile_n, ld=wg_tile_m
+        tile_store_block_packed(P_tile_reblock, Q_slm, ugemm_vs_sg_tile_n,
+                ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
+        //tile_store_t_packed_src1(P_tile_reblock, Q_slm, ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
+
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        // dK = dS^t * Q
+#if DO_MM
+        a_tile_type dK_tile1
+                = ugemm_qdSt(Q + ldq * q0, ldq, S_slm, ugemm_kq_wg_tile_m, d,
+                        ugemm_kq_wg_tile_n, ugemm_kq_wg_tile_m, 0, 0, 0, sg_i_vs,
+                        sg_j_vs, (local char *)ugemm_slm);
+#else
+        a_tile_type dK_tile1;
+#endif
+        // tile_store(dK_tile1, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
+        tile_binary(dK_tile, dK_tile1, binary_add);
+
+        ////tile_fill(dK_tile1, get_group_id(0) + 1);
+
+        /*
+        //tile_store_t_full(dK_tile1, S_slm, 32, sg_i_vs * ugemm_vs_sg_tile_m, sg_j_vs * ugemm_vs_sg_tile_n);
+        //barrier(CLK_LOCAL_MEM_FENCE);
+
+        uint sg_i0_dk = sg_i_kq * ugemm_kq_sg_tile_m;
+        uint sg_j0_dk = sg_j_kq * ugemm_kq_sg_tile_n + k0;
+
+        // write transposed slm to global
+        __global KEY_DATA_T* dK_write = dK + ldk * (sg_i0_dk) + sg_j0_dk;
+        _Pragma("unroll") for (int j = 0; j < ugemm_vs_wg_tile_n; j++, dK_write += ldk) {
+            _Pragma("unroll") for (int i0 = 0; i0 < ugemm_vs_wg_tile_m; i0 += SUBGROUP_SIZE) {
+                // TODO: bounds checking?
+                int i = i0 + get_sub_group_local_id();
+                global_atomic_add(dK_write + i, S_slm[j * D_MAX + i]);
+            }
+        }
+        */
+
+        barrier(CLK_LOCAL_MEM_FENCE);
+        // dQ = dS * K
+#if DO_MM
+        a_tile_type dQ_tile = ugemm_ktq(K + k0, ldk, Q_slm, ugemm_kq_wg_tile_m, d,
+                ugemm_kq_wg_tile_n, ugemm_kq_wg_tile_m, 0, 0, 0, sg_i_vs, sg_j_vs,
+                (local char *)ugemm_slm);
+#else
+        a_tile_type dQ_tile;
+#endif
+
+        // update dQ
+        a_tile_type_dst dQ_tile_dst;
+        /* Convert to half precision and store */
+        tile_copy_reblock(dQ_tile, &dQ_tile_dst);
+
+        //tile_atomic_add(dQ_tile_dst,
+        //    dQ + wg_j0, k, d, ldk, sg_j0_vs, sg_i0_vs);
+
+        //tile_fill(dQ_tile_dst, wg_i0 + 1); // 1,2,3,4
+
+        // tile_store(dQ_tile_dst, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
+
+        uint sg_i0_dq = sg_i_kq * ugemm_kq_sg_tile_m;
+        uint sg_j0_dq = sg_j_kq * ugemm_kq_sg_tile_n;
+        // sum accross rows (i?)
+        tile_atomic_add(
+                dQ_tile_dst, dQ + q0 * ldq, k, d, ldq, sg_i0_dq, sg_j0_dq);
+        //tile_store(dQ_tile_dst, dQ + q0 * ldq, k, d, ldq, sg_i0_dq, sg_j0_dq);
+
+    }
+
+    //TODO: wg_i0 = k0??
+
     // update dV
     a_tile_type_dst dV_tile_dst;
     /* Convert to half precision and store */
     tile_copy_reblock(dV_tile, &dV_tile_dst);
-    //tile_copy_reblock(dV_tile2, &dV_tile_dst);
 
     uint sg_i0_vs = sg_i_vs * ugemm_vs_sg_tile_m;
     uint sg_j0_vs = sg_j_vs * ugemm_vs_sg_tile_n;
 
     //if ((wg_i0==16 && wg_j0==0) || (wg_i0==0 && wg_j0==0)) {
     //tile_store(dV_tile_dst, dV, d, q_group_size, ldv, sg_i0_vs, sg_j0_vs);
-    //}
+    //} * ldv
 
-    tile_atomic_add(dV_tile_dst, dV + k0 * ldv, d, k, ldv, sg_i0_vs, sg_j0_vs);
+    //k0 = wg_i0
+    //tile_atomic_add(dV_tile_dst, dV + wg_i0 * ldv, d, k, ldv, sg_i0_vs, sg_j0_vs);
+    tile_store(dV_tile_dst, dV + wg_i0 * ldv, d, q_group_size, ldv, sg_i0_vs, sg_j0_vs);
 
     // /update dV
-    // return;
+
+    // update dK
+    a_tile_type_dst dK_tile_dst;
+    /* Convert to half precision and store */
+    tile_copy_reblock(dK_tile, &dK_tile_dst);
+
+    uint sg_i0_dk = sg_i_kq * ugemm_kq_sg_tile_m;
+    uint sg_j0_dk = sg_j_kq * ugemm_kq_sg_tile_n;
+    //tile_atomic_add(dK_tile_dst, dK + wg_i0, k, d, ldk, sg_i0_dk, sg_j0_dk);
+    tile_store(dK_tile_dst, dK + wg_i0, k, d, ldk, sg_i0_dk, sg_j0_dk);
+    // /update dK
+}
+
+__attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
+preprocess_Di(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
+        const global VAL_DATA_T *V, global float *ws,
+        //TODO: calculate Di AoT and pass in (separate kernel?) or inline?
+        const global VAL_DATA_T *A, const global VAL_DATA_T *dA,
+        global DST_DATA_T *S2_test, global DST_DATA_T *dK,
+        global DST_DATA_T *dQ, global DST_DATA_T *dV,
+        const global SCALE_DATA_T *scale_ptr, int d, int k, int q,
+        const int attn_mask_type
+#if WITH_ATTN_MASK
+        ,
+        const global MSK_DATA_T *msk
+#endif
+        ,
+        KEY_OFFSETS, QRY_OFFSETS, VAL_OFFSETS, DST_OFFSETS
+#if WITH_ATTN_MASK
+        ,
+        MSK_OFFSETS
+#endif
+        ,
+        const int remainder_k, const int remainder_q) {
+
+    uint lda = DST_S2;
+
+    // TODO: change to q?
+    uint n_wg_k = DIV_UP(k, ugemm_kq_wg_tile_m);
+    uint wg_k = get_group_id(0) % n_wg_k;
+    uint wg_q = get_group_id(0);
+
+    uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
+    uint sg_i_kq = sg_ij % ugemm_kq_sg_per_wg_m;
+    uint sg_j_kq = sg_ij / ugemm_kq_sg_per_wg_m;
+    uint b1 = get_group_id(2);
+
+    uint b0, b0_kv;
+    uint wg_i0 = wg_k * ugemm_kq_wg_tile_m;
+    uint wg_j0 = wg_q * ugemm_kq_wg_tile_n;
+
+
+    #define Di_slm_size (D_MAX * ugemm_kq_wg_tile_n * sizeof(VAL_DATA_T))
+    local char slm[Di_slm_size];
+
+    local VAL_DATA_T *Di_slm = (local VAL_DATA_T *)&slm[0];
+
+    uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m;
+    uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n;
 
     s_sum_tile_type D_i;
     tile_fill(D_i, 0.0f);
-    if (k0end > 0) {
-        /* Load Q tile, destined for SLM */
+    if (q > 0) {
         s_tile_type dA_tile1, A_tile; // for D_i calculation
-        q_tile_type
-                dA_tile; //TODO: convert dA_tile -> dA_tile1 : s_tile_type instead of double read
         uint q0_copy = q_tile_sg_n * sg_ij;
-
-        tile_load_src1(&dA_tile, dA, d, q_group_size, lda, 0, wg_j0 + q0_copy,
-                remainder_q);
-        tile_store_t_slm_src1(
-                &dA_tile, Q_slm, ugemm_kq_sg_tile_n, D_MAX, q0_copy, 0);
-        //tile_store_packed_src1(
-        //dA_tile, Q_slm, ugemm_kq_sg_tile_n, D_MAX, q0_copy, 0);
 
         tile_load(&dA_tile1, (global FMA_TYPE *)dA, d, q, lda, 0,
                 wg_j0 + q0_copy);
         tile_load(&A_tile, (global FMA_TYPE *)A, d, q, lda, 0, wg_j0 + q0_copy);
 #define binary_mul(x, y) ((x) * (y))
         tile_binary(A_tile, dA_tile1, binary_mul);
-        //h reduce this shit, maybe in SLM, this should be separate kernel
-        //tile_vreduce_add(A_tile, &D_i); // TODO: may be transposed?
-        //tile_hreduce_add(A_tile, &D_i); // TODO: may be transposed?
-        //tile_store(A_tile, S2_test, 32, 32, 32, sg_i0_s2, sg_j0_s2);   // layout.C = N
         tile_store_t_full(
-                A_tile, S_slm, ugemm_kq_wg_tile_m, sg_i0_kq, sg_j0_kq);
+                A_tile, Di_slm, ugemm_kq_wg_tile_m, sg_i0_kq, sg_j0_kq);
+
+        //TODO: can be improved, 0.2s runtime, perform in registers
         for (int j = 0; j < ugemm_kq_wg_tile_n; j++) {
             for (int i = get_sub_group_local_id(); i < ugemm_kq_wg_tile_m;
                     i += SUBGROUP_SIZE) {
-                if (j != 0) S_slm[i] += S_slm[j * ugemm_kq_wg_tile_m + i];
+                if (j != 0) Di_slm[i] += Di_slm[j * ugemm_kq_wg_tile_m + i];
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
 
-        tile_load_full(&D_i, S_slm, ugemm_kq_wg_tile_m, sg_i0_kq, sg_j0_kq);
+        tile_load_full(&D_i, Di_slm, ugemm_kq_wg_tile_m, sg_i0_kq, sg_j0_kq);
 
-        //tile_load_full(&A_tile, S_slm, ugemm_kq_wg_tile_m, sg_i0_kq, sg_j0_kq);
-        //tile_store(A_tile, S2_test, 32, 32, 32, sg_i0_s2, sg_j0_s2);   // layout.C = N
-        //return;
-
-        barrier(CLK_LOCAL_MEM_FENCE);
-
-        //             if(get_group_id(0) == 0 && get_sub_group_local_id() == 0) {
-        //                for(int i=0; i<ugemm_kq_wg_tile_n; ++i) {
-        //                    for(int j=0; j<D_MAX; ++j) {
-        //                            printf("%6.1f ", Q_slm[i * D_MAX + j]);
-        //                    }
-        //                    printf("daslm\n");
-        //                }
-
-        //             }
-        //             return;
+        global float *ws_Di = ws + q; //TODO: batch
+        tile_store_full(D_i, ws_Di, q, wg_j0 + sg_j0_kq, 0);//should be 1d write
     }
 
-    // tile_fill(dA_tile1, get_group_id(0));
-
-#if DO_MM
-    p_tile_type P_tile = ugemm_vtdA(V + k0 * ldv, ldv, Q_slm, D_MAX,
-            ugemm_kq_wg_tile_n, k0end, d, 0, 0, 0, sg_i_kq, sg_j_kq,
-            (local char *)ugemm_slm);
-#else
-    p_tile_type P_tile;
-#endif
-    //if(get_sub_group_id() == 0 && get_group_id(0) == 0)
-    //printf("D_i %f ", D_i.x[0].s0);
-    // printf("Stile %f ", S_tile.x[0].s0);
-    tile_store(P_tile, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2); // layout.C = T
-    //tile_store(P_tile, S2_test, 32, 32, 32, sg_i0_s2, sg_j0_s2);   // layout.C = N
-    //return; //seems right (transposed?)
-
-    //tile_hbroadcast_sub(&P_tile, D_i);
-    tile_vbroadcast_sub(&P_tile, D_i);
-
-    //tile_store(P_tile, S2_test, 32, 32, 32, sg_i0_s2, sg_j0_s2);
-    //tile_store(P_tile, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
-    //return;
-
-    //tile_fill(S_tile, 1.f);
-
-    // reload since too many registers used
-    //tile_load_full(&S_tile, dS_slm, ugemm_kq_wg_tile_m, sg_i_kq * ugemm_kq_sg_tile_m, sg_j_kq * ugemm_kq_sg_tile_n);
-    //barrier(CLK_LOCAL_MEM_FENCE);
-    tile_binary(P_tile, S_tile, binary_mul); // is this right?
-
-#define scale_dS(x) (x * scale)
-    //tile_elementwise(P_tile, scale_dS); // TODO: scaled by log2? scale needed at all?? rolled into dP?
-
-    p_tile_type_reblock P_tile_reblock;
-    tile_copy_reblock(P_tile, &P_tile_reblock);
-    tile_store(P_tile_reblock, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
-    //tile_store(S_tile, S2_test, 32, 32, 32, sg_i0_s2, sg_j0_s2);
-    //return;
-
-    // SLM for dK = dS^t * Q
-    tile_store_t_packed_src1(P_tile_reblock, S_slm, ugemm_vs_sg_tile_n,
-            ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
-
-    // SLM for dQ = dS * K, panel = sg_tile_n, ld=wg_tile_m
-    tile_store_block_packed(P_tile_reblock, Q_slm, ugemm_vs_sg_tile_n,
-            ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
-    //tile_store_t_packed_src1(P_tile_reblock, Q_slm, ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m, sg_j0_kq, sg_i0_kq);
-
-    barrier(CLK_LOCAL_MEM_FENCE);
-
-    // dK = dS^t * Q
-#if DO_MM
-    a_tile_type dK_tile1
-            //= ugemm_vs(Q + ldq * wg_j0, ldq, S_slm, ugemm_kq_wg_tile_m,
-            = ugemm_qdSt(Q + ldq * wg_j0, ldq, S_slm, ugemm_kq_wg_tile_m, d,
-                    ugemm_kq_wg_tile_n, ugemm_kq_wg_tile_m, 0, 0, 0, sg_i_vs,
-                    sg_j_vs, (local char *)ugemm_slm);
-#else
-    a_tile_type dK_tile1;
-#endif
-    // tile_store(dK_tile1, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
-
-    // update dK
-    a_tile_type_dst dK_tile_dst;
-    /* Convert to half precision and store */
-    tile_copy_reblock(dK_tile1, &dK_tile_dst);
-
-    uint sg_i0_dk = sg_i_kq * ugemm_kq_sg_tile_m;
-    uint sg_j0_dk = sg_j_kq * ugemm_kq_sg_tile_n;
-    tile_atomic_add(dK_tile_dst, dK + k0, k, d, ldk, sg_i0_dk, sg_j0_dk);
-
-    ////tile_fill(dK_tile1, get_group_id(0) + 1);
-
-    /*
-    //tile_store_t_full(dK_tile1, S_slm, 32, sg_i_vs * ugemm_vs_sg_tile_m, sg_j_vs * ugemm_vs_sg_tile_n);
-    //barrier(CLK_LOCAL_MEM_FENCE);
-
-    uint sg_i0_dk = sg_i_kq * ugemm_kq_sg_tile_m;
-    uint sg_j0_dk = sg_j_kq * ugemm_kq_sg_tile_n + k0;
-
-    // write transposed slm to global
-    __global KEY_DATA_T* dK_write = dK + ldk * (sg_i0_dk) + sg_j0_dk;
-    _Pragma("unroll") for (int j = 0; j < ugemm_vs_wg_tile_n; j++, dK_write += ldk) {
-        _Pragma("unroll") for (int i0 = 0; i0 < ugemm_vs_wg_tile_m; i0 += SUBGROUP_SIZE) {
-            // TODO: bounds checking?
-            int i = i0 + get_sub_group_local_id();
-            global_atomic_add(dK_write + i, S_slm[j * D_MAX + i]);
-        }
-    }
-    */
-
-    // /update dK
-
-    barrier(CLK_LOCAL_MEM_FENCE);
-
-    // figure out dS00, dS01 * K0, K1 order
-    // dS00*K0 + dS01*K1 -> correct?
-    // K0'*dS00' + K1'*dS01'
-
-    // dQ = dS * K
-#if DO_MM
-    a_tile_type dQ_tile = ugemm_ktq(K + k0, ldk, Q_slm, ugemm_kq_wg_tile_m, d,
-            ugemm_kq_wg_tile_n, ugemm_kq_wg_tile_m, 0, 0, 0, sg_i_vs, sg_j_vs,
-            (local char *)ugemm_slm);
-#else
-    a_tile_type dQ_tile;
-#endif
-
-    // update dQ
-    a_tile_type_dst dQ_tile_dst;
-    /* Convert to half precision and store */
-    tile_copy_reblock(dQ_tile, &dQ_tile_dst);
-
-    //tile_atomic_add(dQ_tile_dst,
-    //    dQ + wg_j0, k, d, ldk, sg_j0_vs, sg_i0_vs);
-
-    //tile_fill(dQ_tile_dst, wg_i0 + 1); // 1,2,3,4
-
-    // tile_store(dQ_tile_dst, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2);
-
-    uint sg_i0_dq = sg_i_kq * ugemm_kq_sg_tile_m;
-    uint sg_j0_dq = sg_j_kq * ugemm_kq_sg_tile_n;
-    // sum accross rows (i?)
-    tile_atomic_add(
-            dQ_tile_dst, dQ + wg_j0 * ldq, k, d, ldq, sg_i0_dq, sg_j0_dq);
-
-    // sum accross cols (j?)
-    //tile_atomic_add(dQ_tile_dst,
-    //dQ + k0 * ldq, k, d, ldq, sg_i0_dq, sg_j0_dq);
 }

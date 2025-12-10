@@ -115,10 +115,6 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     evalParams.beta = 0;
     evalParams.euCount = hwInfo.euCount;
 
-    /* Locate appropriate kernel catalog */
-    if (localA && localB)
-        stub("Unsupported protocol");
-
     kcatalog::Catalog catalog = [&]() {
         if (localA)
             return kcatalog::Catalog(CatalogLMR);

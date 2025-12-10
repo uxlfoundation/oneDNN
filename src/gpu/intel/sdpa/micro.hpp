@@ -41,9 +41,7 @@ struct micro_params_t : trivially_serializable_t<micro_params_t> {
     const std::vector<const char *> &get_kernel_names() const {
         static const std::vector<const char *> kernel_names_fwd
                 = {"micro_sdpa"};
-        static const std::vector<const char *> kernel_names_bwd
-                = {"micro_sdpa_bwd"};
-        return is_fwd ? kernel_names_fwd : kernel_names_bwd;
+        return kernel_names_fwd;
     }
 
     status_t create_generator(const intel::engine_t &engine,
@@ -104,7 +102,7 @@ struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
 
     const std::vector<const char *> &get_kernel_names() const {
         static const std::vector<const char *> kernel_names_bwd
-                = {"micro_sdpa_bwd"};
+                = {"preprocess_Di", "micro_sdpa_bwd"};
         return kernel_names_bwd;
     }
 
@@ -562,7 +560,6 @@ struct micro_bwd_t : public primitive_t {
     status_t init(impl::engine_t *engine) override;
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        printf("BWD EXECUTE\n");
         return execute_backward(ctx);
     }
 

@@ -474,21 +474,28 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
     TIME_EXECUTE(execute_unmap_args(args, dnnl_args));
 
     dnnl_status_t status = dnnl_runtime_error;
-    bool run_regular_exec = true;
+    if (is_gpu(engine) && execution_mode == execution_mode_t::graph) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
-    while (execution_mode == execution_mode_t::graph && is_gpu(engine)) {
         void *queue_ptr;
         DNN_SAFE(dnnl_sycl_interop_stream_get_queue(stream, &queue_ptr), CRIT);
-        sycl::queue queue = *static_cast<sycl::queue *>(queue_ptr);
-        const bool can_run_sycl_graph = queue.get_device().get_backend()
-                == sycl::backend::ext_oneapi_level_zero;
-        if (!can_run_sycl_graph) break;
+        ::sycl::queue queue = *static_cast<::sycl::queue *>(queue_ptr);
+        if (queue.get_device().get_backend()
+                != ::sycl::backend::ext_oneapi_level_zero) {
+            BENCHDNN_PRINT(0, "%s %s\n",
+                    "[ERROR] SYCL graph execution is only available on Level "
+                    "Zero backend; currently using:",
+                    ::sycl::detail::get_backend_name_no_vendor(
+                            queue.get_device().get_backend())
+                            .data());
+            if (res) res->state = FAILED;
+            return FAIL;
+        }
 
         BENCHDNN_PRINT(
                 2, "%s\n", "[INFO] Using experimental SYCL graph execution.");
-        sycl::ext::oneapi::experimental::command_graph graph {
+        ::sycl::ext::oneapi::experimental::command_graph graph {
                 queue.get_context(), queue.get_device(),
-                {sycl::ext::oneapi::experimental::property::graph::
+                {::sycl::ext::oneapi::experimental::property::graph::
                                 assume_buffer_outlives_graph {}}};
 
         try {
@@ -498,21 +505,21 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
             DNN_SAFE(dnnl_stream_wait(stream), CRIT);
 
             auto exec = graph.finalize();
-            queue.ext_oneapi_graph(exec).wait();
-        } catch (const sycl::exception &e) {
+            TIME_EXECUTE(queue.ext_oneapi_graph(exec).wait());
+        } catch (const std::exception &e) {
             BENCHDNN_PRINT(0, "%s %s\n",
                     "[ERROR] SYCL graph execution exception:", e.what());
             if (res) res->state = FAILED;
             return FAIL;
         }
-
-        // SYCL graph feature completed submission and execution, no need to
-        // have a regular run.
-        run_regular_exec = false;
-        break;
-    }
+#else
+        BENCHDNN_PRINT(0, "%s\n",
+                "[ERROR] Graph execution is only available on SYCL runtime "
+                "with Level Zero backend.");
+        if (res) res->state = FAILED;
+        return FAIL;
 #endif
-    if (run_regular_exec) {
+    } else {
         stream_staller_t staller(stream);
         TIME_EXECUTE(status = exec_func(stream, dnnl_args));
         staller.release();

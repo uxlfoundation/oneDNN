@@ -116,12 +116,17 @@ int verify_input(const settings_t &s, const settings_t &def) {
         }
     }
 
-    static constexpr int n_vdims_inputs = 2;
-    if (s.prb_vdims.n_inputs() != n_vdims_inputs) {
+    // For grouped encoding, we need 3 dimensions (src: 2D, wei: 3D, dst: 2D)
+    // For regular matmul, we need 2 dimensions (src: 2D, wei: 2D)
+    const bool has_grouped
+            = s.sparse_options[0].get_encoding(DNNL_ARG_SRC) == dnnl_grouped;
+    const int expected_n_vdims_inputs = has_grouped ? 3 : 2;
+
+    if (s.prb_vdims.n_inputs() != expected_n_vdims_inputs) {
         BENCHDNN_PRINT(0,
                 "ERROR: Expected number of dims arguments is `%d`, provided "
                 "`%d`.\n",
-                n_vdims_inputs, s.prb_vdims.n_inputs());
+                expected_n_vdims_inputs, s.prb_vdims.n_inputs());
         SAFE_V(FAIL);
     }
     return OK;

@@ -325,7 +325,7 @@ std::string layout_t::desc_str(bool dnnl_style) const {
 
 void layout_t::sanity_check() const {
 #if !defined(NDEBUG) || GEMMSTONE_ASSERTIONS
-    // TODO: Enable enforcement of sorting, some implementation currently use
+    // TODO: Enable enforcement of sorting, some implementations currently use
     // layout_t to define an iteration order, and in this circumstance sorting
     // is not desired as sorting blocks results in different orders.
 

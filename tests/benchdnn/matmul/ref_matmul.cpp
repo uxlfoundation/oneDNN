@@ -30,6 +30,53 @@ int64_t wei_ba_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
     return (mb * prb->n + n) * prb->k + k;
 }
 
+// Reference implementation for grouped gemm
+// Computes per-expert matmuls: for each expert e, computes dst[e] = src[e] * wei[e]
+// TODO: add support for bias, scales, zero points
+void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
+    const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
+    const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
+    const dnn_mem_t &dst_m = args.find(DNNL_ARG_DST);
+
+    const int64_t group_count = prb->sparse_options.get_group_count();
+    const auto &M_dims = prb->sparse_options.get_group_dims();
+    const int64_t K = prb->k;
+    const int64_t N = prb->n;
+
+    // For each in the group compute a separate matmul
+    int64_t offset = 0;
+    for (int64_t g = 0; g < group_count; g++) {
+        // Number of tokens for this expert
+        const int64_t M_g = M_dims[g];
+        if (M_g == 0) continue;
+
+        // Weights offset for g (weights are 3D: [group_count, K, N])
+        const int64_t wei_offset = g * K * N;
+
+        for (int64_t m = 0; m < M_g; m++) {
+            for (int64_t n = 0; n < N; n++) {
+                float acc = 0.0f;
+                for (int64_t k = 0; k < K; k++) {
+                    // src: plain [total_M, K], indexed as [(offset + m), k]
+                    const int64_t src_idx = (offset + m) * K + k;
+                    // wei: plain [group_count, K, N], indexed as [g, k, n]
+                    const int64_t wei_idx = wei_offset + k * N + n;
+
+                    const float src_val = src_m.get_f32_elem(src_idx);
+                    const float wei_val = wei_m.get_f32_elem(wei_idx);
+                    acc += src_val * wei_val;
+                }
+                // dst: plain [total_M, N], indexed as [(offset + m), n]
+                const int64_t dst_idx = (offset + m) * N + n;
+                dst_m.set_f32_elem(dst_idx, acc);
+            }
+        }
+
+        // Update offset for next iteration
+        offset += M_g;
+    }
+}
+
 void compute_ref_matmul(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
@@ -399,7 +446,9 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
     const auto wei_encoding
             = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
 
-    if (src_encoding == dnnl_csr || wei_encoding == dnnl_csr
+    if (src_encoding == dnnl_grouped) {
+        compute_ref_grouped_matmul(prb, args);
+    } else if (src_encoding == dnnl_csr || wei_encoding == dnnl_csr
             || src_encoding == dnnl_coo || wei_encoding == dnnl_coo) {
         compute_ref_sparse_matmul(prb, args);
     } else {

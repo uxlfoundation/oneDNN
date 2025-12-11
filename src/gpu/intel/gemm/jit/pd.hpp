@@ -22,7 +22,7 @@
 #include "common/c_types_map.hpp"
 #include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/post_ops.hpp"
-#include "gpu/intel/gemm/exec_types.hpp" // @@@@@@ needed ?????
+//#include "gpu/intel/gemm/exec_types.hpp" // @@@@@@ needed ?????
 
 namespace dnnl {
 namespace impl {
@@ -244,6 +244,7 @@ struct pd_t : public gemm::pd_t {
         return k_grouped || n_grouped;
     }
     // @@@@@ used
+#if 0
     bool a_zp_host_scalar() const {
         auto &attr_zps = attr()->zero_points_;
         auto &zp = attr_zps.get(DNNL_ARG_A);
@@ -254,6 +255,25 @@ struct pd_t : public gemm::pd_t {
         auto &zp = attr_zps.get(DNNL_ARG_B);
         return zp.is_host_scalar();
     }
+#else
+    //auto attr_info = attr_info_t::create(attr());
+    //bool host_scales_by_alpha = attr_info.with_host_src_scale
+    //        || attr_info.with_host_wei_scale
+    //        || (attr_info.with_host_dst_scale
+    //                && attr()->post_ops_.len() == 0);
+    //// Bogus non-one value for host scalar.
+    //// Actual value will be passed on execution step
+    //if (host_scales_by_alpha) return 9.99f;
+    //return 1.0f;
+    bool a_zp_host_scalar() const {
+        auto attr_info = attr_info_t::create(attr());
+        return attr_info.with_host_wei_zp;
+    }
+    bool b_zp_host_scalar() const {
+        auto attr_info = attr_info_t::create(attr());
+        return attr_info.with_host_src_zp;
+    }
+#endif
     // @@@@@ used
     int a_q2d_group_k() const {
         if (a_zp_2d()) {

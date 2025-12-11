@@ -55,6 +55,50 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
         auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
         auto src_sparsity = prb->sparse_options.get_sparsity(DNNL_ARG_SRC);
         if (src_encoding != dnnl_sparse_encoding_undef) {
+            if (src_encoding == dnnl_grouped) {
+                // Grouped encoding: validate that weights are 3D
+                const auto &wei_dims = prb->weights_dims();
+                if (wei_dims.size() != 3) {
+                    BENCHDNN_PRINT(0,
+                            "Error: grouped src requires 3D weights "
+                            "[num_experts, K, N], got %dD\n",
+                            (int)wei_dims.size());
+                    return nullptr;
+                }
+
+                const dnnl_dim_t group_count
+                        = prb->sparse_options.get_group_count();
+                const auto &M_dims = prb->sparse_options.get_group_dims();
+                // Calculate total_M from M_dims
+                dnnl_dim_t total_M = 0;
+                for (size_t i = 0; i < M_dims.size(); i++) {
+                    total_M += M_dims[i];
+                }
+
+                // Validate that total_M matches the src M dimension
+                if (total_M != src_rt_dims[0]) {
+                    BENCHDNN_PRINT(0,
+                            "Error: sum of group M dimensions (%lld) doesn't "
+                            "match src M dimension (%lld)\n",
+                            (long long)total_M, (long long)src_rt_dims[0]);
+                    return nullptr;
+                }
+
+                const dnnl_dim_t K = src_rt_dims[1];
+
+                // Build actual dims array [total_M, K]
+                dnnl_dims_t actual_dims;
+                actual_dims[0] = total_M;
+                actual_dims[1] = K;
+
+                // Build group_dims array as shared dims {RUNTIME, K}
+                dnnl_dims_t group_dims;
+                group_dims[0] = DNNL_RUNTIME_DIM_VAL;
+                group_dims[1] = K;
+
+                return dnn_mem_t::init_grouped_md(prb->ndims, actual_dims, dt,
+                        group_count, 2, group_dims, dnnl_s32);
+            }
             const dnnl_dim_t nnz
                     = std::max(prb->m * prb->k * (1.0f - src_sparsity), 1.0f);
             switch (src_encoding) {
@@ -97,15 +141,62 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                     break;
                 default: assert(!"unsupported encoding"); return nullptr;
             }
-        } else
-            return dnn_mem_t::init_md(prb->ndims, weights_rt_dims.data(), dt,
-                    prb->wtag, prb->strides[STRIDES_WEI]);
+        } else {
+            // for grouped case weights are 3D and we use 'abc' tag
+            int wei_ndims = prb->ndims;
+            std::string weights_tag = prb->wtag;
+            if (prb->sparse_options.get_group_count() != 0) {
+                wei_ndims = 3;
+                weights_tag = "abc";
+            }
+
+            return dnn_mem_t::init_md(wei_ndims, weights_rt_dims.data(), dt,
+                    weights_tag, prb->strides[STRIDES_WEI]);
+        }
     }
 
     if (kind == DST) {
         if (dt == dnnl_data_type_undef) dt = prb->dst_dt();
         const auto &dst_rt_dims
                 = get_runtime_dims(prb->dst_dims, prb->dst_runtime_dim_mask());
+
+        // Check if src is grouped - if so, dst must also be grouped
+        auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
+        if (src_encoding == dnnl_grouped) {
+            const dnnl_dim_t group_count
+                    = prb->sparse_options.get_group_count();
+            const auto &M_dims = prb->sparse_options.get_group_dims();
+            const dnnl_dim_t N = dst_rt_dims[1];
+
+            // Calculate total_M from M_dims (same as SRC)
+            dnnl_dim_t total_M = 0;
+            for (size_t i = 0; i < M_dims.size(); i++) {
+                total_M += M_dims[i];
+            }
+
+            // Validate that total_M matches the dst M dimension
+            if (total_M != dst_rt_dims[0]) {
+                BENCHDNN_PRINT(0,
+                        "Error: sum of group M dimensions (%lld) doesn't "
+                        "match dst M dimension (%lld)\n",
+                        (long long)total_M, (long long)dst_rt_dims[0]);
+                return nullptr;
+            }
+
+            // Build actual dims array [total_M, N]
+            dnnl_dims_t actual_dims;
+            actual_dims[0] = total_M;
+            actual_dims[1] = N;
+
+            // Build group_dims array as shared dims {RUNTIME, N}
+            dnnl_dims_t group_dims;
+            group_dims[0] = DNNL_RUNTIME_DIM_VAL;
+            group_dims[1] = N;
+
+            return dnn_mem_t::init_grouped_md(prb->ndims, actual_dims,
+                    dt, group_count, 2, group_dims, dnnl_s32);
+        }
+
         return dnn_mem_t::init_md(prb->ndims, dst_rt_dims.data(), dt, prb->dtag,
                 prb->strides[STRIDES_DST]);
     }

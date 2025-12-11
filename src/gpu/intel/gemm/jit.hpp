@@ -353,15 +353,17 @@ struct gen_t : public primitive_t {
             auto has_gs = [&](int idx) {
                 return !attr()->precomputed_reductions_.has_default_values(idx);
             };
-            jit::quant_params a_quant = {a_scales_type_, ao_type, ag_type,
-                    asc_dims_, ao_dims_, ag_dims_, a_q2d_group_k(),
-                    a_q2d_group_m(), 0, has_gs(DNNL_ARG_A), false};
-            jit::quant_params b_quant = {b_scales_type_, bo_type, bg_type,
-                    bsc_dims_, bo_dims_, bg_dims_, b_q2d_group_k(), 0,
-                    b_q2d_group_n(), has_gs(DNNL_ARG_B), false};
+            jit::quant_params a_quant
+                    = {a_scales_type_, ao_type, ag_type, asc_dims_, ao_dims_,
+                            ag_dims_, a_q2d_group_k(), a_q2d_group_m(), 0,
+                            has_gs(DNNL_ARG_A), false, a_zp_host_scalar()};
+            jit::quant_params b_quant
+                    = {b_scales_type_, bo_type, bg_type, bsc_dims_, bo_dims_,
+                            bg_dims_, b_q2d_group_k(), 0, b_q2d_group_n(),
+                            has_gs(DNNL_ARG_B), false, b_zp_host_scalar()};
             jit::quant_params c_quant = {c_scales_type_, co_type, bg_type,
                     csc_dims_, -1, -1, 0, c_q2d_group_m(), c_q2d_group_n(),
-                    has_gs(DNNL_ARG_C), with_mx_scale()};
+                    has_gs(DNNL_ARG_C), with_mx_scale(), false};
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;

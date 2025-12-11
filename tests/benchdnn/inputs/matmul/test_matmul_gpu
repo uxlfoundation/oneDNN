@@ -51,6 +51,12 @@
 --attr-post-ops=sum+relu+add:f32+add:u8:per_dim_01+linear:0.5:1.5:2.0+mul:f32:per_dim_0+add:s8:per_oc+add:f32:per_tensor
 10x100:100x10
 
+# jit host-side scalar ZPs
+--dt=s8:u4:s32,u8:u4:s32,s8:s8:s32
+--stag=ab --wtag=ba --dtag=ab
+--attr-zero-points=src:host_scalar:1,wei:host_scalar:2,src:host_scalar:1+wei:host_scalar:2
+16x128:128x32
+
 # 3d
 --reset
 --dt=f64,f32,f16,f16:f16:s8,f16:f16:u8,bf16,bf16:bf16:f32

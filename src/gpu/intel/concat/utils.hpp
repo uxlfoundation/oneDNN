@@ -77,18 +77,18 @@ public:
         , chunk_size_(md.padded_dims[concat_dim])
         , padded_chunk_size_(math::gcd(md.dims[concat_dim], chunk_size_))
         , axis_order_(ndims_) {
-        const auto &dims = md.padded_dims;
-        const auto &strides = blocking_.strides;
-        auto cmp = [&](int i, int j) {
-            return strides[i] < strides[j]
-                    || (strides[i] == strides[j] && dims[i] < dims[j]);
-        };
-        std::iota(axis_order_.begin(), axis_order_.end(), 0);
-        std::sort(axis_order_.begin(), axis_order_.end(), cmp);
-
         std::vector<dim_t> blocks(ndims_, 1);
         for (int i = 0; i < blocking_.inner_nblks; ++i)
             blocks[blocking_.inner_idxs[i]] *= blocking_.inner_blks[i];
+
+        const auto &dims = md.padded_dims;
+        const auto &strides = blocking_.strides;
+        auto cmp = [&](int i, int j) {
+            if (strides[i] != strides[j]) return strides[i] < strides[j];
+            return dims[i] / blocks[i] < dims[j] / blocks[j];
+        };
+        std::iota(axis_order_.begin(), axis_order_.end(), 0);
+        std::sort(axis_order_.begin(), axis_order_.end(), cmp);
 
         int i = 0;
         for (; i < ndims_; ++i) {

@@ -371,29 +371,43 @@ public:
         }
     }
 
-    std::string str_impl(bool multiline) const {
+    enum class str_format_t {
+        dense,
+        list,
+        multiline,
+    };
+
+    std::string str_impl(str_format_t format) const {
         if (is_empty()) return "x";
         ostringstream_t oss;
         bool is_first = true;
         for (auto &kv : map_) {
             auto &p = kv.first;
             auto &value = kv.second;
-            if (multiline) {
-                if (!is_first) oss << std::endl;
+            if (format == str_format_t::dense) {
+                oss << p;
+                out_stream_t<ValueT>::call(oss, value);
+            } else if (format == str_format_t::list) {
+                if (!is_first) oss << ", ";
+                oss << p << ": ";
+                out_stream_t<ValueT>::call(oss, value);
+                is_first = false;
+            } else if (format == str_format_t::multiline) {
+                if (!is_first) oss << "\n";
                 oss << std::setw(4) << p << ": ";
                 out_stream_t<ValueT>::call(oss, value);
                 is_first = false;
-            } else {
-                oss << p;
-                out_stream_t<ValueT>::call(oss, value);
             }
         }
         return oss.str();
     }
 
-    virtual std::string str() const {
-        return str_impl(/*multiline=*/!std::is_integral<ValueT>::value);
+    virtual str_format_t str_format() const {
+        if (std::is_integral<ValueT>::value) return str_format_t::dense;
+        return str_format_t::list;
     }
+
+    virtual std::string str() const { return str_impl(str_format()); }
 
 private:
     static std::vector<std::pair<std::string, int>> to_string_int_pairs(
@@ -502,8 +516,6 @@ public:
 #if __cplusplus >= 202002L
     bool operator==(const tile_t &other) const = default;
 #endif
-
-    std::string str() const override { return str_impl(/*multiline=*/false); }
 };
 
 // Coordinate with integer values.

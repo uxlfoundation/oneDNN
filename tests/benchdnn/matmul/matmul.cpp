@@ -1086,14 +1086,8 @@ int checkit(std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 }
 
 std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
-    // TODO: move the regular buffer kinds like SRC or DST to a common function,
-    //       e.g. get_kinds_to_check_default_case
     std::vector<data_kind_t> check_kinds = {DST};
-    if (!prb->attr.dropout.is_def() && prb->attr.dropout.has_output_mask())
-        check_kinds.push_back(DROPOUT_MASK);
-    if (!prb->attr.scales.get(DNNL_ARG_DST).is_def()
-            && prb->attr.scales.get(DNNL_ARG_DST).is_dynamic())
-        check_kinds.push_back(DST_SCALES);
+    get_kinds_to_check_shared(check_kinds, prb->attr);
     return check_kinds;
 }
 

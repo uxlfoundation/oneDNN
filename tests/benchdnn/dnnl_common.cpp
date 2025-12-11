@@ -1827,6 +1827,18 @@ void erase_unused_args(
     }
 }
 
+// Appends data kinds to check during comparison into `check_kinds` vector
+// coming from extensions through `attr`.
+void get_kinds_to_check_shared(
+        std::vector<data_kind_t> &check_kinds, const attr_t &attr) {
+    if (!attr.dropout.is_def() && attr.dropout.has_output_mask())
+        check_kinds.push_back(DROPOUT_MASK);
+
+    if (!attr.scales.get(DNNL_ARG_DST).is_def()
+            && attr.scales.get(DNNL_ARG_DST).is_dynamic())
+        check_kinds.push_back(DST_SCALES);
+}
+
 // This function handles cases when optimized CPU primitive is used as a
 // reference for a problem. Optimized primitive means custom memory formats
 // which require reorder to them. Since `ref_mem_map` is passed to optimized

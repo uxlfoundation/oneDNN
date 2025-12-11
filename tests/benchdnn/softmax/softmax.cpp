@@ -452,6 +452,7 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
         SAFE_V(FAIL);
     }
     assert(!check_kinds.empty());
+    get_kinds_to_check_shared(check_kinds, prb->attr);
     return check_kinds;
 }
 

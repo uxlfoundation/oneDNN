@@ -279,7 +279,7 @@ struct GEMMProblem : public CommonProblem {
     bool earlyDequantizeA() const {
         bool res = ((aOffset == ABOffset::Calc && earlyDequantizableOffset(Ta_ext, Tao, Ta)) || (aScale2D() && (Ta_scale.isSubsetOf(Ta) || Ta.isFP())))
         && !aOffsetHostScalar();
-        VDEBUGINFO(4, primitive, quantization, "earlyDequantizeB() returned %d", res);
+        VDEBUGINFO(4, primitive, quantization, "earlyDequantizeA() returned %d", res);
         return res;
     }
 #endif

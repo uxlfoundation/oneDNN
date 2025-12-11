@@ -16,45 +16,19 @@
 # limitations under the License.
 # *******************************************************************************
 
-name: "CI RISC-V"
+name: "Weekly RISC-V"
 
-#* To avoid duplicate jobs running when both push and PR is satisfied, we use this:
-#* https://github.com/orgs/community/discussions/26940#discussioncomment-5686753
 on:
-  push:
-    branches: [main, "rls-*"]
-    paths:
-      - ".github/automation/riscv/**"
-      - ".github/workflows/ci-riscv.yml"
-      - "cmake/**"
-      - "examples/**"
-      - "include/**"
-      - "src/common/**"
-      - "src/cpu/*"
-      - "src/cpu/rv64/**"
-      - "tests/**"
-      - "CMakeLists.txt"
-  pull_request:
-     types: [opened, synchronize, reopened]
-     paths:
-      - ".github/automation/riscv/**"
-      - ".github/workflows/ci-riscv.yml"
-      - "cmake/**"
-      - "examples/**"
-      - "include/**"
-      - "src/common/**"
-      - "src/cpu/*"
-      - "src/cpu/rv64/**"
-      - "tests/**"
-      - "CMakeLists.txt"
-  #* allow manual trigger of workflow when needed.
   workflow_dispatch:
+  schedule:
+    #* minute (0-59) hour (0-23) day (1-31) month (1-12)  day of the week (0 - 6)
+    #* cron jobs run on the default (main) branch.
+    #* set to run at 5am Saturday UCT
+  - cron: "0 5 * * 6"
 
-#* Stop stale workflows when pull requests are updated: https://stackoverflow.com/a/70972844
-#* Does not apply to the main branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 
 # Declare default permissions as read only.
 permissions: read-all
@@ -64,16 +38,15 @@ jobs:
     strategy:
       matrix:
         config: [
-          { name: riscv-build, label: ubuntu-24.04, threading: OMP, toolset: gcc, build: RelWithAssert, testset: SMOKE }
+          { name: riscv-build, label: ubuntu-24.04, threading: OMP, toolset: gcc, build: RelWithAssert, testset: CI }
         ]
 
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}
     runs-on: ${{ matrix.config.label }}
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          persist-credentials: false
           path: oneDNN
 
       - name: Read version file
@@ -121,9 +94,9 @@ jobs:
 
       # Upload build artifacts
       - name: Upload build artifacts
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
-          name: build-artifact
+          name: build-artifact-weekly
           path: |
             ${{ github.workspace }}/oneDNN/build.tar.gz
           retention-days: 1
@@ -133,18 +106,24 @@ jobs:
     strategy:
       matrix:
         config: [
-          # Test with different vector lengths and threading modes
-          { name: riscv-test-vlen128, threading: OMP, testset: SMOKE, vlen: 128, build: RelWithAssert },
-          { name: riscv-test-vlen256, threading: OMP, testset: SMOKE, vlen: 256, build: RelWithAssert }
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 1, stride: 10 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 2, stride: 10 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 3, stride: 10 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 4, stride: 10 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 5, stride: 10 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 6, stride: 10 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 7, stride: 10 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 8, stride: 10 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 9, stride: 10 },
+          { name: riscv-test-vlen128, threading: OMP, testset: CI, vlen: 128, build: RelWithAssert, part: 10, stride: 10 }
         ]
 
-    name: ${{ matrix.config.name }}, ${{ matrix.config.threading }}
+    name: ${{ matrix.config.name }}, ${{ matrix.config.threading }}, part-${{ matrix.config.part }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout oneDNN
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          persist-credentials: false
           path: oneDNN
 
       - name: Read version file
@@ -156,7 +135,7 @@ jobs:
 
       # Setup QEMU for RISC-V platform support
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
         with:
           platforms: riscv64
 
@@ -168,9 +147,9 @@ jobs:
 
       # Download build artifacts
       - name: Download build artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
-          name: build-artifact
+          name: build-artifact-weekly
           path: ${{ github.workspace }}/oneDNN/
 
       - name: Extract archive
@@ -185,14 +164,16 @@ jobs:
           CTEST_PARALLEL_LEVEL: 4
           ONEDNN_THREADING: ${{ matrix.config.threading }}
           ONEDNN_TEST_SET: ${{ matrix.config.testset }}
+          ONEDNN_TEST_PART: ${{ matrix.config.part }}
+          ONEDNN_TEST_STRIDE: ${{ matrix.config.stride }}
           QEMU_CPU: "rv64,v=true,vlen=${{ matrix.config.vlen }},vext_spec=v1.0"
 
-  # This job adds a check named "CI RISC-V" that represents overall
+  # This job adds a check named "Weekly RISC-V" that represents overall
   # workflow status and can be used in branch rulesets
   status:
     needs: [build, test]
     runs-on: ubuntu-24.04
-    name: "CI RISC-V"
+    name: "Weekly RISC-V"
     steps:
       - name: Print success
         run: echo Success

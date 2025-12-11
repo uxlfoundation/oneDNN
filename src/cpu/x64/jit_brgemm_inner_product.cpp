@@ -288,7 +288,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                         wei_scales ? static_cast<const char *>(wei_scales)
                                         + jbgp.is_oc_scale * oc * sizeof(float)
                                    : nullptr,
-                        dst_scales};
+                        dst_scales_ptr};
 
                 brgemm_kernel_execute_postops(brg_kernel, gemm_batch,
                         addr_batch, (void *)ptr_C, (void *)ptr_D, post_ops_data,
@@ -339,7 +339,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                         wei_scales ? static_cast<const char *>(wei_scales)
                                         + jbgp.is_oc_scale * oc * sizeof(float)
                                    : nullptr,
-                        dst_scales};
+                        dst_scales_ptr};
 
                 brgemm_kernel_execute_postops(brg_kernel_ic_tail, 1, addr_batch,
                         (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch);

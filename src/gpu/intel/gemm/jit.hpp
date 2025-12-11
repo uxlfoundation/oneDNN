@@ -690,16 +690,17 @@ private:
             zero_pool_t *zero_pool, const memory_storage_t &a,
             const memory_storage_t &b, const memory_storage_t &c,
             const memory_storage_t *ao, const memory_storage_t *bo,
-            const memory_storage_t *a_scales, const memory_storage_t *b_scales,
-            const memory_storage_t *c_scales, const memory_storage_t *ag,
-            const memory_storage_t *bg, const memory_storage_t &co,
-            const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
-            int po_count, const memory_storage_t **po_src, int64_t offset_a,
-            int64_t offset_b, int64_t offset_c, int64_t offset_aq,
-            int64_t offset_bq, int64_t offset_co, int64_t *offset_po_src,
-            int32_t lda, int32_t ldb, int32_t ldc, int32_t m, int32_t n,
-            int32_t k, int32_t k0, float alpha, float beta, int32_t cmask,
-            bool last_k_block, bool swapab, bool disable_hilbert) const;
+            int32_t abo_hostscalar, const memory_storage_t *a_scales,
+            const memory_storage_t *b_scales, const memory_storage_t *c_scales,
+            const memory_storage_t *ag, const memory_storage_t *bg,
+            const memory_storage_t &co, const memory_storage_t *c_temp,
+            const memory_storage_t *sround_seed, int po_count,
+            const memory_storage_t **po_src, int64_t offset_a, int64_t offset_b,
+            int64_t offset_c, int64_t offset_aq, int64_t offset_bq,
+            int64_t offset_co, int64_t *offset_po_src, int32_t lda, int32_t ldb,
+            int32_t ldc, int32_t m, int32_t n, int32_t k, int32_t k0,
+            float alpha, float beta, int32_t cmask, bool last_k_block,
+            bool swapab, bool disable_hilbert) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     const gemmstone::CommonDriverInfo *nocopy_info() const {

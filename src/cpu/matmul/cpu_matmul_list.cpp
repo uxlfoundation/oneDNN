@@ -66,7 +66,7 @@ constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         CPU_INSTANCE_AARCH64_ACL(acl_matmul_t)
         CPU_INSTANCE_AARCH64(jit_bf16_matmul_t)
         CPU_INSTANCE_AARCH64(brgemm_matmul_t<sve_256>)
-        CPU_INSTANCE_AARCH64(jit_int8_matmul_t)
+        CPU_INSTANCE_AARCH64(jit_int8_matmul_t<sve_256>)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx10_2_512_amx_2>)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx512_core_amx_fp16>)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx512_core_amx>)

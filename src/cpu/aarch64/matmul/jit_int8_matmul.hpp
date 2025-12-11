@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2025 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,15 +29,18 @@
 #include "cpu/aarch64/matmul/jit_int8_kernel_types.hpp"
 #include "cpu/matmul/cpu_matmul_pd.hpp"
 
+#include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace aarch64 {
 namespace matmul {
 
+template <cpu_isa_t isa>
 struct jit_int8_matmul_kernel_t;
 struct jit_int8_matmul_utils_kernel_t;
-
+template <cpu_isa_t isa>
 struct jit_int8_matmul_t : public primitive_t {
     struct pd_t : public dnnl::impl::cpu::matmul::cpu_matmul_pd_t {
         using ::dnnl::impl::cpu::matmul::cpu_matmul_pd_t::cpu_matmul_pd_t;
@@ -103,7 +107,7 @@ struct jit_int8_matmul_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::unique_ptr<jit_int8_matmul_kernel_t> int8_kernels_[16];
+    std::unique_ptr<jit_int8_matmul_kernel_t<isa>> int8_kernels_[16];
     std::unique_ptr<jit_int8_matmul_utils_kernel_t> reo_ker_a_;
     std::unique_ptr<jit_int8_matmul_utils_kernel_t> reo_ker_b_;
 };

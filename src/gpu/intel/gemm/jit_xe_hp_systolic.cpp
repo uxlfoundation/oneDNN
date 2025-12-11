@@ -130,6 +130,8 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     if (!attr()->zero_points_.has_default_values()) {
+        VDISPATCH_GEMM(!attr()->zero_points_.has_host_scalars(),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
         VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
     }
 

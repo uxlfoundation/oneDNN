@@ -254,7 +254,7 @@ struct GEMMProblem : public CommonProblem {
     bool quantized2DA() const { return forceGroupSumsB || aOffset2D() || aScale2D(); }
     bool quantized2DB() const { return forceGroupSumsA || bOffset2D() || bScale2D(); }
 
-    // @@@@@@ ?????
+    // @@@@@@ ????? NOT to the first PR !!!!!!!!! - use old version
 #if 0
     bool earlyDequantizeA() const {
         VDEBUGINFO(4, primitive, quantization, "earlyDequantizeA(): aOffset = %d earlyDequantizableOffset(Ta_ext, Tao, Ta) = %d", aOffset, (int)earlyDequantizableOffset(Ta_ext, Tao, Ta));

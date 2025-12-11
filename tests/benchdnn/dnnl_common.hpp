@@ -1171,6 +1171,9 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
 void erase_unused_args(
         dnn_mem_map_t &ref_mem_map, const dnn_mem_map_t &mem_map);
 
+void get_kinds_to_check_shared(
+        std::vector<data_kind_t> &check_kinds, const attr_t &attr);
+
 int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
         const dnn_mem_t &library_mem, dnn_mem_map_t &ref_mem_map, int exec_arg,
         dnnl_data_type_t swapped_dt);

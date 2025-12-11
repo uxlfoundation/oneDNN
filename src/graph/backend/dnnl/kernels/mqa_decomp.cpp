@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/compiler_workarounds.hpp"
+
 #include "graph/backend/dnnl/kernels/mqa_decomp.hpp"
 
 #include "graph/backend/dnnl/passes/compile_ops.hpp"
@@ -200,7 +202,8 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
         return memory::data_type_size(m.get_desc().get_data_type());
     };
 
-    const auto loop = [=](int tid, int nthr, dim_t bo, dim_t bi) {
+    const auto loop
+            = [= COMPAT_THIS_CAPTURE](int tid, int nthr, dim_t bo, dim_t bi) {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
         // Deactivating since nested usage model demands it.
         threadpool_utils::deactivate_threadpool();

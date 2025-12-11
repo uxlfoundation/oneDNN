@@ -445,6 +445,74 @@ int fill_sparse_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
     return OK;
 }
 
+int fill_grouped_data(
+        data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt, res_t *res) {
+
+    // only SRC and DST are supported for grouped encoding for now
+    if (kind != SRC && kind != DST) return FAIL;
+
+    // mem_dt must have 2 handles (values + offsets) for grouped encoding
+    if (query_md_num_handles(mem_dt.md_) != 2) return FAIL;
+
+    // access dims from prb to later transform into offsets
+    const int64_t group_count = prb->sparse_options.get_group_count();
+    const auto &M_dims = prb->sparse_options.get_group_dims();
+    if (M_dims.size() != (size_t)group_count) return FAIL;
+
+    // fill and store offsets array [0, M0, M0+M1, ...] in mem_dt buffer 1
+    const int offsets_idx = 1;
+    int32_t cumulative = 0;
+    mem_dt.set_elem(0, cumulative, offsets_idx);
+    for (int64_t g = 0; g < group_count; g++) {
+        cumulative += M_dims[g];
+        mem_dt.set_elem(g + 1, cumulative, offsets_idx);
+    }
+
+    // fill values buffer (index 0) with random data
+    const int64_t K = (kind == SRC) ? prb->k : prb->n;
+    const int values_idx = 0;
+    const int64_t total_M = cumulative;
+    const int64_t nelems = total_M * K;
+
+    // TODO: support `no_ref_memory` for grouped encoding
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return FAIL;
+
+    // below is the usual filling procedure
+    cfg_t cfg(prb, {SRC, WEI, BIA, DST});
+
+    const int64_t chunk_size = 64;
+    const int64_t n_chunks = div_up(nelems, chunk_size);
+    benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
+        int64_t idx_start = idx_chunk * chunk_size;
+        int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
+
+        std::uniform_int_distribution<> gen(
+                cfg.get_range_min(kind), cfg.get_range_max(kind));
+        std::minstd_rand int_seed(kind * nelems + idx_start + 1);
+        int_seed.discard(1);
+
+        // Make sure the first element is positive
+        if (idx_start == 0) {
+            float val = 0;
+            while (val <= 0)
+                val = gen(int_seed);
+            mem_dt.set_elem(0,
+                    round_to_nearest_representable(cfg.get_dt(kind), val),
+                    values_idx);
+            idx_start = 1;
+        }
+
+        for (int64_t i = idx_start; i < idx_end; i++) {
+            float val = gen(int_seed);
+            mem_dt.set_elem(i,
+                    round_to_nearest_representable(cfg.get_dt(kind), val),
+                    values_idx);
+        }
+    });
+
+    return OK;
+}
+
 int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
 

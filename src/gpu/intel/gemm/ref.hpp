@@ -55,8 +55,6 @@ struct ref_jit_params_t : public trivially_serializable_t<ref_jit_params_t> {
 
         kernel_ctx.define_int("WITH_POST_OP", with_post_ops);
         if (with_post_ops) {
-            def_binary_alg_kinds(kernel_ctx);
-            def_eltwise_alg_kinds(kernel_ctx);
             kernel_ctx.define_int("ELTWISE_ALG", eltwise_alg);
         }
         kernel_ctx.define_int("WITH_SUM", with_sum);

@@ -285,7 +285,6 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
 }
 
 status_t xe_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
-    def_binary_alg_kinds(kernel_ctx);
     kernel_ctx.define_int("BINARY_ALG", conf.alg);
     kernel_ctx.define_int(
             "IS_TERNARY", (conf.alg == alg_kind::binary_select) ? 1 : 0);

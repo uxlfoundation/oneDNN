@@ -57,8 +57,9 @@ struct ref_softmax_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(utils::one_of(dst_md()->data_type, f32, bf16, f16,
                                       f8_e5m2, f8_e4m3, s8, u8),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SOFTMAX(attr()->has_default_values(skip_mask_t::scales
-                                      | skip_mask_t::post_ops),
+            VDISPATCH_SOFTMAX(
+                    attr()->has_default_values(skip_mask_t::scales
+                            | skip_mask_t::post_ops | skip_mask_t::dropout),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_SOFTMAX(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_SOFTMAX(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
@@ -68,6 +69,7 @@ struct ref_softmax_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(
                     attr_.set_default_formats(dst_md(0)) == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
+            CHECK(dropout_ok());
 
             nthr_ = 0;
             init_scratchpad();
@@ -112,8 +114,28 @@ struct ref_softmax_fwd_t : public primitive_t {
                         axis_size(true) * sizeof(float) * nthr_);
             }
         }
+
         bool post_ops_ok() const {
             return ref_post_ops_t::post_ops_ok(attr()->post_ops_);
+        }
+
+        status_t dropout_ok() const {
+            if (attr_.dropout_.has_default_values()) return status::success;
+
+            assert(memory_desc_wrapper(dst_md(0)).format_kind()
+                    == format_kind::blocked);
+
+            using namespace format_tag;
+            // See `ref_dropout(...)` comment which explains the requirement.
+            VDISPATCH_SOFTMAX_IC(memory_desc_matches_one_of_tag(
+                                         *dst_md(0), ncdhw, nchw, ncw, nc)
+                            && IMPLICATION(attr_.dropout_.has_output_mask(),
+                                    memory_desc_wrapper(dst_md(0)).similar_to(
+                                            attr_.dropout_.dropout_desc_, true,
+                                            false)),
+                    VERBOSE_UNSUPPORTED_DROPOUT);
+
+            return status::success;
         }
     };
 

@@ -25,6 +25,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
     const dnn_mem_t &src_scale = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     const dnn_mem_t &dst_scale = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+    const dnn_mem_t &dropout_mask = args.find(DNNL_ARG_ATTR_DROPOUT_MASK);
 
     float *dst_ptr = (float *)dst;
 
@@ -90,6 +91,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
 
             const auto v_po_vals = prepare_po_vals(dst, args, v_po_masks, idx);
             dst_ptr[idx] *= src_scale_val;
+            maybe_dropout(prb->attr, dst_ptr[idx], idx, dropout_mask);
             maybe_post_ops(prb->attr, dst_ptr[idx], 0.f, v_po_vals);
             dst_ptr[idx] *= r_dst_scale_val;
         }

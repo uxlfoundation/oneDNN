@@ -35,3 +35,6 @@
 --attr-scales=,dst:common:0.25
 --attr-post-ops=,add:f32:per_oc
 --batch=shapes_ci
+
+# Dropout
+--batch=harness_softmax_dropout

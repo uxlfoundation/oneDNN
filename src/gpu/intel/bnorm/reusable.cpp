@@ -76,9 +76,10 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
     // - DST: SRC, but with one dim reduced and ic moved to the innermost position
     // - [variance only] MEAN: just the ic dim, stores the mean per ic
     std::vector<dim_idx_t> dim_ids = get_dims(ndims);
-    compute::named_buffer_t src_buf("SRC", *data_mdw.md_, dim_ids);
+    compute::named_buffer_t src_buf(
+            compute::name_id_t::src, *data_mdw.md_, dim_ids);
 
-    compute::named_buffer_t dst_buf("DST", src_buf);
+    compute::named_buffer_t dst_buf(compute::name_id_t::dst, src_buf);
     dst_buf.remove_dim(dim_ids[reduce_dim_idx]);
 
     // Move ic interior
@@ -117,7 +118,7 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
                     == status::success,
             "failed to register dst buffer");
     VDISPATCH_BNORM_IC(calc_stat_dispatch_config.define_dim_index(
-                               "IC_DIM", dims::ic, rt_conf.ic)
+                               compute::name_id_t::ic_dim, dims::ic, rt_conf.ic)
                     == status::success,
             "cannot define dim index for dispatch config");
 
@@ -130,7 +131,7 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
     conf.calc_stat_params = dispatch_calc_stat.get_compile_params();
     rt_conf.calc_stat_params = dispatch_calc_stat.get_runtime_params();
 
-    compute::named_buffer_t reduce_buffer("BUFFER", dst_buf);
+    compute::named_buffer_t reduce_buffer(compute::name_id_t::buffer, dst_buf);
     for (const auto &dim : dim_ids) {
         if (dim != dims::ic) reduce_buffer.remove_dim(dim);
     }
@@ -180,7 +181,8 @@ static status_t init_conf_common(reusable_params_t &conf,
 
     size_t ndims = static_cast<size_t>(data_mdw.ndims());
     std::vector<dim_idx_t> dims = get_dims(ndims);
-    compute::named_buffer_t buffer("BUFFER", *data_mdw.md_, dims);
+    compute::named_buffer_t buffer(
+            compute::name_id_t::buffer, *data_mdw.md_, dims);
 
     // Dispatch to all dims
     compute::reusable_dispatch_config_t dispatch_config(
@@ -188,8 +190,8 @@ static status_t init_conf_common(reusable_params_t &conf,
     VDISPATCH_BNORM_IC(
             dispatch_config.register_buffer(buffer) == status::success,
             "failed to register buffer");
-    VDISPATCH_BNORM_IC(
-            dispatch_config.define_dim_index("IC_DIM", dims::ic, rt_conf.ic)
+    VDISPATCH_BNORM_IC(dispatch_config.define_dim_index(
+                               compute::name_id_t::ic_dim, dims::ic, rt_conf.ic)
                     == status::success,
             "cannot define dim index for dispatch config");
 

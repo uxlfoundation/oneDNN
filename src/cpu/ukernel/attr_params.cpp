@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2025 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,6 +23,8 @@
 
 #if DNNL_X64
 #include "cpu/x64/ukernel/attr_params.hpp"
+#elif DNNL_AARCH64
+#include "cpu/aarch64/ukernel/attr_params.hpp"
 #endif
 
 #ifdef DNNL_EXPERIMENTAL_UKERNEL
@@ -33,6 +36,8 @@ using namespace dnnl::impl::cpu::ukernel;
 status_t dnnl_ukernel_attr_params_create(attr_params_t **attr_params) {
 #if DNNL_X64
     return x64::ukernel::dnnl_ukernel_attr_params_create(attr_params);
+#elif DNNL_AARCH64
+    return aarch64::ukernel::dnnl_ukernel_attr_params_create(attr_params);
 #endif
     return status::unimplemented;
 }
@@ -41,6 +46,9 @@ status_t dnnl_ukernel_attr_params_set_post_ops_args(
         attr_params_t *attr_params, const void **post_ops_args) {
 #if DNNL_X64
     return x64::ukernel::dnnl_ukernel_attr_params_set_post_ops_args(
+            attr_params, post_ops_args);
+#elif DNNL_AARCH64
+    return aarch64::ukernel::dnnl_ukernel_attr_params_set_post_ops_args(
             attr_params, post_ops_args);
 #endif
     return status::unimplemented;
@@ -51,6 +59,9 @@ status_t dnnl_ukernel_attr_params_set_A_scales(
 #if DNNL_X64
     return x64::ukernel::dnnl_ukernel_attr_params_set_A_scales(
             attr_params, a_scales);
+#elif DNNL_AARCH64
+    return aarch64::ukernel::dnnl_ukernel_attr_params_set_A_scales(
+            attr_params, a_scales);
 #endif
     return status::unimplemented;
 }
@@ -59,6 +70,9 @@ status_t dnnl_ukernel_attr_params_set_B_scales(
         attr_params_t *attr_params, const void *b_scales) {
 #if DNNL_X64
     return x64::ukernel::dnnl_ukernel_attr_params_set_B_scales(
+            attr_params, b_scales);
+#elif DNNL_AARCH64
+    return aarch64::ukernel::dnnl_ukernel_attr_params_set_B_scales(
             attr_params, b_scales);
 #endif
     return status::unimplemented;
@@ -69,6 +83,9 @@ status_t dnnl_ukernel_attr_params_set_D_scales(
 #if DNNL_X64
     return x64::ukernel::dnnl_ukernel_attr_params_set_D_scales(
             attr_params, d_scales);
+#elif DNNL_AARCH64
+    return aarch64::ukernel::dnnl_ukernel_attr_params_set_D_scales(
+            attr_params, d_scales);
 #endif
     return status::unimplemented;
 }
@@ -76,6 +93,8 @@ status_t dnnl_ukernel_attr_params_set_D_scales(
 status_t dnnl_ukernel_attr_params_destroy(attr_params_t *attr_params) {
 #if DNNL_X64
     return x64::ukernel::dnnl_ukernel_attr_params_destroy(attr_params);
+#elif DNNL_AARCH64
+    return aarch64::ukernel::dnnl_ukernel_attr_params_destroy(attr_params);
 #endif
     return status::unimplemented;
 }

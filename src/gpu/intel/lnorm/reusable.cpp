@@ -152,9 +152,12 @@ status_t reusable_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     // - dst: all dims
     // - stat: (mean/variance) all but last dim
     // - SS: (scale/shift) just the last dim
-    compute::named_buffer_t src_buffer("SRC", *src_md(), dims);
-    compute::named_buffer_t dst_buffer("DST", *dst_md(), dims);
-    compute::named_buffer_t stat_buffer("STAT", *stat_md(), stat_dims);
+    compute::named_buffer_t src_buffer(
+            compute::name_id_t::src, *src_md(), dims);
+    compute::named_buffer_t dst_buffer(
+            compute::name_id_t::dst, *dst_md(), dims);
+    compute::named_buffer_t stat_buffer(
+            compute::name_id_t::stat, *stat_md(), stat_dims);
     compute::named_buffer_t ss_buffer
             = get_ss_buffer(weights_md(), dims.back());
     CHECK(init_conf_common(this, &conf, &rt_conf, engine, src_buffer,
@@ -285,9 +288,12 @@ status_t reusable_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     // - diff_src: all dims (matches src)
     // - stat: (mean/variance) all but last dim
     // - SS: (scale/shift) just the last dim
-    compute::named_buffer_t diff_dst_buffer("DST", *diff_dst_md(), dims);
-    compute::named_buffer_t diff_src_buffer("SRC", *diff_src_md(), dims);
-    compute::named_buffer_t stat_buffer("STAT", *stat_md(), stat_dims);
+    compute::named_buffer_t diff_dst_buffer(
+            compute::name_id_t::dst, *diff_dst_md(), dims);
+    compute::named_buffer_t diff_src_buffer(
+            compute::name_id_t::src, *diff_src_md(), dims);
+    compute::named_buffer_t stat_buffer(
+            compute::name_id_t::stat, *stat_md(), stat_dims);
     compute::named_buffer_t ss_buffer
             = get_ss_buffer(diff_weights_md(), dims.back());
 

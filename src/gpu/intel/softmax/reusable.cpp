@@ -106,8 +106,8 @@ status_t reusable_fwd_t::pd_t::init_dispatch_default_reusable(
     dims_vec_t dispatch_dim_ids = src_dim_ids;
     dispatch_dim_ids.erase(dispatch_dim_ids.begin() + (desc()->softmax_axis));
 
-    compute::named_buffer_t src_buf("SRC", *src_md(), src_dim_ids);
-    compute::named_buffer_t dst_buf("DST", src_buf);
+    compute::named_buffer_t src_buf(name_id_t::src, *src_md(), src_dim_ids);
+    compute::named_buffer_t dst_buf(name_id_t::dst, src_buf);
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     compute::reusable_dispatch_config_t dispatch_config(
@@ -145,11 +145,11 @@ status_t reusable_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
             "indivisible axis reduction size");
 
     // source buffer gets new dimension: multiple workers per reduction block
-    compute::named_buffer_t src_buf("SRC");
+    compute::named_buffer_t src_buf(name_id_t::src);
     src_buf.data_type = conf.src_data_type;
 
     // keep original input buffer geometry for addressing
-    compute::named_buffer_t ori_buf("ORIGINAL");
+    compute::named_buffer_t ori_buf(name_id_t::original);
     ori_buf.data_type = conf.src_data_type;
     for (size_t i = 0; i < dims_ids.size(); i++) {
         ori_buf.append_block(dims_ids[i], sizes[i]);
@@ -175,7 +175,7 @@ status_t reusable_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
                 * softmax_axis_size;
     }
 
-    compute::named_buffer_t dst_buf("DST", src_buf);
+    compute::named_buffer_t dst_buf(name_id_t::dst, src_buf);
     dst_buf.data_type = conf.dst_data_type;
 
     // dispatch: all dims except reduction dimension plus workers dimension

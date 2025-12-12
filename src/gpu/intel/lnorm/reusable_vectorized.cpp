@@ -188,9 +188,12 @@ status_t reusable_vectorized_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     // - dst: all dims
     // - stat: (mean/variance) all but last dim
     // - SS: (scale/shift) just the last dim
-    compute::named_buffer_t src_buffer("SRC", *src_md(), dims);
-    compute::named_buffer_t dst_buffer("DST", *dst_md(), dims);
-    compute::named_buffer_t stat_buffer("STAT", *stat_md(), stat_dims);
+    compute::named_buffer_t src_buffer(
+            compute::name_id_t::src, *src_md(), dims);
+    compute::named_buffer_t dst_buffer(
+            compute::name_id_t::dst, *dst_md(), dims);
+    compute::named_buffer_t stat_buffer(
+            compute::name_id_t::stat, *stat_md(), stat_dims);
     compute::named_buffer_t ss_buffer
             = get_ss_buffer(weights_md(), dims.back());
     CHECK(init_conf_common(this, &conf, &rt_conf, engine, src_buffer,

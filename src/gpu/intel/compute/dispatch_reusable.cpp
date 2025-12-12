@@ -33,7 +33,7 @@ namespace compute {
 // patterns may be non-contiguous in other buffers (i.e. block read/write is only guaranteed
 // to be valid for this buffer)
 status_t reusable_dispatch_config_t::use_subgroup(
-        const std::string &buf_name, size_t size) {
+        name_id_t buf_name, size_t size) {
     if (!engine->mayiuse_sub_group(static_cast<int>(size))) {
         return status::unimplemented;
     }
@@ -43,7 +43,7 @@ status_t reusable_dispatch_config_t::use_subgroup(
 
     // Look for a registered buffer with the given name
     for (size_t i = 0; i < buffers.size(); i++) {
-        if (buffers[i].get_name() == buf_name) {
+        if (buffers[i].get_name_id() == buf_name) {
             subgroup = subgroup_data_t(i, size);
             break;
         }
@@ -56,7 +56,7 @@ status_t reusable_dispatch_config_t::use_subgroup(
 }
 
 status_t reusable_dispatch_config_t::define_dim_index(
-        const char *dim_name, dim_idx_t dim_id, dim_t size) {
+        name_id_t dim_name, dim_idx_t dim_id, dim_t size) {
     memory_desc_t md = types::zero_md();
     md.ndims = 1;
     md.dims[0] = size;
@@ -507,20 +507,26 @@ void dispatch_compile_params_t::def_kernel_macros(
 
     // For each buffer, define the sum that leads to the offset calculation
     data_type_converter_t converter;
-    for (size_t i = 0; i < num_buffers; i++) {
-        const char *name = buffer_names[i];
-        if (buffer_types[i] != data_type::undef) {
-            converter.register_type(name + conv_suff, buffer_types[i]);
+    int term_idx = 0;
+    for (size_t bit_idx = 0; bit_idx < sizeof(name_id_t) * 8; bit_idx++) {
+        name_id_t name_id = name_id_t(uint64_t(1) << bit_idx);
+        if (!static_cast<uint64_t>(buffer_set & name_id)) continue;
+
+        if (buffer_types[term_idx] != data_type::undef) {
+            converter.register_type(
+                    to_string(name_id) + conv_suff, buffer_types[term_idx]);
         }
+
         std::string equation;
-        for (size_t j = 0; j < buffer_num_terms[i]; j++) {
+        for (size_t j = 0; j < buffer_num_terms[term_idx]; j++) {
             equation += utils::format("%s_GET_ID%d(rt_params)", gws_prefix,
-                    buffer_term_index[i][j]);
-            if (j != buffer_num_terms[i] - 1) { equation += "+"; }
+                    buffer_term_index[term_idx][j]);
+            if (j != buffer_num_terms[term_idx] - 1) { equation += "+"; }
         }
         // GWS_<BUFFER_NAME>_<SUFFIX>_OFF
         kernel_ctx.add_option(utils::format("-DGWS_%s_%s_OFF(rt_params)=%s",
-                name, suffix, equation.c_str()));
+                to_string(name_id), suffix, equation.c_str()));
+        term_idx++;
     }
     converter.def_kernel_macros(kernel_ctx);
 

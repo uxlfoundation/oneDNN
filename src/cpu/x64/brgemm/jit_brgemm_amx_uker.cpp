@@ -518,11 +518,11 @@ private:
     void bf32_downconvert(brgemm_iteration_t &bi, int num_rows,
             int tile_num_col_bytes, reg64_t reg_data, int offset,
             reg64_t reg_data_stride, reg64_t reg_buf);
-    void fp8_to_f16_upconvert(brgemm_iteration_t &bi, int num_rows,
+    void fp8_to_xf16_upconvert(brgemm_iteration_t &bi, int num_rows,
             int tile_num_col_bytes, reg64_t reg_data, int offset,
             reg64_t reg_data_stride, reg64_t reg_buf, data_type_t dt);
 
-    void fp8_to_f16_upconvert_to_vnni(brgemm_iteration_t &bi, int num_rows,
+    void fp8_to_xf16_upconvert_to_vnni(brgemm_iteration_t &bi, int num_rows,
             int tile_num_col_bytes, reg64_t reg_data, int offset,
             reg64_t reg_data_stride, reg64_t reg_buf, data_type_t dt);
 
@@ -1982,7 +1982,9 @@ void jit_brgemm_amx_uker_base_t::tdpbxxd(brgemm_iteration_t &bi, int bdb_idx,
         tdpbf16ps(x1, x2, x3);
     } else if (brg.dt_a == f16 && brg.dt_b == f16) {
         tdpfp16ps(x1, x2, x3);
-    } else if (brg.is_fp8 && brg.is_fp8_via_convert()) {
+    } else if (brg.is_fp8 && brg.is_fp8_via_convert_to_bf16()) {
+        tdpbf16ps(x1, x2, x3);
+    } else if (brg.is_fp8 && brg.is_fp8_via_convert_to_f16()) {
         tdpfp16ps(x1, x2, x3);
     } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
         tdpbf8ps(x1, x2, x3);
@@ -2007,9 +2009,9 @@ void jit_brgemm_amx_uker_base_t::tdpbxxd(brgemm_iteration_t &bi, int bdb_idx,
     maybe_tilestore(bi, bdb_idx, ldb_idx, false, do_post_tilestore);
 }
 
-// This method up-converts the data from bf8 to f16 and saves at reg_buf.
+// This method up-converts the data from bf8 to f16/bf16 and saves at reg_buf.
 // Generally used by matrix_A, where no vnni transformation of data is needed.
-void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert(brgemm_iteration_t &bi,
+void jit_brgemm_amx_uker_base_t::fp8_to_xf16_upconvert(brgemm_iteration_t &bi,
         int num_rows, int tile_num_col_bytes, reg64_t reg_data, int offset,
         reg64_t reg_data_stride, reg64_t reg_buf, data_type_t dt) {
     const auto rd_block = bi.rdi->block(0);
@@ -2032,11 +2034,19 @@ void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert(brgemm_iteration_t &bi,
     lea(reg_data_aux, ptr[reg_data + offset]);
 
     for (int r = 0; r < num_rows; ++r) {
-        if (dt == data_type::f8_e5m2)
-            f8_e5m2_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
-        else if (dt == data_type::f8_e4m3)
-            f8_e4m3_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
-        else
+        if (dt == data_type::f8_e5m2) {
+            if (brg.is_fp8_via_convert_to_bf16()) {
+                f8_e5m2_cvt_->vcvt_f8_to_bf16(zmm_1_masked, ptr[reg_data_aux]);
+            } else {
+                f8_e5m2_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            }
+        } else if (dt == data_type::f8_e4m3) {
+            if (brg.is_fp8_via_convert_to_bf16()) {
+                f8_e4m3_cvt_->vcvt_f8_to_bf16(zmm_1_masked, ptr[reg_data_aux]);
+            } else {
+                f8_e4m3_cvt_->vcvt_f8_to_f16(zmm_1_masked, ptr[reg_data_aux]);
+            }
+        } else
             assert(!"unsupported data type");
 
         vmovups(ptr[reg_buf + r * zmm_width_in_bytes], zmm_1);
@@ -2088,8 +2098,8 @@ void jit_brgemm_amx_uker_base_t::bf32_downconvert(brgemm_iteration_t &bi,
 }
 
 // This method up-converts and transforms the data from fp8_vnni to f16_vnni
-// format. Generally used by matrix_B.
-void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert_to_vnni(
+// or bf16_vnni format. Generally used by matrix_B.
+void jit_brgemm_amx_uker_base_t::fp8_to_xf16_upconvert_to_vnni(
         brgemm_iteration_t &bi, int num_rows, int tile_num_col_bytes,
         reg64_t reg_data, int offset, reg64_t reg_data_stride, reg64_t reg_buf,
         data_type_t dt) {
@@ -2108,13 +2118,23 @@ void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert_to_vnni(
     const int r_end = utils::div_up(rd_block, vnni_granularity);
     assert(r_end <= num_rows && "bad tile parameters");
 
-    if (dt == data_type::f8_e5m2)
-        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
-                r_end, reg_data_aux, reg_data_stride, reg_buf);
-    else if (dt == data_type::f8_e4m3)
-        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
-                r_end, reg_data_aux, reg_data_stride, reg_buf);
-    else
+    if (dt == data_type::f8_e5m2) {
+        if (brg.is_fp8_via_convert_to_bf16()) {
+            f8_e5m2_cvt_->vcvt_f8_to_bf16_vnni_block(
+                    r_end, reg_data_aux, reg_data_stride, reg_buf);
+        } else {
+            f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
+                    r_end, reg_data_aux, reg_data_stride, reg_buf);
+        }
+    } else if (dt == data_type::f8_e4m3) {
+        if (brg.is_fp8_via_convert_to_bf16()) {
+            f8_e4m3_cvt_->vcvt_f8_to_bf16_vnni_block(
+                    r_end, reg_data_aux, reg_data_stride, reg_buf);
+        } else {
+            f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
+                    r_end, reg_data_aux, reg_data_stride, reg_buf);
+        }
+    } else
         assert(!"unsupported data type");
 
     // zero rest of the tile data
@@ -2250,14 +2270,14 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
             bf32_downconvert(bi, num_rows, num_col_bytes, reg_base, offset,
                     reg_stride, reg_buf);
         else
-            fp8_to_f16_upconvert(bi, num_rows, num_col_bytes, reg_base, offset,
+            fp8_to_xf16_upconvert(bi, num_rows, num_col_bytes, reg_base, offset,
                     reg_stride, reg_buf, dt);
     } else {
         if (brg.is_bf32)
             bf32_downconvert_to_vnni(bi, num_rows, num_col_bytes, reg_base,
                     offset, reg_stride, reg_buf);
         else
-            fp8_to_f16_upconvert_to_vnni(bi, num_rows, num_col_bytes, reg_base,
+            fp8_to_xf16_upconvert_to_vnni(bi, num_rows, num_col_bytes, reg_base,
                     offset, reg_stride, reg_buf, dt);
     }
 

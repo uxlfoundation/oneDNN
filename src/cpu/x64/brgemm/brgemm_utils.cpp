@@ -772,14 +772,13 @@ status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
 status_t brgemm_blocking_amx10(brgemm_desc_t *brg) {
     // Blocking configuration for AMX
     const auto LD = brg->load_dim;
-    const auto BD = brg->bcast_dim;
 
     brg->ld_block = 16;
     brg->ldb = LD / brg->ld_block;
     brg->ldb_tail = LD % brg->ld_block;
 
-    // For M < 16, use actual M as bd_block instead of 16
-    brg->bd_block = (BD < 16) ? BD : 16;
+    const auto BD = brg->bcast_dim;
+    brg->bd_block = (BD < 16) ? BD : 16; // Use actual M as bd_block for M < 16
     find_bdb_bd_mask(brg, brg->bd_block, brg->bdb, brg->bdb_tail);
 
     const auto ntiles = brgemm_desc_t::AMX_TILES_NUM;
@@ -819,10 +818,6 @@ status_t brgemm_blocking_amx10(brgemm_desc_t *brg) {
     brg->rd_block = brg->rd_step * 4;
     brg->rdb = brg->reduce_dim / brg->rd_block;
     brg->rdb_tail = brg->reduce_dim % brg->rd_block;
-
-    // TODO: AMX10 K-tail support needs more work to handle all cases correctly
-    // For now, reject all K-tails for AMX10
-    if (brg->rdb_tail > 0) { return status::unimplemented; }
 
     // To use less registers in the amx10 microkernel:
     // load several blocks of A and keep them in registers if bd_block2 < ld_block2

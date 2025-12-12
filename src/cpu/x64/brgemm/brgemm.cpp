@@ -777,8 +777,12 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
     }
 
     for (int m = 0; m < brg.get_bd_block2(); m++) {
-        const bool is_bd_tail = !brg.is_amx10()
+        const bool is_bd_tail_regular = !brg.is_amx10()
                 && (brg.bdb_tail && m == (brg.get_bd_block2() - 1));
+        // For AMX10, handle tail when bdb=0 (only tail blocks exist)
+        const bool is_bd_tail_amx10
+                = brg.is_amx10() && brg.bdb == 0 && brg.bdb_tail > 0;
+        const bool is_bd_tail = is_bd_tail_regular || is_bd_tail_amx10;
         const auto Cr = is_bd_tail ? brg.bdb_tail : brg.bd_block;
         for (int n = 0; n < brg.get_ld_block2(); n++) {
             const bool is_ld_tail = !brg.is_amx10()

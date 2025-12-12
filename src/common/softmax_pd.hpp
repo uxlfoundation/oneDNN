@@ -31,6 +31,10 @@
     VCHECK(primitive, create, dispatch, softmax, (f), "%s," msg, \
             this->info(engine), ##__VA_ARGS__)
 
+#define VDISPATCH_SOFTMAX_IC(cond, msg, ...) \
+    VCONDCHECK(primitive, create, dispatch, softmax, (cond), \
+            status::unimplemented, msg, ##__VA_ARGS__)
+
 namespace dnnl {
 namespace impl {
 

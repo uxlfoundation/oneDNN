@@ -996,10 +996,16 @@ void gen_kernel_t::init_interface() {
     if (problem.needsBGroupSums())
         interface_.newArgument(
                 "bg_ptr", ExternalArgumentType::GlobalPtr, bg_access);
-    if (problem.aOffset2D() || problem.aScale2D() || problem.needsAGroupSums())
-        interface_.newArgument("ldaq", DataType::d);
-    if (problem.bOffset2D() || problem.bScale2D() || problem.needsBGroupSums())
-        interface_.newArgument("ldbq", DataType::d);
+    if (problem.aOffset2D() || problem.aScale2D()
+            || problem.needsAGroupSums()) {
+        interface_.newArgument("ldaqk", DataType::d);
+        //interface_.newArgument("ldaqm", DataType::d);
+    }
+    if (problem.bOffset2D() || problem.bScale2D()
+            || problem.needsBGroupSums()) {
+        interface_.newArgument("ldbqk", DataType::d);
+        //interface_.newArgument("ldbqn", DataType::d);
+    }
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
         interface_.newArgument(

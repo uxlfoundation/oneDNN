@@ -117,8 +117,6 @@ struct gen_t : public primitive_t {
             swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
                     || d->transc() == dnnl_trans;
 
-            //swap_ab_ &= !(asc_dims_ > 1 || bsc_dims_ > 1);
-
             // We cannot swap A/B if we don't have kernels to support the
             // swapped data type/alignment requirements
             swap_ab_ &= !(utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
@@ -225,6 +223,10 @@ struct gen_t : public primitive_t {
             }
 
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            if (!attr()->scales_.has_default_values()) {
+                if (swap_ab_) std::swap(asc_dims_, bsc_dims_);
+                if (swap_ab_) std::swap(a_scales_type_, b_scales_type_);
+            }
 
             if (!attr()->zero_points_.has_default_values()) {
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -357,11 +359,11 @@ struct gen_t : public primitive_t {
             };
             jit::quant_params a_quant, b_quant, c_quant;
             if (swap_ab()) {
-                a_quant = {b_scales_type_, bo_type, bg_type, bsc_dims_,
-                        bo_dims_, bg_dims_, b_q2d_group_k(), b_q2d_group_n(), 0,
+                a_quant = {a_scales_type_, ao_type, ag_type, asc_dims_,
+                        ao_dims_, ag_dims_, b_q2d_group_k(), b_q2d_group_n(), 0,
                         has_gs(DNNL_ARG_B), false};
-                b_quant = {a_scales_type_, ao_type, ag_type, asc_dims_,
-                        ao_dims_, ag_dims_, a_q2d_group_k(), 0, a_q2d_group_m(),
+                b_quant = {b_scales_type_, bo_type, bg_type, bsc_dims_,
+                        bo_dims_, bg_dims_, a_q2d_group_k(), 0, a_q2d_group_m(),
                         has_gs(DNNL_ARG_A), false};
             } else {
                 a_quant = {a_scales_type_, ao_type, ag_type, asc_dims_,

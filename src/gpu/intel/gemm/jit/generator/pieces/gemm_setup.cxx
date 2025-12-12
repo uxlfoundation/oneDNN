@@ -918,35 +918,35 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
         }
     }
 
-    auto ldaq = inputs.ldaq, ldbq = inputs.ldbq, ldcq = inputs.ldcq;
-    if (ldaq.isInvalid()) ldaq = inputs.m;
-    if (ldbq.isInvalid()) ldbq = inputs.n;
+    auto ldaqk = inputs.ldaqk, ldbqk = inputs.ldbqk, ldcq = inputs.ldcq;
+    if (ldaqk.isInvalid()) ldaqk = inputs.m;
+    if (ldbqk.isInvalid()) ldbqk = inputs.n;
 
     if (problem.aOffset2D()) 
-        scale(problem.Tao, inputs.ldao, ldaq);
+        scale(problem.Tao, inputs.ldao, ldaqk);
     if (problem.aoPtrDims >= 0)
         scale(problem.Tao, inputs.offsetAO, inputs.offsetAq);
     if (problem.bOffset2D()) 
-        scale(problem.Tbo, inputs.ldbo, ldbq);
+        scale(problem.Tbo, inputs.ldbo, ldbqk);
     if (problem.boPtrDims >= 0)
         scale(problem.Tbo, inputs.offsetBO, inputs.offsetBq);
     if (problem.aScale2D()) {
-        scale(problem.Ta_scale, inputs.ldaScale, ldaq);
+        scale(problem.Ta_scale, inputs.ldaScale, ldaqk);
         scale(problem.Ta_scale, inputs.offsetAScale, inputs.offsetAq);
     }
     if (problem.bScale2D()) {
-        scale(problem.Tb_scale, inputs.ldbScale, ldbq);
+        scale(problem.Tb_scale, inputs.ldbScale, ldbqk);
         scale(problem.Tb_scale, inputs.offsetBScale, inputs.offsetBq);
     }
     if (problem.hasCMXScale()) {
         scale(problem.Tc_scale, inputs.ldcScale, ldcq);
     }
     if (problem.needsAGroupSums()) {
-        scale(problem.Tag, inputs.ldag, ldaq);
+        scale(problem.Tag, inputs.ldag, ldaqk);
         scale(problem.Tag, inputs.offsetAg, inputs.offsetAq);
     }
     if (problem.needsBGroupSums()) {
-        scale(problem.Tbg, inputs.ldbg, ldbq);
+        scale(problem.Tbg, inputs.ldbg, ldbqk);
         scale(problem.Tbg, inputs.offsetBg, inputs.offsetBq);
     }
 
@@ -958,8 +958,8 @@ void Generator<hw>::gemmScaleInputs(const GEMMProblem &problem, const GEMMStrate
     state.ldag = inputs.ldag;
     state.ldbg = inputs.ldbg;
 
-    state.ra.safeRelease(inputs.ldaq);
-    state.ra.safeRelease(inputs.ldbq);
+    state.ra.safeRelease(inputs.ldaqk);
+    state.ra.safeRelease(inputs.ldbqk);
     state.ra.safeRelease(inputs.offsetAq);
     state.ra.safeRelease(inputs.offsetBq);
 }
@@ -2735,8 +2735,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     state.inputs.ldcScale = interface.getArgumentIfExists("ldc_scale");
     state.inputs.ldag = interface.getArgumentIfExists("ldag");
     state.inputs.ldbg = interface.getArgumentIfExists("ldbg");
-    state.inputs.ldaq = interface.getArgumentIfExists("ldaq");
-    state.inputs.ldbq = interface.getArgumentIfExists("ldbq");
+    state.inputs.ldaqk = interface.getArgumentIfExists("ldaqk");
+    state.inputs.ldaqm = interface.getArgumentIfExists("ldaqm");
+    state.inputs.ldbqk = interface.getArgumentIfExists("ldbqk");
+    state.inputs.ldbqn = interface.getArgumentIfExists("ldaqn");
     state.inputs.ldcq = interface.getArgumentIfExists("ldcq");
     state.inputs.m = interface.getArgumentIfExists("m");
     state.inputs.n = interface.getArgumentIfExists("n");
@@ -2918,8 +2920,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         claimIfValid(state.inputs.offsetBg);
     }
 
-    claimIfValid(state.inputs.ldaq);
-    claimIfValid(state.inputs.ldbq);
+    claimIfValid(state.inputs.ldaqk);
+    claimIfValid(state.inputs.ldaqm);
+    claimIfValid(state.inputs.ldbqk);
+    claimIfValid(state.inputs.ldbqn);
     claimIfValid(state.inputs.ldcq);
     claimIfValid(state.inputs.offsetAq);
     claimIfValid(state.inputs.offsetBq);

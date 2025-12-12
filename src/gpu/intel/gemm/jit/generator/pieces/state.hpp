@@ -203,7 +203,7 @@ struct GEMMState : public CommonState {
         ngen::Subregister ldao, ldbo, ldco;                 // d
         ngen::Subregister ldaScale, ldbScale, ldcScale;     // d
         ngen::Subregister ldag, ldbg;                       // d
-        ngen::Subregister ldaq, ldbq, ldcq;                 // d
+        ngen::Subregister ldaqk, ldaqm, ldbqk, ldbqn, ldcq; // d
         ngen::Subregister m, n, k, k0;                      // d
         SubregisterPair alpha_real, alpha_imag;             // T_real
         SubregisterPair beta_real, beta_imag;               // T_real

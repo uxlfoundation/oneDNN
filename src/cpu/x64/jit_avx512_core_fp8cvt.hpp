@@ -45,6 +45,9 @@ struct fp8_conversion_base_t {
     virtual void vcvt_f8_to_f16(
             const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in)
             = 0;
+    virtual void vcvt_f8_to_bf16(
+            const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in)
+            = 0;
     virtual void vcvt_f8_to_f32(
             const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in)
             = 0;
@@ -60,6 +63,11 @@ struct fp8_conversion_base_t {
             = 0;
 
     virtual void vcvt_f8_to_f16_vnni_block(int num_rows,
+            const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
+            const Xbyak::Reg64 &reg_data_out)
+            = 0;
+
+    virtual void vcvt_f8_to_bf16_vnni_block(int num_rows,
             const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
             const Xbyak::Reg64 &reg_data_out)
             = 0;
@@ -116,6 +124,8 @@ struct fp8_conversion_e5m2_t : public fp8_conversion_base_t {
 
     void vcvt_f8_to_f16(
             const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) override;
+    void vcvt_f8_to_bf16(
+            const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) override;
     void vcvt_f8_to_f32(
             const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) override;
     void vcvt_f16_to_f8(
@@ -129,6 +139,9 @@ struct fp8_conversion_e5m2_t : public fp8_conversion_base_t {
     void vcvt_f8_to_f16_vnni_block(int num_rows,
             const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
             const Xbyak::Reg64 &reg_data_out) override;
+    void vcvt_f8_to_bf16_vnni_block(int num_rows,
+            const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
+            const Xbyak::Reg64 &reg_data_out) override;
 
 private:
     const Xbyak::Opmask kmask_aux_;
@@ -137,6 +150,7 @@ private:
     void perform_f8_to_f16_vnni_conversion(const Xbyak::Zmm &zmm_out1,
             const Xbyak::Zmm &zmm_out2, const Xbyak::Operand &op_in,
             int zmm_permute_idx);
+    void vcvt_f16_to_bf16_via_f32(const Xbyak::Zmm &zmm_inout, int aux_idx);
 };
 
 struct fp8_conversion_e4m3_t : public fp8_conversion_base_t {
@@ -152,6 +166,8 @@ struct fp8_conversion_e4m3_t : public fp8_conversion_base_t {
 
     void vcvt_f8_to_f16(
             const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) override;
+    void vcvt_f8_to_bf16(
+            const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) override;
     void vcvt_f8_to_f32(
             const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) override;
     void vcvt_f16_to_f8(
@@ -163,6 +179,9 @@ struct fp8_conversion_e4m3_t : public fp8_conversion_base_t {
             const Xbyak::Zmm &zmm_out2, const Xbyak::Operand &op_in) override;
 
     void vcvt_f8_to_f16_vnni_block(int num_rows,
+            const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
+            const Xbyak::Reg64 &reg_data_out) override;
+    void vcvt_f8_to_bf16_vnni_block(int num_rows,
             const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
             const Xbyak::Reg64 &reg_data_out) override;
 

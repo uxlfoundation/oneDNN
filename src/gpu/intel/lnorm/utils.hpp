@@ -57,11 +57,11 @@ static compute::named_buffer_t get_ss_buffer(
         const memory_desc_t *md, dim_idx_t dim) {
     if (types::is_zero_md(md)) {
         // Scale/shift are unused. We need to construct a buffer that will not be dispatched to
-        compute::named_buffer_t ret("SS");
+        compute::named_buffer_t ret(compute::name_id_t::ss);
         ret.data_type = data_type::f32; // Anything but undef
         return ret;
     } else {
-        return compute::named_buffer_t("SS", *md, {dim});
+        return compute::named_buffer_t(compute::name_id_t::ss, *md, {dim});
     }
 }
 

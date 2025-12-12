@@ -233,7 +233,7 @@ status_t atomic_conf_t::init_dispatcher(
             dims::inner_group,
             dims::subgroup,
     };
-    compute::named_buffer_t src("SRC");
+    compute::named_buffer_t src(compute::name_id_t::src);
     src.data_type = conf.src_type;
     std::array<dim_t, 6> sizes = {
             outer_block.block,
@@ -253,7 +253,7 @@ status_t atomic_conf_t::init_dispatcher(
     src.format_desc.blocking.strides[src_outer_idx]
             = dim_t(outer_block.stride / conf.vect_size);
 
-    compute::named_buffer_t dst("DST", src);
+    compute::named_buffer_t dst(compute::name_id_t::dst, src);
     dst.data_type = conf.dst_type;
     dst.remove_dim(dims::loop);
     dst.remove_dim(dims::local); // broadcasted
@@ -274,10 +274,12 @@ status_t atomic_conf_t::init_dispatcher(
             engine, std::move(dispatch_dims));
     CHECK(config.register_buffer(src));
     CHECK(config.register_buffer(dst));
-    CHECK(config.define_dim_index("ATOMIC", dims::global, conf.global_acc));
-    CHECK(config.define_dim_index("LOCAL", dims::local, conf.local_acc));
+    CHECK(config.define_dim_index(
+            compute::name_id_t::atomic, dims::global, conf.global_acc));
+    CHECK(config.define_dim_index(
+            compute::name_id_t::local, dims::local, conf.local_acc));
     CHECK(config.use_subgroup(
-            src.get_name(), into<size_t>(conf.subgroup_size)));
+            src.get_name_id(), into<size_t>(conf.subgroup_size)));
 
     compute::reusable_dispatch_t dispatch;
     atomic_lws_strategy_t lws_strat(engine, gpu_attr);

@@ -58,20 +58,34 @@ void copy_A(
         bool isTransA, dim_t K, const float *A, const dim_t lda, float *ws) {
     constexpr dim_t m = gemm_f32_traits::get_m_unroll_factor();
 
+    // Two-way software pipelining: overlap load and store
     for (dim_t k = 0; k < K; k++) {
         dim_t i = 0;
         if (isTransA) {
             ptrdiff_t stride = lda * sizeof(float);
-            while (i < m) {
-                size_t vl = __riscv_vsetvl_e32m4(m - i);
-                const float *a_ptr = A + i * lda + k;
-                vfloat32m4_t v_a = __riscv_vlse32_v_f32m4(a_ptr, stride, vl);
-                __riscv_vse32_v_f32m4(ws + i, v_a, vl);
-                i += vl;
+            if (i < m) {
+                size_t vl0 = __riscv_vsetvl_e32m4(m - i);
+                const float *a_ptr0 = A + i * lda + k;
+                vfloat32m4_t v_a0 = __riscv_vlse32_v_f32m4(a_ptr0, stride, vl0);
+                dim_t i0 = i;
+                i += vl0;
+
+                while (i < m) {
+                    size_t vl1 = __riscv_vsetvl_e32m4(m - i);
+                    const float *a_ptr1 = A + i * lda + k;
+                    vfloat32m4_t v_a1
+                            = __riscv_vlse32_v_f32m4(a_ptr1, stride, vl1);
+                    __riscv_vse32_v_f32m4(ws + i0, v_a0, vl0);
+
+                    i0 = i;
+                    vl0 = vl1;
+                    v_a0 = v_a1;
+                    i += vl1;
+                }
+                __riscv_vse32_v_f32m4(ws + i0, v_a0, vl0);
             }
         } else {
             const float *a_ptr = A + k * lda;
-            // Two-way software pipelining: overlap load and store
             if (i < m) {
                 size_t vl0 = __riscv_vsetvl_e32m4(m - i);
                 vfloat32m4_t v_a0 = __riscv_vle32_v_f32m4(a_ptr + i, vl0);
@@ -79,18 +93,15 @@ void copy_A(
                 i += vl0;
 
                 while (i < m) {
-                    // Load next batch while storing current batch
                     size_t vl1 = __riscv_vsetvl_e32m4(m - i);
                     vfloat32m4_t v_a1 = __riscv_vle32_v_f32m4(a_ptr + i, vl1);
                     __riscv_vse32_v_f32m4(ws + i0, v_a0, vl0);
 
-                    // Swap: current becomes next
                     i0 = i;
                     vl0 = vl1;
                     v_a0 = v_a1;
                     i += vl1;
                 }
-                // Store the last batch
                 __riscv_vse32_v_f32m4(ws + i0, v_a0, vl0);
             }
         }

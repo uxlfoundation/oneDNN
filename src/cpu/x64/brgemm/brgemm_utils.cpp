@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -193,10 +193,11 @@ void set_isa_impl(brgemm_desc_t *brg) {
                         is_isa_ok(avx2_vnni_2), avx2_vnni_2,
                         is_isa_ok(avx2_vnni), avx2_vnni, is_isa_ok(avx2), avx2);
     } else if (brg->is_fp8) {
-        brg->isa_impl = utils::map(true, isa_undef,
-                is_isa_ok(avx10_2_512_amx_2), avx10_2_512_amx_2,
-                is_isa_ok(avx10_1_512_amx_fp16), avx10_1_512_amx_fp16,
-                is_isa_ok(avx10_2_512), avx10_2_512);
+        brg->isa_impl
+                = utils::map(true, isa_undef, is_isa_ok(avx10_2_512_amx_2),
+                        avx10_2_512_amx_2, is_isa_ok(avx10_1_512_amx_fp16),
+                        avx10_1_512_amx_fp16, is_isa_ok(avx10_1_512_amx),
+                        avx10_1_512_amx, is_isa_ok(avx10_2_512), avx10_2_512);
     }
 }
 
@@ -1000,7 +1001,7 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->is_f16_tmm
             = brg->is_f16 && is_superset(brg->isa_impl, avx512_core_amx_fp16);
     brg->is_fp8_tmm
-            = brg->is_fp8 && is_superset(brg->isa_impl, avx512_core_amx_fp16);
+            = brg->is_fp8 && is_superset(brg->isa_impl, avx512_core_amx);
 
     brg->has_int8_vnni = isa_has_int8_vnni(brg->isa_impl);
 

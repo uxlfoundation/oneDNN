@@ -81,6 +81,7 @@ using namespace nstl;
 
 using namespace data_type;
 
+template <cpu_isa_t isa>
 struct jit_int8_matmul_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_int8_matmul_kernel_t)
@@ -263,6 +264,14 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
             for (int b = 0; b < ldb; b += 2) {
                 PReg p = (brg_.is_n_tail && b >= ldb - 2) ? prd_st : P_ALL_ONE;
                 int vl = b / 2;
+                // execute the post-op before storing the results
+                if (eltwise_injector_) {
+                    // apply element-wise op to every vector register
+                    // whose index is in [start, end)
+                    int start_idx = acc(a, b).getIdx();
+                    int end_idx = acc(a, b + 1).getIdx() + 1;
+                    eltwise_injector_->compute_vector_range(start_idx, end_idx);
+                }
                 st1w(acc(a, b).s, p, ptr(reg_tmp, vl, MUL_VL));
                 if (a >= bdb - 1 && brg_.is_m_tail) {
                     if (brg_.m_tail % 2 == 0)
@@ -607,9 +616,17 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         }
 
         postamble();
+        if (eltwise_injector_) { eltwise_injector_->prepare_table(); }
     }
 
-    jit_int8_matmul_kernel_t(const brg_int8_t &k) : brg_(k) {}
+    jit_int8_matmul_kernel_t(const brg_int8_t &k)
+        : brg_(k), eltwise_injector_ {nullptr} {}
+    jit_int8_matmul_kernel_t(const brg_int8_t &k,
+            const dnnl_post_ops::entry_t::eltwise_t &eltwise)
+        : brg_(k)
+        , eltwise_injector_ {
+                  utils::make_unique<jit_uni_eltwise_injector_t<isa>>(
+                          this, eltwise, true)} {}
     ~jit_int8_matmul_kernel_t() override = default;
 
 private:
@@ -621,9 +638,11 @@ private:
     int k_tail_blk;
     int k_residual_blk;
     int n_blks;
+    std::unique_ptr<jit_uni_eltwise_injector_t<isa>> eltwise_injector_;
 };
 
-status_t jit_int8_matmul_t::pd_t::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
     const auto src_type = src_md(0)->data_type;
     const auto wei_type = weights_md(0)->data_type;
@@ -744,11 +763,12 @@ status_t jit_int8_matmul_t::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     bool no_post_ops = attr()->post_ops_.has_default_values();
+    bool with_eltwise = attr()->post_ops_.find(primitive_kind::eltwise) >= 0;
     const bool problem_dt_correct
             = (is_s8 || is_u8 || is_u8_s8) && utils::everyone_is(f32, dst_type);
 
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_MATMUL(no_post_ops, VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_MATMUL(no_post_ops || with_eltwise, VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_MATMUL(formats_ok(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_MATMUL(get_sve_length() == 32, VERBOSE_UNSUPPORTED_ISA);
 
@@ -938,7 +958,8 @@ status_t jit_int8_matmul_t::pd_t::init(engine_t *engine) {
     return status::success;
 }
 
-status_t jit_int8_matmul_t::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_int8_matmul_t<isa>::init(engine_t *engine) {
 
     const auto &b1 = pd()->get_b();
     const auto &d1 = pd()->get_d();
@@ -980,6 +1001,9 @@ status_t jit_int8_matmul_t::init(engine_t *engine) {
     b.b_reo = b1.b_reo;
     b.ld_block = b1.ld_block;
 
+    const int eltwise_idx
+            = pd()->attr()->post_ops_.find(primitive_kind_t::dnnl_eltwise);
+
     for (int z = 0; z < 2; z++)
         for (int m = 0; m < 2; m++)
             for (int n = 0; n < 2; n++)
@@ -990,10 +1014,23 @@ status_t jit_int8_matmul_t::init(engine_t *engine) {
                     b.is_k_tail = k;
                     b.is_n_tail = n;
                     b.is_zp_cal = z;
-                    int8_kernels_[idx]
-                            = std::unique_ptr<jit_int8_matmul_kernel_t> {
-                                    new jit_int8_matmul_kernel_t(b)};
+
+                    if (eltwise_idx != -1) {
+                        const auto &eltwise
+                                = pd()->attr()
+                                          ->post_ops_.entry_[eltwise_idx]
+                                          .eltwise;
+                        int8_kernels_[idx] = std::unique_ptr<
+                                jit_int8_matmul_kernel_t<isa>> {
+                                new jit_int8_matmul_kernel_t<isa>(b, eltwise)};
+                    } else {
+                        int8_kernels_[idx] = std::unique_ptr<
+                                jit_int8_matmul_kernel_t<isa>> {
+                                new jit_int8_matmul_kernel_t<isa>(b)};
+                    }
+
                     if (!int8_kernels_[idx]) return status::runtime_error;
+
                     CHECK(int8_kernels_[idx]->create_kernel());
                 }
 
@@ -1012,10 +1049,13 @@ status_t jit_int8_matmul_t::init(engine_t *engine) {
     return status::success;
 }
 
-jit_int8_matmul_t::jit_int8_matmul_t(const pd_t *apd) : primitive_t(apd) {}
-jit_int8_matmul_t::~jit_int8_matmul_t() = default;
+template <cpu_isa_t isa>
+jit_int8_matmul_t<isa>::jit_int8_matmul_t(const pd_t *apd) : primitive_t(apd) {}
+template <cpu_isa_t isa>
+jit_int8_matmul_t<isa>::~jit_int8_matmul_t() = default;
 
-status_t jit_int8_matmul_t::execute(const exec_ctx_t &ctx) const {
+template <cpu_isa_t isa>
+status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
     const auto *weights_b = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
     const auto *src_b = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
@@ -1543,6 +1583,9 @@ status_t jit_int8_matmul_t::execute(const exec_ctx_t &ctx) const {
 
     return status::success;
 }
+
+template struct jit_int8_matmul_t<sve_128>;
+template struct jit_int8_matmul_t<sve_256>;
 
 } // namespace matmul
 } // namespace aarch64

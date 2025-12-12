@@ -34,7 +34,7 @@ namespace aarch64 {
 namespace eltwise_injector {
 
 bool is_isa_supported(cpu_isa_t isa) {
-    return isa == asimd || isa == sve_128;
+    return isa == asimd || isa == sve_128 || isa == sve_256;
 }
 
 bool is_alg_supported(alg_kind_t alg) {
@@ -2490,6 +2490,11 @@ size_t jit_uni_eltwise_injector_t<sve_128>::get_vec_len() {
 }
 
 template <>
+size_t jit_uni_eltwise_injector_t<sve_256>::get_vec_len() {
+    return get_sve_length();
+}
+
+template <>
 void jit_uni_eltwise_injector_t<asimd>::exp_compute_vector_fwd(
         const TRegS &vmm_src) {
     /*
@@ -2723,6 +2728,11 @@ void jit_uni_eltwise_injector_t<sve_128>::load_1word_replicate(
         const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr) {
     h->ld1rw(TRegS(vmm_src.getIdx()), p_all, ptr(x_addr));
 }
+template <>
+void jit_uni_eltwise_injector_t<sve_256>::load_1word_replicate(
+        const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr) {
+    h->ld1rw(TRegS(vmm_src.getIdx()), p_all, ptr(x_addr));
+}
 
 template <>
 void jit_uni_eltwise_injector_t<asimd>::load_vector(
@@ -2731,6 +2741,11 @@ void jit_uni_eltwise_injector_t<asimd>::load_vector(
 }
 template <>
 void jit_uni_eltwise_injector_t<sve_128>::load_vector(
+        const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr) {
+    h->ldr(TReg(vmm_src.getIdx()), ptr(x_addr));
+}
+template <>
+void jit_uni_eltwise_injector_t<sve_256>::load_vector(
         const TRegS &vmm_src, Xbyak_aarch64::XReg x_addr) {
     h->ldr(TReg(vmm_src.getIdx()), ptr(x_addr));
 }
@@ -2772,14 +2787,15 @@ DEFINE_ASIMD_EMPTY_FUNC(hardsigmoid_compute_vector_bwd);
 
 template <>
 void jit_uni_eltwise_injector_t<asimd>::compute_cmp_mask(const TRegS &vmm_src,
-        const TRegS &compare_operand, int cmp_predicate) {};
+        const TRegS &compare_operand, int cmp_predicate) {}
 
 template <>
 void jit_uni_eltwise_injector_t<asimd>::blend_with_mask(
-        const TRegS &vmm_dst, const TRegS &src) {};
+        const TRegS &vmm_dst, const TRegS &src) {}
 
 // We only need sve_128 as the injector is fully vector length agnostic.
 template struct jit_uni_eltwise_injector_t<sve_128>;
+template struct jit_uni_eltwise_injector_t<sve_256>;
 template struct jit_uni_eltwise_injector_t<asimd>;
 
 } // namespace aarch64

@@ -50,13 +50,34 @@ struct riscv_nhwc_pooling_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(memory_desc_wrapper(dst_md()).is_dense(false),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            VDISPATCH_POOLING(utils::everyone_is(data_type::f32,
-                                      src_md()->data_type, dst_md()->data_type),
+
+            const bool is_f16 = src_md()->data_type == data_type::f16;
+
+            VDISPATCH_POOLING(utils::one_of(src_md()->data_type, data_type::f32,
+                                      data_type::f16),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_POOLING(platform::has_data_type_support(data_type::f32),
+
+            VDISPATCH_POOLING(src_md()->data_type == dst_md()->data_type,
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_POOLING(desc()->accum_data_type == data_type::f32,
+
+            const data_type_t expected_acc_type
+                    = is_f16 ? data_type::f32 : src_md()->data_type;
+            VDISPATCH_POOLING(desc()->accum_data_type == expected_acc_type,
                     VERBOSE_UNSUPPORTED_DT);
+
+            if (is_f16) {
+                VDISPATCH_POOLING(DNNL_RISCV_USE_ZVFH_INTRINSICS,
+                        VERBOSE_UNSUPPORTED_ISA);
+
+                // Fallback to reference if post-ops are requested for f16
+                if (!attr()->post_ops_.has_default_values())
+                    return status::unimplemented;
+            }
+
+            VDISPATCH_POOLING(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
+
             VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_POOLING(!is_dilated(), VERBOSE_UNSUPPORTED_FEATURE,
                     "does not support dilations");

@@ -18,6 +18,7 @@
 #define GPU_INTEL_BINARY_COMMON_H
 
 #include "gpu/intel/include/dispatch.h"
+#include "gpu/intel/include/dnnl_interop.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 #include "gpu/intel/include/utils.h"
@@ -371,28 +372,28 @@
 #define DEF_binary_op(dt, special_dt) \
     dt __attribute__((overloadable)) binary_op(int alg, dt src0, dt src1) { \
         switch (alg) { \
-            case (BINARY_ADD): return src0 + src1; \
-            case (BINARY_MUL): return src0 * src1; \
-            case (BINARY_MAX): return max(src0, src1); \
-            case (BINARY_MIN): return min(src0, src1); \
-            case (BINARY_DIV): return src0 / src1; \
-            case (BINARY_SUB): return src0 - src1; \
-            case (BINARY_GE): \
+            case binary_add: return src0 + src1; \
+            case binary_mul: return src0 * src1; \
+            case binary_max: return max(src0, src1); \
+            case binary_min: return min(src0, src1); \
+            case binary_div: return src0 / src1; \
+            case binary_sub: return src0 - src1; \
+            case binary_ge: \
                 return (src0 >= src1) ? SPECIAL(special_dt, one) \
                                       : SPECIAL(special_dt, zero); \
-            case (BINARY_GT): \
+            case binary_gt: \
                 return (src0 > src1) ? SPECIAL(special_dt, one) \
                                      : SPECIAL(special_dt, zero); \
-            case (BINARY_LE): \
+            case binary_le: \
                 return (src0 <= src1) ? SPECIAL(special_dt, one) \
                                       : SPECIAL(special_dt, zero); \
-            case (BINARY_LT): \
+            case binary_lt: \
                 return (src0 < src1) ? SPECIAL(special_dt, one) \
                                      : SPECIAL(special_dt, zero); \
-            case (BINARY_EQ): \
+            case binary_eq: \
                 return (src0 == src1) ? SPECIAL(special_dt, one) \
                                       : SPECIAL(special_dt, zero); \
-            case (BINARY_NE): \
+            case binary_ne: \
                 return (src0 != src1) ? SPECIAL(special_dt, one) \
                                       : SPECIAL(special_dt, zero); \
         } \

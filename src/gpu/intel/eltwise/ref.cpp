@@ -67,8 +67,6 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const memory_desc_t *dst_md) {
     kernel_ctx.set_data_type(conf.data_type);
 
-    def_eltwise_alg_kinds(kernel_ctx);
-
     kernel_ctx.define_int("ELTWISE_ALG", conf.alg);
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("GWS0", conf.dispatch.nd_range().global_range()[0]);

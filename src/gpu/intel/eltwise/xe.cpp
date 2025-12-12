@@ -67,7 +67,6 @@ compute::kernel_ctx_t xe_jit_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
 
     kernel_ctx.set_data_type(data_type);
-    def_eltwise_alg_kinds(kernel_ctx);
 
     kernel_ctx.define_int("ELTWISE_ALG", alg_kind);
 

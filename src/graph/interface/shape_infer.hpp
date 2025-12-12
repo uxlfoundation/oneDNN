@@ -214,6 +214,11 @@ status_t infer_prelu_bwd_output_shape(op_t *n,
 status_t infer_groupnorm_output_shape(op_t *n,
         std::vector<logical_tensor_t *> &inputs,
         std::vector<logical_tensor_t *> &outputs);
+
+status_t infer_dummy_output_shape(op_t *n,
+        std::vector<logical_tensor_t *> &inputs,
+        std::vector<logical_tensor_t *> &outputs);
+
 } // namespace graph
 } // namespace impl
 } // namespace dnnl

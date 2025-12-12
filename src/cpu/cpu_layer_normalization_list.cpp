@@ -28,6 +28,11 @@ using namespace dnnl::impl::cpu::x64;
 #include "cpu/aarch64/acl_layer_normalization.hpp"
 using namespace dnnl::impl::cpu::aarch64;
 #endif
+#elif DNNL_RV64
+#if defined(DNNL_RISCV_USE_RVV_INTRINSICS)
+#include "cpu/rv64/rvv_layer_normalization.hpp"
+using namespace dnnl::impl::cpu::rv64;
+#endif // DNNL_RISCV_USE_RVV_INTRINSICS
 #endif
 
 namespace dnnl {
@@ -44,6 +49,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
         {{forward}, {
             CPU_INSTANCE_X64(jit_uni_layer_normalization_fwd_t)
             CPU_INSTANCE_AARCH64_ACL(acl_layer_normalization_fwd_t)
+            CPU_INSTANCE_RV64GCV(rvv_layer_normalization_fwd_t)
             CPU_INSTANCE(simple_layer_normalization_fwd_t)
             CPU_INSTANCE(ref_layer_normalization_fwd_t)
             nullptr,

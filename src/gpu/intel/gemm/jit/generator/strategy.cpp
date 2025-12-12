@@ -237,6 +237,12 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     //                         64-bit emulation > r0 header storage.
     if (AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
         kChain = 1;
+#if XE3P
+    // Using acc and mad not working on xe3p
+    bool is_xe3p = one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN);
+    if (!systolic && !dotVL && is_xe3p)
+        kChain = 1;
+#endif
     cAccumulators &= (kChain == 1);
 
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW;

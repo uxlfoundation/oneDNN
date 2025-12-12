@@ -371,11 +371,19 @@ struct named_buffer_t : public memory_desc_t {
     named_buffer_t(const char *name) : name(name) {
         format_kind = format_kind::blocked;
     }
+    named_buffer_t(const char *name, const memory_desc_t &md)
+        : named_buffer_t(name, md, default_dims(md.ndims)) {};
 
     // Copy the named_buffer_t, while changing the name
     named_buffer_t(const char *name, const named_buffer_t &buf)
         : memory_desc_t(buf), name(name), dim_ids(buf.get_dim_ids()) {};
 
+    static std::vector<dim_idx_t> default_dims(int ndims) {
+        std::vector<dim_idx_t> dims(ndims);
+        for (int i = 0; i < ndims; i++)
+            dims[i] = i;
+        return dims;
+    }
     dim_t nelems(bool with_padding = false) const {
         return memory_desc_wrapper(static_cast<memory_desc_t>(*this))
                 .nelems(with_padding);

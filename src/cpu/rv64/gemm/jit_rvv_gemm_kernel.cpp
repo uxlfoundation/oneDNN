@@ -41,14 +41,15 @@ void jit_rvv_gemm_kernel_t::generate() {
     const Reg reg_ldb_bytes = t1; // ldb * sizeof(float)
     const Reg reg_ldc_bytes = t2; // ldc * sizeof(float)
     const Reg reg_K = t3; // K
-    const Reg reg_alpha_bits = t4; // raw alpha bits (for completeness)
+    const Reg reg_alpha_bits
+            = t4; // holds raw alpha bits, loaded and then moved to freg_alpha for computation
     const Reg reg_beta_bits = t5; // raw beta bits (0 means beta == 0.0f)
 
     // Loop counters:
     const Reg reg_k = a4; // current k
     const Reg reg_K_main = a5; // K_main = (K / 4) * 4
 
-    // B row pointers for current k (columns 0 and 1).
+    // B row pointers for current k (used to access columns 0, 1, 2, and 3).
     const Reg reg_B0_ptr = a6; // &B(k, 0)
     const Reg reg_B1_ptr = a7; // &B(k, 1)
 
@@ -200,7 +201,7 @@ void jit_rvv_gemm_kernel_t::generate() {
         // beta != 0: v_tmp = beta * C_old + alpha * v_c
         vle32_v(v_tmp, reg_c_col);
         vfmul_vf(v_tmp, v_tmp, freg_beta);
-        vfmul_vf(v_c, v_c, freg_alpha);
+        vfmul_vf(v_c, v_c, freg_alpha); // use in-place v_c update to save regs
         vfadd_vv(v_tmp, v_tmp, v_c);
         vse32_v(v_tmp, reg_c_col);
         j_(label_done);

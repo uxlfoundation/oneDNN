@@ -62,9 +62,6 @@ protected:
     void generate() override;
 };
 
-void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
-        dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta);
-
 } // namespace gemm_utils
 } // namespace rv64
 } // namespace cpu

@@ -186,23 +186,6 @@ struct kernel_mxn_impl<isTransA, isTransB, 4> {
     }
 };
 
-// JIT-optimized specialization for the most important case:
-//   isTransA = false, isTransB = false, n_unroll = 4.
-// For this combination, delegate the inner 8x4 micro-kernel to the RVV
-// JIT kernel implemented in jit_rvv_gemm_kernel.cpp instead of using the
-// RVV intrinsics loop above. This keeps the blocking / threading logic
-// unchanged while giving us a more aggressively unrolled and software-
-// pipelined K loop in the hot compute core.
-template <>
-struct kernel_mxn_impl<false, false, 4> {
-    static void execute(dim_t K, const float *A, dim_t lda, const float *B,
-            dim_t ldb, float *C, dim_t ldc, float alpha, float beta,
-            int ithr = -1) {
-        MAYBE_UNUSED(ithr);
-        jit_rvv_gemm_kernel(A, B, C, lda, ldb, ldc, K, alpha, beta);
-    }
-};
-
 template <bool isTransA, bool isTransB>
 struct kernel_mxn_impl<isTransA, isTransB, 8> {
     static void execute(dim_t K, const float *A, dim_t lda, const float *B,
@@ -269,6 +252,23 @@ struct kernel_mxn_impl<isTransA, isTransB, 8> {
 
             i += vl;
         }
+    }
+};
+
+// JIT-optimized specialization for the most important case:
+//   isTransA = false, isTransB = false, n_unroll = 4.
+// For this combination, delegate the inner 8x4 micro-kernel to the RVV
+// JIT kernel implemented in jit_rvv_gemm_kernel.cpp instead of using the
+// RVV intrinsics loop above. This keeps the blocking / threading logic
+// unchanged while giving us a more aggressively unrolled and software-
+// pipelined K loop in the hot compute core.
+template <>
+struct kernel_mxn_impl<false, false, 4> {
+    static void execute(dim_t K, const float *A, dim_t lda, const float *B,
+            dim_t ldb, float *C, dim_t ldc, float alpha, float beta,
+            int ithr = -1) {
+        MAYBE_UNUSED(ithr);
+        jit_rvv_gemm_kernel(A, B, C, lda, ldb, ldc, K, alpha, beta);
     }
 };
 

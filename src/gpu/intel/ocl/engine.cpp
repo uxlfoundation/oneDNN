@@ -168,6 +168,69 @@ status_t create_ocl_kernel_from_cache_blob(const engine_t *ocl_engine,
     return status::success;
 }
 
+void filter_build_log(std::vector<char> &buf) {
+    // Look for collections of lines in the build log in the form:
+    //
+    //   XXXX
+    //   YYYY
+    //   ZZZZ
+    //   in <context>: '<context name>'
+    //
+    // Strip lines that contain messages that we can't control. If there are
+    // non-blank lines after filtering (excluding the "in <context>" line),
+    // keep the filtered lines.
+    auto should_ignore_line = [](const std::string &line) {
+        const std::vector<std::string> ignore_patterns
+                = {"RetryManager", " and spilled around "};
+        for (const auto &pattern : ignore_patterns)
+            if (line.find(pattern) != std::string::npos) return true;
+        return false;
+    };
+
+    std::string sep;
+    std::string filtered;
+    size_t lines_since_last_kernel_name = 0;
+    auto append = [&](const std::vector<std::string> &lines) {
+        if (lines_since_last_kernel_name <= 1) return;
+        for (const auto &line : lines) {
+            filtered += sep;
+            filtered += line;
+            sep = "\n";
+        }
+    };
+
+    auto is_block_end_marker = [](const std::string &line) {
+        if (line.find("in kernel: ") == 0) return true;
+        if (line.find("in function: ") == 0) return true;
+        if (line.find("in file: ") == 0) return true;
+        return false;
+    };
+
+    std::stringstream ss({buf.begin(), buf.end()});
+    std::string line;
+    std::vector<std::string> current_kernel_lines;
+    bool last_line_blank, current_line_blank = true;
+    while (std::getline(ss, line, '\n')) {
+        last_line_blank = current_line_blank;
+        if (should_ignore_line(line)) continue;
+        current_line_blank = line.empty() || !line[0];
+        if (current_line_blank) {
+            // Collapse multiple blank lines.
+            if (last_line_blank) continue;
+            lines_since_last_kernel_name++;
+        }
+        current_kernel_lines.push_back(line);
+        if (!is_block_end_marker(line)) continue;
+        append(current_kernel_lines);
+        lines_since_last_kernel_name = 0;
+        current_kernel_lines.clear();
+    }
+    lines_since_last_kernel_name++;
+    append(current_kernel_lines);
+
+    buf = {filtered.begin(), filtered.end()};
+}
+
 cl_int maybe_print_debug_info(
         cl_int err_, cl_program program, cl_device_id dev) {
     // Return error code if verbose is not enabled.
@@ -181,21 +244,24 @@ cl_int maybe_print_debug_info(
             program, dev, CL_PROGRAM_BUILD_LOG, 0, nullptr, &log_length);
     gpu_assert(err == CL_SUCCESS);
 
-    if (log_length > 1 && (is_err || is_warn)) {
-        std::vector<char> log_buf(log_length);
-        err = clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG,
-                log_length, log_buf.data(), nullptr);
-        gpu_assert(err == CL_SUCCESS);
-        if (is_err)
-            VERROR(common, ocl,
-                    "Error during the build of OpenCL program. Build log:\n%s",
-                    log_buf.data());
-        else if (is_warn)
-            VWARN(common, ocl,
-                    "Warning during the build of OpenCL program. Build "
-                    "log:\n%s",
-                    log_buf.data());
+    if (log_length <= 1) return err_;
+    std::vector<char> log_buf(log_length);
+    err = clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG, log_length,
+            log_buf.data(), nullptr);
+    gpu_assert(err == CL_SUCCESS);
+    if (err_ == CL_SUCCESS && !is_dev_mode()) {
+        filter_build_log(log_buf);
+        if (log_buf.empty()) return err_;
     }
+    if (is_err)
+        VERROR(common, ocl,
+                "Error during the build of OpenCL program. Build log:\n%s",
+                log_buf.data());
+    else if (is_warn)
+        VWARN(common, ocl,
+                "Warning during the build of OpenCL program. Build "
+                "log:\n%s",
+                log_buf.data());
     MAYBE_UNUSED(err);
     return err_;
 }

@@ -187,6 +187,38 @@ void fp8_conversion_e5m2_t::vcvt_f8_to_f16(
     }
 }
 
+void fp8_conversion_e5m2_t::vcvt_f8_to_bf16(
+        const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
+    assert(utils::one_of(
+            true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
+    assert(xmm_out.isZMM());
+    assert(xmm_out.getIdx() != xmm_aux3_.getIdx());
+
+    // f16 <- f8_e5m2
+    // Floating point conversions typically set quiet bit for NaN inputs.
+    // Here we skip this step as it will be handled during f32<-f16 stage.
+    host_->vpmovzxbw(xmm_out, op_in);
+    host_->vpsllw(xmm_out, xmm_out, 8);
+
+    // copy high bytes to auxiliary register
+    const Xbyak::Zmm zmm_out(xmm_out.getIdx());
+    const Xbyak::Ymm ymm_aux_out_hi(xmm_aux3_.getIdx());
+    host_->vextractf64x4(ymm_aux_out_hi, zmm_out, 1);
+
+    // f32 <- f16
+    const Xbyak::Zmm zmm_aux_out_hi(xmm_aux3_.getIdx());
+    host_->vcvtph2psx(zmm_aux_out_hi, ymm_aux_out_hi);
+    const Xbyak::Ymm ymm_out(xmm_out.getIdx());
+    host_->vcvtph2psx(zmm_out, ymm_out);
+
+    // bf16 <- f32
+    host_->vcvtneps2bf16(ymm_aux_out_hi, zmm_aux_out_hi);
+    host_->vcvtneps2bf16(ymm_out, zmm_out);
+
+    // merge bytes
+    host_->vinsertf64x4(zmm_out, zmm_out, ymm_aux_out_hi, 1);
+}
+
 void fp8_conversion_e5m2_t::prepare_f8_to_f16_vnni_masks(int zmm_permute_idx) {
     const uint64_t mask_even = 0xAAAAAAAAAAAAAAAA;
     host_->mov(reg64_aux_, mask_even);
@@ -234,6 +266,54 @@ void fp8_conversion_e5m2_t::vcvt_f8_to_f16_vnni_block(int num_rows,
         host_->vmovups(host_->ptr[reg_data_out + (r + 1) * zmm_width_in_bytes],
                 zmm_aux2);
         host_->lea(reg_data_in, host_->ptr[reg_data_in + reg_stride_in]);
+    }
+}
+
+void fp8_conversion_e5m2_t::vcvt_f16_to_bf16_via_f32(
+        const Xbyak::Zmm &zmm_inout, int aux_idx) {
+    const Xbyak::Ymm ymm_aux(aux_idx);
+    const Xbyak::Zmm zmm_aux(aux_idx);
+
+    // process upper bytes
+    host_->vextractf64x4(ymm_aux, zmm_inout, 1);
+    host_->vcvtph2psx(zmm_aux, ymm_aux);
+    host_->vcvtneps2bf16(ymm_aux, zmm_aux);
+    host_->vinsertf64x4(zmm_inout, zmm_inout, ymm_aux, 1);
+
+    // process low bytes
+    host_->vextractf64x4(ymm_aux, zmm_inout, 0);
+    host_->vcvtph2psx(zmm_aux, ymm_aux);
+    host_->vcvtneps2bf16(ymm_aux, zmm_aux);
+    host_->vinsertf64x4(zmm_inout, zmm_inout, ymm_aux, 0);
+}
+
+void fp8_conversion_e5m2_t::vcvt_f8_to_bf16_vnni_block(int num_rows,
+        const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
+        const Xbyak::Reg64 &reg_data_out) {
+    constexpr auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
+    const Xbyak::Zmm zmm_aux_lo(xmm_aux1_.getIdx());
+    const Xbyak::Zmm zmm_aux_hi(xmm_aux2_.getIdx());
+
+    const Xbyak::Zmm zmm_permute(xmm_aux3_.getIdx());
+    prepare_f8_to_f16_vnni_masks(zmm_permute.getIdx());
+
+    for (int r = 0; r < num_rows; r += 2) {
+        perform_f8_to_f16_vnni_conversion(zmm_aux_lo, zmm_aux_hi,
+                host_->ptr[reg_data_in], zmm_permute.getIdx());
+
+        vcvt_f16_to_bf16_via_f32(zmm_aux_lo, xmm_aux3_.getIdx());
+        vcvt_f16_to_bf16_via_f32(zmm_aux_hi, xmm_aux3_.getIdx());
+
+        host_->vmovups(
+                host_->ptr[reg_data_out + r * zmm_width_in_bytes], zmm_aux_lo);
+        host_->vmovups(host_->ptr[reg_data_out + (r + 1) * zmm_width_in_bytes],
+                zmm_aux_hi);
+
+        host_->lea(reg_data_in, host_->ptr[reg_data_in + reg_stride_in]);
+
+        if (r + 2 < num_rows)
+            host_->vmovups(zmm_permute,
+                    host_->ptr[host_->rip + label_vnni_permute_index_table_]);
     }
 }
 
@@ -293,6 +373,35 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f16(
     host_->vpermt2b(zmm_aux2, zmm_tmp, zmm_aux1);
 
     host_->vmovdqu16(xmm_out, zmm_aux2);
+}
+
+void fp8_conversion_e4m3_t::vcvt_f8_to_bf16(
+        const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
+    assert(utils::one_of(
+            true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
+    assert(xmm_out.isZMM());
+    assert(xmm_out.getIdx() != xmm_aux3_.getIdx());
+
+    // f16 <- f8_e4m3
+    vcvt_f8_to_f16(xmm_out, op_in);
+
+    // copy high bytes to auxiliary register
+    const Xbyak::Zmm zmm_out(xmm_out.getIdx());
+    const Xbyak::Ymm ymm_aux_out_hi(xmm_aux3_.getIdx());
+    host_->vextractf64x4(ymm_aux_out_hi, zmm_out, 1);
+
+    // f32 <- f16
+    const Xbyak::Zmm zmm_aux_out_hi(xmm_aux3_.getIdx());
+    host_->vcvtph2psx(zmm_aux_out_hi, ymm_aux_out_hi);
+    const Xbyak::Ymm ymm_out(xmm_out.getIdx());
+    host_->vcvtph2psx(zmm_out, ymm_out);
+
+    // bf16 <- f32
+    host_->vcvtneps2bf16(ymm_aux_out_hi, zmm_aux_out_hi);
+    host_->vcvtneps2bf16(ymm_out, zmm_out);
+
+    // merge bytes
+    host_->vinsertf64x4(zmm_out, zmm_out, ymm_aux_out_hi, 1);
 }
 
 void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
@@ -362,6 +471,38 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f32(
 
     // f32 <- f16
     host_->vcvtph2psx(zmm_out, ymm_out);
+}
+
+void fp8_conversion_e4m3_t::vcvt_f8_to_bf16_vnni_block(int num_rows,
+        const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
+        const Xbyak::Reg64 &reg_data_out) {
+    constexpr auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
+    const Xbyak::Zmm zmm_aux_lo(xmm_aux4_.getIdx());
+    const Xbyak::Zmm zmm_aux_hi(xmm_aux5_.getIdx());
+    const Xbyak::Ymm ymm_aux_lo(zmm_aux_lo.getIdx());
+    const Xbyak::Ymm ymm_aux_hi(zmm_aux_hi.getIdx());
+
+    const Xbyak::Zmm zmm_permute(xmm_aux3_.getIdx());
+    for (int r = 0; r < num_rows; r += 2) {
+        host_->vmovups(zmm_permute,
+                host_->ptr[host_->rip + label_vnni_permute_index_table_]);
+
+        host_->vpermb(zmm_aux_lo, zmm_permute,
+                host_->ptr[reg_data_in]); // 3210 -> 1302
+
+        // ymm_aux_lo contains fp8 values from low bytes
+        // move fp8 values from high bytes to ymm_aux_hi
+        host_->vextractf64x4(ymm_aux_hi, zmm_aux_lo, 1);
+        vcvt_f8_to_bf16(zmm_aux_lo, ymm_aux_lo);
+        vcvt_f8_to_bf16(zmm_aux_hi, ymm_aux_hi);
+
+        host_->vmovups(
+                host_->ptr[reg_data_out + r * zmm_width_in_bytes], zmm_aux_lo);
+        host_->vmovups(host_->ptr[reg_data_out + (r + 1) * zmm_width_in_bytes],
+                zmm_aux_hi);
+
+        host_->lea(reg_data_in, host_->ptr[reg_data_in + reg_stride_in]);
+    }
 }
 
 void fp8_conversion_e5m2_t::vcvt_f32_to_f8(

@@ -50,6 +50,16 @@ status_t ref_eltwise_fwd_t::execute_forward_generic(
     auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
     CHECK(status);
 
+    const auto dropout_p
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
+    const auto dropout_seed
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_DROPOUT_SEED);
+    const auto dropout_offset
+            = CTX_IN_MEM(const int64_t *, DNNL_ARG_ATTR_DROPOUT_OFFSET);
+    auto dropout_mask = CTX_OUT_CLEAN_MEM(
+            unsigned char *, DNNL_ARG_ATTR_DROPOUT_MASK, status);
+    CHECK(status);
+
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
 
@@ -62,6 +72,8 @@ status_t ref_eltwise_fwd_t::execute_forward_generic(
     const float alpha = pd()->desc()->alpha;
     const float beta = pd()->desc()->beta;
     const int ndims = pd()->ndims();
+    const bool non_default_attrs = !pd()->attr()->has_default_values();
+    const bool with_dropout = !pd()->attr()->dropout_.has_default_values();
 
     parallel_nd(MB, C, D, H, W,
             [= COMPAT_THIS_CAPTURE](
@@ -72,11 +84,27 @@ status_t ref_eltwise_fwd_t::execute_forward_generic(
         float res = compute_eltwise_scalar_fwd(alg_kind, s, alpha, beta);
         dim_t data_l_off = (((n * C + c) * D + d) * H + h) * W + w;
 
-        ref_post_ops_t::args_t args;
-        args.ctx = &ctx;
-        args.l_offset = data_l_off;
-        args.dst_md = pd()->dst_md();
-        ref_post_ops->execute(res, args);
+        int64_t dropout_seed_val = with_dropout
+                ? io::load_int64_value(
+                          pd()->attr()->dropout_.seed_dt_, dropout_seed, 0)
+                : 0;
+        float dropout_p_val = with_dropout ? dropout_p[0] : 0.0f;
+        int64_t dropout_offset_val
+                = with_dropout && pd()->attr()->dropout_.use_offset_
+                ? dropout_offset[0]
+                : 0;
+
+        if (non_default_attrs) {
+            if (with_dropout) {
+                res = ref_dropout(res, dropout_mask, data_p_off, dropout_p_val,
+                        dropout_seed_val, dropout_offset_val);
+            }
+            ref_post_ops_t::args_t args;
+            args.ctx = &ctx;
+            args.l_offset = data_l_off;
+            args.dst_md = pd()->dst_md();
+            ref_post_ops->execute(res, args);
+        }
 
         io::store_float_value(dst_d.data_type(), res, dst, data_p_off);
     });

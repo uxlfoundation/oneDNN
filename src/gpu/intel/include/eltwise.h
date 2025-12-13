@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_INCLUDE_ELTWISE_H
 #define GPU_INTEL_INCLUDE_ELTWISE_H
 
+#include "gpu/intel/include/dnnl_interop.h"
 #include "gpu/intel/include/types.h"
 
 #if DT_F16 == 1
@@ -268,36 +269,44 @@ POST_OP_DATA_T hardswish_bwd(
 float fwd_eltwise_common(int eltwise_alg, POST_OP_DATA_T x, float alpha_,
         float beta_, float scale_) {
     switch (eltwise_alg) {
-        case RELU: return scale_ * relu_fwd(x, alpha_); break;
-        case LINEAR: return scale_ * linear_fwd(x, alpha_, beta_); break;
-        case SOFT_RELU: return scale_ * soft_relu_fwd(x, alpha_); break;
-        case MISH: return scale_ * mish_fwd(x); break;
-        case LOGISTIC: return scale_ * logistic_fwd(x); break;
-        case TANH: return scale_ * tanh_fwd(x); break;
-        case ELU: return scale_ * elu_fwd(x, alpha_); break;
-        case SQUARE: return scale_ * square_fwd(x); break;
-        case SQRT: return scale_ * sqrt_fwd(x); break;
-        case ABS: return scale_ * abs_fwd(x); break;
-        case EXP: return scale_ * exp_fwd(x); break;
-        case GELU_TANH: return scale_ * gelu_tanh_fwd(x); break;
-        case SWISH: return scale_ * swish_fwd(x, alpha_); break;
-        case LOG: return scale_ * log_fwd(x); break;
-        case CLIP: return scale_ * clip_fwd(x, alpha_, beta_); break;
-        case CLIP_V2: return scale_ * clip_v2_fwd(x, alpha_, beta_); break;
-        case POW: return scale_ * pow_fwd(x, alpha_, beta_); break;
-        case GELU_ERF: return scale_ * gelu_erf_fwd(x); break;
-        case ROUND: return scale_ * round_fwd(x); break;
-        case HARDSWISH: return scale_ * hardswish_fwd(x, alpha_, beta_); break;
-        case HARDSIGMOID:
+        case eltwise_relu: return scale_ * relu_fwd(x, alpha_); break;
+        case eltwise_linear:
+            return scale_ * linear_fwd(x, alpha_, beta_);
+            break;
+        case eltwise_soft_relu: return scale_ * soft_relu_fwd(x, alpha_); break;
+        case eltwise_mish: return scale_ * mish_fwd(x); break;
+        case eltwise_logistic: return scale_ * logistic_fwd(x); break;
+        case eltwise_tanh: return scale_ * tanh_fwd(x); break;
+        case eltwise_elu: return scale_ * elu_fwd(x, alpha_); break;
+        case eltwise_square: return scale_ * square_fwd(x); break;
+        case eltwise_sqrt: return scale_ * sqrt_fwd(x); break;
+        case eltwise_abs: return scale_ * abs_fwd(x); break;
+        case eltwise_exp: return scale_ * exp_fwd(x); break;
+        case eltwise_gelu_tanh: return scale_ * gelu_tanh_fwd(x); break;
+        case eltwise_swish: return scale_ * swish_fwd(x, alpha_); break;
+        case eltwise_log: return scale_ * log_fwd(x); break;
+        case eltwise_clip: return scale_ * clip_fwd(x, alpha_, beta_); break;
+        case eltwise_clip_v2:
+            return scale_ * clip_v2_fwd(x, alpha_, beta_);
+            break;
+        case eltwise_pow: return scale_ * pow_fwd(x, alpha_, beta_); break;
+        case eltwise_gelu_erf: return scale_ * gelu_erf_fwd(x); break;
+        case eltwise_round: return scale_ * round_fwd(x); break;
+        case eltwise_hardswish:
+            return scale_ * hardswish_fwd(x, alpha_, beta_);
+            break;
+        case eltwise_hardsigmoid:
             return scale_ * hardsigmoid_fwd(x, alpha_, beta_);
             break;
-        case RELU_DST: return scale_ * relu_fwd(x, alpha_); break;
-        case LOGISTIC_DST: return scale_ * logistic_fwd(x); break;
-        case TANH_DST: return scale_ * tanh_fwd(x); break;
-        case ELU_DST: return scale_ * elu_fwd(x, alpha_); break;
-        case SQRT_DST: return scale_ * sqrt_fwd(x); break;
-        case EXP_DST: return scale_ * exp_fwd(x); break;
-        case CLIP_V2_DST: return scale_ * clip_v2_fwd(x, alpha_, beta_); break;
+        case eltwise_relu_dst: return scale_ * relu_fwd(x, alpha_); break;
+        case eltwise_logistic_dst: return scale_ * logistic_fwd(x); break;
+        case eltwise_tanh_dst: return scale_ * tanh_fwd(x); break;
+        case eltwise_elu_dst: return scale_ * elu_fwd(x, alpha_); break;
+        case eltwise_sqrt_dst: return scale_ * sqrt_fwd(x); break;
+        case eltwise_exp_dst: return scale_ * exp_fwd(x); break;
+        case eltwise_clip_v2_dst:
+            return scale_ * clip_v2_fwd(x, alpha_, beta_);
+            break;
         default: return x; break;
     }
 }
@@ -314,33 +323,37 @@ float bwd_eltwise(
         POST_OP_DATA_T x, POST_OP_DATA_T y, float alpha_, float beta_) {
 #ifdef ELTWISE_ALG
     switch (ELTWISE_ALG) {
-        case RELU: return relu_bwd(x, y, alpha_); break;
-        case LINEAR: return linear_bwd(x, alpha_); break;
-        case SOFT_RELU: return soft_relu_bwd(x, y, alpha_); break;
-        case MISH: return mish_bwd(x, y); break;
-        case LOGISTIC: return logistic_bwd(x, y); break;
-        case TANH: return tanh_bwd(x, y); break;
-        case ELU: return elu_bwd(x, y, alpha_); break;
-        case SQUARE: return square_bwd(x, y); break;
-        case SQRT: return sqrt_bwd(x, y); break;
-        case ABS: return abs_bwd(x, y); break;
-        case EXP: return exp_bwd(x, y); break;
-        case GELU_TANH: return gelu_tanh_bwd(x, y); break;
-        case SWISH: return swish_bwd(x, y, alpha_); break;
-        case LOG: return log_bwd(x, y); break;
-        case CLIP: return clip_bwd(x, y, alpha_, beta_); break;
-        case CLIP_V2: return clip_v2_bwd(x, y, alpha_, beta_); break;
-        case POW: return pow_bwd(x, y, alpha_, beta_); break;
-        case GELU_ERF: return gelu_erf_bwd(x, y); break;
-        case HARDSWISH: return hardswish_bwd(x, y, alpha_, beta_); break;
-        case HARDSIGMOID: return hardsigmoid_bwd(x, y, alpha_, beta_); break;
-        case RELU_DST: return relu_bwd_use_dst(x, y, alpha_); break;
-        case LOGISTIC_DST: return logistic_bwd_use_dst(x, y); break;
-        case TANH_DST: return tanh_bwd_use_dst(x, y); break;
-        case ELU_DST: return elu_bwd_use_dst(x, y, alpha_); break;
-        case SQRT_DST: return sqrt_bwd_use_dst(x, y); break;
-        case EXP_DST: return exp_bwd_use_dst(x, y); break;
-        case CLIP_V2_DST:
+        case eltwise_relu: return relu_bwd(x, y, alpha_); break;
+        case eltwise_linear: return linear_bwd(x, alpha_); break;
+        case eltwise_soft_relu: return soft_relu_bwd(x, y, alpha_); break;
+        case eltwise_mish: return mish_bwd(x, y); break;
+        case eltwise_logistic: return logistic_bwd(x, y); break;
+        case eltwise_tanh: return tanh_bwd(x, y); break;
+        case eltwise_elu: return elu_bwd(x, y, alpha_); break;
+        case eltwise_square: return square_bwd(x, y); break;
+        case eltwise_sqrt: return sqrt_bwd(x, y); break;
+        case eltwise_abs: return abs_bwd(x, y); break;
+        case eltwise_exp: return exp_bwd(x, y); break;
+        case eltwise_gelu_tanh: return gelu_tanh_bwd(x, y); break;
+        case eltwise_swish: return swish_bwd(x, y, alpha_); break;
+        case eltwise_log: return log_bwd(x, y); break;
+        case eltwise_clip: return clip_bwd(x, y, alpha_, beta_); break;
+        case eltwise_clip_v2: return clip_v2_bwd(x, y, alpha_, beta_); break;
+        case eltwise_pow: return pow_bwd(x, y, alpha_, beta_); break;
+        case eltwise_gelu_erf: return gelu_erf_bwd(x, y); break;
+        case eltwise_hardswish:
+            return hardswish_bwd(x, y, alpha_, beta_);
+            break;
+        case eltwise_hardsigmoid:
+            return hardsigmoid_bwd(x, y, alpha_, beta_);
+            break;
+        case eltwise_relu_dst: return relu_bwd_use_dst(x, y, alpha_); break;
+        case eltwise_logistic_dst: return logistic_bwd_use_dst(x, y); break;
+        case eltwise_tanh_dst: return tanh_bwd_use_dst(x, y); break;
+        case eltwise_elu_dst: return elu_bwd_use_dst(x, y, alpha_); break;
+        case eltwise_sqrt_dst: return sqrt_bwd_use_dst(x, y); break;
+        case eltwise_exp_dst: return exp_bwd_use_dst(x, y); break;
+        case eltwise_clip_v2_dst:
             return clip_v2_bwd_use_dst(x, y, alpha_, beta_);
             break;
 

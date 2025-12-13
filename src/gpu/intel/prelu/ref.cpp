@@ -82,7 +82,6 @@ static status_t init_kernel_ctx_common(
         compute::kernel_ctx_t &kernel_ctx, const conf_t &conf) {
 
     kernel_ctx.set_data_type(conf.dst_md_info.data_type);
-    def_eltwise_alg_kinds(kernel_ctx);
 
     kernel_ctx.define_int("IS_FWD", conf.is_forward);
 

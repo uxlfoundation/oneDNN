@@ -88,8 +88,10 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         long c_stride_m, long c_stride_n
 #if WITH_DROPOUT
         ,
-        __global uchar *dropout_mask_buf, __global uint *dropout_seed_buf,
-        __global float *dropout_p_buf
+        __global uchar *dropout_mask_buf,
+        __global const ulong *dropout_seed_buf,
+        __global const ulong *dropout_offset_buf,
+        __global const float *dropout_p_buf
 #endif
 #if WITH_SROUND
         ,
@@ -117,7 +119,8 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #endif
 
 #if WITH_DROPOUT
-    uint dropout_seed = dropout_seed_buf[0];
+    ulong dropout_seed = dropout_seed_buf[0];
+    ulong dropout_offset = dropout_offset_buf[0];
     uint dropout_threshold = get_dropout_threshold(dropout_p_buf[0]);
     float dropout_inv_q
             = (dropout_p_buf[0] != 1.f) ? 1.f / (1.f - dropout_p_buf[0]) : 0.f;
@@ -286,7 +289,7 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         float po_acc = convert_float(temp);
 
 #if WITH_DROPOUT
-        uint res = philox_4x32(dst_off, dropout_seed);
+        uint res = philox_4x32(dst_off, dropout_seed, dropout_offset);
         uchar dropout = res > dropout_threshold;
         po_acc = (dropout) ? po_acc * dropout_inv_q : 0;
         dropout_mask_buf[dst_off] = dropout;

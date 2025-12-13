@@ -115,15 +115,17 @@ struct ref_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_MATMUL(post_ops_with_binary_ok(attr(), *dst_md(), 6),
                     VERBOSE_UNSUPPORTED_POSTOP);
-            const memory_desc_wrapper dropout_md(attr_.dropout_.dropout_desc_);
-            VDISPATCH_MATMUL(
-                    IMPLICATION(!attr_.dropout_.has_default_values(),
-                            dropout_md.similar_to(dst_md(), true, false)),
-                    VERBOSE_INCONSISTENT_MDS, "dropout", "dst");
-            VDISPATCH_MATMUL(
-                    IMPLICATION(!attr_.dropout_.has_default_values(),
-                            utils::one_of(dropout_md.data_type(), u8, s8)),
-                    VERBOSE_UNSUPPORTED_DT);
+            if (!attr_.dropout_.has_default_values()) {
+                const memory_desc_wrapper dropout_md(
+                        attr_.dropout_.dropout_desc_);
+                VDISPATCH_MATMUL(
+                        IMPLICATION(attr_.dropout_.has_output_mask(),
+                                dropout_md.similar_to(dst_md(), true, false)),
+                        VERBOSE_INCONSISTENT_MDS, "dropout", "dst");
+                VDISPATCH_MATMUL(utils::one_of(dropout_md.data_type(), u8, s8,
+                                         data_type::undef),
+                        VERBOSE_UNSUPPORTED_DT);
+            }
             VDISPATCH_MATMUL(
                     IMPLICATION(utils::one_of(f64, src_dt_, wei_dt_, dst_dt_),
                             dev_info_->has_native(f64)),

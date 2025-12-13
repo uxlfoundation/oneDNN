@@ -328,8 +328,13 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
 
     const bool dropout = !pd()->attr()->dropout_.has_default_values();
     if (dropout) {
+        // 1. add mask
         arg_list.set(arg_idx++, CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
+        // 2. add seed
         arg_list.set(arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED));
+        // 3. add offset
+        arg_list.set(arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_OFFSET));
+        // 4. add probability
         arg_list.set(
                 arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY));
     }
@@ -338,6 +343,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     if (sround) {
         arg_list.set(arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_ROUNDING_SEED));
     }
+
     append_post_ops_to_arg_list(
             ctx, arg_list, arg_idx, pd()->attr()->post_ops_, *pd()->dst_md());
 

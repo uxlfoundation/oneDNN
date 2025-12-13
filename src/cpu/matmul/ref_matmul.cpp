@@ -58,10 +58,12 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
     const auto bias = CTX_IN_MEM(const void *, DNNL_ARG_BIAS);
 
-    const auto p = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
-    const auto seed = CTX_IN_MEM(const uint32_t *, DNNL_ARG_ATTR_DROPOUT_SEED);
-    const auto rnd_seed
-            = CTX_IN_MEM(const uint32_t *, DNNL_ARG_ATTR_ROUNDING_SEED);
+    const auto dropout_p
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
+    const auto dropout_seed
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_DROPOUT_SEED);
+    const auto dropout_offset
+            = CTX_IN_MEM(const int64_t *, DNNL_ARG_ATTR_DROPOUT_OFFSET);
     auto dropout_mask = CTX_OUT_CLEAN_MEM(
             unsigned char *, DNNL_ARG_ATTR_DROPOUT_MASK, status);
     CHECK(status);
@@ -86,9 +88,6 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto weights_d = ctx.memory_mdw(DNNL_ARG_WEIGHTS, pd()->weights_md());
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
     const auto bia_d = ctx.memory_mdw(DNNL_ARG_BIAS, pd()->weights_md(1));
-
-    const memory_desc_wrapper dropout_mask_d(
-            pd()->attr()->dropout_.dropout_desc_);
 
     if (src_d.has_zero_dim() || weights_d.has_zero_dim()
             || dst_d.has_zero_dim())
@@ -265,6 +264,17 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
             [= COMPAT_THIS_CAPTURE](
                     int ithr, int nthr, dim_t mb, dim_t mc, dim_t nc) {
         if (ithr >= pd()->ntasks_) return;
+
+        int64_t dropout_seed_val = with_dropout
+                ? io::load_int64_value(
+                          pd()->attr()->dropout_.seed_dt_, dropout_seed, 0)
+                : 0;
+        float dropout_p_val = with_dropout ? dropout_p[0] : 0.0f;
+        int64_t dropout_offset_val
+                = with_dropout && pd()->attr()->dropout_.use_offset_
+                ? dropout_offset[0]
+                : 0;
+
         for_(dim_t m_ = mc * M_chunk_size;
                 m_ < std::min<dim_t>((mc + 1) * M_chunk_size, M);
                 m_ += dst_scale_group_m)
@@ -287,7 +297,8 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                 const auto dst_off = dst_d.off_v(dst_dims_idx);
                 if (non_default_attrs) {
                     if (with_dropout)
-                        d = ref_dropout(d, dropout_mask, dst_off, *p, *seed);
+                        d = ref_dropout(d, dropout_mask, dst_off, dropout_p_val,
+                                dropout_seed_val, dropout_offset_val);
                     ref_post_ops_t::args_t args;
                     args.dst_val = io::load_float_value(sum_dt, dst, dst_off);
                     args.ctx = &ctx;
@@ -309,8 +320,8 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                         d /= dst_scale;
                     }
                     if (dst_rnd_mode == rounding_mode::stochastic)
-                        d = math::stochastic_round_fwd(
-                                d, dst_off, rnd_seed[0], dst_d.data_type());
+                        d = math::stochastic_round_fwd(d, dst_off,
+                                dropout_seed_val, dst_d.data_type());
                     io::store_float_value(dst_d.data_type(), d, dst, dst_off);
                     utils::dim_iterator(
                             dst_d.dims(), dst_dims_idx, batch_ndims);
@@ -374,8 +385,8 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                     d *= dst_group_scale;
 
                     if (dst_rnd_mode == rounding_mode::stochastic)
-                        d = math::stochastic_round_fwd(
-                                d, dst_off, rnd_seed[0], dst_d.data_type());
+                        d = math::stochastic_round_fwd(d, dst_off,
+                                dropout_seed_val, dst_d.data_type());
                     io::store_float_value(dst_d.data_type(), d, dst, dst_off);
                     utils::dim_iterator(
                             dst_d.dims(), dst_dims_idx, batch_ndims);

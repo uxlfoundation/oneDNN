@@ -56,7 +56,8 @@ struct ref_eltwise_fwd_t : public primitive_t {
             VDISPATCH_ELTWISE(
                     platform::has_data_type_support(src_md()->data_type),
                     VERBOSE_ISA_DT_MISMATCH);
-            VDISPATCH_ELTWISE(attr()->has_default_values(sm::post_ops),
+            VDISPATCH_ELTWISE(
+                    attr()->has_default_values(sm::post_ops | sm::dropout),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_ELTWISE(ref_post_ops_t::post_ops_ok(attr()->post_ops_),
                     VERBOSE_UNSUPPORTED_POSTOP);
@@ -67,19 +68,41 @@ struct ref_eltwise_fwd_t : public primitive_t {
             VDISPATCH_ELTWISE(
                     attr_.set_default_formats(dst_md(0)) == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
+            CHECK(dropout_ok());
 
             use_dense_ = src_d.is_dense(true) && dst_d.is_dense(true)
                     && IMPLICATION(!src_d.is_dense() || !dst_d.is_dense(),
                             is_zero_preserved());
 
             const auto &po = attr()->post_ops_;
-            if (has_zero_dim_memory() || !po.has_default_values())
+            if (has_zero_dim_memory() || !po.has_default_values()
+                    || !attr()->dropout_.has_default_values())
                 use_dense_ = false;
 
             return status::success;
         }
 
         bool use_dense_;
+
+    private:
+        status_t dropout_ok() const {
+            if (attr_.dropout_.has_default_values()) return status::success;
+
+            assert(memory_desc_wrapper(dst_md(0)).format_kind()
+                    == format_kind::blocked);
+
+            using namespace format_tag;
+            // See `ref_dropout(...)` comment which explains the requirement.
+            VDISPATCH_ELTWISE_IC(memory_desc_matches_one_of_tag(
+                                         *dst_md(0), ncdhw, nchw, ncw, nc)
+                            && IMPLICATION(attr_.dropout_.has_output_mask(),
+                                    memory_desc_wrapper(dst_md(0)).similar_to(
+                                            attr_.dropout_.dropout_desc_, true,
+                                            false)),
+                    VERBOSE_UNSUPPORTED_DROPOUT);
+
+            return status::success;
+        }
     };
 
     ref_eltwise_fwd_t(const pd_t *apd) : primitive_t(apd) {}

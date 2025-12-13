@@ -158,9 +158,14 @@ class MemoryDescriptor(Mapping):
 @dataclass(eq=False)
 class Dropout(Mapping):
     tag: Optional[str] = None
+    seed_dt: Optional[str] = None
+    use_offset: Optional[bool] = None
+    use_host_scalars: Optional[bool] = None
 
     def __str__(self):
-        return self.tag or ""
+        return ":".join(
+            [self.tag, self.seed_dt, self.use_offset, self.use_host_scalars]
+        )
 
 
 class FormattedMapping(Mapping, ABC):

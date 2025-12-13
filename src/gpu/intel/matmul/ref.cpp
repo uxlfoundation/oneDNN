@@ -328,16 +328,50 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
 
     const bool dropout = !pd()->attr()->dropout_.has_default_values();
     if (dropout) {
+        const auto &dropout_p
+                = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
+        const auto &dropout_seed = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED);
+        const auto &dropout_offset
+                = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_OFFSET);
+        const bool use_offset = pd()->attr()->dropout_.use_offset_;
+        const bool use_host_scalars = pd()->attr()->dropout_.use_host_scalars_;
+        const bool has_output_mask = pd()->attr()->dropout_.has_output_mask();
+        //printf("offset: %d host scalar: %d output mask: %d\n", use_offset,
+        //        use_host_scalars, has_output_mask);
         arg_list.set(arg_idx++, CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
-        arg_list.set(arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED));
-        arg_list.set(
-                arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY));
+        if (use_host_scalars) {
+            int64_t scalar_seed = 0;
+            int64_t scalar_offset = 0;
+            float scalar_prob = 0.f;
+            const host_scalar_memory_storage_t *seed_storage
+                    = utils::downcast<const host_scalar_memory_storage_t *>(
+                            &dropout_seed);
+            status_t status = seed_storage->get_scalar_value(
+                    &scalar_seed, sizeof(scalar_seed));
+            assert(status == status::success);
+            const host_scalar_memory_storage_t *offset_storage
+                    = utils::downcast<const host_scalar_memory_storage_t *>(
+                            &dropout_offset);
+            status = offset_storage->get_scalar_value(
+                    &scalar_offset, sizeof(scalar_offset));
+            assert(status == status::success);
+            const host_scalar_memory_storage_t *prob_storage
+                    = utils::downcast<const host_scalar_memory_storage_t *>(
+                            &dropout_p);
+            status = prob_storage->get_scalar_value(
+                    &scalar_prob, sizeof(scalar_prob));
+            assert(status == status::success);
+            printf("seed %ld, offset %ld and probability %f\n", scalar_seed,
+                    scalar_offset, scalar_prob);
+            arg_list.set(arg_idx++, scalar_seed);
+            arg_list.set(arg_idx++, scalar_offset);
+            arg_list.set(arg_idx++, scalar_prob);
+        } else {
+            arg_list.set(arg_idx++, dropout_seed);
+            arg_list.set(arg_idx++, dropout_p);
+        }
     }
 
-    const bool sround = !pd()->attr()->rounding_mode_.has_default_values();
-    if (sround) {
-        arg_list.set(arg_idx++, CTX_IN_STORAGE(DNNL_ARG_ATTR_ROUNDING_SEED));
-    }
     append_post_ops_to_arg_list(
             ctx, arg_list, arg_idx, pd()->attr()->post_ops_, *pd()->dst_md());
 
@@ -348,7 +382,6 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     CHECK(parallel_for(ctx, nd_range, kernels_[kidx++], arg_list));
 
     CHECK(ctx.zero_pad_output(DNNL_ARG_DST));
-
     if (mx_scales) {
         compute::kernel_arg_list_t mx_scale_arg_list;
         int arg_idx = 0;
@@ -368,12 +401,14 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
         compute::range_t mx_scale_gws(
                 {(size_t)M, (size_t)N / 32, (size_t)(D0 * D1 * D2 * D3)});
         compute::nd_range_t mx_scale_nd_range(mx_scale_gws);
+
         CHECK(parallel_for(
                 ctx, mx_scale_nd_range, kernels_[kidx++], mx_scale_arg_list));
     }
 
     if (!subbyte_pack) return status_t::dnnl_success;
     compute::kernel_arg_list_t repack_arg_list;
+    printf("repack argument list\n");
     repack_arg_list.set(0, *tmp);
     repack_arg_list.set(1, c);
     repack_arg_list.set(2, into<dim_t>(nelems));

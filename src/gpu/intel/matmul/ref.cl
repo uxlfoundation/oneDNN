@@ -88,12 +88,13 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         long c_stride_m, long c_stride_n
 #if WITH_DROPOUT
         ,
-        __global uchar *dropout_mask_buf, __global uint *dropout_seed_buf,
+        __global uchar *dropout_mask_buf,
+#if USE_HOST_SCALARS
+        long dropout_seed, long dropout_offset, float dropout_p
+#else
+        __global long *dropout_seed_buf,
         __global float *dropout_p_buf
 #endif
-#if WITH_SROUND
-        ,
-        __global uint *sround_seed_buf
 #endif
                 POST_OP_ARGS) {
 
@@ -117,13 +118,13 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #endif
 
 #if WITH_DROPOUT
-    uint dropout_seed = dropout_seed_buf[0];
-    uint dropout_threshold = get_dropout_threshold(dropout_p_buf[0]);
-    float dropout_inv_q
-            = (dropout_p_buf[0] != 1.f) ? 1.f / (1.f - dropout_p_buf[0]) : 0.f;
+#if !USE_HOST_SCALARS
+    long dropout_seed = dropout_seed_buf[0];
+    float dropout_p = dropout_p_buf[0];
+//    printf("[BUFFER] %u seed and %f probab\n", dropout_seed, dropout_p);
 #endif
-#if WITH_SROUND
-    uint sround_seed = sround_seed_buf[0];
+    uint dropout_threshold = get_dropout_threshold(dropout_p);
+    float dropout_inv_q = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
 #endif
 
     long n = get_global_id(1);
@@ -286,14 +287,22 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         float po_acc = convert_float(temp);
 
 #if WITH_DROPOUT
-        uint res = philox_4x32(dst_off, dropout_seed);
+#if USE_HOST_SCALARS
+        uint res = philox_4x32_s64(dst_off, dropout_seed, dropout_offset);
+#else
+        uint res = philox_4x32_s64(dst_off, dropout_seed, 0);
+#endif
         uchar dropout = res > dropout_threshold;
+        printf("dst_off: %ld, %u thresh, %f inv_q, %u res - dropout %hhu\n",
+                dst_off, dropout_threshold, dropout_inv_q, res, dropout);
         po_acc = (dropout) ? po_acc * dropout_inv_q : 0;
+#if HAS_OUTPUT_MASK
         dropout_mask_buf[dst_off] = dropout;
+#endif
 #endif
 
 #if WITH_SROUND
-        po_acc = stochastic_round_fwd(po_acc, dst_off, sround_seed);
+        po_acc = stochastic_round_fwd(po_acc, dst_off, dropout_seed);
 #endif
 
         if (DST_NDIMS == 2)

@@ -181,8 +181,8 @@ static status_t create_ocl_engine(
             ocl_dev = xpu::ocl::make_wrapper(d, true);
 
             cl_int err;
-            ocl_ctx = xpu::ocl::make_wrapper(
-                    clCreateContext(nullptr, 1, &d, nullptr, nullptr, &err));
+            ocl_ctx = xpu::ocl::make_wrapper(xpu::ocl::clCreateContext(
+                    nullptr, 1, &d, nullptr, nullptr, &err));
             OCL_CHECK(err);
             break;
         }
@@ -212,42 +212,22 @@ status_t get_kernel_binary(
     assert(!devs.empty());
     switch (xpu::sycl::get_backend(devs[0])) {
         case xpu::sycl::backend_t::level0: {
-
-#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
-            auto l0_kernel = ::sycl::get_native<
-                    ::sycl::backend::ext_oneapi_level_zero>(kernel);
-            size_t binary_size = 0;
-            CHECK(gpu::intel::sycl::func_zeGetKernelBinary(
-                    l0_kernel, &binary_size, nullptr));
-            binary.resize(binary_size);
-            CHECK(gpu::intel::sycl::func_zeGetKernelBinary(
-                    l0_kernel, &binary_size, binary.data()));
-#else
-            auto bundle = kernel.get_kernel_bundle();
-            auto module_vec = ::sycl::get_native<
-                    ::sycl::backend::ext_oneapi_level_zero>(bundle);
-            auto module = module_vec[0];
-            size_t module_binary_size;
-            xpu::binary_t module_binary;
-            CHECK(gpu::intel::sycl::func_zeModuleGetNativeBinary(
-                    module, &module_binary_size, nullptr));
-            module_binary.resize(module_binary_size);
-            CHECK(gpu::intel::sycl::func_zeModuleGetNativeBinary(
-                    module, &module_binary_size, module_binary.data()));
+            CHECK(get_l0_kernel_binary(kernel, binary));
+#ifndef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
             {
                 std::unique_ptr<gpu::intel::ocl::engine_t, engine_deleter_t>
                         ocl_engine;
                 CHECK(create_ocl_engine(&ocl_engine, devs[0]));
                 xpu::ocl::wrapper_t<cl_program> ocl_program;
                 CHECK(xpu::ocl::create_program(ocl_program,
-                        ocl_engine->device(), ocl_engine->context(),
-                        module_binary));
+                        ocl_engine->device(), ocl_engine->context(), binary));
 
                 cl_int err;
                 auto name = kernel.get_info<
                         ::sycl::info::kernel::function_name>();
-                auto ocl_kernel = xpu::ocl::make_wrapper(
-                        clCreateKernel(ocl_program, name.c_str(), &err));
+                auto ocl_kernel
+                        = xpu::ocl::make_wrapper(xpu::ocl::clCreateKernel(
+                                ocl_program, name.c_str(), &err));
                 OCL_CHECK(err);
                 CHECK(gpu::intel::ocl::get_ocl_kernel_binary(
                         ocl_kernel, binary));
@@ -319,7 +299,8 @@ status_t get_sycl_ocl_device_and_context(
         ocl_device = xpu::ocl::make_wrapper(ocl_dev, true);
 
         ocl_context = xpu::ocl::make_wrapper(
-                clCreateContext(nullptr, 1, &ocl_dev, nullptr, nullptr, &err),
+                xpu::ocl::clCreateContext(
+                        nullptr, 1, &ocl_dev, nullptr, nullptr, &err),
                 true);
         OCL_CHECK(err);
     } else if (be == xpu::sycl::backend_t::level0) {

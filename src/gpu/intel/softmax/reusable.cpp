@@ -246,7 +246,9 @@ compute::kernel_ctx_t reusable_params_t::get_kernel_ctx() const {
     def_data_type(kernel_ctx, src_data_type, "SRC");
     def_data_type(kernel_ctx, dst_data_type, "DST");
 
-    gws_params.def_kernel_macros(kernel_ctx);
+    if (utils::one_of(algorithm_number, many_reductions_per_workgroup,
+                one_reduction_per_workgroup, one_reduction_per_subgroup))
+        gws_params.def_kernel_macros(kernel_ctx);
     return kernel_ctx;
 }
 

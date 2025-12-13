@@ -23,6 +23,7 @@ namespace eltwise {
 void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
+    const dnn_mem_t &dropout_mask = args.find(DNNL_ARG_ATTR_DROPOUT_MASK);
 
     float *dst_ptr = (float *)dst;
 
@@ -35,6 +36,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
 
         const auto v_po_vals = prepare_po_vals(dst, args, v_po_masks, i);
 
+        maybe_dropout(prb->attr, res, i, dropout_mask);
         maybe_post_ops(prb->attr, res, 0.f, v_po_vals);
 
         // Backward use_dst case requires data adjustment since lower data type

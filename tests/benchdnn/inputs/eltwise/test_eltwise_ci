@@ -16,8 +16,10 @@
 --attr-post-ops=,mul:f32
 --batch=option_set_all_algs_int8_ci
 
-
 --dt=f64
 --dir=BWD_D,FWD_I
 --attr-post-ops=
 --batch=option_set_all_algs_ci
+
+# Dropout
+--batch=harness_eltwise_dropout

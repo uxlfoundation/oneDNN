@@ -155,10 +155,10 @@ inline void SetError(int err) {
 inline void ClearError() {
 	local::GetErrorRef() = 0;
 }
-inline int GetError() { return Xbyak::local::GetErrorRef(); }
+inline int GetError() { return Xbyak_riscv::local::GetErrorRef(); }
 
-#define XBYAK_RISCV_THROW(err) { Xbyak::local::SetError(err); return; }
-#define XBYAK_RISCV_THROW_RET(err, r) { Xbyak::local::SetError(err); return r; }
+#define XBYAK_RISCV_THROW(err) { Xbyak_riscv::local::SetError(err); return; }
+#define XBYAK_RISCV_THROW_RET(err, r) { Xbyak_riscv::local::SetError(err); return r; }
 
 #else
 class Error : public std::exception {

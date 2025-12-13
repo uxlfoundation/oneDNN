@@ -291,6 +291,7 @@ dnnl_driver_t deserialized_op_t::opkind2driver() const {
                     {dnnl::graph::op::kind::ReLUBackward,
                             dnnl_driver_t::eltwise},
                     {dnnl::graph::op::kind::Reorder, dnnl_driver_t::reorder},
+                    {dnnl::graph::op::kind::RMSNorm, dnnl_driver_t::lnorm},
                     {dnnl::graph::op::kind::Round, dnnl_driver_t::eltwise},
                     {dnnl::graph::op::kind::Select, dnnl_driver_t::binary},
                     {dnnl::graph::op::kind::Sigmoid, dnnl_driver_t::eltwise},

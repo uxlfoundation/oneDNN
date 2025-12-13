@@ -1156,6 +1156,9 @@ status_t infer_norm_output_shape(op_t *n,
     auto status = infer_identity_output_shape(n, inputs, outputs);
     if (status != status::success) return status;
 
+    const auto is_rms = n->get_kind() == op_kind::RMSNorm;
+    if (is_rms) return status::success;
+
     const bool keep_stats = n->has_attr(op_attr::keep_stats)
             ? n->get_attr<bool>(op_attr::keep_stats)
             // Keep default value as which in op_schema

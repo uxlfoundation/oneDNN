@@ -234,6 +234,16 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     compute::range_t lws = {size_t(nocopy_info()->wg[gemmstone::LoopM]),
             size_t(nocopy_info()->wg[gemmstone::LoopN]), size_t(lws_k)};
 
+    // C Interleave: pad up gws[N] to a multiple of the chunk size and add to gws[M] if misaligned ldc
+    auto info = nocopy_info();
+    gws[1] = utils::rnd_up(gws[1], info->cInterleaveChunk() * lws[1]);
+    if (info->cInterleaveChunk() > 1
+            && (offset_c % 64 > 0 || ldc * problem->Tc % 64 > 0)) {
+        auto wgTileM = info->wgTile(gemmstone::LoopM);
+        auto maxShift = 64 / problem->Tc_ext - 1;
+        gws[0] += lws[0] * utils::div_up(wgTileM + maxShift, wgTileM);
+    }
+
     if (nocopy_info()->isNMK()) {
         std::swap(lws[0], lws[1]);
         std::swap(gws[0], gws[1]);

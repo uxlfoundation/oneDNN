@@ -260,6 +260,7 @@ struct GEMMStrategyPOD : public CommonStrategy {
     bool shrinkWGK = false;                      //   Shrink wgK automatically to try to fit dispatch in 1 wave (or smaller)?
                                     ZPAD(J, 3)
     int fillGoal = 0;                            //     With shrinkWGK, try to fill this fraction of available thread slots, measured in sixteenths (0 = default).
+    int cInterleaveChunk = 1;                    // Minimum chunk size for interleaving columns of C among threads
     bool kParallelVariable = false;              // If true, generate kernel that uses variable k-parallelization for load balancing.
     bool fuseBeta = false;                       //   Fuse beta scaling into kernel? (kParallel/kParallelVariable, requires linear ordering)
     bool fusePostOps = false;                    //   Fuse post-operations into kernel? (kParallel/kParallelVariable, requires linear ordering)

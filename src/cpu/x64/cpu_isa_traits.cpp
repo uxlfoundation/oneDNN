@@ -62,8 +62,8 @@ cpu_isa_t init_max_cpu_isa() {
         ELSEIF_HANDLE_CASE(avx512_core_fp16);
         ELSEIF_HANDLE_CASE(avx512_core_amx);
         ELSEIF_HANDLE_CASE(avx512_core_amx_fp16);
-        ELSEIF_HANDLE_CASE(avx10_2_512);
-        ELSEIF_HANDLE_CASE(avx10_2_512_amx_2);
+        ELSEIF_HANDLE_CASE(avx10_2);
+        ELSEIF_HANDLE_CASE(avx10_2_amx_2);
 
 #undef IF_HANDLE_CASE
 #undef ELSEIF_HANDLE_CASE
@@ -107,8 +107,8 @@ struct isa_info_t {
     // so the internal and external enum types do not coincide.
     dnnl_cpu_isa_t convert_to_public_enum(void) const {
         switch (isa) {
-            case avx10_2_512_amx_2: return dnnl_cpu_isa_avx10_2_512_amx_2;
-            case avx10_2_512: return dnnl_cpu_isa_avx10_2_512;
+            case avx10_2_amx_2: return dnnl_cpu_isa_avx10_2_amx_2;
+            case avx10_2: return dnnl_cpu_isa_avx10_2;
             case avx512_core_amx_fp16: return dnnl_cpu_isa_avx512_core_amx_fp16;
             case avx512_core_amx: return dnnl_cpu_isa_avx512_core_amx;
             case avx512_core_fp16: return dnnl_cpu_isa_avx512_core_fp16;
@@ -127,11 +127,11 @@ struct isa_info_t {
 
     const char *get_name() const {
         switch (isa) {
-            case avx10_2_512_amx_2:
+            case avx10_2_amx_2:
                 return "Intel AVX10.2/512 with float16, Intel DL Boost and "
                        "Intel AMX with bfloat16, float16, float8 and "
                        "8-bit integer support";
-            case avx10_2_512:
+            case avx10_2:
                 return "Intel AVX10.2/512 with float16, Intel DL Boost and "
                        "bfloat16 support ";
             case avx512_core_amx_fp16:
@@ -177,8 +177,8 @@ static isa_info_t get_isa_info_t(void) {
     // descending order due to mayiuse check
 #define HANDLE_CASE(cpu_isa) \
     if (mayiuse(cpu_isa)) return isa_info_t(cpu_isa);
-    HANDLE_CASE(avx10_2_512_amx_2);
-    HANDLE_CASE(avx10_2_512);
+    HANDLE_CASE(avx10_2_amx_2);
+    HANDLE_CASE(avx10_2);
     HANDLE_CASE(avx512_core_amx_fp16);
     HANDLE_CASE(avx512_core_amx);
     HANDLE_CASE(avx512_core_fp16);
@@ -235,8 +235,8 @@ status_t set_max_cpu_isa(dnnl_cpu_isa_t isa) {
         HANDLE_CASE(avx512_core_amx);
         HANDLE_CASE(avx512_core_fp16);
         HANDLE_CASE(avx512_core_amx_fp16);
-        HANDLE_CASE(avx10_2_512);
-        HANDLE_CASE(avx10_2_512_amx_2);
+        HANDLE_CASE(avx10_2);
+        HANDLE_CASE(avx10_2_amx_2);
         default: return invalid_arguments;
     }
     assert(isa_to_set != isa_undef);

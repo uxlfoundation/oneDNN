@@ -173,7 +173,7 @@ jit_brgemm_ip_conf_t::get_desired_weights_tag() const {
     const bool is_fp8 = utils::one_of(jbgp.wei_dt, f8_e5m2, f8_e4m3);
     const bool is_not_vnni_tag = jbgp.wei_dt == f32
             || (jbgp.wei_dt == f16
-                    && one_of(jbgp.isa, avx512_core_fp16, avx10_2_512));
+                    && one_of(jbgp.isa, avx512_core_fp16, avx10_2));
     if (is_not_vnni_tag) {
         if (is_superset(jbgp.isa, avx512_core))
             return {{64,
@@ -1367,8 +1367,8 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
 
     if (!IMPLICATION(is_int8,
                 one_of(isa, avx2_vnni, avx2_vnni_2, avx512_core,
-                        avx512_core_vnni, avx512_core_amx, avx10_2_512,
-                        avx10_2_512_amx_2)))
+                        avx512_core_vnni, avx512_core_amx, avx10_2,
+                        avx10_2_amx_2)))
         return status::unimplemented;
     if (!IMPLICATION(is_bf16,
                 one_of(isa, avx2_vnni_2, avx512_core_bf16, avx512_core_amx)))
@@ -1377,7 +1377,7 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
         return status::unimplemented;
     if (!IMPLICATION(is_f16,
                 one_of(isa, avx2_vnni_2, avx512_core_fp16, avx512_core_amx_fp16,
-                        avx10_2_512)))
+                        avx10_2)))
         return status::unimplemented;
     if (!IMPLICATION(is_fp8, one_of(isa, avx512_core_amx_fp16)))
         return status::unimplemented;

@@ -97,7 +97,7 @@ enum cpu_isa_bit_t : unsigned {
     avx10 = avx2_bit | vex_vnni_bit | evex_core_bit | evex_core_vnni_bit
             | evex_core_bf16_bit | evex_core_fp16_bit,
     avx10_1 = (1 << avx10_version_bit_start) | avx10,
-    avx10_2 = (2 << avx10_version_bit_start) | avx10 | vex_vnni_2_bit,
+    avx10_2_bit = (2 << avx10_version_bit_start) | avx10 | vex_vnni_2_bit,
 };
 
 dnnl_cpu_isa_hints_t DNNL_API get_cpu_isa_hints(bool soft = false);
@@ -145,9 +145,9 @@ enum cpu_isa_t : unsigned {
     avx512_core_amx = avx10_1_512_amx,
     avx10_1_512_amx_fp16 = avx10_1_512_amx | amx_fp16,
     avx512_core_amx_fp16 = avx10_1_512_amx_fp16,
-    avx10_2_512 = avx10_2 | xmm_bit | ymm_bit | zmm_bit,
-    avx10_2_512_amx_2
-    = avx10_2_512 | amx_tile | amx_int8 | amx_bf16 | amx_fp16 | amx_2_bit,
+    avx10_2 = avx10_2_bit | xmm_bit | ymm_bit | zmm_bit,
+    avx10_2_amx_2
+    = avx10_2 | amx_tile | amx_int8 | amx_bf16 | amx_fp16 | amx_2_bit,
     // NOTES: 1. isa_all by default has no isa specific hints
     isa_all = ~0u & ~cpu_isa_hints_utils::hints_mask
             & (~avx10_version_bits | (1 << avx10_version_bit_start))
@@ -352,17 +352,16 @@ struct cpu_isa_traits_t<avx10_1_512_amx_fp16> {
 };
 
 template <>
-struct cpu_isa_traits_t<avx10_2_512> : public cpu_isa_traits_t<avx512_core> {
-    static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_avx10_2_512;
-    static constexpr const char *user_option_env = "avx10_2_512";
+struct cpu_isa_traits_t<avx10_2> : public cpu_isa_traits_t<avx512_core> {
+    static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_avx10_2;
+    static constexpr const char *user_option_env = "avx10_2";
 };
 
 template <>
-struct cpu_isa_traits_t<avx10_2_512_amx_2>
-    : public cpu_isa_traits_t<avx10_2_512> {
+struct cpu_isa_traits_t<avx10_2_amx_2> : public cpu_isa_traits_t<avx10_2> {
     static constexpr dnnl_cpu_isa_t user_option_val
-            = dnnl_cpu_isa_avx10_2_512_amx_2;
-    static constexpr const char *user_option_env = "avx10_2_512_amx_2";
+            = dnnl_cpu_isa_avx10_2_amx_2;
+    static constexpr const char *user_option_env = "avx10_2_amx_2";
 };
 
 inline const Xbyak::util::Cpu &cpu() {
@@ -438,7 +437,7 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
             REG_AVX512_ISA(return cpu().has(Cpu::tAVX512_FP16)
                     && mayiuse(avx512_core_bf16, soft)
                     && mayiuse(avx2_vnni, soft));
-        case avx10_2_512:
+        case avx10_2:
             REG_AVX512_ISA(return cpu().getAVX10version() >= 2
                     && cpu().has(Cpu::tAVX512F) && mayiuse(avx2_vnni_2, soft)
                     && cpu().has(Cpu::tAPX_F) && cpu().has(Cpu::tMOVRS));
@@ -461,11 +460,10 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
         case avx512_core_amx_fp16:
             REG_AMX_ISA(return mayiuse(avx512_core_amx, soft)
                     && mayiuse(amx_fp16, soft));
-        case avx10_2_512_amx_2:
-            REG_AMX_ISA(return mayiuse(avx10_2_512, soft)
-                    && mayiuse(amx_tile, soft) && cpu().has(Cpu::tAMX_TF32)
-                    && cpu().has(Cpu::tAMX_AVX512) && cpu().has(Cpu::tAMX_MOVRS)
-                    && cpu().has(Cpu::tAMX_FP8));
+        case avx10_2_amx_2:
+            REG_AMX_ISA(return mayiuse(avx10_2, soft) && mayiuse(amx_tile, soft)
+                    && cpu().has(Cpu::tAMX_TF32) && cpu().has(Cpu::tAMX_AVX512)
+                    && cpu().has(Cpu::tAMX_MOVRS) && cpu().has(Cpu::tAMX_FP8));
         case isa_all: return false;
         case isa_undef: return true;
     }
@@ -477,7 +475,7 @@ inline bool isa_has_int8_vnni(cpu_isa_t isa) {
 }
 
 inline bool isa_has_s8s8(cpu_isa_t isa) {
-    return is_superset(isa, avx2_vnni_2) || is_superset(isa, avx10_2_512)
+    return is_superset(isa, avx2_vnni_2) || is_superset(isa, avx10_2)
             || is_superset(isa, amx_int8);
 }
 
@@ -497,7 +495,7 @@ inline bool isa_has_masks(cpu_isa_t isa) {
 // Check if the ISA has saturating conversion support
 inline bool isa_has_sat_cvt(cpu_isa_t isa, data_type_t dt) {
     return utils::one_of(dt, data_type::u8, data_type::s8)
-            && is_superset(isa, avx10_2_512);
+            && is_superset(isa, avx10_2);
 }
 
 inline int isa_max_vlen(cpu_isa_t isa) {
@@ -550,8 +548,8 @@ inline int isa_num_vregs(cpu_isa_t isa) {
     (isa) == avx10_1_512 ? prefix STRINGIFY(avx10_1_512) : \
     (isa) == avx10_1_512_amx ? prefix STRINGIFY(avx10_1_512_amx) : \
     (isa) == avx10_1_512_amx_fp16 ? prefix STRINGIFY(avx10_1_512_amx_fp16) : \
-    (isa) == avx10_2_512 ? prefix STRINGIFY(avx10_2_512) : \
-    (isa) == avx10_2_512_amx_2 ? prefix STRINGIFY(avx10_2_512_amx_2) : \
+    (isa) == avx10_2 ? prefix STRINGIFY(avx10_2) : \
+    (isa) == avx10_2_amx_2 ? prefix STRINGIFY(avx10_2_amx_2) : \
     prefix suffix_if_any)
 /* clang-format on */
 

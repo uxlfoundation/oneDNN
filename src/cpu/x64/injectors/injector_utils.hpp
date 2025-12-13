@@ -95,7 +95,7 @@ public:
     inline jit_generator_t &jit() const { return jit_; }
     inline bool ExtendedRegisters() const {
         return is_superset(isa_, avx512_core)
-                && (mayiuse(avx10_2_512) || mayiuse(avx10_2_512_amx_2));
+                && (mayiuse(avx10_2) || mayiuse(avx10_2_amx_2));
     }
 
     inline int Size() const { return size_; }

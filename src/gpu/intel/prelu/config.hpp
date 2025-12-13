@@ -34,6 +34,7 @@ using bwd_pd_t = gpu_prelu_bwd_pd_t;
 struct conf_t {
     bool is_forward;
     bool reduce_diff_weights;
+    bool require_stateless_addressing;
     compute::dispatch_t dispatch;
 
     attr_info_t attr_info;

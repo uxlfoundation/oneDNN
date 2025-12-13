@@ -83,8 +83,6 @@ struct gen_t : public primitive_t {
     };
 
     status_t init(impl::engine_t *engine) override {
-        compute::kernel_ctx_t kernel_ctx;
-
         auto *gpu_engine = utils::downcast<ocl::engine_t *>(engine);
         if (!gpu_engine) return status::runtime_error;
 

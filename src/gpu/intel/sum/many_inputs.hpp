@@ -62,6 +62,7 @@ struct many_inputs_t : public primitive_t {
         const memory_desc_wrapper data_s(pd()->src_md());
 
         kernel_ctx.set_data_type(data_s.data_type());
+        kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
         kernel_ctx.define_int("N_ELEMS", data_d.nelems(true));
 

@@ -70,6 +70,7 @@ struct xe_t : public primitive_t {
         const memory_desc_wrapper data_s(pd()->src_md());
 
         kernel_ctx.set_data_type(data_s.data_type());
+        kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
         size_t io_bytes = (pd()->n_inputs() + 1) * data_d.data_type_size()
                 * data_d.nelems(true);
         // Heuristics: for IO bytes smaller than 10MB reduce vector size for better perf.

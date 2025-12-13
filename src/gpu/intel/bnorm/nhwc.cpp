@@ -201,6 +201,7 @@ static status_t init_conf_common(nhwc_params_t &conf, offsets_t &off,
     conf.impl = impl_t::nhwc_opt;
     init_conf_basic(conf, pd);
     set_offsets(data_mdw, off.src_off);
+    conf.require_stateless_addressing = pd->has_large_buffers();
 
     // TODO: create flags() accessor that returns the correct type
     conf.flags = (normalization_flags_t)pd->desc()->flags;
@@ -302,6 +303,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const compute::dispatch_t &dispatch_reduce_stat,
         const compute::dispatch_t &dispatch,
         const compute::dispatch_t &dispatch_reduce_aux, const offsets_t &off) {
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
     kernel_ctx.set_data_type(conf.data_type);
 
     kernel_ctx.define_int("NDIMS", conf.ndims);

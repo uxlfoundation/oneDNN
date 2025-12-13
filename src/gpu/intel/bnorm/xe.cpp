@@ -142,6 +142,7 @@ static status_t init_conf_common(lookup_table::params_t &conf, offsets_t &off,
     const memory_desc_wrapper data_mdw(
             pd->is_fwd() ? pd->src_md() : pd->diff_src_md());
     conf.impl = impl_t::xe;
+    conf.require_stateless_addressing = pd->has_large_buffers();
 
     init_conf_basic(conf, pd);
     set_offsets(data_mdw, off.src_off);
@@ -327,6 +328,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const compute::dispatch_t &dispatch,
         const compute::dispatch_t &dispatch_reduce_aux, const offsets_t &off) {
     kernel_ctx.set_data_type(conf.data_type);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("MB", conf.mb);

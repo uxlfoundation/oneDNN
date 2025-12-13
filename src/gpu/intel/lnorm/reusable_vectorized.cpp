@@ -105,6 +105,7 @@ static status_t init_conf_common(const pd_t *pd,
                     && dst_mdw.blocking_desc().inner_nblks == 0,
             "reusable vectorized lnorm not used because source or "
             "destination tensors have blocked memory layouts.");
+    conf->require_stateless_addressing = pd->has_large_buffers();
 
     bool c_is_last_physical = src_mdw.blocking_desc().strides[ndims - 1] == 1;
     VDISPATCH_LNORM_IC(src_mdw.is_dense() && c_is_last_physical,
@@ -201,6 +202,7 @@ status_t reusable_vectorized_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 compute::kernel_ctx_t reusable_vectorized_params_t::get_kernel_ctx() const {
     compute::kernel_ctx_t kernel_ctx;
     kernel_ctx.set_data_type(input_dt);
+    kernel_ctx.require_stateless_addressing(require_stateless_addressing);
     def_data_type(kernel_ctx, input_dt, "SRC");
     def_data_type(kernel_ctx, ss_dt, "WEI");
     def_data_type(kernel_ctx, output_dt, "DST");

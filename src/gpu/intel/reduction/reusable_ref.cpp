@@ -184,6 +184,7 @@ status_t reusable_ref_t::pd_t::init_conf(impl::engine_t *engine) {
                 phase.init_dispatcher(subprbs[i], *intel_engine, gpu_attr)
                         == status::success,
                 "failed to initialize dispatcher for subproblem");
+        phase.conf.params.require_stateless_addressing = has_large_buffers();
     }
 
     // Compute div from basic mdw dims
@@ -201,6 +202,10 @@ static void init_kernel_ctx_common(
     // Data types
     kernel_ctx.set_data_type(conf.src_dt);
     def_data_type(kernel_ctx, conf.dst_dt, "DST");
+
+    // Stateless addressing model
+    kernel_ctx.require_stateless_addressing(
+            conf.params.require_stateless_addressing);
 
     // Dispatcher
     conf.params.def_kernel_macros(kernel_ctx);

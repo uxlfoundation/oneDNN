@@ -41,6 +41,7 @@ struct conf_t {
     compute::dispatch_t dispatch;
     offsets_t off;
     attr_info_t attr_info;
+    bool require_stateless_addressing;
 };
 
 } // namespace reduction

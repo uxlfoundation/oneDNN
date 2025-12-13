@@ -253,6 +253,7 @@ struct ref_t : public primitive_t {
         kernel_ctx.set_data_type(pd()->dst_dt_);
         CHECK(def_attr_info(kernel_ctx, pd()->attr_info_,
                 pd()->attr()->post_ops_, *pd()->dst_md()));
+        kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
         if (!pd()->attr()->precomputed_reductions_.has_default_values(
                     DNNL_ARG_SRC))

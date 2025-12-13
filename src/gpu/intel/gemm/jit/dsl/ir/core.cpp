@@ -588,6 +588,32 @@ void ir_visitor_t::_visit(const while_t &obj) {
     visit(obj.body);
 }
 
+const std::string &tg_idx_name(int idx) {
+    static const std::array<std::string, 3> names
+            = {"tg_idx0", "tg_idx1", "tg_idx2"};
+    return names[idx];
+}
+const std::string &thr_idx_name(int idx) {
+    static const std::array<std::string, 3> names
+            = {"thr_idx0", "thr_idx1", "thr_idx2"};
+    return names[idx];
+}
+const std::string &local_id_name(int idx) {
+    static const std::array<std::string, 3> names
+            = {"local_id0", "local_id1", "local_id2"};
+    return names[idx];
+}
+const std::string &local_size_name(int idx) {
+    static const std::array<std::string, 3> names
+            = {"local_size0", "local_size1", "local_size2"};
+    return names[idx];
+}
+const std::string &group_id_name(int idx) {
+    static const std::array<std::string, 3> names
+            = {"group_id0", "group_id1", "group_id2"};
+    return names[idx];
+}
+
 } // namespace ir
 } // namespace dsl
 GEMMSTONE_NAMESPACE_END

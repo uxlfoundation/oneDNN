@@ -47,7 +47,8 @@ public:
     grid_info_t(dim_idx_t ndims) : dims_(ndims), offs_(ndims), idxs_(ndims) {}
     grid_info_t(const std::vector<dim_t> &dims, const std::vector<expr_t> &idxs)
         : grid_info_t(dims, {}, idxs) {}
-    grid_info_t(const std::vector<dim_t> &dims, std::string (*genname)(int))
+    grid_info_t(
+            const std::vector<dim_t> &dims, const std::string &(*genname)(int))
         : grid_info_t(dims, make_idxs(genname, into<dim_idx_t>(dims.size()))) {}
     grid_info_t(const std::vector<dim_t> &dims, const std::vector<dim_t> &offs,
             const std::vector<expr_t> &idxs)
@@ -164,7 +165,8 @@ public:
     XE_DEFINE_DUMP()
 
 private:
-    static std::vector<expr_t> make_idxs(std::string (*genname)(int), int n) {
+    static std::vector<expr_t> make_idxs(
+            const std::string &(*genname)(int), int n) {
         std::vector<expr_t> ret;
         ret.reserve(n);
         for (int i = 0; i < n; i++)

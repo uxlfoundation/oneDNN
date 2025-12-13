@@ -21,9 +21,29 @@
 #include "gemmstone_config.hpp"
 #else
 
+enum class GEMMVerbose { DebugInfo };
+inline int getVerbose(GEMMVerbose v) { return 0; }
+
+#define GEMMSTONE_ASSERTIONS 1
+
 #include "entrance_agent.hpp"
 #include "package.hpp"
 
+#if (__cplusplus >= 202002L || _MSVC_LANG >= 202002L)
+#if __has_include(<version>)
+#include <version>
+#if __cpp_lib_source_location >= 201907L
+#define GEMMSTONE_ENABLE_SOURCE_LOCATION true
+#endif
+#endif
+#endif
+
+#endif
+
+#ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
+#   ifndef CL_TARGET_OPENCL_VERSION
+#       define CL_TARGET_OPENCL_VERSION 210
+#   endif
 #endif
 
 #ifndef GEMMSTONE_ASSERTIONS

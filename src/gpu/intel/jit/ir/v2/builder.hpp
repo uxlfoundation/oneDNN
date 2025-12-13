@@ -18,8 +18,8 @@
 #define GPU_INTEL_JIT_IR_V2_BUILDER_HPP
 
 #include "gpu/intel/jit/ir/kernel_info.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/reduce.hpp"
-#include "gpu/intel/jit/ir/reorder.hpp"
 #include "gpu/intel/jit/ir/v2/bridge.hpp"
 #include "gpu/intel/jit/ir/v2/plan.hpp"
 #include "gpu/intel/jit/ir/v2/send.hpp"

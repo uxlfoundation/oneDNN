@@ -24,7 +24,6 @@
 #include "gpu/intel/conv/jit/v2/kernel.hpp"
 #include "gpu/intel/conv/jit/v2/problem.hpp"
 #include "gpu/intel/conv/jit/v2/tensor_utils.hpp"
-#include "gpu/intel/jit/codegen/kernel.hpp"
 #include "gpu/intel/jit/ir/config.hpp"
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/ir/tensor_config.hpp"
@@ -237,7 +236,7 @@ int estimate_grf_usage_bytes(const kernel_desc_t &desc) {
 }
 
 bool is_tg_size_ok(const kernel_desc_t &desc, const dsl::hw_t &hw) {
-    int max_tg_size = hw.max_tg_size(desc.regs, desc.simd);
+    dim_t max_tg_size = hw.max_tg_size(desc.regs, desc.simd);
     return desc.thread_group_tile.elems() <= max_tg_size;
 }
 
@@ -263,7 +262,7 @@ bool kernel_desc_t::is_supported(
             << "HW mismatch, desc: " << jit::to_string(hw_desc.hw)
             << ", problem: " << jit::to_string(prb->hw().ngen_hw());
     gpu_check(fma != fma_kind_t::undef)
-            << "Invalid fma: " << jit::to_string(fma);
+            << "Invalid fma: " << ir::to_string(fma);
     gpu_check(simd != 0) << "Invalid simd: " << simd;
     gpu_check(regs != 0) << "Invalid regs: " << regs;
     gpu_check(is_tg_size_ok(*this, hw))
@@ -1117,7 +1116,7 @@ void kernel_desc_t::show_help() {
 }
 
 grid_t create_thread_group_grid(const kernel_desc_t &desc) {
-    grid_t grid(jit::ir_builder_t::tg_idx);
+    grid_t grid(jit::ir::tg_idx_name);
     auto set = [&](const pvar_t &dim, int idx) {
         grid.add_mapping(dim, desc.use_stream_k ? 0 : idx);
     };
@@ -1152,7 +1151,7 @@ grid_t create_thread_group_grid(const kernel_desc_t &desc) {
 }
 
 grid_t create_thread_grid(const kernel_desc_t &desc) {
-    grid_t grid(jit::ir_builder_t::thr_idx);
+    grid_t grid(jit::ir::thr_idx_name);
     switch (desc.prop) {
         case prop_kind::forward:
             grid.add_mapping(pvars::oc, 0);

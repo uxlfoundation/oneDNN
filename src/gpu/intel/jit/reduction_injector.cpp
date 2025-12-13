@@ -131,10 +131,7 @@ void reduction_injector_f32_t<ngen_generator_t>::compute(
         const ngen::GRF &src_ptr, const ngen::GRFRange &acc, dim_t stride,
         dim_t iters) {
     using namespace alg_kind;
-#ifdef DNNL_DEV_MODE
-    int pre_regs = ra.get_alloced_regs();
-#endif
-    assert(src_ptr.getType() == ngen::DataType::uq);
+    gpu_assert(src_ptr.getType() == ngen::DataType::uq);
 
     int dt_size = sizeof(float);
     int reg_size = ngen::GRF::bytes(hw());
@@ -203,13 +200,6 @@ void reduction_injector_f32_t<ngen_generator_t>::compute(
     ra.release(loop_index);
     ra.release(val);
     ra.release(loop_flag);
-
-#ifdef DNNL_DEV_MODE
-    int remaining_regs = ra.get_alloced_regs() - pre_regs;
-    gpu_assert(remaining_regs == 0)
-            << remaining_regs
-            << " registers are allocated that need to be released.";
-#endif
 }
 
 template <typename ngen_generator_t>

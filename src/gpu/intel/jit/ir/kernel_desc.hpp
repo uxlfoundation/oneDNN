@@ -34,13 +34,7 @@ class kernel_t;
 
 namespace jit {
 
-namespace dsl {
-using kernel_t = gemmstone::dsl::kernel_t;
-namespace kernel {
-using iface_t = gemmstone::dsl::kernel::iface_t;
-using options_t = gemmstone::dsl::kernel::options_t;
-} // namespace kernel
-} // namespace dsl
+namespace dsl = gemmstone::dsl;
 
 class kernel_info_t;
 class kernel_params_base_t;

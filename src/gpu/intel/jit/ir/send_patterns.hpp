@@ -19,7 +19,7 @@
 
 #include <string>
 
-#include "gpu/intel/jit/ir/send.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/logging.hpp"
 namespace gemmstone {
 namespace dsl {

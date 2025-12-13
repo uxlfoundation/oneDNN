@@ -35,12 +35,26 @@
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
 #define ZEBIN_OUTPUT
+#define GEMMSTONE_WITH_SYCL_RUNTIME
+#define GEMMSTONE_WITH_OPENCL_RUNTIME
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #define OPENCL_OUTPUT
+#define GEMMSTONE_WITH_OPENCL_RUNTIME
 #endif
 
-#ifdef DNNL_DEV_MODE
+#if !defined(NDEBUG) || defined(DNNL_DEV_MODE)
 #define GEMMSTONE_ASSERTIONS 1
+#define GEMMSTONE_WITH_ASM_RUNTIME
+
+#if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+#if __has_include(<version>)
+#include <version>
+#if defined(__cpp_lib_source_location) && __cpp_lib_source_location >= 201907L
+#define GEMMSTONE_ENABLE_SOURCE_LOCATION true
+#endif
+#endif
+#endif
+
 #endif
 
 namespace gemmstone {

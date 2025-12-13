@@ -26,8 +26,7 @@ void ir_builder_t::init_kernel_grid(const grid_info_t &kernel_grid,
         const grid_info_t &tg_grid, int simd_size, constraint_set_t &cset,
         std::vector<stmt_t> &init_stmts) {
     for (dim_idx_t i = 0; i < kernel_grid.ndims(); i++) {
-        auto local_id
-                = var_t::make(dsl::type_t::u16(), ir_builder_t::local_id(i));
+        auto local_id = var_t::make(dsl::type_t::u16(), ir::local_id_name(i));
         int local_id_bound = into<int>(tg_grid.dim(i));
         if (i == dim_idx_t(0)) local_id_bound *= simd_size;
         cset.add_constraint(local_id >= 0);

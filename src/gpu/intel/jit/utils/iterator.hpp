@@ -20,7 +20,7 @@
 #include <functional>
 #include <utility>
 
-#include "gpu/intel/jit/dsl/tensor.hpp"
+#include "gemmstone/dsl/tensor.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -32,6 +32,18 @@ struct generator_dsl_desc_t {
         , iface(ngen_iface)
         , options(hw, strategy.GRFs, strategy.subgroupSize) {}
 
+    generator_dsl_desc_t(const GEMMProblem &problem,
+            const GEMMStrategy &strategy,
+            const ngen::InterfaceHandler &ngen_iface,
+            const dsl::kernel::options_t &options)
+        : problem(problem)
+        , strategy(strategy)
+        , iface(ngen_iface)
+        , options(options) {
+        this->options.set_regs(strategy.GRFs);
+        this->options.set_simd(strategy.subgroupSize);
+    }
+
     const std::string &kernel_name() const { return iface.kernel_name(); }
     const dsl::kernel::iface_t &kernel_iface() const { return iface; }
 

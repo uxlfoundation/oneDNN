@@ -523,15 +523,30 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
     bool is_sparse_packed = false;
     bool is_any_sparse = false;
     std::vector<bool> nnz_mask;
+
     const auto sparse_encoding = prb->sparse_options.get_encoding(kind);
     const bool is_sparse_csr_coo
             = sparse_encoding == dnnl_csr || sparse_encoding == dnnl_coo;
     is_sparse_packed = sparse_encoding == dnnl_packed;
+    const bool is_grouped_dt = (query_md_num_handles(mem_dt.md_) > 1)
+            && (sparse_encoding == dnnl_grouped);
     is_any_sparse = sparse_encoding != sparse_options_t::def_encoding;
 
     if (is_sparse_csr_coo) {
         return fill_sparse_data(
                 kind, prb, mem_dt, mem_fp, res, sparse_encoding);
+    }
+
+    if (is_grouped_dt) {
+        // for grouped encoding: mem_dt has grouped format (2 handles),
+        // mem_fp is plain
+        // fill mem_dt with offsets/values, then copy values from buffer 0 to mem_fp
+        SAFE(fill_grouped_data(kind, prb, mem_dt, res), WARN);
+
+        for (int64_t i = 0; i < mem_fp.nelems(); i++) {
+            mem_fp.set_f32_elem(i, mem_dt.get_elem(i, 0));
+        }
+        return OK;
     }
 
     if (is_sparse_packed) {
@@ -640,7 +655,10 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         }
     });
 
-    SAFE(mem_dt.reorder(mem_fp, cfg.get_swapped_dt(kind)), WARN);
+    // skip reorder for grouped format
+    if (!is_grouped_dt) {
+        SAFE(mem_dt.reorder(mem_fp, cfg.get_swapped_dt(kind)), WARN);
+    }
 
     return OK;
 }
@@ -1060,12 +1078,15 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
         auto wei_encoding = prb->sparse_options.get_encoding(DNNL_ARG_WEIGHTS);
+        auto dst_encoding = prb->sparse_options.get_encoding(DNNL_ARG_DST);
 
         const bool is_sparse_src = exec_arg == DNNL_ARG_SRC
                 && src_encoding != dnnl_sparse_encoding_undef;
         const bool is_sparse_wei = exec_arg == DNNL_ARG_WEIGHTS
                 && wei_encoding != dnnl_sparse_encoding_undef;
-        const bool is_sparse = is_sparse_src || is_sparse_wei;
+        const bool is_sparse_dst = exec_arg == DNNL_ARG_DST
+                && dst_encoding != dnnl_sparse_encoding_undef;
+        const bool is_sparse = is_sparse_src || is_sparse_wei || is_sparse_dst;
         const bool is_sparse_wei_packed
                 = is_sparse_wei && wei_encoding == dnnl_packed;
 
@@ -1076,9 +1097,32 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         if (is_sparse && !is_sparse_wei_packed) {
             if (is_sparse_src) {
-                auto src_fp_d = create_md(prb, SRC);
-                ref_mem_map.emplace(exec_arg,
-                        dnn_mem_t(src_fp_d, ref_engine, /* prefill = */ false));
+                // For grouped encoding, create plain 2D memory for reference
+                if (src_encoding == dnnl_grouped) {
+                    const auto &M_dims = prb->sparse_options.get_group_dims();
+                    const int64_t K = prb->k;
+
+                    // Calculate total_M from M_dims
+                    int64_t total_M = 0;
+                    for (size_t i = 0; i < M_dims.size(); i++) {
+                        total_M += M_dims[i];
+                    }
+
+                    // Create plain 2D memory [total_M, K]
+                    dnnl_dims_t actual_src_dims;
+                    actual_src_dims[0] = total_M;
+                    actual_src_dims[1] = K;
+
+                    ref_mem_map.emplace(exec_arg,
+                            dnn_mem_t(prb->ndims, actual_src_dims, dnnl_f32,
+                                    tag::abx, ref_engine,
+                                    /* prefill = */ false));
+                } else {
+                    auto src_fp_d = create_md(prb, SRC);
+                    ref_mem_map.emplace(exec_arg,
+                            dnn_mem_t(src_fp_d, ref_engine,
+                                    /* prefill = */ false));
+                }
             }
 
             if (is_sparse_wei) {
@@ -1086,23 +1130,79 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 ref_mem_map.emplace(exec_arg,
                         dnn_mem_t(wei_fp_d, ref_engine, /* prefill = */ false));
             }
+
+            // For grouped SRC with dense weights, create 3D reference weights with abc format
+            if (exec_arg == DNNL_ARG_WEIGHTS && src_encoding == dnnl_grouped
+                    && !is_sparse_wei) {
+                const auto group_count = prb->sparse_options.get_group_count();
+                dnnl_dims_t wei_dims_3d;
+                wei_dims_3d[0] = group_count;
+                wei_dims_3d[1] = prb->k;
+                wei_dims_3d[2] = prb->n;
+                ref_mem_map.emplace(exec_arg,
+                        dnn_mem_t(3, wei_dims_3d, dnnl_f32, std::string("abc"),
+                                ref_engine, /* prefill = */ false));
+            }
+
+            if (is_sparse_dst) {
+                // For grouped encoding, create plain 2D memory for reference dst
+                if (dst_encoding == dnnl_grouped) {
+                    const auto &M_dims = prb->sparse_options.get_group_dims();
+                    const int64_t N = prb->n;
+
+                    // Calculate total_M from M_dims (same as SRC)
+                    int64_t total_M = 0;
+                    for (size_t i = 0; i < M_dims.size(); i++) {
+                        total_M += M_dims[i];
+                    }
+
+                    // Create plain 2D memory [total_M, N]
+                    dnnl_dims_t actual_dst_dims;
+                    actual_dst_dims[0] = total_M;
+                    actual_dst_dims[1] = N;
+
+                    ref_mem_map.emplace(exec_arg,
+                            dnn_mem_t(prb->ndims, actual_dst_dims, dnnl_f32,
+                                    tag::abx, ref_engine,
+                                    /* prefill = */ false));
+                } else {
+                    auto dst_fp_d = create_md(prb, DST);
+                    ref_mem_map.emplace(exec_arg,
+                            dnn_mem_t(dst_fp_d, ref_engine,
+                                    /* prefill = */ false));
+                }
+            }
         } else {
             if (exec_arg == DNNL_ARG_WEIGHTS) {
-                // Switch the format tag from "ab" to "ba" but to handle batched
-                // cases, use strides instead.
-                const auto ndims = mem.ndims();
-                const auto &dims = mem.dims();
-                dnnl_dims_t strides {};
-                dnnl_dim_t stride = 1;
-                for (int d = ndims - 2; d >= 0; d--) {
-                    strides[d] = stride * dims[d + 1];
-                    stride = strides[d];
+                // For grouped SRC with 3D weights, use plain abc format (no transpose)
+                if (src_encoding == dnnl_grouped) {
+                    const auto group_count
+                            = prb->sparse_options.get_group_count();
+                    dnnl_dims_t wei_dims_3d;
+                    wei_dims_3d[0] = group_count;
+                    wei_dims_3d[1] = prb->k;
+                    wei_dims_3d[2] = prb->n;
+                    ref_mem_map.emplace(exec_arg,
+                            dnn_mem_t(3, wei_dims_3d, dnnl_f32,
+                                    std::string("abc"), ref_engine,
+                                    /* prefill = */ false));
+                } else {
+                    // Switch the format tag from "ab" to "ba" but to handle batched
+                    // cases, use strides instead.
+                    const auto ndims = mem.ndims();
+                    const auto &dims = mem.dims();
+                    dnnl_dims_t strides {};
+                    dnnl_dim_t stride = 1;
+                    for (int d = ndims - 2; d >= 0; d--) {
+                        strides[d] = stride * dims[d + 1];
+                        stride = strides[d];
+                    }
+                    strides[ndims - 2] = 1;
+                    strides[ndims - 1] = dims[ndims - 2];
+                    ref_mem_map.emplace(exec_arg,
+                            dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine,
+                                    /* prefill = */ false));
                 }
-                strides[ndims - 2] = 1;
-                strides[ndims - 1] = dims[ndims - 2];
-                ref_mem_map.emplace(exec_arg,
-                        dnn_mem_t(mem.md_, dnnl_f32, strides, ref_engine,
-                                /* prefill = */ false));
             } else if (exec_arg != DNNL_ARG_SCRATCHPAD) {
                 // Scratchpad memory relates to a primitive. If reference needs
                 // it, use switch below to define a memory desc for it.
@@ -1255,6 +1355,23 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
             WARN));
 
     args_t args(mem_map), ref_args(ref_mem_map);
+
+    // For grouped encoding, initialize DST offsets
+    // TODO: move somewhere else
+    auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
+    if (src_encoding == dnnl_grouped && mem_map.count(DNNL_ARG_DST)) {
+        auto &dst_mem = mem_map.at(DNNL_ARG_DST);
+        const int64_t group_count = prb->sparse_options.get_group_count();
+        const auto &M_dims = prb->sparse_options.get_group_dims();
+
+        // Initialize offsets in buffer 1
+        int64_t cumulative_offset = 0;
+        dst_mem.set_elem(0, 0, 1); // First offset is always 0
+        for (int64_t i = 0; i < group_count; i++) {
+            cumulative_offset += M_dims[i];
+            dst_mem.set_elem(i + 1, (float)cumulative_offset, 1);
+        }
+    }
 
     SAFE(run_execution(prim, args, res), WARN);
 

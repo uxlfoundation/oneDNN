@@ -253,6 +253,106 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
                 })
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    // f32 sdpa backward pattern: w/ grad for mask_add
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    matmul_qk->append_decision_function(
+                            check_input_dtype<graph::data_type::f32>);
+                    auto optional_scale_and_mask
+                            = optional_scale_and_masks(pgraph, matmul_qk);
+                    auto subtract = pgraph->append_op(graph::op_kind::Subtract,
+                            {in_edge(0, optional_scale_and_mask, 0)});
+                    auto exp = pgraph->append_op(
+                            graph::op_kind::Exp, {in_edge(0, subtract, 0)});
+                    auto matmul_dv = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, exp, 0)});
+                    auto matmul_v_do
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    auto softmax_bwd = pgraph->append_op(
+                            graph::op_kind::SoftMaxBackward,
+                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+
+                    // dMask supports shape: {B,1}x{H,1}x{S_q,1}x{S_k,1}
+                    // This is realized by ReduceSum op
+                    /*auto reducesum = */ pgraph->append_op(
+                            graph::op_kind::ReduceSum,
+                            {in_edge(0, softmax_bwd, 0)});
+
+                    auto ds = pgraph->append_alternation(
+                            {graph::op_kind::Multiply, graph::op_kind::Divide},
+                            {in_edge(0, softmax_bwd, 0)});
+                    auto matmul_dq = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
+                    auto matmul_dk = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
+                    // Q is a shared input for matmul_qk and matmul_dk
+                    pgraph->create_input_port(0, matmul_qk, 0);
+                    pgraph->create_input_port(0, matmul_dk, 1);
+                    // K is a shared input for matmul_qk and matmul_dq
+                    pgraph->create_input_port(1, matmul_qk, 1);
+                    pgraph->create_input_port(1, matmul_dq, 1);
+                    // dO is a shared input for matmul_dv and matmul_v_do
+                    pgraph->create_input_port(2, matmul_dv, 1);
+                    pgraph->create_input_port(2, matmul_v_do, 0);
+                })
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    // xf16 sdpa backward pattern: w/ grad for mask_add
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    matmul_qk->append_decision_function(check_inputs_xf16);
+                    auto optional_scale_and_mask
+                            = optional_scale_and_masks(pgraph, matmul_qk);
+                    auto subtract = pgraph->append_op(graph::op_kind::Subtract,
+                            {in_edge(0, optional_scale_and_mask, 0)});
+                    auto exp = pgraph->append_op(
+                            graph::op_kind::Exp, {in_edge(0, subtract, 0)});
+                    auto tc = pgraph->append_op(
+                            graph::op_kind::TypeCast, {in_edge(0, exp, 0)});
+                    auto matmul_dv = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc, 0)});
+                    auto matmul_v_do
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    auto softmax_bwd = pgraph->append_op(
+                            graph::op_kind::SoftMaxBackward,
+                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+
+                    // dMask supports combination of dtype: f32/f16/bf16
+                    // and shape: {B,1}x{H,1}x{S_q,1}x{S_k,1}
+                    // This is realized by ReduceSum + Typecast ops
+                    auto reducesum
+                            = pgraph->append_op(graph::op_kind::ReduceSum,
+                                    {in_edge(0, softmax_bwd, 0)});
+                    auto popt_tc_graph
+                            = std::make_shared<graph::utils::pm::pb_graph_t>();
+                    graph::utils::pm::pb_op_t *typecast
+                            = popt_tc_graph->append_op(
+                                    graph::op_kind::TypeCast);
+                    popt_tc_graph->create_input_port(0, typecast, 0);
+                    popt_tc_graph->create_output_port(0, typecast, 0);
+                    pgraph->append_optional(popt_tc_graph,
+                            graph::utils::pm::in_edges_t {
+                                    in_edge(0, reducesum, 0)});
+
+                    auto ds = pgraph->append_alternation(
+                            {graph::op_kind::Multiply, graph::op_kind::Divide},
+                            {in_edge(0, softmax_bwd, 0)});
+                    auto tc2 = pgraph->append_op(
+                            graph::op_kind::TypeCast, {in_edge(0, ds, 0)});
+                    auto matmul_dq = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+                    auto matmul_dk = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+                    // Q is a shared input for matmul_qk and matmul_dk
+                    pgraph->create_input_port(0, matmul_qk, 0);
+                    pgraph->create_input_port(0, matmul_dk, 1);
+                    // K is a shared input for matmul_qk and matmul_dq
+                    pgraph->create_input_port(1, matmul_qk, 1);
+                    pgraph->create_input_port(1, matmul_dq, 1);
+                    // dO is a shared input for matmul_dv and matmul_v_do
+                    pgraph->create_input_port(2, matmul_dv, 1);
+                    pgraph->create_input_port(2, matmul_v_do, 0);
+                })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
             return std::make_shared<larger_partition_kernel_t>();
         });
@@ -367,6 +467,118 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                     auto softmax_bwd = pgraph->append_op(
                             graph::op_kind::SoftMaxBackward,
                             {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+                    auto ds = pgraph->append_alternation(
+                            {graph::op_kind::Multiply, graph::op_kind::Divide},
+                            {in_edge(0, softmax_bwd, 0)});
+                    auto tc2 = pgraph->append_op(
+                            graph::op_kind::TypeCast, {in_edge(0, ds, 0)});
+                    auto matmul_dq = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+                    auto matmul_dk = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+                    // reduction_dk
+                    pgraph->append_op(graph::op_kind::ReduceSum,
+                            {in_edge(0, matmul_dk, 0)});
+                    // Q is a shared input for matmul_qk and matmul_dk
+                    pgraph->create_input_port(0, matmul_qk, 0);
+                    pgraph->create_input_port(0, matmul_dk, 1);
+                    // K is a shared input for matmul_qk and matmul_dq
+                    pgraph->create_input_port(1, matmul_qk, 1);
+                    pgraph->create_input_port(1, matmul_dq, 1);
+                    // dO is a shared input for matmul_dv and matmul_v_do
+                    pgraph->create_input_port(2, matmul_dv, 1);
+                    pgraph->create_input_port(2, matmul_v_do, 0);
+                })
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    // f32 gqa backward pattern: w/ grad for mask_add
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    matmul_qk->append_decision_function(
+                            check_input_dtype<graph::data_type::f32>);
+                    auto optional_scale_and_mask
+                            = optional_scale_and_masks(pgraph, matmul_qk);
+                    auto subtract = pgraph->append_op(graph::op_kind::Subtract,
+                            {in_edge(0, optional_scale_and_mask, 0)});
+                    auto exp = pgraph->append_op(
+                            graph::op_kind::Exp, {in_edge(0, subtract, 0)});
+                    auto matmul_dv = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, exp, 0)});
+                    // reduction_dv
+                    pgraph->append_op(graph::op_kind::ReduceSum,
+                            {in_edge(0, matmul_dv, 0)});
+                    auto matmul_v_do
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    auto softmax_bwd = pgraph->append_op(
+                            graph::op_kind::SoftMaxBackward,
+                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+
+                    // dMask supports shape: {B,1}x{H,1}x{S_q,1}x{S_k,1}
+                    // This is realized by ReduceSum op
+                    /*auto reducesum = */ pgraph->append_op(
+                            graph::op_kind::ReduceSum,
+                            {in_edge(0, softmax_bwd, 0)});
+
+                    auto ds = pgraph->append_alternation(
+                            {graph::op_kind::Multiply, graph::op_kind::Divide},
+                            {in_edge(0, softmax_bwd, 0)});
+                    auto matmul_dq = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
+                    auto matmul_dk = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
+                    // reduction_dk
+                    pgraph->append_op(graph::op_kind::ReduceSum,
+                            {in_edge(0, matmul_dk, 0)});
+                    // Q is a shared input for matmul_qk and matmul_dk
+                    pgraph->create_input_port(0, matmul_qk, 0);
+                    pgraph->create_input_port(0, matmul_dk, 1);
+                    // K is a shared input for matmul_qk and matmul_dq
+                    pgraph->create_input_port(1, matmul_qk, 1);
+                    pgraph->create_input_port(1, matmul_dq, 1);
+                    // dO is a shared input for matmul_dv and matmul_v_do
+                    pgraph->create_input_port(2, matmul_dv, 1);
+                    pgraph->create_input_port(2, matmul_v_do, 0);
+                })
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    // xf16 gqa backward pattern: w/ grad for mask_add
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    matmul_qk->append_decision_function(check_inputs_xf16);
+                    auto optional_scale_and_mask
+                            = optional_scale_and_masks(pgraph, matmul_qk);
+                    auto subtract = pgraph->append_op(graph::op_kind::Subtract,
+                            {in_edge(0, optional_scale_and_mask, 0)});
+                    auto exp = pgraph->append_op(
+                            graph::op_kind::Exp, {in_edge(0, subtract, 0)});
+                    auto tc = pgraph->append_op(
+                            graph::op_kind::TypeCast, {in_edge(0, exp, 0)});
+                    auto matmul_dv = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc, 0)});
+                    // reduction_dv
+                    pgraph->append_op(graph::op_kind::ReduceSum,
+                            {in_edge(0, matmul_dv, 0)});
+                    auto matmul_v_do
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    auto softmax_bwd = pgraph->append_op(
+                            graph::op_kind::SoftMaxBackward,
+                            {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+
+                    // dMask supports combination of dtype: f32/f16/bf16
+                    // and shape: {B,1}x{H,1}x{S_q,1}x{S_k,1}
+                    // This is realized by ReduceSum + Typecast ops
+                    auto reducesum
+                            = pgraph->append_op(graph::op_kind::ReduceSum,
+                                    {in_edge(0, softmax_bwd, 0)});
+                    auto popt_tc_graph
+                            = std::make_shared<graph::utils::pm::pb_graph_t>();
+                    graph::utils::pm::pb_op_t *typecast
+                            = popt_tc_graph->append_op(
+                                    graph::op_kind::TypeCast);
+                    popt_tc_graph->create_input_port(0, typecast, 0);
+                    popt_tc_graph->create_output_port(0, typecast, 0);
+                    pgraph->append_optional(popt_tc_graph,
+                            graph::utils::pm::in_edges_t {
+                                    in_edge(0, reducesum, 0)});
+
                     auto ds = pgraph->append_alternation(
                             {graph::op_kind::Multiply, graph::op_kind::Divide},
                             {in_edge(0, softmax_bwd, 0)});

@@ -196,6 +196,14 @@ static status_t reduction_handler(
     if (src_nelems > 65535) { return status::unimplemented; }
 #endif
 
+    const auto &axes = op->get_attr<std::vector<int64_t>>(op_attr::axes);
+    if (axes.empty()) {
+        // No axes needs to be reduced, just connect input to output directly
+        auto identity_op = std::make_shared<op_t>(op_kind::dnnl_identity);
+        rewriter.replace_op(op, identity_op);
+        return status::success;
+    }
+
     auto new_op = std::make_shared<op_t>(op_kind::dnnl_reduction);
     new_op->set_attr<int64_t>(
             op_attr::alg_kind, static_cast<int64_t>(op->get_kind()));

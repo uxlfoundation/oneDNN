@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -3015,10 +3015,17 @@ void CopyPlan::optimizeZip(bool zip2DSrc0)
 
             if (i1.op != i2.op || i1.phase != i2.phase || i1.dst.grf != i2.dst.grf || i1.flag) break;
             if (i1.simd != i2.simd) continue;
+#if XE3P
+            bool is_xe3p = one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN);
+#endif
 
-            auto zippable = [](const CopyOperand &o1, const CopyOperand &o2, bool zip2D = false, bool zipImm = false) {
+            auto zippable = [&](const CopyOperand &o1, const CopyOperand &o2, bool zip2D = false, bool zipImm = false) {
                 if (o1.kind != o2.kind) return false;
+#if XE3P
+                if (o1.kind == CopyOperand::Immediate) return (o1.value == o2.value || (zipImm && !is_xe3p));
+#else
                 if (o1.kind == CopyOperand::Immediate) return (o1.value == o2.value || zipImm);
+#endif
                 if (o1.kind != CopyOperand::GRF) return true;
                 if (o1.type != o2.type || o1.stride != o2.stride || o1.grf != o2.grf) return false;
                 if (o1.temp != o2.temp) return false;

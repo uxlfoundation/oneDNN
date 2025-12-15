@@ -323,6 +323,12 @@ dnnl_driver_t deserialized_op_t::opkind2driver() const {
     dnnl::graph::op::kind op_kind = opstr2kind(kind_);
     const auto it = op_map.find(op_kind);
     if (it != op_map.end()) {
+        if (it->second == dnnl_driver_t::reduction) {
+            // if axes is an empty vector, using reorder instead
+            std::vector<int64_t> reduction_axes;
+            get_attr_s64_vector(reduction_axes, "axes");
+            if (reduction_axes.empty()) return dnnl_driver_t::reorder;
+        }
         return it->second;
     } else {
         fprintf(stderr, "graph: ERROR: Unsupported opkind: `%d`, exiting...\n",
@@ -820,9 +826,16 @@ bool deserialized_graph_t::detect_sdpa_bwd_impl() const {
         }
 
         // find MatMul for dQ or dV
-        cur_op_ref = get_child_ops(cur_op_refs[softmax_bwd_idx])[0];
+        cur_op_refs = get_child_ops(cur_op_refs[softmax_bwd_idx]);
+        // consider the case w/ & w/o gradients w.r.t. mask.
+        if (cur_op_refs.size() > 2) continue;
+        size_t matmul_idx = 0;
+        if (cur_op_refs.size() == 2 && cur_op_refs[0].kind_ == "ReduceSum") {
+            matmul_idx = 1;
+        }
+
         cur_op_ref = find_next_until(
-                cur_op_ref, "MatMul", softmax_bwd_post_op_kind);
+                cur_op_refs[matmul_idx], "MatMul", softmax_bwd_post_op_kind);
         if (cur_op_ref.empty()) {
             BENCHDNN_PRINT(8, "%s\n",
                     "[DETECT_SDPA_BWD]: failed due to no MatMul for dQ or dK");
@@ -833,6 +846,7 @@ bool deserialized_graph_t::detect_sdpa_bwd_impl() const {
         //                      ->MatMul->[dV]
         // MatMul->Subtract->Exp
         //                      ->SoftMaxBackward->MatMul->[dQ / dK]
+        //                                       ->ReduceSum(optional)->Typecast(optional)->[dMask]
         // It will be considered as a SDPA bwd implementation.
         return true;
     }

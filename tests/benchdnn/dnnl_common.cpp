@@ -1096,9 +1096,9 @@ size_t get_cpu_ram_size() {
 }
 #endif
 
-int get_gpu_ram_size(size_t &ram_size) {
+int get_gpu_ram_sizes(size_t &ram_size, size_t &max_alloc_size) {
     if (!is_gpu()) return OK;
-    if (ram_size > 0) return OK;
+    if (ram_size > 0 && max_alloc_size > 0) return OK;
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     auto eng = dnnl::engine(get_test_engine(), true);
@@ -1110,16 +1110,26 @@ int get_gpu_ram_size(size_t &ram_size) {
             sizeof(cl_ulong), &ram_sz, nullptr);
     if (status != CL_SUCCESS) return FAIL;
 
+    cl_ulong max_alloc_sz = 0;
+    status = clGetDeviceInfo(ocl_device, CL_DEVICE_MAX_MEM_ALLOC_SIZE,
+            sizeof(cl_ulong), &max_alloc_sz, nullptr);
+    if (status != CL_SUCCESS) return FAIL;
+
     ram_size = (size_t)ram_sz;
+    max_alloc_size = (size_t)max_alloc_sz;
     return OK;
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
     auto eng = dnnl::engine(get_test_engine(), true);
     auto sycl_dev = dnnl::sycl_interop::get_device(eng);
     ram_size = (size_t)sycl_dev
                        .get_info<::sycl::info::device::global_mem_size>();
+    max_alloc_size
+            = (size_t)sycl_dev
+                      .get_info<::sycl::info::device::max_mem_alloc_size>();
     return OK;
 #endif
     ram_size = 0;
+    max_alloc_size = 0;
     return OK;
 }
 
@@ -1190,7 +1200,8 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
 
     static size_t cpu_device_capacity = get_cpu_ram_size();
     static size_t gpu_device_capacity = 0;
-    SAFE(get_gpu_ram_size(gpu_device_capacity), WARN);
+    static size_t gpu_max_alloc_capacity = 0;
+    SAFE(get_gpu_ram_sizes(gpu_device_capacity, gpu_max_alloc_capacity), WARN);
 
     const size_t device_max_capacity
             = is_cpu() ? cpu_device_capacity : gpu_device_capacity;
@@ -1228,13 +1239,32 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
             res->reason = skip_reason::not_enough_ram;
         }
 
+        const bool all_allocation_fit_limit
+                = std::all_of(check_mem_size_args.sizes.cbegin(),
+                        check_mem_size_args.sizes.cend(), [&](size_t s) {
+            const bool fit = s < gpu_max_alloc_capacity;
+            if (!fit) {
+                BENCHDNN_PRINT(1,
+                        "[CHECK_MEM][%s]: Allocation of size %s "
+                        "doesn't fit allocation limit of %s.\n",
+                        dir_c_str(), smart_bytes(s).c_str(),
+                        smart_bytes(gpu_max_alloc_capacity).c_str());
+            }
+            return fit;
+        });
+        if (!all_allocation_fit_limit) {
+            res->state = SKIPPED;
+            res->reason = skip_reason::not_enough_ram;
+        }
+
         BENCHDNN_PRINT((!fits_device_ram ? 1 : 6),
                 "[CHECK_MEM][%s]: Requested: %s; benchdnn_device_limit: %s; "
-                "device_RAM_capacity: %s;\n",
+                "device_RAM_capacity: %s; gpu_max_alloc: %s;\n",
                 dir_c_str(),
                 smart_bytes(check_mem_size_args.total_size_device).c_str(),
                 smart_bytes(benchdnn_device_limit).c_str(),
-                smart_bytes(gpu_device_capacity).c_str());
+                smart_bytes(gpu_device_capacity).c_str(),
+                smart_bytes(gpu_max_alloc_capacity).c_str());
     }
 
     // Note: in theory, `total_size_ref` itself can be smaller for a `prim_ref`

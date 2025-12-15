@@ -1148,6 +1148,7 @@ public:
     template <typename Type_is,
             req<std::is_same<Type_is, std::vector<int64_t>>::value> = true>
     op &set_attr(attr name, const Type_is &value) {
+        if (value.empty()) { return *this; }
         dnnl_graph_op_attr_t attr = convert_to_c(name);
         error::wrap_c_api(dnnl_graph_op_set_attr_s64(
                                   get(), attr, value.data(), value.size()),

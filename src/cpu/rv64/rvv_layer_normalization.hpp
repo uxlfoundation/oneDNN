@@ -18,16 +18,12 @@
 
 #include <memory>
 
-#include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "common/reorder.hpp"
 #include "common/stream.hpp"
-#include "common/type_helpers.hpp"
-#include "common/utils.hpp"
 
 #include "cpu/cpu_layer_normalization_pd.hpp"
-#include "cpu/platform.hpp"
 
 namespace dnnl {
 namespace impl {

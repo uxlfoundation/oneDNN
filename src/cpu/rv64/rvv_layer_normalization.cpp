@@ -14,10 +14,12 @@
 * limitations under the License.
 *******************************************************************************/
 #include <math.h>
+#include <riscv_vector.h>
+
 #include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
+
 #include "cpu/rv64/rvv_layer_normalization.hpp"
-#include <riscv_vector.h>
 
 namespace dnnl {
 namespace impl {

@@ -136,6 +136,8 @@ are optional.
 9. The TypeCast and two MatMul operations after the Scale node compute the
    gradients with respect to Query and Key, respectively. TypeCast is required
    for bf16 and f16 training scenarios.
+10. The optional ReduceSum and TypeCast operations after the SoftMaxBackward
+    computes the gradients with respect to Mask.
 
 ## Data Types
 

@@ -134,6 +134,8 @@ The blue nodes are required while the brown nodes are optional.
    compute the gradients with respect to Query and Key, respectively. TypeCast
    is required for bf16 and f16 training scenarios. ReduceSum reduces the Key
    gradients from (N, H_kv, N_rep, S, D) to (N, H_kv, 1, S, D).
+10. The optional ReduceSum and TypeCast operations after the SoftMaxBackward
+    computes the gradients with respect to Mask.
 
 ## Data Types
 

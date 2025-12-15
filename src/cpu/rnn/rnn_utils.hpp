@@ -104,7 +104,7 @@
 #else
 
 #define rnn_merged_layer_execution_sig_args \
-    const rnn_utils::rnn_conf_t &rnn, \
+    const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, weights_t **w_layer_, \
             const src_layer_t *src_layer_, scratch_t *scratch_gates_, \
             gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_
@@ -158,11 +158,6 @@
 
 #define rnn_merged_layer_execution_sig(f) \
     dnnl_status_t f(rnn_merged_layer_execution_sig_args) const
-
-#define rnn_matmul_sig(f) \
-    dnnl_status_t f(const exec_ctx_t &ctx, \
-            const std::shared_ptr<dnnl::impl::primitive_t> &matmul_prim, \
-            const weights_t *a_, const gemm_data_t *b_, gemm_acc_t *c_) const
 
 #define rnn_gemm_sig_args \
     const char transA, const char transB, dim_t m, dim_t n, dim_t k, \
@@ -880,17 +875,24 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     rnn.parts_bias[0] = rnn.n_bias;
     rnn.parts_bias[1] = 0;
 
-    rnn.use_matmul = !rnn.is_brgemm && rnn.is_fwd // TODO: Enable BWD
+#if DNNL_X64
+    const bool use_matmul_for_avx512_f32 = !rnn.is_brgemm
+            && rnn.is_cell_dt_f32() && x64::mayiuse(x64::avx512_core);
+#else
+    const bool use_matmul_for_avx512_f32 = false;
+#endif
+    rnn.use_matmul = !rnn.is_brgemm && (rnn.is_fwd || use_matmul_for_avx512_f32)
     // TODO: Below checks are for legacy and a performance study is
     // required to avoid regressions.
 #if DNNL_X64
             && IMPLICATION(
                     rnn.is_cell_dt_bf16(), !x64::mayiuse(x64::avx512_core))
             && IMPLICATION(rnn.is_cell_dt_f32() || rnn.is_cell_dt_int8(),
-                    x64::mayiuse(x64::avx2)
+                    (x64::mayiuse(x64::avx2)
                             && utils::one_of(rd.cell_kind,
                                     alg_kind::vanilla_gru,
-                                    alg_kind::vanilla_augru));
+                                    alg_kind::vanilla_augru))
+                            || use_matmul_for_avx512_f32);
 #else
             && !rnn.is_cell_dt_f32() && !rnn.is_cell_dt_int8();
 #endif
@@ -910,14 +912,16 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     rnn.dst_layer_is_trivial_stride = dst_layer_d.blocking_desc().strides[0]
             == (rnn.dst_layer_ld_ * rnn.mb);
 
-    rnn.merge_gemm_layer = !(rnn.is_brgemm || rnn.use_matmul)
+    rnn.merge_gemm_layer
+            = !(rnn.is_brgemm || rnn.use_matmul) || use_matmul_for_avx512_f32
             ? ((rnn.is_fwd && rnn.src_layer_is_trivial_stride)
                       || ((rd.prop_kind == prop_kind::backward)
                               && rnn.dst_layer_is_trivial_stride))
                     && (((rnn.is_fwd && rnn.mb < 128) || !rnn.is_fwd)
                             || rnn.is_int8_conf())
             : false;
-    rnn.merge_gemm_iter = !(rnn.is_brgemm || rnn.use_matmul)
+    rnn.merge_gemm_iter
+            = !(rnn.is_brgemm || rnn.use_matmul) || use_matmul_for_avx512_f32
             ? rnn.dst_layer_is_trivial_stride && !(rnn.is_fwd || is_gru)
             : false;
     rnn.force_nocopy = false;

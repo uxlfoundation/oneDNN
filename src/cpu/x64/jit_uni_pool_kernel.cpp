@@ -930,13 +930,14 @@ inline void jit_uni_pool_kernel_t<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
             for_(int jj = jj_start; jj < jj_end; jj++)
             for (int bci = 0; bci < ur_bc; bci++) {
                 const auto accvr = vreg(reg_ind(0, bci, jj, ur_bc, ur_w));
-                const auto inpr_i = reg_ind(1, bci, jj, ur_bc, ur_w);
-                auto inpvr = vreg(inpr_i);
                 int aux_input_offset
                         = (ki + jj * stride_w - pad_l) * c_off + bci * c_block;
                 if (aux_input_offset >= iw * c_off) continue;
                 int input_offset = dt_size * aux_input_offset;
                 if (jpp.is_backward) {
+                    const auto inpr_i = reg_ind(1, bci, jj, ur_bc, ur_w);
+                    auto inpvr = vreg(inpr_i);
+
                     load(jpp.src_dt, reg_idx(inpr_i), aux_reg_input,
                             input_offset, is_tail_processing(bci));
                     uni_vaddps(inpvr, inpvr, accvr);
@@ -1051,8 +1052,6 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_fwd(int ur_w, int ur_bc,
                 const auto accvr = vreg(reg_ind(0, bci, jj, ur_bc, ur_w));
                 const auto inpr_i = reg_ind(1, bci, jj, ur_bc, ur_w);
                 const auto inpvr = vreg(inpr_i);
-                const auto indvr = vreg(reg_ind(2, bci, jj, ur_bc, ur_w));
-                const auto cvtvr = vreg(reg_ind(3, bci, jj, ur_bc, ur_w));
                 int aux_input_offset
                         = (ki + jj * stride_w - pad_l) * c_off + bci * c_block;
                 if (aux_input_offset >= iw * c_off) continue;
@@ -1063,17 +1062,28 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_fwd(int ur_w, int ur_bc,
                     movups(vmm_mask, accvr);
                     cmpps(vmm_mask, inpvr, _cmp_lt_os);
                     blendvps(accvr, inpvr);
-                    if (jpp.is_training) blendvps(indvr, vmm_k_offset);
+                    if (jpp.is_training) {
+                        const auto indvr
+                                = vreg(reg_ind(2, bci, jj, ur_bc, ur_w));
+                        blendvps(indvr, vmm_k_offset);
+                    }
                 } else if (utils::one_of(isa, avx, avx2, avx2_vnni_2)) {
+                    const auto cvtvr = vreg(reg_ind(3, bci, jj, ur_bc, ur_w));
                     vcmpps(cvtvr, accvr, inpvr, _cmp_lt_os);
                     vblendvps(accvr, accvr, inpvr, cvtvr);
-                    if (jpp.is_training)
+                    if (jpp.is_training) {
+                        const auto indvr
+                                = vreg(reg_ind(2, bci, jj, ur_bc, ur_w));
                         vblendvps(indvr, indvr, vmm_k_offset, cvtvr);
+                    }
                 } else {
                     vcmpps(k_store_mask, accvr, inpvr, _cmp_lt_os);
                     vblendmps(accvr | k_store_mask, accvr, inpvr);
-                    if (jpp.is_training)
+                    if (jpp.is_training) {
+                        const auto indvr
+                                = vreg(reg_ind(2, bci, jj, ur_bc, ur_w));
                         vblendmps(indvr | k_store_mask, indvr, vmm_k_offset);
+                    }
                 }
             }
             if (jpp.is_training) {
@@ -1221,7 +1231,6 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
                 const auto indvr = vreg(reg_ind(1, bci, jj, ur_bc, ur_w));
                 const auto inpr_i = reg_ind(2, bci, jj, ur_bc, ur_w);
                 const auto inpvr = vreg(inpr_i);
-                const auto cvtvr = vreg(reg_ind(3, bci, jj, ur_bc, ur_w));
                 int aux_inp_offset = (ki + jj * stride_w - pad_l) * input_c_off
                         + bci * c_block;
                 if (aux_inp_offset >= iw * input_c_off) continue;
@@ -1229,6 +1238,7 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
                 load(input_dt, reg_idx(inpr_i), aux_reg_input, inp_offset,
                         is_tail_processing(bci));
                 if (isa == sse41) {
+                    const auto cvtvr = vreg(reg_ind(3, bci, jj, ur_bc, ur_w));
                     movups(cvtvr, indvr);
                     pcmpeqd(cvtvr, vmm_k_offset);
                     andps(cvtvr, outvr);
@@ -1236,6 +1246,7 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
                     store(input_dt, inpvr.getIdx(), aux_reg_input, inp_offset,
                             is_tail_processing(bci));
                 } else if (isa == avx || isa == avx2) {
+                    const auto cvtvr = vreg(reg_ind(3, bci, jj, ur_bc, ur_w));
                     if (mayiuse(avx2)) {
                         vpcmpeqd(cvtvr, indvr, vmm_k_offset);
                     } else {

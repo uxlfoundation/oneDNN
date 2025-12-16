@@ -41,8 +41,19 @@
                     : dnnl::impl::memory_storage_t::empty_storage())
 
 // Returns destination memory which may not have been zero pad initialized.
-#define CTX_OUT_STORAGE(arg) \
+#define CTX_OUT_STORAGE(arg, ...) CTX_OUT_STORAGe##__VA_ARGS__(arg)
+
+#define CTX_OUT_STORAGe(arg) \
     (ctx.output(arg) ? *(ctx.output(arg)->memory_storage()) \
+                     : dnnl::impl::memory_storage_t::empty_storage())
+#define CTX_OUT_STORAGe0(arg) \
+    (ctx.output(arg) ? *ctx.output(arg)->memory_storage(0) \
+                     : dnnl::impl::memory_storage_t::empty_storage())
+#define CTX_OUT_STORAGe1(arg) \
+    (ctx.output(arg) ? *ctx.output(arg)->memory_storage(1) \
+                     : dnnl::impl::memory_storage_t::empty_storage())
+#define CTX_OUT_STORAGe2(arg) \
+    (ctx.output(arg) ? *ctx.output(arg)->memory_storage(2) \
                      : dnnl::impl::memory_storage_t::empty_storage())
 
 // Returns destination memory which has been zero pad initialized. This macro

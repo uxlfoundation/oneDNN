@@ -200,8 +200,7 @@ TEST(iface_grouped_test_t, TestGroupedMDSize) {
 HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
     engine eng = get_test_engine();
 
-    const bool is_unimplemented = (eng.get_kind() == engine::kind::gpu
-            || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL);
+    const bool is_unimplemented = (DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL);
     if (is_unimplemented) return;
 
     const int num_groups = 3;
@@ -243,8 +242,7 @@ HANDLE_EXCEPTIONS_FOR_TEST(
         iface_grouped_test_t, TestGroupedMemorySetGetDataHandles) {
     engine eng = get_test_engine();
 
-    const bool is_unimplemented = (eng.get_kind() == engine::kind::gpu
-            || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL);
+    const bool is_unimplemented = (DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL);
     if (is_unimplemented) return;
 
     const int num_groups = 3;

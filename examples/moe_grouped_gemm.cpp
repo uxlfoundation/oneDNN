@@ -20,6 +20,11 @@
 #include <numeric>
 #include <vector>
 
+#include "example_utils.hpp"
+#include "oneapi/dnnl/dnnl.hpp"
+
+using namespace dnnl;
+
 // Configuration constants
 constexpr int NUM_EXPERTS = 4;
 constexpr int TOP_K = 2; // number of top experts to select per token
@@ -303,12 +308,8 @@ void ref_grouped_gemm(const float *input_concat, float *output_concat,
     }
 }
 
-#include "example_utils.hpp"
-#include "oneapi/dnnl/dnnl.hpp"
-using namespace dnnl;
-
-const engine &eng() {
-    static const engine eng(engine::kind::cpu, 0);
+engine &get_engine(engine::kind engine_kind) {
+    static engine eng(engine_kind, 0);
     return eng;
 }
 
@@ -336,7 +337,7 @@ const engine &eng() {
 void onednn_style_grouped_gemm(const float *input_concat,
         const float *weight_concat, const float *bias_concat,
         float *output_concat, const int *offsets, int num_experts, int K_dim,
-        int N_dim, bool use_scales = false) {
+        int N_dim, engine::kind engine_kind, bool use_scales = false) {
 
     int total_tokens = offsets[num_experts];
 
@@ -362,23 +363,26 @@ void onednn_style_grouped_gemm(const float *input_concat,
     // Step 3: Create memory objects with 2 buffers for grouped encoding
     // Buffer 0: values (concatenated data)
     // Buffer 1: offsets (cumulative row boundaries)
-    memory src_mem(src_md, eng(),
+    memory src_mem(src_md, get_engine(engine_kind),
             {const_cast<float *>(input_concat), const_cast<int *>(offsets)});
 
-    memory dst_mem(dst_md, eng(), {output_concat, const_cast<int *>(offsets)});
+    memory dst_mem(dst_md, get_engine(engine_kind),
+            {output_concat, const_cast<int *>(offsets)});
 
-    memory weights_mem(weights_md, eng(), const_cast<float *>(weight_concat));
+    memory weights_mem(weights_md, get_engine(engine_kind),
+            const_cast<float *>(weight_concat));
 
-    memory bias_mem(bias_md, eng(), const_cast<float *>(bias_concat));
+    memory bias_mem(
+            bias_md, get_engine(engine_kind), const_cast<float *>(bias_concat));
 
     // Step 4: Create matmul primitive descriptor
     // Note: Primitive support for grouped encoding is not yet implemented
     auto matmul_pd = matmul::primitive_desc(
-            eng(), src_md, weights_md, bias_md, dst_md);
+            get_engine(engine_kind), src_md, weights_md, bias_md, dst_md);
 
     // Step 5: Create and execute primitive
     auto matmul_prim = matmul(matmul_pd);
-    dnnl::stream engine_stream(eng());
+    dnnl::stream engine_stream(get_engine(engine_kind));
 
     std::unordered_map<int, memory> args;
     args.insert({DNNL_ARG_SRC, src_mem});
@@ -395,7 +399,8 @@ void onednn_style_grouped_gemm(const float *input_concat,
 /// Uses grouped_gemm for both layers (which handles GEMM + bias)
 void process_experts_mlp(const float *grouped_input, float *grouped_output,
         const ExpertWeights &weights, const RoutingDecision &routing,
-        int input_dim, int hidden_dim, int output_dim) {
+        int input_dim, int hidden_dim, int output_dim,
+        engine::kind engine_kind) {
 
     // Allocate buffer for intermediate hidden layer (all experts combined)
     int total_tokens = routing.token_offsets[NUM_EXPERTS];
@@ -440,7 +445,7 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     // First layer: input -> hidden (oneDNN with concatenated memory)
     onednn_style_grouped_gemm(grouped_input, weights.W1_data, weights.b1_data,
             hidden_all_onednn.data(), offsets.data(), NUM_EXPERTS, input_dim,
-            hidden_dim, false);
+            hidden_dim, engine_kind, false);
 
     // Compare outputs
     float max_diff = 0.0f;
@@ -534,7 +539,7 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     // Second layer with scales: hidden -> output (oneDNN with concat memory)
     onednn_style_grouped_gemm(hidden_all.data(), weights.W2_data,
             weights.b2_data, output_all_scaled.data(), offsets.data(),
-            NUM_EXPERTS, hidden_dim, output_dim, true);
+            NUM_EXPERTS, hidden_dim, output_dim, engine_kind, true);
 
     // Compare outputs
     max_diff = 0.0f;
@@ -599,7 +604,7 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
 // ============================================================================
 void toy_moe(const float *input, float *output, const ExpertWeights &weights,
         const RoutingDecision &routing, int tokens_to_process, int input_dim,
-        int hidden_dim, int output_dim) {
+        int hidden_dim, int output_dim, engine::kind engine_kind) {
 
     std::fill(output, output + tokens_to_process * output_dim, 0.0f);
 
@@ -613,16 +618,17 @@ void toy_moe(const float *input, float *output, const ExpertWeights &weights,
 
     // Step 2: Process all experts through their MLPs
     process_experts_mlp(grouped_input.data(), grouped_output.data(), weights,
-            routing, input_dim, hidden_dim, output_dim);
+            routing, input_dim, hidden_dim, output_dim, engine_kind);
 
     // Step 3: Scatter - distribute results back with routing weights
     scatter_grouped_output(output, grouped_output.data(), routing, output_dim);
 }
 
-int main(int argc, char **argv) {
+void moe_grouped_gemm_example(engine::kind engine_kind) {
     std::cout << "Toy MoE/Grouped GEMM Implementation with 4 Experts (Top-2 "
                  "Routing)\n\n";
 
+    std::cout << "    Engine: " << engine_kind2str_upper(engine_kind) << "\n";
     std::cout << "    Total Number of experts: " << NUM_EXPERTS << "\n";
     std::cout << "    Number of active experts (Top-K routing): " << TOP_K
               << "\n";
@@ -712,7 +718,7 @@ int main(int argc, char **argv) {
 
     // Execute grouped GEMM with MoE
     toy_moe(input.data(), output.data(), expert_weights, routing,
-            TOKENS_TO_PROCESS, INPUT_DIM, HIDDEN_DIM, OUTPUT_DIM);
+            TOKENS_TO_PROCESS, INPUT_DIM, HIDDEN_DIM, OUTPUT_DIM, engine_kind);
 
     // Print output
     print_matrix("Output", output.data(), TOKENS_TO_PROCESS, OUTPUT_DIM);
@@ -729,9 +735,12 @@ int main(int argc, char **argv) {
     if (valid) {
         std::cout << "SUCCESS: Grouped GEMM reference implementation "
                      "completed!\n";
-        return 0;
     } else {
-        std::cout << "FAILED: Invalid output detected!\n";
-        return 1;
+        throw std::runtime_error("Invalid output detected!");
     }
+}
+
+int main(int argc, char **argv) {
+    return handle_example_errors(
+            moe_grouped_gemm_example, parse_engine_kind(argc, argv));
 }

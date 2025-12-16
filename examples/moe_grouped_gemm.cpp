@@ -25,6 +25,14 @@
 
 using namespace dnnl;
 
+// Helper function to write data to a specific buffer index
+inline void write_to_dnnl_memory_buffer(
+        void *src_ptr, size_t size, memory &mem, int buffer_index = 0) {
+    void *mapped_ptr = mem.map_data(buffer_index);
+    if (mapped_ptr) std::memcpy(mapped_ptr, src_ptr, size);
+    mem.unmap_data(mapped_ptr, buffer_index);
+}
+
 // Configuration constants
 constexpr int NUM_EXPERTS = 4;
 constexpr int TOP_K = 2; // number of top experts to select per token
@@ -363,17 +371,22 @@ void onednn_style_grouped_gemm(const float *input_concat,
     // Step 3: Create memory objects with 2 buffers for grouped encoding
     // Buffer 0: values (concatenated data)
     // Buffer 1: offsets (cumulative row boundaries)
-    memory src_mem(src_md, get_engine(engine_kind),
-            {const_cast<float *>(input_concat), const_cast<int *>(offsets)});
 
-    memory dst_mem(dst_md, get_engine(engine_kind),
-            {output_concat, const_cast<int *>(offsets)});
+    memory src_mem(src_md, get_engine(engine_kind));
+    memory dst_mem(dst_md, get_engine(engine_kind));
+    memory weights_mem(weights_md, get_engine(engine_kind));
+    memory bias_mem(bias_md, get_engine(engine_kind));
 
-    memory weights_mem(weights_md, get_engine(engine_kind),
-            const_cast<float *>(weight_concat));
+    write_to_dnnl_memory(const_cast<float *>(input_concat), src_mem);
+    write_to_dnnl_memory(const_cast<float *>(weight_concat), weights_mem);
+    write_to_dnnl_memory(const_cast<float *>(bias_concat), bias_mem);
 
-    memory bias_mem(
-            bias_md, get_engine(engine_kind), const_cast<float *>(bias_concat));
+    size_t offsets_size = (num_experts + 1) * sizeof(int);
+    // Copy using helper to write to buffer 1 (offsets)
+    write_to_dnnl_memory_buffer(
+            const_cast<int *>(offsets), offsets_size, src_mem, 1);
+    write_to_dnnl_memory_buffer(
+            const_cast<int *>(offsets), offsets_size, dst_mem, 1);
 
     // Step 4: Create matmul primitive descriptor
     // Note: Primitive support for grouped encoding is not yet implemented
@@ -392,6 +405,9 @@ void onednn_style_grouped_gemm(const float *input_concat,
 
     matmul_prim.execute(engine_stream, args);
     engine_stream.wait();
+
+    // Read output data back from memory object
+    read_from_dnnl_memory(output_concat, dst_mem);
 }
 
 /// Process all experts through a 2-layer MLP (expert network)

@@ -242,9 +242,12 @@ void Generator<hw>::gemmRepack2DQuantizationData(Type Ts, Type Td, const Registe
     int r = layoutDst.rows();
     int c = layoutDst.cols();
     // FP4 bdpas with group > 32 requires duplicating scales into upper half of registers.
-    if(state.useBDPAS && r*c < minOuterProductCount(hw, problem, strategy)){
+    if(state.useBDPAS && r * c < minOuterProductCount(hw, problem, strategy)){
+        int halfRegElems = elementsPerGRF(hw, Td) / 2;
+        if(r * c > halfRegElems) stub();
         RegisterLayout offsetLayout(layoutDst);
         for( auto &b : offsetLayout){
+            if(b.nr * b.nc > halfRegElems) stub();
             b.offsetBytes += (b.nr * b.nc);
         }
         copyRegisters(Td, Td, layoutDst, offsetLayout, dst, dst, 0, 0, false, strategy, state); 

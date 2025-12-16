@@ -52,7 +52,7 @@ static inline SystolicParams systolicParams(ngen::HW hw, GEMMProblem problem)
     params.osys = ngen::GRF::bytes(hw) / std::max(problem.Tc_compute().real().size(), 4);
     params.rcountMax = 8;
 #if XE3P
-    params.rcountMin = problem.useBDPAS() ? 8 : 0;
+    params.rcountMin = problem.preferBDPAS(hw) ? 8 : 0;
 #endif
 
     return params;

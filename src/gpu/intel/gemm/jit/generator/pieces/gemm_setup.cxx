@@ -3120,7 +3120,7 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
     }
 
 #if XE3P
-    state.useBDPAS = problem.useBDPAS() && strategy.systolic;
+    state.useBDPAS = problem.preferBDPAS(hw) && strategy.systolic;
 #endif
 }
 

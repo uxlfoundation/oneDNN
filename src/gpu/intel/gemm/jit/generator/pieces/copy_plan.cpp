@@ -3016,13 +3016,13 @@ void CopyPlan::optimizeZip(bool zip2DSrc0)
             if (i1.op != i2.op || i1.phase != i2.phase || i1.dst.grf != i2.dst.grf || i1.flag) break;
             if (i1.simd != i2.simd) continue;
 #if XE3P
-            bool is_xe3p = one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN);
+            bool xe3pPlus = (hw >= ngen::HW::XE3P_35_10);
 #endif
 
             auto zippable = [&](const CopyOperand &o1, const CopyOperand &o2, bool zip2D = false, bool zipImm = false) {
                 if (o1.kind != o2.kind) return false;
 #if XE3P
-                if (o1.kind == CopyOperand::Immediate) return (o1.value == o2.value || (zipImm && !is_xe3p));
+                if (o1.kind == CopyOperand::Immediate) return (o1.value == o2.value || (zipImm && !xe3pPlus));
 #else
                 if (o1.kind == CopyOperand::Immediate) return (o1.value == o2.value || zipImm);
 #endif

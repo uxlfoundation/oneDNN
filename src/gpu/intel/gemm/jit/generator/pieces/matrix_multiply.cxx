@@ -493,11 +493,11 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                         c = Xr_scaleLayout.cols();
 
                         if (isA) {
-                            io0 = x % r;
+                            io0 = x;
                             jo0 = (k / problem.aqGroupK) % c;
                         } else {
                             io0 = (k / problem.bqGroupK) % r;
-                            jo0 = x % c;
+                            jo0 = x;
                         }
                         XS = Xr_scaleLayout.find(io0, jo0, Xr_scaleRegs, &neq, &qblock);
                     } else

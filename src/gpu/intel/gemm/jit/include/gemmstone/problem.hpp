@@ -248,21 +248,24 @@ struct GEMMProblem : public CommonProblem {
     bool needsBSums() const { return sumB || (aOffset == ABOffset::Calc && !earlyDequantizeA() && !quantized2DA()); }
 
 #if XE3P
+
+#if XE3P
     bool nativeBDPAS(ngen::HW hw) const {
         return (((Ta == Tb) && (Ta.isF8() || Ta == Type::f16 || Ta == Type::bf16) && hw >= ngen::Core::XE3P_35_10) || (Ta.isF4() && Tb.isF4() && hw >= ngen::Core::XE3P_35_11));
     }
+#endif
     bool forceLateQuant(ngen::HW hw, int minOPCount) const {
         bool fp4_fp8_dpas = ((Ta.isF8() && Tb.isF8()) || (Ta.isF4() && Tb.isF4())) && nativeBDPAS(hw);
-        return fp4_fp8_dpas && ((aScale2D() && !useBDPAS() && aqGroupK % minOPCount == 0)
-            || (bScale2D() && !useBDPAS() && bqGroupK % minOPCount == 0));
+        return fp4_fp8_dpas && ((aScale2D() && !preferBDPAS(hw) && aqGroupK % minOPCount == 0)
+            || (bScale2D() && !preferBDPAS(hw) && bqGroupK % minOPCount == 0));
     }
     bool forceUpconvertQuant(ngen::HW hw) const {
         // Cover cases where scale group < ksys by upconverting, using normal dpas and scale routines.
-        return nativeBDPAS(hw) && Ta.isF4() && Tb.isF4() && ((aScale2D() && !useBDPAS() && aqGroupK % 64 != 0)
-            || (bScale2D() && !useBDPAS() && bqGroupK % 64 != 0));
+        return nativeBDPAS(hw) && Ta.isF4() && Tb.isF4() && ((aScale2D() && !preferBDPAS(hw) && aqGroupK % 64 != 0)
+            || (bScale2D() && !preferBDPAS(hw) && bqGroupK % 64 != 0));
     }
-    bool useBDPAS() const {
-        bool useBDPAS = (bdpasEnabled && (aScale2D() || bScale2D()));
+    bool preferBDPAS(ngen::HW hw) const {
+        bool useBDPAS = (bdpasEnabled && nativeBDPAS(hw) && (aScale2D() || bScale2D()));
         if (aScale2D()) useBDPAS &= (Ta_scale == Type::f8_e8m0) && (aqGroupK % 32 == 0);
         if (bScale2D()) useBDPAS &= (Tb_scale == Type::f8_e8m0) && (bqGroupK % 32 == 0);
         return useBDPAS;
@@ -310,6 +313,7 @@ struct GEMMProblem : public CommonProblem {
         s.append(AO, BO, CO);
         s.append(A_scale, B_scale);
         s.append(checkBeta0);
+        s.append(bdpasEnabled);
         s.append(aOffset, bOffset);
         s.append(aoPtrDims, boPtrDims);
         s.append(asPtrDims, bsPtrDims);

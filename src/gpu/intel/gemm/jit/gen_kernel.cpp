@@ -338,16 +338,18 @@ status_t gen_desc_t::finalize(const char *tags) {
     }
 
 #if XE3P
-    if (problem_.useBDPAS()){
+    // TODO: Fix kChain handling with BDPAS.
+    if (problem_.preferBDPAS(hw_)){
         strategy_.kChain = 1;
     }
 #endif
 
     // If the M/N group size is equal to M or N, align up to a multiple of unroll size
     // XXX: Increase group size to a large value before aligning to increase reusability
+    // TODO: Refactor M/N groups/thread setting to preserve MN group count.
     constexpr int perMNGroupSize = 1 << 24;
 #if XE3P
-    if (problem_.aqGroupM == m_ && (!problem_.bdpasEnabled || m_ > 1)) {
+    if (problem_.aqGroupM == m_ && (!problem_.preferBDPAS(hw_) || m_ > 1)) {
 #else
     if (problem_.aqGroupM == m_) {
 #endif
@@ -356,7 +358,7 @@ status_t gen_desc_t::finalize(const char *tags) {
                 = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
     }
 #if XE3P
-    if (problem_.bqGroupN == n_ && (!problem_.bdpasEnabled || n_ > 1)) {
+    if (problem_.bqGroupN == n_ && (!problem_.preferBDPAS(hw_) || n_ > 1)) {
 #else
     if (problem_.bqGroupN == n_) {
 #endif

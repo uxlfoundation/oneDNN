@@ -132,6 +132,13 @@ bool matches(const kcatalog::Entry &e, const MatchParams &p)
         }
     }
 
+#if XE3P
+    if (p.ReqBDPASDims) {
+        ok = ok && (e.driverInfo.unroll[LoopM] % 8 == 0);
+        ok = ok && (e.driverInfo.unroll[LoopN] % 8 == 0);
+    }
+#endif
+
     for (int i = 0; i < p.nExtraReqs; i++)
         ok = ok && strategyMatch(e.driverInfo, p.extraReqs[i]);
 
@@ -412,6 +419,7 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
         *tagPtr++ = ReqXe2Block2D;
 #if XE3P
     if (one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN)) *tagPtr++ = ReqXe2Block2D;
+    ReqBDPASDims = problem.preferBDPAS(hw);
 #endif
 
     sizes.batch = sizes.m = sizes.n = sizes.k = 0;

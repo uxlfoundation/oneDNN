@@ -52,6 +52,9 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         int32_t lda, int32_t ldb, int32_t ldc, int32_t m, int32_t n, int32_t k,
         int32_t k0, float alpha, float beta, int32_t cmask, bool last_k_block,
         bool swapab, bool disable_hilbert) const {
+
+    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy ------>");
+
     if (pd()->desc()->batch() == 0) return status::success;
 
     uint32_t flags = 0;
@@ -83,14 +86,21 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
 
     set_scalar_arg_cvt(arg_list, argn++, alpha, scalar_type_);
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
+    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add beta");
 
 // @@@
-    if (pd()->with_a_zero_points() && !problem->aOffsetHostScalar())
+    if (pd()->with_a_zero_points() && !problem->aOffsetHostScalar()) {
         arg_list.set(argn++, *ao);
-    if (pd()->with_b_zero_points() && !problem->bOffsetHostScalar())
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *ao");
+    }
+    if (pd()->with_b_zero_points() && !problem->bOffsetHostScalar()) {
         arg_list.set(argn++, *bo);
-    if (problem->aOffsetHostScalar() || problem->bOffsetHostScalar())
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *bo");
+    }
+    if (problem->aOffsetHostScalar() || problem->bOffsetHostScalar()) {
         arg_list.set(argn++, abo_hostscalar);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add abo_hostscalar");
+    }
 // @@@
 
     if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
@@ -300,10 +310,14 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     if (nocopy_info()->fusedBeta() || nocopy_info()->fusedPostOps())
         zero_pool->async_release(zp_token, compute_stream->ctx().get_deps());
 
+    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy <------ ; status = %d", (int)status);
     return status;
 }
 
 status_t gen_t::execute(const exec_ctx_t &ctx) const {
+
+    VDEBUGINFO(4, primitive, gemm, "MY execute ++++++++>");
+
     auto *compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
 
     auto zero_pool = zero_pool_;
@@ -437,6 +451,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     int cmask = 0;
     if (pd()->with_c_zero_points()) {
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : c w/ zp");
         off_co0 = types::bytes_to_elements(c_type, co->offset())
                 + pd()->dyn_offset_co;
         cmask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
@@ -454,18 +469,30 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a || b w/ zp ; setup ao & bo");
 // @@@
         int a_hostscalar_val = 0;
         int b_hostscalar_val = 0;
-        if (ao->is_host_scalar())
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : there are host_scalars() !!!!");
+        if (ao->is_host_scalar()) {
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : ao is host_scalar");
             CHECK(maybe_get_host_scalar_value(*ao, a_hostscalar_val));
-        if (bo->is_host_scalar())
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a_zp_val = %d", a_hostscalar_val);
+        }
+        if (bo->is_host_scalar()) {
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : bo is host_scalar");
             CHECK(maybe_get_host_scalar_value(*bo, b_hostscalar_val));
-        abo_hostscalar = (static_cast<int32_t>(-1 * b_hostscalar_val) << 16)
-                | (static_cast<uint16_t>(-1 * a_hostscalar_val) & 0xFFFF);
-// @@@
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : b_zp_val = %d", b_hostscalar_val);
+        }
+
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a b _zp_val = %d %d",
+                   static_cast<int16_t>(a_hostscalar_val),static_cast<int16_t>(b_hostscalar_val));
+
+        abo_hostscalar = (static_cast<int32_t>(-1 * b_hostscalar_val) << 16) | (static_cast<uint16_t>(-1 * a_hostscalar_val) & 0xFFFF);
+//@@@
     }
 
+    VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
     // Convert host scalar scales to Alpha
     if (pd()->attr()->scales_.has_host_scalars()) {
         const auto &a_scales = pd()->attr()->scales_.get(DNNL_ARG_A);
@@ -539,6 +566,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
         if (k_parallel_global && !nocopy_info()->fusedBeta() && beta != 1.0f
                 && (k > k0 * pd()->kernel_desc()->aux_params()->wgK)) {
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy");
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
 // @@@
                     bo, abo_hostscalar, a_scales, b_scales, c_scales, ag, bg,
@@ -551,7 +579,9 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         }
     }
 
+    VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
     for (int64_t Bk = 0; Bk < nstl::max<dim_t>(k, 1); Bk += block_k) {
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
         int64_t size_k = k - Bk;
         bool last_k_block = (size_k <= block_k);
         if (!last_k_block) size_k = block_k;
@@ -604,6 +634,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 }
 
                 float eff_beta = (Bk == 0) ? beta : 1.0f;
+                VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy, bk bm loop, ao arg");
                 status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c,
 // @@@
                         ao, bo, abo_hostscalar, a_scales, b_scales, c_scales,
@@ -624,6 +655,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (release_zp) release_zero_pool(zero_pool);
 #endif
 
+    VDEBUGINFO(4, primitive, gemm, "MY execute <++++++++ success");
     return status::success;
 }
 

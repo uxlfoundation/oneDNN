@@ -33,8 +33,14 @@ using std::vector;
 template <HW hw>
 bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
+
+    VDEBUGINFO(4, primitive, quantization, "MY: gemmMake2DQuantizationLayouts +++++++++> isA = %d",isA);
+
     auto lateOffset = isA ? problem.needsBGroupSums() : problem.needsAGroupSums();
     int xoPtrDims = (isA ? problem.aoPtrDims : problem.boPtrDims);
+
+    VDEBUGINFO(4, primitive, quantization, "MY: +++++++++ xoPtrDims = %d",xoPtrDims);
+
     bool xo2D = isA ? problem.aOffset2D()       : problem.bOffset2D();
     bool xs2D = isA ? problem.aScale2D()        : problem.bScale2D();
     bool xg2D = isA ? problem.needsAGroupSums() : problem.needsBGroupSums();
@@ -44,8 +50,12 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
 // @@@
     bool xoHostSacalar = isA ? problem.ao_hostscalar : problem.bo_hostscalar ;
 
-    if ((!xo2D && !xoTo2D && !xs2D && !xg2D) || xoHostSacalar) return true;
-// @@@
+    if ((!xo2D && !xoTo2D && !xs2D && !xg2D) || xoHostSacalar) {
+        VDEBUGINFO(4, primitive, quantization, "MY: gemmMake2DQuantizationLayouts <+++++++++ erly return w/ true");
+        return true;
+    }
+    VDEBUGINFO(4, primitive, quantization, "MY: gemmMake2DQuantizationLayouts +++++++++ continune ...");
+
 
     auto &X_strategy       = isA ? strategy.A             : strategy.B;
     auto &X_offsetStrategy = isA ? strategy.AO            : strategy.BO;
@@ -209,6 +219,8 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
             Xr_offsetLayout = RegisterLayout(hw, Txo_int, ro, co, isA, cpo, tileR, tileC, false);
         else stub();
     }
+
+    VDEBUGINFO(4, primitive, quantization, "MY: gemmMake2DQuantizationLayouts <+++++++++ true: isA = %d",isA);
 
     return true;
 }

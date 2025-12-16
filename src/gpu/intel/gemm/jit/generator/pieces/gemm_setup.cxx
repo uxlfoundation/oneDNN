@@ -2013,11 +2013,13 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             A_offsetLayout = RegisterLayout(hw, problem.Tao, r, 1, true);
             state.ra.safeRelease(aoBase);
         } else if (problem.aoPtrDims == 0) {
+            VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmScaleInputs : ao call loadScalars(problem.Tao,...");
             auto grf = loadScalars(problem.Tao, {state.inputs.aoPtr}, strategy, state);
             aoLoad = grf-grf;
             A_offsetLayout = state.Ar_offsetLayout;
             A_offsetLayout.cast(problem.Tao);
         } else {
+            VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmScaleInputs : ao: mov(1, state.inputs.ao, -state.inputs.ao);");
             mov(1, state.inputs.ao, -state.inputs.ao);
             GRF grf{state.inputs.ao.getBase()};
             aoLoad = grf-grf;
@@ -2540,6 +2542,8 @@ void Generator<hw>::makeSLMBaseRelative(Subregister addr, const GEMMState &state
 template <HW hw>
 void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK)
 {
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmInitInterface +++++++++++ >>");
+
     Subregister localSize[3];
     GRF localID[3];
     Subregister tgids[3] = {r0.ud(1), r0.ud(6), r0.ud(7)};   // X, Y, Z threadgroup IDs
@@ -2595,6 +2599,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     }
 
     interface.finalize();
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : after interface.finalize()");
 
     for (int dim = 0; dim < 3; dim++) {
         localID[dim] = interface.getLocalID(dim);
@@ -2602,6 +2607,9 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     }
 
     // Get input arguments.
+
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : get input args: state.xxxxxx = interface.yyyyyyy");
+
     state.inputs.base = interface.getArgumentIfExists("base");
     auto baseSurface = interface.getArgumentSurfaceIfExists("base");
     if (state.inputs.base.isInvalid() && baseSurface == InterfaceHandler::noSurface) {
@@ -2634,13 +2642,31 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
 
     bool aOffset = (problem.aOffset != ABOffset::None);
     bool bOffset = (problem.bOffset != ABOffset::None);
+
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : local bool aOffset bOffset = %d %d (== (problem.aOffset != ABOffset::None))", aOffset,bOffset);
+
+#define VDEBUGINFO_OBJECT(obj) \
+    VDEBUGINFO(4, primitive, object, "MY: +++++ : %s : is Valid Null Scalar = %d %d %d", #obj, (obj).isValid(), (obj).isNull(), (obj).isScalar())
+
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ @@@@@@ : state.inputs.<a|b|o|Ptr> before");
+    VDEBUGINFO_OBJECT(state.inputs.ao);
+    VDEBUGINFO_OBJECT(state.inputs.bo);
+    VDEBUGINFO_OBJECT(state.inputs.abo);
+    VDEBUGINFO_OBJECT(state.inputs.aoPtr);
+    VDEBUGINFO_OBJECT(state.inputs.boPtr);
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ @@@@@@");
+
+
     if (aOffset || bOffset) {
+        VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : yes, there is zp !!!");
         state.inputs.abo = interface.getArgumentIfExists("abo");
         if (state.inputs.abo.isValid()) {
+            VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : if state.inputs.abo.isValid()");
             // A/B offset are two words packed into a single dword argument.
             state.inputs.ao = state.inputs.abo.w(0);
             state.inputs.bo = state.inputs.abo.w(1);
         } else {
+            VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : ELSE state.inputs.abo.isValid()");
             state.inputs.ao = interface.getArgumentIfExists("ao");
             state.inputs.bo = interface.getArgumentIfExists("bo");
         }
@@ -2649,6 +2675,15 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         state.inputs.surfaceAO = interface.getArgumentSurfaceIfExists("ao_ptr");
         state.inputs.surfaceBO = interface.getArgumentSurfaceIfExists("bo_ptr");
     }
+
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ @@@@@@ : state.inputs.<a|b|o|Ptr> after");
+    VDEBUGINFO_OBJECT(state.inputs.ao);
+    VDEBUGINFO_OBJECT(state.inputs.bo);
+    VDEBUGINFO_OBJECT(state.inputs.abo);
+    VDEBUGINFO_OBJECT(state.inputs.aoPtr);
+    VDEBUGINFO_OBJECT(state.inputs.boPtr);
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ @@@@@@");
+
     if (problem.aScale2D()) {
         state.inputs.aScalePtr = interface.getArgumentIfExists("a_scale_ptr");
         state.inputs.surfaceAScale = interface.getArgumentSurfaceIfExists("a_scale_ptr");
@@ -2883,12 +2918,14 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             state.ra.claim(state.inputs.C[q]);
 
     if (aOffset) {
+        VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ claimIfValid ao aoPtr offsertAO");
         claimIfValid(state.inputs.ao);
         claimIfValid(state.inputs.aoPtr);
         claimIfValid(state.inputs.offsetAO);
     }
 
     if (bOffset) {
+        VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ claimIfValid bo boPtr offsertBO");
         claimIfValid(state.inputs.bo);
         claimIfValid(state.inputs.boPtr);
         claimIfValid(state.inputs.offsetBO);
@@ -3072,12 +3109,18 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     // Binary-related arguments are not claimed here, but instead
     //  are reloaded later in the kernel when needed.
 
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmInitInterface << +++++++++++");
+
 }
 
 // Initialize the state structure.
 template <HW hw>
 void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK)
 {
+
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmInitState ********** >>");
+
+
     auto Tc = problem.Tc;
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext;
 
@@ -3089,6 +3132,8 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
         state.isNested |= strategy.fused;
         state.isNested |= strategy.persistentLoop();
     }
+
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmInitState *** : after initState(), gemmInitInterface()");
 
     state.effA = strategy.A.base.isStateless() ? state.inputs.A
                                                : state.inputs.offsetA.d();
@@ -3109,6 +3154,8 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
 
     state.offsetA = state.inputs.offsetA;
     state.offsetB = state.inputs.offsetB;
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmInitState *** : state.offsetA = state.inputs.offsetA");
+
     for (int q = 0; q < state.C_count; q++)
         state.offsetC[q] = state.inputs.offsetC[q];
     state.offsetCO = state.inputs.offsetCO;
@@ -3167,6 +3214,7 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
         state.tempCStrategy.padded = true;
     }
 
+    VDEBUGINFO(4, primitive, gemm_setup, "MY: gemmInitState << ********** ");
 }
 
 GEMMSTONE_NAMESPACE_END

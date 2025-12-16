@@ -2666,7 +2666,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
             state.inputs.ao = state.inputs.abo.w(0);
             state.inputs.bo = state.inputs.abo.w(1);
         } else {
-            VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : ELSE state.inputs.abo.isValid()");
+            VDEBUGINFO(4, primitive, gemm_setup, "MY: +++++ : ELSE state.inputs.abo.isValid() !!!!!! will get ao and bo !!!!!!");
             state.inputs.ao = interface.getArgumentIfExists("ao");
             state.inputs.bo = interface.getArgumentIfExists("bo");
         }

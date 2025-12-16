@@ -1042,10 +1042,17 @@ void gen_kernel_t::init_interface() {
     }
 
 // @@@
+#if 0
     if (problem.aOffsetHostScalar() || problem.bOffsetHostScalar()) {
         VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> @@@@ interface_.newArgument abo");
         interface_.newArgument("abo", DataType::ud);
     }
+#else
+    if (problem.aOffsetHostScalar()) {
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> @@@@ interface_.newArgument ao");
+        interface_.newArgument("ao", DataType::w); // ???? w ?????
+    }
+#endif
 // @@@
     if (problem.aScale2D())
         interface_.newArgument(

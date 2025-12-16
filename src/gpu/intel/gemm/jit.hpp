@@ -715,7 +715,12 @@ private:
             const memory_storage_t &b, const memory_storage_t &c,
             const memory_storage_t *ao, const memory_storage_t *bo,
 // @@@
-            int32_t abo_hostscalar, const memory_storage_t *a_scales,
+#if 0
+            int32_t abo_hostscalar,
+#else
+            int16_t ao_hostscalar, int16_t bo_hostscalar,
+#endif
+            const memory_storage_t *a_scales,
 // @@@
             const memory_storage_t *b_scales, const memory_storage_t *c_scales,
             const memory_storage_t *ag, const memory_storage_t *bg,

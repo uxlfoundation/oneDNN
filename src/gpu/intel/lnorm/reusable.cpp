@@ -241,7 +241,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         calc_mean_arg_list.append(*mean_ptr);
         calc_mean_arg_list.append(pd()->norm_axis());
         calc_mean_arg_list.append(rt_conf.norm_stride);
-        calc_mean_arg_list.append(rt_conf.stat_params.get());
+        append_rt_params(calc_mean_arg_list, rt_conf.stat_params);
 
         auto &nd_range_calc = rt_conf.stat_params.nd_range;
 
@@ -254,7 +254,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         calc_var_arg_list.append(*variance_ptr);
         calc_var_arg_list.append(pd()->norm_axis());
         calc_var_arg_list.append(rt_conf.norm_stride);
-        calc_var_arg_list.append(rt_conf.stat_params.get());
+        append_rt_params(calc_var_arg_list, rt_conf.stat_params);
 
         CHECK(parallel_for(ctx, nd_range_calc, calculate_variance_kernel_,
                 calc_var_arg_list));
@@ -270,7 +270,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.append(pd()->desc()->layer_norm_epsilon);
     arg_list.append(src_scale);
     arg_list.append(dst_scale);
-    arg_list.append(rt_conf.gws_params.get());
+    append_rt_params(arg_list, rt_conf.gws_params);
 
     auto &nd_range = rt_conf.gws_params.nd_range;
     return parallel_for(ctx, nd_range, kernel_, arg_list);
@@ -338,7 +338,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
         ss_arg_list.append(pd()->across_axis());
         ss_arg_list.append(rt_conf.stat_stride);
         ss_arg_list.append(pd()->desc()->layer_norm_epsilon);
-        ss_arg_list.append(rt_conf.scaleshift_params.get());
+        append_rt_params(ss_arg_list, rt_conf.scaleshift_params);
 
         compute::nd_range_t nd_range = rt_conf.scaleshift_params.nd_range;
         CHECK(parallel_for(ctx, nd_range, scaleshift_kernel_, ss_arg_list));
@@ -362,7 +362,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     stat_arg_list.append(rt_conf.norm_stride);
     stat_arg_list.append(pd()->norm_axis());
     stat_arg_list.append(include_stats);
-    stat_arg_list.append(rt_conf.stat_params.get());
+    append_rt_params(stat_arg_list, rt_conf.stat_params);
 
     compute::nd_range_t stat_nd_range = rt_conf.stat_params.nd_range;
     return parallel_for(ctx, stat_nd_range, kernel_, stat_arg_list);

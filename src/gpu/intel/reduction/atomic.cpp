@@ -547,7 +547,7 @@ status_t atomic_t::execute_atomic(const exec_ctx_t &ctx) const {
         arg_list.append(pd()->power);
         arg_list.append(pd()->eps);
         arg_list.append(into<int>(phase.reduction_block.block));
-        arg_list.append(phase.rt_conf.get());
+        append_rt_params(arg_list, phase.rt_conf);
 
         CHECK(parallel_for(ctx, nd_range, kernel, arg_list));
     }

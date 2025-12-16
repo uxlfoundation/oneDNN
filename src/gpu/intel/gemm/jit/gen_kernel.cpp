@@ -1041,19 +1041,17 @@ void gen_kernel_t::init_interface() {
                 "bo_ptr", ExternalArgumentType::GlobalPtr, bo_access);
     }
 
-// @@@
-#if 0
-    if (problem.aOffsetHostScalar() || problem.bOffsetHostScalar()) {
-        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> @@@@ interface_.newArgument abo");
-        interface_.newArgument("abo", DataType::ud);
-    }
-#else
+    // @@@ !!!
     if (problem.aOffsetHostScalar()) {
         VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> @@@@ interface_.newArgument ao");
         interface_.newArgument("ao", DataType::w); // ???? w ?????
     }
-#endif
-// @@@
+    if (problem.bOffsetHostScalar()) {
+        VDEBUGINFO(4, primitive, gen_kernel,
+                "MY: >>>> @@@@ interface_.newArgument bo");
+        interface_.newArgument("bo", DataType::w); // ???? w ?????
+    }
+    // @@@ !!!
     if (problem.aScale2D())
         interface_.newArgument(
                 "a_scale_ptr", ExternalArgumentType::GlobalPtr, as_access);

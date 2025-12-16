@@ -39,14 +39,10 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         intel::stream_t *compute_stream, zero_pool_t *zero_pool,
         const memory_storage_t &a, const memory_storage_t &b,
         const memory_storage_t &c, const memory_storage_t *ao,
-// @@@
-#if 0
-        const memory_storage_t *bo, int32_t abo_hostscalar,
-#else
-        const memory_storage_t *bo,
-        int16_t ao_hostscalar, int16_t bo_hostscalar,
-#endif
-// @@@
+        // @@@ !!!
+        const memory_storage_t *bo, int16_t ao_hostscalar,
+        int16_t bo_hostscalar,
+        // @@@ !!!
         const memory_storage_t *a_scales, const memory_storage_t *b_scales,
         const memory_storage_t *c_scales, const memory_storage_t *ag,
         const memory_storage_t *bg, const memory_storage_t &co,
@@ -93,7 +89,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
     VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add beta");
 
-// @@@
+    // @@@ !!!
     if (pd()->with_a_zero_points() && !problem->aOffsetHostScalar()) {
         arg_list.set(argn++, *ao);
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *ao");
@@ -102,22 +98,16 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         arg_list.set(argn++, *bo);
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add *bo");
     }
-#if 0
-    if (problem->aOffsetHostScalar() || problem->bOffsetHostScalar()) {
-        arg_list.set(argn++, abo_hostscalar);
-        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add abo_hostscalar");
-    }
-#else
     if (problem->aOffsetHostScalar()) {
         arg_list.set(argn++, ao_hostscalar);
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add ao_hostscalar");
     }
     if (problem->bOffsetHostScalar()) {
         arg_list.set(argn++, bo_hostscalar);
-        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add ao_hostscalar");
+        VDEBUGINFO(4, primitive, gemm,
+                "MY: launch_nocopy --- ; add bo_hostscalar");
     }
-#endif
-// @@@
+    // @@@ !!!
 
     if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
     if (problem->bScale2D()) arg_list.set(argn++, *b_scales);
@@ -394,15 +384,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     const memory_storage_t *a_scales = nullptr, *b_scales = nullptr;
     const memory_storage_t *c_scales = nullptr;
     const memory_storage_t *ag = nullptr, *bg = nullptr;
-// @@@
-#if 0
-    int32_t abo_hostscalar = 0;
-#else
+    // @@@ !!!
     int16_t ao_hostscalar = 0;
     int16_t bo_hostscalar = 0;
-#endif
-
-// @@@
+    // @@@ !!!
 
     std::unique_ptr<memory_storage_t> c_temp;
     if (nocopy_info()->needsTempC()) {
@@ -492,7 +477,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a || b w/ zp ; setup ao & bo");
-// @@@
+        // @@@ !!!
         int a_hostscalar_val = 0;
         int b_hostscalar_val = 0;
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : there are host_scalars() !!!!");
@@ -510,13 +495,9 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : a b _zp_val = %d %d",
                    static_cast<int16_t>(a_hostscalar_val),static_cast<int16_t>(b_hostscalar_val));
 
-#if 0
-        abo_hostscalar = (static_cast<int32_t>(-1 * b_hostscalar_val) << 16) | (static_cast<uint16_t>(-1 * a_hostscalar_val) & 0xFFFF);
-#else
         ao_hostscalar = static_cast<int16_t>(-1 * a_hostscalar_val);
         bo_hostscalar = static_cast<int16_t>(-1 * b_hostscalar_val);
-#endif
-//@@@
+        //@@@ !!!
     }
 
     VDEBUGINFO(4, primitive, gemm, "MY execute ++++");
@@ -595,15 +576,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 && (k > k0 * pd()->kernel_desc()->aux_params()->wgK)) {
             VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy");
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
-// @@@
-                    bo,
-#if 0
-                    abo_hostscalar,
-#else
-                    ao_hostscalar, bo_hostscalar,
-#endif
-                    a_scales, b_scales, c_scales, ag, bg,
-// @@@
+                    // @@@ !!!
+                    bo, ao_hostscalar, bo_hostscalar, a_scales, b_scales,
+                    c_scales, ag, bg,
+                    // @@@ !!!
                     *co, nullptr, sround_seed, po_count, po_srcs, off_a0,
                     off_b0, off_c0, off_aq0, off_bq0, off_co0, po_offsets0, lda,
                     ldb, ldc, m, n, 0, 1, 1.0f, beta, 0, false, swapab, true);
@@ -669,15 +645,10 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 float eff_beta = (Bk == 0) ? beta : 1.0f;
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy, bk bm loop, ao arg");
                 status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c,
-// @@@
-                        ao, bo,
-#if 0
-                        abo_hostscalar,
-#else
-                        ao_hostscalar, bo_hostscalar,
-#endif
-                        a_scales, b_scales, c_scales,
-// @@@
+                        // @@@ !!!
+                        ao, bo, ao_hostscalar, bo_hostscalar, a_scales,
+                        b_scales, c_scales,
+                        // @@@ !!!
                         ag, bg, *co, c_temp.get(), sround_seed, po_count,
                         po_srcs, off_a_src, off_b_src, off_c, off_aq, off_bq,
                         off_co, po_offsets, lda, ldb, ldc,

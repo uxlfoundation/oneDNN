@@ -302,6 +302,7 @@ bool pd_t::zp_ok() {
     const bool weights_upconversion = wei_decomp_
             || ((swap_ab() ? b_int4 : a_int4) && dy_quant_enabled_);
 
+// @@@
     // Host scalar support
     const bool a_zp_non_scalar = !a_zps.has_default_values() && ao_dims_ > 0;
     const bool b_zp_non_scalar = !b_zps.has_default_values() && bo_dims_ > 0;
@@ -309,6 +310,7 @@ bool pd_t::zp_ok() {
     if (c_zps.is_host_scalar() || (a_zps.is_host_scalar() && b_zp_non_scalar)
             || (b_zps.is_host_scalar() && a_zp_non_scalar))
         return false;
+// @@@
 
     if (!a_zps.has_default_values()) {
         // Groups determine supported masks.

@@ -487,12 +487,16 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.batch = BatchMode::Strided;
         problem_.batchDims = batch_dims;
     }
+// @@@
     problem_.ao_hostscalar = a_quant.zp_host_scalar;
     problem_.bo_hostscalar = b_quant.zp_host_scalar;
+// @@@
     if (a_quant.zp_ndims >= 0) problem_.aOffset = ABOffset::Calc;
     if (b_quant.zp_ndims >= 0) problem_.bOffset = ABOffset::Calc;
+// @@@
     problem_.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
     problem_.boPtrDims = b_quant.zp_host_scalar ? -1 : b_quant.zp_ndims;
+// @@@
     problem_.AO.layout = MatrixLayout::N;
     problem_.BO.layout
             = (problem_.bOffset2D()) ? MatrixLayout::N : MatrixLayout::T;
@@ -1007,8 +1011,10 @@ void gen_kernel_t::init_interface() {
     if (problem.boPtrDims >= 0)
         interface_.newArgument(
                 "bo_ptr", ExternalArgumentType::GlobalPtr, bo_access);
+// @@@
     if (problem.aOffsetHostScalar() || problem.bOffsetHostScalar())
         interface_.newArgument("abo", DataType::ud);
+// @@@
     if (problem.aScale2D())
         interface_.newArgument(
                 "a_scale_ptr", ExternalArgumentType::GlobalPtr, as_access);

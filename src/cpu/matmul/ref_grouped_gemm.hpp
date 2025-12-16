@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2025 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -61,7 +61,9 @@ struct ref_grouped_gemm_t : public primitive_t {
 
             // Validate matching number of groups
             VDISPATCH_MATMUL(src_grouped.ngroups == dst_grouped.ngroups,
-                    VERBOSE_INCONSISTENT_NDIMS);
+                    VERBOSE_INCONSISTENT_DIM, "src_ngroups",
+                    (int)src_grouped.ngroups, "dst_ngroups",
+                    (int)dst_grouped.ngroups);
 
             // Check data types - support f32 for now
             VDISPATCH_MATMUL(
@@ -83,9 +85,13 @@ struct ref_grouped_gemm_t : public primitive_t {
                         bia_d.ndims() == 2, VERBOSE_UNSUPPORTED_BIAS_CFG);
                 // Bias shape should be [num_experts, N]
                 VDISPATCH_MATMUL(bia_d.dims()[0] == src_grouped.ngroups,
-                        VERBOSE_INCONSISTENT_DIM);
+                        VERBOSE_INCONSISTENT_DIM, "bias_dim[0]",
+                        (int)bia_d.dims()[0], "ngroups",
+                        (int)src_grouped.ngroups);
                 VDISPATCH_MATMUL(bia_d.dims()[1] == wei_d.dims()[2],
-                        VERBOSE_INCONSISTENT_DIM);
+                        VERBOSE_INCONSISTENT_DIM, "bias_dim[1]",
+                        (int)bia_d.dims()[1], "weights_dim[2]",
+                        (int)wei_d.dims()[2]);
             }
 
             // No scales/post-ops for now

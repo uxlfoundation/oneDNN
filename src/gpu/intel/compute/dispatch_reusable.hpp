@@ -297,32 +297,65 @@ DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(dispatch_compile_params_t);
 class dispatch_runtime_params_t {
 public:
     dispatch_runtime_params_t() = default;
-    dispatch_runtime_params_t(
-            const nd_range_t &nd_range, const std::vector<int64_t> &term_list)
-        : nd_range(nd_range), num_terms(term_list.size()) {
+    dispatch_runtime_params_t(const nd_range_t &nd_range, bool use_int32_offset,
+            const std::vector<int64_t> &term_list)
+        : nd_range(nd_range)
+        , use_int32_offset(use_int32_offset)
+        , num_terms(term_list.size()) {
         for (size_t i = 0; i < num_terms; i++) {
-            rt.params[i] = term_list[i];
+            if (use_int32_offset)
+                rt32.params[i] = into<int32_t>(term_list[i]);
+            else
+                rt64.params[i] = term_list[i];
         }
     }
-    dispatch_gws_rt_params_t get() const { return rt; }
+    dispatch_gws_rt_params64_t get64() const {
+        gpu_assert(!use_int32_offset);
+        return rt64;
+    }
+    dispatch_gws_rt_params32_t get32() const {
+        gpu_assert(use_int32_offset);
+        return rt32;
+    }
 
     std::string str() const {
         stringstream_t ss;
         ss << "<dispatch_runtime_params_t: ";
         for (size_t i = 0; i < num_terms; i++) {
             if (i > 0) ss << ", ";
-            ss << "term[" << std::to_string(i) << "]: " << rt.params[i];
+            ss << "term[" << std::to_string(i)
+               << "]: " << (use_int32_offset ? rt32.params[i] : rt64.params[i]);
         }
         ss << ">";
         return ss.str();
     }
 
     nd_range_t nd_range;
+    bool use_int32_offset = false;
 
 private:
     size_t num_terms = 0;
-    dispatch_gws_rt_params_t rt;
+    union {
+        dispatch_gws_rt_params64_t rt64;
+        dispatch_gws_rt_params32_t rt32;
+    };
 };
+
+inline void set_rt_params(compute::kernel_arg_list_t &arg_list, size_t index,
+        const dispatch_runtime_params_t &params) {
+    if (params.use_int32_offset)
+        arg_list.set(index, params.get32());
+    else
+        arg_list.set(index, params.get64());
+}
+
+inline void append_rt_params(compute::kernel_arg_list_t &arg_list,
+        const dispatch_runtime_params_t &params) {
+    if (params.use_int32_offset)
+        arg_list.append(params.get32());
+    else
+        arg_list.append(params.get64());
+}
 
 struct named_dim_t {
 public:
@@ -578,7 +611,8 @@ public:
         compile_params.subgroup = subgroup;
 
         // Set runtime params
-        runtime_params = dispatch_runtime_params_t(nd_range, {term_list});
+        runtime_params = dispatch_runtime_params_t(
+                nd_range, compile_params.use_int32_offset, {term_list});
     }
 
     const dispatch_compile_params_t &get_compile_params() const {

@@ -264,7 +264,7 @@ status_t reusable_ref_t::execute(const exec_ctx_t &ctx) const {
         arg_list.append(pd()->div);
         arg_list.append(pd()->desc()->p);
         arg_list.append(pd()->desc()->eps);
-        arg_list.append(phase.rt_conf.get());
+        append_rt_params(arg_list, phase.rt_conf);
 
         CHECK(parallel_for(ctx, nd_range, kernel, arg_list));
     }

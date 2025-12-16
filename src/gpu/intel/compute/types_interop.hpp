@@ -53,8 +53,13 @@ struct scalar_type_traits_t<int64x6_t> {
 };
 
 template <>
-struct scalar_type_traits_t<dispatch_gws_rt_params_t> {
-    static const auto type = scalar_type_t::_dispatch_gws_rt_params_t;
+struct scalar_type_traits_t<dispatch_gws_rt_params32_t> {
+    static const auto type = scalar_type_t::_dispatch_gws_rt_params32_t;
+};
+
+template <>
+struct scalar_type_traits_t<dispatch_gws_rt_params64_t> {
+    static const auto type = scalar_type_t::_dispatch_gws_rt_params64_t;
 };
 
 template <>

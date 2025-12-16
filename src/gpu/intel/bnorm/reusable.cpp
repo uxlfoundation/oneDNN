@@ -318,7 +318,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         calc_mean_arg_list.set(1, *temp_reduce);
         append_off(calc_mean_arg_list, rt_conf.reduce_dim_stride);
         append_off(calc_mean_arg_list, rt_conf.reduction_nelems);
-        calc_mean_arg_list.append(rt_conf.calc_stat_params.get());
+        append_rt_params(calc_mean_arg_list, rt_conf.calc_stat_params);
 
         auto &nd_range_calc = rt_conf.calc_stat_params.nd_range;
 
@@ -332,7 +332,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         append_off(
                 reduce_mean_arg_list, rt_conf.div / rt_conf.reduction_nelems);
         append_off(reduce_mean_arg_list, rt_conf.div);
-        reduce_mean_arg_list.append(rt_conf.reduce_stat_params.get());
+        append_rt_params(reduce_mean_arg_list, rt_conf.reduce_stat_params);
 
         auto &nd_range_reduce = rt_conf.reduce_stat_params.nd_range;
 
@@ -345,7 +345,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         calc_var_arg_list.set(2, *temp_reduce);
         append_off(calc_var_arg_list, rt_conf.reduce_dim_stride);
         append_off(calc_var_arg_list, rt_conf.reduction_nelems);
-        calc_var_arg_list.append(rt_conf.calc_stat_params.get());
+        append_rt_params(calc_var_arg_list, rt_conf.calc_stat_params);
 
         CHECK(parallel_for(ctx, nd_range_calc, calculate_variance_kernel_,
                 calc_var_arg_list));
@@ -356,7 +356,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         append_off(reduce_var_arg_list, rt_conf.ic);
         append_off(reduce_var_arg_list, rt_conf.div / rt_conf.reduction_nelems);
         append_off(reduce_var_arg_list, rt_conf.div);
-        reduce_var_arg_list.append(rt_conf.reduce_stat_params.get());
+        append_rt_params(reduce_var_arg_list, rt_conf.reduce_stat_params);
 
         CHECK(parallel_for(ctx, nd_range_reduce, reduce_variance_kernel_,
                 reduce_var_arg_list));
@@ -373,7 +373,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.set(7, rt_conf.eps);
     arg_list.set(8, src_add);
     arg_list.set(9, rt_conf.relu_negative_slope);
-    arg_list.append(rt_conf.gws_params.get());
+    append_rt_params(arg_list, rt_conf.gws_params);
 
     auto &nd_range = rt_conf.gws_params.nd_range;
 
@@ -444,7 +444,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     calc_stats_arg_list.set(5, *temp_reduce_shift);
     append_off(calc_stats_arg_list, rt_conf.reduce_dim_stride);
     append_off(calc_stats_arg_list, rt_conf.reduction_nelems);
-    calc_stats_arg_list.append(rt_conf.calc_stat_params.get());
+    append_rt_params(calc_stats_arg_list, rt_conf.calc_stat_params);
 
     auto &nd_range_calc = rt_conf.calc_stat_params.nd_range;
 
@@ -462,7 +462,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     reduce_stats_arg_list.set(5, rt_conf.eps);
     append_off(reduce_stats_arg_list, rt_conf.ic);
     append_off(reduce_stats_arg_list, rt_conf.div / rt_conf.reduction_nelems);
-    reduce_stats_arg_list.append(rt_conf.reduce_stat_params.get());
+    append_rt_params(reduce_stats_arg_list, rt_conf.reduce_stat_params);
 
     auto &nd_range_reduce_stat = rt_conf.reduce_stat_params.nd_range;
 
@@ -482,7 +482,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     arg_list.set(9, rt_conf.eps);
     arg_list.set(10, diff_src_add);
     append_off(arg_list, rt_conf.div);
-    arg_list.append(rt_conf.gws_params.get());
+    append_rt_params(arg_list, rt_conf.gws_params);
 
     auto &nd_range = rt_conf.gws_params.nd_range;
 

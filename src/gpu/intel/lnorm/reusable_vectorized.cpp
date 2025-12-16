@@ -261,7 +261,7 @@ status_t reusable_vectorized_fwd_t::execute_forward(
             pd()->norm_axis(), conf.sg_size * conf.vector_size));
     arg_list.append(1.f / (pd()->norm_axis()));
 
-    arg_list.append(rt_conf.gws_params.get());
+    append_rt_params(arg_list, rt_conf.gws_params);
 
     compute::nd_range_t gws_nd_range_calc(
             {static_cast<size_t>(conf.sg_size),

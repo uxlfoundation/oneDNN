@@ -268,7 +268,7 @@ status_t reusable_fwd_t::execute_generic(const exec_ctx_t &ctx) const {
     arg_list.append(pd()->rt_conf.softmax_axis_size);
     arg_list.append(pd()->rt_conf.softmax_axis_stride);
     arg_list.append(pd()->rt_conf.softmax_chunk_size);
-    arg_list.append(pd()->rt_conf.gws_params.get());
+    append_rt_params(arg_list, pd()->rt_conf.gws_params);
 
     auto status = parallel_for(
             ctx, pd()->rt_conf.gws_params.nd_range, kernel_, arg_list);

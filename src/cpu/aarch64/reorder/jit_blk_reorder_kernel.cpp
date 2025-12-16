@@ -37,7 +37,7 @@ bool jit_single_blk_kernel_t::applicable(const prb_t &p) {
 
     using namespace data_type;
 
-    bool ok = p.ndims >= 2 && mayiuse(sve_256)
+    bool ok = p.ndims >= 2 && utils::one_of(get_max_cpu_isa(), sve_128, sve_256)
             && p.src_scale_type == scale_type_t::NONE
             && p.dst_scale_type == scale_type_t::NONE
             && utils::one_of(p.itype, f32) && utils::one_of(p.otype, f32)
@@ -61,10 +61,19 @@ bool jit_single_blk_kernel_t::applicable(const prb_t &p) {
          *     8    m    1
          *     m    1    8
          */
-    ok = (utils::one_of(n0, 8, 16, 32, 64) || utils::one_of(n1, 8, 16, 32, 64))
+    ok = (utils::one_of(n0, 4, 8, 16, 32, 64)
+                 || utils::one_of(n1, 4, 8, 16, 32, 64))
             && ((i0 == 1 && o1 == 1 && n0 == i1 && o0 == n1)
                     || (o0 == 1 && i1 == 1 && n0 == o1 && i0 == n1));
     if (!ok) return false;
+
+    // The 128-bit version only supports blocking of exactly 4, while the
+    // 256-bit version only suppports the larger block sizes.
+    if (get_max_cpu_isa() == sve_128) {
+        if (n0 != 4 && n1 != 4) { return false; }
+    } else if (get_max_cpu_isa() == sve_256) {
+        if (n0 == 4 || n1 == 4) return false;
+    }
 
     // Do not handle transpose of dimensions other than last 2
     for (int i = 2; i < p.ndims; ++i) {
@@ -84,7 +93,11 @@ jit_single_blk_kernel_t::jit_single_blk_kernel_t(const prb_t &prb)
     , block_sz(prb.nodes[0].n) {}
 
 void jit_single_blk_kernel_t::preamble() {
-    ptrue(p_lsb_256.b, VL32);
+    if (get_sve_length() == 32) {
+        ptrue(p_lsb_256.b, VL32);
+    } else {
+        ptrue(p_lsb_256.b, VL16);
+    }
 }
 
 void jit_single_blk_kernel_t::postamble() {
@@ -107,18 +120,16 @@ void jit_single_blk_kernel_t::generate() {
     cmp(reg_ptr_tail, true);
     b(EQ, tail_processing);
 
-    if (block_sz == 8) {
+    if (block_sz == 4) {
+        gen_ker4x4(0, 0, input_stride, output_stride, 4, 4);
+    } else if (block_sz == 8) {
         gen_ker8x8(0, 0, input_stride, output_stride, 8, 8);
-        block_sz = 8;
     } else if (block_sz == 16) {
         gen_ker16x16_in_8x8(0, 0, input_stride, output_stride);
-        block_sz = 16;
     } else if (block_sz == 32) {
         gen_ker32x32_in_16x16(0, 0, input_stride, output_stride);
-        block_sz = 32;
     } else if (block_sz == 64) {
         gen_ker64x64_in_32x32(0, 0, input_stride, output_stride);
-        block_sz = 64;
     } else {
         assert(!"unimplemented");
     }
@@ -127,7 +138,13 @@ void jit_single_blk_kernel_t::generate() {
 
     L(tail_processing);
 
-    if (block_sz == 8) {
+    if (block_sz == 4) {
+        auto i_tail = input_stride % 4 != 0 ? input_stride % 4 : 4;
+        auto o_tail = output_stride % 4 != 0 ? output_stride % 4 : 4;
+        auto t_mask = i_tail == 4 ? o_tail : i_tail;
+        gen_setmask(t_mask);
+        gen_ker4x4(0, 0, input_stride, output_stride, i_tail, o_tail);
+    } else if (block_sz == 8) {
         auto i_tail = input_stride % 8 != 0 ? input_stride % 8 : 8;
         auto o_tail = output_stride % 8 != 0 ? output_stride % 8 : 8;
         if (i_tail != o_tail) {
@@ -280,6 +297,63 @@ void jit_single_blk_kernel_t::gen_transpose_8x8() {
 // or nChw()C -> nchw
 void jit_single_blk_kernel_t::gen_setmask(int mask) {
     set_preg(p_mask.s, mask, x_tmp_0, x_tmp_1);
+}
+
+void jit_single_blk_kernel_t::gen_transpose_4x4() {
+    auto &z_tmp4 = z_tmp_vec[0];
+    auto &z_tmp5 = z_tmp_vec[1];
+    auto &z_tmp6 = z_tmp_vec[2];
+    auto &z_tmp7 = z_tmp_vec[3];
+
+    /* 1st turn */
+    trn1(z_tmp4.s, z0.s, z1.s);
+    trn1(z_tmp5.s, z2.s, z3.s);
+    trn2(z_tmp6.s, z0.s, z1.s);
+    trn2(z_tmp7.s, z2.s, z3.s);
+
+    trn1(z0.d, z_tmp4.d, z_tmp5.d);
+    trn1(z1.d, z_tmp6.d, z_tmp7.d);
+    trn2(z2.d, z_tmp4.d, z_tmp5.d);
+    trn2(z3.d, z_tmp6.d, z_tmp7.d);
+}
+
+void jit_single_blk_kernel_t::gen_tr4x4(int i_off, int o_off, int input_stride,
+        int output_stride, int in_tail, int out_tail) {
+
+    constexpr int lane = 4;
+
+    if (in_tail == 0 || out_tail == 0) return;
+
+    for (int i = 0; i < out_tail; ++i) {
+        if (in_tail != lane) {
+            add_imm(x_addr, reg_ptr_in_, i_off + i * input_stride * itype_sz_,
+                    x_tmp_0);
+            gen_maskloadu(ZRegS(i), x_addr, p_mask, lane * itype_sz_);
+        } else {
+            add_imm(x_addr, reg_ptr_in_, i_off + i * input_stride * itype_sz_,
+                    x_tmp_0);
+            gen_loadu(ZRegS(i), x_addr, lane * itype_sz_);
+        }
+    }
+
+    gen_transpose_4x4();
+
+    for (int i = 0; i < in_tail; ++i) {
+        if (out_tail == lane) {
+            add_imm(x_addr, reg_ptr_out_, o_off + i * output_stride * otype_sz_,
+                    x_tmp_0);
+            gen_storeu(x_addr, ZRegS(i), lane * otype_sz_);
+        } else {
+            add_imm(x_addr, reg_ptr_out_, o_off + i * output_stride * otype_sz_,
+                    x_tmp_0);
+            gen_maskstoreu(x_addr, ZRegS(i), p_mask, lane * otype_sz_);
+        }
+    }
+}
+
+void jit_single_blk_kernel_t::gen_ker4x4(int i_off, int o_off, int input_stride,
+        int output_stride, int in_tail, int out_tail) {
+    gen_tr4x4(i_off, o_off, input_stride, output_stride, in_tail, out_tail);
 }
 
 void jit_single_blk_kernel_t::gen_tr8x8(int i_off, int o_off, int input_stride,

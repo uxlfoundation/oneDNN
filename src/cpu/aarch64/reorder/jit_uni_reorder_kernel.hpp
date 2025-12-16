@@ -320,9 +320,16 @@ struct jit_single_blk_kernel_t : public jit_generator_t {
     // Register allocation xmm0~11
     void gen_transpose_8x8();
 
+    void gen_transpose_4x4();
+
     // keep order nchw -> nChw()C
     // or nChw()C -> nchw
     void gen_setmask(int mask);
+
+    void gen_tr4x4(int i_off, int o_off, int input_stride, int output_stride,
+            int in_tail, int out_tail);
+    void gen_ker4x4(int i_off, int o_off, int input_stride, int output_stride,
+            int in_tail, int out_tail);
 
     // TODO: Mark parameter with type information
     // XXX: !

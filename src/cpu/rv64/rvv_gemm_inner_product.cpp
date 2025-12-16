@@ -46,6 +46,7 @@ status_t rvv_gemm_inner_product_fwd_t::execute_forward(
     const dim_t K = pd()->IC_total_padded();
     const float *src_f32 = reinterpret_cast<const float *>(src);
     const float *wei_f32 = reinterpret_cast<const float *>(weights);
+    const float *bias_f32 = reinterpret_cast<const float *>(bias);
     float *dst_f32 = reinterpret_cast<float *>(dst);
 
     char transa = 'T';
@@ -53,34 +54,30 @@ status_t rvv_gemm_inner_product_fwd_t::execute_forward(
     dim_t M = OC;
     dim_t N = MB;
     dim_t Kdim = K;
+
+    // GEMM parameters for Row Major layout viewed as Column Major
+    // For Row Major [R, C], viewed as Column Major [C, R], lda = R (physical row stride)
+    // src: [MB, K] Row Major -> viewed as [K, MB] Col Major, ldb = K
+    // dst: [MB, OC] Row Major -> viewed as [OC, MB] Col Major, ldc = OC
+    // wei: [OC, K] Row Major -> viewed as [K, OC] Col Major, lda = K (with transA='T' to get [OC, K])
     dim_t lda = K;
     dim_t ldb = K;
     dim_t ldc = OC;
+
     float alpha = 1.0f;
     float beta = 0.0f;
 
     // Check if weights are Row Major (last stride == 1) or Col Major
     if (wei_d.blocking_desc().strides[wei_d.ndims() - 1] != 1) {
-        // Weights are Column Major (ba)
-        // Logical: [OC, K]
-        // Physical: [OC, K] (Col Major)
-        // GEMM View (Col Major): A is [OC, K]
-        // Target: C = Wei * Src^T = A * B
+        // Weights are Column Major (ba): physical layout is [K, OC]
+        // Already in the format we need: [OC, K] with transA='N'
         transa = 'N';
         lda = OC;
     }
 
     status = rvv_gemm_f32(&transa, &transb, &M, &N, &Kdim, &alpha, wei_f32,
-            &lda, src_f32, &ldb, &beta, dst_f32, &ldc, /*bias=*/nullptr);
+            &lda, src_f32, &ldb, &beta, dst_f32, &ldc, bias_f32);
     if (status != status::success) return status;
-
-    if (bias) {
-        const float *bias_f32 = reinterpret_cast<const float *>(bias);
-        parallel_nd(MB, OC, [&](dim_t mb, dim_t oc) {
-            const dim_t off = dst_d.off(mb, oc);
-            dst_f32[off] += bias_f32[oc];
-        });
-    }
 
     return status::success;
 }

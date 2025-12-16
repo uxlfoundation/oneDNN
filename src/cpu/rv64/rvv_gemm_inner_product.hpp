@@ -81,7 +81,8 @@ struct rvv_gemm_inner_product_fwd_t : public primitive_t {
         bool check_layouts(const memory_desc_wrapper &src_d,
                 const memory_desc_wrapper &wei_d,
                 const memory_desc_wrapper &dst_d) const {
-            if (src_d.ndims() < 2 || wei_d.ndims() < 2 || dst_d.ndims() < 2)
+            // Only support 2D tensors to ensure simple GEMM mapping
+            if (src_d.ndims() != 2 || wei_d.ndims() != 2 || dst_d.ndims() != 2)
                 return false;
 
             const bool plain_dense = src_d.blocking_desc().inner_nblks == 0

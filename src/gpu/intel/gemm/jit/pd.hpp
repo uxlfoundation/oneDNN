@@ -243,16 +243,16 @@ struct pd_t : public gemm::pd_t {
         bool n_grouped = 1 < b_zp_group_n_ && b_zp_group_n_ < desc()->n();
         return k_grouped || n_grouped;
     }
-// @@@
-    bool a_zp_host_scalar() const {
+    // @@@ !!!
+    bool a_zp_hostscalar() const {
         auto attr_info = attr_info_t::create(attr());
         return attr_info.with_host_wei_zp;
     }
-    bool b_zp_host_scalar() const {
+    bool b_zp_hostscalar() const {
         auto attr_info = attr_info_t::create(attr());
         return attr_info.with_host_src_zp;
     }
-// @@@
+    // @@@ !!!
     int a_q2d_group_k() const {
         if (a_zp_2d()) {
             return a_zp_group_k_;

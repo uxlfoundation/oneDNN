@@ -10,10 +10,6 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
-#include <fstream>
-#include <string>
-#include <vector>
-#include <cstring>
 #include "xbyak_riscv_csr.hpp"
 #include "xbyak_riscv.hpp"
 
@@ -135,7 +131,7 @@ public:
     CPU() {
         hwcapFeatures = 0;
         xlen = sizeof(void*) * 8; // Fallback if sysconf fails
-        
+
 #if defined(__linux__) && defined(__riscv)
         // Set hwcapFeatures with AT_HWCAP value from
         // the Linux auxiliary vector to check for base extensions support.
@@ -153,25 +149,28 @@ public:
         struct riscv_hwprobe requests[] = {
             {RISCV_HWPROBE_KEY_IMA_EXT_0, 0}
         };
-        
+
         int ret = syscall(__NR_riscv_hwprobe, &requests, sizeof(requests) / sizeof(requests[0]), 0, NULL, 0);
 
         if (ret == 0) {
             uint64_t v = requests[0].value;
             // Update V support from hwprobe if present
             if (v & RISCV_HWPROBE_IMA_V) hwcapFeatures |= static_cast<uint64_t>(RISCVExtension::V);
-            
+
             // Detect Z-extensions using the table
-            for (const auto& entry : getExtensionTable()) {
+            const struct {
+                RISCVExtension id;
+                uint64_t hwprobe_bit; // Bit in RISCV_HWPROBE_KEY_IMA_EXT_0
+            } table[] = {
+                { RISCVExtension::Zvfh, RISCV_HWPROBE_EXT_ZVFH },
+                { RISCVExtension::Zvbb, RISCV_HWPROBE_EXT_ZVBB },
+                { RISCVExtension::Zvbc, RISCV_HWPROBE_EXT_ZVBC },
+                { RISCVExtension::Zvkg, RISCV_HWPROBE_EXT_ZVKG }
+            };
+            for (const auto& entry : table) {
                 if (v & entry.hwprobe_bit) {
                     hwcapFeatures |= static_cast<uint64_t>(entry.id);
                 }
-            }
-        } else {
-            // Fallback: If hwprobe failed (Kernel < 6.4), use procfs
-            // We only try this if the base Vector extension is present.
-            if (hasExtension(RISCVExtension::V)) {
-                detect_extensions_procfs();
             }
         }
 
@@ -267,49 +266,6 @@ private:
     uint32_t xlen = 0;
     uint32_t vlen = 0;
     uint32_t flen = 0;
-
-    /**
-     * Helper structure for extension mapping
-    */
-    struct ExtensionEntry {
-        RISCVExtension id;
-        uint64_t hwprobe_bit;  // Bit in RISCV_HWPROBE_KEY_IMA_EXT_0
-        const char* name;      // String in /proc/cpuinfo "isa" line
-    };
-
-    /**
-     * Centralized table for all supported Z-extensions
-    */
-    static const std::vector<ExtensionEntry>& getExtensionTable() {
-        static const std::vector<ExtensionEntry> table = {
-            { RISCVExtension::Zvfh, RISCV_HWPROBE_EXT_ZVFH, "_zvfh" },
-            { RISCVExtension::Zvbb, RISCV_HWPROBE_EXT_ZVBB, "_zvbb" },
-            { RISCVExtension::Zvbc, RISCV_HWPROBE_EXT_ZVBC, "_zvbc" },
-            { RISCVExtension::Zvkg, RISCV_HWPROBE_EXT_ZVKG, "_zvkg" }
-        };
-        return table;
-    }
-
-    /**
-     * Helper to detect all extensions in the table from /proc/cpuinfo
-    */
-    void detect_extensions_procfs() {
-        std::ifstream cpuinfo("/proc/cpuinfo");
-        if (!cpuinfo.is_open()) return;
-
-        std::string line;
-        while (std::getline(cpuinfo, line)) {
-            if (line.find("isa") == 0) {
-                for (const auto& entry : getExtensionTable()) {
-                    if (line.find(entry.name) != std::string::npos) {
-                        hwcapFeatures |= static_cast<uint64_t>(entry.id);
-                    }
-                }
-                // We only parse the first valid 'isa' line we find.
-                break; 
-            }
-        }
-    }
 };
 
 } // Xbyak_riscv

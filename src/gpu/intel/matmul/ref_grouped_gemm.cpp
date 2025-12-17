@@ -40,6 +40,9 @@ status_t ref_grouped_gemm_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t total_tokens = src_md->dims[0];
     const dim_t N = wei_md->dims[2];
 
+    const auto &attr_scales = pd()->attr()->scales_;
+    const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
+
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, src_data);
     arg_list.set(1, src_offsets);
@@ -47,6 +50,13 @@ status_t ref_grouped_gemm_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(3, dst_data);
     arg_list.set(4, dst_offsets);
     arg_list.set(5, (int)num_groups);
+
+    int next_arg = 6;
+    if (with_src_scales) {
+        const auto &src_scales
+                = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+        arg_list.set(next_arg++, src_scales);
+    }
 
     // Use total_tokens as upper bound for M dimension
     compute::range_t gws

@@ -124,8 +124,9 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         if (!sc.has_default_values(DNNL_ARG_SRC)) {
             const int mask_src = sc.get_mask(DNNL_ARG_SRC);
 
+            // Allow row-wise scales for grouped matmul
             VCHECK_MATMUL_UNIMPL(
-                    utils::one_of(mask_src, 0, src_qmask_K,
+                    utils::one_of(mask_src, 0, src_qmask_M, src_qmask_K,
                             src_qmask_M + src_qmask_K, full_tensor_mask),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 

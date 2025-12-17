@@ -32,18 +32,39 @@ int64_t wei_ba_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
 
 // Reference implementation for grouped gemm
 // Computes per-expert matmuls: for each expert e, computes dst[e] = src[e] * wei[e]
-// TODO: add support for bias, scales, zero points
+// TODO: add support for more scale policies, zero points
 void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
     const dnn_mem_t &dst_m = args.find(DNNL_ARG_DST);
+    const dnn_mem_t &bia_m = args.find(DNNL_ARG_BIAS);
+    const dnn_mem_t &src_scales
+            = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
 
     const int64_t group_count = prb->sparse_options.get_group_count();
     const auto &M_dims = prb->sparse_options.get_group_dims();
     const int64_t K = prb->k;
     const int64_t N = prb->n;
 
-    // For each in the group compute a separate matmul
+    const bool has_bias = prb->bia_dt != dnnl_data_type_undef;
+    const bool has_src_scale = !prb->attr.scales.get(DNNL_ARG_SRC).is_def();
+
+    // for now validate that only row-wise scales are used
+    // TODO: remove later
+    if (has_src_scale) {
+        const int src_scale_mask = prb->attr.scales.get_mask(
+                DNNL_ARG_SRC, dnnl_matmul, src_m.ndims());
+        const int expected_rowwise_mask = 1 << (src_m.ndims() - 2);
+        if (src_scale_mask != expected_rowwise_mask) {
+            BENCHDNN_PRINT(0,
+                    "Error: grouped matmul reference only supports rowwise "
+                    "(per-M) src scales, got mask %d, expected %d\n",
+                    src_scale_mask, expected_rowwise_mask);
+            SAFE_V(FAIL);
+        }
+    }
+
+    // For each group compute a separate matmul
     int64_t offset = 0;
     for (int64_t g = 0; g < group_count; g++) {
         // Number of tokens for this expert
@@ -54,11 +75,19 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
         const int64_t wei_offset = g * K * N;
 
         for (int64_t m = 0; m < M_g; m++) {
+            const int64_t src_offset = offset + m;
+
+            // retrieve row-wise src scale for this row if any
+            float src_scale = 1.0f;
+            if (has_src_scale) {
+                src_scale = src_scales.get_f32_elem(src_offset);
+            }
+
             for (int64_t n = 0; n < N; n++) {
                 float acc = 0.0f;
                 for (int64_t k = 0; k < K; k++) {
                     // src: plain [total_M, K], indexed as [(offset + m), k]
-                    const int64_t src_idx = (offset + m) * K + k;
+                    const int64_t src_idx = src_offset * K + k;
                     // wei: plain [group_count, K, N], indexed as [g, k, n]
                     const int64_t wei_idx = wei_offset + k * N + n;
 
@@ -66,9 +95,19 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
                     const float wei_val = wei_m.get_f32_elem(wei_idx);
                     acc += src_val * wei_val;
                 }
+
+                // Apply per-token scale
+                acc *= src_scale;
+
+                // Add bias if present
+                if (has_bias) {
+                    const int64_t bias_idx = g * N + n;
+                    acc += bia_m.get_f32_elem(bias_idx);
+                }
+
                 // dst: plain [total_M, N], indexed as [(offset + m), n]
-                const int64_t dst_idx = (offset + m) * N + n;
-                dst_m.set_f32_elem(dst_idx, acc);
+                const int64_t dst_idx = src_offset * N + n;
+                dst_m.set_f32_elem(dst_idx, acc); // todo: dst_offset
             }
         }
 

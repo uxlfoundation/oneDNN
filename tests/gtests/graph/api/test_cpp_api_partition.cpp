@@ -390,3 +390,68 @@ TEST(APIPartition, F8MatmulPartition) {
         parts[0].compile({deq0_src, deq1_src}, {mm_dst}, eng);
     }
 }
+
+// run: ./tests/gtests/graph/api/test_graph_cpp_api_partition  --gtest_filter=*MixMultipleEngines*
+TEST(APIPartition, MixMultipleEngines) {
+    using namespace dnnl::graph;
+    const dnnl::engine::kind ekind = dnnl::engine::kind::cpu;
+    graph g(ekind);
+    size_t id = 0;
+    const auto dt = logical_tensor::data_type::f32;
+
+    auto src = logical_tensor(
+            id++, dt, {16, 64}, logical_tensor::layout_type::strided);
+    auto wei = logical_tensor(
+            id++, dt, {64, 32}, logical_tensor::layout_type::strided);
+    auto dst = logical_tensor(
+            id++, dt, {16, 32}, logical_tensor::layout_type::strided);
+
+    auto matmul = op(id++, op::kind::MatMul, "matmul");
+    matmul.add_inputs({src, wei});
+    matmul.add_outputs({dst});
+
+    auto output = logical_tensor(
+            id++, dt, {16, 32}, logical_tensor::layout_type::strided);
+    auto sigmoid = op(id++, op::kind::Sigmoid, "sigmoid");
+    sigmoid.add_inputs({dst});
+    sigmoid.add_outputs({output});
+
+    g.add_op(matmul);
+    g.add_op(sigmoid);
+    g.finalize();
+    auto parts = g.get_partitions();
+    ASSERT_EQ(parts.size(), 1UL);
+
+    // Compile partition with different engines
+    dnnl::engine eng1 = dnnl::engine(ekind, 0);
+    auto cp1 = parts[0].compile({src, wei}, {output}, eng1);
+
+    // execute with eng1
+    dnnl::stream str = dnnl::stream(eng1);
+    std::vector<float> src_data(16 * 64);
+    std::vector<float> wei_data(64 * 32);
+    std::vector<float> output_data(16 * 32);
+    auto src_tensor = tensor(src, eng1, src_data.data());
+    auto wei_tensor = tensor(wei, eng1, wei_data.data());
+    auto output_tensor = tensor(output, eng1, output_data.data());
+    EXPECT_NO_THROW(
+            cp1.execute(str, {src_tensor, wei_tensor}, {output_tensor}));
+
+    // compile with another engine. this will hit compiled partition cache if
+    // enabled. If cache hit, underlying primitives will be reset with this new
+    // engine to make sure they can be executed with str2 below.
+    dnnl::engine eng2 = dnnl::engine(ekind, 0);
+    auto cp2 = parts[0].compile({src, wei}, {output}, eng2);
+
+    // execute with eng2
+    dnnl::stream str2 = dnnl::stream(eng2);
+    EXPECT_NO_THROW(
+            cp2.execute(str2, {src_tensor, wei_tensor}, {output_tensor}));
+
+    // execute cp1 again. If cp2 hit the cache of cp1 and reset the underlying
+    // primitives' engine, the below execution will crash. Enable
+    // DNNL_GRAPH_COMPILED_PARTITION_CACHE_CAPACITY=0 to avoid cache hit and
+    // make the below execution safe.
+    EXPECT_NO_THROW(
+            cp1.execute(str, {src_tensor, wei_tensor}, {output_tensor}));
+}

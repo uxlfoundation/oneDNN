@@ -94,6 +94,13 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
     VDISPATCH_REORDER_IC(format_tag::undef != src_tag,
             "Only ab, ba or cdba source formats supported");
 
+    auto dst_tag = memory_desc_matches_one_of_tag(*dst_md, format_tag::BA8b4a,
+            format_tag::BA4b4a, format_tag::Ab4a, format_tag::Ab8a,
+            format_tag::Acdb8a, format_tag::Acdb4a);
+    ACL_CHECK_SUPPORT(format_tag::undef == dst_tag,
+            "Only Ab4a/Ab8a, BA8b4a/BA4b4a and Acdb8a/Acdb4a "
+            "destination formats supported");
+
     auto &transpose = _pd->app_.transpose;
     auto &dst_blocking = dst_md->format_desc.blocking;
 

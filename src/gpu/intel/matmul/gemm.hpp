@@ -65,6 +65,10 @@ struct gemm_t : public primitive_t {
             bool with_bia = bias_md->ndims > 0;
             auto orig_dims = a_md->ndims;
 
+            // Check for grouped encoding early before reshape attempts
+            VDISPATCH_MATMUL(
+                    is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
             // TODO: Enable reshaped 2D groups.
             auto src_scales = attr()->scales_.get(DNNL_ARG_SRC);
             int src_scale_group_ndims = 0;
@@ -333,8 +337,6 @@ struct gemm_t : public primitive_t {
                     "2D/3D reshaping");
 
             // We create a gemm_pd and resolve 'any' desc by querying gemm_pd
-            VDISPATCH_MATMUL(
-                    is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
             VDISPATCH_MATMUL_SC(create_gemm_pd(gemm_pd_, engine, a_md, b_md,
                                         c_md, bias_md, acc_dt, &gemm_attr),
                     VERBOSE_PRIMITIVE_CREATION_FAIL, "gemm");

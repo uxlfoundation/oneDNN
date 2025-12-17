@@ -34,6 +34,10 @@
 // get_global_id(1): output row (M dimension within group)
 // get_global_id(2): output column (N dimension)
 
+// Supported below:
+//  Data types: f32, f16
+//  Row-wise (per-token) src scales
+//  Bias addition (shape [ngroups, N])
 __kernel void ref_grouped_gemm_matmul(
         __global const SRC_DATA_T *src, // Buffer 0: concatenated values
         __global const int *src_offsets, // Buffer 1: group offsets [ngroups+1]

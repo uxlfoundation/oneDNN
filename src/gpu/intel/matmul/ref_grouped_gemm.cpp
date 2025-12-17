@@ -42,6 +42,7 @@ status_t ref_grouped_gemm_t::execute_ref(const exec_ctx_t &ctx) const {
 
     const auto &attr_scales = pd()->attr()->scales_;
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
+    const bool with_bias = pd()->with_bias();
 
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, src_data);
@@ -52,6 +53,10 @@ status_t ref_grouped_gemm_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(5, (int)num_groups);
 
     int next_arg = 6;
+    if (with_bias) {
+        const auto &bias_data = CTX_IN_STORAGE(DNNL_ARG_BIAS);
+        arg_list.set(next_arg++, bias_data);
+    }
     if (with_src_scales) {
         const auto &src_scales
                 = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);

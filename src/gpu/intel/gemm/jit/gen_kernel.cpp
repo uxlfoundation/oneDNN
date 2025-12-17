@@ -496,10 +496,12 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.batchDims = batch_dims;
     }
 // @@@ !!!
-    if (a_quant.zp_ndims >= 0 || a_quant.zp_host_scalar) problem_.aOffset = ABOffset::Calc;
-    if (b_quant.zp_ndims >= 0 || a_quant.zp_host_scalar) problem_.bOffset = ABOffset::Calc;
-    problem_.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
-    problem_.boPtrDims = b_quant.zp_host_scalar ? -1 : b_quant.zp_ndims;
+    if (a_quant.zp_ndims >= 0 || a_quant.zp_hostscalar)
+        problem_.aOffset = ABOffset::Calc;
+    if (b_quant.zp_ndims >= 0 || a_quant.zp_hostscalar)
+        problem_.bOffset = ABOffset::Calc;
+    problem_.aoPtrDims = a_quant.zp_hostscalar ? -1 : a_quant.zp_ndims;
+    problem_.boPtrDims = b_quant.zp_hostscalar ? -1 : b_quant.zp_ndims;
     VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : @@@@ setup problem_.aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims,problem_.boPtrDims);
 // @@@ !!!
     problem_.AO.layout = MatrixLayout::N;

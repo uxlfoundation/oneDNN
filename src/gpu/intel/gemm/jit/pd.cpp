@@ -326,20 +326,16 @@ bool pd_t::zp_ok() {
     const bool weights_upconversion = wei_decomp_
             || ((swap_ab() ? b_int4 : a_int4) && dy_quant_enabled_);
 
-// @@@
-    // Host scalar support
-    const bool a_zp_non_scalar = !a_zps.has_default_values() && ao_dims_ > 0;
-    const bool b_zp_non_scalar = !b_zps.has_default_values() && bo_dims_ > 0;
-    // Host scalar ZPs supported only for A & B. Both matrixes' ZPs should be scalar.
-    if (c_zps.is_host_scalar() || (a_zps.is_host_scalar() && b_zp_non_scalar)
-            || (b_zps.is_host_scalar() && a_zp_non_scalar)) {
+// @@@ !!!
+    if (c_zps.is_host_scalar()) {
         VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
         return false;
     }
-// @@@
+// @@@ !!!
 
     if (!a_zps.has_default_values()) {
         VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !a_zps.has_default_values()");
+        VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : cmask_a_ = %d",cmask_a_);
         // Groups determine supported masks.
         if (!a_zps.has_default_groups()) {
             VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !a_zps.has_default_groups()");
@@ -378,6 +374,7 @@ bool pd_t::zp_ok() {
 
     if (!b_zps.has_default_values()) {
         VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !b_zps.has_default_values()");
+        VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : cmask_b_ = %d",cmask_b_);
         // Groups determine supported masks.
         if (!b_zps.has_default_groups()) {
             VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ : !b_zps.has_default_groups()");

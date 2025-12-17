@@ -77,8 +77,23 @@ struct ref_grouped_gemm_t : public primitive_t {
                             && dst_d.metadata_type(0) == s32,
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-            // no bias for now
-            VDISPATCH_MATMUL(!with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+            // Check for limited Bias support
+            if (with_bias()) {
+                memory_desc_wrapper bia_d(weights_md(1));
+                VDISPATCH_MATMUL(
+                        !bia_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+                VDISPATCH_MATMUL(
+                        bia_d.ndims() == 2, VERBOSE_UNSUPPORTED_BIAS_CFG);
+                // Bias shape should be [num_experts, N]
+                VDISPATCH_MATMUL(bia_d.dims()[0] == src_grouped.ngroups,
+                        VERBOSE_INCONSISTENT_DIM, "bias_dim[0]",
+                        (int)bia_d.dims()[0], "ngroups",
+                        (int)src_grouped.ngroups);
+                VDISPATCH_MATMUL(bia_d.dims()[1] == dst_d.dims()[1],
+                        VERBOSE_INCONSISTENT_DIM, "bias_dim[1]",
+                        (int)bia_d.dims()[1], "dst_dim[1]",
+                        (int)dst_d.dims()[2]);
+            }
 
             const auto &attr_scales = attr()->scales_;
             if (!attr_scales.has_default_values(DNNL_ARG_SRC)) {
@@ -127,8 +142,11 @@ struct ref_grouped_gemm_t : public primitive_t {
         kernel_ctx.define_int("N", pd()->weights_md(0)->dims[2]);
         kernel_ctx.define_int("NGROUPS", pd()->ngroups_);
 
-        // bias not supported yet
-        kernel_ctx.define_int("WITH_BIAS", 0);
+        const bool with_bias = pd()->with_bias();
+        kernel_ctx.define_int("WITH_BIAS", with_bias ? 1 : 0);
+        if (with_bias) {
+            def_data_type(kernel_ctx, pd()->weights_md(1)->data_type, "BIA");
+        }
 
         const auto &attr_scales = pd()->attr()->scales_;
         const bool with_src_scales

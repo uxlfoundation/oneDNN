@@ -41,9 +41,8 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     bool xoTo2D = !xo2D && (isA ? problem.aOffset == ABOffset::Calc && (problem.earlyDequantizeA() || lateOffset)
                                 : problem.bOffset == ABOffset::Calc && (problem.earlyDequantizeB() || lateOffset));
     bool cColMajor = isRegisterColMajor(problem.Tc_ext, problem.C, strategy.C);
-    bool xoHostSacalar = isA ? problem.aOffsetHostScalar() : problem.bOffsetHostScalar() ;
 
-    if ((!xo2D && !xoTo2D && !xs2D && !xg2D) || xoHostSacalar) return true;
+    if (!xo2D && !xoTo2D && !xs2D && !xg2D) return true;
 
     auto &X_strategy       = isA ? strategy.A             : strategy.B;
     auto &X_offsetStrategy = isA ? strategy.AO            : strategy.BO;

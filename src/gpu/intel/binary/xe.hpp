@@ -100,6 +100,9 @@ struct xe_t : public primitive_t {
                                      && dst_md()->data_type == u8),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
+            VDISPATCH_BINARY(
+                    !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "dst");
+
             CHECK(init_conf(engine));
             return status::success;
         }

@@ -219,9 +219,18 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     if (prb->bia_dt != dnnl_data_type_undef) {
         auto bia_dims = get_runtime_dims(
                 prb->bia_dims(), prb->bias_runtime_dim_mask());
-        bia_d = dnn_mem_t::init_md(prb->ndims, bia_dims.data(),
-                force_f32_dt ? dnnl_f32 : prb->bia_dt,
-                prb->dst_runtime_dim_mask() != 0 ? tag::abx : tag::any);
+
+        // For grouped format, bias shape should be [num_experts, N]
+        const int64_t group_count = prb->sparse_options.get_group_count();
+        if (group_count > 0) {
+            dims_t bias_dims_2d = {group_count, prb->n};
+            bia_d = dnn_mem_t::init_md(2, bias_dims_2d.data(),
+                    force_f32_dt ? dnnl_f32 : prb->bia_dt, "ab");
+        } else {
+            bia_d = dnn_mem_t::init_md(prb->ndims, bia_dims.data(),
+                    force_f32_dt ? dnnl_f32 : prb->bia_dt,
+                    prb->dst_runtime_dim_mask() != 0 ? tag::abx : tag::any);
+        }
     }
 
     attr_args_t attr_args;

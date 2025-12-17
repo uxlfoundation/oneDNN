@@ -1,0 +1,34 @@
+# Grouped GEMM tests
+#
+# Format: --grouped=M:<num_groups>:<M_dims> MxK:num_groups x K x N:MxN
+# Where M_dims is comma-separated list of M values for each group (sum must equal M)
+#
+# Configurations below cover:
+# - Data types: f32, f16
+# - Row-wise (per-token) src scales: --attr-scales=src:per_dim_0
+# - Bias: --bia-dt=f32, --bia_mask=2 (per-expert bias [num_experts, N])
+# - Empty groups (M_g = 0)
+
+--reset
+
+# Basic correctness - f32
+--dt=f32:f32:f32
+--batch=shapes_grouped
+
+# Basic correctness - f16
+--reset
+--dt=f16:f16:f16
+--batch=shapes_grouped
+
+# Row-wise (per-token) scales - f16
+--reset
+--dt=f16:f16:f16
+--attr-scales=src:per_dim_0
+--batch=shapes_grouped
+
+# Bias + scales - f16
+--reset
+--dt=f16:f16:f16
+--bia-dt=f16 --bia_mask=2
+--attr-scales=src:per_dim_0
+--batch=shapes_grouped

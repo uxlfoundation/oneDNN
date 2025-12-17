@@ -94,9 +94,28 @@ struct ref_grouped_gemm_t : public primitive_t {
                         (int)wei_d.dims()[2]);
             }
 
-            // No scales/post-ops for now
-            VDISPATCH_MATMUL(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+            const auto &attr_scales = attr()->scales_;
+            if (!attr_scales.has_default_values(DNNL_ARG_SRC)) {
+                const int src_mask = attr_scales.get_mask(DNNL_ARG_SRC);
+                const int rowwise_mask = src_qmask_M();
+                // Only rowwise f32 scales supported for src
+                VDISPATCH_MATMUL(src_mask == rowwise_mask,
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                VDISPATCH_MATMUL(attr_scales.get_data_type(DNNL_ARG_SRC) == f32,
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                VDISPATCH_MATMUL(
+                        attr_scales.get(DNNL_ARG_SRC).has_default_groups(),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+            }
+            // No scales on weights or dst for now
+            VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_WEIGHTS),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+            // No post-ops
+            VDISPATCH_MATMUL(attr()->post_ops_.has_default_values(),
+                    VERBOSE_UNSUPPORTED_POSTOP);
 
             return status::success;
         }

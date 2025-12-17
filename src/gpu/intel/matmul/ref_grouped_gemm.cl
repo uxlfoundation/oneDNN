@@ -46,6 +46,10 @@ __kernel void ref_grouped_gemm_matmul(
         ,
         __global const BIA_DATA_T *bias // Bias [ngroups, N]
 #endif
+#if WITH_SRC_SCALES
+        ,
+        __global const float *src_scales
+#endif
 ) {
 
     const int group_id = get_global_id(0);
@@ -84,6 +88,13 @@ __kernel void ref_grouped_gemm_matmul(
         const long wei_idx = (long)k * N + n;
         acc += (ACC_DATA_T)src_group[src_idx] * (ACC_DATA_T)wei_group[wei_idx];
     }
+
+    // Apply row-wise src scale
+#if WITH_SRC_SCALES
+    const int token_idx = src_start + m;
+    const float src_scale = src_scales[token_idx];
+    acc *= (ACC_DATA_T)src_scale;
+#endif
 
 #if WITH_BIAS
     const long bias_idx = (long)group_id * N + n;

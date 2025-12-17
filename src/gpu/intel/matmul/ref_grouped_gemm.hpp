@@ -77,10 +77,32 @@ struct ref_grouped_gemm_t : public primitive_t {
                             && dst_d.metadata_type(0) == s32,
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-            // no bias/scales/post-ops for now
+            // no bias for now
             VDISPATCH_MATMUL(!with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
-            VDISPATCH_MATMUL(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+
+            const auto &attr_scales = attr()->scales_;
+            if (!attr_scales.has_default_values(DNNL_ARG_SRC)) {
+                const int src_mask = attr_scales.get_mask(DNNL_ARG_SRC);
+                const int rowwise_mask = src_qmask_M();
+                // Only row-wise f32 scales supported for src
+                VDISPATCH_MATMUL(src_mask == rowwise_mask,
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                VDISPATCH_MATMUL(attr_scales.get_data_type(DNNL_ARG_SRC) == f32,
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                // No groups for src scales
+                VDISPATCH_MATMUL(
+                        attr_scales.get(DNNL_ARG_SRC).has_default_groups(),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+            }
+            // No scales on weights or dst for now
+            VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_WEIGHTS),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+            // No post-ops for now
+            VDISPATCH_MATMUL(attr()->post_ops_.has_default_values(),
+                    VERBOSE_UNSUPPORTED_POSTOP);
 
             return status::success;
         }
@@ -107,6 +129,11 @@ struct ref_grouped_gemm_t : public primitive_t {
 
         // bias not supported yet
         kernel_ctx.define_int("WITH_BIAS", 0);
+
+        const auto &attr_scales = pd()->attr()->scales_;
+        const bool with_src_scales
+                = !attr_scales.has_default_values(DNNL_ARG_SRC);
+        kernel_ctx.define_int("WITH_SRC_SCALES", with_src_scales ? 1 : 0);
 
         return create_kernel(
                 engine, &kernel_, "ref_grouped_gemm_matmul", kernel_ctx);

@@ -56,6 +56,14 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
     const auto bia_dt
             = with_bias ? pd()->weights_md(1)->data_type : data_type::undef;
 
+    const auto &attr_scales = pd()->attr()->scales_;
+    const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
+    const void *src_scales = nullptr;
+    if (with_src_scales) {
+        src_scales
+                = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
+    }
+
     for (int group_id = 0; group_id < num_groups; ++group_id) {
         const dim_t M = offsets[group_id + 1] - offsets[group_id];
         if (M == 0) continue;
@@ -77,6 +85,13 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
                     const float w
                             = io::load_float_value(wei_dt, wei_data, wei_idx);
                     acc += s * w;
+                }
+
+                if (with_src_scales) {
+                    const dim_t token_idx = offsets[group_id] + m;
+                    const float scale = io::load_float_value(
+                            data_type::f32, src_scales, token_idx);
+                    acc *= scale;
                 }
 
                 if (with_bias) {

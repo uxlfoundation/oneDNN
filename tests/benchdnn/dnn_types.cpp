@@ -243,6 +243,7 @@ int attr_t::policy2mask(int arg, policy_t policy, int ndims,
 
         if (ndims < 2) SAFE_V(FAIL);
         switch (policy) {
+            case PER_DIM_0: return (1 << (ndims - 2)); // Per-M (row-wise)
             case PER_DIM_1:
             case PER_OC: return (1 << (ndims - 1));
             case PER_OCIC: return (1 << (ndims - 1)) + (1 << (ndims - 2));

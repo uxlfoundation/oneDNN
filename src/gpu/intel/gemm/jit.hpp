@@ -356,11 +356,11 @@ struct gen_t : public primitive_t {
             jit::quant_params a_quant
                     = {a_scales_type_, ao_type, ag_type, asc_dims_, ao_dims_,
                             ag_dims_, a_q2d_group_k(), a_q2d_group_m(), 0,
-                            has_gs(DNNL_ARG_A), false, a_zp_host_scalar()};
+                            has_gs(DNNL_ARG_A), false, a_zp_hostscalar()};
             jit::quant_params b_quant
                     = {b_scales_type_, bo_type, bg_type, bsc_dims_, bo_dims_,
                             bg_dims_, b_q2d_group_k(), 0, b_q2d_group_n(),
-                            has_gs(DNNL_ARG_B), false, b_zp_host_scalar()};
+                            has_gs(DNNL_ARG_B), false, b_zp_hostscalar()};
             jit::quant_params c_quant = {c_scales_type_, co_type, bg_type,
                     csc_dims_, -1, -1, 0, c_q2d_group_m(), c_q2d_group_n(),
                     has_gs(DNNL_ARG_C), with_mx_scale(), false};
@@ -690,17 +690,17 @@ private:
             zero_pool_t *zero_pool, const memory_storage_t &a,
             const memory_storage_t &b, const memory_storage_t &c,
             const memory_storage_t *ao, const memory_storage_t *bo,
-            int32_t abo_hostscalar, const memory_storage_t *a_scales,
-            const memory_storage_t *b_scales, const memory_storage_t *c_scales,
-            const memory_storage_t *ag, const memory_storage_t *bg,
-            const memory_storage_t &co, const memory_storage_t *c_temp,
-            const memory_storage_t *sround_seed, int po_count,
-            const memory_storage_t **po_src, int64_t offset_a, int64_t offset_b,
-            int64_t offset_c, int64_t offset_aq, int64_t offset_bq,
-            int64_t offset_co, int64_t *offset_po_src, int32_t lda, int32_t ldb,
-            int32_t ldc, int32_t m, int32_t n, int32_t k, int32_t k0,
-            float alpha, float beta, int32_t cmask, bool last_k_block,
-            bool swapab, bool disable_hilbert) const;
+            int16_t ao_hostscalar, int16_t bo_hostscalar,
+            const memory_storage_t *a_scales, const memory_storage_t *b_scales,
+            const memory_storage_t *c_scales, const memory_storage_t *ag,
+            const memory_storage_t *bg, const memory_storage_t &co,
+            const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
+            int po_count, const memory_storage_t **po_src, int64_t offset_a,
+            int64_t offset_b, int64_t offset_c, int64_t offset_aq,
+            int64_t offset_bq, int64_t offset_co, int64_t *offset_po_src,
+            int32_t lda, int32_t ldb, int32_t ldc, int32_t m, int32_t n,
+            int32_t k, int32_t k0, float alpha, float beta, int32_t cmask,
+            bool last_k_block, bool swapab, bool disable_hilbert) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     const gemmstone::CommonDriverInfo *nocopy_info() const {

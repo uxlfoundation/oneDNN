@@ -177,8 +177,6 @@ struct GEMMProblem : public CommonProblem {
     MatrixAddressing Ag, Bg;                        // Addressing information for A/B group sums.
 
     bool checkBeta0 = true;                         // If true, check for beta = 0 and handle specially.
-    bool ao_hostscalar = false;
-    bool bo_hostscalar = false;
     ABOffset aOffset = ABOffset::None;              // A/B offset modes.
     ABOffset bOffset = ABOffset::None;              //
     int aoPtrDims = -1, boPtrDims = -1;             // A/B offset dimensionality (-1: none; 0: scalar; 1: vector, 2: matrix)
@@ -249,8 +247,8 @@ struct GEMMProblem : public CommonProblem {
     bool hasCMXScale() const { return cMXScale; }
     bool hasAOffsetPtr() const { return (aoPtrDims > -1); }
     bool hasBOffsetPtr() const { return (boPtrDims > -1); }
-    bool aOffsetHostScalar() const {return ao_hostscalar; }
-    bool bOffsetHostScalar() const {return bo_hostscalar; }
+    bool aOffsetHostScalar() const {return aoPtrDims == -1 && aOffset == ABOffset::Calc; }
+    bool bOffsetHostScalar() const {return boPtrDims == -1 && bOffset == ABOffset::Calc; }
 
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }

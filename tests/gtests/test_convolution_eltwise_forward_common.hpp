@@ -325,11 +325,10 @@ protected:
         ASSERT_EQ(conv_primitive_desc.get_padding_r(), padR);
 
         EXPECT_ANY_THROW(convolution_forward(conv_primitive_desc, {}));
-        convolution_forward(conv_primitive_desc)
-                .execute(strm,
-                        {{DNNL_ARG_SRC, c_src}, {DNNL_ARG_WEIGHTS, c_weights},
-                                {DNNL_ARG_BIAS, c_bias},
-                                {DNNL_ARG_DST, c_dst}});
+        convolution_forward prim(conv_primitive_desc);
+        prim.execute(strm,
+                {{DNNL_ARG_SRC, c_src}, {DNNL_ARG_WEIGHTS, c_weights},
+                        {DNNL_ARG_BIAS, c_bias}, {DNNL_ARG_DST, c_dst}});
         strm.wait();
 
         compute_ref_conv_eltwise_fwd<data_t_src, data_t_wei, data_t_wei,

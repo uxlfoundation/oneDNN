@@ -221,11 +221,10 @@ protected:
         ASSERT_EQ(ip_primitive_desc.get_prop_kind(), p.aprop_kind);
 
         EXPECT_ANY_THROW(inner_product_forward(ip_primitive_desc, {}));
-        inner_product_forward(ip_primitive_desc)
-                .execute(strm,
-                        {{DNNL_ARG_SRC, ip_src}, {DNNL_ARG_WEIGHTS, ip_weights},
-                                {DNNL_ARG_BIAS, ip_bias},
-                                {DNNL_ARG_DST, ip_dst}});
+        inner_product_forward prim(ip_primitive_desc);
+        prim.execute(strm,
+                {{DNNL_ARG_SRC, ip_src}, {DNNL_ARG_WEIGHTS, ip_weights},
+                        {DNNL_ARG_BIAS, ip_bias}, {DNNL_ARG_DST, ip_dst}});
         strm.wait();
 
         compute_ref_inner_product_fwd<data_t>(

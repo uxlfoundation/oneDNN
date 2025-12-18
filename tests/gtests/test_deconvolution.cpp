@@ -360,12 +360,11 @@ protected:
         ASSERT_EQ(deconv_primitive_desc.get_padding_r(), padR);
 
         EXPECT_ANY_THROW(deconvolution_forward(deconv_primitive_desc, {}));
-        deconvolution_forward(deconv_primitive_desc)
-                .execute(strm,
-                        {{DNNL_ARG_SRC, src->get()},
-                                {DNNL_ARG_WEIGHTS, weights->get()},
-                                {DNNL_ARG_BIAS, bias->get()},
-                                {DNNL_ARG_DST, dst->get()}});
+        deconvolution_forward prim(deconv_primitive_desc);
+        prim.execute(strm,
+                {{DNNL_ARG_SRC, src->get()}, {DNNL_ARG_WEIGHTS, weights->get()},
+                        {DNNL_ARG_BIAS, bias->get()},
+                        {DNNL_ARG_DST, dst->get()}});
         strm.wait();
 
         auto conv_primitive_desc = convolution_forward::primitive_desc(eng,
@@ -379,11 +378,11 @@ protected:
                         *con_weights_desc, *con_dst_desc, strides, padL, padR,
                         conv_primitive_desc);
 
-        convolution_backward_data(conv_bwd_data_primitive_desc)
-                .execute(strm,
-                        {{DNNL_ARG_DIFF_DST, conv_dst->get()},
-                                {DNNL_ARG_WEIGHTS, weights_tr},
-                                {DNNL_ARG_DIFF_SRC, conv_src.get()}});
+        convolution_backward_data cbd_prim(conv_bwd_data_primitive_desc);
+        cbd_prim.execute(strm,
+                {{DNNL_ARG_DIFF_DST, conv_dst->get()},
+                        {DNNL_ARG_WEIGHTS, weights_tr},
+                        {DNNL_ARG_DIFF_SRC, conv_src.get()}});
         strm.wait();
 
         if (with_bias)
@@ -442,11 +441,11 @@ protected:
         ASSERT_EQ(deconv_bwd_data_primitive_desc.get_padding_l(), padL);
         ASSERT_EQ(deconv_bwd_data_primitive_desc.get_padding_r(), padR);
 
-        deconvolution_backward_data(deconv_bwd_data_primitive_desc)
-                .execute(strm,
-                        {{DNNL_ARG_DIFF_DST, dst->get()},
-                                {DNNL_ARG_WEIGHTS, weights->get()},
-                                {DNNL_ARG_DIFF_SRC, src->get()}});
+        deconvolution_backward_data prim(deconv_bwd_data_primitive_desc);
+        prim.execute(strm,
+                {{DNNL_ARG_DIFF_DST, dst->get()},
+                        {DNNL_ARG_WEIGHTS, weights->get()},
+                        {DNNL_ARG_DIFF_SRC, src->get()}});
         strm.wait();
 
         auto conv_primitive_desc = convolution_forward::primitive_desc(eng,
@@ -454,11 +453,11 @@ protected:
                 *con_src_desc, *con_weights_desc, *con_dst_desc, strides, padL,
                 padR);
 
-        convolution_forward(conv_primitive_desc)
-                .execute(strm,
-                        {{DNNL_ARG_SRC, conv_src->get()},
-                                {DNNL_ARG_WEIGHTS, weights_tr},
-                                {DNNL_ARG_DST, conv_dst.get()}});
+        convolution_forward cf_prim(conv_primitive_desc);
+        cf_prim.execute(strm,
+                {{DNNL_ARG_SRC, conv_src->get()},
+                        {DNNL_ARG_WEIGHTS, weights_tr},
+                        {DNNL_ARG_DST, conv_dst.get()}});
         strm.wait();
 
         compare_data<data_t>(conv_dst.get(), src->get());
@@ -519,12 +518,11 @@ protected:
         ASSERT_EQ(deconv_bwd_weights_primitive_desc.get_padding_l(), padL);
         ASSERT_EQ(deconv_bwd_weights_primitive_desc.get_padding_r(), padR);
 
-        deconvolution_backward_weights(deconv_bwd_weights_primitive_desc)
-                .execute(strm,
-                        {{DNNL_ARG_DIFF_DST, dst->get()},
-                                {DNNL_ARG_SRC, src->get()},
-                                {DNNL_ARG_DIFF_WEIGHTS, weights->get()},
-                                {DNNL_ARG_DIFF_BIAS, bias->get()}});
+        deconvolution_backward_weights prim(deconv_bwd_weights_primitive_desc);
+        prim.execute(strm,
+                {{DNNL_ARG_DIFF_DST, dst->get()}, {DNNL_ARG_SRC, src->get()},
+                        {DNNL_ARG_DIFF_WEIGHTS, weights->get()},
+                        {DNNL_ARG_DIFF_BIAS, bias->get()}});
         strm.wait();
 
         auto conv_primitive_desc = convolution_forward::primitive_desc(eng,
@@ -542,11 +540,11 @@ protected:
                         *con_weights_desc, *con_dst_desc, strides, padL, padR,
                         conv_primitive_desc);
 
-        convolution_backward_weights(conv_bwd_weights_primitive_desc)
-                .execute(strm,
-                        {{DNNL_ARG_DIFF_DST, conv_dst->get()},
-                                {DNNL_ARG_SRC, conv_src->get()},
-                                {DNNL_ARG_DIFF_WEIGHTS, conv_weights}});
+        convolution_backward_weights cbw_prim(conv_bwd_weights_primitive_desc);
+        cbw_prim.execute(strm,
+                {{DNNL_ARG_DIFF_DST, conv_dst->get()},
+                        {DNNL_ARG_SRC, conv_src->get()},
+                        {DNNL_ARG_DIFF_WEIGHTS, conv_weights}});
         strm.wait();
 
         auto weights_tr = test::make_memory(*con_weights_desc, eng);

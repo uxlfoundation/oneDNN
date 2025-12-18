@@ -347,10 +347,10 @@ protected:
         check_zero_tail<data_t>(1, p_dst);
 
         EXPECT_ANY_THROW(pooling_forward(pool_prim_desc, {}));
-        pooling_forward(pool_prim_desc)
-                .execute(strm,
-                        {{DNNL_ARG_SRC, p_src}, {DNNL_ARG_DST, p_dst},
-                                {DNNL_ARG_WORKSPACE, workspace}});
+        pooling_forward prim(pool_prim_desc);
+        prim.execute(strm,
+                {{DNNL_ARG_SRC, p_src}, {DNNL_ARG_DST, p_dst},
+                        {DNNL_ARG_WORKSPACE, workspace}});
 
         strm.wait();
         check_pool_fwd<data_t>(p, p_src, p_dst, workspace);

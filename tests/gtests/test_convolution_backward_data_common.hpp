@@ -283,11 +283,11 @@ protected:
 
         EXPECT_ANY_THROW(
                 convolution_backward_data(conv_bwd_data_primitive_desc, {}));
-        convolution_backward_data(conv_bwd_data_primitive_desc)
-                .execute(strm,
-                        {{DNNL_ARG_DIFF_DST, c_diff_dst.get()},
-                                {DNNL_ARG_WEIGHTS, c_weights.get()},
-                                {DNNL_ARG_DIFF_SRC, c_diff_src.get()}});
+        convolution_backward_data prim(conv_bwd_data_primitive_desc);
+        prim.execute(strm,
+                {{DNNL_ARG_DIFF_DST, c_diff_dst.get()},
+                        {DNNL_ARG_WEIGHTS, c_weights.get()},
+                        {DNNL_ARG_DIFF_SRC, c_diff_src.get()}});
         strm.wait();
 
         auto ref_memory = test::make_memory(c_src_desc, eng);

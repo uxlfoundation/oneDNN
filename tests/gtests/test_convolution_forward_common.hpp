@@ -327,18 +327,18 @@ protected:
         ASSERT_EQ(conv_primitive_desc.get_padding_r(), padR);
 
         EXPECT_ANY_THROW(convolution_forward(conv_primitive_desc, {}));
-        convolution_forward(conv_primitive_desc)
-                .execute(strm,
-                        {{DNNL_ARG_SRC, c_src.get()},
-                                {DNNL_ARG_WEIGHTS, c_weights.get()},
-                                {DNNL_ARG_BIAS, c_bias.get()},
-                                {DNNL_ARG_DST, c_dst.get()},
-                                {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC,
-                                        c_src_scales.get()},
-                                {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS,
-                                        c_wei_scales.get()},
-                                {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
-                                        c_dst_scales.get()}});
+        convolution_forward prim(conv_primitive_desc);
+        prim.execute(strm,
+                {{DNNL_ARG_SRC, c_src.get()},
+                        {DNNL_ARG_WEIGHTS, c_weights.get()},
+                        {DNNL_ARG_BIAS, c_bias.get()},
+                        {DNNL_ARG_DST, c_dst.get()},
+                        {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC,
+                                c_src_scales.get()},
+                        {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS,
+                                c_wei_scales.get()},
+                        {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
+                                c_dst_scales.get()}});
         strm.wait();
 
         auto ref_memory = test::make_memory(c_dst_desc, eng);

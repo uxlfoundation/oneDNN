@@ -333,12 +333,12 @@ protected:
 
         EXPECT_ANY_THROW(convolution_backward_weights(
                 conv_bwd_weights_primitive_desc, {}));
-        convolution_backward_weights(conv_bwd_weights_primitive_desc)
-                .execute(strm,
-                        {{DNNL_ARG_DIFF_DST, c_diff_dst.get()},
-                                {DNNL_ARG_SRC, c_src.get()},
-                                {DNNL_ARG_DIFF_WEIGHTS, c_diff_weights.get()},
-                                {DNNL_ARG_DIFF_BIAS, c_diff_bias.get()}});
+        convolution_backward_weights prim(conv_bwd_weights_primitive_desc);
+        prim.execute(strm,
+                {{DNNL_ARG_DIFF_DST, c_diff_dst.get()},
+                        {DNNL_ARG_SRC, c_src.get()},
+                        {DNNL_ARG_DIFF_WEIGHTS, c_diff_weights.get()},
+                        {DNNL_ARG_DIFF_BIAS, c_diff_bias.get()}});
         strm.wait();
 
         auto ref_diff_weights = test::make_memory(c_diff_weights_desc, eng);

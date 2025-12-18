@@ -63,6 +63,14 @@ int __attribute__((overloadable)) rnd_down(long a, unsigned int b) {
     return (a / b) * b;
 }
 
+int idiv(int a, unsigned int magic_m, unsigned int magic_p) {
+    unsigned long scaled_qot = (unsigned long)magic_m * (unsigned long)a;
+    if (magic_p < 32)
+        return a >> magic_p;
+    else
+        return scaled_qot >> magic_p;
+}
+
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
 
 #if DT_BF8 || SRC_DT_BF8 || WEI_DT_BF8 || DST_DT_BF8 || BIA_DT_BF8 || A_DT_BF8 \

@@ -72,33 +72,28 @@ static status_t init_conf_common(const pd_t *pd, reusable_params_t *conf,
     if (!norm_block) return status::unimplemented;
     rt_conf->norm_stride = norm_block->stride;
 
-    const auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
-            pd->attr()->gpu_attr_.get());
-
-    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
-
     // Norm dispatch: all dimensions
-    auto lws_strategy = compute::default_lws_strategy_t(intel_engine, gpu_attr);
-    compute::reusable_dispatch_config_t dispatch_config(intel_engine, dims);
+    auto lws_strategy = compute::default_lws_strategy_t(engine);
+    compute::reusable_dispatch_config_t dispatch_config(dims, lws_strategy);
     CHECK(dispatch_config.register_buffer(src_buf));
     CHECK(dispatch_config.register_buffer(dst_buf));
     CHECK(dispatch_config.register_buffer(stat_buf));
     CHECK(dispatch_config.register_buffer(ss_buf));
     compute::reusable_dispatch_t dispatch;
 
-    CHECK(dispatch_config.generate(dispatch, lws_strategy));
+    CHECK(dispatch_config.generate(dispatch));
     conf->gws_params = dispatch.get_compile_params();
     rt_conf->gws_params = dispatch.get_runtime_params();
 
     // stat calculation dispatch: all stat dimensions
     compute::reusable_dispatch_config_t calc_stat_dispatch_config(
-            intel_engine, stat_buf.get_dim_ids());
+            stat_buf.get_dim_ids(), lws_strategy);
     CHECK(calc_stat_dispatch_config.register_buffer(src_buf));
     CHECK(calc_stat_dispatch_config.register_buffer(dst_buf));
     CHECK(calc_stat_dispatch_config.register_buffer(stat_buf));
 
     compute::reusable_dispatch_t dispatch_calc_stat;
-    CHECK(calc_stat_dispatch_config.generate(dispatch_calc_stat, lws_strategy));
+    CHECK(calc_stat_dispatch_config.generate(dispatch_calc_stat));
     conf->stat_params = dispatch_calc_stat.get_compile_params();
     rt_conf->stat_params = dispatch_calc_stat.get_runtime_params();
 
@@ -121,13 +116,13 @@ static status_t init_conf_common(const pd_t *pd, reusable_params_t *conf,
 
     // scaleshift dispatch: just the norm axis
     compute::reusable_dispatch_config_t ss_dispatch_config(
-            intel_engine, ss_buf.get_dim_ids());
+            ss_buf.get_dim_ids(), lws_strategy);
     CHECK(ss_dispatch_config.register_buffer(src_buf));
     CHECK(ss_dispatch_config.register_buffer(dst_buf));
     CHECK(ss_dispatch_config.register_buffer(ss_buf));
 
     compute::reusable_dispatch_t dispatch_ss;
-    CHECK(ss_dispatch_config.generate(dispatch_ss, lws_strategy));
+    CHECK(ss_dispatch_config.generate(dispatch_ss));
     conf->scaleshift_params = dispatch_ss.get_compile_params();
     rt_conf->scaleshift_params = dispatch_ss.get_runtime_params();
 
@@ -162,11 +157,7 @@ status_t reusable_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
             = get_ss_buffer(weights_md(), dims.back());
     CHECK(init_conf_common(this, &conf, &rt_conf, engine, src_buffer,
             dst_buffer, stat_buffer, ss_buffer));
-    const auto *gpu_attr
-            = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
-    auto lws_strategy = compute::default_lws_strategy_t(intel_engine, gpu_attr);
+    auto lws_strategy = compute::default_lws_strategy_t(engine);
 
     return status::success;
 }

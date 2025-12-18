@@ -37,24 +37,6 @@ namespace intel {
 namespace lnorm {
 
 using namespace dnnl::impl::gpu::intel::compute;
-struct single_subgroup_lws_strategy_t : public lws_strategy_t {
-    size_t desired_sg_size = 32;
-    single_subgroup_lws_strategy_t(const engine_t *engine,
-            const gpu_primitive_attr_t *gpu_attr, size_t _desired_sg_size)
-        : lws_strategy_t(engine, gpu_attr)
-        , desired_sg_size(_desired_sg_size) {};
-
-    range_t create_lws(
-            range_t &gws, const gws_bin_mapping_t &mapper) const override {
-        range_t lws = {desired_sg_size, 1, 1};
-        return lws;
-    }
-
-    // this strategy doesn't care which blocks are in the lws
-    bool is_included(const mapped_block_t &blocks) const override {
-        return false;
-    }
-};
 
 bool is_sg_and_vector_size_compatible(
         const engine_t *engine, int sg_size, int vector_size) {
@@ -115,9 +97,6 @@ static status_t init_conf_common(const pd_t *pd,
             src_mdw.is_dense() ? "true" : "false",
             int(src_mdw.blocking_desc().strides[ndims - 1]));
 
-    const auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
-            pd->attr()->gpu_attr_.get());
-
     const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
     conf->sg_size = 0;
@@ -149,11 +128,10 @@ static status_t init_conf_common(const pd_t *pd,
             4, (int)pd->norm_axis() / (conf->sg_size * conf->vector_size));
 
     // Norm dispatch: all dimensions
-    auto lws_strategy = single_subgroup_lws_strategy_t(
-            intel_engine, gpu_attr, conf->sg_size);
+    auto lws_strategy = compute::explicit_lws_strategy_t(conf->sg_size, {});
 
     compute::reusable_dispatch_config_t dispatch_config(
-            intel_engine, std::move(dims));
+            std::move(dims), lws_strategy);
     VDISPATCH_LNORM_IC(
             dispatch_config.register_buffer(input_buf) == status::success,
             "failed to register input buffer");
@@ -168,8 +146,7 @@ static status_t init_conf_common(const pd_t *pd,
             "failed to register ss buffer");
 
     compute::reusable_dispatch_t dispatch;
-    VDISPATCH_LNORM_IC(
-            dispatch_config.generate(dispatch, lws_strategy) == status::success,
+    VDISPATCH_LNORM_IC(dispatch_config.generate(dispatch) == status::success,
             "failed to generate dispatch_config");
     conf->gws_params = dispatch.get_compile_params();
     rt_conf->gws_params = dispatch.get_runtime_params();

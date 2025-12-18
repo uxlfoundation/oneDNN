@@ -81,6 +81,7 @@ using namespace nstl;
 
 using namespace data_type;
 
+template <cpu_isa_t isa>
 struct jit_int8_matmul_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_int8_matmul_kernel_t)
@@ -230,6 +231,21 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                 for (int a = 0; a < bdb; a++) {
                     fadd(acc(a, b).s, acc(a, b).s, z31.s);
                     fadd(acc(a, b + 1).s, acc(a, b + 1).s, z31.s);
+                }
+            }
+        }
+
+        if (!eltwise_injectors_.empty()) {
+            for (int a = 0; a < bdb; a++) {
+                for (int b = 0; b < ldb; b += 2) {
+                    // apply element-wise op to every vector register
+                    // whose index is in [start, end)
+                    int start_idx = acc(a, b).getIdx();
+                    int end_idx = acc(a, b + 1).getIdx() + 1;
+                    for (int i = 0; i < (int)eltwise_injectors_.size(); i++) {
+                        eltwise_injectors_[i]->compute_vector_range(
+                                start_idx, end_idx);
+                    }
                 }
             }
         }
@@ -607,9 +623,23 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         }
 
         postamble();
+        if (!eltwise_injectors_.empty()) {
+            for (int i = 0; i < (int)eltwise_injectors_.size(); i++) {
+                eltwise_injectors_[i]->prepare_table();
+            }
+        }
     }
 
     jit_int8_matmul_kernel_t(const brg_int8_t &k) : brg_(k) {}
+    jit_int8_matmul_kernel_t(
+            const brg_int8_t &k, const dnnl::impl::post_ops_t &eltwise)
+        : brg_(k) {
+        for (auto &e : eltwise.entry_) {
+            eltwise_injectors_.emplace_back(utils::make_unique<
+                    jit_uni_eltwise_injector_t<to_vla_sve(isa)>>(
+                    this, e.eltwise));
+        }
+    }
     ~jit_int8_matmul_kernel_t() override = default;
 
 private:
@@ -621,9 +651,12 @@ private:
     int k_tail_blk;
     int k_residual_blk;
     int n_blks;
+    std::vector<std::unique_ptr<jit_uni_eltwise_injector_t<to_vla_sve(isa)>>>
+            eltwise_injectors_;
 };
 
-status_t jit_int8_matmul_t::pd_t::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
     const auto src_type = src_md(0)->data_type;
     const auto wei_type = weights_md(0)->data_type;
@@ -744,11 +777,20 @@ status_t jit_int8_matmul_t::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     bool no_post_ops = attr()->post_ops_.has_default_values();
+
+    auto with_eltwise = [this]() -> bool {
+        // we only support eltwise post-op
+        for (auto &e : this->attr()->post_ops_.entry_) {
+            if (e.kind != primitive_kind::eltwise) return false;
+        }
+        return true;
+    };
+
     const bool problem_dt_correct
             = (is_s8 || is_u8 || is_u8_s8) && utils::everyone_is(f32, dst_type);
 
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_MATMUL(no_post_ops, VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_MATMUL(no_post_ops || with_eltwise(), VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_MATMUL(formats_ok(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_MATMUL(get_sve_length() == 32, VERBOSE_UNSUPPORTED_ISA);
 
@@ -938,7 +980,8 @@ status_t jit_int8_matmul_t::pd_t::init(engine_t *engine) {
     return status::success;
 }
 
-status_t jit_int8_matmul_t::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_int8_matmul_t<isa>::init(engine_t *engine) {
 
     const auto &b1 = pd()->get_b();
     const auto &d1 = pd()->get_d();
@@ -980,6 +1023,9 @@ status_t jit_int8_matmul_t::init(engine_t *engine) {
     b.b_reo = b1.b_reo;
     b.ld_block = b1.ld_block;
 
+    const bool has_eltwise
+            = pd()->attr()->post_ops_.find(primitive_kind_t::dnnl_eltwise) >= 0;
+
     for (int z = 0; z < 2; z++)
         for (int m = 0; m < 2; m++)
             for (int n = 0; n < 2; n++)
@@ -990,10 +1036,20 @@ status_t jit_int8_matmul_t::init(engine_t *engine) {
                     b.is_k_tail = k;
                     b.is_n_tail = n;
                     b.is_zp_cal = z;
-                    int8_kernels_[idx]
-                            = std::unique_ptr<jit_int8_matmul_kernel_t> {
-                                    new jit_int8_matmul_kernel_t(b)};
+
+                    if (has_eltwise) {
+                        int8_kernels_[idx] = std::unique_ptr<
+                                jit_int8_matmul_kernel_t<isa>> {
+                                new jit_int8_matmul_kernel_t<isa>(
+                                        b, pd()->attr()->post_ops_)};
+                    } else {
+                        int8_kernels_[idx] = std::unique_ptr<
+                                jit_int8_matmul_kernel_t<isa>> {
+                                new jit_int8_matmul_kernel_t<isa>(b)};
+                    }
+
                     if (!int8_kernels_[idx]) return status::runtime_error;
+
                     CHECK(int8_kernels_[idx]->create_kernel());
                 }
 
@@ -1012,10 +1068,13 @@ status_t jit_int8_matmul_t::init(engine_t *engine) {
     return status::success;
 }
 
-jit_int8_matmul_t::jit_int8_matmul_t(const pd_t *apd) : primitive_t(apd) {}
-jit_int8_matmul_t::~jit_int8_matmul_t() = default;
+template <cpu_isa_t isa>
+jit_int8_matmul_t<isa>::jit_int8_matmul_t(const pd_t *apd) : primitive_t(apd) {}
+template <cpu_isa_t isa>
+jit_int8_matmul_t<isa>::~jit_int8_matmul_t() = default;
 
-status_t jit_int8_matmul_t::execute(const exec_ctx_t &ctx) const {
+template <cpu_isa_t isa>
+status_t jit_int8_matmul_t<isa>::execute(const exec_ctx_t &ctx) const {
     const auto *weights_b = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
     const auto *src_b = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
     auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
@@ -1543,6 +1602,8 @@ status_t jit_int8_matmul_t::execute(const exec_ctx_t &ctx) const {
 
     return status::success;
 }
+
+template struct jit_int8_matmul_t<sve_256>;
 
 } // namespace matmul
 } // namespace aarch64

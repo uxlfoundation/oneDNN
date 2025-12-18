@@ -28,73 +28,37 @@ class iface_grouped_test_t : public ::testing::Test {};
 TEST(iface_grouped_test_t, TestGroupedMDCreation) {
     const int num_groups = 3;
     const int K = 256;
+    int variable_dim_idx = 0;
 
-    memory::desc md;
-
-    // shared group_dims
-    memory::dims shared_dims = {DNNL_RUNTIME_DIM_VAL, K};
-    ASSERT_NO_THROW(md
-            = memory::desc::grouped({9, K}, dt::f32, num_groups, shared_dims));
-
-    // per-group dims (resolved M per group)
-    memory::dims per_group_dims = {1, K, 3, K, 5, K};
-    ASSERT_NO_THROW(md = memory::desc::grouped(
-                            {9, K}, dt::f32, num_groups, per_group_dims));
-
-    // per-group dims with empty dimension (resolved M per group)
-    memory::dims per_group_dims_empty = {1, K, 0, K, 8, K};
-    ASSERT_NO_THROW(md = memory::desc::grouped(
-                            {9, K}, dt::f32, num_groups, per_group_dims_empty));
-
-    // row-major layout
-    ASSERT_NO_THROW(md = memory::desc::grouped({9, K}, dt::f32, num_groups,
-                            shared_dims, dt::s32, {K, 1}));
-
-    // row-major with "padding"
     ASSERT_NO_THROW(memory::desc::grouped(
-            {4, K}, dt::f32, num_groups, shared_dims, dt::s32, {K + 1, 1}));
+            {9, K}, dt::f32, variable_dim_idx, num_groups));
+
+    ASSERT_NO_THROW(memory::desc::grouped(
+            {4, K}, dt::f16, variable_dim_idx, num_groups, dt::s32));
 }
 
 TEST(iface_grouped_test_t, TestGroupedMDInvalidArgs) {
     const int num_groups = 2;
     const int K = 256;
-    memory::dims valid_group_dims = {1, K, 3, K};
+    int variable_dim_idx = 0;
 
     // 3D is not supported
     memory::dims dims_3d = {4, K, 10};
     EXPECT_THROW(memory::desc::grouped(
-                         dims_3d, dt::f32, num_groups, valid_group_dims),
-            dnnl::error);
-
-    // non-uniform K dimensions (group_dims[1] != group_dims[3])
-    memory::dims non_uniform_k = {1, K, 3, K + 1};
-    EXPECT_THROW(
-            memory::desc::grouped({4, K}, dt::f32, num_groups, non_uniform_k),
-            dnnl::error);
-
-    // RUNTIME_DIM_VAL in K dimension is not supported
-    memory::dims runtime_k = {1, DNNL_RUNTIME_DIM_VAL, 3, K};
-    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, num_groups, runtime_k),
-            dnnl::error);
-
-    // invalid strides
-    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, num_groups,
-                         valid_group_dims, dt::s32, {1, 0}),
-            dnnl::error);
-    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, num_groups,
-                         valid_group_dims, dt::s32, {K - 1, 1}),
+                         dims_3d, dt::f32, variable_dim_idx, num_groups),
             dnnl::error);
 
     // invalid group count
-    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, 0, valid_group_dims),
+    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, variable_dim_idx, 0),
             dnnl::error);
-    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, -1, valid_group_dims),
+    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, variable_dim_idx, -1),
             dnnl::error);
 
-    // invalid inner block dims
-    memory::dims single_k = {K};
-    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, num_groups, single_k),
+    // invalid variable_dim_idx (only 0 is supported)
+    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, -1, num_groups),
             dnnl::error);
+    EXPECT_THROW(
+            memory::desc::grouped({4, K}, dt::f32, 1, num_groups), dnnl::error);
 }
 
 TEST(iface_grouped_test_t, TestGroupedMDQueries) {
@@ -102,16 +66,14 @@ TEST(iface_grouped_test_t, TestGroupedMDQueries) {
     const int K = 256;
     const int total_tokens = 9;
     const memory::dims dims = {total_tokens, K};
-    const memory::dims group_dims = {1, K, 3, K, 5, K};
 
-    // Test with f32 and s32 offsets
     {
         const memory::data_type data_type = dt::f32;
         const memory::data_type offsets_dt = dt::s32;
 
         memory::desc md;
-        ASSERT_NO_THROW(md = memory::desc::grouped(dims, data_type, num_groups,
-                                group_dims, offsets_dt));
+        ASSERT_NO_THROW(md = memory::desc::grouped(
+                                dims, data_type, 0, num_groups, offsets_dt));
 
         // Basic queries
         ASSERT_EQ(md.get_dims(), dims);
@@ -136,44 +98,27 @@ TEST(iface_grouped_test_t, TestGroupedMDQueries) {
 TEST(iface_grouped_test_t, TestGroupedMDComparison) {
     const int num_groups = 2;
     const int K = 256;
-    memory::dims group_dims = {1, K, 3, K};
 
     memory::desc md1, md2;
 
     // equal descriptors
-    ASSERT_NO_THROW(md1
-            = memory::desc::grouped({4, K}, dt::f32, num_groups, group_dims));
-    ASSERT_NO_THROW(md2
-            = memory::desc::grouped({4, K}, dt::f32, num_groups, group_dims));
+    ASSERT_NO_THROW(
+            md1 = memory::desc::grouped({4, K}, dt::f32, 0, num_groups));
+    ASSERT_NO_THROW(
+            md2 = memory::desc::grouped({4, K}, dt::f32, 0, num_groups));
     ASSERT_EQ(md1, md2);
 
     // different data types
-    ASSERT_NO_THROW(md1
-            = memory::desc::grouped({4, K}, dt::f32, num_groups, group_dims));
-    ASSERT_NO_THROW(md2
-            = memory::desc::grouped({4, K}, dt::f16, num_groups, group_dims));
-    ASSERT_NE(md1, md2);
-
-    // different offsets data types
-    ASSERT_NO_THROW(md1 = memory::desc::grouped(
-                            {4, K}, dt::f32, num_groups, group_dims, dt::s32));
-    ASSERT_NO_THROW(md2 = memory::desc::grouped(
-                            {4, K}, dt::f32, num_groups, group_dims, dt::s8));
+    ASSERT_NO_THROW(
+            md1 = memory::desc::grouped({4, K}, dt::f32, 0, num_groups));
+    ASSERT_NO_THROW(
+            md2 = memory::desc::grouped({4, K}, dt::f16, 0, num_groups));
     ASSERT_NE(md1, md2);
 
     // different num_groups
-    ASSERT_NO_THROW(md1
-            = memory::desc::grouped({4, K}, dt::f32, num_groups, group_dims));
-    memory::dims group_dims_3 = {1, K, 1, K, 2, K};
     ASSERT_NO_THROW(
-            md2 = memory::desc::grouped({4, K}, dt::f32, 3, group_dims_3));
-    ASSERT_NE(md1, md2);
-
-    // different strides (same K but different padding)
-    ASSERT_NO_THROW(md1 = memory::desc::grouped({4, K}, dt::f32, num_groups,
-                            group_dims, dt::s32, {K, 1}));
-    ASSERT_NO_THROW(md2 = memory::desc::grouped({4, K}, dt::f32, num_groups,
-                            group_dims, dt::s32, {K + 16, 1}));
+            md1 = memory::desc::grouped({4, K}, dt::f32, 0, num_groups));
+    ASSERT_NO_THROW(md2 = memory::desc::grouped({4, K}, dt::f32, 0, 3));
     ASSERT_NE(md1, md2);
 }
 
@@ -181,11 +126,10 @@ TEST(iface_grouped_test_t, TestGroupedMDSize) {
     const int num_groups = 3;
     const int K = 256;
     const int total_tokens = 9;
-    const memory::dims group_dims = {1, K, 3, K, 5, K};
 
     memory::desc md;
-    ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32,
-                            num_groups, group_dims, dt::s32));
+    ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32, 0,
+                            num_groups, dt::s32));
 
     // Size of values buffer (buffer 0): total_tokens * K elements
     size_t ref_values_size = total_tokens * K * memory::data_type_size(dt::f32);
@@ -206,15 +150,13 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
     const int num_groups = 3;
     const int K = 256;
     const int total_tokens = 9;
-    const memory::dims group_dims = {1, K, 3, K, 5, K};
+    int variable_dim_idx = 0;
 
     memory::desc md;
     ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32,
-                            num_groups, group_dims));
+                            variable_dim_idx, num_groups));
 
     memory mem;
-
-    // default
     mem = memory(md, eng);
 
     // user provided buffers (2 buffers: values and offsets)
@@ -248,11 +190,11 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     const int num_groups = 3;
     const int K = 256;
     const int total_tokens = 9;
-    const memory::dims group_dims = {1, K, 3, K, 5, K};
+    int variable_dim_idx = 0;
 
     memory::desc md;
     ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32,
-                            num_groups, group_dims));
+                            variable_dim_idx, num_groups));
 
     memory mem = memory(md, eng);
 
@@ -279,24 +221,18 @@ TEST(iface_grouped_test_t, TestGroupedMemoryMapUnmap) {
     const int num_groups = 2;
     const int K = 4;
     const int total_tokens = 3;
-    const memory::dims group_dims = {1, K, 2, K};
-    ASSERT_EQ(num_groups * 2, group_dims.size());
+    int variable_dim_idx = 0;
 
     memory::desc md;
     ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32,
-                            num_groups, group_dims, dt::s32));
+                            variable_dim_idx, num_groups, dt::s32));
 
     const int total_elements = total_tokens * K;
     std::vector<float> values(total_elements);
     for (int i = 0; i < total_elements; i++)
         values[i] = static_cast<float>(i) * 0.5f;
 
-    // compute cumulative offsets based on group_dims
-    std::vector<int32_t> offsets = {0};
-    for (int g = 0; g < num_groups; g++) {
-        int M = group_dims[g * 2];
-        offsets.push_back(offsets[g] + M);
-    }
+    std::vector<int32_t> offsets = {0, 1, 3};
     ASSERT_EQ(offsets[num_groups], total_tokens);
 
     memory mem(md, eng, {values.data(), offsets.data()});
@@ -325,10 +261,9 @@ TEST(c_api_grouped_md, TestGroupedMDQueries) {
 
     dnnl_memory_desc_t md = nullptr;
     dnnl_dims_t dims = {total_tokens, K};
-    dnnl_dims_t group_dims = {1, K, 3, K, 5, K};
 
-    DNNL_CHECK(dnnl_memory_desc_create_with_grouped_encoding(&md, 2, dims,
-            dnnl_f32, num_groups, 6, group_dims, dnnl_s32, nullptr));
+    DNNL_CHECK(dnnl_memory_desc_create_with_grouped_encoding(
+            &md, 2, dims, dnnl_f32, 0, num_groups, dnnl_s32));
     ASSERT_NE(md, nullptr);
 
     // Query all properties
@@ -362,60 +297,41 @@ TEST(c_api_grouped_md, TestGroupedMDQueries) {
     DNNL_CHECK(dnnl_memory_desc_destroy(md));
 }
 
-TEST(c_api_grouped_md, TestGroupedMDWithRuntimeDims) {
-    dnnl_memory_desc_t md = nullptr;
-    const int K = 256;
-    dnnl_dims_t dims = {4, K};
-    dnnl_dims_t group_dims = {DNNL_RUNTIME_DIM_VAL, K};
-
-    DNNL_CHECK(dnnl_memory_desc_create_with_grouped_encoding(
-            &md, 2, dims, dnnl_f32, 2, 2, group_dims, dnnl_s32, nullptr));
-    ASSERT_NE(md, nullptr);
-
-    DNNL_CHECK(dnnl_memory_desc_destroy(md));
-}
-
 TEST(c_api_grouped_md, TestGroupedMDInvalidArgs) {
     dnnl_memory_desc_t md = nullptr;
     const int K = 256;
     dnnl_dims_t dims = {4, K};
-    dnnl_dims_t group_dims = {1, K, 3, K};
 
     // 3D is not supported
     dnnl_dims_t dims_3d = {4, K, 10};
-    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(&md, 3, dims_3d,
-                      dnnl_f32, 2, 4, group_dims, dnnl_s32, nullptr),
+    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
+                      &md, 3, dims_3d, dnnl_f32, 0, 2, dnnl_s32),
             dnnl_unimplemented);
     EXPECT_EQ(md, nullptr);
 
-    // non-uniform K dimensions
-    dnnl_dims_t non_uniform_k = {1, K, 3, K + 1};
-    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(&md, 2, dims,
-                      dnnl_f32, 2, 4, non_uniform_k, dnnl_s32, nullptr),
+    // variable_dim_idx out of range
+    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
+                      &md, 2, dims, dnnl_f32, -1, 2, dnnl_s32),
             dnnl_invalid_arguments);
     EXPECT_EQ(md, nullptr);
-
-    // RUNTIME_DIM_VAL in K dimension is not supported
-    dnnl_dims_t runtime_k = {1, DNNL_RUNTIME_DIM_VAL, 3, K};
-    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(&md, 2, dims,
-                      dnnl_f32, 2, 4, runtime_k, dnnl_s32, nullptr),
+    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
+                      &md, 2, dims, dnnl_f32, 2, 2, dnnl_s32),
             dnnl_invalid_arguments);
     EXPECT_EQ(md, nullptr);
 
     // invalid group count
-    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(&md, 2, dims,
-                      dnnl_f32, 0, 4, group_dims, dnnl_s32, nullptr),
+    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
+                      &md, 2, dims, dnnl_f32, 0, 0, dnnl_s32),
             dnnl_invalid_arguments);
     EXPECT_EQ(md, nullptr);
-
-    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(&md, 2, dims,
-                      dnnl_f32, -1, 4, group_dims, dnnl_s32, nullptr),
+    ASSERT_EQ(dnnl_memory_desc_create_with_grouped_encoding(
+                      &md, 2, dims, dnnl_f32, 0, -1, dnnl_s32),
             dnnl_invalid_arguments);
     EXPECT_EQ(md, nullptr);
 
     // null pointer md
     dnnl_status_t status = dnnl_memory_desc_create_with_grouped_encoding(
-            nullptr, 2, dims, dnnl_f32, 2, 4, group_dims, dnnl_s32, nullptr);
+            nullptr, 2, dims, dnnl_f32, 0, 2, dnnl_s32);
     ASSERT_EQ(status, dnnl_invalid_arguments);
 }
 

@@ -42,7 +42,7 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
             = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
 
     const int64_t group_count = prb->sparse_options.get_group_count();
-    const auto &M_dims = prb->sparse_options.get_group_dims();
+    const auto &M_dims = prb->sparse_options.get_group_sizes();
     const int64_t K = prb->k;
     const int64_t N = prb->n;
 

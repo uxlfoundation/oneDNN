@@ -209,24 +209,24 @@ status_t memory_desc_init_by_packed_encoding(memory_desc_t &memory_desc,
     return success;
 }
 
-// Creates a memory descriptor for a grouped sparse tensor encoding
+// Creates a memory descriptor for a grouped encoding
 //
-// Note, that group_dims could be:
-// - [M, K] for same dims for all groups
-// - [M0, K0, M1, K1, ...] for per-group dims
+// The grouped encoding represents a tensor where one dimension has variable
+// size per group (e.g., different number of tokens per expert in MoE).
+// Also could be perceived as a group of multiple tensors along
+// the variable dimension.
 //
-// strides (layout of inner dense blocks):
-// - nullptr: infer row-major strides [K, 1]
-// - Explicit row-major: [K, 1]
+// Parameters:
+// - variable_dim_idx: Index of dimension with variable size
+// - group_count: Number of groups
+// - dims: Total dimensions (e.g., [total_M, K] where total_M = sum of M_i)
 //
-// Supported:
-// - 2D tensors with 2D sub-tensors
-// - first dimension can be resolved or DNNL_RUNTIME_DIM_VAL
-// - second dimension must be resolved and uniform across all groups
+// Supported below:
+// - 2D tensors with variable first dimension
+// - Other dimensions must be uniform across all groups
 status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
-        int ndims, const dims_t dims, data_type_t data_type, dim_t group_count,
-        int group_dims_size, const dims_t group_dims, data_type_t offsets_dt,
-        const dims_t strides) {
+        int ndims, const dims_t dims, data_type_t data_type,
+        int variable_dim_idx, dim_t group_count, data_type_t offsets_dt) {
     if (ndims == 0) {
         memory_desc = types::zero_md();
         return success;
@@ -241,46 +241,25 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
     VCHECK_MEMORY(
             group_count > 0, invalid_arguments, "group_count must be positive");
 
-    // group_dims_size should be 2 (shared) or group_count * 2 (per-group)
-    const bool is_shared = (group_dims_size == 2);
-    const bool is_per_group = (group_dims_size == group_count * 2);
-    VCHECK_MEMORY(is_shared || is_per_group, invalid_arguments,
-            "group_dims_size must be 2 (shared dims) or group_count * 2 "
-            "(per-group dims)");
+    // Validate variable dimension index
+    VCHECK_MEMORY(variable_dim_idx >= 0 && variable_dim_idx < ndims,
+            invalid_arguments, "variable_dim_idx must be in range [0, ndims)");
 
-    // Check that 2nd dimension (K) is resolved and uniform
-    dim_t K = group_dims[1];
-    VCHECK_MEMORY(K != DNNL_RUNTIME_DIM_VAL && K > 0, invalid_arguments,
-            "grouped encoding only supports resolved second dimension (K) in "
-            "group_dims");
+    // Currently only first dimension can be variable
+    VCHECK_MEMORY(variable_dim_idx == 0, unimplemented,
+            "grouped encoding currently only supports variable first dimension "
+            "(M dimension).");
 
-    // Validate that all K dimensions are uniform
-    if (!is_shared) {
-        const int subblock_ndims = 2;
-        for (dim_t g = 1; g < group_count; ++g) {
-            dim_t K_g = group_dims[g * subblock_ndims + 1];
-            VCHECK_MEMORY(K_g == K, invalid_arguments,
-                    "grouped encoding only supports uniform second dimension "
-                    "(K) across all groups");
+    // Non-variable dimensions must be resolved
+    for (int d = 0; d < ndims; ++d) {
+        if (d != variable_dim_idx) {
+            VCHECK_MEMORY(dims[d] != DNNL_RUNTIME_DIM_VAL && dims[d] > 0,
+                    invalid_arguments,
+                    "non-variable dimensions must be resolved");
         }
     }
 
-    // Set strides to row-major if not specified
-    // same logic as memory_desc_init_by_strides
-    dims_t default_strides = {0};
-    if (strides == nullptr) {
-
-        default_strides[1] = 1;
-        default_strides[0] = K;
-        strides = default_strides;
-    }
-
-    // Currently only row-major layout is supported
-    VCHECK_MEMORY(strides[1] == 1, invalid_arguments,
-            "grouped encoding only supports row-major layout (strides[1] must "
-            "be 1)");
-    VCHECK_MEMORY(strides[0] >= K, invalid_arguments,
-            "grouped encoding strides[0] must be >= K (second dimension)");
+    dim_t K = dims[1]; // Uniform dimension
 
     auto md = memory_desc_t();
     md.ndims = ndims;
@@ -291,11 +270,27 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
     // Grouped sparse encoding specifics
     md.format_kind = format_kind::sparse; // TODO: possibly move out to new kind
     md.format_desc.sparse_desc.encoding = sparse_encoding::grouped;
-    md.format_desc.sparse_desc.nnz
-            = dims[0] /* total_M */ * strides[0] /* K + padding (if any) */;
+    md.format_desc.sparse_desc.nnz = dims[0] /* total_M */ * K;
     md.format_desc.sparse_desc.metadata_types[0] = offsets_dt;
     md.format_desc.sparse_desc.grouped_desc.ngroups = group_count;
-    array_copy(md.format_desc.sparse_desc.grouped_desc.strides, strides, ndims);
+    md.format_desc.sparse_desc.grouped_desc.variable_dim_idx = variable_dim_idx;
+
+    // Compute strides based on the constraint that variable_dim_idx must be
+    // the major/outer dimension
+    // Not much in use right now, but might be used in future for other
+    // layouts/padding support
+    dims_t computed_strides;
+    if (variable_dim_idx == 0) {
+        // For variable_dim_idx=0: stride=[K,1] (row-major)
+        computed_strides[0] = K;
+        computed_strides[1] = 1;
+    } else {
+        // Future: column-major layout for variable_dim_idx=1
+        // Would have stride[0]=1, stride[1]=M_i (varies per expert)
+        return unimplemented;
+    }
+    array_copy(md.format_desc.sparse_desc.grouped_desc.strides,
+            computed_strides, ndims);
 
     memory_desc = md;
 
@@ -762,14 +757,14 @@ status_t dnnl_memory_desc_create_with_packed_encoding(
 
 status_t dnnl_memory_desc_create_with_grouped_encoding(
         memory_desc_t **memory_desc, int ndims, const dims_t dims,
-        data_type_t data_type, dim_t num_groups, int group_dims_size,
-        const dims_t group_dims, data_type_t offsets_dt, const dims_t strides) {
+        data_type_t data_type, int variable_dim_idx, dim_t num_groups,
+        data_type_t offsets_dt) {
     if (any_null(memory_desc)) return invalid_arguments;
 
     auto md = utils::make_unique<memory_desc_t>();
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_with_grouped_encoding(*md, ndims, dims, data_type,
-            num_groups, group_dims_size, group_dims, offsets_dt, strides));
+            variable_dim_idx, num_groups, offsets_dt));
     (*memory_desc) = md.release();
     return success;
 }
@@ -867,8 +862,16 @@ status_t dnnl_memory_desc_query(
             }
             break;
         case query::strides:
-            if (!is_blocked) return status::invalid_arguments;
-            *(const dims_t **)result = &md->format_desc.blocking.strides;
+            if (is_blocked) {
+                *(const dims_t **)result = &md->format_desc.blocking.strides;
+            } else if (md->format_kind == format_kind::sparse
+                    && md->format_desc.sparse_desc.encoding
+                            == sparse_encoding::grouped) {
+                *(const dims_t **)result
+                        = &md->format_desc.sparse_desc.grouped_desc.strides;
+            } else {
+                return status::invalid_arguments;
+            }
             break;
         case query::inner_nblks_s32:
             if (!is_blocked) return status::invalid_arguments;

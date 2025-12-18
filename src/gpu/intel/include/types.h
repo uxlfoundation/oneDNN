@@ -297,8 +297,16 @@
 #elif DT_BF16 == 1
 #if WITH_PUNNING
 #define DATA_T ushort
+#define DATA_MAX (ushort)0x7F7F
+#define DATA_MIN (ushort)0xFF7F
+#define DATA_ZERO (ushort)0x0000
+#define DATA_ONE (ushort)0x3F80
 #else
 #define DATA_T bf16
+#define DATA_MAX as_bf16((ushort)0x7F7F)
+#define DATA_MIN as_bf16((ushort)0xFF7F)
+#define DATA_ZERO as_bf16((ushort)0x0000)
+#define DATA_ONE as_bf16((ushort)0x3F80)
 #endif
 #define DATA2_T ushort2
 #define POST_OP_DATA_T float
@@ -306,10 +314,6 @@
 #define DATA4_T ushort4
 #define DATA8_T ushort8
 #define DATA16_T ushort16
-#define DATA_MAX (ushort)0x7F7F
-#define DATA_MIN (ushort)0xFF7F
-#define DATA_ZERO (ushort)0x0000
-#define DATA_ONE (ushort)0x3F80
 #define DEF_ACC_DATA_T float
 #define DEF_ACC_DATA2_T float2
 #define DEF_ACC_DATA4_T float4
@@ -357,17 +361,21 @@
 #elif DT_BF8 == 1
 #if WITH_PUNNING
 #define DATA_T uchar
+#define DATA_MAX (uchar)0x7B
+#define DATA_MIN (uchar)0xFB
+#define DATA_ZERO (uchar)0x00
+#define DATA_ONE (uchar)0x3C
 #else
 #define DATA_T f8_e5m2
+#define DATA_MAX as_f8_e5m2((uchar)0x7B)
+#define DATA_MIN as_f8_e5m2((uchar)0xFB)
+#define DATA_ZERO as_f8_e5m2((uchar)0x00)
+#define DATA_ONE as_f8_e5m2((uchar)0x3C)
 #endif
 #define DATA2_T uchar2
 #define DATA4_T uchar4
 #define DATA8_T uchar8
 #define DATA16_T uchar16
-#define DATA_MAX (uchar)0x7B
-#define DATA_MIN (uchar)0xFB
-#define DATA_ZERO (uchar)0x00
-#define DATA_ONE (uchar)0x3C
 #define DEF_ACC_DATA_T float
 #define DEF_ACC_DATA2_T float2
 #define DEF_ACC_DATA4_T float4
@@ -423,17 +431,21 @@
 #elif DT_HF8 == 1
 #if WITH_PUNNING
 #define DATA_T uchar
+#define DATA_MAX (uchar)0x7E
+#define DATA_MIN (uchar)0xFE
+#define DATA_ZERO (uchar)0x00
+#define DATA_ONE (uchar)0x38
 #else
 #define DATA_T f8_e4m3
+#define DATA_MAX as_f8_e4m3((uchar)0x7E)
+#define DATA_MIN as_f8_e4m3((uchar)0xFE)
+#define DATA_ZERO as_f8_e4m3((uchar)0x00)
+#define DATA_ONE as_f8_e4m3((uchar)0x38)
 #endif
 #define DATA2_T uchar2
 #define DATA4_T uchar4
 #define DATA8_T uchar8
 #define DATA16_T uchar16
-#define DATA_MAX (uchar)0x7E
-#define DATA_MIN (uchar)0xFE
-#define DATA_ZERO (uchar)0x00
-#define DATA_ONE (uchar)0x38
 #define DEF_ACC_DATA_T float
 #define DEF_ACC_DATA2_T float2
 #define DEF_ACC_DATA4_T float4
@@ -489,17 +501,21 @@
 #elif DT_F4_E3M0 == 1
 #if WITH_PUNNING
 #define DATA_T uchar
+#define DATA_MAX (uchar)0x07
+#define DATA_MIN (uchar)0x08
+#define DATA_ZERO (uchar)0x00
+#define DATA_ONE (uchar)0x03
 #else
 #define DATA_T f4_e3m0
+#define DATA_MAX as_f4_e3m0((uchar)0x07)
+#define DATA_MIN as_f4_e3m0((uchar)0x08)
+#define DATA_ZERO as_f4_e3m0((uchar)0x00)
+#define DATA_ONE as_f4_e3m0((uchar)0x03)
 #endif
 #define DATA2_T uchar2
 #define DATA4_T uchar4
 #define DATA8_T uchar8
 #define DATA16_T uchar16
-#define DATA_MAX (uchar)0x07
-#define DATA_MIN (uchar)0x08
-#define DATA_ZERO (uchar)0x00
-#define DATA_ONE (uchar)0x03
 #define DEF_ACC_DATA_T float
 #define DEF_ACC_DATA2_T float2
 #define DEF_ACC_DATA4_T float4
@@ -555,17 +571,21 @@
 #elif DT_F4_E2M1 == 1
 #if WITH_PUNNING
 #define DATA_T uchar
+#define DATA_MAX (uchar)0x07
+#define DATA_MIN (uchar)0x01
+#define DATA_ZERO (uchar)0x00
+#define DATA_ONE (uchar)0x02
 #else
 #define DATA_T f4_e2m1
+#define DATA_MAX as_f4_e2m1((uchar)0x07)
+#define DATA_MIN as_f4_e2m1((uchar)0x01)
+#define DATA_ZERO as_f4_e2m1((uchar)0x00)
+#define DATA_ONE as_f4_e2m1((uchar)0x02)
 #endif
 #define DATA2_T uchar2
 #define DATA4_T uchar4
 #define DATA8_T uchar8
 #define DATA16_T uchar16
-#define DATA_MAX (uchar)0x07
-#define DATA_MIN (uchar)0x01
-#define DATA_ZERO (uchar)0x00
-#define DATA_ONE (uchar)0x02
 #define DEF_ACC_DATA_T float
 #define DEF_ACC_DATA2_T float2
 #define DEF_ACC_DATA4_T float4

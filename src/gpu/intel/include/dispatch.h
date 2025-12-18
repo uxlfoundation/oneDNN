@@ -23,8 +23,6 @@
 #define GWS_GET_THREAD_ID(index) get_global_id(index)
 #endif
 
-#define GWS_OVERFLOW (GWS0_OVERFLOW || GWS1_OVERFLOW || GWS2_OVERFLOW)
-
 #ifdef GWS_WITH_RUNTIME_PARAMS
 
 #define DEFAULT_DISPATCHER_SUFFIX DEFAULT
@@ -32,6 +30,11 @@
 // GWS_<NAME>_<SUFFIX>
 #define DISPATCH_BUFFER_ALIAS(NAME, SUFFIX) \
     CONCAT2(CONCAT2(GWS_, NAME), CONCAT2(_, SUFFIX))
+
+#define GWS_OVERFLOW(rt_params) \
+    CONCAT3(GWS_, DEFAULT_DISPATCHER_SUFFIX, _OVERFLOW)(rt_params)
+#define GWS_IN_PADDING(rt_params) \
+    CONCAT3(GWS_, DEFAULT_DISPATCHER_SUFFIX, _IN_PADDING)(rt_params)
 
 // Ultimately resolves to GWS_<NAME>_<SUFFIX>_OFF, defined by dispatcher
 // as sums of GWS<X>_GET_ID<Y> terms
@@ -50,6 +53,8 @@
     GWS_GET_BUFFER_POS_NAMED(NAME, DEFAULT_DISPATCHER_SUFFIX, rt_params, buffer)
 
 #else
+
+#define GWS_OVERFLOW (GWS0_OVERFLOW || GWS1_OVERFLOW || GWS2_OVERFLOW)
 
 // Shortcut accessors for special cases.
 #define GWS_OP_ZERO(idx, stride, max) 0

@@ -17,10 +17,10 @@
 #include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "common/c_types_map.hpp"
 #include "gemmstone/../../dsl/ir/core.hpp"
-#include "gemmstone/../../dsl/ir/pass/simplify.hpp"
 #include "gpu/intel/block_structure.hpp"
 #include "gpu/intel/compute/data_type_converter.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/logging.hpp"
 #include "gpu/intel/utils.hpp"
 
 namespace dnnl {
@@ -28,34 +28,6 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace compute {
-
-// Enables the use of intel subgroups in the kernel.
-// A buffer is supplied to specify which block (stride=1 block for the buffer)
-// is guaranteed to be dispatched across in the subgroup. Memory access
-// patterns may be non-contiguous in other buffers (i.e. block read/write is only guaranteed
-// to be valid for this buffer)
-status_t reusable_dispatch_config_t::use_subgroup(
-        name_id_t buf_name, size_t size) {
-    if (!engine->mayiuse_sub_group(static_cast<int>(size))) {
-        return status::unimplemented;
-    }
-
-    // Cannot use a subgroup on two buffers
-    gpu_assert(!subgroup.used());
-
-    // Look for a registered buffer with the given name
-    for (size_t i = 0; i < buffers.size(); i++) {
-        if (buffers[i].get_name_id() == buf_name) {
-            subgroup = subgroup_data_t(i, size);
-            break;
-        }
-    }
-
-    // If we couldn't find the buffer, something has gone wrong
-    if (!subgroup.used()) { return status::runtime_error; }
-
-    return status::success;
-}
 
 status_t reusable_dispatch_config_t::define_dim_index(
         name_id_t dim_name, dim_idx_t dim_id, dim_t size) {
@@ -79,231 +51,25 @@ status_t reusable_dispatch_config_t::register_buffer(
         const named_buffer_t &buffer) {
     if (buffers.size() >= MAX_REGISTERED_BUFFERS) return status::unimplemented;
 
-    // Don't allow zero-padding
-    bool has_zero_padding = false;
-    for (size_t dim_idx = 0; dim_idx < static_cast<size_t>(buffer.ndims);
-            dim_idx++) {
-        if (buffer.dims[dim_idx] < buffer.padded_dims[dim_idx]) {
-            has_zero_padding = true;
-        }
-    }
-    if (has_zero_padding) return status::unimplemented;
-
-    // Validate dim sizes
-    std::unordered_map<dim_idx_t, bool, dim_id_hash_t> dim_seen;
-    for (const auto &dim : dispatched_dims) {
-        size_t canonical_idx = buffer.get_dim_idx(dim);
-        if (canonical_idx == dim_not_found) {
-            // broadcasted dimension - nothing to check
-            continue;
-        }
-
-        dim_seen[dim] = (dim_sizes.find(dim) != dim_sizes.end());
-
-        if (dim_seen[dim] && (dim_sizes[dim] != buffer.dims[canonical_idx])) {
-            // Attempting to dispatch to multiple buffers with differently
-            // sized dispatched dimensions. These buffers are incompatible.
-            return status::runtime_error;
-        }
-    }
-
-    // All validation complete - start updating this object
     for (const auto &dim : dispatched_dims) {
         size_t canonical_idx = buffer.get_dim_idx(dim);
         if (canonical_idx == dim_not_found) continue;
+        auto size = buffer.dims[canonical_idx];
+        auto padded_size = buffer.padded_dims[canonical_idx];
+        if (padded_size == 1) continue; // Skip potentially broadcast dimensions
 
-        // Save the dimension size if it hasn't been saved yet
-        if (!dim_seen[dim]) { dim_sizes[dim] = buffer.dims[canonical_idx]; }
+        auto it = dim_sizes.emplace(dim, dim_size_t {size, padded_size});
+        if (!it.second) {
+            // Support the buffer with the most padding,every dimensions must
+            // have a consistent size or be broadcasted
+            auto &value = it.first->second;
+            gpu_assert(size == value.size || (size == 1 && padded_size == 1));
+            value.padded_size = std::max(value.padded_size, padded_size);
+        }
     }
     buffers.emplace_back(buffer);
     return status::success;
 }
-
-// Will mutate a vector of layouts as needed to make each dimension:
-// 1. have the same number of blocks,
-// 2. each with the same size,
-// 3. in the same order
-// by subdividing existing blocks
-class layout_equalizer_t {
-public:
-    static constexpr int broadcasted_block = -1;
-    layout_equalizer_t() = default;
-
-    status_t register_layout(const block_layout_t &layout) {
-        if (master_layout.empty()) {
-            for (const block_t &block : layout) {
-                master_layout.emplace_back(num_layouts, block);
-            }
-            num_layouts++;
-            return status::success;
-        }
-
-        // subdivide the new and master layouts as needed to match
-        block_layout_t new_layout;
-        CHECK(subdivide(layout, new_layout));
-
-        // For each block, find the correct master term to add to
-        std::vector<bool> is_mapped_to(master_layout.size(), false);
-        for (const block_t &block : new_layout) {
-            bool is_mapped = false;
-            for (size_t i = 0; i < master_layout.size(); i++) {
-                if (is_mapped_to[i]) continue;
-
-                auto &master_block = master_layout[i];
-                if (master_block.matches(block)) {
-                    is_mapped = true;
-                    is_mapped_to[i] = true;
-                    master_block.map(num_layouts, block);
-                    break;
-                }
-            }
-            if (!is_mapped) {
-                master_layout.emplace_back(num_layouts, block);
-                is_mapped_to.push_back(true);
-            }
-        }
-        num_layouts++;
-
-        return status::success;
-    }
-
-    const std::unordered_map<size_t, block_t> &buffer_blocks(size_t idx) {
-        return master_layout[idx].get_buffer_blocks();
-    }
-
-    // mutates master_layout and returns a matching layout
-    status_t subdivide(const block_layout_t &layout, block_layout_t &res) {
-        // Can subdivide as long as all dims have the same size as master_layout
-        // (or layout size is 1, as in broadcasted dims)
-        std::array<size_t, DNNL_MAX_NDIMS> layout_dim_sizes;
-        layout_dim_sizes.fill(1);
-        for (const block_t &block : layout) {
-            layout_dim_sizes[static_cast<size_t>(block.dim_idx)]
-                    *= static_cast<size_t>(block.block);
-        }
-
-        std::array<size_t, DNNL_MAX_NDIMS> master_dim_sizes;
-        master_dim_sizes.fill(1);
-        for (const mapped_block_t &block : master_layout) {
-            master_dim_sizes[block.get_dim_idx()] *= block.get_size();
-        }
-
-        for (size_t i = 0; i < DNNL_MAX_NDIMS; i++) {
-            if (layout_dim_sizes[i] == 1 || master_dim_sizes[i] == 1) continue;
-            if (layout_dim_sizes[i] != master_dim_sizes[i]) {
-                return status::runtime_error;
-            }
-        }
-
-        // Shapes are coherent, start subdividing
-        res = layout;
-        std::vector<bool> is_mapped_to(master_layout.size(), false);
-        for (size_t i = 0; i < res.size(); i++) {
-            block_t &block = res[i];
-            dim_t block_size = block.block;
-            for (size_t j = 0; j < master_layout.size(); j++) {
-                if (is_mapped_to[j]) continue;
-
-                mapped_block_t &master_block = master_layout[j];
-                if (master_block.get_dim_idx() != block.dim_idx) continue;
-
-                dim_t master_size = master_block.get_size();
-                if (master_size == block_size) {
-                    // Nothing to do, already matches
-                } else if (block_size % master_size == 0) {
-                    // subdivide block
-                    block.block = master_size;
-                    block_t next_block(block.dim_idx, block_size / master_size,
-                            block.stride * master_size);
-                    res.insert(i + 1, next_block);
-                } else if (master_size % block_size == 0) {
-                    // subdivide master block
-                    mapped_block_t next_block = master_block.split(block_size);
-                    master_layout.insert(
-                            master_layout.begin() + j + 1, next_block);
-                } else {
-                    // Should never be able to reach this case...
-                    return status::runtime_error;
-                }
-                is_mapped_to[j] = true;
-                break;
-            }
-        }
-
-        return status::success;
-    }
-
-    std::vector<block_bin_t> compute_block_bins(
-            const lws_strategy_t &lws_strat, const subgroup_data_t &subgroup) {
-        std::vector<block_bin_t> bins;
-        for (size_t i = 0; i < master_layout.size(); i++) {
-            const mapped_block_t &mapped_blocks = master_layout[i];
-
-            // mapped_block_t that are in the lws have to be
-            // at the start of a new bin
-            if (subgroup.used()) {
-                // The subgroup block has to be in the lws
-                size_t sg_buf_idx = subgroup.buffer_idx();
-                if (!mapped_blocks.is_broadcasted(sg_buf_idx)) {
-                    const block_t &buf_block
-                            = mapped_blocks.get_buffer_blocks().at(sg_buf_idx);
-                    if (buf_block.stride * buf_block.block <= subgroup.size()) {
-                        // This mapped_block_t corresponds to the subgroup block
-                        bins.emplace_back(mapped_blocks, num_layouts, true);
-                        continue;
-                    }
-                }
-            }
-
-            // The lws_strategy_t can specify other blocks to be in the lws as well
-            if (lws_strat.is_included(mapped_blocks)) {
-                bins.emplace_back(mapped_blocks, num_layouts, true);
-                continue;
-            }
-
-            bool found_bin = false;
-            for (block_bin_t &bin : bins) {
-                if (bin.get_blocks().back().can_merge(mapped_blocks)) {
-                    found_bin = true;
-                    bin.append(mapped_blocks);
-                    break;
-                }
-            }
-            if (!found_bin) bins.emplace_back(mapped_blocks, num_layouts);
-        }
-
-        return bins;
-    }
-
-private:
-    void split_block(size_t block_idx, size_t size) {
-        mapped_block_t next_block = master_layout[block_idx].split(size);
-        master_layout.insert(master_layout.begin() + block_idx + 1, next_block);
-    }
-
-    std::vector<mapped_block_t> master_layout;
-    size_t num_layouts = 0;
-};
-
-// Used in compute_terms to store the block_t data and info about
-// where it's mapped to in the GWS
-struct gws_mapped_block_t : public gpu::intel::block_t {
-    gws_mapped_block_t() = default;
-    gws_mapped_block_t(
-            const block_t &block, size_t gws_idx, stride_t gws_stride)
-        : block_t(block), gws_idx(gws_idx), gws_stride(gws_stride) {}
-
-    std::string str() const {
-        ostringstream_t ss;
-        ss << static_cast<const block_t *>(this)->str().c_str();
-        ss << " , gws_stride=" << gws_stride.str();
-        ss << " / gws_idx=" << gws_idx;
-        return ss.str();
-    }
-
-    size_t gws_idx;
-    stride_t gws_stride;
-};
 
 namespace dsl = jit::dsl;
 namespace ir = gemmstone::dsl::ir;
@@ -446,7 +212,6 @@ struct expr_encoder_t : public ir::ir_visitor_t {
         return decode(expr_data_.data(), offset, &term_list_);
     }
 
-private:
     void _visit(const ir::unary_op_t &obj) override {
         gpu_except_not_implemented();
     }
@@ -606,74 +371,198 @@ private:
     const term_registry_t *registry_;
 };
 
-dsl::expr_t calculate_buffer_offset(const gws_bin_mapping_t &gws_map,
-        dim_idx_t buf_idx, term_registry_t &registry) {
-    dsl::expr_t ret = dsl::expr_t(0);
+struct fused_dim_t {
+    fused_dim_t(dim_idx_t base, int64_t size, int64_t padded_size)
+        : base(base), size(size), padded_size(padded_size) {}
+    dim_idx_t base = dim_idx::invalid;
+    int64_t size = 0;
+    int64_t padded_size = 0;
+    dim_idx_t gws_idx = dim_idx::invalid;
+    ir::expr_t idx;
+    std::string str() const {
+        ostringstream_t oss;
+        oss << "root dimension " << base << ": size - " << size
+            << " padded size - " << padded_size << " idx - " << idx;
+        return oss.str();
+    }
+};
 
-    for (size_t gws_idx = 0; gws_idx < range_t::max_ndims; gws_idx++) {
-        const std::vector<block_bin_t> &bins = gws_map.get_bins(gws_idx);
+// Represents dimensions within a list of buffers which may be fused for
+// offset calculations. The fused dimensions are represented as linked lists
+// stored in a hash map.
+struct fused_dim_set_t {
+    using dim_size_t = reusable_dispatch_config_t::dim_size_t;
+    struct node_t {
+        bool is_root() const { return prev == dim_idx::invalid; }
+        bool is_end() const { return next == dim_idx::invalid; }
+        dim_idx_t prev = dim_idx::invalid;
+        dim_idx_t next = dim_idx::invalid;
+    };
 
-        std::vector<gws_mapped_block_t> gws_blocks;
-        stride_t gws_stride = 1;
-        for (size_t i = 0; i < bins.size(); i++) {
-            const block_bin_t &bin = bins[i];
-            if (!bin.is_broadcasted(buf_idx)) {
-                block_t block = bin.combined_block(buf_idx);
-                gws_blocks.emplace_back(block, gws_idx, gws_stride);
-            };
-            gws_stride *= static_cast<dim_t>(bin.size());
+    fused_dim_set_t(const named_buffer_t &buf, const block_layout_t &layout,
+            const std::map<dim_idx_t, dim_size_t> &dim_sizes,
+            const lws_strategy_t &lws_strategy)
+        : dim_sizes(dim_sizes) {
+        for (auto &b : layout) {
+            nodes[b.dim_idx] = {};
         }
+        for (int64_t i = 0; i < into<int64_t>(layout.size()); i++) {
+            auto dim_size = dim_sizes.find(layout[i].dim_idx);
 
-        for (size_t i = 0; i < gws_blocks.size(); i++) {
-            auto block = gws_blocks[i];
-            std::string dim_suffix = std::to_string(gws_idx) + "["
-                    + std::to_string(block.dim_idx) + "]";
-            std::string size_name = "size_dim" + dim_suffix;
-
-            // Merge dense blocks
-            while (i + 1 < gws_blocks.size()) {
-                gws_mapped_block_t &next_block = gws_blocks[i + 1];
-                bool is_buffer_dense
-                        = (block.stride * block.block == next_block.stride);
-                bool is_gws_dense = (block.gws_stride * block.block
-                        == next_block.gws_stride);
-
-                if (!(is_buffer_dense && is_gws_dense)) break;
-
-                size_name += "*size_dim" + std::to_string(gws_idx) + "["
-                        + std::to_string(next_block.dim_idx) + "]";
-                block.block *= next_block.block;
-                i++;
+            // Dimension not part of the workgroup
+            if (dim_size == dim_sizes.end()) {
+                unlink(layout[i].dim_idx);
+                nodes.erase(layout[i].dim_idx);
+                continue;
             }
 
-            dsl::expr_t outer_stride = registry.add(int64_t(block.stride),
-                    "buffer[" + std::to_string(buf_idx) + "].stride"
-                            + dim_suffix);
+            // Dimensions can only be fused when they are contiguous.
+            bool is_dense = (i < into<int64_t>(layout.size() - 1))
+                    && layout[i].stride * layout[i].block
+                            == layout[i + 1].stride;
 
-            dsl::expr_t inner_stride = registry.add(
-                    int64_t(block.gws_stride), "stride_dim" + dim_suffix);
-            dsl::expr_t size = registry.add(block.block, size_name);
+            // Blocked Dimensions cannot be fused since we need to know
+            // their value to calculate offsets into the blocking.
+            bool is_blocked = false;
+            for (size_t j = 0; j < layout.size(); j++) {
+                if (layout[j].dim_idx == layout[i].dim_idx && (j != size_t(i)))
+                    is_blocked = true;
+            }
 
-            // TODO: When using int32_t offsets, use idiv and imod
-            if (size_t(block.block) * block.gws_stride
-                    == gws_map.gws()[gws_idx])
-                ret += global_ids(gws_idx) / inner_stride * outer_stride;
-            else
-                ret += global_ids(gws_idx) / inner_stride % size * outer_stride;
+            // Local dimensions must start a fused dimension so they can be
+            // mapped into the gws.
+            bool is_local = false;
+            for (auto &ld : lws_strategy.local()) {
+                if (layout[i].dim_idx == ld.idx) is_local = true;
+            }
+
+            // Padded dimensions cannot be fused with any further dimensions
+            // so that padding checks can be performed.
+            bool is_padded = buf.dims[buf.get_dim_idx(layout[i].dim_idx)]
+                    < dim_size->second.padded_size;
+
+            if (is_dense && !is_blocked && !is_padded) {
+                link(layout[i].dim_idx, layout[i + 1].dim_idx);
+            } else if (is_blocked || is_local) {
+                unlink(layout[i].dim_idx);
+            }
+        }
+    }
+    fused_dim_set_t(const std::vector<named_buffer_t> &buffers,
+            const std::vector<block_layout_t> &layouts,
+            const std::map<dim_idx_t, dim_size_t> &dim_sizes,
+            const lws_strategy_t &lws_strategy)
+        : dim_sizes(dim_sizes) {
+        for (size_t i = 0; i < buffers.size(); i++) {
+            fused_dim_set_t buffer_set(
+                    buffers[i], layouts[i], dim_sizes, lws_strategy);
+            if (nodes.empty()) {
+                nodes = std::move(buffer_set.nodes);
+                continue;
+            }
+            for (auto &e : buffer_set.nodes) {
+                if (nodes[e.first].prev != e.second.prev) unlink(e.first);
+                if (!nodes[e.first].is_end()
+                        && nodes[e.first].next != e.second.next)
+                    unlink(nodes[e.first].next);
+            }
         }
     }
 
-    ret = ir::simplify(ret);
+    std::vector<fused_dim_t> as_list() const {
+        std::vector<fused_dim_t> ret;
+        for (auto &e : nodes) {
+            if (e.second.is_root()) {
+                size_t size = 1;
+                size_t padded_size = 1;
+                auto next = e.first;
+                while (next != dim_idx::invalid) {
+                    size *= dim_sizes.at(next).size;
+                    padded_size *= dim_sizes.at(next).padded_size;
+                    next = nodes.at(next).next;
+                }
+                ret.emplace_back(e.first, size, padded_size);
+            }
+        }
+        return ret;
+    }
+
+    void link(dim_idx_t idx, dim_idx_t next) {
+        gpu_assert(nodes[idx].next == dim_idx::invalid);
+        gpu_assert(nodes[next].prev == dim_idx::invalid);
+        nodes[idx].next = next;
+        nodes[next].prev = idx;
+    }
+
+    void unlink(dim_idx_t idx) {
+        auto &prev = nodes[idx].prev;
+        if (prev != dim_idx::invalid) {
+            nodes[prev].next = dim_idx::invalid;
+            prev = dim_idx::invalid;
+        }
+    }
+
+    std::string str() const {
+        ostringstream_t oss;
+        const char *prefix = "";
+        oss << "{";
+        for (auto &e : nodes) {
+            if (e.second.is_root()) {
+                dim_idx_t next = e.first;
+                while (next != dim_idx::invalid) {
+                    oss << prefix << next;
+                    prefix = " -> ";
+                    next = nodes.at(next).next;
+                }
+                prefix = ", ";
+            }
+        }
+        oss << "}";
+        return oss.str();
+    }
+
+    std::map<dim_idx_t, node_t> nodes;
+    const std::map<dim_idx_t, dim_size_t> &dim_sizes;
+};
+
+std::unordered_map<dim_idx_t, int> get_dim_pack_order(
+        const lws_strategy_t &lws_strategy,
+        const std::vector<dim_idx_t> &dispatched_dims,
+        const std::vector<named_buffer_t> &buffers,
+        const std::vector<block_layout_t> &layouts) {
+    std::unordered_map<dim_idx_t, int> ret;
+    int64_t idx = -1;
+    for (size_t i = 0; i < buffers.size(); i++) {
+        if (utils::one_of(buffers[i].get_name_id(), name_id_t::dst,
+                    name_id_t::diff_src)) {
+            idx = i;
+            break;
+        }
+    }
+
+    auto local_info = lws_strategy.local();
+
+    int priority = 0;
+    for (auto &local_dim : local_info)
+        ret.emplace(local_dim.idx, priority++);
+    if (idx >= 0) {
+        for (auto &block : layouts[idx])
+            ret.emplace(block.dim_idx, priority++);
+    }
+    for (auto &dim_idx : dispatched_dims)
+        ret.emplace(dim_idx, priority++);
     return ret;
 }
 
 // XXX: Mapping blocks into the gws cannot happen until all necessary dim indices
 // have been requested and all buffers have been registered. Only then can the terms
 // be computed, thus it's all done in the generate function
-status_t reusable_dispatch_config_t::generate(
-        reusable_dispatch_t &dispatch, const lws_strategy_t &lws_strategy) {
+status_t reusable_dispatch_config_t::generate(reusable_dispatch_t &dispatch) {
     // The reusable dispatcher must have at least one buffer to dispatch against
     gpu_assert(!buffers.empty());
+
+    term_registry_t registry;
+    expr_encoder_t encoder;
 
     // Sort to enable deterministic output and simplify serialization
     std::sort(buffers.begin(), buffers.end(),
@@ -681,64 +570,215 @@ status_t reusable_dispatch_config_t::generate(
         return a.get_name_id() < b.get_name_id();
     });
 
-    // Every dispatched dim must have a defined size
+    std::vector<block_layout_t> layouts;
+    layouts.reserve(buffers.size());
+    for (auto &b : buffers) {
+        layouts.emplace_back(b.layout());
+    }
+
+    // Ensure subgroups and local ids are uniform
+    auto local_info = lws_strategy.local();
+    auto subgroup_info = lws_strategy.subgroup();
+    if (subgroup_info.idx != dim_idx::invalid) {
+        gpu_assert(local_info[0].idx == subgroup_info.idx
+                && local_info[0].size % subgroup_info.size == 0);
+    }
+
+    for (auto &local_dim : local_info) {
+        if (local_dim.size == 0) continue;
+        auto &padded_size = dim_sizes[local_dim.idx].padded_size;
+        padded_size = utils::rnd_up(padded_size, local_dim.size);
+    }
+
+    // Every dispatched dim must have a defined size. For unregistered
+    // dimensions, we assume they have size 1.
     for (dim_idx_t id : dispatched_dims) {
-        if (dim_sizes.find(id) == dim_sizes.end()) {
-            return status::unimplemented;
-        }
+        dim_sizes.emplace(id, dim_size_t {1, 1});
     }
 
-    std::array<bool, DNNL_MAX_NDIMS> is_dispatched;
-    is_dispatched.fill(false);
-    for (dim_idx_t dim : dispatched_dims) {
-        is_dispatched[dim] = true;
-    }
+    // Generate fused dimensions used for offset calculations
+    auto fused_dims_set
+            = fused_dim_set_t(buffers, layouts, dim_sizes, lws_strategy);
+    std::vector<fused_dim_t> fused_dims = fused_dims_set.as_list();
+    {
+        // TODO: replace `get_dim_pack_order` with a function which direcltly
+        // computes fused_dims;
+        auto pack_order = get_dim_pack_order(
+                lws_strategy, dispatched_dims, buffers, layouts);
 
-    // Store layouts for each buffer, since they'll be manipulated
-    // for the rest of the generate function
-    layout_equalizer_t equalizer;
-    std::vector<block_layout_t> buf_layouts(buffers.size());
-    for (size_t i = 0; i < buffers.size(); i++) {
-        block_layout_t layout = buffers[i].layout();
-        block_layout_t new_layout;
-        // Only keep dispatched blocks
-        for (const auto &block : layout) {
-            if (is_dispatched[static_cast<size_t>(block.dim_idx)]) {
-                new_layout.append(block);
+        std::sort(fused_dims.begin(), fused_dims.end(),
+                [&](const fused_dim_t &a, const fused_dim_t &b) {
+            return pack_order[a.base] < pack_order[b.base];
+        });
+
+        std::array<size_t, 3> gws_idx = {0, 0, 0};
+        size_t pack_size = fused_dims.size() / 3;
+        dim_idx_t g_i = 0;
+        for (auto &fd : fused_dims) {
+            for (int i = 0; i < 3; i++) {
+                if (local_info[i].idx == fd.base) {
+                    fd.gws_idx = i;
+                    gws_idx[i]++;
+                    break;
+                }
             }
+            if (fd.gws_idx != dim_idx::invalid) continue;
+
+            // Distribute dimensions as evenly as possible to reduce operations
+            // require to compute the fused dimensions index.
+            while (gws_idx[g_i] > pack_size
+                    || (gws_idx[g_i] == pack_size
+                            && g_i >= fused_dims.size() % 3))
+                g_i++;
+            fd.gws_idx = g_i;
+            gws_idx[g_i]++;
         }
-        buf_layouts[i] = new_layout;
-        CHECK(equalizer.register_layout(new_layout));
     }
 
-    std::vector<block_bin_t> bins
-            = equalizer.compute_block_bins(lws_strategy, subgroup);
-
-    // Map bins into gws dims - start with lws bins, then map the rest
-    gws_bin_mapping_t gws_map(subgroup);
-    for (const block_bin_t &bin : bins) {
-        if (bin.is_in_lws()) gws_map.add(bin);
-    }
-    for (const block_bin_t &bin : bins) {
-        if (!bin.is_in_lws()) gws_map.add(bin);
+    // Map fused dimensions into work groups
+    range_t gws_base = {1, 1, 1};
+    std::array<int64_t, 3> gws_max_idx = {0, 0, 0};
+    for (auto &fd : fused_dims) {
+        gws_base[fd.gws_idx] *= fd.padded_size;
+        gws_max_idx[fd.gws_idx]++;
     }
 
+    range_t gws = gws_base;
+    range_t lws = lws_strategy.create_lws(gws);
+
+    // Determine calculation for fused dimensions based on the mapping into work
+    // groups.
+    std::array<int64_t, 3> strides = {1, 1, 1};
+    std::array<int64_t, 3> gws_idx = {0, 0, 0};
+
+    for (auto &fd : fused_dims) {
+        size_t g_i = fd.gws_idx;
+
+        auto scale = [&]() {
+            if (strides[fd.gws_idx] == 1) return global_ids(g_i);
+
+            auto stride_name = "gws" + std::to_string(g_i) + "_stride["
+                    + std::to_string(gws_idx[g_i]) + "]";
+
+            if (gws[g_i] > INT_MAX) {
+                auto stride = registry.add(strides[g_i], stride_name);
+                return global_ids(g_i) / stride;
+            }
+
+            uint32_t m, p;
+            jit::ir_utils::idiv_magicgu(into<uint32_t>(strides[g_i]), m, p);
+            dsl::expr_t magic_m(registry.add(m, stride_name + "_magic_m"));
+            dsl::expr_t magic_p(registry.add(p, stride_name + "_magic_p"));
+            return ir::ternary_idiv(global_ids(g_i), magic_m, magic_p);
+        }();
+
+        auto clamp = [&]() {
+            if (gws_idx[g_i] == gws_max_idx[g_i] - 1) return scale;
+            if (fd.padded_size == 1) return ir::expr_t(0);
+
+            auto size_name = "gws" + std::to_string(g_i) + "_size["
+                    + std::to_string(gws_idx[g_i]) + "]";
+            auto size = registry.add(fd.padded_size, size_name);
+
+            if (gws[g_i] > INT_MAX) { return scale % size; }
+
+            uint32_t m, p;
+            jit::ir_utils::idiv_magicgu(into<uint32_t>(fd.padded_size), m, p);
+            dsl::expr_t magic_m(registry.add(m, size_name + "_magic_m"));
+            dsl::expr_t magic_p(registry.add(p, size_name + "_magic_p"));
+            return scale - (ir::ternary_idiv(scale, magic_m, magic_p) * size);
+        }();
+
+        fd.idx = clamp;
+        strides[g_i] *= fd.padded_size;
+        gws_idx[g_i]++;
+    }
+
+    gpu_info() << "dimension fusions: " << fused_dims_set;
+    for (auto &fd : fused_dims) {
+        gpu_info() << "   " << fd;
+    }
+
+    gpu_info() << "gws: " << gws.str() << " lws: " << lws.str()
+               << " (gws_before_lws_rounding: " << gws_base << ")";
+
+    // Determine calculation required for workgroup overflows due to lws
+    // divisibility requirements.
+    auto gws_overflow = [&]() -> uint8_t {
+        auto ret = ir::expr_t(false);
+        for (int i = 0; i < 3; i++) {
+            if (gws_base[i] == gws[i]) continue;
+            auto idx_check = global_ids(i) >= registry.add(gws_base[i],
+                                     "gws" + std::to_string(i) + "_max");
+            ret = ret.is(false) ? idx_check : (ret | idx_check);
+        }
+        gpu_info() << "    gws overflow: " << ret;
+        return encoder(ret, registry);
+    }();
+
+    // Determine calculations required for buffer padding.
+    auto in_padding = [&]() -> uint8_t {
+        auto ret = ir::expr_t(false);
+        for (size_t i = 0; i < fused_dims.size(); i++) {
+            auto &fd = fused_dims[i];
+            if (fd.size == fd.padded_size) continue;
+            auto idx_check = (fd.idx >= registry.add(fd.size,
+                                      "fused_size[" + std::to_string(i) + "]"));
+            ret = ret.is(false) ? idx_check : ret | idx_check;
+        }
+        gpu_info() << "    gws in padding: " << ret;
+        return encoder(ret, registry);
+    }();
+
+    // Determine calculations for the offset into each buffer.
     std::vector<uint8_t> buffer_exprs;
-    expr_encoder_t encoder;
-    term_registry_t registry;
+    buffer_exprs.reserve(buffers.size());
     for (size_t buf_idx = 0; buf_idx < buffers.size(); buf_idx++) {
         // Deduplicate buffers with the same layout
         for (size_t i = 0; i < buf_idx; i++) {
-            if (buffers[i].layout() == buffers[buf_idx].layout()) {
+            if (layouts[i] == layouts[buf_idx]) {
                 buffer_exprs.emplace_back(buffer_exprs[i]);
                 break;
             }
         }
         if (buffer_exprs.size() > buf_idx) continue;
+        ir::expr_t expr(0);
+        for (auto &fd : fused_dims) {
+            auto dim_stride = 1;
 
-        buffer_exprs.emplace_back(encoder(
-                calculate_buffer_offset(gws_map, buf_idx, registry), registry));
+            const block_t *outer = nullptr;
+            for (auto &e : layouts[buf_idx]) {
+                if (e.dim_idx == fd.base) outer = &e;
+            }
+            if (outer == nullptr) continue;
+
+            for (auto &e : layouts[buf_idx]) {
+                if (e.dim_idx == fd.base) {
+                    if (e.stride == 0) continue;
+                    auto term = dim_stride == 1 ? fd.idx : fd.idx / dim_stride;
+                    if (outer == &e && e.stride != 1) {
+                        term = term
+                                * registry.add(int64_t(e.stride),
+                                        buffers[buf_idx].name() + "_stride["
+                                                + std::to_string(e.dim_idx)
+                                                + "]");
+                    } else if (outer != &e) {
+                        if (e.block > 1) term = term % e.block;
+                        if (e.stride != 1) term = term * int64_t(e.stride);
+                    }
+                    expr = expr.is(0) ? term : expr + term;
+
+                    dim_stride *= e.block;
+                }
+            }
+        }
+        gpu_info() << buffers[buf_idx].name() << ": " << expr;
+
+        buffer_exprs.emplace_back(encoder(expr, registry));
     }
+
+    gpu_info() << "total expr data: " << encoder.expr_data().size()
+               << " bytes, total runtime terms: " << encoder.term_list().size();
 
     if (encoder.expr_data().size() >= MAX_EXPR_TERMS)
         return status::unimplemented;
@@ -747,8 +787,9 @@ status_t reusable_dispatch_config_t::generate(
     if (buffer_exprs.size() >= MAX_REGISTERED_BUFFERS)
         return status::unimplemented;
 
-    dispatch = reusable_dispatch_t(gws_map.nd_range(lws_strategy), subgroup,
-            buffers, buffer_exprs, encoder.expr_data(), encoder.term_list());
+    dispatch = reusable_dispatch_t(nd_range_t(gws, lws), subgroup_info.size,
+            buffers, gws_overflow, in_padding, buffer_exprs,
+            encoder.expr_data(), encoder.term_list());
 
     return status::success;
 }
@@ -763,6 +804,11 @@ void dispatch_compile_params_t::def_kernel_macros(
     std::string conv_suff = (suffix == std::string("DEFAULT"))
             ? ""
             : utils::format("_%s", suffix);
+
+    kernel_ctx.add_option(utils::format("-DGWS_%s_OVERFLOW(rt)=(%s)", suffix,
+            expr_encoder_t::decode(exprs, gws_overflow_expr)));
+    kernel_ctx.add_option(utils::format("-DGWS_%s_IN_PADDING(rt)=(%s)", suffix,
+            expr_encoder_t::decode(exprs, in_padding_expr)));
 
     // For each buffer, define the sum that leads to the offset calculation
     data_type_converter_t converter;
@@ -785,11 +831,16 @@ void dispatch_compile_params_t::def_kernel_macros(
     converter.def_kernel_macros(kernel_ctx);
 
     kernel_ctx.define_int(
-            utils::format("GWS_WITH_SG_%s", suffix), subgroup.used() ? 1 : 0);
-    if (subgroup.used()) {
-        kernel_ctx.define_int(utils::format("GWS_SGS_%s", suffix),
-                static_cast<int64_t>(subgroup.size()));
+            utils::format("GWS_WITH_SG_%s", suffix), bool(subgroup_size));
+    if (subgroup_size) {
+        kernel_ctx.define_int(
+                utils::format("GWS_SGS_%s", suffix), uint32_t(subgroup_size));
     }
+}
+
+bool dispatch_compile_params_t::has_padding() const {
+    return expr_encoder_t::kind_t(exprs[in_padding_expr])
+            != expr_encoder_t::kind_t::constant_false;
 }
 
 std::string dispatch_compile_params_t::str() const {

@@ -97,8 +97,6 @@ float* weight_data;             // [Expert0_weights | Expert1_weights | ...]
 
 - Offsets and sizes have dynamic size based on active ((!) not total) experts (therefore extra array is needed),
   that is a bit different from the PyTorch/proposed oneDNN design, but compatible.
-- Current version provides offsets on host,
-  but device-side offsets expected for the future GPU-based routing.
 
 ## oneDNN Grouped GEMM Support
 
@@ -107,14 +105,20 @@ The main target is GPU execution, since MoE workloads are primarily run on GPUs,
 and ultimately we want to reduce number of kernel launches and be able to handle
 the runtime variable dimensions per expert located on device side after routing.
 
+**Note:**  Due to MoE and Grouped GEMM evolving and frameworks experimenting
+with various designs, current proposal for oneDNN is to introduce changes
+as experimental feature (`-DONEDNN_EXPERIMENTAL_GROUPED_GEMM=ON`), so that we can iterate
+on feedback before stabilizing the API.
+
 ### Proposal #1: Via New Grouped Memory Descriptor (Recommended)
 
 This proposal adds a new grouped memory descriptor that works with the
 existing matmul primitive.
 
-The idea is to represent grouped GEMM data as a "sparse" encoding similar
-to CSR format. Data is stored as concatenated blocks where each expert
-processes a different number of tokens.
+The idea is to represent grouped GEMM data as a new encoding somewhat similar
+to the support of CSR format.
+
+Data is stored as concatenated blocks where each expert processes a different number of tokens.
 
 Representation is:
 ```
@@ -124,45 +128,42 @@ Block sizes:       [M0 x K  | M1 x K  | M2 x K  | M3 x K ]
 Offsets array is for tracking where each expert starts:
 offsets = [0, M0, M0+M1, M0+M1+M2, M0+M1+M2+M3]
 
-Note: Why "sparse"? M_i can be zero if an expert receives no tokens.
-In that case, the next expert starts at the same offset, similar to CSR format row pointers.
+In the case of M_i equals zero, the next expert starts at the same offset, similar to CSR format row pointers.
 Example: if M1 = 0, then offsets = [0, M0, M0, M0 + M2, M0 + M2 + M3]
 ```
 
 The grouped memory descriptor defines:
 - Block count: `num_experts` (known at creation)
 - Total elements: `num_input_tokens x TOP_K x K` (known at creation)
-- Block dimensions: `[Mi x K]` where `Mi` is runtime, `K` is fixed
 - Data types: values and offsets (known at creation)
 - Values buffer: Contiguous data sum(Mi x K) (provided at execution)
 - Offsets buffer: `[0, M0, M0 + M1, ...]` size `num_experts + 1` (at execution)
 
-This representation is analogous to CSR sparse format. CSR uses row
-pointers and column indices to describe sparse structure. The grouped
-descriptor uses offsets to mark block boundaries.
-Empty blocks (experts with zero tokens) are skipped via offsets.
-Structure is known at primitive creation, while runtime dimensions and buffers
-are resolved at execution time using device-side data.
+This representation is analogous to CSR sparse format:
+- CSR uses row pointers and column indices to describe sparse structure, buffers are resolved
+when memory object is created
+- Similarly, the grouped descriptor uses offsets to mark boundaries of each expert's data,
+so that experts with zero tokens are skipped via offsets.
+  - Structure is known at primitive creation, while runtime dimensions and buffers
+    are resolved at execution time using device-side data.
+
+**Note:** Due to these similarities, the proposal is to incorporate grouped encoding under
+`sparse_encoding` enum. Moreover, the suggestion is to rename `sparse_encoding` to `multi_buffer_encoding`
+(or similar) in the next major release to better reflect its expanded purpose.
 
 #### Memory Descriptor API
 
-The grouped memory descriptor is created similarly to CSR descriptors:
+The grouped memory descriptor API is:
 
 ```cpp
 static memory::desc grouped(
-    const dims &adims,               // Overall tensor dims [total_M, K]
-    data_type adata_type,            // Elements data type
-    dim group_count,                 // Group size or number of experts (all, not just active ones)
-    const dims &grouped_dims,        // Group dimensions (clarification below)
-    data_type offsets_dt = s32,      // Offset buffer dtype (default int32)
-    const dims &astrides = {});      // Optional strides (default row-major)
+    const dims &adims,           // Overall tensor dims [total_M, K]
+    data_type adata_type,        // Data type for values
+    int variable_dim_idx,        // Which dimension varies (0 for M dimension)
+    dim group_count,             // Number of groups (all experts, not just active)
+    data_type offsets_dt = s32   // Offset data type (default int32)
+);
 ```
-
-Suggestion is to allow specifying `grouped_dims` in two ways for convenience:
-- **Shared dimensions**: `{M, K}` where M can be RUNTIME_DIM_VAL (size = 2)
-    - Useful for device-side runtime dimension M
-- **Per-group dimensions**: `{M0, K, M1, K, ...}` (size = group_count * 2)
-    - Useful when all dimensions are known on the host in advance
 
 The descriptor specifies a memory object with 2 buffers:
 - Buffer 0: Values, contiguous data organized as groups
@@ -171,12 +172,25 @@ The descriptor specifies a memory object with 2 buffers:
 Example:
 ```cpp
 auto src_md = memory::desc::grouped(
-    {total_tokens, K},              // Overall shape
-    dt::f32,                        // Data type
-    num_experts,                    // Group count
-    {DNNL_RUNTIME_DIM_VAL, K},      // Shared per-group dims
-    dt::s32);                       // Offset dtype
+    {total_tokens, K},      // Overall shape
+    dt::f32,                // Data type
+    0,                      // M dimension varies
+    num_experts);           // Group count
 ```
+
+**Note on Layout:** The grouped descriptor does not allow explicit row-major
+or column-major layout specification because the layout is tied to the variable dimension.
+When `variable_dim_idx = 0` (M varies), the layout is implicitly row-major.
+When `variable_dim_idx = 1` (K varies), the layout is implicitly column-major.
+This constraint ensures the variable dimension corresponds to the outer dimension.
+Support for `variable_dim_idx = 1` is for the backward pass of MoE layers.
+In the backward pass, gradients are computed with respect to the input,
+which involves transposed matrix operations where the K dimension becomes variable
+across experts.
+
+This is a simple version of the grouped descriptor, that could be extended in the future
+to support more use cases (e.g. explicit padding or strides information) if needed.
+Currently offsets could accommodate padding between experts if this is required.
 
 #### Memory Object Creation
 
@@ -189,6 +203,7 @@ int32_t* offsets;    // num_experts + 1 offsets
 
 // Create memory object with 2 buffers
 memory src_mem(src_md, eng, {values, offsets});
+memory dst_mem(dst_md, eng, {output_values, offsets});
 ```
 
 #### Primitive Descriptor Creation
@@ -201,27 +216,30 @@ int total_tokens = num_input_tokens * TOP_K;
 
 // Create grouped memory descriptors for src and dst
 auto src_md = memory::desc::grouped(
-    {total_tokens, K},              // Overall shape
-    dt::f32,                        // Data type
-    num_experts,                    // Group count
-    {DNNL_RUNTIME_DIM_VAL, K});     // Shared per-group dims [Mi, K]
+    {total_tokens, K},      // Overall shape
+    dt::f32,                // Data type
+    0,                      // M dimension varies
+    num_experts);           // Group count
 
 auto dst_md = memory::desc::grouped(
-    {total_tokens, N},              // Overall shape
-    dt::f32,                        // Data type
-    num_experts,                    // Group count
-    {DNNL_RUNTIME_DIM_VAL, N});     // Shared per-group dims [Mi, N]
+    {total_tokens, N},
+    dt::f32,
+    0,
+    num_experts);
 
 // Weights: 3D dense tensor [num_experts, K, N]
 auto weights_md = memory::desc({num_experts, K, N}, dt::f32, tag::abc);
 
-// Create matmul primitive descriptor (no changes)
+// Bias: 2D tensor [num_experts, N]
+auto bias_md = memory::desc({num_experts, N}, dt::f32, tag::ab);
+
+// Create matmul primitive descriptor
 auto matmul_pd = matmul::primitive_desc(
     eng,
     src_md,                 // Grouped src descriptor
     weights_md,             // Dense 3D weights
-    dst_md,                 // Grouped dst descriptor
-    attr);
+    bias_md,                // Dense 2D bias
+    dst_md);                // Grouped dst descriptor
 
 // Create matmul primitive (no changes)
 auto matmul_prim = matmul(matmul_pd);
@@ -242,11 +260,13 @@ int32_t* device_offsets;
 memory src_mem(src_md, eng, {input_data, device_offsets});
 memory dst_mem(dst_md, eng, {output_data, device_offsets});
 memory weights_mem(weights_md, eng, weights_data); // regular 3D weights
+memory bias_mem(bias_md, eng);
 
 // Configure matmul arguments (no changes)
 std::unordered_map<int, memory> args;
 args.insert({DNNL_ARG_SRC, src_mem});
 args.insert({DNNL_ARG_WEIGHTS, weights_mem});
+args.insert({DNNL_ARG_BIAS, bias_mem});
 args.insert({DNNL_ARG_DST, dst_mem});
 
 matmul_prim.execute(stream, args);
@@ -256,46 +276,54 @@ matmul_prim.execute(stream, args);
 
 Note, that scaling pattern is expected to be the same across all experts
 (i.e., all experts use either per-tensor, per-row, per-column, or block-wise scaling,
-no mixing).
+no mixing), therefore setting up scales is similar to regular matmul usage,
+meaning we need to specify scaling mask via attribute as if for individual expert.
 
-How scale memory descriptors could be configured depending on scaling granularity:
+**Scales Memory Options:** Suggestion is to keep scales as plain memory descriptors,
+since scales `offsets` buffer could be derived from src/dst.
 
-- Per-tensor for src: regular 1D descriptor `[num_experts]`
+Snippets below cover most commonly used patterns:
+
+- Row-wise for src: 1D descriptor `[total_tokens]`
 ```cpp
-auto scales_md = memory::desc({num_experts}, dt::f32, tag::x);
-// Memory: [E0: s0 | E1: s1 | E2: s2 | ...] - one scale per expert concatenated
+auto scales_md = memory::desc({total_tokens}, dt::f32, tag::x);
+// Values: [E0_row_scales | E1_row_scales | E2_row_scales | ...]
+// Offsets are derived from src offsets
+
+primitive_attr attr;
+attr.set_scales(DNNL_ARG_SRC,
+                1 << 0,    // Row-wise
+                {},        // No groups
+                dt::f32);
 ```
 
-- Per-row for src: grouped descriptor `[num_experts x Mi]`
-```cpp
-auto scales_md = memory::desc::grouped(
-    {total_tokens},                 // Overall shape [total_M]
-    dt::f32,                        // Data type
-    num_experts,                    // Group count
-    {DNNL_RUNTIME_DIM_VAL});        // Shared per-group dims [Mi]
-// Memory: 2 buffers (values + offsets)
-// Values: [E0_row_scales | E1_row_scales | E2_row_scales | ...] - contiguous
-// Offsets: [0, M0, M0 + M1, ...] <- same as src offsets (!)
-```
-
-- Per-column for weights: regular 2D descriptor `[num_experts x N]`
+- Column-wise for weights: 2D descriptor `[num_experts x N]`
 ```cpp
 auto scales_md = memory::desc({num_experts, N}, dt::f32, tag::ab);
-// Memory: [E0: N scales | E1: N scales | ...]
+// Values: [E0: N scales | E1: N scales | ...]
+
+primitive_attr attr;
+attr.set_scales(DNNL_ARG_WEIGHTS,
+                (1 << 0) | (1 << 2),  // Dimensions 0 (experts) and 2 (N)
+                {},                   // No groups
+                dt::f32);
 ```
 
-- Block-wise: grouped descriptor
+- Grouped scales for weights: 3D descriptor `[num_experts x num_groups_K x N]`
 ```cpp
-// For src [total_tokens x K] with block_size=32 along K
-int block_size = 32;
-auto scales_md = memory::desc::grouped(
-    {total_tokens, K / block_size}, // Overall shape
-    dt::f32,                        // Data type
-    num_experts,                    // Group count
-    {DNNL_RUNTIME_DIM_VAL, K / block_size}); // Shared dims [Mi, K/32]
-// Memory: 2 buffers (values + offsets)
-// Values: [E0: M0 x (K/32) | E1: M1 x (K/32) | ...] - contiguous blocks
-// Offsets: [0, M0, M0 + M1, ...] <- same as src offsets (!)
+int group_size = 32;
+
+auto scales_md = memory::desc(
+    {num_experts, K / group_size, N},
+    dt::f32,
+    tag::abc);
+// Values: [E0: (K/32) x N | E1: (K/32) x N | ...]
+
+primitive_attr attr;
+attr.set_scales(DNNL_ARG_WEIGHTS,
+                (1 << 0) | (1 << 1) | (1 << 2),  // Dimensions 0 (experts), 1 (K), 2 (N) all vary
+                {1, group_size, 1},              // Grouping along K
+                dt::f32);
 ```
 
 ### Proposal #2: Via New Attribute for Offsets

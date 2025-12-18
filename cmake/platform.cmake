@@ -161,22 +161,25 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
 
         set(CAN_COMPILE_RVV_INTRINSICS TRUE)
 
-        # If the user explicitly passed DNNL_ARCH_OPT_FLAGS without Zvfh in
-        # the -march string, respect that and do not enable Zvfh code paths
-        # even if the toolchain supports them.
+        # If explicitly passed DNNL_ARCH_OPT_FLAGS without V or Zvfh in the -march 
+        # string, disable their code paths even if the toolchain supports them.
         if (DEFINED DNNL_ARCH_OPT_FLAGS AND DNNL_ARCH_OPT_FLAGS MATCHES "-march=")
+            string(FIND "${DNNL_ARCH_OPT_FLAGS}" "gcv" _dnnl_rv64_v_pos)
             string(FIND "${DNNL_ARCH_OPT_FLAGS}" "zvfh" _dnnl_rv64_zvfh_pos)
-            if (_dnnl_rv64_zvfh_pos EQUAL -1)
+            if (_dnnl_rv64_v_pos EQUAL -1)
+                set(CAN_COMPILE_RVV_INTRINSICS FALSE)
+                set(CAN_COMPILE_ZVFH_INTRINSICS FALSE)
+            elseif (_dnnl_rv64_zvfh_pos EQUAL -1)
                 set(CAN_COMPILE_ZVFH_INTRINSICS FALSE)
             endif()
         endif()
 
         if (CAN_COMPILE_ZVFH_INTRINSICS)
-            set(CAN_COMPILE_ZVFH_INTRINSICS TRUE)
             set(RV64_MARCH_FLAG "-march=rv64gcv_zvfh")
-        else()
-            set(CAN_COMPILE_ZVFH_INTRINSICS FALSE)
+        elseif (CAN_COMPILE_RVV_INTRINSICS)
             set(RV64_MARCH_FLAG "-march=rv64gcv")
+        else()
+            set(RV64_MARCH_FLAG "-march=rv64gc")
         endif()
     else()
         # RVV is not supported, so Zvfh is also not supported

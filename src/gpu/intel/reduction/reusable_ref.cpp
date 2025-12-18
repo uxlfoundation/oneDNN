@@ -42,11 +42,6 @@ dim_idx_t inner = 2;
 } // namespace dims
 } // namespace
 
-static const std::vector<dim_idx_t> dispatch_dims {
-        dims::outer,
-        dims::inner,
-};
-
 ref_conf_t::ref_conf_t(const subproblem_t &subprb, alg_kind_t alg,
         data_type_t src_dt, data_type_t dst_dt,
         const compute::device_info_t &device_info,
@@ -70,20 +65,22 @@ status_t ref_conf_t::init_dispatcher(const subproblem_t &subprb,
 
     compute::named_buffer_t src_buf(compute::name_id_t::src);
     src_buf.data_type = conf.src_dt;
-    src_buf.append_block(dims::outer, subprb.outer_block.block);
-    src_buf.append_block(dims::reduction, subprb.reduction_block.block);
-    src_buf.append_block(dims::inner, subprb.inner_block.block);
+    src_buf.insert(dims::outer, subprb.outer_block.block);
+    src_buf.insert(dims::reduction, subprb.reduction_block.block);
+    src_buf.insert(dims::inner, subprb.inner_block.block);
+
     compute::named_buffer_t dst_buf(compute::name_id_t::dst, src_buf);
     dst_buf.data_type = conf.dst_dt;
     dst_buf.remove_dim(dims::reduction);
 
-    compute::reusable_dispatch_config_t config(&engine, dispatch_dims);
+    auto lws_strategy = compute::default_lws_strategy_t(&engine);
+    compute::reusable_dispatch_config_t config(
+            {dims::inner, dims::outer}, lws_strategy);
     CHECK(config.register_buffer(src_buf));
     CHECK(config.register_buffer(dst_buf));
 
     compute::reusable_dispatch_t dispatch;
-    CHECK(config.generate(
-            dispatch, compute::default_lws_strategy_t(&engine, gpu_attr)));
+    CHECK(config.generate(dispatch));
     conf.params = dispatch.get_compile_params();
     rt_conf = dispatch.get_runtime_params();
 

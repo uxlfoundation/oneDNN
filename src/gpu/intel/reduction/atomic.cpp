@@ -38,43 +38,6 @@ namespace reduction {
 
 using namespace gpu_utils;
 
-class atomic_lws_strategy_t : public compute::lws_strategy_t {
-public:
-    bool is_included(const compute::mapped_block_t &blocks) const override {
-        for (const block_t &block : inc_blocks) {
-            if (blocks.get_dim_idx() == into<size_t>(block.dim_idx)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    void include(dim_idx_t dim, size_t size) {
-        inc_blocks.emplace_back(into<dim_t>(dim), into<dim_t>(size), 1);
-    }
-
-private:
-    using compute::lws_strategy_t::lws_strategy_t;
-    compute::range_t create_lws(compute::range_t &gws,
-            const compute::gws_bin_mapping_t &mapper) const override {
-        auto lws = compute::range_t::one(gws.ndims());
-
-        for (size_t i = 0; i < gws.ndims(); i++) {
-            const auto &bins = mapper.get_bins(i);
-            if (bins.empty()) continue;
-            for (const block_t &inc_block : inc_blocks) {
-                if (bins[0].get_dim_idx() == into<size_t>(inc_block.dim_idx)) {
-                    lws[i] *= into<size_t>(inc_block.block);
-                }
-            }
-        }
-
-        return lws;
-    }
-
-    std::vector<block_t> inc_blocks;
-};
-
 // 3 relevant blocks: inner, reduction, and outer
 // inner is broken up into subgroup, vector, and inner_group
 //  -- vector block is implicit: it's not dispatched or broadcasted,
@@ -245,7 +208,7 @@ status_t atomic_conf_t::init_dispatcher(
             conf.subgroup_size,
     };
     for (size_t dim_idx = 0; dim_idx < all_dims.size(); dim_idx++) {
-        src.append_block(all_dims[dim_idx], sizes[dim_idx]);
+        src.insert(all_dims[dim_idx], sizes[dim_idx]);
     }
     // the loop dim may have padding - update the outer block's stride to avoid it
     dim_idx_t src_outer_idx = src.get_dim_idx(dims::outer);
@@ -270,22 +233,25 @@ status_t atomic_conf_t::init_dispatcher(
             = inner_block.block / conf.vect_size;
 
     // Create the dispatcher
+    if (!engine->device_info()->mayiuse_sub_group(conf.subgroup_size))
+        return status::unimplemented;
+
+    std::array<compute::lws_strategy_t::dim_info_t, 3> lws_info;
+    lws_info[0] = {src.layout()[0].dim_idx, int64_t(conf.subgroup_size)};
+    lws_info[1] = {dims::local, conf.local_acc};
+
+    compute::explicit_lws_strategy_t lws_strat(conf.subgroup_size, lws_info);
     compute::reusable_dispatch_config_t config(
-            engine, std::move(dispatch_dims));
+            std::move(dispatch_dims), lws_strat);
     CHECK(config.register_buffer(src));
     CHECK(config.register_buffer(dst));
     CHECK(config.define_dim_index(
             compute::name_id_t::atomic, dims::global, conf.global_acc));
     CHECK(config.define_dim_index(
             compute::name_id_t::local, dims::local, conf.local_acc));
-    CHECK(config.use_subgroup(
-            src.get_name_id(), into<size_t>(conf.subgroup_size)));
 
     compute::reusable_dispatch_t dispatch;
-    atomic_lws_strategy_t lws_strat(engine, gpu_attr);
-    lws_strat.include(dims::local, into<size_t>(conf.local_acc));
-    lws_strat.include(dims::subgroup, into<size_t>(conf.subgroup_size));
-    CHECK(config.generate(dispatch, lws_strat));
+    CHECK(config.generate(dispatch));
     conf.params = dispatch.get_compile_params();
     rt_conf = dispatch.get_runtime_params();
 

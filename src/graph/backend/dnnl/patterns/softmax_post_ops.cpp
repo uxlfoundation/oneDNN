@@ -89,6 +89,20 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_softmax_post_ops)
             return std::make_shared<softmax_fwd_t>();
         });
 
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_softmax_dropout)
+        .set_priority(8.3f)
+        .set_kind(partition_kind_t::misc_post_ops)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    pm::pb_op_t *softmax_base
+                            = pgraph->append_op(graph::op_kind::SoftMax);
+                    pgraph->append_op(graph::op_kind::Dropout,
+                            in_edges_t {in_edge(0, softmax_base, 0)});
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<softmax_fwd_t>();
+        });
+
 DNNL_BACKEND_REGISTER_PATTERN_DEF_END
 
 } // namespace pattern

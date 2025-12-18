@@ -378,6 +378,25 @@ DNNL_GRAPH_OP_SCHEMA(Divide, 1,
                 .set_shape_inference_function(
                         infer_elemwise_arithmetic_output_shape))
 
+DNNL_GRAPH_OP_SCHEMA(Dropout, 1,
+        op_schema_t()
+                .set_num_inputs(4)
+                .set_outputs_option(op_schema_t::param_num_option::optional)
+                .set_num_outputs(std::set<size_t>({1, 2}))
+                .set_input(0, "src", "T")
+                .set_input(1, "seed", "T_seed")
+                .set_input(2, "offset", "T_offset")
+                .set_input(3, "probability", "T_p")
+                .set_output(0, "dst", "T")
+                .set_output(1, "mask", "T_mask")
+                .set_type_constraints(
+                        "T", {data_type::f32, data_type::bf16, data_type::f16})
+                .set_type_constraints("T_seed", {data_type::s64})
+                .set_type_constraints("T_offset", {data_type::s64})
+                .set_type_constraints("T_p", {data_type::f32})
+                .set_type_constraints("T_mask", {data_type::u8})
+                .set_shape_inference_function(infer_dropout_output_shape))
+
 DNNL_GRAPH_OP_SCHEMA(Elu, 1,
         op_schema_t()
                 .set_num_inputs(1)

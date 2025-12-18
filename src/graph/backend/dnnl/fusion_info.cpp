@@ -211,6 +211,12 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                 static_cast<dnnl::memory::data_type>(zps_data_type));
     }
 
+    if (fusion_info.dropout_) {
+        memory::desc mask_desc;
+        attr.set_dropout(mask_desc, /*seed_dt*/ memory::data_type::s64,
+                /*use_offset*/ true, /*use_host_scalars*/ true);
+    }
+
     // convert post ops
     dnnl::post_ops dnnl_pops;
     for (auto &pop : fusion_info.get_post_ops()) {

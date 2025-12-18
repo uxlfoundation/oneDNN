@@ -65,6 +65,7 @@ const data_type_t f8_e5m2 = dnnl_f8_e5m2;
 const data_type_t f8_e4m3 = dnnl_f8_e4m3;
 const data_type_t s4 = dnnl_s4;
 const data_type_t u4 = dnnl_u4;
+const data_type_t s64 = dnnl_s64;
 } // namespace data_type
 
 using partition_policy_t = dnnl_graph_partition_policy_t;
@@ -213,6 +214,7 @@ const op_kind_t Tanh = dnnl_graph_op_tanh;
 const op_kind_t TanhBackward = dnnl_graph_op_tanh_backward;
 const op_kind_t TypeCast = dnnl_graph_op_type_cast;
 const op_kind_t Wildcard = dnnl_graph_op_wildcard;
+const op_kind_t Dropout = dnnl_graph_op_dropout;
 const op_kind_t LastSymbol = dnnl_graph_op_last_symbol;
 } // namespace op_kind
 

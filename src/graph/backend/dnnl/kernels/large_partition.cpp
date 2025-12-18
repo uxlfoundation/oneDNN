@@ -176,6 +176,9 @@ void larger_partition_kernel_t::prepare_args_set(
         const tensor_t &ts = inputs[mem_idx.second];
         const logical_tensor_t lt = ts.get_logical_tensor();
         const logical_tensor_wrapper_t ltw(lt);
+        printf("DEBUG: id=%zu is_host_scalar=%d format_kind=%d\n", lt.id,
+                (int)ltw.is_host_scalar(),
+                (int)mem.get_desc().get_format_kind());
         if (ltw.is_host_scalar()) {
             DNNL_HOST_SCALAR_TYPE_SWITCH(ltw.data_type(), DType, {
                 mem.set_host_scalar_value(

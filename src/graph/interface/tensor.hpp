@@ -64,6 +64,7 @@ private:
         // property is host_scalar
         int32_t s32_value = 0;
         float f32_value;
+        int64_t s64_value;
         // TODO: add more dtype support
     } scalar_;
 };

@@ -487,12 +487,26 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.batch = BatchMode::Strided;
         problem_.batchDims = batch_dims;
     }
+#if 0
     if (a_quant.zp_ndims >= 0 || a_quant.zp_hostscalar)
         problem_.aOffset = ABOffset::Calc;
     if (b_quant.zp_ndims >= 0 || a_quant.zp_hostscalar)
         problem_.bOffset = ABOffset::Calc;
     problem_.aoPtrDims = a_quant.zp_hostscalar ? -1 : a_quant.zp_ndims;
     problem_.boPtrDims = b_quant.zp_hostscalar ? -1 : b_quant.zp_ndims;
+#else
+    problem_.aOffset = a_quant.has_zp ? ABOffset::Calc : ABOffset::None;
+    problem_.bOffset = b_quant.has_zp ? ABOffset::Calc : ABOffset::None;
+    problem_.aoPtrDims = a_quant.zp_ndims;
+    problem_.boPtrDims = b_quant.zp_ndims;
+    VDEBUGINFO(4, primitive, MYgemm, "a_quant.has_zp b_quant.has_zp = %d %d", a_quant.has_zp, b_quant.has_zp);
+    VDEBUGINFO(4, primitive, MYgemm, "a_quant.zp_ndims b_quant.zp_ndims = %d %d", a_quant.zp_ndims, b_quant.zp_ndims);
+    VDEBUGINFO(4, primitive, MYgemm, "problem_.aOffset bOffset = %d %d", (int)problem_.aOffset, (int)problem_.bOffset);
+    VDEBUGINFO(4, primitive, MYgemm, "problem_.aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims, problem_.boPtrDims);
+#endif
+
+
+
     problem_.AO.layout = MatrixLayout::N;
     problem_.BO.layout
             = (problem_.bOffset2D()) ? MatrixLayout::N : MatrixLayout::T;

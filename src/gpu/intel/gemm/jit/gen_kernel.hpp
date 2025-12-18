@@ -126,7 +126,7 @@ struct quant_params {
     int group_n;
     bool force_gs;
     bool mx;
-    bool zp_hostscalar;
+    bool has_zp;
 };
 
 struct gen_nocopy_desc_t : public gen_desc_t {

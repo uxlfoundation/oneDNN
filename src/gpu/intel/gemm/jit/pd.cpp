@@ -31,10 +31,12 @@ using namespace intel::jit;
 
 namespace {
 
-// Obtain dimension count for gemmstone (common scales give count 0).
+// Obtain dimension count for gemmstone
+// Common scales give count 0, host side scalars give -1.
 int quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &qmd, int k_idx) {
     if (entry.has_default_values()) return -1;
+    if (entry.is_host_scalar()) return -1;
     if (qmd.ndims < 2) return 0;
 
     // Count the number of nontrivial (dim > 1) dimensions present
@@ -243,6 +245,7 @@ status_t pd_t::init_attrs() {
     auto ndims = d->c_desc.ndims;
     ao_dims_ = quant_entry_ndims(a_zps, a_zp_md_, ndims - 2);
     bo_dims_ = quant_entry_ndims(b_zps, b_zp_md_, ndims - 1);
+    VDEBUGINFO(4, primitive, MYgemm, "quant_entry_ndims: ao_dims_ bo_dims_ = %d %d", ao_dims_, bo_dims_);
     ag_dims_ = quant_entry_ndims(a_gs, a_gs_md_, ndims - 2);
     bg_dims_ = quant_entry_ndims(b_gs, b_gs_md_, ndims - 1);
     asc_dims_ = quant_entry_ndims(a_scales, a_scale_md_, ndims - 2);

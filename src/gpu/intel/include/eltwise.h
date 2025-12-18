@@ -19,6 +19,9 @@
 
 #include "gpu/intel/include/dnnl_interop.h"
 #include "gpu/intel/include/types.h"
+#if !WITH_PUNNING
+#include "gpu/intel/include/conversion.h"
+#endif
 
 #if DT_F16 == 1
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
@@ -61,8 +64,13 @@ POST_OP_DATA_T linear_bwd(POST_OP_DATA_T dd, float alpha) {
 }
 
 POST_OP_DATA_T soft_relu_fwd(POST_OP_DATA_T s, float alpha) {
+#if WITH_PUNNING
+    POST_OP_DATA_T data_max = (POST_OP_DATA_T)DATA_MAX;
+#else
+    POST_OP_DATA_T data_max = CONCAT2(into_, POST_OP_DATA_T)(DATA_MAX);
+#endif
     s = alpha * s;
-    POST_OP_DATA_T v = (s < log((POST_OP_DATA_T)DATA_MAX) ? log1p(exp(s)) : s);
+    POST_OP_DATA_T v = (s < log(data_max) ? log1p(exp(s)) : s);
     return v / alpha;
 }
 POST_OP_DATA_T soft_relu_bwd(POST_OP_DATA_T dd, POST_OP_DATA_T s, float alpha) {

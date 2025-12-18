@@ -522,9 +522,11 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
 
         emad(1, state.offsetB, state.offsetB, shiftJ0, state.inputs.ldb, strategy, state);
         emad(1, state.offsetC[0], state.offsetC[0], shiftJ0, state.inputs.ldc[0], strategy, state);
-        add(1, state.j0, state.j0, -shiftJ0);
-        if (state.wgJ0.isValid())
-            mov(1, state.wgJ0, 0);
+        if (state.wgJ0.isValid()) {
+            add(1, state.j0, state.j0, -shiftJ0);
+            divUp(state.j0, state.j0, strategy.cInterleaveChunk, strategy, state);
+        }
+        mov(1, shiftJ0, 0);
 
         if (!strategy.persistentLoop()) {
             state.ra.safeRelease(state.inputs.ldb);

@@ -928,6 +928,7 @@ struct memory : public handle<dnnl_memory_t> {
         f32 = dnnl_f32,
         //// [64-bit/double-precision floating point](https://en.wikipedia.org/wiki/Double-precision_floating-point_format).
         f64 = dnnl_f64,
+        s64 = dnnl_s64,
         /// 32-bit signed integer.
         s32 = dnnl_s32,
         /// 8-bit signed integer.

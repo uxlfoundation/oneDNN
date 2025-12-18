@@ -277,6 +277,8 @@ public:
         s4 = dnnl_s4,
         /// 4-bit unsigned integer.
         u4 = dnnl_u4,
+        /// 64-bit signed integer.
+        s64 = dnnl_s64,
     };
 
     /// Layout type
@@ -862,6 +864,7 @@ public:
         Wildcard = dnnl_graph_op_wildcard,
         GenIndex = dnnl_graph_op_gen_index,
         GreaterEqual = dnnl_graph_op_greater_equal,
+        Dropout = dnnl_graph_op_dropout,
         // Sentinel
         LastSymbol = dnnl_graph_op_last_symbol,
     };

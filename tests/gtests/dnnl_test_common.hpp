@@ -308,7 +308,23 @@ struct acc_t<uint8_t> {
     using type = int;
 };
 
-// Smart pointer for map/unmap operations with unique_ptr semantics
+// Smart pointer for map/unmap operations with unique_ptr semantics.
+//
+// Note: this abstraction works only under assumption that execution post this
+// object construction is synchronous. However, this assumption doesn't hold for
+// asynchronous threadpool runtime (ATR); it also requires any object being
+// copyable when captured by a parallel-like call but this class restricts a
+// copy.
+// To overcome this limitation a trick is used which, in turn, relies on another
+// assumption that ATR doesn't require real mapping and freely uses a bare
+// pointer provided by this abstraction when accessing it.
+// Thus, runtimes relying on mapping will execute in synchronous mode and use
+// a mapped pointer with this abstraction unmapping it at its destruction, and
+// other runtimes just using a bare pointer.
+//
+// If the latter assumption will no longer hold, there's no other way but to do
+// honest manual mapping and unmapping and passing a pointer inside parallel
+// calls to satisfy all runtimes requirements.
 template <typename T>
 struct mapped_ptr_t {
     using nonconst_type = typename std::remove_cv<T>::type;
@@ -395,6 +411,15 @@ inline memory::desc create_md(const memory::dims &dims,
     return memory::desc(dims, data_type, fmt_tag);
 }
 
+inline void synchronize_threadpool(dnnl::engine::kind akind) {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    if (akind == dnnl::engine::kind::cpu) {
+        auto *tp = dnnl::testing::get_threadpool();
+        if (tp) tp->wait();
+    }
+#endif
+}
+
 template <typename data_t>
 static inline data_t set_value(
         memory::dim index, data_t mean, data_t deviation, double sparsity) {
@@ -422,7 +447,7 @@ static inline data_t set_value(
 template <typename data_t>
 static void fill_data(const memory::dim nelems, data_t *data, data_t mean,
         data_t deviation, double sparsity = 1.) {
-    dnnl::impl::parallel_nd(nelems, [&](memory::dim n) {
+    dnnl::impl::parallel_nd(nelems, [=](memory::dim n) {
         data[n] = set_value<data_t>(n, mean, deviation, sparsity);
     });
 }
@@ -432,6 +457,7 @@ static void fill_data(const memory::dim nelems, const memory &mem, data_t mean,
         data_t deviation, double sparsity = 1.) {
     auto data_ptr = map_memory<data_t>(mem);
     fill_data<data_t>(nelems, data_ptr, mean, deviation, sparsity);
+    synchronize_threadpool(mem.get_engine().get_kind());
 }
 
 inline void fill_data(memory::data_type dt, const memory &mem, float mean,
@@ -465,12 +491,13 @@ inline void fill_data(memory::data_type dt, const memory &mem, float mean,
             break;
         default: assert(!"unsupported data type"); break;
     }
+    synchronize_threadpool(mem.get_engine().get_kind());
 }
 
 template <typename data_t>
 static void fill_data(const memory::dim nelems, data_t *data,
         double sparsity = 1., bool init_negs = false) {
-    dnnl::impl::parallel_nd(nelems, [&](memory::dim n) {
+    dnnl::impl::parallel_nd(nelems, [=](memory::dim n) {
         data[n] = set_value<data_t>(n, data_t(1), data_t(0.2f), sparsity);
 
         if (init_negs && n % 4 == 0)
@@ -484,13 +511,15 @@ static void fill_data(const memory::dim nelems, const memory &mem,
         double sparsity = 1., bool init_negs = false) {
     auto data_ptr = map_memory<data_t>(mem);
     fill_data<data_t>(nelems, data_ptr, sparsity, init_negs);
+    synchronize_threadpool(mem.get_engine().get_kind());
 }
 
 template <typename data_t>
 static void remove_zeroes(const memory &mem) {
     size_t nelems = mem.get_desc().get_size() / sizeof(data_t);
-    auto data_ptr = map_memory<data_t>(mem);
-    dnnl::impl::parallel_nd(nelems, [&](memory::dim n) {
+    auto mem_data = map_memory<data_t>(mem);
+    data_t *data_ptr = mem_data;
+    dnnl::impl::parallel_nd(nelems, [=](memory::dim n) {
         if (data_ptr[n] == data_t(0)) data_ptr[n] += data_t(1);
     });
 }
@@ -527,10 +556,12 @@ static void compare_data(
         num *= dims[d];
     }
 
-    auto ref_data = map_memory<data_t>(ref);
-    auto dst_data = map_memory<data_t>(dst);
+    auto ref_mapped = map_memory<data_t>(ref);
+    data_t *ref_data = ref_mapped;
+    auto dst_mapped = map_memory<data_t>(dst);
+    data_t *dst_data = dst_mapped;
 
-    dnnl::impl::parallel_nd(num, [&](memory::dim i) {
+    dnnl::impl::parallel_nd(num, [=](memory::dim i) {
         if (is_current_test_failed()) return;
 
         data_t ref = ref_data[mdw_ref.off_l(i, true)];
@@ -553,6 +584,8 @@ static void compare_data(
             ASSERT_EQ(ref, got) << "Index: " << i << " Total: " << num;
         }
     });
+
+    synchronize_threadpool(dst.get_engine().get_kind());
 }
 
 inline const char *query_impl_info(const_dnnl_primitive_desc_t pd) {

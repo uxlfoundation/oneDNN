@@ -29,10 +29,14 @@ void compute_ref_conv_eltwise_fwd(const test_convolution_sizes_t &c,
         const memory &src, const memory &weights, const memory &bias,
         const memory &dst, bool w_bias, algorithm elt_alg, float elt_alpha,
         float elt_beta) {
-    auto src_data = map_memory<data_t_src>(src);
-    auto weights_data = map_memory<data_t_wei>(weights);
-    auto bias_data = w_bias ? map_memory<data_t_dst>(bias) : nullptr;
-    auto dst_data = map_memory<data_t_dst>(dst);
+    auto src_mapped = map_memory<data_t_src>(src);
+    data_t_src *src_data = src_mapped;
+    auto weights_mapped = map_memory<data_t_wei>(weights);
+    data_t_wei *weights_data = weights_mapped;
+    auto bias_mapped = map_memory<data_t_dst>(bias);
+    data_t_dst *bias_data = bias_mapped;
+    auto dst_mapped = map_memory<data_t_dst>(dst);
+    data_t_dst *dst_data = dst_mapped;
 
     const memory::desc src_d = src.get_desc();
     const memory::desc weights_d = weights.get_desc();
@@ -41,13 +45,13 @@ void compute_ref_conv_eltwise_fwd(const test_convolution_sizes_t &c,
     auto padded_ic = src_d.get_padded_dims()[1];
     auto padded_oc = dst_d.get_padded_dims()[1];
 
-    const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
-    const dnnl::impl::memory_desc_wrapper weights_mdw(weights_d.get());
-    const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
-
     dnnl::impl::parallel_nd(c.mb, c.ng, c.oc / c.ng, c.oh, c.ow,
-            [&](memory::dim n, memory::dim g, memory::dim oc, memory::dim oh,
+            [=](memory::dim n, memory::dim g, memory::dim oc, memory::dim oh,
                     memory::dim ow) {
+        const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
+        const dnnl::impl::memory_desc_wrapper weights_mdw(weights_d.get());
+        const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
+
         memory::dim oidx = n * padded_oc * c.oh * c.ow
                 + g * padded_oc / c.ng * c.oh * c.ow + oc * c.oh * c.ow
                 + oh * c.ow + ow;

@@ -34,17 +34,20 @@ struct deconvolution_test_params_t {
 template <typename data_t>
 void compute_bias_fwd(const test_convolution_sizes_t &c,
         const dnnl::memory &dst, const dnnl::memory &bias) {
-    auto bias_data = map_memory<data_t>(bias);
-    auto dst_data = map_memory<data_t>(dst);
+    auto bias_mapped = map_memory<data_t>(bias);
+    data_t *bias_data = bias_mapped;
+    auto dst_mapped = map_memory<data_t>(dst);
+    data_t *dst_data = dst_mapped;
 
     const memory::desc bias_d = bias.get_desc();
     const memory::desc dst_d = dst.get_desc();
-    const dnnl::impl::memory_desc_wrapper bias_mdw(bias_d.get());
-    const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
 
     dnnl::impl::parallel_nd(c.mb, c.ng, c.oc / c.ng, c.oh, c.ow,
-            [&](memory::dim n, memory::dim g, memory::dim oc, memory::dim oh,
+            [=](memory::dim n, memory::dim g, memory::dim oc, memory::dim oh,
                     memory::dim ow) {
+        const dnnl::impl::memory_desc_wrapper bias_mdw(bias_d.get());
+        const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
+
         data_t b = bias_data[bias_mdw.off_l(g * c.oc / c.ng + oc, true)];
         memory::dim oidx = n * c.oc * c.oh * c.ow
                 + g * c.oc / c.ng * c.oh * c.ow + oc * c.oh * c.ow + oh * c.ow
@@ -56,16 +59,19 @@ void compute_bias_fwd(const test_convolution_sizes_t &c,
 template <typename data_t>
 void compute_bias_bwd(const test_convolution_sizes_t &c,
         const dnnl::memory &dst, const dnnl::memory &bias) {
-    auto bias_data = map_memory<data_t>(bias);
-    auto dst_data = map_memory<data_t>(dst);
+    auto bias_mapped = map_memory<data_t>(bias);
+    data_t *bias_data = bias_mapped;
+    auto dst_mapped = map_memory<data_t>(dst);
+    data_t *dst_data = dst_mapped;
 
     const memory::desc bias_d = bias.get_desc();
     const memory::desc dst_d = dst.get_desc();
-    const dnnl::impl::memory_desc_wrapper bias_mdw(bias_d.get());
-    const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
 
     dnnl::impl::parallel_nd(
-            c.ng, c.oc / c.ng, [&](memory::dim g, memory::dim oc) {
+            c.ng, c.oc / c.ng, [=](memory::dim g, memory::dim oc) {
+        const dnnl::impl::memory_desc_wrapper bias_mdw(bias_d.get());
+        const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
+
         memory::dim bidx = g * c.oc / c.ng + oc;
         bias_data[bias_mdw.off_l(bidx, true)] = 0.0;
         for_(memory::dim mb = 0; mb < c.mb; ++mb)
@@ -83,17 +89,21 @@ void compute_bias_bwd(const test_convolution_sizes_t &c,
 template <typename data_t>
 void transpose_wei(const test_convolution_sizes_t &c,
         const dnnl::memory &weights, const dnnl::memory &weights_tr) {
+    auto weights_mapped = map_memory<data_t>(weights);
+    data_t *weights_data = weights_mapped;
+    auto weights_tr_mapped = map_memory<data_t>(weights_tr);
+    data_t *weights_tr_data = weights_tr_mapped;
 
-    auto weights_data = map_memory<data_t>(weights);
     const memory::desc weights_d = weights.get_desc();
-    const dnnl::impl::memory_desc_wrapper weights_mdw(weights_d.get());
-    auto weights_tr_data = map_memory<data_t>(weights_tr);
     const memory::desc weights_tr_d = weights_tr.get_desc();
-    const dnnl::impl::memory_desc_wrapper weights_tr_mdw(weights_tr_d.get());
 
     dnnl::impl::parallel_nd(c.ng, c.oc / c.ng, c.ic / c.ng, c.kh, c.kw,
-            [&](memory::dim g, memory::dim oc, memory::dim ic, memory::dim kh,
+            [=](memory::dim g, memory::dim oc, memory::dim ic, memory::dim kh,
                     memory::dim kw) {
+        const dnnl::impl::memory_desc_wrapper weights_mdw(weights_d.get());
+        const dnnl::impl::memory_desc_wrapper weights_tr_mdw(
+                weights_tr_d.get());
+
         memory::dim widx = g * c.oc / c.ng * c.ic / c.ng * c.kh * c.kw
                 + oc * c.ic / c.ng * c.kh * c.kw + ic * c.kh * c.kw + kh * c.kw
                 + kw;

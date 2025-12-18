@@ -33,7 +33,7 @@ TEST(primitive_cache_mt_test, TestGeneralCase) {
 
     memory::dim n_primitives = 12;
 
-    dnnl::impl::parallel_nd(n_primitives, [&](memory::dim np) {
+    dnnl::impl::parallel_nd(n_primitives, [=](memory::dim np) {
         auto md = memory::desc({{np, 1, 1, 1}, dt::f32, tag::nchw});
         auto relu_pd = eltwise_forward::primitive_desc(eng,
                 prop_kind::forward_inference, algorithm::eltwise_relu, md, md,
@@ -41,6 +41,7 @@ TEST(primitive_cache_mt_test, TestGeneralCase) {
         auto relu = eltwise_forward(relu_pd);
     });
 
+    synchronize_threadpool(eng.get_kind());
     ASSERT_EQ(get_primitive_cache_size(), n_primitives);
 }
 
@@ -58,7 +59,7 @@ TEST(primitive_cache_mt_test, TestNestedCase) {
     memory::dim n_primitives = 12;
     memory::dim n_srcs = 32;
 
-    dnnl::impl::parallel_nd(n_primitives, [&](memory::dim np) {
+    dnnl::impl::parallel_nd(n_primitives, [=](memory::dim np) {
         std::vector<memory::desc> src_mds(n_srcs);
         std::vector<float> scales(n_srcs, 1.0);
 
@@ -68,6 +69,7 @@ TEST(primitive_cache_mt_test, TestNestedCase) {
         auto sum_pd = sum::primitive_desc(eng, scales, src_mds);
         auto sum_prim = sum(sum_pd);
     });
+    synchronize_threadpool(eng.get_kind());
 }
 
 TEST(primitive_cache_mt_test, TestMTCacheHit) {
@@ -95,11 +97,12 @@ TEST(primitive_cache_mt_test, TestMTCacheHit) {
         create_eltwise_primitive(i);
 
     // This section should only perform cache_hits
-    dnnl::impl::parallel(0, [&](int ithr, int nthr) {
+    dnnl::impl::parallel(0, [=](int ithr, int nthr) {
         for (int i = 0; i < n_primitives; i++)
             create_eltwise_primitive(i);
     });
 
+    synchronize_threadpool(eng.get_kind());
     ASSERT_EQ(get_primitive_cache_size(), n_primitives);
 }
 

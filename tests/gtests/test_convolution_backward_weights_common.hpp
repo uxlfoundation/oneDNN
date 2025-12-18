@@ -28,18 +28,21 @@ template <typename data_t_src, typename data_t_diff_dst,
         typename data_t_diff_bias>
 void compute_ref_conv_bwd_bias(const test_convolution_sizes_t &c,
         const memory &diff_dst, const memory &diff_bias) {
-    auto diff_bias_data = map_memory<data_t_diff_bias>(diff_bias);
-    auto diff_dst_data = map_memory<data_t_diff_dst>(diff_dst);
+    auto diff_bias_mapped = map_memory<data_t_diff_bias>(diff_bias);
+    data_t_diff_bias *diff_bias_data = diff_bias_mapped;
+    auto diff_dst_mapped = map_memory<data_t_diff_dst>(diff_dst);
+    data_t_diff_dst *diff_dst_data = diff_dst_mapped;
 
     const memory::desc bias_d = diff_bias.get_desc();
     const memory::desc dst_d = diff_dst.get_desc();
-    const dnnl::impl::memory_desc_wrapper diff_bias_mdw(bias_d.get());
-    const dnnl::impl::memory_desc_wrapper diff_dst_mdw(dst_d.get());
 
     auto padded_oc = dst_d.get_padded_dims()[1];
 
     dnnl::impl::parallel_nd(
-            c.ng, c.oc / c.ng, [&](memory::dim g, memory::dim oc) {
+            c.ng, c.oc / c.ng, [=](memory::dim g, memory::dim oc) {
+        const dnnl::impl::memory_desc_wrapper diff_bias_mdw(bias_d.get());
+        const dnnl::impl::memory_desc_wrapper diff_dst_mdw(dst_d.get());
+
         memory::dim bidx = g * padded_oc / c.ng + oc;
         diff_bias_data[diff_bias_mdw.off_l(bidx, true)] = 0.0;
         for_(memory::dim mb = 0; mb < c.mb; ++mb)
@@ -58,23 +61,27 @@ template <typename data_t_src, typename data_t_diff_dst,
         typename data_t_diff_weights>
 void compute_ref_conv_bwd_weights(const test_convolution_sizes_t &c,
         const memory &src, const memory &diff_dst, const memory &diff_weights) {
-    auto src_data = map_memory<data_t_src>(src);
-    auto diff_weights_data = map_memory<data_t_diff_weights>(diff_weights);
-    auto diff_dst_data = map_memory<data_t_diff_dst>(diff_dst);
+    auto src_mapped = map_memory<data_t_src>(src);
+    data_t_src *src_data = src_mapped;
+    auto diff_weights_mapped = map_memory<data_t_diff_weights>(diff_weights);
+    data_t_diff_weights *diff_weights_data = diff_weights_mapped;
+    auto diff_dst_mapped = map_memory<data_t_diff_dst>(diff_dst);
+    data_t_diff_dst *diff_dst_data = diff_dst_mapped;
 
     const memory::desc src_d = src.get_desc();
     const memory::desc weights_d = diff_weights.get_desc();
     const memory::desc dst_d = diff_dst.get_desc();
-    const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
-    const dnnl::impl::memory_desc_wrapper diff_weights_mdw(weights_d.get());
-    const dnnl::impl::memory_desc_wrapper diff_dst_mdw(dst_d.get());
 
     auto padded_ic = src_d.get_padded_dims()[1];
     auto padded_oc = dst_d.get_padded_dims()[1];
 
     dnnl::impl::parallel_nd(c.ng, c.oc / c.ng, c.ic / c.ng, c.kh, c.kw,
-            [&](memory::dim g, memory::dim oc, memory::dim ic, memory::dim kh,
+            [=](memory::dim g, memory::dim oc, memory::dim ic, memory::dim kh,
                     memory::dim kw) {
+        const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
+        const dnnl::impl::memory_desc_wrapper diff_weights_mdw(weights_d.get());
+        const dnnl::impl::memory_desc_wrapper diff_dst_mdw(dst_d.get());
+
         memory::dim widx = g * padded_oc / c.ng * padded_ic / c.ng * c.kh * c.kw
                 + oc * padded_ic / c.ng * c.kh * c.kw + ic * c.kh * c.kw
                 + kh * c.kw + kw;

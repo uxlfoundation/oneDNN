@@ -32,9 +32,12 @@ template <typename data_t>
 void compute_ref_inner_product_bwd_data(int ndims,
         const test_inner_product_descr_t &ipd, const memory &diff_dst,
         const memory &weights, const memory &diff_src) {
-    auto diff_dst_data = map_memory<data_t>(diff_dst);
-    auto weights_data = map_memory<data_t>(weights);
-    auto diff_src_data = map_memory<data_t>(diff_src);
+    auto diff_dst_mapped = map_memory<data_t>(diff_dst);
+    data_t *diff_dst_data = diff_dst_mapped;
+    auto weights_mapped = map_memory<data_t>(weights);
+    data_t *weights_data = weights_mapped;
+    auto diff_src_mapped = map_memory<data_t>(diff_src);
+    data_t *diff_src_data = diff_src_mapped;
 
     const memory::desc diff_dst_d = diff_dst.get_desc();
     const memory::desc weights_d = weights.get_desc();
@@ -47,7 +50,7 @@ void compute_ref_inner_product_bwd_data(int ndims,
     if (ndims == 5) has_spatial = has_spatial || ipd.kd > 1;
     auto padded_ic = diff_src_d.get_padded_dims()[1];
 
-    dnnl::impl::parallel_nd(ipd.mb, ipd.ic, [&](memory::dim n, memory::dim ic) {
+    dnnl::impl::parallel_nd(ipd.mb, ipd.ic, [=](memory::dim n, memory::dim ic) {
         if (has_spatial) {
             for_(memory::dim kd = 0; kd < ipd.kd; ++kd)
             for_(memory::dim kh = 0; kh < ipd.kh; ++kh)
@@ -78,6 +81,8 @@ void compute_ref_inner_product_bwd_data(int ndims,
             }
         }
     });
+
+    synchronize_threadpool(diff_dst.get_engine().get_kind());
 }
 
 struct inprod_test_params_t {

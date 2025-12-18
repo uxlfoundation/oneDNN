@@ -36,7 +36,7 @@ TEST(test_ref_float8_conversions, f8_e5m2_to_f32) {
                     impl::data_type::f8_e5m2),
             "Engine does not support this data type.");
     // check all 256 f8_e5m2 values
-    impl::parallel_nd(0xff, [&](uint16_t u16) {
+    impl::parallel_nd(0xff, [=](uint16_t u16) {
         // convert f8_e5m2 to f32 and back again,
         // expecting bitwise idendical values except for sNaN,
         // where the convention is to set the quiet bit:
@@ -65,7 +65,7 @@ TEST(test_ref_float8_conversions, f8_e4m3_to_f32) {
                     impl::data_type::f8_e4m3),
             "Engine does not support this data type.");
     // check all 256 f8_e4m3 values
-    impl::parallel_nd(0xff, [&](uint16_t u16) {
+    impl::parallel_nd(0xff, [=](uint16_t u16) {
         uint8_t u8 = static_cast<uint8_t>(u16);
         constexpr bool is_bitcast = true;
         float8_e4m3_t x8(u8, is_bitcast);
@@ -96,7 +96,7 @@ TEST(test_ref_float8_conversions, f32_to_f8_e4m3) {
                     impl::data_type::f8_e4m3),
             "Engine does not support this data type.");
     // check all 2^32 f32 values
-    impl::parallel_nd(0x100000000, [&](int64_t s64) {
+    impl::parallel_nd(0x100000000, [=](int64_t s64) {
         uint32_t u32 = static_cast<uint32_t>(s64);
         float x32 = bit_cast<float>(u32);
         ASSERT_EQ(u32, bit_cast<uint32_t>(x32));
@@ -127,7 +127,7 @@ TEST(test_jit_float8_conversions, f8_e5m2_to_f32) {
             "Engine does not support this data type.");
 
     // check all 2^8 fp8 values
-    impl::parallel_nd(0xff, [&](uint16_t u16) {
+    impl::parallel_nd(0xff, [=](uint16_t u16) {
         // convert from f8_e5m2 to f32 using ref and jit converters
         uint8_t u8 = static_cast<uint8_t>(u16);
         constexpr bool is_bitcast = true;
@@ -172,7 +172,7 @@ TEST(test_jit_float8_conversions, f8_e4m3_to_f32) {
             "Engine does not support this data type.");
 
     // check all 2^8 fp8 values
-    impl::parallel_nd(0xff, [&](uint16_t u16) {
+    impl::parallel_nd(0xff, [=](uint16_t u16) {
         // convert from f8_e4m3 to f32 using ref and jit converters
         uint8_t u8 = static_cast<uint8_t>(u16);
         constexpr bool is_bitcast = true;
@@ -219,7 +219,7 @@ TEST(test_jit_float8_conversions, f16_to_fp8) {
     SKIP_IF(!is_fp8_supported, "Engine does not support this data type.");
 
     // check all 2^16 f16 values
-    impl::parallel_nd(0xffff, [&](uint16_t u32) {
+    impl::parallel_nd(0xffff, [=](uint16_t u32) {
         uint16_t u16 = static_cast<uint16_t>(u32);
         constexpr bool is_bitcast = true;
         auto x16 = float16_t(u16, is_bitcast);
@@ -269,7 +269,7 @@ TEST(test_f16_conversions, f16_to_f32) {
             "Engine does not support this ISA.");
 
     // check all 2^16 f16 values
-    impl::parallel_nd(0xffff, [&](uint16_t u32) {
+    impl::parallel_nd(0xffff, [=](uint16_t u32) {
         // convert from f16 to f32 using ref and jit converters
         uint16_t u16 = static_cast<uint16_t>(u32);
         constexpr bool is_bitcast = true;

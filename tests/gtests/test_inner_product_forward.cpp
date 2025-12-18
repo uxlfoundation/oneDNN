@@ -31,24 +31,27 @@ struct test_inner_product_descr_t {
 template <typename data_t>
 void compute_ref_inner_product_fwd(test_inner_product_descr_t ipd, memory &src,
         memory &weights, memory &bias, memory &dst) {
-    const bool w_bias = bias.get_desc().get_ndims() != 0;
-    auto src_data = map_memory<data_t>(src);
-    auto weights_data = map_memory<data_t>(weights);
-    auto bias_data = w_bias ? map_memory<data_t>(bias) : nullptr;
-    auto dst_data = map_memory<data_t>(dst);
+    auto src_mapped = map_memory<data_t>(src);
+    data_t *src_data = src_mapped;
+    auto weights_mapped = map_memory<data_t>(weights);
+    data_t *weights_data = weights_mapped;
+    auto bias_mapped = map_memory<data_t>(bias);
+    data_t *bias_data = bias_mapped;
+    auto dst_mapped = map_memory<data_t>(dst);
+    data_t *dst_data = dst_mapped;
 
     const memory::desc src_d = src.get_desc();
     const memory::desc weights_d = weights.get_desc();
     const memory::desc bias_d = bias.get_desc();
     const memory::desc dst_d = dst.get_desc();
-    const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
-    const dnnl::impl::memory_desc_wrapper weights_mdw(weights_d.get());
-    const dnnl::impl::memory_desc_wrapper bias_mdw(bias_d.get());
-    const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
 
-    auto padded_ic = src_mdw.padded_dims()[1];
+    dnnl::impl::parallel_nd(ipd.mb, ipd.oc, [=](memory::dim n, memory::dim oc) {
+        const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
+        const dnnl::impl::memory_desc_wrapper weights_mdw(weights_d.get());
+        const dnnl::impl::memory_desc_wrapper bias_mdw(bias_d.get());
+        const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
 
-    dnnl::impl::parallel_nd(ipd.mb, ipd.oc, [&](memory::dim n, memory::dim oc) {
+        auto padded_ic = src_mdw.padded_dims()[1];
         memory::dim oidx = n * ipd.oc + oc;
         dst_data[dst_mdw.off_l(oidx, true)]
                 = bias_data ? bias_data[bias_mdw.off_l(oc, true)] : data_t {0};

@@ -61,12 +61,15 @@ void test_threadpool_maxconcurrency_st(dnnl_status_t &res) {
 TEST_F(threadpool_test_t, TestMaxConcurrencyConcurrent) {
     const int nthreads = 100;
     std::vector<std::thread> threads;
+    threads.reserve(nthreads);
     std::vector<dnnl_status_t> results(nthreads);
-    for (int i = 0; i <= nthreads; i++)
+    for (int i = 0; i < nthreads; i++)
         threads.emplace_back(
                 test_threadpool_maxconcurrency_st, std::ref(results[i]));
+
     for (auto &t : threads)
         t.join();
+
     for (auto &r : results)
         ASSERT_EQ(r, dnnl_success);
 }

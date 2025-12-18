@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2022-2025 Intel Corporation
+ * Copyright 2022 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,7 +71,6 @@ public:
 
     subgraph_t(const std::vector<op_ptr> &ops, bool reset_layout = true);
 
-    status_t reset_engine(const dnnl::engine &eng);
     // The inputs and outputs logical tensors given by users at compilation
     // stage
     std::vector<logical_tensor_t> ins_;

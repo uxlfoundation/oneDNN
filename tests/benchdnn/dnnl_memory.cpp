@@ -693,13 +693,11 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_host_scalar_md(
 
 benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_grouped_md(
         int ndims, const dnnl_dims_t dims, dnnl_data_type_t data_type,
-        dnnl_dim_t group_count, int group_dims_size,
-        const dnnl_dims_t group_dims, dnnl_data_type_t offsets_dt,
-        const dims_t &strides) {
+        int variable_dim_idx, dnnl_dim_t group_count,
+        dnnl_data_type_t offsets_dt) {
     dnnl_memory_desc_t md {};
     DNN_SAFE_V(dnnl_memory_desc_create_with_grouped_encoding(&md, ndims, dims,
-            data_type, group_count, group_dims_size, group_dims, offsets_dt,
-            strides.empty() ? nullptr : strides.data()));
+            data_type, variable_dim_idx, group_count, offsets_dt));
     return md;
 }
 

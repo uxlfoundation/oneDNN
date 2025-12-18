@@ -1056,9 +1056,12 @@ std::ostream &operator<<(
                     break;
                 }
             }
-            s << "--grouped=" << sparse_options.get_dim_name(grouped_arg) << ":"
+            // Convert variable_dim_idx back to dim_name for display
+            int var_idx = sparse_options.get_variable_dim_idx(grouped_arg);
+            const char *dim_name = (var_idx == 0) ? "M" : "?";
+            s << "--grouped=" << dim_name << ":"
               << sparse_options.get_group_count(grouped_arg) << ":";
-            const auto &dims = sparse_options.get_group_dims(grouped_arg);
+            const auto &dims = sparse_options.get_group_sizes(grouped_arg);
             for (size_t i = 0; i < dims.size(); i++) {
                 s << dims[i];
                 if (i != dims.size() - 1) s << ",";

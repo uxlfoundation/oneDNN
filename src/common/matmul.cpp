@@ -435,7 +435,12 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
     int m_idx = 0, m_idx_bias = 0, k_idx_src = 0, k_idx_wei = 0, n_idx_wei = 0,
         n_idx_dst = 0;
     if (is_grouped_memory && ndims == 2) {
-        m_idx = 0;
+        // Also check for supported variable dimension index
+        const auto &grouped_desc = memory_desc_wrapper(&op_d.src_desc)
+                                           .sparse_desc()
+                                           .grouped_desc;
+        m_idx = grouped_desc.variable_dim_idx;
+        VCHECK_MATMUL(m_idx == 0, VERBOSE_UNSUPPORTED_SPARSE_CFG);
         m_idx_bias = 1;
         k_idx_src = 1;
         k_idx_wei = 1;

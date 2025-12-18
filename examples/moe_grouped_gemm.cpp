@@ -350,14 +350,16 @@ void onednn_style_grouped_gemm(const float *input_concat,
     int total_tokens = offsets[num_experts];
 
     // Step 1: Create grouped memory descriptors for input and output
-    // Uses shared dimensions where M is runtime (varies per expert)
-    memory::dims shared_dims = {DNNL_RUNTIME_DIM_VAL, K_dim};
+    // First dimension (M) varies per expert, second dimension (K/N) is uniform
     auto src_md = memory::desc::grouped({total_tokens, K_dim},
-            memory::data_type::f32, num_experts, shared_dims);
+            memory::data_type::f32,
+            0, // variable_dim_idx: dimension 0 (M) varies
+            num_experts);
 
-    memory::dims shared_dims_out = {DNNL_RUNTIME_DIM_VAL, N_dim};
     auto dst_md = memory::desc::grouped({total_tokens, N_dim},
-            memory::data_type::f32, num_experts, shared_dims_out);
+            memory::data_type::f32,
+            0, // variable_dim_idx: dimension 0 (M) varies
+            num_experts);
 
     // Step 2: Create regular 3D memory descriptor for weights and 2D for bias
     // Shape: [num_experts x K_dim x N_dim]

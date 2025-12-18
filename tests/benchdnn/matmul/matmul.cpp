@@ -68,7 +68,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
 
                 const dnnl_dim_t group_count
                         = prb->sparse_options.get_group_count();
-                const auto &M_dims = prb->sparse_options.get_group_dims();
+                const auto &M_dims = prb->sparse_options.get_group_sizes();
                 // Calculate total_M from M_dims
                 dnnl_dim_t total_M = 0;
                 for (size_t i = 0; i < M_dims.size(); i++) {
@@ -92,12 +92,11 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                 actual_dims[1] = K;
 
                 // Build group_dims array as shared dims {RUNTIME, K}
-                dnnl_dims_t group_dims;
-                group_dims[0] = DNNL_RUNTIME_DIM_VAL;
-                group_dims[1] = K;
+                // Variable dimension is M (index 0)
+                int variable_dim_idx = 0;
 
                 return dnn_mem_t::init_grouped_md(prb->ndims, actual_dims, dt,
-                        group_count, 2, group_dims, dnnl_s32);
+                        variable_dim_idx, group_count, dnnl_s32);
             }
             const dnnl_dim_t nnz
                     = std::max(prb->m * prb->k * (1.0f - src_sparsity), 1.0f);
@@ -165,7 +164,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
         if (src_encoding == dnnl_grouped) {
             const dnnl_dim_t group_count
                     = prb->sparse_options.get_group_count();
-            const auto &M_dims = prb->sparse_options.get_group_dims();
+            const auto &M_dims = prb->sparse_options.get_group_sizes();
             const dnnl_dim_t N = dst_rt_dims[1];
 
             // Calculate total_M from M_dims (same as SRC)
@@ -188,13 +187,12 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
             actual_dims[0] = total_M;
             actual_dims[1] = N;
 
-            // Build group_dims array as shared dims {RUNTIME, N}
-            dnnl_dims_t group_dims;
-            group_dims[0] = DNNL_RUNTIME_DIM_VAL;
-            group_dims[1] = N;
+            // Grouped: DST uses same M_dims as SRC
+            // Variable dimension is M (index 0)
+            int variable_dim_idx = 0;
 
-            return dnn_mem_t::init_grouped_md(prb->ndims, actual_dims,
-                    dt, group_count, 2, group_dims, dnnl_s32);
+            return dnn_mem_t::init_grouped_md(prb->ndims, actual_dims, dt,
+                    variable_dim_idx, group_count, dnnl_s32);
         }
 
         return dnn_mem_t::init_md(prb->ndims, dst_rt_dims.data(), dt, prb->dtag,
@@ -465,7 +463,7 @@ int fill_grouped_data(
 
     // access dims from prb to later transform into offsets
     const int64_t group_count = prb->sparse_options.get_group_count();
-    const auto &M_dims = prb->sparse_options.get_group_dims();
+    const auto &M_dims = prb->sparse_options.get_group_sizes();
     if (M_dims.size() != (size_t)group_count) return FAIL;
 
     // fill and store offsets array [0, M0, M0+M1, ...] in mem_dt buffer 1
@@ -1108,7 +1106,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             if (is_sparse_src) {
                 // For grouped encoding, create plain 2D memory for reference
                 if (src_encoding == dnnl_grouped) {
-                    const auto &M_dims = prb->sparse_options.get_group_dims();
+                    const auto &M_dims = prb->sparse_options.get_group_sizes();
                     const int64_t K = prb->k;
 
                     // Calculate total_M from M_dims
@@ -1156,7 +1154,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             if (is_sparse_dst) {
                 // For grouped encoding, create plain 2D memory for reference dst
                 if (dst_encoding == dnnl_grouped) {
-                    const auto &M_dims = prb->sparse_options.get_group_dims();
+                    const auto &M_dims = prb->sparse_options.get_group_sizes();
                     const int64_t N = prb->n;
 
                     // Calculate total_M from M_dims (same as SRC)
@@ -1371,7 +1369,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     if (src_encoding == dnnl_grouped && mem_map.count(DNNL_ARG_DST)) {
         auto &dst_mem = mem_map.at(DNNL_ARG_DST);
         const int64_t group_count = prb->sparse_options.get_group_count();
-        const auto &M_dims = prb->sparse_options.get_group_dims();
+        const auto &M_dims = prb->sparse_options.get_group_sizes();
 
         // Initialize offsets in buffer 1
         int64_t cumulative_offset = 0;

@@ -736,13 +736,17 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
 
     std::string dim_name = s.substr(0, first_colon);
 
-    // Validate dimension name
-    if (dim_name != "M" && dim_name != "K" && dim_name != "N") {
+    // Validate dimension name (only M is currently supported)
+    if (dim_name != "M") {
         BENCHDNN_PRINT(0,
-                "Error: dimension name must be M, K, or N, got '%s'\n",
+                "Error: dimension name must be M (only M is currently "
+                "supported), got '%s'\n",
                 dim_name.c_str());
         SAFE_V(FAIL);
     }
+
+    // Convert dim_name to variable_dim_idx (M=0)
+    int variable_dim_idx = 0; // M is always index 0
 
     pos = first_colon + 1;
     auto second_colon = s.find(':', pos);
@@ -784,7 +788,7 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
 
     // For now, always apply to DNNL_ARG_SRC
     int arg = DNNL_ARG_SRC;
-    v.set_grouped(arg, dim_name, group_count, sizes);
+    v.set_grouped(arg, variable_dim_idx, group_count, sizes);
 
     sparse_options.assign({v});
     return true;

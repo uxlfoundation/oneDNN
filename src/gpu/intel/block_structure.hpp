@@ -110,20 +110,14 @@ struct block_layout_t {
 
     size_t size() const { return num_blocks; }
     bool empty() const { return num_blocks == 0; }
-    const block_t &front() const {
-        gpu_assert(num_blocks > 0);
-        return blocks[0];
-    }
-    block_t &front() {
-        gpu_assert(num_blocks > 0);
-        return blocks[0];
-    }
+    const block_t &front() const { return blocks[0]; }
+    block_t &front() { return blocks[0]; }
     const block_t &back() const {
-        gpu_assert(num_blocks > 0);
+        if (num_blocks == 0) return blocks[0];
         return blocks[num_blocks - 1];
     }
     block_t &back() {
-        gpu_assert(num_blocks > 0);
+        if (num_blocks == 0) return blocks[0];
         return blocks[num_blocks - 1];
     }
 

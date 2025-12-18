@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ struct batch_norm_fwd_t : public kernel_base_t {
 private:
     allocator_t *g_alloc_ = nullptr;
 
+    std::shared_ptr<subgraph_t> subgraph_;
     memory_planner_t memory_planner_;
 
     std::function<std::shared_ptr<execution_args_set_t>()> resource_ctor_;
@@ -97,6 +98,7 @@ struct batch_norm_bwd_t : public kernel_base_t {
 private:
     allocator_t *g_alloc_ = nullptr;
 
+    std::shared_ptr<subgraph_t> subgraph_;
     memory_planner_t memory_planner_;
 
     std::function<std::shared_ptr<execution_args_set_t>()> resource_ctor_;

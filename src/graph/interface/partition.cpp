@@ -679,17 +679,10 @@ status_t dnnl_graph_partition::compile(
 
     compiled_partition.first->init(result.value->pimpl_);
     compiled_partition.second = context.cache_status;
-    if (context.cache_status == cache_state_t::compiled_partition_hit
-            && aengine != compiled_partition.first->get_engine()) {
-        compiled_partition_t *cp = compiled_partition.first;
-        cp->reset_engine(aengine);
-    }
 
     return result.status;
 }
-status_t dnnl_graph_compiled_partition::reset_engine(const engine_t *e) {
-    return pimpl_->reset_engine(e);
-}
+
 status_t dnnl_graph_compiled_partition::execute(const stream_t *astream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs) const {

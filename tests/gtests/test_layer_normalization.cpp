@@ -333,7 +333,8 @@ protected:
         }
 
         EXPECT_ANY_THROW(layer_normalization_forward(lnorm_fwd_pd, {}));
-        layer_normalization_forward(lnorm_fwd_pd).execute(strm, args);
+        primitive layer_normalization_forward(lnorm_fwd_pd);
+        layer_normalization_forward.execute(strm, args);
         strm.wait();
     }
 
@@ -361,7 +362,8 @@ protected:
         }
 
         EXPECT_ANY_THROW(layer_normalization_backward(lnorm_bwd_pd, {}));
-        layer_normalization_backward(lnorm_bwd_pd).execute(strm, args);
+        primitive layer_normalization_backward(lnorm_bwd_pd);
+        layer_normalization_backward.execute(strm, args);
         strm.wait();
     }
 

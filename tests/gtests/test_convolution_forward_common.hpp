@@ -53,24 +53,22 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
             [&](memory::dim n, memory::dim g, memory::dim oc, memory::dim oh,
                     memory::dim ow) {
         data_t_acc a = 0;
-        for (memory::dim ic = 0; ic < c.ic / c.ng; ic++) {
-            for (memory::dim kh = 0; kh < c.kh; kh++) {
-                for (memory::dim kw = 0; kw < c.kw; kw++) {
-                    memory::dim iw = ow * c.strw - c.padw + kw * (1 + c.dilw);
-                    memory::dim ih = oh * c.strh - c.padh + kh * (1 + c.dilh);
-                    if (iw < 0 || iw >= c.iw) continue;
-                    if (ih < 0 || ih >= c.ih) continue;
-                    memory::dim iidx = n * padded_ic * c.ih * c.iw
-                            + g * padded_ic / c.ng * c.ih * c.iw
-                            + ic * c.ih * c.iw + ih * c.iw + iw;
-                    memory::dim widx = g * padded_oc / c.ng * padded_ic / c.ng
-                                    * c.kh * c.kw
-                            + oc * padded_ic / c.ng * c.kh * c.kw
-                            + ic * c.kh * c.kw + kh * c.kw + kw;
-                    a += ((data_t_acc)src_data[src_mdw.off_l(iidx, true)])
-                            * weights_data[weights_mdw.off_l(widx, true)];
-                }
-            }
+        for_(memory::dim ic = 0; ic < c.ic / c.ng; ic++)
+        for_(memory::dim kh = 0; kh < c.kh; kh++)
+        for (memory::dim kw = 0; kw < c.kw; kw++) {
+            memory::dim iw = ow * c.strw - c.padw + kw * (1 + c.dilw);
+            memory::dim ih = oh * c.strh - c.padh + kh * (1 + c.dilh);
+            if (iw < 0 || iw >= c.iw) continue;
+            if (ih < 0 || ih >= c.ih) continue;
+            memory::dim iidx = n * padded_ic * c.ih * c.iw
+                    + g * padded_ic / c.ng * c.ih * c.iw + ic * c.ih * c.iw
+                    + ih * c.iw + iw;
+            memory::dim widx
+                    = g * padded_oc / c.ng * padded_ic / c.ng * c.kh * c.kw
+                    + oc * padded_ic / c.ng * c.kh * c.kw + ic * c.kh * c.kw
+                    + kh * c.kw + kw;
+            a += ((data_t_acc)src_data[src_mdw.off_l(iidx, true)])
+                    * weights_data[weights_mdw.off_l(widx, true)];
         }
 
         float a_fp = (float)a;

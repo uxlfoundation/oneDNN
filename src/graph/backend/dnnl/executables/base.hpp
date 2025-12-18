@@ -24,7 +24,6 @@
 #include <unordered_map>
 
 #include "common/primitive.hpp"
-#include "common/primitive_desc_iface.hpp"
 
 #include "oneapi/dnnl/dnnl.hpp"
 #ifdef DNNL_WITH_SYCL
@@ -111,21 +110,11 @@ inline arg_indices_t dummy_arg_indices_getter(const op_t *op) {
 #define DECLARE_ARG_INDICES_GETTER \
     static arg_indices_t get_arg_indices(const op_t *op);
 
-#define DECLARE_RESET_ENGINE(primitive) \
-    status_t reset_engine(const dnnl::engine &p_engine) override { \
-        const auto desc_t = prim_.get_primitive_desc()->impl(); \
-        dnnl_primitive_desc new_pd_t(desc_t, p_engine.get()); \
-        primitive::primitive_desc new_pd(&new_pd_t); \
-        prim_ = primitive(new_pd); \
-        return status::success; \
-    } // namespace dnnl_impl
-
 struct op_executable_t {
     virtual ~op_executable_t() = default;
     virtual void execute(const stream &stream,
             const std::unordered_map<int, memory> &args) const
             = 0;
-    virtual status_t reset_engine(const dnnl::engine &engine) = 0;
 #ifdef DNNL_WITH_SYCL
     virtual ::sycl::event execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
@@ -248,10 +237,6 @@ struct dummy_impl_t : public op_executable_t {
         return e;
     }
 #endif
-    status_t reset_engine(const dnnl::engine &p_engine) override {
-        UNUSED(p_engine);
-        return status::success;
-    }
 };
 
 } // namespace dnnl_impl

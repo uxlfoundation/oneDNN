@@ -152,7 +152,8 @@ struct hash<dnnl::impl::graph::partition_hashing::key_t> {
         size_t seed = 0;
         // Compute hash for nthread_, engine_kind_
         seed = dnnl::impl::hash_combine(seed, key.nthread_);
-        seed = dnnl::impl::hash_combine(seed, key.engine_id_.hash());
+        seed = dnnl::impl::hash_combine(
+                seed, reinterpret_cast<uintptr_t>(key.engine_));
 
         // Combine hash for op_kinds & attributes with the computed hash
         seed = get_array_hash(seed, key.ops_);

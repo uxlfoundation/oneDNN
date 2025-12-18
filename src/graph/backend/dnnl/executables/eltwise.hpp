@@ -26,7 +26,6 @@ namespace dnnl_impl {
 struct eltwise_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(dnnl::eltwise_forward::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::eltwise_forward);
 
     eltwise_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
@@ -67,7 +66,6 @@ private:
 struct eltwise_bwd_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(dnnl::eltwise_backward::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::eltwise_backward);
 
     eltwise_bwd_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
@@ -108,7 +106,6 @@ private:
 struct binary_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(dnnl::binary::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::binary);
 
     binary_executable_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
             pd_cache_t &pd_cache, const fpmath_t &fpmath,
@@ -155,7 +152,6 @@ private:
 struct prelu_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(dnnl::prelu_forward::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::prelu_forward);
 
     prelu_executable_t(std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
             pd_cache_t &pd_cache, const fpmath_t &fpmath,
@@ -196,7 +192,6 @@ private:
 struct prelu_bwd_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(dnnl::prelu_backward::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::prelu_backward);
 
     prelu_bwd_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,

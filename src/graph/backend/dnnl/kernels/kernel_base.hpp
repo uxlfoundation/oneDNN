@@ -21,7 +21,6 @@
 #include <memory>
 #include <vector>
 
-#include "graph/backend/dnnl/subgraph.hpp"
 #include "graph/interface/c_types_map.hpp"
 #include "graph/interface/logical_tensor.hpp"
 
@@ -52,12 +51,6 @@ struct kernel_base_t {
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs)
             = 0;
-
-    virtual status_t reset_engine(const engine_t *aengine) {
-        dnnl::engine p_engine = make_dnnl_engine(*aengine);
-        if (!subgraph_) return status::invalid_arguments;
-        return subgraph_->reset_engine(p_engine);
-    }
 
     status_t execute(const stream_t *astream,
             const std::vector<tensor_t> &inputs,
@@ -118,7 +111,6 @@ struct kernel_base_t {
 protected:
     std::vector<inplace_pair_t> inplace_pairs_;
     dnnl::engine p_engine_;
-    std::shared_ptr<subgraph_t> subgraph_;
 };
 
 using kernel_ptr = std::shared_ptr<kernel_base_t>;

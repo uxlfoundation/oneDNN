@@ -27,7 +27,6 @@ namespace dnnl_impl {
 struct conv_fwd_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(dnnl::convolution_forward::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::convolution_forward);
 
     conv_fwd_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
@@ -63,7 +62,6 @@ struct conv_bwd_data_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(
             dnnl::convolution_backward_data::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::convolution_backward_data);
 
     conv_bwd_data_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
@@ -105,7 +103,6 @@ struct conv_bwd_weights_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(
             dnnl::convolution_backward_weights::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::convolution_backward_weights);
 
     conv_bwd_weights_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,

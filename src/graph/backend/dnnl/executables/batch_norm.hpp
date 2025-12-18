@@ -80,8 +80,6 @@ struct bn_folding_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override;
 #endif
 
-    status_t reset_engine(const dnnl::engine &p_engine) override;
-
 private:
     desc_t desc_;
     dnnl::binary add_prim_;
@@ -98,7 +96,6 @@ struct batchnorm_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(
             dnnl::batch_normalization_forward::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::batch_normalization_forward);
 
     batchnorm_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
@@ -138,7 +135,6 @@ struct batchnorm_bwd_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(
             dnnl::batch_normalization_backward::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::batch_normalization_backward);
 
     batchnorm_bwd_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,

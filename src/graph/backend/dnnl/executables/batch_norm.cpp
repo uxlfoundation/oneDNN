@@ -538,24 +538,6 @@ arg_indices_t bn_folding_t::get_arg_indices(const op_t *op) {
     return args;
 }
 
-status_t bn_folding_t::reset_engine(const dnnl::engine &p_engine) {
-    const auto add_desc_t = add_prim_.get_primitive_desc()->impl();
-    dnnl_primitive_desc new_add_pd_t(add_desc_t, p_engine.get());
-    dnnl::binary::primitive_desc new_add_pd(&new_add_pd_t);
-    add_prim_ = dnnl::binary(new_add_pd);
-
-    const auto mul_desc_t = mul_prim_.get_primitive_desc()->impl();
-    dnnl_primitive_desc new_mul_pd_t(mul_desc_t, p_engine.get());
-    dnnl::binary::primitive_desc new_mul_pd(&new_mul_pd_t);
-    mul_prim_ = dnnl::binary(new_mul_pd);
-
-    const auto sub_desc_t = sub_prim_.get_primitive_desc()->impl();
-    dnnl_primitive_desc new_sub_pd_t(sub_desc_t, p_engine.get());
-    dnnl::binary::primitive_desc new_sub_pd(&new_sub_pd_t);
-    sub_prim_ = dnnl::binary(new_sub_pd);
-    return status::success;
-}
-
 batchnorm_executable_t::desc_t batchnorm_executable_t::create_desc(
         std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
         pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout) {

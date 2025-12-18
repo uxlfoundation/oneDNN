@@ -51,11 +51,6 @@ struct memory_reparser_t : public dummy_impl_t {
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override;
 #endif
-
-    status_t reset_engine(const dnnl::engine &p_engine) override {
-        UNUSED(p_engine);
-        return status::success;
-    }
 };
 
 } // namespace dnnl_impl

@@ -27,7 +27,6 @@ namespace dnnl_impl {
 struct softmax_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(dnnl::softmax_forward::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::softmax_forward);
 
     softmax_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
@@ -68,7 +67,6 @@ private:
 struct softmax_bwd_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(dnnl::softmax_backward::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::softmax_backward);
 
     softmax_bwd_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,

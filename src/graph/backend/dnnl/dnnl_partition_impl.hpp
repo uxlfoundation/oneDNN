@@ -48,17 +48,6 @@ public:
                   engine, inputs, outputs, kernel->get_inplace_pairs())
         , kernel_(kernel) {}
 
-    // Current implementation uses const_cast to reset `engine_` to point to a
-    // new engine object. The input engine remains const-qualified, and library
-    // currently does not modify the engine object itself. If future changes
-    // require modifying the engine object directly, this logic must be revised.
-    // Modifying a const-qualified engine internally would result in undefined
-    // behavior (UB).
-    status_t reset_engine(const engine_t *engine) override {
-        engine_ = const_cast<engine_t *>(engine);
-        return kernel_->reset_engine(engine);
-    }
-
     status_t execute(const stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs) override {

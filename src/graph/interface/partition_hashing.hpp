@@ -66,15 +66,15 @@ struct key_t {
     bool operator==(const key_t &other) const;
     const std::thread::id &thread_id() const { return thread_id_; }
     bool has_runtime_dependencies() const {
-        return !(engine_id_.kind() == engine_kind::cpu
-                && impl::is_native_runtime(engine_id_.runtime_kind()));
+        return !(engine_->kind() == engine_kind::cpu
+                && impl::is_native_runtime(engine_->runtime_kind()));
     }
 
     mutable std::vector<op_t *> ops_;
     mutable std::vector<logical_tensor_t> ins_;
     mutable std::vector<logical_tensor_t> outs_;
     int nthread_;
-    impl::engine_id_t engine_id_;
+    const impl::engine_t *engine_;
     const impl::graph::fpmath_t fpmath_;
 
 private:

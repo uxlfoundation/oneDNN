@@ -146,23 +146,17 @@ are resolved at execution time using device-side data.
 
 #### Memory Descriptor API
 
-The grouped memory descriptor is created similarly to CSR descriptors:
+The grouped memory descriptor API is:
 
 ```cpp
 static memory::desc grouped(
-    const dims &adims,               // Overall tensor dims [total_M, K]
-    data_type adata_type,            // Elements data type
-    dim group_count,                 // Group size or number of experts (all, not just active ones)
-    const dims &grouped_dims,        // Group dimensions (clarification below)
-    data_type offsets_dt = s32,      // Offset buffer dtype (default int32)
-    const dims &astrides = {});      // Optional strides (default row-major)
+    const dims &adims,           // Overall tensor dims [total_M, K]
+    data_type adata_type,        // Data type for values
+    int variable_dim_idx,        // Which dimension varies (0 for M dimension)
+    dim group_count,             // Number of groups (all experts, not just active)
+    data_type offsets_dt = s32   // Offset data type (default int32)
+);
 ```
-
-Suggestion is to allow specifying `grouped_dims` in two ways for convenience:
-- **Shared dimensions**: `{M, K}` where M can be RUNTIME_DIM_VAL (size = 2)
-    - Useful for device-side runtime dimension M
-- **Per-group dimensions**: `{M0, K, M1, K, ...}` (size = group_count * 2)
-    - Useful when all dimensions are known on the host in advance
 
 The descriptor specifies a memory object with 2 buffers:
 - Buffer 0: Values, contiguous data organized as groups
@@ -171,11 +165,10 @@ The descriptor specifies a memory object with 2 buffers:
 Example:
 ```cpp
 auto src_md = memory::desc::grouped(
-    {total_tokens, K},              // Overall shape
-    dt::f32,                        // Data type
-    num_experts,                    // Group count
-    {DNNL_RUNTIME_DIM_VAL, K},      // Shared per-group dims
-    dt::s32);                       // Offset dtype
+    {total_tokens, K},      // Overall shape
+    dt::f32,                // Data type
+    0,                      // M dimension varies
+    num_experts);           // Group count
 ```
 
 #### Memory Object Creation
@@ -189,6 +182,7 @@ int32_t* offsets;    // num_experts + 1 offsets
 
 // Create memory object with 2 buffers
 memory src_mem(src_md, eng, {values, offsets});
+memory dst_mem(dst_md, eng, {output_values, offsets});
 ```
 
 #### Primitive Descriptor Creation
@@ -201,27 +195,30 @@ int total_tokens = num_input_tokens * TOP_K;
 
 // Create grouped memory descriptors for src and dst
 auto src_md = memory::desc::grouped(
-    {total_tokens, K},              // Overall shape
-    dt::f32,                        // Data type
-    num_experts,                    // Group count
-    {DNNL_RUNTIME_DIM_VAL, K});     // Shared per-group dims [Mi, K]
+    {total_tokens, K},      // Overall shape
+    dt::f32,                // Data type
+    0,                      // M dimension varies
+    num_experts);           // Group count
 
 auto dst_md = memory::desc::grouped(
-    {total_tokens, N},              // Overall shape
-    dt::f32,                        // Data type
-    num_experts,                    // Group count
-    {DNNL_RUNTIME_DIM_VAL, N});     // Shared per-group dims [Mi, N]
+    {total_tokens, N},
+    dt::f32,
+    0,
+    num_experts);
 
 // Weights: 3D dense tensor [num_experts, K, N]
 auto weights_md = memory::desc({num_experts, K, N}, dt::f32, tag::abc);
 
-// Create matmul primitive descriptor (no changes)
+// Bias: 2D tensor [num_experts, N]
+auto bias_md = memory::desc({num_experts, N}, dt::f32, tag::ab);
+
+// Create matmul primitive descriptor
 auto matmul_pd = matmul::primitive_desc(
     eng,
     src_md,                 // Grouped src descriptor
     weights_md,             // Dense 3D weights
-    dst_md,                 // Grouped dst descriptor
-    attr);
+    bias_md,                // Dense 2D bias
+    dst_md);                // Grouped dst descriptor
 
 // Create matmul primitive (no changes)
 auto matmul_prim = matmul(matmul_pd);
@@ -242,11 +239,13 @@ int32_t* device_offsets;
 memory src_mem(src_md, eng, {input_data, device_offsets});
 memory dst_mem(dst_md, eng, {output_data, device_offsets});
 memory weights_mem(weights_md, eng, weights_data); // regular 3D weights
+memory bias_mem(bias_md, eng);
 
 // Configure matmul arguments (no changes)
 std::unordered_map<int, memory> args;
 args.insert({DNNL_ARG_SRC, src_mem});
 args.insert({DNNL_ARG_WEIGHTS, weights_mem});
+args.insert({DNNL_ARG_BIAS, bias_mem});
 args.insert({DNNL_ARG_DST, dst_mem});
 
 matmul_prim.execute(stream, args);
@@ -269,10 +268,10 @@ auto scales_md = memory::desc({num_experts}, dt::f32, tag::x);
 - Per-row for src: grouped descriptor `[num_experts x Mi]`
 ```cpp
 auto scales_md = memory::desc::grouped(
-    {total_tokens},                 // Overall shape [total_M]
-    dt::f32,                        // Data type
-    num_experts,                    // Group count
-    {DNNL_RUNTIME_DIM_VAL});        // Shared per-group dims [Mi]
+    {total_tokens},      // Overall shape
+    dt::f32,                // Data type
+    0,                      // M dimension varies
+    num_experts);           // Group count
 // Memory: 2 buffers (values + offsets)
 // Values: [E0_row_scales | E1_row_scales | E2_row_scales | ...] - contiguous
 // Offsets: [0, M0, M0 + M1, ...] <- same as src offsets (!)
@@ -289,10 +288,10 @@ auto scales_md = memory::desc({num_experts, N}, dt::f32, tag::ab);
 // For src [total_tokens x K] with block_size=32 along K
 int block_size = 32;
 auto scales_md = memory::desc::grouped(
-    {total_tokens, K / block_size}, // Overall shape
-    dt::f32,                        // Data type
-    num_experts,                    // Group count
-    {DNNL_RUNTIME_DIM_VAL, K / block_size}); // Shared dims [Mi, K/32]
+    {total_tokens, K / block_size},
+    dt::f32,                // Data type
+    0,                      // M dimension varies
+    num_experts);
 // Memory: 2 buffers (values + offsets)
 // Values: [E0: M0 x (K/32) | E1: M1 x (K/32) | ...] - contiguous blocks
 // Offsets: [0, M0, M0 + M1, ...] <- same as src offsets (!)

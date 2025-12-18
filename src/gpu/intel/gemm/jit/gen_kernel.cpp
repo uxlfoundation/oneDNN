@@ -126,6 +126,8 @@ status_t gen_desc_t::finalize(const char *tags) {
 #ifdef DNNL_DEV_MODE
     std::string ovr_strategy;
     ovr_strategy = gpu_utils::dev_getenv("GEMM_KERNEL", ovr_strategy);
+    VDEBUGINFO(4, primitive, MYgemm, "ovr_strategy = %s", ovr_strategy.c_str());
+
     if (!ovr_strategy.empty()) {
         // Warning: will override problem data types (including up/down
         // conversions) - this will cause inaccuracies if precisions/layouts

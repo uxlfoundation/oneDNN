@@ -436,14 +436,16 @@ inline bool rnn_packed_desc_is_equal(
 }
 
 inline bool sparse_desc_is_equal(
-        const sparse_desc_t &lhs, const sparse_desc_t &rhs) {
+        const sparse_desc_t &lhs, const sparse_desc_t &rhs, int ndims) {
     bool ok = lhs.encoding == rhs.encoding && lhs.nnz == rhs.nnz;
     if (!ok) return false;
 
     if (lhs.encoding == sparse_encoding::grouped) {
         ok = ok && lhs.grouped_desc.ngroups == rhs.grouped_desc.ngroups
-                && lhs.grouped_desc.strides[0] == rhs.grouped_desc.strides[0]
-                && lhs.grouped_desc.strides[1] == rhs.grouped_desc.strides[1];
+                && lhs.grouped_desc.variable_dim_idx
+                        == rhs.grouped_desc.variable_dim_idx
+                && utils::array_cmp(lhs.grouped_desc.strides,
+                        rhs.grouped_desc.strides, ndims);
         if (!ok) return false;
     }
 
@@ -663,8 +665,8 @@ inline bool operator==(const memory_desc_t &lhs, const memory_desc_t &rhs) {
         return types::rnn_packed_desc_is_equal(lhs.format_desc.rnn_packed_desc,
                 rhs.format_desc.rnn_packed_desc);
     else if (lhs.format_kind == format_kind::sparse)
-        return types::sparse_desc_is_equal(
-                lhs.format_desc.sparse_desc, rhs.format_desc.sparse_desc);
+        return types::sparse_desc_is_equal(lhs.format_desc.sparse_desc,
+                rhs.format_desc.sparse_desc, lhs.ndims);
     return true;
 }
 

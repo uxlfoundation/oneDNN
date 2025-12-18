@@ -55,9 +55,7 @@ static std::vector<dim_idx_t> get_dims(size_t ndims) {
 
 static status_t init_calculate_stats_conf(reusable_params_t &conf,
         reusable_runtime_params_t &rt_conf, impl::engine_t *engine,
-        const memory_desc_wrapper &data_mdw,
-        const gpu_primitive_attr_t *gpu_attr) {
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+        const memory_desc_wrapper &data_mdw) {
     const size_t ndims = static_cast<size_t>(data_mdw.ndims());
     dim_t calc_dims[MAX_DIMS];
     auto &dims = data_mdw.dims();
@@ -109,8 +107,9 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
             break;
         }
     }
+    auto lws_strategy = compute::default_lws_strategy_t(engine);
     compute::reusable_dispatch_config_t calc_stat_dispatch_config(
-            intel_engine, dim_ids);
+            dim_ids, lws_strategy);
     VDISPATCH_BNORM_IC(calc_stat_dispatch_config.register_buffer(src_buf)
                     == status::success,
             "failed to register src buffer");
@@ -123,9 +122,7 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
             "cannot define dim index for dispatch config");
 
     compute::reusable_dispatch_t dispatch_calc_stat;
-    auto lws_strategy = compute::default_lws_strategy_t(intel_engine, gpu_attr);
-    VDISPATCH_BNORM_IC(
-            calc_stat_dispatch_config.generate(dispatch_calc_stat, lws_strategy)
+    VDISPATCH_BNORM_IC(calc_stat_dispatch_config.generate(dispatch_calc_stat)
                     == status::success,
             "failed to generate dispatch_config");
     conf.calc_stat_params = dispatch_calc_stat.get_compile_params();
@@ -138,15 +135,15 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
 
     // Reduce kernels dispatch to ic dim only
     compute::reusable_dispatch_config_t reduce_stat_dispatch_config(
-            intel_engine, {dims::ic});
+            {dims::ic}, lws_strategy);
     VDISPATCH_BNORM_IC(
             reduce_stat_dispatch_config.register_buffer(reduce_buffer)
                     == status::success,
             "failed to register reduce buffer");
 
     compute::reusable_dispatch_t dispatch_reduce_stat;
-    VDISPATCH_BNORM_IC(reduce_stat_dispatch_config.generate(
-                               dispatch_reduce_stat, lws_strategy)
+    VDISPATCH_BNORM_IC(
+            reduce_stat_dispatch_config.generate(dispatch_reduce_stat)
                     == status::success,
             "failed to generate dispatch_config");
     conf.reduce_stat_params = dispatch_reduce_stat.get_compile_params();
@@ -156,8 +153,7 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
 
 static status_t init_conf_common(reusable_params_t &conf,
         reusable_runtime_params_t &rt_conf, const pd_t *pd,
-        const memory_desc_wrapper &data_mdw, impl::engine_t *engine,
-        const gpu_primitive_attr_t *&gpu_attr) {
+        const memory_desc_wrapper &data_mdw, impl::engine_t *engine) {
     const desc_t &bd = *pd->desc();
 
     conf = utils::zero<decltype(conf)>();
@@ -176,16 +172,16 @@ static status_t init_conf_common(reusable_params_t &conf,
 
     conf.with_leaky_relu = conf.with_relu && rt_conf.relu_negative_slope != 0.f;
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
-
     size_t ndims = static_cast<size_t>(data_mdw.ndims());
     std::vector<dim_idx_t> dims = get_dims(ndims);
     compute::named_buffer_t buffer(
             compute::name_id_t::buffer, *data_mdw.md_, dims);
 
     // Dispatch to all dims
+
+    auto lws_strategy = compute::default_lws_strategy_t(engine);
     compute::reusable_dispatch_config_t dispatch_config(
-            intel_engine, std::move(dims));
+            std::move(dims), lws_strategy);
     VDISPATCH_BNORM_IC(
             dispatch_config.register_buffer(buffer) == status::success,
             "failed to register buffer");
@@ -195,10 +191,7 @@ static status_t init_conf_common(reusable_params_t &conf,
             "cannot define dim index for dispatch config");
 
     compute::reusable_dispatch_t dispatch;
-    VDISPATCH_BNORM_IC(
-            dispatch_config.generate(dispatch,
-                    compute::default_lws_strategy_t(intel_engine, gpu_attr))
-                    == status::success,
+    VDISPATCH_BNORM_IC(dispatch_config.generate(dispatch) == status::success,
             "failed to generate dispatch_config");
     conf.gws_params = dispatch.get_compile_params();
     rt_conf.gws_params = dispatch.get_runtime_params();
@@ -230,10 +223,8 @@ static void init_kernel_ctx_common(
 
 status_t reusable_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper data_mdw(src_md());
-    const auto *gpu_attr
-            = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-    CHECK(init_conf_common(conf, rt_conf, this, data_mdw, engine, gpu_attr));
-    CHECK(init_calculate_stats_conf(conf, rt_conf, engine, data_mdw, gpu_attr));
+    CHECK(init_conf_common(conf, rt_conf, this, data_mdw, engine));
+    CHECK(init_calculate_stats_conf(conf, rt_conf, engine, data_mdw));
     return status::success;
 }
 
@@ -381,10 +372,8 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 status_t reusable_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper data_mdw(diff_src_md());
-    const auto *gpu_attr
-            = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-    CHECK(init_conf_common(conf, rt_conf, this, data_mdw, engine, gpu_attr));
-    CHECK(init_calculate_stats_conf(conf, rt_conf, engine, data_mdw, gpu_attr));
+    CHECK(init_conf_common(conf, rt_conf, this, data_mdw, engine));
+    CHECK(init_calculate_stats_conf(conf, rt_conf, engine, data_mdw));
     return status::success;
 }
 

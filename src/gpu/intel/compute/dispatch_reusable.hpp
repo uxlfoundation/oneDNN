@@ -42,172 +42,6 @@ namespace compute {
 #define MAX_REGISTERED_BUFFERS 16
 #define MAX_EXPR_TERMS 128
 
-enum class gws_op_t : uint8_t {
-    ZERO,
-    SOLO,
-    FIRST,
-    MOD,
-    SOLO_BLOCK,
-    FIRST_BLOCK,
-    MOD_BLOCK,
-    UNDEF,
-};
-
-inline std::string to_string(gws_op_t op) {
-    switch (op) {
-#define CASE(x) \
-    case gws_op_t::x: return #x;
-        CASE(ZERO);
-        CASE(SOLO);
-        CASE(FIRST);
-        CASE(MOD);
-        CASE(SOLO_BLOCK);
-        CASE(FIRST_BLOCK);
-        CASE(MOD_BLOCK);
-        CASE(UNDEF);
-#undef CASE
-    }
-    return "invalid";
-#undef CASE
-}
-
-// Encodes the information needed for one term like (idx / stride % max) * block
-// - stride, max, and block are defined by an index into the runtime struct
-// - idx is defined by an index into the gws indexing function
-// - the gws_op is used to simplify the expression if stride/max/block are known
-struct gws_indexing_term_t {
-    struct compile_params_t {
-        compile_params_t() = default;
-        compile_params_t(gws_op_t op, size_t gws_idx)
-            : op(op), gws_idx(into<uint8_t>(gws_idx)) {};
-
-        bool operator==(const compile_params_t &other) const {
-            return op == other.op && gws_idx == other.gws_idx;
-        }
-
-        std::string str() const {
-            stringstream_t ss;
-            ss << "<compile_params_t op=" << to_string(op)
-               << ", gws_idx=" << int(gws_idx) << ">";
-            return ss.str();
-        }
-
-        gws_op_t op = {};
-        uint8_t gws_idx = {};
-    };
-
-    struct runtime_params_t {
-        runtime_params_t() = default;
-        runtime_params_t(dim_t size, stride_t stride, dim_t block)
-            : size(size), stride(stride), block(block) {};
-
-        bool operator==(const runtime_params_t &other) const {
-            return size == other.size && stride == other.stride
-                    && block == other.block;
-        }
-        dim_t size;
-        stride_t stride;
-        dim_t block;
-    };
-
-    gws_indexing_term_t() = default;
-
-    bool operator==(const gws_indexing_term_t &other) const {
-        return compile_params_ == other.compile_params_
-                && runtime_params_ == other.runtime_params_;
-    }
-    gws_indexing_term_t(gws_op_t op, size_t gws_idx, dim_t size,
-            stride_t stride, dim_t block)
-        : compile_params_(op, gws_idx), runtime_params_(size, stride, block) {};
-
-    size_t get_hash() const { return serialization_stream_t::get_hash(*this); }
-
-    std::string str() const {
-        stringstream_t ss;
-        ss << "<gws_indexing_term_t op=" << to_string(compile_params_.op)
-           << ", gws_idx=" << compile_params_.gws_idx
-           << ", size=" << runtime_params_.size
-           << ", stride=" << runtime_params_.stride
-           << ", block=" << runtime_params_.block << ">";
-        return ss.str();
-    }
-
-    const compile_params_t &compile_params() const { return compile_params_; }
-    const runtime_params_t &runtime_params() const { return runtime_params_; }
-
-    compile_params_t compile_params_;
-    uint8_t pad[6] = {};
-    runtime_params_t runtime_params_;
-};
-
-struct gws_term_list_t {
-    size_t append(const gws_indexing_term_t &term) {
-        size_t idx = add_term(term);
-        return idx;
-    }
-
-    const gws_indexing_term_t &operator[](size_t idx) const {
-        return terms[idx];
-    }
-    size_t size() const { return terms.size(); }
-
-    size_t get_hash() const { return serialization_stream_t::get_hash(terms); }
-
-    bool operator==(const gws_term_list_t &other) const {
-        return terms == other.terms;
-    }
-
-    std::vector<gws_indexing_term_t> terms;
-
-    std::string str() const {
-        ostringstream_t ss;
-        for (size_t i = 0; i < terms.size(); i++) {
-            ss << terms[i].str() << std::endl;
-        }
-        return ss.str();
-    }
-
-private:
-    size_t add_term(const gws_indexing_term_t &term) {
-        // Use an existing term if an exact match is found
-        for (size_t i = 0; i < terms.size(); i++) {
-            const gws_indexing_term_t &existing = terms[i];
-            if (term == existing) return i;
-        }
-
-        // Create a new term
-        size_t ret = terms.size();
-        terms.emplace_back(term);
-        return ret;
-    }
-};
-
-struct subgroup_data_t {
-public:
-    subgroup_data_t() = default;
-    subgroup_data_t(size_t buffer_idx, size_t size)
-        : use_subgroup(true), buffer_idx_(buffer_idx), size_(size) {}
-#if __cplusplus >= 202002L
-    bool operator==(const subgroup_data_t &) const = default;
-#endif
-
-    bool used() const { return use_subgroup; }
-    size_t buffer_idx() const {
-        gpu_assert(use_subgroup);
-        return buffer_idx_;
-    }
-    size_t size() const {
-        gpu_assert(use_subgroup);
-        return size_;
-    }
-
-protected:
-    bool use_subgroup = false;
-    int8_t padding[7] = {0};
-    uint64_t buffer_idx_ = 0;
-    uint64_t size_ = 0;
-};
-
 enum class name_id_t : uint64_t {
     // Common buffer names
     src = 1,
@@ -264,155 +98,6 @@ inline const std::string &to_string(name_id_t value) {
 }
 
 GPU_DEFINE_BIT_MASK_ENUM_OPS(name_id_t);
-
-// The reusable dispatcher interface involves a number of terms like (idx / stride % max) * block,
-// and a mapping from several equations into these terms. Equations can share terms,
-// and generally correspond to offset calculation for a buffer or dimension index
-// calculation. As long as the sharing of terms is reasonably generic, the compiled
-// parameters encode just the block structure and therefore are able to be reused.
-struct dispatch_compile_params_t {
-    dispatch_compile_params_t() = default;
-#if __cplusplus >= 202002L
-    bool operator==(const dispatch_compile_params_t &) const = default;
-#endif
-
-    void def_kernel_macros(
-            kernel_ctx_t &kernel_ctx, const char *suffix = "DEFAULT") const;
-    std::string str() const;
-
-    subgroup_data_t subgroup;
-    bool use_int32_offset = false;
-    uint8_t padding[7] = {0};
-
-    name_id_t buffer_set = {}; // Bitset representing supported buffers
-
-    // Offset into exprs where buffer offset expression is stored
-    uint8_t buffer_off_expr[MAX_REGISTERED_BUFFERS] = {};
-    uint8_t exprs[MAX_EXPR_TERMS] = {};
-    data_type_t buffer_types[MAX_REGISTERED_BUFFERS] = {data_type::undef};
-};
-DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(dispatch_compile_params_t);
-
-class dispatch_runtime_params_t {
-public:
-    dispatch_runtime_params_t() = default;
-    dispatch_runtime_params_t(const nd_range_t &nd_range, bool use_int32_offset,
-            const std::vector<int64_t> &term_list)
-        : nd_range(nd_range)
-        , use_int32_offset(use_int32_offset)
-        , num_terms(term_list.size()) {
-        for (size_t i = 0; i < num_terms; i++) {
-            if (use_int32_offset)
-                rt32.params[i] = into<int32_t>(term_list[i]);
-            else
-                rt64.params[i] = term_list[i];
-        }
-    }
-    dispatch_gws_rt_params64_t get64() const {
-        gpu_assert(!use_int32_offset);
-        return rt64;
-    }
-    dispatch_gws_rt_params32_t get32() const {
-        gpu_assert(use_int32_offset);
-        return rt32;
-    }
-
-    std::string str() const {
-        stringstream_t ss;
-        ss << "<dispatch_runtime_params_t: ";
-        for (size_t i = 0; i < num_terms; i++) {
-            if (i > 0) ss << ", ";
-            ss << "term[" << std::to_string(i)
-               << "]: " << (use_int32_offset ? rt32.params[i] : rt64.params[i]);
-        }
-        ss << ">";
-        return ss.str();
-    }
-
-    nd_range_t nd_range;
-    bool use_int32_offset = false;
-
-private:
-    size_t num_terms = 0;
-    union {
-        dispatch_gws_rt_params64_t rt64;
-        dispatch_gws_rt_params32_t rt32;
-    };
-};
-
-inline void set_rt_params(compute::kernel_arg_list_t &arg_list, size_t index,
-        const dispatch_runtime_params_t &params) {
-    if (params.use_int32_offset)
-        arg_list.set(index, params.get32());
-    else
-        arg_list.set(index, params.get64());
-}
-
-inline void append_rt_params(compute::kernel_arg_list_t &arg_list,
-        const dispatch_runtime_params_t &params) {
-    if (params.use_int32_offset)
-        arg_list.append(params.get32());
-    else
-        arg_list.append(params.get64());
-}
-
-struct named_dim_t {
-public:
-    named_dim_t(const char *name, size_t idx) : name(name), idx(idx) {};
-
-    const char *name;
-    size_t idx;
-};
-
-class gws_bin_mapping_t;
-
-struct lws_strategy_t {
-    lws_strategy_t(const engine_t *engine, const gpu_primitive_attr_t *gpu_attr)
-        : engine(engine), gpu_attr(gpu_attr) {};
-    virtual ~lws_strategy_t() = default;
-
-    virtual range_t create_lws(
-            range_t &gws, const gws_bin_mapping_t &mapper) const
-            = 0;
-
-    // Determine if a given block (mapped to each buffer) should be in the lws.
-    // Gets called for each block dispatched to the GWS.
-    // XXX: If a subgroup is used, its block must be added to the lws. It will not get
-    // dispatched to this function, and will always be included.
-    virtual bool is_included(const mapped_block_t &blocks) const = 0;
-
-    size_t get_max_wg_size() const {
-        bool large_grf_mode = gpu_attr && gpu_attr->threads_per_eu() == 4;
-        return engine->device_info()->max_wg_size(large_grf_mode);
-    }
-
-protected:
-    const engine_t *engine;
-    const gpu_primitive_attr_t *gpu_attr;
-};
-
-// Balance lws size with occupation
-struct default_lws_strategy_t : public lws_strategy_t {
-    default_lws_strategy_t(
-            const engine_t *engine, const gpu_primitive_attr_t *gpu_attr)
-        : lws_strategy_t(engine, gpu_attr) {};
-    range_t create_lws(
-            range_t &gws, const gws_bin_mapping_t &mapper) const override {
-        range_t lws
-                = get_optimal_lws(gws, -1, engine->device_info()->gpu_arch());
-        return lws;
-    }
-
-    // this strategy doesn't care which blocks are in the lws
-    bool is_included(const mapped_block_t &blocks) const override {
-        return false;
-    }
-};
-
-struct dim_id_hash_t {
-    size_t operator()(const dim_idx_t &id) const noexcept { return id; }
-};
-
 constexpr dim_idx_t dim_not_found = std::numeric_limits<dim_idx_t>::max();
 
 struct named_buffer_t : public memory_desc_t {
@@ -580,15 +265,173 @@ private:
     }
 };
 
+// The reusable dispatcher interface involves a number of terms like (idx / stride % max) * block,
+// and a mapping from several equations into these terms. Equations can share terms,
+// and generally correspond to offset calculation for a buffer or dimension index
+// calculation. As long as the sharing of terms is reasonably generic, the compiled
+// parameters encode just the block structure and therefore are able to be reused.
+struct dispatch_compile_params_t {
+    dispatch_compile_params_t() = default;
+#if __cplusplus >= 202002L
+    bool operator==(const dispatch_compile_params_t &) const = default;
+#endif
+
+    void def_kernel_macros(
+            kernel_ctx_t &kernel_ctx, const char *suffix = "DEFAULT") const;
+    std::string str() const;
+
+    name_id_t buffer_set = {}; // Bitset representing supported buffers
+    uint8_t subgroup_size = 0;
+    bool use_int32_offset = false;
+    uint8_t padding[4] = {0};
+
+    // Offset into exprs where buffer offset expression is stored
+    uint8_t gws_overflow_expr = {};
+    uint8_t in_padding_expr = {};
+    uint8_t buffer_off_expr[MAX_REGISTERED_BUFFERS] = {};
+    uint8_t exprs[MAX_EXPR_TERMS] = {};
+    data_type_t buffer_types[MAX_REGISTERED_BUFFERS] = {data_type::undef};
+};
+DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(dispatch_compile_params_t);
+
+class dispatch_runtime_params_t {
+public:
+    dispatch_runtime_params_t() = default;
+    dispatch_runtime_params_t(const nd_range_t &nd_range, bool use_int32_offset,
+            const std::vector<int64_t> &term_list)
+        : nd_range(nd_range)
+        , use_int32_offset(use_int32_offset)
+        , num_terms(term_list.size()) {
+        for (size_t i = 0; i < num_terms; i++) {
+            if (use_int32_offset)
+                rt32.params[i] = into<int32_t>(term_list[i]);
+            else
+                rt64.params[i] = term_list[i];
+        }
+    }
+    dispatch_gws_rt_params64_t get64() const {
+        gpu_assert(!use_int32_offset);
+        return rt64;
+    }
+    dispatch_gws_rt_params32_t get32() const {
+        gpu_assert(use_int32_offset);
+        return rt32;
+    }
+
+    std::string str() const {
+        stringstream_t ss;
+        ss << "<dispatch_runtime_params_t: ";
+        for (size_t i = 0; i < num_terms; i++) {
+            if (i > 0) ss << ", ";
+            ss << "term[" << std::to_string(i)
+               << "]: " << (use_int32_offset ? rt32.params[i] : rt64.params[i]);
+        }
+        ss << ">";
+        return ss.str();
+    }
+
+    nd_range_t nd_range;
+    bool use_int32_offset = false;
+
+private:
+    size_t num_terms = 0;
+    union {
+        dispatch_gws_rt_params64_t rt64;
+        dispatch_gws_rt_params32_t rt32;
+    };
+};
+
+inline void set_rt_params(compute::kernel_arg_list_t &arg_list, size_t index,
+        const dispatch_runtime_params_t &params) {
+    if (params.use_int32_offset)
+        arg_list.set(index, params.get32());
+    else
+        arg_list.set(index, params.get64());
+}
+
+inline void append_rt_params(compute::kernel_arg_list_t &arg_list,
+        const dispatch_runtime_params_t &params) {
+    if (params.use_int32_offset)
+        arg_list.append(params.get32());
+    else
+        arg_list.append(params.get64());
+}
+
+struct lws_strategy_t {
+    struct dim_info_t {
+        dim_idx_t idx = dim_idx::invalid;
+        int64_t size = 0;
+    };
+
+    virtual ~lws_strategy_t() = default;
+    virtual range_t create_lws(range_t &gws) const = 0;
+
+    virtual const dim_info_t &subgroup() const {
+        static dim_info_t ret;
+        return ret;
+    }
+
+    virtual const std::array<dim_info_t, 3> &local() const {
+        static std::array<dim_info_t, 3> ret;
+        return ret;
+    }
+};
+
+// Balance lws size with occupation
+struct default_lws_strategy_t : public lws_strategy_t {
+    default_lws_strategy_t(gpu_arch_t arch) : arch(arch) {};
+    default_lws_strategy_t(const impl::engine_t *engine)
+        : default_lws_strategy_t(
+                  utils::downcast<const intel::engine_t *>(engine)
+                          ->device_info()
+                          ->gpu_arch()) {};
+    range_t create_lws(range_t &gws) const override {
+        range_t lws = get_optimal_lws(gws, -1, arch);
+        return lws;
+    }
+    gpu_arch_t arch;
+};
+
+struct explicit_lws_strategy_t : public lws_strategy_t {
+    explicit_lws_strategy_t(
+            int subgroup_size, const std::array<dim_info_t, 3> &local)
+        : subgroup_(subgroup_size ? dim_info_t {local[0].idx, subgroup_size}
+                                  : dim_info_t {})
+        , local_(local) {}
+
+    range_t create_lws(range_t &gws) const override {
+        std::vector<int> lws;
+        for (size_t i = 0; i < gws.ndims(); i++) {
+            if (local()[i].idx == dim_idx::invalid) {
+                lws.emplace_back(1);
+                continue;
+            }
+            lws.emplace_back(local()[i].size);
+            gws[i] = utils::rnd_up(gws[i], local()[i].size);
+        }
+        return lws;
+    }
+    const dim_info_t &subgroup() const override { return subgroup_; }
+    const std::array<dim_info_t, 3> &local() const override { return local_; }
+
+private:
+    dim_info_t subgroup_;
+    std::array<dim_info_t, 3> local_;
+};
+
 class reusable_dispatch_t {
 public:
     reusable_dispatch_t() = default;
     reusable_dispatch_t(const compute::nd_range_t &nd_range,
-            subgroup_data_t subgroup, const std::vector<named_buffer_t> buffers,
+            int64_t subgroup_size, const std::vector<named_buffer_t> buffers,
+
+            uint8_t gws_overflow, uint8_t in_padding,
             const std::vector<uint8_t> &buffer_off_exprs,
             const std::vector<uint8_t> &expr_data,
             const std::vector<int64_t> &term_list) {
 
+        compile_params.gws_overflow_expr = gws_overflow;
+        compile_params.in_padding_expr = in_padding;
         for (size_t i = 0; i < expr_data.size(); i++)
             compile_params.exprs[i] = expr_data[i];
         for (size_t i = 0; i < buffer_off_exprs.size(); i++)
@@ -607,7 +450,7 @@ public:
         }
 
         compile_params.use_int32_offset = max_buffer_size <= INT32_MAX;
-        compile_params.subgroup = subgroup;
+        compile_params.subgroup_size = into<uint8_t>(subgroup_size);
 
         // Set runtime params
         runtime_params = dispatch_runtime_params_t(
@@ -625,97 +468,26 @@ private:
     dispatch_compile_params_t compile_params;
     dispatch_runtime_params_t runtime_params;
 };
-// TODO: Add a strategy pattern for this, in case the mapping
-// leads to performance degradation
-class gws_bin_mapping_t {
-public:
-    gws_bin_mapping_t(subgroup_data_t sg) : sg(sg) {}
-    void add(const block_bin_t &bin) {
-        // If this bin has the subgroup block, it has to be mapped to
-        // the first bin in the 0th gws dim
-        if (sg.used()) {
-            if (!bin.is_broadcasted(sg.buffer_idx())) {
-                block_t block = bin.combined_block(sg.buffer_idx());
-                if (block.stride == stride_t(1)) {
-                    // Remove any existing bins in dim 0, and re-add them
-                    std::vector<block_bin_t> displaced = map[0];
-                    clear_(0);
-                    add_(bin, 0);
-                    for (const block_bin_t &old_bin : displaced) {
-                        add(old_bin);
-                    }
-                    return;
-                }
-            }
-        }
-
-        // Insert into the first empty gws dim, if one exists
-        for (size_t i = 0; i < map.size(); i++) {
-            if (map[i].empty()) {
-                add_(bin, i);
-                return;
-            }
-        }
-
-        // Insert into the first dim that will remove *some* divisions/modulus
-        const mapped_block_t &first_new_block = bin.get_blocks().front();
-        for (size_t i = 0; i < map.size(); i++) {
-            block_bin_t &last = map[i].back();
-            const mapped_block_t &last_old_block = last.get_blocks().back();
-
-            if (last_old_block.can_merge(first_new_block, false)) {
-                add_(bin, i);
-                return;
-            }
-        }
-
-        // Insert into the last dim
-        add_(bin, gws_.ndims() - 1);
-    }
-
-    nd_range_t nd_range(const lws_strategy_t &lws_strategy) {
-        range_t lws = lws_strategy.create_lws(gws_, *this);
-        return compute::nd_range_t(gws_, lws);
-    }
-
-    const range_t &gws() const { return gws_; }
-
-    const std::vector<block_bin_t> &get_bins(size_t idx) const {
-        return map[idx];
-    }
-
-private:
-    void add_(const block_bin_t &bin, size_t gws_dim) {
-        map[gws_dim].emplace_back(bin);
-        gws_[gws_dim] *= bin.size();
-    }
-    void clear_(size_t gws_idx) {
-        map[gws_idx].clear();
-        gws_[gws_idx] = 1;
-    }
-    subgroup_data_t sg;
-    std::array<std::vector<block_bin_t>, range_t::max_ndims> map;
-    range_t gws_ = range_t::one();
-};
 
 class reusable_dispatch_config_t {
 public:
     reusable_dispatch_config_t(
-            const engine_t *engine, std::vector<dim_idx_t> dims)
-        : dispatched_dims(std::move(dims)), engine(engine) {};
-    status_t generate(
-            reusable_dispatch_t &dispatch, const lws_strategy_t &lws_strategy);
+            std::vector<dim_idx_t> dims, const lws_strategy_t &lws_strategy)
+        : dispatched_dims(std::move(dims)), lws_strategy(lws_strategy) {};
+    status_t generate(reusable_dispatch_t &dispatch);
     status_t register_buffer(const named_buffer_t &buffer);
     status_t define_dim_index(name_id_t dim_name, dim_idx_t dim_id, dim_t size);
-    status_t use_subgroup(name_id_t buf_name, size_t size);
+
+    struct dim_size_t {
+        dim_t size;
+        dim_t padded_size;
+    };
 
 private:
     std::vector<named_buffer_t> buffers;
     std::vector<dim_idx_t> dispatched_dims;
-    std::unordered_map<dim_idx_t, dim_t, dim_id_hash_t> dim_sizes;
-
-    subgroup_data_t subgroup;
-    const engine_t *engine;
+    std::map<dim_idx_t, dim_size_t> dim_sizes;
+    const lws_strategy_t &lws_strategy;
 };
 
 } // namespace compute
@@ -723,25 +495,5 @@ private:
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
-
-namespace std {
-template <>
-struct hash<dnnl::impl::gpu::intel::compute::gws_term_list_t> {
-    size_t operator()(
-            const dnnl::impl::gpu::intel::compute::gws_term_list_t &list)
-            const {
-        return list.get_hash();
-    }
-};
-template <>
-struct hash<dnnl::impl::gpu::intel::compute::gws_indexing_term_t> {
-    size_t operator()(
-            const dnnl::impl::gpu::intel::compute::gws_indexing_term_t &term)
-            const {
-        return term.get_hash();
-    }
-};
-
-} // namespace std
 
 #endif

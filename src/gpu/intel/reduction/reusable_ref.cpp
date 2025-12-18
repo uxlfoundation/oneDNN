@@ -77,13 +77,13 @@ status_t ref_conf_t::init_dispatcher(const subproblem_t &subprb,
     dst_buf.data_type = conf.dst_dt;
     dst_buf.remove_dim(dims::reduction);
 
-    compute::reusable_dispatch_config_t config(&engine, dispatch_dims);
+    auto lws_strategy = compute::default_lws_strategy_t(&engine);
+    compute::reusable_dispatch_config_t config({}, lws_strategy);
     CHECK(config.register_buffer(src_buf));
     CHECK(config.register_buffer(dst_buf));
 
     compute::reusable_dispatch_t dispatch;
-    CHECK(config.generate(
-            dispatch, compute::default_lws_strategy_t(&engine, gpu_attr)));
+    CHECK(config.generate(dispatch));
     conf.params = dispatch.get_compile_params();
     rt_conf = dispatch.get_runtime_params();
 

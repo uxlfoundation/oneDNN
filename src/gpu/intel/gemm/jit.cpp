@@ -455,7 +455,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         cmask = pd()->sum_ab_cmask();
     }
 
-    // Pack host scalar zero-points
+    // Get host scalar zero-poins values
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);

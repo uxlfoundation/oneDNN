@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -136,9 +136,7 @@ public:
         return kernel->ocl_execute_impl(g_stream, inputs, outputs, deps, event);
     }
 #endif
-    status_t reset_engine(const engine_t *g_engine) override {
-        return kernel->reset_engine(g_engine);
-    }
+
     std::string str() const override { return kernel->str(); }
 };
 } // namespace dnnl_impl

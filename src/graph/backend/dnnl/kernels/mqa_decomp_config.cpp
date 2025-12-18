@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2024 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -469,31 +469,6 @@ dnnl::primitive_attr mqa_decomp_config_t::make_primitive_attr(
     }
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     return attr;
-}
-
-#define DECLARE_RESET_ENGINE(primitive_name, primitive_type) \
-    { \
-        const auto desc_t = (primitive_name).get_primitive_desc()->impl(); \
-        dnnl_primitive_desc new_pd_t(desc_t, p_engine.get()); \
-        primitive_type::primitive_desc new_pd(&new_pd_t); \
-        (primitive_name) = primitive_type(new_pd); \
-    }
-
-impl::status_t mqa_decomp_config_t::reset_engine(const dnnl::engine &p_engine) {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
-    omp_set_num_threads(1);
-#endif
-    DECLARE_RESET_ENGINE(sub_mm1_prim, matmul);
-    DECLARE_RESET_ENGINE(sub_mm2_prim, matmul);
-    DECLARE_RESET_ENGINE(sub_softmax_prim, softmax_forward);
-    sub_reorder0.reset_engine(p_engine);
-    sub_reorder1.reset_engine(p_engine);
-    sub_reorder2.reset_engine(p_engine);
-    sub_reorder3.reset_engine(p_engine);
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
-    omp_set_num_threads(nthr);
-#endif
-    return dnnl_success;
 }
 
 template status_t

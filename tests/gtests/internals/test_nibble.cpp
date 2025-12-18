@@ -51,7 +51,7 @@ TEST(test_limits, f4_e3m0) {
 
 template <typename T>
 void test_conversions() {
-    impl::parallel_nd(0xff, [&](uint8_t u8) {
+    impl::parallel_nd(0xff, [=](uint8_t u8) {
         // Each uint8_t contains a pair of 4-bit numbers.
         // Convert T -> f32 and back again,
         // expecting bitwise identical values.

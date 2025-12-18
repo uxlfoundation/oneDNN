@@ -60,26 +60,30 @@ float linear_weight(memory::dim y, memory::dim y_max, memory::dim x_max) {
 template <typename data_t>
 void compute_ref_resampling_fwd(const resampling_test_params_t &p,
         const memory &src_m, const memory &dst_m) {
-    auto src_data = map_memory<data_t>(src_m);
-    auto dst_data = map_memory<data_t>(dst_m);
+    auto src_mapped = map_memory<data_t>(src_m);
+    data_t *src_data = src_mapped;
+    auto dst_mapped = map_memory<data_t>(dst_m);
+    data_t *dst_data = dst_mapped;
 
     const memory::desc src_d = src_m.get_desc();
     const memory::desc dst_d = dst_m.get_desc();
 
-    const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
-    const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
-
     auto pd = p.test_pd;
-    auto padded_c = src_mdw.padded_dims()[1];
 
-    auto src = [&](memory::dim n, memory::dim c, memory::dim d, memory::dim h,
+    auto src = [=](memory::dim n, memory::dim c, memory::dim d, memory::dim h,
                        memory::dim w) {
+        const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
+        auto padded_c = src_mdw.padded_dims()[1];
         memory::dim idx = n * padded_c * pd.id * pd.ih * pd.iw
                 + c * pd.id * pd.ih * pd.iw + d * pd.ih * pd.iw + h * pd.iw + w;
         return src_data[src_mdw.off_l(idx, true)];
     };
 
-    dnnl::impl::parallel_nd(pd.mb, pd.c, [&](memory::dim n, memory::dim c) {
+    dnnl::impl::parallel_nd(pd.mb, pd.c, [=](memory::dim n, memory::dim c) {
+        const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
+        const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
+        auto padded_c = src_mdw.padded_dims()[1];
+
         for_(memory::dim od = 0; od < pd.od; od++)
         for_(memory::dim oh = 0; oh < pd.oh; oh++)
         for (memory::dim ow = 0; ow < pd.ow; ow++) {
@@ -125,26 +129,30 @@ void compute_ref_resampling_fwd(const resampling_test_params_t &p,
 template <typename data_t>
 void compute_ref_resampling_bwd(const resampling_test_params_t &p,
         const memory &diff_dst_m, const memory &diff_src_m) {
-    auto diff_src_data = map_memory<data_t>(diff_src_m);
-    auto diff_dst_data = map_memory<data_t>(diff_dst_m);
+    auto diff_src_mapped = map_memory<data_t>(diff_src_m);
+    data_t *diff_src_data = diff_src_mapped;
+    auto diff_dst_mapped = map_memory<data_t>(diff_dst_m);
+    data_t *diff_dst_data = diff_dst_mapped;
 
     const memory::desc diff_src_d = diff_src_m.get_desc();
     const memory::desc diff_dst_d = diff_dst_m.get_desc();
 
-    const dnnl::impl::memory_desc_wrapper diff_src_mdw(diff_src_d.get());
-    const dnnl::impl::memory_desc_wrapper diff_dst_mdw(diff_dst_d.get());
-
     auto pd = p.test_pd;
-    auto padded_c = diff_src_mdw.padded_dims()[1];
 
-    auto off = [&](memory::dim n, memory::dim c, memory::dim d, memory::dim h,
+    auto off = [=](memory::dim n, memory::dim c, memory::dim d, memory::dim h,
                        memory::dim w) {
+        const dnnl::impl::memory_desc_wrapper diff_src_mdw(diff_src_d.get());
+        auto padded_c = diff_src_mdw.padded_dims()[1];
         return diff_src_mdw.off_l(n * padded_c * pd.id * pd.ih * pd.iw
                         + c * pd.id * pd.ih * pd.iw + d * pd.ih * pd.iw
                         + h * pd.iw + w,
                 true);
     };
-    dnnl::impl::parallel_nd(pd.mb, pd.c, [&](memory::dim n, memory::dim c) {
+    dnnl::impl::parallel_nd(pd.mb, pd.c, [=](memory::dim n, memory::dim c) {
+        const dnnl::impl::memory_desc_wrapper diff_src_mdw(diff_src_d.get());
+        const dnnl::impl::memory_desc_wrapper diff_dst_mdw(diff_dst_d.get());
+        auto padded_c = diff_src_mdw.padded_dims()[1];
+
         for_(memory::dim id = 0; id < pd.id; id++)
         for_(memory::dim ih = 0; ih < pd.ih; ih++)
         for (memory::dim iw = 0; iw < pd.iw; iw++) {

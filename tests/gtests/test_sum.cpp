@@ -84,25 +84,27 @@ private:
 
     void check_data(const std::vector<memory> &srcs,
             const std::vector<float> &scale, const memory &dst) {
-        auto dst_data = map_memory<const dst_data_t>(dst);
+        auto dst_mapped = map_memory<const dst_data_t>(dst);
+        const dst_data_t *dst_data = dst_mapped;
         const auto &dst_d = dst.get_desc();
         const auto dst_dims = dst_d.get_dims();
-        const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
 
-        std::vector<mapped_ptr_t<const src_data_t>> mapped_srcs;
-        mapped_srcs.reserve(srcs.size());
+        std::vector<const src_data_t *> srcs_data;
+        srcs_data.reserve(srcs.size());
         for (auto &src : srcs)
-            mapped_srcs.emplace_back(map_memory<const src_data_t>(src));
+            srcs_data.emplace_back(map_memory<const src_data_t>(src));
 
         dnnl::impl::parallel_nd(dst_dims[0], dst_dims[1], dst_dims[2],
                 dst_dims[3],
-                [&](memory::dim n, memory::dim c, memory::dim h,
+                [=](memory::dim n, memory::dim c, memory::dim h,
                         memory::dim w) {
             if (is_current_test_failed()) return;
 
+            const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
+
             acc_t src_sum = 0.0;
             for (size_t num = 0; num < srcs.size(); num++) {
-                auto &src_data = mapped_srcs[num];
+                auto &src_data = srcs_data[num];
                 const auto &src_d = srcs[num].get_desc();
                 const auto src_dims = src_d.get_dims();
                 const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
@@ -130,6 +132,8 @@ private:
             acc_t dst_val = dst_data[dst_mdw.off_l(dst_idx, false)];
             ASSERT_EQ(src_sum, dst_val);
         });
+
+        synchronize_threadpool(dst.get_engine().get_kind());
     }
 
 protected:
@@ -267,11 +271,12 @@ protected:
                     == sum_pd.src_desc(i));
 
         {
-            auto dst_data = map_memory<dst_data_t>(dst);
+            auto dst_mapped = map_memory<dst_data_t>(dst);
+            dst_data_t *dst_data = dst_mapped;
             const size_t sz = dst.get_desc().get_size() / sizeof(dst_data_t);
             // overwriting dst to prevent false positives for test cases.
             dnnl::impl::parallel_nd(
-                    (ptrdiff_t)sz, [&](ptrdiff_t i) { dst_data[i] = -32; });
+                    (ptrdiff_t)sz, [=](ptrdiff_t i) { dst_data[i] = -32; });
         }
         EXPECT_ANY_THROW(sum(sum_pd, {}));
         sum c(sum_pd);

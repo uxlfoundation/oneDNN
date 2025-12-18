@@ -28,24 +28,27 @@ struct ref_gemm_t {
     static void call(const test_params_t &p, int64_t M, int64_t N,
             const test_memory &a_mem, const test_memory &b_mem,
             const test_memory &c_mem, const test_memory &) {
-        auto a = map_memory<a_dt>(a_mem);
-        auto b = map_memory<b_dt>(b_mem);
-        auto c = map_memory<c_dt>(c_mem);
+        auto a_mapped = map_memory<a_dt>(a_mem);
+        a_dt *a = a_mapped;
+        auto b_mapped = map_memory<b_dt>(b_mem);
+        b_dt *b = b_mapped;
+        auto c_mapped = map_memory<c_dt>(c_mem);
+        c_dt *c = c_mapped;
 
         const bool tr_a = p.transA && (p.transA == 'T' || p.transA == 't');
         const bool tr_b = p.transB && (p.transB == 'T' || p.transB == 't');
 
-        auto pa = [&](int64_t i, int64_t j) {
+        auto pa = [=](int64_t i, int64_t j) {
             return a[p.off.a + i * p.lda + j];
         };
-        auto pb = [&](int64_t i, int64_t j) {
+        auto pb = [=](int64_t i, int64_t j) {
             return b[p.off.b + i * p.ldb + j];
         };
-        auto pc = [&](int64_t i, int64_t j) -> c_dt & {
+        auto pc = [=](int64_t i, int64_t j) -> c_dt & {
             return c[p.off.c + i * p.ldc + j];
         };
 
-        dnnl::impl::parallel_nd(M, N, [&](int64_t im, int64_t in) {
+        dnnl::impl::parallel_nd(M, N, [=](int64_t im, int64_t in) {
             c_dt c_elem = (p.beta == 0.) ? 0. : pc(im, in) * p.beta;
 
             for (int64_t ik = 0; ik < p.K; ik++) {
@@ -63,10 +66,14 @@ struct ref_gemm_t<a_dt, b_dt, int32_t> {
     static void call(const test_params_t &p, int64_t M, int64_t N,
             const test_memory &a_mem, const test_memory &b_mem,
             const test_memory &c_mem, const test_memory &oc_mem) {
-        auto A = map_memory<a_dt>(a_mem);
-        auto B = map_memory<b_dt>(b_mem);
-        auto C = map_memory<int32_t>(c_mem);
-        auto oc = map_memory<int32_t>(oc_mem);
+        auto A_mapped = map_memory<a_dt>(a_mem);
+        a_dt *A = A_mapped;
+        auto B_mapped = map_memory<b_dt>(b_mem);
+        b_dt *B = B_mapped;
+        auto C_mapped = map_memory<int32_t>(c_mem);
+        int32_t *C = C_mapped;
+        auto oc_mapped = map_memory<int32_t>(oc_mem);
+        int32_t *oc = oc_mapped;
 
         const bool tr_a = p.transA && (p.transA == 'T' || p.transA == 't');
         const bool tr_b = p.transB && (p.transB == 'T' || p.transB == 't');
@@ -75,20 +82,20 @@ struct ref_gemm_t<a_dt, b_dt, int32_t> {
         bool OCisC = (p.igemm_params.offsetc == 'C'
                 || p.igemm_params.offsetc == 'c');
 
-        auto pa = [&](int64_t i, int64_t j) {
+        auto pa = [=](int64_t i, int64_t j) {
             return (double)A[p.off.a + i * p.lda + j];
         };
-        auto pb = [&](int64_t i, int64_t j) {
+        auto pb = [=](int64_t i, int64_t j) {
             return (double)B[p.off.b + i * p.ldb + j];
         };
-        auto pc = [&](int64_t i, int64_t j) -> int32_t & {
+        auto pc = [=](int64_t i, int64_t j) -> int32_t & {
             return C[p.off.c + i * p.ldc + j];
         };
 
         int8_t oa = p.igemm_params.oa();
         int8_t ob = p.igemm_params.ob();
 
-        dnnl::impl::parallel_nd(M, N, [&](int64_t m, int64_t n) {
+        dnnl::impl::parallel_nd(M, N, [=](int64_t m, int64_t n) {
             double c_elem = 0;
             for (int64_t k = 0; k < p.K; k++) {
                 const double a_elem = (tr_a ? pa(k, m) : pa(m, k)) - oa;
@@ -142,6 +149,7 @@ void compare(const test_params_t &p, const test_memory &c_mem,
             ASSERT_NEAR(diff, 0, eps) << "Row: " << i << " Col: " << j;
         }
     });
+    synchronize_threadpool(c_mem.get().get_engine().get_kind());
 }
 
 template <typename a_dt, typename b_dt, typename c_dt>

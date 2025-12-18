@@ -78,6 +78,8 @@ TEST(test_layout_propagator, LayoutPropagatorForReorder) {
     ASSERT_EQ(layout_propagator_for_reorder(
                       op, p_engine, pd_cache, fpm, use_block_layout, rewriter),
             graph::status::success);
+    // See: DUMMY_PARALLEL.
+    dnnl::impl::parallel(1, [](int, int) {});
 }
 
 TEST(test_layout_propagator, LayoutPropagatorForSumDeathTest) {

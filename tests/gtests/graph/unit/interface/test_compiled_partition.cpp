@@ -200,6 +200,8 @@ TEST(test_interface_compiled_partition, CacheEngine) {
         auto ts_output = dnnl_graph_tensor(output, eng, DNNL_MEMORY_ALLOCATE);
         ASSERT_EQ(cp.execute(strm_t, {ts_input}, {ts_output}),
                 impl::status_t::dnnl_success);
+        // See: DUMMY_PARALLEL.
+        dnnl::impl::parallel(1, [](int, int) {});
     }
 
 #ifdef DNNL_GRAPH_DISABLE_COMPILED_PARTITION_CACHE

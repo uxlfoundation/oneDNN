@@ -156,13 +156,6 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                     wei_scale_group_n = sc.get_group(DNNL_ARG_WEIGHTS, 1);
             }
 
-            // Groups per N are solely for weights decompression as it's
-            // impossible to get performant kernel for a single `k` element in
-            // chain for regular quantized case.
-            VCHECK_MATMUL_UNIMPL(IMPLICATION(wei_scale_group_n > 1,
-                                         attr->fpmath_.apply_to_int_),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-
             // Due to hardware specifics, groups, when more than 1, should be
             // multiple of 16.
             VCHECK_MATMUL_UNIMPL(

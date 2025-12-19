@@ -132,6 +132,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
             = !attr_scales.get(DNNL_ARG_SRC).has_default_groups()
             ? attr_scales.get_group(DNNL_ARG_SRC, 1)
             : (src_scale_per_k ? 1 : K);
+    const auto src_scale_group_m = attr_scales.get_group(DNNL_ARG_SRC, 1);
     const auto src_scale_ngroups_k = K / src_scale_group_k;
     // Identify src_scales dimensions as user may not pass them.
     dims_t src_scale_dims {};
@@ -279,6 +280,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, src_scale_stride_m);
     arg_list.set(arg_idx++, src_scale_stride_b0);
     arg_list.set(arg_idx++, src_scale_stride_b1);
+    arg_list.set(arg_idx++, src_scale_group_m);
     arg_list.set(arg_idx++, src_scale_group_k);
     arg_list.set(arg_idx++, wei_scales);
     arg_list.set(arg_idx++, wei_scale_stride_n);

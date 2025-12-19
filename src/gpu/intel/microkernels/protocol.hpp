@@ -57,6 +57,7 @@ public:
         bool offsetB = false;
         bool scaleA = false;
         bool scaleB = false;
+        bool kParallelLocal = false;
 
         Options() = default;
         explicit Options(int flags)
@@ -67,7 +68,8 @@ public:
             , offsetA(flags & (1 << 4))
             , offsetB(flags & (1 << 5))
             , scaleA(flags & (1 << 6))
-            , scaleB(flags & (1 << 7)) {}
+            , scaleB(flags & (1 << 7))
+            , kParallelLocal(flags & (1 << 8)) {}
 
         int toOptionsMask() const {
             int ioptions = 0;
@@ -79,6 +81,7 @@ public:
             if (offsetB) ioptions |= (1 << 5);
             if (scaleA) ioptions |= (1 << 6);
             if (scaleB) ioptions |= (1 << 7);
+            if (kParallelLocal) ioptions |= (1 << 8);
             return ioptions;
         }
     };

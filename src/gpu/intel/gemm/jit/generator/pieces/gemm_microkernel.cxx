@@ -39,6 +39,8 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     outputCLayout.clear();
 
     strategy.forceWGUpdate = WGFixed;
+    strategy.forceFixedWGK = true;
+    strategy.activeThreads = strategy.wg[LoopM] * strategy.wg[LoopN] * strategy.wg[LoopK];
 
     strategy.AO.base = A64;
     strategy.BO.base = A64;
@@ -67,6 +69,8 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
 
     state.lidM = getAndClaim("local_id_m").uw();
     state.lidN = getAndClaim("local_id_n").uw();
+    if (strategy.kParallelLocal)
+        state.lidK = getAndClaim("local_id_k").uw();
 
     state.allocEmulate64Temp(strategy.emulate);
 
@@ -113,7 +117,7 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     }
 
     if (strategy.kParallelLocal) {
-        /* Select k0 automatically -- also need to compute lidK */
+        /* Select k0 automatically */
         int wgK = strategy.wg[LoopK];
         if (!is_zero_or_pow2(wgK)) stub();
         k0 = state.ra.alloc_sub<uint32_t>();
@@ -125,13 +129,18 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     emad(1, state.i0, state.i0, state.lidM, strategy.unroll[LoopM], strategy, state);
     emad(1, state.j0, state.j0, state.lidN, strategy.unroll[LoopN], strategy, state);
     if (strategy.kParallelLocal) {
+        bool anyAB2D = strategy.A.address2D || strategy.B.address2D
+                || (strategy.prefetchA && strategy.A_prefetch.address2D)
+                || (strategy.prefetchB && strategy.B_prefetch.address2D);
+        if (anyAB2D) {
+            state.fullK = state.ra.alloc_sub<uint32_t>(getHint(HintType::LongTerm, strategy));
+            mov(1, state.fullK, state.inputs.k);
+        }
+
         emad(1, state.h0, state.h0, k0, state.lidK, strategy, state);
         add(1 | sat, k.ud(), k, -state.h0);
         min_(1, k, k, k0);
-        if (strategy.barrierFreq > 0 || strategy.slmBuffers > 0)
-            state.ra.safeRelease(k0);
-        else
-            state.threadK0 = k0;
+        state.threadK0 = k0;
     }
 
     gemmCalcWGRemainders(problem, strategy, state);
@@ -272,6 +281,9 @@ micro::Package Generator<hw>::gemmMicrokernelPackage(const GEMMProblem &problem_
         package.arguments.push_back(std::move(arg));
     }
 
+    auto slmSize = std::max(gemmSLMSize(hw, problem, strategy, true),
+                            gemmPerKSLMSize(hw, problem, strategy) * strategy.wg[LoopK]);
+
     auto effLoopM = !transposeC ? LoopM : LoopN;
     auto effLoopN = !transposeC ? LoopN : LoopM;
     package.settings.push_back({"sg_tile_m", strategy.unroll[effLoopM]});
@@ -281,7 +293,7 @@ micro::Package Generator<hw>::gemmMicrokernelPackage(const GEMMProblem &problem_
     package.settings.push_back({"sg_per_wg_m", strategy.wg[effLoopM]});
     package.settings.push_back({"sg_per_wg_n", strategy.wg[effLoopN]});
     package.settings.push_back({"sg_per_wg_k", strategy.wg[LoopK]});
-    package.settings.push_back({"slm_size", int(gemmSLMSize(hw, problem, strategy, true))});
+    package.settings.push_back({"slm_size", int(slmSize)});
 
     package.barrierCount = interface.getBarrierCount();
 

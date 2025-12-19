@@ -87,6 +87,8 @@ logical_tensor::data_type deserialized_lt_t::get_data_type() const {
         return logical_tensor::data_type::s4;
     } else if (data_type_ == "u4") {
         return logical_tensor::data_type::u4;
+    } else if (data_type_ == "s64") {
+        return logical_tensor::data_type::s64;
     } else {
         return logical_tensor::data_type::undef;
     }
@@ -223,6 +225,7 @@ dnnl_driver_t deserialized_op_t::opkind2driver() const {
                             dnnl_driver_t::deconv},
                     {dnnl::graph::op::kind::Dequantize, dnnl_driver_t::reorder},
                     {dnnl::graph::op::kind::Divide, dnnl_driver_t::binary},
+                    {dnnl::graph::op::kind::Dropout, dnnl_driver_t::eltwise},
                     {dnnl::graph::op::kind::DynamicDequantize,
                             dnnl_driver_t::reorder},
                     {dnnl::graph::op::kind::DynamicQuantize,

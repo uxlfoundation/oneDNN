@@ -514,6 +514,7 @@ int flex_rewrite_t::infer_output_shape(
             case dnnl::graph::op::kind::Tanh:
             case dnnl::graph::op::kind::TanhBackward:
             case dnnl::graph::op::kind::TypeCast:
+            case dnnl::graph::op::kind::Dropout:
             // infer_bias_add_output_shape
             case dnnl::graph::op::kind::BiasAdd:
                 in0 = aop.in_lts_[0].id_;

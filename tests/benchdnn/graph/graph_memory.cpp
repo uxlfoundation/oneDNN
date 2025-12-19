@@ -72,6 +72,7 @@ dnn_graph_mem_t::dnn_graph_mem_t(const dnn_mem_t &mem,
     }
 
     if (is_op_input) {
+        std::cout << "lt_id:" << lt.id_ << std::endl;
         // Create graph memory with memory description from graph path.
         dnnl::memory::desc md(graph_dims_, data_type, graph_strides_);
         mem_ = dnn_mem_t(md.get(), g_eng.get(), /* prefill = */ true);
@@ -124,14 +125,19 @@ int dnn_graph_mem_t::fill_mem_with_data(
     int ndims = mem.ndims();
     const auto prim_to_graph_memcpy
             = [](dnn_mem_t &graph_mem, const dnn_mem_t &prim_mem) {
+        std::cout << "aaa" << std::endl;
         const void *prim_data_handle = static_cast<const void *>(prim_mem);
+        std::cout << "bbb" << std::endl;
         void *graph_data_handle = graph_mem.get_mapped_pointer<void>();
+        std::cout << "ccc" << std::endl;
         std::memcpy(graph_data_handle, prim_data_handle, graph_mem.size());
     };
 
     if (src_dt != dst_dt || src_eng != dst_eng) {
         // If dt or eng is different, need to transfer data under same dt or
         // engine to perform a data copy.
+        std::cout << "prim eng:" << src_eng << ", graph eng:" << dst_eng
+                  << std::endl;
         dnn_mem_t c_mem(ndims, mem.dims(), dst_dt, mem.strides(), dst_eng,
                 /* prefill = */ true);
         SAFE_V(c_mem.reorder(mem));

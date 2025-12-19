@@ -29,7 +29,7 @@
 #define QUANTIZE_COMMON 3
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define DIV_UP(x, y) (((x) + (y)-1) / (y))
+#define DIV_UP(x, y) (((x) + (y) - 1) / (y))
 
 #define sg_per_wg (ugemm_kq_sg_per_wg_m * ugemm_kq_sg_per_wg_n)
 #define q_tile_sg_n DIV_UP(ugemm_kq_wg_tile_n, sg_per_wg)
@@ -528,7 +528,6 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         iscale = native_recip(scale);
 #endif
 #endif
-        //scale *= 1.442695f; // log2(e)
     }
 
 #if PREFETCH_K0
@@ -615,8 +614,6 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
     uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m;
     uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n;
-    //printf("tile_n %d sg_j0 %d sg_i, %d\n", ugemm_kq_wg_tile_n, sg_j0_kq, sg_i_kq);
-    //printf("k0? >k0_end%d:%d \n", k0end, ugemm_kq_wg_tile_m);
 
     /* Main loop over k blocks */
     for (int k0 = 0; k0 < k0end; k0 += ugemm_kq_wg_tile_m) {
@@ -676,19 +673,20 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                         ldkq
 #endif
                 );
+
 #if KQ_F16_ACC
         s_tile_type_float S_tile;
         tile_copy_reblock(S_tile_f16, &S_tile);
 #endif
 
 #if KEY_SCALES == QUANTIZE_COMMON
-#define k_scale_op(x) ((x)*k_scale)
+#define k_scale_op(x) ((x) * k_scale)
         tile_elementwise(S_tile, k_scale_op);
 #endif
 
         /* Apply attention mask */
 #if WITH_ATTN_MASK
-#define unscale(x) ((x)*iscale)
+#define unscale(x) ((x) * iscale)
         mask_tile_type_float mask_tile_float;
         tile_copy_reblock(mask_tile, &mask_tile_float);
 #if WITH_ATTN_SCALE
@@ -837,23 +835,6 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         if (last) {
             tile_store_full(S_sum_tile, S_sum_slm, ugemm_kq_wg_tile_n, sg_j0_kq,
                     sg_i_kq);
-#if IS_TRAINING
-
-#define log2(x) (native_vlog2(x) * 0.6931471805f)
-            tile_elementwise(S_sum_tile, log2);
-#define scale_op(x) ((x)*scale)
-            tile_elementwise(S_max_tile_old, scale_op);
-            tile_binary(S_max_tile_old, S_sum_tile, binary_add);
-
-            // save columns logsumexp to workspace for training pass
-            global float *ws_maxes = ws;
-            tile_store_full(S_max_tile_old, ws_maxes, ugemm_kq_wg_tile_n,
-                    sg_j0_kq + wg_j0, 0);
-
-            //global float *ws_sums = ws + q;
-            //tile_store_full(S_sum_tile, ws_sums, ugemm_kq_wg_tile_n,
-            //sg_j0_kq + wg_j0, 0);
-#endif
         }
 
 #if PREFETCH_K
@@ -989,6 +970,29 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         if (need_sum_barrier)
             intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
 
+#if IS_TRAINING
+        s_sum_tile_type S_sum_total, S_sum_load;
+        tile_fill(S_sum_total, 0.f);
+#pragma unroll
+        for (uint sg1 = 0; sg1 < ugemm_kq_sg_per_wg_m; sg1++) {
+            tile_load_full(&S_sum_load, S_sum_slm, ugemm_kq_wg_tile_n,
+                    ugemm_kq_sg_tile_n * sg_j_kq, sg1);
+            tile_binary(S_sum_total, S_sum_load, binary_add);
+        }
+
+#define log2(x) (native_vlog2(x) * 0.6931471805f)
+        tile_elementwise(S_sum_total, log2);
+#define scale_op(x) ((x) * scale)
+        tile_elementwise(S_max_tile_old, scale_op);
+        tile_binary(S_max_tile_old, S_sum_total, binary_add);
+
+        // save columns logsumexp to workspace for training pass
+        global float *ws_logsumexp = ws;
+        tile_store(S_max_tile_old, ws_logsumexp, q, 1, q, sg_j0_kq + wg_j0,
+                sg_i0_kq);
+        // sg_i0 specified to avoid OOB subgroups from aliasing
+#endif
+
         /* Load column sums from SLM + reduce in registers */
         a_scale_tile_type A_scale_tile, A_scale_tile_load;
         tile_fill(A_scale_tile, 0.0f);
@@ -1000,7 +1004,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             tile_binary(A_scale_tile, A_scale_tile_load, binary_add);
         }
 #if VAL_SCALES == QUANTIZE_COMMON
-#define v_scale_op(x) ((x)*v_scale)
+#define v_scale_op(x) ((x) * v_scale)
         tile_elementwise(A_tile, v_scale_op);
 #endif
 

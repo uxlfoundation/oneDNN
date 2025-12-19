@@ -170,7 +170,7 @@ protected:
         //ws_md_.format_tag = format_tag::a;
 
         dims_t d;
-        d[0] = 3 * desc()->queries(); // col sums + maxs + Di // TODO: add batch
+        d[0] = 2 * desc()->queries(); // logsumexp + Di // TODO: add batch
 
         memory_desc_init_by_tag(ws_md_, 1, d, data_type::f32, format_tag::a);
     }

@@ -58,13 +58,18 @@ bool with_quantize_common(const quant_entry_t &entry) {
 
 } /* anonymous namespace */
 
-status_t update_config_from_devenv_values(config_t *config, bool quantized) {
+status_t update_config_from_devenv_values(
+        config_t *config, bool quantized, bool is_bwd = false) {
     std::string q_config_str
             = gpu_utils::dev_getenv("QUANTIZED_SDPA_CONFIG", std::string(""));
     std::string config_str
             = gpu_utils::dev_getenv("SDPA_CONFIG", std::string(""));
-    if ((!config_str.empty() && !quantized)
-            || (!q_config_str.empty() && quantized)) {
+    std::string bwd_config_str
+            = gpu_utils::dev_getenv("BWD_SDPA_CONFIG", std::string(""));
+    std::cout << "bwdstr" << bwd_config_str << std::endl;
+    if (!is_bwd
+            && ((!config_str.empty() && !quantized)
+                    || (!q_config_str.empty() && quantized))) {
         std::array<int, 8> config_values;
         int i;
         int num_values = 0;
@@ -91,6 +96,37 @@ status_t update_config_from_devenv_values(config_t *config, bool quantized) {
             config->wg_n_kq = config_values[5];
             config->wg_m_vs = config_values[6];
             config->wg_n_vs = config_values[7];
+        }
+    }
+    if (is_bwd && !bwd_config_str.empty()) {
+        std::array<int, 4> config_values;
+        int i;
+        int num_values = 0;
+
+        stringstream_t ss(bwd_config_str);
+        while (ss >> i) {
+            config_values[num_values++] = i;
+            if (ss.peek() == ',') ss.ignore();
+        }
+        VCHECK_SDPA_COND(num_values == 4,
+                "BWD_SDPA_CONFIG(%s) is invalid. Must be 4 integers "
+                "separate by a comma: "
+                "<unroll_m_kq>,<unroll_n_kq>,<wg_m_"
+                "kq>,<wg_n_kq>",
+                config_str.c_str());
+        if (num_values == 4) {
+            printf("got %d %d %d %d\n", config_values[0], config_values[1],
+                    config_values[2], config_values[3]);
+            config->unroll_m_kq = config_values[0];
+            config->unroll_n_kq = config_values[1];
+            config->wg_m_kq = config_values[2];
+            config->wg_n_kq = config_values[3];
+
+            //tMPP
+            config->unroll_m_vs = 32;
+            config->unroll_n_vs = 32;
+            config->wg_m_vs = 1;
+            config->wg_n_vs = 1;
         }
     }
     return status::success;
@@ -412,7 +448,9 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             "No suitable kernel configuration found for the given problem "
             "size and attributes.");
 
-    CHECK(update_config_from_devenv_values(config, quantized));
+    const bool is_bwd = true;
+    printf("UDATING ENV BWD\n");
+    CHECK(update_config_from_devenv_values(config, quantized, is_bwd));
 
     VDEBUGINFO(4, primitive, sdpa,
             "D=%d,K=%d,%s%s%s"
@@ -428,6 +466,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             config->unroll_n_vs * config->wg_n_vs, config->unroll_m_vs,
             config->unroll_n_vs, config->wg_m_vs, config->wg_n_vs);
 
+    /*
     VCHECK_SDPA_COND(config->unroll_n_kq * config->wg_n_kq
                             == config->unroll_n_vs * config->wg_n_vs
                     && config->unroll_n_kq % config->unroll_n_vs == 0,
@@ -444,6 +483,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             config->unroll_m_vs, config->wg_m_vs,
             config->unroll_m_vs * config->wg_m_vs,
             static_cast<long int>(d->head_size()));
+            */
 
     // serializable minimal set of configuration params for ukernels
     // will be used to generate shim ukernels in reusable kernel_ctx
@@ -507,7 +547,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     auto problem_kq = problem;
 
-    problem_kq.A.layout = MatrixLayout::Pc;
+    problem_kq.A.layout = MatrixLayout::
+            N; //TODO: make this Pc? Pr? how to match w/systolic?
     problem_kq.B.layout = convert_dnnl_to_kernel_layout(qry_md());
     problem_kq.C.layout = MatrixLayout::T;
     const memory_desc_wrapper key_mdw(key_md());
@@ -569,7 +610,9 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     //problem_vs.A.setAlignment(alignmentForLD(ldv)); //gmem
     problem_vs.A.setAlignment(64); // S is packed in SLM
     problem_vs.B.setAlignment(64); // S is packed in SLM
-    if (use_systolic_ukernel()) { problem_vs.B.crosspack = 16; }
+    if (use_systolic_ukernel()) {
+        problem_vs.B.crosspack = 16;
+    } //TODO: if systolic problem.A.crosspack, tileR tileC
 
     ukernel_params.problem_vs = {problem_vs};
 
@@ -597,8 +640,10 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem_vtdA.Ta_ext = convert_dnnl_to_kernel_type(val_md()->data_type);
     problem_vtdA.A.layout = transpose_layout(
             convert_dnnl_to_kernel_layout(val_md())); //TODO hardcode?
+    //problem_vtdA.A.layout = convert_dnnl_to_kernel_layout(val_md()); //TODO hardcode?
 
-    problem_vtdA.B.layout = MatrixLayout::Pr; //is this right? w/shared slm between vs?
+    problem_vtdA.B.layout
+            = MatrixLayout::T; //is this right? w/shared slm between vs?
     problem_vtdA.C.layout = MatrixLayout::T; //which?
     problem_vtdA.A.setAlignment(alignmentForLD(ldv));
     problem_vtdA.B.setAlignment(64); // S is packed in SLM
@@ -627,13 +672,13 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     //////// Q * dS^t
     auto problem_qdSt = problem;
-    problem_qdSt.Ta_ext = convert_dnnl_to_kernel_type(val_md()->data_type);
+    problem_qdSt.Ta_ext = convert_dnnl_to_kernel_type(qry_md()->data_type);
     problem_qdSt.A.layout
-            = convert_dnnl_to_kernel_layout(val_md()); //TODO hardcode?
+            = convert_dnnl_to_kernel_layout(qry_md()); //TODO hardcode?
 
-    problem_qdSt.B.layout = MatrixLayout::Pr;
+    problem_qdSt.B.layout = MatrixLayout::T;
     problem_qdSt.C.layout = MatrixLayout::T; //which?
-    problem_qdSt.A.setAlignment(alignmentForLD(ldv));
+    problem_qdSt.A.setAlignment(alignmentForLD(ldq));
     problem_qdSt.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) {
         problem_qdSt.B.crosspack = 2;
@@ -1257,11 +1302,16 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     reqs_kq.push_back(StrategyRequirement::WGM == config.wg_m_kq);
     reqs_kq.push_back(StrategyRequirement::WGN == config.wg_n_kq);
 
+    //is borken?? wtf
+    //TODO: change? unique for all? same for all?
     std::vector<StrategyRequirement> reqs_vs;
-    reqs_vs.push_back(StrategyRequirement::UnrollM == config.unroll_m_vs);
-    reqs_vs.push_back(StrategyRequirement::UnrollN == config.unroll_n_vs);
-    reqs_vs.push_back(StrategyRequirement::WGM == config.wg_m_vs);
-    reqs_vs.push_back(StrategyRequirement::WGN == config.wg_n_vs);
+    reqs_vs.push_back(StrategyRequirement::UnrollM == config.unroll_m_kq);
+    reqs_vs.push_back(StrategyRequirement::UnrollN == config.unroll_n_kq);
+    reqs_vs.push_back(StrategyRequirement::WGM == config.wg_m_kq);
+    reqs_vs.push_back(StrategyRequirement::WGN == config.wg_n_kq);
+
+    printf("kq config %d %d %d %d\n", config.unroll_m_kq, config.unroll_n_kq,
+            config.wg_m_kq, config.wg_n_kq);
 
     std::vector<StrategyRequirement> reqs_vtdA;
     reqs_vtdA.push_back(StrategyRequirement::UnrollM
@@ -1303,10 +1353,10 @@ status_t micro_bwd_params_t::get_kernel_ctx(
                 strategy.dpasw |= strategy.fused;
             };
             gemm_vs = selectGEMMMicrokernel(
-                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs, adjust_vs);
+                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_kq, adjust_vs);
         } else {
             gemm_vs = selectGEMMMicrokernel(
-                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs);
+                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_kq);
         }
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
@@ -1339,7 +1389,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
 
     try {
         gemm_vtdA = selectGEMMMicrokernel(
-                opts_vtdA, hw_info, sizes_vtdA, problem_vtdA, reqs_vtdA);
+                opts_vtdA, hw_info, sizes_vtdA, problem_vtdA, reqs_kq);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_vtdA microkernel generation failure with message: %s",
@@ -1355,7 +1405,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
 
     try {
         gemm_ktq = selectGEMMMicrokernel(
-                opts_ktq, hw_info, sizes_ktq, problem_ktq, reqs_ktq);
+                opts_ktq, hw_info, sizes_ktq, problem_ktq, reqs_kq);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_ktq microkernel generation failure with message: %s",
@@ -1370,7 +1420,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
 
     try {
         gemm_qdSt = selectGEMMMicrokernel(
-                opts_qdSt, hw_info, sizes_qdSt, problem_qdSt, reqs_qdSt);
+                opts_qdSt, hw_info, sizes_qdSt, problem_qdSt, reqs_kq);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_qdSt microkernel generation failure with message: %s",
@@ -1622,13 +1672,16 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     //gws[0] *= utils::div_up(K, wg_tile_k);
     gws[0] *= utils::div_up(Q, wg_tile_q);
-    //gws[0] *= utils::div_up(K, wg_tile_k) * utils::div_up(Q, wg_tile_q); //atomics approach
+    // gws[0] *= utils::div_up(K, wg_tile_k) * utils::div_up(Q, wg_tile_q); // atomics approach
     gws[1] *= pd()->dst_md()->dims[1];
     gws[2] *= pd()->dst_md()->dims[0];
 
     auto nd_range = compute::nd_range_t(gws, lws);
+    printf("gws[%d %d %d] lws[%d %d %d]\n", gws[0], gws[1], gws[2], lws[0],
+            lws[1], lws[2]);
     //TODO errorcheck
-    parallel_for(ctx, nd_range, preprocess_, arg_list);
+    parallel_for(ctx, nd_range, preprocess_,
+            arg_list); //TODO: check how many to fill D_MAX
 
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 

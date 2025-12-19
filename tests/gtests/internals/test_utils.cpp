@@ -19,9 +19,10 @@ using dnnl::memory;
 using mdt = memory::data_type;
 
 memory::dim product(const std::vector<int64_t> &dims) {
-    return dims.empty() ? 0
-                        : std::accumulate(dims.begin(), dims.end(),
-                                (memory::dim)1, std::multiplies<memory::dim>());
+    return dims.empty()
+            ? 0
+            : std::accumulate(dims.begin(), dims.end(), (memory::dim)1,
+                      std::multiplies<memory::dim>());
 }
 
 std::random_device &get_random_device() {
@@ -60,11 +61,13 @@ void fill_eye(std::vector<float> &out, const memory::desc &desc) {
     auto elems = product(desc.get_dims());
     size_t width = desc.get_dims()[desc.get_ndims() - 1];
     for (memory::dim i = 0; i < elems; i++) {
-        //if(i%width == i/width) {
-        //if (i % width == i / width % 16) { //TMP for testing
-        //if ((i % width == i / width % 16) || (i % width == 3 && i / width == 1)) { //TMP for testing
-        if ((i % width == i / width % 32) || (i % width == 3 && i / width == 1) || (i % width == 0)) { //TMP for testing
-        //if ((i % width == i / width % 16) || (i % width == 3 && i / width == 1) || i == 1) { //TMP for testing
+        if (i % width == i / width) {
+            //if (i % width == i / width % 16) { //TMP for testing
+            //
+            //if ((i % width == i / width % 16) || (i % width == 3 && i / width == 1)) { //TMP for testing
+            //
+            //if ((i % width == i / width % 32) || (i % width == 3 && i / width == 1) || (i % width == 0)) { //TMP for testing
+            //if ((i % width == i / width % 16) || (i % width == 3 && i / width == 1) || i == 1) { //TMP for testing
             out[i] = 1.f;
         } else {
             out[i] = 0.f;
@@ -245,8 +248,11 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
                 for (size_t i = 0; i < ndims; ++i) {
                     offset += idxs[i] * strides[i];
                 }
-                printf("%+6.1f ", (mapped_ptr[offset]));
-                //printf("%+6.3f ", (mapped_ptr[offset]));
+                //printf("%+6.1f ", (mapped_ptr[offset]));
+                //printf("%+6.2f ", (mapped_ptr[offset]));
+                if (idxs[lastdim] % 16 == 0) printf("|");
+                if (idxs[lastdim] % 32 == 0) printf("|");
+                printf("%+6.4f ", (mapped_ptr[offset]));
                 if (idxs[lastdim] == (dims[lastdim] - 1)) { printf("\n"); }
             });
         } break;

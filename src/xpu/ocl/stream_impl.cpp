@@ -176,6 +176,10 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
     }
 
     if (is_profiling_enabled()) {
+        if (stream->is_verbose_profiler_enabled()) {
+            xpu::ocl::event_t::from(out_dep).events = {out_event};
+        }
+
         auto ocl_event = utils::make_unique<xpu::ocl::event_t>(
                 std::vector<xpu::ocl::wrapper_t<cl_event>> {out_event});
         stream_profiler->register_event(std::move(ocl_event));
@@ -227,6 +231,10 @@ status_t stream_impl_t::fill(impl::stream_t *stream,
     }
 
     if (is_profiling_enabled()) {
+        if (stream->is_verbose_profiler_enabled()) {
+            xpu::ocl::event_t::from(out_dep).events = {out_event};
+        }
+
         auto ocl_event = utils::make_unique<xpu::ocl::event_t>(
                 std::vector<xpu::ocl::wrapper_t<cl_event>> {out_event});
         stream_profiler->register_event(std::move(ocl_event));

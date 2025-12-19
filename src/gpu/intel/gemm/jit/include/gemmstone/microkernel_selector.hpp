@@ -42,6 +42,7 @@ struct GEMMOptions {
     bool offsetB = false;
     bool scaleA = false;
     bool scaleB = false;
+    bool kParallelLocal = false;
 
     GEMMOptions() = default;
 };

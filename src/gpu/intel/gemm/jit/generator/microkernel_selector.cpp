@@ -78,6 +78,7 @@ std::vector<Protocol::Argument> arguments(const GEMMOptions &o) {
     if (o.localA) argsV[0].stype.format = LocalPointer;
     if (o.localB) argsV[2].stype.format = LocalPointer;
     if (o.addToC) argsV[4].direction = Protocol::Argument::InOut;
+    if (o.kParallelLocal) argsV.push_back({"local_id_k", In, s32});
     if (o.slmPtr) argsV.push_back({"slm", In, LocalPointer});
     if (o.scaleA) argsV.push_back({"a_scale", In, GlobalPointer});
     if (o.offsetA) argsV.push_back({"a_offset", In, GlobalPointer});

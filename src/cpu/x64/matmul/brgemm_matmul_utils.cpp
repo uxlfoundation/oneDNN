@@ -231,9 +231,8 @@ status_t check_isa_with_datatype(
             && IMPLICATION(bm_conf_utils.is_bf16(),
                     one_of(isa, avx512_core_amx, avx512_core_bf16, avx2_vnni_2))
             && IMPLICATION(bm_conf_utils.is_f16(),
-                    one_of(isa, avx10_2_512, avx10_2_512_amx_2,
-                            avx512_core_amx_fp16, avx512_core_fp16,
-                            avx2_vnni_2))
+                    one_of(isa, avx10_2, avx10_2_amx_2, avx512_core_amx_fp16,
+                            avx512_core_fp16, avx2_vnni_2))
             // `avx512_core_amx_fp16` is not supported for plain upconversion
             // as HW supports native compute.
             && IMPLICATION(bm_conf_utils.is_f32_f16(),
@@ -254,11 +253,11 @@ status_t check_isa_with_datatype(
                     one_of(isa, avx512_core, avx2))
             && IMPLICATION(bm_conf_utils.is_f8(),
                     is_superset(isa, avx512_core_amx_fp16)
-                            || is_superset(isa, avx10_2_512))
+                            || is_superset(isa, avx10_2))
             && IMPLICATION(bm_conf_utils.is_bf8(),
                     is_superset(isa, avx512_core_amx_fp16))
-            && IMPLICATION(bm_conf_utils.is_f4_via_convert(),
-                    one_of(isa, avx10_2_512));
+            && IMPLICATION(
+                    bm_conf_utils.is_f4_via_convert(), one_of(isa, avx10_2));
     return ok ? status::success : status::unimplemented;
 }
 
@@ -304,7 +303,7 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && isa == avx512_core_amx)
     , tf32_dt(f32_dt
               && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
-              && isa == avx10_2_512_amx_2)
+              && isa == avx10_2_amx_2)
     , weights_decompression_support(one_of(bgmmc.wei_dt, u8, s8, u4, s4)
               && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::f16,
                       fpmath_mode::strict, fpmath_mode::any)
@@ -1898,7 +1897,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     }
 
     // init mem advice heuristic based on bmn threads and excution scan order
-    if (is_superset(isa, avx10_2_512)) mem_advice_init(bgmmc);
+    if (is_superset(isa, avx10_2)) mem_advice_init(bgmmc);
 
     // Dispatch small shapes to VNNI for better performance
     const bool runtime_dims

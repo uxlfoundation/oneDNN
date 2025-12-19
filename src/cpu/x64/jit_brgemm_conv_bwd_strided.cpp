@@ -53,10 +53,10 @@ static bool impl_supports_datatype(data_type_t data_type) {
             return x64::mayiuse(x64::avx512_core_fp16)
                     || x64::mayiuse(x64::avx2_vnni_2);
         case data_type::f8_e5m2:
-            return x64::mayiuse(x64::avx10_2_512_amx_2)
+            return x64::mayiuse(x64::avx10_2_amx_2)
                     || x64::mayiuse(x64::avx512_core_amx_fp16);
         case data_type::f8_e4m3:
-            return x64::mayiuse(x64::avx10_2_512)
+            return x64::mayiuse(x64::avx10_2)
                     || x64::mayiuse(x64::avx512_core_amx_fp16);
         case data_type::f32:
         case data_type::s32:
@@ -1657,8 +1657,8 @@ template struct brgemm_convolution_bwd_strided_t<avx512_core>;
 template struct brgemm_convolution_bwd_strided_t<avx512_core_vnni>;
 template struct brgemm_convolution_bwd_strided_t<avx512_core_bf16>;
 template struct brgemm_convolution_bwd_strided_t<avx512_core_fp16>;
-template struct brgemm_convolution_bwd_strided_t<avx10_2_512>;
-template struct brgemm_convolution_bwd_strided_t<avx10_2_512_amx_2>;
+template struct brgemm_convolution_bwd_strided_t<avx10_2>;
+template struct brgemm_convolution_bwd_strided_t<avx10_2_amx_2>;
 
 } // namespace x64
 

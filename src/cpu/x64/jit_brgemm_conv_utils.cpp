@@ -1757,7 +1757,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.is_fp8 = one_of(jcp.src_dt, f8_e5m2, f8_e4m3)
             && one_of(jcp.wei_dt, f8_e5m2, f8_e4m3);
     jcp.is_fp8_convert
-            = jcp.is_fp8 && one_of(isa, avx10_1_512_amx_fp16, avx10_2_512);
+            = jcp.is_fp8 && one_of(isa, avx10_1_512_amx_fp16, avx10_2);
     jcp.is_f32_f16
             = everyone_is(f32, jcp.src_dt, jcp.dst_dt) && jcp.wei_dt == f16;
     jcp.is_f32_bf16
@@ -1775,7 +1775,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             && isa == avx512_core_amx;
     jcp.is_tf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
             && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
-            && is_superset(isa, avx10_2_512_amx_2);
+            && is_superset(isa, avx10_2_amx_2);
     jcp.wei_plain = everyone_is(true, jcp.wei_dt == data_type::f32,
             is_superset(isa, avx512_core), weights_d.is_plain());
     if (jcp.wei_plain)
@@ -1887,11 +1887,11 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_CONV_IC(
             IMPLICATION(one_of(jcp.wei_dt, f8_e5m2, f8_e4m3),
-                    mayiuse(avx512_core_amx_fp16) || mayiuse(avx10_2_512)),
+                    mayiuse(avx512_core_amx_fp16) || mayiuse(avx10_2)),
             VERBOSE_ISA_DT_MISMATCH);
-    VDISPATCH_CONV_IC(IMPLICATION(jcp.wei_dt == f8_e5m2,
-                              mayiuse(avx512_core_amx_fp16)
-                                      || mayiuse(avx10_2_512_amx_2)),
+    VDISPATCH_CONV_IC(
+            IMPLICATION(jcp.wei_dt == f8_e5m2,
+                    mayiuse(avx512_core_amx_fp16) || mayiuse(avx10_2_amx_2)),
             VERBOSE_ISA_DT_MISMATCH);
     const bool is_f32
             = utils::everyone_is(f32, jcp.src_dt, jcp.wei_dt, jcp.dst_dt);
@@ -3122,9 +3122,9 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
             && one_of(diff_weights_d.data_type(), f32, f16, f8_e5m2, f8_e4m3)
             && one_of(diff_dst_d.data_type(), f8_e5m2, f8_e4m3);
 
-    jcp.isa = is_fp8 ? (mayiuse(avx10_2_512_amx_2) ? avx10_2_512_amx_2
-                                                   : avx512_core_amx_fp16)
-                     : (is_f16 ? avx512_core_amx_fp16 : avx512_core_amx);
+    jcp.isa = is_fp8
+            ? (mayiuse(avx10_2_amx_2) ? avx10_2_amx_2 : avx512_core_amx_fp16)
+            : (is_f16 ? avx512_core_amx_fp16 : avx512_core_amx);
 
     // disabling verbose dispatch messages for unsupported isa for better readability
     if (!mayiuse(jcp.isa)) return status::unimplemented;

@@ -61,6 +61,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     bool scaleB = protocol.options().scaleB;
     bool offsetA = protocol.options().offsetA;
     bool offsetB = protocol.options().offsetB;
+    bool kParallelLocal = protocol.options().kParallelLocal;
 
     bool transC = !isColMajor(problem_.C.layout);
 
@@ -187,6 +188,12 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     strategy.kParallel = strategy.kParallelVariable = strategy.persistent = false;
     strategy.cWalkOrder = WalkOrder::HW2D;
 
+    /* Disable k-parallelization if the protocol does not allow it */
+    if (!kParallelLocal) {
+        strategy.kParallelLocal = strategy.kInterleave = false;
+        strategy.wg[LoopK] = 1;
+    }
+
     /* Adjust strategy for performance */
     if (strategy.barrierFreq > 0 && sizes.k < 4 * strategy.barrierFreq)
         strategy.barrierFreq = 0;
@@ -218,6 +225,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     interface.newArgument("h0", DataType::d);
     interface.newArgument("local_id_m", DataType::d);
     interface.newArgument("local_id_n", DataType::d);
+    if (kParallelLocal)    interface.newArgument("local_id_k", DataType::d);
     if (slmPtr)            interface.newArgument("slm_base", ExternalArgumentType::LocalPtr);
     if (scaleA)            interface.newArgument("a_scale_ptr", ExternalArgumentType::GlobalPtr);
     if (offsetA)           interface.newArgument("ao_ptr", ExternalArgumentType::GlobalPtr);

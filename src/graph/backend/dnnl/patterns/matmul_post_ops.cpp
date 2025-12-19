@@ -90,6 +90,20 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_post_ops)
             return std::make_shared<float_matmul>();
         });
 
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_matmul_dropout)
+        .set_priority(8.9f)
+        .set_kind(partition_kind_t::misc_post_ops)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    pm::pb_op_t *matmul_base
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    pgraph->append_op(graph::op_kind::Dropout,
+                            in_edges_t {in_edge(0, matmul_base, 0)});
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<float_matmul>();
+        });
+
 /*
               \   /
               matmul

@@ -55,6 +55,9 @@ struct xe_fwd_t : public primitive_t {
             is_blocked = (src_d.matches_one_of_tag(nCw16c, nChw16c, nCdhw16c)
                     != format_tag::undef);
 
+            VDISPATCH_SOFTMAX(get_subgroup_size(intel_engine, subgroup_size),
+                    VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
+            buffer_size = vect_size * subgroup_size;
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_SOFTMAX(
                     IMPLICATION(is_blocked, axis_size() % buffer_size == 0),
@@ -63,7 +66,9 @@ struct xe_fwd_t : public primitive_t {
                     VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst",
                     src_md()->ndims, dst_md()->ndims);
             VDISPATCH_SOFTMAX(axis() == src_d.ndims() - 1, VERBOSE_BAD_AXIS);
-            VDISPATCH_SOFTMAX((src_d.is_plain() || is_blocked || is_nhwc),
+            VDISPATCH_SOFTMAX(
+                    (src_d.is_plain() || (is_blocked && subgroup_size == 16)
+                            || is_nhwc),
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_SOFTMAX(
                     utils::one_of(src_dt, f64, f32, f16, bf16, u8, s8),
@@ -86,8 +91,6 @@ struct xe_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(attr_scales_ok(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_SOFTMAX_SC(
                     set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_SOFTMAX(intel_engine->mayiuse_sub_group(subgroup_size),
-                    VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
 
             VDISPATCH_SOFTMAX(
                     !(is_blocked && src_md()->dims[1] % subgroup_size != 0),
@@ -172,7 +175,8 @@ struct xe_fwd_t : public primitive_t {
         compute::range_t gws = compute::range_t::empty(1);
         compute::range_t lws = compute::range_t::empty(1);
         size_t group_size = 0;
-        const int subgroup_size = 16;
+        int subgroup_size = 16;
+        const int vect_size = 8;
         const int byte_alignment_read = 4;
         const int byte_alignment_write = 16;
         int thread_reads = 0;
@@ -259,6 +263,9 @@ struct xe_bwd_t : public primitive_t {
             const memory_desc_wrapper dst_d(dst_md());
 
             using namespace data_type;
+            VDISPATCH_SOFTMAX(get_subgroup_size(intel_engine, subgroup_size),
+                    VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
+            buffer_size = vect_size * subgroup_size;
             VDISPATCH_SOFTMAX(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_SOFTMAX(axis_size() % buffer_size == 0, VERBOSE_BAD_AXIS);
             VDISPATCH_SOFTMAX(memory_desc_ndims_ok(
@@ -273,8 +280,6 @@ struct xe_bwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(
                     utils::one_of(diff_dst_d.data_type(), f64, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_SOFTMAX(intel_engine->mayiuse_sub_group(subgroup_size),
-                    VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup_size");
             VDISPATCH_SOFTMAX(IMPLICATION(utils::one_of(data_type::f64,
                                                   diff_dst_md()->data_type,
                                                   diff_src_md()->data_type),
@@ -298,6 +303,9 @@ struct xe_bwd_t : public primitive_t {
                     != format_tag::undef);
             is_blk = (diff_src_d.matches_one_of_tag(nCw16c, nChw16c, nCdhw16c)
                     != format_tag::undef);
+            VDISPATCH_SOFTMAX(
+                    (is_blk && subgroup_size == 16) || diff_src_d.is_plain(),
+                    VERBOSE_UNSUPPORTED_TAG);
             if (is_nhwc || is_blk) {
                 group_size = subgroup_size * (axis_size() / buffer_size);
             } else {
@@ -318,9 +326,10 @@ struct xe_bwd_t : public primitive_t {
         size_t batches = 0;
         bool is_nhwc = false;
         bool is_blk = false;
-        const int subgroup_size = 16;
+        int subgroup_size = 16;
+        const int vect_size = 8;
         // 8x16 load and store commands (Vector_Size x Sub_Group_Size)
-        const int buffer_size = 128;
+        int buffer_size = 128;
     };
 
     status_t init(impl::engine_t *engine) override {

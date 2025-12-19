@@ -92,6 +92,9 @@ const char *get_kernel_header(const std::string &name) {
             kernel_header_list
             = { @KER_HEADER_LIST_ENTRIES@ };
 
+    // Used for OpenCL interoperability validation in C++ code
+    if (name == "dnnl_types.h") return "";
+
     gpu_assert(kernel_header_list.count(name) == 1)
             << "Found " << kernel_header_list.count(name)
             << " headers with the name " << name << ". Expected 1";

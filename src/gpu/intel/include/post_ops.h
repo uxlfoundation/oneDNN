@@ -32,20 +32,20 @@
 float fwd_binary(unsigned algorithm, POST_OP_DATA_T x, POST_OP_DATA_T y) {
     switch (algorithm) {
         // binary
-        case BINARY_ADD: return x + y; break;
-        case BINARY_MUL: return x * y; break;
-        case BINARY_MIN: return x < y ? x : y; break;
-        case BINARY_MAX: return x > y ? x : y; break;
-        case BINARY_DIV: return x / y; break;
-        case BINARY_SUB: return x - y; break;
-        case BINARY_GE: return x >= y; break;
-        case BINARY_GT: return x > y; break;
-        case BINARY_LE: return x <= y; break;
-        case BINARY_LT: return x < y; break;
-        case BINARY_EQ: return x == y; break;
-        case BINARY_NE: return x != y; break;
-        case RELU: // binary && relu = prelu
-            return fwd_eltwise_common(RELU, x, y, 0.0f, 1.0f);
+        case binary_add: return x + y; break;
+        case binary_mul: return x * y; break;
+        case binary_min: return x < y ? x : y; break;
+        case binary_max: return x > y ? x : y; break;
+        case binary_div: return x / y; break;
+        case binary_sub: return x - y; break;
+        case binary_ge: return x >= y; break;
+        case binary_gt: return x > y; break;
+        case binary_le: return x <= y; break;
+        case binary_lt: return x < y; break;
+        case binary_eq: return x == y; break;
+        case binary_ne: return x != y; break;
+        case eltwise_relu: // binary && relu = prelu
+            return fwd_eltwise_common(eltwise_relu, x, y, 0.0f, 1.0f);
             break;
         default: return 0.f;
     }

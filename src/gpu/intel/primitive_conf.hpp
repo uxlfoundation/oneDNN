@@ -33,6 +33,7 @@ namespace gpu {
 namespace intel {
 
 struct block_layout_t;
+struct gpu_post_ops_t;
 
 bool memory_desc_ndims_ok(const memory_desc_t *md);
 
@@ -202,10 +203,6 @@ void def_memory_desc_info(compute::kernel_ctx_t &kernel_ctx,
         const memory_desc_info_t &md_info, const char *prefix,
         bool with_punning = true);
 
-void def_binary_alg_kinds(compute::kernel_ctx_t &kernel_ctx);
-
-void def_eltwise_alg_kinds(compute::kernel_ctx_t &kernel_ctx);
-
 bool post_ops_with_binary_ok(const primitive_attr_t *attr,
         const memory_desc_t &dst_md, const int max_ndims_supported = 2);
 
@@ -215,6 +212,8 @@ status_t get_prelu_md(int prelu_mask, const dim_t *dst_dims,
 
 status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
         const post_ops_t &post_ops, const memory_desc_t &dst_md);
+status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
+        const gpu_post_ops_t &post_ops, int ndims);
 
 int append_post_ops_to_arg_list_base(const exec_args_t &args,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,

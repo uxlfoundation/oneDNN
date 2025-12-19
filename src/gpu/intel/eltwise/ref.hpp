@@ -19,7 +19,9 @@
 
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
+#include "common/serialization.hpp"
 #include "gpu/gpu_eltwise_pd.hpp"
+#include "gpu/intel/compute/dispatch_reusable.hpp"
 #include "gpu/intel/eltwise/config.hpp"
 #include "gpu/intel/primitive.hpp"
 
@@ -28,6 +30,45 @@ namespace impl {
 namespace gpu {
 namespace intel {
 namespace eltwise {
+
+struct ref_jit_params_t : trivially_serializable_t<ref_jit_params_t> {
+    status_t create_generator(const intel::engine_t &engine,
+            compute::kernel_bundle_t &bundle) const {
+        compute::kernel_ctx_t kernel_ctx;
+        CHECK(get_kernel_ctx(kernel_ctx));
+        auto status = engine.create_kernel_bundle(
+                bundle, get_kernel_names(), kernel_ctx);
+        return status;
+    }
+
+    const std::vector<const char *> &get_kernel_names() const {
+        static const std::vector<const char *> names_fwd {"ref_eltwise_fwd"};
+        static const std::vector<const char *> names_bwd {"ref_eltwise_bwd"};
+        return core.is_fwd ? names_fwd : names_bwd;
+    }
+
+    status_t get_kernel_ctx(compute::kernel_ctx_t &) const;
+
+    serialization_stream_t serialize() const {
+        return serialization_stream_t(core, post_ops);
+    }
+
+    struct core_t {
+        compute::dispatch_compile_params_t params;
+        alg_kind_t alg_kind = {};
+        int ndims = {};
+        data_type_t src_dt = {};
+        data_type_t dst_dt = {};
+        data_type_t diff_src_dt = {};
+        data_type_t diff_dst_dt = {};
+        bool is_fwd = {};
+        int8_t pad[7] = {};
+    };
+    DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(core_t);
+
+    core_t core;
+    gpu_post_ops_t post_ops;
+};
 
 struct ref_fwd_t : public primitive_t {
     using primitive_t::primitive_t;
@@ -73,21 +114,13 @@ struct ref_fwd_t : public primitive_t {
         }
 
         status_t init_conf(impl::engine_t *engine);
-        status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        conf_t conf;
+        ref_jit_params_t conf;
+        compute::dispatch_runtime_params_t rt_conf;
     };
 
     status_t init(impl::engine_t *engine) override {
-        compute::kernel_ctx_t kernel_ctx;
-
-        status_t status = pd()->init_kernel_ctx(kernel_ctx);
-        if (status != status::success) return status;
-
-        CHECK(create_kernel(engine, &kernel_, "ref_eltwise_fwd", kernel_ctx));
-        if (!kernel_) return status::runtime_error;
-
-        return status::success;
+        return create_kernel(engine, kernel_, "ref_eltwise_fwd", pd()->conf);
     }
 
     status_t execute(const exec_ctx_t &ctx) const override {
@@ -148,25 +181,18 @@ struct ref_bwd_t : public primitive_t {
         }
 
         status_t init_conf(impl::engine_t *engine);
-        status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
-        conf_t conf;
+        ref_jit_params_t conf;
+        compute::dispatch_runtime_params_t rt_conf;
     };
 
     status_t init(impl::engine_t *engine) override {
-        compute::kernel_ctx_t kernel_ctx;
-
-        status_t status = pd()->init_kernel_ctx(kernel_ctx);
-        if (status != status::success) return status;
-
-        CHECK(create_kernel(engine, &kernel_, "ref_eltwise_bwd", kernel_ctx));
-        if (!kernel_) return status::runtime_error;
-
-        return status::success;
+        return create_kernel(engine, kernel_, "ref_eltwise_bwd", pd()->conf);
     }
 
     status_t execute(const exec_ctx_t &ctx) const override {
-        return execute_backward_dense(ctx);
+        CHECK(execute_backward_dense(ctx));
+        return status::success;
     }
 
 private:

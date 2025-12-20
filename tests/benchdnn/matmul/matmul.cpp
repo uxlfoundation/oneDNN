@@ -234,11 +234,29 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     attr_args_t attr_args;
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
 
+    const bool is_grouped
+            = prb->sparse_options.get_encoding(DNNL_ARG_SRC) == dnnl_grouped;
+
     const auto overload_quant_mask = [&](policy_t policy, int arg) {
         // Overload PER_OC/PER_OCIC mask definition for batched cases.
         if (policy == policy_t::PER_OC || policy == policy_t::PER_OCIC) {
             int mask = 1 << (prb->ndims - 1);
             if (policy == policy_t::PER_OCIC) mask += 1 << (prb->ndims - 2);
+
+            // For grouped GEMM with weight scales:
+            // Only per_ocic with 128x1 groups supported
+            // Weights are 3D: [num_experts, K, N]
+            // Mask calculated as if for 2D [K, N]: per_ocic = (1<<0)|(1<<1)
+            if (is_grouped
+                    && arg == (DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS)) {
+                if (policy == policy_t::PER_OCIC) {
+                    mask = (1 << 0) | (1 << 1); // K and N dimensions for 2D
+                } else {
+                    // per_oc not supported for grouped GEMM weight scales
+                    mask = -1; // Invalid mask to trigger error
+                }
+            }
+
             attr_args.prepare_quant(prb->attr, arg, mask);
         }
     };
@@ -1348,6 +1366,31 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
     return check_kinds;
 }
 
+void hack_grouped_scale_memory(const prb_t *prb, dnn_mem_map_t &mem_map) {
+    auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
+    if (src_encoding != dnnl_grouped) return;
+    if (!mem_map.count(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS)) return;
+
+    const auto &wei_scales_entry = prb->attr.scales.get(DNNL_ARG_WEIGHTS);
+    if (wei_scales_entry.is_def() || wei_scales_entry.groups.empty()) return;
+
+    const int64_t num_experts = prb->sparse_options.get_group_count();
+    const int64_t K = prb->weights_dims()[1]; // weights are [num_experts, K, N]
+    const int64_t N = prb->weights_dims()[2];
+    const int64_t group_k = wei_scales_entry.groups[0];
+    const int64_t ngroups_k = K / group_k;
+    const int64_t expected_nelems = num_experts * ngroups_k * N;
+
+    auto &scales_mem = mem_map.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    if (scales_mem.nelems() != expected_nelems) {
+        dnnl_dims_t scale_dims = {num_experts, ngroups_k, N};
+        auto scales_md = dnn_mem_t::init_md(
+                3, scale_dims, wei_scales_entry.dt, tag::abx);
+        scales_mem
+                = dnn_mem_t(scales_md, get_test_engine(), /* prefill = */ true);
+    }
+}
+
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
     set_zmalloc_max_expected_size(res->mem_size_args.zmalloc_expected_size);
@@ -1357,6 +1400,9 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     dnn_mem_map_t mem_map, ref_mem_map;
     init_memory_args<prb_t>(mem_map, prb, prim, supported_exec_args(prb->dir));
+    // TODO: need to modify scale memory dimensions for grouped GEMM before fill
+    hack_grouped_scale_memory(prb, mem_map);
+
     TIME_FILL(SAFE(init_ref_memory_args(
                            ref_mem_map, mem_map, prim, prb, res, prim_ref),
             WARN));

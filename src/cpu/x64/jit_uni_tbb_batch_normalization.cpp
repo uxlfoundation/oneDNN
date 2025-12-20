@@ -2000,24 +2000,28 @@ public:
 
         auto reduce = [&](acc_data_t *stat, acc_data_t *r_stat) {
             if (!need_reduction) return;
-            acc_data_t *loc_stat = r_stat;
 
-            for (dim_t c = 0; c < size_C_stat; ++c)
-                stat[c] = loc_stat[c];
+            parallel(1, [= COMPAT_THIS_CAPTURE](int, int) {
+                acc_data_t *loc_stat = r_stat;
 
-            for (int thr_ns = 1; thr_ns < nthr_NS; ++thr_ns) {
-                loc_stat += size_C_stat;
                 for (dim_t c = 0; c < size_C_stat; ++c)
-                    stat[c] += loc_stat[c];
-            }
+                    stat[c] = loc_stat[c];
 
-            for (dim_t c = 0; c < size_C_stat; ++c)
-                stat[c] /= N_ * S_;
+                for (int thr_ns = 1; thr_ns < nthr_NS; ++thr_ns) {
+                    loc_stat += size_C_stat;
+                    for (dim_t c = 0; c < size_C_stat; ++c)
+                        stat[c] += loc_stat[c];
+                }
+
+                for (dim_t c = 0; c < size_C_stat; ++c)
+                    stat[c] /= N_ * S_;
+            });
         };
 
         // find local mean
         acc_data_t *r_mean = need_reduction ? rbuf : mean;
-        parallel(nthr.glob, [&](int ithr_glob, int nthr_glob) {
+        parallel(nthr.glob,
+                [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
             bnorm_dims_t start, stop;
@@ -2043,7 +2047,8 @@ public:
 
         // find local var
         acc_data_t *r_var = need_reduction ? rbuf : var;
-        parallel(nthr.glob, [&](int ithr_glob, int nthr_glob) {
+        parallel(nthr.glob,
+                [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
             bnorm_dims_t start, stop;
@@ -2078,7 +2083,8 @@ public:
         std::tie(stride_N, stride_S, stride_C)
                 = get_data_strides<isa>(pd_, tag_kind_);
 
-        parallel(nthr.glob, [&](int ithr_glob, int nthr_glob) {
+        parallel(nthr.glob,
+                [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
             bnorm_dims_t start, stop;
@@ -2168,28 +2174,31 @@ public:
         auto reduce = [&]() {
             if (!need_reduction) return;
 
-            // diff_gamma
-            const acc_data_t *loc_diff_gamma = r_diff_gamma;
-            for (dim_t c = 0; c < size_C_stat; ++c)
-                diff_gamma[c] = loc_diff_gamma[c];
-            for (int thr_ns = 1; thr_ns < nthr_NS; ++thr_ns) {
-                loc_diff_gamma += size_C_stat;
+            parallel(1, [=](int, int) {
+                // diff_gamma
+                const acc_data_t *loc_diff_gamma = r_diff_gamma;
                 for (dim_t c = 0; c < size_C_stat; ++c)
-                    diff_gamma[c] += loc_diff_gamma[c];
-            }
+                    diff_gamma[c] = loc_diff_gamma[c];
+                for (int thr_ns = 1; thr_ns < nthr_NS; ++thr_ns) {
+                    loc_diff_gamma += size_C_stat;
+                    for (dim_t c = 0; c < size_C_stat; ++c)
+                        diff_gamma[c] += loc_diff_gamma[c];
+                }
 
-            // diff_beta
-            const acc_data_t *loc_diff_beta = r_diff_beta;
-            for (dim_t c = 0; c < size_C_stat; ++c)
-                diff_beta[c] = loc_diff_beta[c];
-            for (int thr_ns = 1; thr_ns < nthr_NS; ++thr_ns) {
-                loc_diff_beta += size_C_stat;
+                // diff_beta
+                const acc_data_t *loc_diff_beta = r_diff_beta;
                 for (dim_t c = 0; c < size_C_stat; ++c)
-                    diff_beta[c] += loc_diff_beta[c];
-            }
+                    diff_beta[c] = loc_diff_beta[c];
+                for (int thr_ns = 1; thr_ns < nthr_NS; ++thr_ns) {
+                    loc_diff_beta += size_C_stat;
+                    for (dim_t c = 0; c < size_C_stat; ++c)
+                        diff_beta[c] += loc_diff_beta[c];
+                }
+            });
         };
 
-        parallel(nthr.glob, [&](int ithr_glob, int nthr_glob) {
+        parallel(nthr.glob,
+                [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
             bnorm_dims_t start, stop;
@@ -2231,7 +2240,8 @@ public:
         std::tie(stride_N, stride_S, stride_C)
                 = get_data_strides<isa>(pd_, tag_kind_);
 
-        parallel(nthr.glob, [&](int ithr_glob, int nthr_glob) {
+        parallel(nthr.glob,
+                [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
             bnorm_dims_t start, stop;

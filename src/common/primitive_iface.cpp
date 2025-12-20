@@ -116,8 +116,8 @@ status_t primitive_execute(
         bool block_on_wait = true;
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
         dnnl::threadpool_interop::threadpool_iface *tp;
-        auto status = stream->get_threadpool(&tp);
-        block_on_wait = status == status::success && tp
+        auto st = stream->get_threadpool(&tp);
+        block_on_wait = st == status::success && tp
                 && !(tp->get_flags()
                         & dnnl::threadpool_interop::threadpool_iface::
                                 ASYNCHRONOUS);

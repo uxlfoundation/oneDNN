@@ -94,11 +94,14 @@ bool generic_check_format_tags(memory::format_tag format) {
 template <typename data_t>
 void check_pool_fwd(const pool_test_params_t &p, const memory &src,
         const memory &dst, const memory &ws) {
-    auto src_data = map_memory<data_t>(src);
-    auto dst_data = map_memory<data_t>(dst);
-    auto ws_data_ptr = map_memory<unsigned char>(ws);
+    auto src_mapped = map_memory<data_t>(src);
+    data_t *src_data = src_mapped;
+    auto dst_mapped = map_memory<data_t>(dst);
+    data_t *dst_data = dst_mapped;
+    auto ws_mapped = map_memory<unsigned char>(ws);
+    unsigned char *ws_data_ptr = ws_mapped;
 
-    auto ws_data = [&](size_t idx) -> int {
+    auto ws_data = [=](size_t idx) -> int {
         auto w = (const unsigned char *)ws_data_ptr;
         if (w == nullptr) return -1;
         if (ws.get_desc().get_data_type() == dnnl_u8)
@@ -111,10 +114,6 @@ void check_pool_fwd(const pool_test_params_t &p, const memory &src,
     const memory::desc dst_d = dst.get_desc();
     const memory::desc ws_d = ws.get_desc();
 
-    const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
-    const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
-    const dnnl::impl::memory_desc_wrapper ws_mdw(ws_d.get());
-
     auto pd = p.test_pd;
     size_t padded_c = src_d.get_padded_dims()[1];
 
@@ -122,9 +121,13 @@ void check_pool_fwd(const pool_test_params_t &p, const memory &src,
     const bool is_miopen_gpu = is_amd_gpu(get_test_engine());
 
     dnnl::impl::parallel_nd(pd.mb, pd.c, pd.od, pd.oh, pd.ow,
-            [&](memory::dim n, memory::dim c, memory::dim od, memory::dim oh,
+            [=](memory::dim n, memory::dim c, memory::dim od, memory::dim oh,
                     memory::dim ow) {
         if (is_current_test_failed()) return;
+
+        const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
+        const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
+        const dnnl::impl::memory_desc_wrapper ws_mdw(ws_d.get());
 
         memory::dim oidx = n * padded_c * pd.od * pd.oh * pd.ow
                 + c * pd.od * pd.oh * pd.ow + od * pd.oh * pd.ow + oh * pd.ow
@@ -204,6 +207,8 @@ void check_pool_fwd(const pool_test_params_t &p, const memory &src,
                     << " oh = " << oh << " ow = " << ow;
         }
     });
+
+    synchronize_threadpool(dst.get_engine().get_kind());
 }
 
 template <typename data_t>

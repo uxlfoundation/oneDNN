@@ -103,17 +103,19 @@ status_t logsoftmax_fwd_t::execute_impl(const stream_t *g_stream,
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
+    auto scratchpad = std::make_shared<temporary_scratchpad_t>(
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    assertm(scratchpad.size()
+    assertm(scratchpad->size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
-    prepare_args_set(res, inputs, outputs, scratchpad);
+    prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
     }
+
+    prolong_temporary_scratchpad_lifetime(g_stream, scratchpad);
 
     return status::success;
 }
@@ -267,17 +269,20 @@ status_t logsoftmax_bwd_t::execute_impl(const stream_t *g_stream,
     execution_args_set_t *res = res_cache.get_or_add(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
-    temporary_scratchpad_t scratchpad(
+    auto scratchpad = std::make_shared<temporary_scratchpad_t>(
             memory_planner_.total_internal_temporary_size(), p_engine_,
             *g_alloc_);
-    assertm(scratchpad.size()
+    assertm(scratchpad->size()
                     >= memory_planner_.total_internal_temporary_size(),
             "no enough scratchpad memory");
-    prepare_args_set(res, inputs, outputs, scratchpad);
+    prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
     }
+
+    prolong_temporary_scratchpad_lifetime(g_stream, scratchpad);
+
     return status::success;
 }
 

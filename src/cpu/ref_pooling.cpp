@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
@@ -177,7 +178,8 @@ status_t ref_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     ker_t kernel = is_max_pool ? (ker_t)ker_max : (ker_t)ker_avg;
 
     parallel_nd(MB, OC, OD, OH, OW,
-            [&](dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
+            [= COMPAT_THIS_CAPTURE](
+                    dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
         auto data_p_off = get_offset(dst_d, mb, oc, od, oh, ow);
         auto data_l_off = (((mb * OC + oc) * OD + od) * OH + oh) * OW + ow;
         float res = base_res;
@@ -333,7 +335,7 @@ status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
             = alg == alg_kind::pooling_max ? (ker_t)ker_max : (ker_t)ker_avg;
 
     const int nthr = pd()->nthr_;
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [=](const int ithr, const int nthr) {
         dim_t start = 0, end = 0;
         balance211(diff_src_d.nelems(true), nthr, ithr, start, end);
         if (start == end) return;
@@ -342,7 +344,7 @@ status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
             io::store_float_value(data_type::f32, 0, diff_src, i);
     });
 
-    parallel_nd_ext(nthr, MB, OC, [&](int, int, dim_t mb, dim_t oc) {
+    parallel_nd_ext(nthr, MB, OC, [=](int, int, dim_t mb, dim_t oc) {
         for_(dim_t od = od_start; od < od_end; ++od)
         for_(dim_t oh = oh_start; oh < oh_end; ++oh)
         for (dim_t ow = ow_start; ow < ow_end; ++ow) {
@@ -351,7 +353,7 @@ status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
     });
 
     if (diff_src_d.data_type() != data_type::f32) {
-        parallel(nthr, [&](const int ithr, const int nthr) {
+        parallel(nthr, [=](const int ithr, const int nthr) {
             dim_t start = 0, end = 0;
             balance211(diff_src_d.nelems(true), nthr, ithr, start, end);
             if (start == end) return;

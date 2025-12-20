@@ -27,6 +27,8 @@
 
 #include "oneapi/dnnl/dnnl.hpp"
 
+#include "common/compiler_workarounds.hpp"
+
 namespace dnnl {
 
 using dim = memory::dim;
@@ -307,7 +309,8 @@ protected:
     }
 
     void Test() {
-        dnnl::impl::parallel(nthreads, [this](int ithr, int nthr) {
+        dnnl::impl::parallel(
+                nthreads, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
             const int step = (ntasks + nthr - 1) / nthr;
             const int beg = ithr * step;
             const int end = std::min(beg + step, ntasks);
@@ -315,16 +318,18 @@ protected:
                 tasks_[i]->execute();
         });
 
-        for (int i = 0; i < ntasks; i++) {
-            tasks_[i]->validate();
-        }
+        dnnl::impl::parallel(1, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
+            for (int i = 0; i < ntasks; i++) {
+                tasks_[i]->validate();
+            }
+        });
+
+        synchronize_threadpool(get_test_engine_kind());
     }
 
     static const int ntasks;
     static const int nthreads;
     std::vector<std::shared_ptr<task_t>> tasks_;
-    engine eng;
-    stream strm;
 };
 
 const int test_concurrency_t::ntasks = 1000;

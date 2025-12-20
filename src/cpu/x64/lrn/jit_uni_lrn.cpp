@@ -121,7 +121,7 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::execute_forward(
     const auto ker_last = ker_last_.get();
 
     if (dat_tag == nChw8c && ls == 5 && ak == lrn_across_channels) {
-        parallel_nd(N, C / VECTOR_LENGTH, [&](dim_t n, dim_t c8) {
+        parallel_nd(N, C / VECTOR_LENGTH, [=](dim_t n, dim_t c8) {
             const auto offset = n * HW * C + c8 * HW * VECTOR_LENGTH;
             auto ws_ptr = ws ? &ws[offset] : nullptr;
             jit_args_fwd_t args {&src[offset], &dst[offset], ws_ptr, nullptr};
@@ -134,7 +134,7 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::execute_forward(
         });
     } else if (one_of(dat_tag, nhwc, nChw8c, nChw16c)
             && ak == lrn_within_channel) {
-        parallel_nd(N, C / VECTOR_LENGTH, [&](dim_t n, dim_t c) {
+        parallel_nd(N, C / VECTOR_LENGTH, [=](dim_t n, dim_t c) {
             const std::size_t offset = dat_tag == nhwc
                     ? n * HW * C + c * VECTOR_LENGTH
                     : n * HW * C + c * HW * VECTOR_LENGTH;
@@ -145,7 +145,7 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::execute_forward(
         });
     } else if (dat_tag == nchw && ls == 5 && ak == lrn_across_channels) {
         parallel_nd(N, (HW + VECTOR_LENGTH - 1) / VECTOR_LENGTH,
-                [&](dim_t n, dim_t hw8) {
+                [=](dim_t n, dim_t hw8) {
             const auto offset = n * HW * C + hw8 * VECTOR_LENGTH;
             auto ws0_ptr = ws ? &ws[offset] : nullptr;
             jit_args_fwd_t args {&src[offset], &dst[offset], ws0_ptr, nullptr};
@@ -156,7 +156,7 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::execute_forward(
                 (*ker)(&args);
         });
     } else { // nhwc
-        parallel_nd(N, HW, [&](dim_t n, dim_t hw) {
+        parallel_nd(N, HW, [=](dim_t n, dim_t hw) {
             const auto offset = n * HW * C + hw * C;
             auto ws_ptr = ws ? &ws[offset] : nullptr;
             jit_args_fwd_t args {&src[offset], &dst[offset], ws_ptr, nullptr};
@@ -306,7 +306,7 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::execute_backward(
 
     if (one_of(dat_tag, nhwc, nChw8c, nChw16c)
             && ak == alg_kind::lrn_within_channel) {
-        parallel_nd(N, C / VECTOR_LENGTH, [&](dim_t n, dim_t c) {
+        parallel_nd(N, C / VECTOR_LENGTH, [=](dim_t n, dim_t c) {
             const std::size_t offset = dat_tag == nhwc
                     ? n * H * W * C + c * VECTOR_LENGTH
                     : n * H * W * C + c * H * W * VECTOR_LENGTH;
@@ -315,7 +315,7 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::execute_backward(
             (*ker)(&args);
         });
     } else if (use_h_parallelism) {
-        parallel_nd(N, C / VECTOR_LENGTH, H, [&](dim_t n, dim_t c8, dim_t h) {
+        parallel_nd(N, C / VECTOR_LENGTH, H, [=](dim_t n, dim_t c8, dim_t h) {
             const std::size_t offset = n * C * H * W
                     + c8 * H * W * VECTOR_LENGTH + h * W * VECTOR_LENGTH;
             jit_args_bwd_t args {&src[offset], &diff_dst[offset], &ws[offset],
@@ -330,7 +330,7 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::execute_backward(
                 (*ker)(&args);
         });
     } else {
-        parallel_nd(N, C / VECTOR_LENGTH, [&](dim_t n, dim_t c8) {
+        parallel_nd(N, C / VECTOR_LENGTH, [=](dim_t n, dim_t c8) {
             const std::size_t offset
                     = n * C * H * W + c8 * H * W * VECTOR_LENGTH;
             jit_args_bwd_t args {&src[offset], &diff_dst[offset], &ws[offset],

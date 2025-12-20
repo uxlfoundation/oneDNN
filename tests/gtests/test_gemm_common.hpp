@@ -652,6 +652,10 @@ protected:
                         && get_test_engine_kind() == engine::kind::cpu,
                 "CPU does not support bf16bf16bf16 GEMM.");
 
+        SKIP_IF(get_test_engine_kind() == engine::kind::cpu
+                        && DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL,
+                "Asynchronous Threadpool runtime is not supported");
+
         catch_expected_failures(
                 [&]() { Test(); }, p.expect_to_fail, p.expected_status, false);
     }

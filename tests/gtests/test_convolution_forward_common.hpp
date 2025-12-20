@@ -34,43 +34,43 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
         const memory::desc &weights_d, const memory::desc &bias_d,
         const memory::desc &dst_d, const memory &src, const memory &weights,
         const memory &bias, const memory &dst) {
-    const bool w_bias = bias_d.get_ndims() != 0;
-    auto src_data = map_memory<data_t_src>(src);
-    auto weights_data = map_memory<data_t_wei>(weights);
-
-    auto bias_data = w_bias ? map_memory<data_t_dst>(bias) : nullptr;
-    auto dst_data = map_memory<data_t_dst>(dst);
+    auto src_mapped = map_memory<data_t_src>(src);
+    data_t_src *src_data = src_mapped;
+    auto weights_mapped = map_memory<data_t_wei>(weights);
+    data_t_wei *weights_data = weights_mapped;
+    auto bias_mapped = map_memory<data_t_dst>(bias);
+    data_t_dst *bias_data = bias_mapped;
+    auto dst_mapped = map_memory<data_t_dst>(dst);
+    data_t_dst *dst_data = dst_mapped;
 
     auto padded_ic = src_d.get_padded_dims()[1];
     auto padded_oc = dst_d.get_padded_dims()[1];
 
-    const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
-    const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
-    const dnnl::impl::memory_desc_wrapper weights_mdw(weights_d.get());
-    const dnnl::impl::memory_desc_wrapper bias_mdw(bias_d.get());
-
     dnnl::impl::parallel_nd(c.mb, c.ng, c.oc / c.ng, c.oh, c.ow,
-            [&](memory::dim n, memory::dim g, memory::dim oc, memory::dim oh,
+            [=](memory::dim n, memory::dim g, memory::dim oc, memory::dim oh,
                     memory::dim ow) {
+        const dnnl::impl::memory_desc_wrapper src_mdw(src_d.get());
+        const dnnl::impl::memory_desc_wrapper dst_mdw(dst_d.get());
+        const dnnl::impl::memory_desc_wrapper weights_mdw(weights_d.get());
+        const dnnl::impl::memory_desc_wrapper bias_mdw(bias_d.get());
+
         data_t_acc a = 0;
-        for (memory::dim ic = 0; ic < c.ic / c.ng; ic++) {
-            for (memory::dim kh = 0; kh < c.kh; kh++) {
-                for (memory::dim kw = 0; kw < c.kw; kw++) {
-                    memory::dim iw = ow * c.strw - c.padw + kw * (1 + c.dilw);
-                    memory::dim ih = oh * c.strh - c.padh + kh * (1 + c.dilh);
-                    if (iw < 0 || iw >= c.iw) continue;
-                    if (ih < 0 || ih >= c.ih) continue;
-                    memory::dim iidx = n * padded_ic * c.ih * c.iw
-                            + g * padded_ic / c.ng * c.ih * c.iw
-                            + ic * c.ih * c.iw + ih * c.iw + iw;
-                    memory::dim widx = g * padded_oc / c.ng * padded_ic / c.ng
-                                    * c.kh * c.kw
-                            + oc * padded_ic / c.ng * c.kh * c.kw
-                            + ic * c.kh * c.kw + kh * c.kw + kw;
-                    a += ((data_t_acc)src_data[src_mdw.off_l(iidx, true)])
-                            * weights_data[weights_mdw.off_l(widx, true)];
-                }
-            }
+        for_(memory::dim ic = 0; ic < c.ic / c.ng; ic++)
+        for_(memory::dim kh = 0; kh < c.kh; kh++)
+        for (memory::dim kw = 0; kw < c.kw; kw++) {
+            memory::dim iw = ow * c.strw - c.padw + kw * (1 + c.dilw);
+            memory::dim ih = oh * c.strh - c.padh + kh * (1 + c.dilh);
+            if (iw < 0 || iw >= c.iw) continue;
+            if (ih < 0 || ih >= c.ih) continue;
+            memory::dim iidx = n * padded_ic * c.ih * c.iw
+                    + g * padded_ic / c.ng * c.ih * c.iw + ic * c.ih * c.iw
+                    + ih * c.iw + iw;
+            memory::dim widx
+                    = g * padded_oc / c.ng * padded_ic / c.ng * c.kh * c.kw
+                    + oc * padded_ic / c.ng * c.kh * c.kw + ic * c.kh * c.kw
+                    + kh * c.kw + kw;
+            a += ((data_t_acc)src_data[src_mdw.off_l(iidx, true)])
+                    * weights_data[weights_mdw.off_l(widx, true)];
         }
 
         float a_fp = (float)a;

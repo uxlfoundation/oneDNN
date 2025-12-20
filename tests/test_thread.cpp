@@ -235,7 +235,15 @@ private:
     std::unique_ptr<Eigen::ThreadPool> thread_pool_;
 
     // Async value that signals completion of the last scheduled parallel loop.
-    // This is used only when is_async_ is true.
+    //
+    // Note: for an unknown reason if the `threadpool_t` is constructed but the
+    // `parallel_for(...)` isn't called, ASan would bark on
+    // `OkDoneEventSingleton()` internals during the program destruction.
+    // It seems `done_event_` must be updated with its `FlatMap(...)` method,
+    // but it's just a theory.
+    // Some tests exposing this scenario have dummy parallel calls to avoid this
+    // issue.
+    // ANCHOR: DUMMY_PARALLEL.
     tsl::AsyncValueRef<tsl::Chain> done_event_;
 
 public:

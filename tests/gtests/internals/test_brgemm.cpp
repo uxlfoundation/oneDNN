@@ -146,11 +146,13 @@ private:
             mapped_ptr_t<b_dt> &b_mem_reordered) const {
         static constexpr int k_pack = 4 / sizeof(b_dt);
 
-        dnnl::impl::parallel_nd(p.K, p.N, [&](int64_t k, int64_t n) {
+        const b_dt *b_mem_data = b_mem;
+        b_dt *b_mem_reordered_data = b_mem_reordered;
+        dnnl::impl::parallel_nd(p.K, p.N, [=](int64_t k, int64_t n) {
             size_t b_off = k * p.ldb + n;
             size_t b_reordered_off
                     = (k / k_pack) * p.ldb * k_pack + n * k_pack + k % k_pack;
-            b_mem_reordered[b_reordered_off] = b_mem[b_off];
+            b_mem_reordered_data[b_reordered_off] = b_mem_data[b_off];
         });
     }
 

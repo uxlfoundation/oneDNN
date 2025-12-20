@@ -29,6 +29,8 @@ TEST(test_interface_partition_hashing, ThreadId) {
     graph::engine_t &engine = *get_engine();
     graph::partition_hashing::key_t key {&engine, {}, {}, {}, {}};
     ASSERT_EQ(std::this_thread::get_id(), key.thread_id());
+    // See: DUMMY_PARALLEL.
+    dnnl::impl::parallel(1, [](int, int) {});
 }
 
 TEST(test_interface_partition_hashing, GetArrayHash) {

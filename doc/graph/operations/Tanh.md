@@ -38,3 +38,9 @@ Tanh operation supports the following data type combinations.
 | f32  | f32  |
 | bf16 | bf16 |
 | f16  | f16  |
+
+## Implementation Notes
+
+Tanh supports in-place operations, meaning that `src` can be used as both
+input and output (`dst`). In case of in-place operation, the original `src` data
+will be overwritten. Use in-place operations whenever possible for performance.

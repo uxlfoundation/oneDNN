@@ -67,3 +67,10 @@ Select operation supports the following data type combinations.
 | boolean | f32           | f32  |
 | boolean | bf16          | bf16 |
 | boolean | f16           | f16  |
+
+## Implementation Notes
+
+Select supports in-place operations, meaning that `src_0` can be used as both
+input and output. In case of in-place operation, the original `src_0` data
+will be overwritten. Use in-place operations whenever possible for
+performance.

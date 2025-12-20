@@ -33,7 +33,7 @@ struct HWInformation {
 /* Main entrypoint for microkernel auto-selection */
 micro::Package selectGEMMMicrokernel(micro::GEMMProtocol protocol, HWInformation hwInfo, SizeParams sizes, const GEMMProblem &problem,
                                      const std::vector<StrategyRequirement> &reqs = std::vector<StrategyRequirement>(),
-                                     void (*strategyAdjuster)(GEMMStrategy &strategy) = nullptr);
+                                     void (*strategyAdjuster)(GEMMStrategy &strategy) = nullptr, SelectionObserver *observer = nullptr);
 
 /* Helpers */
 static inline int alignmentForLD(int ld)

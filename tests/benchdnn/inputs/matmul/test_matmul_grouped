@@ -8,6 +8,7 @@
 # - Row-wise (per-token) src scales: --attr-scales=src:per_dim_0
 # - Bias: --bia-dt=f32, --bia_mask=2 (per-expert bias [num_experts, N])
 # - Empty groups (M_g = 0)
+# - Weight scales: per_ocic:128x1 (grouped along K dimension)
 
 --reset
 
@@ -32,3 +33,30 @@
 --bia-dt=f16 --bia_mask=2
 --attr-scales=src:per_dim_0
 --batch=shapes_grouped
+
+# Weight scales
+--reset
+--dt=u8:s4:bf16
+--grouped=M:4:8,8,8,8
+--attr-scales=wei:per_ocic:bf16:128x1
+32x512:4x512x256:32x256
+
+--reset
+--dt=s8:s4:bf16
+--grouped=M:4:8,8,8,8
+--attr-scales=wei:per_ocic:bf16:128x1
+32x512:4x512x256:32x256
+
+--reset
+--dt=u8:u8:bf16
+--grouped=M:4:8,8,8,8
+--attr-scales=wei:per_ocic:bf16:128x1
+32x512:4x512x256:32x256
+
+# Combined src + weight scales
+--reset
+--dt=u8:s4:bf16
+--grouped=M:4:8,8,8,8
+--attr-scales=src:per_dim_0+wei:per_ocic:bf16:128x1
+32x512:4x512x256:32x256
+

@@ -112,7 +112,7 @@ Protocol makeProtocol(const GEMMOptions &o) {
 
 Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
                    const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
-                   void (*strategyAdjuster)(GEMMStrategy &strategy))
+                   void (*strategyAdjuster)(GEMMStrategy &strategy), SelectionObserver *observer)
 {
     bool localA = options.localA;
     bool localB = options.localB;
@@ -206,7 +206,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     /* Call kernel selector */
     EvaluateAuxOutput auxParams;
     const kcatalog::Entry * entry = nullptr;
-    auto entries = select(catalog, 1, &matchParams, evalParams, auxParams);
+    auto entries = select(catalog, 1, &matchParams, evalParams, auxParams, observer);
     if (entries.size() > 0)
 	    entry = entries[0];
 

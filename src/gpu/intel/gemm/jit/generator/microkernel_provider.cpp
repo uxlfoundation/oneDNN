@@ -51,7 +51,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
 
 Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeParams sizes,
                               const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
-                              void (*strategyAdjuster)(GEMMStrategy &strategy))
+                              void (*strategyAdjuster)(GEMMStrategy &strategy), SelectionObserver *observer)
 {
     bool localA = protocol.options().localA;
     bool localB = protocol.options().localB;
@@ -145,7 +145,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     /* Call kernel selector */
     EvaluateAuxOutput auxParams;
     const kcatalog::Entry * entry = nullptr;
-    auto entries = select(catalog, 1, &matchParams, evalParams, auxParams);
+    auto entries = select(catalog, 1, &matchParams, evalParams, auxParams, observer);
     if (entries.size() > 0)
 	    entry = entries[0];
 

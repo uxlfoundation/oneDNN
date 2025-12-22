@@ -630,9 +630,8 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
         }
     }
 
-    jit_int8_matmul_kernel_t(const brg_int8_t &k) : brg_(k) {}
     jit_int8_matmul_kernel_t(
-            const brg_int8_t &k, const dnnl::impl::post_ops_t &eltwise)
+            const brg_int8_t &k, const dnnl::impl::post_ops_t &eltwise = {})
         : brg_(k) {
         for (auto &e : eltwise.entry_) {
             eltwise_injectors_.emplace_back(utils::make_unique<

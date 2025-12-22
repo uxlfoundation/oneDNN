@@ -1,0 +1,14 @@
+--reset
+--stag=abx --wtag=abx,any --dtag=abx
+--dt=f8_e4m3:f8_e4m3:f32,f8_e4m3:f8_e4m3:bf16
+--attr-scales=src:per_tensor:f8_e5m2:1x128+wei:per_tensor:f8_e5m2:128x128,src:per_tensor:f16:32x32+wei:per_tensor:f8_e5m2:32x32
+2x2048x1024:2x1024x512_n"DLRM:5*1"
+2x2048x256:2x256x128_n"NCF:1*1"
+2x2048x128:1x128x128_n"NCF:2*1"
+2x896x1024:2x1024x4096_n"RNN-T:Encoder_cell1_Hidden*11"
+2x896x320:1x320x1280_n"RNN-T:Prediction_Input*12"
+2048x1024:1024x512_n"DLRM:5*1"
+2048x256:256x128_n"NCF:1*1"
+2048x128:128x128_n"NCF:2*1"
+896x1024:1024x4096_n"RNN-T:Encoder_cell1_Hidden*11"
+

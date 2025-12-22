@@ -236,6 +236,13 @@ inline uint64_t get_sve_length() {
     return cpu().getSveLen();
 }
 
+// SVE length in element type
+inline uint64_t get_sve_length(data_type_t data_type) {
+    const size_t dt_size = types::data_type_size(data_type);
+    assert(dt_size > 0);
+    return get_sve_length() / dt_size;
+}
+
 inline bool mayiuse_atomic() {
     using namespace Xbyak_aarch64::util;
     return cpu().isAtomicSupported();
@@ -292,13 +299,15 @@ inline size_t data_type_vnni_simd_elems(data_type_t data_type) {
 }
 
 // Maximum number of elements of a given type in a SIMD (SVE/Neon) vector for a
-// given ISA
+// given ISA. Note that if cpu_isa_t is just sve (not sve_vl) then the value is
+// determined at runtime (unlike the others, which can be determiend at compile time)
 inline size_t simd_elems(data_type_t dt, cpu_isa_t cpu_isa) {
     switch (cpu_isa) {
         case sve_512: return data_type_vnni_simd_elems<sve_512>(dt);
         case sve_256: return data_type_vnni_simd_elems<sve_256>(dt);
         case sve_128:
         case asimd: return data_type_vnni_simd_elems<sve_128>(dt);
+        case sve: return get_sve_length(dt);
         default: {
             // If this ISA does implement SIMD, then you need to add support for
             // it in this function. If not, then you need to check earlier in
@@ -307,6 +316,10 @@ inline size_t simd_elems(data_type_t dt, cpu_isa_t cpu_isa) {
             return 0;
         }
     }
+}
+
+inline size_t simd_bytes(cpu_isa_t isa) {
+    return simd_elems(data_type::s8, isa);
 }
 
 } // namespace aarch64

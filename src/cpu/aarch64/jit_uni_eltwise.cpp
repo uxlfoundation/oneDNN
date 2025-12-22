@@ -101,6 +101,8 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
 
     void generate() override {
         const bool is_fwd = pd_->is_fwd();
+        // Note: load type may not the same as compute type
+        const auto simd_elems_per_load = simd_elems(data_type(), isa);
 
         preamble();
         XReg param = param1;
@@ -116,7 +118,7 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         ldr(reg_work_amount, ptr(X_TMP_0));
         eltwise_injector_->load_table_addr();
         Label vectorized_loop_start, remainder_loop_start, remainder_loop_end;
-        cmp(reg_work_amount, simd_w());
+        cmp(reg_work_amount, simd_elems_per_load);
         b(LT, remainder_loop_start);
         L(vectorized_loop_start);
 
@@ -163,17 +165,17 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
             }
         }
 
-        const auto shift = vlen();
         store_vector(reg_dst, vmm_src.s);
         // Update pointers for the next iteration
         // Note: we use X_TMP_0 as a temporary register to avoid conflicts with
         // other registers.
-        add_imm(reg_src, reg_src, shift, X_TMP_0);
-        add_imm(reg_dst, reg_dst, shift, X_TMP_0);
-        if (!is_fwd) add_imm(reg_diff_dst, reg_diff_dst, shift, X_TMP_0);
+        add_imm(reg_src, reg_src, simd_bytes(isa), X_TMP_0);
+        add_imm(reg_dst, reg_dst, simd_bytes(isa), X_TMP_0);
+        if (!is_fwd)
+            add_imm(reg_diff_dst, reg_diff_dst, simd_bytes(isa), X_TMP_0);
 
-        sub_imm(reg_work_amount, reg_work_amount, simd_w(), X_TMP_0);
-        cmp(reg_work_amount, simd_w());
+        sub_imm(reg_work_amount, reg_work_amount, simd_elems_per_load, X_TMP_0);
+        cmp(reg_work_amount, simd_elems_per_load);
         b(GE, vectorized_loop_start);
 
         // tail processing
@@ -214,7 +216,7 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
 
         add_imm(reg_src, reg_src, dtype_size(), X_TMP_0);
         add_imm(reg_dst, reg_dst, dtype_size(), X_TMP_0);
-        add_imm(reg_diff_dst, reg_diff_dst, dtype_size(), X_TMP_0);
+        if (!is_fwd) add_imm(reg_diff_dst, reg_diff_dst, dtype_size(), X_TMP_0);
         subs(reg_work_amount, reg_work_amount, 1);
 
         b(remainder_loop_start);
@@ -229,12 +231,6 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
 private:
     using TReg = typename cpu_isa_traits<isa>::TReg;
     using TRegS = typename cpu_isa_traits<isa>::TRegS;
-    int vlen() {
-        // TODO: If we do decide to add a different enum for
-        // VLA SVE, we should handle this in cpu_isa_traits
-        return isa == asimd ? cpu_isa_traits<asimd>::vlen : get_sve_length();
-    }
-    int simd_w() { return vlen() / dtype_size(); }
 
     XReg reg_src = x11;
     XReg reg_dst = x8;
@@ -472,7 +468,8 @@ status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
     const memory_desc_wrapper data_d(pd()->src_md());
     const auto nelems = data_d.nelems(true);
-    const int simd_w = 64 / data_d.data_type_size();
+    // Number of elements in a cacheline. We don't want threads to share
+    const int cacheline_elems = 64 / data_d.data_type_size();
 
     const data_type_t src_dt = pd()->src_md()->data_type;
     const auto offset_bytes
@@ -484,9 +481,10 @@ status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     parallel(0, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
 
-        balance211(utils::div_up(nelems, simd_w), nthr, ithr, start, end);
-        start = nstl::min(nelems, start * simd_w);
-        end = nstl::min(nelems, end * simd_w);
+        balance211(
+                utils::div_up(nelems, cacheline_elems), nthr, ithr, start, end);
+        start = nstl::min(nelems, start * cacheline_elems);
+        end = nstl::min(nelems, end * cacheline_elems);
         if (start == end) return;
 
         jit_args_t args;
@@ -563,7 +561,8 @@ status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper data_d(pd()->data_md());
     const memory_desc_wrapper diff_data_d(pd()->diff_src_md());
     const auto nelems = data_d.nelems(true);
-    const int simd_w = 64 / data_d.data_type_size();
+    // Number of elements in a cacheline. We don't want threads to share
+    const int cacheline_elems = 64 / data_d.data_type_size();
 
     const data_type_t data_dt = pd()->use_dst() ? pd()->dst_md()->data_type
                                                 : pd()->src_md()->data_type;
@@ -579,9 +578,10 @@ status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     parallel(0, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
 
-        balance211(utils::div_up(nelems, simd_w), nthr, ithr, start, end);
-        start = nstl::min(nelems, start * simd_w);
-        end = nstl::min(nelems, end * simd_w);
+        balance211(
+                utils::div_up(nelems, cacheline_elems), nthr, ithr, start, end);
+        start = nstl::min(nelems, start * cacheline_elems);
+        end = nstl::min(nelems, end * cacheline_elems);
         if (start == end) return;
 
         jit_args_t args;

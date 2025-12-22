@@ -690,8 +690,8 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
         return status::unimplemented;
     }
 
-    // AMX10 with K-tails is not yet supported
-    if (brg->is_amx10() && brg->rdb_tail > 0) { return status::unimplemented; }
+    // AMX10 with K-tails is now supported with regular kernel
+    //if (brg->is_amx10() && brg->rdb_tail > 0) { return status::unimplemented; }
 
     if (!IMPLICATION((brg->rdb_tail
                              % ((brg->is_bf16_tmm || brg->is_f16_tmm) ? 2 : 4))

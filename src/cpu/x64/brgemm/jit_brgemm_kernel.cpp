@@ -247,6 +247,7 @@ private:
     const reg64_savable_backup_t reg_aux_D_backup {reg_aux_D, r28};
     const reg64_savable_backup_t reg_aux_D_bdb_loop_backup {reg_aux_D, r19};
     const reg64_savable_t reg_D_bdb_loop_shift {regscratchpad_, rbx, r21};
+    const reg64_savable_t reg_b_offset_saved {regscratchpad_, rax, r22};
 
     /* bf16 emulation */
     const reg64_t bf16_emu_scratch = rbx;
@@ -877,8 +878,17 @@ void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(dim_t ld_block2, bool is_tail) {
     add(reg_aux_C, C_offset);
     add(reg_aux_D, D_offset);
 
-    add(reg_b_offset,
-            (is_tail) ? ldb_B_offset(0, true) : ldb_B_offset(ld_block2));
+    // For AMX10 K-tail with BA format: use reduce_dim instead of rd_step
+    // BA format stores full K dimension per N-block: [N-block][K-full][N-VNNI]
+    // For the tail case (is_tail=true), use the standard calculation
+    if (brg.is_amx10() && brg.rdb_tail > 0 && !is_tail) {
+        const dim_t B_offset
+                = brg.typesize_B * ld_block2 * brg.ld_block * brg.reduce_dim;
+        add(reg_b_offset, B_offset);
+    } else {
+        add(reg_b_offset,
+                (is_tail) ? ldb_B_offset(0, true) : ldb_B_offset(ld_block2));
+    }
 
     if (brg.with_bias) {
         reg_aux_bias.restore();
@@ -3152,13 +3162,6 @@ void jit_brgemm_kernel_t<Wmm>::ldb_loop(dim_t bd_block2, bool is_bdb_tail,
             if (brg.is_tmm) reg_ldb_loop.save();
             cmp(reg_ldb_loop, 0);
             jg(ldb_loop_label, T_NEAR);
-        } else if (brg.is_amx10() && brg.rdb_tail > 0) {
-            // For AMX10 K-tail with single-iteration ldb_loop: manually advance reg_b_offset
-            // since ldb_regs_shift won't be called
-            if (!is_ld_tail)
-                add(reg_b_offset, ldb_B_offset(ld_block2, false));
-            else
-                add(reg_b_offset, ldb_B_offset(0, true));
         }
     }
 }
@@ -3168,6 +3171,9 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
     auto do_ldb_loop = [this](dim_t bd_block2, bool is_bdb_tail, bool first_bdb,
                                bool last_bdb, dim_t rows_for_rd_tail,
                                bool skip_accumulation) {
+        // For AMX10 K-tail with BA16a8b2a format, each bdb iteration starts fresh with reg_b_offset = 0
+        // No restore needed - copy_post_ops_stack_values_to_aux already zeros it
+
         if (brg.ldb2 > 0) {
             const bool is_ld_reg_tail = false;
             const bool is_ld_tail = false;

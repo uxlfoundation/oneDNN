@@ -30,3 +30,11 @@
 --dt=f4_e2m1
 --attr-scales=src:per_tensor:f8_e4m3:1x16+wei:per_tensor:f8_e4m3:16x1+dst:dynamic_fp:f8_e4m3:1x16
 --batch=shapes_mx
+
+## 2D Blocked Scales
+
+--reset
+--stag=abx --wtag=abx,any --dtag=abx
+--dt=f4_e2m1:f4_e2m1:f32,f4_e2m1:f4_e2m1:bf16
+--attr-scales=src:per_tensor:f8_e5m2:1x128+wei:per_tensor:f8_e5m2:128x128,src:per_tensor:f16:32x32+wei:per_tensor:f8_e5m2:32x32
+--batch=shapes_2d_attr

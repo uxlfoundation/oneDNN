@@ -21,7 +21,7 @@
 #include <string>
 #include <sstream>
 
-#if defined(__has_include) && __has_include("source_location")
+#if defined(__cpp_lib_source_location) && __cpp_lib_source_location >= 201907L
 #include <source_location>
 #endif
 

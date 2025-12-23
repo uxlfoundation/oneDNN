@@ -89,6 +89,66 @@ TEST(test_ref_float8_conversions, f8_e4m3_to_f32) {
     });
 }
 
+TEST(test_ref_float8_conversions, f8_e5m2_to_bf16) {
+    SKIP_IF(!impl::cpu::platform::has_data_type_support(
+                    impl::data_type::f8_e5m2),
+            "Engine does not support this data type.");
+    // check all 256 f8_e5m2 values
+    impl::parallel_nd(0xff, [&](uint16_t u16) {
+        // convert f8_e5m2 to bf16 and back again,
+        // expecting bitwise idendical values except for sNaN,
+        // where the convention is to set the quiet bit:
+        // * +sNaN: 0x7d -> 0x7f
+        // * -sNaN: 0xfd -> 0xff
+        // f8_e5m2 encoding: seeeeemm
+        //                         |_-> quiet bit is msb of mantissa
+        const uint8_t u8 = static_cast<uint8_t>(u16);
+        constexpr bool is_bitcast = true;
+        float8_e5m2_t x8(u8, is_bitcast);
+        ASSERT_EQ(u8, x8.raw_bits_);
+        ASSERT_EQ(u8, bit_cast<uint8_t>(x8));
+        bfloat16_t x16 = x8;
+        float8_e5m2_t y8 = x16;
+
+        // if x8 is an sNaN the conversion sets the quiet bit (msb of mantissa)
+        const bool is_x8_snan = impl::utils::one_of(u8, 0x7d, 0xfd);
+        const uint8_t y8_expect = is_x8_snan ? u8 | 0x02 : u8;
+
+        ASSERT_EQ(y8_expect, bit_cast<uint8_t>(y8));
+    });
+}
+
+TEST(test_ref_float8_conversions, f8_e4m3_to_bf16) {
+    SKIP_IF(!impl::cpu::platform::has_data_type_support(
+                    impl::data_type::f8_e4m3),
+            "Engine does not support this data type.");
+    // check all 256 f8_e4m3 values
+    impl::parallel_nd(0xff, [&](uint16_t u16) {
+        const uint8_t u8 = static_cast<uint8_t>(u16);
+        constexpr bool is_bitcast = true;
+        float8_e4m3_t x8(u8, is_bitcast);
+        ASSERT_EQ(u8, x8.raw_bits_);
+        ASSERT_EQ(u8, bit_cast<uint8_t>(x8));
+
+        // convert f8_e4m3 to bf16 and back again,
+        // expecting bitwise idendical values.
+        // Note: f8_e4m3 does not have sNaN values, so no need to set quiet bit
+        bfloat16_t x16 = x8;
+        float8_e4m3_t y8 = x16;
+        const uint8_t y8_expect = u8;
+        ASSERT_EQ(y8_expect, bit_cast<uint8_t>(y8))
+                << std::hex << std::endl
+                << "u8 = " << static_cast<uint32_t>(u8) << std::endl
+                << "x8.raw_bits_ = "
+                << static_cast<uint32_t>(bit_cast<uint8_t>(x8)) << std::endl
+                << "y8.raw_bits_ = "
+                << static_cast<uint32_t>(bit_cast<uint8_t>(y8)) << std::endl
+                << "y8_expect = " << static_cast<uint32_t>(y8_expect)
+                << std::endl
+                << std::dec;
+    });
+}
+
 TEST(test_ref_float8_conversions, f32_to_f8_e4m3) {
     SKIP_IF(!impl::cpu::platform::has_data_type_support(
                     impl::data_type::f8_e4m3),

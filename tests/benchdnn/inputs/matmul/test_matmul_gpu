@@ -110,6 +110,11 @@
 --attr-post-ops=sum+add:f32+add:u8:per_dim_01+mul:f32:per_dim_0+add:s8:per_tensor+add:f32:per_dim_01+linear:2:-1
 1x5x4x3x30x2:6x1x4x3x2x20
 
+# Test with_po for 5D and 6D
+--reset --dt=f64 --attr-post-ops=add:f32
+2x1x3x1x5x7:1x4x1x6x7x8
+1x3x1x5x7:4x1x6x7x8
+
 # Test Strided
 --reset
 --dt=u8:s8:u8,f16,f32

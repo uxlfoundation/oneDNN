@@ -67,19 +67,26 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
     const uint d1 = GWS_GET_D1();
     const uint d2 = GWS_GET_D2();
     const uint d3 = GWS_GET_D3();
+    const uint d4 = GWS_GET_D4();
+    const uint d5 = GWS_GET_D5();
 
-    size_t data_idx = SRC_OFF(d0, d1, d2, d3, 0, 0);
+    size_t data_idx = SRC_OFF(d0, d1, d2, d3, d4, d5);
 
     ACC_DATA_T acc = load(acc, src, data_idx);
     POST_OP_DATA_T accumulator = 0;
-    if (d0 < DST_D0 && d1 < DST_D1 && d2 < DST_D2 && d3 < DST_D3) {
+    if (d0 < DST_D0 && d1 < DST_D1 && d2 < DST_D2 && d3 < DST_D3 && d4 < DST_D4
+            && d5 < DST_D5) {
         const float a_scale = A_SCALES ? a_scales[0] : 1;
-        const uint b_scale_dim = (NDIMS == 2) ? d1 : (NDIMS == 3) ? d2 : d3;
+        const uint b_scale_dim = (NDIMS == 2) ? d1
+                : (NDIMS == 3)                ? d2
+                : (NDIMS == 4)                ? d3
+                : (NDIMS == 5)                ? d4
+                                              : d5;
         float b_scale = 1;
         if (B_SCALES) load(&b_scale, b_scales + scale_stride * b_scale_dim);
         if (A_SCALES || B_SCALES) acc *= a_scale * b_scale;
         if (bias) {
-            ACC_DATA_T b = load(b, bias + BIAS_OFF(d0, d1, d2, d3, 0, 0));
+            ACC_DATA_T b = load(b, bias + BIAS_OFF(d0, d1, d2, d3, d4, d5));
             acc += b;
         }
 
@@ -87,7 +94,7 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
         POST_OP_DATA_T sum_src = WITH_SUM ? load(sum_src, dst, data_idx) : 0.0f;
 
         accumulator = AS_POST_OP_DATA_T(acc);
-        APPLY_POST_OPS_SERIAL(accumulator, sum_src, d0, d1, d2, d3, 0, 0);
+        APPLY_POST_OPS_SERIAL(accumulator, sum_src, d0, d1, d2, d3, d4, d5);
 #if WITH_MX_DST_SCALE == 0
         if (C_SCALES) {
             POST_OP_DATA_T c_scale = load(c_scale, c_scales);

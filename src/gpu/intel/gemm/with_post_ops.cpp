@@ -37,7 +37,7 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
                               && utils::one_of(d->b_type(), f16, f32, bf16))
             && attr()->mayiconvert(d->a_type(), f32);
     VDISPATCH_GEMM(
-            d->c_desc.ndims <= 4, VERBOSE_UNSUPPORTED_MD_FLAG, "c_desc.ndims");
+            d->c_desc.ndims <= 6, VERBOSE_UNSUPPORTED_MD_FLAG, "c_desc.ndims");
     VDISPATCH_GEMM(!utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k()),
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
     VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
@@ -167,10 +167,14 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     dispatch_ = intel_engine->create_dispatch(pd_->dst_md());
     dispatch_.define_dim("D0", 0, pd_->dst_md()->padded_dims[0]);
     dispatch_.define_dim("D1", 1, pd_->dst_md()->padded_dims[1]);
-    dispatch_.define_dim("D3", ndims > 3 ? 3 : 0,
-            ndims > 3 ? pd_->dst_md()->padded_dims[3] : 1);
     dispatch_.define_dim("D2", ndims > 2 ? 2 : 0,
             ndims > 2 ? pd_->dst_md()->padded_dims[2] : 1);
+    dispatch_.define_dim("D3", ndims > 3 ? 3 : 0,
+            ndims > 3 ? pd_->dst_md()->padded_dims[3] : 1);
+    dispatch_.define_dim("D4", ndims > 4 ? 4 : 0,
+            ndims > 4 ? pd_->dst_md()->padded_dims[4] : 1);
+    dispatch_.define_dim("D5", ndims > 5 ? 5 : 0,
+            ndims > 5 ? pd_->dst_md()->padded_dims[5] : 1);
     dispatch_.generate();
 
     init_scratchpad();

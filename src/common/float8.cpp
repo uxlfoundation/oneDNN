@@ -16,6 +16,7 @@
 
 #include <array>
 
+#include "common/bfloat16.hpp"
 #include "common/bit_cast.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/float16.hpp"
@@ -90,6 +91,43 @@ float8_e5m2_t::operator float16_t() const {
     std::array<uint8_t, 2> iraw = {{0, raw}};
     auto f16 = utils::bit_cast<float16_t>(iraw);
     return f16;
+}
+
+float8_e5m2_t::operator bfloat16_t() const {
+    const uint16_t s8 = (raw_bits_ & 0x80) >> 7;
+    const uint16_t e8 = (raw_bits_ & 0x7c) >> 2;
+    const uint16_t m8 = (raw_bits_ & 0x3);
+
+    const uint16_t s_bf16 = s8;
+    uint16_t e_bf16 = 0;
+    uint16_t m_bf16 = 0;
+
+    if (e8 == 0 && m8 == 0) {
+        // Zero
+        e_bf16 = 0;
+        m_bf16 = 0;
+    } else if (e8 == 0x1f && m8 != 0) {
+        // NaN: convert to quiet NaN, preserve payload
+        e_bf16 = 0xff;
+        m_bf16 = 0x40 | (m8 << 5);
+    } else if (e8 == 0x1f && m8 == 0) {
+        // Infinity
+        e_bf16 = 0xff;
+        m_bf16 = 0;
+    } else if (e8 == 0) {
+        // Need to convert f8_e5m2 denormal into bf16 normal
+        const int shift = (m8 & 0x2) ? 1 : 2;
+        // e5m2 bias=15, bf16 bias=127
+        e_bf16 = 1 - shift + 112; // 112 = 127 - 15
+        m_bf16 = ((m8 << shift) & 0x3) << 5;
+    } else {
+        // Normal values
+        e_bf16 = e8 + 112; // = (e8 - 15) + 127
+        m_bf16 = m8 << 5;
+    }
+
+    const uint16_t bf16_bits = (s_bf16 << 15) | (e_bf16 << 7) | m_bf16;
+    return utils::bit_cast<bfloat16_t>(bf16_bits);
 }
 
 float8_e4m3_t &float8_e4m3_t::operator=(float16_t f) {
@@ -186,6 +224,40 @@ float8_e4m3_t::operator float16_t() const {
 
     const uint16_t u16 = s16 | e16 | m16;
     return utils::bit_cast<float16_t>(u16);
+}
+
+float8_e4m3_t::operator bfloat16_t() const {
+    const uint16_t s8 = (raw_bits_ & 0x80) >> 7;
+    const uint16_t e8 = (raw_bits_ & 0x78) >> 3;
+    const uint16_t m8 = (raw_bits_ & 0x7);
+
+    const uint16_t s_bf16 = s8;
+    uint16_t e_bf16 = 0;
+    uint16_t m_bf16 = 0;
+
+    if (e8 == 0 && m8 == 0) {
+        // Zero
+        e_bf16 = 0;
+        m_bf16 = 0;
+    } else if (e8 == 0xf && m8 == 0x7) {
+        // NaN (e4m3 has no infinity, only exp=15 mantissa=7 is NaN)
+        // Convert to quiet NaN, preserve payload
+        e_bf16 = 0xff;
+        m_bf16 = 0x40 | (m8 << 4);
+    } else if (e8 == 0) {
+        // Need to convert f8_e4m3 denormal into bf16 normal
+        const int shift = (m8 & 0x4) ? 1 : (m8 & 0x2) ? 2 : 3;
+        // e4m3 bias=7, bf16 bias=127
+        e_bf16 = 1 - shift + 120; // 120 = 127 - 7
+        m_bf16 = ((m8 << shift) & 0x7) << 4;
+    } else {
+        // Normal values
+        e_bf16 = e8 + 120; // = e8 - 7 + 127
+        m_bf16 = m8 << 4;
+    }
+
+    const uint16_t bf16_bits = (s_bf16 << 15) | (e_bf16 << 7) | m_bf16;
+    return utils::bit_cast<bfloat16_t>(bf16_bits);
 }
 
 void cvt_f8_e5m2_to_float(float *out, const float8_e5m2_t *inp, size_t nelems) {

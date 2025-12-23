@@ -19,6 +19,7 @@
 
 #include <cstdint>
 
+#include "common/bfloat16.hpp"
 #include "common/float16.hpp"
 
 namespace dnnl {
@@ -46,6 +47,7 @@ struct float8_e5m2_t {
 
     DNNL_API operator float() const;
     DNNL_API operator float16_t() const;
+    DNNL_API operator bfloat16_t() const;
 
     float8_e5m2_t &operator+=(const float a) {
         (*this) = float {*this} + a;
@@ -66,6 +68,7 @@ struct float8_e4m3_t {
 
     DNNL_API operator float() const;
     DNNL_API operator float16_t() const;
+    DNNL_API operator bfloat16_t() const;
 
     float8_e4m3_t &operator+=(const float a) {
         (*this) = float {*this} + a;

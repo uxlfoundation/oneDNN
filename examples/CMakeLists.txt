@@ -22,13 +22,14 @@ endif()
 append(CMAKE_C_FLAGS "${CMAKE_EXAMPLE_CCXX_FLAGS}")
 append(CMAKE_CXX_FLAGS "${CMAKE_EXAMPLE_CCXX_FLAGS}")
 
-# link examples directly to OCL
+# Link the examples to the OpenCL runtime
 if(DNNL_GPU_RUNTIME STREQUAL "OCL")
     find_package(OpenCL REQUIRED)
-    if(OpenCL_LIBRARY)
-        list(APPEND EXTRA_SHARED_LIBS ${OpenCL_LIBRARY})
+    if(OpenCL_FOUND)
+        add_definitions(-DCL_TARGET_OPENCL_VERSION=120)
+        list(APPEND EXTRA_SHARED_LIBS OpenCL::OpenCL)
     else()
-        message(FATAL_ERROR "OpenCL SDK is not found. You can use OPENCLROOT CMake option to specify the path or disable building examples with ONEDNN_BUILD_EXAMPLES=OFF")
+        message(FATAL_ERROR "OpenCL SDK is not found. You can use OPENCLROOT CMake option to specify the path or disable building tests with ONEDNN_BUILD_EXAMPLES=OFF.")
     endif()
 endif()
 

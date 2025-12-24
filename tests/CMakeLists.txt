@@ -29,11 +29,12 @@ set(CMAKE_TEST_CCXX_NOWARN_FLAGS)
 # propagate no warning flags
 append(CMAKE_TEST_CCXX_NOWARN_FLAGS "${CMAKE_CCXX_NOWARN_FLAGS}")
 
-# link tests directly to OCL
+# Link the tests to the OpenCL runtime
 if(DNNL_GPU_RUNTIME STREQUAL "OCL")
     find_package(OpenCL REQUIRED)
-    if(OpenCL_LIBRARY)
-        list(APPEND EXTRA_SHARED_LIBS ${OpenCL_LIBRARY})
+    if(OpenCL_FOUND)
+        add_definitions(-DCL_TARGET_OPENCL_VERSION=120)
+        list(APPEND EXTRA_SHARED_LIBS OpenCL::OpenCL)
     else()
         message(FATAL_ERROR "OpenCL SDK is not found. You can use OPENCLROOT CMake option to specify the path or disable building tests with ONEDNN_BUILD_TESTS=OFF.")
     endif()

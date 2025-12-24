@@ -153,7 +153,7 @@ elseif(APPLE)
     set(CTESTCONFIG_PATH "${DNNLROOT}/lib")
 endif()
 
-# Link to OpenCL runtime directly
+# Link examples to the OpenCL runtime
 function(maybe_link_opencl name)
     if(DNNL_GPU_RUNTIME STREQUAL "OCL")
         find_package(OpenCL REQUIRED)
@@ -161,7 +161,7 @@ function(maybe_link_opencl name)
             add_definitions(-DCL_TARGET_OPENCL_VERSION=120)
             target_link_libraries(${name} OpenCL::OpenCL)
         else()
-            message(FATAL_ERROR "OpenCL SDK is not found. You can use OPENCLROOT CMake option to specify the path or disable building examples with ONEDNN_BUILD_EXAMPLES=OFF")
+            message(FATAL_ERROR "OpenCL SDK is not found. You can use OPENCLROOT CMake option to specify the path")
         endif()
     endif()
 endfunction()

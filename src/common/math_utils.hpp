@@ -464,12 +464,12 @@ inline uint32_t philox4x32(uint64_t idx, uint64_t seed, uint64_t offset) {
     // Note 1: This impl computes 4 different int32_t rand
     //   values. Even though this is redundundant for sequential ref,
     //   keeping vector version to guide optimized implementations.
-
     uint64_t x = (idx & ~3L);
     uint32_t ctr[4] = {uint32_t(offset), uint32_t(offset >> 32), uint32_t(x),
             uint32_t(x >> 32)};
     uint32_t key[2] = {uint32_t(seed), uint32_t(seed >> 32)};
-
+    //printf("ctr: %d, %d, %d, %d\n", ctr[0], ctr[1], ctr[2], ctr[3]);
+    //printf("key: %d, %d\n", key[0], key[1]);
     auto mulhilo32 = [&](uint32_t a, uint32_t b, uint32_t &hi, uint32_t &lo) {
         const uint64_t product = static_cast<uint64_t>(a) * b;
         lo = static_cast<uint32_t>(product);
@@ -511,6 +511,7 @@ inline uint32_t philox4x32(uint32_t idx, uint32_t seed) {
     uint64_t idx_64 = ((x + 3) << 32) + (x + 2);
     uint64_t offset_64 = ((x + 1) << 32) + x;
     uint64_t seed_64 = (uint64_t(seed) << 32) + seed;
+    //printf("x:%ld idx_64:%ld offset_64:%ld seed_64:%ld \n", x, idx_64, offset_64, seed_64);
     return philox4x32(idx_64, seed_64, offset_64);
 }
 

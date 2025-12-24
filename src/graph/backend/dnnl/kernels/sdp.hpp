@@ -136,9 +136,7 @@ public:
         return kernel->ocl_execute_impl(g_stream, inputs, outputs, deps, event);
     }
 #endif
-    status_t reset_engine(const engine_t *g_engine) override {
-        return kernel->reset_engine(g_engine);
-    }
+
     std::string str() const override { return kernel->str(); }
 };
 } // namespace dnnl_impl

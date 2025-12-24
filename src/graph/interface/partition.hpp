@@ -228,8 +228,6 @@ public:
         return info_.c_str();
     }
 
-    graph::status_t reset_engine(const graph::engine_t *e);
-
 private:
     std::shared_ptr<graph::compiled_partition_impl_t> pimpl_;
 

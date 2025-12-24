@@ -284,7 +284,9 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
         else if (mod.substr(0, 3) == "grf") {
             mod.erase(0,3);
             strategy.GRFs = std::stoi(mod);
-        } else if (mod.substr(0, 3) == "dot") {
+        } else if (mod == "dsl")
+            strategy.isDSLGenerator = true;
+         else if (mod.substr(0, 3) == "dot") {
             mod.erase(0,3);
             strategy.dotVL = mod.empty() ? 1 : std::stoi(mod);
         } else if (mod.substr(0, 3) == "cti") {
@@ -850,6 +852,8 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
         if (strategy.dpasw)
             s << " dw";
     }
+
+    if (strategy.isDSLGenerator) s << " dsl";
 
     if (strategy.dotVL) {
         s << " dot";

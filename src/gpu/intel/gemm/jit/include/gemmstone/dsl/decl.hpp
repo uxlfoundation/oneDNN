@@ -1,0 +1,46 @@
+/*******************************************************************************
+* Copyright 2025 Intel Corporation
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
+
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_DSL_DECL_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_DSL_DECL_HPP
+
+#include "gemmstone/dsl/ir.hpp"
+#include "internal/utils.hpp"
+
+GEMMSTONE_NAMESPACE_START
+namespace dsl {
+
+// TODO: re-evaluate naming within op_kind_t to remove '_' prefix
+namespace ir {
+enum class op_kind_t;
+}
+using op_kind_t = ir::op_kind_t;
+
+// TODO: ir_context_t should be removed from the DSL API. All necessary
+// information should be passed in either via kernel::interface and
+// kernel::options.
+namespace ir {
+class ir_context_t;
+}
+
+using expr_t = ir::expr_t;
+using stmt_t = ir::stmt_t;
+using send_cache_hint_t = ir::send_cache_hint_t;
+
+} // namespace dsl
+GEMMSTONE_NAMESPACE_END
+
+#endif

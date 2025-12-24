@@ -15,7 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/reorder/jit/config.hpp"
-#include "gpu/intel/jit/ir/reorder.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/reorder/jit/tiler.hpp"
 
 namespace dnnl {

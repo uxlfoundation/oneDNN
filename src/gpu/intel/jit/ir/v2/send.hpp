@@ -19,7 +19,7 @@
 
 #include "gemmstone/../../dsl/ir/pass/simplify.hpp"
 #include "gpu/intel/jit/ir/block_2d_utils.hpp"
-#include "gpu/intel/jit/ir/fma.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 #include "gpu/intel/jit/ir/linear_expr.hpp"
 #include "gpu/intel/jit/ir/v2/plan_utils.hpp"
 #include "gpu/intel/jit/ir/v2/reqs.hpp"

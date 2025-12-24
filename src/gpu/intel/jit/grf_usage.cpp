@@ -16,11 +16,8 @@
 
 #include "gpu/intel/jit/grf_usage.hpp"
 
-#include "gpu/intel/jit/codegen/allocation_size.hpp"
-#include "gpu/intel/jit/ir/fma.hpp"
+#include "gemmstone/../../dsl/ir/codegen/allocation_size.hpp"
 #include "gpu/intel/jit/ir/legacy.hpp"
-#include "gpu/intel/jit/ir/reorder.hpp"
-#include "gpu/intel/jit/ir/send.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -117,7 +114,7 @@ public:
     void _visit(const alloc_t &obj) override {
         if (is_invalid_) return;
         int size = (obj.kind == alloc_kind_t::grf ? obj.size : 0);
-        size = utils::rnd_up(size, grf_size_);
+        size = ir::register_size(obj, grf_size_);
         ir::mem_usage_guard_t alloc_guard(
                 &alloc_usage_, &peak_alloc_usage_, size);
         ir::mem_usage_guard_t guard(&grf_usage_, &peak_grf_usage_, size);
@@ -162,7 +159,7 @@ public:
     void _visit(const let_t &obj) override {
         if (is_invalid_) return;
         int size = (obj.value.is_empty() ? 0 : obj.var.type().size());
-        size = utils::rnd_up(size, ngen_alloc_granularity);
+        size = ir::register_size(obj);
         ir::mem_usage_guard_t guard(&grf_usage_, &peak_grf_usage_, size);
         ir_visitor_t::_visit(obj);
     }

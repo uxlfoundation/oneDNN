@@ -19,8 +19,8 @@
 
 #include <vector>
 
-#include "gemmstone/dsl/ir/object.hpp"
 #include "gemmstone/dsl/hw.hpp"
+#include "gemmstone/dsl/ir/object.hpp"
 
 #include "ngen_debuginfo.hpp"
 
@@ -53,7 +53,8 @@ public:
     const ir::expr_t &operator[](size_t idx) const;
     bool has(const std::string &name) const { return find_arg_impl(name); }
 
-    ir::expr_t find_arg(const std::string &name, bool allow_empty = false) const;
+    ir::expr_t find_arg(
+            const std::string &name, bool allow_empty = false) const;
     size_t index(const std::string &name) const;
     void register_arg(const ir::expr_t &var) { args_.emplace_back(var); }
     void register_arg(const std::string &name, const type_t &type);
@@ -82,7 +83,7 @@ private:
 extern codegen_extension_handler_t default_extension_handler;
 
 // Compilation options used for IR generation and lowering
-class options_t: public stringify_t<options_t> {
+class options_t : public stringify_t<options_t> {
 public:
     options_t() = default;
     options_t(const hw_t &hw) : hw_(hw) {}

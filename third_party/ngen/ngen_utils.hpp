@@ -132,7 +132,7 @@ template <typename T> static inline constexpr14 T roundup_pow2(T x)
     if (x <= 1)
         return 1;
     else
-        return 1 << (1 + bsr(x - 1));
+        return T(1) << (1 + bsr(x - 1));
 }
 
 template <typename T> static inline constexpr14 T rounddown_pow2(T x)

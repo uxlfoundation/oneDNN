@@ -20,8 +20,8 @@
 #include <cstdint>
 #include <string>
 
-#include "internal/utils.hpp"
 #include "gemmstone/dsl/type.hpp"
+#include "internal/utils.hpp"
 
 GEMMSTONE_NAMESPACE_START
 namespace dsl {
@@ -36,7 +36,7 @@ class ir_visitor_t;
 namespace object {
 // Base class for all IR objects. Implemented as an intrusive pointer, with
 // the reference counter stored inside the object.
-class impl_t: public stringify_t<impl_t> {
+class impl_t : public stringify_t<impl_t> {
 public:
     impl_t(const impl_t &) = delete;
     impl_t &operator=(const impl_t &) = delete;
@@ -60,7 +60,7 @@ public:
     //       necessary, and please don't add a non-const variant of the method!
     template <typename T>
     const T &as() const {
-        assume(is<T>());
+        gemm_assert(is<T>());
         return *as_ptr<T>(); // fails on incorrect casts even in Release
     }
 
@@ -136,7 +136,7 @@ private:
     };
 
     // Type information.
-    const info_t &info() const { return info_; };
+    const info_t &info() const { return info_; }
 
     ref_count_t ref_count_;
     info_t info_;
@@ -182,7 +182,7 @@ private:
 } // namespace object
 
 // Base wrapper for IR objects.
-class object_t: public stringify_t<object_t> {
+class object_t : public stringify_t<object_t> {
 public:
     using impl_t = object::impl_t;
     object_t(impl_t *impl = nullptr) : impl_(impl) { retain(impl_); }
@@ -215,7 +215,7 @@ public:
 
     template <typename T>
     const T &as() const {
-        assume(impl_);
+        gemm_assert(impl_);
         return impl_->as<T>();
     }
 

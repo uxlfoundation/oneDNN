@@ -22,7 +22,7 @@
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
 
-#include "gpu/intel/jit/codegen/register_allocator.hpp"
+#include "gemmstone/../../dsl/ir/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "ngen_core.hpp"
 #include "ngen_emulation.hpp"
@@ -33,6 +33,8 @@ namespace gpu {
 namespace intel {
 namespace jit {
 
+namespace ir = gemmstone::dsl::ir;
+
 inline bool reduction_injector_f32_is_supported(alg_kind_t alg) {
     using namespace alg_kind;
     return utils::one_of(alg, reduction_sum, reduction_mean, reduction_max,
@@ -42,7 +44,7 @@ inline bool reduction_injector_f32_is_supported(alg_kind_t alg) {
 template <typename ngen_generator_t>
 struct reduction_injector_f32_t {
     reduction_injector_f32_t(ngen_generator_t &host, alg_kind_t alg,
-            reg_allocator_t &ra_, int stepping_id)
+            ngen::RegisterAllocator &ra_, int stepping_id)
         : emu_strategy(host.getHardware(), stepping_id)
         , alg_(alg)
         , h(host)
@@ -85,7 +87,7 @@ private:
 
     const alg_kind_t alg_;
     ngen_generator_t &h;
-    reg_allocator_t &ra;
+    ngen::RegisterAllocator &ra;
 
     void sum_fwd(int simd, const ngen::GRF &acc, const ngen::GRF &val);
     void max_fwd(int simd, const ngen::GRF &acc, const ngen::GRF &val);

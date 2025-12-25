@@ -467,7 +467,9 @@ inline uint32_t philox4x32(uint64_t idx, uint64_t seed, uint64_t offset) {
     uint64_t x = (idx & ~3L);
     uint32_t ctr[4] = {uint32_t(offset), uint32_t(offset >> 32), uint32_t(x),
             uint32_t(x >> 32)};
+    printf("seed: %08x %ld\n", seed, seed);
     uint32_t key[2] = {uint32_t(seed), uint32_t(seed >> 32)};
+    printf("key initial =[%08x %08x]\n", key[0], key[1]);
     //printf("ctr: %d, %d, %d, %d\n", ctr[0], ctr[1], ctr[2], ctr[3]);
     //printf("key: %d, %d\n", key[0], key[1]);
     auto mulhilo32 = [&](uint32_t a, uint32_t b, uint32_t &hi, uint32_t &lo) {
@@ -496,11 +498,16 @@ inline uint32_t philox4x32(uint64_t idx, uint64_t seed, uint64_t offset) {
         key[1] += PHILOX_W4x32_1;
     };
     constexpr int nrounds = 10;
+
     for (int i = 0; i < (nrounds - 1); ++i) {
         philox4x32round();
+        printf("CPU idx=%d ctr=[%08x %08x %08x %08x] key after=[%08x %08x]\n",
+                idx, ctr[0], ctr[1], ctr[2], ctr[3], key[0], key[1]);
         philox4x32bumpkey();
     }
     philox4x32round();
+    printf("CPU idx=%d ctr=[%08x %08x %08x %08x] key=[%08x %08x]\n", idx,
+            ctr[0], ctr[1], ctr[2], ctr[3], key[0], key[1]);
 
     return ctr[idx & 3L];
 }

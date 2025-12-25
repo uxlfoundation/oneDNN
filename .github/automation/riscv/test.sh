@@ -28,6 +28,20 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 echo "Using QEMU for test execution"
 export QEMU_LD_PREFIX=/usr/riscv64-linux-gnu
 
-set -x
-ctest --no-tests=error --output-on-failure -E $("${SCRIPT_DIR}"/skipped-tests.sh)
-set +x
+if [[ "$ONEDNN_TEST_SET" == "SMOKE" ]]; then
+    set -x
+    ctest --no-tests=error --output-on-failure -E $("${SCRIPT_DIR}"/skipped-tests.sh)
+    set +x
+
+elif [[ "$ONEDNN_TEST_SET" == "CI" ]]; then
+    set -x
+    start=${ONEDNN_TEST_PART:-1}
+    stride=${ONEDNN_TEST_STRIDE:-1}
+    ctest --no-tests=error --output-on-failure -I ${start},,${stride} -E $("${SCRIPT_DIR}"/skipped-tests.sh)
+    set +x
+
+else
+    echo "Unknown Test Set: $ONEDNN_TEST_SET"
+    exit 1
+fi
+

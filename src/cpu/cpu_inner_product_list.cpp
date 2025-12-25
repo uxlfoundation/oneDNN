@@ -34,6 +34,7 @@ using namespace dnnl::impl::cpu::aarch64;
 #endif
 #elif DNNL_RV64
 #if defined(DNNL_RISCV_USE_RVV_INTRINSICS)
+#include "cpu/rv64/rvv_gemm_inner_product.hpp"
 #include "cpu/rv64/rvv_inner_product.hpp"
 using namespace dnnl::impl::cpu::rv64;
 #endif
@@ -65,6 +66,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX512(brgemm_inner_product_fwd_t<avx512_core>)
             CPU_INSTANCE_AVX2(brgemm_inner_product_fwd_t<avx2>)
             CPU_INSTANCE_AARCH64_ACL(acl_inner_product_fwd_t)
+            CPU_INSTANCE_RV64GCV(rvv_gemm_inner_product_fwd_t)
             CPU_INSTANCE_RV64GCV(rvv_inner_product_fwd_t)
             CPU_INSTANCE(gemm_inner_product_fwd_t<f32>)
             CPU_INSTANCE(ref_inner_product_fwd_t)

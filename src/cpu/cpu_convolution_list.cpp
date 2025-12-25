@@ -74,6 +74,7 @@ using namespace dnnl::impl::cpu::x64;
 using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
 #if defined(DNNL_RISCV_USE_RVV_INTRINSICS)
+#include "cpu/rv64/jit_rvv_1x1_convolution.hpp"
 #include "cpu/rv64/rvv_gemm_convolution.hpp"
 using namespace dnnl::impl::cpu::rv64;
 #endif // DNNL_RISCV_USE_RVV_INTRINSICS
@@ -168,6 +169,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AARCH64(brgemm_convolution_fwd_t<sve_128>)
             CPU_INSTANCE_AARCH64(jit_sve_convolution_fwd_t<f32,f32,f32,sve_128>)
             CPU_INSTANCE_X64(jit_uni_ncsp_convolution_fwd_t)
+            CPU_INSTANCE_RV64GCV(jit_rvv_1x1_convolution_fwd_t)
             CPU_INSTANCE_RV64GCV(riscv_gemm_convolution_fwd_t)
             CPU_INSTANCE(gemm_convolution_fwd_t)
             CPU_INSTANCE(ref_convolution_fwd_t)

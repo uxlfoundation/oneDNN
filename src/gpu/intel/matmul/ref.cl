@@ -290,11 +290,9 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #if USE_HOST_SCALARS
         uint res = philox_4x32_s64(dst_off, dropout_seed, dropout_offset);
 #else
-        uint res = philox_4x32_s64(dst_off, dropout_seed, 0);
+        uint res = philox_4x32(dst_off, dropout_seed);
 #endif
         uchar dropout = res > dropout_threshold;
-        printf("dst_off: %ld, %u thresh, %f inv_q, %u res - dropout %hhu\n",
-                dst_off, dropout_threshold, dropout_inv_q, res, dropout);
         po_acc = (dropout) ? po_acc * dropout_inv_q : 0;
 #if HAS_OUTPUT_MASK
         dropout_mask_buf[dst_off] = dropout;

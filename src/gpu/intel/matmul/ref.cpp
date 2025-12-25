@@ -361,8 +361,6 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
             status = prob_storage->get_scalar_value(
                     &scalar_prob, sizeof(scalar_prob));
             assert(status == status::success);
-            printf("seed %ld, offset %ld and probability %f\n", scalar_seed,
-                    scalar_offset, scalar_prob);
             arg_list.set(arg_idx++, scalar_seed);
             arg_list.set(arg_idx++, scalar_offset);
             arg_list.set(arg_idx++, scalar_prob);

@@ -338,7 +338,6 @@ struct ref_t : public primitive_t {
         if (!kernels_[0]) return status::runtime_error;
         if ((pd()->subbyte_pack_ || pd()->mx_scales_) && !kernels_[1])
             return status::runtime_error;
-        printf("Created all kernels: %d\n", kidx);
         return status::success;
     }
 

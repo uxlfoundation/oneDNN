@@ -305,8 +305,6 @@ float ref_dropout(float src, uint8_t *mask, dim_t idx, float p, int64_t seed,
                         : philox4x32(uint32_t(idx), uint32_t(seed));
     p = std::max(std::min(p, 1.f), 0.f);
     uint8_t m = (r > double(std::numeric_limits<uint32_t>::max()) * p);
-    printf("idx: %d - %f thresh, %f inv q, %u res - dropout: %hhu\n", idx,
-            p * double(std::numeric_limits<uint32_t>::max()), inv_q, r, m);
     if (mask) mask[idx] = m;
     return (m) ? src * inv_q : 0;
 }

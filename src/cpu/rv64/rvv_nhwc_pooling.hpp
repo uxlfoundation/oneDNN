@@ -20,6 +20,7 @@
 
 #include "common/primitive.hpp"
 #include "cpu/cpu_pooling_pd.hpp"
+#include "cpu/rv64/cpu_isa_traits.hpp"
 #include "cpu/rv64/rvv_postops.hpp"
 
 namespace dnnl {
@@ -66,8 +67,7 @@ struct riscv_nhwc_pooling_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
 
             if (is_f16) {
-                VDISPATCH_POOLING(DNNL_RISCV_USE_ZVFH_INTRINSICS,
-                        VERBOSE_UNSUPPORTED_ISA);
+                VDISPATCH_POOLING(mayiuse(zvfh), VERBOSE_UNSUPPORTED_ISA);
 
                 // Fallback to reference if post-ops are requested for f16
                 if (!attr()->post_ops_.has_default_values())

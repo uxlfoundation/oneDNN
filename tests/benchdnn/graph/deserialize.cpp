@@ -739,7 +739,7 @@ bool deserialized_graph_t::detect_sdpa_fwd_impl() const {
 
         // find the second MatMul
         cur_op_ref = get_child_ops(cur_op_ref)[0];
-        cur_op_ref = find_next_until(cur_op_ref, "MatMul", {});
+        cur_op_ref = find_next_until(cur_op_ref, "MatMul", {"Dropout"});
         if (cur_op_ref.empty()) {
             BENCHDNN_PRINT(8, "%s\n",
                     "[DETECT_SDPA_FWD]: failed due to no MatMul for PV");
@@ -761,7 +761,8 @@ bool deserialized_graph_t::detect_sdpa_bwd_impl() const {
                     "GreaterEqual"};
     static const std::unordered_set<std::string> softmax_bwd_post_op_kind
             = {"Divide", "Multiply", "TypeCast"};
-    static const std::unordered_set<std::string> mm2_pre_op_kind = {"TypeCast"};
+    static const std::unordered_set<std::string> mm2_pre_op_kind
+            = {"TypeCast", "Dropout"};
     const auto is_root_op = [&](const deserialized_op_t &op) {
         return std::none_of(op.in_lts_.begin(), op.in_lts_.end(),
                 [&](const deserialized_lt_t &lt) {
@@ -866,6 +867,8 @@ const deserialized_op_t &deserialized_graph_t::find_next_until(
     const deserialized_op_t *cur_op_ptr = &start_op;
     while (!cur_op_ptr->empty() && cur_op_ptr->kind_ != target_kind) {
         if (!allowed_skips.empty() && !allowed_skips.count(cur_op_ptr->kind_)) {
+            std::cout << "[DEBUG] Stopped at op id " << cur_op_ptr->id_
+                      << " kind " << cur_op_ptr->kind_ << std::endl;
             break;
         }
         const auto &child_ops = get_child_ops(*cur_op_ptr);

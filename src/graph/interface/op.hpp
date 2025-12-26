@@ -397,6 +397,7 @@ public:
             CASE(ConvTransposeBackwardWeights);
             CASE(Dequantize);
             CASE(Divide);
+            CASE(Dropout);
             CASE(DynamicDequantize);
             CASE(DynamicQuantize);
             CASE(Elu);

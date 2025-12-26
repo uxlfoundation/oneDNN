@@ -1073,7 +1073,11 @@ status_t insert_unsqueeze_and_squeeze_for_reduction(
 
 status_t insert_host_scalar(std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);
+    std::set<value_t *> visited;
     for (const auto &val : sg->get_input_values()) {
+        if (visited.count(val)) continue;
+        visited.insert(val);
+
         logical_tensor_t lt = val->get_logical_tensor();
         if (lt.property == property_type::host_scalar) {
             // Create a new dnnl_host_scalar op

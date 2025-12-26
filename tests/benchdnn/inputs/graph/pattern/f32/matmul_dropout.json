@@ -1,0 +1,150 @@
+{
+  "version": "3.1.0",
+  "engine_kind": "cpu",
+  "fpmath_mode": "strict",
+  "graph": [
+    {
+        "id": 0,
+        "name": "MatMul",
+        "kind": "MatMul",
+        "attrs": {
+            "transpose_a": {
+                "type": "bool",
+                "value": 0
+            },
+            "transpose_b": {
+                "type": "bool",
+                "value": 0
+            }
+        },
+        "inputs": [
+            {
+                "id": 0,
+                "dtype": "f32",
+                "shape": [
+                    1,
+                    16,
+                    32,
+                    256
+                ],
+                "stride": [
+                    131072,
+                    8192,
+                    256,
+                    1
+                ],
+                "layout_type": "strided",
+                "property_type": "undef"
+            },
+            {
+                "id": 1,
+                "dtype": "f32",
+                "shape": [
+                    1,
+                    16,
+                    256,
+                    32
+                ],
+                "stride": [
+                    131072,
+                    8192,
+                    32,
+                    1
+                ],
+                "layout_type": "strided",
+                "property_type": "undef"
+            }
+        ],
+        "outputs": [
+            {
+                "id": 2,
+                "dtype": "f32",
+                "shape": [
+                    1,
+                    16,
+                    32,
+                    32
+                ],
+                "stride": [
+                    16384,
+                    1024,
+                    32,
+                    1
+                ],
+                "layout_type": "strided",
+                "property_type": "undef"
+            }
+        ]
+    },
+    {
+      "id": 1,
+      "name": "dropout",
+      "kind": "Dropout",
+      "attrs": {},
+      "inputs": [
+        {
+          "id": 2,
+          "dtype": "f32",
+          "shape": [
+                    1,
+                    16,
+                    32,
+                    32
+                ],
+                "stride": [
+                    16384,
+                    1024,
+                    32,
+                    1
+                ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        },
+        {
+            "id": 3,
+            "dtype": "s64",
+            "shape": [],
+            "stride": [],
+            "layout_type": "strided",
+            "property_type": "host_scalar"
+        },
+        {
+            "id": 4,
+            "dtype": "s64",
+            "shape": [],
+            "stride": [],
+            "layout_type": "strided",
+            "property_type": "host_scalar"
+        },
+        {
+            "id": 5,
+            "dtype": "f32",
+            "shape": [],
+            "stride": [],
+            "layout_type": "strided",
+            "property_type": "host_scalar"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 6,
+          "dtype": "f32",
+          "shape": [
+                    1,
+                    16,
+                    32,
+                    32
+                ],
+                "stride": [
+                    16384,
+                    1024,
+                    32,
+                    1
+                ],
+          "layout_type": "strided",
+          "property_type": "undef"
+        }
+      ]
+    }
+  ]
+}

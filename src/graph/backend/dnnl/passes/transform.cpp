@@ -1448,25 +1448,55 @@ status_t fuse_dropout(std::shared_ptr<subgraph_t> &sg) {
         auto in_val = cur_op->get_input_value(0);
         VCHECK_TRANSFORM(in_val->has_producer(), status::unimplemented,
                 "dropout's input has no producer");
-        VCHECK_TRANSFORM(in_val->get_producer()
-                                 .get_output_value(0)
-                                 ->get_consumers()
-                                 .size()
-                        == 1,
-                status::unimplemented,
-                "dropout's input producer has multiple consumers");
+        // currently dropout attribute is supported by matmul, softmax, eltwise
+        // primitives. However, softmax is special since it has multiple outputs,
+        // so we need to handle the dropout separately by softmax +
+        // [eltwise-linear + dropout]. For matmul, we can fuse it with dropout
+        // but as it runs into ref, the performance is not good, worse than
+        // jitted matmul + [eltwise-linear + dropout], so we only fuse eltwise +
+        // dropout for now.
         auto &prev_op = in_val->get_producer();
-        VCHECK_TRANSFORM(
-                impl::utils::one_of(prev_op.get_kind(), op_kind::dnnl_matmul,
-                        op_kind::dnnl_softmax, op_kind::dnnl_eltwise),
-                status::unimplemented,
-                "dropout's input producer must be one of matmul, softmax, or "
-                "eltwise, but got %s",
-                prev_op.get_name().c_str());
+        if (prev_op.get_kind() != op_kind::dnnl_eltwise
+                || in_val->get_consumers().size() > 1) {
+            // dropout's preceding op has multiple consumers, cannot fuse
+            // directly. Insert an identity op (eltwise linear) between
+            // preceding op and dropout.
+            /*  A --> Dropout
+                |
+                  --> B
+             ---------------insert----------------
+                A --> Eltwise-Linear --> Dropout
+                |
+                  --> B
+            */
+            op_ptr new_op = std::make_shared<op_t>(op_kind::dnnl_eltwise);
+            new_op->set_attr<float>(op_attr::alpha, 1.f);
+            new_op->set_attr<float>(op_attr::beta, 0.f);
+            new_op->set_attr<int64_t>(op_attr::alg_kind,
+                    static_cast<int64_t>(dnnl::algorithm::eltwise_linear));
 
-        fuse_groups.emplace_back(&prev_op, cur_op.get());
-        visited.insert(&prev_op);
-        visited.insert(cur_op.get());
+            new_op->add_input(in_val);
+            in_val->add_consumer(*new_op, 0);
+
+            auto new_out_val = std::make_shared<value_t>(
+                    *new_op, 0, in_val->get_logical_tensor(), true);
+            new_op->add_output(new_out_val);
+            insert_empty_scratchpad(new_op);
+
+            in_val->remove_consumer(*cur_op, 0);
+            new_out_val->add_consumer(*cur_op, 0);
+            cur_op->connect_input(0, new_out_val);
+
+            rewriter.to_insert(new_op);
+
+            fuse_groups.emplace_back(new_op.get(), cur_op.get());
+            visited.insert(new_op.get());
+            visited.insert(cur_op.get());
+        } else {
+            fuse_groups.emplace_back(&prev_op, cur_op.get());
+            visited.insert(&prev_op);
+            visited.insert(cur_op.get());
+        }
     }
 
     for (auto &fuse_group : fuse_groups) {

@@ -125,8 +125,9 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion_cpu)
                             = optional_scale_and_masks(pgraph, matmul_qk);
                     auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
                             {in_edge(0, optional_scale_and_mask, 0)});
+                    auto dropout = optional_dropout(pgraph, softmax);
                     auto matmul_v = pgraph->append_op(
-                            graph::op_kind::MatMul, {in_edge(0, softmax, 0)});
+                            graph::op_kind::MatMul, {in_edge(0, dropout, 0)});
                     // Optional transpose + reshape/reorder
                     optional_transpose_reshape(pgraph, matmul_v, 0);
                 })
@@ -147,8 +148,9 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_gemma_fusion_cpu)
                             = optional_select(pgraph, opt_soft_capping, 2);
                     auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
                             {in_edge(0, opt_select, 0)});
+                    auto dropout = optional_dropout(pgraph, softmax);
                     auto matmul_v = pgraph->append_op(
-                            graph::op_kind::MatMul, {in_edge(0, softmax, 0)});
+                            graph::op_kind::MatMul, {in_edge(0, dropout, 0)});
                     // Optional transpose + reshape/reorder
                     optional_transpose_reshape(pgraph, matmul_v, 0);
                 })
@@ -168,8 +170,9 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_fusion_gpu)
                             = optional_scale_and_masks(pgraph, matmul_qk);
                     auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
                             {in_edge(0, optional_scale_and_mask, 0)});
+                    auto dropout = optional_dropout(pgraph, softmax);
                     auto matmul_v = pgraph->append_op(
-                            graph::op_kind::MatMul, {in_edge(0, softmax, 0)});
+                            graph::op_kind::MatMul, {in_edge(0, dropout, 0)});
                     // Optional transpose + reshape/reorder
                     optional_transpose_reshape(pgraph, matmul_v, 0);
                 })
@@ -253,6 +256,89 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_sdp_backward_fusion)
                     pgraph->create_input_port(2, matmul_dv, 1);
                     pgraph->create_input_port(2, matmul_v_do, 0);
                 })
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    // f32 sdpa with dropout
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    matmul_qk->append_decision_function(
+                            check_input_dtype<graph::data_type::f32>);
+                    auto optional_scale_and_mask
+                            = optional_scale_and_masks(pgraph, matmul_qk);
+                    auto subtract = pgraph->append_op(graph::op_kind::Subtract,
+                            {in_edge(0, optional_scale_and_mask, 0)});
+                    auto exp = pgraph->append_op(
+                            graph::op_kind::Exp, {in_edge(0, subtract, 0)});
+                    auto dropout = pgraph->append_op(
+                            graph::op_kind::Dropout, {in_edge(0, exp, 0)});
+                    auto matmul_dv = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, dropout, 0)});
+                    auto matmul_v_do
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    auto dropout2 = pgraph->append_op(graph::op_kind::Dropout,
+                            {in_edge(0, matmul_v_do, 0)});
+                    auto softmax_bwd = pgraph->append_op(
+                            graph::op_kind::SoftMaxBackward,
+                            {in_edge(0, dropout2, 0), in_edge(1, exp, 0)});
+                    auto ds = pgraph->append_alternation(
+                            {graph::op_kind::Multiply, graph::op_kind::Divide},
+                            {in_edge(0, softmax_bwd, 0)});
+                    auto matmul_dq = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
+                    auto matmul_dk = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
+                    // Q is a shared input for matmul_qk and matmul_dk
+                    pgraph->create_input_port(0, matmul_qk, 0);
+                    pgraph->create_input_port(0, matmul_dk, 1);
+                    // K is a shared input for matmul_qk and matmul_dq
+                    pgraph->create_input_port(1, matmul_qk, 1);
+                    pgraph->create_input_port(1, matmul_dq, 1);
+                    // dO is a shared input for matmul_dv and matmul_v_do
+                    pgraph->create_input_port(2, matmul_dv, 1);
+                    pgraph->create_input_port(2, matmul_v_do, 0);
+                })
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    // xf16 sdpa with dropout
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    matmul_qk->append_decision_function(check_inputs_xf16);
+                    auto optional_scale_and_mask
+                            = optional_scale_and_masks(pgraph, matmul_qk);
+                    auto subtract = pgraph->append_op(graph::op_kind::Subtract,
+                            {in_edge(0, optional_scale_and_mask, 0)});
+                    auto exp = pgraph->append_op(
+                            graph::op_kind::Exp, {in_edge(0, subtract, 0)});
+                    auto dropout = pgraph->append_op(
+                            graph::op_kind::Dropout, {in_edge(0, exp, 0)});
+                    auto tc = pgraph->append_op(
+                            graph::op_kind::TypeCast, {in_edge(0, dropout, 0)});
+                    auto matmul_dv = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc, 0)});
+                    auto matmul_v_do
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    auto dropout2 = pgraph->append_op(graph::op_kind::Dropout,
+                            {in_edge(0, matmul_v_do, 0)});
+                    auto softmax_bwd = pgraph->append_op(
+                            graph::op_kind::SoftMaxBackward,
+                            {in_edge(0, dropout2, 0), in_edge(1, exp, 0)});
+                    auto ds = pgraph->append_alternation(
+                            {graph::op_kind::Multiply, graph::op_kind::Divide},
+                            {in_edge(0, softmax_bwd, 0)});
+                    auto tc2 = pgraph->append_op(
+                            graph::op_kind::TypeCast, {in_edge(0, ds, 0)});
+                    auto matmul_dq = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+                    auto matmul_dk = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+                    // Q is a shared input for matmul_qk and matmul_dk
+                    pgraph->create_input_port(0, matmul_qk, 0);
+                    pgraph->create_input_port(0, matmul_dk, 1);
+                    // K is a shared input for matmul_qk and matmul_dq
+                    pgraph->create_input_port(1, matmul_qk, 1);
+                    pgraph->create_input_port(1, matmul_dq, 1);
+                    // dO is a shared input for matmul_dv and matmul_v_do
+                    pgraph->create_input_port(2, matmul_dv, 1);
+                    pgraph->create_input_port(2, matmul_v_do, 0);
+                })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
             return std::make_shared<larger_partition_kernel_t>();
         });
@@ -286,10 +372,11 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_fusion)
                     auto p_select2 = optional_select(pgraph, mask, 2);
                     auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
                             {in_edge(0, p_select2, 0)});
+                    auto dropout = optional_dropout(pgraph, softmax);
                     auto reshape3
                             = pgraph->append_op(graph::op_kind::StaticReshape);
                     auto matmul_v = pgraph->append_op(graph::op_kind::MatMul,
-                            {in_edge(0, softmax, 0), in_edge(1, reshape3, 0)});
+                            {in_edge(0, dropout, 0), in_edge(1, reshape3, 0)});
                     auto reshape4
                             = pgraph->append_op(graph::op_kind::StaticReshape,
                                     {in_edge(0, matmul_v, 0)});
@@ -367,6 +454,101 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_gqa_backward_fusion)
                     auto softmax_bwd = pgraph->append_op(
                             graph::op_kind::SoftMaxBackward,
                             {in_edge(0, matmul_v_do, 0), in_edge(1, exp, 0)});
+                    auto ds = pgraph->append_alternation(
+                            {graph::op_kind::Multiply, graph::op_kind::Divide},
+                            {in_edge(0, softmax_bwd, 0)});
+                    auto tc2 = pgraph->append_op(
+                            graph::op_kind::TypeCast, {in_edge(0, ds, 0)});
+                    auto matmul_dq = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+                    auto matmul_dk = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc2, 0)});
+                    // reduction_dk
+                    pgraph->append_op(graph::op_kind::ReduceSum,
+                            {in_edge(0, matmul_dk, 0)});
+                    // Q is a shared input for matmul_qk and matmul_dk
+                    pgraph->create_input_port(0, matmul_qk, 0);
+                    pgraph->create_input_port(0, matmul_dk, 1);
+                    // K is a shared input for matmul_qk and matmul_dq
+                    pgraph->create_input_port(1, matmul_qk, 1);
+                    pgraph->create_input_port(1, matmul_dq, 1);
+                    // dO is a shared input for matmul_dv and matmul_v_do
+                    pgraph->create_input_port(2, matmul_dv, 1);
+                    pgraph->create_input_port(2, matmul_v_do, 0);
+                })
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    // f32 gqa with dropout
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    matmul_qk->append_decision_function(
+                            check_input_dtype<graph::data_type::f32>);
+                    auto optional_scale_and_mask
+                            = optional_scale_and_masks(pgraph, matmul_qk);
+                    auto subtract = pgraph->append_op(graph::op_kind::Subtract,
+                            {in_edge(0, optional_scale_and_mask, 0)});
+                    auto exp = pgraph->append_op(
+                            graph::op_kind::Exp, {in_edge(0, subtract, 0)});
+                    auto dropout = pgraph->append_op(
+                            graph::op_kind::Dropout, {in_edge(0, exp, 0)});
+                    auto matmul_dv = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, dropout, 0)});
+                    // reduction_dv
+                    pgraph->append_op(graph::op_kind::ReduceSum,
+                            {in_edge(0, matmul_dv, 0)});
+                    auto matmul_v_do
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    auto dropout2 = pgraph->append_op(graph::op_kind::Dropout,
+                            {in_edge(0, matmul_v_do, 0)});
+                    auto softmax_bwd = pgraph->append_op(
+                            graph::op_kind::SoftMaxBackward,
+                            {in_edge(0, dropout2, 0), in_edge(1, exp, 0)});
+                    auto ds = pgraph->append_alternation(
+                            {graph::op_kind::Multiply, graph::op_kind::Divide},
+                            {in_edge(0, softmax_bwd, 0)});
+                    auto matmul_dq = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
+                    auto matmul_dk = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, ds, 0)});
+                    // reduction_dk
+                    pgraph->append_op(graph::op_kind::ReduceSum,
+                            {in_edge(0, matmul_dk, 0)});
+                    // Q is a shared input for matmul_qk and matmul_dk
+                    pgraph->create_input_port(0, matmul_qk, 0);
+                    pgraph->create_input_port(0, matmul_dk, 1);
+                    // K is a shared input for matmul_qk and matmul_dq
+                    pgraph->create_input_port(1, matmul_qk, 1);
+                    pgraph->create_input_port(1, matmul_dq, 1);
+                    // dO is a shared input for matmul_dv and matmul_v_do
+                    pgraph->create_input_port(2, matmul_dv, 1);
+                    pgraph->create_input_port(2, matmul_v_do, 0);
+                })
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph)
+                        -> void { // xf16 gqa with dropout
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul);
+                    matmul_qk->append_decision_function(check_inputs_xf16);
+                    auto optional_scale_and_mask
+                            = optional_scale_and_masks(pgraph, matmul_qk);
+                    auto subtract = pgraph->append_op(graph::op_kind::Subtract,
+                            {in_edge(0, optional_scale_and_mask, 0)});
+                    auto exp = pgraph->append_op(
+                            graph::op_kind::Exp, {in_edge(0, subtract, 0)});
+                    auto dropout = pgraph->append_op(
+                            graph::op_kind::Dropout, {in_edge(0, exp, 0)});
+                    auto tc = pgraph->append_op(
+                            graph::op_kind::TypeCast, {in_edge(0, dropout, 0)});
+                    auto matmul_dv = pgraph->append_op(
+                            graph::op_kind::MatMul, {in_edge(0, tc, 0)});
+                    // reduction_dv
+                    pgraph->append_op(graph::op_kind::ReduceSum,
+                            {in_edge(0, matmul_dv, 0)});
+                    auto matmul_v_do
+                            = pgraph->append_op(graph::op_kind::MatMul);
+                    auto dropout2 = pgraph->append_op(graph::op_kind::Dropout,
+                            {in_edge(0, matmul_v_do, 0)});
+                    auto softmax_bwd = pgraph->append_op(
+                            graph::op_kind::SoftMaxBackward,
+                            {in_edge(0, dropout2, 0), in_edge(1, exp, 0)});
                     auto ds = pgraph->append_alternation(
                             {graph::op_kind::Multiply, graph::op_kind::Divide},
                             {in_edge(0, softmax_bwd, 0)});

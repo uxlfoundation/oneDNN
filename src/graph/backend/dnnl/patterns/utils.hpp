@@ -408,6 +408,18 @@ inline graph::utils::pm::repetition_t *optional_scale(
     return optional_scale;
 }
 
+inline graph::utils::pm::repetition_t *optional_dropout(
+        const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
+        graph::utils::pm::pb_node_t *input) {
+    auto dropout_graph = std::make_shared<graph::utils::pm::pb_graph_t>();
+    auto dropout = dropout_graph->append_op(graph::op_kind::Dropout);
+    dropout_graph->create_input_port(0, dropout, 0);
+    dropout_graph->create_output_port(0, dropout, 0);
+    auto optional_dropout
+            = pgraph->append_optional(dropout_graph, {in_edge(0, input, 0)});
+    return optional_dropout;
+}
+
 inline graph::utils::pm::repetition_t *optional_explicit_mask(
         const std::shared_ptr<graph::utils::pm::pb_graph_t> &pgraph,
         graph::utils::pm::pb_node_t *scaled_output) {

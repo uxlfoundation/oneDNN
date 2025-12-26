@@ -102,8 +102,9 @@ void print_test_case(logical_tensor::data_type dt, const gqa_dims_t &p) {
 bool bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
         dnnl::stream &strm, dnnl::engine &eng, const tensor &ts_query,
         const tensor &ts_key, const tensor &ts_scale, const tensor &ts_mask,
-        const tensor &ts_value, tensor &ts_output, tensor &ts_stats,
-        double time_limit = 0.) {
+        const tensor &ts_dropout_seed, const tensor &ts_dropout_offset,
+        const tensor &ts_dropout_prob, const tensor &ts_value,
+        tensor &ts_output, tensor &ts_stats, double time_limit = 0.) {
     const bool quick_test = (time_limit == 0.);
 
     // Intermediate data type
@@ -115,6 +116,9 @@ bool bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
     auto value = ts_value.get_logical_tensor();
     auto scale = ts_scale.get_logical_tensor();
     auto mask = ts_mask.get_logical_tensor();
+    auto dropout_seed = ts_dropout_seed.get_logical_tensor();
+    auto dropout_offset = ts_dropout_offset.get_logical_tensor();
+    auto dropout_prob = ts_dropout_prob.get_logical_tensor();
 
     const dims q_sz = query.get_dims();
     const dims kv_sz = key.get_dims();
@@ -154,10 +158,16 @@ bool bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
     softmax.add_inputs({masked_score});
     softmax.add_outputs({probs, stats});
 
+    // dropped_out = dropout(attention_probs)
+    auto dropped_out = logical_tensor(id++, dt, score_sz, layout_type::strided);
+    auto dropout = op(id++, op::kind::Dropout, "dropout");
+    dropout.add_inputs({probs, dropout_seed, dropout_offset, dropout_prob});
+    dropout.add_outputs({dropped_out});
+
     // attention_output = attention_probs x value
     auto output = logical_tensor(id++, dt, layout_type::strided);
     auto bmm2 = op(id++, op::kind::MatMul, "bmm2");
-    bmm2.add_inputs({probs, value});
+    bmm2.add_inputs({dropped_out, value});
     bmm2.add_outputs({output});
 
     // Construct a gqa graph with engine kind and operations.
@@ -166,6 +176,7 @@ bool bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
     gqa.add_op(scale_div);
     gqa.add_op(mask_add);
     gqa.add_op(softmax);
+    gqa.add_op(dropout);
     gqa.add_op(bmm2);
     gqa.finalize();
 
@@ -179,16 +190,19 @@ bool bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
 
     // Compile the partition with inputs, outputs, and an engine.
     compiled_partition cp = partitions[0].compile(
-            {query, key, scale, mask, value}, {output, stats}, eng);
+            {query, key, scale, mask, dropout_seed, dropout_offset,
+                    dropout_prob, value},
+            {output, stats}, eng);
 
     // Update output tensor objects with correct logical tensors
     auto output_w_shape = cp.query_logical_tensor(output.get_id());
     auto stats_w_shape = cp.query_logical_tensor(stats.get_id());
     ts_output = tensor(output_w_shape, eng);
     ts_stats = tensor(stats_w_shape, eng);
-
     // Execute the compiled partition of gqa.
-    cp.execute(strm, {ts_query, ts_key, ts_scale, ts_mask, ts_value},
+    cp.execute(strm,
+            {ts_query, ts_key, ts_scale, ts_mask, ts_dropout_seed,
+                    ts_dropout_offset, ts_dropout_prob, ts_value},
             {ts_output, ts_stats});
 
     // Wait for the computation to finish.
@@ -198,7 +212,9 @@ bool bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
 
     // First run (forward).
     auto start_first = std::chrono::steady_clock::now();
-    cp.execute(strm, {ts_query, ts_key, ts_scale, ts_mask, ts_value},
+    cp.execute(strm,
+            {ts_query, ts_key, ts_scale, ts_mask, ts_dropout_seed,
+                    ts_dropout_offset, ts_dropout_prob, ts_value},
             {ts_output, ts_stats});
     strm.wait();
     auto end_first = std::chrono::steady_clock::now();
@@ -209,7 +225,9 @@ bool bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
     const int runs = std::max(min_runs, int(time_limit / dur_first.count()));
     auto start = std::chrono::steady_clock::now();
     for (int i = 0; i <= runs; i++)
-        cp.execute(strm, {ts_query, ts_key, ts_scale, ts_mask, ts_value},
+        cp.execute(strm,
+                {ts_query, ts_key, ts_scale, ts_mask, ts_dropout_seed,
+                        ts_dropout_offset, ts_dropout_prob, ts_value},
                 {ts_output, ts_stats});
     strm.wait();
     auto end = std::chrono::steady_clock::now();
@@ -225,7 +243,9 @@ bool bench_gqa_forward(engine::kind ekind, logical_tensor::data_type dt,
 bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
         dnnl::stream &strm, dnnl::engine &eng, const tensor &ts_query,
         const tensor &ts_key, const tensor &ts_scale, const tensor &ts_mask,
-        const tensor &ts_value, const tensor &ts_output, const tensor &ts_stats,
+        const tensor &ts_dropout_seed, const tensor &ts_dropout_offset,
+        const tensor &ts_dropout_prob, const tensor &ts_value,
+        const tensor &ts_output, const tensor &ts_stats,
         const tensor &ts_doutput, double time_limit = 0.) {
     const bool quick_test = (time_limit == 0.);
 
@@ -237,6 +257,9 @@ bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
     auto key = ts_key.get_logical_tensor();
     auto value = ts_value.get_logical_tensor();
     auto scale = ts_scale.get_logical_tensor();
+    auto dropout_seed = ts_dropout_seed.get_logical_tensor();
+    auto dropout_offset = ts_dropout_offset.get_logical_tensor();
+    auto dropout_prob = ts_dropout_prob.get_logical_tensor();
     auto mask = ts_mask.get_logical_tensor();
     auto output = ts_output.get_logical_tensor();
     auto stats = ts_stats.get_logical_tensor();
@@ -285,12 +308,19 @@ bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
     exp.add_inputs({sub_out});
     exp.add_outputs({probs});
 
+    // dropped_out = dropout(attention_probs)
+    auto dropped_probs
+            = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
+    auto dropout = op(id++, op::kind::Dropout, "dropout");
+    dropout.add_inputs({probs, dropout_seed, dropout_offset, dropout_prob});
+    dropout.add_outputs({dropped_probs});
+
     // the following bmm doesn't support different input dtypes, insert a typecast
-    auto probs_cast = probs;
+    auto probs_cast = dropped_probs;
     auto typecast = op(id++, op::kind::TypeCast, "typecast");
     if (dt != dt_inter) {
         probs_cast = logical_tensor(id++, dt, score_sz, layout_type::strided);
-        typecast.add_inputs({probs});
+        typecast.add_inputs({dropped_probs});
         typecast.add_outputs({probs_cast});
     }
 
@@ -309,13 +339,21 @@ bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
     reduce_dv.add_inputs({dvalue});
     reduce_dv.add_outputs({dvalue_reduced});
 
-    // compute dprobs = doutput * value^T
-    auto dprobs
+    // compute ddropped_probs = doutput * value^T
+    auto ddropped_probs
             = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
     auto bmm_do_v = op(id++, op::kind::MatMul, "bmm_dprobs");
     bmm_do_v.set_attr<bool>(op::attr::transpose_b, true);
     bmm_do_v.add_inputs({doutput, value});
-    bmm_do_v.add_outputs({dprobs});
+    bmm_do_v.add_outputs({ddropped_probs});
+
+    // dprobs = dropout(ddropped_probs)
+    auto dprobs
+            = logical_tensor(id++, dt_inter, score_sz, layout_type::strided);
+    auto dropout2 = op(id++, op::kind::Dropout, "dropout");
+    dropout2.add_inputs(
+            {ddropped_probs, dropout_seed, dropout_offset, dropout_prob});
+    dropout2.add_outputs({dprobs});
 
     // compute dmasked_score =  dsoftmax(dprobs)
     auto dmasked_score
@@ -370,8 +408,10 @@ bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
     gqa_bwd.add_op(mask_add);
     gqa_bwd.add_op(subtract);
     gqa_bwd.add_op(exp);
+    gqa_bwd.add_op(dropout);
     gqa_bwd.add_op(bmm_p_do);
     gqa_bwd.add_op(bmm_do_v);
+    gqa_bwd.add_op(dropout2);
     gqa_bwd.add_op(softmax_grad);
     gqa_bwd.add_op(scale_div2);
     gqa_bwd.add_op(bmm_dscaled_score_k);
@@ -396,7 +436,8 @@ bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
 
     // Compile the partition with inputs, outputs, and an engine.
     compiled_partition cp = partitions[0].compile(
-            {query, key, scale, mask, value, output, stats, doutput},
+            {query, key, scale, mask, dropout_seed, dropout_offset,
+                    dropout_prob, value, output, stats, doutput},
             {dquery, dkey_reduced, dvalue_reduced}, eng);
 
     // Create tensor objects
@@ -406,8 +447,9 @@ bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
 
     // Execute the compiled partition of sdpa.
     cp.execute(strm,
-            {ts_query, ts_key, ts_scale, ts_mask, ts_value, ts_output, ts_stats,
-                    ts_doutput},
+            {ts_query, ts_key, ts_scale, ts_mask, ts_dropout_seed,
+                    ts_dropout_offset, ts_dropout_prob, ts_value, ts_output,
+                    ts_stats, ts_doutput},
             {ts_dquery, ts_dkey, ts_dvalue});
 
     // Wait for the computation to finish.
@@ -418,8 +460,9 @@ bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
     // First run (backward).
     auto start_first = std::chrono::steady_clock::now();
     cp.execute(strm,
-            {ts_query, ts_key, ts_scale, ts_mask, ts_value, ts_output, ts_stats,
-                    ts_doutput},
+            {ts_query, ts_key, ts_scale, ts_mask, ts_dropout_seed,
+                    ts_dropout_offset, ts_dropout_prob, ts_value, ts_output,
+                    ts_stats, ts_doutput},
             {ts_dquery, ts_dkey, ts_dvalue});
     strm.wait();
     auto end_first = std::chrono::steady_clock::now();
@@ -431,7 +474,8 @@ bool bench_gqa_backward(engine::kind ekind, logical_tensor::data_type dt,
     auto start = std::chrono::steady_clock::now();
     for (int i = 0; i <= runs; i++)
         cp.execute(strm,
-                {ts_query, ts_key, ts_scale, ts_mask, ts_value, ts_output,
+                {ts_query, ts_key, ts_scale, ts_mask, ts_dropout_seed,
+                        ts_dropout_offset, ts_dropout_prob, ts_value, ts_output,
                         ts_stats, ts_doutput},
                 {ts_dquery, ts_dkey, ts_dvalue});
     strm.wait();
@@ -464,11 +508,20 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     const dims scale_sz = {1};
 
     // Create logical tensors for input tensors
-    auto query_lt = logical_tensor(100, dt, q_sz, layout_type::strided);
-    auto key_lt = logical_tensor(101, dt, kv_sz, layout_type::strided);
-    auto scale_lt = logical_tensor(102, dt, scale_sz, layout_type::strided);
-    auto mask_lt = logical_tensor(103, dt, score_sz, layout_type::strided);
-    auto value_lt = logical_tensor(104, dt, kv_sz, layout_type::strided);
+    auto query_lt = logical_tensor(200, dt, q_sz, layout_type::strided);
+    auto key_lt = logical_tensor(201, dt, kv_sz, layout_type::strided);
+    auto scale_lt = logical_tensor(202, dt, scale_sz, layout_type::strided);
+    auto mask_lt = logical_tensor(203, dt, score_sz, layout_type::strided);
+    auto value_lt = logical_tensor(204, dt, kv_sz, layout_type::strided);
+    auto dropout_seed_lt = logical_tensor(205, logical_tensor::data_type::s64,
+            0, layout_type::strided,
+            logical_tensor::property_type::host_scalar);
+    auto dropout_offset_lt = logical_tensor(206, logical_tensor::data_type::s64,
+            0, layout_type::strided,
+            logical_tensor::property_type::host_scalar);
+    auto dropout_prob_lt = logical_tensor(207, logical_tensor::data_type::f32,
+            0, layout_type::strided,
+            logical_tensor::property_type::host_scalar);
 
     // Create tensor objects
     tensor ts_query(query_lt, eng);
@@ -497,9 +550,21 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
     write_to_dnnl_tensor(mask_data.data(), ts_mask);
     write_to_dnnl_tensor(value_data.data(), ts_value);
 
+    // Create host scalar tensors for dropout
+    int32_t dropout_seed_value = 12345;
+    int64_t dropout_offset_value = 100;
+    float dropout_prob_value = 0.1f;
+    auto ts_dropout_seed
+            = tensor::make_scalar_tensor(dropout_seed_lt, &dropout_seed_value);
+    auto ts_dropout_offset = tensor::make_scalar_tensor(
+            dropout_offset_lt, &dropout_offset_value);
+    auto ts_dropout_prob
+            = tensor::make_scalar_tensor(dropout_prob_lt, &dropout_prob_value);
+
     // Run forward pass
     bool success = bench_gqa_forward(ekind, dt, strm, eng, ts_query, ts_key,
-            ts_scale, ts_mask, ts_value, ts_output, ts_stats, time_limit);
+            ts_scale, ts_mask, ts_dropout_seed, ts_dropout_offset,
+            ts_dropout_prob, ts_value, ts_output, ts_stats, time_limit);
     if (!success) return;
 
     // Prepare output gradients
@@ -514,7 +579,8 @@ void bench_gqa(engine::kind ekind, logical_tensor::data_type dt,
 
     // Run backward pass
     bench_gqa_backward(ekind, dt, strm, eng, ts_query, ts_key, ts_scale,
-            ts_mask, ts_value, ts_output, ts_stats, ts_doutput, time_limit);
+            ts_mask, ts_dropout_seed, ts_dropout_offset, ts_dropout_prob,
+            ts_value, ts_output, ts_stats, ts_doutput, time_limit);
 }
 
 void bad_args() {
@@ -560,9 +626,9 @@ void gqa_perf(engine::kind ekind, int argc, char **argv) {
         }
     }
 
-    bench(ekind, dnnl_f32, params, 2000.0 /*ms*/);
-    bench(ekind, dnnl_bf16, params, 2000.0 /*ms*/);
-    bench(ekind, dnnl_f16, params, 2000.0 /*ms*/);
+    bench(ekind, dnnl_f32, params, 0 /*ms*/);
+    bench(ekind, dnnl_bf16, params, 0 /*ms*/);
+    bench(ekind, dnnl_f16, params, 0 /*ms*/);
 }
 
 int main(int argc, char **argv) {

@@ -50,10 +50,21 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_POOLING(memory_desc_wrapper(dst_md()).is_dense(false),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            static constexpr data_type_t d_type = data_type::f32;
-            const bool types_ok = src_md()->data_type == d_type
-                    && dst_md()->data_type == d_type;
-            VDISPATCH_POOLING(types_ok, VERBOSE_UNSUPPORTED_DT);
+            const bool is_f16 = src_md()->data_type == data_type::f16;
+            VDISPATCH_POOLING(utils::one_of(src_md()->data_type, data_type::f32,
+                                      data_type::f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_POOLING(src_md()->data_type == dst_md()->data_type,
+                    VERBOSE_UNSUPPORTED_DT);
+            if (is_f16) {
+                VDISPATCH_POOLING(DNNL_RISCV_USE_ZVFH_INTRINSICS,
+                        VERBOSE_UNSUPPORTED_ISA);
+                VDISPATCH_POOLING(desc()->accum_data_type == data_type::f32,
+                        VERBOSE_UNSUPPORTED_DT);
+            }
+            VDISPATCH_POOLING(
+                    platform::has_data_type_support(src_md()->data_type),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_POOLING(!is_dilated(), VERBOSE_UNSUPPORTED_FEATURE,
                     "does not support dilations");

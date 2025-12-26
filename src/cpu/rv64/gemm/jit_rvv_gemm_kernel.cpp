@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "cpu/rv64/gemm/jit_rvv_gemm_kernel.hpp"
+#include "common/verbose.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -24,8 +25,8 @@ namespace gemm_utils {
 
 using namespace Xbyak_riscv;
 
-jit_rvv_gemm_kernel_t::jit_rvv_gemm_kernel_t()
-    : jit_generator_t("rv64_gemm_kernel_f32_jit") {
+jit_rvv_gemm_kernel_t::jit_rvv_gemm_kernel_t(dim_t m)
+    : jit_generator_t("rv64_gemm_kernel_f32_jit"), m_(m) {
     create_kernel();
 }
 
@@ -64,12 +65,17 @@ void jit_rvv_gemm_kernel_t::generate() {
     const FReg freg_b2 = fa4;
     const FReg freg_b3 = fa5;
 
+    // Vector register layout depends on m_ (LMUL setting)
+    // For m=8 (LMUL=m2): each vreg occupies 2 vector registers
+    //   v_c0(0), v_c1(2), v_c2(4), v_c3(6), v_a0(8), v_tmp(10)
+    // For m=16 (LMUL=m4): each vreg occupies 4 vector registers
+    //   v_c0(0), v_c1(4), v_c2(8), v_c3(12), v_a0(16), v_tmp(20)
     const VReg v_c0(0);
-    const VReg v_c1(2);
-    const VReg v_c2(4);
-    const VReg v_c3(6);
-    const VReg v_a0(8);
-    const VReg v_tmp(10);
+    const VReg v_c1 = (m_ == 16) ? VReg(4) : VReg(2);
+    const VReg v_c2 = (m_ == 16) ? VReg(8) : VReg(4);
+    const VReg v_c3 = (m_ == 16) ? VReg(12) : VReg(6);
+    const VReg v_a0 = (m_ == 16) ? VReg(16) : VReg(8);
+    const VReg v_tmp = (m_ == 16) ? VReg(20) : VReg(10);
     // Layout of call_params_t:
     //   0  : const float *A;
     //   8  : const float *B;
@@ -100,10 +106,10 @@ void jit_rvv_gemm_kernel_t::generate() {
     lw(reg_beta_bits, reg_param, 60);
     fmv_w_x(freg_beta, reg_beta_bits);
 
-    // Set VL once for 8 rows; with LMUL = m2 this requires that the hardware
-    // supports at least VL = 8 for SEW = e32, LMUL = m2 on this target.
-    li(reg_tmp0, 8);
-    vsetvli(x0, reg_tmp0, SEW::e32, LMUL::m2);
+    // Set VL once for m_ rows; with LMUL = m2 (for m=8) or m4 (for m=16)
+    const LMUL lmul = (m_ == 16) ? LMUL::m4 : LMUL::m2;
+    li(reg_tmp0, m_);
+    vsetvli(x0, reg_tmp0, SEW::e32, lmul);
 
     // Initialize B row pointers for k = 0.
     // B0_ptr = B base; B1_ptr = B + ldb_bytes
@@ -227,8 +233,18 @@ void jit_rvv_gemm_kernel_t::generate() {
 }
 
 void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
-        dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta) {
-    static jit_rvv_gemm_kernel_t kernel;
+        dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta, dim_t m) {
+    static jit_rvv_gemm_kernel_t kernel_m8(8);
+    static jit_rvv_gemm_kernel_t kernel_m16(16);
+
+    // Print verbose message to indicate JIT kernel is being used for GEMM
+    static bool verbose_printed = false;
+    if (!verbose_printed) {
+        VINFO(primitive, create, dispatch, rvv_gemm_jit,
+                "JIT gemm kernel taking over: m=%d, n=4", (int)m);
+        verbose_printed = true;
+    }
+
     jit_rvv_gemm_kernel_t::call_params_t p;
     p.A = A;
     p.B = B;
@@ -239,7 +255,12 @@ void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
     p.K = K;
     p.alpha = alpha;
     p.beta = beta;
-    kernel(&p);
+
+    if (m == 8) {
+        kernel_m8(&p);
+    } else { // m == 16
+        kernel_m16(&p);
+    }
 }
 
 } // namespace gemm_utils

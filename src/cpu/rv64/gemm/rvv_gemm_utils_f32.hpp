@@ -88,10 +88,11 @@ void partition_unit_diff(
         int ithr, int nthr, dim_t n, dim_t *t_offset, dim_t *t_block);
 
 // RVV JIT micro-kernel used from rvv_gemm_f32.cpp to replace the hand-written
-// RVV intrinsics implementation of the 8x4 micro-kernel when
+// RVV intrinsics implementation of the 8x4 or 16x4 micro-kernel when
 //   isTransA = false, isTransB = false, n_unroll = 4.
+// The m parameter must be either 8 or 16.
 void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
-        dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta);
+        dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta, dim_t m);
 
 } // namespace gemm_utils
 } // namespace rv64

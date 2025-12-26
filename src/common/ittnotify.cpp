@@ -45,6 +45,7 @@ namespace {
 thread_local primitive_kind_t thread_primitive_kind;
 thread_local const char *thread_primitive_info;
 thread_local const char *thread_primitive_log_kind;
+thread_local __itt_id thread_primitive_task_id = __itt_null;
 __itt_string_handle *thread_primitive_meta_fmt
         = __itt_string_handle_create("%s");
 
@@ -67,10 +68,13 @@ __itt_domain *itt_domain(const char *log_kind) {
 
 } // namespace
 
-void primitive_task_start(
-        primitive_kind_t kind, const char *pd_info, const char *log_kind) {
+void primitive_task_start(primitive_kind_t kind, const char *pd_info,
+        const char *log_kind, __itt_id task_id) {
     if (kind == primitive_kind::undefined) return;
     __itt_domain *pd_domain = itt_domain(log_kind);
+
+    thread_primitive_task_id = task_id;
+    __itt_id_create(pd_domain, thread_primitive_task_id);
 
 #define CASE(x) \
     __itt_string_handle_create(dnnl_prim_kind2str(primitive_kind::x))
@@ -105,7 +109,7 @@ void primitive_task_start(
     if (kind_idx < primitive_kind::internal_only_start) {
         assert((size_t)kind_idx < sizeof(prim_kind_itt_strings)
                         / sizeof(prim_kind_itt_strings[0]));
-        __itt_task_begin(pd_domain, __itt_null, __itt_null,
+        __itt_task_begin(pd_domain, thread_primitive_task_id, __itt_null,
                 prim_kind_itt_strings[kind_idx]);
     }
     thread_primitive_kind = kind;
@@ -126,12 +130,19 @@ const char *primitive_task_get_current_log_kind() {
     return thread_primitive_log_kind;
 }
 
+__itt_id primitive_task_get_itt_id() {
+    return thread_primitive_task_id;
+}
+
 void primitive_task_end(const char *log_kind) {
     if (thread_primitive_kind != primitive_kind::undefined) {
         __itt_task_end(itt_domain(log_kind));
         thread_primitive_kind = primitive_kind::undefined;
         thread_primitive_info = nullptr;
         thread_primitive_log_kind = nullptr;
+
+        __itt_id_destroy(itt_domain(log_kind), thread_primitive_task_id);
+        thread_primitive_task_id = __itt_null;
     }
 }
 #else

@@ -278,6 +278,7 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
     auto task_primitive_kind = itt::primitive_task_get_current_kind();
     auto task_primitive_info = itt::primitive_task_get_current_info();
     auto task_primitive_log_kind = itt::primitive_task_get_current_log_kind();
+    auto task_primitive_itt_id = itt::primitive_task_get_itt_id();
     bool itt_enable = itt::get_itt(itt::__itt_task_level_high);
 #endif
 #if DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL
@@ -297,7 +298,7 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
 #if defined(DNNL_ENABLE_ITT_TASKS)
         if (ithr_ && itt_enable)
             itt::primitive_task_start(task_primitive_kind, task_primitive_info,
-                    task_primitive_log_kind);
+                    task_primitive_log_kind, task_primitive_itt_id);
 #endif
         f(ithr_, nthr_);
 #if defined(DNNL_ENABLE_ITT_TASKS)
@@ -312,7 +313,7 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
                 == primitive_kind::undefined;
         if (mark_task && itt_enable)
             itt::primitive_task_start(task_primitive_kind, task_primitive_info,
-                    task_primitive_log_kind);
+                    task_primitive_log_kind, task_primitive_itt_id);
 #endif
         f(ithr, nthr);
 #if defined(DNNL_ENABLE_ITT_TASKS)
@@ -335,7 +336,8 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
             bool is_master = threadpool_utils::get_active_threadpool() == tp;
             if (!is_master && itt_enable) {
                 itt::primitive_task_start(task_primitive_kind,
-                        task_primitive_info, task_primitive_log_kind);
+                        task_primitive_info, task_primitive_log_kind,
+                        task_primitive_itt_id);
             }
 #endif
             f(ithr, nthr);

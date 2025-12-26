@@ -20,6 +20,7 @@
 
 #include "cpu/platform.hpp"
 
+#include "cpu/rv64/gemm/jit_rvv_gemm_kernel.hpp"
 #include "cpu/rv64/gemm/rvv_gemm_f32.hpp"
 #include "cpu/rv64/gemm/rvv_gemm_utils_f32.hpp"
 
@@ -391,23 +392,57 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
         const dim_t ldc, const float alpha, const float beta, float *ws,
         bool do_copy, int ithr = -1) {
 
-    dim_t n_unroll = gemm_f32_traits::get_n_unroll_factor();
-    dim_t m_unroll = gemm_f32_traits::get_m_unroll_factor();
+    const dim_t n_unroll = gemm_f32_traits::get_n_unroll_factor();
+    const dim_t m_unroll = gemm_f32_traits::get_m_unroll_factor();
 
     dim_t Nu = rnd_dn(N, n_unroll);
     dim_t Mu = rnd_dn(M, m_unroll);
 
-    for (dim_t i = 0; i < Mu; i += m_unroll) {
-        for (dim_t j = 0; j < Nu; j += n_unroll) {
-            const float *b = isTransB ? &B[j] : &B[j * ldb];
-            const float *a = isTransA ? &A[i * lda] : &A[i];
-            if (do_copy) {
-                if (j == 0) { copy_A(isTransA, K, a, lda, ws); }
-                kernel_mxn<false, isTransB>(K, ws, m_unroll, b, ldb,
-                        &C[i + j * ldc], ldc, alpha, beta, ithr);
-            } else {
-                kernel_mxn<isTransA, isTransB>(K, a, lda, b, ldb,
-                        &C[i + j * ldc], ldc, alpha, beta, ithr);
+    // JIT-optimized specialization for the most important case:
+    //   isTransA = false, isTransB = false, n_unroll = 4.
+    const bool use_jit_ker = !isTransA && !isTransB && (n_unroll == 4)
+            && (m_unroll == 8 || m_unroll == 16);
+
+    if (do_copy) {
+        if (use_jit_ker) {
+            for (dim_t i = 0; i < Mu; i += m_unroll) {
+                for (dim_t j = 0; j < Nu; j += n_unroll) {
+                    const float *b = isTransB ? &B[j] : &B[j * ldb];
+                    const float *a = isTransA ? &A[i * lda] : &A[i];
+                    if (j == 0) { copy_A(isTransA, K, a, lda, ws); }
+                    jit_rvv_gemm_kernel(a, b, &C[i + j * ldc], lda, ldb, ldc, K,
+                            alpha, beta, m_unroll);
+                }
+            }
+        } else {
+            for (dim_t i = 0; i < Mu; i += m_unroll) {
+                for (dim_t j = 0; j < Nu; j += n_unroll) {
+                    const float *b = isTransB ? &B[j] : &B[j * ldb];
+                    const float *a = isTransA ? &A[i * lda] : &A[i];
+                    if (j == 0) { copy_A(isTransA, K, a, lda, ws); }
+                    kernel_mxn<false, isTransB>(K, ws, m_unroll, b, ldb,
+                            &C[i + j * ldc], ldc, alpha, beta, ithr);
+                }
+            }
+        }
+    } else {
+        if (use_jit_ker) {
+            for (dim_t i = 0; i < Mu; i += m_unroll) {
+                for (dim_t j = 0; j < Nu; j += n_unroll) {
+                    const float *b = isTransB ? &B[j] : &B[j * ldb];
+                    const float *a = isTransA ? &A[i * lda] : &A[i];
+                    jit_rvv_gemm_kernel(a, b, &C[i + j * ldc], lda, ldb, ldc, K,
+                            alpha, beta, m_unroll);
+                }
+            }
+        } else {
+            for (dim_t i = 0; i < Mu; i += m_unroll) {
+                for (dim_t j = 0; j < Nu; j += n_unroll) {
+                    const float *b = isTransB ? &B[j] : &B[j * ldb];
+                    const float *a = isTransA ? &A[i * lda] : &A[i];
+                    kernel_mxn<isTransA, isTransB>(K, a, lda, b, ldb,
+                            &C[i + j * ldc], ldc, alpha, beta, ithr);
+                }
             }
         }
     }

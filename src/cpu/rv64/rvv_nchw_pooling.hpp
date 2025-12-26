@@ -61,6 +61,9 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
                         VERBOSE_UNSUPPORTED_ISA);
                 VDISPATCH_POOLING(desc()->accum_data_type == data_type::f32,
                         VERBOSE_UNSUPPORTED_DT);
+                // Fallback to reference if post-ops are requested for f16
+                if (!attr()->post_ops_.has_default_values())
+                    return status::unimplemented;
             }
             VDISPATCH_POOLING(
                     platform::has_data_type_support(src_md()->data_type),

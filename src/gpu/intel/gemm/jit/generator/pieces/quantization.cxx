@@ -312,7 +312,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
 
     bool common = (qlayout.rows() * qlayout.cols()) == 1;
 
-    bool bfSpecialPath = (T == Type::bf16) && (Tq == Type::f32) && (xqGroupMN > 1) && layout.hasFullCrosspack(2);
+    bool bfSpecialPath = (T == Type::bf16) && (Tq == Type::f32) && (xqGroupMN > 1) && layout.hasFullCrosspack(2) && problem.Ta.isInteger();
     GRFMultirange qPairs;
     int npairs = 0;
 

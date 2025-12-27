@@ -368,6 +368,76 @@ static void AvgPoolingIncludePadding_f16(const dnnl::impl::float16_t *src,
         dst[dst_offset] = (dnnl::impl::float16_t)(red_res / kernel_volume);
     });
 }
+
+static void AvgPoolingExcludePadding_f16(const dnnl::impl::float16_t *src,
+        dnnl::impl::float16_t *dst, const dim_t batch, const dim_t channels,
+        const dim_t outD, const dim_t outH, const dim_t outW, const dim_t inD,
+        const dim_t inH, const dim_t inW, const dim_t kerD, const dim_t kerH,
+        const dim_t kerW, const dim_t strideD, const dim_t strideH,
+        const dim_t strideW, const dim_t padFront, const dim_t padTop,
+        const dim_t padLeft) {
+
+    parallel_nd(batch, channels, outD, outH, outW,
+            [&](dim_t mb, dim_t c, dim_t od, dim_t oh, dim_t ow) {
+        const size_t dst_offset = (size_t)outW * outH * outD * channels * mb
+                + (size_t)outW * outH * outD * c + (size_t)outW * outH * od
+                + (size_t)outW * oh + (size_t)ow;
+        const auto src_offset
+                = ((size_t)inW * inH * inD) * ((size_t)channels * mb + c);
+        const auto local_src = &src[src_offset];
+        const auto IWH = (size_t)inW * inH;
+
+        int od_offset = od * strideD - padFront;
+        int oh_offset = oh * strideH - padTop;
+        int ow_offset = ow * strideW - padLeft;
+        int iw_start = std::max(ow_offset, 0);
+        int iw_end = std::min(ow_offset + (int)kerW, (int)inW);
+
+        if (iw_start >= iw_end) {
+            dst[dst_offset] = (dnnl::impl::float16_t)0.0f;
+            return;
+        }
+
+        size_t size = iw_end - iw_start;
+        size_t vl = __riscv_vsetvl_e16m1(size);
+        vfloat32m2_t vsum_f32 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+        size_t count = 0;
+
+        for (int id = od_offset; id < od_offset + (int)kerD; id++) {
+            if (id < 0 || id >= inD) continue;
+            for (int ih = oh_offset; ih < oh_offset + (int)kerH; ih++) {
+                if (ih < 0 || ih >= inH) continue;
+
+                const size_t local_src_offset
+                        = IWH * id + (size_t)inW * ih + iw_start;
+                size_t iw = 0;
+                while (iw < size) {
+                    size_t vli = __riscv_vsetvl_e16m1(size - iw);
+                    vfloat16m1_t vsrc_f16 = __riscv_vle16_v_f16m1(
+                            (const _Float16 *)&local_src[local_src_offset + iw],
+                            vli);
+                    vfloat32m2_t vsrc_f32
+                            = __riscv_vfwcvt_f_f_v_f32m2(vsrc_f16, vli);
+                    vsum_f32 = __riscv_vfadd_vv_f32m2(vsum_f32, vsrc_f32, vli);
+                    iw += vli;
+                }
+                count += size;
+            }
+        }
+
+        if (count == 0) {
+            dst[dst_offset] = (dnnl::impl::float16_t)0.0f;
+            return;
+        }
+
+        vfloat32m1_t zero_scalar = __riscv_vfmv_v_f_f32m1(0.0f, 1);
+        vfloat32m1_t vred_res
+                = __riscv_vfredusum_vs_f32m2_f32m1(vsum_f32, zero_scalar, vl);
+        float red_res;
+        __riscv_vse32_v_f32m1(&red_res, vred_res, 1);
+        dst[dst_offset] = (dnnl::impl::float16_t)(red_res / (float)count);
+    });
+}
 #endif
 
 } // namespace
@@ -440,6 +510,9 @@ status_t riscv_nchw_pooling_fwd_t::execute_forward(
                     SD, SH, SW, padF, padT, padL);
         } else if (is_avg_pool_include) {
             AvgPoolingIncludePadding_f16(src, dst, MB, C, OD, OH, OW, ID, IH,
+                    IW, KD, KH, KW, SD, SH, SW, padF, padT, padL);
+        } else if (is_avg_pool_exclude) {
+            AvgPoolingExcludePadding_f16(src, dst, MB, C, OD, OH, OW, ID, IH,
                     IW, KD, KH, KW, SD, SH, SW, padF, padT, padL);
         } else {
             return status::unimplemented;

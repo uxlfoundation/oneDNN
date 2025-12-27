@@ -26,7 +26,6 @@
 #include "xpu/ocl/utils.hpp"
 
 using namespace dnnl::impl;
-using namespace dnnl::impl::xpu::ocl;
 
 status_t dnnl_ocl_interop_engine_create(dnnl::impl::engine_t **engine,
         cl_device_id device, cl_context context) {
@@ -116,22 +115,22 @@ status_t dnnl_ocl_interop_engine_get_cache_blob_id(
 
     // Get platform.
     cl_platform_id platform;
-    err = clGetDeviceInfo(
+    err = xpu::ocl::clGetDeviceInfo(
             device, CL_DEVICE_PLATFORM, sizeof(platform), &platform, nullptr);
     OCL_CHECK(err);
 
     // Get platform name size.
-    err = clGetPlatformInfo(
+    err = xpu::ocl::clGetPlatformInfo(
             platform, CL_PLATFORM_NAME, 0, nullptr, &platform_name_size);
     OCL_CHECK(err);
 
     // Get device name size.
-    err = clGetDeviceInfo(
+    err = xpu::ocl::clGetDeviceInfo(
             device, CL_DEVICE_NAME, 0, nullptr, &device_name_size);
     OCL_CHECK(err);
 
     // Get driver version size.
-    err = clGetDeviceInfo(
+    err = xpu::ocl::clGetDeviceInfo(
             device, CL_DRIVER_VERSION, 0, nullptr, &driver_version_size);
     OCL_CHECK(err);
 
@@ -145,15 +144,15 @@ status_t dnnl_ocl_interop_engine_get_cache_blob_id(
 
     // Get platform name.
     auto platform_name = std::string(platform_name_size, '\0');
-    err = clGetPlatformInfo(platform, CL_PLATFORM_NAME, platform_name.size(),
-            &platform_name[0], nullptr);
+    err = xpu::ocl::clGetPlatformInfo(platform, CL_PLATFORM_NAME,
+            platform_name.size(), &platform_name[0], nullptr);
     OCL_CHECK(err);
 
     sstream.append_array(platform_name.size(), platform_name.data());
 
     // Get device name.
     auto device_name = std::string(device_name_size, '\0');
-    err = clGetDeviceInfo(
+    err = xpu::ocl::clGetDeviceInfo(
             device, CL_DEVICE_NAME, device_name_size, &device_name[0], nullptr);
     OCL_CHECK(err);
 
@@ -161,8 +160,8 @@ status_t dnnl_ocl_interop_engine_get_cache_blob_id(
 
     // Get driver version.
     auto driver_version = std::string(driver_version_size, '\0');
-    err = clGetDeviceInfo(device, CL_DRIVER_VERSION, driver_version_size,
-            &driver_version[0], nullptr);
+    err = xpu::ocl::clGetDeviceInfo(device, CL_DRIVER_VERSION,
+            driver_version_size, &driver_version[0], nullptr);
     OCL_CHECK(err);
 
     sstream.append_array(driver_version.size(), driver_version.data());

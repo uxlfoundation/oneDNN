@@ -49,6 +49,7 @@
 
 # Third party components
 /third-party/ @uxlfoundation/onednn-arch
+/third_party/opencl/ @uxlfoundation/onednn-gpu-intel
 /third_party/level_zero/ @uxlfoundation/onednn-gpu-intel
 /third_party/mdapi/ @uxlfoundation/onednn-gpu-intel
 /third_party/ngen/ @uxlfoundation/onednn-gpu-intel

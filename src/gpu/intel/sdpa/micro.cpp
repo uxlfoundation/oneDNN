@@ -602,7 +602,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     //problem_vs.A.layout = convert_dnnl_to_kernel_layout(val_md()); //gmem
     problem_vs.A.layout = MatrixLayout::T;
 
-    problem_vs.B.layout = MatrixLayout::Pr;
+    problem_vs.B.layout = MatrixLayout::T;
     problem_vs.C.layout = MatrixLayout::N;
     const memory_desc_wrapper val_mdw(val_md());
     auto ldv = static_cast<int>(
@@ -1378,8 +1378,10 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     shimOptions.useTileOps = true;
     shimOptions.decorator = "kq";
 
-    kernel_ctx.add_custom_header("gemm_kq.h",
-            micro::generateShim(gemm_kq, HostLanguage::OpenCL_C, shimOptions));
+    std::string gemm_kq_header
+            = micro::generateShim(gemm_kq, HostLanguage::OpenCL_C, shimOptions);
+    std::cout << gemm_kq_header << std::endl;
+    kernel_ctx.add_custom_header("gemm_kq.h", std::move(gemm_kq_header));
 
     shimOptions.microkernelID++;
     shimOptions.decorator = "vs";
@@ -1668,21 +1670,27 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     arg_list.append(remainder_q);
 
     compute::range_t lws = {(size_t)pd()->sg_size(), (size_t)sg_per_wg, 1};
+    compute::range_t gws_preprocess = lws;
     compute::range_t gws = lws;
 
-    //gws[0] *= utils::div_up(K, wg_tile_k);
-    gws[0] *= utils::div_up(Q, wg_tile_q);
-    // gws[0] *= utils::div_up(K, wg_tile_k) * utils::div_up(Q, wg_tile_q); // atomics approach
-    gws[1] *= pd()->dst_md()->dims[1];
-    gws[2] *= pd()->dst_md()->dims[0];
+    // needed separate gws??
+    gws_preprocess[0] *= utils::div_up(Q, wg_tile_q);
+    gws_preprocess[1] *= pd()->dst_md()->dims[1];
+    gws_preprocess[2] *= pd()->dst_md()->dims[0];
 
-    auto nd_range = compute::nd_range_t(gws, lws);
-    printf("gws[%d %d %d] lws[%d %d %d]\n", gws[0], gws[1], gws[2], lws[0],
-            lws[1], lws[2]);
+    auto nd_range_preprocess = compute::nd_range_t(gws_preprocess, lws);
+    printf("preprocessgws[%d %d %d] lws[%d %d %d]\n", gws_preprocess[0],
+            gws_preprocess[1], gws_preprocess[2], lws[0], lws[1], lws[2]);
     //TODO errorcheck
-    parallel_for(ctx, nd_range, preprocess_,
+    parallel_for(ctx, nd_range_preprocess, preprocess_,
             arg_list); //TODO: check how many to fill D_MAX
 
+    printf("gws[%d %d %d] lws[%d %d %d]\n", gws[0], gws[1], gws[2], lws[0],
+            lws[1], lws[2]);
+    gws[0] *= utils::div_up(K, wg_tile_k);
+    gws[1] *= pd()->dst_md()->dims[1];
+    gws[2] *= pd()->dst_md()->dims[0];
+    auto nd_range = compute::nd_range_t(gws, lws);
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 
     return status::success;

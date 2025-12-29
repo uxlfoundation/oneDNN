@@ -252,7 +252,8 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
                 //printf("%+6.2f ", (mapped_ptr[offset]));
                 if (idxs[lastdim] % 16 == 0) printf("|");
                 if (idxs[lastdim] % 32 == 0) printf("|");
-                printf("%+6.4f ", (mapped_ptr[offset]));
+                printf("%+6.2f ", (mapped_ptr[offset]));
+                //printf("%+6.4f ", (mapped_ptr[offset]));
                 if (idxs[lastdim] == (dims[lastdim] - 1)) { printf("\n"); }
             });
         } break;

@@ -28,7 +28,7 @@
 #include <memory>
 #include <random>
 
-#define PRINT_MEM 0
+#define PRINT_MEM 1
 
 using mdt = memory::data_type;
 using dnnl::accumulation_mode;
@@ -2250,6 +2250,7 @@ public:
 
             check_memory<float_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold, fthreshold);
+//#if 0
 #if PRINT_MEM
             print_mem(t.m_diff_value, "gold m_diff_value");
             print_mem(t.m_diff_value_quantized, "test m_diff_value");
@@ -2641,11 +2642,10 @@ INSTANTIATE_TEST_SUITE_P(llama_bwd_f32,
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    16,      16,     16, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
 
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    16,      16,     16, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
-                    //sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
-                    sdpa_dims_t{   1,    1,        1,      64,       64,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
-    ), &print_to_string);
-//                   sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
-//   ), &print_to_string);
+                    sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+//                    sdpa_dims_t{   1,    1,        1,      64,       64,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   //sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+   ), &print_to_string);
 
 // clang-format on
 

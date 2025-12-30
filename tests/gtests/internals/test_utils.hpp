@@ -61,13 +61,50 @@ void transpose_strides(
 /// uses reorder to perform the conversion to the destination data type.
 template <typename T>
 void write_to_dnnl_memory(const T *handle, dnnl::memory &mem, dnnl::engine &eng,
-        dnnl::stream &s) {
+        dnnl::stream &s, int buffer_index = 0) {
     size_t size = mem.get_desc().get_size();
 
     if (!handle) throw std::runtime_error("handle is nullptr.");
 
     if (eng.get_kind() == dnnl::engine::kind::gpu) {
-        if (mem.get_desc().get_data_type() != dnnl_f32
+        if (mem.get_desc().get_sparse_encoding()
+                == memory::sparse_encoding::grouped) {
+            if (buffer_index == 0) {
+                dnnl::memory mem_f32_mem({mem.get_desc().get_dims(),
+                                                 dnnl::memory::data_type::f32,
+                                                 mem.get_desc().get_strides()},
+                        eng);
+                write_to_dnnl_memory<float>(
+                        (const float *)handle, mem_f32_mem, eng, s);
+                dnnl::memory mem_type({mem.get_desc().get_dims(),
+                                              mem.get_desc().get_data_type(),
+                                              memory::format_tag::ab},
+                        eng);
+                dnnl::reorder(mem_f32_mem, mem_type)
+                        .execute(s, mem_f32_mem, mem_type);
+                void *mapped_ptr = mem.map_data(buffer_index);
+                void *mapped_ptr_type = mem_type.map_data();
+                if (!mapped_ptr || !mapped_ptr_type)
+                    throw std::runtime_error(
+                            "Failed to map memory in write_to_dnnl_memory");
+                std::memcpy(mapped_ptr, mapped_ptr_type, size);
+                mem.unmap_data(mapped_ptr, buffer_index);
+                mem_type.unmap_data(mapped_ptr_type);
+            } else {
+                auto grouped_desc
+                        = mem.get_desc()
+                                  .get()
+                                  ->format_desc.sparse_desc.grouped_desc;
+                auto ngroups = grouped_desc.ngroups + 1;
+                void *mapped_ptr = mem.map_data(buffer_index);
+                if (!mapped_ptr)
+                    throw std::runtime_error(
+                            "Failed to map memory in write_to_dnnl_memory");
+                std::memcpy(
+                        mapped_ptr, handle, (ngroups + 1) * sizeof(int32_t));
+                mem.unmap_data(mapped_ptr, buffer_index);
+            }
+        } else if (mem.get_desc().get_data_type() != dnnl_f32
                 && std::is_same<T, float>::value) {
             dnnl::memory mem_f32_mem(
                     {mem.get_desc().get_dims(), dnnl::memory::data_type::f32,

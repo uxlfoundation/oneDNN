@@ -18,6 +18,7 @@
 
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 #include "gpu/intel/matmul/gemm.hpp"
+#include "gpu/intel/matmul/grouped_micro_gemm.hpp"
 #include "gpu/intel/matmul/ref.hpp"
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 #include "gpu/intel/matmul/ref_grouped_gemm.hpp"
@@ -48,6 +49,7 @@ namespace {
 constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         GPU_INSTANCE_INTEL(intel::matmul::gemm_t)
         GPU_INSTANCE_INTEL(intel::matmul::ref_sparse_t)
+        GPU_INSTANCE_GROUPED(intel::matmul::grouped_micro_gemm_t)
         GPU_INSTANCE_GROUPED(intel::matmul::ref_grouped_t)
         GPU_INSTANCE_INTEL_REF(intel::matmul::ref_t)
         GPU_INSTANCE_NVIDIA(nvidia::cudnn_matmul_lt_t)

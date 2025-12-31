@@ -88,12 +88,11 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     //reqs.push_back(StrategyRequirement::WGN == 1);
 
     GEMMOptions opts;
-
-    std::vector<StrategyRequirement> reqs;
-    reqs.push_back(StrategyRequirement::UnrollM == 32);
-    reqs.push_back(StrategyRequirement::UnrollN == 16);
-    reqs.push_back(StrategyRequirement::WGM == 2);
-    reqs.push_back(StrategyRequirement::WGN == 1);
+    //std::vector<StrategyRequirement> reqs;
+    //reqs.push_back(StrategyRequirement::UnrollM == 32);
+    //reqs.push_back(StrategyRequirement::UnrollN == 16);
+    //reqs.push_back(StrategyRequirement::WGM == 2);
+    //reqs.push_back(StrategyRequirement::WGN == 1);
 
     try {
         gemm = microkernel::selectGEMM(opts, hw_info, sizes, problem);
@@ -123,6 +122,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     pd_->sg_per_wg_n_ = gemm.getSetting("sg_per_wg_n");
     pd_->sg_tile_m_ = gemm.getSetting("sg_tile_m");
     pd_->sg_tile_n_ = gemm.getSetting("sg_tile_n");
+    if (gemm.grfMin > 128 || gemm.grfMin > 128) pd_->use_256_grf_ = true;
 
     return status::success;
 }
@@ -207,6 +207,9 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
 
     CHECK(init_microkernels(engine));
     kernel_ctx_.set_data_type(pd()->dst_md()->data_type);
+
+    if (pd()->use_256_grf_)
+        kernel_ctx_.add_option("-cl-intel-256-GRF-per-thread");
     return create_kernel(engine, &kernel_, "grouped_micro_gemm", kernel_ctx_);
 }
 

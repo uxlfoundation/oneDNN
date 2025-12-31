@@ -132,7 +132,7 @@ TEST_F(GroupedGEMM, BasicCreation) {
         for (int i = 0; i < M_group_sizes[g] * N; ++i) {
             float diff = std::abs(mapped_ptr_test[i] - mapped_ptr_gold[i]);
             ASSERT_NEAR(mapped_ptr_test[i], mapped_ptr_gold[i], 0.03f)
-                    << "Mismatch at group" << g << " index " << i
+                    << "Mismatch at group=" << g << " index=" << i
                     << "test=" << mapped_ptr_test[i]
                     << ", gold=" << mapped_ptr_gold[i] << ", diff=" << diff;
         }

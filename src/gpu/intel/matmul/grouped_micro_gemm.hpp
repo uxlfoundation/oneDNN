@@ -66,6 +66,7 @@ struct grouped_micro_gemm_t : public primitive_t {
 
         int sg_size_ = 0;
         bool use_systolic_ukernel_ = true;
+        bool use_256_grf_ = false;
         data_type_t src_dt_ = data_type::undef;
         data_type_t dst_dt_ = data_type::undef;
         data_type_t wei_dt_ = data_type::undef;

@@ -20,6 +20,7 @@
 
 #include "common/primitive.hpp"
 #include "cpu/cpu_pooling_pd.hpp"
+#include "cpu/rv64/cpu_isa_traits.hpp"
 #include "cpu/rv64/rvv_postops.hpp"
 
 namespace dnnl {
@@ -57,8 +58,7 @@ struct riscv_nchw_pooling_fwd_t : public primitive_t {
             VDISPATCH_POOLING(src_md()->data_type == dst_md()->data_type,
                     VERBOSE_UNSUPPORTED_DT);
             if (is_f16) {
-                VDISPATCH_POOLING(DNNL_RISCV_USE_ZVFH_INTRINSICS,
-                        VERBOSE_UNSUPPORTED_ISA);
+                VDISPATCH_POOLING(mayiuse(zvfh), VERBOSE_UNSUPPORTED_ISA);
                 VDISPATCH_POOLING(desc()->accum_data_type == data_type::f32,
                         VERBOSE_UNSUPPORTED_DT);
                 // Fallback to reference if post-ops are requested for f16

@@ -874,7 +874,8 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
             && bgmmc.N <= 14528
             && ((bgmmc.M <= 768 && bgmmc.K <= 128)
                     || bgmmc.K * bgmmc.M <= 49152);
-    const int max_m_blk = nstl::min(need_large_m_blk ? 512 : 256, matmul.M);
+    const int max_m_blk = nstl::min(
+            128, matmul.M); //nstl::min(need_large_m_blk ? 512 : 256, matmul.M);
     int min_m_blk = nstl::min(32, matmul.M);
 
     dim_t min_m_chunks = div_up(matmul.M, max_m_blk);
@@ -1858,10 +1859,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         const bool exception
                 = (bgmmc.M >= 1000 && bgmmc.K <= 16 && bgmmc.N <= 16)
                 || (bgmmc.M <= 256 && bgmmc.K <= 8 && bgmmc.N <= 1024);
-        VCONDCHECK_BG(
-                IMPLICATION(bgmmc.ndims == 2,
-                        exception || !small_K || !can_use_gemm_fallback()),
-                VERBOSE_SMALL_SHAPES);
+        //        VCONDCHECK_BG(
+        //                IMPLICATION(bgmmc.ndims == 2,
+        //                        exception || !small_K || !can_use_gemm_fallback()),
+        //                VERBOSE_SMALL_SHAPES);
     }
 
     bgmmc.use_buffer_reduce

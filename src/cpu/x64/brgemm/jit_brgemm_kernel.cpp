@@ -1719,7 +1719,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_without_post_ops(
         for_(dim_t bd = 0; bd < bd_block; bd++)
         for (dim_t ld = 0; ld < ld_block2; ld++) {
             auto vmm = accm(ld_block2, bd, ld);
-            const auto addr_c = ptr[reg_aux_C + C_offset(bd, ld)];
+            const auto addr_c = ptr[reg_aux_C + C_offset(0, ld)];
             const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
             prefetchw(addr_c);
             if (!is_tail)

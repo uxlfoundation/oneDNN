@@ -21,6 +21,7 @@
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "cpu/cpu_softmax_pd.hpp"
+#include "cpu/rv64/cpu_isa_traits.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -61,8 +62,17 @@ struct rvv_softmax_fwd_t : public primitive_t {
             rsp_.outer_size
                     = src_d.nelems(true) / (rsp_.inner_size * axis_size(true));
 
-            VDISPATCH_SOFTMAX(rsp_.data_type == data_type::f32
-                            && dst_md()->data_type == rsp_.data_type,
+            const bool is_f16 = src_md()->data_type == data_type::f16;
+            VDISPATCH_SOFTMAX(utils::one_of(src_md()->data_type, data_type::f32,
+                                      data_type::f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_SOFTMAX(src_md()->data_type == dst_md()->data_type,
+                    VERBOSE_UNSUPPORTED_DT);
+            if (is_f16) {
+                VDISPATCH_SOFTMAX(mayiuse(zvfh), VERBOSE_UNSUPPORTED_ISA);
+            }
+            VDISPATCH_SOFTMAX(
+                    platform::has_data_type_support(src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SOFTMAX(
                     check_layouts(src_d, dst_d), VERBOSE_UNSUPPORTED_TAG);
@@ -83,10 +93,11 @@ struct rvv_softmax_fwd_t : public primitive_t {
         void init_scratchpad() {
             auto scratchpad = scratchpad_registry().registrar();
             nthr_ = rsp_.inner_size > 1 ? dnnl_get_max_threads() : 1;
+            const size_t dt_size = types::data_type_size(rsp_.data_type);
             if (rsp_.inner_size > 1) {
                 scratchpad.template book<char>(
                         memory_tracking::names::key_softmax_interim_store,
-                        static_cast<size_t>(axis_size(true)) * sizeof(float)
+                        static_cast<size_t>(axis_size(true)) * dt_size
                                 * static_cast<size_t>(nthr_));
             }
         }

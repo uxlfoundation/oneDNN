@@ -37,6 +37,15 @@ struct config_t {
     int wg_m_vs, wg_n_vs; // Workgroup configuration for V*S GEMM
 };
 
+struct bwd_config_t {
+    int unroll_m_BrBc, unroll_n_BrBc; // Subgroup tile sizes for Br*Bc GEMMs
+    int unroll_m_BcD, unroll_n_BcD; // Subgroup tile sizes for Bc*D GEMMs
+    int unroll_m_BrD, unroll_n_BrD; // Subgroup tile sizes for Br*D GEMMs
+    int wg_m_BrBc, wg_n_BrBc; // Workgroup configuration for Br*Bc GEMMs
+    int wg_m_BcD, wg_n_BcD; // Workgroup configuration for Bc*D GEMMs
+    int wg_m_BrD, wg_n_BrD; // Workgroup configuration for Br*D GEMMs
+};
+
 enum class property : int {
     none = 0x0,
     second_token = 0x1,
@@ -244,22 +253,28 @@ DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(micro_fwd_ukernel_params_t);
 
 struct micro_bwd_ukernel_params_t
     : trivially_serializable_t<micro_bwd_ukernel_params_t> {
-    int unroll_m_kq, unroll_n_kq;
-    int unroll_m_vs, unroll_n_vs;
-    int wg_m_kq, wg_n_kq;
-    int wg_m_vs, wg_n_vs;
+    int unroll_m_BrBc, unroll_n_BrBc;
+    int unroll_m_BcD, unroll_n_BcD;
+    int unroll_m_BrD, unroll_n_BrD;
+
+    int wg_m_BrBc, wg_n_BrBc;
+    int wg_m_BcD, wg_n_BcD;
+    int wg_m_BrD, wg_n_BrD;
 
     ukernel_serialized_hwinfo_t hwinfo;
+
     ukernel_serialized_problem_t problem_kq;
     ukernel_serialized_problem_t problem_vs;
     ukernel_serialized_problem_t problem_vtdA;
     ukernel_serialized_problem_t problem_ktq;
     ukernel_serialized_problem_t problem_qdSt;
+
     ukernel_serialized_opts_t opts_kq;
     ukernel_serialized_opts_t opts_vs;
     ukernel_serialized_opts_t opts_vtdA;
     ukernel_serialized_opts_t opts_ktq;
     ukernel_serialized_opts_t opts_qdSt;
+
     ukernel_serialized_sizes_t sizes_kq, sizes_vs;
     ukernel_serialized_sizes_t sizes_vtdA;
     ukernel_serialized_sizes_t sizes_ktq;

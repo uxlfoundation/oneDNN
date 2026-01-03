@@ -58,18 +58,13 @@ bool with_quantize_common(const quant_entry_t &entry) {
 
 } /* anonymous namespace */
 
-status_t update_config_from_devenv_values(
-        config_t *config, bool quantized, bool is_bwd = false) {
+status_t update_config_from_devenv_values(config_t *config, bool quantized) {
     std::string q_config_str
             = gpu_utils::dev_getenv("QUANTIZED_SDPA_CONFIG", std::string(""));
     std::string config_str
             = gpu_utils::dev_getenv("SDPA_CONFIG", std::string(""));
-    std::string bwd_config_str
-            = gpu_utils::dev_getenv("BWD_SDPA_CONFIG", std::string(""));
-    std::cout << "bwdstr" << bwd_config_str << std::endl;
-    if (!is_bwd
-            && ((!config_str.empty() && !quantized)
-                    || (!q_config_str.empty() && quantized))) {
+    if ((!config_str.empty() && !quantized)
+            || (!q_config_str.empty() && quantized)) {
         std::array<int, 8> config_values;
         int i;
         int num_values = 0;
@@ -98,8 +93,17 @@ status_t update_config_from_devenv_values(
             config->wg_n_vs = config_values[7];
         }
     }
-    if (is_bwd && !bwd_config_str.empty()) {
-        std::array<int, 4> config_values;
+    return status::success;
+}
+
+status_t update_config_from_devenv_values(bwd_config_t *config) {
+    std::string bwd_config_str
+            = gpu_utils::dev_getenv("BWD_SDPA_CONFIG", std::string(""));
+    std::cout << "bwdstr" << bwd_config_str << std::endl;
+    printf("in?%d???\n", bwd_config_str.empty());
+    if (!bwd_config_str.empty()) {
+        printf("in????\n");
+        std::array<int, 12> config_values;
         int i;
         int num_values = 0;
 
@@ -108,26 +112,32 @@ status_t update_config_from_devenv_values(
             config_values[num_values++] = i;
             if (ss.peek() == ',') ss.ignore();
         }
-        VCHECK_SDPA_COND(num_values == 4,
-                "BWD_SDPA_CONFIG(%s) is invalid. Must be 4 integers "
+        printf("nvals%d", num_values);
+        VCHECK_SDPA_COND(num_values == 12,
+                "BWD_SDPA_CONFIG(%s) is invalid. Must be 12 integers "
                 "separate by a comma: "
-                "<unroll_m_kq>,<unroll_n_kq>,<wg_m_"
-                "kq>,<wg_n_kq>",
-                config_str.c_str());
-        if (num_values == 4) {
-            printf("got %d %d %d %d\n", config_values[0], config_values[1],
-                    config_values[2], config_values[3]);
-            config->unroll_m_kq = config_values[0];
-            config->unroll_n_kq = config_values[1];
-            config->wg_m_kq = config_values[2];
-            config->wg_n_kq = config_values[3];
-
-            //tMPP
-            config->unroll_m_vs = 32;
-            config->unroll_n_vs = 32;
-            config->wg_m_vs = 1;
-            config->wg_n_vs = 1;
+                "<unroll_m_BrBc>,<unroll_n_BrBc>,"
+                "<unroll_m_BcD>,<unroll_n_BcD>,"
+                "<unroll_m_BrD>,<unroll_n_BrD>,"
+                "<wg_m_BrBc>,<wg_n_BrBc>"
+                "<wg_m_BcD>,<wg_n_BcD>"
+                "<wg_m_BrD>,<wg_n_BrD>",
+                bwd_config_str.c_str());
+        if (num_values == 12) {
+            config->unroll_m_BrBc = config_values[0];
+            config->unroll_n_BrBc = config_values[1];
+            config->unroll_m_BcD = config_values[2];
+            config->unroll_n_BcD = config_values[3];
+            config->unroll_m_BrD = config_values[4];
+            config->unroll_n_BrD = config_values[5];
+            config->wg_m_BrBc = config_values[6];
+            config->wg_n_BrBc = config_values[7];
+            config->wg_m_BcD = config_values[8];
+            config->wg_n_BcD = config_values[9];
+            config->wg_m_BrD = config_values[10];
+            config->wg_n_BrD = config_values[11];
         }
+        printf("set\n");
     }
     return status::success;
 }
@@ -425,7 +435,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             "Microkernels not supported by the OpenCL driver.");
 
     /* Retrieve pre-tuned kernel configuration */
-    config_t *config = nullptr;
+    //bwd_config_t *config = nullptr;
     const dim_t thin_q_threshold = 16;
     auto queries = d->queries();
     if (queries == 1) { queries = (d->q_desc.dims[1] / d->kv_head_number); }
@@ -441,61 +451,98 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             && !is_f32; // f32 -> non-systolic kernel only
 
     bool use_fma_config = !use_systolic_ukernel_;
-    config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
-            is_integrated, use_fma_config, is_f32);
+    //config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
+    //is_integrated, use_fma_config, is_f32);
+    //TODO^^__fix bwd config database
+    //VCHECK_SDPA_COND(config != nullptr,
+    //"No suitable kernel configuration found for the given problem "
+    //"size and attributes.");
 
-    VCHECK_SDPA_COND(config != nullptr,
-            "No suitable kernel configuration found for the given problem "
-            "size and attributes.");
-
-    const bool is_bwd = true;
     printf("UDATING ENV BWD\n");
-    CHECK(update_config_from_devenv_values(config, quantized, is_bwd));
+    bwd_config_t bconfig;
+    bwd_config_t *config = &bconfig;
+    CHECK(update_config_from_devenv_values(config));
 
     VDEBUGINFO(4, primitive, sdpa,
             "D=%d,K=%d,%s%s%s"
-            "kq_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d,"
-            "vs_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d",
+            "BcBr_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d," //todo: bcbr here only to print corresponding tile_m to conceptual Bc
+            "BcD_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d"
+            "BrD_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d",
             static_cast<int>(d->head_size()), static_cast<int>(d->keys()),
             thin_q ? "thin_q," : "", quantized ? "quant," : "",
             is_integrated ? "integrated" : "",
-            config->unroll_m_kq * config->wg_m_kq,
-            config->unroll_n_kq * config->wg_n_kq, config->unroll_m_kq,
-            config->unroll_n_kq, config->wg_m_kq, config->wg_n_kq,
-            config->unroll_m_vs * config->wg_m_vs,
-            config->unroll_n_vs * config->wg_n_vs, config->unroll_m_vs,
-            config->unroll_n_vs, config->wg_m_vs, config->wg_n_vs);
+            config->unroll_m_BrBc * config->wg_m_BrBc,
+            config->unroll_n_BrBc * config->wg_n_BrBc, config->unroll_m_BrBc,
+            config->unroll_n_BrBc, config->wg_m_BrBc, config->wg_n_BrBc,
+            config->unroll_m_BcD * config->wg_m_BcD,
+            config->unroll_n_BcD * config->wg_n_BcD, config->unroll_m_BcD,
+            config->unroll_n_BcD, config->wg_m_BcD, config->wg_n_BcD,
+            config->unroll_m_BrD * config->wg_m_BrD,
+            config->unroll_n_BrD * config->wg_n_BrD, config->unroll_m_BrD,
+            config->unroll_n_BrD, config->wg_m_BrD, config->wg_n_BrD);
 
-    /*
-    VCHECK_SDPA_COND(config->unroll_n_kq * config->wg_n_kq
-                            == config->unroll_n_vs * config->wg_n_vs
-                    && config->unroll_n_kq % config->unroll_n_vs == 0,
-            "[CONFIG] The config KQ work_group tile N(%d) axis must equal "
-            "VS work_group tile N(%d) axis and KQ subgroup tile N(%d) axis "
-            "must be divisible by VS subgroup tile N(%d) axis",
-            config->unroll_n_kq * config->wg_n_kq,
-            config->unroll_n_vs * config->wg_n_vs, config->unroll_n_kq,
-            config->unroll_n_vs);
-
-    VCHECK_SDPA_COND(config->unroll_m_vs * config->wg_m_vs >= d->head_size(),
-            "The vs matmul config work_group tile M(%d*%d=%d) axis must be "
+    // (Br)Bc == Bc(D)
+    VCHECK_SDPA_COND(((config->unroll_m_BrBc * config->wg_m_BrBc
+                              == config->unroll_n_BcD * config->wg_n_BcD)
+                             && (config->wg_m_BrBc * config->wg_n_BrBc
+                                     == config->wg_m_BcD * config->wg_n_BcD)),
+            "[CONFIG] The config BrBc work_group tile M(%d) axis must equal "
+            "BcD work_group tile N(%d) axis and number of total subgroups "
+            "for both should be equal(%d ?= %d)",
+            config->unroll_m_BrBc * config->wg_m_BrBc,
+            config->unroll_n_BcD * config->wg_n_BcD,
+            config->wg_m_BrBc * config->wg_n_BrBc,
+            config->wg_m_BcD * config->wg_n_BcD);
+    // (Bc)D >= head size
+    VCHECK_SDPA_COND(config->unroll_m_BcD * config->wg_m_BcD >= d->head_size(),
+            "The BcD matmul config work_group tile M(%d*%d=%d) axis must be "
             "greater than or equal to head size(%ld)",
-            config->unroll_m_vs, config->wg_m_vs,
-            config->unroll_m_vs * config->wg_m_vs,
+            config->unroll_m_BcD, config->wg_m_BcD,
+            config->unroll_m_BcD * config->wg_m_BcD,
             static_cast<long int>(d->head_size()));
-            */
+
+    // Br(Bc) == Br(D)
+    VCHECK_SDPA_COND(((config->unroll_n_BrBc * config->wg_n_BrBc
+                              == config->unroll_n_BrD * config->wg_n_BrD)
+                             && (config->wg_m_BrBc * config->wg_n_BrBc
+                                     == config->wg_m_BrD * config->wg_n_BrD)),
+            "[CONFIG] The config BrBc work_group tile N(%d) axis must equal "
+            "BrD work_group tile N(%d) axis and number of total subgroups "
+            "for both should be equal(%d ?= %d)",
+            config->unroll_n_BrBc * config->wg_n_BrBc,
+            config->unroll_n_BrD * config->wg_n_BrD,
+            config->wg_m_BrBc * config->wg_n_BrBc,
+            config->wg_m_BrD * config->wg_n_BrD);
+
+    // (Br)D >= head size
+    VCHECK_SDPA_COND(config->unroll_m_BrD * config->wg_m_BrD >= d->head_size(),
+            "The BrD matmul config work_group tile M(%d*%d=%d) axis must be "
+            "greater than or equal to head size(%ld)",
+            config->unroll_m_BrD, config->wg_m_BrD,
+            config->unroll_m_BrD * config->wg_m_BrD,
+            static_cast<long int>(d->head_size()));
 
     // serializable minimal set of configuration params for ukernels
     // will be used to generate shim ukernels in reusable kernel_ctx
     micro_bwd_ukernel_params_t ukernel_params;
-    ukernel_params.unroll_m_kq = config->unroll_m_kq;
-    ukernel_params.unroll_n_kq = config->unroll_n_kq;
-    ukernel_params.unroll_m_vs = config->unroll_m_vs;
-    ukernel_params.unroll_n_vs = config->unroll_n_vs;
-    ukernel_params.wg_m_kq = config->wg_m_kq;
-    ukernel_params.wg_n_kq = config->wg_n_kq;
-    ukernel_params.wg_m_vs = config->wg_m_vs;
-    ukernel_params.wg_n_vs = config->wg_n_vs;
+
+    ukernel_params.unroll_m_BrBc = config->unroll_m_BrBc;
+    ukernel_params.unroll_n_BrBc = config->unroll_n_BrBc;
+
+    ukernel_params.unroll_m_BcD = config->unroll_m_BcD;
+    ukernel_params.unroll_n_BcD = config->unroll_n_BcD;
+
+    ukernel_params.unroll_m_BrD = config->unroll_m_BrD;
+    ukernel_params.unroll_n_BrD = config->unroll_n_BrD;
+
+    ukernel_params.wg_m_BrBc = config->wg_m_BrBc;
+    ukernel_params.wg_n_BrBc = config->wg_n_BrBc;
+
+    ukernel_params.wg_m_BcD = config->wg_m_BcD;
+    ukernel_params.wg_n_BcD = config->wg_n_BcD;
+
+    ukernel_params.wg_m_BrD = config->wg_m_BrD;
+    ukernel_params.wg_n_BrD = config->wg_n_BrD;
 
     /* Get device information */
     HWInformation hw_info;
@@ -513,7 +560,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
         return (gemm_desc_t::get_trans(*md) == dnnl_trans) ? MatrixLayout::T
                                                            : MatrixLayout::N;
     };
-    //TMPPP
+    // TMPPP
     auto transpose_layout = [](const gemmstone::MatrixLayout l) {
         switch (l) {
             case MatrixLayout::N: return MatrixLayout::T;
@@ -600,7 +647,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     problem_vs.Ta_ext = convert_dnnl_to_kernel_type(val_md()->data_type);
     //problem_vs.A.layout = convert_dnnl_to_kernel_layout(val_md()); //gmem
-    problem_vs.A.layout = MatrixLayout::T;
+    problem_vs.A.layout = MatrixLayout::N;
 
     problem_vs.B.layout = MatrixLayout::T;
     problem_vs.C.layout = MatrixLayout::N;
@@ -608,7 +655,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     auto ldv = static_cast<int>(
             gemm_desc_t::get_ld(*val_md()) * val_mdw.data_type_size());
     //problem_vs.A.setAlignment(alignmentForLD(ldv)); //gmem
-    problem_vs.A.setAlignment(64); // S is packed in SLM
+    problem_vs.A.setAlignment(
+            d_max() * val_mdw.data_type_size()); // S is packed in SLM
     problem_vs.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) {
         problem_vs.B.crosspack = 16;
@@ -619,8 +667,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     // directly tied to config, will recompile w/head size and config updates
     // no need for interval quantization
     heuristic_sizes.m = d->values();
-    const int wg_tile_n = config->wg_n_kq * config->unroll_n_kq;
-    const int wg_tile_m = config->wg_m_kq * config->unroll_m_kq;
+    const int wg_tile_n = config->wg_n_BrBc * config->unroll_n_BrBc;
+    const int wg_tile_m = config->wg_m_BrBc * config->unroll_m_BrBc;
     heuristic_sizes.n = wg_tile_n;
     heuristic_sizes.k = wg_tile_m;
 
@@ -642,8 +690,10 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             convert_dnnl_to_kernel_layout(val_md())); //TODO hardcode?
     //problem_vtdA.A.layout = convert_dnnl_to_kernel_layout(val_md()); //TODO hardcode?
 
+    //problem_vtdA.B.layout
+    //= MatrixLayout::T; //is this right? w/shared slm between vs?
     problem_vtdA.B.layout
-            = MatrixLayout::T; //is this right? w/shared slm between vs?
+            = MatrixLayout::N; //is this right? w/shared slm between vs?
     problem_vtdA.C.layout = MatrixLayout::T; //which?
     problem_vtdA.A.setAlignment(alignmentForLD(ldv));
     problem_vtdA.B.setAlignment(64); // S is packed in SLM
@@ -676,8 +726,9 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem_qdSt.A.layout
             = convert_dnnl_to_kernel_layout(qry_md()); //TODO hardcode?
 
-    problem_qdSt.B.layout = MatrixLayout::T;
-    problem_qdSt.C.layout = MatrixLayout::T; //which?
+    problem_qdSt.B.layout = MatrixLayout::N;
+    problem_qdSt.C.layout
+            = MatrixLayout::T; //which? layout determines output tile shape
     problem_qdSt.A.setAlignment(alignmentForLD(ldq));
     problem_qdSt.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) {
@@ -709,7 +760,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     problem_ktq.A.layout
             = transpose_layout(convert_dnnl_to_kernel_layout(key_md()));
-    problem_ktq.B.layout = MatrixLayout::Pr;
+    problem_ktq.B.layout = MatrixLayout::T;
     problem_ktq.C.layout = MatrixLayout::N; // which?
     problem_ktq.A.setAlignment(alignmentForLD(ldk));
     problem_ktq.B.setAlignment(64); // S is packed in SLM
@@ -1001,14 +1052,16 @@ status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.d_max = pd->d_max();
 
     /* Set up microkernel strategy */
-    const config_t config = {conf.ukernel_config.unroll_m_kq,
-            conf.ukernel_config.unroll_n_kq, conf.ukernel_config.unroll_m_vs,
-            conf.ukernel_config.unroll_n_vs, conf.ukernel_config.wg_m_kq,
-            conf.ukernel_config.wg_n_kq, conf.ukernel_config.wg_m_vs,
-            conf.ukernel_config.wg_n_vs};
+    const bwd_config_t config = {conf.ukernel_config.unroll_m_BrBc,
+            conf.ukernel_config.unroll_n_BrBc, conf.ukernel_config.unroll_m_BcD,
+            conf.ukernel_config.unroll_n_BcD, conf.ukernel_config.unroll_m_BrD,
+            conf.ukernel_config.unroll_n_BrD, conf.ukernel_config.wg_m_BrBc,
+            conf.ukernel_config.wg_n_BrBc, conf.ukernel_config.wg_m_BcD,
+            conf.ukernel_config.wg_n_BcD, conf.ukernel_config.wg_m_BrD,
+            conf.ukernel_config.wg_n_BrD};
 
-    const int kq_wg_tile_m = config.wg_m_kq * config.unroll_m_kq;
-    const int vs_wg_tile_m = config.wg_m_vs * config.unroll_m_vs;
+    const int kq_wg_tile_m = config.wg_m_BrBc * config.unroll_m_BrBc;
+    const int vs_wg_tile_m = config.wg_m_BcD * config.unroll_m_BcD;
     int tile_k = kq_wg_tile_m;
     int tile_v = vs_wg_tile_m;
 
@@ -1024,7 +1077,7 @@ status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.block_a = (lda % 4 == 0 && v_full);
         conf.block_msk = (ldmsk % 4 == 0);
     } else if (pd->arch() >= compute::gpu_arch_t::xe_hpc
-            && config.unroll_m_vs < 64) {
+            && config.unroll_m_BcD < 64) { //TODO: update
         auto vbytes = d->values() * val_mdw.data_type_size();
         if (lda % 16 == 0 && vbytes % 4 == 0) conf.block_2d_a = true;
     }
@@ -1290,50 +1343,52 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     micro::Package gemm_kq, gemm_vs, gemm_vtdA, gemm_ktq, gemm_qdSt;
 
     /* Set up microkernel strategy */
-    const config_t config
-            = {ukernel_config.unroll_m_kq, ukernel_config.unroll_n_kq,
-                    ukernel_config.unroll_m_vs, ukernel_config.unroll_n_vs,
-                    ukernel_config.wg_m_kq, ukernel_config.wg_n_kq,
-                    ukernel_config.wg_m_vs, ukernel_config.wg_n_vs};
+    const bwd_config_t config
+            = {ukernel_config.unroll_m_BrBc, ukernel_config.unroll_n_BrBc,
+                    ukernel_config.unroll_m_BcD, ukernel_config.unroll_n_BcD,
+                    ukernel_config.unroll_m_BrD, ukernel_config.unroll_n_BrD,
+                    ukernel_config.wg_m_BrBc, ukernel_config.wg_n_BrBc,
+                    ukernel_config.wg_m_BcD, ukernel_config.wg_n_BcD,
+                    ukernel_config.wg_m_BrD, ukernel_config.wg_n_BrD};
 
     std::vector<StrategyRequirement> reqs_kq;
-    reqs_kq.push_back(StrategyRequirement::UnrollM == config.unroll_m_kq);
-    reqs_kq.push_back(StrategyRequirement::UnrollN == config.unroll_n_kq);
-    reqs_kq.push_back(StrategyRequirement::WGM == config.wg_m_kq);
-    reqs_kq.push_back(StrategyRequirement::WGN == config.wg_n_kq);
+    reqs_kq.push_back(StrategyRequirement::UnrollM == config.unroll_m_BrBc);
+    reqs_kq.push_back(StrategyRequirement::UnrollN == config.unroll_n_BrBc);
+    reqs_kq.push_back(StrategyRequirement::WGM == config.wg_m_BrBc);
+    reqs_kq.push_back(StrategyRequirement::WGN == config.wg_n_BrBc);
 
     //is borken?? wtf
     //TODO: change? unique for all? same for all?
     std::vector<StrategyRequirement> reqs_vs;
-    reqs_vs.push_back(StrategyRequirement::UnrollM == config.unroll_m_kq);
-    reqs_vs.push_back(StrategyRequirement::UnrollN == config.unroll_n_kq);
-    reqs_vs.push_back(StrategyRequirement::WGM == config.wg_m_kq);
-    reqs_vs.push_back(StrategyRequirement::WGN == config.wg_n_kq);
+    reqs_vs.push_back(StrategyRequirement::UnrollM == config.unroll_m_BcD);
+    reqs_vs.push_back(StrategyRequirement::UnrollN == config.unroll_n_BcD);
+    reqs_vs.push_back(StrategyRequirement::WGM == config.wg_m_BcD);
+    reqs_vs.push_back(StrategyRequirement::WGN == config.wg_n_BcD);
 
-    printf("kq config %d %d %d %d\n", config.unroll_m_kq, config.unroll_n_kq,
-            config.wg_m_kq, config.wg_n_kq);
+    printf("kq config %d %d %d %d\n", config.unroll_m_BrBc,
+            config.unroll_n_BrBc, config.wg_m_BrBc, config.wg_n_BrBc);
 
     std::vector<StrategyRequirement> reqs_vtdA;
     reqs_vtdA.push_back(StrategyRequirement::UnrollM
-            == config.unroll_m_kq); //TODO: alter unroll to match vs?
+            == config.unroll_m_BrBc); //TODO: alter unroll to match vs?
     reqs_vtdA.push_back(StrategyRequirement::UnrollN
-            == config.unroll_n_kq); //TODO: alter unroll to match vs?
+            == config.unroll_n_BrBc); //TODO: alter unroll to match vs?
     reqs_vtdA.push_back(StrategyRequirement::WGM
-            == config.wg_m_kq); //TODO: alter unroll to match vs?
+            == config.wg_m_BrBc); //TODO: alter unroll to match vs?
     reqs_vtdA.push_back(StrategyRequirement::WGN
-            == config.wg_n_kq); //TODO: alter unroll to match vs?
+            == config.wg_n_BrBc); //TODO: alter unroll to match vs?
 
     std::vector<StrategyRequirement> reqs_ktq;
-    reqs_ktq.push_back(StrategyRequirement::UnrollM == config.unroll_m_kq);
-    reqs_ktq.push_back(StrategyRequirement::UnrollN == config.unroll_n_kq);
-    reqs_ktq.push_back(StrategyRequirement::WGM == config.wg_m_kq);
-    reqs_ktq.push_back(StrategyRequirement::WGN == config.wg_n_kq);
+    reqs_ktq.push_back(StrategyRequirement::UnrollM == config.unroll_m_BrD);
+    reqs_ktq.push_back(StrategyRequirement::UnrollN == config.unroll_n_BrD);
+    reqs_ktq.push_back(StrategyRequirement::WGM == config.wg_m_BrD);
+    reqs_ktq.push_back(StrategyRequirement::WGN == config.wg_n_BrD);
 
     std::vector<StrategyRequirement> reqs_qdSt;
-    reqs_qdSt.push_back(StrategyRequirement::UnrollM == config.unroll_m_kq);
-    reqs_qdSt.push_back(StrategyRequirement::UnrollN == config.unroll_n_kq);
-    reqs_qdSt.push_back(StrategyRequirement::WGM == config.wg_m_kq);
-    reqs_qdSt.push_back(StrategyRequirement::WGN == config.wg_n_kq);
+    reqs_qdSt.push_back(StrategyRequirement::UnrollM == config.unroll_m_BcD);
+    reqs_qdSt.push_back(StrategyRequirement::UnrollN == config.unroll_n_BcD);
+    reqs_qdSt.push_back(StrategyRequirement::WGM == config.wg_m_BcD);
+    reqs_qdSt.push_back(StrategyRequirement::WGN == config.wg_n_BcD);
 
     /* Ask microkernel provider for microkernel */
     try {
@@ -1353,10 +1408,10 @@ status_t micro_bwd_params_t::get_kernel_ctx(
                 strategy.dpasw |= strategy.fused;
             };
             gemm_vs = selectGEMMMicrokernel(
-                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_kq, adjust_vs);
+                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs, adjust_vs);
         } else {
             gemm_vs = selectGEMMMicrokernel(
-                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_kq);
+                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs);
         }
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
@@ -1386,12 +1441,14 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     shimOptions.microkernelID++;
     shimOptions.decorator = "vs";
 
-    kernel_ctx.add_custom_header("gemm_vs.h",
-            micro::generateShim(gemm_vs, HostLanguage::OpenCL_C, shimOptions));
+    std::string gemm_vs_header
+            = micro::generateShim(gemm_vs, HostLanguage::OpenCL_C, shimOptions);
+    std::cout << gemm_vs_header << std::endl;
+    kernel_ctx.add_custom_header("gemm_vs.h", std::move(gemm_vs_header));
 
     try {
         gemm_vtdA = selectGEMMMicrokernel(
-                opts_vtdA, hw_info, sizes_vtdA, problem_vtdA, reqs_kq);
+                opts_vtdA, hw_info, sizes_vtdA, problem_vtdA, reqs_vtdA);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_vtdA microkernel generation failure with message: %s",
@@ -1407,7 +1464,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
 
     try {
         gemm_ktq = selectGEMMMicrokernel(
-                opts_ktq, hw_info, sizes_ktq, problem_ktq, reqs_kq);
+                opts_ktq, hw_info, sizes_ktq, problem_ktq, reqs_ktq);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_ktq microkernel generation failure with message: %s",
@@ -1417,12 +1474,14 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     shimOptions.microkernelID++;
     shimOptions.decorator = "ktq";
 
-    kernel_ctx.add_custom_header("gemm_ktq.h",
-            micro::generateShim(gemm_ktq, HostLanguage::OpenCL_C, shimOptions));
+    std::string gemm_ktq_header = micro::generateShim(
+            gemm_ktq, HostLanguage::OpenCL_C, shimOptions);
+    std::cout << gemm_ktq_header << std::endl;
+    kernel_ctx.add_custom_header("gemm_ktq.h", std::move(gemm_ktq_header));
 
     try {
         gemm_qdSt = selectGEMMMicrokernel(
-                opts_qdSt, hw_info, sizes_qdSt, problem_qdSt, reqs_kq);
+                opts_qdSt, hw_info, sizes_qdSt, problem_qdSt, reqs_qdSt);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_qdSt microkernel generation failure with message: %s",
@@ -1432,14 +1491,14 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     shimOptions.microkernelID++;
     shimOptions.decorator = "qdSt";
 
-    kernel_ctx.add_custom_header("gemm_qdSt.h",
-            micro::generateShim(
-                    gemm_qdSt, HostLanguage::OpenCL_C, shimOptions));
+    std::string gemm_qdSt_header = micro::generateShim(
+            gemm_qdSt, HostLanguage::OpenCL_C, shimOptions);
+    std::cout << gemm_qdSt_header << std::endl;
+    kernel_ctx.add_custom_header("gemm_qdSt.h", std::move(gemm_qdSt_header));
 
     if (gemm_kq.grfMin > 128 || gemm_vs.grfMin > 128 || gemm_vtdA.grfMin > 128
             || gemm_ktq.grfMin > 128 || gemm_qdSt.grfMin > 128)
         kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
-    printf("heredone1027\n");
 
     return status::success;
 }
@@ -1581,18 +1640,29 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     const auto &conf = pd()->conf;
 
-    const config_t config = {conf.ukernel_config.unroll_m_kq,
-            conf.ukernel_config.unroll_n_kq, conf.ukernel_config.unroll_m_vs,
-            conf.ukernel_config.unroll_n_vs, conf.ukernel_config.wg_m_kq,
-            conf.ukernel_config.wg_n_kq, conf.ukernel_config.wg_m_vs,
-            conf.ukernel_config.wg_n_vs};
+    const bwd_config_t config = {conf.ukernel_config.unroll_m_BrBc,
+            conf.ukernel_config.unroll_n_BrBc, conf.ukernel_config.unroll_m_BcD,
+            conf.ukernel_config.unroll_n_BcD, conf.ukernel_config.unroll_m_BrD,
+            conf.ukernel_config.unroll_n_BrD, conf.ukernel_config.wg_m_BrBc,
+            conf.ukernel_config.wg_n_BrBc, conf.ukernel_config.wg_m_BcD,
+            conf.ukernel_config.wg_n_BcD, conf.ukernel_config.wg_m_BrD,
+            conf.ukernel_config.wg_n_BrD};
 
-    const int kq_wg_tile_m = config.wg_m_kq * config.unroll_m_kq;
-    const int kq_wg_tile_n = config.wg_n_kq * config.unroll_n_kq;
+    const int kq_wg_tile_m = config.wg_m_BrBc * config.unroll_m_BrBc;
+    const int kq_wg_tile_n = config.wg_n_BrBc * config.unroll_n_BrBc;
 
     auto wg_tile_k = kq_wg_tile_m;
     auto wg_tile_q = kq_wg_tile_n;
-    auto sg_per_wg = config.wg_m_kq * config.wg_n_kq;
+    auto sg_per_wg = config.wg_m_BrBc * config.wg_n_BrBc;
+
+    auto sg_per_wg_BrBc = config.wg_m_BrBc * config.wg_n_BrBc;
+    auto sg_per_wg_BcD = config.wg_m_BcD * config.wg_n_BcD;
+    auto sg_per_wg_BrD = config.wg_m_BrD * config.wg_n_BrD;
+
+    using std::max;
+    sg_per_wg = max(max(sg_per_wg_BrBc, sg_per_wg_BcD), sg_per_wg_BrD);
+
+    //printf("sg_per_wg: max%d  BrBc %d BcD %d BrD %d \n", sg_per_wg, sg_per_wg_BrBc, sg_per_wg_BcD, sg_per_wg_BrD);
 
     const memory_desc_wrapper qry_mdw(pd()->qry_md());
     const memory_desc_wrapper key_mdw(pd()->key_md());
@@ -1679,14 +1749,14 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     gws_preprocess[2] *= pd()->dst_md()->dims[0];
 
     auto nd_range_preprocess = compute::nd_range_t(gws_preprocess, lws);
-    printf("preprocessgws[%d %d %d] lws[%d %d %d]\n", gws_preprocess[0],
-            gws_preprocess[1], gws_preprocess[2], lws[0], lws[1], lws[2]);
+    //printf("preprocessgws[%d %d %d] lws[%d %d %d]\n", gws_preprocess[0],
+    //gws_preprocess[1], gws_preprocess[2], lws[0], lws[1], lws[2]);
     //TODO errorcheck
     parallel_for(ctx, nd_range_preprocess, preprocess_,
             arg_list); //TODO: check how many to fill D_MAX
 
-    printf("gws[%d %d %d] lws[%d %d %d]\n", gws[0], gws[1], gws[2], lws[0],
-            lws[1], lws[2]);
+    //printf("gws[%d %d %d] lws[%d %d %d]\n", gws[0], gws[1], gws[2], lws[0],
+    //lws[1], lws[2]);
     gws[0] *= utils::div_up(K, wg_tile_k);
     gws[1] *= pd()->dst_md()->dims[1];
     gws[2] *= pd()->dst_md()->dims[0];

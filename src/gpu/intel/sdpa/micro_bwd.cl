@@ -1267,6 +1267,7 @@ preprocess_Di(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const int remainder_k, const int remainder_q) {
 
     uint lda = DST_S2;
+    uint ldq = QRY_S2;
 
     // TODO: change to q?
     uint wg_q = get_group_id(0);
@@ -1291,8 +1292,13 @@ preprocess_Di(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     //tile_fill(D_i, 0.0f);
     if (q > 0) {
         q_tile_type dA_tile1, A_tile; // for D_i calculation
+        q_tile_type zero_dQ_tile; // zeroing dQ for atomics
+        tile_fill(zero_dQ_tile, 0.f);
+
         uint q0_copy = q_tile_sg_n * sg_ij;
 
+        tile_store(zero_dQ_tile, (global FMA_TYPE *)dQ, d, q, ldq, 0,
+                wg_j0 + q0_copy);
         // printf("wg_m,n %d,%d  sg_ij %d, sg_i,j_kq %d,%d q0_copy%d \n", ugemm_kq_wg_tile_m, ugemm_kq_wg_tile_n, sg_ij, sg_i_kq, sg_j_kq, q0_copy);
 
         // TODO: fixtype, load dA_type

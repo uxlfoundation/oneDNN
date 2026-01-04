@@ -32,6 +32,12 @@ def __scopeCheck(msg: str):
     status = "Message scope: "
 
     if not re.match("^[a-z0-9_]+(, [a-z0-9_]+)*: ", msg):
+        if re.match("^\s+", msg):
+            print(
+                f"{status} FAILED: Commit message shouldn't have leading spaces"
+            )
+            return False
+
         print(
             f"{status} FAILED: Commit message must follow the format "
             "<scope>:[ <scope>:] <short description>"

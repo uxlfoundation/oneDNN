@@ -60,6 +60,18 @@ inline status_t maybe_get_host_scalar_value(
             status = get_scalar_value<bfloat16_t, float>(
                     scalar_value, scalar_storage);
             break;
+        case f8_e4m3:
+            status = get_scalar_value<float8_e4m3_t, float>(
+                    scalar_value, scalar_storage);
+            break;
+        case f8_e5m2:
+            status = get_scalar_value<float8_e5m2_t, float>(
+                    scalar_value, scalar_storage);
+            break;
+        case e8m0:
+            status = get_scalar_value<float8_e8m0_t, float>(
+                    scalar_value, scalar_storage);
+            break;
         case s32:
             status = get_scalar_value<int32_t, float>(
                     scalar_value, scalar_storage);

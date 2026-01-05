@@ -20,30 +20,46 @@
 #define DT_UNDEF 1
 #include "gpu/intel/include/types.h"
 
-uint philox_4x32(long idx, uint seed) {
+uint philox_4x32_s64(ulong idx, ulong seed, ulong offset) {
 #define PHILOX_4UINT_ROUND(mul, ctr, key) \
-    as_uint4(convert_ulong2(ctr.s31) * mul) ^ (uint4)(ctr.s20 ^ key, 0, 0).s3120
+    as_uint4(convert_ulong2(ctr.s02) * mul).s3210 \
+            ^ (uint4)(ctr.s1 ^ key.s0, 0, ctr.s3 ^ key.s1, 0)
 
-    uint4 ctr = 0;
-    const ulong2 ctr_mul = (ulong2)(0xD2511F53uL, 0xCD9E8D57uL);
-    const ulong key_add = as_ulong((uint2)(0x9E3779B9u, 0xBB67AE85u));
-    const uint16 key0 = (uint16)(seed)
-            + as_uint16((ulong8)(key_add))
+    ulong x = (idx & ~3L);
+    uint4 ctr = (uint4)((uint)offset, (uint)(offset >> 32), (uint)x,
+            (uint)(x >> 32));
+    uint seed_lo = (uint)seed;
+    uint seed_hi = (uint)(seed >> 32);
+    const ulong seeds = as_ulong((uint2)(seed_lo, seed_hi));
+
+    const ulong2 PHILOX_M4x32 = (ulong2)(0xD2511F53uL, 0xCD9E8D57uL);
+    const ulong PHILOX_W4x32 = as_ulong((uint2)(0x9E3779B9u, 0xBB67AE85u));
+    const uint16 key0 = as_uint16((ulong8)(seeds))
+            + as_uint16((ulong8)(PHILOX_W4x32))
                     * (uint16)(0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7);
-    const uint4 key1
-            = (uint4)(seed) + as_uint4((ulong2)(key_add)) * (uint4)(8, 8, 9, 9);
-    ctr = (uint4)(idx & ~3L) + (uint4)(3, 2, 1, 0);
-    ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key0.s01);
-    ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key0.s23);
-    ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key0.s45);
-    ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key0.s67);
-    ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key0.s89);
-    ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key0.sAB);
-    ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key0.sCD);
-    ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key0.sEF);
-    ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key1.s01);
-    ctr = PHILOX_4UINT_ROUND(ctr_mul, ctr, key1.s23);
-    return ctr[~idx & 3L];
+    const uint4 key1 = as_uint4((ulong2)seeds)
+            + as_uint4((ulong2)(PHILOX_W4x32)) * (uint4)(8, 8, 9, 9);
+
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s01);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s23);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s45);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s67);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.s89);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.sAB);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.sCD);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key0.sEF);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key1.s01);
+    ctr = PHILOX_4UINT_ROUND(PHILOX_M4x32, ctr, key1.s23);
+    return ctr[idx & 3L];
+}
+
+uint philox_4x32(uint idx, uint seed) {
+    // Note: this is for compatibility with impls that don't support s64 rand
+    ulong x = idx & ~3L;
+    ulong idx_64 = ((x + 3) << 32) + (x + 2);
+    ulong offset_64 = ((x + 1) << 32) + x;
+    ulong seed_64 = ((ulong)(seed) << 32) + seed;
+    return philox_4x32_s64(idx_64, seed_64, offset_64);
 }
 
 ushort philox_8x16(long idx, uint seed) {

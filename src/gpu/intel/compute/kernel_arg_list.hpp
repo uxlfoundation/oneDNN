@@ -249,6 +249,7 @@ public:
             APPEND_STORED_SCALAR_VALUE(bf16, bfloat16_t)
             APPEND_STORED_SCALAR_VALUE(f32, float)
             APPEND_STORED_SCALAR_VALUE(s32, int32_t)
+            APPEND_STORED_SCALAR_VALUE(s64, int64_t)
             APPEND_STORED_SCALAR_VALUE(s8, int8_t)
             APPEND_STORED_SCALAR_VALUE(u8, uint8_t)
             default:
@@ -300,6 +301,7 @@ public:
             SET_STORED_SCALAR_VALUE(bf16, bfloat16_t)
             SET_STORED_SCALAR_VALUE(f32, float)
             SET_STORED_SCALAR_VALUE(s32, int32_t)
+            SET_STORED_SCALAR_VALUE(s64, int64_t)
             SET_STORED_SCALAR_VALUE(s8, int8_t)
             SET_STORED_SCALAR_VALUE(u8, uint8_t)
             default:

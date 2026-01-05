@@ -92,8 +92,14 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
     if (problem->bScale2D()) arg_list.set(argn++, *b_scales);
     if (pd()->with_mx_scale()) arg_list.set(argn++, *c_scales);
-    if (problem->needsAGroupSums()) arg_list.set(argn++, *ag);
-    if (problem->needsBGroupSums()) arg_list.set(argn++, *bg);
+    if (problem->needsAGroupSums()) {
+        if (!ag || !*ag) return status::runtime_error;
+        arg_list.set(argn++, *ag);
+    }
+    if (problem->needsBGroupSums()) {
+        if (!bg || !*bg) return status::runtime_error;
+        arg_list.set(argn++, *bg);
+    }
 
     if (problem->aOffset2D() || problem->aScale2D()
             || problem->needsAGroupSums()) {

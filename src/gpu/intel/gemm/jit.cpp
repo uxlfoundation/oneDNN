@@ -35,6 +35,13 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
+bool check_memory_storage(const memory_storage_t *storage, const char *name) {
+    if (storage && *storage) return true;
+    VERROR(primitive, gpu, "%s,%s: %s", "jit::gemm", "argument is not set",
+            name);
+    return false;
+}
+
 status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         intel::stream_t *compute_stream, zero_pool_t *zero_pool,
         const memory_storage_t &a, const memory_storage_t &b,
@@ -92,8 +99,14 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     if (problem->aScale2D()) arg_list.set(argn++, *a_scales);
     if (problem->bScale2D()) arg_list.set(argn++, *b_scales);
     if (pd()->with_mx_scale()) arg_list.set(argn++, *c_scales);
-    if (problem->needsAGroupSums()) arg_list.set(argn++, *ag);
-    if (problem->needsBGroupSums()) arg_list.set(argn++, *bg);
+    if (problem->needsAGroupSums()) {
+        if (!check_memory_storage(ag, "ag")) return status::runtime_error;
+        arg_list.set(argn++, *ag);
+    }
+    if (problem->needsBGroupSums()) {
+        if (!check_memory_storage(bg, "bg")) return status::runtime_error;
+        arg_list.set(argn++, *bg);
+    }
 
     if (problem->aOffset2D() || problem->aScale2D()
             || problem->needsAGroupSums()) {

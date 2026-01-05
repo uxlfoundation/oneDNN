@@ -61,7 +61,8 @@ struct dnn_mem_t {
     dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt, const std::string &tag,
             dnnl_engine_t engine);
 
-    dnn_mem_t(const_dnnl_memory_desc_t md, void *value);
+    // Construct a host-scalar memory object, initialized with 0x3F pattern.
+    dnn_mem_t(const_dnnl_memory_desc_t md);
 
     dnn_mem_t(const dnn_mem_t &rhs) = delete;
     dnn_mem_t &operator=(const dnn_mem_t &rhs) = delete;
@@ -251,6 +252,7 @@ private:
     // when in doubt, always use `true` to stay on the safe side of things.
     int initialize(dnnl_engine_t engine, bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
+    int initialize_by_host_scalar(const_dnnl_memory_desc_t md, void *value);
 
     void set_dt(dnnl_data_type_t dt) const;
 

@@ -2048,19 +2048,21 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         int local_exec_arg = exec_arg ^ DNNL_ARG_ATTR_ZERO_POINTS;
         TIME_FILL(SAFE(
                 fill_zero_points(attr, local_exec_arg, mem, ref_mem), WARN));
-    } else if (is_dropout_p && !attr.dropout.use_host_scalars) {
+    } else if (is_dropout_p) {
         ref_mem.set_f32_elem(0, attr.dropout.p);
-        TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
-    } else if (is_dropout_seed && !attr.dropout.use_host_scalars) {
+        mem.set_elem(0, attr.dropout.p);
+    } else if (is_dropout_seed) {
         ref_mem = dnn_mem_t(mem.md_, dnnl_s64, tag::abx, get_cpu_engine(),
                 /* prefill = */ false);
         ref_mem.set_s64_elem(0, attr.dropout.seed);
-        TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
-    } else if (is_dropout_offset && !attr.dropout.use_host_scalars) {
+        assert(mem.dt() == dnnl_s64);
+        mem.set_s64_elem(0, attr.dropout.seed);
+    } else if (is_dropout_offset) {
         ref_mem = dnn_mem_t(mem.md_, dnnl_s64, tag::abx, get_cpu_engine(),
                 /* prefill = */ false);
         ref_mem.set_s64_elem(0, attr.dropout.offset);
-        TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
+        assert(mem.dt() == dnnl_s64);
+        mem.set_s64_elem(0, attr.dropout.offset);
     } else if (is_rounding_seed) {
         ref_mem.set_elem(0, attr.rounding_mode.seed);
         TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));

@@ -466,8 +466,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     VDEBUGINFO(4, primitive, sdpa,
             "D=%d,K=%d,%s%s%s"
             "BcBr_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d," //todo: bcbr here only to print corresponding tile_m to conceptual Bc
-            "BcD_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d"
-            "BrD_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d",
+            "DBc_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d"
+            "DBr_tile(%d, %d): unroll_m=%d unroll_n=%d wg_m=%d wg_n=%d",
             static_cast<int>(d->head_size()), static_cast<int>(d->keys()),
             thin_q ? "thin_q," : "", quantized ? "quant," : "",
             is_integrated ? "integrated" : "",
@@ -481,6 +481,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             config->unroll_n_BrD * config->wg_n_BrD, config->unroll_m_BrD,
             config->unroll_n_BrD, config->wg_m_BrD, config->wg_n_BrD);
 
+//MATCH #sg exactly
     // (Br)Bc == Bc(D)
     VCHECK_SDPA_COND(((config->unroll_m_BrBc * config->wg_m_BrBc
                               == config->unroll_n_BcD * config->wg_n_BcD)
@@ -493,34 +494,63 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             config->unroll_n_BcD * config->wg_n_BcD,
             config->wg_m_BrBc * config->wg_n_BrBc,
             config->wg_m_BcD * config->wg_n_BcD);
-    // (Bc)D >= head size
-    VCHECK_SDPA_COND(config->unroll_m_BcD * config->wg_m_BcD >= d->head_size(),
-            "The BcD matmul config work_group tile M(%d*%d=%d) axis must be "
-            "greater than or equal to head size(%ld)",
-            config->unroll_m_BcD, config->wg_m_BcD,
-            config->unroll_m_BcD * config->wg_m_BcD,
-            static_cast<long int>(d->head_size()));
 
-    // Br(Bc) == Br(D)
-    VCHECK_SDPA_COND(((config->unroll_n_BrBc * config->wg_n_BrBc
-                              == config->unroll_n_BrD * config->wg_n_BrD)
-                             && (config->wg_m_BrBc * config->wg_n_BrBc
-                                     == config->wg_m_BrD * config->wg_n_BrD)),
-            "[CONFIG] The config BrBc work_group tile N(%d) axis must equal "
-            "BrD work_group tile N(%d) axis and number of total subgroups "
-            "for both should be equal(%d ?= %d)",
-            config->unroll_n_BrBc * config->wg_n_BrBc,
-            config->unroll_n_BrD * config->wg_n_BrD,
-            config->wg_m_BrBc * config->wg_n_BrBc,
-            config->wg_m_BrD * config->wg_n_BrD);
+//   // (Br)Bc == Bc(D), ngroups <= BrBc ngroups, seems to hang.... needs exact?
+//   VCHECK_SDPA_COND(((config->unroll_m_BrBc * config->wg_m_BrBc
+//                             == config->unroll_n_BcD * config->wg_n_BcD)
+//                            && (config->wg_m_BcD * config->wg_n_BcD
+//                                <= config->wg_m_BrBc * config->wg_n_BrBc)),
+//           "[CONFIG] The config BrBc work_group tile M(%d) axis must equal "
+//           "BcD work_group tile N(%d) axis and number of total subgroups "
+//           "for both should be equal(%d ?= %d)",
+//           config->unroll_m_BrBc * config->wg_m_BrBc,
+//           config->unroll_n_BcD * config->wg_n_BcD,
+//           config->wg_m_BcD * config->wg_n_BcD,
+//           config->wg_m_BrBc * config->wg_n_BrBc);
 
-    // (Br)D >= head size
-    VCHECK_SDPA_COND(config->unroll_m_BrD * config->wg_m_BrD >= d->head_size(),
-            "The BrD matmul config work_group tile M(%d*%d=%d) axis must be "
-            "greater than or equal to head size(%ld)",
-            config->unroll_m_BrD, config->wg_m_BrD,
-            config->unroll_m_BrD * config->wg_m_BrD,
-            static_cast<long int>(d->head_size()));
+//   // (Bc)D >= head size
+//   VCHECK_SDPA_COND(config->unroll_m_BcD * config->wg_m_BcD >= d->head_size(),
+//           "The BcD matmul config work_group tile M(%d*%d=%d) axis must be "
+//           "greater than or equal to head size(%ld)",
+//           config->unroll_m_BcD, config->wg_m_BcD,
+//           config->unroll_m_BcD * config->wg_m_BcD,
+//           static_cast<long int>(d->head_size()));
+
+//MATCH #sg exactly
+   // Br(Bc) == Br(D)
+//   VCHECK_SDPA_COND(((config->unroll_n_BrBc * config->wg_n_BrBc
+//                             == config->unroll_n_BrD * config->wg_n_BrD)
+//                            && (config->wg_m_BrBc * config->wg_n_BrBc
+//                                    == config->wg_m_BrD * config->wg_n_BrD)),
+//           "[CONFIG] The config BrBc work_group tile N(%d) axis must equal "
+//           "BrD work_group tile N(%d) axis and number of total subgroups "
+//           "for both should be equal(%d ?= %d)",
+//           config->unroll_n_BrBc * config->wg_n_BrBc,
+//           config->unroll_n_BrD * config->wg_n_BrD,
+//           config->wg_m_BrBc * config->wg_n_BrBc,
+//           config->wg_m_BrD * config->wg_n_BrD);
+//
+   // Br(Bc) == Br(D), ngroups <= BrBc ngroups, seems to hang.... needs exact?
+   VCHECK_SDPA_COND(((config->unroll_n_BrBc * config->wg_n_BrBc
+                             == config->unroll_n_BrD * config->wg_n_BrD)
+                            && (config->wg_m_BrD * config->wg_n_BrD <= config->wg_m_BrBc * config->wg_n_BrBc)),
+           "[CONFIG] The config BrBc work_group tile N(%d) axis must equal "
+           "BrD work_group tile N(%d) axis and number of total subgroups "
+           "should be less than BrBc subgroups (%d ?<= %d)",
+           config->unroll_n_BrBc * config->wg_n_BrBc,
+           config->unroll_n_BrD * config->wg_n_BrD,
+           config->wg_m_BrD * config->wg_n_BrD,
+           config->wg_m_BrBc * config->wg_n_BrBc);
+
+
+//    // (Br)D >= head size
+//    VCHECK_SDPA_COND(config->unroll_m_BrD * config->wg_m_BrD >= d->head_size(),
+//            "The BrD matmul config work_group tile M(%d*%d=%d) axis must be "
+//            "greater than or equal to head size(%ld)",
+//            config->unroll_m_BrD, config->wg_m_BrD,
+//            config->wg_m_BrBc * config->wg_n_BrBc,
+//            config->unroll_m_BrD * config->wg_m_BrD,
+//            static_cast<long int>(d->head_size()));
 
     // serializable minimal set of configuration params for ukernels
     // will be used to generate shim ukernels in reusable kernel_ctx
@@ -592,10 +622,13 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem.Tc = problem.Tc_ext = Type::f32;
     problem.Ts = problem.Tc;
 
+    const int wg_tile_m_brbc = config->wg_m_BrBc * config->unroll_m_BrBc;
+    const int wg_tile_n_brbc = config->wg_n_BrBc * config->unroll_n_BrBc;
+
     auto problem_kq = problem;
 
-    problem_kq.A.layout = MatrixLayout::
-            N; //TODO: make this Pc? Pr? how to match w/systolic?
+    problem_kq.A.layout = MatrixLayout::N;
+    //TODO: make this Pc? Pr? how to match w/systolic?
     problem_kq.B.layout = convert_dnnl_to_kernel_layout(qry_md());
     problem_kq.C.layout = MatrixLayout::T;
     const memory_desc_wrapper key_mdw(key_md());
@@ -604,7 +637,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             gemm_desc_t::get_ld(*key_md()) * key_mdw.data_type_size());
     auto ldq = static_cast<int>(
             gemm_desc_t::get_ld(*qry_md()) * qry_mdw.data_type_size());
-    problem_kq.A.setAlignment(64); // Q is packed in VNNI format in SLM
+    //problem_kq.A.setAlignment(64); // Q is packed in VNNI format in SLM
+    problem_kq.A.setAlignment(wg_tile_m_brbc * key_mdw.data_type_size() ); // Q is packed in VNNI format in SLM
     if (use_systolic_ukernel()) {
         problem_kq.A.crosspack = 2;
         problem_kq.A.tileR = into<uint16_t>(sg_size_);
@@ -627,16 +661,21 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     SizeParams heuristic_sizes;
     // quanatizing sizes to large intervals allows kernel
     // selection search while avoiding recompilation for every new size
-    heuristic_sizes.m
-            = nearest_conf_seq_interval(arch_, d->head_size(), d->keys(),
-                    thin_q, quantized, is_integrated, use_fma_config, is_f32);
-    // query size is only tuned to thin_q/non-thin_q cases
-    heuristic_sizes.n = (queries <= thin_q_threshold)
-            ? thin_q_threshold
-            : utils::rnd_up_pow2(queries);
-    heuristic_sizes.k
-            = d->head_size(); // baked into kernel regardless, no quantization
-    heuristic_sizes.batch = utils::rnd_up_pow2(d->batch_size());
+//   heuristic_sizes.m
+//           = nearest_conf_seq_interval(arch_, d->head_size(), d->keys(),
+//                   thin_q, quantized, is_integrated, use_fma_config, is_f32);
+//   // query size is only tuned to thin_q/non-thin_q cases
+//   heuristic_sizes.n = (queries <= thin_q_threshold)
+//           ? thin_q_threshold
+//           : utils::rnd_up_pow2(queries);
+//   heuristic_sizes.k
+//           = d->head_size(); // baked into kernel regardless, no quantization
+//   heuristic_sizes.batch = utils::rnd_up_pow2(d->batch_size());
+//
+    heuristic_sizes.m = wg_tile_m_brbc;
+    heuristic_sizes.n = wg_tile_n_brbc;
+    heuristic_sizes.k = d->head_size();
+    heuristic_sizes.batch = 1;
 
     ukernel_params.sizes_kq = {heuristic_sizes};
 
@@ -793,8 +832,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 }
 
 status_t micro_t::init(impl::engine_t *engine) {
-    printf("is_fwd?%d fk name?? %s \n", pd()->conf.is_fwd,
-            pd()->conf.get_kernel_names()[0]);
+    //printf("is_fwd?%d fk name?? %s \n", pd()->conf.is_fwd,
+            //pd()->conf.get_kernel_names()[0]);
     CHECK(create_kernel(
             engine, kernel_, pd()->conf.get_kernel_names()[0], pd()->conf));
     //std::vector<const char *> kernel_names = pd()->conf.get_kernel_names();
@@ -1611,7 +1650,7 @@ status_t micro_t::execute_forward(const exec_ctx_t &ctx) const {
     gws[2] *= pd()->dst_md()->dims[0];
 
     printf("execFWD\n");
-    printf("Q%d K%d D%d\n", Q, K, D);
+    printf("Q%ld K%ld D%ld\n", Q, K, D);
     auto nd_range = compute::nd_range_t(gws, lws);
     std::cout << "ndrange" << nd_range.str() << std::endl;
     return parallel_for(ctx, nd_range, kernel_, arg_list);
@@ -1622,7 +1661,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     const auto &qry = CTX_IN_STORAGE(DNNL_ARG_QUERIES);
     const auto &key = CTX_IN_STORAGE(DNNL_ARG_KEYS);
     const auto &val = CTX_IN_STORAGE(DNNL_ARG_VALUES);
-    const auto &ws = CTX_OUT_STORAGE(DNNL_ARG_WORKSPACE);
+    auto &ws = CTX_OUT_STORAGE(DNNL_ARG_WORKSPACE);
     const auto &dst = CTX_IN_STORAGE(DNNL_ARG_DST);
     const auto &diff_dst = CTX_IN_STORAGE(DNNL_ARG_DIFF_DST);
     auto &diff_q = CTX_OUT_STORAGE(DNNL_ARG_DIFF_QUERIES);
@@ -1662,7 +1701,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     using std::max;
     sg_per_wg = max(max(sg_per_wg_BrBc, sg_per_wg_BcD), sg_per_wg_BrD);
 
-    //printf("sg_per_wg: max%d  BrBc %d BcD %d BrD %d \n", sg_per_wg, sg_per_wg_BrBc, sg_per_wg_BcD, sg_per_wg_BrD);
+    //printf("sssssg_per_wg: max%d  BrBc %d BcD %d BrD %d \n", sg_per_wg, sg_per_wg_BrBc, sg_per_wg_BcD, sg_per_wg_BrD);
 
     const memory_desc_wrapper qry_mdw(pd()->qry_md());
     const memory_desc_wrapper key_mdw(pd()->key_md());
@@ -1749,18 +1788,21 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     gws_preprocess[2] *= pd()->dst_md()->dims[0];
 
     auto nd_range_preprocess = compute::nd_range_t(gws_preprocess, lws);
-    //printf("preprocessgws[%d %d %d] lws[%d %d %d]\n", gws_preprocess[0],
+    //printf("preprocessgws[%ld %ld %ld] lws[%ld %ld %ld]\n", gws_preprocess[0],
     //gws_preprocess[1], gws_preprocess[2], lws[0], lws[1], lws[2]);
     //TODO errorcheck
     parallel_for(ctx, nd_range_preprocess, preprocess_,
             arg_list); //TODO: check how many to fill D_MAX
 
-    //printf("gws[%d %d %d] lws[%d %d %d]\n", gws[0], gws[1], gws[2], lws[0],
-    //lws[1], lws[2]);
     gws[0] *= utils::div_up(K, wg_tile_k);
     gws[1] *= pd()->dst_md()->dims[1];
     gws[2] *= pd()->dst_md()->dims[0];
     auto nd_range = compute::nd_range_t(gws, lws);
+
+    //printf("K??%d. divup wg_tile_k%d", K, wg_tile_k);
+    //printf("gws[%ld %ld %ld] lws[%ld %ld %ld]\n", gws[0], gws[1], gws[2], lws[0],
+    //lws[1], lws[2]);
+
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 
     return status::success;

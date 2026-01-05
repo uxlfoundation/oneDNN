@@ -308,7 +308,7 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
             return arg_usage_t::output;
 
         if (arg == DNNL_ARG_WORKSPACE)
-            return !types::is_zero_md(workspace_md()) ? arg_usage_t::input
+            return !types::is_zero_md(workspace_md()) ? arg_usage_t::output
                                                       : arg_usage_t::unused;
 
         return primitive_desc_t::arg_usage(arg);
@@ -360,11 +360,12 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
 
     int n_inputs() const override {
         // Q, K, V, O, dO
-        return 5 + int(with_attn_mask()) + int(with_attn_scale())
-                + int(!types::is_zero_md(workspace_md()));
+        return 5 + int(with_attn_mask()) + int(with_attn_scale());
+
+                //+ int(!types::is_zero_md(workspace_md()));
     }
     //int n_outputs() const override { return 3; } // dQ, dK, dV
-    int n_outputs() const override { return 4; } // dQ, dK, dV //TMP s2
+    int n_outputs() const override { return 5; } // dQ, dK, dV //TMP s2 // tmp ws
 
     const memory_desc_t *diff_qry_md() const { return &desc_.diff_q_desc; }
     const memory_desc_t *diff_key_md() const { return &desc_.diff_k_desc; }

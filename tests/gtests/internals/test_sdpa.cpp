@@ -1697,6 +1697,7 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     /*
      */
     /*
+    */
     auto loop_bwd_prim = [&] { bwd_loop(); };
 
     int iterations = 20;
@@ -1709,7 +1710,6 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
 
     auto qtime_bwd = min_time(quantized_bwd_time) / iterations;
     printf("qtime_training_backwards_prim %f\n", (float)qtime_bwd.count());
-    */
 
     // print q,k gradients
 #if PRINT_MEM
@@ -2105,6 +2105,8 @@ public:
         }
         if (mask_ptr) { sdpa_fwd_args[DNNL_ARG_ATTN_MASK] = t.m_mask; }
 
+        strm.wait();
+        printf("%dwat?\n", __LINE__);
         sdpa_fwd.execute(strm, sdpa_fwd_args);
         strm.wait();
         printf("%dwat done w/forward execute?\n", __LINE__);
@@ -2144,6 +2146,7 @@ public:
          *
          */
         /*
+        */
         auto loop_bwd_quantized
                 = [&] { sdpa_bwd.execute(strm, sdpa_bwd_args); };
 
@@ -2157,7 +2160,6 @@ public:
 
         auto qtime_bwd = min_time(quantized_bwd_time) / iterations;
         printf("qtime_training_backward %f\n", (float)qtime_bwd.count());
-        */
 
 #if PRINT_MEM
         print_mem(t.m_S2_intermediate, "temporary computed_S2");
@@ -2261,6 +2263,8 @@ public:
             printf("----------\n\n");
 #endif
         }
+        printf("qtimebwd (ms): %f \n",
+                    (float)qtime_bwd.count() / 1e6 );
     }
 
     void perf() {
@@ -2647,8 +2651,10 @@ INSTANTIATE_TEST_SUITE_P(llama_bwd_f32,
 
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    16,      16,     16, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
 //                    sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
-                    sdpa_dims_t{   1,      1,        1,      64,       64,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
-//                   sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+//                    sdpa_dims_t{   1,      1,        1,      64,       64,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   //sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   sdpa_dims_t{   1,    1,        1,      4096,       4096,    128,      128,     128, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   //sdpa_dims_t{   1,    1,        1,      8192,       8192,    128,      128,     128, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
    ), &print_to_string);
 
 // clang-format on

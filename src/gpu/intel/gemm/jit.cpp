@@ -454,11 +454,17 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         co = &sum_ab;
         cmask = pd()->sum_ab_cmask();
     }
+    if (swapab) {
+        uint8_t swap_table[4] = {0, 2, 1, 3};
+        cmask = (cmask & ~3) | swap_table[cmask & 3];
+    }
 
     // Get host scalar zero-poins values
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
-        ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
-        bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
+        ao = swapab ? &GEMM_CTX_ARG_STORAGE(b_zero_point)
+                    : &GEMM_CTX_ARG_STORAGE(a_zero_point);
+        bo = swapab ? &GEMM_CTX_ARG_STORAGE(a_zero_point)
+                    : &GEMM_CTX_ARG_STORAGE(b_zero_point);
         int a_hostscalar_val = 0;
         int b_hostscalar_val = 0;
         if (ao->is_host_scalar())
@@ -495,21 +501,22 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         }
     }
 
-    if (pd()->a_scales_2d()) { a_scales = &GEMM_CTX_ARG_STORAGE(a_scales); }
-    if (pd()->b_scales_2d()) { b_scales = &GEMM_CTX_ARG_STORAGE(b_scales); }
+    if (pd()->a_scales_2d()) {
+        a_scales = swapab ? &GEMM_CTX_ARG_STORAGE(b_scales)
+                          : &GEMM_CTX_ARG_STORAGE(a_scales);
+    }
+    if (pd()->b_scales_2d()) {
+        b_scales = swapab ? &GEMM_CTX_ARG_STORAGE(a_scales)
+                          : &GEMM_CTX_ARG_STORAGE(b_scales);
+    }
     if (pd()->with_mx_scale()) { c_scales = &GEMM_CTX_ARG_STORAGE(c_scales); }
 
-    if (problem.needsAGroupSums()) ag = &GEMM_CTX_ARG_STORAGE(a_group_sums);
-    if (problem.needsBGroupSums()) bg = &GEMM_CTX_ARG_STORAGE(b_group_sums);
-
-    if (swapab) {
-        std::swap(ao, bo);
-        std::swap(a_scales, b_scales);
-        std::swap(ag, bg);
-
-        uint8_t swap_table[4] = {0, 2, 1, 3};
-        cmask = (cmask & ~3) | swap_table[cmask & 3];
-    }
+    if (problem.needsAGroupSums())
+        ag = swapab ? &GEMM_CTX_ARG_STORAGE(b_group_sums)
+                    : &GEMM_CTX_ARG_STORAGE(a_group_sums);
+    if (problem.needsBGroupSums())
+        bg = swapab ? &GEMM_CTX_ARG_STORAGE(a_group_sums)
+                    : &GEMM_CTX_ARG_STORAGE(b_group_sums);
 
     status_t status;
 

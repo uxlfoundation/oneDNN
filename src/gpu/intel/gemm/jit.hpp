@@ -222,15 +222,31 @@ struct gen_t : public primitive_t {
                         VERBOSE_SHAPE_RESTRICTION);
             }
 
-            VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            if (!attr()->scales_.has_default_values()) {
+                VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+                if (swap_ab_) {
+                    std::swap(a_scales_type_, b_scales_type_);
+                    std::swap(asc_dims_, bsc_dims_);
+                    std::swap(a_scales_group_k_, b_scales_group_k_);
+                    std::swap(a_scales_group_m_, b_scales_group_n_);
+                }
+            }
 
             if (!attr()->zero_points_.has_default_values()) {
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-                if (swap_ab_) std::swap(ao_dims_, bo_dims_);
+                if (swap_ab_) {
+                    std::swap(ao_dims_, bo_dims_);
+                    std::swap(a_zp_group_k_, b_zp_group_k_);
+                    std::swap(a_zp_group_m_, b_zp_group_n_);
+                }
             }
             if (!attr()->precomputed_reductions_.has_default_values()) {
                 VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
-                if (swap_ab_) std::swap(ag_dims_, bg_dims_);
+                if (swap_ab_) {
+                    std::swap(ag_dims_, bg_dims_);
+                    std::swap(a_gs_group_k_, b_gs_group_k_);
+                    std::swap(a_gs_group_m_, b_gs_group_n_);
+                }
             }
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);

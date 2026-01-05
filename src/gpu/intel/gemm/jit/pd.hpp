@@ -21,6 +21,7 @@
 
 #include "common/c_types_map.hpp"
 #include "gpu/intel/gemm/config.hpp"
+#include "gpu/intel/gemm/exec_types.hpp"
 #include "gpu/intel/post_ops.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -106,7 +107,6 @@ struct pd_t : public gemm::pd_t {
     const int mask_per_oc = 1 << 1;
     const int mask_per_ic = 1 << 2;
 
-    const int idx_a = DNNL_ARG_WEIGHTS;
     memory_desc_t prelu_wei_md, a_scale_md_, b_scale_md_, c_scale_md_;
     memory_desc_t a_zp_md_, b_zp_md_;
     memory_desc_t a_gs_md_, b_gs_md_;
@@ -248,12 +248,14 @@ struct pd_t : public gemm::pd_t {
         return k_grouped || n_grouped;
     }
     bool a_zp_hostscalar() const {
-        auto attr_info = attr_info_t::create(attr());
-        return attr_info.with_host_wei_zp;
+        return attr()
+                ->zero_points_.get(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
+                .is_host_scalar();
     }
     bool b_zp_hostscalar() const {
-        auto attr_info = attr_info_t::create(attr());
-        return attr_info.with_host_src_zp;
+        return attr()
+                ->zero_points_.get(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
+                .is_host_scalar();
     }
     int a_q2d_group_k() const {
         if (a_zp_2d()) {

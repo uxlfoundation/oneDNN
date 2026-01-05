@@ -212,8 +212,8 @@ struct matmul_pd_t : public primitive_desc_t {
             if (arg == DNNL_ARG_WEIGHTS) {
                 const auto &g0 = scales.get_group(arg, 0);
                 const auto &g1 = scales.get_group(arg, 1);
-                const bool wei_k_group_ok = IMPLICATION(g0 > 1, K() % g1 == 0);
-                const bool wei_n_group_ok = IMPLICATION(g1 > 1, N() % g0 == 0);
+                const bool wei_k_group_ok = IMPLICATION(g0 > 1, K() % g0 == 0);
+                const bool wei_n_group_ok = IMPLICATION(g1 > 1, N() % g1 == 0);
 
                 ok = ok && wei_k_group_ok && wei_n_group_ok;
 

@@ -27,10 +27,26 @@
 
 #include "common.hpp"
 #include "utils/dims.hpp"
+#include "utils/dnnl_query.hpp"
 #include "utils/wrapper.hpp"
 
 #define dnnl_mem_default_value 0xFF
 #define dnnl_mem_default_perf_test_value 0x3F
+
+template <typename T_>
+dnnl_data_type_t get_dt() {
+    using T = typename std::decay<T_>::type;
+#define CASE(dt, type) \
+    if (std::is_same<T, type>()) return dt;
+    CASE(dnnl_f32, float);
+    CASE(dnnl_f64, double);
+    CASE(dnnl_s32, int32_t);
+    CASE(dnnl_s64, int64_t);
+    CASE(dnnl_s8, int8_t);
+    CASE(dnnl_u8, uint8_t);
+#undef CASE
+    return dnnl_data_type_undef;
+}
 
 struct dnn_mem_t {
     struct handle_info_t {
@@ -61,7 +77,22 @@ struct dnn_mem_t {
     dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt, const std::string &tag,
             dnnl_engine_t engine);
 
-    dnn_mem_t(const_dnnl_memory_desc_t md, void *value);
+    // Construct a host-scalar memory object, float is casted.
+    dnn_mem_t(const_dnnl_memory_desc_t md, float value) {
+        active_ = (initialize_by_host_scalar(md, value) == OK);
+    }
+
+    // Construct a host-scalar memory object, type `T` must match the memory descriptor.
+    template <typename T>
+    dnn_mem_t(const_dnnl_memory_desc_t md, T *value) {
+        if (query_md_data_type(md, 0) != get_dt<T>()) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "Error: mismatch between md type and value type in "
+                    "dnn_mem_t(md, value).");
+            SAFE_V(FAIL);
+        }
+        active_ = (initialize_by_host_scalar(md, value) == OK);
+    }
 
     dnn_mem_t(const dnn_mem_t &rhs) = delete;
     dnn_mem_t &operator=(const dnn_mem_t &rhs) = delete;
@@ -251,6 +282,8 @@ private:
     // when in doubt, always use `true` to stay on the safe side of things.
     int initialize(dnnl_engine_t engine, bool prefill,
             const handle_info_t &handle_info = handle_info_t::allocate());
+    int initialize_by_host_scalar(const_dnnl_memory_desc_t md, float value);
+    int initialize_by_host_scalar(const_dnnl_memory_desc_t md, void *value);
 
     void set_dt(dnnl_data_type_t dt) const;
 

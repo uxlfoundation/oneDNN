@@ -1055,7 +1055,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             if (policy == attr_t::policy_t::HOST_SCALAR) {
                 auto scales_md = dnn_mem_t::init_host_scalar_md(dt);
                 float scale = sc.get(exec_arg).scale;
-                mem_map.emplace(exec_sc_arg, dnn_mem_t(scales_md, &scale));
+                mem_map.emplace(exec_sc_arg, dnn_mem_t(scales_md, scale));
                 return;
             }
 
@@ -1110,8 +1110,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
 
             if (e.policy == attr_t::policy_t::HOST_SCALAR) {
                 auto zp_md = dnn_mem_t::init_host_scalar_md(e.dt);
-                int32_t zero_point = zp.get(exec_arg).value;
-                mem_map.emplace(exec_zp_arg, dnn_mem_t(zp_md, &zero_point));
+                float zero_point = zp.get(exec_arg).value;
+                mem_map.emplace(exec_zp_arg, dnn_mem_t(zp_md, zero_point));
                 return;
             }
 

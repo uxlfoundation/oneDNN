@@ -59,24 +59,6 @@ dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_engine_t engine,
     }
 }
 
-dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, void *value) {
-    dnnl_format_kind_t format_kind = query_md_format_kind(md);
-    if (format_kind != dnnl_format_kind_host_scalar) { return; }
-
-    auto status = dnnl_memory_desc_clone(&md_, md);
-    (void)status;
-    assert(status == dnnl_success);
-
-    status = dnnl_memory_create_host_scalar(&m_, md_, value);
-    assert(status == dnnl_success);
-
-    // Map the memory for compatibility,
-    // allowing data to be accessed just like a regular memory object
-    map();
-
-    active_ = (status == dnnl_success);
-}
-
 dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md, dnnl_data_type_t dt,
         const std::string &tag, dnnl_engine_t engine, bool prefill) {
     const int ndims = query_md_ndims(md);
@@ -955,6 +937,30 @@ int dnn_mem_t::initialize(
     }
 
     return OK;
+}
+
+dnn_mem_t::dnn_mem_t(const_dnnl_memory_desc_t md) {
+    uint64_t dummy = 0x3F3F3F3F3F3F3F3F;
+    active_ = (initialize_by_host_scalar(md, &dummy) == OK);
+}
+
+int dnn_mem_t::initialize_by_host_scalar(
+        const_dnnl_memory_desc_t md, void *value) {
+    dnnl_format_kind_t format_kind = query_md_format_kind(md);
+    if (format_kind != dnnl_format_kind_host_scalar) return FAIL;
+
+    auto status = dnnl_memory_desc_clone(&md_, md);
+    (void)status;
+    assert(status == dnnl_success);
+
+    status = dnnl_memory_create_host_scalar(&m_, md_, value);
+    assert(status == dnnl_success);
+
+    // Map the memory for compatibility,
+    // allowing data to be accessed just like a regular memory object
+    map();
+
+    return (status == dnnl_success) ? OK : FAIL;
 }
 
 static int cleanup_sycl(

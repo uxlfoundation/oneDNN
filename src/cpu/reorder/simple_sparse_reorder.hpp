@@ -151,7 +151,7 @@ struct simple_sparse_reorder_impl_t<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
         // Fill output_bitmask and move non-zero elements to the begining of the
         // blocks. Also, remember number of non-zero elements per-block to
         // calculate output_offsets later.
-        parallel_nd(nblks, [&](dim_t b) {
+        parallel_nd(nblks, [=](dim_t b) {
             dim_t nnz_per_blk = 0;
             for (dim_t i = 0; i < blk_sz / bitmask_step; i++) {
                 uint64_t &bm = output_bitmask[b * blk_sz / bitmask_step + i];
@@ -169,7 +169,7 @@ struct simple_sparse_reorder_impl_t<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
 
         // Calculate output_offsets using previously computed number of non-zero
         // elements in each block.
-        parallel_nd(nblks, [&](dim_t b) {
+        parallel_nd(nblks, [=](dim_t b) {
             dim_t off = 0;
             if (b != 0) {
                 for (dim_t i = 0; i < b; i++) {
@@ -182,7 +182,7 @@ struct simple_sparse_reorder_impl_t<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
         // Use the calculated output_offsets and number of non-zero elements
         // per block to copy the non-zero elements that we moved to the
         // begining of the blocks to output_values.
-        parallel_nd(nblks, [&](dim_t b) {
+        parallel_nd(nblks, [=](dim_t b) {
             const auto nnz_per_blk = nnz_per_blocks[b];
             const auto blk_off = output_offsets[b];
             for (dim_t i = 0; i < nnz_per_blk; i++) {

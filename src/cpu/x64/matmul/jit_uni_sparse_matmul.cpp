@@ -373,7 +373,7 @@ status_t jit_uni_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
     // If not, use 0, which means all threads.
     const int nthr = data_to_process_in_kb < threshold_in_kb;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         dim_t start = 0, end = 0;
         balance211(M, nthr, ithr, start, end);
         if (start >= end) return;

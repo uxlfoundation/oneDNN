@@ -341,6 +341,7 @@ protected:
     void gemmReverseLoops(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmScaleInputs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmCalcWGRemainders(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void gemmCalcWGIndices(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     void gemmGetBatchIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmReleaseBatchIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);

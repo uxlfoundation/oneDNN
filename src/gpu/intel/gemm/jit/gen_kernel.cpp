@@ -526,7 +526,6 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.B_scale.setAlignment(
                 int(types::data_type_size(b_quant.scales_type)));
     }
-
     if (c_quant.scales_type != data_type::undef) {
         problem_.csPtrDims = c_quant.scale_ndims;
         problem_.cMXScale = c_quant.mx;

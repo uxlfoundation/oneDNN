@@ -35,6 +35,8 @@ namespace {
 int quant_entry_ndims(
         const quant_entry_t &entry, const memory_desc_t &qmd, int k_idx) {
     if (entry.has_default_values()) return -1;
+    // ndims = -1 is a special value for host scalars.
+    if (entry.is_host_scalar()) return -1;
     if (qmd.ndims < 2) return 0;
 
     // Count the number of nontrivial (dim > 1) dimensions present

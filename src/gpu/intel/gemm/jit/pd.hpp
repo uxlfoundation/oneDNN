@@ -171,8 +171,12 @@ struct pd_t : public gemm::pd_t {
         return !attr()->scales_.has_default_values(DNNL_ARG_DST);
     }
 
-    bool with_a_zero_points() const { return (ao_dims_ >= 0); }
-    bool with_b_zero_points() const { return (bo_dims_ >= 0); }
+    bool with_a_zero_points() const {
+        return (ao_dims_ >= 0) || a_zp_hostscalar();
+    }
+    bool with_b_zero_points() const {
+        return (bo_dims_ >= 0) || b_zp_hostscalar();
+    }
     bool with_c_zero_points() const {
         return !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
     }

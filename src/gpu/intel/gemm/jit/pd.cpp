@@ -388,15 +388,24 @@ bool pd_t::scales_ok() {
         if (scales.has_default_values(s) || scales.get(s).is_host_scalar())
             continue;
         const auto &x_scales = scales.get(s);
-
         auto mask = x_scales.get_mask();
-        if (!(utils::one_of(mask, 0, mask_scalar, mask_per_oc, mask_per_ic)
-                    || (utils::one_of(s, DNNL_ARG_A, DNNL_ARG_B)
-                            && !x_scales.has_default_groups()
-                            && valid_2d_mask(mask, ndims))
-                    || (s == DNNL_ARG_C && !x_scales.has_default_groups()
-                            && with_mx_scale() && valid_2d_mask(mask, ndims))))
-            return false;
+        bool is_ab = utils::one_of(s, DNNL_ARG_A, DNNL_ARG_B);
+        if (x_scales.has_default_groups()) {
+            if (is_ab) {
+                // Masking by K requires groups for A/B.
+                const int mn_idx = (s == DNNL_ARG_A ? 1 : 0);
+                if (!utils::one_of(mask, 0, (1 << mn_idx))) return false;
+            } else {
+                if (!utils::one_of(mask, 0, (1 << 0), (1 << 1))) return false;
+            }
+        } else {
+            if (is_ab) {
+                if (!valid_2d_mask(mask, ndims)) return false;
+            } else {
+                if (!with_mx_scale() || !valid_2d_mask(mask, ndims))
+                    return false;
+            }
+        }
 
         if (!x_scales.has_default_groups()) {
             // Dynamic Dst Quant only supported with `1x32` groups.

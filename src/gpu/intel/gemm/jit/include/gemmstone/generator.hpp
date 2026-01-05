@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -332,6 +332,7 @@ protected:
     void gemmReverseLoops(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmScaleInputs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmCalcWGRemainders(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void gemmCalcWGIndices(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     void gemmGetBatchIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmReleaseBatchIDs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);

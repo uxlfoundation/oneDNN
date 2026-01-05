@@ -980,6 +980,32 @@ void Generator<hw>::gemmCalcWGRemainders(const GEMMProblem &problem, const GEMMS
     if (strategy.coopB != CoopSplit::FullK) state.ra.safeRelease(state.wgJ0);
 }
 
+// Calculate workgroup m/n indices.
+template <HW hw>
+void Generator<hw>::gemmCalcWGIndices(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+{
+    Subregister idM, idN;
+
+    idM = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp1, strategy));
+    idN = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp0, strategy));
+
+    if (strategy.fixedWG(problem)) {
+        mulConstant(1, idM, state.inputs.groupIDM, strategy.wg[LoopM]);
+        mulConstant(1, idN, state.inputs.groupIDN, strategy.wg[LoopN]);
+    } else {
+        mul(1, idM, state.inputs.groupIDM, state.inputs.localSizeM.uw());
+        mul(1, idN, state.inputs.groupIDN, state.inputs.localSizeN.uw());
+    }
+    bool gemmtBarriers = problem.gemmt() && strategy.needsBarrier();
+    if (wgRemCheck(problem, strategy) || gemmtBarriers) {
+        state.wgI0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp0, strategy));
+        state.wgJ0 = state.ra.alloc_sub<uint32_t>(getHint(HintType::TempComp1, strategy));
+        mulConstant(1, state.wgI0, idM, strategy.unroll[LoopM]);
+        mulConstant(1, state.wgJ0, idN, strategy.unroll[LoopN]);
+    }
+    state.ra.safeRelease(idM);
+    state.ra.safeRelease(idN);
+}
 // Cache multiples of lda/ldb for later address calculations.
 template <HW hw>
 void Generator<hw>::gemmCacheLDABMultiples(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool doA, bool doB)

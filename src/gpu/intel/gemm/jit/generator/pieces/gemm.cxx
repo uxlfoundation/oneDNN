@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -405,18 +405,12 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
     state.ra.safeRelease(idM);
     state.ra.safeRelease(idN);
     state.ra.safeRelease(idK);
-    if (!strategy.persistentLoop()) {
-        state.ra.safeRelease(state.inputs.localSizeM);
-        state.ra.safeRelease(state.inputs.localSizeN);
-    }
     if (anyKParallelFixed) {
         state.ra.safeRelease(state.inputs.localIDK);
         if (!strategy.persistentLoop())
             state.ra.safeRelease(state.inputs.localSizeK);
     }
     if (strategy.linearOrder() || strategy.persistentLoop()) {
-        state.ra.safeRelease(state.inputs.groupIDM);
-        state.ra.safeRelease(state.inputs.groupIDN);
         state.ra.claim(state.nextGroupIDM);
         state.ra.claim(state.nextGroupIDN);
     }
@@ -459,8 +453,6 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
             state.ra.safeRelease(state.inputs.k0);
     }
 
-    state.ra.safeRelease(state.inputs.localIDM);
-    state.ra.safeRelease(state.inputs.localIDN);
     if (!strategy.needsMNLocalIDs())
         state.lidM = state.lidN = invalid;
 
@@ -487,6 +479,17 @@ void Generator<hw>::gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState
 
     gemmSetupABC(problem, strategy, state);
     gemmSubkernel(problem, strategy, state);
+
+    if (strategy.linearOrder() || strategy.persistentLoop()) {
+        state.ra.safeRelease(state.inputs.groupIDM);
+        state.ra.safeRelease(state.inputs.groupIDN);
+    }
+    if (!strategy.persistentLoop()) {
+        state.ra.safeRelease(state.inputs.localSizeM);
+        state.ra.safeRelease(state.inputs.localSizeN);
+    }
+    state.ra.safeRelease(state.inputs.localIDM);
+    state.ra.safeRelease(state.inputs.localIDN);
 
     mark(lKernelDone);
 
@@ -735,6 +738,8 @@ void Generator<hw>::gemmSubkernel(GEMMProblem &problem, GEMMStrategy &strategy, 
         auto modStrategy = strategy;
 
         gemmDowngradeAccess(problem, modStrategy, state);
+        gemmCalcWGIndices(problem, modStrategy, state);
+        gemmCalcWGRemainders(problem, modStrategy, state);
 
         status << "Unaligned A/B" << status_stream::endl;
         if (!gemmMEdge(problem, modStrategy, state)) {

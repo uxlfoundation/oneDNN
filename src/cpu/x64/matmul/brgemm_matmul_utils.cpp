@@ -870,12 +870,11 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
         matmul_avx512_blocking_params_t &best_blocking) {
     const int nthr = bgmmc.nthr;
 
-    const bool need_large_m_blk = bgmmc.ndims == 2 && bm_conf_utils.is_f32()
-            && bgmmc.N <= 14528
+    const bool need_small_m_blk = bgmmc.nthr == 1 && bgmmc.ndims == 2
+            && bm_conf_utils.is_f32() && bgmmc.N <= 14528
             && ((bgmmc.M <= 768 && bgmmc.K <= 128)
                     || bgmmc.K * bgmmc.M <= 49152);
-    const int max_m_blk = nstl::min(
-            128, matmul.M); //nstl::min(need_large_m_blk ? 512 : 256, matmul.M);
+    const int max_m_blk = nstl::min(need_small_m_blk ? 128 : 256, matmul.M);
     int min_m_blk = nstl::min(32, matmul.M);
 
     dim_t min_m_chunks = div_up(matmul.M, max_m_blk);

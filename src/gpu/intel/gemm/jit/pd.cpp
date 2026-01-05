@@ -288,6 +288,7 @@ status_t pd_t::init_attrs() {
 bool pd_t::zp_ok() {
     using namespace data_type;
     auto &attr_zps = attr()->zero_points_;
+    if (attr_zps.has_default_values()) return true;
     auto &a_zps = attr_zps.get(DNNL_ARG_A);
     auto &b_zps = attr_zps.get(DNNL_ARG_B);
     auto &c_zps = attr_zps.get(DNNL_ARG_C);
@@ -357,6 +358,7 @@ bool pd_t::zp_ok() {
 
 bool pd_t::gs_ok() {
     auto &attr_gs = attr()->precomputed_reductions_;
+    if (attr_gs.has_default_values()) return true;
 
     if (!attr_gs.has_default_values(DNNL_ARG_DST)) { return false; }
 
@@ -378,6 +380,7 @@ bool pd_t::gs_ok() {
 
 bool pd_t::scales_ok() {
     const auto &scales = attr()->scales_;
+    if (scales.has_default_values()) return true;
     int ndims = desc()->a_desc.ndims;
     using namespace data_type;
 

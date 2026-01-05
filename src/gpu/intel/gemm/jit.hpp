@@ -222,14 +222,9 @@ struct gen_t : public primitive_t {
                         VERBOSE_SHAPE_RESTRICTION);
             }
 
-            if (!attr()->scales_.has_default_values()) {
-                VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            }
-
-            if (!attr()->zero_points_.has_default_values())
-                VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
-            if (!attr()->precomputed_reductions_.has_default_values())
-                VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
+            VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            VDISPATCH_GEMM(gs_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
 

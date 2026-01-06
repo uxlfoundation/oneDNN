@@ -424,7 +424,22 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
     const bool with_reduce = op_d.reduce_desc.ndims != 0;
 #if DNNL_EXPERIMENTAL_GROUPED_GEMM
     const bool is_grouped_memory
-            = memory_desc_wrapper(&op_d.src_desc).is_grouped_desc(); // todo
+            = memory_desc_wrapper(&op_d.src_desc).is_grouped_desc();
+
+    if (with_bias && is_grouped_memory) {
+        const memory_desc_wrapper src_d(&op_d.src_desc);
+        const memory_desc_wrapper wei_d(&op_d.weights_desc);
+        const memory_desc_wrapper bia_d(&op_d.bias_desc);
+        const auto &grouped_desc = src_d.sparse_desc().grouped_desc;
+        const dim_t num_groups = grouped_desc.ngroups;
+        const dim_t N = wei_d.dims()[wei_d.ndims() - 1];
+
+        // For now only 2D bias [num_groups, N] is supported for grouped matmul
+        VCHECK_MATMUL(
+                bia_d.ndims() == 2, VERBOSE_BAD_NDIMS, "bias", bia_d.ndims());
+        VCHECK_MATMUL(bia_d.dims()[0] == num_groups && bia_d.dims()[1] == N,
+                VERBOSE_BAD_DIM, "bias", 0);
+    }
 #else
     const bool is_grouped_memory = false;
 #endif
@@ -441,36 +456,16 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
     VCHECK_MATMUL(IMPLICATION(with_reduce, op_d.reduce_desc.ndims == ndims),
             VERBOSE_BAD_NDIMS, "reduce", op_d.reduce_desc.ndims);
 
-    // check: m, n, k
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
-    // TODO: temporary hack to accommodate grouped memory layouts
-    int m_idx = 0, m_idx_bias = 0, k_idx_src = 0, k_idx_wei = 0, n_idx_wei = 0,
-        n_idx_dst = 0;
-    if (is_grouped_memory && ndims == 2) {
-        // Also check for supported variable dimension index
-        const auto &grouped_desc = memory_desc_wrapper(&op_d.src_desc)
-                                           .sparse_desc()
-                                           .grouped_desc;
-        m_idx = grouped_desc.variable_dim_idx;
-        VCHECK_MATMUL(m_idx == 0, VERBOSE_UNSUPPORTED_SPARSE_CFG);
-        m_idx_bias = 1;
-        k_idx_src = 1;
-        k_idx_wei = 1;
-        n_idx_wei = 2;
-        n_idx_dst = 1;
-    } else {
-#else
-    int m_idx = 0, m_idx_bias = 0, k_idx_src = 0, k_idx_wei = 0, n_idx_wei = 0,
-        n_idx_dst = 0;
-    {
-#endif
-        m_idx = ndims - 2;
-        m_idx_bias = m_idx;
-        k_idx_src = m_idx + 1;
-        k_idx_wei = m_idx;
-        n_idx_wei = ndims - 1;
-        n_idx_dst = ndims - 1;
-    }
+    const memory_desc_wrapper src_d(&op_d.src_desc);
+    const memory_desc_wrapper wei_d(&op_d.weights_desc);
+    const memory_desc_wrapper dst_d(dst_desc);
+
+    const int m_idx = src_d.ndims() - 2;
+    const int k_idx_src = src_d.ndims() - 1;
+    const int k_idx_wei = wei_d.ndims() - 2;
+    const int n_idx_dst = dst_d.ndims() - 1;
+    const int n_idx_wei = wei_d.ndims() - 1;
+
     VCHECK_MATMUL(dst_desc->dims[m_idx] == src_desc->dims[m_idx],
             VERBOSE_INCONSISTENT_DIM, "dst", m_idx, "src", m_idx);
     VCHECK_MATMUL(dst_desc->dims[n_idx_dst] == weights_desc->dims[n_idx_wei],
@@ -481,10 +476,22 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
                           one_of(op_d.bias_desc.dims[n_idx_dst], 1,
                                   dst_desc->dims[n_idx_dst])),
             VERBOSE_INCONSISTENT_DIM, "bias", n_idx_dst, "dst", n_idx_dst);
-    VCHECK_MATMUL(IMPLICATION(with_bias,
-                          one_of(op_d.bias_desc.dims[m_idx_bias], 1,
-                                  dst_desc->dims[m_idx_bias])),
-            VERBOSE_INCONSISTENT_DIM, "bias", m_idx_bias, "dst", m_idx_bias);
+
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+    // For now, for grouped matmul, bias M dimension should match num_groups, not dst M
+    if (with_bias && is_grouped_memory) {
+        const auto &grouped_desc = src_d.sparse_desc().grouped_desc;
+        const dim_t num_groups = grouped_desc.ngroups;
+        VCHECK_MATMUL(one_of(op_d.bias_desc.dims[m_idx], 1, num_groups),
+                VERBOSE_INCONSISTENT_DIM, "bias", m_idx, "num_groups", 0);
+    } else
+#endif
+    {
+        VCHECK_MATMUL(IMPLICATION(with_bias,
+                              one_of(op_d.bias_desc.dims[m_idx], 1,
+                                      dst_desc->dims[m_idx])),
+                VERBOSE_INCONSISTENT_DIM, "bias", m_idx, "dst", m_idx);
+    }
 
     VCHECK_MATMUL(IMPLICATION(with_reduce,
                           one_of(op_d.reduce_desc.dims[n_idx_wei], 1,

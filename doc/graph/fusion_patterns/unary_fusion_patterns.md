@@ -40,3 +40,11 @@ oneDNN supports the following combinations of data types for src and dst:
 
 The definition of the data types and support status on different CPU and GPU
 platforms follow the general description in the [Data Types Guide](@ref dev_guide_data_types).
+
+## Implementation Notes
+
+Post-binary Add operations in the epilogue subgraph support in-place operations when
+the post-binary Add is the last operation in the epilogue subgraph and the `dst` output
+shape is identical and data type size is the same as the binary Add input.
+In case of an in-place operation, the original input data will be overwritten.
+Use in-place operations whenever possible for performance.

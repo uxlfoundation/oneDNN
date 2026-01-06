@@ -39,26 +39,41 @@ TEST(iface_grouped_test_t, TestGroupedMDCreation) {
 
 TEST(iface_grouped_test_t, TestGroupedMDInvalidArgs) {
     const int num_groups = 2;
-    const int K = 256;
-    int variable_dim_idx = 0;
+    const int M = 100, K = 256;
 
     // 3D is not supported
-    memory::dims dims_3d = {4, K, 10};
-    EXPECT_THROW(memory::desc::grouped(
-                         dims_3d, dt::f32, variable_dim_idx, num_groups),
+    EXPECT_THROW(memory::desc::grouped({4, K, 10}, dt::f32, 0, num_groups),
             dnnl::error);
 
-    // invalid group count
-    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, variable_dim_idx, 0),
-            dnnl::error);
-    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, variable_dim_idx, -1),
-            dnnl::error);
+    // Invalid group count: 0, negative
+    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, 0, 0), dnnl::error);
+    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, 0, -1), dnnl::error);
 
-    // invalid variable_dim_idx (only 0 is supported)
+    // Invalid variable_dim_idx: only 0 is supported for now
     EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, -1, num_groups),
             dnnl::error);
     EXPECT_THROW(
             memory::desc::grouped({4, K}, dt::f32, 1, num_groups), dnnl::error);
+
+    // Runtime dimensions not supported
+    EXPECT_THROW(memory::desc::grouped(
+                         {DNNL_RUNTIME_DIM_VAL, K}, dt::f32, 0, num_groups),
+            dnnl::error);
+    EXPECT_THROW(memory::desc::grouped(
+                         {M, DNNL_RUNTIME_DIM_VAL}, dt::f32, 0, num_groups),
+            dnnl::error);
+
+    // Zero dimensions not allowed
+    EXPECT_THROW(
+            memory::desc::grouped({0, K}, dt::f32, 0, num_groups), dnnl::error);
+    EXPECT_THROW(
+            memory::desc::grouped({M, 0}, dt::f32, 0, num_groups), dnnl::error);
+
+    // Valid offsets type: s32; invalid: f32
+    ASSERT_NO_THROW(
+            memory::desc::grouped({M, K}, dt::f32, 0, num_groups, dt::s32));
+    EXPECT_THROW(memory::desc::grouped({M, K}, dt::f32, 0, num_groups, dt::f32),
+            dnnl::error);
 }
 
 TEST(iface_grouped_test_t, TestGroupedMDQueries) {

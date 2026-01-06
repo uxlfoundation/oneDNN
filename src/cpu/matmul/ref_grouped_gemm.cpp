@@ -67,6 +67,7 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
     for (int group_id = 0; group_id < num_groups; ++group_id) {
         const dim_t M = offsets[group_id + 1] - offsets[group_id];
         if (M == 0) continue;
+        if (M < 0) return status::runtime_error;
 
         const dim_t src_base_idx = offsets[group_id] * K;
         const dim_t dst_base_idx = offsets[group_id] * N;

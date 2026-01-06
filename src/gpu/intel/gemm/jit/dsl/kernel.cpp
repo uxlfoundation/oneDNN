@@ -16,6 +16,7 @@
 
 #include "gemmstone/dsl/kernel.hpp"
 #include "dsl/ir/core.hpp"
+#include "dsl/ir/ir.hpp"
 #include "ngen_interface.hpp"
 
 GEMMSTONE_NAMESPACE_START
@@ -64,6 +65,18 @@ void kernel::iface_t::register_arg(
 
 const std::string &kernel::iface_t::arg_t::name() const {
     return var.as<ir::var_t>().name;
+}
+
+std::string kernel_t::str() const {
+    ostringstream_t oss;
+    const char *prefix = "";
+    oss << iface.kernel_name() << "(";
+    for (size_t i = 0; i < iface.nargs(); i++) {
+        oss << prefix << iface[i].as<ir::var_t>().name;
+        prefix = ", ";
+    }
+    oss << "):\n" << to_string(body, 1);
+    return oss.str();
 }
 
 } // namespace dsl

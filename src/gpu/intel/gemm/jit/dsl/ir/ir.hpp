@@ -578,6 +578,9 @@ stmt_t find_stmt_group(const object_t &root, const stmt_label_t &label);
 // Removes all statement groups matching the label.
 object_t remove_stmt_group(const object_t &root, stmt_label_t label);
 
+// Print object with indentation
+std::string to_string(const object_t &object, int indent);
+
 class scope_visitor_t : public ir_visitor_t {
 public:
     bool is_expr_defined(const expr_t &e) const {
@@ -765,7 +768,6 @@ public:
 private:
     expr_t expr_;
 };
-
 // Helper class to find constant bounds of integer expressions based on known
 // relations.
 class bound_finder_base_t {

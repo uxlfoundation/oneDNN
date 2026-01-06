@@ -35,7 +35,8 @@ namespace {
 // Helper class to print IR objects.
 class ir_printer_t : public ir_visitor_t {
 public:
-    ir_printer_t(std::ostream &out) : out_(out) {}
+    ir_printer_t(std::ostream &out, int indent = 0)
+        : out_(out), indent_(indent) {}
 
     void _visit(const assign_t &obj) override {
         print_indent();
@@ -378,6 +379,12 @@ public:
 
 } // namespace
 
+std::string to_string(const object_t &object, int indent) {
+    ostringstream_t oss;
+    ir_printer_t printer(oss, indent);
+    printer.visit(object);
+    return oss.str();
+}
 std::string object::impl_t::str() const {
     ostringstream_t oss;
     ir_printer_t printer(oss);

@@ -1145,6 +1145,7 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
         dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
         dnnl_data_type_t data_type, dnnl_dim_t nnz);
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
 /// Creates a memory descriptor for grouped encoding, that
 /// stores multiple independent sub-tensors.
 ///
@@ -1176,6 +1177,7 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_grouped_encoding(
         dnnl_memory_desc_t *memory_desc, int ndims, const dnnl_dims_t dims,
         dnnl_data_type_t data_type, int variable_dim_idx,
         dnnl_dim_t group_count, dnnl_data_type_t offsets_dt);
+#endif
 
 /// Creates a memory descriptor for a scalar value that resides on the host.
 ///

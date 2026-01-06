@@ -124,11 +124,18 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         if (!sc.has_default_values(DNNL_ARG_SRC)) {
             const int mask_src = sc.get_mask(DNNL_ARG_SRC);
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
             // Allow row-wise scales for grouped matmul
             VCHECK_MATMUL_UNIMPL(
                     utils::one_of(mask_src, 0, src_qmask_M, src_qmask_K,
                             src_qmask_M + src_qmask_K, full_tensor_mask),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
+#else
+            VCHECK_MATMUL_UNIMPL(
+                    utils::one_of(mask_src, 0, src_qmask_K,
+                            src_qmask_M + src_qmask_K, full_tensor_mask),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+#endif
 
             if (!sc.get(DNNL_ARG_SRC).has_default_groups()) {
                 if (mask_src & src_qmask_K)
@@ -415,8 +422,12 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
 
     const bool with_bias = op_d.bias_desc.ndims != 0;
     const bool with_reduce = op_d.reduce_desc.ndims != 0;
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
     const bool is_grouped_memory
             = memory_desc_wrapper(&op_d.src_desc).is_grouped_desc(); // todo
+#else
+    const bool is_grouped_memory = false;
+#endif
     const int ndims = dst_desc->ndims;
     VCHECK_MATMUL(ndims >= 2 && ndims <= DNNL_MAX_NDIMS, VERBOSE_BAD_NDIMS,
             "dst", ndims);
@@ -431,6 +442,7 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
             VERBOSE_BAD_NDIMS, "reduce", op_d.reduce_desc.ndims);
 
     // check: m, n, k
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
     // TODO: temporary hack to accommodate grouped memory layouts
     int m_idx = 0, m_idx_bias = 0, k_idx_src = 0, k_idx_wei = 0, n_idx_wei = 0,
         n_idx_dst = 0;
@@ -447,6 +459,11 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
         n_idx_wei = 2;
         n_idx_dst = 1;
     } else {
+#else
+    int m_idx = 0, m_idx_bias = 0, k_idx_src = 0, k_idx_wei = 0, n_idx_wei = 0,
+        n_idx_dst = 0;
+    {
+#endif
         m_idx = ndims - 2;
         m_idx_bias = m_idx;
         k_idx_src = m_idx + 1;

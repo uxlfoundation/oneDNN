@@ -209,6 +209,7 @@ status_t memory_desc_init_by_packed_encoding(memory_desc_t &memory_desc,
     return success;
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
 // Creates a memory descriptor for a grouped encoding
 //
 // The grouped encoding represents a tensor where one dimension has variable
@@ -296,6 +297,7 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
 
     return success;
 }
+#endif // DNNL_EXPERIMENTAL_GROUPED_GEMM
 
 status_t memory_desc_init_submemory(memory_desc_t &memory_desc,
         const memory_desc_t &parent_memory_desc, const dims_t dims,
@@ -755,6 +757,7 @@ status_t dnnl_memory_desc_create_with_packed_encoding(
     return success;
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
 status_t dnnl_memory_desc_create_with_grouped_encoding(
         memory_desc_t **memory_desc, int ndims, const dims_t dims,
         data_type_t data_type, int variable_dim_idx, dim_t num_groups,
@@ -768,6 +771,7 @@ status_t dnnl_memory_desc_create_with_grouped_encoding(
     (*memory_desc) = md.release();
     return success;
 }
+#endif // DNNL_EXPERIMENTAL_GROUPED_GEMM
 
 status_t dnnl_memory_desc_create_host_scalar(
         memory_desc_t **memory_desc, data_type_t data_type) {
@@ -864,12 +868,16 @@ status_t dnnl_memory_desc_query(
         case query::strides:
             if (is_blocked) {
                 *(const dims_t **)result = &md->format_desc.blocking.strides;
-            } else if (md->format_kind == format_kind::sparse
+            }
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+            else if (md->format_kind == format_kind::sparse
                     && md->format_desc.sparse_desc.encoding
                             == sparse_encoding::grouped) {
                 *(const dims_t **)result
                         = &md->format_desc.sparse_desc.grouped_desc.strides;
-            } else {
+            }
+#endif
+            else {
                 return status::invalid_arguments;
             }
             break;
@@ -926,7 +934,9 @@ status_t dnnl_memory_desc_query_v2(
                         *(int *)result = md->ndims + 1;
                         break;
                     case sparse_encoding::packed: *(int *)result = 3; break;
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
                     case sparse_encoding::grouped: *(int *)result = 2; break;
+#endif
                     default: assert(!"unknown encoding"); *(int *)result = 0;
                 }
             } else

@@ -73,8 +73,12 @@ struct memory_desc_wrapper : public c_compatible {
     }
     bool is_sparse_desc() const { return format_kind() == format_kind::sparse; }
     bool is_grouped_desc() const {
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
         return is_sparse_desc()
                 && sparse_desc().encoding == sparse_encoding::grouped;
+#else
+        return false;
+#endif
     }
 
     bool is_host_scalar_desc() const {
@@ -392,7 +396,9 @@ struct memory_desc_wrapper : public c_compatible {
                         return utils::div_up(nelems(true), CHAR_BIT);
                     default: assert(!"unknown index"); return 0;
                 }
-            } else if (sparse_desc().encoding == sparse_encoding::grouped) {
+            }
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+            else if (sparse_desc().encoding == sparse_encoding::grouped) {
                 // Grouped encoding has values buffer and offsets buffer
                 switch (index) {
                     case 0:
@@ -406,7 +412,9 @@ struct memory_desc_wrapper : public c_compatible {
                     }
                     default: assert(!"unknown index"); return 0;
                 }
-            } else {
+            }
+#endif
+            else {
                 assert(!"unknown sparse encoding");
                 return 0;
             }

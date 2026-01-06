@@ -55,6 +55,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
         auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
         auto src_sparsity = prb->sparse_options.get_sparsity(DNNL_ARG_SRC);
         if (src_encoding != dnnl_sparse_encoding_undef) {
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
             if (src_encoding == dnnl_grouped) {
                 // Grouped encoding: validate that weights are 3D
                 const auto &wei_dims = prb->weights_dims();
@@ -98,6 +99,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                 return dnn_mem_t::init_grouped_md(prb->ndims, actual_dims, dt,
                         variable_dim_idx, group_count, dnnl_s32);
             }
+#endif
             const dnnl_dim_t nnz
                     = std::max(prb->m * prb->k * (1.0f - src_sparsity), 1.0f);
             switch (src_encoding) {
@@ -144,10 +146,12 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
             // for grouped case weights are 3D and we use 'abc' tag
             int wei_ndims = prb->ndims;
             std::string weights_tag = prb->wtag;
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
             if (prb->sparse_options.get_group_count() != 0) {
                 wei_ndims = 3;
                 weights_tag = "abc";
             }
+#endif
 
             return dnn_mem_t::init_md(wei_ndims, weights_rt_dims.data(), dt,
                     weights_tag, prb->strides[STRIDES_WEI]);
@@ -160,6 +164,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                 = get_runtime_dims(prb->dst_dims, prb->dst_runtime_dim_mask());
 
         // Check if src is grouped - if so, dst must also be grouped
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
         auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
         if (src_encoding == dnnl_grouped) {
             const dnnl_dim_t group_count
@@ -194,6 +199,7 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
             return dnn_mem_t::init_grouped_md(prb->ndims, actual_dims, dt,
                     variable_dim_idx, group_count, dnnl_s32);
         }
+#endif
 
         return dnn_mem_t::init_md(prb->ndims, dst_rt_dims.data(), dt, prb->dtag,
                 prb->strides[STRIDES_DST]);
@@ -219,12 +225,15 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
                 prb->bia_dims(), prb->bias_runtime_dim_mask());
 
         // For grouped format, bias shape should be [num_experts, N]
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
         const int64_t group_count = prb->sparse_options.get_group_count();
         if (group_count > 0) {
             dims_t bias_dims_2d = {group_count, prb->n};
             bia_d = dnn_mem_t::init_md(2, bias_dims_2d.data(),
                     force_f32_dt ? dnnl_f32 : prb->bia_dt, "ab");
-        } else {
+        } else
+#endif
+        {
             bia_d = dnn_mem_t::init_md(prb->ndims, bia_dims.data(),
                     force_f32_dt ? dnnl_f32 : prb->bia_dt,
                     prb->dst_runtime_dim_mask() != 0 ? tag::abx : tag::any);
@@ -234,8 +243,10 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     attr_args_t attr_args;
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
     const bool is_grouped
             = prb->sparse_options.get_encoding(DNNL_ARG_SRC) == dnnl_grouped;
+#endif
 
     const auto overload_quant_mask = [&](policy_t policy, int arg) {
         // Overload PER_OC/PER_OCIC mask definition for batched cases.
@@ -243,6 +254,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
             int mask = 1 << (prb->ndims - 1);
             if (policy == policy_t::PER_OCIC) mask += 1 << (prb->ndims - 2);
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
             // For grouped GEMM with weight scales:
             // Only per_ocic with 128x1 groups supported
             // Weights are 3D: [num_experts, K, N]
@@ -256,6 +268,7 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
                     mask = -1; // Invalid mask to trigger error
                 }
             }
+#endif
 
             attr_args.prepare_quant(prb->attr, arg, mask);
         }
@@ -470,6 +483,7 @@ int fill_sparse_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
     return OK;
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
 int fill_grouped_data(
         data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt, res_t *res) {
 
@@ -537,6 +551,7 @@ int fill_grouped_data(
 
     return OK;
 }
+#endif
 
 int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
@@ -554,7 +569,10 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
             = sparse_encoding == dnnl_csr || sparse_encoding == dnnl_coo;
     is_sparse_packed = sparse_encoding == dnnl_packed;
     const bool is_grouped_dt = (query_md_num_handles(mem_dt.md_) > 1)
-            && (sparse_encoding == dnnl_grouped);
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+            && (sparse_encoding == dnnl_grouped)
+#endif
+            ;
     is_any_sparse = sparse_encoding != sparse_options_t::def_encoding;
 
     if (is_sparse_csr_coo) {
@@ -563,6 +581,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
     }
 
     if (is_grouped_dt) {
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
         // for grouped encoding: mem_dt has grouped format (2 handles),
         // mem_fp is plain
         // fill mem_dt with offsets/values, then copy values from buffer 0 to mem_fp
@@ -572,6 +591,9 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
             mem_fp.set_f32_elem(i, mem_dt.get_elem(i, 0));
         }
         return OK;
+#else
+        return FAIL;
+#endif
     }
 
     if (is_sparse_packed) {
@@ -1122,6 +1144,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         if (is_sparse && !is_sparse_wei_packed) {
             if (is_sparse_src) {
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
                 // For grouped encoding, create plain 2D memory for reference
                 if (src_encoding == dnnl_grouped) {
                     const auto &M_dims = prb->sparse_options.get_group_sizes();
@@ -1142,7 +1165,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                             dnn_mem_t(prb->ndims, actual_src_dims, dnnl_f32,
                                     tag::abx, ref_engine,
                                     /* prefill = */ false));
-                } else {
+                } else
+#endif
+                {
                     auto src_fp_d = create_md(prb, SRC);
                     ref_mem_map.emplace(exec_arg,
                             dnn_mem_t(src_fp_d, ref_engine,
@@ -1157,6 +1182,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             }
 
             // For grouped SRC with dense weights, create 3D reference weights with abc format
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
             if (exec_arg == DNNL_ARG_WEIGHTS && src_encoding == dnnl_grouped
                     && !is_sparse_wei) {
                 const auto group_count = prb->sparse_options.get_group_count();
@@ -1168,8 +1194,10 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                         dnn_mem_t(3, wei_dims_3d, dnnl_f32, std::string("abc"),
                                 ref_engine, /* prefill = */ false));
             }
+#endif
 
             if (is_sparse_dst) {
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
                 // For grouped encoding, create plain 2D memory for reference dst
                 if (dst_encoding == dnnl_grouped) {
                     const auto &M_dims = prb->sparse_options.get_group_sizes();
@@ -1190,7 +1218,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                             dnn_mem_t(prb->ndims, actual_dst_dims, dnnl_f32,
                                     tag::abx, ref_engine,
                                     /* prefill = */ false));
-                } else {
+                } else
+#endif
+                {
                     auto dst_fp_d = create_md(prb, DST);
                     ref_mem_map.emplace(exec_arg,
                             dnn_mem_t(dst_fp_d, ref_engine,
@@ -1199,6 +1229,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             }
         } else {
             if (exec_arg == DNNL_ARG_WEIGHTS) {
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
                 // For grouped SRC with 3D weights, use plain abc format (no transpose)
                 if (src_encoding == dnnl_grouped) {
                     const auto group_count
@@ -1211,7 +1242,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                             dnn_mem_t(3, wei_dims_3d, dnnl_f32,
                                     std::string("abc"), ref_engine,
                                     /* prefill = */ false));
-                } else {
+                } else
+#endif
+                {
                     // Switch the format tag from "ab" to "ba" but to handle batched
                     // cases, use strides instead.
                     const auto ndims = mem.ndims();
@@ -1366,6 +1399,7 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
     return check_kinds;
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
 void hack_grouped_scale_memory(const prb_t *prb, dnn_mem_map_t &mem_map) {
     auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
     if (src_encoding != dnnl_grouped) return;
@@ -1390,6 +1424,7 @@ void hack_grouped_scale_memory(const prb_t *prb, dnn_mem_map_t &mem_map) {
                 = dnn_mem_t(scales_md, get_test_engine(), /* prefill = */ true);
     }
 }
+#endif
 
 int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         const prb_t *prb, res_t *res) {
@@ -1400,8 +1435,10 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     dnn_mem_map_t mem_map, ref_mem_map;
     init_memory_args<prb_t>(mem_map, prb, prim, supported_exec_args(prb->dir));
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
     // TODO: need to modify scale memory dimensions for grouped GEMM before fill
     hack_grouped_scale_memory(prb, mem_map);
+#endif
 
     TIME_FILL(SAFE(init_ref_memory_args(
                            ref_mem_map, mem_map, prim, prb, res, prim_ref),
@@ -1409,6 +1446,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     args_t args(mem_map), ref_args(ref_mem_map);
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
     // For grouped encoding, initialize DST offsets
     // TODO: move somewhere else
     auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
@@ -1425,6 +1463,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
             dst_mem.set_elem(i + 1, (float)cumulative_offset, 1);
         }
     }
+#endif
 
     SAFE(run_execution(prim, args, res), WARN);
 

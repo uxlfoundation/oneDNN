@@ -101,7 +101,9 @@ const char *dnnl_sparse_encoding2str(dnnl_sparse_encoding_t v) {
     if (v == dnnl_csr) return "csr";
     if (v == dnnl_packed) return "packed";
     if (v == dnnl_coo) return "coo";
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
     if (v == dnnl_grouped) return "grouped";
+#endif
     assert(!"unknown sparse_encoding");
     return "unknown sparse_encoding";
 }

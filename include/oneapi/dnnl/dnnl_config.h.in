@@ -232,4 +232,6 @@
 #cmakedefine01 BUILD_GEMM_SSE41
 #cmakedefine01 BUILD_GEMM_AVX2
 #cmakedefine01 BUILD_GEMM_AVX512
+
+#cmakedefine01 DNNL_EXPERIMENTAL_GROUPED_GEMM
 #endif

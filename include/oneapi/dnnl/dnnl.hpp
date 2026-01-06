@@ -979,8 +979,10 @@ struct memory : public handle<dnnl_memory_t> {
         packed = dnnl_packed,
         /// Coordinate Sparse (COO) encoding.
         coo = dnnl_coo,
-        /// Grouped Encoding.
+    /// Grouped Encoding.
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
         grouped = dnnl_grouped,
+#endif
     };
 
     /// Memory format tag specification.
@@ -3002,6 +3004,7 @@ struct memory : public handle<dnnl_memory_t> {
             return desc {md};
         }
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
         /// Creates a memory descriptor for grouped encoding, that
         /// stores multiple independent sub-tensors.
         ///
@@ -3049,6 +3052,7 @@ struct memory : public handle<dnnl_memory_t> {
                         status, "could not create a grouped memory descriptor");
             return desc {md};
         }
+#endif
 
         /// Creates a memory descriptor for a scalar value that resides on the host.
         ///

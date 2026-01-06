@@ -692,6 +692,7 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
             str, option_name, help);
 }
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
 /**
  * Parse grouped encoding options.
  * Format: DIM_NAME:NUM_GROUPS:size0,size1,...,sizeN
@@ -793,6 +794,7 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
     sparse_options.assign({v});
     return true;
 }
+#endif
 
 bool parse_multi_tag(std::vector<std::vector<std::string>> &tag,
         const std::vector<std::vector<std::string>> &def_tag, const char *str,

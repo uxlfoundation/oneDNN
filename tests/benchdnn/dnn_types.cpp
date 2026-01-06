@@ -1038,6 +1038,7 @@ std::ostream &operator<<(
         const std::vector<int> args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
         bool has_grouped = false;
         for (const int arg : args) {
             if (sparse_options.get_encoding(arg) == dnnl_grouped) {
@@ -1067,7 +1068,9 @@ std::ostream &operator<<(
                 if (i != dims.size() - 1) s << ",";
             }
             s << " ";
-        } else {
+        } else
+#endif
+        {
             // Output old format for non-grouped encodings
             s << "--encoding=";
             for (int i = 0; i < (int)args.size(); i++) {

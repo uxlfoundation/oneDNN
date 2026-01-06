@@ -119,7 +119,12 @@ int verify_input(const settings_t &s, const settings_t &def) {
     // For grouped encoding, we need 3 dimensions (src: 2D, wei: 3D, dst: 2D)
     // For regular matmul, we need 2 dimensions (src: 2D, wei: 2D)
     const bool has_grouped
-            = s.sparse_options[0].get_encoding(DNNL_ARG_SRC) == dnnl_grouped;
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+            = s.sparse_options[0].get_encoding(DNNL_ARG_SRC) == dnnl_grouped
+#else
+            = false
+#endif
+            ;
     const int expected_n_vdims_inputs = has_grouped ? 3 : 2;
 
     if (s.prb_vdims.n_inputs() != expected_n_vdims_inputs) {
@@ -170,7 +175,9 @@ int bench(int argc, char **argv) {
                 || parse_tag(s.wtag, def.wtag, argv[0], "wtag")
                 || parse_tag(s.dtag, def.dtag, argv[0], "dtag")
                 || parse_encoding(s.sparse_options, argv[0], "encoding")
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
                 || parse_grouped(s.sparse_options, argv[0], "grouped")
+#endif
                 || parse_strides(s.strides, def.strides, argv[0], "strides")
                 || parse_dt(s.bia_dt, def.bia_dt, argv[0], "bia-dt")
                 // TODO: remove this later

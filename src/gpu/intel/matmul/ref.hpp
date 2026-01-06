@@ -298,6 +298,7 @@ struct ref_t : public primitive_t {
         def_data_type(kernel_ctx, pd()->dst_dt_, "DST");
         def_data_type(kernel_ctx, pd()->bia_dt_, "BIA");
         data_type_t acc_type = pd()->desc()->accum_data_type;
+        data_type_t seed_type = pd()->attr()->dropout_.seed_dt_;
         switch (pd()->attr()->acc_mode_) {
             case accumulation_mode::strict:
             case accumulation_mode::relaxed:
@@ -308,6 +309,7 @@ struct ref_t : public primitive_t {
             default: break;
         }
         def_data_type(kernel_ctx, acc_type, "ACC");
+        def_data_type(kernel_ctx, seed_type, "SEED");
         def_data_type(kernel_ctx,
                 pd()->attr()->scales_.get_data_type(DNNL_ARG_WEIGHTS),
                 "WEI_SCALES");

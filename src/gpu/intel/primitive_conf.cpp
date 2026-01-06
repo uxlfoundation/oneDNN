@@ -280,6 +280,7 @@ const char *get_type_name(data_type_t dt, bool with_punning) {
         case data_type::s4: return with_punning ? "uchar" : "s4";
         case data_type::u4: return with_punning ? "uchar" : "u4";
         case data_type::s32: return "int";
+        case data_type::s64: return "long";
         default:
             gpu_error_not_expected()
                     << "Unexpected data type " << dnnl_dt2str(dt);
@@ -351,6 +352,10 @@ void def_data_type(compute::kernel_ctx_t &kernel_ctx, data_type_t dt,
         case data_type::s32:
             kernel_ctx.add_option(
                     utils::format("-D%s_DATA_T=int -D%s_DT_S32", str, str));
+            break;
+        case data_type::s64:
+            kernel_ctx.add_option(
+                    utils::format("-D%s_DATA_T=int -D%s_DT_S64", str, str));
             break;
         default:
             gpu_error_not_expected()

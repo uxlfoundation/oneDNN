@@ -92,8 +92,8 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #if USE_HOST_SCALARS
         long dropout_seed, long dropout_offset, float dropout_p
 #else
-        __global long *dropout_seed_buf, __global long *dropout_offset_buf,
-        __global float *dropout_p_buf
+        __global SEED_DATA_T *dropout_seed_buf,
+        __global long *dropout_offset_buf, __global float *dropout_p_buf
 #endif
 #endif
 #if WITH_SROUND
@@ -123,7 +123,7 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 
 #if WITH_DROPOUT
 #if !USE_HOST_SCALARS
-    long dropout_seed = dropout_seed_buf[0];
+    SEED_DATA_T dropout_seed = dropout_seed_buf[0];
     long dropout_offset = USE_OFFSET ? dropout_offset_buf[0] : 0;
     float dropout_p = dropout_p_buf[0];
 #endif

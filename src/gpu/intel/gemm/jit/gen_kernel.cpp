@@ -101,6 +101,8 @@ static gemmstone::Scalar stringToScalar(std::string val) {
 #endif
 
 status_t gen_desc_t::finalize(const char *tags) {
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_desc_t::finalize(const char *tags) ++++++>");
+
     // Update problem alignments to match catalog entry.
     if (!isPacked(problem_.A.layout)
             && problem_.Ta_ext.paddedSize() >= problem_.Ta.paddedSize()) {
@@ -336,6 +338,7 @@ status_t gen_desc_t::finalize(const char *tags) {
     if (strategy_.kInterleave) aux_params_.wgK = strategy_.wg[LoopK];
     update_driver_info();
 
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_desc_t::finalize(const char *tags) <++++++ success");
     return status::success;
 }
 
@@ -436,6 +439,8 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     using namespace ngen;
     using namespace kcatalog;
 
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::select_kernel ---->");
+
     arch_ = arch;
     hw_ = convert_dnnl_arch_to_ngen(arch);
     stepping_ = stepping;
@@ -455,6 +460,9 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     align_c = nstl::max(align_c, int(c_type_size));
 
     // Set up problem structure.
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : !!!!!! main setup problem_ structure !!!!!");
+
     problem_.Ta = problem_.Ta_ext = convert_dnnl_to_kernel_type(a_type);
     problem_.Tb = problem_.Tb_ext = convert_dnnl_to_kernel_type(b_type);
     problem_.Tc = convert_dnnl_to_kernel_type(acc_type);
@@ -487,12 +495,15 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.batch = BatchMode::Strided;
         problem_.batchDims = batch_dims;
     }
+// @@@ !!!
     if (a_quant.zp_ndims >= 0 || a_quant.zp_hostscalar)
         problem_.aOffset = ABOffset::Calc;
     if (b_quant.zp_ndims >= 0 || b_quant.zp_hostscalar)
         problem_.bOffset = ABOffset::Calc;
     problem_.aoPtrDims = a_quant.zp_hostscalar ? -1 : a_quant.zp_ndims;
     problem_.boPtrDims = b_quant.zp_hostscalar ? -1 : b_quant.zp_ndims;
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : @@@@ setup problem_.aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims,problem_.boPtrDims);
+// @@@ !!!
     problem_.AO.layout = MatrixLayout::N;
     problem_.BO.layout
             = (problem_.bOffset2D()) ? MatrixLayout::N : MatrixLayout::T;
@@ -604,7 +615,12 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         if (problem_.bqGroupK == 0) problem_.bqGroupK = problem_.aqGroupK;
     }
 
+    VDEBUGINFO(4, primitive, gen_kernel, "MY: ---- : @@@@ problem_ = %s", problem_.toString().c_str());
+
     // Select a kernel from the catalog.
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : Select a kernel from the catalog");
+
     std::vector<MatchParams> match_params;
     MatchParams base(hw_, has_systolic, is_integrated, problem_);
 
@@ -754,11 +770,15 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     tags_ = match_params[0].tags;
     Ts_ = problem_.Ts;
     beta_ = problem_.beta;
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::select_kernel <---- return select(catalog()...)");
+
     return select(catalog(), static_cast<int>(match_params.size()),
             match_params.data(), eval_params_, aux_params_, &observer);
 }
 
 status_t gen_nocopy_desc_t::finalize() {
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::finalize() ----> final update problem_");
     // Update A/B/C types from entry.
     Type Ta_new, Ta_ext_new, Tb_new, Tb_ext_new, Tc_new;
     parsePrecisions(entry_->selector.precisions[0], Ta_ext_new, Ta_new);
@@ -796,6 +816,7 @@ status_t gen_nocopy_desc_t::finalize() {
     if (block_k > 0 && k_ > block_k && eval_params_.beta != 1.0f)
         problem_.beta = Scalar();
     evaluate(*entry_, eval_params_, aux_params_);
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: gen_nocopy_desc_t::finalize() <---- return gen_desc_t::finalize(tags_.c_str())");
     return gen_desc_t::finalize(tags_.c_str());
 }
 
@@ -968,6 +989,9 @@ void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
 }
 
 void gen_kernel_t::init_interface() {
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: init_interface >>>>>>>>>>");
+
     using namespace ngen;
 
     auto &problem = *desc()->problem();
@@ -1001,14 +1025,18 @@ void gen_kernel_t::init_interface() {
     interface_.newArgument("k", DataType::d);
     interface_.newArgument("alpha_real", s_type_ngen);
     interface_.newArgument("beta_real", s_type_ngen);
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument beta");
+
     if (problem.aoPtrDims >= 0)
         interface_.newArgument(
                 "ao_ptr", ExternalArgumentType::GlobalPtr, ao_access);
     if (problem.boPtrDims >= 0)
         interface_.newArgument(
                 "bo_ptr", ExternalArgumentType::GlobalPtr, bo_access);
+    // @@@ !!!
     if (problem.aOffsetHostScalar()) interface_.newArgument("ao", DataType::w);
     if (problem.bOffsetHostScalar()) interface_.newArgument("bo", DataType::w);
+    // @@@ !!!
     if (problem.aScale2D())
         interface_.newArgument(
                 "a_scale_ptr", ExternalArgumentType::GlobalPtr, as_access);
@@ -1076,10 +1104,12 @@ void gen_kernel_t::init_interface() {
             if (problem.hasAOffsetPtr()) {
                 interface_.newArgument(
                         "offset_stride_A" + std::to_string(i), DataType::d);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             }
             if (problem.hasBOffsetPtr()) {
                 interface_.newArgument(
                         "offset_stride_B" + std::to_string(i), DataType::d);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             }
             if (problem.needsAGroupSums()) {
                 interface_.newArgument(
@@ -1103,12 +1133,15 @@ void gen_kernel_t::init_interface() {
         for (int i = 0; i < problem.batchDims - 1; i++) {
             interface_.newArgument(
                     "batch_size" + std::to_string(i), DataType::ud);
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             if (enable_generator_dsl()) {
                 interface_.newArgument(
                         "batch_magic" + std::to_string(i), DataType::uq);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             } else {
                 interface_.newArgument(
                         "recip_batch_size" + std::to_string(i), DataType::ud);
+                VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> interface_.newArgument");
             }
         }
     }
@@ -1147,6 +1180,9 @@ void gen_kernel_t::init_interface() {
 
     if (desc()->hw_ >= HW::XeHPG) interface_.allowArgumentRearrangement(false);
     interface_.externalName(kernel_name());
+
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: init_interface <<<<<<<<<");
+
 }
 
 dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,

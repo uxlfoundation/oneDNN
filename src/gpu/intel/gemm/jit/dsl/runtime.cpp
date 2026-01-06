@@ -90,24 +90,26 @@ dsl::hw_t get_hardware(cl_device_id device, cl_context context) {
 
     cl_int err;
     cl_uint eu_count = 0;
-    err = clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(eu_count),
-            &eu_count, nullptr);
+    err = ngen::dynamic::clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS,
+            sizeof(eu_count), &eu_count, nullptr);
     if (err) return {};
 
     size_t max_wg_size;
-    err = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
+    err = ngen::dynamic::clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
             sizeof(max_wg_size), &max_wg_size, nullptr);
     if (err) return {};
 
     cl_ulong l3_cache_size;
-    err = clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_CACHE_SIZE,
-            sizeof(l3_cache_size), &l3_cache_size, nullptr);
+    err = ngen::dynamic::clGetDeviceInfo(device,
+            CL_DEVICE_GLOBAL_MEM_CACHE_SIZE, sizeof(l3_cache_size),
+            &l3_cache_size, nullptr);
     if (err) return {};
 
     dsl::hw::attr_t attr;
     cl_bitfield attrs_cl;
-    err = clGetDeviceInfo(device, CL_DEVICE_FEATURE_CAPABILITIES_INTEL,
-            sizeof(cl_bitfield), &attrs_cl, nullptr);
+    err = ngen::dynamic::clGetDeviceInfo(device,
+            CL_DEVICE_FEATURE_CAPABILITIES_INTEL, sizeof(cl_bitfield),
+            &attrs_cl, nullptr);
     if (err) return {};
 
     if (ngen::getCore(product.family) >= ngen::HW::XeHPC)

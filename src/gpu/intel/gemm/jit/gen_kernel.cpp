@@ -22,12 +22,12 @@
 #include "common/utils.hpp"
 #include "gemmstone/../../generator_dsl/builder.hpp"
 #include "gemmstone/../../generator_dsl/kernel_desc.hpp"
+#include "gemmstone/dsl/dsl.hpp"
 #include "gemmstone/generator.hpp"
 #include "gemmstone/strategy_parser.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
 #include "gpu/intel/gemm/jit/generator/pieces/compute_utils.hpp"
-#include "gpu/intel/jit/dsl/dsl.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
@@ -487,10 +487,12 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.batch = BatchMode::Strided;
         problem_.batchDims = batch_dims;
     }
-    if (a_quant.zp_ndims >= 0) problem_.aOffset = ABOffset::Calc;
-    if (b_quant.zp_ndims >= 0) problem_.bOffset = ABOffset::Calc;
-    problem_.aoPtrDims = a_quant.zp_ndims;
-    problem_.boPtrDims = b_quant.zp_ndims;
+    if (a_quant.zp_ndims >= 0 || a_quant.zp_hostscalar)
+        problem_.aOffset = ABOffset::Calc;
+    if (b_quant.zp_ndims >= 0 || b_quant.zp_hostscalar)
+        problem_.bOffset = ABOffset::Calc;
+    problem_.aoPtrDims = a_quant.zp_hostscalar ? -1 : a_quant.zp_ndims;
+    problem_.boPtrDims = b_quant.zp_hostscalar ? -1 : b_quant.zp_ndims;
     problem_.AO.layout = MatrixLayout::N;
     problem_.BO.layout
             = (problem_.bOffset2D()) ? MatrixLayout::N : MatrixLayout::T;
@@ -1005,6 +1007,8 @@ void gen_kernel_t::init_interface() {
     if (problem.boPtrDims >= 0)
         interface_.newArgument(
                 "bo_ptr", ExternalArgumentType::GlobalPtr, bo_access);
+    if (problem.aOffsetHostScalar()) interface_.newArgument("ao", DataType::w);
+    if (problem.bOffsetHostScalar()) interface_.newArgument("bo", DataType::w);
     if (problem.aScale2D())
         interface_.newArgument(
                 "a_scale_ptr", ExternalArgumentType::GlobalPtr, as_access);

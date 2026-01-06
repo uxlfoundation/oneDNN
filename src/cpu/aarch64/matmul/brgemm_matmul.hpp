@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2025 Arm Ltd. and affiliates
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
@@ -53,13 +54,15 @@ struct brgemm_matmul_t : public primitive_t {
         status_t init(engine_t *engine);
         int get_brg_kernel_idx(bool is_bs_tail, bool do_initialization,
                 int m_ker_idx, bool is_N_tail, bool is_K_tail) const;
-        const brgemm_t &get_brg_desc(int idx) const { return brg_descs_[idx]; }
+        const brgemm_desc_t &get_brg_desc(int idx) const {
+            return brg_descs_[idx];
+        }
         const brgemm_matmul_conf_t &get_brgemm_matmul_conf() const {
             return bgmmc_;
         }
 
     private:
-        brgemm_t brg_descs_[max_num_brg_kernels_matmul];
+        brgemm_desc_t brg_descs_[max_num_brg_kernels_matmul];
         brgemm_matmul_conf_t bgmmc_;
     };
 

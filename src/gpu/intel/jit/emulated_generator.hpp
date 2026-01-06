@@ -1,18 +1,18 @@
 /*******************************************************************************
- * Copyright 2024 Intel Corporation
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *******************************************************************************/
+* Copyright 2024 Intel Corporation
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
 
 #ifndef GPU_INTEL_JIT_EMULATED_GENERATOR_HPP
 #define GPU_INTEL_JIT_EMULATED_GENERATOR_HPP
@@ -21,10 +21,10 @@
 #include "ngen.hpp"
 
 #include "gpu/intel/compute/device_info.hpp"
-#include "gpu/intel/jit/codegen/register_allocator.hpp"
 #include "gpu/intel/jit/generator.hpp"
 #include "ngen_core.hpp"
 #include "ngen_emulation.hpp"
+#include "ngen_register_allocator.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -47,13 +47,13 @@ public:
         , emu_strategy(hw, device_info.stepping_id()) {}
 
 protected:
-    reg_allocator_t ra_;
+    ngen::RegisterAllocator ra_;
 
 private:
     ngen::EmulationStrategy emu_strategy;
 
 protected:
-    reg_allocator_t &ra() { return ra_; }
+    ngen::RegisterAllocator &ra() { return ra_; }
 
     void emov(const ngen::InstructionModifier &mod, const ngen::RegData &dst,
             const ngen::RegData &src0);
@@ -116,7 +116,7 @@ private:
 
 // clang-format off
 #define FORWARD_EMULATION(hw) \
-reg_allocator_t &ra() { return emulated_generator_t<hw>::ra(); } \
+ngen::RegisterAllocator &ra() { return emulated_generator_t<hw>::ra(); }             \
 void emov(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0) { emulated_generator_t<hw>::emov(mod, dst, src0); } \
 void emov(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::Immediate &src0) { emulated_generator_t<hw>::emov(mod, dst, src0); } \
 void emul(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const ngen::RegData &src1) { emulated_generator_t<hw>::emul(mod, dst, src0, src1); } \

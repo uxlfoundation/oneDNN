@@ -50,11 +50,6 @@ struct sdpa_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override;
 #endif
 
-    status_t reset_engine(const dnnl::engine &p_engine) override {
-        UNUSED(p_engine);
-        return status::success;
-    }
-
 private:
     std::shared_ptr<primitive_desc_t> sdpa_pd_;
     std::shared_ptr<primitive_t> sdpa_prim_;

@@ -284,9 +284,14 @@ void parseStrategy(const char *str, HW hw, const GEMMProblem &problem, GEMMStrat
         else if (mod.substr(0, 3) == "grf") {
             mod.erase(0,3);
             strategy.GRFs = std::stoi(mod);
-        } else if (mod.substr(0, 3) == "dot") {
+        } else if (mod == "dsl")
+            strategy.isDSLGenerator = true;
+         else if (mod.substr(0, 3) == "dot") {
             mod.erase(0,3);
             strategy.dotVL = mod.empty() ? 1 : std::stoi(mod);
+        } else if (mod.substr(0, 3) == "cti") {
+            mod.erase(0,3);
+            strategy.cInterleaveChunk = mod.empty() ? 64 / problem.Tc_ext : std::stoi(mod);
         } else if (mod == "sys")
             strategy.systolic = true;
         else if (mod == "dw")
@@ -848,6 +853,8 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
             s << " dw";
     }
 
+    if (strategy.isDSLGenerator) s << " dsl";
+
     if (strategy.dotVL) {
         s << " dot";
         if (strategy.dotVL > 1) s << strategy.dotVL;
@@ -911,6 +918,8 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     if (!strategy.jointSplit)           s << " njs";
     if (strategy.mSplitThresh)          s << " ms" << strategy.mSplitThresh;
     if (strategy.nSplitThresh)          s << " ns" << strategy.nSplitThresh;
+
+    if (strategy.cInterleaveChunk > 1)  s << " cti" << strategy.cInterleaveChunk;
 
     if (strategy.kParallel)             s << " kb";
     if (strategy.kParallelVariable)     s << " kv";

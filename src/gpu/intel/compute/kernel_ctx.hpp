@@ -85,6 +85,13 @@ public:
     // operations when native 64-bit operations are unsupported.
     void use_int32_offset(bool value) { use_int32_offset_ = value; }
 
+    void require_stateless_addressing(bool value) {
+        require_stateless_addressing_ = value;
+    }
+    bool require_stateless_addressing() const {
+        return require_stateless_addressing_;
+    }
+
     void define_int(const char *variable, int64_t value) {
         set_macro(variable, value, int_var_map_);
     }
@@ -157,8 +164,9 @@ public:
     bool has_custom_headers() const { return !custom_headers_.empty(); }
 
 private:
-    void register_buffer_size(dim_t nelems) {
-        if (nelems > INT_MAX) use_int32_offset(false);
+    void register_buffer_size(dim_t nelems, size_t size) {
+        if (nelems > INT32_MAX) use_int32_offset(false);
+        if (size > UINT32_MAX) require_stateless_addressing(true);
     }
 
     void set_default_options(const primitive_attr_t *attr) {
@@ -208,6 +216,7 @@ private:
     std::set<std::string> option_set_;
     std::unordered_map<std::string, std::string> custom_headers_;
     bool use_int32_offset_ = true;
+    bool require_stateless_addressing_ = false;
 };
 
 } // namespace compute

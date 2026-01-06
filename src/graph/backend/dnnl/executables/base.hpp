@@ -24,7 +24,6 @@
 #include <unordered_map>
 
 #include "common/primitive.hpp"
-#include "common/primitive_desc_iface.hpp"
 
 #include "oneapi/dnnl/dnnl.hpp"
 #ifdef DNNL_WITH_SYCL
@@ -94,7 +93,9 @@ void get_arg_indices_for_post_ops(
 arg_indices_t get_arg_indices_for_siso_op(const op_t *op);
 arg_indices_t get_arg_indices_for_miso_op(const op_t *op);
 arg_indices_t get_arg_indices_for_conv_and_matmul(const op_t *op);
-arg_indices_t get_arg_indices_for_lnorm_and_gnorm(const op_t *op);
+// Normalization ops, including layer_norm, and group_norm
+// rms_norm is lowered to layer_norm, so it is also handled here.
+arg_indices_t get_arg_indices_for_norm(const op_t *op);
 
 // A dummy arg indices getter which is only used for those internal ops that are
 // only for fusion purpose, like dnnl_add_zps and dnnl_sub_zps. The dummy getter
@@ -111,21 +112,11 @@ inline arg_indices_t dummy_arg_indices_getter(const op_t *op) {
 #define DECLARE_ARG_INDICES_GETTER \
     static arg_indices_t get_arg_indices(const op_t *op);
 
-#define DECLARE_RESET_ENGINE(primitive) \
-    status_t reset_engine(const dnnl::engine &p_engine) override { \
-        const auto desc_t = prim_.get_primitive_desc()->impl(); \
-        dnnl_primitive_desc new_pd_t(desc_t, p_engine.get()); \
-        primitive::primitive_desc new_pd(&new_pd_t); \
-        prim_ = primitive(new_pd); \
-        return status::success; \
-    } // namespace dnnl_impl
-
 struct op_executable_t {
     virtual ~op_executable_t() = default;
     virtual void execute(const stream &stream,
             const std::unordered_map<int, memory> &args) const
             = 0;
-    virtual status_t reset_engine(const dnnl::engine &engine) = 0;
 #ifdef DNNL_WITH_SYCL
     virtual ::sycl::event execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
@@ -241,17 +232,13 @@ struct dummy_impl_t : public op_executable_t {
         // Otherwise, gather all dependencies.
         auto q = dnnl::ocl_interop::get_command_queue(stream);
         cl_event e;
-        auto err = clEnqueueMarkerWithWaitList(
+        auto err = xpu::ocl::clEnqueueMarkerWithWaitList(
                 q, static_cast<cl_uint>(deps.size()), deps.data(), &e);
         assert(err == CL_SUCCESS);
         MAYBE_UNUSED(err);
         return e;
     }
 #endif
-    status_t reset_engine(const dnnl::engine &p_engine) override {
-        UNUSED(p_engine);
-        return status::success;
-    }
 };
 
 } // namespace dnnl_impl

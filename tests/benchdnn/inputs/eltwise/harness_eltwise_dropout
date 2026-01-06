@@ -1,0 +1,11 @@
+--reset
+
+--dir=FWD_D
+--dt=f32,bf16
+--tag=abx
+
+--attr-dropout=0.5:12345678,0.75:12345678:undef,0.25:843921:any:1238976:true
+
+--alpha=0 --beta=0
+--alg=exp,exp_dst
+--batch=shapes_ci

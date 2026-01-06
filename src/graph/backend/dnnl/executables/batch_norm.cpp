@@ -306,7 +306,7 @@ cl_event bn_folding_t::execute_ocl(const stream &stream,
     cl_event e;
     xpu::ocl::usm::memcpy(stream.get(), epsilon_mem.get_data_handle(),
             &desc_.epsilon_, epsilon_mem.get_desc().get_size(), 0, nullptr, &e);
-    clWaitForEvents(1, &e);
+    xpu::ocl::clWaitForEvents(1, &e);
 
     auto ocl_deps = dnnl::ocl_interop::execute(add_prim_, stream,
             {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
@@ -336,7 +336,7 @@ cl_event bn_folding_t::execute_ocl(const stream &stream,
                 graph::utils::prod(variance.get_desc().get_dims()), 0.0f);
         xpu::ocl::usm::memcpy(stream.get(), valid_bias.get_data_handle(),
                 zero.data(), valid_bias.get_desc().get_size(), 0, nullptr, &e);
-        clWaitForEvents(1, &e);
+        xpu::ocl::clWaitForEvents(1, &e);
 
         auto ocl_deps3 = dnnl::ocl_interop::execute(sub_prim_, stream,
                 {{DNNL_ARG_SRC_0, valid_bias}, {DNNL_ARG_SRC_1, mean},
@@ -536,24 +536,6 @@ arg_indices_t bn_folding_t::get_arg_indices(const op_t *op) {
             {indices_t::type_t::output, out_idx++}}); // scratchpad
 
     return args;
-}
-
-status_t bn_folding_t::reset_engine(const dnnl::engine &p_engine) {
-    const auto add_desc_t = add_prim_.get_primitive_desc()->impl();
-    dnnl_primitive_desc new_add_pd_t(add_desc_t, p_engine.get());
-    dnnl::binary::primitive_desc new_add_pd(&new_add_pd_t);
-    add_prim_ = dnnl::binary(new_add_pd);
-
-    const auto mul_desc_t = mul_prim_.get_primitive_desc()->impl();
-    dnnl_primitive_desc new_mul_pd_t(mul_desc_t, p_engine.get());
-    dnnl::binary::primitive_desc new_mul_pd(&new_mul_pd_t);
-    mul_prim_ = dnnl::binary(new_mul_pd);
-
-    const auto sub_desc_t = sub_prim_.get_primitive_desc()->impl();
-    dnnl_primitive_desc new_sub_pd_t(sub_desc_t, p_engine.get());
-    dnnl::binary::primitive_desc new_sub_pd(&new_sub_pd_t);
-    sub_prim_ = dnnl::binary(new_sub_pd);
-    return status::success;
 }
 
 batchnorm_executable_t::desc_t batchnorm_executable_t::create_desc(

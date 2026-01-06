@@ -115,6 +115,9 @@ struct ref_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_MATMUL(post_ops_with_binary_ok(attr(), *dst_md(), 6),
                     VERBOSE_UNSUPPORTED_POSTOP);
+            VDISPATCH_MATMUL(IMPLICATION(!attr_.dropout_.has_default_values(),
+                                     attr_.dropout_.seed_dt_ == data_type::s32),
+                    VERBOSE_UNSUPPORTED_DROPOUT);
             const memory_desc_wrapper dropout_md(attr_.dropout_.dropout_desc_);
             VDISPATCH_MATMUL(
                     IMPLICATION(!attr_.dropout_.has_default_values(),
@@ -253,6 +256,7 @@ struct ref_t : public primitive_t {
         kernel_ctx.set_data_type(pd()->dst_dt_);
         CHECK(def_attr_info(kernel_ctx, pd()->attr_info_,
                 pd()->attr()->post_ops_, *pd()->dst_md()));
+        kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
 
         if (!pd()->attr()->precomputed_reductions_.has_default_values(
                     DNNL_ARG_SRC))

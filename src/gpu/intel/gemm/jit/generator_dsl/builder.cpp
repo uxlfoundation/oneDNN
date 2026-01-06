@@ -14,24 +14,22 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "dsl/ir/pass/pass.hpp"
 #include "dsl/ir/pass/trace.hpp"
 #include "dsl/utils/logging.hpp"
+#include "dsl/utils/utils.hpp"
 #include "gemmstone/config.hpp"
+#include "gemmstone/dsl/dsl.hpp"
 #include "gemmstone/strategy.hpp"
 #include "generator_dsl/kernel_desc.hpp"
-#include "gpu/intel/jit/dsl/dsl.hpp"
-#include "gpu/intel/jit/pass/pass.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
-#include "gpu/intel/utils.hpp"
 
 GEMMSTONE_NAMESPACE_START
 
-namespace dnnl_dsl = dnnl::impl::gpu::intel::jit::dsl;
-namespace dnnl_ir = dnnl::impl::gpu::intel::jit;
-using namespace dnnl_dsl;
+using namespace dsl;
 
-inline dsl::type_t into_ir(Type t, int elems = 1) {
-    using namespace dsl;
+inline type_t into_ir(Type t, int elems = 1) {
+    using namespace ir;
     switch (t) {
         case Type::invalid: return type_t::undef();
 
@@ -77,7 +75,7 @@ struct transform_t {
         , cache_hint(to_ir(cache_hint))
         , dims(std::move(dims)) {}
 
-    layout_t get_layout(const tile_t &sizes, dsl::type_t type) const {
+    layout_t get_layout(const tile_t &sizes, type_t type) const {
 
         auto col_var = dims[0];
         auto col = sizes[dims[0]];
@@ -228,9 +226,9 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
         const std::vector<idx_t> &dims) {
     for (size_t i = 0; i < ops.len(); i++) {
         if (ops[i].is_eltwise()) {
-            gpu_assert(false) << "Unimplemeted";
+            stub();
         } else if (ops[i].is_sum()) {
-            gpu_assert(false) << "Unimplemeted";
+            stub();
         } else if (ops[i].is_binary()) {
             auto &e = ops[i].as_binary();
             std::string i_s = std::to_string(i);
@@ -256,9 +254,8 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
             }
 
             auto src_g = [&]() -> global_tensor_t {
-                expr_t src_g_offset
-                        = dsl::ir::simplify(arg("offset_binary" + i_s)
-                                + e.src1_desc.get_offset(idxs, strides));
+                expr_t src_g_offset = ir::simplify(arg("offset_binary" + i_s)
+                        + e.src1_desc.get_offset(idxs, strides));
 
                 idx_map_t<expr_t> g_strides;
                 idx_map_t<expr_t> g_sizes;
@@ -290,13 +287,13 @@ void apply_post_ops(const dnnl::impl::gpu::intel::gpu_post_ops_t &ops,
 
             switch (e.alg) {
                 case dnnl::impl::alg_kind::binary_add:
-                    binary(dsl::ir::op_kind_t::_add, C, C, src);
+                    binary(ir::op_kind_t::_add, C, C, src);
                     break;
-                default: gpu_assert(false) << "Unimplemented";
+                default: stub();
             }
 
         } else {
-            gpu_assert(false) << "Unimplemented";
+            stub();
         }
     }
 }
@@ -325,12 +322,12 @@ struct basic_iterator_t : kloop_iterator_t {
         , C_store_ {C}
 
     {
-        dnnl_dsl::assume(m_idx_ % C.tile[m_var] == 0);
-        dnnl_dsl::assume(n_idx_ % C.tile[n_var] == 0);
+        assume(m_idx_ % C.tile[m_var] == 0);
+        assume(n_idx_ % C.tile[n_var] == 0);
 
-        dnnl_dsl::assume(m_idx_ >= 0);
-        dnnl_dsl::assume(n_idx_ >= 0);
-        dnnl_dsl::assume(k_idx_ >= 0);
+        assume(m_idx_ >= 0);
+        assume(n_idx_ >= 0);
+        assume(k_idx_ >= 0);
     }
 
     const global_tensor_t &A_prefetch() const override { return A_prefetch_; }
@@ -399,40 +396,39 @@ struct generator_dsl_t {
     generator_dsl_t(const generator_dsl_desc_t &desc)
         : problem(desc.problem), strategy(desc.strategy) {}
 
-    dsl::kernel_t build(
-            dsl::kernel::iface_t iface, dsl::ir::ir_context_t &ctx) {
+    kernel_t build(kernel::iface_t iface, ir::ir_context_t &ctx) {
         if (strategy.kParallel || strategy.kParallelLocal) {
-            gpu_warning() << "kParallel support is unimplemented";
+            dsl_warning() << "kParallel support is unimplemented";
             return {};
         }
         if (strategy.persistentLoop()) {
-            gpu_warning() << "persistentLoop support is unimplemented";
+            dsl_warning() << "persistentLoop support is unimplemented";
             return {};
         }
         if (strategy.slmA || strategy.slmB) {
-            gpu_warning() << "slm copy support is unimplemented, disabling "
+            dsl_warning() << "slm copy support is unimplemented, disabling "
                              "slm copy";
         }
 
         if (strategy.wgPadFactor > 1) {
-            gpu_warning() << "work group padding is unimplemented";
+            dsl_warning() << "work group padding is unimplemented";
             return {};
         }
 
         if (strategy.cWalkOrder != WalkOrder::HW2D) {
-            gpu_warning() << "Unsupported walk order";
+            dsl_warning() << "Unsupported walk order";
             return {};
         }
 
         if (problem.Ta != problem.Ta_ext || problem.Tb != problem.Tb_ext
                 || problem.Tc != problem.Tc_ext) {
-            gpu_warning() << "Type conversion support is unimplemented";
+            dsl_warning() << "Type conversion support is unimplemented";
             return {};
         }
 
         if (problem.batch != BatchMode::None
                 && problem.batch != BatchMode::Strided) {
-            gpu_warning() << "Batch mode is unimplemented";
+            dsl_warning() << "Batch mode is unimplemented";
             return {};
         }
 
@@ -552,19 +548,17 @@ struct generator_dsl_t {
                 kloop_it.B_load(), B_load_transform, strategy.B_copies);
 
         auto prefetchA = strategy.prefetchA
-                ? dnnl::impl::utils::rnd_dn(
-                          strategy.prefetchA, strategy.ka_prefetch)
+                ? round_down(strategy.prefetchA, strategy.ka_prefetch)
                 : 0;
         if (prefetchA != strategy.prefetchA)
-            gpu_warning() << "Unimplemented partial A tile prefetch, modifying "
+            dsl_warning() << "Unimplemented partial A tile prefetch, modifying "
                              "prefetch distance "
                           << strategy.prefetchA << " -> " << prefetchA;
         auto prefetchB = strategy.prefetchB
-                ? dnnl::impl::utils::rnd_dn(
-                          strategy.prefetchB, strategy.kb_prefetch)
+                ? round_down(strategy.prefetchB, strategy.kb_prefetch)
                 : 0;
         if (prefetchB != strategy.prefetchB)
-            gpu_warning() << "Unimplemented partial B tile prefetch, modifying "
+            dsl_warning() << "Unimplemented partial B tile prefetch, modifying "
                              "prefetch distance "
                           << strategy.prefetchB << " -> " << prefetchB;
 
@@ -572,9 +566,9 @@ struct generator_dsl_t {
                 std::move(A_load), std::move(B_load), A_prefetch_transform,
                 B_prefetch_transform, C};
 
-        gpu_assert(k_loop_main.A_load_warmup() % kloop_it.A_load().tile[k_var]
+        dsl_assert(k_loop_main.A_load_warmup() % kloop_it.A_load().tile[k_var]
                 == 0);
-        gpu_assert(k_loop_main.B_load_warmup() % kloop_it.B_load().tile[k_var]
+        dsl_assert(k_loop_main.B_load_warmup() % kloop_it.B_load().tile[k_var]
                 == 0);
 
         tensor_config_t A_load_short(kloop_it.A_load(), A_load_transform, 1);
@@ -584,19 +578,16 @@ struct generator_dsl_t {
                 = (int)lcm(A_load_short.tile[k_var], B_load_short.tile[k_var]);
         k_loop_config_t k_loop_short {k_blk_short, 0, 0, kloop_it, A_load_short,
                 B_load_short, A_prefetch_transform, B_prefetch_transform, C};
-        gpu_assert(k_loop_short.k_warmup() == 0);
+        dsl_assert(k_loop_short.k_warmup() == 0);
 
         if (problem.A.alignment) {
-            dnnl_dsl::assume(
-                    arg("lda") % (problem.A.alignment / problem.Ta_ext) == 0);
+            assume(arg("lda") % (problem.A.alignment / problem.Ta_ext) == 0);
         }
         if (problem.B.alignment) {
-            dnnl_dsl::assume(
-                    arg("ldb") % (problem.B.alignment / problem.Tb_ext) == 0);
+            assume(arg("ldb") % (problem.B.alignment / problem.Tb_ext) == 0);
         }
         if (problem.C.alignment) {
-            dnnl_dsl::assume(
-                    arg("ldc") % (problem.C.alignment / problem.Tc_ext) == 0);
+            assume(arg("ldc") % (problem.C.alignment / problem.Tc_ext) == 0);
         }
 
         _if(kloop_it.is_inbounds(0), [&]() {
@@ -742,7 +733,7 @@ struct generator_dsl_t {
             kloop_it.kloop_inc(k_blk);
         });
 
-        auto tail_end = dnnl::impl::utils::rnd_up(warmup, k_blk);
+        auto tail_end = round_up(warmup, k_blk);
         for (int k_unroll_idx = 0; k_unroll_idx < tail_end;
                 k_unroll_idx += k_unroll_blk) {
             bool A_prefetch = k_unroll_idx + cfg.A_prefetch_warmup < tail_end;
@@ -757,20 +748,20 @@ struct generator_dsl_t {
     const GEMMStrategy &strategy;
 };
 
-dsl::kernel_t make_kernel(const generator_dsl_desc_t &desc) {
-    dsl::ir::constraint_set_t cset;
-    dsl::ir::ir_context_t ctx(desc.options, cset);
+kernel_t make_kernel(const generator_dsl_desc_t &desc) {
+    ir::constraint_set_t cset;
+    ir::ir_context_t ctx(desc.options, cset);
 
-    dsl::ir::trace_start();
+    ir::trace_start();
     auto k = generator_dsl_t(desc).build(desc.kernel_iface(), ctx);
-    dsl::ir::trace_pass("build generator_dsl_t", k.body, ctx);
+    ir::trace_pass("build generator_dsl_t", k.body, ctx);
 
-    k.body = dsl::ir::simplify(k.body, ctx);
-    k.body = dnnl_ir::inject_send(k.body, ctx);
+    k.body = ir::simplify(k.body, ctx);
+    k.body = ir::inject_send(k.body, ctx);
 
     // TODO: This should be unnecessary as it could happen at codegen
-    k.body = dnnl_ir::fixup_if_conditions(k.body, ctx);
-    k.body = dnnl_ir::eliminate_common_subexprs(
+    k.body = ir::fixup_if_conditions(k.body, ctx);
+    k.body = ir::eliminate_common_subexprs(
             k.body, ctx, desc.strategy.GRFs * ctx.hw().grf_size());
     return k;
 }

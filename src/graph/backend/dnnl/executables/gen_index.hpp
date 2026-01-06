@@ -51,11 +51,6 @@ struct genindex_executable_t : public op_executable_t {
             const std::vector<cl_event> &deps) const override;
 #endif
 
-    status_t reset_engine(const dnnl::engine &p_engine) override {
-        UNUSED(p_engine);
-        return status::success;
-    }
-
 private:
     int axis_, nelems_, ndims_;
     dims_t output_dims_, output_strides_;

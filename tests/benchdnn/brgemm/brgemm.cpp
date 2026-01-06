@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
+* Copyright 2025 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -49,8 +50,6 @@
 #define namespace_impl dnnl::impl::cpu::x64
 #elif defined(DNNL_AARCH64) && DNNL_AARCH64 == 1
 #define namespace_impl dnnl::impl::cpu::aarch64
-// TODO: remove when `brgemm_t` type gets renamed.
-using brgemm_desc_t = namespace_impl::brgemm_t;
 #endif
 
 #if defined(brg_x64) || defined(brg_aarch64)
@@ -408,11 +407,20 @@ int init_kernel(kernel_args_t &kernel_args) {
 
     dnnl_status_t st = dnnl_success;
     auto &brgemm = kernel_args.brgemm_;
-    DNN_SAFE(
-            dnnl_brgemm_create(&brgemm, prb->m, prb->n, prb->k, prb->batch_size,
-                    prb->get_lda(), prb->get_ldb(), prb->get_ldc(),
-                    prb->src_dt(), prb->wei_dt(), prb->acc_dt()),
-            WARN);
+    // brgemm ukernel returns unimplemented for int8 and bf16
+    // on aarch64 at the moment, for now we'll treat those cases
+    // as SKIPPED rather than UNTESTED FAILED
+    st = dnnl_brgemm_create(&brgemm, prb->m, prb->n, prb->k, prb->batch_size,
+            prb->get_lda(), prb->get_ldb(), prb->get_ldc(), prb->src_dt(),
+            prb->wei_dt(), prb->acc_dt());
+#if defined(brg_aarch64)
+    if (st == dnnl_unimplemented) {
+        SAFE(check_dnnl_status(st, prb, res), WARN);
+        if (res->state == SKIPPED) return OK;
+    }
+#endif
+    DNN_SAFE(st, WARN);
+
     // Only `beta` equal to `0.f` and `1.f` works.
     DNN_SAFE(dnnl_brgemm_set_add_C(brgemm, static_cast<int>(prb->beta)), WARN);
     DNN_SAFE(dnnl_brgemm_set_post_ops(
@@ -1340,11 +1348,12 @@ int doit(const prb_t *prb, res_t *res) {
     DNN_SAFE(dnnl_ukernel_attr_params_set_post_ops_args(
                      attr_params, binary_po_v.data()),
             WARN);
-
+#if defined(brg_x64)
     DNN_SAFE(dnnl_ukernel_attr_params_set_A_scales(attr_params, src_scales_ptr),
             WARN);
     DNN_SAFE(dnnl_ukernel_attr_params_set_B_scales(attr_params, wei_scales_ptr),
             WARN);
+#endif
     DNN_SAFE(dnnl_ukernel_attr_params_set_D_scales(attr_params, dst_scales_ptr),
             WARN);
 #endif

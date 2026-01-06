@@ -129,7 +129,7 @@ status_t eltwise_attr_check(const eltwise_desc_t &desc, const engine_t *engine,
                 prop_kind::forward_training)) {
         const data_type_t dst_dt = desc.dst_desc.data_type;
 
-        auto fwd_attr_mask = smask_t::post_ops;
+        auto fwd_attr_mask = smask_t::post_ops | smask_t::dropout;
 
         VCHECK_ELTWISE_IMPL(attr->has_default_values(fwd_attr_mask, dst_dt),
                 VERBOSE_UNSUPPORTED_ATTR);

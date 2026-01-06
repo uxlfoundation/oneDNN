@@ -56,14 +56,21 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
         return status::unimplemented;
     auto prb = tr::prb_t();
     // For shapes with dimension greater than thres it is found that jit:uni is better that jit:blk
-    auto thres = 1920 * 4096;
+    auto upper_thres = 1920 * 4096;
     auto src_d = memory_desc_wrapper(src_md);
     auto prd = 1;
 
     for (int d = 0; d < src_d.ndims(); ++d) {
         const auto dim = src_d.dims()[d];
         prd *= dim;
-        if (prd > thres) return status::unimplemented;
+        if (prd > upper_thres) return status::unimplemented;
+    }
+
+    // Very small shapes are faster on jit uni for SVE-128
+    auto lower_thres = 128 * 128;
+
+    if (get_max_cpu_isa() == sve_128 && prd < lower_thres) {
+        return status::unimplemented;
     }
 
     status_t prb_init_status = prb_init(prb, *src_md, *dst_md, attr);
@@ -93,8 +100,8 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
 }
 
 void jit_blk_reorder_t::pd_t::prb_tile_normalize(tr::prb_t &p) {
-    if (!utils::one_of(p.nodes[0].n, 8ul, 16ul, 32ul, 64ul)
-            && utils::one_of(p.nodes[1].n, 8ul, 16ul, 32ul, 64ul)) {
+    if (!utils::one_of(p.nodes[0].n, 4ul, 8ul, 16ul, 32ul, 64ul)
+            && utils::one_of(p.nodes[1].n, 4ul, 8ul, 16ul, 32ul, 64ul)) {
         nstl::swap(p.nodes[0], p.nodes[1]);
     }
 }

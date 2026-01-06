@@ -17,7 +17,7 @@
 #include "gpu/intel/jit/pass/alloc.hpp"
 
 #include "gemmstone/../../dsl/ir/pass/trace.hpp"
-#include "gpu/intel/jit/ir/send.hpp"
+#include "gpu/intel/jit/ir/legacy.hpp"
 
 namespace dnnl {
 namespace impl {

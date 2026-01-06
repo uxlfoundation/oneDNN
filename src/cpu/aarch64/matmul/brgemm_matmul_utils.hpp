@@ -122,6 +122,8 @@ struct brgemm_matmul_conf_t {
     data_type_t wei_dt;
     data_type_t acc_dt;
     data_type_t bia_dt;
+    data_type_t orig_src_dt;
+    data_type_t orig_wei_dt;
     int nthr;
     int nthr_k;
 
@@ -167,6 +169,7 @@ struct brgemm_matmul_conf_t {
     bool has_zero_point_a, has_zero_point_b, has_zero_point_c;
     bool post_ops_applicable;
     bool transposed_A;
+    bool transposed_B;
     bool blocked_B;
 
     dim_t zp_a_comp_shift_n;
@@ -307,6 +310,10 @@ private:
     const bool n_blk_fixed;
     const cpu_isa_t isa_;
 };
+
+status_t init_conf(brgemm_matmul_conf_t &conf, dim_t batch, dim_t M, dim_t K,
+        dim_t N, dim_t in_ld, dim_t n_blk, data_type_t in_type,
+        data_type_t out_type, format_tag_t in_tag);
 
 void init_aux_values(brgemm_matmul_conf_t &bgmmc,
         const memory_desc_wrapper &src_d, const memory_desc_wrapper &wei_d,

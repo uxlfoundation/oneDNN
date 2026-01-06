@@ -158,6 +158,7 @@ static status_t init_ocl_conf(ocl_conf_t &ocl_conf, const pd_t *pd,
     const memory_desc_wrapper &weights_layer_d = pd->weights_md(0);
     const memory_desc_wrapper &dst_iter_c_d = pd->dst_md(2);
 
+    ocl_conf.require_stateless_addressing = pd->has_large_buffers();
     ocl_conf.src_dt = conf.src_data_type;
     ocl_conf.src_c_dt = src_iter_c_d.data_type();
     ocl_conf.wei_dt = weights_layer_d.data_type();
@@ -336,6 +337,8 @@ status_t ocl_conf_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
         CHECK(ocl_attr.set_gpu_attr(gpu_primitive_attr_t(threads_per_eu)));
     ocl_attr.deterministic_ = deterministic;
     kernel_ctx = compute::kernel_ctx_t(&ocl_attr);
+
+    kernel_ctx.require_stateless_addressing(require_stateless_addressing);
 
     kernel_ctx.add_option("-cl-std=CL2.0");
 

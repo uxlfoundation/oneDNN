@@ -136,6 +136,11 @@ are optional.
 9. The TypeCast and two MatMul operations after the Scale node compute the
    gradients with respect to Query and Key, respectively. TypeCast is required
    for bf16 and f16 training scenarios.
+10. The optional End operation marks the output of SoftMaxBackward as a
+    partition output, representing the gradients with respect to the Mask. Note
+    that the output shape of `dM` is (N, H, S, S) and the data
+    type is f32. The library does not perform any reduction or typecast on this
+    output (for example, reducing to (1, 1, S, S), casting to f16).
 
 ## Data Types
 

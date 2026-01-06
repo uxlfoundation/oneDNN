@@ -34,7 +34,7 @@ bool check_softmax_dtype(const op_t *n);
 
 bool check_softmax_bwd_output_dtype(const op_t *n);
 
-bool check_ln_gn_data_type(const op_t *n);
+bool check_norm_data_type(const op_t *n);
 
 bool check_typecast_data_type(const op_t *n);
 

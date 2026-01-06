@@ -100,6 +100,59 @@ static status_t binary_handler(
     return status::success;
 }
 
+/* convert End op to Identity op
+     dst_val              src_val
+       |  \                |     \
+      End Other  ==>    Identity  Other
+                           |
+                        dst_val
+*/
+static status_t identity_handler(
+        const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
+    VCHECK_INVALID_ARGUMENT(op->num_inputs() == 1 && op->num_outputs() == 0,
+            "End op expects one input and no output but got %zu and %zu",
+            op->num_inputs(), op->num_outputs());
+
+    // remove the End op from the consumer list of dst_val
+    auto dst_val = op->get_input_value(0);
+    dst_val->remove_consumer(*op, 0);
+
+    // create a new src_val
+    logical_tensor_t new_lt = dst_val->get_logical_tensor();
+    new_lt.id = empty_logical_tensor_with_default_id().id;
+    value_ptr new_src_val;
+    if (dst_val->has_producer()) {
+        auto &producer = dst_val->get_producer();
+        const size_t producer_offset = dst_val->get_offset();
+        new_src_val = std::make_shared<value_t>(
+                producer, producer_offset, new_lt, true);
+        producer.connect_output(producer_offset, new_src_val);
+    } else {
+        new_src_val = std::make_shared<value_t>(new_lt, true);
+    }
+
+    // move other consumers to the new src_val
+    std::vector<value_t::consumer_t> other_consumers(
+            dst_val->get_consumers().begin(), dst_val->get_consumers().end());
+    for (const auto &consumer : other_consumers) {
+        op_t &consumer_op = consumer.get_op();
+        const size_t offset = consumer.get_offset();
+        if (&consumer_op == op.get()) continue;
+        dst_val->remove_consumer(consumer_op, offset);
+        consumer_op.connect_input(offset, new_src_val);
+    }
+
+    // connect Identity op between new src_val and dst_val
+    auto identity_op = std::make_shared<op_t>(op_kind::dnnl_identity);
+    new_src_val->add_consumer(*identity_op, 0);
+    identity_op->add_input(new_src_val);
+    identity_op->add_output(dst_val);
+    rewriter.to_insert(identity_op);
+    rewriter.to_remove(op);
+
+    return status::success;
+}
+
 static status_t bias_add_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
     auto new_op = std::make_shared<op_t>(op_kind::dnnl_binary);
@@ -915,6 +968,23 @@ static status_t gen_index_handler(
     return status::success;
 }
 
+static status_t rmsnorm_handler(
+        const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
+    auto new_op = std::make_shared<op_t>(op_kind::dnnl_layernorm);
+    new_op->set_attr<bool>(op_attr::is_rms, true);
+    if (op->get_input_values().size() == 2) {
+        new_op->set_attr<bool>(op_attr::use_affine, true);
+    } else {
+        new_op->set_attr<bool>(op_attr::use_affine, false);
+    }
+    // RMSNorm OP in oneDNN Graph API only have 1 output
+    new_op->set_attr<bool>(op_attr::keep_stats, false);
+    new_op->merge_attributes(op->get_attributes());
+    rewriter.replace_op(op, new_op);
+    insert_empty_scratchpad(new_op);
+    return status::success;
+}
+
 #define ITEM(kind, func) \
     { \
         graph::op_kind::kind, handler_func { \
@@ -1000,6 +1070,7 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         ITEM(ReduceMin, reduction_handler),
         ITEM(ReduceProd, reduction_handler),
         ITEM(ReduceSum, reduction_handler),
+        ITEM(RMSNorm, rmsnorm_handler),
         // softplus
         ITEM(SoftPlus, softplus_handler),
         ITEM(SoftPlusBackward, softplus_handler),
@@ -1010,6 +1081,7 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         // layernorm
         ITEM(LayerNorm, common_handler<op_kind::kDnnl_layernorm>),
         ITEM(LayerNormBackward, common_handler<op_kind::kDnnl_layernorm_bwd>),
+        ITEM(RMSNorm, common_handler<op_kind::kDnnl_layernorm>),
         // groupnorm
         ITEM(GroupNorm, common_handler<op_kind::kDnnl_groupnorm>),
         // quantization
@@ -1031,7 +1103,7 @@ static const std::unordered_map<graph::op_kind_t, handler_func> handler_table {
         ITEM(GenIndex, gen_index_handler),
         // utility
         ITEM(Wildcard, dummy_handler),
-        ITEM(End, dummy_handler),
+        ITEM(End, identity_handler),
 };
 
 #undef ITEM

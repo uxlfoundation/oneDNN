@@ -245,7 +245,7 @@ struct cpu_cache_args_t {
 };
 
 size_t get_cpu_ram_size();
-int get_gpu_ram_size(size_t &ram_size);
+int get_gpu_ram_sizes(size_t &ram_size, size_t &max_alloc_size);
 int get_cpu_cache_size(cpu_cache_args_t &cache_args);
 int get_gpu_cache_size(size_t &cache_size);
 
@@ -438,6 +438,31 @@ int create_primitive(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
     SAFE(collect_mem_size(res->mem_size_args, pdw, dir,
                  /* need_skip = */ !is_graph_ref),
             WARN);
+
+    // The library scratchpad is allocated at create_primitive stage. The memory
+    // check is moved after the creation stage. It's necessary to check the
+    // library scratchpad size against gpu_max_alloc, otherwise, out_of_memory
+    // would be issued by the library.
+    if (res->mem_size_args.scratchpad_size > 0 && is_gpu()
+            && query_scratchpad_mode(query_attr(pdw))
+                    == dnnl_scratchpad_mode_library) {
+        static size_t gpu_device_capacity = 0;
+        static size_t gpu_max_alloc_capacity = 0;
+        SAFE(get_gpu_ram_sizes(gpu_device_capacity, gpu_max_alloc_capacity),
+                WARN);
+        const bool fit
+                = res->mem_size_args.scratchpad_size < gpu_max_alloc_capacity;
+        if (!fit) {
+            BENCHDNN_PRINT(1,
+                    "[CHECK_MEM]: Size of the scratchpad %s "
+                    "doesn't fit the allocation limit of %s.\n",
+                    smart_bytes(res->mem_size_args.scratchpad_size).c_str(),
+                    smart_bytes(gpu_max_alloc_capacity).c_str());
+            res->state = SKIPPED;
+            res->reason = skip_reason::not_enough_ram;
+            return OK;
+        }
+    }
 
     TIME_C_PRIM(DNN_SAFE(dnnl_primitive_create(&prim, pdw), WARN));
     primw.reset(prim);
@@ -957,14 +982,38 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
         const auto &dropout_md = query_md(const_pd, DNNL_ARG_ATTR_DROPOUT_MASK);
         mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_MASK,
                 dnn_mem_t(dropout_md, test_engine, /* prefill = */ true));
-        int64_t count = 1;
-        auto prob_md = dnn_mem_t::init_md(1, &count, dnnl_f32, tag::abx);
-        mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_PROBABILITY,
-                dnn_mem_t(prob_md, test_engine, /* prefill = */ true));
 
-        auto seed_md = dnn_mem_t::init_md(1, &count, dnnl_s32, tag::abx);
-        mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_SEED,
-                dnn_mem_t(seed_md, test_engine, /* prefill = */ true));
+        if (prb->attr.dropout.use_host_scalars) {
+            auto prob_md = dnn_mem_t::init_host_scalar_md(dnnl_f32);
+            float probability = prb->attr.dropout.p;
+            mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_PROBABILITY,
+                    dnn_mem_t(prob_md, &probability));
+            auto seed_md = dnn_mem_t::init_host_scalar_md(dnnl_s64);
+            int64_t seed = prb->attr.dropout.seed;
+            mem_map.emplace(
+                    DNNL_ARG_ATTR_DROPOUT_SEED, dnn_mem_t(seed_md, &seed));
+            if (prb->attr.dropout.offset != 0) {
+                auto offset_md = dnn_mem_t::init_host_scalar_md(dnnl_s64);
+                int64_t offset = prb->attr.dropout.offset;
+                mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_OFFSET,
+                        dnn_mem_t(offset_md, &offset));
+            }
+        } else {
+            int64_t count = 1;
+            auto prob_md = dnn_mem_t::init_md(1, &count, dnnl_f32, tag::abx);
+            mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_PROBABILITY,
+                    dnn_mem_t(prob_md, test_engine, /* prefill = */ true));
+            auto seed_md = dnn_mem_t::init_md(1, &count, dnnl_s64, tag::abx);
+            mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_SEED,
+                    dnn_mem_t(seed_md, test_engine, /* prefill = */ true));
+            if (prb->attr.dropout.offset != 0) {
+                auto offset_md
+                        = dnn_mem_t::init_md(1, &count, dnnl_s64, tag::abx);
+                mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_OFFSET,
+                        dnn_mem_t(
+                                offset_md, test_engine, /* prefill = */ true));
+            }
+        }
     }
 
     // Scales.
@@ -1146,6 +1195,9 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
 
 void erase_unused_args(
         dnn_mem_map_t &ref_mem_map, const dnn_mem_map_t &mem_map);
+
+void get_kinds_to_check_shared(
+        std::vector<data_kind_t> &check_kinds, const attr_t &attr);
 
 int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
         const dnn_mem_t &library_mem, dnn_mem_map_t &ref_mem_map, int exec_arg,

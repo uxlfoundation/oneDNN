@@ -183,14 +183,22 @@ struct primitive_desc_t : public c_compatible {
             return !is_zero_md(scratchpad_md()) ? arg_usage_t::output
                                                 : arg_usage_t::unused;
         if (arg == DNNL_ARG_ATTR_DROPOUT_MASK)
-            return !attr()->dropout_.has_default_values() ? arg_usage_t::output
-                                                          : arg_usage_t::unused;
+            return !attr()->dropout_.has_default_values()
+                            && attr()->dropout_.has_output_mask()
+                    ? arg_usage_t::output
+                    : arg_usage_t::unused;
         if (arg == DNNL_ARG_ATTR_DROPOUT_PROBABILITY)
             return !attr()->dropout_.has_default_values() ? arg_usage_t::input
                                                           : arg_usage_t::unused;
         if (arg == DNNL_ARG_ATTR_DROPOUT_SEED)
             return !attr()->dropout_.has_default_values() ? arg_usage_t::input
                                                           : arg_usage_t::unused;
+        if (arg == DNNL_ARG_ATTR_DROPOUT_OFFSET)
+            return !attr()->dropout_.has_default_values()
+                            && attr()->dropout_.use_offset_
+                    ? arg_usage_t::input
+                    : arg_usage_t::unused;
+
         if (arg == DNNL_ARG_ATTR_ROUNDING_SEED)
             return !attr()->rounding_mode_.has_default_values()
                     ? arg_usage_t::input
@@ -260,12 +268,12 @@ struct primitive_desc_t : public c_compatible {
     virtual const memory_desc_t *invariant_bia_md() const {
         return invariant_wei_md(1);
     }
-    virtual const memory_desc_t *invariant_dst_md() const {
+    virtual const memory_desc_t *invariant_dst_md(int index = 0) const {
         const auto prop_kind = get_prop_kind();
         return utils::one_of(prop_kind, prop_kind::backward_data,
                        prop_kind::backward_weights, prop_kind::backward)
-                ? diff_dst_md()
-                : dst_md();
+                ? diff_dst_md(index)
+                : dst_md(index);
     }
 
     virtual format_kind_t invariant_src_user_format_kind(int index = 0) const {
@@ -470,6 +478,28 @@ struct primitive_desc_t : public c_compatible {
 
     int pd_iterator_offset() const { return pd_iterator_offset_; }
     int skip_idx() const { return skip_idx_; }
+
+    bool has_large_buffers() const {
+        auto is_large = [](const memory_desc_t *md) {
+            return memory_desc_wrapper(md).size() > UINT32_MAX;
+        };
+
+        for (int i = 0; i < n_inputs(); i++) {
+            if (is_large(invariant_src_md(i))) return true;
+        }
+        if (is_large(invariant_wei_md())) return true;
+        for (int i = 0; i < n_outputs(); i++) {
+            if (is_large(invariant_dst_md(i))) return true;
+        }
+        const auto &post_ops = attr()->post_ops_;
+        for (int i = 0; i < post_ops.len(); i++) {
+            const auto &e = post_ops.entry_[i];
+            if (e.is_binary()) {
+                if (is_large(&(e.binary.src1_desc))) return true;
+            }
+        }
+        return false;
+    }
 
 protected:
     primitive_attr_t attr_;

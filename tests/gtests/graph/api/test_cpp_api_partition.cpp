@@ -390,3 +390,69 @@ TEST(APIPartition, F8MatmulPartition) {
         parts[0].compile({deq0_src, deq1_src}, {mm_dst}, eng);
     }
 }
+
+// Compiling the same partition with different engines will generate different
+// compiled partitions. Each compiled partition is bound to the engine used in
+// compilation. Executing the compiled partitions interleavely should work fine.
+TEST(APIPartition, UseMultipleEngines) {
+    using namespace dnnl::graph;
+    const engine::kind ekind = static_cast<engine::kind>(api_test_engine_kind);
+
+    graph g(ekind);
+    size_t id = 0;
+    const auto dt = logical_tensor::data_type::f32;
+
+    auto src = logical_tensor(
+            id++, dt, {16, 64}, logical_tensor::layout_type::strided);
+    auto wei = logical_tensor(
+            id++, dt, {64, 32}, logical_tensor::layout_type::strided);
+    auto dst = logical_tensor(
+            id++, dt, {16, 32}, logical_tensor::layout_type::strided);
+
+    auto matmul = op(id++, op::kind::MatMul, "matmul");
+    matmul.add_inputs({src, wei});
+    matmul.add_outputs({dst});
+
+    auto output = logical_tensor(
+            id++, dt, {16, 32}, logical_tensor::layout_type::strided);
+    auto sigmoid = op(id++, op::kind::Sigmoid, "sigmoid");
+    sigmoid.add_inputs({dst});
+    sigmoid.add_outputs({output});
+
+    g.add_op(matmul);
+    g.add_op(sigmoid);
+    g.finalize();
+    auto parts = g.get_partitions();
+    ASSERT_EQ(parts.size(), 1UL);
+
+    // Compile the partition.
+    dnnl::engine eng1 = dnnl::engine(ekind, 0);
+    auto cp1 = parts[0].compile({src, wei}, {output}, eng1);
+
+    // Execute with eng1.
+    dnnl::stream str1 = dnnl::stream(eng1);
+    auto ts_src1 = tensor(src, eng1);
+    auto ts_wei1 = tensor(wei, eng1);
+    auto ts_output1 = tensor(output, eng1);
+    EXPECT_NO_THROW(cp1.execute(str1, {ts_src1, ts_wei1}, {ts_output1}));
+
+    // Compile the partition with another engine.
+    dnnl::engine eng2 = dnnl::engine(ekind, 0);
+    auto cp2 = parts[0].compile({src, wei}, {output}, eng2);
+
+    // Execute with eng2.
+    dnnl::stream str2 = dnnl::stream(eng2);
+    auto ts_src2 = tensor(src, eng2);
+    auto ts_wei2 = tensor(wei, eng2);
+    auto ts_output2 = tensor(output, eng2);
+    EXPECT_NO_THROW(cp2.execute(str2, {ts_src2, ts_wei2}, {ts_output2}));
+
+    // Execute cp1 again with eng1.
+    EXPECT_NO_THROW(cp1.execute(str1, {ts_src1, ts_wei1}, {ts_output1}));
+
+    // Execute cp2 again with eng2.
+    EXPECT_NO_THROW(cp2.execute(str2, {ts_src2, ts_wei2}, {ts_output2}));
+
+    // Executing cp1 with eng2 should throw exception.
+    EXPECT_ANY_THROW(cp1.execute(str2, {ts_src2, ts_wei2}, {ts_output2}));
+}

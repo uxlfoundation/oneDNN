@@ -79,6 +79,101 @@ const char *convert_cl_int_to_str(cl_int cl_status);
         MAYBE_UNUSED(s); \
     } while (false)
 
+#if defined(_WIN32)
+#define OCL_LIB_NAME "OpenCL.dll"
+#elif defined(__linux__)
+#define OCL_LIB_NAME "libOpenCL.so.1"
+#endif
+
+template <typename F>
+F find_ocl_symbol(const char *symbol) {
+    return (F)xpu::find_symbol(OCL_LIB_NAME, symbol);
+}
+#undef OCL_LIB_NAME
+
+enum { CL_SYMBOL_NOT_FOUND = -128 };
+
+// In case the OCL symbol is not found:
+// - if the return value of OCL function is cl_int, return CL_SYMBOL_NOT_FOUND
+// - if the return value of OCL function is a pointer, return nullptr
+template <typename T>
+typename std::enable_if<std::is_same<T, cl_int>::value, T>::type
+no_ocl_symbol_error() {
+    return CL_SYMBOL_NOT_FOUND;
+}
+template <typename T>
+typename std::enable_if<std::is_pointer<T>::value, T>::type
+no_ocl_symbol_error() {
+    return nullptr;
+}
+
+#define INDIRECT_OCL_CALL(result_type, f) \
+    template <typename... Args> \
+    result_type f(Args &&...args) { \
+        static auto f_ = find_ocl_symbol<decltype(&::f)>(#f); \
+        if (f_) return f_(std::forward<Args>(args)...); \
+        return no_ocl_symbol_error<result_type>(); \
+    }
+
+INDIRECT_OCL_CALL(cl_int, clBuildProgram)
+INDIRECT_OCL_CALL(cl_mem, clCreateBuffer)
+INDIRECT_OCL_CALL(cl_context, clCreateContext)
+INDIRECT_OCL_CALL(cl_kernel, clCreateKernel)
+INDIRECT_OCL_CALL(cl_program, clCreateProgramWithBinary)
+INDIRECT_OCL_CALL(cl_program, clCreateProgramWithSource)
+INDIRECT_OCL_CALL(cl_mem, clCreateSubBuffer)
+INDIRECT_OCL_CALL(cl_int, clCreateSubDevices)
+INDIRECT_OCL_CALL(cl_int, clEnqueueCopyBuffer)
+INDIRECT_OCL_CALL(cl_int, clEnqueueFillBuffer)
+INDIRECT_OCL_CALL(void *, clEnqueueMapBuffer)
+INDIRECT_OCL_CALL(cl_int, clEnqueueMarkerWithWaitList)
+INDIRECT_OCL_CALL(cl_int, clEnqueueNDRangeKernel)
+INDIRECT_OCL_CALL(cl_int, clEnqueueReadBuffer)
+INDIRECT_OCL_CALL(cl_int, clEnqueueUnmapMemObject)
+INDIRECT_OCL_CALL(cl_int, clEnqueueWriteBuffer)
+INDIRECT_OCL_CALL(cl_int, clFinish)
+INDIRECT_OCL_CALL(cl_int, clGetCommandQueueInfo)
+INDIRECT_OCL_CALL(cl_int, clGetContextInfo)
+INDIRECT_OCL_CALL(cl_int, clGetDeviceIDs)
+INDIRECT_OCL_CALL(cl_int, clGetDeviceInfo)
+INDIRECT_OCL_CALL(cl_int, clGetEventProfilingInfo)
+INDIRECT_OCL_CALL(void *, clGetExtensionFunctionAddressForPlatform)
+INDIRECT_OCL_CALL(cl_int, clGetKernelArgInfo)
+INDIRECT_OCL_CALL(cl_int, clGetKernelInfo)
+INDIRECT_OCL_CALL(cl_int, clGetMemObjectInfo)
+INDIRECT_OCL_CALL(cl_int, clGetPlatformIDs)
+INDIRECT_OCL_CALL(cl_int, clGetPlatformInfo)
+INDIRECT_OCL_CALL(cl_int, clGetProgramBuildInfo)
+INDIRECT_OCL_CALL(cl_int, clGetProgramInfo)
+INDIRECT_OCL_CALL(cl_int, clReleaseCommandQueue)
+INDIRECT_OCL_CALL(cl_int, clReleaseContext)
+INDIRECT_OCL_CALL(cl_int, clReleaseDevice)
+INDIRECT_OCL_CALL(cl_int, clReleaseEvent)
+INDIRECT_OCL_CALL(cl_int, clReleaseKernel)
+INDIRECT_OCL_CALL(cl_int, clReleaseMemObject)
+INDIRECT_OCL_CALL(cl_int, clReleaseProgram)
+INDIRECT_OCL_CALL(cl_int, clReleaseSampler)
+INDIRECT_OCL_CALL(cl_int, clRetainCommandQueue)
+INDIRECT_OCL_CALL(cl_int, clRetainContext)
+INDIRECT_OCL_CALL(cl_int, clRetainDevice)
+INDIRECT_OCL_CALL(cl_int, clRetainEvent)
+INDIRECT_OCL_CALL(cl_int, clRetainKernel)
+INDIRECT_OCL_CALL(cl_int, clRetainMemObject)
+INDIRECT_OCL_CALL(cl_int, clRetainProgram)
+INDIRECT_OCL_CALL(cl_int, clRetainSampler)
+INDIRECT_OCL_CALL(cl_int, clSetKernelArg)
+INDIRECT_OCL_CALL(cl_int, clWaitForEvents)
+#ifdef CL_VERSION_2_0
+INDIRECT_OCL_CALL(cl_command_queue, clCreateCommandQueueWithProperties)
+#else
+INDIRECT_OCL_CALL(cl_command_queue, clCreateCommandQueue)
+#endif
+#ifdef CL_VERSION_2_1
+INDIRECT_OCL_CALL(cl_kernel, clCloneKernel)
+#endif
+
+#undef INDIRECT_OCL_CALL
+
 // OpenCL objects reference counting traits
 template <typename T>
 struct ref_traits;
@@ -89,61 +184,81 @@ struct ref_traits;
 
 template <>
 struct ref_traits<cl_context> {
-    static void retain(cl_context t) { UNUSED_OCL_RESULT(clRetainContext(t)); }
+    static void retain(cl_context t) {
+        UNUSED_OCL_RESULT(xpu::ocl::clRetainContext(t));
+    }
     static void release(cl_context t) {
-        UNUSED_OCL_RESULT(clReleaseContext(t));
+        UNUSED_OCL_RESULT(xpu::ocl::clReleaseContext(t));
     }
 };
 
 template <>
 struct ref_traits<cl_command_queue> {
     static void retain(cl_command_queue t) {
-        UNUSED_OCL_RESULT(clRetainCommandQueue(t));
+        UNUSED_OCL_RESULT(xpu::ocl::clRetainCommandQueue(t));
     }
     static void release(cl_command_queue t) {
-        UNUSED_OCL_RESULT(clReleaseCommandQueue(t));
+        UNUSED_OCL_RESULT(xpu::ocl::clReleaseCommandQueue(t));
     }
 };
 
 template <>
 struct ref_traits<cl_program> {
-    static void retain(cl_program t) { UNUSED_OCL_RESULT(clRetainProgram(t)); }
+    static void retain(cl_program t) {
+        UNUSED_OCL_RESULT(xpu::ocl::clRetainProgram(t));
+    }
     static void release(cl_program t) {
-        UNUSED_OCL_RESULT(clReleaseProgram(t));
+        UNUSED_OCL_RESULT(xpu::ocl::clReleaseProgram(t));
     }
 };
 
 template <>
 struct ref_traits<cl_kernel> {
-    static void retain(cl_kernel t) { UNUSED_OCL_RESULT(clRetainKernel(t)); }
-    static void release(cl_kernel t) { UNUSED_OCL_RESULT(clReleaseKernel(t)); }
+    static void retain(cl_kernel t) {
+        UNUSED_OCL_RESULT(xpu::ocl::clRetainKernel(t));
+    }
+    static void release(cl_kernel t) {
+        UNUSED_OCL_RESULT(xpu::ocl::clReleaseKernel(t));
+    }
 };
 
 template <>
 struct ref_traits<cl_mem> {
-    static void retain(cl_mem t) { UNUSED_OCL_RESULT(clRetainMemObject(t)); }
-    static void release(cl_mem t) { UNUSED_OCL_RESULT(clReleaseMemObject(t)); }
+    static void retain(cl_mem t) {
+        UNUSED_OCL_RESULT(xpu::ocl::clRetainMemObject(t));
+    }
+    static void release(cl_mem t) {
+        UNUSED_OCL_RESULT(xpu::ocl::clReleaseMemObject(t));
+    }
 };
 
 template <>
 struct ref_traits<cl_sampler> {
-    static void retain(cl_sampler t) { UNUSED_OCL_RESULT(clRetainSampler(t)); }
+    static void retain(cl_sampler t) {
+        UNUSED_OCL_RESULT(xpu::ocl::clRetainSampler(t));
+    }
     static void release(cl_sampler t) {
-        UNUSED_OCL_RESULT(clReleaseSampler(t));
+        UNUSED_OCL_RESULT(xpu::ocl::clReleaseSampler(t));
     }
 };
 
 template <>
 struct ref_traits<cl_event> {
-    static void retain(cl_event t) { UNUSED_OCL_RESULT(clRetainEvent(t)); }
-    static void release(cl_event t) { UNUSED_OCL_RESULT(clReleaseEvent(t)); }
+    static void retain(cl_event t) {
+        UNUSED_OCL_RESULT(xpu::ocl::clRetainEvent(t));
+    }
+    static void release(cl_event t) {
+        UNUSED_OCL_RESULT(xpu::ocl::clReleaseEvent(t));
+    }
 };
 
 template <>
 struct ref_traits<cl_device_id> {
-    static void retain(cl_device_id t) { UNUSED_OCL_RESULT(clRetainDevice(t)); }
+    static void retain(cl_device_id t) {
+        UNUSED_OCL_RESULT(xpu::ocl::clRetainDevice(t));
+    }
     static void release(cl_device_id t) {
-        UNUSED_OCL_RESULT(clReleaseDevice(t));
+        UNUSED_OCL_RESULT(xpu::ocl::clReleaseDevice(t));
     }
 };
 
@@ -234,8 +349,9 @@ private:
     std::unordered_map<cl_platform_id, F> ext_func_ptrs_;
 
     static F load_ext_func(cl_platform_id platform, const char *ext_func_name) {
-        return reinterpret_cast<F>(clGetExtensionFunctionAddressForPlatform(
-                platform, ext_func_name));
+        return reinterpret_cast<F>(
+                xpu::ocl::clGetExtensionFunctionAddressForPlatform(
+                        platform, ext_func_name));
     }
 
     static const std::vector<cl_platform_id> &vendor_platforms(
@@ -247,17 +363,18 @@ private:
     static std::vector<cl_platform_id> get_vendor_platforms(
             const char *vendor_name) {
         cl_uint num_platforms = 0;
-        cl_int err = clGetPlatformIDs(0, nullptr, &num_platforms);
+        cl_int err = xpu::ocl::clGetPlatformIDs(0, nullptr, &num_platforms);
         if (err != CL_SUCCESS) return {};
 
         std::vector<cl_platform_id> platforms(num_platforms);
-        err = clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
+        err = xpu::ocl::clGetPlatformIDs(
+                num_platforms, platforms.data(), nullptr);
         if (err != CL_SUCCESS) return {};
 
         std::vector<cl_platform_id> vendor_platforms;
         char platform_vendor_name[128] = {};
         for (cl_platform_id p : platforms) {
-            err = clGetPlatformInfo(p, CL_PLATFORM_VENDOR,
+            err = xpu::ocl::clGetPlatformInfo(p, CL_PLATFORM_VENDOR,
                     sizeof(platform_vendor_name), platform_vendor_name,
                     nullptr);
             if (err != CL_SUCCESS) continue;

@@ -108,7 +108,7 @@ status_t softmax_attr_check(const softmax_desc_t &desc, const engine_t *engine,
         const data_type_t src_dt = desc.src_desc.data_type;
         const data_type_t dst_dt = desc.dst_desc.data_type;
 
-        auto fwd_attr_mask = smask_t::post_ops;
+        auto fwd_attr_mask = smask_t::post_ops | smask_t::dropout;
 
         const bool is_int8 = utils::one_of(src_dt, s8, u8)
                 || utils::one_of(dst_dt, s8, u8);

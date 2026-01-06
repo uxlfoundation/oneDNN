@@ -56,7 +56,7 @@ inline attr_t &operator&=(attr_t &a, attr_t b) {
 }
 } // namespace type
 
-class type_t: public stringify_t<type_t> {
+class type_t : public stringify_t<type_t> {
 public:
     friend struct type_internal_accessor_t;
     using attr_t = type::attr_t;
@@ -426,7 +426,8 @@ private:
 
     void check() const {
         if (is_ptr())
-            assume(elems_ == 1, "Pointer type must have default elems value.");
+            gemm_assert(
+                    elems_ == 1, "Pointer type must have default elems value.");
         ;
     }
 };

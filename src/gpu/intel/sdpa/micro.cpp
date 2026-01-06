@@ -393,6 +393,8 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.val_data_t = val_mdw.data_type();
     conf.dst_data_t = dst_mdw.data_type();
 
+    conf.require_stateless_addressing = has_large_buffers();
+
     conf.msk_data_t = data_type::undef;
     if (pd->with_attn_mask()) { conf.msk_data_t = msk_mdw.data_type(); }
 
@@ -519,8 +521,8 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.prefetch_d_max = 0;
     }
 
-    const bool is_xe2 = pd->arch() == compute::gpu_arch_t::xe2;
-    conf.q_arrive_await_barrier = (Q > 1) && !is_xe2;
+    const bool arch_gte_xe2 = pd->arch() >= compute::gpu_arch_t::xe2;
+    conf.q_arrive_await_barrier = (Q > 1) && !arch_gte_xe2;
     conf.softmax_inf_as_zero
             = (d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
     conf.use_systolic_ukernel = pd->use_systolic_ukernel();
@@ -532,6 +534,7 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
 status_t micro_params_t::get_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
     using namespace micro;
+    kernel_ctx.require_stateless_addressing(require_stateless_addressing);
 
     kernel_ctx.define_int("NDIMS", ndims);
     kernel_ctx.set_data_type(data_t);

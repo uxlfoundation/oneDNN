@@ -24,7 +24,6 @@
 #include "common/utils.hpp"
 #include "gemmstone/../../dsl/ir/ir.hpp"
 #include "gemmstone/../../dsl/ir/pass/trace.hpp"
-#include "gpu/intel/jit/codegen/ngen_helpers.hpp"
 #include "gpu/intel/jit/ir/epilogue.hpp"
 #include "gpu/intel/jit/ir/gemm_schedule.hpp"
 #include "gpu/intel/jit/ir/post_ops.hpp"
@@ -177,10 +176,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     const auto &lg = cfg.loop_grid();
     const auto &kg = cfg.kernel_grid();
     const auto &tg = cfg.thread_group_grid();
-    const auto &dims_grid = cfg.dims_padded();
-    std::vector<dim_t> padded_dims(dims_grid.ndims());
-    for (dim_idx_t i = 0; i < padded_dims.size(); i++)
-        padded_dims[i] = dims_grid[i];
+    const auto &padded_dims = cfg.dims_padded();
     gpu_assert(padded_dims.size() == 5);
     std::vector<dim_t> dims {padded_dims[0], src_layout.elems(1),
             padded_dims[2], padded_dims[3], padded_dims[4]};
@@ -415,14 +411,11 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
         const int mult = 4 / type.base().size();
         expr_t v = 0;
         if (isneg) {
-            switch (to_ngen(type.base())) {
-                case ngen::DataType::f: v = 0xFF7FFFFF; break;
-                case ngen::DataType::bf: v = 0xFF7FFF7F; break;
-                case ngen::DataType::hf: v = 0xFBFFFBFF; break;
-                default:
-                    v = (mult > 1) ? (mult > 2) ? 0x80808080 : 0x80008000
-                                   : 0x80000000;
-            }
+            v = type.is_f32()        ? 0xFF7FFFFF
+                    : type.is_bf16() ? 0xFF7FFF7F
+                    : type.is_f16()  ? 0xFBFFFBFF
+                    : (mult > 1)     ? (mult > 2) ? 0x80808080 : 0x80008000
+                                     : 0x80000000;
         }
         v = cast_t::make(dsl::type_t::s32(), v);
         auto v_long = shuffle_t::make_broadcast(v, simd);

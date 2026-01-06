@@ -390,6 +390,7 @@ status_t atomic_t::pd_t::init_conf(impl::engine_t *engine) {
                 phase.inner_block.block % phase.conf.subgroup_size == 0,
                 VERBOSE_BLOCKING_FAIL, "subgroup size mismatch");
         CHECK(phase.init_dispatcher(intel_engine, gpu_attr));
+        phase.conf.params.require_stateless_addressing = has_large_buffers();
     }
 
     for (atomic_conf_t &phase : phases) {
@@ -459,6 +460,8 @@ static void init_kernel_ctx_common(
     using namespace alg_kind;
 
     kernel_ctx.set_data_type(conf.src_type);
+    kernel_ctx.require_stateless_addressing(
+            conf.params.require_stateless_addressing);
     def_data_type(kernel_ctx, conf.src_type, "SRC");
     def_data_type(kernel_ctx, conf.dst_type, "DST");
 

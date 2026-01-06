@@ -104,10 +104,6 @@ struct const_memory_filler_t : public op_executable_t {
         return e;
     }
 #endif
-    status_t reset_engine(const dnnl::engine &p_engine) override {
-        UNUSED(p_engine);
-        return status::success;
-    }
 
 private:
     std::vector<target_dt> get_attr_data(

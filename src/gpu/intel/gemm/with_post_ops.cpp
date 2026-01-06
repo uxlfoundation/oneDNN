@@ -37,7 +37,7 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
                               && utils::one_of(d->b_type(), f16, f32, bf16))
             && attr()->mayiconvert(d->a_type(), f32);
     VDISPATCH_GEMM(
-            d->c_desc.ndims <= 4, VERBOSE_UNSUPPORTED_MD_FLAG, "c_desc.ndims");
+            d->c_desc.ndims <= 6, VERBOSE_UNSUPPORTED_MD_FLAG, "c_desc.ndims");
     VDISPATCH_GEMM(!utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k()),
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
     VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
@@ -160,7 +160,6 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     CHECK(attr_.set_default_formats(dst_md(0)));
     VDISPATCH_GEMM(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
-    compute::kernel_ctx_t kernel_ctx;
     use_scratchpad_with_post_op_worker = use_reorder
             || attributes_with_po->post_ops_.find(primitive_kind_t::dnnl_sum)
                     != -1;
@@ -168,10 +167,14 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     dispatch_ = intel_engine->create_dispatch(pd_->dst_md());
     dispatch_.define_dim("D0", 0, pd_->dst_md()->padded_dims[0]);
     dispatch_.define_dim("D1", 1, pd_->dst_md()->padded_dims[1]);
-    dispatch_.define_dim("D3", ndims > 3 ? 3 : 0,
-            ndims > 3 ? pd_->dst_md()->padded_dims[3] : 1);
     dispatch_.define_dim("D2", ndims > 2 ? 2 : 0,
             ndims > 2 ? pd_->dst_md()->padded_dims[2] : 1);
+    dispatch_.define_dim("D3", ndims > 3 ? 3 : 0,
+            ndims > 3 ? pd_->dst_md()->padded_dims[3] : 1);
+    dispatch_.define_dim("D4", ndims > 4 ? 4 : 0,
+            ndims > 4 ? pd_->dst_md()->padded_dims[4] : 1);
+    dispatch_.define_dim("D5", ndims > 5 ? 5 : 0,
+            ndims > 5 ? pd_->dst_md()->padded_dims[5] : 1);
     dispatch_.generate();
 
     init_scratchpad();
@@ -205,6 +208,7 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
 
     int ndims = src_info.ndims;
     kernel_ctx.set_data_type(mx_scales_ ? acc_type_ : c_type);
+    kernel_ctx.require_stateless_addressing(has_large_buffers());
 
     const auto &attr_scales = attr()->scales_;
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);

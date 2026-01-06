@@ -18,7 +18,9 @@
 #ifndef CPU_AARCH64_BRGEMM_BRGEMM_TYPES_HPP
 #define CPU_AARCH64_BRGEMM_BRGEMM_TYPES_HPP
 
+#include "common/c_types_map.hpp"
 #include "common/primitive_attr.hpp"
+#include "common/utils.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/platform.hpp"
 
@@ -184,7 +186,7 @@ struct DNNL_API brgemm_attr_t {
     const brgemm_batch_element_t *static_offsets;
 };
 
-struct brgemm_t {
+struct brgemm_desc_t {
     // Note: new added parameters must be taken into account in the brgemm
     // comparison function
     int bcast_dim = 0; // M;
@@ -213,7 +215,7 @@ struct brgemm_t {
     dim_t stride_b = 0;
 
     brgemm_layout_t layout = brgemm_layout_undef;
-    brgemm_batch_kind_t type;
+    brgemm_batch_kind_t type = brgemm_batch_kind_t::brgemm_addr;
     bool is_dgmm = false; // set to true in brdgmm_desc_init
     bool with_sum = false;
     bool req_cal_comp_pads = false;
@@ -296,10 +298,25 @@ struct brgemm_t {
         return sz;
     }
 
-    bool is_b_data_layout_vnni() { return true; }
+    // A class version of the `static` version of the function.
+    // Note: used in benchdnn only, not used inside the library.
+    bool is_b_data_layout_vnni() const { return is_b_data_layout_vnni(dt_b); }
 
-    bool operator==(const brgemm_t &rhs) const;
-    bool operator<(const brgemm_t &rhs) const;
+    static bool is_b_data_layout_vnni(data_type_t dt_b) {
+        using namespace data_type;
+        return utils::one_of(dt_b, s8, u8, bf16);
+    }
+
+    bool are_post_ops_applicable() const {
+        const bool has_zero_points = !utils::everyone_is(
+                brgemm_broadcast_t::none, zp_type_a, zp_type_b, zp_type_c);
+        return dt_c != dt_d || with_eltwise || with_binary || with_bias
+                || with_sum || req_s8s8_compensation || has_zero_points
+                || with_scales || with_dst_scales;
+    }
+
+    bool operator==(const brgemm_desc_t &rhs) const;
+    bool operator<(const brgemm_desc_t &rhs) const;
 };
 
 struct brgemm_kernel_params_t {
@@ -355,7 +372,7 @@ struct brgemm_kernel_t {
 };
 
 struct brgemm_kernel_common_t : public brgemm_kernel_t {
-    brgemm_kernel_common_t(const brgemm_t abrd);
+    brgemm_kernel_common_t(const brgemm_desc_t abrd);
     ~brgemm_kernel_common_t() override;
 
     status_t create_kernel() override;
@@ -369,7 +386,7 @@ private:
 };
 
 struct brdgmm_kernel_t : public brgemm_kernel_t {
-    brdgmm_kernel_t(const brgemm_t abrd);
+    brdgmm_kernel_t(const brgemm_desc_t abrd);
     ~brdgmm_kernel_t() override;
 
     status_t create_kernel() override;
@@ -384,7 +401,7 @@ private:
 
 /// @param bias Vector of bias (vector length is N)
 /// @param scales - Vector of scale factor values which represents combination
-///     scale factors for matrixes A and B. If brgemm_t::is_oc_scale = true
+///     scale factors for matrixes A and B. If brgemm_desc_t::is_oc_scale = true
 ///     vector length is N otherwise it must be broadcasted to vector of simd
 ///     width length
 /// @param binary_post_ops_rhs - Ptr to table of pointers to tensors used as rhs
@@ -414,6 +431,7 @@ private:
 ///
 struct brgemm_post_ops_data_t {
     brgemm_post_ops_data_t() = default;
+
     brgemm_post_ops_data_t(const void *bias, const float *scales,
             const void *binary_post_ops_rhs, size_t oc_logical_off,
             const size_t dst_row_logical_off = 0,

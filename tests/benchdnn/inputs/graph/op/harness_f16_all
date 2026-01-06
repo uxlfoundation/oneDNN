@@ -134,6 +134,9 @@
 --reset --dt=f16 --in-shapes=1:1x1x1x1 --case=op/f32/greaterequal.json
 --reset --dt=f16 --in-shapes=1:1 --case=op/f32/greaterequal.json
 --reset --dt=f16 --op-attrs=0:mode:gelu_erf,0:mode:gelu_tanh --case=op/f32/gelu.json
+--reset --dt=f16 --case=op/f32/rmsnorm.json
+# f16 src/dst with f32 scale
+--reset --dt=0:f16+1:f16 --case=op/f32/rmsnorm.json
 
 # select
 --reset --dt=bf16 --in-shapes=2:1x1x1x128 --case=op/f32/select.json

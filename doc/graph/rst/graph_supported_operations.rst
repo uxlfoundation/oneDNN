@@ -71,6 +71,7 @@ Supported Operations
    dev_guide_op_relu
    dev_guide_op_relubackward
    dev_guide_op_reorder
+   dev_guide_op_rmsnorm
    dev_guide_op_round
    dev_guide_op_select
    dev_guide_op_sigmoid

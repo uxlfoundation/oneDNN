@@ -62,6 +62,7 @@ struct conf_t {
     scales_query_t scale_src[64];
     uint64_t scales_mask;
     bool use_large_index = true;
+    bool require_stateless_addressing = true;
 };
 
 } // namespace concat

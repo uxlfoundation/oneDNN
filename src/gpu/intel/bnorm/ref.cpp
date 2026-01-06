@@ -80,6 +80,7 @@ static void init_conf_common(conf_t &conf, compute::dispatch_t &dispatch,
 
     conf = utils::zero<decltype(conf)>();
     conf.data_type = data_mdw.data_type();
+    conf.require_stateless_addressing = pd->has_large_buffers();
 
     conf.ndims = ndims;
     conf.mb = data_mdw.dims()[0];
@@ -119,6 +120,7 @@ static void init_conf_common(conf_t &conf, compute::dispatch_t &dispatch,
 static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const conf_t &conf, const compute::dispatch_t &dispatch,
         const offsets_t &off) {
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
     kernel_ctx.set_data_type(conf.data_type, false);
 
     kernel_ctx.define_int("NDIMS", conf.ndims);

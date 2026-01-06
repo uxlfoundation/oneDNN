@@ -162,7 +162,7 @@ struct CommonStrategy {
     bool simulation = false;                    // For use in simulator?
     bool systolicAvailable = false;             // True if systolic array present.
     bool avoidIncConflicts = true;              // If true, duplicate address increments across banks to avoid bundle conflicts.
-                                    ZPAD(A, 1)
+    bool isDSLGenerator = false;
     ngen::HW raHW = ngen::HW::Unknown;          // Pretend to be a different GPU for register allocation purposes.
     ngen::ThreadArbitrationMode arbitrationMode
         = ngen::ThreadArbitrationMode::Default; // Thread arbitration policy to use.
@@ -260,6 +260,7 @@ struct GEMMStrategyPOD : public CommonStrategy {
     bool shrinkWGK = false;                      //   Shrink wgK automatically to try to fit dispatch in 1 wave (or smaller)?
                                     ZPAD(J, 3)
     int fillGoal = 0;                            //     With shrinkWGK, try to fill this fraction of available thread slots, measured in sixteenths (0 = default).
+    int cInterleaveChunk = 1;                    // Minimum chunk size for interleaving columns of C among threads
     bool kParallelVariable = false;              // If true, generate kernel that uses variable k-parallelization for load balancing.
     bool fuseBeta = false;                       //   Fuse beta scaling into kernel? (kParallel/kParallelVariable, requires linear ordering)
     bool fusePostOps = false;                    //   Fuse post-operations into kernel? (kParallel/kParallelVariable, requires linear ordering)

@@ -30,6 +30,8 @@ static status_t init_conf_common(
     const memory_desc_wrapper src_mdw(pd->invariant_src_md());
     const memory_desc_wrapper dst_mdw(pd->invariant_dst_md());
 
+    conf.require_stateless_addressing = pd->has_large_buffers();
+
     auto is_c_dense = [](const memory_desc_wrapper &mdw) {
         return mdw.blocking_desc().strides[1] == 1;
     };
@@ -181,6 +183,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const memory_desc_t *dst_md) {
     using namespace dnnl::impl::alg_kind;
     kernel_ctx.set_data_type(conf.src_dt);
+    kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
     kernel_ctx.define_int("NDIMS", conf.ndims);
     if (conf.num_batches > 1) {

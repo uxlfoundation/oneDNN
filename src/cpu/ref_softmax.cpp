@@ -49,6 +49,15 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     const float *dst_scales
             = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
+    const auto dropout_p
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
+    const auto dropout_seed
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_DROPOUT_SEED);
+    const auto dropout_offset
+            = CTX_IN_MEM(const int64_t *, DNNL_ARG_ATTR_DROPOUT_OFFSET);
+    auto dropout_mask
+            = CTX_OUT_MEM(unsigned char *, DNNL_ARG_ATTR_DROPOUT_MASK);
+
     float *interim_scratchpad
             = ctx.get_scratchpad_grantor().template get<float>(
                     key_softmax_interim_store);
@@ -77,6 +86,8 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     const auto src_dt_size = types::data_type_size(pd()->src_md()->data_type);
     const auto dst_dt_size = types::data_type_size(pd()->dst_md()->data_type);
 
+    const bool non_default_attrs = !pd()->attr()->has_default_values();
+    const bool with_dropout = !pd()->attr()->dropout_.has_default_values();
     const int nthr = pd()->nthr_;
 
     parallel_nd_ext(nthr, outer_size_,
@@ -88,6 +99,16 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
         void *interim_ptr = pd()->need_intermediate_scratchpad()
                 ? (interim_scratchpad + ithr * axis_size)
                 : dst_data;
+
+        int64_t dropout_seed_val = with_dropout
+                ? io::load_int64_value(
+                          pd()->attr()->dropout_.seed_dt_, dropout_seed, 0)
+                : 0;
+        float dropout_p_val = with_dropout ? dropout_p[0] : 0.0f;
+        int64_t dropout_offset_val
+                = with_dropout && pd()->attr()->dropout_.use_offset_
+                ? dropout_offset[0]
+                : 0;
 
         float space_max = -FLT_MAX;
         float space_denom = 0;
@@ -181,12 +202,17 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
             }
             if (with_src_scales) val *= src_scales[0];
 
-            // post-ops
-            ref_post_ops_t::args_t args;
-            args.ctx = &ctx;
-            args.l_offset = ou * ou_stride + c;
-            args.dst_md = pd()->dst_md();
-            ref_post_ops->execute(val, args);
+            if (non_default_attrs) {
+                if (with_dropout)
+                    val = ref_dropout(val, dropout_mask, ou * ou_stride + c,
+                            dropout_p_val, dropout_seed_val,
+                            dropout_offset_val);
+                ref_post_ops_t::args_t args;
+                args.ctx = &ctx;
+                args.l_offset = ou * ou_stride + c;
+                args.dst_md = pd()->dst_md();
+                ref_post_ops->execute(val, args);
+            }
 
             if (with_dst_scales) val /= dst_scales[0];
             io::store_float_value(dst_d.data_type(), val, dst_data, c);
@@ -213,6 +239,15 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
             = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     const float *dst_scales
             = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+
+    const auto dropout_p
+            = CTX_IN_MEM(const float *, DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
+    const auto dropout_seed
+            = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_DROPOUT_SEED);
+    const auto dropout_offset
+            = CTX_IN_MEM(const int64_t *, DNNL_ARG_ATTR_DROPOUT_OFFSET);
+    auto dropout_mask
+            = CTX_OUT_MEM(unsigned char *, DNNL_ARG_ATTR_DROPOUT_MASK);
 
     float *interim_scratchpad
             = ctx.get_scratchpad_grantor().template get<float>(
@@ -250,12 +285,24 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
             ctx.zero_pad_output(DNNL_ARG_DST);
     }
 
+    const bool non_default_attrs = !pd()->attr()->has_default_values();
+    const bool with_dropout = !pd()->attr()->dropout_.has_default_values();
     const auto axis_size = pd()->axis_size(true);
     const int nthr = pd()->nthr_;
 
     parallel_nd_ext(nthr, outer_size_,
             [= COMPAT_THIS_CAPTURE](int ithr, int, dim_t ou) {
         const dim_t thr_shift = ithr * axis_size;
+
+        int64_t dropout_seed_val = with_dropout
+                ? io::load_int64_value(
+                          pd()->attr()->dropout_.seed_dt_, dropout_seed, 0)
+                : 0;
+        float dropout_p_val = with_dropout ? dropout_p[0] : 0.0f;
+        int64_t dropout_offset_val
+                = with_dropout && pd()->attr()->dropout_.use_offset_
+                ? dropout_offset[0]
+                : 0;
 
         float space_max_val = 0, space_denom_val = 0;
         float *space_max = &space_max_val, *space_denom = &space_denom_val;
@@ -315,12 +362,18 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
                 }
                 if (with_src_scales) d *= src_scales[0];
 
-                // post-ops
-                ref_post_ops_t::args_t args;
-                args.ctx = &ctx;
-                args.l_offset = ou_in_offset + c * inner_size_;
-                args.dst_md = pd()->dst_md();
-                ref_post_ops->execute(d, args);
+                if (non_default_attrs) {
+                    if (with_dropout) {
+                        d = ref_dropout(d, dropout_mask, dst_off, dropout_p_val,
+                                dropout_seed_val, dropout_offset_val);
+                    }
+                    ref_post_ops_t::args_t args;
+                    args.ctx = &ctx;
+                    args.l_offset = ou_in_offset + c * inner_size_;
+                    args.dst_md = pd()->dst_md();
+                    ref_post_ops->execute(d, args);
+                }
+
                 if (with_dst_scales) d /= dst_scales[0];
 
                 io::store_float_value(dst_d.data_type(), d, dst, dst_off);

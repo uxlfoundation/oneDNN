@@ -51,6 +51,12 @@
 --attr-post-ops=sum+relu+add:f32+add:u8:per_dim_01+linear:0.5:1.5:2.0+mul:f32:per_dim_0+add:s8:per_oc+add:f32:per_tensor
 10x100:100x10
 
+# jit host-side scalar ZPs
+--dt=s8:u4:s32,u8:u4:s32,s8:s8:s32
+--stag=ab --wtag=ba --dtag=ab
+--attr-zero-points=src:host_scalar:1,wei:host_scalar:2,src:host_scalar:1+wei:host_scalar:2
+16x128:128x32
+
 # 3d
 --reset
 --dt=f64,f32,f16,f16:f16:s8,f16:f16:u8,bf16,bf16:bf16:f32
@@ -103,6 +109,11 @@
 --attr-scales=src:common:0.25+wei:common:0.5+dst:common:2
 --attr-post-ops=sum+add:f32+add:u8:per_dim_01+mul:f32:per_dim_0+add:s8:per_tensor+add:f32:per_dim_01+linear:2:-1
 1x5x4x3x30x2:6x1x4x3x2x20
+
+# Test with_po for 5D and 6D
+--reset --dt=f64 --attr-post-ops=add:f32
+2x1x3x1x5x7:1x4x1x6x7x8
+1x3x1x5x7:4x1x6x7x8
 
 # Test Strided
 --reset

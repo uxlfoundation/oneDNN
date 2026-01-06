@@ -1668,6 +1668,22 @@ status_t layout_propagator_for_gen_index(std::shared_ptr<op_t> &op,
     return status;
 }
 
+status_t layout_propagator_for_identity(std::shared_ptr<op_t> &op,
+        const dnnl::engine &p_engine, pd_cache_t &pd_cache,
+        const fpmath_t &fpmath, bool use_block_layout,
+        subgraph_rewriter_t &rewriter) {
+    logical_tensor_t dst_lt = op->get_input_logical_tensor(0);
+    VCHECK_LAYOUT_PROPAGATOR(!ltw(dst_lt).is_any(), status::invalid_arguments,
+            "layout of identity dst can't be any");
+    auto dst_md = make_dnnl_memory_desc(dst_lt);
+    auto src_md = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
+    if (src_md != dst_md) {
+        insert_reorder_before(op, 0, dst_md, p_engine, pd_cache, fpmath,
+                use_block_layout, rewriter);
+    }
+    return status::success;
+}
+
 status_t layout_propagator_for_groupnorm(op_ptr &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
         const fpmath_t &fpmath, bool use_block_layout,

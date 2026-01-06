@@ -59,6 +59,7 @@ struct simple_t : public primitive_t {
 
     status_t init(impl::engine_t *engine) override {
         compute::kernel_ctx_t kernel_ctx;
+        kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
         CHECK(create_kernel(engine, &kernel_, "simple_sum", kernel_ctx));
         if (!kernel_) return status::runtime_error;
         return status::success;

@@ -83,6 +83,7 @@ CommonDriverInfo Generator<hw>::driverInfo(GEMMProblem problem, const GEMMStrate
     if (problem.needsAGroupSums())                                info.flags |= FlagAGroupSums;
     if (problem.needsBGroupSums())                                info.flags |= FlagBGroupSums;
     info.flags |= (strategy.fillGoal << FlagShiftFillGoal) & FlagMaskFillGoal;
+    info.flags |= (static_cast<uint64_t>(strategy.cInterleaveChunk) << FlagShiftCInterleave) & FlagMaskCInterleave;
     info.slm = int(gemmSLMSize(hw, problem, strategy));
     info.perKSLM = int(gemmPerKSLMSize(hw, problem, strategy));
     info.alignment[0] = problem.A.alignment;

@@ -21,6 +21,9 @@
 
 #include "gpu/intel/primitive_conf.hpp"
 
+// Included to enable compatibility tests
+#include "gpu/intel/include/dnnl_interop.h"
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -392,55 +395,6 @@ void def_memory_desc_info(compute::kernel_ctx_t &kernel_ctx,
     }
 }
 
-void def_binary_alg_kinds(compute::kernel_ctx_t &kernel_ctx) {
-    kernel_ctx.define_int("BINARY_ADD", alg_kind::binary_add);
-    kernel_ctx.define_int("BINARY_MUL", alg_kind::binary_mul);
-    kernel_ctx.define_int("BINARY_MIN", alg_kind::binary_min);
-    kernel_ctx.define_int("BINARY_MAX", alg_kind::binary_max);
-    kernel_ctx.define_int("BINARY_DIV", alg_kind::binary_div);
-    kernel_ctx.define_int("BINARY_SUB", alg_kind::binary_sub);
-    kernel_ctx.define_int("BINARY_GE", alg_kind::binary_ge);
-    kernel_ctx.define_int("BINARY_GT", alg_kind::binary_gt);
-    kernel_ctx.define_int("BINARY_LE", alg_kind::binary_le);
-    kernel_ctx.define_int("BINARY_LT", alg_kind::binary_lt);
-    kernel_ctx.define_int("BINARY_EQ", alg_kind::binary_eq);
-    kernel_ctx.define_int("BINARY_NE", alg_kind::binary_ne);
-}
-
-void def_eltwise_alg_kinds(compute::kernel_ctx_t &kernel_ctx) {
-    kernel_ctx.define_int("RELU", alg_kind::eltwise_relu);
-    kernel_ctx.define_int("LINEAR", alg_kind::eltwise_linear);
-    kernel_ctx.define_int("SOFT_RELU", alg_kind::eltwise_soft_relu);
-    kernel_ctx.define_int("MISH", alg_kind::eltwise_mish);
-    kernel_ctx.define_int("LOGISTIC", alg_kind::eltwise_logistic);
-    kernel_ctx.define_int("TANH", alg_kind::eltwise_tanh);
-    kernel_ctx.define_int("ELU", alg_kind::eltwise_elu);
-    kernel_ctx.define_int("SQUARE", alg_kind::eltwise_square);
-    kernel_ctx.define_int("SQRT", alg_kind::eltwise_sqrt);
-    kernel_ctx.define_int("ABS", alg_kind::eltwise_abs);
-    kernel_ctx.define_int("EXP", alg_kind::eltwise_exp);
-    kernel_ctx.define_int("GELU_TANH", alg_kind::eltwise_gelu_tanh);
-    kernel_ctx.define_int("SWISH", alg_kind::eltwise_swish);
-    kernel_ctx.define_int("LOG", alg_kind::eltwise_log);
-    kernel_ctx.define_int("CLIP", alg_kind::eltwise_clip);
-    kernel_ctx.define_int("CLIP_V2", alg_kind::eltwise_clip_v2);
-    kernel_ctx.define_int("POW", alg_kind::eltwise_pow);
-    kernel_ctx.define_int("GELU_ERF", alg_kind::eltwise_gelu_erf);
-    kernel_ctx.define_int("ROUND", alg_kind::eltwise_round);
-    kernel_ctx.define_int("HARDSWISH", alg_kind::eltwise_hardswish);
-    kernel_ctx.define_int("HARDSIGMOID", alg_kind::eltwise_hardsigmoid);
-
-    kernel_ctx.define_int("RELU_DST", alg_kind::eltwise_relu_use_dst_for_bwd);
-    kernel_ctx.define_int(
-            "LOGISTIC_DST", alg_kind::eltwise_logistic_use_dst_for_bwd);
-    kernel_ctx.define_int("TANH_DST", alg_kind::eltwise_tanh_use_dst_for_bwd);
-    kernel_ctx.define_int("ELU_DST", alg_kind::eltwise_elu_use_dst_for_bwd);
-    kernel_ctx.define_int("SQRT_DST", alg_kind::eltwise_sqrt_use_dst_for_bwd);
-    kernel_ctx.define_int("EXP_DST", alg_kind::eltwise_exp_use_dst_for_bwd);
-    kernel_ctx.define_int(
-            "CLIP_V2_DST", alg_kind::eltwise_clip_v2_use_dst_for_bwd);
-}
-
 bool post_ops_with_binary_ok(const primitive_attr_t *attr,
         const memory_desc_t &dst_md, const int max_ndims_supported) {
     const auto &p = attr->post_ops_;
@@ -754,9 +708,6 @@ status_t def_attr_info_impl(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("WITH_HOST_WEI_SCALE", attr_info.with_host_wei_scale);
     kernel_ctx.define_int("WITH_HOST_DST_SCALE", attr_info.with_host_dst_scale);
     kernel_ctx.define_int("WITH_MX_DST_SCALE", attr_info.with_mx_dst_scale);
-
-    def_binary_alg_kinds(kernel_ctx);
-    def_eltwise_alg_kinds(kernel_ctx);
 
     return def_post_ops_cfg(kernel_ctx, post_ops, dst_md);
 }

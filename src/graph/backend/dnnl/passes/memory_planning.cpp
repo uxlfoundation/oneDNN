@@ -57,7 +57,7 @@ std::vector<op_inplace_pair_t> get_op_inplace_pairs(op_t &op) {
             op_kind::dnnl_add_zps, op_kind::dnnl_reorder, op_kind::dnnl_binary,
             op_kind::dnnl_eltwise, op_kind::dnnl_softmax,
             op_kind::dnnl_logsoftmax, op_kind::dnnl_softmax_bwd,
-            op_kind::dnnl_logsoftmax_bwd};
+            op_kind::dnnl_logsoftmax_bwd, op_kind::dnnl_identity};
     std::vector<op_inplace_pair_t> pairs;
 
     // Make post-sum inplace has higher priority since it affects both

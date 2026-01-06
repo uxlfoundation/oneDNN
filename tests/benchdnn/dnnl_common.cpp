@@ -305,6 +305,11 @@ int test_persistent_cache_api(
                                     != std::string::npos))
                 return OK;
 
+            // If the operation is trivial, there may be no kernel in the cache.
+            const auto dst_md = query_md(pd, DNNL_ARG_DST);
+            for (int i = 0; i < dst_md->ndims; ++i)
+                if (dst_md->padded_dims[i] == 0) return OK;
+
             BENCHDNN_PRINT(
                     0, "error: %s\n", "cache blob is not expected to be empty");
             res->state = FAILED;
@@ -474,21 +479,28 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
     TIME_EXECUTE(execute_unmap_args(args, dnnl_args));
 
     dnnl_status_t status = dnnl_runtime_error;
-    bool run_regular_exec = true;
+    if (is_gpu(engine) && execution_mode == execution_mode_t::graph) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
-    while (execution_mode == execution_mode_t::graph && is_gpu(engine)) {
         void *queue_ptr;
         DNN_SAFE(dnnl_sycl_interop_stream_get_queue(stream, &queue_ptr), CRIT);
-        sycl::queue queue = *static_cast<sycl::queue *>(queue_ptr);
-        const bool can_run_sycl_graph = queue.get_device().get_backend()
-                == sycl::backend::ext_oneapi_level_zero;
-        if (!can_run_sycl_graph) break;
+        ::sycl::queue queue = *static_cast<::sycl::queue *>(queue_ptr);
+        if (queue.get_device().get_backend()
+                != ::sycl::backend::ext_oneapi_level_zero) {
+            BENCHDNN_PRINT(0, "%s %s\n",
+                    "[ERROR] SYCL graph execution is only available on Level "
+                    "Zero backend; currently using:",
+                    ::sycl::detail::get_backend_name_no_vendor(
+                            queue.get_device().get_backend())
+                            .data());
+            if (res) res->state = FAILED;
+            return FAIL;
+        }
 
         BENCHDNN_PRINT(
                 2, "%s\n", "[INFO] Using experimental SYCL graph execution.");
-        sycl::ext::oneapi::experimental::command_graph graph {
+        ::sycl::ext::oneapi::experimental::command_graph graph {
                 queue.get_context(), queue.get_device(),
-                {sycl::ext::oneapi::experimental::property::graph::
+                {::sycl::ext::oneapi::experimental::property::graph::
                                 assume_buffer_outlives_graph {}}};
 
         try {
@@ -498,21 +510,21 @@ int execute_and_wait(perf_function_t &exec_func, const dnnl_engine_t &engine,
             DNN_SAFE(dnnl_stream_wait(stream), CRIT);
 
             auto exec = graph.finalize();
-            queue.ext_oneapi_graph(exec).wait();
-        } catch (const sycl::exception &e) {
+            TIME_EXECUTE(queue.ext_oneapi_graph(exec).wait());
+        } catch (const std::exception &e) {
             BENCHDNN_PRINT(0, "%s %s\n",
                     "[ERROR] SYCL graph execution exception:", e.what());
             if (res) res->state = FAILED;
             return FAIL;
         }
-
-        // SYCL graph feature completed submission and execution, no need to
-        // have a regular run.
-        run_regular_exec = false;
-        break;
-    }
+#else
+        BENCHDNN_PRINT(0, "%s\n",
+                "[ERROR] Graph execution is only available on SYCL runtime "
+                "with Level Zero backend.");
+        if (res) res->state = FAILED;
+        return FAIL;
 #endif
-    if (run_regular_exec) {
+    } else {
         stream_staller_t staller(stream);
         TIME_EXECUTE(status = exec_func(stream, dnnl_args));
         staller.release();
@@ -1096,30 +1108,36 @@ size_t get_cpu_ram_size() {
 }
 #endif
 
-int get_gpu_ram_size(size_t &ram_size) {
+int get_gpu_ram_sizes(size_t &ram_size, size_t &max_alloc_size) {
     if (!is_gpu()) return OK;
-    if (ram_size > 0) return OK;
+    if (ram_size > 0 && max_alloc_size > 0) return OK;
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     auto eng = dnnl::engine(get_test_engine(), true);
-    cl_int status = CL_SUCCESS;
-    cl_device_id ocl_device = dnnl::ocl_interop::get_device(eng);
+    cl_device_id ocl_dev = dnnl::ocl_interop::get_device(eng);
 
     cl_ulong ram_sz = 0;
-    status = clGetDeviceInfo(ocl_device, CL_DEVICE_GLOBAL_MEM_SIZE,
+    cl_int status = clGetDeviceInfo(ocl_dev, CL_DEVICE_GLOBAL_MEM_SIZE,
             sizeof(cl_ulong), &ram_sz, nullptr);
     if (status != CL_SUCCESS) return FAIL;
 
     ram_size = (size_t)ram_sz;
+    // For OCL runtime we allow allocation of buffers up to VRAM size,
+    // with the usage of CL_MEM_ALLOW_UNRESTRICTED_SIZE_INTEL flag.
+    max_alloc_size = (size_t)ram_sz;
     return OK;
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
     auto eng = dnnl::engine(get_test_engine(), true);
     auto sycl_dev = dnnl::sycl_interop::get_device(eng);
     ram_size = (size_t)sycl_dev
                        .get_info<::sycl::info::device::global_mem_size>();
+    max_alloc_size
+            = (size_t)sycl_dev
+                      .get_info<::sycl::info::device::max_mem_alloc_size>();
     return OK;
 #endif
     ram_size = 0;
+    max_alloc_size = 0;
     return OK;
 }
 
@@ -1190,7 +1208,8 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
 
     static size_t cpu_device_capacity = get_cpu_ram_size();
     static size_t gpu_device_capacity = 0;
-    SAFE(get_gpu_ram_size(gpu_device_capacity), WARN);
+    static size_t gpu_max_alloc_capacity = 0;
+    SAFE(get_gpu_ram_sizes(gpu_device_capacity, gpu_max_alloc_capacity), WARN);
 
     const size_t device_max_capacity
             = is_cpu() ? cpu_device_capacity : gpu_device_capacity;
@@ -1228,13 +1247,32 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
             res->reason = skip_reason::not_enough_ram;
         }
 
+        const bool all_allocation_fit_limit
+                = std::all_of(check_mem_size_args.sizes.cbegin(),
+                        check_mem_size_args.sizes.cend(), [&](size_t s) {
+            const bool fit = s < gpu_max_alloc_capacity;
+            if (!fit) {
+                BENCHDNN_PRINT(1,
+                        "[CHECK_MEM][%s]: Allocation of size %s "
+                        "doesn't fit allocation limit of %s.\n",
+                        dir_c_str(), smart_bytes(s).c_str(),
+                        smart_bytes(gpu_max_alloc_capacity).c_str());
+            }
+            return fit;
+        });
+        if (!all_allocation_fit_limit) {
+            res->state = SKIPPED;
+            res->reason = skip_reason::not_enough_ram;
+        }
+
         BENCHDNN_PRINT((!fits_device_ram ? 1 : 6),
                 "[CHECK_MEM][%s]: Requested: %s; benchdnn_device_limit: %s; "
-                "device_RAM_capacity: %s;\n",
+                "device_RAM_capacity: %s; gpu_max_alloc: %s;\n",
                 dir_c_str(),
                 smart_bytes(check_mem_size_args.total_size_device).c_str(),
                 smart_bytes(benchdnn_device_limit).c_str(),
-                smart_bytes(gpu_device_capacity).c_str());
+                smart_bytes(gpu_device_capacity).c_str(),
+                smart_bytes(gpu_max_alloc_capacity).c_str());
     }
 
     // Note: in theory, `total_size_ref` itself can be smaller for a `prim_ref`
@@ -1827,6 +1865,18 @@ void erase_unused_args(
     }
 }
 
+// Appends data kinds to check during comparison into `check_kinds` vector
+// coming from extensions through `attr`.
+void get_kinds_to_check_shared(
+        std::vector<data_kind_t> &check_kinds, const attr_t &attr) {
+    if (!attr.dropout.is_def() && attr.dropout.has_output_mask())
+        check_kinds.push_back(DROPOUT_MASK);
+
+    if (!attr.scales.get(DNNL_ARG_DST).is_def()
+            && attr.scales.get(DNNL_ARG_DST).is_dynamic())
+        check_kinds.push_back(DST_SCALES);
+}
+
 // This function handles cases when optimized CPU primitive is used as a
 // reference for a problem. Optimized primitive means custom memory formats
 // which require reorder to them. Since `ref_mem_map` is passed to optimized
@@ -1934,6 +1984,7 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
     const bool is_zero_point_arg = (exec_arg & DNNL_ARG_ATTR_ZERO_POINTS);
     const bool is_dropout_p = (exec_arg == DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
     const bool is_dropout_seed = (exec_arg == DNNL_ARG_ATTR_DROPOUT_SEED);
+    const bool is_dropout_offset = (exec_arg == DNNL_ARG_ATTR_DROPOUT_OFFSET);
     const bool is_rounding_seed = (exec_arg == DNNL_ARG_ATTR_ROUNDING_SEED);
 
     if (is_post_ops_arg) {
@@ -1990,11 +2041,18 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         int local_exec_arg = exec_arg ^ DNNL_ARG_ATTR_ZERO_POINTS;
         TIME_FILL(SAFE(
                 fill_zero_points(attr, local_exec_arg, mem, ref_mem), WARN));
-    } else if (is_dropout_p) {
+    } else if (is_dropout_p && !attr.dropout.use_host_scalars) {
         ref_mem.set_f32_elem(0, attr.dropout.p);
         TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
-    } else if (is_dropout_seed) {
-        ref_mem.set_elem(0, attr.dropout.seed);
+    } else if (is_dropout_seed && !attr.dropout.use_host_scalars) {
+        ref_mem = dnn_mem_t(mem.md_, dnnl_s64, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
+        ref_mem.set_s64_elem(0, attr.dropout.seed);
+        TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
+    } else if (is_dropout_offset && !attr.dropout.use_host_scalars) {
+        ref_mem = dnn_mem_t(mem.md_, dnnl_s64, tag::abx, get_cpu_engine(),
+                /* prefill = */ false);
+        ref_mem.set_s64_elem(0, attr.dropout.offset);
         TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
     } else if (is_rounding_seed) {
         ref_mem.set_elem(0, attr.rounding_mode.seed);

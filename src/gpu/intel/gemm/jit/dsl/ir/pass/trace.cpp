@@ -46,14 +46,14 @@ void trace_stop(const char *pass_name) {
     if (get_trace_profiler()) get_trace_profiler()->stop(pass_name);
 }
 void trace_perf() {
-    gpu_perf() << get_trace_profiler();
+    dsl_perf() << get_trace_profiler();
 }
 
 void trace_pass(
         const char *pass_name, const stmt_t &stmt, const ir_context_t &ir_ctx) {
     trace_stop(pass_name);
-    gpu_trace() << "=== After " << pass_name << "\n" << stmt;
-    gpu_trace() << ir_ctx.cset();
+    dsl_trace() << "=== After " << pass_name << "\n" << stmt;
+    dsl_trace() << ir_ctx.cset();
 }
 #endif
 

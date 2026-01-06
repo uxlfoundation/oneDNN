@@ -221,8 +221,8 @@ namespace custom {
 } // namespace custom
 
 namespace binary {
-bool get_binary_prb_vdims(
-        const deserialized_op_t &base_op_ref, prb_vdims_t &prb_vdims) {
+bool get_binary_prb_vdims_and_strides(const deserialized_op_t &base_op_ref,
+        ::binary::settings_t &op_setting) {
     // since base_op_ref is a copy from the original
     // it is safe to modify it
     deserialized_op_t &base_op = const_cast<deserialized_op_t &>(base_op_ref);
@@ -231,13 +231,20 @@ bool get_binary_prb_vdims(
     auto &src1_dims = base_op.in_lts_[1].shape_;
     auto &dst_dims = base_op.out_lts_[0].shape_;
     const auto &ndims = dst_dims.size();
+
+    auto &src0_strides = base_op.in_lts_[0].stride_;
+    auto &src1_strides = base_op.in_lts_[1].stride_;
+    auto &dst_strides = base_op.out_lts_[0].stride_;
+    // TODO: Binary Select currently does not support setting strides
+    // because it involves three inputs, whereas the current stride
+    // configuration only supports two. This will be extended as needed.
     if (base_op_ref.kind_ == "Select") {
         const auto &src2_dims = base_op.in_lts_[2].shape_;
 
         ::graph::extend_dims(base_op.in_lts_[0], ndims);
         ::graph::extend_dims(base_op.in_lts_[1], ndims);
         ::graph::extend_dims(base_op.in_lts_[2], ndims);
-        prb_vdims = prb_vdims_t({src1_dims, src2_dims, src0_dims});
+        op_setting.prb_vdims = prb_vdims_t({src1_dims, src2_dims, src0_dims});
         return true;
     }
     // use Add to implement BiasAdd, need to align channel dims of src1
@@ -249,8 +256,12 @@ bool get_binary_prb_vdims(
         else if (ndims == 2) {
             if (src1_dims[0] == 1 || src1_dims[0] == src0_dims[0]) {
                 src1_dims.insert(src1_dims.end(), 1);
+                // [1,1]/[M, 1] strides: [1,1]
+                src1_strides.insert(src1_strides.end(), 1);
             } else if (src1_dims[0] == src0_dims[1]) {
                 src1_dims.insert(src1_dims.begin(), 1);
+                // [1,N] strides: [N,1]
+                src1_strides.insert(src1_strides.begin(), src1_dims[1]);
             } else {
                 return false;
             }
@@ -258,15 +269,26 @@ bool get_binary_prb_vdims(
         // src0: [N,X,C] / [N,C,X] ---> src1:[1,1..,C] / [1,C,1..]
         else if (ndims > 2) {
             dims_t src1_dims_tmp(ndims, 1);
+            dims_t src1_strides_tmp(ndims, 1);
             // default NCX
-            int64_t channel_idx = 1;
+            size_t channel_idx = 1;
             if (base_op_ref.has_NXC_format()) { channel_idx = ndims - 1; }
             src1_dims_tmp[channel_idx] = src0_dims[channel_idx];
             src1_dims = std::move(src1_dims_tmp);
 
+            // calculate src1 strides
+            for (size_t i = 0; i < ndims; i++) {
+                if (i >= channel_idx)
+                    src1_strides_tmp[i] = 1;
+                else
+                    src1_strides_tmp[i] = src1_dims[channel_idx];
+            }
+            src1_strides = std::move(src1_strides_tmp);
+
             // convert NXC to NCX
             if (base_op_ref.has_NXC_format()) {
                 change_format_to_ncx(src0_dims, src1_dims, dst_dims);
+                change_format_to_ncx(src0_strides, src1_strides, dst_strides);
             }
         }
     } else {
@@ -274,7 +296,9 @@ bool get_binary_prb_vdims(
         ::graph::extend_dims(base_op.in_lts_[1], ndims);
     }
 
-    prb_vdims = prb_vdims_t({src0_dims, src1_dims});
+    op_setting.prb_vdims = prb_vdims_t({src0_dims, src1_dims});
+    op_setting.strides.front()
+            = vdims_t({src0_strides, src1_strides, dst_strides});
     return true;
 }
 
@@ -343,7 +367,7 @@ bool get_binary_alg(
         const deserialized_op_t &base_op_ref, res_t *res) {
     ::binary::settings_t op_setting;
     DNN_GRAPH_CHECK_SETTINGS(
-            binary::get_binary_prb_vdims(base_op_ref, op_setting.prb_vdims),
+            binary::get_binary_prb_vdims_and_strides(base_op_ref, op_setting),
             res);
 
     DNN_GRAPH_CHECK_SETTINGS(
@@ -1220,6 +1244,14 @@ bool get_lnorm_dir(const deserialized_op_t &base_op_ref, dir_t &dir) {
         } else {
             return false;
         }
+    } else if (op_kind == "RMSNorm") {
+        // RMSNorm OP in oneDNN Graph API only have 1 output
+        const size_t out_size = base_op_ref.out_lts_.size();
+        if (out_size == 1) {
+            dir = dir_t::FWD_I;
+        } else {
+            return false;
+        }
     } else if (op_kind == "LayerNormBackward") {
         dir = dir_t::BWD_DW;
     } else {
@@ -1235,7 +1267,7 @@ bool get_lnorm_dt(const deserialized_op_t &base_op_ref, dnnl_data_type_t &dt) {
 }
 
 bool get_lnorm_flags(
-        const deserialized_op_t &base_op_ref, ::bnorm::flags_t &flags) {
+        const deserialized_op_t &base_op_ref, ::lnorm::flags_t &flags) {
     bool use_affine = false;
     base_op_ref.get_attr_bool(use_affine, "use_affine");
     const auto &op_kind = base_op_ref.kind_;
@@ -1254,6 +1286,19 @@ bool get_lnorm_flags(
             } else {
                 return false;
             }
+        }
+    } else if (op_kind == "RMSNorm") {
+        flags = ::lnorm::USE_RMS_NORM;
+        // RMSNorm input: src, gamma(opt)
+        // no beta/shift parameter for RMSNorm
+        if (in_size == 2) {
+            // has gamma (scale only)
+            flags |= ::lnorm::USE_SCALE;
+        } else if (in_size == 1) {
+            // no gamma
+            flags |= ::lnorm::NONE;
+        } else {
+            return false;
         }
     } else if (op_kind == "LayerNormBackward") {
         // input: src, diff_dst, mean, var, gamma(opt), beta(opt)
@@ -1288,6 +1333,8 @@ bool get_lnorm_flags(
             lnorm::get_lnorm_dt(base_op_ref, op_setting.dt[0].front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_driver_tag(base_op_ref, op_setting.tag[0].front()), res);
+    DNN_GRAPH_CHECK_SETTINGS(
+            get_driver_tag(base_op_ref, op_setting.tag[0].back(), true), res);
     DNN_GRAPH_CHECK_SETTINGS(
             lnorm::get_lnorm_flags(base_op_ref, op_setting.flags.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(

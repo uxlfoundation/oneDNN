@@ -145,14 +145,26 @@ arg_indices_t get_arg_indices_for_conv_and_matmul(const op_t *op) {
     return args;
 }
 
-arg_indices_t get_arg_indices_for_lnorm_and_gnorm(const op_t *op) {
+arg_indices_t get_arg_indices_for_norm(const op_t *op) {
     arg_indices_t args;
     size_t in_idx = 0;
+    const bool is_rms = op->has_attr(op_attr::is_rms)
+            ? op->get_attr<bool>(op_attr::is_rms)
+            : false;
     args.insert({DNNL_ARG_SRC, {indices_t::type_t::input, in_idx++}});
     if (!op->has_attr(op_attr::use_affine)
             || op->get_attr<bool>(op_attr::use_affine)) {
-        args.insert({DNNL_ARG_SCALE, {indices_t::type_t::input, in_idx++}});
-        args.insert({DNNL_ARG_SHIFT, {indices_t::type_t::input, in_idx++}});
+        // rms doesn't support shift
+        if (!is_rms) {
+            args.insert({DNNL_ARG_SCALE, {indices_t::type_t::input, in_idx++}});
+            args.insert({DNNL_ARG_SHIFT, {indices_t::type_t::input, in_idx++}});
+        } else {
+            if (op->has_attr(op_attr::use_affine)
+                    && op->get_attr<bool>(op_attr::use_affine)) {
+                args.insert(
+                        {DNNL_ARG_SCALE, {indices_t::type_t::input, in_idx++}});
+            }
+        }
     }
 
     const fusion_info_t &fusion_info = op->has_attr(op_attr::fusion_info)
@@ -170,9 +182,13 @@ arg_indices_t get_arg_indices_for_lnorm_and_gnorm(const op_t *op) {
     args.insert({DNNL_ARG_DST, {indices_t::type_t::output, out_idx++}});
     if (!op->has_attr(op_attr::keep_stats)
             || op->get_attr<bool>(op_attr::keep_stats)) {
-        args.insert({DNNL_ARG_MEAN, {indices_t::type_t::output, out_idx++}});
-        args.insert(
-                {DNNL_ARG_VARIANCE, {indices_t::type_t::output, out_idx++}});
+        // RMSNorm OP in oneDNN Graph API only have 1 output
+        if (!is_rms) {
+            args.insert(
+                    {DNNL_ARG_MEAN, {indices_t::type_t::output, out_idx++}});
+            args.insert({DNNL_ARG_VARIANCE,
+                    {indices_t::type_t::output, out_idx++}});
+        }
     }
 
     args.insert({DNNL_ARG_SCRATCHPAD, {indices_t::type_t::output, out_idx++}});

@@ -91,6 +91,7 @@ struct conf_t {
     bool is_nchw;
     bool is_src_nchw, is_src_nhwc;
     bool is_dst_nhwc;
+    bool require_stateless_addressing;
 
     int tile_size;
     int wino_m;

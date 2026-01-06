@@ -291,6 +291,7 @@ dnnl_driver_t deserialized_op_t::opkind2driver() const {
                     {dnnl::graph::op::kind::ReLUBackward,
                             dnnl_driver_t::eltwise},
                     {dnnl::graph::op::kind::Reorder, dnnl_driver_t::reorder},
+                    {dnnl::graph::op::kind::RMSNorm, dnnl_driver_t::lnorm},
                     {dnnl::graph::op::kind::Round, dnnl_driver_t::eltwise},
                     {dnnl::graph::op::kind::Select, dnnl_driver_t::binary},
                     {dnnl::graph::op::kind::Sigmoid, dnnl_driver_t::eltwise},
@@ -820,9 +821,16 @@ bool deserialized_graph_t::detect_sdpa_bwd_impl() const {
         }
 
         // find MatMul for dQ or dV
-        cur_op_ref = get_child_ops(cur_op_refs[softmax_bwd_idx])[0];
+        cur_op_refs = get_child_ops(cur_op_refs[softmax_bwd_idx]);
+        // consider the case w/ & w/o gradients w.r.t. mask.
+        if (cur_op_refs.size() > 2) continue;
+        size_t matmul_idx = 0;
+        if (cur_op_refs.size() == 2 && cur_op_refs[0].kind_ == "End") {
+            matmul_idx = 1;
+        }
+
         cur_op_ref = find_next_until(
-                cur_op_ref, "MatMul", softmax_bwd_post_op_kind);
+                cur_op_refs[matmul_idx], "MatMul", softmax_bwd_post_op_kind);
         if (cur_op_ref.empty()) {
             BENCHDNN_PRINT(8, "%s\n",
                     "[DETECT_SDPA_BWD]: failed due to no MatMul for dQ or dK");
@@ -833,6 +841,7 @@ bool deserialized_graph_t::detect_sdpa_bwd_impl() const {
         //                      ->MatMul->[dV]
         // MatMul->Subtract->Exp
         //                      ->SoftMaxBackward->MatMul->[dQ / dK]
+        //                                       ->End (optional)
         // It will be considered as a SDPA bwd implementation.
         return true;
     }

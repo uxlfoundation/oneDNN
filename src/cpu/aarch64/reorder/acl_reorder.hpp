@@ -16,10 +16,8 @@
 #ifndef CPU_AARCH64_REORDER_ACL_REORDER_HPP
 #define CPU_AARCH64_REORDER_ACL_REORDER_HPP
 
-#include "arm_compute/core/Types.h"
 #include "common/utils.hpp"
 #include "cpu/aarch64/acl_utils.hpp"
-#include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/reorder/cpu_reorder_pd.hpp"
 
 namespace dnnl {

@@ -27,7 +27,6 @@ namespace dnnl_impl {
 struct reorder_executable_t : public op_executable_t {
     DECLARE_DESC_CLASS_AND_CREATOR(dnnl::reorder::primitive_desc);
     DECLARE_ARG_INDICES_GETTER;
-    DECLARE_RESET_ENGINE(dnnl::reorder);
 
     reorder_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,

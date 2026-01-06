@@ -721,11 +721,11 @@ private:
         if (!is_enabled(check_kind_t::check_tg_size)) return true;
 
         auto &tg = ctx.blk.thread_group();
-        dim_t tg_size = 1;
-        dim_t max_tg = 1;
+        size_t tg_size = 1;
+        size_t max_tg = 1;
         for (auto &d : tg) {
             tg_size *= tg[d];
-            max_tg = std::max(tg[d], max_tg);
+            max_tg = std::max(tg[d], int64_t(max_tg));
         }
         if (max_tg > max_tg_dim_) return false;
         if (tg_size > max_tg_size_) return false;
@@ -969,7 +969,7 @@ private:
     const config_t &cfg_;
     const tile_t padded_shape_;
     const tile_t padded_gemm_shape_;
-    const int max_tg_size_ = 0;
+    const size_t max_tg_size_ = 0;
 
     uint64_t check_mask_ = 0;
     uint64_t optional_check_mask_ = 0;

@@ -21,6 +21,9 @@
 
 #ifndef __OPENCL_CL_H
 #include <CL/cl.h>
+#endif
+
+#ifndef OPENCL_CL_EXT_H_
 #include <CL/cl_ext.h>
 #endif
 

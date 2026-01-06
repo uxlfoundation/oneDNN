@@ -29,13 +29,6 @@ enum class op_kind_t;
 }
 using op_kind_t = ir::op_kind_t;
 
-// TODO: ir_context_t should be removed from the DSL API. All necessary
-// information should be passed in either via kernel::interface and
-// kernel::options.
-namespace ir {
-class ir_context_t;
-}
-
 using expr_t = ir::expr_t;
 using stmt_t = ir::stmt_t;
 using send_cache_hint_t = ir::send_cache_hint_t;

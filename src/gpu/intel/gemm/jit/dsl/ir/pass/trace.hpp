@@ -42,9 +42,11 @@ inline void trace_perf() {};
 #endif
 
 #ifdef GEMMSTONE_ASSERTIONS
+void trace_pass(const char *pass_name, const kernel_t &kernel);
 void trace_pass(
         const char *pass_name, const stmt_t &stmt, const ir_context_t &ir_ctx);
 #else
+inline void trace_pass(const char *pass_name, const kernel_t &kernel) {}
 inline void trace_pass(const char *pass_name, const stmt_t &stmt,
         const ir_context_t &ir_ctx) {};
 #endif

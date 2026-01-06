@@ -53,14 +53,14 @@ using while_t = ir::while_t;
 struct ctx_t {
     bool new_ir_api() const { return new_ir_api_; }
 
-    void declare_kernel(const kernel::iface_t &interface, ir_context_t &ctx,
-            bool new_ir_api = false) {
+    void declare_kernel(const kernel::iface_t &interface,
+            const kernel::options_t &options, bool new_ir_api = false) {
         slm_byte_offset_ = 0;
         new_ir_api_ = new_ir_api;
         dsl_assert(stmts_stack_.empty())
                 << "Invalid generation of a kernel within a kernel";
         interface_ = interface;
-        ctx_ = &ctx;
+        ctx_ = ir_context_t(options);
 
         begin_scope();
 
@@ -111,13 +111,13 @@ struct ctx_t {
             auto slm_alloc = builtin_t::make("alloc")(slm_buf);
             body = slm_alloc.append(body);
         }
-        kernel_t ret {std::move(interface_), body, ctx_->options()};
-        ctx_ = nullptr;
+        kernel_t ret {std::move(interface_), body, ctx_.options()};
+        ctx_ = {};
         interface_ = {"undefined_dsl_kernel"};
         return ret;
     }
 
-    int simd() const { return ctx_->options().simd(); }
+    int simd() const { return ctx_.options().simd(); }
 
     const std::array<expr_t, 3> &group_ids() const { return group_ids_; }
     const expr_t &group_id(int idx) const { return group_ids_[idx]; }
@@ -131,7 +131,7 @@ struct ctx_t {
     expr_t arg(const std::string &name, bool allow_empty = false) {
         auto a = interface_.find_arg(name, allow_empty);
         expr_t value;
-        if (a && ctx_->cset().is_single_value(a, value)) { return value; }
+        if (a && ctx_.cset().is_single_value(a, value)) { return value; }
         return a;
     }
 
@@ -210,7 +210,7 @@ struct ctx_t {
 
     void reserve_slm(int bytes) { slm_byte_offset_ += bytes; }
 
-    void assume(const expr_t &e) { ctx_->add_constraint(e); }
+    void assume(const expr_t &e) { ctx_.add_constraint(e); }
 
     void begin_scope() { stmts_stack_.emplace(); }
 
@@ -232,7 +232,7 @@ struct ctx_t {
         stmts().emplace_back(std::move(stmt));
     }
 
-    const ir_context_t *ir_ctx() const { return ctx_; }
+    const ir_context_t &ir_ctx() const { return ctx_; }
 
 private:
     type_t local_id_type() const { return u16; }
@@ -240,7 +240,7 @@ private:
     type_t local_size_type() const { return u16; }
 
     expr_t var(type_t type, const std::string &name) {
-        return var_t::make(type, ctx_->create_tmp_name(name));
+        return var_t::make(type, ctx_.create_tmp_name(name));
     }
 
     stmt_t to_stmt() {
@@ -287,7 +287,7 @@ private:
     std::vector<stmt_t> &stmts() { return stmts_stack_.top(); }
     std::stack<std::vector<stmt_t>> stmts_stack_;
     kernel::iface_t interface_ = {"undefined_dsl_kernel"};
-    ir_context_t *ctx_ = nullptr;
+    ir_context_t ctx_;
     std::array<expr_t, 3> group_ids_;
     std::array<expr_t, 3> local_ids_;
     std::array<expr_t, 3> local_sizes_;
@@ -303,18 +303,18 @@ ctx_t &default_ctx() {
 }
 
 int grf_size() {
-    return default_ctx().ir_ctx()->hw().grf_size();
+    return default_ctx().ir_ctx().hw().grf_size();
 }
 int min_align_2d() {
-    return block_2d_base_alignment(default_ctx().ir_ctx()->hw());
+    return block_2d_base_alignment(default_ctx().ir_ctx().hw());
 }
 int min_pitch_2d() {
-    return block_2d_pitch_alignment(default_ctx().ir_ctx()->hw());
+    return block_2d_pitch_alignment(default_ctx().ir_ctx().hw());
 }
 
-void declare_kernel(
-        const kernel::iface_t &interface, ir_context_t &ctx, bool new_ir_api) {
-    default_ctx().declare_kernel(interface, ctx, new_ir_api);
+void declare_kernel(const kernel::iface_t &interface,
+        const kernel::options_t &options, bool new_ir_api) {
+    default_ctx().declare_kernel(interface, options, new_ir_api);
 }
 
 kernel_t end_kernel() {
@@ -723,9 +723,8 @@ void mma(const tensor_t &C, const tensor_t &A, const tensor_t &B,
             int simd = (int)std::min(
                     inst_tile[simd_idx], tile[simd_idx] - coord[simd_idx]);
 
-            auto mad = mad_t::make(default_ctx().ir_ctx()->hw(),
-                    C.layout.type(), simd, A.layout.type(), a_stride,
-                    B.layout.type(), b_stride);
+            auto mad = mad_t::make(default_ctx().ir_ctx().hw(), C.layout.type(),
+                    simd, A.layout.type(), a_stride, B.layout.type(), b_stride);
 
             auto dst = C.subbuf(base + coord);
             auto src1 = A.subbuf(base + coord);

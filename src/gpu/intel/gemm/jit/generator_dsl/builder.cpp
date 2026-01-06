@@ -394,9 +394,12 @@ private:
 
 struct generator_dsl_t {
     generator_dsl_t(const generator_dsl_desc_t &desc)
-        : problem(desc.problem), strategy(desc.strategy) {}
+        : problem(desc.problem)
+        , strategy(desc.strategy)
+        , iface(desc.kernel_iface())
+        , options(desc.options) {}
 
-    kernel_t build(kernel::iface_t iface, ir::ir_context_t &ctx) {
+    kernel_t build() {
         if (strategy.kParallel || strategy.kParallelLocal) {
             dsl_warning() << "kParallel support is unimplemented";
             return {};
@@ -432,7 +435,7 @@ struct generator_dsl_t {
             return {};
         }
 
-        declare_kernel(iface, ctx);
+        declare_kernel(iface, options);
 
         const auto m = arg("m");
         const auto n = arg("n");
@@ -746,23 +749,22 @@ struct generator_dsl_t {
 
     const GEMMProblem &problem;
     const GEMMStrategy &strategy;
+    const kernel::iface_t &iface;
+    const kernel::options_t &options;
 };
 
 kernel_t make_kernel(const generator_dsl_desc_t &desc) {
-    ir::constraint_set_t cset;
-    ir::ir_context_t ctx(desc.options, cset);
-
     ir::trace_start();
-    auto k = generator_dsl_t(desc).build(desc.kernel_iface(), ctx);
-    ir::trace_pass("build generator_dsl_t", k.body, ctx);
+    auto k = generator_dsl_t(desc).build();
+    ir::trace_pass("build generator_dsl_t", k);
 
-    k.body = ir::simplify(k.body, ctx);
-    k.body = ir::inject_send(k.body, ctx);
+    k.body = ir::simplify(k.body);
+    ir::inject_send(k);
 
     // TODO: This should be unnecessary as it could happen at codegen
-    k.body = ir::fixup_if_conditions(k.body, ctx);
-    k.body = ir::eliminate_common_subexprs(
-            k.body, ctx, desc.strategy.GRFs * ctx.hw().grf_size());
+    ir::fixup_if_conditions(k);
+    ir::eliminate_common_subexprs(
+            k, desc.strategy.GRFs * desc.options.hw().grf_size());
     return k;
 }
 

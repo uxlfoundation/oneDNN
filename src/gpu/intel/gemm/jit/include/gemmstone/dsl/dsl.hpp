@@ -34,8 +34,8 @@ struct send_hint_t {
     send_cache_hint_t cache;
 };
 
-void declare_kernel(const kernel::iface_t &interface, ir::ir_context_t &ctx,
-        bool new_ir_api = false);
+void declare_kernel(const kernel::iface_t &interface,
+        const kernel::options_t &ctx, bool new_ir_api = false);
 kernel_t end_kernel();
 
 void begin_scope();

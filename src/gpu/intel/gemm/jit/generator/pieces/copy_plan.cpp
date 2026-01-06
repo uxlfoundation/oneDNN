@@ -1259,6 +1259,13 @@ void CopyPlan::planInt8ToBF(CopyInstruction &i)
         copyThrough(i, DataType::f);
         return;
     }
+#if XE3P
+    bool is_xe3p = one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN);
+    if (is_xe3p){
+            copyThrough(i, DataType::f);
+            return;
+    }
+#endif
 
     auto ie = splitMultiple<3>(i);
 

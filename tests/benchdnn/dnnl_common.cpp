@@ -307,8 +307,8 @@ int test_persistent_cache_api(
 
             // If the operation is trivial, there may be no kernel in the cache.
             const auto dst_md = query_md(pd, DNNL_ARG_DST);
-            for (int i = 0; i < dst_md->ndims; ++i)
-                if (dst_md->padded_dims[i] == 0) return OK;
+            for (int i = 0; i < query_md_ndims(dst_md); ++i)
+                if (query_md_padded_dims(dst_md)[i] == 0) return OK;
 
             BENCHDNN_PRINT(
                     0, "error: %s\n", "cache blob is not expected to be empty");

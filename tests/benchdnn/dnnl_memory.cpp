@@ -177,18 +177,19 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
         if (dnnl_memory_desc_equal(src.md_, dst.md_)) {
             // If fail to create reorder pd, use plain data copy for identical
             // mds.
+            //
+            // For unknown reason using memcpy with int4 data types leads to
+            // the double corruption error. Stick for per element copy for now.
             BENCHDNN_PRINT(2, "%s\n", "[REORDER] Fallback to plain copy.");
             const int64_t chunk_size = 64;
             const int64_t n_chunks = div_up(src.nelems(), chunk_size);
-            const int64_t size_dt = src.sizeof_dt();
             benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
                 int64_t idx_start = idx_chunk * chunk_size;
                 int64_t idx_end = MIN2(idx_start + chunk_size, src.nelems());
-                char *in
-                        = src.get_mapped_pointer<char>(0) + idx_start * size_dt;
-                char *out
-                        = dst.get_mapped_pointer<char>(0) + idx_start * size_dt;
-                std::memcpy(out, in, (idx_end - idx_start) * size_dt);
+                for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+                    float e = src.get_elem(idx);
+                    dst.set_elem(idx, e);
+                }
             });
             return OK;
         }

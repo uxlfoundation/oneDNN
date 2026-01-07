@@ -89,4 +89,16 @@ float stochastic_round_fwd(float s, long idx, uint seed) {
 }
 #endif
 
+#if WITH_DROPOUT
+// No need to enable fp64 extensions just to compute (double)p * 0xFFFFFFFFu
+uint get_dropout_threshold(float p) {
+    if (p >= 1.f) return 0xFFFFFFFFu;
+    char exponent = 126 - ((as_uint(p) >> 23) & 0x7F);
+    if ((p <= 0.f) || (exponent > 31)) return 0u;
+    uint mantissa = (as_uint(p) << 8) | 0x80000000u;
+    if (!exponent) return (convert_ulong(mantissa) * 0xFFFFFFFFuL) >> 32;
+    return ((convert_ulong(mantissa >> exponent) * 0xFFFFFFFFuL) >> 32)
+            + !!(mantissa & ((1u << exponent) - 1u));
+}
+#endif
 #endif

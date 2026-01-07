@@ -39,6 +39,25 @@ struct simple_fwd_t : public primitive_t {
                     {primitive_kind::eltwise, primitive_kind::binary});
         }
 
+        status_t dropout_ok() const {
+            if (attr_.dropout_.has_default_values()) return status::success;
+
+            assert(memory_desc_wrapper(dst_md(0)).format_kind()
+                    == format_kind::blocked);
+
+            using namespace format_tag;
+            // See `ref_dropout(...)` comment which explains the requirement.
+            VDISPATCH_SOFTMAX_IC(memory_desc_matches_one_of_tag(
+                                         *dst_md(0), ncdhw, nchw, ncw, nc)
+                            && IMPLICATION(attr_.dropout_.has_output_mask(),
+                                    memory_desc_wrapper(dst_md(0)).similar_to(
+                                            attr_.dropout_.dropout_desc_, true,
+                                            false)),
+                    VERBOSE_UNSUPPORTED_DROPOUT);
+
+            return status::success;
+        }
+
         status_t init(impl::engine_t *engine) {
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
@@ -75,8 +94,9 @@ struct simple_fwd_t : public primitive_t {
             VDISPATCH_SOFTMAX(memory_desc_ndims_ok(src_md(), dst_md()),
                     VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src", "dst",
                     src_md()->ndims, dst_md()->ndims);
-            VDISPATCH_SOFTMAX(attr()->has_default_values(skip_mask_t::scales
-                                      | skip_mask_t::post_ops),
+            VDISPATCH_SOFTMAX(
+                    attr()->has_default_values(skip_mask_t::scales
+                            | skip_mask_t::post_ops | skip_mask_t::dropout),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_SOFTMAX(is_not_double_blk, VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_SOFTMAX(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -85,6 +105,7 @@ struct simple_fwd_t : public primitive_t {
                     set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_SOFTMAX_SC(attr_.set_default_formats(dst_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
+            CHECK(dropout_ok());
 
             dim_t nelems = axis_size(true);
 
@@ -138,6 +159,13 @@ struct simple_fwd_t : public primitive_t {
         kernel_ctx.define_int("GROUP_SIZE", pd()->group_size);
         kernel_ctx.define_int("SUB_GROUP_SIZE", pd()->subgroup_size);
         kernel_ctx.define_int("IS_FWD", 1);
+        kernel_ctx.define_int(
+                "WITH_DROPOUT", !pd()->attr()->dropout_.has_default_values());
+        kernel_ctx.define_int(
+                "USE_HOST_SCALARS", pd()->attr()->dropout_.use_host_scalars_);
+        kernel_ctx.define_int("USE_OFFSET", pd()->attr()->dropout_.use_offset_);
+        kernel_ctx.define_int(
+                "HAS_OUTPUT_MASK", pd()->attr()->dropout_.has_output_mask());
         kernel_ctx.add_option("-cl-std=CL2.0");
         kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO",
                 pd()->alg_kind() == alg_kind::softmax_accurate_inf_as_zero);

@@ -13,6 +13,8 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+
+#include "gpu/intel/include/philox.h"
 #include "gpu/intel/softmax/simple.h"
 
 #if IS_FWD
@@ -24,7 +26,19 @@ __attribute__((intel_reqd_sub_group_size(SUB_GROUP_SIZE)))
 
 __kernel void
 simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
-        __global float *src_scale, __global float *dst_scale POST_OP_ARGS) {
+        __global float *src_scale, __global float *dst_scale
+#if WITH_DROPOUT
+        ,
+        __global uchar *dropout_mask_buf,
+#if USE_HOST_SCALARS
+        long dropout_seed, long dropout_offset,
+        float dropout_p
+#else
+        __global long *dropout_seed_buf, __global long *dropout_offset_buf,
+        __global float *dropout_p_buf
+#endif
+#endif
+                POST_OP_ARGS) {
 
     const int dim[] = {
             (get_global_id(0) / GROUP_SIZE) % BLOCK_0,
@@ -85,7 +99,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
     // finding max value for each sub_group
     if (!(NEEDS_PADDING(dim[0], dim[1], dim[2], dim[3], dim[4], begin))) {
         for (int i = begin; i < end && i < DD(SOFTMAX_AXIS_IDX); ++i) {
-            size_t data_off
+            dim_t data_off
                     = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
             d[i - begin] = SRC_TO_REF(src[data_off]);
             max_ = max(max_, d[i - begin]);
@@ -128,7 +142,7 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
 #endif
 
     for (int i = begin; i < end; ++i) {
-        size_t data_off = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
+        dim_t data_off = DATA_OFF(dim[0], dim[1], dim[2], dim[3], dim[4], i);
 
         POST_OP_DATA_T tmp;
         if (NEEDS_PADDING(dim[0], dim[1], dim[2], dim[3], dim[4], i)) {
@@ -164,6 +178,28 @@ simple_softmax_fwd_generic(__global SRC_DATA_T *src, __global DATA_T *dst,
 
 #if WITH_DST_SCALES
         tmp /= dst_scale[0];
+#endif
+
+#if WITH_DROPOUT
+#if !USE_HOST_SCALARS
+        long dropout_seed = dropout_seed_buf[0];
+        long dropout_offset = USE_OFFSET ? dropout_offset_buf[0] : 0;
+        float dropout_p = dropout_p_buf[0];
+#endif
+        uint dropout_threshold = get_dropout_threshold(dropout_p);
+        float dropout_inv_q
+                = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
+#if USE_OFFSET
+        uint res = philox_4x32_s64(
+                (ulong)data_off, (ulong)dropout_seed, (ulong)dropout_offset);
+#else
+        uint res = philox_4x32(data_off, (uint)dropout_seed);
+#endif
+        uchar dropout = res > dropout_threshold;
+        tmp = (dropout) ? tmp * dropout_inv_q : 0;
+#if HAS_OUTPUT_MASK
+        dropout_mask_buf[data_off] = dropout;
+#endif
 #endif
         dst[data_off] = TO_DST(tmp);
     }

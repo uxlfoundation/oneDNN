@@ -172,10 +172,10 @@ struct pd_t : public gemm::pd_t {
     }
 
     bool with_a_zero_points() const {
-        return (swap_ab_ ? bo_dims_ >= 0 : ao_dims_ >= 0) || a_zp_hostscalar();
+        return (swap_ab_ ? bo_dims_ >= 0 : ao_dims_ >= 0) || a_zp_host_scalar();
     }
     bool with_b_zero_points() const {
-        return (swap_ab_ ? ao_dims_ >= 0 : bo_dims_ >= 0) || b_zp_hostscalar();
+        return (swap_ab_ ? ao_dims_ >= 0 : bo_dims_ >= 0) || b_zp_host_scalar();
     }
     bool with_c_zero_points() const {
         return !attr()->zero_points_.has_default_values(DNNL_ARG_DST);
@@ -247,12 +247,12 @@ struct pd_t : public gemm::pd_t {
         bool n_grouped = 1 < b_zp_group_n_ && b_zp_group_n_ < desc()->n();
         return k_grouped || n_grouped;
     }
-    bool a_zp_hostscalar() const {
+    bool a_zp_host_scalar() const {
         return attr()
                 ->zero_points_.get(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
                 .is_host_scalar();
     }
-    bool b_zp_hostscalar() const {
+    bool b_zp_host_scalar() const {
         return attr()
                 ->zero_points_.get(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                 .is_host_scalar();

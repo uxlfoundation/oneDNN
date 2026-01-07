@@ -490,12 +490,12 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.batch = BatchMode::Strided;
         problem_.batchDims = batch_dims;
     }
-    if (a_quant.zp_ndims >= 0 || a_quant.zp_hostscalar)
+    if (a_quant.zp_ndims >= 0 || a_quant.zp_host_scalar)
         problem_.aOffset = ABOffset::Calc;
-    if (b_quant.zp_ndims >= 0 || b_quant.zp_hostscalar)
+    if (b_quant.zp_ndims >= 0 || b_quant.zp_host_scalar)
         problem_.bOffset = ABOffset::Calc;
-    problem_.aoPtrDims = a_quant.zp_hostscalar ? -1 : a_quant.zp_ndims;
-    problem_.boPtrDims = b_quant.zp_hostscalar ? -1 : b_quant.zp_ndims;
+    problem_.aoPtrDims = a_quant.zp_host_scalar ? -1 : a_quant.zp_ndims;
+    problem_.boPtrDims = b_quant.zp_host_scalar ? -1 : b_quant.zp_ndims;
     problem_.AO.layout = MatrixLayout::N;
     problem_.BO.layout
             = (problem_.bOffset2D()) ? MatrixLayout::N : MatrixLayout::T;

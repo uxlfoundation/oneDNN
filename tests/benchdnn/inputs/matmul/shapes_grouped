@@ -1,23 +1,24 @@
 # Grouped GEMM shapes
-# Format: MxK:num_groups x K x N:MxN with --grouped=M:<num_groups>:<M_dims>
+# Format: MxK:KxN with --grouped=M:<num_groups>:<M_dims>
+# The group dimension is inserted automatically into weights (becomes [G,K,N])
 
 --grouped=M:4:8,8,8,8
-32x64:4x64x32:32x32
+32x64:64x32
 --grouped=M:8:8,8,8,8,8,8,8,8
-64x64:8x64x64:64x64
+64x64:64x64
 --grouped=M:16:2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
-32x128:16x128x96:32x96
+32x128:128x96
 
 # Unbalanced
 --grouped=M:3:2,6,8
-16x32:3x32x24:16x24
+16x32:32x24
 --grouped=M:4:10,20,30,40
-100x64:4x64x32:100x32
+100x64:64x32
 --grouped=M:5:1,2,4,8,16
-31x64:5x64x32:31x32
+31x64:64x32
 
 # Edge cases
 --grouped=M:1:8
-8x16:1x16x12:8x12
+8x16:16x12
 --grouped=M:6:0,1,2,0,3,0
-6x24:6x24x20:6x20
+6x24:24x20

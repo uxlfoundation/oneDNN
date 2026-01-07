@@ -59,6 +59,20 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_eltwise_binary)
             return std::make_shared<float_eltwise_fwd>();
         });
 
+DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, fp_eltwise_dropout)
+        .set_priority(8.3f)
+        .set_kind(partition_kind_t::misc_post_ops)
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    pm::pb_op_t *peltwise
+                            = pgraph->append_alternation(get_unary_ops());
+                    pgraph->append_op(graph::op_kind::Dropout,
+                            in_edges_t {in_edge(0, peltwise, 0)});
+                })
+        .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
+            return std::make_shared<float_eltwise_fwd>();
+        });
+
 DNNL_BACKEND_REGISTER_PATTERN_DEF_END
 
 } // namespace pattern

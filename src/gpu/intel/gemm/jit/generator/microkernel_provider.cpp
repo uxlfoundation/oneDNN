@@ -209,6 +209,25 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
 
     strategy.preflight(hw, problem);
 
+    if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 10) {
+        if (entry)
+            std::cout << "Selected microkernel catalog entry: " << entry->str() << std::endl;
+        else
+            std::cout << "Microkernel generated heuristically" << std::endl;
+    }
+    if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
+        std::string result = problem.toString();
+        result.append(" ");
+        result.append(std::to_string(strategy.unroll[LoopM]));
+        result.append(" ");
+        result.append(std::to_string(strategy.unroll[LoopN]));
+        result.append(" ");
+        result.append(problem.scalarsToString());
+        result.append(" ");
+        result.append(unparseStrategy(hw, problem, strategy));
+        std::cout << "Actual kernel: " << result << std::endl;
+    }
+
     /* Set up arguments for microkernel */
     InterfaceHandler interface(hw);
 

@@ -94,6 +94,45 @@ inline void print_idxs(std::vector<int64_t> idxs) {
     printf(" ):");
 }
 
+template <typename T>
+dnnl::memory get_group_mem(const dnnl::memory &mem, int group_idx) {
+    auto eng = mem.get_engine();
+    dnnl::stream s(eng);
+    s.wait();
+    auto desc = mem.get_desc();
+    auto dims = desc.get_dims();
+    auto strides = desc.get_strides();
+    auto dt = desc.get_data_type();
+    if (memory::data_type_size(dt) != sizeof(T)) {
+        throw std::runtime_error("Data type size mismatch");
+    }
+
+    auto grouped_desc = desc.get()->format_desc.sparse_desc.grouped_desc;
+    auto ngroups = grouped_desc.ngroups;
+
+    std::vector<int32_t> group_offsets(ngroups + 1);
+    std::vector<T> group_values(product(dims));
+    void *group_values_ptr = mem.map_data(0);
+    void *mapped_offsets_ptr = mem.map_data(1);
+    std::memcpy(group_offsets.data(), mapped_offsets_ptr,
+            (ngroups + 1) * sizeof(int32_t));
+    std::memcpy(
+            group_values.data(), group_values_ptr, product(dims) * sizeof(T));
+    mem.unmap_data(mapped_offsets_ptr, 1);
+    mem.unmap_data(group_values_ptr, 0);
+
+    dnnl::memory::dims sz = dims;
+    sz[grouped_desc.variable_dim_idx]
+            = group_offsets[group_idx + 1] - group_offsets[group_idx];
+    memory::desc d = memory::desc({sz}, dt, strides);
+    memory group_mem(d, eng);
+    write_to_dnnl_memory<T>(group_values.data()
+                    + group_offsets[group_idx] * strides[dims.size() - 2],
+            group_mem, eng, s);
+    s.wait();
+    return group_mem;
+}
+
 void print_mem(const dnnl::memory &mem, const std::string &name) {
     auto eng = mem.get_engine();
     dnnl::stream s(eng);
@@ -106,6 +145,30 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
     size_t lastdim = ndims - 1;
 
     printf("%sbegin : ", name.c_str());
+
+    if (desc.get_sparse_encoding() == memory::sparse_encoding::grouped) {
+        auto grouped_desc = desc.get()->format_desc.sparse_desc.grouped_desc;
+        auto ngroups = grouped_desc.ngroups;
+
+        for (int g = 0; g < ngroups; g++) {
+            dnnl::memory gmem;
+            switch (desc.get_data_type()) {
+                case dnnl::memory::data_type::f32:
+                    gmem = get_group_mem<float>(mem, g);
+                    break;
+                case dnnl::memory::data_type::f16:
+                    gmem = get_group_mem<dnnl::impl::float16_t>(mem, g);
+                    break;
+                default:
+                    throw std::runtime_error(
+                            "Unsupported data type for grouped memory print");
+            }
+
+            print_mem(gmem, name + "_group" + std::to_string(g) + "_");
+        }
+        return;
+    }
+
     printf("\ndims : [");
     for (auto d : dims) {
         printf("%6ld ", (long)d);

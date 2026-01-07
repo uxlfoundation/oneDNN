@@ -37,7 +37,6 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
     //arch_ = dev_info->gpu_arch();
-    auto pd_ = (pd_t *)primitive_t::pd().get();
 
     /* Get device information */
     HWInformation hw_info;
@@ -47,19 +46,16 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
 
     if (hw_info.gmdid == 0) return status::unimplemented;
 
-    int m = static_cast<int>(pd_->dst_md(0)->dims[pd_->dst_md(0)->ndims - 2]);
-    int n = static_cast<int>(pd_->dst_md(0)->dims[pd_->dst_md(0)->ndims - 1]);
-    int k = static_cast<int>(pd_->src_md(0)->dims[pd_->src_md(0)->ndims - 1]);
     auto src_mdw = memory_desc_wrapper(pd()->src_md(0));
     auto wei_mdw = memory_desc_wrapper(pd()->weights_md());
     //auto dst_mdw = memory_desc_wrapper(pd()->dst_md(0));
 
-    // User(rm)                         Gemmstone(cm)
-    // MxN   MxK   KxN        NxM   MxK     KxN
-    // Dst  =  Src  x  Weights  ->  Dst  =  Weights x Src
+    //int m = ((dst_mdw.has_runtime_dims()) ? 128 : static_cast<int>(pd()->M()))
+    /// pd()->ngroups_;
+    int m = (static_cast<int>(pd()->M()));
+    int n = static_cast<int>(pd()->N());
+    int k = static_cast<int>(pd()->K());
 
-    //printf("User              D=SxW M=%d, N=%d, K=%d\n", m, n, k);
-    //printf("Grouped MicroGEMM D=WxS M=%d, N=%d, K=%d\n", n, m, k);
     GEMMProblem problem;
     problem.Ta_ext = convert_dnnl_to_kernel_type(src_mdw.data_type());
     problem.Tb_ext = convert_dnnl_to_kernel_type(wei_mdw.data_type());
@@ -82,7 +78,6 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
 
     micro::Package gemm;
 
-    micro::GEMMProtocol::Options opts;
     //std::vector<StrategyRequirement> reqs;
     //reqs.push_back(StrategyRequirement::UnrollM == 32);
     //reqs.push_back(StrategyRequirement::UnrollN == 16);
@@ -225,9 +220,9 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     const auto &dst_offsets = CTX_OUT_STORAGE(DNNL_ARG_DST, 1);
 
     auto pd_ = pd();
-    const auto *src_md = pd()->src_md(0);
+    const auto *src_md = ctx.input(DNNL_ARG_SRC)->md();
     const auto *wei_md = pd()->weights_md();
-    const auto *dst_md = pd()->dst_md(0);
+    const auto *dst_md = ctx.output(DNNL_ARG_DST)->md();
 
     const size_t num_groups = pd()->ngroups_;
 
@@ -235,7 +230,7 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
     const bool with_bias = pd()->with_bias();
 
-    int m_all = static_cast<int>(dst_md->dims[dst_md->ndims - 2]);
+    int m_all = static_cast<int>(dst_md->dims[dst_md->ndims - 2]) / num_groups;
     int n = static_cast<int>(dst_md->dims[dst_md->ndims - 1]);
     int k = static_cast<int>(src_md->dims[src_md->ndims - 1]);
     //printf("m_all=%d, n=%d, k=%d\n", m_all, n, k);
@@ -273,8 +268,9 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     // Use total_tokens as upper bound for M dimension
     compute::range_t lws = {(size_t)pd_->sg_per_wg_m_ * pd_->sg_size_,
             (size_t)pd_->sg_per_wg_n_, 1};
-    compute::range_t gws = {utils::div_up(m_all, pd_->sg_tile_m_) * lws[0],
-            utils::div_up(n, pd_->sg_tile_n_) * lws[1], num_groups};
+    compute::range_t gws = {utils::div_up(m_all, lws[0]) * lws[0],
+            utils::div_up(n, pd_->sg_per_wg_n_ * pd_->sg_tile_n_) * lws[1],
+            num_groups};
     //std::cout << "LWS: " << lws.str() << std::endl;
     //std::cout << "GWS: " << gws.str() << std::endl;
 

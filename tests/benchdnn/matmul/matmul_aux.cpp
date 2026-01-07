@@ -102,7 +102,22 @@ std::string prb_t::set_repro_line() {
     if (canonical || !impl_filter.is_def() || !global_impl_filter.is_def())
         s << impl_filter;
 
-    s << static_cast<const prb_vdims_t &>(*this);
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+    // For grouped matmul, output weights in 2D format (without group dimension)
+    // since the group dimension is inferred from the --grouped parameter
+    if (sparse_options.get_encoding(DNNL_ARG_SRC) == dnnl_grouped) {
+        vdims_t output_vdims = vdims;
+        // Convert weights from 3D [G, K, N] back to 2D [K, N] for output
+        if (output_vdims.size() > 1 && output_vdims[1].size() == 3) {
+            output_vdims[1] = {output_vdims[1][1], output_vdims[1][2]};
+        }
+        s << vdims2str(output_vdims);
+        if (!name.empty()) s << "_n" << name;
+    } else
+#endif
+    {
+        s << static_cast<const prb_vdims_t &>(*this);
+    }
 
     return s.str();
 }

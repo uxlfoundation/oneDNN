@@ -50,6 +50,9 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     int m = static_cast<int>(pd_->dst_md(0)->dims[pd_->dst_md(0)->ndims - 2]);
     int n = static_cast<int>(pd_->dst_md(0)->dims[pd_->dst_md(0)->ndims - 1]);
     int k = static_cast<int>(pd_->src_md(0)->dims[pd_->src_md(0)->ndims - 1]);
+    auto src_mdw = memory_desc_wrapper(pd()->src_md(0));
+    auto wei_mdw = memory_desc_wrapper(pd()->weights_md());
+    //auto dst_mdw = memory_desc_wrapper(pd()->dst_md(0));
 
     // User(rm)                         Gemmstone(cm)
     // MxN   MxK   KxN        NxM   MxK     KxN
@@ -58,12 +61,11 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     //printf("User              D=SxW M=%d, N=%d, K=%d\n", m, n, k);
     //printf("Grouped MicroGEMM D=WxS M=%d, N=%d, K=%d\n", n, m, k);
     GEMMProblem problem;
-    problem.Ta_ext = convert_dnnl_to_kernel_type(pd_->src_md(0)->data_type);
-    problem.Tb_ext = convert_dnnl_to_kernel_type(pd_->weights_md()->data_type);
-    problem.Tc_ext = convert_dnnl_to_kernel_type(pd_->dst_md(0)->data_type);
+    problem.Ta_ext = convert_dnnl_to_kernel_type(src_mdw.data_type());
+    problem.Tb_ext = convert_dnnl_to_kernel_type(wei_mdw.data_type());
+    problem.Tc_ext = problem.Ts = problem.Tc = Type::f32;
     problem.Ta = problem.Ta_ext;
     problem.Tb = problem.Tb_ext;
-    problem.Ts = problem.Tc = Type::f32;
     problem.A.layout = MatrixLayout::T;
     problem.B.layout = MatrixLayout::T;
     problem.C.layout = MatrixLayout::T;
@@ -157,9 +159,12 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
 
     ngroups_ = src_grouped.ngroups;
     // only supported dt for now
-    VDISPATCH_MATMUL(utils::one_of(src_dt_, f32, f16)
-                    && src_dt_ == wei_dt_, //&& src_dt_ == dst_type,
-            VERBOSE_UNSUPPORTED_DT_CFG);
+    VDISPATCH_MATMUL(
+            utils::one_of(src_dt_, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT_CFG);
+    VDISPATCH_MATMUL(
+            utils::one_of(wei_dt_, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT_CFG);
+    VDISPATCH_MATMUL(
+            utils::one_of(dst_dt_, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT_CFG);
 
     // Check offsets are int32
     VDISPATCH_MATMUL(
@@ -204,6 +209,10 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
 
     if (pd()->use_256_grf_)
         kernel_ctx_.add_option("-cl-intel-256-GRF-per-thread");
+
+    def_data_type(kernel_ctx_, pd()->src_dt_, "SRC");
+    def_data_type(kernel_ctx_, pd()->wei_dt_, "WEI");
+    def_data_type(kernel_ctx_, pd()->dst_dt_, "DST");
     return create_kernel(engine, &kernel_, "grouped_micro_gemm", kernel_ctx_);
 }
 

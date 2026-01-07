@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright 2022-2025 Intel Corporation
+ * Copyright 2022 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -718,12 +718,17 @@ layernorm_executable_t::desc_t layernorm_executable_t::create_desc(
     bool use_affine = true;
     if (op->has_attr(op_attr::use_affine))
         use_affine = op->get_attr<bool>(op_attr::use_affine);
+    bool is_rms = false;
+    if (op->has_attr(op_attr::is_rms))
+        is_rms = op->get_attr<bool>(op_attr::is_rms);
 
     auto flags = dnnl::normalization_flags::none;
-    if (use_affine)
-        flags |= (dnnl::normalization_flags::use_scale
-                | dnnl::normalization_flags::use_shift);
-
+    if (is_rms) flags |= dnnl::normalization_flags::rms_norm;
+    if (use_affine) {
+        flags |= dnnl::normalization_flags::use_scale;
+        // no shift for rms norm
+        if (!is_rms) flags |= dnnl::normalization_flags::use_shift;
+    }
     prop_kind pkind = keep_stats ? prop_kind::forward_training
                                  : prop_kind::forward_inference;
 
@@ -735,8 +740,17 @@ layernorm_executable_t::desc_t layernorm_executable_t::create_desc(
     auto dst = make_dnnl_memory_desc(
             op->get_output_value(0)->get_logical_tensor());
     dst = to_format_any(dst);
-    dnnl::layer_normalization_forward::primitive_desc pd(
-            p_engine, pkind, src, dst, epsilon, flags, prm_attr);
+    dnnl::layer_normalization_forward::primitive_desc pd;
+    if (use_affine) {
+        memory::data_type scale_shift_data_type
+                = static_cast<memory::data_type>(
+                        op->get_input_value(1)->get_logical_tensor().data_type);
+        pd = dnnl::layer_normalization_forward::primitive_desc(p_engine, pkind,
+                src, dst, scale_shift_data_type, epsilon, flags, prm_attr);
+    } else {
+        pd = dnnl::layer_normalization_forward::primitive_desc(
+                p_engine, pkind, src, dst, epsilon, flags, prm_attr);
+    }
 
     pd_cache.insert({op.get(), pd});
     return {pd, false};
@@ -2192,44 +2206,59 @@ arg_indices_t batchnorm_bwd_executable_t::get_arg_indices(const op_t *op) {
     return arg_indices;
 }
 
-static arg_indices_t get_arg_indices_for_lnorm_and_gnorm(const op_t *op) {
-    arg_indices_t arg_indices;
-
-    size_t in_index = 0;
-    arg_indices.insert({DNNL_ARG_SRC, indices_t {input, in_index++}});
+static arg_indices_t get_arg_indices_for_norm(const op_t *op) {
+    arg_indices_t args;
+    size_t in_idx = 0;
+    const bool is_rms = op->has_attr(op_attr::is_rms)
+            ? op->get_attr<bool>(op_attr::is_rms)
+            : false;
+    args.insert({DNNL_ARG_SRC, {indices_t::type_t::input, in_idx++}});
     if (!op->has_attr(op_attr::use_affine)
             || op->get_attr<bool>(op_attr::use_affine)) {
-        arg_indices.insert({DNNL_ARG_SCALE, indices_t {input, in_index++}});
-        arg_indices.insert({DNNL_ARG_SHIFT, indices_t {input, in_index++}});
+        // rms doesn't support shift
+        if (!is_rms) {
+            args.insert({DNNL_ARG_SCALE, {indices_t::type_t::input, in_idx++}});
+            args.insert({DNNL_ARG_SHIFT, {indices_t::type_t::input, in_idx++}});
+        } else {
+            if (op->has_attr(op_attr::use_affine)
+                    && op->get_attr<bool>(op_attr::use_affine)) {
+                args.insert(
+                        {DNNL_ARG_SCALE, {indices_t::type_t::input, in_idx++}});
+            }
+        }
     }
 
     const fusion_info_t &fusion_info = op->has_attr(op_attr::fusion_info)
             ? op->get_attr<fusion_info_t>(op_attr::fusion_info)
             : fusion_info_t();
 
-    get_arg_indices_for_post_ops(op, arg_indices, in_index);
+    get_arg_indices_for_post_ops(op, args, in_idx);
 
     if (fusion_info.with_runtime_scales(false, 0)) {
-        arg_indices.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
-                indices_t {input, in_index++}});
+        args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
+                indices_t {input, in_idx++}});
     }
 
     size_t out_index = 0;
-    arg_indices.insert({DNNL_ARG_DST, indices_t {output, out_index++}});
+    args.insert({DNNL_ARG_DST, indices_t {output, out_index++}});
     if (!op->has_attr(op_attr::keep_stats)
             || op->get_attr<bool>(op_attr::keep_stats)) {
-        arg_indices.insert({DNNL_ARG_MEAN, indices_t {output, out_index++}});
-        arg_indices.insert(
-                {DNNL_ARG_VARIANCE, indices_t {output, out_index++}});
+        // RMSNorm OP in oneDNN Graph API only have 1 output
+        if (!is_rms) {
+            args.insert(
+                    {DNNL_ARG_MEAN, {indices_t::type_t::output, out_index++}});
+            args.insert({DNNL_ARG_VARIANCE,
+                    {indices_t::type_t::output, out_index++}});
+        }
     }
 
-    arg_indices.insert({DNNL_ARG_SCRATCHPAD, indices_t {output, out_index++}});
+    args.insert({DNNL_ARG_SCRATCHPAD, indices_t {output, out_index++}});
 
-    return arg_indices;
+    return args;
 }
 
 arg_indices_t layernorm_executable_t::get_arg_indices(const op_t *op) {
-    return get_arg_indices_for_lnorm_and_gnorm(op);
+    return get_arg_indices_for_norm(op);
 }
 
 arg_indices_t layernorm_bwd_executable_t::get_arg_indices(const op_t *op) {
@@ -2357,7 +2386,7 @@ arg_indices_t eltwise_bwd_executable_t::get_arg_indices(const op_t *op) {
 }
 
 arg_indices_t groupnorm_executable_t::get_arg_indices(const op_t *op) {
-    return get_arg_indices_for_lnorm_and_gnorm(op);
+    return get_arg_indices_for_norm(op);
 }
 
 arg_indices_t genindex_executable_t::get_arg_indices(const op_t *op) {

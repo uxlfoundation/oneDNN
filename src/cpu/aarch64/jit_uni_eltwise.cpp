@@ -216,7 +216,7 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
 
         add_imm(reg_src, reg_src, dtype_size(), X_TMP_0);
         add_imm(reg_dst, reg_dst, dtype_size(), X_TMP_0);
-        add_imm(reg_diff_dst, reg_diff_dst, dtype_size(), X_TMP_0);
+        if (!is_fwd) add_imm(reg_diff_dst, reg_diff_dst, dtype_size(), X_TMP_0);
         subs(reg_work_amount, reg_work_amount, 1);
 
         b(remainder_loop_start);

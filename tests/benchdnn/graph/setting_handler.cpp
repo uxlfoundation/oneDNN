@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <random>
+
 #include "setting_handler.hpp"
 #include "graph/utils.hpp"
 
@@ -86,6 +88,35 @@ bool get_graph_attr(const deserialized_op_t &base_op_ref,
         const auto &fpmath_mode = base_op_ref.fpmath_mode_;
         arg_fpmath_mode.set(str2fpmath_mode(fpmath_mode.c_str()),
                 str2bool(base_op_ref.fpmath_mode_apply_to_int_.c_str()));
+    }
+
+    return true;
+}
+
+bool get_graph_attr(
+        const deserialized_op_t &base_op_ref, attr_t::dropout_t &arg_dropout) {
+
+    if (base_op_ref.kind_ != "Dropout") return true;
+
+    // Generate a random seed
+    std::minstd_rand seed1(1);
+    std::uniform_int_distribution<> gen1(1, 100);
+    int64_t seed = gen1(seed1);
+    arg_dropout.seed = seed;
+
+    // Generate a random offset
+    std::minstd_rand seed2(2);
+    std::uniform_int_distribution<> gen2(1, 100);
+    arg_dropout.offset = gen2(seed2);
+
+    // Generate a random probability
+    std::minstd_rand seed3(3);
+    std::uniform_real_distribution<float> gen3(0.1f, 1.f);
+    arg_dropout.p = gen3(seed3);
+
+    if (base_op_ref.out_lts_.size() == 1) {
+        // no output mask
+        arg_dropout.tag = tag::undef;
     }
 
     return true;
@@ -973,6 +1004,7 @@ get_eltwise_kind_map() {
             {"Square", ::eltwise::alg_t::SQUARE},
             {"Tanh", ::eltwise::alg_t::TANH},
             {"TanhBackward", ::eltwise::alg_t::TANH},
+            {"Dropout", ::eltwise::alg_t::LINEAR},
     };
     return map_;
 }
@@ -1050,6 +1082,8 @@ bool get_eltwise_alpha(const deserialized_op_t &base_op_ref, float &alpha) {
         alpha = 1.f / 6.f;
     } else if (op_kind == "Pow") {
         alpha = 1; // alpha is constant 1 according to graph API Pow definition
+    } else if (op_kind == "Dropout") {
+        alpha = 1;
     }
     return true;
 }
@@ -1065,6 +1099,8 @@ bool get_eltwise_beta(const deserialized_op_t &base_op_ref, float &beta) {
         base_op_ref.get_attr_f32(beta, "beta");
     } else if (op_kind == "HardSwish" || op_kind == "HardSwishBackward") {
         beta = 1.f / 2.f;
+    } else if (op_kind == "Dropout") {
+        beta = 0.f;
     }
     return true;
 }
@@ -1096,6 +1132,9 @@ bool get_eltwise_beta(const deserialized_op_t &base_op_ref, float &beta) {
             res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_graph_attr(base_op_ref, op_setting.fpmath_mode.front()), res);
+
+    DNN_GRAPH_CHECK_SETTINGS(
+            get_graph_attr(base_op_ref, op_setting.dropout.front()), res);
 
     return op_setting;
 }

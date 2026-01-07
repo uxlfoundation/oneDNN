@@ -18,6 +18,7 @@
 
 #include <iostream>
 
+#include "common/cpp_compat.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 
@@ -69,8 +70,10 @@ namespace gpu_utils {
 
 class error_stream_t {
 public:
-    error_stream_t(const char *file, int line, const char *assert_msg)
-        : data_(new data_t(file, line, assert_msg)) {}
+    error_stream_t(const char *file, int line, const char *assert_msg) {
+        out_ << "Assertion " << assert_msg << " failed at " << file << ":"
+             << line << std::endl;
+    }
 
     // This is to be able use a steam object in short-circuit evaluation with
     // booleans, see below.
@@ -78,42 +81,22 @@ public:
 
     template <typename T>
     error_stream_t &operator<<(const T &t) {
-        data_->out << t;
+        out_ << t;
         return *this;
     }
 
     ~error_stream_t() noexcept(false) {
-        if (data_ == nullptr) return;
-
-        std::cout << data_->out.str() << std::endl;
+        if (cpp_compat::uncaught_exceptions()) return;
+        std::cout << out_.str() << std::endl;
 #ifdef GPU_ABORT_ON_ERROR
         std::abort();
 #else
-        auto err = std::runtime_error(data_->out.str());
-        delete data_;
-        data_ = nullptr;
-
-        // This is techincally unsafe. Since error_stream_t is only used in
-        // debug builds and since it is only used by ir_assert() which signals
-        // an ill-defined program state, nested throws is not a concern.
-        throw err; // NOLINT
+        throw std::runtime_error(out_.str());
 #endif
     }
 
 private:
-    struct data_t {
-        data_t(const char *file, int line, const char *assert_msg)
-            : file(file), line(line) {
-            out << "Assertion " << assert_msg << " failed at " << file << ":"
-                << line << std::endl;
-        }
-
-        const char *file;
-        int line;
-        ostringstream_t out;
-    };
-
-    data_t *data_;
+    ostringstream_t out_;
 };
 
 #if !defined(NDEBUG) || defined(DNNL_DEV_MODE)

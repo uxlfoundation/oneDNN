@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -158,7 +158,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::icb_loop(const int icb,
         sub(reg_icb, reg_icb, 1);
         b(label_icb_loop);
     }
-    L_aligned(label_loop_end);
+    L(label_loop_end);
 
     if (icb_tail) compute(ic_step, mb_tail, n_block, icb_tail, true);
 }
@@ -172,13 +172,13 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::khw_loop(const int icb,
     ldr(reg_kh_l, ptr(param1, GET_OFF(kh_l)));
     mov(reg_aux_kh_in, reg_in);
 
-    L_aligned(label_kh_loop);
+    L(label_kh_loop);
     {
         cmp(reg_kh_l, 0);
         b(EQ, label_kh_end);
         ldr(reg_kw_l, ptr(param1, GET_OFF(kw_l)));
         mov(reg_aux_kw_in, reg_aux_kh_in);
-        L_aligned(label_kw_loop);
+        L(label_kw_loop);
         {
             cmp(reg_kw_l, 0);
             b(EQ, label_kw_end);
@@ -187,13 +187,13 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::khw_loop(const int icb,
             sub(reg_kw_l, reg_kw_l, 1);
             b(label_kw_loop);
         }
-        L_aligned(label_kw_end);
+        L(label_kw_end);
 
         add_imm(reg_aux_kh_in, reg_aux_kh_in, inp_kh_sz_, X_TMP_0);
         sub(reg_kh_l, reg_kh_l, 1);
         b(label_kh_loop);
     }
-    L_aligned(label_kh_end);
+    L(label_kh_end);
 }
 
 template <cpu_isa_t isa>
@@ -282,7 +282,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::generate() {
 
     zero_accumulators(m_block, n_block);
 
-    L_aligned(label_kd_loop);
+    L(label_kd_loop);
     {
         cmp(reg_kd_l, 0);
         b(EQ, label_loop_end);
@@ -291,7 +291,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::generate() {
         sub(reg_kd_l, reg_kd_l, 1);
         b(label_kd_loop);
     }
-    L_aligned(label_loop_end);
+    L(label_loop_end);
 
     store_accumulators(m_block, n_block);
 

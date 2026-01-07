@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2023 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -269,7 +269,6 @@ struct brgemm_desc_t {
     bool load_nt_A = false;
     bool load_nt_B = false;
 
-    bool embd_bcst = false;
     bool with_bias = false;
     bool req_s8s8_compensation = false;
     bool with_weights_scale_adjust = false;

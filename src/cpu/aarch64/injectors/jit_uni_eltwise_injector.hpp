@@ -144,12 +144,15 @@ struct jit_uni_eltwise_injector_t {
     void compute_vector(size_t idx) { compute_vector_range(idx, idx + 1); }
     void prepare_table(bool gen_table = true);
     void load_table_addr() { h->adr(x_table, l_table); }
+    void set_input_range(float min_value, float max_value);
 
 private:
     const alg_kind_t alg_;
     const float alpha_;
     const float beta_;
     const float scale_;
+    float max_input_ = INFINITY;
+    float min_input_ = -INFINITY;
 
     jit_generator_t *const h;
 
@@ -212,6 +215,8 @@ private:
             const injector_utils::vmm_index_set_iterator_t start_idx_it);
     void injector_postamble();
     void assign_regs();
+    void store_preserved_vec(size_t slot, size_t vmm_idx);
+    void load_preserved_vec(size_t slot, size_t vmm_idx);
     void set_coef_to_regs();
     void compute_cmp_mask(
             const TRegS &vmm_src, const TRegS &vmm_cmpare, int cmp_predicate);

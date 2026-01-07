@@ -661,7 +661,9 @@ status_t insert_unsqueeze_and_squeeze_for_matmul(
 
         std::vector<int64_t> squeeze_axes;
         for (size_t i = 0; i < op->num_inputs(); i++) {
-            int32_t ndims = op->get_input_logical_tensor(i).ndims;
+            logical_tensor_t input_lt = op->get_input_logical_tensor(i);
+            if (input_lt.property == property_type::host_scalar) continue;
+            int32_t ndims = input_lt.ndims;
             std::vector<int64_t> axes;
             if (i != 1 && src_ndims == 1) {
                 // 1D src: [K] -> [1, K], dst of primitive will be [1, N]
@@ -1071,9 +1073,19 @@ status_t insert_unsqueeze_and_squeeze_for_reduction(
 
 status_t insert_host_scalar(std::shared_ptr<subgraph_t> &sg) {
     subgraph_rewriter_t rewriter(sg);
+    std::set<value_t *> visited;
     for (const auto &val : sg->get_input_values()) {
+        if (visited.count(val)) continue;
+        visited.insert(val);
+
         logical_tensor_t lt = val->get_logical_tensor();
         if (lt.property == property_type::host_scalar) {
+            // Special case for dropout op, since dropout op can accept host
+            // scalar input directly
+            if (val->get_consumers()[0].get_op().get_kind()
+                    == op_kind::dnnl_dropout)
+                continue;
+
             // Create a new dnnl_host_scalar op
             op_ptr host_scalar_op
                     = std::make_shared<op_t>(op_kind::dnnl_host_scalar);

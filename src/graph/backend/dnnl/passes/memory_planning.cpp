@@ -160,7 +160,11 @@ std::shared_ptr<execution_args_set_t> execution_args_set_t::clone() const {
         memory cloned_mem;
         if (val_mem.second.get_desc().get_format_kind()
                 == dnnl::memory::format_kind::host_scalar) {
-            cloned_mem = dnnl::memory(val_mem.second.get_desc(), 0);
+            DNNL_HOST_SCALAR_TYPE_SWITCH(
+                    val_mem.second.get_desc().get_data_type(), DType, {
+                        cloned_mem = dnnl::memory(val_mem.second.get_desc(),
+                                static_cast<DType>(0));
+                    });
         } else if (val_mem.second.get_engine().get_kind()
                 == dnnl::engine::kind::gpu) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
@@ -770,9 +774,13 @@ status_t memory_planner_t::prepare_execution_args_set(
             const logical_tensor_t in_lt = in->get_logical_tensor();
             const logical_tensor_wrapper_t ltw(in_lt);
             auto md = make_dnnl_memory_desc(in_lt);
-            auto mem = ltw.is_host_scalar()
-                    ? dnnl::memory(md, 0)
-                    : make_dnnl_memory(md, p_engine, nullptr);
+            dnnl::memory mem;
+            if (ltw.is_host_scalar()) {
+                DNNL_HOST_SCALAR_TYPE_SWITCH(md.get_data_type(), DType,
+                        { mem = dnnl::memory(md, static_cast<DType>(0)); });
+            } else {
+                mem = make_dnnl_memory(md, p_engine, nullptr);
+            }
             exec_args_set_.add_value_mem_map({in.get(), mem});
             classify_mem(mem, in.get());
             prepared.insert(in.get());

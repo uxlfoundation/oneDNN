@@ -65,8 +65,10 @@ std::unique_ptr<T> make_unique(Args &&...args) {
 
 class error_stream_t {
 public:
-    error_stream_t(const char *file, int line, const char *assert_msg)
-        : data_(new data_t(file, line, assert_msg)) {}
+    error_stream_t(const char *file, int line, const char *assert_msg) {
+        out_ << "Assertion " << assert_msg << " failed at " << file << ":"
+             << line << std::endl;
+    }
 
     // This is to be able use a steam object in short-circuit evaluation with
     // booleans, see below.
@@ -74,39 +76,29 @@ public:
 
     template <typename T>
     error_stream_t &operator<<(const T &t) {
-        data_->out << t;
+        out_ << t;
         return *this;
     }
 
     ~error_stream_t() noexcept(false) {
-        if (data_ == nullptr) return;
+#if __cplusplus < 201703L || (defined(_MSVC_LANG) && _MSVC_LANG < 201703L)
+        if (std::uncaught_exception()) {
+#else
+        if (std::uncaught_exceptions()) {
+#endif
+            return;
+        }
 
-        printf("%s\n", data_->out.str().c_str());
+        printf("%s\n", out_.str().c_str());
 #ifdef GPU_ABORT_ON_ERROR
         std::abort();
 #else
-        auto err = std::runtime_error(data_->out.str());
-        delete data_;
-        data_ = nullptr;
-
-        // This is techincally unsafe. Since error_stream_t is only used in
-        // debug builds and since it is only used by ir_assert() which signals
-        // an ill-defined program state, nested throws is not a concern.
-        throw err; // NOLINT
+        throw std::runtime_error(out_.str());
 #endif
     }
 
 private:
-    struct data_t {
-        data_t(const char *file, int line, const char *assert_msg)
-            : file(file), line(line) {}
-
-        const char *file;
-        int line;
-        ostringstream_t out;
-    };
-
-    data_t *data_;
+    ostringstream_t out_;
 };
 
 #if !defined(NDEBUG) || defined(GEMMSTONE_ASSERTIONS)

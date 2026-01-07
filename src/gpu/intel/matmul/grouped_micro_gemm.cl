@@ -44,12 +44,6 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc, const global WEI_DAT
     ugemm_grouped_c_type c_tile
       = ugemm_grouped(src, ldsrc, wei, ldwei, m, n, k, wg_i0, wg_j0, 0, sg_i, sg_j);
 
-    //if(get_group_id(2) == 1)
-    //printf("(%2lu,%2lu,%2lu)(%2lu,%2lu): grouped_micro_gemm batch %2lu m %2d n %2d k %2d wg_i0 %2lu wg_j0 %2lu sg_i0 %2lu sg_j0 %2lu src_offset %3v2d tile[0]: %5.2v8hlf tile[1]: %5.2v8hlf ldc: %d\n",
-           //get_group_id(0), get_group_id(1), get_group_id(2), get_local_id(0), get_local_id(1), batch, m, n, k, wg_i0, wg_j0, sg_i0, sg_j0, src_offset, c_tile.x[0], c_tile.x[1], lddst);
-    //printf("(%2lu,%2lu,%2lu)(%2lu,%2lu): grouped_micro_gemm batch %2lu m %2d n %2d k %2d wg_i0 %2lu wg_j0 %2lu sg_i0 %2lu sg_j0 %2lu src_offset %3v2d tile[0]: %5.2v8hlf tile[1]: %5.2v8hlf tile[2]: %5.2v8hlf tile[3]: %5.2v8hlf ldc: %d\n",
-    //       get_group_id(0), get_group_id(1), get_group_id(2), get_local_id(0), get_local_id(1), batch, m, n, k, wg_i0, wg_j0, sg_i0, sg_j0, src_offset, c_tile.x[0], c_tile.x[1], c_tile.x[2], c_tile.x[3], lddst);
-    //tile_fill(c_tile, get_group_id(0) + sg_i);
 #if DST_DT_F32
     tile_store(c_tile, dst, n, m, lddst, sg_j0, sg_i0);
 #else

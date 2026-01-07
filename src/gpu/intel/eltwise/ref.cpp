@@ -66,7 +66,7 @@ static status_t init_conf_common(
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
         const conf_t &conf, const post_ops_t &post_ops,
-        const memory_desc_t *dst_md) {
+        const dropout_t &dropout, const memory_desc_t *dst_md) {
     kernel_ctx.set_data_type(conf.data_type);
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
 
@@ -76,6 +76,10 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("GWS1", conf.dispatch.nd_range().global_range()[1]);
     kernel_ctx.define_int("GWS2", conf.dispatch.nd_range().global_range()[2]);
     kernel_ctx.define_int("USE_CUSTOM_GWS_GET_ID", 1);
+    kernel_ctx.define_int("WITH_DROPOUT", !dropout.has_default_values());
+    kernel_ctx.define_int("USE_HOST_SCALARS", dropout.use_host_scalars_);
+    kernel_ctx.define_int("USE_OFFSET", dropout.use_offset_);
+    kernel_ctx.define_int("HAS_OUTPUT_MASK", dropout.has_output_mask());
 
     bool with_binary_post_ops
             = post_ops.find(primitive_kind_t::dnnl_binary) != -1;
@@ -103,8 +107,8 @@ status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t ref_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
-    return init_kernel_ctx_common(
-            kernel_ctx, conf, attr()->post_ops_, invariant_dst_md());
+    return init_kernel_ctx_common(kernel_ctx, conf, attr()->post_ops_,
+            attr()->dropout_, invariant_dst_md());
 }
 
 status_t ref_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
@@ -122,9 +126,52 @@ status_t ref_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     arg_list.set(1, dst);
     arg_list.set(2, alpha);
     arg_list.set(3, beta);
+    const bool with_dropout = !pd()->attr()->dropout_.has_default_values();
+
+    int arg_idx = 5;
+    if (with_dropout) {
+        const bool use_host_scalars = pd()->attr()->dropout_.use_host_scalars_;
+        const bool use_offset = pd()->attr()->dropout_.use_offset_;
+
+        const auto &dropout_p
+                = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_PROBABILITY);
+        const auto &dropout_seed = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_SEED);
+        const auto &dropout_offset
+                = CTX_IN_STORAGE(DNNL_ARG_ATTR_DROPOUT_OFFSET);
+        arg_list.set(arg_idx++, CTX_OUT_STORAGE(DNNL_ARG_ATTR_DROPOUT_MASK));
+        if (use_host_scalars) {
+            int64_t scalar_seed = 0;
+            int64_t scalar_offset = 0;
+            float scalar_prob = 0.f;
+            const host_scalar_memory_storage_t *seed_storage
+                    = utils::downcast<const host_scalar_memory_storage_t *>(
+                            &dropout_seed);
+            CHECK(seed_storage->get_scalar_value(
+                    &scalar_seed, sizeof(scalar_seed)));
+            if (use_offset) {
+                const host_scalar_memory_storage_t *offset_storage
+                        = utils::downcast<const host_scalar_memory_storage_t *>(
+                                &dropout_offset);
+                CHECK(offset_storage->get_scalar_value(
+                        &scalar_offset, sizeof(scalar_offset)));
+            }
+            const host_scalar_memory_storage_t *prob_storage
+                    = utils::downcast<const host_scalar_memory_storage_t *>(
+                            &dropout_p);
+            CHECK(prob_storage->get_scalar_value(
+                    &scalar_prob, sizeof(scalar_prob)));
+            arg_list.set(arg_idx++, scalar_seed);
+            arg_list.set(arg_idx++, scalar_offset);
+            arg_list.set(arg_idx++, scalar_prob);
+        } else {
+            arg_list.set(arg_idx++, dropout_seed);
+            arg_list.set(arg_idx++, dropout_offset);
+            arg_list.set(arg_idx++, dropout_p);
+        }
+    }
 
     append_post_ops_to_arg_list(
-            ctx, arg_list, 5, pd()->attr()->post_ops_, *pd()->dst_md());
+            ctx, arg_list, arg_idx, pd()->attr()->post_ops_, *pd()->dst_md());
 
     auto nd_range = conf.dispatch.nd_range();
     return large_parallel_for(ctx, nd_range, kernel_, arg_list, 4);
@@ -136,8 +183,8 @@ status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t ref_bwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
-    return init_kernel_ctx_common(
-            kernel_ctx, conf, attr()->post_ops_, invariant_dst_md());
+    return init_kernel_ctx_common(kernel_ctx, conf, attr()->post_ops_,
+            attr()->dropout_, invariant_dst_md());
 }
 
 status_t ref_bwd_t::execute_backward_dense(const exec_ctx_t &ctx) const {

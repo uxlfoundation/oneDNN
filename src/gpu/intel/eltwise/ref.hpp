@@ -35,11 +35,30 @@ struct ref_fwd_t : public primitive_t {
         using gpu_eltwise_fwd_pd_t::gpu_eltwise_fwd_pd_t;
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
+        status_t dropout_ok() const {
+            if (attr_.dropout_.has_default_values()) return status::success;
+
+            assert(memory_desc_wrapper(dst_md(0)).format_kind()
+                    == format_kind::blocked);
+
+            using namespace format_tag;
+            // See `ref_dropout(...)` comment which explains the requirement.
+            VDISPATCH_ELTWISE_IC(memory_desc_matches_one_of_tag(
+                                         *dst_md(0), ncdhw, nchw, ncw, nc)
+                            && IMPLICATION(attr_.dropout_.has_output_mask(),
+                                    memory_desc_wrapper(dst_md(0)).similar_to(
+                                            attr_.dropout_.dropout_desc_, true,
+                                            false)),
+                    VERBOSE_UNSUPPORTED_DROPOUT);
+
+            return status::success;
+        }
 
         status_t init(impl::engine_t *engine) {
             auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
-            const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
+            const auto attr_skip_mask = (primitive_attr_t::skip_mask_t::post_ops
+                    | primitive_attr_t::skip_mask_t::dropout);
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -68,6 +87,7 @@ struct ref_fwd_t : public primitive_t {
                                       intel_engine->mayiuse(
                                               compute::device_ext_t::khr_fp16)),
                     VERBOSE_UNSUPPORTED_DT_CFG);
+            CHECK(dropout_ok());
             CHECK(init_conf(engine));
             return status::success;
         }

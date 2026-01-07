@@ -17,6 +17,7 @@
 #include "gpu/intel/include/dispatch.h"
 #include "gpu/intel/include/eltwise.h"
 #include "gpu/intel/include/io.h"
+#include "gpu/intel/include/philox.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types_interop.h"
 
@@ -29,8 +30,19 @@
 
 #if IS_FWD
 __kernel void ref_eltwise_fwd(__global SRC_DATA_T *src,
-        __global DST_DATA_T *dst, float alpha, float beta,
-        int64x3_t offset POST_OP_ARGS) {
+        __global DST_DATA_T *dst, float alpha, float beta, int64x3_t offset
+#if WITH_DROPOUT
+        ,
+        __global uchar *dropout_mask_buf,
+#if USE_HOST_SCALARS
+        long dropout_seed, long dropout_offset,
+        float dropout_p
+#else
+        __global long *dropout_seed_buf, __global long *dropout_offset_buf,
+        __global float *dropout_p_buf
+#endif
+#endif
+                POST_OP_ARGS) {
 #if USE_GWS_GET
     dim_t d0 = GWS_GET_D0();
     dim_t d1 = GWS_GET_D1();
@@ -77,6 +89,28 @@ __kernel void ref_eltwise_fwd(__global SRC_DATA_T *src,
 #endif
 
     APPLY_POST_OPS_SERIAL(tmp_s, dst_data, d0, d1, d2, d3, d4, d5);
+
+#if WITH_DROPOUT
+#if !USE_HOST_SCALARS
+    long dropout_seed = dropout_seed_buf[0];
+    long dropout_offset = USE_OFFSET ? dropout_offset_buf[0] : 0;
+    float dropout_p = dropout_p_buf[0];
+#endif
+    uint dropout_threshold = get_dropout_threshold(dropout_p);
+    float dropout_inv_q = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
+#if USE_OFFSET
+    uint res = philox_4x32_s64(
+            (ulong)data_off, (ulong)dropout_seed, (ulong)dropout_offset);
+#else
+    uint res = philox_4x32(data_off, (uint)dropout_seed);
+#endif
+    uchar dropout = res > dropout_threshold;
+    tmp_s = (dropout) ? tmp_s * dropout_inv_q : 0;
+#if HAS_OUTPUT_MASK
+    dropout_mask_buf[data_off] = dropout;
+#endif
+#endif
+
     write(dst + data_off, tmp_s);
 }
 

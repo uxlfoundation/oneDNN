@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
 * Copyright 2023-2025 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -126,10 +126,6 @@ int calculate_ldb_params(brgemm_desc_t *brg, const int try_ld_block2) {
     brg->ldb2_tail = brg->ldb % brg->ld_block2;
 
     if (brg->ldb2 == 0) brg->ld_block2 = nstl::max(1, brg->ldb2_tail);
-    brg->embd_bcst = brg->is_f32
-            && (brg->ldb2_tail <= 1 && brg->ldb2 == 0)
-            /*only sve512 or more can bcast*/
-            && is_superset(brg->isa_impl, sve_512);
 
     const int adj_ld_block2
             = (brg->ldb2 != 0) ? brg->ld_block2 : brg->ldb2_tail;
@@ -148,8 +144,6 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     const int beta_regs = !one_of(brg->beta, 1.f, 0.f);
 
     const int max_isa_regs = isa_num_vregs(brg->isa_impl);
-    // note: the 'adj_ld_block2' already removes the necessary registers
-    // for 'embd_bcst'
     auto max_reg_count = max_isa_regs - max_bcst_regs - beta_regs
             - req_compensation - req_zp_a_comp_pads;
     if (req_zp_a_comp_pads)

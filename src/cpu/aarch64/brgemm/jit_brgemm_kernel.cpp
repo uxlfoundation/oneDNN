@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -802,7 +802,6 @@ void jit_brgemm_kernel_t::apply_post_ops(
             }
 
             if (p_sum_scale_reg_set) {
-                // embd bcast fma
                 mov_imm(reg_ptr_sum_scale,
                         reinterpret_cast<size_t>(p_sum_scale));
                 ld1rw(vmm_sum_scale.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_scale));
@@ -1463,8 +1462,6 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             = need_comp_pads && vpad != 0 ? bd_b <= bd_e : bd_b < bd_e;
     if (!is_valid_bd) return;
 
-    bool is_emdbd = brg.embd_bcst;
-
     int rd_loop = 0, rd_tail_size = 0;
     if (brg.is_gemv) {
         rd_loop = 1;
@@ -1541,7 +1538,7 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                     = maybe_load_bytes && (rd == rd_loop - brg.rd_step);
 
             auto rows_by_load_bytes = have_to_load_bytes ? rows_for_rd_tail : 0;
-            for (int bd = bd_b; bd < bd_e && !is_emdbd; bd++) {
+            for (int bd = bd_b; bd < bd_e; bd++) {
                 const auto bd_by_load_bytes = (bd >= bd_e - rows_by_load_bytes
                         || brg.brgattr.wary_A_k_tail_read);
                 broadcast(bcst(bd), A_offset(bd, rd),
@@ -1552,28 +1549,11 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                 add_imm(X_DEFAULT_ADDR, reg_aux_B, B_offset(ld, rd), X_TMP_0);
                 if (brg.dt_b == data_type::f16) {
                     assert(!"unsupported\n");
-                } else if (is_ld_tail) {
-                    ld1w(load().s, ld_tail_mask / T_z, ptr(X_DEFAULT_ADDR));
-                } else {
-                    ld1w(load().s, P_ALL_ONE / T_z, ptr(X_DEFAULT_ADDR));
                 }
+                ld1w(load().s, mask / T_z, ptr(X_DEFAULT_ADDR));
                 for (int bd = bd_b; bd < bd_e; bd++) {
                     auto vmm = accm(ld_block2, bd, ld);
-                    if (is_emdbd) {
-                        // The ld1rw immediate must be <=252 and a multiple of 4
-                        if (A_offset(bd, rd) >= 0 && A_offset(bd, rd) <= 252
-                                && A_offset(bd, rd) % 4 == 0) {
-                            ld1rw(load().s, mask / T_z,
-                                    ptr(reg_aux_A, A_offset(bd, rd)));
-                        } else {
-                            add_imm(X_DEFAULT_ADDR, reg_aux_A, A_offset(bd, rd),
-                                    X_TMP_0);
-                            ld1rw(load().s, mask / T_z, ptr(X_DEFAULT_ADDR));
-                        }
-                        fmla(vmm.s, P_ALL_ONE / T_m, load(ld).s, load().s);
-                    } else {
-                        dot_product(vmm, load(), bcst(bd));
-                    }
+                    dot_product(vmm, load(), bcst(bd));
                 }
             }
         }
@@ -1605,34 +1585,14 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
 
             auto rows_by_load_bytes = have_to_load_bytes ? rows_for_rd_tail : 0;
             for (int bd = bd_b; bd < bd_e; bd++) {
-                if (!is_emdbd) {
-                    const auto bd_by_load_bytes
-                            = (bd >= bd_e - rows_by_load_bytes
-                                    || brg.brgattr.wary_A_k_tail_read);
-                    broadcast(bcst(), A_offset(bd, rd),
-                            (have_to_load_bytes && bd_by_load_bytes), brg.dt_a);
-                }
+                const auto bd_by_load_bytes = (bd >= bd_e - rows_by_load_bytes
+                        || brg.brgattr.wary_A_k_tail_read);
+                broadcast(bcst(), A_offset(bd, rd),
+                        (have_to_load_bytes && bd_by_load_bytes), brg.dt_a);
                 //The current implementaion of prefetch is not giving any gain in performance but is rather introducing some latency. Therefore it is removed util a new useful implementation is deviced.
                 for (int ld = 0; ld < ld_block2; ld++) {
                     auto zmm = accm(ld_block2, bd, ld);
-                    if (is_emdbd) {
-                        const auto mask = brg.is_gemv && is_rd_tail
-                                ? gemv_tail_mask
-                                : P_ALL_ONE;
-                        // The ld1rw immediate must be <= 252 and a multiple of 4
-                        if (A_offset(bd, rd) >= 0 && A_offset(bd, rd) <= 252
-                                && A_offset(bd, rd) % 4 == 0) {
-                            ld1rw(z_tmp_1().s, mask / T_z,
-                                    ptr(reg_aux_A, A_offset(bd, rd)));
-                        } else {
-                            add_imm(X_DEFAULT_ADDR, reg_aux_A, A_offset(bd, rd),
-                                    X_TMP_0);
-                            ld1rw(z_tmp_1().s, mask / T_z, ptr(X_DEFAULT_ADDR));
-                        }
-                        fmla(zmm.s, mask / T_m, load(ld).s, z_tmp_1().s);
-                    } else {
-                        dot_product(zmm, load(ld), bcst());
-                    }
+                    dot_product(zmm, load(ld), bcst());
                 }
             }
         }

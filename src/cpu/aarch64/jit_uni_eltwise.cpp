@@ -101,6 +101,8 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
 
     void generate() override {
         const bool is_fwd = pd_->is_fwd();
+        // Note: load type may not the same as compute type
+        const auto simd_elems_per_load = simd_elems(data_type(), isa);
 
         preamble();
         XReg param = param1;
@@ -116,7 +118,7 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         ldr(reg_work_amount, ptr(X_TMP_0));
         eltwise_injector_->load_table_addr();
         Label vectorized_loop_start, remainder_loop_start, remainder_loop_end;
-        cmp(reg_work_amount, simd_w());
+        cmp(reg_work_amount, simd_elems_per_load);
         b(LT, remainder_loop_start);
         L(vectorized_loop_start);
 
@@ -163,17 +165,17 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
             }
         }
 
-        const auto shift = vlen();
         store_vector(reg_dst, vmm_src.s);
         // Update pointers for the next iteration
         // Note: we use X_TMP_0 as a temporary register to avoid conflicts with
         // other registers.
-        add_imm(reg_src, reg_src, shift, X_TMP_0);
-        add_imm(reg_dst, reg_dst, shift, X_TMP_0);
-        if (!is_fwd) add_imm(reg_diff_dst, reg_diff_dst, shift, X_TMP_0);
+        add_imm(reg_src, reg_src, simd_bytes(isa), X_TMP_0);
+        add_imm(reg_dst, reg_dst, simd_bytes(isa), X_TMP_0);
+        if (!is_fwd)
+            add_imm(reg_diff_dst, reg_diff_dst, simd_bytes(isa), X_TMP_0);
 
-        sub_imm(reg_work_amount, reg_work_amount, simd_w(), X_TMP_0);
-        cmp(reg_work_amount, simd_w());
+        sub_imm(reg_work_amount, reg_work_amount, simd_elems_per_load, X_TMP_0);
+        cmp(reg_work_amount, simd_elems_per_load);
         b(GE, vectorized_loop_start);
 
         // tail processing
@@ -229,12 +231,6 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
 private:
     using TReg = typename cpu_isa_traits<isa>::TReg;
     using TRegS = typename cpu_isa_traits<isa>::TRegS;
-    int vlen() {
-        // TODO: If we do decide to add a different enum for
-        // VLA SVE, we should handle this in cpu_isa_traits
-        return isa == asimd ? cpu_isa_traits<isa>::vlen : get_sve_length();
-    }
-    int simd_w() { return vlen() / dtype_size(); }
 
     XReg reg_src = x11;
     XReg reg_dst = x8;
@@ -339,7 +335,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::load_vector(
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::load_vector(
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::load_vector(
         TRegS &dst, const XReg addr) {
     ld1w(dst, P_ALL_ONE / T_z, ptr(addr));
 }
@@ -352,7 +348,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::store_vector(
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::store_vector(
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::store_vector(
         const XReg &addr, const TRegS src) {
     st1w(src, P_ALL_ONE / T_z, ptr(addr));
 }
@@ -367,8 +363,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::unpack_bf16(
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::unpack_bf16(
-        TReg &v0, TReg &v1) {
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::unpack_bf16(TReg &v0, TReg &v1) {
     mov(v1.s, P_ALL_ONE, v0.s);
     lsl(v0.s, v0.s, 16);
     and_(v1.s, 0xFFFF0000);
@@ -381,8 +376,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::pack_bf16(TReg &v0, TReg &v1) {
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::pack_bf16(
-        TReg &v0, TReg &v1) {
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::pack_bf16(TReg &v0, TReg &v1) {
     bfcvt(v0.h, P_ALL_ONE, v0.s);
     bfcvtnt(v0.h, P_ALL_ONE, v1.s);
 }
@@ -397,8 +391,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::unpack_fp16(
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::unpack_fp16(
-        TReg &v0, TReg &v1) {
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::unpack_fp16(TReg &v0, TReg &v1) {
     mov(v1.s, P_ALL_ONE, v0.s);
     fcvt(v0.s, P_ALL_ONE, v0.h);
     lsr(v1.s, v1.s, 16);
@@ -413,8 +406,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::asimd>::pack_fp16(TReg &v0, TReg &v1) {
 }
 
 template <>
-inline void jit_uni_kernel_t<cpu_isa_t::sve_128>::pack_fp16(
-        TReg &v0, TReg &v1) {
+inline void jit_uni_kernel_t<cpu_isa_t::sve>::pack_fp16(TReg &v0, TReg &v1) {
     fcvt(v0.h, P_ALL_ONE, v0.s);
     // Next three lines could be replaced by fcvtnt(vmm_src.h, P_ALL_ONE, tmp0.s)
     // Not currently implemented in xbyak
@@ -476,7 +468,8 @@ status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
     const memory_desc_wrapper data_d(pd()->src_md());
     const auto nelems = data_d.nelems(true);
-    const int simd_w = 64 / data_d.data_type_size();
+    // Number of elements in a cacheline. We don't want threads to share
+    const int cacheline_elems = 64 / data_d.data_type_size();
 
     const data_type_t src_dt = pd()->src_md()->data_type;
     const auto offset_bytes
@@ -488,9 +481,10 @@ status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     parallel(0, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
 
-        balance211(utils::div_up(nelems, simd_w), nthr, ithr, start, end);
-        start = nstl::min(nelems, start * simd_w);
-        end = nstl::min(nelems, end * simd_w);
+        balance211(
+                utils::div_up(nelems, cacheline_elems), nthr, ithr, start, end);
+        start = nstl::min(nelems, start * cacheline_elems);
+        end = nstl::min(nelems, end * cacheline_elems);
         if (start == end) return;
 
         jit_args_t args;
@@ -567,7 +561,8 @@ status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper data_d(pd()->data_md());
     const memory_desc_wrapper diff_data_d(pd()->diff_src_md());
     const auto nelems = data_d.nelems(true);
-    const int simd_w = 64 / data_d.data_type_size();
+    // Number of elements in a cacheline. We don't want threads to share
+    const int cacheline_elems = 64 / data_d.data_type_size();
 
     const data_type_t data_dt = pd()->use_dst() ? pd()->dst_md()->data_type
                                                 : pd()->src_md()->data_type;
@@ -583,9 +578,10 @@ status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     parallel(0, [&](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
 
-        balance211(utils::div_up(nelems, simd_w), nthr, ithr, start, end);
-        start = nstl::min(nelems, start * simd_w);
-        end = nstl::min(nelems, end * simd_w);
+        balance211(
+                utils::div_up(nelems, cacheline_elems), nthr, ithr, start, end);
+        start = nstl::min(nelems, start * cacheline_elems);
+        end = nstl::min(nelems, end * cacheline_elems);
         if (start == end) return;
 
         jit_args_t args;
@@ -599,11 +595,9 @@ status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-// Jit uni eltwise is fully vector length agnostic, so we use sve_128
-// as alias for VLA SVE.
 template struct jit_uni_eltwise_fwd_t<asimd>;
-template struct jit_uni_eltwise_fwd_t<sve_128>;
-template struct jit_uni_eltwise_bwd_t<sve_128>;
+template struct jit_uni_eltwise_fwd_t<sve>;
+template struct jit_uni_eltwise_bwd_t<sve>;
 
 } // namespace aarch64
 } // namespace cpu

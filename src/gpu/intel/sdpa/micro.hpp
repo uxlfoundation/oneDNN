@@ -387,6 +387,7 @@ struct micro_bwd_t : public primitive_t {
 
             //TODO: real checks
             // TODO: check dt == f32 | f16 for all inputs
+            // TODO: check dQ dK dV sizes match Q K V
             printf("%d %d %d %d??ndims\n", qry_md()->ndims, key_md()->ndims,
                     val_md()->ndims, dst_md()->ndims);
             VCHECK_SDPA_COND(

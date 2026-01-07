@@ -163,14 +163,8 @@ protected:
         , hint_fwd_pd_(hint_fwd_pd) {}
 
     void init_default_ws() {
-        //ws_md_.ndims = 1;
-        //ws_md_.dims[0] = 2 * desc()->queries(); // col sums + maxs
-        //printf("def size %d\n", ws_md_.dims[0]);
-        //ws_md_.data_type = data_type::f32;
-        //ws_md_.format_tag = format_tag::a;
-
         dims_t d;
-        d[0] = 2 * desc()->queries(); // logsumexp + Di // TODO: add batch
+        d[0] = desc()->batch_size() * 2 * desc()->queries(); // (logsumexp + Di) per query
 
         memory_desc_init_by_tag(ws_md_, 1, d, data_type::f32, format_tag::a);
     }

@@ -433,22 +433,19 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         ,
         const int remainder_k, const int remainder_q) {
 
-    const global float *ws_logsumexp = ws; //TODO: batch TODO: logsumexp
-
-
     uint wg_k = get_group_id(0);
 
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
-    uint b1 = get_group_id(2);
 
-    uint b0, b0_kv;
+    uint b0, b1;
+    b0 = get_group_id(1);
+    b1 = get_group_id(2);
+
     uint wg_i0 = wg_k * ugemm_kq_wg_tile_m;
 
-    uint q_group_size;
-    // tmp avoid batched grouping logic for GQA
-    b0 = get_group_id(1);
-    b0_kv = b0 / KV_GROUP_SIZE;
-    q_group_size = q;
+    const uint preprocess_batch = b1 * (DST_D1 * 2 * q) + b0 * (2 * q);
+    const global float *ws_logsumexp = ws + preprocess_batch;
+    const global float *ws_Di = ws + preprocess_batch + q;
 
     /* Calculate the number of keys to process */
     int k0end = k;
@@ -484,8 +481,8 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define dQ_slm_size \
     (D_MAX * ugemm_kq_wg_tile_n \
             * sizeof(float)) // not used yet, needed w/more register pressure?
-#define dK_slm_size (ugemm_kq_wg_tile_n * D_MAX * sizeof(float))
-#define dV_slm_size (ugemm_kq_wg_tile_n * D_MAX * sizeof(float))
+#define dK_slm_size (ugemm_kq_wg_tile_m * D_MAX * sizeof(float))
+#define dV_slm_size (ugemm_kq_wg_tile_m * D_MAX * sizeof(float))
 
 #define ugemm_slm_size \
     MAX(MAX(MAX(MAX(ugemm_kq_slm_size, ugemm_vs_slm_size), \
@@ -518,15 +515,16 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
     // used for accumulation of dV, dK across q-loop
     /*
-    local float *dK_slm = (local float *)&slm[K_slm_size + Q_slm_size
-            + S_slm_size + dS_slm_size + ugemm_slm_size];
-    local float *dV_slm = (local float *)&slm[K_slm_size + Q_slm_size
-            + S_slm_size + dS_slm_size + ugemm_slm_size + dK_slm_size];
     */
+    local float *dK_slm = (local float *)&slm[K_slm_size + Q_slm_size
+            //+ S_slm_size + dS_slm_size + ugemm_slm_size];
+            + S_slm_size + ugemm_slm_size];
+    local float *dV_slm = (local float *)&slm[K_slm_size + Q_slm_size
+            //+ S_slm_size + dS_slm_size + ugemm_slm_size + dK_slm_size];
+            + S_slm_size + ugemm_slm_size + dK_slm_size];
 
-    const size_t k_offset = KEY_BATCH(
-            b1, b0_kv); //TODO: b0_kv needed? no groups if non-quantized
-    const size_t v_offset = VAL_BATCH(b1, b0_kv);
+    const size_t k_offset = KEY_BATCH(b1, b0);
+    const size_t v_offset = VAL_BATCH(b1, b0);
     const size_t q_offset = QRY_BATCH(b1, b0);
     const size_t a_offset = DST_BATCH(b1, b0);
 
@@ -585,7 +583,6 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const uint n_col_sg
                 = DIV_UP(ugemm_kq_wg_tile_n, SUBGROUP_SIZE * sg_per_wg);
         const float zero = 0.f;
-        /*
 #pragma unroll
         for (int q = 0; q < n_col_sg; q++) {
             intel_sub_group_block_write(
@@ -597,13 +594,11 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                             * SUBGROUP_SIZE],
                     as_uint(zero));
         }
-        */
     }
 
     uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m; // *16
     uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n; // *16
 
-    //dv_tile_type dV_tile;
     a_tile_type dK_tile;
     dv_tile_type dV_tile;
     tile_fill(dK_tile, 0.0f);
@@ -687,7 +682,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     dA_tile; //TODO: convert dA_tile -> dA_tile1 : s_tile_type instead of double read
             uint q0_copy = q_tile_sg_n * sg_ij;
 
-            tile_load_src1(&dA_tile, dA, d, q_group_size, lda, 0, q0 + q0_copy,
+            tile_load_src1(&dA_tile, dA, d, q, lda, 0, q0 + q0_copy,
                     remainder_q);
 
             //tile_store_block_packed(dA_tile, Q_slm, ugemm_kq_sg_tile_n, ugemm_kq_wg_tile_n, 0, q0_copy);
@@ -711,13 +706,21 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
         tile_binary(dV_tile, dV_tile1, binary_add);
 
+        //slm dv tile
+        //dv_tile_type dV_tile_slm;
+        //tile_load_full(
+            //&dV_tile_slm, dV_slm, ugemm_kq_wg_tile_m, sg_i0_vs, sg_j0_vs);
+        //barrier(CLK_LOCAL_MEM_FENCE);
+        //tile_binary(dV_tile_slm, dV_tile1, binary_add);
+        //barrier(CLK_LOCAL_MEM_FENCE);
+        //tile_store_full(dV_tile_slm, dV_slm, ugemm_kq_wg_tile_m, sg_i0_vs, sg_j0_vs);
+
         // Calculate D_i tile, TODO: this should be a separate kernel and replace calculation w/DRAM read
         p_sum_tile_type D_i;
         tile_fill(D_i, 0.0f);
         if (q0end > 0) {
             uint q0_copy = q_tile_sg_n * sg_ij;
 
-            const global float *ws_Di = ws + q; //TODO: batch
             tile_load(&D_i, ws_Di, q0end, 1, q0end, q0 + sg_j0_kq,
                     0); // for vbroadcast
         }
@@ -765,13 +768,17 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
         barrier(CLK_LOCAL_MEM_FENCE);
 
-        uint sg_i0_qdSt = sg_i_qdSt * ugemm_qdSt_sg_tile_m;
-        uint sg_j0_qdSt = sg_j_qdSt * ugemm_qdSt_sg_tile_n;
+        tile_binary(dK_tile, dK_tile1, binary_add);
 
-        uint sg_i0_dk = sg_i_vs * ugemm_vs_sg_tile_m;
-        uint sg_j0_dk = sg_j_vs * ugemm_vs_sg_tile_n;
-        tile_binary(dK_tile, dK_tile1, binary_add); //TODO_BINary
-        // TODO: reintroduce SLM for dK dV
+        uint sg_i0_dk = sg_i_qdSt * ugemm_qdSt_sg_tile_m;
+        uint sg_j0_dk = sg_j_qdSt * ugemm_qdSt_sg_tile_n;
+
+        //// dk slm tile
+        //a_tile_type dK_tile_slm;
+        //tile_load_full(
+            //&dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, sg_j0_dk, sg_i0_dk);
+        //tile_binary(dK_tile_slm, dK_tile1, binary_add);
+        //tile_store_full(dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, sg_j0_dk, sg_i0_dk);
 
         // dQ = dS * K
 #if DO_MM
@@ -794,14 +801,24 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint sg_i0_vs = sg_i_vs * ugemm_vs_sg_tile_m;
     uint sg_j0_vs = sg_j_vs * ugemm_vs_sg_tile_n;
 
-    tile_store(dV_tile, dV + wg_i0 * ldv, d, q_group_size, ldv, sg_i0_vs,
-            sg_j0_vs);
+    //dv_tile_type dV_tile_slm;
+    //barrier(CLK_LOCAL_MEM_FENCE);
+    //tile_load_full(
+        //&dV_tile_slm, dV_slm, ugemm_kq_wg_tile_m, sg_i0_vs, sg_j0_vs);
+    //tile_store(dV_tile_slm, dV + wg_i0 * ldv, d, q, ldv, sg_i0_vs, sg_j0_vs);
+
+    tile_store(dV_tile, dV + wg_i0 * ldv, d, q, ldv, sg_i0_vs, sg_j0_vs);
 
     // /update dV
 
     // update dK
     uint sg_i0_dk = sg_i_qdSt * ugemm_qdSt_sg_tile_m;
     uint sg_j0_dk = sg_j_qdSt * ugemm_qdSt_sg_tile_n;
+
+    //a_tile_type dK_tile_slm;
+    //tile_load_full(
+        //&dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, sg_j0_dk, sg_i0_dk);
+    //tile_store(dK_tile_slm, dK + wg_i0, k, d, ldk, sg_j0_dk, sg_i0_dk);
 
     tile_store(dK_tile, dK + wg_i0, k, d, ldk, sg_j0_dk, sg_i0_dk);
 }
@@ -837,9 +854,26 @@ preprocess_Di(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
     uint sg_i_kq = sg_ij % ugemm_kq_sg_per_wg_m;
     uint sg_j_kq = sg_ij / ugemm_kq_sg_per_wg_m;
-    uint b1 = get_group_id(2);
 
-    uint b0, b0_kv;
+    uint b0, b1;
+    b0 = get_group_id(1);
+    b1 = get_group_id(2);
+
+    const uint preprocess_batch = b1 * (DST_D1 * 2 * q) + b0 * (2 * q);
+
+    const size_t q_offset = QRY_BATCH(b1, b0);
+    const size_t a_offset = DST_BATCH(b1, b0);
+
+    /* Locate dQ/A/dA matrices within batch */
+    dQ += q_offset;
+
+    A += a_offset;
+    dA += a_offset;
+
+    global float *ws_Di = ws + q;
+    ws_Di += preprocess_batch;
+
+
     uint wg_j0 = wg_q * ugemm_kq_wg_tile_n;
 
 #define Di_slm_size (ugemm_kq_wg_tile_n * sizeof(VAL_DATA_T))
@@ -880,8 +914,6 @@ preprocess_Di(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         }
         barrier(CLK_LOCAL_MEM_FENCE); //unneeded, no sharing, only caching
         // tile_load_full(&D_i, Di_slm, ugemm_kq_wg_tile_n, q0_copy, 0);
-
-        global float *ws_Di = ws + q; //TODO: batch
 
         for (int i = get_local_id(0); i < ugemm_kq_wg_tile_n;
                 i += get_local_size(0)) {

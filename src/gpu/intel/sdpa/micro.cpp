@@ -638,7 +638,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     auto ldq = static_cast<int>(
             gemm_desc_t::get_ld(*qry_md()) * qry_mdw.data_type_size());
     //problem_kq.A.setAlignment(64); // Q is packed in VNNI format in SLM
-    problem_kq.A.setAlignment(wg_tile_m_brbc * key_mdw.data_type_size() ); // Q is packed in VNNI format in SLM
+    problem_kq.A.setAlignment(alignmentForLD(wg_tile_m_brbc * key_mdw.data_type_size() )); // Q is packed in VNNI format in SLM
     if (use_systolic_ukernel()) {
         problem_kq.A.crosspack = 2;
         problem_kq.A.tileR = into<uint16_t>(sg_size_);

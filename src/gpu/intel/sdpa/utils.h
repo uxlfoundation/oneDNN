@@ -55,6 +55,8 @@
 #define QRY_S2 QRY_S.array[2]
 #define VAL_S2 VAL_S.array[2]
 #define DST_S2 DST_S.array[2]
+#define DST_D0 KEY_D.array[0]
+#define DST_D1 KEY_D.array[1]
 #define MSK_D0 MSK_D.array[0]
 #define MSK_D1 MSK_D.array[1]
 #define MSK_S2 MSK_S.array[2]

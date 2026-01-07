@@ -987,7 +987,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_binary(S_max_tile_old, S_sum_total, binary_add);
 
         // save columns logsumexp to workspace for training pass
-        global float *ws_logsumexp = ws;
+        const uint preprocess_batch = b1 * (DST_D1 * 2 * q) + b0 * (2 * q);
+
+        global float *ws_logsumexp = ws + preprocess_batch;
         tile_store(S_max_tile_old, ws_logsumexp, q, 1, q, sg_j0_kq + wg_j0,
                 sg_i0_kq);
         // sg_i0 specified to avoid OOB subgroups from aliasing

@@ -44,6 +44,23 @@ namespace dnnl_impl {
 using op_t = op_t;
 using ltw = logical_tensor_wrapper_t;
 
+dnnl::memory make_dnnl_memory_scalar(const dnnl::memory::desc &md) {
+    auto dt = md.get_data_type();
+    if (dt == dnnl::memory::data_type::s64) {
+        return dnnl::memory(md, (int64_t)0);
+    } else if (dt == dnnl::memory::data_type::f32) {
+        return dnnl::memory(md, (float)0);
+    } else if (dt == dnnl::memory::data_type::s32) {
+        return dnnl::memory(md, (int32_t)0);
+    } else if (dt == dnnl::memory::data_type::u8) {
+        return dnnl::memory(md, (uint8_t)0);
+    } else if (dt == dnnl::memory::data_type::s8) {
+        return dnnl::memory(md, (int8_t)0);
+    } else {
+        return dnnl::memory(md, 0);
+    }
+}
+
 struct op_inplace_pair_t {
     op_inplace_pair_t(size_t in_idx, size_t out_idx)
         : in_idx_(in_idx), out_idx_(out_idx) {}
@@ -160,7 +177,7 @@ std::shared_ptr<execution_args_set_t> execution_args_set_t::clone() const {
         memory cloned_mem;
         if (val_mem.second.get_desc().get_format_kind()
                 == dnnl::memory::format_kind::host_scalar) {
-            cloned_mem = dnnl::memory(val_mem.second.get_desc(), 0);
+            cloned_mem = make_dnnl_memory_scalar(val_mem.second.get_desc());
         } else if (val_mem.second.get_engine().get_kind()
                 == dnnl::engine::kind::gpu) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
@@ -771,7 +788,7 @@ status_t memory_planner_t::prepare_execution_args_set(
             const logical_tensor_wrapper_t ltw(in_lt);
             auto md = make_dnnl_memory_desc(in_lt);
             auto mem = ltw.is_host_scalar()
-                    ? dnnl::memory(md, 0)
+                    ? make_dnnl_memory_scalar(md)
                     : make_dnnl_memory(md, p_engine, nullptr);
             exec_args_set_.add_value_mem_map({in.get(), mem});
             classify_mem(mem, in.get());

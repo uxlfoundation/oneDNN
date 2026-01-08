@@ -394,7 +394,7 @@ status_t mqa_decomp_config_t::record_input_offset(
 status_t mqa_decomp_config_t::record_mqa_ops(std::shared_ptr<subgraph_t> &sg) {
     op_ptr reorder1, reorder2, matmul1, softmax, matmul2;
     for (const auto &cur_op : sg->get_ops()) {
-        if (cur_op->get_kind() != op_kind::dnnl_matmul) continue;
+        if (cur_op->get_kind() != op_kind::_dnnl_matmul) continue;
         if (get_post_op(cur_op) != nullptr) {
             matmul1 = cur_op;
             auto reshape = get_post_op(cur_op);
@@ -449,7 +449,7 @@ dnnl::primitive_attr mqa_decomp_config_t::make_primitive_attr(
                 = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         attr = make_dnnl_primitive_attr(op, fusion_info);
     }
-    if (op && op->get_kind() == op_kind::dnnl_reorder) {
+    if (op && op->get_kind() == op_kind::_dnnl_reorder) {
         // generate mask
         int mask = 0;
         if (op->has_attr(op_attr::axis) && op->has_attr(op_attr::qtype)) {

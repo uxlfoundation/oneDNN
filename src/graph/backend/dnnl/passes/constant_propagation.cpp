@@ -21,7 +21,6 @@
 
 #include "graph/interface/value.hpp"
 
-#include "graph/backend/dnnl/internal_attrs.hpp"
 #include "graph/backend/dnnl/passes/utils.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
@@ -34,17 +33,25 @@ namespace {
 bool has_scratchpad(const op_t *op) {
     // the following ops do not have scratchpad output by definition
     const static std::set<op_kind_t> no_scratchpad_ops {
-            op_kind::dnnl_constant_scales, op_kind::dnnl_constant_zps,
-            op_kind::dnnl_add_zps, op_kind::dnnl_sub_zps,
-            op_kind::dnnl_to_group, op_kind::dnnl_from_group,
-            op_kind::dnnl_permute, op_kind::dnnl_squeeze,
-            op_kind::dnnl_unsqueeze, op_kind::dnnl_transpose,
-            op_kind::dnnl_reshape, op_kind::dnnl_gen_index, op_kind::dnnl_mask};
+            op_kind::_dnnl_constant_scales,
+            op_kind::_dnnl_constant_zps,
+            op_kind::_dnnl_add_zps,
+            op_kind::_dnnl_sub_zps,
+            op_kind::_dnnl_to_group,
+            op_kind::_dnnl_from_group,
+            op_kind::_dnnl_permute,
+            op_kind::_dnnl_squeeze,
+            op_kind::_dnnl_unsqueeze,
+            op_kind::_dnnl_transpose,
+            op_kind::_dnnl_reshape,
+            op_kind::_dnnl_gen_index,
+            op_kind::_dnnl_mask,
+    };
 
     // the following ops may have scratchpad output if output size > 1
     const static std::set<op_kind_t> may_have_scratchpad_ops {
-            op_kind::dnnl_mul_scales,
-            op_kind::dnnl_reorder,
+            op_kind::_dnnl_mul_scales,
+            op_kind::_dnnl_reorder,
     };
 
     const op_kind_t kind = op->get_kind();

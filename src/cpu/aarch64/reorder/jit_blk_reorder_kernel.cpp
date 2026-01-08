@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2022-2025 Arm Ltd. and affiliates
+* Copyright 2022-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -53,27 +53,31 @@ bool jit_single_blk_kernel_t::applicable(const prb_t &p) {
     auto o1 = p.nodes[1].os;
 
     /*
-         * for a transpose of plain to 8c case, nodes would be like:
-         *     n    is   os
-         *     m    1    8
-         *     8    m    1
-         * or
-         *     8    m    1
-         *     m    1    8
-         */
-    ok = (utils::one_of(n0, 4, 8, 16, 32, 64)
-                 || utils::one_of(n1, 4, 8, 16, 32, 64))
-            && ((i0 == 1 && o1 == 1 && n0 == i1 && o0 == n1)
-                    || (o0 == 1 && i1 == 1 && n0 == o1 && i0 == n1));
-    if (!ok) return false;
-
-    // The 128-bit version only supports blocking of exactly 4, while the
-    // 256-bit version only suppports the larger block sizes.
+     * for a transpose of plain to 8c case, nodes would be like:
+     *     n    is   os
+     *     m    1    8
+     *     8    m    1
+     * or
+     *     8    m    1
+     *     m    1    8
+     *
+     * The 128-bit version only supports blocking of exactly 4, while the
+     * 256-bit version only supports the larger block sizes.
+     */
     if (get_max_cpu_isa() == sve_128) {
-        if (n0 != 4 && n1 != 4) { return false; }
+        ok = (n0 == 4 && o0 == 1 && i1 == 1 && n0 == o1 && i0 == n1)
+                || (n1 == 4 && i0 == 1 && o1 == 1 && n0 == i1 && o0 == n1);
+
     } else if (get_max_cpu_isa() == sve_256) {
-        if (n0 == 4 || n1 == 4) return false;
+        ok = (utils::one_of(n0, 8, 16, 32, 64)
+                     && (o0 == 1 && i1 == 1 && n0 == o1 && i0 == n1))
+                || (utils::one_of(n1, 8, 16, 32, 64)
+                        && (i0 == 1 && o1 == 1 && n0 == i1 && o0 == n1));
+    } else {
+        assert(!"unsupported isa");
     }
+
+    if (!ok) return false;
 
     // Do not handle transpose of dimensions other than last 2
     for (int i = 2; i < p.ndims; ++i) {

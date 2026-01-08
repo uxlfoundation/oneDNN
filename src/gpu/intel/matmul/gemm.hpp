@@ -65,13 +65,22 @@ struct gemm_t : public primitive_t {
             bool with_bia = bias_md->ndims > 0;
             auto orig_dims = a_md->ndims;
 
+            // TODO: Enable reshaped 2D groups.
+            auto src_scales = attr()->scales_.get(DNNL_ARG_SRC);
+            int src_scale_group_ndims = 0;
+            if (!src_scales.has_default_groups())
+                for (int i = 0; i < 2; ++i) {
+                    if (src_scales.get_group(i) > 1) ++src_scale_group_ndims;
+                }
+
             auto maybe_reshape = [&]() -> status_t {
                 int batch_b_dims = 1;
                 for (int i = 0; i < b_md->ndims - 2; i++) {
                     batch_b_dims *= b_md->dims[i];
                 }
                 // for batch dim can map broadcast to 2d: eg. 4x1x4096:1x4096x16 -> 4x4096:4096x16
-                bool reshape_2d = (batch_b_dims == 1 && b_md->ndims > 2);
+                bool reshape_2d = (batch_b_dims == 1 && b_md->ndims > 2
+                        && src_scale_group_ndims < 1);
                 bool reshape_3d = (a_md->ndims > 3);
                 bool allow_reshape
                         = gpu_utils::dev_getenv("GEMM_ALLOW_RESHAPE", true);

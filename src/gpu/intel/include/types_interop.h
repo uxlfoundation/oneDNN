@@ -24,6 +24,7 @@
 // be included external to this file when compiling outside of an OpenCL context
 #ifdef __OPENCL_VERSION__
 typedef uchar uint8_t;
+typedef int int32_t;
 typedef long int64_t;
 #endif
 
@@ -48,13 +49,21 @@ typedef struct {
 } int64x6_t;
 
 // Number of terms usable by a single dispatcher, each defined in ocl_types.h
-#define MAX_INDEXING_TERMS 10
+#define MAX_RUNTIME_TERMS 32
 
 typedef struct {
-    int64_t sizes[MAX_INDEXING_TERMS];
-    int64_t strides[MAX_INDEXING_TERMS];
-    int64_t blocks[MAX_INDEXING_TERMS];
-} dispatch_gws_rt_params_t;
+    int64_t params[MAX_RUNTIME_TERMS];
+} dispatch_gws_rt_params64_t;
+
+typedef struct {
+    int32_t params[MAX_RUNTIME_TERMS];
+} dispatch_gws_rt_params32_t;
+
+#ifdef GWS_USE_PARAMS32
+typedef dispatch_gws_rt_params32_t dispatch_gws_rt_params_t;
+#else
+typedef dispatch_gws_rt_params64_t dispatch_gws_rt_params_t;
+#endif
 
 #define ZERO_PAD_MASK_DATA_TYPE uint8_t
 #define ZERO_PAD_MASK_DT_BITS (8 * sizeof(ZERO_PAD_MASK_DATA_TYPE))

@@ -20,64 +20,33 @@
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types_interop.h"
 
-#define DATA_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(DST, x0, x1, x2, x3, x4, x5)
-
-#define DIFF_DATA_OFF(x0, x1, x2, x3, x4, x5) \
-    OFF_MD(DIFF, x0, x1, x2, x3, x4, x5)
-
-#define GWS_GET_THREAD_ID(index) (get_global_id(index) + offset.array[index])
-
 #if IS_FWD
 __kernel void ref_eltwise_fwd(__global SRC_DATA_T *src,
         __global DST_DATA_T *dst, float alpha, float beta,
-        int64x3_t offset POST_OP_ARGS) {
-#if USE_GWS_GET
-    dim_t d0 = GWS_GET_D0();
-    dim_t d1 = GWS_GET_D1();
-    dim_t d2 = GWS_GET_D2();
-    dim_t d3 = GWS_GET_D3();
-    dim_t d4 = GWS_GET_D4();
-    dim_t d5 = GWS_GET_D5();
+        const dispatch_gws_rt_params_t gws_params POST_OP_ARGS) {
+    if (GWS_OVERFLOW(gws_params)) return;
 
-    const dim_t data_off = DATA_OFF(d0, d1, d2, d3, d4, d5);
+    src = GWS_GET_BUFFER_POS(SRC, gws_params, src);
+    dst = GWS_GET_BUFFER_POS(DST, gws_params, dst);
 
-    if (d0 >= DST_D0 || d1 >= DST_D1 || d2 >= DST_D2 || d3 >= DST_D3
-            || d4 >= DST_D4 || d5 >= DST_D5) {
-        write(dst + data_off, 0.f);
+    if (GWS_IN_PADDING(gws_params)) {
+        *dst = DATA_ZERO;
         return;
     }
-#else
-    const dim_t data_off = get_global_id(0)
-#if GWS1 > 1
-            + get_global_id(1) * GWS0
-#endif
-#if GWS2 > 1
-            + get_global_id(2) * GWS0 * GWS1
-#endif
-            ;
 
-    const dim_t d0 = 0;
-    const dim_t d1 = 0;
-    const dim_t d2 = 0;
-    const dim_t d3 = 0;
-    const dim_t d4 = 0;
-    const dim_t d5 = 0;
-#endif
-
-#if DT_F16 == 1
-    float tmp_s = load(tmp_s, src + data_off);
-#else
-    float tmp_s = load(tmp_s, src + data_off);
-#endif
+    float tmp_s = load(tmp_s, src);
     tmp_s = fwd_eltwise(tmp_s, alpha, beta, 1.0f);
 
-    float dst_data;
+    float dst_data = 0;
 #if WITH_SUM
-    load(dst_data, dst + data_off);
+    load(&dst_data, dst);
 #endif
+    APPLY_POST_OPS_SERIAL(tmp_s, dst_data, GWS_GET_OFF(A, gws_params),
+            GWS_GET_OFF(B, gws_params), GWS_GET_OFF(C, gws_params),
+            GWS_GET_OFF(D, gws_params), GWS_GET_OFF(E, gws_params),
+            GWS_GET_OFF(F, gws_params));
 
-    APPLY_POST_OPS_SERIAL(tmp_s, dst_data, d0, d1, d2, d3, d4, d5);
-    write(dst + data_off, tmp_s);
+    write(dst, tmp_s);
 }
 
 #else // #if IS_FWD
@@ -85,29 +54,22 @@ __kernel void ref_eltwise_fwd(__global SRC_DATA_T *src,
 #if DT_F64 == 1 || DT_F32 == 1 || DT_BF16 == 1 || DT_F16 == 1
 
 __kernel void ref_eltwise_bwd(__global SRC_DATA_T *src,
-        __global DIFF_DATA_T *diff_src, __global DIFF_DATA_T *diff_dst,
-        float alpha, float beta, int64x3_t offset) {
+        __global DIFF_SRC_DATA_T *diff_src, __global DIFF_DST_DATA_T *diff_dst,
+        float alpha, float beta, const dispatch_gws_rt_params_t gws_params) {
+    if (GWS_OVERFLOW(gws_params)) return;
 
-    dim_t d0 = GWS_GET_D0();
-    dim_t d1 = GWS_GET_D1();
-    dim_t d2 = GWS_GET_D2();
-    dim_t d3 = GWS_GET_D3();
-    dim_t d4 = GWS_GET_D4();
-    dim_t d5 = GWS_GET_D5();
+    src = GWS_GET_BUFFER_POS(SRC, gws_params, src);
+    diff_src = GWS_GET_BUFFER_POS(DIFF_SRC, gws_params, diff_src);
+    diff_dst = GWS_GET_BUFFER_POS(DIFF_DST, gws_params, diff_dst);
 
-    const dim_t data_off = DATA_OFF(d0, d1, d2, d3, d4, d5);
-    const dim_t diff_data_off = DIFF_DATA_OFF(d0, d1, d2, d3, d4, d5);
-
-    if (d0 >= DST_D0 || d1 >= DST_D1 || d2 >= DST_D2 || d3 >= DST_D3
-            || d4 >= DST_D4 || d5 >= DST_D5) {
-        write(diff_src + diff_data_off, 0.f);
+    if (GWS_IN_PADDING(gws_params)) {
+        *diff_src = DATA_ZERO;
         return;
     }
 
-    POST_OP_DATA_T tmp_dd = load(tmp_dd, diff_dst + diff_data_off);
-    POST_OP_DATA_T tmp_s = load(tmp_s, src + data_off);
-
-    write(diff_src + diff_data_off, bwd_eltwise(tmp_dd, tmp_s, alpha, beta));
+    POST_OP_DATA_T tmp_dd = load(tmp_dd, diff_dst);
+    POST_OP_DATA_T tmp_s = load(tmp_s, src);
+    write(diff_src, bwd_eltwise(tmp_dd, tmp_s, alpha, beta));
 }
 #endif
 

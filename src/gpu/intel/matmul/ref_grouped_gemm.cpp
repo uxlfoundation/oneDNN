@@ -42,6 +42,8 @@ status_t ref_grouped_gemm_t::execute_ref(const exec_ctx_t &ctx) const {
 
     const auto &attr_scales = pd()->attr()->scales_;
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
+    const bool with_wei_scales
+            = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
     const bool with_bias = pd()->with_bias();
 
     compute::kernel_arg_list_t arg_list;
@@ -61,6 +63,11 @@ status_t ref_grouped_gemm_t::execute_ref(const exec_ctx_t &ctx) const {
         const auto &src_scales
                 = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
         arg_list.set(next_arg++, src_scales);
+    }
+    if (with_wei_scales) {
+        const auto &wei_scales
+                = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+        arg_list.set(next_arg++, wei_scales);
     }
 
     // Use total_tokens as upper bound for M dimension

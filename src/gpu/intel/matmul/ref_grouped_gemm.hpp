@@ -109,9 +109,20 @@ struct ref_grouped_gemm_t : public primitive_t {
                         attr_scales.get(DNNL_ARG_SRC).has_default_groups(),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
-            // No scales on weights or dst for now
-            VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_WEIGHTS),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            if (!attr_scales.has_default_values(DNNL_ARG_WEIGHTS)) {
+                const int wei_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
+                const int colwise_mask = wei_qmask_N();
+                // Only column-wise f32 scales supported for weights
+                VDISPATCH_MATMUL(wei_mask == colwise_mask,
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                VDISPATCH_MATMUL(
+                        attr_scales.get_data_type(DNNL_ARG_WEIGHTS) == f32,
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                // No groups for weight scales
+                VDISPATCH_MATMUL(
+                        attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups(),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+            }
             VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 
@@ -152,6 +163,11 @@ struct ref_grouped_gemm_t : public primitive_t {
         const bool with_src_scales
                 = !attr_scales.has_default_values(DNNL_ARG_SRC);
         kernel_ctx.define_int("WITH_SRC_SCALES", with_src_scales ? 1 : 0);
+
+        const auto &attr_scales = pd()->attr()->scales_;
+        const bool with_wei_scales
+                = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
+        kernel_ctx.define_int("WITH_WEI_SCALES", with_wei_scales ? 1 : 0);
 
         return create_kernel(
                 engine, &kernel_, "ref_grouped_gemm_matmul", kernel_ctx);

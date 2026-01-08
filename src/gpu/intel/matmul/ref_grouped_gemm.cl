@@ -54,6 +54,10 @@ __kernel void ref_grouped_gemm_matmul(
         ,
         __global const float *src_scales
 #endif
+#if WITH_WEI_SCALES
+        ,
+        __global const float *wei_scales
+#endif
 ) {
 
     const int group_id = get_global_id(0);
@@ -98,6 +102,13 @@ __kernel void ref_grouped_gemm_matmul(
     const int token_idx = src_start + m;
     const float src_scale = src_scales[token_idx];
     acc *= (ACC_DATA_T)src_scale;
+#endif
+
+    // Apply column-wise weight scale
+#if WITH_WEI_SCALES
+    const long wei_scale_idx = (long)group_id * N + n;
+    const float wei_scale = wei_scales[wei_scale_idx];
+    acc *= (ACC_DATA_T)wei_scale;
 #endif
 
 #if WITH_BIAS

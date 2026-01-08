@@ -64,6 +64,14 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
                 = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     }
 
+    const bool with_wei_scales
+            = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
+    const void *wei_scales = nullptr;
+    if (with_wei_scales) {
+        wei_scales = CTX_IN_MEM(
+                const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
+    }
+
     for (int group_id = 0; group_id < num_groups; ++group_id) {
         const dim_t M = offsets[group_id + 1] - offsets[group_id];
         if (M == 0) continue;
@@ -88,10 +96,19 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
                     acc += s * w;
                 }
 
+                // row-wise src scales
                 if (with_src_scales) {
                     const dim_t token_idx = offsets[group_id] + m;
                     const float scale = io::load_float_value(
                             data_type::f32, src_scales, token_idx);
+                    acc *= scale;
+                }
+
+                // column-wise wei scales
+                if (with_wei_scales) {
+                    const dim_t scale_idx = group_id * N + n;
+                    const float scale = io::load_float_value(
+                            data_type::f32, wei_scales, scale_idx);
                     acc *= scale;
                 }
 

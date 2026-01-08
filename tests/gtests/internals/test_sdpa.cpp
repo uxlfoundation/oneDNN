@@ -709,10 +709,10 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     }
 
     printf("%dwat?\n", __LINE__);
-    //fill_random(query_data, query_md);
-    fill_eye(query_data, query_md);
-    //fill_random(diff_output_data, output_md);
-    fill_eye(diff_output_data, output_md);
+    fill_random(query_data, query_md);
+    //fill_eye(query_data, query_md);
+    fill_random(diff_output_data, output_md);
+    //fill_eye(diff_output_data, output_md);
     fill_random_quantized(key_quantized_data, key_quantized_md,
             (p.key.dt == mdt::u4 || p.key.dt == mdt::u8));
     fill_random_quantized(val_quantized_data, val_quantized_md,
@@ -2653,8 +2653,9 @@ INSTANTIATE_TEST_SUITE_P(llama_bwd_f32,
 //                    sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
 //                    sdpa_dims_t{   4,    2,        2,      32,       32,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
 //                    sdpa_dims_t{   1,      1,        1,      64,       64,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
-                   //sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
-                   sdpa_dims_t{   1,    1,        1,      4096,       4096,    128,      128,     128, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   //sdpa_dims_t{   1,    1,        1,      4096,       4096,    64,      64,     64, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   //sdpa_dims_t{   1,    1,        1,      4096,       4096,    128,      128,     128, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                    //sdpa_dims_t{   1,    1,        1,      8192,       8192,    128,      128,     128, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
    ), &print_to_string);
 

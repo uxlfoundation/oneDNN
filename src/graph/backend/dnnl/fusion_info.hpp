@@ -31,8 +31,6 @@
 #include "graph/interface/value.hpp"
 #include "graph/utils/utils.hpp"
 
-#include "graph/backend/dnnl/internal_attrs.hpp"
-#include "graph/backend/dnnl/internal_ops.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
 #include "oneapi/dnnl/dnnl.hpp"
@@ -89,11 +87,11 @@ class fusion_info_t {
         const op_t *get_op() const { return op_.get(); }
 
         bool is_post_sum() const {
-            return op_->get_kind() == op_kind::dnnl_binary && is_post_sum_;
+            return op_->get_kind() == op_kind::_dnnl_binary && is_post_sum_;
         }
 
         bool is_post_binary() const {
-            return op_->get_kind() == op_kind::dnnl_binary && !is_post_sum_;
+            return op_->get_kind() == op_kind::_dnnl_binary && !is_post_sum_;
         }
 
         void set_post_sum() { is_post_sum_ = true; }
@@ -263,7 +261,7 @@ public:
     bool has_post_dw_conv() const {
         auto pos = std::find_if(post_ops_.begin(), post_ops_.end(),
                 [](const std::shared_ptr<meta_op_t> &mop) {
-            return mop->get_op()->get_kind() == op_kind::dnnl_convolution;
+            return mop->get_op()->get_kind() == op_kind::_dnnl_convolution;
         });
         return pos != post_ops_.end();
     }
@@ -271,7 +269,7 @@ public:
     const std::shared_ptr<meta_op_t> &get_post_dw_conv() const {
         auto pos = std::find_if(post_ops_.begin(), post_ops_.end(),
                 [](const std::shared_ptr<meta_op_t> &mop) {
-            return mop->get_op()->get_kind() == op_kind::dnnl_convolution;
+            return mop->get_op()->get_kind() == op_kind::_dnnl_convolution;
         });
 
         VCHECK_FUSION_INFO(

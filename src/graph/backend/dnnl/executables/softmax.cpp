@@ -46,13 +46,13 @@ softmax_executable_t::desc_t softmax_executable_t::create_desc(
     if (axis < 0) { axis += src.get_ndims(); }
 
     dnnl::algorithm algo = dnnl::algorithm::undef;
-    if (op->get_kind() == dnnl_impl::op_kind::dnnl_softmax) {
+    if (op->get_kind() == op_kind::_dnnl_softmax) {
         const auto mode = op->get_attr<std::string>(op_attr::mode);
         algo = mode == "inf_as_zero"
                 ? static_cast<dnnl::algorithm>(
                           dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
                 : dnnl::algorithm::softmax_accurate;
-    } else if (op->get_kind() == dnnl_impl::op_kind::dnnl_logsoftmax) {
+    } else if (op->get_kind() == op_kind::_dnnl_logsoftmax) {
         algo = dnnl::algorithm::softmax_log;
     } else {
         assert(!"unexpected op kind");
@@ -102,8 +102,7 @@ softmax_bwd_executable_t::desc_t softmax_bwd_executable_t::create_desc(
     src_lt.data_type = diff_src_lt.data_type;
     auto src = make_dnnl_memory_desc(src_lt);
 
-    const dnnl::algorithm algo
-            = op->get_kind() == dnnl_impl::op_kind::dnnl_logsoftmax_bwd
+    const dnnl::algorithm algo = op->get_kind() == op_kind::_dnnl_logsoftmax_bwd
             ? dnnl::algorithm::softmax_log
             : dnnl::algorithm::softmax_accurate;
 

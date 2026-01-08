@@ -696,7 +696,7 @@ impl::status_t sdp_decomp_config_t::record_sdp_ops(
         auto in_val = op->get_input_value(1);
         if (in_val->has_producer()) {
             auto *producer = &in_val->get_producer();
-            if (producer->get_kind() == op_kind::dnnl_permute) {
+            if (producer->get_kind() == op_kind::_dnnl_permute) {
                 in_val = producer->get_input_value(0);
                 if (in_val->has_producer())
                     producer = &in_val->get_producer();
@@ -704,7 +704,7 @@ impl::status_t sdp_decomp_config_t::record_sdp_ops(
                     return nullptr;
             }
             if (producer == nullptr
-                    || producer->get_kind() != op_kind::dnnl_reorder)
+                    || producer->get_kind() != op_kind::_dnnl_reorder)
                 return nullptr;
             return producer->shared_from_this();
         } else
@@ -712,11 +712,11 @@ impl::status_t sdp_decomp_config_t::record_sdp_ops(
     };
 
     for (const auto &cur_op : sg->get_ops()) {
-        if (!cur_op || cur_op->get_kind() != op_kind::dnnl_matmul) continue;
+        if (!cur_op || cur_op->get_kind() != op_kind::_dnnl_matmul) continue;
         auto post_op = get_post_op(cur_op);
         op_ptr select;
         if (has_select && !select_fusiable) {
-            if (!post_op || post_op->get_kind() != op_kind::dnnl_binary
+            if (!post_op || post_op->get_kind() != op_kind::_dnnl_binary
                     || post_op->get_attr<int64_t>(op_attr::alg_kind)
                             != alg_kind::binary_select)
                 continue;
@@ -724,7 +724,7 @@ impl::status_t sdp_decomp_config_t::record_sdp_ops(
             post_op = get_post_op(select);
         }
 
-        if (!post_op || post_op->get_kind() != op_kind::dnnl_softmax) continue;
+        if (!post_op || post_op->get_kind() != op_kind::_dnnl_softmax) continue;
         auto ppost_op = get_post_op(post_op);
         VCHECK_SDP_DECOMP(ppost_op != nullptr, status::invalid_graph,
                 "Failed to find post post op for matmul");
@@ -852,7 +852,7 @@ impl::status_t sdp_decomp_config_t::prepare_sdp_scales_zps(
             args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, sub_dst_zp});
         }
     }
-    if (op && op->get_kind() == op_kind::dnnl_reorder) {
+    if (op && op->get_kind() == op_kind::_dnnl_reorder) {
         if (op->has_attr(op_attr::with_runtime_dst_zps)
                 && op->get_attr<bool>(op_attr::with_runtime_dst_zps)) {
             memory::desc sub_dst_zp_md
@@ -876,7 +876,7 @@ dnnl::primitive_attr sdp_decomp_config_t::make_primitive_attr(
                 = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         attr = make_dnnl_primitive_attr(op, fusion_info);
     }
-    if (op && op->get_kind() == op_kind::dnnl_reorder) {
+    if (op && op->get_kind() == op_kind::_dnnl_reorder) {
         // generate mask
         int mask = 0;
         if (op->has_attr(op_attr::axis) && op->has_attr(op_attr::qtype)) {

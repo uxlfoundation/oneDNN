@@ -37,7 +37,6 @@
 
 #include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/fusion_info.hpp"
-#include "graph/backend/dnnl/internal_ops.hpp"
 #include "graph/backend/dnnl/utils.hpp"
 
 #include "dnnl.hpp"

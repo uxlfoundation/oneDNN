@@ -129,7 +129,7 @@ jobs:
       - name: Find last successful run
         if: failure()
         id: get-stable-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
         with:
           key: latest-nightly-success-sha
           path: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/stable.sha
@@ -181,7 +181,7 @@ jobs:
         run: echo "$(git rev-parse --short HEAD)" > .github/automation/aarch64/stable.sha
 
       - name: Save hash
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
         with:
           key: latest-nightly-success-sha
           path: ${{ github.workspace }}/oneDNN/.github/automation/aarch64/stable.sha

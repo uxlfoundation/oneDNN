@@ -47,8 +47,7 @@ TEST(test_insert_ops, InsertPermuteForOpOnlyRequireDataFormat) {
     size_t id = 0;
 
     auto op = std::make_shared<graph::op_t>(id++,
-            static_cast<graph::op_kind_t>(
-                    graph::dnnl_impl::op_kind::kDnnl_prelu),
+            static_cast<graph::op_kind_t>(graph::op_kind::_dnnl_prelu),
             "prelu");
 
     op->set_attr<std::string>(graph::op_attr::data_format, "NXC");
@@ -80,22 +79,19 @@ TEST(test_insert_ops, InsertPermuteForOpOnlyRequireDataFormat) {
 
     graph::dnnl_impl::fusion_info_t init_info;
     prelu_op->set_attr<graph::dnnl_impl::fusion_info_t>(
-            graph::dnnl_impl::op_attr::fusion_info, init_info);
+            graph::op_attr::fusion_info, init_info);
 
     graph::dnnl_impl::fusion_info_t fusion_info
             = prelu_op->get_attr<graph::dnnl_impl::fusion_info_t>(
-                    graph::dnnl_impl::op_attr::fusion_info);
-
+                    graph::op_attr::fusion_info);
     auto post_op = std::make_shared<graph::op_t>(id++,
-            static_cast<graph::op_kind_t>(
-                    graph::dnnl_impl::op_kind::dnnl_binary),
-            "add");
-    post_op->set_attr<int64_t>(graph::dnnl_impl::op_attr::alg_kind,
+            static_cast<graph::op_kind_t>(graph::op_kind::_dnnl_binary), "add");
+    post_op->set_attr<int64_t>(graph::op_attr::alg_kind,
             static_cast<int64_t>(graph::dnnl_impl::get_binary_alg_map().at(
                     graph::op_kind::Add)));
     fusion_info.append_post_binary(post_op, {2});
     prelu_op->set_attr<graph::dnnl_impl::fusion_info_t>(
-            graph::dnnl_impl::op_attr::fusion_info, fusion_info);
+            graph::op_attr::fusion_info, fusion_info);
     ASSERT_EQ(graph::dnnl_impl::insert_permute_for_op_only_require_data_format(
                       subgraph),
             graph::status::success);
@@ -124,8 +120,7 @@ TEST(test_insert_ops, InsertToGroupForReorder) {
         auto &status = std::get<2>(item);
 
         auto op = std::make_shared<graph::op_t>(id++,
-                static_cast<graph::op_kind_t>(
-                        graph::dnnl_impl::op_kind::dnnl_reorder),
+                static_cast<graph::op_kind_t>(graph::op_kind::_dnnl_reorder),
                 "reorder");
         graph::logical_tensor_t in_lt = utils::logical_tensor_init(
                 id++, in_dims, graph::data_type::f32);

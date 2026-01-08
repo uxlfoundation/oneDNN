@@ -230,7 +230,7 @@ void scatter_grouped_output(float *output, const float *grouped_output,
 }
 
 /// Reference Grouped GEMM with optional scales support
-/// Supports per-tensor, row-wise (src), and column-wise (wei) scales
+/// Supports row-wise (src) and column-wise (wei) scales
 /// Computes: output = ((input * scale_src) * (weights * scale_wei) + bias) / scale_dst
 ///
 /// Uses concatenated memory layout matching oneDNN grouped encoding
@@ -242,19 +242,15 @@ void scatter_grouped_output(float *output, const float *grouped_output,
 /// @param num_experts Number of experts
 /// @param K_dim Input dimension
 /// @param N_dim Output dimension
-/// @param scale_src_concat Concatenated src scales (nullptr = no scaling)
-/// @param scale_wei_concat Concatenated wei scales (nullptr = no scaling)
+/// @param scale_src_concat Concatenated row-wise src scales (nullptr = no scaling)
+/// @param scale_wei_concat Concatenated column-wise wei scales (nullptr = no scaling)
 /// @param scale_dst_concat Concatenated dst scales (nullptr = no scaling)
-/// @param src_scale_size Size of src scales: 1 for per-tensor, M for row-wise (nullptr if no scaling)
-/// @param wei_scale_size Size of wei scales: 1 for per-tensor, N for column-wise (nullptr if no scaling)
 void ref_grouped_gemm(const float *input_concat, float *output_concat,
         const float *weight_concat, const float *bias_concat,
         const int *offsets, int num_experts, int K_dim, int N_dim,
         const float *scale_src_concat = nullptr,
         const float *scale_wei_concat = nullptr,
-        const float *scale_dst_concat = nullptr,
-        const int *src_scale_size = nullptr,
-        const int *wei_scale_size = nullptr) {
+        const float *scale_dst_concat = nullptr) {
 
     for (int expert_id = 0; expert_id < num_experts; ++expert_id) {
         int num_expert_tokens = offsets[expert_id + 1] - offsets[expert_id];
@@ -273,29 +269,18 @@ void ref_grouped_gemm(const float *input_concat, float *output_concat,
         const float *dst_scales
                 = scale_dst_concat ? scale_dst_concat + expert_id : nullptr;
 
-        // Using size here to determine scaling strategy (row-wise, column-wise, per-tensor)
-        int src_scale_sz = src_scale_size ? src_scale_size[expert_id] : 0;
-        int wei_scale_sz = wei_scale_size ? wei_scale_size[expert_id] : 0;
-
         // GEMM with optional scales: output = ((input * scale_src) * (W * scale_wei) + bias) / scale_dst
         //
         // Input: (num_expert_tokens x K_dim)
         // Weights: (K_dim x N_dim)
         // Output dimensions: (num_expert_tokens x N_dim)
         for (int m = 0; m < num_expert_tokens; ++m) {
-            // Get src scale: per-tensor (size == 1) or row-wise (size == M)
-            float src_scale = 1.0f;
-            if (src_scales) {
-                src_scale = (src_scale_sz == 1) ? src_scales[0] : src_scales[m];
-            }
+            // Get row-wise src scale
+            float src_scale = src_scales ? src_scales[m] : 1.0f;
 
             for (int n = 0; n < N_dim; ++n) {
-                // Get wei scale: per-tensor (size == 1) or column-wise (size == N)
-                float wei_scale = 1.0f;
-                if (wei_scales) {
-                    wei_scale = (wei_scale_sz == 1) ? wei_scales[0]
-                                                    : wei_scales[n];
-                }
+                // Get column-wise wei scale
+                float wei_scale = wei_scales ? wei_scales[n] : 1.0f;
 
                 float sum = 0.0f;
                 for (int k = 0; k < K_dim; ++k) {
@@ -340,13 +325,16 @@ engine &get_engine(engine::kind engine_kind) {
 /// @param num_experts Number of experts
 /// @param K_dim Input dimension (same for all experts)
 /// @param N_dim Output dimension (same for all experts)
-/// @param use_scales If true, applies row-wise src scales
+/// @param use_src_scales If true, applies row-wise src scales
 /// @param scale_src_concat Optional row-wise src scales [total_tokens] (nullptr if not used)
+/// @param use_wei_scales If true, applies column-wise weight scales
+/// @param scale_wei_concat Optional column-wise weight scales [num_experts x N_dim] (nullptr if not used)
 void onednn_style_grouped_gemm(const float *input_concat,
         const float *weight_concat, const float *bias_concat,
         float *output_concat, const int *offsets, int num_experts, int K_dim,
-        int N_dim, engine::kind engine_kind, bool use_scales = false,
-        const float *scale_src_concat = nullptr) {
+        int N_dim, engine::kind engine_kind, bool use_src_scales = false,
+        const float *scale_src_concat = nullptr, bool use_wei_scales = false,
+        const float *scale_wei_concat = nullptr) {
 
     int total_tokens = offsets[num_experts];
 
@@ -374,10 +362,9 @@ void onednn_style_grouped_gemm(const float *input_concat,
     // Step 3: Create primitive attributes for scales (if used)
     primitive_attr attr;
     memory src_scales_mem;
+    memory wei_scales_mem;
 
-    if (use_scales && scale_src_concat) {
-        // Set row-wise (per-dim-0) src scales
-        // For grouped matmul: mask = 1 << 0 = 1 (scale varies along M dimension)
+    if (use_src_scales && scale_src_concat) {
         int src_mask = 1 << 0; // Row-wise scaling
         attr.set_scales_mask(DNNL_ARG_SRC, src_mask);
 
@@ -387,6 +374,18 @@ void onednn_style_grouped_gemm(const float *input_concat,
         src_scales_mem = memory(src_scales_md, get_engine(engine_kind));
         write_to_dnnl_memory(
                 const_cast<float *>(scale_src_concat), src_scales_mem);
+    }
+
+    if (use_wei_scales && scale_wei_concat) {
+        int wei_mask = 1 << 2; // Column-wise scaling (last dimension!)
+        attr.set_scales_mask(DNNL_ARG_WEIGHTS, wei_mask);
+
+        // Create memory for weight scales (column-wise: [num_experts x N_dim])
+        auto wei_scales_md = memory::desc({num_experts, N_dim},
+                memory::data_type::f32, memory::format_tag::ab);
+        wei_scales_mem = memory(wei_scales_md, get_engine(engine_kind));
+        write_to_dnnl_memory(
+                const_cast<float *>(scale_wei_concat), wei_scales_mem);
     }
 
     // Step 4: Create memory objects with 2 buffers for grouped encoding
@@ -424,8 +423,11 @@ void onednn_style_grouped_gemm(const float *input_concat,
     args.insert({DNNL_ARG_DST, dst_mem});
 
     // Add scales to execution arguments if used
-    if (use_scales && scale_src_concat) {
+    if (use_src_scales && scale_src_concat) {
         args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, src_scales_mem});
+    }
+    if (use_wei_scales && scale_wei_concat) {
+        args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, wei_scales_mem});
     }
 
     matmul_prim.execute(engine_stream, args);
@@ -543,34 +545,35 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
 
     // Prepare scales in concatenated format:
     //   src: row-wise (0.8 + m*0.06)
-    // Note: wei and dst scales not yet supported by ref_grouped_gemm
+    //   wei: column-wise (1.0 + 0.1 * n)
     std::vector<float> scale_src_concat(total_tokens);
-    std::vector<int> src_scale_sizes(num_active_experts);
+    std::vector<float> scale_wei_concat(NUM_EXPERTS * output_dim);
 
-    for (int idx = 0; idx < num_active_experts; ++idx) {
-        int expert_id = active_expert_ids[idx];
-        int token_start = routing.token_offsets[expert_id];
-        int M = offsets[idx + 1] - offsets[idx];
+    for (int e = 0; e < NUM_EXPERTS; ++e) {
+        int token_start = routing.token_offsets[e];
+        int M = routing.token_offsets[e + 1] - routing.token_offsets[e];
 
-        // Row-wise src scales (concatenated by expert)
+        // Row-wise src scales
         for (int m = 0; m < M; ++m) {
             scale_src_concat[token_start + m] = 0.8f + m * 0.06f;
         }
-        src_scale_sizes[idx] = M;
+
+        // Column-wise weight scales for this expert
+        for (int n = 0; n < output_dim; ++n) {
+            scale_wei_concat[e * output_dim + n] = 1.0f + 0.1f * n;
+        }
     }
 
-    // Second layer: hidden -> output (ref with src scales only)
-    // Note: oneDNN ref_grouped_gemm currently only supports src scales
+    // Second layer: hidden -> output (ref with both src and wei scales)
     ref_grouped_gemm(hidden_all.data(), output_all_ref.data(), weights.W2_data,
             weights.b2_data, offsets.data(), NUM_EXPERTS, hidden_dim,
-            output_dim, scale_src_concat.data(), nullptr, nullptr,
-            src_scale_sizes.data(), nullptr);
+            output_dim, scale_src_concat.data(), scale_wei_concat.data());
 
     // Second layer with scales: hidden -> output (oneDNN with concat memory)
     onednn_style_grouped_gemm(hidden_all.data(), weights.W2_data,
             weights.b2_data, output_all_scaled.data(), offsets.data(),
             NUM_EXPERTS, hidden_dim, output_dim, engine_kind, true,
-            scale_src_concat.data());
+            scale_src_concat.data(), true, scale_wei_concat.data());
 
     // Compare outputs
     max_diff = 0.0f;
@@ -583,12 +586,12 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     }
     avg_diff = total_diff / num_elements;
 
-    std::cout << "=== Layer 2 GEMM with Src Scales Comparison ===\n";
+    std::cout << "=== Layer 2 GEMM with Src and Wei Scales Comparison ===\n";
     snprintf(buf, sizeof(buf), "  Max difference: %.10f\n", max_diff);
     std::cout << buf;
     snprintf(buf, sizeof(buf), "  Avg difference: %.10f\n", avg_diff);
     std::cout << buf;
-    if (max_diff < 2e-5f) {
+    if (max_diff < 5e-5f) {
         std::cout << "  Status: PASS\n";
     } else {
         std::cout << "  Status: FAIL\n";

@@ -255,7 +255,7 @@ conv_fwd_executable_t::desc_t conv_fwd_executable_t::create_desc(
         if (op->get_output_value(0)->get_consumers().size() == 1) {
             const auto &next_op
                     = op->get_output_value(0)->get_consumers()[0].get_op();
-            if (next_op.get_kind() == op_kind::dnnl_permute) {
+            if (next_op.get_kind() == op_kind::_dnnl_permute) {
                 auto permute_dst_lt = next_op.get_output_logical_tensor(0);
                 auto perm = get_permutation(permute_dst_lt.ndims, "NCX", "NXC");
                 if (next_op.get_attr<std::vector<int64_t>>(op_attr::permutation)

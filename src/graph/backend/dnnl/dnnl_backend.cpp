@@ -21,7 +21,6 @@
 
 #include "graph/backend/dnnl/dnnl_backend.hpp"
 #include "graph/backend/dnnl/dnnl_constant_tensor_cache.hpp"
-#include "graph/backend/dnnl/dnnl_opset.hpp"
 #include "graph/backend/dnnl/kernels/kernels.hpp"
 #include "graph/backend/dnnl/patterns/data_type_check_pass.hpp"
 #include "graph/backend/dnnl/patterns/fusions.hpp"
@@ -33,12 +32,6 @@ namespace dnnl_impl {
 
 dnnl_backend_t::dnnl_backend_t(const std::string &name, float priority)
     : backend_t(name, priority) {
-    register_op_schemas();
-}
-
-bool dnnl_backend_t::register_op_schemas() {
-    register_dnnl_opset_schema();
-    return true;
 }
 
 pass::pass_registry_t dnnl_backend_t::register_passes() {

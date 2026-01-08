@@ -281,7 +281,7 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         float po_acc = convert_float(temp);
 
 #if WITH_DROPOUT
-#if USE_OFFSET
+#if WITH_SEED_S64 && USE_OFFSET
         uint res = philox_4x32_s64(
                 dst_off, (ulong)dropout_seed, (ulong)dropout_offset);
 #else

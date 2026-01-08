@@ -247,9 +247,12 @@ struct ref_t : public primitive_t {
     status_t init(impl::engine_t *engine) override {
         compute::kernel_ctx_t kernel_ctx;
 
+        bool with_seed_s64
+                = (pd()->attr()->dropout_.seed_dt_) == data_type::s64;
         int ndims = pd()->dst_md()->ndims;
         kernel_ctx.define_int("DST_NDIMS", ndims);
         kernel_ctx.define_int("WITH_BIAS", pd()->with_bias());
+        kernel_ctx.define_int("WITH_SEED_S64", with_seed_s64);
         kernel_ctx.define_int(
                 "WITH_DROPOUT", !pd()->attr()->dropout_.has_default_values());
         kernel_ctx.define_int(

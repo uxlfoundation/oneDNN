@@ -17,6 +17,7 @@
 #include "gpu/intel/include/dispatch.h"
 #include "gpu/intel/include/io.h"
 #include "gpu/intel/include/math_utils.h"
+#include "gpu/intel/include/philox.h"
 #include "gpu/intel/include/post_ops.h"
 #include "gpu/intel/include/types.h"
 
@@ -48,6 +49,16 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
         int dst_zp_value
 #else
         global int *dst_zp
+#endif
+#if WITH_DROPOUT
+        ,
+        __global uchar *dropout_mask_buf,
+#if DROPOUT_USE_HOST_SCALARS
+        long dropout_seed, long dropout_offset, float dropout_p
+#else
+        __global long *dropout_seed_buf, __global long *dropout_offset_buf,
+        __global float *dropout_p_buf
+#endif
 #endif
 ) {
 #if WITH_HOST_SRC_SCALE
@@ -103,5 +114,25 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
 #endif
         if (DST_ZERO_POINT) accumulator += dst_zp[0];
     }
+#if WITH_DROPOUT
+#if !DROPOUT_USE_HOST_SCALARS
+    long dropout_seed = dropout_seed_buf[0];
+    long dropout_offset = DROPOUT_USE_OFFSET ? dropout_offset_buf[0] : 0;
+    float dropout_p = dropout_p_buf[0];
+#endif
+    uint dropout_threshold = get_dropout_threshold(dropout_p);
+    float dropout_inv_q = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
+#if DROPOUT_USE_OFFSET
+    uint res = philox_4x32_s64(
+            data_idx, (ulong)dropout_seed, (ulong)dropout_offset);
+#else
+    uint res = philox_4x32((uint)data_idx, (uint)dropout_seed);
+#endif
+    uchar dropout = res > dropout_threshold;
+    accumulator = (dropout) ? accumulator * dropout_inv_q : 0;
+#if DROPOUT_HAS_OUTPUT_MASK
+    dropout_mask_buf[data_idx] = dropout;
+#endif
+#endif
     write(dst + data_idx, accumulator);
 }

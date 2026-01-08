@@ -54,6 +54,10 @@ struct with_post_ops_t : public primitive_t {
         attr_info_t attr_info_;
         bool subbyte_pack_ = false;
         bool mx_scales_ = false;
+        bool with_dropout = false;
+        bool dropout_use_host_scalars = false;
+        bool dropout_use_offset = false;
+        bool dropout_has_output_mask = false;
         data_type_t dst_type_ = data_type::undef;
         data_type_t acc_type_ = data_type::undef;
     };

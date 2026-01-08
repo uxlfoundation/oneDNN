@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/gemm/with_post_ops.hpp"
+#include "gpu/intel/gemm/host_scalars.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,7 +31,7 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     const auto attr_skip_mask = smask_t::scales_data_type
             | smask_t::scales_groups | smask_t::post_ops
             | smask_t::accumulation_mode | smask_t::fpmath_mode
-            | smask_t::zero_points_data_type;
+            | smask_t::zero_points_data_type | smask_t::dropout;
 
     bool wei_decomp = (utils::one_of(d->c_type(), f32, f16, bf16)
                               && utils::one_of(d->a_type(), u8, s8, u4, s4)
@@ -131,6 +132,7 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     CHECK(attributes_without_po.set_post_ops(post_ops_t()));
     attributes_without_po.scales_ = scales_t();
     attributes_without_po.zero_points_ = zero_points_t();
+    attributes_without_po.dropout_ = dropout_t();
     const auto &zp = attributes_with_po->zero_points_;
     int src_mask = zp.get_mask(DNNL_ARG_SRC);
     int wei_mask = zp.get_mask(DNNL_ARG_WEIGHTS);
@@ -163,6 +165,23 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     use_scratchpad_with_post_op_worker = use_reorder
             || attributes_with_po->post_ops_.find(primitive_kind_t::dnnl_sum)
                     != -1;
+    with_dropout = !attr()->dropout_.has_default_values();
+    if (with_dropout) {
+        dropout_use_host_scalars = attr()->dropout_.use_host_scalars_;
+        dropout_use_offset = attr()->dropout_.use_offset_;
+        dropout_has_output_mask = attr()->dropout_.has_output_mask();
+        assert(memory_desc_wrapper(dst_md(0)).format_kind()
+                == format_kind::blocked);
+        using namespace format_tag;
+        // Note: for `offset = 0` keep the legacy logic without the `offset`.
+        VDISPATCH_GEMM_IC(
+                memory_desc_matches_one_of_tag(*dst_md(0), ncdhw, nchw, ncw, nc)
+                        && IMPLICATION(dropout_has_output_mask,
+                                memory_desc_wrapper(dst_md(0)).similar_to(
+                                        attr()->dropout_.dropout_desc_, true,
+                                        false)),
+                VERBOSE_UNSUPPORTED_DROPOUT);
+    }
     auto ndims = pd_->dst_md()->ndims;
     dispatch_ = intel_engine->create_dispatch(pd_->dst_md());
     dispatch_.define_dim("D0", 0, pd_->dst_md()->padded_dims[0]);
@@ -236,6 +255,10 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("C_SCALES", with_dst_scales);
     kernel_ctx.define_int("DST_ZERO_POINT",
             !attr()->zero_points_.has_default_values(DNNL_ARG_DST));
+    kernel_ctx.define_int("WITH_DROPOUT", with_dropout);
+    kernel_ctx.define_int("DROPOUT_USE_HOST_SCALARS", dropout_use_host_scalars);
+    kernel_ctx.define_int("DROPOUT_USE_OFFSET", dropout_use_offset);
+    kernel_ctx.define_int("DROPOUT_HAS_OUTPUT_MASK", dropout_has_output_mask);
     def_dispatch(kernel_ctx, dispatch_);
     return status::success;
 }
@@ -304,6 +327,33 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
     arg_list.set(idx++,
             pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0 ? 1 : 0);
     arg_list.set(idx, GEMM_CTX_ARG_STORAGE(c_zero_point));
+    if (pd()->with_dropout) {
+        const auto mem_dropout_seed = &GEMM_CTX_ARG_STORAGE(dropout_seed);
+        const auto mem_dropout_offset = &GEMM_CTX_ARG_STORAGE(dropout_offset);
+        const auto mem_dropout_prob = &GEMM_CTX_ARG_STORAGE(dropout_prob);
+        idx++;
+        arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(dropout_mask));
+        if (pd()->dropout_use_host_scalars) {
+            int64_t scalar_dropout_seed = 0;
+            int64_t scalar_dropout_offset = 0;
+            float scalar_dropout_prob = 0.f;
+            CHECK(maybe_get_host_scalar_value(
+                    *mem_dropout_seed, scalar_dropout_seed));
+            if (pd()->dropout_use_offset) {
+                CHECK(maybe_get_host_scalar_value(
+                        *mem_dropout_offset, scalar_dropout_offset));
+            }
+            CHECK(maybe_get_host_scalar_value(
+                    *mem_dropout_prob, scalar_dropout_prob));
+            arg_list.set(idx++, scalar_dropout_seed);
+            arg_list.set(idx++, scalar_dropout_offset);
+            arg_list.set(idx, scalar_dropout_prob);
+        } else {
+            arg_list.set(idx++, *mem_dropout_seed);
+            arg_list.set(idx++, *mem_dropout_offset);
+            arg_list.set(idx, *mem_dropout_prob);
+        }
+    }
     auto nd_range = pd()->dispatch_.nd_range();
     CHECK(parallel_for(ctx, nd_range, kernels_[kidx++], arg_list));
 

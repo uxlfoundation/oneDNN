@@ -24,7 +24,7 @@ GEMMSTONE_NAMESPACE_START
 namespace dsl {
 namespace ir {
 
-#ifdef GEMMSTONE_ASSERTIONS
+#if GEMMSTONE_ASSERTIONS
 profiler_t *get_trace_profiler() {
     static thread_local auto profiler = getVerbose(GEMMVerbose::DebugInfo)
                     >= static_cast<int>(log_level_t::perf)

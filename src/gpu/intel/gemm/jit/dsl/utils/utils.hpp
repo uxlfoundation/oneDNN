@@ -101,7 +101,7 @@ private:
     ostringstream_t out_;
 };
 
-#if !defined(NDEBUG) || defined(GEMMSTONE_ASSERTIONS)
+#if !defined(NDEBUG) || GEMMSTONE_ASSERTIONS
 #define dsl_assert(cond) \
     !(cond) && gemmstone::dsl::error_stream_t(__FILE__, __LINE__, #cond)
 #else

@@ -5,9 +5,9 @@
 # The group dimension is inserted automatically into weights (becomes [G,K,N])
 #
 # Configurations below cover:
-# - Data types: f32, f16
+# - Data types: f32, bf16, f16
 # - Row-wise (per-token) src scales: --attr-scales=src:per_dim_0
-# - Bias: --bia-dt=f32, --bia_mask=2 (per-expert bias [num_experts, N])
+# - Bias: --bia-dt=f32/bf16/f16, --bia_mask=2 (per-expert bias [num_experts, N])
 # - Empty groups (M_g = 0)
 # - Weight scales: per_ocic:128x1 (grouped along K dimension)
 
@@ -20,6 +20,11 @@
 # Basic correctness - f16
 --reset
 --dt=f16:f16:f16
+--batch=shapes_grouped
+
+# Basic correctness - bf16
+--reset
+--dt=bf16:bf16:bf16
 --batch=shapes_grouped
 
 # Row-wise (per-token) scales - f16

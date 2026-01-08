@@ -65,8 +65,8 @@ struct ref_grouped_gemm_t : public primitive_t {
                     (int)src_grouped.ngroups, "dst_ngroups",
                     (int)dst_grouped.ngroups);
 
-            // Check that data types are f32 or f16
-            VDISPATCH_MATMUL(utils::one_of(src_type, f32, f16)
+            // Check that data types are f32, bf16, or f16
+            VDISPATCH_MATMUL(utils::one_of(src_type, f32, bf16, f16)
                             && src_type == wei_type && src_type == dst_type,
                     VERBOSE_UNSUPPORTED_DT_CFG);
 

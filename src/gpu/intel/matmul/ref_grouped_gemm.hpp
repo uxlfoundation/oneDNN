@@ -68,7 +68,7 @@ struct ref_grouped_gemm_t : public primitive_t {
             ngroups_ = src_grouped.ngroups;
 
             // only supported dt for now
-            VDISPATCH_MATMUL(utils::one_of(src_dt_, f32, f16)
+            VDISPATCH_MATMUL(utils::one_of(src_dt_, f32, bf16, f16)
                             && src_dt_ == wei_dt_ && src_dt_ == dst_dt_,
                     VERBOSE_UNSUPPORTED_DT_CFG);
 

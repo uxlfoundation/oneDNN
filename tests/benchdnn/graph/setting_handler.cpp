@@ -91,6 +91,21 @@ bool get_graph_attr(const deserialized_op_t &base_op_ref,
     return true;
 }
 
+bool get_graph_attr(const deserialized_op_t &base_op_ref,
+        dnnl_accumulation_mode_t &acc_mode) {
+
+    const auto &op_kind = base_op_ref.kind_;
+    static const std::unordered_set<std::string> accept_acc_op {"MatMul"};
+
+    if (accept_acc_op.find(op_kind) != accept_acc_op.end()) {
+        std::string str_acc_mode;
+        if (base_op_ref.get_attr_string(str_acc_mode, "accumulation_mode")) {
+            acc_mode = str2accumulation_mode(str_acc_mode.c_str());
+        }
+    }
+    return true;
+}
+
 bool get_driver_tag_by_idx(const deserialized_op_t &base_op_ref,
         std::string &tag, int idx = 0, bool from_output = false) {
     logical_tensor::dims dims = from_output ? base_op_ref.out_lts_[idx].shape_
@@ -1610,6 +1625,9 @@ bool get_matmul_bia_mask(const deserialized_op_t &base_op_ref, int &bia_mask) {
             res);
     DNN_GRAPH_CHECK_SETTINGS(
             get_graph_attr(base_op_ref, op_setting.fpmath_mode.front()), res);
+
+    DNN_GRAPH_CHECK_SETTINGS(
+            get_graph_attr(base_op_ref, op_setting.acc_mode.front()), res);
 
     return op_setting;
 }

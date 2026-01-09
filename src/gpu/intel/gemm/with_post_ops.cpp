@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/gemm/with_post_ops.hpp"
+#include "gpu/intel/gemm/host_scalars.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -327,13 +328,33 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
             pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0 ? 1 : 0);
     arg_list.set(idx, GEMM_CTX_ARG_STORAGE(c_zero_point));
     if (pd()->with_dropout) {
+        const auto mem_dropout_seed = &GEMM_CTX_ARG_STORAGE(dropout_seed);
+        const auto mem_dropout_offset = &GEMM_CTX_ARG_STORAGE(dropout_offset);
+        const auto mem_dropout_prob = &GEMM_CTX_ARG_STORAGE(dropout_prob);
         idx++;
         if (pd()->dropout_has_output_mask) {
             arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(dropout_mask));
         }
-        arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(dropout_seed));
-        arg_list.set(idx++, GEMM_CTX_ARG_STORAGE(dropout_offset));
-        arg_list.set(idx, GEMM_CTX_ARG_STORAGE(dropout_prob));
+        if (pd()->dropout_use_host_scalars) {
+            long scalar_dropout_seed = 0;
+            long scalar_dropout_offset = 0;
+            float scalar_dropout_prob = 0.f;
+            CHECK(maybe_get_host_scalar_value(
+                    *mem_dropout_seed, scalar_dropout_seed));
+            if (pd()->dropout_use_offset) {
+                CHECK(maybe_get_host_scalar_value(
+                        *mem_dropout_offset, scalar_dropout_offset));
+            }
+            CHECK(maybe_get_host_scalar_value(
+                    *mem_dropout_prob, scalar_dropout_prob));
+            arg_list.set(idx++, scalar_dropout_seed);
+            arg_list.set(idx++, scalar_dropout_offset);
+            arg_list.set(idx, scalar_dropout_prob);
+        } else {
+            arg_list.set(idx++, *mem_dropout_seed);
+            arg_list.set(idx++, *mem_dropout_offset);
+            arg_list.set(idx, *mem_dropout_prob);
+        }
     }
     auto nd_range = pd()->dispatch_.nd_range();
     CHECK(parallel_for(ctx, nd_range, kernels_[kidx++], arg_list));

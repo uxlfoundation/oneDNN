@@ -22,10 +22,10 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <cinttypes>
+#include <cstdlib>
 #include <functional>
 #include <map>
 #include <string>
@@ -73,7 +73,7 @@ enum { CRIT = 1, WARN = 2 };
                         "Error: Function '%s' at (%s:%d) returned '%d'\n", \
                         __FUNCTION__, __FILE__, __LINE__, status__); \
                 fflush(0); \
-                if ((s) == CRIT) exit(1); \
+                if ((s) == CRIT) { std::abort(); } \
             } \
             return status__; \
         } \
@@ -87,7 +87,7 @@ enum { CRIT = 1, WARN = 2 };
                     "Error: Function '%s' at (%s:%d) returned '%d'\n", \
                     __FUNCTION__, __FILE__, __LINE__, status__); \
             fflush(0); \
-            exit(1); \
+            std::abort(); \
         } \
     } while (0)
 

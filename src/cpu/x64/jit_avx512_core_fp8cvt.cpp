@@ -49,7 +49,7 @@ void fp8_conversion_e5m2_t::prepare_table() {
     }
 
     // Other tables are not needed if fp8 is native
-    if (is_fp8_native()) return;
+    if (is_f8_f16_conv_native()) return;
 
     host_->align(64);
     host_->L(label_table_to_f8_);
@@ -84,31 +84,49 @@ void fp8_conversion_e4m3_t::prepare_table() {
         host_->db(index);
     }
 
-    // Other tables are not needed if fp8 is native
-    if (is_fp8_native()) return;
-
     host_->L(label_table_from_f8_);
-    // 0: map from f8_e4m3 byte to high byte of f16 (ignoring sign)
+
+    // 0: map from f8_e4m3 byte to high byte of bf16 (ignoring sign)
     for (uint8_t u8 = 0; u8 < 128; ++u8) {
         const float8_e4m3_t x8(u8, /* bit_cast = */ true);
-        const float16_t x16 = static_cast<float16_t>(static_cast<float>(x8));
-        const uint16_t u16 = x16.raw >> 8;
+        const bfloat16_t x16 = x8;
+        const uint16_t u16 = x16.raw_bits_ >> 8;
         host_->db(u16);
     }
-    // 128: map from f8_e4m3 byte to low byte of f16 (ignoring sign)
+    // 128: map from f8_e4m3 byte to low byte of bf16 (ignoring sign)
     for (uint8_t u8 = 0; u8 < 128; ++u8) {
         const float8_e4m3_t x8(u8, /* bit_cast = */ true);
-        const float16_t x16 = static_cast<float16_t>(static_cast<float>(x8));
-        const uint16_t u16 = (x16.raw & 0xff);
+        const bfloat16_t x16 = x8;
+        const uint16_t u16 = (x16.raw_bits_ & 0xff);
         host_->db(u16);
     }
-    // 256: indices to interleave high and low bytes
+    if (!is_f8_f16_conv_native()) {
+        // 256: map from f8_e4m3 byte to high byte of f16 (ignoring sign)
+        for (uint8_t u8 = 0; u8 < 128; ++u8) {
+            const float8_e4m3_t x8(u8, /* bit_cast = */ true);
+            const float16_t x16 = x8;
+            const uint16_t u16 = x16.raw >> 8;
+            host_->db(u16);
+        }
+        // 384: map from f8_e4m3 byte to low byte of f16 (ignoring sign)
+        for (uint8_t u8 = 0; u8 < 128; ++u8) {
+            const float8_e4m3_t x8(u8, /* bit_cast = */ true);
+            const float16_t x16 = x8;
+            const uint16_t u16 = (x16.raw & 0xff);
+            host_->db(u16);
+        }
+    }
+    // 256 or 512: indices to interleave high and low bytes
     for (uint8_t u8 = 0; u8 < 64; ++u8) {
         int idx = (u8 / 2) + 64 * (u8 % 2); // 0, 64, 1, 65, ...
         host_->db(idx);
     }
-    // 320: sign mask for fp8 values
+    // 320 or 576: sign mask for fp8 values
     host_->dq(0x8080808080808080);
+
+    // Other tables are not needed if fp8 is native
+    if (is_f8_f16_conv_native()) return;
+
     host_->align(64);
     host_->L(label_table_to_f8_);
     // 0: map from f16 sign+exponent word to f8_e4m3 sign+exponent byte
@@ -334,15 +352,24 @@ void fp8_conversion_e5m2_t::vcvt_f8_to_f32(
     host_->vcvtph2psx(zmm_out, ymm_out);
 }
 
-void fp8_conversion_e4m3_t::vcvt_f8_to_f16(
-        const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
+void fp8_conversion_e4m3_t::vcvt_f8_to_xf16(const Xbyak::Xmm &xmm_out,
+        const Xbyak::Operand &op_in, data_type_t dt) {
+    assert(utils::one_of(dt, data_type::bf16, data_type::f16));
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
 
-    if (is_fp8_native()) {
+    const bool is_f16 = dt == data_type::f16;
+    const bool is_native_conv = is_f8_f16_conv_native();
+
+    if (is_f16 && is_native_conv) {
         host_->vcvthf82ph(xmm_out, op_in);
         return;
     }
+
+    const int xf16_hi_bytes_offset = is_f16 ? 256 : 0;
+    const int xf16_lo_bytes_offset = is_f16 ? 384 : 128;
+    const int interleave_indices_offset = is_native_conv ? 256 : 512;
+    const int sign_mask_offset = interleave_indices_offset + 64;
 
     host_->lea(reg64_aux_,
             host_->ptr[host_->rip + label_table_from_f8_]); // base of table
@@ -359,49 +386,31 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f16(
                                         : ymm_mask(zmm_in, xmm_out);
 
     if (op_in.isMEM()) host_->vmovdqu8(vmm_in, op_in);
-    // f16 <- f8_e4m3
+    // xf16 <- f8_e4m3
     tabulate(data_type::f8_e4m3, zmm_aux1, zmm_in,
-            host_->zword[reg64_aux_]); // high byte
+            host_->zword[reg64_aux_ + xf16_hi_bytes_offset]); // high byte
     tabulate(data_type::f8_e4m3, zmm_aux2, zmm_in,
-            host_->zword[reg64_aux_ + 128]); // low byte
+            host_->zword[reg64_aux_ + xf16_lo_bytes_offset]); // low byte
     // sign correction
     // 0xf8 means A = A | (B & C)
-    // 320 is offset of sign mask in table
-    host_->vpternlogq(zmm_aux1, zmm_in, host_->ptr_b[reg64_aux_ + 320], 0xf8);
+    host_->vpternlogq(zmm_aux1, zmm_in,
+            host_->ptr_b[reg64_aux_ + sign_mask_offset], 0xf8);
     // merge high and low
-    host_->vmovdqu64(zmm_tmp, host_->zword[reg64_aux_ + 256]);
+    host_->vmovdqu64(
+            zmm_tmp, host_->zword[reg64_aux_ + interleave_indices_offset]);
     host_->vpermt2b(zmm_aux2, zmm_tmp, zmm_aux1);
 
     host_->vmovdqu16(xmm_out, zmm_aux2);
 }
 
+void fp8_conversion_e4m3_t::vcvt_f8_to_f16(
+        const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
+    vcvt_f8_to_xf16(xmm_out, op_in, data_type::f16);
+}
+
 void fp8_conversion_e4m3_t::vcvt_f8_to_bf16(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
-    assert(utils::one_of(
-            true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
-    assert(xmm_out.isZMM());
-    assert(xmm_out.getIdx() != xmm_aux3_.getIdx());
-
-    // f16 <- f8_e4m3
-    vcvt_f8_to_f16(xmm_out, op_in);
-
-    // copy high bytes to auxiliary register
-    const Xbyak::Zmm zmm_out(xmm_out.getIdx());
-    const Xbyak::Ymm ymm_aux_out_hi(xmm_aux3_.getIdx());
-    host_->vextractf64x4(ymm_aux_out_hi, zmm_out, 1);
-
-    // f32 <- f16
-    const Xbyak::Zmm zmm_aux_out_hi(xmm_aux3_.getIdx());
-    host_->vcvtph2psx(zmm_aux_out_hi, ymm_aux_out_hi);
-    const Xbyak::Ymm ymm_out(xmm_out.getIdx());
-    host_->vcvtph2psx(zmm_out, ymm_out);
-
-    // bf16 <- f32
-    host_->vcvtneps2bf16(ymm_aux_out_hi, zmm_aux_out_hi);
-    host_->vcvtneps2bf16(ymm_out, zmm_out);
-
-    // merge bytes
-    host_->vinsertf64x4(zmm_out, zmm_out, ymm_aux_out_hi, 1);
+    vcvt_f8_to_xf16(xmm_out, op_in, data_type::bf16);
 }
 
 void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
@@ -423,10 +432,10 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni(const Xbyak::Zmm &zmm_out1,
     vcvt_f8_to_f16(zmm_out2, ymm_out2);
 }
 
-void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni_block(int num_rows,
+void fp8_conversion_e4m3_t::vcvt_f8_to_xf16_vnni_block(int num_rows,
         const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
-        const Xbyak::Reg64 &reg_data_out) {
-    const auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
+        const Xbyak::Reg64 &reg_data_out, data_type_t dt) {
+    constexpr auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
     const Xbyak::Zmm zmm_out1(xmm_aux4_.getIdx());
     const Xbyak::Zmm zmm_out2(xmm_aux5_.getIdx());
     const Xbyak::Ymm ymm_out1(zmm_out1.getIdx());
@@ -443,8 +452,8 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni_block(int num_rows,
         // move fp8 values from upper bytes to ymm_out2
         host_->vextractf64x4(ymm_out2, zmm_out1, 1);
 
-        vcvt_f8_to_f16(zmm_out1, ymm_out1);
-        vcvt_f8_to_f16(zmm_out2, ymm_out2);
+        vcvt_f8_to_xf16(zmm_out1, ymm_out1, dt);
+        vcvt_f8_to_xf16(zmm_out2, ymm_out2, dt);
 
         host_->vmovups(
                 host_->ptr[reg_data_out + r * zmm_width_in_bytes], zmm_out1);
@@ -453,6 +462,13 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni_block(int num_rows,
 
         host_->lea(reg_data_in, host_->ptr[reg_data_in + reg_stride_in]);
     }
+}
+
+void fp8_conversion_e4m3_t::vcvt_f8_to_f16_vnni_block(int num_rows,
+        const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
+        const Xbyak::Reg64 &reg_data_out) {
+    vcvt_f8_to_xf16_vnni_block(
+            num_rows, reg_data_in, reg_stride_in, reg_data_out, data_type::f16);
 }
 
 void fp8_conversion_e4m3_t::vcvt_f8_to_f32(
@@ -464,7 +480,7 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f32(
     const Xbyak::Zmm zmm_out(xmm_out.getIdx());
 
     // f16 <- f8_e4m3
-    if (is_fp8_native())
+    if (is_f8_f16_conv_native())
         host_->vcvthf82ph(ymm_mask(xmm_out), op_in);
     else
         vcvt_f8_to_f16(ymm_mask(xmm_out), op_in);
@@ -476,33 +492,8 @@ void fp8_conversion_e4m3_t::vcvt_f8_to_f32(
 void fp8_conversion_e4m3_t::vcvt_f8_to_bf16_vnni_block(int num_rows,
         const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
         const Xbyak::Reg64 &reg_data_out) {
-    constexpr auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
-    const Xbyak::Zmm zmm_aux_lo(xmm_aux4_.getIdx());
-    const Xbyak::Zmm zmm_aux_hi(xmm_aux5_.getIdx());
-    const Xbyak::Ymm ymm_aux_lo(zmm_aux_lo.getIdx());
-    const Xbyak::Ymm ymm_aux_hi(zmm_aux_hi.getIdx());
-
-    const Xbyak::Zmm zmm_permute(xmm_aux3_.getIdx());
-    for (int r = 0; r < num_rows; r += 2) {
-        host_->vmovups(zmm_permute,
-                host_->ptr[host_->rip + label_vnni_permute_index_table_]);
-
-        host_->vpermb(zmm_aux_lo, zmm_permute,
-                host_->ptr[reg_data_in]); // 3210 -> 1302
-
-        // ymm_aux_lo contains fp8 values from low bytes
-        // move fp8 values from high bytes to ymm_aux_hi
-        host_->vextractf64x4(ymm_aux_hi, zmm_aux_lo, 1);
-        vcvt_f8_to_bf16(zmm_aux_lo, ymm_aux_lo);
-        vcvt_f8_to_bf16(zmm_aux_hi, ymm_aux_hi);
-
-        host_->vmovups(
-                host_->ptr[reg_data_out + r * zmm_width_in_bytes], zmm_aux_lo);
-        host_->vmovups(host_->ptr[reg_data_out + (r + 1) * zmm_width_in_bytes],
-                zmm_aux_hi);
-
-        host_->lea(reg_data_in, host_->ptr[reg_data_in + reg_stride_in]);
-    }
+    vcvt_f8_to_xf16_vnni_block(num_rows, reg_data_in, reg_stride_in,
+            reg_data_out, data_type::bf16);
 }
 
 void fp8_conversion_e5m2_t::vcvt_f32_to_f8(
@@ -516,7 +507,7 @@ void fp8_conversion_e5m2_t::vcvt_f32_to_f8(
     // f16 <- f32
     host_->vcvtps2phx(op_in.isXMM() ? xmm_out : ymm_mask(xmm_out), op_in);
     // f8_e5m2 <- f16 (RNE)
-    if (is_fp8_native())
+    if (is_f8_f16_conv_native())
         host_->vcvtph2bf8(xmm_out, ymm_out);
     else
         vcvt_f16_to_f8(xmm_out, ymm_out);
@@ -526,7 +517,7 @@ void fp8_conversion_e5m2_t::vcvt_f16_to_f8(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
-    if (is_fp8_native()) {
+    if (is_f8_f16_conv_native()) {
         host_->vcvtph2bf8(xmm_out, op_in);
         return;
     }
@@ -578,7 +569,7 @@ void fp8_conversion_e4m3_t::vcvt_f32_to_f8(
     // f16 <- f32
     host_->vcvtps2phx(ymm_mask(xmm_out), op_in);
     // f8_e4m3 <- f16 (RNE)
-    if (is_fp8_native())
+    if (is_f8_f16_conv_native())
         host_->vcvtph2hf8(xmm_out, ymm_out);
     else
         vcvt_f16_to_f8(xmm_out, ymm_out);
@@ -588,7 +579,7 @@ void fp8_conversion_e4m3_t::vcvt_f16_to_f8(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
-    if (is_fp8_native()) {
+    if (is_f8_f16_conv_native()) {
         host_->vcvtph2hf8(xmm_out, op_in);
         return;
     }

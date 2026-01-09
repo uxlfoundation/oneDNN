@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -308,7 +308,11 @@ void Generator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const RegisterB
                     auto mod = simd | maskMod | ExecutionOffset(eoff);
                     if (block.ebytes * block.count != T.real().size()) stub();
                     if (astrategy.newDP) {
-                        auto op = T.isFP() ? AtomicOp::fadd
+#if XE3P
+                        auto op = T.isFP() ? (hw >= HW::XE3P_35_10 && T == Type::bf16) ? AtomicOp::bfadd : AtomicOp::fadd
+#else
+                        auto op = T.isFP() ? T == Type::bf16 ? AtomicOp::bfadd : AtomicOp::fadd
+#endif
                                            : AtomicOp::add;
                         atomic(op, mod, specLSC, astrategy.base, getAddress(addr[hoff], block, astrategy), curSrc);
                     } else switch (T.real()) {

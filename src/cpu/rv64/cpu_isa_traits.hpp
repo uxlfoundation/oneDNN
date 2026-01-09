@@ -25,6 +25,11 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "dnnl_types.h"
+
+#ifndef XBYAK_RISCV_V
+#define XBYAK_RISCV_V 1
+#endif
+
 #include "xbyak_riscv/xbyak_riscv_util.hpp"
 
 namespace dnnl {

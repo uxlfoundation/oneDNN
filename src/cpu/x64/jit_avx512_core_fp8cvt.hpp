@@ -84,7 +84,7 @@ protected:
     const Xbyak::Xmm xmm_aux3_;
     const Xbyak::Reg64 reg64_aux_;
 
-    bool is_fp8_native() {
+    bool is_f8_f16_conv_native() {
         return is_superset(host_->max_cpu_isa(), cpu_isa_t::avx10_2_512);
     }
 
@@ -191,6 +191,12 @@ private:
     // Must use full Zmm registers to properly load all table values.
     void tabulate(const data_type_t dt, const Xbyak::Zmm &zmm_out,
             const Xbyak::Zmm &zmm_in, const Xbyak::Address &addr);
+
+    void vcvt_f8_to_xf16(const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in,
+            data_type_t dt);
+    void vcvt_f8_to_xf16_vnni_block(int num_rows,
+            const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
+            const Xbyak::Reg64 &reg_data_out, data_type_t dt);
 
     Xbyak::Label label_table_from_f8_;
     const Xbyak::Xmm xmm_aux4_;

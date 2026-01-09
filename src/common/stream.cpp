@@ -49,6 +49,13 @@ status_t dnnl_stream_create(
         return status::unimplemented;
     }
 
+    // enables profiling capabilities to allow the verbose mode to print
+    // profiling info using device measured times
+    const bool enable_verbose_profiler = engine->kind() == engine_kind::gpu
+            && get_verbose(verbose_t::exec_profile)
+            && (getenv_int_user("DISABLE_ASYNC_VERBOSE", 0) == 0);
+    if (enable_verbose_profiler) { flags |= stream_flags::profiling; }
+
     return engine->create_stream(stream, flags);
 }
 

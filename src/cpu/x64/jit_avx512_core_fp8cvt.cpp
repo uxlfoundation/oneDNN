@@ -104,16 +104,14 @@ void fp8_conversion_e4m3_t::prepare_table() {
         // 256: map from f8_e4m3 byte to high byte of f16 (ignoring sign)
         for (uint8_t u8 = 0; u8 < 128; ++u8) {
             const float8_e4m3_t x8(u8, /* bit_cast = */ true);
-            const float16_t x16
-                    = static_cast<float16_t>(static_cast<float>(x8));
+            const float16_t x16 = x8;
             const uint16_t u16 = x16.raw >> 8;
             host_->db(u16);
         }
         // 384: map from f8_e4m3 byte to low byte of f16 (ignoring sign)
         for (uint8_t u8 = 0; u8 < 128; ++u8) {
             const float8_e4m3_t x8(u8, /* bit_cast = */ true);
-            const float16_t x16
-                    = static_cast<float16_t>(static_cast<float>(x8));
+            const float16_t x16 = x8;
             const uint16_t u16 = (x16.raw & 0xff);
             host_->db(u16);
         }

@@ -21,6 +21,7 @@
 #include "gemmstone/driver_info.hpp"
 #include "gemmstone/kernel_catalog.hpp"
 #include "gemmstone/kernel_evaluator.hpp"
+#include "gemmstone/kernel_selector.hpp"
 #include "gemmstone/problem.hpp"
 #include "gemmstone/strategy.hpp"
 #include "gemmstone/type.hpp"
@@ -91,7 +92,10 @@ struct gen_desc_t {
         return *entry_;
     }
 
-    void set_entry(const gemmstone::kcatalog::Entry *entry) { entry_ = entry; }
+    void set_entry(const gemmstone::EntryData &data) {
+        entry_ = data.entry;
+        aux_params_ = data.aux;
+    }
 
 protected:
     compute::gpu_arch_t arch_;
@@ -131,11 +135,10 @@ struct gen_nocopy_desc_t : public gen_desc_t {
         mode = static_cast<compute_mode>(mode | flag);
     }
 
-    std::vector<const gemmstone::kcatalog::Entry *> select_kernel(
-            compute::gpu_arch_t arch, int stepping, int eu_count,
-            bool has_systolic, bool is_integrated, compute_mode mode,
-            int batch_dims, bool trans_a, bool trans_b, bool trans_co,
-            bool swap_ab, const quant_params &a_quant,
+    std::vector<gemmstone::EntryData> collect_kernels(compute::gpu_arch_t arch,
+            int stepping, int eu_count, bool has_systolic, bool is_integrated,
+            compute_mode mode, int batch_dims, bool trans_a, bool trans_b,
+            bool trans_co, bool swap_ab, const quant_params &a_quant,
             const quant_params &b_quant, const quant_params &c_quant,
             bool mx_scales, bool dst_sround, bool c_offset, bool bias,
             sum_ab_t reduce_ab, float alpha, float beta, data_type_t a_type,

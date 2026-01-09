@@ -314,7 +314,7 @@ struct gen_t : public primitive_t {
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
-            auto entries = kernel_desc_.select_kernel(arch_, stepping,
+            auto entries = kernel_desc_.collect_kernels(arch_, stepping,
                     dev_info_->eu_count(), has_systolic, is_integrated, mode,
                     batch_dims(), eff_transa(), eff_transb(), eff_trans_bias(),
                     swap_ab(), swapped_a_quant, swapped_b_quant, c_quant,

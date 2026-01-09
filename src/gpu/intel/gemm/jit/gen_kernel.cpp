@@ -425,17 +425,17 @@ status_t gen_desc_t::transfer_post_ops(
     return status::success;
 }
 
-std::vector<const gemmstone::kcatalog::Entry *>
-gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
-        int eu_count, bool has_systolic, bool is_integrated, compute_mode mode,
-        int batch_dims, bool trans_a, bool trans_b, bool trans_co, bool swap_ab,
-        const quant_params &a_quant, const quant_params &b_quant,
-        const quant_params &c_quant, bool mx_scales, bool dst_sround,
-        bool c_offset, bool bias, sum_ab_t reduce_ab, float alpha, float beta,
-        data_type_t a_type, data_type_t b_type, data_type_t c_type,
-        data_type_t co_type, data_type_t acc_type, int align_a, int align_b,
-        int align_c, dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc,
-        dim_t batch, gpu_post_ops_t &&post_ops) {
+std::vector<gemmstone::EntryData> gen_nocopy_desc_t::collect_kernels(
+        compute::gpu_arch_t arch, int stepping, int eu_count, bool has_systolic,
+        bool is_integrated, compute_mode mode, int batch_dims, bool trans_a,
+        bool trans_b, bool trans_co, bool swap_ab, const quant_params &a_quant,
+        const quant_params &b_quant, const quant_params &c_quant,
+        bool mx_scales, bool dst_sround, bool c_offset, bool bias,
+        sum_ab_t reduce_ab, float alpha, float beta, data_type_t a_type,
+        data_type_t b_type, data_type_t c_type, data_type_t co_type,
+        data_type_t acc_type, int align_a, int align_b, int align_c, dim_t m,
+        dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
+        gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
 
@@ -548,8 +548,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     if (beta == 0.0f || beta == 1.0f) problem_.beta = beta;
 
     auto status = transfer_post_ops(std::move(post_ops), swap_ab);
-    if (status != status::success)
-        return std::vector<const gemmstone::kcatalog::Entry *>();
+    if (status != status::success) return std::vector<gemmstone::EntryData>();
 
     if (c_offset || bias || reduce_ab != sum_ab::sum_none) {
         assert(!(c_offset && bias));
@@ -741,8 +740,10 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     tags_ = match_params[0].tags;
     Ts_ = problem_.Ts;
     beta_ = problem_.beta;
-    return select(catalog(), static_cast<int>(match_params.size()),
-            match_params.data(), eval_params_, aux_params_, &observer);
+    std::vector<gemmstone::EntryData> entries = gemmstone::collect_kernels(
+            catalog(), static_cast<int>(match_params.size()),
+            match_params.data(), eval_params_, &observer);
+    return entries;
 }
 
 status_t gen_nocopy_desc_t::finalize() {
@@ -782,7 +783,6 @@ status_t gen_nocopy_desc_t::finalize() {
     problem_.beta = beta_;
     if (block_k > 0 && k_ > block_k && eval_params_.beta != 1.0f)
         problem_.beta = Scalar();
-    evaluate(*entry_, eval_params_, aux_params_);
     return gen_desc_t::finalize(tags_.c_str());
 }
 
@@ -906,11 +906,11 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(compute::gpu_arch_t arch,
 
     SelectionObserver observer = entryObserver;
 
-    auto entries = select(
+    entry_ = select(
             catalog(), match_params, eval_params, aux_params_, &observer);
 
-    if (entries.size() < 1) return status::unimplemented;
-    entry_ = entries[0];
+    if (!entry_) return status::unimplemented;
+
     return finalize(match_params.tags);
 }
 

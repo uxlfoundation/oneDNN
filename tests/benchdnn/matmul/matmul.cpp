@@ -243,29 +243,25 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
     attr_args_t attr_args;
     attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dst_dims.data());
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
-    const bool is_grouped
-            = prb->sparse_options.get_encoding(DNNL_ARG_SRC) == dnnl_grouped;
-#endif
-
     const auto overload_quant_mask = [&](policy_t policy, int arg) {
-        // Overload PER_OC/PER_OCIC mask definition for batched cases.
-        if (policy == policy_t::PER_OC || policy == policy_t::PER_OCIC) {
+        // Overload PER_OC/PER_OCIC/PER_DIM_1 mask definition for batched/grouped cases.
+        if (policy == policy_t::PER_OC || policy == policy_t::PER_OCIC
+                || policy == policy_t::PER_DIM_1) {
             int mask = 1 << (prb->ndims - 1);
             if (policy == policy_t::PER_OCIC) mask += 1 << (prb->ndims - 2);
 
 #if DNNL_EXPERIMENTAL_GROUPED_GEMM
             // For grouped GEMM with weight scales:
-            // Only per_ocic with 128x1 groups supported
             // Weights are 3D: [num_experts, K, N]
-            // Mask calculated as if for 2D [K, N]: per_ocic = (1<<0)|(1<<1)
-            if (is_grouped
+            // For column-wise (PER_DIM_1): mask = 1 << 2 (N dimension in 3D)
+            // For per_ocic: mask = (1<<1)|(1<<2) (K and N dimensions in 3D)
+            if (prb->sparse_options.get_encoding(DNNL_ARG_SRC) == dnnl_grouped
                     && arg == (DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS)) {
                 if (policy == policy_t::PER_OCIC) {
-                    mask = (1 << 0) | (1 << 1); // K and N dimensions for 2D
-                } else {
-                    // per_oc not supported for grouped GEMM weight scales
-                    mask = -1; // Invalid mask to trigger error
+                    mask = (1 << 1) | (1 << 2); // K and N dimensions for 3D
+                } else if (policy == policy_t::PER_DIM_1
+                        || policy == policy_t::PER_OC) {
+                    mask = 1 << 2; // N dimension for 3D (column-wise)
                 }
             }
 #endif
@@ -1400,26 +1396,46 @@ std::vector<data_kind_t> get_kinds_to_check(const prb_t *prb) {
 }
 
 #if DNNL_EXPERIMENTAL_GROUPED_GEMM
+// TODO: remove
+// temporary hack: adjust wei scales memory dims for grouped matmul
+// current assumption that we either need grouped scales or column-wise scales
 void hack_grouped_scale_memory(const prb_t *prb, dnn_mem_map_t &mem_map) {
     auto src_encoding = prb->sparse_options.get_encoding(DNNL_ARG_SRC);
     if (src_encoding != dnnl_grouped) return;
     if (!mem_map.count(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS)) return;
 
     const auto &wei_scales_entry = prb->attr.scales.get(DNNL_ARG_WEIGHTS);
-    if (wei_scales_entry.is_def() || wei_scales_entry.groups.empty()) return;
+    if (wei_scales_entry.is_def()) return;
 
     const int64_t num_experts = prb->sparse_options.get_group_count();
     const int64_t K = prb->weights_dims()[1]; // weights are [num_experts, K, N]
     const int64_t N = prb->weights_dims()[2];
-    const int64_t group_k = wei_scales_entry.groups[0];
-    const int64_t ngroups_k = K / group_k;
-    const int64_t expected_nelems = num_experts * ngroups_k * N;
+
+    int64_t expected_nelems;
+    dnnl_dims_t scale_dims;
+    int scale_ndims;
+
+    if (!wei_scales_entry.groups.empty()) {
+        // per_ocic case: scales are [num_experts, ngroups_k, N]
+        const int64_t group_k = wei_scales_entry.groups[0];
+        const int64_t ngroups_k = K / group_k;
+        expected_nelems = num_experts * ngroups_k * N;
+        scale_ndims = 3;
+        scale_dims[0] = num_experts;
+        scale_dims[1] = ngroups_k;
+        scale_dims[2] = N;
+    } else {
+        // per_dim_1 (column-wise) case: scales are [num_experts, N]
+        expected_nelems = num_experts * N;
+        scale_ndims = 2;
+        scale_dims[0] = num_experts;
+        scale_dims[1] = N;
+    }
 
     auto &scales_mem = mem_map.at(DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS);
     if (scales_mem.nelems() != expected_nelems) {
-        dnnl_dims_t scale_dims = {num_experts, ngroups_k, N};
         auto scales_md = dnn_mem_t::init_md(
-                3, scale_dims, wei_scales_entry.dt, tag::abx);
+                scale_ndims, scale_dims, wei_scales_entry.dt, tag::abx);
         scales_mem
                 = dnn_mem_t(scales_md, get_test_engine(), /* prefill = */ true);
     }

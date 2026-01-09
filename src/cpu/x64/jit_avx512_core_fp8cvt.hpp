@@ -84,7 +84,7 @@ protected:
     const Xbyak::Xmm xmm_aux3_;
     const Xbyak::Reg64 reg64_aux_;
 
-    bool is_fp8_native() {
+    bool is_f8_f16_conv_native() {
         return is_superset(host_->max_cpu_isa(), cpu_isa_t::avx10_2_512);
     }
 

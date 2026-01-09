@@ -21,7 +21,6 @@
 #include "gemmstone/kernel_catalog.hpp"
 #include "gemmstone/kernel_evaluator.hpp"
 
-#include <algorithm>
 #include <functional>
 
 GEMMSTONE_NAMESPACE_START
@@ -94,8 +93,21 @@ struct MatchParams : public MatchParamsBase
 
 using SelectionObserver = std::function<void (const kcatalog::Entry *entry, double score, EvaluateAuxOutput aux)>;
 
-const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer = nullptr);
-const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer = nullptr);
+struct EntryData {
+    EntryData(const kcatalog::Entry *entry_, EvaluateAuxOutput aux_, double score_) : entry(entry_), aux(std::move(aux_)), score(score_) {}
+    const kcatalog::Entry *entry;
+    EvaluateAuxOutput aux;
+    double score;
+    bool operator<(const EntryData& other) const;
+};
+
+// Returns the best catalog entry only
+const kcatalog::Entry* select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer = nullptr);
+const kcatalog::Entry* select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer = nullptr);
+
+// Returns a sorted list of catalog entries that match the MatchParams
+const std::vector<EntryData> collect_kernels(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, SelectionObserver *observer = nullptr);
+const std::vector<EntryData> collect_kernels(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, SelectionObserver *observer = nullptr);
 
 // Extended API for iterating over all matching kernels.
 bool matches(const kcatalog::Entry &e, const MatchParams &pattern);

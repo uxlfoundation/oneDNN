@@ -16,6 +16,7 @@
 
 #include "gemmstone/kernel_selector.hpp"
 #include "gemmstone/kernel_evaluator.hpp"
+#include "kernel_catalog.hpp"
 
 #include <cassert>
 #include <cctype>
@@ -157,24 +158,33 @@ bool lessAligned(int alignA1, int alignB1, int alignA2, int alignB2)
     return (alignA1 <= alignA2) && (alignB1 <= alignB2) && (alignA1 + alignB1 < alignB1 + alignB2);
 }
 
-struct EntryData {
-    EntryData(const kcatalog::Entry *entry_, double score_) : entry(entry_), score(score_) {}
-    const kcatalog::Entry *entry;
-    double score;
-};
+bool EntryData::operator<(const EntryData& other) const {
+    bool lhsFallback = (entry->restrictions.tags[0] == kcatalog::ReqAlignFallback);
+    int  lhsAlignA = std::max(entry->restrictions.alignment[0], 4);
+    int  lhsAlignB = std::max(entry->restrictions.alignment[1], 4);
+    bool rhsFallback = (other.entry->restrictions.tags[0] == kcatalog::ReqAlignFallback);
+    int  rhsAlignA = std::max(other.entry->restrictions.alignment[0], 4);
+    int  rhsAlignB = std::max(other.entry->restrictions.alignment[1], 4);
+    if (rhsFallback && lessAligned(rhsAlignA, rhsAlignB, lhsAlignA, lhsAlignB)) return true;
+    if (lhsFallback && lessAligned(lhsAlignA, lhsAlignB, rhsAlignA, rhsAlignB)) return false;
+    if (score < other.score) return true;
+    if (score > other.score) return false;
+    return (&entry < &other.entry);
+}
 
 // Inner kernel selection logic.
 // Choose the best entry, if any, matching one of the given patterns.
-const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux,  SelectionObserver * observer)
+const std::vector<EntryData> getEntries(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams,  SelectionObserver * observer)
 {
     // TODO: omit evaluation if only one match, if aux output not needed.
-    std::vector<EntryData> keys;
+    std::vector<EntryData> entries;
     for (int ipattern = 0; ipattern < npatterns; ipattern++) {
         for (auto it = match(catalog, patterns[ipattern]); it; it++) {
             // Late tag checking. If late tags do not match, we skip entry.
             if (tagMatch(it->restrictions.tags, patterns[ipattern].lateTags)) {
+                EvaluateAuxOutput aux;
                 auto score = evaluate(*it, eparams, aux);
-                keys.emplace_back(&*it, score);
+                entries.emplace_back(&*it, aux, score);
                 if (observer) {
                     (*observer)(&*it, score, aux);
                 }
@@ -182,46 +192,38 @@ const std::vector<const kcatalog::Entry *> getEntries(const kcatalog::Catalog &c
         }
     }
 
-    auto less = [&](const EntryData &lhs, const EntryData &rhs){
-                      bool lhsFallback = (lhs.entry->restrictions.tags[0] == kcatalog::ReqAlignFallback);
-                      int  lhsAlignA = std::max(lhs.entry->restrictions.alignment[0], 4);
-                      int  lhsAlignB = std::max(lhs.entry->restrictions.alignment[1], 4);
-                      bool rhsFallback = (rhs.entry->restrictions.tags[0] == kcatalog::ReqAlignFallback);
-                      int  rhsAlignA = std::max(rhs.entry->restrictions.alignment[0], 4);
-                      int  rhsAlignB = std::max(rhs.entry->restrictions.alignment[1], 4);
-                      if (rhsFallback && lessAligned(rhsAlignA, rhsAlignB, lhsAlignA, lhsAlignB)) return true;
-                      if (lhsFallback && lessAligned(lhsAlignA, lhsAlignB, rhsAlignA, rhsAlignB)) return false;
-                      if (lhs.score < rhs.score) return true;
-                      if (lhs.score > rhs.score) return false;
-                      return (lhs.entry < rhs.entry);
-    };
-    std::sort(keys.begin(), keys.end(), less);
-
-    // Unpack into vector of entries (dropping score)
-    std::vector<const kcatalog::Entry *> entries;
-    entries.reserve(keys.size());
-    for (auto &key : keys)
-        entries.push_back(key.entry);
+    std::sort(entries.begin(), entries.end());
 
     return entries;
 }
 
-// User-facing kernel selection logic.
-// Includes architecture and data type fallbacks.
-const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
-{
+const kcatalog::Entry * select(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer) {
     return select(catalog, 1, &pattern, eparams, aux, observer);
 }
 
-const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer)
+const kcatalog::Entry * select(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, EvaluateAuxOutput &aux, SelectionObserver *observer) {
+    std::vector<EntryData> entries = collect_kernels(catalog, npatterns, patterns, eparams, observer);
+    if (entries.empty()) return nullptr;
+    aux = entries[0].aux;
+    return entries[0].entry;
+}
+
+// User-facing kernel selection logic.
+// Includes architecture and data type fallbacks.
+const std::vector<EntryData> collect_kernels(const kcatalog::Catalog &catalog, const MatchParams &pattern, const EvaluateParams &eparams, SelectionObserver *observer)
+{
+    return collect_kernels(catalog, 1, &pattern, eparams, observer);
+}
+
+const std::vector<EntryData> collect_kernels(const kcatalog::Catalog &catalog, int npatterns, const MatchParams *patterns, const EvaluateParams &eparams, SelectionObserver *observer)
 {
     using namespace kcatalog;
 
-    std::vector<const kcatalog::Entry *> entries;
+    std::vector<EntryData> entries;
     if (npatterns == 0 || !patterns)
         return entries;
 
-    auto result = getEntries(catalog, npatterns, patterns, eparams, aux, observer);
+    auto result = getEntries(catalog, npatterns, patterns, eparams, observer);
 
     // Architecture fallback loop.
     bool first = true;
@@ -237,7 +239,7 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
         // Type fallback loop.
         while (true) {
             if (!first) {
-                auto entries =  getEntries(catalog, npatterns, modPatterns.data(), eparams, aux, observer);
+                auto entries = getEntries(catalog, npatterns, modPatterns.data(), eparams, observer);
                 result.insert(result.end(), entries.begin(), entries.end());
             }
             first = false;
@@ -292,9 +294,6 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
             default:        hw = 0; break;
         }
     } while (hw);
-
-    if (entries.size() > 0)
-	    evaluate(*entries[0], eparams, aux);
 
     return result;
 }

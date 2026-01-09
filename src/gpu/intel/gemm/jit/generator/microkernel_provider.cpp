@@ -143,10 +143,7 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
 
     /* Call kernel selector */
     EvaluateAuxOutput auxParams;
-    const kcatalog::Entry * entry = nullptr;
-    auto entries = select(catalog, 1, &matchParams, evalParams, auxParams);
-    if (entries.size() > 0)
-	    entry = entries[0];
+    const kcatalog::Entry *entry = select(catalog, 1, &matchParams, evalParams, auxParams);
 
     GEMMStrategy strategy(hw, stepping);
 

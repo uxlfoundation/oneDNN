@@ -65,7 +65,6 @@ struct ref_t : public primitive_t {
                             | smask_t::rounding_mode
                             | smask_t::precomputed_reductions),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_MATMUL(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
             VDISPATCH_MATMUL(attr_scales_ok({DNNL_ARG_SRC, DNNL_ARG_WEIGHTS,
                                                     DNNL_ARG_DST},
                                      {quantization_mode::static_sazp,

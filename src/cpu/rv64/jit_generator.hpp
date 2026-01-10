@@ -25,11 +25,6 @@
 #include "common/utils.hpp"
 
 #include "cpu/rv64/cpu_isa_traits.hpp"
-
-#ifndef XBYAK_RISCV_V
-#define XBYAK_RISCV_V 1
-#endif
-
 #include "xbyak_riscv/xbyak_riscv.hpp"
 
 #define DECLARE_CPU_JIT_AUX_FUNCTIONS(gen_name) \

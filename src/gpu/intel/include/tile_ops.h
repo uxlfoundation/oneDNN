@@ -710,6 +710,16 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
                         *= tile_access(tr, i0, 0, rsg, rbr, rbc, rnbr); \
             } \
         } \
+    } \
+    __attribute__((overloadable)) void tile_vbroadcast_min( \
+            tile_type *t, rtile_type tr) { \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++) { \
+            _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
+                tile_access(*t, i0, j, sg, br, bc, nbr) = min( \
+                    tile_access(*t, i0, j, sg, br, bc, nbr), \
+                    tile_access(tr, i0, 0, rsg, rbr, rbc, rnbr)); \
+            } \
+        } \
     }
 
 #define DECLARE_2D_TILE_HREDUCE(tile_type, sg, br, bc, nbr, nbc, rtile_type, \

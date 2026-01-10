@@ -769,7 +769,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem_qdSt.C.layout
             = MatrixLayout::T; //which? layout determines output tile shape
     problem_qdSt.A.setAlignment(alignmentForLD(ldq));
-    problem_qdSt.B.setAlignment(64); // S is packed in SLM
+    problem_qdSt.B.setAlignment(alignmentForLD(wg_tile_m_brbc * sizeof(float))); // S is packed in SLM //todo
     if (use_systolic_ukernel()) {
         problem_qdSt.B.crosspack = 2;
         problem_qdSt.B.tileR = into<uint16_t>(d_max());
@@ -1687,11 +1687,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             conf.ukernel_config.wg_n_BcD, conf.ukernel_config.wg_m_BrD,
             conf.ukernel_config.wg_n_BrD};
 
-    const int kq_wg_tile_m = config.wg_m_BrBc * config.unroll_m_BrBc;
-    const int kq_wg_tile_n = config.wg_n_BrBc * config.unroll_n_BrBc;
-
-    auto wg_tile_k = kq_wg_tile_m;
-    auto wg_tile_q = kq_wg_tile_n;
+    auto wg_tile_k = config.unroll_m_BrBc * config.wg_m_BrBc;
+    auto wg_tile_q = config.unroll_n_BrBc * config.wg_n_BrBc;
     auto sg_per_wg = config.wg_m_BrBc * config.wg_n_BrBc;
 
     auto sg_per_wg_BrBc = config.wg_m_BrBc * config.wg_n_BrBc;
@@ -1769,11 +1766,11 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     // append_offs(arg_list, diff_val_off);
 
     if (pd()->with_attn_mask()) { append_offs(arg_list, msk_off); }
-    const int remainder_k = (K % kq_wg_tile_m) != 0;
+    const int remainder_k = (K % wg_tile_k) != 0;
 
     auto *d = pd()->desc();
     const bool d_full = (d->head_size() == pd()->d_max());
-    const int remainder_q = d_full && ((Q % kq_wg_tile_n) != 0);
+    const int remainder_q = d_full && ((Q % wg_tile_q) != 0);
 
     arg_list.append(remainder_k);
     arg_list.append(remainder_q);
@@ -1799,9 +1796,9 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     gws[2] *= pd()->dst_md()->dims[0];
     auto nd_range = compute::nd_range_t(gws, lws);
 
-    //printf("K??%d. divup wg_tile_k%d", K, wg_tile_k);
-    //printf("gws[%ld %ld %ld] lws[%ld %ld %ld]\n", gws[0], gws[1], gws[2], lws[0],
-    //lws[1], lws[2]);
+    printf("K??%d. divup wg_tile_k%d", K, wg_tile_k);
+    printf("gws[%ld %ld %ld] lws[%ld %ld %ld]\n", gws[0], gws[1], gws[2], lws[0],
+    lws[1], lws[2]);
 
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 

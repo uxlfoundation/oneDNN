@@ -603,7 +603,7 @@ private:
         cmp(reg_apply_comp, 0);
         b(EQ, label_apply_without_comp);
         apply_comp(m_block, n_block, tail);
-        L_aligned(label_apply_without_comp);
+        L(label_apply_without_comp);
 
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {

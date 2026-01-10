@@ -1812,9 +1812,31 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                     && jcp.stride_w % i == 0)
                 jcp.trans_dim_koef = i;
         }
+        // For pure_1d shapes with no exact divisor, try relaxed matching to
+        // reduce scratchpad size. Check if rounding iw down preserves ow.
+        if (pure_1d && jcp.trans_dim_koef == 1) {
+            for (int i = w_koef_max; i > 1; i--) {
+                if (IMPLICATION(jcp.ic * i > jcp.simd_w,
+                            (jcp.ic * i) % jcp.simd_w == 0)
+                        && jcp.kw % i == 0 && jcp.stride_w % i == 0) {
+                    // Check that rounding iw down doesn't change ow
+                    const auto iw_rounded = (jcp.iw / i) * i;
+                    const auto ow_orig = (jcp.iw - jcp.kw) / jcp.stride_w + 1;
+                    const auto ow_new
+                            = (iw_rounded - jcp.kw) / jcp.stride_w + 1;
+                    if (ow_orig == ow_new && iw_rounded >= jcp.kw) {
+                        jcp.trans_dim_koef = i;
+                        break;
+                    }
+                }
+            }
+        }
         if (jcp.trans_dim_koef > 1) {
             jcp.ic_without_padding *= jcp.trans_dim_koef;
             jcp.ic *= jcp.trans_dim_koef;
+            // For pure_1d, round iw down to be divisible by trans_dim_koef
+            if (pure_1d && jcp.iw % jcp.trans_dim_koef != 0)
+                jcp.iw = (jcp.iw / jcp.trans_dim_koef) * jcp.trans_dim_koef;
             jcp.iw /= jcp.trans_dim_koef;
             jcp.kw /= jcp.trans_dim_koef;
             jcp.stride_w /= jcp.trans_dim_koef;

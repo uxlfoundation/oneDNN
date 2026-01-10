@@ -55,22 +55,31 @@ struct ref_grouped_gemm_t : public primitive_t {
                     !wei_d.is_sparse_desc() && !wei_d.is_grouped_desc(),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-            // Extract grouped encoding
+            // Validate matching number of groups
             const auto &src_grouped = src_d.sparse_desc().grouped_desc;
             const auto &dst_grouped = dst_d.sparse_desc().grouped_desc;
 
-            // Validate matching number of groups
             VDISPATCH_MATMUL(src_grouped.ngroups == dst_grouped.ngroups,
                     VERBOSE_INCONSISTENT_DIM, "src_ngroups",
                     (int)src_grouped.ngroups, "dst_ngroups",
                     (int)dst_grouped.ngroups);
 
-            // Check that data types are f32, bf16, or f16
-            VDISPATCH_MATMUL(utils::one_of(src_type, f32, bf16, f16)
-                            && src_type == wei_type && src_type == dst_type,
+            // Supported data types: fp and int8/int4 for src/wei
+            const bool is_fp_src = utils::one_of(src_type, f32, bf16, f16);
+            const bool is_int_src = utils::one_of(src_type, u8, s8);
+            const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4);
+
+            VDISPATCH_MATMUL(is_fp_src || is_int_src, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(
+                    utils::one_of(wei_type, f32, bf16, f16, u8, s8, s4, u4),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(utils::one_of(dst_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            // No support for weights only quantization as of now, both src/wei should be int
+            VDISPATCH_MATMUL(IMPLICATION(is_int_src, is_int_wei),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
-            // Check offsets are int32
+            // Check that offsets are int32
             VDISPATCH_MATMUL(src_d.metadata_type(0) == s32
                             && dst_d.metadata_type(0) == s32,
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
@@ -83,7 +92,7 @@ struct ref_grouped_gemm_t : public primitive_t {
                         VERBOSE_UNSUPPORTED_BIAS_CFG);
                 VDISPATCH_MATMUL(
                         bia_d.ndims() == 2, VERBOSE_UNSUPPORTED_BIAS_CFG);
-                // Bias shape should be [num_experts, N]
+                // Bias shape should be [ngroups, N]
                 VDISPATCH_MATMUL(bia_d.dims()[0] == src_grouped.ngroups,
                         VERBOSE_INCONSISTENT_DIM, "bias_dim[0]",
                         (int)bia_d.dims()[0], "ngroups",
@@ -94,6 +103,7 @@ struct ref_grouped_gemm_t : public primitive_t {
                         (int)wei_d.dims()[2]);
             }
 
+            // Check for supported quantization schemes
             const auto &attr_scales = attr()->scales_;
             if (!attr_scales.has_default_values(DNNL_ARG_SRC)) {
                 const int src_mask = attr_scales.get_mask(DNNL_ARG_SRC);
@@ -110,15 +120,25 @@ struct ref_grouped_gemm_t : public primitive_t {
             if (!attr_scales.has_default_values(DNNL_ARG_WEIGHTS)) {
                 const int wei_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
                 const int colwise_mask = wei_qmask_N();
-                // Only column-wise f32 scales supported for weights
-                VDISPATCH_MATMUL(wei_mask == colwise_mask,
+                const int blocked_mask = wei_qmask_K() | wei_qmask_N();
+                // Allow column-wise or blocked (K grouping) scales for weights
+                VDISPATCH_MATMUL(utils::one_of(attr_scales.get_data_type(
+                                                       DNNL_ARG_WEIGHTS),
+                                         f32, bf16),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 VDISPATCH_MATMUL(
-                        attr_scales.get_data_type(DNNL_ARG_WEIGHTS) == f32,
+                        wei_mask == colwise_mask || wei_mask == blocked_mask,
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
-                VDISPATCH_MATMUL(
-                        attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups(),
-                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                if (!attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
+                    VDISPATCH_MATMUL(utils::one_of(wei_type, u8, s8, s4, u4),
+                            VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    const auto gK = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
+                    VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    VDISPATCH_MATMUL(
+                            K() % gK == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    const auto gN = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
+                    VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                }
             }
             VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
@@ -126,6 +146,8 @@ struct ref_grouped_gemm_t : public primitive_t {
             // No post-ops
             VDISPATCH_MATMUL(attr()->post_ops_.has_default_values(),
                     VERBOSE_UNSUPPORTED_POSTOP);
+
+            // TODO: anything else?
 
             return status::success;
         }

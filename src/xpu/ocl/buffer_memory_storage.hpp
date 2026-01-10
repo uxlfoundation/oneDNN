@@ -24,7 +24,7 @@
 
 #include "xpu/ocl/memory_storage_base.hpp"
 
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 
 namespace dnnl {
 namespace impl {

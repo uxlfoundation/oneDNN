@@ -135,7 +135,7 @@ if(NOT DNNL_GPU_RUNTIME STREQUAL "NONE")
     add_subdirectory(gpu)
 endif()
 
-if(DNNL_WITH_SYCL OR DNNL_GPU_RUNTIME STREQUAL "OCL")
+if(DNNL_WITH_SYCL OR DNNL_GPU_RUNTIME MATCHES "OCL")
     add_subdirectory(xpu)
 endif()
 

@@ -58,9 +58,12 @@ add_subdirectory(jit)
 
 if(DNNL_GPU_RUNTIME STREQUAL "OCL")
     add_subdirectory(ocl)
+elseif(DNNL_GPU_RUNTIME STREQUAL "L0")
+    add_subdirectory(l0)
 elseif(DNNL_WITH_SYCL)
     add_subdirectory(sycl)
     add_subdirectory(ocl)
+    add_subdirectory(l0/utils)
 endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_gpu_intel)

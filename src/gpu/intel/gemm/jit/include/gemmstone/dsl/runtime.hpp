@@ -48,6 +48,11 @@ std::vector<uint8_t> make_binary(const kernel_t &kernel);
 #ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
 cl_kernel make_kernel(const kernel_t &kernel, cl_context ctx, cl_device_id dev);
 #endif
+#ifdef GEMMSTONE_WITH_LEVEL_ZERO_RUNTIME
+std::pair<ze_module_handle_t, ze_kernel_handle_t> make_kernel(
+        const kernel_t &kernel, ze_context_handle_t ctx,
+        ze_device_handle_t dev);
+#endif
 
 } // namespace dsl
 GEMMSTONE_NAMESPACE_END

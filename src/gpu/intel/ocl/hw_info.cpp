@@ -15,7 +15,7 @@
 *******************************************************************************/
 
 #include "gpu/intel/ocl/hw_info.hpp"
-#include "gpu/intel/ocl/utils.hpp"
+#include "gpu/intel/ocl/utils/utils.hpp"
 
 #include "gpu/intel/jit/binary_format.hpp"
 #include "gpu/intel/jit/generator.hpp"

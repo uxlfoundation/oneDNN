@@ -28,6 +28,18 @@ namespace softmax {
 using fwd_pd_t = gpu_softmax_fwd_pd_t;
 using bwd_pd_t = gpu_softmax_bwd_pd_t;
 
+inline bool get_subgroup_size(
+        intel::engine_t *intel_engine, int &subgroup_size) {
+    for (int size : {16, 32}) {
+        bool mayiuse_subgroup = intel_engine->mayiuse_sub_group(size);
+        if (mayiuse_subgroup) {
+            subgroup_size = size;
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace softmax
 } // namespace intel
 } // namespace gpu

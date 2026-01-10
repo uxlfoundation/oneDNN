@@ -49,7 +49,7 @@ status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
 
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *device_info = intel_engine->device_info();
-    int sub_group_size = 1;
+    int sub_group_size = 32;
     if (device_info->mayiuse_sub_group(16)) sub_group_size = 16;
     conf.sub_group_size = sub_group_size;
 
@@ -131,10 +131,12 @@ void ref_t::pd_t::init_scratchpad() {
 status_t ref_t::execute(const exec_ctx_t &ctx) const {
     auto &src = CTX_IN_STORAGE(DNNL_ARG_FROM);
     auto &dst = CTX_OUT_STORAGE(DNNL_ARG_TO);
-    auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
-            memory_tracking::names::key_reorder_space);
-
     const auto &conf = pd()->conf;
+    auto tmp = conf.subbyte_pack
+            ? ctx.get_scratchpad_grantor().get_memory_storage(
+                      memory_tracking::names::key_reorder_space)
+            : nullptr;
+
     if (conf.nelems == 0) return status::success;
 
     compute::kernel_arg_list_t arg_list;

@@ -89,10 +89,17 @@ private:
         const auto &dst_d = dst.get_desc();
         const auto dst_dims = dst_d.get_dims();
 
+        // Note: mapped pointers must be kept alive for XeLP and XeHPC platforms
+        // as the runtime for some reason doesn't keep underlyuing mapped
+        // pointers alive despite they were accessed by the user.
+        std::vector<mapped_ptr_t<const src_data_t>> srcs_mapped;
+        srcs_mapped.reserve(srcs.size());
         std::vector<const src_data_t *> srcs_data;
         srcs_data.reserve(srcs.size());
-        for (auto &src : srcs)
-            srcs_data.emplace_back(map_memory<const src_data_t>(src));
+        for (auto &src : srcs) {
+            srcs_mapped.emplace_back(map_memory<const src_data_t>(src));
+            srcs_data.emplace_back(srcs_mapped.back());
+        }
 
         dnnl::impl::parallel_nd(dst_dims[0], dst_dims[1], dst_dims[2],
                 dst_dims[3],

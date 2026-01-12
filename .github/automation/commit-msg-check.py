@@ -55,10 +55,14 @@ def __numCharacterCheck(msg: str):
         print(f"{status} OK")
         return True
     else:
-        # Fixup commits usually include the full name of the commit they are
-        # fixing, which adds 6 more symbols to the message. Let them in.
+        # Fixup or revert commits usually include the full name of the commit
+        # they are fixing, which adds 6 more symbols to the message.
+        # Let them in.
         if re.match("^fixup: ", msg):
             print(f"{status} Fixup message, OK")
+            return True
+        elif re.match("^revert: ", msg):
+            print(f"{status} Revert message, OK")
             return True
         else:
             print(

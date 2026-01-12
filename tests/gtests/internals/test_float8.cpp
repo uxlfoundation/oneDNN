@@ -37,9 +37,8 @@ TEST(test_ref_float8_conversions, f8_e5m2_to_f32) {
             "Engine does not support this data type.");
     // check all 256 f8_e5m2 values
     impl::parallel_nd(0xff, [=](uint16_t u16) {
-        // convert f8_e5m2 to f32 and back again,
-        // expecting bitwise idendical values except for sNaN,
-        // where the convention is to set the quiet bit:
+        // Convert f8_e5m2 to f32 and back, expecting bitwise identical values.
+        // Exception is sNaN, where the convention is to set the quiet bit:
         // * +sNaN: 0x7d -> 0x7f
         // * -sNaN: 0xfd -> 0xff
         // f8_e5m2 encoding: seeeeemm
@@ -72,8 +71,7 @@ TEST(test_ref_float8_conversions, f8_e4m3_to_f32) {
         ASSERT_EQ(u8, x8.raw_bits_);
         ASSERT_EQ(u8, bit_cast<uint8_t>(x8));
 
-        // convert f8_e4m3 to f32 and back again,
-        // expecting bitwise idendical values.
+        // Convert f8_e4m3 to f32 and back, expecting bitwise identical values.
         // Note: f8_e4m3 does not have sNaN values, so no need to set quiet bit
         float x32(x8);
         float8_e4m3_t y8(x32);

@@ -82,7 +82,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             = utils::one_of(dst_dt, data_type::f8_e5m2, data_type::f8_e4m3);
     const bool dst_is_fp4
             = utils::one_of(dst_dt, data_type::f4_e2m1, data_type::f4_e3m0);
-    // grouped dst scales are supported for mxfp
+    // grouped dst scales are supported for MXFP
     if (dst_is_fp8 || dst_is_fp4) attr_mask |= smask_t::scales_groups;
 
     // Matmul supports fpmath mode and accumulation mode
@@ -203,17 +203,22 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
         // For dynamic_fp scaling, only NVFP4 flavor is supported.
         if (sc.get(DNNL_ARG_DST).is_dynamic_fp()) {
-            // only group size of 16
+            using namespace data_type;
+
             VCHECK_MATMUL_UNIMPL(sc.get_mask(DNNL_ARG_DST) == full_tensor_mask,
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VCHECK_MATMUL_UNIMPL(sc.get_group(DNNL_ARG_DST, -1) == 16
-                            && sc.get_group(DNNL_ARG_DST, -2) == 1,
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-            // only e4m3 scales
-            VCHECK_MATMUL_UNIMPL(
-                    sc.get_data_type(DNNL_ARG_DST) == data_type::f8_e4m3,
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            switch (sc.get_data_type(DNNL_ARG_DST)) {
+                case f8_e4m3:
+                    // Group sizes of 16 for NVFP4.
+                    VCHECK_MATMUL_UNIMPL(sc.get_group(DNNL_ARG_DST, -1) == 16
+                                    && sc.get_group(DNNL_ARG_DST, -2) == 1,
+                            VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    break;
+                default:
+                    VCHECK_MATMUL_UNIMPL(false, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    break;
+            }
         }
     }
 

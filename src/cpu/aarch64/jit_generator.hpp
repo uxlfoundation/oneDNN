@@ -97,6 +97,31 @@ const Xbyak_aarch64::XReg abi_param1(Xbyak_aarch64::Operand::X0),
         abi_param7(Xbyak_aarch64::Operand::X6),
         abi_param8(Xbyak_aarch64::Operand::X7),
         abi_not_param1(Xbyak_aarch64::Operand::X15);
+
+template <typename T,
+        typename std::enable_if<std::is_unsigned<T>::value,
+                std::nullptr_t>::type
+        = nullptr>
+bool is_imm12(T imm) {
+    uint64_t bit_ptn = static_cast<uint64_t>(imm);
+
+    const uint64_t IMM12_MASK = ~uint64_t(0xfff);
+    // <= 4095
+    return ((bit_ptn & IMM12_MASK) == 0);
+}
+
+template <typename T,
+        typename std::enable_if<std::is_signed<T>::value, std::nullptr_t>::type
+        = nullptr>
+bool is_imm12(T imm) {
+    /* Sign bit must be extended. */
+    int64_t bit_ptn = static_cast<int64_t>(imm);
+    const uint64_t IMM12_MASK = ~uint64_t(0xfff);
+
+    // <= 4095
+    return (imm >= 0) && ((bit_ptn & IMM12_MASK) == 0);
+}
+
 } // namespace
 
 class jit_generator_t : public Xbyak_aarch64::CodeGenerator,
@@ -273,6 +298,37 @@ public:
             addvl(dst, src, offset / cpu_sveLen);
         else
             add_imm(dst, src, offset, tmp);
+    }
+
+    // Return XReg which points to base + stride_bytes * n in as few instructions as possible
+    // We return a XReg so that we can use the dst or base reg
+    Xbyak_aarch64::XReg strided_addr(const Xbyak_aarch64::XReg &dst,
+            const Xbyak_aarch64::XReg &base,
+            const Xbyak_aarch64::XReg &reg_stride_bytes,
+            const int32_t stride_bytes, const int32_t n,
+            const Xbyak_aarch64::XReg &tmp) {
+        int32_t offset_bytes = stride_bytes * n;
+        if (n == 0) {
+            // (0 instructions) Use the base
+            return base;
+        } else if (is_imm12(offset_bytes)) {
+            // (1 instruction) The byte offset can be expressed as an int12 immediate in the add instruction
+            add(dst, base, static_cast<uint32_t>(offset_bytes & 0xfff));
+            return dst;
+        } else {
+            const auto LSL = Xbyak_aarch64::ShMod::LSL;
+            switch (n) {
+                case 1:
+                    // 1 instruction
+                    add(dst, base, reg_stride_bytes);
+                    return dst;
+                case 2: add(dst, base, reg_stride_bytes, LSL, 1); return dst;
+                case 4: add(dst, base, reg_stride_bytes, LSL, 2); return dst;
+                case 8: add(dst, base, reg_stride_bytes, LSL, 3); return dst;
+                case 16: add(dst, base, reg_stride_bytes, LSL, 4); return dst;
+                default: add_imm(dst, base, offset_bytes, tmp); return dst;
+            }
+        }
     }
 
     template <typename PRegBHSD, typename T>

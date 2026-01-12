@@ -187,6 +187,8 @@ private:
 
     const XReg reg_tmp_ = x16;
 
+    const XReg reg_stride_bytes_A = x17;
+
     constexpr static int origin_offs_batch_offs_ = 0;
     constexpr static int origin_strd_batch_offs_ = 0;
     constexpr static int reg_bias_offs_ = 8;
@@ -220,28 +222,30 @@ private:
     constexpr static int max_vregs = 32;
     const int max_effective_vregs;
 
-    PReg ld_full_mask = PReg(2);
+    PReg rd_tail_mask = PReg(2);
     PReg ld_tail_mask = PReg(3);
-    PReg gemv_tail_mask = PReg(4);
 
     ZReg accm(int ld_block, int bd, int ld) const {
+        // Starts at the highest (e.g. 31), descending and using ld_block * bd_block registers as accumulators
         return ZReg(max_effective_vregs - 1 - (bd * ld_block + ld));
     }
 
-    ZReg bcst(int bd = 0) {
+    ZReg bcst(int bd = 0) const {
         if (n_bcast_1_load) {
-            int idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
-                    - bd;
-            assert(idx > 0);
-            return ZReg(idx);
-        } else
-            return this->z0;
+            // Indexed FMLA/DOT instructions are only defined in the architecture for z0-z7
+            // https://developer.arm.com/documentation/111108/2025-12/SVE-Instructions/FMLA--indexed---Floating-point-fused-multiply-add-by-indexed-element-
+            assert(bd <= 7);
+            return ZReg(bd);
+        } else {
+            return ZReg(0);
+        }
     }
 
-    ZReg load(int ld = 0) {
+    ZReg load(int ld = 0) const {
         if (n_bcast_1_load) {
-            return this->z0;
+            return ZReg(brg.bd_block);
         } else {
+            // Starts off from lowest accm register, and continues descending
             int idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
                     - ld;
             assert(idx > 0);
@@ -252,9 +256,27 @@ private:
     const ZReg &z_tmp_2() const noexcept { return this->z1; }
     const ZReg &z_tmp_3() const noexcept { return this->z2; }
     const ZReg &z_tail_mask() const noexcept { return this->z1; }
-    const ZReg &z_one_bytes() const noexcept { return this->z3; }
-    const ZReg &z_zp_a_shift() const noexcept { return this->z2; }
-    const ZReg &z_inp_shift() const noexcept { return this->z1; }
+    ZReg z_one_bytes() const noexcept {
+        if (n_bcast_1_load) {
+            return ZReg(brg.bd_block + 3);
+        } else {
+            return this->z3;
+        }
+    }
+    ZReg z_zp_a_shift() const noexcept {
+        if (n_bcast_1_load) {
+            return ZReg(brg.bd_block + 2);
+        } else {
+            return this->z2;
+        }
+    }
+    ZReg z_inp_shift() const noexcept {
+        if (n_bcast_1_load) {
+            return ZReg(brg.bd_block + 1);
+        } else {
+            return this->z1;
+        }
+    }
 
     ZReg int8_ones_words() const noexcept { return ZReg(max_vregs - 1); }
     ZReg int8_dot_product_temp() const noexcept { return ZReg(max_vregs - 2); }
@@ -291,9 +313,32 @@ private:
     void compute_int8_compensation(int rd_loop, int bd_b, int bd_e,
             int bd_block, int ld_block2, bool is_ld_tail, int vpad);
 
-    void dot_product(ZReg z1, ZReg z2, ZReg z3);
+    // Load at most a word from the left hand side for broadcasting
+    void load_word_for_bcast(const ZReg &dst, bool is_tail, const XReg &base,
+            const int32_t offset_elements, const data_type_t dt,
+            const XReg &tmp);
+
+    // Note that we load and bcast words because they are our granule size
+    void load_A_word_for_bcast(int32_t &base_offset, const ZReg &dst,
+            bool is_tail, const XReg &reg_A_ptr, const int32_t bd,
+            const int32_t rd, const XReg &tmp);
+
+    // Load at most a quadword from the left hand side for broadcasting
+    void load_quadword_for_bcast(const ZReg &dst, const XReg &base,
+            const PReg &mask, const XReg &reg_stride_bytes,
+            const int32_t stride_bytes, const int32_t n, const data_type_t dt);
+
+    // FMLA/DOT
+    void dot_product(ZReg v_acc, ZReg v_a, ZReg v_b);
+    // FMLA/DOT with indexed b vector
+    void dot_product(ZReg v_acc, ZReg v_a, ZReg v_b, const int16_t index);
+
     void gemm_microkernel(int bd_block2, bool is_bdb_tail, int ld_block,
             bool is_rd_tail, bool is_ld_tail, int vpad, int rows_for_rd_tail);
+    // GEMV microkernel is distinct from GEMM in that it loads vectors from A and B
+    // and assumes that we will sum all the elements after the microkernel
+    void gemv_microkernel(
+            bool is_bdb_tail, int ld_block2, bool is_rd_tail, int vpad);
 
     void ldb_loop(int bd_block2, bool is_bdb_tail, int ld_block,
             int ldb_loop_length, bool is_reg_tail, bool is_ld_tail,
@@ -648,6 +693,8 @@ void jit_brgemm_kernel_t::read_params() {
     ldr(reg_D, ptr(param1, GET_OFF(ptr_D)));
     ldr(reg_BS, ptr(param1, GET_OFF(BS)));
 
+    mov_imm(reg_stride_bytes_A, brg.typesize_A * brg.LDA);
+
     // ptr_buf is re-used for passing compensations for
     // brg.req_s8s8_compensation case
     if (brg.req_s8s8_compensation) {
@@ -710,7 +757,7 @@ void jit_brgemm_kernel_t::zero_accumulators(int bd_block2, bool is_bdb_tail,
         // This is also required only when K is blocked.
         if (need_to_apply_beta && !brg.is_gemv) {
             const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
-            const auto k_mask = is_tail ? ld_tail_mask : ld_full_mask;
+            const auto k_mask = is_tail ? ld_tail_mask : P_ALL_ONE;
 
             const int offset = C_offset(bd, ld);
 
@@ -813,7 +860,7 @@ void jit_brgemm_kernel_t::apply_post_ops(
                 const auto vmm = accm(ld_block2, bd, ld);
                 const auto vmm_prev_dst = z_tmp_1();
                 const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
-                const auto k_mask = is_tail ? ld_tail_mask : ld_full_mask;
+                const auto k_mask = is_tail ? ld_tail_mask : P_ALL_ONE;
                 const int offset = D_offset(bd, ld);
                 add_imm(X_DEFAULT_ADDR, reg_aux_D, offset, X_TMP_0);
                 cvt2ps(brg.sum_dt, vmm_prev_dst, X_DEFAULT_ADDR, is_tail, false,
@@ -846,7 +893,7 @@ static inline bool isa_has_masks(cpu_isa_t isa) {
 void jit_brgemm_kernel_t::store_accumulators_apply_post_ops(
         int bd_block, int ld_block2, int ldb_and_bdb_offset, bool is_ld_tail) {
 
-    auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
+    auto k_mask = (!is_ld_tail) ? P_ALL_ONE : ld_tail_mask;
 
     // if (brg.is_int8 && alpha_or_beta_applicable && !beta_uses_vadd) ->
     // accumulated values are already converted to ps in apply_alpha_beta()
@@ -1086,7 +1133,7 @@ void jit_brgemm_kernel_t::apply_compensation(
         int bd_block, int ld_block2, bool is_ld_tail) {
     // apply compensation to accumulated values
     // to avoid the loss of accuracy when converting s32 to f32
-    auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
+    auto k_mask = (!is_ld_tail) ? P_ALL_ONE : ld_tail_mask;
 
     if (!brg.req_cal_comp_pads && brg.zp_type_a != brgemm_broadcast_t::none) {
         auto vmm_zp_a_val = z_tmp_2();
@@ -1177,10 +1224,9 @@ void jit_brgemm_kernel_t::store_accumulators_without_post_ops(
         for (int bd = 0; bd < bd_block; bd++) {
             for (int ld = 0; ld < ld_block2; ld++) {
                 auto zmm = accm(ld_block2, bd, ld);
-                saturate_f32(
-                        zmm, zmm_lbound, zmm_ubound, brg.dt_d, ld_full_mask);
-                frinti(zmm.s, ld_full_mask, zmm.s);
-                fcvtzs(zmm.s, ld_full_mask, zmm.s);
+                saturate_f32(zmm, zmm_lbound, zmm_ubound, brg.dt_d, P_ALL_ONE);
+                frinti(zmm.s, P_ALL_ONE, zmm.s);
+                fcvtzs(zmm.s, P_ALL_ONE, zmm.s);
             }
         }
     }
@@ -1200,11 +1246,11 @@ void jit_brgemm_kernel_t::store_accumulators_without_post_ops(
                 x_addr = reg_tmp_;
             }
             if (brg.is_gemv && brg.beta == 0.f) {
-                faddv(scalar_reg, ld_full_mask, zmm.s);
+                faddv(scalar_reg, P_ALL_ONE, zmm.s);
                 STR_IMM(scalar_reg, x_addr, (offset - base_offset));
             } else if (brg.is_gemv && brg.beta != 0.f) {
                 LDR_IMM(scalar_reg, x_addr, (offset - base_offset));
-                fadda(scalar_reg, ld_full_mask, zmm.s);
+                fadda(scalar_reg, P_ALL_ONE, zmm.s);
                 STR_IMM(scalar_reg, x_addr, (offset - base_offset));
             } else {
                 ST_MUL_VL(st1w, zmm.s, mask, x_addr, offset - base_offset, 4);
@@ -1271,10 +1317,10 @@ void jit_brgemm_kernel_t::sum_into_one_lane(
             }
 
             if (brg.beta == 0.f) {
-                faddv(scalar_reg, ld_full_mask, zmm.s);
+                faddv(scalar_reg, P_ALL_ONE, zmm.s);
             } else {
                 LDR_IMM(scalar_reg, x_addr, (offset - base_offset));
-                fadda(scalar_reg, ld_full_mask, zmm.s);
+                fadda(scalar_reg, P_ALL_ONE, zmm.s);
             }
             uni_clear(zmm);
             mov(zmm.s, ld_tail_mask, scalar_reg);
@@ -1361,12 +1407,12 @@ void jit_brgemm_kernel_t::set_A_B_matrices() {
     add(reg_aux_B, reg_aux_B, reg_b_offset);
 }
 
-void jit_brgemm_kernel_t::dot_product(ZReg v_acc, ZReg v_b, ZReg v_a) {
+void jit_brgemm_kernel_t::dot_product(ZReg v_acc, ZReg v_a, ZReg v_b) {
     if (brg.is_f32) {
         fmla(v_acc.s, P_ALL_ONE / T_m, v_a.s, v_b.s);
-    } else if (brg.is_bf16)
+    } else if (brg.is_bf16) {
         bfdot(v_acc.s, v_b.h, v_a.h);
-    else if (brg.is_int8 && isa_has_s8s8(brg.isa_impl)) {
+    } else if (brg.is_int8 && isa_has_s8s8(brg.isa_impl)) {
         // SDOT/USDOT/UDOT implicitly produce int32 output.
         // we reorder RHS to align for SDOT lane-wise ops.
         if (brg.dt_a == data_type::u8 && brg.dt_b == data_type::u8)
@@ -1374,13 +1420,41 @@ void jit_brgemm_kernel_t::dot_product(ZReg v_acc, ZReg v_b, ZReg v_a) {
         else if (brg.dt_a == data_type::s8 && brg.dt_b == data_type::s8)
             sdot(v_acc.s, v_a.b, v_b.b);
         else if (brg.dt_a == data_type::u8 && brg.dt_b == data_type::s8)
-            usdot(v_acc.s, v_a.b, v_b.b);
+            usdot(v_acc.s, v_b.b, v_a.b);
         // TODO: Add support for s8u8 once zero point handling can be properly tested.
         // Currently excluded as we are unable to test zero point compensation.
         else if (brg.dt_a == data_type::s8 && brg.dt_b == data_type::u8)
             assert(!"unsupported\n");
-    } else
+    } else {
         assert(!"unsupported\n");
+    }
+}
+
+void jit_brgemm_kernel_t::dot_product(
+        ZReg v_acc, ZReg v_a, ZReg v_b, const int16_t index) {
+    if (brg.is_f32) {
+        fmla(v_acc.s, v_a.s,
+                ZRegSElem(v_b.getIdx(), static_cast<uint32_t>(index)));
+    } else if (brg.is_bf16) {
+        bfdot(v_acc.s, v_a.h,
+                ZRegHElem(v_b.getIdx(), static_cast<uint32_t>(index)));
+    } else if (brg.is_int8 && isa_has_s8s8(brg.isa_impl)) {
+        // SDOT/USDOT/UDOT implicitly produce int32 output.
+        // we reorder RHS to align for SDOT index-wise ops.
+        auto v_b_index = ZRegBElem(v_b.getIdx(), static_cast<uint32_t>(index));
+        if (brg.dt_a == data_type::u8 && brg.dt_b == data_type::u8)
+            udot(v_acc.s, v_a.b, v_b_index);
+        else if (brg.dt_a == data_type::s8 && brg.dt_b == data_type::s8)
+            sdot(v_acc.s, v_a.b, v_b_index);
+        else if (brg.dt_a == data_type::u8 && brg.dt_b == data_type::s8)
+            sudot(v_acc.s, v_a.b, v_b_index);
+        // TODO: Add support for s8u8 once zero point handling can be properly tested.
+        // Currently excluded as we are unable to test zero point compensation.
+        else if (brg.dt_a == data_type::s8 && brg.dt_b == data_type::u8)
+            assert(!"unsupported\n");
+    } else {
+        assert(!"unsupported\n");
+    }
 }
 
 void jit_brgemm_kernel_t::compute_int8_compensation(int rd_loop, int bd_b,
@@ -1452,6 +1526,80 @@ void jit_brgemm_kernel_t::compute_int8_compensation(int rd_loop, int bd_b,
     }
 }
 
+void jit_brgemm_kernel_t::load_A_word_for_bcast(int32_t &base_offset,
+        const ZReg &dst, bool is_tail, const XReg &reg_A_ptr, const int32_t bd,
+        const int32_t rd, const XReg &tmp) {
+    auto dt_bytes = dnnl_data_type_size(brg.dt_a);
+
+    int64_t offset_bytes = A_offset(bd, rd) - base_offset;
+    // Stride between bd
+    const auto A_stride_bytes = brg.typesize_A * brg.LDA;
+
+    // Tail here means fewer elements than needed to make up a word
+    if (!is_tail || brg.typesize_A == 4) {
+        // If the offset is out of range of LD1RW, add strides so it isn't
+        // https://developer.arm.com/documentation/ddi0596/2021-03/SVE-Instructions/LD1RW--Load-and-broadcast-unsigned-word-to-vector-
+        if (offset_bytes > 252 || offset_bytes < 0 || (offset_bytes % 4) != 0) {
+            auto num_strides_to_increment = offset_bytes / A_stride_bytes;
+            base_offset += num_strides_to_increment * A_stride_bytes;
+            offset_bytes -= num_strides_to_increment * A_stride_bytes;
+            strided_addr(reg_A_ptr, reg_A_ptr, reg_stride_bytes_A,
+                    A_stride_bytes, num_strides_to_increment, tmp);
+        }
+        // This would require rd > 63 (=252/4), which _should_ be impossible, or we messed up the above logic
+        assert(!(offset_bytes > 252 || offset_bytes < 0
+                || (offset_bytes % 4) != 0));
+
+        auto addr = ptr(reg_A_ptr, static_cast<int32_t>(offset_bytes));
+        ld1rw(dst.s, P_ALL_ONE / T_z, addr);
+    } else {
+        const int64_t mul_vl = offset_bytes / simd_bytes(brg.isa_impl);
+        if (offset_bytes % simd_bytes(brg.isa_impl) == 0 && mul_vl >= -8
+                && mul_vl <= 7) {
+            auto addr = ptr(reg_A_ptr, mul_vl, MUL_VL);
+            if (dt_bytes == 1) ld1b(dst.b, rd_tail_mask / T_z, addr);
+            if (dt_bytes == 2) ld1h(dst.h, rd_tail_mask / T_z, addr);
+        } else {
+            add_imm(X_DEFAULT_ADDR, reg_A_ptr, offset_bytes, tmp);
+            auto addr = ptr(X_DEFAULT_ADDR);
+            if (dt_bytes == 1) ld1b(dst.b, rd_tail_mask / T_z, addr);
+            if (dt_bytes == 2) ld1h(dst.h, rd_tail_mask / T_z, addr);
+        }
+        // For VL=128, we could elide this dup by using  indexed DOT/FMLA, but
+        // we would need to justify the extra logic, especially given
+        // that it is only used for tails
+        dup(dst.s, dst.s[0]);
+    }
+}
+
+void jit_brgemm_kernel_t::load_quadword_for_bcast(const ZReg &dst,
+        const XReg &base, const PReg &mask, const XReg &reg_stride_bytes,
+        const int32_t stride_bytes, const int32_t n, const data_type_t dt) {
+    auto dt_bytes = dnnl_data_type_size(dt);
+    if (!utils::one_of(dt_bytes, 1ul, 2ul, 4ul)) {
+        assert("Unsupported data type size");
+    }
+    int32_t offset_bytes = stride_bytes * n;
+    if (offset_bytes >= -128 && offset_bytes <= 112
+            && (offset_bytes % 16) == 0) {
+        // (1 instruction) We can use immediate version, includes n == 0 case
+        auto addr = AdrScImm(ptr(base, offset_bytes));
+        if (dt_bytes == 1) ld1rqb(dst.b, mask / T_z, addr);
+        if (dt_bytes == 2) ld1rqh(dst.h, mask / T_z, addr);
+        if (dt_bytes == 4) ld1rqw(dst.s, mask / T_z, addr);
+    } else {
+        // (2 or 3 instructions) [mov_imm +] add + ld
+        XReg reg_addr = strided_addr(X_DEFAULT_ADDR, base, reg_stride_bytes,
+                stride_bytes, n, X_TMP_3);
+        auto addr = ptr(reg_addr);
+        if (dt_bytes == 1) ld1rqb(dst.b, mask / T_z, addr);
+        if (dt_bytes == 2) ld1rqh(dst.h, mask / T_z, addr);
+        if (dt_bytes == 4) ld1rqw(dst.s, mask / T_z, addr);
+    }
+    // Note that we could use ld1rq* register + register, but it is quite complicated and
+    // slower on V1. Perf uplift (~0.5%) on V2 did not justify complexity
+}
+
 void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
         int ld_block2, bool is_rd_tail, bool is_ld_tail, int vpad,
         int rows_for_rd_tail) {
@@ -1464,116 +1612,107 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
     if (!is_valid_bd) return;
 
     int rd_loop = 0, rd_tail_size = 0;
-    if (brg.is_gemv) {
-        rd_loop = 1;
-        rd_tail_size = brg.rdb_tail;
-    } else {
-        if (is_rd_tail) {
-            rd_tail_size = brg.rdb_tail % brg.rd_step;
-            if (brg.is_bf16 || brg.is_int8) {
-                rd_loop = (rd_tail_size != 0)
-                        ? ((brg.rdb_tail / brg.rd_step) + 1) * brg.rd_step
-                        : brg.rdb_tail;
-            } else
-                rd_loop = brg.rdb_tail;
+    if (is_rd_tail) {
+        rd_tail_size = brg.rdb_tail % brg.rd_step;
+        if (brg.is_bf16 || brg.is_int8) {
+            rd_loop = (rd_tail_size != 0)
+                    ? ((brg.rdb_tail / brg.rd_step) + 1) * brg.rd_step
+                    : brg.rdb_tail;
         } else
-            rd_loop = brg.rd_block;
+            rd_loop = brg.rdb_tail;
+    } else {
+        rd_loop = brg.rd_block;
     }
-
-    unsigned long base_offset = 0;
-    mov(X_TMP_2, reg_aux_A);
-    auto broadcast = [=, &base_offset](const ZReg &z1, size_t offset,
-                             bool is_tail, data_type_t dt) {
-        if (is_tail) {
-            eor(z1.d, z1.d, z1.d);
-            auto xmm_tmp = z_tmp_1();
-            add_imm(X_DEFAULT_ADDR, reg_aux_A, offset, X_TMP_0);
-            if (brg.is_int8) {
-                set_preg(P_TMP.b, rd_tail_size, X_TMP_0, X_TMP_1);
-                ld1b(xmm_tmp.b, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
-            } else if (brg.is_bf16) {
-                set_preg(P_TMP.h, rd_tail_size, X_DEFAULT_ADDR, X_TMP_1);
-                ld1h(xmm_tmp.h, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
-            } else if (brg.is_f16) {
-                assert(!"unsupported\n");
-            }
-            dup(z1.s, xmm_tmp.s[0]);
-        } else {
-            if (dt == data_type::f32 && brg.is_gemv) {
-                const auto mask = is_rd_tail ? gemv_tail_mask : P_ALL_ONE;
-                LD_MUL_VL(ld1w, z1.s, mask, reg_aux_A, offset, 4);
-            } else if (one_of(dt, data_type::f32, data_type::s8, data_type::u8,
-                               data_type::bf16)) {
-                auto offset_ = offset - base_offset;
-                // The ld1rw immediate must be <=252 and a multiple of 4
-                // refer to https://developer.arm.com/documentation/ddi0602/2025-09/SVE-Instructions/LD1RW--Load-and-broadcast-unsigned-word-to-vector-
-                if ((offset_ < 0 || offset_ > 252 || offset_ % 4 != 0)
-                        && !brg.is_gemv) {
-                    add_imm(X_TMP_2, X_TMP_2, offset_, X_TMP_0);
-                    base_offset += offset_;
-                    offset_ = 0;
-                }
-                ld1rw(z1.s, P_ALL_ONE / T_z,
-                        ptr(X_TMP_2, static_cast<int32_t>(offset_)));
-            } else if (dt == data_type::f16) {
-                assert(!"unsupported\n");
-            }
-        }
-
-        if (brg.req_s8s8_compensation) assert(!"unsupported\n");
-    };
 
     const bool comp_vpad = vpad != 0
             && (brg.req_s8s8_compensation
                     || brg.zp_type_a != brgemm_broadcast_t::none);
-    if (brg.req_cal_comp_pads || comp_vpad)
+    if (brg.req_cal_comp_pads || comp_vpad) {
         compute_int8_compensation(
                 rd_loop, bd_b, bd_e, bd_block, ld_block2, is_ld_tail, vpad);
+    }
 
-    bool maybe_load_bytes
-            = (rows_for_rd_tail > 0 || brg.brgattr.wary_A_k_tail_read)
-            && is_rd_tail && rd_tail_size != 0 && (brg.is_bf16 || brg.is_int8);
+    auto A_stride_bytes = static_cast<int32_t>(brg.typesize_A * brg.LDA);
+
     if (n_bcast_1_load) {
+        // Use a tmp to store the pointer to the first element of A in the tile
+        // We can't use reg_aux_A directly because we increment this by a quadword when needed
+        XReg reg_A_ptr = X_TMP_4;
+        mov(reg_A_ptr, reg_aux_A);
+        // We need to bump the ptr forward if we will not be starting at 0 (vpad)
+        if (bd_b != 0) {
+            reg_A_ptr = strided_addr(reg_A_ptr, reg_A_ptr, reg_stride_bytes_A,
+                    A_stride_bytes, bd_b, X_TMP_4);
+        }
+        auto x_addr = reg_aux_B;
+        unsigned long b_base_offset = 0;
         for (int rd = 0; rd < rd_loop; rd += brg.rd_step) {
-            bool have_to_load_bytes
-                    = maybe_load_bytes && (rd == rd_loop - brg.rd_step);
-
-            auto rows_by_load_bytes = have_to_load_bytes ? rows_for_rd_tail : 0;
-            for (int bd = bd_b; bd < bd_e; bd++) {
-                const auto bd_by_load_bytes = (bd >= bd_e - rows_by_load_bytes
-                        || brg.brgattr.wary_A_k_tail_read);
-                broadcast(bcst(bd), A_offset(bd, rd),
-                        have_to_load_bytes && bd_by_load_bytes, brg.dt_a);
+            // Load a quadword and broadcast the words using an indexed FMLA/DOT instead of
+            // broadcasting one element at a time. We can only do this if there is no
+            // per-DOT overhead, and our elements are contiguous
+            auto quadword_index = rd / data_type_vnni_granularity(brg.dt_a) % 4;
+            if (quadword_index == 0 && rd != 0) {
+                // Bump by quadword
+                add(reg_A_ptr, reg_A_ptr, 16);
+            }
+            if (quadword_index == 0) {
+                // If loading a quadword would take us past the end of rd_loop, we need to use a mask
+                bool quadword_is_too_much = (rd + 4 * brg.rd_step) > rd_loop;
+                PReg rd_mask = (quadword_is_too_much || is_rd_tail)
+                        ? rd_tail_mask
+                        : P_ALL_ONE;
+                for (int bd = bd_b; bd < bd_e; bd++) {
+                    // We have already incremented reg_A_ptr to bd_b
+                    auto n_stride = bd - bd_b;
+                    load_quadword_for_bcast(bcst(bd), reg_A_ptr, rd_mask,
+                            reg_stride_bytes_A, A_stride_bytes, n_stride,
+                            brg.dt_a);
+                }
             }
             for (int ld = 0; ld < ld_block2; ld++) {
                 const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
-                add_imm(X_DEFAULT_ADDR, reg_aux_B, B_offset(ld, rd), X_TMP_0);
-                ld1w(load().s, mask / T_z, ptr(X_DEFAULT_ADDR));
+                const int b_offset = B_offset(ld, rd);
+                if (!use_mul_vl(b_offset - b_base_offset, 4, cpu_sveLen)) {
+                    add_vl_or_imm(reg_tmp_, x_addr, b_offset - b_base_offset,
+                            X_TMP_0);
+                    b_base_offset = b_offset;
+                    x_addr = reg_tmp_;
+                }
+                auto b_mul_vl = compute_off_mul_vl(
+                        b_offset - b_base_offset, 4, cpu_sveLen);
+                ld1w(load(ld).s, mask / T_z, ptr(x_addr, b_mul_vl, MUL_VL));
                 for (int bd = bd_b; bd < bd_e; bd++) {
-                    auto vmm = accm(ld_block2, bd, ld);
-                    dot_product(vmm, load(), bcst(bd));
+                    dot_product(accm(ld_block2, bd, ld), load(), bcst(bd),
+                            quadword_index);
                 }
             }
         }
     } else {
         auto x_addr = reg_aux_B;
-        int base_offset = 0;
+        int b_base_offset = 0;
+
+        bool maybe_load_bytes
+                = (rows_for_rd_tail > 0 || brg.brgattr.wary_A_k_tail_read)
+                && is_rd_tail && rd_tail_size != 0
+                && (brg.is_bf16 || brg.is_int8);
 
         for (int rd = 0; rd < rd_loop; rd += brg.rd_step) {
+            // Pointer to A we will increment within this microkernel
+            int a_base_offset = 0;
+            const XReg reg_A_ptr = X_TMP_4;
+            mov(reg_A_ptr, reg_aux_A);
             for (int ld = 0; ld < ld_block2; ld++) {
                 auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
-                if (brg.is_gemv) mask = is_rd_tail ? gemv_tail_mask : P_ALL_ONE;
                 const int offset = B_offset(ld, rd);
-                if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
+                if (!use_mul_vl(offset - b_base_offset, 4, cpu_sveLen)) {
                     add_vl_or_imm(
-                            reg_tmp_, x_addr, offset - base_offset, X_TMP_0);
-                    base_offset = offset;
+                            reg_tmp_, x_addr, offset - b_base_offset, X_TMP_0);
+                    b_base_offset = offset;
                     x_addr = reg_tmp_;
                 }
-                LD_MUL_VL(ld1w, load(ld).s, mask, x_addr, offset - base_offset,
-                        4);
+                auto b_off_mul_vl = (offset - b_base_offset) / cpu_sveLen;
+                ld1w(load(ld).s, mask / T_z, ptr(x_addr, b_off_mul_vl, MUL_VL));
             }
-
             bool have_to_load_bytes
                     = maybe_load_bytes && (rd == rd_loop - brg.rd_step);
 
@@ -1581,14 +1720,50 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             for (int bd = bd_b; bd < bd_e; bd++) {
                 const auto bd_by_load_bytes = (bd >= bd_e - rows_by_load_bytes
                         || brg.brgattr.wary_A_k_tail_read);
-                broadcast(bcst(), A_offset(bd, rd),
-                        (have_to_load_bytes && bd_by_load_bytes), brg.dt_a);
-                //The current implementaion of prefetch is not giving any gain in performance but is rather introducing some latency. Therefore it is removed util a new useful implementation is deviced.
+                const auto need_rd_mask
+                        = (have_to_load_bytes && bd_by_load_bytes);
+
+                load_A_word_for_bcast(a_base_offset, bcst(bd), need_rd_mask,
+                        reg_A_ptr, bd, rd, X_TMP_3);
+
                 for (int ld = 0; ld < ld_block2; ld++) {
-                    auto zmm = accm(ld_block2, bd, ld);
-                    dot_product(zmm, load(ld), bcst());
+                    dot_product(accm(ld_block2, bd, ld), load(ld), bcst(bd));
                 }
             }
+        }
+    }
+}
+
+void jit_brgemm_kernel_t::gemv_microkernel(
+        bool is_bdb_tail, int ld_block2, bool is_rd_tail, int vpad) {
+
+    int bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
+    const auto bd_b = nstl::max(0, vpad);
+    const auto bd_e = nstl::min(bd_block, bd_block + vpad);
+    const auto is_valid_bd
+            = need_comp_pads && vpad != 0 ? bd_b <= bd_e : bd_b < bd_e;
+    if (!is_valid_bd) return;
+
+    // GEMV has no rd loop
+    int rd = 0;
+
+    auto x_addr = reg_aux_B;
+    int base_offset = 0;
+
+    auto mask = is_rd_tail ? rd_tail_mask : P_ALL_ONE;
+    for (int ld = 0; ld < ld_block2; ld++) {
+        const int offset = B_offset(ld, rd);
+        if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
+            add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset, X_TMP_0);
+            base_offset = offset;
+            x_addr = reg_tmp_;
+        }
+        LD_MUL_VL(ld1w, load(ld).s, mask, x_addr, offset - base_offset, 4);
+    }
+    for (int bd = bd_b; bd < bd_e; bd++) {
+        LD_MUL_VL(ld1w, bcst().s, mask, reg_aux_A, A_offset(bd, rd), 4);
+        for (int ld = 0; ld < ld_block2; ld++) {
+            dot_product(accm(ld_block2, bd, ld), load(ld), bcst());
         }
     }
 }
@@ -1629,8 +1804,30 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
             L(rdb_loop_label);
             {
                 const bool is_rd_tail = false;
-                gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
-                        is_ld_tail, vpad, rows_for_rd_tail);
+
+                if (brg.is_gemv) {
+                    gemv_microkernel(is_bdb_tail, ld_block2, is_rd_tail, vpad);
+                } else {
+                    if (n_bcast_1_load
+                            && (brg.rd_block * brg.typesize_A) != 16) {
+                        // GEMM n_bcast_1_load loads quadwords from left hand side when it can
+                        // But we need to make sure we don't load more than one rd_block when loading quadwords
+                        const int rd_block_quadtail
+                                = brg.rd_block % (16 / brg.typesize_A);
+                        if (brg.typesize_A == 1)
+                            set_preg(rd_tail_mask.b, rd_block_quadtail, X_TMP_0,
+                                    X_TMP_1);
+                        if (brg.typesize_A == 2)
+                            set_preg(rd_tail_mask.h, rd_block_quadtail, X_TMP_0,
+                                    X_TMP_1);
+                        if (brg.typesize_A == 4)
+                            set_preg(rd_tail_mask.s, rd_block_quadtail, X_TMP_0,
+                                    X_TMP_1);
+                    }
+
+                    gemm_microkernel(bd_block2, is_bdb_tail, ld_block2,
+                            is_rd_tail, is_ld_tail, vpad, rows_for_rd_tail);
+                }
 
                 add_vl_or_imm(reg_aux_A, reg_aux_A,
                         brg.is_gemv ? cpu_sveLen : rdb_A_offset(), X_TMP_0);
@@ -1644,8 +1841,47 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
         if (rdb_tail != 0) {
             const bool is_rd_tail = true;
 
-            gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
-                    is_ld_tail, vpad, rows_for_rd_tail);
+            if (brg.is_gemv) {
+                // GEMV loads whole vector from left hand side
+                const int k_tail
+                        = brg.LDA % simd_elems(data_type::f32, brg.isa_impl);
+                set_preg(rd_tail_mask.s, k_tail, X_TMP_0, X_TMP_1);
+
+                gemv_microkernel(is_bdb_tail, ld_block2, is_rd_tail, vpad);
+            } else {
+                if (n_bcast_1_load) {
+                    // GEMM n_bcast_1_load loads quadwords from left hand side when it can
+                    // But we need to make sure we don't load more than one rd_tail when loading quadwords
+                    const int rd_tail_quadtail
+                            = brg.rdb_tail == 16 ? 16 : (brg.rdb_tail % 16);
+                    if (brg.typesize_A == 1)
+                        set_preg(rd_tail_mask.b, rd_tail_quadtail, X_TMP_0,
+                                X_TMP_1);
+                    if (brg.typesize_A == 2)
+                        set_preg(rd_tail_mask.h, rd_tail_quadtail, X_TMP_0,
+                                X_TMP_1);
+                    if (brg.typesize_A == 4)
+                        set_preg(rd_tail_mask.s, rd_tail_quadtail, X_TMP_0,
+                                X_TMP_1);
+                    // Note that n_bcast_1_load may still need to deal with the tail
+                } else {
+                    // n_load_1_bcast loads at most a word, but we may need to predicate the
+                    // last word load to avoid overstepping the A buffer
+                    const auto rd_tail_size = brg.rdb_tail % brg.rd_step;
+                    if (brg.typesize_A == 1)
+                        set_preg(
+                                rd_tail_mask.b, rd_tail_size, X_TMP_0, X_TMP_1);
+                    if (brg.typesize_A == 2)
+                        set_preg(
+                                rd_tail_mask.h, rd_tail_size, X_TMP_0, X_TMP_1);
+                    if (brg.typesize_A == 4)
+                        set_preg(
+                                rd_tail_mask.s, rd_tail_size, X_TMP_0, X_TMP_1);
+                }
+
+                gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
+                        is_ld_tail, vpad, rows_for_rd_tail);
+            }
         }
     };
     if (is_ldb_loop_) { mov_imm(reg_ldb_loop, ldb_loop_length); }
@@ -1840,9 +2076,15 @@ void jit_brgemm_kernel_t::bdb_loop() {
     auto ld_block2 = (brg.ldb2 > 0) ? brg.ld_block2
                                     : ((brg.ldb2_tail > 0) ? brg.ldb2_tail : 1);
     const int free_vregs = max_effective_vregs - brg.req_s8s8_compensation;
-    n_bcast_1_load = brg.is_int8
+    // For SVE 128 the shorter vector length seems to benefit from this approach
+    n_bcast_1_load = (brg.is_int8 || simd_bytes(brg.isa_impl) == 16)
+            // On A64FX, indexed DOT instructions use 2 uops, so we avoid them
+            && simd_bytes(brg.isa_impl) != 64
+            // we must use z0-z7 for indexed FMLAs, so we cannot do n_bcast_1_load if bd_block > 8
+            && brg.bd_block <= 8
             && ((brg.bd_block * (ld_block2 + 1) < free_vregs)
                     && (bd_blocks_for_rd_tail == 0) && (rows_for_rd_tail == 0));
+
     // loop order may be specified in brgemm attributes
     if (brg.brgattr.hint_loop_order != brgemm_lo_default)
         n_bcast_1_load = (brg.brgattr.hint_loop_order == brgemm_lo_bl_1load)
@@ -1978,11 +2220,10 @@ void jit_brgemm_kernel_t::generate() {
     size_t simd_w_ = simd_elems(data_type::f32, brg.isa_impl);
 
     preamble();
+    // Can we remove this?
     if (simd_w_ != cpu_sveLen / sizeof(float)) {
         set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
-        set_preg(ld_full_mask.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
-    } else
-        ptrue(ld_full_mask.b);
+    }
 
     mov(x7, x0);
     mov(x6, x1);
@@ -2004,10 +2245,6 @@ void jit_brgemm_kernel_t::generate() {
 
     set_preg(ld_tail_mask.s, brg.ldb_tail, X_TMP_0, X_TMP_1);
     if (brg.is_int8 && !brg.has_int8_vnni) { assert(!"unsupported\n"); }
-    if (brg.is_gemv) {
-        const int k_tail = brg.LDA % simd_w_;
-        set_preg(gemv_tail_mask.s, k_tail, X_TMP_0, X_TMP_1);
-    }
 
     read_params();
 

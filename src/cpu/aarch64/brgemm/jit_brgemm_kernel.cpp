@@ -1547,9 +1547,6 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             for (int ld = 0; ld < ld_block2; ld++) {
                 const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
                 add_imm(X_DEFAULT_ADDR, reg_aux_B, B_offset(ld, rd), X_TMP_0);
-                if (brg.dt_b == data_type::f16) {
-                    assert(!"unsupported\n");
-                }
                 ld1w(load().s, mask / T_z, ptr(X_DEFAULT_ADDR));
                 for (int bd = bd_b; bd < bd_e; bd++) {
                     auto vmm = accm(ld_block2, bd, ld);
@@ -1565,19 +1562,15 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             for (int ld = 0; ld < ld_block2; ld++) {
                 auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
                 if (brg.is_gemv) mask = is_rd_tail ? gemv_tail_mask : P_ALL_ONE;
-                if (brg.dt_b == data_type::f16) {
-                    assert(!"unsupported\n");
-                } else {
-                    const int offset = B_offset(ld, rd);
-                    if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
-                        add_vl_or_imm(reg_tmp_, x_addr, offset - base_offset,
-                                X_TMP_0);
-                        base_offset = offset;
-                        x_addr = reg_tmp_;
-                    }
-                    LD_MUL_VL(ld1w, load(ld).s, mask, x_addr,
-                            offset - base_offset, 4);
+                const int offset = B_offset(ld, rd);
+                if (!use_mul_vl(offset - base_offset, 4, cpu_sveLen)) {
+                    add_vl_or_imm(
+                            reg_tmp_, x_addr, offset - base_offset, X_TMP_0);
+                    base_offset = offset;
+                    x_addr = reg_tmp_;
                 }
+                LD_MUL_VL(ld1w, load(ld).s, mask, x_addr, offset - base_offset,
+                        4);
             }
 
             bool have_to_load_bytes

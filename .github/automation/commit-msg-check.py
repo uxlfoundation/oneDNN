@@ -38,6 +38,10 @@ def __scopeCheck(msg: str):
             )
             return False
 
+        if re.match("^Merge ", msg):
+            print(f"{status} FAILED: Merge commits are not allowed")
+            return False
+
         print(
             f"{status} FAILED: Commit message must follow the format "
             "<scope>:[ <scope>:] <short description>"

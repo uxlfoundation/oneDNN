@@ -68,10 +68,13 @@ protected:
 
         // Map-unmap section
         {
+            // Note: fill before mapping; otherwise, double mapping (one here,
+            // one inside `fill_data`) leads to hang in SYCL CPU runtime.
+            fill_data<data_t>(phys_size, mem0);
+
             // Put non-zeros even to the padded area
             auto mem0_ptr = map_memory<data_t>(mem0);
             if (phys_size) GTEST_EXPECT_NE(mem0_ptr, nullptr);
-            fill_data<data_t>(phys_size, mem0);
 
             // mem1_placeholder = copy(mem0)
             auto mem1_ph_ptr = map_memory<data_t>(mem1_placeholder);

@@ -70,9 +70,9 @@ bool jit_single_blk_kernel_t::applicable(const prb_t &p) {
 
     } else if (get_max_cpu_isa() == sve_256) {
         ok = (utils::one_of(n0, 8, 16, 32, 64)
-                     && (o0 == 1 && i1 == 1 && n0 == o1 && i0 == n1))
-                || (utils::one_of(n1, 8, 16, 32, 64)
-                        && (i0 == 1 && o1 == 1 && n0 == i1 && o0 == n1));
+                     || utils::one_of(n1, 8, 16, 32, 64))
+                && ((o0 == 1 && i1 == 1 && n0 == o1 && i0 == n1)
+                        || (i0 == 1 && o1 == 1 && n0 == i1 && o0 == n1));
     } else {
         assert(!"unsupported isa");
     }

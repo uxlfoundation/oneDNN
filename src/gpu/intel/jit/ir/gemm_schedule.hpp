@@ -19,7 +19,6 @@
 
 #include <functional>
 #include <limits>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,9 +41,9 @@ namespace jit {
 // - M:  shared only by A and C
 // - N:  shared only by B and C
 // - K:  shared only by A and B (reduction dimension)
-enum class bmnk_kind_t { undef = -1, b = 0, m = 1, n = 2, k = 3 };
+enum class bmnk_kind_t : int { undef = -1, b = 0, m = 1, n = 2, k = 3 };
 
-enum class abc_kind_t { undef, a, b, c };
+enum class abc_kind_t : int { undef, a, b, c };
 
 inline std::ostream &operator<<(std::ostream &out, abc_kind_t abc) {
     switch (abc) {

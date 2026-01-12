@@ -373,7 +373,7 @@ void CopyResource::initialize(Generator &g)
     auto dataF  = (const float *)    &data[0];
     int n32 = (n + 3) >> 2;
 
-    bool do64 = (g.getHardware() >= HW::XeHPC);
+    const bool do64 = (g.getHardware() >= HW::XeHPC);
     GRF r(src.ngen().getBase());
     for (int i = 0; 2*i+1 < n32; i++) {
         if (do64) {

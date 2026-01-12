@@ -430,6 +430,7 @@ public:
                 if (d == dim) return i;
             }
         }
+        gpu_error_not_expected();
         return -1;
     }
 

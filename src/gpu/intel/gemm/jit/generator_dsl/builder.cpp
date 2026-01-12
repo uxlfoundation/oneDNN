@@ -576,8 +576,9 @@ struct generator_dsl_t {
 
         auto k_blk_short
                 = (int)lcm(A_load_short.tile[k_var], B_load_short.tile[k_var]);
-        k_loop_config_t k_loop_short {k_blk_short, 0, 0, kloop_it, A_load_short,
-                B_load_short, A_prefetch_transform, B_prefetch_transform, C};
+        k_loop_config_t k_loop_short {k_blk_short, 0, 0, kloop_it,
+                std::move(A_load_short), std::move(B_load_short),
+                A_prefetch_transform, B_prefetch_transform, std::move(C)};
         dsl_assert(k_loop_short.k_warmup() == 0);
 
         if (problem.A.alignment) {

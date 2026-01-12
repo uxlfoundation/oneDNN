@@ -67,7 +67,8 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
                     || has_f8_e5m2_binary_postops)
                 f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(this,
                         fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
-                        fp8_tmp_mask, fp8_tmp_reg);
+                        fp8_emu_xmm_4(), fp8_emu_xmm_5(), fp8_tmp_mask,
+                        fp8_tmp_reg);
             if (one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_d)
                     || has_f8_e4m3_binary_postops)
                 f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(this,

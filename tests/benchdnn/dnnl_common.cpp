@@ -774,6 +774,8 @@ inline int measure_perf_aggregate(timer::timer_t &t,
         for (size_t j = 0; j < v_stream.size(); j++) {
             notify_gpu_profiling_complete(v_stream[j]);
         }
+
+        t.filter_collection();
     }
 
     return OK;

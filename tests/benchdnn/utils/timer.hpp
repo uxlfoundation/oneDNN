@@ -79,6 +79,10 @@ struct timer_t {
         return ticks_[mode] / (mode == avg ? times() : 1);
     }
 
+    // Discards up to 10% of collection of minimal values to stabilize the
+    // "best" statistic of the collection.
+    void filter_collection();
+
     timer_t(const timer_t &rhs) = default;
     timer_t &operator=(const timer_t &rhs);
     timer_t &operator=(timer_t &&rhs) = default;
@@ -86,6 +90,7 @@ struct timer_t {
     int times_;
     uint64_t ticks_[n_modes], ticks_start_;
     double ms_[n_modes], ms_start_;
+    std::vector<double> ms_vec_; // Collects all measurements.
 };
 
 // Designated timers to support benchdnn performance reporting and general time

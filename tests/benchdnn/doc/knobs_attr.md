@@ -137,7 +137,7 @@ value which is passed for execution at runtime. Specifying a value for any other
 policies will trigger an error.
 
 `DATA_TYPE` specifies data type for scale factors. Supported values are
-`f32` (the default), `f16`, `bf16`.
+`f32` (the default), `f16`, `bf16`, `e8m0`, `f8_e5m2`, `f8_e4m3`.
 
 `GROUPS` specifies how scales are grouped along dimensions where multiple scale
 factors are used.

@@ -67,9 +67,12 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
-    if (enable_itt)
-        itt::primitive_task_start(primitive_desc_iface->impl()->kind(),
-                primitive_desc_iface->info(), VERBOSE_create);
+    if (enable_itt) {
+        const char *pd_info = primitive_desc_iface->info();
+        auto task_id = itt::make_itt_id(pd_info, get_msec());
+        itt::primitive_task_start(primitive_desc_iface->impl()->kind(), pd_info,
+                VERBOSE_create, task_id);
+    }
 #endif
 
     if (get_verbose(verbose_t::create_profile,
@@ -107,8 +110,14 @@ status_t primitive_execute(
 
 #if defined(DNNL_ENABLE_ITT_TASKS)
     const bool enable_itt = itt::get_itt(itt::__itt_task_level_low);
-    if (enable_itt)
-        itt::primitive_task_start(pd->impl()->kind(), pd->info(), VERBOSE_exec);
+    if (enable_itt) {
+        // ITT task IDs are uniquely assigned using pd->info() and
+        // timestamps - the timestamps helps distinguish between different
+        // instances of the same configuration
+        auto task_id = itt::make_itt_id(pd->info(), get_msec());
+        itt::primitive_task_start(
+                pd->impl()->kind(), pd->info(), VERBOSE_exec, task_id);
+    }
 #endif
 
     if (get_verbose(verbose_t::exec_profile,

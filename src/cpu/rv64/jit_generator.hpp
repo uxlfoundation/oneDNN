@@ -85,7 +85,8 @@ public:
     template <typename... kernel_args_t>
     void operator()(kernel_args_t... args) const {
         using jit_kernel_func_t = void (*)(const kernel_args_t...);
-        auto *fptr = reinterpret_cast<jit_kernel_func_t>(jit_ker_);
+        auto *fptr = reinterpret_cast<jit_kernel_func_t>(
+                const_cast<uint8_t *>(jit_ker_));
         (*fptr)(std::forward<kernel_args_t>(args)...);
     }
 

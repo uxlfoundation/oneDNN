@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2022-2024 Arm Ltd. and affiliates
+* Copyright 2022-2024, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -266,6 +266,21 @@ unsigned get_per_core_cache_size(int level) {
         return cpu().getDataCacheSize(l) / cpu().getCoresSharingDataCache(l);
     } else
         return 0;
+#elif DNNL_AARCH64
+    const auto num_caches
+            = static_cast<int>(aarch64::cpu().getLastDataCacheLevel());
+
+    if (num_caches == 0) { return guess(level); }
+
+    if (level > 0 && level <= num_caches) {
+        const auto &cache_level
+                = static_cast<Xbyak_aarch64::util::Arm64CacheLevel>(level);
+
+        return aarch64::cpu().getDataCacheSize(cache_level)
+                / aarch64::cpu().getCoresSharingDataCache(cache_level);
+    } else {
+        return 0;
+    }
 #else
     return guess(level);
 #endif

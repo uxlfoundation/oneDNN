@@ -101,21 +101,26 @@ void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
             i += (dim_t)vl;
         }
     } else {
+        float *tmp_dst = new float[len];
         float sum_exp = 0.f;
         for (dim_t i = 0; i < len; ++i) {
-            sum_exp += expf((float)src[i] - max_val);
+            float e = expf((float)src[i] - max_val);
+            tmp_dst[i] = e;
+            sum_exp += e;
         }
         const float inv_sum = 1.0f / sum_exp;
 
         for (dim_t i = 0; i < len;) {
             size_t vl = __riscv_vsetvl_e16m1((size_t)(len - i));
 
-            for (size_t j = 0; j < vl; ++j) {
-                float e = expf((float)src[i + j] - max_val);
-                dst[i + j] = (dnnl::impl::float16_t)(e * inv_sum);
-            }
+            vfloat32m2_t v_f32 = __riscv_vle32_v_f32m2(tmp_dst + i, vl);
+            vfloat32m2_t v_res = __riscv_vfmul_vf_f32m2(v_f32, inv_sum, vl);
+            vfloat16m1_t v_out = __riscv_vfncvt_f_f_w_f16m1(v_res, vl);
+            __riscv_vse16_v_f16m1((_Float16 *)(dst + i), v_out, vl);
+
             i += (dim_t)vl;
         }
+        delete[] tmp_dst;
     }
 }
 #endif

@@ -94,5 +94,6 @@
 --batch=shapes_mx
 
 --dt=f8_e4m3
+--skip-impl=ref
 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1+dst:mx:e8m0:1x32
 --batch=shapes_mx

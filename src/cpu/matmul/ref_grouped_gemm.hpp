@@ -36,6 +36,11 @@ struct ref_grouped_gemm_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref_grouped:any", ref_grouped_gemm_t);
 
+        // Override masks to include 0th expert dimension
+        int wei_qmask_K() const { return (1 << 0) | (1 << 1); }
+
+        int wei_qmask_N() const { return (1 << 0) | (1 << 2); }
+
         status_t init(engine_t *engine) {
             using namespace data_type;
             const auto src_type = src_md(0)->data_type;

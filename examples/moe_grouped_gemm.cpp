@@ -368,7 +368,7 @@ void onednn_style_grouped_gemm(const float *input_concat,
         int src_mask = 1 << 0; // Row-wise scaling
         attr.set_scales_mask(DNNL_ARG_SRC, src_mask);
 
-        // Create memory for src scales (row-wise: [total_tokens])
+        // src scales, row-wise: [total_tokens]
         auto src_scales_md = memory::desc(
                 {total_tokens}, memory::data_type::f32, memory::format_tag::a);
         src_scales_mem = memory(src_scales_md, get_engine(engine_kind));
@@ -377,10 +377,10 @@ void onednn_style_grouped_gemm(const float *input_concat,
     }
 
     if (use_wei_scales && scale_wei_concat) {
-        int wei_mask = 1 << 2; // Column-wise scaling (last dimension!)
+        int wei_mask = (1 << 0) | (1 << 2); // Column-wise scaling
         attr.set_scales_mask(DNNL_ARG_WEIGHTS, wei_mask);
 
-        // Create memory for weight scales (column-wise: [num_experts x N_dim])
+        // wei scales, column-wise: [num_experts x N_dim]
         auto wei_scales_md = memory::desc({num_experts, N_dim},
                 memory::data_type::f32, memory::format_tag::ab);
         wei_scales_mem = memory(wei_scales_md, get_engine(engine_kind));

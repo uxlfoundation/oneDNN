@@ -134,7 +134,7 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
     if (jpp.needs_f32_accum_for_bf16) dtypes.insert(data_type::f32);
 
     typename io_mdt_helper::saturation_map_t saturation_confs;
-    if (jpp.dst_dt == data_type::u8) {
+    if (jpp.dst_dt == data_type::u8 || jpp.dst_dt == data_type::s8) {
         io::io_saturation_conf_t io_saturation_conf(
                 vmm_zero.getIdx(), vmm_saturation_ubound.getIdx(), tmp_gpr);
         saturation_confs.insert({jpp.dst_dt, io_saturation_conf});

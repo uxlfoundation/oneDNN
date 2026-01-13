@@ -65,6 +65,13 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
                     "does not support dilations");
             VDISPATCH_POOLING(set_default_params() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
+            bool is_max_with_postops
+                    = (desc()->alg_kind == alg_kind::pooling_max)
+                    && attr()->post_ops_.len() > 0;
+            bool is_int8
+                    = (d_type == data_type::u8) || (d_type == data_type::s8);
+
+            if (is_int8 && !is_max_with_postops) return status::unimplemented;
 
             const bool is_training
                     = desc_.prop_kind == prop_kind::forward_training;

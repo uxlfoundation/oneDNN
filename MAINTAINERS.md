@@ -264,3 +264,4 @@ Team: @uxlfoundation/onednn-devops
 | ------------------ | --------------------- | ----------------- | ---------- |
 | Tatyana Primak     | @tprimak              | Intel Corporation | Maintainer |
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
+| Viktoria Gvozdeva  | @vgvozdeva            | Intel Corporation | Maintainer |

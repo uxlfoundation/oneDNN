@@ -19,7 +19,8 @@
 #include "utils/cold_cache.hpp"
 #include "utils/fill.hpp"
 
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
 extern "C" dnnl_status_t dnnl_impl_gpu_flush_cache(
         dnnl_stream_t stream, size_t bytes, dnnl_memory_t data);
 extern "C" size_t dnnl_impl_gpu_l3_cache_size(dnnl_engine_t engine);
@@ -328,8 +329,8 @@ int cold_cache_t::thrash_reorder(size_t mem_size, size_t granularity) const {
 }
 
 void cold_cache_t::flush_cache(dnnl_stream_t stream) {
-    // Flushing is only applied for GPU.
-    if (!is_gpu()) return;
+    // Flushing is only applied for Intel GPU.
+    if (!is_gpu() || is_nvidia_gpu() || is_amd_gpu()) return;
 
     // Keep initialization separately from a global reference to have an option
     // to clean up that memory.
@@ -337,7 +338,8 @@ void cold_cache_t::flush_cache(dnnl_stream_t stream) {
     static size_t flush_cache_size = 0;
     std::call_once(flag, [&]() {
         static constexpr size_t min_flush_cache_size = (16 << 20); // 16 MB
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
         flush_cache_size = dnnl_impl_gpu_l3_cache_size(get_test_engine());
 #endif
         flush_cache_size = MAX2(flush_cache_size, min_flush_cache_size);
@@ -346,7 +348,8 @@ void cold_cache_t::flush_cache(dnnl_stream_t stream) {
                 1, dims, dnnl_s8, "a", get_test_engine(), /* prefill = */ true);
     });
 
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
+        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
     DNN_SAFE_V(dnnl_impl_gpu_flush_cache(
             stream, flush_cache_size, flush_cache_memory().m_));
 #endif

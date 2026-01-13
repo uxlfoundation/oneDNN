@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
 * Copyright 2020-2025 Arm Ltd. and affiliates
-* Copyright 2020-2025 FUJITSU LIMITED
+* Copyright 2020-2026 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.

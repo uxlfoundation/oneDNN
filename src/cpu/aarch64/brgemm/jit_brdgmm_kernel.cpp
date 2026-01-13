@@ -246,7 +246,7 @@ void jit_brdgmm_kernel_base_t::cvt2ps(data_type_t type_in, const ZReg vmm_in,
         default: assert(!"unsupported data type");
     }
     if (types::is_integral_dt(type_in)) {
-        scvtf(vmm_in.s, P_ALL_ONE / T_m, vmm_in.s);
+        scvtf(vmm_in.s, P_ALL_ONE / T_z, vmm_in.s);
     }
 }
 
@@ -313,7 +313,7 @@ void jit_brdgmm_kernel_base_t::apply_post_ops(
         if (p_sum_zp_reg_set) {
             mov_imm(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
             ld1rw(vmm_sum_zp.s, P_ALL_ONE / T_z, ptr(reg_ptr_sum_zp));
-            scvtf(vmm_sum_zp.s, P_ALL_ONE / T_m, vmm_sum_zp.s);
+            scvtf(vmm_sum_zp.s, P_ALL_ONE / T_z, vmm_sum_zp.s);
         }
 
         for_(int m_i = 0; m_i < m_blocks; m_i++)
@@ -333,7 +333,7 @@ void jit_brdgmm_kernel_base_t::apply_post_ops(
             if (!p_sum_scale_reg_set)
                 fadd(vmm.s, vmm.s, vmm_prev_dst.s);
             else {
-                fmla(vmm.s, P_ALL_ONE / T_m, vmm_prev_dst.s, vmm_sum_scale.s);
+                fmla(vmm.s, P_ALL_ONE / T_z, vmm_prev_dst.s, vmm_sum_scale.s);
             }
         }
     };
@@ -366,7 +366,7 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
             if (substep_simd <= 0) continue;
             const bool mask_flag = substep_simd < simd_w_;
             const ZReg vmm = accm(m_blocks, n_blocks, m, n, v_i);
-            if (dq2ps_required) { scvtf(vmm.s, P_ALL_ONE / T_m, vmm.s); }
+            if (dq2ps_required) { scvtf(vmm.s, P_ALL_ONE / T_z, vmm.s); }
             const ZReg z_tmp = push_z_tmp(vmm, vmm);
             if (brg.is_oc_scale) {
                 add_imm(X_DEFAULT_ADDR, reg_aux_scales, scales_offset(n, v_i),
@@ -417,7 +417,7 @@ void jit_brdgmm_kernel_base_t::store_accumulators_apply_post_ops(
         for (int m = 0; m < m_blocks; m++) {
             auto vmm = accm(m_blocks, n_blocks, m, n, v_i);
             if (dq2ps_required && !brg.with_scales)
-                scvtf(vmm.s, P_ALL_ONE / T_m, vmm.s);
+                scvtf(vmm.s, P_ALL_ONE / T_z, vmm.s);
             if (brg.with_bias) { fadd(vmm.s, vmm.s, vmm_bias.s); }
         }
     }

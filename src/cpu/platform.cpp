@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2022-2024 Arm Ltd. and affiliates
+* Copyright 2022-2024, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -274,7 +274,7 @@ unsigned get_per_core_cache_size(int level) {
 unsigned get_num_cores() {
 #if DNNL_X64
     return x64::cpu().getNumCores(Xbyak::util::CoreLevel);
-#elif defined(DNNL_AARCH64_USE_ACL)
+#elif DNNL_AARCH64
     return aarch64::cpu().getNumCores(Xbyak_aarch64::util::CoreLevel);
 #else
     return 1;

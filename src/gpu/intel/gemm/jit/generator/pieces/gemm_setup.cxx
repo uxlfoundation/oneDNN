@@ -360,6 +360,8 @@ void Generator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subregister j0, 
     auto &offsetCp = initial ? state.offsetCp   : state.effCp;
     auto  offsetCO = initial ? state.offsetCO   : state.effCO;
     bool doCO = doC && (problem.cOffset != COffset::None);
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmOffsetABC : doCO = %d (if 1 - needs actions)", doCO);
+
     bool doAp = doA, doBp = doB;
 
     Subregister tempQ0 = state.ra.alloc_sub<int64_t>(getHint(HintType::TempComp0, strategy));
@@ -708,8 +710,10 @@ void Generator<hw>::gemmFoldOffsets(const GEMMProblem &problem, const GEMMStrate
     foldOrSave(strategy.B, state.inputs.B, state.offsetB, state.inputs.offsetB, state.saveOffsetB);
     for (int q = 0; q < state.C_count; q++)
         foldOrSave(strategy.C, state.inputs.C[q], state.offsetC[q], state.inputs.offsetC[q], state.saveOffsetC[q]); // todo init for hpl
-    if (problem.usesCO())
+    if (problem.usesCO()){
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmFoldOffsets : TODO - foldOrSave()");
         foldOrSave(strategy.CO, state.inputs.CO, state.offsetCO, state.inputs.offsetCO, state.saveOffsetCO);
+    }
 
     if (deduplicateAB)
         state.effA = state.inputs.A;
@@ -730,8 +734,10 @@ void Generator<hw>::gemmRestoreOffsets(const GEMMProblem &problem, const GEMMStr
     zeroOrRestore(strategy.B, state.saveOffsetB, state.inputs.offsetB);
     for (int q = 0; q < state.C_count; q++)
         zeroOrRestore(strategy.C, state.saveOffsetC[q], state.inputs.offsetC[q]);
-    if (problem.usesCO())
+    if (problem.usesCO()){
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmFoldOffsets : TODO - zeroOrRestore()");
         zeroOrRestore(strategy.CO, state.saveOffsetCO, state.inputs.offsetCO);
+    }
 }
 
 // Prepare final A/B/C pointers for a GEMM-like inner loop.
@@ -761,6 +767,7 @@ void Generator<hw>::gemmSetupABC(const GEMMProblem &problem, const GEMMStrategy 
     }
 
     if (problem.usesCO() && strategy.CO.base.isStateless()) {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmSetupABC : TODO");
         eadd(1, state.effCO, state.inputs.CO, state.offsetCO, strategy, state);
         if (strategy.persistentLoop())
             state.offsetCO = invalid;
@@ -2542,6 +2549,10 @@ void Generator<hw>::makeSLMBaseRelative(Subregister addr, const GEMMState &state
 template <HW hw>
 void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK)
 {
+
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& >>>>>>> ");
+
+
     Subregister localSize[3];
     GRF localID[3];
     Subregister tgids[3] = {r0.ud(1), r0.ud(6), r0.ud(7)};   // X, Y, Z threadgroup IDs
@@ -2583,8 +2594,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     interface.requireWalkOrder(0, 1, 2);
 
     bool needStatelessWrites = strategy.C.base.isStateless();
-    if (problem.sumA || problem.sumB)
+    if (problem.sumA || problem.sumB){
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& TODO ");
         needStatelessWrites |= strategy.CO.base.isStateless();
+    }
 
     interface.requireStatelessWrites(needStatelessWrites);
 
@@ -2626,8 +2639,13 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     state.inputs.surfaceC[0] = interface.getArgumentSurfaceIfExists("C");
     state.C_count = state.inputs.C[1].isValid() ? 2 : 1;
     if (problem.usesCO()) {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : problem.usesCO()");
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : state.inputs.CO.isInvalide = %d",(int)state.inputs.CO.isInvalid());
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : state.inputs.surfaceCO = %d",state.inputs.surfaceCO);
         state.inputs.CO = interface.getArgumentIfExists("CO");
         state.inputs.surfaceCO = interface.getArgumentSurfaceIfExists("CO");
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : after state.inputs.CO.isInvalide = %d",(int)state.inputs.CO.isInvalid());
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& :       state.inputs.surfaceCO = %d",state.inputs.surfaceCO);
     }
     if (state.useTempC) {
         state.inputs.tempC = interface.getArgumentIfExists("temp_C");
@@ -2850,8 +2868,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     if (strategy.C.base.getModel() != ModelA64)
         for (int q = 0; q < state.C_count; q++)
             state.inputs.offsetC[q] = state.inputs.offsetC[q].d();
-    if (problem.usesCO() && strategy.CO.base.getModel() != ModelA64)
+    if (problem.usesCO() && strategy.CO.base.getModel() != ModelA64){
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& TODO ");
         state.inputs.offsetCO = state.inputs.offsetCO.d();
+    }
     for (auto &off: state.inputs.binaryOffsets)
         off = off.d();
 
@@ -2927,6 +2947,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     claimIfValid(state.inputs.offsetBq);
 
     if (problem.usesCO()) {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& TODO ");
         if (strategy.CO.base.isStateless())
             state.ra.claim(state.inputs.CO);
         state.ra.claim(state.inputs.offsetCO);
@@ -3074,12 +3095,15 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     // Binary-related arguments are not claimed here, but instead
     //  are reloaded later in the kernel when needed.
 
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface <<<<< &&&&&&&");
+
 }
 
 // Initialize the state structure.
 template <HW hw>
 void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state, bool inSK)
 {
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmInitState ***** >>>>>");
     auto Tc = problem.Tc;
     auto Ta_ext = problem.Ta_ext, Tb_ext = problem.Tb_ext;
 
@@ -3101,8 +3125,10 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
                                                       : state.inputs.offsetC[q].d();
     }
     if (problem.usesCO()) {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitState ***** : strategy.CO.base.isStateless() = %d", (int)strategy.CO.base.isStateless());
         state.effCO = strategy.CO.base.isStateless() ? state.inputs.CO
                                                      : state.inputs.offsetCO.d();
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitState ***** : set state.effCO");
     }
     if (state.useTempC) {
         state.effTempC = strategy.C.base.isStateless() ? state.inputs.tempC
@@ -3168,7 +3194,7 @@ void Generator<hw>::gemmInitState(GEMMProblem &problem, GEMMStrategy &strategy, 
         state.tempCStrategy.address2D = false;
         state.tempCStrategy.padded = true;
     }
-
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmInitState ***** <<<<<<");
 }
 
 GEMMSTONE_NAMESPACE_END

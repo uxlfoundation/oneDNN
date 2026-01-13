@@ -57,15 +57,25 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     if (pd()->desc()->batch() == 0) return status::success;
 
     uint32_t flags = 0;
+    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; flags = 0");
     bool k_parallel_fixed
             = (nocopy_info()->kParallel() || nocopy_info()->kParallelLocal())
             && !nocopy_info()->kParallelVariable();
 
     auto problem = pd()->kernel_desc()->problem();
 
-    if (!last_k_block) flags |= gemmstone::FlagNonfinalKBlock;
-    if (cmask & 1) flags |= gemmstone::FlagCOColumn;
-    if (cmask & 2) flags |= gemmstone::FlagCORow;
+    if (!last_k_block) {
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; flags |= gemmstone::FlagNonfinalKBlock");
+        flags |= gemmstone::FlagNonfinalKBlock;
+    }
+    if (cmask & 1) {
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; flags |= gemmstone::FlagCOColumn");
+        flags |= gemmstone::FlagCOColumn;
+    }
+    if (cmask & 2) {
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; flags |= gemmstone::FlagCORow");
+        flags |= gemmstone::FlagCORow;
+    }
 
     compute::kernel_arg_list_t arg_list;
     int argn = 0;
@@ -85,7 +95,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
 
     set_scalar_arg_cvt(arg_list, argn++, alpha, scalar_type_);
     set_scalar_arg_cvt(arg_list, argn++, beta, scalar_type_);
-    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add beta");
+    //VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; add beta");
 
     // @@@ !!!
     if (pd()->with_a_zero_points() && !problem->aOffsetHostScalar())
@@ -127,10 +137,13 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     }
     if (pd()->with_c_zero_points() || pd()->with_bias()
             || pd()->with_sum_ab()) {
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, co)");
         arg_list.set(argn++, co);
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, offset_co)");
         arg_list.set(argn++, offset_co);
         if (pd()->with_bias()) {
             auto ldco = into<int32_t>(pd()->desc()->ld_bias());
+            VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, ldco)");
             arg_list.set(argn++, ldco);
         }
     }
@@ -371,10 +384,13 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     auto &a = swapab ? GEMM_CTX_ARG_STORAGE(a) : GEMM_CTX_ARG_STORAGE(b);
     auto &b = swapab ? GEMM_CTX_ARG_STORAGE(b) : GEMM_CTX_ARG_STORAGE(a);
     auto &c = GEMM_CTX_ARG_STORAGE(c);
+    VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : &c_zp = GEMM_CTX_ARG_STORAGE(c_zero_point)");
+
     auto &c_zp = GEMM_CTX_ARG_STORAGE(c_zero_point);
     auto &bias = GEMM_CTX_ARG_STORAGE(bias);
     auto &sum_ab = GEMM_CTX_ARG_STORAGE(sum_ab);
     auto *sround_seed = &GEMM_CTX_ARG_STORAGE(sround_seed);
+    VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : *co = &c_zp");
     auto *co = &c_zp;
     const memory_storage_t *ao = nullptr, *bo = nullptr;
     const memory_storage_t *a_scales = nullptr, *b_scales = nullptr;
@@ -454,10 +470,14 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
 
     int cmask = 0;
     if (pd()->with_c_zero_points()) {
-        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : c w/ zp");
+
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : pd()->with_c_zero_points(): ");
         off_co0 = types::bytes_to_elements(c_type, co->offset())
                 + pd()->dyn_offset_co;
         cmask = pd()->attr()->zero_points_.get_mask(DNNL_ARG_DST);
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : off_co0 = %ld", off_co0);
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : cmask = %d", cmask);
+
     } else if (pd()->with_bias()) {
         off_co0 = types::bytes_to_elements(c_type, bias.offset());
         co = &bias;

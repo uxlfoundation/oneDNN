@@ -189,11 +189,13 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
     }
 
     bool splitUpdateStore = (problem.cOffset == COffset::Post);
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmAccessC : TODO : splitUpdateStore = %d (problem.cOffset == COffset::Post)", splitUpdateStore);
 
     // New post-op path: do all post-ops up to sum, if any.
     size_t poSum = 0;
     bool newPostOps = !useEltwiseInjector(problem);
     if (op == COperation::UpdateStore && newPostOps) {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmAccessC : newPostOps");
         for (poSum = 0; poSum < problem.postOps.len(); poSum++)
             if (problem.postOps[poSum].is_sum())
                 break;
@@ -203,12 +205,15 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
 
     if (op == COperation::UpdateStore && splitUpdateStore) {
         // C postoffset is implemented by splitting the update and store steps.
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmAccessC : C postoffset via splitting the update and store steps");
         bool ok = true;
         bool oldAllowEmptyC = state.allowEmptyC;
         state.allowEmptyC = false;
 
-        if (!(problem.alpha1() && problem.beta0()))
+        if (!(problem.alpha1() && problem.beta0())){
+            VDEBUGINFO(4, primitive, gemm, "MY: gemmAccessC : !(problem.alpha1() && problem.beta0())");
             ok = ok && gemmAccessC(COperation::Update, problem, strategy, state);
+        }
 
         auto storeProblem = problem;
         storeProblem.cOffset = COffset::None;
@@ -216,13 +221,18 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
         storeProblem.beta = 0;
 
         // Do any post-sum post-ops.
-        if (newPostOps)
+        if (newPostOps){
+            VDEBUGINFO(4, primitive, gemm, "MY: gemmAccessC : if newPostOps - call gemmApplyPostOps");
             gemmApplyPostOps(poSum + 1, problem.postOps.len(), problem, strategy, state);
+        }
         storeProblem.postOps = PostOps{};
 
-        if (problem.cOffset == COffset::Post)
+        if (problem.cOffset == COffset::Post){
+            VDEBUGINFO(4, primitive, gemm, "MY: gemmAccessC : call gemmApplyCOffsetDispatch");
             ok = ok && gemmApplyCOffsetDispatch(problem, strategy, state);
+        }
 
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmAccessC : call gemmAccessC");
         ok = ok && gemmAccessC(COperation::UpdateStore, storeProblem, strategy, state);
 
         state.allowEmptyC = oldAllowEmptyC;

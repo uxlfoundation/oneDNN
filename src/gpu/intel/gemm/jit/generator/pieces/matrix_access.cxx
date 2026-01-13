@@ -51,6 +51,8 @@ template <HW hw>
 void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &layout, const vector<GRFRange> &addrs,
                                const CommonStrategy &strategy, CommonState &state, bool readCheck)
 {
+    VDEBUGINFO(4, primitive, gemm, "MY: loadMatrix >>>>");
+
     if (layout.empty()) return;
 
     auto &astrategy = layout.addressingStrategy();
@@ -69,6 +71,7 @@ void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &
     }
 
     finishRegisterBlockMasking(state);
+    VDEBUGINFO(4, primitive, gemm, "MY: loadMatrix >>>>");
 }
 
 // Output code for loading a single matrix block into registers.

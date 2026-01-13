@@ -227,7 +227,7 @@ struct gen_t : public primitive_t {
             }
 
             VDISPATCH_GEMM(scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ok");
+            //VDEBUGINFO(4, primitive, gemm, "MY init ===== scales ok");
 
             if (!attr()->zero_points_.has_default_values()) {
                 VDISPATCH_GEMM(zp_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -242,7 +242,7 @@ struct gen_t : public primitive_t {
             VDEBUGINFO(4, primitive, gemm, "MY init ===== precomputed OK");
 
             VDISPATCH_GEMM_SC(init_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
-            VDEBUGINFO(4, primitive, gemm, "MY init =====");
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== post ops inited");
 
             bool with_binary = (post_ops_.find(binary) != -1)
                     || (post_ops_.find(prelu) != -1);
@@ -288,7 +288,7 @@ struct gen_t : public primitive_t {
             auto bo_type = with_b_zero_points()
                     ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
                     : data_type::s32;
-            VDEBUGINFO(4, primitive, gemm, "MY init ===== : ao_type bo_type = %d %d",(int)ao_type,(int)bo_type);
+            //VDEBUGINFO(4, primitive, gemm, "MY init ===== : ao_type bo_type = %d %d",(int)ao_type,(int)bo_type);
 
             auto ag_type = with_a_group_sums()
                     ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
@@ -299,22 +299,27 @@ struct gen_t : public primitive_t {
             bool int_acc = utils::one_of(eff_a_type(), s8, u8);
             int_acc &= (!(a_scales_grouped() || b_scales_grouped())
                     && !(a_zp_grouped() || b_zp_grouped()));
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== : int_acc = %d",int_acc);
+
             auto co_type = with_bias() ? d->bias_type()
                     : with_sum_ab()    ? d->sum_ab_type
                     : int_acc          ? s32
                                        : d->c_type();
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== : co_type = %d",(int)co_type);
 
             // Choose accumulation data type.
             auto acc_type = int_acc
                     ? s32
                     : (utils::one_of(f64, eff_a_type(), eff_b_type()) ? f64
                                                                       : f32);
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== : acc_type = %d",(int)acc_type);
             VDISPATCH_GEMM(
                     IMPLICATION(acc_type == f64, !with_eltwise && !with_binary),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             bool need_x32_acc
                     = with_binary || !IMPLICATION(with_sum_, sum_at_begin_);
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== : need_x32_acc = %d",need_x32_acc);
 
             switch (attr()->acc_mode_) {
                 case accumulation_mode::any:
@@ -325,25 +330,39 @@ struct gen_t : public primitive_t {
                 case accumulation_mode::s32: acc_type = data_type::s32; break;
                 default: break;
             }
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== : acc_type = %d",(int)acc_type);
 
             // Handle special compute modes.
             kernel_desc_t::compute_mode mode = kernel_desc_t::mode_default;
 
-            if (attr()->mayiconvert(f32, tf32))
+            if (attr()->mayiconvert(f32, tf32)){
+                VDEBUGINFO(4, primitive, gemm, "MY init ===== set mode_tf32 ");
                 set_mode(mode, kernel_desc_t::mode_tf32);
-            if (attr()->mayiconvert(f32, bf16))
+            }
+            if (attr()->mayiconvert(f32, bf16)){
+                VDEBUGINFO(4, primitive, gemm, "MY init ===== set mode_bf16x1 ");
                 set_mode(mode, kernel_desc_t::mode_bf16x1);
-            if (attr()->mayiconvert(f32, f16))
+            }
+            if (attr()->mayiconvert(f32, f16)){
+                VDEBUGINFO(4, primitive, gemm, "MY init ===== set mode_f16x1 ");
                 set_mode(mode, kernel_desc_t::mode_f16x1);
-            if (attr()->mayiconvert(f32, f32))
+            }
+            if (attr()->mayiconvert(f32, f32)){
+                VDEBUGINFO(4, primitive, gemm, "MY init ===== set mode_strict ");
                 set_mode(mode, kernel_desc_t::mode_strict);
-            if (attr()->deterministic_)
+            }
+            if (attr()->deterministic_){
+                VDEBUGINFO(4, primitive, gemm, "MY init ===== set mode_deterministic ");
                 set_mode(mode, kernel_desc_t::mode_deterministic);
-            if (attr()->acc_mode_ == accumulation_mode::relaxed)
+            }
+            if (attr()->acc_mode_ == accumulation_mode::relaxed){
+                VDEBUGINFO(4, primitive, gemm, "MY init ===== set mode_relaxed_acc ");
                 set_mode(mode, kernel_desc_t::mode_relaxed_acc);
+            }
 
             if (wei_decomp_) {
                 acc_type = data_type::f32;
+                VDEBUGINFO(4, primitive, gemm, "MY init ===== set mode_w_decomp");
                 set_mode(mode, kernel_desc_t::mode_w_decomp);
             }
 
@@ -373,9 +392,13 @@ struct gen_t : public primitive_t {
                     = {b_scales_type_, bo_type, bg_type, bsc_dims_, bo_dims_,
                             bg_dims_, b_q2d_group_k(), 0, b_q2d_group_n(),
                             has_gs(DNNL_ARG_B), false, b_zp_hostscalar()};
+
             jit::quant_params c_quant = {c_scales_type_, co_type, bg_type,
                     csc_dims_, -1, -1, 0, c_q2d_group_m(), c_q2d_group_n(),
                     has_gs(DNNL_ARG_C), with_mx_scale(), false};
+
+            VDEBUGINFO(4, primitive, gemm, "MY init ===== set c_quant w/ zp_type = %d zp_hostscalar = false",(int)co_type );
+
             // @@@ !!!
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;

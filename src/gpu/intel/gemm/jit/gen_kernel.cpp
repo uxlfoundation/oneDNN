@@ -502,7 +502,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.bOffset = ABOffset::Calc;
     problem_.aoPtrDims = a_quant.zp_hostscalar ? -1 : a_quant.zp_ndims;
     problem_.boPtrDims = b_quant.zp_hostscalar ? -1 : b_quant.zp_ndims;
-    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : @@@@ setup problem_.aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims,problem_.boPtrDims);
+    //VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : @@@@ setup problem_.aoPtrDims boPtrDims = %d %d", problem_.aoPtrDims,problem_.boPtrDims);
 // @@@ !!!
     problem_.AO.layout = MatrixLayout::N;
     problem_.BO.layout
@@ -581,10 +581,17 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     if (status != status::success)
         return std::vector<const gemmstone::kcatalog::Entry *>();
 
+    VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : c_offset = %d", c_offset);
     if (c_offset || bias || reduce_ab != sum_ab::sum_none) {
         assert(!(c_offset && bias));
-        if (bias) problem_.cOffset = COffset::Pre;
-        if (c_offset) problem_.cOffset = COffset::Post;
+        if (bias) {
+            problem_.cOffset = COffset::Pre;
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : problem_.c_offset = %d (Pre)", (int)problem_.cOffset);
+        }
+        if (c_offset) {
+            problem_.cOffset = COffset::Post;
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: ---- : problem_.c_offset = %d (Post)", (int)problem_.cOffset);
+        }
         problem_.CO.crosspack = 1;
         problem_.CO.alignment = problem_.C.alignment;
         problem_.CO.layout = trans_co ? MatrixLayout::T : MatrixLayout::N;
@@ -1025,7 +1032,7 @@ void gen_kernel_t::init_interface() {
     interface_.newArgument("k", DataType::d);
     interface_.newArgument("alpha_real", s_type_ngen);
     interface_.newArgument("beta_real", s_type_ngen);
-    VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument beta");
+    //VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument beta");
 
     if (problem.aoPtrDims >= 0)
         interface_.newArgument(
@@ -1058,11 +1065,18 @@ void gen_kernel_t::init_interface() {
         interface_.newArgument("ldbq", DataType::d);
     if (problem.hasCMXScale()) interface_.newArgument("ldcq", DataType::d);
     if (problem.cOffset != COffset::None || problem.sumA || problem.sumB) {
+//@@@
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> co_access = %d (None = 0, Stateless = 1, Surface = 2, All = 3, Default = 4)", (int)co_access);
         interface_.newArgument(
                 "CO", ExternalArgumentType::GlobalPtr, co_access);
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument CO");
         interface_.newArgument("offset_CO", DataType::q);
-        if (problem.cOffset == COffset::Pre)
+        VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument offset_CO");
+        if (problem.cOffset == COffset::Pre){
+            VDEBUGINFO(4, primitive, gen_kernel,"MY: >>>> newArgument ldco");
             interface_.newArgument("ldco", DataType::d);
+        }
+// @@@
     }
     if (problem.postOps.cStochasticRound) {
         interface_.newArgument("sround_seed", ExternalArgumentType::GlobalPtr);

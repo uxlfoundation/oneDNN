@@ -39,6 +39,8 @@ static inline bool canDualGRF(ngen::HW hw, ngen::DataType dt, const CommonStrate
 template <typename F>
 static inline void map(ngen::HW hw, ngen::DataType dt, const GRFMultirange &r1, const GRFMultirange &r2, const CommonStrategy &strategy, F f)
 {
+    //VDEBUGINFO(4, primitive, gemm, "MY: map");
+
     int ne = elementsPerGRF(hw, dt);
     int rstride = canDualGRF(hw, dt, strategy) ? 2 : 1;
     int len = r1.getLen();
@@ -56,6 +58,7 @@ static inline void map(ngen::HW hw, ngen::DataType dt, const GRFMultirange &r1, 
 template <typename F>
 static inline void map(ngen::HW hw, ngen::DataType dt, const GRFMultirange &r1, const GRFMultirange &r2, const GRFMultirange &r3, const CommonStrategy &strategy, F f)
 {
+    //VDEBUGINFO(4, primitive, gemm, "MY: map");
     int ne = elementsPerGRF(hw, dt);
     int rstride = canDualGRF(hw, dt, strategy) ? 2 : 1;
     int len = r1.getLen();
@@ -73,6 +76,7 @@ static inline void map(ngen::HW hw, ngen::DataType dt, const GRFMultirange &r1, 
 template <typename F>
 static inline void map(ngen::HW hw, ngen::DataType dt, const GRFMultirange &r1, const GRFMultirange &r2, const GRFMultirange &r3, const GRFMultirange &r4, const CommonStrategy &strategy, F f)
 {
+    //VDEBUGINFO(4, primitive, gemm, "MY: map");
     int ne = elementsPerGRF(hw, dt);
     int rstride = canDualGRF(hw, dt, strategy) ? 2 : 1;
     int len = r1.getLen();
@@ -92,10 +96,12 @@ static inline void map(ngen::HW hw, ngen::DataType dt, const GRFMultirange &regs
                        const RegisterLayout &layout, const CommonStrategy &strategy, F f,
                        int cxComponent = -1)
 {
+    VDEBUGINFO(4, primitive, gemm, "MY: map -->");
     using namespace ngen;
 
     int curReg = 0, curOff = 0, curBytes = 0;
     auto ebytes = getBytes(dt);
+    VDEBUGINFO(4, primitive, gemm, "MY: map : ebytes = %d", ebytes);
 
     auto map1 = [&]() {
         curOff &= -ebytes;
@@ -115,6 +121,7 @@ static inline void map(ngen::HW hw, ngen::DataType dt, const GRFMultirange &regs
             auto nbytes = ngen::utils::rounddown_pow2(std::min(maxBytes, curBytes));
             auto ne = std::min<int>(32, nbytes / ebytes);
             nbytes = ne * ebytes;
+            VDEBUGINFO(4, primitive, gemm, "MY: map1(): ebytes, nbytes, ne = %d %d %d", ebytes, nbytes, ne);
 
             auto reg = regs[curOff >> GRF::log2Bytes(hw)].sub((curOff & (GRF::bytes(hw) - 1)) / ebytes, dt)(1);
 
@@ -137,31 +144,37 @@ static inline void map(ngen::HW hw, ngen::DataType dt, const GRFMultirange &regs
         }
     }
 
+    VDEBUGINFO(4, primitive, gemm, "MY: map1()");
     map1();
+    VDEBUGINFO(4, primitive, gemm, "MY: map <--");
 }
 
 // Variants that allow the type to be specified as a (C++ type) template parameter.
 template <typename T, typename F>
 static inline void map(ngen::HW hw, const GRFMultirange &r1, const GRFMultirange &r2,
                        const CommonStrategy &strategy, F f) {
+    //VDEBUGINFO(4, primitive, gemm, "MY: map");
     map(hw, ngen::getDataType<T>(), r1, r2, strategy, f);
 }
 
 template <typename T, typename F>
 static inline void map(ngen::HW hw, const GRFMultirange &r1, const GRFMultirange &r2, const GRFMultirange &r3,
                        const CommonStrategy &strategy, F f) {
+    //VDEBUGINFO(4, primitive, gemm, "MY: map");
     map(hw, ngen::getDataType<T>(), r1, r2, r3, strategy, f);
 }
 
 template <typename T, typename F>
 static inline void map(ngen::HW hw, const GRFMultirange &regs, const RegisterLayout &layout,
                        const CommonStrategy &strategy, F f) {
+    //VDEBUGINFO(4, primitive, gemm, "MY: map");
     map(hw, ngen::getDataType<T>(), regs, layout, strategy, f);
 }
 
 // Variant that allow the type to be specified as a native Type, rather than an nGEN type.
 template <typename... Targs>
 static inline void map(ngen::HW hw, Type T, Targs &&...args) {
+    VDEBUGINFO(4, primitive, gemm, "MY: map");
     map(hw, T.ngen(), std::forward<Targs>(args)...);
 }
 

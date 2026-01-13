@@ -110,7 +110,7 @@ status_t pd_t::init_post_ops() {
 
     if (!ok) return status::unimplemented;
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** try convert scales to postops");
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: init_post_ops() **** try convert scales to postops");
 
     // If scales are present, convert them and any bias to binary post-ops.
     //   Exception: 2D scales.
@@ -133,7 +133,7 @@ status_t pd_t::init_post_ops() {
     auto maybe_convert_scales_to_postop
             = [this](const memory_desc_t &scale_md, int arg, data_type_t dt,
                       bool mx, bool &converted) -> status_t {
-        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** maybe_convert_scales_to_postop >>>>>");
+        //VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: init_post_ops() **** maybe_convert_scales_to_postop >>>>>");
 
         auto ndims = desc()->c_desc.ndims;
         // Scales on A/B can be converted to postops if
@@ -154,7 +154,7 @@ status_t pd_t::init_post_ops() {
             }
             converted = true;
         }
-        VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: maybe_convert_scales_to_postop : converted = %d",converted);
+        //VDEBUGINFO(4, primitive, gemm_jit_pd,"MY: maybe_convert_scales_to_postop : converted = %d",converted);
         return status::success;
     };
 
@@ -227,7 +227,7 @@ status_t pd_t::init_attrs() {
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : wei_decomp_ dy_quant_enabled_ quant_enabled_ = %d %d %d",wei_decomp_,dy_quant_enabled_,quant_enabled_);
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : wei_decomp_ dy_quant_enabled_ quant_enabled_ = %d %d %d",wei_decomp_,dy_quant_enabled_,quant_enabled_);
 
     const auto &d = desc();
 
@@ -248,6 +248,8 @@ status_t pd_t::init_attrs() {
     cmask_a_ = a_zps.get_mask();
     cmask_b_ = b_zps.get_mask();
     cmask_c_ = c_zps.get_mask();
+    // @@@ 0 - for common & hostscalar
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : recieved(input) cmask_c_ = %d",cmask_c_);
 
     // Swap descriptors to follow column major format
     CHECK(a_zps.get_md(a_zp_md_, d->b_desc));
@@ -267,8 +269,8 @@ status_t pd_t::init_attrs() {
     bsc_dims_ = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
     csc_dims_ = quant_entry_ndims(c_scales, c_scale_md_, -1);
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : init pdt:: ao_dims_ = %d", ao_dims_);
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : init pdt:: bo_dims_ = %d", bo_dims_);
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : init pdt:: ao_dims_ = %d", ao_dims_);
+    //VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ***** : init pdt:: bo_dims_ = %d", bo_dims_);
 
     a_scales_type_ = a_scales.get_data_type();
     if (!a_zps.has_default_groups()) {
@@ -377,10 +379,14 @@ bool pd_t::zp_ok() {
     }
 
     if (!attr_zps.has_default_values(DNNL_ARG_C)) {
-        if (!utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)) return false;
+        VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ cmask_c_ = %d",cmask_c_);
+        if (!utils::one_of(cmask_c_, 0, mask_scalar, mask_per_oc)) {
+            VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: ______ < false");
+            return false;
+        }
     }
 
-    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: zp_ok < ______");
+    VDEBUGINFO(4, primitive, gemm_jit_pd, "MY: zp_ok < ______ true");
     return true;
 }
 

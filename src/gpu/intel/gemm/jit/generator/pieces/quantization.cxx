@@ -33,6 +33,8 @@ using std::vector;
 template <HW hw>
 bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state)
 {
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmMake2DQuantizationLayouts ++++++> ");
+
     auto lateOffset = isA ? problem.needsBGroupSums() : problem.needsAGroupSums();
     int xoPtrDims = (isA ? problem.aoPtrDims : problem.boPtrDims);
     bool xo2D = isA ? problem.aOffset2D()       : problem.bOffset2D();
@@ -42,7 +44,10 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
                                 : problem.bOffset == ABOffset::Calc && (problem.earlyDequantizeB() || lateOffset));
     bool cColMajor = isRegisterColMajor(problem.Tc_ext, problem.C, strategy.C);
 
-    if (!xo2D && !xoTo2D && !xs2D && !xg2D) return true;
+    if (!xo2D && !xoTo2D && !xs2D && !xg2D) {
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmMake2DQuantizationLayouts <++++++ early return ");
+        return true;
+    }
 
     auto &X_strategy       = isA ? strategy.A             : strategy.B;
     auto &X_offsetStrategy = isA ? strategy.AO            : strategy.BO;
@@ -207,6 +212,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         else stub();
     }
 
+    VDEBUGINFO(4, primitive, gemm, "MY: gemmMake2DQuantizationLayouts <++++++ return ");
     return true;
 }
 

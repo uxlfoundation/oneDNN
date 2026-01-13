@@ -65,22 +65,13 @@ struct gemm_t : public primitive_t {
             bool with_bia = bias_md->ndims > 0;
             auto orig_dims = a_md->ndims;
 
-            // TODO: Enable reshaped 2D groups.
-            auto src_scales = attr()->scales_.get(DNNL_ARG_SRC);
-            int src_scale_group_ndims = 0;
-            if (!src_scales.has_default_groups())
-                for (int i = 0; i < 2; ++i) {
-                    if (src_scales.get_group(i) > 1) ++src_scale_group_ndims;
-                }
-
             auto maybe_reshape = [&]() -> status_t {
                 int batch_b_dims = 1;
                 for (int i = 0; i < b_md->ndims - 2; i++) {
                     batch_b_dims *= b_md->dims[i];
                 }
                 // for batch dim can map broadcast to 2d: eg. 4x1x4096:1x4096x16 -> 4x4096:4096x16
-                bool reshape_2d = (batch_b_dims == 1 && b_md->ndims > 2
-                        && src_scale_group_ndims < 1);
+                bool reshape_2d = (batch_b_dims == 1 && b_md->ndims > 2);
                 bool reshape_3d = (a_md->ndims > 3);
                 bool allow_reshape
                         = gpu_utils::dev_getenv("GEMM_ALLOW_RESHAPE", true);
@@ -118,7 +109,7 @@ struct gemm_t : public primitive_t {
                 squash_dims(bia_dims, bias_md->dims, ndims, reshape_size);
 
                 // Cannot reshape if bias is broadcast across a subset of squashed dimensions
-                bool bcast_not_ok = IMPLICATION(
+                bool bcast_ok = IMPLICATION(
                         with_bia, utils::one_of(bia_dims[0], 1, c_dims[0]));
 
                 // 3D reshaping is only possible if A and B batch sizes allow.
@@ -132,8 +123,8 @@ struct gemm_t : public primitive_t {
                     if (b_md->dims[i] == 1 && a_md->dims[i] > 1)
                         b_broadcast = true;
                 }
-                bcast_not_ok = bcast_not_ok && !(a_broadcast && b_broadcast);
-                bcast_not_ok = bcast_not_ok
+                bcast_ok = bcast_ok && !(a_broadcast && b_broadcast);
+                bcast_ok = bcast_ok
                         && IMPLICATION(reshape_size == 3,
                                 a_dims[0] == b_dims[0]
                                         || utils::one_of(
@@ -147,17 +138,17 @@ struct gemm_t : public primitive_t {
                     CHECK_BOOL(memory_desc_reshape(out_md, in_md, ndims, dims));
                     return true;
                 };
-                bcast_not_ok = bcast_not_ok
+                bcast_ok = bcast_ok
                         && safe_reshape(
                                 a_md_reshaped, *a_md, reshape_size, a_dims);
-                bcast_not_ok = bcast_not_ok
+                bcast_ok = bcast_ok
                         && safe_reshape(
                                 b_md_reshaped, *b_md, reshape_size, b_dims);
-                bcast_not_ok = bcast_not_ok
+                bcast_ok = bcast_ok
                         && safe_reshape(
                                 c_md_reshaped, *c_md, reshape_size, c_dims);
                 if (with_bia) {
-                    bcast_not_ok = bcast_not_ok
+                    bcast_ok = bcast_ok
                             && safe_reshape(bia_md_reshaped, *bias_md,
                                     reshape_size, bia_dims);
                 }
@@ -191,7 +182,7 @@ struct gemm_t : public primitive_t {
                                     : 1;
                         }
                         memory_desc_t tmp_po_desc;
-                        bcast_not_ok = bcast_not_ok
+                        bcast_ok = bcast_ok
                                 && safe_reshape(tmp_po_desc, po_desc,
                                         reshape_size, po_dims);
                         reshaped_post_ops.entry_[i].binary.src1_desc
@@ -228,7 +219,6 @@ struct gemm_t : public primitive_t {
                         reshaped_post_ops.entry_[i].prelu.mask = new_mask;
                     }
                 }
-                if (!bcast_not_ok) return status::success;
 
                 // Quantization has a few wrinkles...
                 // Example: --attr-scales=src:per_ocic:f16:1x128 4x1x4096:1x4096x16
@@ -294,6 +284,43 @@ struct gemm_t : public primitive_t {
                     CHECK(entries.set(arg, reshaped_entry));
                     return status::success;
                 };
+
+                // Quantization attributes are unsupported in Gemmstone with any
+                // non-trivial (neither broadcast nor full dimension) modification
+                // of groups during reshape.
+                // TODO: Enable arbitrary reshaped grouped quant.
+                auto safe_bcast_quant = [&](const quant_entry_t &entry,
+                                                const dims_t orig_dims,
+                                                dims_t reshape_dims) -> bool {
+                    int full_tensor_mask = ((1 << c_md->ndims) - 1);
+                    int per_oc_mask = (1 << 1);
+                    if (!reshape_2d || entry.has_default_values()
+                            || utils::one_of(entry.get_mask(), 0, per_oc_mask,
+                                    full_tensor_mask))
+                        return true;
+
+                    if (utils::one_of(orig_dims[diff_dims], reshape_dims[0], 1))
+                        return true;
+
+                    return false;
+                };
+
+                bcast_ok = bcast_ok
+                        && safe_bcast_quant(gemm_attr.scales_.get(DNNL_ARG_SRC),
+                                a_md->dims, a_dims);
+                bcast_ok = bcast_ok
+                        && safe_bcast_quant(
+                                gemm_attr.scales_.get(DNNL_ARG_WEIGHTS),
+                                b_md->dims, b_dims);
+                bcast_ok = bcast_ok
+                        && safe_bcast_quant(
+                                gemm_attr.zero_points_.get(DNNL_ARG_SRC),
+                                a_md->dims, a_dims);
+                bcast_ok = bcast_ok
+                        && safe_bcast_quant(
+                                gemm_attr.zero_points_.get(DNNL_ARG_WEIGHTS),
+                                b_md->dims, b_dims);
+                if (!bcast_ok) return status::success;
 
                 scales_t reshaped_scales = gemm_attr.scales_;
                 zero_points_t reshaped_zp = gemm_attr.zero_points_;

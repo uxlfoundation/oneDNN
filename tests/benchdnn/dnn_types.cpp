@@ -147,6 +147,8 @@ policy_t attr_t::str2policy(const std::string &str) {
     CASE(PER_DIM_0);
     CASE(PER_DIM_1);
     CASE(PER_DIM_01);
+    CASE(PER_DIM_02);
+    CASE(PER_DIM_012);
     CASE(PER_DIM_2);
     CASE(PER_DIM_3);
     CASE(PER_TENSOR);
@@ -165,6 +167,8 @@ const char *attr_t::policy2str(policy_t policy) {
     if (policy == PER_DIM_0) return "per_dim_0";
     if (policy == PER_DIM_1) return "per_dim_1";
     if (policy == PER_DIM_01) return "per_dim_01";
+    if (policy == PER_DIM_02) return "per_dim_02";
+    if (policy == PER_DIM_012) return "per_dim_012";
     if (policy == PER_DIM_2) return "per_dim_2";
     if (policy == PER_DIM_3) return "per_dim_3";
     if (policy == PER_TENSOR) return "per_tensor";
@@ -192,6 +196,8 @@ int attr_t::get_default_mask(policy_t policy, int ndims) {
         case PER_DIM_1: return (1 << 1);
         case PER_OCIC:
         case PER_DIM_01: return (1 << 0) + (1 << 1);
+        case PER_DIM_02: return (1 << 0) + (1 << 2);
+        case PER_DIM_012: return (1 << 0) + (1 << 1) + (1 << 2);
         case PER_DIM_2: return (1 << 2);
         case PER_DIM_3: return (1 << 3);
         case MX:
@@ -247,6 +253,11 @@ int attr_t::policy2mask(int arg, policy_t policy, int ndims,
             case PER_DIM_1:
             case PER_OC: return (1 << (ndims - 1));
             case PER_OCIC: return (1 << (ndims - 1)) + (1 << (ndims - 2));
+            case PER_DIM_02:
+                return (1 << 0) | (1 << 2); // For grouped GEMM: experts and N
+            case PER_DIM_012:
+                return (1 << 0) | (1 << 1)
+                        | (1 << 2); // For grouped GEMM: all 3 dims
             case MX:
             case DYNAMIC_FP:
             case PER_TENSOR: return attr_t::get_default_mask(policy, ndims);
@@ -345,6 +356,7 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
             case PER_TENSOR:
             case PER_OC:
             case PER_OCIC:
+            case PER_DIM_012:
             case MX:
             case DYNAMIC_FP:
                 if (this->groups.size() != 2) {
@@ -356,8 +368,8 @@ int attr_t::arg_scales_t::entry_t::from_str(const std::string &s) {
                 break;
             default:
                 BENCHDNN_PRINT(0, "%s\n",
-                        "Error: groups are supported only for PER_OC and "
-                        "PER_OCIC policies.");
+                        "Error: groups are supported only for PER_OC, "
+                        "PER_OCIC, and PER_DIM_012 policies.");
                 SAFE_V(FAIL);
         }
     }

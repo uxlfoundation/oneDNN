@@ -249,23 +249,6 @@ dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
                 || policy == policy_t::PER_DIM_1) {
             int mask = 1 << (prb->ndims - 1);
             if (policy == policy_t::PER_OCIC) mask += 1 << (prb->ndims - 2);
-
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
-            // For grouped GEMM with weight scales:
-            // Weights are 3D: [num_experts, K, N]
-            // For column-wise (PER_DIM_1): mask = 1 << 2 (N dimension in 3D)
-            // For per_ocic: mask = (1<<1)|(1<<2) (K and N dimensions in 3D)
-            if (prb->sparse_options.get_encoding(DNNL_ARG_SRC) == dnnl_grouped
-                    && arg == (DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS)) {
-                if (policy == policy_t::PER_OCIC) {
-                    mask = (1 << 1) | (1 << 2); // K and N dimensions for 3D
-                } else if (policy == policy_t::PER_DIM_1
-                        || policy == policy_t::PER_OC) {
-                    mask = 1 << 2; // N dimension for 3D (column-wise)
-                }
-            }
-#endif
-
             attr_args.prepare_quant(prb->attr, arg, mask);
         }
     };
@@ -1416,7 +1399,7 @@ void hack_grouped_scale_memory(const prb_t *prb, dnn_mem_map_t &mem_map) {
     int scale_ndims;
 
     if (!wei_scales_entry.groups.empty()) {
-        // per_ocic case: scales are [num_experts, ngroups_k, N]
+        // per_dim_012 case: scales are [num_experts, ngroups_k, N]
         const int64_t group_k = wei_scales_entry.groups[0];
         const int64_t ngroups_k = K / group_k;
         expected_nelems = num_experts * ngroups_k * N;
@@ -1425,7 +1408,7 @@ void hack_grouped_scale_memory(const prb_t *prb, dnn_mem_map_t &mem_map) {
         scale_dims[1] = ngroups_k;
         scale_dims[2] = N;
     } else {
-        // per_dim_1 (column-wise) case: scales are [num_experts, N]
+        // per_dim_02 (column-wise) case: scales are [num_experts, N]
         expected_nelems = num_experts * N;
         scale_ndims = 2;
         scale_dims[0] = num_experts;

@@ -119,10 +119,11 @@ inline void *find_symbol(const char *library_name, const char *symbol) {
                         | FORMAT_MESSAGE_ALLOCATE_BUFFER
                         | FORMAT_MESSAGE_IGNORE_INSERTS,
                 nullptr, GetLastError(),
-                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), error_text, 0,
-                nullptr);
+                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&error_text,
+                0, nullptr);
         VERROR(common, runtime, "error while opening %s library: %s",
                 library_name, error_text);
+        LocalFree(error_text);
         return nullptr;
     }
     void *symbol_address
@@ -133,12 +134,13 @@ inline void *find_symbol(const char *library_name, const char *symbol) {
                         | FORMAT_MESSAGE_ALLOCATE_BUFFER
                         | FORMAT_MESSAGE_IGNORE_INSERTS,
                 nullptr, GetLastError(),
-                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), error_text, 0,
-                nullptr);
+                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&error_text,
+                0, nullptr);
         VERROR(common, runtime,
                 "error while searching for a %s symbol address in %s library: "
                 "%s",
                 symbol, library_name, error_text);
+        LocalFree(error_text);
         return nullptr;
     }
     return symbol_address;
@@ -161,8 +163,10 @@ inline void *find_symbol(const char *library_name, const char *symbol) {
                 "error while searching for a %s symbol address in %s library: "
                 "%s",
                 symbol, library_name, dlerror());
+        dlclose(handle);
         return nullptr;
     }
+    dlclose(handle);
     return symbol_address;
 }
 #endif

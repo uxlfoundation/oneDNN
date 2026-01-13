@@ -200,3 +200,4 @@ Orphans
     page_cnn_inference_f32_c_brief.rst
     page_cpu_cnn_training_f32_c_brief.rst
     page_cross_engine_reorder_c_brief.rst
+    page_deprecated

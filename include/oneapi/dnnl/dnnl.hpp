@@ -908,6 +908,8 @@ struct memory : public handle<dnnl_memory_t> {
         /// Undefined data type (used for empty memory descriptors).
         undef = dnnl_data_type_undef,
         /// 4-bit float data type with 3-bit exponent and 0 bit mantissa.
+        ///
+        /// @deprecated The f4_e3m0 data type will be removed in a future release.
         f4_e3m0 = dnnl_f4_e3m0,
         /// [MX-compliant 4-bit float data type](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) with 2-bit exponent and 1 bit mantissa.
         f4_e2m1 = dnnl_f4_e2m1,

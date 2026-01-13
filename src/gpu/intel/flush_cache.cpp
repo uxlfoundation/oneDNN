@@ -64,3 +64,11 @@ extern "C" dnnl::impl::status_t DNNL_API dnnl_impl_gpu_flush_cache(
         dnnl::impl::memory_t *data) {
     return dnnl::impl::gpu::intel::flush(stream, bytes, data);
 }
+
+extern "C" size_t DNNL_API dnnl_impl_gpu_l3_cache_size(
+        dnnl::impl::engine_t *engine) {
+    auto *intel_engine
+            = dnnl::impl::utils::downcast<dnnl::impl::gpu::intel::engine_t *>(
+                    engine);
+    return intel_engine->device_info()->l3_cache_size();
+}

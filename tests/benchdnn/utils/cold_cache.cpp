@@ -22,6 +22,7 @@
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
 extern "C" dnnl_status_t dnnl_impl_gpu_flush_cache(
         dnnl_stream_t stream, size_t bytes, dnnl_memory_t data);
+extern "C" size_t dnnl_impl_gpu_l3_cache_size(dnnl_engine_t engine);
 #endif
 
 cold_cache_input_t cold_cache_input;
@@ -326,22 +327,28 @@ int cold_cache_t::thrash_reorder(size_t mem_size, size_t granularity) const {
     return OK;
 }
 
-void cold_cache_t::flush_cache(dnnl_stream_t stream) const {
+void cold_cache_t::flush_cache(dnnl_stream_t stream) {
     // Flushing is only applied for GPU.
     if (!is_gpu()) return;
 
     // Keep initialization separately from a global reference to have an option
     // to clean up that memory.
     static std::once_flag flag;
+    static size_t flush_cache_size = 0;
     std::call_once(flag, [&]() {
-        const dnnl_dims_t dims = {flush_cache_size_};
+        static constexpr size_t min_flush_cache_size = (16 << 20); // 16 MB
+#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
+        flush_cache_size = dnnl_impl_gpu_l3_cache_size(get_test_engine());
+#endif
+        flush_cache_size = MAX2(flush_cache_size, min_flush_cache_size);
+        const dnnl_dims_t dims = {static_cast<dnnl_dim_t>(flush_cache_size)};
         flush_cache_memory() = dnn_mem_t(
                 1, dims, dnnl_s8, "a", get_test_engine(), /* prefill = */ true);
     });
 
 #if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE
     DNN_SAFE_V(dnnl_impl_gpu_flush_cache(
-            stream, flush_cache_size_, flush_cache_memory().m_));
+            stream, flush_cache_size, flush_cache_memory().m_));
 #endif
 }
 

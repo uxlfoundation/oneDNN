@@ -139,8 +139,7 @@ private:
 
     int thrash_reorder(size_t mem_size, size_t granularity) const;
 
-    static constexpr size_t flush_cache_size_ = (32 << 20); // 32 MB;
-    void flush_cache(dnnl_stream_t stream) const;
+    void flush_cache(dnnl_stream_t stream);
 
     BENCHDNN_DISALLOW_COPY_AND_ASSIGN(cold_cache_t);
 };

@@ -27,11 +27,12 @@
 /src/cpu/rnn/ @uxlfoundation/onednn-cpu-x64
 
 # GPU Engine
-/src/gpu/amd/ @uxlfoundation/onednn-gpu-amd
 /src/gpu/intel/ @uxlfoundation/onednn-gpu-intel
-/src/gpu/nvidia/ @uxlfoundation/onednn-gpu-nvidia
 /src/gpu/generic/ @uxlfoundation/onednn-arch
-/src/gpu/generic/sycl/ @uxlfoundation/onednn-gpu-generic
+
+# /src/gpu/amd/ @uxlfoundation/onednn-gpu-amd
+# /src/gpu/nvidia/ @uxlfoundation/onednn-gpu-nvidia
+# /src/gpu/generic/sycl/ @uxlfoundation/onednn-gpu-generic
 
 # Tests
 /tests/benchdnn/inputs/ @uxlfoundation/onednn-maintain

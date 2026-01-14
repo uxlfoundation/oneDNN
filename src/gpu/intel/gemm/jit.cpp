@@ -43,7 +43,11 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
         int16_t bo_hostscalar, const memory_storage_t *a_scales,
         const memory_storage_t *b_scales, const memory_storage_t *c_scales,
         const memory_storage_t *ag, const memory_storage_t *bg,
-        const memory_storage_t &co, const memory_storage_t *c_temp,
+        const memory_storage_t &co,
+// CCC ???
+        int16_t co_hostscalar,
+// CCC ???
+        const memory_storage_t *c_temp,
         const memory_storage_t *sround_seed, int po_count,
         const memory_storage_t **po_srcs, int64_t offset_a, int64_t offset_b,
         int64_t offset_c, int64_t offset_aq, int64_t offset_bq,
@@ -400,6 +404,9 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     int16_t ao_hostscalar = 0;
     int16_t bo_hostscalar = 0;
     // @@@ !!!
+    // CCC ???
+    int16_t co_hostscalar = 0;
+    // CCC ???
 
     std::unique_ptr<memory_storage_t> c_temp;
     if (nocopy_info()->needsTempC()) {
@@ -582,7 +589,11 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy");
             status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c, ao,
                     bo, ao_hostscalar, bo_hostscalar, a_scales, b_scales,
-                    c_scales, ag, bg, *co, nullptr, sround_seed, po_count,
+                    c_scales, ag, bg, *co,
+// CCC ???
+                    co_hostscalar,
+// CCC ???
+                    nullptr, sround_seed, po_count,
                     po_srcs, off_a0, off_b0, off_c0, off_aq0, off_bq0, off_co0,
                     po_offsets0, lda, ldb, ldc, m, n, 0, 1, 1.0f, beta, 0,
                     false, swapab, true);
@@ -649,7 +660,11 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
                 VDEBUGINFO(4, primitive, gemm, "MY execute ++++ launch_nocopy, bk bm loop, ao arg");
                 status = launch_nocopy(ctx, compute_stream, zero_pool, a, b, c,
                         ao, bo, ao_hostscalar, bo_hostscalar, a_scales,
-                        b_scales, c_scales, ag, bg, *co, c_temp.get(),
+                        b_scales, c_scales, ag, bg, *co,
+// CCC ???
+                        co_hostscalar,
+// CCC ???
+                        c_temp.get(),
                         sround_seed, po_count, po_srcs, off_a_src, off_b_src,
                         off_c, off_aq, off_bq, off_co, po_offsets, lda, ldb,
                         ldc, into<int32_t>(size_m), into<int32_t>(size_n),

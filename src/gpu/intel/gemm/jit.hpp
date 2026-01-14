@@ -740,7 +740,11 @@ private:
             int16_t ao_hostscalar, int16_t bo_hostscalar,
             const memory_storage_t *a_scales, const memory_storage_t *b_scales,
             const memory_storage_t *c_scales, const memory_storage_t *ag,
-            const memory_storage_t *bg, const memory_storage_t &co,
+            const memory_storage_t *bg,
+// CCC ???
+            const memory_storage_t &co,
+            int16_t co_hostscalar, // ???? int32
+// CCC ???
             const memory_storage_t *c_temp, const memory_storage_t *sround_seed,
             int po_count, const memory_storage_t **po_src, int64_t offset_a,
             int64_t offset_b, int64_t offset_c, int64_t offset_aq,

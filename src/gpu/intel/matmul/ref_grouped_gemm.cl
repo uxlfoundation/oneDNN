@@ -64,8 +64,8 @@ __kernel void ref_grouped_gemm_matmul(
     const int m = get_global_id(1);
     const int n = get_global_id(2);
 
-    const int src_start = src_offsets[group_id];
-    const int src_end = src_offsets[group_id + 1];
+    const int src_start = (group_id == 0) ? 0 : src_offsets[group_id - 1];
+    const int src_end = src_offsets[group_id];
     const int M = src_end - src_start;
 
     if (group_id >= ngroups) return;
@@ -74,8 +74,8 @@ __kernel void ref_grouped_gemm_matmul(
     if (m >= M) return; // upper bound is currently very large (total_tokens)
     if (M <= 0) return; // skip empty or invalid groups
 
-    const int dst_start = dst_offsets[group_id];
-    const int dst_end = dst_offsets[group_id + 1];
+    const int dst_start = (group_id == 0) ? 0 : dst_offsets[group_id - 1];
+    const int dst_end = dst_offsets[group_id];
     const int dst_M = dst_end - dst_start;
 
     if (dst_M != M)

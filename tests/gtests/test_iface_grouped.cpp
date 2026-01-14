@@ -247,8 +247,8 @@ TEST(iface_grouped_test_t, TestGroupedMemoryMapUnmap) {
     for (int i = 0; i < total_elements; i++)
         values[i] = static_cast<float>(i) * 0.5f;
 
-    std::vector<int32_t> offsets = {0, 1, 3};
-    ASSERT_EQ(offsets[num_groups], total_tokens);
+    std::vector<int32_t> offsets = {1, 3};
+    ASSERT_EQ(offsets[num_groups - 1], total_tokens);
 
     memory mem(md, eng, {values.data(), offsets.data()});
 

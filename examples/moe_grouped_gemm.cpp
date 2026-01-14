@@ -82,7 +82,8 @@ struct RoutingDecision {
     std::vector<float> weights; // Routing weights (TOP_K per token)
     std::vector<int> token_counts; // Number of tokens assigned to each expert
     std::vector<std::vector<int>> expert_token_ids; // Token IDs for each expert
-    std::vector<int> token_offsets; // Start offset for each expert's tokens
+    std::vector<int>
+            token_offsets; // Cumulative end offset for each expert (N elements)
 };
 
 /// Structure to hold expert weight offsets in contiguous memory
@@ -114,7 +115,7 @@ void compute_routing(const float *input, int tokens_to_process, int input_dim,
     routing.weights.resize(tokens_to_process * top_k);
     routing.token_counts.resize(num_experts, 0);
     routing.expert_token_ids.resize(num_experts);
-    routing.token_offsets.resize(num_experts + 1, 0);
+    routing.token_offsets.resize(num_experts, 0);
 
     // Compute routing logits for each token
     std::vector<float> logits(tokens_to_process * num_experts);
@@ -166,10 +167,11 @@ void compute_routing(const float *input, int tokens_to_process, int input_dim,
         }
     }
 
-    // Compute token offsets for each expert (cumulative sum)
+    // Compute token offsets for each expert (cumulative ends)
+    int cumulative = 0;
     for (int e = 0; e < num_experts; ++e) {
-        routing.token_offsets[e + 1]
-                = routing.token_offsets[e] + routing.token_counts[e];
+        cumulative += routing.token_counts[e];
+        routing.token_offsets[e] = cumulative;
     }
 }
 
@@ -181,7 +183,8 @@ void gather_grouped_input(const float *input, float *grouped_input,
         int num_tokens = routing.token_counts[expert_id];
         if (num_tokens == 0) continue;
 
-        int offset = routing.token_offsets[expert_id];
+        int offset
+                = (expert_id == 0) ? 0 : routing.token_offsets[expert_id - 1];
         const int *token_ids = routing.expert_token_ids[expert_id].data();
         float *expert_gathered = grouped_input + offset * input_dim;
 
@@ -203,7 +206,8 @@ void scatter_grouped_output(float *output, const float *grouped_output,
         int num_expert_tokens = routing.token_counts[expert_id];
         if (num_expert_tokens == 0) continue;
 
-        int token_offset = routing.token_offsets[expert_id];
+        int token_offset
+                = (expert_id == 0) ? 0 : routing.token_offsets[expert_id - 1];
         const float *expert_output = grouped_output + token_offset * output_dim;
         const int *token_ids = routing.expert_token_ids[expert_id].data();
 
@@ -253,16 +257,17 @@ void ref_grouped_gemm(const float *input_concat, float *output_concat,
         const float *scale_dst_concat = nullptr) {
 
     for (int expert_id = 0; expert_id < num_experts; ++expert_id) {
-        int num_expert_tokens = offsets[expert_id + 1] - offsets[expert_id];
+        int offset_start = (expert_id == 0) ? 0 : offsets[expert_id - 1];
+        int offset_end = offsets[expert_id];
+        int num_expert_tokens = offset_end - offset_start;
 
-        const float *expert_input = input_concat + offsets[expert_id] * K_dim;
-        float *expert_output = output_concat + offsets[expert_id] * N_dim;
+        const float *expert_input = input_concat + offset_start * K_dim;
+        float *expert_output = output_concat + offset_start * N_dim;
         const float *W = weight_concat + expert_id * K_dim * N_dim;
         const float *b = bias_concat + expert_id * N_dim;
 
-        const float *src_scales = scale_src_concat
-                ? scale_src_concat + offsets[expert_id]
-                : nullptr;
+        const float *src_scales
+                = scale_src_concat ? scale_src_concat + offset_start : nullptr;
         const float *wei_scales = scale_wei_concat
                 ? scale_wei_concat + expert_id * N_dim
                 : nullptr;
@@ -313,9 +318,9 @@ engine &get_engine(engine::kind engine_kind) {
 /// (memory::desc::grouped) which represents data as concatenated sub-tensors
 /// with varying first dimension (M per expert) and uniform second dimension (K).
 ///
-/// Memory layout follows CSR-like sparse encoding:
+/// Memory layout for grouped encoding:
 /// - Buffer 0 (values): Concatenated expert data [E0|E1|...|EN]
-/// - Buffer 1 (offsets): Cumulative row boundaries [0, M0, M0+M1, ...]
+/// - Buffer 1 (offsets): Cumulative end positions [M0, M0+M1, ...] (N elements)
 ///
 /// @param input_concat Concatenated input buffer [total_tokens x K_dim]
 /// @param weight_concat Concatenated weights [num_experts x K_dim x N_dim]
@@ -446,7 +451,7 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
         engine::kind engine_kind) {
 
     // Allocate buffer for intermediate hidden layer (all experts combined)
-    int total_tokens = routing.token_offsets[NUM_EXPERTS];
+    int total_tokens = routing.token_offsets[NUM_EXPERTS - 1];
     std::vector<float> hidden_all(total_tokens * hidden_dim);
 
     // Identify active experts (== those with tokens assigned)
@@ -461,9 +466,7 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     offsets[0] = 0;
     for (int idx = 0; idx < num_active_experts; ++idx) {
         int expert_id = active_expert_ids[idx];
-        offsets[idx + 1] = offsets[idx]
-                + (routing.token_offsets[expert_id + 1]
-                        - routing.token_offsets[expert_id]);
+        offsets[idx + 1] = offsets[idx] + routing.token_counts[expert_id];
     }
 
     // Save hidden layer output for comparison
@@ -474,7 +477,8 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     std::vector<float *> hidden_ptrs_onednn(num_active_experts);
     for (int idx = 0; idx < num_active_experts; ++idx) {
         int expert_id = active_expert_ids[idx];
-        int token_start = routing.token_offsets[expert_id];
+        int token_start
+                = (expert_id == 0) ? 0 : routing.token_offsets[expert_id - 1];
         hidden_ptrs_ref[idx] = hidden_all_ref.data() + token_start * hidden_dim;
         hidden_ptrs_onednn[idx]
                 = hidden_all_onednn.data() + token_start * hidden_dim;
@@ -537,7 +541,8 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     std::vector<float *> output_ptrs_scaled(num_active_experts);
     for (int idx = 0; idx < num_active_experts; ++idx) {
         int expert_id = active_expert_ids[idx];
-        int token_start = routing.token_offsets[expert_id];
+        int token_start
+                = (expert_id == 0) ? 0 : routing.token_offsets[expert_id - 1];
         output_ptrs_ref[idx] = output_all_ref.data() + token_start * output_dim;
         output_ptrs_scaled[idx]
                 = output_all_scaled.data() + token_start * output_dim;
@@ -550,8 +555,8 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     std::vector<float> scale_wei_concat(NUM_EXPERTS * output_dim);
 
     for (int e = 0; e < NUM_EXPERTS; ++e) {
-        int token_start = routing.token_offsets[e];
-        int M = routing.token_offsets[e + 1] - routing.token_offsets[e];
+        int token_start = (e == 0) ? 0 : routing.token_offsets[e - 1];
+        int M = routing.token_counts[e];
 
         // Row-wise src scales
         for (int m = 0; m < M; ++m) {
@@ -643,7 +648,7 @@ void toy_moe(const float *input, float *output, const ExpertWeights &weights,
     std::fill(output, output + tokens_to_process * output_dim, 0.0f);
 
     // Allocate buffers for grouped input and output
-    int total_tokens = routing.token_offsets[NUM_EXPERTS];
+    int total_tokens = routing.token_offsets[NUM_EXPERTS - 1];
     std::vector<float> grouped_input(total_tokens * input_dim);
     std::vector<float> grouped_output(total_tokens * output_dim);
 
@@ -737,9 +742,10 @@ void moe_grouped_gemm_example(engine::kind engine_kind) {
 
     std::cout << "Token distribution per expert:\n";
     for (int e = 0; e < NUM_EXPERTS; ++e) {
+        int start_offset = (e == 0) ? 0 : routing.token_offsets[e - 1];
         std::cout << "  Expert " << e << ": " << routing.token_counts[e]
-                  << " tokens (offset in contiguous memory: "
-                  << routing.token_offsets[e] << ")\n";
+                  << " tokens (offset in contiguous memory: " << start_offset
+                  << ")\n";
     }
     std::cout << "\n";
 

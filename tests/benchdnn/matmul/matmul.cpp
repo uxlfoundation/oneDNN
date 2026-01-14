@@ -477,13 +477,12 @@ int fill_grouped_data(
     const auto &M_dims = prb->sparse_options.get_group_sizes();
     if (M_dims.size() != (size_t)group_count) return FAIL;
 
-    // fill and store offsets array [0, M0, M0+M1, ...] in mem_dt buffer 1
+    // fill and store offsets array [M0, M0+M1, ...] in mem_dt buffer 1 (N cumulative ends)
     const int offsets_idx = 1;
     int32_t cumulative = 0;
-    mem_dt.set_elem(0, cumulative, offsets_idx);
     for (int64_t g = 0; g < group_count; g++) {
         cumulative += M_dims[g];
-        mem_dt.set_elem(g + 1, cumulative, offsets_idx);
+        mem_dt.set_elem(g, cumulative, offsets_idx);
     }
 
     // fill values buffer (index 0) with random data

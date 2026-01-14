@@ -88,12 +88,14 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
                     data_type::s4, data_type::u4);
 
     for (int group_id = 0; group_id < num_groups; ++group_id) {
-        const dim_t M = offsets[group_id + 1] - offsets[group_id];
+        const dim_t offset_start = (group_id == 0) ? 0 : offsets[group_id - 1];
+        const dim_t offset_end = offsets[group_id];
+        const dim_t M = offset_end - offset_start;
         if (M == 0) continue;
         if (M < 0) return status::runtime_error;
 
-        const dim_t src_base_idx = offsets[group_id] * K;
-        const dim_t dst_base_idx = offsets[group_id] * N;
+        const dim_t src_base_idx = offset_start * K;
+        const dim_t dst_base_idx = offset_start * N;
         const dim_t wei_base_idx = group_id * K * N;
 
         for (dim_t m = 0; m < M; ++m) {
@@ -123,7 +125,7 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
                         float acc_f = static_cast<float>(acc);
 
                         if (with_src_scales) {
-                            const dim_t idx = offsets[group_id] + m;
+                            const dim_t idx = offset_start + m;
                             const float src_scale = io::load_float_value(
                                     data_type::f32, src_scales, idx);
                             acc_f *= src_scale;
@@ -155,7 +157,7 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
                     }
 
                     if (with_src_scales) {
-                        const dim_t idx = offsets[group_id] + m;
+                        const dim_t idx = offset_start + m;
                         const float scale = io::load_float_value(
                                 data_type::f32, src_scales, idx);
                         acc *= scale;

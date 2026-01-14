@@ -1158,11 +1158,11 @@ dnnl_status_t DNNL_API dnnl_memory_desc_create_with_packed_encoding(
 ///
 /// Memory layout:
 /// - Buffer 0 (values): Sub-tensors stored as [A0 | A1 | ... | AN]
-/// - Buffer 1 (offsets): Start position of each sub-tensor in buffer 0.
+/// - Buffer 1 (offsets): Cumulative end position of each sub-tensor.
 ///
 /// Example: 3 groups with shapes {1, 256}, {3, 256}, {5, 256}
 /// - Values buffer: 9 * 256 elements total
-/// - Offsets: [0, 1, 4, 9] marking where each sub-tensor starts
+/// - Offsets: [1, 4, 9] marking cumulative ends (first group starts at 0)
 ///
 /// @param memory_desc Output memory descriptor.
 /// @param ndims Number of dimensions for the tensor.

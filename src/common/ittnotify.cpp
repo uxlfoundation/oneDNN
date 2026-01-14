@@ -102,9 +102,9 @@ void primitive_task_start(
 #undef CASE
     int kind_idx = (int)kind;
     assert(kind_idx >= 0);
-    if (kind_idx < primitive_kind::internal_only_start) {
-        assert((size_t)kind_idx < sizeof(prim_kind_itt_strings)
-                        / sizeof(prim_kind_itt_strings[0]));
+    if (kind_idx < primitive_kind::internal_only_start
+            && (size_t)kind_idx < sizeof(prim_kind_itt_strings)
+                            / sizeof(prim_kind_itt_strings[0])) {
         __itt_task_begin(pd_domain, __itt_null, __itt_null,
                 prim_kind_itt_strings[kind_idx]);
     }

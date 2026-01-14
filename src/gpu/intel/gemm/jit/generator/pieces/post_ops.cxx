@@ -451,6 +451,12 @@ bool Generator<hw>::gemmApplyCOffsetDispatch(const GEMMProblem &problem, const G
         state.raVFlag.claim(state.flagSwizzle);
     }
 
+
+// @@@ $$$ ??? TODO - implement hostscalar in gemmBinaryOpC:
+// add one more parameter - hostscalar ???
+// not loat matrix - from stat.input.?????
+
+
     status << "Applying fixed C offset" << status_stream::endl;
     VDEBUGINFO(4, primitive, gemm, "MY: gemmApplyCOffsetDispatch ~~~~~ Applying fixed C offset - call gemmBinaryOpC(add, false, false, ....)");
     ok = ok && gemmBinaryOpC(BinaryOp::Add, false, false, Tco, CO, CO_strategy, effCO, ldco, problem, strategy, state);

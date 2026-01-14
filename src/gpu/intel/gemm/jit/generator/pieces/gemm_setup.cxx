@@ -2617,6 +2617,9 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     }
 
     // Get input arguments.
+
+// @@@ $$$ ??? TODO add new argument like CO_hostscalar
+
     state.inputs.base = interface.getArgumentIfExists("base");
     auto baseSurface = interface.getArgumentSurfaceIfExists("base");
     if (state.inputs.base.isInvalid() && baseSurface == InterfaceHandler::noSurface) {

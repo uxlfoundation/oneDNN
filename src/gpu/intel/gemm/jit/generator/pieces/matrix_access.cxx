@@ -57,21 +57,25 @@ void Generator<hw>::loadMatrix(const GRFMultirange &dest, const RegisterLayout &
 
     auto &astrategy = layout.addressingStrategy();
     if (astrategy.prefetch && astrategy.newDP) {
+        VDEBUGINFO(4, primitive, gemm, "MY: loadMatrix");
         prefetchMatrix(layout, addrs, strategy, state);
         return;
     }
 
-    if (strategy.readSuppressionWA && (layout.hasFlags() || !getDefaultNoMask()))
+    if (strategy.readSuppressionWA && (layout.hasFlags() || !getDefaultNoMask())){
+        VDEBUGINFO(4, primitive, gemm, "MY: loadMatrix");
         doReadSuppressionWA(strategy, state);
+    }
 
     for (int l = 0; l < layout.blocks(); l++) {
+        VDEBUGINFO(4, primitive, gemm, "MY: loadMatrix: blocks loop: %d of %d", l, layout.blocks());
         auto offsetReg = contiguityCheck(hw, layout[l], dest);
         prepareSeriesRegisterBlockMasking(layout, state, l);
         loadMatrixBlock(dest[offsetReg], layout[l], layout.addressing(), astrategy, addrs[l], strategy, state, readCheck, true);
     }
 
     finishRegisterBlockMasking(state);
-    VDEBUGINFO(4, primitive, gemm, "MY: loadMatrix >>>>");
+    VDEBUGINFO(4, primitive, gemm, "MY: loadMatrix <<<<");
 }
 
 // Output code for loading a single matrix block into registers.
@@ -81,12 +85,16 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
                                     const CommonStrategy &strategy, CommonState &state,
                                     bool readCheck, bool series)
 {
+    VDEBUGINFO(4, primitive, gemm, "MY: loadMatrixBlock  --->>>");
     InstructionModifier maskMod;
     InstructionModifier mod = block.simdSize;
+    VDEBUGINFO(4, primitive, gemm, "MY: loadMatrixBlock  ---: block. nr nc simdSize = %d %d %d", block.nr, block.nc, block.simdSize);
 
     // Zero SIMD size blocks are filled as part of another load. Skip them.
-    if (!block.isLoadBlock())
+    if (!block.isLoadBlock()){
+        VDEBUGINFO(4, primitive, gemm, "MY: loadMatrixBlock  ---: early return");
         return;
+    }
 
     // Prepare masking.
     FlagRegister flag;
@@ -96,77 +104,86 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
 
     // Look up preassigned token.
     for (auto &entry: state.tokenMap) {
+        VDEBUGINFO(4, primitive, gemm, "MY: loadMatrixBlock  ---: preassigned token");
         if (entry.first == dest.getBase() || entry.first == addr.getBase()) {
             mod |= SBID(entry.second);
             break;
         }
     }
 
-    if (astrategy.newDP) switch (block.implAccessType(atype, astrategy)) {
+    if (astrategy.newDP) {
+        VDEBUGINFO(4, primitive, gemm, "MY: loadMatrixBlock  ---: newDP");
+        switch (block.implAccessType(atype, astrategy)) {
         case AccessType::Block:
         case AccessType::Scattered:
-        case AccessType::ChannelScattered: {
-            auto spec = getDataSpecLSC(atype, astrategy, block, AccessClass::Read);
-            if (astrategy.atomic && hw >= HW::Xe2)
-                atomic(AtomicOp::load, mod, dest, spec, astrategy.base, getAddress(addr, block, astrategy));
-            else if (block.descAssigned) {
-                MessageDescriptor desc;
-                ExtendedMessageDescriptor exdesc;
-                encodeLoadDescriptors(hw, desc, exdesc, block.simdSize, r0, spec, astrategy.base, null);
-                send(mod, static_cast<SharedFunction>(block.sfid), dest, addr, null, exdesc.all, a0[0]);
-            } else
-                load(mod, dest, spec, astrategy.base, getAddress(addr, block, astrategy));
-            break;
-        }
+        case AccessType::ChannelScattered:
+            {
+                auto spec = getDataSpecLSC(atype, astrategy, block, AccessClass::Read);
+                if (astrategy.atomic && hw >= HW::Xe2) atomic(AtomicOp::load, mod, dest, spec, astrategy.base, getAddress(addr, block, astrategy));
+                else if (block.descAssigned) {
+                    MessageDescriptor desc;
+                    ExtendedMessageDescriptor exdesc;
+                    encodeLoadDescriptors(hw, desc, exdesc, block.simdSize, r0, spec, astrategy.base, null);
+                    send(mod, static_cast<SharedFunction>(block.sfid), dest, addr, null, exdesc.all, a0[0]);
+                } else load(mod, dest, spec, astrategy.base, getAddress(addr, block, astrategy));
+                break;
+            }
         case AccessType::Block2D:
         case AccessType::Block2DTranspose:
-        case AccessType::Block2DVNNI: {
-            int w = 0, h = 0, count = 0;
-            block.getBlock2DWH(w, h, count, atype);
-            auto spec = block_2d(getDataSizeLSC(block.ebytes, false), w, h, count) | astrategy.cachingR;
-            if (astrategy.accessType == AccessType::Block2DTranspose) spec |= transpose;
-            if (astrategy.accessType == AccessType::Block2DVNNI)      spec |= vnni;
-            load(mod, dest, spec, astrategy.base, getAddress(addr, block, astrategy));
-            break;
+        case AccessType::Block2DVNNI:
+            {
+                int w = 0, h = 0, count = 0;
+                block.getBlock2DWH(w, h, count, atype);
+                auto spec = block_2d(getDataSizeLSC(block.ebytes, false), w, h, count) | astrategy.cachingR;
+                if (astrategy.accessType == AccessType::Block2DTranspose) spec |= transpose;
+                if (astrategy.accessType == AccessType::Block2DVNNI)      spec |= vnni;
+                load(mod, dest, spec, astrategy.base, getAddress(addr, block, astrategy));
+                break;
+            }
+        default:
+            stub();
         }
-        default: stub();
-    } else if (block.descAssigned)
+    } else if (block.descAssigned) {
+        VDEBUGINFO(4, primitive, gemm, "MY: loadMatrixBlock  ---: block.descAssigned");
         send(mod, static_cast<SharedFunction>(block.sfid), dest, addr, null, block.sfid, a0[0]);
-    else switch (block.implAccessType(atype, astrategy)) {
-        case AccessType::ChannelScattered: {
-            static const ChannelMask cmasks[4] = {ChannelMask::r, ChannelMask::rg, ChannelMask::rgb, ChannelMask::rgba};
-            if (block.ebytes != 4) stub();
-            load(mod, dest, surface_dword(cmasks[block.count - 1]), astrategy.base, addr);
-            break;
-        }
+    } else {
+        VDEBUGINFO(4, primitive, gemm, "MY: loadMatrixBlock  ---: else");
+        switch (block.implAccessType(atype, astrategy)) {
+        case AccessType::ChannelScattered:
+            {
+                static const ChannelMask cmasks[4] = { ChannelMask::r, ChannelMask::rg, ChannelMask::rgb, ChannelMask::rgba };
+                if (block.ebytes != 4) stub();
+                load(mod, dest, surface_dword(cmasks[block.count - 1]), astrategy.base, addr);
+                break;
+            }
         case AccessType::Scattered:
-            if (block.ebytes == 8)
-                load(mod, dest, scattered_qword(block.count), astrategy.base, addr);
-            else if (block.ebytes == 4)
-                load(mod, dest, scattered_dword(block.count), astrategy.base, addr);
-            else if (block.ebytes == 1)
-                load(mod, dest, scattered_byte(block.count), astrategy.base, addr);
-            else
-                hw_unsupported();
+            if (block.ebytes == 8) load(mod, dest, scattered_qword(block.count), astrategy.base, addr);
+            else if (block.ebytes == 4) load(mod, dest, scattered_dword(block.count), astrategy.base, addr);
+            else if (block.ebytes == 1) load(mod, dest, scattered_byte(block.count), astrategy.base, addr);
+            else hw_unsupported();
             break;
         case AccessType::Block:
-            if (block.ebytes == 32)
-                load(mod, dest, block_hword(block.count), astrategy.base, addr);
-            else if (block.ebytes == 16 && !block.extra)
-                load(mod, dest, block_oword(block.count), astrategy.base, addr);
-            else if (block.ebytes == 16)
-                load(mod, dest, aligned_block_oword(block.count), astrategy.base, addr);
-            else
-                hw_unsupported();
+            if (block.ebytes == 32) load(mod, dest, block_hword(block.count), astrategy.base, addr);
+            else if (block.ebytes == 16 && !block.extra) load(mod, dest, block_oword(block.count), astrategy.base, addr);
+            else if (block.ebytes == 16) load(mod, dest, aligned_block_oword(block.count), astrategy.base, addr);
+            else hw_unsupported();
             break;
-        default: stub();
+        default:
+            stub();
+        }
     }
 
     if (series) {
-        if (flag.isValid())
+        VDEBUGINFO(4, primitive, gemm, "MY: loadMatrixBlock  ---: series");
+        if (flag.isValid()){
+            VDEBUGINFO(4, primitive, gemm, "MY: loadMatrixBlock  ---: series/flag.isValid()");
             state.raVFlag.unlock(flag);     /* was locked during preload */
-    } else
+        }
+    } else{
+        VDEBUGINFO(4, primitive, gemm, "MY: loadMatrixBlock  ---: else series");
         finishRegisterBlockMasking(state);
+    }
+    VDEBUGINFO(4, primitive, gemm, "MY: loadMatrixBlock  ---<<< ");
 }
 
 // Output code for storing a matrix chunk from registers.

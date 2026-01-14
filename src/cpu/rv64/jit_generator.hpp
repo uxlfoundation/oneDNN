@@ -85,6 +85,8 @@ public:
     template <typename... kernel_args_t>
     void operator()(kernel_args_t... args) const {
         using jit_kernel_func_t = void (*)(const kernel_args_t...);
+        // This const_cast is required for Clang.
+        // Clang rejects reinterpret_cast from const uint8_t* to function pointer.
         auto *fptr = reinterpret_cast<jit_kernel_func_t>(
                 const_cast<uint8_t *>(jit_ker_));
         (*fptr)(std::forward<kernel_args_t>(args)...);

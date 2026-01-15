@@ -17,7 +17,7 @@
 #ifndef CPU_RV64_JIT_PRIMITIVE_CONF_HPP
 #define CPU_RV64_JIT_PRIMITIVE_CONF_HPP
 
-#include "common/primitive_attr.hpp"
+#include "common/c_types_map.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -39,7 +39,7 @@ struct jit_1x1_conv_conf_t {
     int load_block, reduce_block;
     int bcast_block;
 
-    int load_dim, bcast_dim, reduce_dim;
+    dim_t load_dim, bcast_dim, reduce_dim;
 
     int ur, ur_tail;
     int load_loop_blk;
@@ -50,7 +50,7 @@ struct jit_1x1_conv_conf_t {
     int nb_bcast_blocking, nb_bcast_blocking_max;
     int nb_reduce_blocking;
 
-    int reduce_loop_bcast_step;
+    dim_t reduce_loop_bcast_step;
     int reduce_loop_load_step;
     int bcast_loop_bcast_step;
     int bcast_loop_output_step;
@@ -84,8 +84,10 @@ struct jit_1x1_conv_args_t {
     size_t first_last_flag;
 };
 
-#define FLAG_REDUCE_FIRST 1
-#define FLAG_REDUCE_LAST 2
+enum {
+    FLAG_REDUCE_FIRST = 1 << 0,
+    FLAG_REDUCE_LAST = 1 << 1,
+};
 
 } // namespace rv64
 } // namespace cpu

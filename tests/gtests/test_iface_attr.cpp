@@ -694,6 +694,8 @@ HANDLE_EXCEPTIONS_FOR_TEST_F(attr_test_t, DepthwiseFusion) {
             "Depthwise fusion is only supported on CPU engine");
 #if DNNL_AARCH64
     SKIP_IF(true, "Depthwise fusion is not supported on AArch64 at this time");
+#elif DNNL_RV64
+    SKIP_IF(true, "Depthwise fusion is not supported on RV64 at this time");
 #endif
 
     engine e {engine_kind, 0};

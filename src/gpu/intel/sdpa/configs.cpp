@@ -669,11 +669,10 @@ dim_t nearest_conf_seq_interval(compute::gpu_arch_t arch, dim_t head_size,
     return utils::rnd_up_pow2(seq);
 }
 
-void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
+void deserialize_config_to_gemmstone(micro::HWInformation &hwInfo,
         gemmstone::GEMMProblem &problem_kq, gemmstone::GEMMProblem &problem_vs,
-        micro::GEMMProtocol::Options &opts_kq,
-        micro::GEMMProtocol::Options &opts_vs, gemmstone::SizeParams &sizes_kq,
-        gemmstone::SizeParams &sizes_vs,
+        micro::GEMMOptions &opts_kq, micro::GEMMOptions &opts_vs,
+        gemmstone::SizeParams &sizes_kq, gemmstone::SizeParams &sizes_vs,
         const micro_ukernel_params_t &ukernel_config) {
 
     // hardware info
@@ -683,7 +682,7 @@ void deserialize_config_to_gemmstone(gemmstone::HWInformation &hwInfo,
 
     // options kq, vs
     auto deserialize_options
-            = [](micro::GEMMProtocol::Options &gemmstone_opts,
+            = [](micro::GEMMOptions &gemmstone_opts,
                       const ukernel_serialized_opts_t &serialized_opts) {
         gemmstone_opts.localB = serialized_opts.localB;
         gemmstone_opts.slmPtr = serialized_opts.slmPtr;

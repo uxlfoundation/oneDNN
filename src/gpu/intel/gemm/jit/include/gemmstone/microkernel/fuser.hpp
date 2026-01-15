@@ -14,17 +14,16 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_MICROKERNELS_FUSER_HPP
-#define GPU_MICROKERNELS_FUSER_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_FUSER_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_FUSER_HPP
 
 #include <cstdint>
 #include <vector>
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace micro {
+#include "gemmstone/config.hpp"
+
+GEMMSTONE_NAMESPACE_START
+namespace microkernel {
 
 // Markers for patch sections.
 static constexpr uint32_t sigilStart = 0xCAFEFADE;
@@ -32,17 +31,14 @@ static constexpr uint32_t sigilEnd = 0xFADECAFE;
 static constexpr const char *sigilBinary = "@_u_@";
 
 // Fuse the microkernel machine code into the program binary of a compiled host kernel.
-void fuseMicrokernel(std::vector<uint8_t> &binary,
+void fuse(std::vector<uint8_t> &binary,
         const std::vector<uint8_t> &microkernel, int id = 0);
 
 // Fusing microkernels that were embedded directly in source code.
-void fuseMicrokernels(std::vector<uint8_t> &binary, const char *source);
+void fuse(std::vector<uint8_t> &binary, const char *source);
 bool hasMicrokernels(const char *source);
 
-} /* namespace micro */
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+}
+GEMMSTONE_NAMESPACE_END
 
 #endif

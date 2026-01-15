@@ -53,7 +53,6 @@ add_subdirectory("conv/jit/v2/planner")
 endif()
 
 add_subdirectory(compute)
-add_subdirectory(microkernels)
 add_subdirectory(jit)
 
 if(DNNL_GPU_RUNTIME STREQUAL "OCL")

@@ -26,8 +26,8 @@
 #include "xpu/ocl/memory_storage.hpp"
 
 #include "gemmstone/dsl/runtime.hpp"
+#include "gemmstone/microkernel/fuser.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
-#include "gpu/intel/microkernels/fuser.hpp"
 #include "gpu/intel/ocl/device_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
 #include "gpu/intel/ocl/stream.hpp"
@@ -269,7 +269,7 @@ cl_int maybe_print_debug_info(
 
 inline status_t fuse_microkernels(cl_context context, cl_device_id device,
         xpu::ocl::wrapper_t<cl_program> &program, const char *code) {
-    if (micro::hasMicrokernels(code)) {
+    if (gemmstone::microkernel::hasMicrokernels(code)) {
         cl_int status = CL_SUCCESS;
         size_t binary_size = 0;
         OCL_CHECK(xpu::ocl::clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES,
@@ -281,7 +281,7 @@ inline status_t fuse_microkernels(cl_context context, cl_device_id device,
                 sizeof(binary_data), &binary_data, nullptr));
 
         try {
-            micro::fuseMicrokernels(binary, code);
+            gemmstone::microkernel::fuse(binary, code);
         } catch (...) { return status::runtime_error; }
 
         auto nbinary_size = binary.size();

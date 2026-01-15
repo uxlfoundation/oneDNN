@@ -14,14 +14,17 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_PROVIDER_HPP
-#define GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_PROVIDER_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_SELECTOR_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_SELECTOR_HPP
 
 #include "gemmstone/config.hpp"
 #include "gemmstone/kernel_selector.hpp"
 #include "gemmstone/kernel_evaluator.hpp"
+#include "gemmstone/microkernel/package.hpp"
+#include "gemmstone/microkernel/protocol.hpp"
 
 GEMMSTONE_NAMESPACE_START
+namespace microkernel {
 
 /* Hardware information for microkernel provider */
 struct HWInformation {
@@ -30,8 +33,21 @@ struct HWInformation {
     bool systolicAvailable;
 };
 
+struct GEMMOptions {
+    bool localA = false;
+    bool localB = false;
+    bool addToC = false;
+    bool slmPtr = false;
+    bool offsetA = false;
+    bool offsetB = false;
+    bool scaleA = false;
+    bool scaleB = false;
+
+    GEMMOptions() = default;
+};
+
 /* Main entrypoint for microkernel auto-selection */
-micro::Package selectGEMMMicrokernel(micro::GEMMProtocol protocol, HWInformation hwInfo, SizeParams sizes, const GEMMProblem &problem,
+Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes, const GEMMProblem &problem,
                                      const std::vector<StrategyRequirement> &reqs = std::vector<StrategyRequirement>(),
                                      void (*strategyAdjuster)(GEMMStrategy &strategy) = nullptr);
 
@@ -43,6 +59,7 @@ static inline int alignmentForLD(int ld)
     return 128;
 };
 
+}
 GEMMSTONE_NAMESPACE_END
 
 #endif /* header guard */

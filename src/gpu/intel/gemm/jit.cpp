@@ -485,6 +485,17 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : off_co0 = %ld", off_co0);
         VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : cmask = %d", cmask);
 
+        // CCC ???
+        int co_hostscalar_val = 0;
+        if (co->is_host_scalar()) {
+            VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : !!! co->is_host_scalar() !!!!");
+            CHECK(maybe_get_host_scalar_value(*co, co_hostscalar_val));
+        }
+        co_hostscalar = static_cast<int16_t>(-1 * co_hostscalar_val);
+        VDEBUGINFO(4, primitive, gemm, "MY execute ++++ : co_hostscalar = %d", co_hostscalar);
+        // CCC ???
+
+
     } else if (pd()->with_bias()) {
         off_co0 = types::bytes_to_elements(c_type, bias.offset());
         co = &bias;

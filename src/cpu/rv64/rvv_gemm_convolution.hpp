@@ -39,7 +39,7 @@ struct riscv_gemm_convolution_fwd_t : public primitive_t {
     struct pd_t : public cpu_convolution_fwd_pd_t {
         using cpu_convolution_fwd_pd_t::cpu_convolution_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(GEMM_IMPL_STR, riscv_gemm_convolution_fwd_t,
+        DECLARE_COMMON_PD_T("gemm:rvv", riscv_gemm_convolution_fwd_t,
                 USE_GLOBAL_SCRATCHPAD);
 
         status_t init(engine_t *engine) {

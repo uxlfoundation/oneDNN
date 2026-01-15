@@ -597,7 +597,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.CO.layout = trans_co ? MatrixLayout::T : MatrixLayout::N;
     }
 
-    // CCC ??? TODO !!!!!
+    // CCC ??? TODO !!!!! hostscalar to problem_ ?????? needed ?????
 
     problem_.sumA = (reduce_ab == sum_ab::sum_b_col);
     problem_.sumB = (reduce_ab == sum_ab::sum_a_row);

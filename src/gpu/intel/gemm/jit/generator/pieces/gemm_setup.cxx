@@ -2642,7 +2642,7 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     state.inputs.surfaceC[0] = interface.getArgumentSurfaceIfExists("C");
     state.C_count = state.inputs.C[1].isValid() ? 2 : 1;
     if (problem.usesCO()) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : problem.usesCO()- getArgumentIfExists");
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : problem.usesCO()- getArgumentIfExists about CO");
         VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : before state.inputs.CO.isInvalide = %d",(int)state.inputs.CO.isInvalid());
         state.inputs.CO = interface.getArgumentIfExists("CO");
         state.inputs.surfaceCO = interface.getArgumentSurfaceIfExists("CO");
@@ -2650,7 +2650,9 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
         VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& :       state.inputs.surfaceCO = %d",state.inputs.surfaceCO);
 
         // CCC ???
-        // state.inputs.co_hostscalar = interface.getArgumentIfExists("co_hostscalar"); ?????
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : before state.inputs.co_hostscalar.isInvalide = %d",(int)state.inputs.co_hostscalar.isInvalid());
+        state.inputs.co_hostscalar = interface.getArgumentIfExists("co_hostscalar");
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : after state.inputs.co_hostscalar.isInvalide = %d",(int)state.inputs.co_hostscalar.isInvalid());
         // CCC ???
 
     }
@@ -2954,10 +2956,10 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     claimIfValid(state.inputs.offsetBq);
 
     if (problem.usesCO()) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& TODO ");
         if (strategy.CO.base.isStateless())
             state.ra.claim(state.inputs.CO);
         state.ra.claim(state.inputs.offsetCO);
+        // CCC ???? TODO claim ????? state.inputs.co_hostscalar ????
     }
 
     if (state.useTempC)

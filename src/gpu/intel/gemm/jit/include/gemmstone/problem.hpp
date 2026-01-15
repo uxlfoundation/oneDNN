@@ -23,6 +23,11 @@
 #include "internal/utils.hpp"
 #include "gemmstone/type.hpp"
 
+
+// CCC ???
+#include "gemmstone/../../../../utils.hpp"
+// CCC ???
+
 GEMMSTONE_NAMESPACE_START
 
 // Matrix layouts in memory.
@@ -249,6 +254,13 @@ struct GEMMProblem : public CommonProblem {
     bool hasBOffsetPtr() const { return (boPtrDims > -1); }
     bool aOffsetHostScalar() const {return aoPtrDims == -1 && aOffset == ABOffset::Calc; }
     bool bOffsetHostScalar() const {return boPtrDims == -1 && bOffset == ABOffset::Calc; }
+    // CCC ???
+    // ??????? also see Simon's comment to my A/B ZP PR ???????
+    bool cOffsetHostScalar() const {
+        bool temphost = dnnl::impl::gpu::intel::gpu_utils::dev_getenv("co_host", false);
+        return temphost ; /* ?????????? maybe by cOffset ???????? maybe temp ?????? */
+    }
+    // CCC ???
 
     bool aScale2D() const { return (asPtrDims >= 2); }
     bool bScale2D() const { return (bsPtrDims >= 2); }

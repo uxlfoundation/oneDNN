@@ -68,6 +68,8 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
 
     auto problem = pd()->kernel_desc()->problem();
 
+    VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; co_hostscalar = %d", co_hostscalar);
+
     if (!last_k_block) {
         VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; flags |= gemmstone::FlagNonfinalKBlock");
         flags |= gemmstone::FlagNonfinalKBlock;
@@ -151,6 +153,14 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             arg_list.set(argn++, ldco);
         }
     }
+
+    // CCC ???
+    if (problem->cOffsetHostScalar()) {
+        VDEBUGINFO(4, primitive, gemm, "MY: launch_nocopy --- ; arg_list.set(argn++, co_hostscalar)");
+        arg_list.set(argn++, co_hostscalar);
+    }
+    // CCC ???
+
     if (nocopy_info()->needsTempC()) arg_list.set(argn++, *c_temp);
     if (problem->postOps.cStochasticRound) {
         arg_list.set(argn++, *sround_seed);

@@ -2642,13 +2642,17 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
     state.inputs.surfaceC[0] = interface.getArgumentSurfaceIfExists("C");
     state.C_count = state.inputs.C[1].isValid() ? 2 : 1;
     if (problem.usesCO()) {
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : problem.usesCO()");
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : state.inputs.CO.isInvalide = %d",(int)state.inputs.CO.isInvalid());
-        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : state.inputs.surfaceCO = %d",state.inputs.surfaceCO);
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : problem.usesCO()- getArgumentIfExists");
+        VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : before state.inputs.CO.isInvalide = %d",(int)state.inputs.CO.isInvalid());
         state.inputs.CO = interface.getArgumentIfExists("CO");
         state.inputs.surfaceCO = interface.getArgumentSurfaceIfExists("CO");
         VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& : after state.inputs.CO.isInvalide = %d",(int)state.inputs.CO.isInvalid());
         VDEBUGINFO(4, primitive, gemm, "MY: gemmInitInterface &&&&&&& :       state.inputs.surfaceCO = %d",state.inputs.surfaceCO);
+
+        // CCC ???
+        // state.inputs.co_hostscalar = interface.getArgumentIfExists("co_hostscalar"); ?????
+        // CCC ???
+
     }
     if (state.useTempC) {
         state.inputs.tempC = interface.getArgumentIfExists("temp_C");

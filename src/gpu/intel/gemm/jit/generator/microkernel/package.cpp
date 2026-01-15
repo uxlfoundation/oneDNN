@@ -14,30 +14,25 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "entrance_agent.hpp"
-
-#include <array>
-
+#include "gemmstone/microkernel/package.hpp"
 #include "ngen_decoder.hpp"
-#include "npack/neo_packager.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace micro {
+GEMMSTONE_NAMESPACE_START
+namespace microkernel {
 
-EntranceAgent::Status EntranceAgent::scan(Package &package) {
+using namespace ngen;
+
+Package::Status Package::finalize() {
     using namespace ngen;
 
     auto status = Status::Success;
 
-    auto product = npack::decodeHWIPVersion(package.gmdidCompat);
+    auto product = npack::decodeHWIPVersion(gmdidCompat);
     auto hw = getCore(product.family);
 
     if (hw == HW::Unknown) return Status::UnsupportedHW;
 
-    Decoder decoder(hw, package.binary);
+    Decoder decoder(hw, binary);
     DependencyRegion dstRegion;
 
     /* Track clobbered registers at full register granularity for simplicity. */
@@ -46,7 +41,7 @@ EntranceAgent::Status EntranceAgent::scan(Package &package) {
     for (; !decoder.done(); decoder.advance()) {
         // Check for systolic usage.
         auto op = decoder.opcode();
-        package.systolic |= (op == Opcode::dpas || op == Opcode::dpasw);
+        systolic |= (op == Opcode::dpas || op == Opcode::dpasw);
 
         // Get destination region and add to clobbers.
         if (decoder.getOperandRegion(dstRegion, -1)) {
@@ -60,7 +55,7 @@ EntranceAgent::Status EntranceAgent::scan(Package &package) {
     }
 
     // Group clobber array into consecutive ranges.
-    package.clobbers.clear();
+    clobbers.clear();
 
     int regBytes = GRF::bytes(hw);
     int base = 0, len = 0;
@@ -71,7 +66,7 @@ EntranceAgent::Status EntranceAgent::scan(Package &package) {
             else
                 base = j, len = 1;
         } else if (len > 0) {
-            package.clobbers.emplace_back(
+            clobbers.emplace_back(
                     RegisterRange(base * regBytes, len * regBytes));
             len = 0;
         }
@@ -79,34 +74,31 @@ EntranceAgent::Status EntranceAgent::scan(Package &package) {
 
     // Capture GRF usage from clobbers and arguments.
     uint32_t last = 0;
-    if (!package.clobbers.empty()) {
-        auto &final = package.clobbers.back();
+    if (!clobbers.empty()) {
+        auto &final = clobbers.back();
         last = final.boffset + final.blen;
     }
-    for (const auto &argument : package.arguments)
+    for (const auto &argument : arguments)
         for (auto &range : argument.location)
             last = std::max(last, range.boffset + range.blen);
 
-    package.grfMin = (last + regBytes - 1) / regBytes;
+    grfMin = (last + regBytes - 1) / regBytes;
 
     // Generate LUID from hash of kernel. Later, the cataloguer can update it in case of collisions.
     uint32_t luid = 0;
     uint32_t multiplier = 1357;
 
-    auto *u32ptr = (const uint32_t *)package.binary.data();
-    for (size_t i = 0; i < (package.binary.size() >> 2); i++) {
+    auto *u32ptr = (const uint32_t *)binary.data();
+    for (size_t i = 0; i < (binary.size() >> 2); i++) {
         luid ^= u32ptr[i] * multiplier;
         multiplier += 2;
         luid = (luid << 3) | (luid >> 29);
     }
 
-    package.luid = luid;
+    this->luid = luid;
 
     return status;
 }
 
-} /* namespace micro */
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+}
+GEMMSTONE_NAMESPACE_END

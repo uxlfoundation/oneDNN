@@ -14,16 +14,15 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_MICROKERNELS_ELF_HPP
-#define GPU_MICROKERNELS_ELF_HPP
+#ifndef GEMMSTONE_GENERATOR_MICROKERNEL_ELF_HPP
+#define GEMMSTONE_GENERATOR_MICROKERNEL_ELF_HPP
 
 #include <cstdint>
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace micro {
+#include "gemmstone/config.hpp"
+
+GEMMSTONE_NAMESPACE_START
+namespace microkernel {
 
 enum {
     ELFMagic = 0x464C457F, // '\x7FELF'
@@ -82,10 +81,7 @@ struct SectionHeader {
     uint64_t entrySize;
 };
 
-} /* namespace micro */
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+}
+GEMMSTONE_NAMESPACE_END
 
 #endif

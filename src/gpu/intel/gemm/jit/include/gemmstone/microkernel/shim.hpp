@@ -14,35 +14,32 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_MICROKERNELS_ENTRANCE_AGENT_HPP
-#define GPU_MICROKERNELS_ENTRANCE_AGENT_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_SHIM_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_SHIM_HPP
 
-#include "package.hpp"
+#include <string>
 
-// The entrance agent is a stateless class that analyzes an incoming package from the microkernel provider,
-//   deducing information from the raw microkernel binary.
+#include "gemmstone/microkernel/package.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace micro {
+GEMMSTONE_NAMESPACE_START
+namespace microkernel {
 
-class EntranceAgent {
-public:
-    enum class Status {
-        Success,
-        UncertainClobbers,
-        UnsupportedHW,
-    };
 
-    static Status scan(Package &package);
+enum class HostLanguage { None, OpenCL_C, SYCL, vISA };
+
+struct ShimOptions {
+    std::string decorator;
+    int subgroupSize = 0;
+    bool copyScalarArgs = true;
+    bool copyTensorArgs = false;
+    bool useTileOps = false;
+    uint32_t microkernelID = 0;
 };
 
-} /* namespace micro */
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+std::string generateShim(const Package &package, HostLanguage language,
+        const ShimOptions &options = ShimOptions());
+
+}
+GEMMSTONE_NAMESPACE_END
 
 #endif

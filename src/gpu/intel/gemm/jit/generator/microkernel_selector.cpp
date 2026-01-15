@@ -18,13 +18,15 @@
 
 #define BINARY_OUTPUT
 
-#include "gemmstone/microkernel_provider.hpp"
+#include "gemmstone/microkernel_selector.hpp"
 #include "gemmstone/generator.hpp"
 #include "gemmstone/kernel_selector.hpp"
 #include "gemmstone/strategy_parser.hpp"
+#include "ngen_decoder.hpp"
 #include "npack/neo_packager.hpp"
 
 GEMMSTONE_NAMESPACE_START
+namespace microkernel {
 
 #define _CATALOG_ CatalogMMR
 #include "selector/db/ukernel_mmr.db"
@@ -42,25 +44,83 @@ GEMMSTONE_NAMESPACE_START
 #undef _CATALOG_
 
 using namespace ngen;
-using namespace micro;
-
 
 static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool localA, bool localB,
                                            GEMMProblem &problem, HWInformation hwInfo, SizeParams sizes,
                                            const std::vector<StrategyRequirement> &reqs);
 
-Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeParams sizes,
-                              const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
-                              void (*strategyAdjuster)(GEMMStrategy &strategy))
+std::vector<Protocol::Argument> arguments(const GEMMOptions &o) {
+    auto In = Protocol::Argument::In;
+    auto Out = Protocol::Argument::Out;
+
+    auto LocalPointer = StructuredType::LocalPointer;
+    auto GlobalPointer = StructuredType::GlobalPointer;
+    auto s32 = StructuredType::s32;
+
+    static Protocol::Argument args[] = {
+            {"a", In, GlobalPointer},
+            {"lda", In, s32},
+            {"b", In, GlobalPointer},
+            {"ldb", In, s32},
+            {"c", Out, 2},
+            {"m", In, s32},
+            {"n", In, s32},
+            {"k", In, s32},
+            {"i0", In, s32},
+            {"j0", In, s32},
+            {"h0", In, s32},
+            {"local_id_m", In, s32},
+            {"local_id_n", In, s32},
+    };
+    std::vector<Protocol::Argument> argsV
+            = {args, args + sizeof(args) / sizeof(args[0])};
+
+    if (o.localA) argsV[0].stype.format = LocalPointer;
+    if (o.localB) argsV[2].stype.format = LocalPointer;
+    if (o.addToC) argsV[4].direction = Protocol::Argument::InOut;
+    if (o.slmPtr) argsV.push_back({"slm", In, LocalPointer});
+    if (o.scaleA) argsV.push_back({"a_scale", In, GlobalPointer});
+    if (o.offsetA) argsV.push_back({"a_offset", In, GlobalPointer});
+    if (o.offsetA || o.scaleA) argsV.push_back({"ldaq", In, s32});
+    if (o.scaleB) argsV.push_back({"b_scale", In, GlobalPointer});
+    if (o.offsetB) argsV.push_back({"b_offset", In, GlobalPointer});
+    if (o.offsetB || o.scaleB) { argsV.push_back({"ldbq", In, s32}); }
+
+    return argsV;
+}
+
+std::vector<Protocol::Setting> settings() {
+    static Protocol::Setting settings[] = {
+            {"sg_tile_m"},
+            {"sg_tile_n"},
+            {"wg_tile_m"},
+            {"wg_tile_n"},
+            {"sg_per_wg_m"},
+            {"sg_per_wg_n"},
+            {"sg_per_wg_k"},
+            {"slm_size"},
+    };
+    static std::vector<Protocol::Setting> settingsV
+            = {settings, settings + sizeof(settings) / sizeof(settings[0])};
+    return settingsV;
+}
+
+Protocol makeProtocol(const GEMMOptions &o) {
+    return {"ugemm", arguments(o), settings()};
+}
+
+Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
+                   const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
+                   void (*strategyAdjuster)(GEMMStrategy &strategy))
 {
-    bool localA = protocol.options().localA;
-    bool localB = protocol.options().localB;
-    bool beta1 = protocol.options().addToC;
-    bool slmPtr = protocol.options().slmPtr;
-    bool scaleA = protocol.options().scaleA;
-    bool scaleB = protocol.options().scaleB;
-    bool offsetA = protocol.options().offsetA;
-    bool offsetB = protocol.options().offsetB;
+    bool localA = options.localA;
+    bool localB = options.localB;
+    bool beta1 = options.addToC;
+    bool slmPtr = options.slmPtr;
+    bool scaleA = options.scaleA;
+    bool scaleB = options.scaleB;
+    bool offsetA = options.offsetA;
+    bool offsetB = options.offsetB;
 
     bool transC = !isColMajor(problem_.C.layout);
 
@@ -233,12 +293,13 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
         problem.B.packSize = strategy.unroll[LoopN];
 
     /* Generate microkernel */
-#define ARCH_DISPATCH(arch)                                                         \
-    case HW::arch: {                                                                \
-        Generator<HW::arch> generator;                                    \
-        generator.setStepping(stepping);                                            \
-        return generator.gemmMicrokernelPackage(problem, strategy, interface,       \
-                                                protocol, hwInfo.gmdid, transC);    \
+#define ARCH_DISPATCH(arch)                                                          \
+    case HW::arch: {                                                                 \
+        Generator<HW::arch> generator;                                               \
+        generator.setStepping(stepping);                                             \
+        return generator.gemmMicrokernelPackage(problem, strategy, interface,        \
+                                                makeProtocol(options), hwInfo.gmdid,\
+                                                transC);                             \
     }
 
     switch (hw) {
@@ -377,5 +438,5 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     return true;
 }
 
+}
 GEMMSTONE_NAMESPACE_END
-

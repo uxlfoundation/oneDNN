@@ -14,45 +14,39 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_MICROKERNELS_PACKAGE_HPP
-#define GPU_MICROKERNELS_PACKAGE_HPP
+#ifndef GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_PACKAGE_HPP
+#define GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_PACKAGE_HPP
 
-#include <array>
-#include <cstdint>
-#include <stdexcept>
-#include <string>
-#include <vector>
+#include "gemmstone/microkernel/protocol.hpp"
 
-#include "protocol.hpp"
-
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace micro {
+GEMMSTONE_NAMESPACE_START
+namespace microkernel {
 
 struct Argument;
 struct RegisterRange;
 struct Setting;
 
 // Microkernel package.
-//
-// Fields marked [*] are automatically filled in by the entrance agent.
+// Fields marked [*] are automatically filled in by finalize().
 struct Package {
+
+    // Information on a single configuration setting.
+    struct Setting {
+        std::string name; // Setting name
+        int value; // Setting numeric value
+    };
+
     /* Identifiers */
     Protocol protocol; // Protocol implemented by microkernel
     uint64_t luid; // Unique package ID for use in catalog [*]
-    std::vector<uint8_t>
-            providerID; // Optional free-form identifier for use by microkernel provider
+    std::vector<uint8_t> providerID; // Optional free-form identifier for use by microkernel provider
 
     /* Code */
     std::vector<uint8_t> binary; // Raw binary blob
 
     /* Register usage */
-    std::vector<Argument>
-            arguments; // Input and output arguments for microkernel
-    std::vector<RegisterRange>
-            clobbers; // Registers clobbered by microkernel (includes arguments) [*]
+    std::vector<Argument> arguments; // Input and output arguments for microkernel
+    std::vector<RegisterRange> clobbers; // Registers clobbered by microkernel (includes arguments) [*]
 
     /* Requirements */
     uint32_t gmdidCompat; // Compatible GMDID
@@ -61,10 +55,25 @@ struct Package {
     bool systolic = false; // Does microkernel use systolic array? [*]
 
     /* Configuration */
-    std::vector<Setting>
-            settings; // Description of this microkernel's configuration (WG size, tile size, etc.) for host kernel to interpret
+    std::vector<Setting> settings; // Description of this microkernel's configuration (WG size, tile size, etc.) for host kernel to interpret
 
-    inline int getSetting(const char *name) const;
+    int getSetting(const char *name) const {
+        for (auto &setting : settings)
+            if (setting.name == name) return setting.value;
+
+        throw std::runtime_error(
+                std::string("Microkernel package does not provide requested setting: ")
+                                 + name);
+    }
+
+    enum class Status {
+        Success,
+        UncertainClobbers,
+        UnsupportedHW,
+    };
+
+    // Analyzes the package and deduces information from the raw microkernel binary.
+    Status finalize();
 };
 
 // Contiguous span of register space.
@@ -122,25 +131,7 @@ struct Argument {
     TensorConfig sizes; // Tensor size, for tensor arguments
 };
 
-// Information on a single configuration setting.
-struct Setting {
-    std::string name; // Setting name
-    int value; // Setting numeric value
-};
-
-int Package::getSetting(const char *name) const {
-    for (auto &setting : settings)
-        if (setting.name == name) return setting.value;
-    throw std::runtime_error(
-            std::string(
-                    "Microkernel package does not provide requested setting: ")
-            + name);
 }
+GEMMSTONE_NAMESPACE_END
 
-} /* namespace micro */
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
-
-#endif
+#endif /* header guard */

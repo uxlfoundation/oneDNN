@@ -158,13 +158,13 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     syncall();
 }
 
-static inline micro::StructuredType::Type microType(Type T);
+static inline microkernel::StructuredType::Type microType(Type T);
 
 template <HW hw>
-micro::Package Generator<hw>::gemmMicrokernelPackage(const GEMMProblem &problem_, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_,
-                                                     micro::GEMMProtocol protocol, uint32_t gmdid, bool transposeC)
+microkernel::Package Generator<hw>::gemmMicrokernelPackage(const GEMMProblem &problem_, const GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_,
+                                                     const microkernel::Protocol &protocol, uint32_t gmdid, bool transposeC)
 {
-    using namespace micro;
+    using namespace microkernel;
     Package package;
 
     auto problem = problem_;
@@ -285,14 +285,14 @@ micro::Package Generator<hw>::gemmMicrokernelPackage(const GEMMProblem &problem_
 
     package.barrierCount = interface.getBarrierCount();
 
-    EntranceAgent::scan(package);
+    package.finalize();
 
     return package;
 }
 
-static inline micro::StructuredType::Type microType(Type T)
+static inline microkernel::StructuredType::Type microType(Type T)
 {
-    using ST = micro::StructuredType::Type;
+    using ST = microkernel::StructuredType::Type;
 #define CASE(x) case Type::x: return ST::x;
     switch (T) {
         CASE(f64)

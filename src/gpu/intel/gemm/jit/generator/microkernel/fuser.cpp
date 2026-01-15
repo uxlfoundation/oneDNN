@@ -20,18 +20,15 @@
 #include <stdexcept>
 #include <vector>
 
-#include "elf.hpp"
-#include "fuser.hpp"
+#include "generator/microkernel/elf.hpp"
+#include "gemmstone/microkernel/fuser.hpp"
 
-namespace dnnl {
-namespace impl {
-namespace gpu {
-namespace intel {
-namespace micro {
+GEMMSTONE_NAMESPACE_START
+namespace microkernel {
 
 static void fixupJumpTargets(uint8_t *start, size_t len, ptrdiff_t adjust);
 
-void fuseMicrokernel(std::vector<uint8_t> &binary,
+void fuse(std::vector<uint8_t> &binary,
         const std::vector<uint8_t> &microkernel, long id) {
     auto base = binary.data();
     auto bytes = binary.size();
@@ -170,10 +167,10 @@ void fuseMicrokernel(std::vector<uint8_t> &binary,
     std::swap(binary, newBinary);
 
     // Tail-recurse to handle any further instances of this microkernel
-    fuseMicrokernel(binary, microkernel, id);
+    fuse(binary, microkernel, id);
 }
 
-void fuseMicrokernels(std::vector<uint8_t> &binary, const char *source) {
+void fuse(std::vector<uint8_t> &binary, const char *source) {
     std::vector<uint8_t> microkernel;
     const auto sigilLen = strlen(sigilBinary);
 
@@ -192,7 +189,7 @@ void fuseMicrokernels(std::vector<uint8_t> &binary, const char *source) {
             microkernel.push_back(static_cast<uint8_t>(
                     (toNybble(s[0]) << 4) | toNybble(s[1])));
         }
-        fuseMicrokernel(binary, microkernel, id);
+        fuse(binary, microkernel, id);
     }
 }
 
@@ -225,8 +222,5 @@ bool hasMicrokernels(const char *source) {
     return std::strstr(source, sigilBinary);
 }
 
-} /* namespace micro */
-} // namespace intel
-} // namespace gpu
-} // namespace impl
-} // namespace dnnl
+}
+GEMMSTONE_NAMESPACE_END

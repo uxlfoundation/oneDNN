@@ -110,6 +110,35 @@ Protocol makeProtocol(const GEMMOptions &o) {
     return {"ugemm", arguments(o), settings()};
 }
 
+InterfaceHandler generateInterface(Core hw, bool localA, bool localB,
+                                   bool slmPtr, bool scaleA, bool offsetA,
+                                   bool scaleB, bool offsetB) {
+    /* Set up arguments for microkernel */
+    InterfaceHandler interface(hw);
+
+    interface.setArgumentBase(ngen::GRF(8));
+    interface.newArgument("A", localA ? ExternalArgumentType::LocalPtr : ExternalArgumentType::GlobalPtr);
+    interface.newArgument("lda", DataType::d);
+    interface.newArgument("B", localB ? ExternalArgumentType::LocalPtr : ExternalArgumentType::GlobalPtr);
+    interface.newArgument("ldb", DataType::d);
+    interface.newArgument("m", DataType::d);
+    interface.newArgument("n", DataType::d);
+    interface.newArgument("k", DataType::d);
+    interface.newArgument("i0", DataType::d);
+    interface.newArgument("j0", DataType::d);
+    interface.newArgument("h0", DataType::d);
+    interface.newArgument("local_id_m", DataType::d);
+    interface.newArgument("local_id_n", DataType::d);
+    if (slmPtr)            interface.newArgument("slm_base", ExternalArgumentType::LocalPtr);
+    if (scaleA)            interface.newArgument("a_scale_ptr", ExternalArgumentType::GlobalPtr);
+    if (offsetA)           interface.newArgument("ao_ptr", ExternalArgumentType::GlobalPtr);
+    if (scaleA || offsetA) interface.newArgument("ldaq", DataType::d);
+    if (scaleB)            interface.newArgument("b_scale_ptr", ExternalArgumentType::GlobalPtr);
+    if (offsetB)           interface.newArgument("bo_ptr", ExternalArgumentType::GlobalPtr);
+    if (scaleB || offsetB) interface.newArgument("ldbq", DataType::d);
+    return interface;
+}
+
 Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
                    const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
                    void (*strategyAdjuster)(GEMMStrategy &strategy), SelectionObserver *observer)
@@ -193,6 +222,11 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     /* Locate appropriate kernel catalog */
     if (localA && localB)
         stub("Unsupported protocol");
+
+    /* Generate interface */
+    InterfaceHandler interface = generateInterface(hw, localA, localB,
+                                                  slmPtr, scaleA, offsetA,
+                                                  scaleB, offsetB);
 
     kcatalog::Catalog catalog = [&]() {
         if (localA)
@@ -300,31 +334,6 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
         result.append(unparseStrategy(hw, problem, strategy));
         std::cout << "Actual kernel: " << result << std::endl;
     }
-
-    /* Set up arguments for microkernel */
-    InterfaceHandler interface(hw);
-
-    interface.setArgumentBase(ngen::GRF(8));
-    interface.newArgument("A", localA ? ExternalArgumentType::LocalPtr : ExternalArgumentType::GlobalPtr);
-    interface.newArgument("lda", DataType::d);
-    interface.newArgument("B", localB ? ExternalArgumentType::LocalPtr : ExternalArgumentType::GlobalPtr);
-    interface.newArgument("ldb", DataType::d);
-    interface.newArgument("m", DataType::d);
-    interface.newArgument("n", DataType::d);
-    interface.newArgument("k", DataType::d);
-    interface.newArgument("i0", DataType::d);
-    interface.newArgument("j0", DataType::d);
-    interface.newArgument("h0", DataType::d);
-    interface.newArgument("local_id_m", DataType::d);
-    interface.newArgument("local_id_n", DataType::d);
-    if (kParallelLocal)    interface.newArgument("local_id_k", DataType::d);
-    if (slmPtr)            interface.newArgument("slm_base", ExternalArgumentType::LocalPtr);
-    if (scaleA)            interface.newArgument("a_scale_ptr", ExternalArgumentType::GlobalPtr);
-    if (offsetA)           interface.newArgument("ao_ptr", ExternalArgumentType::GlobalPtr);
-    if (scaleA || offsetA) interface.newArgument("ldaq", DataType::d);
-    if (scaleB)            interface.newArgument("b_scale_ptr", ExternalArgumentType::GlobalPtr);
-    if (offsetB)           interface.newArgument("bo_ptr", ExternalArgumentType::GlobalPtr);
-    if (scaleB || offsetB) interface.newArgument("ldbq", DataType::d);
 
     /* Update problem from strategy */
     if (isPacked(problem.A.layout))

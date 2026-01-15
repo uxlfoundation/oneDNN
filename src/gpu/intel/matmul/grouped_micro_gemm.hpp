@@ -67,14 +67,13 @@ struct grouped_micro_gemm_t : public primitive_t {
         int sg_size_ = 0;
         bool use_systolic_ukernel_ = true;
         bool use_256_grf_ = false;
-        data_type_t src_dt_ = data_type::undef;
-        data_type_t dst_dt_ = data_type::undef;
-        data_type_t wei_dt_ = data_type::undef;
         dim_t sg_per_wg_m_ = 0;
         dim_t sg_per_wg_n_ = 0;
         dim_t sg_tile_m_ = 0;
         dim_t sg_tile_n_ = 0;
         dim_t ngroups_ = 0;
+        std::array<dim_t, 2> src_group_sizes_ = {0, 0};
+        std::array<dim_t, 3> wei_group_sizes_ = {0, 0, 0};
 
     private:
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;

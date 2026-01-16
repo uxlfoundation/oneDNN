@@ -16,6 +16,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cassert>
+
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
@@ -254,6 +256,9 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
     CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, src_type, wei_type, false,
             false, brgemm_row_major, alpha, vbeta, jcp_.LDA, jcp_.LDB, jcp_.LDC,
             vbrgM, vN, vK, strides_ptr));
+
+    // FIXME: use_uker is currently always false. We should add support or
+    // remove the dead code.
     brgattr.use_uker = jcp_.use_uker;
     brgattr.use_interleave_stores = jcp_.use_interleave_stores;
     brgattr.hint_prefetching = jcp_.hint_prefetching;
@@ -336,15 +341,15 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
 
     const auto adj_M = nstl::max(jcp_.M, jcp_.M_tail);
 
+    // FIXME: use_uker is currently always false. We should add support or
+    // remove the dead code.
+    //
     // 1. The unrolled kernel can be used for exec_trans and exec_base.
     // For exec_base it makes sense to use unrolled kernel only if
     // there is no padding by width.
     // 2. For exec_trans block by kw is always KW
-    // 3. 'false' is used intentionally to disable the condition, ensuring that
-    // the assert fails only when jcp_.use_uker is true, regardless of exec_type.
-    assert(IMPLICATION(jcp_.use_uker,
-            false && one_of(jcp_.exec_type, exec_base, exec_trans)));
-    assert(IMPLICATION(jcp_.use_interleave_stores, jcp_.use_uker));
+    assert(!jcp_.use_uker);
+    assert(!jcp_.use_interleave_stores);
 
     bs_c = 0;
 
@@ -440,6 +445,8 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             * ((jcp_.exec_type == exec_trans && jcp_.kh_sets > 1) ? 0 : 1);
     wei_kw_offset = static_cast<dim_t>(wei_dsz) * wei_kw_stride;
 
+    // FIXME: use_uker is currently always false. We should add support or
+    // remove the dead code.
     if (jcp_.use_uker) {
 
         assert(KD % KD_BLOCK == 0);

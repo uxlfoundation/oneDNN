@@ -13,12 +13,12 @@
 TBD
 
 # Functionality
-##Common
+## Common
 
 ## Functional API
 * Introduced destination tensor [dynamic quantization] in matmul primitive following Open Compute Microscaling (MX) formats specification. See [MXFP8 matmul tutorial] for quick introduction into MX-capabilities in oneDNN.
 * Introduced support for NVFP4 quantization scheme. The changes include support for `fp8_e4m3` grouped scales and dynamic quantization support for destination tensor with NVFP4-specific formula for scales computation.
-* Introduced support for dropout as a primitive attribute for matmul, softmax and eltwise primitives MFDNN-14090
+* Introduced support for dropout as a primitive attribute for matmul, softmax and eltwise primitives.
 
 [dynamic quantization]: https://uxlfoundation.github.io/oneDNN/v3.11/dev_guide_attributes_quantization.html#dynamic-quantization
 [MXFP8 matmul tutorial]: https://uxlfoundation.github.io/oneDNN/v3.11/page_mxfp_matmul_cpp.html#doxid-mxfp-matmul-cpp

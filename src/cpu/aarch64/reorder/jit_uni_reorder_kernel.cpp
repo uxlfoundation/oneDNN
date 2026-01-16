@@ -96,8 +96,8 @@ status_t jit_uni_reorder_kernel_f32_t::create_kernel() {
                                  : offsetof(call_param_t, x)
 #define TAIL_PARAM(x) abi_param1, offsetof(tail_call_param_t, x)
 
-bool jit_uni_reorder_kernel_f32_t::simple_impl_desc_init(
-        const prb_t &prb, simple_impl_desc_t *desc) {
+bool jit_uni_reorder_kernel_f32_t::impl_desc_init(
+        const prb_t &prb, impl_desc_t *desc) {
     const int ndims = prb.ndims;
 
     int ndims_full_unroll = 0;
@@ -166,8 +166,8 @@ bool jit_uni_reorder_kernel_f32_t::applicable(const prb_t &p) {
             && utils::one_of(p.otype, f32, f16, bf16, s32, data_type::s8, u8)
             && utils::everyone_is(0, p.ioff, p.ooff) /* do we need this? */
             && utils::one_of(p.beta, 0.f, 1.f) /* anything else? */
-            && simple_impl_desc_init(p, nullptr) && prb_has_small_strides(p)
-            && bf16_ok && IMPLICATION(is_f16, f16_ok);
+            && impl_desc_init(p, nullptr) && prb_has_small_strides(p) && bf16_ok
+            && IMPLICATION(is_f16, f16_ok);
 
     return ok;
 }
@@ -1334,16 +1334,10 @@ void jit_uni_reorder_kernel_f32_t::process_unroll_generic(
 
 void jit_uni_reorder_kernel_f32_t::compute_ker(
         const int ndims, const int len_unroll, const bool tail_processing) {
-    bool optimized = false;
-    optimized = optimized || process_unroll_tr8x8(ndims, len_unroll)
-            || process_unroll_tr4x8(ndims, len_unroll);
+    if (process_unroll_tr8x8(ndims, len_unroll)) return;
+    if (process_unroll_tr4x8(ndims, len_unroll)) return;
 
-    if (!optimized) process_unroll_generic(ndims, len_unroll, tail_processing);
-}
-
-void jit_uni_reorder_kernel_f32_t::loop_begin(Label &l, XReg reg_cnt, int len) {
-    mov(reg_cnt, len);
-    L(l);
+    process_unroll_generic(ndims, len_unroll, tail_processing);
 }
 
 void jit_uni_reorder_kernel_f32_t::check_if_this_is_last_chunk(
@@ -1447,67 +1441,7 @@ void jit_uni_reorder_kernel_f32_t::finalize_tail_loop(int i_step, int o_step,
     }
 }
 
-void jit_uni_reorder_kernel_f32_t::loop_end(Label &l, XReg reg_cnt, int len,
-        int i_step, int o_step, int s_step, int c_step,
-        const int curr_node_id) {
-    add_imm(reg_off_in_, reg_off_in_, i_step * itype_sz_, X_TMP_0);
-    add_imm(reg_off_out_, reg_off_out_, o_step * otype_sz_, X_TMP_0);
-    add_imm(x_ptr_in_off, x_ptr_in_off, i_step * itype_sz_, X_TMP_0);
-    add_imm(x_ptr_out_off, x_ptr_out_off, o_step * otype_sz_, X_TMP_0);
-
-    if (prb_.src_scale_type == scale_type_t::MANY)
-        add_imm(x_ptr_src_scale_off, x_ptr_src_scale_off, s_step * stype_sz_,
-                X_TMP_0);
-    if (prb_.dst_scale_type == scale_type_t::MANY)
-        add_imm(x_ptr_dst_scale_off, x_ptr_dst_scale_off, s_step * stype_sz_,
-                X_TMP_0);
-
-    if (compensation_needed_) {
-        add_imm(reg_off_comp_, reg_off_comp_, c_step * sizeof(int32_t),
-                X_TMP_0);
-        add_imm(x_ptr_comp_off, x_ptr_comp_off, c_step * sizeof(int32_t),
-                X_TMP_0);
-    }
-
-    subs(reg_cnt, reg_cnt, 1);
-    b(NE, l);
-
-    if (prb_.tail(curr_node_id) != 0) {
-        Label if_end;
-
-        // On the stack should be an information if node
-        // was processed with tail or not.
-        ldr(X_TMP_0, post_ptr(X_SP, X_TMP_0.getBit() / 8));
-
-        cmp(X_TMP_0, with_tail_info_);
-        b(NE, if_end);
-        finalize_tail_loop(i_step, o_step, s_step, c_step, curr_node_id);
-        L(if_end);
-    }
-
-    // Restore offset to initial values. It means before
-    // loop execution.
-    sub_imm(reg_off_in_, reg_off_in_, len * i_step * itype_sz_, X_TMP_0);
-    sub_imm(reg_off_out_, reg_off_out_, len * o_step * otype_sz_, X_TMP_0);
-    sub_imm(x_ptr_in_off, x_ptr_in_off, len * i_step * itype_sz_, X_TMP_0);
-    sub_imm(x_ptr_out_off, x_ptr_out_off, len * o_step * otype_sz_, X_TMP_0);
-
-    if (prb_.src_scale_type == scale_type_t::MANY)
-        sub_imm(x_ptr_src_scale_off, x_ptr_src_scale_off,
-                len * s_step * stype_sz_, X_TMP_0);
-    if (prb_.dst_scale_type == scale_type_t::MANY)
-        sub_imm(x_ptr_dst_scale_off, x_ptr_dst_scale_off,
-                len * s_step * stype_sz_, X_TMP_0);
-    if (compensation_needed_) {
-        sub_imm(reg_off_comp_, reg_off_comp_, len * c_step * sizeof(int32_t),
-                X_TMP_0);
-        sub_imm(x_ptr_comp_off, x_ptr_comp_off, len * c_step * sizeof(int32_t),
-                X_TMP_0);
-    }
-}
-
-void jit_uni_reorder_kernel_f32_t::compute_blk_ker(
-        const simple_impl_desc_t &desc) {
+void jit_uni_reorder_kernel_f32_t::compute_blk_ker(const impl_desc_t &desc) {
     static constexpr bool with_tail_processing = true;
     Label no_last_chunk, end_label;
     int omp_ndims = prb_.full_ndims - prb_.ndims;
@@ -1531,7 +1465,7 @@ void jit_uni_reorder_kernel_f32_t::compute_blk_ker(
     L(end_label);
 }
 
-void jit_uni_reorder_kernel_f32_t::create_loops(const simple_impl_desc_t &desc,
+void jit_uni_reorder_kernel_f32_t::create_loops(const impl_desc_t &desc,
         const std::array<const XReg, 3> &reg_cnt, int jit_loop) {
     assert(jit_loop <= ndims_jit_loop_max);
 
@@ -1546,6 +1480,7 @@ void jit_uni_reorder_kernel_f32_t::create_loops(const simple_impl_desc_t &desc,
         const bool curr_node_has_tail = prb_.tail(curr_node_id) != 0;
         Label loop, if_no_tail, if_end;
 
+        // Loop begin
         if (curr_node_has_tail) {
             const size_t reg_bytes = X_TMP_0.getBit() / 8;
             if (prb_.nodes[curr_node_id].is_parent_empty()) {
@@ -1591,24 +1526,83 @@ void jit_uni_reorder_kernel_f32_t::create_loops(const simple_impl_desc_t &desc,
         } else if (curr_node_has_tail) {
             L(loop);
         } else {
-            loop_begin(loop, reg_loop_cnt, node_size);
+            mov(reg_loop_cnt, node_size);
+            L(loop);
         }
 
+        // Loop body
         create_loops(desc, reg_cnt, jit_loop - 1);
 
-        loop_end(loop, reg_loop_cnt, node_size,
-                prb_.is(curr_node_id) * unroll_factor,
-                prb_.os(curr_node_id) * unroll_factor,
-                prb_.ss(curr_node_id) * unroll_factor,
-                prb_.cs(curr_node_id) * unroll_factor, curr_node_id);
+        // Loop end
+        XReg reg_cnt = reg_loop_cnt;
+        int len = node_size;
+        int i_step = prb_.is(curr_node_id) * unroll_factor;
+        int o_step = prb_.os(curr_node_id) * unroll_factor;
+        int s_step = prb_.ss(curr_node_id) * unroll_factor;
+        int c_step = prb_.cs(curr_node_id) * unroll_factor;
+        add_imm(reg_off_in_, reg_off_in_, i_step * itype_sz_, X_TMP_0);
+        add_imm(reg_off_out_, reg_off_out_, o_step * otype_sz_, X_TMP_0);
+        add_imm(x_ptr_in_off, x_ptr_in_off, i_step * itype_sz_, X_TMP_0);
+        add_imm(x_ptr_out_off, x_ptr_out_off, o_step * otype_sz_, X_TMP_0);
+
+        if (prb_.src_scale_type == scale_type_t::MANY)
+            add_imm(x_ptr_src_scale_off, x_ptr_src_scale_off,
+                    s_step * stype_sz_, X_TMP_0);
+        if (prb_.dst_scale_type == scale_type_t::MANY)
+            add_imm(x_ptr_dst_scale_off, x_ptr_dst_scale_off,
+                    s_step * stype_sz_, X_TMP_0);
+
+        if (compensation_needed_) {
+            add_imm(reg_off_comp_, reg_off_comp_, c_step * sizeof(int32_t),
+                    X_TMP_0);
+            add_imm(x_ptr_comp_off, x_ptr_comp_off, c_step * sizeof(int32_t),
+                    X_TMP_0);
+        }
+
+        subs(reg_cnt, reg_cnt, 1);
+        b(NE, loop);
+
+        if (prb_.tail(curr_node_id) != 0) {
+            Label if_end;
+
+            // On the stack should be an information if node
+            // was processed with tail or not.
+            ldr(X_TMP_0, post_ptr(X_SP, X_TMP_0.getBit() / 8));
+
+            cmp(X_TMP_0, with_tail_info_);
+            b(NE, if_end);
+            finalize_tail_loop(i_step, o_step, s_step, c_step, curr_node_id);
+            L(if_end);
+        }
+
+        // Restore offset to initial values. It means before
+        // loop execution.
+        sub_imm(reg_off_in_, reg_off_in_, len * i_step * itype_sz_, X_TMP_0);
+        sub_imm(reg_off_out_, reg_off_out_, len * o_step * otype_sz_, X_TMP_0);
+        sub_imm(x_ptr_in_off, x_ptr_in_off, len * i_step * itype_sz_, X_TMP_0);
+        sub_imm(x_ptr_out_off, x_ptr_out_off, len * o_step * otype_sz_,
+                X_TMP_0);
+
+        if (prb_.src_scale_type == scale_type_t::MANY)
+            sub_imm(x_ptr_src_scale_off, x_ptr_src_scale_off,
+                    len * s_step * stype_sz_, X_TMP_0);
+        if (prb_.dst_scale_type == scale_type_t::MANY)
+            sub_imm(x_ptr_dst_scale_off, x_ptr_dst_scale_off,
+                    len * s_step * stype_sz_, X_TMP_0);
+        if (compensation_needed_) {
+            sub_imm(reg_off_comp_, reg_off_comp_,
+                    len * c_step * sizeof(int32_t), X_TMP_0);
+            sub_imm(x_ptr_comp_off, x_ptr_comp_off,
+                    len * c_step * sizeof(int32_t), X_TMP_0);
+        }
     } else {
         compute_blk_ker(desc);
     }
 }
 
-bool jit_uni_reorder_kernel_f32_t::simple_impl() {
-    simple_impl_desc_t d;
-    if (!simple_impl_desc_init(prb_, &d)) return false;
+bool jit_uni_reorder_kernel_f32_t::impl() {
+    impl_desc_t d;
+    if (!impl_desc_init(prb_, &d)) return false;
 
     eor(reg_off_in_, reg_off_in_, reg_off_in_);
     eor(reg_off_out_, reg_off_out_, reg_off_out_);
@@ -1626,11 +1620,6 @@ bool jit_uni_reorder_kernel_f32_t::simple_impl() {
     create_loops(d, reg_cnt, n_jit_loops);
 
     return true;
-}
-
-void jit_uni_reorder_kernel_f32_t::impl() {
-    if (simple_impl()) return;
-    assert(!"no implementation available");
 }
 
 #define UNROLL_INST(inst, reg, ...) \
@@ -1859,7 +1848,6 @@ jit_uni_reorder_kernel_f32_t::jit_uni_reorder_kernel_f32_t(const desc_t &desc)
 
 void jit_uni_reorder_kernel_f32_t::generate() {
     using namespace Xbyak_aarch64::util;
-    uint64_t sveLen = get_sve_length();
     Label end_of_kernel;
 
     preamble();
@@ -1892,7 +1880,7 @@ void jit_uni_reorder_kernel_f32_t::generate() {
     ldr(reg_ptr_in_, ptr(X_TMP_0));
     ldr(reg_ptr_out_, ptr(X_TMP_1));
 
-    if (sveLen) { /* SVE is available. */
+    if (mayiuse(sve)) {
         ptrue(p_lsb_256.b, VL32);
         ptrue(p_lsb_128.b, VL16);
         ptrue(p_lsb_64.b, VL8);
@@ -1929,13 +1917,13 @@ void jit_uni_reorder_kernel_f32_t::generate() {
         L(reorder_kernel);
     }
 
-    if (can_do_tr8x8()) {
+    if (mayiuse(sve)) {
         dup(ymm_zero_, 0);
     } else {
         movi(xmm_zero_, 0);
     }
 
-    impl();
+    if (!impl()) { assert(!"no implementation available"); }
 
     L(end_of_kernel);
     postamble();

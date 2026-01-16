@@ -61,6 +61,7 @@ struct kernel_t {
 
     kernel_t(const desc_t &desc)
         : desc_(desc)
+        , prb_(desc_.prb)
         , compensation_needed_(
                   desc.prb.req_s8s8_comp || desc.prb.req_asymmetric_comp) {}
     virtual void operator()(const call_param_t *c) const = 0;
@@ -86,8 +87,8 @@ struct kernel_t {
 
 protected:
     const desc_t desc_;
-    const prb_t &prb_ = desc_.prb;
-    bool compensation_needed_ = false;
+    const prb_t &prb_;
+    bool compensation_needed_;
 };
 
 /* kernel */
@@ -114,15 +115,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         ndims_jit_loop_max = 3,
     };
 
-    struct simple_impl_desc_t {
+    struct impl_desc_t {
         int ndims_full_unroll = 0;
         int len_last_dim_unroll = 0;
         int tail_len_unroll = 0;
         int len_unroll = 0;
     };
 
-    static bool simple_impl_desc_init(
-            const prb_t &prb, simple_impl_desc_t *desc);
+    static bool impl_desc_init(const prb_t &prb, impl_desc_t *desc);
 
     static bool applicable(const prb_t &p);
 
@@ -165,8 +165,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
     void compute_ker(
             const int ndims, const int len_unroll, const bool tail_processing);
 
-    void loop_begin(Xbyak_aarch64::Label &l, XReg reg_cnt, int len);
-
     void check_if_this_is_last_chunk(const XReg reg_curr_chunk, int node_id);
 
     void zero_dst_memory(const int bytes_to_zeroing);
@@ -174,17 +172,12 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
     void finalize_tail_loop(int i_step, int o_step, int s_step, int c_step,
             const int curr_node_id);
 
-    void loop_end(Xbyak_aarch64::Label &l, XReg reg_cnt, int len, int i_step,
-            int o_step, int s_step, int c_step, const int curr_node_id);
+    void compute_blk_ker(const impl_desc_t &desc);
 
-    void compute_blk_ker(const simple_impl_desc_t &desc);
-
-    void create_loops(const simple_impl_desc_t &desc,
+    void create_loops(const impl_desc_t &desc,
             const std::array<const XReg, 3> &reg_cnt, int jit_loop);
 
-    bool simple_impl();
-
-    void impl();
+    bool impl();
 
     void cvt_z_s32_f32(const size_t startIdx, const size_t regNum);
     void cvt_v_s32_f32(const size_t startIdx, const size_t regNum);

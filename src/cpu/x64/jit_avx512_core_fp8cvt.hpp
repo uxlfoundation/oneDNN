@@ -111,12 +111,6 @@ protected:
         const Xbyak::Xmm xmm_out(xmm_in.getIdx());
         return xmm_out | Xbyak::Opmask(xmm_with_mask.getOpmaskIdx());
     }
-
-    // Load table values from 128 consecutive bytes at given address.
-    // Input Zmm register holds table lookup indices.
-    // Must use full Zmm registers to properly load all table values.
-    void tabulate(const data_type_t dt, const Xbyak::Zmm &zmm_out,
-            const Xbyak::Zmm &zmm_in, const Xbyak::Address &addr);
 };
 
 struct fp8_conversion_e5m2_t : public fp8_conversion_base_t {
@@ -125,15 +119,6 @@ struct fp8_conversion_e5m2_t : public fp8_conversion_base_t {
             const Xbyak::Opmask kmask_aux, const Xbyak::Reg64 reg64_aux)
         : fp8_conversion_base_t(host, xmm_aux1, xmm_aux2, xmm_aux3, reg64_aux)
         , kmask_aux_(kmask_aux) {}
-    fp8_conversion_e5m2_t(jit_generator_t *host, const Xbyak::Xmm &xmm_aux1,
-            const Xbyak::Xmm &xmm_aux2, const Xbyak::Xmm &xmm_aux3,
-            const Xbyak::Xmm &xmm_aux4, const Xbyak::Xmm &xmm_aux5,
-            const Xbyak::Opmask kmask_aux, const Xbyak::Reg64 reg64_aux)
-        : fp8_conversion_base_t(host, xmm_aux1, xmm_aux2, xmm_aux3, reg64_aux)
-        , kmask_aux_(kmask_aux)
-        , is_bf16_supported_(true)
-        , xmm_aux4_(xmm_aux4.getIdx())
-        , xmm_aux5_(xmm_aux5.getIdx()) {}
 
     void prepare_table() override;
 
@@ -165,11 +150,6 @@ private:
     void perform_f8_to_f16_vnni_conversion(const Xbyak::Zmm &zmm_out1,
             const Xbyak::Zmm &zmm_out2, const Xbyak::Operand &op_in,
             int zmm_permute_idx);
-
-    bool is_bf16_supported_ {false};
-    Xbyak::Label label_table_from_f8_;
-    const Xbyak::Xmm xmm_aux4_;
-    const Xbyak::Xmm xmm_aux5_;
 };
 
 struct fp8_conversion_e4m3_t : public fp8_conversion_base_t {
@@ -205,6 +185,12 @@ struct fp8_conversion_e4m3_t : public fp8_conversion_base_t {
             const Xbyak::Reg64 &reg_data_out) override;
 
 private:
+    // Load table values from 128 consecutive bytes at given address.
+    // Input Zmm register holds table lookup indices.
+    // Must use full Zmm registers to properly load all table values.
+    void tabulate(const data_type_t dt, const Xbyak::Zmm &zmm_out,
+            const Xbyak::Zmm &zmm_in, const Xbyak::Address &addr);
+
     void vcvt_f8_to_xf16(const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in,
             data_type_t dt);
     void vcvt_f8_to_xf16_vnni_block(int num_rows,

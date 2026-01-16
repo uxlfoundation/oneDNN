@@ -33,27 +33,10 @@ void fp8_conversion_base_t::bcst_f8_to_f32(
     vcvt_f8_to_f32(xmm_out, tmp_xmm);
 }
 
-void fp8_conversion_base_t::tabulate(const data_type_t dt,
-        const Xbyak::Zmm &zmm_out, const Xbyak::Zmm &zmm_in,
-        const Xbyak::Address &addr) {
-    host_->vmovdqu64(zmm_out, addr);
-    switch (dt) {
-        case data_type::f8_e4m3:
-        case data_type::f8_e5m2:
-            host_->vpermt2b(
-                    zmm_out, zmm_in, host_->zword[addr.getRegExp() + 64]);
-            break;
-        case data_type::f16:
-            host_->vpermt2w(
-                    zmm_out, zmm_in, host_->zword[addr.getRegExp() + 64]);
-            break;
-        default: assert(!"Unsupported data type in helper routine");
-    }
-}
-
 void fp8_conversion_e5m2_t::prepare_table() {
     host_->align(64);
     host_->L(label_vnni_permute_index_table_);
+    // Data for f16
     for (size_t i = 0; i < 64; ++i) {
         // 2, 0, 3, 1, ...
         size_t index = i;
@@ -65,42 +48,14 @@ void fp8_conversion_e5m2_t::prepare_table() {
         }
         host_->db(index);
     }
-    if (is_bf16_supported_) {
-        // Continuation of label_vnni_permute_index_table_
-        for (size_t i = 0; i < 32; ++i) {
-            size_t index = 4 * (i / 2) + (i % 2);
-            host_->db(index);
-        }
-        for (size_t i = 32; i < 64; ++i) {
-            size_t index = 4 * ((i - 32) / 2) + (i % 2) + 2;
-            host_->db(index);
-        }
+    // Data for bf16
+    for (size_t i = 0; i < 32; ++i) {
+        size_t index = 4 * (i / 2) + (i % 2);
+        host_->db(index);
     }
-
-    if (is_bf16_supported_) {
-        host_->L(label_table_from_f8_);
-
-        // 0: map from f8_e5m2 byte to high byte of bf16 (ignoring sign)
-        for (uint8_t u8 = 0; u8 < 128; ++u8) {
-            const float8_e5m2_t x8(u8, /* bit_cast = */ true);
-            const bfloat16_t x16 = x8;
-            const uint16_t u16 = x16.raw_bits_ >> 8;
-            host_->db(u16);
-        }
-        // 128: map from f8_e5m2 byte to low byte of bf16 (ignoring sign)
-        for (uint8_t u8 = 0; u8 < 128; ++u8) {
-            const float8_e5m2_t x8(u8, /* bit_cast = */ true);
-            const bfloat16_t x16 = x8;
-            const uint16_t u16 = (x16.raw_bits_ & 0xff);
-            host_->db(u16);
-        }
-        // 256: indices to interleave high and low bytes
-        for (uint8_t u8 = 0; u8 < 64; ++u8) {
-            int idx = (u8 / 2) + 64 * (u8 % 2); // 0, 64, 1, 65, ...
-            host_->db(idx);
-        }
-        // 320: sign mask for fp8 values
-        host_->dq(0x8080808080808080);
+    for (size_t i = 32; i < 64; ++i) {
+        size_t index = 4 * ((i - 32) / 2) + (i % 2) + 2;
+        host_->db(index);
     }
 
     // Other tables are not needed if fp8 is native
@@ -262,45 +217,34 @@ void fp8_conversion_e5m2_t::vcvt_f8_to_f16(
 
 void fp8_conversion_e5m2_t::vcvt_f8_to_bf16(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
-    assert(is_bf16_supported_);
     assert(utils::one_of(
             true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
+    assert(xmm_out.isZMM());
+    assert(xmm_out.getIdx() != xmm_aux3_.getIdx());
 
-    constexpr int xf16_hi_bytes_offset = 0;
-    constexpr int xf16_lo_bytes_offset = 128;
-    constexpr int interleave_indices_offset = 256;
-    constexpr int sign_mask_offset = 320;
+    // f16 <- f8_e5m2
+    // Floating point conversions typically set quiet bit for NaN inputs.
+    // Here we skip this step as it will be handled during f32<-f16 stage.
+    host_->vpmovzxbw(xmm_out, op_in);
+    host_->vpsllw(xmm_out, xmm_out, 8);
 
-    host_->lea(reg64_aux_,
-            host_->ptr[host_->rip + label_table_from_f8_]); // base of table
+    // copy high bytes to auxiliary register
+    const Xbyak::Zmm zmm_out(xmm_out.getIdx());
+    const Xbyak::Ymm ymm_aux_out_hi(xmm_aux3_.getIdx());
+    host_->vextractf64x4(ymm_aux_out_hi, zmm_out, 1);
 
-    // must use full Zmm to properly load all table values
-    const Xbyak::Zmm zmm_in(
-            op_in.isMEM() ? xmm_aux3_.getIdx() : op_in.getIdx());
-    const Xbyak::Zmm zmm_aux1(xmm_aux1_.getIdx());
-    const Xbyak::Zmm zmm_aux2(xmm_aux2_.getIdx());
-    const Xbyak::Zmm zmm_tmp(xmm_aux3_.getIdx());
+    // f32 <- f16
+    const Xbyak::Zmm zmm_aux_out_hi(xmm_aux3_.getIdx());
+    host_->vcvtph2psx(zmm_aux_out_hi, ymm_aux_out_hi);
+    const Xbyak::Ymm ymm_out(xmm_out.getIdx());
+    host_->vcvtph2psx(zmm_out, ymm_out);
 
-    // if output register is ymm then we read xmm only
-    const auto vmm_in = xmm_out.isYMM() ? xmm_mask(zmm_in, xmm_out)
-                                        : ymm_mask(zmm_in, xmm_out);
+    // bf16 <- f32
+    host_->vcvtneps2bf16(ymm_aux_out_hi, zmm_aux_out_hi);
+    host_->vcvtneps2bf16(ymm_out, zmm_out);
 
-    if (op_in.isMEM()) host_->vmovdqu8(vmm_in, op_in);
-    // xf16 <- f8_e5m2
-    tabulate(data_type::f8_e5m2, zmm_aux1, zmm_in,
-            host_->zword[reg64_aux_ + xf16_hi_bytes_offset]); // high byte
-    tabulate(data_type::f8_e5m2, zmm_aux2, zmm_in,
-            host_->zword[reg64_aux_ + xf16_lo_bytes_offset]); // low byte
-    // sign correction
-    // 0xf8 means A = A | (B & C)
-    host_->vpternlogq(zmm_aux1, zmm_in,
-            host_->ptr_b[reg64_aux_ + sign_mask_offset], 0xf8);
-    // merge high and low
-    host_->vmovdqu64(
-            zmm_tmp, host_->zword[reg64_aux_ + interleave_indices_offset]);
-    host_->vpermt2b(zmm_aux2, zmm_tmp, zmm_aux1);
-
-    host_->vmovdqu16(xmm_out, zmm_aux2);
+    // merge bytes
+    host_->vinsertf64x4(zmm_out, zmm_out, ymm_aux_out_hi, 1);
 }
 
 void fp8_conversion_e5m2_t::prepare_f8_to_f16_vnni_masks(int zmm_permute_idx) {
@@ -356,11 +300,9 @@ void fp8_conversion_e5m2_t::vcvt_f8_to_f16_vnni_block(int num_rows,
 void fp8_conversion_e5m2_t::vcvt_f8_to_bf16_vnni_block(int num_rows,
         const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
         const Xbyak::Reg64 &reg_data_out) {
-    assert(is_bf16_supported_);
-
     constexpr auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
-    const Xbyak::Zmm zmm_out1(xmm_aux4_.getIdx());
-    const Xbyak::Zmm zmm_out2(xmm_aux5_.getIdx());
+    const Xbyak::Zmm zmm_out1(xmm_aux1_.getIdx());
+    const Xbyak::Zmm zmm_out2(xmm_aux2_.getIdx());
     const Xbyak::Ymm ymm_out1(zmm_out1.getIdx());
     const Xbyak::Ymm ymm_out2(zmm_out2.getIdx());
 
@@ -681,6 +623,23 @@ void fp8_conversion_e4m3_t::vcvt_f16_to_f8(
     // pack even bytes to lower half of register
     // NOTE: there will be garbage in upper half of register
     host_->vpermb(xmm_out, xmm_aux3_, ymm_out);
+}
+
+void fp8_conversion_e4m3_t::tabulate(const data_type_t dt,
+        const Xbyak::Zmm &zmm_out, const Xbyak::Zmm &zmm_in,
+        const Xbyak::Address &addr) {
+    host_->vmovdqu64(zmm_out, addr);
+    switch (dt) {
+        case data_type::f8_e4m3:
+            host_->vpermt2b(
+                    zmm_out, zmm_in, host_->zword[addr.getRegExp() + 64]);
+            break;
+        case data_type::f16:
+            host_->vpermt2w(
+                    zmm_out, zmm_in, host_->zword[addr.getRegExp() + 64]);
+            break;
+        default: assert(!"Unsupported data type in helper routine");
+    }
 }
 
 jit_cvt_fp8_t::jit_cvt_fp8_t(f32_convert_mode_t mode)

@@ -18,8 +18,18 @@
 
 set -o errexit -o pipefail -o noclobber
 
-export CC=clang
-export CXX=clang++
+if [[ "$BUILD_TOOLSET" == "DPC++" ]]; then
+    . /opt/intel/oneapi/setvars.sh
+    export CC=icx
+    export CXX=icpx
+    export CPU_RUNTIME=SYCL
+    export GPU_RUNTIME=SYCL
+else
+    export CC=clang
+    export CXX=clang++
+    export CPU_RUNTIME=OMP
+    export GPU_RUNTIME=OCL
+fi
 
 if [[ "$ONEDNN_ACTION" == "configure" ]]; then
     if [[ "$GITHUB_JOB" == "pr-clang-tidy" ]]; then
@@ -32,8 +42,8 @@ if [[ "$ONEDNN_ACTION" == "configure" ]]; then
           -DDNNL_EXPERIMENTAL_PROFILING=ON \
           -DDNNL_EXPERIMENTAL_UKERNEL=ON \
           -DONEDNN_EXPERIMENTAL_LOGGING=ON \
-          -DDNNL_CPU_RUNTIME=OMP \
-          -DDNNL_GPU_RUNTIME=OCL \
+          -DDNNL_CPU_RUNTIME=$CPU_RUNTIME \
+          -DDNNL_GPU_RUNTIME=$GPU_RUNTIME \
           -DDNNL_WERROR=ON \
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
       set +x

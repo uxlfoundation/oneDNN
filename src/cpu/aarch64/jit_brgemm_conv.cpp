@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1698,7 +1698,7 @@ void brgemm_convolution_fwd_t<isa>::ker_base(brgemm_thread_ctx_t &btc) const {
     const auto call_brgemm
             = [&](int brg_idx, int ic_block_s, int n_ic_blocks,
                       int comp_ker_offs, bool do_postops, bool do_only_comp) {
-        if (k_l <= 0) return;
+        assert(k_l > 0 && "invalid batch range");
         const auto brg_ker = brgemm_kernels_[brg_idx];
 
         assert(jcp.brg_type != brgemm_static_offs);
@@ -1873,7 +1873,7 @@ void brgemm_convolution_fwd_t<isa>::ker_trans(
 
     const auto call_brgemm = [&](int brg_idx, int ic_block_s, int n_ic_blocks,
                                      bool do_postops) {
-        if (k_l <= 0) return;
+        assert(k_l > 0 && "invalid batch range");
         const auto brg_ker = brgemm_kernels_[brg_idx];
 
         const auto kh_ee = jcp.kh_sets > 1 ? kh_b + 1 : kh_e;
@@ -1985,6 +1985,7 @@ void brgemm_convolution_fwd_t<isa>::ker_vpad(brgemm_thread_ctx_t &btc) const {
 
     const auto call_brgemm = [&](int brg_idx, int ic_block_s, int n_ic_blocks,
                                      int comp_ker_offs, bool do_postops) {
+        assert(k_l > 0 && "invalid batch range");
         const auto brg_ker = brgemm_kernels_[brg_idx];
 
         assert(jcp.brg_type != brgemm_static_offs);

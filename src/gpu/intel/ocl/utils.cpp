@@ -20,6 +20,7 @@
 #include <mutex>
 #include <CL/cl_ext.h>
 
+#include "gpu/intel/logging.hpp"
 #include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/ocl/hw_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
@@ -222,7 +223,7 @@ status_t get_ocl_kernel_binary(cl_kernel ocl_kernel, xpu::binary_t &binary) {
 void debugdump_processed_source(const std::string &source,
         const std::string &options, const std::string &cl_options) {
 #if defined(__linux__) && defined(DNNL_DEV_MODE)
-    if (get_verbose(verbose_t::debuginfo) >= 10) {
+    gpu_trace() << [&]() {
         auto get_defines = [](const std::string &from) {
             std::string ret;
             size_t pos = 0;
@@ -277,9 +278,8 @@ void debugdump_processed_source(const std::string &source,
         std::string preprocess_cmd
                 = std::string() + "cpp -P " + o + " | clang-format";
         execute_command(preprocess_cmd, source);
-        std::cout << "OCL_ARCH_OPTIONS: " << cl_options << std::endl;
-        std::cout << "OCL_OPTIONS: " << options << std::endl;
-    }
+        return preprocess_cmd;
+    }();
 #endif
 }
 

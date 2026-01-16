@@ -350,10 +350,10 @@ struct gen_t : public primitive_t {
             // TODO: Refactor to contain all swap handling within pd.
             jit::quant_params a_quant, b_quant;
             if (swap_ab()) {
-                a_quant = {b_scales_type_, bo_type, ag_type, bsc_dims_,
+                a_quant = {b_scales_type_, ao_type, ag_type, bsc_dims_,
                         bo_dims_, bg_dims_, b_q2d_group_k(), b_q2d_group_n(), 0,
                         has_gs(DNNL_ARG_B), false, b_zp_hostscalar()};
-                b_quant = {a_scales_type_, ao_type, bg_type, asc_dims_,
+                b_quant = {a_scales_type_, bo_type, bg_type, asc_dims_,
                         ao_dims_, ag_dims_, a_q2d_group_k(), 0, a_q2d_group_m(),
                         has_gs(DNNL_ARG_A), false, a_zp_hostscalar()};
             } else {

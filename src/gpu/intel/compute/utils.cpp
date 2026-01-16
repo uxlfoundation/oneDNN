@@ -16,6 +16,8 @@
 
 #include "gpu/intel/compute/utils.hpp"
 
+#include "gpu/intel/logging.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -52,7 +54,7 @@ status_t preprocess_headers(stringstream_t &pp_code, const char *code,
 void debugdump_processed_source(const std::string &source,
         const std::string &options, const std::string &ocl_options) {
 #if defined(__linux__) && defined(DNNL_DEV_MODE)
-    if (get_verbose(verbose_t::debuginfo) >= 10) {
+    gpu_trace() << [&]() {
         auto get_defines = [](const std::string &from) {
             std::string ret;
             size_t pos = 0;
@@ -107,8 +109,8 @@ void debugdump_processed_source(const std::string &source,
         std::string preprocess_cmd
                 = std::string() + "cpp -P " + o + " | clang-format";
         execute_command(preprocess_cmd, source);
-        std::cout << "OCL_ARCH_OPTIONS: " << ocl_options << std::endl;
-    }
+        return preprocess_cmd;
+    }();
 #endif
 }
 

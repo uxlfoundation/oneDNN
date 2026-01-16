@@ -403,6 +403,8 @@ bool pd_t::scales_ok() {
             if (s == DNNL_ARG_C && with_mx_scale() && x_scales.get_group(0) != 1
                     && x_scales.get_group(1) != 32)
                 return false;
+            // Other dynamic quant unsupported
+            if (x_scales.is_dynamic()) return false;
         }
     }
 

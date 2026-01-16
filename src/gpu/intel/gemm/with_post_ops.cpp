@@ -60,7 +60,8 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
         if (arg == DNNL_ARG_WEIGHTS && !wei_decomp) {
             VDISPATCH_GEMM((mask == 0 || mask == (1 << (dst_md()->ndims - 1))),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
-        } else if (arg == DNNL_ARG_DST && attr()->scales_.get(arg).is_mx()) {
+        } else if (arg == DNNL_ARG_DST
+                && attr()->scales_.get(arg).is_dynamic()) {
             VDISPATCH_GEMM(utils::one_of(d->a_type(), f4_e2m1, f8_e5m2, f8_e4m3)
                             && utils::one_of(
                                     d->b_type(), f4_e2m1, f8_e5m2, f8_e4m3),
@@ -90,15 +91,15 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
                 sizeof(char), OCL_BUFFER_ALIGNMENT);
     }
 
-    mx_scales_ = attr()->scales_.get(DNNL_ARG_DST).is_mx();
-    if (mx_scales_) {
+    dynamic_scales_ = attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
+    if (dynamic_scales_) {
         using namespace dnnl::impl::memory_tracking::names;
         const memory_desc_wrapper dst_mdw(dst_md(0));
         const auto &padded_dims = dst_mdw.padded_dims();
         const dim_t ndims = dst_mdw.ndims();
         const dim_t nelems = utils::array_product(padded_dims, ndims);
         auto scratchpad = scratchpad_registry().registrar();
-        scratchpad.book(memory_tracking::names::key_matmul_mx_scale_space,
+        scratchpad.book(memory_tracking::names::key_matmul_dyn_scale_space,
                 nelems, sizeof(float), OCL_BUFFER_ALIGNMENT);
     }
 
@@ -214,7 +215,7 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
 
     def_memory_desc_info(kernel_ctx, src_info, "SRC", false);
     def_memory_desc_info(kernel_ctx, bias_info, "BIAS", false);
-    if (mx_scales_) {
+    if (dynamic_scales_) {
         dnnl_memory_desc d_md(*dst_md(0));
         d_md.data_type = acc_type_;
         memory_desc_wrapper d_mdw(d_md);
@@ -226,7 +227,7 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
     }
 
     int ndims = src_info.ndims;
-    kernel_ctx.set_data_type(mx_scales_ ? acc_type_ : c_type);
+    kernel_ctx.set_data_type(dynamic_scales_ ? acc_type_ : c_type);
     kernel_ctx.require_stateless_addressing(has_large_buffers());
 
     const auto &attr_scales = attr()->scales_;
@@ -299,13 +300,13 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
     CHECK(gemm(prim_)->execute(nested_ctx));
 
     const bool subbyte_pack = pd()->subbyte_pack_;
-    const bool mx_scales = pd()->mx_scales_;
+    const bool dyn_scales = pd()->dynamic_scales_;
 
     auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_matmul_pack_space);
 
     auto tmp_ds = ctx.get_scratchpad_grantor().get_memory_storage(
-            memory_tracking::names::key_matmul_mx_scale_space);
+            memory_tracking::names::key_matmul_dyn_scale_space);
 
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0,
@@ -313,11 +314,10 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
                                    : GEMM_CTX_ARG_STORAGE(c));
     arg_list.set(1, GEMM_CTX_ARG_STORAGE(bias));
     arg_list.set(2,
-            mx_scales                     ? *tmp_ds
-                    : pd()->subbyte_pack_ ? *tmp
-                                          : GEMM_CTX_ARG_STORAGE(c));
+            dyn_scales             ? *tmp_ds
+                    : subbyte_pack ? *tmp
+                                   : GEMM_CTX_ARG_STORAGE(c));
     const auto &args = ctx.args();
-    int kidx = 0;
     int idx = append_post_ops_to_arg_list(args.exec_args, arg_list, 3,
             pd()->attr()->post_ops_, *pd()->dst_md());
     //a/b tensors are swapped for gemm
@@ -355,9 +355,11 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
         }
     }
     auto nd_range = pd()->dispatch_.nd_range();
-    CHECK(parallel_for(ctx, nd_range, kernels_[kidx++], arg_list));
+    CHECK(parallel_for(ctx, nd_range, kernels_[0], arg_list));
 
-    if (mx_scales) {
+    if (dyn_scales) {
+        const auto group_size
+                = pd()->attr()->scales_.get_group(DNNL_ARG_DST, -1);
         const auto c_d = nested_ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
         const int last = c_d.ndims() - 1;
         const dim_t D3 = c_d.ndims() > 5 ? c_d.dims()[last - 5] : 1;
@@ -371,27 +373,25 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
         for (int i = 0; i < c_d.ndims(); i++)
             if (c_d.dims()[last - i] > 1) { c_stride[i] = c_strides[last - i]; }
 
-        compute::kernel_arg_list_t mx_scale_arg_list;
+        compute::kernel_arg_list_t arg_list;
         int arg_idx = 0;
-        mx_scale_arg_list.set(arg_idx++, *tmp_ds);
-        mx_scale_arg_list.set(
-                arg_idx++, subbyte_pack ? *tmp : GEMM_CTX_ARG_STORAGE(c));
-        mx_scale_arg_list.set(arg_idx++, GEMM_CTX_ARG_STORAGE(c_scales));
-        mx_scale_arg_list.set(arg_idx++, 32);
-        mx_scale_arg_list.set(arg_idx++, D0);
-        mx_scale_arg_list.set(arg_idx++, D1);
-        mx_scale_arg_list.set(arg_idx++, D2);
-        mx_scale_arg_list.set(arg_idx++, c_stride[5]);
-        mx_scale_arg_list.set(arg_idx++, c_stride[4]);
-        mx_scale_arg_list.set(arg_idx++, c_stride[3]);
-        mx_scale_arg_list.set(arg_idx++, c_stride[2]);
-        mx_scale_arg_list.set(arg_idx++, c_stride[1]);
-        mx_scale_arg_list.set(arg_idx++, c_stride[0]);
-        compute::range_t mx_scale_gws(
-                {(size_t)M, (size_t)N / 32, (size_t)(D0 * D1 * D2 * D3)});
-        compute::nd_range_t mx_scale_nd_range(mx_scale_gws);
-        CHECK(parallel_for(
-                ctx, mx_scale_nd_range, kernels_[kidx++], mx_scale_arg_list));
+        arg_list.set(arg_idx++, *tmp_ds);
+        arg_list.set(arg_idx++, subbyte_pack ? *tmp : GEMM_CTX_ARG_STORAGE(c));
+        arg_list.set(arg_idx++, GEMM_CTX_ARG_STORAGE(c_scales));
+        arg_list.set(arg_idx++, group_size);
+        arg_list.set(arg_idx++, D0);
+        arg_list.set(arg_idx++, D1);
+        arg_list.set(arg_idx++, D2);
+        arg_list.set(arg_idx++, c_stride[5]);
+        arg_list.set(arg_idx++, c_stride[4]);
+        arg_list.set(arg_idx++, c_stride[3]);
+        arg_list.set(arg_idx++, c_stride[2]);
+        arg_list.set(arg_idx++, c_stride[1]);
+        arg_list.set(arg_idx++, c_stride[0]);
+        compute::range_t gws({(size_t)M, (size_t)N / group_size,
+                (size_t)(D0 * D1 * D2 * D3)});
+        compute::nd_range_t nd_range(gws);
+        CHECK(parallel_for(ctx, nd_range, kernels_[1], arg_list));
     }
     if (!subbyte_pack) return status_t::dnnl_success;
     memory_desc_wrapper dst_mdw(pd()->dst_md(0));
@@ -404,7 +404,7 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
     compute::range_t repack_gws((nelems * 4 + 7) / 8);
     compute::nd_range_t repack_nd_range(repack_gws);
     return large_parallel_for(impl::exec_ctx_t(ctx.stream()), repack_nd_range,
-            kernels_[kidx++], repack_arg_list, 4);
+            kernels_[2], repack_arg_list, 4);
 }
 
 } // namespace gemm

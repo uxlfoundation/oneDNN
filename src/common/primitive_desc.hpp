@@ -171,7 +171,7 @@ struct primitive_desc_t : public c_compatible {
         if (arg & DNNL_ARG_ATTR_SCALES) {
             int scale_arg = arg & ~DNNL_ARG_ATTR_SCALES;
             if (!attr()->scales_.has_default_values(scale_arg)) {
-                if (attr()->scales_.get(scale_arg).is_mx())
+                if (attr()->scales_.get(scale_arg).is_dynamic())
                     return arg_usage_t::output;
                 else
                     return arg_usage_t::input;

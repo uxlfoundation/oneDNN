@@ -218,26 +218,28 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         mean_ptr = tmp_mean.get();
         variance_ptr = tmp_var.get();
     } else if (pd()->stats_are_src()) {
-        mean_ptr = ctx.input(DNNL_ARG_MEAN)->memory_storage();
+        mean_ptr = &CTX_IN_STORAGE(DNNL_ARG_MEAN);
         variance_ptr = ctx.input(DNNL_ARG_VARIANCE)->memory_storage();
     } else {
-        mean_ptr = ctx.output(DNNL_ARG_MEAN)->memory_storage();
+        mean_ptr = &CTX_OUT_STORAGE(DNNL_ARG_MEAN);
         variance_ptr = ctx.output(DNNL_ARG_VARIANCE)->memory_storage();
     }
 
     if (!pd()->stats_are_src()) {
-        // They must be computed, and stored in the tmp/output buffers above
-        compute::kernel_arg_list_t calc_mean_arg_list;
-        calc_mean_arg_list.append(src);
-        calc_mean_arg_list.append(*mean_ptr);
-        calc_mean_arg_list.append(pd()->norm_axis());
-        calc_mean_arg_list.append(rt_conf.norm_stride);
-        append_rt_params(calc_mean_arg_list, rt_conf.stat_params);
-
         auto &nd_range_calc = rt_conf.stat_params.nd_range;
 
-        CHECK(parallel_for(ctx, nd_range_calc, calculate_mean_kernel_,
-                calc_mean_arg_list));
+        if (!pd()->skip_mean()) {
+            // They must be computed, and stored in the tmp/output buffers above
+            compute::kernel_arg_list_t calc_mean_arg_list;
+            calc_mean_arg_list.append(src);
+            calc_mean_arg_list.append(*mean_ptr);
+            calc_mean_arg_list.append(pd()->norm_axis());
+            calc_mean_arg_list.append(rt_conf.norm_stride);
+            append_rt_params(calc_mean_arg_list, rt_conf.stat_params);
+
+            CHECK(parallel_for(ctx, nd_range_calc, calculate_mean_kernel_,
+                    calc_mean_arg_list));
+        }
 
         compute::kernel_arg_list_t calc_var_arg_list;
         calc_var_arg_list.append(src);

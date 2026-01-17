@@ -501,11 +501,19 @@ bool access_builder_t::try_build_2d(send_params_t &send_params) {
     }
     reg_layout_ = reg_layout_.with_block({b0.idx, count});
 
-    int w_outermost
-            = ir_utils::safe_divide(vlayout.elems(b0.idx), count * width);
-    int h_outermost = ir_utils::safe_divide(vlayout.elems(b1.idx), height);
-    reg_layout_ = reg_layout_.with_block({b0.idx, w_outermost});
-    reg_layout_ = reg_layout_.with_block({b1.idx, h_outermost});
+    auto maybe_add_outer = [](layout_t &l, const layout_t::block_t &b, int &i) {
+        if ((b.size > 1) && (b.size > i))
+            l = l.with_block({b.idx, ir_utils::safe_divide(b.size, i)});
+        i = utils::div_up(i, b.size);
+    };
+    int b0_inner = count * width;
+    int b1_inner = height;
+    for (auto &iter : blocks) {
+        if (iter.idx == b0.idx)
+            maybe_add_outer(reg_layout_, iter, b0_inner);
+        else if (iter.idx == b1.idx)
+            maybe_add_outer(reg_layout_, iter, b1_inner);
+    }
 
     if (type_factor != 1) {
         auto blocks = reg_layout_.blocks();

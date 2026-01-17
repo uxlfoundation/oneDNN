@@ -38,7 +38,7 @@ class pads_value_check_t
     : public ::testing::TestWithParam<dnnl_graph_pads_value_params_t> {
 public:
     void TestPadsValueCheck() {
-        auto params = ::testing::TestWithParam<
+        const auto &params = ::testing::TestWithParam<
                 dnnl_graph_pads_value_params_t>::GetParam();
         graph::op_t op(params.op_name);
         op.set_attr<dims>(graph::op_attr::pads_begin, params.pads_begin);
@@ -209,7 +209,7 @@ class data_type_check_t
     : public ::testing::TestWithParam<dnnl_graph_data_type_params_t> {
 public:
     void TestDataTypeCheck() {
-        auto params = ::testing::TestWithParam<
+        const auto &params = ::testing::TestWithParam<
                 dnnl_graph_data_type_params_t>::GetParam();
 
         graph::op_t op(params.op_name);
@@ -309,7 +309,7 @@ class layer_norm_all_check_t
     : public ::testing::TestWithParam<dnnl_graph_ln_params_t> {
 public:
     void TestLayerNormAllCheck() {
-        auto params
+        const auto &params
                 = ::testing::TestWithParam<dnnl_graph_ln_params_t>::GetParam();
 
         graph::op_t op(params.op_name);
@@ -396,7 +396,7 @@ class shape_check_t
     : public ::testing::TestWithParam<dnnl_graph_shape_params_t> {
 public:
     void TestShapeCheck() {
-        auto params = ::testing::TestWithParam<
+        const auto &params = ::testing::TestWithParam<
                 dnnl_graph_shape_params_t>::GetParam();
 
         graph::op_t op(params.op_name);

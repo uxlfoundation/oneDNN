@@ -4870,7 +4870,7 @@ public:
     void Test() {
         const op_schema_t *schema = op_schema_registry_t::get_op_schema(kind);
 
-        auto params = ::testing::TestWithParam<
+        const auto &params = ::testing::TestWithParam<
                 dynamic_quantization_params_t>::GetParam();
 
         op_t dynamic_quantize {0, kind, "dynamic_quantize"};

@@ -510,7 +510,12 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
     stmt = stmt.append(create_epilogue_stmt(exec, ir_ctx, schedule,
             /*force_c_reorder=*/false, post_op_ctx, dst_thr_tile_coord,
             write_layout.with(acc_type.base()), dst_buf, acc_buf, buf_size));
-
+    for (auto &alloc : allocs) {
+        auto &a = alloc.as<alloc_t>();
+        if (a.buf.is_same(acc_buf))
+            alloc = alloc_t::make(a.buf, std::max(a.size, uint32_t(buf_size)),
+                    a.kind, a.attrs, a.body);
+    }
     loop_bound_counter_t lbc(schedule);
     auto exit_cond = (lbc.count(ow) >= prb.ow) ? (ow < prb.ow) : expr_t();
     if (lbc.count(oh) >= prb.oh)

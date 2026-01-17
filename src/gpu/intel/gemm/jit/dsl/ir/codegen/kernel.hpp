@@ -511,7 +511,7 @@ public:
         auto src0 = _src0;
         auto src1 = _src1;
         auto src2 = _src2;
-        auto scope = ngen_register_scope_t(ra_);
+        ngen_register_scope_t scope(ra_);
         align_src_dst_offset(this, scope, mod, dst, src0);
         align_src_dst_offset(this, scope, mod, dst, src1);
         if (getHardware() >= ngen::HW::XeHP) {
@@ -540,7 +540,7 @@ public:
         auto src0 = _src0;
         auto src1 = _src1;
         auto src2 = _src2;
-        auto scope = ngen_register_scope_t(ra_);
+        ngen_register_scope_t scope(ra_);
         align_src_dst_offset(this, scope, mod, dst, src1);
         if (src2.is_reg_data()) {
             align_src_dst_offset(this, scope, mod, dst, src0);

@@ -110,7 +110,7 @@ public:
     ngen::HW hw() const { return host_->getHardware(); }
 
     void _visit(const alloc_t &obj) override {
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         bool do_alloc = (obj.kind == alloc_kind_t::grf);
         bool use_bc_alloc = false;
         if (do_alloc) {
@@ -144,7 +144,7 @@ public:
 
     void _visit(const for_t &obj) override {
         host_->comment(obj.line_str());
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         auto var_op = scope.alloc_reg_data(obj.var.type());
         bool dynamic_loop = !is_const(obj.init) || !is_const(obj.bound);
         auto init_op = evaluate(obj.init, scope);
@@ -186,7 +186,7 @@ public:
 
     void _visit(const func_call_t &obj) override {
         host_->comment(obj.line_str());
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
 
         auto &func = obj.func;
         if (func.is<dpas_t>()) {
@@ -245,7 +245,7 @@ public:
         host_->comment(obj.line_str());
 
         bool has_else = bool(obj.else_body);
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         auto cond_op = evaluate(obj.cond, scope);
 
         ngen::Label l_else;
@@ -275,7 +275,7 @@ public:
             return;
         }
 
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         host_->comment(obj.line_str());
         if (is_const(obj.value) || is_shuffle_const(obj.value)
                 || obj.var.type() != obj.value.type()) {
@@ -312,7 +312,7 @@ public:
         scope.clear();
 
         // Claim the let variable allocation.
-        auto var_scope = register_scope();
+        ngen_register_scope_t var_scope(host_->ra());
         if (!var_grf_range.isInvalid()) {
             var_scope.claim(var_grf_range);
         } else if (!var_sub.isInvalid()) {
@@ -325,7 +325,7 @@ public:
 
     void _visit(const store_t &obj) override {
         host_->comment(obj.line_str());
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         auto buf_op = evaluate(obj.buf, scope);
         auto off = to_cpp<int>(obj.off);
         auto mask_op = evaluate(obj.mask, scope);
@@ -352,7 +352,7 @@ public:
 
     void _visit(const while_t &obj) override {
         host_->comment(obj.line_str());
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
 
         ngen::Label loop_end_label;
         ngen::Label loop_begin_label;
@@ -404,23 +404,21 @@ private:
         // registers.
         std::vector<ngen::GRFRange> ranges;
         for (int found = 0; found < 2;) {
-            auto r = scope.try_alloc_range(regs);
+            auto r = scope.register_allocator().try_alloc_range(regs);
             ranges.push_back(r);
             if (!is_used_recently(r)) found++;
         }
         auto range = ranges.back();
-        ranges.pop_back();
         for (auto &r : ranges)
-            scope.safeRelease(r);
+            scope.register_allocator().safeRelease(r);
         // If there no range found, fall back to regular allocation, without
         // any heuristics.
-        if (range.isInvalid()) range = scope.alloc_range(regs);
+        if (range.isInvalid())
+            range = scope.alloc_range(regs);
+        else
+            scope.claim(range);
         record(range);
         return reg_buf_t(scope.hw(), range);
-    }
-
-    ngen_register_scope_t register_scope() {
-        return ngen_register_scope_t(host_->ra());
     }
 
 #if GEMMSTONE_ASSERTIONS
@@ -498,7 +496,7 @@ private:
     void barrier_wait() { host_->barrierwait(); }
 
     void slm_fence(const func_call_attr_t &attr) {
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
         if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
@@ -508,7 +506,7 @@ private:
     }
 
     void barrier(const func_call_attr_t &attr) {
-        auto scope = register_scope();
+        ngen_register_scope_t scope(host_->ra());
         auto tmp = scope.alloc();
         ngen::InstructionModifier mod;
         if (attr) mod = mod | attr.as<instruction_modifier_attr_t>().mod;
@@ -949,7 +947,7 @@ public:
             default: {
                 // Some cases require pre-allocated register regions with
                 // special strides for a/b.
-                auto scope = ngen_register_scope_t(host_->ra());
+                ngen_register_scope_t scope(host_->ra());
                 auto a_out_op = maybe_alloc_strided_op(obj.type, obj.a, scope);
                 auto b_out_op = maybe_alloc_strided_op(obj.type, obj.b, scope);
                 bool is_mul = obj.op_kind == op_kind_t::_mul;

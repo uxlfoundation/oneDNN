@@ -364,6 +364,7 @@ struct sdpa_bwd_pd_t : public sdpa_pd_t {
     const memory_desc_t *diff_qry_md() const { return &desc_.diff_q_desc; }
     const memory_desc_t *diff_key_md() const { return &desc_.diff_k_desc; }
     const memory_desc_t *diff_val_md() const { return &desc_.diff_v_desc; }
+    const memory_desc_t *diff_dst_md() const { return &desc_.diff_dst_desc; }
 
 protected:
     sdpa_bwd_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,

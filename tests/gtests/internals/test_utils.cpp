@@ -68,10 +68,33 @@ void fill_eye(std::vector<float> &out, const memory::desc &desc) {
         //
         if ((i % width == i / width % 32) || (i % width == 3 && i / width == 1)
                 || (i % width == 0)) { //TMP for testing
+
             //if ((i % width == i / width % 16) || (i % width == 3 && i / width == 1) || i == 1) { //TMP for testing
+        //if (i % width == i / width % 32) {
             out[i] = 1.f;
         } else {
             out[i] = 0.f;
+        }
+    }
+}
+
+
+void fill_lin(std::vector<float> &out, const memory::desc &desc) {
+    auto elems = product(desc.get_dims());
+    size_t width = desc.get_dims()[desc.get_ndims() - 1];
+    for (memory::dim i = 0; i < elems; i++) {
+        out[i] = i;
+    }
+}
+
+void fill_lin_t(std::vector<float> &out, const memory::desc &desc) {
+    auto elems = product(desc.get_dims());
+    size_t width = desc.get_dims()[desc.get_ndims() - 1];
+    size_t height = desc.get_dims()[desc.get_ndims() - 2];
+    float f = 0 ;
+    for(int i=0; i<height;  ++i) {
+        for(int j=0; j<width;  ++j) {
+            out[j * height + i] = f++;
         }
     }
 }

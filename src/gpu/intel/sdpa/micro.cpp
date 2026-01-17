@@ -627,22 +627,25 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     auto problem_kq = problem;
 
-    problem_kq.A.layout = MatrixLayout::N;
-    //TODO: make this Pc? Pr? how to match w/systolic?
+    problem_kq.A.layout = MatrixLayout::Pc;
+    // problem_kq.A.layout = MatrixLayout::N;
+    // TODO: make this Pc? Pr? how to match w/systolic?
     problem_kq.B.layout = convert_dnnl_to_kernel_layout(qry_md());
-    problem_kq.C.layout = MatrixLayout::T;
+    problem_kq.C.layout = MatrixLayout::N;
     const memory_desc_wrapper key_mdw(key_md());
     const memory_desc_wrapper qry_mdw(qry_md());
     auto ldk = static_cast<int>(
             gemm_desc_t::get_ld(*key_md()) * key_mdw.data_type_size());
     auto ldq = static_cast<int>(
             gemm_desc_t::get_ld(*qry_md()) * qry_mdw.data_type_size());
-    //problem_kq.A.setAlignment(64); // Q is packed in VNNI format in SLM
-    problem_kq.A.setAlignment(alignmentForLD(wg_tile_m_brbc * key_mdw.data_type_size() )); // Q is packed in VNNI format in SLM
+    problem_kq.A.setAlignment(64); // Q is packed in VNNI format in SLM
+    // problem_kq.A.setAlignment(alignmentForLD(wg_tile_m_brbc * key_mdw.data_type_size() )); // Q is packed in VNNI format in SLM
     if (use_systolic_ukernel()) {
-        problem_kq.A.crosspack = 2;
-        problem_kq.A.tileR = into<uint16_t>(sg_size_);
-        problem_kq.A.tileC = into<uint16_t>(d_max());
+        problem_kq.A.crosspack = 16; // 32 / sizeof(Ta?)
+                                     //
+        //problem_kq.A.crosspack = 2;
+        //problem_kq.A.tileR = into<uint16_t>(sg_size_);
+        //problem_kq.A.tileC = into<uint16_t>(d_max());
     }
     problem_kq.B.setAlignment(alignmentForLD(ldq));
 
@@ -686,18 +689,23 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     problem_vs.Ta_ext = convert_dnnl_to_kernel_type(val_md()->data_type);
     //problem_vs.A.layout = convert_dnnl_to_kernel_layout(val_md()); //gmem
-    problem_vs.A.layout = MatrixLayout::N;
+    //problem_vs.A.layout = MatrixLayout::N; //og
+    //problem_vs.B.layout = MatrixLayout::T; //og
+    //problem_vs.C.layout = MatrixLayout::N; //og
 
-    problem_vs.B.layout = MatrixLayout::T;
+    //problem_vs.A.layout = MatrixLayout::Pc;
+    problem_vs.A.layout = convert_dnnl_to_kernel_layout(diff_dst_md()); //gmem
+    problem_vs.B.layout = MatrixLayout::Pr;
     problem_vs.C.layout = MatrixLayout::N;
-    const memory_desc_wrapper val_mdw(val_md());
+    const memory_desc_wrapper diff_dst_mdw(diff_dst_md());
     auto ldv = static_cast<int>(
-            gemm_desc_t::get_ld(*val_md()) * val_mdw.data_type_size());
-    //problem_vs.A.setAlignment(alignmentForLD(ldv)); //gmem
-    problem_vs.A.setAlignment(
-            d_max() * val_mdw.data_type_size()); // S is packed in SLM
+            gemm_desc_t::get_ld(*diff_dst_md()) * diff_dst_mdw.data_type_size());
+    problem_vs.A.setAlignment(alignmentForLD(ldv)); //gmem
+    //problem_vs.A.setAlignment(alignmentForLD(d_max() * diff_dst_mdw.data_type_size())); // S is packed in SLM
+    //problem_vs.A.setAlignment(64); // S is packed in SLM
     problem_vs.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) {
+        problem_vs.A.crosspack = 16;
         problem_vs.B.crosspack = 16;
     } //TODO: if systolic problem.A.crosspack, tileR tileC
 
@@ -715,7 +723,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     /* Set up microkernel options */
     micro::GEMMProtocol::Options opts_vs;
-    opts_vs.localA = true;
+    opts_vs.localA = false;
+    //opts_vs.localA = true;
     opts_vs.localB = true;
     opts_vs.slmPtr = true;
 
@@ -725,15 +734,19 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     //TMP??????? how to deal w/forward, separate config?
     auto problem_vtdA = problem;
     problem_vtdA.Ta_ext = convert_dnnl_to_kernel_type(val_md()->data_type);
+//   problem_vtdA.A.layout = transpose_layout(
+//           convert_dnnl_to_kernel_layout(val_md())); //TODO hardcode?
+//   problem_vtdA.B.layout
+//           = MatrixLayout::N; //is this right? w/shared slm between vs?
+//   problem_vtdA.C.layout = MatrixLayout::T; //which?
+
+    // swap arg order??
     problem_vtdA.A.layout = transpose_layout(
             convert_dnnl_to_kernel_layout(val_md())); //TODO hardcode?
-    //problem_vtdA.A.layout = convert_dnnl_to_kernel_layout(val_md()); //TODO hardcode?
-
-    //problem_vtdA.B.layout
-    //= MatrixLayout::T; //is this right? w/shared slm between vs?
     problem_vtdA.B.layout
-            = MatrixLayout::N; //is this right? w/shared slm between vs?
+            = MatrixLayout::Pr; //is this right? w/shared slm between vs?
     problem_vtdA.C.layout = MatrixLayout::T; //which?
+                                             //
     problem_vtdA.A.setAlignment(alignmentForLD(ldv));
     problem_vtdA.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) {
@@ -762,18 +775,26 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     //////// Q * dS^t
     auto problem_qdSt = problem;
     problem_qdSt.Ta_ext = convert_dnnl_to_kernel_type(qry_md()->data_type);
+//   problem_qdSt.A.layout
+//           = convert_dnnl_to_kernel_layout(qry_md()); //TODO hardcode?
+//   problem_qdSt.B.layout = MatrixLayout::N;
+//   problem_qdSt.C.layout
+//           = MatrixLayout::T; //which? layout determines output tile shape
+
+    problem_qdSt.Ta_ext = convert_dnnl_to_kernel_type(qry_md()->data_type);
     problem_qdSt.A.layout
             = convert_dnnl_to_kernel_layout(qry_md()); //TODO hardcode?
-
-    problem_qdSt.B.layout = MatrixLayout::N;
+    problem_qdSt.B.layout = MatrixLayout::Pr;
     problem_qdSt.C.layout
             = MatrixLayout::T; //which? layout determines output tile shape
+
     problem_qdSt.A.setAlignment(alignmentForLD(ldq));
     problem_qdSt.B.setAlignment(alignmentForLD(wg_tile_m_brbc * sizeof(float))); // S is packed in SLM //todo
     if (use_systolic_ukernel()) {
-        problem_qdSt.B.crosspack = 2;
-        problem_qdSt.B.tileR = into<uint16_t>(d_max());
-        problem_qdSt.B.tileC = into<uint16_t>(sg_size_);
+        problem_qdSt.B.crosspack = 16;
+        //problem_qdSt.B.crosspack = 2;
+        //problem_qdSt.B.tileR = into<uint16_t>(d_max());
+        //problem_qdSt.B.tileC = into<uint16_t>(sg_size_);
     }
 
     ukernel_params.problem_qdSt = {problem_qdSt};
@@ -797,16 +818,23 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     auto problem_ktq = problem;
     problem_ktq.Ta_ext = convert_dnnl_to_kernel_type(key_md()->data_type);
 
+//   problem_ktq.A.layout
+//           = transpose_layout(convert_dnnl_to_kernel_layout(key_md()));
+//   problem_ktq.B.layout = MatrixLayout::T;
+//   problem_ktq.C.layout = MatrixLayout::N; // which?
+
     problem_ktq.A.layout
             = transpose_layout(convert_dnnl_to_kernel_layout(key_md()));
-    problem_ktq.B.layout = MatrixLayout::T;
+    problem_ktq.B.layout = MatrixLayout::Pr;
     problem_ktq.C.layout = MatrixLayout::N; // which?
+
     problem_ktq.A.setAlignment(alignmentForLD(ldk));
     problem_ktq.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) {
-        problem_ktq.B.crosspack = 2;
-        problem_ktq.B.tileR = into<uint16_t>(d_max());
-        problem_ktq.B.tileC = into<uint16_t>(sg_size_);
+        problem_ktq.B.crosspack = 16;
+        //problem_ktq.B.crosspack = 2;
+        //problem_ktq.B.tileR = into<uint16_t>(d_max());
+        //problem_ktq.B.tileC = into<uint16_t>(sg_size_);
     }
 
     ukernel_params.problem_ktq = {problem_ktq};
@@ -1406,6 +1434,9 @@ status_t micro_bwd_params_t::get_kernel_ctx(
 
     printf("kq config %d %d %d %d\n", config.unroll_m_BrBc,
             config.unroll_n_BrBc, config.wg_m_BrBc, config.wg_n_BrBc);
+    printf("vs config %d %d %d %d\n", config.unroll_m_BcD,
+            config.unroll_n_BcD, config.wg_m_BcD, config.wg_n_BcD);
+
 
     std::vector<StrategyRequirement> reqs_vtdA;
     reqs_vtdA.push_back(StrategyRequirement::UnrollM

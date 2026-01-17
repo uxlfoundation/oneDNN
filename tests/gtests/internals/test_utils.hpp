@@ -42,6 +42,9 @@ void fill_random(std::vector<float> &out, const dnnl::memory::desc &desc);
 
 void fill_eye(std::vector<float> &out, const dnnl::memory::desc &desc);
 
+void fill_lin(std::vector<float> &out, const memory::desc &desc);
+void fill_lin_t(std::vector<float> &out, const memory::desc &desc);
+
 void fill_random_scales(
         std::vector<float> &out, const dnnl::memory::desc &desc);
 

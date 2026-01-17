@@ -540,6 +540,32 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
             int offset_c) { \
         tile_store(t, ptr, m, n, m, offset_r, offset_c); \
     } \
+    __attribute__((overloadable)) void tile_load_t_packed_src1(tile_type *t, \
+            local element_type *ptr, int panel, int ld, int offset_r, \
+            int offset_c) { \
+        offset_c += get_sub_group_local_id(); \
+        int offset_r0 = offset_r % panel; \
+        int offset_r1 = offset_r - offset_r0; \
+        ptr += offset_r0 + panel * offset_c + ld * offset_r1; \
+        _Pragma("unroll") for (int j0 = 0; j0 < br * nbr; \
+                               j0 += sg, ptr += sg * panel ) { \
+            _Pragma("unroll") for (int i = 0; i < bc * nbc; i++) \
+                tile_access(*(t), j0, i, sg, br, bc, nbr) = ptr[i]; \
+        } \
+    } \
+    __attribute__((overloadable)) void tile_load_packed_src1(tile_type *t, \
+            local element_type *ptr, int panel, int ld, int offset_r, \
+            int offset_c) { \
+        ptr += offset_c * panel; \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += panel) \
+            _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; \
+                                   i0 += sg) { \
+                int i = i0 + get_sub_group_local_id(); \
+                int offset_r0 = (offset_r + i) % panel; \
+                int offset_r1 = (offset_r + i) - offset_r0; \
+                tile_access(*(t), i0, j, sg, br, bc, nbr) = ptr[offset_r0 + offset_r1*ld]; \
+        } \
+    } \
     __attribute__((overloadable)) void tile_store_packed_src1(tile_type t, \
             local element_type *ptr, int panel, int ld, int offset_r, \
             int offset_c) { \

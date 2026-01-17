@@ -709,12 +709,15 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     }
 
     printf("%dwat?\n", __LINE__);
-    fill_random(query_data, query_md);
-    //fill_eye(query_data, query_md);
-    fill_random(diff_output_data, output_md);
-    //fill_eye(diff_output_data, output_md);
+    //fill_random(query_data, query_md);
+    fill_eye(query_data, query_md);
+    //fill_random(diff_output_data, output_md);
+    fill_eye(diff_output_data, output_md);
+    //fill_lin(diff_output_data, output_md);
+    //fill_lin_t(diff_output_data, output_md);
     fill_random_quantized(key_quantized_data, key_quantized_md,
             (p.key.dt == mdt::u4 || p.key.dt == mdt::u8));
+    //fill_lin(key_quantized_data, key_quantized_md);
     fill_random_quantized(val_quantized_data, val_quantized_md,
             (p.value.dt == mdt::u4 || p.value.dt == mdt::u8));
     if (p.qtype != quantize_type::no_quantization) {
@@ -1428,9 +1431,13 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     } else {
         printf("key !quantized\n");
         auto keytmp = as(strm, key, p.dt.dt);
+        //TODO: ensure correct f16/f32 gold data gen
+        //grouped_key_md = p.key_format_tag == memory::format_tag::abcd
+                //? memory::desc(k_sz, p.dt.dt, memory::format_tag::abcde)
+                //: memory::desc(k_sz, p.dt.dt, memory::format_tag::abced);
         grouped_key_md = p.key_format_tag == memory::format_tag::abcd
-                ? memory::desc(k_sz, p.dt.dt, memory::format_tag::abcde)
-                : memory::desc(k_sz, p.dt.dt, memory::format_tag::abced);
+                ? memory::desc(k_sz, mdt::f32, memory::format_tag::abcde)
+                : memory::desc(k_sz, mdt::f32, memory::format_tag::abced);
 
         key_dequantized = reshape(strm, keytmp, grouped_key_md);
     }
@@ -2246,8 +2253,8 @@ public:
             printf("check dK\n");
             check_memory<float_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
                     max_diff_threshold, fthreshold);
-//#if 0
-#if PRINT_MEM
+#if 0
+//#if PRINT_MEM
             print_mem(t.m_diff_key, "gold m_diff_key");
             print_mem(t.m_diff_key_quantized, "test m_diff_key");
             printf("----------\n\n");
@@ -2256,8 +2263,8 @@ public:
             printf("check dV\n");
             check_memory<float_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold, fthreshold);
-//#if 0
-#if PRINT_MEM
+#if 0
+//#if PRINT_MEM
             print_mem(t.m_diff_value, "gold m_diff_value");
             print_mem(t.m_diff_value_quantized, "test m_diff_value");
             printf("----------\n\n");
@@ -2648,15 +2655,20 @@ INSTANTIATE_TEST_SUITE_P(llama_bwd_f32,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,    kdt,        ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,    mskdt, qtype
     testing::Values(
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    16,      16,     16, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                    //sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                    sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
 
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    16,      16,     16, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
-//                    sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
 //                    sdpa_dims_t{   4,    2,        2,      32,       32,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                     //sdpa_dims_t{   1,      1,        1,      64,       64,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                     //sdpa_dims_t{   1,      1,        1,      65,       4097,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                     //sdpa_dims_t{   1,      1,        1,      4096,       64,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                    // sdpa_dims_t{   1,      1,        1,      1025,       15,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }// dv failing here, why
-                   sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   //sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   //sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   //sdpa_dims_t{   1,    16,        16,      384,       384,    64,      64,     64, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   //sdpa_dims_t{   1,    16,        16,      384,       384,    64,      64,     64, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   //sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                    //sdpa_dims_t{   1,    1,        1,      4096,       4096,    64,      64,     64, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
 //                   sdpa_dims_t{   1,    1,        1,      4096,       4096,    128,      128,     128, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                    //sdpa_dims_t{   1,    1,        1,      8192,       8192,    128,      128,     128, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }

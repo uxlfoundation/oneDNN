@@ -121,7 +121,7 @@ protected:
         SKIP_IF(unsupported_data_type(data_type_wei),
                 "Engine does not support this data type.");
 
-        test_convolution_eltwise_params_t p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 test_convolution_eltwise_params_t>::GetParam();
 
         SKIP_IF_CUDA(
@@ -234,7 +234,7 @@ protected:
     }
 
     virtual void Test() {
-        test_convolution_eltwise_params_t p = ::testing::TestWithParam<
+        const auto &p = ::testing::TestWithParam<
                 test_convolution_eltwise_params_t>::GetParam();
         ASSERT_EQ(p.aalgorithm, algorithm::convolution_direct);
         auto eng = get_test_engine();

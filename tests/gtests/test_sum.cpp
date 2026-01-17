@@ -167,8 +167,7 @@ protected:
         SKIP_IF_HIP(true, "Sum operator is not supported by HIP");
         src_data_type = data_traits_t<src_data_t>::data_type;
         dst_data_type = data_traits_t<dst_data_t>::data_type;
-        sum_test_params p
-                = ::testing::TestWithParam<sum_test_params>::GetParam();
+        const auto &p = ::testing::TestWithParam<sum_test_params>::GetParam();
         SKIP_IF(get_test_engine_kind() == engine::kind::gpu
                         && src_data_type == memory::data_type::bf16,
                 "GPU does not support bfloat16 data type.");
@@ -200,8 +199,7 @@ protected:
     }
 
     void Test() {
-        sum_test_params p
-                = ::testing::TestWithParam<sum_test_params>::GetParam();
+        const auto &p = ::testing::TestWithParam<sum_test_params>::GetParam();
 
         // sum specific types and values
         using pd_t = sum::primitive_desc;

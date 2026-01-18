@@ -782,16 +782,16 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 //           = MatrixLayout::T; //which? layout determines output tile shape
 
     problem_qdSt.Ta_ext = convert_dnnl_to_kernel_type(qry_md()->data_type);
-    problem_qdSt.A.layout
-            = convert_dnnl_to_kernel_layout(qry_md()); //TODO hardcode?
-    problem_qdSt.B.layout = MatrixLayout::Pr;
+    problem_qdSt.B.layout
+            = transpose_layout(convert_dnnl_to_kernel_layout(qry_md())); //TODO hardcode?
+    problem_qdSt.A.layout = MatrixLayout::Pc;
     problem_qdSt.C.layout
-            = MatrixLayout::T; //which? layout determines output tile shape
+            = MatrixLayout::N; //which? layout determines output tile shape
 
-    problem_qdSt.A.setAlignment(alignmentForLD(ldq));
-    problem_qdSt.B.setAlignment(alignmentForLD(wg_tile_m_brbc * sizeof(float))); // S is packed in SLM //todo
+    problem_qdSt.B.setAlignment(alignmentForLD(ldq));
+    problem_qdSt.A.setAlignment(alignmentForLD(wg_tile_m_brbc * sizeof(float))); // S is packed in SLM //todo
     if (use_systolic_ukernel()) {
-        problem_qdSt.B.crosspack = 16;
+        //problem_qdSt.B.crosspack = 16;
         //problem_qdSt.B.crosspack = 2;
         //problem_qdSt.B.tileR = into<uint16_t>(d_max());
         //problem_qdSt.B.tileC = into<uint16_t>(sg_size_);
@@ -810,7 +810,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     /* Set up microkernel options */
     micro::GEMMProtocol::Options opts_qdSt;
-    opts_qdSt.localB = true;
+    opts_qdSt.localA = true;
+    opts_qdSt.localB = false;
     opts_qdSt.slmPtr = true;
     ukernel_params.opts_qdSt = {opts_qdSt};
 
@@ -1455,10 +1456,10 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     reqs_ktq.push_back(StrategyRequirement::WGN == config.wg_n_BrD);
 
     std::vector<StrategyRequirement> reqs_qdSt;
-    reqs_qdSt.push_back(StrategyRequirement::UnrollM == config.unroll_m_BcD);
-    reqs_qdSt.push_back(StrategyRequirement::UnrollN == config.unroll_n_BcD);
-    reqs_qdSt.push_back(StrategyRequirement::WGM == config.wg_m_BcD);
-    reqs_qdSt.push_back(StrategyRequirement::WGN == config.wg_n_BcD);
+    reqs_qdSt.push_back(StrategyRequirement::UnrollM == config.unroll_n_BcD);
+    reqs_qdSt.push_back(StrategyRequirement::UnrollN == config.unroll_m_BcD);
+    reqs_qdSt.push_back(StrategyRequirement::WGM == config.wg_n_BcD);
+    reqs_qdSt.push_back(StrategyRequirement::WGN == config.wg_m_BcD);
 
     /* Ask microkernel provider for microkernel */
     try {

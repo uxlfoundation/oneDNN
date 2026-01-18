@@ -40,7 +40,7 @@
 
 /* Instantiate tile types and operations */
 typedef ugemm_kq_c_type s_tile_type; // Bc*Br tile
-typedef ugemm_qdSt_c_type a_tile_type; // D*Bc tile
+typedef ugemm_qdSt_c_type a_tile_type; // Bc*D tile
 typedef ugemm_vtdA_c_type p_tile_type; // Bc*Br tile
 typedef ugemm_vs_c_type dv_tile_type; // D*Bc tile
 typedef ugemm_ktq_c_type ktq_tile_type; // D*Br tile
@@ -942,17 +942,22 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 //               ugemm_kq_wg_tile_n, sg_i0_kq, sg_j0_kq);
         tile_store_t_packed_src1(P_tile_reblock, dS_slm, ugemm_kq_sg_tile_n,
                 ugemm_kq_wg_tile_n, sg_i0_kq, sg_j0_kq);
+        //layout matches all tile layouts
 
         barrier(CLK_LOCAL_MEM_FENCE);
 
-
+//TODO:wtf is tiled 2,1 wrong, 2,2 is right????
         // dK = dS^t * Q
-
 #if DO_MM
         // TODO: cache Q tile instead of re-reading from glm
-        a_tile_type dK_tile1 = ugemm_qdSt(Q + q0 * ldq, ldq, dS_slm, ugemm_kq_wg_tile_n,
+//       a_tile_type dK_tile1 = ugemm_qdSt(Q + q0 * ldq, ldq, dS_slm, ugemm_kq_wg_tile_n,
+//               //d, ugemm_kq_wg_tile_m, ugemm_kq_wg_tile_n, 0, 0, 0, sg_i_qdSt,
+//               d, k_chunk, q_nchunk, 0, 0, 0, sg_i_qdSt,
+//               sg_j_qdSt, (local char *)ugemm_slm);
+        a_tile_type dK_tile1 = ugemm_qdSt(
+                dS_slm, ugemm_kq_wg_tile_n, Q + q0*ldq, ldq,
                 //d, ugemm_kq_wg_tile_m, ugemm_kq_wg_tile_n, 0, 0, 0, sg_i_qdSt,
-                d, k_chunk, q_nchunk, 0, 0, 0, sg_i_qdSt,
+                k_chunk, d, q_nchunk, 0, 0, 0, sg_i_qdSt,
                 sg_j_qdSt, (local char *)ugemm_slm);
 #else
         a_tile_type dK_tile1;
@@ -971,12 +976,13 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         //// dk slm tile
         a_tile_type dK_tile_slm;
         tile_load_full(
-            &dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, sg_j0_dk, sg_i0_dk);
+            &dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, sg_i0_dk, sg_j0_dk);
 
         tile_binary(dK_tile_slm, dK_tile1, binary_add);
-        //tile_store(dK_tile1, S2_test, 32, 32, 32, sg_j0_dk, sg_i0_dk);
-        //tile_store(dK_tile_slm, S2_test, 32, 32, 32, sg_j0_dk, sg_i0_dk);
-        tile_store_full(dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, sg_j0_dk, sg_i0_dk);
+        //if(q0>0)
+        //tile_store(dK_tile1, S2_test, 32, 32, 32, sg_i0_dk, sg_j0_dk);
+        //tile_store(dK_tile_slm, S2_test, 32, 32, 32, sg_i0_dk, sg_j0_dk);
+        tile_store_full(dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, sg_i0_dk, sg_j0_dk);
 
 
         p_tile_type_reblock dS_transpose_tile;
@@ -988,8 +994,8 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         barrier(CLK_LOCAL_MEM_FENCE);
         // dQ = dS * K
 
-        /*
         //if(q0 == 0  && k0 == 0 && get_local_id(0) == 0 && get_global_id(1) == 0) {
+        /*
         if(get_global_id(1) == 0) {
             for(int i=0; i<ugemm_kq_wg_tile_n; ++i) {
                 for(int j=0; j<ugemm_kq_wg_tile_m; ++j) {
@@ -1049,7 +1055,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     //update from slm
     a_tile_type dK_tile_slm;
     tile_load_full(
-        &dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, sg_j0_dk, sg_i0_dk);
+        &dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, sg_i0_dk, sg_j0_dk);
 
     //TODO: ifdef guards for fp32
     a_tile_type_dst dK_tile_dst;
@@ -1062,9 +1068,9 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     //tile_store(dK_tile_dst, dK + wg_i0, wg_k_chunk, d, ldk, sg_i0_dk, sg_j0_dk);
     //tile_store_full(dK_tile_dst, dK + wg_i0, ldk, sg_j0_dk, sg_i0_dk);
 #if USE_SYSTOLIC_UKERNEL
-    tile_store(dK_tile_dst, dK + wg_i0, wg_k_chunk, d, ldk, sg_j0_dk, sg_i0_dk);
+    tile_store(dK_tile_dst, dK + wg_i0, wg_k_chunk, d, ldk, sg_i0_dk, sg_j0_dk);
 #else
-    tile_store(dK_tile_slm, dK + wg_i0, wg_k_chunk, d, ldk, sg_j0_dk, sg_i0_dk);
+    tile_store(dK_tile_slm, dK + wg_i0, wg_k_chunk, d, ldk, sg_i0_dk, sg_j0_dk);
 #endif
 
     // update from tile directly, noslm

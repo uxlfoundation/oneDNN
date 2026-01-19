@@ -40,7 +40,7 @@ TBD
 * Extended [quantization attributes] documentation to cover all quantization schemes supported by the library.
 * Added [matmul fp8 quantization] example demonstrating use of matmul primitive with `fp8` source, destination, and weights.
 * Extended oneDNN [threadpool runtime] with an option to support asynchronous execution and updated all CPU implementations accordingly. This extension makes oneDNN compatible with OpenXLA "thunk" runtime.
-* Extended information about primitive execution available in VTune(TM) with the same level of detail as reported by oneDNN [verbose mode]. This feature requires VTune 2025.7 or later.
+* Extended information about primitive execution available in VTune(TM) Profiler with the same level of detail as reported by oneDNN [verbose mode]. This feature requires VTune Profiler 2025.7 or later.
 * Introduced [`ONEDNN_SAFE_RBP`] build knob that instructs x64 implementations to preserve value of `rbp` register for tools that rely on stack unwinding. This option may have visible performance impact on some workloads.
 * Removed build time dependency on OpenCL runtime in SYCL build configuration.
 

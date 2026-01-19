@@ -34,13 +34,13 @@ TBD
 * Introduced support for 2D grouped scales in `fp8` matmul.
 
 ## Intel Architecture Processors
-* Introduces support for different data types of source and destination in pooling forward propagation.
+* Introduced support for different data types of source and destination in pooling forward propagation.
 
 # Usability
 * Extended [quantization attributes] documentation to cover all quantization schemes supported by the library.
 * Added [matmul fp8 quantization] example demonstrating use of matmul primitive with `fp8` source, destination, and weights.
 * Extended oneDNN [threadpool runtime] with an option to support asynchronous execution and updated all CPU implementations accordingly. This extension makes oneDNN compatible with OpenXLA "thunk" runtime.
-* Extended information about primitive execution available in VTune with the same level of detail as reported by oneDNN [verbose mode]. This feature requires VTune 2025.7 or later.
+* Extended information about primitive execution available in VTune(TM) with the same level of detail as reported by oneDNN [verbose mode]. This feature requires VTune 2025.7 or later.
 * Introduced [`ONEDNN_SAFE_RBP`] build knob that instructs x64 implementations to preserve value of `rbp` register for tools that rely on stack unwinding. This option may have visible performance impact on some workloads.
 * Removed build time dependency on OpenCL runtime in SYCL build configuration.
 
@@ -56,8 +56,8 @@ TBD
 * [BLAS-like API] including `dnnl::sgemm`, `dnnl::gemm_u8s8s32`, and `dnnl::gemm_s8s8s32` functions is deprecated
   and will be removed in future releases. If you are using this API consider switching to [matmul primitive].
 
-[BLAS-like API]: https://uxlfoundation.github.io/oneDNN/v3.10/group_dnnl_api_blas.html
-[matmul primitive]: https://uxlfoundation.github.io/oneDNN/v3.10/dev_guide_matmul.html
+[BLAS-like API]: https://uxlfoundation.github.io/oneDNN/v3.11/group_dnnl_api_blas.html
+[matmul primitive]: https://uxlfoundation.github.io/oneDNN/v3.11/dev_guide_matmul.html
 
 # Thanks to our Contributors
 This release contains contributions from the [project core team] as well as Andrei Hutu @Anndrey24, Anna Sztukowska @asztukow, Arseniy Obolenskiy @aobolensk, Avanish Tiwari @Tiwari-Avanish, czekun @ZackyLake, Deeksha Kasture @kasturedeeksha, Fadi Arafeh @fadara01, Gassan Salama @gassan-arm, Henry Gardiner @henry-gar, @jstachowintel, Keanu Czirjak @keanucz, Krishna Sai @krishnasai-mcw, Murray Steele @murste01, Narendra Bagria @narenbagria, Joseph Kuo @PershingSquare, @pmanczak, @vishwascm, Yejing Lai @Yejing-Lai, 夏卓昭 @xiazhuozhao

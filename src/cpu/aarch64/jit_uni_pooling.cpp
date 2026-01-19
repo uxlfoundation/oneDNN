@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2017 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@
 #include "common/type_helpers.hpp"
 
 #include "cpu/aarch64/jit_uni_pooling.hpp"
-#include "cpu/aarch64/reorder/jit_uni_reorder.hpp"
+#include "cpu/aarch64/reorder/jit_uni_reorder_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -49,7 +49,7 @@ struct trans_wrapper_t {
         auto create_ker = [=](dim_t ys, dim_t y_inp_str, dim_t y_out_str,
                                   dim_t xs, dim_t x_inp_str, dim_t x_out_str) {
             tr::prb_t prb;
-            kernel_t::desc_t desc;
+            jit_uni_reorder_kernel_t::desc_t desc;
 
             prb.ndims = 2;
             prb.ioff = 0;
@@ -72,8 +72,8 @@ struct trans_wrapper_t {
 
             prb.full_ndims = prb.ndims;
 
-            kernel_t::desc_init(desc, prb, 2);
-            return kernel_t::create(desc);
+            jit_uni_reorder_kernel_t::desc_init(desc, prb, 2);
+            return jit_uni_reorder_kernel_t::create_handle(desc);
         };
 
         if (nb_x_ * nb_y_ > 0)
@@ -98,9 +98,9 @@ struct trans_wrapper_t {
         dim_t x_blocked = nb_x_ * 8;
         dim_t y_blocked = nb_y_ * 8;
 
-        auto call_ker = [&](tr::kernel_t &ker, dim_t inp_y, dim_t inp_x,
-                                dim_t out_y, dim_t out_x) {
-            tr::call_param_t cp;
+        auto call_ker = [&](tr::jit_uni_reorder_kernel_t &ker, dim_t inp_y,
+                                dim_t inp_x, dim_t out_y, dim_t out_x) {
+            tr::jit_uni_reorder_kernel_t::call_param_t cp;
             cp.src_scales = nullptr;
             cp.dst_scales = nullptr;
 
@@ -124,9 +124,9 @@ struct trans_wrapper_t {
     ~trans_wrapper_t() = default;
 
 private:
-    std::unique_ptr<tr::kernel_t> ker_;
-    std::unique_ptr<tr::kernel_t> ker_x_tail_;
-    std::unique_ptr<tr::kernel_t> ker_y_tail_;
+    std::unique_ptr<tr::jit_uni_reorder_kernel_t> ker_;
+    std::unique_ptr<tr::jit_uni_reorder_kernel_t> ker_x_tail_;
+    std::unique_ptr<tr::jit_uni_reorder_kernel_t> ker_y_tail_;
 
     const size_t inp_dt_size_;
     const size_t out_dt_size_;

@@ -51,7 +51,7 @@ namespace aarch64 {
 
 status_t jit_uni_reorder_t::pd_t::init(engine_t *engine, engine_t *src_engine,
         engine_t *dst_engine, const tr::prb_t &prb,
-        const tr::kernel_t::desc_t &ker_desc) {
+        const tr::jit_uni_reorder_kernel_t::desc_t &ker_desc) {
     prb_ = prb;
     ker_desc_ = ker_desc;
     nthr_ = dnnl_get_max_threads();
@@ -126,9 +126,9 @@ status_t jit_uni_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
     if (prb.is_tail_present) prb_node_dependency(prb);
 
     // Kernel descriptor creation
-    tr::kernel_t::desc_t ker_desc;
-    status_t ker_init_status
-            = tr::kernel_t::desc_init(ker_desc, prb, ndims_ker_max);
+    tr::jit_uni_reorder_kernel_t::desc_t ker_desc;
+    status_t ker_init_status = tr::jit_uni_reorder_kernel_t::desc_init(
+            ker_desc, prb, ndims_ker_max);
     if (ker_init_status != status::success) return ker_init_status;
 
     const int ndims_driver = prb.ndims - ker_desc.prb.ndims;
@@ -155,7 +155,7 @@ void jit_uni_reorder_t::omp_driver_0d(int off, const char *in, char *out,
         int dst_zp, int32_t *compensation_scratch) const {
     const tr::prb_t &prb = pd()->prb_;
 
-    tr::call_param_t base_params;
+    tr::jit_uni_reorder_kernel_t::call_param_t base_params;
     base_params.in = in;
     base_params.out = out;
     base_params.src_scales = src_scales;
@@ -165,7 +165,7 @@ void jit_uni_reorder_t::omp_driver_0d(int off, const char *in, char *out,
     base_params.compensation_scratch = compensation_scratch;
 
     if (prb.is_tail_present) {
-        tr::tail_call_param_t tail_params;
+        tr::jit_uni_reorder_kernel_t::tail_call_param_t tail_params;
         tail_params.base_params = base_params;
 
         static constexpr int omp_ndims = 0;
@@ -184,7 +184,7 @@ void jit_uni_reorder_t::omp_driver_1d(int ithr, int nthr, int off,
     const tr::prb_t &prb = pd()->prb_;
     const tr::node_t *ns = prb.nodes + off;
     for_nd(ithr, nthr, (ptrdiff_t)ns[0].n, [&](ptrdiff_t d0) {
-        tr::call_param_t base_params;
+        tr::jit_uni_reorder_kernel_t::call_param_t base_params;
         base_params.in = in + d0 * ns[0].is * data_type_size(prb.itype);
         base_params.out = out + d0 * ns[0].os * data_type_size(prb.otype);
         base_params.src_scales = src_scales + d0 * ns[0].ss;
@@ -194,7 +194,7 @@ void jit_uni_reorder_t::omp_driver_1d(int ithr, int nthr, int off,
         base_params.compensation_scratch = compensation_scratch + d0 * ns[0].cs;
 
         if (prb.is_tail_present) {
-            tr::tail_call_param_t tail_params;
+            tr::jit_uni_reorder_kernel_t::tail_call_param_t tail_params;
             tail_params.base_params = base_params;
 
             static constexpr int omp_ndims = 1;
@@ -217,7 +217,7 @@ void jit_uni_reorder_t::omp_driver_2d(int ithr, int nthr, int off,
     const tr::node_t *ns = prb.nodes + off;
     for_nd(ithr, nthr, (ptrdiff_t)ns[1].n, (ptrdiff_t)ns[0].n,
             [&](ptrdiff_t d1, ptrdiff_t d0) {
-        tr::call_param_t base_params;
+        tr::jit_uni_reorder_kernel_t::call_param_t base_params;
         base_params.in = in
                 + (d0 * ns[0].is + d1 * ns[1].is) * data_type_size(prb.itype);
         base_params.out = out
@@ -230,7 +230,7 @@ void jit_uni_reorder_t::omp_driver_2d(int ithr, int nthr, int off,
                 = compensation_scratch + d0 * ns[0].cs + d1 * ns[1].cs;
 
         if (prb.is_tail_present) {
-            tr::tail_call_param_t tail_params;
+            tr::jit_uni_reorder_kernel_t::tail_call_param_t tail_params;
             tail_params.base_params = base_params;
 
             static constexpr int omp_ndims = 2;
@@ -253,7 +253,7 @@ void jit_uni_reorder_t::omp_driver_3d(int ithr, int nthr, int off,
     const tr::node_t *ns = prb.nodes + off;
     for_nd(ithr, nthr, (ptrdiff_t)ns[2].n, (ptrdiff_t)ns[1].n,
             (ptrdiff_t)ns[0].n, [&](ptrdiff_t d2, ptrdiff_t d1, ptrdiff_t d0) {
-        tr::call_param_t base_params;
+        tr::jit_uni_reorder_kernel_t::call_param_t base_params;
         base_params.in = in
                 + (d0 * ns[0].is + d1 * ns[1].is + d2 * ns[2].is)
                         * data_type_size(prb.itype);
@@ -270,7 +270,7 @@ void jit_uni_reorder_t::omp_driver_3d(int ithr, int nthr, int off,
                 + d1 * ns[1].cs + d2 * ns[2].cs;
 
         if (prb.is_tail_present) {
-            tr::tail_call_param_t tail_params;
+            tr::jit_uni_reorder_kernel_t::tail_call_param_t tail_params;
             tail_params.base_params = base_params;
 
             static constexpr int omp_ndims = 3;
@@ -294,7 +294,7 @@ void jit_uni_reorder_t::omp_driver_4d(int ithr, int nthr, int off,
     for_nd(ithr, nthr, (ptrdiff_t)ns[3].n, (ptrdiff_t)ns[2].n,
             (ptrdiff_t)ns[1].n, (ptrdiff_t)ns[0].n,
             [&](ptrdiff_t d3, ptrdiff_t d2, ptrdiff_t d1, ptrdiff_t d0) {
-        tr::call_param_t base_params;
+        tr::jit_uni_reorder_kernel_t::call_param_t base_params;
         base_params.in = in
                 + (d0 * ns[0].is + d1 * ns[1].is + d2 * ns[2].is
                           + d3 * ns[3].is)
@@ -313,7 +313,7 @@ void jit_uni_reorder_t::omp_driver_4d(int ithr, int nthr, int off,
                 + d1 * ns[1].cs + d2 * ns[2].cs + d3 * ns[3].cs;
 
         if (prb.is_tail_present) {
-            tr::tail_call_param_t tail_params;
+            tr::jit_uni_reorder_kernel_t::tail_call_param_t tail_params;
             tail_params.base_params = base_params;
 
             static constexpr int omp_ndims = 4;
@@ -448,7 +448,7 @@ void jit_uni_reorder_t::reduce_compensation(char *out,
 
 void jit_uni_reorder_t::fill_curr_data_chunks(const tr::prb_t &prb,
         const int off, const ptrdiff_t *omp_data_chunks, const int omp_ndims,
-        tr::tail_call_param_t &c) const {
+        tr::jit_uni_reorder_kernel_t::tail_call_param_t &c) const {
     // Chunks are backwards numered i.e:
     // [0] -> [node_size]
     // [1] -> [node_size - 1]
@@ -498,7 +498,10 @@ void jit_uni_reorder_t::fill_curr_data_chunks(const tr::prb_t &prb,
 }
 
 status_t jit_uni_reorder_t::init(engine_t *engine) {
-    CHECK(safe_ptr_assign(kernel_, tr::kernel_t::create(pd()->ker_desc_)));
+    // We could inject the correct implementer of the kernel_t interface at this
+    // point.
+    CHECK(safe_ptr_assign(kernel_,
+            tr::jit_uni_reorder_kernel_t::create_handle(pd()->ker_desc_)));
     return kernel_->create_kernel();
 }
 

@@ -37,11 +37,12 @@ namespace tr {
 using namespace Xbyak_aarch64;
 using namespace dnnl::impl::types;
 
-status_t kernel_t::desc_init(
-        kernel_t::desc_t &desc, const prb_t &prb, int ndims_ker_max) {
+status_t jit_uni_reorder_kernel_t::desc_init(
+        desc_t &desc, const prb_t &prb, int ndims_ker_max) {
 
     desc.prb = prb;
-    desc.prb.ioff = desc.prb.ooff = 0;
+    desc.prb.ioff = 0;
+    desc.prb.ooff = 0;
 
     if (ndims_ker_max > prb.ndims) return status::invalid_arguments;
 
@@ -59,35 +60,30 @@ status_t kernel_t::desc_init(
     desc.id = 0;
     for (int ndims_ker = ndims_ker_max; ndims_ker > 0; --ndims_ker) {
         desc.prb.ndims = ndims_ker;
-        if (jit_uni_reorder_kernel_f32_t::applicable(desc.prb))
-            return status::success;
+        if (generic_kernel_t::applicable(desc.prb)) return status::success;
     }
 
     return status::unimplemented;
 }
 
-kernel_t *kernel_t::create(const kernel_t::desc_t &desc) {
-    switch (desc.id) {
-        case 0: return new jit_uni_reorder_kernel_f32_t(desc);
-        default: assert(!"unknown kernel id"); return nullptr;
+jit_uni_reorder_kernel_t *jit_uni_reorder_kernel_t::create_handle(
+        const desc_t &desc) {
+    jit_uni_reorder_kernel_t *handle = nullptr;
+
+    if (desc.id != 0) { return handle; }
+
+    if (tr8x8_kernel_t::applicable(desc.prb)) {
+        handle = new tr8x8_kernel_t(desc);
+    } else if (tr4x8_kernel_t::applicable(desc.prb)) {
+        handle = new tr4x8_kernel_t(desc);
+    } else if (generic_kernel_t::applicable(desc.prb)) {
+        handle = new generic_kernel_t(desc);
     }
 
-    return nullptr;
+    return handle;
 }
 
 /* kernel */
-void jit_uni_reorder_kernel_f32_t::operator()(const call_param_t *c) const {
-    jit_generator_t::operator()(c);
-}
-
-void jit_uni_reorder_kernel_f32_t::operator()(
-        const tail_call_param_t *c) const {
-    jit_generator_t::operator()(c);
-}
-
-status_t jit_uni_reorder_kernel_f32_t::create_kernel() {
-    return jit_generator_t::create_kernel();
-}
 
 #define PARAM(x) \
     abi_param1, \
@@ -96,7 +92,7 @@ status_t jit_uni_reorder_kernel_f32_t::create_kernel() {
                                  : offsetof(call_param_t, x)
 #define TAIL_PARAM(x) abi_param1, offsetof(tail_call_param_t, x)
 
-bool jit_uni_reorder_kernel_f32_t::impl_desc_init(
+bool jit_uni_reorder_kernel_t::impl_desc_init(
         const prb_t &prb, impl_desc_t *desc) {
     const int ndims = prb.ndims;
 
@@ -145,35 +141,7 @@ bool jit_uni_reorder_kernel_f32_t::impl_desc_init(
     return true;
 }
 
-bool jit_uni_reorder_kernel_f32_t::applicable(const prb_t &p) {
-    using namespace data_type;
-
-    bool bf16_ok = (mayiuse_bf16() && (p.itype == bf16) && (p.otype == bf16)
-                           && !interim_f32_needed(p, false) && p.beta == 0.f)
-            || (p.itype != bf16 && p.otype != bf16)
-            || (p.itype == f32 && p.otype == bf16 && mayiuse_bf16()
-                    && p.beta == 0.f)
-            || (p.itype == bf16 && p.otype == f32 && mayiuse_bf16()
-                    && p.beta == 0.f);
-
-    bool is_f16 = (p.itype == f16 || p.otype == f16);
-    bool f16_ok = (p.itype == f32 && p.otype == f16 && p.beta == 0.f)
-            || (p.itype == f16 && p.otype == f32 && p.beta == 0.f)
-            || (p.itype == f16 && p.otype == f16 && p.beta == 0.f);
-
-    bool ok = true && p.ndims > 0
-            && utils::one_of(p.itype, f32, f16, bf16, s32, data_type::s8, u8)
-            && utils::one_of(p.otype, f32, f16, bf16, s32, data_type::s8, u8)
-            && utils::everyone_is(0, p.ioff, p.ooff) /* do we need this? */
-            && utils::one_of(p.beta, 0.f, 1.f) /* anything else? */
-            && impl_desc_init(p, nullptr) && prb_has_small_strides(p) && bf16_ok
-            && IMPLICATION(is_f16, f16_ok);
-
-    return ok;
-}
-
-XReg jit_uni_reorder_kernel_f32_t::o_addr(
-        int o_off, bool with_type_multiplier) {
+XReg jit_uni_reorder_kernel_t::o_addr(int o_off, bool with_type_multiplier) {
     if (o_off) {
         add_imm(X_DEFAULT_ADDR, x_ptr_out_off,
                 o_off * (with_type_multiplier ? otype_sz_ : 1), X_TMP);
@@ -183,7 +151,7 @@ XReg jit_uni_reorder_kernel_f32_t::o_addr(
     return x_ptr_out_off;
 }
 
-XReg jit_uni_reorder_kernel_f32_t::src_s_addr(int s_off) {
+XReg jit_uni_reorder_kernel_t::src_s_addr(int s_off) {
     if (s_off) {
         add_imm(X_DEFAULT_ADDR, x_ptr_src_scale_off, s_off * stype_sz_, X_TMP);
         return X_DEFAULT_ADDR;
@@ -192,7 +160,7 @@ XReg jit_uni_reorder_kernel_f32_t::src_s_addr(int s_off) {
     }
 }
 
-XReg jit_uni_reorder_kernel_f32_t::dst_s_addr(int s_off) {
+XReg jit_uni_reorder_kernel_t::dst_s_addr(int s_off) {
     if (s_off) {
         add_imm(X_DEFAULT_ADDR, x_ptr_dst_scale_off, s_off * stype_sz_, X_TMP);
         return X_DEFAULT_ADDR;
@@ -201,7 +169,7 @@ XReg jit_uni_reorder_kernel_f32_t::dst_s_addr(int s_off) {
     }
 }
 
-XReg jit_uni_reorder_kernel_f32_t::c_addr(int c_off) {
+XReg jit_uni_reorder_kernel_t::c_addr(int c_off) {
     if (c_off) {
         add_imm(X_DEFAULT_ADDR, x_ptr_comp_off, c_off * sizeof(int32_t), X_TMP);
         return X_DEFAULT_ADDR;
@@ -210,7 +178,7 @@ XReg jit_uni_reorder_kernel_f32_t::c_addr(int c_off) {
     return x_ptr_comp_off;
 }
 
-XReg jit_uni_reorder_kernel_f32_t::data_chunk_addr(int node_id) {
+XReg jit_uni_reorder_kernel_t::data_chunk_addr(int node_id) {
     add_imm(X_DEFAULT_ADDR, abi_param1,
             offsetof(tail_call_param_t, curr_data_chunks)
                     + sizeof(int64_t) * (node_id),
@@ -218,7 +186,7 @@ XReg jit_uni_reorder_kernel_f32_t::data_chunk_addr(int node_id) {
     return X_DEFAULT_ADDR;
 }
 
-void jit_uni_reorder_kernel_f32_t::step(int off, int prev_i_off, int prev_o_off,
+void jit_uni_reorder_kernel_t::step(int off, int prev_i_off, int prev_o_off,
         int prev_s_off, int prev_c_off, int &i_off, int &o_off, int &s_off,
         int &c_off, int step_size) {
     i_off = prev_i_off;
@@ -253,45 +221,23 @@ void jit_uni_reorder_kernel_f32_t::step(int off, int prev_i_off, int prev_o_off,
     }
 }
 
-void jit_uni_reorder_kernel_f32_t::step(int off, int prev_i_off, int prev_o_off,
+void jit_uni_reorder_kernel_t::step(int off, int prev_i_off, int prev_o_off,
         int &i_off, int &o_off, int step_size) {
     int dummy = 0;
     step(off, prev_i_off, prev_o_off, dummy, dummy, i_off, o_off, dummy, dummy,
             step_size);
 }
 
-bool jit_uni_reorder_kernel_f32_t::can_do_tr4x8() {
-    using namespace data_type;
-
-    // The kernel is specialised for f32 -> bf16 reorders.
-    //
-    // This process relies on swapping the two innermost dimensions.
-    // Therefore, the input stride in the second node and output stride in
-    // first node have to be equal to 1.
-    return mayiuse(sve_256) && prb_.ndims >= 2
-            && (prb_.itype == f32 && prb_.otype == bf16) && prb_.n(0) == 4
-            && prb_.n(1) == 8 && utils::everyone_is(1, prb_.os(0), prb_.is(1))
-            && !prb_.is_tail_present
-            && prb_.src_scale_type == scale_type_t::NONE
-            && prb_.dst_scale_type == scale_type_t::NONE && prb_.beta == 0.f
-            && !compensation_needed_;
-}
-
-bool jit_uni_reorder_kernel_f32_t::process_unroll_tr4x8(
-        const int ndims, const int len) {
-    if (!can_do_tr4x8()) return false;
-
+void tr4x8_kernel_t::compute(int ndims, int len, bool) {
     const int step_size = prb_.n(0) * prb_.n(1);
     int i_off = 0, o_off = 0;
     for (int off = 0; off < len; off += step_size) {
         step(off, i_off, o_off, i_off, o_off, step_size);
-        tr4x8_sve256(i_off, o_off);
+        tr4x8_core(i_off, o_off);
     }
-
-    return true;
 }
 
-void jit_uni_reorder_kernel_f32_t::tr4x8_sve256(int i_off, int o_off) {
+void tr4x8_kernel_t::tr4x8_core(int i_off, int o_off) {
     using namespace data_type;
 
     auto z0 = ZRegS(0);
@@ -379,7 +325,7 @@ void jit_uni_reorder_kernel_f32_t::tr4x8_sve256(int i_off, int o_off) {
     st1h(z6.h, P_ALL_ONE, ptr(x_tmp_1));
 }
 
-void jit_uni_reorder_kernel_f32_t::tr8x8_sve256(int i_off, int o_off) {
+void tr8x8_kernel_t::tr8x8_core(int i_off, int o_off) {
     using namespace data_type;
 
     const auto cvt2ps
@@ -555,41 +501,16 @@ void jit_uni_reorder_kernel_f32_t::tr8x8_sve256(int i_off, int o_off) {
         st1w(ZRegS {4 + i}, p_size / T_z, ptr(x_tmp_vec[i]));
 }
 
-bool jit_uni_reorder_kernel_f32_t::can_do_tr8x8() {
-    using namespace data_type;
-
-    static constexpr int desirable_node_size = 8;
-    static constexpr int desirable_stride = 1;
-
-    // This process relies on swapping the two innermost dimensions.
-    // Therefore, the input stride in the second node and output stride in
-    // first node have to be equal to 1.
-    return mayiuse(sve_256) && prb_.ndims >= 2
-            && ((utils::one_of(prb_.itype, u8, data_type::s8, s32, f32)
-                    && utils::one_of(prb_.otype, u8, data_type::s8, s32, f32)))
-            && utils::everyone_is(desirable_node_size, prb_.n(0), prb_.n(1))
-            && utils::everyone_is(desirable_stride, prb_.os(0), prb_.is(1))
-            && !prb_.is_tail_present
-            && prb_.src_scale_type == scale_type_t::NONE
-            && prb_.dst_scale_type == scale_type_t::NONE && prb_.beta == 0.f
-            && !compensation_needed_;
-}
-
-bool jit_uni_reorder_kernel_f32_t::process_unroll_tr8x8(
-        const int ndims, const int len) {
-    if (!can_do_tr8x8()) return false;
-
+void tr8x8_kernel_t::compute(int ndims, int len, bool) {
     const int step_size = prb_.n(0) * prb_.n(1);
     int i_off = 0, o_off = 0;
     for (int off = 0; off < len; off += step_size) {
         step(off, i_off, o_off, i_off, o_off, step_size);
-        tr8x8_sve256(i_off, o_off);
+        tr8x8_core(i_off, o_off);
     }
-
-    return true;
 }
 
-void jit_uni_reorder_kernel_f32_t::process_unroll_generic_step(int reg_unroll,
+void generic_kernel_t::process_unroll_generic_step(int reg_unroll,
         const int *i_off, const int *o_off, const int *s_off, const int *c_off,
         const int *zero_padding, const bool tail_processing) {
     using namespace data_type;
@@ -1266,7 +1187,7 @@ void jit_uni_reorder_kernel_f32_t::process_unroll_generic_step(int reg_unroll,
     }
 }
 
-bool jit_uni_reorder_kernel_f32_t::interim_f32_needed(
+bool jit_uni_reorder_kernel_t::interim_f32_needed(
         const prb_t &prb, bool compensation_needed) {
     using namespace data_type;
     bool ret = utils::one_of(f32, prb.itype, prb.otype)
@@ -1280,7 +1201,7 @@ bool jit_uni_reorder_kernel_f32_t::interim_f32_needed(
     return ret;
 }
 
-void jit_uni_reorder_kernel_f32_t::process_unroll_generic(
+void generic_kernel_t::compute(
         const int ndims, int len, const bool tail_processing) {
     assert(IMPLICATION(prb_.nodes[0].tail_size > 0,
             len == static_cast<int>(prb_.nodes[0].n)
@@ -1332,15 +1253,7 @@ void jit_uni_reorder_kernel_f32_t::process_unroll_generic(
     }
 }
 
-void jit_uni_reorder_kernel_f32_t::compute_ker(
-        const int ndims, const int len_unroll, const bool tail_processing) {
-    if (process_unroll_tr8x8(ndims, len_unroll)) return;
-    if (process_unroll_tr4x8(ndims, len_unroll)) return;
-
-    process_unroll_generic(ndims, len_unroll, tail_processing);
-}
-
-void jit_uni_reorder_kernel_f32_t::check_if_this_is_last_chunk(
+void jit_uni_reorder_kernel_t::check_if_this_is_last_chunk(
         const XReg reg_curr_chunk, int node_id) {
     // Chunks are backwards numered i.e:
     // [0] -> [node_size]
@@ -1355,7 +1268,7 @@ void jit_uni_reorder_kernel_f32_t::check_if_this_is_last_chunk(
     cmp(reg_curr_chunk, last_chunk);
 }
 
-void jit_uni_reorder_kernel_f32_t::zero_dst_memory(const int bytes_to_zeroing) {
+void jit_uni_reorder_kernel_t::zero_dst_memory(const int bytes_to_zeroing) {
     static constexpr int num_of_bytes_in_xmm = 128 / 8;
 
     const int xmms_to_zeroing
@@ -1390,7 +1303,7 @@ void jit_uni_reorder_kernel_f32_t::zero_dst_memory(const int bytes_to_zeroing) {
     }
 }
 
-void jit_uni_reorder_kernel_f32_t::finalize_tail_loop(int i_step, int o_step,
+void jit_uni_reorder_kernel_t::finalize_tail_loop(int i_step, int o_step,
         int s_step, int c_step, const int curr_node_id) {
     static constexpr int empty_chunk_info = -1;
 
@@ -1441,7 +1354,7 @@ void jit_uni_reorder_kernel_f32_t::finalize_tail_loop(int i_step, int o_step,
     }
 }
 
-void jit_uni_reorder_kernel_f32_t::compute_blk_ker(const impl_desc_t &desc) {
+void jit_uni_reorder_kernel_t::inject_kernel_body(const impl_desc_t &desc) {
     static constexpr bool with_tail_processing = true;
     Label no_last_chunk, end_label;
     int omp_ndims = prb_.full_ndims - prb_.ndims;
@@ -1456,16 +1369,16 @@ void jit_uni_reorder_kernel_f32_t::compute_blk_ker(const impl_desc_t &desc) {
 
         const int len_unroll = desc.tail_len_unroll > 0 ? desc.tail_len_unroll
                                                         : desc.len_unroll;
-        compute_ker(omp_ndims, len_unroll, with_tail_processing);
+        compute(omp_ndims, len_unroll, with_tail_processing);
         b(end_label);
     }
 
     L(no_last_chunk);
-    compute_ker(omp_ndims, desc.len_unroll, !with_tail_processing);
+    compute(omp_ndims, desc.len_unroll, !with_tail_processing);
     L(end_label);
 }
 
-void jit_uni_reorder_kernel_f32_t::create_loops(const impl_desc_t &desc,
+void jit_uni_reorder_kernel_t::create_loops(const impl_desc_t &desc,
         const std::array<const XReg, 3> &reg_cnt, int jit_loop) {
     assert(jit_loop <= ndims_jit_loop_max);
 
@@ -1596,11 +1509,11 @@ void jit_uni_reorder_kernel_f32_t::create_loops(const impl_desc_t &desc,
                     len * c_step * sizeof(int32_t), X_TMP_0);
         }
     } else {
-        compute_blk_ker(desc);
+        inject_kernel_body(desc);
     }
 }
 
-bool jit_uni_reorder_kernel_f32_t::impl() {
+bool jit_uni_reorder_kernel_t::impl() {
     impl_desc_t d;
     if (!impl_desc_init(prb_, &d)) return false;
 
@@ -1631,73 +1544,73 @@ bool jit_uni_reorder_kernel_f32_t::impl() {
     for (size_t i = startIdx; i < startIdx + regNum; i++) \
         inst(__VA_ARGS__);
 
-void jit_uni_reorder_kernel_f32_t::cvt_z_s32_f32(
+void jit_uni_reorder_kernel_t::cvt_z_s32_f32(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST(scvtf, ZRegS, tmp, P_ALL_ONE / T_m, tmp);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_s32_f32(
+void jit_uni_reorder_kernel_t::cvt_v_s32_f32(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST(scvtf, VReg4S, tmp, tmp);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_z_f32_s32(
+void jit_uni_reorder_kernel_t::cvt_z_f32_s32(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST(frinti, ZRegS, tmp, P_ALL_ONE / T_m, tmp);
     UNROLL_INST(fcvtzs, ZRegS, tmp, P_ALL_ONE / T_m, tmp);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_f32_s32(
+void jit_uni_reorder_kernel_t::cvt_v_f32_s32(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST(frinti, VReg4S, tmp, tmp);
     UNROLL_INST(fcvtzs, VReg4S, tmp, tmp);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_f32_bf16(
+void jit_uni_reorder_kernel_t::cvt_v_f32_bf16(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST2(bfcvtn, VReg4H(i), VReg4S(i));
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_bf16_fp32(
+void jit_uni_reorder_kernel_t::cvt_v_bf16_fp32(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST2(shll, VReg4S(i), VReg4H(i), 16);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_f16_f32(
+void jit_uni_reorder_kernel_t::cvt_v_f16_f32(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST2(fcvtl, VReg4S(i), VReg4H(i));
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_f32_f16(
+void jit_uni_reorder_kernel_t::cvt_v_f32_f16(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST2(fcvtn, VReg4H(i), VReg4S(i));
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_z_s8_s32(
+void jit_uni_reorder_kernel_t::cvt_z_s8_s32(
         const size_t startIdx, const size_t regNum) {
     cvt_z_b_s(startIdx, regNum);
     UNROLL_INST(sxtb, ZRegS, tmp, P_ALL_ONE / T_m, tmp);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_s8_s32(
+void jit_uni_reorder_kernel_t::cvt_v_s8_s32(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST(sxtl, VReg, tmp.h8, tmp.b8);
     UNROLL_INST(sxtl, VReg, tmp.s4, tmp.h4);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_z_s8_f32(
+void jit_uni_reorder_kernel_t::cvt_z_s8_f32(
         const size_t startIdx, const size_t regNum) {
     cvt_z_b_s(startIdx, regNum);
     cvt_z_s32_f32(startIdx, regNum);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_s8_f32(
+void jit_uni_reorder_kernel_t::cvt_v_s8_f32(
         const size_t startIdx, const size_t regNum) {
     cvt_v_b_s(startIdx, regNum);
     cvt_v_s32_f32(startIdx, regNum);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_z_b_s(
+void jit_uni_reorder_kernel_t::cvt_z_b_s(
         const size_t startIdx, const size_t regNum) {
     assert(z_tmp7.getIdx() < startIdx
             || startIdx + regNum - 1 < z_tmp7.getIdx());
@@ -1707,7 +1620,7 @@ void jit_uni_reorder_kernel_f32_t::cvt_z_b_s(
     UNROLL_INST(zip1, ZRegH, tmp, tmp, z_tmp7.h);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_b_s(
+void jit_uni_reorder_kernel_t::cvt_v_b_s(
         const size_t startIdx, const size_t regNum) {
     assert(v_tmp7.getIdx() < startIdx
             || startIdx + regNum - 1 < v_tmp7.getIdx());
@@ -1718,19 +1631,19 @@ void jit_uni_reorder_kernel_f32_t::cvt_v_b_s(
     UNROLL_INST(zip1, VReg8H, tmp, tmp, v_tmp7.h8);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_z_u8_s32(
+void jit_uni_reorder_kernel_t::cvt_z_u8_s32(
         const size_t startIdx, const size_t regNum) {
     cvt_z_b_s(startIdx, regNum);
     UNROLL_INST(uxtb, ZRegS, tmp, P_ALL_ONE / T_m, tmp);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_u8_s32(
+void jit_uni_reorder_kernel_t::cvt_v_u8_s32(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST(uxtl, VReg, tmp.h8, tmp.b8);
     UNROLL_INST(uxtl, VReg, tmp.s4, tmp.h4);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_z_s32_s8(
+void jit_uni_reorder_kernel_t::cvt_z_s32_s8(
         const size_t startIdx, const size_t regNum) {
     assert(z_tmp7.getIdx() < startIdx
             || startIdx + regNum - 1 < z_tmp7.getIdx());
@@ -1742,7 +1655,7 @@ void jit_uni_reorder_kernel_f32_t::cvt_z_s32_s8(
     UNROLL_INST(uzp1, ZRegB, tmp, tmp, z_tmp7.b);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_s32_s8(
+void jit_uni_reorder_kernel_t::cvt_v_s32_s8(
         const size_t startIdx, const size_t regNum) {
     assert(v_tmp7.getIdx() < startIdx
             || startIdx + regNum - 1 < v_tmp7.getIdx());
@@ -1759,12 +1672,12 @@ void jit_uni_reorder_kernel_f32_t::cvt_v_s32_s8(
     UNROLL_INST(uzp1, VReg16B, tmp, tmp, v_tmp7.b16);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_z_u8_s8(
+void jit_uni_reorder_kernel_t::cvt_z_u8_s8(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST2(umin, ZRegB(i), 127);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_u8_s8(
+void jit_uni_reorder_kernel_t::cvt_v_u8_s8(
         const size_t startIdx, const size_t regNum) {
     assert(v_tmp7.getIdx() < startIdx
             || startIdx + regNum - 1 < v_tmp7.getIdx());
@@ -1774,14 +1687,14 @@ void jit_uni_reorder_kernel_f32_t::cvt_v_u8_s8(
     UNROLL_INST(umin, VReg16B, tmp, tmp, v_tmp7.b16);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_z_u32_u8(
+void jit_uni_reorder_kernel_t::cvt_z_u32_u8(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST2(umin, ZRegS(i), 255);
     UNROLL_INST(uzp1, ZRegH, tmp, tmp, tmp);
     UNROLL_INST(uzp1, ZRegB, tmp, tmp, tmp);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_u32_u8(
+void jit_uni_reorder_kernel_t::cvt_v_u32_u8(
         const size_t startIdx, const size_t regNum) {
     assert(v_tmp7.getIdx() < startIdx
             || startIdx + regNum - 1 < v_tmp7.getIdx());
@@ -1793,7 +1706,7 @@ void jit_uni_reorder_kernel_f32_t::cvt_v_u32_u8(
     UNROLL_INST(uzp1, VReg16B, tmp, tmp, tmp);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_z_s32_u8(
+void jit_uni_reorder_kernel_t::cvt_z_s32_u8(
         const size_t startIdx, const size_t regNum) {
     assert(z_tmp7.getIdx() < startIdx
             || startIdx + regNum - 1 < z_tmp7.getIdx());
@@ -1806,7 +1719,7 @@ void jit_uni_reorder_kernel_f32_t::cvt_z_s32_u8(
     UNROLL_INST2(mov, ZRegB(i), P_NOT_128 / T_m, 0);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_s32_u8(
+void jit_uni_reorder_kernel_t::cvt_v_s32_u8(
         const size_t startIdx, const size_t regNum) {
     assert(v_tmp7.getIdx() < startIdx
             || startIdx + regNum - 1 < v_tmp7.getIdx());
@@ -1821,12 +1734,12 @@ void jit_uni_reorder_kernel_f32_t::cvt_v_s32_u8(
     UNROLL_INST(uzp1, VReg16B, tmp, tmp, tmp);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_z_s8_u8(
+void jit_uni_reorder_kernel_t::cvt_z_s8_u8(
         const size_t startIdx, const size_t regNum) {
     UNROLL_INST2(smax, ZRegB(i), 0);
 }
 
-void jit_uni_reorder_kernel_f32_t::cvt_v_s8_u8(
+void jit_uni_reorder_kernel_t::cvt_v_s8_u8(
         const size_t startIdx, const size_t regNum) {
     assert(v_tmp7.getIdx() < startIdx
             || startIdx + regNum - 1 < v_tmp7.getIdx());
@@ -1838,15 +1751,19 @@ void jit_uni_reorder_kernel_f32_t::cvt_v_s8_u8(
 #undef UNROLL_INST
 #undef UNROLL_INST
 
-jit_uni_reorder_kernel_f32_t::jit_uni_reorder_kernel_f32_t(const desc_t &desc)
-    : kernel_t(desc), isa_(get_max_cpu_isa()) {
+jit_uni_reorder_kernel_t::jit_uni_reorder_kernel_t(const desc_t &desc)
+    : desc_(desc)
+    , prb_(desc_.prb)
+    , compensation_needed_(
+              desc.prb.req_s8s8_comp || desc.prb.req_asymmetric_comp)
+    , isa_(get_max_cpu_isa()) {
     assert(!utils::one_of(isa_, isa_undef, isa_all));
     itype_sz_ = data_type_size(prb_.itype);
     otype_sz_ = data_type_size(prb_.otype);
     stype_sz_ = sizeof(float);
 }
 
-void jit_uni_reorder_kernel_f32_t::generate() {
+void jit_uni_reorder_kernel_t::generate() {
     using namespace Xbyak_aarch64::util;
     Label end_of_kernel;
 

@@ -817,7 +817,7 @@ void prb_thread_kernel_balance(prb_t &prb, int &ndims_ker_max, int nthr) {
      * (less than tr::ker_prb_size_min). In that case try to split the
      * innermost driver dimension into two, to increase size_ker_cur. */
     const bool want_borrow_ker_from_drv = kdims < prb.ndims
-            && size_ker_cur < kernel_t::ker_prb_size_min
+            && size_ker_cur < jit_uni_reorder_kernel_t::ker_prb_size_min
             && size_drv_cur > size_drv_min;
     if (want_borrow_ker_from_drv) {
         /* size_want_borrow is the minimal size, so that:
@@ -829,8 +829,8 @@ void prb_thread_kernel_balance(prb_t &prb, int &ndims_ker_max, int nthr) {
          *  In the worst case the minimal size_want_borrow is equal
          *  to the innermost driver dimension itself. In that case
          *  we will sacrifice it in favor of kernel (is it fine?). */
-        size_t size_want_borrow
-                = utils::div_up(kernel_t::ker_prb_size_min, size_ker_cur);
+        size_t size_want_borrow = utils::div_up(
+                jit_uni_reorder_kernel_t::ker_prb_size_min, size_ker_cur);
         for (; prb.nodes[kdims].n % size_want_borrow; ++size_want_borrow)
             ;
 
@@ -844,7 +844,7 @@ void prb_thread_kernel_balance(prb_t &prb, int &ndims_ker_max, int nthr) {
      * try to split the outermost kernel dimension into two, to increase
      * size_drv_cur. */
     const bool want_borrow_drv_from_ker
-            = size_ker_cur > kernel_t::ker_prb_size_min
+            = size_ker_cur > jit_uni_reorder_kernel_t::ker_prb_size_min
             && size_drv_cur < size_drv_min;
     if (want_borrow_drv_from_ker) {
         size_t size_want_borrow = utils::div_up(size_drv_min, size_drv_cur);

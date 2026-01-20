@@ -330,6 +330,7 @@ engine &get_engine(engine::kind engine_kind) {
 /// @param num_experts Number of experts
 /// @param K_dim Input dimension (same for all experts)
 /// @param N_dim Output dimension (same for all experts)
+/// @param engine_kind oneDNN engine kind (cpu or gpu)
 /// @param use_src_scales If true, applies row-wise src scales
 /// @param scale_src_concat Optional row-wise src scales [total_tokens] (nullptr if not used)
 /// @param use_wei_scales If true, applies column-wise weight scales

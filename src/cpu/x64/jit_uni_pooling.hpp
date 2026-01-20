@@ -58,11 +58,21 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
             // Disabling verbose dispatch messages for unsupported dt for better
             // readability.
             // TODO: restore once `d_type` template argument is removed.
-            if (!everyone_is(
-                        d_type, src_md()->data_type, dst_md()->data_type)) {
+            if (!everyone_is(d_type, src_md()->data_type)) {
                 return status::unimplemented;
             }
 
+            VDISPATCH_POOLING(everyone_is(d_type, src_md()->data_type,
+                                      dst_md()->data_type)
+                            || (one_of(src_md()->data_type, data_type::u8,
+                                        data_type::s8)
+                                    && one_of(dst_md()->data_type,
+                                            data_type::f32, data_type::f16))
+                            || (one_of(src_md()->data_type, data_type::f32,
+                                        data_type::f16)
+                                    && one_of(dst_md()->data_type,
+                                            data_type::u8, data_type::s8)),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(
                     attr()->has_default_values(
                             primitive_attr_t::skip_mask_t::post_ops, d_type),
@@ -71,11 +81,13 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
                     "does not support dilations");
             VDISPATCH_POOLING(set_default_params() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
+
             bool is_max_with_postops
                     = (desc()->alg_kind == alg_kind::pooling_max)
                     && attr()->post_ops_.len() > 0;
             bool is_int8
-                    = (d_type == data_type::u8) || (d_type == data_type::s8);
+                    = everyone_is(d_type, dst_md()->data_type, data_type::u8)
+                    || everyone_is(d_type, dst_md()->data_type, data_type::s8);
 
             if (is_int8 && !is_max_with_postops) return status::unimplemented;
 

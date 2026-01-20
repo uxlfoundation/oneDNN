@@ -293,6 +293,7 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
         jpp.is_fp8 = false;
         jpp.src_dt = jpp.dst_dt = data_type::f32;
         jpp.dt_size = types::data_type_size(jpp.src_dt);
+        jpp.dst_dt_size = types::data_type_size(jpp.dst_dt);
         jpp.tag_kind = jit_memory_tag_kind_t::ncsp;
 
         // used to initialize binary post-ops
@@ -302,6 +303,7 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
         }
     } else {
         jpp.dt_size = types::data_type_size(src_d.data_type());
+        jpp.dst_dt_size = types::data_type_size(jpp.dst_dt);
         jpp.tag_kind = (fmt_tag == nspc_fmt_tag)
                 ? jit_memory_tag_kind_t::nspc
                 : jit_memory_tag_kind_t::blocked;
@@ -983,7 +985,7 @@ inline void jit_uni_pool_kernel_t<isa>::avg_step(int ur_w, int ur_bc, int pad_l,
             for (int bci = 0; bci < ur_bc; bci++) {
                 const auto accr_i = reg_ind(0, bci, jj, ur_bc, ur_w);
                 const auto output_offset
-                        = dt_size * (jj * c_off + bci * c_block);
+                        = jpp.dst_dt_size * (jj * c_off + bci * c_block);
                 store(jpp.dst_dt, reg_idx(accr_i), reg_output, output_offset,
                         is_tail_processing(bci));
             }
@@ -1139,7 +1141,8 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_fwd(int ur_w, int ur_bc,
     for_(int jj = 0; jj < ur_w; jj++)
     for (int bci = 0; bci < ur_bc; bci++) {
         const auto accr_i = reg_ind(0, bci, jj, ur_bc, ur_w);
-        const auto output_offset = jpp.dt_size * (jj * c_off + bci * c_block);
+        const auto output_offset
+                = jpp.dst_dt_size * (jj * c_off + bci * c_block);
         const bool is_c_tail_processing = is_tail_processing(bci);
         store(jpp.dst_dt, reg_idx(accr_i), reg_output, output_offset,
                 is_c_tail_processing);
@@ -1451,7 +1454,7 @@ void jit_uni_pool_kernel_t<isa>::generate() {
 
         if (!inc_reg) return;
 
-        auto output_dt_size = jpp.dt_size;
+        auto output_dt_size = jpp.dst_dt_size;
         auto shift = (isa == sse41) ? vlen : 0;
         add(reg_input,
                 input_dt_size * nstl::max(0, ur_w * stride_w - lpad)

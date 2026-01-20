@@ -114,7 +114,9 @@ public:
         for (auto &opt : option_set_)
             if (opt.find(opt_start) != std::string::npos) return true;
 
-        return int_var_map_.count(name) != 0 || float_var_map_.count(name) != 0;
+        std::string var_name = name;
+        return int_var_map_.count(var_name) != 0
+                || float_var_map_.count(var_name) != 0;
     }
     bool has_macro(const std::string &name) const {
         return has_macro(name.c_str());

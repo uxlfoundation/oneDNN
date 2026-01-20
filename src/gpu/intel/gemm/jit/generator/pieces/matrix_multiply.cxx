@@ -451,6 +451,10 @@ void Generator<hw>::outerProductSystolic(int h, int ha, int hb, int opCount, boo
                 if (rc != 8 && strategy.extendedAtomicFMA) hw_unsupported();
             }
 
+#if XE3P
+            if (hhbase + ksys < opCount) mod |= Fwd;
+#endif
+
             if (startRepackC && hhbase == 0)
                 srcC0 = null.retype(C0.getType());
 

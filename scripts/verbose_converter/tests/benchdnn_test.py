@@ -21,7 +21,7 @@ import subprocess
 import sys
 from argparse import RawTextHelpFormatter
 from collections import defaultdict
-from typing import Dict, List, IO
+from typing import IO, Dict, List
 
 
 class TestingException(RuntimeError):
@@ -51,7 +51,7 @@ def convert_dir_benchdnn2verbose(dir):
 def filter_verbose(verbose: IO[str], driver: str, filter_event: str):
     found_cases: List[str] = []
     tentative_cases: Dict[str, List[str]] = defaultdict(list)
-    for line in iter(verbose.readline, ''):
+    for line in iter(verbose.readline, ""):
         if "__REPRO" in line:
             # n: STATUS (Status message) __REPRO: repro
             _, status_info, repro = map(str.strip, line.split(":", 2))

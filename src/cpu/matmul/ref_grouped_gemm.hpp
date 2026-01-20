@@ -17,6 +17,10 @@
 #ifndef CPU_MATMUL_REF_GROUPED_GEMM_HPP
 #define CPU_MATMUL_REF_GROUPED_GEMM_HPP
 
+#include "oneapi/dnnl/dnnl_config.h"
+
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/primitive.hpp"
@@ -171,4 +175,5 @@ private:
 } // namespace impl
 } // namespace dnnl
 
+#endif // DNNL_EXPERIMENTAL_GROUPED_GEMM
 #endif // CPU_MATMUL_REF_GROUPED_GEMM_HPP

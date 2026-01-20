@@ -16,6 +16,8 @@
 
 #include "gpu/intel/matmul/ref_grouped_gemm.hpp"
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+
 #include "common/c_types_map.hpp"
 #include "gpu/intel/compute/utils.hpp"
 
@@ -82,3 +84,5 @@ status_t ref_grouped_gemm_t::execute_ref(const exec_ctx_t &ctx) const {
 } // namespace gpu
 } // namespace impl
 } // namespace dnnl
+
+#endif // DNNL_EXPERIMENTAL_GROUPED_GEMM

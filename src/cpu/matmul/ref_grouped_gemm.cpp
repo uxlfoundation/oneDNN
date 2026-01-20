@@ -16,6 +16,8 @@
 
 #include "cpu/matmul/ref_grouped_gemm.hpp"
 
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
@@ -192,3 +194,5 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl
+
+#endif // DNNL_EXPERIMENTAL_GROUPED_GEMM

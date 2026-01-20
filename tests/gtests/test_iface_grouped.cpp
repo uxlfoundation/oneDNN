@@ -14,6 +14,10 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "oneapi/dnnl/dnnl_config.h"
+
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+
 #include "dnnl_test_common.hpp"
 #include "gtest/gtest.h"
 
@@ -351,3 +355,5 @@ TEST(c_api_grouped_md, TestGroupedMDInvalidArgs) {
 }
 
 } // namespace dnnl
+
+#endif // DNNL_EXPERIMENTAL_GROUPED_GEMM

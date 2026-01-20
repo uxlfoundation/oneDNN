@@ -17,6 +17,10 @@
 #ifndef GPU_INTEL_MATMUL_REF_GROUPED_GEMM_HPP
 #define GPU_INTEL_MATMUL_REF_GROUPED_GEMM_HPP
 
+#include "oneapi/dnnl/dnnl_config.h"
+
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+
 #include <assert.h>
 
 #include "common/c_types_map.hpp"
@@ -189,4 +193,5 @@ private:
 } // namespace impl
 } // namespace dnnl
 
+#endif // DNNL_EXPERIMENTAL_GROUPED_GEMM
 #endif // GPU_INTEL_MATMUL_REF_GROUPED_GEMM_HPP

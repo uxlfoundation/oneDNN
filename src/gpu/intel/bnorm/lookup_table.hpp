@@ -141,9 +141,10 @@ public:
     void override_set(const std::string &s, bool is_env) override {
         auto params = get_all_params();
         auto parts = gpu_utils::split(s);
+        const std::string sep = "=";
         for (auto &p : parts) {
             if (p.empty()) continue;
-            auto sub_parts = gpu_utils::split(p, "=");
+            auto sub_parts = gpu_utils::split(p, sep);
             gpu_assert(sub_parts.size() == 2);
             auto &key = sub_parts[0];
             auto &value = sub_parts[1];

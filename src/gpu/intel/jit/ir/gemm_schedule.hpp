@@ -1003,8 +1003,9 @@ private:
     static expr_t create_var(
             const std::vector<expr_t> &vars, const std::string &suffix) {
         std::string var_name;
+        const std::string idx_suffix = "_idx";
         for (auto &v : vars) {
-            auto name = strip_suffix(v.as<var_t>().name, "_idx");
+            auto name = strip_suffix(v.as<var_t>().name, idx_suffix);
             var_name += name + "_";
         }
         var_name += suffix;

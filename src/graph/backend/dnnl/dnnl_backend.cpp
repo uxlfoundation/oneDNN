@@ -25,6 +25,7 @@
 #include "graph/backend/dnnl/kernels/kernels.hpp"
 #include "graph/backend/dnnl/patterns/data_type_check_pass.hpp"
 #include "graph/backend/dnnl/patterns/fusions.hpp"
+#include "graph/backend/dnnl/patterns/grouped_matmul_fusion.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -74,6 +75,12 @@ pass::pass_registry_t dnnl_backend_t::register_passes() {
     auto check_pass_ptr = std::make_shared<pattern::dtype_check_pass_t>(
             "dnnl_backend", "dtype_check_pass", dtypes_to_check);
     pass_registry.register_pass(check_pass_ptr);
+
+    // grouped matmul fusion pass
+    auto grouped_matmul_pass_ptr
+            = std::make_shared<pattern::grouped_matmull_fusion_t>(
+                    "dnnl_backend", "grouped_matmul_fusion");
+    pass_registry.register_pass(grouped_matmul_pass_ptr);
 
     pass_registry.sort_passes();
 

@@ -118,6 +118,23 @@ jobs:
           config: ".github/.licenserc.yml"
           mode: "check"
 
+  other-lint:
+    name: Other linters
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Python linting
+        uses: oxsecurity/megalinter/flavors/python@42bb470545e359597e7f12156947c436e4e3fb9a # v9.3.0
+        id: pyl
+        env:
+          VALIDATE_ALL_CODEBASE: true
+          MEGALINTER_CONFIG: .github/python-linting.yml
+
   pr-status:
     name: Formatting
     runs-on: ubuntu-24.04

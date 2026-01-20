@@ -269,7 +269,7 @@ public:
         for (auto &s : plan.stages) {
             if (!s.is_x2r()) continue;
             auto kind = s.x2r.tensor_kind;
-            auto name = pick_abc(kind, desc.prop, "src", "wei", "dst");
+            std::string name = pick_abc(kind, desc.prop, "src", "wei", "dst");
             if (entries_.count(name) > 0) continue;
             auto &e = entries_[name];
             e.mem_buf = var_mgr.get_arg(name);

@@ -20,28 +20,23 @@ from __future__ import print_function
 import os
 import re
 import sys
-import datetime
+import textwrap
 import xml.etree.ElementTree as ET
 
 
 def template(body, banner):
-    return """\
-%s
+    return f"""\
+{banner}
 // DO NOT EDIT, AUTO-GENERATED
-// Use this script to update the file: scripts/%s
+// Use this script to update the file: scripts/{os.path.basename(__file__)}
 
 // clang-format off
 
-%s""" % (
-        banner,
-        os.path.basename(__file__),
-        body,
-    )
+{body}"""
 
 
 def header(body):
-    return (
-        """\
+    return f"""
 #ifndef ONEAPI_DNNL_DNNL_DEBUG_H
 #define ONEAPI_DNNL_DNNL_DEBUG_H
 
@@ -52,26 +47,23 @@ def header(body):
 #include "oneapi/dnnl/dnnl_types.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C" {{
 #endif
 
-%s
+{body}
 const char DNNL_API *dnnl_runtime2str(unsigned v);
 const char DNNL_API *dnnl_fmt_kind2str(dnnl_format_kind_t v);
 
 #ifdef __cplusplus
-}
+}}
 #endif
 
 #endif
-"""
-        % body
-    )
+""".lstrip()
 
 
 def source(body):
-    return (
-        """\
+    return f"""
 #include <assert.h>
 
 #include "oneapi/dnnl/dnnl_debug.h"
@@ -79,21 +71,18 @@ def source(body):
 
 #include "common/c_types_map.hpp"
 
-%s
-"""
-        % body
-    )
+{body}
+""".lstrip()
 
 
 def header_benchdnn(body):
-    return (
-        """\
+    return f"""
 #ifndef DNNL_DEBUG_HPP
 #define DNNL_DEBUG_HPP
 
 #include "oneapi/dnnl/dnnl.h"
 
-%s
+{body}
 /* status */
 const char *status2str(dnnl_status_t status);
 
@@ -122,14 +111,11 @@ const char *accumulation_mode2str(dnnl_accumulation_mode_t mode);
 const char *rounding_mode2str(dnnl_rounding_mode_t mode);
 
 #endif
-"""
-        % body
-    )
+""".lstrip()
 
 
 def source_benchdnn(body):
-    return (
-        """\
+    return f"""
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -140,46 +126,44 @@ def source_benchdnn(body):
 
 #include "src/common/z_magic.hpp"
 
-%s
+{body.rstrip()}
 
-const char *status2str(dnnl_status_t status) {
+const char *status2str(dnnl_status_t status) {{
     return dnnl_status2str(status);
-}
+}}
 
-const char *dt2str(dnnl_data_type_t dt) {
+const char *dt2str(dnnl_data_type_t dt) {{
     return dnnl_dt2str(dt);
-}
+}}
 
-const char *fmt_tag2str(dnnl_format_tag_t tag) {
+const char *fmt_tag2str(dnnl_format_tag_t tag) {{
     return dnnl_fmt_tag2str(tag);
-}
+}}
 
-const char *sparse_encoding2str(dnnl_sparse_encoding_t encoding) {
+const char *sparse_encoding2str(dnnl_sparse_encoding_t encoding) {{
     return dnnl_sparse_encoding2str(encoding);
-}
+}}
 
-const char *engine_kind2str(dnnl_engine_kind_t kind) {
+const char *engine_kind2str(dnnl_engine_kind_t kind) {{
     return dnnl_engine_kind2str(kind);
-}
+}}
 
-const char *scratchpad_mode2str(dnnl_scratchpad_mode_t mode) {
+const char *scratchpad_mode2str(dnnl_scratchpad_mode_t mode) {{
     return dnnl_scratchpad_mode2str(mode);
-}
+}}
 
-const char *fpmath_mode2str(dnnl_fpmath_mode_t mode) {
+const char *fpmath_mode2str(dnnl_fpmath_mode_t mode) {{
     return dnnl_fpmath_mode2str(mode);
-}
+}}
 
-const char *accumulation_mode2str(dnnl_accumulation_mode_t mode) {
+const char *accumulation_mode2str(dnnl_accumulation_mode_t mode) {{
     return dnnl_accumulation_mode2str(mode);
-}
+}}
 
-const char *rounding_mode2str(dnnl_rounding_mode_t mode) {
+const char *rounding_mode2str(dnnl_rounding_mode_t mode) {{
     return dnnl_rounding_mode2str(mode);
-}
-"""
-        % body.rstrip()
-    )
+}}
+""".lstrip()
 
 
 def maybe_skip(enum):
@@ -220,54 +204,78 @@ def sanitize_value(v):
 
 def func_to_str_decl(enum, is_header=False):
     abbrev = enum_abbrev(enum)
-    return "const char %s*dnnl_%s2str(%s v)" % (
-        "DNNL_API " if is_header else "",
-        abbrev,
-        enum,
-    )
+    visibility = "DNNL_API " if is_header else ""
+    return f"const char {visibility}*dnnl_{abbrev}2str({enum} v)"
+
+
+def blocks_to_func_body(blocks, indent="    "):
+    def is_preprocessor_stmt(block: str):
+        return block.strip()[0] == "#"
+
+    def add_indent(line):
+        if not line.strip():
+            return ""
+        return indent + line
+
+    blocks = blocks[:]
+    for i, block in enumerate(blocks):
+        dedented = textwrap.dedent(block).strip()
+        if is_preprocessor_stmt(block):
+            blocks[i] = dedented
+            continue
+        indented = "\n".join(map(add_indent, dedented.split("\n")))
+        blocks[i] = indented
+    if not blocks or is_preprocessor_stmt(blocks[0]):
+        return "\n".join(blocks).strip()
+    return indent + "\n".join(blocks).strip()
 
 
 def func_to_str(enum, values):
-    indent = "    "
     abbrev = enum_abbrev(enum)
-    func = ""
-    func += func_to_str_decl(enum) + " {\n"
+    signature = func_to_str_decl(enum)
+    func_blocks = []
     for v in values:
-        func += '%sif (v == %s) return "%s";\n' % (indent, v, sanitize_value(v))
+        func_blocks.append(f'if (v == {v}) return "{sanitize_value(v)}";')
     if enum == "dnnl_primitive_kind_t":
-        func += (
-            '%sif (v == dnnl::impl::primitive_kind::sdpa) return "sdpa";\n'
-            % indent
+        func_blocks.append(
+            'if (v == dnnl::impl::primitive_kind::sdpa) return "sdpa";'
         )
     if enum == "dnnl_alg_kind_t":
-        func += (
-            '%sif (v == dnnl::impl::alg_kind::softmax_accurate_inf_as_zero) return "softmax_accurate_inf_as_zero";\n'
-            % indent
+        func_blocks.append(
+            """
+if (v == dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
+    return "softmax_accurate_inf_as_zero";
+            """
         )
-    func += '%sassert(!"unknown %s");\n' % (indent, abbrev)
-    func += '%sreturn "unknown %s";\n}\n' % (indent, abbrev)
-    return func
+    func_blocks.append(f'assert(!"unknown {abbrev}");')
+    func_blocks.append(f'return "unknown {abbrev}";')
+
+    body = blocks_to_func_body(func_blocks)
+    return f"{signature} {{\n{body}\n}}\n"
 
 
 def str_to_func_decl(enum, is_header=False, is_dnnl=True):
     attr = "DNNL_API " if is_header and is_dnnl else ""
     prefix = "dnnl_" if is_dnnl else ""
     abbrev = enum_abbrev(enum)
-    return "%s %s%sstr2%s(const char *str)" % (enum, attr, prefix, abbrev)
+    return f"{enum} {attr}{prefix}str2{abbrev}(const char *str)"
 
 
 def str_to_func(enum, values, is_dnnl=True):
-    indent = "    "
     abbrev = enum_abbrev(enum)
-    func = ""
-    func += str_to_func_decl(enum, is_dnnl=is_dnnl) + " {\n"
-    func += """#define CASE(_case) do { \\
+    func_blocks = []
+    signature = str_to_func_decl(enum, is_dnnl=is_dnnl)
+    func_blocks.append(
+        """
+#define CASE(_case) do { \\
     if (!strcmp(STRINGIFY(_case), str) \\
             || !strcmp("dnnl_" STRINGIFY(_case), str)) \\
         return CONCAT2(dnnl_, _case); \\
 } while (0)
-"""
+        """
+    )
     special_values = []
+    v_undef = None
     for v in values:
         if "last" in v:
             continue
@@ -278,29 +286,34 @@ def str_to_func(enum, values, is_dnnl=True):
         if "any" in v:
             special_values.append(v)
             continue
-        func += "%sCASE(%s);\n" % (indent, sanitize_value(v))
-    func += "#undef CASE\n"
+        func_blocks.append(f"CASE({sanitize_value(v)});")
+    func_blocks.append("#undef CASE")
     for v in special_values:
-        v_short = re.search(r"(any|undef)", v).group()
-        func += """%sif (!strcmp("%s", str) || !strcmp("%s", str))
-        return %s;
-""" % (
-            indent,
-            v_short,
-            v,
-            v,
+        match = re.search(r"(any|undef)", v)
+        if match is None:
+            continue
+        v_short = match.group()
+        func_blocks.append(
+            f"""
+if (!strcmp("{v_short}", str) || !strcmp("{v}", str))
+    return {v};
+            """
         )
     if enum != "dnnl_format_tag_t":
-        func += (
-            '%sprintf("Error: %s ' % (indent, abbrev)
-            + '`%s` is not supported.\\n", str);\n'
+        func_blocks.append(
+            f"""
+printf("Error: {abbrev} `%s` is not supported.\\n", str);
+            """
         )
-        func += '%sassert(!"unknown %s");\n' % (indent, abbrev)
-    func += "%sreturn %s;\n}\n" % (
-        indent,
-        v_undef if enum != "dnnl_format_tag_t" else "dnnl_format_tag_last",
-    )
-    return func
+        func_blocks.append(f'assert(!"unknown {abbrev}");')
+    assert isinstance(v_undef, str)
+    default = v_undef
+    if enum == "dnnl_format_tag_t":
+        default = "dnnl_format_tag_last"
+    func_blocks.append(f"return {default};")
+
+    body = blocks_to_func_body(func_blocks)
+    return f"{signature} {{\n{body}\n}}\n"
 
 
 def generate(ifile, banners):
@@ -339,8 +352,7 @@ def generate(ifile, banners):
 
 def usage():
     print(
-        """\
-%s types.xml
+        f"""{sys.argv[0]} types.xml
 
 Generates oneDNN debug header and source files with enum to string mapping.
 Input types.xml file can be obtained with CastXML[1]:
@@ -348,7 +360,6 @@ $ castxml --castxml-cc-gnu-c clang --castxml-output=1 \\
         -Iinclude -Ibuild/include include/oneapi/dnnl/dnnl_types.h -o types.xml
 
 [1] https://github.com/CastXML/CastXML"""
-        % sys.argv[0]
     )
     sys.exit(1)
 
@@ -362,17 +373,17 @@ script_root = os.path.dirname(os.path.realpath(__file__))
 ifile = sys.argv[1] if len(sys.argv) > 1 else usage()
 
 file_paths = (
-    "%s/../include/oneapi/dnnl/dnnl_debug.h" % script_root,
-    "%s/../src/common/dnnl_debug_autogenerated.cpp" % script_root,
-    "%s/../tests/benchdnn/dnnl_debug.hpp" % script_root,
-    "%s/../tests/benchdnn/dnnl_debug_autogenerated.cpp" % script_root,
+    f"{script_root}/../include/oneapi/dnnl/dnnl_debug.h",
+    f"{script_root}/../src/common/dnnl_debug_autogenerated.cpp",
+    f"{script_root}/../tests/benchdnn/dnnl_debug.hpp",
+    f"{script_root}/../tests/benchdnn/dnnl_debug_autogenerated.cpp",
 )
 
 banners = []
 for file_path in file_paths:
     with open(file_path, "r") as f:
         m = re.match(r"^/\*+\n(\*.*\n)+\*+/\n", f.read())
-        banners.append("" if m == None else m.group(0))
+        banners.append("" if m is None else m.group(0))
 
 for file_path, file_body in zip(file_paths, generate(ifile, banners)):
     with open(file_path, "w") as f:

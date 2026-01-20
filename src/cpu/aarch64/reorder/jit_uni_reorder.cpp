@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2022-2025 Arm Ltd. and affiliates
+* Copyright 2022-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -49,11 +49,17 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-status_t jit_uni_reorder_t::pd_t::init(
-        engine_t *engine, engine_t *src_engine, engine_t *dst_engine) {
-    CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
+status_t jit_uni_reorder_t::pd_t::init(engine_t *engine, engine_t *src_engine,
+        engine_t *dst_engine, const tr::prb_t &prb,
+        const tr::kernel_t::desc_t &ker_desc) {
+    prb_ = prb;
+    ker_desc_ = ker_desc;
+    nthr_ = dnnl_get_max_threads();
+    with_groups_ = prb_.compensation_mask == tr::prb_t::comp_mask_with_groups;
 
+    CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
     CHECK(init_scratchpad());
+    CHECK(init_scratchpad_md());
 
     return status::success;
 }
@@ -99,23 +105,27 @@ status_t jit_uni_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
         const memory_desc_t *dst_md) {
     if (!impl::is_dense_format_kind({src_md, dst_md}))
         return status::unimplemented;
-    auto prb = tr::prb_t();
 
+    // Create problem descriptor
+    auto prb = tr::prb_t();
     status_t prb_init_status = prb_init(prb, *src_md, *dst_md, attr);
     if (prb_init_status != status::success) return prb_init_status;
 
+    // Cache optimisation
     tr::prb_block_for_cache(prb);
     DEBUG({
         verbose_printf(
                 verbose_t::debuginfo, "cache: %s\n", prb_dump(prb).c_str());
     });
 
+    // Driver-kernel load balancing
     int ndims_ker_max {};
     int nthr = dnnl_get_max_threads();
     tr::prb_thread_kernel_balance(prb, ndims_ker_max, nthr);
 
     if (prb.is_tail_present) prb_node_dependency(prb);
 
+    // Kernel descriptor creation
     tr::kernel_t::desc_t ker_desc;
     status_t ker_init_status
             = tr::kernel_t::desc_init(ker_desc, prb, ndims_ker_max);
@@ -130,17 +140,12 @@ status_t jit_uni_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
                 prb_dump(ker_desc.prb).c_str());
     });
 
+    // Primitive descriptor initialisation
     auto _pd = make_unique_pd<pd_t>(
             attr, src_engine->kind(), src_md, dst_engine->kind(), dst_md);
     if (_pd == nullptr) return status::out_of_memory;
 
-    _pd->nthr_ = nthr;
-    _pd->prb_ = prb;
-    _pd->with_groups_
-            = prb.compensation_mask == tr::prb_t::comp_mask_with_groups;
-    CHECK(_pd->init(engine, src_engine, dst_engine));
-    _pd->ker_desc_ = ker_desc;
-    CHECK(_pd->init_scratchpad_md());
+    CHECK(_pd->init(engine, src_engine, dst_engine, prb, ker_desc));
 
     return safe_ptr_assign(*reorder_pd, _pd.release());
 }

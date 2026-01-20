@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2023 FUJITSU LIMITED
-* Copyright 2022, 2025 Arm Ltd. and affiliates
+* Copyright 2022, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,8 +44,9 @@ struct jit_uni_reorder_t : public primitive_t {
         bool with_groups_ = false;
         dim_t D_mask_ = 0;
 
-        status_t init(
-                engine_t *engine, engine_t *src_engine, engine_t *dst_engine);
+        status_t init(engine_t *engine, engine_t *src_engine,
+                engine_t *dst_engine, const tr::prb_t &prb,
+                const tr::kernel_t::desc_t &ker_desc);
 
     private:
         status_t init_scratchpad();

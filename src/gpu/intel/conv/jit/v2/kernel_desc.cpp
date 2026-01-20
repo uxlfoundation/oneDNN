@@ -712,7 +712,7 @@ tensor_config_t get_tensor_config(
         const kernel_desc_t &desc, const pd_t *pd = nullptr) {
     arg_helper_t h(desc);
     tensor_config_t tensor_cfg;
-    for (auto *t : {"src", "wei", "dst", "bias"}) {
+    for (std::string t : {"src", "wei", "dst", "bias"}) {
         bool is_input = h.is_input(t);
         bool is_output = h.is_output(t);
         if (!is_input && !is_output) continue;

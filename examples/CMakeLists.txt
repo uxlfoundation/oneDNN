@@ -71,7 +71,9 @@ if(NOT DNNL_EXPERIMENTAL_UKERNEL)
 endif()
 
 if(NOT DNNL_EXPERIMENTAL_GROUPED_GEMM)
-    list(REMOVE_ITEM sources ${CMAKE_CURRENT_SOURCE_DIR}/moe_grouped_gemm.cpp)
+    list(REMOVE_ITEM sources
+        ${CMAKE_CURRENT_SOURCE_DIR}/moe_grouped_gemm.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/matmul_grouped.cpp)
 endif()
 
 # Remove tests for CUDA which use unimplemented primitives

@@ -21,6 +21,9 @@ class Scaling:
     def __init__(self):
         self.max_value = 0
 
+    def update(self, _): ...
+
+
 class SampleRelative(Scaling):
     title = "Sample Relative"
 
@@ -29,11 +32,13 @@ class SampleRelative(Scaling):
             self.max_value = value
         return
 
+
 class Absolute(Scaling):
     title = "Absolute"
 
-    def update(self, value):
+    def update(self, _):
         return
+
 
 def scale_from_str(name):
     normalized = name.lower()
@@ -47,7 +52,7 @@ def scale_from_str(name):
 class Metric:
     title = ""
 
-    def get(self, sample):
+    def get(self, _):
         return 0
 
 

@@ -15,10 +15,10 @@
 ################################################################################
 
 import itertools
-import random
 import math
+import random
 
-from matmul.primitive import *
+from ..matmul.primitive import Dims, Kind, Primitive
 
 
 class Region:
@@ -41,7 +41,8 @@ class Region:
             self.alignment
         ):
             raise RuntimeError(
-                f"Inconsistent number of dimensions between restrictions in {line}"
+                "Inconsistent number of dimensions between restrictions in"
+                f" {line}"
             )
 
         self.ndims = len(self.min)
@@ -67,7 +68,10 @@ class Sampler:
         self.dim_sampler = self.DimSampler(region)
 
     def __str__(self):
-        return f"-s {self.samples} -m {self.mode} -l {self.layouts} -r {self.region} -t {self.types}"
+        return (
+            f"-s {self.samples} -m {self.mode} -l {self.layouts} -r"
+            f" {self.region} -t {self.types}"
+        )
 
     def __iter__(self):
         if self.mode == "zip":
@@ -122,7 +126,8 @@ class Sampler:
             self.seen = set()
             if region.ndims < 3:
                 raise RuntimeError(
-                    f"Insufficient dimensions for matmul operation, expected at least 3, but got {region.ndims}"
+                    "Insufficient dimensions for matmul operation, expected at"
+                    f" least 3, but got {region.ndims}"
                 )
 
         def __next__(self):
@@ -153,5 +158,6 @@ class Sampler:
                     return Dims(dims[:-3], dims[-3], dims[-2], dims[-1])
 
             raise RuntimeError(
-                f"Cannot sample >{len(self.seen)} problems in region {self.region}"
+                f"Cannot sample >{len(self.seen)} problems in region"
+                f" {self.region}"
             )

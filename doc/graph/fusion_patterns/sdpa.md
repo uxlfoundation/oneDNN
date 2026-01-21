@@ -79,9 +79,12 @@ optional.
 4. The SoftMax operation takes the masked output and transforms it into
    probabilities between 0 and 1. See [SoftMax](@ref dev_guide_op_softmax)
    operation in Graph API.
-5. The second MatMul calculates the dot products between the probabilities after
+5. The optional Dropout operation takes the normalized output and randomly
+   drops some elements during training. See [Dropout](@ref dev_guide_op_dropout)
+   operation in Graph API.
+6. The second MatMul calculates the dot products between the probabilities after
    SoftMax and Value.
-6. The Reorder node is optional and used to reshape or transpose the attention
+7. The Reorder node is optional and used to reshape or transpose the attention
    output for cases where the attention output is transformed from shape (N, H,
    S, D_v) to (N, S, H, D_v) or (N, S, H * D_v). The node can be constructed by
    the combinations of [StaticTranspose](@ref dev_guide_op_statictranspose) and
@@ -124,19 +127,22 @@ are optional.
    and recover the probabilities computed by SoftMax in the training forward
    propagation. See [Subtract](@ref dev_guide_op_subtract) and [Exp](@ref dev_guide_op_exp)
    in Graph API.
-5. The TypeCast and MatMul operations after Exp are used to compute the
+5. The Dropout, TypeCast and MatMul operations after Exp are used to compute the
    gradients with respect to Value. TypeCast is required for bf16 and f16
    training scenarios. See [TypeCast](@ref dev_guide_op_typecast) in Graph API.
 6. The MatMul takes the output gradients (`dO`) and the Value as inputs to
    compute the gradients of the probabilities.
-7. The SoftMaxBackward operation computes the gradients of the scaled output.
+7. The Dropout operation takes the gradients of the dropped probabilities as
+   input and computes gradients with respect to the normalized probabilities.
+   See [Dropout](@ref dev_guide_op_dropout) in Graph API.
+8. The SoftMaxBackward operation computes the gradients of the scaled output.
    See [SoftMaxBackward](@ref dev_guide_op_softmaxbackward) in Graph API.
-8. The Scale node after SoftMaxBackward corresponds to the forward Scale node
+9. The Scale node after SoftMaxBackward corresponds to the forward Scale node
    and is used to compute the gradients of the score.
-9. The TypeCast and two MatMul operations after the Scale node compute the
+10. The TypeCast and two MatMul operations after the Scale node compute the
    gradients with respect to Query and Key, respectively. TypeCast is required
    for bf16 and f16 training scenarios.
-10. The optional End operation marks the output of SoftMaxBackward as a
+11. The optional End operation marks the output of SoftMaxBackward as a
     partition output, representing the gradients with respect to the Mask. Note
     that the output shape of `dM` is (N, H, S, S) and the data
     type is f32. The library does not perform any reduction or typecast on this
@@ -174,8 +180,7 @@ platforms follow the general description in @ref dev_guide_data_types.
    Divide, and Select operations require the input tensors to have the same
    shape or the shapes can be properly broadcasted based on the operation
    attribute.
-3. Dropout is currently not supported in SDPA training.
-4. CPU
+3. CPU
    - Optimized implementation for inference is available for 4D Q/K tensors with
      shape defined as (N, H, S, D_qk) and V tensor with shape defined as
      (N, H, S, D_v).
@@ -183,7 +188,7 @@ platforms follow the general description in @ref dev_guide_data_types.
      runtime on Intel Architecture Processors.
    - Specifically for OpenMP runtime, the optimized implementation requires `N *
      H > 2 * thread number` to get enough parallelism.
-5. GPU
+4. GPU
    - Optimized implementation for inference is available for 4D Q/K tensors with
      shape defined as (N, H, S, D_qk) and V tensor with shape defined as (N, H,
      S, D_v) where D_qk equals D_v.

@@ -1455,10 +1455,9 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
         // Initialize offsets in buffer 1
         int64_t cumulative_offset = 0;
-        dst_mem.set_elem(0, 0, 1); // First offset is always 0
         for (int64_t i = 0; i < group_count; i++) {
             cumulative_offset += M_dims[i];
-            dst_mem.set_elem(i + 1, (float)cumulative_offset, 1);
+            dst_mem.set_elem(i, (float)cumulative_offset, 1);
         }
     }
 #endif

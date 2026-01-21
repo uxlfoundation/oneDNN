@@ -465,8 +465,7 @@ def find_files(basepath, options):
 
 
 def print_help(prog: str):
-    print(
-        f"""usage: {prog} [OPTIONS] files...
+    print(f"""usage: {prog} [OPTIONS] files...
 
 description:
     Checks the files (or directories) given for correct header guards in each
@@ -482,8 +481,7 @@ options:
     --pedantic, -p
           warn about repetitive parts in file names
     --help, -h
-          print this help and exit"""
-    )
+          print this help and exit""")
 
 
 def to_long_name(field: str):

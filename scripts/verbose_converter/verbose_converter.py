@@ -77,14 +77,10 @@ def convert(
         logger.info("Generating output ...")
         if generator == "benchdnn":
             if "create_nested" in events:
-                logger.warning(
-                    one_line(
-                        """
+                logger.warning(one_line("""
                         Benchdnn arguments generated from create_nested events
                         may not work!
-                        """
-                    )
-                )
+                        """))
             return generate(InputGenerator(logger), log_parser, split_output)
         elif generator == "breakdown":
             return generate(BreakdownGenerator(logger), log_parser, agg_keys)
@@ -149,12 +145,10 @@ def main() -> int:
         "--aggregate",
         nargs="+",
         default=aggregate_opts,
-        help=one_line(
-            f"""
+        help=one_line(f"""
              aggregates statistics on the specified keys (default: all keys but
              time). Values: {aggregate_opts}
-             """
-        ),
+             """),
     )
     args_parser.add_argument(
         "-v",
@@ -177,11 +171,9 @@ def main() -> int:
         "--events",
         nargs="+",
         default=list(default_events),
-        help=one_line(
-            f"""
+        help=one_line(f"""
              events to parse (default: create and exec). Values: {event_opts}.
-             """
-        ),
+             """),
     )
     args = args_parser.parse_args()
 

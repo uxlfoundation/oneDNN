@@ -241,12 +241,10 @@ def func_to_str(enum, values):
             'if (v == dnnl::impl::primitive_kind::sdpa) return "sdpa";'
         )
     if enum == "dnnl_alg_kind_t":
-        func_blocks.append(
-            """
+        func_blocks.append("""
 if (v == dnnl::impl::alg_kind::softmax_accurate_inf_as_zero)
     return "softmax_accurate_inf_as_zero";
-            """
-        )
+            """)
     func_blocks.append(f'assert(!"unknown {abbrev}");')
     func_blocks.append(f'return "unknown {abbrev}";')
 
@@ -265,15 +263,13 @@ def str_to_func(enum, values, is_dnnl=True):
     abbrev = enum_abbrev(enum)
     func_blocks = []
     signature = str_to_func_decl(enum, is_dnnl=is_dnnl)
-    func_blocks.append(
-        """
+    func_blocks.append("""
 #define CASE(_case) do { \\
     if (!strcmp(STRINGIFY(_case), str) \\
             || !strcmp("dnnl_" STRINGIFY(_case), str)) \\
         return CONCAT2(dnnl_, _case); \\
 } while (0)
-        """
-    )
+        """)
     special_values = []
     v_undef = None
     for v in values:
@@ -293,18 +289,14 @@ def str_to_func(enum, values, is_dnnl=True):
         if match is None:
             continue
         v_short = match.group()
-        func_blocks.append(
-            f"""
+        func_blocks.append(f"""
 if (!strcmp("{v_short}", str) || !strcmp("{v}", str))
     return {v};
-            """
-        )
+            """)
     if enum != "dnnl_format_tag_t":
-        func_blocks.append(
-            f"""
+        func_blocks.append(f"""
 printf("Error: {abbrev} `%s` is not supported.\\n", str);
-            """
-        )
+            """)
         func_blocks.append(f'assert(!"unknown {abbrev}");')
     assert isinstance(v_undef, str)
     default = v_undef
@@ -351,16 +343,14 @@ def generate(ifile, banners):
 
 
 def usage():
-    print(
-        f"""{sys.argv[0]} types.xml
+    print(f"""{sys.argv[0]} types.xml
 
 Generates oneDNN debug header and source files with enum to string mapping.
 Input types.xml file can be obtained with CastXML[1]:
 $ castxml --castxml-cc-gnu-c clang --castxml-output=1 \\
         -Iinclude -Ibuild/include include/oneapi/dnnl/dnnl_types.h -o types.xml
 
-[1] https://github.com/CastXML/CastXML"""
-    )
+[1] https://github.com/CastXML/CastXML""")
     sys.exit(1)
 
 

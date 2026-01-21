@@ -162,13 +162,11 @@ def generate_verbose(path_to_benchdnn, engine, driver, batch):
     if sub.stderr is not None:
         stderr = sub.stderr.read()
     # most likely converter generated incorrect batch file
-    raise TestingException(
-        f"""
+    raise TestingException(f"""
          benchdnn returned {exit_code},
          args: {sub_args}
          stderr: {stderr}
-         """
-    )
+         """)
 
 
 def generate_batch(verbose, driver):
@@ -261,13 +259,11 @@ def compare(driver, ref_v, comp_v):
         for log_type, content in file_map.items():
             with open(f"{driver}.{log_type}.log", "w") as fd:
                 fd.write(content)
-        raise TestingException(
-            f"""
+        raise TestingException(f"""
              verboses do not match
              ref: {r}
              com: {c}
-             """
-        )
+             """)
 
 
 def test(path_to_benchdnn, engine, driver, batch):

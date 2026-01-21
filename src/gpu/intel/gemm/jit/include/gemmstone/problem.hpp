@@ -143,6 +143,22 @@ enum class COffset {
     Pre,        // C offset before all other updates (bias).
 };
 
+// Quantization dimension type.
+enum class qDimType {
+    None,          // 0 dim, no quant along this dim.
+    NoBcast,       // Group Size 1 / No group, qdim D along this dim.
+    PartialBcast,  // Dim > Group > 1, qdim D/G along this dim.
+    FullBcast,     // (Dim > 1) == Group, qdim 1 along this dim.
+};
+
+static inline qDimType qType(int group, int dim){
+    if(group == 0) return qDimType::None;
+    if(group == 1) return qDimType::NoBcast;
+    if(group < dim) return qDimType::PartialBcast;
+    if(dim > 1 && group == dim) return qDimType::FullBcast;
+    return qDimType::None;
+}
+
 // Batch mode.
 enum class BatchMode {
     None, Strided, Nonstrided, Variable
@@ -185,6 +201,10 @@ struct GEMMProblem : public CommonProblem {
     int aqGroupM = 0, aqGroupK = 0;                 // Group sizes for A quantization parameters (offsets and scales)
     int bqGroupN = 0, bqGroupK = 0;                 // Group sizes for B quantization parameters (offsets and scales)
     int cqGroupM = 0, cqGroupN = 0;                 // Group sizes for C quantization parameters (offsets and scales)
+
+    qDimType aqTypeM = qDimType::None;              // A quantization outer dim relation to tensor dim (offsets and scales).
+    qDimType bqTypeN = qDimType::None;              // B quantization outer dim relation to tensor dim (offsets and scales).
+
     COffset cOffset = COffset::None;                // C offset mode.
     BatchMode batch = BatchMode::None;              // Batch mode.
     int batchDims = 0;                              // # of batch dimensions (strided batch only).

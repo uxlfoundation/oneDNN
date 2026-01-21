@@ -339,8 +339,14 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     if(problem.Tbo.is4() || problem.Tb_scale.is4()){
         unrollReq[LoopN] = 2;
     }
+    if(problem.aqTypeM == qDimType::PartialBcast){
+        unrollReq[LoopM] = dnnl::impl::math::lcm(problem.aqGroupM, unrollReq[LoopM]);
+    }
+    if(problem.bqTypeN == qDimType::PartialBcast){
+        unrollReq[LoopN] = dnnl::impl::math::lcm(problem.aqGroupM, unrollReq[LoopN]);
+    }
     if(problem.hasCMXScale() && unrollReq[LoopN] % 32){
-        unrollReq[LoopN] = 32;
+        unrollReq[LoopN] = dnnl::impl::math::lcm(unrollReq[LoopN], 32);
     }
 
 

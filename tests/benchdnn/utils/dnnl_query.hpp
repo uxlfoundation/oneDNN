@@ -39,6 +39,8 @@ const_dnnl_memory_desc_t query_md(const_dnnl_memory_t memory);
 dnnl_engine_t query_engine(const_dnnl_primitive_desc_t pd,
         dnnl_query_t engine_type = dnnl_query_engine);
 dnnl_engine_t query_engine(const_dnnl_memory_t memory);
+dnnl_engine_t query_engine(const_dnnl_stream_t stream);
+dnnl_engine_kind_t query_engine_kind(dnnl_engine_t engine);
 
 int64_t query_mem_consumption(const_dnnl_primitive_desc_t pd);
 
@@ -55,8 +57,6 @@ const_dnnl_post_ops_t query_post_ops(const_dnnl_primitive_attr_t attr);
 const_dnnl_post_ops_t query_post_ops(const_dnnl_primitive_desc_t pd);
 const_dnnl_primitive_attr_t query_attr(const_dnnl_primitive_desc_t pd);
 const_dnnl_primitive_desc_t query_pd(dnnl_primitive_t prim);
-
-dnnl_engine_kind_t query_engine_kind(const dnnl_engine_t &engine);
 
 dnnl_sparse_encoding_t query_md_sparse_encoding(const_dnnl_memory_desc_t md);
 dnnl_dim_t query_md_nnz(const_dnnl_memory_desc_t md);

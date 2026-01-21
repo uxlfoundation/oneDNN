@@ -199,17 +199,29 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
                 reinterpret_cast<const op_desc_t *>(&conv_d), attr(), nullptr);
         if (!it.is_initialized()) return status::out_of_memory;
 
+        bool found_impl = false;
         while (++it != it.end()) {
             conv_pd_ = *it;
+            // First, try BRGEMM backward strided implementation
             if (check_embedded_impl_init<
                         typename brgemm_convolution_bwd_strided_t<isa>::pd_t>(
                         it)
-                    == status::success)
+                    == status::success) {
+                found_impl = true;
                 break;
+            }
+            // Fallback: try any other backward data convolution implementation
+            // This allows non-BRGEMM kernels (like jit_avx512_core_bf16) to handle
+            // cases with uneven spatial dimensions
+            if ((*it)->kind() == primitive_kind::convolution) {
+                found_impl = true;
+                break;
+            }
         }
-        if (it == it.end())
+        if (!found_impl)
             VDISPATCH_DECONVOLUTION_IC(false,
-                    "brgemm implementation not found for strided convolution");
+                    "no suitable implementation found for strided "
+                    "deconvolution");
     } else {
         CHECK(fwd_conv_desc_create(fwd_deconv_d, &conv_d));
 

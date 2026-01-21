@@ -321,14 +321,12 @@ status_t gen_desc_t::finalize(const char *tags) {
     // Currently this is incompatible with precomputed reductions.
     // XXX: Increase group size to a large value before aligning to increase reusability.
     constexpr int perMNGroupSize = 1 << 24;
-    if (problem_.aqGroupM == m_
-            && (!problem_.forceGroupSumsA || problem_.aqGroupM > 1)) {
+    if (problem_.aqGroupM == m_ && problem_.aqGroupM > 1) {
         problem_.aqGroupM = std::max(problem_.aqGroupM, perMNGroupSize);
         problem_.aqGroupM
                 = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
     }
-    if (problem_.bqGroupN == n_
-            && (!problem_.forceGroupSumsB || problem_.bqGroupN > 1)) {
+    if (problem_.bqGroupN == n_ && problem_.bqGroupN > 1) {
         problem_.bqGroupN = std::max(problem_.bqGroupN, perMNGroupSize);
         problem_.bqGroupN
                 = utils::rnd_up(problem_.bqGroupN, strategy_.unroll[LoopN]);

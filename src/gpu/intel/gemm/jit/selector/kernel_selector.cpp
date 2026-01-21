@@ -131,9 +131,8 @@ bool matches(const kcatalog::Entry &e, const MatchParams &p)
         }
     }
 
-    if (p.reqNUnroll32){
-        ok = ok && (e.driverInfo.unroll[LoopM] % 32 == 0);
-    }
+    ok = ok && ((e.driverInfo.unroll[LoopM] % p.unrollReq[LoopM]) == 0 || (p.unrollReq[LoopM] % e.driverInfo.unroll[LoopM]) == 0);
+    ok = ok && ((e.driverInfo.unroll[LoopN] % p.unrollReq[LoopN]) == 0 || (p.unrollReq[LoopN] % e.driverInfo.unroll[LoopN]) == 0);
 
     for (int i = 0; i < p.nExtraReqs; i++)
         ok = ok && strategyMatch(e.driverInfo, p.extraReqs[i]);
@@ -332,7 +331,17 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
     using namespace kcatalog;
 
     auto problem = problem_;
-    reqNUnroll32 = problem.hasCMXScale();
+
+    if(problem.aqGroupM > 1 && problem.aqGroupM % 32 == 0){
+        unrollReq[LoopM] = problem.aqGroupM;
+    }
+    if(problem.bqGroupN > 1 && problem.bqGroupN % 32 == 0){
+        unrollReq[LoopN] = problem.bqGroupN;
+    }
+    if(problem.hasCMXScale() && unrollReq[LoopN] % 32){
+        unrollReq[LoopN] = unrollReq[LoopN] > 1 ? unrollReq[LoopN] * 32 : 32;
+    }
+
 
     switch (hw) {
         default: assert(!"Unknown architecture");

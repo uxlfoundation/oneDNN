@@ -31,14 +31,31 @@ The list of clang-tidy checks the oneDNN code base follows is available in the
 
 ### Coding style
 
-The coding style consistency in oneDNN is maintained using `clang-format`. When
-submitting your contribution, please make sure that it adheres to the existing
-coding style with the following command:
+The C/C++ coding style consistency in oneDNN is maintained using
+`clang-format`. When submitting your contribution, please make sure that it
+adheres to the existing coding style with the following command:
 ```sh
 clang-format -style=file -i foo.cpp
 ```
-This will format the code using the `_clang_format` file found in the oneDNN top
-level directory.
+This will format the code using the `.clang_format` file found in the oneDNN
+top-level directory.
+
+oneDNN also contains a handful of auxiliary Python scripts. Formatting and
+linting is performed with `black`, `isort`, and `flake8`. Type-checking is
+performed with `mypy` and `pyright`. When submitting your contribution
+containing Python code, please make sure that it adheres to the existing coding
+style with the following commands:
+```sh
+black .
+isort .
+flake8  # Should report no errors/warnings
+mypy    # Should report no errors/warnings
+pyright # Should report no errors/warnings
+```
+This will format and type-check the code using the `pyproject.toml` file found
+in the oneDNN top-level directory. `flake8` may raise additional warnings
+(e.g., unused variables) according to the rules in the `.flake8` file.
+Type-checking and linting warnings require manual intervention to correct.
 
 Coding style is secondary to the general code design.
 

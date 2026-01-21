@@ -43,6 +43,11 @@ struct ref_grouped_gemm_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref_grouped:any", ref_grouped_gemm_t);
 
+        // Override masks to include 0th expert dimension
+        int wei_qmask_K() const { return (1 << 0) | (1 << 1); }
+
+        int wei_qmask_N() const { return (1 << 0) | (1 << 2); }
+
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
@@ -168,7 +173,6 @@ struct ref_grouped_gemm_t : public primitive_t {
                 = !attr_scales.has_default_values(DNNL_ARG_SRC);
         kernel_ctx.define_int("WITH_SRC_SCALES", with_src_scales ? 1 : 0);
 
-        const auto &attr_scales = pd()->attr()->scales_;
         const bool with_wei_scales
                 = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
         kernel_ctx.define_int("WITH_WEI_SCALES", with_wei_scales ? 1 : 0);

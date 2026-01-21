@@ -25,6 +25,7 @@ Supported Operations
    dev_guide_op_convtransposebackwardweights
    dev_guide_op_dequantize
    dev_guide_op_divide
+   dev_guide_op_dropout
    dev_guide_op_dynamicdequantize
    dev_guide_op_dynamicquantize
    dev_guide_op_elu

@@ -89,12 +89,15 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
             && utils::one_of(wei_dt, data_type::s8, data_type::u8,
                     data_type::s4, data_type::u4);
 
-    for (int group_id = 0; group_id < num_groups; ++group_id) {
+    // Parallelize over groups (experts in MoE)
+    // Expectation is to see 128-256+ groups, with varying M per group
+    // and possibly some empty groups (M == 0)
+    parallel_nd(num_groups, [&](dim_t group_id) {
         const dim_t offset_start = (group_id == 0) ? 0 : offsets[group_id - 1];
         const dim_t offset_end = offsets[group_id];
         const dim_t M = offset_end - offset_start;
-        if (M == 0) continue;
-        if (M < 0) return status::runtime_error;
+
+        if (M == 0) return; // skip if no rows in this group
 
         const dim_t src_base_idx = offset_start * K;
         const dim_t dst_base_idx = offset_start * N;
@@ -185,7 +188,7 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
                 io::store_float_value(dst_dt, result, dst_data, dst_idx);
             }
         }
-    }
+    });
 
     return status::success;
 }

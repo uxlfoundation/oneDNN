@@ -65,6 +65,28 @@ An exception is a memory object for host-side scalars that corresponds to
 requires only a data type, and creating the memory object does not require
 an engine. For details, see @ref dev_guide_host_side_scalars.
 
+#### Multi-Buffer Memory Objects
+
+Some memory descriptors require multiple buffers. When creating memory objects
+for such descriptors, provide an array of data pointers:
+
+~~~cpp
+// Example: memory with 2 buffers
+memory multi_buf_mem(descriptor, engine, {buffer0_ptr, buffer1_ptr});
+
+// Access individual buffers
+void* buffer0 = multi_buf_mem.get_data_handle(0);
+void* buffer1 = multi_buf_mem.get_data_handle(1);
+size_t buffer0_size = multi_buf_mem.get_size(0);
+size_t buffer1_size = multi_buf_mem.get_size(1);
+~~~
+
+Multi-buffer memory is used for:
+- **Sparse encodings** (COO, CSR, PACKED): Separate buffers for values, indices,
+  and pointers
+- **Grouped memory format**: Separate buffers for concatenated data and group
+  offset boundaries
+
 ## Levels of Abstraction
 
 Conceptually, oneDNN has multiple levels of abstractions for primitives and

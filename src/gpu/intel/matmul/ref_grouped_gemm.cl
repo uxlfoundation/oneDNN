@@ -27,7 +27,7 @@
 //  B/wei: [num_experts, K, N] dense 3D tensor
 //  C/dst: [total_tokens, N] with grouped encoding (values in buffer 0, offsets in buffer 1)
 //
-// offsets is an array of size ngroups, with values [0, M_0, M_0 + M_1, M_0 + M_1 + M_2, ...]
+// offsets is an array of size ngroups, with cumulative values [M_0, M_0 + M_1, M_0 + M_1 + M_2, ...]
 // Note, that M_g can be zero for some groups
 //
 // get_global_id(0): group index

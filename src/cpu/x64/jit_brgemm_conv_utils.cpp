@@ -2245,6 +2245,15 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     bool try_exec_type_res = false;
 
+    // Avoid exec_trans when iw is very large and trans_dim_koef==1, as this
+    // would lead to excessive scratchpad size proportional to iw.
+    // The value is empirical
+    constexpr dim_t max_iw_for_exec_trans = 100000;
+    if (try_exec_trans && jcp.trans_dim_koef == 1
+            && jcp.iw > max_iw_for_exec_trans) {
+        try_exec_trans = false;
+    }
+
     if (try_exec_type_res == false && try_exec_trans) {
         jcp.exec_type = exec_trans;
         if (try_relo_whi) {
@@ -2472,6 +2481,21 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
+
+    // Check scratchpad size to avoid allocating huge buffers
+    if (jcp.exec_type == exec_trans) {
+        constexpr size_t scratchpad_limit_by_absolute_value = (size_t)32
+                << 30; // 32Gb - TODO: may it's too large?
+        const size_t scratchpad_limit_by_tensor_sizes = (size_t)64 * jcp.nthr
+                * (src_d.size() + weights_d.size() + dst_d.size());
+        const size_t scratchpad_limit
+                = nstl::min(scratchpad_limit_by_absolute_value,
+                        scratchpad_limit_by_tensor_sizes);
+        const size_t inp_buffer_size
+                = static_cast<size_t>(jcp.nthr) * jcp.inp_buffer_size;
+        VDISPATCH_CONV_IC(inp_buffer_size * jcp.src_dsz <= scratchpad_limit,
+                VERBOSE_SCRATCHPAD_LIMIT);
+    }
 
     return status::success;
 }

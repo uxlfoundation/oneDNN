@@ -35,8 +35,9 @@
 // get_global_id(2): output column (N dimension)
 
 // Supported below:
-//  Data types: f32, f16
+//  Data types: f32, f16, bf16
 //  Row-wise (per-token) src scales
+//  Column-wise weight scales
 //  Bias addition (shape [ngroups, N])
 __kernel void ref_grouped_gemm_matmul(
         __global const SRC_DATA_T *src, // Buffer 0: concatenated values
@@ -94,7 +95,9 @@ __kernel void ref_grouped_gemm_matmul(
     for (int k = 0; k < K; k++) {
         const long src_idx = (long)m * K + k;
         const long wei_idx = (long)k * N + n;
-        acc += (ACC_DATA_T)src_group[src_idx] * (ACC_DATA_T)wei_group[wei_idx];
+        ACC_DATA_T src_val = SRC_TO_REF(src_group[src_idx]);
+        ACC_DATA_T wei_val = WEI_TO_REF(wei_group[wei_idx]);
+        acc += src_val * wei_val;
     }
 
     // Apply row-wise src scale
@@ -113,11 +116,11 @@ __kernel void ref_grouped_gemm_matmul(
 
 #if WITH_BIAS
     const long bias_idx = (long)group_id * N + n;
-    acc += (ACC_DATA_T)bias[bias_idx];
+    acc += BIA_TO_REF(bias[bias_idx]);
 #endif
 
     // todo: prevent overflow
     const long out_idx = (long)m * N + n;
 
-    dst_group[out_idx] = (DST_DATA_T)acc;
+    dst_group[out_idx] = REF_TO_DST(acc);
 }

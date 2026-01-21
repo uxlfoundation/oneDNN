@@ -39,6 +39,13 @@
 #define MAGICSIZEY 2
 #define MAGICSIZEZ 1
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#define FORWARD(hw) NGEN_FORWARD_SYCL(hw)
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#define FORWARD(hw) NGEN_FORWARD_OPENCL(hw)
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -49,7 +56,7 @@ using namespace ngen;
 
 template <HW hw>
 class binary_format_kernel_t : public generator_t<hw> {
-    NGEN_FORWARD_OPENCL(hw);
+    FORWARD(hw);
 
 public:
     binary_format_kernel_t()

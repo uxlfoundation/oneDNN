@@ -52,13 +52,13 @@ static inline std::unique_ptr<engine_factory_t> get_engine_factory(
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     if (kind == engine_kind::gpu && runtime_kind == runtime_kind::ocl) {
-        return std::unique_ptr<engine_factory_t>(
-                new xpu::ocl::engine_factory_t(kind));
+        return xpu::ocl::get_engine_factory(kind);
     }
 #endif
 #ifdef DNNL_WITH_SYCL
-    if (runtime_kind == runtime_kind::sycl)
+    if (runtime_kind == runtime_kind::sycl) {
         return xpu::sycl::get_engine_factory(kind);
+    }
 #endif
     return nullptr;
 }

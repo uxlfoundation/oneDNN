@@ -40,19 +40,21 @@ using gemm_f32_traits = gemm_utils::gemm_utils_traits<float>;
 
 namespace {
 
-#define STORE_C(C_PTR, V_C_REG, ALPHA, BETA, VL) \
+#define STORE_C(C_PTR, V_C_REG, ALPHA, BETA, VL, LMUL) \
     do { \
         float *c_final_ptr = (C_PTR); \
         if ((BETA) == 0.0f) { \
-            vfloat32m1_t v_res \
-                    = __riscv_vfmul_vf_f32m1((V_C_REG), (ALPHA), (VL)); \
-            __riscv_vse32_v_f32m1(c_final_ptr, v_res, (VL)); \
+            vfloat32##LMUL##_t v_res \
+                    = __riscv_vfmul_vf_f32##LMUL((V_C_REG), (ALPHA), (VL)); \
+            __riscv_vse32_v_f32##LMUL(c_final_ptr, v_res, (VL)); \
         } else { \
-            vfloat32m1_t v_c_old = __riscv_vle32_v_f32m1(c_final_ptr, (VL)); \
-            vfloat32m1_t v_res \
-                    = __riscv_vfmul_vf_f32m1(v_c_old, (BETA), (VL)); \
-            v_res = __riscv_vfmacc_vf_f32m1(v_res, (ALPHA), (V_C_REG), (VL)); \
-            __riscv_vse32_v_f32m1(c_final_ptr, v_res, (VL)); \
+            vfloat32##LMUL##_t v_c_old \
+                    = __riscv_vle32_v_f32##LMUL(c_final_ptr, (VL)); \
+            vfloat32##LMUL##_t v_res \
+                    = __riscv_vfmul_vf_f32##LMUL(v_c_old, (BETA), (VL)); \
+            v_res = __riscv_vfmacc_vf_f32##LMUL( \
+                    v_res, (ALPHA), (V_C_REG), (VL)); \
+            __riscv_vse32_v_f32##LMUL(c_final_ptr, v_res, (VL)); \
         } \
     } while (0)
 
@@ -130,31 +132,31 @@ struct kernel_mxn_impl<isTransA, isTransB, 2> {
 
         dim_t i = 0;
         while (i < m) {
-            size_t vl = __riscv_vsetvl_e32m1(m - i);
+            size_t vl = __riscv_vsetvl_e32m8(m - i);
 
-            vfloat32m1_t v_c0 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            vfloat32m1_t v_c1 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+            vfloat32m8_t v_c0 = __riscv_vfmv_v_f_f32m8(0.0f, vl);
+            vfloat32m8_t v_c1 = __riscv_vfmv_v_f_f32m8(0.0f, vl);
 
             for (dim_t k = 0; k < K; ++k) {
-                vfloat32m1_t v_a;
+                vfloat32m8_t v_a;
                 if (isTransA) {
                     ptrdiff_t stride_a = lda * sizeof(float);
-                    v_a = __riscv_vlse32_v_f32m1(A + i * lda + k, stride_a, vl);
+                    v_a = __riscv_vlse32_v_f32m8(A + i * lda + k, stride_a, vl);
                 } else {
-                    v_a = __riscv_vle32_v_f32m1(A + i + k * lda, vl);
+                    v_a = __riscv_vle32_v_f32m8(A + i + k * lda, vl);
                 }
 
                 const float *b_ptr = isTransB ? &B[k * ldb] : &B[k];
                 const dim_t b_stride = isTransB ? 1 : ldb;
 
-                v_c0 = __riscv_vfmacc_vf_f32m1(
+                v_c0 = __riscv_vfmacc_vf_f32m8(
                         v_c0, b_ptr[0 * b_stride], v_a, vl);
-                v_c1 = __riscv_vfmacc_vf_f32m1(
+                v_c1 = __riscv_vfmacc_vf_f32m8(
                         v_c1, b_ptr[1 * b_stride], v_a, vl);
             }
 
-            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl);
-            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl);
+            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl, m8);
+            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl, m8);
 
             i += vl;
         }
@@ -173,41 +175,41 @@ struct kernel_mxn_impl<isTransA, isTransB, 4> {
 
         dim_t i = 0;
         while (i < m) {
-            size_t vl = __riscv_vsetvl_e32m1(m - i);
+            size_t vl = __riscv_vsetvl_e32m4(m - i);
 
-            vfloat32m1_t v_c0, v_c1, v_c2, v_c3;
+            vfloat32m4_t v_c0, v_c1, v_c2, v_c3;
 
-            v_c0 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c1 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c2 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c3 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+            v_c0 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c1 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c2 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+            v_c3 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
 
             for (dim_t k = 0; k < K; ++k) {
-                vfloat32m1_t v_a;
+                vfloat32m4_t v_a;
                 if (isTransA) {
                     ptrdiff_t stride_a = lda * sizeof(float);
-                    v_a = __riscv_vlse32_v_f32m1(A + i * lda + k, stride_a, vl);
+                    v_a = __riscv_vlse32_v_f32m4(A + i * lda + k, stride_a, vl);
                 } else {
-                    v_a = __riscv_vle32_v_f32m1(A + i + k * lda, vl);
+                    v_a = __riscv_vle32_v_f32m4(A + i + k * lda, vl);
                 }
 
                 const float *b_ptr = isTransB ? &B[k * ldb] : &B[k];
                 const dim_t b_stride = isTransB ? 1 : ldb;
 
-                v_c0 = __riscv_vfmacc_vf_f32m1(
+                v_c0 = __riscv_vfmacc_vf_f32m4(
                         v_c0, b_ptr[0 * b_stride], v_a, vl);
-                v_c1 = __riscv_vfmacc_vf_f32m1(
+                v_c1 = __riscv_vfmacc_vf_f32m4(
                         v_c1, b_ptr[1 * b_stride], v_a, vl);
-                v_c2 = __riscv_vfmacc_vf_f32m1(
+                v_c2 = __riscv_vfmacc_vf_f32m4(
                         v_c2, b_ptr[2 * b_stride], v_a, vl);
-                v_c3 = __riscv_vfmacc_vf_f32m1(
+                v_c3 = __riscv_vfmacc_vf_f32m4(
                         v_c3, b_ptr[3 * b_stride], v_a, vl);
             }
 
-            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl);
-            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl);
-            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl);
-            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl);
+            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl, m4);
+            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl, m4);
+            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl, m4);
+            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl, m4);
 
             i += vl;
         }
@@ -226,57 +228,57 @@ struct kernel_mxn_impl<isTransA, isTransB, 8> {
 
         dim_t i = 0;
         while (i < m) {
-            size_t vl = __riscv_vsetvl_e32m1(m - i);
+            size_t vl = __riscv_vsetvl_e32m2(m - i);
 
-            vfloat32m1_t v_c0, v_c1, v_c2, v_c3, v_c4, v_c5, v_c6, v_c7;
+            vfloat32m2_t v_c0, v_c1, v_c2, v_c3, v_c4, v_c5, v_c6, v_c7;
 
-            v_c0 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c1 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c2 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c3 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c4 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c5 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c6 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-            v_c7 = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+            v_c0 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c1 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c2 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c3 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c4 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c5 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c6 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+            v_c7 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
 
             for (dim_t k = 0; k < K; ++k) {
-                vfloat32m1_t v_a;
+                vfloat32m2_t v_a;
                 if (isTransA) {
                     ptrdiff_t stride_a = lda * sizeof(float);
-                    v_a = __riscv_vlse32_v_f32m1(A + i * lda + k, stride_a, vl);
+                    v_a = __riscv_vlse32_v_f32m2(A + i * lda + k, stride_a, vl);
                 } else {
-                    v_a = __riscv_vle32_v_f32m1(A + i + k * lda, vl);
+                    v_a = __riscv_vle32_v_f32m2(A + i + k * lda, vl);
                 }
 
                 const float *b_ptr = isTransB ? &B[k * ldb] : &B[k];
                 const dim_t b_stride = isTransB ? 1 : ldb;
 
-                v_c0 = __riscv_vfmacc_vf_f32m1(
+                v_c0 = __riscv_vfmacc_vf_f32m2(
                         v_c0, b_ptr[0 * b_stride], v_a, vl);
-                v_c1 = __riscv_vfmacc_vf_f32m1(
+                v_c1 = __riscv_vfmacc_vf_f32m2(
                         v_c1, b_ptr[1 * b_stride], v_a, vl);
-                v_c2 = __riscv_vfmacc_vf_f32m1(
+                v_c2 = __riscv_vfmacc_vf_f32m2(
                         v_c2, b_ptr[2 * b_stride], v_a, vl);
-                v_c3 = __riscv_vfmacc_vf_f32m1(
+                v_c3 = __riscv_vfmacc_vf_f32m2(
                         v_c3, b_ptr[3 * b_stride], v_a, vl);
-                v_c4 = __riscv_vfmacc_vf_f32m1(
+                v_c4 = __riscv_vfmacc_vf_f32m2(
                         v_c4, b_ptr[4 * b_stride], v_a, vl);
-                v_c5 = __riscv_vfmacc_vf_f32m1(
+                v_c5 = __riscv_vfmacc_vf_f32m2(
                         v_c5, b_ptr[5 * b_stride], v_a, vl);
-                v_c6 = __riscv_vfmacc_vf_f32m1(
+                v_c6 = __riscv_vfmacc_vf_f32m2(
                         v_c6, b_ptr[6 * b_stride], v_a, vl);
-                v_c7 = __riscv_vfmacc_vf_f32m1(
+                v_c7 = __riscv_vfmacc_vf_f32m2(
                         v_c7, b_ptr[7 * b_stride], v_a, vl);
             }
 
-            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl);
-            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl);
-            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl);
-            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl);
-            STORE_C(C + 4 * ldc + i, v_c4, alpha, beta, vl);
-            STORE_C(C + 5 * ldc + i, v_c5, alpha, beta, vl);
-            STORE_C(C + 6 * ldc + i, v_c6, alpha, beta, vl);
-            STORE_C(C + 7 * ldc + i, v_c7, alpha, beta, vl);
+            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl, m2);
+            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl, m2);
+            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl, m2);
+            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl, m2);
+            STORE_C(C + 4 * ldc + i, v_c4, alpha, beta, vl, m2);
+            STORE_C(C + 5 * ldc + i, v_c5, alpha, beta, vl, m2);
+            STORE_C(C + 6 * ldc + i, v_c6, alpha, beta, vl, m2);
+            STORE_C(C + 7 * ldc + i, v_c7, alpha, beta, vl, m2);
 
             i += vl;
         }
@@ -363,22 +365,22 @@ struct kernel_mxn_impl<isTransA, isTransB, 16> {
                         v_c15, b_ptr[15 * b_stride], v_a, vl);
             }
 
-            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl);
-            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl);
-            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl);
-            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl);
-            STORE_C(C + 4 * ldc + i, v_c4, alpha, beta, vl);
-            STORE_C(C + 5 * ldc + i, v_c5, alpha, beta, vl);
-            STORE_C(C + 6 * ldc + i, v_c6, alpha, beta, vl);
-            STORE_C(C + 7 * ldc + i, v_c7, alpha, beta, vl);
-            STORE_C(C + 8 * ldc + i, v_c8, alpha, beta, vl);
-            STORE_C(C + 9 * ldc + i, v_c9, alpha, beta, vl);
-            STORE_C(C + 10 * ldc + i, v_c10, alpha, beta, vl);
-            STORE_C(C + 11 * ldc + i, v_c11, alpha, beta, vl);
-            STORE_C(C + 12 * ldc + i, v_c12, alpha, beta, vl);
-            STORE_C(C + 13 * ldc + i, v_c13, alpha, beta, vl);
-            STORE_C(C + 14 * ldc + i, v_c14, alpha, beta, vl);
-            STORE_C(C + 15 * ldc + i, v_c15, alpha, beta, vl);
+            STORE_C(C + 0 * ldc + i, v_c0, alpha, beta, vl, m1);
+            STORE_C(C + 1 * ldc + i, v_c1, alpha, beta, vl, m1);
+            STORE_C(C + 2 * ldc + i, v_c2, alpha, beta, vl, m1);
+            STORE_C(C + 3 * ldc + i, v_c3, alpha, beta, vl, m1);
+            STORE_C(C + 4 * ldc + i, v_c4, alpha, beta, vl, m1);
+            STORE_C(C + 5 * ldc + i, v_c5, alpha, beta, vl, m1);
+            STORE_C(C + 6 * ldc + i, v_c6, alpha, beta, vl, m1);
+            STORE_C(C + 7 * ldc + i, v_c7, alpha, beta, vl, m1);
+            STORE_C(C + 8 * ldc + i, v_c8, alpha, beta, vl, m1);
+            STORE_C(C + 9 * ldc + i, v_c9, alpha, beta, vl, m1);
+            STORE_C(C + 10 * ldc + i, v_c10, alpha, beta, vl, m1);
+            STORE_C(C + 11 * ldc + i, v_c11, alpha, beta, vl, m1);
+            STORE_C(C + 12 * ldc + i, v_c12, alpha, beta, vl, m1);
+            STORE_C(C + 13 * ldc + i, v_c13, alpha, beta, vl, m1);
+            STORE_C(C + 14 * ldc + i, v_c14, alpha, beta, vl, m1);
+            STORE_C(C + 15 * ldc + i, v_c15, alpha, beta, vl, m1);
 
             i += vl;
         }

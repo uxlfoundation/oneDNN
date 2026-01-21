@@ -417,9 +417,16 @@ void args_t::replace(int arg, const dnn_mem_t *mem) {
 
 stream_staller_t::stream_staller_t(stream_t &stream) {
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    auto eng = query_engine(stream);
+    auto eng_kind = query_engine_kind(eng);
+    if (eng_kind != dnnl_cpu) return;
+
     void *tp_ptr;
     dnnl_threadpool_interop_stream_get_threadpool(stream, &tp_ptr);
     auto tp = static_cast<dnnl::threadpool_interop::threadpool_iface *>(tp_ptr);
+
+    // `tp` is not expected to be empty for CPU streams with threadpol runtime.
+    if (!tp) SAFE_V(FAIL);
 
     // Only relevant for asynchronous threadpool, synchronous will
     // deadlock.

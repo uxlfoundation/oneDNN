@@ -1277,7 +1277,14 @@ dnnl_data_type_t convert_dt(const dnnl::graph::logical_tensor::data_type dt) {
 
 stream_staller_t::stream_staller_t(graph::cpp_stream_t &stream) {
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    const auto &eng = stream.get_engine();
+    auto eng_kind = eng.get_kind();
+    if (eng_kind != dnnl::engine::kind::cpu) return;
+
     auto tp = dnnl::threadpool_interop::get_threadpool(stream);
+
+    // `tp` is not expected to be empty for CPU streams with threadpol runtime.
+    if (!tp) SAFE_V(FAIL);
 
     // Only relevant for asynchronous threadpool, synchronous will
     // deadlock.

@@ -28,7 +28,8 @@
 #include "oneapi/dnnl/dnnl.hpp"
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "oneapi/dnnl/dnnl_ocl.hpp"
-#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
+#endif
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
 #include "oneapi/dnnl/dnnl_sycl.hpp"
 #endif
 
@@ -1142,6 +1143,8 @@ int get_gpu_ram_sizes(size_t &ram_size, size_t &max_alloc_size) {
             = (size_t)sycl_dev
                       .get_info<::sycl::info::device::max_mem_alloc_size>();
     return OK;
+#else
+    assert(!"unsupported GPU runtime");
 #endif
     ram_size = 0;
     max_alloc_size = 0;
@@ -1189,6 +1192,8 @@ int get_gpu_cache_size(size_t &cache_size) {
     _cache_size
             = (size_t)sycl_dev
                       .get_info<::sycl::info::device::global_mem_cache_size>();
+#else
+    assert(!"unsupported GPU runtime");
 #endif
     cache_size = _cache_size;
     return OK;
@@ -1745,6 +1750,8 @@ engine_t::engine_t(const engine_t &other) : is_owner_(other.is_owner_) {
         DNN_SAFE_V(dnnl_sycl_interop_engine_get_device(other.engine_, &dev));
         DNN_SAFE_V(dnnl_sycl_interop_engine_get_context(other.engine_, &ctx));
         DNN_SAFE_V(dnnl_sycl_interop_engine_create(&engine_, dev, ctx));
+#else
+        assert(!"unsupported GPU runtime");
 #endif
     } else {
         assert(!"unsupported engine kind");

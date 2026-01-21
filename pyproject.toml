@@ -1,3 +1,34 @@
 [tool.black]
 line-length = 80
-include = 'scripts\/.*\.pyi?$'
+include = '.*\.py(i|.in)?$'
+exclude = 'doc/doxyrest'
+preview = true
+enable-unstable-feature = ["string_processing"]
+
+[tool.isort]
+profile = "black"
+line_length = 80
+src_paths = [".github", "scripts", "doc"]
+skip_glob = ["doc/doxyrest/*"]
+supported_extensions = ["py", "pyi", "in"]
+multi_line_output = 3
+include_trailing_comma = true
+use_parentheses = true
+force_grid_wrap = 0
+
+[tool.mypy]
+files = ["scripts", ".github", "doc"]
+exclude = ["doc/doxyrest"]
+follow_imports = "skip"
+install_types = true
+check_untyped_defs = true
+disable_error_code = ["override", "import-not-found", "import-untyped"]
+
+[tool.pyright]
+include = ["*.py", "*.pyi", "*.py.in"]
+exclude = ["doc/doxyrest"]
+pythonVersion = "3.7"
+reportMissingModuleSource = false
+reportIncompatibleVariableOverride = false
+reportIncompatibleMethodOverride = false
+reportMissingImports = false

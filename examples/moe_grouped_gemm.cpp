@@ -342,7 +342,7 @@ void onednn_style_grouped_gemm(const float *input_concat,
         const float *scale_src_concat = nullptr, bool use_wei_scales = false,
         const float *scale_wei_concat = nullptr) {
 
-    int total_tokens = offsets[num_experts];
+    int total_tokens = offsets[num_experts - 1];
 
     // Step 1: Create grouped memory descriptors for input and output
     // First dimension (M) varies per expert, second dimension (K/N) is uniform
@@ -407,7 +407,7 @@ void onednn_style_grouped_gemm(const float *input_concat,
     write_to_dnnl_memory(const_cast<float *>(weight_concat), weights_mem);
     write_to_dnnl_memory(const_cast<float *>(bias_concat), bias_mem);
 
-    size_t offsets_size = (num_experts + 1) * sizeof(int);
+    size_t offsets_size = num_experts * sizeof(int);
     // Copy using helper to write to buffer 1 (offsets)
     write_to_dnnl_memory_buffer(
             const_cast<int *>(offsets), offsets_size, src_mem, 1);
@@ -455,35 +455,17 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     int total_tokens = routing.token_offsets[NUM_EXPERTS - 1];
     std::vector<float> hidden_all(total_tokens * hidden_dim);
 
-    // Identify active experts (== those with tokens assigned)
-    std::vector<int> active_expert_ids;
+    // Build offsets array for all experts (including empty ones)
+    std::vector<int> offsets(NUM_EXPERTS);
+    int cumulative = 0;
     for (int i = 0; i < NUM_EXPERTS; ++i) {
-        if (routing.token_counts[i] > 0) { active_expert_ids.push_back(i); }
-    }
-    int num_active_experts = active_expert_ids.size();
-
-    // Build offsets array for active experts
-    std::vector<int> offsets(num_active_experts + 1);
-    offsets[0] = 0;
-    for (int idx = 0; idx < num_active_experts; ++idx) {
-        int expert_id = active_expert_ids[idx];
-        offsets[idx + 1] = offsets[idx] + routing.token_counts[expert_id];
+        cumulative += routing.token_counts[i];
+        offsets[i] = cumulative;
     }
 
     // Save hidden layer output for comparison
     std::vector<float> hidden_all_ref(total_tokens * hidden_dim);
     std::vector<float> hidden_all_onednn(total_tokens * hidden_dim);
-
-    std::vector<float *> hidden_ptrs_ref(num_active_experts);
-    std::vector<float *> hidden_ptrs_onednn(num_active_experts);
-    for (int idx = 0; idx < num_active_experts; ++idx) {
-        int expert_id = active_expert_ids[idx];
-        int token_start
-                = (expert_id == 0) ? 0 : routing.token_offsets[expert_id - 1];
-        hidden_ptrs_ref[idx] = hidden_all_ref.data() + token_start * hidden_dim;
-        hidden_ptrs_onednn[idx]
-                = hidden_all_onednn.data() + token_start * hidden_dim;
-    }
 
     // First layer: input -> hidden (GEMM + bias via ref_grouped_gemm, no scales)
     ref_grouped_gemm(grouped_input, hidden_all_ref.data(), weights.W1_data,
@@ -537,17 +519,6 @@ void process_experts_mlp(const float *grouped_input, float *grouped_output,
     // Save output for comparison
     std::vector<float> output_all_ref(total_tokens * output_dim);
     std::vector<float> output_all_scaled(total_tokens * output_dim);
-
-    std::vector<float *> output_ptrs_ref(num_active_experts);
-    std::vector<float *> output_ptrs_scaled(num_active_experts);
-    for (int idx = 0; idx < num_active_experts; ++idx) {
-        int expert_id = active_expert_ids[idx];
-        int token_start
-                = (expert_id == 0) ? 0 : routing.token_offsets[expert_id - 1];
-        output_ptrs_ref[idx] = output_all_ref.data() + token_start * output_dim;
-        output_ptrs_scaled[idx]
-                = output_all_scaled.data() + token_start * output_dim;
-    }
 
     // Prepare scales in concatenated format:
     //   src: row-wise (0.8 + m*0.06)

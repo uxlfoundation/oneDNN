@@ -53,7 +53,7 @@ for Mixture-of-Experts (MoE) workloads. Grouped format allows handling of
 variable-size batching where one dimension varies per group.
 
 More details are available in the [Grouped Memory Format section](@ref
-dev_guide_mem_formats_grouped) and [MatMul Grouped GEMM section](@ref dev_guide_matmul_grouped_gemm).
+dev_guide_grouped_mem) and [MatMul Grouped GEMM section](@ref dev_guide_matmul_grouped_gemm).
 
 
 ### ONEDNN_EXPERIMENTAL_PROFILING

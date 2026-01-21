@@ -317,26 +317,11 @@ Grouped GEMM enables matrix multiplication when one dimension varies across
 groups, as occurs in Mixture-of-Experts (MoE) models where tokens are dynamically
 routed to different experts.
 
-### Overview
-
-In MoE models, each expert processes a different number of tokens, requiring matrix
-multiplications with varying M dimensions. Grouped GEMM processes all experts in a
-single operation using [grouped memory format](@ref dev_guide_mem_formats_grouped):
+To implement grouped GEMM the, matmul primitive could be used together with
+[grouped memory format](@ref dev_guide_grouped_mem). For instance, grouped format
+could be used for source and destination tensors, while weights remain dense.
 
 ### Code Snippet
-
-**Source (input tokens):**
-- Descriptor: `[total_tokens, K]` with grouped encoding
-- Memory: Concatenated data + offsets buffer
-- `total_tokens` = sum of all expert token counts
-
-**Weights (expert parameters):**
-- Descriptor: `[num_experts, K, N]` 3D tensor
-- Memory: Dense layout, one `KxN` matrix per expert
-
-**Destination (output tokens):**
-- Descriptor: `[total_tokens, N]` with grouped encoding
-- Memory: Concatenated outputs + offsets buffer
 
 ~~~cpp
 const memory::dim num_experts = 4;
@@ -344,45 +329,53 @@ const memory::dim total_tokens = 2350;  // = 800 + 600 + 0 + 950
 const memory::dim K = 512, N = 256;
 
 // Source: grouped encoding for variable M
+// Descriptor: [total_tokens, K] with grouped encoding
+// Memory: concatenated data and offsets buffer
+// total_tokens is a sum of all expert token counts
 auto src_md = memory::desc::grouped(
-    {total_tokens, K}, memory::data_type::s8,
+    {total_tokens, K}, memory::data_type::f32,
     0, num_experts);  // dim 0 varies per group
 
-// Weights: 3D
+// Weights: [num_experts, K, N] 3D tensor
 auto weights_md = memory::desc({num_experts, K, N},
-    memory::data_type::s8, memory::format_tag::abc);
+    memory::data_type::f32, memory::format_tag::abc);
 
 // Destination: grouped encoding
+// Descriptor: [total_tokens, N] with grouped encoding
+// Memory: concatenated outputs and offsets buffer
 auto dst_md = memory::desc::grouped(
     {total_tokens, N}, memory::data_type::f32,
     0, num_experts);
 
-// Offsets: cumulative token counts per expert
-std::vector<int32_t> offsets = {800, 1400, 1400, 2350};
 
 auto matmul_pd = matmul::primitive_desc(engine, src_md, weights_md, dst_md);
+
+// Offsets: cumulative token counts per expert
+// Offsets are expected to be resolved at execution time
+std::vector<int32_t> offsets = {800, 1400, 1400, 2350};
 ~~~
 
 ### Attributes and Quantization
 
-@note Currently only scaling factors (scales) and bias are supported for grouped GEMM.
-
-Both scales and bias are expected to use the same offsets as the source and
+@note Both scales and bias are expected to use the same offsets as the source and
 destination tensors to align with the grouped format.
 
-**Per-token source scales:**
+Setting attributes for grouped GEMM follows the regular matmul attribute API.
+Below are some examples of common use cases.
+
+Per-token source scales:
 ~~~cpp
 attr.set_scales_mask(DNNL_ARG_SRC, (1 << 0));  // Varies along M
 // Scale tensor: [total_tokens]
 ~~~
 
-**Per-expert-column weight scales:**
+Per-expert-column weight scales:
 ~~~cpp
 attr.set_scales_mask(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 2));
 // Scale tensor: [num_experts, N]
 ~~~
 
-**Bias per expert:**
+Bias per expert:
 ~~~cpp
 // Bias: [num_experts, N]
 auto bias_md = memory::desc({num_experts, N},
@@ -403,8 +396,11 @@ To use grouped GEMM in benchdnn, specify the `--grouped` argument as follows
 
 ### Implementation Notes
 
-- Currently, only dimension 0 can vary (2D matmul)
-- Source and destination must use identical grouping
-- Supported on CPU and GPU engines
+- Currently, only dimension 0 can vary.
+- Supported are scales and bias attributes.
+- Source and destination must use identical grouping.
+- Supported on CPU and GPU engines.
 
-@note See example: @ref matmul_grouped_cpp
+### Examples
+
+See @ref matmul_grouped_cpp for a complete example of using grouped GEMM.

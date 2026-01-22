@@ -43,6 +43,7 @@ TBD
 * Extended information about primitive execution available in VTune(TM) Profiler with the same level of detail as reported by oneDNN [verbose mode]. This feature requires VTune Profiler 2025.7 or later.
 * Introduced [`ONEDNN_SAFE_RBP`] build knob that instructs x64 implementations to preserve value of `rbp` register for tools that rely on stack unwinding. This option may have visible performance impact on some workloads.
 * Removed build time dependency on OpenCL runtime in SYCL build configuration.
+`ONEDNN_ENABLE_GRAPH_DUMP` build knob is enabled by default.
 
 [quantization attributes]: https://uxlfoundation.github.io/oneDNN/v3.11/dev_guide_attributes_quantization.html
 [matmul fp8 quantization]: https://uxlfoundation.github.io/oneDNN/v3.11/page_matmul_f8_quantization_cpp.html

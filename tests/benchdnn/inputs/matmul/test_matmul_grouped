@@ -1,8 +1,12 @@
 # Grouped GEMM tests
 #
-# Format: --grouped=M:<num_groups>:<M_dims> MxK:KxN
-# Where M_dims is comma-separated list of M values for each group (sum must equal M)
+# Format: --grouped=<dim_idx>:<num_groups>:<group_sizes> MxK:KxN
+# Where:
+#   dim_idx      - dimension index to group
+#   num_groups   - number of groups/experts
+#   group_sizes  - comma-separated list of sizes for each group (sum must equal dimension size)
 # The group dimension is inserted automatically into weights (becomes [G,K,N])
+# Aligns with grouped memory descriptor's variable_dim_idx
 #
 # Configurations below cover:
 # - Data types: f32, bf16, f16
@@ -58,19 +62,19 @@
 # Blocked wei scales - u8/s8
 --reset
 --dt=u8:s4:bf16,s8:s4:bf16,u8:u8:bf16
---grouped=M:4:8,8,8,8
+--grouped=0:4:8,8,8,8
 --attr-scales=wei:per_dim_012:bf16:128x1,wei:per_dim_012:bf16:64x1,wei:per_dim_012:bf16:32x1
 32x512:512x256
 
 # Combined row-wise src + blocked weight scales - u8/s8
 --reset
 --dt=u8:s4:bf16,s8:s4:bf16,u8:s4:bf16
---grouped=M:4:8,8,8,8
+--grouped=0:4:8,8,8,8
 --attr-scales=src:per_dim_0+wei:per_dim_012:bf16:128x1,src:per_dim_0+wei:per_dim_012:bf16:32x1,src:per_dim_0+wei:per_dim_012:bf16:64x1
 32x512:512x256
 
 --reset
 --dt=s8:s4:f32
---grouped=M:4:8,8,8,8
+--grouped=0:4:8,8,8,8
 --attr-scales=src:per_dim_0+wei:per_dim_012:f32:128x1
 32x512:512x256

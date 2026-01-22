@@ -1060,7 +1060,7 @@ std::ostream &operator<<(
         }
 
         if (has_grouped) {
-            // Output new format: --grouped=M:8:32,64,32,...
+            // Output new format: --grouped=0:8:32,64,32,...
             // Find the first arg with grouped encoding to get the data
             int grouped_arg = DNNL_ARG_SRC;
             for (const int arg : args) {
@@ -1069,10 +1069,8 @@ std::ostream &operator<<(
                     break;
                 }
             }
-            // Convert variable_dim_idx back to dim_name for display
             int var_idx = sparse_options.get_variable_dim_idx(grouped_arg);
-            const char *dim_name = (var_idx == 0) ? "M" : "?";
-            s << "--grouped=" << dim_name << ":"
+            s << "--grouped=" << var_idx << ":"
               << sparse_options.get_group_count(grouped_arg) << ":";
             const auto &dims = sparse_options.get_group_sizes(grouped_arg);
             for (size_t i = 0; i < dims.size(); i++) {

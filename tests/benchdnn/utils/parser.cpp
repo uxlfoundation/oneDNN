@@ -695,22 +695,23 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
 #if DNNL_EXPERIMENTAL_GROUPED_GEMM
 /**
  * Parse grouped encoding options.
- * Format: DIM_NAME:NUM_GROUPS:size0,size1,...,sizeN
- * DIM_NAME is the dimension name (M, K, or N),
+ * Format: DIM_IDX:NUM_GROUPS:size0,size1,...,sizeN
+ * DIM_IDX is the dimension index (0, 1, or 2),
  *     where src MxK * weights KxN = dst MxN
+ *     0 = M dimension, 1 = K dimension, 2 = N dimension
  * NUM_GROUPS is the number of tensors in the group
  * size0, size1,..., sizeN are the sizes for each in the group
  */
 bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
         const char *str, const std::string &option_name /* = "grouped"*/) {
     static const std::string help
-            = "DIM_NAME:NUM_GROUPS:size0,size1,...,sizeN\n   "
+            = "DIM_IDX:NUM_GROUPS:size0,size1,...,sizeN\n   "
               "Specifies grouped encoding for MoE workloads.\n"
-              "    DIM_NAME is the dimension name (M, K, or N)\n"
+              "    DIM_IDX is the dimension index (0=M, 1=K, 2=N)\n"
               "    NUM_GROUPS is the number of expert groups\n"
               "    size0,size1,...,sizeN are the sizes for each in the group "
               "(comma-separated)\n"
-              "    Example: --grouped=M:8:32,64,32,96,48,80,56,72\n";
+              "    Example: --grouped=0:8:32,64,32,96,48,80,56,72\n";
 
     parser_utils::add_option_to_help(option_name, help);
     const std::string pattern = parser_utils::get_pattern(option_name);
@@ -726,28 +727,37 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
 
     sparse_options_t v;
 
-    // Parse format: DIM_NAME:NUM_GROUPS:size0,size1,...
+    // Parse format: DIM_IDX:NUM_GROUPS:size0,size1,...
     size_t pos = 0;
     auto first_colon = s.find(':');
     if (first_colon == std::string::npos) {
         BENCHDNN_PRINT(0, "%s\n",
-                "Error: grouped format requires DIM_NAME:NUM_GROUPS:sizes");
+                "Error: grouped format requires DIM_IDX:NUM_GROUPS:sizes");
         SAFE_V(FAIL);
     }
 
-    std::string dim_name = s.substr(0, first_colon);
+    std::string dim_idx_str = s.substr(0, first_colon);
 
-    // Validate dimension name (only M is currently supported)
-    if (dim_name != "M") {
+    // Parse dimension index
+    int variable_dim_idx = -1;
+    try {
+        variable_dim_idx = std::stoi(dim_idx_str);
+    } catch (...) {
         BENCHDNN_PRINT(0,
-                "Error: dimension name must be M (only M is currently "
-                "supported), got '%s'\n",
-                dim_name.c_str());
+                "Error: dimension index must be a number (0=M, 1=K, 2=N), "
+                "got '%s'\n",
+                dim_idx_str.c_str());
         SAFE_V(FAIL);
     }
 
-    // Convert dim_name to variable_dim_idx (M=0)
-    int variable_dim_idx = 0; // M is always index 0
+    // Validate dimension index (only 0 is currently supported)
+    if (variable_dim_idx != 0) {
+        BENCHDNN_PRINT(0,
+                "Error: dimension index must be 0 (only M/dim 0 is currently "
+                "supported), got %d\n",
+                variable_dim_idx);
+        SAFE_V(FAIL);
+    }
 
     pos = first_colon + 1;
     auto second_colon = s.find(':', pos);

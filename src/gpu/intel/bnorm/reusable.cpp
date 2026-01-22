@@ -55,9 +55,7 @@ static std::vector<dim_idx_t> get_dims(size_t ndims) {
 
 static status_t init_calculate_stats_conf(reusable_params_t &conf,
         reusable_runtime_params_t &rt_conf, impl::engine_t *engine,
-        const memory_desc_wrapper &data_mdw,
-        const gpu_primitive_attr_t *gpu_attr) {
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+        const memory_desc_wrapper &data_mdw) {
     const size_t ndims = static_cast<size_t>(data_mdw.ndims());
     dim_t calc_dims[MAX_DIMS];
     auto &dims = data_mdw.dims();
@@ -76,14 +74,16 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
     // - DST: SRC, but with one dim reduced and ic moved to the innermost position
     // - [variance only] MEAN: just the ic dim, stores the mean per ic
     std::vector<dim_idx_t> dim_ids = get_dims(ndims);
-    compute::named_buffer_t src_buf("SRC", *data_mdw.md_, dim_ids);
+    compute::named_buffer_t src_buf(
+            compute::name_id_t::src, *data_mdw.md_, dim_ids);
 
-    compute::named_buffer_t dst_buf("DST", src_buf);
+    compute::named_buffer_t dst_buf(compute::name_id_t::dst, src_buf);
     dst_buf.remove_dim(dim_ids[reduce_dim_idx]);
 
     // Move ic interior
+    dst_buf.remove_blocking();
     dst_buf.remove_dim(dims::ic);
-    dst_buf.append_block(dims::ic, dims[1]);
+    dst_buf.insert(dims::ic, dims[1]);
 
     rt_conf.reduce_dim_stride = 1;
     size_t num_blocks_reduced = 0;
@@ -108,8 +108,9 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
             break;
         }
     }
+    auto lws_strategy = compute::default_lws_strategy_t(engine);
     compute::reusable_dispatch_config_t calc_stat_dispatch_config(
-            intel_engine, dim_ids);
+            dim_ids, lws_strategy);
     VDISPATCH_BNORM_IC(calc_stat_dispatch_config.register_buffer(src_buf)
                     == status::success,
             "failed to register src buffer");
@@ -117,35 +118,33 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
                     == status::success,
             "failed to register dst buffer");
     VDISPATCH_BNORM_IC(calc_stat_dispatch_config.define_dim_index(
-                               "IC_DIM", dims::ic, rt_conf.ic)
+                               compute::name_id_t::ic_dim, dims::ic, rt_conf.ic)
                     == status::success,
             "cannot define dim index for dispatch config");
 
     compute::reusable_dispatch_t dispatch_calc_stat;
-    auto lws_strategy = compute::default_lws_strategy_t(intel_engine, gpu_attr);
-    VDISPATCH_BNORM_IC(
-            calc_stat_dispatch_config.generate(dispatch_calc_stat, lws_strategy)
+    VDISPATCH_BNORM_IC(calc_stat_dispatch_config.generate(dispatch_calc_stat)
                     == status::success,
             "failed to generate dispatch_config");
     conf.calc_stat_params = dispatch_calc_stat.get_compile_params();
     rt_conf.calc_stat_params = dispatch_calc_stat.get_runtime_params();
 
-    compute::named_buffer_t reduce_buffer("BUFFER", dst_buf);
+    compute::named_buffer_t reduce_buffer(compute::name_id_t::buffer, dst_buf);
     for (const auto &dim : dim_ids) {
         if (dim != dims::ic) reduce_buffer.remove_dim(dim);
     }
 
     // Reduce kernels dispatch to ic dim only
     compute::reusable_dispatch_config_t reduce_stat_dispatch_config(
-            intel_engine, {dims::ic});
+            {dims::ic}, lws_strategy);
     VDISPATCH_BNORM_IC(
             reduce_stat_dispatch_config.register_buffer(reduce_buffer)
                     == status::success,
             "failed to register reduce buffer");
 
     compute::reusable_dispatch_t dispatch_reduce_stat;
-    VDISPATCH_BNORM_IC(reduce_stat_dispatch_config.generate(
-                               dispatch_reduce_stat, lws_strategy)
+    VDISPATCH_BNORM_IC(
+            reduce_stat_dispatch_config.generate(dispatch_reduce_stat)
                     == status::success,
             "failed to generate dispatch_config");
     conf.reduce_stat_params = dispatch_reduce_stat.get_compile_params();
@@ -155,8 +154,7 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
 
 static status_t init_conf_common(reusable_params_t &conf,
         reusable_runtime_params_t &rt_conf, const pd_t *pd,
-        const memory_desc_wrapper &data_mdw, impl::engine_t *engine,
-        const gpu_primitive_attr_t *&gpu_attr) {
+        const memory_desc_wrapper &data_mdw, impl::engine_t *engine) {
     const desc_t &bd = *pd->desc();
 
     conf = utils::zero<decltype(conf)>();
@@ -176,30 +174,30 @@ static status_t init_conf_common(reusable_params_t &conf,
 
     conf.with_leaky_relu = conf.with_relu && rt_conf.relu_negative_slope != 0.f;
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
-
     size_t ndims = static_cast<size_t>(data_mdw.ndims());
     std::vector<dim_idx_t> dims = get_dims(ndims);
-    compute::named_buffer_t buffer("BUFFER", *data_mdw.md_, dims);
+    compute::named_buffer_t buffer(
+            compute::name_id_t::buffer, *data_mdw.md_, dims);
 
     // Dispatch to all dims
+
+    auto lws_strategy = compute::default_lws_strategy_t(engine);
     compute::reusable_dispatch_config_t dispatch_config(
-            intel_engine, std::move(dims));
+            std::move(dims), lws_strategy);
     VDISPATCH_BNORM_IC(
             dispatch_config.register_buffer(buffer) == status::success,
             "failed to register buffer");
-    VDISPATCH_BNORM_IC(
-            dispatch_config.define_dim_index("IC_DIM", dims::ic, rt_conf.ic)
+    VDISPATCH_BNORM_IC(dispatch_config.define_dim_index(
+                               compute::name_id_t::ic_dim, dims::ic, rt_conf.ic)
                     == status::success,
             "cannot define dim index for dispatch config");
 
     compute::reusable_dispatch_t dispatch;
-    VDISPATCH_BNORM_IC(
-            dispatch_config.generate(dispatch,
-                    compute::default_lws_strategy_t(intel_engine, gpu_attr))
-                    == status::success,
+    VDISPATCH_BNORM_IC(dispatch_config.generate(dispatch) == status::success,
             "failed to generate dispatch_config");
     conf.gws_params = dispatch.get_compile_params();
+    VDISPATCH_BNORM_IC(
+            !conf.gws_params.has_padding(), "padding support is unimplemented");
     rt_conf.gws_params = dispatch.get_runtime_params();
 
     return status::success;
@@ -230,10 +228,8 @@ static void init_kernel_ctx_common(
 
 status_t reusable_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     const memory_desc_wrapper data_mdw(src_md());
-    const auto *gpu_attr
-            = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-    CHECK(init_conf_common(conf, rt_conf, this, data_mdw, engine, gpu_attr));
-    CHECK(init_calculate_stats_conf(conf, rt_conf, engine, data_mdw, gpu_attr));
+    CHECK(init_conf_common(conf, rt_conf, this, data_mdw, engine));
+    CHECK(init_calculate_stats_conf(conf, rt_conf, engine, data_mdw));
     return status::success;
 }
 
@@ -316,7 +312,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         calc_mean_arg_list.set(1, *temp_reduce);
         append_off(calc_mean_arg_list, rt_conf.reduce_dim_stride);
         append_off(calc_mean_arg_list, rt_conf.reduction_nelems);
-        calc_mean_arg_list.append(rt_conf.calc_stat_params.get());
+        append_rt_params(calc_mean_arg_list, rt_conf.calc_stat_params);
 
         auto &nd_range_calc = rt_conf.calc_stat_params.nd_range;
 
@@ -330,7 +326,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         append_off(
                 reduce_mean_arg_list, rt_conf.div / rt_conf.reduction_nelems);
         append_off(reduce_mean_arg_list, rt_conf.div);
-        reduce_mean_arg_list.append(rt_conf.reduce_stat_params.get());
+        append_rt_params(reduce_mean_arg_list, rt_conf.reduce_stat_params);
 
         auto &nd_range_reduce = rt_conf.reduce_stat_params.nd_range;
 
@@ -343,7 +339,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         calc_var_arg_list.set(2, *temp_reduce);
         append_off(calc_var_arg_list, rt_conf.reduce_dim_stride);
         append_off(calc_var_arg_list, rt_conf.reduction_nelems);
-        calc_var_arg_list.append(rt_conf.calc_stat_params.get());
+        append_rt_params(calc_var_arg_list, rt_conf.calc_stat_params);
 
         CHECK(parallel_for(ctx, nd_range_calc, calculate_variance_kernel_,
                 calc_var_arg_list));
@@ -354,7 +350,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         append_off(reduce_var_arg_list, rt_conf.ic);
         append_off(reduce_var_arg_list, rt_conf.div / rt_conf.reduction_nelems);
         append_off(reduce_var_arg_list, rt_conf.div);
-        reduce_var_arg_list.append(rt_conf.reduce_stat_params.get());
+        append_rt_params(reduce_var_arg_list, rt_conf.reduce_stat_params);
 
         CHECK(parallel_for(ctx, nd_range_reduce, reduce_variance_kernel_,
                 reduce_var_arg_list));
@@ -371,7 +367,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.set(7, rt_conf.eps);
     arg_list.set(8, src_add);
     arg_list.set(9, rt_conf.relu_negative_slope);
-    arg_list.append(rt_conf.gws_params.get());
+    append_rt_params(arg_list, rt_conf.gws_params);
 
     auto &nd_range = rt_conf.gws_params.nd_range;
 
@@ -381,10 +377,8 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 status_t reusable_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper data_mdw(diff_src_md());
-    const auto *gpu_attr
-            = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
-    CHECK(init_conf_common(conf, rt_conf, this, data_mdw, engine, gpu_attr));
-    CHECK(init_calculate_stats_conf(conf, rt_conf, engine, data_mdw, gpu_attr));
+    CHECK(init_conf_common(conf, rt_conf, this, data_mdw, engine));
+    CHECK(init_calculate_stats_conf(conf, rt_conf, engine, data_mdw));
     return status::success;
 }
 
@@ -442,7 +436,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     calc_stats_arg_list.set(5, *temp_reduce_shift);
     append_off(calc_stats_arg_list, rt_conf.reduce_dim_stride);
     append_off(calc_stats_arg_list, rt_conf.reduction_nelems);
-    calc_stats_arg_list.append(rt_conf.calc_stat_params.get());
+    append_rt_params(calc_stats_arg_list, rt_conf.calc_stat_params);
 
     auto &nd_range_calc = rt_conf.calc_stat_params.nd_range;
 
@@ -460,7 +454,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     reduce_stats_arg_list.set(5, rt_conf.eps);
     append_off(reduce_stats_arg_list, rt_conf.ic);
     append_off(reduce_stats_arg_list, rt_conf.div / rt_conf.reduction_nelems);
-    reduce_stats_arg_list.append(rt_conf.reduce_stat_params.get());
+    append_rt_params(reduce_stats_arg_list, rt_conf.reduce_stat_params);
 
     auto &nd_range_reduce_stat = rt_conf.reduce_stat_params.nd_range;
 
@@ -480,7 +474,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     arg_list.set(9, rt_conf.eps);
     arg_list.set(10, diff_src_add);
     append_off(arg_list, rt_conf.div);
-    arg_list.append(rt_conf.gws_params.get());
+    append_rt_params(arg_list, rt_conf.gws_params);
 
     auto &nd_range = rt_conf.gws_params.nd_range;
 

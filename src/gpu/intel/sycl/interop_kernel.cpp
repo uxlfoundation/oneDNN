@@ -77,9 +77,14 @@ static void set_scalar_arg(::sycl::handler &cgh, int index,
         case scalar_type_t::_int64x6_t:
             cgh.set_arg(index, *static_cast<const compute::int64x6_t *>(value));
             break;
-        case scalar_type_t::_dispatch_gws_rt_params_t:
+        case scalar_type_t::_dispatch_gws_rt_params32_t:
             cgh.set_arg(index,
-                    *static_cast<const compute::dispatch_gws_rt_params_t *>(
+                    *static_cast<const compute::dispatch_gws_rt_params32_t *>(
+                            value));
+            break;
+        case scalar_type_t::_dispatch_gws_rt_params64_t:
+            cgh.set_arg(index,
+                    *static_cast<const compute::dispatch_gws_rt_params64_t *>(
                             value));
             break;
         default:

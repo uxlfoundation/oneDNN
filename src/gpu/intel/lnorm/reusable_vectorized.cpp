@@ -37,24 +37,6 @@ namespace intel {
 namespace lnorm {
 
 using namespace dnnl::impl::gpu::intel::compute;
-struct single_subgroup_lws_strategy_t : public lws_strategy_t {
-    size_t desired_sg_size = 32;
-    single_subgroup_lws_strategy_t(const engine_t *engine,
-            const gpu_primitive_attr_t *gpu_attr, size_t _desired_sg_size)
-        : lws_strategy_t(engine, gpu_attr)
-        , desired_sg_size(_desired_sg_size) {};
-
-    range_t create_lws(
-            range_t &gws, const gws_bin_mapping_t &mapper) const override {
-        range_t lws = {desired_sg_size, 1, 1};
-        return lws;
-    }
-
-    // this strategy doesn't care which blocks are in the lws
-    bool is_included(const mapped_block_t &blocks) const override {
-        return false;
-    }
-};
 
 bool is_sg_and_vector_size_compatible(
         const engine_t *engine, int sg_size, int vector_size) {
@@ -115,9 +97,6 @@ static status_t init_conf_common(const pd_t *pd,
             src_mdw.is_dense() ? "true" : "false",
             int(src_mdw.blocking_desc().strides[ndims - 1]));
 
-    const auto *gpu_attr = utils::downcast<gpu_primitive_attr_t *>(
-            pd->attr()->gpu_attr_.get());
-
     const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
     conf->sg_size = 0;
@@ -148,12 +127,22 @@ static status_t init_conf_common(const pd_t *pd,
     conf->unroll = std::min<int>(
             4, (int)pd->norm_axis() / (conf->sg_size * conf->vector_size));
 
-    // Norm dispatch: all dimensions
-    auto lws_strategy = single_subgroup_lws_strategy_t(
-            intel_engine, gpu_attr, conf->sg_size);
+    // Reduction across stat buffers is performed via a subgroup reduction
+    dim_idx_t subgroup_idx = MAX_NDIMS;
+    compute::named_buffer_t local_buf(compute::name_id_t::local,
+            {{subgroup_idx, int64_t(conf->sg_size)}});
+    vector<dim_idx_t> dispatch_dims = get_dims(ndims, true);
+    dispatch_dims.emplace_back(subgroup_idx);
+
+    std::array<lws_strategy_t::dim_info_t, 3> lws;
+    lws[0] = {subgroup_idx, int64_t(conf->sg_size)};
+    auto lws_strategy = compute::explicit_lws_strategy_t(conf->sg_size, lws);
 
     compute::reusable_dispatch_config_t dispatch_config(
-            intel_engine, std::move(dims));
+            std::move(dispatch_dims), lws_strategy);
+    VDISPATCH_LNORM_IC(
+            dispatch_config.register_buffer(local_buf) == status::success,
+            "failed to register input buffer");
     VDISPATCH_LNORM_IC(
             dispatch_config.register_buffer(input_buf) == status::success,
             "failed to register input buffer");
@@ -168,8 +157,7 @@ static status_t init_conf_common(const pd_t *pd,
             "failed to register ss buffer");
 
     compute::reusable_dispatch_t dispatch;
-    VDISPATCH_LNORM_IC(
-            dispatch_config.generate(dispatch, lws_strategy) == status::success,
+    VDISPATCH_LNORM_IC(dispatch_config.generate(dispatch) == status::success,
             "failed to generate dispatch_config");
     conf->gws_params = dispatch.get_compile_params();
     rt_conf->gws_params = dispatch.get_runtime_params();
@@ -188,9 +176,12 @@ status_t reusable_vectorized_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     // - dst: all dims
     // - stat: (mean/variance) all but last dim
     // - SS: (scale/shift) just the last dim
-    compute::named_buffer_t src_buffer("SRC", *src_md(), dims);
-    compute::named_buffer_t dst_buffer("DST", *dst_md(), dims);
-    compute::named_buffer_t stat_buffer("STAT", *stat_md(), stat_dims);
+    compute::named_buffer_t src_buffer(
+            compute::name_id_t::src, *src_md(), dims);
+    compute::named_buffer_t dst_buffer(
+            compute::name_id_t::dst, *dst_md(), dims);
+    compute::named_buffer_t stat_buffer(
+            compute::name_id_t::stat, *stat_md(), stat_dims);
     compute::named_buffer_t ss_buffer
             = get_ss_buffer(weights_md(), dims.back());
     CHECK(init_conf_common(this, &conf, &rt_conf, engine, src_buffer,
@@ -258,16 +249,10 @@ status_t reusable_vectorized_fwd_t::execute_forward(
             pd()->norm_axis(), conf.sg_size * conf.vector_size));
     arg_list.append(1.f / (pd()->norm_axis()));
 
-    arg_list.append(rt_conf.gws_params.get());
+    append_rt_params(arg_list, rt_conf.gws_params);
 
-    compute::nd_range_t gws_nd_range_calc(
-            {static_cast<size_t>(conf.sg_size),
-                    rt_conf.gws_params.nd_range.global_range().data()[1],
-                    rt_conf.gws_params.nd_range.global_range().data()[2]},
-            {static_cast<size_t>(conf.sg_size), 1, 1});
-
-    return parallel_for(
-            ctx, gws_nd_range_calc, calculate_lnorm_kernel_, arg_list);
+    return parallel_for(ctx, rt_conf.gws_params.nd_range,
+            calculate_lnorm_kernel_, arg_list);
 }
 
 } // namespace lnorm

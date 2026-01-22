@@ -27,6 +27,7 @@
 
 #include "gemmstone/dsl/runtime.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
+#include "gpu/intel/logging.hpp"
 #include "gpu/intel/microkernels/fuser.hpp"
 #include "gpu/intel/ocl/device_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
@@ -82,20 +83,13 @@ status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
 
 void maybe_print_build_info(const std::vector<const char *> &kernel_names,
         const compute::kernel_ctx_t &kernel_ctx) {
-#if defined(DISABLE_VERBOSE)
-    return;
-#endif
 
-    // Print out kernel options if the correct verbosity is set
-    if (get_verbose(verbose_t::debuginfo) >= 5) {
-        ostringstream_t oss;
-        for (const char *name : kernel_names)
-            oss << name << " ";
+    ostringstream_t names;
+    for (const char *name : kernel_names)
+        names << " " << name;
 
-        VFORMAT(get_msec(), verbose_t::debuginfo, primitive, exec,
-                VERBOSE_debug, "kernel options,%s,%s", oss.str().c_str(),
-                kernel_ctx.options().c_str());
-    }
+    gpu_info() << "build kernels:" << names;
+    gpu_info() << "build options: " << kernel_ctx.options();
 }
 
 status_t engine_t::init() {

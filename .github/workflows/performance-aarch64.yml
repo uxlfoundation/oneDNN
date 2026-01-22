@@ -1,5 +1,5 @@
 # *******************************************************************************
-# Copyright 2024-2025 Arm Limited and affiliates.
+# Copyright 2024-2026 Arm Limited and affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -184,7 +184,7 @@ jobs:
           OMP_NUM_THREADS: ${{ inputs.num_threads || 16 }}
 
       - name: Update wiki
-        if: ${{ (success() || failure()) && inputs.benchdnn_command == '' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ryo-not-rio/wiki') }}
+        if: ${{ (success() || failure()) && inputs.benchdnn_command == '' && github.ref == 'refs/heads/main' }}
         uses: ./oneDNN/.github/actions/update-wiki
         with:
           command: add-perf

@@ -10,7 +10,14 @@
 * Improved convolution performance with host-side scalar scales and zero points.
 
 ## AArch64-based Processors
-TBD
+* Improved performance of `s8/u8` eltwise post-ops on Arm(R) Neoverse(TM) V1 processors.
+* Improved `f16` and `bf16` eltwise performance for `abs`, `relu`, `square`, `sqrt`, `clip`, and `clip_v2`.
+* Improved `exp` eltwise performance on Arm(R) Neoverse(TM) N1 processors.
+* Improved reorder primitive performance.
+* Added matmul optimisations for GEMVs.
+* Improved performance of `bf16` matmul.
+* Improved performance of `bf16/int8` convolutions.
+* Convolutions with large spatial filters now consume much less memory during primitive setup.
 
 ## RISC-V based processors
 * Improved eltwise and binary primitives performance.
@@ -44,6 +51,10 @@ TBD
 ## Intel Architecture Processors
 * Introduced support for different data types of source and destination in pooling forward propagation.
 
+## AArch64-based Processors
+* Added limited support for the BRGEMM Microkernel API
+* Added limited support for Windows on Arm builds with MSVC
+
 # Usability
 * Extended [quantization attributes] documentation to cover all quantization schemes supported by the library.
 * Added [matmul fp8 quantization] example demonstrating use of matmul primitive with `fp8` source, destination, and weights.
@@ -52,6 +63,7 @@ TBD
 * Introduced [`ONEDNN_SAFE_RBP`] build knob that instructs x64 implementations to preserve value of `rbp` register for tools that rely on stack unwinding. This option may have visible performance impact on some workloads.
 * Removed build time dependency on OpenCL runtime in SYCL build configuration.
 * `ONEDNN_ENABLE_GRAPH_DUMP` build knob is enabled by default.
+* Fixed a potential overflow on AArch64 builds with Arm Compute Library.
 
 [quantization attributes]: https://uxlfoundation.github.io/oneDNN/v3.11/dev_guide_attributes_quantization.html
 [matmul fp8 quantization]: https://uxlfoundation.github.io/oneDNN/v3.11/page_matmul_f8_quantization_cpp.html

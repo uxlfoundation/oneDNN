@@ -20,7 +20,7 @@
 // Structures intended for use in both OpenCL C and C++ code. This is especially
 // helpful for parameter transfer.
 
-// Due to limitations in engine.cpp:preprocess_headers(), <cstdint> must
+// Due to limitations in compute::preprocess_headers(), <cstdint> must
 // be included external to this file when compiling outside of an OpenCL context
 #ifdef __OPENCL_VERSION__
 typedef uchar uint8_t;

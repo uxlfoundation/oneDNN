@@ -55,9 +55,6 @@ status_t get_ocl_kernel_binary(cl_kernel ocl_kernel, xpu::binary_t &binary);
 status_t get_ocl_program_binary_size(
         cl_kernel kernel, cl_device_id device, size_t *size);
 
-void debugdump_processed_source(const std::string &source,
-        const std::string &options, const std::string &ocl_options);
-
 status_t get_kernel_arg_types(cl_kernel ocl_kernel,
         std::vector<gpu::intel::compute::scalar_type_t> *arg_types);
 

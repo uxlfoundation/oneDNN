@@ -119,7 +119,7 @@ status_t engine_t::create_kernels(
             "No OpenCL source was found for kernel");
 
     stringstream_t pp_code;
-    CHECK(gpu::intel::ocl::preprocess_headers(pp_code, source, kernel_ctx));
+    CHECK(compute::preprocess_headers(pp_code, source, kernel_ctx));
 
     std::string build_options = kernel_ctx.options();
     build_options += " " + device_info()->get_cl_ext_options();

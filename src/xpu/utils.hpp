@@ -163,10 +163,19 @@ inline void *find_symbol(const char *library_name, const char *symbol) {
                 "error while searching for a %s symbol address in %s library: "
                 "%s",
                 symbol, library_name, dlerror());
-        dlclose(handle);
+        // See a comment below.
+        // dlclose(handle);
         return nullptr;
     }
-    dlclose(handle);
+    // Note: `dlclose` invalidates `symbol_address` if the application hadn't
+    // had a `handle` opened before. The solution to put a handle in some
+    // `static` object leads to other problems with unloading a library from
+    // applications linked with oneDNN when it comes to managing global
+    // resources passed between libraries such as contexts.
+    //
+    // Thus, the recommendation is not to `dlclose` the handle and let it slide.
+    //
+    // dlclose(handle);
     return symbol_address;
 }
 #endif

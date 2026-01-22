@@ -94,7 +94,11 @@ __kernel void ref_grouped_gemm_matmul(
     ACC_DATA_T acc = (ACC_DATA_T)0;
     for (int k = 0; k < K; k++) {
         const long src_idx = (long)m * K + k;
+#if WEI_TRANSPOSED
+        const long wei_idx = (long)n * K + k;
+#else
         const long wei_idx = (long)k * N + n;
+#endif
         ACC_DATA_T src_val = SRC_TO_REF(src_group[src_idx]);
         ACC_DATA_T wei_val = WEI_TO_REF(wei_group[wei_idx]);
         acc += src_val * wei_val;

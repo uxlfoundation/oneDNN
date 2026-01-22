@@ -62,9 +62,14 @@ struct ref_grouped_gemm_t : public primitive_t {
             // src, dst - grouped, weights - dense
             VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
+            // Weights should be dense, support abc or acb format
             VDISPATCH_MATMUL(
                     !wei_d.is_sparse_desc() && !wei_d.is_grouped_desc(),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            VDISPATCH_MATMUL(
+                    wei_d.matches_one_of_tag(format_tag::abc, format_tag::acb),
+                    VERBOSE_UNSUPPORTED_TAG);
 
             const auto &src_grouped = src_d.sparse_desc().grouped_desc;
             const auto &dst_grouped = dst_d.sparse_desc().grouped_desc;
@@ -76,9 +81,8 @@ struct ref_grouped_gemm_t : public primitive_t {
 
             ngroups_ = src_grouped.ngroups;
 
-            // only supported dt for now
-            VDISPATCH_MATMUL(utils::one_of(src_dt_, f32, bf16, f16)
-                            && src_dt_ == wei_dt_ && src_dt_ == dst_dt_,
+            VDISPATCH_MATMUL(src_dt_ == wei_dt_ && src_dt_ == dst_dt_
+                            && utils::one_of(src_dt_, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             // only supported offsets type for now
@@ -90,7 +94,8 @@ struct ref_grouped_gemm_t : public primitive_t {
             if (with_bias()) {
                 memory_desc_wrapper bia_d(weights_md(1));
                 VDISPATCH_MATMUL(
-                        !bia_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+                        !bia_d.is_sparse_desc() && !bia_d.is_grouped_desc(),
+                        VERBOSE_UNSUPPORTED_BIAS_CFG);
                 VDISPATCH_MATMUL(
                         bia_d.ndims() == 2, VERBOSE_UNSUPPORTED_BIAS_CFG);
                 // Bias shape should be [num_experts, N]
@@ -100,8 +105,7 @@ struct ref_grouped_gemm_t : public primitive_t {
                         (int)src_grouped.ngroups);
                 VDISPATCH_MATMUL(bia_d.dims()[1] == dst_d.dims()[1],
                         VERBOSE_INCONSISTENT_DIM, "bias_dim[1]",
-                        (int)bia_d.dims()[1], "dst_dim[1]",
-                        (int)dst_d.dims()[2]);
+                        (int)bia_d.dims()[1], "N_dim", (int)dst_d.dims()[1]);
             }
 
             const auto &attr_scales = attr()->scales_;
@@ -161,6 +165,11 @@ struct ref_grouped_gemm_t : public primitive_t {
         kernel_ctx.define_int("K", pd()->src_md()->dims[1]);
         kernel_ctx.define_int("N", pd()->weights_md(0)->dims[2]);
         kernel_ctx.define_int("NGROUPS", pd()->ngroups_);
+
+        // Check if weights are transposed (acb format)
+        memory_desc_wrapper wei_d(pd()->weights_md(0));
+        const bool wei_transposed = wei_d.matches_tag(format_tag::acb);
+        kernel_ctx.define_int("WEI_TRANSPOSED", wei_transposed ? 1 : 0);
 
         const bool with_bias = pd()->with_bias();
         kernel_ctx.define_int("WITH_BIAS", with_bias ? 1 : 0);

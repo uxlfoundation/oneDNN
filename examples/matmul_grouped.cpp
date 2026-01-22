@@ -65,13 +65,14 @@ void grouped_matmul_example(engine::kind engine_kind) {
 
     std::cout << "Number of experts: " << num_experts << std::endl;
 
-    std::cout << "Token routing: " << total_tokens << " tokens across "
-              << num_experts << " experts [";
+    std::cout << "Token distribution: " << total_tokens << " total tokens";
+    std::cout << " routed to " << num_experts << " experts";
+    std::cout << " (";
     for (memory::dim i = 0; i < num_experts; ++i) {
         std::cout << tokens_per_expert[i];
         if (i < num_experts - 1) std::cout << ", ";
     }
-    std::cout << "]" << std::endl;
+    std::cout << " tokens per expert)" << std::endl;
 
     // src is [total_tokens, K] with grouped encoding
     // wei is [num_experts, K, N] with standard 3D format
@@ -79,19 +80,27 @@ void grouped_matmul_example(engine::kind engine_kind) {
     const memory::dim K = 64; // Input feature dimension
     const memory::dim N = 128; // Output feature dimension
 
-    std::cout << "MatMul dimensions: " << "src[" << total_tokens << ", " << K
-              << "], " << "wei[" << num_experts << ", " << K << ", " << N
-              << "], " << "dst[" << total_tokens << ", " << N << "]"
-              << std::endl;
+    std::cout << "Input dimensions: K=" << K << " (features), N=" << N
+              << " (outputs)" << std::endl;
+    std::cout << "Weight format: acb with physical layout " << num_experts
+              << "x" << N << "x" << K << std::endl;
+    std::cout << std::endl;
 
     std::vector<float> src_data(total_tokens * K);
     for (int i = 0; i < total_tokens * K; ++i) {
         src_data[i] = i / 10.f;
     }
-    std::vector<float> weights_data(num_experts * K * N);
-    for (int i = 0; i < num_experts * K * N; ++i) {
-        weights_data[i] = i / 20.f;
+
+    std::vector<float> weights_data(num_experts * N * K);
+    for (int e = 0; e < num_experts; ++e) {
+        for (int n = 0; n < N; ++n) {
+            for (int k = 0; k < K; ++k) {
+                weights_data[e * N * K + n * K + k]
+                        = (e * K * N + k * N + n) / 20.f;
+            }
+        }
     }
+
     std::vector<float> dst_data(total_tokens * N, 0.0f);
 
     // Create memory descriptors with grouped encoding
@@ -105,7 +114,7 @@ void grouped_matmul_example(engine::kind engine_kind) {
     auto dst_md = memory::desc::grouped(
             dst_dims, memory::data_type::f32, 0, num_experts);
     auto weights_md = memory::desc(
-            weights_dims, memory::data_type::f32, memory::format_tag::abc);
+            weights_dims, memory::data_type::f32, memory::format_tag::acb);
 
     // Create memory objects
     // Grouped memory has 2 buffers:
@@ -162,10 +171,6 @@ void grouped_matmul_example(engine::kind engine_kind) {
 
     // Wait for completion
     engine_stream.wait();
-
-    std::cout << "Grouped MatMul example passed successfully on "
-              << (engine_kind == engine::kind::cpu ? "CPU" : "GPU") << "!"
-              << std::endl;
 }
 
 int main(int argc, char **argv) {

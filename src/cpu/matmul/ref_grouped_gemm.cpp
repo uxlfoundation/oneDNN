@@ -35,11 +35,11 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper wei_d(pd()->weights_md(0));
 
     // src: [total_tokens, K] grouped
-    // wei: [num_experts, K, N] dense
+    // wei: [num_experts, K, N] dense with abc or acb
     // dst: [total_tokens, N] grouped
     const auto &src_grouped = src_d.sparse_desc().grouped_desc;
     const dim_t num_groups = src_grouped.ngroups;
-    const dim_t K = src_d.dims()[1];
+    const dim_t K = wei_d.dims()[1];
     const dim_t N = wei_d.dims()[2];
 
     const void *src_data = CTX_IN_MEM(const void *, DNNL_ARG_SRC, 0);
@@ -101,7 +101,6 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
 
         const dim_t src_base_idx = offset_start * K;
         const dim_t dst_base_idx = offset_start * N;
-        const dim_t wei_base_idx = group_id * K * N;
 
         for (dim_t m = 0; m < M; ++m) {
             for (dim_t n = 0; n < N; ++n) {
@@ -118,7 +117,9 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
                         for (dim_t k = 0; k < group_k; ++k) {
                             const dim_t k_abs = k + i_group * group_k;
                             const dim_t src_idx = src_base_idx + m * K + k_abs;
-                            const dim_t wei_idx = wei_base_idx + k_abs * N + n;
+
+                            dims_t wei_dims = {group_id, k_abs, n};
+                            const dim_t wei_idx = wei_d.off_v(wei_dims);
 
                             const int s = io::load_int_value(
                                     src_dt, src_data, src_idx);
@@ -152,7 +153,9 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
 
                     for (dim_t k = 0; k < K; ++k) {
                         const dim_t src_idx = src_base_idx + m * K + k;
-                        const dim_t wei_idx = wei_base_idx + k * N + n;
+
+                        dims_t wei_dims = {group_id, k, n};
+                        const dim_t wei_idx = wei_d.off_v(wei_dims);
 
                         const float s = io::load_float_value(
                                 src_dt, src_data, src_idx);

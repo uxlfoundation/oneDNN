@@ -59,10 +59,13 @@ struct ref_grouped_gemm_t : public primitive_t {
             VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-            // Weights should be dense
+            // Weights should be dense, abc (K x N) or acb (N x K) format
             VDISPATCH_MATMUL(
                     !wei_d.is_sparse_desc() && !wei_d.is_grouped_desc(),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            VDISPATCH_MATMUL(
+                    wei_d.matches_one_of_tag(format_tag::abc, format_tag::acb),
+                    VERBOSE_UNSUPPORTED_TAG);
 
             // Validate matching number of groups
             const auto &src_grouped = src_d.sparse_desc().grouped_desc;
@@ -108,8 +111,7 @@ struct ref_grouped_gemm_t : public primitive_t {
                         (int)src_grouped.ngroups);
                 VDISPATCH_MATMUL(bia_d.dims()[1] == wei_d.dims()[2],
                         VERBOSE_INCONSISTENT_DIM, "bias_dim[1]",
-                        (int)bia_d.dims()[1], "weights_dim[2]",
-                        (int)wei_d.dims()[2]);
+                        (int)bia_d.dims()[1], "N_dim", (int)wei_d.dims()[2]);
             }
 
             // Check for supported quantization schemes

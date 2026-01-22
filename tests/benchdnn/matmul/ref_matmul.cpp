@@ -33,7 +33,6 @@ int64_t wei_ba_off_f(const prb_t *prb, int64_t mb, int64_t k, int64_t n) {
 #if DNNL_EXPERIMENTAL_GROUPED_GEMM
 // Reference implementation for grouped gemm
 // Computes per-expert matmuls: for each expert e, computes dst[e] = src[e] * wei[e]
-// TODO: add support for more scale policies, zero points
 void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
     const dnn_mem_t &wei_m = args.find(DNNL_ARG_WEIGHTS);
@@ -84,9 +83,6 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
         const int64_t M_g = M_dims[g];
         if (M_g == 0) continue;
 
-        // Weights offset for g (weights are 3D: [group_count, K, N])
-        const int64_t wei_offset = g * K * N;
-
         for (int64_t m = 0; m < M_g; m++) {
             const int64_t src_offset = offset + m;
 
@@ -107,7 +103,8 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
                         const int64_t k_idx
                                 = n_k_group_idx * wei_scale_group_k + k;
                         const int64_t src_idx = src_offset * K + k_idx;
-                        const int64_t wei_idx = wei_offset + k_idx * N + n;
+                        dnnl_dims_t wei_pos = {g, k_idx, n};
+                        const int64_t wei_idx = md_off_v(wei_m, wei_pos);
 
                         const float src_val = src_m.get_f32_elem(src_idx);
                         const float wei_val = wei_m.get_f32_elem(wei_idx);

@@ -1,0 +1,1 @@
+[36mINFO[0m Loading configuration from file: .github/.licenserc.yaml 

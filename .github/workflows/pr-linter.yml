@@ -118,10 +118,20 @@ jobs:
           config: ".github/.licenserc.yml"
           mode: "check"
 
+  pr-security-scan:
+    name: Security Scanning
+    runs-on: ["innersource.prod.amr.dind"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: intel-innersource/applications.security.monitoring.cas@v2
+        with:
+          sdl-api-key: ${{ secrets.1951f63a-bf40-40e4-a547-5094d415f847 }}
+          sdl-project-id: ${{ secrets.e805d7f0-10e2-4b6e-9dc1-87ee95086fe0 }}
+
   pr-status:
     name: Formatting
     runs-on: ubuntu-24.04
-    needs: [ pr-commits, pr-clang-format, pr-format-tags, pr-check-license-header ]
+    needs: [ pr-commits, pr-clang-format, pr-format-tags, pr-check-license-header, pr-security-scan ]
     steps:
       - name: Print success
         run: echo "Success"

@@ -25,7 +25,7 @@ TBD
 
 ## Graph API 
 * Introduced support for [RMS Normalization] operation. 
-* Introduced support for output gradient of attention mask for SDPA training.
+* Introduced support for output gradient of attention mask for SDPA and GQA training.
 
 [RMS Normalization]: https://uxlfoundation.github.io/oneDNN/v3.11/dev_guide_op_rmsnorm.html
 

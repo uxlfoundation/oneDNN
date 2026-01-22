@@ -117,6 +117,7 @@ TEST(APIOp, CreateAllOps) {
             op::kind::GenIndex,
             op::kind::GreaterEqual,
             op::kind::RMSNorm,
+            op::kind::Dropout,
     };
     // clang-format on
 

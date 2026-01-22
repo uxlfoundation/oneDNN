@@ -24,7 +24,8 @@
 #include <vector>
 
 #include "common/utils.hpp"
-#include "gpu/intel/compute/device_info.hpp"
+
+#include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/utils.hpp"
 
 namespace dnnl {
@@ -154,6 +155,12 @@ private:
     range_t global_range_;
     range_t local_range_;
 };
+
+status_t preprocess_headers(stringstream_t &pp_code, const char *code,
+        const compute::kernel_ctx_t &kernel_ctx);
+
+void debugdump_processed_source(const std::string &source,
+        const std::string &options, const std::string &ocl_options);
 
 } // namespace compute
 } // namespace intel

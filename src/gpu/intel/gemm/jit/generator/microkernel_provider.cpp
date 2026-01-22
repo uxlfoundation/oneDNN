@@ -146,8 +146,20 @@ Package selectGEMMMicrokernel(GEMMProtocol protocol, HWInformation hwInfo, SizeP
     EvaluateAuxOutput auxParams;
     const kcatalog::Entry * entry = nullptr;
     auto entries = select(catalog, 1, &matchParams, evalParams, auxParams, observer);
-    if (entries.size() > 0)
-	    entry = entries[0];
+    // First, attempt to find a strategy that matches the protocol's options
+    for(const auto* this_entry: entries) {
+        GEMMStrategy strategy(hw, stepping);
+        strategy.unroll[LoopM] = this_entry->driverInfo.unroll[LoopM];
+        strategy.unroll[LoopN] = this_entry->driverInfo.unroll[LoopN];
+        parseStrategy(this_entry->strategy, hw, problem, strategy);
+        if (!kParallelLocal && strategy.kParallelLocal) continue;
+        entry = this_entry;
+        break;
+    }
+
+    // If unsuccessful, we can pick the first strategy and modify the parameters to fit the protocol
+    if (entry == nullptr && entries.size() > 0)
+        entry = entries[0];
 
     GEMMStrategy strategy(hw, stepping);
 

@@ -12,6 +12,14 @@
 ## AArch64-based Processors
 TBD
 
+## RISC-V based processors
+* Improved eltwise and binary primitives performance.
+* Improved `f32` GEMM performance.
+* Improved `f32` matmul, softmax, convolution and inner product primitives performance.
+* Improved `f32` batch, group and layer normalization primitives performance.
+* Improved `f32` and `fp16` pooling primitive performance.
+* Improved reorder(`fp32` to `u8`) primitive performance.
+
 # Functionality
 ## Common
 
@@ -43,7 +51,7 @@ TBD
 * Extended information about primitive execution available in VTune(TM) Profiler with the same level of detail as reported by oneDNN [verbose mode]. This feature requires VTune Profiler 2025.7 or later.
 * Introduced [`ONEDNN_SAFE_RBP`] build knob that instructs x64 implementations to preserve value of `rbp` register for tools that rely on stack unwinding. This option may have visible performance impact on some workloads.
 * Removed build time dependency on OpenCL runtime in SYCL build configuration.
-`ONEDNN_ENABLE_GRAPH_DUMP` build knob is enabled by default.
+* `ONEDNN_ENABLE_GRAPH_DUMP` build knob is enabled by default.
 
 [quantization attributes]: https://uxlfoundation.github.io/oneDNN/v3.11/dev_guide_attributes_quantization.html
 [matmul fp8 quantization]: https://uxlfoundation.github.io/oneDNN/v3.11/page_matmul_f8_quantization_cpp.html

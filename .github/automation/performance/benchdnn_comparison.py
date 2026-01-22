@@ -25,16 +25,16 @@ Usage:
 """
 
 import argparse
-from collections import defaultdict
-import git
 import json
 import math
 import os
 import pathlib
-from scipy.stats import ttest_ind
 import statistics
 import warnings
+from collections import defaultdict
 
+import git
+from scipy.stats import ttest_ind
 
 F_PATH = pathlib.Path(__file__).parent.resolve()
 CI_JSON_PATH = F_PATH / "../aarch64/ci.json"
@@ -50,15 +50,18 @@ def compare_two_benchdnn(file1, file2, out_file=None):
     """
     Compare two benchdnn output files
     """
+
+    def split_perf_data(fd):
+        for line in fd.readlines():
+            if line[0:8] != "--mode=P":
+                continue
+            yield line.split(",")
+
     with open(file1) as f:
-        r1 = f.readlines()
+        r1 = list(split_perf_data(f))
 
     with open(file2) as f:
-        r2 = f.readlines()
-
-    # Trim non-formatted lines and split the problem from time
-    r1 = [x.split(",") for x in r1 if x[0:8] == "--mode=P"]
-    r2 = [x.split(",") for x in r2 if x[0:8] == "--mode=P"]
+        r2 = list(split_perf_data(f))
 
     if (len(r1) == 0) or (len(r2) == 0):
         raise Exception("One or both of the test results have zero lines")
@@ -90,7 +93,11 @@ def compare_two_benchdnn(file1, file2, out_file=None):
 
         repo = git.Repo(F_PATH / "../../..", search_parent_directories=True)
         head_sha = repo.git.rev_parse(repo.head.object.hexsha, short=6)
-        headers = f"| problem | oneDNN ({ci_json['dependencies']['onednn-base']}) time(ms) | oneDNN ({head_sha}) time(ms) | speedup (>1 is faster) |\n"
+        headers = (
+            f"| problem | oneDNN ({ci_json['dependencies']['onednn-base']})"
+            f" time(ms) | oneDNN ({head_sha}) time(ms) | speedup (>1 is"
+            " faster) |\n"
+        )
         with open(out_file, "w") as f:
             f.write(headers + "| :---: | :---: | :---: | :---:|\n")
 
@@ -197,7 +204,8 @@ def compare_two_benchdnn(file1, file2, out_file=None):
             )
             with open(out_file, "a") as f:
                 f.write(
-                    f"|{prb_str}|{r1_med_exec:.3g}|{r2_med_exec:.3g}|{speedup_str}|\n"
+                    f"|{prb_str}|{r1_med_exec:.3g}|{r2_med_exec:.3g}"
+                    f"|{speedup_str}|\n"
                 )
 
     print_to_github_out(f"pass={not exec_failures}")

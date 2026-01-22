@@ -19,8 +19,8 @@
 # *******************************************************************************
 
 import argparse
-import subprocess
 import re
+import subprocess
 
 
 # Ensure the scope ends in a colon and that same level scopes are
@@ -31,14 +31,14 @@ import re
 def __scopeCheck(msg: str):
     status = "Message scope: "
 
-    if not re.match("^[a-z0-9_]+(, [a-z0-9_]+)*: ", msg):
-        if re.match("^\s+", msg):
+    if not re.match(r"^[a-z0-9_]+(, [a-z0-9_]+)*: ", msg):
+        if re.match(r"^\s+", msg):
             print(
                 f"{status} FAILED: Commit message shouldn't have leading spaces"
             )
             return False
 
-        if re.match("^Merge ", msg):
+        if re.match(r"^Merge ", msg):
             print(f"{status} FAILED: Merge commits are not allowed")
             return False
 
@@ -62,10 +62,10 @@ def __numCharacterCheck(msg: str):
         # Fixup or revert commits usually include the full name of the commit
         # they are fixing, which adds 6 more symbols to the message.
         # Let them in.
-        if re.match("^fixup: ", msg):
+        if re.match(r"^fixup: ", msg):
             print(f"{status} Fixup message, OK")
             return True
-        elif re.match("^revert: ", msg):
+        elif re.match(r"^revert: ", msg):
             print(f"{status} Revert message, OK")
             return True
         else:

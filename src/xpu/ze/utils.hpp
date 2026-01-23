@@ -114,6 +114,7 @@ F find_ze_symbol(const char *symbol) {
         ZE_CHECK(init_(default_ze_flags)); \
         static auto f_ = find_ze_symbol<decltype(&::f)>(#f); \
         if (!f_) return status::runtime_error; \
+        printf("Used symbol: %s\n", #f); \
         ZE_CHECK(f_(std::forward<Args>(args)...)); \
         return status::success; \
     }

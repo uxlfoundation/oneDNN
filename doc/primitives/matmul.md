@@ -332,68 +332,75 @@ The source and destination tensors use [grouped memory format](@ref dev_guide_gr
 because the number of tokens per expert varies dynamically in MoE workloads. The
 grouped encoding stores values as concatenated buffers with an offsets array specifying
 group boundaries. Weights are represented as a regular dense 3D tensor
-`[num_experts, K, N]` because all experts have uniform dimensions, making grouped
+`[num_groups, K, N]` because all experts have uniform dimensions, making grouped
 encoding unnecessary.
 
 ### Code Snippet
 
 ~~~cpp
-const memory::dim num_experts = 4;
-const memory::dim total_tokens = 2350;  // = 800 + 600 + 0 + 950
+const memory::dim num_groups = 4;
 const memory::dim K = 512, N = 256;
 
-// Source: grouped encoding for variable M
+// MoE routing result:
+// Expert 0: 800 tokens
+// Expert 1: 600 tokens
+// Expert 2: 0 tokens
+// Expert 3: 950 tokens
+const memory::dim total_tokens = 2350;  // Sum of all token counts
+
+// Source: grouped encoding for variable M dimension
 // Descriptor: [total_tokens, K] with grouped encoding
-// Memory: concatenated data and offsets buffer
-// total_tokens is a sum of all expert token counts
+// Memory layout: [expert0_tokens | expert1_tokens | expert2_tokens | expert3_tokens]
 auto src_md = memory::desc::grouped(
     {total_tokens, K}, memory::data_type::f32,
-    0, num_experts);  // dim 0 varies per group
+    0, num_groups);  // dimension 0 (M) varies per group
 
-// Weights: [num_experts, K, N] 3D tensor
-auto weights_md = memory::desc({num_experts, K, N},
+// Weights: standard 3D dense tensor [num_groups, K, N]
+// Each expert has its own K by N weight matrix
+auto weights_md = memory::desc({num_groups, K, N},
     memory::data_type::f32, memory::format_tag::abc);
 
-// Destination: grouped encoding
-// Descriptor: [total_tokens, N] with grouped encoding
-// Memory: concatenated outputs and offsets buffer
+// Destination: grouped encoding matching source structure
 auto dst_md = memory::desc::grouped(
     {total_tokens, N}, memory::data_type::f32,
-    0, num_experts);
-
+    0, num_groups);
 
 auto matmul_pd = matmul::primitive_desc(engine, src_md, weights_md, dst_md);
 
-// Offsets: cumulative token counts per expert
-// Offsets are expected to be resolved at execution time
+// Offsets mark the boundary of each expert's tokens
+// Format: [end_expert0, end_expert1, end_expert2, end_expert3]
 std::vector<int32_t> offsets = {800, 1400, 1400, 2350};
+
+// Set offsets for both input and output memory objects
+auto src_mem = memory(src_md, engine, {src_data, offsets.data()});
+auto dst_mem = memory(dst_md, engine, {dst_data, offsets.data()});
 ~~~
 
-### Attributes and Quantization
-
-@note Both scales and bias are expected to use the same offsets as the source and
-destination tensors to align with the grouped format.
+### Attributes Support
 
 Setting attributes for grouped GEMM follows the regular matmul attribute API.
-Below are some examples of common use cases.
+Below are some examples of common use cases for MoE workloads.
 
 Per-token source scales:
 ~~~cpp
-attr.set_scales_mask(DNNL_ARG_SRC, (1 << 0));  // Varies along M
-// Scale tensor: [total_tokens]
+attr.set_scales_mask(DNNL_ARG_SRC, (1 << 0));  // Varies along M dimension
+// Scale tensor: [total_tokens] - one scale per token
+// Layout: concatenated like source data, uses same offsets
 ~~~
 
 Per-expert-column weight scales:
 ~~~cpp
 attr.set_scales_mask(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 2));
-// Scale tensor: [num_experts, N]
+// Scale tensor: [num_groups, N] - dense 2D tensor
+// Layout: standard ab layout
 ~~~
 
 Bias per expert:
 ~~~cpp
-// Bias: [num_experts, N]
-auto bias_md = memory::desc({num_experts, N},
+// Bias: [num_groups, N] - dense 2D tensor
+auto bias_md = memory::desc({num_groups, N},
     memory::data_type::f32, memory::format_tag::ab);
+// Layout: standard ab layout
 ~~~
 
 ### Benchdnn Testing

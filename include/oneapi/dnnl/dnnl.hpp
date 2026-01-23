@@ -3006,34 +3006,32 @@ struct memory : public handle<dnnl_memory_t> {
 
 #if DNNL_EXPERIMENTAL_GROUPED_GEMM
         /// Creates a memory descriptor for grouped encoding, that
-        /// stores multiple independent sub-tensors.
+        /// stores multiple independent sub-buffers (groups) with one
+        /// dimension varying in size.
         ///
         /// Common use case is Mixture-of-Experts (MoE) workloads where each expert
         /// processes different numbers of tokens.
-        /// In this case, each sub-tensor can have a different size along the
-        /// first dimension, but all share the same size along the second dimension.
-        /// The total size along the first dimension is fixed, but distribution
-        /// among sub-tensors can change.
         ///
-        /// Memory layout:
-        /// - Buffer 0 (values): Sub-tensors stored as [A0 | A1 | ... | AN]
-        /// - Buffer 1 (offsets): Start position of each sub-tensor in buffer 0.
+        /// Memory layout consists of two buffers:
+        /// - Buffer 0 (values): Concatenated data [group0 | group1 | ... | groupN-1]
+        /// - Buffer 1 (offsets): Cumulative indices [size0, size0 + size1, ...]
         ///
-        /// Example: 3 groups with shapes {1, 256}, {3, 256}, {5, 256}
-        /// - Values buffer: 9 * 256 elements total
-        /// - Offsets: [0, 1, 4, 9] marking where each sub-tensor starts
+        /// Example in the context of MoE:
+        /// Below is how to describe 3 experts with token counts [1, 3, 5] and feature dim 256
+        /// - Descriptor dims: {9, 256} where 9 is 1 + 3 + 5 (total tokens)
+        /// - Variable dimension: 0 (token count varies per expert)
+        /// - Group count: 3 (number of experts)
+        /// - Values buffer: 9 x 256 elements
+        /// - Offsets buffer: [1, 4, 9] (cumulative token counts)
         ///
-        /// @param adims Array of dimensions representing the overall tensor
-        ///     shape.
-        /// @param adata_type Elements data type.
-        /// @param variable_dim_idx Index of the dimension that varies between
-        ///     sub-tensors.
-        /// @param group_count Number of sub-tensors included.
-        /// @param offsets_dt Data type of the offsets array.
-        /// @param allow_empty A flag signifying whether construction is
-        ///     allowed to fail without throwing an exception. In this case a
-        ///     zero memory descriptor will be returned. This flag is optional
-        ///     and defaults to false.
+        /// @param adims Tensor dimensions. For the variable dimension,
+        ///     specify the total size (sum across all groups).
+        /// @param adata_type Data type of tensor elements.
+        /// @param variable_dim_idx Index of dimension that varies between groups.
+        /// @param group_count Number of groups (e.g., number of experts in MoE).
+        /// @param offsets_dt Data type of offsets buffer. Default: s32.
+        /// @param allow_empty Allow construction to fail without exception.
+        ///     Returns zero descriptor on failure. Default: false.
         /// @returns Memory descriptor for grouped encoding.
         static desc grouped(const dims &adims, data_type adata_type,
                 int variable_dim_idx, dim group_count,

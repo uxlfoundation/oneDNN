@@ -53,6 +53,9 @@ void grouped_matmul_example(engine::kind engine_kind) {
     // Sample token distribution across experts
     const memory::dim num_experts = 4; // Number of experts in the MoE model
     std::vector<int32_t> tokens_per_expert = {12, 8, 0, 10};
+
+    // Build cumulative offsets (exclusive-end boundaries)
+    // offsets[i] = total tokens up to and including expert i
     std::vector<int32_t> offsets(num_experts);
     offsets[0] = tokens_per_expert[0];
     for (memory::dim i = 1; i < num_experts; ++i) {
@@ -82,8 +85,9 @@ void grouped_matmul_example(engine::kind engine_kind) {
 
     std::cout << "Input dimensions: K=" << K << " (features), N=" << N
               << " (outputs)" << std::endl;
-    std::cout << "Weight format: acb with physical layout " << num_experts
-              << "x" << N << "x" << K << std::endl;
+    std::cout << "Weights: [" << num_experts << ", " << K << ", " << N
+              << "] tensor in acb format (experts × output_dim × input_dim)"
+              << std::endl;
     std::cout << std::endl;
 
     std::vector<float> src_data(total_tokens * K);
@@ -129,6 +133,8 @@ void grouped_matmul_example(engine::kind engine_kind) {
     write_to_dnnl_memory(weights_data.data(), weights_mem);
 
     // Write offsets to buffer 1 (offsets buffer)
+    // Both src and dst must use identical offsets since token distribution
+    // is the same for input and output (each expert processes the same tokens)
     write_to_dnnl_memory(offsets.data(), src_mem, 1);
     write_to_dnnl_memory(offsets.data(), dst_mem, 1);
 

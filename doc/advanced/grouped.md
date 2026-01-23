@@ -31,13 +31,17 @@ by the offsets buffer at execution time.
 
 ### Offsets Buffer
 
-The offsets buffer contains cumulative counts that define group boundaries, that allows
-to locate the starting position of each group in the data buffer.
-For groups with sizes `[M_0, M_1, M_2, ..., M_{num_groups-1}]`, the offsets array is
-`[M_0, M_0+M_1, M_0+M_1+M_2, ..., sum(M)]` with length equal to `num_groups`.
+The offsets buffer contains cumulative indices that define group boundaries.
+Each offset marks the end position of a group in the concatenated data buffer.
 
-Note, that empty groups (size `0`) are valid and common in MoE when no tokens are routed to an expert.
-In this case, consecutive offsets will be equal (i.e. `offsets[i] == offsets[i+1]`).
+For groups with sizes `[M_0, M_1, M_2, ..., M_{num_groups-1}]`, the offsets array is:
+```
+[M_0, M_0+M_1, M_0+M_1+M_2, ..., sum(M)]
+```
+with length equal to `num_groups`.
+
+Note, that empty groups (size = 0) are valid and common in MoE when no tokens route to an expert.
+Consecutive offsets will be equal: `offsets[g-1] == offsets[g]`.
 
 ## Grouped Memory Descriptor API
 
@@ -53,21 +57,22 @@ static memory::desc memory::desc::grouped(
 
 ## Creating and Using Grouped Memory
 
-For a 2D grouped tensor `[total_M, K]` with `variable_dim_idx=0`:
-- `total_M` = sum of all group sizes in dimension `0`
-- `K` remains constant across all groups
-- Data is concatenated for all groups in buffer `0`
+For instance, 2D grouped tensor `[total_M, K]` with `variable_dim_idx = 0`:
+- Dimension `0` (`M`) is variable per group with `total_M`
+    being a sum of all group sizes, number of groups is `N`
+- Dimension `1` (`K`) is constant across all groups
+- Buffer 0 is concatenated data values `[group0 | group1 | ... | groupN-1]`
+- Buffer 1 is offsets array marking group boundaries
 
 ~~~cpp
-// Example setup:
-// 8 groups with varying sizes in dimension 0
-// tokens_per_group = {800, 600, 700, 500, 650, 450, 550, 750}
-// total_tokens = 5000
-// offsets = {800, 1400, 2100, 2600, 3250, 3700, 4250, 5000}
+// Example: MoE layer with 8 experts processing variable token counts
+// Routing result: tokens_per_expert = {800, 600, 700, 500, 650, 450, 550, 750}
+// Total sequence length: 5000 tokens
+// Offsets: {800, 1400, 2100, 2600, 3250, 3700, 4250, 5000}
 
-const int num_groups = 8;
-const int total_M = 5000;
-const int K = 512;
+const int num_groups = 8;       // Number of expert networks
+const int total_tokens = 5000;  // Total tokens across all experts
+const int K = 512;              // Feature dimension (hidden size)
 
 // Create grouped memory descriptor
 auto grouped_md = memory::desc::grouped(

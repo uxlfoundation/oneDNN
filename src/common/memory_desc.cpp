@@ -271,7 +271,10 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
     array_copy(md.padded_dims, dims, ndims);
 
     // Grouped sparse encoding specifics
-    md.format_kind = format_kind::sparse; // TODO: possibly move out to new kind
+    // Uses format_kind::sparse because grouped layout is a form of multi-buffer
+    // representation where values are stored together with metadata
+    // describing the variable structure (similar to CSR with rowptr/colind)
+    md.format_kind = format_kind::sparse;
     md.format_desc.sparse_desc.encoding = sparse_encoding::grouped;
     md.format_desc.sparse_desc.nnz = dims[0] /* total_M */ * K;
     md.format_desc.sparse_desc.metadata_types[0] = offsets_dt;

@@ -225,7 +225,10 @@ struct sparse_desc_t {
     // - Use the bitmask to unpack the packed data
     blocking_desc_t packed_desc;
 
-    // Grouped encoding descriptor (for dnnl_grouped encoding)
+    // Grouped encoding descriptor
+    // Uses format_kind::sparse because grouped layout is a form of multi-buffer
+    // representation where values are stored together with metadata
+    // describing the variable structure (similar to CSR with rowptr/colind)
     struct grouped_desc_t {
         // Number of groups
         dnnl_dim_t ngroups;

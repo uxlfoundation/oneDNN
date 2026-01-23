@@ -478,6 +478,13 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
             VERBOSE_INCONSISTENT_DIM, "bias", n_idx_dst, "dst", n_idx_dst);
 
 #if DNNL_EXPERIMENTAL_GROUPED_GEMM
+    if (is_grouped_memory) {
+        const auto &grouped_desc = src_d.sparse_desc().grouped_desc;
+        const dim_t num_groups = grouped_desc.ngroups;
+        VCHECK_MATMUL(wei_d.dims()[0] == num_groups, VERBOSE_INCONSISTENT_DIM,
+                "wei", 0, "ngroups", 0);
+    }
+
     // For now, for grouped matmul, bias M dimension should match num_groups, not dst M
     if (with_bias && is_grouped_memory) {
         const auto &grouped_desc = src_d.sparse_desc().grouped_desc;

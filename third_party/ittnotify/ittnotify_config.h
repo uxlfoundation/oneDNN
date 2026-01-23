@@ -208,10 +208,10 @@
 #define ITT_MAGIC { 0xED, 0xAB, 0xAB, 0xEC, 0x0D, 0xEE, 0xDA, 0x30 }
 
 /* Replace with snapshot date YYYYMMDD for promotion build. */
-#define API_VERSION_BUILD    20250807
+#define API_VERSION_BUILD    20230630
 
 #ifndef API_VERSION_NUM
-#define API_VERSION_NUM 3.26.3
+#define API_VERSION_NUM 3.24.6
 #endif /* API_VERSION_NUM */
 
 #define API_VERSION "ITT-API-Version " ITT_TO_STR(API_VERSION_NUM) \
@@ -611,7 +611,7 @@ typedef struct ___itt_global
         h->nameW   = name ? _wcsdup(name) : NULL; \
         h->domainA   = NULL; \
         h->domainW   = domain ? _wcsdup(domain) : NULL; \
-        h->type = type; \
+        h->type = (int)type; \
         h->index = 0; \
         h->next   = NULL; \
         if (h_tail == NULL) \
@@ -632,7 +632,7 @@ typedef struct ___itt_global
         __itt_fstrdup(domain, domain_copy); \
         h->domainA  = domain_copy; \
         h->domainW   = NULL; \
-        h->type = type; \
+        h->type = (int)type; \
         h->index = 0; \
         h->next   = NULL; \
         if (h_tail == NULL) \
@@ -684,7 +684,7 @@ typedef struct ___itt_global
     h = (__itt_counter_metadata*)malloc(sizeof(__itt_counter_metadata)); \
     if (h != NULL) { \
         h->counter = counter; \
-        h->type = type; \
+        h->type = (int)type; \
         h->str_valueA = NULL; \
         h->str_valueW = NULL; \
         h->value = value; \
@@ -702,7 +702,7 @@ typedef struct ___itt_global
     h = (__itt_counter_metadata*)malloc(sizeof(__itt_counter_metadata)); \
     if (h != NULL) { \
         h->counter = counter; \
-        h->type = type; \
+        h->type = (int)type; \
         char *str_value_copy = NULL; \
         __itt_fstrdup(str_valueA, str_value_copy); \
         h->str_valueA = str_value_copy; \
@@ -722,7 +722,7 @@ typedef struct ___itt_global
     h = (__itt_counter_metadata*)malloc(sizeof(__itt_counter_metadata)); \
     if (h != NULL) { \
         h->counter = counter; \
-        h->type = type; \
+        h->type = (int)type; \
         h->str_valueA = NULL; \
         h->str_valueW = str_valueW ? _wcsdup(str_valueW) : NULL; \
         h->value = 0; \

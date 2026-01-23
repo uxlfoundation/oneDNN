@@ -422,27 +422,49 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
 
     const bool with_bias = op_d.bias_desc.ndims != 0;
     const bool with_reduce = op_d.reduce_desc.ndims != 0;
+
+    const memory_desc_wrapper src_d(&op_d.src_desc);
+    const memory_desc_wrapper wei_d(&op_d.weights_desc);
+    const memory_desc_wrapper dst_d(dst_desc);
+
 #if DNNL_EXPERIMENTAL_GROUPED_GEMM
-    const bool is_grouped_memory
-            = memory_desc_wrapper(&op_d.src_desc).is_grouped_desc();
+    // Validate grouped memory consistency
+    const bool is_grouped_memory = src_d.is_grouped_desc();
+    const dim_t num_groups
+            = is_grouped_memory ? src_d.sparse_desc().grouped_desc.ngroups : 0;
 
-    if (with_bias && is_grouped_memory) {
-        const memory_desc_wrapper src_d(&op_d.src_desc);
-        const memory_desc_wrapper wei_d(&op_d.weights_desc);
-        const memory_desc_wrapper bia_d(&op_d.bias_desc);
-        const auto &grouped_desc = src_d.sparse_desc().grouped_desc;
-        const dim_t num_groups = grouped_desc.ngroups;
-        const dim_t N = wei_d.dims()[wei_d.ndims() - 1];
+    if (is_grouped_memory) {
+        const auto &src_grouped_desc = src_d.sparse_desc().grouped_desc;
 
-        // For now only 2D bias [num_groups, N] is supported for grouped matmul
-        VCHECK_MATMUL(
-                bia_d.ndims() == 2, VERBOSE_BAD_NDIMS, "bias", bia_d.ndims());
-        VCHECK_MATMUL(bia_d.dims()[0] == num_groups && bia_d.dims()[1] == N,
-                VERBOSE_BAD_DIM, "bias", 0);
+        // Validate destination has matching grouped encoding
+        VCHECK_MATMUL(dst_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
+        const auto &dst_grouped_desc = dst_d.sparse_desc().grouped_desc;
+        VCHECK_MATMUL(dst_grouped_desc.ngroups == num_groups,
+                VERBOSE_INCONSISTENT_DIM, "dst_ngroups", 0, "src_ngroups", 0);
+        VCHECK_MATMUL(dst_grouped_desc.variable_dim_idx
+                        == src_grouped_desc.variable_dim_idx,
+                VERBOSE_INCONSISTENT_DIM, "dst_variable_dim_idx", 0,
+                "src_variable_dim_idx", 0);
+
+        // Validate weights dimension matches number of groups
+        VCHECK_MATMUL(wei_d.dims()[0] == num_groups, VERBOSE_INCONSISTENT_DIM,
+                "wei", 0, "ngroups", 0);
+
+        // Validate bias shape for grouped matmul
+        if (with_bias) {
+            const memory_desc_wrapper bia_d(&op_d.bias_desc);
+            const dim_t N = wei_d.dims()[wei_d.ndims() - 1];
+            VCHECK_MATMUL(bia_d.ndims() == 2, VERBOSE_BAD_NDIMS, "bias",
+                    bia_d.ndims());
+            VCHECK_MATMUL(bia_d.dims()[0] == num_groups && bia_d.dims()[1] == N,
+                    VERBOSE_BAD_DIM, "bias", 0);
+        }
     }
 #else
     const bool is_grouped_memory = false;
+    const dim_t num_groups = 0;
 #endif
+
     const int ndims = dst_desc->ndims;
     VCHECK_MATMUL(ndims >= 2 && ndims <= DNNL_MAX_NDIMS, VERBOSE_BAD_NDIMS,
             "dst", ndims);
@@ -455,10 +477,6 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
             VERBOSE_BAD_NDIMS, "bias", op_d.bias_desc.ndims);
     VCHECK_MATMUL(IMPLICATION(with_reduce, op_d.reduce_desc.ndims == ndims),
             VERBOSE_BAD_NDIMS, "reduce", op_d.reduce_desc.ndims);
-
-    const memory_desc_wrapper src_d(&op_d.src_desc);
-    const memory_desc_wrapper wei_d(&op_d.weights_desc);
-    const memory_desc_wrapper dst_d(dst_desc);
 
     const int m_idx = src_d.ndims() - 2;
     const int k_idx_src = src_d.ndims() - 1;
@@ -476,29 +494,12 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
                           one_of(op_d.bias_desc.dims[n_idx_dst], 1,
                                   dst_desc->dims[n_idx_dst])),
             VERBOSE_INCONSISTENT_DIM, "bias", n_idx_dst, "dst", n_idx_dst);
-
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
-    if (is_grouped_memory) {
-        const auto &grouped_desc = src_d.sparse_desc().grouped_desc;
-        const dim_t num_groups = grouped_desc.ngroups;
-        VCHECK_MATMUL(wei_d.dims()[0] == num_groups, VERBOSE_INCONSISTENT_DIM,
-                "wei", 0, "ngroups", 0);
-    }
-
-    // For now, for grouped matmul, bias M dimension should match num_groups, not dst M
-    if (with_bias && is_grouped_memory) {
-        const auto &grouped_desc = src_d.sparse_desc().grouped_desc;
-        const dim_t num_groups = grouped_desc.ngroups;
-        VCHECK_MATMUL(one_of(op_d.bias_desc.dims[m_idx], 1, num_groups),
-                VERBOSE_INCONSISTENT_DIM, "bias", m_idx, "num_groups", 0);
-    } else
-#endif
-    {
-        VCHECK_MATMUL(IMPLICATION(with_bias,
-                              one_of(op_d.bias_desc.dims[m_idx], 1,
-                                      dst_desc->dims[m_idx])),
-                VERBOSE_INCONSISTENT_DIM, "bias", m_idx, "dst", m_idx);
-    }
+    VCHECK_MATMUL(IMPLICATION(with_bias,
+                          one_of(op_d.bias_desc.dims[m_idx], 1,
+                                  is_grouped_memory ? num_groups
+                                                    : dst_desc->dims[m_idx])),
+            VERBOSE_INCONSISTENT_DIM, "bias", m_idx,
+            is_grouped_memory ? "num_groups" : "dst", m_idx);
 
     VCHECK_MATMUL(IMPLICATION(with_reduce,
                           one_of(op_d.reduce_desc.dims[n_idx_wei], 1,

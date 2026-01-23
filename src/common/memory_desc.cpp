@@ -281,23 +281,6 @@ status_t memory_desc_init_with_grouped_encoding(memory_desc_t &memory_desc,
     md.format_desc.sparse_desc.grouped_desc.ngroups = group_count;
     md.format_desc.sparse_desc.grouped_desc.variable_dim_idx = variable_dim_idx;
 
-    // Compute strides based on the constraint that variable_dim_idx must be
-    // the major/outer dimension
-    // Not much in use right now, but might be used in future for other
-    // layouts/padding support
-    dims_t computed_strides;
-    if (variable_dim_idx == 0) {
-        // For variable_dim_idx=0: stride=[K,1] (row-major)
-        computed_strides[0] = K;
-        computed_strides[1] = 1;
-    } else {
-        // Future: column-major layout for variable_dim_idx=1
-        // Would have stride[0]=1, stride[1]=M_i (varies per expert)
-        return unimplemented;
-    }
-    array_copy(md.format_desc.sparse_desc.grouped_desc.strides,
-            computed_strides, ndims);
-
     memory_desc = md;
 
     return success;
@@ -878,8 +861,7 @@ status_t dnnl_memory_desc_query(
             else if (md->format_kind == format_kind::sparse
                     && md->format_desc.sparse_desc.encoding
                             == sparse_encoding::grouped) {
-                *(const dims_t **)result
-                        = &md->format_desc.sparse_desc.grouped_desc.strides;
+                return status::invalid_arguments;
             }
 #endif
             else {

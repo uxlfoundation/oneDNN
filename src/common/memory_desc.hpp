@@ -233,12 +233,7 @@ struct sparse_desc_t {
         // Number of groups
         dnnl_dim_t ngroups;
         // Index of the dimension with variable size per group
-        // The variable dimension is always the major dimension
-        // in the physical layout
         int variable_dim_idx;
-        // For variable_dim_idx=0 with dims=[M,K]: stride=[K,1] (row-major)
-        // Might be used in future for other layouts/padding support
-        dnnl_dims_t strides;
     } grouped_desc;
 };
 

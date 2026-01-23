@@ -107,10 +107,9 @@ TEST(iface_grouped_test_t, TestGroupedMDQueries) {
         ASSERT_EQ(nnz, total_tokens * K);
 
         // Query strides
+        // Note, that this return empty vector since strides are not supported
         memory::dims strides = md.get_strides();
-        ASSERT_EQ(strides.size(), 2);
-        ASSERT_EQ(strides[0], K);
-        ASSERT_EQ(strides[1], 1);
+        ASSERT_TRUE(strides.empty());
     }
 }
 

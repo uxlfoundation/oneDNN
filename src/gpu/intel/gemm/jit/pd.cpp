@@ -632,6 +632,8 @@ status_t pd_t::init_GEMMProblem(
     problem.bqGroupK = b_quant.group_k;
     problem.aqGroupM = a_quant.group_m;
     problem.bqGroupN = b_quant.group_n;
+    problem.aqTypeM = qType(problem.aqGroupM, eff_m());
+    problem.bqTypeN = qType(problem.bqGroupN, eff_n());
     if (a_quant.scales_type != data_type::undef) {
         problem.Ta_scale = convert_dnnl_to_kernel_type(a_quant.scales_type);
         problem.A_scale.layout = swap_ab() ? MatrixLayout::T : MatrixLayout::N;

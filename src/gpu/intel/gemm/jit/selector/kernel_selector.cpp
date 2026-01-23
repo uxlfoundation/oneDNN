@@ -332,14 +332,14 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, bool isInt
 
     auto problem = problem_;
 
-    if(problem.aqGroupM > 1 && problem.aqGroupM % 32 == 0){
+    if(problem.aqTypeM == qDimType::PartialBcast){
         unrollReq[LoopM] = problem.aqGroupM;
     }
-    if(problem.bqGroupN > 1 && problem.bqGroupN % 32 == 0){
+    if(problem.bqTypeN == qDimType::PartialBcast){
         unrollReq[LoopN] = problem.bqGroupN;
     }
     if(problem.hasCMXScale() && unrollReq[LoopN] % 32){
-        unrollReq[LoopN] = unrollReq[LoopN] > 1 ? unrollReq[LoopN] * 32 : 32;
+        unrollReq[LoopN] = unrollReq[LoopN] > 1 ? std::max(unrollReq[LoopN], 32) : 32;
     }
 
 

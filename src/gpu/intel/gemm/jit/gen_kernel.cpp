@@ -321,12 +321,12 @@ status_t gen_desc_t::finalize(const char *tags) {
     // Currently this is incompatible with precomputed reductions.
     // XXX: Increase group size to a large value before aligning to increase reusability.
     constexpr int perMNGroupSize = 1 << 24;
-    if (problem_.aqGroupM == m_ && problem_.aqGroupM > 1) {
+    if (problem_.aqTypeM == qDimType::FullBcast) {
         problem_.aqGroupM = std::max(problem_.aqGroupM, perMNGroupSize);
         problem_.aqGroupM
                 = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
     }
-    if (problem_.bqGroupN == n_ && problem_.bqGroupN > 1) {
+    if (problem_.bqTypeN == qDimType::FullBcast) {
         problem_.bqGroupN = std::max(problem_.bqGroupN, perMNGroupSize);
         problem_.bqGroupN
                 = utils::rnd_up(problem_.bqGroupN, strategy_.unroll[LoopN]);
@@ -512,6 +512,8 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
     problem_.bqGroupK = b_quant.group_k;
     problem_.aqGroupM = a_quant.group_m;
     problem_.bqGroupN = b_quant.group_n;
+    problem_.aqTypeM = qType(problem_.aqGroupM, m_);
+    problem_.bqTypeN = qType(problem_.bqGroupN, n_);
     if (a_quant.scales_type != data_type::undef) {
         problem_.Ta_scale = convert_dnnl_to_kernel_type(a_quant.scales_type);
         problem_.A_scale.layout = swap_ab ? MatrixLayout::T : MatrixLayout::N;

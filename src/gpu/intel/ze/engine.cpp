@@ -35,8 +35,8 @@ namespace intel {
 namespace ze {
 
 status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
-        const ze_driver_handle_t dri, const ze_device_handle_t dev,
-        const ze_context_handle_t ctx, size_t index) {
+        ze_driver_handle_t dri, ze_device_handle_t dev, ze_context_handle_t ctx,
+        size_t index) {
     gpu_assert(engine_kind == engine_kind::gpu);
     std::unique_ptr<ze::engine_t, engine_deleter_t> e(
             (new ze::engine_t(dri, dev, ctx, index)));
@@ -199,23 +199,23 @@ gpu_utils::device_id_t engine_t::device_id() const {
             std::make_tuple(1), xpu::ze::get_device_uuid(device()));
 }
 
-const ze_driver_handle_t engine_t::driver() const {
+ze_driver_handle_t engine_t::driver() const {
     return impl()->driver();
 }
 
-const ze_device_handle_t engine_t::device() const {
+ze_device_handle_t engine_t::device() const {
     return impl()->device();
 }
 
-const ze_context_handle_t engine_t::context() const {
+ze_context_handle_t engine_t::context() const {
     return impl()->context();
 }
 
-const cl_device_id engine_t::ocl_device() const {
+cl_device_id engine_t::ocl_device() const {
     return impl()->ocl_device();
 }
 
-const cl_context engine_t::ocl_context() const {
+cl_context engine_t::ocl_context() const {
     return impl()->ocl_context();
 }
 

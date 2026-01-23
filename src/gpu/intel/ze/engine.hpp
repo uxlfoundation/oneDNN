@@ -30,8 +30,8 @@ namespace intel {
 namespace ze {
 
 status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
-        const ze_driver_handle_t dri, const ze_device_handle_t dev,
-        const ze_context_handle_t ctx, size_t index);
+        ze_driver_handle_t dri, ze_device_handle_t dev, ze_context_handle_t ctx,
+        size_t index);
 
 class engine_t : public intel::engine_t {
 public:
@@ -61,12 +61,12 @@ public:
 
     gpu::intel::gpu_utils::device_id_t device_id() const override;
 
-    const ze_driver_handle_t driver() const;
-    const ze_device_handle_t device() const;
-    const ze_context_handle_t context() const;
+    ze_driver_handle_t driver() const;
+    ze_device_handle_t device() const;
+    ze_context_handle_t context() const;
 
-    const cl_device_id ocl_device() const;
-    const cl_context ocl_context() const;
+    cl_device_id ocl_device() const;
+    cl_context ocl_context() const;
 
     bool mayiuse_microkernels() const;
 

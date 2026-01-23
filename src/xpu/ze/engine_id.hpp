@@ -28,9 +28,8 @@ namespace xpu {
 namespace ze {
 
 struct engine_id_impl_t : public impl::engine_id_impl_t {
-    engine_id_impl_t(const ze_device_handle_t device,
-            const ze_context_handle_t context, engine_kind_t kind,
-            runtime_kind_t runtime_kind, size_t index)
+    engine_id_impl_t(ze_device_handle_t device, ze_context_handle_t context,
+            engine_kind_t kind, runtime_kind_t runtime_kind, size_t index)
         : impl::engine_id_impl_t(kind, runtime_kind, index)
         , device_(device)
         , context_(context) {}

@@ -34,9 +34,8 @@ class kernel_t : public compute::kernel_impl_t {
 public:
     static status_t make(compute::kernel_t &compute_kernel,
             const std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>>
-                    module_ptr,
-            const ze_kernel_handle_t kernel_ptr,
-            const std::string &kernel_name);
+                    &module_ptr,
+            ze_kernel_handle_t kernel_ptr, const std::string &kernel_name);
     ~kernel_t() override;
 
     status_t check_alignment(
@@ -55,9 +54,8 @@ public:
 private:
     friend class kernel_compat_t;
     kernel_t(const std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>>
-                     module_ptr,
-            const ze_kernel_handle_t kernel_ptr,
-            const std::string &kernel_name);
+                     &module_ptr,
+            ze_kernel_handle_t kernel_ptr, const std::string &kernel_name);
 
     std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>> module_;
     ze_kernel_handle_t kernel_;

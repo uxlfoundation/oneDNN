@@ -29,12 +29,11 @@ namespace ze {
 struct event_t : public xpu::event_t {
     event_t() = default;
     event_t(const event_t &) = default;
+    event_t(const ze_event_handle_t &event) { events_.emplace_back(event); }
     event_t(const std::vector<ze_event_handle_t> &event) : events_(event) {}
     event_t(std::vector<ze_event_handle_t> &&event)
         : events_(std::move(event)) {}
-    event_t(ze_event_handle_t &&event) {
-        events_.emplace_back(std::move(event));
-    }
+    event_t(ze_event_handle_t &&event) { events_.emplace_back(event); }
     ~event_t() override = default;
 
     event_t &operator=(event_t &&other) {

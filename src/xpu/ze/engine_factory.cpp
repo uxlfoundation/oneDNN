@@ -77,8 +77,8 @@ status_t engine_factory_t::engine_create(
 }
 
 status_t engine_factory_t::engine_create(impl::engine_t **engine,
-        const ze_driver_handle_t driver, const ze_device_handle_t device,
-        const ze_context_handle_t context, size_t index) const {
+        ze_driver_handle_t driver, ze_device_handle_t device,
+        ze_context_handle_t context, size_t index) const {
     return gpu::intel::ze::engine_create(
             engine, engine_kind_, driver, device, context, index);
 }

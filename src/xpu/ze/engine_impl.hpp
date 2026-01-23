@@ -31,22 +31,18 @@ namespace ze {
 class engine_impl_t : public impl::engine_impl_t {
 public:
     engine_impl_t() = delete;
-    engine_impl_t(engine_kind_t kind, const ze_driver_handle_t driver,
-            const ze_device_handle_t device, const ze_context_handle_t context,
+    engine_impl_t(engine_kind_t kind, ze_driver_handle_t driver,
+            ze_device_handle_t device, ze_context_handle_t context,
             size_t index);
 
     ~engine_impl_t() override = default;
 
-    const ze_driver_handle_t driver() const { return driver_; }
-    const ze_device_handle_t device() const { return device_; }
-    const ze_context_handle_t context() const { return context_; }
+    ze_driver_handle_t driver() const { return driver_; }
+    ze_device_handle_t device() const { return device_; }
+    ze_context_handle_t context() const { return context_; }
 
-    const xpu::ocl::wrapper_t<cl_device_id> ocl_device() const {
-        return ocl_device_;
-    }
-    const xpu::ocl::wrapper_t<cl_context> ocl_context() const {
-        return ocl_context_;
-    }
+    xpu::ocl::wrapper_t<cl_device_id> ocl_device() const { return ocl_device_; }
+    xpu::ocl::wrapper_t<cl_context> ocl_context() const { return ocl_context_; }
 
     status_t create_stream_impl(
             impl::stream_impl_t **stream_impl, unsigned flags) const override;

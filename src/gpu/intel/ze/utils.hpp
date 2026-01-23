@@ -34,17 +34,14 @@ status_t init_gpu_hw_info(impl::engine_t *engine, ze_device_handle_t device,
         compute::gpu_arch_t &gpu_arch, compute::gpu_product_t &product,
         uint64_t &native_extensions, bool &mayiuse_systolic,
         bool &mayiuse_ngen_kernels);
-status_t get_module_binary(
-        const ze_module_handle_t module, xpu::binary_t &binary);
-status_t get_kernel_binary(
-        const ze_kernel_handle_t kernel, xpu::binary_t &binary);
-bool mayiuse_microkernels(const ze_device_handle_t device,
-        const ze_context_handle_t context, const std::string &code);
-status_t compile_ocl_module_to_binary(const ze_device_handle_t device,
-        const ze_context_handle_t context, const std::string &code,
+status_t get_module_binary(ze_module_handle_t module, xpu::binary_t &binary);
+status_t get_kernel_binary(ze_kernel_handle_t kernel, xpu::binary_t &binary);
+bool mayiuse_microkernels(ze_device_handle_t device,
+        ze_context_handle_t context, const std::string &code);
+status_t compile_ocl_module_to_binary(ze_device_handle_t device,
+        ze_context_handle_t context, const std::string &code,
         const std::string &options, xpu::binary_t &binary);
-status_t create_kernels(const ze_device_handle_t device,
-        const ze_context_handle_t context,
+status_t create_kernels(ze_device_handle_t device, ze_context_handle_t context,
         const std::vector<const char *> &kernel_names,
         const xpu::binary_t &binary, ze_module_handle_t *module,
         std::vector<ze_kernel_handle_t> &kernels);

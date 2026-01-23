@@ -36,9 +36,9 @@ public:
 
     status_t engine_create(
             impl::engine_t **engine, size_t index) const override;
-    status_t engine_create(impl::engine_t **engine,
-            const ze_driver_handle_t adriver, const ze_device_handle_t adevice,
-            const ze_context_handle_t acontext, size_t index) const;
+    status_t engine_create(impl::engine_t **engine, ze_driver_handle_t adriver,
+            ze_device_handle_t adevice, ze_context_handle_t acontext,
+            size_t index) const;
 
 private:
     engine_kind_t engine_kind_;

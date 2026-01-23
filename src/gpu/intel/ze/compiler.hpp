@@ -25,9 +25,8 @@ namespace gpu {
 namespace intel {
 namespace ze {
 
-static inline cl_program ocl_compile(const cl_device_id device,
-        const cl_context context, const char *kernel_code,
-        const char *options) {
+static inline cl_program ocl_compile(cl_device_id device, cl_context context,
+        const char *kernel_code, const char *options) {
     cl_int err;
     cl_program program = xpu::ocl::clCreateProgramWithSource(
             context, 1, &kernel_code, nullptr, &err);
@@ -41,8 +40,8 @@ static inline cl_program ocl_compile(const cl_device_id device,
     return program;
 }
 
-inline bool ocl_mayiuse_microkernels(const cl_device_id device,
-        const cl_context context, const char *kernel_code) {
+inline bool ocl_mayiuse_microkernels(
+        cl_device_id device, cl_context context, const char *kernel_code) {
     cl_program program = ocl_compile(device, context, kernel_code, "");
     if (program) {
         xpu::ocl::clReleaseProgram(program);
@@ -51,9 +50,8 @@ inline bool ocl_mayiuse_microkernels(const cl_device_id device,
     return false;
 }
 
-inline status_t ocl_build_kernels(const cl_device_id device,
-        const cl_context context, const char *kernel_code, const char *options,
-        xpu::binary_t &binary) {
+inline status_t ocl_build_kernels(cl_device_id device, cl_context context,
+        const char *kernel_code, const char *options, xpu::binary_t &binary) {
     cl_program program = ocl_compile(device, context, kernel_code, options);
     if (!program) return status::runtime_error;
 

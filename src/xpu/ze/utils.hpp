@@ -218,10 +218,10 @@ private:
     }
 };
 
-xpu::device_uuid_t get_device_uuid(const ze_device_handle_t device);
-status_t get_device_index(size_t *index, const ze_device_handle_t device);
-std::string get_kernel_name(const ze_kernel_handle_t kernel);
-ze_memory_type_t get_pointer_type(const ze_context_handle_t, const void *ptr);
+xpu::device_uuid_t get_device_uuid(ze_device_handle_t device);
+status_t get_device_index(size_t *index, ze_device_handle_t device);
+std::string get_kernel_name(ze_kernel_handle_t kernel);
+ze_memory_type_t get_pointer_type(ze_context_handle_t, const void *ptr);
 
 } // namespace ze
 } // namespace xpu

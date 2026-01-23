@@ -50,8 +50,8 @@ namespace ze_interop {
 /// @param acontext Level Zero context.
 ///
 /// @returns Created engine.
-inline engine make_engine(const ze_driver_handle_t adriver,
-        const ze_device_handle_t adevice, const ze_context_handle_t acontext) {
+inline engine make_engine(ze_driver_handle_t adriver,
+        ze_device_handle_t adevice, ze_context_handle_t acontext) {
     dnnl_engine_t aengine;
     error::wrap_c_api(
             dnnl_ze_interop_engine_create(&aengine, adriver, adevice, acontext),

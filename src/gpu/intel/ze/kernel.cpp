@@ -38,16 +38,16 @@ public:
 
 status_t kernel_t::make(compute::kernel_t &compute_kernel,
         const std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>>
-                module_ptr,
-        const ze_kernel_handle_t kernel_ptr, const std::string &kernel_name) {
+                &module_ptr,
+        ze_kernel_handle_t kernel_ptr, const std::string &kernel_name) {
     compute_kernel = compute::kernel_t(std::make_shared<kernel_compat_t>(
             module_ptr, kernel_ptr, kernel_name));
     return status::success;
 }
 
 kernel_t::kernel_t(const std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>>
-                           module_ptr,
-        const ze_kernel_handle_t kernel_ptr, const std::string &kernel_name)
+                           &module_ptr,
+        ze_kernel_handle_t kernel_ptr, const std::string &kernel_name)
     : module_(module_ptr), kernel_(kernel_ptr), kernel_name_(kernel_name) {}
 
 kernel_t::~kernel_t() {
@@ -184,16 +184,16 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
             = utils::downcast<const xpu::ze::event_t *>(&out_dep)->events_;
 
     event_ = ze_stream->create_event();
-    ze_event_handle_t out_event = *(event_.get());
+    ze_event_handle_t out_event = *event_;
 
     CHECK(xpu::ze::zeCommandListAppendLaunchKernel(ze_stream->list(), kernel_,
             &group_count, out_event, static_cast<uint32_t>(ze_deps.size()),
-            ze_deps.size() ? ze_deps.data() : nullptr));
+            !ze_deps.empty() ? ze_deps.data() : nullptr));
 
     if (out_event) ze_out_deps.push_back(out_event);
     if (stream.is_profiling_enabled()) {
         ze_stream->profiler().register_event(
-                utils::make_unique<xpu::ze::event_t>(std::move(out_event)));
+                utils::make_unique<xpu::ze::event_t>(out_event));
     }
 
     return status::success;

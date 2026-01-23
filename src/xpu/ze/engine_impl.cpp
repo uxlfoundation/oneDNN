@@ -23,9 +23,8 @@ namespace impl {
 namespace xpu {
 namespace ze {
 
-engine_impl_t::engine_impl_t(engine_kind_t kind,
-        const ze_driver_handle_t driver, const ze_device_handle_t device,
-        const ze_context_handle_t context, size_t index)
+engine_impl_t::engine_impl_t(engine_kind_t kind, ze_driver_handle_t driver,
+        ze_device_handle_t device, ze_context_handle_t context, size_t index)
     : impl::engine_impl_t(kind, runtime_kind::ze, index)
     , driver_(driver)
     , device_(device)

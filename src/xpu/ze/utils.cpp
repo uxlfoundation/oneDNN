@@ -21,7 +21,7 @@ namespace impl {
 namespace xpu {
 namespace ze {
 
-xpu::device_uuid_t get_device_uuid(const ze_device_handle_t device) {
+xpu::device_uuid_t get_device_uuid(ze_device_handle_t device) {
     static_assert(ZE_MAX_DEVICE_UUID_SIZE == 16,
             "ZE_MAX_DEVICE_UUID_SIZE is expected to be 16");
 
@@ -44,7 +44,7 @@ xpu::device_uuid_t get_device_uuid(const ze_device_handle_t device) {
     return xpu::device_uuid_t(uuid[0], uuid[1]);
 }
 
-status_t get_device_index(size_t *index, const ze_device_handle_t device) {
+status_t get_device_index(size_t *index, ze_device_handle_t device) {
     uint32_t driver_count = 0;
     CHECK(ze::zeDriverGet(&driver_count, nullptr));
 
@@ -68,7 +68,7 @@ status_t get_device_index(size_t *index, const ze_device_handle_t device) {
     return status::invalid_arguments;
 }
 
-std::string get_kernel_name(const ze_kernel_handle_t kernel) {
+std::string get_kernel_name(ze_kernel_handle_t kernel) {
     std::string kernel_name;
 
     size_t kernel_name_size = 0;
@@ -84,7 +84,7 @@ std::string get_kernel_name(const ze_kernel_handle_t kernel) {
 }
 
 ze_memory_type_t get_pointer_type(
-        const ze_context_handle_t context, const void *ptr) {
+        ze_context_handle_t context, const void *ptr) {
     ze_memory_allocation_properties_t memory_allocation_properties;
     memory_allocation_properties.stype
             = ZE_STRUCTURE_TYPE_MEMORY_ALLOCATION_PROPERTIES;

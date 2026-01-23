@@ -34,7 +34,7 @@ const xpu::context_t &stream_t::ctx() const {
     return impl()->ze_ctx();
 }
 
-const ze_event_handle_t stream_t::get_output_event() const {
+ze_event_handle_t stream_t::get_output_event() const {
     return impl()->get_output_event();
 }
 

@@ -25,8 +25,8 @@
 using namespace dnnl::impl;
 
 status_t dnnl_ze_interop_engine_create(engine_t **engine,
-        const ze_driver_handle_t adriver, const ze_device_handle_t adevice,
-        const ze_context_handle_t acontext) {
+        ze_driver_handle_t adriver, ze_device_handle_t adevice,
+        ze_context_handle_t acontext) {
     bool args_ok = !utils::any_null(engine, adriver, adevice, acontext);
     if (!args_ok) return status::invalid_arguments;
 

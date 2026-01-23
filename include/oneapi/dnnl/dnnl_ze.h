@@ -46,8 +46,8 @@ extern "C" {
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_ze_interop_engine_create(dnnl_engine_t *engine,
-        const ze_driver_handle_t adriver, const ze_device_handle_t adevice,
-        const ze_context_handle_t acontext);
+        ze_driver_handle_t adriver, ze_device_handle_t adevice,
+        ze_context_handle_t acontext);
 
 /// Returns the Level Zero context associated with an engine.
 ///

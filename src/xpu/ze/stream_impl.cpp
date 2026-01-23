@@ -102,7 +102,7 @@ ze_event_handle_t stream_impl_t::get_output_event() const {
 
 std::shared_ptr<xpu::ze::wrapper_t<ze_event_handle_t>>
 stream_impl_t::create_event() {
-    if (!event_pool_.get())
+    if (!event_pool_)
         return std::make_shared<xpu::ze::wrapper_t<ze_event_handle_t>>();
 
     ze_event_desc_t event_desc = {};
@@ -113,7 +113,7 @@ stream_impl_t::create_event() {
     event_desc.wait = ZE_EVENT_SCOPE_FLAG_HOST;
 
     ze_event_handle_t event;
-    ze::zeEventCreate(*(event_pool_.get()), &event_desc, &event);
+    ze::zeEventCreate(*event_pool_, &event_desc, &event);
 
     auto event_ptr
             = std::make_shared<xpu::ze::wrapper_t<ze_event_handle_t>>(event);
@@ -141,11 +141,11 @@ status_t stream_impl_t::copy(const impl::memory_storage_t &src,
     std::vector<ze_event_handle_t> ze_deps
             = utils::downcast<const event_t *>(&deps)->events_;
 
-    ze_event_handle_t out_event = *(create_event().get());
+    ze_event_handle_t out_event = *create_event();
     CHECK(ze::zeCommandListAppendMemoryCopy(list_, dst.data_handle(),
             src.data_handle(), size, out_event,
             static_cast<uint32_t>(ze_deps.size()),
-            ze_deps.size() ? ze_deps.data() : nullptr));
+            !ze_deps.empty() ? ze_deps.data() : nullptr));
     if (out_event)
         utils::downcast<event_t *>(&out_dep)->events_.push_back(out_event);
 
@@ -158,11 +158,11 @@ status_t stream_impl_t::fill(const impl::memory_storage_t &dst, uint8_t pattern,
     std::vector<ze_event_handle_t> ze_deps
             = utils::downcast<const event_t *>(&deps)->events_;
 
-    ze_event_handle_t out_event = *(create_event().get());
+    ze_event_handle_t out_event = *create_event();
     CHECK(ze::zeCommandListAppendMemoryFill(list_, dst.data_handle(), &pattern,
             sizeof(pattern), size, out_event,
             static_cast<uint32_t>(ze_deps.size()),
-            ze_deps.size() ? ze_deps.data() : nullptr));
+            !ze_deps.empty() ? ze_deps.data() : nullptr));
     if (out_event)
         utils::downcast<event_t *>(&out_dep)->events_.push_back(out_event);
 

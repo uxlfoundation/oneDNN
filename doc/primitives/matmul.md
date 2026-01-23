@@ -317,9 +317,23 @@ Grouped GEMM enables matrix multiplication when one dimension varies across
 groups, as occurs in Mixture-of-Experts (MoE) models where tokens are dynamically
 routed to different experts.
 
-To implement grouped GEMM the, matmul primitive could be used together with
-[grouped memory format](@ref dev_guide_grouped_mem). For instance, grouped format
-could be used for source and destination tensors, while weights remain dense.
+The computation for grouped GEMM with \f$G\f$ groups is defined as:
+
+\f[
+    \dst_g(m, n) =
+        \sum_{k=0}^{K - 1}
+            \src_g(m, k) \cdot \weights_g(k, n)
+        , \quad g = 0, \ldots, G-1
+\f]
+
+where \f$m \in [0, M_g)\f$ and \f$M_g\f$ is the number of rows in group \f$g\f$.
+
+The source and destination tensors use [grouped memory format](@ref dev_guide_grouped_mem)
+because the number of tokens per expert varies dynamically in MoE workloads. The
+grouped encoding stores values as concatenated buffers with an offsets array specifying
+group boundaries. Weights are represented as a regular dense 3D tensor
+`[num_experts, K, N]` because all experts have uniform dimensions, making grouped
+encoding unnecessary.
 
 ### Code Snippet
 

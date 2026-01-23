@@ -333,6 +333,8 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
     kernel_ctx_.define_int("SRC_ELEMS_PER_BYTE", elems_per_byte(src_dt));
     kernel_ctx_.define_int("WEI_ELEMS_PER_BYTE", elems_per_byte(wei_dt));
 
+    auto bia_dt = pd()->weights_md(1)->data_type;
+    def_data_type(kernel_ctx_, bia_dt, "BIA");
     kernel_ctx_.define_int("WITH_BIAS", pd()->with_bias());
 
     return create_kernel(engine, &kernel_, "grouped_micro_gemm", kernel_ctx_);

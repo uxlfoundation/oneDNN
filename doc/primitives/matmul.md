@@ -410,8 +410,13 @@ To use grouped GEMM in benchdnn, specify the `--grouped` argument as follows
 
 ### Implementation Notes
 
-- Currently, only dimension 0 can vary.
+- Currently, only single dimension `0` can vary.
 - Supported are scales and bias attributes.
+  - Source Scales: row-wise (per-token, `mask = (1 << 0)`) are applied to all experts equally.
+  - Weight Scales: column-wise (per-expert-per-column, `mask = (1 << 0) | (1 << 2)`)
+    and K-blocked (per-expert-per-K-block-per-column, `mask = (1 << 0) | (1 << 1) | (1 << 2)`)
+    with group specification are supported.
+  - Bias supports per-expert shape.
 - Source and destination must use identical grouping.
 - Supported on CPU and GPU engines.
 

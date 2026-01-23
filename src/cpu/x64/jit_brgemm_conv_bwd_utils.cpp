@@ -1457,6 +1457,9 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     const bool has_uneven_spatial = jcp.id % jcp.stride_d != 0
             || jcp.ih % jcp.stride_h != 0 || jcp.has_uneven_iw;
 
+    // deconvolution (use_inversion) is disabled, for uneven spatial cases
+    // it's needed for binary post-ops to support bigger rhs tensor basing
+    // on enlarged output tensor
     if (cd.use_inversion && has_uneven_spatial) return status::unimplemented;
 
     jcp.dilate_d = (ndims == 5) ? cd.dilates[0] : 0;

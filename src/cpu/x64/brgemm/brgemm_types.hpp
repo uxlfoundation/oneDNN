@@ -336,6 +336,7 @@ struct brgemm_desc_t {
     bool is_int8 = false, is_int8_tmm = false;
     bool is_bf16 = false, is_bf16_tmm = false, is_bf16_emu = false;
     bool is_fp8 = false, is_fp8_tmm = false;
+    bool is_bf16_f8 = false;
     bool is_f16 = false, is_f16_tmm = false;
     bool is_f32 = false;
     bool is_bf32 = false;

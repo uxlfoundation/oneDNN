@@ -255,6 +255,8 @@ status_t check_isa_with_datatype(
             && IMPLICATION(bm_conf_utils.is_f8(),
                     is_superset(isa, avx512_core_amx)
                             || is_superset(isa, avx10_2_512))
+            && IMPLICATION(bm_conf_utils.is_bf16_f8(),
+                    is_superset(isa, avx512_core_amx))
             && IMPLICATION(bm_conf_utils.is_bf8() && !bm_conf_utils.is_f8(),
                     is_superset(isa, avx512_core_amx_fp16))
             && IMPLICATION(bm_conf_utils.is_f4_via_convert(),
@@ -271,6 +273,7 @@ status_t check_datatype_cfg(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
                       bm_conf_utils.is_f4_via_convert(),
                       bm_conf_utils.is_tf32(),
                       bm_conf_utils.is_bf16_with_int_wei(),
+                      bm_conf_utils.is_bf16_f8(),
                       bm_conf_utils.is_f16_with_int_wei(),
                       bm_conf_utils.is_f32_with_int_wei())
             && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei()
@@ -329,6 +332,8 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, f16, f32))
     , f32_with_int_wei_dt(weights_decompression_support
               && everyone_is(f32, bgmmc.src_dt, bgmmc.dst_dt))
+    , bf16_f8_dt(bgmmc.src_dt == bf16 && one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
+              && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
     , A_any_layout(A_any_layout)
     , B_any_layout(B_any_layout)
     , C_any_layout(C_any_layout)
@@ -1385,6 +1390,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_f32_with_int_wei = bm_conf_utils.is_f32_with_int_wei();
     bgmmc.is_f32_f16 = bm_conf_utils.is_f32_f16();
     bgmmc.is_f32_bf16 = bm_conf_utils.is_f32_bf16();
+    bgmmc.is_bf16_f8 = bm_conf_utils.is_bf16_f8();
     bgmmc.with_wei_decompression = bm_conf_utils.with_weights_decompression();
     bgmmc.is_int4_weights = one_of(bgmmc.wei_dt, data_type::s4, data_type::u4);
     bgmmc.is_f4_via_convert = bm_conf_utils.is_f4_via_convert();

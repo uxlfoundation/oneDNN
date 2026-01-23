@@ -61,7 +61,7 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
             }
         }
 
-        if (brg.is_fp8 || has_f8_e5m2_binary_postops
+        if (brg.is_fp8 || brg.is_bf16_f8 || has_f8_e5m2_binary_postops
                 || has_f8_e4m3_binary_postops) {
             if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d)
                     || has_f8_e5m2_binary_postops)

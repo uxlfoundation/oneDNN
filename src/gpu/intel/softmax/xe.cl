@@ -212,14 +212,15 @@ xe_softmax_fwd(__global SRC_DATA_T *src, __global DST_DATA_T *dst,
 
 #else
     // NHWC kernel for lws size < max_lws or multiples of max_lws
-    // Blocked layout kernel for 128-byte reads and writes
+    // Blocked layout kernel for 128/256-byte reads and writes (based on subgroup_size)
     const int channel_offset = CHANNELS * THREAD_BUF_SIZE * subgroup_local_id;
 
 #if IS_BLOCKED
     const int channel_block = channel_id / CHANNELS;
     const int channel_in_block = channel_id % CHANNELS;
 
-    int data_off = mb * CHANNELS * SOFTMAX_AXIS_SIZE + channel_offset
+    int data_off = mb * CHANNELS_PADDED * SOFTMAX_AXIS_SIZE
+            + channel_block * SOFTMAX_AXIS_SIZE * CHANNELS + channel_offset
             + channel_in_block;
     const int buf_reads = THREAD_BUF_SIZE;
 #else

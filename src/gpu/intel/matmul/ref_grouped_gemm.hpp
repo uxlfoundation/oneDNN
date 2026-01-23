@@ -43,6 +43,7 @@ struct ref_grouped_gemm_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref_grouped:any", ref_grouped_gemm_t);
 
+        // Weights are 3D: [G, K, N]
         // Override masks to include 0th expert dimension
         int wei_qmask_K() const { return (1 << 0) | (1 << 1); }
 

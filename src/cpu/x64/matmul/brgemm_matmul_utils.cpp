@@ -675,7 +675,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
 
     if (bgmmc.ndims > 3) return format_tag::undef;
 
-    if (is_int8() || is_f8()) {
+    if (is_int8() || is_f8() || is_bf16_f8()) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c4b : BA16a64b4a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c4b : BA16a48b4a;
@@ -1183,7 +1183,9 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
                       bm_conf_utils.is_bf16_with_int_wei(),
                       (bgmmc.is_amx
                               && (bm_conf_utils.is_f16()
-                                      || bm_conf_utils.is_f16_with_int_wei())))
+                                      || bm_conf_utils.is_f16_with_int_wei()
+                                      // || bm_conf_utils.is_bf16_f8()
+                                      )))
             && (bgmmc.isa != avx2_vnni_2) // no perf study yet.
             && bgmmc.lda_big_pow2() && bgmmc.M >= 1024;
 
@@ -1731,6 +1733,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                     || ((bm_conf_utils.is_f16()
                                 || bm_conf_utils.is_f16_with_int_wei())
                             && isa == avx512_core_fp16)
+                    //     || (bm_conf_utils.is_bf16_f8()
+                    //             && one_of(isa, avx512_core_amx, avx512_core_amx_fp16))
                     || (bgmmc.wei_zp_type != brgemm_broadcast_t::none
                             && !bm_conf_utils.with_weights_decompression())
                     || bgmmc.transposed_A);
@@ -1926,7 +1930,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         const dim_t buffer_a_chunk_sz_limit = 126;
         is_small_shapes = is_small_shapes
                 && bgmmc.buffer_a_gb_stride <= buffer_a_chunk_sz_limit;
-    } else if (bm_conf_utils.is_f8() || bm_conf_utils.is_bf8()) {
+    } else if (bm_conf_utils.is_f8() || bm_conf_utils.is_bf16_f8()
+            || bm_conf_utils.is_bf8()) {
         is_small_shapes = false;
     } else {
         is_small_shapes = is_small_shapes && bgmmc.ndims < 3

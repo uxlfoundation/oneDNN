@@ -411,8 +411,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             brgattr.use_uker = true;
             brgattr.use_interleave_stores = true;
             brgattr.max_bs = bs;
-            brgattr.wary_A_k_tail_read = bgmmc_.extendable_k;
-            brgattr.extendable_k = bgmmc_.extendable_k;
+            brgattr.wary_A_k_tail_read = bgmmc_.extendable_k || is_bf16_f8;
+            brgattr.extendable_k = bgmmc_.extendable_k || is_bf16_f8;
             // TODO: change expected sizes to local chunks wrt L2 blocking
             brgattr.hint_expected_A_size = vM * vK * bs;
             brgattr.hint_expected_B_size = vN * vK * bs;

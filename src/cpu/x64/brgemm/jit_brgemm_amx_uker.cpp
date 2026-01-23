@@ -1856,7 +1856,7 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
             brgemm_hint_mem_advice_B, brgemm_hint_mem_advice_A_B);
     bool has_mem_advice = is_A ? mem_advice_A : mem_advice_B;
 
-    if (brg.is_input_convert()) {
+    if (!(is_A && brg.is_bf16_f8) && brg.is_input_convert()) {
         // try_load_nt is not supported in maybe_pre_process_data as there is
         // no guarantee that the data is cache line aligned.
         maybe_pre_process_data(bi, t1, reg_base, offset, reg_stride, mk);
@@ -1982,9 +1982,9 @@ void jit_brgemm_amx_uker_base_t::tdpbxxd(brgemm_iteration_t &bi, int bdb_idx,
         tdpbf16ps(x1, x2, x3);
     } else if (brg.dt_a == f16 && brg.dt_b == f16) {
         tdpfp16ps(x1, x2, x3);
-    } else if (brg.is_fp8 && brg.is_fp8_via_convert_to_bf16()) {
+    } else if (brg.is_fp8_via_convert_to_bf16()) {
         tdpbf16ps(x1, x2, x3);
-    } else if (brg.is_fp8 && brg.is_fp8_via_convert_to_f16()) {
+    } else if (brg.is_fp8_via_convert_to_f16()) {
         tdpfp16ps(x1, x2, x3);
     } else if (brg.dt_a == f8_e5m2 && brg.dt_b == f8_e5m2) {
         tdpbf8ps(x1, x2, x3);
@@ -2269,9 +2269,11 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
         if (brg.is_bf32)
             bf32_downconvert(bi, num_rows, num_col_bytes, reg_base, offset,
                     reg_stride, reg_buf);
-        else
+        else if (brg.is_fp8)
             fp8_to_xf16_upconvert(bi, num_rows, num_col_bytes, reg_base, offset,
                     reg_stride, reg_buf, dt);
+        else
+            assert(brg.is_bf16_f8);
     } else {
         if (brg.is_bf32)
             bf32_downconvert_to_vnni(bi, num_rows, num_col_bytes, reg_base,

@@ -140,6 +140,10 @@ struct ref_grouped_gemm_t : public primitive_t {
             VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
 
+            // Zero-points are not supported
+            VDISPATCH_MATMUL(attr()->zero_points_.has_default_values(),
+                    VERBOSE_UNSUPPORTED_ATTR);
+
             // No post-ops for now
             VDISPATCH_MATMUL(attr()->post_ops_.has_default_values(),
                     VERBOSE_UNSUPPORTED_POSTOP);

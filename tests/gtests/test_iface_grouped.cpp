@@ -30,23 +30,23 @@ using dt = memory::data_type;
 class iface_grouped_test_t : public ::testing::Test {};
 
 TEST(iface_grouped_test_t, TestGroupedMDCreation) {
-    const int num_groups = 3;
+    const int ngroups = 3;
     const int K = 256;
     int variable_dim_idx = 0;
 
-    ASSERT_NO_THROW(memory::desc::grouped(
-            {9, K}, dt::f32, variable_dim_idx, num_groups));
+    ASSERT_NO_THROW(
+            memory::desc::grouped({9, K}, dt::f32, variable_dim_idx, ngroups));
 
     ASSERT_NO_THROW(memory::desc::grouped(
-            {4, K}, dt::f16, variable_dim_idx, num_groups, dt::s32));
+            {4, K}, dt::f16, variable_dim_idx, ngroups, dt::s32));
 }
 
 TEST(iface_grouped_test_t, TestGroupedMDInvalidArgs) {
-    const int num_groups = 2;
+    const int ngroups = 2;
     const int M = 100, K = 256;
 
     // 3D is not supported
-    EXPECT_THROW(memory::desc::grouped({4, K, 10}, dt::f32, 0, num_groups),
+    EXPECT_THROW(memory::desc::grouped({4, K, 10}, dt::f32, 0, ngroups),
             dnnl::error);
 
     // Invalid group count: 0, negative
@@ -54,34 +54,34 @@ TEST(iface_grouped_test_t, TestGroupedMDInvalidArgs) {
     EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, 0, -1), dnnl::error);
 
     // Invalid variable_dim_idx: only 0 is supported for now
-    EXPECT_THROW(memory::desc::grouped({4, K}, dt::f32, -1, num_groups),
-            dnnl::error);
     EXPECT_THROW(
-            memory::desc::grouped({4, K}, dt::f32, 1, num_groups), dnnl::error);
+            memory::desc::grouped({4, K}, dt::f32, -1, ngroups), dnnl::error);
+    EXPECT_THROW(
+            memory::desc::grouped({4, K}, dt::f32, 1, ngroups), dnnl::error);
 
     // Runtime dimensions not supported
     EXPECT_THROW(memory::desc::grouped(
-                         {DNNL_RUNTIME_DIM_VAL, K}, dt::f32, 0, num_groups),
+                         {DNNL_RUNTIME_DIM_VAL, K}, dt::f32, 0, ngroups),
             dnnl::error);
     EXPECT_THROW(memory::desc::grouped(
-                         {M, DNNL_RUNTIME_DIM_VAL}, dt::f32, 0, num_groups),
+                         {M, DNNL_RUNTIME_DIM_VAL}, dt::f32, 0, ngroups),
             dnnl::error);
 
     // Zero dimensions not allowed
     EXPECT_THROW(
-            memory::desc::grouped({0, K}, dt::f32, 0, num_groups), dnnl::error);
+            memory::desc::grouped({0, K}, dt::f32, 0, ngroups), dnnl::error);
     EXPECT_THROW(
-            memory::desc::grouped({M, 0}, dt::f32, 0, num_groups), dnnl::error);
+            memory::desc::grouped({M, 0}, dt::f32, 0, ngroups), dnnl::error);
 
     // Valid offsets type: s32; invalid: f32
     ASSERT_NO_THROW(
-            memory::desc::grouped({M, K}, dt::f32, 0, num_groups, dt::s32));
-    EXPECT_THROW(memory::desc::grouped({M, K}, dt::f32, 0, num_groups, dt::f32),
+            memory::desc::grouped({M, K}, dt::f32, 0, ngroups, dt::s32));
+    EXPECT_THROW(memory::desc::grouped({M, K}, dt::f32, 0, ngroups, dt::f32),
             dnnl::error);
 }
 
 TEST(iface_grouped_test_t, TestGroupedMDQueries) {
-    const int num_groups = 3;
+    const int ngroups = 3;
     const int K = 256;
     const int total_tokens = 9;
     const memory::dims dims = {total_tokens, K};
@@ -92,7 +92,7 @@ TEST(iface_grouped_test_t, TestGroupedMDQueries) {
 
         memory::desc md;
         ASSERT_NO_THROW(md = memory::desc::grouped(
-                                dims, data_type, 0, num_groups, offsets_dt));
+                                dims, data_type, 0, ngroups, offsets_dt));
 
         // Basic queries
         ASSERT_EQ(md.get_dims(), dims);
@@ -114,48 +114,42 @@ TEST(iface_grouped_test_t, TestGroupedMDQueries) {
 }
 
 TEST(iface_grouped_test_t, TestGroupedMDComparison) {
-    const int num_groups = 2;
+    const int ngroups = 2;
     const int K = 256;
 
     memory::desc md1, md2;
 
     // equal descriptors
-    ASSERT_NO_THROW(
-            md1 = memory::desc::grouped({4, K}, dt::f32, 0, num_groups));
-    ASSERT_NO_THROW(
-            md2 = memory::desc::grouped({4, K}, dt::f32, 0, num_groups));
+    ASSERT_NO_THROW(md1 = memory::desc::grouped({4, K}, dt::f32, 0, ngroups));
+    ASSERT_NO_THROW(md2 = memory::desc::grouped({4, K}, dt::f32, 0, ngroups));
     ASSERT_EQ(md1, md2);
 
     // different data types
-    ASSERT_NO_THROW(
-            md1 = memory::desc::grouped({4, K}, dt::f32, 0, num_groups));
-    ASSERT_NO_THROW(
-            md2 = memory::desc::grouped({4, K}, dt::f16, 0, num_groups));
+    ASSERT_NO_THROW(md1 = memory::desc::grouped({4, K}, dt::f32, 0, ngroups));
+    ASSERT_NO_THROW(md2 = memory::desc::grouped({4, K}, dt::f16, 0, ngroups));
     ASSERT_NE(md1, md2);
 
-    // different num_groups
-    ASSERT_NO_THROW(
-            md1 = memory::desc::grouped({4, K}, dt::f32, 0, num_groups));
+    // different ngroups
+    ASSERT_NO_THROW(md1 = memory::desc::grouped({4, K}, dt::f32, 0, ngroups));
     ASSERT_NO_THROW(md2 = memory::desc::grouped({4, K}, dt::f32, 0, 3));
     ASSERT_NE(md1, md2);
 }
 
 TEST(iface_grouped_test_t, TestGroupedMDSize) {
-    const int num_groups = 3;
+    const int ngroups = 3;
     const int K = 256;
     const int total_tokens = 9;
 
     memory::desc md;
-    ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32, 0,
-                            num_groups, dt::s32));
+    ASSERT_NO_THROW(md = memory::desc::grouped(
+                            {total_tokens, K}, dt::f32, 0, ngroups, dt::s32));
 
     // Size of values buffer (buffer 0): total_tokens * K elements
     size_t ref_values_size = total_tokens * K * memory::data_type_size(dt::f32);
     ASSERT_EQ(md.get_size(0), ref_values_size);
 
-    // Size of offsets buffer (buffer 1): num_groups + 1
-    size_t ref_offsets_size
-            = (num_groups + 1) * memory::data_type_size(dt::s32);
+    // Size of offsets buffer (buffer 1): ngroups + 1
+    size_t ref_offsets_size = (ngroups + 1) * memory::data_type_size(dt::s32);
     ASSERT_EQ(md.get_size(1), ref_offsets_size);
 }
 
@@ -165,14 +159,14 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
     const bool is_unimplemented = (DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL);
     if (is_unimplemented) return;
 
-    const int num_groups = 3;
+    const int ngroups = 3;
     const int K = 256;
     const int total_tokens = 9;
     int variable_dim_idx = 0;
 
     memory::desc md;
     ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32,
-                            variable_dim_idx, num_groups));
+                            variable_dim_idx, ngroups));
 
     memory mem;
     mem = memory(md, eng);
@@ -181,7 +175,7 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
     {
         const int total_elements = total_tokens * K;
         std::vector<float> values(total_elements);
-        std::vector<int32_t> offsets(num_groups + 1);
+        std::vector<int32_t> offsets(ngroups + 1);
         offsets = {0, 1, 4, 9};
 
         EXPECT_NO_THROW(mem = memory(md, eng, {values.data(), offsets.data()}));
@@ -191,7 +185,7 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedMemoryCreation) {
     {
         const int total_elements = total_tokens * K;
         std::vector<float> values(total_elements);
-        std::vector<int32_t> offsets(num_groups + 1);
+        std::vector<int32_t> offsets(ngroups + 1);
         offsets = {0, 1, 1, 9}; // skip group 2
 
         EXPECT_NO_THROW(mem = memory(md, eng, {values.data(), offsets.data()}));
@@ -205,21 +199,21 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     const bool is_unimplemented = (DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL);
     if (is_unimplemented) return;
 
-    const int num_groups = 3;
+    const int ngroups = 3;
     const int K = 256;
     const int total_tokens = 9;
     int variable_dim_idx = 0;
 
     memory::desc md;
     ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32,
-                            variable_dim_idx, num_groups));
+                            variable_dim_idx, ngroups));
 
     memory mem = memory(md, eng);
 
     {
         const int total_elements = total_tokens * K;
         std::vector<float> values(total_elements);
-        std::vector<int32_t> offsets(num_groups + 1);
+        std::vector<int32_t> offsets(ngroups + 1);
 
         ASSERT_NO_THROW(mem.set_data_handle(values.data(), 0));
         ASSERT_NO_THROW(mem.set_data_handle(offsets.data(), 1));
@@ -236,14 +230,14 @@ TEST(iface_grouped_test_t, TestGroupedMemoryMapUnmap) {
             || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL);
     if (is_unimplemented) return;
 
-    const int num_groups = 2;
+    const int ngroups = 2;
     const int K = 4;
     const int total_tokens = 3;
     int variable_dim_idx = 0;
 
     memory::desc md;
     ASSERT_NO_THROW(md = memory::desc::grouped({total_tokens, K}, dt::f32,
-                            variable_dim_idx, num_groups, dt::s32));
+                            variable_dim_idx, ngroups, dt::s32));
 
     const int total_elements = total_tokens * K;
     std::vector<float> values(total_elements);
@@ -251,7 +245,7 @@ TEST(iface_grouped_test_t, TestGroupedMemoryMapUnmap) {
         values[i] = static_cast<float>(i) * 0.5f;
 
     std::vector<int32_t> offsets = {1, 3};
-    ASSERT_EQ(offsets[num_groups - 1], total_tokens);
+    ASSERT_EQ(offsets[ngroups - 1], total_tokens);
 
     memory mem(md, eng, {values.data(), offsets.data()});
 
@@ -272,7 +266,7 @@ TEST(iface_grouped_test_t, TestGroupedMemoryMapUnmap) {
 }
 
 TEST(c_api_grouped_md, TestGroupedMDQueries) {
-    const int num_groups = 3;
+    const int ngroups = 3;
     const int K = 256;
     const int total_tokens = 9;
     const int total_elements = total_tokens * K;
@@ -281,7 +275,7 @@ TEST(c_api_grouped_md, TestGroupedMDQueries) {
     dnnl_dims_t dims = {total_tokens, K};
 
     DNNL_CHECK(dnnl_memory_desc_create_with_grouped_encoding(
-            &md, 2, dims, dnnl_f32, 0, num_groups, dnnl_s32));
+            &md, 2, dims, dnnl_f32, 0, ngroups, dnnl_s32));
     ASSERT_NE(md, nullptr);
 
     // Query all properties
@@ -310,7 +304,7 @@ TEST(c_api_grouped_md, TestGroupedMDQueries) {
     EXPECT_EQ(values_size, total_elements * sizeof(float));
 
     size_t offsets_size = dnnl_memory_desc_get_size_v2(md, 1);
-    EXPECT_EQ(offsets_size, (num_groups + 1) * sizeof(int32_t));
+    EXPECT_EQ(offsets_size, (ngroups + 1) * sizeof(int32_t));
 
     DNNL_CHECK(dnnl_memory_desc_destroy(md));
 }

@@ -38,7 +38,7 @@ status_t ref_grouped_gemm_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto *src_md = pd()->src_md();
     const auto *wei_md = pd()->weights_md(0);
 
-    const dim_t num_groups = pd()->ngroups_;
+    const dim_t ngroups = pd()->ngroups_;
     const dim_t total_tokens = src_md->dims[0];
     const dim_t N = wei_md->dims[2];
 
@@ -54,7 +54,7 @@ status_t ref_grouped_gemm_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(2, wei_data);
     arg_list.set(3, dst_data);
     arg_list.set(4, dst_offsets);
-    arg_list.set(5, (int)num_groups);
+    arg_list.set(5, (int)ngroups);
 
     int next_arg = 6;
     if (with_bias) {
@@ -72,9 +72,8 @@ status_t ref_grouped_gemm_t::execute_ref(const exec_ctx_t &ctx) const {
         arg_list.set(next_arg++, wei_scales);
     }
 
-    // Use total_tokens as upper bound for M dimension
-    compute::range_t gws
-            = {(size_t)num_groups, (size_t)total_tokens, (size_t)N};
+    // Simple 3D dispatch for ref impl clarity
+    compute::range_t gws = {(size_t)ngroups, (size_t)total_tokens, (size_t)N};
 
     return parallel_for(ctx, compute::nd_range_t(gws), kernel_, arg_list);
 }

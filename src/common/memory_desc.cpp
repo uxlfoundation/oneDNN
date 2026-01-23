@@ -748,14 +748,14 @@ status_t dnnl_memory_desc_create_with_packed_encoding(
 #if DNNL_EXPERIMENTAL_GROUPED_GEMM
 status_t dnnl_memory_desc_create_with_grouped_encoding(
         memory_desc_t **memory_desc, int ndims, const dims_t dims,
-        data_type_t data_type, int variable_dim_idx, dim_t num_groups,
+        data_type_t data_type, int variable_dim_idx, dim_t ngroups,
         data_type_t offsets_dt) {
     if (any_null(memory_desc)) return invalid_arguments;
 
     auto md = utils::make_unique<memory_desc_t>();
     if (!md) return out_of_memory;
     CHECK(memory_desc_init_with_grouped_encoding(*md, ndims, dims, data_type,
-            variable_dim_idx, num_groups, offsets_dt));
+            variable_dim_idx, ngroups, offsets_dt));
     (*memory_desc) = md.release();
     return success;
 }

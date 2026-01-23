@@ -38,7 +38,7 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
     // wei: [num_experts, K, N] dense with abc or acb
     // dst: [total_tokens, N] grouped
     const auto &src_grouped = src_d.sparse_desc().grouped_desc;
-    const dim_t num_groups = src_grouped.ngroups;
+    const dim_t ngroups = src_grouped.ngroups;
     const dim_t K = wei_d.dims()[1];
     const dim_t N = wei_d.dims()[2];
 
@@ -92,7 +92,7 @@ status_t ref_grouped_gemm_t::execute(const exec_ctx_t &ctx) const {
     // Parallelize over groups (experts in MoE)
     // Expectation is to see 128-256+ groups, with varying M per group
     // and possibly some empty groups (M == 0)
-    parallel_nd(num_groups, [&](dim_t group_id) {
+    parallel_nd(ngroups, [&](dim_t group_id) {
         const dim_t offset_start = (group_id == 0) ? 0 : offsets[group_id - 1];
         const dim_t offset_end = offsets[group_id];
         const dim_t M = offset_end - offset_start;

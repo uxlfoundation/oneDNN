@@ -347,6 +347,43 @@ TEST(c_api_grouped_md, TestGroupedMDInvalidArgs) {
     ASSERT_EQ(status, dnnl_invalid_arguments);
 }
 
+TEST(iface_grouped_test_t, TestGroupedMatmulValidation) {
+    engine eng = get_test_engine();
+    const int ngroups = 3;
+    const int M = 100, K = 256, N = 512;
+
+    auto src_md = memory::desc::grouped({M, K}, dt::f32, 0, ngroups);
+    auto dst_md = memory::desc::grouped({M, N}, dt::f32, 0, ngroups);
+    auto wei_md
+            = memory::desc({ngroups, K, N}, dt::f32, memory::format_tag::abc);
+
+    // Invalid: grouped/non-grouped combinations
+    auto dense_src = memory::desc({M, K}, dt::f32, memory::format_tag::ab);
+    auto dense_dst = memory::desc({M, N}, dt::f32, memory::format_tag::ab);
+
+    EXPECT_THROW(matmul::primitive_desc(eng, dense_src, wei_md, dst_md),
+            dnnl::error);
+    EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dense_dst),
+            dnnl::error);
+    EXPECT_THROW(matmul::primitive_desc(eng, dense_src, wei_md, dense_dst),
+            dnnl::error);
+
+    // Invalid: 2D weights
+    auto wei_2d = memory::desc({K, N}, dt::f32, memory::format_tag::ab);
+    EXPECT_THROW(
+            matmul::primitive_desc(eng, src_md, wei_2d, dst_md), dnnl::error);
+
+    // Invalid: mismatched ngroups
+    auto dst_4groups = memory::desc::grouped({M, N}, dt::f32, 0, 4);
+    auto wei_4groups
+            = memory::desc({4, K, N}, dt::f32, memory::format_tag::abc);
+
+    EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_md, dst_4groups),
+            dnnl::error);
+    EXPECT_THROW(matmul::primitive_desc(eng, src_md, wei_4groups, dst_md),
+            dnnl::error);
+}
+
 } // namespace dnnl
 
 #endif // DNNL_EXPERIMENTAL_GROUPED_GEMM

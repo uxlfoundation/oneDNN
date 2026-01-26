@@ -22,7 +22,7 @@
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
-#include "gpu/intel/gemm/jit/include/gemmstone/microkernel_provider.hpp"
+#include "gemmstone/microkernel_selector.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -126,7 +126,7 @@ status_t micro_gated_mlp_t::pd_t::init_microkernels(impl::engine_t *engine) {
     if (!config) return status::unimplemented;
 
     /* Get device information */
-    gemmstone::HWInformation hw_info;
+    gemmstone::microkernel::HWInformation hw_info;
     hw_info.euCount = dev_info->eu_count();
     hw_info.gmdid = dev_info->ip_version();
     hw_info.systolicAvailable = intel_engine->mayiuse(
@@ -153,7 +153,7 @@ status_t micro_gated_mlp_t::pd_t::init_microkernels(impl::engine_t *engine) {
     const memory_desc_wrapper W_gate_mdw(W_gate_md());
     auto ldgu = static_cast<int>(
             gemm_desc_t::get_ld(*W_gate_md()) * W_gate_mdw.data_type_size()); // todo: / elems_per_byte??
-    problem_wgu.A.setAlignment(gemmstone::alignmentForLD(ldgu));
+    problem_wgu.A.setAlignment(gemmstone::microkernel::alignmentForLD(ldgu));
     problem_wgu.B.setAlignment(64);
     problem_wgu.B.crosspack = 2;
 
@@ -206,7 +206,7 @@ status_t micro_gated_mlp_t::pd_t::init_microkernels(impl::engine_t *engine) {
     reqs_wgu.push_back(gemmstone::StrategyRequirement::WGN == config->wg_n_gwu);
 
     /* Set up microkernel options */
-    micro::GEMMProtocol::Options opts_wgu;
+    gemmstone::microkernel::GEMMOptions opts_wgu;
     opts_wgu.localB = true;
     opts_wgu.slmPtr = true;
 
@@ -219,7 +219,7 @@ status_t micro_gated_mlp_t::pd_t::init_microkernels(impl::engine_t *engine) {
     //std::cout << "problemStr: " << problem.toString() << std::endl;
     /* Ask microkernel provider for microkernel */
     try {
-        gemm_gateup_ = selectGEMMMicrokernel(
+        gemm_gateup_ = selectGEMM(
                 opts_wgu, hw_info, sizes, problem_wgu, reqs_wgu);
     } catch (std::exception &e) {
         VDISPATCH_GATED_MLP(false,
@@ -231,7 +231,6 @@ status_t micro_gated_mlp_t::pd_t::init_microkernels(impl::engine_t *engine) {
 }
 
 status_t micro_gated_mlp_t::init(impl::engine_t *engine) {
-    using namespace micro;
     using namespace alg_kind;
 
     compute::kernel_ctx_t kernel_ctx;
@@ -282,9 +281,9 @@ status_t micro_gated_mlp_t::init(impl::engine_t *engine) {
     auto lda = gemm_desc_t::get_ld(*pd()->dst_md())
             * dst_mdw.data_type_size(); //TODO: replace w/tmp mem?
 
-    kernel_ctx.define_int("SRC_ALIGN", gemmstone::alignmentForLD(int(lds)));
-    kernel_ctx.define_int("WGU_ALIGN", gemmstone::alignmentForLD(int(ldwgu)));
-    kernel_ctx.define_int("DST_ALIGN", gemmstone::alignmentForLD(int(lda)));
+    kernel_ctx.define_int("SRC_ALIGN", gemmstone::microkernel::alignmentForLD(int(lds)));
+    kernel_ctx.define_int("WGU_ALIGN", gemmstone::microkernel::alignmentForLD(int(ldwgu)));
+    kernel_ctx.define_int("DST_ALIGN", gemmstone::microkernel::alignmentForLD(int(lda)));
 
     auto *d = pd()->desc();
 
@@ -366,7 +365,7 @@ status_t micro_gated_mlp_t::init(impl::engine_t *engine) {
     if (lda % 4 == 0 && (oc_sz(*d) % tile_wgu_m) == 0) kernel_ctx.define_int("BLOCK_DST", 1);
 
     /* Generate microkernel shims */
-    ShimOptions shimOptions;
+    gemmstone::microkernel::ShimOptions shimOptions;
     shimOptions.subgroupSize = pd()->sg_size();
     shimOptions.useTileOps = true;
     shimOptions.decorator = "wgu";
@@ -377,8 +376,8 @@ status_t micro_gated_mlp_t::init(impl::engine_t *engine) {
     //std::cout << "shim HEADER" << std::endl;
     //std::cout << header << std::endl;
     kernel_ctx.add_custom_header("gemm_gateup.h",
-            micro::generateShim(
-                    pd()->gemm_gateup(), HostLanguage::OpenCL_C, shimOptions));
+            generateShim(pd()->gemm_gateup(),
+                gemmstone::microkernel::HostLanguage::OpenCL_C, shimOptions));
 
     if (pd()->gemm_gateup().grfMin > 128) {
         kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");

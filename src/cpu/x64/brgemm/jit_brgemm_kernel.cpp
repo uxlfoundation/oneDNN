@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Intel Corporation
+* Copyright 2020-2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -878,14 +878,16 @@ void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(dim_t ld_block2, bool is_tail) {
     add(reg_aux_C, C_offset);
     add(reg_aux_D, D_offset);
 
-    // For AMX10 K-tail with BA format: use reduce_dim instead of rd_step
-    // BA format stores full K dimension per N-block: [N-block][K-full][N-VNNI]
-    // For the tail case (is_tail=true), use the standard calculation
-    if (brg.is_amx10() && brg.rdb_tail > 0 && !is_tail) {
-        const dim_t B_offset
-                = brg.typesize_B * ld_block2 * brg.ld_block * brg.reduce_dim;
+    // For AMX10 K-tail: Check if we need special handling for AB vs BA format
+    // AB format (LDB2=0): [K][N] order, BA format (LDB2!=0): [N][K] order
+    if (brg.is_amx10() && brg.rdb_tail > 0 && brg.brgattr.LDB2 != 0) {
+        // BA format: use reduce_dim
+        const dim_t B_offset = is_tail
+                ? (brg.typesize_B * brg.ldb_tail * brg.reduce_dim)
+                : (brg.typesize_B * ld_block2 * brg.ld_block * brg.reduce_dim);
         add(reg_b_offset, B_offset);
     } else {
+        // AB format or no K-tail: use standard formula
         add(reg_b_offset,
                 (is_tail) ? ldb_B_offset(0, true) : ldb_B_offset(ld_block2));
     }

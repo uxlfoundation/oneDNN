@@ -138,7 +138,7 @@ jobs:
 
       - if: ${{ (contains(matrix.config.label,'ubuntu') && (matrix.config.toolset == 'clang')) }}
         name: Install clang
-        uses: KyleMayes/install-llvm-action@98e68e10c96dffcb7bfed8b2144541a66b49aa02 # v2.0.8
+        uses: KyleMayes/install-llvm-action@ebc0426251bc40c7cd31162802432c68818ab8f0 # v2.0.9
         with:
           version: ${{ fromJson(steps.get-versions.outputs.output).dependencies.clang }}
 

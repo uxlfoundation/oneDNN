@@ -26,10 +26,10 @@
 #include "common/primitive.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "gemmstone/microkernel/shim.hpp"
 #include "gpu/gpu_resource.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
 #include "gpu/intel/primitive.hpp"
-#include "gpu/intel/microkernels/shim.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {
@@ -174,7 +174,7 @@ struct micro_gated_mlp_t : public primitive_t {
             return status::success;
         }
 
-        const micro::Package &gemm_gateup() const { return gemm_gateup_; }
+        const gemmstone::microkernel::Package &gemm_gateup() const { return gemm_gateup_; }
 
         int sg_size() const { return sg_size_; }
 
@@ -183,7 +183,7 @@ struct micro_gated_mlp_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> gemm_fc_down_pd_;
 
     private:
-        micro::Package gemm_gateup_;
+        gemmstone::microkernel::Package gemm_gateup_;
         int sg_size_ = 0;
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 

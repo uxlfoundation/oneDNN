@@ -31,7 +31,255 @@
 using mdt = memory::data_type;
 using dnnl::accumulation_mode;
 
-enum class mask_type { no_mask, oneD, twoD, causal };
+using mdt = memory::data_type;
+using dnnl::accumulation_mode;
+
+enum class mask_type { no_mask, oneD, twoD, causal_br, causal_tl };
+enum class scale_type { host_side, device_side };
+constexpr scale_type default_scale_type = scale_type::device_side;
+
+std::ostream &operator<<(std::ostream &ss, const mask_type &p) {
+    ss << "mask:";
+    switch (p) {
+        case mask_type::no_mask: ss << "no mask"; break;
+        case mask_type::oneD: ss << "1D"; break;
+        case mask_type::twoD: ss << "2D"; break;
+        case mask_type::causal_br: ss << "causal bottom right"; break;
+        case mask_type::causal_tl: ss << "causal top left"; break;
+    }
+    return ss;
+}
+
+std::ostream &operator<<(std::ostream &ss, const scale_type &p) {
+    ss << "scale:";
+    switch (p) {
+        case scale_type::device_side: ss << "device_side"; break;
+        case scale_type::host_side: ss << "host_side"; break;
+    }
+    return ss;
+}
+
+struct tag_t {
+    dnnl::memory::format_tag t;
+    tag_t() : t(dnnl::memory::format_tag::undef) {}
+    tag_t(dnnl::memory::format_tag t_) : t(t_) {}
+    operator dnnl::memory::format_tag() const { return t; }
+    bool operator==(const memory::format_tag &other) const {
+        return t == other;
+    }
+};
+
+std::ostream &operator<<(std::ostream &ss, const tag_t &p) {
+    ss << "key tag:";
+    switch (p.t) {
+        case dnnl::memory::format_tag::abcd: ss << "abcd"; break;
+        case dnnl::memory::format_tag::abdc: ss << "abdc"; break;
+        default: ss << "undef"; break;
+    }
+    return ss;
+}
+
+bool is_quantized(mdt dt, mdt sdt, mdt zpdt, quantize_type qtype) {
+    if (qtype == quantize_type::no_quantization) return false;
+
+    if (dt == mdt::f16 || dt == mdt::bf16 || dt == mdt::f32
+            || dt == mdt::f8_e4m3 || dt == mdt::f8_e5m2) {
+        return false;
+    }
+    if (sdt == mdt::undef && zpdt == mdt::undef) return false;
+    return true;
+}
+
+struct tensor_type_t {
+    std::string name;
+    mdt dt;
+    mdt sdt; // scaled data type
+    mdt zpdt; // zero point data type
+    tensor_type_t() = default;
+    tensor_type_t(const tensor_type_t &other) = default;
+    tensor_type_t(tensor_type_t &&other) = default;
+    tensor_type_t &operator=(const tensor_type_t &other) = default;
+    tensor_type_t &operator=(tensor_type_t &&other) = default;
+    tensor_type_t(std::string name_, memory::data_type t,
+            memory::data_type st = mdt::undef,
+            memory::data_type zpt = mdt::undef)
+        : name(std::move(name_)), dt(t), sdt(st), zpdt(zpt) {}
+    //operator memory::data_type() const { return dt; }
+};
+
+std::ostream &operator<<(std::ostream &ss, const tensor_type_t &p) {
+    ss << p.name << ":" << p.dt;
+    if (is_quantized(p.dt, p.sdt, p.zpdt, quantize_type::per_token)) {
+        ss << "x" << p.sdt;
+        ss << "x" << p.zpdt;
+    }
+    return ss;
+}
+
+struct head_group_size_t {
+    memory::dim head_size;
+    int kgroup_size;
+    int vgroup_size;
+};
+
+std::ostream &operator<<(
+        std::ostream &ss, const head_group_size_t &head_group) {
+    ss << "Head Size(D)=" << head_group.head_size;
+    if (head_group.head_size != head_group.kgroup_size
+            || head_group.head_size != head_group.vgroup_size) {
+        ss << " Group Size=";
+        if (head_group.kgroup_size == head_group.vgroup_size) {
+            ss << head_group.kgroup_size;
+        } else {
+            ss << "(" << head_group.kgroup_size << "x" << head_group.vgroup_size
+               << ")";
+        }
+    }
+    return ss;
+}
+
+struct seq_len_size_t {
+    memory::dim q;
+    memory::dim kv;
+};
+
+std::ostream &operator<<(std::ostream &ss, const seq_len_size_t &seq_len) {
+    ss << "Sequence Length";
+    if (seq_len.q == seq_len.kv) {
+        ss << "(K/Q)=" << seq_len.q;
+    } else {
+        ss << "Q:" << seq_len.q << " K/V:" << seq_len.kv;
+    }
+    return ss;
+}
+
+struct num_heads_t {
+    memory::dim q;
+    memory::dim kv;
+};
+
+std::ostream &operator<<(std::ostream &ss, const num_heads_t &heads) {
+    ss << "Number of Heads(N)=";
+    if (heads.q == heads.kv) {
+        ss << heads.q;
+    } else {
+        ss << "Q:" << heads.q << " K/V:" << heads.kv;
+    }
+    return ss;
+}
+
+struct mask_config_t {
+    mask_type type;
+    memory::data_type dt;
+};
+
+std::ostream &operator<<(std::ostream &ss, const mask_config_t &m) {
+    ss << "Mask =";
+    switch (m.type) {
+        case mask_type::no_mask: ss << "no mask"; break;
+        case mask_type::oneD: ss << "1D:" << m.dt; break;
+        case mask_type::twoD: ss << "2D:" << m.dt; break;
+        case mask_type::causal_br: ss << "causalbr"; break;
+        case mask_type::causal_tl: ss << "causaltl"; break;
+    }
+    return ss;
+}
+
+struct accumulation_t {
+    dnnl::accumulation_mode kq_acc;
+    dnnl::accumulation_mode vs_acc;
+};
+
+std::ostream &operator<<(std::ostream &ss, const accumulation_t &accs) {
+    ss << "Acc(KQ/VS) =";
+    std::string kq_str
+            = (accs.kq_acc == accumulation_mode::f16) ? "(f16," : "(f32,";
+    std::string vs_str
+            = (accs.vs_acc == accumulation_mode::f16) ? "f16)" : "f32)";
+    ss << kq_str << vs_str;
+    return ss;
+}
+
+using sdpa_dims_t_tuple = std::tuple<int, num_heads_t, seq_len_size_t,
+        head_group_size_t, tensor_type_t, tensor_type_t, tensor_type_t,
+        quantize_type, tag_t, mask_config_t, scale_type, accumulation_t>;
+
+template <typename T>
+void fill_value(std::vector<T> &out, const dnnl::memory::desc &desc, T value) {
+    auto elems = product(desc.get_dims());
+    for (int i = 0; i < elems; i++) {
+        out[i] = value;
+    }
+}
+
+/// Read from handle, write to memory
+/// This function is similar to the function found in write_to_dnnl_memory but this
+/// function has been expanded to perform an inline conversion from the source data
+/// type(handle) to the destination memory object. Currently, it only supports
+/// bf16, f16, f32, s32, u8/s8, u4/s4 data types for the dnnl::memory object
+/// and unsigned int and float for the handle.
+///
+/// The function first transfers the data to the handle's data type then
+/// uses reorder to perform the conversion to the destination data type.
+template <typename T>
+void write_to_dnnl_memory(const T *handle, dnnl::memory &mem, dnnl::engine &eng,
+        dnnl::stream &s) {
+    size_t size = mem.get_desc().get_size();
+
+    if (!handle) throw std::runtime_error("handle is nullptr.");
+
+    if (eng.get_kind() == dnnl::engine::kind::gpu) {
+        if (mem.get_desc().get_data_type() != dnnl_f32
+                && std::is_same<T, float>::value) {
+            dnnl::memory mem_f32_mem(
+                    {mem.get_desc().get_dims(), dnnl::memory::data_type::f32,
+                            mem.get_desc().get_strides()},
+                    eng);
+            write_to_dnnl_memory<float>(
+                    (const float *)handle, mem_f32_mem, eng, s);
+            dnnl::reorder(mem_f32_mem, mem).execute(s, mem_f32_mem, mem);
+        } else if (mem.get_desc().get_data_type() != dnnl_s32
+                && std::is_same<T, int>::value) {
+            dnnl::memory mem_s32_mem(
+                    {mem.get_desc().get_dims(), dnnl::memory::data_type::s32,
+                            mem.get_desc().get_strides()},
+                    eng);
+            write_to_dnnl_memory<int>((const int *)handle, mem_s32_mem, eng, s);
+            dnnl::reorder(mem_s32_mem, mem).execute(s, mem_s32_mem, mem);
+        } else if ((mem.get_desc().get_data_type() == dnnl_u8
+                           || mem.get_desc().get_data_type() == dnnl_s8
+                           || mem.get_desc().get_data_type() == dnnl_s4
+                           || mem.get_desc().get_data_type() == dnnl_u4)
+                && std::is_same<T, unsigned>::value) {
+            dnnl::memory mem_u32_mem(
+                    {mem.get_desc().get_dims(), dnnl::memory::data_type::s32,
+                            mem.get_desc().get_strides()},
+                    eng);
+            write_to_dnnl_memory<unsigned>(
+                    (const unsigned *)handle, mem_u32_mem, eng, s);
+            dnnl::reorder(mem_u32_mem, mem).execute(s, mem_u32_mem, mem);
+        } else {
+            s.wait();
+            void *mapped_ptr = mem.map_data();
+            if (!mapped_ptr)
+                throw std::runtime_error(
+                        "Failed to map memory in write_to_dnnl_memory");
+            std::memcpy(mapped_ptr, handle, size);
+            mem.unmap_data(mapped_ptr);
+        }
+        return;
+    }
+
+    if (eng.get_kind() == dnnl::engine::kind::cpu) {
+        uint8_t *dst = static_cast<uint8_t *>(mem.get_data_handle());
+        if (!dst) throw std::runtime_error("get_data_handle returned nullptr.");
+        for (size_t i = 0; i < size; ++i)
+            dst[i] = ((uint8_t *)handle)[i];
+        return;
+    }
+
+    assert(!"not expected");
+}
 
 struct sdpa_dims_t {
     memory::dim mb;

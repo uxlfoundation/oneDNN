@@ -37,6 +37,107 @@ using namespace dnnl::impl::types;
             status::unimplemented, msg, ##__VA_ARGS__);
 
 namespace {
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
+        const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
+        const memory_desc_t *bias_desc, const memory_desc_t *dst_desc) {
+    using namespace data_type;
+
+    VCHECK_MATMUL(
+            !any_null(src_desc, weights_desc, dst_desc), VERBOSE_NULL_ARG);
+
+    VCHECK_MATMUL(!any_memory_desc_host_scalar(
+                          src_desc, weights_desc, bias_desc, dst_desc),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
+    auto op_d = matmul_desc_t();
+    op_d.primitive_kind = primitive_kind::matmul;
+
+    op_d.src_desc = *src_desc;
+    op_d.weights_desc = *weights_desc;
+    if (bias_desc) op_d.bias_desc = *bias_desc;
+    op_d.dst_desc = *dst_desc;
+
+    const memory_desc_wrapper src_d(&op_d.src_desc);
+    const memory_desc_wrapper wei_d(&op_d.weights_desc);
+    const memory_desc_wrapper dst_d(dst_desc);
+
+    // Validate grouped encoding on src and dst
+    VCHECK_MATMUL_UNIMPL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
+    // Weights should be dense, abc or acb format
+    VCHECK_MATMUL_UNIMPL(!wei_d.is_sparse_desc() && !wei_d.is_grouped_desc(),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    VCHECK_MATMUL_UNIMPL(
+            wei_d.matches_one_of_tag(format_tag::abc, format_tag::acb),
+            VERBOSE_UNSUPPORTED_TAG);
+
+    // Validate matching number of groups
+    const auto &src_grouped = src_d.sparse_desc().grouped_desc;
+    const auto &dst_grouped = dst_d.sparse_desc().grouped_desc;
+    const dim_t ngroups = src_grouped.ngroups;
+
+    VCHECK_MATMUL_UNIMPL(src_grouped.ngroups == dst_grouped.ngroups,
+            VERBOSE_INCONSISTENT_DIM, "src_ngroups", (int)src_grouped.ngroups,
+            "dst_ngroups", (int)dst_grouped.ngroups);
+
+    VCHECK_MATMUL_UNIMPL(
+            dst_grouped.variable_dim_idx == src_grouped.variable_dim_idx,
+            VERBOSE_INCONSISTENT_DIM, "dst_variable_dim_idx", 0,
+            "src_variable_dim_idx", 0);
+
+    VCHECK_MATMUL_UNIMPL(wei_d.dims()[0] == ngroups, VERBOSE_INCONSISTENT_DIM,
+            "weights_dim[0]", (int)wei_d.dims()[0], "src_ngroups",
+            (int)ngroups);
+
+    // Check offsets are int32
+    VCHECK_MATMUL_UNIMPL(
+            src_d.metadata_type(0) == s32 && dst_d.metadata_type(0) == s32,
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
+    const bool with_bias = op_d.bias_desc.ndims != 0;
+
+    // Validate bias if present
+    if (with_bias) {
+        const memory_desc_wrapper bia_d(&op_d.bias_desc);
+        const dim_t N = wei_d.dims()[wei_d.ndims() - 1];
+
+        // Bias must be dense (not sparse or grouped)
+        VCHECK_MATMUL_UNIMPL(
+                !bia_d.is_sparse_desc() && !bia_d.is_grouped_desc(),
+                VERBOSE_UNSUPPORTED_BIAS_CFG);
+        // Bias must be 2D for grouped matmul implementations
+        VCHECK_MATMUL_UNIMPL(bia_d.ndims() == 2, VERBOSE_UNSUPPORTED_BIAS_CFG);
+        // Bias shape should be [ngroups, N]
+        VCHECK_MATMUL_UNIMPL(bia_d.dims()[0] == ngroups && bia_d.dims()[1] == N,
+                VERBOSE_INCONSISTENT_DIM, "bias_dim[0]", (int)bia_d.dims()[0],
+                "ngroups", (int)ngroups);
+    }
+
+    *matmul_desc = op_d;
+    return status::success;
+}
+
+status_t grouped_matmul_attr_check(
+        const matmul_desc_t &desc, const primitive_attr_t *attr) {
+    using smask_t = primitive_attr_t::skip_mask_t;
+
+    if (attr == nullptr) return status::success;
+    if (attr->has_default_values()) return status::success;
+
+    // Grouped matmul only supports scales, no zero points, etc.
+    auto allowed_mask = smask_t::scales_data_type | smask_t::scales_groups;
+    VCHECK_MATMUL_UNIMPL(
+            attr->has_default_values(allowed_mask, desc.dst_desc.data_type),
+            VERBOSE_UNSUPPORTED_ATTR);
+
+    // Specific checks are happening in impls for now
+
+    return status::success;
+}
+#endif // DNNL_EXPERIMENTAL_GROUPED_GEMM
+
 status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         const primitive_attr_t *attr) {
     using smask_t = primitive_attr_t::skip_mask_t;
@@ -124,18 +225,10 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         if (!sc.has_default_values(DNNL_ARG_SRC)) {
             const int mask_src = sc.get_mask(DNNL_ARG_SRC);
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
-            // Allow row-wise scales for grouped matmul
-            VCHECK_MATMUL_UNIMPL(
-                    utils::one_of(mask_src, 0, src_qmask_M, src_qmask_K,
-                            src_qmask_M + src_qmask_K, full_tensor_mask),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-#else
             VCHECK_MATMUL_UNIMPL(
                     utils::one_of(mask_src, 0, src_qmask_K,
                             src_qmask_M + src_qmask_K, full_tensor_mask),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
-#endif
 
             if (!sc.get(DNNL_ARG_SRC).has_default_groups()) {
                 if (mask_src & src_qmask_K)
@@ -427,43 +520,8 @@ status_t matmul_desc_init(matmul_desc_t *matmul_desc,
     const memory_desc_wrapper wei_d(&op_d.weights_desc);
     const memory_desc_wrapper dst_d(dst_desc);
 
-#if DNNL_EXPERIMENTAL_GROUPED_GEMM
-    // Validate grouped memory consistency
-    const bool is_grouped_memory = src_d.is_grouped_desc();
-    const dim_t ngroups
-            = is_grouped_memory ? src_d.sparse_desc().grouped_desc.ngroups : 0;
-
-    if (is_grouped_memory) {
-        const auto &src_grouped_desc = src_d.sparse_desc().grouped_desc;
-
-        // Validate destination has matching grouped encoding
-        VCHECK_MATMUL(dst_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
-        const auto &dst_grouped_desc = dst_d.sparse_desc().grouped_desc;
-        VCHECK_MATMUL(dst_grouped_desc.ngroups == ngroups,
-                VERBOSE_INCONSISTENT_DIM, "dst_ngroups", 0, "src_ngroups", 0);
-        VCHECK_MATMUL(dst_grouped_desc.variable_dim_idx
-                        == src_grouped_desc.variable_dim_idx,
-                VERBOSE_INCONSISTENT_DIM, "dst_variable_dim_idx", 0,
-                "src_variable_dim_idx", 0);
-
-        // Validate weights dimension matches number of groups
-        VCHECK_MATMUL(wei_d.dims()[0] == ngroups, VERBOSE_INCONSISTENT_DIM,
-                "wei", 0, "ngroups", 0);
-
-        // Validate bias shape for grouped matmul
-        if (with_bias) {
-            const memory_desc_wrapper bia_d(&op_d.bias_desc);
-            const dim_t N = wei_d.dims()[wei_d.ndims() - 1];
-            VCHECK_MATMUL(bia_d.ndims() == 2, VERBOSE_BAD_NDIMS, "bias",
-                    bia_d.ndims());
-            VCHECK_MATMUL(bia_d.dims()[0] == ngroups && bia_d.dims()[1] == N,
-                    VERBOSE_BAD_DIM, "bias", 0);
-        }
-    }
-#else
     const bool is_grouped_memory = false;
     const dim_t ngroups = 0;
-#endif
 
     const int ndims = dst_desc->ndims;
     VCHECK_MATMUL(ndims >= 2 && ndims <= DNNL_MAX_NDIMS, VERBOSE_BAD_NDIMS,
@@ -602,6 +660,20 @@ status_t dnnl_matmul_primitive_desc_create(
         const memory_desc_t *bias_desc, const memory_desc_t *dst_desc,
         const primitive_attr_t *attr) {
     auto matmul_desc = matmul_desc_t();
+
+#if DNNL_EXPERIMENTAL_GROUPED_GEMM
+    const memory_desc_wrapper src_d(src_desc);
+    if (src_d.is_grouped_desc()) {
+        // Use grouped-specific validation functions
+        CHECK(grouped_matmul_desc_init(
+                &matmul_desc, src_desc, weights_desc, bias_desc, dst_desc));
+        CHECK(grouped_matmul_attr_check(matmul_desc, attr));
+        return primitive_desc_create(primitive_desc_iface, engine,
+                (const op_desc_t *)&matmul_desc, nullptr, attr);
+    }
+#endif
+
+    // Regular matmul validation
     CHECK(matmul_desc_init(
             &matmul_desc, src_desc, weights_desc, bias_desc, dst_desc));
     CHECK(matmul_attr_check(matmul_desc, engine, attr));

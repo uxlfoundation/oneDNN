@@ -56,27 +56,6 @@ struct ref_grouped_gemm_t : public primitive_t {
             memory_desc_wrapper wei_d(weights_md(0));
             memory_desc_wrapper dst_d(dst_md());
 
-            // Check for grouped encoding on src and dst
-            VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
-
-            // Weights should be dense, abc (K x N) or acb (N x K) format
-            VDISPATCH_MATMUL(
-                    !wei_d.is_sparse_desc() && !wei_d.is_grouped_desc(),
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            VDISPATCH_MATMUL(
-                    wei_d.matches_one_of_tag(format_tag::abc, format_tag::acb),
-                    VERBOSE_UNSUPPORTED_TAG);
-
-            // Validate matching number of groups
-            const auto &src_grouped = src_d.sparse_desc().grouped_desc;
-            const auto &dst_grouped = dst_d.sparse_desc().grouped_desc;
-
-            VDISPATCH_MATMUL(src_grouped.ngroups == dst_grouped.ngroups,
-                    VERBOSE_INCONSISTENT_DIM, "src_ngroups",
-                    (int)src_grouped.ngroups, "dst_ngroups",
-                    (int)dst_grouped.ngroups);
-
             // Supported data types: fp and int8/int4 for src/wei
             const bool is_fp_src = utils::one_of(src_type, f32, bf16, f16);
             const bool is_int_src = utils::one_of(src_type, u8, s8);
@@ -91,29 +70,6 @@ struct ref_grouped_gemm_t : public primitive_t {
             // No support for weights only quantization as of now, both src/wei should be int
             VDISPATCH_MATMUL(IMPLICATION(is_int_src, is_int_wei),
                     VERBOSE_UNSUPPORTED_DT_CFG);
-
-            // Check that offsets are int32
-            VDISPATCH_MATMUL(src_d.metadata_type(0) == s32
-                            && dst_d.metadata_type(0) == s32,
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
-
-            // Check for limited Bias support
-            if (with_bias()) {
-                memory_desc_wrapper bia_d(weights_md(1));
-                VDISPATCH_MATMUL(
-                        !bia_d.is_sparse_desc() && !bia_d.is_grouped_desc(),
-                        VERBOSE_UNSUPPORTED_BIAS_CFG);
-                VDISPATCH_MATMUL(
-                        bia_d.ndims() == 2, VERBOSE_UNSUPPORTED_BIAS_CFG);
-                // Bias shape should be [ngroups, N]
-                VDISPATCH_MATMUL(bia_d.dims()[0] == src_grouped.ngroups,
-                        VERBOSE_INCONSISTENT_DIM, "bias_dim[0]",
-                        (int)bia_d.dims()[0], "ngroups",
-                        (int)src_grouped.ngroups);
-                VDISPATCH_MATMUL(bia_d.dims()[1] == wei_d.dims()[2],
-                        VERBOSE_INCONSISTENT_DIM, "bias_dim[1]",
-                        (int)bia_d.dims()[1], "N_dim", (int)wei_d.dims()[2]);
-            }
 
             // Check for supported quantization schemes
             const auto &attr_scales = attr()->scales_;

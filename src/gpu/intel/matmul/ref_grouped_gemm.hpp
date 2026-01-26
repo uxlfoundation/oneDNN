@@ -60,55 +60,15 @@ struct ref_grouped_gemm_t : public primitive_t {
             memory_desc_wrapper wei_d(weights_md(0));
             memory_desc_wrapper dst_d(dst_md());
 
-            // src, dst - grouped, weights - dense
-            VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
-
-            // Weights should be dense, support abc or acb format
-            VDISPATCH_MATMUL(
-                    !wei_d.is_sparse_desc() && !wei_d.is_grouped_desc(),
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            VDISPATCH_MATMUL(
-                    wei_d.matches_one_of_tag(format_tag::abc, format_tag::acb),
-                    VERBOSE_UNSUPPORTED_TAG);
-
             const auto &src_grouped = src_d.sparse_desc().grouped_desc;
-            const auto &dst_grouped = dst_d.sparse_desc().grouped_desc;
-
-            VDISPATCH_MATMUL(src_grouped.ngroups == dst_grouped.ngroups,
-                    VERBOSE_INCONSISTENT_DIM, "src_ngroups",
-                    (int)src_grouped.ngroups, "dst_ngroups",
-                    (int)dst_grouped.ngroups);
-
             ngroups_ = src_grouped.ngroups;
 
+            // GPU ref currently only supports matching data types
             VDISPATCH_MATMUL(src_dt_ == wei_dt_ && src_dt_ == dst_dt_
                             && utils::one_of(src_dt_, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
-            // only supported offsets type for now
-            VDISPATCH_MATMUL(src_d.metadata_type(0) == s32
-                            && dst_d.metadata_type(0) == s32,
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
-
-            // Check for limited Bias support
-            if (with_bias()) {
-                memory_desc_wrapper bia_d(weights_md(1));
-                VDISPATCH_MATMUL(
-                        !bia_d.is_sparse_desc() && !bia_d.is_grouped_desc(),
-                        VERBOSE_UNSUPPORTED_BIAS_CFG);
-                VDISPATCH_MATMUL(
-                        bia_d.ndims() == 2, VERBOSE_UNSUPPORTED_BIAS_CFG);
-                // Bias shape should be [num_experts, N]
-                VDISPATCH_MATMUL(bia_d.dims()[0] == src_grouped.ngroups,
-                        VERBOSE_INCONSISTENT_DIM, "bias_dim[0]",
-                        (int)bia_d.dims()[0], "ngroups",
-                        (int)src_grouped.ngroups);
-                VDISPATCH_MATMUL(bia_d.dims()[1] == dst_d.dims()[1],
-                        VERBOSE_INCONSISTENT_DIM, "bias_dim[1]",
-                        (int)bia_d.dims()[1], "N_dim", (int)dst_d.dims()[1]);
-            }
-
+            // Check for supported quantization schemes
             const auto &attr_scales = attr()->scales_;
             if (!attr_scales.has_default_values(DNNL_ARG_SRC)) {
                 const int src_mask = attr_scales.get_mask(DNNL_ARG_SRC);

@@ -1,4 +1,18 @@
-
+/*******************************************************************************
+* Copyright 2026 Intel Corporation
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
 
 #include "gpu/intel/include/conversion.h"
 #include "gpu/intel/include/tile_ops.h"
@@ -9,35 +23,33 @@
 
 #if WITH_BIAS
 DECLARE_2D_TILE(bias_tile_type, float, SUBGROUP_SIZE,
-                ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
-                ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
+        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
+        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
 
 #ifndef BIA_DT_F32
 DECLARE_2D_TILE(bias_in_tile_type, BIA_DATA_T, SUBGROUP_SIZE,
-                ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
-                ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
+        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
+        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
 DECLARE_2D_TILE_COPY_REBLOCK(bias_in_tile_type, SUBGROUP_SIZE,
-                             ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
-                             ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
-                             bias_tile_type, SUBGROUP_SIZE, ugemm_grouped_c_type_block0,
-                             ugemm_grouped_c_type_block1, ugemm_grouped_c_type_nblock0,
-                             ugemm_grouped_c_type_nblock1, CONVERT_FLOAT_T)
+        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
+        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
+        bias_tile_type, SUBGROUP_SIZE, ugemm_grouped_c_type_block0,
+        ugemm_grouped_c_type_block1, ugemm_grouped_c_type_nblock0,
+        ugemm_grouped_c_type_nblock1, CONVERT_FLOAT_T)
 #endif
 #endif
-
 
 #ifndef DST_DT_F32
 DECLARE_2D_TILE(c_tile_type_dst, DST_DATA_T, SUBGROUP_SIZE,
-                ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
-                ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
-
+        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
+        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
 
 DECLARE_2D_TILE_COPY_REBLOCK(ugemm_grouped_c_type, SUBGROUP_SIZE,
-                             ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
-                             ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
-                             c_tile_type_dst, SUBGROUP_SIZE, ugemm_grouped_c_type_block0,
-                             ugemm_grouped_c_type_block1, ugemm_grouped_c_type_nblock0,
-                             ugemm_grouped_c_type_nblock1, CONVERT_DATA_T)
+        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
+        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
+        c_tile_type_dst, SUBGROUP_SIZE, ugemm_grouped_c_type_block0,
+        ugemm_grouped_c_type_block1, ugemm_grouped_c_type_nblock0,
+        ugemm_grouped_c_type_nblock1, CONVERT_DATA_T)
 
 DECLARE_2D_TILE_COPY_REBLOCK(c_tile_type_dst, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
@@ -48,8 +60,6 @@ DECLARE_2D_TILE_COPY_REBLOCK(c_tile_type_dst, SUBGROUP_SIZE,
 
 #endif
 
-
-
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
         const global WEI_DATA_T *wei, int ldwei, global DST_DATA_T *dst,
@@ -58,9 +68,7 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
         const global SRC_ATTR_ZP_DATA_T *src_attr_zp, const int ldsrcq,
         const global WEI_ATTR_SCALES_DATA_T *wei_attr_scales,
         const global WEI_ATTR_ZP_DATA_T *wei_attr_zp, const int ldweiq, int n,
-        int k ,
-        const global BIA_DATA_T *bias
-) {
+        int k, const global BIA_DATA_T *bias) {
 
 #if ugemm_grouped_slm_size > 0
     local char slm[ugemm_grouped_slm_size];
@@ -69,7 +77,8 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
 #endif
 
     unsigned long batch = get_group_id(2);
-    int2 src_offset = *(global int2 *)(src_offsets + (batch > 0 ? batch - 1: batch));
+    int2 src_offset
+            = *(global int2 *)(src_offsets + (batch > 0 ? batch - 1 : batch));
 
     int sg_i = sub_group_broadcast(get_local_id(0) / SUBGROUP_SIZE, 0);
     int sg_j = sub_group_broadcast(get_local_id(1), 0);
@@ -86,16 +95,22 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
 
     src += src_offset.x * ldsrc / SRC_ELEMS_PER_BYTE;
     wei += batch * k * ldwei / WEI_ELEMS_PER_BYTE;
-    dst += (src_offset.x) * lddst;
+    dst += src_offset.x * lddst;
 #if WITH_SRC_ATTR_SCALES
-    src_attr_scales += src_offset.x * NUM_SRC_ATTR_SCALES;
+    src_attr_scales += src_offset.x;
+#endif
+#if WITH_SRC_ATTR_ZP
+    src_attr_zp += src_offset.x;
 #endif
 #if WITH_WEI_ATTR_SCALES
-    wei_attr_scales += batch * n * NUM_WEI_ATTR_SCALES;
+    wei_attr_scales += batch * ldweiq * (k / WEI_GROUP_SIZE);
+#endif
+#if WITH_WEI_ATTR_ZP
+    wei_attr_zp += batch * ldweiq * (k / WEI_GROUP_SIZE);
 #endif
 
     ugemm_grouped_c_type c_tile = ugemm_grouped(
-                                                src, ldsrc, wei, ldwei, m, n, k, wg_i0, wg_j0, 0, sg_i, sg_j, slm
+            src, ldsrc, wei, ldwei, m, n, k, wg_i0, wg_j0, 0, sg_i, sg_j, slm
 #if WITH_SRC_ATTR_SCALES
             ,
             src_attr_scales
@@ -123,14 +138,9 @@ grouped_micro_gemm(const global SRC_DATA_T *src, int ldsrc,
     );
 #if WITH_BIAS
 #define binary_add(x, y) ((x) + (y))
-    bias += batch * n; //C_offsets[batch];
+    bias += batch * n;
     bias_tile_type bias_tile;
 #if BIA_DT_F32
-    if(get_local_id(0) == 0 && get_local_id(1) == 0 && batch == 0) {
-      for(int i = 0; i < n; i++) {
-        printf("bias[%d]=%f\n", i, bias[i]);
-      }
-    }
     tile_load(&bias_tile, bias, n, m, 0, sg_j0, sg_i0);
 #else
     {

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2025 Intel Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,6 +28,14 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
+int elems_per_byte(data_type_t dt) {
+    switch (dt) {
+        case data_type::u4:
+        case data_type::s4: return 2;
+        default: return 1;
+    }
+}
+
 status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     using namespace jit;
     using namespace gemmstone;
@@ -49,9 +57,8 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
 
     auto src_mdw = memory_desc_wrapper(pd()->src_md(0));
     auto wei_mdw = memory_desc_wrapper(pd()->weights_md());
-    auto dst_mdw = memory_desc_wrapper(pd()->dst_md(0));
 
-    int m = std::max(128, static_cast<int>(pd()->M()));
+    int m = static_cast<int>(pd()->M());
     int n = static_cast<int>(pd()->N());
     int k = static_cast<int>(pd()->K());
 
@@ -64,73 +71,117 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     problem.Ta_ext = convert_dnnl_to_kernel_type(src_mdw.data_type());
     problem.Tb_ext = convert_dnnl_to_kernel_type(wei_mdw.data_type());
     problem.Tc_ext = problem.Ts = problem.Tc = Type::f32;
-    problem.Ta = problem.Ta_ext;
-    problem.Tb = problem.Tb_ext;
-    problem.A.layout = MatrixLayout::T;
-    problem.B.layout = MatrixLayout::T;
-    problem.C.layout = MatrixLayout::T;
-    problem.A.setAlignment(alignmentForLD(k * problem.Ta_ext.bits() / 8));
-    problem.B.setAlignment(alignmentForLD(n * problem.Tb_ext.bits() / 8));
-    problem.C.setAlignment(problem.Tc.size());
 
-    auto quantizedType = [](data_type_t dt, data_type_t ddt) {
-        switch (dt) {
-            case dnnl_bf16: return Type::bf16;
-            case dnnl_f16: return Type::f16;
-            case dnnl_f32: return Type::f32;
-            case dnnl_u8:
-            case dnnl_s8:
-            case dnnl_u4:
-            case dnnl_s4:
-                if (ddt == dnnl_bf16)
-                    return Type::bf16;
-                else
-                    return Type::f16;
-            default: return Type::invalid;
+    auto internalTypes = [](Type extType) -> Type {
+        switch (extType) {
+            case Type::u4:
+            case Type::s4: return Type::s8;
+            default: return extType;
         }
     };
 
+    problem.Ta = internalTypes(problem.Ta_ext);
+    problem.Tb = internalTypes(problem.Tb_ext);
+
+    problem.A.setAlignment(alignmentForLD(
+            pd()->K() / problem.Ta_ext.perByte() * problem.Ta_ext.bits() / 8));
+    problem.B.setAlignment(alignmentForLD(pd()->N() / problem.Tb_ext.perByte()
+            * problem.Tb_ext.paddedSize()));
+
+    problem.C.setAlignment(problem.Tc.size());
+
+    problem.A.layout = MatrixLayout::T;
+    problem.B.layout = MatrixLayout::T;
+    //problem.B.layout = convert_dnnl_to_kernel_layout(wei_mdw.md_);
+    problem.C.layout = MatrixLayout::T;
+
+    //auto quantizedType = [](data_type_t dt, data_type_t ddt) {
+    //    switch (dt) {
+    //        case dnnl_bf16: return Type::bf16;
+    //        case dnnl_f16: return Type::f16;
+    //        case dnnl_f32: return Type::f32;
+    //        case dnnl_u8:
+    //        case dnnl_s8:
+    //        case dnnl_u4:
+    //        case dnnl_s4:
+    //            if (ddt == dnnl_bf16)
+    //                return Type::bf16;
+    //            else
+    //                return Type::f16;
+    //        default: return Type::invalid;
+    //    }
+    //};
+
     GEMMOptions opts;
+    opts.scaleA = !pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC);
+    opts.offsetA = !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_SRC);
+    opts.scaleB = !pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS);
+    opts.offsetB
+            = !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS);
     opts.slmPtr = true;
-    if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC)) {
-        opts.scaleA = true;
-        problem.Ta = quantizedType(src_mdw.data_type(), dst_mdw.data_type());
+
+    if (opts.scaleA) {
+        //problem.Ta = quantizedType(src_mdw.data_type(), dst_mdw.data_type());
         auto src_scales = pd()->attr()->scales_.get(DNNL_ARG_SRC);
         data_type_t src_scale_dt = src_scales.get_data_type();
         problem.Ta_scale = convert_dnnl_to_kernel_type(src_scale_dt);
         problem.A_scale.setAlignment(
                 int8_t(types::data_type_size(src_scale_dt)));
-        problem.A_scale.layout = MatrixLayout::N;
+        problem.A_scale.layout = MatrixLayout::T;
         problem.asPtrDims = 2;
     }
-    if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)) {
-        opts.scaleB = true;
-        problem.Tb = quantizedType(wei_mdw.data_type(), dst_mdw.data_type());
+    if (opts.offsetA) {
+        //problem.Ta = quantizedType(src_mdw.data_type(), dst_mdw.data_type());
+        auto src_zp = pd()->attr()->zero_points_.get(DNNL_ARG_SRC);
+        data_type_t src_zp_dt = src_zp.get_data_type();
+        problem.Tao = convert_dnnl_to_kernel_type(src_zp_dt);
+        problem.AO.setAlignment(types::data_type_size(src_zp_dt));
+        problem.AO.layout = MatrixLayout::T;
+        problem.aoPtrDims = 2;
+        problem.aOffset = ABOffset::Calc;
+    }
+
+    if (opts.scaleB) {
+        //problem.Tb = quantizedType(wei_mdw.data_type(), dst_mdw.data_type());
         auto wei_scales = pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS);
         data_type_t wei_scale_dt = wei_scales.get_data_type();
         problem.Tb_scale = convert_dnnl_to_kernel_type(wei_scale_dt);
-        problem.B_scale.setAlignment(pd()->N()
-                / pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).get_group_size()
-                * int8_t(types::data_type_size(wei_scale_dt)));
+        problem.B_scale.setAlignment(
+                int8_t(types::data_type_size(wei_scale_dt)));
         problem.B_scale.layout = MatrixLayout::T;
         problem.bsPtrDims = 2;
     }
 
-    if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC)) {
-        auto &src_scales = pd()->attr()->scales_.get(DNNL_ARG_SRC);
+    if (opts.offsetB) {
+        //problem.Tb = quantizedType(wei_mdw.data_type(), dst_mdw.data_type());
+        auto wei_zp = pd()->attr()->zero_points_.get(DNNL_ARG_WEIGHTS);
+        data_type_t wei_zp_dt = wei_zp.get_data_type();
+        problem.Tbo = convert_dnnl_to_kernel_type(wei_zp_dt);
+        problem.BO.layout = MatrixLayout::T;
+        problem.BO.setAlignment(types::data_type_size(wei_zp_dt));
+        problem.boPtrDims = 2;
+        problem.bOffset = ABOffset::Calc;
+    }
+
+    if (opts.scaleA || opts.offsetA) {
+        const quant_entry_t &src_scales = opts.scaleA
+                ? pd()->attr()->scales_.get(DNNL_ARG_SRC)
+                : pd()->attr()->zero_points_.get(DNNL_ARG_SRC);
         memory_desc_t md;
         const memory_desc_t &src_md = *pd()->src_md();
         src_scales.get_md(md, src_md);
         problem.aqGroupM = pd()->src_group_sizes_[0];
-        problem.aqGroupK = pd()->src_group_sizes_[1];
+        problem.aqGroupK = utils::rnd_up_pow2(pd()->src_group_sizes_[1]);
     }
-    if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)) {
-        auto &wei_scales = pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS);
+    if (opts.scaleB || opts.offsetB) {
+        const quant_entry_t &wei_quant = opts.scaleB
+                ? pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS)
+                : pd()->attr()->zero_points_.get(DNNL_ARG_WEIGHTS);
         memory_desc_t md;
         const memory_desc_t &wei_md = *pd()->weights_md();
-        wei_scales.get_md(md, wei_md);
-        problem.bqGroupK = pd()->wei_group_sizes_[1];
+        wei_quant.get_md(md, wei_md);
         problem.bqGroupN = pd()->wei_group_sizes_[2];
+        problem.bqGroupK = utils::rnd_up_pow2(pd()->wei_group_sizes_[1]);
     }
 
     SizeParams sizes;
@@ -151,10 +202,13 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
         gemm = microkernel::selectGEMM(opts, hw_info, sizes, problem);
     } catch (const std::runtime_error &ex) {
         std::vector<StrategyRequirement> reqs;
-        reqs.push_back(StrategyRequirement::UnrollM == 32);
-        reqs.push_back(StrategyRequirement::UnrollN == 32);
+        reqs.push_back(StrategyRequirement::UnrollM == 16);
+        reqs.push_back(StrategyRequirement::UnrollN
+                == utils::rnd_up_pow2(std::min<int>(pd()->N(), 64)));
         reqs.push_back(StrategyRequirement::WGM == 2);
-        reqs.push_back(StrategyRequirement::WGN == 2);
+        reqs.push_back(StrategyRequirement::WGN
+                == utils::rnd_up_pow2(std::max<int>(
+                        2, std::min<int>(pd()->N() / reqs[1].value, 8))));
         try {
             gemm = selectGEMM(opts, hw_info, sizes, problem, reqs);
         } catch (const std::runtime_error &ex) {
@@ -168,7 +222,6 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     //        gemm.getSetting("sg_per_wg_m"), gemm.getSetting("sg_per_wg_n"),
     //        gemm.getSetting("sg_tile_m"), gemm.getSetting("sg_tile_n"));
 
-    //printf(__FILE__ "(%d)\n", __LINE__);
     auto sg_size = dev_info->min_subgroup_size();
 
     /* Generate microkernel shims */
@@ -186,7 +239,7 @@ status_t grouped_micro_gemm_t::init_microkernels(impl::engine_t *engine) {
     pd_->sg_per_wg_n_ = gemm.getSetting("sg_per_wg_n");
     pd_->sg_tile_m_ = gemm.getSetting("sg_tile_m");
     pd_->sg_tile_n_ = gemm.getSetting("sg_tile_n");
-    if (gemm.grfMin > 128 || gemm.grfMin > 128) pd_->use_256_grf_ = true;
+    if (gemm.grfMin > 128) pd_->use_256_grf_ = true;
 
     return status::success;
 }
@@ -211,10 +264,20 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     memory_desc_wrapper wei_d(weights_md(0));
     memory_desc_wrapper dst_d(dst_md());
 
-    calc_group_sizes(
-            src_group_sizes_, attr()->scales_.get(DNNL_ARG_SRC), *src_md());
-    calc_group_sizes(wei_group_sizes_, attr()->scales_.get(DNNL_ARG_WEIGHTS),
-            *weights_md());
+    if (!attr()->scales_.has_default_values(DNNL_ARG_SRC)) {
+        calc_group_sizes(
+                src_group_sizes_, attr()->scales_.get(DNNL_ARG_SRC), *src_md());
+    } else if (!attr()->zero_points_.has_default_values(DNNL_ARG_SRC)) {
+        calc_group_sizes(src_group_sizes_,
+                attr()->zero_points_.get(DNNL_ARG_SRC), *src_md());
+    }
+    if (!attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)) {
+        calc_group_sizes(wei_group_sizes_,
+                attr()->scales_.get(DNNL_ARG_WEIGHTS), *weights_md());
+    } else if (!attr()->zero_points_.has_default_values(DNNL_ARG_WEIGHTS)) {
+        calc_group_sizes(wei_group_sizes_,
+                attr()->zero_points_.get(DNNL_ARG_WEIGHTS), *weights_md());
+    }
 
     // Check for grouped encoding on src and dst
     VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
@@ -274,14 +337,6 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     return status::success;
 }
 
-auto elems_per_byte(data_type_t dt) {
-    switch (dt) {
-        case data_type::u4:
-        case data_type::s4: return 2;
-        default: return 1;
-    }
-}
-
 status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
 
     CHECK(init_microkernels(engine));
@@ -321,14 +376,14 @@ status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
     def_data_type(kernel_ctx_,
             pd()->attr()->zero_points_.get(DNNL_ARG_WEIGHTS).get_data_type(),
             "WEI_ATTR_ZP");
-
-    if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC)) {
-        kernel_ctx_.define_int(
-                "NUM_SRC_ATTR_SCALES", pd()->src_group_sizes_[0]);
+    if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_SRC)
+            || !pd()->attr()->zero_points_.has_default_values(DNNL_ARG_SRC)) {
+        kernel_ctx_.define_int("SRC_GROUP_SIZE", pd()->src_group_sizes_[1]);
     }
-    if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)) {
-        kernel_ctx_.define_int(
-                "NUM_WEI_ATTR_SCALES", pd()->K() / pd()->wei_group_sizes_[1]);
+    if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
+            || !pd()->attr()->zero_points_.has_default_values(
+                    DNNL_ARG_WEIGHTS)) {
+        kernel_ctx_.define_int("WEI_GROUP_SIZE", pd()->wei_group_sizes_[1]);
     }
     kernel_ctx_.define_int("SRC_ELEMS_PER_BYTE", elems_per_byte(src_dt));
     kernel_ctx_.define_int("WEI_ELEMS_PER_BYTE", elems_per_byte(wei_dt));
@@ -360,40 +415,52 @@ status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
     const auto &bias_data = CTX_IN_STORAGE(DNNL_ARG_BIAS);
 
     auto pd_ = pd();
-    const auto *src_md = ctx.input(DNNL_ARG_SRC)->md();
-    const auto *wei_md = pd()->weights_md();
-    const auto *dst_md = ctx.output(DNNL_ARG_DST)->md();
-    const memory_desc_t *src_scales_md = nullptr;
-    const memory_desc_t *wei_scales_md = nullptr;
+    const memory_desc_t *src_md = ctx.input(DNNL_ARG_SRC)->md();
+    const memory_desc_t *wei_md = pd()->weights_md();
+    const memory_desc_t *dst_md = ctx.output(DNNL_ARG_DST)->md();
 
     const size_t num_groups = pd()->ngroups_;
 
-    const auto &attr_scales = pd()->attr()->scales_;
+    const quant_entries_t &attr_scales = pd()->attr()->scales_;
+    const quant_entries_t &attr_zero_points = pd()->attr()->zero_points_;
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);
+    const bool with_src_zero_points
+            = !attr_zero_points.has_default_values(DNNL_ARG_SRC);
     const bool with_wei_scales
             = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
-    const bool with_bias = pd()->with_bias();
+    const bool with_wei_zero_points
+            = !attr_zero_points.has_default_values(DNNL_ARG_WEIGHTS);
 
-    if (with_src_scales) {
-        src_scales_md = ctx.input(DNNL_ARG_SRC | DNNL_ARG_ATTR_SCALES)->md();
-    }
-    if (with_wei_scales) {
-        wei_scales_md
-                = ctx.input(DNNL_ARG_WEIGHTS | DNNL_ARG_ATTR_SCALES)->md();
-    }
+    int ldsrcq = 0;
+    int ldweiq = 0;
 
+    if (with_src_scales || with_src_zero_points) {
+        const memory_desc_t *src_quant_md = with_src_scales
+                ? ctx.input(DNNL_ARG_SRC | DNNL_ARG_ATTR_SCALES)->md()
+                : ctx.input(DNNL_ARG_SRC | DNNL_ARG_ATTR_ZERO_POINTS)->md();
+        ldsrcq = static_cast<int>(src_quant_md->format_desc.blocking
+                                          .strides[src_quant_md->ndims - 1]);
+    }
+    if (with_wei_scales || with_wei_zero_points) {
+        const memory_desc_t *wei_quant_md = with_wei_scales
+                ? ctx.input(DNNL_ARG_WEIGHTS | DNNL_ARG_ATTR_SCALES)->md()
+                : ctx.input(DNNL_ARG_WEIGHTS | DNNL_ARG_ATTR_ZERO_POINTS)->md();
+        ldweiq = static_cast<int>(wei_quant_md->format_desc.blocking
+                                          .strides[wei_quant_md->ndims - 2]);
+    }
     int m_all = static_cast<int>(dst_md->dims[dst_md->ndims - 2]);
     int n = static_cast<int>(dst_md->dims[dst_md->ndims - 1]);
     int k = static_cast<int>(src_md->dims[src_md->ndims - 1]);
-    //printf("m_all=%d, n=%d, k=%d\n", m_all, n, k);
+    //printf("m_all=%d, n=%d, k=%d ldsrcq: %d ldweiq: %d\n", m_all, n, k, ldsrcq,
+    //        ldweiq);
 
     int ldsrc = static_cast<int>(src_md->dims[src_md->ndims - 1]);
     int ldwei = static_cast<int>(wei_md->dims[wei_md->ndims - 1]);
     int lddst = static_cast<int>(dst_md->dims[dst_md->ndims - 1]);
-    int ldsrcq = static_cast<int>(
-            src_scales_md ? src_scales_md->dims[src_scales_md->ndims - 1] : 0);
-    int ldweiq = static_cast<int>(
-            wei_scales_md ? wei_scales_md->dims[wei_scales_md->ndims - 1] : 0);
+    //int ldsrc = static_cast<int>(gemm_desc_t::get_ld(*src_md));
+    //int ldwei = static_cast<int>(gemm_desc_t::get_ld(*wei_md));
+    //int lddst = static_cast<int>(gemm_desc_t::get_ld(*dst_md));
+    //printf("ldsrc=%d, ldwei=%d, lddst=%d\n", ldsrc, ldwei, lddst);
 
     compute::kernel_arg_list_t arg_list;
     arg_list.append(src_data);

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2024-2025 Intel Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_MATMUL_GROUPED_MICRO_GEMM_HPP
-#define GPU_MATMUL_GROUPED_MICRO_GEMM_HPP
+#ifndef GPU_INTEL_MATMUL_GROUPED_MICRO_GEMM_HPP
+#define GPU_INTEL_MATMUL_GROUPED_MICRO_GEMM_HPP
 
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
@@ -78,7 +78,7 @@ struct grouped_micro_gemm_t : public primitive_t {
     private:
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
     };
-    status_t init(impl::engine_t *engine);
+    status_t init(impl::engine_t *engine) override;
     status_t init_microkernels(impl::engine_t *engine);
 
     status_t execute(const exec_ctx_t &ctx) const override;
@@ -95,4 +95,4 @@ struct grouped_micro_gemm_t : public primitive_t {
 } // namespace impl
 } // namespace dnnl
 
-#endif // GPU_MATMUL_GROUPED_MICRO_GEMM_HPP
+#endif // GPU_INTEL_MATMUL_GROUPED_MICRO_GEMM_HPP

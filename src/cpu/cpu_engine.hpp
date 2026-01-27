@@ -49,6 +49,12 @@
     DNNL_RV64GCV_ZVFH_ONLY(CPU_INSTANCE(__VA_ARGS__))
 #define CPU_INSTANCE_PPC64(...) DNNL_PPC64_ONLY(CPU_INSTANCE(__VA_ARGS__))
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+#define CPU_INSTANCE_GROUPED(...) CPU_INSTANCE(__VA_ARGS__)
+#else
+#define CPU_INSTANCE_GROUPED(...)
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace cpu {

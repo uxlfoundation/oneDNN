@@ -267,17 +267,17 @@ struct gen_t : public primitive_t {
 
             // Wrangle data types.
             auto ao_type = with_a_zero_points()
-                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
-                    : data_type::s32;
+                    ? attr_zps.get_data_type(DNNL_ARG_A)
+                    : data_type::undef;
             auto bo_type = with_b_zero_points()
-                    ? attr_zps.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
-                    : data_type::s32;
+                    ? attr_zps.get_data_type(DNNL_ARG_B)
+                    : data_type::undef;
             auto ag_type = with_a_group_sums()
-                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_B : DNNL_ARG_A)
-                    : data_type::s32;
+                    ? attr_gs.get_data_type(DNNL_ARG_A)
+                    : data_type::undef;
             auto bg_type = with_b_group_sums()
-                    ? attr_gs.get_data_type(swap_ab_ ? DNNL_ARG_A : DNNL_ARG_B)
-                    : data_type::s32;
+                    ? attr_gs.get_data_type(DNNL_ARG_B)
+                    : data_type::undef;
             bool int_acc = utils::one_of(eff_a_type(), s8, u8);
             int_acc &= (!(a_scales_grouped() || b_scales_grouped())
                     && !(a_zp_grouped() || b_zp_grouped()));
@@ -347,26 +347,22 @@ struct gen_t : public primitive_t {
                 return !attr()->precomputed_reductions_.has_default_values(idx);
             };
 
-            // TODO: Refactor to contain all swap handling within pd.
-            jit::quant_params a_quant, b_quant;
+            jit::quant_params a_quant
+                    = {a_scales_type_, ao_type, ag_type, asc_dims_, ao_dims_,
+                            ag_dims_, a_q2d_group_k(), a_q2d_group_m(), 0,
+                            has_gs(DNNL_ARG_A), false, a_zp_host_scalar()};
+            jit::quant_params b_quant
+                    = {b_scales_type_, bo_type, bg_type, bsc_dims_, bo_dims_,
+                            bg_dims_, b_q2d_group_k(), 0, b_q2d_group_n(),
+                            has_gs(DNNL_ARG_B), false, b_zp_host_scalar()};
             if (swap_ab()) {
-                a_quant = {b_scales_type_, ao_type, ag_type, bsc_dims_,
-                        bo_dims_, bg_dims_, b_q2d_group_k(), b_q2d_group_n(), 0,
-                        has_gs(DNNL_ARG_B), false, b_zp_host_scalar()};
-                b_quant = {a_scales_type_, bo_type, bg_type, asc_dims_,
-                        ao_dims_, ag_dims_, a_q2d_group_k(), 0, a_q2d_group_m(),
-                        has_gs(DNNL_ARG_A), false, a_zp_host_scalar()};
-            } else {
-                a_quant = {a_scales_type_, ao_type, ag_type, asc_dims_,
-                        ao_dims_, ag_dims_, a_q2d_group_k(), a_q2d_group_m(), 0,
-                        has_gs(DNNL_ARG_A), false, a_zp_host_scalar()};
-                b_quant = {b_scales_type_, bo_type, bg_type, bsc_dims_,
-                        bo_dims_, bg_dims_, b_q2d_group_k(), 0, b_q2d_group_n(),
-                        has_gs(DNNL_ARG_B), false, b_zp_host_scalar()};
+                std::swap(a_quant, b_quant);
+                std::swap(a_quant.group_m, a_quant.group_n);
+                std::swap(b_quant.group_m, b_quant.group_n);
             }
-            jit::quant_params c_quant = {c_scales_type_, co_type, bg_type,
-                    csc_dims_, -1, -1, 0, c_q2d_group_m(), c_q2d_group_n(),
-                    has_gs(DNNL_ARG_C), with_mx_scale(), false};
+            jit::quant_params c_quant = {c_scales_type_, co_type,
+                    data_type::undef, csc_dims_, -1, -1, 0, c_q2d_group_m(),
+                    c_q2d_group_n(), false, with_mx_scale(), false};
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;

@@ -649,9 +649,10 @@ int get_post_op_mem_usage(const post_op_tensor_info_t &info, int c_elems,
 
 int find_tile_size(const dsl::kernel::options_t &options,
         const post_op_context_t &post_op_ctx, const view_t &c_mem_view,
-        const layout_t &c_reg_layout, int preload_max_size, int post_op_blk) {
+        const layout_t &c_reg_layout, int tile_max_size, int preload_max_size,
+        int post_op_blk) {
     bool with_post_ops = !post_op_ctx.post_ops().empty();
-    for (int tile_size = 1024; tile_size >= 1; tile_size /= 2) {
+    for (int tile_size = tile_max_size; tile_size >= 1; tile_size /= 2) {
         int c_type_size = c_mem_view.type().size();
         int elems = tile_size / (with_post_ops ? sizeof(float) : c_type_size);
         int c_mul_size = elems * c_type_size;
@@ -676,7 +677,7 @@ int find_tile_size(const dsl::kernel::options_t &options,
         int total_size = c_size + preload_max_size + po_size;
         int available_size = options.regs() * options.grf_size()
                 - (int)size_bytes(c_reg_layout);
-        if (total_size <= available_size * 0.8) return tile_size;
+        if (total_size <= available_size * 0.75) return tile_size;
     }
     gpu_error_not_expected();
     return -1;
@@ -712,7 +713,8 @@ public:
             const post_op_context_t &post_op_ctx,
             const tile_coord_t &thr_tile_coord, const view_t &c_mem_view,
             const layout_t &c_reg_layout, const expr_t &c_mem_buf,
-            const expr_t &c_reg_buf, int preload_max_size, int post_op_blk)
+            const expr_t &c_reg_buf, int tile_max_size, int preload_max_size,
+            int post_op_blk)
         : ir_ctx_(ir_ctx)
         , gemm_schedule_(gemm_schedule)
         , post_op_ctx_(post_op_ctx)
@@ -720,7 +722,6 @@ public:
         , c_mem_buf_(c_mem_buf)
         , force_c_reorder_(force_c_reorder)
         , restore_zero_padding_(post_op_ctx.need_to_restore_zero_padding())
-        , preload_max_size_(preload_max_size)
         , post_op_blk_(post_op_blk) {
 
         int tensor_idx = 0;
@@ -728,7 +729,7 @@ public:
         // Tile size in bytes. All post-ops are applied to a single tile, then
         // to the next tile, etc.
         tile_size_ = find_tile_size(options, post_op_ctx_, c_mem_view_,
-                c_reg_layout, preload_max_size_, post_op_blk_);
+                c_reg_layout, tile_max_size, preload_max_size, post_op_blk_);
 
         gpu_trace() << "Creating epilogue with parameters"
                     << ": tile_size = " << tile_size_
@@ -754,7 +755,7 @@ public:
 
         // Estimate buffer sizes required to load the full tensor, do not do
         // preload if it requires too much GRF memory.
-        int available_size = preload_max_size_;
+        int available_size = preload_max_size;
         for (auto &t : post_op_tensors_) {
             if (!t.needs_load()) continue;
             int required_size = t.estimate_grf_consumption();
@@ -1163,7 +1164,6 @@ private:
     // - the destination data type without post-ops
     // - f32 with post-ops
     int tile_size_;
-    int preload_max_size_;
     int post_op_blk_;
 
     std::vector<post_op_builder_t> post_op_builders_;
@@ -1179,6 +1179,10 @@ stmt_t create_epilogue_stmt(const dsl::kernel::options_t &options,
         bool force_c_reorder, const post_op_context_t &post_op_ctx,
         const tile_coord_t &thr_tile_coord, const layout_t &c_reg_layout,
         const expr_t &c_mem_buf, const expr_t &c_reg_buf, int &c_reg_buf_size) {
+    int grf_max_size = options.grf_size() * options.regs();
+    gpu_assert(utils::rnd_up_pow2(grf_max_size) == grf_max_size);
+    // Max size of post-op tile in bytes, GRF/2 by default.
+    int tile_max_size = grf_max_size / 2;
     // Max size of post-op tensor buffers to preload and reuse for all tiles.
     int preload_max_size = 512;
     // Block size to apply post-ops within tile. A post-op may have associated
@@ -1190,7 +1194,7 @@ stmt_t create_epilogue_stmt(const dsl::kernel::options_t &options,
             = post_op_ctx.cp_view().create_sub_view(thr_tile_coord);
     epilogue_builder_t builder(ir_ctx, options, gemm_schedule, force_c_reorder,
             post_op_ctx, thr_tile_coord, c_mem_view, c_reg_layout, c_mem_buf,
-            c_reg_buf, preload_max_size, post_op_blk);
+            c_reg_buf, tile_max_size, preload_max_size, post_op_blk);
     c_reg_buf_size = utils::rnd_up(builder.c_reg_buf_size(), ir_ctx.grf_size());
     return builder.stmt();
 }

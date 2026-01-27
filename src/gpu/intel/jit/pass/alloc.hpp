@@ -68,6 +68,12 @@ stmt_t inject_let_stmts(const stmt_t &stmt, const std::vector<stmt_t> &lets);
 //     }
 stmt_t inject_dangling_let_stmts(const stmt_t &stmt);
 
+// Injects an allocation attribute to store information about the SENDs that
+// access the buffer. This information is used during nGEN lowering to better
+// utilize the register space by splitting the buffer into chunks that might
+// be non-contiguous between the SENDs.
+stmt_t inject_send_map_attribute(const stmt_t &stmt, ir_context_t &ir_ctx);
+
 } // namespace jit
 } // namespace intel
 } // namespace gpu

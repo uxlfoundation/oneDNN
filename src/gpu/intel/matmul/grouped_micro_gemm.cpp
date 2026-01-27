@@ -298,12 +298,21 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
 
     ngroups_ = src_grouped.ngroups;
     // only supported dt for now
-    VDISPATCH_MATMUL(utils::one_of(src_dt, f32, f16, bf16, u8, s8, s4),
+    VDISPATCH_MATMUL(utils::one_of(src_dt, f32, f16, bf16, u8, s8, s4, u4),
             VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_MATMUL(utils::one_of(wei_dt, f32, f16, bf16, u8, s8, s4),
+    VDISPATCH_MATMUL(utils::one_of(wei_dt, f32, f16, bf16, u8, s8, s4, u4),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_MATMUL(
             utils::one_of(dst_dt, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT_CFG);
+
+    const bool src_subbyte = utils::one_of(src_dt, s4, u4);
+    const bool wei_subbyte = utils::one_of(wei_dt, s4, u4);
+    VDISPATCH_MATMUL(IMPLICATION(src_subbyte, (K() % 2) == 0), VERBOSE_BAD_DIM,
+            "src", 1);
+    VDISPATCH_MATMUL(IMPLICATION(wei_subbyte, (K() % 2) == 0), VERBOSE_BAD_DIM,
+            "weights", 1);
+    VDISPATCH_MATMUL(IMPLICATION(wei_subbyte, (N() % 2) == 0), VERBOSE_BAD_DIM,
+            "weights", 2);
 
     // Check offsets are int32
     VDISPATCH_MATMUL(

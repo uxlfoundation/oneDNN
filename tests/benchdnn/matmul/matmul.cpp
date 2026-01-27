@@ -143,13 +143,13 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> create_md(const prb_t *prb,
                 default: assert(!"unsupported encoding"); return nullptr;
             }
         } else {
-            // for grouped case weights are 3D and we use 'abc' tag
+            // for grouped case weights are 3D
             int wei_ndims = prb->ndims;
             std::string weights_tag = prb->wtag;
 #if DNNL_EXPERIMENTAL_GROUPED_GEMM
             if (prb->sparse_options.get_group_count() != 0) {
                 wei_ndims = 3;
-                weights_tag = "abc";
+                if (weights_tag == "any") { weights_tag = "abc"; }
             }
 #endif
 

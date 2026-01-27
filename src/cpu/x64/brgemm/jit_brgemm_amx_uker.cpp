@@ -2958,30 +2958,31 @@ void jit_brgemm_amx_uker_base_t::generate() {
     mov(reg_mask, tail_mask);
     kmovq(ld_tail_mask, reg_mask);
 
-    LDA_size_ = brg.typesize_A * brg.LDA;
-    LDB_size_ = brg.typesize_B * brg.LDB;
-    LDC_size_ = brg.typesize_C * brg.LDC;
-    LDD_size_ = brg.typesize_D * brg.LDD;
+    LDA_size_ = static_cast<dim_t>(brg.typesize_A) * brg.LDA;
+    LDB_size_ = static_cast<dim_t>(brg.typesize_B) * brg.LDB;
+    LDC_size_ = static_cast<dim_t>(brg.typesize_C) * brg.LDC;
+    LDD_size_ = static_cast<dim_t>(brg.typesize_D) * brg.LDD;
 
-    LDA2_size_ = brg.typesize_A * brg.LDA2;
-    LDB2_size_ = brg.typesize_B * brg.LDB2;
-    LDC2_size_M_ = brg.typesize_C * brg.LDC2_M;
-    LDC2_size_N_ = brg.typesize_C * brg.LDC2_N;
+    LDA2_size_ = static_cast<dim_t>(brg.typesize_A) * brg.LDA2;
+    LDB2_size_ = static_cast<dim_t>(brg.typesize_B) * brg.LDB2;
+    LDC2_size_M_ = static_cast<dim_t>(brg.typesize_C) * brg.LDC2_M;
+    LDC2_size_N_ = static_cast<dim_t>(brg.typesize_C) * brg.LDC2_N;
 
-    ld_block_B_size_ = brg.typesize_B
+    ld_block_B_size_ = static_cast<dim_t>(brg.typesize_B)
             * ((brg.brgattr.LDB2 != 0) ? brg.brgattr.LDB2 : brg.ld_block);
-    ld_block_C_size_ = brg.typesize_C * brg.ld_block;
-    ld_block_D_size_ = brg.typesize_D * brg.ld_block;
-    ld_block_bias_size_ = brg.typesize_bias * brg.ld_block;
+    ld_block_C_size_ = static_cast<dim_t>(brg.typesize_C) * brg.ld_block;
+    ld_block_D_size_ = static_cast<dim_t>(brg.typesize_D) * brg.ld_block;
+    ld_block_bias_size_ = static_cast<dim_t>(brg.typesize_bias) * brg.ld_block;
     if (brg.with_wei_scales) {
         ld_block_scales_size_
-                = types::data_type_size(brg.dt_wei_scales) * brg.ld_block;
+                = static_cast<dim_t>(types::data_type_size(brg.dt_wei_scales))
+                * brg.ld_block;
     }
-    ld_block_zp_size_ = sizeof(int32_t) * brg.ld_block;
-    ldb_tail_B_size_ = brg.typesize_B * brg.ldb_tail;
-    ldb_tail_C_size_ = brg.typesize_C * brg.ldb_tail;
-    ldb_tail_D_size_ = brg.typesize_D * brg.ldb_tail;
-    ldb_tail_zp_size_ = sizeof(int32_t) * brg.ldb_tail;
+    ld_block_zp_size_ = static_cast<dim_t>(sizeof(int32_t)) * brg.ld_block;
+    ldb_tail_B_size_ = static_cast<dim_t>(brg.typesize_B) * brg.ldb_tail;
+    ldb_tail_C_size_ = static_cast<dim_t>(brg.typesize_C) * brg.ldb_tail;
+    ldb_tail_D_size_ = static_cast<dim_t>(brg.typesize_D) * brg.ldb_tail;
+    ldb_tail_zp_size_ = static_cast<dim_t>(sizeof(int32_t)) * brg.ldb_tail;
 
     // if beta == 1 and C datatype is f32 it is better to perform addition by
     // reading tiles directly from C instead of by reading/writing by vectors

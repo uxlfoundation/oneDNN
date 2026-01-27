@@ -162,6 +162,12 @@ namespace gpu {
     DNNL_GPU_INTEL_ONLY(GPU_INSTANCE(__VA_ARGS__))
 #endif
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+#define GPU_INSTANCE_GROUPED(...) DNNL_GPU_INTEL_ONLY(GPU_INSTANCE(__VA_ARGS__))
+#else
+#define GPU_INSTANCE_GROUPED(...)
+#endif
+
 #define DECLARE_IMPL_LIST(kind) \
     const impl_list_item_t *get_##kind##_impl_list(const kind##_desc_t *desc);
 

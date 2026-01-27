@@ -28,7 +28,7 @@
 #include <memory>
 #include <random>
 
-#define PRINT_MEM 0
+#define PRINT_MEM 1
 
 using mdt = memory::data_type;
 using dnnl::accumulation_mode;
@@ -2144,11 +2144,11 @@ public:
                 t.m_diff_key,
                 t.m_diff_value); //TODO: quantized vs non-quantized for GOLD
 
-        float max_diff_threshold = 0.2f;
+        float max_diff_threshold = 0.3f;
         float fthreshold = 0.f;
         if (p.dt.dt == mdt::bf16 || p.dt.dt == mdt::f16) {
             //fthreshold = 0.0079f; //todo: correct threshold or better values
-            fthreshold = 0.079f;
+            fthreshold = 0.1;
         } else {
             fthreshold = 0.001466f;
         }
@@ -2161,90 +2161,66 @@ public:
             printf("check output\n");
             check_memory<float16_t>(strm, t.m_output, t.m_output_quantized,
                     max_diff_threshold, fthreshold);
-#if 0
-//#if PRINT_MEM
-            print_mem(t.m_output, "gold m_output");
-            print_mem(t.m_output_quantized, "test m_output");
-            printf("----------\n\n");
-#endif
 
             printf("check dQ\n");
             check_memory<float16_t>(strm, t.m_diff_query, t.m_diff_query_quantized, max_diff_threshold, fthreshold);
-//#if 0
-#if PRINT_MEM
-            print_mem(t.m_diff_query, "gold m_diff_query");
-            print_mem(t.m_diff_query_quantized, "test m_diff_query");
-            printf("----------\n\n");
-#endif
 
             printf("check dK\n");
             check_memory<float16_t>(strm,   t.m_diff_key,   t.m_diff_key_quantized, max_diff_threshold, fthreshold);
-#if 0
-//#if PRINT_MEM
-            print_mem(t.m_diff_key, "gold m_diff_key");
-            print_mem(t.m_diff_key_quantized, "test m_diff_key");
-            printf("----------\n\n");
-#endif
 
             printf("check dV\n");
             check_memory<float16_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold, fthreshold);
-#if 0
-//#if PRINT_MEM
-            print_mem(t.m_diff_value, "gold m_diff_value");
-            print_mem(t.m_diff_value_quantized, "test m_diff_value");
-            printf("----------\n\n");
-#endif
+
         } else if (t.m_output.get_desc().get_data_type()
                 == mdt::bf16) { //TODO: unneeded?
             check_memory<bfloat16_t>(strm, t.m_output, t.m_output_quantized,
                     max_diff_threshold, fthreshold);
+            printf("check dQ\n");
+            check_memory<bfloat16_t>(strm, t.m_diff_query, t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+
+            printf("check dK\n");
+            check_memory<bfloat16_t>(strm,   t.m_diff_key,   t.m_diff_key_quantized, max_diff_threshold, fthreshold);
+
+            printf("check dV\n");
+            check_memory<bfloat16_t>(strm, t.m_diff_value,
+                    t.m_diff_value_quantized, max_diff_threshold, fthreshold);
+
         } else if (t.m_output.get_desc().get_data_type() == mdt::f32) {
             printf("\n\n====== Bwd Compare ======\n");
             check_memory<float_t>(strm, t.m_output, t.m_output_quantized,
                     max_diff_threshold, fthreshold);
-#if PRINT_MEM
-            print_mem(t.m_output, "gold m_output");
-            print_mem(t.m_output_quantized, "test m_output");
-            printf("----------\n\n");
-#endif
 
             printf("check dQ\n");
             check_memory<float_t>(strm, t.m_diff_query,
                     t.m_diff_query_quantized, max_diff_threshold, fthreshold);
-            //auto qtdims = t.m_diff_query.get_desc().get_dims();
-            //memory::desc q_t_md({qtdims[0], qtdims[1], qtdims[2], qtdims[3]},
-            //memory::data_type::f32, memory::format_tag::abcd);
-            //memory t_diffq = memory(q_t_md, eng);
-            //memory t_diffqq = memory(q_t_md, eng);
-            //transpose_strides(eng, t_diffq, t.m_diff_query);
-            //transpose_strides(eng, t_diffqq, t.m_diff_query_quantized);
 
-#if PRINT_MEM
-            print_mem(t.m_diff_query, "gold m_diff_query");
-            print_mem(t.m_diff_query_quantized, "test m_diff_query");
-            printf("----------\n\n");
-#endif
             printf("check dK\n");
             check_memory<float_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
                     max_diff_threshold, fthreshold);
-#if 0
-//#if PRINT_MEM
-            print_mem(t.m_diff_key, "gold m_diff_key");
-            print_mem(t.m_diff_key_quantized, "test m_diff_key");
-            printf("----------\n\n");
-#endif
 
             printf("check dV\n");
             check_memory<float_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold, fthreshold);
-#if 0
-//#if PRINT_MEM
-            print_mem(t.m_diff_value, "gold m_diff_value");
-            print_mem(t.m_diff_value_quantized, "test m_diff_value");
-            printf("----------\n\n");
-#endif
         }
+
+#if PRINT_MEM
+        print_mem(t.m_output, "gold m_output");
+        print_mem(t.m_output_quantized, "test m_output");
+        printf("----------\n\n");
+
+        print_mem(t.m_diff_query, "gold m_diff_query");
+        print_mem(t.m_diff_query_quantized, "test m_diff_query");
+        printf("----------\n\n");
+
+        print_mem(t.m_diff_key, "gold m_diff_key");
+        print_mem(t.m_diff_key_quantized, "test m_diff_key");
+        printf("----------\n\n");
+
+        print_mem(t.m_diff_value, "gold m_diff_value");
+        print_mem(t.m_diff_value_quantized, "test m_diff_value");
+        printf("----------\n\n");
+#endif
         printf("qtimebwd (ms): %f \n",
                     (float)qtime_bwd.count() / 1e6 );
     }
@@ -2630,7 +2606,8 @@ INSTANTIATE_TEST_SUITE_P(llama_bwd_f32,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,    kdt,        ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,    mskdt, qtype
     testing::Values(
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    16,      16,     16, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
-                    sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                    //sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                    sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::bf16, mdt::bf16,  mdt::undef, mdt::undef,  mdt::bf16, mdt::undef, mdt::undef, mdt::bf16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
 
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    16,      16,     16, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }

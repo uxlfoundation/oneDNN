@@ -64,18 +64,6 @@ typedef ugemm_ktq_c_type ktq_tile_type; // D*Br tile
 #define SCALES_TO_FLOAT convert_float
 #endif
 
-#ifdef VAL_ATTR_SCALES_DT_BF16
-#define VAL_SCALES_TO_FLOAT cvt_bf16_to_f32
-#else
-#define VAL_SCALES_TO_FLOAT convert_float
-#endif
-
-#if KEY_ATTR_SCALES_DT_BF16
-#define KEY_SCALES_TO_FLOAT cvt_bf16_to_f32
-#else
-#define KEY_SCALES_TO_FLOAT convert_float
-#endif
-
 /*
 won't work, since br*nbr < SG_SZ
 DECLARE_2D_TILE(a_t_tile_type, FMA_TYPE, SUBGROUP_SIZE,
@@ -97,6 +85,12 @@ DECLARE_2D_TILE(q_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
 #else
 DECLARE_2D_TILE(q_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
 #endif
+
+DECLARE_2D_TILE_COPY_REBLOCK(q_tile_type, SUBGROUP_SIZE,
+        D_MAX, 1, 1, q_tile_sg_n,
+        dq_tile_type, SUBGROUP_SIZE,
+        D_MAX, 1, 1, q_tile_sg_n,
+        CONVERT_FLOAT_T)
 
 #if BLOCK_Q
 
@@ -256,7 +250,7 @@ DECLARE_2D_TILE_COPY_REBLOCK(p_tile_type_reblock, SUBGROUP_SIZE,
         p_tile_type, SUBGROUP_SIZE,
         ugemm_vtdA_c_type_block0, ugemm_vtdA_c_type_block1,
         ugemm_vtdA_c_type_nblock0, ugemm_vtdA_c_type_nblock1,
-        CONVERT_DATA_T)
+        CONVERT_FLOAT_T)
 
 DECLARE_2D_TILE_VREDUCE(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
@@ -582,7 +576,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         // QQQ what is panel even for?? is it just panel_size=64? w/Pr
         // todo, return to slm_k function
         // tile_store_t_slm_k(&K_tile, K_slm, ugemm_kq_sg_tile_m,
-                //ugemm_kq_wg_tile_m, 0, k0_copy);
+                // ugemm_kq_wg_tile_m, 0, k0_copy);
 
 #if USE_SYSTOLIC_UKERNEL
         tile_store_sys_src1(K_tile, &K_slm[0], ugemm_kq_wg_tile_m, 0, k0_copy);
@@ -918,7 +912,8 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 //sg_j_kq * ugemm_vtdA_sg_tile_n, sg_i_kq * ugemm_vtdA_sg_tile_m);
         //tile_fill(S2_tile, get_sub_group_local_id());
         //if(q0==0)
-        //tile_store(S2_tile_reblock, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2); //latest
+        tile_copy_reblock(dP_tile, &S2_tile_reblock);
+        tile_store(S2_tile_reblock, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2); //latest
         //tile_store(S2_tile, S2_test, 32, 32, 32, sg_j0_s2, sg_i0_s2); //latest
 
         barrier(CLK_LOCAL_MEM_FENCE);
@@ -1089,8 +1084,8 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         /* Convert to half precision and store */
         tile_copy_reblock(dQ_tile, &dQ_tile_dst);
         //if(q0 == 0)
- //       if(k0 == 0)
- //           tile_store(dQ_tile_dst, S2_test, 32, 32, 32, sg_i0_dq, sg_j0_dq);
+//        if(k0 == 0)
+//           tile_store(dQ_tile_dst, S2_test, 32, 32, 32, sg_i0_dq, sg_j0_dq);
 
         //tile_atomic_add(dQ_tile_dst, dQ, d, q, ldq, sg_i0_dq, sg_j0_dq);
         tile_atomic_add(dQ_tile, dQ, d, q, ldq, sg_i0_dq, sg_j0_dq);
@@ -1204,7 +1199,7 @@ preprocess_Di(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define Di_slm_size (ugemm_kq_wg_tile_n * sizeof(VAL_DATA_T))
     local char slm[Di_slm_size];
 
-    local VAL_DATA_T *Di_slm = (local VAL_DATA_T *)&slm[0];
+    local float *Di_slm = (local float *)&slm[0];
 
     uint sg_i0_kq = sg_i_kq * ugemm_kq_sg_tile_m;
     uint sg_j0_kq = sg_j_kq * ugemm_kq_sg_tile_n;
@@ -1212,8 +1207,8 @@ preprocess_Di(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     //s_sum_tile_type D_i;
     //tile_fill(D_i, 0.0f);
     if (q > 0) {
-        q_tile_type dA_tile1, A_tile; // for D_i calculation
-        dq_tile_type zero_dQ_tile; // zeroing dQ for atomics
+        // zeroing dQ for atomics
+        dq_tile_type zero_dQ_tile;
         tile_fill(zero_dQ_tile, 0.f);
 
         uint q0_copy = q_tile_sg_n * sg_ij;
@@ -1221,12 +1216,29 @@ preprocess_Di(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_store(zero_dQ_tile, (global float *)dQ, d, q, ldq, 0,
                 wg_j0 + q0_copy);
 
-        // TODO: fixtype, load dA_type
-        tile_load(&dA_tile1, (global FMA_TYPE *)dA, d, q, lda, 0,
+        // D_i calculation
+#if QRY_DT_F32
+        dq_tile_type dA_tile, A_tile;
+        tile_load(&dA_tile, (global FMA_TYPE *)dA, d, q, lda, 0,
                 wg_j0 + q0_copy);
         tile_load(&A_tile, (global FMA_TYPE *)A, d, q, lda, 0, wg_j0 + q0_copy);
+#else
+        dq_tile_type dA_tile, A_tile;
+        q_tile_type dA_tile_reblock, A_tile_reblock; // load native type
+
+        tile_load(&dA_tile_reblock, (global FMA_TYPE *)dA, d, q, lda, 0,
+                wg_j0 + q0_copy);
+
+        // convert to float for calculation
+        tile_load(&A_tile_reblock, (global FMA_TYPE *)A, d, q, lda, 0, wg_j0 + q0_copy);
+        tile_copy_reblock(dA_tile_reblock, &dA_tile);
+        tile_copy_reblock(A_tile_reblock, &A_tile);
+
+
+#endif
+
 #define binary_mul(x, y) ((x) * (y))
-        tile_binary(A_tile, dA_tile1, binary_mul);
+        tile_binary(A_tile, dA_tile, binary_mul);
 
         for (int j = 0; j < q_tile_sg_n; j++) {
             float r = 0.f;
@@ -1243,6 +1255,7 @@ preprocess_Di(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 i += get_local_size(0)) {
             if (get_local_id(1) == 0 && (wg_j0 + i) < q) { ws_Di[wg_j0 + i] = Di_slm[i];  }
         }
+
         //tile_store(D_i, ws_Di, q, 1, q, wg_j0 + q0_copy,
         //0); //should be 1d write //TODO:wg_j correct?
     }
@@ -1264,6 +1277,6 @@ postprocess_dQ(
     dQ += q_offset;
     size_t idx = get_global_id(0);
     if(idx < (d * q)) {
-        dQ[idx] = (DST_DATA_T)dQ_float[idx];
+        dQ[idx] = TO_DATA_T(dQ_float[idx]);
     }
 }

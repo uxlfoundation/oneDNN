@@ -243,7 +243,9 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
                 for (size_t i = 0; i < ndims; ++i) {
                     offset += idxs[i] * strides[i];
                 }
-                printf("%+9.3f", (float)(mapped_ptr[offset]));
+                if (idxs[lastdim] % 16 == 0) printf("|");
+                if (idxs[lastdim] % 32 == 0) printf("|");
+                printf("%+6.3f ", (float)(mapped_ptr[offset]));
                 if (idxs[lastdim] == (dims[lastdim] - 1)) { printf("\n"); }
             });
         } break;

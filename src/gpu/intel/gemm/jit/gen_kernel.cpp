@@ -571,14 +571,20 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         problem_.autoTypeConversions(hw_, has_systolic);
 
     if (problem_.needsAGroupSums()) {
-        problem_.Tag = convert_dnnl_to_kernel_type(a_quant.gs_type);
+        data_type_t gs_dt = a_quant.gs_type == data_type::undef
+                ? data_type::s32
+                : a_quant.gs_type;
+        problem_.Tag = convert_dnnl_to_kernel_type(gs_dt);
         problem_.Ag.layout = MatrixLayout::N;
         problem_.Ag.setAlignment(problem_.Tag.paddedSize());
         if (problem_.bqGroupK == 0) problem_.bqGroupK = problem_.aqGroupK;
         if (problem_.aqGroupK == 0) problem_.aqGroupK = problem_.bqGroupK;
     }
     if (problem_.needsBGroupSums()) {
-        problem_.Tbg = convert_dnnl_to_kernel_type(b_quant.gs_type);
+        data_type_t gs_dt = b_quant.gs_type == data_type::undef
+                ? data_type::s32
+                : b_quant.gs_type;
+        problem_.Tbg = convert_dnnl_to_kernel_type(gs_dt);
         problem_.Bg.layout = MatrixLayout::N;
         problem_.Bg.setAlignment(problem_.Tbg.paddedSize());
         if (problem_.aqGroupK == 0) problem_.aqGroupK = problem_.bqGroupK;

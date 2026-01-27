@@ -16,6 +16,7 @@
 
 #include "gpu/intel/gemm/jit/pd.hpp"
 #include "common/c_types_map.hpp"
+#include "common/primitive_attr_quant.hpp"
 #include "gpu/intel/gemm/exec_types.hpp"
 #include "gpu/intel/jit/eltwise_injector.hpp"
 #include "gpu/intel/utils.hpp"
@@ -153,14 +154,14 @@ status_t pd_t::init_post_ops() {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(a_scale_md_, DNNL_ARG_A,
                 a_scales.get_data_type(), a_scales.is_mx(), converted));
-        if (converted) asc_dims_ = -1;
+        if (converted) a_quant.scale_ndims = -1;
     }
 
     if (!b_scales.has_default_values() && !b_scales.is_host_scalar()) {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(b_scale_md_, DNNL_ARG_B,
                 b_scales.get_data_type(), b_scales.is_mx(), converted));
-        if (converted) bsc_dims_ = -1;
+        if (converted) b_quant.scale_ndims = -1;
     }
 
     bool try_c_scale = !c_scales.is_host_scalar()
@@ -241,45 +242,62 @@ status_t pd_t::init_attrs() {
     CHECK(c_scales.get_md(c_scale_md_, desc_.c_desc));
 
     auto ndims = d->c_desc.ndims;
-    ao_dims_ = quant_entry_ndims(a_zps, a_zp_md_, ndims - 2);
-    bo_dims_ = quant_entry_ndims(b_zps, b_zp_md_, ndims - 1);
-    ag_dims_ = quant_entry_ndims(a_gs, a_gs_md_, ndims - 2);
-    bg_dims_ = quant_entry_ndims(b_gs, b_gs_md_, ndims - 1);
-    asc_dims_ = quant_entry_ndims(a_scales, a_scale_md_, ndims - 2);
-    bsc_dims_ = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
-    csc_dims_ = quant_entry_ndims(c_scales, c_scale_md_, -1);
+    a_quant.zp_ndims = quant_entry_ndims(a_zps, a_zp_md_, ndims - 2);
+    b_quant.zp_ndims = quant_entry_ndims(b_zps, b_zp_md_, ndims - 1);
+    a_quant.gs_ndims = quant_entry_ndims(a_gs, a_gs_md_, ndims - 2);
+    b_quant.gs_ndims = quant_entry_ndims(b_gs, b_gs_md_, ndims - 1);
+    a_quant.scale_ndims = quant_entry_ndims(a_scales, a_scale_md_, ndims - 2);
+    b_quant.scale_ndims = quant_entry_ndims(b_scales, b_scale_md_, ndims - 1);
+    c_quant.scale_ndims = quant_entry_ndims(c_scales, c_scale_md_, -1);
 
-    a_scales_type_ = a_scales.get_data_type();
-    if (!a_zps.has_default_groups()) {
-        a_zp_group_k_ = a_zps.get_group(0);
-        a_zp_group_m_ = a_zps.get_group(1);
-    }
-    if (!a_gs.has_default_groups()) {
-        a_gs_group_k_ = a_gs.get_group(0);
-        a_gs_group_m_ = a_gs.get_group(1);
-    }
-    if (!a_scales.has_default_groups()) {
-        a_scales_group_k_ = a_scales.get_group(0);
-        a_scales_group_m_ = a_scales.get_group(1);
-    }
+    a_quant.scales_type = a_scales.get_data_type();
+    a_quant.zp_type = a_zps.get_data_type();
+    a_quant.gs_type = a_gs.get_data_type();
+    a_quant.force_gs = !a_gs.has_default_values();
+    a_quant.zp_host_scalar = a_zp_host_scalar();
+    // XXX, gemmstone support: if multiple grouped quantization attributes exist
+    // for one matrix, they must have the same group size
+    const auto &set_a_groups
+            = [](quant_params &quant, const quant_entry_t &entry) -> status_t {
+        int k_grp = entry.get_group(0);
+        int m_grp = entry.get_group(1);
+        if (quant.group_k > 0 && quant.group_k != k_grp)
+            return status::unimplemented;
+        quant.group_k = k_grp;
+        if (quant.group_m > 0 && quant.group_m != m_grp)
+            return status::unimplemented;
+        quant.group_m = m_grp;
+        return status::success;
+    };
+    if (!a_zps.has_default_groups()) CHECK(set_a_groups(a_quant, a_zps));
+    if (!a_gs.has_default_groups()) CHECK(set_a_groups(a_quant, a_gs));
+    if (!a_scales.has_default_groups()) CHECK(set_a_groups(a_quant, a_scales));
 
-    b_scales_type_ = b_scales.get_data_type();
-    if (!b_zps.has_default_groups()) {
-        b_zp_group_n_ = b_zps.get_group(0);
-        b_zp_group_k_ = b_zps.get_group(1);
-    }
-    if (!b_gs.has_default_groups()) {
-        b_gs_group_n_ = b_gs.get_group(0);
-        b_gs_group_k_ = b_gs.get_group(1);
-    }
-    if (!b_scales.has_default_groups()) {
-        b_scales_group_n_ = b_scales.get_group(0);
-        b_scales_group_k_ = b_scales.get_group(1);
-    }
-    c_scales_type_ = c_scales.get_data_type();
+    b_quant.scales_type = b_scales.get_data_type();
+    b_quant.zp_type = b_zps.get_data_type();
+    b_quant.gs_type = b_gs.get_data_type();
+    b_quant.force_gs = !b_gs.has_default_values();
+    b_quant.zp_host_scalar = b_zp_host_scalar();
+    const auto &set_b_groups
+            = [](quant_params &quant, const quant_entry_t &entry) -> status_t {
+        int n_grp = entry.get_group(0);
+        int k_grp = entry.get_group(1);
+        if (quant.group_n > 0 && quant.group_n != n_grp)
+            return status::unimplemented;
+        quant.group_n = n_grp;
+        if (quant.group_k > 0 && quant.group_k != k_grp)
+            return status::unimplemented;
+        quant.group_k = k_grp;
+        return status::success;
+    };
+    if (!b_zps.has_default_groups()) CHECK(set_b_groups(b_quant, b_zps));
+    if (!b_gs.has_default_groups()) CHECK(set_b_groups(b_quant, b_gs));
+    if (!b_scales.has_default_groups()) CHECK(set_b_groups(b_quant, b_scales));
+
+    c_quant.scales_type = c_scales.get_data_type();
     if (!c_scales.has_default_groups()) {
-        c_scales_group_m_ = c_scales.get_group(1);
-        c_scales_group_n_ = c_scales.get_group(0);
+        c_quant.group_m = c_scales.get_group(1);
+        c_quant.group_n = c_scales.get_group(0);
         with_mx_scale_ = c_scales.is_mx();
     }
     return status::success;

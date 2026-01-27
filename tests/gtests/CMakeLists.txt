@@ -96,6 +96,11 @@ file(GLOB PRIM_TEST_CASES_SRC
                               test_group_normalization.cpp
                               )
 
+# Add grouped tests if experimental grouped memory is enabled
+if(DNNL_EXPERIMENTAL_GROUPED_MEMORY)
+    list(APPEND PRIM_TEST_CASES_SRC test_iface_grouped.cpp)
+endif()
+
 if(DNNL_CPU_RUNTIME STREQUAL "NONE")
     list(APPEND PRIM_TEST_CASES_SRC test_iface_gpu_only.cpp)
     set_source_files_properties(test_iface_gpu_only.cpp PROPERTIES NO_ENGINE_PARAM true)

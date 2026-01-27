@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2025 Intel Corporation
+* Copyright 2019 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -515,6 +515,7 @@ void dnn_mem_t::unmap() const {
     for (int i = 0; i < nhandles; i++) {
         // Unregister a mapped memory entry if a different pointer from `data_`
         // was returned when mapped.
+        printf("dnn_memory unmap: handle: %d in memory unmap\n\n", i);
         if (IMPLICATION(!data_.empty(), data_[i] != mapped_ptrs_[i]))
             memory_registry_t::get_instance().remove_mapped(
                     mapped_ptrs_[i], size(i));

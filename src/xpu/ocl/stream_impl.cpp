@@ -140,7 +140,7 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
         }
     } else {
         CHECK(wait());
-
+        printf("use map/unmap in xpu/ocl/stream");
         // Use map/unmap
         void *src_mapped_ptr;
         void *dst_mapped_ptr;
@@ -183,7 +183,7 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
 
     if (flags() & stream_flags::out_of_order)
         xpu::ocl::event_t::from(out_dep).events = {std::move(out_event)};
-
+    printf("created stream copy\n");
     return status::success;
 }
 

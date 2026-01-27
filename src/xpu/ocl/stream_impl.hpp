@@ -53,6 +53,7 @@ public:
     cl_command_queue queue() { return queue_; }
 
     status_t wait() {
+        printf("Calling clFinish\n");
         OCL_CHECK(clFinish(queue()));
         return status::success;
     }

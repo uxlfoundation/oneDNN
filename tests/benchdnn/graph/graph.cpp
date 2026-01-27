@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2022-2025 Intel Corporation
+* Copyright 2022 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -721,13 +721,20 @@ int doit(const prb_t *prb, res_t *res) {
         output_ts_all.emplace_back(output_ts);
 
         auto &graph_mem_mgr = graph_mem_manager_t::get_instance();
+        auto &graph_mem_req_ = graph_memory_req_args_t::get_instance();
+        size_t total_gpu_req = graph_mem_req_.get_mem_req(GPU_REQ)
+                + graph_mem_req_.get_mem_req(CPU_REQ);
+        //size_t total_mem = get_benchdnn_device_limit() + get_benchdnn_cpu_limit();
+        printf("Total Mem (CPU + GPU) : %g GB\n", GB(total_gpu_req));
         graph_mem_mgr.start_graph_mem_check();
         BENCHDNN_PRINT(3, "[INFO]: Start execution of partition #%zd.\n", i);
         // Need following clean-up steps as the memories have been mappped to
         // device. Otherwise the deconstruction will fail.
+        printf("");
         DNN_GRAPH_SAFE(
                 c_partitions[i - idx_offset].execute(strm, input_ts, output_ts),
                 (WARN | NEED_CLEANUP), res);
+        printf("In graph.cpp L#731 one with c_partitions cleanup\n");
         DNN_GRAPH_SAFE(strm.wait(), WARN, res);
         graph_mem_mgr.stop_graph_mem_check();
 

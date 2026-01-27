@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Intel Corporation
+* Copyright 2021 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ namespace xpu {
 namespace ocl {
 
 struct map_usm_tag;
+int global_count = 0;
 
 status_t usm_memory_storage_t::map_data(
         void **mapped_ptr, impl::stream_t *stream, size_t size) const {
@@ -44,8 +45,10 @@ status_t usm_memory_storage_t::map_data(
     if (!stream) CHECK(engine()->get_service_stream(stream));
 
     void *host_ptr = usm::malloc_host(stream->engine(), size);
-    if (!host_ptr) return status::out_of_memory;
 
+    printf("map memory data in usm memory ");
+    if (!host_ptr) return status::out_of_memory;
+    printf("host ptr is not null :: count %d\n", global_count++);
     auto leak_guard = decltype(usm_ptr_)(
             host_ptr, [this](void *p) { usm::free(engine(), p); });
     CHECK(usm::memcpy(stream, host_ptr, usm_ptr(), size, 0, nullptr, nullptr));
@@ -71,9 +74,11 @@ status_t usm_memory_storage_t::map_data(
 status_t usm_memory_storage_t::unmap_data(
         void *mapped_ptr, impl::stream_t *stream) const {
     if (!mapped_ptr || is_host_accessible()) return status::success;
-
+    printf("usm unmap memory storage ");
     if (!stream) CHECK(engine()->get_service_stream(stream));
+    printf("getting instance for map manager and ");
     auto &map_manager = memory_map_manager_t<map_usm_tag>::instance();
+    printf("call unmap :: count %d\n", global_count--);
     return map_manager.unmap(this, stream, mapped_ptr);
 }
 

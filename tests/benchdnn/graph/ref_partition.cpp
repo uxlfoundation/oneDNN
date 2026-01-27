@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2025 Intel Corporation
+* Copyright 2023 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -548,6 +548,8 @@ int ref_partition_t::check_partition_total_size(
     // Prepare the memory limit for benchdnn graph
     static size_t benchdnn_cpu_limit = get_benchdnn_cpu_limit();
     static size_t benchdnn_device_limit = get_benchdnn_device_limit();
+    printf("total benchdnn limit:: cpu: %g GB device:: %g Gb\n",
+            GB(benchdnn_cpu_limit), GB(benchdnn_device_limit));
     auto &graph_mem_req = graph_memory_req_args_t::get_instance();
 
     size_t new_mem_req = 0;

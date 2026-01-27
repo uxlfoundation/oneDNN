@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "gemmstone/problem.hpp"
 #include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/post_ops.hpp"
 #include "gpu/intel/primitive_conf.hpp"
@@ -32,6 +33,9 @@ namespace gemm {
 namespace jit {
 
 #define GEMM_MAX_PO 36
+
+status_t transfer_post_ops(gemmstone::GEMMProblem &problem,
+        gpu_post_ops_t &&post_ops_, bool swap_ab);
 
 struct pd_t : public gemm::pd_t {
     using gemm::pd_t::pd_t;
@@ -70,6 +74,9 @@ struct pd_t : public gemm::pd_t {
         return binary_srcs_;
     }
     bool valid_2d_mask(int mask, int ndims, bool per_tensor_ok = true);
+
+    status_t init_GEMMProblem(gemmstone::GEMMProblem &problem,
+            const intel::engine_t *engine) const;
 
     float beta_ = 0.0f;
 

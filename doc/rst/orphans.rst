@@ -66,6 +66,7 @@ Orphans
     example_matmul_with_host_scalar_scale.cpp.rst
     example_matmul_f8_quantization.cpp.rst
     example_mxfp_matmul.cpp.rst
+    example_matmul_grouped.cpp.rst
     page_augru_example_cpp.rst
     page_batch_normalization_example_cpp.rst
     page_binary_example_cpp.rst
@@ -141,6 +142,7 @@ Orphans
     page_matmul_with_host_scalar_scale_cpp.rst
     page_matmul_f8_quantization_cpp.rst
     page_mxfp_matmul_cpp.rst
+    page_matmul_grouped_cpp.rst
     page_augru_example_cpp_brief.rst
     page_batch_normalization_example_cpp_brief.rst
     page_binary_example_cpp_brief.rst
@@ -200,3 +202,4 @@ Orphans
     page_cnn_inference_f32_c_brief.rst
     page_cpu_cnn_training_f32_c_brief.rst
     page_cross_engine_reorder_c_brief.rst
+    page_matmul_grouped_cpp_brief.rst

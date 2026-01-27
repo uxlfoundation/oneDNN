@@ -278,7 +278,7 @@ TEST(test_sdp_decomp_execute, Int8SdpDecomp_CPU) {
                 ASSERT_EQ(g.get_ops().size(), 13U);
             else
                 ASSERT_EQ(g.get_ops().size(), 12U);
-            graph::pass::pass_base_ptr apass = get_pass("int8_sdp_fusion");
+            graph::pass::pass_base_ptr apass = get_pass("x8_sdpa_fusion");
             apass->run(g);
             ASSERT_EQ(g.get_num_partitions(), 1U);
             auto part = g.get_partitions()[0];
@@ -1061,7 +1061,7 @@ TEST(test_sdp_decomp_execute, Int8SdpCorr_CPU) {
                     head_dim, transpose_b[i], attention_mask_vec[j]);
             g.finalize();
 
-            graph::pass::pass_base_ptr apass = get_pass("int8_sdp_fusion");
+            graph::pass::pass_base_ptr apass = get_pass("x8_sdpa_fusion");
             apass->run(g);
             ASSERT_EQ(g.get_num_partitions(), 1U);
             auto part = g.get_partitions()[0];
@@ -1288,7 +1288,7 @@ TEST(test_sdp_decomp_execute, Int8DistilBertSdpCorr_CPU) {
                 &g, batch_size, seq_len, num_head, head_dim, transpose_b[i]);
         g.finalize();
 
-        graph::pass::pass_base_ptr apass = get_pass("int8_sdp_fusion");
+        graph::pass::pass_base_ptr apass = get_pass("x8_sdpa_fusion");
         apass->run(g);
         ASSERT_EQ(g.get_num_partitions(), 1U);
         auto part = g.get_partitions()[0];

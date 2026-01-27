@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2022-2025 Arm Ltd. and affiliates
+* Copyright 2022-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -584,137 +584,6 @@ bool jit_uni_reorder_kernel_f32_t::process_unroll_tr8x8(
     for (int off = 0; off < len; off += step_size) {
         step(off, i_off, o_off, i_off, o_off, step_size);
         tr8x8_sve256(i_off, o_off);
-    }
-
-    return true;
-}
-
-template <cpu_isa_t isa>
-bool jit_uni_reorder_kernel_f32_t::process_direct_copy(
-        const int ndims, const int len) {
-    using namespace data_type;
-
-    static constexpr int desirable_stride = 1;
-    using TRegS =
-            typename utils::conditional<isa == asimd, VReg4S, ZRegS>::type;
-    const int simd_w = cpu_isa_traits<isa>::vlen / itype_sz_;
-
-    // TODO: support tail_processing for direct copy
-
-    const bool do_src_zp = prb_.req_src_zp;
-    const bool do_dst_zp = prb_.req_dst_zp;
-    const bool zp_applicable = IMPLICATION(
-            (do_src_zp || do_dst_zp), utils::one_of(prb_.itype, s32, f32));
-    const bool can_do = true && mayiuse(isa) && compensation_needed_ == false
-            && utils::everyone_is(desirable_stride, prb_.os(0), prb_.is(0))
-            && (false || (prb_.itype == prb_.otype ? zp_applicable : false)
-                    || (prb_.itype == s32 && prb_.otype == f32)
-                    || (prb_.itype == f32 && prb_.otype == s32))
-            && len % simd_w == 0 && prb_.n(0) % len == 0
-            && !prb_.is_tail_present
-            && prb_.src_scale_type == scale_type_t::NONE
-            && prb_.dst_scale_type == scale_type_t::NONE && prb_.beta == 0.f;
-    if (!can_do) return false;
-
-    static constexpr int vmm_zp_last_idx = 15;
-    const auto vmm_src_zp
-            = TRegS(do_dst_zp ? vmm_zp_last_idx - 1 : vmm_zp_last_idx);
-    if (do_src_zp) {
-        uni_ld1rw(vmm_src_zp, PARAM(src_zp));
-        uni_scvtf(vmm_src_zp, vmm_src_zp);
-    }
-    const auto vmm_dst_zp = TRegS(vmm_zp_last_idx);
-    if (do_dst_zp) {
-        uni_ld1rw(vmm_dst_zp, PARAM(dst_zp));
-        uni_scvtf(vmm_dst_zp, vmm_dst_zp);
-    }
-
-    const auto apply_zp_ps = [&](const TRegS vmm) {
-        if (do_src_zp) fsub(vmm, vmm, vmm_src_zp);
-        if (do_dst_zp) fadd(vmm, vmm, vmm_dst_zp);
-    };
-
-    for (int off = 0; off < len;) {
-        // TODO: we need extra reg for proper saturation if otype == s32
-        int unroll = nstl::min(16 - (prb_.otype == s32), (len - off) / simd_w);
-        unroll = (do_src_zp || do_dst_zp)
-                ? nstl::min(unroll, 16 - do_src_zp - do_dst_zp)
-                : unroll;
-
-        int ur = 0;
-        int tmp_ur = 0;
-        while (ur < unroll) {
-            int count = 0;
-            const int vlen = cpu_isa_traits<isa>::vlen;
-
-            do {
-                add_imm(x_tmp_vec[count++], x_ptr_in_off,
-                        (off + ur * simd_w) * itype_sz_, X_DEFAULT_ADDR);
-                ur++;
-            } while (ur < unroll && count < x_tmp_vec_size);
-
-            for (int i = 0; i < count; i++) {
-                if (vlen == 64 || vlen == 32)
-                    ld1w(ZRegS(tmp_ur + i), p_lsb_256 / T_z, ptr(x_tmp_vec[i]));
-                else if (vlen == 16)
-                    ldr(QReg(tmp_ur + i), ptr(x_tmp_vec[i]));
-                else
-                    assert(!"unreachable");
-            }
-            tmp_ur += count;
-        }
-
-        if (prb_.itype != prb_.otype) {
-            for (int ur = 0; ur < unroll; ++ur) {
-                TRegS r(ur);
-                if (prb_.itype == s32 && prb_.otype == f32) {
-                    uni_scvtf(r, r);
-                    apply_zp_ps(r);
-                } else if (prb_.itype == f32 && prb_.otype == s32) {
-                    apply_zp_ps(r);
-                    uni_frinti(r, r);
-                    uni_fcvtzs(r, r);
-                } else
-                    assert(!"unreachable");
-            }
-        } else if (do_src_zp || do_dst_zp) {
-            for (int ur = 0; ur < unroll; ++ur) {
-                const auto vmm = TRegS(ur);
-                if (prb_.otype == f32) {
-                    apply_zp_ps(vmm);
-                } else if (prb_.otype == s32) {
-                    uni_scvtf(vmm, vmm);
-                    apply_zp_ps(vmm);
-                    uni_frinti(vmm, vmm);
-                    uni_fcvtzs(vmm, vmm);
-                }
-            }
-        }
-
-        ur = 0;
-        tmp_ur = 0;
-        while (ur < unroll) {
-            int count = 0;
-            const int vlen = cpu_isa_traits<isa>::vlen;
-
-            do {
-                add_imm(x_tmp_vec[count++], x_ptr_out_off,
-                        (off + ur * simd_w) * otype_sz_, X_DEFAULT_ADDR);
-                ur++;
-            } while (ur < unroll && count < x_tmp_vec_size);
-
-            for (int i = 0; i < count; i++) {
-                if (vlen == 64 || vlen == 32)
-                    st1w(ZRegS(tmp_ur + i), p_lsb_256 / T_z, ptr(x_tmp_vec[i]));
-                else if (vlen == 16)
-                    str(QReg(tmp_ur + i), ptr(x_tmp_vec[i]));
-                else
-                    assert(!"unreachable");
-            }
-            tmp_ur += count;
-        }
-
-        off += unroll * simd_w;
     }
 
     return true;
@@ -1466,9 +1335,7 @@ void jit_uni_reorder_kernel_f32_t::process_unroll_generic(
 void jit_uni_reorder_kernel_f32_t::compute_ker(
         const int ndims, const int len_unroll, const bool tail_processing) {
     bool optimized = false;
-    optimized = optimized || process_direct_copy<sve_256>(ndims, len_unroll)
-            || process_direct_copy<asimd>(ndims, len_unroll)
-            || process_unroll_tr8x8(ndims, len_unroll)
+    optimized = optimized || process_unroll_tr8x8(ndims, len_unroll)
             || process_unroll_tr4x8(ndims, len_unroll);
 
     if (!optimized) process_unroll_generic(ndims, len_unroll, tail_processing);

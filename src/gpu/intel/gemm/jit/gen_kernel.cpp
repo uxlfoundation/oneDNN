@@ -430,12 +430,12 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
         int eu_count, bool has_systolic, bool is_integrated, compute_mode mode,
         int batch_dims, bool trans_a, bool trans_b, bool trans_co, bool swap_ab,
         const quant_params &a_quant, const quant_params &b_quant,
-        const quant_params &c_quant, bool dst_sround, bool c_offset, bool bias,
-        sum_ab_t reduce_ab, float alpha, float beta, data_type_t a_type,
-        data_type_t b_type, data_type_t c_type, data_type_t co_type,
-        data_type_t acc_type, int align_a, int align_b, int align_c, dim_t m,
-        dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc, dim_t batch,
-        gpu_post_ops_t &&post_ops) {
+        const quant_params &c_quant, bool mx_scales, bool dst_sround,
+        bool c_offset, bool bias, sum_ab_t reduce_ab, float alpha, float beta,
+        data_type_t a_type, data_type_t b_type, data_type_t c_type,
+        data_type_t co_type, data_type_t acc_type, int align_a, int align_b,
+        int align_c, dim_t m, dim_t n, dim_t k, dim_t lda, dim_t ldb, dim_t ldc,
+        dim_t batch, gpu_post_ops_t &&post_ops) {
     using namespace ngen;
     using namespace kcatalog;
 
@@ -529,7 +529,7 @@ gen_nocopy_desc_t::select_kernel(compute::gpu_arch_t arch, int stepping,
 
     if (c_quant.scales_type != data_type::undef) {
         problem_.csPtrDims = c_quant.scale_ndims;
-        problem_.cMXScale = c_quant.mx;
+        problem_.cMXScale = mx_scales;
         problem_.Tc_scale = convert_dnnl_to_kernel_type(c_quant.scales_type);
         problem_.cqGroupM = c_quant.group_m;
         problem_.cqGroupN = c_quant.group_n;

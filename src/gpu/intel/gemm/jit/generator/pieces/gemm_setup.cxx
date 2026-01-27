@@ -1661,6 +1661,14 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     state.repackA |= problem.earlyDequantizeA() && !slmA;
     state.repackB |= problem.earlyDequantizeB() && !slmB;
 
+#if XE3P
+    bool is_xe3p = one_of(hw, ngen::HW::XE3P_35_10, ngen::HW::XE3P_35_11, ngen::HW::XE3P_UNKNOWN);
+    state.upConvertATo8Bit =  is_xe3p && Ta.bits() == 4 && Tb.bits() == 8 && strategy.systolic;
+    state.upConvertBTo8Bit =  is_xe3p && Tb.bits() == 4 && Ta.bits() == 8 && strategy.systolic;
+
+    state.repackA |= state.upConvertATo8Bit;
+    state.repackB |= state.upConvertBTo8Bit;
+#endif
     if (crosspackA == 0) crosspackA = 1;
     if (crosspackB == 0) crosspackB = 1;
 
@@ -1679,12 +1687,27 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
                 state.ka_repack = gcd(problem.aqGroupK, state.ka_repack);
                 repackN = std::max(state.ka_repack, outerProductCount(hw, problem, strategy));
         }
-        state.Ar_layout = RegisterLayout(hw, Ta, unrollM, repackN, state.A_layout.colMajor(), crosspackA, tileM_A, tileK_A, true, splitA);
+#if XE3P
+	auto Ta_repack = Ta;
+	if (state.upConvertATo8Bit)
+		Ta_repack = Ta == Type::s4 ? Type::s8 : Type::u8;
+	state.Ar_layout = RegisterLayout(hw, Ta_repack, unrollM, repackN, state.A_layout.colMajor(), state.upConvertATo8Bit ? crosspackA/2 : crosspackA, tileM_A, tileK_A, true, splitA);
+#else
+	state.Ar_layout = RegisterLayout(hw,  Ta, unrollM, repackN, state.A_layout.colMajor(), crosspackA, tileM_A, tileK_A, true, splitA);
+#endif
     }
 
     if (state.repackB)
-        state.Br_layout = RegisterLayout(hw, Tb, strategy.kb_load, unrollN, state.B_layout.colMajor(), crosspackB, tileK_B, tileN_B, true, splitB);
-
+#if XE3P
+    {
+	auto Tb_repack = Tb;
+	if (state.upConvertBTo8Bit)
+	    Tb_repack = Tb == Type::s4 ? Type::s8 : Type::u8;
+	state.Br_layout = RegisterLayout(hw, Tb_repack, strategy.kb_load, unrollN, state.B_layout.colMajor(), state.upConvertBTo8Bit ? crosspackB/2 : crosspackB, tileK_B, tileN_B, true, splitB);
+   }
+#else
+	    state.Br_layout = RegisterLayout(hw,  Tb, strategy.kb_load, unrollN, state.B_layout.colMajor(),  crosspackB, tileK_B, tileN_B, true, splitB);
+#endif
     // Prepare to repack C if needed, and choose repack tile size.
     if (Tc != Tc_compute || problem.forceLateQuant(hw, minOuterProductCount(hw, problem, strategy))) {
         auto &period = state.cRepackPeriod;

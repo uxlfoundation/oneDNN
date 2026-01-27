@@ -339,6 +339,8 @@ struct GEMMState : public CommonState {
     bool systolicSumA = false, systolicSumB = false;
 #if XE3P    
     bool useBDPAS = false;
+    bool upConvertATo8Bit = false;
+    bool upConvertBTo8Bit = false;
 #endif
     bool lateKLoopCheck = false;
     bool splitBarrierAlways = false;

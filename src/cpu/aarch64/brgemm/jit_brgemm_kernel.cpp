@@ -729,8 +729,9 @@ void jit_brgemm_kernel_t::zero_accumulators(int bd_block2, bool is_bdb_tail,
                 dup(vmm_beta.s, wreg_tmp);
                 fmul(zmm.s, zmm.s, vmm_beta.s);
             }
-        } else
-            eor(zmm.d, zmm.d, zmm.d);
+        } else {
+            uni_clear(zmm);
+        }
     }
 }
 
@@ -1275,7 +1276,7 @@ void jit_brgemm_kernel_t::sum_into_one_lane(
                 LDR_IMM(scalar_reg, x_addr, (offset - base_offset));
                 fadda(scalar_reg, ld_full_mask, zmm.s);
             }
-            eor(zmm.d, zmm.d, zmm.d);
+            uni_clear(zmm);
             mov(zmm.s, ld_tail_mask, scalar_reg);
         }
     }
@@ -1394,7 +1395,7 @@ void jit_brgemm_kernel_t::compute_int8_compensation(int rd_loop, int bd_b,
         // accum - inp_shift * conv(1, wei_s32)
         if (brg.req_s8s8_compensation) {
             if (brg.req_cal_comp_pads) {
-                eor(vmm_tmp.d, vmm_tmp.d, vmm_tmp.d);
+                uni_clear(vmm_tmp);
                 dot_product(vmm_tmp, vmm_load, z_inp_shift());
             }
 
@@ -1409,7 +1410,7 @@ void jit_brgemm_kernel_t::compute_int8_compensation(int rd_loop, int bd_b,
         }
 
         if (brg.zp_type_a != brgemm_broadcast_t::none) {
-            eor(vmm_tmp.d, vmm_tmp.d, vmm_tmp.d);
+            uni_clear(vmm_tmp);
             dot_product(vmm_tmp, vmm_load, z_one_bytes());
             mul(vmm_tmp.s, P_ALL_ONE / T_m, z_zp_a_shift().s);
 

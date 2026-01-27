@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
 * Copyright 2020-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -342,9 +342,18 @@ public:
         sub(r, divend, r);
     }
 
-    void uni_clear(const Xbyak_aarch64::VReg &dst) { eor(dst.b, dst.b, dst.b); }
-
-    void uni_clear(const Xbyak_aarch64::ZReg &dst) { eor(dst.d, dst.d, dst.d); }
+    void uni_clear(const Xbyak_aarch64::VReg &dst) {
+        // movi 0 on any part of the SIMD&FP reg will also zero out the rest of the
+        // SIMD vector (see the Arm ARM C7.1.1).
+        // We use this because movi d is zero latency on Neoverse V2
+        movi(Xbyak_aarch64::DReg(dst.getIdx()), 0);
+    }
+    void uni_clear(const Xbyak_aarch64::ZReg &dst) {
+        // movi 0 on any part of the SIMD&FP reg will also zero out the rest of the SVE vector
+        // (see the Arm ARM C7.1.1 and B1.4.3 R_WKYLB)
+        // We use this because movi d is zero latency on Neoverse V2
+        movi(Xbyak_aarch64::DReg(dst.getIdx()), 0);
+    }
 
     template <typename T>
     void uni_fadd(const T &dst, const T &src, const T &src2) {

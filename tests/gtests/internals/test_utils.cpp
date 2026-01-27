@@ -66,11 +66,11 @@ void fill_eye(std::vector<float> &out, const memory::desc &desc) {
         //
         //if ((i % width == i / width % 16) || (i % width == 3 && i / width == 1)) { //TMP for testing
         //
-        if ((i % width == i / width % 32) || (i % width == 3 && i / width == 1)
-                || (i % width == 0)) { //TMP for testing
+//      if ((i % width == i / width % 32) || (i % width == 3 && i / width == 1)
+//              || (i % width == 0)) { //TMP for testing
 
             //if ((i % width == i / width % 16) || (i % width == 3 && i / width == 1) || i == 1) { //TMP for testing
-        //if (i % width == i / width % 32) {
+        if (i % width == i / width % 32) {
             out[i] = 1.f;
         } else {
             out[i] = 0.f;
@@ -258,7 +258,9 @@ void print_mem(const dnnl::memory &mem, const std::string &name) {
                 for (size_t i = 0; i < ndims; ++i) {
                     offset += idxs[i] * strides[i];
                 }
-                printf("%+6.1f ", (mapped_ptr[offset].f()));
+                if (idxs[lastdim] % 16 == 0) printf("|");
+                if (idxs[lastdim] % 32 == 0) printf("|");
+                printf("%+6.3f ", (mapped_ptr[offset].f()));
                 if (idxs[lastdim] == (dims[lastdim] - 1)) { printf("\n"); }
             });
         } break;

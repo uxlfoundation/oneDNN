@@ -694,18 +694,19 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     //problem_vs.C.layout = MatrixLayout::N; //og
 
     //problem_vs.A.layout = MatrixLayout::Pc;
+    //problem_vs.A.layout = transpose_layout(convert_dnnl_to_kernel_layout(diff_dst_md())); //gmem
     problem_vs.A.layout = convert_dnnl_to_kernel_layout(diff_dst_md()); //gmem
     problem_vs.B.layout = MatrixLayout::Pr;
     problem_vs.C.layout = MatrixLayout::N;
     const memory_desc_wrapper diff_dst_mdw(diff_dst_md());
-    auto ldv = static_cast<int>(
+    auto lda = static_cast<int>(
             gemm_desc_t::get_ld(*diff_dst_md()) * diff_dst_mdw.data_type_size());
-    problem_vs.A.setAlignment(alignmentForLD(ldv)); //gmem
+    problem_vs.A.setAlignment(alignmentForLD(lda)); //gmem
     //problem_vs.A.setAlignment(alignmentForLD(d_max() * diff_dst_mdw.data_type_size())); // S is packed in SLM
     //problem_vs.A.setAlignment(64); // S is packed in SLM
     problem_vs.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) {
-        problem_vs.A.crosspack = 16;
+        //problem_vs.A.crosspack = 16;
         problem_vs.B.crosspack = 16;
     } //TODO: if systolic problem.A.crosspack, tileR tileC
 
@@ -743,24 +744,30 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     // swap arg order??
     problem_vtdA.A.layout = transpose_layout(
             convert_dnnl_to_kernel_layout(val_md())); //TODO hardcode?
+    //problem_vtdA.B.layout
+            //= MatrixLayout::Pr; //is this right? w/shared slm between vs?
     problem_vtdA.B.layout
-            = MatrixLayout::Pr; //is this right? w/shared slm between vs?
+            = convert_dnnl_to_kernel_layout(diff_dst_md()); //TODO hardcode?
     problem_vtdA.C.layout = MatrixLayout::T; //which?
                                              //
+    const memory_desc_wrapper val_mdw(val_md());
+    auto ldv = gemm_desc_t::get_ld(*val_md()) * val_mdw.data_type_size();
     problem_vtdA.A.setAlignment(alignmentForLD(ldv));
-    problem_vtdA.B.setAlignment(64); // S is packed in SLM
+    problem_vtdA.B.setAlignment(alignmentForLD(lda));
+    //problem_vtdA.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) {
-        problem_vtdA.B.crosspack = 2;
-        problem_vtdA.B.tileR = into<uint16_t>(d_max());
-        problem_vtdA.B.tileC = into<uint16_t>(sg_size_);
+        //problem_vtdA.B.crosspack = 16;
+        //problem_vtdA.B.crosspack = 2;
+        //problem_vtdA.B.tileR = into<uint16_t>(d_max());
+        //problem_vtdA.B.tileC = into<uint16_t>(sg_size_);
     }
 
     ukernel_params.problem_vtdA = {problem_vtdA};
 
-    //tODO swap?
+    // tODO swap?
     heuristic_sizes.m = d->values();
-    //const int wg_tile_m = config->wg_m_kq * config->unroll_m_kq;
-    //const int wg_tile_n = config->wg_n_kq * config->unroll_n_kq;
+    // const int wg_tile_m = config->wg_m_kq * config->unroll_m_kq;
+    // const int wg_tile_n = config->wg_n_kq * config->unroll_n_kq;
     heuristic_sizes.n = wg_tile_n;
     heuristic_sizes.k = wg_tile_m;
 
@@ -768,7 +775,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     /* Set up microkernel options */
     micro::GEMMProtocol::Options opts_vtdA;
-    opts_vtdA.localB = true;
+    //opts_vtdA.localB = true;
+    opts_vtdA.localB = false;
     opts_vtdA.slmPtr = true;
     ukernel_params.opts_vtdA = {opts_vtdA};
 
@@ -782,16 +790,16 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 //           = MatrixLayout::T; //which? layout determines output tile shape
 
     problem_qdSt.Ta_ext = convert_dnnl_to_kernel_type(qry_md()->data_type);
+    problem_qdSt.A.layout = MatrixLayout::Pc;
     problem_qdSt.B.layout
             = transpose_layout(convert_dnnl_to_kernel_layout(qry_md())); //TODO hardcode?
-    problem_qdSt.A.layout = MatrixLayout::Pc;
     problem_qdSt.C.layout
             = MatrixLayout::N; //which? layout determines output tile shape
 
+    problem_qdSt.A.setAlignment(64);
     problem_qdSt.B.setAlignment(alignmentForLD(ldq));
-    problem_qdSt.A.setAlignment(alignmentForLD(wg_tile_m_brbc * sizeof(float))); // S is packed in SLM //todo
     if (use_systolic_ukernel()) {
-        //problem_qdSt.B.crosspack = 16;
+        problem_qdSt.A.crosspack = 16;
         //problem_qdSt.B.crosspack = 2;
         //problem_qdSt.B.tileR = into<uint16_t>(d_max());
         //problem_qdSt.B.tileC = into<uint16_t>(sg_size_);
@@ -824,6 +832,9 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 //   problem_ktq.B.layout = MatrixLayout::T;
 //   problem_ktq.C.layout = MatrixLayout::N; // which?
 
+    //problem_ktq.A.layout = MatrixLayout::Pc;
+    //problem_ktq.B.layout
+            //= convert_dnnl_to_kernel_layout(key_md());
     problem_ktq.A.layout
             = transpose_layout(convert_dnnl_to_kernel_layout(key_md()));
     problem_ktq.B.layout = MatrixLayout::Pr;
@@ -851,6 +862,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     /* Set up microkernel options */
     micro::GEMMProtocol::Options opts_ktq;
+    opts_ktq.localA = false;
     opts_ktq.localB = true;
     opts_ktq.slmPtr = true;
     ukernel_params.opts_ktq = {opts_ktq};
@@ -884,6 +896,7 @@ status_t micro_bwd_t::init(impl::engine_t *engine) {
 
     preprocess_ = kernels[0];
     kernel_ = kernels[1];
+    postprocess_ = kernels[2];
 
     //printf("k name?? %s \n", pd()->conf.get_kernel_names()[0]);
     //CHECK(create_kernel(
@@ -891,6 +904,7 @@ status_t micro_bwd_t::init(impl::engine_t *engine) {
     //printf("iBWDDDDD\n");
     if (!preprocess_) return status::runtime_error;
     if (!kernel_) return status::runtime_error;
+    if (!postprocess_) return status::runtime_error;
     //printf("iBWDDDDD\n");
     return status::success;
 }
@@ -1056,8 +1070,8 @@ status_t micro_t::pd_t::init_conf(impl::engine_t *engine) {
 
     // workspace to hold column sums and maxes
     bool is_training = desc()->prop_kind == prop_kind::forward_training;
-    if (is_training) { pd->init_default_ws(); }
     conf.is_training = is_training;
+    if (is_training) { pd->init_default_ws(); } //TODO: init scratchspace here too? init_ws in hpp?
 
     return status::success;
 }
@@ -1169,6 +1183,24 @@ status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
             = (d->softmax_alg == alg_kind::softmax_accurate_inf_as_zero);
     conf.use_systolic_ukernel = pd->use_systolic_ukernel();
 
+    return status::success;
+}
+
+status_t micro_bwd_t::pd_t::init_scratchpad(impl::engine_t *engine) {
+    auto scratchpad = scratchpad_registry().registrar();
+    auto gpu_align = utils::downcast<gpu::engine_t *>(engine)
+                             ->get_buffer_alignment();
+    memory_desc_wrapper dQ_wspace(diff_qry_md());
+    //TODO: move D_i to scratch instead of workspace?
+    size_t wspace_size = dQ_wspace.dims()[0] * dQ_wspace.dims()[1] *
+        dQ_wspace.dims()[2] * dQ_wspace.dims()[3];
+    // f32 can directly atomic add to output
+    // others need intermediate scratchpad before conversion
+    if (conf.data_t != data_type::f32) {
+        //printf("scratch_size %d\n", wspace_size);
+        scratchpad.book(memory_tracking::names::key_sdpa_dQ_reduction,
+                wspace_size, sizeof(float), gpu_align);
+    }
     return status::success;
 }
 
@@ -1330,7 +1362,7 @@ status_t micro_params_t::get_kernel_ctx(
 
     if (gemm_kq.grfMin > 128 || gemm_vs.grfMin > 128)
         kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
-    printf("heredone1027\n");
+    //printf("heredone1027\n");
 
     return status::success;
 }
@@ -1433,10 +1465,10 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     reqs_vs.push_back(StrategyRequirement::WGM == config.wg_m_BcD);
     reqs_vs.push_back(StrategyRequirement::WGN == config.wg_n_BcD);
 
-    printf("kq config %d %d %d %d\n", config.unroll_m_BrBc,
-            config.unroll_n_BrBc, config.wg_m_BrBc, config.wg_n_BrBc);
-    printf("vs config %d %d %d %d\n", config.unroll_m_BcD,
-            config.unroll_n_BcD, config.wg_m_BcD, config.wg_n_BcD);
+    //printf("kq config %d %d %d %d\n", config.unroll_m_BrBc,
+            //config.unroll_n_BrBc, config.wg_m_BrBc, config.wg_n_BrBc);
+    //printf("vs config %d %d %d %d\n", config.unroll_m_BcD,
+            //config.unroll_n_BcD, config.wg_m_BcD, config.wg_n_BcD);
 
 
     std::vector<StrategyRequirement> reqs_vtdA;
@@ -1454,6 +1486,11 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     reqs_ktq.push_back(StrategyRequirement::UnrollN == config.unroll_n_BrD);
     reqs_ktq.push_back(StrategyRequirement::WGM == config.wg_m_BrD);
     reqs_ktq.push_back(StrategyRequirement::WGN == config.wg_n_BrD);
+
+    //reqs_ktq.push_back(StrategyRequirement::UnrollM == config.unroll_n_BrD);
+    //reqs_ktq.push_back(StrategyRequirement::UnrollN == config.unroll_m_BrD);
+    //reqs_ktq.push_back(StrategyRequirement::WGM == config.wg_n_BrD);
+    //reqs_ktq.push_back(StrategyRequirement::WGN == config.wg_m_BrD);
 
     std::vector<StrategyRequirement> reqs_qdSt;
     reqs_qdSt.push_back(StrategyRequirement::UnrollM == config.unroll_n_BcD);
@@ -1529,9 +1566,10 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     shimOptions.microkernelID++;
     shimOptions.decorator = "vtdA";
 
-    kernel_ctx.add_custom_header("gemm_vtdA.h",
-            micro::generateShim(
-                    gemm_vtdA, HostLanguage::OpenCL_C, shimOptions));
+    std::string gemm_vtdA_header
+            = micro::generateShim(gemm_vtdA, HostLanguage::OpenCL_C, shimOptions);
+    std::cout << gemm_vtdA_header << std::endl;
+    kernel_ctx.add_custom_header("gemm_vtdA.h", std::move(gemm_vtdA_header));
 
     try {
         gemm_ktq = selectGEMMMicrokernel(
@@ -1681,10 +1719,10 @@ status_t micro_t::execute_forward(const exec_ctx_t &ctx) const {
     }
     gws[2] *= pd()->dst_md()->dims[0];
 
-    printf("execFWD\n");
-    printf("Q%ld K%ld D%ld\n", Q, K, D);
+    //printf("execFWD\n");
+    //printf("Q%ld K%ld D%ld\n", Q, K, D);
     auto nd_range = compute::nd_range_t(gws, lws);
-    std::cout << "ndrange" << nd_range.str() << std::endl;
+    //std::cout << "ndrange" << nd_range.str() << std::endl;
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 }
 
@@ -1701,6 +1739,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     auto &diff_v = CTX_OUT_STORAGE(DNNL_ARG_DIFF_VALUES);
     const auto &scale = CTX_IN_STORAGE(DNNL_ARG_SCALE);
     const auto &attn_mask = CTX_IN_STORAGE(DNNL_ARG_ATTN_MASK);
+    auto diff_q_scratch = ctx.get_scratchpad_grantor().get_memory_storage(
+            memory_tracking::names::key_sdpa_dQ_reduction);
 
     auto &s2_test = CTX_OUT_STORAGE(DNNL_ARG_S2_TEST); //tmp
 
@@ -1708,6 +1748,8 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     const dim_t K = pd()->desc()->keys();
     const dim_t D = pd()->desc()->head_size();
     //printf("Q%d K%d D%d\n", Q, K, D);
+    const data_type_t data_t = pd()->dst_md()->data_type;
+    const bool needs_intermediate_dQ = (data_t != data_type::f32);
 
     const auto &conf = pd()->conf;
 
@@ -1778,7 +1820,7 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     arg_list.append(diff_dst);
     arg_list.append(s2_test);
     arg_list.append(diff_k);
-    arg_list.append(diff_q);
+    arg_list.append(needs_intermediate_dQ ? *diff_q_scratch : diff_q);
     arg_list.append(diff_v);
     arg_list.append(scale);
     arg_list.append((int)D);
@@ -1828,11 +1870,35 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     gws[2] *= pd()->dst_md()->dims[0];
     auto nd_range = compute::nd_range_t(gws, lws);
 
-    printf("K??%d. divup wg_tile_k%d", K, wg_tile_k);
-    printf("gws[%ld %ld %ld] lws[%ld %ld %ld]\n", gws[0], gws[1], gws[2], lws[0],
-    lws[1], lws[2]);
+    //printf("K??%d. divup wg_tile_k%d", K, wg_tile_k);
+    //printf("gws[%ld %ld %ld] lws[%ld %ld %ld]\n", gws[0], gws[1], gws[2], lws[0],
+    //lws[1], lws[2]);
+    parallel_for(ctx, nd_range, kernel_, arg_list);
 
-    return parallel_for(ctx, nd_range, kernel_, arg_list);
+    if (needs_intermediate_dQ) {
+        lws = {256, 1, 1}; //TODO: hardcode? pick?
+        compute::range_t gws_postprocess = lws;
+
+        // needed separate gws??
+        gws_postprocess[0] *= utils::div_up(Q*D, lws[0]);
+        gws_postprocess[1] *= pd()->dst_md()->dims[1];
+        gws_postprocess[2] *= pd()->dst_md()->dims[0];
+        auto nd_range_postprocess = compute::nd_range_t(gws_postprocess, lws);
+        //printf("postprocess gws[%ld %ld %ld] lws[%ld %ld %ld]\n", gws_postprocess[0], gws_postprocess[1], gws_postprocess[2], lws[0], lws[1], lws[2]);
+
+
+        compute::kernel_arg_list_t postprocess_arg_list;
+        postprocess_arg_list.append(diff_q);
+        postprocess_arg_list.append(*diff_q_scratch);
+        postprocess_arg_list.append((int)D);
+        postprocess_arg_list.append((int)K);
+        postprocess_arg_list.append((int)Q);
+        append_offs(postprocess_arg_list, qry_off);
+        postprocess_arg_list.append(remainder_k);
+        postprocess_arg_list.append(remainder_q);
+
+        parallel_for(ctx, nd_range_postprocess, postprocess_, postprocess_arg_list);
+    }
 
     return status::success;
 }

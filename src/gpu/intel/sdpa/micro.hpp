@@ -102,7 +102,7 @@ struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
 
     const std::vector<const char *> &get_kernel_names() const {
         static const std::vector<const char *> kernel_names_bwd
-                = {"preprocess_Di", "micro_sdpa_bwd"};
+                = {"preprocess_Di", "micro_sdpa_bwd", "postprocess_dQ"};
         return kernel_names_bwd;
     }
 
@@ -506,11 +506,12 @@ struct micro_bwd_t : public primitive_t {
             }
 
             init_default_ws();
-            printf("iscomparableeee?%d\n", compare_ws(hint_fwd_pd_));
             VCHECK_SDPA_COND(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
 
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));
+            CHECK(init_scratchpad(engine));
+            printf("iscomparableeee?%d\n", compare_ws(hint_fwd_pd_));
             printf("INIT bwd_DONE\n");
 
             return status::success;
@@ -554,6 +555,7 @@ struct micro_bwd_t : public primitive_t {
         bool use_systolic_ukernel_ = true;
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
+        status_t init_scratchpad(impl::engine_t *engine);
         status_t init_conf_microkernels(impl::engine_t *engine);
         status_t init_conf(impl::engine_t *engine);
     };
@@ -568,7 +570,7 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     status_t execute_backward(const exec_ctx_t &ctx) const;
 
-    compute::kernel_t kernel_, preprocess_;
+    compute::kernel_t kernel_, preprocess_, postprocess_;
 };
 
 } // namespace sdpa

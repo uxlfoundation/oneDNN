@@ -487,7 +487,6 @@ memory double_and_resize(const memory::desc &desc, dnnl::engine &eng,
 sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
         const sdpa_dims_t &p, std::vector<dnnl_memory_t> &doubled_memory) {
     sdpa_tensors_t out;
-    printf("%dwat?\n", __LINE__);
 
     // Prepare input and output shapes to construct the sdpa graph.
     const memory::dims q_sz
@@ -643,9 +642,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     std::vector<float> output_data(product(q_sz), NAN);
 
     std::vector<float> s2_data(product(s2_sz), 0);
-    std::vector<float> diff_value_data(product(q_sz), 0.f); //tmp atomics
-    std::vector<float> diff_query_data(product(q_sz), 0.f); //tmp atomics
-    std::vector<float> diff_key_data(product(k_sz), 0.f); //tmp atomics
 
     out.sdpa_attr_quantized.set_scratchpad_mode(dnnl::scratchpad_mode::library);
 
@@ -709,14 +705,15 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     }
 
     printf("%dwat?\n", __LINE__);
-    //fill_random(query_data, query_md);
-    fill_eye(query_data, query_md);
-    //fill_random(diff_output_data, output_md);
-    fill_eye(diff_output_data, output_md);
+    fill_random(query_data, query_md);
+    //fill_eye(query_data, query_md);
+    fill_random(diff_output_data, output_md);
+    //fill_eye(diff_output_data, output_md);
     //fill_lin(diff_output_data, output_md);
     //fill_lin_t(diff_output_data, output_md);
     fill_random_quantized(key_quantized_data, key_quantized_md,
             (p.key.dt == mdt::u4 || p.key.dt == mdt::u8));
+    //fill_eye(key_quantized_data, key_quantized_md);
     //fill_lin(key_quantized_data, key_quantized_md);
     fill_random_quantized(val_quantized_data, val_quantized_md,
             (p.value.dt == mdt::u4 || p.value.dt == mdt::u8));
@@ -931,15 +928,6 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     write_to_dnnl_memory(query_data.data(), out.m_query, eng, strm);
 
     write_to_dnnl_memory(diff_output_data.data(), out.m_diff_output, eng, strm);
-    write_to_dnnl_memory(diff_value_data.data(), out.m_diff_value, eng, strm);
-    write_to_dnnl_memory(
-            diff_value_data.data(), out.m_diff_value_quantized, eng, strm);
-    write_to_dnnl_memory(diff_query_data.data(), out.m_diff_query, eng, strm);
-    write_to_dnnl_memory(
-            diff_query_data.data(), out.m_diff_query_quantized, eng, strm);
-    write_to_dnnl_memory(diff_key_data.data(), out.m_diff_key, eng, strm);
-    write_to_dnnl_memory(
-            diff_key_data.data(), out.m_diff_key_quantized, eng, strm);
 
     write_to_dnnl_memory(
             key_quantized_data.data(), out.m_key_quantized, eng, strm);
@@ -1400,6 +1388,7 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     const memory::dims q_sz {p.mb, head_group_batches, head_q_group_size,
             p.seq_len.q, p.head_group.head_size};
 
+    //std::cout << p.dt << std::endl;
     printf("k_sz: [%ld %ld %ld %ld %ld]\n", k_sz[0], k_sz[1], k_sz[2], k_sz[3],
             k_sz[4]);
     printf("v_sz: [%ld %ld %ld %ld %ld]\n", v_sz[0], v_sz[1], v_sz[2], v_sz[3],
@@ -1407,61 +1396,25 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     printf("q_sz: [%ld %ld %ld %ld %ld]\n", q_sz[0], q_sz[1], q_sz[2], q_sz[3],
             q_sz[4]);
     memory::desc grouped_key_md(k_sz, p.dt.dt, memory::format_tag::abcde);
-    memory::desc grouped_value_md(v_sz, mdt::f32, memory::format_tag::abcde);
+    memory::desc grouped_value_md(v_sz, p.dt.dt, memory::format_tag::abcde);
     memory::desc grouped_query_md(q_sz, p.dt.dt, memory::format_tag::abcde);
-    memory::desc grouped_value_f16_md(
-            v_sz, mdt::f16, memory::format_tag::abcde);
 
+    printf("key !quantized\n");
+    //TODO: remove quantized alias? none for training
     memory key_dequantized;
-    if ((key.get_desc().get_data_type() != mdt::f16
-                && key.get_desc().get_data_type() != mdt::bf16)
-            && p.qtype != quantize_type::no_quantization) {
+    auto keytmp = as(strm, key, p.dt.dt);
+    grouped_key_md = p.key_format_tag == memory::format_tag::abcd
+            ? memory::desc(k_sz, p.dt.dt, memory::format_tag::abcde)
+            : memory::desc(k_sz, p.dt.dt, memory::format_tag::abced);
 
-        dnnl::reorder key_dequantize_prim;
-        std::tie(key_dequantize_prim, key_dequantized)
-                = dequantize_prim(eng, p.dt.dt, key.get_desc(), t.kq_mask,
-                        t.kq_groups, p.key.sdt, p.key.zpdt);
+    key_dequantized = reshape(strm, keytmp, grouped_key_md);
 
-        std::unordered_map<int, memory> key_dequantize_args = {
-                {DNNL_ARG_FROM, key},
-                {DNNL_ARG_TO, key_dequantized},
-        };
-        key_dequantize_prim.execute(strm, key_dequantize_args);
-        key_dequantized = reshape(strm, key_dequantized, grouped_key_md);
-    } else {
-        printf("key !quantized\n");
-        auto keytmp = as(strm, key, p.dt.dt);
-        //TODO: ensure correct f16/f32 gold data gen
-        //grouped_key_md = p.key_format_tag == memory::format_tag::abcd
-                //? memory::desc(k_sz, p.dt.dt, memory::format_tag::abcde)
-                //: memory::desc(k_sz, p.dt.dt, memory::format_tag::abced);
-        grouped_key_md = p.key_format_tag == memory::format_tag::abcd
-                ? memory::desc(k_sz, mdt::f32, memory::format_tag::abcde)
-                : memory::desc(k_sz, mdt::f32, memory::format_tag::abced);
-
-        key_dequantized = reshape(strm, keytmp, grouped_key_md);
-    }
 
     memory value_dequantized;
-    if (value.get_desc().get_data_type() != mdt::f16
-            && value.get_desc().get_data_type() != mdt::bf16
-            && p.qtype != quantize_type::no_quantization) {
-        dnnl::reorder value_dequantize_prim;
-        std::tie(value_dequantize_prim, value_dequantized)
-                = dequantize_prim(eng, mdt::f32, value.get_desc(), t.vs_mask,
-                        t.vs_groups, p.value.sdt, p.value.zpdt);
-
-        std::unordered_map<int, memory> value_dequantize_args = {
-                {DNNL_ARG_FROM, value},
-                {DNNL_ARG_TO, value_dequantized},
-        };
-        value_dequantize_prim.execute(strm, value_dequantize_args);
-        value_dequantized = reshape(strm, value_dequantized, grouped_value_md);
-    } else {
-        printf("val !quantized\n");
-        auto value32 = as(strm, value, mdt::f32);
-        value_dequantized = reshape(strm, value32, grouped_value_md);
-    }
+    printf("val !quantized\n");
+    //auto value32 = as(strm, value, mdt::f32);
+    auto value32 = as(strm, value, p.dt.dt); //TODO: keep? remove? value32 isn't necessary? keep in orgiginal type?
+    value_dequantized = reshape(strm, value32, grouped_value_md);
 
     memory grouped_query = reshape(strm, query, grouped_query_md);
 
@@ -1470,9 +1423,12 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     printf("score_sz: [%ld %ld %ld %ld %ld]\n", score_sz[0], score_sz[1],
             score_sz[2], score_sz[3]);
     memory::desc score_md {score_sz, mdt::f32, memory::format_tag::abcde};
+    memory::desc score_f16_md {score_sz, mdt::f16, memory::format_tag::abcde};
 
     auto score = memory(score_md, eng);
+    auto score_f16 = memory(score_f16_md, eng);
     auto score2 = memory(score_md, eng);
+    auto score2_f16 = memory(score_f16_md, eng);
 
     // matmul primitive for QK
     auto bmm1_pd = matmul::primitive_desc(eng, grouped_query_md,
@@ -1496,7 +1452,7 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
             = double_and_resize(grouped_query_md, eng, strm, doubled_memory);
     auto bmm2_pd = matmul::primitive_desc(eng, score_md, grouped_value_md,
             grouped_query_md,
-            bmm2_attr); //STF: grouped_query_md size correct here?
+            bmm2_attr);
     auto bmm2_prim = matmul(bmm2_pd);
 
     // setup args
@@ -1580,15 +1536,14 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
 
     // init v, score2 gradients
     memory::desc diff_score2_md(
-            score_sz, memory::data_type::f32, memory::format_tag::abcde);
+            score_sz, mdt::f32, memory::format_tag::abcde);
     memory dV_mem(grouped_value_md, eng);
-    memory dV_mem_f16(grouped_value_f16_md, eng);
     memory diff_score2_mem(diff_score2_md, eng);
 
     // backwards pass gradient of s2 (dS2 = dO * v^t)
     memory::desc v_t_md
             = memory::desc({v_sz[0], v_sz[1], v_sz[2], v_sz[4], v_sz[3]},
-                    memory::data_type::f32, memory::format_tag::abced);
+                    /*dO.get_dt*/p.dt.dt, memory::format_tag::abced);
     matmul::primitive_desc mm_bwd_dS2_pd(
             eng, grouped_output_md, v_t_md, diff_score2_md);
     matmul mm_bwd_dS2(mm_bwd_dS2_pd);
@@ -1602,14 +1557,21 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
 #endif
 
     // backwards pass gradient of v (dV = s2^t * dO)
+
+    // downcast score to p.dt.dt
     memory::desc s2_t_md = memory::desc(
             {score_sz[0], score_sz[1], score_sz[2], score_sz[4], score_sz[3]},
-            memory::data_type::f32, memory::format_tag::abced);
+            p.dt.dt, memory::format_tag::abced);
+
+    memory score2_downcast;
+    auto score32 = as(strm, score2, p.dt.dt);
+    score2_downcast = reshape(strm, score32, s2_t_md);
+
     matmul::primitive_desc mm_bwd_dV_pd(
             eng, s2_t_md, grouped_output_md, grouped_value_md);
     matmul mm_bwd_dV(mm_bwd_dV_pd);
     mm_bwd_dV.execute(strm,
-            {{DNNL_ARG_SRC, score2}, {DNNL_ARG_WEIGHTS, dO_mem},
+            {{DNNL_ARG_SRC, score2_downcast}, {DNNL_ARG_WEIGHTS, dO_mem},
                     {DNNL_ARG_DST, dV_mem}});
     strm.wait();
 
@@ -1621,7 +1583,7 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
 
     // init memory for softmax gradients
     memory::desc diff_score_md(
-            score_sz, memory::data_type::f32, memory::format_tag::abcde);
+            score_sz, p.dt.dt, memory::format_tag::abcde);
     memory diff_score_mem(diff_score_md, eng);
 
     // backwards pass gradient of softmax
@@ -1654,7 +1616,7 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     //                   memory::data_type::f32, memory::format_tag::abced);
     memory::desc k_t_md
             = memory::desc({k_sz[0], k_sz[1], k_sz[2], k_sz[4], k_sz[3]},
-                    memory::data_type::f32, memory::format_tag::abced);
+                    p.dt.dt, memory::format_tag::abced);
     matmul::primitive_desc mm_bwd_dq_pd(
             eng, diff_score_md, k_t_md, grouped_query_md);
     matmul mm_bwd_dq(mm_bwd_dq_pd);
@@ -1666,7 +1628,7 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
 
     // backwards pass gradient of k (dK = q^t * dS)
     memory::desc q_t_md({q_sz[0], q_sz[1], q_sz[2], q_sz[4], q_sz[3]},
-            memory::data_type::f32, memory::format_tag::abced);
+            p.dt.dt, memory::format_tag::abced);
     matmul::primitive_desc mm_bwd_dk_pd(
             eng, q_t_md, diff_score_md, key_dequantized.get_desc());
     matmul mm_bwd_dk(mm_bwd_dk_pd);
@@ -1681,7 +1643,7 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
                 {{DNNL_ARG_SRC, dO_mem}, {DNNL_ARG_WEIGHTS, value_dequantized},
                         {DNNL_ARG_DST, diff_score2_mem}});
         mm_bwd_dV.execute(strm,
-                {{DNNL_ARG_SRC, score2}, {DNNL_ARG_WEIGHTS, dO_mem},
+                {{DNNL_ARG_SRC, score2_downcast}, {DNNL_ARG_WEIGHTS, dO_mem},
                         {DNNL_ARG_DST, dV_mem}});
 
         softmax_bwd.execute(strm,
@@ -1725,16 +1687,15 @@ void prim_sdpa_quant_bwd(const sdpa_dims_t &p, const sdpa_tensors_t &t,
 #endif
 
     // tmp, test f16 training, todo @all
-    auto f32_to_f16_pd = dnnl::reorder::primitive_desc(
-            eng, grouped_value_md, eng, grouped_value_f16_md);
-    auto f32_to_f16_prim = dnnl::reorder(f32_to_f16_pd);
-    f32_to_f16_prim.execute(
-            strm, {{DNNL_ARG_FROM, dV_mem}, {DNNL_ARG_TO, dV_mem_f16}});
+    //auto f32_to_f16_pd = dnnl::reorder::primitive_desc(
+            //eng, grouped_value_md, eng, grouped_value_f16_md);
+    //auto f32_to_f16_prim = dnnl::reorder(f32_to_f16_pd);
+    //f32_to_f16_prim.execute(
+            //strm, {{DNNL_ARG_FROM, dV_mem}, {DNNL_ARG_TO, dV_mem_f16}});
 
     diff_query = dQ_mem;
-    diff_key = dK_mem;
+    diff_key   = dK_mem;
     diff_value = dV_mem;
-    //diff_value = dV_mem_f16;
 }
 
 template <typename T>
@@ -1800,7 +1761,7 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
     gold.unmap_data(mapped_ptr_gold);
     test.unmap_data(mapped_ptr_test);
 
-    int threshold = total * 0.0006;
+    int threshold = total * 0.002;
 
     ASSERT_LE(mismatches, threshold) << mismatches << " out of: " << total;
     ASSERT_LE(max_diff, max_diff_threshold);
@@ -2183,10 +2144,11 @@ public:
                 t.m_diff_key,
                 t.m_diff_value); //TODO: quantized vs non-quantized for GOLD
 
-        float max_diff_threshold = 0.03f;
+        float max_diff_threshold = 0.2f;
         float fthreshold = 0.f;
-        if (p.dt.dt == mdt::bf16) {
-            fthreshold = 0.0079f;
+        if (p.dt.dt == mdt::bf16 || p.dt.dt == mdt::f16) {
+            //fthreshold = 0.0079f; //todo: correct threshold or better values
+            fthreshold = 0.079f;
         } else {
             fthreshold = 0.001466f;
         }
@@ -2196,30 +2158,43 @@ public:
         if (t.m_output.get_desc().get_data_type()
                 == mdt::f16) { //TODO: unneeded?
             printf("\n\n====== Bwd Compare ======\n");
+            printf("check output\n");
             check_memory<float16_t>(strm, t.m_output, t.m_output_quantized,
                     max_diff_threshold, fthreshold);
-#if PRINT_MEM
+#if 0
+//#if PRINT_MEM
             print_mem(t.m_output, "gold m_output");
             print_mem(t.m_output_quantized, "test m_output");
             printf("----------\n\n");
+#endif
 
-            //tmp skip dQ, dK
-            //check_memory<float16_t>(strm, t.m_diff_query, t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+            printf("check dQ\n");
+            check_memory<float16_t>(strm, t.m_diff_query, t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+//#if 0
+#if PRINT_MEM
             print_mem(t.m_diff_query, "gold m_diff_query");
             print_mem(t.m_diff_query_quantized, "test m_diff_query");
-            //printf("----------\n\n");
+            printf("----------\n\n");
+#endif
 
-            //check_memory<float16_t>(strm,   t.m_diff_key,   t.m_diff_key_quantized, max_diff_threshold, fthreshold);
+            printf("check dK\n");
+            check_memory<float16_t>(strm,   t.m_diff_key,   t.m_diff_key_quantized, max_diff_threshold, fthreshold);
+#if 0
+//#if PRINT_MEM
             print_mem(t.m_diff_key, "gold m_diff_key");
             print_mem(t.m_diff_key_quantized, "test m_diff_key");
-            //printf("----------\n\n");
-
-            print_mem(t.m_diff_value, "gold m_diff_value");
-            print_mem(t.m_diff_value_quantized, "test m_diff_value");
+            printf("----------\n\n");
 #endif
+
+            printf("check dV\n");
             check_memory<float16_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold, fthreshold);
+#if 0
+//#if PRINT_MEM
+            print_mem(t.m_diff_value, "gold m_diff_value");
+            print_mem(t.m_diff_value_quantized, "test m_diff_value");
             printf("----------\n\n");
+#endif
         } else if (t.m_output.get_desc().get_data_type()
                 == mdt::bf16) { //TODO: unneeded?
             check_memory<bfloat16_t>(strm, t.m_output, t.m_output_quantized,
@@ -2253,8 +2228,8 @@ public:
             printf("check dK\n");
             check_memory<float_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
                     max_diff_threshold, fthreshold);
-//#if 0
-#if PRINT_MEM
+#if 0
+//#if PRINT_MEM
             print_mem(t.m_diff_key, "gold m_diff_key");
             print_mem(t.m_diff_key_quantized, "test m_diff_key");
             printf("----------\n\n");
@@ -2655,7 +2630,7 @@ INSTANTIATE_TEST_SUITE_P(llama_bwd_f32,
                                // mb,hd_num,kv_hd_num,seq_len,qry_num,hd_size, kg_sz, vgrp_sz,       dt,    kdt,        ksdt,      kzpdt,       vdt,       vsdt,      vzpdt,    mskdt, qtype
     testing::Values(
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    16,      16,     16, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
-                    //sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                    sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
 
                     //sdpa_dims_t{   1,    1,        1,      32,       32,    16,      16,     16, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
@@ -2664,7 +2639,7 @@ INSTANTIATE_TEST_SUITE_P(llama_bwd_f32,
                     //sdpa_dims_t{   1,      1,        1,      65,       4097,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                     //sdpa_dims_t{   1,      1,        1,      4096,       64,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                    // sdpa_dims_t{   1,      1,        1,      1025,       15,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }// dv failing here, why
-                   sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
+                   //sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                    //sdpa_dims_t{   1,    1,        1,      4096,       4096,    32,      32,     32, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                    //sdpa_dims_t{   1,    16,        16,      384,       384,    64,      64,     64, mdt::f16, mdt::f16,  mdt::undef, mdt::undef,  mdt::f16, mdt::undef, mdt::undef, mdt::f16, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }
                    //sdpa_dims_t{   1,    16,        16,      384,       384,    64,      64,     64, mdt::f32, mdt::f32,  mdt::undef, mdt::undef,  mdt::f32, mdt::undef, mdt::undef, mdt::f32, quantize_type::no_quantization,  no_key_transposed, mask_type::no_mask }

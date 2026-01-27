@@ -593,6 +593,20 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
                     = tile_access(t, j0, i, sg, br, bc, nbr); \
         } \
     } \
+    __attribute__((overloadable)) void tile_store_sys_src1(tile_type t, \
+            local element_type *ptr, int ld, int offset_r, int offset_c) { \
+        offset_r += get_sub_group_local_id(); \
+        ptr += sg * offset_c; \
+        _Pragma("unroll") for (int j = 0; j < bc * nbc; j++, ptr += sg ) { \
+            int offset_rr = offset_r; \
+            _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; \
+                                   i0 += sg) { \
+                int offset_r0 = (offset_r + i0) & (sg - 1); \
+                int offset_r1 = (offset_r + i0) & ~(sg - 1); \
+                ptr[ offset_r0 + ld * offset_r1] = tile_access(t, i0, j, sg, br, bc, nbr); \
+            } \
+        } \
+    } \
     __attribute__((overloadable)) void tile_store_t_sys_src1(tile_type t, \
             local element_type *ptr, int ld, int offset_r, int offset_c) { \
         offset_c += get_sub_group_local_id(); \
@@ -625,6 +639,26 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
             } \
         } \
     } \
+    __attribute__((overloadable)) void tile_load_sys_src2(tile_type *t, \
+            local element_type *ptr, int tile_n, int ld, int offset_r, \
+            int offset_c) { \
+        const int cp = 32 / sizeof(element_type); \
+        offset_r += get_sub_group_local_id(); \
+        int offset_c0 = offset_c & (cp - 1); \
+        int offset_c1 = offset_c & ~(cp - 1); \
+        ptr += offset_c0 + tile_n * offset_c1; \
+        _Pragma("unroll") for (int j0 = 0; j0 < br * nbr; \
+                               j0 += sg, offset_r += sg) { \
+            int offset_r0 = offset_r & (tile_n - 1); \
+            int offset_r1 = offset_r & ~(tile_n - 1); \
+            local element_type *ptr_j = ptr + offset_r0 + ld * offset_r1; \
+            _Pragma("unroll") for (int i = 0; i < bc * nbc; i++) { \
+                tile_access(*t, j0, i, sg, br, bc, nbr) = *ptr_j; \
+                ptr_j += cp; \
+                if ((~i & (cp - 1)) == 0) ptr_j += cp * (tile_n - 1); \
+            } \
+        } \
+    } \
     __attribute__((overloadable)) void tile_store_t_sys_src2(tile_type t, \
             local element_type *ptr, int tile_n, int ld, int offset_r, \
             int offset_c) { \
@@ -640,6 +674,26 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
             local element_type *ptr_j = ptr + cp * offset_c0 + ld * offset_c1; \
             _Pragma("unroll") for (int i = 0; i < bc * nbc; i++) { \
                 *ptr_j = tile_access(t, j0, i, sg, br, bc, nbr); \
+                ptr_j++; \
+                if ((~i & (cp - 1)) == 0) ptr_j += cp * (tile_n - 1); \
+            } \
+        } \
+    } \
+    __attribute__((overloadable)) void tile_load_t_sys_src2(tile_type *t, \
+            local element_type *ptr, int tile_n, int ld, int offset_r, \
+            int offset_c) { \
+        const int cp = 32 / sizeof(element_type); \
+        offset_c += get_sub_group_local_id(); \
+        int offset_r0 = offset_r & (cp - 1); \
+        int offset_r1 = offset_r & ~(cp - 1); \
+        ptr += offset_r0 + tile_n * offset_r1; \
+        _Pragma("unroll") for (int j0 = 0; j0 < br * nbr; \
+                               j0 += sg, offset_c += sg) { \
+            int offset_c0 = offset_c & (tile_n - 1); \
+            int offset_c1 = offset_c & ~(tile_n - 1); \
+            local element_type *ptr_j = ptr + cp * offset_c0 + ld * offset_c1; \
+            _Pragma("unroll") for (int i = 0; i < bc * nbc; i++) { \
+                tile_access(*t, j0, i, sg, br, bc, nbr) = *ptr_j; \
                 ptr_j++; \
                 if ((~i & (cp - 1)) == 0) ptr_j += cp * (tile_n - 1); \
             } \
@@ -681,7 +735,7 @@ DEF_BLOCK2D_LOAD_STORE(float, uint, 16, 16, u32_m8k32v1, 32, 8)
     __attribute__((overloadable)) void tile_atomic_add(tile_type t, \
             global element_type *ptr, int m, int n, int ld, int offset_r, \
             int offset_c) { \
-        if (m >= offset_r + br * nbr && n >= offset_c + bc * nbc) { \
+        if (m >= (offset_r + (br * nbr)) && n >= (offset_c + (bc * nbc))) { \
             tile_atomic_add_full(t, ptr, ld, offset_r, offset_c); \
             return; \
         } \

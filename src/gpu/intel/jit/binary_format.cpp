@@ -212,11 +212,6 @@ public:
                             HW::XE3P_UNKNOWN>::make_kernel(engine, skip_check);
                     break;
 #endif
-#if XE4
-                case compute::gpu_arch_t::xe4:
-                    assert(!"Xe4+ does not need binary format check.");
-                    break;
-#endif
 
                 case compute::gpu_arch_t::unknown:
                     VWARN(common, runtime,
@@ -239,14 +234,6 @@ status_t gpu_supports_binary_format(bool *ok, impl::engine_t *engine) {
         VERROR(common, runtime, "bad engine kind, expected a gpu engine");
         return status::invalid_arguments;
     }
-
-#if XE4
-    // Skip check for Xe4 architecture and newer.
-    if (gpu_engine->device_info()->gpu_arch() >= compute::gpu_arch_t::xe4) {
-        *ok = true;
-        return status::success;
-    }
-#endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
     if (engine->runtime_kind() == runtime_kind::ocl) {

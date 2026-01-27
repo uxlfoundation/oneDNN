@@ -52,12 +52,6 @@ struct gen_t : public primitive_t {
 
             using smask_t = primitive_attr_t::skip_mask_t;
             const auto attr_skip_mask = smask_t::gpu_attr;
-#if XE4
-            auto *intel_engine = utils::downcast<engine_t *>(engine);
-            VDISPATCH_REDUCTION(intel_engine->device_info()->gpu_arch()
-                            < compute::gpu_arch_t::xe4,
-                    VERBOSE_UNSUPPORTED_ARCH, "gpu");
-#endif
             VDISPATCH_REDUCTION_SC(
                     set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_REDUCTION(attr()->has_default_values(attr_skip_mask),

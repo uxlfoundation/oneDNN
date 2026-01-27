@@ -454,9 +454,6 @@ REG_XE3P_ISA(template class emulated_generator_t<gpu_xe3p_35_10>);
 REG_XE3P_ISA(template class emulated_generator_t<gpu_xe3p_35_11>);
 REG_XE3P_ISA(template class emulated_generator_t<gpu_xe3p_35_unknown>);
 #endif
-#if XE4
-REG_XE4_ISA(template class emulated_generator_t<gpu_xe4>);
-#endif
 
 } // namespace jit
 } // namespace intel

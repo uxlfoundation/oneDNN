@@ -86,10 +86,6 @@ inline ngen::HW convert_dnnl_arch_to_ngen(compute::gpu_arch_t gpu_arch) {
         case compute::gpu_arch_t::xe3p_35_11: return ngen::HW::XE3P_35_11;
         case compute::gpu_arch_t::xe3p_35_unknown: return ngen::HW::XE3P_UNKNOWN;
 #endif
-#if XE4
-        case compute::gpu_arch_t::xe4: return ngen::HW::Xe4;
-#endif
-
         case compute::gpu_arch_t::unknown: return ngen::HW::Unknown;
     }
     return ngen::HW::Unknown;
@@ -108,15 +104,15 @@ inline compute::gpu_arch_t convert_ngen_arch_to_dnnl(ngen::HW gpu_arch) {
         case ngen::HW::XE3P_35_11: return compute::gpu_arch_t::xe3p_35_11;
         case ngen::HW::XE3P_UNKNOWN: return compute::gpu_arch_t::xe3p_35_unknown;
 #endif
-#if XE4
-        case ngen::HW::Xe4: return compute::gpu_arch_t::xe4;
-#endif
         case ngen::HW::Gen9:
         case ngen::HW::Gen10:
         case ngen::HW::Gen11:
             // Gen9, Gen10, Gen11 are not supported anymore. Included
             // here instead of default to emit warnings at this spot
             // when new architectures are added.
+#if XE4
+        case ngen::HW::Xe4:
+#endif
         case ngen::HW::Unknown: return compute::gpu_arch_t::unknown;
     }
     return compute::gpu_arch_t::unknown;

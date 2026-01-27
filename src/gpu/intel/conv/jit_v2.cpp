@@ -134,11 +134,6 @@ public:
         using intel::engine_t;
         auto *intel_engine = utils::downcast<engine_t *>(engine);
         if (!intel_engine->mayiuse_ngen_kernels()) return status::unimplemented;
-#if XE4
-        if (intel_engine->device_info()->gpu_arch() >= compute::gpu_arch_t::xe4)
-            return status::unimplemented;
-
-#endif
         if (!pd->set_default_alg_kind(alg_kind::convolution_direct))
             return status::unimplemented;
 

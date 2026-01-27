@@ -62,9 +62,6 @@ constexpr gpu_gen_t gpu_xe3p_35_10 = ngen::HW::XE3P_35_10;
 constexpr gpu_gen_t gpu_xe3p_35_11 = ngen::HW::XE3P_35_11;
 constexpr gpu_gen_t gpu_xe3p_35_unknown = ngen::HW::XE3P_UNKNOWN;
 #endif
-#if XE4
-constexpr gpu_gen_t gpu_xe4 = ngen::HW::Xe4;
-#endif
 
 #if (!defined(NDEBUG) || defined(DNNL_DEV_MODE))
 #define GENERATOR_NAME __FILE__

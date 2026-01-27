@@ -697,7 +697,6 @@ static auto hw_names = nstl::to_array({
         make_enum_name(ngen::Core::XE3P_35_10, "xe3p_35_10"),
         make_enum_name(ngen::Core::XE3P_35_11, "xe3p_35_11"),
         make_enum_name(ngen::Core::XE3P_UNKNOWN, "xe3p_35_unknown"),
-        make_enum_name(ngen::Core::Xe4, "xe4"),
 });
 GPU_DEFINE_PARSE_ENUM(ngen::HW, hw_names)
 
@@ -719,7 +718,6 @@ static auto product_family_names = nstl::to_array({
         make_enum_name(ngen::ProductFamily::XE3P_35_10, "xe3p_35_10"),
         make_enum_name(ngen::ProductFamily::XE3P_35_11, "xe3p_35_11"),
         make_enum_name(ngen::ProductFamily::XE3P_UNKNOWN, "xe3p_35_unknown"),
-        make_enum_name(ngen::ProductFamily::GenericXe4, "xe4"),
 });
 GPU_DEFINE_PARSE_ENUM(ngen::ProductFamily, product_family_names)
 
@@ -1231,20 +1229,6 @@ void deserialize_from_hex(T &t, const std::string &s_hex) {
         REG_XE3P_ISA(GPU_HW_CASE_(XE3P_35_10)); \
         REG_XE3P_ISA(GPU_HW_CASE_(XE3P_35_11)); \
         REG_XE3P_ISA(GPU_HW_CASE_(XE3P_UNKNOWN)); \
-        REG_XE4_ISA(GPU_HW_CASE_(Xe4)); \
-        default: gpu_assert(false) << "Unexpected GPU architecture"; \
-    }
-
-#elif XE4
-#define GPU_HW_SWITCH(hw) \
-    switch (hw) { \
-        REG_XELP_ISA(GPU_HW_CASE_(XeLP)); \
-        REG_XEHP_ISA(GPU_HW_CASE_(XeHP)); \
-        REG_XEHPG_ISA(GPU_HW_CASE_(XeHPG)); \
-        REG_XEHPC_ISA(GPU_HW_CASE_(XeHPC)); \
-        REG_XE2_ISA(GPU_HW_CASE_(Xe2)); \
-        REG_XE3_ISA(GPU_HW_CASE_(Xe3)); \
-        REG_XE4_ISA(GPU_HW_CASE_(Xe4)); \
         default: gpu_assert(false) << "Unexpected GPU architecture"; \
     }
 

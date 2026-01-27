@@ -50,9 +50,6 @@ uint64_t get_future_extensions(
         case gpu_arch_t::xe3p_35_11:
         case gpu_arch_t::xe3p_35_unknown:
 #endif
-#if XE4
-        case gpu_arch_t::xe4:
-#endif
             extensions |= (uint64_t)device_ext_t::intel_global_float_atomics;
             extensions
                     |= (uint64_t)device_ext_t::intel_variable_eu_thread_count;
@@ -166,9 +163,6 @@ int device_info_t::max_eus_per_wg(gpu_arch_t gpu_arch) {
         case gpu::intel::compute::gpu_arch_t::xe_lp:
         case gpu::intel::compute::gpu_arch_t::xe_hp:
         case gpu::intel::compute::gpu_arch_t::xe_hpg: return 16;
-#if XE4
-        case gpu_arch_t::xe4: return 4;
-#endif
         case gpu::intel::compute::gpu_arch_t::unknown: return 8;
     }
     return 8;
@@ -182,9 +176,6 @@ int device_info_t::max_subgroup_size(gpu_arch_t gpu_arch) {
         case gpu_arch_t::xe3p_35_10:
         case gpu_arch_t::xe3p_35_11:
         case gpu_arch_t::xe3p_35_unknown:
-#endif
-#if XE4
-        case gpu_arch_t::xe4:
 #endif
         case gpu::intel::compute::gpu_arch_t::xe3: return 32;
         case gpu::intel::compute::gpu_arch_t::xe_lp:
@@ -213,9 +204,6 @@ int device_info_t::min_subgroup_size() const {
         case gpu_arch_t::xe3p_35_unknown:
 #endif
         case gpu_arch_t::xe3: return 16;
-#if XE4
-        case gpu_arch_t::xe4: return 32;
-#endif
         default: return 0;
     }
 }
@@ -228,9 +216,6 @@ int device_info_t::max_exec_size(gpu_arch_t gpu_arch) {
         case gpu::intel::compute::gpu_arch_t::xe3p_35_10:
         case gpu::intel::compute::gpu_arch_t::xe3p_35_11:
         case gpu::intel::compute::gpu_arch_t::xe3p_35_unknown:
-#endif
-#if XE4
-        case gpu::intel::compute::gpu_arch_t::xe4:
 #endif
         case gpu::intel::compute::gpu_arch_t::xe3: return 128;
         default: return 64;
@@ -270,9 +255,6 @@ int device_info_t::threads_per_eu(gpu_arch_t gpu_arch, bool large_grf_mode) {
         case gpu::intel::compute::gpu_arch_t::xe3p_35_11:
         case gpu::intel::compute::gpu_arch_t::xe3p_35_unknown:
 #endif
-#if XE4
-        case gpu::intel::compute::gpu_arch_t::xe4:
-#endif
         case gpu::intel::compute::gpu_arch_t::xe3:
             return large_grf_mode ? 4 : 8;
         case gpu::intel::compute::gpu_arch_t::unknown: return 7;
@@ -295,11 +277,6 @@ int device_info_t::max_slm_size(gpu_arch_t gpu_arch) {
         case gpu::intel::compute::gpu_arch_t::xe3p_35_11:
         case gpu::intel::compute::gpu_arch_t::xe3p_35_unknown:
             slm_size = 3 * (1 << 17);
-            break;
-#endif
-#if XE4
-        case gpu::intel::compute::gpu_arch_t::xe4:
-            slm_size = 1280 * 1024;
             break;
 #endif
         case gpu::intel::compute::gpu_arch_t::xe3: slm_size = (1 << 17); break;
@@ -337,9 +314,6 @@ size_t device_info_t::icache_size() const {
         case gpu::intel::compute::gpu_arch_t::xe3p_35_10:
         case gpu::intel::compute::gpu_arch_t::xe3p_35_11:
         case gpu::intel::compute::gpu_arch_t::xe3p_35_unknown: return 80 * 1024;
-#endif
-#if XE4
-        case gpu::intel::compute::gpu_arch_t::xe4: return 96 * 1024;
 #endif
         case gpu::intel::compute::gpu_arch_t::unknown: assert(!"not expected");
     }

@@ -64,11 +64,6 @@ status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
                 || attr()->scales_.get_mask(DNNL_ARG_DST) == 0;
         return src_scale_ok && dst_scale_ok;
     };
-#if XE4
-    VDISPATCH_REORDER(
-            intel_engine->device_info()->gpu_arch() < compute::gpu_arch_t::xe4,
-            VERBOSE_UNSUPPORTED_ARCH, "gpu");
-#endif
     VDISPATCH_REORDER(
             src_engine == dst_engine && src_engine->kind() == engine_kind::gpu,
             VERBOSE_BAD_ENGINE_KIND);

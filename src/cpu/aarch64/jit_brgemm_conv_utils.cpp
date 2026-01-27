@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1850,8 +1850,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             cur_brgb.oc_block = ocb * jcp.acc_simd_w;
             cur_brgb.nb_oc = utils::div_up(jcp.oc, cur_brgb.oc_block);
             if (!cur_brgb.fast_check_oc_block()) continue;
-            // eff heuristics seem to be wrong for sve_128, <16 is always worse
-            if (isa == sve_128 && cur_brgb.oc_block < 16) break;
+            // for sve128 try to use larger oc_block for better efficiency
+            if (isa == sve_128 && cur_brgb.oc_block == 4) cur_brgb.oc_block = 8;
 
             const status_t blocking_ok = cur_brgb.calc_blocks();
             if (blocking_ok != status::success) continue;
